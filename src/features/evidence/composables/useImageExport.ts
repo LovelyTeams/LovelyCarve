@@ -100,7 +100,9 @@ async function startImageExport(opts: {
   if (!destination || epoch !== generation || context !== evidenceContext()) return false;
 
   const startedAtMs = Date.now();
-  const job: ImageExportJob = {
+  // Keep the same proxy in the map and closures: a reactive Map wraps raw
+  // values on get(), so comparing a raw job with jobs.get() never releases it.
+  const job: ImageExportJob = reactive({
     imageId: opts.imageId,
     taskId: newTaskId(),
     destination,
@@ -111,7 +113,7 @@ async function startImageExport(opts: {
     lastBytesDone: 0,
     bytesPerSecond: 0,
     cancelling: false,
-  };
+  });
   jobs.set(opts.imageId, job);
 
   const toast = pushPersistentToast({
