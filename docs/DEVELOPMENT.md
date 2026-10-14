@@ -100,7 +100,7 @@ just run-example probe_partitions '"D:\Evidence Files\disk.E01"'
 
 `build-plugins` 按提交的锁文件构建宿主和 linuxinfo，并把动态库复制到 `plugin.toml` 旁。`dev` 使用开发版插件；`build-release` 与 CLI 打包先构建发布版插件。修改插件时先在插件仓库提交并推送，再在主仓库提交子模块指针，不要只提交指针而漏推插件提交。
 
-安装包和便携包共用 `src-tauri/tauri.plugins.conf.json`：主程序旁放置 `lc-plugin-host.exe`，插件目录包含 `plugins/linuxinfo/plugin.toml` 和 DLL，插件不嵌入主程序。单独部署插件使用 `just pack-plugins`；更换文件前退出应用，重启后会重新发现。接口与工件来源见 [插件协议](PLUGIN_PROTOCOL.md) 和 [Linux 基本信息插件](LINUXINFO.md)。
+安装包和便携包共用 `src-tauri/tauri.plugins.generated.conf.json`：主程序旁放置 `lc-plugin-host.exe`，插件目录包含 `plugins/linuxinfo/plugin.toml` 和 DLL，插件不嵌入主程序。单独部署插件使用 `just pack-plugins`；新增插件目录后在设置页手动“检查插件目录”即可发现；更换已有插件文件前退出应用，重启后生效。`just plugin-bundle` 从全部清单生成资源配置，声明的 `[library] resources` 也随包分发；生成配置不提交到 Git。资源生成回归用 `just test-plugin-bundle`。接口与工件来源见 [插件协议](PLUGIN_PROTOCOL.md) 和 [Linux 基本信息插件](LINUXINFO.md)。
 
 ReFS 使用纯 Rust 读取器；旧的 `librefs-13.dll` 只在显式的 `refs-dll-oracle` 特性下用于对照，不随正式包分发。Dokan、OpenSSL 与可选的 OpenCV DLL，以及模型和许可证属于构建 / 运行资源，按打包配置分发。`src-tauri/binaries` 中的 `vcruntime140.dll`、`vcruntime140_1.dll`、`msvcp140.dll` 和 `msvcp140_1.dll` 是 Visual Studio 可再发行目录中的 VC++ 运行库，随主程序放在同一目录：主程序和 CLI 静态链接 `vcruntime`，但动态依赖 C++ 标准库 `msvcp140`（它又依赖 `vcruntime140` / `vcruntime140_1`），`lc-plugin-host`、`linuxinfo` 和 OpenSSL 的 `libcrypto` 动态依赖 `vcruntime140`；便携包打包时不对这些 DLL 做 UPX 压缩。Tauri 的 MSI 打包会收入 `src-tauri/target/release` 根目录下的所有 DLL，`build-release` 因此先删除其中未在打包配置里声明的 DLL（例如完整构建留下的 OpenCV 和 ONNX Runtime 执行提供者）。发布前用 `dumpbin /dependents` 核对主程序、CLI、插件宿主、插件和随附 DLL 的依赖，除 Windows 自带组件外都应能在包内找到。测试夹具及其来源说明保存在 vendor 与 tests 目录中，不要用真实检材替换。
 

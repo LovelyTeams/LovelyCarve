@@ -43,7 +43,7 @@ verify-rust: fmt check clippy test
 
 # Run the SDK, process host and linuxinfo checks.
 [group("verify")]
-verify-plugins: fmt clippy-plugins test-plugins
+verify-plugins: fmt clippy-plugins test-plugins test-plugin-bundle
 
 # Start Vite after preparing offline viewer assets.
 [group("frontend")]
@@ -150,16 +150,26 @@ clippy:
 test *args:
     {{ cargo_env }}cargo test --no-default-features {{ args }}
 
-# Build linuxinfo and lc-plugin-host; pass --release for bundles.
+# Build discovered plugin crates and lc-plugin-host; pass --release for bundles.
 [group("plugins")]
 build-plugins *args:
     {{ cargo_env }}bun scripts/build-plugins.mjs {{ args }}
 
-# Package linuxinfo with its process-isolation host.
+# Package discovered plugins with their process-isolation host.
 [group("plugins")]
 [windows]
-pack-plugins: (build-plugins "--release")
+pack-plugins: (build-plugins "--release") plugin-bundle
     pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\pack-plugins.ps1'
+
+# Generate manifest-derived runtime resources from staged release plugins.
+[group("plugins")]
+plugin-bundle:
+    bun scripts/generate-plugin-bundle.mjs
+
+# Verify manifest-derived plugin packaging with independent fixture directories.
+[group("plugins")]
+test-plugin-bundle:
+    bun test scripts/lib/plugin-bundle.test.mjs
 
 # Test the SDK, lc-plugin-host and linuxinfo.
 [group("plugins")]
@@ -222,15 +232,17 @@ build-full:
 [windows]
 build-release *args:
     {{ cargo_env }}bun scripts/build-plugins.mjs --release
+    bun scripts/generate-plugin-bundle.mjs
     pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\prune-bundle-dlls.ps1'
-    {{ windowsenv }}; bun run tauri build --config '{{ justfile_directory() }}\src-tauri\tauri.plugins.conf.json' {{ args }}
+    {{ windowsenv }}; bun run tauri build --config '{{ justfile_directory() }}\src-tauri\tauri.plugins.generated.conf.json' {{ args }}
 
 # Build the desktop release bundle with QR/OCR, models and plugins (Windows).
 [group("desktop")]
 [windows]
 build-release-full *args:
     {{ cargo_env }}bun scripts/build-plugins.mjs --release
-    {{ vsenv }}; bun run tauri build --features qrcode-wechat,ocr-cuda --config '{{ justfile_directory() }}\src-tauri\tauri.plugins.conf.json' --config '{{ justfile_directory() }}\src-tauri\tauri.full.conf.json' {{ args }}
+    bun scripts/generate-plugin-bundle.mjs
+    {{ vsenv }}; bun run tauri build --features qrcode-wechat,ocr-cuda --config '{{ justfile_directory() }}\src-tauri\tauri.plugins.generated.conf.json' --config '{{ justfile_directory() }}\src-tauri\tauri.full.conf.json' {{ args }}
 
 # Build and package the portable Windows desktop app.
 [group("desktop")]
@@ -247,13 +259,13 @@ pack-full: build-release-full
 # Package the existing desktop release without rebuilding.
 [group("desktop")]
 [windows]
-repack:
+repack: plugin-bundle
     pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\pack.ps1'
 
 # Package an existing desktop release with QR/OCR resources.
 [group("desktop")]
 [windows]
-repack-full:
+repack-full: plugin-bundle
     pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\pack.ps1' -QrOcr
 
 # Run the CLI without QR/OCR.
@@ -310,6 +322,7 @@ smoke-cli executable:
 [windows]
 pack-cli: build-cli
     {{ cargo_env }}bun scripts/build-plugins.mjs --release
+    bun scripts/generate-plugin-bundle.mjs
     pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\pack-cli.ps1'
 
 # Build and package the full Windows CLI with QR/OCR and plugins.
@@ -317,12 +330,13 @@ pack-cli: build-cli
 [windows]
 pack-cli-full: build-cli-full
     {{ cargo_env }}bun scripts/build-plugins.mjs --release
+    bun scripts/generate-plugin-bundle.mjs
     pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\pack-cli.ps1' -RequireQrOcr
 
 # Package an existing Windows CLI release using its actual capabilities.
 [group("cli")]
 [windows]
-repack-cli:
+repack-cli: plugin-bundle
     pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\pack-cli.ps1'
 
 # Test the read-only Rust ReFS port independently of the desktop host.

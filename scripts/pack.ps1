@@ -81,9 +81,9 @@ if ($QrOcr) {
     Write-Host "==> staged resources/ ($resCount externalized model files)"
 }
 
-# lc-plugin-host and the bundled plugins: the same set tauri.plugins.conf.json
+# lc-plugin-host and the bundled plugins: the same set tauri.plugins.generated.conf.json
 # adds to the installers (built by `just build-release`).
-$pluginBundle = Get-Content -LiteralPath (Join-Path $Root 'src-tauri\tauri.plugins.conf.json') -Raw | ConvertFrom-Json
+$pluginBundle = Get-Content -LiteralPath (Join-Path $Root 'src-tauri\tauri.plugins.generated.conf.json') -Raw | ConvertFrom-Json
 foreach ($resource in $pluginBundle.bundle.resources.PSObject.Properties) {
     $target = Join-Path $stage $resource.Value
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null

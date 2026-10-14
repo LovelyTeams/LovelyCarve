@@ -50,6 +50,7 @@ pub struct EvidenceAnalysisRequest {
 /// When the last reference goes, a process worker is killed with it.
 pub struct TaskWorker {
     plugin_id: String,
+    definition: PluginDefinition,
     connection: PluginConnection,
 }
 
@@ -96,10 +97,11 @@ impl PluginManager {
     ) -> Result<TaskWorker> {
         let definition = self.definition(plugin_id)?;
         let connection = self
-            .open_connection(definition, Some(Arc::new(progress)))
+            .open_connection(&definition, Some(Arc::new(progress)))
             .await?;
         Ok(TaskWorker {
             plugin_id: plugin_id.to_owned(),
+            definition,
             connection,
         })
     }
@@ -107,8 +109,8 @@ impl PluginManager {
     /// Runs a file analyzer on the plugin's shared instance.
     pub async fn analyze_file(&self, request: FileAnalysisRequest) -> Result<PluginAnalysisResult> {
         let definition = self.file_analyzer(&request)?;
-        let connection = self.client(definition).await?;
-        self.run_file_analysis(&connection, definition, request)
+        let connection = self.client(&definition).await?;
+        self.run_file_analysis(&connection, &definition, request)
             .await
     }
 
@@ -119,7 +121,16 @@ impl PluginManager {
         request: FileAnalysisRequest,
     ) -> Result<PluginAnalysisResult> {
         let connection = worker.connection_for(&request.plugin_id)?;
-        let definition = self.file_analyzer(&request)?;
+        let definition = &worker.definition;
+        if !definition
+            .manifest
+            .file_analyzer_capabilities()
+            .any(|capability| capability.analyzer == request.analyzer)
+        {
+            return Err(PluginError::Manifest(
+                "worker 未声明该文件分析器".to_owned(),
+            ));
+        }
         self.run_file_analysis(connection, definition, request)
             .await
     }
@@ -131,8 +142,8 @@ impl PluginManager {
         request: EvidenceAnalysisRequest,
     ) -> Result<PluginAnalysisResult> {
         let definition = self.evidence_analyzer(&request)?;
-        let connection = self.client(definition).await?;
-        self.run_evidence_analysis(&connection, definition, request)
+        let connection = self.client(&definition).await?;
+        self.run_evidence_analysis(&connection, &definition, request)
             .await
     }
 
@@ -143,12 +154,21 @@ impl PluginManager {
         request: EvidenceAnalysisRequest,
     ) -> Result<PluginAnalysisResult> {
         let connection = worker.connection_for(&request.plugin_id)?;
-        let definition = self.evidence_analyzer(&request)?;
+        let definition = &worker.definition;
+        if !definition
+            .manifest
+            .evidence_analyzer_capabilities()
+            .any(|capability| capability.analyzer == request.analyzer)
+        {
+            return Err(PluginError::Manifest(
+                "worker 未声明该检材分析器".to_owned(),
+            ));
+        }
         self.run_evidence_analysis(connection, definition, request)
             .await
     }
 
-    fn file_analyzer(&self, request: &FileAnalysisRequest) -> Result<&PluginDefinition> {
+    fn file_analyzer(&self, request: &FileAnalysisRequest) -> Result<PluginDefinition> {
         let definition = self.definition(&request.plugin_id)?;
         if definition
             .manifest
@@ -167,7 +187,7 @@ impl PluginManager {
         }
     }
 
-    fn evidence_analyzer(&self, request: &EvidenceAnalysisRequest) -> Result<&PluginDefinition> {
+    fn evidence_analyzer(&self, request: &EvidenceAnalysisRequest) -> Result<PluginDefinition> {
         let definition = self.definition(&request.plugin_id)?;
         if definition
             .manifest
@@ -464,6 +484,15 @@ analyzer = "{ANALYZER}"
                 ),
             )
             .expect("manifest");
+            std::fs::write(
+                plugin_directory.join(format!(
+                    "{}workers{}",
+                    std::env::consts::DLL_PREFIX,
+                    std::env::consts::DLL_SUFFIX
+                )),
+                b"test library",
+            )
+            .expect("library");
             let manager = PluginManager::discover(&[plugin_directory]).expect("discover");
             let image_path = directory.path().join("image.raw");
             std::fs::write(&image_path, b"hello world!").expect("raw image");
@@ -496,6 +525,7 @@ analyzer = "{ANALYZER}"
             .expect("in-process worker");
             TaskWorker {
                 plugin_id: PLUGIN_ID.to_owned(),
+                definition: self.manager.definition(PLUGIN_ID).expect("definition"),
                 connection: PluginConnection::InProcess(client),
             }
         }
@@ -521,6 +551,28 @@ analyzer = "{ANALYZER}"
         (messages, move |event: PluginProgressEvent| {
             sink.lock().push(event.message.unwrap_or_default());
         })
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn captured_task_worker_survives_catalog_removal() {
+        let fixture = Fixture::new();
+        let worker = fixture.worker(|_| {});
+        let directory = fixture
+            .manager
+            .definition(PLUGIN_ID)
+            .expect("definition")
+            .directory;
+        std::fs::remove_file(directory.join("plugin.toml")).expect("remove manifest");
+        fixture.manager.rescan().expect("rescan");
+        assert!(fixture.manager.definitions().is_empty());
+        assert!(fixture.manager.definition(PLUGIN_ID).is_err());
+        let result = fixture
+            .manager
+            .analyze_file_on(&worker, fixture.request("after removal"))
+            .await
+            .expect("existing worker still runs");
+        assert_eq!(result.summary.as_deref(), Some("after removal"));
+        assert!(worker.is_alive());
     }
 
     #[tokio::test(flavor = "multi_thread")]

@@ -32,6 +32,8 @@ CLI 目前仍链接 Tauri 的原生运行时；Linux 构建保留其 GTK/系统�
 插件是原生动态库，从程序旁的 `plugins/` 发现；默认隔离方式的插件由程序旁的
 `lc-plugin-host` 加载，不需要额外的解释器或运行时。
 
+运行中添加插件目录后，可执行 `plugin-rescan --json` 手动检查；`plugin-scan-report --json` 查看最近诊断，`plugin-list --json` 读取已经发布的列表。JSONL 会话中的命令名分别为 `plugin_rescan`、`plugin_scan_report`、`plugin_list`。查询列表不会扫描磁盘；库更新需要重启。字段说明见 [插件配置参考](PLUGIN_MANIFEST.md)。
+
 ## 交互浏览
 
 ```text

@@ -10,6 +10,7 @@ target/
 /src-tauri/gen/schemas/
 
 # Libraries staged by just build-plugins
+/src-tauri/tauri.plugins.generated.conf.json
 /plugins/*/*.dll
 /plugins/*/*.so
 /plugins/*/*.dylib

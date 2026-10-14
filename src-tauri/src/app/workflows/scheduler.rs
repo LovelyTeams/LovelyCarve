@@ -106,22 +106,16 @@ impl Execution {
             .get(&task.info.image_id)
             .cloned()
             .ok_or_else(|| format!("检材 {} 未加载", task.info.image_id))?;
-        let manifest = self
+        let definition = self
             .manager
-            .definitions()
-            .iter()
-            .find(|definition| definition.manifest.id == task.info.plugin_id)
-            .map(|definition| &definition.manifest);
-        let plugin_version = manifest
-            .map(|manifest| manifest.version.clone())
-            .unwrap_or_default();
-        // 检材级 function 没有目标文件,插件经
-        // `evidence.*` 自行遍历检材;文件级 function 仍走 FileHandle。
-        let evidence_level = manifest.is_some_and(|manifest| {
-            manifest
-                .evidence_analyzer_capabilities()
-                .any(|capability| capability.analyzer == task.info.analyzer)
-        });
+            .definition(&task.info.plugin_id)
+            .map_err(|error| format!("插件不可用: {error}"))?;
+        let manifest = &definition.manifest;
+        let plugin_version = manifest.version.clone();
+        // 检材级 function 没有目标文件,文件级 function 仍走 FileHandle。
+        let evidence_level = manifest
+            .evidence_analyzer_capabilities()
+            .any(|capability| capability.analyzer == task.info.analyzer);
         let (node_id, file_name) = if evidence_level {
             (String::new(), String::new())
         } else {

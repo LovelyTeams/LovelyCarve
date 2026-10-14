@@ -7,7 +7,8 @@ use crate::{
         analysis::results::models::PluginAnalysisResult,
         analysis::results::plugin_result_store::{self, NewPluginAnalysis, StoredPluginAnalysis},
         extensions::plugin::{
-            FileAnalysisRequest, PluginIsolation, PluginManager, PluginPermission, PluginState,
+            FileAnalysisRequest, PluginIsolation, PluginManager, PluginPermission,
+            PluginScanReport, PluginState, PLUGIN_CATALOG_CHANGED,
         },
     },
     state::AppState,
@@ -133,6 +134,31 @@ pub async fn plugin_list(state: State<'_, AppState>) -> Result<Vec<PluginInfo>, 
     .map_err(|err| AppError::task_panicked("plugin_list", err))
 }
 
+/// Reads the last published directory diagnostics without inspecting disk.
+#[tauri::command]
+pub async fn plugin_scan_report(state: State<'_, AppState>) -> Result<PluginScanReport, AppError> {
+    Ok(plugin_manager(&state)?.catalog_snapshot().report.clone())
+}
+
+/// Explicit manual inspection on a blocking worker. Emits `plugin-catalog-changed`
+/// with the published generation; never starts plugin code or automatic analyses.
+#[tauri::command]
+pub async fn plugin_rescan(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<PluginScanReport, AppError> {
+    use tauri::Emitter as _;
+    let manager = plugin_manager(&state)?;
+    let report = tokio::task::spawn_blocking(move || manager.rescan())
+        .await
+        .map_err(|error| AppError::task_panicked("plugin_rescan", error))?
+        .map_err(plugin_app_error)?;
+    if let Err(error) = app.emit(PLUGIN_CATALOG_CHANGED, report.generation) {
+        tracing::warn!("emit plugin-catalog-changed failed: {error}");
+    }
+    Ok(report)
+}
+
 #[tauri::command]
 pub async fn plugin_restart(state: State<'_, AppState>, plugin_id: String) -> Result<(), AppError> {
     plugin_manager(&state)?
@@ -152,8 +178,8 @@ pub async fn plugin_analyze_file(
 ) -> Result<PluginAnalysisRunResponse, AppError> {
     let manager = plugin_manager(&state)?;
     let image = loaded_image_app_error(&state, &image_id).await?;
-    let definition = manager
-        .definitions()
+    let definitions = manager.definitions();
+    let definition = definitions
         .iter()
         .find(|definition| definition.manifest.id == plugin_id);
     let plugin_version = definition

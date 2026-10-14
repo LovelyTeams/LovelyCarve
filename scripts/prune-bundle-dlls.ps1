@@ -11,7 +11,7 @@ param(
     # Repo root (defaults to the parent of this script's dir).
     [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path,
     # Bundle configurations under src-tauri whose resources are kept.
-    [string[]]$Config = @('tauri.conf.json', 'tauri.plugins.conf.json')
+    [string[]]$Config = @('tauri.conf.json', 'tauri.plugins.generated.conf.json')
 )
 
 $ErrorActionPreference = 'Stop'

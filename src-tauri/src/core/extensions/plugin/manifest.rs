@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use super::{PluginError, Result};
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct PluginManifest {
     pub id: String,
     pub name: String,
@@ -30,6 +31,7 @@ pub struct PluginManifest {
 
 /// The plugin library and where it runs.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct LibraryManifest {
     /// Library path relative to the plugin directory. A name without a
     /// library extension (`linuxinfo`) resolves to the platform file name:
@@ -37,6 +39,9 @@ pub struct LibraryManifest {
     pub path: String,
     #[serde(default)]
     pub isolation: PluginIsolation,
+    /// Additional runtime files to include in plugin packages, relative to this directory.
+    #[serde(default)]
+    pub resources: Vec<String>,
 }
 
 /// Where a plugin library runs.
@@ -64,6 +69,7 @@ pub enum TaskTrigger {
 /// 插件级任务调度声明。所有字段可省略,默认值为:
 /// 手动触发、非内部、单实例、不可暂停。
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct TaskManifest {
     /// 前驱 function 名,空表示依赖链第一环。
     #[serde(default)]
@@ -128,7 +134,7 @@ pub enum PluginPermission {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Capability {
     Filesystem(FilesystemCapability),
     FileAnalyzer(FileAnalyzerCapability),
@@ -137,6 +143,7 @@ pub enum Capability {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct FilesystemCapability {
     pub filesystem: String,
     #[serde(default)]
@@ -144,6 +151,7 @@ pub struct FilesystemCapability {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct FileAnalyzerCapability {
     pub analyzer: String,
     #[serde(default)]
@@ -157,6 +165,7 @@ pub struct FileAnalyzerCapability {
 /// 检材级分析能力:任务不指向单个文件,
 /// 插件拿到整个检材的只读文件视图自行定位数据。
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct EvidenceAnalyzerCapability {
     pub analyzer: String,
     /// function 显示名,如「Linux基本信息」;
@@ -222,6 +231,17 @@ impl PluginManifest {
             return Err(PluginError::Manifest(
                 "library.path must be a relative path inside the plugin directory".to_owned(),
             ));
+        }
+        for resource in &self.library.resources {
+            if resource.trim().is_empty()
+                || Path::new(resource)
+                    .components()
+                    .any(|component| !matches!(component, Component::Normal(_)))
+            {
+                return Err(PluginError::Manifest(
+                    "library.resources 必须是插件目录内的相对文件路径".to_owned(),
+                ));
+            }
         }
         for capability in self.filesystem_capabilities() {
             if capability.filesystem.trim().is_empty()

@@ -1,16 +1,27 @@
 <template>
-  <section class="plugin-settings-panel" aria-label="插件设置" :aria-busy="loading">
+  <section class="plugin-settings-panel" aria-label="插件设置" :aria-busy="loading || checking">
     <div class="plugin-toolbar">
       <span class="plugin-count">已安装 <strong>{{ plugins.length.toLocaleString() }}</strong> 个插件</span>
-      <button class="ui-btn" type="button" :disabled="loading || busyPluginId !== null" @click="loadPlugins">
-        <Loader2 v-if="loading" :size="14" class="spin" /><RefreshCw v-else :size="14" aria-hidden="true" />刷新
+      <button class="ui-btn" type="button" :disabled="loading || checking || busyPluginId !== null" @click="rescanPlugins">
+        <Loader2 v-if="checking" :size="14" class="spin" /><RefreshCw v-else :size="14" aria-hidden="true" />{{ checking ? '检查中' : '检查插件目录' }}
       </button>
     </div>
-    <p class="plugin-hint">查看插件状态；展开详情查看能力、权限与安装位置。</p>
+    <p class="plugin-hint">放入完整插件目录后点击检查；展开详情查看能力、权限与安装位置。</p>
+    <p v-if="scanSummary" class="ui-alert success" role="status">{{ scanSummary }}</p>
+    <p v-if="subscriptionError" class="ui-alert warn" role="alert">{{ subscriptionError }}</p>
+    <details v-if="report" v-disclosure-motion class="ui-disclosure plugin-disclosure">
+      <summary><ChevronRight :size="14" class="ui-chevron" aria-hidden="true" />检查目录与诊断（{{ diagnostics.length }}）</summary>
+      <div class="plugin-detail-content">
+        <p v-for="root in report.roots" :key="root" class="plugin-path">{{ root }}</p>
+        <div v-for="(diagnostic, index) in diagnostics" :key="index" class="ui-alert plugin-feedback" :class="diagnostic.status === 'error' ? 'danger' : 'warn'">
+          <div><strong>{{ diagnostic.pluginId || '目录检查' }}</strong><p class="plugin-path">{{ diagnostic.directory }}</p><p class="plugin-hint">{{ diagnostic.message }}<template v-if="diagnostic.status === 'updatePending' && diagnostic.version">（扫描版本 {{ diagnostic.version }}）</template></p></div>
+        </div>
+      </div>
+    </details>
     <div v-if="error" class="ui-alert danger" role="alert">
       <CircleAlert :size="16" aria-hidden="true" />
       <span class="error-text">读取插件失败：{{ error }}</span>
-      <button class="ui-btn sm" type="button" :disabled="loading || busyPluginId !== null" @click="loadPlugins">重试</button>
+      <button class="ui-btn sm" type="button" :disabled="loading || checking || busyPluginId !== null" @click="loadPlugins">重试</button>
     </div>
     <div v-if="loading && plugins.length === 0" class="ui-empty plugin-state" role="status">
       <span class="ui-empty-icon accent"><Loader2 :size="24" class="spin" /></span>
@@ -19,15 +30,16 @@
     <div v-else-if="plugins.length === 0 && !error" class="ui-empty plugin-state">
       <span class="ui-empty-icon"><Puzzle :size="28" aria-hidden="true" /></span>
       <p class="ui-empty-title">未发现插件</p>
-      <p class="ui-empty-desc">将插件清单与动态库放入应用数据目录的 plugins 文件夹，然后刷新。</p>
+      <p class="ui-empty-desc">将插件清单与动态库放入应用数据目录的 plugins 文件夹，然后点击“检查插件目录”。</p>
     </div>
     <div v-else class="plugin-list">
       <article v-for="plugin in plugins" :key="plugin.id" class="ui-card plugin-card">
         <div class="plugin-card-heading">
           <span class="plugin-icon"><Puzzle :size="18" aria-hidden="true" /></span>
           <div class="plugin-title"><strong :title="plugin.name">{{ plugin.name }}</strong><span>v{{ plugin.version }}</span></div>
+          <span v-if="report?.entries.some(entry => entry.pluginId === plugin.id && entry.status === 'updatePending')" class="ui-badge warn">更新待重启</span>
           <span class="ui-badge" :class="stateClass(plugin)">{{ stateLabel(plugin) }}</span>
-          <button class="ui-btn sm ghost" type="button" :disabled="loading || busyPluginId !== null" @click="restartPlugin(plugin)">
+          <button class="ui-btn sm ghost" type="button" :disabled="loading || checking || busyPluginId !== null" @click="restartPlugin(plugin)">
             <Loader2 v-if="busyPluginId === plugin.id" :size="13" class="spin" /><RotateCw v-else :size="13" aria-hidden="true" />
             {{ busyPluginId === plugin.id ? '重置中' : '重置' }}
           </button>
@@ -57,37 +69,77 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { vDisclosureMotion } from '../../../composables/uiMotionDirectives';
 import {
   ChevronRight, CircleAlert, Loader2, Puzzle, RefreshCw, RotateCw,
 } from 'lucide-vue-next';
 import {
-  pluginList, pluginRestart,
-  type PluginCapabilityInfo, type PluginInfo, type PluginPermission,
+  pluginList, pluginRestart, pluginRescan, pluginScanReport, onPluginCatalogChanged,
+  type PluginCapabilityInfo, type PluginInfo, type PluginPermission, type PluginScanReport,
 } from '../../../lib/ipc/plugins';
 
 const plugins = ref<PluginInfo[]>([]);
 const loading = ref(false);
+const checking = ref(false);
+const report = ref<PluginScanReport | null>(null);
+const scanSummary = ref('');
+const subscriptionError = ref('');
+const diagnostics = computed(() => report.value?.entries.filter(entry => !['added', 'unchanged'].includes(entry.status)) ?? []);
 const error = ref('');
 const busyPluginId = ref<string | null>(null);
 const actionFeedback = ref<{ pluginId: string; failed: boolean; message: string } | null>(null);
 let disposed = false;
-onBeforeUnmount(() => { disposed = true; });
+let requestGeneration = 0;
+let unlisten: (() => void) | null = null;
+onBeforeUnmount(() => { disposed = true; requestGeneration++; unlisten?.(); });
 
-onMounted(() => void loadPlugins());
+onMounted(async () => {
+  try {
+    const stop = await onPluginCatalogChanged(() => {
+      if (!checking.value) void loadPlugins();
+    });
+    if (disposed) { stop(); return; }
+    unlisten = stop;
+  } catch (cause) {
+    if (!disposed) subscriptionError.value = `插件变化订阅失败：${String(cause)}，可手动检查目录。`;
+  }
+  if (!disposed) void loadPlugins();
+});
+
+async function rescanPlugins() {
+  if (checking.value || loading.value || busyPluginId.value !== null || disposed) return;
+  checking.value = true;
+  scanSummary.value = '';
+  error.value = '';
+  try {
+    const result = await pluginRescan();
+    if (disposed) return;
+    const count = result.entries.filter(entry => entry.status === 'added').length;
+    scanSummary.value = `检查完成，新发现 ${count} 个插件。`;
+    await loadPlugins();
+  } catch (cause) {
+    if (!disposed) error.value = `检查目录失败：${String(cause)}`;
+  } finally {
+    checking.value = false;
+  }
+}
 
 async function loadPlugins() {
-  if (loading.value || disposed) return;
+  if (disposed) return;
+  const generation = ++requestGeneration;
   loading.value = true;
   error.value = '';
   try {
-    const result = await pluginList();
-    if (!disposed) plugins.value = result;
+    const [result, scan] = await Promise.all([pluginList(), pluginScanReport()]);
+    if (!disposed && generation === requestGeneration) {
+      plugins.value = result;
+      report.value = scan;
+    }
   } catch (cause) {
-    if (!disposed) error.value = String(cause);
+    if (!disposed && generation === requestGeneration) error.value = String(cause);
   } finally {
-    loading.value = false;
+    if (generation === requestGeneration) loading.value = false;
   }
 }
 
@@ -155,6 +207,7 @@ function stateClass(plugin: PluginInfo) {
 .plugin-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .plugin-count { color: var(--text-secondary); font-size: 12px; }
 .plugin-count strong { color: var(--text-primary); font-family: var(--font-mono); font-weight: 600; }
+.plugin-path { margin: 4px 0; font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); overflow-wrap: anywhere; user-select: text; }
 .plugin-hint { margin: 0; color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
 .plugin-state { min-height: 160px; }
 .error-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }

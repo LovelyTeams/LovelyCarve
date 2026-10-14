@@ -29,8 +29,8 @@ foreach ($feature in @('ocr', 'qrcode')) {
         Copy-Item -LiteralPath (Join-Path $Root "src-tauri/resources/$feature") -Destination $resourcesTarget -Recurse
     }
 }
-# lc-plugin-host and the bundled plugins (the set tauri.plugins.conf.json ships).
-$pluginBundle = Get-Content -LiteralPath (Join-Path $Root 'src-tauri/tauri.plugins.conf.json') -Raw | ConvertFrom-Json
+# lc-plugin-host and the bundled plugins (the set tauri.plugins.generated.conf.json ships).
+$pluginBundle = Get-Content -LiteralPath (Join-Path $Root 'src-tauri/tauri.plugins.generated.conf.json') -Raw | ConvertFrom-Json
 foreach ($resource in $pluginBundle.bundle.resources.PSObject.Properties) {
     $target = Join-Path $stage $resource.Value
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null

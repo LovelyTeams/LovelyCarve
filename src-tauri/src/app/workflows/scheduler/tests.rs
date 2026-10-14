@@ -36,7 +36,7 @@ async fn plugin_tasks_run_and_persist_side_by_side_on_a_real_image() {
             post_action_debounce: Duration::from_millis(1),
             ..SchedulerConfig::default()
         },
-        Arc::new(move || FunctionRegistry::from_definitions(registry_manager.definitions())),
+        Arc::new(move || FunctionRegistry::from_definitions(&registry_manager.definitions())),
         Arc::new(move |case_dir: &Path| {
             Arc::new(PluginTaskRunner::new(
                 Arc::clone(&images),

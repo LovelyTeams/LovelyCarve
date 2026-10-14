@@ -19,6 +19,7 @@ import {
   type SchedNotice,
   type SchedTaskRecord,
 } from '../../../lib/ipc/tasks';
+import { onPluginCatalogChanged } from '../../../lib/ipc/plugins';
 import type { UnlistenFn } from '../../../lib/ipc/events';
 import { taskCaseContext } from './taskContext';
 import { notifyError, notifyInfo, notifySuccess } from '../../../composables/useToast';
@@ -32,6 +33,9 @@ const loading = shallowRef(false);
 const error = shallowRef<string | null>(null);
 let unlisten: UnlistenFn | null = null;
 let listening: Promise<void> | null = null;
+let pluginUnlisten: UnlistenFn | null = null;
+let pluginListening: Promise<void> | null = null;
+let functionGeneration = 0;
 let caseWatchInstalled = false;
 let caseWatchScope: ReturnType<typeof effectScope> | null = null;
 let refreshGeneration = 0;
@@ -96,6 +100,7 @@ function errorMessage(err: unknown): string {
 async function refresh(): Promise<void> {
   const generation = ++refreshGeneration;
   const directory = caseKey();
+  const functionRequest = ++functionGeneration;
   const changes = new Map<number, SchedTaskRecord | null>();
   pendingChanges = changes;
   loading.value = true;
@@ -112,13 +117,30 @@ async function refresh(): Promise<void> {
       else merged.delete(id);
     }
     replaceTasks([...merged.values()]);
-    functions.value = registry;
+    if (functionRequest === functionGeneration) functions.value = registry;
   } catch (err) {
     if (generation === refreshGeneration && directory === caseKey()) error.value = errorMessage(err);
   } finally {
     if (generation === refreshGeneration) {
       pendingChanges = null;
       loading.value = false;
+    }
+  }
+}
+
+/** Catalog changes refresh only functions, preserving task state and current selections. */
+async function refreshFunctions(): Promise<void> {
+  const generation = ++functionGeneration;
+  const listener = listenerGeneration;
+  const revision = caseRevision;
+  try {
+    const registry = await schedTaskFunctions();
+    if (generation === functionGeneration && listener === listenerGeneration && revision === caseRevision) {
+      functions.value = registry;
+    }
+  } catch (err) {
+    if (generation === functionGeneration && listener === listenerGeneration && revision === caseRevision) {
+      error.value = `更新插件功能失败：${errorMessage(err)}`;
     }
   }
 }
@@ -139,6 +161,20 @@ function ensureListening(): Promise<void> {
         console.error('subscribe sched-task-event failed:', err);
       });
   }
+  if (!pluginListening) {
+    const generation = listenerGeneration;
+    pluginListening = onPluginCatalogChanged(() => {
+      if (generation === listenerGeneration) void refreshFunctions();
+    }).then(stop => {
+      if (generation !== listenerGeneration) stop();
+      else { pluginUnlisten = stop; void refreshFunctions(); }
+    }).catch(err => {
+      if (generation === listenerGeneration) {
+        pluginListening = null;
+        console.error('subscribe plugin-catalog-changed failed:', err);
+      }
+    });
+  }
   if (!caseWatchInstalled) {
     caseWatchInstalled = true;
     // 案件切换:任务表随案件台账变化,整表重拉;关案后清空。
@@ -147,6 +183,7 @@ function ensureListening(): Promise<void> {
       () => taskCaseContext()?.dir ?? null,
       dir => {
         ++refreshGeneration;
+        ++functionGeneration;
         ++caseRevision;
         pendingChanges = null;
         replaceTasks([]);
@@ -172,6 +209,10 @@ export function disposeTaskCenter(): void {
   listenerGeneration++;
   caseRevision++;
   unlisten?.();
+  pluginUnlisten?.();
+  pluginUnlisten = null;
+  pluginListening = null;
+  ++functionGeneration;
   unlisten = null;
   listening = null;
   caseWatchInstalled = false;

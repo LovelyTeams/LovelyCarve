@@ -95,6 +95,7 @@ fn start() -> Result<i32, CliError> {
             "snapshot-build-progress",
             "carve-scan-progress",
             "plugin-progress",
+            "plugin-catalog-changed",
             "sched-task-event",
             "autodetect-finished",
             "autodetect-failed",
@@ -115,10 +116,18 @@ fn start() -> Result<i32, CliError> {
         }
     }
     let worker_status = exit_status.clone();
+    // Tauri invokes setup on Ready, not build. Commands must not race discovery
+    // and the other setup-owned services, especially in an open JSONL session.
+    let (ready_sender, ready_receiver) = std::sync::mpsc::sync_channel(1);
     std::thread::Builder::new()
         .name("lovelycarve-cli".into())
         .stack_size(16 * 1024 * 1024)
         .spawn(move || {
+            if let Err(error) = ready_receiver.recv() {
+                tracing::error!("CLI 初始化未完成: {error}");
+                handle.exit(1);
+                return;
+            }
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 tauri::async_runtime::block_on(execute(&handle, &matches))
             }));
@@ -140,11 +149,23 @@ fn start() -> Result<i32, CliError> {
             worker_status.store(code, Ordering::SeqCst);
             handle.exit(code);
         })?;
-    app.run_return(|handle, event| match event {
+    let mut ready_sender = Some(ready_sender);
+    app.run_return(move |handle, event| match event {
+        tauri::RunEvent::Ready => {
+            if let Some(sender) = ready_sender.take() {
+                if let Err(error) = sender.send(()) {
+                    tracing::error!("CLI 工作线程未就绪: {error}");
+                    handle.exit(1);
+                }
+            }
+        }
         tauri::RunEvent::ExitRequested {
             code: None, api, ..
         } => api.prevent_exit(),
-        tauri::RunEvent::Exit => tauri::async_runtime::block_on(shutdown(handle)),
+        tauri::RunEvent::Exit => {
+            drop(ready_sender.take());
+            tauri::async_runtime::block_on(shutdown(handle));
+        }
         _ => {}
     });
     Ok(if interrupted.load(Ordering::SeqCst) {

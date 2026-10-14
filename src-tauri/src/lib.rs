@@ -151,6 +151,8 @@ pub(crate) fn application_builder() -> tauri::Builder<tauri::Wry> {
             commands::analysis::os_detect::os_detect,
             commands::analysis::autodetect::autodetect_evidence,
             commands::extensions::plugin::plugin_list,
+            commands::extensions::plugin::plugin_scan_report,
+            commands::extensions::plugin::plugin_rescan,
             commands::extensions::plugin::plugin_restart,
             commands::extensions::plugin::plugin_analyze_file,
             commands::extensions::plugin::plugin_analysis_list,

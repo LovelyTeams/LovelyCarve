@@ -12,6 +12,10 @@ pub(crate) async fn release_media(state: &AppState) {
 pub(crate) async fn shutdown_plugins(state: &AppState) {
     let manager = state.plugins.read().clone();
     if let Some(manager) = manager {
+        let discovery = manager.clone();
+        if let Err(error) = tokio::task::spawn_blocking(move || discovery.close_discovery()).await {
+            tracing::warn!("closing plugin discovery failed: {error}");
+        }
         manager.shutdown().await;
     }
 }

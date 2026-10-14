@@ -1,11 +1,4 @@
-use std::{
-    cmp::Ordering,
-    collections::{HashMap, HashSet},
-    fs,
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
-};
+use std::{cmp::Ordering, collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 
 use parking_lot::RwLock;
 use rmpv::Value;
@@ -14,6 +7,7 @@ use tokio::sync::Mutex;
 
 use super::{
     client::{HostRpcServices, PluginProgressSink},
+    discovery::PluginCatalog,
     fingerprint::fingerprint_directory,
     EvidenceRegistry, FileRegistry, PluginConnection, PluginError, PluginManifest,
     PluginProgressEvent, RemoteVolume, Result, SourceHandle, SourceRegistry,
@@ -90,7 +84,7 @@ struct OpenResponse {
 }
 
 pub struct PluginManager {
-    definitions: Vec<PluginDefinition>,
+    catalog: Arc<PluginCatalog>,
     sources: SourceRegistry,
     files: FileRegistry,
     evidences: EvidenceRegistry,
@@ -103,55 +97,35 @@ impl PluginManager {
     /// 发现即信任:所有清单合法的插件初始为 `Configured`(可派发/可探测)。
     /// 指纹仅作信息展示,不构成启用门槛。
     pub fn discover(roots: &[PathBuf]) -> Result<Self> {
-        let mut definitions = Vec::new();
-        let mut plugin_ids = HashSet::new();
-        for root in roots {
-            let paths = match manifest_paths(root) {
-                Ok(paths) => paths,
-                Err(error) => {
-                    tracing::warn!(root = %root.display(), "plugin root cannot be inspected: {error}");
-                    continue;
-                }
-            };
-            for manifest_path in paths {
-                let manifest = match PluginManifest::load(&manifest_path) {
-                    Ok(manifest) => manifest,
-                    Err(error) => {
-                        tracing::warn!(manifest = %manifest_path.display(), "plugin ignored: {error}");
-                        continue;
-                    }
-                };
-                if !plugin_ids.insert(manifest.id.clone()) {
-                    tracing::warn!(plugin_id = %manifest.id, "duplicate plugin ignored");
-                    continue;
-                }
-                let directory = manifest_path.parent().ok_or_else(|| {
-                    PluginError::Manifest(format!(
-                        "manifest {} has no parent directory",
-                        manifest_path.display()
-                    ))
-                })?;
-                definitions.push(PluginDefinition::new(directory.to_owned(), manifest));
-            }
-        }
-        definitions.sort_by(|left, right| left.manifest.id.cmp(&right.manifest.id));
-        let states = definitions
-            .iter()
-            .map(|definition| (definition.manifest.id.clone(), PluginState::Configured))
-            .collect();
+        let catalog = Arc::new(PluginCatalog::new(roots));
+        catalog.rescan()?;
         Ok(Self {
-            definitions,
+            catalog,
             sources: SourceRegistry::default(),
             files: FileRegistry::default(),
             evidences: EvidenceRegistry::default(),
             clients: Mutex::new(HashMap::new()),
-            states: RwLock::new(states),
+            states: RwLock::default(),
             progress_sink: RwLock::new(None),
         })
     }
 
-    pub fn definitions(&self) -> &[PluginDefinition] {
-        &self.definitions
+    pub fn definitions(&self) -> Arc<[PluginDefinition]> {
+        Arc::clone(&self.catalog.snapshot().definitions)
+    }
+
+    pub fn catalog_snapshot(&self) -> Arc<super::CatalogSnapshot> {
+        self.catalog.snapshot()
+    }
+
+    /// Blocking disk inspection; existing connections and task workers are preserved.
+    pub fn rescan(&self) -> Result<super::PluginScanReport> {
+        self.catalog.rescan()
+    }
+
+    /// Blocking: stop directory inspection before shutting down live instances.
+    pub fn close_discovery(&self) {
+        self.catalog.close();
     }
 
     pub fn sources(&self) -> &SourceRegistry {
@@ -169,7 +143,12 @@ impl PluginManager {
     /// State of the plugin's shared instance (task workers are not tracked
     /// here; their state is the task's).
     pub fn state(&self, plugin_id: &str) -> Option<PluginState> {
-        self.states.read().get(plugin_id).cloned()
+        self.states.read().get(plugin_id).cloned().or_else(|| {
+            self.definitions()
+                .iter()
+                .any(|definition| definition.manifest.id == plugin_id)
+                .then_some(PluginState::Configured)
+        })
     }
 
     /// Receives `host.progress` of the shared instances (direct
@@ -195,10 +174,11 @@ impl PluginManager {
         Ok(())
     }
 
-    pub(super) fn definition(&self, plugin_id: &str) -> Result<&PluginDefinition> {
-        self.definitions
+    pub(crate) fn definition(&self, plugin_id: &str) -> Result<PluginDefinition> {
+        self.definitions()
             .iter()
             .find(|definition| definition.manifest.id == plugin_id)
+            .cloned()
             .ok_or_else(|| PluginError::Manifest(format!("plugin {plugin_id} is not configured")))
     }
 
@@ -218,7 +198,7 @@ impl PluginManager {
 
     pub async fn probe(&self, source: &SourceHandle) -> Vec<ProbeMatch> {
         let mut matches = Vec::new();
-        for definition in self.definitions.iter().filter(|definition| {
+        for definition in self.definitions().iter().filter(|definition| {
             definition
                 .manifest
                 .filesystem_capabilities()
@@ -257,17 +237,8 @@ impl PluginManager {
         let Some(best) = self.probe(source).await.into_iter().next() else {
             return Ok(None);
         };
-        let definition = self
-            .definitions
-            .iter()
-            .find(|definition| definition.manifest.id == best.plugin_id)
-            .ok_or_else(|| {
-                PluginError::Manifest(format!(
-                    "probed plugin {} is no longer configured",
-                    best.plugin_id
-                ))
-            })?;
-        let client = self.client(definition).await?;
+        let definition = self.definition(&best.plugin_id)?;
+        let client = self.client(&definition).await?;
         let params = Value::Map(vec![
             (
                 Value::from("source_id"),
@@ -381,6 +352,11 @@ impl PluginManager {
         definition: &PluginDefinition,
         progress_sink: Option<PluginProgressSink>,
     ) -> Result<PluginConnection> {
+        let catalog = Arc::clone(&self.catalog);
+        let definition_for_check = definition.clone();
+        tokio::task::spawn_blocking(move || catalog.validate_for_load(&definition_for_check))
+            .await
+            .map_err(|error| PluginError::Manifest(format!("检查插件文件失败: {error}")))??;
         let client = PluginConnection::open(
             definition,
             HostRpcServices::new(
@@ -417,34 +393,13 @@ impl PluginManager {
     }
 }
 
-fn manifest_paths(root: &Path) -> Result<Vec<PathBuf>> {
-    if !root.exists() {
-        return Ok(Vec::new());
-    }
-    let direct = root.join("plugin.toml");
-    if direct.is_file() {
-        return Ok(vec![direct]);
-    }
-    let mut paths = Vec::new();
-    for entry in fs::read_dir(root)? {
-        let entry = entry?;
-        if entry.file_type()?.is_dir() {
-            let candidate = entry.path().join("plugin.toml");
-            if candidate.is_file() {
-                paths.push(candidate);
-            }
-        }
-    }
-    paths.sort();
-    Ok(paths)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::{
         extensions::plugin::EvidenceAnalysisRequest, filesystem::evidence_session::EvidenceSession,
     };
+    use std::{fs, path::Path};
 
     #[test]
     fn discovers_sorted_immediate_plugin_directories() {
@@ -461,11 +416,12 @@ version = "1"
 protocol_min = 1
 protocol_max = 1
 [library]
-path = "test"
+path = "test.dll"
 "#
                 ),
             )
             .expect("write manifest");
+            fs::write(plugin_directory.join("test.dll"), b"test").expect("library");
         }
         let manager =
             PluginManager::discover(&[temporary.path().to_owned()]).expect("discover plugins");
@@ -494,7 +450,7 @@ version = "1"
 protocol_min = 1
 protocol_max = 1
 [library]
-path = "test"
+path = "test.dll"
 "#,
         )
         .expect("manifest");

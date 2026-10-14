@@ -17,6 +17,7 @@ mod analysis_result;
 mod client;
 mod codec;
 mod connection;
+mod discovery;
 mod error;
 mod evidence_directory_cache;
 mod evidence_name_scan;
@@ -36,6 +37,9 @@ pub use analysis::{EvidenceAnalysisRequest, FileAnalysisRequest, TaskWorker};
 pub use client::{PluginClient, PluginCommand, PluginIdentity, PluginProgressEvent};
 pub use codec::MAX_FRAME_SIZE;
 pub use connection::PluginConnection;
+pub use discovery::{
+    CatalogSnapshot, PluginScanEntry, PluginScanReport, PluginScanStatus, PLUGIN_CATALOG_CHANGED,
+};
 pub use error::{PluginError, Result};
 pub use evidence_registry::{
     EvidenceHandle, EvidenceNode, EvidenceRegistry, EvidenceRoot, MAX_EVIDENCE_READ,

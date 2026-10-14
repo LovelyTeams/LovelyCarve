@@ -18,6 +18,76 @@ import threading
 import zlib
 
 
+def check_manual_plugin_discovery(executable, root):
+    plugin_root = root / "manual-plugins"
+    plugin_root.mkdir()
+    environment = {**os.environ, "LOVELYCARVE_PLUGIN_DIR": str(plugin_root)}
+    identifier = "org.test.manual_discovery"
+    with (root / "plugin-scan.stderr").open("w", encoding="utf-8") as diagnostics:
+        process = subprocess.Popen([str(executable), "session"], stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=diagnostics,
+                                   text=True, encoding="utf-8", cwd=root, env=environment)
+        responses = queue.Queue()
+        def read_responses():
+            for line in process.stdout:
+                responses.put(line)
+        reader = threading.Thread(target=read_responses, daemon=True)
+        reader.start()
+        sequence = 0
+        def request(command):
+            nonlocal sequence
+            sequence += 1
+            request_id = f"{command}-{sequence}"
+            process.stdin.write(json.dumps({"id": request_id, "command": command}) + "\n")
+            process.stdin.flush()
+            row = json.loads(responses.get(timeout=30))
+            assert row["id"] == request_id and "result" in row, row
+            return row["result"]
+        try:
+            assert not any(plugin["id"] == identifier for plugin in request("plugin_list"))
+            plugin = plugin_root / "arbitrary-directory"
+            plugin.mkdir()
+            manifest = f'''id = "{identifier}"
+name = "CLI discovery fixture"
+version = "1"
+protocol_min = 1
+protocol_max = 1
+[library]
+path = "test.dll"
+[[capabilities]]
+type = "evidence_analyzer"
+analyzer = "baseinfo"
+'''
+            (plugin / "plugin.toml").write_text(manifest, encoding="utf-8")
+            (plugin / "test.dll").write_bytes(b"fixture only: never load this file")
+            # Merely querying the list does not inspect disk.
+            assert not any(item["id"] == identifier for item in request("plugin_list"))
+            added = request("plugin_rescan")
+            assert any(item["pluginId"] == identifier and item["status"] == "added" for item in added["entries"]), added
+            assert any(item["id"] == identifier for item in request("plugin_list"))
+            assert any(item["function"] == identifier + "/baseinfo" for item in request("sched_task_functions"))
+            assert request("plugin_scan_report")["generation"] == added["generation"]
+            (plugin / "plugin.toml").write_text(manifest.replace('version = "1"', 'version = "2"'), encoding="utf-8")
+            updated = request("plugin_rescan")
+            assert any(item["pluginId"] == identifier and item["status"] == "updatePending" and item["version"] == "2" for item in updated["entries"]), updated
+            assert next(item for item in request("plugin_list") if item["id"] == identifier)["version"] == "1"
+            (plugin / "plugin.toml").unlink()
+            removed = request("plugin_rescan")
+            assert any(item["pluginId"] == identifier and item["status"] == "removed" for item in removed["entries"]), removed
+            assert not any(item["id"] == identifier for item in request("plugin_list"))
+            assert not any(item["function"] == identifier + "/baseinfo" for item in request("sched_task_functions"))
+            process.stdin.close()
+            process.wait(timeout=30)
+            assert process.returncode == 0, process.returncode
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            for stream in [process.stdin, process.stdout]:
+                stream.close()
+            reader.join(timeout=5)
+
+
 def main():
     executable = Path(sys.argv[1]).resolve()
     with tempfile.TemporaryDirectory(prefix="lovelycarve-cli-test-") as directory:
@@ -38,6 +108,8 @@ def main():
 
         catalog = json.loads(run(["commands", "--json"]).stdout)
         assert len(catalog) >= 148
+        assert {"plugin_rescan", "plugin_scan_report"}.issubset({command["name"] for command in catalog})
+        check_manual_plugin_discovery(executable, root)
         assert any(command["name"] == "fs_media_temp" for command in catalog)
         capabilities = json.loads(run(["capabilities", "--json"]).stdout)
         assert capabilities["windowless"] and capabilities["backend_commands"] == len(catalog)

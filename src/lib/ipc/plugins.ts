@@ -1,4 +1,31 @@
 import { invokeCmd } from './client';
+import { onEvent, type UnlistenFn } from './events';
+
+export type PluginScanStatus = 'added' | 'unchanged' | 'removed' | 'updatePending' | 'error' | 'duplicate' | 'missingRoot';
+export interface PluginScanEntry {
+  directory: string;
+  pluginId: string | null;
+  version: string | null;
+  status: PluginScanStatus;
+  message: string;
+}
+export interface PluginScanReport {
+  generation: number;
+  roots: string[];
+  entries: PluginScanEntry[];
+}
+
+export function pluginRescan(): Promise<PluginScanReport> {
+  return invokeCmd<PluginScanReport>('plugin_rescan');
+}
+
+export function pluginScanReport(): Promise<PluginScanReport> {
+  return invokeCmd<PluginScanReport>('plugin_scan_report');
+}
+
+export function onPluginCatalogChanged(handler: (generation: number) => void): Promise<UnlistenFn> {
+  return onEvent<number>('plugin-catalog-changed', ({ payload }) => handler(payload));
+}
 
 export type PluginPermission = 'file_materialize' | 'emit_artifacts' | 'network';
 export type PluginRuntimeState = 'configured' | 'starting' | 'running' | 'crashed';

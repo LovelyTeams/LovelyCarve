@@ -25,11 +25,16 @@ parsers that issue many small reads.
 
 ## Discovery, manifest, and trust
 
+For the complete Chinese field reference, defaults, accepted values, and current
+validation limits, see [plugin.toml 配置参考](PLUGIN_MANIFEST.md). The manual background rescan is described in [插件发现流程](PLUGIN_DISCOVERY.md).
+
 LovelyCarve discovers immediate plugin directories under the per-user app-data
 `plugins` directory and the `plugins` directory next to the executable (where
 the installer puts the bundled plugins). Development builds additionally
 inspect `./plugins` and the repository's `plugins/`; an extra root may be
-provided through `LOVELYCARVE_PLUGIN_DIR`. Each directory must contain a
+provided through `LOVELYCARVE_PLUGIN_DIR`. During a running session, the settings
+page inspects these roots only when the user clicks 检查插件目录; there is no
+periodic poll or file watcher. Each directory must contain a
 `plugin.toml` and the library it names:
 
 ```toml
@@ -52,7 +57,7 @@ trigger = "manually"                         # "auto" roots are created when evi
 internal = false                             # true hides the task from the default task list
 single_instance = true                       # one active task per (function, evidence)
 can_pause = false                            # allow /task/pause; resume re-runs from scratch
-type = "fileanalyzer"                        # display category (e.g. "longtime", "analysis")
+type = "fileanalyzer"                        # display category; current default for both analyzer kinds
 platform = "linux"                           # target platform; omit for "all"
 support = ["系统信息", "用户列表"]             # sub-items the function covers
 evidence_types = ["disk"]                    # supported evidence types; omit for all
@@ -493,12 +498,19 @@ and `{ kind: "notice", notice }` for `taskOffline` / `taskTimeout` /
 
 ## Application IPC and management UI
 
-The Tauri IPC layer exposes `plugin_list`, `plugin_restart`,
+The Tauri IPC layer exposes `plugin_list`, `plugin_scan_report`, `plugin_rescan`, `plugin_restart`,
 `plugin_analyze_file`, and `plugin_analysis_list`. Frontend code calls the
 typed wrappers in `src/lib/ipc/plugins.ts`. The settings plugin page shows
 state, capabilities (filesystem, file and evidence analyzers), permissions,
 directory, library file, isolation mode, and fingerprint, and can restart a
-plugin without restarting LovelyCarve. Plugins are trusted on discovery —
+plugin without restarting LovelyCarve. Manual rescans run on a blocking worker
+and publish `plugin-catalog-changed` with a generation number; new plugins appear
+in the settings and analysis menus without replacing live instances. Changed
+plugins retain their current definition and require an application restart.
+Removed plugins stop accepting new calls while captured task workers and
+filesystem sessions stay alive. Unknown manifest fields are rejected. Additional
+package files are declared as `[library] resources = ["helper.dll", "data/map.json"]`.
+Plugins are trusted on discovery —
 there is no approval or disable flow.
 
 Scheduled tasks use `sched_task_functions`, `sched_task_list`,

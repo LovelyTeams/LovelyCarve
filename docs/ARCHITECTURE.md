@@ -158,7 +158,7 @@ LVM 标签/CRC/活动副本位于 `evidence/partitions/lvm2/header.rs`，有界�
 - 卷/挂载：`fs_mount_readonly`、`fs_unmount_readonly`、`fs_mounts`、挂载点建议和创建
 - BitLocker：状态、密码/恢复密钥/VMK 解锁、内存扫描、导出解密镜像
 - 案件和快照：案件创建/打开/关闭、证据列表/移除、卷快照构建/列表/删除
-- 插件与任务调度：`plugin_list`/`plugin_restart`/`plugin_analyze_file`/
+- 插件与任务调度：`plugin_list`/`plugin_rescan`/`plugin_scan_report`/`plugin_restart`/`plugin_analyze_file`/
   `plugin_analysis_list`；`sched_task_functions`、`sched_task_list`、`sched_task_create`、
   `sched_task_cancel`/`pause`/`start`/`restart`/`remove`、`sched_evidence_post_actions_set`
 - 系统辅助：主题、任务取消、模块摘要、路径显示、二维码、OCR、OS 检测、Windows 盘符识别
@@ -486,6 +486,8 @@ function（检材级 function 无此限制）；结果树一次整树返回（�
 逻辑源句柄，不能获得或直接打开证据路径。运行时提供握手、受限读取、分页、取消、进度与超时。
 Unknown 分区在首次展开时通过插件管理器执行 `fs.probe` / `fs.open`，命中后安装 `RemoteVolume`；
 其 children、stat、范围读取和流式读取继续复用原有 `Volume` / `FsSession` dispatch。
+
+启动扫描与运行中的手动“检查插件目录”共用 `plugin/discovery.rs`。`plugin_rescan` 在阻塞线程检查清单及动态库元数据，通过独立扫描锁串行化，再发布不可变清单快照与代际；`plugin_scan_report` 只读取最近报告。`plugin-catalog-changed` 通知设置页和任务功能状态更新，不重置任务列表。新增插件按需加载，变更定义待重启，移除撤销新调用入口；管理器、连接、源注册表与 worker 不随扫描替换，worker 固定持有启动定义。停止插件运行时前先关闭扫描发布。完整字段与流程见 [配置参考](PLUGIN_MANIFEST.md) 和 [插件发现](PLUGIN_DISCOVERY.md)。
 
 插件**发现即信任**：清单合法的插件初始即为可用（`Configured`），可直接探测、派发与分析；
 没有批准步骤与禁用开关，插件目录 SHA-256 指纹仅用于设置页展示与版本标识（已加载的库不会卸载，

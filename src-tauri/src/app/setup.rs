@@ -117,7 +117,7 @@ pub(crate) fn build_task_scheduler(
     let registry_source: RegistrySource = Arc::new(move || {
         let manager = registry_plugins.read().clone();
         match manager {
-            Some(manager) => FunctionRegistry::from_definitions(manager.definitions()),
+            Some(manager) => FunctionRegistry::from_definitions(&manager.definitions()),
             None => FunctionRegistry::default(),
         }
     });

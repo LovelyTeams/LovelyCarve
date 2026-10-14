@@ -70,7 +70,7 @@ Use the repository-root `Justfile` as the task entry point. Do not replace an ex
 - `just build-plugins [--release]`: build the plugin workspace (`lc-plugin-host` and the plugin libraries) and copy each library next to its `plugin.toml`; `just dev`, `just build-release` and `just pack-cli` run it first.
 - `just test-plugins` / `just clippy-plugins`: test / lint the plugin workspace.
 - `just build` / `just build-full`: build the backend without / with QR/OCR. Cargo default features are empty.
-- `just build-release` / `just build-release-full`: create the Windows release desktop bundle without / with QR/OCR; both merge `src-tauri/tauri.plugins.conf.json`, and the full entry also merges `src-tauri/tauri.full.conf.json` for OpenCV and models. Tauri's MSI bundler also packs every DLL left in `src-tauri/target/release`, so the default entry first removes the undeclared ones (`scripts/prune-bundle-dlls.ps1`).
+- `just build-release` / `just build-release-full`: create the Windows release desktop bundle without / with QR/OCR; both merge `src-tauri/tauri.plugins.generated.conf.json`, and the full entry also merges `src-tauri/tauri.full.conf.json` for OpenCV and models. Tauri's MSI bundler also packs every DLL left in `src-tauri/target/release`, so the default entry first removes the undeclared ones (`scripts/prune-bundle-dlls.ps1`).
 - `just run-example probe_partitions <image-path>`: run the standalone partition probe.
 - `just run-example probe_partitions <image-path> --mbr`: inspect raw MBR/EBR slots, provenance and recovery warnings.
 - `just run-example-fast <name> [args]`: run a probe with `release-fast` and one Cargo build job.

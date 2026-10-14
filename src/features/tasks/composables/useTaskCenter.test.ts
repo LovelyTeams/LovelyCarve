@@ -233,3 +233,32 @@ it('starts following a case context registered after its first consumer', async 
   applySchedEventForTests({ kind: 'taskChanged', task: record() });
   active.value = null; expect(center.tasks.value).toEqual([]);
 });
+
+it('updates functions on catalog changes without replacing task state', async () => {
+  const center = useTaskCenter();
+  invokeMock.mockResolvedValue([]);
+  for (let index = 0; index < 8; index++) await Promise.resolve();
+  applySchedEventForTests({ kind: 'taskChanged', task: record({ status: 'running' }) });
+  const registry = [{ function: 'org.new.plugin/baseinfo', enabled: true }];
+  invokeMock.mockImplementation(command => command === 'sched_task_functions' ? Promise.resolve(registry) : Promise.reject(new Error('must not reload task list')));
+  const subscription = listenMock.mock.calls.find(call => call[0] === 'plugin-catalog-changed')!;
+  subscription[1]({ payload: 2 });
+  for (let index = 0; index < 8; index++) await Promise.resolve();
+  expect(center.functions.value).toEqual(registry);
+  expect(center.tasks.value).toEqual([record({ status: 'running' })]);
+  expect(center.error.value).toBeNull();
+});
+
+it('releases a late catalog subscription and rejects results after disposal', async () => {
+  let resolve!: (stop: () => void) => void;
+  listenMock.mockImplementation(event => event === 'plugin-catalog-changed' ? new Promise(yes => { resolve = yes; }) : Promise.resolve(() => {}));
+  const center = useTaskCenter();
+  const callback = listenMock.mock.calls.find(call => call[0] === 'plugin-catalog-changed')![1];
+  resetTaskCenterForTests();
+  const stop = vi.fn(); resolve(stop);
+  for (let index = 0; index < 8; index++) await Promise.resolve();
+  callback({ payload: 2 });
+  expect(stop).toHaveBeenCalledOnce();
+  expect(center.functions.value).toEqual([]);
+  expect(invokeMock).not.toHaveBeenCalled();
+});
