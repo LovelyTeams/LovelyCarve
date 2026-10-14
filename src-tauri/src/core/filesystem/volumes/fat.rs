@@ -197,7 +197,7 @@ impl FatVolume {
                 return Ok(out);
             }
         };
-        let dir_bytes = match recover::read_dir_bytes(&self.image, &geom, &fat, cluster) {
+        let (dir_bytes, slot_offsets) = match recover::read_dir_bytes(&self.image, &geom, &fat, cluster) {
             Ok(b) => b,
             Err(err) => {
                 tracing::debug!("FAT recover read dir {path} failed: {err}");
@@ -205,7 +205,7 @@ impl FatVolume {
             }
         };
         let parent_id = self.node_id(path);
-        let mut recovered = recover::scan_dir_deleted(&dir_bytes, &geom);
+        let mut recovered = recover::scan_dir_deleted(&dir_bytes, &slot_offsets, &geom);
         // Repair start clusters whose high 16 bits Windows zeroed on delete, so
         // the deleted-entry data run lands on the real bytes instead of garbage deep
         // inside another file's extent (the `_00W.csv` case).
@@ -257,7 +257,7 @@ impl FatVolume {
             },
             size: entry.size,
             deleted: true,
-            inode: None,
+            inode: Some(entry.slot_offset),
             timestamps: entry.timestamps,
             link_target: None,
             has_snapshot: false,

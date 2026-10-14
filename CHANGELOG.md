@@ -19,6 +19,8 @@
 
 - TAR.GZ / TGZ、Docker / OCI 压缩层与小米备份的 GZIP 读取接入纯 Rust `gzipf`，完整读取拼接成员并校验全部尾部，避免忽略后续成员或损坏校验值；GZIP 备份提取前先验证完整压缩流。
 
+- Deleted FAT entries now expose their directory-slot offset (absolute image offset) as the metadata address, matching live entries.
+
 ## [1.1.0] - 2026-10-13
 
 补齐分区表、卷管理与加密容器的读取能力，接入 FileVault 2 并扩展 APFS 与 HFS+ 读取，与 libyal 系列库逐项对照并修正一批取证读取问题，同时重新整理 README 与文档。
