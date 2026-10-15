@@ -1352,7 +1352,8 @@ pub(crate) fn parse_ewf2_device_info(raw: &[u8], chunk_size: &mut u64, total_siz
 ///
 /// Field codes: `cn`=`case_number`, `en`=`evidence_number`, `ex`=examiner,
 /// `de`=description, `nt`=notes, `av`=`acquiry_software`, `ov`=`os_version`,
-/// `ad`=`acquiry_date`, `sd`=`system_date`.
+/// `at`=`acquiry_date`, `tt`=`system_date` (decimal POSIX seconds, matching
+/// libewf_case_data.c); `ad`/`sd` remain accepted for older synthetic fixtures.
 pub(crate) fn parse_ewf2_case_data(raw: &[u8], metadata: &mut EwfMetadata) {
     if raw.len() < 2 {
         return;
@@ -1385,8 +1386,8 @@ pub(crate) fn parse_ewf2_case_data(raw: &[u8], metadata: &mut EwfMetadata) {
                 "nt" => metadata.notes = Some(val.to_string()),
                 "av" => metadata.acquiry_software = Some(val.to_string()),
                 "ov" => metadata.os_version = Some(val.to_string()),
-                "ad" => metadata.acquiry_date = Some(val.to_string()),
-                "sd" => metadata.system_date = Some(val.to_string()),
+                "at" | "ad" => metadata.acquiry_date = Some(val.to_string()),
+                "tt" | "sd" => metadata.system_date = Some(val.to_string()),
                 _ => {}
             }
         }

@@ -6,7 +6,24 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
+use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
+
+/// Display interpretation only; the original header value remains authoritative.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EwfHeaderDate {
+    pub display: String,
+    pub time_basis: EwfDateTimeBasis,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EwfDateTimeBasis {
+    /// Acquisition-machine wall time with no recorded offset.
+    Local,
+    /// POSIX seconds rendered on the UTC epoch basis, never in the viewer's zone.
+    Unix,
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EwfAcquiryInfo {
@@ -17,6 +34,10 @@ pub struct EwfAcquiryInfo {
     pub notes: Option<String>,
     pub acquiry_date: Option<String>,
     pub system_date: Option<String>,
+    #[serde(default)]
+    pub acquiry_date_parsed: Option<EwfHeaderDate>,
+    #[serde(default)]
+    pub system_date_parsed: Option<EwfHeaderDate>,
     pub acquiry_operating_system: Option<String>,
     pub acquiry_software_version: Option<String>,
     pub model: Option<String>,
@@ -92,6 +113,8 @@ impl EwfHandle {
             notes: metadata.notes.clone(),
             acquiry_date: metadata.acquiry_date.clone(),
             system_date: metadata.system_date.clone(),
+            acquiry_date_parsed: metadata.acquiry_date.as_deref().and_then(parse_header_date),
+            system_date_parsed: metadata.system_date.as_deref().and_then(parse_header_date),
             acquiry_operating_system: metadata.os_version.clone(),
             acquiry_software_version: metadata.acquiry_software.clone(),
             model: metadata.model.clone(),
@@ -146,6 +169,69 @@ impl EwfHandle {
             .read_at(buffer, offset)
             .with_context(|| format!("EWF read at byte {offset}"))
     }
+}
+
+/// EWF1 header m/u: EnCase/FTK six-part local dates or linen POSIX seconds.
+/// UTF-16 header2 m/u and EWF2 case_data at/tt use decimal POSIX seconds
+/// (libewf_header_values.c / libewf_case_data.c). Legacy vendor ad/sd fixtures
+/// also contain ISO dates. Do not use Local/mktime for offset-free dates:
+/// the examining computer's timezone and DST rules are not source evidence.
+fn parse_header_date(raw: &str) -> Option<EwfHeaderDate> {
+    let value = raw.trim();
+    if value.is_empty() || value.len() > 64 {
+        return None;
+    }
+    let (display, time_basis) = if value.bytes().all(|byte| byte.is_ascii_digit()) {
+        let seconds = value.parse::<i64>().ok()?;
+        let date = DateTime::from_timestamp(seconds, 0)?;
+        if !(1..=9999).contains(&date.year()) {
+            return None;
+        }
+        (
+            date.format("%Y-%m-%d %H:%M:%S").to_string(),
+            EwfDateTimeBasis::Unix,
+        )
+    } else {
+        let parts: Vec<_> = value.split_ascii_whitespace().collect();
+        let date = if let [year, month, day, hour, minute, second] = parts.as_slice() {
+            if year.len() != 4
+                || parts
+                    .iter()
+                    .any(|part| !part.bytes().all(|byte| byte.is_ascii_digit()))
+            {
+                return None;
+            }
+            NaiveDate::from_ymd_opt(year.parse().ok()?, month.parse().ok()?, day.parse().ok()?)?
+                .and_hms_opt(
+                    hour.parse().ok()?,
+                    minute.parse().ok()?,
+                    second.parse().ok()?,
+                )?
+        } else if let Ok(date) = NaiveDate::parse_from_str(value, "%Y-%m-%d") {
+            if !(1..=9999).contains(&date.year()) {
+                return None;
+            }
+            return Some(EwfHeaderDate {
+                display: date.format("%Y-%m-%d").to_string(),
+                time_basis: EwfDateTimeBasis::Local,
+            });
+        } else {
+            NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
+                .or_else(|_| NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S"))
+                .ok()?
+        };
+        if !(1..=9999).contains(&date.year()) {
+            return None;
+        }
+        (
+            date.format("%Y-%m-%d %H:%M:%S").to_string(),
+            EwfDateTimeBasis::Local,
+        )
+    };
+    Some(EwfHeaderDate {
+        display,
+        time_basis,
+    })
 }
 
 fn unix_ms(time: std::time::SystemTime) -> Option<i64> {
