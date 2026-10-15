@@ -488,6 +488,16 @@ function（检材级 function 无此限制）；结果树一次整树返回（�
 Unknown 分区在首次展开时通过插件管理器执行 `fs.probe` / `fs.open`，命中后安装 `RemoteVolume`；
 其 children、stat、范围读取和流式读取继续复用原有 `Volume` / `FsSession` dispatch。
 
+插件的日志（SDK 的 `Context::log`，`LogLevel` 级别）有两条入口：`in_process` 走 ABI 回调
+（`in_process.rs` 的 `host_log`），`process` 走 `lc-plugin-host` 写出的 stderr 行
+（`client/process.rs` 的 stderr 读取任务）。两条入口都保留原有 `tracing`（target `plugin`）输出，同时把
+该行交给 `log_file::PluginLogStore`：一个专用写线程按插件追加到
+`<应用数据目录>/logs/plugins/<插件 id>.log`，单文件超过 8 MiB 时轮转为 `<插件 id>.log.1` 并保留一代。
+`record` 只把行放入有界队列（4096 行）后立即返回，磁盘变慢不会阻塞插件调用，队列满时丢弃的行数会在
+文件里补一条 `WARN`。日志写在应用数据目录而不是插件目录：已安装插件可能只读，而且插件目录的 SHA-256
+指纹（`fingerprint.rs`）会把新增的日志文件算进插件内容。`process` 模式下 loader 的 stderr 行带
+`ERROR` / `WARN` / `INFO` / `DEBUG` 前缀，落盘时据此还原级别，无前缀的 loader 诊断记为 `HOST`。
+
 插件**发现即信任**：清单合法的插件初始即为可用（`Configured`），可直接探测、派发与分析；
 没有批准步骤与禁用开关，插件目录 SHA-256 指纹仅用于设置页展示与版本标识（已加载的库不会卸载，
 插件更新后重启应用即生效）。

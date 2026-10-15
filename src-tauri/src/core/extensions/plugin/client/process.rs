@@ -1,11 +1,14 @@
 //! Isolated plugin process startup and restricted environment.
 use super::*;
 
+/// Longest stderr line held before it is reported as one.
+const MAX_STDERR_LINE: usize = 64 * 1024;
+
 impl PluginClient {
     pub(in crate::core::extensions::plugin) async fn spawn(
         command: PluginCommand,
         services: HostRpcServices,
-        progress_sink: Option<PluginProgressSink>,
+        sinks: PluginSinks,
     ) -> Result<Arc<Self>> {
         let mut process = Command::new(&command.program);
         process
@@ -43,17 +46,43 @@ impl PluginClient {
 
         if let Some(stderr) = child.stderr.take() {
             let plugin_id = command.plugin_id.clone();
+            let logs = sinks.logs.clone();
             tokio::spawn(async move {
                 let mut stderr = stderr;
                 let mut buffer = [0_u8; STDERR_CHUNK_SIZE];
+                // stderr arrives in arbitrary chunks, so lines are cut at
+                // their newline instead of at the read boundary; the loader
+                // prefixes every complete line with the level the plugin
+                // asked for.
+                let mut pending: Vec<u8> = Vec::new();
+                let emit = |bytes: &[u8]| {
+                    let message = String::from_utf8_lossy(bytes);
+                    let message = message.trim_end_matches(['\r', '\n']);
+                    if message.is_empty() {
+                        return;
+                    }
+                    tracing::info!(target: "plugin", %plugin_id, "{message}");
+                    if let Some(logs) = &logs {
+                        logs.record_stderr(&plugin_id, message);
+                    }
+                };
                 loop {
                     match stderr.read(&mut buffer).await {
-                        Ok(0) => break,
+                        Ok(0) => {
+                            emit(&pending);
+                            break;
+                        }
                         Ok(length) => {
-                            let message = String::from_utf8_lossy(&buffer[..length]);
-                            let message = message.trim_end_matches(['\r', '\n']);
-                            if !message.is_empty() {
-                                tracing::info!(target: "plugin", %plugin_id, "{message}");
+                            pending.extend_from_slice(&buffer[..length]);
+                            while let Some(index) = pending.iter().position(|byte| *byte == b'\n') {
+                                let line: Vec<u8> = pending.drain(..=index).collect();
+                                emit(&line);
+                            }
+                            // A plugin that never writes a newline must not
+                            // grow the buffer without bound.
+                            if pending.len() > MAX_STDERR_LINE {
+                                emit(&pending);
+                                pending.clear();
                             }
                         }
                         Err(error) => {
@@ -70,7 +99,7 @@ impl PluginClient {
             Box::new(stdin),
             services,
             Some(child),
-            progress_sink,
+            sinks.progress,
             Some(process_guard),
         )
         .await

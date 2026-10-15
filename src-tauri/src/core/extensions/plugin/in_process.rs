@@ -30,9 +30,9 @@ use rmpv::Value;
 use super::{
     client::{
         dispatch_host_request_with_cancellation, plugin_error_to_rpc, HostRpcServices, PluginHello,
-        PluginProgressSink,
+        PluginProgressSink, PluginSinks,
     },
-    PluginError, PluginIdentity, Result,
+    PluginError, PluginIdentity, PluginLogLevel, PluginLogStore, Result,
 };
 
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
@@ -46,6 +46,9 @@ struct HostContext {
     /// Emptied when the client closes, so the sink of a task worker (and the
     /// task state it captures) does not live on in the leaked context.
     progress_sink: Mutex<Option<PluginProgressSink>>,
+    /// Appends the plugin's `Context::log` lines to its file; shared with the log
+    /// store, so the leaked context keeps it alive after the client is gone.
+    logs: Option<Arc<PluginLogStore>>,
     runtime: tokio::runtime::Handle,
     open: AtomicBool,
     cancellation: tokio_util::sync::CancellationToken,
@@ -71,24 +74,25 @@ impl InProcessClient {
         library: &Path,
         plugin_id: &str,
         services: HostRpcServices,
-        progress_sink: Option<PluginProgressSink>,
+        sinks: PluginSinks,
     ) -> Result<Arc<Self>> {
         let entry = loader::load_library(library).map_err(abi_error)?;
-        Self::create(entry, plugin_id, services, progress_sink)
+        Self::create(entry, plugin_id, services, sinks)
     }
 
     pub(super) fn create(
         entry: EntryFn,
         plugin_id: &str,
         services: HostRpcServices,
-        progress_sink: Option<PluginProgressSink>,
+        sinks: PluginSinks,
     ) -> Result<Arc<Self>> {
         let runtime = tokio::runtime::Handle::try_current()
             .map_err(|error| PluginError::Unavailable(error.to_string()))?;
         let host: &'static HostContext = Box::leak(Box::new(HostContext {
             services,
             plugin_id: plugin_id.to_owned(),
-            progress_sink: Mutex::new(progress_sink),
+            progress_sink: Mutex::new(sinks.progress),
+            logs: sinks.logs,
             runtime: runtime.clone(),
             open: AtomicBool::new(true),
             cancellation: tokio_util::sync::CancellationToken::new(),
@@ -396,6 +400,9 @@ unsafe extern "C" fn host_log(context: *mut c_void, level: u32, message: Bytes) 
     let host = unsafe { &*context.cast::<HostContext>() };
     let message = String::from_utf8_lossy(unsafe { message.as_slice() });
     let plugin_id = host.plugin_id.as_str();
+    if let Some(logs) = &host.logs {
+        logs.record(plugin_id, PluginLogLevel::from_abi(level), &message);
+    }
     match level {
         abi::LOG_ERROR => tracing::error!(target: "plugin", %plugin_id, "{message}"),
         abi::LOG_WARN => tracing::warn!(target: "plugin", %plugin_id, "{message}"),
@@ -505,7 +512,8 @@ mod tests {
                 EvidenceRegistry::default(),
                 [],
             );
-            InProcessClient::create(entry, PLUGIN_ID, services, None).expect("in-process client")
+            InProcessClient::create(entry, PLUGIN_ID, services, PluginSinks::default())
+                .expect("in-process client")
         }
 
         fn file(&self, name: &str) -> FileHandle {

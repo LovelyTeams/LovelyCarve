@@ -51,6 +51,14 @@ type PendingRequests = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value>>>>>;
 type InboundRequests = Arc<Mutex<HashMap<u64, CancellationToken>>>;
 pub(super) type PluginProgressSink = Arc<dyn Fn(PluginProgressEvent) + Send + Sync>;
 
+/// Where a running plugin instance reports progress and log lines. Both are
+/// optional: an instance without a sink only reaches `tracing`.
+#[derive(Clone, Default)]
+pub(super) struct PluginSinks {
+    pub progress: Option<PluginProgressSink>,
+    pub logs: Option<Arc<super::log_file::PluginLogStore>>,
+}
+
 #[derive(Clone)]
 struct RouterContext {
     pending: PendingRequests,

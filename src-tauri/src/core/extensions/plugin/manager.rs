@@ -13,9 +13,9 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use super::{
-    client::{HostRpcServices, PluginProgressSink},
+    client::{HostRpcServices, PluginProgressSink, PluginSinks},
     fingerprint::fingerprint_directory,
-    EvidenceRegistry, FileRegistry, PluginConnection, PluginError, PluginManifest,
+    EvidenceRegistry, FileRegistry, PluginConnection, PluginError, PluginLogStore, PluginManifest,
     PluginProgressEvent, RemoteVolume, Result, SourceHandle, SourceRegistry,
 };
 
@@ -97,6 +97,7 @@ pub struct PluginManager {
     clients: Mutex<HashMap<String, PluginConnection>>,
     states: RwLock<HashMap<String, PluginState>>,
     progress_sink: RwLock<Option<PluginProgressSink>>,
+    log_store: RwLock<Option<Arc<PluginLogStore>>>,
 }
 
 impl PluginManager {
@@ -147,6 +148,7 @@ impl PluginManager {
             clients: Mutex::new(HashMap::new()),
             states: RwLock::new(states),
             progress_sink: RwLock::new(None),
+            log_store: RwLock::new(None),
         })
     }
 
@@ -176,6 +178,12 @@ impl PluginManager {
     /// `plugin_analyze_file` calls); a task worker reports to its task.
     pub fn set_progress_sink(&self, sink: impl Fn(PluginProgressEvent) + Send + Sync + 'static) {
         *self.progress_sink.write() = Some(Arc::new(sink));
+    }
+
+    /// Appends every plugin's `Context::log` lines to its own file under the
+    /// store's root. Without a store, plugin logs only reach `tracing`.
+    pub fn set_log_store(&self, store: Arc<PluginLogStore>) {
+        *self.log_store.write() = Some(store);
     }
 
     /// Stops the plugin's shared instance; the next browse or direct analysis
@@ -359,8 +367,7 @@ impl PluginManager {
         self.states
             .write()
             .insert(definition.manifest.id.clone(), PluginState::Starting);
-        let progress_sink = self.progress_sink.read().clone();
-        let started = self.open_connection(definition, progress_sink).await;
+        let started = self.open_connection(definition, self.sinks()).await;
         let state = match &started {
             Ok(_) => PluginState::Running,
             Err(error) => PluginState::Crashed(error.to_string()),
@@ -373,13 +380,23 @@ impl PluginManager {
         Ok(client)
     }
 
+    /// Where a new instance reports: the progress sink of the manager's owner
+    /// and the shared log store. Read once, before the connection starts, so
+    /// no lock is held across the await.
+    pub(super) fn sinks(&self) -> PluginSinks {
+        PluginSinks {
+            progress: self.progress_sink.read().clone(),
+            logs: self.log_store.read().clone(),
+        }
+    }
+
     /// Starts an instance of `definition` and checks that it is the plugin
-    /// its manifest declares. The instance's `host.progress` reports go to
-    /// `progress_sink`.
+    /// its manifest declares. `sinks` decides where its `host.progress`
+    /// reports and `Context::log` lines go.
     pub(super) async fn open_connection(
         &self,
         definition: &PluginDefinition,
-        progress_sink: Option<PluginProgressSink>,
+        sinks: PluginSinks,
     ) -> Result<PluginConnection> {
         let client = PluginConnection::open(
             definition,
@@ -389,7 +406,7 @@ impl PluginManager {
                 self.evidences.clone(),
                 definition.manifest.permissions.iter().copied(),
             ),
-            progress_sink,
+            sinks,
         )
         .await?;
         let mismatch = if client.identity().id != definition.manifest.id {

@@ -11,7 +11,7 @@ use std::{
 use rmpv::Value;
 
 use super::{
-    client::{HostRpcServices, PluginProgressSink},
+    client::{HostRpcServices, PluginSinks},
     in_process::InProcessClient,
     PluginClient, PluginCommand, PluginDefinition, PluginError, PluginIdentity, PluginIsolation,
     Result,
@@ -32,7 +32,7 @@ impl PluginConnection {
     pub(super) async fn open(
         definition: &PluginDefinition,
         services: HostRpcServices,
-        progress_sink: Option<PluginProgressSink>,
+        sinks: PluginSinks,
     ) -> Result<Self> {
         let library = definition.manifest.library_path(&definition.directory);
         if !library.is_file() {
@@ -50,7 +50,7 @@ impl PluginConnection {
                     working_directory: Some(definition.directory.clone()),
                 };
                 Ok(Self::Process(
-                    PluginClient::spawn(command, services, progress_sink).await?,
+                    PluginClient::spawn(command, services, sinks).await?,
                 ))
             }
             PluginIsolation::InProcess => {
@@ -58,7 +58,7 @@ impl PluginConnection {
                 // Loading runs the library's initialisers; keep them off the
                 // async workers.
                 let client = tokio::task::spawn_blocking(move || {
-                    InProcessClient::load(&library, &plugin_id, services, progress_sink)
+                    InProcessClient::load(&library, &plugin_id, services, sinks)
                 })
                 .await
                 .map_err(|error| PluginError::Unavailable(error.to_string()))??;
