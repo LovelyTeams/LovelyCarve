@@ -80,6 +80,7 @@ PR 描述反映最终实现，不记录讨论经过、已放弃的方案或与�
 2. 完成代码风格整理、回归测试、对应文档与 `[Unreleased]` 更新，再运行所需验证。验证后继续修改代码或解决冲突时，重新执行受影响的检查。
 3. 将最终改动推到 PR 分支，核对待合并的提交与已验证的提交一致，并更新 PR 标题和说明。整理外部贡献时保留原作者归属。
 4. 默认使用 Squash 合并，合并提交标题遵循 Conventional Commits，且必须以实际 PR 编号 `(#<编号>)` 结尾，例如 `feat(plugin): persist plugin logs beside the executable (#3)`。使用 `gh pr merge --subject` 自定义标题时也必须显式保留该后缀；合并后核对远端合并提交的标题与编号，再将本地 `main` 快进同步到远端。
+5. 合并提交保留贡献者原有的 Author 姓名和邮箱，Committer 记录实际执行合并的维护者（目前为 `b3nguang`）。外部贡献在 GitHub 上应显示为“原作者 authored，维护者 committed”。合并后使用 `git show --format=fuller <合并提交>` 检查两种身份，并核对远端提交关联的 GitHub 账号；不要将 Author 改成维护者，也不要为了显示头像虚构 `Co-authored-by`。
 
 维护与发布见 [发布指南](docs/RELEASING.md)。
 

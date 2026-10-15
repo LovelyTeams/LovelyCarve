@@ -254,4 +254,6 @@ Recent history uses Conventional Commits with optional scopes, for example `feat
 
 Every PR merge commit subject must end with its actual PR number in parentheses, for example `feat(plugin): persist plugin logs beside the executable (#3)`. Include this suffix explicitly when overriding `gh pr merge --subject`, and verify the resulting remote commit title after merging. Do not add a PR number to direct commits that do not come from a PR.
 
+Preserve the contributor's original author name and email on PR merge commits, and record the actual maintainer performing the merge as committer (currently `b3nguang`). For an external contribution, GitHub should show the contributor as authored and the maintainer as committed. Verify both identities on the resulting remote commit, including their GitHub account associations; do not replace the original author with the maintainer or invent a co-author merely to display another avatar.
+
 Pull requests should describe user-visible behavior, list the local `just` recipes used for verification, link related issues, and include screenshots or recordings for UI changes. Claim hosted CI coverage only when the relevant workflow run has succeeded.
