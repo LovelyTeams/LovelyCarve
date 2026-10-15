@@ -107,6 +107,16 @@ afterEach(() => {
 });
 
 describe('DiskImageInfo evidence overview', () => {
+  it.each(['folder', 'tar', 'zip', 'sevenz', 'ad1', 'docker', 'android_backup'])('does not mount RAID detection for %s logical evidence without partitions', async sourceFormat => {
+    await mount({ ...fixture, source_format: sourceFormat, partitions: [], table_scheme: null });
+    expect(host.textContent).not.toContain('RAID 检测结果');
+  });
+
+  it.each(['raw', 'ewf', 'vmdk', 'ldplayer', 'assembled'])('keeps RAID detection available for %s block evidence without partitions', async sourceFormat => {
+    await mount({ ...fixture, source_format: sourceFormat, partitions: [], table_scheme: null });
+    expect(host.textContent).toContain('RAID 检测结果');
+  });
+
   it('shows a readable reconstruction name and exports its original image from the header', async () => {
     const path = 'assembled://md:auto-raid5-59494dc69af24768b6a690819d35420e';
     await mount({ ...fixture, path, source_format: 'assembled', on_disk_bytes: null,

@@ -1,14 +1,13 @@
 <template>
   <div class="platform">
-    <span v-if="report" class="platform-chip" :class="{ unknown: !report.platform }">
+    <span v-if="report" class="platform-chip" :class="{ unknown: !report.platform }" :title="report.display_platform_name || undefined">
       <component :is="conclusionIcon" :size="14" aria-hidden="true" />
-      <span class="platform-name">{{ report.platform ? report.display_platform_name || platformLabel(report.platform, tr) : tr("平台未识别") }}</span>
-      <span class="platform-type">· {{ evidenceTypeLabel(report.evidence_type, tr) }}<template v-if="manufactor"> · {{ manufactor }}</template></span>
+      <span class="platform-name">{{ report.platform ? platformLabel(report.platform, tr) : tr("平台未识别") }}</span>
+      <span class="platform-type">· {{ conclusionType }}</span>
     </span>
     <span v-else-if="pending" class="platform-state"><Loader2 :size="13" class="spin" />{{ tr("正在识别平台…") }}</span>
     <span v-else-if="error" class="platform-state failed" :title="error"><TriangleAlert :size="13" />{{ tr("平台识别失败") }}</span>
     <span v-else class="platform-state">{{ tr("尚未识别平台") }}</span>
-    <span v-if="report?.is_backup" class="ui-badge sm info">{{ tr("备份") }}</span>
     <span v-for="extra in extraPlatforms" :key="extra" class="ui-badge sm">{{ platformLabel(extra, tr) }}</span>
     <slot />
     <button
@@ -35,7 +34,7 @@ import { runAutoDetect, useAutoDetectError, useAutoDetectPending, useAutoDetectR
 import { useBuiltinTasks } from '../../tasks/api';
 import { autoDetectTaskId } from '../../tasks/model/autodetectTasks';
 
-// 镜像信息页头部的平台结论（平台 · 检材类型 · 厂商）与重新识别按钮。
+// 镜像信息页头部的平台结论（平台 · 厂商 · 检材类型）与重新识别按钮。
 // 逐分区判定与告警随回写存入案件，页面只显示结论。
 const props = defineProps<{ imageId: string }>();
 
@@ -49,6 +48,11 @@ const pending = computed(() => manualPending.value || tasks.value.some(task =>
   task.id === autoDetectTaskId(props.imageId) && (task.status === 'queued' || task.status === 'running')));
 
 const manufactor = computed(() => manufactorLabel(report.value?.manufactor));
+const conclusionType = computed(() => {
+  if (!report.value) return '';
+  return [manufactor.value, report.value.is_backup ? tr("备份") : evidenceTypeLabel(report.value.evidence_type, tr)]
+    .filter(Boolean).join(' · ');
+});
 
 // 主平台之外的其它命中平台。
 const extraPlatforms = computed(() =>

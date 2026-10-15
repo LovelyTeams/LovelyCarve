@@ -36,6 +36,21 @@ beforeEach(() => {
 afterEach(() => { app.unmount(); host.remove(); });
 
 describe('platform badge', () => {
+  it.each(['backup', 'XiaomiBackup'])('shows one backup conclusion for %s without repeating the manufacturer or matching rule', evidenceType => {
+    const description = 'Android · Xiaomi · 关键词匹配备份';
+    report.value = { platform: 'android', platforms: ['android'], display_platform_name: description,
+      evidence_type: evidenceType, is_backup: true, manufactor: 'xiaomi' } as AutoDetectReport;
+    mount();
+    const chip = host.querySelector('.platform-chip')!;
+    expect(chip.querySelector('.platform-name')?.textContent).toBe('Android');
+    expect(chip.querySelector('.platform-type')?.textContent).toBe('· Xiaomi · 备份');
+    expect(chip.textContent?.match(/备份/g)).toHaveLength(1);
+    expect(chip.textContent?.match(/Xiaomi/g)).toHaveLength(1);
+    expect(host.querySelectorAll('.ui-badge')).toHaveLength(0);
+    expect(chip.getAttribute('title')).toBe(description);
+    expect(detect.run).not.toHaveBeenCalled();
+  });
+
   it('runs the detection once when the page opens without a conclusion', () => {
     mount();
     expect(detect.run).toHaveBeenCalledWith('disk-one');

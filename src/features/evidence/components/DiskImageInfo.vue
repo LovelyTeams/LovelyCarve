@@ -11,11 +11,11 @@
       <div v-if="info.index_only" class="ui-alert info" role="status">{{ tr("离线索引 · 原镜像不可用。容量与格式来自案件记录；目录和属性可在文件列表查看，恢复原路径的镜像后重新打开即可读取正文。") }}</div>
       <IosBackupCard v-if="info.ios_backup" :key="info.id" :info="info" @open-image="emit('open-image', $event)" />
 
-      <EvidenceVolumes v-if="!info.index_only && !info.ios_backup" :key="info.id" :info="info" :can-unlock-container="canUnlockContainer" :case-directory="activeCase?.dir"
+      <EvidenceVolumes v-if="!info.index_only && !info.ios_backup" :key="info.id" :info="info" :can-unlock-container="supportsBlockOperations" :case-directory="activeCase?.dir"
         @unlock="openUnlock" @open-image="emit('open-image', $event)" @copy="copyText" />
 
       <!-- RAID 检测（与该镜像无关时自隐） -->
-      <RaidStackPanel v-if="!info.index_only" :info="info" @open-image="emit('open-image', $event)" />
+      <RaidStackPanel v-if="supportsBlockOperations" :info="info" @open-image="emit('open-image', $event)" />
 
       <div v-if="!info.index_only" class="overview-grid">
         <EvidenceIntegrityCard :info="info" @copy="copyText" />
@@ -24,7 +24,7 @@
       </div>
 
       <EncryptedVolumeUnlockDialog
-        v-if="canUnlockContainer"
+        v-if="supportsBlockOperations"
         :key="info.id"
         :open="unlockOpen"
         :info="info"
@@ -56,7 +56,7 @@ const emit = defineEmits<{ 'open-image': [path: string] }>();
 
 const { activeCase } = useCaseContext();
 const LOGICAL_FORMATS = new Set(['folder', 'tar', 'zip', 'sevenz', 'ad1', 'docker', 'android_backup']);
-const canUnlockContainer = computed(() => !!props.info && !props.info.index_only && !LOGICAL_FORMATS.has(props.info.source_format));
+const supportsBlockOperations = computed(() => !!props.info && !props.info.index_only && !props.info.ios_backup && !LOGICAL_FORMATS.has(props.info.source_format));
 
 // ── LUKS / VeraCrypt：卷卡标题或 LUKS 分区行打开解锁弹窗 ──────────────────────
 const unlockOpen = ref(false);
