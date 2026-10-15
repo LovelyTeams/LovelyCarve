@@ -17,8 +17,9 @@ use rmpv::Value;
 
 use super::analysis_result::parse_analysis_result;
 use super::{
-    manager::PluginDefinition, EvidenceRegistry, FileRegistry, PluginConnection, PluginError,
-    PluginManager, PluginManifest, PluginPermission, PluginProgressEvent, Result,
+    client::PluginSinks, manager::PluginDefinition, EvidenceRegistry, FileRegistry,
+    PluginConnection, PluginError, PluginManager, PluginManifest, PluginPermission,
+    PluginProgressEvent, Result,
 };
 use crate::core::analysis::results::models::PluginAnalysisResult;
 use crate::core::filesystem::evidence_session::EvidenceSession;
@@ -96,7 +97,13 @@ impl PluginManager {
     ) -> Result<TaskWorker> {
         let definition = self.definition(plugin_id)?;
         let connection = self
-            .open_connection(definition, Some(Arc::new(progress)))
+            .open_connection(
+                definition,
+                PluginSinks {
+                    progress: Some(Arc::new(progress)),
+                    ..self.sinks()
+                },
+            )
             .await?;
         Ok(TaskWorker {
             plugin_id: plugin_id.to_owned(),
@@ -357,12 +364,14 @@ mod tests {
 
     use lovelycarve_plugin::{
         abi::{HostApiV1, PluginApiV1},
-        runtime, AnalysisResult, File, FileAnalyzer, Plugin,
+        runtime, AnalysisResult, File, FileAnalyzer, LogLevel, Plugin,
     };
 
     use super::*;
     use crate::core::analysis::results::models::PluginAnalysisArtifact;
-    use crate::core::extensions::plugin::{client::HostRpcServices, in_process::InProcessClient};
+    use crate::core::extensions::plugin::{
+        client::HostRpcServices, in_process::InProcessClient, PluginLogStore,
+    };
 
     const PLUGIN_ID: &str = "org.test.workers";
     const ANALYZER: &str = "test.workers";
@@ -395,8 +404,8 @@ mod tests {
     };
     static WAITING_FILE: Mutex<Option<String>> = Mutex::new(None);
 
-    /// `wait` records its file id and runs until cancelled; any other name
-    /// reports progress, then returns only while a second run is in flight.
+    /// `wait` runs until cancelled, `log` writes a line without waiting, and
+    /// other names rendezvous to verify concurrent task workers.
     struct Workers;
 
     impl FileAnalyzer for Workers {
@@ -414,7 +423,8 @@ mod tests {
                 return Err(lovelycarve_plugin::Error::cancelled());
             }
             file.context().progress(1, Some(2), Some(file.name()))?;
-            if !BOTH_RUNNING.meet(2) {
+            file.context().log(LogLevel::Info, "workers run");
+            if file.name() != "log" && !BOTH_RUNNING.meet(2) {
                 return Err(lovelycarve_plugin::Error::new(
                     "NOT_CONCURRENT",
                     "the other run never started",
@@ -481,6 +491,15 @@ analyzer = "{ANALYZER}"
             &self,
             progress: impl Fn(PluginProgressEvent) + Send + Sync + 'static,
         ) -> TaskWorker {
+            self.worker_with_logs(progress, None)
+        }
+
+        /// The same worker, with the log store the manager would hand it.
+        fn worker_with_logs(
+            &self,
+            progress: impl Fn(PluginProgressEvent) + Send + Sync + 'static,
+            logs: Option<Arc<PluginLogStore>>,
+        ) -> TaskWorker {
             let services = HostRpcServices::new(
                 self.manager.sources().clone(),
                 self.manager.files().clone(),
@@ -491,7 +510,10 @@ analyzer = "{ANALYZER}"
                 workers_entry,
                 PLUGIN_ID,
                 services,
-                Some(Arc::new(progress)),
+                PluginSinks {
+                    progress: Some(Arc::new(progress)),
+                    logs,
+                },
             )
             .expect("in-process worker");
             TaskWorker {
@@ -573,6 +595,28 @@ analyzer = "{ANALYZER}"
         };
 
         assert!(fixture.manager.files().info(PLUGIN_ID, &file_id).is_err());
+    }
+
+    /// End to end: a log line a plugin writes during a run is appended to
+    /// that plugin's own file.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_plugin_log_line_lands_in_its_own_file() {
+        let fixture = Fixture::new();
+        let log_root = fixture._directory.path().join("plugin-logs");
+        let store = PluginLogStore::open(&log_root).expect("log store");
+        let worker = fixture.worker_with_logs(|_| {}, Some(Arc::clone(&store)));
+
+        fixture
+            .manager
+            .analyze_file_on(&worker, fixture.request("log"))
+            .await
+            .expect("run");
+
+        worker.shutdown().await.expect("shutdown worker");
+        store.shutdown();
+        let path = store.file_path(PLUGIN_ID);
+        let content = std::fs::read_to_string(&path).expect("plugin log file");
+        assert!(content.contains(" INFO workers run"), "{content}");
     }
 
     #[tokio::test(flavor = "multi_thread")]

@@ -66,6 +66,10 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
                     tracing::debug!("emit plugin-progress failed: {err}");
                 }
             });
+            match crate::core::extensions::plugin::PluginLogStore::beside_executable() {
+                Ok(store) => manager.set_log_store(store),
+                Err(err) => tracing::warn!("plugin log files are unavailable: {err}"),
+            }
             *app.state::<AppState>().plugins.write() = Some(std::sync::Arc::new(manager));
         }
         Err(err) => tracing::warn!("LPP plugin discovery failed: {err}"),

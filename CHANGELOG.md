@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- 插件日志（SDK 的 `Context::log`）按插件落盘到软件 exe 目录下的 `logs/plugins/<插件 id>.log`，单文件超过 8 MiB 自动轮转并保留一代；写入由独立线程与有界队列完成，不阻塞插件调用，也不受默认 `warn` 过滤影响。
+
 ### Fixed
 
 - 修复 EWF 回归测试的三项错误断言与合成镜像布局，补充压缩块精确长度、不可压缩数据及 eager/lazy 读取一致性验证。

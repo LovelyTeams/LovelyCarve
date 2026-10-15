@@ -24,6 +24,7 @@ mod evidence_registry;
 mod file_registry;
 mod fingerprint;
 mod in_process;
+mod log_file;
 mod manager;
 mod manifest;
 mod process_guard;
@@ -43,6 +44,7 @@ pub use evidence_registry::{
 };
 pub use file_registry::{FileHandle, FileRegistry, MaterializedFileLease};
 pub use in_process::InProcessClient;
+pub use log_file::{PluginLogLevel, PluginLogStore};
 pub use lovelycarve_plugin::wire::{LppMessage, RpcError};
 pub use manager::{PluginDefinition, PluginManager, PluginState, ProbeMatch};
 pub use manifest::{

@@ -85,6 +85,7 @@ impl PluginClient {
             child: child.map(tokio::sync::Mutex::new),
             outbound_slots: Arc::new(Semaphore::new(MAX_OUTBOUND_REQUESTS)),
             _process_guard: process_guard,
+            stderr_task: tokio::sync::Mutex::new(None),
         }))
     }
 }
