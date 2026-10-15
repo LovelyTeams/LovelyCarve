@@ -7,7 +7,13 @@
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-15
+
 ### Added
+
+- 界面支持简体中文与英文，可在设置中即时切换并保存偏好，主窗口与独立预览窗口同步语言。
+
+- 新增纯 Rust Parallels PHDI 读取器，支持 v2 Plain / Sparse / Split 与差分父链，保留随机读取和完整性校验。
 
 - RAW / 解密镜像导出接入任务中心，显示目标路径、进度和终态，并共用进度提示的取消入口。
 
@@ -104,6 +110,7 @@
 - 可选二维码识别与 OCR 构建；默认轻量构建关闭这些功能，完整构建通过 `*-full` 配方启用。
 - 源码构建、Windows 安装包与便携包、CLI 和插件的本地打包配方，以及使用、开发、接口和第三方来源说明。
 
-[Unreleased]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/LovelyTeams/LovelyCarve/releases/tag/v1.0.0

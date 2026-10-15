@@ -1,6 +1,6 @@
 [package]
 name = "lovelycarve"
-version = "1.1.0"
+version = "1.1.1"
 description = "LovelyCarve — a forensic carver with a soft heart."
 authors = ["LovelyCarve contributors"]
 edition = "2021"
