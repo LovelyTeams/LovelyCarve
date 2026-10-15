@@ -32,7 +32,7 @@ vendored 读取器的上游版本与本地补丁记录在 [vendor/UPSTREAM.md](.
 | 任务 | 文档 |
 | --- | --- |
 | 配置环境、构建、打包与性能验证 | [开发指南](DEVELOPMENT.md) |
-| 提交修改、选择验证范围 | [贡献指南](../CONTRIBUTING.md)、[仓库约定](../AGENTS.md) |
+| 提交修改、选择验证范围、整理与合并 PR | [贡献指南](../CONTRIBUTING.md)、[PR 规范](../CONTRIBUTING.md#拉取请求)、[仓库约定](../AGENTS.md) |
 | 理解后端、证据会话、任务、案件存储与索引 | [架构说明](ARCHITECTURE.md) |
 | 修改界面与前端状态 | [前端规范](FRONTEND.md)、[前端模块与生命周期](FRONTEND_STRUCTURE.md) |
 | 增加命令或事件 | [架构说明 · 功能与 IPC 对照](ARCHITECTURE.md#功能与-ipc-对照)、[扩展流程](ARCHITECTURE.md#扩展流程) |
