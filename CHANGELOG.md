@@ -19,7 +19,7 @@
 
 - TAR.GZ / TGZ、Docker / OCI 压缩层与小米备份的 GZIP 读取接入纯 Rust `gzipf`，完整读取拼接成员并校验全部尾部，避免忽略后续成员或损坏校验值；GZIP 备份提取前先验证完整压缩流。
 
-- Deleted FAT entries now expose their directory-slot offset (absolute image offset) as the metadata address, matching live entries.
+- FAT 删除项的元数据地址保留短目录项的绝对镜像偏移，支持非零分区基址、固定根目录和不连续的目录簇链。
 
 ## [1.1.0] - 2026-10-13
 

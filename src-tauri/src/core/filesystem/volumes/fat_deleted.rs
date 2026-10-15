@@ -23,15 +23,15 @@ use chrono::NaiveDate;
 use crate::core::evidence::image::DiskImage;
 use crate::core::filesystem::tree::fs_tree::{FsDataRun, Mactb};
 
+mod directory;
+pub use directory::read_dir_bytes;
+
 const DENTRY_LEN: usize = 32;
 const SLOT_DELETED: u8 = 0xE5;
 const ATTR_LFN: u8 = 0x0F;
 const ATTR_VOLUME_ID: u8 = 0x08;
 const ATTR_DIRECTORY: u8 = 0x10;
 const LFN_SEQ_MASK: u8 = 0x3F;
-/// Bound directory-cluster-chain following so a corrupt/looping FAT can't hang
-/// a recovery scan.
-const MAX_DIR_CLUSTERS: usize = 1 << 20;
 /// Standard LBA of the FAT32 backup boot sector (BPB offset 50-51 defaults to
 /// 6). Used as the recovery fallback when the primary boot sector is wiped.
 const FAT32_BACKUP_BOOT_SECTOR: u64 = 6;
@@ -40,8 +40,7 @@ const BOOT_SECTOR_LEN: usize = 512;
 /// One recovered FAT directory entry from a deleted slot.
 #[derive(Debug, Clone)]
 pub struct RecoveredEntry {
-    /// Absolute byte offset (in the image) of this directory slot, preserving
-    /// distinct records and matching live entries' `inode` scale.
+    /// Byte offset within the raw directory stream, preserving distinct records.
     pub slot_offset: u64,
     pub name: String,
     pub is_directory: bool,
@@ -171,90 +170,10 @@ impl FatGeom {
     }
 }
 
-/// Read a directory's raw bytes plus the absolute image offset of each 32-byte
-/// slot. For FAT12/16 root (`first_cluster == 0` and not FAT32) reads the fixed
-/// root region; otherwise follows the cluster chain from `first_cluster`
-/// through the FAT.
-pub fn read_dir_bytes(
-    image: &Arc<DiskImage>,
-    geom: &FatGeom,
-    fat: &FatTable,
-    first_cluster: u32,
-) -> Result<(Vec<u8>, Vec<u64>)> {
-    if first_cluster < 2 {
-        if geom.is_fat32 {
-            // FAT32 root lives at root_cluster, never the fixed region.
-            return read_cluster_chain(image, geom, fat, geom.root_cluster);
-        }
-        // FAT12/16 fixed root region.
-        let root_start_sector = geom.reserved_sectors + geom.num_fats * geom.sectors_per_fat;
-        let offset = geom.base_offset + root_start_sector as u64 * geom.bytes_per_sector as u64;
-        let len = geom.root_entries as usize * DENTRY_LEN;
-        let bytes = image.read_range(offset, len)?;
-        let slot_offsets = (0..bytes.len() / DENTRY_LEN)
-            .map(|i| offset + (i * DENTRY_LEN) as u64)
-            .collect();
-        return Ok((bytes, slot_offsets));
-    }
-    read_cluster_chain(image, geom, fat, first_cluster)
-}
-
-fn read_cluster_chain(
-    image: &Arc<DiskImage>,
-    geom: &FatGeom,
-    fat: &FatTable,
-    first_cluster: u32,
-) -> Result<(Vec<u8>, Vec<u64>)> {
-    let mut out = Vec::new();
-    let mut slot_offsets = Vec::new();
-    let cluster_size = geom.cluster_size() as usize;
-    let slots_per_cluster = cluster_size / DENTRY_LEN;
-    let max_cluster = geom.cluster_count() + 2;
-    let mut cluster = first_cluster;
-    let mut guard = 0usize;
-    let mut visited = std::collections::HashSet::new();
-    while cluster >= 2 && cluster < max_cluster && guard < MAX_DIR_CLUSTERS {
-        if !visited.insert(cluster) {
-            anyhow::bail!("FAT cyclic directory chain");
-        }
-        let bytes = image.read_range(geom.cluster_offset(cluster), cluster_size)?;
-        if bytes.len() != cluster_size {
-            anyhow::bail!("FAT directory short read");
-        }
-        let cluster_start = geom.cluster_offset(cluster);
-        for i in 0..slots_per_cluster {
-            slot_offsets.push(cluster_start + (i * DENTRY_LEN) as u64);
-        }
-        out.extend_from_slice(&bytes);
-        // The end-of-chain marker lives on the LAST cluster, so it must be read
-        // *before* we stop — testing it at the top of the loop would drop the
-        // final cluster, and read nothing at all for a single-cluster directory
-        // such as the FAT32 root (whose own FAT entry is already EOC). That was
-        // why root-directory `0xE5` deletions never surfaced.
-        if fat.is_end_of_chain(cluster) {
-            break;
-        }
-        let next = fat.next_cluster(cluster);
-        if next < 2 || next >= max_cluster {
-            anyhow::bail!("FAT invalid directory chain");
-        }
-        cluster = next;
-        guard += 1;
-    }
-    if guard >= MAX_DIR_CLUSTERS {
-        anyhow::bail!("FAT directory exceeds recovery limit");
-    }
-    Ok((out, slot_offsets))
-}
-
 /// Scan a directory's raw bytes for `0xE5`-deleted entries, reassembling any
 /// preceding LFN run. Live entries are ignored (the vendored crate already
 /// lists them).
-pub fn scan_dir_deleted(
-    dir_bytes: &[u8],
-    slot_offsets: &[u64],
-    geom: &FatGeom,
-) -> Vec<RecoveredEntry> {
+pub fn scan_dir_deleted(dir_bytes: &[u8], geom: &FatGeom) -> Vec<RecoveredEntry> {
     let mut out = Vec::new();
     let mut lfn_parts: Vec<(u8, [u16; 13])> = Vec::new();
     let slots = dir_bytes.len() / DENTRY_LEN;
@@ -312,7 +231,7 @@ pub fn scan_dir_deleted(
         let first_cluster = (high << 16) | u16::from_le_bytes([slot[26], slot[27]]) as u32;
         let runs = contiguous_runs(geom, first_cluster, size);
         out.push(RecoveredEntry {
-            slot_offset: slot_offsets.get(i).copied().unwrap_or((i * DENTRY_LEN) as u64),
+            slot_offset: (i * DENTRY_LEN) as u64,
             name,
             is_directory,
             size,
@@ -774,8 +693,8 @@ pub fn resolve_dir_cluster(
 ) -> Result<u32> {
     let mut cluster = 0u32; // 0 = root
     for segment in path.split('/').filter(|s| !s.is_empty()) {
-        let (dir_bytes, _) = read_dir_bytes(image, geom, fat, cluster)?;
-        let found = find_live_child_cluster(&dir_bytes, segment);
+        let directory = read_dir_bytes(image, geom, fat, cluster)?;
+        let found = find_live_child_cluster(&directory.bytes, segment);
         match found {
             Some(next) => cluster = next,
             None => anyhow::bail!("FAT directory segment not found: {segment}"),
@@ -872,7 +791,7 @@ mod tests {
         let mut short = short_slot(b"XELLO   TXT", 0x20, 5, 1234);
         short[0] = SLOT_DELETED; // deleted: first char lost
         buf.extend_from_slice(&short);
-        let recovered = scan_dir_deleted(&buf, &[], &g);
+        let recovered = scan_dir_deleted(&buf, &g);
         assert_eq!(recovered.len(), 1);
         assert_eq!(recovered[0].name, "_ELLO.TXT");
         assert_eq!(recovered[0].size, 1234);
@@ -893,7 +812,7 @@ mod tests {
         let mut buf = Vec::new();
         buf.extend_from_slice(&lfn);
         buf.extend_from_slice(&short);
-        let recovered = scan_dir_deleted(&buf, &[], &g);
+        let recovered = scan_dir_deleted(&buf, &g);
         assert_eq!(recovered.len(), 1);
         assert_eq!(recovered[0].name, "report.doc");
     }
@@ -904,7 +823,7 @@ mod tests {
         let mut buf = Vec::new();
         buf.extend_from_slice(&short_slot(b"LIVE    TXT", 0x20, 3, 10)); // live
         buf.extend_from_slice(&short_slot(b"VOLUME  ID ", ATTR_VOLUME_ID, 0, 0)); // volid
-        let recovered = scan_dir_deleted(&buf, &[], &g);
+        let recovered = scan_dir_deleted(&buf, &g);
         assert!(recovered.is_empty());
     }
 
@@ -1101,19 +1020,20 @@ mod tests {
         assert!(geom.is_fat32);
         assert_eq!(geom.root_cluster, 2);
         let fat = FatTable::load(&image, &geom).expect("fat table");
-        let (dir, slot_offsets) = read_dir_bytes(&image, &geom, &fat, 0).expect("root dir bytes");
+        let dir = read_dir_bytes(&image, &geom, &fat, 0).expect("root dir bytes");
         assert_eq!(
-            dir.len(),
+            dir.bytes.len(),
             512,
             "single end-of-chain root cluster must be read, not skipped"
         );
-        let recovered = scan_dir_deleted(&dir, &slot_offsets, &geom);
+        let recovered = scan_dir_deleted(&dir.bytes, &geom);
         assert_eq!(recovered.len(), 1, "the deleted root entry must surface");
         assert_eq!(recovered[0].name, "_00W.CSV");
         assert_eq!(recovered[0].size, 1234);
-        // Root cluster 2 sits at sector 5; its first slot must report the
-        // absolute image offset, matching live entries' `inode` scale.
-        assert_eq!(recovered[0].slot_offset, (5 * sector) as u64);
+        assert_eq!(
+            dir.entry_offset(recovered[0].slot_offset).unwrap(),
+            (5 * sector) as u64
+        );
     }
 
     /// Build a FAT32 geometry with 8 KiB clusters (the `UDisk.img` layout) and a
