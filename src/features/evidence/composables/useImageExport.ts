@@ -1,5 +1,3 @@
-
-import { tr } from '../../../composables/useLocale';
 // Streams a loaded image — in practice an assembled (reconstructed) RAID
 // device — to a raw `.dd`/`.img` file on disk, with a live progress toast and
 // a cancel button. Pattern mirrors `useImageHash` (a per-image long task driven
@@ -14,9 +12,12 @@ import { save } from '@tauri-apps/plugin-dialog';
 import { bitlockerExportDecryptedImage } from '../../../lib/ipc/bitlocker';
 import { imageExportRaw, IMAGE_EXPORT_PROGRESS_EVENT, type ImageExportResult, type ImageExportProgress } from '../../../lib/ipc/image';
 import { taskCancel } from '../../../lib/ipc/taskRuntime';
-import { onEvent, type UnlistenFn } from '../../../lib/ipc/index';
+import { onEvent, type UnlistenFn } from '../../../lib/ipc/events';
+import { tr } from '../../../composables/useLocale';
 import { notifyError, pushPersistentToast } from '../../../composables/useToast';
 import { formatBytes } from '../../../utils/format';
+import { trackedImageExport } from '../../tasks/api';
+import { evidenceContext } from './evidenceContext';
 
 export interface ImageExportJob {
   imageId: string;
@@ -30,8 +31,6 @@ export interface ImageExportJob {
   bytesPerSecond: number;
   cancelling: boolean;
 }
-
-import { evidenceContext } from './evidenceContext';
 
 const jobs = reactive(new Map<string, ImageExportJob>());
 const choices = new Map<string, symbol>();
@@ -102,9 +101,8 @@ async function startImageExport(opts: {
   if (!destination || epoch !== generation || context !== evidenceContext()) return false;
 
   const startedAtMs = Date.now();
-  // Keep the same proxy in the map and closures: a reactive Map wraps raw
-  // values on get(), so comparing a raw job with jobs.get() never releases it.
-  const job: ImageExportJob = reactive({
+  // Share the same reactive job between progress handlers and registry identity checks.
+  const job = reactive<ImageExportJob>({
     imageId: opts.imageId,
     taskId: newTaskId(),
     destination,
@@ -166,12 +164,12 @@ async function startImageExport(opts: {
   }
   try {
     const exporter = opts.exporter ?? imageExportRaw;
-    const outcome = await exporter({
+    const outcome = await trackedImageExport(job, () => exporter({
       imageId: opts.imageId,
       destination,
       taskId: job.taskId,
       ...(opts.mode ? { mode: opts.mode } : {}),
-    });
+    }), () => cancelExportJob(job));
     if (epoch !== generation) return true;
     const written = typeof outcome === 'number' ? outcome : outcome.bytes_written;
     const faultDetail = typeof outcome !== 'number' && outcome.read_faults_detected
@@ -228,7 +226,11 @@ async function startBitlockerDecryptedImageExport(opts: {
 /** Request cancellation of an in-flight export. Idempotent. */
 async function cancelImageExport(imageId: string): Promise<void> {
   const job = jobs.get(imageId);
-  if (!job || job.cancelling) return;
+  if (job) await cancelExportJob(job);
+}
+
+async function cancelExportJob(job: ImageExportJob): Promise<void> {
+  if (job.cancelling) return;
   job.cancelling = true;
   try {
     await taskCancel({ taskId: job.taskId });

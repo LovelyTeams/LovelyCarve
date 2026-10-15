@@ -1,7 +1,7 @@
 
 import { tr } from '../../../composables/useLocale';
 
-import { type BuiltinTask } from '../model/types';
+import { type BuiltinTask, type ImageExportTaskState } from '../model/types';
 import { computed, effectScope, ref, shallowRef, watch } from 'vue';
 import { fsChildren, fsChildrenPage, fsDockerPrepare, fsFlatPage } from '../../../lib/ipc/fs/query';
 import { taskCancel, taskList, onTaskLifecycle } from '../../../lib/ipc/taskRuntime';
@@ -11,6 +11,8 @@ import { carveLatestScan, carveScanStatus, carveStart, carveScanPause, carveScan
 import { onSnapshotProgress } from '../../../lib/ipc/cases';
 import { onAutoDetectFailed, onAutoDetectFinished } from '../../../lib/ipc/autodetect';
 import { encryptedVolumeUnlock } from '../../../lib/ipc/encrypted';
+import type { ImageExportResult } from '../../../lib/ipc/image';
+import { formatBytes } from '../../../utils/format';
 import { IpcCommandError } from '../../../lib/ipc/client';
 import { applySnapshotTasks, recoverSnapshotTasks, isSnapshotTask } from '../model/filesystemTasks';
 import { applyAutoDetectFailure, applyAutoDetectLifecycle, applyAutoDetectSuccess, autoDetectTaskId, isAutoDetectTask, recoverAutoDetectTask } from '../model/autodetectTasks';
@@ -22,6 +24,7 @@ import { createBuiltinTaskEvents } from './useBuiltinTaskEvents';
 const records = shallowRef(new Map<string, BuiltinTask>());
 const now = ref(Date.now());
 const owned = new Map<string, symbol>();
+const exportCancels = new Map<string, () => Promise<void>>();
 const dockerNames = new Map<string, string>();
 const dockerPreparations = new Map<string, Promise<void>>();
 const persistedSearches = new Set<string>();
@@ -295,6 +298,7 @@ function ensureTracking(): Promise<void> {
       refreshing = false;
       records.value = new Map();
       owned.clear();
+      exportCancels.clear();
       dockerNames.clear();
       dockerPreparations.clear();
       persistedSearches.clear();
@@ -327,11 +331,50 @@ async function run<T>(task: BuiltinTask, operation: () => Promise<T>, summarize:
     if (current()) patch(task.id, { status: 'success', progress: 100, finished: Date.now(), cancelling: false, ...summarize(result) });
     return result;
   } catch (error) {
-    const cancelled = task.kind === 'encryptedUnlock' && error instanceof IpcCommandError && error.code === 'cancelled';
-    if (current()) patch(task.id, { status: cancelled ? 'cancel' : 'failed', error: cancelled ? null : String(error), message: cancelled ? tr("已取消解锁") : task.message, finished: Date.now(), cancelling: false });
+    const cancelled = (task.kind === 'encryptedUnlock' || task.kind === 'imageExport')
+      && (error instanceof IpcCommandError && error.code === 'cancelled'
+        || task.kind === 'imageExport' && (records.value.get(task.id)?.cancelling || /cancel/i.test(String(error))));
+    if (current()) patch(task.id, { status: cancelled ? 'cancel' : 'failed', error: cancelled ? null : String(error), message: cancelled ? (task.kind === 'imageExport' ? tr("导出已取消（保留部分文件）") : tr("已取消解锁")) : task.message, finished: Date.now(), cancelling: false });
     throw error;
   } finally {
     if (current()) owned.delete(task.id);
+  }
+}
+
+/** Share live export state and its cancellation path with the task center. */
+export async function trackedImageExport<T extends number | ImageExportResult>(
+  job: ImageExportTaskState,
+  operation: () => Promise<T>,
+  cancelExport: () => Promise<void>,
+): Promise<T> {
+  const task = makeTask('imageExport', `imageExport:${job.taskId}`, job.imageId, job.destination);
+  task.started = job.startedAtMs;
+  task.cancelId = job.taskId;
+  const completion = run(task, operation, outcome => {
+    const written = typeof outcome === 'number' ? outcome : outcome.bytes_written;
+    const warning = typeof outcome !== 'number' && outcome.read_faults_detected
+      ? tr(" · 警告：含 {0} 合成零字节（{1} 个坏区）", { 0: formatBytes(outcome.synthetic_bytes), 1: outcome.bad_regions.length })
+      : '';
+    return { message: tr("已导出 {0}{1}", { 0: formatBytes(written), 1: warning }) };
+  });
+  const owner = owned.get(task.id);
+  exportCancels.set(task.id, cancelExport);
+  const progress = effectScope(true);
+  progress.run(() => watch(
+    () => [job.bytesDone, job.bytesTotal, job.cancelling],
+    () => {
+      if (owned.get(task.id) !== owner) return;
+      patch(task.id, {
+        progress: percent(job.bytesDone, job.bytesTotal), cancelling: job.cancelling,
+        message: `${formatBytes(job.bytesDone)} / ${formatBytes(job.bytesTotal)}`,
+      });
+    },
+    { flush: 'sync', immediate: true },
+  ));
+  try { return await completion; }
+  finally {
+    progress.stop();
+    if (exportCancels.get(task.id) === cancelExport) exportCancels.delete(task.id);
   }
 }
 
@@ -423,6 +466,8 @@ export function trackedFsFlatPage(args: Parameters<typeof fsFlatPage>[0]) {
 async function cancel(id: string) {
   const task = records.value.get(id);
   if (!task?.cancelId || !(task.kind === 'carve' ? activeCarveStatuses.includes(task.status) : ['queued', 'running'].includes(task.status)) || task.cancelling) return;
+  const cancelExport = exportCancels.get(id);
+  if (cancelExport) return cancelExport();
   const epoch = caseRevision;
   const related = [...records.value.values()].filter(item => item.cancelId === task.cancelId && ['queued', 'running', 'pause'].includes(item.status));
   if (related.some(item => item.cancelling)) return;
@@ -454,7 +499,7 @@ export function disposeBuiltinTasks() {
   eventBridge?.dispose(); eventBridge = null;
   if (timer) clearInterval(timer);
   timer = null; subscriptions = null; refreshing = false;
-  records.value = new Map(); owned.clear(); dockerNames.clear(); dockerPreparations.clear(); persistedSearches.clear(); localTimelineStarts.clear(); carveCases.clear(); snapshotCases.clear(); autodetectCases.clear();
+  records.value = new Map(); owned.clear(); exportCancels.clear(); dockerNames.clear(); dockerPreparations.clear(); persistedSearches.clear(); localTimelineStarts.clear(); carveCases.clear(); snapshotCases.clear(); autodetectCases.clear();
 }
 
 export function resetBuiltinTasksForTests() { disposeBuiltinTasks(); }

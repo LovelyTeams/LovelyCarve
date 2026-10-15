@@ -9,6 +9,8 @@
 
 ### Added
 
+- RAW / 解密镜像导出接入任务中心，显示目标路径、进度和终态，并共用进度提示的取消入口。
+
 - CLI JSONL 会话支持 `session --jobs N` 并发查询，保留案件／检材切换屏障与结果引用依赖；命令清单公开并发能力，响应按 ID 关联，便于 AI agent 自动化。
 
 - QCOW 读取补齐 v1、DEFLATE 压缩、RAW/QCOW 差分父链和 legacy AES 密码/原始密钥入口，提供 libqcow 全部 42 API 对照；修复零簇覆盖父镜像、现代 v3 头部与读取边界校验。
