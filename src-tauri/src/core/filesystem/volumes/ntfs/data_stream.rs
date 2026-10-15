@@ -177,7 +177,7 @@ impl<'n, 'f> DataStream<'n, 'f> {
             vec![0; unit_size]
         } else if sparse {
             let decoded = super::lznt1::decompress(&stored, unit_size)
-                .with_context(|| format!("NTFS LZNT1 compression unit {unit}"))?;
+                .map_err(|error| anyhow!("NTFS LZNT1 compression unit {unit}: {error:#}"))?;
             ensure!(
                 decoded.len() >= required || stored.iter().all(|byte| *byte == 0),
                 "short decoded NTFS compression unit {unit}"

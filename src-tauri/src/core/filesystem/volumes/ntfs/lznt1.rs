@@ -5,7 +5,9 @@ use anyhow::{ensure, Result};
 pub(super) fn decompress(input: &[u8], limit: usize) -> Result<Vec<u8>> {
     let mut output = Vec::with_capacity(limit);
     let mut cursor = 0;
-    while cursor < input.len() {
+    // Cluster-aligned storage can end in a single padding byte. Once the
+    // complete unit is decoded, that padding is not another block header.
+    while cursor < input.len() && output.len() < limit {
         ensure!(cursor + 2 <= input.len(), "truncated LZNT1 block header");
         let header = u16::from_le_bytes([input[cursor], input[cursor + 1]]);
         cursor += 2;
