@@ -175,6 +175,7 @@ pub struct PluginClient {
     child: Option<tokio::sync::Mutex<Child>>,
     outbound_slots: Arc<Semaphore>,
     _process_guard: Option<ProcessGuard>,
+    stderr_task: tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl PluginClient {
@@ -303,6 +304,18 @@ impl PluginClient {
                 Err(_) => {
                     child.kill().await?;
                     child.wait().await?;
+                }
+            }
+        }
+        if let Some(mut task) = self.stderr_task.lock().await.take() {
+            match timeout(Duration::from_secs(2), &mut task).await {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    tracing::warn!(plugin_id = %self.identity.id, "plugin stderr task failed: {error}");
+                }
+                Err(_) => {
+                    task.abort();
+                    tracing::warn!(plugin_id = %self.identity.id, "plugin stderr drain timed out");
                 }
             }
         }

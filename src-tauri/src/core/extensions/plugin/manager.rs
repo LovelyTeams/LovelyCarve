@@ -222,6 +222,12 @@ impl PluginManager {
                 .write()
                 .insert(plugin_id, PluginState::Configured);
         }
+        let store = self.log_store.write().take();
+        if let Some(store) = store {
+            if let Err(error) = tokio::task::spawn_blocking(move || store.shutdown()).await {
+                tracing::warn!("plugin log shutdown failed: {error}");
+            }
+        }
     }
 
     pub async fn probe(&self, source: &SourceHandle) -> Vec<ProbeMatch> {

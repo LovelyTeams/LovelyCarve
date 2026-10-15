@@ -404,8 +404,8 @@ mod tests {
     };
     static WAITING_FILE: Mutex<Option<String>> = Mutex::new(None);
 
-    /// `wait` records its file id and runs until cancelled; any other name
-    /// reports progress, then returns only while a second run is in flight.
+    /// `wait` runs until cancelled, `log` writes a line without waiting, and
+    /// other names rendezvous to verify concurrent task workers.
     struct Workers;
 
     impl FileAnalyzer for Workers {
@@ -424,7 +424,7 @@ mod tests {
             }
             file.context().progress(1, Some(2), Some(file.name()))?;
             file.context().log(LogLevel::Info, "workers run");
-            if !BOTH_RUNNING.meet(2) {
+            if file.name() != "log" && !BOTH_RUNNING.meet(2) {
                 return Err(lovelycarve_plugin::Error::new(
                     "NOT_CONCURRENT",
                     "the other run never started",
@@ -608,21 +608,14 @@ analyzer = "{ANALYZER}"
 
         fixture
             .manager
-            .analyze_file_on(&worker, fixture.request("alpha"))
+            .analyze_file_on(&worker, fixture.request("log"))
             .await
             .expect("run");
 
-        // The writer thread appends behind the run, so the line shows up
-        // shortly after it returns.
+        worker.shutdown().await.expect("shutdown worker");
+        store.shutdown();
         let path = store.file_path(PLUGIN_ID);
-        let mut content = String::new();
-        for _ in 0..200 {
-            content = std::fs::read_to_string(&path).unwrap_or_default();
-            if content.contains("workers run") {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
+        let content = std::fs::read_to_string(&path).expect("plugin log file");
         assert!(content.contains(" INFO workers run"), "{content}");
     }
 

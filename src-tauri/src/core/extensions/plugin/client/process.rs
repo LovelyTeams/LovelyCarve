@@ -44,57 +44,15 @@ impl PluginClient {
             .take()
             .ok_or_else(|| PluginError::Handshake("plugin stdin was not piped".to_owned()))?;
 
-        if let Some(stderr) = child.stderr.take() {
+        let stderr_task = child.stderr.take().map(|stderr| {
             let plugin_id = command.plugin_id.clone();
             let logs = sinks.logs.clone();
             tokio::spawn(async move {
-                let mut stderr = stderr;
-                let mut buffer = [0_u8; STDERR_CHUNK_SIZE];
-                // stderr arrives in arbitrary chunks, so lines are cut at
-                // their newline instead of at the read boundary; the loader
-                // prefixes every complete line with the level the plugin
-                // asked for.
-                let mut pending: Vec<u8> = Vec::new();
-                let emit = |bytes: &[u8]| {
-                    let message = String::from_utf8_lossy(bytes);
-                    let message = message.trim_end_matches(['\r', '\n']);
-                    if message.is_empty() {
-                        return;
-                    }
-                    tracing::info!(target: "plugin", %plugin_id, "{message}");
-                    if let Some(logs) = &logs {
-                        logs.record_stderr(&plugin_id, message);
-                    }
-                };
-                loop {
-                    match stderr.read(&mut buffer).await {
-                        Ok(0) => {
-                            emit(&pending);
-                            break;
-                        }
-                        Ok(length) => {
-                            pending.extend_from_slice(&buffer[..length]);
-                            while let Some(index) = pending.iter().position(|byte| *byte == b'\n') {
-                                let line: Vec<u8> = pending.drain(..=index).collect();
-                                emit(&line);
-                            }
-                            // A plugin that never writes a newline must not
-                            // grow the buffer without bound.
-                            if pending.len() > MAX_STDERR_LINE {
-                                emit(&pending);
-                                pending.clear();
-                            }
-                        }
-                        Err(error) => {
-                            tracing::debug!(%plugin_id, "plugin stderr stopped: {error}");
-                            break;
-                        }
-                    }
-                }
-            });
-        }
+                read_stderr(stderr, &plugin_id, logs.as_deref()).await;
+            })
+        });
 
-        Self::connect(
+        let client = Self::connect(
             Box::new(stdout),
             Box::new(stdin),
             services,
@@ -102,7 +60,56 @@ impl PluginClient {
             sinks.progress,
             Some(process_guard),
         )
-        .await
+        .await?;
+        *client.stderr_task.lock().await = stderr_task;
+        Ok(client)
+    }
+}
+
+/// Reassembles stderr lines across read boundaries, including a final line
+/// without a newline. A broken loader cannot grow the pending buffer forever.
+async fn read_stderr(
+    mut stderr: impl AsyncRead + Unpin,
+    plugin_id: &str,
+    logs: Option<&super::super::PluginLogStore>,
+) {
+    let mut buffer = [0_u8; STDERR_CHUNK_SIZE];
+    let mut pending: Vec<u8> = Vec::new();
+    let emit = |bytes: &[u8]| {
+        let message = String::from_utf8_lossy(bytes);
+        let message = message.trim_end_matches(['\r', '\n']);
+        if message.is_empty() {
+            return;
+        }
+        tracing::info!(target: "plugin", %plugin_id, "{message}");
+        if let Some(logs) = logs {
+            logs.record_stderr(plugin_id, message);
+        }
+    };
+    loop {
+        match stderr.read(&mut buffer).await {
+            Ok(0) => {
+                emit(&pending);
+                break;
+            }
+            Ok(length) => {
+                pending.extend_from_slice(&buffer[..length]);
+                while let Some(index) = pending.iter().position(|byte| *byte == b'\n') {
+                    let line: Vec<u8> = pending.drain(..=index).collect();
+                    emit(&line);
+                }
+                // A plugin that never writes a newline must not
+                // grow the buffer without bound.
+                if pending.len() > MAX_STDERR_LINE {
+                    emit(&pending);
+                    pending.clear();
+                }
+            }
+            Err(error) => {
+                tracing::debug!(%plugin_id, "plugin stderr stopped: {error}");
+                break;
+            }
+        }
     }
 }
 
@@ -136,4 +143,32 @@ pub(super) fn apply_restricted_environment(
             "denied"
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::extensions::plugin::PluginLogStore;
+    use tokio::io::AsyncWriteExt as _;
+
+    #[tokio::test]
+    async fn fragmented_stderr_preserves_utf8_levels_and_the_final_line() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let store = PluginLogStore::open(directory.path()).expect("log store");
+        let (mut writer, reader) = tokio::io::duplex(1);
+        let write = async move {
+            writer
+                .write_all("WARN 日志\r\nINFO done\nloader note".as_bytes())
+                .await
+                .expect("stderr");
+            writer.shutdown().await.expect("close stderr");
+        };
+        tokio::join!(write, read_stderr(reader, "org.test.stderr", Some(&store)));
+        store.shutdown();
+        let content = std::fs::read_to_string(store.file_path("org.test.stderr")).expect("log");
+        assert_eq!(content.lines().count(), 3);
+        assert!(content.contains(" WARN 日志\n"));
+        assert!(content.contains(" INFO done\n"));
+        assert!(content.contains(" HOST loader note\n"));
+    }
 }

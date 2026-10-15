@@ -13,7 +13,7 @@ use std::{
     path::Path,
     sync::{
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
-        Arc,
+        Arc, Weak,
     },
     time::{Duration, Instant},
 };
@@ -46,9 +46,8 @@ struct HostContext {
     /// Emptied when the client closes, so the sink of a task worker (and the
     /// task state it captures) does not live on in the leaked context.
     progress_sink: Mutex<Option<PluginProgressSink>>,
-    /// Appends the plugin's `Context::log` lines to its file; shared with the log
-    /// store, so the leaked context keeps it alive after the client is gone.
-    logs: Option<Arc<PluginLogStore>>,
+    /// The leaked callback context must not keep the writer thread alive.
+    logs: Option<Weak<PluginLogStore>>,
     runtime: tokio::runtime::Handle,
     open: AtomicBool,
     cancellation: tokio_util::sync::CancellationToken,
@@ -92,7 +91,7 @@ impl InProcessClient {
             services,
             plugin_id: plugin_id.to_owned(),
             progress_sink: Mutex::new(sinks.progress),
-            logs: sinks.logs,
+            logs: sinks.logs.as_ref().map(Arc::downgrade),
             runtime: runtime.clone(),
             open: AtomicBool::new(true),
             cancellation: tokio_util::sync::CancellationToken::new(),
@@ -400,7 +399,7 @@ unsafe extern "C" fn host_log(context: *mut c_void, level: u32, message: Bytes) 
     let host = unsafe { &*context.cast::<HostContext>() };
     let message = String::from_utf8_lossy(unsafe { message.as_slice() });
     let plugin_id = host.plugin_id.as_str();
-    if let Some(logs) = &host.logs {
+    if let Some(logs) = host.logs.as_ref().and_then(Weak::upgrade) {
         logs.record(plugin_id, PluginLogLevel::from_abi(level), &message);
     }
     match level {

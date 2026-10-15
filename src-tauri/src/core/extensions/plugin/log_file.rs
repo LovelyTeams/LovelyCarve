@@ -4,7 +4,7 @@
 //! (`isolation = "in_process"`) or as a `LEVEL message` line on the loader's
 //! stderr (`isolation = "process"`). Both paths hand the line to a
 //! [`PluginLogStore`], which appends it to that plugin's own file under the
-//! app data directory, so plugin output outlives the session and no longer
+//! executable directory, so plugin output outlives the session and no longer
 //! depends on the `warn` default of the tracing subscriber.
 //!
 //! `record` never blocks its caller: it queues the line for a writer thread and
@@ -25,6 +25,8 @@ use std::{
 };
 
 use lovelycarve_plugin::abi;
+use parking_lot::{Mutex, RwLock};
+use sha2::{Digest as _, Sha256};
 
 use super::Result;
 
@@ -35,6 +37,7 @@ const QUEUE_CAPACITY: usize = 4096;
 const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
 /// Longest plugin id fragment kept in a file name.
 const MAX_FILE_NAME_CHARS: usize = 120;
+const MAX_MESSAGE_BYTES: usize = 64 * 1024;
 
 /// Severity of one plugin log line.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -93,14 +96,6 @@ struct Record {
     at: SystemTime,
 }
 
-enum Message {
-    Line(Record),
-    /// Test hook: lets a test wait until everything queued before it has been
-    /// written.
-    #[cfg(test)]
-    Ack(std::sync::mpsc::Sender<()>),
-}
-
 /// One plugin's open log file and how many bytes it holds.
 struct OpenLog {
     file: File,
@@ -110,7 +105,7 @@ struct OpenLog {
 impl OpenLog {
     fn open(path: &Path) -> std::io::Result<Self> {
         let file = OpenOptions::new().create(true).append(true).open(path)?;
-        let bytes = file.metadata().map(|meta| meta.len()).unwrap_or(0);
+        let bytes = file.metadata()?.len();
         Ok(Self { file, bytes })
     }
 
@@ -147,11 +142,26 @@ impl OpenLog {
 /// cloning its line.
 pub struct PluginLogStore {
     root: PathBuf,
-    sender: SyncSender<Message>,
+    sender: RwLock<Option<SyncSender<Record>>>,
+    writer: Mutex<Option<std::thread::JoinHandle<()>>>,
     dropped: Arc<AtomicU64>,
 }
 
 impl PluginLogStore {
+    /// Uses the running desktop or CLI executable's directory, independent of
+    /// the working directory and the per-user application data directory.
+    pub fn beside_executable() -> Result<Arc<Self>> {
+        let executable = std::env::current_exe()?;
+        let directory = executable.parent().ok_or_else(|| {
+            std::io::Error::other("plugin logs require an executable parent directory")
+        })?;
+        let root = directory.join("logs").join("plugins");
+        Self::open(&root).map_err(|error| {
+            std::io::Error::other(format!("plugin log directory {}: {error}", root.display()))
+                .into()
+        })
+    }
+
     /// Opens `root`, creating it, and starts the writer thread.
     pub fn open(root: impl Into<PathBuf>) -> Result<Arc<Self>> {
         Self::with_limits(root.into(), MAX_FILE_BYTES, QUEUE_CAPACITY)
@@ -163,12 +173,13 @@ impl PluginLogStore {
         let dropped = Arc::new(AtomicU64::new(0));
         let writer_root = root.clone();
         let writer_dropped = Arc::clone(&dropped);
-        std::thread::Builder::new()
+        let writer = std::thread::Builder::new()
             .name("plugin-log".to_owned())
             .spawn(move || writer_loop(&writer_root, max_file_bytes, &receiver, &writer_dropped))?;
         Ok(Arc::new(Self {
             root,
-            sender,
+            sender: RwLock::new(Some(sender)),
+            writer: Mutex::new(Some(writer)),
             dropped,
         }))
     }
@@ -176,6 +187,20 @@ impl PluginLogStore {
     /// The file the plugin's lines are appended to.
     pub fn file_path(&self, plugin_id: &str) -> PathBuf {
         self.root.join(log_file_name(plugin_id))
+    }
+
+    /// Stops accepting records and drains the queue. Blocking: call off the
+    /// async workers after shutting down plugin instances.
+    pub fn shutdown(&self) {
+        self.sender.write().take();
+        if self
+            .writer
+            .lock()
+            .take()
+            .is_some_and(|writer| writer.join().is_err())
+        {
+            tracing::warn!("plugin log writer panicked");
+        }
     }
 
     /// Queues one `Context::log` line. Returns immediately, also when the writer
@@ -203,46 +228,49 @@ impl PluginLogStore {
     }
 
     fn push(&self, plugin_id: &str, level: PluginLogLevel, message: &str) {
+        let sender = self.sender.read();
+        let Some(sender) = sender.as_ref() else {
+            return;
+        };
+        let message = if message.len() > MAX_MESSAGE_BYTES {
+            let end = message.floor_char_boundary(MAX_MESSAGE_BYTES);
+            format!("{} [truncated]", &message[..end])
+        } else {
+            message.to_owned()
+        };
         let record = Record {
             plugin_id: plugin_id.to_owned(),
             level,
-            message: message.to_owned(),
+            message,
             at: SystemTime::now(),
         };
-        match self.sender.try_send(Message::Line(record)) {
+        match sender.try_send(record) {
             Ok(()) => {}
             Err(TrySendError::Full(_)) => {
                 self.dropped.fetch_add(1, Ordering::Relaxed);
             }
-            Err(TrySendError::Disconnected(_)) => {}
+            Err(TrySendError::Disconnected(_)) => {
+                tracing::warn!("plugin log writer disconnected");
+            }
         }
     }
 }
 
-fn writer_loop(
-    root: &Path,
-    max_file_bytes: u64,
-    receiver: &Receiver<Message>,
-    dropped: &AtomicU64,
-) {
+impl Drop for PluginLogStore {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
+fn writer_loop(root: &Path, max_file_bytes: u64, receiver: &Receiver<Record>, dropped: &AtomicU64) {
     let mut files: HashMap<String, Option<OpenLog>> = HashMap::new();
     let mut reported_drops = 0_u64;
-    while let Ok(message) = receiver.recv() {
-        #[cfg(test)]
-        let record = match message {
-            Message::Line(record) => record,
-            Message::Ack(ack) => {
-                let _ = ack.send(());
-                continue;
-            }
-        };
-        #[cfg(not(test))]
-        let Message::Line(record) = message;
+    while let Ok(record) = receiver.recv() {
         let path = root.join(log_file_name(&record.plugin_id));
         let open = files.entry(record.plugin_id.clone()).or_insert_with(|| {
             OpenLog::open(&path).map_or_else(
                 |error| {
-                    tracing::debug!(
+                    tracing::warn!(
                         plugin_id = %record.plugin_id,
                         "plugin log file {} is unavailable: {error}",
                         path.display()
@@ -266,7 +294,7 @@ fn writer_loop(
                 PluginLogLevel::Warn.label(),
             );
             if let Err(error) = open.write_line(&path, &notice, max_file_bytes) {
-                tracing::debug!(plugin_id = %record.plugin_id, "plugin log write failed: {error}");
+                tracing::warn!(plugin_id = %record.plugin_id, "plugin log write failed: {error}");
             }
         }
         let line = format!(
@@ -276,7 +304,7 @@ fn writer_loop(
             record.message
         );
         if let Err(error) = open.write_line(&path, &line, max_file_bytes) {
-            tracing::debug!(plugin_id = %record.plugin_id, "plugin log write failed: {error}");
+            tracing::warn!(plugin_id = %record.plugin_id, "plugin log write failed: {error}");
         }
     }
 }
@@ -301,10 +329,18 @@ fn log_file_name(plugin_id: &str) -> String {
         })
         .collect();
     let stem = cleaned.split('.').next().unwrap_or_default();
-    if stem.is_empty()
+    let cleaned = if stem.is_empty()
         || crate::core::filesystem::tree::fs_tree_export::is_windows_device_name(stem)
     {
-        format!("_{cleaned}.log")
+        format!("_{cleaned}")
+    } else {
+        cleaned
+    };
+    // Keep distinct ids separate after truncation, sanitization, or Windows
+    // case folding. Ordinary lowercase ids retain their readable file names.
+    if cleaned != plugin_id || plugin_id.bytes().any(|byte| byte.is_ascii_uppercase()) {
+        let digest = hex::encode(Sha256::digest(plugin_id.as_bytes()));
+        format!("{cleaned}-{digest}.log")
     } else {
         format!("{cleaned}.log")
     }
@@ -336,14 +372,20 @@ mod tests {
             .collect()
     }
 
-    /// Waits until every line queued before the call has been written.
-    fn settle(store: &PluginLogStore) {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        store
-            .sender
-            .send(Message::Ack(sender))
-            .expect("writer thread");
-        receiver.recv().expect("writer thread");
+    #[test]
+    fn default_root_is_beside_the_running_executable() {
+        let executable = std::env::current_exe().expect("executable");
+        let store = PluginLogStore::beside_executable().expect("log store beside executable");
+        assert_eq!(
+            store.file_path(PLUGIN_ID),
+            executable
+                .parent()
+                .expect("directory")
+                .join("logs")
+                .join("plugins")
+                .join("com.example.plugin.log")
+        );
+        store.shutdown();
     }
 
     #[test]
@@ -352,7 +394,7 @@ mod tests {
         let store = store(directory.path());
         store.record("com.example.one", PluginLogLevel::Info, "reading image");
         store.record("com.example.two", PluginLogLevel::Error, "no evidence");
-        settle(&store);
+        store.shutdown();
         let one = read(&store.file_path("com.example.one"));
         let two = read(&store.file_path("com.example.two"));
         assert_eq!(one.lines().count(), 1);
@@ -366,7 +408,7 @@ mod tests {
         let directory = tempfile::tempdir().expect("temp dir");
         let store = store(directory.path());
         store.record(PLUGIN_ID, PluginLogLevel::Debug, "scanning roots");
-        settle(&store);
+        store.shutdown();
         let content = read(&store.file_path(PLUGIN_ID));
         let line = content.lines().next().expect("one line");
         let mut fields = line.splitn(3, ' ');
@@ -388,7 +430,7 @@ mod tests {
             PLUGIN_ID,
             "WARN os-release is empty\r\nINFO 2 fields\nplain loader note",
         );
-        settle(&store);
+        store.shutdown();
         let content = read(&store.file_path(PLUGIN_ID));
         let levels: Vec<&str> = content
             .lines()
@@ -410,7 +452,7 @@ mod tests {
                 &format!("line {index} {}", "x".repeat(24)),
             );
         }
-        settle(&store);
+        store.shutdown();
         let path = store.file_path(PLUGIN_ID);
         let previous = path.with_extension("log.1");
         assert!(previous.is_file(), "no rotation happened");
@@ -438,12 +480,12 @@ mod tests {
         {
             let store = store(directory.path());
             store.record(PLUGIN_ID, PluginLogLevel::Info, "first run");
-            settle(&store);
+            store.shutdown();
         }
         {
             let store = store(directory.path());
             store.record(PLUGIN_ID, PluginLogLevel::Info, "second run");
-            settle(&store);
+            store.shutdown();
         }
         let content = read(&directory.path().join("com.example.plugin.log"));
         assert!(content.contains("first run"), "{content}");
@@ -456,11 +498,74 @@ mod tests {
             log_file_name("com.example.plugin"),
             "com.example.plugin.log"
         );
-        assert_eq!(
-            log_file_name("com/example:plugin"),
-            "com_example_plugin.log"
+        for id in ["com/example:plugin", "con", "", "..", "CON.txt"] {
+            let name = log_file_name(id);
+            assert!(!name.contains(['/', '\\', ':']));
+            assert!(name.ends_with(".log"));
+        }
+        for (left, right) in [
+            ("con", "_con"),
+            ("Plugin", "plugin"),
+            ("com/example:plugin", "com_example_plugin"),
+        ] {
+            assert_ne!(
+                log_file_name(left).to_lowercase(),
+                log_file_name(right).to_lowercase()
+            );
+        }
+        let prefix = "a".repeat(MAX_FILE_NAME_CHARS);
+        assert_ne!(
+            log_file_name(&format!("{prefix}1")),
+            log_file_name(&format!("{prefix}2"))
         );
-        assert_eq!(log_file_name("con"), "_con.log");
-        assert_eq!(log_file_name(""), "_.log");
+    }
+
+    #[test]
+    fn dropping_the_store_drains_queued_records() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let store = store(directory.path());
+        let path = store.file_path(PLUGIN_ID);
+        store.record(PLUGIN_ID, PluginLogLevel::Info, "last record");
+        drop(store);
+        assert!(read(&path).contains(" INFO last record\n"));
+    }
+
+    #[test]
+    fn full_queue_drops_records_and_reports_the_count() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let (sender, receiver) = sync_channel(1);
+        let store = PluginLogStore {
+            root: directory.path().to_owned(),
+            sender: RwLock::new(Some(sender)),
+            writer: Mutex::new(None),
+            dropped: Arc::new(AtomicU64::new(0)),
+        };
+        store.record(PLUGIN_ID, PluginLogLevel::Info, "accepted");
+        store.record(PLUGIN_ID, PluginLogLevel::Info, "dropped");
+        assert_eq!(store.dropped.load(Ordering::Relaxed), 1);
+        store.shutdown();
+        writer_loop(directory.path(), MAX_FILE_BYTES, &receiver, &store.dropped);
+        let content = read(&store.file_path(PLUGIN_ID));
+        assert!(content.contains("1 plugin log lines were dropped"));
+        assert!(content.contains(" INFO accepted\n"));
+        assert!(!content.contains(" INFO dropped\n"));
+    }
+
+    #[test]
+    fn oversized_messages_keep_valid_utf8_and_a_truncation_marker() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let store = PluginLogStore::open(directory.path()).expect("store");
+        store.record(
+            PLUGIN_ID,
+            PluginLogLevel::Info,
+            &"日志".repeat(MAX_MESSAGE_BYTES),
+        );
+        store.shutdown();
+        let content = read(&store.file_path(PLUGIN_ID));
+        assert!(content.ends_with(" [truncated]\n"));
+        assert!(content.len() < MAX_MESSAGE_BYTES + 100);
+        store.record(PLUGIN_ID, PluginLogLevel::Info, "after shutdown");
+        store.shutdown();
+        assert_eq!(read(&store.file_path(PLUGIN_ID)), content);
     }
 }

@@ -66,14 +66,9 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
                     tracing::debug!("emit plugin-progress failed: {err}");
                 }
             });
-            // 插件日志落盘:每个插件一个文件,与 trace 输出互不影响。
-            let log_root = app_data_dir.join("logs").join("plugins");
-            match crate::core::extensions::plugin::PluginLogStore::open(&log_root) {
+            match crate::core::extensions::plugin::PluginLogStore::beside_executable() {
                 Ok(store) => manager.set_log_store(store),
-                Err(err) => tracing::warn!(
-                    "plugin log files are unavailable at {}: {err}",
-                    log_root.display()
-                ),
+                Err(err) => tracing::warn!("plugin log files are unavailable: {err}"),
             }
             *app.state::<AppState>().plugins.write() = Some(std::sync::Arc::new(manager));
         }

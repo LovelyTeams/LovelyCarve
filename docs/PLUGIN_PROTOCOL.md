@@ -194,7 +194,7 @@ synchronous. The SDK provides:
 - result types (`AnalysisResult`, `Artifact`, `TimelineEvent`, `Finding`,
   `ResultNode`, an ordered `Attributes` map) and `LogLevel` logging to the
   LovelyCarve log (target `plugin`) and to that plugin's own file under the
-  application data directory (`logs/plugins/<plugin id>.log`, rotated at
+  executable directory (`logs/plugins/<plugin id>.log`, rotated at
   8 MiB, keeping one previous generation).
 
 The workspace in `plugins/` holds the SDK, `lc-plugin-host` and the bundled
@@ -211,8 +211,8 @@ requests into plugin calls on worker threads and plugin host calls into
 requests back to LovelyCarve:
 
 - stdin is protocol input, stdout is protocol output, and stderr is logs;
-  each stderr line starts with `ERROR` / `WARN` / `INFO` / `DEBUG`, which is
-  what the host records in the plugin's log file.
+  SDK log calls carry an `ERROR` / `WARN` / `INFO` / `DEBUG` prefix;
+  unprefixed loader diagnostics are recorded as `HOST`.
 - Each frame is a four-byte big-endian payload length followed by MessagePack.
 - Frames are limited to 8 MiB. `source.read` is limited to 4 MiB.
 - Host request IDs are even; loader request IDs are odd.

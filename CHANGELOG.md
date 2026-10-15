@@ -9,7 +9,7 @@
 
 ### Added
 
-- 插件日志（SDK 的 `Context::log`）按插件落盘到应用数据目录的 `logs/plugins/<插件 id>.log`，单文件超过 8 MiB 自动轮转并保留一代；写入由独立线程与有界队列完成，不阻塞插件调用，也不受默认 `warn` 过滤影响。
+- 插件日志（SDK 的 `Context::log`）按插件落盘到软件 exe 目录下的 `logs/plugins/<插件 id>.log`，单文件超过 8 MiB 自动轮转并保留一代；写入由独立线程与有界队列完成，不阻塞插件调用，也不受默认 `warn` 过滤影响。
 
 ### Fixed
 
