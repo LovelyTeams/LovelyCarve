@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { effectScope, shallowRef } from 'vue';
+import { effectScope, reactive, shallowRef } from 'vue';
 import type { GlobalSearchHistoryEntry, GlobalSearchOptions, GlobalSearchProgress, GlobalSearchSummary } from '../../../lib/ipc/search';
 import type { DockerIndexStatus } from '../../../lib/ipc/fs/types';
 import type { TimelineBuildSummary, TimelineProgress } from '../../../lib/ipc/timeline';
 import type { AutoDetectFailure, AutoDetectReport } from '../../../lib/ipc/autodetect';
-import { resetBuiltinTasksForTests, trackedCarveStart, trackedFsChildren, trackedFsFlatPage, trackedGlobalSearchStart, trackedTimelineStart, trackedEncryptedVolumeUnlock, useBuiltinTasks } from './useBuiltinTasks';
+import { resetBuiltinTasksForTests, trackedImageExport, trackedCarveStart, trackedFsChildren, trackedFsFlatPage, trackedGlobalSearchStart, trackedTimelineStart, trackedEncryptedVolumeUnlock, useBuiltinTasks } from './useBuiltinTasks';
 import { IpcCommandError } from '../../../lib/ipc/client';
 import type { EncryptedUnlockResult } from '../../../lib/ipc/encrypted';
 import { resetAutoDetectForTests, runAutoDetect, useAutoDetectReport, ensureAutoDetectListener, isAutoDetectRunPending } from '../../evidence/composables/useAutoDetect';
@@ -522,4 +522,80 @@ it('deduplicates cancellation across queued indexing and its running filesystem 
   expect(hub.tasks.value.every(task => task.cancelling)).toBe(true);
   snapshotProgress({ payload: { ...snapshotEvent, phase: 'cancelled' } });
   expect(hub.tasks.value.every(task => task.status === 'cancel' && !task.cancelling)).toBe(true);
+});
+
+
+function exportJob(taskId = 'export-1') {
+  return reactive({ imageId: 'disk-a', taskId, destination: 'D:/exports/disk.dd',
+    bytesDone: 0, bytesTotal: 0, startedAtMs: Date.now(), cancelling: false });
+}
+
+describe('image export task ownership', () => {
+  it('tracks shared progress after page disposal and retains read-fault provenance', async () => {
+    const operation = deferred<import('../../../lib/ipc/image').ImageExportResult>();
+    const job = exportJob();
+    const page = effectScope();
+    const hub = page.run(() => useBuiltinTasks())!;
+    const running = trackedImageExport(job, () => operation.promise, vi.fn());
+    await settle();
+    page.stop();
+    job.bytesTotal = 4096;
+    job.bytesDone = 1024;
+    expect(hub.tasks.value[0]).toMatchObject({ id: 'imageExport:export-1', kind: 'imageExport',
+      title: '镜像导出', subject: job.destination, progress: 25, status: 'running', cancelId: 'export-1' });
+    operation.resolve({ bytes_written: 4096, bad_regions: [{ offset: 0, length: 512 }],
+      synthetic_bytes: 512, read_faults_detected: true });
+    await running;
+    expect(hub.tasks.value[0]).toMatchObject({ status: 'success', progress: 100, cancelling: false });
+    expect(hub.tasks.value[0].message).toContain('512 B');
+    expect(hub.tasks.value[0].message).toContain('1 个坏区');
+    job.bytesDone = 2048;
+    await hub.refresh();
+    expect(hub.tasks.value[0].progress).toBe(100);
+  });
+
+  it('uses the initiating workflow cancellation path and waits for backend confirmation', async () => {
+    const operation = deferred<number>();
+    const job = exportJob();
+    const hub = useBuiltinTasks();
+    const cancelExport = vi.fn(async () => {
+      job.cancelling = true;
+      await ipc.cancel({ taskId: job.taskId });
+    });
+    const running = trackedImageExport(job, () => operation.promise, cancelExport);
+    await settle();
+    await hub.cancel('imageExport:export-1');
+    await hub.cancel('imageExport:export-1');
+    expect(cancelExport).toHaveBeenCalledOnce();
+    expect(ipc.cancel).toHaveBeenCalledExactlyOnceWith({ taskId: 'export-1' });
+    expect(hub.tasks.value[0]).toMatchObject({ status: 'running', cancelling: true });
+    operation.reject(new Error('export cancelled'));
+    await expect(running).rejects.toThrow('export cancelled');
+    expect(hub.tasks.value[0]).toMatchObject({ status: 'cancel', cancelling: false, error: null });
+  });
+
+  it('retains a failure and allows another export of the same evidence', async () => {
+    const hub = useBuiltinTasks();
+    await expect(trackedImageExport(exportJob(), async () => { throw new Error('permission denied'); }, vi.fn()))
+      .rejects.toThrow('permission denied');
+    await trackedImageExport(exportJob('export-2'), async () => 4096, vi.fn());
+    expect(hub.tasks.value.map(task => [task.id, task.status, task.error])).toEqual([
+      ['imageExport:export-1', 'failed', 'Error: permission denied'],
+      ['imageExport:export-2', 'success', null],
+    ]);
+  });
+
+  it('does not publish late export progress or completion after an A to B to A case switch', async () => {
+    const operation = deferred<number>();
+    const job = exportJob();
+    const hub = useBuiltinTasks();
+    const running = trackedImageExport(job, () => operation.promise, vi.fn());
+    await settle();
+    activeCase.value = { dir: 'case-b', evidence: [{ image_id: 'disk-a' }] };
+    activeCase.value = { dir: 'case-a', evidence: [{ image_id: 'disk-a' }] };
+    job.bytesDone = 1024;
+    operation.resolve(4096);
+    await running;
+    expect(hub.tasks.value).toEqual([]);
+  });
 });

@@ -7,7 +7,7 @@ export type TaskHubTab = 'tasks' | 'quick';
 
 export interface BuiltinTask {
   id: string;
-  kind: 'docker' | 'search' | 'timeline' | 'carve' | 'filesystem' | 'index' | 'autodetect' | 'encryptedUnlock';
+  kind: 'docker' | 'search' | 'timeline' | 'carve' | 'filesystem' | 'index' | 'autodetect' | 'encryptedUnlock' | 'imageExport';
   imageId: string;
   title: string;
   subject: string;
@@ -23,4 +23,15 @@ export interface BuiltinTask {
   cancelling: boolean;
   results: number;
   timelineRows: number;
+}
+
+/** Reactive export state shared by the initiating workflow and task center. */
+export interface ImageExportTaskState {
+  imageId: string;
+  taskId: string;
+  destination: string;
+  bytesDone: number;
+  bytesTotal: number;
+  startedAtMs: number;
+  cancelling: boolean;
 }

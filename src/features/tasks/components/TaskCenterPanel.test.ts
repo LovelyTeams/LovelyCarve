@@ -69,6 +69,29 @@ beforeEach(() => {
 afterEach(() => { app?.unmount(); app = undefined; host.remove(); });
 
 describe('task list sections', () => {
+  it('shows image export progress, cancellation and the retained destination', async () => {
+    records.value = [];
+    builtinRecords.value = [builtin('imageExport', {
+      title: '镜像导出', subject: 'D:/exports/disk.dd', progress: 25,
+      message: '1 KiB / 4 KiB', cancelId: 'export-1',
+    })];
+    await mount();
+    expect(row('镜像导出').textContent).toContain('D:/exports/disk.dd');
+    expect(host.querySelector('[aria-label="镜像导出进度"]')?.getAttribute('aria-valuenow')).toBe('25');
+    await click('取消 镜像导出');
+    expect(actions.nativeCancel).toHaveBeenCalledWith('imageExport:1');
+    builtinRecords.value[0].cancelling = true;
+    await nextTick();
+    expect(row('镜像导出').textContent).toContain('正在取消，请稍候');
+    builtinRecords.value[0].status = 'cancel';
+    builtinRecords.value[0].cancelling = false;
+    builtinRecords.value[0].message = '导出已取消（保留部分文件）';
+    await nextTick();
+    expect(sectionLabels()).toEqual(['已结束 1 项']);
+    expect(row('镜像导出').textContent).toContain('D:/exports/disk.dd');
+    expect(row('镜像导出').textContent).toContain('保留部分文件');
+  });
+
   it('shows encrypted unlocks as cancellable background work and retains the outcome', async () => {
     records.value = [];
     builtinRecords.value = [builtin('encryptedUnlock', {
