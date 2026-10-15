@@ -73,7 +73,7 @@ fsfatinfo 的卷信息与文件层级对应镜像信息页、文件树和 CLI；
 
 FAT 本地时间和 OffsetValid 未设置的 exFAT 时间输出为 `YYYY-MM-DDTHH:mm:ss.SSS`，不附加虚构的 `Z`；只有已知 offset 的 exFAT 时间才归一化为 UTC RFC 3339。时间线只投影带时区的时间，不猜测检材所在时区。
 
-这些 metadata 是后端 Rust 接口，inode 字段返回目录项偏移；原始属性与卷序列号没有对应的 Tauri 命令，也不在详情面板中展示。
+这些 metadata 是后端 Rust 接口，`inode` 返回短目录项的绝对镜像偏移（分区基址 + 卷内偏移），FAT 活项与删除项使用相同坐标。删除项按固定根目录区域或实际目录簇链映射地址，节点 ID 继续使用目录流内的槽位偏移区分同名记录。元数据地址排序表示镜像中的物理位置；目录簇不连续时，它不一定等于目录遍历顺序，也不代表写入或时间顺序。原始属性与卷序列号没有对应的 Tauri 命令，也不在详情面板中展示。
 
 尚未覆盖：按任意裸目录项偏移反向打开、完整的 OEM 多字节代码页、按自定义 exFAT Up-case Table 的 Unicode 比较，以及 Boot Region / entry-set / upcase 全部 checksum 的严格验证链。删除的连续 run 和 FAT32 高字截断重建仍是候选推断，不保证簇未被重用；碎片化的删除正文、缺失父链及删除目录的递归恢复没有完整支持。LFN 序号丢失后的删除项名称是尽力恢复。
 
@@ -89,7 +89,7 @@ just test-vendor exfat
 
 | 测试 | 覆盖 |
 | --- | --- |
-| `volumes/fat/tests.rs` | 三种 FAT、碎片范围与 EOF、错误链、活动 FAT32、大逻辑扇区、属性与偏移、10ms 时间、同名删除项、证据字节不变 |
+| `volumes/fat/tests.rs` | 三种 FAT、碎片范围与 EOF、错误链、活动 FAT32、大逻辑扇区、属性与偏移、非零分区基址与不连续目录簇的删除项地址、10ms 时间、同名删除项、证据字节不变 |
 | `volumes/exfat/fixture_tests.rs` | 碎片 / 连续、VDL 0 / 700 / 1100、跨初始化边界、尾部零、跨槽位代理对、UTC-5、属性与偏移、坏链、备份 BPB、连续子目录删除项 |
 | `fat_deleted` / `exfat_recover` 测试 | 删除短名 / LFN / entry-set、目录 slack、最后 EOC 簇、备份选择、高字截断候选 |
 | vendor/exfat 时间测试 | 未知 / 正 / 负 offset、10ms 上限与非法值 |
