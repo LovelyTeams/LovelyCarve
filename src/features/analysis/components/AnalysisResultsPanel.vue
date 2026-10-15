@@ -1,32 +1,32 @@
 <template>
-  <section class="analysis-results" aria-label="分析结果">
-    <p class="sr-only" role="status">{{ treeError || recordsError ? '' : recordsLoading ? '正在读取记录…' : selectedNode ? `${selectedNode.label}，共 ${recordsTotal.toLocaleString()} 条${keyword ? '匹配记录' : '记录'}，第 ${pageIndex + 1} 页` : '' }}</p>
+  <section class="analysis-results" :aria-label="tr('分析结果')">
+    <p class="sr-only" role="status">{{ treeError || recordsError ? '' : recordsLoading ? tr("正在读取记录…") : selectedNode ? tr("{0}，共 {1} 条{2}，第 {3} 页", { 0: selectedNode.label, 1: recordsTotal.toLocaleString(), 2: keyword ? tr("匹配记录") : tr("记录"), 3: pageIndex + 1 }) : '' }}</p>
     <!-- 页面不设标题栏：选中结果项后顶部只有检索与导出，结果路径与计数放在底部状态栏。 -->
     <div v-if="selectedNode" class="ui-toolbar results-toolbar">
       <form class="ui-search record-search" :class="{ applied: keyword }" @submit.prevent="applyKeyword(keywordInput)">
         <Search :size="14" />
-        <input v-model="keywordInput" aria-label="搜索当前结果" placeholder="搜索当前结果，回车确认…" />
-        <button v-if="keywordInput || keyword" class="ui-icon-btn sm" type="button" aria-label="清除搜索" title="清除搜索" @click="keywordInput = ''; applyKeyword('')"><X :size="13" /></button>
+        <input v-model="keywordInput" :aria-label="tr('搜索当前结果')" :placeholder="tr('搜索当前结果，回车确认…')" />
+        <button v-if="keywordInput || keyword" class="ui-icon-btn sm" type="button" :aria-label="tr('清除搜索')" :title="tr('清除搜索')" @click="keywordInput = ''; applyKeyword('')"><X :size="13" /></button>
       </form>
       <div class="ui-toolbar-actions">
-        <button v-if="exporting && exportCanCancel" class="ui-btn ghost" @click="cancelExport">取消导出</button>
-        <button class="ui-btn" :disabled="exporting || treeLoading || !!treeError || recordsLoading || recordsTotal === 0" @click="exportCsv"><Loader2 v-if="exporting" :size="14" class="spin" /><Download v-else :size="14" />{{ exporting ? '导出中…' : '导出 CSV' }}</button>
-        <button class="ui-icon-btn" :disabled="treeLoading" aria-label="刷新分析结果" title="刷新" @click="reload"><Loader2 v-if="treeLoading" :size="16" class="spin" /><RefreshCw v-else :size="16" /></button>
+        <button v-if="exporting && exportCanCancel" class="ui-btn ghost" @click="cancelExport">{{ tr("取消导出") }}</button>
+        <button class="ui-btn" :disabled="exporting || treeLoading || !!treeError || recordsLoading || recordsTotal === 0" @click="exportCsv"><Loader2 v-if="exporting" :size="14" class="spin" /><Download v-else :size="14" />{{ exporting ? tr("导出中…") : tr("导出 CSV") }}</button>
+        <button class="ui-icon-btn" :disabled="treeLoading" :aria-label="tr('刷新分析结果')" :title="tr('刷新')" @click="reload"><Loader2 v-if="treeLoading" :size="16" class="spin" /><RefreshCw v-else :size="16" /></button>
       </div>
     </div>
-    <div v-if="treeError" class="ui-empty state-box error" role="alert"><span class="ui-empty-icon"><CircleAlert :size="24" /></span><p class="ui-empty-desc">分析结果读取失败：{{ treeError }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="reload">重试</button></div></div>
+    <div v-if="treeError" class="ui-empty state-box error" role="alert"><span class="ui-empty-icon"><CircleAlert :size="24" /></span><p class="ui-empty-desc">{{ tr("分析结果读取失败：") }}{{ treeError }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="reload">{{ tr("重试") }}</button></div></div>
     <WorkspaceStartState v-else-if="!selectedNode" :icon="DatabaseZap" :loading="treeLoading"
-      :title="treeLoading ? '正在读取分析结果…' : tree.length ? '选择一个结果项' : '当前检材还没有分析结果'"
-      :description="tree.length ? '在左侧结果目录中选择结果项，查看解析出的记录。' : '选择分析功能，完成后结果会显示在这里。'"
-      :action-label="tree.length ? undefined : '快速分析'" :action-icon="DatabaseZap" role="status" @action="emit('quickAnalysis')">
-      <template #toolbar><button class="ui-btn ghost" :disabled="treeLoading" @click="reload"><RefreshCw :size="14" />刷新</button></template>
+      :title="treeLoading ? tr('正在读取分析结果…') : tree.length ? tr('选择一个结果项') : tr('当前检材还没有分析结果')"
+      :description="tree.length ? tr('在左侧结果目录中选择结果项，查看解析出的记录。') : tr('选择分析功能，完成后结果会显示在这里。')"
+      :action-label="tree.length ? undefined : tr('快速分析')" :action-icon="DatabaseZap" role="status" @action="emit('quickAnalysis')">
+      <template #toolbar><button class="ui-btn ghost" :disabled="treeLoading" @click="reload"><RefreshCw :size="14" />{{ tr("刷新") }}</button></template>
     </WorkspaceStartState>
     <div v-else class="results-body">
       <div class="result-table">
         <div class="table-scroll" :aria-busy="recordsLoading">
-          <div v-if="recordsLoading" class="ui-empty state-box" role="status"><span class="ui-empty-icon accent"><Loader2 :size="22" class="spin" /></span><p class="ui-empty-desc">正在读取记录…</p></div>
-          <div v-else-if="recordsError" class="ui-empty state-box error" role="alert"><span class="ui-empty-icon"><CircleAlert :size="22" /></span><p class="ui-empty-desc">记录读取失败：{{ recordsError }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="retryRecords">重试</button></div></div>
-          <div v-else-if="records.length === 0" class="ui-empty state-box" role="status"><span class="ui-empty-icon"><Inbox :size="24" /></span><p class="ui-empty-desc">{{ keyword ? '没有匹配的记录' : '此结果项暂无记录' }}</p><div v-if="keyword" class="ui-empty-actions"><button class="ui-btn" @click="keywordInput = ''; applyKeyword('')">清除搜索</button></div></div>
+          <div v-if="recordsLoading" class="ui-empty state-box" role="status"><span class="ui-empty-icon accent"><Loader2 :size="22" class="spin" /></span><p class="ui-empty-desc">{{ tr("正在读取记录…") }}</p></div>
+          <div v-else-if="recordsError" class="ui-empty state-box error" role="alert"><span class="ui-empty-icon"><CircleAlert :size="22" /></span><p class="ui-empty-desc">{{ tr("记录读取失败：") }}{{ recordsError }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="retryRecords">{{ tr("重试") }}</button></div></div>
+          <div v-else-if="records.length === 0" class="ui-empty state-box" role="status"><span class="ui-empty-icon"><Inbox :size="24" /></span><p class="ui-empty-desc">{{ keyword ? tr("没有匹配的记录") : tr("此结果项暂无记录") }}</p><div v-if="keyword" class="ui-empty-actions"><button class="ui-btn" @click="keywordInput = ''; applyKeyword('')">{{ tr("清除搜索") }}</button></div></div>
           <table v-else class="data-table records-table" :style="{ minWidth: `${424 + selectedNode.columns.length * 200}px` }" :aria-label="selectedNode.label">
             <colgroup>
               <col class="col-index" />
@@ -34,45 +34,45 @@
               <col v-for="column in selectedNode.columns" :key="column.key" class="col-field" />
               <col class="col-locate" />
             </colgroup>
-            <thead><tr><th class="row-number">序号</th><th>名称</th><th v-for="column in selectedNode.columns" :key="column.key" :title="`${column.label} · ${column.key}`">{{ column.label }}</th><th>定位</th></tr></thead>
+            <thead><tr><th class="row-number">{{ tr("序号") }}</th><th>{{ tr("名称") }}</th><th v-for="column in selectedNode.columns" :key="column.key" :title="`${column.label} · ${column.key}`">{{ column.label }}</th><th>{{ tr("定位") }}</th></tr></thead>
             <tbody><tr v-for="(record, index) in records" :key="record.artifactId" :class="{ active: selectedRecordId === record.artifactId }" :aria-selected="selectedRecordId === record.artifactId" tabindex="0" @click="openRecord(record.artifactId)" @keydown.enter.prevent="openRecord(record.artifactId)">
               <td class="row-number mono">{{ pageIndex * ANALYSIS_PAGE_SIZE + index + 1 }}</td><td :title="record.title">{{ record.title }}</td><td v-for="column in selectedNode.columns" :key="column.key" :title="cellText(record.attributes[column.key], Infinity)">{{ cellText(record.attributes[column.key]) }}</td>
-              <td><button class="ui-btn link sm" :disabled="locating || !sources(record).length" :title="sources(record)[0]?.label || '此记录未提供源文件位置'" @click.stop="locateRecord(record)" @keydown.enter.stop><LocateFixed :size="13" />定位源文件</button></td>
+              <td><button class="ui-btn link sm" :disabled="locating || !sources(record).length" :title="sources(record)[0]?.label || tr('此记录未提供源文件位置')" @click.stop="locateRecord(record)" @keydown.enter.stop><LocateFixed :size="13" />{{ tr("定位源文件") }}</button></td>
             </tr></tbody>
           </table>
         </div>
         <footer class="ui-footbar table-footer">
           <span class="footer-crumb" :title="crumbLabel"><Table2 :size="12" /><span>{{ crumbLabel }}</span></span>
-          <span class="ui-footbar-stat"><strong :key="recordsTotal" class="ui-bump">{{ recordsTotal.toLocaleString() }}</strong> 条{{ keyword ? '匹配记录' : '记录' }}</span>
-          <span v-if="completedLabel" class="ui-footbar-stat footer-completed">完成于 <strong>{{ completedLabel }}</strong></span>
+          <span class="ui-footbar-stat"><strong :key="recordsTotal" class="ui-bump">{{ recordsTotal.toLocaleString() }}</strong> {{ tr("条") }}{{ keyword ? tr("匹配记录") : tr("记录") }}</span>
+          <span v-if="completedLabel" class="ui-footbar-stat footer-completed">{{ tr("完成于") }} <strong>{{ completedLabel }}</strong></span>
           <span class="ui-footbar-spacer"></span>
-          <div class="pager"><button class="ui-icon-btn sm" :disabled="pageIndex === 0 || recordsLoading" aria-label="上一页" title="上一页" @click="goToPage(pageIndex - 1)"><ChevronLeft :size="16" /></button><span class="mono">{{ pageIndex + 1 }} / {{ pageCount }}</span><button class="ui-icon-btn sm" :disabled="pageIndex >= pageCount - 1 || recordsLoading" aria-label="下一页" title="下一页" @click="goToPage(pageIndex + 1)"><ChevronRight :size="16" /></button></div>
+          <div class="pager"><button class="ui-icon-btn sm" :disabled="pageIndex === 0 || recordsLoading" :aria-label="tr('上一页')" :title="tr('上一页')" @click="goToPage(pageIndex - 1)"><ChevronLeft :size="16" /></button><span class="mono">{{ pageIndex + 1 }} / {{ pageCount }}</span><button class="ui-icon-btn sm" :disabled="pageIndex >= pageCount - 1 || recordsLoading" :aria-label="tr('下一页')" :title="tr('下一页')" @click="goToPage(pageIndex + 1)"><ChevronRight :size="16" /></button></div>
         </footer>
       </div>
       <UiTransition kind="dock">
-        <DetailDock v-if="selectedRecordId" label="记录详情" close-label="关闭详情" :title="detail?.title || '记录详情'" :content-key="selectedRecordId" @close="closeDetail">
-          <div v-if="detailLoading" class="ui-empty state-box" role="status"><span class="ui-empty-icon accent"><Loader2 :size="20" class="spin" /></span><p class="ui-empty-desc">加载中…</p></div>
-          <div v-else-if="detailError" class="ui-empty state-box error" role="alert"><p class="ui-empty-desc">详情读取失败：{{ detailError }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="openRecord(selectedRecordId)">重试</button></div></div>
+        <DetailDock v-if="selectedRecordId" :label="tr('记录详情')" :close-label="tr('关闭详情')" :title="detail?.title || tr('记录详情')" :content-key="selectedRecordId" @close="closeDetail">
+          <div v-if="detailLoading" class="ui-empty state-box" role="status"><span class="ui-empty-icon accent"><Loader2 :size="20" class="spin" /></span><p class="ui-empty-desc">{{ tr("加载中…") }}</p></div>
+          <div v-else-if="detailError" class="ui-empty state-box error" role="alert"><p class="ui-empty-desc">{{ tr("详情读取失败：") }}{{ detailError }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="openRecord(selectedRecordId)">{{ tr("重试") }}</button></div></div>
           <FileDetailLayout v-else-if="detail" :title="detail.title">
             <template #icon><Table2 :size="20" /></template>
-            <template #badges><span class="ui-badge">分析记录</span><span class="ui-badge">{{ selectedNode.label }}</span></template>
-            <FileDetailSection title="源文件" wide>
+            <template #badges><span class="ui-badge">{{ tr("分析记录") }}</span><span class="ui-badge">{{ selectedNode.label }}</span></template>
+            <FileDetailSection :title="tr('源文件')" wide>
               <div v-if="sources(detail).length" class="source-files">
                 <button v-for="source in sources(detail)" :key="source.label" class="ui-btn link sm source-file" :disabled="locating" :title="source.label" @click="emit('openFile', source.target)"><LocateFixed :size="14" /><span>{{ source.label }}</span></button>
               </div>
-              <p v-else class="source-missing">此记录未提供源文件位置。</p>
+              <p v-else class="source-missing">{{ tr("此记录未提供源文件位置。") }}</p>
             </FileDetailSection>
-            <FileDetailSection title="记录内容" wide>
+            <FileDetailSection :title="tr('记录内容')" wide>
               <FileDetailFields :fields="[
-                ...(detail.value !== null && detail.value !== undefined ? [{ label: '记录值', value: cellText(detail.value, Infinity), copyable: true }] : []),
+                ...(detail.value !== null && detail.value !== undefined ? [{ label: tr('记录值'), value: cellText(detail.value, Infinity), copyable: true }] : []),
                 ...detailFields.map(field => ({ key: field.key, label: field.label, value: cellText(detail!.attributes[field.key], Infinity), copyable: true })),
               ]" />
             </FileDetailSection>
-            <FileDetailSection :key="selectedRecordId" title="技术信息" collapsible wide>
+            <FileDetailSection :key="selectedRecordId" :title="tr('技术信息')" collapsible wide>
               <FileDetailFields :fields="[
-                { label: '记录 ID', value: detail.artifactId, mono: true, copyable: true },
-                { label: '结果类型', value: detail.artifactType, mono: true, copyable: true },
-                { label: '运行 ID', value: detail.runId, mono: true, copyable: true },
+                { label: tr('记录 ID'), value: detail.artifactId, mono: true, copyable: true },
+                { label: tr('结果类型'), value: detail.artifactType, mono: true, copyable: true },
+                { label: tr('运行 ID'), value: detail.runId, mono: true, copyable: true },
               ]" />
             </FileDetailSection>
           </FileDetailLayout>
@@ -83,6 +83,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr, useLocale } from '../../../composables/useLocale';
+
 import UiTransition from '../../../components/ui/UiTransition.vue';
 import WorkspaceStartState from '../../../components/layout/WorkspaceStartState.vue';
 import DetailDock from '../../../components/layout/DetailDock.vue';
@@ -146,11 +148,12 @@ const selectedCrumb = computed<string[]>(() => {
 
 /** 状态栏的结果路径：检材 › 分类 › 功能 › 结果项。 */
 const crumbLabel = computed(() => selectedCrumb.value.join(' › ') || selectedNode.value?.label || '');
+const { locale } = useLocale();
 const completedLabel = computed(() => {
   const completedAt = selectedNode.value?.completedAt;
   if (!completedAt) return '';
   const completed = new Date(completedAt);
-  return Number.isNaN(completed.getTime()) ? '' : completed.toLocaleString('zh-CN', { hour12: false });
+  return Number.isNaN(completed.getTime()) ? '' : completed.toLocaleString(locale.value, { hour12: false });
 });
 
 function cellText(value: unknown, maxLength = 120): string {
@@ -180,22 +183,22 @@ const detailFields = computed(() => {
 async function exportCsv(): Promise<void> {
   const node = selectedNode.value;
   if (!node || exporting.value) return;
-  const columns = ['名称', ...node.columns.map(column => column.label)];
+  const columns = [tr("名称"), ...node.columns.map(column => column.label)];
   const controller = new AbortController();
   exportController = controller;
   exporting.value = true;
   exportCanCancel.value = true;
   const progress = pushPersistentToast({
-    title: '正在导出分析结果',
-    detail: `${node.label} · 正在读取记录…`,
+    title: tr("正在导出分析结果"),
+    detail: tr("{0} · 正在读取记录…", { 0: node.label }),
     progress: 0,
     action: {
-      label: '取消',
+      get label() { return tr("取消"); },
       onClick: cancelExport,
     },
   });
   controller.signal.addEventListener('abort', () => {
-    progress.update({ detail: `${node.label} · 正在取消…`, action: { label: '取消中…', onClick: () => {}, disabled: true } });
+    progress.update({ detail: tr("{0} · 正在取消…", { 0: node.label }), action: { get label() { return tr("取消中…"); }, onClick: () => {}, disabled: true } });
   }, { once: true });
   try {
     const count = await exportRecords(
@@ -211,10 +214,10 @@ async function exportCsv(): Promise<void> {
         ),
       csv => {
         exportCanCancel.value = false;
-        progress.update({ detail: `${node.label} · 请选择保存位置`, progress: 100, action: undefined });
+        progress.update({ detail: tr("{0} · 请选择保存位置", { 0: node.label }), progress: 100, action: undefined });
         return saveTextWithDialog({
-          title: '导出分析结果',
-          defaultPath: `分析结果-${sanitizeExportFilename(node.label)}.csv`,
+          title: tr("导出分析结果"),
+          defaultPath: tr("分析结果-{0}.csv", { 0: sanitizeExportFilename(node.label) }),
           filters: [{ name: 'CSV', extensions: ['csv'] }],
           content: csv,
         });
@@ -222,15 +225,15 @@ async function exportCsv(): Promise<void> {
       {
         signal: controller.signal,
         onProgress: ({ loaded, total }) => progress.update({
-          detail: `${node.label} · 已读取 ${loaded.toLocaleString()} / ${total.toLocaleString()} 条记录`,
+          detail: tr("{0} · 已读取 {1} / {2} 条记录", { 0: node.label, 1: loaded.toLocaleString(), 2: total.toLocaleString() }),
           progress: total ? loaded / total * 100 : 100,
         }),
       },
     );
-    if (count === 0) notifyInfo('没有可导出的记录', '请刷新分析结果后重试。');
+    if (count === 0) notifyInfo(tr("没有可导出的记录"), tr("请刷新分析结果后重试。"));
   } catch (error) {
-    if (controller.signal.aborted) notifyInfo('已取消导出', node.label);
-    else notifyError('导出失败', String(error));
+    if (controller.signal.aborted) notifyInfo(tr("已取消导出"), node.label);
+    else notifyError(tr("导出失败"), String(error));
   } finally {
     progress.dismiss();
     exportController = null;

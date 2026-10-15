@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { onBeforeUnmount, ref, watch } from 'vue';
 import type { ImageInfo } from '../../../lib/ipc/image';
 import { imageUnload } from '../../../lib/ipc/image';
@@ -46,7 +48,7 @@ export function useIosBackup(info: () => ImageInfo, openImage: (path: string) =>
       }
     } catch (cause) {
       if (captured === generation) error.value = String(cause);
-      else notifyError(operation === 'unlock' ? 'iOS 备份解锁失败' : 'iOS 备份检查失败', String(cause));
+      else notifyError(operation === 'unlock' ? tr("iOS 备份解锁失败") : tr("iOS 备份检查失败"), String(cause));
     } finally {
       request.password = '';
       if (captured === generation) { busy.value = null; taskId = undefined; }

@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, onScopeDispose, reactive, ref, watch } from 'vue';
 import { trackedFsChildren as fsChildren } from '../../tasks/api';
 import { notifyError } from '../../../composables/useToast';
@@ -95,7 +97,7 @@ export function useFileTree(options: FileTreeOptions) {
       // 之后——SYSTEM 配置单元可达数十 MiB，绝不能阻塞首屏。
       void fetchDriveLetters(gen);
     } catch (error) {
-      if (current(gen)) notifyError('读取目录树失败', String(error));
+      if (current(gen)) notifyError(tr("读取目录树失败"), String(error));
     } finally {
       if (current(gen)) rootLoaded.value = true;
     }
@@ -155,7 +157,7 @@ export function useFileTree(options: FileTreeOptions) {
         ids.push(moreId);
         nodes.set(moreId, {
           id: moreId,
-          name: `… 其余 ${skippedFiles} 项（见右侧列表）`,
+          name: tr("… 其余 {0} 项（见右侧列表）", { 0: skippedFiles }),
           parentId,
           kind: 'file',
           expanded: false,

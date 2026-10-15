@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, onMounted, onScopeDispose, ref, watch } from 'vue';
 import { open } from '@tauri-apps/plugin-dialog';
 import { carveRecover, type CarveRecoveryResult, type CarveScanSnapshot } from '../../../lib/ipc/carve';
@@ -25,7 +27,7 @@ export function useCarveRecovery(options: { imageId: () => string; scan: () => C
     const generation = contextGeneration;
     recovering.value = true;
     try {
-      const picked = await open({ directory: true, multiple: false, title: '选择雕刻文件恢复目录' });
+      const picked = await open({ directory: true, multiple: false, title: tr("选择雕刻文件恢复目录") });
       if (!picked || Array.isArray(picked) || disposed || generation !== contextGeneration) return;
       const taskId = makeTaskId();
       recoveryTaskId.value = taskId;
@@ -42,12 +44,12 @@ export function useCarveRecovery(options: { imageId: () => string; scan: () => C
       if (disposed || generation !== contextGeneration) return;
       recoveryResult.value = result;
       if (result.failed > 0 || result.report_error) {
-        notifyInfo('雕刻恢复完成但有警告', `成功 ${result.recovered} 个，失败 ${result.failed} 个`);
+        notifyInfo(tr("雕刻恢复完成但有警告"), tr("成功 {0} 个，失败 {1} 个", { 0: result.recovered, 1: result.failed }));
       } else {
-        notifySuccess('雕刻恢复完成', `已恢复 ${result.recovered} 个文件并生成 DFXML 报告`);
+        notifySuccess(tr("雕刻恢复完成"), tr("已恢复 {0} 个文件并生成 DFXML 报告", { 0: result.recovered }));
       }
     } catch (error) {
-      if (!disposed) notifyError('雕刻恢复失败', String(error));
+      if (!disposed) notifyError(tr("雕刻恢复失败"), String(error));
     } finally {
       if (!disposed && generation === contextGeneration) {
         recovering.value = false; recoveryTaskId.value = null; recoveryProgress.value = null;
@@ -72,7 +74,7 @@ export function useCarveRecovery(options: { imageId: () => string; scan: () => C
     try {
       await taskCancel({ taskId: recoveryTaskId.value });
     } catch (error) {
-      notifyError('取消恢复失败', String(error));
+      notifyError(tr("取消恢复失败"), String(error));
     }
   }
 
@@ -83,7 +85,7 @@ export function useCarveRecovery(options: { imageId: () => string; scan: () => C
   onMounted(() => {
     void onTaskProgress(event => { if (!disposed && event.payload.task.id === recoveryTaskId.value) recoveryProgress.value = event.payload; })
       .then(cleanup => { if (disposed) cleanup(); else unlisten = cleanup; })
-      .catch(error => { if (!disposed) notifyError('订阅雕刻恢复进度失败', String(error)); });
+      .catch(error => { if (!disposed) notifyError(tr("订阅雕刻恢复进度失败"), String(error)); });
   });
   onScopeDispose(() => { disposed = true; contextGeneration++; unlisten?.(); unlisten = null; });
   return { recovering, recoveryProgress, recoveryResult, recoveryPercent, recoverSelected, recoverAll, recoverOne, cancelRecovery };

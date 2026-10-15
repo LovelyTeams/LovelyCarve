@@ -1,10 +1,10 @@
 <template>
-  <section class="result-navigation" aria-label="分析结果目录">
-    <label class="ui-search directory-search"><Search :size="13" aria-hidden="true" /><input ref="searchInput" v-model="search" aria-label="搜索结果项" placeholder="搜索结果项…" @keydown.esc.stop.prevent="clearSearch" /><button v-if="search" class="ui-icon-btn sm" type="button" title="清除目录搜索" aria-label="清除目录搜索" @click="clearSearch"><X :size="12" aria-hidden="true" /></button></label>
+  <section class="result-navigation" :aria-label="tr('分析结果目录')">
+    <label class="ui-search directory-search"><Search :size="13" aria-hidden="true" /><input ref="searchInput" v-model="search" :aria-label="tr('搜索结果项')" :placeholder="tr('搜索结果项…')" @keydown.esc.stop.prevent="clearSearch" /><button v-if="search" class="ui-icon-btn sm" type="button" :title="tr('清除目录搜索')" :aria-label="tr('清除目录搜索')" @click="clearSearch"><X :size="12" aria-hidden="true" /></button></label>
     <div class="directory-scroll">
-      <div v-if="treeLoading && !groups.length" class="directory-state" role="status"><Loader2 :size="16" class="spin" aria-hidden="true" />正在读取分析结果…</div>
-      <div v-else-if="treeError" class="directory-state" role="alert"><span>分析结果读取失败：{{ treeError }}</span><button class="ui-btn link sm" @click="reload">重试</button></div>
-      <div v-else-if="!groups.length" class="directory-state" role="status">{{ search ? '未找到结果项' : '暂无分析结果' }}</div>
+      <div v-if="treeLoading && !groups.length" class="directory-state" role="status"><Loader2 :size="16" class="spin" aria-hidden="true" />{{ tr("正在读取分析结果…") }}</div>
+      <div v-else-if="treeError" class="directory-state" role="alert"><span>{{ tr("分析结果读取失败：") }}{{ treeError }}</span><button class="ui-btn link sm" @click="reload">{{ tr("重试") }}</button></div>
+      <div v-else-if="!groups.length" class="directory-state" role="status">{{ search ? tr("未找到结果项") : tr("暂无分析结果") }}</div>
       <div v-for="group in groups" v-else :key="group.id" class="result-group">
         <button class="group-heading" :aria-expanded="search ? true : !collapsedGroups.has(group.id)" :title="group.category" @click="toggleGroup(group.id)"><ChevronDown :size="13" :class="{ closed: !search && collapsedGroups.has(group.id) }" /><span>{{ group.label }}</span><small v-if="group.category">{{ group.category }}</small></button>
         <UiTransition><div v-if="search || !collapsedGroups.has(group.id)">
@@ -16,6 +16,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import UiTransition from '../../../components/ui/UiTransition.vue';
 import { computed, ref, watch } from 'vue';
 import { ChevronDown, Loader2, Search, Table2, X } from 'lucide-vue-next';

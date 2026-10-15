@@ -12,18 +12,18 @@
         <header class="ui-modal-header">
           <span class="ui-modal-icon"><Plus :size="18" /></span>
           <div class="ui-modal-heading">
-            <h2 id="add-image-title" class="ui-modal-title">添加证据</h2>
-            <p class="ui-modal-subtitle">选择证据来源后会登记到当前案件</p>
+            <h2 id="add-image-title" class="ui-modal-title">{{ tr("添加证据") }}</h2>
+            <p class="ui-modal-subtitle">{{ tr("选择证据来源后会登记到当前案件") }}</p>
           </div>
-          <button class="ui-icon-btn" title="关闭" aria-label="关闭" @click="emit('close')"><X :size="16" /></button>
+          <button class="ui-icon-btn" :title="tr('关闭')" :aria-label="tr('关闭')" @click="emit('close')"><X :size="16" /></button>
         </header>
 
         <div class="ui-modal-body add-options">
           <button class="ui-choice" @click="choose('image')">
             <span class="ui-choice-icon"><HardDrive :size="20" /></span>
             <span class="ui-choice-text">
-              <span class="ui-choice-title">镜像文件</span>
-              <span class="ui-choice-desc">RAW / E01 / VMDK / VHD(X) / ISO / DMG / LDBK 等磁盘镜像</span>
+              <span class="ui-choice-title">{{ tr("镜像文件") }}</span>
+              <span class="ui-choice-desc">{{ tr("RAW / E01 / VMDK / VHD(X) / ISO / DMG / LDBK 等磁盘镜像") }}</span>
             </span>
             <ChevronRight :size="18" class="ui-choice-arrow" />
           </button>
@@ -31,8 +31,8 @@
           <button class="ui-choice" @click="choose('folder')">
             <span class="ui-choice-icon"><FolderOpen :size="20" /></span>
             <span class="ui-choice-text">
-              <span class="ui-choice-title">文件夹</span>
-              <span class="ui-choice-desc">本机目录、已解包数据集或 iTunes / Finder 的 iOS 备份</span>
+              <span class="ui-choice-title">{{ tr("文件夹") }}</span>
+              <span class="ui-choice-desc">{{ tr("本机目录、已解包数据集或 iTunes / Finder 的 iOS 备份") }}</span>
             </span>
             <ChevronRight :size="18" class="ui-choice-arrow" />
           </button>
@@ -40,8 +40,8 @@
           <button class="ui-choice" @click="choose('bcp')">
             <span class="ui-choice-icon"><Database :size="20" /></span>
             <span class="ui-choice-text">
-              <span class="ui-choice-title">BCP 文件</span>
-              <span class="ui-choice-desc">打开网安数据交换 BCP，按索引浏览分类与记录</span>
+              <span class="ui-choice-title">{{ tr("BCP 文件") }}</span>
+              <span class="ui-choice-desc">{{ tr("打开网安数据交换 BCP，按索引浏览分类与记录") }}</span>
             </span>
             <ChevronRight :size="18" class="ui-choice-arrow" />
           </button>
@@ -49,8 +49,8 @@
           <button class="ui-choice" @click="choose('raid')">
             <span class="ui-choice-icon"><Layers :size="20" /></span>
             <span class="ui-choice-text">
-              <span class="ui-choice-title">RAID 磁盘</span>
-              <span class="ui-choice-desc">逐块放入成员盘，自动检测阵列，确认后再打开重组镜像</span>
+              <span class="ui-choice-title">{{ tr("RAID 磁盘") }}</span>
+              <span class="ui-choice-desc">{{ tr("逐块放入成员盘，自动检测阵列，确认后再打开重组镜像") }}</span>
             </span>
             <ChevronRight :size="18" class="ui-choice-arrow" />
           </button>
@@ -58,10 +58,10 @@
           <button class="ui-choice" @click="choose('physical_disk')">
             <span class="ui-choice-icon"><HardDriveDownload :size="20" /></span>
             <span class="ui-choice-text">
-              <span class="ui-choice-title">物理磁盘</span>
-              <span class="ui-choice-desc">直接读取本机块设备；Windows 通常需要管理员权限</span>
+              <span class="ui-choice-title">{{ tr("物理磁盘") }}</span>
+              <span class="ui-choice-desc">{{ tr("直接读取本机块设备；Windows 通常需要管理员权限") }}</span>
             </span>
-            <span class="ui-badge warn">需提权</span>
+            <span class="ui-badge warn">{{ tr("需提权") }}</span>
             <ChevronRight :size="18" class="ui-choice-arrow" />
           </button>
         </div>
@@ -71,6 +71,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { type AddImageKind } from '../model/types';
 
 import { onUnmounted, watch } from 'vue';

@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { onScopeDispose, ref, type Ref } from 'vue';
 import { trackedFsChildrenPage as fsChildrenPage } from '../../tasks/api';
 import { notifyError } from '../../../composables/useToast';
@@ -48,7 +50,7 @@ export function useDirectoryQuery(options: {
     do {
       const page = await fsChildrenPage({ imageId, parentId, query, cursor, pageSize: 500 });
       if (!current(gen) || signature !== options.signature()) return;
-      if (page.nextCursor && page.nextCursor === cursor) throw new Error('目录分页未前进，请刷新后重试');
+      if (page.nextCursor && page.nextCursor === cursor) throw new Error(tr("目录分页未前进，请刷新后重试"));
       nodes.push(...page.items);
       cursor = page.nextCursor;
       directoryTotal.value = page.total ?? nodes.length;
@@ -69,14 +71,14 @@ export function useDirectoryQuery(options: {
       const page = await fsChildrenPage({ imageId: options.imageId(), parentId: options.parentId(),
         cursor, pageSize: 500, query: options.query() });
       if (!current(gen) || signature !== options.signature() || !options.enabled()) return;
-      if (page.nextCursor && page.nextCursor === cursor) throw new Error('目录分页未前进，请刷新后重试');
+      if (page.nextCursor && page.nextCursor === cursor) throw new Error(tr("目录分页未前进，请刷新后重试"));
       directoryCursor.value = page.nextCursor;
       directoryTotal.value = page.total ?? entries.value.length + page.items.length;
       options.beforeAppend();
       entries.value = entries.value.concat(page.items);
       options.hydrated(page.items, gen);
     } catch (error) {
-      if (current(gen)) notifyError('目录补页失败', String(error));
+      if (current(gen)) notifyError(tr("目录补页失败"), String(error));
     } finally {
       directoryFetching = false;
       if (!disposed && !current(gen) && !loading.value && options.wantedThrough() >= entries.value.length) {

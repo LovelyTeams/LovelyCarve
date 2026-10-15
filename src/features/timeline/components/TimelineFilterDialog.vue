@@ -1,21 +1,21 @@
 <template>
     <Teleport to="body">
       <UiTransition kind="fade"><div v-if="dialog.open" class="ui-modal-overlay tl-modal-overlay">
-        <div ref="dialogElement" class="ui-modal tl-modal" role="dialog" aria-modal="true" aria-label="时间线筛选配置" :aria-labelledby="titleId" tabindex="-1" @keydown.esc.stop="emit('close')">
+        <div ref="dialogElement" class="ui-modal tl-modal" role="dialog" aria-modal="true" :aria-label="tr('时间线筛选配置')" :aria-labelledby="titleId" tabindex="-1" @keydown.esc.stop="emit('close')">
           <header class="ui-modal-header">
             <span class="ui-modal-icon"><SlidersHorizontal :size="18" /></span>
             <div class="ui-modal-heading">
-              <h3 :id="titleId" class="ui-modal-title">事件类型</h3>
-              <p class="ui-modal-subtitle">默认显示全部类型。勾选后仅显示所选来源与事件类型。</p>
+              <h3 :id="titleId" class="ui-modal-title">{{ tr("事件类型") }}</h3>
+              <p class="ui-modal-subtitle">{{ tr("默认显示全部类型。勾选后仅显示所选来源与事件类型。") }}</p>
             </div>
-            <button type="button" class="ui-icon-btn" title="关闭筛选配置" aria-label="关闭筛选配置" @click="emit('close')">
+            <button type="button" class="ui-icon-btn" :title="tr('关闭筛选配置')" :aria-label="tr('关闭筛选配置')" @click="emit('close')">
               <X :size="16" />
             </button>
           </header>
 
           <section class="ui-modal-body tl-modal-section">
-            <h4 class="ui-section-title">应用与数据类型</h4>
-            <div v-if="typeGroups.length === 0" class="ui-empty tl-modal-empty"><p class="ui-empty-desc">暂无维度数据</p></div>
+            <h4 class="ui-section-title">{{ tr("应用与数据类型") }}</h4>
+            <div v-if="typeGroups.length === 0" class="ui-empty tl-modal-empty"><p class="ui-empty-desc">{{ tr("暂无维度数据") }}</p></div>
             <div v-for="group in typeGroups" :key="group.from_app" class="tl-type-group">
               <label class="ui-check tl-app-check">
                 <input
@@ -42,14 +42,16 @@
           </section>
 
           <footer class="ui-modal-footer">
-            <button type="button" class="ui-btn" @click="emit('close')">取消</button>
-            <button type="button" class="ui-btn primary" @click="emit('apply')">应用</button>
+            <button type="button" class="ui-btn" @click="emit('close')">{{ tr("取消") }}</button>
+            <button type="button" class="ui-btn primary" @click="emit('apply')">{{ tr("应用") }}</button>
           </footer>
         </div>
       </div></UiTransition>
     </Teleport>
 </template>
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { SlidersHorizontal, X } from 'lucide-vue-next';
 import { ref, useId } from 'vue';
 import UiTransition from '../../../components/ui/UiTransition.vue';

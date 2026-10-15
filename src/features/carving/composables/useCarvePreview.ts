@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { carvePreview, type CarveArtifact, type CarveScanSnapshot } from '../../../lib/ipc/carve';
 export function useCarvePreview(options: { imageId: () => string; scan: () => CarveScanSnapshot | null; artifact: () => CarveArtifact | null }) {
@@ -7,9 +9,9 @@ export function useCarvePreview(options: { imageId: () => string; scan: () => Ca
   const previewMessage = computed(() => {
     const artifact = options.artifact();
     if (!artifact) return '';
-    if (artifact.category !== 'image') return '此格式暂不提供内嵌渲染，可恢复后使用原类型视图复核。';
-    if (artifact.length > MAX_IMAGE_PREVIEW_BYTES) return '图像超过 8 MB 预览上限，可恢复后查看。';
-    return '无法渲染该图像，结构可能不完整。';
+    if (artifact.category !== 'image') return tr("此格式暂不提供内嵌渲染，可恢复后使用原类型视图复核。");
+    if (artifact.length > MAX_IMAGE_PREVIEW_BYTES) return tr("图像超过 8 MB 预览上限，可恢复后查看。");
+    return tr("无法渲染该图像，结构可能不完整。");
   });
 
   function revokePreview() {

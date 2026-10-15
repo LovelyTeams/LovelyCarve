@@ -1,13 +1,13 @@
 <template>
   <Transition name="task-hub-motion" appear>
-    <aside v-show="open" id="task-hub" ref="root" class="task-hub" role="dialog" aria-label="任务中心" tabindex="-1" @keydown.esc.stop="emit('close')">
+    <aside v-show="open" id="task-hub" ref="root" class="task-hub" role="dialog" :aria-label="tr('任务中心')" tabindex="-1" @keydown.esc.stop="emit('close')">
       <header class="hub-head">
-        <div class="ui-tabs hub-tabs" role="tablist" aria-label="任务中心" @keydown="onTabKeydown">
-          <button id="task-list-tab" class="ui-tab" role="tab" :aria-selected="tab === 'tasks'" :tabindex="tab === 'tasks' ? 0 : -1" aria-controls="task-list-panel" @click="emit('update:tab', 'tasks')">任务<span v-if="activeCount" :key="activeCount" class="ui-count accent ui-bump" :aria-label="`${activeCount} 项进行中`">{{ activeCount }}</span></button>
-          <button id="quick-analysis-tab" class="ui-tab" role="tab" :aria-selected="tab === 'quick'" :tabindex="tab === 'quick' ? 0 : -1" aria-controls="quick-analysis-panel" @click="emit('update:tab', 'quick')">快速分析</button>
+        <div class="ui-tabs hub-tabs" role="tablist" :aria-label="tr('任务中心')" @keydown="onTabKeydown">
+          <button id="task-list-tab" class="ui-tab" role="tab" :aria-selected="tab === 'tasks'" :tabindex="tab === 'tasks' ? 0 : -1" aria-controls="task-list-panel" @click="emit('update:tab', 'tasks')">{{ tr("任务") }}<span v-if="activeCount" :key="activeCount" class="ui-count accent ui-bump" :aria-label="tr('{0} 项进行中', { 0: activeCount })">{{ activeCount }}</span></button>
+          <button id="quick-analysis-tab" class="ui-tab" role="tab" :aria-selected="tab === 'quick'" :tabindex="tab === 'quick' ? 0 : -1" aria-controls="quick-analysis-panel" @click="emit('update:tab', 'quick')">{{ tr("快速分析") }}</button>
         </div>
-        <span v-if="currentImageId" class="hub-evidence" :title="`当前检材：${currentImagePath}`"><HardDrive :size="12" /><span>{{ evidenceName || currentImageName }}</span></span>
-        <button class="ui-icon-btn hub-close" aria-label="收起任务中心" title="收起，任务继续运行" @click="emit('close')"><X :size="16" /></button>
+        <span v-if="currentImageId" class="hub-evidence" :title="tr('当前检材：{0}', { 0: currentImagePath })"><HardDrive :size="12" /><span>{{ evidenceName || currentImageName }}</span></span>
+        <button class="ui-icon-btn hub-close" :aria-label="tr('收起任务中心')" :title="tr('收起，任务继续运行')" @click="emit('close')"><X :size="16" /></button>
       </header>
       <template v-if="currentImageId">
         <div v-show="tab === 'tasks'" id="task-list-panel" v-content-motion.rise="tab" class="hub-body" role="tabpanel" aria-labelledby="task-list-tab">
@@ -17,23 +17,25 @@
           <QuickAnalysisPanel v-if="evidence" :key="evidence.image_id" :image-id="evidence.image_id" :evidence-platform="evidence.platform" :evidence-type="evidence.evidence_type" @submitted="onSubmitted" />
           <div v-else class="ui-empty hub-empty">
             <span class="ui-empty-icon accent"><HardDrive :size="24" /></span>
-            <p class="ui-empty-title">选择案件检材，开始快速分析</p>
-            <p class="ui-empty-desc">当前镜像的后台任务可在「任务」页查看。</p>
-            <div class="ui-empty-actions"><button class="ui-btn sm primary" @click="emit('openCaseManager')">打开案件管理</button></div>
+            <p class="ui-empty-title">{{ tr("选择案件检材，开始快速分析") }}</p>
+            <p class="ui-empty-desc">{{ tr("当前镜像的后台任务可在「任务」页查看。") }}</p>
+            <div class="ui-empty-actions"><button class="ui-btn sm primary" @click="emit('openCaseManager')">{{ tr("打开案件管理") }}</button></div>
           </div>
         </div>
       </template>
       <div v-else class="ui-empty hub-empty">
         <span class="ui-empty-icon accent"><HardDrive :size="24" /></span>
-        <p class="ui-empty-title">{{ hasCase ? '打开检材，查看分析任务' : '打开案件，开始分析' }}</p>
-        <p class="ui-empty-desc">任务与快速分析跟随顶部当前检材标签。</p>
-        <div class="ui-empty-actions"><button class="ui-btn sm primary" @click="emit('openCaseManager')">打开案件管理</button></div>
+        <p class="ui-empty-title">{{ hasCase ? tr("打开检材，查看分析任务") : tr("打开案件，开始分析") }}</p>
+        <p class="ui-empty-desc">{{ tr("任务与快速分析跟随顶部当前检材标签。") }}</p>
+        <div class="ui-empty-actions"><button class="ui-btn sm primary" @click="emit('openCaseManager')">{{ tr("打开案件管理") }}</button></div>
       </div>
     </aside>
   </Transition>
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { type TaskHubTab } from '../model/types';
 
 /** 右上角「任务中心」浮动面板：任务列表与快速分析两个页签，均限定为顶部当前检材。 */

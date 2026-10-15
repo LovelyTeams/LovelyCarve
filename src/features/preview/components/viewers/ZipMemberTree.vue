@@ -3,9 +3,9 @@
           <div class="tree-toolbar">
             <div class="ui-search filter">
               <Search :size="13" />
-              <input v-model="filter" type="text" placeholder="过滤路径" spellcheck="false" />
+              <input v-model="filter" type="text" :placeholder="tr('过滤路径')" spellcheck="false" />
             </div>
-            <button v-if="!filterQuery" class="ui-icon-btn sm bordered" :title="allExpanded ? '全部折叠' : '全部展开'" :aria-label="allExpanded ? '全部折叠' : '全部展开'" @click="toggleAll">
+            <button v-if="!filterQuery" class="ui-icon-btn sm bordered" :title="allExpanded ? tr('全部折叠') : tr('全部展开')" :aria-label="allExpanded ? tr('全部折叠') : tr('全部展开')" @click="toggleAll">
               <component :is="allExpanded ? FoldVertical : UnfoldVertical" :size="14" />
             </button>
           </div>
@@ -13,7 +13,7 @@
           <!-- 过滤态：匹配项扁平列表；否则可折叠目录树。两种行都虚拟化渲染——
                中央目录最多列出 5 万个成员，全部铺成 DOM 会卡住预览面板。 -->
           <div ref="treeScrollEl" class="tree-scroll">
-            <div v-if="filterQuery && listRows.length === 0" class="empty-row mono">无匹配项</div>
+            <div v-if="filterQuery && listRows.length === 0" class="empty-row mono">{{ tr("无匹配项") }}</div>
             <div v-if="paddingTop > 0" :style="{ height: `${paddingTop}px` }" aria-hidden="true"></div>
             <template v-for="{ item: row } in visibleListRows" :key="row.key">
               <button
@@ -55,6 +55,8 @@
 
 </template>
 <script setup lang="ts">
+import { tr } from '../../../../composables/useLocale';
+
 import { ref, watch } from 'vue';
 import { Search, FoldVertical, UnfoldVertical, ChevronRight, ChevronDown, Lock, Folder, FolderOpen, File, Link2 } from 'lucide-vue-next';
 import { useVirtualList } from '../../../../composables/useVirtualList';

@@ -5,32 +5,32 @@
         <header class="ui-modal-header case-head">
           <span class="ui-modal-icon"><Briefcase :size="18" aria-hidden="true" /></span>
           <div class="ui-modal-heading">
-            <h2 id="case-manager-title" class="ui-modal-title" :title="activeCase?.name">{{ activeCase?.name || '案件管理' }}</h2>
-            <p class="ui-modal-subtitle">{{ activeCase ? '案件 · ' + activeCase.case_number : '新建案件，或继续已有工作' }}</p>
+            <h2 id="case-manager-title" class="ui-modal-title" :title="activeCase?.name">{{ activeCase?.name || tr("案件管理") }}</h2>
+            <p class="ui-modal-subtitle">{{ activeCase ? tr("案件 · ") + activeCase.case_number : tr("新建案件，或继续已有工作") }}</p>
           </div>
-          <span v-if="activeCase?.locked" class="ui-badge warn"><Lock :size="11" /> 已锁定</span>
-          <button class="ui-icon-btn" type="button" title="关闭" aria-label="关闭案件管理" :disabled="actionBusy" @click="requestClose"><X :size="16" /></button>
+          <span v-if="activeCase?.locked" class="ui-badge warn"><Lock :size="11" /> {{ tr("已锁定") }}</span>
+          <button class="ui-icon-btn" type="button" :title="tr('关闭')" :aria-label="tr('关闭案件管理')" :disabled="actionBusy" @click="requestClose"><X :size="16" /></button>
         </header>
 
         <section v-if="!activeCase" class="ui-modal-body case-empty">
           <div class="case-empty-actions">
-            <button class="ui-btn primary" :disabled="actionBusy" @click="onCreate"><Plus :size="15" /> 新建案件</button>
-            <button class="ui-btn" :disabled="actionBusy" @click="onOpen"><FolderOpen :size="15" /> 打开案件</button>
+            <button class="ui-btn primary" :disabled="actionBusy" @click="onCreate"><Plus :size="15" /> {{ tr("新建案件") }}</button>
+            <button class="ui-btn" :disabled="actionBusy" @click="onOpen"><FolderOpen :size="15" /> {{ tr("打开案件") }}</button>
           </div>
-          <div v-if="registryLoading && !cases.length" class="ui-empty" role="status"><Loader2 :size="24" class="spin" /><p class="ui-empty-desc">正在读取案件…</p></div>
-          <div v-if="registryError" class="ui-alert danger" role="alert"><span class="error-text">{{ registryError }}</span><button class="ui-btn sm" :disabled="registryLoading" @click="refreshCases">重试</button></div>
-          <p v-if="!registryLoading && !registryError && !cases.length" class="hint">暂无最近案件</p>
+          <div v-if="registryLoading && !cases.length" class="ui-empty" role="status"><Loader2 :size="24" class="spin" /><p class="ui-empty-desc">{{ tr("正在读取案件…") }}</p></div>
+          <div v-if="registryError" class="ui-alert danger" role="alert"><span class="error-text">{{ registryError }}</span><button class="ui-btn sm" :disabled="registryLoading" @click="refreshCases">{{ tr("重试") }}</button></div>
+          <p v-if="!registryLoading && !registryError && !cases.length" class="hint">{{ tr("暂无最近案件") }}</p>
           <div v-if="cases.length" class="recent-list">
-            <h3 class="ui-section-title">最近案件 <span class="ui-count">{{ cases.length.toLocaleString() }}</span></h3>
+            <h3 class="ui-section-title">{{ tr("最近案件") }} <span class="ui-count">{{ cases.length.toLocaleString() }}</span></h3>
             <div v-for="item in cases" :key="item.dir" class="recent-row">
-              <button class="recent-open" :disabled="actionBusy || item.missing" :title="item.missing ? '案件目录或案件台账已不可读' : item.dir" @click="onOpenListed(item)">
+              <button class="recent-open" :disabled="actionBusy || item.missing" :title="item.missing ? tr('案件目录或案件台账已不可读') : item.dir" @click="onOpenListed(item)">
                 <span class="recent-icon"><Clock :size="16" /></span>
                 <span class="recent-text">
-                  <span class="recent-name">{{ item.name }} <Lock v-if="item.locked" :size="11" /><span v-if="item.missing" class="ui-badge sm danger">缺失</span></span>
+                  <span class="recent-name">{{ item.name }} <Lock v-if="item.locked" :size="11" /><span v-if="item.missing" class="ui-badge sm danger">{{ tr("缺失") }}</span></span>
                   <span class="recent-dir mono">{{ item.dir }}</span>
                 </span>
               </button>
-              <button class="ui-icon-btn danger" :aria-label="(item.missing ? '移除记录 ' : '删除案件 ') + item.name" :title="item.missing ? '移除缺失案件记录' : '删除案件数据（保留源镜像与其他文件）'" :disabled="actionBusy" @click="onRemoveCase(item)"><Trash2 :size="14" /></button>
+              <button class="ui-icon-btn danger" :aria-label="(item.missing ? tr('移除记录 ') : tr('删除案件 ')) + item.name" :title="item.missing ? tr('移除缺失案件记录') : tr('删除案件数据（保留源镜像与其他文件）')" :disabled="actionBusy" @click="onRemoveCase(item)"><Trash2 :size="14" /></button>
             </div>
           </div>
         </section>
@@ -39,14 +39,14 @@
           <div class="ui-modal-body case-body">
             <section class="case-evidence">
               <div class="section-head">
-                <h3 class="ui-section-title">检材 <span class="ui-count">{{ evidence.length.toLocaleString() }}</span></h3>
-                <button class="ui-btn primary" :disabled="actionBusy || activeCase.locked" :title="activeCase.locked ? '解锁案件后可添加' : '添加镜像、文件夹或磁盘'" @click="emit('add-evidence')"><Plus :size="14" /> 添加检材</button>
+                <h3 class="ui-section-title">{{ tr("检材") }} <span class="ui-count">{{ evidence.length.toLocaleString() }}</span></h3>
+                <button class="ui-btn primary" :disabled="actionBusy || activeCase.locked" :title="activeCase.locked ? tr('解锁案件后可添加') : tr('添加镜像、文件夹或磁盘')" @click="emit('add-evidence')"><Plus :size="14" /> {{ tr("添加检材") }}</button>
               </div>
               <div v-if="evidence.length" class="ev-list">
                 <div v-for="group in evidenceModel.groups" :key="group.parent.image_id" class="ev-group">
                   <CaseEvidenceRow :evidence="group.parent" :current="group.parent.image_id === imageId" :raid-level="group.level" :busy="actionBusy" :locked="activeCase.locked" @open="onOpenEvidence" @remove="onRemoveEvidence" />
                   <details v-disclosure-motion v-if="group.members.length" class="member-fold">
-                    <summary><ChevronRight :size="13" /> 成员镜像 · {{ group.members.length }}</summary>
+                    <summary><ChevronRight :size="13" /> {{ tr("成员镜像 ·") }} {{ group.members.length }}</summary>
                     <div class="member-list">
                       <CaseEvidenceRow v-for="member in group.members" :key="member.image_id" :evidence="member" :current="member.image_id === imageId" :busy="actionBusy" :locked="activeCase.locked" @open="onOpenEvidence" @remove="onRemoveEvidence" />
                     </div>
@@ -56,62 +56,62 @@
               </div>
               <div v-else class="ui-empty evidence-empty">
                 <span class="ui-empty-icon"><HardDrive :size="24" /></span>
-                <p class="ui-empty-title">还没有检材</p>
-                <p class="ui-empty-desc">{{ activeCase.locked ? '解锁案件后，可添加检材。' : '添加镜像、文件夹或磁盘，开始查看与分析。' }}</p>
+                <p class="ui-empty-title">{{ tr("还没有检材") }}</p>
+                <p class="ui-empty-desc">{{ activeCase.locked ? tr("解锁案件后，可添加检材。") : tr("添加镜像、文件夹或磁盘，开始查看与分析。") }}</p>
               </div>
             </section>
 
             <details v-disclosure-motion v-if="imageId" class="section-fold">
-              <summary><Layers :size="15" /><span>卷快照</span><span class="fold-note">当前检材 · {{ currentVolumes.length }} 个卷</span><ChevronRight :size="15" class="fold-chevron" /></summary>
+              <summary><Layers :size="15" /><span>{{ tr("卷快照") }}</span><span class="fold-note">{{ tr("当前检材 ·") }} {{ currentVolumes.length }} {{ tr("个卷") }}</span><ChevronRight :size="15" class="fold-chevron" /></summary>
               <div class="fold-content">
                 <ul v-if="currentVolumes.length" class="vol-list">
                   <li v-for="vol in currentVolumes" :key="vol.key" class="vol-row">
                     <div class="vol-text"><span class="vol-name">{{ vol.label }}</span><span class="vol-key">{{ vol.key }}</span></div>
                     <span class="vol-status">
-                      <template v-if="progressFor(vol.key)"><Loader2 :size="12" class="spin" /> {{ progressFor(vol.key)!.entries.toLocaleString() }} 条…</template>
+                      <template v-if="progressFor(vol.key)"><Loader2 :size="12" class="spin" /> {{ progressFor(vol.key)!.entries.toLocaleString() }} {{ tr("条…") }}</template>
                       <template v-else-if="snapshotFor(vol.key)">
-                        {{ snapshotFor(vol.key)!.entry_count.toLocaleString() }} 条
-                        <span v-if="snapshotFor(vol.key)!.truncated" class="ui-badge sm warn">截断</span>
-                        <span v-if="!snapshotFor(vol.key)!.indexed" class="ui-badge sm warn" title="文件索引不可用，浏览回退到内存目录">未索引</span>
-                        <span v-if="snapshotFor(vol.key)!.stale" class="ui-badge sm danger">过期</span>
+                        {{ snapshotFor(vol.key)!.entry_count.toLocaleString() }} {{ tr("条") }}
+                        <span v-if="snapshotFor(vol.key)!.truncated" class="ui-badge sm warn">{{ tr("截断") }}</span>
+                        <span v-if="!snapshotFor(vol.key)!.indexed" class="ui-badge sm warn" :title="tr('文件索引不可用，浏览回退到内存目录')">{{ tr("未索引") }}</span>
+                        <span v-if="snapshotFor(vol.key)!.stale" class="ui-badge sm danger">{{ tr("过期") }}</span>
                       </template>
-                      <template v-else>未建立</template>
+                      <template v-else>{{ tr("未建立") }}</template>
                     </span>
-                    <button v-if="progressFor(vol.key)" class="ui-btn sm" :disabled="snapshotActions.has(`${imageId}:${vol.key}`)" @click="onSnapshotAction(vol.key, 'cancel')"><Loader2 v-if="snapshotActions.has(`${imageId}:${vol.key}`)" :size="13" class="spin" />取消</button>
-                    <button v-else class="ui-btn sm" :disabled="actionBusy || activeCase.locked || snapshotActions.has(`${imageId}:${vol.key}`)" @click="onSnapshotAction(vol.key, 'build')"><Loader2 v-if="snapshotActions.has(`${imageId}:${vol.key}`)" :size="13" class="spin" />{{ snapshotActions.has(`${imageId}:${vol.key}`) ? '提交中' : snapshotFor(vol.key) ? '重建' : '建立' }}</button>
+                    <button v-if="progressFor(vol.key)" class="ui-btn sm" :disabled="snapshotActions.has(`${imageId}:${vol.key}`)" @click="onSnapshotAction(vol.key, 'cancel')"><Loader2 v-if="snapshotActions.has(`${imageId}:${vol.key}`)" :size="13" class="spin" />{{ tr("取消") }}</button>
+                    <button v-else class="ui-btn sm" :disabled="actionBusy || activeCase.locked || snapshotActions.has(`${imageId}:${vol.key}`)" @click="onSnapshotAction(vol.key, 'build')"><Loader2 v-if="snapshotActions.has(`${imageId}:${vol.key}`)" :size="13" class="spin" />{{ snapshotActions.has(`${imageId}:${vol.key}`) ? tr("提交中") : snapshotFor(vol.key) ? tr("重建") : tr("建立") }}</button>
                   </li>
                 </ul>
-                <p v-else class="hint">当前检材没有可快照的卷。</p>
+                <p v-else class="hint">{{ tr("当前检材没有可快照的卷。") }}</p>
               </div>
             </details>
 
             <details v-disclosure-motion class="section-fold">
-              <summary><Briefcase :size="15" /><span>案件详情</span><ChevronRight :size="15" class="fold-chevron" /></summary>
+              <summary><Briefcase :size="15" /><span>{{ tr("案件详情") }}</span><ChevronRight :size="15" class="fold-chevron" /></summary>
               <div class="fold-content">
                 <dl class="case-properties">
-                  <dt>案件编号</dt><dd class="mono">{{ activeCase.case_number }}</dd>
-                  <dt>检验人</dt><dd>{{ activeCase.examiner || '—' }}</dd>
-                  <dt>存储位置</dt><dd class="mono">{{ activeCase.dir }}</dd>
-                  <dt>最近更新</dt><dd>{{ formatTime(activeCase.updated_at) }}</dd>
-                  <dt>案件快照</dt><dd>{{ activeCase.snapshots.length.toLocaleString() }} 份</dd>
-                  <dt>库版本</dt><dd>v{{ activeCase.schema_version }}</dd>
+                  <dt>{{ tr("案件编号") }}</dt><dd class="mono">{{ activeCase.case_number }}</dd>
+                  <dt>{{ tr("检验人") }}</dt><dd>{{ activeCase.examiner || '—' }}</dd>
+                  <dt>{{ tr("存储位置") }}</dt><dd class="mono">{{ activeCase.dir }}</dd>
+                  <dt>{{ tr("最近更新") }}</dt><dd>{{ formatTime(activeCase.updated_at) }}</dd>
+                  <dt>{{ tr("案件快照") }}</dt><dd>{{ activeCase.snapshots.length.toLocaleString() }} {{ tr("份") }}</dd>
+                  <dt>{{ tr("库版本") }}</dt><dd>v{{ activeCase.schema_version }}</dd>
                 </dl>
-                <button class="ui-btn sm" :disabled="actionBusy" @click="onClose"><X :size="13" /> 关闭案件</button>
+                <button class="ui-btn sm" :disabled="actionBusy" @click="onClose"><X :size="13" /> {{ tr("关闭案件") }}</button>
               </div>
             </details>
           </div>
         </template>
         <div v-if="operationError" class="ui-alert danger case-feedback" role="alert"><span class="error-text">{{ operationError }}</span></div>
-        <div v-if="pendingAction || busy" class="case-progress" role="status"><Loader2 :size="14" class="spin" />{{ pendingAction || '正在处理案件…' }}</div>
+        <div v-if="pendingAction || busy" class="case-progress" role="status"><Loader2 :size="14" class="spin" />{{ pendingAction || tr("正在处理案件…") }}</div>
         <footer class="ui-modal-footer case-footer">
           <template v-if="activeCase">
-            <button class="ui-btn ghost start" :disabled="actionBusy" @click="onOpen"><FolderOpen :size="14" /> 切换案件</button>
+            <button class="ui-btn ghost start" :disabled="actionBusy" @click="onOpen"><FolderOpen :size="14" /> {{ tr("切换案件") }}</button>
             <button class="ui-btn ghost" :disabled="actionBusy" @click="onToggleLock">
-              <template v-if="activeCase.locked"><Unlock :size="14" /> 解锁案件</template>
-              <template v-else><Lock :size="14" /> 锁定案件</template>
+              <template v-if="activeCase.locked"><Unlock :size="14" /> {{ tr("解锁案件") }}</template>
+              <template v-else><Lock :size="14" /> {{ tr("锁定案件") }}</template>
             </button>
           </template>
-          <button class="ui-btn" type="button" :disabled="actionBusy" @click="requestClose">完成</button>
+          <button class="ui-btn" type="button" :disabled="actionBusy" @click="requestClose">{{ tr("完成") }}</button>
         </footer>
       </div>
     </div>
@@ -119,6 +119,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { vDisclosureMotion } from '../../../composables/uiMotionDirectives';
 import { computed, ref, watch } from 'vue';
 import { Briefcase, ChevronRight, Clock, FolderOpen, HardDrive, Layers, Loader2, Lock, Plus, Trash2, Unlock, X } from 'lucide-vue-next';
@@ -282,7 +284,7 @@ watch(
   (visible) => {
     if (visible) {
       operationError.value = '';
-      void refreshActive().catch((err) => { operationError.value = `刷新案件失败：${err}。请关闭后重新打开。`; });
+      void refreshActive().catch((err) => { operationError.value = tr("刷新案件失败：{0}。请关闭后重新打开。", { 0: err }); });
       void refreshCases();
     }
   },
@@ -313,17 +315,17 @@ const currentVolumes = computed<VolumeChoice[]>(() => {
   ) {
     const label =
       info.source_format === 'docker'
-        ? '容器根'
+        ? tr("容器根")
         : info.source_format === 'folder'
-          ? '文件夹根'
+          ? tr("文件夹根")
           : info.source_format === 'ad1'
-            ? '逻辑镜像根'
-            : '归档根';
+            ? tr("逻辑镜像根")
+            : tr("归档根");
     return [{ key: 'root', label }];
   }
   return info.partitions.map((p) => ({
     key: `part:${p.id}`,
-    label: p.label || `分区 ${p.id} · ${p.kind}`,
+    label: p.label || tr("分区 {0} · {1}", { 0: p.id, 1: p.kind }),
   }));
 });
 
@@ -337,14 +339,14 @@ function progressFor(volumeKey: string) {
 
 async function onCreate() {
   if (actionBusy.value) return;
-  pendingAction.value = '正在新建案件…';
+  pendingAction.value = tr("正在新建案件…");
   operationError.value = '';
   try {
-    const dir = await pickDirectory('选择新建案件的目录');
+    const dir = await pickDirectory(tr("选择新建案件的目录"));
     if (!dir) return;
     await createCase(dir, dirName(dir));
   } catch (err) {
-    operationError.value = `新建案件失败：${err}。请检查目录后重试。`;
+    operationError.value = tr("新建案件失败：{0}。请检查目录后重试。", { 0: err });
   } finally {
     pendingAction.value = '';
   }
@@ -352,10 +354,10 @@ async function onCreate() {
 
 async function onOpen() {
   if (actionBusy.value) return;
-  pendingAction.value = '正在打开案件…';
+  pendingAction.value = tr("正在打开案件…");
   operationError.value = '';
   try {
-    const dir = await pickDirectory('选择已有案件目录');
+    const dir = await pickDirectory(tr("选择已有案件目录"));
     if (!dir) return;
     await openCase(dir);
     // Auto-open every evidence image as a tab. The backend re-loads each path
@@ -367,7 +369,7 @@ async function onOpen() {
       emit('close');
     }
   } catch (err) {
-    operationError.value = `打开案件失败：${err}。请检查案件目录后重试。`;
+    operationError.value = tr("打开案件失败：{0}。请检查案件目录后重试。", { 0: err });
   } finally {
     pendingAction.value = '';
   }
@@ -377,7 +379,7 @@ async function onOpen() {
  *  `missing` entry (directory or case ledger unreadable) can only be deleted. */
 async function onOpenListed(item: CaseListItem) {
   if (actionBusy.value || item.missing) return;
-  pendingAction.value = '正在打开案件…';
+  pendingAction.value = tr("正在打开案件…");
   operationError.value = '';
   try {
     await openCase(item.dir);
@@ -387,7 +389,7 @@ async function onOpenListed(item: CaseListItem) {
       emit('close');
     }
   } catch (err) {
-    operationError.value = `打开案件失败：${err}。请检查案件目录后重试。`;
+    operationError.value = tr("打开案件失败：{0}。请检查案件目录后重试。", { 0: err });
   } finally {
     pendingAction.value = '';
   }
@@ -399,20 +401,20 @@ async function onOpenListed(item: CaseListItem) {
 async function onRemoveCase(item: CaseListItem) {
   if (actionBusy.value) return;
   const result = await confirmWithResult({
-    title: '删除案件',
+    title: tr("删除案件"),
     message: item.missing
-      ? `「${item.name}」的案件目录已不可读，是否从案件列表中移除？`
-      : `确定删除案件「${item.name}」（${item.case_number}）吗？将删除目录 ${item.dir} 中的案件数据，包括案件台账、索引、标签、分析结果与快照；目录里的其它文件保留。镜像文件本身不受影响。此操作不可恢复。`,
-    confirmText: item.missing ? '移除' : '删除',
+      ? tr("「{0}」的案件目录已不可读，是否从案件列表中移除？", { 0: item.name })
+      : tr("确定删除案件「{0}」（{1}）吗？将删除目录 {2} 中的案件数据，包括案件台账、索引、标签、分析结果与快照；目录里的其它文件保留。镜像文件本身不受影响。此操作不可恢复。", { 0: item.name, 1: item.case_number, 2: item.dir }),
+    confirmText: item.missing ? tr("移除") : tr("删除"),
     danger: true,
   });
   if (!result.confirmed || actionBusy.value || !props.visible) return;
-  pendingAction.value = item.missing ? '正在移除记录…' : '正在删除案件…';
+  pendingAction.value = item.missing ? tr("正在移除记录…") : tr("正在删除案件…");
   operationError.value = '';
   try {
     await removeCase(item.dir);
   } catch (err) {
-    operationError.value = `删除案件失败：${err}。请检查目录权限后重试。`;
+    operationError.value = tr("删除案件失败：{0}。请检查目录权限后重试。", { 0: err });
   } finally {
     pendingAction.value = '';
   }
@@ -421,12 +423,12 @@ async function onRemoveCase(item: CaseListItem) {
 async function onToggleLock() {
   if (actionBusy.value) return;
   const locked = !(activeCase.value?.locked ?? false);
-  pendingAction.value = locked ? '正在锁定案件…' : '正在解锁案件…';
+  pendingAction.value = locked ? tr("正在锁定案件…") : tr("正在解锁案件…");
   operationError.value = '';
   try {
     await setLocked(locked);
   } catch (err) {
-    operationError.value = `${locked ? '锁定' : '解锁'}案件失败：${err}。请重试。`;
+    operationError.value = tr("{0}案件失败：{1}。请重试。", { 0: locked ? tr("锁定") : tr("解锁"), 1: err });
   } finally {
     pendingAction.value = '';
   }
@@ -434,12 +436,12 @@ async function onToggleLock() {
 
 async function onClose() {
   if (actionBusy.value) return;
-  pendingAction.value = '正在关闭案件…';
+  pendingAction.value = tr("正在关闭案件…");
   operationError.value = '';
   try {
     await closeCase();
   } catch (err) {
-    operationError.value = `关闭案件失败：${err}。请重试。`;
+    operationError.value = tr("关闭案件失败：{0}。请重试。", { 0: err });
   } finally {
     pendingAction.value = '';
   }
@@ -460,26 +462,26 @@ async function onRemoveEvidence(ev: EvidenceRef) {
   const caseDirectory = activeCase.value?.dir;
   if (!skipCaseEvidenceRemoveConfirm.value) {
     const result = await confirmWithResult({
-      title: '从案件卸载镜像',
-      message: `确定从案件移除「${baseName(ev.path)}」吗？该镜像在案件内的快照会一并删除，已打开的镜像标签页也会关闭。镜像文件本身不受影响。`,
-      confirmText: '卸载',
+      title: tr("从案件卸载镜像"),
+      message: tr("确定从案件移除「{0}」吗？该镜像在案件内的快照会一并删除，已打开的镜像标签页也会关闭。镜像文件本身不受影响。", { 0: baseName(ev.path) }),
+      confirmText: tr("卸载"),
       danger: true,
       checkbox: {
-        label: '后续不再提醒',
+        get label() { return tr("后续不再提醒"); },
       },
     });
     if (!result.confirmed) return;
     if (result.checkboxChecked) skipCaseEvidenceRemoveConfirm.value = true;
   }
   if (actionBusy.value || activeCase.value?.locked || !props.visible || activeCase.value?.dir !== caseDirectory) return;
-  pendingAction.value = '正在移除检材…';
+  pendingAction.value = tr("正在移除检材…");
   operationError.value = '';
   try {
     await removeEvidence(ev.image_id);
     // Close the image's tab (if open) now that it's no longer case evidence.
     emit('evidence-removed', ev.path);
   } catch (err) {
-    operationError.value = `移除检材失败：${err}。请重试。`;
+    operationError.value = tr("移除检材失败：{0}。请重试。", { 0: err });
   } finally {
     pendingAction.value = '';
   }
@@ -497,7 +499,7 @@ async function onSnapshotAction(volumeKey: string, action: 'build' | 'cancel') {
     else await cancelBuild(imageId, volumeKey);
   } catch (cause) {
     if (props.imageId === imageId && activeCase.value?.dir === directory) {
-      operationError.value = `${action === 'build' ? '建立' : '取消'}快照失败：${String(cause)}。请重试。`;
+      operationError.value = tr("{0}快照失败：{1}。请重试。", { 0: action === 'build' ? tr("建立") : tr("取消"), 1: String(cause) });
     }
   } finally {
     const next = new Set(snapshotActions.value);
@@ -508,7 +510,7 @@ async function onSnapshotAction(volumeKey: string, action: 'build' | 'cancel') {
 
 function formatTime(iso: string): string {
   const formatted = formatEpochSeconds(Date.parse(iso) / 1000, { precision: 'seconds', fallback: '', zeroAsMissing: false });
-  return formatted ? `${formatted}（本地）` : '时间未知';
+  return formatted ? tr("{0}（本地）", { 0: formatted }) : tr("时间未知");
 }
 </script>
 

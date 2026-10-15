@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { onScopeDispose, ref, shallowRef, type Ref } from 'vue';
 import { trackedFsFlatPage as fsFlatPage } from '../../tasks/api';
 import { fsFlatExtCounts } from '../../../lib/ipc/fs/query';
@@ -128,7 +130,7 @@ export function useFlatFileQuery(options: {
         options.hydrated(rows, gen);
       }
     } catch (err) {
-      if (current(gen)) notifyError('全显补页失败', String(err));
+      if (current(gen)) notifyError(tr("全显补页失败"), String(err));
     } finally {
       flatFetching = false;
       if (!disposed && supersededByReload && !loading.value && options.signature() === lastLoadedFlatSignature && flatWantedThrough >= entries.value.length) {

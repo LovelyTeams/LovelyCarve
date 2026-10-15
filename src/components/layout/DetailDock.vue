@@ -1,6 +1,6 @@
 <template>
   <aside ref="panel" class="detail-dock" :style="{ width: `${width}px` }" :aria-label="label" @keydown.esc.stop="$emit('close')">
-    <div class="dock-resize" role="separator" aria-label="调整详情宽度" aria-orientation="vertical"
+    <div class="dock-resize" role="separator" :aria-label="tr('调整详情宽度')" aria-orientation="vertical"
       tabindex="0" :aria-valuenow="width" :aria-valuemin="MIN_WIDTH" :aria-valuemax="MAX_WIDTH"
       @pointerdown="startResize" @keydown.left.prevent="resizeBy(24)" @keydown.right.prevent="resizeBy(-24)" />
     <header class="dock-header">
@@ -47,6 +47,8 @@ function saveWidth() {
 </script>
 
 <script setup lang="ts">
+import { tr } from '../../composables/useLocale';
+
 import { onBeforeUnmount, watch } from 'vue';
 import { X } from 'lucide-vue-next';
 import { vContentMotion } from '../../composables/uiMotionDirectives';

@@ -1,3 +1,4 @@
+import { sourceText, type Translator, type Locale } from '../../../i18n/translate';
 import type { CarveCategory, CarveScanSnapshot } from '../../../lib/ipc/carve';
 const MIB = 1024 * 1024;
 const GIB = 1024 * MIB;
@@ -20,14 +21,14 @@ export const MAX_RESULTS_OPTIONS = [
 export function isFinished(task: CarveScanSnapshot) {
   return ['completed', 'cancelled', 'failed'].includes(task.status);
 }
-export function statusLabel(status: CarveScanSnapshot['status']) {
-  return { queued: '排队中', running: '扫描中', paused: '已暂停', completed: '已完成', cancelled: '已取消', failed: '失败' }[status];
+export function statusLabel(status: CarveScanSnapshot['status'], tr: Translator = sourceText) {
+  return { queued: tr("排队中"), running: tr("扫描中"), paused: tr("已暂停"), completed: tr("已完成"), cancelled: tr("已取消"), failed: tr("失败") }[status];
 }
 export function scanPercent(task: CarveScanSnapshot) {
   return task.bytes_total > 0 ? Math.min(100, task.bytes_scanned / task.bytes_total * 100) : 0;
 }
-export function formatScanTime(task: CarveScanSnapshot) {
-  return new Date(task.created_unix_ms).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+export function formatScanTime(task: CarveScanSnapshot, locale: Locale = 'zh-CN') {
+  return new Date(task.created_unix_ms).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 export function categoryTone(category: CarveCategory): string {
   return {

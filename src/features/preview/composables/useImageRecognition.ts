@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue';
 import { svgPoints, type ImageRecognitionView, type OcrTextItem } from '../model/imageRecognition';
 import { taskCancel } from '../../../lib/ipc/taskRuntime';
@@ -171,7 +173,7 @@ export function useImageRecognition(options: UseImageRecognitionOptions) {
       });
       if (!current()) return;
       qrResult.value = result;
-      if (result.codes.length === 0 && !result.cancelled) qrError.value = '未识别到二维码';
+      if (result.codes.length === 0 && !result.cancelled) qrError.value = tr("未识别到二维码");
     } catch (error) {
       if (current()) qrError.value = String(error);
     } finally {
@@ -188,7 +190,7 @@ export function useImageRecognition(options: UseImageRecognitionOptions) {
   }
 
   async function cancelQrScan() {
-    if (qrOwner?.started) await taskCancel({ taskId: qrOwner.taskId }).catch(error => notifyError('取消二维码扫描失败', String(error)));
+    if (qrOwner?.started) await taskCancel({ taskId: qrOwner.taskId }).catch(error => notifyError(tr("取消二维码扫描失败"), String(error)));
   }
 
   async function copyQrText(text: string, index: number) {
@@ -203,7 +205,7 @@ export function useImageRecognition(options: UseImageRecognitionOptions) {
         if (qrCopiedIndex.value === index) qrCopiedIndex.value = null;
       }, 1500);
     } catch {
-      if (!disposed && requestGeneration === generation) notifyError('复制失败');
+      if (!disposed && requestGeneration === generation) notifyError(tr("复制失败"));
     }
   }
 
@@ -218,7 +220,7 @@ export function useImageRecognition(options: UseImageRecognitionOptions) {
       const result = await ocrScan({ imageId, nodeId });
       if (!current()) return;
       ocrResult.value = result;
-      if (result.regions.length === 0) ocrError.value = '未识别到文字';
+      if (result.regions.length === 0) ocrError.value = tr("未识别到文字");
     } catch (error) {
       if (current()) ocrError.value = String(error);
     } finally {
@@ -239,7 +241,7 @@ export function useImageRecognition(options: UseImageRecognitionOptions) {
         ocrCopiedAll.value = false;
       }, 1500);
     } catch {
-      if (!disposed && requestGeneration === generation) notifyError('复制失败');
+      if (!disposed && requestGeneration === generation) notifyError(tr("复制失败"));
     }
   }
 

@@ -8,20 +8,20 @@
     </div>
     <p v-if="info.source_format !== 'assembled'" class="evidence-path">
       <span class="mono">{{ info.path }}</span>
-      <button class="ui-icon-btn sm" title="复制路径" aria-label="复制路径" @click="emit('copy', '路径', info.path)"><Copy :size="12" /></button>
+      <button class="ui-icon-btn sm" :title="tr('复制路径')" :aria-label="tr('复制路径')" @click="emit('copy', tr('路径'), info.path)"><Copy :size="12" /></button>
     </p>
     <p class="evidence-size">
       <strong class="mono">{{ formatBytes(info.size_bytes) }}</strong>
-      <template v-if="onDiskSummary"> · 实际占用 <span class="mono">{{ onDiskSummary.size }}</span>（{{ onDiskSummary.ratio }}）
+      <template v-if="onDiskSummary">{{ ' ' + tr("· 实际占用") }} <span class="mono">{{ onDiskSummary.size }}</span>（{{ onDiskSummary.ratio }}）
       </template>
     </p>
   </div>
   <div class="evidence-actions">
     <AutoDetectBadge :image-id="info.id">
       <button v-if="canExport" class="ui-btn"
-        :disabled="exporting" :aria-busy="exporting" title="导出完整 RAW 镜像；已解锁分区使用解密内容" @click="exportRawImage">
+        :disabled="exporting" :aria-busy="exporting" :title="tr('导出完整 RAW 镜像；已解锁分区使用解密内容')" @click="exportRawImage">
         <Loader2 v-if="exporting" :size="14" class="spin" />
-        <HardDriveDownload v-else :size="14" />导出原始镜像
+        <HardDriveDownload v-else :size="14" />{{ tr("导出原始镜像") }}
       </button>
     </AutoDetectBadge>
   </div>
@@ -29,6 +29,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { computed } from 'vue';
 import { Archive, Boxes, Container, Copy, FolderOpen, HardDrive, HardDriveDownload, History, Loader2, LockOpen } from 'lucide-vue-next';
 import type { ImageInfo } from '../../../lib/ipc/image';
@@ -40,7 +42,7 @@ const props = defineProps<{ info: ImageInfo }>();
 const emit = defineEmits<{ copy: [label: string, value: string] }>();
 
 // ── 检材头部 ─────────────────────────────────────────────────────────────
-const fileName = computed(() => evidenceDisplayName(props.info));
+const fileName = computed(() => evidenceDisplayName(props.info, tr));
 const LOGICAL_FORMATS = new Set(['folder', 'tar', 'zip', 'sevenz', 'ad1', 'docker']);
 const canExport = computed(() => !props.info.index_only && !props.info.ios_backup && !LOGICAL_FORMATS.has(props.info.source_format));
 const { startImageExport, jobFor } = useImageExport();
@@ -54,12 +56,12 @@ async function exportRawImage() {
       imageId: info.id,
       defaultFileName: `${fileName.value.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_')}.dd`,
       mode: 'unlockedPartitions',
-      title: '导出原始镜像为 RAW',
-      runningTitle: '导出原始镜像中…',
-      doneTitle: '原始镜像导出完成',
+      title: tr("导出原始镜像为 RAW"),
+      runningTitle: tr("导出原始镜像中…"),
+      doneTitle: tr("原始镜像导出完成"),
     });
   } catch (error) {
-    notifyError('导出失败', String(error));
+    notifyError(tr("导出失败"), String(error));
   }
 }
 
@@ -67,16 +69,16 @@ async function exportRawImage() {
 const FORMAT_LABELS: Record<string, string> = {
   sevenz: '7z',
   docker: 'Docker',
-  folder: '文件夹',
-  physical_disk: '物理磁盘',
-  xiaomi_firmware: '小米固件',
-  ldplayer: '雷电模拟器备份',
-  assembled: 'RAID 重组',
-  decrypted: '解密视图',
-  shadow_copy: 'VSS 卷影副本',
+  get folder() { return tr("文件夹"); },
+  get physical_disk() { return tr("物理磁盘"); },
+  get xiaomi_firmware() { return tr("小米固件"); },
+  get ldplayer() { return tr("雷电模拟器备份"); },
+  get assembled() { return tr("RAID 重组"); },
+  get decrypted() { return tr("解密视图"); },
+  get shadow_copy() { return tr("VSS 卷影副本"); },
 };
 const formatLabel = computed(() => {
-  if (props.info.ios_backup) return 'iOS 备份';
+  if (props.info.ios_backup) return tr("iOS 备份");
   const format = props.info?.source_format ?? '';
   return FORMAT_LABELS[format] ?? format.toUpperCase();
 });

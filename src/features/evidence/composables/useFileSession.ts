@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { ref, shallowRef, onScopeDispose, getCurrentScope } from 'vue';
 import { open } from '@tauri-apps/plugin-dialog';
 
@@ -140,13 +142,13 @@ async function maybeAlertLockedBitlocker(info: ImageInfo): Promise<void> {
     }
     const handle = pushPersistentToast({
       kind: 'info',
-      title: '检测到 BitLocker 加密分区',
+      title: tr("检测到 BitLocker 加密分区"),
       detail:
         lockedCount > 1
-          ? `镜像包含 ${lockedCount} 个已锁定的 BitLocker 分区，需解锁后才能浏览其文件系统。`
-          : '镜像包含一个已锁定的 BitLocker 分区，需解锁后才能浏览其文件系统。',
+          ? tr("镜像包含 {0} 个已锁定的 BitLocker 分区，需解锁后才能浏览其文件系统。", { 0: lockedCount })
+          : tr("镜像包含一个已锁定的 BitLocker 分区，需解锁后才能浏览其文件系统。"),
       action: {
-        label: '前往解锁',
+        get label() { return tr("前往解锁"); },
         onClick: () => {
           bitlockerUnlockNavigator?.();
           dismissBitlockerReminder(info.id);
@@ -262,13 +264,13 @@ export function useFileSession() {
         // BitLocker partition. Must not block the load / panel switch on the
         // per-partition status probes.
         if (!info.index_only) void maybeAlertLockedBitlocker(info);
-        parserName.value = info.index_only ? `离线索引 (${info.source_format})` : `Disk Image (${info.source_format})`;
+        parserName.value = info.index_only ? tr("离线索引 ({0})", { 0: info.source_format }) : `Disk Image (${info.source_format})`;
         return { opened: true, mode: 'image', nextPanel: info.index_only ? 'files' : 'dashboard', imageId: info.id };
       }
 
       return {
         opened: false,
-        error: '暂不支持该文件类型。当前构建只接入磁盘镜像、逻辑证据归档和文件夹证据；请选择镜像文件，或通过“添加证据”选择文件夹/物理磁盘',
+        error: tr("暂不支持该文件类型。当前构建只接入磁盘镜像、逻辑证据归档和文件夹证据；请选择镜像文件，或通过“添加证据”选择文件夹/物理磁盘"),
       };
     } finally {
       if (generation === loadGeneration) { cleanupLoadProgressListener(); loading.value = false; }
@@ -282,7 +284,7 @@ export function useFileSession() {
     const selected = await open({
       directory: true,
       multiple: false,
-      title: '选择文件夹作为逻辑证据',
+      title: tr("选择文件夹作为逻辑证据"),
     });
     if (!selected || typeof selected !== 'string') return null;
     return selected;
@@ -291,8 +293,8 @@ export function useFileSession() {
   async function pickBcpFiles(): Promise<string[]> {
     const selected = await open({
       multiple: true,
-      title: '选择 BCP 文件（可多选）',
-      filters: [{ name: 'BCP 数据文件', extensions: ['bcp'] }],
+      title: tr("选择 BCP 文件（可多选）"),
+      filters: [{ name: tr("BCP 数据文件"), extensions: ['bcp'] }],
     });
     if (!selected) return [];
     return Array.isArray(selected) ? selected as string[] : [selected as string];
@@ -301,7 +303,7 @@ export function useFileSession() {
   /** Open the platform picker in multi-select mode. Returns the selected
    *  paths, or an empty array on cancel. Used for opening several disk images
    *  at once and for picking RAID member disks (caller sets the title). */
-  async function pickFiles(title = '选择磁盘镜像（可多选）'): Promise<string[]> {
+  async function pickFiles(title = tr("选择磁盘镜像（可多选）")): Promise<string[]> {
     const selected = await open({
       multiple: true,
       title,

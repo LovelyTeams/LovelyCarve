@@ -1,5 +1,5 @@
 <template>
-  <div v-if="usable" class="raid-diagram" :style="{ '--disk-count': cols }" :aria-label="`RAID ${level} 条带布局示意`">
+  <div v-if="usable" class="raid-diagram" :style="{ '--disk-count': cols }" :aria-label="tr('RAID {0} 条带布局示意', { 0: level })">
     <div class="diagram-scroll">
       <div class="diagram-board">
         <div class="array-grid">
@@ -7,7 +7,7 @@
                traceable across every disk. Heights are token-locked to the disk
                columns so the rows always line up. -->
           <div class="stripe-gutter" aria-hidden="true">
-            <div class="gutter-cap mono">条带</div>
+            <div class="gutter-cap mono">{{ tr("条带") }}</div>
             <div class="gutter-rows">
               <div
                 v-for="(_row, r) in grid"
@@ -28,7 +28,7 @@
               :class="{ dropped: s === droppedSlot }"
             >
               <div class="disk-head">
-                <span class="disk-col mono">槽位 {{ s }}</span>
+                <span class="disk-col mono">{{ tr("槽位") }} {{ s }}</span>
                 <span class="disk-id">
                   <component
                     :is="s === droppedSlot ? AlertTriangle : HardDrive"
@@ -60,16 +60,18 @@
     </div>
 
     <div class="legend">
-      <span class="lg mono"><i class="sw data"></i>数据</span>
-      <span class="lg mono"><i class="sw p"></i>P 校验</span>
-      <span v-if="hasQ" class="lg mono"><i class="sw q"></i>Q 校验</span>
-      <span v-if="droppedSlot != null" class="lg mono"><i class="sw dropped"></i>掉线盘（校验重建）</span>
+      <span class="lg mono"><i class="sw data"></i>{{ tr("数据") }}</span>
+      <span class="lg mono"><i class="sw p"></i>{{ tr("P 校验") }}</span>
+      <span v-if="hasQ" class="lg mono"><i class="sw q"></i>{{ tr("Q 校验") }}</span>
+      <span v-if="droppedSlot != null" class="lg mono"><i class="sw dropped"></i>{{ tr("掉线盘（校验重建）") }}</span>
     </div>
-    <p class="caption">前 {{ rows }} 条带示意<span v-if="chunkLabel"> · 每块 {{ chunkLabel }}</span></p>
+    <p class="caption">{{ tr("前") }} {{ rows }} {{ tr("条带示意") }}<span v-if="chunkLabel"> {{ tr("· 每块") }} {{ chunkLabel }}</span></p>
   </div>
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { computed, ref } from 'vue';
 import { AlertTriangle, HardDrive } from 'lucide-vue-next';
 
@@ -160,7 +162,7 @@ const grid = computed<Cell[][]>(() => {
 });
 
 function labelFor(slot: number): string {
-  return props.diskLabels?.[slot] || `槽位 ${slot}`;
+  return props.diskLabels?.[slot] || tr("槽位 {0}", { 0: slot });
 }
 
 function cellClass(cell: Cell): Record<string, boolean> {

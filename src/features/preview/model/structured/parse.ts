@@ -1,3 +1,4 @@
+import { sourceText, type Translator } from '../../../../i18n/translate';
 // 结构化文本（JSON / YAML / XML）→ 统一的有序树 PValue。
 //
 // 设计目标：一套 PValue 表示喂给 graph.ts / layout.ts，三种格式各自解析后归一。
@@ -35,7 +36,7 @@ export function detectFormat(text: string): PFormat {
   return 'yaml';
 }
 
-export function parseStructured(text: string, formatHint?: PFormat): ParseResult {
+export function parseStructured(text: string, formatHint?: PFormat, tr: Translator = sourceText): ParseResult {
   const format = formatHint ?? detectFormat(text);
   if (text.trim().length === 0) {
     return { value: null, format, error: 'empty' };
@@ -47,7 +48,7 @@ export function parseStructured(text: string, formatHint?: PFormat): ParseResult
       case 'yaml':
         return { value: jsToPValue(yamlLoad(text)), format };
       case 'xml':
-        return { value: parseXml(text), format };
+        return { value: parseXml(text, tr), format };
     }
   } catch (err) {
     return { value: null, format, error: errMessage(err) };
@@ -112,12 +113,12 @@ function stripJsonComments(src: string): string {
 
 // ---- XML -----------------------------------------------------------------
 
-function parseXml(text: string): PValue {
+function parseXml(text: string, tr: Translator = sourceText): PValue {
   const doc = new DOMParser().parseFromString(text, 'application/xml');
   const perr = doc.querySelector('parsererror');
-  if (perr) throw new Error(perr.textContent?.trim() || 'XML 解析失败');
+  if (perr) throw new Error(perr.textContent?.trim() || tr("XML 解析失败"));
   const root = doc.documentElement;
-  if (!root) throw new Error('XML 缺少根元素');
+  if (!root) throw new Error(tr("XML 缺少根元素"));
   return { t: 'object', entries: [[root.nodeName, elementToPValue(root)]] };
 }
 

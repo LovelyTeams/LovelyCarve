@@ -189,6 +189,14 @@ const KIND_LABEL_EXPR: &str = "(CASE
     WHEN kind = 'unallocated' THEN '未分配'
     ELSE kind END)";
 
+const KIND_ENGLISH_LABEL_EXPR: &str = "(CASE
+    WHEN nid LIKE 'diskgap:%' OR nid LIKE 'unalloc:%' THEN 'unallocated space'
+    WHEN kind = 'dir' THEN 'folder'
+    WHEN kind = 'file' THEN 'file'
+    WHEN kind = 'symlink' THEN 'symbolic link'
+    WHEN kind = 'unallocated' THEN 'unallocated'
+    ELSE kind END)";
+
 /// 本卷里子项不在索引中的已删除目录 `(nid, full_path)`,子树起点另追加
 /// `full_path_low` 区间。
 ///

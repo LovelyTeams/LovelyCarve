@@ -7,7 +7,7 @@
     <div
       v-if="!standalone"
       class="resize-handle"
-      title="拖动调整面板高度"
+      :title="tr('拖动调整面板高度')"
       @pointerdown="onResizeStart"
     ></div>
     <div class="preview-pane">
@@ -26,11 +26,11 @@
         <FileMetadataPanel v-if="activeTab === 'detail'" :node="node" :full-path="fullPath" :extension="ext"
           :ident="effectiveIdent" :digest="digest" :ext-mismatch="extMismatch" />
         <template v-else>
-          <div v-if="indexOnly" class="state-row mono">原镜像不可用，仅能查看索引中的文件属性。</div>
+          <div v-if="indexOnly" class="state-row mono">{{ tr("原镜像不可用，仅能查看索引中的文件属性。") }}</div>
           <FileRangePreview v-else-if="activeTab === 'hex' && focusTarget" :image-id="imageId" :node-id="node.id" :size="node.size" :target="focusTarget" />
-          <div v-else-if="loading" class="state-row mono">加载中…</div>
+          <div v-else-if="loading" class="state-row mono">{{ tr("加载中…") }}</div>
           <div v-else-if="error" class="state-row mono error">{{ error }}</div>
-          <div v-else-if="node.kind === 'dir'" class="state-row mono">目录没有内容可预览，详见「详细信息」标签页。</div>
+          <div v-else-if="node.kind === 'dir'" class="state-row mono">{{ tr("目录没有内容可预览，详见「详细信息」标签页。") }}</div>
 
           <!-- 原类型视图：按文件原生类型渲染 -->
           <template v-else-if="activeTab === 'raw'">
@@ -125,11 +125,11 @@
               @media-error="onMediaError" @image-load="onImageLoad" @cancel-qr="cancelQrScan" @copy-qr="copyQrText" @copy-ocr="copyAllOcrText"
             />
 
-            <div v-else class="state-row mono">该类型暂不支持原类型视图，请切换到文本 / 十六进制视图。</div>
+            <div v-else class="state-row mono">{{ tr("该类型暂不支持原类型视图，请切换到文本 / 十六进制视图。") }}</div>
           </template>
 
           <template v-else-if="activeTab === 'text'">
-            <div v-if="truncated" class="trunc-note mono">已截断：仅显示前 {{ formatBytes(bytes.length) }}（共 {{ formatBytes(node.size) }}）</div>
+            <div v-if="truncated" class="trunc-note mono">{{ tr("已截断：仅显示前") }} {{ formatBytes(bytes.length) }}{{ tr("（共") }} {{ formatBytes(node.size) }}）</div>
             <!-- 无关键字时按纯文本渲染，且切成块、用 content-visibility 让浏览器只布局可视块——
                  否则上百万字符（尤其二进制文件解码后几乎无换行）一次性整体布局会卡死（切到文本视图很卡）。
                  仅在搜索时才走单个 <pre v-html>（注入 <mark> 高亮，命中导航需整块在 DOM 里）。 -->
@@ -186,6 +186,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import FileMetadataPanel from './FileMetadataPanel.vue';
 import { vContentMotion } from '../../../composables/uiMotionDirectives';
 import { ref, computed, watch, defineAsyncComponent } from 'vue';
@@ -320,10 +322,10 @@ const renderedMarkdown = computed(() => renderMarkdownPreview(decodedText.value)
 // 「识别真实类型」按钮的状态：识别中、是否检出伪装、按钮文案与提示。
 const identBtnTitle = computed<string>(() => {
   const t = effectiveIdent.value;
-  if (!t) return 'Magika 按文件内容识别真实类型，与扩展名无关——可发现改后缀伪装';
+  if (!t) return tr("Magika 按文件内容识别真实类型，与扩展名无关——可发现改后缀伪装");
   const parts = [`${t.label}（${t.mime_type}）`, t.description];
-  parts.push(t.inferred ? `模型置信度 ${(t.score * 100).toFixed(1)}%` : '规则直判');
-  if (extMismatch.value) parts.push(`扩展名 .${ext.value} 与识别类型不符，疑似改后缀伪装`);
+  parts.push(t.inferred ? tr("模型置信度 {0}%", { 0: (t.score * 100).toFixed(1) }) : tr("规则直判"));
+  if (extMismatch.value) parts.push(tr("扩展名 .{0} 与识别类型不符，疑似改后缀伪装", { 0: ext.value }));
   return parts.join(' · ');
 });
 
@@ -409,7 +411,7 @@ async function openExternal() {
       readingState: getReadingState(),
     });
   } catch (e) {
-    notifyError('打开独立窗口失败', String(e));
+    notifyError(tr("打开独立窗口失败"), String(e));
   }
 }
 

@@ -1,19 +1,19 @@
 <template>
   <div class="deleted-pane">
-    <div v-if="loading" class="state-row mono"><Loader2 :size="14" class="spin" /> 正在扫描已删除记录…</div>
+    <div v-if="loading" class="state-row mono"><Loader2 :size="14" class="spin" /> {{ tr("正在扫描已删除记录…") }}</div>
 
     <div v-else-if="error" class="ui-alert danger load-alert" role="alert">
       <AlertCircle :size="14" />
-      <span class="alert-text">扫描已删除记录失败：{{ error }}</span>
-      <button type="button" class="ui-btn sm" @click="load">重试</button>
+      <span class="alert-text">{{ tr("扫描已删除记录失败：") }}{{ error }}</span>
+      <button type="button" class="ui-btn sm" @click="load">{{ tr("重试") }}</button>
     </div>
 
     <template v-else-if="result">
       <div class="deleted-toolbar">
-        <UiSelect v-model="tableFilter" class="sm" :options="tableOptions" aria-label="按表筛选" />
-        <UiSelect v-model="originFilter" class="sm" :options="originOptions" aria-label="按来源筛选" />
-        <span v-if="result.omitted" class="ui-badge sm warn" :title="`结果超过 ${MAX_LISTED} 条，只列出前 ${MAX_LISTED} 条`">
-          另有 {{ result.omitted.toLocaleString() }} 条未列出
+        <UiSelect v-model="tableFilter" class="sm" :options="tableOptions" :aria-label="tr('按表筛选')" />
+        <UiSelect v-model="originFilter" class="sm" :options="originOptions" :aria-label="tr('按来源筛选')" />
+        <span v-if="result.omitted" class="ui-badge sm warn" :title="tr('结果超过 {0} 条，只列出前 {1} 条', { 0: MAX_LISTED, 1: MAX_LISTED })">
+          {{ tr("另有") }} {{ result.omitted.toLocaleString() }} {{ tr("条未列出") }}
         </span>
         <span class="toolbar-spacer" />
         <span class="deleted-facts mono">{{ facts }}</span>
@@ -28,7 +28,7 @@
         <details v-if="result.schemas.length" v-disclosure-motion class="ui-disclosure schema-box">
           <summary class="schema-summary">
             <ChevronRight :size="12" class="ui-chevron" />
-            <span>已删除的表结构</span>
+            <span>{{ tr("已删除的表结构") }}</span>
             <span class="ui-count">{{ result.schemas.length }}</span>
           </summary>
           <ul class="schema-list">
@@ -36,7 +36,7 @@
               <div class="schema-head">
                 <span class="ui-badge sm outline">{{ schema.object_type }}</span>
                 <span class="schema-name mono">{{ schema.name }}</span>
-                <span v-if="schema.root_page !== null" class="dim mono">根页 {{ schema.root_page }}</span>
+                <span v-if="schema.root_page !== null" class="dim mono">{{ tr("根页") }} {{ schema.root_page }}</span>
               </div>
               <pre class="schema-sql mono">{{ schema.sql }}</pre>
             </li>
@@ -46,15 +46,15 @@
 
       <div v-if="!result.records.length" class="ui-empty">
         <div class="ui-empty-icon"><ArchiveRestore :size="22" /></div>
-        <p class="ui-empty-title">未发现已删除记录</p>
-        <p class="ui-empty-desc">空闲页、页内空闲区以及 WAL 和回滚日志里都没有可恢复的行。开启 secure_delete 或执行过 VACUUM 的库不会留下这类残留。</p>
+        <p class="ui-empty-title">{{ tr("未发现已删除记录") }}</p>
+        <p class="ui-empty-desc">{{ tr("空闲页、页内空闲区以及 WAL 和回滚日志里都没有可恢复的行。开启 secure_delete 或执行过 VACUUM 的库不会留下这类残留。") }}</p>
       </div>
 
       <div v-else-if="!filtered.length" class="ui-empty">
         <div class="ui-empty-icon"><FilterX :size="22" /></div>
-        <p class="ui-empty-title">没有符合筛选条件的记录</p>
+        <p class="ui-empty-title">{{ tr("没有符合筛选条件的记录") }}</p>
         <div class="ui-empty-actions">
-          <button type="button" class="ui-btn sm" @click="clearFilters">清除筛选</button>
+          <button type="button" class="ui-btn sm" @click="clearFilters">{{ tr("清除筛选") }}</button>
         </div>
       </div>
 
@@ -63,12 +63,12 @@
           <table class="data-table db-table">
             <thead>
               <tr>
-                <th class="rownum-th mono">序号</th>
-                <th>来源</th>
-                <th>表</th>
-                <th>位置</th>
+                <th class="rownum-th mono">{{ tr("序号") }}</th>
+                <th>{{ tr("来源") }}</th>
+                <th>{{ tr("表") }}</th>
+                <th>{{ tr("位置") }}</th>
                 <th class="numeric">rowid</th>
-                <th class="numeric">置信度</th>
+                <th class="numeric">{{ tr("置信度") }}</th>
                 <th v-for="(header, index) in valueHeaders" :key="index">
                   <span class="col-text">
                     <span class="col-name mono">{{ header.name }}</span>
@@ -87,9 +87,9 @@
                 </td>
                 <td class="table-cell" :title="LINK_TITLE[record.link]">
                   <span v-if="record.table" class="mono">{{ record.table }}</span>
-                  <span v-else class="dim">未归属</span>
-                  <span v-if="record.link === 'inferred'" class="ui-badge sm outline link-badge">推断</span>
-                  <span v-else-if="record.link === 'ambiguous'" class="ui-badge sm outline link-badge">多表匹配</span>
+                  <span v-else class="dim">{{ tr("未归属") }}</span>
+                  <span v-if="record.link === 'inferred'" class="ui-badge sm outline link-badge">{{ tr("推断") }}</span>
+                  <span v-else-if="record.link === 'ambiguous'" class="ui-badge sm outline link-badge">{{ tr("多表匹配") }}</span>
                 </td>
                 <td class="mono" :title="overflowTitle(record)">{{ location(record) }}</td>
                 <td class="mono numeric">{{ record.rowid ?? '—' }}</td>
@@ -110,11 +110,11 @@
         <footer class="pager">
           <span class="pager-info mono">{{ rangeStart }}–{{ rangeEnd }} / {{ filtered.length.toLocaleString() }}</span>
           <span class="pager-spacer" />
-          <button class="ui-icon-btn sm bordered" title="上一页" aria-label="上一页" :disabled="pageIndex <= 0" @click="offset -= PAGE_SIZE">
+          <button class="ui-icon-btn sm bordered" :title="tr('上一页')" :aria-label="tr('上一页')" :disabled="pageIndex <= 0" @click="offset -= PAGE_SIZE">
             <ChevronLeft :size="14" />
           </button>
           <span class="pager-page mono">{{ pageIndex + 1 }} / {{ pageCount }}</span>
-          <button class="ui-icon-btn sm bordered" title="下一页" aria-label="下一页" :disabled="pageIndex >= pageCount - 1" @click="offset += PAGE_SIZE">
+          <button class="ui-icon-btn sm bordered" :title="tr('下一页')" :aria-label="tr('下一页')" :disabled="pageIndex >= pageCount - 1" @click="offset += PAGE_SIZE">
             <ChevronRight :size="14" />
           </button>
         </footer>
@@ -124,6 +124,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../../composables/useLocale';
+
 // SQLite 浏览器的「已删除记录」：后端从空闲页、页内空闲区、溢出链、未检查点
 // 的 -wal 和回滚 -journal 中恢复的行（不含现存行）。按表、来源筛选，前端分页；
 // 选中某张现存表时按它的列名显示值。回滚日志里修改前的版本，与当前值不同的
@@ -163,27 +165,27 @@ const ORIGIN_ORDER: SqliteRecordOrigin[] = [
 ];
 
 const ORIGIN_LABEL: Record<SqliteRecordOrigin, string> = {
-  freelist_page: '空闲页',
-  in_page: '页内空闲区',
-  freeblock: '空闲块重建',
-  prior_version: '更新前版本',
-  dropped_table: '已删除的表',
-  wal_frame: 'WAL 帧',
-  wal_commit: 'WAL 提交',
-  journal_deleted: '日志 · 已删除',
-  journal_prior: '日志 · 修改前',
+  get freelist_page() { return tr("空闲页"); },
+  get in_page() { return tr("页内空闲区"); },
+  get freeblock() { return tr("空闲块重建"); },
+  get prior_version() { return tr("更新前版本"); },
+  get dropped_table() { return tr("已删除的表"); },
+  get wal_frame() { return tr("WAL 帧"); },
+  get wal_commit() { return tr("WAL 提交"); },
+  get journal_deleted() { return tr("日志 · 已删除"); },
+  get journal_prior() { return tr("日志 · 修改前"); },
 };
 
 const ORIGIN_TITLE: Record<SqliteRecordOrigin, string> = {
-  freelist_page: '从释放到空闲链表的页中雕刻',
-  in_page: '从仍在使用的页的空闲区中雕刻',
-  freeblock: '单元头已被空闲块覆盖，按列结构重建，rowid 已丢失',
-  prior_version: '仍存在的行在更新前的旧版本',
-  dropped_table: '已不存在的表释放的页',
-  wal_frame: '未检查点的 -wal 中的页映像',
-  wal_commit: 'WAL 提交快照',
-  journal_deleted: '最后一个事务删除的行，来自回滚日志',
-  journal_prior: '最后一个事务修改前的行，来自回滚日志',
+  get freelist_page() { return tr("从释放到空闲链表的页中雕刻"); },
+  get in_page() { return tr("从仍在使用的页的空闲区中雕刻"); },
+  get freeblock() { return tr("单元头已被空闲块覆盖，按列结构重建，rowid 已丢失"); },
+  get prior_version() { return tr("仍存在的行在更新前的旧版本"); },
+  get dropped_table() { return tr("已不存在的表释放的页"); },
+  get wal_frame() { return tr("未检查点的 -wal 中的页映像"); },
+  get wal_commit() { return tr("WAL 提交快照"); },
+  get journal_deleted() { return tr("最后一个事务删除的行，来自回滚日志"); },
+  get journal_prior() { return tr("最后一个事务修改前的行，来自回滚日志"); },
 };
 
 const ORIGIN_TONE: Record<SqliteRecordOrigin, string> = {
@@ -199,10 +201,10 @@ const ORIGIN_TONE: Record<SqliteRecordOrigin, string> = {
 };
 
 const LINK_TITLE: Record<SqliteTableLink, string> = {
-  known: '记录所在的页仍属于这张表的 B 树',
-  inferred: '记录在空闲页上，行结构只与这张表吻合',
-  ambiguous: '行结构与多张表吻合，这里给出最接近的一张',
-  unattributed: '无法归属到现存的表，可能来自已删除的表',
+  get known() { return tr("记录所在的页仍属于这张表的 B 树"); },
+  get inferred() { return tr("记录在空闲页上，行结构只与这张表吻合"); },
+  get ambiguous() { return tr("行结构与多张表吻合，这里给出最接近的一张"); },
+  get unattributed() { return tr("无法归属到现存的表，可能来自已删除的表"); },
 };
 
 const loading = ref(false);
@@ -222,12 +224,12 @@ const tableNames = computed(() =>
 const hasUnattributed = computed(() => records.value.some((record) => record.table === null));
 const origins = computed(() => ORIGIN_ORDER.filter((origin) => records.value.some((record) => record.origin === origin)));
 const tableOptions = computed<UiSelectOption<string>[]>(() => [
-  { value: '', label: '全部表' },
+  { value: '', get label() { return tr("全部表"); } },
   ...tableNames.value.map((name) => ({ value: name, label: name })),
-  ...(hasUnattributed.value ? [{ value: UNATTRIBUTED, label: '未归属' }] : []),
+  ...(hasUnattributed.value ? [{ value: UNATTRIBUTED, get label() { return tr("未归属"); } }] : []),
 ]);
 const originOptions = computed<UiSelectOption<SqliteRecordOrigin | ''>[]>(() => [
-  { value: '', label: '全部来源' },
+  { value: '', get label() { return tr("全部来源"); } },
   ...origins.value.map((origin) => ({ value: origin, label: ORIGIN_LABEL[origin] })),
 ]);
 
@@ -253,7 +255,7 @@ const valueHeaders = computed(() => {
     const column = schemaColumns.value[index];
     return column
       ? { name: column.name, meta: column.type_name || '?' }
-      : { name: `列 ${index + 1}`, meta: '' };
+      : { name: tr("列 {0}", { 0: index + 1 }), meta: '' };
   });
 });
 
@@ -267,25 +269,25 @@ const facts = computed(() => {
   const recovery = result.value;
   if (!recovery) return '';
   const parts = [
-    recovery.cipher ?? `页大小 ${recovery.page_size}`,
-    `${recovery.page_count.toLocaleString()} 页`,
-    `空闲页 ${recovery.freelist_pages.toLocaleString()}`,
+    recovery.cipher ?? tr("页大小 {0}", { 0: recovery.page_size }),
+    tr("{0} 页", { 0: recovery.page_count.toLocaleString() }),
+    tr("空闲页 {0}", { 0: recovery.freelist_pages.toLocaleString() }),
   ];
-  if (recovery.sidecars.length) parts.push(`已结合 ${recovery.sidecars.join('、')}`);
+  if (recovery.sidecars.length) parts.push(tr("已结合 {0}", { 0: recovery.sidecars.join('、') }));
   return parts.join(' · ');
 });
 
 function location(record: SqliteRecoveredRecord): string {
   const parts: string[] = [];
-  if (record.wal_frame !== null) parts.push(`WAL 帧 ${record.wal_frame}`);
-  if (record.page !== null) parts.push(`页 ${record.page}`);
+  if (record.wal_frame !== null) parts.push(tr("WAL 帧 {0}", { 0: record.wal_frame }));
+  if (record.page !== null) parts.push(tr("页 {0}", { 0: record.page }));
   if (record.offset !== null) parts.push(`0x${record.offset.toString(16).toUpperCase()}`);
-  if (record.overflow_pages.length) parts.push(`溢出 ${record.overflow_pages.length} 页`);
+  if (record.overflow_pages.length) parts.push(tr("溢出 {0} 页", { 0: record.overflow_pages.length }));
   return parts.join(' · ') || '—';
 }
 
 function overflowTitle(record: SqliteRecoveredRecord): string | undefined {
-  return record.overflow_pages.length ? `溢出页：${record.overflow_pages.join(', ')}` : undefined;
+  return record.overflow_pages.length ? tr("溢出页：{0}", { 0: record.overflow_pages.join(', ') }) : undefined;
 }
 
 /** 两个单元格是否已知不同；BLOB 只下发大小，大小相同时无法判断。 */
@@ -319,7 +321,7 @@ function valueTitle(record: SqliteRecoveredRecord, column: number): string | und
   if (!cell) return undefined;
   const current = changedCurrent(record, column);
   const text = sqliteCellText(cell);
-  return current ? `${text}\n当前值：${sqliteCellText(current)}` : text;
+  return current ? tr("{0}\n当前值：{1}", { 0: text, 1: sqliteCellText(current) }) : text;
 }
 
 function clearFilters() {

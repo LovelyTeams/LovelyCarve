@@ -4,7 +4,7 @@ This file guides AI agents and contributors working in this repository. Follow t
 
 ## Project Overview
 
-`lovelycarve` is a Tauri v2 desktop forensic evidence tool with a window-free CLI. The backend is Rust with async tasks, memory-mapped raw image access, and pure Rust image, filesystem and encrypted-container readers. Evidence includes disk images, folders, archives, AD1 logical images, iOS local backups, physical disks and assembled RAID arrays. The frontend is Vue 3 (Composition API), TypeScript, and Vite. The app targets Windows, macOS, and Linux, but the current desktop development and release recipes are Windows-only; macOS/Linux artifacts need separate verification. UI copy is Chinese-first and written inline (there is no i18n layer).
+`lovelycarve` is a Tauri v2 desktop forensic evidence tool with a window-free CLI. The backend is Rust with async tasks, memory-mapped raw image access, and pure Rust image, filesystem and encrypted-container readers. Evidence includes disk images, folders, archives, AD1 logical images, iOS local backups, physical disks and assembled RAID arrays. The frontend is Vue 3 (Composition API), TypeScript, and Vite. The app targets Windows, macOS, and Linux, but the current desktop development and release recipes are Windows-only; macOS/Linux artifacts need separate verification. UI copy supports Simplified Chinese and English through `src/composables/useLocale.ts` and the catalogs in `src/i18n/`; Chinese is the default.
 
 Core workflow: open or create a case, load evidence, detect partitions, browse filesystem data, preview native file types, hash / export / carve, build volume snapshots, run global search and timeline projections, and run LPP plugins. Read `docs/ARCHITECTURE.md` before adding backend modules. Read `docs/FRONTEND.md` (the frontend spec: principles, tokens and contrast, type scale, spacing, primitives, states and feedback, tables, dialogs and layering, motion, copy, accessibility, review checklist) before changing UI; the design system itself is the CSS tokens in `src/styles/themes.css` plus the shared `ui-*` primitives in `src/styles/ui.css` and the motion layer in `src/styles/motion.css` — read them too.
 
@@ -21,6 +21,7 @@ Use `docs/README.md` for the documentation map and `CONTRIBUTING.md` / `docs/DEV
 - `src/utils/`: shared pure helpers for formatting, safe HTML, CSV and similar concerns.
 - `src/views/`: secondary app windows (the detached `FilePreviewWindow.vue`). The main shell is `src/AppShell.vue`.
 - `src/lib/ipc/`: the typed IPC service layer — `client.ts` (sole `invoke` wrapper), `events.ts` (`onEvent`/`emitEvent`), and per-domain command modules. Components/composables call this layer, not Tauri `invoke`/`listen` directly.
+- `src/i18n/`: English translations, Chinese context overrides, and the pure translation contract. `useLocale` owns the persisted preference and cross-window synchronization.
 - `src/styles/themes.css`: all theme tokens for `light`, `dark`, and `pink`.
 - `src/styles/ui.css`: shared UI primitives (buttons, fields, tabs, badges, cards, modal shell, menus, empty states, panel headers), loaded globally through `global.css`.
 - `src/styles/motion.css`: the motion layer (shared keyframes, primitive entrances, the `ui-stagger` utility, the theme reveal), loaded globally after `ui.css`.
@@ -40,7 +41,7 @@ Use `docs/README.md` for the documentation map and `CONTRIBUTING.md` / `docs/DEV
 
 Use the repository-root `Justfile` as the task entry point. Do not replace an existing recipe with a direct `bun`, `cargo`, or Tauri command. Run `just bootstrap` for initial setup; it initializes the pinned plugin submodule and installs frontend dependencies with the frozen lockfile. Run `just --list` when the available tasks may have changed, and use `just --show <recipe>` or `just --dry-run <recipe>` to inspect platform-specific commands and dependencies. Prerequisites and environment overrides are documented in `docs/DEVELOPMENT.md`; toolchain versions come from `src-tauri/Cargo.toml` and `package.json`.
 
-- `just verify-fe`: run IPC and structure checks, type-checking, frontend tests and the production build.
+- `just verify-fe`: run IPC, structure and translation checks, type-checking, frontend tests and the production build.
 - `just verify-rust`: run `fmt`, `check`, `clippy` and backend tests.
 - `just verify-plugins`: run formatting, plugin linting and plugin tests.
 - `just dev-fe`: run the Vite frontend, including the file-viewer asset preparation step.
@@ -49,6 +50,7 @@ Use the repository-root `Justfile` as the task entry point. Do not replace an ex
 - `just build-fe`: type-check and build the frontend production bundle.
 - `just test-fe`: run the complete frontend Vitest suite once.
 - `just ipc-check`: enforce the typed frontend IPC boundary.
+- `just i18n-check`: check translation coverage, interpolation parameters, and untranslated template text.
 - `just frontend-structure-check`: enforce feature/shared/model dependency boundaries, valid import/style paths, and absence of runtime dependency cycles.
 - `just fmt`: format the main Rust crate, the plugin workspace and the maintained vendored reader crates.
 - `just check`: compile-check the Rust backend without the optional OpenCV QR feature.
@@ -203,7 +205,7 @@ Vue 3 single-file components with `<script setup lang="ts">` and the Composition
 - Timing comes from tokens: `--transition-fast` (0.15s ease) / `--transition-normal` (0.25s ease) for plain state changes, and `--motion-fast|normal|slow` (150 / 250 / 400ms) with `--ease-out` (entrances), `--ease-in` (exits) and `--ease-spring` (small pops) for motion. Entrances take the longer duration, exits the shorter.
 - Decorative motion lives under `:root[data-motion='full']` (use `:where(:root[data-motion='full'])` in the global sheets to keep single-class specificity) and reuses the keyframes in `motion.css` (`ui-rise-in`, `ui-pop-in`, `ui-zoom-in`, `ui-bounce-in`, `ui-grow-x|y`, `ui-bump`, idle `ui-float` / `ui-twinkle` / `ui-breathe`). They animate the individual `translate` / `scale` / `rotate` properties, declare only the start state and run with `backwards` fill, so they compose with a component's own `transform`. `ui-menu`, `ui-alert` and `ui-empty` animate in on their own; add `ui-stagger` to short, non-virtualized lists and card grids (never virtual lists: recycled or keyed-moved rows restart the entrance) and `ui-bump` plus a value `:key` to counters. Idle loops are for illustrations and drop targets only.
 - JS-driven motion goes through `animateUi` / `motionTiming` (`useUiMotion.ts`), `UiTransition` (`collapse` / `horizontal` / `fade` / `pop`), `v-content-motion` (light fade; `.rise` for page and tab switches) and `v-disclosure-motion`; each settles immediately with motion off. The theme switch passes the clicked control to `setTheme(theme, from)` for the circular view-transition reveal.
-- UI copy is Chinese-first and written inline; there is no i18n layer.
+- UI copy uses `tr()` from `composables/useLocale.ts`, with Chinese source messages and English translations in `src/i18n/en.json`. Context-specific keys also need `src/i18n/zh-CN.json` entries. Use full-message interpolation; keep option labels reactive. Pure presentation models accept an optional `Translator` defaulting to `sourceText`, without importing locale state. Translate application labels only; preserve evidence names/paths/content, plugin-provided fields, persisted tag values, filter values and IPC enums. Run `just i18n-check` after copy changes; it is part of `verify-fe`.
 
 After frontend changes, always run `just build-fe` (or at least `just typecheck` while iterating). Use `just test-fe` whenever behavior or state logic changes.
 

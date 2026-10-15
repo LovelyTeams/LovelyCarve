@@ -3,11 +3,11 @@
     <button
       class="cat-chip all"
       :class="{ active: selected.size === 0 }"
-      title="显示全部类别"
+      :title="tr('显示全部类别')"
       @click="$emit('clear')"
     >
       <Files :size="13" />
-      <span class="cat-label">全部</span>
+      <span class="cat-label">{{ tr("全部") }}</span>
       <span v-if="countsComplete !== false" class="cat-count mono">{{ total.toLocaleString() }}</span>
     </button>
     <button
@@ -15,17 +15,19 @@
       :key="c.key"
       class="cat-chip"
       :class="[`cat-${c.key}`, { active: selected.has(c.key) }]"
-      :title="selected.has(c.key) ? `取消筛选「${c.label}」` : `仅显示「${c.label}」（可多选）`"
+      :title="selected.has(c.key) ? tr('取消筛选「{0}」', { 0: tr(c.label) }) : tr('仅显示「{0}」（可多选）', { 0: tr(c.label) })"
       @click="$emit('toggle', c.key)"
     >
       <component :is="CATEGORY_ICON[c.key]" :size="13" class="cat-icon" />
-      <span class="cat-label">{{ c.label }}</span>
+      <span class="cat-label">{{ tr(c.label) }}</span>
       <span v-if="countsComplete !== false" class="cat-count mono">{{ (counts[c.key] ?? 0).toLocaleString() }}</span>
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 // 文件分类筛选条：把列表里已有的「按扩展名分类」（fileCategory 的 IconCategory）
 // 横向铺成可多选的芯片，每个芯片带该类别在当前目录的命中数。选中即按类别收窄
 // filteredEntries（多选取并集），不改后端、不读文件头——纯前端按扩展名归类。

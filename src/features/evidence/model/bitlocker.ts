@@ -1,3 +1,4 @@
+import { sourceText, type Translator } from '../../../i18n/translate';
 export type BitlockerUnlockMode = 'password' | 'recovery' | 'vmk' | 'key';
 
 export interface BitlockerUnlockJob {
@@ -54,7 +55,7 @@ function formatBitlockerBytes(n: number): string {
 }
 
 /** UI projection shared by unlock and memory scan jobs; does not own task state. */
-export function bitlockerProgress(job: { bytesDone: number; bytesTotal: number } | undefined) {
+export function bitlockerProgress(job: { bytesDone: number; bytesTotal: number } | undefined, tr: Translator = sourceText) {
   const percent = !job || job.bytesTotal === 0 ? 0 : Math.min(100, (job.bytesDone / job.bytesTotal) * 100);
-  return { percent, percentText: `${percent.toFixed(1)}%`, bytesText: !job ? '' : job.bytesTotal === 0 ? '准备中…' : `${formatBitlockerBytes(job.bytesDone)} / ${formatBitlockerBytes(job.bytesTotal)}` };
+  return { percent, percentText: `${percent.toFixed(1)}%`, bytesText: !job ? '' : job.bytesTotal === 0 ? tr("准备中…") : `${formatBitlockerBytes(job.bytesDone)} / ${formatBitlockerBytes(job.bytesTotal)}` };
 }

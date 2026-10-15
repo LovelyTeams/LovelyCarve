@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, onScopeDispose, ref, watch, type ComputedRef, type Ref } from 'vue';
 import { fsPreviewText, type DecodedText } from '../../../lib/ipc/fs/read';
 import { highlightHtml } from '../../../utils/highlight';
@@ -115,8 +117,8 @@ export function useTextPreview(options: UseTextPreviewOptions) {
   const autoEncodingLabel = computed(() => {
     const decodedValue = decoded.value;
     return decodedValue && decodedValue.nodeId === options.nodeId()
-      ? `自动 · ${decodedValue.encoding}`
-      : '自动';
+      ? tr("自动 · {0}", { 0: decodedValue.encoding })
+      : tr("自动");
   });
 
   const encodingWarn = computed(() =>
@@ -126,13 +128,13 @@ export function useTextPreview(options: UseTextPreviewOptions) {
   );
 
   const encodingTitle = computed(() => {
-    if (encodingOverride.value) return '已手动指定文本编码（点选「自动」恢复检测）';
+    if (encodingOverride.value) return tr("已手动指定文本编码（点选「自动」恢复检测）");
     const decodedValue = decoded.value;
-    if (!decodedValue || decodedValue.nodeId !== options.nodeId()) return '文本编码（自动检测）';
-    const how = decodedValue.from_bom ? 'BOM 声明' : '自动检测';
+    if (!decodedValue || decodedValue.nodeId !== options.nodeId()) return tr("文本编码（自动检测）");
+    const how = decodedValue.from_bom ? tr("BOM 声明") : tr("自动检测");
     return decodedValue.had_errors
-      ? `编码 ${decodedValue.encoding}（${how}）· 含无法解码字节，若仍乱码可手动切换编码`
-      : `编码 ${decodedValue.encoding}（${how}）`;
+      ? tr("编码 {0}（{1}）· 含无法解码字节，若仍乱码可手动切换编码", { 0: decodedValue.encoding, 1: how })
+      : tr("编码 {0}（{1}）", { 0: decodedValue.encoding, 1: how });
   });
 
   async function ensureDecodedText() {

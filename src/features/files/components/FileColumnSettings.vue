@@ -3,16 +3,16 @@
     <aside v-if="open" class="col-settings">
       <div class="settings-panel">
         <div class="settings-search">
-          <input v-model="filter" class="ui-input sm" type="text" placeholder="过滤列名…" aria-label="过滤显示列" />
+          <input v-model="filter" class="ui-input sm" type="text" :placeholder="tr('过滤列名…')" :aria-label="tr('过滤显示列')" />
         </div>
         <div class="settings-list">
           <label v-for="column in visibleSettingsList" :key="column.key" class="settings-item"
             :class="{ unready: column.ready === false }"
-            :title="column.ready === false ? '该列的数据来源尚未接通，接通后自动开放' : undefined">
+            :title="column.ready === false ? tr('该列的数据来源尚未接通，接通后自动开放') : undefined">
             <input type="checkbox" :checked="columnVisible[column.key]" :disabled="column.ready === false"
               @change="emit('toggle', column.key)" />
-            <span class="settings-label">{{ column.label }}</span>
-            <span v-if="column.ready === false" class="ui-badge sm info">未接通</span>
+            <span class="settings-label">{{ tr(column.label) }}</span>
+            <span v-if="column.ready === false" class="ui-badge sm info">{{ tr("未接通") }}</span>
           </label>
         </div>
       </div>
@@ -21,6 +21,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { computed, ref } from 'vue';
 import type { ColumnDef } from '../model/model';
 
@@ -29,7 +31,7 @@ const emit = defineEmits<{ toggle: [key: string] }>();
 const filter = ref('');
 const visibleSettingsList = computed(() => {
   const keyword = filter.value.trim().toLowerCase();
-  return keyword ? props.columns.filter(column => column.label.toLowerCase().includes(keyword) || column.key.includes(keyword)) : props.columns;
+  return keyword ? props.columns.filter(column => tr(column.label).toLowerCase().includes(keyword) || column.key.includes(keyword)) : props.columns;
 });
 </script>
 

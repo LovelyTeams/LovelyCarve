@@ -118,6 +118,36 @@ fn filter_covers_keyword_name_path_and_kinds() {
 }
 
 #[test]
+fn kind_filters_accept_both_languages() {
+    let items = [
+        entry("file", "文件列表", NodeKind::File, "/文件列表"),
+        entry("link", "target", NodeKind::Symlink, "/target"),
+        entry("unalloc:1", "gap", NodeKind::File, "/gap"),
+    ];
+    for (query, expected) in [
+        ("文件", vec!["file"]),
+        ("file", vec!["file"]),
+        ("symbolic", vec!["link"]),
+        ("符号", vec!["link"]),
+        ("UNALLOCATED", vec!["unalloc:1"]),
+        ("未分配", vec!["unalloc:1"]),
+    ] {
+        let filter = FlatFileFilter {
+            kind_query: Some(query.into()),
+            ..FlatFileFilter::default()
+        }
+        .normalized();
+        let actual: Vec<&str> = items
+            .iter()
+            .filter(|item| flat_filter_keeps(item, &filter))
+            .map(|item| item.node.id.as_str())
+            .collect();
+        assert_eq!(actual, expected, "{query}");
+    }
+    assert_eq!(items[0].node.name, "文件列表");
+}
+
+#[test]
 fn filter_size_mod_and_deleted() {
     let mut base = node("s", "a.bin", NodeKind::File);
     base.size = 1025;

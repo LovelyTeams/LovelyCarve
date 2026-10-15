@@ -2,13 +2,13 @@
   <div class="disk-image-info">
     <div v-if="!info" class="ui-empty">
       <span class="ui-empty-icon"><HardDrive :size="26" /></span>
-      <p class="ui-empty-title">未加载镜像</p>
+      <p class="ui-empty-title">{{ tr("未加载镜像") }}</p>
     </div>
     <div v-else class="overview ui-stagger">
       <!-- 检材头部：哪份检材（文件名、格式、完整路径、容量），右侧是平台识别结论与原始镜像导出。
            不做卡片；页面名由侧栏给出。 -->
       <EvidenceHeader :info="info" @copy="copyText" />
-      <div v-if="info.index_only" class="ui-alert info" role="status">离线索引 · 原镜像不可用。容量与格式来自案件记录；目录和属性可在文件列表查看，恢复原路径的镜像后重新打开即可读取正文。</div>
+      <div v-if="info.index_only" class="ui-alert info" role="status">{{ tr("离线索引 · 原镜像不可用。容量与格式来自案件记录；目录和属性可在文件列表查看，恢复原路径的镜像后重新打开即可读取正文。") }}</div>
       <IosBackupCard v-if="info.ios_backup" :key="info.id" :info="info" @open-image="emit('open-image', $event)" />
 
       <EvidenceVolumes v-if="!info.index_only && !info.ios_backup" :key="info.id" :info="info" :can-unlock-container="canUnlockContainer" :case-directory="activeCase?.dir"
@@ -36,6 +36,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { computed, ref, watch } from 'vue';
 import { HardDrive } from 'lucide-vue-next';
 import type { ImageInfo } from '../../../lib/ipc/image';
@@ -68,9 +70,9 @@ function openUnlock(partitionId: number | null) {
 async function copyText(label: string, value: string) {
   try {
     await navigator.clipboard.writeText(value);
-    notifySuccess('已复制', label);
+    notifySuccess(tr("已复制"), label);
   } catch (e) {
-    notifyError('复制失败', String(e));
+    notifyError(tr("复制失败"), String(e));
   }
 }
 

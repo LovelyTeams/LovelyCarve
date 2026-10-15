@@ -35,7 +35,7 @@ bootstrap:
 
 # Run the complete frontend checks required for a contribution.
 [group("verify")]
-verify-fe: ipc-check frontend-structure-check typecheck test-fe build-fe
+verify-fe: ipc-check frontend-structure-check i18n-check typecheck test-fe build-fe
 
 # Run the backend checks required for a contribution.
 [group("verify")]
@@ -75,6 +75,11 @@ ipc-check:
 [group("frontend")]
 frontend-structure-check:
     bun scripts/check-frontend-structure.mjs
+
+# Check translations, interpolation parameters and untranslated template text.
+[group("frontend")]
+i18n-check:
+    bun scripts/check-i18n.mjs
 
 # Upgrade both viewer packages and refresh offline assets.
 [group("frontend")]

@@ -1,3 +1,5 @@
+
+import { tr } from '../../composables/useLocale';
 import { ref } from 'vue';
 import type { AddImageKind } from '../../features/evidence/model/types';
 import type { LoadFileOptions, OpenTabResult } from '../workspace/useTabManager';
@@ -49,7 +51,7 @@ export function useEvidenceOpen(options: {
     showAddImageDialog.value = false;
     if (kind === 'image') {
       // Open one or more disk images, each as its own tab (last one active).
-      const paths = await pickFiles('选择磁盘镜像（可多选）');
+      const paths = await pickFiles(tr("选择磁盘镜像（可多选）"));
       for (const path of paths) {
         if (/\.bcp$/i.test(path)) await openBcpFilePaths([path]);
         else await openImagePath(path);
@@ -67,7 +69,7 @@ export function useEvidenceOpen(options: {
       if (path) {
         const result = await openImagePath(path, { forceImage: true, quiet: true });
         if (!result.ok) {
-          notifyError('打开物理磁盘失败', `${path}：${result.error}（读取物理磁盘需要以管理员身份运行本程序）`);
+          notifyError(tr("打开物理磁盘失败"), tr("{0}：{1}（读取物理磁盘需要以管理员身份运行本程序）", { 0: path, 1: result.error }));
         }
       }
     } else {
@@ -92,10 +94,10 @@ export function useEvidenceOpen(options: {
     const result = await openImagePath(path, { quiet: true });
     if (result.ok) return true;
     const hint = path.startsWith('decrypted://')
-      ? '解密会话已关闭，请重新解锁源镜像'
-      : path.startsWith('vss://') ? '卷影副本会话已关闭，请在源镜像的「卷影副本」中重新打开'
-      : path.startsWith('assembled://') ? '请重新运行 RAID 检测后重试' : '';
-    notifyError('打开镜像失败', hint ? `${result.error}；${hint}` : result.error);
+      ? tr("解密会话已关闭，请重新解锁源镜像")
+      : path.startsWith('vss://') ? tr("卷影副本会话已关闭，请在源镜像的「卷影副本」中重新打开")
+      : path.startsWith('assembled://') ? tr("请重新运行 RAID 检测后重试") : '';
+    notifyError(tr("打开镜像失败"), hint ? `${result.error}；${hint}` : result.error);
     return false;
   }
 

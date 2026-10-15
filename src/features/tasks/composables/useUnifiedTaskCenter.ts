@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, toValue, type MaybeRefOrGetter } from 'vue';
 import type { SchedTaskRecord } from '../../../lib/ipc/tasks';
 import { useTaskCenter } from './useTaskCenter';
@@ -23,10 +25,10 @@ export function useUnifiedTaskCenter(imageId: MaybeRefOrGetter<string | null>) {
     ...builtin.tasks.value.map(task => ({
       id: task.id, sourceId: task.id, builtin: true, cancellable: !!task.cancelId,
       indeterminate: task.progress === null && task.status === 'running', cancelling: task.cancelling,
-      name: task.id, displayName: task.title, typeName: '内置任务', evidenceId: 0,
+      name: task.id, displayName: task.title, typeName: tr("内置任务"), evidenceId: 0,
       status: task.status, progress: task.progress ?? 0, internal: false, canPause: task.kind === 'carve', singleInstance: false,
       params: { nodeId: null, fileName: task.subject || null, platform: null, subItems: [] },
-      result: { summary: task.cancelling ? '正在取消，请稍候…' : task.message, artifactCount: task.results, timelineCount: task.timelineRows, findingCount: 0, runId: null },
+      result: { summary: task.cancelling ? tr("正在取消，请稍候…") : task.message, artifactCount: task.results, timelineCount: task.timelineRows, findingCount: 0, runId: null },
       info: { pluginId: '', analyzer: task.kind, imageId: task.imageId, trigger: task.trigger, parentTid: null, error: task.error },
       dependence: '', spendTimeSecs: Math.max(0, ((task.finished ?? builtin.now.value) - task.started) / 1000), remainTimeSecs: null,
       startAt: new Date(task.started).toISOString(), createAt: new Date(task.started).toISOString(), updateAt: '',
@@ -45,7 +47,7 @@ export function useUnifiedTaskCenter(imageId: MaybeRefOrGetter<string | null>) {
     try {
       if (action === 'cancel' && task.cancellable) await builtin.cancel(id);
       else if ((action === 'pause' || action === 'start') && task.canPause) await builtin[action](id);
-    } catch (error) { notifyError({ cancel: '取消任务失败', pause: '暂停任务失败', start: '继续任务失败', restart: '重启任务失败', remove: '删除任务失败' }[action], String(error)); }
+    } catch (error) { notifyError({ cancel: tr("取消任务失败"), pause: tr("暂停任务失败"), start: tr("继续任务失败"), restart: tr("重启任务失败"), remove: tr("删除任务失败") }[action], String(error)); }
   }
   return { tasks, activeCount, refresh, notices, loading: plugins.loading, error: plugins.error,
     cancel: (id: string) => act(id, 'cancel'), pause: (id: string) => act(id, 'pause'),

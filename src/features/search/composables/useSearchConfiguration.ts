@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, nextTick, onScopeDispose, reactive, ref, shallowRef, watch } from 'vue';
 import { fsChildren } from '../../../lib/ipc/fs/query';
 import type { FsNode } from '../../../lib/ipc/fs/types';
@@ -19,23 +21,23 @@ export function useSearchConfiguration(options: SearchConfigurationOptions) {
   const dialog = reactive(createSearchDraft());
 
   const scopeSummary = computed(() => {
-    if (dialog.scopeMode === 'tags') return dialog.tags.length ? `标签：${dialog.tags.join('、')}` : '全部文件（未限制标签）';
+    if (dialog.scopeMode === 'tags') return dialog.tags.length ? tr("标签：{0}", { 0: dialog.tags.map(tag => tr(tag)).join(', ') }) : tr("全部文件（未限制标签）");
     if (dialog.scopeMode === 'tree_nodes') {
       const paths = parseSearchPatterns(dialog.treeNodesText);
-      return paths.length ? `${paths.length} 个目录或文件` : '全部文件（未限制目录）';
+      return paths.length ? tr("{0} 个目录或文件", { 0: paths.length }) : tr("全部文件（未限制目录）");
     }
-    return dialog.partitions.length ? `已选 ${dialog.partitions.length} 个分区` : '全部分区';
+    return dialog.partitions.length ? tr("已选 {0} 个分区", { 0: dialog.partitions.length }) : tr("全部分区");
   });
   const advancedSummary = computed(() => [
-    `${dialog.codepages.length} 种编码`,
-    dialog.searchDeleted ? '含已删除文件' : '不含已删除文件',
-    ...(dialog.searchEmptySpace ? ['含未分配空间'] : []),
-    ...(dialog.regexesText.trim() ? ['含正则'] : []),
-    ...(dialog.calcHash ? ['计算哈希'] : []),
-    ...(dialog.matchCase ? ['区分大小写'] : []),
-    ...(dialog.stopAfterFirst ? ['每文件首命中'] : []),
+    tr("{0} 种编码", { 0: dialog.codepages.length }),
+    dialog.searchDeleted ? tr("含已删除文件") : tr("不含已删除文件"),
+    ...(dialog.searchEmptySpace ? [tr("含未分配空间")] : []),
+    ...(dialog.regexesText.trim() ? [tr("含正则")] : []),
+    ...(dialog.calcHash ? [tr("计算哈希")] : []),
+    ...(dialog.matchCase ? [tr("区分大小写")] : []),
+    ...(dialog.stopAfterFirst ? [tr("每文件首命中")] : []),
   ].join(' · '));
-  const dialogError = computed(() => searchConfigurationError(dialog));
+  const dialogError = computed(() => searchConfigurationError(dialog, tr));
 
   function toggleCodePage(page: SearchCodePage) {
     const index = dialog.codepages.indexOf(page);

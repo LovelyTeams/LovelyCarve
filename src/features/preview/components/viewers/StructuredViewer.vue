@@ -3,35 +3,35 @@
     <!-- 工具栏 -->
     <div class="toolbar">
       <div class="ui-seg">
-        <button class="ui-seg-item" :class="{ active: view === 'graph' }" @click="view = 'graph'" title="节点图">
-          <Network :size="13" /> 图
+        <button class="ui-seg-item" :class="{ active: view === 'graph' }" @click="view = 'graph'" :title="tr('节点图')">
+          <Network :size="13" /> {{ tr("图") }}
         </button>
-        <button class="ui-seg-item" :class="{ active: view === 'tree' }" @click="view = 'tree'" title="树视图">
-          <ListTree :size="13" /> 树
+        <button class="ui-seg-item" :class="{ active: view === 'tree' }" @click="view = 'tree'" :title="tr('树视图')">
+          <ListTree :size="13" /> {{ tr("树") }}
         </button>
       </div>
 
       <span class="ui-badge sm mono">{{ format.toUpperCase() }}</span>
-      <span v-if="okScene" class="stat mono">{{ nodeCount.toLocaleString() }} 节点</span>
+      <span v-if="okScene" class="stat mono">{{ nodeCount.toLocaleString() }} {{ tr("节点") }}</span>
 
       <div class="spacer"></div>
 
       <template v-if="view === 'graph' && okScene">
-        <button class="ui-icon-btn sm" @click="expandAll" title="全部展开" aria-label="全部展开"><ChevronsUpDown :size="14" /></button>
-        <button class="ui-icon-btn sm" @click="collapseAll" title="全部折叠" aria-label="全部折叠"><ChevronsDownUp :size="14" /></button>
+        <button class="ui-icon-btn sm" @click="expandAll" :title="tr('全部展开')" :aria-label="tr('全部展开')"><ChevronsUpDown :size="14" /></button>
+        <button class="ui-icon-btn sm" @click="collapseAll" :title="tr('全部折叠')" :aria-label="tr('全部折叠')"><ChevronsDownUp :size="14" /></button>
         <span class="ui-divider-v"></span>
-        <button class="ui-icon-btn sm" @click="zoomOut" title="缩小" aria-label="缩小"><ZoomOut :size="14" /></button>
-        <span class="zoom mono" @click="resetView" title="重置缩放">{{ Math.round(zoom * 100) }}%</span>
-        <button class="ui-icon-btn sm" @click="zoomIn" title="放大" aria-label="放大"><ZoomIn :size="14" /></button>
-        <button class="ui-icon-btn sm" @click="doFit" title="适应窗口" aria-label="适应窗口"><Frame :size="14" /></button>
+        <button class="ui-icon-btn sm" @click="zoomOut" :title="tr('缩小')" :aria-label="tr('缩小')"><ZoomOut :size="14" /></button>
+        <span class="zoom mono" @click="resetView" :title="tr('重置缩放')">{{ Math.round(zoom * 100) }}%</span>
+        <button class="ui-icon-btn sm" @click="zoomIn" :title="tr('放大')" :aria-label="tr('放大')"><ZoomIn :size="14" /></button>
+        <button class="ui-icon-btn sm" @click="doFit" :title="tr('适应窗口')" :aria-label="tr('适应窗口')"><Frame :size="14" /></button>
       </template>
     </div>
 
     <!-- 错误 / 空 -->
     <div v-if="scene.kind === 'error'" class="state-row mono error">
-      <AlertTriangle :size="14" /> 无法解析为 {{ format.toUpperCase() }} 结构：{{ scene.message }}。请切换到「文本 / 十六进制」视图。
+      <AlertTriangle :size="14" /> {{ tr("无法解析为") }} {{ format.toUpperCase() }} {{ tr("结构：") }}{{ scene.message }}{{ tr("。请切换到「文本 / 十六进制」视图。") }}
     </div>
-    <div v-else-if="scene.kind === 'empty'" class="state-row mono">空文档，无可视化内容。</div>
+    <div v-else-if="scene.kind === 'empty'" class="state-row mono">{{ tr("空文档，无可视化内容。") }}</div>
 
     <!-- 图视图 -->
     <div
@@ -46,7 +46,7 @@
       @pointerleave="onPointerUp"
     >
       <div v-if="overCap" class="cap-banner mono">
-        <AlertTriangle :size="12" /> 结构较大（超过 {{ NODE_CAP.toLocaleString() }} 节点），部分深层分支已折叠为摘要；可改用「树」或文本视图。
+        <AlertTriangle :size="12" /> {{ tr("结构较大（超过") }} {{ NODE_CAP.toLocaleString() }} {{ tr("节点），部分深层分支已折叠为摘要；可改用「树」或文本视图。") }}
       </div>
 
       <div class="viewport" :style="viewportStyle">
@@ -74,7 +74,7 @@
                 class="row-toggle"
                 @pointerdown.stop
                 @click.stop="toggle(r.childId!)"
-                :title="collapsed.has(r.childId) ? '展开' : '折叠'"
+                :title="collapsed.has(r.childId) ? tr('展开') : tr('折叠')"
               >
                 <Plus v-if="collapsed.has(r.childId)" :size="11" />
                 <Minus v-else :size="11" />
@@ -87,7 +87,7 @@
         </div>
       </div>
 
-      <div class="hint mono">滚轮缩放 · 拖拽平移</div>
+      <div class="hint mono">{{ tr("滚轮缩放 · 拖拽平移") }}</div>
     </div>
 
     <!-- 树视图 -->
@@ -98,6 +98,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../../composables/useLocale';
+
 // JSON / YAML / XML 的「原类型视图」：仿 jsoncrack 把结构化文本渲染成可折叠的
 // 节点图（图）与缩进折叠列表（树）。解析全在前端（parse.ts），不走后端/IPC——
 // 文本由父级 decodedText 经 :text 传入，与 CodeViewer 同源。
@@ -134,15 +136,15 @@ const { panX, panY, zoom, isPanning, onWheel, onPointerDown, onPointerMove, onPo
   useGraphPanZoom();
 
 // 解析 → 全量图（仅随文本/格式变；折叠不重建）。
-const parsed = computed(() => parseStructured(props.text ?? '', props.format));
-const fullGraph = computed(() => (parsed.value.value ? buildGraph(parsed.value.value) : null));
+const parsed = computed(() => parseStructured(props.text ?? '', props.format, tr));
+const fullGraph = computed(() => (parsed.value.value ? buildGraph(parsed.value.value, tr) : null));
 
 // 折叠感知的布局 + 可见子集。layoutGraph 会就地写回节点坐标。
 const scene = computed(() => {
   const p = parsed.value;
   if (p.error === 'empty') return { kind: 'empty' as const, format: p.format };
   if (!p.value || !fullGraph.value) {
-    return { kind: 'error' as const, format: p.format, message: p.error ?? '解析失败' };
+    return { kind: 'error' as const, format: p.format, message: p.error ?? tr("解析失败") };
   }
   const g = fullGraph.value;
   const b = layoutGraph(g.nodes, { collapsed: collapsed.value });

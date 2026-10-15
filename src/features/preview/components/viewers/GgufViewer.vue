@@ -1,6 +1,6 @@
 <template>
   <div class="report-viewer gguf-viewer">
-    <div v-if="loading" class="state-row mono"><Loader2 :size="14" class="spin" /> 正在解析 GGUF 结构…</div>
+    <div v-if="loading" class="state-row mono"><Loader2 :size="14" class="spin" /> {{ tr("正在解析 GGUF 结构…") }}</div>
     <div v-else-if="error" class="state-row mono error">{{ error }}</div>
 
     <template v-else-if="report">
@@ -21,40 +21,40 @@
         <div class="tiles">
           <div class="tile">
             <span class="tile-num">{{ humanParams }}</span>
-            <span class="tile-label">参数量</span>
+            <span class="tile-label">{{ tr("参数量") }}</span>
           </div>
           <div class="tile">
             <span class="tile-num">{{ report.tensor_count.toLocaleString() }}</span>
-            <span class="tile-label">张量</span>
+            <span class="tile-label">{{ tr("张量") }}</span>
           </div>
           <div class="tile">
             <span class="tile-num">{{ report.metadata_kv_count.toLocaleString() }}</span>
-            <span class="tile-label">元数据项</span>
+            <span class="tile-label">{{ tr("元数据项") }}</span>
           </div>
           <div class="tile">
             <span class="tile-num">{{ report.quantization || '—' }}</span>
-            <span class="tile-label">量化</span>
+            <span class="tile-label">{{ tr("量化") }}</span>
           </div>
           <div class="tile">
             <span class="tile-num">{{ formatBytes(report.file_size) }}</span>
-            <span class="tile-label">文件大小</span>
+            <span class="tile-label">{{ tr("文件大小") }}</span>
           </div>
         </div>
 
         <div class="detail-grid">
-          <div><span class="dk">架构</span><span class="dv mono">{{ report.architecture || '—' }}</span></div>
-          <div><span class="dk">量化</span><span class="dv mono">{{ quantLabel }}</span></div>
-          <div><span class="dk">完整参数量</span><span class="dv mono">{{ report.total_parameters.toLocaleString() }}</span></div>
-          <div><span class="dk">对齐</span><span class="dv mono">{{ report.alignment }} 字节</span></div>
-          <div><span class="dk">张量数据偏移</span><span class="dv mono">{{ formatBytes(report.tensor_data_offset) }} · 0x{{ report.tensor_data_offset.toString(16).toUpperCase() }}</span></div>
-          <div><span class="dk">GGUF 版本</span><span class="dv mono">v{{ report.version }}</span></div>
+          <div><span class="dk">{{ tr("架构") }}</span><span class="dv mono">{{ report.architecture || '—' }}</span></div>
+          <div><span class="dk">{{ tr("量化") }}</span><span class="dv mono">{{ quantLabel }}</span></div>
+          <div><span class="dk">{{ tr("完整参数量") }}</span><span class="dv mono">{{ report.total_parameters.toLocaleString() }}</span></div>
+          <div><span class="dk">{{ tr("对齐") }}</span><span class="dv mono">{{ report.alignment }} {{ tr("字节") }}</span></div>
+          <div><span class="dk">{{ tr("张量数据偏移") }}</span><span class="dv mono">{{ formatBytes(report.tensor_data_offset) }} · 0x{{ report.tensor_data_offset.toString(16).toUpperCase() }}</span></div>
+          <div><span class="dk">{{ tr("GGUF 版本") }}</span><span class="dv mono">v{{ report.version }}</span></div>
         </div>
       </section>
 
       <!-- 张量类型分布 -->
       <section v-if="report.tensor_types.length" class="card">
         <div class="card-head">
-          <h4 class="card-title">张量类型分布</h4>
+          <h4 class="card-title">{{ tr("张量类型分布") }}</h4>
         </div>
         <div class="share-bar" v-if="report.total_parameters > 0">
           <span
@@ -69,7 +69,7 @@
           <div v-for="(t, i) in report.tensor_types" :key="t.type_name" class="type-chip">
             <span class="type-dot" :style="{ background: typeColor(i) }"></span>
             <span class="type-name mono">{{ t.type_name }}</span>
-            <span class="type-meta mono">{{ t.count }} 个 · {{ paramPct(t.parameters) }}</span>
+            <span class="type-meta mono">{{ t.count }} {{ tr("个 ·") }} {{ paramPct(t.parameters) }}</span>
           </div>
         </div>
       </section>
@@ -77,16 +77,16 @@
       <!-- 元数据 -->
       <section class="card">
         <div class="card-head">
-          <h4 class="card-title">元数据 <span class="count-badge mono">{{ report.metadata.length }}</span></h4>
+          <h4 class="card-title">{{ tr("元数据") }} <span class="count-badge mono">{{ report.metadata.length }}</span></h4>
           <div class="filter">
             <Search :size="12" />
-            <input v-model="metaFilter" type="text" placeholder="过滤键 / 值" spellcheck="false" />
+            <input v-model="metaFilter" type="text" :placeholder="tr('过滤键 / 值')" spellcheck="false" />
           </div>
         </div>
         <div class="table-scroll">
           <table class="data-table g-table">
             <thead>
-              <tr><th class="col-key">键</th><th class="col-type">类型</th><th>值</th></tr>
+              <tr><th class="col-key">{{ tr("键") }}</th><th class="col-type">{{ tr("类型") }}</th><th>{{ tr("值") }}</th></tr>
             </thead>
             <tbody>
               <tr v-for="m in filteredMetadata" :key="m.key">
@@ -101,7 +101,7 @@
                 </td>
               </tr>
               <tr v-if="filteredMetadata.length === 0">
-                <td colspan="3" class="empty-row">无匹配项</td>
+                <td colspan="3" class="empty-row">{{ tr("无匹配项") }}</td>
               </tr>
             </tbody>
           </table>
@@ -112,37 +112,37 @@
       <section class="card">
         <div class="card-head">
           <h4 class="card-title">
-            张量
+            {{ tr("张量") }}
             <span class="count-badge mono">{{ report.tensors_truncated ? `${report.tensors.length} / ${report.tensor_count}` : report.tensors.length }}</span>
           </h4>
           <div class="filter">
             <Search :size="12" />
-            <input v-model="tensorFilter" type="text" placeholder="过滤名称 / 类型" spellcheck="false" />
+            <input v-model="tensorFilter" type="text" :placeholder="tr('过滤名称 / 类型')" spellcheck="false" />
           </div>
         </div>
-        <div v-if="report.tensors.length === 0" class="empty-row pad">该文件不含张量。</div>
+        <div v-if="report.tensors.length === 0" class="empty-row pad">{{ tr("该文件不含张量。") }}</div>
         <template v-else>
           <div class="table-scroll">
             <table class="data-table g-table">
               <thead>
-                <tr><th>名称</th><th>类型</th><th>形状</th><th class="ralign">参数量</th><th class="ralign">偏移</th></tr>
+                <tr><th>{{ tr("名称") }}</th><th>{{ tr("类型") }}</th><th>{{ tr("形状") }}</th><th class="ralign">{{ tr("参数量") }}</th><th class="ralign">{{ tr("偏移") }}</th></tr>
               </thead>
               <tbody>
                 <tr v-for="(t, i) in filteredTensors" :key="`${i}-${t.name}`">
                   <td class="t-name mono">{{ t.name }}</td>
                   <td><span class="t-type">{{ t.type_name }}</span></td>
-                  <td class="mono t-shape">{{ t.dimensions.length ? t.dimensions.join(' × ') : '标量' }}</td>
+                  <td class="mono t-shape">{{ t.dimensions.length ? t.dimensions.join(' × ') : tr("标量") }}</td>
                   <td class="mono ralign">{{ t.parameters.toLocaleString() }}</td>
                   <td class="mono ralign dim">0x{{ t.offset.toString(16).toUpperCase() }}</td>
                 </tr>
                 <tr v-if="filteredTensors.length === 0">
-                  <td colspan="5" class="empty-row">无匹配项</td>
+                  <td colspan="5" class="empty-row">{{ tr("无匹配项") }}</td>
                 </tr>
               </tbody>
             </table>
           </div>
           <div v-if="report.tensors_truncated" class="trunc-note mono">
-            张量较多，仅显示前 {{ report.tensors.length.toLocaleString() }} 个（共 {{ report.tensor_count.toLocaleString() }}）；上方参数量 / 类型分布按全部张量统计。
+            {{ tr("张量较多，仅显示前") }} {{ report.tensors.length.toLocaleString() }} {{ tr("个（共") }} {{ report.tensor_count.toLocaleString() }}{{ tr("）；上方参数量 / 类型分布按全部张量统计。") }}
           </div>
         </template>
       </section>
@@ -150,7 +150,7 @@
       <!-- 解析警告 -->
       <section v-if="report.parse_warnings.length" class="card warn-card">
         <div class="card-head">
-          <h4 class="card-title"><AlertTriangle :size="13" /> 解析警告</h4>
+          <h4 class="card-title"><AlertTriangle :size="13" /> {{ tr("解析警告") }}</h4>
         </div>
         <div v-for="(w, i) in report.parse_warnings" :key="i" class="warn-line mono">{{ w }}</div>
       </section>
@@ -159,6 +159,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../../composables/useLocale';
+
 // GGUF（llama.cpp / ggml 大模型权重容器）的「原类型视图」：调用 fs_gguf_preview
 // 拿结构化报告，按模型来源视角渲染（架构 / 量化 / 参数量 / 张量类型分布 / 完整
 // 元数据 / 张量布局）。只读文件前部头区，不触碰数 GB 的权重数据本体。
@@ -179,7 +181,7 @@ const metaFilter = ref('');
 const tensorFilter = ref('');
 
 const displayName = computed(
-  () => report.value?.name || report.value?.architecture || '未命名 GGUF 模型',
+  () => report.value?.name || report.value?.architecture || tr("未命名 GGUF 模型"),
 );
 
 const quantLabel = computed(() => {

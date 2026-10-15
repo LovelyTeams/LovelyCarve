@@ -7,51 +7,51 @@
         <span class="ui-badge array-status" :class="status.sev">
           <component :is="statusIcons[status.sev]" :size="12" />{{ status.label }}
         </span>
-        <span v-if="arr.heuristic" class="ui-badge outline" :title="heuristicTitle(arr)">参数推定</span>
-        <span class="member-count mono">{{ activeMembers(arr) }} / {{ arr.raid_disks }} 成员盘</span>
+        <span v-if="arr.heuristic" class="ui-badge outline" :title="heuristicTitle(arr, tr)">{{ tr("参数推定") }}</span>
+        <span class="member-count mono">{{ activeMembers(arr) }} / {{ arr.raid_disks }} {{ tr("成员盘") }}</span>
       </div>
       <div v-if="arr.assembled_image_id && !isCurrentImage" class="array-actions">
         <button class="ui-btn" :disabled="exporting" :aria-busy="exporting"
-          title="将重组镜像导出为 RAW（.dd）文件" @click="emit('export')">
+          :title="tr('将重组镜像导出为 RAW（.dd）文件')" @click="emit('export')">
           <Loader2 v-if="exporting" :size="14" class="spin" />
-          <HardDriveDownload v-else :size="14" />导出重组镜像
+          <HardDriveDownload v-else :size="14" />{{ tr("导出重组镜像") }}
         </button>
         <button class="ui-btn primary" :disabled="opening" :aria-busy="opening"
-          title="打开重组镜像标签" @click="emit('open')">
+          :title="tr('打开重组镜像标签')" @click="emit('open')">
           <Loader2 v-if="opening" :size="14" class="spin" />
-          <ExternalLink v-else :size="14" />打开重组镜像
+          <ExternalLink v-else :size="14" />{{ tr("打开重组镜像") }}
         </button>
       </div>
     </header>
 
-    <section class="members-section" aria-label="成员盘顺序">
+    <section class="members-section" :aria-label="tr('成员盘顺序')">
       <ol class="member-order">
         <li v-for="entry in memberSlots" :key="entry.slot" class="member-order-item">
-          <span class="ui-badge outline mono slot-number" :title="`槽位 ${entry.slot}`">{{ entry.slot }}</span>
-          <span v-if="entry.member" class="chip-name" :title="originTitle(entry.member.origin, imagePaths)">
+          <span class="ui-badge outline mono slot-number" :title="tr('槽位 {0}', { 0: entry.slot })">{{ entry.slot }}</span>
+          <span v-if="entry.member" class="chip-name" :title="originTitle(entry.member.origin, imagePaths, tr)">
             {{ memberShortLabel(entry.member, imagePaths) }}
           </span>
-          <span v-else class="missing-member">缺失成员</span>
-          <span v-if="entry.member?.reconstructed" class="ui-badge sm warn">校验重建</span>
+          <span v-else class="missing-member">{{ tr("缺失成员") }}</span>
+          <span v-if="entry.member?.reconstructed" class="ui-badge sm warn">{{ tr("校验重建") }}</span>
         </li>
       </ol>
     </section>
 
     <details v-disclosure-motion :key="`${imageId}:${arr.set_uuid}`"
       class="ui-disclosure layout-diagram array-details" :open="diagramOpen" @toggle="onDiagramToggle">
-      <summary><ChevronRight :size="14" class="ui-chevron" />重组详情</summary>
+      <summary><ChevronRight :size="14" class="ui-chevron" />{{ tr("重组详情") }}</summary>
       <div class="details-content" :class="{ 'with-diagram': showDiagram(arr) }">
         <dl class="geometry-fields">
-          <div><dt>数据块大小</dt><dd class="mono">{{ chunkDisplay(arr) }}</dd></div>
-          <div v-if="arr.level === 5 || arr.level === 6"><dt>校验布局</dt><dd>{{ layoutLabel(arr) }}</dd></div>
-          <div><dt>数据偏移</dt><dd class="mono">{{ dataOffsetDisplay(arr) }}</dd></div>
+          <div><dt>{{ tr("数据块大小") }}</dt><dd class="mono">{{ chunkDisplay(arr) }}</dd></div>
+          <div v-if="arr.level === 5 || arr.level === 6"><dt>{{ tr("校验布局") }}</dt><dd>{{ layoutLabel(arr, tr) }}</dd></div>
+          <div><dt>{{ tr("数据偏移") }}</dt><dd class="mono">{{ dataOffsetDisplay(arr, tr) }}</dd></div>
         </dl>
         <RaidLayoutDiagram v-if="showDiagram(arr)" :level="arr.level" :layout="arr.layout"
           :num-disks="arr.raid_disks" :disk-labels="diskLabelsFor(arr, imagePaths)"
           :missing-slot="missingSlotFor(arr)" :chunk-label="chunkDisplay(arr)" />
       </div>
       <div v-if="diagnostics?.length" class="details-diagnostics diagnostics">
-        <h5>检测说明</h5>
+        <h5>{{ tr("检测说明") }}</h5>
         <ul class="mono"><li v-for="(message, index) in diagnostics" :key="index">{{ message }}</li></ul>
       </div>
     </details>
@@ -59,6 +59,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { computed } from 'vue';
 import { CircleAlert, CircleCheck, CircleDot, ChevronRight, ExternalLink, HardDriveDownload, Loader2 } from 'lucide-vue-next';
 import { vDisclosureMotion } from '../../../composables/uiMotionDirectives';
@@ -70,7 +72,7 @@ const props = defineProps<{ arr: RaidArray; imageId: string; imagePaths: Readonl
 const emit = defineEmits<{ open: []; export: []; 'diagram-toggle': [open: boolean] }>();
 const isCurrentImage = computed(() => props.arr.assembled_image_id === props.imageId);
 const statusIcons = { success: CircleCheck, warn: CircleAlert, info: CircleDot };
-const status = computed(() => arrayStatus(props.arr));
+const status = computed(() => arrayStatus(props.arr, tr));
 const customName = computed(() => props.arr.set_name === `auto-raid${props.arr.level}` ? null : props.arr.set_name);
 const memberSlots = computed(() => {
   const members = new Map(orderedMembers(props.arr).map(member => [member.slot, member]));

@@ -1,16 +1,18 @@
 <template>
   <div class="binary-viewer">
-    <div v-if="loading" class="state-row mono"><Loader2 :size="14" class="spin" /> 正在解析二进制结构…</div>
+    <div v-if="loading" class="state-row mono"><Loader2 :size="14" class="spin" /> {{ tr("正在解析二进制结构…") }}</div>
     <div v-else-if="error" class="state-row mono error">{{ error }}</div>
     <PeViewer v-else-if="peReport" :report="peReport" />
     <ElfViewer v-else-if="elfReport" :report="elfReport" />
     <MachoViewer v-else-if="machoReport" :report="machoReport" />
     <ArchiveViewer v-else-if="archiveReport" :report="archiveReport" />
-    <div v-else class="state-row mono">无法识别的二进制格式。</div>
+    <div v-else class="state-row mono">{{ tr("无法识别的二进制格式。") }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../../composables/useLocale';
+
 // 二进制「原类型视图」分发器：调用 fs_binary_preview 拿带 `kind` 标签的报告，
 // 按格式渲染 ELF / Mach-O / PE / ar 子视图。loading / error 在此统一处理，子视图
 // 只接收已解析的报告（prop 驱动）。

@@ -1,11 +1,11 @@
 <template>
-  <section class="start-page" aria-label="起始页">
+  <section class="start-page" :aria-label="tr('起始页')">
     <div class="start-content">
       <header class="start-brand">
         <BrandMark :size="96" variant="background" />
         <div>
           <h1>LovelyCarve<span>.</span></h1>
-          <p>磁盘取证 / 数据恢复工具</p>
+          <p>{{ tr("磁盘取证 / 数据恢复工具") }}</p>
         </div>
       </header>
       <div class="start-cards">
@@ -28,29 +28,29 @@
             </svg>
             <FileDown :size="64" :stroke-width="0.75" class="art-image" />
           </div>
-          <h2 id="import-title">{{ dragging ? '松开以添加证据' : '拖入文件' }}</h2>
-          <p class="format-label">支持镜像与归档格式</p>
-          <div class="format-list" aria-label="常用支持格式">
+          <h2 id="import-title">{{ dragging ? tr("松开以添加证据") : tr("拖入文件") }}</h2>
+          <p class="format-label">{{ tr("支持镜像与归档格式") }}</p>
+          <div class="format-list" :aria-label="tr('常用支持格式')">
             <span v-for="format in formats" :key="format" class="ui-badge mono outline">{{ format }}</span>
           </div>
           <div class="import-actions">
-            <button class="ui-btn lg primary block" type="button" title="添加证据 (Ctrl+O)" :disabled="busy" @click="$emit('open')">
+            <button class="ui-btn lg primary block" type="button" :title="tr('添加证据 (Ctrl+O)')" :disabled="busy" @click="$emit('open')">
               <Loader2 v-if="busy" :size="18" class="spin" aria-hidden="true" />
               <FolderOpen v-else :size="18" aria-hidden="true" />
-              <span>{{ busy ? loadLabel : '选择文件' }}</span>
+              <span>{{ busy ? loadLabel : tr("选择文件") }}</span>
               <ArrowRight v-if="!busy" :size="18" aria-hidden="true" />
             </button>
             <button class="ui-btn lg block" type="button" :disabled="busy" @click="$emit('open-case')">
-              <BriefcaseBusiness :size="18" aria-hidden="true" /><span>案件管理</span>
+              <BriefcaseBusiness :size="18" aria-hidden="true" /><span>{{ tr("案件管理") }}</span>
             </button>
           </div>
-          <p class="shortcut"><kbd class="ui-kbd">Ctrl</kbd><kbd class="ui-kbd">O</kbd><span>添加镜像、文件夹或磁盘</span></p>
+          <p class="shortcut"><kbd class="ui-kbd">Ctrl</kbd><kbd class="ui-kbd">O</kbd><span>{{ tr("添加镜像、文件夹或磁盘") }}</span></p>
           <span class="sr-only" role="status">{{ busy ? loadLabel : '' }}</span>
         </section>
         <section class="ui-card recent-card" aria-labelledby="recent-title">
           <header class="recent-header">
-            <h2 id="recent-title" ref="recentTitle" tabindex="-1">最近打开的案件</h2>
-            <button ref="clearRecentButton" type="button" class="ui-btn ghost sm" title="清空最近案件记录" :disabled="busy || clearingRecent || !recentCases.length" @click="handleClearRecent">清空</button>
+            <h2 id="recent-title" ref="recentTitle" tabindex="-1">{{ tr("最近打开的案件") }}</h2>
+            <button ref="clearRecentButton" type="button" class="ui-btn ghost sm" :title="tr('清空最近案件记录')" :disabled="busy || clearingRecent || !recentCases.length" @click="handleClearRecent">{{ tr("清空") }}</button>
           </header>
           <div v-if="recentCases.length" class="recent-list ui-stagger">
             <button v-for="entry in recentCases" :key="entry.dir" class="recent-entry" type="button" :disabled="busy" :title="entry.dir" @click="$emit('open-recent', entry)">
@@ -64,8 +64,8 @@
           </div>
           <div v-else class="ui-empty recent-empty">
             <span class="ui-empty-icon" aria-hidden="true"><History :size="26" :stroke-width="1.5" /></span>
-            <p class="ui-empty-title">还没有最近打开的案件</p>
-            <p class="ui-empty-desc">创建或打开案件后，会显示在这里</p>
+            <p class="ui-empty-title">{{ tr("还没有最近打开的案件") }}</p>
+            <p class="ui-empty-desc">{{ tr("创建或打开案件后，会显示在这里") }}</p>
           </div>
         </section>
       </div>
@@ -74,6 +74,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../composables/useLocale';
+
 import { nextTick, ref } from 'vue';
 import { ArrowRight, BriefcaseBusiness, ChevronRight, FileDown, FolderOpen, History, Loader2 } from 'lucide-vue-next';
 import BrandMark from '../../components/display/BrandMark.vue';
@@ -90,7 +92,7 @@ const recentTitle = ref<HTMLHeadingElement | null>(null);
 const formats = ['.dd', '.img', '.raw', '.E01', '.AD1', '.vmdk', '.vhdx', '.qcow2', '.vdi', '.iso', '.zip', '.7z', '.tar'];
 function formatDate(value: string) {
   const timestamp = formatEpochSeconds(Date.parse(value) / 1000, { precision: 'seconds', fallback: '', zeroAsMissing: false });
-  return timestamp ? `${timestamp}（本地）` : '时间未知';
+  return timestamp ? tr("{0}（本地）", { 0: timestamp }) : tr("时间未知");
 }
 
 async function handleClearRecent() {
@@ -98,9 +100,9 @@ async function handleClearRecent() {
   clearingRecent.value = true;
   try {
     const accepted = await confirm({
-      title: '清空最近案件记录',
-      message: '将清除本地最近案件记录。当前案件、案件目录和案件登记均会保留；创建或打开案件后会重新记录。',
-      confirmText: '清空记录',
+      title: tr("清空最近案件记录"),
+      message: tr("将清除本地最近案件记录。当前案件、案件目录和案件登记均会保留；创建或打开案件后会重新记录。"),
+      confirmText: tr("清空记录"),
       danger: true,
     });
     if (accepted && !props.busy) emit('clear-recent');

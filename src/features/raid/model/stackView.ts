@@ -1,3 +1,4 @@
+import { sourceText, type Translator } from '../../../i18n/translate';
 import type { RaidStack, RaidArray, RaidArrayMember, RaidMemberOrigin, RaidVolumeGroup } from '../../../lib/ipc/raid';
 import { formatBinaryBytes as formatBytes } from '../../../utils/format';
 export { formatBytes };
@@ -32,11 +33,11 @@ export function arrayTitle(arr: RaidArray): string {
 
 /** Tooltip for the metadata-less badge: the parameters the heuristic
  *  recovered, so an examiner can see the reconstruction was inferred. */
-export function heuristicTitle(arr: RaidArray): string {
-  const layoutNames = ['左异步', '右异步', '左同步', '右同步'];
-  const parts = ['无 RAID 元数据，参数经文件系统校验推定', `块大小 ${arr.chunksize_sectors / 2}K`];
-  if (arr.level === 5) parts.push(`布局 ${layoutNames[arr.layout] ?? `#${arr.layout}`}`);
-  parts.push(`数据偏移 ${arr.data_offset_sectors} 扇区`);
+export function heuristicTitle(arr: RaidArray, tr: Translator = sourceText): string {
+  const layoutNames = [tr("左异步"), tr("右异步"), tr("左同步"), tr("右同步")];
+  const parts = [tr("无 RAID 元数据，参数经文件系统校验推定"), tr("块大小 {0}K", { 0: arr.chunksize_sectors / 2 })];
+  if (arr.level === 5) parts.push(tr("布局 {0}", { 0: layoutNames[arr.layout] ?? `#${arr.layout}` }));
+  parts.push(tr("数据偏移 {0} 扇区", { 0: arr.data_offset_sectors }));
   return parts.join(' · ');
 }
 
@@ -46,21 +47,21 @@ export function activeMembers(arr: RaidArray): number {
 
 type StatusSeverity = 'success' | 'warn' | 'info';
 
-export function arrayStatus(arr: RaidArray): { label: string; sev: StatusSeverity } {
-  if (arr.assembled_image_id) return { label: '已重组', sev: 'success' };
+export function arrayStatus(arr: RaidArray, tr: Translator = sourceText): { label: string; sev: StatusSeverity } {
+  if (arr.assembled_image_id) return { label: tr("已重组"), sev: 'success' };
   if (activeMembers(arr) < arr.raid_disks) {
-    return { label: `成员不全 ${activeMembers(arr)}/${arr.raid_disks}`, sev: 'warn' };
+    return { label: tr("成员不全 {0}/{1}", { 0: activeMembers(arr), 1: arr.raid_disks }), sev: 'warn' };
   }
   if (arr.level !== 0 && arr.level !== 5) {
-    return { label: `RAID${arr.level} 暂不支持重组`, sev: 'info' };
+    return { label: tr("RAID{0} 暂不支持重组", { 0: arr.level }), sev: 'info' };
   }
   // mdadm layouts 0..3 are the only RAID5 variants the assembler replays.
   if (arr.level === 5 && arr.layout > 3) {
-    return { label: `RAID5 布局 ${arr.layout} 暂不支持重组`, sev: 'info' };
+    return { label: tr("RAID5 布局 {0} 暂不支持重组", { 0: arr.layout }), sev: 'info' };
   }
   // Remaining causes (filesystem not recognised, member geometry conflicts,
   // probe read errors) are only distinguishable via the diagnostics list.
-  return { label: '未能重组，见诊断', sev: 'warn' };
+  return { label: tr("未能重组，见诊断"), sev: 'warn' };
 }
 
 /** Relative capacity of a member vs. the largest column (0..100), for the thin
@@ -97,12 +98,12 @@ const LEVEL_NAMES: Record<number, string> = {
   10: 'RAID 10（条带镜像）',
 };
 
-export function levelLabel(arr: RaidArray): string {
-  return LEVEL_NAMES[arr.level] ?? `RAID ${arr.level}`;
+export function levelLabel(arr: RaidArray, tr: Translator = sourceText): string {
+  return tr(LEVEL_NAMES[arr.level] ?? `RAID ${arr.level}`);
 }
 
-export function layoutLabel(arr: RaidArray): string {
-  return LAYOUT_NAMES[arr.layout] ?? `布局 #${arr.layout}`;
+export function layoutLabel(arr: RaidArray, tr: Translator = sourceText): string {
+  return (LAYOUT_NAMES[arr.layout] ? tr(LAYOUT_NAMES[arr.layout]) : undefined) ?? tr("布局 #{0}", { 0: arr.layout });
 }
 
 /** Chunk (stripe unit) size — `chunksize_sectors` is in 512-byte sectors. */
@@ -112,10 +113,10 @@ export function chunkDisplay(arr: RaidArray): string {
 }
 
 /** Per-member reserved header before the array data starts. */
-export function dataOffsetDisplay(arr: RaidArray): string {
+export function dataOffsetDisplay(arr: RaidArray, tr: Translator = sourceText): string {
   const s = arr.data_offset_sectors;
-  if (s === 0) return '0 扇区';
-  return `${s.toLocaleString()} 扇区 · ${formatBytes(s * 512)}`;
+  if (s === 0) return tr("0 扇区");
+  return tr("{0} 扇区 · {1}", { 0: s.toLocaleString(), 1: formatBytes(s * 512) });
 }
 
 /** The stripe diagram only makes sense for the striped/parity levels we model
@@ -154,10 +155,10 @@ function baseName(path: string): string {
   return parts[parts.length - 1] || path;
 }
 
-export function originTitle(origin: RaidMemberOrigin, imagePaths: ReadonlyMap<string, string>): string {
-  if (origin.kind === 'lv') return `逻辑卷 ${origin.vg_name}/${origin.lv_name}（VG ${origin.vg_uuid}）`;
+export function originTitle(origin: RaidMemberOrigin, imagePaths: ReadonlyMap<string, string>, tr: Translator = sourceText): string {
+  if (origin.kind === 'lv') return tr("逻辑卷 {0}/{1}（VG {2}）", { 0: origin.vg_name, 1: origin.lv_name, 2: origin.vg_uuid });
   const path = imagePaths.get(origin.image_id) ?? origin.image_id;
-  return `${path} · 分区${origin.partition_id} · 偏移 0x${origin.byte_offset.toString(16).toUpperCase()}`;
+  return tr("{0} · 分区{1} · 偏移 0x{2}", { 0: path, 1: origin.partition_id, 2: origin.byte_offset.toString(16).toUpperCase() });
 }
 
 /** Suggested RAW filename for a reconstructed array: array name (or a short

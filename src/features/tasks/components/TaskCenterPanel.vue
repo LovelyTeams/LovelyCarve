@@ -1,71 +1,71 @@
 <template>
-  <section class="task-center" aria-label="任务列表">
+  <section class="task-center" :aria-label="tr('任务列表')">
     <div class="task-toolbar">
-      <label class="ui-search task-search"><Search :size="14" /><input v-model="search" aria-label="搜索任务" placeholder="搜索任务或文件" /><button v-if="search" class="ui-icon-btn sm" aria-label="清除任务搜索" @click="search = ''"><X :size="13" /></button></label>
-      <button v-if="internalCount" class="ui-btn sm ghost" :aria-pressed="showInternal" :title="showInternal ? '隐藏调度器内部任务' : '显示调度器内部任务'" @click="showInternal = !showInternal"><component :is="showInternal ? Eye : EyeOff" :size="13" />内部 {{ internalCount }}</button>
-      <button class="ui-icon-btn" :disabled="loading" aria-label="刷新任务" title="刷新" @click="refresh"><Loader2 v-if="loading" :size="15" class="spin" /><RefreshCw v-else :size="15" /></button>
+      <label class="ui-search task-search"><Search :size="14" /><input v-model="search" :aria-label="tr('搜索任务')" :placeholder="tr('搜索任务或文件')" /><button v-if="search" class="ui-icon-btn sm" :aria-label="tr('清除任务搜索')" @click="search = ''"><X :size="13" /></button></label>
+      <button v-if="internalCount" class="ui-btn sm ghost" :aria-pressed="showInternal" :title="showInternal ? tr('隐藏调度器内部任务') : tr('显示调度器内部任务')" @click="showInternal = !showInternal"><component :is="showInternal ? Eye : EyeOff" :size="13" />{{ tr("内部") }} {{ internalCount }}</button>
+      <button class="ui-icon-btn" :disabled="loading" :aria-label="tr('刷新任务')" :title="tr('刷新')" @click="refresh"><Loader2 v-if="loading" :size="15" class="spin" /><RefreshCw v-else :size="15" /></button>
     </div>
     <div class="task-scroll" :aria-busy="loading">
-      <div v-if="error" class="ui-empty state-box error"><span class="ui-empty-icon"><CircleAlert :size="22" /></span><p class="ui-empty-title">读取任务失败</p><p class="ui-empty-desc">{{ error }}</p><div class="ui-empty-actions"><button class="ui-btn sm" @click="refresh">重试</button></div></div>
-      <div v-else-if="loading && !visibleTasks.length" class="ui-empty state-box"><span class="ui-empty-icon accent"><Loader2 :size="22" class="spin" /></span><p class="ui-empty-desc">正在读取任务…</p></div>
+      <div v-if="error" class="ui-empty state-box error"><span class="ui-empty-icon"><CircleAlert :size="22" /></span><p class="ui-empty-title">{{ tr("读取任务失败") }}</p><p class="ui-empty-desc">{{ error }}</p><div class="ui-empty-actions"><button class="ui-btn sm" @click="refresh">{{ tr("重试") }}</button></div></div>
+      <div v-else-if="loading && !visibleTasks.length" class="ui-empty state-box"><span class="ui-empty-icon accent"><Loader2 :size="22" class="spin" /></span><p class="ui-empty-desc">{{ tr("正在读取任务…") }}</p></div>
       <div v-else-if="!visibleTasks.length" class="ui-empty state-box">
         <span class="ui-empty-icon accent"><ListTodo :size="24" /></span>
-        <p class="ui-empty-title">{{ scopedTasks.length ? '没有匹配的任务' : '当前检材还没有任务' }}</p>
-        <p class="ui-empty-desc">{{ scopedTasks.length ? '换个关键词再试。' : '在快速分析中选择功能，进度与结果会显示在这里。' }}</p>
+        <p class="ui-empty-title">{{ scopedTasks.length ? tr("没有匹配的任务") : tr("当前检材还没有任务") }}</p>
+        <p class="ui-empty-desc">{{ scopedTasks.length ? tr("换个关键词再试。") : tr("在快速分析中选择功能，进度与结果会显示在这里。") }}</p>
         <div class="ui-empty-actions">
-          <button v-if="scopedTasks.length" class="ui-btn sm" @click="resetFilters">清除搜索</button>
-          <button v-else class="ui-btn sm primary" @click="emit('quickAnalysis')"><Zap :size="13" />快速分析</button>
+          <button v-if="scopedTasks.length" class="ui-btn sm" @click="resetFilters">{{ tr("清除搜索") }}</button>
+          <button v-else class="ui-btn sm primary" @click="emit('quickAnalysis')"><Zap :size="13" />{{ tr("快速分析") }}</button>
         </div>
       </div>
       <template v-else>
         <!-- One card per section, laid out like the image-info cards: icon title and count,
              then rows split by hairlines. The section and the row's badge carry the status. -->
-        <section v-for="section in sections" :key="section.key" class="ui-card task-card" :class="section.key" :aria-label="`${section.label} ${section.tasks.length} 项`">
+        <section v-for="section in sections" :key="section.key" class="ui-card task-card" :class="section.key" :aria-label="tr('{0} {1} 项', { 0: tr(section.label), 1: section.tasks.length })">
           <header class="card-head">
-            <h3 class="ui-card-title"><component :is="SECTION_ICON[section.key]" :size="15" />{{ section.label }}</h3>
+            <h3 class="ui-card-title"><component :is="SECTION_ICON[section.key]" :size="15" />{{ tr(section.label) }}</h3>
             <span class="ui-count" :class="{ accent: section.key === 'active' }">{{ section.tasks.length }}</span>
-            <button type="button" class="ui-icon-btn sm card-toggle" :aria-expanded="!collapsed.has(section.key)" :aria-label="`${collapsed.has(section.key) ? '展开' : '收起'}${section.label}`" :title="collapsed.has(section.key) ? '展开' : '收起'" @click="toggleSection(section.key)"><ChevronDown :size="14" /></button>
+            <button type="button" class="ui-icon-btn sm card-toggle" :aria-expanded="!collapsed.has(section.key)" :aria-label="`${collapsed.has(section.key) ? tr('展开') : tr('收起')}${tr(section.label)}`" :title="collapsed.has(section.key) ? tr('展开') : tr('收起')" @click="toggleSection(section.key)"><ChevronDown :size="14" /></button>
           </header>
           <UiTransition><div v-if="!collapsed.has(section.key)" class="task-list">
             <article v-for="{ task, action, target } in section.rows" :key="task.id" class="task-row" :class="{ expanded: expandedIds.has(task.id) }" :style="{ '--tone': TASK_STATUS_TONE[task.status] }" :aria-label="task.displayName">
               <div class="task-main">
-                <button class="task-open" :aria-expanded="expandedIds.has(task.id)" :aria-controls="`task-detail-${task.id}`" :aria-label="`${expandedIds.has(task.id) ? '收起' : '展开'} ${task.displayName} 详情`" @click="toggleDetail(task.id)">
+                <button class="task-open" :aria-expanded="expandedIds.has(task.id)" :aria-controls="`task-detail-${task.id}`" :aria-label="tr('{0} {1} 详情', { 0: expandedIds.has(task.id) ? tr('收起') : tr('展开'), 1: task.displayName })" @click="toggleDetail(task.id)">
                   <span class="task-line">
                     <strong class="task-name" :title="task.displayName">{{ task.displayName }}</strong>
                     <span v-if="badgeLabel(task)" class="ui-badge sm tone task-badge"><Loader2 v-if="task.status === 'running' && !task.cancelling" :size="11" class="spin" />{{ badgeLabel(task) }}</span>
                   </span>
                   <span v-if="!(task.info.error && expandedIds.has(task.id))" class="task-line task-sub"><span class="task-summary" :title="taskSummary(task)">{{ taskSummary(task) }}</span><span class="task-meta mono">{{ taskMeta(task) }}</span></span>
-                  <span v-if="showsProgress(task)" class="ui-progress task-progress" :class="{ indeterminate: task.indeterminate }" role="progressbar" :aria-label="`${task.displayName}进度`" :aria-valuenow="task.indeterminate ? undefined : taskProgressPercent(task)" :aria-valuetext="task.indeterminate ? '处理中' : undefined" aria-valuemin="0" aria-valuemax="100"><span :style="task.indeterminate ? undefined : { width: `${taskProgressPercent(task)}%` }" /></span>
+                  <span v-if="showsProgress(task)" class="ui-progress task-progress" :class="{ indeterminate: task.indeterminate }" role="progressbar" :aria-label="tr('{0}进度', { 0: task.displayName })" :aria-valuenow="task.indeterminate ? undefined : taskProgressPercent(task)" :aria-valuetext="task.indeterminate ? tr('处理中') : undefined" aria-valuemin="0" aria-valuemax="100"><span :style="task.indeterminate ? undefined : { width: `${taskProgressPercent(task)}%` }" /></span>
                 </button>
                 <button v-if="action" class="ui-btn sm task-action" :disabled="pendingIds.has(task.id)" :title="actionLabel(action, target)" :aria-label="`${actionLabel(action, target)} ${task.displayName}`" @click="runTaskAction(task, action)"><Loader2 v-if="pendingIds.has(task.id)" :size="13" class="spin" /><component v-else :is="ACTION_ICON[action]" :size="13" />{{ ACTION_TEXT[action] }}</button>
               </div>
               <UiTransition><div v-if="expandedIds.has(task.id)" :id="`task-detail-${task.id}`" class="task-detail">
                 <div v-if="task.info.error" class="ui-alert danger detail-error"><CircleAlert :size="14" /><span>{{ task.info.error }}</span></div>
                 <dl class="detail-list">
-                  <div v-if="task.params.fileName" class="detail-row"><dt>{{ task.builtin ? '对象' : '文件' }}</dt><dd>{{ task.params.fileName }}</dd></div>
-                  <div class="detail-row"><dt>{{ task.startAt ? '开始' : '创建' }}</dt><dd class="mono">{{ formatTaskDateTime(task.startAt || task.createAt) }}</dd></div>
-                  <div class="detail-row"><dt>耗时</dt><dd class="mono">{{ formatTaskDuration(task.spendTimeSecs) }}</dd></div>
-                  <div v-if="task.status !== 'success' && !task.indeterminate && taskProgressPercent(task) > 0" class="detail-row"><dt>进度</dt><dd class="mono">{{ taskProgressPercent(task) }}%</dd></div>
-                  <div v-if="task.result && !task.builtin" class="detail-row"><dt>产物</dt><dd>{{ artifactSummary(task) }}</dd></div>
-                  <div v-else-if="task.builtin && task.result?.summary" class="detail-row"><dt>结果</dt><dd>{{ task.result.summary }}</dd></div>
+                  <div v-if="task.params.fileName" class="detail-row"><dt>{{ task.builtin ? tr("对象") : tr("文件") }}</dt><dd>{{ task.params.fileName }}</dd></div>
+                  <div class="detail-row"><dt>{{ task.startAt ? tr("开始") : tr("创建") }}</dt><dd class="mono">{{ formatTaskDateTime(task.startAt || task.createAt) }}</dd></div>
+                  <div class="detail-row"><dt>{{ tr("耗时") }}</dt><dd class="mono">{{ formatTaskDuration(task.spendTimeSecs) }}</dd></div>
+                  <div v-if="task.status !== 'success' && !task.indeterminate && taskProgressPercent(task) > 0" class="detail-row"><dt>{{ tr("进度") }}</dt><dd class="mono">{{ taskProgressPercent(task) }}%</dd></div>
+                  <div v-if="task.result && !task.builtin" class="detail-row"><dt>{{ tr("产物") }}</dt><dd>{{ artifactSummary(task) }}</dd></div>
+                  <div v-else-if="task.builtin && task.result?.summary" class="detail-row"><dt>{{ tr("结果") }}</dt><dd>{{ task.result.summary }}</dd></div>
                 </dl>
                 <div class="detail-actions">
-                  <button v-if="!task.builtin && isTerminalStatus(task.status)" class="ui-btn sm ghost danger-soft detail-remove" :disabled="pendingIds.has(task.id)" @click="runTaskAction(task, 'remove')"><Trash2 :size="13" />删除任务</button>
-                  <button v-if="task.cancellable && !task.cancelling && canCancelStatus(task.status) && action !== 'cancel'" class="ui-btn sm" :disabled="pendingIds.has(task.id)" @click="runTaskAction(task, 'cancel')"><X :size="13" />取消任务</button>
-                  <button v-if="!task.builtin && canRestartStatus(task.status) && action !== 'restart'" class="ui-btn sm" :disabled="pendingIds.has(task.id)" @click="runTaskAction(task, 'restart')"><RotateCcw :size="13" />重新分析</button>
-                  <button v-if="target && action !== 'open'" class="ui-btn sm" @click="openResult(task)"><ArrowUpRight :size="13" />{{ TASK_RESULT_LABEL[target] }}</button>
+                  <button v-if="!task.builtin && isTerminalStatus(task.status)" class="ui-btn sm ghost danger-soft detail-remove" :disabled="pendingIds.has(task.id)" @click="runTaskAction(task, 'remove')"><Trash2 :size="13" />{{ tr("删除任务") }}</button>
+                  <button v-if="task.cancellable && !task.cancelling && canCancelStatus(task.status) && action !== 'cancel'" class="ui-btn sm" :disabled="pendingIds.has(task.id)" @click="runTaskAction(task, 'cancel')"><X :size="13" />{{ tr("取消任务") }}</button>
+                  <button v-if="!task.builtin && canRestartStatus(task.status) && action !== 'restart'" class="ui-btn sm" :disabled="pendingIds.has(task.id)" @click="runTaskAction(task, 'restart')"><RotateCcw :size="13" />{{ tr("重新分析") }}</button>
+                  <button v-if="target && action !== 'open'" class="ui-btn sm" @click="openResult(task)"><ArrowUpRight :size="13" />{{ tr(TASK_RESULT_LABEL[target]) }}</button>
                 </div>
-                <details v-disclosure-motion class="card-disclosure technical-details"><summary><ChevronDown :size="14" />技术信息</summary><dl class="detail-list"><div class="detail-row"><dt>任务</dt><dd class="mono">{{ task.sourceId }} · {{ task.name }}</dd></div><div class="detail-row"><dt>检材 ID</dt><dd class="mono">{{ task.info.imageId }}</dd></div><div class="detail-row"><dt>触发</dt><dd>{{ task.info.trigger === 'auto' ? '自动' : '手动' }}</dd></div><div v-if="task.dependence" class="detail-row"><dt>依赖</dt><dd class="mono">{{ task.dependence }}</dd></div><div v-if="task.info.parentTid !== null" class="detail-row"><dt>父任务</dt><dd class="mono">#{{ task.info.parentTid }}</dd></div></dl></details>
+                <details v-disclosure-motion class="card-disclosure technical-details"><summary><ChevronDown :size="14" />{{ tr("技术信息") }}</summary><dl class="detail-list"><div class="detail-row"><dt>{{ tr("任务") }}</dt><dd class="mono">{{ task.sourceId }} · {{ task.name }}</dd></div><div class="detail-row"><dt>{{ tr("检材 ID") }}</dt><dd class="mono">{{ task.info.imageId }}</dd></div><div class="detail-row"><dt>{{ tr("触发") }}</dt><dd>{{ task.info.trigger === 'auto' ? tr("自动") : tr("手动") }}</dd></div><div v-if="task.dependence" class="detail-row"><dt>{{ tr("依赖") }}</dt><dd class="mono">{{ task.dependence }}</dd></div><div v-if="task.info.parentTid !== null" class="detail-row"><dt>{{ tr("父任务") }}</dt><dd class="mono">#{{ task.info.parentTid }}</dd></div></dl></details>
               </div></UiTransition>
             </article>
-            <button v-if="section.hidden" type="button" class="card-more" @click="showAllFinished = true"><ChevronDown :size="14" />显示其余 {{ section.hidden }} 项</button>
+            <button v-if="section.hidden" type="button" class="card-more" @click="showAllFinished = true"><ChevronDown :size="14" />{{ tr("显示其余") }} {{ section.hidden }} {{ tr("项") }}</button>
           </div></UiTransition>
         </section>
-        <section v-if="notices.length" class="ui-card task-card notices-card" :aria-label="`最近通知 ${notices.length} 条`">
+        <section v-if="notices.length" class="ui-card task-card notices-card" :aria-label="tr('最近通知 {0} 条', { 0: notices.length })">
           <header class="card-head">
-            <h3 class="ui-card-title"><Bell :size="15" />最近通知</h3>
+            <h3 class="ui-card-title"><Bell :size="15" />{{ tr("最近通知") }}</h3>
             <span class="ui-count">{{ notices.length }}</span>
-            <button type="button" class="ui-icon-btn sm card-toggle" :aria-expanded="noticesOpen" :aria-label="`${noticesOpen ? '收起' : '展开'}最近通知`" :title="noticesOpen ? '收起' : '展开'" @click="noticesOpen = !noticesOpen"><ChevronDown :size="14" /></button>
+            <button type="button" class="ui-icon-btn sm card-toggle" :aria-expanded="noticesOpen" :aria-label="tr('{0}最近通知', { 0: noticesOpen ? tr('收起') : tr('展开') })" :title="noticesOpen ? tr('收起') : tr('展开')" @click="noticesOpen = !noticesOpen"><ChevronDown :size="14" /></button>
           </header>
           <UiTransition><dl v-if="noticesOpen" class="detail-list notice-list"><div v-for="(notice, index) in notices" :key="index" class="detail-row"><dt>{{ NOTICE_LABEL[notice.kind] }}</dt><dd>{{ notice.message }}</dd></div></dl></UiTransition>
         </section>
@@ -75,6 +75,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import UiTransition from '../../../components/ui/UiTransition.vue';
 import { vDisclosureMotion } from '../../../composables/uiMotionDirectives';
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue';
@@ -167,12 +169,12 @@ const visibleTasks = computed(() => {
 const SECTION_ICON: Record<TaskSectionKey, Component> = { active: Activity, attention: TriangleAlert, finished: History };
 
 type RowAction = 'pause' | 'start' | 'restart' | 'cancel' | 'open';
-const ACTION_LABEL: Record<Exclude<RowAction, 'open'>, string> = { pause: '暂停', start: '继续', restart: '重新分析', cancel: '取消' };
+const ACTION_LABEL: Record<Exclude<RowAction, 'open'>, string> = { get pause() { return tr("暂停"); }, get start() { return tr("继续"); }, get restart() { return tr("重新分析"); }, get cancel() { return tr("取消"); } };
 /** Button text; `open` is spelled out in the tooltip and accessible name. */
-const ACTION_TEXT: Record<RowAction, string> = { ...ACTION_LABEL, open: '查看' };
+const ACTION_TEXT: Record<RowAction, string> = { get pause() { return ACTION_LABEL.pause; }, get start() { return ACTION_LABEL.start; }, get restart() { return ACTION_LABEL.restart; }, get cancel() { return ACTION_LABEL.cancel; }, get open() { return tr("查看"); } };
 const ACTION_ICON: Record<RowAction, Component> = { pause: Pause, start: Play, restart: RotateCcw, cancel: X, open: ArrowUpRight };
 function actionLabel(action: RowAction, target: TaskResultPanel | null): string {
-  return action === 'open' && target ? TASK_RESULT_LABEL[target] : ACTION_LABEL[action as Exclude<RowAction, 'open'>];
+  return action === 'open' && target ? tr(TASK_RESULT_LABEL[target]) : ACTION_LABEL[action as Exclude<RowAction, 'open'>];
 }
 
 /** One direct control per row: run state first, then the way to the results, then recovery. */
@@ -218,9 +220,9 @@ async function runTaskAction(task: UnifiedTask, action: RowAction | 'remove') {
   pendingIds.value.add(id);
   try {
     if (action === 'remove' || action === 'restart') {
-      const ok = await confirm({ title: action === 'remove' ? '删除任务' : '重新分析',
-        message: action === 'remove' ? '将删除该任务及其分析数据，是否继续？' : '重新分析会清理该任务之前的结果，是否继续？',
-        confirmText: action === 'remove' ? '删除' : '重新分析', danger: true });
+      const ok = await confirm({ title: action === 'remove' ? tr("删除任务") : tr("重新分析"),
+        message: action === 'remove' ? tr("将删除该任务及其分析数据，是否继续？") : tr("重新分析会清理该任务之前的结果，是否继续？"),
+        confirmText: action === 'remove' ? tr("删除") : tr("重新分析"), danger: true });
       if (!ok || disposed) return;
     }
     await ({ cancel, pause, start, restart, remove })[action](id);
@@ -233,22 +235,22 @@ function showsProgress(task: UnifiedTask): boolean {
 
 /** Status badge; a finished success needs none, the section already says so. */
 function badgeLabel(task: UnifiedTask): string | null {
-  if (task.cancelling) return '取消中';
-  if (task.status === 'running') return task.indeterminate ? '处理中' : `执行中 ${taskProgressPercent(task)}%`;
+  if (task.cancelling) return tr("取消中");
+  if (task.status === 'running') return task.indeterminate ? tr("处理中") : tr("执行中 {0}%", { 0: taskProgressPercent(task) });
   if (task.status === 'success') return null;
-  return TASK_STATUS_LABEL[task.status];
+  return tr(TASK_STATUS_LABEL[task.status]);
 }
 
 function artifactSummary(task: UnifiedTask): string {
   const result = task.result;
   if (!result) return '';
-  return `${result.artifactCount.toLocaleString()} 条结果 · ${result.timelineCount.toLocaleString()} 条时间线 · ${result.findingCount.toLocaleString()} 项发现`;
+  return tr("{0} 条结果 · {1} 条时间线 · {2} 项发现", { 0: result.artifactCount.toLocaleString(), 1: result.timelineCount.toLocaleString(), 2: result.findingCount.toLocaleString() });
 }
 
 const STATUS_HINT: Record<SchedTaskStatus, string> = {
-  created: '等待派发', queued: '等待可用执行器', running: '正在分析检材…',
-  success: '分析已完成', failed: '分析失败', cancel: '任务已取消',
-  pause: '进度已保留，可继续分析', offline: '执行器离线，可尝试继续',
+  get created() { return tr("等待派发"); }, get queued() { return tr("等待可用执行器"); }, get running() { return tr("正在分析检材…"); },
+  get success() { return tr("分析已完成"); }, get failed() { return tr("分析失败"); }, get cancel() { return tr("任务已取消"); },
+  get pause() { return tr("进度已保留，可继续分析"); }, get offline() { return tr("执行器离线，可尝试继续"); },
 };
 function taskSummary(task: UnifiedTask): string {
   if (task.info.error) return task.info.error;
@@ -262,19 +264,19 @@ function taskSummary(task: UnifiedTask): string {
 /** Right-hand note: how long live work has run, when queued work was created, when the rest started. */
 function taskMeta(task: UnifiedTask): string {
   if (task.status === 'running' || task.status === 'pause') {
-    const remain = task.status === 'running' && task.remainTimeSecs ? ` · 剩余 ${formatTaskDuration(task.remainTimeSecs)}` : '';
-    return `已用 ${formatTaskDuration(task.spendTimeSecs)}${remain}`;
+    const remain = task.status === 'running' && task.remainTimeSecs ? tr(" · 剩余 {0}", { 0: formatTaskDuration(task.remainTimeSecs) }) : '';
+    return tr("已用 {0}{1}", { 0: formatTaskDuration(task.spendTimeSecs), 1: remain });
   }
-  if (task.status === 'created' || task.status === 'queued') return `${formatTaskClock(task.createAt)} 创建`;
+  if (task.status === 'created' || task.status === 'queued') return tr("{0} 创建", { 0: formatTaskClock(task.createAt) });
   return formatTaskClock(task.startAt || task.createAt);
 }
 
 /** 调度通知的展示标签。 */
 const NOTICE_LABEL: Record<SchedNoticeKind, string> = {
-  taskOffline: '任务离线',
-  taskTimeout: '任务超时',
-  allTasksFinished: '全部完成',
-  postActionFailed: '收尾失败',
+  get taskOffline() { return tr("任务离线"); },
+  get taskTimeout() { return tr("任务超时"); },
+  get allTasksFinished() { return tr("全部完成"); },
+  get postActionFailed() { return tr("收尾失败"); },
 };
 </script>
 

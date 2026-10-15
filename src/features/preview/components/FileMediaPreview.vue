@@ -4,7 +4,7 @@
          后端 fs_media_temp 先把节点物化到临时文件，再由 <video>/<audio>
          通过 asset 协议按需取字节范围（支持跳转 / 大文件）。 -->
     <template v-if="isStreamMedia">
-      <div v-if="streamLoading" class="state-row mono">准备预览…</div>
+      <div v-if="streamLoading" class="state-row mono">{{ tr("准备预览…") }}</div>
       <div v-else-if="streamError" class="state-row mono error">{{ streamError }}</div>
       <video
         v-else-if="streamUrl && category === 'video'"
@@ -27,9 +27,9 @@
     <!-- 图片：整文件读入内存以 Blob 预览（受 MEDIA_CAP 约束）。 -->
     <template v-else>
       <div v-if="mediaTooLarge" class="state-row mono">
-        文件过大（{{ formatBytes(node.size) }}），无法预览，请导出后查看。
+        {{ tr("文件过大（") }}{{ formatBytes(node.size) }}{{ tr("），无法预览，请导出后查看。") }}
       </div>
-      <div v-else-if="mediaLoading" class="state-row mono">加载中…</div>
+      <div v-else-if="mediaLoading" class="state-row mono">{{ tr("加载中…") }}</div>
       <div v-else-if="mediaError" class="state-row mono error">{{ mediaError }}</div>
       <template v-else-if="mediaUrl">
       <div v-if="category === 'image'" class="qr-image-area">
@@ -89,16 +89,16 @@
         <div v-if="recognition.qrScanning || recognition.qrResult || recognition.qrError" class="qr-results">
           <div class="qr-results-head">
             <QrCode :size="13" />
-            <span class="qr-results-title">二维码识别</span>
+            <span class="qr-results-title">{{ tr("二维码识别") }}</span>
             <span v-if="recognition.qrResult" class="ui-badge sm mono qr-pill">
-              {{ recognition.qrResult.codes.length }} 个 ·
-              {{ recognition.qrResult.detector === 'wechat' ? 'WeChat' : '标准' }} ·
-              {{ recognition.qrResult.attempts }} 次
-              <template v-if="recognition.qrResult.cancelled"> · 已取消</template>
+              {{ recognition.qrResult.codes.length }} {{ tr("个 ·") }}
+              {{ recognition.qrResult.detector === 'wechat' ? 'WeChat' : tr("标准") }} ·
+              {{ recognition.qrResult.attempts }} {{ tr("次") }}
+              <template v-if="recognition.qrResult.cancelled"> {{ tr("· 已取消") }}</template>
             </span>
             <span class="qr-spacer"></span>
-            <label class="qr-expected" title="期望识别的二维码数量（达到即停止扫描）">
-              数量
+            <label class="qr-expected" :title="tr('期望识别的二维码数量（达到即停止扫描）')">
+              {{ tr("数量") }}
               <input
                 class="ui-input sm mono qr-expected-input"
                 type="number"
@@ -108,15 +108,15 @@
                 :disabled="recognition.qrScanning"
               />
             </label>
-            <button v-if="recognition.qrScanning" class="ui-btn sm danger-soft" title="取消扫描" @click="emit('cancelQr')">
-              <X :size="12" />取消
+            <button v-if="recognition.qrScanning" class="ui-btn sm danger-soft" :title="tr('取消扫描')" @click="emit('cancelQr')">
+              <X :size="12" />{{ tr("取消") }}
             </button>
           </div>
 
           <div v-if="recognition.qrScanning" class="qr-progress mono">
-            扫描中
+            {{ tr("扫描中") }}
             <template v-if="recognition.qrProgress">
-              {{ recognition.qrProgress.attempts }}/{{ recognition.qrProgress.total }}（已找到 {{ recognition.qrProgress.found }}）
+              {{ recognition.qrProgress.attempts }}/{{ recognition.qrProgress.total }}{{ tr("（已找到") }} {{ recognition.qrProgress.found }}）
             </template>
           </div>
           <div v-else-if="recognition.qrError" class="qr-empty mono">{{ recognition.qrError }}</div>
@@ -135,7 +135,7 @@
               </div>
               <div class="qr-item-meta">
                 <span class="qr-transform mono">{{ c.transform }}</span>
-                <button class="ui-icon-btn sm bordered" title="复制内容" aria-label="复制内容" @click="emit('copyQr', c.text, i)">
+                <button class="ui-icon-btn sm bordered" :title="tr('复制内容')" :aria-label="tr('复制内容')" @click="emit('copyQr', c.text, i)">
                   <Check v-if="recognition.qrCopiedIndex === i" :size="12" />
                   <Copy v-else :size="12" />
                 </button>
@@ -147,21 +147,21 @@
         <div v-if="recognition.ocrScanning || recognition.ocrResult || recognition.ocrError" class="ocr-results">
           <div class="ocr-results-head">
             <ScanText :size="13" />
-            <span class="ocr-results-title">文字识别</span>
+            <span class="ocr-results-title">{{ tr("文字识别") }}</span>
             <span class="ocr-spacer"></span>
             <button
               v-if="recognition.ocrFullText"
               class="ui-btn sm"
-              :title="recognition.ocrCopiedAll ? '已复制' : '复制文本'"
+              :title="recognition.ocrCopiedAll ? tr('已复制') : tr('复制文本')"
               @click="emit('copyOcr')"
             >
               <Check v-if="recognition.ocrCopiedAll" :size="12" />
               <Copy v-else :size="12" />
-              复制
+              {{ tr("复制") }}
             </button>
           </div>
 
-          <div v-if="recognition.ocrScanning" class="ocr-progress mono">识别中…</div>
+          <div v-if="recognition.ocrScanning" class="ocr-progress mono">{{ tr("识别中…") }}</div>
           <div v-else-if="recognition.ocrError" class="ocr-empty mono">{{ recognition.ocrError }}</div>
           <pre v-else-if="recognition.ocrFullText" class="ocr-text-block">{{ recognition.ocrFullText }}</pre>
         </div>
@@ -174,6 +174,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import type { Ref } from 'vue';
 import { X, Copy, Check, QrCode, ScanText } from 'lucide-vue-next';
 import type { FsNode } from '../../../lib/ipc/fs/types';

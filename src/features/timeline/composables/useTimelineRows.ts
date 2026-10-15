@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { timelineDatas, type TimelineQuery, type TimelineRow } from '../../../lib/ipc/timeline';
 import { notifyError } from '../../../composables/useToast';
@@ -39,8 +41,8 @@ export function useTimelineRows(options: { imageId: () => string; buildQuery: ()
       selectedRowId.value = null;
     } catch (error) {
       if (!disposed && generation === rowsGeneration) {
-        rowsError.value = '记录加载失败，请重试';
-        notifyError('读取时间线明细失败', String(error));
+        rowsError.value = tr("记录加载失败，请重试");
+        notifyError(tr("读取时间线明细失败"), String(error));
       }
     } finally {
       if (!disposed && generation === rowsGeneration) loadingRows.value = false;
@@ -64,8 +66,8 @@ export function useTimelineRows(options: { imageId: () => string; buildQuery: ()
       rowsTotal.value = page.total;
     } catch (error) {
       if (!disposed && generation === rowsGeneration) {
-        rowsError.value = '记录加载失败，请重试';
-        notifyError('读取时间线明细失败', String(error));
+        rowsError.value = tr("记录加载失败，请重试");
+        notifyError(tr("读取时间线明细失败"), String(error));
       }
     } finally {
       if (fetchingGeneration === generation) fetchingGeneration = null;

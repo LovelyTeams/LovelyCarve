@@ -1,3 +1,5 @@
+
+import { tr } from '../../composables/useLocale';
 import { onScopeDispose, reactive, ref, watch, type Ref } from 'vue';
 import type { CaseInfo } from '../../lib/ipc/cases';
 import { caseEvidenceList } from '../../lib/ipc/cases';
@@ -73,7 +75,7 @@ export function useRaidMemberOpen(options: {
 
   async function addRaidMemberFiles() {
     const captured = generation;
-    const paths = await pickFiles('添加 RAID 成员盘（可重复选择）');
+    const paths = await pickFiles(tr("添加 RAID 成员盘（可重复选择）"));
     if (captured === generation) await addRaidMemberPaths(paths);
   }
 
@@ -81,12 +83,12 @@ export function useRaidMemberOpen(options: {
    *  then run batches sequentially so the final detection includes every drop. */
   function addRaidMemberPaths(paths: string[]): Promise<void> {
     if (raidMemberOpening.value) {
-      notifyInfo('正在打开重组镜像', '打开完成后再添加成员盘。');
+      notifyInfo(tr("正在打开重组镜像"), tr("打开完成后再添加成员盘。"));
       return Promise.resolve();
     }
     const freshPaths = [...new Set(paths)].filter(path => !raidMemberQueue.value.some(member => member.path === path));
     if (paths.length > 0 && freshPaths.length === 0) {
-      notifyInfo('成员盘已在队列中', '所选磁盘已经放入 RAID 检测队列。');
+      notifyInfo(tr("成员盘已在队列中"), tr("所选磁盘已经放入 RAID 检测队列。"));
       return Promise.resolve();
     }
     if (freshPaths.length === 0) return Promise.resolve();
@@ -121,7 +123,7 @@ export function useRaidMemberOpen(options: {
       if (raidMemberQueue.value.some(member => member.status === 'loaded')) await detectRaidMemberQueue();
     }).catch(error => {
       if (captured !== generation) return;
-      notifyError('添加成员盘失败', String(error));
+      notifyError(tr("添加成员盘失败"), String(error));
     });
     return memberLoadQueue;
   }
@@ -140,7 +142,7 @@ export function useRaidMemberOpen(options: {
       const stack = await detectRaid({ promptAssembled: false });
       if (captured !== generation) return;
       if (!stack) {
-        raidMemberError.value = raidStackError.value ?? '自动检测未返回结果，请稍后重试。';
+        raidMemberError.value = raidStackError.value ?? tr("自动检测未返回结果，请稍后重试。");
         return;
       }
       raidMemberStack.value = stack;
@@ -189,7 +191,7 @@ export function useRaidMemberOpen(options: {
         await removeEvidence(member.id);
       } catch (e) {
         console.error('remove RAID member evidence failed:', member.path, e);
-        notifyError('移出成员盘失败', String(e));
+        notifyError(tr("移出成员盘失败"), String(e));
       }
     }
     if (raidMemberQueue.value.some(item => item.status === 'loaded')) {
@@ -210,7 +212,7 @@ export function useRaidMemberOpen(options: {
 
     const assembled = relevantRaidArrays(stack).filter(array => array.assembled_image_id);
     if (assembled.length === 0) {
-      notifyError('尚无可打开的 RAID 阵列', '请继续添加成员盘，或在镜像信息页使用手动重组。');
+      notifyError(tr("尚无可打开的 RAID 阵列"), tr("请继续添加成员盘，或在镜像信息页使用手动重组。"));
       return;
     }
 
@@ -235,14 +237,14 @@ export function useRaidMemberOpen(options: {
           const result = await openImagePath(summary.path);
           if (result.ok) opened += 1;
         } catch (e) {
-          notifyError('打开重组镜像失败', String(e));
+          notifyError(tr("打开重组镜像失败"), String(e));
         }
       }
 
       if (opened > 0) {
         const notes: string[] = [];
-        if (strays.length > 0) notes.push(`${strays.length} 块非成员盘未加入案件`);
-        notifyInfo('RAID 重组镜像已打开', notes.join('；') || `已打开 ${opened} 个重组镜像页`);
+        if (strays.length > 0) notes.push(tr("{0} 块非成员盘未加入案件", { 0: strays.length }));
+        notifyInfo(tr("RAID 重组镜像已打开"), notes.join('；') || tr("已打开 {0} 个重组镜像页", { 0: opened }));
         showRaidMemberDialog.value = false;
       }
     } finally {

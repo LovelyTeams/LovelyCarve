@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { notifyError, notifyInfo, notifySuccess } from '../../../composables/useToast';
 import type { EncryptedUnlockOptions } from '../../../lib/ipc/encrypted';
 import { imageUnload, type ImageInfo } from '../../../lib/ipc/image';
@@ -34,7 +36,7 @@ export function startEncryptedVolumeUnlock(info: ImageInfo, options: EncryptedUn
   if (jobs.has(key)) {
     options.password = '';
     options.masterKeyHex = undefined;
-    notifyError('解锁加密容器失败', '此加密区域已有解锁任务，可在任务中心查看或取消');
+    notifyError(tr("解锁加密容器失败"), tr("此加密区域已有解锁任务，可在任务中心查看或取消"));
     return false;
   }
   const taskId = crypto.randomUUID();
@@ -44,7 +46,7 @@ export function startEncryptedVolumeUnlock(info: ImageInfo, options: EncryptedUn
   const opener = openDerivedImage;
   const current = () => epoch === generation && context === evidenceContext();
   const partition = info.partitions.find(partition => partition.id === options.partitionId);
-  const subject = `${({ luks: 'LUKS', veracrypt: 'VeraCrypt', filevault: 'FileVault 2' }[options.scheme])} · ${partition ? `分区 ${partition.id}${partition.label ? ` · ${partition.label}` : ''}` : '整个镜像 / 容器'}`;
+  const subject = `${({ luks: 'LUKS', veracrypt: 'VeraCrypt', filevault: 'FileVault 2' }[options.scheme])} · ${partition ? tr("分区 {0}{1}", { 0: partition.id, 1: partition.label ? ` · ${partition.label}` : '' }) : tr("整个镜像 / 容器")}`;
   jobs.set(key, taskId);
   void (async () => {
     try {
@@ -59,7 +61,7 @@ export function startEncryptedVolumeUnlock(info: ImageInfo, options: EncryptedUn
         updater?.(result.image);
       } else {
         try {
-          if (!opener) throw new Error('明文会话导航服务不可用');
+          if (!opener) throw new Error(tr("明文会话导航服务不可用"));
           if (!await opener(result.image.path)) {
             await imageUnload({ imageId: result.image.id });
             return;
@@ -69,10 +71,10 @@ export function startEncryptedVolumeUnlock(info: ImageInfo, options: EncryptedUn
           throw error;
         }
       }
-      notifySuccess('加密卷解锁成功', result.cipher);
+      notifySuccess(tr("加密卷解锁成功"), result.cipher);
     } catch (error) {
       if (current() && !(error instanceof IpcCommandError && error.code === 'cancelled')) {
-        notifyError('解锁加密容器失败', String(error));
+        notifyError(tr("解锁加密容器失败"), String(error));
       } else if (!current()) {
         console.warn('旧会话加密卷解锁已结束', error);
       }
@@ -82,6 +84,6 @@ export function startEncryptedVolumeUnlock(info: ImageInfo, options: EncryptedUn
       if (jobs.get(key) === taskId) jobs.delete(key);
     }
   })();
-  notifyInfo('已开始后台解锁', '可在任务中心查看状态或取消');
+  notifyInfo(tr("已开始后台解锁"), tr("可在任务中心查看状态或取消"));
   return true;
 }

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { computed, onMounted, onScopeDispose, ref, watch } from 'vue';
 import { CalendarRange, TriangleAlert, CircleAlert, Download, Loader2, RefreshCw, SlidersHorizontal, Undo2, X, Search, BarChart3, Plus } from 'lucide-vue-next';
 import UiTransition from '../../../components/ui/UiTransition.vue';
@@ -34,10 +36,10 @@ const build = useTimelineBuild({ imageId: () => props.imageId, onBuilt: () => { 
 const { statusInfo, statusError, building, progress, statusChipClass, buildButtonLabel, refreshStatus, buildButtonClicked } = build;
 const spanLabel = computed(() => {
   const info = statusInfo.value;
-  if (!info) return '正在读取时间线状态…';
-  if (info.status === 'buildRequired') return '尚未创建 · 汇总文件时间与分析事件';
+  if (!info) return tr("正在读取时间线状态…");
+  if (info.status === 'buildRequired') return tr("尚未创建 · 汇总文件时间与分析事件");
   const zone = `UTC${tzHours >= 0 ? '+' : ''}${tzHours}`;
-  if (info.start_time == null || info.end_time == null) return `暂无时间范围 · ${zone}`;
+  if (info.start_time == null || info.end_time == null) return tr("暂无时间范围 · {0}", { 0: zone });
   return `${formatEpoch(info.start_time, tzHours).slice(0, 10)} → ${formatEpoch(info.end_time, tzHours).slice(0, 10)} · ${zone}`;
 });
 
@@ -65,32 +67,32 @@ onScopeDispose(() => { initGeneration++; });
 </script>
 
 <template>
-  <section class="timeline-panel" aria-label="时间线">
+  <section class="timeline-panel" :aria-label="tr('时间线')">
     <WorkspaceStartState v-if="!building && (!statusInfo || statusInfo.status === 'buildRequired')"
       :icon="BarChart3" :loading="!statusInfo && !statusError"
-      :title="statusError ? '读取时间线失败' : statusInfo ? '还没有时间线' : '正在读取时间线…'"
-      :description="statusError || '汇总文件时间与分析事件，查看事件发生顺序。'"
-      :action-label="statusError ? '重试' : '创建时间线'" :action-icon="statusError ? RefreshCw : Plus"
+      :title="statusError ? tr('读取时间线失败') : statusInfo ? tr('还没有时间线') : tr('正在读取时间线…')"
+      :description="statusError || tr('汇总文件时间与分析事件，查看事件发生顺序。')"
+      :action-label="statusError ? tr('重试') : tr('创建时间线')" :action-icon="statusError ? RefreshCw : Plus"
       @action="statusError ? initPanel() : buildButtonClicked()" />
     <template v-else>
     <!-- 页面不设标题栏：工具条左侧为检索与筛选，右侧为构建状态与操作；
          覆盖时间段与计数放在底部状态栏。 -->
     <form class="ui-toolbar tl-filter-row" @submit.prevent="applyFilters">
-      <div class="ui-search tl-search"><Search :size="14" /><input v-model="filterTextDraft" type="text" placeholder="搜索事件内容或文件路径" aria-label="搜索时间线" /><button class="ui-btn sm ghost tl-search-submit" type="submit">搜索</button></div>
-      <button type="button" class="ui-btn" :class="{ active: typeFilterActive }" @click="openConfigDialog"><SlidersHorizontal :size="14" />{{ typeFilterActive ? `${selectedPairs.length} 类事件` : '全部类型' }}</button>
-      <label class="ui-check"><input v-model="showDelete" type="checkbox" />包含已删除</label>
-      <span v-if="activeDrill" class="tl-drill-chip" :title="`仅显示 ${formatRange(activeDrill.start, activeDrill.end, tzHours)} 的事件`">
+      <div class="ui-search tl-search"><Search :size="14" /><input v-model="filterTextDraft" type="text" :placeholder="tr('搜索事件内容或文件路径')" :aria-label="tr('搜索时间线')" /><button class="ui-btn sm ghost tl-search-submit" type="submit">{{ tr("搜索") }}</button></div>
+      <button type="button" class="ui-btn" :class="{ active: typeFilterActive }" @click="openConfigDialog"><SlidersHorizontal :size="14" />{{ typeFilterActive ? tr("{0} 类事件", { 0: selectedPairs.length }) : tr("全部类型") }}</button>
+      <label class="ui-check"><input v-model="showDelete" type="checkbox" />{{ tr("包含已删除") }}</label>
+      <span v-if="activeDrill" class="tl-drill-chip" :title="tr('仅显示 {0} 的事件', { 0: formatRange(activeDrill.start, activeDrill.end, tzHours) })">
         <CalendarRange :size="13" /><span class="mono">{{ formatRange(activeDrill.start, activeDrill.end, tzHours) }}</span>
-        <button v-if="drillStack.length > 1" class="ui-icon-btn sm" type="button" title="返回上一级" aria-label="返回上一级" @click="undoDrill"><Undo2 :size="12" /></button>
-        <button class="ui-icon-btn sm" type="button" title="显示全部时间" aria-label="显示全部时间" @click="drillStack = []; unit = 'year'"><X :size="12" /></button>
+        <button v-if="drillStack.length > 1" class="ui-icon-btn sm" type="button" :title="tr('返回上一级')" :aria-label="tr('返回上一级')" @click="undoDrill"><Undo2 :size="12" /></button>
+        <button class="ui-icon-btn sm" type="button" :title="tr('显示全部时间')" :aria-label="tr('显示全部时间')" @click="drillStack = []; unit = 'year'"><X :size="12" /></button>
       </span>
-      <button v-if="hasFilters || filterTextDraft" class="ui-btn link" type="button" @click="resetFilters"><Undo2 :size="13" />重置筛选</button>
+      <button v-if="hasFilters || filterTextDraft" class="ui-btn link" type="button" @click="resetFilters"><Undo2 :size="13" />{{ tr("重置筛选") }}</button>
       <div class="ui-toolbar-actions">
-        <span class="ui-badge sm tl-status" :class="statusChipClass" :title="spanLabel">{{ statusInfo ? statusLabel(statusInfo.status) : '读取中…' }}</span>
+        <span class="ui-badge sm tl-status" :class="statusChipClass" :title="spanLabel">{{ statusInfo ? statusLabel(statusInfo.status, tr) : tr("读取中…") }}</span>
         <button type="button" class="ui-btn" :class="{ primary: statusInfo?.status === 'buildRequired' || statusInfo?.status === 'stale' }" :disabled="statusInfo === null" @click="buildButtonClicked">
           <Loader2 v-if="building || statusInfo?.status === 'running'" :size="14" class="spin" /><RefreshCw v-else :size="14" />{{ buildButtonLabel }}
         </button>
-        <button type="button" class="ui-btn" :disabled="exporting || rowsTotal === 0 || loadingRows" @click="exportRows"><Download :size="14" />{{ exporting ? '导出中…' : '导出结果' }}</button>
+        <button type="button" class="ui-btn" :disabled="exporting || rowsTotal === 0 || loadingRows" @click="exportRows"><Download :size="14" />{{ exporting ? tr("导出中…") : tr("导出结果") }}</button>
       </div>
     </form>
 
@@ -99,10 +101,10 @@ onScopeDispose(() => { initGeneration++; });
       <div class="tl-column">
         <div class="tl-body">
           <div v-if="building || statusInfo?.status === 'running'" class="ui-alert info tl-notice" role="status">
-            <Loader2 :size="14" class="spin" /><span>正在构建，当前结果可能不完整</span>
-            <span v-if="progress">已处理 {{ progress.done.toLocaleString() }}<template v-if="progress.total > 0"> / {{ progress.total.toLocaleString() }}</template> 项 · 已生成 {{ progress.rows.toLocaleString() }} 条事件</span>
+            <Loader2 :size="14" class="spin" /><span>{{ tr("正在构建，当前结果可能不完整") }}</span>
+            <span v-if="progress">{{ tr("已处理") }} {{ progress.done.toLocaleString() }}<template v-if="progress.total > 0"> / {{ progress.total.toLocaleString() }}</template> {{ tr("项 · 已生成") }} {{ progress.rows.toLocaleString() }} {{ tr("条事件") }}</span>
           </div>
-          <div v-else-if="statusInfo?.status === 'stale'" class="ui-alert warn tl-notice"><TriangleAlert :size="14" /><span>有新数据尚未加入时间线，点击「更新时间线」即可同步。</span></div>
+          <div v-else-if="statusInfo?.status === 'stale'" class="ui-alert warn tl-notice"><TriangleAlert :size="14" /><span>{{ tr("有新数据尚未加入时间线，点击「更新时间线」即可同步。") }}</span></div>
           <div v-if="statusInfo?.meta?.error" class="ui-alert danger tl-notice" role="alert"><CircleAlert :size="14" /><span>{{ statusInfo.meta.error }}</span></div>
 
           <TimelineOverview v-if="statusInfo && statusInfo.status !== 'buildRequired'" v-model:chart-mode="chartMode" v-model:chart-visible="chartVisible" v-model:unit="unit"
@@ -118,13 +120,13 @@ onScopeDispose(() => { initGeneration++; });
         <footer class="ui-footbar tl-footer">
           <span class="tl-footer-span"><CalendarRange :size="12" />{{ spanLabel }}</span>
           <template v-if="statusInfo && statusInfo.status !== 'buildRequired'">
-            <span class="ui-footbar-stat">事件 <strong :key="statusInfo.record_count" class="ui-bump">{{ statusInfo.record_count.toLocaleString() }}</strong></span>
-            <span v-if="statusInfo.meta" class="ui-footbar-stat tl-footer-detail">文件记录 <strong>{{ statusInfo.meta.file_rows.toLocaleString() }}</strong></span>
-            <span v-if="statusInfo.meta" class="ui-footbar-stat tl-footer-detail">分析事件 <strong>{{ statusInfo.meta.event_rows.toLocaleString() }}</strong></span>
+            <span class="ui-footbar-stat">{{ tr("事件") }} <strong :key="statusInfo.record_count" class="ui-bump">{{ statusInfo.record_count.toLocaleString() }}</strong></span>
+            <span v-if="statusInfo.meta" class="ui-footbar-stat tl-footer-detail">{{ tr("文件记录") }} <strong>{{ statusInfo.meta.file_rows.toLocaleString() }}</strong></span>
+            <span v-if="statusInfo.meta" class="ui-footbar-stat tl-footer-detail">{{ tr("分析事件") }} <strong>{{ statusInfo.meta.event_rows.toLocaleString() }}</strong></span>
           </template>
           <span class="ui-footbar-spacer"></span>
-          <span v-if="loadingRows" class="tl-footer-loading"><Loader2 :size="12" class="spin" /> 加载中…</span>
-          <span v-else class="mono">已加载 {{ rows.length.toLocaleString() }} / <strong :key="rowsTotal" class="tl-footer-total ui-bump">{{ rowsTotal.toLocaleString() }}</strong> 条{{ hasFilters ? '（已筛选）' : '' }}</span>
+          <span v-if="loadingRows" class="tl-footer-loading"><Loader2 :size="12" class="spin" /> {{ tr("加载中…") }}</span>
+          <span v-else class="mono">{{ tr("已加载") }} {{ rows.length.toLocaleString() }} / <strong :key="rowsTotal" class="tl-footer-total ui-bump">{{ rowsTotal.toLocaleString() }}</strong> {{ tr("条") }}{{ hasFilters ? tr("（已筛选）") : '' }}</span>
         </footer>
       </div>
       <UiTransition kind="dock"><TimelineEventDetail v-if="selectedRow" :row="selectedRow" :time="formatEpoch(selectedRow.tl_time, tzHours)" :tone="flagTone(selectedRow.tl_flag)" :icon="dataTypeIcon(selectedRow.data_type)" :locating="locating" @open="openRow" @close="selectedRowId = null" /></UiTransition>

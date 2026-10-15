@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, type Ref } from 'vue';
 import { useCaseSnapshots } from '../../cases/api';
 
@@ -44,15 +46,15 @@ export function useVolumeSnapshotStatus(options: {
       building &&
       (building.phase === 'walking' || building.phase === 'started' || building.phase === 'indexing')
     ) {
-      return { state: 'building', label: `快照构建中 · ${building.entries.toLocaleString()} 条` };
+      return { state: 'building', get label() { return tr("快照构建中 · {0} 条", { 0: building.entries.toLocaleString() }); } };
     }
     const snap = snapshots.value.find(s => s.image_id === imageId && s.volume_key === key);
     if (!snap) return null;
-    if (snap.stale) return { state: 'stale', label: '快照已过期' };
+    if (snap.stale) return { state: 'stale', get label() { return tr("快照已过期"); } };
     const count = snap.entry_count.toLocaleString();
     return {
       state: 'ready',
-      label: snap.truncated ? `快照就绪 · ${count} 条（截断）` : `快照就绪 · ${count} 条`,
+      label: snap.truncated ? tr("快照就绪 · {0} 条（截断）", { 0: count }) : tr("快照就绪 · {0} 条", { 0: count }),
     };
   });
 

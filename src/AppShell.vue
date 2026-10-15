@@ -12,8 +12,8 @@
     @new-tab="handleOpenFile"
   >
     <template #workspace-actions>
-      <button ref="taskHubTrigger" type="button" class="ui-btn sm titlebar-chip task-hub-trigger" :class="{ active: taskHubOpen }" :aria-expanded="taskHubOpen" aria-controls="task-hub" aria-label="任务中心" title="任务列表与快速分析" @click="toggleTaskHub">
-        <ListTodo :size="14" /><span class="titlebar-chip-label">任务中心</span><span v-if="taskActiveCount" :key="taskActiveCount" class="ui-count accent ui-bump">{{ taskActiveCount.toLocaleString() }}</span>
+      <button ref="taskHubTrigger" type="button" class="ui-btn sm titlebar-chip task-hub-trigger" :class="{ active: taskHubOpen }" :aria-expanded="taskHubOpen" aria-controls="task-hub" :aria-label="tr('任务中心')" :title="tr('任务列表与快速分析')" @click="toggleTaskHub">
+        <ListTodo :size="14" /><span class="titlebar-chip-label">{{ tr("任务中心") }}</span><span v-if="taskActiveCount" :key="taskActiveCount" class="ui-count accent ui-bump">{{ taskActiveCount.toLocaleString() }}</span>
       </button>
     </template>
   </Titlebar>
@@ -74,7 +74,7 @@
     <div v-if="isDragOver && !showRaidMemberDialog" class="drag-overlay">
       <div class="drag-overlay-content">
         <Upload :size="48" />
-        <span>松开以添加证据</span>
+        <span>{{ tr("松开以添加证据") }}</span>
       </div>
     </div>
   </Transition>
@@ -150,7 +150,7 @@
           v-else
           :busy="loading || isSwitching || isOpeningRecentCase"
           :dragging="isDragOver"
-          :load-label="isOpeningRecentCase ? '正在打开案件…' : loadLabel"
+          :load-label="isOpeningRecentCase ? tr('正在打开案件…') : loadLabel"
           :recent-cases="recentCases"
           @open="handleOpenFile"
           @open-case="showCaseManager = true"
@@ -164,6 +164,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from './composables/useLocale';
+
 import './styles/workspace.css';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { vContentMotion } from './composables/uiMotionDirectives';
@@ -302,15 +304,15 @@ const { locating: locatingResult, openLocation: openResultLocation } = useResult
   imageId: () => imageId.value,
   openImage: async targetImageId => {
     const evidence = activeCase.value?.evidence.find(item => item.image_id === targetImageId);
-    if (!evidence) throw new Error('来源检材不在当前案件中');
+    if (!evidence) throw new Error(tr("来源检材不在当前案件中"));
     const result = await openImagePath(evidence.path, { forceImage: !evidence.path.startsWith('assembled://'), quiet: true });
-    if (!result.ok) throw new Error(`无法打开来源检材：${result.error}`);
+    if (!result.ok) throw new Error(tr("无法打开来源检材：{0}", { 0: result.error }));
     return true;
   },
   showFiles: () => { activePanel.value = 'files'; },
   isFilesActive: () => activePanel.value === 'files',
   panel: () => diskFileListRef.value,
-  onError: message => notifyError('定位失败', message),
+  onError: message => notifyError(tr("定位失败"), message),
 });
 
 function handleCaseManagerClose() {
@@ -350,10 +352,10 @@ const loadPercent = computed(() => {
 // a generic spinner label before any image-load progress event arrives.
 const loadLabel = computed(() => {
   const p = loadProgress.value;
-  if (!p) return '正在载入镜像...';
+  if (!p) return tr("正在载入镜像...");
   let label = p.stage;
   if (p.total > 0) label += ` ${loadPercent.value}%`;
-  if (p.entries > 0) label += ` · ${p.entries.toLocaleString()} 条`;
+  if (p.entries > 0) label += tr(" · {0} 条", { 0: p.entries.toLocaleString() });
   return label;
 });
 

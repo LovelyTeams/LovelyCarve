@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, onMounted, onScopeDispose, ref, watch } from 'vue';
 import { trackedCarveStart as carveStart } from '../../tasks/api';
 import { carveScanList, carveScanRemove, carveScanStatus, carveScanPause, carveScanResume, onCarveScanProgress, type CarveStartOptions, type CarveScanSnapshot } from '../../../lib/ipc/carve';
@@ -63,14 +65,14 @@ export function useCarveHistory(options: CarveHistoryOptions) {
     if (!isFinished(task) || deletingScanId.value || options.recovering()) return;
     const imageId = options.imageId();
     const captured = generation;
-    if (!await confirm({ title: '删除雕刻记录', message: '删除本次扫描及内存中的结果，已恢复到磁盘的文件不受影响。', confirmText: '删除', danger: true })) return;
+    if (!await confirm({ title: tr("删除雕刻记录"), message: tr("删除本次扫描及内存中的结果，已恢复到磁盘的文件不受影响。"), confirmText: tr("删除"), danger: true })) return;
     if (disposed || captured !== generation || options.recovering()) return;
     deletingScanId.value = task.scan_id;
     try {
       await carveScanRemove({ imageId, scanId: task.scan_id });
       if (!disposed && captured === generation) await refreshHistory(imageId);
     } catch (error) {
-      if (!disposed && captured === generation) notifyError('删除雕刻记录失败', String(error));
+      if (!disposed && captured === generation) notifyError(tr("删除雕刻记录失败"), String(error));
     } finally {
       if (!disposed && captured === generation) deletingScanId.value = null;
     }
@@ -86,12 +88,12 @@ export function useCarveHistory(options: CarveHistoryOptions) {
   const progressHeadline = computed(() => {
     const current = scan.value;
     if (!current) return '';
-    if (current.status === 'queued') return '等待扫描';
-    if (current.status === 'running') return `扫描中 · ${progressPercent.value.toFixed(1)}%`;
-    if (current.status === 'paused') return `扫描已暂停 · ${progressPercent.value.toFixed(1)}%`;
-    if (current.status === 'completed') return current.truncated ? '扫描已达到结果上限' : '扫描完成';
-    if (current.status === 'cancelled') return '扫描已取消，已发现结果仍可恢复';
-    return '扫描失败';
+    if (current.status === 'queued') return tr("等待扫描");
+    if (current.status === 'running') return tr("扫描中 · {0}%", { 0: progressPercent.value.toFixed(1) });
+    if (current.status === 'paused') return tr("扫描已暂停 · {0}%", { 0: progressPercent.value.toFixed(1) });
+    if (current.status === 'completed') return current.truncated ? tr("扫描已达到结果上限") : tr("扫描完成");
+    if (current.status === 'cancelled') return tr("扫描已取消，已发现结果仍可恢复");
+    return tr("扫描失败");
   });
   const scanStatusTone = computed(() => ({
     queued: 'info', running: 'info', paused: 'warn', completed: 'success', cancelled: '', failed: 'danger',
@@ -116,7 +118,7 @@ export function useCarveHistory(options: CarveHistoryOptions) {
       await refreshHistory(imageId, result.scan_id);
       if (!disposed && captured === generation) options.onStarted();
     } catch (error) {
-      if (!disposed && captured === generation) notifyError('无法开始文件雕刻', String(error));
+      if (!disposed && captured === generation) notifyError(tr("无法开始文件雕刻"), String(error));
     } finally {
       if (!disposed && captured === generation) starting.value = false;
     }
@@ -127,9 +129,9 @@ export function useCarveHistory(options: CarveHistoryOptions) {
     if (!taskId || disposed) return;
     try {
       await taskCancel({ taskId });
-      notifyInfo('正在取消扫描', '已提交取消请求，当前读取块完成后停止。');
+      notifyInfo(tr("正在取消扫描"), tr("已提交取消请求，当前读取块完成后停止。"));
     } catch (error) {
-      notifyError('取消扫描失败', String(error));
+      notifyError(tr("取消扫描失败"), String(error));
     }
   }
 
@@ -141,7 +143,7 @@ export function useCarveHistory(options: CarveHistoryOptions) {
       const snapshot = await carveScanPause({ scanId });
       if (!disposed && captured === generation) updateSnapshot(snapshot);
     } catch (error) {
-      if (!disposed && captured === generation) notifyError('暂停扫描失败', String(error));
+      if (!disposed && captured === generation) notifyError(tr("暂停扫描失败"), String(error));
     }
   }
 
@@ -153,7 +155,7 @@ export function useCarveHistory(options: CarveHistoryOptions) {
       const snapshot = await carveScanResume({ scanId });
       if (!disposed && captured === generation) updateSnapshot(snapshot);
     } catch (error) {
-      if (!disposed && captured === generation) notifyError('继续扫描失败', String(error));
+      if (!disposed && captured === generation) notifyError(tr("继续扫描失败"), String(error));
     }
   }
 
@@ -171,7 +173,7 @@ export function useCarveHistory(options: CarveHistoryOptions) {
       if (!scan.value) void selectScan(event.payload);
       else if (scan.value.scan_id === event.payload.scan_id) options.onMoreResults();
     }).then(cleanup => { if (disposed) cleanup(); else unlisten = cleanup; })
-      .catch(error => { if (!disposed) notifyError('订阅雕刻进度失败', String(error)); });
+      .catch(error => { if (!disposed) notifyError(tr("订阅雕刻进度失败"), String(error)); });
   });
   onScopeDispose(() => { disposed = true; generation++; historyRequest++; unlisten?.(); unlisten = null; });
   return {
