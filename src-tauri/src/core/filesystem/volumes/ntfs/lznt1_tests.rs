@@ -30,6 +30,16 @@ fn decodes_literals_overlapping_matches_and_raw_blocks() {
 }
 
 #[test]
+fn ignores_storage_padding_after_a_complete_compression_unit() {
+    // A full 4 KiB block followed by one alignment byte. Windows LZNT1
+    // decoding stops at the output size without parsing a new block header.
+    let input = [3, 0xb0, 2, b'A', 0xfc, 0x0f, 0];
+    assert_eq!(decompress(&input, 4096).unwrap(), vec![b'A'; 4096]);
+    // The same byte is still a truncated header if another block is needed.
+    assert!(decompress(&input, 8192).is_err());
+}
+
+#[test]
 fn rejects_truncated_invalid_and_oversized_blocks() {
     for input in [
         vec![0x00],

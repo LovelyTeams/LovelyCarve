@@ -21,7 +21,7 @@ NTFS 由 vendored `ntfs` crate 加本地取证适配层读取，不加载 libfsn
 | 文件属性链与 ADS | 支持 | 按类型、原始 UTF-16 名称和连续 VCN 连接；instance 仅定位记录内属性 | 不同 instance、填充名称偏移、相邻不同 ADS |
 | 驻留 / 非驻留 / 碎片 / 稀疏 / 未初始化尾部 | 支持 | `DataStream`，零 LCN 差值仍为分配簇；短读失败 | 稀疏、碎片、尾部、短读、损坏头和 runlist |
 | 原始属性、类型/flags/name/size、映射段 | 支持 | `read_attribute_value`、`record_metadata.attributes.extents`；未知类型保留数值 | 驻留值、稀疏与已分配映射；压缩映射表示存储字节 |
-| LZNT1 | 支持 | 完整/流式/范围/ADS/采样统一解码 | Windows `RtlCompressBuffer` 生成的固定向量 |
+| LZNT1 | 支持 | 完整/流式/范围/ADS/采样统一解码；压缩单元解满后忽略簇对齐填充 | Windows `RtlCompressBuffer` 生成的固定向量、末尾单字节填充回归 |
 | WOF XPRESS-Huffman 4K / 8K / 16K | 支持 | `WofCompressedData` + WOF 文件 provider；同一逻辑读取入口 | Windows 原生 codec 向量、压缩/存储混合块 |
 | WOF LZX 32K | 支持 | WIM 变种 LZX，含最后一个不足 32K 的块 | wimlib C oracle 向量与跨块读取 |
 | WOF offset table / 64 位 offsets | 支持 | N−1 个相对偏移、末端隐式边界；按需读取两项，缓存一个块 | 32 位表覆盖；64 位分支尚无 >4 GiB 固定样本 |
@@ -53,6 +53,9 @@ just run-example probe_ntfs_metadata '<镜像路径>' <分区ID> <MFT记录号>
 just run-example probe_ntfs_metadata --mft '<导出的 $MFT>' <MFT记录号>
 just run-example probe_ntfs_stream '<镜像路径>' <分区ID> <MFT记录号> '<独立对照文件>'
 ```
+
+元数据探针也接受卷内路径代替 MFT 记录号。流读取探针对超过 16 MiB 的文件使用临时文件
+比对完整流、范围读取和前 16 MiB 的有界读取，避免把整个大文件放入内存；可选对照文件按长度和 SHA-256 核对。
 
 `read_attribute_value(record, instance, budget)` 读取物理属性内的值。
 非驻留压缩值仍是编码后的存储，不能当作已解码正文；文件正文必须走
