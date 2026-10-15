@@ -1,22 +1,24 @@
 <template>
   <footer class="preview-footer">
     <span v-if="hasSelection" class="sel-info mono">
-      已选 {{ selCount }} 字节 · 0x{{ selMin.toString(16).toUpperCase() }}–0x{{ selMax.toString(16).toUpperCase() }}
+      {{ tr("已选") }} {{ selCount }} {{ tr("字节 · 0x") }}{{ selMin.toString(16).toUpperCase() }}–0x{{ selMax.toString(16).toUpperCase() }}
     </span>
     <div v-if="totalPages > 1" class="footer-pager">
-      <span class="footer-label">分页大小：</span>
-      <UiSelect v-model="pageSize" class="sm mono page-size" :options="PAGE_SIZE_OPTIONS" aria-label="分页大小" />
-      <span class="footer-label">当前页：</span>
+      <span class="footer-label">{{ tr("分页大小：") }}</span>
+      <UiSelect v-model="pageSize" class="sm mono page-size" :options="PAGE_SIZE_OPTIONS" :aria-label="tr('分页大小')" />
+      <span class="footer-label">{{ tr("当前页：") }}</span>
       <input class="ui-input sm mono page-input" type="number" min="1" :max="totalPages" v-model.number="page" />
       <span class="footer-divider">/ {{ totalPages }}</span>
-      <button class="ui-icon-btn sm bordered" aria-label="上一页" :disabled="page <= 1" @click="page -= 1"><ChevronLeft :size="14" /></button>
+      <button class="ui-icon-btn sm bordered" :aria-label="tr('上一页')" :disabled="page <= 1" @click="page -= 1"><ChevronLeft :size="14" /></button>
       <span class="ui-count accent page-current">{{ page }}</span>
-      <button class="ui-icon-btn sm bordered" aria-label="下一页" :disabled="page >= totalPages" @click="page += 1"><ChevronRight :size="14" /></button>
+      <button class="ui-icon-btn sm bordered" :aria-label="tr('下一页')" :disabled="page >= totalPages" @click="page += 1"><ChevronRight :size="14" /></button>
     </div>
   </footer>
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import UiSelect from '../../../components/ui/UiSelect.vue';
 import { PREVIEW_PAGE_SIZES as PAGE_SIZE_OPTIONS } from '../model/preview';

@@ -1,3 +1,5 @@
+
+import { tr } from '../../composables/useLocale';
 /**
  * useTabManager — browser-style multi-tab orchestrator for evidence images.
  *
@@ -190,9 +192,9 @@ export type OpenTabResult = { ok: true } | { ok: false; error: string };
 async function openNewTab(filePath: string, opts?: LoadFileOptions): Promise<OpenTabResult> {
   if (!hooks) {
     console.warn('[useTabManager] hooks not initialised; openNewTab is a no-op');
-    return { ok: false, error: '工作区尚未就绪' };
+    return { ok: false, error: tr("工作区尚未就绪") };
   }
-  if (!filePath) return { ok: false, error: '路径为空' };
+  if (!filePath) return { ok: false, error: tr("路径为空") };
   filePath = hooks.resolveTabPath?.(filePath) ?? filePath;
 
   // De-dup: same path → activate the existing tab instead of stacking
@@ -203,7 +205,7 @@ async function openNewTab(filePath: string, opts?: LoadFileOptions): Promise<Ope
     await activateTab(existing.id);
     return tabs.value.some(t => t.id === existing.id)
       ? { ok: true }
-      : { ok: false, error: '已打开的标签页重新载入失败' };
+      : { ok: false, error: tr("已打开的标签页重新载入失败") };
   }
 
   const mode = deriveMode(filePath);
@@ -212,7 +214,7 @@ async function openNewTab(filePath: string, opts?: LoadFileOptions): Promise<Ope
       ? crypto.randomUUID()
       : `tab-${nextActivationSeq()}-${Math.random().toString(36).slice(2, 8)}`,
     filePath,
-    fileName: evidenceDisplayName({ path: filePath, source_format: filePath.startsWith('assembled://') ? 'assembled' : '' }),
+    fileName: evidenceDisplayName({ path: filePath, source_format: filePath.startsWith('assembled://') ? 'assembled' : '' }, tr),
     mode,
     lastActivePanel: '',
     lastActiveSeq: nextActivationSeq(),
@@ -290,7 +292,7 @@ async function openNewTab(filePath: string, opts?: LoadFileOptions): Promise<Ope
     // Backend refused — yank the tab back out and restore the active tab.
     // The load hook has already reported the reason unless `quiet`.
     rollback();
-    return { ok: false, error: outcome.error ?? '载入未完成' };
+    return { ok: false, error: outcome.error ?? tr("载入未完成") };
   } catch (e) {
     // The workspace shell's load hook catches load errors itself, so this
     // only fires on an unexpected teardown/hook failure. Roll back the

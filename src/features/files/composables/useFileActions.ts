@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, reactive } from 'vue';
 import { notifyError, notifySuccess } from '../../../composables/useToast';
 import { tsvEscape } from '../../../utils/exportFormat';
@@ -43,28 +45,28 @@ export function useFileActions(options: {
   async function copyText(text: string, what: string) {
     try {
       await navigator.clipboard.writeText(text);
-      notifySuccess('已复制', what);
+      notifySuccess(tr("已复制"), what);
     } catch (err) {
-      notifyError('复制失败', String(err));
+      notifyError(tr("复制失败"), String(err));
     }
   }
 
   function copyCurrentPath() {
-    void copyText(options.currentPath(), '当前目录完整路径');
+    void copyText(options.currentPath(), tr("当前目录完整路径"));
   }
 
   function onCopyNames() {
     const nodes = copyMenuNodes();
     options.closeMenu();
     if (nodes.length === 0) return;
-    void copyText(nodes.map(n => n.name).join('\n'), `${nodes.length} 个名称`);
+    void copyText(nodes.map(n => n.name).join('\n'), tr("{0} 个名称", { 0: nodes.length }));
   }
 
   function onCopyPaths() {
     const nodes = copyMenuNodes();
     options.closeMenu();
     if (nodes.length === 0) return;
-    void copyText(nodes.map(n => fullPathOf(n)).join('\n'), `${nodes.length} 条完整路径`);
+    void copyText(nodes.map(n => fullPathOf(n)).join('\n'), tr("{0} 条完整路径", { 0: nodes.length }));
   }
 
   // 证据级信息行：制表符分隔，多行带表头，可直接粘进 Excel / 笔录。检材文件名不可信，每个单元格
@@ -73,20 +75,20 @@ export function useFileActions(options: {
     const nodes = copyMenuNodes();
     options.closeMenu();
     if (nodes.length === 0) return;
-    const header = '全路径\t类型\t大小(字节)\t创建时间\t修改时间\t访问时间\t元数据地址\t已删除';
+    const header = tr("全路径\t类型\t大小(字节)\t创建时间\t修改时间\t访问时间\t元数据地址\t已删除");
     const lines = nodes.map(n =>
       [
         fullPathOf(n),
-        kindLabel(n),
+        kindLabel(n, tr),
         n.kind === 'dir' ? '' : String(n.size),
         formatTimestamp(n.timestamps?.created || n.timestamps?.birth),
         formatTimestamp(n.timestamps?.modified),
         formatTimestamp(n.timestamps?.accessed),
         String(n.inode ?? ''),
-        n.deleted ? '是' : '否',
+        n.deleted ? tr("是") : tr("否"),
       ].map(tsvEscape).join('\t'),
     );
-    void copyText([header, ...lines].join('\n'), `${nodes.length} 行取证信息`);
+    void copyText([header, ...lines].join('\n'), tr("{0} 行取证信息", { 0: nodes.length }));
   }
 
   const canExportFile = computed(() => checkedFiles.value.length > 0 || options.node()?.kind === 'file');
@@ -163,9 +165,9 @@ export function useFileActions(options: {
     );
     if (tag) {
       options.revealTagColumn();
-      notifySuccess('已打标', `${nodes.length} 项 → ${tag}`);
+      notifySuccess(tr("已打标"), tr("{0} 项 → {1}", { 0: nodes.length, 1: tag }));
     } else {
-      notifySuccess('已清除标签', `${nodes.length} 项`);
+      notifySuccess(tr("已清除标签"), tr("{0} 项", { 0: nodes.length }));
     }
   }
 

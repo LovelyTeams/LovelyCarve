@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { onScopeDispose, watch } from 'vue';
 import { trackedGlobalSearchStart } from '../../tasks/api';
 import { onGlobalSearchProgress, type GlobalSearchOptions, type GlobalSearchProgress } from '../../../lib/ipc/search';
@@ -35,7 +37,7 @@ export function useSearchExecution(options: SearchExecutionOptions) {
         }, 200);
       });
       if (disposed) cleanup(); else unlisten = cleanup;
-    } catch (error) { if (!disposed) notifyError('订阅搜索进度失败', String(error)); }
+    } catch (error) { if (!disposed) notifyError(tr("订阅搜索进度失败"), String(error)); }
   }
   function startSearch(configured: GlobalSearchOptions) {
     if (disposed) return;
@@ -45,8 +47,8 @@ export function useSearchExecution(options: SearchExecutionOptions) {
     void (async () => {
       try {
         const summary = await trackedGlobalSearchStart({ imageId, searchId, options: configured });
-        if (current(captured) && summary.status === 'cancelled') notifyInfo('搜索已取消', `已保留 ${summary.record_count.toLocaleString()} 条部分结果。`);
-      } catch (error) { if (current(captured)) notifyError('全局搜索失败', String(error)); }
+        if (current(captured) && summary.status === 'cancelled') notifyInfo(tr("搜索已取消"), tr("已保留 {0} 条部分结果。", { 0: summary.record_count.toLocaleString() }));
+      } catch (error) { if (current(captured)) notifyError(tr("全局搜索失败"), String(error)); }
       finally {
         if (current(captured)) {
           await options.refreshTasks(searchId);

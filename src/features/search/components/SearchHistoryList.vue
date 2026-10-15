@@ -1,18 +1,18 @@
 <template>
 <aside class="task-pane">
       <header class="task-pane-header">
-        <strong class="task-pane-title">搜索记录</strong>
+        <strong class="task-pane-title">{{ tr("搜索记录") }}</strong>
         <span class="history-count mono">{{ tasks.length }}</span>
-        <button class="ui-icon-btn sm" aria-label="收起搜索记录" title="收起搜索记录" @click="emit('close')"><X :size="14" /></button>
+        <button class="ui-icon-btn sm" :aria-label="tr('收起搜索记录')" :title="tr('收起搜索记录')" @click="emit('close')"><X :size="14" /></button>
       </header>
       <div class="task-scroll">
         <div v-if="loadingTasks" class="task-state">
           <Loader2 :size="15" class="spin" />
-          <span>正在读取任务…</span>
+          <span>{{ tr("正在读取任务…") }}</span>
         </div>
         <div v-else-if="tasks.length === 0 && !historyError" class="task-state empty">
           <SearchX :size="18" />
-          <span>还没有搜索任务</span>
+          <span>{{ tr("还没有搜索任务") }}</span>
         </div>
         <ul v-else class="task-list">
           <li
@@ -28,14 +28,14 @@
                 <CircleAlert v-else :size="13" />
               </span>
               <span class="task-title" :title="taskFullTitle(task)">
-                {{ taskDisplayTitle(task.keywords, task.regexes) }}
+                {{ taskDisplayTitle(task.keywords, task.regexes, tr) }}
               </span>
               <span class="task-count mono">
                 {{ (runningInfoOf(task)?.hits ?? task.total_matches).toLocaleString() }}
               </span>
               <span class="task-meta">
-                {{ formatTaskTime(task) }} · {{ statusLabel(task.status) }}
-                <template v-if="task.truncated"> · 不完整</template>
+                {{ formatTaskTime(task) }} · {{ statusLabel(task.status, tr) }}
+                <template v-if="task.truncated"> {{ tr("· 不完整") }}</template>
               </span>
               <span
                 v-if="task.status === 'running'"
@@ -50,8 +50,8 @@
             <button
               class="task-delete"
               type="button"
-              title="删除整次搜索（含命中）"
-              :aria-label="`删除搜索 ${taskDisplayTitle(task.keywords, task.regexes)}`"
+              :title="tr('删除整次搜索（含命中）')"
+              :aria-label="tr('删除搜索 {0}', { 0: taskDisplayTitle(task.keywords, task.regexes, tr) })"
               :disabled="deletingTaskId !== null"
               @click.stop="emit('delete', task)"
             >
@@ -65,6 +65,8 @@
 
 </template>
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { Loader2, X, SearchX, CheckCircle2, CircleSlash, CircleAlert, Trash2 } from 'lucide-vue-next';
 import type { GlobalSearchHistoryEntry, GlobalSearchProgress } from '../../../lib/ipc/search';
 import { taskDisplayTitle } from '../model/searchResults';

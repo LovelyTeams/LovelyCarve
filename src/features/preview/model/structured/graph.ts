@@ -1,3 +1,4 @@
+import { sourceText, type Translator } from '../../../../i18n/translate';
 // PValue（有序值树）→ 节点图模型 {nodes, edges}，仿 jsoncrack 的形态：
 // 每个容器（object/array）是一个多行节点，行内原子值就地显示（key: value），
 // 行内嵌套容器则从该行引一条边到子节点。原子根（整文件只是个标量）退化为单节点。
@@ -70,11 +71,11 @@ export const NODE_CAP = 2000;
 /** 单个节点的最大行数——扁平超大容器只渲染前 ROW_CAP 行 + 一条省略行。 */
 const ROW_CAP = 200;
 
-export function buildGraph(value: PValue): GraphResult {
+export function buildGraph(value: PValue, tr: Translator = sourceText): GraphResult {
   const ctx: BuildCtx = { nodes: [], edges: [], idSeq: 0, overCap: false };
 
   if (value.t === 'object' || value.t === 'array') {
-    buildContainer(ctx, value, 0, null);
+    buildContainer(ctx, value, 0, null, tr);
   } else {
     const id = `n${ctx.idSeq++}`;
     const node: GNode = {
@@ -109,6 +110,7 @@ function buildContainer(
   v: Extract<PValue, { t: 'object' | 'array' }>,
   depth: number,
   parentId: string | null,
+  tr: Translator = sourceText,
 ): GNode {
   const id = `n${ctx.idSeq++}`;
   const node: GNode = {
@@ -139,7 +141,7 @@ function buildContainer(
       const len = val.t === 'object' ? val.entries.length : val.items.length;
       const expandable = len > 0 && ctx.nodes.length < NODE_CAP;
       if (expandable) {
-        const child = buildContainer(ctx, val, depth + 1, id);
+        const child = buildContainer(ctx, val, depth + 1, id, tr);
         ctx.edges.push({ id: `e_${id}_${child.id}`, from: id, to: child.id, fromRowIndex: rowIndex });
         node.childIds.push(child.id);
         node.hasChildren = true;
@@ -156,7 +158,7 @@ function buildContainer(
   if (truncated) {
     node.rows.push({
       key: null,
-      preview: `… 其余 ${(allItems.length - ROW_CAP).toLocaleString()} 项已省略`,
+      preview: tr("… 其余 {0} 项已省略", { 0: (allItems.length - ROW_CAP).toLocaleString() }),
       valueType: 'null',
       childId: null,
     });

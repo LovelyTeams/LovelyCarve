@@ -1,13 +1,14 @@
+import { sourceText, type Translator } from '../../../i18n/translate';
 import type { ImageInfo, DiskPartition } from '../../../lib/ipc/image';
 import { formatBinaryBytes as formatBytes, formatEpochSeconds } from '../../../utils/format';
 import { KIND_LABELS } from '../../../lib/models/filesystemLabels';
 export { formatBytes, KIND_LABELS };
 
 /** Shared evidence heading and workspace tab name; keep RAID session identities in details. */
-export function evidenceDisplayName(info: Pick<ImageInfo, 'path' | 'source_format'>): string {
+export function evidenceDisplayName(info: Pick<ImageInfo, 'path' | 'source_format'>, tr: Translator = sourceText): string {
   if (info.source_format === 'assembled') {
     const automatic = /^assembled:\/\/md:auto-raid(\d+)-[a-f0-9]{32}$/i.exec(info.path);
-    return automatic ? `RAID ${automatic[1]} 重组镜像` : 'RAID 重组镜像';
+    return automatic ? tr("RAID {0} 重组镜像", { 0: automatic[1] }) : tr("RAID 重组镜像");
   }
   return info.path.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? info.path;
 }
@@ -29,18 +30,18 @@ export const SCHEME_LABELS: Record<string, string> = {
 };
 
 
-export function partitionTitle(p: { id: number; kind: string; start_lba: number; label: string | null }): string {
+export function partitionTitle(p: { id: number; kind: string; start_lba: number; label: string | null }, tr: Translator = sourceText): string {
   if (p.label) return p.label;
   // 与后端 fs_tree.rs::partition_name 一致：只留序号。类型在徽章、
   // 几何在起始扇区列，都不进标题。
-  return `分区${p.id}`;
+  return tr("分区{0}", { 0: p.id });
 }
 
 /** 起始扇区的悬停提示：完整范围、长度与字节偏移。 */
-export function partitionGeometry(p: DiskPartition, sectorSize: number, unit: string): string {
+export function partitionGeometry(p: DiskPartition, sectorSize: number, unit: string, tr: Translator = sourceText): string {
   const end = p.start_lba + p.length_lba - 1;
   const offset = (p.start_lba * sectorSize).toString(16).toUpperCase();
-  return `${unit} ${p.start_lba.toLocaleString()} – ${end.toLocaleString()}，共 ${p.length_lba.toLocaleString()} ${unit}\n字节偏移 0x${offset}`;
+  return tr("{0} {1} – {2}，共 {3} {4}\n字节偏移 0x{5}", { 0: unit, 1: p.start_lba.toLocaleString(), 2: end.toLocaleString(), 3: p.length_lba.toLocaleString(), 4: unit, 5: offset });
 }
 
 
@@ -70,7 +71,7 @@ export interface LayoutSegment {
 }
 
 
-export function evidenceLayout(info: ImageInfo | null): LayoutSegment[] {
+export function evidenceLayout(info: ImageInfo | null, tr: Translator = sourceText): LayoutSegment[] {
   if (!info || info.size_bytes <= 0 || info.partitions.length === 0) return [];
   const total = info.size_bytes;
   const sorted = info.partitions
@@ -87,7 +88,7 @@ export function evidenceLayout(info: ImageInfo | null): LayoutSegment[] {
       widthPct: (lenBytes / total) * 100,
       lenBytes,
       color: partColor(index),
-      tooltip: `${partitionTitle(p)} · ${KIND_LABELS[p.kind] || p.kind} · ${formatBytes(lenBytes)}`,
+      tooltip: `${partitionTitle(p, tr)} · ${KIND_LABELS[p.kind] || p.kind} · ${formatBytes(lenBytes)}`,
       partition: p,
     });
   }
@@ -104,45 +105,45 @@ export interface InfoRow {
 
 // 头部之外的检材事实：精确字节数、扇区大小、磁盘标识；卷影副本会话再加来源。
 // 镜像 ID 与镜像文件的创建 / 修改时间是本机侧信息，不在此列。
-export function evidenceFacts(info: ImageInfo | null): InfoRow[] {
+export function evidenceFacts(info: ImageInfo | null, tr: Translator = sourceText): InfoRow[] {
   if (!info) return [];
   const rows: InfoRow[] = [
-    { label: '逻辑大小', value: `${info.size_bytes.toLocaleString()} 字节`, mono: true },
-    { label: info.source_format === 'xiaomi_firmware' ? '寻址单位' : '扇区大小', value: `${info.sector_size} B`, mono: true },
+    { label: tr("逻辑大小"), value: tr("{0} 字节", { 0: info.size_bytes.toLocaleString() }), mono: true },
+    { label: info.source_format === 'xiaomi_firmware' ? tr("寻址单位") : tr("扇区大小"), value: `${info.sector_size} B`, mono: true },
   ];
-  if (info.source_format === 'assembled') rows.push({ label: '重组镜像标识', value: info.path, mono: true, copyable: true });
-  if (info.disk_id) rows.push({ label: '磁盘标识', value: info.disk_id, mono: true, copyable: true });
+  if (info.source_format === 'assembled') rows.push({ label: tr("重组镜像标识"), value: info.path, mono: true, copyable: true });
+  if (info.disk_id) rows.push({ label: tr("磁盘标识"), value: info.disk_id, mono: true, copyable: true });
   const shadow = info.shadow_copy;
   if (shadow) {
-    rows.push({ label: '卷影副本', value: `分区 #${shadow.partition_id} 的第 ${shadow.index + 1} 个（按创建时间）` });
+    rows.push({ label: tr("卷影副本"), value: tr("分区 #{0} 的第 {1} 个（按创建时间）", { 0: shadow.partition_id, 1: shadow.index + 1 }) });
     const taken = formatEpochSeconds(shadow.created_unix_ms == null ? null : shadow.created_unix_ms / 1000, {
       timezone: 'utc', precision: 'seconds', suffix: true, fallback: '',
     });
-    if (taken) rows.push({ label: '快照时间', value: taken, mono: true });
-    if (shadow.shadow_copy_id) rows.push({ label: '卷影副本 ID', value: shadow.shadow_copy_id, mono: true, copyable: true });
+    if (taken) rows.push({ label: tr("快照时间"), value: taken, mono: true });
+    if (shadow.shadow_copy_id) rows.push({ label: tr("卷影副本 ID"), value: shadow.shadow_copy_id, mono: true, copyable: true });
   }
   return rows;
 }
 
-export function acquisitionRows(info: ImageInfo | null): InfoRow[] {
+export function acquisitionRows(info: ImageInfo | null, tr: Translator = sourceText): InfoRow[] {
   const ewf = info?.ewf;
   if (!ewf) return [];
   const candidates: Array<[string, string | null, boolean?]> = [
-    ['案件编号', ewf.case_number, true],
-    ['证据编号', ewf.evidence_number, true],
-    ['取证员', ewf.examiner_name],
-    ['采集时间', ewf.acquiry_date, true],
-    ['设备型号', ewf.model],
-    ['序列号', ewf.serial_number, true],
-    ['描述', ewf.description],
-    ['备注', ewf.notes],
-    ['采集格式', ewf.format],
-    ['介质类型', ewf.media_type],
-    ['压缩方式', ewf.compression],
-    ['分段数', ewf.segment_count != null ? String(ewf.segment_count) : null, true],
-    ['系统时间', ewf.system_date, true],
-    ['采集系统', ewf.acquiry_operating_system],
-    ['采集软件版本', ewf.acquiry_software_version, true],
+    [tr("案件编号"), ewf.case_number, true],
+    [tr("证据编号"), ewf.evidence_number, true],
+    [tr("取证员"), ewf.examiner_name],
+    [tr("采集时间"), ewf.acquiry_date, true],
+    [tr("设备型号"), ewf.model],
+    [tr("序列号"), ewf.serial_number, true],
+    [tr("描述"), ewf.description],
+    [tr("备注"), ewf.notes],
+    [tr("采集格式"), ewf.format],
+    [tr("介质类型"), ewf.media_type],
+    [tr("压缩方式"), ewf.compression],
+    [tr("分段数"), ewf.segment_count != null ? String(ewf.segment_count) : null, true],
+    [tr("系统时间"), ewf.system_date, true],
+    [tr("采集系统"), ewf.acquiry_operating_system],
+    [tr("采集软件版本"), ewf.acquiry_software_version, true],
   ];
   return candidates
     .filter((entry): entry is [string, string, boolean?] => !!entry[1])

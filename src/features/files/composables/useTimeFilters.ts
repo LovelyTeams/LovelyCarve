@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, nextTick, reactive, ref } from 'vue';
 import { formatTimestamp } from '../../../utils/time';
 import type { DiskFsNode } from '../model/model';
@@ -74,10 +76,10 @@ export function useTimeFilters(options: UseTimeFiltersOptions) {
     if (!isTimeColumn(key) || !validationAttempted[key]) return errors;
     const filter = timeFilters[key];
     const { from, to } = timeFilterBounds(key);
-    if (filter.fromEnabled && from === null) errors.from = '请输入有效日期或时间，例如 2026-10-11 09:30。';
-    if (filter.toEnabled && to === null) errors.to = '请输入有效日期或时间，例如 2026-10-11 18:00。';
+    if (filter.fromEnabled && from === null) errors.from = tr("请输入有效日期或时间，例如 2026-10-11 09:30。");
+    if (filter.toEnabled && to === null) errors.to = tr("请输入有效日期或时间，例如 2026-10-11 18:00。");
     if (from !== null && to !== null && from > to) {
-      errors.from = '起始时间不能晚于截止时间。';
+      errors.from = tr("起始时间不能晚于截止时间。");
       errors.to = errors.from;
     }
     return errors;
@@ -145,8 +147,8 @@ export function useTimeFilters(options: UseTimeFiltersOptions) {
   function timeFilterSummary(key: TimeColumnKey): string {
     const filter = timeFilters[key];
     const parts: string[] = [];
-    if (filter.appliedFrom !== null) parts.push(`自 ${filter.appliedFrom}`);
-    if (filter.appliedTo !== null) parts.push(`至 ${filter.appliedTo}`);
+    if (filter.appliedFrom !== null) parts.push(tr("自 {0}", { 0: filter.appliedFrom }));
+    if (filter.appliedTo !== null) parts.push(tr("至 {0}", { 0: filter.appliedTo }));
     return parts.join('，');
   }
 

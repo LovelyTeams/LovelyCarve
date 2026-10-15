@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { carveResultsPage, type CarveArtifact, type CarveCategory, type CarveScanSnapshot } from '../../../lib/ipc/carve';
 import { mergeCarveArtifacts } from '../model/carveResults';
@@ -97,7 +99,7 @@ export function useCarveResults(options: { imageId: () => string; scan: () => Ca
       const cursor = page.next_cursor;
       page = await carveResultsPage({ scanId: current.scan_id, cursor, limit: 200 });
       if (disposed || generation !== pageGeneration || options.scan()?.scan_id !== current.scan_id) return;
-      if (page.next_cursor === cursor) throw new Error('结果游标未前进，请重试读取');
+      if (page.next_cursor === cursor) throw new Error(tr("结果游标未前进，请重试读取"));
       artifacts.value = mergeCarveArtifacts(artifacts.value, page.items);
       nextCursor.value = page.next_cursor;
       resumeCursor.value = page.resume_cursor;

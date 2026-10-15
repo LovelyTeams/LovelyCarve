@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { reactive, computed, type ComputedRef } from 'vue';
 import { notifyError, notifySuccess } from '../../../composables/useToast';
 import { bitlockerScanMemory, bitlockerUnlock, bitlockerUnlockWithVmk } from '../../../lib/ipc/bitlocker';
@@ -87,7 +89,7 @@ async function runUnlock(
 ): Promise<boolean> {
   const key = jobKey(imageId, partitionId);
   if (unlockJobs.has(key)) {
-    notifyError('解锁失败', '此分区已有解锁任务在进行中');
+    notifyError(tr("解锁失败"), tr("此分区已有解锁任务在进行中"));
     return false;
   }
   const taskId = newTaskId('bde');
@@ -126,12 +128,12 @@ async function runUnlock(
       });
     }
     if (epoch !== generation) return true;
-    notifySuccess('BitLocker 解锁成功', successLabel);
+    notifySuccess(tr("BitLocker 解锁成功"), successLabel);
     // 解锁后自动为该 NTFS 卷构建快照（即发即忘，不阻塞解锁返回）。
     if (workflow && workflow === snapshotWorkflow && context === workflow.context()) workflow.unlocked(imageId, partitionId);
     return true;
   } catch (err) {
-    if (epoch === generation) notifyError('BitLocker 解锁失败', String(err));
+    if (epoch === generation) notifyError(tr("BitLocker 解锁失败"), String(err));
     return false;
   } finally {
     if (epoch === generation) {
@@ -157,7 +159,7 @@ export function startBitlockerRecoveryUnlock(
     'recovery',
     { recoveryPassword, password: null },
     'bitlocker_unlock',
-    `Partition ${partitionId} 已通过恢复密钥解锁`,
+    tr("Partition {0} 已通过恢复密钥解锁", { 0: partitionId }),
   );
 }
 
@@ -173,7 +175,7 @@ export function startBitlockerPasswordUnlock(
     'password',
     { recoveryPassword: null, password },
     'bitlocker_unlock',
-    `Partition ${partitionId} 已通过用户密码解锁`,
+    tr("Partition {0} 已通过用户密码解锁", { 0: partitionId }),
   );
 }
 
@@ -189,7 +191,7 @@ export function startBitlockerVmkUnlock(
     'vmk',
     { vmkHex },
     'bitlocker_unlock_with_vmk',
-    `Partition ${partitionId} 已通过 VMK 解锁`,
+    tr("Partition {0} 已通过 VMK 解锁", { 0: partitionId }),
   );
 }
 
@@ -197,7 +199,7 @@ export function startBitlockerKeyUnlock(imageId: string, partitionId: number, cr
   if (credential.kind === 'vmk') return startBitlockerVmkUnlock(imageId, partitionId, credential.vmkHex);
   const payload = credential.kind === 'startup' ? { startupKeyPath: credential.startupKeyPath }
     : credential.kind === 'fvek' ? { fvekHex: credential.fvekHex, tweakHex: credential.tweakHex || null } : {};
-  return runUnlock(imageId, partitionId, 'key', payload, 'bitlocker_unlock', `分区 ${partitionId} 已解锁`);
+  return runUnlock(imageId, partitionId, 'key', payload, 'bitlocker_unlock', tr("分区 {0} 已解锁", { 0: partitionId }));
 }
 
 export async function cancelBitlockerUnlock(imageId: string, partitionId: number): Promise<void> {
@@ -208,7 +210,7 @@ export async function cancelBitlockerUnlock(imageId: string, partitionId: number
   try {
     await taskCancel({ taskId: job.taskId });
   } catch (err) {
-    notifyError('取消失败', String(err));
+    notifyError(tr("取消失败"), String(err));
     job.cancelling = false;
   }
 }
@@ -224,7 +226,7 @@ export async function startBitlockerMemoryScan(
 ): Promise<BitlockerVmkScanResult | null> {
   const key = jobKey(imageId, partitionId);
   if (scanJobs.has(key)) {
-    notifyError('内存扫描失败', '此分区已有扫描任务在进行中');
+    notifyError(tr("内存扫描失败"), tr("此分区已有扫描任务在进行中"));
     return null;
   }
   const taskId = newTaskId('bde-scan');
@@ -257,7 +259,7 @@ export async function startBitlockerMemoryScan(
     });
     return result;
   } catch (err) {
-    if (epoch === generation) notifyError('内存扫描失败', String(err));
+    if (epoch === generation) notifyError(tr("内存扫描失败"), String(err));
     return null;
   } finally {
     if (epoch === generation) {
@@ -279,7 +281,7 @@ export async function cancelBitlockerMemoryScan(imageId: string, partitionId: nu
   try {
     await taskCancel({ taskId: job.taskId });
   } catch (err) {
-    notifyError('取消失败', String(err));
+    notifyError(tr("取消失败"), String(err));
     job.cancelling = false;
   }
 }

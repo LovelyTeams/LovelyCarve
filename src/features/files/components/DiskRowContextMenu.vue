@@ -16,13 +16,13 @@
           class="tag-pill mono"
           :class="`tag-${TAG_STYLE[tag]}`"
           :disabled="copyCount === 0"
-          :title="copyCount > 1 ? `给勾选的 ${copyCount} 项打「${tag}」标签` : `打「${tag}」标签`"
+          :title="copyCount > 1 ? tr('给勾选的 {0} 项打「{1}」标签', { 0: copyCount, 1: tr(tag) }) : tr('打「{0}」标签', { 0: tr(tag) })"
           @click="$emit('tag-pick', tag)"
-        >{{ tag }}</button>
+        >{{ tr(tag) }}</button>
         <button
           class="tag-pill tag-clear mono"
           :disabled="copyCount === 0"
-          title="清除标签"
+          :title="tr('清除标签')"
           @click="$emit('tag-pick', null)"
         >
           <X :size="11" />
@@ -36,17 +36,17 @@
         @click="$emit('show-detail')"
       >
         <Info :size="13" />
-        <span>查看详情</span>
+        <span>{{ tr("查看详情") }}</span>
       </button>
       <button
         class="ui-menu-item disk-row-menu-item"
         role="menuitem"
         :disabled="!canReturnToOriginalDir"
-        title="跳到该条目的所在目录，并清除当前筛选"
+        :title="tr('跳到该条目的所在目录，并清除当前筛选')"
         @click="$emit('return-to-original-dir')"
       >
         <FolderOpen :size="13" />
-        <span>回到原始目录</span>
+        <span>{{ tr("回到原始目录") }}</span>
       </button>
       <button
         v-if="canMount"
@@ -67,7 +67,7 @@
         @click="$emit('export-file')"
       >
         <FileDown :size="13" />
-        <span>{{ checkedFileCount > 0 ? `导出勾选文件（${checkedFileCount}）` : '导出文件' }}</span>
+        <span>{{ checkedFileCount > 0 ? tr("导出勾选文件（{0}）", { 0: checkedFileCount }) : tr("导出文件") }}</span>
       </button>
       <button
         class="ui-menu-item disk-row-menu-item"
@@ -76,7 +76,7 @@
         @click="$emit('export-dir')"
       >
         <FolderDown :size="13" />
-        <span>{{ checkedDirCount > 0 ? `导出勾选文件夹（${checkedDirCount}）` : '导出文件夹' }}</span>
+        <span>{{ checkedDirCount > 0 ? tr("导出勾选文件夹（{0}）", { 0: checkedDirCount }) : tr("导出文件夹") }}</span>
       </button>
       <div
         class="disk-row-submenu-wrap"
@@ -92,7 +92,7 @@
           @click="canHash && $emit('update:hashMenuOpen', !hashMenuOpen)"
         >
           <Fingerprint :size="13" />
-          <span>{{ checkedFileCount > 1 ? `计算勾选文件哈希（${checkedFileCount}）` : '计算哈希值' }}</span>
+          <span>{{ checkedFileCount > 1 ? tr("计算勾选文件哈希（{0}）", { 0: checkedFileCount }) : tr("计算哈希值") }}</span>
           <ChevronRight :size="12" class="submenu-caret" />
         </button>
         <div v-if="hashMenuOpen && canHash" class="ui-menu disk-row-submenu" :class="{ flip: hashMenuFlip }" role="menu">
@@ -103,7 +103,7 @@
             role="menuitem"
             @click="$emit('compute-hash', option.algos)"
           >
-            <span class="mono">{{ option.label }}</span>
+            <span class="mono">{{ tr(option.label) }}</span>
           </button>
         </div>
       </div>
@@ -111,40 +111,42 @@
         class="ui-menu-item disk-row-menu-item"
         role="menuitem"
         :disabled="!canIdentify"
-        title="Magika 按文件内容识别真实类型，与扩展名无关——可发现改后缀伪装"
+        :title="tr('Magika 按文件内容识别真实类型，与扩展名无关——可发现改后缀伪装')"
         @click="$emit('identify-type')"
       >
         <ScanSearch :size="13" />
-        <span>{{ checkedFileCount > 1 ? `识别勾选文件类型（${checkedFileCount}）` : '识别文件类型' }}</span>
+        <span>{{ checkedFileCount > 1 ? tr("识别勾选文件类型（{0}）", { 0: checkedFileCount }) : tr("识别文件类型") }}</span>
       </button>
       <button
         class="ui-menu-item disk-row-menu-item"
         role="menuitem"
         :disabled="!canPluginTask"
-        title="提交到任务中心，由已启用的 LPP 插件 function 分析该文件；声明了依赖链的 function 会自动接续"
+        :title="tr('提交到任务中心，由已启用的 LPP 插件 function 分析该文件；声明了依赖链的 function 会自动接续')"
         @click="$emit('plugin-task')"
       >
         <Puzzle :size="13" />
-        <span>插件分析任务…</span>
+        <span>{{ tr("插件分析任务…") }}</span>
       </button>
       <div class="ui-menu-sep" role="separator"></div>
       <button class="ui-menu-item disk-row-menu-item" role="menuitem" :disabled="copyCount === 0" @click="$emit('copy-names')">
         <Copy :size="13" />
-        <span>{{ copyCount > 1 ? `复制名称（${copyCount}）` : '复制名称' }}</span>
+        <span>{{ copyCount > 1 ? tr("复制名称（{0}）", { 0: copyCount }) : tr("复制名称") }}</span>
       </button>
       <button class="ui-menu-item disk-row-menu-item" role="menuitem" :disabled="copyCount === 0" @click="$emit('copy-paths')">
         <ClipboardCopy :size="13" />
-        <span>{{ copyCount > 1 ? `复制完整路径（${copyCount}）` : '复制完整路径' }}</span>
+        <span>{{ copyCount > 1 ? tr("复制完整路径（{0}）", { 0: copyCount }) : tr("复制完整路径") }}</span>
       </button>
       <button class="ui-menu-item disk-row-menu-item" role="menuitem" :disabled="copyCount === 0" @click="$emit('copy-forensic')">
         <ClipboardList :size="13" />
-        <span>{{ copyCount > 1 ? `复制取证信息（${copyCount}）` : '复制取证信息' }}</span>
+        <span>{{ copyCount > 1 ? tr("复制取证信息（{0}）", { 0: copyCount }) : tr("复制取证信息") }}</span>
       </button>
     </div>
   </Teleport>
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import {
   ChevronRight,
   ClipboardCopy,

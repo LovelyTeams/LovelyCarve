@@ -7,8 +7,8 @@
     :style="{ left: `${filterPopover.x}px`, top: `${filterPopover.y}px`, width: `${filterPopover.width}px` }"
   >
     <div class="disk-filter-head">
-      <span class="disk-filter-title">过滤 · {{ filterPopoverColumn?.label }}</span>
-      <button class="ui-icon-btn sm" title="关闭" aria-label="关闭过滤" @click="hideFilterPopover">
+      <span class="disk-filter-title">{{ tr("过滤 ·") }} {{ tr(filterPopoverColumn?.label ?? '') }}</span>
+      <button class="ui-icon-btn sm" :title="tr('关闭')" :aria-label="tr('关闭过滤')" @click="hideFilterPopover">
         <X :size="14" />
       </button>
     </div>
@@ -20,48 +20,48 @@
         @keydown.esc="onFilterCloseKey"
       >
         <div class="disk-size-row">
-          <input type="checkbox" v-model="sizeFilter.leEnabled" title="启用大小上限" />
+          <input type="checkbox" v-model="sizeFilter.leEnabled" :title="tr('启用大小上限')" />
           <span class="disk-size-op">≤</span>
           <input
             class="ui-input sm mono disk-size-num"
             type="text"
             inputmode="decimal"
             placeholder="1.2"
-            aria-label="文件大小上限"
+            :aria-label="tr('文件大小上限')"
             :aria-invalid="sizeFilterErrors.le ? 'true' : undefined"
             :aria-describedby="sizeFilterErrors.le ? `${fieldId}-size-upper` : undefined"
             v-model="sizeFilter.leValue"
             @input="sizeFilter.leEnabled = true"
           />
-          <UiSelect v-model="sizeFilter.leUnit" class="sm mono disk-size-unit" :options="SIZE_UNIT_OPTIONS" aria-label="大小上限单位" />
+          <UiSelect v-model="sizeFilter.leUnit" class="sm mono disk-size-unit" :options="SIZE_UNIT_OPTIONS" :aria-label="tr('大小上限单位')" />
         </div>
         <p v-if="sizeFilterErrors.le" :id="`${fieldId}-size-upper`" class="ui-field-error" role="alert">{{ sizeFilterErrors.le }}</p>
         <div class="disk-size-row">
-          <input type="checkbox" v-model="sizeFilter.geEnabled" title="启用大小下限" />
+          <input type="checkbox" v-model="sizeFilter.geEnabled" :title="tr('启用大小下限')" />
           <span class="disk-size-op">≥</span>
           <input
             class="ui-input sm mono disk-size-num"
             type="text"
             inputmode="decimal"
             placeholder="3.4"
-            aria-label="文件大小下限"
+            :aria-label="tr('文件大小下限')"
             :aria-invalid="sizeFilterErrors.ge ? 'true' : undefined"
             :aria-describedby="sizeFilterErrors.ge ? `${fieldId}-size-lower` : undefined"
             v-model="sizeFilter.geValue"
             @input="sizeFilter.geEnabled = true"
           />
-          <UiSelect v-model="sizeFilter.geUnit" class="sm mono disk-size-unit" :options="SIZE_UNIT_OPTIONS" aria-label="大小下限单位" />
+          <UiSelect v-model="sizeFilter.geUnit" class="sm mono disk-size-unit" :options="SIZE_UNIT_OPTIONS" :aria-label="tr('大小下限单位')" />
         </div>
         <p v-if="sizeFilterErrors.ge" :id="`${fieldId}-size-lower`" class="ui-field-error" role="alert">{{ sizeFilterErrors.ge }}</p>
         <div class="disk-size-row">
-          <input type="checkbox" v-model="sizeFilter.modEnabled" title="按字节数整除余数筛选（如 mod 512 = 0 找扇区对齐的文件）" />
+          <input type="checkbox" v-model="sizeFilter.modEnabled" :title="tr('按字节数整除余数筛选（如 mod 512 = 0 找扇区对齐的文件）')" />
           <span class="disk-size-op">mod</span>
           <input
             class="ui-input sm mono disk-size-num"
             type="text"
             inputmode="numeric"
             placeholder="512"
-            aria-label="大小整除的除数"
+            :aria-label="tr('大小整除的除数')"
             :aria-invalid="sizeFilterErrors.mod ? 'true' : undefined"
             :aria-describedby="sizeFilterErrors.mod ? `${fieldId}-size-divisor` : undefined"
             v-model="sizeFilter.modValue"
@@ -73,7 +73,7 @@
             type="text"
             inputmode="numeric"
             placeholder="0"
-            aria-label="大小整除的余数"
+            :aria-label="tr('大小整除的余数')"
             :aria-invalid="sizeFilterErrors.remainder ? 'true' : undefined"
             :aria-describedby="sizeFilterErrors.remainder ? `${fieldId}-size-remainder` : undefined"
             v-model="sizeFilter.modRemainder"
@@ -85,10 +85,10 @@
         <div class="disk-filter-actions">
           <button class="ui-btn sm primary" @click="applySizeFilter">
             <Filter :size="12" />
-            <span>激活</span>
+            <span>{{ tr("激活") }}</span>
           </button>
           <button class="ui-btn sm" :disabled="!sizeFilter.active" @click="disableSizeFilter">
-            禁用
+            {{ tr("禁用") }}
           </button>
         </div>
       </div>
@@ -101,16 +101,16 @@
         @keydown.esc="onFilterCloseKey"
       >
         <div class="disk-size-row">
-          <input type="checkbox" v-model="popoverTimeFilter.fromEnabled" title="启用起始时间" />
-          <span class="disk-size-op">自</span>
+          <input type="checkbox" v-model="popoverTimeFilter.fromEnabled" :title="tr('启用起始时间')" />
+          <span class="disk-size-op">{{ tr("自") }}</span>
           <div class="disk-time-wrap">
             <input
               class="ui-input sm mono disk-time-input"
               type="text"
               placeholder="yyyy-mm-dd hh:mm:ss"
-              title="可只填日期（按整日）或省略秒（按整分钟）"
+              :title="tr('可只填日期（按整日）或省略秒（按整分钟）')"
               v-model="popoverTimeFilter.fromValue"
-              aria-label="起始时间"
+              :aria-label="tr('起始时间')"
               :aria-invalid="timeFilterErrors.from ? 'true' : undefined"
               :aria-describedby="timeFilterErrors.from ? `${fieldId}-time-from` : undefined"
               @input="popoverTimeFilter.fromEnabled = true"
@@ -118,8 +118,8 @@
             <button
               class="ui-icon-btn sm disk-time-pick"
               :class="{ active: timeCalOpen === 'from' }"
-              title="从日历选择"
-              aria-label="从日历选择起始时间"
+              :title="tr('从日历选择')"
+              :aria-label="tr('从日历选择起始时间')"
               @click="toggleTimeCal('from')"
             >
               <CalendarDays :size="12" />
@@ -128,16 +128,16 @@
         </div>
         <p v-if="timeFilterErrors.from" :id="`${fieldId}-time-from`" class="ui-field-error" role="alert">{{ timeFilterErrors.from }}</p>
         <div class="disk-size-row">
-          <input type="checkbox" v-model="popoverTimeFilter.toEnabled" title="启用截止时间" />
-          <span class="disk-size-op">至</span>
+          <input type="checkbox" v-model="popoverTimeFilter.toEnabled" :title="tr('启用截止时间')" />
+          <span class="disk-size-op">{{ tr("至") }}</span>
           <div class="disk-time-wrap">
             <input
               class="ui-input sm mono disk-time-input"
               type="text"
               placeholder="yyyy-mm-dd hh:mm:ss"
-              title="可只填日期（按整日）或省略秒（按整分钟）"
+              :title="tr('可只填日期（按整日）或省略秒（按整分钟）')"
               v-model="popoverTimeFilter.toValue"
-              aria-label="截止时间"
+              :aria-label="tr('截止时间')"
               :aria-invalid="timeFilterErrors.to ? 'true' : undefined"
               :aria-describedby="timeFilterErrors.to ? `${fieldId}-time-to` : undefined"
               @input="popoverTimeFilter.toEnabled = true"
@@ -145,8 +145,8 @@
             <button
               class="ui-icon-btn sm disk-time-pick"
               :class="{ active: timeCalOpen === 'to' }"
-              title="从日历选择"
-              aria-label="从日历选择截止时间"
+              :title="tr('从日历选择')"
+              :aria-label="tr('从日历选择截止时间')"
               @click="toggleTimeCal('to')"
             >
               <CalendarDays :size="12" />
@@ -157,24 +157,24 @@
         <UiTransition kind="collapse"><div v-if="timeCalOpen" class="disk-time-cal">
           <div class="cal-main">
             <div class="disk-time-cal-head">
-              <button class="cal-nav" title="上一年" @click="moveTimeCal(-12)">
+              <button class="cal-nav" :title="tr('上一年')" @click="moveTimeCal(-12)">
                 <ChevronsLeft :size="13" />
               </button>
-              <button class="cal-nav" title="上一月" @click="moveTimeCal(-1)">
+              <button class="cal-nav" :title="tr('上一月')" @click="moveTimeCal(-1)">
                 <ChevronLeft :size="13" />
               </button>
               <span class="cal-title">
-                {{ timeCalCursor.year }} 年 {{ String(timeCalCursor.month + 1).padStart(2, '0') }} 月
+                {{ timeCalCursor.year }} {{ tr("年") }} {{ String(timeCalCursor.month + 1).padStart(2, '0') }} {{ tr("月") }}
               </span>
-              <button class="cal-nav" title="下一月" @click="moveTimeCal(1)">
+              <button class="cal-nav" :title="tr('下一月')" @click="moveTimeCal(1)">
                 <ChevronRight :size="13" />
               </button>
-              <button class="cal-nav" title="下一年" @click="moveTimeCal(12)">
+              <button class="cal-nav" :title="tr('下一年')" @click="moveTimeCal(12)">
                 <ChevronsRight :size="13" />
               </button>
             </div>
             <div class="disk-time-cal-grid">
-              <span v-for="w in ['一', '二', '三', '四', '五', '六', '日']" :key="w" class="cal-weekday">
+              <span v-for="w in [tr('一'), tr('二'), tr('三'), tr('四'), tr('五'), tr('六'), tr('日')]" :key="w" class="cal-weekday">
                 {{ w }}
               </span>
               <button
@@ -187,12 +187,12 @@
               >{{ c.day }}</button>
             </div>
             <div class="disk-time-cal-foot">
-              <button class="ui-btn link sm" @click="clearTimeCalRow">清除</button>
-              <button class="ui-btn link sm" @click="pickTimeCalToday">今天</button>
+              <button class="ui-btn link sm" @click="clearTimeCalRow">{{ tr("清除") }}</button>
+              <button class="ui-btn link sm" @click="pickTimeCalToday">{{ tr("今天") }}</button>
             </div>
           </div>
           <div class="cal-time-cols">
-            <div class="cal-time-col" title="时">
+            <div class="cal-time-col" :title="tr('时')">
               <button
                 v-for="v in CAL_HOURS"
                 :key="`h${v}`"
@@ -201,7 +201,7 @@
                 @click="pickCalTime('h', v)"
               >{{ v }}</button>
             </div>
-            <div class="cal-time-col" title="分">
+            <div class="cal-time-col" :title="tr('分')">
               <button
                 v-for="v in CAL_MINSEC"
                 :key="`m${v}`"
@@ -210,7 +210,7 @@
                 @click="pickCalTime('m', v)"
               >{{ v }}</button>
             </div>
-            <div class="cal-time-col" title="秒">
+            <div class="cal-time-col" :title="tr('秒')">
               <button
                 v-for="v in CAL_MINSEC"
                 :key="`s${v}`"
@@ -224,14 +224,14 @@
         <div class="disk-filter-actions">
           <button class="ui-btn sm primary" @click="applyPopoverTimeFilter">
             <Filter :size="12" />
-            <span>激活</span>
+            <span>{{ tr("激活") }}</span>
           </button>
           <button
             class="ui-btn sm"
             :disabled="!popoverTimeFilter.active"
             @click="disablePopoverTimeFilter"
           >
-            禁用
+            {{ tr("禁用") }}
           </button>
         </div>
       </div>
@@ -246,7 +246,7 @@
             :value="opt.value"
             v-model="filters[filterPopover.key]"
           />
-          <span>{{ opt.label }}</span>
+          <span>{{ tr(opt.label) }}</span>
         </label>
       </div>
     </template>
@@ -257,7 +257,7 @@
         <input
           class="ui-input sm mono disk-filter-input"
           type="text"
-          :placeholder="filterPopover.key === 'path' ? '输入 / 逐级补全，Tab 补全 ↑↓ 选择' : filterPopover.key === 'name' ? '关键字，支持 * ? 通配符' : '输入关键字'"
+          :placeholder="filterPopover.key === 'path' ? tr('输入 / 逐级补全，Tab 补全 ↑↓ 选择') : filterPopover.key === 'name' ? tr('关键字，支持 * ? 通配符') : tr('输入关键字')"
           v-model="filters[filterPopover.key]"
           @input="onTextFilterInput"
           @focus="onTextFilterFocus"
@@ -283,19 +283,19 @@
           v-if="pathSuggestMatches.total > pathSuggestMatches.list.length"
           class="disk-path-suggest-more"
         >
-          匹配 {{ pathSuggestMatches.total }} 项，仅列出前 {{ pathSuggestMatches.list.length }} 项
+          {{ tr("匹配") }} {{ pathSuggestMatches.total }} {{ tr("项，仅列出前") }} {{ pathSuggestMatches.list.length }} {{ tr("项") }}
         </div>
       </div>
       <div v-else-if="pathSuggestLoadingVisible" class="disk-path-suggest-loading">
         <Loader2 :size="11" class="spin" />
-        <span>正在读取该层目录…</span>
+        <span>{{ tr("正在读取该层目录…") }}</span>
       </div>
       <div class="disk-filter-actions">
         <button
           class="ui-btn sm"
           :disabled="!filters[filterPopover.key]"
           @click="clearPopoverFilter"
-        >清除</button>
+        >{{ tr("清除") }}</button>
       </div>
     </template>
   </div></UiTransition>
@@ -303,6 +303,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { useId } from 'vue';
 import { Filter, X, CalendarDays, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Folder, File as FileIcon, Loader2 } from 'lucide-vue-next';
 import UiSelect from '../../../components/ui/UiSelect.vue';

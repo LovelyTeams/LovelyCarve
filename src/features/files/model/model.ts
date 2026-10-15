@@ -1,3 +1,4 @@
+import { sourceText, type Translator } from '../../../i18n/translate';
 import type { FsNode } from '../../../lib/ipc/fs/types';
 
 /** Backend node with presentation-only path and stable row identity. */
@@ -66,12 +67,12 @@ export function isHostDockerMountRoot(node: DiskFsNode | null): node is DiskFsNo
   return node.id === 'host-docker:' || isHostDockerContainerRootId(node.id);
 }
 
-export function kindLabel(node: DiskFsNode): string {
-  if (isVirtualUnalloc(node)) return '未分配空间';
-  if (node.kind === 'dir') return '目录';
-  if (node.kind === 'file') return '文件';
-  if (node.kind === 'symlink') return '符号链接';
-  if (node.kind === 'unallocated') return '未分配';
+export function kindLabel(node: DiskFsNode, tr: Translator = sourceText): string {
+  if (isVirtualUnalloc(node)) return tr("未分配空间");
+  if (node.kind === 'dir') return tr("目录");
+  if (node.kind === 'file') return tr("文件");
+  if (node.kind === 'symlink') return tr("符号链接");
+  if (node.kind === 'unallocated') return tr("未分配");
   return node.kind;
 }
 

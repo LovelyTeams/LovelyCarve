@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 // 「自动挂载案件全部分区」编排。
 //
 // 打开案件时（且挂载方式为「文件夹」、开关开启），依次把案件内每块证据磁盘
@@ -53,7 +55,7 @@ export function useAutoMount() {
         // 拿不到现有挂载列表不致命——大不了对已挂的再试一次（会失败计入 failed）。
       }
 
-      notifyInfo('自动挂载案件分区', `正在载入并挂载 ${caseInfo.evidence.length} 块证据磁盘…`);
+      notifyInfo(tr("自动挂载案件分区"), tr("正在载入并挂载 {0} 块证据磁盘…", { 0: caseInfo.evidence.length }));
 
       for (const ev of caseInfo.evidence) {
         let detail;
@@ -71,7 +73,7 @@ export function useAutoMount() {
             continue;
           }
           try {
-            const name = p.label ?? `分区${p.id}`;
+            const name = p.label ?? tr("分区{0}", { 0: p.id });
             const dir = await fsCreateMountDir({ root, imageId: detail.id, name });
             await fsMountReadonly({ imageId: detail.id, nodeId, mountPoint: dir });
             mounted += 1;
@@ -85,12 +87,12 @@ export function useAutoMount() {
     }
 
     if (mounted === 0 && failed === 0) return; // 没什么可挂的，安静收场
-    const parts = [`已挂载 ${mounted} 个分区`];
-    if (skipped > 0) parts.push(`跳过 ${skipped} 个已挂载`);
-    if (failed > 0) parts.push(`失败 ${failed}`);
+    const parts = [tr("已挂载 {0} 个分区", { 0: mounted })];
+    if (skipped > 0) parts.push(tr("跳过 {0} 个已挂载", { 0: skipped }));
+    if (failed > 0) parts.push(tr("失败 {0}", { 0: failed }));
     const detail = parts.join(' · ');
-    if (failed === 0) notifySuccess('自动挂载完成', detail);
-    else notifyError('自动挂载部分失败', detail);
+    if (failed === 0) notifySuccess(tr("自动挂载完成"), detail);
+    else notifyError(tr("自动挂载部分失败"), detail);
   }
 
   return { maybeAutoMountCase, autoMounting };

@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { fsDigest, fsIdentifyType, type FsTypeIdent, type HashAlgo, type StoredDigest } from '../../../lib/ipc/fs/derived';
 import { pushPersistentToast } from '../../../composables/useToast';
 import { broadcastPreview } from '../../preview/api';
@@ -20,13 +22,13 @@ export function useFileDerivedActions(options: {
     const algoLabel = algos.map(a => HASH_ALGO_LABEL[a]).join('/');
     const toast = pushPersistentToast({
       kind: 'info',
-      title: `计算 ${algoLabel} 中…（${files.length} 个）`,
-      detail: '准备中',
+      title: tr("计算 {0} 中…（{1} 个）", { 0: algoLabel, 1: files.length }),
+      detail: tr("准备中"),
       action: {
-        label: '取消',
+        get label() { return tr("取消"); },
         onClick: () => {
           cancelled = true;
-          toast.update({ action: { label: '取消中…', onClick: () => {}, disabled: true } });
+          toast.update({ action: { get label() { return tr("取消中…"); }, onClick: () => {}, disabled: true } });
         },
       },
     });
@@ -67,16 +69,16 @@ export function useFileDerivedActions(options: {
         failed++;
         lastErr = String(err);
       }
-      toast.update({ detail: `${ok + failed}/${files.length}${failed > 0 ? ` · 失败 ${failed}` : ''}` });
+      toast.update({ detail: `${ok + failed}/${files.length}${failed > 0 ? tr(" · 失败 {0}", { 0: failed }) : ''}` });
     }
     persistDigests(imageId, computed);
-    const parts = [`${ok} 个成功`];
-    if (failed > 0) parts.push(`失败 ${failed}（${lastErr}）`);
-    if (cancelled) parts.push(`未计算 ${files.length - ok - failed}`);
+    const parts = [tr("{0} 个成功", { 0: ok })];
+    if (failed > 0) parts.push(tr("失败 {0}（{1}）", { 0: failed, 1: lastErr }));
+    if (cancelled) parts.push(tr("未计算 {0}", { 0: files.length - ok - failed }));
     toast.update({
       kind: failed > 0 ? 'error' : cancelled ? 'info' : 'success',
-      title: cancelled ? '哈希计算已取消' : failed > 0 ? '哈希计算完成（部分失败）' : '哈希计算完成',
-      detail: `${parts.join(' · ')} · 结果已回填 ${algoLabel} 列`,
+      title: cancelled ? tr("哈希计算已取消") : failed > 0 ? tr("哈希计算完成（部分失败）") : tr("哈希计算完成"),
+      detail: tr("{0} · 结果已回填 {1} 列", { 0: parts.join(' · '), 1: algoLabel }),
       action: undefined,
     });
     toast.dismiss(failed > 0 ? 6000 : 3200);
@@ -92,13 +94,13 @@ export function useFileDerivedActions(options: {
     const imageId = options.imageId();
     const toast = pushPersistentToast({
       kind: 'info',
-      title: `识别文件类型中…（${files.length} 个）`,
-      detail: '准备中',
+      title: tr("识别文件类型中…（{0} 个）", { 0: files.length }),
+      detail: tr("准备中"),
       action: {
-        label: '取消',
+        get label() { return tr("取消"); },
         onClick: () => {
           cancelled = true;
-          toast.update({ action: { label: '取消中…', onClick: () => {}, disabled: true } });
+          toast.update({ action: { get label() { return tr("取消中…"); }, onClick: () => {}, disabled: true } });
         },
       },
     });
@@ -135,7 +137,7 @@ export function useFileDerivedActions(options: {
         failed++;
         lastErr = String(err);
       }
-      toast.update({ detail: `${ok + failed}/${files.length}${failed > 0 ? ` · 失败 ${failed}` : ''}` });
+      toast.update({ detail: `${ok + failed}/${files.length}${failed > 0 ? tr(" · 失败 {0}", { 0: failed }) : ''}` });
     }
     // 识别结果落盘（开案件后跨会话复用，省得重跑推理）；无案件是 no-op。
     persistFtypes(imageId, identified);
@@ -143,13 +145,13 @@ export function useFileDerivedActions(options: {
     const single = files.length === 1 && lastResult !== null;
     const parts = single
       ? [`${lastResult!.label}（${lastResult!.mime_type}）`]
-      : [`${ok} 个成功`];
-    if (failed > 0) parts.push(`失败 ${failed}（${lastErr}）`);
-    if (cancelled) parts.push(`未识别 ${files.length - ok - failed}`);
+      : [tr("{0} 个成功", { 0: ok })];
+    if (failed > 0) parts.push(tr("失败 {0}（{1}）", { 0: failed, 1: lastErr }));
+    if (cancelled) parts.push(tr("未识别 {0}", { 0: files.length - ok - failed }));
     toast.update({
       kind: failed > 0 ? 'error' : cancelled ? 'info' : 'success',
-      title: cancelled ? '类型识别已取消' : failed > 0 ? '类型识别完成（部分失败）' : '类型识别完成',
-      detail: `${parts.join(' · ')} · 结果已回填「识别类型」列`,
+      title: cancelled ? tr("类型识别已取消") : failed > 0 ? tr("类型识别完成（部分失败）") : tr("类型识别完成"),
+      detail: tr("{0} · 结果已回填「识别类型」列", { 0: parts.join(' · ') }),
       action: undefined,
     });
     toast.dismiss(failed > 0 ? 6000 : 3200);

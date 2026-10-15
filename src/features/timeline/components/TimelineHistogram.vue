@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 // 时间线柱状图。
 // 点击柱子 = 钻取：时间范围收窄到该桶 + 粒度降一档（由父面板处理）。
 // 悬停 tooltip 显示桶区间与计数；X 轴标签按桶数抽稀。
@@ -50,7 +52,7 @@ function barHeightRatio(bucket: TimelineBucket): number {
 
 function tooltipOf(bucket: TimelineBucket): string {
   const { start, end } = bucketRange(bucket.date_str, props.unit, props.tzHours);
-  return `${bucket.date_str}\n${formatRange(start, end, props.tzHours)}\n${bucket.count} 条记录`;
+  return tr("{0}\n{1}\n{2} 条记录", { 0: bucket.date_str, 1: formatRange(start, end, props.tzHours), 2: bucket.count });
 }
 
 function shouldLabel(index: number): boolean {
@@ -60,13 +62,13 @@ function shouldLabel(index: number): boolean {
 
 <template>
   <div class="tl-chart" :style="{ height: `${height + 22}px` }">
-    <div v-if="buckets.length === 0" class="tl-chart-empty">当前过滤条件下无时间线数据</div>
+    <div v-if="buckets.length === 0" class="tl-chart-empty">{{ tr("当前过滤条件下无时间线数据") }}</div>
     <template v-else>
       <div class="tl-chart-meta">
-        <span class="tl-chart-max mono">峰值 {{ maxCount.toLocaleString() }}</span>
-        <span v-if="truncated" class="tl-chart-truncated">桶数已达上限，数据被截断</span>
+        <span class="tl-chart-max mono">{{ tr("峰值") }} {{ maxCount.toLocaleString() }}</span>
+        <span v-if="truncated" class="tl-chart-truncated">{{ tr("桶数已达上限，数据被截断") }}</span>
       </div>
-      <div class="tl-bars" :style="{ height: `${height}px` }" role="group" aria-label="时间线柱状图">
+      <div class="tl-bars" :style="{ height: `${height}px` }" role="group" :aria-label="tr('时间线柱状图')">
         <button
           v-for="(bucket, index) in buckets"
           :key="bucket.date_str"
@@ -75,7 +77,7 @@ function shouldLabel(index: number): boolean {
           :data-bucket-index="index" :tabindex="focusedBucket === index ? 0 : -1"
           :style="{ '--bar-index': index }"
           :title="tooltipOf(bucket)"
-          :aria-label="`${bucket.date_str}，${bucket.count} 条事件`"
+          :aria-label="tr('{0}，{1} 条事件', { 0: bucket.date_str, 1: bucket.count })"
           @focus="focusedBucket = index" @keydown="onBarKeydown($event, index)"
           @click="emit('select', bucket)"
         >
@@ -87,7 +89,7 @@ function shouldLabel(index: number): boolean {
             :style="{ height: `${Math.round(barHeightRatio(bucket) * 100)}%` }"
           ></span>
           <span class="tl-bar-label mono" :class="{ visible: shouldLabel(index) }">{{
-            bucketShortLabel(bucket.date_str, unit)
+            bucketShortLabel(bucket.date_str, unit, tr)
           }}</span>
         </button>
       </div>

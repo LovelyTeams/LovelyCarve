@@ -1,5 +1,5 @@
 <template>
-  <section class="global-search-panel" aria-label="全局搜索">
+  <section class="global-search-panel" :aria-label="tr('全局搜索')">
     <!-- 左：搜索任务树（检材 → 搜索任务节点）。任务即历史：运行中排最前，
          删除任务 = 删除整次搜索。 -->
     <UiTransition kind="horizontal"><SearchHistoryList v-show="historyVisible" :tasks="tasks" :loading-tasks="loadingTasks" :history-error="historyError"
@@ -8,7 +8,7 @@
 
     <!-- 右：任务命中表（服务端分页 / 过滤 / 去重）。 -->
     <div class="result-pane">
-      <div v-if="historyError && selectedTask" class="ui-alert danger result-read-error" role="alert"><CircleAlert :size="14" /><span>读取搜索记录失败：{{ historyError }}</span><button class="ui-btn sm" :disabled="loadingTasks" @click="history.refreshTasks()">重试</button></div>
+      <div v-if="historyError && selectedTask" class="ui-alert danger result-read-error" role="alert"><CircleAlert :size="14" /><span>{{ tr("读取搜索记录失败：") }}{{ historyError }}</span><button class="ui-btn sm" :disabled="loadingTasks" @click="history.refreshTasks()">{{ tr("重试") }}</button></div>
       <template v-if="selectedTask">
         <!-- 页面不设标题栏：顶部一行即工作工具条（筛选在左、操作在右），
              当前任务的模式、状态与命中数放在底部状态栏。 -->
@@ -17,8 +17,8 @@
             class="ui-btn ghost icon history-switch"
             type="button"
             :aria-pressed="historyVisible"
-            :title="historyVisible ? '收起搜索记录' : '展开搜索记录'"
-            aria-label="搜索记录"
+            :title="historyVisible ? tr('收起搜索记录') : tr('展开搜索记录')"
+            :aria-label="tr('搜索记录')"
             @click="historyVisible = !historyVisible"
           ><PanelLeft :size="15" /></button>
           <label class="ui-search filter-input" :class="{ applied: filterKeyword }">
@@ -26,12 +26,12 @@
             <input
               v-model="filterKeywordDraft"
               type="text"
-              placeholder="在结果中筛选内容、文件名或路径，回车应用"
-              aria-label="筛选搜索结果"
+              :placeholder="tr('在结果中筛选内容、文件名或路径，回车应用')"
+              :aria-label="tr('筛选搜索结果')"
               :disabled="selectedRunning || loadingHits"
               @keydown.enter.prevent="applyFilters"
             />
-            <button v-if="filterKeyword || filterKeywordDraft" class="ui-icon-btn sm" type="button" title="清除筛选" aria-label="清除筛选" :disabled="selectedRunning || loadingHits" @click="clearResultFilter"><X :size="13" /></button>
+            <button v-if="filterKeyword || filterKeywordDraft" class="ui-icon-btn sm" type="button" :title="tr('清除筛选')" :aria-label="tr('清除筛选')" :disabled="selectedRunning || loadingHits" @click="clearResultFilter"><X :size="13" /></button>
           </label>
           <UiSelect
             v-model="distinctMode"
@@ -39,8 +39,8 @@
             :class="{ applied: distinctMode !== 'none' }"
             :options="distinctOptions"
             :disabled="selectedRunning || loadingHits"
-            title="去重显示（不影响已存结果）"
-            aria-label="结果去重方式"
+            :title="tr('去重显示（不影响已存结果）')"
+            :aria-label="tr('结果去重方式')"
             @change="applyFilters"
           />
           <div class="ui-toolbar-actions">
@@ -53,7 +53,7 @@
             >
               <Loader2 v-if="cancelling" :size="13" class="spin" />
               <X v-else :size="13" />
-              <span>{{ cancelling ? '正在取消' : '取消搜索' }}</span>
+              <span>{{ cancelling ? tr("正在取消") : tr("取消搜索") }}</span>
             </button>
             <button
               class="ui-btn"
@@ -63,9 +63,9 @@
             >
               <Loader2 v-if="exporting" :size="13" class="spin" />
               <Download v-else :size="13" />
-              <span>导出</span>
+              <span>{{ tr("导出") }}</span>
             </button>
-            <button class="ui-btn primary" type="button" @click="openCreateDialog"><Plus :size="14" />新建搜索</button>
+            <button class="ui-btn primary" type="button" @click="openCreateDialog"><Plus :size="14" />{{ tr("新建搜索") }}</button>
           </div>
         </form>
 
@@ -73,8 +73,8 @@
         <div class="result-body">
           <div class="result-main">
             <div v-if="hitsError" class="ui-alert danger result-read-error" role="alert">
-              <CircleAlert :size="14" /><span>读取搜索结果失败：{{ hitsError }}</span>
-              <button class="ui-btn sm" @click="retryHits">重试</button>
+              <CircleAlert :size="14" /><span>{{ tr("读取搜索结果失败：") }}{{ hitsError }}</span>
+              <button class="ui-btn sm" @click="retryHits">{{ tr("重试") }}</button>
             </div>
             <SearchTaskFeedback :selected-task="selectedTask" :selected-running="selectedRunning" :progress-percent="progressPercent"
               :files-done-label="filesDoneLabel" :files-total-label="filesTotalLabel" :total-matches-label="totalMatchesLabel" />
@@ -91,10 +91,10 @@
       </template>
 
       <WorkspaceStartState v-else :icon="Search" :loading="loadingTasks"
-        :title="historyError ? '读取搜索记录失败' : loadingTasks ? '正在读取搜索记录…' : '还没有搜索记录'"
-        :description="historyError || '输入关键词或正则，查找检材中的文件内容'"
-        :action-label="historyError ? '重试' : '新建搜索'" :action-icon="historyError ? RefreshCw : Plus" @action="historyError ? history.refreshTasks() : openCreateDialog()">
-        <template #toolbar><button class="ui-btn ghost" :aria-pressed="historyVisible" @click="historyVisible = !historyVisible"><PanelLeft :size="14" />搜索记录</button></template>
+        :title="historyError ? tr('读取搜索记录失败') : loadingTasks ? tr('正在读取搜索记录…') : tr('还没有搜索记录')"
+        :description="historyError || tr('输入关键词或正则，查找检材中的文件内容')"
+        :action-label="historyError ? tr('重试') : tr('新建搜索')" :action-icon="historyError ? RefreshCw : Plus" @action="historyError ? history.refreshTasks() : openCreateDialog()">
+        <template #toolbar><button class="ui-btn ghost" :aria-pressed="historyVisible" @click="historyVisible = !historyVisible"><PanelLeft :size="14" />{{ tr("搜索记录") }}</button></template>
       </WorkspaceStartState>
     </div>
 
@@ -106,6 +106,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { computed } from 'vue';
 import { CircleAlert, RefreshCw, PanelLeft, Filter, Download, Loader2, Plus, Search, X } from 'lucide-vue-next';
 import UiSelect from '../../../components/ui/UiSelect.vue';
@@ -135,9 +137,9 @@ const query = useSearchHits({ imageId: () => props.imageId, searchId: () => sele
 const { hits, hitsTotal, loadingHits, hitsError, retryHits, selectedHitSeq, selectedHit, filterKeywordDraft, filterKeyword,
   distinctMode, clearResultFilter, applyFilters, ensureHitsThrough } = query;
 const distinctOptions = computed(() => [
-  { value: 'none' as const, label: '全部记录' },
-  { value: 'file' as const, label: '按文件去重' },
-  { value: 'sha256' as const, label: '按哈希去重', disabled: !selectedTask.value?.calc_hash },
+  { value: 'none' as const, get label() { return tr("全部记录"); } },
+  { value: 'file' as const, get label() { return tr("按文件去重"); } },
+  { value: 'sha256' as const, get label() { return tr("按哈希去重"); }, disabled: !selectedTask.value?.calc_hash },
 ]);
 const { startSearch } = useSearchExecution({
   imageId: () => props.imageId, selectedSearchId: () => selectedSearchId.value,

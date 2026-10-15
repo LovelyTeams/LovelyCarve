@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 // 任务中心状态(插件任务调度全生命周期的前端镜像)。
 //
 // 模块级单例:订阅一次 `sched-task-event`,把任务变更增量合并进列表,
@@ -61,16 +63,16 @@ function pushNotice(notice: SchedNotice) {
   notices.value = next;
   switch (notice.kind) {
     case 'taskOffline':
-      notifyError('任务 worker 离线', notice.message);
+      notifyError(tr("任务 worker 离线"), notice.message);
       break;
     case 'taskTimeout':
-      notifyError('任务进度超时', notice.message);
+      notifyError(tr("任务进度超时"), notice.message);
       break;
     case 'allTasksFinished':
-      notifySuccess('检材任务全部完成', notice.message);
+      notifySuccess(tr("检材任务全部完成"), notice.message);
       break;
     case 'postActionFailed':
-      notifyError('收尾动作失败', notice.message);
+      notifyError(tr("收尾动作失败"), notice.message);
       break;
   }
 }
@@ -213,25 +215,25 @@ export function useTaskCenter() {
       if (revision === caseRevision && directory === caseKey()) upsertTask(record);
       return record;
     } catch (err) {
-      notifyError(`${label}失败`, errorMessage(err));
+      notifyError(tr("{0}失败", { 0: label }), errorMessage(err));
       return null;
     }
   }
 
   function cancel(taskId: number) {
-    return runAction('取消任务', () => schedTaskCancel(taskId));
+    return runAction(tr("取消任务"), () => schedTaskCancel(taskId));
   }
 
   function pause(taskId: number) {
-    return runAction('暂停任务', () => schedTaskPause(taskId));
+    return runAction(tr("暂停任务"), () => schedTaskPause(taskId));
   }
 
   function start(taskId: number) {
-    return runAction('启动任务', () => schedTaskStart(taskId));
+    return runAction(tr("启动任务"), () => schedTaskStart(taskId));
   }
 
   function restart(taskId: number) {
-    return runAction('重启任务', () => schedTaskRestart(taskId));
+    return runAction(tr("重启任务"), () => schedTaskRestart(taskId));
   }
 
   async function remove(taskId: number): Promise<boolean> {
@@ -242,7 +244,7 @@ export function useTaskCenter() {
       if (revision === caseRevision && directory === caseKey()) removeTask(taskId);
       return true;
     } catch (err) {
-      notifyError('删除任务失败', errorMessage(err));
+      notifyError(tr("删除任务失败"), errorMessage(err));
       return false;
     }
   }
@@ -266,13 +268,13 @@ export function useTaskCenter() {
       if (options.quiet) {
         // The caller summarises the batch.
       } else if (response.created) {
-        notifyInfo('任务已创建', `${response.task.displayName} · #${response.task.id}`);
+        notifyInfo(tr("任务已创建"), `${response.task.displayName} · #${response.task.id}`);
       } else {
-        notifyInfo('任务已存在', `${response.task.displayName} 已有未完成任务 #${response.task.id}`);
+        notifyInfo(tr("任务已存在"), tr("{0} 已有未完成任务 #{1}", { 0: response.task.displayName, 1: response.task.id }));
       }
       return response.task;
     } catch (err) {
-      notifyError('创建任务失败', errorMessage(err));
+      notifyError(tr("创建任务失败"), errorMessage(err));
       return null;
     }
   }

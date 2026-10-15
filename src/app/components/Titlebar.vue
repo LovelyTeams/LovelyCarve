@@ -27,28 +27,28 @@
       type="button"
       class="ui-btn sm titlebar-chip titlebar-case-btn"
       :class="{ 'has-case': !!caseName }"
-      :title="caseName ? `案件管理 · ${caseName}` : '案件管理（当前无案件）'"
-      aria-label="案件管理"
+      :title="caseName ? tr('案件管理 · {0}', { 0: caseName }) : tr('案件管理（当前无案件）')"
+      :aria-label="tr('案件管理')"
       @click="$emit('open-case')"
     >
       <Briefcase :size="14" />
-      <span class="titlebar-chip-label">案件管理</span>
+      <span class="titlebar-chip-label">{{ tr("案件管理") }}</span>
     </button>
 
-    <button class="ui-btn sm titlebar-chip titlebar-settings-btn" type="button" title="设置中心" aria-label="设置中心" @click="$emit('open-settings')">
+    <button class="ui-btn sm titlebar-chip titlebar-settings-btn" type="button" :title="tr('设置中心')" :aria-label="tr('设置中心')" @click="$emit('open-settings')">
       <Settings :size="14" />
-      <span class="titlebar-chip-label">设置中心</span>
+      <span class="titlebar-chip-label">{{ tr("设置中心") }}</span>
     </button>
 
     <!-- Right: platform window controls -->
     <div class="titlebar-controls">
-      <button class="titlebar-button" type="button" aria-label="最小化" title="最小化" @click="minimize">
+      <button class="titlebar-button" type="button" :aria-label="tr('最小化')" :title="tr('最小化')" @click="minimize">
         <Minus :size="16" />
       </button>
-      <button class="titlebar-button" type="button" aria-label="最大化或还原" title="最大化/还原" @click="toggleMaximize">
+      <button class="titlebar-button" type="button" :aria-label="tr('最大化或还原')" :title="tr('最大化/还原')" @click="toggleMaximize">
         <Square :size="14" />
       </button>
-      <button class="titlebar-button close" type="button" aria-label="关闭窗口" title="关闭" @click="close">
+      <button class="titlebar-button close" type="button" :aria-label="tr('关闭窗口')" :title="tr('关闭')" @click="close">
         <X :size="16" />
       </button>
     </div>
@@ -56,6 +56,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../composables/useLocale';
+
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   Briefcase, Minus, Settings, Square, X,

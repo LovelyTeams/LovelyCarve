@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 // Streams a loaded image — in practice an assembled (reconstructed) RAID
 // device — to a raw `.dd`/`.img` file on disk, with a live progress toast and
 // a cancel button. Pattern mirrors `useImageHash` (a per-image long task driven
@@ -80,7 +82,7 @@ async function startImageExport(opts: {
   mode?: 'source' | 'unlockedPartitions';
 }): Promise<boolean> {
   if (jobs.has(opts.imageId) || choices.has(opts.imageId)) {
-    notifyError('导出失败', opts.duplicateMessage ?? '此镜像已有导出任务在进行中');
+    notifyError(tr("导出失败"), opts.duplicateMessage ?? tr("此镜像已有导出任务在进行中"));
     return false;
   }
 
@@ -91,8 +93,8 @@ async function startImageExport(opts: {
   let destination: string | null;
   try {
     destination = await save({
-      title: opts.title ?? '导出重组镜像为 RAW', defaultPath: opts.defaultFileName,
-      filters: [{ name: 'RAW 磁盘镜像', extensions: ['dd', 'img', 'raw'] }],
+      title: opts.title ?? tr("导出重组镜像为 RAW"), defaultPath: opts.defaultFileName,
+      filters: [{ name: tr("RAW 磁盘镜像"), extensions: ['dd', 'img', 'raw'] }],
     });
   } finally {
     if (choices.get(opts.imageId) === choice) choices.delete(opts.imageId);
@@ -116,10 +118,10 @@ async function startImageExport(opts: {
 
   const toast = pushPersistentToast({
     kind: 'info',
-    title: opts.runningTitle ?? '导出重组镜像中…',
-    detail: `${destination} · 准备中`,
+    title: opts.runningTitle ?? tr("导出重组镜像中…"),
+    detail: tr("{0} · 准备中", { 0: destination }),
     progress: 0,
-    action: { label: '取消', onClick: () => void cancelImageExport(opts.imageId) },
+    action: { get label() { return tr("取消"); }, onClick: () => void cancelImageExport(opts.imageId) },
   });
 
   // Wire the progress listener BEFORE invoking so the backend's initial
@@ -142,7 +144,7 @@ async function startImageExport(opts: {
       job.bytesTotal = event.payload.bytes_total;
       job.lastProgressAtMs = now;
       job.lastBytesDone = job.bytesDone;
-      const tail = job.cancelling ? ' · 取消中…' : '';
+      const tail = job.cancelling ? tr(" · 取消中…") : '';
       toast.update({
         detail: `${destination} · ${formatBytes(job.bytesDone)} / ${formatBytes(job.bytesTotal)} · ${exportSpeedText(job)}${tail}`,
         progress: percent(job),
@@ -152,7 +154,7 @@ async function startImageExport(opts: {
     else { unlisten(); unlisten = null; }
   } catch (err) {
     // Losing live progress shouldn't abort the export itself.
-    notifyError('进度监听失败', String(err));
+    notifyError(tr("进度监听失败"), String(err));
   }
 
   if (epoch !== generation || context !== evidenceContext()) {
@@ -171,12 +173,12 @@ async function startImageExport(opts: {
     if (epoch !== generation) return true;
     const written = typeof outcome === 'number' ? outcome : outcome.bytes_written;
     const faultDetail = typeof outcome !== 'number' && outcome.read_faults_detected
-      ? ` · 警告：含 ${formatBytes(outcome.synthetic_bytes)} 合成零字节（${outcome.bad_regions.length} 个坏区）`
+      ? tr(" · 警告：含 {0} 合成零字节（{1} 个坏区）", { 0: formatBytes(outcome.synthetic_bytes), 1: outcome.bad_regions.length })
       : '';
     toast.update({
       kind: faultDetail ? 'info' : 'success',
-      title: faultDetail ? '导出完成，但包含合成零字节' : (opts.doneTitle ?? '重组镜像导出完成'),
-      detail: `${destination} · ${formatBytes(written)} · 平均 ${exportSpeedText(job, written)}${faultDetail}`,
+      title: faultDetail ? tr("导出完成，但包含合成零字节") : (opts.doneTitle ?? tr("重组镜像导出完成")),
+      detail: tr("{0} · {1} · 平均 {2}{3}", { 0: destination, 1: formatBytes(written), 2: exportSpeedText(job, written), 3: faultDetail }),
       action: undefined,
       progress: 100,
     });
@@ -189,8 +191,8 @@ async function startImageExport(opts: {
     const cancelled = job.cancelling || /cancel/i.test(String(err));
     toast.update({
       kind: cancelled ? 'info' : 'error',
-      title: cancelled ? '导出已取消' : '导出失败',
-      detail: cancelled ? `${destination} · 已取消（保留部分文件）` : String(err),
+      title: cancelled ? tr("导出已取消") : tr("导出失败"),
+      detail: cancelled ? tr("{0} · 已取消（保留部分文件）", { 0: destination }) : String(err),
       action: undefined,
       progress: undefined,
     });
@@ -210,9 +212,9 @@ async function startBitlockerDecryptedImageExport(opts: {
   return startImageExport({
     imageId: opts.imageId,
     defaultFileName: opts.defaultFileName,
-    title: '导出 BitLocker 解密后完整镜像',
-    runningTitle: '导出解密后完整镜像中…',
-    doneTitle: '解密后完整镜像导出完成',
+    title: tr("导出 BitLocker 解密后完整镜像"),
+    runningTitle: tr("导出解密后完整镜像中…"),
+    doneTitle: tr("解密后完整镜像导出完成"),
     exporter: args =>
       bitlockerExportDecryptedImage({
         ...args,
@@ -229,7 +231,7 @@ async function cancelImageExport(imageId: string): Promise<void> {
   try {
     await taskCancel({ taskId: job.taskId });
   } catch (err) {
-    notifyError('取消失败', String(err));
+    notifyError(tr("取消失败"), String(err));
     job.cancelling = false;
   }
 }

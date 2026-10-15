@@ -46,7 +46,8 @@ src/
 ├── lib/ipc/                唯一 Tauri IPC 边界
 ├── lib/models/             文件定位等跨功能纯契约
 ├── utils/                  格式化、安全 HTML、CSV 等共享纯函数
-├── styles/themes.css       light/dark/pink 三套主题 token（界面文案中文优先、直接写在模板里，无 i18n 层）
+├── i18n/                   中英文词典与纯翻译函数；语言偏好由 composables/useLocale.ts 持有
+├── styles/themes.css       light/dark/pink 三套主题 token
 ├── styles/ui.css           全局共享 UI 基元：按钮、输入框、分段/标签切换、徽章、卡片、弹窗壳、菜单、空态、面板标题
 └── styles/motion.css       动效层：共享关键帧、基元入场、ui-stagger 依次入场、主题圆形展开
 ```

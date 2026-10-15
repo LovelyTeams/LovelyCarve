@@ -1,3 +1,4 @@
+import { sourceText, type Translator } from '../../../i18n/translate';
 import type { BcpDataset } from '../../../lib/ipc/bcp';
 
 export const BCP_CATEGORIES = [
@@ -30,9 +31,9 @@ export function bcpSuffix(code: string): string {
   return code.match(/(\d{6})$/)?.[1] ?? code;
 }
 
-export function bcpDatasetLabel(dataset: BcpDataset): string {
+export function bcpDatasetLabel(dataset: BcpDataset, tr: Translator = sourceText): string {
   const suffix = bcpSuffix(dataset.code);
-  return DATASET_NAMES[suffix] ?? `${suffix} 数据`;
+  return (DATASET_NAMES[suffix] ? tr(DATASET_NAMES[suffix]) : undefined) ?? tr("{0} 数据", { 0: suffix });
 }
 
 export function bcpCategory(code: string): string {

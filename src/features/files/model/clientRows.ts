@@ -1,3 +1,4 @@
+import { sourceText, translate, type Translator } from '../../../i18n/translate';
 import type { FsTypeIdent, StoredDigest } from '../../../lib/ipc/fs/derived';
 import type { IconCategory } from '../../../utils/fileCategory';
 import { shouldShowDirectoryWithEmptyFilter } from './emptyDirectoryFilter';
@@ -29,7 +30,7 @@ export interface ClientFileRows {
 }
 
 /** Full-directory projection only; server-paged queries retain their authoritative order. */
-export function projectFileRows(input: ClientFileRows): FsNode[] {
+export function projectFileRows(input: ClientFileRows, tr: Translator = sourceText): FsNode[] {
   const { entries, deepsearch, directoryClientFilter, effectiveFilters, digestCache, ftypeCache,
     tagOfNode, fullPathOf, selectedCategories, categoryOfNode, sizeFilter, appliedSizePredicate,
     activeTimeFilterKeys, matchesTimeFilter, hideEmptyDirs, stackDepth, emptySubtree, dirCounts,
@@ -51,7 +52,10 @@ export function projectFileRows(input: ClientFileRows): FsNode[] {
   const extQ = effectiveFilters.ext?.trim().toLowerCase();
   if (extQ) out = out.filter(n => extOf(n).toLowerCase().includes(extQ));
   const kindQ = effectiveFilters.kind?.trim().toLowerCase();
-  if (kindQ) out = out.filter(n => kindLabel(n).toLowerCase().includes(kindQ));
+  if (kindQ) out = out.filter(node => {
+    const source = kindLabel(node);
+    return source.includes(kindQ) || translate(source, 'en').toLowerCase().includes(kindQ);
+  });
   const inodeQ = effectiveFilters.inode?.trim();
   if (inodeQ) out = out.filter(n => String(n.inode ?? '').includes(inodeQ));
   const linkQ = effectiveFilters.link?.trim().toLowerCase();
@@ -67,7 +71,10 @@ export function projectFileRows(input: ClientFileRows): FsNode[] {
   const sm3Q = effectiveFilters.sm3?.trim().toLowerCase();
   if (sm3Q) out = out.filter(n => digestCache.get(n.id)?.sm3?.toLowerCase().includes(sm3Q) ?? false);
   const tagQ = effectiveFilters.tag?.trim();
-  if (tagQ) out = out.filter(n => tagOfNode(n)?.includes(tagQ) ?? false);
+  if (tagQ) out = out.filter(node => {
+    const tag = tagOfNode(node);
+    return !!tag && (tag.includes(tagQ) || tr(tag).includes(tagQ) || translate(tag, 'en').includes(tagQ));
+  });
   const ftypeQ = effectiveFilters.ftype?.trim().toLowerCase();
   if (ftypeQ) {
     out = out.filter(n => {

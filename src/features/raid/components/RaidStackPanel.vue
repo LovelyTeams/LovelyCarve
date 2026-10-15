@@ -1,22 +1,22 @@
 <template>
   <section v-if="visible" class="ui-card panel-card raid-card">
     <header class="ui-card-header panel-header">
-      <h3 class="ui-card-title"><Boxes :size="15" />RAID 检测</h3>
-      <span v-if="arrayCount > 0" class="ui-count accent">{{ arrayCount }} 阵列</span>
+      <h3 class="ui-card-title"><Boxes :size="15" />{{ tr("RAID 检测") }}</h3>
+      <span v-if="arrayCount > 0" class="ui-count accent">{{ arrayCount }} {{ tr("阵列") }}</span>
       <div v-if="info.source_format !== 'assembled'" class="header-actions">
         <button
           class="ui-btn sm"
-          title="手动指定成员盘、块大小和数据偏移"
+          :title="tr('手动指定成员盘、块大小和数据偏移')"
           @click="showManual = true"
         >
           <Wrench :size="13" />
-          <span>手动重组</span>
+          <span>{{ tr("手动重组") }}</span>
         </button>
         <button
           class="ui-icon-btn sm bordered"
           :disabled="loading"
-          title="重新检测（扫描所有已加载镜像）"
-          aria-label="重新检测"
+          :title="tr('重新检测（扫描所有已加载镜像）')"
+          :aria-label="tr('重新检测')"
           @click="() => detect()"
         >
           <Loader2 v-if="loading" :size="13" class="spin" />
@@ -28,12 +28,12 @@
     <div class="panel-content">
       <div v-if="loading && !stack" class="status-row">
         <Loader2 :size="13" class="spin" />
-        <span>正在扫描已加载镜像中的 LVM / mdadm 结构…</span>
+        <span>{{ tr("正在扫描已加载镜像中的 LVM / mdadm 结构…") }}</span>
       </div>
 
       <div v-else-if="error" class="ui-alert danger">
         <AlertTriangle :size="15" />
-        <span>检测失败：{{ error }}</span>
+        <span>{{ tr("检测失败：") }}{{ error }}</span>
       </div>
 
       <template v-else-if="stack">
@@ -49,11 +49,11 @@
         <RaidVolumeGroupCard v-for="vg in relevantVgs" :key="vg.vg_uuid" :vg="vg" />
 
         <div v-if="!hasFindings" class="status-row">
-          <span>未检测到与该镜像相关的 LVM 卷组或 mdadm RAID 阵列。</span>
+          <span>{{ tr("未检测到与该镜像相关的 LVM 卷组或 mdadm RAID 阵列。") }}</span>
         </div>
 
         <details v-disclosure-motion v-if="stack.diagnostics.length > 0 && relevantArrays.length !== 1" class="ui-disclosure diagnostics">
-          <summary><ChevronRight :size="14" class="ui-chevron" />诊断信息 <span class="ui-count">{{ stack.diagnostics.length }}</span></summary>
+          <summary><ChevronRight :size="14" class="ui-chevron" />{{ tr("诊断信息") }} <span class="ui-count">{{ stack.diagnostics.length }}</span></summary>
           <ul>
             <li v-for="(d, i) in stack.diagnostics" :key="i" class="mono">{{ d }}</li>
           </ul>
@@ -72,6 +72,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { vDisclosureMotion } from '../../../composables/uiMotionDirectives';
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import {
@@ -172,7 +174,7 @@ async function openAssembled(arr: RaidArray) {
     const summary = await imageInfoById({ imageId });
     if (!disposed && captured === generation) emit('open-image', summary.path);
   } catch (e) {
-    if (!disposed && captured === generation) notifyError('打开重组镜像失败', String(e));
+    if (!disposed && captured === generation) notifyError(tr("打开重组镜像失败"), String(e));
   } finally {
     if (!disposed && captured === generation) openingId.value = null;
   }

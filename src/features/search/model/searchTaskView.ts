@@ -1,3 +1,4 @@
+import { sourceText, type Translator } from '../../../i18n/translate';
 import type { GlobalSearchHistoryEntry, GlobalSearchProgress } from '../../../lib/ipc/search';
 
 export function taskFullTitle(task: GlobalSearchHistoryEntry): string {
@@ -21,8 +22,8 @@ export function formatElapsedLabel(task: GlobalSearchHistoryEntry): string {
   return `${Math.floor(seconds / 60)}m${seconds % 60}s`;
 }
 
-export function statusLabel(status: string): string {
-  return ({ running: '搜索中', success: '已完成', cancelled: '已取消', failed: '失败' } as Record<string, string>)[status] ?? status;
+export function statusLabel(status: string, tr: Translator = sourceText): string {
+  return ({ running: tr("搜索中"), success: tr("已完成"), cancelled: tr("已取消"), failed: tr("失败") } as Record<string, string>)[status] ?? status;
 }
 export function searchProgressPercent(progress: GlobalSearchProgress | null): number | null {
   return progress?.files_total ? Math.min(100, Math.round(progress.files_done / progress.files_total * 100)) : null;

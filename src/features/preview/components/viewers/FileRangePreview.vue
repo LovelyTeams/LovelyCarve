@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { tr } from '../../../../composables/useLocale';
+
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { ChevronLeft, ChevronRight, Crosshair, Loader2 } from 'lucide-vue-next';
 import { fsReadRange } from '../../../../lib/ipc/fs/read';
@@ -34,14 +36,14 @@ async function load() {
   bytes.value = new Uint8Array();
   try {
     if (!Number.isSafeInteger(props.target.offset) || props.target.offset < 0 || props.target.offset >= props.size) {
-      throw new Error('命中偏移超出文件范围，文件内容可能已变化');
+      throw new Error(tr("命中偏移超出文件范围，文件内容可能已变化"));
     }
     const result = await fsReadRange({ imageId: props.imageId, nodeId: props.nodeId, offset: start.value, length: Math.min(WINDOW_SIZE, props.size - start.value) });
     if (request !== generation) return;
     bytes.value = new Uint8Array(result);
-    if (!bytes.value.length) throw new Error('该位置没有可读取的内容');
+    if (!bytes.value.length) throw new Error(tr("该位置没有可读取的内容"));
     if (props.target.offset >= start.value && props.target.offset < start.value + WINDOW_SIZE && props.target.offset >= end.value) {
-      throw new Error('读取内容未覆盖命中位置，文件可能已变化或无法完整读取');
+      throw new Error(tr("读取内容未覆盖命中位置，文件可能已变化或无法完整读取"));
     }
   } catch (reason) {
     if (request === generation) error.value = String(reason);
@@ -62,14 +64,14 @@ onBeforeUnmount(() => { generation++; });
 </script>
 
 <template>
-  <section class="range-preview" aria-label="命中字节预览">
+  <section class="range-preview" :aria-label="tr('命中字节预览')">
     <header class="range-toolbar">
-      <span>命中 <strong class="mono">0x{{ hex(target.offset) }}</strong> · {{ target.length }} 字节</span>
-      <button type="button" class="ui-icon-btn sm bordered" title="回到命中位置" aria-label="回到命中位置" :disabled="loading" @click="goTo(target.offset)"><Crosshair :size="14" /></button>
+      <span>{{ tr("命中") }} <strong class="mono">0x{{ hex(target.offset) }}</strong> · {{ target.length }} {{ tr("字节") }}</span>
+      <button type="button" class="ui-icon-btn sm bordered" :title="tr('回到命中位置')" :aria-label="tr('回到命中位置')" :disabled="loading" @click="goTo(target.offset)"><Crosshair :size="14" /></button>
     </header>
-    <div v-if="loading" class="range-state" role="status"><Loader2 :size="18" class="spin" />正在读取命中位置…</div>
-    <div v-else-if="error" class="range-state error" role="alert">{{ error }}<button type="button" class="ui-btn sm" @click="load">重试</button></div>
-    <div v-else ref="content" class="range-content mono" tabindex="0" aria-label="十六进制内容">
+    <div v-if="loading" class="range-state" role="status"><Loader2 :size="18" class="spin" />{{ tr("正在读取命中位置…") }}</div>
+    <div v-else-if="error" class="range-state error" role="alert">{{ error }}<button type="button" class="ui-btn sm" @click="load">{{ tr("重试") }}</button></div>
+    <div v-else ref="content" class="range-content mono" tabindex="0" :aria-label="tr('十六进制内容')">
       <div class="hex-row heading"><span>Offset</span><span>HEX</span><span>ASCII</span></div>
       <div v-for="row in rows" :key="row.offset" class="hex-row">
         <span class="offset">{{ hex(row.offset) }}</span>
@@ -79,7 +81,7 @@ onBeforeUnmount(() => { generation++; });
     </div>
     <footer class="range-toolbar">
       <span class="mono">{{ start.toLocaleString() }}–{{ end.toLocaleString() }} / {{ size.toLocaleString() }} B</span>
-      <span class="range-actions"><button type="button" class="ui-icon-btn sm bordered" aria-label="上一段" :disabled="loading || start <= 0" @click="goTo(start - WINDOW_SIZE)"><ChevronLeft :size="15" /></button><button type="button" class="ui-icon-btn sm bordered" aria-label="下一段" :disabled="loading || start + WINDOW_SIZE >= size" @click="goTo(start + WINDOW_SIZE)"><ChevronRight :size="15" /></button></span>
+      <span class="range-actions"><button type="button" class="ui-icon-btn sm bordered" :aria-label="tr('上一段')" :disabled="loading || start <= 0" @click="goTo(start - WINDOW_SIZE)"><ChevronLeft :size="15" /></button><button type="button" class="ui-icon-btn sm bordered" :aria-label="tr('下一段')" :disabled="loading || start + WINDOW_SIZE >= size" @click="goTo(start + WINDOW_SIZE)"><ChevronRight :size="15" /></button></span>
     </footer>
   </section>
 </template>

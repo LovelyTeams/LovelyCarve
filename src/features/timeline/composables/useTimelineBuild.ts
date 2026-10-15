@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, onActivated, onMounted, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { trackedTimelineStart as timelineStart } from '../../tasks/api';
 import { timelineStatus, onTimelineProgress, type TimelineStatusInfo } from '../../../lib/ipc/timeline';
@@ -27,14 +29,14 @@ export function useTimelineBuild(options: { imageId: () => string; onBuilt: () =
   });
 
   const buildButtonLabel = computed(() => {
-    if (building.value || statusInfo.value?.status === 'running') return '取消构建';
+    if (building.value || statusInfo.value?.status === 'running') return tr("取消构建");
     switch (statusInfo.value?.status) {
       case 'buildRequired':
-        return '创建时间线';
+        return tr("创建时间线");
       case 'stale':
-        return '更新时间线';
+        return tr("更新时间线");
       default:
-        return '重建时间线';
+        return tr("重建时间线");
     }
   });
 
@@ -51,7 +53,7 @@ export function useTimelineBuild(options: { imageId: () => string; onBuilt: () =
       return info;
     } catch (error) {
       if (captured === generation && request === statusGeneration && !disposed) {
-        notifyError('读取时间线状态失败', String(error));
+        notifyError(tr("读取时间线状态失败"), String(error));
         statusInfo.value = null;
         statusError.value = String(error);
       }
@@ -69,18 +71,18 @@ export function useTimelineBuild(options: { imageId: () => string; onBuilt: () =
       const summary = await timelineStart({ imageId });
       if (captured !== generation || disposed) return;
       if (summary.status === 'cancelled') {
-        notifyInfo('时间线构建已取消', '已落库的部分投影保留，可随时重建。');
+        notifyInfo(tr("时间线构建已取消"), tr("已落库的部分投影保留，可随时重建。"));
       } else {
         notifyInfo(
-          '时间线构建完成',
-          `文件 ${summary.file_rows.toLocaleString()} 条、插件事件 ${summary.event_rows.toLocaleString()} 条` +
+          tr("时间线构建完成"),
+          tr("文件 {0} 条、插件事件 {1} 条", { 0: summary.file_rows.toLocaleString(), 1: summary.event_rows.toLocaleString() }) +
           (summary.skipped_invalid_time > 0
-            ? `（跳过 ${summary.skipped_invalid_time.toLocaleString()} 条无有效时间戳的记录）`
+            ? tr("（跳过 {0} 条无有效时间戳的记录）", { 0: summary.skipped_invalid_time.toLocaleString() })
             : ''),
         );
       }
     } catch (error) {
-      if (captured === generation && !disposed) notifyError('时间线构建失败', String(error));
+      if (captured === generation && !disposed) notifyError(tr("时间线构建失败"), String(error));
     } finally {
       if (captured === generation && !disposed) {
         building.value = false;
@@ -98,7 +100,7 @@ export function useTimelineBuild(options: { imageId: () => string; onBuilt: () =
       try {
         await taskCancel({ taskId: `timeline-build-${options.imageId()}` });
       } catch (error) {
-        if (captured === generation && !disposed) notifyError('取消时间线构建失败', String(error));
+        if (captured === generation && !disposed) notifyError(tr("取消时间线构建失败"), String(error));
       }
       return;
     }
@@ -115,7 +117,7 @@ export function useTimelineBuild(options: { imageId: () => string; onBuilt: () =
       if (disposed || event.payload.image_id !== options.imageId()) return;
       progress.value = { done: event.payload.done, total: event.payload.total, rows: event.payload.rows };
     }).then(cleanup => { if (disposed) cleanup(); else unlisten = cleanup; })
-      .catch(error => { if (!disposed) notifyError('订阅时间线进度失败', String(error)); });
+      .catch(error => { if (!disposed) notifyError(tr("订阅时间线进度失败"), String(error)); });
   });
   onActivated(() => { if (statusInfo.value) void refreshStatus(); });
   onScopeDispose(() => { disposed = true; generation++; statusGeneration++; unlisten?.(); unlisten = null; });

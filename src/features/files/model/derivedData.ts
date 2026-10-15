@@ -1,3 +1,4 @@
+import { sourceText, type Translator } from '../../../i18n/translate';
 import type { FsTypeIdent, HashAlgo } from '../../../lib/ipc/fs/derived';
 import type { DiskFsNode as FsNode } from './model';
 
@@ -5,10 +6,10 @@ export function ftypeCellText(t: FsTypeIdent): string {
   return t.inferred ? `${t.label} ${(t.score * 100).toFixed(0)}%` : t.label;
 }
 
-export function ftypeTitle(t: FsTypeIdent): string {
+export function ftypeTitle(t: FsTypeIdent, tr: Translator = sourceText): string {
   const parts = [t.description, t.mime_type];
-  if (t.extensions.length > 0) parts.push(`常见扩展名 ${t.extensions.join('/')}`);
-  parts.push(t.inferred ? `模型置信度 ${(t.score * 100).toFixed(1)}%` : '规则直判');
+  if (t.extensions.length > 0) parts.push(tr("常见扩展名 {0}", { 0: t.extensions.join('/') }));
+  parts.push(t.inferred ? tr("模型置信度 {0}%", { 0: (t.score * 100).toFixed(1) }) : tr("规则直判"));
   return parts.join(' · ');
 }
 

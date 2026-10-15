@@ -1,7 +1,7 @@
 <template>
-  <aside class="sidebar-nav" :class="{ collapsed, 'hover-preview': collapsed && hoverPreview }" aria-label="工作区导航" @pointerleave="closeHover" @focusout="onFocusOut" @keydown.esc="dismissHover">
+  <aside class="sidebar-nav" :class="{ collapsed, 'hover-preview': collapsed && hoverPreview }" :aria-label="tr('工作区导航')" @pointerleave="closeHover" @focusout="onFocusOut" @keydown.esc="dismissHover">
     <div class="category-rail">
-      <nav class="category-list" aria-label="工作区大类">
+      <nav class="category-list" :aria-label="tr('工作区大类')">
         <button
           v-for="group in groups"
           :key="group.groupId"
@@ -22,8 +22,8 @@
       <div class="rail-actions">
         <button
           class="ui-icon-btn rail-action"
-          :title="collapsed ? '展开子类栏' : '收起子类栏'"
-          :aria-label="collapsed ? '展开子类栏' : '收起子类栏'"
+          :title="collapsed ? tr('展开子类栏') : tr('收起子类栏')"
+          :aria-label="collapsed ? tr('展开子类栏') : tr('收起子类栏')"
           :aria-expanded="!collapsed"
           :aria-controls="pagesId"
           @click="collapsed = !collapsed"
@@ -34,7 +34,7 @@
     </div>
 
     <section v-show="!collapsed || hoverPreview" :id="pagesId" class="page-sidebar" :aria-label="displayedGroup?.groupLabel">
-      <nav v-if="!showContext" class="page-list" :aria-label="`${displayedGroup?.groupLabel ?? ''}子页面`">
+      <nav v-if="!showContext" class="page-list" :aria-label="tr('{0}子页面', { 0: displayedGroup?.groupLabel ?? '' })">
         <button
           v-for="item in displayedGroup?.items ?? []"
           :key="item.id"
@@ -55,6 +55,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../composables/useLocale';
+
 import { computed, ref, useId, useSlots, watch, type Component } from 'vue';
 import {
   BarChart3, Database, FileQuestion, Files, FileSearch, Globe, HardDrive,

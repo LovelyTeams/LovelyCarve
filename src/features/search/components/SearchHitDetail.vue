@@ -1,27 +1,27 @@
 <template>
-  <DetailDock label="文件详情" close-label="关闭命中详情" :title="hit.file_name" :content-key="hit.hit_seq" @close="$emit('close')">
+  <DetailDock :label="tr('文件详情')" :close-label="tr('关闭命中详情')" :title="hit.file_name" :content-key="hit.hit_seq" @close="$emit('close')">
     <FileDetailLayout :title="hit.file_name">
       <template #icon><FileNodeIcon :id="hit.node_id" :kind="hit.source_kind === 'file' ? 'file' : 'unallocated'" :name="hit.file_name" :size="20" /></template>
-      <template #badges><span class="ui-badge">搜索命中</span><span class="ui-badge">{{ sourceKindLabel(hit.source_kind) }}</span></template>
-      <template #actions><button class="ui-btn sm" :disabled="locating" @click="$emit('open', hit)"><Loader2 v-if="locating" :size="14" class="spin" /><ArrowUpRight v-else :size="14" />{{ locating ? '定位中…' : '定位文件' }}</button></template>
-      <FileDetailSection title="基本信息">
+      <template #badges><span class="ui-badge">{{ tr("搜索命中") }}</span><span class="ui-badge">{{ sourceKindLabel(hit.source_kind, tr) }}</span></template>
+      <template #actions><button class="ui-btn sm" :disabled="locating" @click="$emit('open', hit)"><Loader2 v-if="locating" :size="14" class="spin" /><ArrowUpRight v-else :size="14" />{{ locating ? tr("定位中…") : tr("定位文件") }}</button></template>
+      <FileDetailSection :title="tr('基本信息')">
         <FileDetailFields :fields="[
-          { label: '路径', value: hit.file_path, copyable: true },
-          { label: '大小', value: formatSearchFileSize(hit.file_size), mono: true },
+          { label: tr('路径'), value: hit.file_path, copyable: true },
+          { label: tr('大小'), value: formatSearchFileSize(hit.file_size), mono: true },
         ]" />
       </FileDetailSection>
-      <FileDetailSection title="命中信息">
+      <FileDetailSection :title="tr('命中信息')">
         <FileDetailFields :fields="[
-          { label: '匹配方式', value: hit.pattern_kind === 'regex' ? '正则表达式' : '关键词' },
-          { label: '匹配内容', value: hit.pattern, copyable: true },
-          { label: '偏移', value: formatHitOffset(hit), mono: true, copyable: true },
-          { label: '编码', value: hit.encoding || '未知', mono: true },
+          { label: tr('匹配方式'), value: hit.pattern_kind === 'regex' ? tr('正则表达式') : tr('关键词') },
+          { label: tr('匹配内容'), value: hit.pattern, copyable: true },
+          { label: tr('偏移'), value: formatHitOffset(hit), mono: true, copyable: true },
+          { label: tr('编码'), value: hit.encoding || tr('未知'), mono: true },
         ]" />
       </FileDetailSection>
-      <FileDetailSection title="命中上下文" wide>
+      <FileDetailSection :title="tr('命中上下文')" wide>
         <pre class="detail-block"><template v-for="(segment, index) in highlightSearchPattern(hit.context_full || hit.context_preview, hit.pattern)" :key="index"><mark v-if="segment.matched">{{ segment.text }}</mark><template v-else>{{ segment.text }}</template></template></pre>
       </FileDetailSection>
-      <FileDetailSection v-if="hashFields.length" title="文件哈希" wide>
+      <FileDetailSection v-if="hashFields.length" :title="tr('文件哈希')" wide>
         <FileDetailFields :fields="hashFields" />
       </FileDetailSection>
     </FileDetailLayout>
@@ -29,6 +29,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { computed } from 'vue';
 import { ArrowUpRight, Loader2 } from 'lucide-vue-next';
 import DetailDock from '../../../components/layout/DetailDock.vue';

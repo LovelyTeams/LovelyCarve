@@ -11,21 +11,21 @@
     <button
       v-if="job"
       class="bde-chip"
-      :title="job.cancelling ? '正在取消…' : '点击查看解锁进度'"
+      :title="job.cancelling ? tr('正在取消…') : tr('点击查看解锁进度')"
       @click="openPopover"
     >
       <span class="bde-chip-dot"></span>
-      <span>{{ job.cancelling ? '取消中' : '解锁中' }}</span>
+      <span>{{ job.cancelling ? tr("取消中") : tr("解锁中") }}</span>
       <span class="bde-chip-pct">{{ unlockProgress.percentText }}</span>
     </button>
     <button
       v-else-if="scanJob"
       class="bde-chip"
-      :title="scanJob.cancelling ? '正在取消…' : '点击查看扫描进度'"
+      :title="scanJob.cancelling ? tr('正在取消…') : tr('点击查看扫描进度')"
       @click="openPopover"
     >
       <span class="bde-chip-dot"></span>
-      <span>{{ scanJob.cancelling ? '取消中' : '扫描中' }}</span>
+      <span>{{ scanJob.cancelling ? tr("取消中") : tr("扫描中") }}</span>
       <span class="bde-chip-pct">{{ scanProgress.percentText }}</span>
     </button>
     <button
@@ -35,17 +35,17 @@
       @click="togglePopover"
     >
       <KeyRound :size="13" />
-      <span>解锁</span>
+      <span>{{ tr("解锁") }}</span>
     </button>
     <button
       v-else
       class="ui-btn sm bde-btn"
       :disabled="!!exportJob"
-      :title="exportJob ? '正在导出解密后完整镜像' : '导出完整 RAW 镜像，并将此 BitLocker 分区替换为解密后内容'"
+      :title="exportJob ? tr('正在导出解密后完整镜像') : tr('导出完整 RAW 镜像，并将此 BitLocker 分区替换为解密后内容')"
       @click="exportDecryptedImage"
     >
       <Download :size="13" />
-      <span>{{ exportJob ? '导出中' : '导出解密镜像' }}</span>
+      <span>{{ exportJob ? tr("导出中") : tr("导出解密镜像") }}</span>
     </button>
 
     <!-- Teleported to <body> so the host panel's `overflow-y: auto`
@@ -61,7 +61,7 @@
       >
         <div class="bde-popover-head">
         <span class="bde-popover-icon"><KeyRound :size="14" /></span>
-        <div class="bde-popover-title">解锁 BitLocker 分区</div>
+        <div class="bde-popover-title">{{ tr("解锁 BitLocker 分区") }}</div>
       </div>
 
       <!-- Mode tabs — hidden while any job is running so the progress UI
@@ -83,21 +83,23 @@
         :can-submit-password="canSubmitPassword" :can-submit-recovery="canSubmitRecovery" @password="submitPassword" @recovery="submitRecovery" @blur="onRecoveryBlur" @close="closePopover" />
 
       <BitlockerKeyForm v-if="!job && !scanJob && mode === 'key'" :key="`${imageId}:${partition.id}`" @submit="submitKey" @close="closePopover" />
-      <p v-if="metadata && !job && !scanJob" class="ui-field-hint">元数据 v{{ metadata.version }} · {{ metadata.bytes_per_sector }} 字节扇区{{ metadata.used_space_only ? ' · 仅加密已用空间' : '' }} · 保护器 {{ metadata.protector_types.map(protectorLabel).join('、') || '无' }}</p>
+      <p v-if="metadata && !job && !scanJob" class="ui-field-hint">{{ tr("元数据 v") }}{{ metadata.version }} · {{ metadata.bytes_per_sector }} {{ tr("字节扇区") }}{{ metadata.used_space_only ? tr(" · 仅加密已用空间") : '' }} {{ tr("· 保护器") }} {{ metadata.protector_types.map(protectorLabel).join('、') || tr("无") }}</p>
 
       <BitlockerMemoryCandidates v-if="!job && !scanJob && mode === 'memory'" :memory-path="memoryPath" :candidates="candidates"
         @pick="pickMemoryFile" @scan="startScan" @reset="resetMemory" @close="closePopover" @unlock="unlockWithCandidate" />
 
-      <BitlockerJobProgress v-if="job" :label="job.cancelling ? '取消中…' : unlockLabel" :percent="unlockProgress.percent" :percent-text="unlockProgress.percentText" :bytes-text="unlockProgress.bytesText"
-        :cancelling="job.cancelling" note="解锁任务会在后台继续，关闭面板不会中断。" cancel-label="终止任务" @cancel="onCancelUnlock" />
-      <BitlockerJobProgress v-if="!job && scanJob" :label="scanJob.cancelling ? '取消中…' : '扫描内存镜像'" :percent="scanProgress.percent" :percent-text="scanProgress.percentText" :bytes-text="scanProgress.bytesText"
-        :cancelling="scanJob.cancelling" note="扫描会在后台继续，关闭面板不会中断。" cancel-label="终止扫描" @cancel="onCancelScan" />
+      <BitlockerJobProgress v-if="job" :label="job.cancelling ? tr('取消中…') : unlockLabel" :percent="unlockProgress.percent" :percent-text="unlockProgress.percentText" :bytes-text="unlockProgress.bytesText"
+        :cancelling="job.cancelling" :note="tr('解锁任务会在后台继续，关闭面板不会中断。')" :cancel-label="tr('终止任务')" @cancel="onCancelUnlock" />
+      <BitlockerJobProgress v-if="!job && scanJob" :label="scanJob.cancelling ? tr('取消中…') : tr('扫描内存镜像')" :percent="scanProgress.percent" :percent-text="scanProgress.percentText" :bytes-text="scanProgress.bytesText"
+        :cancelling="scanJob.cancelling" :note="tr('扫描会在后台继续，关闭面板不会中断。')" :cancel-label="tr('终止扫描')" @cancel="onCancelScan" />
       </div>
     </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { Lock, LockOpen, KeyRound, Download } from 'lucide-vue-next';
@@ -134,10 +136,10 @@ const emit = defineEmits<{
 }>();
 
 const tabs: { id: Mode; label: string }[] = [
-  { id: 'password', label: '密码' },
-  { id: 'recovery', label: '恢复密钥' },
-  { id: 'memory', label: '内存镜像' },
-  { id: 'key', label: '其他密钥' },
+  { id: 'password', get label() { return tr("密码"); } },
+  { id: 'recovery', get label() { return tr("恢复密钥"); } },
+  { id: 'memory', get label() { return tr("内存镜像"); } },
+  { id: 'key', get label() { return tr("其他密钥"); } },
 ];
 
 const locked = ref(true);
@@ -162,29 +164,29 @@ const { startBitlockerDecryptedImageExport, jobFor } = useImageExport();
 const exportJob = computed(() => jobFor(props.imageId));
 
 const statusTitle = computed(() => {
-  if (locked.value) return 'BitLocker 卷未解锁';
+  if (locked.value) return tr("BitLocker 卷未解锁");
   return encryption.value
-    ? `BitLocker 已解锁 · ${encryption.value}`
-    : 'BitLocker 已解锁';
+    ? tr("BitLocker 已解锁 · {0}", { 0: encryption.value })
+    : tr("BitLocker 已解锁");
 });
 
 const unlockLabel = computed(() => {
   const j = job.value;
-  if (!j) return '解锁中';
+  if (!j) return tr("解锁中");
   switch (j.mode) {
     case 'password':
-      return '密码解锁中';
+      return tr("密码解锁中");
     case 'recovery':
-      return '恢复密钥解锁中';
+      return tr("恢复密钥解锁中");
     case 'vmk':
-      return 'VMK 解锁中';
+      return tr("VMK 解锁中");
     case 'key':
-      return '密钥解锁中';
+      return tr("密钥解锁中");
   }
 });
 
-const unlockProgress = computed(() => bitlockerProgress(job.value));
-const scanProgress = computed(() => bitlockerProgress(scanJob.value));
+const unlockProgress = computed(() => bitlockerProgress(job.value, tr));
+const scanProgress = computed(() => bitlockerProgress(scanJob.value, tr));
 
 const popover = useBitlockerPopover({
   context: () => `${props.imageId}:${props.partition.id}`, mode: () => mode.value, content: () => [candidates.value, !!job.value, !!scanJob.value],
@@ -221,7 +223,7 @@ async function refreshStatus() {
 }
 
 function protectorLabel(value: number): string {
-  const labels: Record<number, string> = { 0: '明文密钥', 0x0200: 'BEK', 0x0800: '恢复密码', 0x2000: '密码', 0x0100: 'TPM' };
+  const labels: Record<number, string> = { 0: tr("明文密钥"), 0x0200: 'BEK', 0x0800: tr("恢复密码"), 0x2000: tr("密码"), 0x0100: 'TPM' };
   return labels[value] ?? `0x${value.toString(16).padStart(4, '0')}`;
 }
 async function refreshMetadata() {
@@ -276,10 +278,10 @@ async function pickMemoryFile() {
   const captured = generation;
   const selected = await openDialog({
     multiple: false,
-    title: '选择内存镜像',
+    title: tr("选择内存镜像"),
     filters: [
       { name: 'Memory dump', extensions: ['raw', 'mem', 'bin', 'dmp', 'vmem'] },
-      { name: '所有文件', extensions: ['*'] },
+      { name: tr("所有文件"), extensions: ['*'] },
     ],
   });
   if (!current(captured) || !selected || typeof selected !== 'string') return;

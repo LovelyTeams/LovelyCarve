@@ -1,7 +1,7 @@
 <template>
   <div class="hash-panel">
     <div class="hash-controls">
-      <div class="hash-algos" role="group" aria-label="哈希算法">
+      <div class="hash-algos" role="group" :aria-label="tr('哈希算法')">
         <label
           v-for="algo in ALL_HASH_ALGOS"
           :key="algo"
@@ -24,7 +24,7 @@
         @click="start"
       >
         <Fingerprint :size="13" />
-        <span>{{ hasAnyResult ? '重新计算' : '计算哈希' }}</span>
+        <span>{{ hasAnyResult ? tr("重新计算") : tr("计算哈希") }}</span>
       </button>
       <button
         v-else
@@ -32,13 +32,13 @@
         :disabled="job.cancelling"
         @click="cancel"
       >
-        <span>{{ job.cancelling ? '取消中…' : '终止' }}</span>
+        <span>{{ job.cancelling ? tr("取消中…") : tr("终止") }}</span>
       </button>
     </div>
 
     <div v-if="job" class="hash-progress">
       <div class="hash-progress-meta">
-        <span class="hash-progress-label">{{ job.cancelling ? '正在取消' : '正在计算' }} <span class="mono hash-selection">{{ algorithmSummary }}</span></span>
+        <span class="hash-progress-label">{{ job.cancelling ? tr("正在取消") : tr("正在计算") }} <span class="mono hash-selection">{{ algorithmSummary }}</span></span>
         <span class="mono hash-progress-pct">{{ percentText }}</span>
       </div>
       <div class="ui-progress">
@@ -54,8 +54,8 @@
           <span class="hash-value mono">{{ result?.[algo] }}</span>
           <button
             class="ui-icon-btn sm hash-copy"
-            :title="copiedAlgo === algo ? '已复制' : `复制 ${algo.toUpperCase()}`"
-            :aria-label="`复制 ${algo.toUpperCase()}`"
+            :title="copiedAlgo === algo ? tr('已复制') : tr('复制 {0}', { 0: algo.toUpperCase() })"
+            :aria-label="tr('复制 {0}', { 0: algo.toUpperCase() })"
             @click="copy(algo)"
           >
             <Check v-if="copiedAlgo === algo" :size="12" />
@@ -67,14 +67,16 @@
     <div v-if="result?.read_faults_detected" class="ui-alert warn hash-fault-warning">
       <AlertTriangle :size="15" />
       <span>
-        哈希包含 {{ formatBytes(result.synthetic_bytes) }} 合成零字节，涉及
-        {{ result.bad_regions.length }} 个坏区；结果不可视为无错误的原始介质哈希。
+        {{ tr("哈希包含") }} {{ formatBytes(result.synthetic_bytes) }} {{ tr("合成零字节，涉及") }}
+        {{ result.bad_regions.length }} {{ tr("个坏区；结果不可视为无错误的原始介质哈希。") }}
       </span>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { formatBinaryBytes as formatBytes } from '../../../utils/format';
 import { computed, ref, watch } from 'vue';
 import { AlertTriangle, Fingerprint, Copy, Check } from 'lucide-vue-next';
@@ -124,7 +126,7 @@ const percentText = computed(() => `${percent.value.toFixed(1)}%`);
 const bytesText = computed(() => {
   const j = job.value;
   if (!j) return '';
-  if (j.bytesTotal === 0) return '准备中…';
+  if (j.bytesTotal === 0) return tr("准备中…");
   return `${formatBytes(j.bytesDone)} / ${formatBytes(j.bytesTotal)}`;
 });
 
@@ -138,7 +140,7 @@ function toggleAlgo(algo: HashAlgo) {
 
 async function start() {
   if (selected.value.length === 0) {
-    notifyError('哈希计算失败', '请至少选择一种算法');
+    notifyError(tr("哈希计算失败"), tr("请至少选择一种算法"));
     return;
   }
   await startImageHash(props.imageId, selected.value);
@@ -160,7 +162,7 @@ async function copy(algo: HashAlgo) {
       copiedTimer = null;
     }, 1500);
   } catch (err) {
-    notifyError('复制失败', String(err));
+    notifyError(tr("复制失败"), String(err));
   }
 }
 

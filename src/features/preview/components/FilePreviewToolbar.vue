@@ -9,17 +9,17 @@
         role="tab"
         :aria-selected="activeTab === t.key"
         :disabled="indexOnly && t.key !== 'detail'"
-        :title="indexOnly && t.key !== 'detail' ? '正文预览需恢复原镜像' : undefined"
+        :title="indexOnly && t.key !== 'detail' ? tr('正文预览需恢复原镜像') : undefined"
         :class="{ active: activeTab === t.key }"
         @click="activeTab = t.key"
-      >{{ t.label }}</button>
+      >{{ tr(t.label) }}</button>
     </div>
-    <span v-if="indexOnly" class="ui-badge sm info" title="属性来自已有索引，正文预览需恢复原镜像">离线索引</span>
+    <span v-if="indexOnly" class="ui-badge sm info" :title="tr('属性来自已有索引，正文预览需恢复原镜像')">{{ tr("离线索引") }}</span>
     <div v-if="!standalone" class="window-actions">
-      <button class="ui-icon-btn sm" title="在独立窗口打开" aria-label="在独立窗口打开" @click="emit('external')">
+      <button class="ui-icon-btn sm" :title="tr('在独立窗口打开')" :aria-label="tr('在独立窗口打开')" @click="emit('external')">
         <ExternalLink :size="14" />
       </button>
-      <button class="ui-icon-btn sm" title="关闭" aria-label="关闭预览" @click="emit('close')">
+      <button class="ui-icon-btn sm" :title="tr('关闭')" :aria-label="tr('关闭预览')" @click="emit('close')">
         <X :size="14" />
       </button>
     </div>
@@ -31,11 +31,11 @@
         <button
           class="ui-btn sm charset-btn"
           :class="{ active: charsetMenuOpen }"
-          title="选择十六进制视图显示的字符集列"
+          :title="tr('选择十六进制视图显示的字符集列')"
           @click="charsetMenuOpen = !charsetMenuOpen"
         >
           <Languages :size="13" />
-          <span class="charset-btn-label">字符集 {{ selectedCharsetCount }}</span>
+          <span class="charset-btn-label">{{ tr("字符集") }} {{ selectedCharsetCount }}</span>
           <ChevronDown :size="12" />
         </button>
         <template v-if="charsetMenuOpen">
@@ -57,7 +57,7 @@
            字符集列，不在此列。 -->
       <div v-if="needsDecodedText" class="enc-picker" :title="encodingTitle">
         <Languages :size="13" />
-        <UiSelect v-model="encodingOverride" class="enc-select mono" :options="encodingOptions" aria-label="文本编码" />
+        <UiSelect v-model="encodingOverride" class="enc-select mono" :options="encodingOptions" :aria-label="tr('文本编码')" />
         <AlertTriangle v-if="encodingWarn" :size="12" class="enc-warn" />
       </div>
       <!-- 关键字搜索：文本/十六进制及可搜索的原类型子视图才有意义；
@@ -68,22 +68,22 @@
           <input
             class="mono search-input"
             type="text"
-            placeholder="请输入关键字"
-            aria-label="搜索预览内容"
+            :placeholder="tr('请输入关键字')"
+            :aria-label="tr('搜索预览内容')"
             v-model="searchQuery"
             @keydown="emit('searchKeydown', $event)"
           />
         </div>
         <span v-if="searchQuery" class="match-count mono">
-          {{ matchCount ? `${currentMatch >= 0 ? currentMatch + 1 : 0}/${matchCount}` : '无匹配' }}
+          {{ matchCount ? `${currentMatch >= 0 ? currentMatch + 1 : 0}/${matchCount}` : tr("无匹配") }}
         </span>
-        <button class="ui-icon-btn sm bordered" title="上一个 (Shift+Enter)" aria-label="上一个匹配" :disabled="matchCount === 0" @click="emit('gotoMatch', -1)">
+        <button class="ui-icon-btn sm bordered" :title="tr('上一个 (Shift+Enter)')" :aria-label="tr('上一个匹配')" :disabled="matchCount === 0" @click="emit('gotoMatch', -1)">
           <ChevronUp :size="14" />
         </button>
-        <button class="ui-icon-btn sm bordered" title="下一个 (Enter)" aria-label="下一个匹配" :disabled="matchCount === 0" @click="emit('gotoMatch', 1)">
+        <button class="ui-icon-btn sm bordered" :title="tr('下一个 (Enter)')" :aria-label="tr('下一个匹配')" :disabled="matchCount === 0" @click="emit('gotoMatch', 1)">
           <ChevronDown :size="14" />
         </button>
-        <button class="ui-icon-btn sm bordered" title="清除" aria-label="清除搜索" :disabled="!searchQuery" @click="searchQuery = ''">
+        <button class="ui-icon-btn sm bordered" :title="tr('清除')" :aria-label="tr('清除搜索')" :disabled="!searchQuery" @click="searchQuery = ''">
           <X :size="14" />
         </button>
       </div>
@@ -101,7 +101,7 @@
         <AlertTriangle v-else-if="extMismatch" :size="13" />
         <ScanSearch v-else :size="13" />
         <span v-if="effectiveIdent" class="ident-label mono">{{ effectiveIdent.label }}</span>
-        <span v-else class="ident-label">识别真实类型</span>
+        <span v-else class="ident-label">{{ tr("识别真实类型") }}</span>
       </button>
       <!-- 扫描二维码：仅图片的原类型视图出现。WeChat 检测器 + 暴力变换，
            识别结果在图上叠框并列于图下方。 -->
@@ -109,12 +109,12 @@
         v-if="activeTab === 'raw' && category === 'image'"
         class="ui-btn sm ident-btn qr-scan-btn"
         :disabled="qrScanning"
-        :title="qrScanning ? '正在扫描二维码…' : '扫描图中的二维码（WeChat 检测器 + 暴力变换）'"
+        :title="qrScanning ? tr('正在扫描二维码…') : tr('扫描图中的二维码（WeChat 检测器 + 暴力变换）')"
         @click="emit('qrScan')"
       >
         <Loader2 v-if="qrScanning" :size="13" class="spin" />
         <QrCode v-else :size="13" />
-        <span class="ident-label">{{ qrScanning ? '扫描中…' : '扫描二维码' }}</span>
+        <span class="ident-label">{{ qrScanning ? tr("扫描中…") : tr("扫描二维码") }}</span>
       </button>
       <!-- 识别文字（OCR）：仅图片的原类型视图出现。PP-OCRv6 检测+识别，
            识别结果在图上叠框并列于图下方。 -->
@@ -122,12 +122,12 @@
         v-if="activeTab === 'raw' && category === 'image'"
         class="ui-btn sm ident-btn ocr-scan-btn"
         :disabled="ocrScanning"
-        :title="ocrScanning ? '正在识别文字…' : '识别图中的文字（PP-OCRv6 OCR）'"
+        :title="ocrScanning ? tr('正在识别文字…') : tr('识别图中的文字（PP-OCRv6 OCR）')"
         @click="emit('ocrScan')"
       >
         <Loader2 v-if="ocrScanning" :size="13" class="spin" />
         <ScanText v-else :size="13" />
-        <span class="ident-label">{{ ocrScanning ? '识别中…' : '识别文字' }}</span>
+        <span class="ident-label">{{ ocrScanning ? tr("识别中…") : tr("识别文字") }}</span>
       </button>
     </div>
   </div>
@@ -136,6 +136,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { X, Search, ExternalLink, ChevronUp, ChevronDown, ScanSearch, AlertTriangle, Loader2, Languages, QrCode, ScanText } from 'lucide-vue-next';
 import UiSelect, { type UiSelectOption } from '../../../components/ui/UiSelect.vue';
 import type { FsTypeIdent } from '../../../lib/ipc/fs/derived';

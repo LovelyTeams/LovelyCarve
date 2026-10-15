@@ -5,20 +5,20 @@
     <div class="pw-titlebar" data-tauri-drag-region>
       <div class="pw-title-left" data-tauri-drag-region>
         <FileText :size="14" class="pw-title-icon" />
-        <span class="pw-title-text">{{ node?.name ?? '文件预览' }}</span>
+        <span class="pw-title-text">{{ node?.name ?? tr("文件预览") }}</span>
       </div>
       <div class="pw-title-right">
         <button v-if="ownerId && previewId" class="pw-btn dock-btn" :disabled="docking"
-          title="收回原文件列表的右侧预览栏" @click="dockWindow">
-          <PanelRightClose :size="14" /><span>{{ docking ? '正在停靠…' : '停靠到右侧' }}</span>
+          :title="tr('收回原文件列表的右侧预览栏')" @click="dockWindow">
+          <PanelRightClose :size="14" /><span>{{ docking ? tr("正在停靠…") : tr("停靠到右侧") }}</span>
         </button>
-        <button class="pw-btn" title="最小化" @click="minimizeWindow">
+        <button class="pw-btn" :title="tr('最小化')" @click="minimizeWindow">
           <Minus :size="14" />
         </button>
-        <button class="pw-btn" :title="isMaximized ? '还原' : '最大化'" @click="toggleMaximizeWindow">
+        <button class="pw-btn" :title="isMaximized ? tr('还原') : tr('最大化')" @click="toggleMaximizeWindow">
           <component :is="isMaximized ? Square : Maximize2" :size="13" />
         </button>
-        <button class="pw-btn close" title="关闭 (Ctrl+W)" @click="closeWindow">
+        <button class="pw-btn close" :title="tr('关闭 (Ctrl+W)')" @click="closeWindow">
           <X :size="14" />
         </button>
       </div>
@@ -40,7 +40,7 @@
         @identified="onIdentified"
         @close="closeWindow"
       />
-      <div v-else class="pw-empty mono">无法加载文件预览参数。</div>
+      <div v-else class="pw-empty mono">{{ tr("无法加载文件预览参数。") }}</div>
     </div>
 
     <ToastHost />
@@ -49,6 +49,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../composables/useLocale';
+
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { FileText, Maximize2, Minus, PanelRightClose, Square, X } from 'lucide-vue-next';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -102,7 +104,7 @@ async function dockWindow() {
     await focusMainWindow();
     await closeWindow();
   } catch (error) {
-    notifyError('停靠失败', String(error));
+    notifyError(tr("停靠失败"), String(error));
   } finally {
     docking.value = false;
   }
@@ -196,12 +198,12 @@ async function bindSelection() {
     unlistenSelection = cleanup;
     await requestPreviewSelection(ownerId, previewId);
   } catch (error) {
-    if (!disposed) notifyError('预览同步初始化失败', String(error));
+    if (!disposed) notifyError(tr("预览同步初始化失败"), String(error));
   }
 }
 
 watch(() => node.value?.name, name => {
-  if (name) void appWindow.setTitle(name).catch(error => notifyError('更新预览标题失败', String(error)));
+  if (name) void appWindow.setTitle(name).catch(error => notifyError(tr("更新预览标题失败"), String(error)));
 }, { immediate: true });
 
 async function refreshMaximized() {
@@ -213,7 +215,7 @@ async function refreshMaximized() {
 }
 
 async function minimizeWindow() {
-  try { await appWindow.minimize(); } catch (e) { notifyError('最小化失败', String(e)); }
+  try { await appWindow.minimize(); } catch (e) { notifyError(tr("最小化失败"), String(e)); }
 }
 
 async function toggleMaximizeWindow() {
@@ -221,12 +223,12 @@ async function toggleMaximizeWindow() {
     await appWindow.toggleMaximize();
     await refreshMaximized();
   } catch (e) {
-    notifyError('窗口操作失败', String(e));
+    notifyError(tr("窗口操作失败"), String(e));
   }
 }
 
 async function closeWindow() {
-  try { await appWindow.close(); } catch (e) { notifyError('关闭失败', String(e)); }
+  try { await appWindow.close(); } catch (e) { notifyError(tr("关闭失败"), String(e)); }
 }
 
 let unlistenResize: UnlistenFn | null = null;

@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { onScopeDispose, ref, shallowRef } from 'vue';
 import { timelineCount, type TimelineBucket, type TimelineQuery } from '../../../lib/ipc/timeline';
 import { notifyError } from '../../../composables/useToast';
@@ -27,8 +29,8 @@ export function useTimelineAggregation(options: { imageId: () => string; buildQu
       bucketsTruncated.value = data.length >= BUCKET_CAP;
     } catch (error) {
       if (disposed || generation !== bucketsGeneration) return;
-      bucketsError.value = '趋势加载失败，请重试';
-      notifyError('时间线聚合失败', String(error));
+      bucketsError.value = tr("趋势加载失败，请重试");
+      notifyError(tr("时间线聚合失败"), String(error));
       buckets.value = [];
     } finally {
       if (!disposed && generation === bucketsGeneration) loadingBuckets.value = false;
@@ -47,8 +49,8 @@ export function useTimelineAggregation(options: { imageId: () => string; buildQu
     } catch (error) {
       if (disposed || generation !== heatmapGeneration) return;
       heatmapBuckets.value = [];
-      heatmapError.value = '热力图加载失败，请重试';
-      notifyError('读取活动热力图失败', String(error));
+      heatmapError.value = tr("热力图加载失败，请重试");
+      notifyError(tr("读取活动热力图失败"), String(error));
     } finally {
       if (!disposed && generation === heatmapGeneration) loadingHeatmap.value = false;
     }

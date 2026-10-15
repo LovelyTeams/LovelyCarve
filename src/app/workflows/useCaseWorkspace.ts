@@ -1,3 +1,5 @@
+
+import { tr } from '../../composables/useLocale';
 import { notifyInfo, notifyError } from '../../composables/useToast';
 import type { LoadFileOptions, OpenTabResult, WorkspaceTab } from '../workspace/useTabManager';
 import type { useRaidStack } from '../../features/raid/api';
@@ -69,11 +71,11 @@ export function useCaseWorkspace(options: {
     const opened = paths.length - failed.length;
     if (failed.length > 0) {
       notifyError(
-        `${failed.length} 个证据镜像未能打开`,
-        `已打开 ${opened} 个；以下证据可能被移动、删除，或 RAID 成员不全：${failed.join('；')}`,
+        tr("{0} 个证据镜像未能打开", { 0: failed.length }),
+        tr("已打开 {0} 个；以下证据可能被移动、删除，或 RAID 成员不全：{1}", { 0: opened, 1: failed.join('；') }),
       );
     } else if (opened > 0) {
-      notifyInfo('已加载案件证据', `已加载 ${opened} 个证据镜像`);
+      notifyInfo(tr("已加载案件证据"), tr("已加载 {0} 个证据镜像", { 0: opened }));
     }
   }
 

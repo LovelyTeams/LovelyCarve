@@ -1,5 +1,5 @@
 <template>
-  <nav class="tabbar" aria-label="证据标签页" data-tauri-drag-region>
+  <nav class="tabbar" :aria-label="tr('证据标签页')" data-tauri-drag-region>
     <div ref="scrollRegion" class="tabbar-scroll">
       <div
         v-for="tab in tabs"
@@ -19,7 +19,7 @@
           type="button"
           class="tab-activate"
           :aria-current="tab.id === activeTabId ? 'page' : undefined"
-          :title="tab.pendingLoad ? `${tab.filePath}（等待当前分析完成）` : tab.filePath"
+          :title="tab.pendingLoad ? tr('{0}（等待当前分析完成）', { 0: tab.filePath }) : tab.filePath"
           :disabled="isBusy && tab.id !== activeTabId"
           @click="$emit('activate', tab.id)"
         >
@@ -31,8 +31,8 @@
         <button
           type="button"
           class="ui-icon-btn sm tab-close"
-          :title="`关闭 ${tab.fileName}`"
-          :aria-label="`关闭 ${tab.fileName}`"
+          :title="tr('关闭 {0}', { 0: tab.fileName })"
+          :aria-label="tr('关闭 {0}', { 0: tab.fileName })"
           :disabled="isBusy && tab.id !== activeTabId"
           @click="closeTab(tab.id)"
           @auxclick.middle.stop.prevent="closeTab(tab.id)"
@@ -41,13 +41,15 @@
         </button>
       </div>
     </div>
-    <button ref="newTabButton" type="button" class="ui-icon-btn tab-new" title="新标签（Ctrl+T）" aria-label="新标签" @click="$emit('new-tab')">
+    <button ref="newTabButton" type="button" class="ui-icon-btn tab-new" :title="tr('新标签（Ctrl+T）')" :aria-label="tr('新标签')" @click="$emit('new-tab')">
       <Plus :size="16" />
     </button>
   </nav>
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../composables/useLocale';
+
 import { onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, ref, watch } from 'vue';
 import { ClipboardList, Clock, HardDrive, Loader2, Plus, X } from 'lucide-vue-next';
 import type { WorkspaceTab } from '../workspace/useTabManager';

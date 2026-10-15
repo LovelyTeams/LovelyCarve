@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, onScopeDispose, reactive, ref, shallowRef, watch } from 'vue';
 import { globalSearchHistoryDelete, globalSearchHistoryList, type GlobalSearchHistoryEntry, type GlobalSearchProgress } from '../../../lib/ipc/search';
 import { taskCancel } from '../../../lib/ipc/taskRuntime';
@@ -101,9 +103,9 @@ export function useSearchHistory(options: { imageId: () => string }) {
     const context = contextGeneration;
     const imageId = options.imageId();
     const confirmed = await confirm({
-      title: '删除整次搜索',
-      message: `将删除「${taskDisplayTitle(task.keywords, task.regexes)}」任务及其全部命中记录，且不可恢复。`,
-      confirmText: '删除', danger: true
+      title: tr("删除整次搜索"),
+      message: tr("将删除「{0}」任务及其全部命中记录，且不可恢复。", { 0: taskDisplayTitle(task.keywords, task.regexes, tr) }),
+      confirmText: tr("删除"), danger: true
     });
     if (!confirmed || !current(context) || deletingTaskId.value !== null) return;
     const operation = ++deleteGeneration;
@@ -117,7 +119,7 @@ export function useSearchHistory(options: { imageId: () => string }) {
         if (selectedSearchId.value === task.search_id) selectedSearchId.value = null;
         await refreshTasks();
       }
-    } catch (error) { if (valid()) notifyError('删除搜索任务失败', String(error)); }
+    } catch (error) { if (valid()) notifyError(tr("删除搜索任务失败"), String(error)); }
     finally { if (valid()) deletingTaskId.value = null; }
   }
   async function cancelSelectedTask() {
@@ -129,8 +131,8 @@ export function useSearchHistory(options: { imageId: () => string }) {
     cancelling.value = true;
     try {
       await taskCancel({ taskId });
-      if (valid()) notifyInfo('已请求取消', '扫描会在当前对象完成后停止，已命中的结果保留。');
-    } catch (error) { if (valid()) notifyError('取消搜索失败', String(error)); }
+      if (valid()) notifyInfo(tr("已请求取消"), tr("扫描会在当前对象完成后停止，已命中的结果保留。"));
+    } catch (error) { if (valid()) notifyError(tr("取消搜索失败"), String(error)); }
     finally { if (valid()) cancelling.value = false; }
   }
   watch(selectedSearchId, () => { cancelGeneration++; cancelling.value = false; }, { flush: 'sync' });

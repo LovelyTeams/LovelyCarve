@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 // 快速分析的数据组装逻辑:功能清单过滤、平台克隆、按插件归并、分类分组与收藏持久化。
 //
 // - preprocessFuncs:剔除 Internal 与文件级功能,按检材类型(evidencetype)过滤;
@@ -23,7 +25,7 @@ export const PLATFORM_ORDER = [
 
 export const PLATFORM_LABELS: Record<string, string> = {
   android: 'Android',
-  harmony: '鸿蒙',
+  get harmony() { return tr("鸿蒙"); },
   ios: 'iOS',
   windows: 'Windows',
   macos: 'macOS',
@@ -183,7 +185,7 @@ export function buildPluginGroups(
   }
   const groups: PluginGroup[] = [];
   if (favour.length > 0) {
-    groups.push({ key: 'favour', label: '收藏', plugins: favour });
+    groups.push({ key: 'favour', get label() { return tr("收藏"); }, plugins: favour });
   }
   // Known types in a fixed reading order, then any other type as first listed.
   const rank = (typeName: string) => {
@@ -197,7 +199,7 @@ export function buildPluginGroups(
   }
   const longtime = byType.get(LONGTIME_TYPE) ?? [];
   if (longtime.length > 0) {
-    groups.push({ key: LONGTIME_TYPE, label: '耗时任务', plugins: longtime });
+    groups.push({ key: LONGTIME_TYPE, get label() { return tr("耗时任务"); }, plugins: longtime });
   }
   return groups;
 }
@@ -210,16 +212,16 @@ const TYPE_ORDER = [
 /** 插件清单 `[task] type` 的中文名;未知类型原样显示。 */
 function typeLabel(typeName: string): string {
   const known: Record<string, string> = {
-    baseinfo: '基本信息',
-    system: '系统记录',
-    application: '应用程序',
-    browserinfo: '浏览器',
-    loginfo: '日志',
-    databaseinfo: '数据库',
-    fileanalyzer: '文件分析',
-    filesystem: '文件系统',
-    analysis: '数据分析',
-    longtime: '耗时任务',
+    baseinfo: tr("基本信息"),
+    system: tr("系统记录"),
+    application: tr("应用程序"),
+    browserinfo: tr("浏览器"),
+    loginfo: tr("日志"),
+    databaseinfo: tr("数据库"),
+    fileanalyzer: tr("文件分析"),
+    filesystem: tr("文件系统"),
+    analysis: tr("数据分析"),
+    longtime: tr("耗时任务"),
   };
   return known[typeName] ?? typeName;
 }

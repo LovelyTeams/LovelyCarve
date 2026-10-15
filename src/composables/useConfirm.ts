@@ -1,3 +1,5 @@
+
+import { tr } from './useLocale';
 // Promise-based custom confirm dialog.
 //
 // Replaces `window.confirm()` — which in Tauri's webview is either
@@ -72,8 +74,8 @@ function openConfirm(opts: ConfirmOptions): Promise<ConfirmResult> {
     active.value = {
       title: opts.title,
       message: opts.message,
-      confirmText: opts.confirmText ?? '确认',
-      cancelText: opts.cancelText ?? '取消',
+      confirmText: opts.confirmText ?? tr("确认"),
+      cancelText: opts.cancelText ?? tr("取消"),
       danger: Boolean(opts.danger),
       checkbox: opts.checkbox ?? null,
       checkboxChecked: Boolean(opts.checkbox?.initialChecked),

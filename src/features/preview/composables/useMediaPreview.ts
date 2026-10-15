@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, onScopeDispose, ref } from 'vue';
 import { fsRead } from '../../../lib/ipc/fs/read';
 import { mediaStreamUrl } from '../../../lib/ipc/media';
@@ -56,8 +58,8 @@ export function useMediaPreview(options: {
   function onMediaError() {
     if (!streamUrl.value || streamError.value) return;
     streamError.value = options.category() === 'video'
-      ? '此视频的编码内核无法解码（如 H.265/HEVC），请导出后用外部播放器查看。'
-      : '此音频的编码内核无法解码，请导出后用外部播放器查看。';
+      ? tr("此视频的编码内核无法解码（如 H.265/HEVC），请导出后用外部播放器查看。")
+      : tr("此音频的编码内核无法解码，请导出后用外部播放器查看。");
   }
   onScopeDispose(() => { disposed = true; resetMedia(); });
   return { mediaUrl, mediaLoading, mediaError, streamUrl, streamLoading, streamError, loadMedia, loadStreamMedia, resetMedia, onMediaError };

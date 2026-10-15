@@ -1,18 +1,18 @@
 <template>
-  <section class="log-panel" aria-label="运行日志">
+  <section class="log-panel" :aria-label="tr('运行日志')">
     <div class="ui-toolbar log-toolbar">
       <label class="ui-search log-search">
         <Search :size="14" aria-hidden="true" />
-        <input v-model="searchText" type="search" aria-label="搜索日志" placeholder="搜索日志…" spellcheck="false" />
+        <input v-model="searchText" type="search" :aria-label="tr('搜索日志')" :placeholder="tr('搜索日志…')" spellcheck="false" />
       </label>
       <div class="ui-toolbar-actions">
-        <button class="ui-btn sm" type="button" :disabled="!entries.length || copying" title="复制全部会话日志" @click="copyLogs">
-          <Loader2 v-if="copying" :size="14" class="spin" /><Copy v-else :size="14" aria-hidden="true" />复制全部
+        <button class="ui-btn sm" type="button" :disabled="!entries.length || copying" :title="tr('复制全部会话日志')" @click="copyLogs">
+          <Loader2 v-if="copying" :size="14" class="spin" /><Copy v-else :size="14" aria-hidden="true" />{{ tr("复制全部") }}
         </button>
-        <button class="ui-btn sm" type="button" :disabled="!entries.length || copying" @click="clearLogs"><Eraser :size="14" aria-hidden="true" />清空</button>
+        <button class="ui-btn sm" type="button" :disabled="!entries.length || copying" @click="clearLogs"><Eraser :size="14" aria-hidden="true" />{{ tr("清空") }}</button>
       </div>
     </div>
-    <div class="log-levels" role="group" aria-label="日志级别">
+    <div class="log-levels" role="group" :aria-label="tr('日志级别')">
       <button v-for="level in levelOptions" :key="level.key" class="ui-btn sm" type="button"
         :class="{ active: enabledLevels[level.key] }" :aria-pressed="enabledLevels[level.key]"
         @click="enabledLevels[level.key] = !enabledLevels[level.key]">
@@ -20,8 +20,8 @@
       </button>
     </div>
     <p v-if="feedback" class="ui-alert" :class="copyFailed ? 'danger' : 'success'" :role="copyFailed ? 'alert' : 'status'">{{ feedback }}</p>
-    <div ref="bodyEl" class="log-body" tabindex="0" aria-label="日志内容" @scroll="onScroll">
-      <p v-if="!filteredEntries.length" class="log-empty" role="status">{{ entries.length ? '没有符合筛选条件的日志。' : '暂无日志，运行期间的输出会显示在这里。' }}</p>
+    <div ref="bodyEl" class="log-body" tabindex="0" :aria-label="tr('日志内容')" @scroll="onScroll">
+      <p v-if="!filteredEntries.length" class="log-empty" role="status">{{ entries.length ? tr("没有符合筛选条件的日志。") : tr("暂无日志，运行期间的输出会显示在这里。") }}</p>
       <div v-for="entry in filteredEntries" :key="entry.id" class="log-entry">
         <time class="log-time" :datetime="new Date(entry.timestamp).toISOString()" :title="formatEpochSeconds(entry.timestamp / 1000)">{{ formatTime(entry.timestamp) }}</time>
         <span class="ui-badge sm log-level" :class="levelOptions.find(level => level.key === entry.level)?.tone">{{ levelLabels[entry.level] }}</span>
@@ -29,14 +29,16 @@
       </div>
     </div>
     <div class="log-footer">
-      <span>显示 {{ filteredEntries.length.toLocaleString() }} / {{ entries.length.toLocaleString() }} 条 · 本地时间</span>
-      <label class="ui-check"><input v-model="autoScroll" type="checkbox" />自动滚动</label>
+      <span>{{ tr("显示") }} {{ filteredEntries.length.toLocaleString() }} / {{ entries.length.toLocaleString() }} {{ tr("条 · 本地时间") }}</span>
+      <label class="ui-check"><input v-model="autoScroll" type="checkbox" />{{ tr("自动滚动") }}</label>
     </div>
-    <p class="ui-field-hint">仅保留当前会话最近 5,000 条输出。</p>
+    <p class="ui-field-hint">{{ tr("仅保留当前会话最近 5,000 条输出。") }}</p>
   </section>
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Copy, Eraser, Loader2, Search } from 'lucide-vue-next';
 import { useConsoleCapture, type ConsoleLevel } from '../../../composables/useConsoleCapture';
@@ -44,11 +46,11 @@ import { formatEpochSeconds } from '../../../utils/format';
 
 const { entries, clear, copyAll } = useConsoleCapture();
 const levelOptions: { key: ConsoleLevel; label: string; tone: string }[] = [
-  { key: 'log', label: '普通', tone: '' },
-  { key: 'info', label: '信息', tone: 'info' },
-  { key: 'warn', label: '警告', tone: 'warn' },
-  { key: 'error', label: '错误', tone: 'danger' },
-  { key: 'debug', label: '调试', tone: '' },
+  { key: 'log', get label() { return tr("普通"); }, tone: '' },
+  { key: 'info', get label() { return tr("信息"); }, tone: 'info' },
+  { key: 'warn', get label() { return tr("警告"); }, tone: 'warn' },
+  { key: 'error', get label() { return tr("错误"); }, tone: 'danger' },
+  { key: 'debug', get label() { return tr("调试"); }, tone: '' },
 ];
 const levelLabels = Object.fromEntries(levelOptions.map(level => [level.key, level.label])) as Record<ConsoleLevel, string>;
 const enabledLevels = ref<Record<ConsoleLevel, boolean>>({ log: true, info: true, warn: true, error: true, debug: true });
@@ -96,9 +98,9 @@ async function copyLogs() {
   feedback.value = '';
   try {
     await copyAll();
-    if (!disposed) { copyFailed.value = false; feedback.value = '已复制全部日志。'; }
+    if (!disposed) { copyFailed.value = false; feedback.value = tr("已复制全部日志。"); }
   } catch (cause) {
-    if (!disposed) { copyFailed.value = true; feedback.value = `复制日志失败：${String(cause)}。请重试。`; }
+    if (!disposed) { copyFailed.value = true; feedback.value = tr("复制日志失败：{0}。请重试。", { 0: String(cause) }); }
   } finally {
     if (!disposed) copying.value = false;
   }

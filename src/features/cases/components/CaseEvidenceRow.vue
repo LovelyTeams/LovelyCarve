@@ -2,10 +2,10 @@
   <article class="evidence-row" :class="{ current }">
     <div class="evidence-main">
       <div class="evidence-icon"><Boxes v-if="raidLevel !== undefined" :size="20" /><HardDrive v-else :size="20" /></div>
-      <button class="evidence-name" :disabled="busy" :title="`打开 ${evidence.path}`" @click="emit('open', evidence)">
+      <button class="evidence-name" :disabled="busy" :title="tr('打开 {0}', { 0: evidence.path })" @click="emit('open', evidence)">
         <span class="file-name">{{ fileName }}</span>
         <span class="file-meta">
-          <span v-if="current" class="ui-badge sm info">当前检材</span>
+          <span v-if="current" class="ui-badge sm info">{{ tr("当前检材") }}</span>
           <span v-if="raidLevel !== undefined">RAID {{ raidLevel }}</span>
           <span>{{ evidence.source_format.toUpperCase() }}</span>
           <span v-if="evidence.platform">{{ evidence.platform.toUpperCase() }}</span>
@@ -13,21 +13,23 @@
         </span>
       </button>
       <div class="row-actions">
-        <button class="ui-btn sm ghost" :disabled="busy" @click="emit('open', evidence)">打开</button>
-        <button class="ui-icon-btn details-toggle" :aria-label="`${expanded ? '收起' : '展开'} ${fileName} 的详情`" :aria-expanded="expanded" :aria-controls="detailsId" title="检材详情" @click="expanded = !expanded"><ChevronDown :size="16" :class="{ rotated: expanded }" /></button>
+        <button class="ui-btn sm ghost" :disabled="busy" @click="emit('open', evidence)">{{ tr("打开") }}</button>
+        <button class="ui-icon-btn details-toggle" :aria-label="tr('{0} {1} 的详情', { 0: expanded ? tr('收起') : tr('展开'), 1: fileName })" :aria-expanded="expanded" :aria-controls="detailsId" :title="tr('检材详情')" @click="expanded = !expanded"><ChevronDown :size="16" :class="{ rotated: expanded }" /></button>
       </div>
     </div>
     <UiTransition><div v-if="expanded" :id="detailsId" class="evidence-details">
       <dl>
-        <dt>位置</dt><dd class="file-path">{{ evidence.path }}</dd>
-        <dt>添加时间</dt><dd>{{ addedAt }}</dd>
+        <dt>{{ tr("位置") }}</dt><dd class="file-path">{{ evidence.path }}</dd>
+        <dt>{{ tr("添加时间") }}</dt><dd>{{ addedAt }}</dd>
       </dl>
-      <button class="ui-btn sm danger-soft" :disabled="busy || locked" @click="emit('remove', evidence)"><Trash2 :size="13" /> 从案件移除</button>
+      <button class="ui-btn sm danger-soft" :disabled="busy || locked" @click="emit('remove', evidence)"><Trash2 :size="13" /> {{ tr("从案件移除") }}</button>
     </div></UiTransition>
   </article>
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import UiTransition from '../../../components/ui/UiTransition.vue';
 import { computed, ref, useId } from 'vue';
 import { Boxes, ChevronDown, HardDrive, Trash2 } from 'lucide-vue-next';
@@ -51,7 +53,7 @@ const fileName = computed(() => props.evidence.path.split(/[\\/]+/).filter(Boole
 const addedAt = computed(() => {
   const value = props.evidence.added_at;
   const formatted = formatEpochSeconds(Date.parse(value) / 1000, { precision: 'seconds', fallback: '', zeroAsMissing: false });
-  return formatted ? `${formatted}（本地）` : '时间未知';
+  return formatted ? tr("{0}（本地）", { 0: formatted }) : tr("时间未知");
 });
 </script>
 

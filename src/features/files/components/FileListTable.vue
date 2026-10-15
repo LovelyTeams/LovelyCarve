@@ -17,7 +17,7 @@
       <th class="cell-check">
         <input
           type="checkbox"
-          aria-label="全选文件列表条目"
+          :aria-label="tr('全选文件列表条目')"
           :checked="headerChecked"
           :indeterminate="headerIndeterminate"
           @change="emit('toggleAll')"
@@ -33,17 +33,17 @@
         <button
           v-if="c.filterMode !== 'none'"
           class="head-funnel"
-          :aria-label="`过滤${c.label}`"
+          :aria-label="tr('过滤{0}', { 0: tr(c.label) })"
           :class="{ active: isColumnFiltered(c.key) }"
           :disabled="deepsearch && !FLAT_SERVER_FILTER_COLUMNS.has(c.key)"
           :title="deepsearch && !FLAT_SERVER_FILTER_COLUMNS.has(c.key)
-            ? `「${c.label}」的数据来自独立存档，文件全显的分页查询无法按它过滤`
-            : isColumnFiltered(c.key) ? `过滤「${c.label}」：${filterSummaryOf(c.key)}` : `过滤「${c.label}」`"
+            ? tr('「{0}」的数据来自独立存档，文件全显的分页查询无法按它过滤', { 0: tr(c.label) })
+            : isColumnFiltered(c.key) ? tr('过滤「{0}」：{1}', { 0: tr(c.label), 1: filterSummaryOf(c.key) }) : tr('过滤「{0}」', { 0: tr(c.label) })"
           @click.stop="emit('filter', $event, c)"
         >
           <Filter :size="12" />
         </button>
-        <button class="head-label" :aria-label="`按${c.label}排序`" @click="emit('sort', c.key)">{{ c.label }}</button>
+        <button class="head-label" :aria-label="tr('按{0}排序', { 0: tr(c.label) })" @click="emit('sort', c.key)">{{ tr(c.label) }}</button>
         <Loader2 v-if="sortBusyKey === c.key" :size="12" class="head-sort spin" />
         <ArrowUp v-else-if="sortKey === c.key && sortDir === 'asc'" :size="12" class="head-sort" />
         <ArrowDown v-else-if="sortKey === c.key && sortDir === 'desc'" :size="12" class="head-sort" />
@@ -55,15 +55,15 @@
       <td class="state-row" :colspan="visibleColumns.length + 1">
         <template v-if="deepsearch">
           <Loader2 :size="12" class="spin" />
-          <span>正在查询全显结果…</span>
+          <span>{{ tr("正在查询全显结果…") }}</span>
         </template>
-        <template v-else>加载中…</template>
+        <template v-else>{{ tr("加载中…") }}</template>
       </td>
     </tr>
     <tr v-else-if="rowCount === 0">
       <td class="state-row" :colspan="visibleColumns.length + 1">
         <!-- 有条目但被过滤光 ≠ 空目录：取证列表绝不能把「被过滤」说成「空」。 -->
-        {{ loadedCount > 0 ? '无匹配条目（已过滤）' : deepsearch ? '无匹配文件' : '空目录' }}
+        {{ loadedCount > 0 ? tr("无匹配条目（已过滤）") : deepsearch ? tr("无匹配文件") : tr("空目录") }}
       </td>
     </tr>
     <template v-else>
@@ -88,7 +88,7 @@
         <td class="cell-check">
           <input
             type="checkbox"
-            :aria-label="`勾选 ${vi.item.name}`"
+            :aria-label="tr('勾选 {0}', { 0: vi.item.name })"
             :checked="checkedIds.has(vi.item.id)"
             @click.stop="emit('checkClick', $event, vi.item.id)"
             @dblclick.stop
@@ -112,22 +112,22 @@
               :class="{ 'is-dir': vi.item.kind === 'dir' }"
               @click="emit('nameClick', $event, vi.item)"
             >{{ vi.item.name }}</span>
-            <span v-if="vi.item.deleted" class="deleted-label">已删除</span>
+            <span v-if="vi.item.deleted" class="deleted-label">{{ tr("已删除") }}</span>
             <span
               v-if="vi.item.link_target"
               class="link-target mono"
-              :title="`符号链接指向：${vi.item.link_target}`"
+              :title="tr('符号链接指向：{0}', { 0: vi.item.link_target })"
             >→ {{ vi.item.link_target }}</span>
             <span
               v-if="vi.item.has_snapshot && vi.item.id.startsWith('ntfs:')"
               class="tag-pill mono snapshot-pill"
-              title="该文件含 NTFS 命名数据流（ADS / Alternate Data Stream），可能隐藏额外内容；下方独立行可查看/导出"
-            >数据流</span>
+              :title="tr('该文件含 NTFS 命名数据流（ADS / Alternate Data Stream），可能隐藏额外内容；下方独立行可查看/导出')"
+            >{{ tr("数据流") }}</span>
             <span
               v-else-if="vi.item.has_snapshot"
               class="tag-pill mono snapshot-pill"
-              title="该文件含 ReFS 文件快照流（refsutil streamsnapshot），保存了替换前的原始内容；下方独立行可查看/导出"
-            >快照</span>
+              :title="tr('该文件含 ReFS 文件快照流（refsutil streamsnapshot），保存了替换前的原始内容；下方独立行可查看/导出')"
+            >{{ tr("快照") }}</span>
             <span
               v-if="vi.item.kind === 'dir' && dirCounts[vi.item.id] != null && dirCounts[vi.item.id] > 0"
               class="dir-count mono"
@@ -137,7 +137,7 @@
             <span class="mono">{{ extOf(vi.item) || '—' }}</span>
           </template>
           <template v-else-if="c.key === 'kind'">
-            <span>{{ kindLabel(vi.item) }}</span>
+            <span>{{ kindLabel(vi.item, tr) }}</span>
           </template>
           <template v-else-if="c.key === 'size'">
             <span class="mono">{{ vi.item.kind === 'dir' ? '—' : formatBytes(vi.item.size) }}</span>
@@ -177,17 +177,17 @@
               v-if="tagOfNode(vi.item)"
               class="tag-pill mono"
               :class="`tag-${TAG_STYLE[tagOfNode(vi.item)!]}`"
-            >{{ tagOfNode(vi.item) }}</span>
+            >{{ tr(tagOfNode(vi.item) ?? '') }}</span>
           </template>
           <template v-else-if="c.key === 'ftype'">
             <span
               v-if="ftypeCache.get(vi.item.id)"
               class="mono"
-              :title="ftypeTitle(ftypeCache.get(vi.item.id)!)"
+              :title="ftypeTitle(ftypeCache.get(vi.item.id)!, tr)"
             >{{ ftypeCellText(ftypeCache.get(vi.item.id)!) }}</span>
           </template>
           <template v-else-if="c.key === 'deleted'">
-            <span>{{ vi.item.deleted ? '是' : '否' }}</span>
+            <span>{{ vi.item.deleted ? tr("是") : tr("否") }}</span>
           </template>
           <template v-else>
             <span class="mono">—</span>
@@ -214,6 +214,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { onMounted, onBeforeUnmount, useTemplateRef } from 'vue';
 import { Filter, Loader2, ArrowUp, ArrowDown } from 'lucide-vue-next';
 import FileNodeIcon from '../../../components/display/FileNodeIcon.vue';

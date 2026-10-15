@@ -1,3 +1,5 @@
+
+import { tr } from './useLocale';
 import { readonly, ref } from 'vue';
 
 export type ToastKind = 'success' | 'error' | 'info';
@@ -101,8 +103,8 @@ export function notifyInfo(title: string, detail?: string) {
   return pushToast('info', title, detail);
 }
 
-export function notifyExportSuccess(path: string, label = '导出成功') {
-  return notifySuccess(label, `已导出到: ${path}`);
+export function notifyExportSuccess(path: string, label = tr("导出成功")) {
+  return notifySuccess(label, tr("已导出到: {0}", { 0: path }));
 }
 
 export interface PersistentToastOptions {

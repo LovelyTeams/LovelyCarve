@@ -6,6 +6,7 @@ import Titlebar from '../../../app/components/Titlebar.vue';
 import { useTheme } from '../../../composables/useTheme';
 import { useUiPreferences } from '../../../composables/useUiPreferences';
 import { open } from '@tauri-apps/plugin-dialog';
+import { setLocale } from '../../../composables/useLocale';
 
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ minimize: vi.fn(), toggleMaximize: vi.fn(), close: vi.fn() }) }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
@@ -21,6 +22,7 @@ async function settle() { await nextTick(); await nextTick(); }
 beforeEach(() => {
   vi.mocked(open).mockReset();
   localStorage.clear();
+  setLocale('zh-CN');
   setTheme('light');
   preferences.motionPreference.value = 'system';
   preferences.mountTarget.value = 'drive';
@@ -28,10 +30,25 @@ beforeEach(() => {
   preferences.autoMountCaseEvidence.value = false;
   host = document.createElement('div'); document.body.append(host);
 });
-afterEach(() => { app?.unmount(); host.remove(); });
+afterEach(() => { app?.unmount(); host.remove(); setLocale('zh-CN'); });
 function button(label: string) { return [...host.querySelectorAll<HTMLButtonElement>('button')].find(element => element.textContent?.trim() === label)!; }
 
 describe('settings entry and preferences', () => {
+  it('switches the open settings to English immediately and persists the choice', async () => {
+    app = createApp(ToolSettingsModal, { visible: true }); app.mount(host);
+    const language = host.querySelector<HTMLInputElement>('input[type="radio"][value="en"]')!;
+    language.click(); await settle();
+    expect(localStorage.getItem('lovelycarve-locale')).toBe('en');
+    expect(host.querySelector('.ui-modal-title')?.textContent).toBe('Settings');
+    expect(button('Dark')).toBeDefined();
+    expect(host.querySelector('.settings-nav-item[aria-current="page"] strong')?.textContent).toBe('Appearance');
+    expect(host.textContent).toContain('Changes saved automatically');
+    preferences.mountTarget.value = 'folder'; await settle();
+    expect(host.querySelector('.path-input')?.getAttribute('placeholder')).toBe('Leave empty to use the case folder');
+    button('Restore page defaults').click(); await settle();
+    expect(host.querySelector('.ui-modal-title')?.textContent).toBe('设置中心');
+    expect(localStorage.getItem('lovelycarve-locale')).toBe('zh-CN');
+  });
   it('provides logs and version information inside settings without a status bar', async () => {
     app = createApp(ToolSettingsModal, { visible: true }); app.mount(host);
     button('关于').click();

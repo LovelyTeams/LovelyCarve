@@ -9,7 +9,7 @@
       @clear-search="clearSearchKeyword" @toggle-deepsearch="toggleDeepsearch" @refresh="refresh" @toggle-preview="togglePreview"
     />
 
-    <div v-if="indexOnly" class="ui-alert info offline-notice" role="status"><CircleAlert :size="16" /><span>离线索引 · 原镜像不可用，可浏览已索引目录、筛选文件和查看属性。正文预览、导出、哈希及分析需恢复原镜像。</span></div>
+    <div v-if="indexOnly" class="ui-alert info offline-notice" role="status"><CircleAlert :size="16" /><span>{{ tr("离线索引 · 原镜像不可用，可浏览已索引目录、筛选文件和查看属性。正文预览、导出、哈希及分析需恢复原镜像。") }}</span></div>
     <div v-if="error" class="error-banner" role="alert"><CircleAlert :size="14" /><span class="mono">{{ error }}</span></div>
 
     <div class="body">
@@ -63,7 +63,7 @@
 
       </div>
       <UiTransition kind="dock">
-      <FilePreviewDock v-if="dockedPreviewVisible" :name="detailNode?.name ?? '文件预览'" :opening="previewOpening" :can-detach="!!detailNode"
+      <FilePreviewDock v-if="dockedPreviewVisible" :name="detailNode?.name ?? tr('文件预览')" :opening="previewOpening" :can-detach="!!detailNode"
         @detach="detachPreview" @close="previewVisible = false">
         <DiskFileDetail
           v-if="detailNode"
@@ -79,7 +79,7 @@
           :ident="ftypeCache.get(detailNode.id) ?? null"
           @identified="onDetailIdentified"
         />
-        <div v-else class="ui-empty preview-empty"><span class="ui-empty-icon accent"><PanelRightOpen :size="26" /></span><p class="ui-empty-title">选择文件，即刻预览</p><p class="ui-empty-desc">单击文件查看内容，双击目录进入</p><p class="ui-empty-desc">拖动上方标题栏，可拆分为独立窗口</p></div>
+        <div v-else class="ui-empty preview-empty"><span class="ui-empty-icon accent"><PanelRightOpen :size="26" /></span><p class="ui-empty-title">{{ tr("选择文件，即刻预览") }}</p><p class="ui-empty-desc">{{ tr("单击文件查看内容，双击目录进入") }}</p><p class="ui-empty-desc">{{ tr("拖动上方标题栏，可拆分为独立窗口") }}</p></div>
       </FilePreviewDock>
       </UiTransition>
     </div>
@@ -135,6 +135,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import UiTransition from '../../../components/ui/UiTransition.vue';
 import { ref, computed, watch, reactive, shallowRef, onActivated, onDeactivated, onUnmounted, onScopeDispose } from 'vue';
 import { type FsTypeIdent, type StoredDigest } from '../../../lib/ipc/fs/derived';
@@ -529,7 +531,7 @@ const filteredEntries = computed(() => projectFileRows({
   activeTimeFilterKeys: activeTimeFilterKeys.value, matchesTimeFilter,
   hideEmptyDirs: hideEmptyDirs.value, stackDepth: stack.value.length, emptySubtree, dirCounts,
   sortKey: sortKey.value, sortDir: sortDir.value, sortContext,
-}));
+}, tr));
 
 // Virtualize the table body so a 10k-entry directory renders only the visible
 // rows of DOM instead of 10k <tr>. Row height is pinned in CSS (.disk-file-row
@@ -720,7 +722,7 @@ async function onReturnToOriginalDir() {
   const targetStack = await resolveAbsoluteDirStack(parentPath);
   if (request !== originalDirectoryRequest) return;
   if (!targetStack) {
-    notifyError('回到原始目录失败', `无法定位目录：${parentPath}`);
+    notifyError(tr("回到原始目录失败"), tr("无法定位目录：{0}", { 0: parentPath }));
     return;
   }
   clearAllFilters();

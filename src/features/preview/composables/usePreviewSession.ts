@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { onScopeDispose, ref, type Ref } from 'vue';
 import { fsPreview } from '../../../lib/ipc/fs/read';
 import { fsIdentifyType, type FsTypeIdent } from '../../../lib/ipc/fs/derived';
@@ -41,7 +43,7 @@ export function usePreviewSession(options: {
     previousWasFile = node.kind === 'file';
     if (options.indexOnly?.()) {
       options.activeTab.value = 'detail';
-      error.value = '原镜像不可用，仅能查看索引中的文件属性；请恢复原镜像后重试。';
+      error.value = tr("原镜像不可用，仅能查看索引中的文件属性；请恢复原镜像后重试。");
       return;
     }
     options.activeTab.value = previousWasFile ? fileTab : 'detail';
@@ -74,7 +76,7 @@ export function usePreviewSession(options: {
         options.activeTab.value = 'raw';
         options.loadNativeMedia();
       }
-    } catch (reason) { if (valid()) notifyError('类型识别失败', String(reason)); }
+    } catch (reason) { if (valid()) notifyError(tr("类型识别失败"), String(reason)); }
     finally { if (valid()) identifying.value = false; }
   }
   onScopeDispose(() => { disposed = true; generation++; identifyingGeneration++; });

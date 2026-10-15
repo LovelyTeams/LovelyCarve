@@ -3,38 +3,38 @@
     <Teleport to="body">
       <Transition name="ui-modal">
       <div v-if="open" class="ui-modal-overlay gs-modal-overlay" @keydown.esc.stop="emit('close')">
-        <div class="ui-modal gs-modal" role="dialog" aria-modal="true" aria-label="新建搜索任务" :aria-labelledby="titleId" tabindex="-1">
+        <div class="ui-modal gs-modal" role="dialog" aria-modal="true" :aria-label="tr('新建搜索任务')" :aria-labelledby="titleId" tabindex="-1">
           <header class="ui-modal-header">
             <span class="ui-modal-icon"><Search :size="18" /></span>
             <div class="ui-modal-heading">
-              <h2 :id="titleId" class="ui-modal-title">新建搜索</h2>
-              <p class="ui-modal-subtitle">在检材的文件内容中查找关键词或正则表达式</p>
+              <h2 :id="titleId" class="ui-modal-title">{{ tr("新建搜索") }}</h2>
+              <p class="ui-modal-subtitle">{{ tr("在检材的文件内容中查找关键词或正则表达式") }}</p>
             </div>
-            <button type="button" class="ui-icon-btn" title="关闭" aria-label="关闭" :disabled="starting" @click="emit('close')">
+            <button type="button" class="ui-icon-btn" :title="tr('关闭')" :aria-label="tr('关闭')" :disabled="starting" @click="emit('close')">
               <X :size="16" />
             </button>
           </header>
           <div class="ui-modal-body gs-modal-body">
             <label class="ui-field">
-              <span class="ui-field-label">关键词（每行一个）</span>
+              <span class="ui-field-label">{{ tr("关键词（每行一个）") }}</span>
               <textarea
                 class="ui-textarea keyword-textarea"
                 v-model="draft.keysText"
                 rows="4"
                 spellcheck="false"
-                placeholder="例如：password&#10;每行一个关键词，可同时搜索多个"
+                :placeholder="tr('例如：password\n每行一个关键词，可同时搜索多个')"
                 :ref="elements.keyword"
                 :aria-invalid="patternError ? 'true' : undefined"
                 :aria-describedby="patternsNoteId"
                 @blur="patternsTouched = true"
               ></textarea>
-              <p :id="patternsNoteId" :class="patternError ? 'ui-field-error' : 'ui-field-hint'" :role="patternError ? 'alert' : undefined">{{ patternError || '至少输入一个关键词，或在高级选项中填写正则表达式' }}</p>
+              <p :id="patternsNoteId" :class="patternError ? 'ui-field-error' : 'ui-field-hint'" :role="patternError ? 'alert' : undefined">{{ patternError || tr("至少输入一个关键词，或在高级选项中填写正则表达式") }}</p>
             </label>
             <details v-disclosure-motion class="search-disclosure">
-              <summary><span>搜索范围</span><small>{{ scopeSummary }}</small></summary>
+              <summary><span>{{ tr("搜索范围") }}</span><small>{{ scopeSummary }}</small></summary>
               <div class="disclosure-body">
                 <div class="ui-field">
-                  <span class="ui-field-label">搜索范围</span>
+                  <span class="ui-field-label">{{ tr("搜索范围") }}</span>
                   <div class="ui-seg gs-scope-tabs" role="tablist">
                     <button
                       v-for="tab in SCOPE_TABS"
@@ -46,16 +46,16 @@
                       :aria-selected="draft.scopeMode === tab.id"
                       @click="draft.scopeMode = tab.id"
                     >
-                      {{ tab.label }}
+                      {{ tr(tab.label) }}
                     </button>
                   </div>
                   <!-- 按分区 -->
                   <div v-if="draft.scopeMode === 'partitions'" class="gs-scope-body">
                     <div v-if="loadingPartitions" class="task-state">
-                      <Loader2 :size="13" class="spin" /><span>正在读取分区…</span>
+                      <Loader2 :size="13" class="spin" /><span>{{ tr("正在读取分区…") }}</span>
                     </div>
                     <div v-else-if="partitionOptions.length === 0" class="gs-scope-empty">
-                      未检出分区（整镜像按单一文件系统处理，范围保持默认即可）
+                      {{ tr("未检出分区（整镜像按单一文件系统处理，范围保持默认即可）") }}
                     </div>
                     <label v-else class="ui-check">
                       <input
@@ -63,7 +63,7 @@
                         :checked="draft.partitions.length === 0"
                         @change="draft.partitions = []"
                       />
-                      <span>全部分区（默认）</span>
+                      <span>{{ tr("全部分区（默认）") }}</span>
                     </label>
                     <div v-if="partitionOptions.length > 0" class="gs-partition-grid">
                       <label
@@ -89,7 +89,7 @@
                       class="ui-check"
                     >
                       <input type="checkbox" :value="tag" v-model="draft.tags" />
-                      <span class="tag-chip" :class="TAG_STYLE[tag]">{{ tag }}</span>
+                      <span class="tag-chip" :class="TAG_STYLE[tag]">{{ tr(tag) }}</span>
                     </label>
                   </div>
                   <!-- 按目录 -->
@@ -99,19 +99,19 @@
                       v-model="draft.treeNodesText"
                       rows="3"
                       spellcheck="false"
-                      placeholder="每行一个卷内目录或文件路径，例如：&#10;/Users/alice/Documents&#10;/Windows/System32/config"
+                      :placeholder="tr('每行一个卷内目录或文件路径，例如：\n/Users/alice/Documents\n/Windows/System32/config')"
                     ></textarea>
-                    <span class="gs-scope-hint">目录按子树搜索；留空 = 不限制</span>
+                    <span class="gs-scope-hint">{{ tr("目录按子树搜索；留空 = 不限制") }}</span>
                   </div>
                 </div>
 
               </div>
             </details>
             <details v-disclosure-motion class="search-disclosure" :open="hasAdvancedErrors">
-              <summary><span>高级选项</span><small>{{ advancedSummary }}</small></summary>
+              <summary><span>{{ tr("高级选项") }}</span><small>{{ advancedSummary }}</small></summary>
               <div class="disclosure-body">
                 <label class="ui-field">
-                  <span class="ui-field-label">正则表达式（每行一个）</span>
+                  <span class="ui-field-label">{{ tr("正则表达式（每行一个）") }}</span>
                   <textarea
                     class="ui-textarea mono"
                     v-model="draft.regexesText"
@@ -124,7 +124,7 @@
                   ></textarea>
                 </label>
                 <div class="ui-field">
-                  <span class="ui-field-label">搜索编码</span>
+                  <span class="ui-field-label">{{ tr("搜索编码") }}</span>
                   <div class="gs-chip-row">
                     <button
                       v-for="page in CODE_PAGES"
@@ -142,38 +142,38 @@
                 </div>
 
                 <div class="gs-options-row">
-                  <label class="ui-check" title="关闭后只搜索未删除的文件">
+                  <label class="ui-check" :title="tr('关闭后只搜索未删除的文件')">
                     <input type="checkbox" v-model="draft.searchDeleted" />
-                    <span>搜索已删除文件</span>
+                    <span>{{ tr("搜索已删除文件") }}</span>
                   </label>
-                  <label class="ui-check" title="同时搜索各分区未分配空间和分区之间的空隙">
+                  <label class="ui-check" :title="tr('同时搜索各分区未分配空间和分区之间的空隙')">
                     <input type="checkbox" v-model="draft.searchEmptySpace" />
-                    <span>搜索未分配空间</span>
+                    <span>{{ tr("搜索未分配空间") }}</span>
                   </label>
-                  <label class="ui-check" title="为命中文件计算 MD5 和 SHA256，供核验及去重使用">
+                  <label class="ui-check" :title="tr('为命中文件计算 MD5 和 SHA256，供核验及去重使用')">
                     <input type="checkbox" v-model="draft.calcHash" />
-                    <span>命中文件计算哈希</span>
+                    <span>{{ tr("命中文件计算哈希") }}</span>
                   </label>
-                  <label class="ui-check" title="区分大小写（默认不区分）">
+                  <label class="ui-check" :title="tr('区分大小写（默认不区分）')">
                     <input type="checkbox" v-model="draft.matchCase" />
-                    <span>匹配大小写</span>
+                    <span>{{ tr("匹配大小写") }}</span>
                   </label>
-                  <label class="ui-check" title="每个文件找到首处匹配后继续搜索下一个文件">
+                  <label class="ui-check" :title="tr('每个文件找到首处匹配后继续搜索下一个文件')">
                     <input type="checkbox" v-model="draft.stopAfterFirst" />
-                    <span>每个文件只保留首个命中</span>
+                    <span>{{ tr("每个文件只保留首个命中") }}</span>
                   </label>
                 </div>
 
                 <div class="gs-caps-row">
                   <label class="gs-cap">
-                    <span>每文件命中上限</span>
+                    <span>{{ tr("每文件命中上限") }}</span>
                     <input v-model.number="draft.perFileCap" class="ui-input sm mono" type="number" min="1" step="1" :aria-invalid="errors.perFileCap ? 'true' : undefined" :aria-describedby="perFileNoteId" />
-                    <span :id="perFileNoteId" :class="errors.perFileCap ? 'ui-field-error' : 'ui-field-hint'" :role="errors.perFileCap ? 'alert' : undefined">{{ errors.perFileCap || '填写大于 0 的整数' }}</span>
+                    <span :id="perFileNoteId" :class="errors.perFileCap ? 'ui-field-error' : 'ui-field-hint'" :role="errors.perFileCap ? 'alert' : undefined">{{ errors.perFileCap || tr("填写大于 0 的整数") }}</span>
                   </label>
                   <label class="gs-cap">
-                    <span>全局命中上限</span>
+                    <span>{{ tr("全局命中上限") }}</span>
                     <input v-model.number="draft.globalCap" class="ui-input sm mono" type="number" min="1" step="1" :aria-invalid="errors.globalCap ? 'true' : undefined" :aria-describedby="globalNoteId" />
-                    <span :id="globalNoteId" :class="errors.globalCap ? 'ui-field-error' : 'ui-field-hint'" :role="errors.globalCap ? 'alert' : undefined">{{ errors.globalCap || '填写大于 0 的整数' }}</span>
+                    <span :id="globalNoteId" :class="errors.globalCap ? 'ui-field-error' : 'ui-field-hint'" :role="errors.globalCap ? 'alert' : undefined">{{ errors.globalCap || tr("填写大于 0 的整数") }}</span>
                   </label>
                 </div>
 
@@ -181,7 +181,7 @@
             </details>
           </div>
           <footer class="ui-modal-footer gs-modal-footer">
-            <button class="ui-btn" type="button" :disabled="starting" @click="emit('close')">取消</button>
+            <button class="ui-btn" type="button" :disabled="starting" @click="emit('close')">{{ tr("取消") }}</button>
             <button
               class="ui-btn primary"
               type="button"
@@ -190,7 +190,7 @@
             >
               <Loader2 v-if="starting" :size="13" class="spin" />
               <Search v-else :size="13" />
-              <span>开始搜索</span>
+              <span>{{ tr("开始搜索") }}</span>
             </button>
           </footer>
         </div>
@@ -199,6 +199,8 @@
     </Teleport>
 </template>
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { Loader2, Search, X } from 'lucide-vue-next';
 import { computed, ref, useId, watch, type Ref } from 'vue';
 import { useDialogFocus } from '../../../composables/useDialogFocus';
@@ -213,7 +215,7 @@ const codepagesNoteId = useId();
 const perFileNoteId = useId();
 const globalNoteId = useId();
 const patternsTouched = ref(false);
-const errors = computed(() => searchConfigurationErrors(props.draft));
+const errors = computed(() => searchConfigurationErrors(props.draft, tr));
 const patternError = computed(() => patternsTouched.value ? errors.value.patterns : null);
 const hasAdvancedErrors = computed(() => Boolean(errors.value.codepages || errors.value.perFileCap || errors.value.globalCap));
 watch(() => props.open, () => { patternsTouched.value = false; });

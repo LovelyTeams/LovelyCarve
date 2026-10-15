@@ -1,17 +1,17 @@
 <template>
 <section ref="sectionEl" class="ui-card volume-card" data-section="volumes" aria-labelledby="volumes-title">
   <header class="ui-card-header">
-    <h3 id="volumes-title" class="ui-card-title"><Layers :size="15" />{{ isFirmwareContainer ? '固件段布局' : '卷与分区' }}</h3>
+    <h3 id="volumes-title" class="ui-card-title"><Layers :size="15" />{{ isFirmwareContainer ? tr("固件段布局") : tr("卷与分区") }}</h3>
     <span v-if="schemeLabel" class="ui-badge sm mono">{{ schemeLabel }}</span>
     <span v-if="info.partitions.length > 0" class="ui-count">{{ info.partitions.length }}</span>
     <button v-if="canUnlockContainer" class="ui-btn sm head-action" type="button" @click="emit('unlock', null)">
-      <LockKeyhole :size="13" />解锁加密容器
+      <LockKeyhole :size="13" />{{ tr("解锁加密容器") }}
     </button>
   </header>
 
   <!-- 磁盘图：斜纹底即未分配空间，色块与分区行同色，点击色块定位到行。 -->
   <div v-if="layoutSegments.length > 0" class="disk-map">
-    <div class="layout-bar ui-stagger" role="group" aria-label="磁盘布局，点击色块定位分区">
+    <div class="layout-bar ui-stagger" role="group" :aria-label="tr('磁盘布局，点击色块定位分区')">
       <button
         v-for="seg in layoutSegments"
         :key="seg.key"
@@ -23,10 +23,10 @@
         @click="scrollToPartition(seg.partition.id)"
         @mouseenter="hoveredPartition = seg.partition.id"
         @mouseleave="hoveredPartition = null"
-      ><span v-if="seg.widthPct >= 14" class="seg-label">{{ partitionTitle(seg.partition) }}<small class="mono">{{ formatBytes(seg.lenBytes) }}</small></span></button>
+      ><span v-if="seg.widthPct >= 14" class="seg-label">{{ partitionTitle(seg.partition, tr) }}<small class="mono">{{ formatBytes(seg.lenBytes) }}</small></span></button>
     </div>
     <p v-if="unallocatedBytes > 0" class="disk-map-note">
-      <span class="unalloc-swatch" aria-hidden="true"></span>未分配 <span class="mono">{{ formatBytes(unallocatedBytes) }}</span>
+      <span class="unalloc-swatch" aria-hidden="true"></span>{{ tr("未分配") }} <span class="mono">{{ formatBytes(unallocatedBytes) }}</span>
     </p>
   </div>
 
@@ -36,25 +36,25 @@
       <EvidenceMountControl :view="mountViewFor(syntheticRoot.id)" :busy="busyPartitions.has(SYNTHETIC_MOUNT_KEY)" :share-busy="!!mountViewFor(syntheticRoot.id) && busyShares.has(mountViewFor(syntheticRoot.id)!.id)"
         :mount-target="mountTarget" :picker-loading="pickerLoading" :picker-open="pickerOpenFor === SYNTHETIC_MOUNT_KEY" :available-drives="availableDrives"
         @toggle="beginMount(syntheticRoot.id, SYNTHETIC_MOUNT_KEY, syntheticRoot.label)" @share="toggleShare(mountViewFor(syntheticRoot.id)!, syntheticRoot.label)"
-        @mount="drive => syntheticRoot && finishMountAt(syntheticRoot.id, SYNTHETIC_MOUNT_KEY, syntheticRoot.label, drive)" @copy="value => emit('copy', '共享名', value)" />
+        @mount="drive => syntheticRoot && finishMountAt(syntheticRoot.id, SYNTHETIC_MOUNT_KEY, syntheticRoot.label, drive)" @copy="value => emit('copy', tr('共享名'), value)" />
     </div>
     <p class="synthetic-root-hint">
-      逻辑证据以单一合成根呈现（无分区表），可只读挂载为 Windows 盘符 / 文件夹后用资源管理器浏览。
+      {{ tr("逻辑证据以单一合成根呈现（无分区表），可只读挂载为 Windows 盘符 / 文件夹后用资源管理器浏览。") }}
     </p>
   </div>
   <div v-else-if="info.partitions.length === 0" class="ui-empty volume-empty">
     <span class="ui-empty-icon"><Layers :size="24" /></span>
-    <p class="ui-empty-title">未检测到分区</p>
+    <p class="ui-empty-title">{{ tr("未检测到分区") }}</p>
   </div>
   <!-- 分区表：每个分区一行。结束扇区、扇区数和字节偏移在起始扇区的悬停提示里；
        卷影副本在所在分区行下展开。 -->
   <div v-else class="partition-table" role="table" aria-labelledby="volumes-title">
     <div class="part-head" role="row">
-      <span class="cell col-name" role="columnheader">名称</span>
-      <span class="cell col-fs" role="columnheader">{{ isFirmwareContainer ? '类型' : '文件系统' }}</span>
-      <span class="cell col-start" role="columnheader">起始{{ addressUnit }}</span>
-      <span class="cell col-size" role="columnheader">大小</span>
-      <span class="cell col-actions" role="columnheader"><span class="sr-only">操作</span></span>
+      <span class="cell col-name" role="columnheader">{{ tr("名称") }}</span>
+      <span class="cell col-fs" role="columnheader">{{ isFirmwareContainer ? tr("类型") : tr("文件系统") }}</span>
+      <span class="cell col-start" role="columnheader">{{ tr("起始") }}{{ addressUnit }}</span>
+      <span class="cell col-size" role="columnheader">{{ tr("大小") }}</span>
+      <span class="cell col-actions" role="columnheader"><span class="sr-only">{{ tr("操作") }}</span></span>
     </div>
     <div class="part-body ui-stagger" role="rowgroup">
       <template v-for="row in partitionRows" :key="`${info.id}:${row.partition.id}`">
@@ -70,10 +70,10 @@
         >
           <span class="cell col-name" role="cell">
             <span class="part-swatch" aria-hidden="true"></span>
-            <span class="part-label" :title="partitionTitle(row.partition)">{{ partitionTitle(row.partition) }}</span>
+            <span class="part-label" :title="partitionTitle(row.partition, tr)">{{ partitionTitle(row.partition, tr) }}</span>
             <span v-if="row.partition.label" class="part-index mono">#{{ row.partition.id }}</span>
           </span>
-          <span class="cell col-fs" role="cell"><span class="ui-badge sm mono">{{ KIND_LABELS[row.partition.kind] || row.partition.kind }}</span><span v-if="info.unlocked_partitions?.includes(row.partition.id)" class="ui-badge sm success">已解锁</span></span>
+          <span class="cell col-fs" role="cell"><span class="ui-badge sm mono">{{ KIND_LABELS[row.partition.kind] || row.partition.kind }}</span><span v-if="info.unlocked_partitions?.includes(row.partition.id)" class="ui-badge sm success">{{ tr("已解锁") }}</span></span>
           <span class="cell col-start mono" role="cell" :title="geometryTitle(row.partition)"><span class="cell-label">{{ addressUnit }}</span>{{ row.partition.start_lba.toLocaleString() }}</span>
           <span class="cell col-size mono" role="cell">{{ formatBytes(row.partition.length_lba * info.sector_size) }}</span>
           <div class="cell col-actions" role="cell">
@@ -81,8 +81,8 @@
               <span
                 v-if="!row.shadow.error && row.shadow.shadow_copies.length === 0"
                 class="shadow-none"
-                title="该卷有 VSS 区，但没有卷影副本（未创建，或已被删除）"
-              >无卷影副本</span>
+                :title="tr('该卷有 VSS 区，但没有卷影副本（未创建，或已被删除）')"
+              >{{ tr("无卷影副本") }}</span>
               <button
                 v-else
                 class="ui-btn sm ghost shadow-toggle"
@@ -94,7 +94,7 @@
               >
                 <TriangleAlert v-if="row.shadow.error" :size="13" />
                 <History v-else :size="13" />
-                <span>{{ row.shadow.error ? '卷影副本读取失败' : `卷影副本 ${row.shadow.shadow_copies.length}` }}</span>
+                <span>{{ row.shadow.error ? tr("卷影副本读取失败") : tr("卷影副本 {0}", { 0: row.shadow.shadow_copies.length }) }}</span>
                 <ChevronDown :size="13" class="shadow-chevron" />
               </button>
 
@@ -109,16 +109,16 @@
                     v-if="['luks', 'filevault'].includes(row.partition.kind) && canUnlockContainer"
                     class="ui-btn sm"
                     type="button"
-                    title="解锁该加密分区并以只读方式浏览文件"
+                    :title="tr('解锁该加密分区并以只读方式浏览文件')"
                     @click="emit('unlock', row.partition.id)"
                   >
-                    <KeyRound :size="13" />解锁
+                    <KeyRound :size="13" />{{ tr("解锁") }}
                   </button>
                   <EvidenceMountControl v-if="isMountable(row.partition) && canShowMount(row.partition)" :view="mountFor(row.partition)"
                     :busy="busyPartitions.has(row.partition.id)" :share-busy="!!mountFor(row.partition) && busyShares.has(mountFor(row.partition)!.id)"
                     :mount-target="mountTarget" :picker-loading="pickerLoading" :picker-open="pickerOpenFor === row.partition.id" :available-drives="availableDrives"
-                    @toggle="toggleMount(row.partition)" @share="toggleShare(mountFor(row.partition)!, partitionTitle(row.partition))"
-                    @mount="drive => mountAt(row.partition, drive)" @copy="value => emit('copy', '共享名', value)" />
+                    @toggle="toggleMount(row.partition)" @share="toggleShare(mountFor(row.partition)!, partitionTitle(row.partition, tr))"
+                    @mount="drive => mountAt(row.partition, drive)" @copy="value => emit('copy', tr('共享名'), value)" />
                 </div>
               </div>
               <div
@@ -140,12 +140,14 @@
           </div>
         </div>
         <p v-if="shadowLoadError" class="ui-alert danger shadow-alert" role="alert">
-          <span>读取卷影副本失败：{{ shadowLoadError }}</span>
-          <button class="ui-btn sm" type="button" @click="loadShadowCopies()">重试</button>
+          <span>{{ tr("读取卷影副本失败：") }}{{ shadowLoadError }}</span>
+          <button class="ui-btn sm" type="button" @click="loadShadowCopies()">{{ tr("重试") }}</button>
         </p>
       </section>
 </template>
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { computed, nextTick, onScopeDispose, ref } from 'vue';
 import { ChevronDown, History, KeyRound, Layers, LockKeyhole, TriangleAlert } from 'lucide-vue-next';
 import type { ImageInfo, DiskPartition } from '../../../lib/ipc/image';
@@ -171,7 +173,7 @@ const { mountTarget, mountFolderRoot } = useUiPreferences();
 
 const isFirmwareContainer = computed(() => props.info?.source_format === 'xiaomi_firmware');
 /** 分区起点的单位：固件段按字节寻址。 */
-const addressUnit = computed(() => (isFirmwareContainer.value ? '字节' : '扇区'));
+const addressUnit = computed(() => (isFirmwareContainer.value ? tr("字节") : tr("扇区")));
 
 /** 逻辑证据没有块设备层，不会有加密容器或卷影副本。 */
 const canUnlockContainer = computed(() => props.canUnlockContainer);
@@ -180,12 +182,12 @@ const canUnlockContainer = computed(() => props.canUnlockContainer);
 const schemeLabel = computed(() => {
   const scheme = props.info?.table_scheme;
   if (!scheme) return null;
-  return SCHEME_LABELS[scheme] || scheme.toUpperCase();
+  return tr(SCHEME_LABELS[scheme] || scheme.toUpperCase());
 });
 
-const geometryTitle = (partition: DiskPartition) => partitionGeometry(partition, props.info?.sector_size ?? 0, addressUnit.value);
+const geometryTitle = (partition: DiskPartition) => partitionGeometry(partition, props.info?.sector_size ?? 0, addressUnit.value, tr);
 
-const layoutSegments = computed(() => evidenceLayout(props.info));
+const layoutSegments = computed(() => evidenceLayout(props.info, tr));
 
 const unallocatedBytes = computed(() => {
   const info = props.info;

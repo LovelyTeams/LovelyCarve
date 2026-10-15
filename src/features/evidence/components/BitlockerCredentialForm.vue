@@ -8,17 +8,17 @@
       type="password"
       autocomplete="off"
       spellcheck="false"
-      placeholder="BitLocker 用户密码"
+      :placeholder="tr('BitLocker 用户密码')"
       @keydown.enter.prevent="emit('password')"
       @keydown.esc.prevent="emit('close')"
     />
     <div class="bde-actions">
-      <button class="ui-btn sm" @click="emit('close')">取消</button>
+      <button class="ui-btn sm" @click="emit('close')">{{ tr("取消") }}</button>
       <button
         class="ui-btn sm primary"
         :disabled="!canSubmitPassword"
         @click="emit('password')"
-      >解锁</button>
+      >{{ tr("解锁") }}</button>
     </div>
   </template>
 
@@ -42,19 +42,21 @@
       <AlertCircle :size="12" /><span>{{ recoveryError }}</span>
     </p>
     <p v-else :id="recoveryNoteId" class="ui-field-hint bde-field-note">
-      共 8 组 6 位数字，可直接粘贴 · 已完成 <span class="mono">{{ validGroups }}/8</span> 组
+      {{ tr("共 8 组 6 位数字，可直接粘贴 · 已完成") }} <span class="mono">{{ validGroups }}/8</span> {{ tr("组") }}
     </p>
     <div class="bde-actions">
-      <button class="ui-btn sm" @click="emit('close')">取消</button>
+      <button class="ui-btn sm" @click="emit('close')">{{ tr("取消") }}</button>
       <button
         class="ui-btn sm primary"
         :disabled="!canSubmitRecovery"
         @click="emit('recovery')"
-      >解锁</button>
+      >{{ tr("解锁") }}</button>
     </div>
   </template>
 </template>
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { AlertCircle } from 'lucide-vue-next';
 import type { Ref } from 'vue';
 import type { BitlockerInputMode } from '../model/bitlocker';

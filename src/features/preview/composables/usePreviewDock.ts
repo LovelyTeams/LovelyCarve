@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef } from 'vue';
 import { onPreviewDockRequest, onPreviewSelectionRequest, publishPreviewSelection } from '../../../lib/ipc/previewDock';
 import { focusFilePreviewWindow, openFilePreviewWindow, type FilePreviewWindowArgs } from '../../../lib/ipc/windows';
@@ -52,7 +54,7 @@ export function usePreviewDock<T>(options: {
   });
   void ready.catch(error => {
     for (const cleanup of listeners.splice(0)) cleanup();
-    notifyError('预览停靠初始化失败', String(error));
+    notifyError(tr("预览停靠初始化失败"), String(error));
   });
 
   async function sync(args: FilePreviewWindowArgs & { node: T }): Promise<void> {
@@ -64,7 +66,7 @@ export function usePreviewDock<T>(options: {
     try {
       await publishPreviewSelection({ ownerId, previewId: updated.id, revision: updated.revision, args });
     } catch (error) {
-      notifyError('同步独立预览失败', String(error));
+      notifyError(tr("同步独立预览失败"), String(error));
     }
   }
 
@@ -79,7 +81,7 @@ export function usePreviewDock<T>(options: {
       }
       return focused;
     } catch (error) {
-      notifyError('聚焦独立预览失败', String(error));
+      notifyError(tr("聚焦独立预览失败"), String(error));
       return false;
     }
   }
@@ -108,7 +110,7 @@ export function usePreviewDock<T>(options: {
       return true;
     } catch (error) {
       if (preview.value?.id === previewId) preview.value = null;
-      notifyError('打开独立预览失败', String(error));
+      notifyError(tr("打开独立预览失败"), String(error));
       return false;
     } finally {
       opening.value = false;

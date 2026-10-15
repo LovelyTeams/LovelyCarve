@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, reactive, ref } from 'vue';
 import { formatBytes } from '../model/model';
 import type { SizeUnit, SizeFilterState } from '../model/filters';
@@ -53,17 +55,17 @@ export function useSizeFilter() {
     if (!validationAttempted.value) return errors;
     const upper = parsedBound(sizeFilter.leEnabled, sizeFilter.leValue, sizeFilter.leUnit);
     const lower = parsedBound(sizeFilter.geEnabled, sizeFilter.geValue, sizeFilter.geUnit);
-    if (sizeFilter.leEnabled && upper === null) errors.le = '请输入有效的非负大小，过大的数值请调小。';
-    if (sizeFilter.geEnabled && lower === null) errors.ge = '请输入有效的非负大小，过大的数值请调小。';
+    if (sizeFilter.leEnabled && upper === null) errors.le = tr("请输入有效的非负大小，过大的数值请调小。");
+    if (sizeFilter.geEnabled && lower === null) errors.ge = tr("请输入有效的非负大小，过大的数值请调小。");
     if (upper !== null && lower !== null && lower > upper) {
-      errors.ge = '大小下限不能大于上限，请检查数值和单位。';
+      errors.ge = tr("大小下限不能大于上限，请检查数值和单位。");
       errors.le = errors.ge;
     }
     if (sizeFilter.modEnabled) {
       const divisor = Number(sizeFilter.modValue);
       const remainder = Number(sizeFilter.modRemainder.trim() || '0');
-      if (!sizeFilter.modValue.trim() || !Number.isSafeInteger(divisor) || divisor <= 0) errors.mod = '除数必须是有效的正整数。';
-      if (!Number.isSafeInteger(remainder) || remainder < 0 || (divisor > 0 && remainder >= divisor)) errors.remainder = '余数必须是非负整数，并且小于除数。';
+      if (!sizeFilter.modValue.trim() || !Number.isSafeInteger(divisor) || divisor <= 0) errors.mod = tr("除数必须是有效的正整数。");
+      if (!Number.isSafeInteger(remainder) || remainder < 0 || (divisor > 0 && remainder >= divisor)) errors.remainder = tr("余数必须是非负整数，并且小于除数。");
     }
     return errors;
   });

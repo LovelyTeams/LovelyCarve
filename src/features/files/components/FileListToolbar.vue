@@ -1,12 +1,12 @@
 <template>
 <div class="path-bar">
-  <button class="ui-icon-btn" :class="{ active: treeVisible }" aria-label="切换目录树" title="显示 / 隐藏目录树" @click="treeVisible = !treeVisible"><PanelLeft :size="16" /></button>
+  <button class="ui-icon-btn" :class="{ active: treeVisible }" :aria-label="tr('切换目录树')" :title="tr('显示 / 隐藏目录树')" @click="treeVisible = !treeVisible"><PanelLeft :size="16" /></button>
   <button
     class="ui-icon-btn"
-    aria-label="返回上一级"
+    :aria-label="tr('返回上一级')"
     :disabled="stack.length <= 1 || loading"
     @click="emit('goUp')"
-    title="返回上一级"
+    :title="tr('返回上一级')"
   ><ArrowLeft :size="15" /></button>
   <div class="breadcrumb mono" :class="{ deepsearch }">
     <template v-for="(frame, i) in stack" :key="`${i}-${frame.id}`">
@@ -17,8 +17,8 @@
         :disabled="loading"
         @click="i === stack.length - 1 ? emit('copyPath') : emit('goTo', i)"
         :title="i === stack.length - 1
-          ? `点击复制完整路径：${currentDirectoryPath}`
-          : `转到 ${frame.name}`"
+          ? tr('点击复制完整路径：{0}', { 0: currentDirectoryPath })
+          : tr('转到 {0}', { 0: frame.name })"
       >
         <HardDrive v-if="i === 0" :size="13" class="crumb-root-icon" />
         <span v-if="i > 0 || frame.name !== '/'">{{ frame.name }}</span>
@@ -30,33 +30,33 @@
       v-if="deepsearch"
       :size="12"
       class="crumb-flat-icon"
-      title="文件全显：当前节点下所有文件已递归平铺"
+      :title="tr('文件全显：当前节点下所有文件已递归平铺')"
     />
   </div>
   <label
     class="ui-search flat-search"
     :class="{ active: deepsearch }"
-    title="搜索当前目录及子目录中的文件名或路径"
+    :title="tr('搜索当前目录及子目录中的文件名或路径')"
   >
     <Search :size="14" />
     <input
       class="flat-search-input"
       type="text"
-      placeholder="搜索文件名或路径…"
-      aria-label="搜索文件名或路径"
+      :placeholder="tr('搜索文件名或路径…')"
+      :aria-label="tr('搜索文件名或路径')"
       v-model="searchKeyword"
       @input="emit('searchInput')"
       @keydown.esc.stop="emit('clearSearch')"
     />
-    <button v-if="searchKeyword" class="ui-icon-btn sm" title="清空关键词" aria-label="清空关键词" @click="emit('clearSearch')">
+    <button v-if="searchKeyword" class="ui-icon-btn sm" :title="tr('清空关键词')" :aria-label="tr('清空关键词')" @click="emit('clearSearch')">
       <X :size="13" />
     </button>
   </label>
   <div class="path-bar-actions">
     <button class="ui-btn" :class="{ active: selectedCategoryCount > 0 || categoryFilterOpen }"
       :aria-expanded="categoryFilterOpen" :disabled="loading && selectedCategoryCount === 0"
-      title="按文件类型筛选" @click="categoryFilterOpen = !categoryFilterOpen">
-      <Filter :size="14" /><span>分类{{ selectedCategoryCount ? ` · ${selectedCategoryCount}` : '' }}</span>
+      :title="tr('按文件类型筛选')" @click="categoryFilterOpen = !categoryFilterOpen">
+      <Filter :size="14" /><span>{{ tr("分类") }}{{ selectedCategoryCount ? ` · ${selectedCategoryCount}` : '' }}</span>
     </button>
     <button
       class="ui-btn"
@@ -64,21 +64,21 @@
       :aria-pressed="deepsearch"
       @click="emit('toggleDeepsearch')"
       :title="deepsearch
-        ? '文件全显（已开启）：点击退出，恢复逐级浏览'
-        : '文件全显：以当前节点为根递归平铺全部文件，按需分页加载'"
+        ? tr('文件全显（已开启）：点击退出，恢复逐级浏览')
+        : tr('文件全显：以当前节点为根递归平铺全部文件，按需分页加载')"
     >
-      <component :is="deepsearch ? Layers3 : Layers" :size="13" /><span>子目录</span>
+      <component :is="deepsearch ? Layers3 : Layers" :size="13" /><span>{{ tr("子目录") }}</span>
     </button>
     <div class="toolbar-utilities">
-      <button class="ui-icon-btn" :disabled="loading" title="刷新当前目录" aria-label="刷新当前目录" @click="emit('refresh')">
+      <button class="ui-icon-btn" :disabled="loading" :title="tr('刷新当前目录')" :aria-label="tr('刷新当前目录')" @click="emit('refresh')">
         <RefreshCw :size="15" :class="{ spin: loading }" />
       </button>
       <button class="ui-icon-btn" :class="{ active: !settingsCollapsed }" :aria-expanded="!settingsCollapsed"
-        title="显示列" aria-label="显示列" @click="settingsCollapsed = !settingsCollapsed">
+        :title="tr('显示列')" :aria-label="tr('显示列')" @click="settingsCollapsed = !settingsCollapsed">
         <Columns3 :size="15" />
       </button>
       <button class="ui-icon-btn" :class="{ active: dockedPreviewVisible }" :aria-pressed="dockedPreviewVisible"
-        :title="previewDetached ? '显示独立预览' : '右侧预览'" :aria-label="previewDetached ? '显示独立预览' : '右侧预览'" @click="emit('togglePreview')">
+        :title="previewDetached ? tr('显示独立预览') : tr('右侧预览')" :aria-label="previewDetached ? tr('显示独立预览') : tr('右侧预览')" @click="emit('togglePreview')">
         <PanelRightOpen :size="15" />
       </button>
     </div>
@@ -87,6 +87,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { PanelLeft, ArrowLeft, ChevronRight, HardDrive, Copy, Layers3, Search, X, Filter, Layers, RefreshCw, Columns3, PanelRightOpen } from 'lucide-vue-next';
 import type { FileNavigationFrame } from '../model/navigation';
 

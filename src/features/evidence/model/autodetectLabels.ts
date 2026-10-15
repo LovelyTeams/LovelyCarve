@@ -1,3 +1,4 @@
+import { sourceText, type Translator } from '../../../i18n/translate';
 import type { DetectRoute, EvidencePlatform } from '../../../lib/ipc/autodetect';
 
 
@@ -14,9 +15,9 @@ export const PLATFORM_LABELS: Record<EvidencePlatform, string> = {
   othermobile: '其他移动设备',
 };
 
-export function platformLabel(platform: EvidencePlatform | null | undefined): string {
-  if (!platform) return '未识别';
-  return PLATFORM_LABELS[platform] ?? platform;
+export function platformLabel(platform: EvidencePlatform | null | undefined, tr: Translator = sourceText): string {
+  if (!platform) return tr("未识别");
+  return tr(PLATFORM_LABELS[platform] ?? platform);
 }
 
 export const ROUTE_LABELS: Record<DetectRoute, string> = {
@@ -25,19 +26,19 @@ export const ROUTE_LABELS: Record<DetectRoute, string> = {
   phone_image: '手机镜像路',
 };
 
-export function routeLabel(route: DetectRoute): string {
-  return ROUTE_LABELS[route] ?? route;
+export function routeLabel(route: DetectRoute, tr: Translator = sourceText): string {
+  return tr(ROUTE_LABELS[route] ?? route);
 }
 
 /** `evidence.type` 词 → 展示文字;备份枚举词原样返回(它们本身就是标识)。 */
-export function evidenceTypeLabel(evidenceType: string): string {
+export function evidenceTypeLabel(evidenceType: string, tr: Translator = sourceText): string {
   switch (evidenceType) {
     case 'disk':
-      return '磁盘镜像';
+      return tr("磁盘镜像");
     case 'compressfile':
-      return '归档 / 逻辑证据';
+      return tr("归档 / 逻辑证据");
     case 'backup':
-      return '备份文件';
+      return tr("备份文件");
     default:
       return evidenceType;
   }
