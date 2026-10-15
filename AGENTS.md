@@ -248,6 +248,8 @@ Write documentation as a description of the current state, not a work log. Do no
 
 ## Commit and Pull Request Guidelines
 
+Follow the [pull request conventions in CONTRIBUTING.md](CONTRIBUTING.md#拉取请求) when preparing, updating, reviewing, or merging a PR. Adapt external contributions to the repository's existing style and architecture before merging, preserve author attribution, and verify the final PR head after resolving conflicts or changing scope.
+
 Recent history uses Conventional Commits with optional scopes, for example `feat(index): ...`, `fix(fstree): ...`, `perf(index): ...`, and `chore: ...`. Keep subjects imperative and specific.
 
 Pull requests should describe user-visible behavior, list the local `just` recipes used for verification, link related issues, and include screenshots or recordings for UI changes. Claim hosted CI coverage only when the relevant workflow run has succeeded.
