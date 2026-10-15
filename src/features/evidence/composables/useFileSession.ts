@@ -67,6 +67,8 @@ export const DISK_IMAGE_EXTENSIONS = [
   'vdi',
   'pmfx',
   'ldbk',
+  'ab',
+  'bak',
   'tar',
   'tgz',
   'zip',

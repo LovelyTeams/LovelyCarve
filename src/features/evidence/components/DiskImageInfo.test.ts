@@ -274,14 +274,15 @@ describe('DiskImageInfo evidence overview', () => {
     expect(host.querySelector('.unlock-dialog')?.getAttribute('data-partition')).toBe('null');
   });
 
-  it('keeps the archive root mount entry when there are no physical partitions', async () => {
-    await mount({ ...fixture, source_format: 'zip', partitions: [] });
+  it.each(['zip', 'android_backup'])('keeps the %s archive root mount entry when there are no physical partitions', async sourceFormat => {
+    await mount({ ...fixture, source_format: sourceFormat, partitions: [] });
     expect(host.querySelector('.synthetic-root-title')?.textContent).toBe('归档根');
     expect(host.querySelector('.synthetic-root-mount .mount-btn')).not.toBeNull();
     expect(host.querySelector('.partition-table')).toBeNull();
     expect(button(host, '解锁加密容器')).toBeUndefined();
     expect(button(host, '导出原始镜像')).toBeUndefined();
     expect(shadow.list).not.toHaveBeenCalled();
+    if (sourceFormat === 'android_backup') expect(host.querySelector('.evidence-head .ui-badge')?.textContent).toBe('Android 备份');
   });
 
   it('treats an AD1 logical image like the other logical evidence', async () => {

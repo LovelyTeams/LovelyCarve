@@ -341,6 +341,18 @@ impl ImageSource {
         let file = File::open(path)
             .with_context(|| format!("failed to open image: {}", path.display()))?;
         let mmap = unsafe { Mmap::map(&file)? };
+        let is_android_backup =
+            mmap.starts_with(b"ANDROID BACKUP\n") || mmap.starts_with(b"MIUI BACKUP\n");
+        if extension.as_deref() == Some("ab") && !is_android_backup {
+            anyhow::bail!("invalid Android Backup magic: {}", path.display());
+        }
+        if is_android_backup {
+            return Ok(Self::Raw {
+                size_bytes: mmap.len() as u64,
+                mmap,
+                format: ImageFormat::AndroidBackup,
+            });
+        }
         if mmap.get(..4)
             == Some(crate::core::evidence::partitions::xiaomi_firmware::XIAOMI_FIRMWARE_MAGIC)
         {

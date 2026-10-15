@@ -139,6 +139,32 @@ impl DiskImage {
         // detection and surface the appropriate merged-view through
         // `core::filesystem::tree::fs_tree` instead.
         let (partitions, docker, folder, tar, zip, sevenz, table_scheme, disk_id) = match &source {
+            ImageSource::Raw {
+                mmap,
+                format: ImageFormat::AndroidBackup,
+                ..
+            } => {
+                let label = path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.display().to_string());
+                let tar = crate::core::evidence::readers::mi_bak::open_bak_archive_from_reader(
+                    std::io::Cursor::new(&mmap[..]),
+                    &path,
+                    label,
+                )
+                .with_context(|| format!("open Android backup: {}", path.display()))?;
+                (
+                    Vec::new(),
+                    None,
+                    None,
+                    Some(Arc::new(tar)),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            }
             ImageSource::Docker { image } => (
                 Vec::new(),
                 Some(Arc::clone(image)),

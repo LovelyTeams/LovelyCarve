@@ -168,7 +168,9 @@ impl FolderImage {
                     if entry_path
                         .extension()
                         .and_then(|ext| ext.to_str())
-                        .is_some_and(|ext| ext.eq_ignore_ascii_case("bak"))
+                        .is_some_and(|ext| {
+                            ext.eq_ignore_ascii_case("bak") || ext.eq_ignore_ascii_case("ab")
+                        })
                     {
                         bak_files.push((rel.clone(), entry_path.clone(), size));
                     }
@@ -522,6 +524,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         write(root.join("app.bak"), build_test_bak()).unwrap();
+        let backup = build_test_bak();
+        write(
+            root.join("phone.ab"),
+            backup.strip_prefix(b"xiaomi-prefix").unwrap(),
+        )
+        .unwrap();
 
         let image = FolderImage::open(root).expect("open folder");
 
@@ -531,6 +539,13 @@ mod tests {
             Some(FolderEntryKind::Dir)
         );
         assert_eq!(image.read(unpacked, usize::MAX).unwrap(), b"hello");
+        assert_eq!(image.lookup("phone.ab").unwrap().kind, FolderEntryKind::Dir);
+        assert_eq!(
+            image
+                .read("phone.ab/apps/com.example/data.txt", usize::MAX)
+                .unwrap(),
+            b"hello"
+        );
     }
 
     fn build_test_bak() -> Vec<u8> {

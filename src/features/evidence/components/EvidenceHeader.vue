@@ -43,7 +43,7 @@ const emit = defineEmits<{ copy: [label: string, value: string] }>();
 
 // ── 检材头部 ─────────────────────────────────────────────────────────────
 const fileName = computed(() => evidenceDisplayName(props.info, tr));
-const LOGICAL_FORMATS = new Set(['folder', 'tar', 'zip', 'sevenz', 'ad1', 'docker']);
+const LOGICAL_FORMATS = new Set(['folder', 'tar', 'zip', 'sevenz', 'ad1', 'docker', 'android_backup']);
 const canExport = computed(() => !props.info.index_only && !props.info.ios_backup && !LOGICAL_FORMATS.has(props.info.source_format));
 const { startImageExport, jobFor } = useImageExport();
 const exporting = computed(() => !!jobFor(props.info.id));
@@ -72,6 +72,7 @@ const FORMAT_LABELS: Record<string, string> = {
   get folder() { return tr("文件夹"); },
   get physical_disk() { return tr("物理磁盘"); },
   get xiaomi_firmware() { return tr("小米固件"); },
+  get android_backup() { return tr("Android 备份"); },
   get ldplayer() { return tr("雷电模拟器备份"); },
   get assembled() { return tr("RAID 重组"); },
   get decrypted() { return tr("解密视图"); },
@@ -89,6 +90,7 @@ const evidenceIcon = computed(() => {
       return FolderOpen;
     case 'zip':
     case 'tar':
+    case 'android_backup':
     case 'sevenz':
     case 'ad1':
       return Archive;

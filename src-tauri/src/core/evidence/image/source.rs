@@ -369,7 +369,7 @@ impl ImageSource {
             | Self::Vdi { sector_size, .. } => *sector_size,
             Self::Block { sector_size, .. } => *sector_size as usize,
             Self::Raw {
-                format: ImageFormat::XiaomiFirmware,
+                format: ImageFormat::XiaomiFirmware | ImageFormat::AndroidBackup,
                 ..
             } => 1,
             _ => 512,

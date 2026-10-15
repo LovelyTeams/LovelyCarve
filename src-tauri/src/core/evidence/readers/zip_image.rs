@@ -37,6 +37,10 @@ use memmap2::Mmap;
 use parking_lot::Mutex;
 use zip::{CompressionMethod, ZipArchive};
 
+use crate::core::evidence::readers::tar_image::TarImage;
+
+mod bak;
+
 /// Soft cap on recorded members — keeps a pathological / corrupt archive from
 /// exhausting memory while staying far above any real evidence ZIP. Matches the
 /// tar loader's bound.
@@ -80,6 +84,8 @@ pub struct ZipEntry {
     /// `None` for DEFLATE members (their archived bytes are compressed),
     /// directories, links, and non-readable members.
     stored_location: Option<(u64, u64)>,
+    /// Member in a decoded backup tar, with paths relative to that backup.
+    bak_source: Option<(usize, String)>,
 }
 
 pub struct ZipImage {
@@ -94,6 +100,7 @@ pub struct ZipImage {
     archive: Mutex<ZipArchive<Cursor<Mmap>>>,
     entries: BTreeMap<String, ZipEntry>,
     total_size: u64,
+    bak_archives: Vec<TarImage>,
 }
 
 impl std::fmt::Debug for ZipImage {
@@ -133,7 +140,7 @@ impl ZipImage {
             .unwrap_or_else(|| path.display().to_string());
 
         let mut archive = archive;
-        let (entries, total_size) = scan_zip(&mut archive)
+        let (mut entries, mut total_size) = scan_zip(&mut archive)
             .with_context(|| format!("scan zip archive: {}", path.display()))?;
         if entries.len() <= 1 {
             // Only the synthetic root: an empty / unusable archive. Bail so
@@ -141,6 +148,7 @@ impl ZipImage {
             bail!("no zip members found in {}", path.display());
         }
 
+        let bak_archives = bak::index_backups(&mut archive, &mut entries, &mut total_size, &path);
         Ok(Self {
             path,
             label,
@@ -148,6 +156,7 @@ impl ZipImage {
             archive: Mutex::new(archive),
             entries,
             total_size,
+            bak_archives,
         })
     }
 
@@ -232,6 +241,13 @@ impl ZipImage {
         F: FnMut(&[u8]) -> Result<()>,
     {
         let entry = self.resolve(rel)?;
+        if let Some((index, path)) = &entry.bak_source {
+            return self
+                .bak_archives
+                .get(*index)
+                .context("backup archive index out of range")?
+                .stream_file(path, chunk_size, visitor);
+        }
         if let Some((offset, size)) = entry.stored_location {
             let data = self.slice(offset, size)?;
             if chunk_size == 0 {
@@ -270,6 +286,7 @@ impl ZipImage {
             .ok_or_else(|| anyhow!("not found in zip: {rel}"))?;
         match entry.kind {
             ZipEntryKind::File => Ok(entry),
+            ZipEntryKind::Symlink if entry.bak_source.is_some() => Ok(entry),
             ZipEntryKind::Symlink => {
                 let target = entry
                     .link_target
@@ -300,6 +317,13 @@ impl ZipImage {
     }
 
     fn read_entry(&self, entry: &ZipEntry, max_bytes: usize) -> Result<Vec<u8>> {
+        if let Some((index, path)) = &entry.bak_source {
+            return self
+                .bak_archives
+                .get(*index)
+                .context("backup archive index out of range")?
+                .read(path, max_bytes);
+        }
         if let Some((offset, size)) = entry.stored_location {
             let data = self.slice(offset, size)?;
             let take = (size as usize).min(max_bytes);
@@ -455,6 +479,7 @@ fn scan_zip(archive: &mut ZipArchive<Cursor<Mmap>>) -> Result<(BTreeMap<String, 
             link_target,
             archive_index,
             stored_location,
+            bak_source: None,
         };
         // Collision policy mirrors the tar loader: a directory (real or
         // synthesised, possibly with descendants) is never demoted to a file by
@@ -532,6 +557,7 @@ fn dir_entry(rel_path: String) -> ZipEntry {
         link_target: None,
         archive_index: None,
         stored_location: None,
+        bak_source: None,
     }
 }
 

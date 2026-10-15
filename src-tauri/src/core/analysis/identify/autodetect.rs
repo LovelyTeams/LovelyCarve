@@ -157,7 +157,7 @@ pub fn detect_image(
     let format = image.info().source_format;
     let mut warnings = Vec::new();
 
-    // 字节魔数先行:adb `.ab` / 小米 `.bak` 以 raw 打开时既无分区也不是归档。
+    // 字节魔数先行:adb `.ab` / 小米 `.bak` 保留原始备份头，即使文件树已解码。
     let header_backup = if image.folder.is_some() {
         None
     } else {
@@ -191,6 +191,7 @@ pub fn detect_image(
         | ImageFormat::Pmfx
         | ImageFormat::Docker
         | ImageFormat::Tar
+        | ImageFormat::AndroidBackup
         | ImageFormat::Zip
         | ImageFormat::Sevenz
         | ImageFormat::Ad1

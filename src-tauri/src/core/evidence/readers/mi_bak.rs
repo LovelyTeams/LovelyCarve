@@ -1,19 +1,18 @@
-//! Xiaomi `.bak` logical-backup unpacking.
+//! Android `.ab` and Xiaomi `.bak` logical-backup unpacking.
 //!
 //! Xiaomi app backups commonly wrap an Android Backup (`ANDROID BACKUP\n`)
 //! stream with a small proprietary prefix. The reference JavaScript tool drops
 //! everything before the `AN` marker, parses the Android Backup header, inflates
-//! the payload when requested, and extracts the resulting tar. Folder evidence
+//! the payload when requested, and extracts the resulting tar. Folder and ZIP evidence
 //! uses the faster path here: the original `.bak` remains untouched, the payload
 //! is materialised once as a temporary tar, and individual files are read lazily
 //! from that tar index.
 
 use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom};
+use std::io::{self, BufRead, BufReader, Cursor, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context, Result};
-use flate2::read::ZlibDecoder;
 use gzipf::GzipDecoder;
 use memchr::memmem::Finder;
 
@@ -23,6 +22,10 @@ const ANDROID_BACKUP_MAGIC: &[u8] = b"ANDROID BACKUP\n";
 const BACKUP_FILE_V1: u8 = 1;
 const BACKUP_FILE_V5: u8 = 5;
 const ENCRYPTION_NONE: &str = "none";
+
+#[path = "mi_bak/zlib.rs"]
+mod zlib;
+use zlib::ValidatedZlib;
 
 #[cfg(test)]
 #[path = "mi_bak/gzip_tests.rs"]
@@ -66,7 +69,11 @@ pub fn unpack_bak_file(input_path: &Path, output_dir: &Path) -> Result<MiBakUnpa
 
     let compressed_line =
         read_header_line(&mut reader).context("read Android Backup compression flag")?;
-    let compressed = compressed_line.trim() == "1";
+    let compressed = match compressed_line.as_str() {
+        "0" => false,
+        "1" => true,
+        _ => bail!("invalid Android Backup compression flag: {compressed_line}"),
+    };
     let encryption = read_header_line(&mut reader).context("read Android Backup encryption")?;
     if encryption != ENCRYPTION_NONE {
         bail!("encrypted Android Backup payload is not supported during folder auto-unpack");
@@ -89,7 +96,7 @@ pub fn unpack_bak_file(input_path: &Path, output_dir: &Path) -> Result<MiBakUnpa
             tar.rewind().context("rewind validated backup tar")?;
             extract_tar(tar, output_dir)
         } else {
-            extract_tar(ZlibDecoder::new(reader), output_dir)
+            extract_tar(ValidatedZlib::new(reader), output_dir)
         }
     } else {
         extract_tar(reader, output_dir)
@@ -102,40 +109,72 @@ pub fn unpack_bak_file(input_path: &Path, output_dir: &Path) -> Result<MiBakUnpa
 /// decompressed once into a temporary tar, then tar headers are indexed for
 /// lazy reads.
 pub fn open_bak_archive(input_path: &Path, label: String) -> Result<TarImage> {
-    let mut file = File::open(input_path)
+    let file = File::open(input_path)
         .with_context(|| format!("open bak file {}", input_path.display()))?;
-    let backup_offset = find_android_backup_offset(&mut file)?
-        .ok_or_else(|| anyhow!("ANDROID BACKUP marker not found"))?;
-    file.seek(SeekFrom::Start(backup_offset))
-        .with_context(|| format!("seek to Android Backup payload in {}", input_path.display()))?;
+    open_bak_archive_from_reader(file, input_path, label)
+}
 
-    let mut reader = BufReader::new(file);
+/// Index an embedded backup directly from a sequential archive member reader.
+/// Only the decoded tar is materialised; no intermediate `.bak` copy is needed.
+pub fn open_bak_archive_from_reader(
+    mut input: impl Read,
+    input_path: &Path,
+    label: String,
+) -> Result<TarImage> {
+    // Keep an overlap so a magic split across input buffers is recognised.
+    // Replay the bytes already read past the marker before continuing input.
+    let finder = Finder::new(ANDROID_BACKUP_MAGIC);
+    let overlap = ANDROID_BACKUP_MAGIC.len() - 1;
+    let mut buffer = vec![0u8; 64 * 1024 + overlap];
+    let mut carry_len = 0;
+    let prefix = loop {
+        let read = input.read(&mut buffer[carry_len..])?;
+        if read == 0 {
+            bail!("ANDROID BACKUP marker not found");
+        }
+        let filled = carry_len + read;
+        if let Some(position) = finder.find(&buffer[..filled]) {
+            break buffer[position..filled].to_vec();
+        }
+        carry_len = overlap.min(filled);
+        buffer.copy_within(filled - carry_len..filled, 0);
+    };
+    let mut reader = BufReader::new(Cursor::new(prefix).chain(input));
     read_backup_header(&mut reader)?;
 
-    let compressed = read_header_line(&mut reader)
-        .context("read Android Backup compression flag")?
-        .trim()
-        == "1";
+    let compressed_line =
+        read_header_line(&mut reader).context("read Android Backup compression flag")?;
+    let compressed = match compressed_line.as_str() {
+        "0" => false,
+        "1" => true,
+        _ => bail!("invalid Android Backup compression flag: {compressed_line}"),
+    };
     let encryption = read_header_line(&mut reader).context("read Android Backup encryption")?;
     if encryption != ENCRYPTION_NONE {
-        bail!("encrypted Android Backup payload is not supported during folder auto-unpack");
+        bail!("encrypted Android Backup payload is not supported during auto-unpack");
     }
 
-    if compressed {
-        let is_gzip = reader
-            .fill_buf()
-            .map(gzipf::check_signature)
+    let archive = if compressed {
+        let mut signature = [0u8; 2];
+        reader
+            .read_exact(&mut signature)
             .context("probe Android Backup compression")?;
+        let is_gzip = gzipf::check_signature(&signature);
+        let mut compressed_reader = BufReader::new(Cursor::new(signature).chain(&mut reader));
         if is_gzip {
-            let mut decoder = GzipDecoder::new(reader);
+            let mut decoder = GzipDecoder::new(&mut compressed_reader);
             TarImage::open_from_tar_reader(input_path.to_path_buf(), Some(label), &mut decoder)
         } else {
-            let mut decoder = ZlibDecoder::new(reader);
+            let mut decoder = ValidatedZlib::new(&mut compressed_reader);
             TarImage::open_from_tar_reader(input_path.to_path_buf(), Some(label), &mut decoder)
         }
     } else {
         TarImage::open_from_tar_reader(input_path.to_path_buf(), Some(label), &mut reader)
-    }
+    }?;
+    // A compressed payload may finish before its enclosing ZIP member. Drain
+    // that reader too, so a bad ZIP CRC or truncated member cannot be published.
+    io::copy(&mut reader, &mut io::sink()).context("validate enclosing backup stream")?;
+    Ok(archive)
 }
 
 fn find_android_backup_offset(file: &mut File) -> io::Result<Option<u64>> {
@@ -163,12 +202,19 @@ fn find_android_backup_offset(file: &mut File) -> io::Result<Option<u64>> {
 }
 
 fn read_header_line(reader: &mut impl BufRead) -> io::Result<String> {
+    const MAX_HEADER_LINE: u64 = 4096;
     let mut line = Vec::new();
-    let read = reader.read_until(b'\n', &mut line)?;
-    if read == 0 {
+    let read = Read::take(&mut *reader, MAX_HEADER_LINE + 1).read_until(b'\n', &mut line)?;
+    if read == 0 || !line.ends_with(b"\n") {
         return Err(io::Error::new(
             io::ErrorKind::UnexpectedEof,
-            "missing Android Backup header line",
+            "missing or unterminated Android Backup header line",
+        ));
+    }
+    if read as u64 > MAX_HEADER_LINE {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Android Backup header line exceeds limit",
         ));
     }
     if line.ends_with(b"\n") {
@@ -177,7 +223,7 @@ fn read_header_line(reader: &mut impl BufRead) -> io::Result<String> {
     if line.ends_with(b"\r") {
         line.pop();
     }
-    Ok(String::from_utf8_lossy(&line).into_owned())
+    String::from_utf8(line).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
 fn read_backup_header(reader: &mut impl BufRead) -> Result<u8> {

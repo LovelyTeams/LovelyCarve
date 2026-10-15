@@ -55,7 +55,7 @@ const props = defineProps<{ info: ImageInfo | null }>();
 const emit = defineEmits<{ 'open-image': [path: string] }>();
 
 const { activeCase } = useCaseContext();
-const LOGICAL_FORMATS = new Set(['folder', 'tar', 'zip', 'sevenz', 'ad1', 'docker']);
+const LOGICAL_FORMATS = new Set(['folder', 'tar', 'zip', 'sevenz', 'ad1', 'docker', 'android_backup']);
 const canUnlockContainer = computed(() => !!props.info && !props.info.index_only && !LOGICAL_FORMATS.has(props.info.source_format));
 
 // ── LUKS / VeraCrypt：卷卡标题或 LUKS 分区行打开解锁弹窗 ──────────────────────

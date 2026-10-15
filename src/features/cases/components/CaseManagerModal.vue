@@ -309,6 +309,7 @@ const currentVolumes = computed<VolumeChoice[]>(() => {
     info.source_format === 'docker' ||
     info.source_format === 'folder' ||
     info.source_format === 'tar' ||
+    info.source_format === 'android_backup' ||
     info.source_format === 'zip' ||
     info.source_format === 'sevenz' ||
     info.source_format === 'ad1'

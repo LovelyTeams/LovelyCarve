@@ -221,6 +221,9 @@ pub enum ImageFormat {
     /// as a merged read-only file tree via `core::evidence::readers::tar_image`; partitions are
     /// empty and the hex view reads the raw outer-tar bytes.
     Tar,
+    /// Android `adb backup` (`.ab`) or MIUI `.bak`, with a decoded TAR tree.
+    /// Byte-level access retains the original backup container, including headers.
+    AndroidBackup,
     /// `.zip` archive treated as a logical-evidence file tree (KAPE triage,
     /// logical extraction, collected-evidence bundle). Surfaced as a merged
     /// read-only file tree via `core::evidence::readers::zip_image`; partitions are empty and the
@@ -342,6 +345,8 @@ mod metadata;
 pub(crate) use metadata::find_partition;
 
 pub use faults::{BadRegion, ReadFaultPolicy, ReadFaultReport};
+#[cfg(test)]
+mod android_backup_tests;
 #[cfg(test)]
 mod phdi_tests;
 #[cfg(test)]

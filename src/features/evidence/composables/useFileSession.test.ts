@@ -38,6 +38,13 @@ beforeEach(() => {
 });
 
 describe('useFileSession disk image extension handling', () => {
+  it.each(['phone.ab', 'app.bak'])('loads Android backup %s through image_load', async fileName => {
+    listenMock.mockResolvedValue(vi.fn());
+    invokeMock.mockResolvedValue({ id: 'phone', source_format: 'android_backup', partitions: [] });
+    const session = useFileSession();
+    expect(await session.openByPath(fileName)).toMatchObject({ opened: true, mode: 'image', imageId: 'phone' });
+    expect(invokeMock).toHaveBeenCalledWith('image_load', expect.objectContaining({ path: fileName }));
+  });
   it('routes ISO images through the disk-image loader', () => {
     expect(DISK_IMAGE_EXTENSIONS).toContain('iso');
     expect(isDiskImageExtension('iso')).toBe(true);

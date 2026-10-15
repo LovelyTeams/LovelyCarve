@@ -206,7 +206,9 @@ pub fn file_stat(image: &Arc<DiskImage>, rel: &str, node_id: &str) -> Result<FsS
     // Unlike a folder source, tar reads ARE byte-offset reads into the same
     // image stream the hex view sees — so surface the real archive offset as
     // the physical run, letting the data-run panel jump hex to the file's bytes.
-    let data_runs = if is_readable {
+    let data_runs = if is_readable
+        && image.info().source_format != crate::core::evidence::image::ImageFormat::AndroidBackup
+    {
         match tar.data_location(rel) {
             Some((offset, size)) if size > 0 => vec![FsDataRun {
                 logical_offset: 0,

@@ -48,6 +48,7 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
   const syntheticRoot = computed<{ id: string; label: string } | null>(() => {
     switch (options.info()?.source_format) {
       case 'tar':
+      case 'android_backup':
         return { id: 'tar:', get label() { return tr("归档根"); } };
       case 'zip':
         return { id: 'zip:', get label() { return tr("归档根"); } };

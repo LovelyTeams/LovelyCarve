@@ -19,6 +19,9 @@
 
 vendor [GZIP 读取器](formats/GZIP.md) 参照 libgzipf 实现多成员、元数据、校验和 seek，已接入 tar.gz / tgz、Docker / OCI 压缩层与小米备份。
 
+[Android 备份](formats/ANDROID_BACKUP.md) 记录 `.ab` / 小米 `.bak` 的独立打开、
+原始字节保持及解密边界；[小米备份](formats/MIUI_BAK.md) 记录 ZIP / 目录内的自动展开。
+
 vendor [RAW / 分段 RAW](formats/SMRAW.md) 参照 libsmraw 实现分段读写与完整性检查，读取接入桌面和 CLI。
 
 vendor [QCOW / QCOW2](formats/QCOW.md) 对照 libqcow 全部 42 API，支持 v1/2/3、DEFLATE、差分父链和 legacy AES 凭据读取。

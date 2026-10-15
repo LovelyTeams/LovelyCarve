@@ -193,9 +193,17 @@ LVM 标签/CRC/活动副本位于 `evidence/partitions/lvm2/header.rs`，有界�
 | VHD / VHDX | `core::evidence::readers::vhd_image` → `vendor/vhd` / `vendor/vhdx` | 纯 Rust 固定/动态盘随机读取；VHDX 日志仅在内存重放，差分盘无父盘参数时明确拒绝 |
 | DMG | vendored `udif` + `hfsplus` | UDIF 容器与 HFS+ |
 | Xiaomi HDR1 firmware | `core::evidence::partitions::xiaomi_firmware` | 按字节偏移解析固件段，将其中可识别的文件系统作为卷浏览；原始容器字节保持不变 |
+| Android / MIUI backup | `core::evidence::readers::mi_bak` | `.ab` / `.bak` 解码为逻辑 TAR 树，原始字节源仍保留备份头和压缩数据；见 [Android 备份](formats/ANDROID_BACKUP.md) |
 | LDBK | `core::evidence::readers::ldplayer_image` | 解包后按多分区盘处理 |
 | TAR / TAR.GZ / ZIP / 7Z / folder | 逻辑证据源 | 无分区表，暴露为合成只读文件树 |
 | PhysicalDrive | `core::evidence::physical_disk` | Windows 物理磁盘，通常需要管理员权限 |
+
+ZIP 与本机目录检材中的小米 `.bak` / Android `.ab` 复用 `readers::mi_bak`，跳过小米前缀、
+解析 Android Backup 头并将 TAR 物化到自动清理的临时文件。ZIP 通过成员流直接
+解码，不额外写出 `.bak` 副本；`zip_image::bak` 将 TAR 条目投影到原成员路径下，
+读取与流式导出转给对应 `TarImage`。解码后的偏移不作为原 ZIP 的数据位置。
+未识别、加密、解码失败或超出条目上限的备份保留原始文件节点；ZIP 成员完整读取、
+CRC 与逻辑长度核对成功后才发布目录。格式与外部参考见 [小米备份](formats/MIUI_BAK.md)。
 
 分区识别不能仅凭首扇区末尾的 `0x55AA` 判断 MBR：NTFS 等卷引导扇区也含此标记。
 MBR 解析先校验四个分区项的启动标志（`0x00` / `0x80`），拒绝将引导代码或提示文字解释为分区表；
@@ -544,8 +552,8 @@ Windows 对 ReFS 直接命中、NTFS 看 `Windows/WINDOWS/Program Files/Program 
 命中。归档/备份路（tar/zip/7z/AD1/docker/目录检材）对合成根做无类型门限的平台检查，并按包内条目做特征文件
 （`huaweicheck.json`、`thunderforensic.json`、`kunlunmobile.json`、`backupinfo.ini`、`backupHistoryInfo.xml`、
 `SmartSwitchBackupInf.bk`、`com.tencent.mm.*`、`weixin_resource.zip`、`com.tencent.mobileqq.*`、`info.xml`、
-iTunes 清单）与关键词匹配；raw 打开的 `.ab`/小米 `.bak` 由文件头魔数直接判备份，加密未预填密码时报
-"未预填密码或密码错误"。手机镜像路（小米固件容器、雷电备份）分区扫描后兜底 Android。
+iTunes 清单）与关键词匹配；`.ab`/小米 `.bak` 由保留的原始文件头魔数直接判备份，
+独立打开时先建立逻辑文件树，加密备份明确拒绝。手机镜像路（小米固件容器、雷电备份）分区扫描后兜底 Android。
 
 回写：有活动案件且检材已登记时，`evidence.platform` ← 平台词、`evidence.type` ← `disk` /
 `compressfile` / 备份枚举词、`evidence.extra_info` ← 厂商 / 显示名 / 备份特征 / 告警 JSON、
