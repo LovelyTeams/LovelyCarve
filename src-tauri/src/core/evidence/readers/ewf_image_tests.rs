@@ -1,6 +1,110 @@
 use super::*;
 use md5::{Digest, Md5};
 
+#[test]
+fn ewf_header_dates_preserve_local_wall_time_and_precision() {
+    for (raw, display) in [
+        ("2026 9 21 9 13 5", "2026-09-21 09:13:05"),
+        ("2002 03 04 10 19 59", "2002-03-04 10:19:59"),
+        (" \t2024  2 29 0 0 0\r\n", "2024-02-29 00:00:00"),
+        ("2026-09-21 09:13:05", "2026-09-21 09:13:05"),
+        ("2026-09-21T09:13:05", "2026-09-21 09:13:05"),
+        ("2025-01-15", "2025-01-15"),
+        ("0001 1 1 0 0 0", "0001-01-01 00:00:00"),
+        ("9999 12 31 23 59 59", "9999-12-31 23:59:59"),
+    ] {
+        assert_eq!(
+            parse_header_date(raw),
+            Some(EwfHeaderDate {
+                display: display.into(),
+                time_basis: EwfDateTimeBasis::Local,
+            }),
+            "{raw:?}"
+        );
+    }
+}
+
+#[test]
+fn ewf_header_dates_decode_posix_seconds_without_viewer_timezone() {
+    for (raw, display) in [
+        ("0", "1970-01-01 00:00:00"),
+        ("1142163845", "2006-03-12 11:44:05"),
+        ("2147483648", "2038-01-19 03:14:08"),
+        ("253402300799", "9999-12-31 23:59:59"),
+    ] {
+        assert_eq!(
+            parse_header_date(raw),
+            Some(EwfHeaderDate {
+                display: display.into(),
+                time_basis: EwfDateTimeBasis::Unix,
+            }),
+            "{raw:?}"
+        );
+    }
+}
+
+#[test]
+fn ewf_header_dates_reject_invalid_or_unsupported_values() {
+    for raw in [
+        "",
+        " ",
+        "unknown",
+        "2026 2 29 1 2 3",
+        "2024 13 1 0 0 0",
+        "2024 1 0 0 0 0",
+        "2024 1 1 24 0 0",
+        "2024 1 1 0 60 0",
+        "2024 1 1 0 0 61",
+        "2026 9 21 9 13",
+        "2026 9 21 9 13 5 +0800",
+        "2026-09-21T09:13:05Z",
+        "2026-02-29",
+        "0000 1 1 0 0 0",
+        "-1",
+        "253402300800",
+        "1770000000000",
+        "18446744073709551616",
+    ] {
+        assert_eq!(parse_header_date(raw), None, "{raw:?}");
+    }
+}
+
+#[test]
+fn ewf_header_dates_keep_serialized_raw_fields_and_read_old_payloads() -> anyhow::Result<()> {
+    let old = serde_json::json!({ "acquiry_date": "2026 9 21 9 13 5", "system_date": "bad" });
+    let mut info: EwfAcquiryInfo = serde_json::from_value(old.clone())?;
+    assert!(info.acquiry_date_parsed.is_none());
+    info.acquiry_date_parsed = info.acquiry_date.as_deref().and_then(parse_header_date);
+    let wire = serde_json::to_value(info)?;
+    assert_eq!(wire["acquiry_date"], old["acquiry_date"]);
+    assert_eq!(wire["system_date"], old["system_date"]);
+    assert_eq!(
+        wire["acquiry_date_parsed"],
+        serde_json::json!({
+            "display": "2026-09-21 09:13:05", "time_basis": "local",
+        })
+    );
+    Ok(())
+}
+
+#[test]
+fn ewf_external_acquisition_date_display() -> anyhow::Result<()> {
+    let Some(path) = std::env::var_os("EWF_DATE_IMAGE") else {
+        return Ok(());
+    };
+    let reader = EwfHandle::open(Path::new(&path))?;
+    let info = reader.acquiry_info();
+    assert_eq!(info.acquiry_date.as_deref(), Some("2026 9 21 9 13 5"));
+    assert_eq!(
+        info.acquiry_date_parsed,
+        Some(EwfHeaderDate {
+            display: "2026-09-21 09:13:05".into(),
+            time_basis: EwfDateTimeBasis::Local,
+        })
+    );
+    Ok(())
+}
+
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("vendor/ewf/tests/data")

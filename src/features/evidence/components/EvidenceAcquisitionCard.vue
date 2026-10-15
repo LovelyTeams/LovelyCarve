@@ -47,10 +47,9 @@ import { ACQUISITION_HIGHLIGHTS, acquisitionRows, evidenceFacts } from '../model
 const props = defineProps<{ info: ImageInfo }>();
 const emit = defineEmits<{ copy: [label: string, value: string] }>();
 const detailRows = computed(() => evidenceFacts(props.info, tr));
-const ewfRows = computed(() => acquisitionRows(props.info));
-const acquisitionHighlights = computed(() => ewfRows.value.filter(row => ACQUISITION_HIGHLIGHTS.has(row.label))
-  .map(row => ({ ...row, label: tr(row.label) })));
-const acquisitionDetails = computed(() => ewfRows.value.filter(row => !ACQUISITION_HIGHLIGHTS.has(row.label))
-  .map(row => ({ ...row, label: tr(row.label) })));
+const ewfRows = computed(() => acquisitionRows(props.info, tr));
+const acquisitionHighlights = computed(() => ewfRows.value.filter(row =>
+  ACQUISITION_HIGHLIGHTS.has(row.acquisitionKey ?? row.label)));
+const acquisitionDetails = computed(() => ewfRows.value.filter(row => !acquisitionHighlights.value.includes(row)));
 </script>
 <style scoped src="../styles/evidence-facts.css"></style>

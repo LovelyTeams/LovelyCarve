@@ -12,7 +12,14 @@ export interface DiskPartition {
   label: string | null;
 }
 
-/** EWF (E01) 采集元数据,字段缺失时为 null(镜像未携带或 libewf 过旧)。 */
+/** Optional display interpretation; raw acquisition fields remain unchanged. */
+export interface EwfHeaderDate {
+  display: string;
+  /** Local wall time has no recorded offset; Unix seconds use the UTC epoch basis. */
+  time_basis: 'local' | 'unix';
+}
+
+/** EWF (E01/Ex01) 采集元数据，字段缺失时为 null。 */
 export interface EwfAcquiryInfo {
   case_number: string | null;
   evidence_number: string | null;
@@ -21,6 +28,8 @@ export interface EwfAcquiryInfo {
   notes: string | null;
   acquiry_date: string | null;
   system_date: string | null;
+  acquiry_date_parsed?: EwfHeaderDate | null;
+  system_date_parsed?: EwfHeaderDate | null;
   acquiry_operating_system: string | null;
   acquiry_software_version: string | null;
   model: string | null;

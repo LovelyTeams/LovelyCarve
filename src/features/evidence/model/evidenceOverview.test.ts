@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { ImageInfo } from '../../../lib/ipc/image';
-import { evidenceDisplayName, evidenceFacts, evidenceHashVerdict, evidenceLayout, formatBytes, partColor, partitionGeometry, storedHashRows } from './evidenceOverview';
+import type { EwfAcquiryInfo, ImageInfo } from '../../../lib/ipc/image';
+import { translate, type Translator } from '../../../i18n/translate';
+import { ACQUISITION_HIGHLIGHTS, acquisitionRows, evidenceDisplayName, evidenceFacts, evidenceHashVerdict, evidenceLayout, formatBytes, partColor, partitionGeometry, storedHashRows } from './evidenceOverview';
 
 const info: ImageInfo = { id: 'a', path: 'a', source_format: 'raw', size_bytes: 1000, sector_size: 100, table_scheme: 'gpt', disk_id: null, on_disk_bytes: null, created_unix_ms: null, modified_unix_ms: null, ewf: null, partitions: [
   { id: 1, kind: 'ntfs', label: '末尾', start_lba: 8, length_lba: 8 },
@@ -9,6 +10,30 @@ const info: ImageInfo = { id: 'a', path: 'a', source_format: 'raw', size_bytes: 
 ] };
 
 describe('evidence overview projections', () => {
+  it('shows local acquisition dates without shifting them and keeps raw dates in the disclosure', () => {
+    const evidence = { ...info, ewf: {
+      acquiry_date: '2026 9 21 9 13 5',
+      acquiry_date_parsed: { display: '2026-09-21 09:13:05', time_basis: 'local' },
+      system_date: '1142163845',
+      system_date_parsed: { display: '2006-03-12 11:44:05', time_basis: 'unix' },
+    } as EwfAcquiryInfo };
+    const rows = acquisitionRows(evidence);
+    expect(rows.find(row => row.label === '采集时间')?.value).toBe('2026-09-21 09:13:05（采集机本地时间，时区未记录）');
+    expect(rows.find(row => row.label === '系统时间')?.value).toBe('2006-03-12 11:44:05（Unix 时间，按 UTC 显示）');
+    const details = rows.filter(row => !ACQUISITION_HIGHLIGHTS.has(row.acquisitionKey!));
+    expect(details.find(row => row.label === '采集时间原始值')?.value).toBe('2026 9 21 9 13 5');
+    expect(details.find(row => row.label === '系统时间原始值')?.value).toBe('1142163845');
+    const english: Translator = (message, params) => translate(message, 'en', params);
+    const highlights = acquisitionRows(evidence, english).filter(row => ACQUISITION_HIGHLIGHTS.has(row.acquisitionKey!));
+    expect(highlights.find(row => row.label === 'Acquisition time')?.value).toBe('2026-09-21 09:13:05 (acquisition machine local time, timezone not recorded)');
+  });
+  it('falls back to unchanged raw dates for invalid values and older IPC payloads', () => {
+    const evidence = { ...info, ewf: { acquiry_date: '  invalid date  ', system_date: '2026 9 21 9 13 5' } as EwfAcquiryInfo };
+    expect(acquisitionRows(evidence).find(row => row.label === '采集时间')?.value).toBe('  invalid date  ');
+    expect(acquisitionRows(evidence).find(row => row.label === '系统时间')?.value).toBe('2026 9 21 9 13 5');
+    expect(acquisitionRows({ ...info, ewf: { acquiry_date: null, system_date: null } as EwfAcquiryInfo })).toEqual([]);
+    expect(acquisitionRows(null)).toEqual([]);
+  });
   it('clips the disk layout to image bytes while preserving the original partition colours', () => {
     expect(evidenceLayout(info)).toEqual([
       { key: 'part-2', leftPct: 0, widthPct: 20, lenBytes: 200, color: partColor(1), tooltip: '分区2 · Ext4 · 200 B', partition: info.partitions[1] },

@@ -1,5 +1,5 @@
 import { sourceText, type Translator } from '../../../i18n/translate';
-import type { ImageInfo, DiskPartition } from '../../../lib/ipc/image';
+import type { ImageInfo, DiskPartition, EwfHeaderDate } from '../../../lib/ipc/image';
 import { formatBinaryBytes as formatBytes, formatEpochSeconds } from '../../../utils/format';
 import { KIND_LABELS } from '../../../lib/models/filesystemLabels';
 export { formatBytes, KIND_LABELS };
@@ -101,6 +101,8 @@ export interface InfoRow {
   value: string;
   mono?: boolean;
   copyable?: boolean;
+  /** Stable source label used to group rows before localization. */
+  acquisitionKey?: string;
 }
 
 // 头部之外的检材事实：精确字节数、扇区大小、磁盘标识；卷影副本会话再加来源。
@@ -128,26 +130,37 @@ export function evidenceFacts(info: ImageInfo | null, tr: Translator = sourceTex
 export function acquisitionRows(info: ImageInfo | null, tr: Translator = sourceText): InfoRow[] {
   const ewf = info?.ewf;
   if (!ewf) return [];
+  const dateValue = (raw: string | null, parsed: EwfHeaderDate | null | undefined): string | null => {
+    if (!raw || !parsed) return raw;
+    return parsed.time_basis === 'local'
+      ? tr('{0}（采集机本地时间，时区未记录）', { 0: parsed.display })
+      : tr('{0}（Unix 时间，按 UTC 显示）', { 0: parsed.display });
+  };
   const candidates: Array<[string, string | null, boolean?]> = [
-    [tr("案件编号"), ewf.case_number, true],
-    [tr("证据编号"), ewf.evidence_number, true],
-    [tr("取证员"), ewf.examiner_name],
-    [tr("采集时间"), ewf.acquiry_date, true],
-    [tr("设备型号"), ewf.model],
-    [tr("序列号"), ewf.serial_number, true],
-    [tr("描述"), ewf.description],
-    [tr("备注"), ewf.notes],
-    [tr("采集格式"), ewf.format],
-    [tr("介质类型"), ewf.media_type],
-    [tr("压缩方式"), ewf.compression],
-    [tr("分段数"), ewf.segment_count != null ? String(ewf.segment_count) : null, true],
-    [tr("系统时间"), ewf.system_date, true],
-    [tr("采集系统"), ewf.acquiry_operating_system],
-    [tr("采集软件版本"), ewf.acquiry_software_version, true],
+    ['案件编号', ewf.case_number, true],
+    ['证据编号', ewf.evidence_number, true],
+    ['取证员', ewf.examiner_name],
+    ['采集时间', dateValue(ewf.acquiry_date, ewf.acquiry_date_parsed), true],
+    ['设备型号', ewf.model],
+    ['序列号', ewf.serial_number, true],
+    ['描述', ewf.description],
+    ['备注', ewf.notes],
+    ['采集格式', ewf.format],
+    ['介质类型', ewf.media_type],
+    ['压缩方式', ewf.compression],
+    ['分段数', ewf.segment_count != null ? String(ewf.segment_count) : null, true],
+    ['系统时间', dateValue(ewf.system_date, ewf.system_date_parsed), true],
+    ['采集系统', ewf.acquiry_operating_system],
+    ['采集软件版本', ewf.acquiry_software_version, true],
   ];
+  // Always reachable in the disclosure, including malformed/unparsed headers.
+  candidates.push(
+    ['采集时间原始值', ewf.acquiry_date, true],
+    ['系统时间原始值', ewf.system_date, true],
+  );
   return candidates
     .filter((entry): entry is [string, string, boolean?] => !!entry[1])
-    .map(([label, value, mono]) => ({ label, value, mono }));
+    .map(([label, value, mono]) => ({ label: tr(label), value, mono, acquisitionKey: label }));
 }
 
 /** 直接显示的采集字段；其余放进「更多采集信息」。 */
