@@ -2110,5 +2110,8 @@
   "timeUnits.day": "Day",
   "timeUnits.hour": "Hour",
   "timeUnits.minute": "Minute",
-  "timeUnits.second": "Second"
+  "timeUnits.second": "Second",
+  "镜像导出": "Image export",
+  "导出已取消（保留部分文件）": "Export cancelled (partial file retained)",
+  "已导出 {0}{1}": "Exported {0}{1}"
 }
