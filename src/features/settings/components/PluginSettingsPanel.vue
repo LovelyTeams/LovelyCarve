@@ -1,25 +1,25 @@
 <template>
-  <section class="plugin-settings-panel" aria-label="插件设置" :aria-busy="loading">
+  <section class="plugin-settings-panel" :aria-label="tr('插件设置')" :aria-busy="loading">
     <div class="plugin-toolbar">
-      <span class="plugin-count">已安装 <strong>{{ plugins.length.toLocaleString() }}</strong> 个插件</span>
+      <span class="plugin-count">{{ tr("已安装") }} <strong>{{ plugins.length.toLocaleString() }}</strong> {{ tr("个插件") }}</span>
       <button class="ui-btn" type="button" :disabled="loading || busyPluginId !== null" @click="loadPlugins">
-        <Loader2 v-if="loading" :size="14" class="spin" /><RefreshCw v-else :size="14" aria-hidden="true" />刷新
+        <Loader2 v-if="loading" :size="14" class="spin" /><RefreshCw v-else :size="14" aria-hidden="true" />{{ tr("刷新") }}
       </button>
     </div>
-    <p class="plugin-hint">查看插件状态；展开详情查看能力、权限与安装位置。</p>
+    <p class="plugin-hint">{{ tr("查看插件状态；展开详情查看能力、权限与安装位置。") }}</p>
     <div v-if="error" class="ui-alert danger" role="alert">
       <CircleAlert :size="16" aria-hidden="true" />
-      <span class="error-text">读取插件失败：{{ error }}</span>
-      <button class="ui-btn sm" type="button" :disabled="loading || busyPluginId !== null" @click="loadPlugins">重试</button>
+      <span class="error-text">{{ tr("读取插件失败：") }}{{ error }}</span>
+      <button class="ui-btn sm" type="button" :disabled="loading || busyPluginId !== null" @click="loadPlugins">{{ tr("重试") }}</button>
     </div>
     <div v-if="loading && plugins.length === 0" class="ui-empty plugin-state" role="status">
       <span class="ui-empty-icon accent"><Loader2 :size="24" class="spin" /></span>
-      <p class="ui-empty-desc">正在读取插件…</p>
+      <p class="ui-empty-desc">{{ tr("正在读取插件…") }}</p>
     </div>
     <div v-else-if="plugins.length === 0 && !error" class="ui-empty plugin-state">
       <span class="ui-empty-icon"><Puzzle :size="28" aria-hidden="true" /></span>
-      <p class="ui-empty-title">未发现插件</p>
-      <p class="ui-empty-desc">将插件清单与动态库放入应用数据目录的 plugins 文件夹，然后刷新。</p>
+      <p class="ui-empty-title">{{ tr("未发现插件") }}</p>
+      <p class="ui-empty-desc">{{ tr("将插件清单与动态库放入应用数据目录的 plugins 文件夹，然后刷新。") }}</p>
     </div>
     <div v-else class="plugin-list">
       <article v-for="plugin in plugins" :key="plugin.id" class="ui-card plugin-card">
@@ -29,25 +29,25 @@
           <span class="ui-badge" :class="stateClass(plugin)">{{ stateLabel(plugin) }}</span>
           <button class="ui-btn sm ghost" type="button" :disabled="loading || busyPluginId !== null" @click="restartPlugin(plugin)">
             <Loader2 v-if="busyPluginId === plugin.id" :size="13" class="spin" /><RotateCw v-else :size="13" aria-hidden="true" />
-            {{ busyPluginId === plugin.id ? '重置中' : '重置' }}
+            {{ busyPluginId === plugin.id ? tr("重置中") : tr("重置") }}
           </button>
         </div>
         <p v-if="plugin.error" class="ui-alert danger plugin-feedback" role="alert">{{ plugin.error }}</p>
         <p v-if="actionFeedback?.pluginId === plugin.id" class="ui-alert plugin-feedback" :class="actionFeedback.failed ? 'danger' : 'success'" :role="actionFeedback.failed ? 'alert' : 'status'">{{ actionFeedback.message }}</p>
         <details v-disclosure-motion class="ui-disclosure plugin-disclosure">
-          <summary><ChevronRight :size="14" class="ui-chevron" aria-hidden="true" />详情</summary>
+          <summary><ChevronRight :size="14" class="ui-chevron" aria-hidden="true" />{{ tr("详情") }}</summary>
           <div class="plugin-detail-content">
             <div class="capability-list">
               <span v-for="capability in plugin.capabilities" :key="`${capability.kind}:${capability.name}`" class="ui-badge">{{ capabilityLabel(capability.kind) }} · {{ capability.name }}</span>
-              <span v-if="plugin.capabilities.length === 0" class="ui-badge">未声明可用能力</span>
+              <span v-if="plugin.capabilities.length === 0" class="ui-badge">{{ tr("未声明可用能力") }}</span>
             </div>
             <dl class="plugin-details">
-              <dt>标识</dt><dd>{{ plugin.id }}</dd>
-              <dt>加载方式</dt><dd>{{ isolationLabel(plugin) }}</dd>
-              <dt>权限</dt><dd>{{ plugin.permissions.length ? plugin.permissions.map(permissionLabel).join('、') : '无需额外权限' }}</dd>
-              <dt>代码指纹</dt><dd>{{ plugin.fingerprint || '暂无' }}</dd>
-              <dt>安装目录</dt><dd>{{ plugin.directory }}</dd>
-              <dt>库文件</dt><dd>{{ plugin.library }}</dd>
+              <dt>{{ tr("标识") }}</dt><dd>{{ plugin.id }}</dd>
+              <dt>{{ tr("加载方式") }}</dt><dd>{{ isolationLabel(plugin) }}</dd>
+              <dt>{{ tr("权限") }}</dt><dd>{{ plugin.permissions.length ? plugin.permissions.map(permissionLabel).join('、') : tr("无需额外权限") }}</dd>
+              <dt>{{ tr("代码指纹") }}</dt><dd>{{ plugin.fingerprint || tr("暂无") }}</dd>
+              <dt>{{ tr("安装目录") }}</dt><dd>{{ plugin.directory }}</dd>
+              <dt>{{ tr("库文件") }}</dt><dd>{{ plugin.library }}</dd>
             </dl>
           </div>
         </details>
@@ -57,6 +57,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { vDisclosureMotion } from '../../../composables/uiMotionDirectives';
 import {
@@ -93,7 +95,7 @@ async function loadPlugins() {
 
 async function restartPlugin(plugin: PluginInfo) {
   if (loading.value || busyPluginId.value !== null) return;
-  await runAction(plugin, () => pluginRestart(plugin.id), '插件已重置，将在下次使用时启动');
+  await runAction(plugin, () => pluginRestart(plugin.id), tr("插件已重置，将在下次使用时启动"));
 }
 
 async function runAction(plugin: PluginInfo, action: () => Promise<void>, success: string) {
@@ -105,7 +107,7 @@ async function runAction(plugin: PluginInfo, action: () => Promise<void>, succes
     actionFeedback.value = { pluginId: plugin.id, failed: false, message: success };
     await loadPlugins();
   } catch (cause) {
-    if (!disposed) actionFeedback.value = { pluginId: plugin.id, failed: true, message: `重置失败：${String(cause)}。请重试。` };
+    if (!disposed) actionFeedback.value = { pluginId: plugin.id, failed: true, message: tr("重置失败：{0}。请重试。", { 0: String(cause) }) };
   } finally {
     busyPluginId.value = null;
   }
@@ -113,32 +115,32 @@ async function runAction(plugin: PluginInfo, action: () => Promise<void>, succes
 
 function permissionLabel(permission: PluginPermission) {
   const labels: Record<PluginPermission, string> = {
-    file_materialize: '临时物化文件',
-    emit_artifacts: '写入结构化结果',
-    network: '网络访问',
+    file_materialize: tr("临时物化文件"),
+    emit_artifacts: tr("写入结构化结果"),
+    network: tr("网络访问"),
   };
   return labels[permission];
 }
 
 function capabilityLabel(kind: PluginCapabilityInfo['kind']) {
   const labels: Record<PluginCapabilityInfo['kind'], string> = {
-    filesystem: '文件系统',
-    fileAnalyzer: '文件分析',
-    evidenceAnalyzer: '检材分析',
+    filesystem: tr("文件系统"),
+    fileAnalyzer: tr("文件分析"),
+    evidenceAnalyzer: tr("检材分析"),
   };
   return labels[kind];
 }
 
 function isolationLabel(plugin: PluginInfo) {
-  return plugin.isolation === 'inProcess' ? '进程内（无隔离）' : '独立进程（lc-plugin-host）';
+  return plugin.isolation === 'inProcess' ? tr("进程内（无隔离）") : tr("独立进程（lc-plugin-host）");
 }
 
 function stateLabel(plugin: PluginInfo) {
   const labels: Record<PluginInfo['state'], string> = {
-    configured: '已就绪',
-    starting: '启动中',
-    running: '运行中',
-    crashed: '异常退出',
+    configured: tr("已就绪"),
+    starting: tr("启动中"),
+    running: tr("运行中"),
+    crashed: tr("异常退出"),
   };
   return labels[plugin.state];
 }

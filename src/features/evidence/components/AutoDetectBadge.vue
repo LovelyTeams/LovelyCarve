@@ -2,21 +2,21 @@
   <div class="platform">
     <span v-if="report" class="platform-chip" :class="{ unknown: !report.platform }">
       <component :is="conclusionIcon" :size="14" aria-hidden="true" />
-      <span class="platform-name">{{ report.platform ? report.display_platform_name || platformLabel(report.platform) : '平台未识别' }}</span>
-      <span class="platform-type">· {{ evidenceTypeLabel(report.evidence_type) }}<template v-if="manufactor"> · {{ manufactor }}</template></span>
+      <span class="platform-name">{{ report.platform ? report.display_platform_name || platformLabel(report.platform, tr) : tr("平台未识别") }}</span>
+      <span class="platform-type">· {{ evidenceTypeLabel(report.evidence_type, tr) }}<template v-if="manufactor"> · {{ manufactor }}</template></span>
     </span>
-    <span v-else-if="pending" class="platform-state"><Loader2 :size="13" class="spin" />正在识别平台…</span>
-    <span v-else-if="error" class="platform-state failed" :title="error"><TriangleAlert :size="13" />平台识别失败</span>
-    <span v-else class="platform-state">尚未识别平台</span>
-    <span v-if="report?.is_backup" class="ui-badge sm info">备份</span>
-    <span v-for="extra in extraPlatforms" :key="extra" class="ui-badge sm">{{ platformLabel(extra) }}</span>
+    <span v-else-if="pending" class="platform-state"><Loader2 :size="13" class="spin" />{{ tr("正在识别平台…") }}</span>
+    <span v-else-if="error" class="platform-state failed" :title="error"><TriangleAlert :size="13" />{{ tr("平台识别失败") }}</span>
+    <span v-else class="platform-state">{{ tr("尚未识别平台") }}</span>
+    <span v-if="report?.is_backup" class="ui-badge sm info">{{ tr("备份") }}</span>
+    <span v-for="extra in extraPlatforms" :key="extra" class="ui-badge sm">{{ platformLabel(extra, tr) }}</span>
     <slot />
     <button
       class="ui-icon-btn sm"
       type="button"
       :disabled="pending"
-      :title="pending ? '正在识别平台' : report ? '重新识别平台并回写检材' : '开始识别平台'"
-      :aria-label="report ? '重新识别平台' : '开始识别平台'"
+      :title="pending ? tr('正在识别平台') : report ? tr('重新识别平台并回写检材') : tr('开始识别平台')"
+      :aria-label="report ? tr('重新识别平台') : tr('开始识别平台')"
       @click="rerun"
     >
       <Loader2 v-if="pending" :size="13" class="spin" />
@@ -26,6 +26,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { computed, watch } from 'vue';
 import { Archive, Loader2, Monitor, RefreshCw, Smartphone, TriangleAlert } from 'lucide-vue-next';
 import { evidenceTypeLabel, manufactorLabel, platformLabel } from '../model/autodetectLabels';

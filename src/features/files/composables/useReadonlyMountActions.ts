@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, ref, shallowRef, watch, onScopeDispose } from 'vue';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { fsCreateMountDir, fsMountReadonly, fsMounts, fsSuggestMountPoint, fsUnmountReadonly, type DokanMountView } from '../../../lib/ipc/mount';
@@ -37,9 +39,9 @@ export function useReadonlyMountActions(options: {
     if (view) {
       const trimmed = view.mount_point.replace(/[\\/]+$/, '');
       const leaf = trimmed.split(/[\\/]/).filter(Boolean).pop() || trimmed;
-      return `卸载 ${leaf}`;
+      return tr("卸载 {0}", { 0: leaf });
     }
-    return options.target() === 'folder' ? '挂载到只读文件夹' : '挂载为只读盘符';
+    return options.target() === 'folder' ? tr("挂载到只读文件夹") : tr("挂载为只读盘符");
   });
 
   async function refreshReadonlyMounts() {
@@ -60,7 +62,7 @@ export function useReadonlyMountActions(options: {
     const picked = await openDialog({
       directory: true,
       multiple: false,
-      title: '选择挂载目录（须为空且位于 NTFS 卷）',
+      title: tr("选择挂载目录（须为空且位于 NTFS 卷）"),
     });
     return typeof picked === 'string' ? picked : null;
   }
@@ -80,13 +82,13 @@ export function useReadonlyMountActions(options: {
       if (!current()) return;
       const existing = readonlyMounts.value.find(view => view.image_id === imageId && view.root_node_id === node.id);
       if (existing) {
-        const toast = pushPersistentToast({ kind: 'info', title: '正在卸载…', detail: existing.mount_point });
+        const toast = pushPersistentToast({ kind: 'info', title: tr("正在卸载…"), detail: existing.mount_point });
         try {
           await fsUnmountReadonly({ mountId: existing.id });
-          toast.update({ kind: 'success', title: '卸载成功', detail: `${existing.mount_point} 已释放` });
+          toast.update({ kind: 'success', title: tr("卸载成功"), detail: tr("{0} 已释放", { 0: existing.mount_point }) });
           toast.dismiss(3200);
         } catch (error) {
-          toast.update({ kind: 'error', title: '卸载失败', detail: String(error) });
+          toast.update({ kind: 'error', title: tr("卸载失败"), detail: String(error) });
           toast.dismiss(6000);
         }
         if (current()) await refreshReadonlyMounts();
@@ -97,20 +99,20 @@ export function useReadonlyMountActions(options: {
       if (!mountPoint || !current()) return;
       const toast = pushPersistentToast({
         kind: 'info',
-        title: '正在挂载 Docker 文件系统…',
+        title: tr("正在挂载 Docker 文件系统…"),
         detail: `${node.name} → ${mountPoint}`,
       });
       try {
         const view = await fsMountReadonly({ imageId, nodeId: node.id, mountPoint });
-        toast.update({ kind: 'success', title: '挂载成功', detail: `${node.name} → ${view.mount_point}` });
+        toast.update({ kind: 'success', title: tr("挂载成功"), detail: `${node.name} → ${view.mount_point}` });
         toast.dismiss(4200);
       } catch (error) {
-        toast.update({ kind: 'error', title: '挂载失败', detail: String(error) });
+        toast.update({ kind: 'error', title: tr("挂载失败"), detail: String(error) });
         toast.dismiss(6000);
       }
       if (current()) await refreshReadonlyMounts();
     } catch (error) {
-      if (current()) notifyError('挂载失败', String(error));
+      if (current()) notifyError(tr("挂载失败"), String(error));
     } finally {
       if (current()) mountBusy.value = false;
     }

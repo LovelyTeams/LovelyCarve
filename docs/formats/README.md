@@ -22,9 +22,13 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | LUKS | [LUKS.md](LUKS.md) | libluksde 对照；LUKS1/2、AES / Serpent / Blowfish / ARC4、IV 方案、主密钥解锁 |
 | BitLocker | [BITLOCKER.md](BITLOCKER.md) | libbde 对照；Vista、Windows 7+ 与 To Go 卷，六种加密方法、EOW 与各种解锁方式 |
 | 卷影副本 | [VSS.md](VSS.md) | libvshadow 对照；存储区链重建、原始块枚举、catalog 校验与尺寸恢复 |
+| GZIP | [GZIP.md](GZIP.md) | libgzipf 42 API 对照；纯 Rust 多成员、元数据、校验、流式/seek；接入 tar.gz / Docker 层 / 小米备份 |
+| RAW / 分段 RAW | [SMRAW.md](SMRAW.md) | libsmraw 72 API 对照；分段发现、随机读写、缺段/源变化检查；读取接入宿主 |
+| QCOW / QCOW2 | [QCOW.md](QCOW.md) | libqcow 全部 42 API；v1/2/3、DEFLATE、RAW/QCOW 父链、legacy AES 与完整性检查 |
+| Parallels PHDI | [PHDI.md](PHDI.md) | libphdi 56 API 对照；纯 Rust v2 Plain / Sparse / Split / 差分父链、XML 元数据及完整性检查 |
 | iOS 备份 | [IOS_BACKUPS.md](../IOS_BACKUPS.md) | 本地备份浏览、加密备份解锁与异常检查 |
 
-其余格式（Btrfs、ZFS、UFS、SquashFS、ISO 9660，以及 EWF、VMDK、VHD / VHDX、QCOW2、VDI、DMG、AD1 等镜像容器）的实现位置见 [架构说明的镜像与证据源](../ARCHITECTURE.md#镜像与证据源)，上游版本、本地补丁与测试样本记录在各 vendor 目录的 `LOVELYCARVE.md` / `ORIGIN.md` 中。命令行下的镜像打开、解锁和导出示例见 [CLI 手册](../CLI.md)。
+其余格式（Btrfs、ZFS、UFS、SquashFS、ISO 9660，以及 EWF、VMDK、VHD / VHDX、VDI、DMG、AD1 等镜像容器）的实现位置见 [架构说明的镜像与证据源](../ARCHITECTURE.md#镜像与证据源)，上游版本、本地补丁与测试样本记录在各 vendor 目录的 `LOVELYCARVE.md` / `ORIGIN.md` 中。命令行下的镜像打开、解锁和导出示例见 [CLI 手册](../CLI.md)。
 
 ## 维护要求
 

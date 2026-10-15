@@ -1,3 +1,4 @@
+import { sourceText, type Translator } from '../../../i18n/translate';
 // 全局搜索面板的纯展示逻辑。wire 层
 // 命中为 `lib/ipc/search.ts` 的 `GlobalSearchHit`（snake_case 原样）；本模块
 // 只做格式化与高亮，不做状态。
@@ -33,18 +34,18 @@ export function formatSearchFileSize(bytes: number): string {
 }
 
 /** 来源列：文件 / 未分配（$未分配簇）/ 磁盘间隙。 */
-export function sourceKindLabel(sourceKind: string): string {
-  if (sourceKind === 'unallocated') return '未分配';
-  if (sourceKind === 'diskgap') return '磁盘间隙';
-  return '文件';
+export function sourceKindLabel(sourceKind: string, tr: Translator = sourceText): string {
+  if (sourceKind === 'unallocated') return tr("未分配");
+  if (sourceKind === 'diskgap') return tr("磁盘间隙");
+  return tr("文件");
 }
 
 /** 任务树节点标题：关键词在前、正则在后；空侧省略。 */
-export function taskDisplayTitle(keywords: string[], regexes: string[]): string {
+export function taskDisplayTitle(keywords: string[], regexes: string[], tr: Translator = sourceText): string {
   const parts: string[] = [];
   if (keywords.length > 0) parts.push(keywords.join('、'));
-  if (regexes.length > 0) parts.push(`/${regexes[0]}${regexes.length > 1 ? ` 等${regexes.length}条` : ''}`);
-  return parts.join(' + ') || '（空）';
+  if (regexes.length > 0) parts.push(`/${regexes[0]}${regexes.length > 1 ? tr(" 等{0}条", { 0: regexes.length }) : ''}`);
+  return parts.join(' + ') || tr("（空）");
 }
 
 /** 以首个模式为中心截取上下文预览（长内容收进悬浮完整上下文）。 */

@@ -1,19 +1,19 @@
 <template>
   <div class="sqlite-viewer">
-    <div v-if="loading" class="state-row mono"><Loader2 :size="14" class="spin" /> 正在解析 SQLite 数据库…</div>
-    <div v-else-if="error" class="state-row mono error">SQLite 解析失败：{{ error }}</div>
+    <div v-if="loading" class="state-row mono"><Loader2 :size="14" class="spin" /> {{ tr("正在解析 SQLite 数据库…") }}</div>
+    <div v-else-if="error" class="state-row mono error">{{ tr("SQLite 解析失败：") }}{{ error }}</div>
 
     <!-- 加密库：密钥输入表单 -->
     <div v-else-if="locked" class="lock-wrap">
       <form class="lock-card" @submit.prevent="submitKey">
         <div class="lock-head">
           <Lock :size="15" />
-          <span>数据库已加密（SQLCipher）</span>
+          <span>{{ tr("数据库已加密（SQLCipher）") }}</span>
         </div>
-        <p class="lock-hint mono">输入密钥以解密预览。多数 App 用文本口令；部分 IM 用 32 字节 raw key（hex）。旧版/微信库见下方高级参数。</p>
+        <p class="lock-hint mono">{{ tr("输入密钥以解密预览。多数 App 用文本口令；部分 IM 用 32 字节 raw key（hex）。旧版/微信库见下方高级参数。") }}</p>
 
         <div class="ui-seg seg">
-          <button type="button" class="ui-seg-item" :class="{ active: keyMode === 'passphrase' }" @click="keyMode = 'passphrase'">口令</button>
+          <button type="button" class="ui-seg-item" :class="{ active: keyMode === 'passphrase' }" @click="keyMode = 'passphrase'">{{ tr("口令") }}</button>
           <button type="button" class="ui-seg-item" :class="{ active: keyMode === 'raw' }" @click="keyMode = 'raw'">Raw Key (hex)</button>
         </div>
 
@@ -23,7 +23,7 @@
           v-model="passphrase"
           type="password"
           class="ui-input mono lock-input"
-          placeholder="数据库口令"
+          :placeholder="tr('数据库口令')"
           autocomplete="off"
         />
         <input
@@ -32,30 +32,30 @@
           v-model="rawHexKey"
           type="text"
           class="ui-input mono lock-input"
-          placeholder="64 个十六进制字符（32 字节），可选再带 32 字符 salt"
+          :placeholder="tr('64 个十六进制字符（32 字节），可选再带 32 字符 salt')"
           autocomplete="off"
           spellcheck="false"
         />
 
         <details v-disclosure-motion class="lock-adv" :open="showAdvanced">
-          <summary class="mono">高级参数（旧版库 / 微信）</summary>
+          <summary class="mono">{{ tr("高级参数（旧版库 / 微信）") }}</summary>
           <div class="adv-grid">
             <label class="adv-field">
-              <span class="adv-k">兼容版本</span>
+              <span class="adv-k">{{ tr("兼容版本") }}</span>
               <UiSelect v-model="compatibility" class="sm mono lock-input" :options="COMPATIBILITY_OPTIONS" />
             </label>
             <label class="adv-field">
-              <span class="adv-k">页大小</span>
-              <input v-model.number="pageSize" type="number" min="512" step="512" class="ui-input sm mono lock-input" placeholder="默认" />
+              <span class="adv-k">{{ tr("页大小") }}</span>
+              <input v-model.number="pageSize" type="number" min="512" step="512" class="ui-input sm mono lock-input" :placeholder="tr('默认')" />
             </label>
             <label class="adv-field">
               <span class="adv-k">kdf_iter</span>
-              <input v-model.number="kdfIter" type="number" min="1" class="ui-input sm mono lock-input" placeholder="默认" />
+              <input v-model.number="kdfIter" type="number" min="1" class="ui-input sm mono lock-input" :placeholder="tr('默认')" />
             </label>
           </div>
           <div class="adv-presets">
-            <span class="adv-k">预设：</span>
-            <button type="button" class="ui-btn sm" @click="applyWechatPreset">微信 EnMicroMsg</button>
+            <span class="adv-k">{{ tr("预设：") }}</span>
+            <button type="button" class="ui-btn sm" @click="applyWechatPreset">{{ tr("微信 EnMicroMsg") }}</button>
           </div>
         </details>
 
@@ -64,7 +64,7 @@
         <button type="submit" class="ui-btn primary lock-submit" :disabled="!canSubmit || unlocking">
           <Loader2 v-if="unlocking" :size="14" class="spin" />
           <KeyRound v-else :size="14" />
-          {{ unlocking ? '解密中…' : '解密' }}
+          {{ unlocking ? tr("解密中…") : tr("解密") }}
         </button>
       </form>
     </div>
@@ -85,25 +85,25 @@
           <span class="table-name mono">{{ t.name }}</span>
           <span class="row-pill mono">{{ t.error ? '!' : t.row_count ?? '—' }}</span>
         </button>
-        <div v-if="!digest.tables.length" class="list-empty">没有用户表</div>
+        <div v-if="!digest.tables.length" class="list-empty">{{ tr("没有用户表") }}</div>
         <div class="list-sep" aria-hidden="true" />
         <button
           class="table-item"
           :class="{ active: showDeleted }"
-          title="从空闲页、页内空闲区、WAL 与回滚日志中恢复已删除的行"
+          :title="tr('从空闲页、页内空闲区、WAL 与回滚日志中恢复已删除的行')"
           @click="openDeleted"
         >
           <ArchiveRestore :size="13" class="table-icon" />
-          <span class="table-name">已删除记录</span>
+          <span class="table-name">{{ tr("已删除记录") }}</span>
           <span v-if="deletedCount !== null" class="row-pill mono">{{ deletedCount.toLocaleString() }}</span>
         </button>
       </aside>
 
       <!-- 右：所选表的数据，或已删除记录 -->
       <div class="grid-pane">
-        <div v-if="digest.encrypted" class="decrypted-bar"><LockOpen :size="12" /> 已解密（SQLCipher）</div>
-        <div v-if="digest.sidecars.length" class="wal-bar" title="预览是 SQLite 回放 WAL 中已提交事务后的状态，比主库文件更新">
-          <History :size="12" /> 已回放 {{ digest.sidecars.join('、') }}
+        <div v-if="digest.encrypted" class="decrypted-bar"><LockOpen :size="12" /> {{ tr("已解密（SQLCipher）") }}</div>
+        <div v-if="digest.sidecars.length" class="wal-bar" :title="tr('预览是 SQLite 回放 WAL 中已提交事务后的状态，比主库文件更新')">
+          <History :size="12" /> {{ tr("已回放") }} {{ digest.sidecars.join('、') }}
         </div>
         <SqliteDeletedRecords
           v-if="deletedOpened"
@@ -116,22 +116,22 @@
           @counted="deletedCount = $event"
         />
         <template v-if="!showDeleted">
-          <div v-if="!digest.tables.length" class="state-row mono">库内没有用户表。已删除的表可能留有数据，可在左侧打开「已删除记录」查找。</div>
-          <div v-else-if="!activeName" class="state-row mono">在左侧选择一张表。</div>
-          <div v-else-if="rowsLoading && !rows.length" class="state-row mono"><Loader2 :size="14" class="spin" /> 加载中…</div>
+          <div v-if="!digest.tables.length" class="state-row mono">{{ tr("库内没有用户表。已删除的表可能留有数据，可在左侧打开「已删除记录」查找。") }}</div>
+          <div v-else-if="!activeName" class="state-row mono">{{ tr("在左侧选择一张表。") }}</div>
+          <div v-else-if="rowsLoading && !rows.length" class="state-row mono"><Loader2 :size="14" class="spin" /> {{ tr("加载中…") }}</div>
           <div v-else-if="rowsError" class="state-row mono error">{{ rowsError }}</div>
           <template v-else>
             <div class="grid-scroll">
               <table class="data-table db-table">
                 <thead>
                   <tr>
-                    <th class="rownum-th mono">序号</th>
+                    <th class="rownum-th mono">{{ tr("序号") }}</th>
                     <th
                       v-for="c in columns"
                       :key="c.name"
                       class="sortable"
                       :class="{ sorted: orderBy === c.name }"
-                      :title="`按 ${c.name} 排序`"
+                      :title="tr('按 {0} 排序', { 0: c.name })"
                       @click="toggleSort(c.name)"
                     >
                       <span class="col-head">
@@ -153,7 +153,7 @@
                     <td v-for="(cell, ci) in row" :key="ci" class="mono" :class="sqliteCellClass(cell)">{{ sqliteCellText(cell) }}</td>
                   </tr>
                   <tr v-if="!rows.length">
-                    <td class="mono dim empty-cell" :colspan="columns.length + 1">（无数据）</td>
+                    <td class="mono dim empty-cell" :colspan="columns.length + 1">{{ tr("（无数据）") }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -165,11 +165,11 @@
                 {{ rangeStart }}–{{ rangeEnd }} / {{ total }}
               </span>
               <span class="pager-spacer" />
-              <button class="ui-icon-btn sm bordered" title="上一页" aria-label="上一页" :disabled="pageIndex <= 0 || rowsLoading" @click="prevPage">
+              <button class="ui-icon-btn sm bordered" :title="tr('上一页')" :aria-label="tr('上一页')" :disabled="pageIndex <= 0 || rowsLoading" @click="prevPage">
                 <ChevronLeft :size="14" />
               </button>
               <span class="pager-page mono">{{ pageIndex + 1 }} / {{ pageCount }}</span>
-              <button class="ui-icon-btn sm bordered" title="下一页" aria-label="下一页" :disabled="pageIndex >= pageCount - 1 || rowsLoading" @click="nextPage">
+              <button class="ui-icon-btn sm bordered" :title="tr('下一页')" :aria-label="tr('下一页')" :disabled="pageIndex >= pageCount - 1 || rowsLoading" @click="nextPage">
                 <ChevronRight :size="14" />
               </button>
             </footer>
@@ -181,6 +181,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../../composables/useLocale';
+
 import { vDisclosureMotion } from '../../../../composables/uiMotionDirectives';
 // SQLite 库的「原类型视图」：左侧表清单（名称 + 行数），右侧按需分页取
 // 所选表的行（点列头排序，底部翻页）。加密库（SQLCipher）先弹密钥表单，
@@ -219,7 +221,7 @@ const passphrase = ref('');
 const rawHexKey = ref('');
 const compatibility = ref<number | ''>('');
 const COMPATIBILITY_OPTIONS: UiSelectOption<number | ''>[] = [
-  { value: '', label: '默认 (4)' },
+  { value: '', get label() { return tr("默认 (4)"); } },
   ...[4, 3, 2, 1].map(version => ({ value: version, label: `SQLCipher ${version}` })),
 ];
 const pageSize = ref<number | ''>('');
@@ -388,7 +390,7 @@ async function loadDigest(key?: SqliteKey) {
     if (msg.includes(SQLITE_LOCKED)) {
       // 加密库：弹密钥表单。带 key 仍失败 = 密钥/参数不对。
       locked.value = true;
-      keyError.value = key ? '密钥或兼容参数不正确，请检查后重试。' : null;
+      keyError.value = key ? tr("密钥或兼容参数不正确，请检查后重试。") : null;
       nextTick(() => firstInput.value?.focus());
     } else {
       error.value = msg;

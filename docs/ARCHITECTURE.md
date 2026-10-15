@@ -46,7 +46,8 @@ src/
 ├── lib/ipc/                唯一 Tauri IPC 边界
 ├── lib/models/             文件定位等跨功能纯契约
 ├── utils/                  格式化、安全 HTML、CSV 等共享纯函数
-├── styles/themes.css       light/dark/pink 三套主题 token（界面文案中文优先、直接写在模板里，无 i18n 层）
+├── i18n/                   中英文词典与纯翻译函数；语言偏好由 composables/useLocale.ts 持有
+├── styles/themes.css       light/dark/pink 三套主题 token
 ├── styles/ui.css           全局共享 UI 基元：按钮、输入框、分段/标签切换、徽章、卡片、弹窗壳、菜单、空态、面板标题
 └── styles/motion.css       动效层：共享关键帧、基元入场、ui-stagger 依次入场、主题圆形展开
 ```
@@ -117,6 +118,8 @@ src-tauri/src/
 
 `lib.rs` 保留 builder 和唯一的命令注册表。启动接线在 `app/setup.rs`，桌面退出和 CLI 共用 `app/lifecycle.rs` 的媒体、插件清理步骤，各入口保持原有收尾顺序。CLI 生成器沿模块声明解析嵌套命令路径，命令名、参数和帮助分组保持稳定。
 
+CLI JSONL 调度位于 `cli/session.rs`。`session --jobs N` 使用有界输入队列和查询工作线程，主协调器统一发布按请求 ID 关联的 JSON 响应；stdin 等待不会阻塞完成结果输出。并发查询复制派发时的 Shell 上下文，案件／检材／目录切换及其他未列入并发清单的命令先等待已有查询完成。结构化 `$ref` 等待先前请求结果，EOF 收齐请求后再等待后台任务。新增命令默认是屏障；确认其生命周期与并发安全后，才加入查询清单并通过命令目录的 `parallel` 字段公开。
+
 `src-tauri/examples/` 按用途分类，所有 example 目标在 Cargo 中显式声明，通过 `just run-example <名称>` 调用；`just check-examples` 检查这些目标，用法见 [后端探针](../src-tauri/examples/README.md)。新增模块使用 `<name>.rs` 加 `<name>/`，不新增 `mod.rs`。
 
 `core::evidence::image::DiskImage` 负责镜像源、分区布局、字节读取、解密和定位缓存。`AppState.images` 登记的对象是 `Arc<core::filesystem::evidence_session::EvidenceSession>`：它持有同一个字节读者，并拥有宿主 Docker、NTFS 删除记录投影及外部卷注册表。字节扫描、RAID、哈希和源字节导出借用 `disk_image()`；文件树、预览和插件证据浏览借用 session。原证据 ID、路径、序列化字段和分区寻址保持不变。
@@ -180,11 +183,12 @@ LVM 标签/CRC/活动副本位于 `evidence/partitions/lvm2/header.rs`，有界�
 
 | 类型 | 后端路径 | 说明 |
 | --- | --- | --- |
-| RAW / DD / IMG / ISO | `core::evidence::image` | 统一扇区读取，ISO 由 CDFS 探针识别 |
+| RAW / DD / IMG / ISO | `core::evidence::image` + `vendor/smraw` | 单文件 mmap，分段 RAW 纯 Rust positioned I/O 与所有段稳定性检查；ISO 由 CDFS 探针识别，边界见 [SMRAW](formats/SMRAW.md) |
 | E01 / Ex01 | `core::evidence::readers::ewf_image` → vendored `ewf` (SecurityRonin/ewf-forensic) | 纯 Rust、多分卷、随机读取、v1 延迟块索引；无需 libewf DLL |
 | VMDK | `core::evidence::readers::vmdk_image` + `vendor/vmdk` | vmdk-forensic 的纯 Rust flat / sparse / streamOptimized 读取；分卷与父盘源变化检测 |
-| QCOW2 | vendored `qcow2` | v2/v3 稀疏虚拟盘，只读随机访问；压缩簇、加密和 backing file 明确拒绝 |
+| QCOW / QCOW2 | vendored `qcow2` | v1/2/3 稀疏/DEFLATE 虚拟盘、RAW/QCOW backing chains；legacy AES 通过 image_load 可选凭据打开，能力与边界见 [QCOW](formats/QCOW.md) |
 | VDI | vendored `vdi` | VirtualBox VDI 1.1 动态盘与固定盘，只读稀疏随机访问；差分盘明确拒绝 |
+| Parallels PHDI | vendored `phdi` | XML / .hdd bundle、v2 Plain / Sparse / Split / 差分父链；直接逻辑随机读、所有父链文件稳定性与指纹，见 [PHDI](formats/PHDI.md) |
 | BitLocker | `core::evidence::crypto::bde_image` + `vendor/bitlocker` | 纯 Rust 密码/恢复密码/明文密钥/BEK/VMK/FVEK；六种 AES、Vista、EOW；直接读取分区，无 DLL 或临时整卷转储；验证边界见 [BITLOCKER](formats/BITLOCKER.md) |
 | VHD / VHDX | `core::evidence::readers::vhd_image` → `vendor/vhd` / `vendor/vhdx` | 纯 Rust 固定/动态盘随机读取；VHDX 日志仅在内存重放，差分盘无父盘参数时明确拒绝 |
 | DMG | vendored `udif` + `hfsplus` | UDIF 容器与 HFS+ |
@@ -208,6 +212,12 @@ image index（最多 8 层）。当归档包含多个候选时，优先选择 bl
 CPU 架构的 manifest；同时存在 `index.json` 与 `manifest.json` 的混合归档在 OCI 图不完整时可回退旧式
 manifest。`.tar` 加载先建立一次普通 TAR 成员索引，确认容器标记后把同一个 mmap 和成员位置交给 Docker
 合层器；各层建索引通过 seek 跳过文件体，只读取 tar header，避免重复扫描外层归档或读穿层内文件内容。
+
+`.tar.gz` / `.tgz`、Docker / OCI 的 GZIP 层与小米 `.bak` 中的 GZIP payload
+使用 vendored `gzipf` 完整消费拼接成员并校验所有 CRC / ISIZE。TAR / 备份
+解压到自动清理的临时文件，压缩层保留 8 GiB 解压上限；校验成功后才发布
+文件树或开始备份提取。原证据路径保留，损坏 tar.gz 沿用原始字节 RAW 探测
+回退。宿主接入、限额和验证边界见 [GZIP](formats/GZIP.md)。
 
 普通磁盘镜像中的 Docker Engine 数据由 `core::filesystem::docker::host_docker` 惰性探测：只检查 Ext4 分区与 LVM 内的
 Ext4 逻辑卷是否存在 `/var/lib/docker`，把发现的容器作为磁盘根下的“Docker 容器”合成节点。首次展开

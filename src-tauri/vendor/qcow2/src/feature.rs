@@ -1,7 +1,7 @@
 use super::extension::FeatureNameTable;
-use super::{Error, Result};
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)] // Wire discriminants used when validating the feature-name table.
 pub enum FeatureKind {
     Incompatible = 0,
     Compatible = 1,
@@ -37,28 +37,8 @@ impl Feature {
         self.bits &= !bit
     }
 
-    pub fn enabled(&self, bit: u64) -> bool {
-        (self.bits & bit) != 0
-    }
     pub fn bits(&self) -> u64 {
         self.bits
-    }
-    pub fn unknown(&self) -> Self {
-        let known = self.names.len();
-        Feature {
-            kind: self.kind,
-            names: self.names,
-            bits: self.bits & !((1 << known) - 1),
-        }
-    }
-
-    pub fn ensure_known(&self, table: &FeatureNameTable) -> Result<()> {
-        let unknown = self.unknown();
-        if unknown.bits() == 0 {
-            Ok(())
-        } else {
-            Err(Error::UnsupportedFeature(unknown.to_string(table)))
-        }
     }
 
     // Show a nice representation of a feature set.

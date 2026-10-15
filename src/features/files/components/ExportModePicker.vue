@@ -18,10 +18,10 @@
           <header class="ui-modal-header">
             <span class="ui-modal-icon"><FolderDown :size="18" /></span>
             <div class="ui-modal-heading">
-              <h2 id="export-mode-title" class="ui-modal-title">导出文件夹</h2>
-              <p class="ui-modal-subtitle">选择导出后的组织方式</p>
+              <h2 id="export-mode-title" class="ui-modal-title">{{ tr("导出文件夹") }}</h2>
+              <p class="ui-modal-subtitle">{{ tr("选择导出后的组织方式") }}</p>
             </div>
-            <button class="ui-icon-btn" type="button" aria-label="取消" title="取消" @click="$emit('choose', null)">
+            <button class="ui-icon-btn" type="button" :aria-label="tr('取消')" :title="tr('取消')" @click="$emit('choose', null)">
               <X :size="16" />
             </button>
           </header>
@@ -29,16 +29,16 @@
             <button class="ui-choice" type="button" @click="$emit('choose', 'tree')">
               <span class="ui-choice-icon"><FolderTree :size="20" /></span>
               <span class="ui-choice-text">
-                <span class="ui-choice-title">原始目录结构</span>
-                <span class="ui-choice-desc">保留嵌套目录，按原样写入磁盘</span>
+                <span class="ui-choice-title">{{ tr("原始目录结构") }}</span>
+                <span class="ui-choice-desc">{{ tr("保留嵌套目录，按原样写入磁盘") }}</span>
               </span>
               <ChevronRight :size="18" class="ui-choice-arrow" />
             </button>
             <button class="ui-choice" type="button" @click="$emit('choose', 'zip')">
               <span class="ui-choice-icon"><FileArchive :size="20" /></span>
               <span class="ui-choice-text">
-                <span class="ui-choice-title">ZIP 压缩包</span>
-                <span class="ui-choice-desc">Deflate 压缩，打包为单个 .zip 文件</span>
+                <span class="ui-choice-title">{{ tr("ZIP 压缩包") }}</span>
+                <span class="ui-choice-desc">{{ tr("Deflate 压缩，打包为单个 .zip 文件") }}</span>
               </span>
               <ChevronRight :size="18" class="ui-choice-arrow" />
             </button>
@@ -50,6 +50,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { ref } from 'vue';
 import { ChevronRight, FileArchive, FolderDown, FolderTree, X } from 'lucide-vue-next';
 import { useDialogFocus } from '../../../composables/useDialogFocus';

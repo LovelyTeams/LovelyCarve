@@ -16,6 +16,7 @@ export type ImageFormat =
   | 'ewf'
   | 'vmdk'
   | 'qcow2'
+  | 'phdi'
   | 'vdi'
   | 'vhd'
   | 'vhdx'

@@ -2,12 +2,12 @@
   <div class="csv-viewer">
     <!-- 加载 / 错误 / 空态 -->
     <div v-if="loading" class="state-row">
-      <IndeterminateBar label="正在解析表格…" />
+      <IndeterminateBar :label="tr('正在解析表格…')" />
     </div>
     <div v-else-if="error" class="state-row mono error">
-      <AlertTriangle :size="14" /> 无法解析为表格：{{ error }}
+      <AlertTriangle :size="14" /> {{ tr("无法解析为表格：") }}{{ error }}
     </div>
-    <div v-else-if="isEmpty" class="state-row mono">空文档，无可视化内容。</div>
+    <div v-else-if="isEmpty" class="state-row mono">{{ tr("空文档，无可视化内容。") }}</div>
 
     <template v-else>
       <!-- 工具栏：首行表头开关 + 分隔符选择（切换即后端重解析）+ 行列统计总览 -->
@@ -16,25 +16,25 @@
           class="ui-btn sm"
           :class="{ active: headerMode }"
           :aria-pressed="headerMode"
-          title="把首行当作表头"
+          :title="tr('把首行当作表头')"
           @click="headerMode = !headerMode"
         >
-          <Heading :size="13" /> 首行表头
+          <Heading :size="13" /> {{ tr("首行表头") }}
         </button>
 
         <label class="delim-pick">
-          <span class="delim-lead">分隔符</span>
+          <span class="delim-lead">{{ tr("分隔符") }}</span>
           <UiSelect v-model="manualDelim" class="sm mono" :options="delimiterOptions" />
         </label>
 
-        <span v-if="sortCol !== null" class="sort-tag" title="点击列头切换排序，再点一次可清除">
-          按「{{ headerCells[sortCol] }}」{{ sortDir === 'asc' ? '升序' : '降序' }}
-          <button class="sort-clear" title="清除排序" @click="clearSort"><X :size="11" /></button>
+        <span v-if="sortCol !== null" class="sort-tag" :title="tr('点击列头切换排序，再点一次可清除')">
+          {{ tr("按「") }}{{ headerCells[sortCol] }}」{{ sortDir === 'asc' ? tr("升序") : tr("降序") }}
+          <button class="sort-clear" :title="tr('清除排序')" @click="clearSort"><X :size="11" /></button>
         </span>
 
         <span class="spacer"></span>
 
-        <span class="stat mono">{{ totalDataRows.toLocaleString() }} 行 × {{ colCount }} 列</span>
+        <span class="stat mono">{{ totalDataRows.toLocaleString() }} {{ tr("行 ×") }} {{ colCount }} {{ tr("列") }}</span>
       </div>
 
       <!-- 表格 -->
@@ -42,13 +42,13 @@
         <table class="data-table csv-table">
           <thead>
             <tr>
-              <th class="rownum-th mono">行</th>
+              <th class="rownum-th mono">{{ tr("行") }}</th>
               <th
                 v-for="(h, ci) in rendered.header"
                 :key="ci"
                 class="col-th mono"
                 :class="{ sorted: sortCol === ci }"
-                :title="`${headerCells[ci]}（点击排序）`"
+                :title="tr('{0}（点击排序）', { 0: headerCells[ci] })"
                 @click="toggleSort(ci)"
               >
                 <span class="th-inner">
@@ -68,7 +68,7 @@
               </td>
             </tr>
             <tr v-if="!rendered.rows.length">
-              <td class="dim empty-cell mono" :colspan="colCount + 1">（无数据行）</td>
+              <td class="dim empty-cell mono" :colspan="colCount + 1">{{ tr("（无数据行）") }}</td>
             </tr>
           </tbody>
         </table>
@@ -83,6 +83,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../../composables/useLocale';
+
 // CSV / TSV 的「原类型视图」：解析在后端（core/csv_table.rs，经 fs_csv_preview 读
 // 镜像内文件字节后解析），前端只负责渲染表格 + 交互——首行表头可切、分隔符可选
 // （切换即后端重解析）、列头点击排序、关键字高亮/计数/定位。自取数据型（同
@@ -116,10 +118,10 @@ const MAX_ROWS = 50_000;
 const READ_CAP_LABEL = '16 MiB';
 
 const DELIM_LABELS: Record<Delimiter, string> = {
-  ',': '逗号 ,',
-  ';': '分号 ;',
-  '\t': '制表符 ⇥',
-  '|': '竖线 |',
+  get ','() { return tr("逗号 ,"); },
+  get ';'() { return tr("分号 ;"); },
+  get '\t'() { return tr("制表符 ⇥"); },
+  get '|'() { return tr("竖线 |"); },
 };
 
 const loading = ref(true);
@@ -175,10 +177,10 @@ const charToDelim = (s: string): Delimiter =>
 const autoDelimLabel = computed(() => {
   if (table.value && manualDelim.value === 'auto') return DELIM_LABELS[charToDelim(table.value.delimiter)];
   if (props.delimiter) return DELIM_LABELS[props.delimiter];
-  return '嗅探';
+  return tr("嗅探");
 });
 const delimiterOptions = computed<UiSelectOption<Delimiter | 'auto'>[]>(() => [
-  { value: 'auto', label: `自动（${autoDelimLabel.value}）` },
+  { value: 'auto', get label() { return tr("自动（{0}）", { 0: autoDelimLabel.value }); } },
   ...DELIMITERS.map(delimiter => ({ value: delimiter, label: DELIM_LABELS[delimiter] })),
 ]);
 
@@ -186,7 +188,7 @@ const delimiterOptions = computed<UiSelectOption<Delimiter | 'auto'>[]>(() => [
 const headerCells = computed<string[]>(() => {
   const cols = colCount.value;
   const base = headerMode.value ? allRows.value[0] ?? [] : [];
-  return Array.from({ length: cols }, (_, i) => base[i] ?? `列 ${i + 1}`);
+  return Array.from({ length: cols }, (_, i) => base[i] ?? tr("列 {0}", { 0: i + 1 }));
 });
 
 // 数据行：携带「数据行序号」(num)，排序后仍指回它在文件中的原始次序（取证忠实）。
@@ -291,11 +293,11 @@ const capNotes = computed<string[]>(() => {
   const t = table.value;
   if (!t) return [];
   const notes: string[] = [];
-  if (t.truncatedBytes) notes.push(`文件大于 ${READ_CAP_LABEL}，仅解析前 ${READ_CAP_LABEL} 字节。`);
+  if (t.truncatedBytes) notes.push(tr("文件大于 {0}，仅解析前 {1} 字节。", { 0: READ_CAP_LABEL, 1: READ_CAP_LABEL }));
   if (t.truncatedRows) {
-    notes.push(`数据较多，仅解析前 ${MAX_ROWS.toLocaleString()} 行（共约 ${t.totalRows.toLocaleString()} 行）；导出后查看完整数据。`);
+    notes.push(tr("数据较多，仅解析前 {0} 行（共约 {1} 行）；导出后查看完整数据。", { 0: MAX_ROWS.toLocaleString(), 1: t.totalRows.toLocaleString() }));
   } else if (sortedRows.value.length > ROW_CAP) {
-    notes.push(`行数较多，仅渲染前 ${ROW_CAP.toLocaleString()} 行（排序覆盖已解析的 ${sortedRows.value.length.toLocaleString()} 行）。`);
+    notes.push(tr("行数较多，仅渲染前 {0} 行（排序覆盖已解析的 {1} 行）。", { 0: ROW_CAP.toLocaleString(), 1: sortedRows.value.length.toLocaleString() }));
   }
   return notes;
 });

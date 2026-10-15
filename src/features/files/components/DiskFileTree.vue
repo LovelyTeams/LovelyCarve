@@ -2,11 +2,11 @@
   <aside class="tree-rail">
     <div class="tree-header">
       <FolderTree :size="14" class="tree-header-icon" />
-      <span class="tree-header-label">目录树</span>
+      <span class="tree-header-label">{{ tr("目录树") }}</span>
       <button
         class="ui-icon-btn sm tree-header-toggle"
         :class="{ active: hideEmptyDirs }"
-        :title="hideEmptyDirs ? '显示空目录' : '隐藏空目录（其下没有任何文件的目录，含只有空目录的）'"
+        :title="hideEmptyDirs ? tr('显示空目录') : tr('隐藏空目录（其下没有任何文件的目录，含只有空目录的）')"
         :aria-pressed="hideEmptyDirs"
         @click="hideEmptyDirs = !hideEmptyDirs"
       >
@@ -21,7 +21,7 @@
     >
       <div class="tree-docker-loading-copy">
         <Loader2 :size="12" class="spin" />
-        <span>正在合并容器文件系统…</span>
+        <span>{{ tr("正在合并容器文件系统…") }}</span>
       </div>
       <div class="tree-docker-loading-track" aria-hidden="true"><span></span></div>
     </div>
@@ -54,13 +54,13 @@
           <span
             v-if="row.depth === 0 && row.node.driveLetter"
             class="tree-drive-letter mono"
-            :title="`源系统盘符 ${row.node.driveLetter}`"
+            :title="tr('源系统盘符 {0}', { 0: row.node.driveLetter })"
           >{{ row.node.driveLetter }}</span>
           <span class="tree-name" :title="row.node.name">{{ row.node.name }}</span>
           <span v-if="row.node.childCount != null && row.node.childCount > 0" class="tree-count mono">{{ row.node.childCount }}</span>
         </button>
         <div v-if="rootNodes.length === 0 && rootLoaded" class="tree-empty mono">
-          没有可显示的目录
+          {{ tr("没有可显示的目录") }}
         </div>
       </div>
     </div>
@@ -68,6 +68,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { ChevronRight, FolderTree, FolderX, Loader2 } from 'lucide-vue-next';
 import FileNodeIcon from '../../../components/display/FileNodeIcon.vue';
 import { useCaseContext } from '../../cases/api';

@@ -1,12 +1,10 @@
 use std::{
-    collections::{HashMap, HashSet},
     io::{BufRead, Write},
     path::Path,
     time::Duration,
 };
 
-use serde::Deserialize;
-use serde_json::{json, Map, Value};
+use serde_json::Value;
 use tauri::Manager;
 
 use super::{input, shell::Shell, CliError, Output};
@@ -183,7 +181,7 @@ fn safe_text(text: &str) -> String {
         .collect()
 }
 
-fn line(reader: &mut impl BufRead) -> Result<Option<String>, CliError> {
+pub(super) fn line(reader: &mut impl BufRead) -> Result<Option<String>, CliError> {
     let mut text = String::new();
     let bytes = std::io::Read::take(&mut *reader, (MAX_LINE + 1) as u64).read_line(&mut text)?;
     if bytes > MAX_LINE {
@@ -260,130 +258,9 @@ pub(super) async fn shell_lines(
     Ok(())
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Request {
-    id: String,
-    command: String,
-    #[serde(default)]
-    args: Map<String, Value>,
-    #[serde(default)]
-    output: Option<String>,
-}
-
-/// References use {"$ref":"request-id#/json/pointer"}. Literal strings are
-/// never expanded, so passwords, Windows paths and evidence text stay exact.
-fn resolve_refs(value: &mut Value, results: &HashMap<String, Value>) -> Result<(), CliError> {
-    match value {
-        Value::Object(object) if object.len() == 1 && object.contains_key("$ref") => {
-            let reference = object["$ref"]
-                .as_str()
-                .ok_or_else(|| CliError::invalid("$ref 必须是字符串"))?;
-            let (id, pointer) = reference.split_once('#').unwrap_or((reference, ""));
-            *value = results
-                .get(id)
-                .and_then(|result| result.pointer(pointer))
-                .cloned()
-                .ok_or_else(|| CliError::invalid(format!("无效结果引用: {reference}")))?;
-        }
-        Value::Object(object) => {
-            for value in object.values_mut() {
-                resolve_refs(value, results)?;
-            }
-        }
-        Value::Array(array) => {
-            for value in array {
-                resolve_refs(value, results)?;
-            }
-        }
-        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
-    }
-    Ok(())
-}
-
-pub(super) async fn json_lines(
-    app: &tauri::AppHandle,
-    shell: &mut Shell,
-    reader: &mut impl BufRead,
-) -> Result<bool, CliError> {
-    let mut results = HashMap::new();
-    let mut request_ids = HashSet::new();
-    let mut failed = false;
-    while let Some(line) = line(reader)? {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let request: Request = match serde_json::from_str(line.trim_start_matches('\u{feff}')) {
-            Ok(request) => request,
-            Err(error) => {
-                print_output(
-                    Output::Json(json!({"id":null,"error":CliError::from(error)})),
-                    true,
-                )?;
-                failed = true;
-                continue;
-            }
-        };
-        let result = async {
-            if request.id.is_empty() || !request_ids.insert(request.id.clone()) {
-                return Err(CliError::invalid("请求 ID 必须非空且唯一"));
-            }
-            if request_ids.len() > 10000 {
-                return Err(CliError::invalid("单会话最多保留 10000 个结果引用"));
-            }
-            let mut args = Value::Object(request.args);
-            resolve_refs(&mut args, &results)?;
-            let Value::Object(args) = args else {
-                return Err(CliError::invalid("args 必须为对象"));
-            };
-            let output = if request.command == "wait" {
-                if !args.is_empty() {
-                    return Err(CliError::invalid("wait 不接受参数"));
-                }
-                wait_idle(app).await?;
-                Output::Json(Value::Null)
-            } else if let Some(matches) = input::shell_matches(&request.command, &args)? {
-                shell
-                    .execute(app, &matches)
-                    .await?
-                    .unwrap_or(Output::Json(Value::Null))
-            } else {
-                shell.invoke(app, &request.command, args).await?
-            };
-            if let Some(path) = request.output {
-                save_output(Path::new(&path), output)?;
-                Ok(json!({"output":path}))
-            } else {
-                Ok(output.json())
-            }
-        }
-        .await;
-        let response = match result {
-            Ok(value) => {
-                results.insert(request.id.clone(), value.clone());
-                json!({"id":request.id,"result":value})
-            }
-            Err(error) => {
-                failed = true;
-                json!({"id":request.id,"error":error})
-            }
-        };
-        print_output(Output::Json(response), true)?;
-    }
-    Ok(failed)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn references_are_structural_and_errors_are_not_silenced() {
-        let results = HashMap::from([("open".into(), json!({"id":"image-1"}))]);
-        let mut args = json!({"imageId":{"$ref":"open#/id"},"text":"$open/id"});
-        resolve_refs(&mut args, &results).unwrap();
-        assert_eq!(args, json!({"imageId":"image-1","text":"$open/id"}));
-        assert!(resolve_refs(&mut json!({"$ref":"missing#/id"}), &results).is_err());
-    }
     #[test]
     fn output_never_overwrites_existing_evidence() {
         let directory = tempfile::tempdir().unwrap();

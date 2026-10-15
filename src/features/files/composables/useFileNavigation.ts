@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, nextTick, onScopeDispose, ref, type Ref } from 'vue';
 import { fsNodeLocate, fsSourceLocate } from '../../../lib/ipc/fs/query';
 import type { FsLocateResult } from '../../../lib/ipc/fs/types';
@@ -106,7 +108,7 @@ export function useFileNavigation(options: {
     if (error.value) throw new Error(error.value);
     if (!located.file_id) return;
     const node = entries.value.find(entry => entry.id === located.file_id);
-    if (!node) throw new Error('文件已不在原目录中，请刷新索引后重新定位');
+    if (!node) throw new Error(tr("文件已不在原目录中，请刷新索引后重新定位"));
     selectedKey.value = rowKeyOf(node);
     detailNode.value = node;
     detailFocus.value = offset !== undefined && Number.isSafeInteger(offset) && offset >= 0

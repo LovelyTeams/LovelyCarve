@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, nextTick, onDeactivated, onScopeDispose, ref, watch, type Ref } from 'vue';
 import { carveFormats, type CarveCategory, type CarveFormatInfo, type CarveStartOptions, type CarveScope } from '../../../lib/ipc/carve';
 import type { DiskPartition, ImageInfo } from '../../../lib/ipc/image';
@@ -50,7 +52,7 @@ export function useCarveConfiguration(options: { imageId: () => string; imageInf
   const partitions = computed(() => options.imageInfo()?.partitions ?? []);
   const partitionOptions = computed(() => partitions.value.map(partition => ({ value: partition.id, label: partitionLabel(partition) })));
   function partitionLabel(partition: DiskPartition): string {
-    const name = partition.label?.trim() || `分区 ${partition.id}`;
+    const name = partition.label?.trim() || tr("分区 {0}", { 0: partition.id });
     return `${name} · ${partition.kind.toUpperCase()} · ${formatBytes(partition.length_lba * (options.imageInfo()?.sector_size ?? 512))}`;
   }
 

@@ -6,13 +6,13 @@
         <header class="ui-modal-header">
           <span class="ui-modal-icon"><Settings :size="18" aria-hidden="true" /></span>
           <div class="ui-modal-heading">
-            <h2 id="tool-settings-title" class="ui-modal-title">设置中心</h2>
-            <p class="ui-modal-subtitle">{{ activeSection === 'logs' ? '当前会话日志' : activeSection === 'about' ? '软件信息' : '更改自动保存' }}</p>
+            <h2 id="tool-settings-title" class="ui-modal-title">{{ tr("设置中心") }}</h2>
+            <p class="ui-modal-subtitle">{{ activeSection === 'logs' ? tr("当前会话日志") : activeSection === 'about' ? tr("软件信息") : tr("更改自动保存") }}</p>
           </div>
-          <button class="ui-icon-btn" type="button" title="关闭" aria-label="关闭设置" @click="$emit('close')"><X :size="16" /></button>
+          <button class="ui-icon-btn" type="button" :title="tr('关闭')" :aria-label="tr('关闭设置')" @click="$emit('close')"><X :size="16" /></button>
         </header>
 
-        <nav class="settings-nav" aria-label="设置分类">
+        <nav class="settings-nav" :aria-label="tr('设置分类')">
           <button v-for="section in sections" :key="section.id" type="button" class="ui-btn ghost settings-nav-item"
             :class="{ active: activeSection === section.id }" :aria-current="activeSection === section.id ? 'page' : undefined"
             @click="activeSection = section.id">
@@ -24,9 +24,21 @@
           <PluginSettingsPanel v-if="activeSection === 'plugins'" />
           <AppLogPanel v-else-if="activeSection === 'logs'" />
           <AppAboutPanel v-else-if="activeSection === 'about'" />
-          <section v-else class="settings-panel" aria-label="界面设置">
+          <section v-else class="settings-panel" :aria-label="tr('界面设置')">
             <div class="setting-row">
-              <h3 class="setting-label" :id="themeLabelId">主题</h3>
+              <h3 class="setting-label" :id="languageLabelId">{{ tr('语言') }}</h3>
+              <div class="setting-control">
+                <div class="ui-seg" role="radiogroup" :aria-labelledby="languageLabelId" :aria-describedby="languageHintId">
+                  <label v-for="option in languageOptions" :key="option.value" class="ui-seg-item" :class="{ active: locale === option.value }">
+                    <input type="radio" class="sr-only" :name="languageLabelId" :value="option.value"
+                      :checked="locale === option.value" @change="setLocale(option.value)" />{{ option.label }}
+                  </label>
+                </div>
+                <p class="ui-field-hint" :id="languageHintId">{{ tr('立即应用，并同步到独立预览窗口。') }}</p>
+              </div>
+            </div>
+            <div class="setting-row">
+              <h3 class="setting-label" :id="themeLabelId">{{ tr("主题") }}</h3>
               <div class="ui-seg theme-options" role="group" :aria-labelledby="themeLabelId">
                 <button v-for="theme in themes" :key="theme" class="ui-seg-item" type="button"
                   :class="{ active: currentTheme === theme }" :aria-pressed="currentTheme === theme"
@@ -37,7 +49,7 @@
             </div>
 
             <div class="setting-row">
-              <h3 class="setting-label" :id="motionLabelId">界面动画</h3>
+              <h3 class="setting-label" :id="motionLabelId">{{ tr("界面动画") }}</h3>
               <div class="setting-control">
                 <div class="ui-seg" role="radiogroup" :aria-labelledby="motionLabelId" :aria-describedby="motionHintId">
                   <label v-for="option in motionOptions" :key="option.value" class="ui-seg-item" :class="{ active: motionPreference === option.value }">
@@ -49,32 +61,32 @@
             </div>
 
             <div class="setting-row mount-setting">
-              <h3 class="setting-label" :id="mountLabelId">分区挂载</h3>
+              <h3 class="setting-label" :id="mountLabelId">{{ tr("分区挂载") }}</h3>
               <div class="setting-control">
                 <div class="ui-seg" role="radiogroup" :aria-labelledby="mountLabelId">
                   <label class="ui-seg-item" :class="{ active: mountTarget === 'drive' }">
                     <input type="radio" class="sr-only" :name="mountLabelId" value="drive" v-model="mountTarget" />
-                    <HardDrive :size="14" aria-hidden="true" />驱动器盘符
+                    <HardDrive :size="14" aria-hidden="true" />{{ tr("驱动器盘符") }}
                   </label>
                   <label class="ui-seg-item" :class="{ active: mountTarget === 'folder' }">
                     <input type="radio" class="sr-only" :name="mountLabelId" value="folder" v-model="mountTarget" />
-                    <FolderOpen :size="14" aria-hidden="true" />文件夹
+                    <FolderOpen :size="14" aria-hidden="true" />{{ tr("文件夹") }}
                   </label>
                 </div>
-                <p class="ui-field-hint">{{ mountTarget === 'drive' ? '只读挂载到空闲盘符（H–Y）。' : '只读挂载到 NTFS 卷上的空文件夹。' }}</p>
+                <p class="ui-field-hint">{{ mountTarget === 'drive' ? tr("只读挂载到空闲盘符（H–Y）。") : tr("只读挂载到 NTFS 卷上的空文件夹。") }}</p>
                 <div v-if="mountTarget === 'folder'" class="mount-options">
-                  <label class="setting-label" :for="mountRootId">默认根目录</label>
+                  <label class="setting-label" :for="mountRootId">{{ tr("默认根目录") }}</label>
                   <div class="path-row">
                     <input :id="mountRootId" v-model="mountFolderRoot" type="text" class="ui-input mono path-input"
-                      :aria-describedby="mountRootHintId" :placeholder="activeCase?.dir || '留空使用案件目录'" />
+                      :aria-describedby="mountRootHintId" :placeholder="activeCase?.dir || tr('留空使用案件目录')" />
                     <button class="ui-btn" type="button" :disabled="pickingDirectory" @click="pickMountFolderRoot">
-                      <Loader2 v-if="pickingDirectory" :size="14" class="spin" /><FolderOpen v-else :size="14" aria-hidden="true" />选择
+                      <Loader2 v-if="pickingDirectory" :size="14" class="spin" /><FolderOpen v-else :size="14" aria-hidden="true" />{{ tr("选择") }}
                     </button>
                   </div>
-                  <p class="ui-field-hint" :id="mountRootHintId">在此目录下创建挂载文件夹；留空使用案件目录，无案件时手动选择。</p>
+                  <p class="ui-field-hint" :id="mountRootHintId">{{ tr("在此目录下创建挂载文件夹；留空使用案件目录，无案件时手动选择。") }}</p>
                   <label class="auto-mount-row">
-                    <span class="setting-control"><strong>打开案件时自动挂载</strong><small>挂载全部可用分区，跳过需解锁的分区。</small></span>
-                    <input type="checkbox" role="switch" class="ui-switch" v-model="autoMountCaseEvidence" aria-label="打开案件时自动挂载全部分区" />
+                    <span class="setting-control"><strong>{{ tr("打开案件时自动挂载") }}</strong><small>{{ tr("挂载全部可用分区，跳过需解锁的分区。") }}</small></span>
+                    <input type="checkbox" role="switch" class="ui-switch" v-model="autoMountCaseEvidence" :aria-label="tr('打开案件时自动挂载全部分区')" />
                   </label>
                 </div>
               </div>
@@ -83,8 +95,8 @@
           </section>
         </main>
         <footer class="ui-modal-footer">
-          <button v-if="activeSection === 'appearance'" class="ui-btn ghost start" type="button" @click="resetCurrentSection">恢复当前页默认</button>
-          <button class="ui-btn primary" type="button" @click="$emit('close')">完成</button>
+          <button v-if="activeSection === 'appearance'" class="ui-btn ghost start" type="button" @click="resetCurrentSection">{{ tr("恢复当前页默认") }}</button>
+          <button class="ui-btn primary" type="button" @click="$emit('close')">{{ tr("完成") }}</button>
         </footer>
       </div>
     </div>
@@ -92,6 +104,9 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+import { useLocale, DEFAULT_LOCALE, type Locale } from '../../../composables/useLocale';
+
 import { vContentMotion } from '../../../composables/uiMotionDirectives';
 import { computed, markRaw, ref, useId, watch, type Component } from 'vue';
 import {
@@ -121,10 +136,10 @@ defineEmits<{
 }>();
 
 const sections = [
-  { id: 'appearance' as const, label: '界面', icon: markRaw(Palette) },
-  { id: 'plugins' as const, label: '插件', icon: markRaw(Puzzle) },
-  { id: 'logs' as const, label: '日志', icon: markRaw(Terminal) },
-  { id: 'about' as const, label: '关于', icon: markRaw(Info) },
+  { id: 'appearance' as const, get label() { return tr("界面"); }, icon: markRaw(Palette) },
+  { id: 'plugins' as const, get label() { return tr("插件"); }, icon: markRaw(Puzzle) },
+  { id: 'logs' as const, get label() { return tr("日志"); }, icon: markRaw(Terminal) },
+  { id: 'about' as const, get label() { return tr("关于"); }, icon: markRaw(Info) },
 ];
 
 const activeSection = ref<SettingsSection>(props.initialSection);
@@ -139,6 +154,13 @@ watch(
 const dialogEl = ref<HTMLElement | null>(null);
 useDialogFocus(() => props.visible, dialogEl);
 const themeLabelId = useId();
+const languageLabelId = useId();
+const languageHintId = useId();
+const { locale, setLocale } = useLocale();
+const languageOptions: { value: Locale; label: string }[] = [
+  { value: 'zh-CN', label: '简体中文' },
+  { value: 'en', label: 'English' },
+];
 const motionLabelId = useId();
 const motionHintId = useId();
 const mountLabelId = useId();
@@ -151,23 +173,23 @@ const { motionPreference, mountTarget, mountFolderRoot, autoMountCaseEvidence } 
 const { systemReducedMotion } = useUiMotion();
 const { currentTheme, setTheme, themes } = useTheme();
 const themeIcons: Record<ThemeName, Component> = { light: Sun, dark: Moon, pink: Flower2 };
-const themeNames: Record<ThemeName, string> = { light: '浅色', dark: '深色', pink: '樱花' };
+const themeNames: Record<ThemeName, string> = { get light() { return tr("浅色"); }, get dark() { return tr("深色"); }, get pink() { return tr("樱花"); } };
 
 const motionOptions: { value: MotionPreference; label: string }[] = [
-  { value: 'system', label: '跟随系统' },
-  { value: 'on', label: '开启' },
-  { value: 'off', label: '关闭' },
+  { value: 'system', get label() { return tr("跟随系统"); } },
+  { value: 'on', get label() { return tr("开启"); } },
+  { value: 'off', get label() { return tr('motion.off'); } },
 ];
 const motionHint = computed(() => {
-  if (motionPreference.value === 'off') return '已关闭动画，保留加载指示。';
+  if (motionPreference.value === 'off') return tr("已关闭动画，保留加载指示。");
   if (motionPreference.value === 'on') {
     return systemReducedMotion.value
-      ? '始终播放动画，忽略系统减少动态效果设置。'
-      : '始终播放界面动画。';
+      ? tr("始终播放动画，忽略系统减少动态效果设置。")
+      : tr("始终播放界面动画。");
   }
   return systemReducedMotion.value
-    ? '跟随系统，当前不播放动画。'
-    : '跟随系统，当前播放动画。';
+    ? tr("跟随系统，当前不播放动画。")
+    : tr("跟随系统，当前播放动画。");
 });
 const { activeCase } = useCaseContext();
 
@@ -180,11 +202,11 @@ async function pickMountFolderRoot() {
       multiple: false,
       directory: true,
       defaultPath: mountFolderRoot.value.trim() || activeCase.value?.dir || undefined,
-      title: '选择默认挂载根目录（NTFS 卷上的文件夹）',
+      title: tr("选择默认挂载根目录（NTFS 卷上的文件夹）"),
     });
     if (typeof result === 'string') mountFolderRoot.value = result;
   } catch (cause) {
-    directoryError.value = `选择目录失败：${String(cause)}。请重试。`;
+    directoryError.value = tr("选择目录失败：{0}。请重试。", { 0: String(cause) });
   } finally {
     pickingDirectory.value = false;
   }
@@ -192,6 +214,7 @@ async function pickMountFolderRoot() {
 
 function resetCurrentSection() {
   if (activeSection.value === 'appearance') {
+    setLocale(DEFAULT_LOCALE);
     setTheme('light');
     motionPreference.value = 'system';
     mountTarget.value = 'drive';

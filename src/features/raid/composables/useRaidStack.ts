@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 // Session-wide RAID detection state. raid_auto_detect scans ALL loaded
 // images (LVM PV joins and mdadm member sets span images), so its result is
 // not per-image — every RaidStackPanel instance (one per tab) shares one
@@ -54,10 +56,10 @@ async function promptAssembledArrays(result: RaidStack, arrays: RaidArray[]) {
     const fs = result.filesystems.find(f => f.set_uuid === arr.set_uuid);
     const detail = [formatBytes(arr.assembled_bytes), fs?.kind].filter(Boolean).join(' · ');
     const ok = await confirm({
-      title: '检测到完整 RAID 阵列',
-      message: `RAID${arr.level} ${arrayTitle(arr)} 已重组为虚拟镜像（${detail}）。是否打开重组镜像？`,
-      confirmText: '打开重组镜像',
-      cancelText: '暂不',
+      title: tr("检测到完整 RAID 阵列"),
+      message: tr("RAID{0} {1} 已重组为虚拟镜像（{2}）。是否打开重组镜像？", { 0: arr.level, 1: arrayTitle(arr), 2: detail }),
+      confirmText: tr("打开重组镜像"),
+      cancelText: tr("暂不"),
     });
     if (captured !== generation) return;
     if (!ok || !arr.assembled_image_id) continue;
@@ -67,7 +69,7 @@ async function promptAssembledArrays(result: RaidStack, arrays: RaidArray[]) {
       const summary = await imageInfoById({ imageId: arr.assembled_image_id });
       openImage?.(summary.path);
     } catch (e) {
-      notifyError('打开重组镜像失败', String(e));
+      notifyError(tr("打开重组镜像失败"), String(e));
     }
   }
 }
@@ -98,12 +100,12 @@ function announceArrays(result: RaidStack, prompt: boolean) {
     const active = activeMembers(arr);
     const status =
       active < arr.raid_disks
-        ? `成员不全 ${active}/${arr.raid_disks}，加载其余成员盘后将自动重组`
-        : '未能重组，详见镜像信息页的 RAID 检测卡片';
+        ? tr("成员不全 {0}/{1}，加载其余成员盘后将自动重组", { 0: active, 1: arr.raid_disks })
+        : tr("未能重组，详见镜像信息页的 RAID 检测卡片");
     incompleteToasts.set(
       arr.set_uuid,
       pushPersistentToast({
-        title: '检测到 RAID 阵列',
+        title: tr("检测到 RAID 阵列"),
         detail: `RAID${arr.level} ${arrayTitle(arr)} · ${status}`,
       }),
     );

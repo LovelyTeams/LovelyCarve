@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { computed, ref, watch } from 'vue';
 import type { TimelineBucket } from '../../../lib/ipc/timeline';
 import { buildHeatmapDays, heatmapLevel } from '../model/timelineHeatmap';
@@ -17,7 +19,7 @@ const months = computed(() => days.value.filter(day => day.day === 1));
 const max = computed(() => Math.max(0, ...props.buckets.map(bucket => bucket.count)));
 const total = computed(() => props.buckets.reduce((sum, bucket) => sum + bucket.count, 0));
 const activeDays = computed(() => days.value.filter(day => day.count > 0).length);
-const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+const weekdays = computed(() => [tr("一"), tr("二"), tr("三"), tr("四"), tr("五"), tr("六"), tr("日")]);
 const focusedDay = ref(0);
 watch(() => props.year, () => { focusedDay.value = 0; });
 function onDayKeydown(event: KeyboardEvent, index: number) {
@@ -37,23 +39,23 @@ function selected(date: string) {
 </script>
 
 <template>
-  <div class="heatmap" aria-label="年度活动热力图">
+  <div class="heatmap" :aria-label="tr('年度活动热力图')">
     <div class="calendar-scroll">
       <div class="calendar" :style="{ '--weeks': weeks }">
-        <span v-for="month in months" :key="month.month" class="month" :style="{ gridColumn: `${month.week + 2} / span 3`, gridRow: 1 }">{{ month.month }}月</span>
+        <span v-for="month in months" :key="month.month" class="month" :style="{ gridColumn: `${month.week + 2} / span 3`, gridRow: 1 }">{{ month.month }}{{ tr("月") }}</span>
         <span v-for="(day, index) in weekdays" :key="day" class="weekday" :style="{ gridColumn: 1, gridRow: index + 2 }">{{ day }}</span>
         <button v-for="(day, index) in days" :key="day.date" type="button" class="day" :data-day-index="index" :tabindex="focusedDay === index ? 0 : -1"
           :class="[`level-${heatmapLevel(day.count, max)}`, { selected: selected(day.date) }]"
           :style="{ gridColumn: day.week + 2, gridRow: day.weekday + 2 }"
-          :title="`${day.date} · ${day.count.toLocaleString()} 条事件，点击查看当天记录`"
-          :aria-label="`${day.date}，${day.count} 条事件`" :aria-pressed="selected(day.date)"
+          :title="tr('{0} · {1} 条事件，点击查看当天记录', { 0: day.date, 1: day.count.toLocaleString() })"
+          :aria-label="tr('{0}，{1} 条事件', { 0: day.date, 1: day.count })" :aria-pressed="selected(day.date)"
           @focus="focusedDay = index" @keydown="onDayKeydown($event, index)"
           @click="emit('select', day.date)"></button>
       </div>
     </div>
     <div class="heatmap-footer">
-      <span>{{ year }} 年 · {{ activeDays }} 个活跃日 · {{ total.toLocaleString() }} 条事件<span v-if="max"> · 单日峰值 {{ max.toLocaleString() }}</span></span>
-      <span class="legend">少 <i v-for="level in [0, 1, 2, 3, 4]" :key="level" :class="`level-${level}`"></i> 多</span>
+      <span>{{ year }} {{ tr("年 ·") }} {{ activeDays }} {{ tr("个活跃日 ·") }} {{ total.toLocaleString() }} {{ tr("条事件") }}<span v-if="max"> {{ tr("· 单日峰值") }} {{ max.toLocaleString() }}</span></span>
+      <span class="legend">{{ tr("少") }} <i v-for="level in [0, 1, 2, 3, 4]" :key="level" :class="`level-${level}`"></i> {{ tr("多") }}</span>
     </div>
   </div>
 </template>

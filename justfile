@@ -35,7 +35,7 @@ bootstrap:
 
 # Run the complete frontend checks required for a contribution.
 [group("verify")]
-verify-fe: ipc-check frontend-structure-check typecheck test-fe build-fe
+verify-fe: ipc-check frontend-structure-check i18n-check typecheck test-fe build-fe
 
 # Run the backend checks required for a contribution.
 [group("verify")]
@@ -76,6 +76,11 @@ ipc-check:
 frontend-structure-check:
     bun scripts/check-frontend-structure.mjs
 
+# Check translations, interpolation parameters and untranslated template text.
+[group("frontend")]
+i18n-check:
+    bun scripts/check-i18n.mjs
+
 # Upgrade both viewer packages and refresh offline assets.
 [group("frontend")]
 update-file-viewer version *args:
@@ -104,6 +109,9 @@ fmt:
     cd src-tauri/vendor/luks && cargo fmt
     cd src-tauri/vendor/veracrypt && cargo fmt
     cd src-tauri/vendor/vsc && cargo fmt
+    cd src-tauri/vendor/gzipf && cargo fmt
+    cd src-tauri/vendor/smraw && cargo fmt
+    cd src-tauri/vendor/phdi && cargo fmt
     cd src-tauri/vendor/refs-reader && cargo fmt
     cd src-tauri/vendor/sqlite-core && cargo fmt
     cd src-tauri/vendor/ad1 && cargo fmt
@@ -344,6 +352,29 @@ clippy-refs:
 test-vendor name *args:
     cargo test --manifest-path src-tauri/vendor/{{ name }}/Cargo.toml --lib {{ args }}
 
+# Test the standalone single/split RAW reader and new-output writer.
+[group("readers")]
+[working-directory("src-tauri/vendor/smraw")]
+test-smraw *args:
+    cargo test {{ args }}
+
+[group("readers")]
+[working-directory("src-tauri/vendor/smraw")]
+clippy-smraw *args:
+    cargo clippy --all-targets {{ args }}
+
+# Test the standalone pure Rust GZIP member reader and its independent corpus.
+[group("readers")]
+[working-directory("src-tauri/vendor/gzipf")]
+test-gzipf *args:
+    cargo test {{ args }}
+
+# Lint the GZIP reader without desktop dependencies.
+[group("readers")]
+[working-directory("src-tauri/vendor/gzipf")]
+clippy-gzipf *args:
+    cargo clippy --all-targets {{ args }}
+
 # Test the FileVault core and forensic auditor, including optional libfvde oracle.
 [group("readers")]
 [working-directory("src-tauri/vendor/filevault")]
@@ -396,11 +427,34 @@ test-vhd *args:
 test-vhdx *args:
     cargo test {{ args }}
 
-# Test the QCOW2 reader.
+# Test the QCOW 1/2/3 reader and independent fixtures.
 [group("readers")]
 [working-directory("src-tauri/vendor/qcow2")]
-test-qcow2:
-    cargo test
+test-qcow2 *args:
+    cargo test {{ args }}
+
+# Lint the QCOW reader and every test target.
+[group("readers")]
+[working-directory("src-tauri/vendor/qcow2")]
+clippy-qcow2:
+    cargo clippy --all-targets -- -D warnings
+
+# Regenerate invented QCOW fixtures (Python cryptography required).
+[group("readers")]
+generate-qcow-fixtures:
+    {{ python }} src-tauri/vendor/qcow2/tests/data/generate.py
+
+# Test the standalone Parallels reader and malformed-image regressions.
+[group("readers")]
+[working-directory("src-tauri/vendor/phdi")]
+test-phdi *args:
+    cargo test {{ args }}
+
+# Lint the Parallels reader and every test target.
+[group("readers")]
+[working-directory("src-tauri/vendor/phdi")]
+clippy-phdi:
+    cargo clippy --all-targets -- -D warnings
 
 # Test the VDI reader.
 [group("readers")]

@@ -4,22 +4,22 @@
       <header class="ui-modal-header">
         <span class="ui-modal-icon"><Wrench :size="18" /></span>
         <div class="ui-modal-heading">
-          <h2 id="raid-manual-title" class="ui-modal-title">手动 RAID 重组</h2>
+          <h2 id="raid-manual-title" class="ui-modal-title">{{ tr("手动 RAID 重组") }}</h2>
         </div>
-        <button class="ui-icon-btn" title="关闭" aria-label="关闭" @click="emit('close')">
+        <button class="ui-icon-btn" :title="tr('关闭')" :aria-label="tr('关闭')" @click="emit('close')">
           <X :size="16" />
         </button>
       </header>
 
       <div class="ui-modal-body manual-body">
         <p class="hint">
-          自动检测啃不动的阵列（未知偏移 / 缺盘 / 任意盘序）可在此手动指定几何参数，按列序选择成员盘后预览重组结果。
+          {{ tr("自动检测啃不动的阵列（未知偏移 / 缺盘 / 任意盘序）可在此手动指定几何参数，按列序选择成员盘后预览重组结果。") }}
         </p>
 
         <!-- Member selection + column order -->
         <div class="cols">
           <section class="col">
-            <h4 class="col-title">可选镜像</h4>
+            <h4 class="col-title">{{ tr("可选镜像") }}</h4>
             <ul v-if="candidates.length" class="image-list">
               <li
                 v-for="img in candidates"
@@ -33,60 +33,60 @@
                 <span class="image-size mono">{{ formatBytes(img.size_bytes) }}</span>
               </li>
             </ul>
-            <p v-else class="empty">无已加载的真实镜像</p>
+            <p v-else class="empty">{{ tr("无已加载的真实镜像") }}</p>
           </section>
 
           <section class="col">
-            <h4 class="col-title">列顺序（col0 → colN）</h4>
+            <h4 class="col-title">{{ tr("列顺序（col0 → colN）") }}</h4>
             <ul v-if="order.length" class="order-list">
               <li v-for="(id, idx) in order" :key="id" class="order-row">
                 <span class="slot mono">col{{ idx }}</span>
                 <span class="image-name" :title="pathOf(id)">{{ baseName(pathOf(id)) }}</span>
-                <span v-if="level === 5 && missingSlot === idx" class="ui-badge sm warn">掉线·重建</span>
+                <span v-if="level === 5 && missingSlot === idx" class="ui-badge sm warn">{{ tr("掉线·重建") }}</span>
                 <span class="order-actions">
-                  <button class="ui-icon-btn sm" title="上移" aria-label="上移" :disabled="idx === 0" @click="move(idx, -1)">
+                  <button class="ui-icon-btn sm" :title="tr('上移')" :aria-label="tr('上移')" :disabled="idx === 0" @click="move(idx, -1)">
                     <ChevronUp :size="14" />
                   </button>
-                  <button class="ui-icon-btn sm" title="下移" aria-label="下移" :disabled="idx === order.length - 1" @click="move(idx, 1)">
+                  <button class="ui-icon-btn sm" :title="tr('下移')" :aria-label="tr('下移')" :disabled="idx === order.length - 1" @click="move(idx, 1)">
                     <ChevronDown :size="14" />
                   </button>
-                  <button class="ui-icon-btn sm danger" title="移除" aria-label="移除" @click="toggleMember(id)">
+                  <button class="ui-icon-btn sm danger" :title="tr('移除')" :aria-label="tr('移除')" @click="toggleMember(id)">
                     <X :size="14" />
                   </button>
                 </span>
               </li>
             </ul>
-            <p v-else class="empty">点击左侧镜像，按列序加入</p>
+            <p v-else class="empty">{{ tr("点击左侧镜像，按列序加入") }}</p>
           </section>
         </div>
 
         <!-- Geometry parameters -->
         <div class="params">
           <label class="param">
-            <span>级别</span>
+            <span>{{ tr("级别") }}</span>
             <UiSelect v-model="level" class="sm mono" :options="LEVEL_OPTIONS" />
           </label>
           <label v-if="level === 5" class="param">
-            <span>校验布局</span>
+            <span>{{ tr("校验布局") }}</span>
             <UiSelect v-model="layout" class="sm mono" :options="LAYOUT_OPTIONS" />
           </label>
           <label class="param">
-            <span>块大小 (KiB)</span>
+            <span>{{ tr("块大小 (KiB)") }}</span>
             <input v-model.number="chunkKiB" class="ui-input sm mono" type="number" min="1" step="1" />
           </label>
           <label class="param">
-            <span>数据偏移 (扇区)</span>
+            <span>{{ tr("数据偏移 (扇区)") }}</span>
             <input v-model.number="dataOffsetSectors" class="ui-input sm mono" type="number" min="0" step="1" />
           </label>
           <label v-if="level === 5" class="param">
-            <span>缺失列（降级）</span>
+            <span>{{ tr("缺失列（降级）") }}</span>
             <UiSelect v-model="missingSlot" class="sm mono" :options="missingSlotOptions" />
           </label>
         </div>
 
         <!-- Live stripe-layout preview (pure geometry, no backend round-trip) -->
         <div v-if="order.length >= 2" class="diagram-wrap">
-          <h4 class="col-title">条带布局预览</h4>
+          <h4 class="col-title">{{ tr("条带布局预览") }}</h4>
           <RaidLayoutDiagram
             :level="level"
             :layout="layout"
@@ -104,9 +104,9 @@
         </div>
         <div v-else-if="result" class="preview">
           <div class="preview-head mono">
-            重组容量 {{ formatBytes(result.size_bytes) }} ·
-            <template v-if="result.partitions.length">{{ result.partitions.length }} 分区</template>
-            <template v-else>未识别出分区表</template>
+            {{ tr("重组容量") }} {{ formatBytes(result.size_bytes) }} ·
+            <template v-if="result.partitions.length">{{ result.partitions.length }} {{ tr("分区") }}</template>
+            <template v-else>{{ tr("未识别出分区表") }}</template>
           </div>
           <ul v-if="result.partitions.length" class="part-list">
             <li v-for="(p, i) in result.partitions" :key="i" class="part-row mono">
@@ -115,20 +115,20 @@
               <span v-if="p.label" class="part-label">{{ p.label }}</span>
             </li>
           </ul>
-          <p v-else class="empty mono">该几何未产生可识别的分区/文件系统，请调整参数后重试。</p>
+          <p v-else class="empty mono">{{ tr("该几何未产生可识别的分区/文件系统，请调整参数后重试。") }}</p>
         </div>
       </div>
 
       <footer class="ui-modal-footer">
-        <button class="ui-btn ghost start" @click="emit('close')">取消</button>
+        <button class="ui-btn ghost start" @click="emit('close')">{{ tr("取消") }}</button>
         <button class="ui-btn" :class="{ primary: !canOpen }" :disabled="order.length < 2 || busy" @click="preview">
           <Loader2 v-if="busy" :size="14" class="spin" />
-          <span>{{ busy ? '重组中…' : '重组并预览' }}</span>
+          <span>{{ busy ? tr("重组中…") : tr("重组并预览") }}</span>
         </button>
         <button v-if="canOpen" class="ui-btn primary" :disabled="opening" @click="open">
           <Loader2 v-if="opening" :size="14" class="spin" />
           <ExternalLink v-else :size="14" />
-          <span>打开重组镜像</span>
+          <span>{{ tr("打开重组镜像") }}</span>
         </button>
       </footer>
     </div>
@@ -136,6 +136,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { formatBinaryBytes as formatBytes } from '../../../utils/format';
 import { computed, onMounted, ref } from 'vue';
 import {
@@ -159,7 +161,7 @@ const emit = defineEmits<{ close: []; 'open-image': [path: string] }>();
 
 const LEVEL_OPTIONS: UiSelectOption<number>[] = [{ value: 5, label: 'RAID5' }, { value: 0, label: 'RAID0' }];
 const LAYOUT_OPTIONS: UiSelectOption<number>[] = [
-  { value: 0, label: '左异步' }, { value: 1, label: '右异步' }, { value: 2, label: '左同步' }, { value: 3, label: '右同步' },
+  { value: 0, get label() { return tr("左异步"); } }, { value: 1, get label() { return tr("右异步"); } }, { value: 2, get label() { return tr("左同步"); } }, { value: 3, get label() { return tr("右同步"); } },
 ];
 
 const candidates = ref<LoadedImage[]>([]);
@@ -170,7 +172,7 @@ const chunkKiB = ref(32);
 const dataOffsetSectors = ref(2048); // 1 MiB
 const missingSlot = ref<number | null>(null);
 const missingSlotOptions = computed<UiSelectOption<number | null>[]>(() => [
-  { value: null, label: '无（全部在线）' },
+  { value: null, get label() { return tr("无（全部在线）"); } },
   ...order.value.map((_, index) => ({ value: index, label: `col${index}` })),
 ]);
 
@@ -185,7 +187,7 @@ onMounted(async () => {
     // Real images only — synthetic assembled devices can't be members.
     candidates.value = all.filter(img => !img.path.startsWith('assembled://'));
   } catch (e) {
-    error.value = `加载镜像列表失败：${e}`;
+    error.value = tr("加载镜像列表失败：{0}", { 0: e });
   }
 });
 
@@ -244,7 +246,7 @@ async function preview() {
       missing_slot: level.value === 5 ? missingSlot.value : null,
     });
   } catch (e) {
-    error.value = `重组失败：${e}`;
+    error.value = tr("重组失败：{0}", { 0: e });
   } finally {
     busy.value = false;
   }
@@ -258,7 +260,7 @@ async function open() {
     emit('open-image', summary.path);
     emit('close');
   } catch (e) {
-    notifyError('打开重组镜像失败', String(e));
+    notifyError(tr("打开重组镜像失败"), String(e));
   } finally {
     opening.value = false;
   }

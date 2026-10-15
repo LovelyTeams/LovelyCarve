@@ -4,18 +4,17 @@
       <IndeterminateBar :label="phaseLabel" />
     </div>
     <div v-else-if="tooLarge" class="state-row mono">
-      文件过大（{{ formatBytes(node.size) }}），不渲染预览以免占用过多内存；请导出后查看，或切换到
-      「文本 / 十六进制」视图。
+      {{ tr("文件过大（") }}{{ formatBytes(node.size) }}{{ tr("），不渲染预览以免占用过多内存；请导出后查看，或切换到 「文本 / 十六进制」视图。") }}
     </div>
-    <div v-else-if="empty" class="state-row mono">空文件（0 字节），无可渲染内容。</div>
+    <div v-else-if="empty" class="state-row mono">{{ tr("空文件（0 字节），无可渲染内容。") }}</div>
     <div v-else-if="error" class="state-row mono error">
-      <AlertTriangle :size="14" /> 无法渲染为「{{ node.name }}」：{{ error }}。请切换到「文本 / 十六进制」视图。
+      <AlertTriangle :size="14" /> {{ tr("无法渲染为「") }}{{ node.name }}」：{{ error }}{{ tr("。请切换到「文本 / 十六进制」视图。") }}
     </div>
     <!-- Flyfish File Viewer 自带工具栏 / 渲染面与 Shadow DOM 隔离，整个容器交由其管理；
          theme 经 options 注入，切换主题时以 :key 重挂（库对 options 的响应性未验证）。 -->
     <FileViewer
       v-else
-      :key="`${node.id}:${currentTheme}`"
+      :key="`${node.id}:${currentTheme}:${locale}`"
       class="rich-viewer"
       :file="sourceFile ?? undefined"
       :url="sourceUrl ?? undefined"
@@ -26,6 +25,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr, useLocale } from '../../../../composables/useLocale';
+
 // 「rich」原类型视图：文档 / 办公 / 邮件 / 非 zip 压缩包 / CAD / 3D / 图表等格式交给
 // Flyfish File Viewer（@file-viewer/vue3-full）在浏览器内渲染。渲染器按扩展名懒加载，
 // 扩展名路由以 `name` prop 为准（它覆盖从 url / File 推导的文件名——大文件走临时文件
@@ -56,6 +57,7 @@ const NON_STREAM_CAP = 64 * 1024 * 1024;
 const TEMP_CAP = 4 * 1024 * 1024 * 1024;
 
 const { currentTheme } = useTheme();
+const { locale } = useLocale();
 
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -66,7 +68,7 @@ const sourceUrl = ref<string | null>(null);
 // 加载阶段（驱动进度条文案）：读取字节 → 物化临时文件。渲染由库内部负责（懒加载 + 解析）。
 const phase = ref<'read' | 'materialize'>('read');
 const phaseLabel = computed(() =>
-  phase.value === 'read' ? '正在读取文件字节…' : '正在准备预览文件…',
+  phase.value === 'read' ? tr("正在读取文件字节…") : tr("正在准备预览文件…"),
 );
 
 // 卸载守卫 + 单调请求序号：父级以 :key=node.id 重挂本组件（每个文件一个新实例），故 nodeId
@@ -131,9 +133,10 @@ onBeforeUnmount(() => {
 });
 
 const viewerOptions = computed<FileViewerOptions>(() => ({
+  i18n: { locale: locale.value === 'en' ? 'en-US' : 'zh-CN' },
   // pink 是浅底主题（themes.css），库内按 light 渲染；dark 才走库的深色。
   theme: currentTheme.value === 'dark' ? 'dark' : 'light',
-  locale: 'zh-CN',
+  locale: locale.value === 'en' ? 'en-US' : 'zh-CN',
   // 默认（auto）即 Shadow DOM：库的样式不渗入 app，app 的 reset 也伤不到库内 UI。
   styleIsolation: 'auto',
   pdf: {

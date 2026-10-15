@@ -35,7 +35,7 @@
           >
             {{ toast.action.label }}
           </button>
-          <button class="ui-icon-btn sm" aria-label="关闭通知" @click="removeToast(toast.id)">
+          <button class="ui-icon-btn sm" :aria-label="tr('关闭通知')" @click="removeToast(toast.id)">
             <X :size="14" />
           </button>
         </div>
@@ -45,6 +45,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../composables/useLocale';
+
 import type { Component } from 'vue';
 import { AlertCircle, CheckCircle2, Info, X } from 'lucide-vue-next';
 import { useToast, type ToastKind } from '../../composables/useToast';

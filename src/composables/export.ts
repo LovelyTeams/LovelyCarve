@@ -1,3 +1,5 @@
+
+import { tr } from './useLocale';
 // File-save helpers that pair a native dialog + write with a toast on
 // completion. These orchestrate Tauri plugin I/O *and* user-facing
 // notification (useToast), so they live at the composable layer — depending
@@ -37,7 +39,7 @@ export async function saveTextWithDialog(options: SaveTextOptions) {
     notifyExportSuccess(path, options.successLabel);
     return path;
   } catch (error) {
-    notifyError('导出失败', String(error));
+    notifyError(tr("导出失败"), String(error));
     return null;
   }
 }
@@ -54,7 +56,7 @@ export async function saveBinaryWithDialog(options: SaveBinaryOptions) {
     notifyExportSuccess(path, options.successLabel);
     return path;
   } catch (error) {
-    notifyError('导出失败', String(error));
+    notifyError(tr("导出失败"), String(error));
     return null;
   }
 }
@@ -81,7 +83,7 @@ interface SaveBatchToFolderOptions {
 export async function saveBatchToFolder(options: SaveBatchToFolderOptions) {
   try {
     const folder = await open({
-      title: options.title ?? '选择导出目录',
+      title: options.title ?? tr("选择导出目录"),
       directory: true,
       multiple: false,
     });
@@ -142,11 +144,11 @@ export async function saveBatchToFolder(options: SaveBatchToFolderOptions) {
 
     notifyExportSuccess(
       base,
-      options.successLabel?.(written, base) ?? `已导出 ${written} 个文件到 ${base}`,
+      options.successLabel?.(written, base) ?? tr("已导出 {0} 个文件到 {1}", { 0: written, 1: base }),
     );
     return base;
   } catch (error) {
-    notifyError('批量导出失败', String(error));
+    notifyError(tr("批量导出失败"), String(error));
     return null;
   }
 }

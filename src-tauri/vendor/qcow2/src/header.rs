@@ -1,357 +1,321 @@
-use std::collections::HashSet;
-use std::fmt::{self, Debug, Formatter};
-use std::io::Read;
-use std::mem::size_of;
-use std::path::PathBuf;
-use std::result;
+//! Bounded QCOW 1/2/3 header parsing.
+use crate::{
+    extension::{Extension, FeatureNameTable},
+    feature::{Feature, FeatureKind},
+    int::div_ceil,
+    Error, Result,
+};
+use byteorder::{BigEndian, ByteOrder};
+use positioned_io::ReadAt;
+use std::{collections::HashSet, path::PathBuf};
 
-#[cfg(unix)]
-use std::ffi::OsStr;
-#[cfg(unix)]
-use std::os::unix::ffi::OsStrExt;
+pub(crate) const MAGIC: [u8; 4] = *b"QFI\xfb";
 
-use byteorder::BigEndian;
-use positioned_io::{ByteIo, Cursor, ReadAt};
-
-use super::extension::{self, Extension, FeatureNameTable, UnknownExtension};
-use super::feature::{Feature, FeatureKind};
-use super::int::{div_ceil, div_rem, is_multiple_of, padding_to_multiple};
-use super::{Error, Result};
-
-const MAGIC: u32 = 0x514649fb;
-const VERSION_2: u32 = 2;
-const VERSION_3: u32 = 3;
-
-// Common header for all versions.
-#[repr(C)]
-#[derive(Default, Debug)]
-pub struct HeaderCommon {
-    pub magic: u32,
+#[derive(Debug, Default)]
+pub(crate) struct Header {
     pub version: u32,
-    pub backing_file_offset: u64,
-    pub backing_file_size: u32,
     pub cluster_bits: u32,
+    pub l2_bits: u32,
     pub size: u64,
-    pub crypt_method: u32,
-    pub l1_size: u32,
-    pub l1_table_offset: u64,
-    pub refcount_table_offset: u64,
-    pub refcount_table_clusters: u32,
-    pub nb_snapshots: u32,
-    pub snapshots_offset: u64,
-}
-
-#[allow(dead_code)]
-const INCOMPATIBLE_DIRTY: u64 = 0b1;
-#[allow(dead_code)]
-const INCOMPATIBLE_CORRUPT: u64 = 0b10;
-#[allow(dead_code)]
-const COMPATIBLE_LAZY_REFCOUNTS: u64 = 0b1;
-#[allow(dead_code)]
-const AUTOCLEAR_BITMAPS: u64 = 0b1;
-
-static INCOMPATIBLE_NAMES: &[&str] = &["dirty", "corrupt"];
-static COMPATIBLE_NAMES: &[&str] = &["lazy refcounts"];
-static AUTOCLEAR_NAMES: &[&str] = &["bitmaps"];
-
-const HEADER_LENGTH_V3: usize = 104;
-
-pub struct HeaderV3 {
-    pub incompatible: Feature,
-    pub compatible: Feature,
-    pub autoclear: Feature,
-
-    pub refcount_order: u32,
-    pub header_length: u32,
-
-    pub feature_name_table: FeatureNameTable,
-    pub unknown_extensions: Vec<UnknownExtension>,
-
-    pub backing_file_name: PathBuf,
-}
-impl HeaderV3 {
-    // Get an extension by extension code. If we can't find one, use UnknownExtension.
-    pub fn extension(&mut self, code: u32) -> &mut dyn Extension {
-        match code {
-            extension::EXT_CODE_FEATURE_NAME_TABLE => &mut self.feature_name_table,
-            _ => {
-                let u = UnknownExtension::new(code);
-                self.unknown_extensions.push(u);
-                self.unknown_extensions.last_mut().unwrap()
-            }
-        }
-    }
-}
-impl Debug for HeaderV3 {
-    fn fmt(&self, fmt: &mut Formatter) -> result::Result<(), fmt::Error> {
-        fmt.debug_struct("HeaderV3")
-            .field(
-                "incompatible",
-                &self.incompatible.to_string(&self.feature_name_table),
-            )
-            .field(
-                "compatible",
-                &self.compatible.to_string(&self.feature_name_table),
-            )
-            .field(
-                "autoclear",
-                &self.autoclear.to_string(&self.feature_name_table),
-            )
-            .field("refcount_order", &self.refcount_order)
-            .field("header_length", &self.header_length)
-            .field("feature_name_table", &self.feature_name_table)
-            .field("backing_file_name", &self.backing_file_name)
-            .field("unknown extensions", &self.unknown_extensions)
-            .finish()
-    }
-}
-impl Default for HeaderV3 {
-    fn default() -> Self {
-        HeaderV3 {
-            incompatible: Feature::new(FeatureKind::Incompatible, INCOMPATIBLE_NAMES),
-            compatible: Feature::new(FeatureKind::Compatible, COMPATIBLE_NAMES),
-            autoclear: Feature::new(FeatureKind::Autoclear, AUTOCLEAR_NAMES),
-            refcount_order: 0,
-            header_length: 0,
-            backing_file_name: PathBuf::new(),
-            feature_name_table: FeatureNameTable::default(),
-            unknown_extensions: Vec::new(),
-        }
-    }
-}
-
-#[derive(Default, Debug)]
-pub struct Header {
-    pub c: HeaderCommon,
-    pub v3: HeaderV3,
+    pub encryption: u32,
+    pub l1_size: u64,
+    pub l1_offset: u64,
+    pub snapshots: u32,
+    pub incompatible: u64,
+    pub compatible: u64,
+    pub autoclear: u64,
+    pub backing_name: Option<PathBuf>,
+    pub backing_format: Option<String>,
 }
 
 impl Header {
-    fn validate_common(&self) -> Result<()> {
-        if self.c.magic != MAGIC {
+    pub fn read(io: &impl ReadAt, source_size: Option<u64>) -> Result<Self> {
+        let mut bytes = [0; 104];
+        io.read_exact_at(0, &mut bytes[..8])?;
+        if bytes[..4] != MAGIC {
             return Err(Error::FileType);
         }
-        if !matches!(self.c.version, VERSION_2 | VERSION_3) {
-            return Err(Error::Version(self.c.version));
-        }
-        if self.c.backing_file_offset != 0 {
-            return Err(Error::UnsupportedFeature("backing file".to_owned()));
-            // if self.c.backing_file_offset > self.cluster_size() {
-            //     return Err(Error::FileFormat("backing file name not in first cluster"
-            //          .to_owned()));
-            // }
-            // if self.c.backing_file_size > 1023 {
-            //     return Err(Error::FileFormat("backing file name size too big".to_owned()));
-            // }
-        }
-        if self.c.cluster_bits < 9 || self.c.cluster_bits > 22 {
+        let version = BigEndian::read_u32(&bytes[4..8]);
+        let minimum = match version {
+            1 => 48,
+            2 => 72,
+            3 => 104,
+            _ => return Err(Error::Version(version)),
+        };
+        io.read_exact_at(8, &mut bytes[8..minimum])?;
+        let backing_offset = BigEndian::read_u64(&bytes[8..16]);
+        let backing_size = BigEndian::read_u32(&bytes[16..20]) as u64;
+        let cluster_bits = if version == 1 {
+            bytes[32] as u32
+        } else {
+            BigEndian::read_u32(&bytes[20..24])
+        };
+        if !(9..=21).contains(&cluster_bits) {
             return Err(Error::FileFormat(format!(
-                "bad cluster_bits {}",
-                self.c.cluster_bits
+                "invalid cluster bits: {cluster_bits}"
             )));
         }
-        if self.c.crypt_method != 0 {
-            return Err(Error::UnsupportedFeature("encryption".to_owned()));
+        let l2_bits = if version == 1 {
+            bytes[33] as u32
+        } else {
+            cluster_bits - 3
+        };
+        if l2_bits == 0 || l2_bits > 21 {
+            return Err(Error::FileFormat(format!("invalid L2 bits: {l2_bits}")));
         }
-        if self.c.l1_size as u64 != self.l1_entries() {
-            return Err(Error::FileFormat("bad L1 entry count".to_owned()));
+        let mut header = Self {
+            version,
+            cluster_bits,
+            l2_bits,
+            size: BigEndian::read_u64(&bytes[24..32]),
+            encryption: BigEndian::read_u32(if version == 1 {
+                &bytes[36..40]
+            } else {
+                &bytes[32..36]
+            }),
+            l1_offset: BigEndian::read_u64(&bytes[40..48]),
+            ..Self::default()
+        };
+        if header.size > i64::MAX as u64 {
+            return Err(Error::FileFormat(
+                "media size exceeds seekable range".into(),
+            ));
         }
-        if !is_multiple_of(self.c.l1_table_offset, self.cluster_size()) {
-            return Err(Error::FileFormat("bad L1 offset".to_owned()));
-        }
-        if !is_multiple_of(self.c.refcount_table_offset, self.cluster_size()) {
-            return Err(Error::FileFormat("bad refcount offset".to_owned()));
-        }
-        if !is_multiple_of(self.c.snapshots_offset, self.cluster_size()) {
-            return Err(Error::FileFormat("bad snapshots offset".to_owned()));
-        }
-        Ok(())
-    }
-
-    // Read the common header.
-    fn read_common<I: Read>(&mut self, io: &mut ByteIo<I, BigEndian>) -> Result<()> {
-        self.c.magic = io.read_u32()?;
-        self.c.version = io.read_u32()?;
-        self.c.backing_file_offset = io.read_u64()?;
-        self.c.backing_file_size = io.read_u32()?;
-        self.c.cluster_bits = io.read_u32()?;
-        self.c.size = io.read_u64()?;
-        self.c.crypt_method = io.read_u32()?;
-        self.c.l1_size = io.read_u32()?;
-        self.c.l1_table_offset = io.read_u64()?;
-        self.c.refcount_table_offset = io.read_u64()?;
-        self.c.refcount_table_clusters = io.read_u32()?;
-        self.c.nb_snapshots = io.read_u32()?;
-        self.c.snapshots_offset = io.read_u64()?;
-        self.validate_common()?;
-        Ok(())
-    }
-
-    fn read_extensions<I: ReadAt>(&mut self, io: &mut ByteIo<Cursor<I>, BigEndian>) -> Result<()> {
-        let mut seen = HashSet::<u32>::new();
-        loop {
-            let ext_code = io.read_u32()?;
-
-            // No duplicates allowed.
-            if seen.contains(&ext_code) {
-                return Err(Error::FileFormat(format!(
-                    "duplicate header extension {:#x}",
-                    ext_code
-                )));
+        match header.encryption {
+            0 | 1 => {}
+            2 => return Err(Error::UnsupportedFeature("QCOW LUKS encryption".into())),
+            value => {
+                return Err(Error::UnsupportedFeature(format!(
+                    "encryption method {value}"
+                )))
             }
-            seen.insert(ext_code);
-
-            let len = io.read_u32()? as u64;
-            if ext_code == extension::EXT_CODE_NONE {
-                break;
-            }
-
-            if len + io.get_ref().position() > self.cluster_size() {
-                // Don't try to read too much dynamic data!
+        }
+        let required_entries = div_ceil(header.size, header.cluster_size() * header.l2_entries());
+        header.l1_size = if version == 1 {
+            required_entries
+        } else {
+            BigEndian::read_u32(&bytes[36..40]) as u64
+        };
+        if header.l1_size < required_entries || header.l1_size * 8 > 32 * 1024 * 1024 {
+            return Err(Error::FileFormat(
+                "L1 table is too small or exceeds 32 MiB limit".into(),
+            ));
+        }
+        // QCOW1 only requires 8-byte L1 alignment.
+        let alignment = if version == 1 {
+            8
+        } else {
+            header.cluster_size()
+        };
+        if !header.l1_offset.is_multiple_of(alignment)
+            || (header.l1_size != 0 && header.l1_offset < minimum as u64)
+        {
+            return Err(Error::FileFormat("invalid L1 table offset".into()));
+        }
+        check_range(
+            header.l1_offset,
+            header.l1_size * 8,
+            source_size,
+            "L1 table",
+        )?;
+        if version != 1 {
+            let refcount_offset = BigEndian::read_u64(&bytes[48..56]);
+            let refcount_clusters = BigEndian::read_u32(&bytes[56..60]) as u64;
+            let snapshots_offset = BigEndian::read_u64(&bytes[64..72]);
+            header.snapshots = BigEndian::read_u32(&bytes[60..64]);
+            if refcount_offset % header.cluster_size() != 0
+                || snapshots_offset % header.cluster_size() != 0
+            {
                 return Err(Error::FileFormat(
-                    "complete header too big for first cluster".to_owned(),
+                    "unaligned refcount or snapshot table".into(),
                 ));
             }
+            if refcount_clusters != 0 {
+                if refcount_offset < header.cluster_size() {
+                    return Err(Error::FileFormat("refcount table overlaps header".into()));
+                }
+                check_range(
+                    refcount_offset,
+                    refcount_clusters * header.cluster_size(),
+                    source_size,
+                    "refcount table",
+                )?;
+            }
+            if header.snapshots != 0 {
+                if snapshots_offset < header.cluster_size() {
+                    return Err(Error::FileFormat("snapshot table overlaps header".into()));
+                }
+                check_range(
+                    snapshots_offset,
+                    header.snapshots as u64 * 40,
+                    source_size,
+                    "snapshot headers",
+                )?;
+            }
+        }
+        let mut header_length = minimum as u64;
+        if version == 3 {
+            header.incompatible = BigEndian::read_u64(&bytes[72..80]);
+            header.compatible = BigEndian::read_u64(&bytes[80..88]);
+            header.autoclear = BigEndian::read_u64(&bytes[88..96]);
+            let refcount_order = BigEndian::read_u32(&bytes[96..100]);
+            header_length = BigEndian::read_u32(&bytes[100..104]) as u64;
+            if header_length < 104
+                || !header_length.is_multiple_of(8)
+                || header_length > header.cluster_size()
+                || refcount_order > 6
             {
-                let take = io.take(len);
-                let mut sub = ByteIo::<_, BigEndian>::new(take);
-                let ext = self.v3.extension(ext_code);
-                ext.read(&mut sub)?;
-
-                // Verify all is read.
-                let remain = sub.bytes().count();
-                if remain > 0 {
-                    return Err(Error::FileFormat(format!(
-                        "{} bytes left after reading \
-                                                          extension {:#x}",
-                        remain, ext_code
+                return Err(Error::FileFormat(
+                    "invalid v3 header length or refcount order".into(),
+                ));
+            }
+            check_range(0, header_length, source_size, "header")?;
+            if header_length > 104 {
+                let mut compression = [0];
+                io.read_exact_at(104, &mut compression)?;
+                if compression[0] != 0 {
+                    return Err(Error::UnsupportedFeature(format!(
+                        "compression type {}",
+                        compression[0]
                     )));
                 }
             }
-
-            // Read padding.
-            let mut pad = vec![0; padding_to_multiple(len, 8)];
-            io.read_exact(&mut pad)?;
-        }
-        Ok(())
-    }
-
-    // Read a filesystem path.
-    fn read_path<I: Read>(&mut self, io: &mut ByteIo<I, BigEndian>, len: usize) -> Result<PathBuf> {
-        let mut buf = vec![0; len];
-        io.read_exact(&mut buf)?;
-
-        #[cfg(unix)]
-        {
-            // Paths on Unix are arbitrary byte sequences.
-            Ok(From::from(OsStr::from_bytes(&buf)))
-        }
-        #[cfg(not(unix))]
-        {
-            // Windows paths must be represented as Unicode here.
-            let path = String::from_utf8_lossy(&buf).into_owned();
-            Ok(From::from(path))
-        }
-    }
-
-    // Read the version 3 header.
-    fn read_v3<I: ReadAt>(&mut self, io: &mut ByteIo<Cursor<I>, BigEndian>) -> Result<()> {
-        self.v3.incompatible.set(io.read_u64()?);
-        self.v3.compatible.set(io.read_u64()?);
-        self.v3.autoclear.set(io.read_u64()?);
-        self.v3.refcount_order = io.read_u32()?;
-        self.v3.header_length = io.read_u32()?;
-        let actual_length = io.get_ref().position();
-        if self.v3.header_length as u64 != actual_length {
-            return Err(Error::FileFormat(format!(
-                "header is {actual_length} bytes, file claims {}",
-                self.v3.header_length
-            )));
-        }
-        self.read_extensions(io)?;
-        if self.c.backing_file_offset != 0 {
-            if self.c.backing_file_offset != io.get_ref().position() {
+            if header.incompatible & 8 != 0 {
                 return Err(Error::FileFormat(
-                    "backing file offset not consistent with extensions".to_owned(),
+                    "compression feature requires a nonzero compression type".into(),
                 ));
             }
-            // Need an extra copy to defeat borrow checker.
-            // See https://github.com/rust-lang/rust/issues/29975
-            let backing_file_size = self.c.backing_file_size;
-            self.v3.backing_file_name = self.read_path(io, backing_file_size as usize)?;
         }
-
-        // Validation.
-        if self.v3.incompatible.enabled(INCOMPATIBLE_CORRUPT) {
-            return Err(Error::UnsupportedFeature("corrupt bit".to_owned()));
+        if backing_offset != 0 {
+            let limit = if version == 1 {
+                source_size.unwrap_or(u64::MAX)
+            } else {
+                header.cluster_size()
+            };
+            if backing_offset < header_length
+                || backing_size == 0
+                || backing_size > 1023
+                || backing_offset
+                    .checked_add(backing_size)
+                    .is_none_or(|end| end > limit)
+            {
+                return Err(Error::FileFormat("invalid backing filename range".into()));
+            }
+            check_range(
+                backing_offset,
+                backing_size,
+                source_size,
+                "backing filename",
+            )?;
+            let mut name = vec![0; backing_size as usize];
+            io.read_exact_at(backing_offset, &mut name)?;
+            if name.contains(&0) {
+                return Err(Error::FileFormat("NUL in backing filename".into()));
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::ffi::OsStringExt;
+                header.backing_name = Some(std::ffi::OsString::from_vec(name).into());
+            }
+            #[cfg(not(unix))]
+            {
+                header.backing_name = Some(
+                    String::from_utf8(name)
+                        .map_err(|_| Error::FileFormat("backing filename is not UTF-8".into()))?
+                        .into(),
+                );
+            }
         }
-        self.v3
-            .incompatible
-            .ensure_known(&self.v3.feature_name_table)?;
-        if self.v3.refcount_order > 6 {
-            return Err(Error::FileFormat(format!(
-                "bad refcount_order {}",
-                self.v3.refcount_order
-            )));
+        let mut feature_names = FeatureNameTable::default();
+        if version != 1 {
+            let limit = if backing_offset == 0 {
+                header.cluster_size()
+            } else {
+                backing_offset
+            };
+            let mut position = header_length;
+            let mut seen = HashSet::new();
+            while position < limit {
+                if limit - position < 8 {
+                    return Err(Error::FileFormat("truncated extension header".into()));
+                }
+                let mut record = [0; 8];
+                io.read_exact_at(position, &mut record)?;
+                let code = BigEndian::read_u32(&record[..4]);
+                let length = BigEndian::read_u32(&record[4..]) as u64;
+                position += 8;
+                if code == 0 {
+                    if length != 0 {
+                        return Err(Error::FileFormat("nonempty extension terminator".into()));
+                    }
+                    break;
+                }
+                let padded = div_ceil(length, 8) * 8;
+                if !seen.insert(code) || padded > limit - position {
+                    return Err(Error::FileFormat(
+                        "duplicate or out-of-bounds header extension".into(),
+                    ));
+                }
+                check_range(position, padded, source_size, "header extension")?;
+                let mut data = vec![0; length as usize];
+                io.read_exact_at(position, &mut data)?;
+                match code {
+                    0x6803_f857 => feature_names.read(&mut data.as_slice())?,
+                    0xe279_2aca => {
+                        if data.is_empty() || data.contains(&0) {
+                            return Err(Error::FileFormat("invalid backing format name".into()));
+                        }
+                        header.backing_format = Some(String::from_utf8(data).map_err(|_| {
+                            Error::FileFormat("invalid backing format encoding".into())
+                        })?);
+                    }
+                    _ => {}
+                }
+                position += padded;
+            }
+            if header.incompatible & 2 != 0 {
+                return Err(Error::UnsupportedFeature("corrupt image flag".into()));
+            }
+            let mut features = Feature::new(
+                FeatureKind::Incompatible,
+                &[
+                    "dirty",
+                    "corrupt",
+                    "external data file",
+                    "compression type",
+                    "extended L2 entries",
+                ],
+            );
+            features.set(header.incompatible & !1);
+            if features.bits() != 0 {
+                return Err(Error::UnsupportedFeature(
+                    features.to_string(&feature_names),
+                ));
+            }
         }
-        if actual_length != HEADER_LENGTH_V3 as u64 {
-            return Err(Error::Internal(format!(
-                "header must be {HEADER_LENGTH_V3} bytes, but we read {actual_length}"
-            )));
-        }
-        if io.get_ref().position() > self.cluster_size() {
-            return Err(Error::FileFormat(
-                "complete header too big for first cluster".to_owned(),
-            ));
-        }
-
-        Ok(())
+        Ok(header)
     }
-
-    pub fn read<I: ReadAt>(&mut self, io: &mut ByteIo<I, BigEndian>) -> Result<()> {
-        // The headers are best read sequentially, rather than positioned.
-        // So get a sequential cursor to read from.
-        let curs = Cursor::new(io.get_mut());
-        let mut io: ByteIo<_, BigEndian> = ByteIo::new(curs);
-
-        // Read the header.
-        self.read_common(&mut io)?;
-        if self.c.version == VERSION_3 {
-            self.read_v3(&mut io)?;
-        }
-        Ok(())
-    }
-
-    // How big is each cluster, in bytes?
     pub fn cluster_size(&self) -> u64 {
-        1 << self.c.cluster_bits
+        1 << self.cluster_bits
     }
-
-    // How big is the guest?
-    pub fn guest_size(&self) -> u64 {
-        self.c.size
-    }
-
-    // How many virtual blocks can there be?
-    pub fn max_virtual_blocks(&self) -> u64 {
-        div_ceil(self.c.size, self.cluster_size())
-    }
-
-    // How many entries are in an L2?
     pub fn l2_entries(&self) -> u64 {
-        self.cluster_size() / size_of::<u64>() as u64
+        1 << self.l2_bits
     }
+}
 
-    // How many entries are in an L1?
-    pub fn l1_entries(&self) -> u64 {
-        div_ceil(self.max_virtual_blocks(), self.l2_entries())
+pub(crate) fn check_range(
+    position: u64,
+    length: u64,
+    source_size: Option<u64>,
+    context: &str,
+) -> Result<()> {
+    let end = position
+        .checked_add(length)
+        .ok_or_else(|| Error::FileFormat(format!("{context} offset overflow")))?;
+    if source_size.is_some_and(|size| end > size) || end > i64::MAX as u64 {
+        return Err(Error::FileFormat(format!(
+            "{context} extends beyond source"
+        )));
     }
-
-    // Find how an offset fits in the guest block hierarchy.
-    // Returns (l1_l2_idx, l2_block_idx, block_offset).
-    pub fn guest_offset_info(&self, pos: u64) -> (u64, u64, u64) {
-        let (block_idx, block_offset) = div_rem(pos, self.cluster_size());
-        let (l1_l2_idx, l2_block_idx) = div_rem(block_idx, self.l2_entries());
-        (l1_l2_idx, l2_block_idx, block_offset)
-    }
+    Ok(())
 }

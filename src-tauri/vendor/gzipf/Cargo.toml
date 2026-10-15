@@ -1,0 +1,21 @@
+[package]
+name = "gzipf"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+license = "AGPL-3.0-only"
+description = "Read-only pure Rust GZIP member reader with integrity checks and seek support"
+readme = "README.md"
+publish = false
+
+[dependencies]
+crc32fast = "1.5"
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+uninlined_format_args = "warn"
+
+[workspace]

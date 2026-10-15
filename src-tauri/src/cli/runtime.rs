@@ -159,7 +159,16 @@ pub(super) fn capabilities() -> Result<Output, CliError> {
         "version": env!("CARGO_PKG_VERSION"), "platform": std::env::consts::OS,
         "backend_commands": catalog::commands()?.len(), "windowless": true,
         "qrcode": cfg!(feature = "qrcode-wechat"), "ocr": cfg!(feature = "ocr"),
-        "ocr_cuda": cfg!(feature = "ocr-cuda"), "dokan_mount": cfg!(target_os = "windows")
+        "ocr_cuda": cfg!(feature = "ocr-cuda"), "dokan_mount": cfg!(target_os = "windows"),
+        "session": {
+            "protocol": "jsonl", "protocol_version": 1,
+            "default_jobs": 1, "max_jobs": 64,
+            "response_order": "completion", "correlation_field": "id",
+            "references": "prior-successful-result-json-pointer",
+            "non_parallel_commands": "barrier",
+            "stdout": "responses", "events": "stderr",
+            "max_line_bytes": 16 * 1024 * 1024, "max_requests": 10000
+        }
     })))
 }
 
@@ -200,8 +209,9 @@ async fn execute(app: &tauri::AppHandle, matches: &ArgMatches) -> Result<i32, Cl
             )
             .await?;
         }
-        Some(("session", _)) => {
-            failed = workflow::json_lines(app, &mut shell, &mut std::io::stdin().lock()).await?;
+        Some(("session", args)) => {
+            let jobs = args.get_one::<u32>("jobs").copied().unwrap_or(1) as usize;
+            failed = super::session::json_lines(app, &mut shell, jobs).await?;
         }
         Some(("run", args)) => {
             let path = args

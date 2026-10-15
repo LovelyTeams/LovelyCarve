@@ -101,6 +101,26 @@ impl DiskImage {
                 })
                 .into_iter()
                 .collect(),
+            ImageSource::SplitRaw { reader } => reader
+                .segments()
+                .iter()
+                .map(|segment| SourceFileSnapshot {
+                    path: segment.path.clone(),
+                    len: segment.len,
+                    modified_unix_ms: segment.modified.and_then(unix_ms),
+                    created_unix_ms: segment.created.and_then(unix_ms),
+                })
+                .collect(),
+            ImageSource::Phdi { reader } => reader
+                .source_files()
+                .iter()
+                .map(|source| SourceFileSnapshot {
+                    path: source.path.clone(),
+                    len: source.len,
+                    modified_unix_ms: source.modified.and_then(unix_ms),
+                    created_unix_ms: source.created.and_then(unix_ms),
+                })
+                .collect(),
             ImageSource::Ewf { reader, .. } => reader
                 .lock()
                 .segment_file_snapshots()

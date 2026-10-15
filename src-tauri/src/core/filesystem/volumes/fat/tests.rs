@@ -129,14 +129,20 @@ impl Fixture {
     }
 
     fn open(&self) -> (tempfile::NamedTempFile, FatVolume) {
+        self.open_at(0)
+    }
+
+    fn open_at(&self, base_offset: usize) -> (tempfile::NamedTempFile, FatVolume) {
+        assert!(base_offset.is_multiple_of(512));
         let mut temporary = tempfile::NamedTempFile::new().unwrap();
+        temporary.write_all(&vec![0; base_offset]).unwrap();
         temporary.write_all(&self.bytes).unwrap();
         temporary.flush().unwrap();
         let image = Arc::new(DiskImage::open(temporary.path()).unwrap());
         let partition = Partition {
             id: 0,
             kind: PartitionKind::Fat12,
-            start_lba: 0,
+            start_lba: base_offset as u64 / image.sector_size as u64,
             length_lba: self.bytes.len() as u64 / image.sector_size as u64,
             label: None,
             unique_guid: None,
@@ -274,4 +280,104 @@ fn fat_keeps_same_name_deleted_records_with_distinct_ids() {
         crate::core::filesystem::deleted::parse_run_id(&nodes[1].id),
         Some((fixture.cluster_offset(5) as u64, 1100))
     );
+}
+
+#[test]
+fn fat_deleted_metadata_uses_absolute_fixed_root_offsets() {
+    for format in [Format::Fat12, Format::Fat16] {
+        for sector_size in [512, 8192] {
+            let mut fixture = Fixture::new(format, sector_size);
+            let root_offset = fixture.root_sector * sector_size;
+            let mut entry: [u8; 32] = fixture.bytes[root_offset..root_offset + 32]
+                .try_into()
+                .unwrap();
+            entry[0] = 0xe5;
+            fixture.bytes[root_offset + 32..root_offset + 64].copy_from_slice(&entry);
+            // A zero-length deleted directory still has a metadata address.
+            entry[11] = 0x10;
+            entry[26..32].fill(0);
+            fixture.bytes[root_offset + 64..root_offset + 96].copy_from_slice(&entry);
+            let base_offset = 4 * 512;
+            let (temporary, volume) = fixture.open_at(base_offset);
+            let nodes = volume.children_with_deleted("").unwrap();
+            assert_eq!(
+                nodes
+                    .iter()
+                    .map(|node| (node.deleted, node.inode))
+                    .collect::<Vec<_>>(),
+                vec![
+                    (false, Some((base_offset + root_offset) as u64)),
+                    (true, Some((base_offset + root_offset + 32) as u64)),
+                    (true, Some((base_offset + root_offset + 64) as u64)),
+                ]
+            );
+            let root_id = hex::encode("part:0");
+            assert_eq!(nodes[2].id, format!("deleted:fat:part:0:{root_id}:64"));
+            assert_eq!(
+                std::fs::read(temporary.path()).unwrap(),
+                [vec![0; base_offset], fixture.bytes].concat()
+            );
+        }
+    }
+}
+
+#[test]
+fn fat_deleted_metadata_follows_fragmented_directory_clusters() {
+    for format in [Format::Fat12, Format::Fat16, Format::Fat32] {
+        let mut fixture = Fixture::new(format, 512);
+        let root_offset = fixture.root_sector * 512;
+        let mut entry: [u8; 32] = fixture.bytes[root_offset..root_offset + 32]
+            .try_into()
+            .unwrap();
+        // The directory traverses a later physical cluster before an earlier one.
+        fixture.set_link(9, 3);
+        fixture.set_link(3, 0xffffffff);
+        let path = if matches!(format, Format::Fat32) {
+            fixture.set_link(2, 9);
+            ""
+        } else {
+            let mut directory = [0u8; 32];
+            directory[..11].copy_from_slice(b"FOLDER     ");
+            directory[11] = 0x10;
+            directory[26..28].copy_from_slice(&9u16.to_le_bytes());
+            fixture.bytes[root_offset + 32..root_offset + 64].copy_from_slice(&directory);
+            "/FOLDER"
+        };
+        entry[0] = 0xe5;
+        let first_offset = fixture.cluster_offset(9) + 32;
+        let second_offset = fixture.cluster_offset(3) + 64;
+        fixture.bytes[first_offset..first_offset + 32].copy_from_slice(&entry);
+        fixture.bytes[second_offset..second_offset + 32].copy_from_slice(&entry);
+        let base_offset = 4 * 512;
+        let (_temporary, volume) = fixture.open_at(base_offset);
+        let nodes: Vec<_> = volume
+            .children_with_deleted(path)
+            .unwrap()
+            .into_iter()
+            .filter(|node| node.deleted)
+            .collect();
+        assert_eq!(
+            nodes
+                .iter()
+                .map(|node| (node.name.as_str(), node.inode))
+                .collect::<Vec<_>>(),
+            vec![
+                ("_AYLOAD.BIN", Some((base_offset + first_offset) as u64)),
+                ("_AYLOAD.BIN", Some((base_offset + second_offset) as u64)),
+            ]
+        );
+        let preceding_bytes = if matches!(format, Format::Fat32) {
+            512
+        } else {
+            0
+        };
+        let parent_id = hex::encode(volume.node_id(path));
+        let data_offset = base_offset + fixture.cluster_offset(5);
+        assert_eq!(
+            nodes.iter().map(|node| node.id.clone()).collect::<Vec<_>>(),
+            [preceding_bytes + 32, preceding_bytes + 512 + 64].map(|slot_offset| {
+                format!("deleted:run:part:0:fat:{parent_id}:{slot_offset}:0x{data_offset:x}:0x44c")
+            })
+        );
+    }
 }

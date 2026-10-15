@@ -4,13 +4,17 @@ import hashlib
 import ctypes
 from ctypes import wintypes
 import json
+import io
 import os
+import queue
 from pathlib import Path
 import struct
 import subprocess
 import signal
 import sys
 import tempfile
+import tarfile
+import threading
 import zlib
 
 
@@ -37,9 +41,256 @@ def main():
         assert any(command["name"] == "fs_media_temp" for command in catalog)
         capabilities = json.loads(run(["capabilities", "--json"]).stdout)
         assert capabilities["windowless"] and capabilities["backend_commands"] == len(catalog)
+        assert capabilities["session"]["max_jobs"] == 64
+        assert next(command for command in catalog if command["name"] == "fs_read_range")["parallel"]
+        assert not next(command for command in catalog if command["name"] == "image_unload")["parallel"]
         run(["--help"])
         run(["fs-read", "--help"])
         run(["--unknown"], expected=2)
+        run(["session", "--jobs", "0"], expected=2)
+        run(["session", "--jobs", "65"], expected=2)
+
+        concurrent_requests = [
+            {"id": "open", "command": "image_load", "args": {"path": str(evidence)}},
+            {"id": "cd", "command": "cd", "args": {"path": evidence.name}},
+            {"id": "read", "command": "fs_read_range", "args": {"nodeId": node, "offset": 0, "length": 8}},
+            {"id": "digest", "command": "fs_digest", "args": {"nodeId": node, "algos": ["sha256"]}},
+            {"id": "stat", "command": "stat", "args": {"path": "hello.txt"}},
+            {"id": "dependent", "command": "fs_read_range", "args": {"nodeId": {"$ref": "stat#/node_id"}, "offset": 0, "length": 8}},
+            {"id": "bad", "command": "image_list", "args": {"typo": True}},
+            {"id": "invalid-args", "command": "image_list", "args": []},
+            {"id": "wait", "command": "wait"},
+            {"id": "close", "command": "image_unload", "args": {"imageId": {"$ref": "open#/id"}}},
+            {"id": "remaining", "command": "image_list"},
+        ]
+        result = run(["session", "--jobs", "4"], "\n".join(json.dumps(request) for request in concurrent_requests), expected=1)
+        concurrent_rows = {row["id"]: row for row in map(json.loads, result.stdout.splitlines())}
+        assert len(concurrent_rows) == len(concurrent_requests), result.stdout
+        assert concurrent_rows["read"]["result"]["data"] == content[:8].hex()
+        assert concurrent_rows["dependent"]["result"] == concurrent_rows["read"]["result"]
+        assert concurrent_rows["digest"]["result"]["sha256"] == hashlib.sha256(content).hexdigest()
+        assert concurrent_rows["remaining"]["result"] == []
+        assert all("result" in row for key, row in concurrent_rows.items() if key not in {"bad", "invalid-args"}), concurrent_rows
+        assert all("code" in concurrent_rows[key]["error"] and "message" in concurrent_rows[key]["error"] for key in ["bad", "invalid-args"])
+
+        # AI clients keep stdin open and wait for a response before sending more.
+        process = subprocess.Popen([str(executable), "--image", str(evidence), "session", "-j", "4"],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True, encoding="utf-8", cwd=root)
+        response_queue = queue.Queue()
+        reader_thread = threading.Thread(target=lambda: response_queue.put(process.stdout.readline()), daemon=True)
+        try:
+            process.stdin.write(json.dumps({"id": "live", "command": "fs_read_range", "args": {"nodeId": node, "offset": 0, "length": 8}}) + "\n")
+            process.stdin.flush()
+            reader_thread.start()
+            live = json.loads(response_queue.get(timeout=30))
+            assert live == {"id": "live", "result": concurrent_rows["read"]["result"]}, live
+            assert process.poll() is None, "session exited before stdin EOF"
+            process.stdin.close()
+            process.wait(timeout=30)
+            assert process.returncode == 0, process.stderr.read()
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            for stream in [process.stdin, process.stdout, process.stderr]:
+                stream.close()
+            reader_thread.join(timeout=5)
+
+        # Optional private evidence stays outside the repository. Compare actual
+        # filesystem queries and bounded bytes between serial and parallel runs.
+        real_image = os.environ.get("LOVELYCARVE_CLI_TEST_IMAGE")
+        if real_image:
+            def real_queries(jobs):
+                # Keep one evidence session per mode, avoiding repeated E01 opens.
+                with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as diagnostics:
+                    process = subprocess.Popen([str(executable), "--image", real_image, "session", "--jobs", str(jobs)],
+                                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=diagnostics,
+                                               text=True, encoding="utf-8", cwd=root)
+                    replies = queue.Queue()
+                    def collect():
+                        for line in process.stdout:
+                            replies.put(line)
+                        replies.put(None)
+                    thread = threading.Thread(target=collect, daemon=True)
+                    thread.start()
+                    def batch(requests):
+                        for request in requests:
+                            process.stdin.write(json.dumps(request) + "\n")
+                        process.stdin.flush()
+                        pending = {request["id"] for request in requests}
+                        results = {}
+                        while pending:
+                            line = replies.get(timeout=120)
+                            assert line is not None, "real evidence session ended early"
+                            row = json.loads(line)
+                            assert row["id"] in pending and "result" in row, row
+                            pending.remove(row["id"])
+                            results[row["id"]] = row["result"]
+                        return results
+                    try:
+                        roots = batch([{"id": "roots", "command": "fs_children", "args": {"parentId": ""}}])
+                        directories = [entry["id"] for entry in roots["roots"] if entry["kind"] == "dir"][:4]
+                        requests = [{"id": f"dir-{index}", "command": "fs_children", "args": {"parentId": parent}}
+                                    for index, parent in enumerate(directories)]
+                        assert requests, "real evidence has no browsable volumes"
+                        directory_rows = batch(requests)
+                        files = sorted((entry for entries in directory_rows.values() for entry in entries
+                                        if entry["kind"] == "file" and entry["size"] > 0 and not entry["deleted"]),
+                                       key=lambda entry: entry["id"])[:4]
+                        # Files may live below a filesystem's top-level directories.
+                        children = sorted(entry["id"] for entries in directory_rows.values() for entry in entries
+                                          if entry["kind"] == "dir" and not entry["deleted"])[:8]
+                        if not files and children:
+                            nested = batch([{"id": f"nested-{index}", "command": "fs_children", "args": {"parentId": parent}}
+                                            for index, parent in enumerate(children)])
+                            directory_rows.update(nested)
+                            files = sorted((entry for entries in nested.values() for entry in entries
+                                            if entry["kind"] == "file" and entry["size"] > 0 and not entry["deleted"]),
+                                           key=lambda entry: entry["id"])[:4]
+                        assert files, "real evidence has no file for bounded read verification"
+                        byte_requests = [{"id": f"bytes-{index}", "command": "fs_read_range", "args": {
+                            "nodeId": entry["id"], "offset": 0, "length": min(4096, entry["size"])}}
+                            for index, entry in enumerate(files)]
+                        byte_rows = batch(byte_requests)
+                        process.stdin.close()
+                        process.wait(timeout=120)
+                        assert process.returncode == 0
+                        return directory_rows, byte_rows
+                    finally:
+                        if process.poll() is None:
+                            process.kill()
+                            process.wait()
+                        thread.join(timeout=5)
+                        process.stdin.close()
+                        process.stdout.close()
+            serial_directories, serial_bytes = real_queries(1)
+            parallel_directories, parallel_bytes = real_queries(4)
+            assert parallel_directories == serial_directories, "real evidence directory queries differ under concurrency"
+            assert parallel_bytes == serial_bytes, "real evidence range reads differ under concurrency"
+            print(f"Real evidence concurrency passed: {len(serial_directories)} directories, {len(serial_bytes)} bounded file reads", flush=True)
+
+        # Parallels: an independently built split plain/sparse disk is exposed
+        # as guest bytes by the same image_load/export/unload command surface.
+        phdi_bundle = root / "Parallels evidence.hdd"
+        phdi_bundle.mkdir()
+        phdi_plain = b"plain guest sector".ljust(512, b"\0")
+        (phdi_bundle / "plain.hds").write_bytes(phdi_plain)
+        phdi_sparse = bytearray(1024)
+        phdi_sparse[:16] = b"WithoutFreeSpace"
+        for offset, value in [(16, 2), (28, 1), (32, 2), (48, 1), (64, 1)]:
+            struct.pack_into("<I", phdi_sparse, offset, value)
+        struct.pack_into("<Q", phdi_sparse, 36, 2)
+        phdi_sparse[512:] = b"sparse guest sector".ljust(512, b"\0")
+        (phdi_bundle / "sparse.hds").write_bytes(phdi_sparse)
+        phdi_descriptor = """<?xml version="1.0" encoding="UTF-8"?>
+<Parallels_disk_image Version="1.0"><Disk_Parameters><Disk_size>3</Disk_size></Disk_Parameters>
+<StorageData><Storage><Start>0</Start><End>1</End><Blocksize>1</Blocksize><Image>
+<GUID>{11111111-1111-1111-1111-111111111111}</GUID><Type>Plain</Type><File>plain.hds</File>
+</Image></Storage><Storage><Start>1</Start><End>3</End><Blocksize>1</Blocksize><Image>
+<GUID>{11111111-1111-1111-1111-111111111111}</GUID><Type>Compressed</Type><File>sparse.hds</File>
+</Image></Storage></StorageData></Parallels_disk_image>"""
+        (phdi_bundle / "DiskDescriptor.xml").write_text(phdi_descriptor, encoding="utf-8")
+        for suffix, source_path in [("bundle", phdi_bundle), ("descriptor", phdi_bundle / "DiskDescriptor.xml")]:
+            destination = root / f"phdi-{suffix}.raw"
+            requests = [
+                {"id": "open", "command": "image_load", "args": {"path": str(source_path)}},
+                {"id": "export", "command": "image_export_raw", "args": {
+                    "destination": str(destination), "taskId": f"phdi-{suffix}", "readFaultPolicy": "strict"}},
+                {"id": "close", "command": "image_unload", "args": {"imageId": {"$ref": "open#/id"}}},
+            ]
+            result = run(["session"], "\n".join(json.dumps(request) for request in requests))
+            rows = [json.loads(line) for line in result.stdout.splitlines()]
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["source_format"] == "phdi", rows
+            assert destination.read_bytes() == phdi_plain + bytes(phdi_sparse[512:]) + bytes(512)
+            assert (phdi_bundle / "plain.hds").read_bytes() == phdi_plain
+            assert (phdi_bundle / "sparse.hds").read_bytes() == phdi_sparse
+
+        # A recognized corrupt descriptor must fail, rather than become RAW.
+        (phdi_bundle / "DiskDescriptor.xml").write_text("broken", encoding="utf-8")
+        result = run(["session"], json.dumps({"id": "broken-phdi", "command": "image_load", "args": {
+            "path": str(phdi_bundle / "DiskDescriptor.xml")}}), expected=1)
+        assert "error" in json.loads(result.stdout), result
+
+        # The actual generated image_load dispatch must accept transient QCOW
+        # credentials, export logical bytes, and preserve the source image.
+        qcow_fixtures = Path(__file__).resolve().parents[1] / "src-tauri/vendor/qcow2/tests/data"
+        qcow_plain = (qcow_fixtures / "plain.bin").read_bytes()
+        qcow_key_hex = (b"qcow-test" + bytes(7)).hex()
+        for version in (1, 2, 3):
+            for encoding, credential in [("deflate", {}), ("aes", {"qcowPassword": "qcow-test"}),
+                                         ("aes", {"qcowKeyHex": qcow_key_hex})]:
+                source_path = qcow_fixtures / f"v{version}-{encoding}.qcow"
+                original = source_path.read_bytes()
+                destination = root / f"qcow-{version}-{encoding}-{len(credential)}-{list(credential)}.raw"
+                requests = [
+                    {"id": "open", "command": "image_load", "args": {"path": str(source_path), **credential}},
+                    {"id": "export", "command": "image_export_raw", "args": {
+                        "destination": str(destination), "taskId": "qcow-export", "readFaultPolicy": "strict"}},
+                    {"id": "close", "command": "image_unload", "args": {"imageId": {"$ref": "open#/id"}}},
+                ]
+                result = run(["session"], "\n".join(json.dumps(request) for request in requests))
+                rows = [json.loads(line) for line in result.stdout.splitlines()]
+                assert all("result" in row for row in rows), rows
+                assert rows[0]["result"]["source_format"] == "qcow2", rows
+                expected = qcow_plain + bytes(4096) if encoding == "deflate" else bytes(4096) + qcow_plain
+                assert destination.read_bytes() == expected
+                assert source_path.read_bytes() == original
+                assert "qcow-test" not in result.stdout + result.stderr
+                assert qcow_key_hex not in result.stdout + result.stderr
+        for credential in [{}, {"qcowPassword": "qcow-test", "qcowKeyHex": qcow_key_hex},
+                           {"qcowKeyHex": "aa"}, {"qcowPassword": "非 ASCII"}]:
+            request = {"id": "invalid", "command": "image_load", "args": {
+                "path": str(qcow_fixtures / "v2-aes.qcow"), **credential}}
+            result = run(["session"], json.dumps(request), expected=1)
+            assert "error" in json.loads(result.stdout), result
+
+        # Independent Python/zlib multi-member GZIP through the actual evidence
+        # commands: headers/data may cross member boundaries, including empties.
+        tar_stream = io.BytesIO()
+        with tarfile.open(fileobj=tar_stream, mode="w") as archive:
+            for name, data in [("first.txt", b"first"), ("second.txt", content)]:
+                header = tarfile.TarInfo(name)
+                header.size = len(data)
+                archive.addfile(header, io.BytesIO(data))
+        tar_bytes = tar_stream.getvalue()
+        gzip_bytes = b"".join(gzip.compress(chunk, mtime=0) for chunk in
+                              [b"", tar_bytes[:600], tar_bytes[600:1300], tar_bytes[1300:], b""])
+        for suffix in [".tgz", ".tar.gz"]:
+            compressed_tar = root / ("multi-member" + suffix)
+            compressed_tar.write_bytes(gzip_bytes)
+            output = root / ("gzip-read" + suffix + ".txt")
+            requests = [
+                {"id": "open", "command": "image_load", "args": {"path": str(compressed_tar)}},
+                {"id": "children", "command": "fs_children", "args": {"parentId": "tar:"}},
+                {"id": "read", "command": "fs_read", "args": {"nodeId": "tar:" + b"second.txt".hex()}, "output": str(output)},
+                {"id": "digest", "command": "fs_digest", "args": {"nodeId": "tar:" + b"second.txt".hex(), "algos": ["sha256"]}},
+                {"id": "wait", "command": "wait"},
+                {"id": "close", "command": "image_unload", "args": {"imageId": {"$ref": "open#/id"}}},
+            ]
+            result = run(["session"], "\n".join(json.dumps(request) for request in requests))
+            rows = {row["id"]: row for row in map(json.loads, result.stdout.splitlines())}
+            assert all("result" in row for row in rows.values()), rows
+            assert rows["open"]["result"]["source_format"] == "tar", rows
+            assert output.read_bytes() == content
+            assert rows["digest"]["result"]["sha256"] == hashlib.sha256(content).hexdigest()
+            assert compressed_tar.read_bytes() == gzip_bytes
+
+        # A bad trailer after a valid tar must not publish a partial tar tree.
+        # Preserve the extension probe's existing RAW fallback for inspection.
+        corrupt_gzip = bytearray(gzip_bytes)
+        corrupt_gzip[-8] ^= 1
+        corrupt_tar = root / "corrupt-tail.tgz"
+        corrupt_tar.write_bytes(corrupt_gzip)
+        requests = [
+            {"id": "open", "command": "image_load", "args": {"path": str(corrupt_tar)}},
+            {"id": "close", "command": "image_unload", "args": {"imageId": {"$ref": "open#/id"}}},
+        ]
+        result = run(["session"], "\n".join(json.dumps(request) for request in requests))
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        assert all("result" in row for row in rows), rows
+        assert rows[0]["result"]["source_format"] == "raw", rows
 
         encrypted_fixtures = Path(__file__).resolve().parents[1] / "src-tauri/tests/data/encrypted"
         plaintext = (encrypted_fixtures / "plain.img").read_bytes()
@@ -204,6 +455,34 @@ export hello.txt "{exported}"
         assert rows[3]["result"]["artifacts_found"] == 1, rows
         assert rows[4]["result"]["recovered"] == 1, rows
         assert next(recovered.glob("*.png")).read_bytes() == png
+
+        # Split RAW exports must include every member, including unaligned cuts.
+        split_bytes = bytes(range(256)) * 513
+        split_first = root / "split evidence.raw.001"
+        split_second = root / "split evidence.raw.002"
+        split_third = root / "split evidence.raw.003"
+        split_first.write_bytes(split_bytes[:517])
+        split_second.write_bytes(split_bytes[517:65539])
+        split_third.write_bytes(split_bytes[65539:])
+        split_export = root / "split-export.raw"
+        requests = [
+            {"id": "open", "command": "image_load", "args": {"path": str(split_first)}},
+            {"id": "export", "command": "image_export_raw", "args": {"destination": str(split_export), "taskId": "split-export", "readFaultPolicy": "strict"}},
+            {"id": "close", "command": "image_unload", "args": {"imageId": {"$ref": "open#/id"}}},
+        ]
+        result = run(["session"], "\n".join(json.dumps(request) for request in requests))
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        assert all("result" in row for row in rows), rows
+        assert rows[0]["result"]["source_format"] == "raw", rows
+        assert rows[0]["result"]["size_bytes"] == len(split_bytes), rows
+        assert split_export.read_bytes() == split_bytes
+        assert split_first.read_bytes() == split_bytes[:517]
+        assert split_second.read_bytes() == split_bytes[517:65539]
+        assert split_third.read_bytes() == split_bytes[65539:]
+        split_second.unlink()
+        requests = [{"id": "open", "command": "image_load", "args": {"path": str(split_first)}}]
+        result = run(["session"], "\n".join(json.dumps(request) for request in requests), expected=1)
+        assert "error" in json.loads(result.stdout.splitlines()[0]), result.stdout
 
         # Read and export actual EWF evidence through the public headless commands.
         fixtures = Path(__file__).resolve().parents[1] / "src-tauri/vendor/ewf/tests/data"

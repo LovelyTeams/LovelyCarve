@@ -1,14 +1,16 @@
 <template>
-  <section class="about-panel" aria-label="软件信息">
+  <section class="about-panel" :aria-label="tr('软件信息')">
     <div class="about-name"><BrandMark :size="24" /><strong>LovelyCarve</strong></div>
     <dl class="about-details">
-      <div><dt>软件版本</dt><dd class="mono">v{{ version }}</dd></div>
-      <div><dt>构建时间（本地）</dt><dd>{{ buildTime }}</dd></div>
+      <div><dt>{{ tr("软件版本") }}</dt><dd class="mono">v{{ version }}</dd></div>
+      <div><dt>{{ tr("构建时间（本地）") }}</dt><dd>{{ buildTime }}</dd></div>
     </dl>
   </section>
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { computed } from 'vue';
 import BrandMark from '../../../components/display/BrandMark.vue';
 import { useAppVersion } from '../../../composables/useAppVersion';
@@ -17,7 +19,7 @@ import { formatEpochSeconds } from '../../../utils/format';
 const { version, buildDate } = useAppVersion();
 const buildTime = computed(() => {
   const timestamp = Date.parse(buildDate);
-  return Number.isFinite(timestamp) ? formatEpochSeconds(timestamp / 1000, { precision: 'seconds' }) : '未知';
+  return Number.isFinite(timestamp) ? formatEpochSeconds(timestamp / 1000, { precision: 'seconds' }) : tr("未知");
 });
 </script>
 

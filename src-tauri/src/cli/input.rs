@@ -36,7 +36,16 @@ pub(super) fn parser() -> Result<Command, CliError> {
         .subcommand(Command::new("shell").about("交互终端（默认）；help 查看命令，exit 退出"))
         .subcommand(Command::new("capabilities").about("查看本构建启用的功能与运行平台"))
         .subcommand(
-            Command::new("session").about("stdin/stdout JSONL 有状态协议；EOF 等待任务后退出"),
+            Command::new("session")
+                .about("stdin/stdout JSONL 有状态协议；EOF 等待任务后退出")
+                .arg(
+                    Arg::new("jobs")
+                        .long("jobs")
+                        .short('j')
+                        .default_value("1")
+                        .value_parser(clap::value_parser!(u32).range(1..=64))
+                        .help("并发查询数（1–64）；上下文与修改操作顺序执行"),
+                ),
         )
         .subcommand(
             Command::new("run")
@@ -439,6 +448,27 @@ mod tests {
     #[test]
     fn generated_clap_commands_do_not_collide() {
         parser().unwrap().debug_assert();
+    }
+
+    #[test]
+    fn session_jobs_are_bounded_and_default_to_sequential() {
+        let matches = parser()
+            .unwrap()
+            .try_get_matches_from(["lovelycarve-cli", "session"])
+            .unwrap();
+        assert_eq!(
+            matches
+                .subcommand_matches("session")
+                .unwrap()
+                .get_one::<u32>("jobs"),
+            Some(&1)
+        );
+        for value in ["0", "65", "no"] {
+            assert!(parser()
+                .unwrap()
+                .try_get_matches_from(["lovelycarve-cli", "session", "--jobs", value])
+                .is_err());
+        }
     }
 
     #[test]

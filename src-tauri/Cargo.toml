@@ -106,6 +106,7 @@ fs2 = "0.4.3"
 # te、archive、endian_fd，满足 Object::parse。
 goblin = "0.10.7"
 gpt = { path = "vendor/gpt" }
+gzipf = { path = "vendor/gzipf" }
 hex = "0.4.3"
 hfsplus = { path = "vendor/hfsplus" }
 # 原类型视图「文字识别（OCR）」把文件字节解成 RgbImage 喂给 oar-ocr（仅 `ocr` feature）。
@@ -146,6 +147,7 @@ opencv = { version = "0.101.1", optional = true, default-features = false }
 # build script 在构建期拉取并静态链接 ONNX Runtime，运行时无需额外 DLL。
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["ndarray", "std", "download-binaries", "tls-native"] }
 parking_lot = "0.12.5"
+phdi = { path = "vendor/phdi" }
 plist = "1.10.1"
 qcow2 = { path = "vendor/qcow2" }
 quick-xml = "0.42.0"
@@ -173,6 +175,7 @@ sevenz-rust2 = { version = "0.24.0", default-features = false }
 sha1 = "0.11.0"
 sha2 = "0.11.0"
 sm3 = "0.5.0"
+smraw = { path = "vendor/smraw" }
 sqlite-core = { path = "vendor/sqlite-core" }
 tar = "0.4.46"
 tauri = { version = "2.12.3", features = ["protocol-asset"] }
@@ -306,6 +309,8 @@ opt-level = 3
 [profile.release.package.sm3]
 opt-level = 3
 [profile.release.package.crc32fast]
+opt-level = 3
+[profile.release.package.gzipf]
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3

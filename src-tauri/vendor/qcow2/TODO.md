@@ -1,29 +1,12 @@
-* tests
-  * coverage?
+# Explicitly unsupported capabilities
 
-* v3 header
-  * more extensions?
-  * more publicly available metadata
+- QCOW LUKS payloads and crypt-header indirection.
+- Zstd compressed clusters and extended L2/subclusters.
+- External data-file layouts.
+- Historical internal snapshot selection (count is available).
+- Writes, refcount repair, compaction, merging and resizing.
+- Automatic path-open cancellation and arbitrary legacy filename codepages.
 
-* read guest blocks
-  * snapshots
-
-* features
-  * compression
-  * v2
-  * backing file
-  * encryption
-  * dirty bit / repair
-  * dirty bitmap?
-
-* parse contents
-  * partitions
-  * ext4
-  * discard
-
-* writing
-  * write guest blocks
-  * moving blocks around
-  * compaction
-
-* cargo fmt
+The current supported scope and complete libqcow API comparison are documented
+in LOVELYCARVE.md and ../../../docs/formats/QCOW.md. Unsupported layouts fail
+explicitly instead of being interpreted as ordinary clusters.

@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, ref, useId } from 'vue';
 import { checkRecoveryKey } from '../model/bitlockerRecoveryKey';
 
@@ -13,7 +15,7 @@ export function useBitlockerCredentials() {
   // Recovery key: a finished group that fails the checksum is flagged as soon as
   // it is typed; what is merely missing waits until the user submits or leaves
   // the field, so a half-typed key never reads as an error.
-  const recoveryCheck = computed(() => checkRecoveryKey(recoveryInput.value));
+  const recoveryCheck = computed(() => checkRecoveryKey(recoveryInput.value, tr));
   const recoveryTouched = ref(false);
   const recoveryNoteId = useId();
   const recoveryError = computed(() => recoveryCheck.value.groupError

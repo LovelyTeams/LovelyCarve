@@ -12,6 +12,10 @@ pub(super) enum ImageSource {
         size_bytes: u64,
         format: ImageFormat,
     },
+    /// Read-only split RAW; positioned I/O spans all source members.
+    SplitRaw {
+        reader: smraw::RawImage,
+    },
     Ewf {
         // parking_lot's eventual-fairness lock: under sustained contention
         // (e.g. a long fs_digest hashing loop racing fs_children), it
@@ -30,6 +34,9 @@ pub(super) enum ImageSource {
     Qcow2 {
         reader: qcow2::Qcow2<File>,
         size_bytes: u64,
+    },
+    Phdi {
+        reader: phdi::PhdiImage,
     },
     Vdi {
         reader: vdi::VdiDisk,
@@ -75,25 +82,35 @@ pub(super) enum ImageSource {
     /// mmap held inside the `DockerImage`, so the hex view still sees the
     /// raw on-disk bytes; navigation and file reads go through the merged
     /// container filesystem in `core::filesystem::tree::fs_tree`'s docker dispatch branch.
-    Docker { image: Arc<DockerImage> },
+    Docker {
+        image: Arc<DockerImage>,
+    },
     /// Plain `.tar` archive. Reads are served from the outer-tar mmap held
     /// inside the `TarImage` (so hex sees the raw on-disk bytes); navigation
     /// and file reads go through the merged file tree in `core::filesystem::tree::fs_tree`'s tar
     /// dispatch branch.
-    Tar { image: Arc<TarImage> },
+    Tar {
+        image: Arc<TarImage>,
+    },
     /// `.zip` archive. Reads (`read_range`) are served from the outer-zip mmap
     /// held inside the `ZipImage` (so hex sees the raw on-disk bytes);
     /// navigation and file reads go through the merged file tree in
     /// `core::filesystem::tree::fs_tree`'s zip dispatch branch, which decompresses members.
-    Zip { image: Arc<ZipImage> },
+    Zip {
+        image: Arc<ZipImage>,
+    },
     /// `.7z` archive. Reads (`read_range`) are served from the outer 7z mmap
     /// for hex / raw export; navigation and file reads go through the logical
     /// archive tree and decompress members on demand.
-    Sevenz { image: Arc<SevenzImage> },
+    Sevenz {
+        image: Arc<SevenzImage>,
+    },
     /// AD1 logical image. Reads (`read_range`) are served from the segment
     /// mmaps held inside the `Ad1Image`, back to back; navigation and file
     /// reads go through the item tree and inflate data chunks on demand.
-    Ad1 { image: Arc<Ad1Image> },
+    Ad1 {
+        image: Arc<Ad1Image>,
+    },
     /// Host-attached physical disk opened via positioned reads (no mmap —
     /// Windows physical-drive handles can't be mmap'd, and block devices
     /// on Linux/macOS don't have a stable in-memory representation). The
@@ -139,6 +156,11 @@ impl std::fmt::Debug for ImageSource {
                 .field("size_bytes", size_bytes)
                 .field("format", format)
                 .finish(),
+            Self::SplitRaw { reader } => f
+                .debug_struct("SplitRaw")
+                .field("size_bytes", &reader.media_size())
+                .field("segments", &reader.segments().len())
+                .finish(),
             Self::Ewf {
                 size_bytes,
                 sector_size,
@@ -155,6 +177,10 @@ impl std::fmt::Debug for ImageSource {
             Self::Qcow2 { size_bytes, .. } => f
                 .debug_struct("Qcow2")
                 .field("size_bytes", size_bytes)
+                .finish(),
+            Self::Phdi { reader } => f
+                .debug_struct("Phdi")
+                .field("size_bytes", &reader.media_size())
                 .finish(),
             Self::Vdi {
                 size_bytes,
@@ -252,9 +278,11 @@ impl ImageSource {
         match self {
             Self::Indexed { format, .. } => *format,
             Self::Raw { format, .. } => *format,
+            Self::SplitRaw { .. } => ImageFormat::Raw,
             Self::Ewf { .. } => ImageFormat::Ewf,
             Self::Vmdk { .. } => ImageFormat::Vmdk,
             Self::Qcow2 { .. } => ImageFormat::Qcow2,
+            Self::Phdi { .. } => ImageFormat::Phdi,
             Self::Vdi { .. } => ImageFormat::Vdi,
             Self::VhdFamily { format, .. } => *format,
             Self::Dmg { .. } => ImageFormat::Dmg,
@@ -275,9 +303,11 @@ impl ImageSource {
         match self {
             Self::Indexed { size_bytes, .. } => *size_bytes,
             Self::Raw { size_bytes, .. } => *size_bytes,
+            Self::SplitRaw { reader } => reader.media_size(),
             Self::Ewf { size_bytes, .. } => *size_bytes,
             Self::Vmdk { size_bytes, .. } => *size_bytes,
             Self::Qcow2 { size_bytes, .. } => *size_bytes,
+            Self::Phdi { reader } => reader.media_size(),
             Self::Vdi { size_bytes, .. } => *size_bytes,
             Self::VhdFamily { size_bytes, .. } => *size_bytes,
             Self::Dmg { size_bytes, .. } => *size_bytes,
@@ -302,11 +332,13 @@ impl ImageSource {
             Self::Ewf { .. }
             | Self::Vmdk { .. }
             | Self::Qcow2 { .. }
+            | Self::Phdi { .. }
             | Self::Vdi { .. }
             | Self::VhdFamily { .. }
             | Self::Pmfx { .. } => true,
             Self::Indexed { .. }
             | Self::Raw { .. }
+            | Self::SplitRaw { .. }
 
             | Self::Dmg { .. }
             | Self::Assembled { .. }
@@ -330,6 +362,7 @@ impl ImageSource {
 
     pub(super) fn sector_size(&self) -> usize {
         match self {
+            Self::Phdi { reader } => reader.sector_size() as usize,
             Self::VhdFamily { sector_size, .. }
             | Self::Pmfx { sector_size, .. }
             | Self::Ewf { sector_size, .. }
@@ -374,6 +407,16 @@ impl ImageSource {
                     .context("image offset does not fit in memory address space")?;
                 dst.copy_from_slice(&mmap[start..start + available]);
                 Ok((available, Vec::new()))
+            }
+            Self::SplitRaw { reader } => {
+                let filled = reader.read_at(start, dst)?;
+                Ok((filled, Vec::new()))
+            }
+            Self::Phdi { reader } => {
+                let filled = reader
+                    .read_at(start, dst)
+                    .with_context(|| format!("failed to read PHDI at offset {start}"))?;
+                Ok((filled, Vec::new()))
             }
             Self::Dmg { mmap, .. } => {
                 let start = usize::try_from(start)
@@ -484,6 +527,12 @@ impl ImageSource {
                     .context("image offset does not fit in memory address space")?;
                 Ok((mmap[start..start + available].to_vec(), Vec::new()))
             }
+            Self::SplitRaw { reader } => {
+                let mut buffer = vec![0; available];
+                let filled = reader.read_at(start, &mut buffer)?;
+                buffer.truncate(filled);
+                Ok((buffer, Vec::new()))
+            }
             Self::Dmg { mmap, .. } => {
                 let start = usize::try_from(start)
                     .context("image offset does not fit in memory address space")?;
@@ -514,6 +563,14 @@ impl ImageSource {
                 let filled = reader
                     .read_at(start, &mut buf)
                     .with_context(|| format!("failed to read QCOW2 at offset {start}"))?;
+                buf.truncate(filled);
+                Ok((buf, Vec::new()))
+            }
+            Self::Phdi { reader } => {
+                let mut buf = vec![0u8; available];
+                let filled = reader
+                    .read_at(start, &mut buf)
+                    .with_context(|| format!("failed to read PHDI at offset {start}"))?;
                 buf.truncate(filled);
                 Ok((buf, Vec::new()))
             }
@@ -645,6 +702,7 @@ pub(super) fn source_file_meta(
                 ImageSource::Ewf { reader, .. } => reader.lock().segments_on_disk_bytes(),
                 ImageSource::Vmdk { reader, .. } => reader.lock().files_on_disk_bytes(),
                 ImageSource::Ad1 { image } => Some(image.outer_len()),
+                ImageSource::SplitRaw { reader } => Some(reader.media_size()),
                 ImageSource::Folder { .. } => None,
                 _ => Some(meta.len()),
             };

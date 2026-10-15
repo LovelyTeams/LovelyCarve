@@ -30,6 +30,72 @@ no libfsapfs C sources or binaries are incorporated. The new APFS fixtures
 are invented, reproducible project test structures (AGPL-3.0-only), documented
 in `src-tauri/vendor/apfs/tests/data/README.md`.
 
+## Parallels image capability reference
+
+`src-tauri/vendor/phdi` is original LovelyCarve Rust code (AGPL-3.0-only),
+referencing the public format and API of Joachim Metz and contributors'
+[libyal/libphdi fb132dceb2a1](https://github.com/libyal/libphdi/commit/fb132dceb2a1a43c2597b10bbf9e65757d08cf7c).
+The upstream library is LGPL-3.0-or-later, its tools GPL-3.0-or-later,
+and its format document GFDL-1.3-or-later. No upstream C implementation,
+document text, test data or binaries are incorporated. The runtime uses
+the unmodified [quick-xml 0.42.0](https://github.com/tafia/quick-xml) crate
+under MIT; dependency versions remain pinned in Cargo.lock.
+Original synthetic tests and an independent Python oracle accompany the reader.
+The public dfVFS test image was verified outside the repository and is not
+redistributed. Provenance and all 56 API comparisons are recorded in
+[PHDI](docs/formats/PHDI.md) and the vendor ORIGIN.md / LICENSE.
+
+## RAW image capability reference
+
+`src-tauri/vendor/smraw` is original LovelyCarve Rust code (AGPL-3.0-only),
+referencing the public RAW I/O and naming capabilities of Joachim Metz and
+contributors' [libyal/libsmraw](https://github.com/libyal/libsmraw/commit/adfa6b8bc8617226805926180244c774366aad30).
+The upstream library is LGPL-3.0-or-later and its tools are GPL-3.0-or-later.
+No upstream C implementation, document text, test data, binaries or bindings
+are incorporated. This crate has no third-party runtime dependencies.
+Its license, provenance and scope remain in its vendor directory; all 72
+public APIs are compared in [SMRAW](docs/formats/SMRAW.md).
+The project-generated synthetic tests contain no real evidence.
+
+## QCOW reader capability reference
+
+`src-tauri/vendor/qcow2` retains Dave Vasilevsky's MIT-licensed qcow2-rs
+feature-name parsing and utility/error infrastructure. Original LovelyCarve
+QCOW1/2/3 header/read/chain/crypto implementations and invented new test fixtures
+are AGPL-3.0-only; both LICENSE-MIT and LICENSE-AGPL are retained in the crate.
+Its manifest records `MIT AND AGPL-3.0-only`. Exact origin and change boundaries
+are recorded in [LOVELYCARVE.md](src-tauri/vendor/qcow2/LOVELYCARVE.md).
+
+Joachim Metz and contributors' [libyal/libqcow](https://github.com/libyal/libqcow/commit/3e390fbb465f37f3da92c1362c5df3da04ff9efe)
+is a public capability/format reference, not incorporated code. It is
+LGPL-3.0-or-later; its format document is GFDL-1.3-or-later. No C sources,
+documentation text, upstream test data, binaries or bindings are copied.
+All 42 public declarations are compared in [QCOW](docs/formats/QCOW.md).
+New dependencies use unmodified RustCrypto aes 0.9.3 / zeroize 1.9.1
+(MIT OR Apache-2.0) and flate2 1.1.10 (MIT OR Apache-2.0), using pure Rust
+miniz_oxide rather than native zlib. Versions are pinned in the Rust lockfiles.
+Independent Python zlib/OpenSSL fixture generation and SHA-256 records remain
+in the test directory; those packages are not runtime dependencies.
+
+## GZIP reader capability reference
+
+`src-tauri/vendor/gzipf` is original LovelyCarve Rust code (AGPL-3.0-only),
+using RFC 1952 and the public capabilities of Joachim Metz's
+[libyal/libgzipf](https://github.com/libyal/libgzipf/commit/d1b4e6ba5911e1b86a3f9d4ca3fd31f1d69a6b68)
+as references. The upstream implementation is LGPL-3.0-or-later and its
+format documentation is GFDL-1.3-or-later. No upstream C code, document text,
+test data, binaries or bindings are incorporated. The new crate's license,
+provenance, API comparison and invented test-data records are retained in its
+directory and [docs/formats/GZIP.md](docs/formats/GZIP.md).
+
+The crate uses `flate2` 1.1.10 and `crc32fast` 1.5.2, both declaring
+MIT OR Apache-2.0. DEFLATE uses the pure Rust miniz_oxide backend; it does not
+link native zlib. Exact transitive versions are pinned in the crate's own
+Cargo.lock; the host Cargo.lock also records the path dependency. Host tar.gz,
+Docker/OCI GZIP layers and Xiaomi GZIP backups use this reader. The independent
+test corpus is invented project data encoded by
+Python's C zlib, licensed AGPL-3.0-only, with a reproducible generator and hashes.
+
 ## Flyfish File Viewer
 
 The Vue preview component `@file-viewer/vue3-full` and the asset-copy plugin

@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { onScopeDispose, ref, watch } from 'vue';
 import { save } from '@tauri-apps/plugin-dialog';
 import { globalSearchExport, type GlobalSearchDistinct, type GlobalSearchHistoryEntry } from '../../../lib/ipc/search';
@@ -23,15 +25,15 @@ export function useSearchExport(options: SearchExportOptions) {
     exporting.value = true;
     try {
       const destination = await save({
-        title: '导出全局搜索结果',
-        defaultPath: `全局搜索-${taskDisplayTitle(task.keywords, task.regexes).slice(0, 24)}.csv`,
+        title: tr("导出全局搜索结果"),
+        defaultPath: tr("全局搜索-{0}.csv", { 0: taskDisplayTitle(task.keywords, task.regexes, tr).slice(0, 24) }),
         filters: [{ name: 'CSV', extensions: ['csv'] }]
       });
       if (!destination || !current(captured)) return;
       const result = await globalSearchExport({ imageId, searchId: task.search_id, destination, keyword, distinct });
       // Once started, host output remains actionable even if the visible selection changes.
-      if (!disposed) notifyExportSuccess(result.output_path, `已导出 ${result.record_count.toLocaleString()} 条命中`);
-    } catch (error) { if (!disposed) notifyError('导出失败', String(error)); }
+      if (!disposed) notifyExportSuccess(result.output_path, tr("已导出 {0} 条命中", { 0: result.record_count.toLocaleString() }));
+    } catch (error) { if (!disposed) notifyError(tr("导出失败"), String(error)); }
     finally { if (current(captured)) exporting.value = false; }
   }
   watch([options.imageId, () => options.selectedTask()?.search_id], () => { generation++; exporting.value = false; }, { flush: 'sync' });

@@ -1,3 +1,4 @@
+import { sourceText, type Translator } from '../../../i18n/translate';
 import type { GlobalSearchOptions, SearchCodePage } from '../../../lib/ipc/search';
 import { parseSearchPatterns } from './searchResults';
 
@@ -32,19 +33,19 @@ export function createSearchDraft() {
 
 export type SearchDraft = ReturnType<typeof createSearchDraft>;
 
-export function searchConfigurationError(dialog: SearchDraft): string | null {
-  return Object.values(searchConfigurationErrors(dialog)).find(error => error !== null) ?? null;
+export function searchConfigurationError(dialog: SearchDraft, tr: Translator = sourceText): string | null {
+  return Object.values(searchConfigurationErrors(dialog, tr)).find(error => error !== null) ?? null;
 }
 
 /** Field errors shared by submission validation and accessible form feedback. */
-export function searchConfigurationErrors(dialog: SearchDraft) {
+export function searchConfigurationErrors(dialog: SearchDraft, tr: Translator = sourceText) {
   const keys = parseSearchPatterns(dialog.keysText);
   const regexes = parseSearchPatterns(dialog.regexesText);
   return {
-    patterns: keys.length === 0 && regexes.length === 0 ? '至少输入一个关键词或正则' : null,
-    codepages: dialog.codepages.length === 0 ? '至少选择一个编码页' : null,
-    perFileCap: !Number.isInteger(dialog.perFileCap) || dialog.perFileCap < 1 ? '每文件上限须为正整数' : null,
-    globalCap: !Number.isInteger(dialog.globalCap) || dialog.globalCap < 1 ? '全局上限须为正整数' : null,
+    patterns: keys.length === 0 && regexes.length === 0 ? tr("至少输入一个关键词或正则") : null,
+    codepages: dialog.codepages.length === 0 ? tr("至少选择一个编码页") : null,
+    perFileCap: !Number.isInteger(dialog.perFileCap) || dialog.perFileCap < 1 ? tr("每文件上限须为正整数") : null,
+    globalCap: !Number.isInteger(dialog.globalCap) || dialog.globalCap < 1 ? tr("全局上限须为正整数") : null,
   };
 }
 

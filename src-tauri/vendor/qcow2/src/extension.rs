@@ -1,42 +1,15 @@
 use std::borrow::Cow;
-use std::fmt::{self, Debug, Formatter};
+use std::fmt::Debug;
 use std::io::{ErrorKind, Read};
-use std::result;
 
 use byteorder::ReadBytesExt;
 
 use super::feature::{FeatureKind, FEATURE_KIND_COUNT};
 use super::{Error, Result};
 
-pub const EXT_CODE_FEATURE_NAME_TABLE: u32 = 0x6803f857;
-pub const EXT_CODE_NONE: u32 = 0;
-
+/// Parses the payload of a bounded header extension; must consume it fully.
 pub trait Extension: Debug {
     fn read(&mut self, io: &mut dyn Read) -> Result<()>;
-}
-
-pub struct UnknownExtension {
-    code: u32,
-    data: Vec<u8>,
-}
-impl UnknownExtension {
-    pub fn new(code: u32) -> Self {
-        UnknownExtension { code, data: vec![] }
-    }
-}
-impl Extension for UnknownExtension {
-    fn read(&mut self, io: &mut dyn Read) -> Result<()> {
-        io.read_to_end(&mut self.data)?;
-        Ok(())
-    }
-}
-impl Debug for UnknownExtension {
-    fn fmt(&self, fmt: &mut Formatter) -> result::Result<(), fmt::Error> {
-        fmt.debug_struct("UnknownExtension")
-            .field("code", &format!("{:#x}", &self.code))
-            .field("size", &self.data.len())
-            .finish()
-    }
 }
 
 #[derive(Debug)]
@@ -48,7 +21,7 @@ pub struct FeatureName {
 #[derive(Debug, Default)]
 pub struct FeatureNameTable(Vec<FeatureName>);
 impl FeatureNameTable {
-    pub fn name(&self, kind: FeatureKind, bit: u8) -> Cow<'_, String> {
+    pub fn name(&self, kind: FeatureKind, bit: u8) -> Cow<'_, str> {
         for n in &self.0 {
             if n.kind == kind as u8 && n.bit == bit {
                 return Cow::Borrowed(&n.name);
@@ -95,7 +68,8 @@ impl Extension for FeatureNameTable {
                         }
                     }
                     // This can't fail!
-                    let name = String::from_utf8(chars).unwrap();
+                    let name = String::from_utf8(chars)
+                        .map_err(|_| Error::FileFormat("invalid feature name".into()))?;
                     self.0.push(FeatureName { kind, bit, name });
                 }
             }

@@ -6,12 +6,14 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../composables/useLocale';
+
 import { Loader2 } from 'lucide-vue-next';
 
 withDefaults(defineProps<{
   label?: string;
 }>(), {
-  label: '正在加载面板...',
+  get label() { return tr("正在加载面板..."); },
 });
 </script>
 

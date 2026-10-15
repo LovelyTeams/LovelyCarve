@@ -267,6 +267,60 @@ fn monolithic_sparse_vmdk_uses_native_reader() {
 }
 
 #[test]
+fn qcow_supports_all_versions_compression_and_legacy_aes() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let fixture_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("vendor/qcow2/tests/data");
+    let plaintext = std::fs::read(fixture_root.join("plain.bin")).expect("plaintext oracle");
+    for version in 1..=3 {
+        let path = temp.path().join(format!("v{version}.bin"));
+        std::fs::copy(fixture_root.join(format!("v{version}-deflate.qcow")), &path)
+            .expect("copy fixture");
+        let source = ImageSource::open(&path).expect("signature-detected compressed QCOW");
+        assert_eq!(source.format(), ImageFormat::Qcow2);
+        assert_eq!(
+            source.read_range(3970, 200).expect("cross cluster read"),
+            [plaintext[3970..].to_vec(), vec![0; 74]].concat()
+        );
+        std::fs::copy(fixture_root.join(format!("v{version}-aes.qcow")), &path)
+            .expect("copy fixture");
+        assert!(ImageSource::open(&path).is_err());
+        let image = DiskImage::open_with_qcow_key(
+            &path,
+            qcow2::EncryptionKey::from_password("qcow-test").expect("ASCII key"),
+        )
+        .expect("open encrypted QCOW");
+        assert_eq!(
+            image.read_range(4601, 555).expect("unaligned plaintext"),
+            plaintext[505..1060]
+        );
+    }
+}
+
+#[test]
+fn qcow_backing_is_used_by_host_and_missing_parent_fails() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let path = temp.path().join("child.qcow2");
+    let mut child = vec![0; 512 * 3];
+    child[..4].copy_from_slice(b"QFI\xfb");
+    child[4..8].copy_from_slice(&2u32.to_be_bytes());
+    child[8..16].copy_from_slice(&256u64.to_be_bytes());
+    child[16..20].copy_from_slice(&10u32.to_be_bytes());
+    child[20..24].copy_from_slice(&9u32.to_be_bytes());
+    child[24..32].copy_from_slice(&1024u64.to_be_bytes());
+    child[36..40].copy_from_slice(&1u32.to_be_bytes());
+    child[40..48].copy_from_slice(&512u64.to_be_bytes());
+    child[256..266].copy_from_slice(b"parent.raw");
+    std::fs::write(&path, &child).expect("child fixture");
+    assert!(ImageSource::open(&path).is_err());
+    std::fs::write(temp.path().join("parent.raw"), vec![0x42; 1024]).expect("RAW parent");
+    let source = ImageSource::open(&path).expect("backing-aware source");
+    assert_eq!(
+        source.read_range(509, 31).expect("backing data"),
+        vec![0x42; 31]
+    );
+}
+
+#[test]
 fn qcow2_uses_logical_guest_stream() {
     let temp = tempfile::tempdir().expect("tempdir");
     let path = temp.path().join("case.qcow2");

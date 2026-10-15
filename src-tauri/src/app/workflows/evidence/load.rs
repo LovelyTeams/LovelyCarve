@@ -50,6 +50,7 @@ pub async fn image_load(
     app: AppHandle,
     state: State<'_, AppState>,
     path: String,
+    qcow_key: Option<qcow2::EncryptionKey>,
 ) -> Result<ImageInfo, AppError> {
     let session_hint = if path.starts_with("decrypted://") {
         Some("decrypted session expired; unlock the source again")
@@ -104,7 +105,7 @@ pub async fn image_load(
             }
         }
     };
-    load_image_runtime(&state, &app, image_id, path).await
+    load_image_runtime(&state, &app, image_id, path, qcow_key).await
 }
 
 async fn image_load_lock(state: &AppState, path: &str) -> Arc<tokio::sync::Mutex<()>> {
@@ -128,6 +129,7 @@ pub(crate) async fn load_image_runtime(
     app: &AppHandle,
     image_id: String,
     path: String,
+    qcow_key: Option<qcow2::EncryptionKey>,
 ) -> Result<ImageInfo, AppError> {
     if let Some(existing) = {
         let images = state.images.lock().await;
@@ -168,8 +170,8 @@ pub(crate) async fn load_image_runtime(
         let observer = move |progress: crate::core::evidence::image::OpenProgress| {
             emit_load_progress(&progress_app, &progress_path, progress, &last_emit);
         };
-        crate::core::evidence::image::DiskImage::open_with_id_observed(
-            open_id, &open_path, &observer,
+        crate::core::evidence::image::DiskImage::open_with_id_observed_qcow_key(
+            open_id, &open_path, &observer, qcow_key,
         )
     })
     .await

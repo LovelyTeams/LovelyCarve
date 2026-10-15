@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 // Active-case + volume-snapshot session state.
 //
 // A case is a global singleton (the backend holds exactly one active case),
@@ -95,7 +97,7 @@ export function disposeCaseSession(): void {
 }
 
 function beginCaseMutation(): number {
-  if (busy.value) throw new Error('案件操作正在进行，请稍候');
+  if (busy.value) throw new Error(tr("案件操作正在进行，请稍候"));
   busy.value = true;
   activeRequest++;
   snapshotRequest++;
@@ -126,7 +128,7 @@ async function refreshCases(): Promise<void> {
     const next = await caseList();
     if (request === registryRequest) cases.value = next;
   } catch (err) {
-    if (request === registryRequest) registryError.value = `读取案件列表失败：${String(err)}`;
+    if (request === registryRequest) registryError.value = tr("读取案件列表失败：{0}", { 0: String(err) });
   } finally {
     if (request === registryRequest) registryLoading.value = false;
   }

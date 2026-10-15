@@ -2,6 +2,14 @@
 use super::*;
 impl ImageSource {
     pub(in crate::core::evidence::image) fn open(path: &Path) -> anyhow::Result<Self> {
+        if path.is_dir()
+            && (lower_extension(path).as_deref() == Some("hdd")
+                || path.join("DiskDescriptor.xml").is_file())
+        {
+            let reader = phdi::PhdiImage::open(path)
+                .with_context(|| format!("failed to open Parallels bundle: {}", path.display()))?;
+            return Ok(Self::Phdi { reader });
+        }
         // Folder selection: when the user picks a directory, treat it as a
         // logical-evidence source. Has to come before everything else so we
         // don't try to mmap a directory handle.
@@ -27,6 +35,29 @@ impl ImageSource {
                 sector_size,
                 path: path.to_path_buf(),
             });
+        }
+
+        let descriptor_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| {
+                name.eq_ignore_ascii_case("DiskDescriptor.xml")
+                    || name.eq_ignore_ascii_case("DiskDescriptor.xml.Backup")
+            });
+        if descriptor_name || matches!(lower_extension(path).as_deref(), Some("hds" | "hdd")) {
+            if !descriptor_name
+                && path
+                    .parent()
+                    .is_some_and(|parent| parent.join("DiskDescriptor.xml").is_file())
+            {
+                anyhow::bail!(
+                    "请打开 Parallels DiskDescriptor.xml 或 .hdd 目录，以保留分段与差分父链：{}",
+                    path.display()
+                );
+            }
+            let reader = phdi::PhdiImage::open(path)
+                .with_context(|| format!("failed to open Parallels image: {}", path.display()))?;
+            return Ok(Self::Phdi { reader });
         }
 
         // Docker / OCI image archives and plain filesystem tarballs both ship
@@ -172,6 +203,52 @@ impl ImageSource {
             });
         }
 
+        // RAW has no signature. Recognize numbered families before probing
+        // embedded guest bytes as another container, while preserving EWF's
+        // explicit extension/signature priority. Require the first member so
+        // case identity cannot vary with the selected member.
+        let raw_segments = smraw::discover(path)
+            .with_context(|| format!("failed to discover RAW segments: {}", path.display()))?;
+        if raw_segments.numbered {
+            let first = raw_segments
+                .paths
+                .first()
+                .context("RAW segment list is empty")?;
+            if crate::core::casework::case::evidence_path_key(
+                &std::fs::canonicalize(first)?.to_string_lossy(),
+            ) != crate::core::casework::case::evidence_path_key(
+                &std::fs::canonicalize(path)?.to_string_lossy(),
+            ) {
+                anyhow::bail!(
+                    "这是 RAW 镜像的后续分段，请打开第一个分段：{}",
+                    first.display()
+                );
+            }
+            let reader = smraw::RawImage::open_segments(raw_segments.paths)
+                .with_context(|| format!("failed to open split RAW image: {}", path.display()))?;
+            return Ok(Self::SplitRaw { reader });
+        }
+
+        // Preserve EWF and numbered RAW priority before interpreting guest
+        // bytes as a container signature (a RAW member can begin with HDS).
+        let mut signature = [0; 16];
+        let sparse = File::open(path)?.read(&mut signature)? == signature.len()
+            && phdi::is_sparse_signature(&signature);
+        if sparse {
+            if path
+                .parent()
+                .is_some_and(|parent| parent.join("DiskDescriptor.xml").is_file())
+            {
+                anyhow::bail!(
+                    "请打开 Parallels DiskDescriptor.xml 或 .hdd 目录，以保留分段与差分父链：{}",
+                    path.display()
+                );
+            }
+            let reader = phdi::PhdiImage::open(path)
+                .with_context(|| format!("failed to open Parallels image: {}", path.display()))?;
+            return Ok(Self::Phdi { reader });
+        }
+
         if should_open_as_pmfx(path)? {
             let reader = PmfxImage::open(path)
                 .with_context(|| format!("failed to open PMFX image: {}", path.display()))?;
@@ -184,10 +261,8 @@ impl ImageSource {
 
         let extension = lower_extension(path);
         if matches!(extension.as_deref(), Some("qcow" | "qcow2")) || has_qcow2_signature(path)? {
-            let file = File::open(path)
-                .with_context(|| format!("failed to open QCOW2 image: {}", path.display()))?;
-            let reader = qcow2::Qcow2::open(file)
-                .with_context(|| format!("failed to parse QCOW2 image: {}", path.display()))?;
+            let reader = qcow2::Qcow2::open_path(path)
+                .with_context(|| format!("failed to parse QCOW image: {}", path.display()))?;
             let size_bytes = reader.guest_size();
             return Ok(Self::Qcow2 { reader, size_bytes });
         }

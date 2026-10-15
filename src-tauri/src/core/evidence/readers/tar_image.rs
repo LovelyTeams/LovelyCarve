@@ -27,7 +27,7 @@ use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context, Result};
-use flate2::read::GzDecoder;
+use gzipf::GzipDecoder;
 use memmap2::Mmap;
 use tempfile::NamedTempFile;
 
@@ -35,6 +35,10 @@ use tempfile::NamedTempFile;
 /// hundred thousand entries; this bound keeps a pathological / corrupt archive
 /// from exhausting memory while staying far above any real evidence tar.
 const MAX_ENTRIES: usize = 2_000_000;
+
+#[cfg(test)]
+#[path = "tar_image/gzip_tests.rs"]
+mod gzip_tests;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TarEntryKind {
@@ -112,7 +116,9 @@ impl TarImage {
     pub fn open_gzip(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
         let file = File::open(&path).with_context(|| format!("open {}", path.display()))?;
-        let mut decoder = GzDecoder::new(file);
+        // Drain every GZIP member and validate all trailers before publishing
+        // the tempfile-backed tar view. Errors drop the unpublished tempfile.
+        let mut decoder = GzipDecoder::new(file);
         Self::open_from_tar_reader(path, None, &mut decoder)
     }
 

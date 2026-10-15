@@ -1,4 +1,6 @@
 
+import { tr } from '../../../composables/useLocale';
+
 import { type BuiltinTask } from '../model/types';
 import { computed, effectScope, ref, shallowRef, watch } from 'vue';
 import { fsChildren, fsChildrenPage, fsDockerPrepare, fsFlatPage } from '../../../lib/ipc/fs/query';
@@ -49,7 +51,7 @@ function remove(id: string) {
   records.value = next;
 }
 function makeTask(kind: BuiltinTask['kind'], id: string, imageId: string, subject = '') {
-  return makeBuiltinTask(kind, id, imageId, subject, Date.now());
+  return makeBuiltinTask(kind, id, imageId, subject, Date.now(), tr);
 }
 function accepts(imageId: string) {
   return taskCaseContext()?.evidence?.some(item => item.image_id === imageId)
@@ -68,7 +70,7 @@ function applyCarveSnapshot(snapshot: CarveScanSnapshot) {
   const caseDir = taskCaseContext()?.dir ?? null;
   if (carveCases.has(snapshot.scan_id) && carveCases.get(snapshot.scan_id) !== caseDir) return;
   carveCases.set(snapshot.scan_id, caseDir);
-  const task = projectCarveTask(snapshot, records.value.get(`carve:${snapshot.scan_id}`), Date.now());
+  const task = projectCarveTask(snapshot, records.value.get(`carve:${snapshot.scan_id}`), Date.now(), tr);
   if (task) put(task);
 }
 
@@ -78,14 +80,14 @@ export async function trackedCarveStart(args: Parameters<typeof carveStart>[0]) 
   const epoch = caseRevision;
   const caseDir = taskCaseContext()?.dir ?? null;
   await ready;
-  if (epoch !== caseRevision) throw new Error('案件已切换，任务未启动');
+  if (epoch !== caseRevision) throw new Error(tr("案件已切换，任务未启动"));
   const result = await carveStart(args);
   carveCases.set(result.scan_id, caseDir);
   if (epoch !== caseRevision) {
-    throw new Error('案件已切换，请在原检材查看扫描任务');
+    throw new Error(tr("案件已切换，请在原检材查看扫描任务"));
   }
   const id = `carve:${result.scan_id}`;
-  if (!records.value.has(id)) put({ ...makeTask('carve', id, args.imageId), status: 'queued', cancelId: result.task_id, message: '等待扫描' });
+  if (!records.value.has(id)) put({ ...makeTask('carve', id, args.imageId), status: 'queued', cancelId: result.task_id, message: tr("等待扫描") });
   const previous = records.value.get(id);
   try {
     const snapshot = await carveScanStatus({ scanId: result.scan_id });
@@ -122,7 +124,7 @@ async function refresh() {
           if (records.value.get(id) !== previous.get(id)) continue;
           if (autodetectCases.has(task.imageId) && autodetectCases.get(task.imageId) !== caseDir) continue;
           autodetectCases.set(task.imageId, caseDir);
-          records.value = recoverAutoDetectTask(records.value, task, autoDetectTrigger(task.imageId), Date.now());
+          records.value = recoverAutoDetectTask(records.value, task, autoDetectTrigger(task.imageId), Date.now(), undefined, tr);
           continue;
         }
         if (!isSnapshotTask(task)) continue;
@@ -130,7 +132,7 @@ async function refresh() {
         if (records.value.get(id) !== previous.get(id)) continue;
         if (snapshotCases.has(task.id) && snapshotCases.get(task.id) !== caseDir) continue;
         snapshotCases.set(task.id, caseDir);
-        records.value = recoverSnapshotTasks(records.value, task, Date.now());
+        records.value = recoverSnapshotTasks(records.value, task, Date.now(), undefined, tr);
       }
     } catch (error) { console.warn('读取文件系统任务状态失败', error); }
     for (const evidence of activeCase?.evidence ?? []) {
@@ -165,7 +167,7 @@ async function refresh() {
             status: status(row.status), error: row.error, started: row.started_ms, finished: row.finished_ms,
             cancelling: row.status === 'running' && !!snapshot.get(id)?.cancelling,
             progress: row.status === 'success' ? 100 : percent(row.files_scanned, row.files_total),
-            message: `已扫描 ${row.files_scanned.toLocaleString()} 个文件 · ${row.total_matches.toLocaleString()} 处命中`, results: row.total_matches
+            message: tr("已扫描 {0} 个文件 · {1} 处命中", { 0: row.files_scanned.toLocaleString(), 1: row.total_matches.toLocaleString() }), results: row.total_matches
           });
         }
       } else console.warn('读取搜索任务历史失败', searches.reason);
@@ -180,7 +182,7 @@ async function refresh() {
           cancelling: row.status === 'running' && !!snapshot.get(id)?.cancelling,
           progress: row.status === 'success' ? 100 : records.value.get(id)?.progress ?? null,
           timelineRows: row.file_rows + row.event_rows,
-          message: `文件 ${row.file_rows.toLocaleString()} 条 · 事件 ${row.event_rows.toLocaleString()} 条`
+          message: tr("文件 {0} 条 · 事件 {1} 条", { 0: row.file_rows.toLocaleString(), 1: row.event_rows.toLocaleString() })
         });
         else remove(id);
       } else if (timeline.status === 'rejected') console.warn('读取时间线任务状态失败', timeline.reason);
@@ -202,7 +204,7 @@ function ensureTracking(): Promise<void> {
       const caseDir = taskCaseContext()?.dir ?? null;
       if (snapshotCases.has(payload.task_id) && snapshotCases.get(payload.task_id) !== caseDir) return;
       snapshotCases.set(payload.task_id, caseDir);
-      records.value = applySnapshotTasks(records.value, payload, Date.now());
+      records.value = applySnapshotTasks(records.value, payload, Date.now(), tr);
     }),
     () => onTaskLifecycle(({ payload }) => {
       const task = payload.task;
@@ -230,14 +232,14 @@ function ensureTracking(): Promise<void> {
         // case DTO lists the evidence, so this cannot filter by `accepts`.
         if (payload.phase === 'queued') autodetectCases.set(task.imageId, caseDir);
         else if (autodetectCases.has(task.imageId) && autodetectCases.get(task.imageId) !== caseDir) return;
-        records.value = applyAutoDetectLifecycle(records.value, payload, autoDetectTrigger(task.imageId), Date.now());
+        records.value = applyAutoDetectLifecycle(records.value, payload, autoDetectTrigger(task.imageId), Date.now(), tr);
         return;
       }
       if (!isSnapshotTask(task)) return;
       if (payload.phase === 'queued') snapshotCases.set(task.id, caseDir);
       else if (snapshotCases.has(task.id) && snapshotCases.get(task.id) !== caseDir) return;
       if (payload.phase !== 'finished') {
-        records.value = recoverSnapshotTasks(records.value, task, Date.now(), payload.phase === 'queued');
+        records.value = recoverSnapshotTasks(records.value, task, Date.now(), payload.phase === 'queued', tr);
       } else {
         // Registry removal is not proof of success. Domain completion carries the outcome.
         for (const kind of ['filesystem', 'index']) {
@@ -245,18 +247,18 @@ function ensureTracking(): Promise<void> {
           const current = records.value.get(id);
           if (current && ['queued', 'running'].includes(current.status)) patch(id, {
             status: task.status === 'cancellationRequested' ? 'cancel' : 'offline', finished: Date.now(), cancelling: false,
-            error: task.status === 'cancellationRequested' ? null : '任务已结束，未收到完成结果，请检查日志',
+            error: task.status === 'cancellationRequested' ? null : tr("任务已结束，未收到完成结果，请检查日志"),
           });
         }
       }
     }),
     () => onAutoDetectFinished(({ payload }) => {
       if (epoch !== generation || !autoDetectInCase(payload.image_id)) return;
-      records.value = applyAutoDetectSuccess(records.value, payload, Date.now());
+      records.value = applyAutoDetectSuccess(records.value, payload, Date.now(), tr);
     }),
     () => onAutoDetectFailed(({ payload }) => {
       if (epoch !== generation || !autoDetectInCase(payload.image_id)) return;
-      records.value = applyAutoDetectFailure(records.value, payload, Date.now());
+      records.value = applyAutoDetectFailure(records.value, payload, Date.now(), tr);
     }),
     () => onCarveScanProgress(({ payload }) => {
       if (epoch !== generation || !accepts(payload.image_id)) return;
@@ -269,7 +271,7 @@ function ensureTracking(): Promise<void> {
       if (records.value.get(id)?.status !== 'running') return;
       patch(id, {
         progress: percent(payload.files_done, payload.files_total), results: payload.hits,
-        message: `已扫描 ${payload.files_done.toLocaleString()} / ${payload.files_total.toLocaleString()} 个文件 · ${payload.hits.toLocaleString()} 处命中`
+        message: tr("已扫描 {0} / {1} 个文件 · {2} 处命中", { 0: payload.files_done.toLocaleString(), 1: payload.files_total.toLocaleString(), 2: payload.hits.toLocaleString() })
       });
     }),
     () => onTimelineProgress(({ payload }) => {
@@ -279,7 +281,7 @@ function ensureTracking(): Promise<void> {
       if (records.value.get(id)?.status !== 'running') return;
       patch(id, {
         progress: percent(payload.done, payload.total), timelineRows: payload.rows,
-        message: `已处理 ${payload.done.toLocaleString()}${payload.total > 0 ? ` / ${payload.total.toLocaleString()}` : ''} 项 · ${payload.rows.toLocaleString()} 条时间线`
+        message: tr("已处理 {0}{1} 项 · {2} 条时间线", { 0: payload.done.toLocaleString(), 1: payload.total > 0 ? ` / ${payload.total.toLocaleString()}` : '', 2: payload.rows.toLocaleString() })
       });
     }),
   ]);
@@ -312,7 +314,7 @@ async function run<T>(task: BuiltinTask, operation: () => Promise<T>, summarize:
   const ready = ensureTracking();
   const caseDir = taskCaseContext()?.dir;
   const epoch = caseRevision;
-  if (owned.has(task.id)) throw new Error('任务正在执行，请等待完成');
+  if (owned.has(task.id)) throw new Error(tr("任务正在执行，请等待完成"));
   const owner = Symbol(task.id);
   put(task);
   if (task.kind === 'timeline') localTimelineStarts.set(task.id, task.started);
@@ -320,13 +322,13 @@ async function run<T>(task: BuiltinTask, operation: () => Promise<T>, summarize:
   const current = () => epoch === caseRevision && taskCaseContext()?.dir === caseDir && owned.get(task.id) === owner;
   try {
     await ready;
-    if (!current()) throw new Error('案件已切换，任务未启动');
+    if (!current()) throw new Error(tr("案件已切换，任务未启动"));
     const result = await operation();
     if (current()) patch(task.id, { status: 'success', progress: 100, finished: Date.now(), cancelling: false, ...summarize(result) });
     return result;
   } catch (error) {
     const cancelled = task.kind === 'encryptedUnlock' && error instanceof IpcCommandError && error.code === 'cancelled';
-    if (current()) patch(task.id, { status: cancelled ? 'cancel' : 'failed', error: cancelled ? null : String(error), message: cancelled ? '已取消解锁' : task.message, finished: Date.now(), cancelling: false });
+    if (current()) patch(task.id, { status: cancelled ? 'cancel' : 'failed', error: cancelled ? null : String(error), message: cancelled ? tr("已取消解锁") : task.message, finished: Date.now(), cancelling: false });
     throw error;
   } finally {
     if (current()) owned.delete(task.id);
@@ -336,19 +338,19 @@ async function run<T>(task: BuiltinTask, operation: () => Promise<T>, summarize:
 export function trackedEncryptedVolumeUnlock(args: Parameters<typeof encryptedVolumeUnlock>[0] & { taskId: string }, subject: string) {
   const task = makeTask('encryptedUnlock', `encryptedUnlock:${args.taskId}`, args.imageId, subject);
   task.cancelId = args.taskId;
-  task.message = '正在派生密钥并解锁；取消将在当前派生阶段结束后生效';
+  task.message = tr("正在派生密钥并解锁；取消将在当前派生阶段结束后生效");
   return run(task, () => {
     // IPC may defer transport; clearing local credentials must not mutate its payload.
     try { return encryptedVolumeUnlock({ ...args, options: { ...args.options } }); }
     finally { args.options.password = ''; }
-  }, result => ({ message: `已解锁 · ${result.cipher}` }));
+  }, result => ({ message: tr("已解锁 · {0}", { 0: result.cipher }) }));
 }
 
 export function trackedGlobalSearchStart(args: Parameters<typeof globalSearchStart>[0]) {
   return run(makeTask('search', `search:${args.searchId}`, args.imageId, [...args.options.keys, ...args.options.regexes].join('、')),
     () => globalSearchStart(args), result => ({
       status: status(result.status), progress: result.status === 'success' ? 100 : percent(result.files_scanned, result.files_total),
-      results: result.total_matches, message: `${result.matched_file_count.toLocaleString()} 个匹配文件 · ${result.total_matches.toLocaleString()} 处命中`
+      results: result.total_matches, message: tr("{0} 个匹配文件 · {1} 处命中", { 0: result.matched_file_count.toLocaleString(), 1: result.total_matches.toLocaleString() })
     }));
 }
 export function trackedTimelineStart(args: Parameters<typeof timelineStart>[0]) {
@@ -356,7 +358,7 @@ export function trackedTimelineStart(args: Parameters<typeof timelineStart>[0]) 
   return run(task, () => timelineStart(args), result => ({
     status: status(result.status),
     progress: result.status === 'success' ? 100 : records.value.get(task.id)?.progress ?? null,
-    timelineRows: result.file_rows + result.event_rows, message: `文件 ${result.file_rows.toLocaleString()} 条 · 事件 ${result.event_rows.toLocaleString()} 条`
+    timelineRows: result.file_rows + result.event_rows, message: tr("文件 {0} 条 · 事件 {1} 条", { 0: result.file_rows.toLocaleString(), 1: result.event_rows.toLocaleString() })
   }));
 }
 
@@ -372,25 +374,25 @@ async function trackDockerRead<T>(args: { imageId: string; parentId: string | nu
     preparation = (async () => {
       const request = { imageId: args.imageId, rootId: root, caseDir };
       const cached = await fsDockerPrepare({ ...request, mode: 'status' });
-      if (epoch !== caseRevision) throw new Error('案件已切换，请重新打开容器');
+      if (epoch !== caseRevision) throw new Error(tr("案件已切换，请重新打开容器"));
       if (cached.ready) return;
       const task = makeTask('docker', id, args.imageId, dockerNames.get(`${args.imageId}:${root}`) || root);
-      task.message = caseDir ? '正在合并容器并保存索引…' : '正在合并容器文件系统…';
+      task.message = caseDir ? tr("正在合并容器并保存索引…") : tr("正在合并容器文件系统…");
       await run(task, async () => {
         const result = await fsDockerPrepare({ ...request, mode: 'build' });
-        if (!result.ready) throw new Error('容器索引尚未完成，请重试');
+        if (!result.ready) throw new Error(tr("容器索引尚未完成，请重试"));
         return result;
       }, result => ({
         results: result.entryCount, message: result.persisted
-          ? `索引已保存 · ${result.entryCount.toLocaleString()} 项，下次直接打开`
-          : `容器已就绪 · ${result.entryCount.toLocaleString()} 项（当前会话）`
+          ? tr("索引已保存 · {0} 项，下次直接打开", { 0: result.entryCount.toLocaleString() })
+          : tr("容器已就绪 · {0} 项（当前会话）", { 0: result.entryCount.toLocaleString() })
       }));
     })();
     dockerPreparations.set(id, preparation);
   }
   try {
     await preparation;
-    if (epoch !== caseRevision) throw new Error('案件已切换，请重新打开容器');
+    if (epoch !== caseRevision) throw new Error(tr("案件已切换，请重新打开容器"));
     return await operation();
   } finally {
     if (dockerPreparations.get(id) === preparation) dockerPreparations.delete(id);

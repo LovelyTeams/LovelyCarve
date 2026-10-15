@@ -20,8 +20,34 @@ pub async fn image_load(
     app: AppHandle,
     state: State<'_, AppState>,
     path: String,
+    qcow_password: Option<String>,
+    qcow_key_hex: Option<String>,
 ) -> Result<ImageInfo, AppError> {
-    crate::app::workflows::evidence::image_load(app, state, path).await
+    let password = qcow_password.map(zeroize::Zeroizing::new);
+    let key_hex = qcow_key_hex.map(zeroize::Zeroizing::new);
+    let key = match (password, key_hex) {
+        (Some(_), Some(_)) => {
+            return Err(AppError::invalid_input(
+                "choose QCOW password or key, not both",
+            ))
+        }
+        (Some(password), None) => Some(
+            qcow2::EncryptionKey::from_password(&password)
+                .map_err(|error| AppError::invalid_input(error.to_string()))?,
+        ),
+        (None, Some(key_hex)) => {
+            let bytes = zeroize::Zeroizing::new(hex::decode(key_hex.as_str()).map_err(|_| {
+                AppError::invalid_input("QCOW key must use hexadecimal characters")
+            })?);
+            let key: [u8; 16] = bytes
+                .as_slice()
+                .try_into()
+                .map_err(|_| AppError::invalid_input("QCOW AES key must be exactly 16 bytes"))?;
+            Some(qcow2::EncryptionKey::from_bytes(key))
+        }
+        (None, None) => None,
+    };
+    crate::app::workflows::evidence::image_load(app, state, path, key).await
 }
 
 #[tauri::command]

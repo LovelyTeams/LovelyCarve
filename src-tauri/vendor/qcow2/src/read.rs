@@ -1,182 +1,299 @@
-use std::cmp::min;
-use std::io;
-use std::mem::size_of;
+//! Checked L1/L2 translation, logical holes, DEFLATE and sector reads.
+use crate::{header::check_range, Error, Qcow2, Result};
+use byteorder::{BigEndian, ByteOrder};
+use flate2::{Decompress, FlushDecompress, Status};
+use positioned_io::{ReadAt, Size};
+use std::{
+    cmp::min,
+    io::{self, Read, Seek, SeekFrom},
+    sync::Arc,
+};
 
-use byteorder::BigEndian;
-use positioned_io::{ByteIo, ReadAt, Size};
-
-use super::{Error, Qcow2, Result};
-
-const L1_COW: u64 = 1 << 63;
-const L1_RESERVED: u64 = (0x7F << 56) | 0x1FF;
-const L1_POS: u64 = !(L1_COW | L1_RESERVED);
-#[derive(Debug)]
-pub enum L1Entry {
+const OFFSET: u64 = 0x00ff_ffff_ffff_fe00;
+enum Entry {
     Empty,
-    Standard { pos: u64 },
+    Zero,
+    Standard(u64),
+    Compressed { position: u64, size: usize },
 }
 
-const L2_COW: u64 = 1 << 63;
-const L2_COMPRESSED: u64 = 1 << 62;
-const L2_ZERO: u64 = 1;
-const L2_RESERVED: u64 = (0x3F << 56) | 0xFE;
-const L2_POS: u64 = !(L2_COW | L2_COMPRESSED | L2_ZERO | L2_RESERVED);
-const L2_COMPRESSED_MASK: u64 = !(L2_COW | L2_COMPRESSED);
-#[derive(Debug)]
-pub enum L2Entry {
-    Empty,
-    Standard { pos: u64, zero: bool },
-    Compressed,
-}
-
-impl<I> Qcow2<I>
-where
-    I: ReadAt,
-{
-    /// Get a Reader for the main virtual disk.
-    ///
-    /// This allows data to be read from inside the virtual disk image.
-    pub fn reader(&self) -> Result<Reader<'_, I>> {
-        Ok(Reader { q: self })
-    }
-
-    fn l1_entry_read(&self, l1: &ByteIo<Vec<u8>, BigEndian>, l1_l2_idx: u64) -> Result<L1Entry> {
-        let offset = l1_l2_idx * size_of::<u64>() as u64;
-        let entry = l1.read_u64_at(offset)?;
-        if entry & L1_RESERVED != 0 {
+impl<I: ReadAt> Qcow2<I> {
+    fn entry(&self, guest: u64) -> Result<Entry> {
+        let cluster = guest / self.cluster_size();
+        let l1_index = cluster / self.header.l2_entries();
+        let l1_offset = usize::try_from(l1_index * 8)
+            .map_err(|_| Error::FileFormat("L1 index overflow".into()))?;
+        let bytes = self
+            .l1
+            .get(l1_offset..l1_offset + 8)
+            .ok_or_else(|| Error::FileFormat("L1 index out of bounds".into()))?;
+        let l1_entry = BigEndian::read_u64(bytes);
+        let table = if self.header.version == 1 {
+            if l1_entry & (1 << 63) != 0 {
+                return Err(Error::FileFormat("compressed L1 table".into()));
+            }
+            l1_entry
+        } else {
+            if l1_entry & !(OFFSET | (1 << 63)) != 0 {
+                return Err(Error::FileFormat("reserved L1 bits".into()));
+            }
+            l1_entry & OFFSET
+        };
+        if table == 0 {
+            return Ok(Entry::Empty);
+        }
+        if table % self.cluster_size() != 0 || table < self.cluster_size() {
             return Err(Error::FileFormat(
-                "reserved bit used in L1 entry".to_owned(),
+                "unaligned or header-overlapping L2 table".into(),
             ));
         }
-
-        let pos = entry & L1_POS;
-        if pos == 0 {
-            return Ok(L1Entry::Empty);
-        }
-        Ok(L1Entry::Standard { pos })
-    }
-    fn l2_entry_read_raw(&self, l2_pos: u64, l2_block_idx: u64) -> Result<u64> {
-        let offset = l2_pos + l2_block_idx * size_of::<u64>() as u64;
-
-        // Check the cache.
-        let mut cache = self.l2_cache.lock()?;
-        if let Some(ret) = cache.get(&offset) {
-            return Ok(*ret);
-        }
-
-        let ret = self.io.read_u64_at(offset)?;
-        cache.put(offset, ret);
-        Ok(ret)
-    }
-    fn l2_entry_parse(&self, entry: u64) -> Result<L2Entry> {
-        Ok(if entry & L2_COMPRESSED != 0 {
-            let x = 70 - self.header.c.cluster_bits;
-            let entry = entry & L2_COMPRESSED_MASK;
-            let _pos = entry & ((1 << x) - 1);
-            let _size = (entry >> x) * 512;
-            L2Entry::Compressed
+        check_range(
+            table,
+            self.header.l2_entries() * 8,
+            self.source_size,
+            "L2 table",
+        )?;
+        let position = table
+            .checked_add((cluster % self.header.l2_entries()) * 8)
+            .ok_or_else(|| Error::FileFormat("L2 offset overflow".into()))?;
+        let cached = self.l2_cache.lock()?.get(&position).copied();
+        let entry = match cached {
+            Some(entry) => entry,
+            None => {
+                let mut bytes = [0; 8];
+                self.io.read_exact_at(position, &mut bytes)?;
+                let entry = BigEndian::read_u64(&bytes);
+                self.l2_cache.lock()?.put(position, entry);
+                entry
+            }
+        };
+        let compressed_bit = if self.header.version == 1 {
+            1 << 63
         } else {
-            if entry & L2_RESERVED != 0 {
-                return Err(Error::FileFormat(
-                    "reserved bit used in L2 entry".to_owned(),
+            1 << 62
+        };
+        if entry & compressed_bit != 0 {
+            if self.header.encryption != 0 {
+                return Err(Error::UnsupportedFeature(
+                    "simultaneous encryption and compression".into(),
                 ));
             }
-            let pos = entry & L2_POS;
-            if pos != 0 {
-                L2Entry::Standard {
-                    pos,
-                    zero: (entry & L2_ZERO != 0),
-                }
+            if self.header.version != 1 && entry & (1 << 63) != 0 {
+                return Err(Error::FileFormat("copied bit on compressed cluster".into()));
+            }
+            let shift = if self.header.version == 1 {
+                63 - self.header.cluster_bits
             } else {
-                L2Entry::Empty
+                70 - self.header.cluster_bits
+            };
+            let descriptor = entry & !compressed_bit;
+            let position = descriptor & ((1u64 << shift) - 1);
+            let size = if self.header.version == 1 {
+                descriptor >> shift
+            } else {
+                ((descriptor >> shift) + 1) * 512 - (position & 511)
+            };
+            if position < self.cluster_size() || size == 0 || size > self.cluster_size() * 2 {
+                return Err(Error::FileFormat("invalid compressed descriptor".into()));
             }
-        })
-    }
-    fn l2_entry_read(&self, l1: &ByteIo<Vec<u8>, BigEndian>, guest_offset: u64) -> Result<L2Entry> {
-        let (l1_l2_idx, l2_block_idx, _) = self.header.guest_offset_info(guest_offset);
-        let l1_entry = self.l1_entry_read(l1, l1_l2_idx)?;
-        Ok(match l1_entry {
-            L1Entry::Empty => L2Entry::Empty,
-            L1Entry::Standard { pos, .. } => {
-                let raw = self.l2_entry_read_raw(pos, l2_block_idx)?;
-                self.l2_entry_parse(raw)?
+            // QEMU may omit trailing sector padding at physical EOF. Decode the
+            // available bytes and still require a complete stream and cluster.
+            let size = if self.header.version != 1 {
+                self.source_size
+                    .map_or(size, |length| size.min(length.saturating_sub(position)))
+            } else {
+                size
+            };
+            check_range(position, size, self.source_size, "compressed cluster")?;
+            if size == 0 {
+                return Err(Error::FileFormat("compressed cluster beyond EOF".into()));
             }
-        })
-    }
-    fn zero_fill(buf: &mut [u8]) {
-        buf.fill(0);
-    }
-    fn guest_block_read(&self, entry: L2Entry, offset: u64, buf: &mut [u8]) -> Result<()> {
-        match entry {
-            L2Entry::Empty => Self::zero_fill(buf),
-            L2Entry::Standard { pos, zero, .. } => {
-                if zero {
-                    Self::zero_fill(buf)
-                } else {
-                    self.io.read_exact_at(pos + offset, buf)?
-                }
-            }
-            L2Entry::Compressed => {
-                return Err(Error::UnsupportedFeature("compressed blocks".to_owned()))
-            }
+            return Ok(Entry::Compressed {
+                position,
+                size: size as usize,
+            });
         }
-        Ok(())
+        let position = if self.header.version == 1 {
+            entry
+        } else {
+            let zero_bit = if self.header.version == 3 { 1 } else { 0 };
+            if entry & !(OFFSET | (1 << 63) | zero_bit) != 0 {
+                return Err(Error::FileFormat("reserved L2 bits".into()));
+            }
+            let position = entry & OFFSET;
+            if entry & zero_bit != 0 {
+                if position != 0
+                    && (!position.is_multiple_of(self.cluster_size())
+                        || position < self.cluster_size())
+                {
+                    return Err(Error::FileFormat("invalid allocated zero cluster".into()));
+                }
+                if position != 0 {
+                    check_range(position, 1, self.source_size, "allocated zero cluster")?;
+                }
+                return Ok(Entry::Zero);
+            }
+            position
+        };
+        if position == 0 {
+            return Ok(Entry::Empty);
+        }
+        if position % self.cluster_size() != 0 || position < self.cluster_size() {
+            return Err(Error::FileFormat(
+                "unaligned or header-overlapping data cluster".into(),
+            ));
+        }
+        Ok(Entry::Standard(position))
     }
+
+    fn compressed(&self, guest_cluster: u64, position: u64, size: usize) -> Result<Arc<Vec<u8>>> {
+        // Guest identity keeps the cache correct even for shared host clusters.
+        if let Some(bytes) = self.decoded_cache.lock()?.get(&guest_cluster) {
+            return Ok(Arc::clone(bytes));
+        }
+        let mut input = vec![0; size];
+        self.io.read_exact_at(position, &mut input)?;
+        let mut output = vec![0; self.cluster_size() as usize + 1];
+        // QCOW uses raw DEFLATE with QEMU's 12-bit window, no zlib wrapper.
+        let mut decoder = Decompress::new(false);
+        let status = decoder
+            .decompress(&input, &mut output, FlushDecompress::Finish)
+            .map_err(|error| Error::FileFormat(format!("invalid DEFLATE cluster: {error}")))?;
+        if status != Status::StreamEnd || decoder.total_out() != self.cluster_size() {
+            return Err(Error::FileFormat(
+                "incomplete or oversized DEFLATE cluster".into(),
+            ));
+        }
+        output.truncate(self.cluster_size() as usize);
+        let output = Arc::new(output);
+        self.decoded_cache
+            .lock()?
+            .put(guest_cluster, Arc::clone(&output));
+        Ok(output)
+    }
+
     pub(crate) fn guest_read(
         &self,
-        l1: &ByteIo<Vec<u8>, BigEndian>,
-        pos: u64,
-        buf: &mut [u8],
-    ) -> io::Result<usize> {
-        // Check for reads past EOF.
-        if pos >= self.header.guest_size() {
+        position: u64,
+        buffer: &mut [u8],
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<usize> {
+        if cancelled() {
+            return Err(Error::Cancelled);
+        }
+        if self.header.encryption != 0 && self.key.is_none() {
+            return Err(Error::KeyRequired);
+        }
+        if position >= self.guest_size() || buffer.is_empty() {
             return Ok(0);
         }
-        let ret = min(buf.len() as u64, self.header.guest_size() - pos) as usize;
-        let mut buf = &mut buf[..ret];
-
-        let mut offset = pos % self.cluster_size();
-        let mut guest_block_pos = pos - offset;
-        while !buf.is_empty() {
-            let entry = self.l2_entry_read(l1, guest_block_pos)?;
-            let size = min(buf.len() as u64, self.cluster_size() - offset) as usize;
-            self.guest_block_read(entry, offset, &mut buf[..size])?;
-
-            let tmp = buf;
-            buf = &mut tmp[size..];
-            guest_block_pos += self.cluster_size();
-            offset = 0;
+        let length = min(buffer.len() as u64, self.guest_size() - position) as usize;
+        let mut done = 0;
+        while done < length {
+            if cancelled() {
+                return Err(Error::Cancelled);
+            }
+            let guest = position + done as u64;
+            let offset = guest % self.cluster_size();
+            let cluster = guest - offset;
+            let count = min((length - done) as u64, self.cluster_size() - offset) as usize;
+            let output = &mut buffer[done..done + count];
+            match self.entry(guest)? {
+                Entry::Zero => output.fill(0),
+                Entry::Empty => {
+                    if self.header.backing_name.is_some() {
+                        let parent = self.backing.as_ref().ok_or(Error::MissingBacking)?;
+                        let parent_size = self.backing_size.ok_or(Error::MissingBacking)?;
+                        let available =
+                            min(count as u64, parent_size.saturating_sub(guest)) as usize;
+                        parent.read_exact_at(guest, &mut output[..available])?;
+                        output[available..].fill(0);
+                    } else {
+                        output.fill(0);
+                    }
+                }
+                Entry::Standard(host) => {
+                    if let Some(key) = self.key.as_ref().filter(|_| self.header.encryption == 1) {
+                        // Read only complete sectors covering the request, so
+                        // random reads don't need a whole-cluster allocation.
+                        let sector_start = offset / 512 * 512;
+                        let sector_end = crate::int::div_ceil(offset + count as u64, 512) * 512;
+                        let mut bytes =
+                            zeroize::Zeroizing::new(vec![0; (sector_end - sector_start) as usize]);
+                        check_range(host, sector_end, self.source_size, "encrypted data")?;
+                        self.io.read_exact_at(host + sector_start, &mut bytes)?;
+                        key.decrypt(cluster + sector_start, &mut bytes)?;
+                        let start = (offset - sector_start) as usize;
+                        output.copy_from_slice(&bytes[start..start + count]);
+                    } else {
+                        check_range(
+                            host,
+                            offset + count as u64,
+                            self.source_size,
+                            "allocated data",
+                        )?;
+                        self.io.read_exact_at(host + offset, output)?;
+                    }
+                }
+                Entry::Compressed { position, size } => {
+                    let bytes = self.compressed(cluster, position, size)?;
+                    output.copy_from_slice(&bytes[offset as usize..offset as usize + count]);
+                }
+            }
+            if cancelled() {
+                return Err(Error::Cancelled);
+            }
+            done += count;
         }
-        Ok(ret)
-    }
-
-    pub(crate) fn l1_read(&self) -> Result<Vec<u8>> {
-        let mut buf = vec![0; self.header.l1_entries() as usize * size_of::<u64>()];
-        self.io
-            .read_exact_at(self.header.c.l1_table_offset, &mut buf)?;
-        Ok(buf)
+        Ok(length)
     }
 }
 
-/// A reader of data from the virtual disk image.
-pub struct Reader<'a, I: 'a + ReadAt> {
-    q: &'a Qcow2<I>,
+/// Logical disk cursor. Positioned reads leave its sequential offset unchanged.
+pub struct Reader<'a, I: ReadAt> {
+    image: &'a Qcow2<I>,
+    position: u64,
 }
-
-impl<'a, I> ReadAt for Reader<'a, I>
-where
-    I: 'a + ReadAt,
-{
-    fn read_at(&self, pos: u64, buf: &mut [u8]) -> io::Result<usize> {
-        self.q.read_at(pos, buf).map_err(Into::into)
+impl<'a, I: ReadAt> Reader<'a, I> {
+    pub(crate) fn new(image: &'a Qcow2<I>) -> Self {
+        Self { image, position: 0 }
+    }
+    /// Current sequential offset.
+    pub fn position(&self) -> u64 {
+        self.position
     }
 }
-
-impl<'a, I> Size for Reader<'a, I>
-where
-    I: 'a + ReadAt,
-{
+impl<I: ReadAt> ReadAt for Reader<'_, I> {
+    fn read_at(&self, position: u64, buffer: &mut [u8]) -> io::Result<usize> {
+        self.image.read_at(position, buffer).map_err(Into::into)
+    }
+}
+impl<I: ReadAt> Size for Reader<'_, I> {
     fn size(&self) -> io::Result<Option<u64>> {
-        Ok(Some(self.q.guest_size()))
+        Ok(Some(self.image.guest_size()))
+    }
+}
+impl<I: ReadAt> Read for Reader<'_, I> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let count = self.image.read_at(self.position, buffer)?;
+        self.position += count as u64;
+        Ok(count)
+    }
+}
+impl<I: ReadAt> Seek for Reader<'_, I> {
+    fn seek(&mut self, offset: SeekFrom) -> io::Result<u64> {
+        let position = match offset {
+            SeekFrom::Start(position) => position as i128,
+            SeekFrom::Current(delta) => self.position as i128 + delta as i128,
+            SeekFrom::End(delta) => self.image.guest_size() as i128 + delta as i128,
+        };
+        if !(0..=i64::MAX as i128).contains(&position) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "QCOW seek outside supported range",
+            ));
+        }
+        self.position = position as u64;
+        Ok(self.position)
     }
 }

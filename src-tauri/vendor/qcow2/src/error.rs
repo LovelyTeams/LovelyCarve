@@ -6,6 +6,19 @@ use std::sync::PoisonError;
 /// The error type for Qcow2 operations.
 #[derive(Debug)]
 pub enum Error {
+    /// An operation was cancelled by its caller.
+    Cancelled,
+    /// Legacy-encrypted logical bytes require an explicit key.
+    KeyRequired,
+    /// A declared backing source has not been attached.
+    MissingBacking,
+    /// A backing file could not be opened; retains source context.
+    BackingFile {
+        /// Resolved parent filename.
+        path: std::path::PathBuf,
+        /// Underlying failure.
+        error: io::Error,
+    },
     /// The underlying source of a Qcow2 reported an I/O error.
     Io(io::Error),
 
@@ -44,6 +57,7 @@ impl<T> From<PoisonError<T>> for Error {
 impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match *self {
+            Error::BackingFile { ref error, .. } => Some(error),
             Error::Io(ref err) => Some(err),
             _ => None,
         }
@@ -53,6 +67,17 @@ impl StdError for Error {
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
+            Error::Cancelled => f.write_str("QCOW read cancelled"),
+            Error::KeyRequired => {
+                f.write_str("QCOW AES-128-CBC requires a password or 16-byte key")
+            }
+            Error::MissingBacking => {
+                f.write_str("QCOW backing file is required for unallocated data")
+            }
+            Error::BackingFile {
+                ref path,
+                ref error,
+            } => write!(f, "QCOW backing file {}: {error}", path.display()),
             Error::Io(ref err) => err.fmt(f),
             Error::FileType => f.write_str("Not a qcow2 file"),
             Error::Version(found) => write!(f, "Unsupported version {}", found),
@@ -66,6 +91,10 @@ impl Display for Error {
 
 impl From<Error> for io::Error {
     fn from(err: Error) -> io::Error {
-        io::Error::other(err)
+        match err {
+            Error::Io(error) => error,
+            Error::Cancelled => io::Error::new(io::ErrorKind::Interrupted, err),
+            error => io::Error::other(error),
+        }
     }
 }

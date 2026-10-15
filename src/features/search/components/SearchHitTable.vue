@@ -5,7 +5,7 @@
                   <col class="name-column" /><col class="path-column" /><col class="context-column" />
                   <col class="action-column" />
                 </colgroup>
-                <thead><tr><th>文件</th><th>路径 / 来源</th><th>命中内容</th><th><span class="action-heading">定位</span></th></tr></thead>
+                <thead><tr><th>{{ tr("文件") }}</th><th>{{ tr("路径 / 来源") }}</th><th>{{ tr("命中内容") }}</th><th><span class="action-heading">{{ tr("定位") }}</span></th></tr></thead>
                 <tbody>
                   <tr v-if="paddingTop > 0" class="virtual-spacer" aria-hidden="true">
                     <td :colspan="columnCount" :style="{ height: `${paddingTop}px` }"></td>
@@ -26,7 +26,7 @@
                         <strong>{{ virtualItem.item.file_name }}</strong>
                       </span>
                     </td>
-                    <td class="path-cell" :title="virtualItem.item.file_path || sourceKindLabel(virtualItem.item.source_kind)"><span v-if="virtualItem.item.source_kind !== 'file'" class="ui-badge sm source-badge">{{ sourceKindLabel(virtualItem.item.source_kind) }}</span><span class="mono">{{ virtualItem.item.file_path || '—' }}</span></td>
+                    <td class="path-cell" :title="virtualItem.item.file_path || sourceKindLabel(virtualItem.item.source_kind, tr)"><span v-if="virtualItem.item.source_kind !== 'file'" class="ui-badge sm source-badge">{{ sourceKindLabel(virtualItem.item.source_kind, tr) }}</span><span class="mono">{{ virtualItem.item.file_path || '—' }}</span></td>
                     <td class="context-cell">
                       <div class="context-preview mono" :title="virtualItem.item.context_full">
                         <template v-for="(segment, index) in highlightSearchPattern(buildSearchContextPreview(virtualItem.item.context_preview, virtualItem.item.pattern), virtualItem.item.pattern)" :key="index">
@@ -34,7 +34,7 @@
                         </template>
                       </div>
                     </td>
-                    <td><button class="ui-btn link locate-link" title="定位文件并查看命中字节" :disabled="locating" @click.stop="emit('open', virtualItem.item)" @keydown.enter.stop><ArrowUpRight :size="14" />定位</button></td>
+                    <td><button class="ui-btn link locate-link" :title="tr('定位文件并查看命中字节')" :disabled="locating" @click.stop="emit('open', virtualItem.item)" @keydown.enter.stop><ArrowUpRight :size="14" />{{ tr("定位") }}</button></td>
                   </tr>
                   <tr v-if="paddingBottom > 0" class="virtual-spacer" aria-hidden="true">
                     <td :colspan="columnCount" :style="{ height: `${paddingBottom}px` }"></td>
@@ -45,12 +45,12 @@
                       <SearchX v-else :size="18" />
                       <span>{{
                         loadingHits || selectedRunning
-                          ? '正在等待命中结果…'
+                          ? tr("正在等待命中结果…")
                           : filterKeyword
-                            ? '没有符合当前过滤条件的记录'
-                            : '本次搜索没有命中'
+                            ? tr("没有符合当前过滤条件的记录")
+                            : tr("本次搜索没有命中")
                       }}</span>
-                      <button v-if="filterKeyword && !loadingHits && !selectedRunning" class="ui-btn sm" @click="emit('clear-filter')">清除筛选</button>
+                      <button v-if="filterKeyword && !loadingHits && !selectedRunning" class="ui-btn sm" @click="emit('clear-filter')">{{ tr("清除筛选") }}</button>
                     </td>
                   </tr>
                 </tbody>
@@ -59,6 +59,8 @@
 
 </template>
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue';
 import { ArrowUpRight, Loader2, SearchX } from 'lucide-vue-next';
 import FileNodeIcon from '../../../components/display/FileNodeIcon.vue';

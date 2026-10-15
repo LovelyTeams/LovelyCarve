@@ -66,6 +66,7 @@ dependencies = [
  "cipher 0.5.2",
  "cpubits",
  "cpufeatures 0.3.1",
+ "zeroize",
 ]
 
 [[package]]
@@ -2730,6 +2731,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gzipf"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "flate2",
+]
+
+[[package]]
 name = "half"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3720,6 +3729,7 @@ dependencies = [
  "fs2",
  "goblin",
  "gpt",
+ "gzipf",
  "hex",
  "hfsplus",
  "image",
@@ -3744,6 +3754,7 @@ dependencies = [
  "opencv",
  "ort",
  "parking_lot",
+ "phdi",
  "plist",
  "qcow2",
  "quick-xml 0.42.0",
@@ -3765,6 +3776,7 @@ dependencies = [
  "sha1 0.11.0",
  "sha2 0.11.0",
  "sm3",
+ "smraw",
  "sqlite-core",
  "syn 3.0.8",
  "tar",
@@ -5030,6 +5042,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
+name = "phdi"
+version = "0.1.0"
+dependencies = [
+ "quick-xml 0.42.0",
+]
+
+[[package]]
 name = "phf"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5372,9 +5391,12 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 name = "qcow2"
 version = "0.1.3-lovelycarve"
 dependencies = [
+ "aes 0.9.3",
  "byteorder",
+ "flate2",
  "lru",
  "positioned-io",
+ "zeroize",
 ]
 
 [[package]]
@@ -6457,6 +6479,10 @@ name = "smallvec"
 version = "1.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b3dc8af474f516a851ff4bd12db780f948b9250ad37211e4eec0bccea54e01b"
+
+[[package]]
+name = "smraw"
+version = "0.1.0"
 
 [[package]]
 name = "socket2"

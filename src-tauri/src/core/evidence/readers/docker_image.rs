@@ -43,6 +43,10 @@ use crate::core::evidence::readers::tar_image::TarImage;
 
 const MAX_DECODED_LAYER: u64 = 8 * 1024 * 1024 * 1024;
 
+#[cfg(test)]
+#[path = "docker_image/gzip_tests.rs"]
+mod gzip_tests;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum EntryKind {
@@ -497,7 +501,7 @@ fn detect_compression(media_type: &str, raw: &[u8]) -> Compression {
     if mt.contains("zstd") {
         return Compression::Zstd;
     }
-    if raw.starts_with(&[0x1f, 0x8b]) {
+    if gzipf::check_signature(raw) {
         return Compression::Gzip;
     }
     if raw.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]) {
@@ -507,15 +511,15 @@ fn detect_compression(media_type: &str, raw: &[u8]) -> Compression {
 }
 
 fn decode_gzip(raw: &[u8]) -> Result<Vec<u8>> {
-    use flate2::read::GzDecoder;
+    let mut options = gzipf::Options::default();
+    options.max_uncompressed_bytes = MAX_DECODED_LAYER;
+    options.max_compressed_bytes = raw.len() as u64;
     let mut out = Vec::new();
-    GzDecoder::new(raw)
-        .take(MAX_DECODED_LAYER + 1)
+    // No Read::take: reaching an output limit must fail, never masquerade as
+    // EOF before later members or their trailers have been checked.
+    gzipf::GzipDecoder::with_options(raw, options)
         .read_to_end(&mut out)
         .context("gunzip layer")?;
-    if out.len() as u64 > MAX_DECODED_LAYER {
-        bail!("gzip layer exceeds {MAX_DECODED_LAYER} bytes");
-    }
     Ok(out)
 }
 

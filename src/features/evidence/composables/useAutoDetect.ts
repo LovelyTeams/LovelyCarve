@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, reactive, type ComputedRef } from 'vue';
 import {
   AUTODETECT_FAILED_EVENT,
@@ -111,7 +113,7 @@ export async function runAutoDetect(imageId: string): Promise<AutoDetectReport |
     if (e instanceof IpcCommandError && e.code === 'cancelled') return null;
     const message = String(e);
     errors.set(imageId, message);
-    notifyError('自动识别失败', message);
+    notifyError(tr("自动识别失败"), message);
     return null;
   } finally {
     if (current()) pending.delete(imageId);

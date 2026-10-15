@@ -9,20 +9,22 @@
                 >{{ pattern.regex ? `/${pattern.text}/` : pattern.text }}</span>
                 <span v-if="selectedPatterns.hidden > 0" class="pattern-more">+{{ selectedPatterns.hidden }}</span>
               </span>
-              <span class="ui-badge sm status-badge" :class="searchStatusTone">{{ statusLabel(selectedTask.status) }}</span>
-              <span class="ui-footbar-stat">扫描 <strong>{{ scannedLabel }}</strong> 个对象</span>
-              <span class="ui-footbar-stat">命中 <strong :key="matchedFileCountLabel" class="ui-bump">{{ matchedFileCountLabel }}</strong> 个文件 · <strong :key="totalMatchesLabel" class="ui-bump">{{ totalMatchesLabel }}</strong> 处</span>
-              <span v-if="selectedTask.finished_ms" class="ui-footbar-stat footer-elapsed">耗时 <strong>{{ formatElapsedLabel(selectedTask) }}</strong></span>
+              <span class="ui-badge sm status-badge" :class="searchStatusTone">{{ statusLabel(selectedTask.status, tr) }}</span>
+              <span class="ui-footbar-stat">{{ tr("扫描") }} <strong>{{ scannedLabel }}</strong> {{ tr("个对象") }}</span>
+              <span class="ui-footbar-stat">{{ tr("命中") }} <strong :key="matchedFileCountLabel" class="ui-bump">{{ matchedFileCountLabel }}</strong> {{ tr("个文件 ·") }} <strong :key="totalMatchesLabel" class="ui-bump">{{ totalMatchesLabel }}</strong> {{ tr("处") }}</span>
+              <span v-if="selectedTask.finished_ms" class="ui-footbar-stat footer-elapsed">{{ tr("耗时") }} <strong>{{ formatElapsedLabel(selectedTask) }}</strong></span>
               <span class="ui-footbar-spacer"></span>
               <span v-if="loadingHits" class="footer-loading">
-                <Loader2 :size="11" class="spin" /> 加载中…
+                <Loader2 :size="11" class="spin" /> {{ tr("加载中…") }}
               </span>
               <span class="footer-total mono">
-                {{ hitsTotal.toLocaleString() }} 条结果
+                {{ hitsTotal.toLocaleString() }} {{ tr("条结果") }}
               </span>
             </footer>
 </template>
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { Loader2 } from 'lucide-vue-next';
 import type { GlobalSearchHistoryEntry } from '../../../lib/ipc/search';
 import { taskFullTitle, formatTaskTime, formatElapsedLabel, statusLabel } from '../model/searchTaskView';

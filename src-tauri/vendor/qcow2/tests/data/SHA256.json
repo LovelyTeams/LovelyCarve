@@ -1,0 +1,38 @@
+{
+  "plain.bin": {
+    "size": 4096,
+    "sha256": "4c035498e45cb143e68b1f84a193234dc4b8975c1e5a569fc0212ec210818468"
+  },
+  "v1-deflate.qcow": {
+    "size": 13565,
+    "sha256": "a288db9f42b11bcb8fac091106059c7cd531d5545f420ed0c3b8292aa1e04b19"
+  },
+  "v1-aes.qcow": {
+    "size": 16384,
+    "sha256": "5e0a1f17a37362e2838e560063d624abfb05c6b545ccdbbad006f49c93af2974"
+  },
+  "v2-deflate.qcow": {
+    "size": 13565,
+    "sha256": "e47c03902b6f5e38f5160574cc611800ff71610b6e03d9d0c70c56e64b9765a3"
+  },
+  "v2-aes.qcow": {
+    "size": 16384,
+    "sha256": "0a83e7fcd53dc69905d20405fc21b69d951bb03a8b7622e07c9217e4e53e8e6f"
+  },
+  "v3-deflate.qcow": {
+    "size": 13565,
+    "sha256": "7e22b0cbde465dd4d1be9df081f4a117ebbb3420641e849e72e15a03e6618764"
+  },
+  "v3-aes.qcow": {
+    "size": 16384,
+    "sha256": "c18759b61e82798d6177d664f54d350bded393f69b772cbed3eac18d21567744"
+  },
+  "v2-deflate-short.qcow": {
+    "size": 13563,
+    "sha256": "584333be3f0c3263d8c3f8ce328a753b811c878e131da4ab6f37c9e29c2ec3dc"
+  },
+  "v2-deflate-long.qcow": {
+    "size": 13564,
+    "sha256": "6f7ace9cafe72b80f00035775e641c6565bf236ae151f0df4359e310f43c7415"
+  }
+}

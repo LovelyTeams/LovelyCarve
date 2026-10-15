@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, onActivated, onDeactivated, onMounted, onScopeDispose, ref, watch } from 'vue';
 import { open } from '@tauri-apps/plugin-dialog';
 import { bitlockerStatus } from '../../../lib/ipc/bitlocker';
@@ -46,15 +48,15 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
   const syntheticRoot = computed<{ id: string; label: string } | null>(() => {
     switch (options.info()?.source_format) {
       case 'tar':
-        return { id: 'tar:', label: '归档根' };
+        return { id: 'tar:', get label() { return tr("归档根"); } };
       case 'zip':
-        return { id: 'zip:', label: '归档根' };
+        return { id: 'zip:', get label() { return tr("归档根"); } };
       case 'sevenz':
-        return { id: 'sevenz:', label: '归档根' };
+        return { id: 'sevenz:', get label() { return tr("归档根"); } };
       case 'ad1':
-        return { id: 'ad1:', label: '逻辑镜像根' };
+        return { id: 'ad1:', get label() { return tr("逻辑镜像根"); } };
       case 'docker':
-        return { id: 'docker:', label: '容器根' };
+        return { id: 'docker:', get label() { return tr("容器根"); } };
       default:
         return null;
     }
@@ -159,7 +161,7 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
     try {
       if (view.share) {
         await fsUnshareMount({ mountId: view.id });
-        notifySuccess('共享已关闭', view.share.unc_path);
+        notifySuccess(tr("共享已关闭"), view.share.unc_path);
       } else {
         const share = await fsShareMount({
           mountId: view.id,
@@ -167,14 +169,14 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
         });
         try {
           await navigator.clipboard.writeText(share.unc_path);
-          notifySuccess('共享成功', `${share.unc_path} 已复制`);
+          notifySuccess(tr("共享成功"), tr("{0} 已复制", { 0: share.unc_path }));
         } catch {
-          notifySuccess('共享成功', share.unc_path);
+          notifySuccess(tr("共享成功"), share.unc_path);
         }
       }
       if (current(captured)) await refreshMounts();
     } catch (e) {
-      notifyError(view.share ? '取消共享失败' : '共享失败', String(e));
+      notifyError(view.share ? tr("取消共享失败") : tr("共享失败"), String(e));
     } finally {
       if (current(captured)) setShareBusy(view.id, false);
     }
@@ -193,10 +195,10 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
       setBusy(key, true);
       try {
         await fsUnmountReadonly({ mountId: existing.id });
-        notifySuccess('卸载成功', `${existing.mount_point} 已释放`);
+        notifySuccess(tr("卸载成功"), tr("{0} 已释放", { 0: existing.mount_point }));
         if (current(context.generation)) await refreshMounts();
       } catch (e) {
-        notifyError('卸载失败', String(e));
+        notifyError(tr("卸载失败"), String(e));
       } finally {
         if (current(context.generation)) setBusy(key, false);
       }
@@ -214,7 +216,7 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
         try {
           dir = await fsCreateMountDir({ root, imageId: context.imageId, name: title });
         } catch (e) {
-          notifyError('挂载失败', `无法在默认挂载根目录下新建文件夹：${String(e)}`);
+          notifyError(tr("挂载失败"), tr("无法在默认挂载根目录下新建文件夹：{0}", { 0: String(e) }));
           if (current(context.generation)) setBusy(key, false);
           return;
         }
@@ -228,11 +230,11 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
         const picked = await open({
           directory: true,
           multiple: false,
-          title: '选择挂载目录（须为空且位于 NTFS 卷）',
+          title: tr("选择挂载目录（须为空且位于 NTFS 卷）"),
         });
         folder = typeof picked === 'string' ? picked : null;
       } catch (e) {
-        notifyError('挂载失败', String(e));
+        notifyError(tr("挂载失败"), String(e));
         return;
       }
       if (!folder || !current(context.generation)) return; // 用户取消或已切换检材
@@ -247,12 +249,12 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
       if (!current(context.generation)) return;
       availableDrives.value = drives;
       if (availableDrives.value.length === 0) {
-        notifyError('挂载失败', '没有可用盘符（H–Y 全部占用）');
+        notifyError(tr("挂载失败"), tr("没有可用盘符（H–Y 全部占用）"));
         pickerOpenFor.value = null;
       }
     } catch (e) {
       if (!current(context.generation)) return;
-      notifyError('挂载失败', String(e));
+      notifyError(tr("挂载失败"), String(e));
       pickerOpenFor.value = null;
     } finally {
       if (current(context.generation)) pickerLoading.value = false;
@@ -275,21 +277,21 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
         nodeId,
         mountPoint,
       });
-      notifySuccess('挂载成功', `${title} → ${view.mount_point}`);
+      notifySuccess(tr("挂载成功"), `${title} → ${view.mount_point}`);
       if (current(context.generation)) await refreshMounts();
     } catch (e) {
-      notifyError('挂载失败', String(e));
+      notifyError(tr("挂载失败"), String(e));
     } finally {
       if (current(context.generation)) setBusy(key, false);
     }
   }
 
   function toggleMount(p: DiskPartition) {
-    return beginMount(`part:${p.id}`, p.id, partitionTitle(p));
+    return beginMount(`part:${p.id}`, p.id, partitionTitle(p, tr));
   }
 
   function mountAt(p: DiskPartition, mountPoint: string) {
-    return finishMountAt(`part:${p.id}`, p.id, partitionTitle(p), mountPoint);
+    return finishMountAt(`part:${p.id}`, p.id, partitionTitle(p, tr), mountPoint);
   }
 
   watch([() => options.info()?.id, options.caseDirectory], () => {

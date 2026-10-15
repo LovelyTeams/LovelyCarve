@@ -13,7 +13,8 @@ use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context, Result};
-use flate2::read::{GzDecoder, ZlibDecoder};
+use flate2::read::ZlibDecoder;
+use gzipf::GzipDecoder;
 use memchr::memmem::Finder;
 
 use crate::core::evidence::readers::tar_image::TarImage;
@@ -22,6 +23,10 @@ const ANDROID_BACKUP_MAGIC: &[u8] = b"ANDROID BACKUP\n";
 const BACKUP_FILE_V1: u8 = 1;
 const BACKUP_FILE_V5: u8 = 5;
 const ENCRYPTION_NONE: &str = "none";
+
+#[cfg(test)]
+#[path = "mi_bak/gzip_tests.rs"]
+mod gzip_tests;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MiBakUnpackStats {
@@ -70,10 +75,19 @@ pub fn unpack_bak_file(input_path: &Path, output_dir: &Path) -> Result<MiBakUnpa
     if compressed {
         let is_gzip = reader
             .fill_buf()
-            .map(|bytes| bytes.starts_with(&[0x1f, 0x8b]))
-            .unwrap_or(false);
+            .map(gzipf::check_signature)
+            .context("probe Android Backup compression")?;
         if is_gzip {
-            extract_tar(GzDecoder::new(reader), output_dir)
+            // tar::Archive stops at its end marker, before a GZIP trailer or
+            // later members. Validate the entire stream in a temporary tar
+            // before creating extracted files; this also preserves empty tar
+            // support in the legacy unpack path.
+            let mut decoder = GzipDecoder::new(reader);
+            let mut tar = tempfile::tempfile().context("create temporary gzip backup tar")?;
+            io::copy(&mut decoder, &mut tar)
+                .context("decompress and validate gzip Android Backup")?;
+            tar.rewind().context("rewind validated backup tar")?;
+            extract_tar(tar, output_dir)
         } else {
             extract_tar(ZlibDecoder::new(reader), output_dir)
         }
@@ -110,10 +124,10 @@ pub fn open_bak_archive(input_path: &Path, label: String) -> Result<TarImage> {
     if compressed {
         let is_gzip = reader
             .fill_buf()
-            .map(|bytes| bytes.starts_with(&[0x1f, 0x8b]))
-            .unwrap_or(false);
+            .map(gzipf::check_signature)
+            .context("probe Android Backup compression")?;
         if is_gzip {
-            let mut decoder = GzDecoder::new(reader);
+            let mut decoder = GzipDecoder::new(reader);
             TarImage::open_from_tar_reader(input_path.to_path_buf(), Some(label), &mut decoder)
         } else {
             let mut decoder = ZlibDecoder::new(reader);

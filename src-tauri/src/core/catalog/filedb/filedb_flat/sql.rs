@@ -53,8 +53,11 @@ pub(super) fn push_filter(clause: &mut WhereClause, filter: &FlatFileFilter, sco
     }
     if let Some(query) = &filter.kind_query {
         clause.push(
-            &format!("{KIND_LABEL_EXPR} LIKE ? ESCAPE '\\'"),
-            [Value::Text(like_contains_escaped(query))],
+            &format!("({KIND_LABEL_EXPR} LIKE ? ESCAPE '\\' OR {KIND_ENGLISH_LABEL_EXPR} LIKE ? ESCAPE '\\')"),
+            [
+                Value::Text(like_contains_escaped(query)),
+                Value::Text(like_contains_escaped(query)),
+            ],
         );
     }
     if let Some(query) = &filter.link_query {

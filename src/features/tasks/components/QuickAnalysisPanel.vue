@@ -1,10 +1,10 @@
 <template>
-  <section class="quick-analysis" aria-label="快速分析">
+  <section class="quick-analysis" :aria-label="tr('快速分析')">
     <div class="qa-head">
       <div class="qa-toolbar">
-        <UiSelect v-if="platforms.length > 1" class="qa-platform" :model-value="activePlatform" :options="platformOptions" :disabled="submitting" aria-label="分析平台" @update:model-value="onPickPlatform" />
+        <UiSelect v-if="platforms.length > 1" class="qa-platform" :model-value="activePlatform" :options="platformOptions" :disabled="submitting" :aria-label="tr('分析平台')" @update:model-value="onPickPlatform" />
         <span v-else-if="platforms.length" class="qa-platform-label"><component :is="platformIcon(platforms[0])" :size="13" />{{ platformLabel(platforms[0]) }}</span>
-        <label class="ui-search qa-search"><Search :size="14" /><input v-model="search" type="text" placeholder="搜索插件或分析内容" aria-label="搜索插件或分析内容" /><button v-if="search" class="ui-icon-btn sm" aria-label="清除搜索" @click="search = ''"><X :size="13" /></button></label>
+        <label class="ui-search qa-search"><Search :size="14" /><input v-model="search" type="text" :placeholder="tr('搜索插件或分析内容')" :aria-label="tr('搜索插件或分析内容')" /><button v-if="search" class="ui-icon-btn sm" :aria-label="tr('清除搜索')" @click="search = ''"><X :size="13" /></button></label>
       </div>
       <!-- One box for everything listed (the matches while searching); each category has its own below. -->
       <div v-if="groups.length" class="qa-selectbar">
@@ -15,22 +15,22 @@
             :indeterminate="checkState(visiblePlugins) === 'some'"
             :disabled="submitting || !selectable(visiblePlugins).length"
             @change="toggleMany(visiblePlugins)"
-          />{{ searching ? '全选匹配的插件' : '全选' }}
+          />{{ searching ? tr("全选匹配的插件") : tr("全选") }}
         </label>
-        <span class="qa-selectbar-count">{{ visiblePlugins.length }} 个插件</span>
+        <span class="qa-selectbar-count">{{ visiblePlugins.length }} {{ tr("个插件") }}</span>
         <button class="ui-btn sm ghost qa-expand-all" type="button" @click="toggleExpandAll">
-          <component :is="allExpanded ? ChevronsDownUp : ChevronsUpDown" :size="13" />{{ allExpanded ? '全部收起' : '全部展开' }}
+          <component :is="allExpanded ? ChevronsDownUp : ChevronsUpDown" :size="13" />{{ allExpanded ? tr("全部收起") : tr("全部展开") }}
         </button>
       </div>
     </div>
 
     <div class="qa-scroll">
-      <div v-if="loading && !functions.length" class="ui-empty state-box"><span class="ui-empty-icon accent"><Loader2 :size="22" class="spin" /></span><p class="ui-empty-desc">正在加载分析插件…</p></div>
-      <div v-else-if="error && !functions.length" class="ui-empty state-box error"><span class="ui-empty-icon"><CircleAlert :size="22" /></span><p class="ui-empty-title">读取分析插件失败</p><p class="ui-empty-desc">{{ error }}</p><div class="ui-empty-actions"><button class="ui-btn sm" @click="refresh">重试</button></div></div>
-      <div v-else-if="!platformPlugins.length" class="ui-empty state-box"><span class="ui-empty-icon"><Zap :size="22" /></span><p class="ui-empty-title">暂无可用的分析插件</p><p class="ui-empty-desc">{{ platforms.length ? '当前平台没有适用于该检材的插件。' : '安装提供检材分析能力的插件后，会显示在这里。' }}</p></div>
-      <div v-else-if="!groups.length" class="ui-empty state-box"><span class="ui-empty-icon"><Search :size="22" /></span><p class="ui-empty-title">没有匹配的插件</p><div class="ui-empty-actions"><button class="ui-btn sm" @click="search = ''">清除搜索</button></div></div>
+      <div v-if="loading && !functions.length" class="ui-empty state-box"><span class="ui-empty-icon accent"><Loader2 :size="22" class="spin" /></span><p class="ui-empty-desc">{{ tr("正在加载分析插件…") }}</p></div>
+      <div v-else-if="error && !functions.length" class="ui-empty state-box error"><span class="ui-empty-icon"><CircleAlert :size="22" /></span><p class="ui-empty-title">{{ tr("读取分析插件失败") }}</p><p class="ui-empty-desc">{{ error }}</p><div class="ui-empty-actions"><button class="ui-btn sm" @click="refresh">{{ tr("重试") }}</button></div></div>
+      <div v-else-if="!platformPlugins.length" class="ui-empty state-box"><span class="ui-empty-icon"><Zap :size="22" /></span><p class="ui-empty-title">{{ tr("暂无可用的分析插件") }}</p><p class="ui-empty-desc">{{ platforms.length ? tr("当前平台没有适用于该检材的插件。") : tr("安装提供检材分析能力的插件后，会显示在这里。") }}</p></div>
+      <div v-else-if="!groups.length" class="ui-empty state-box"><span class="ui-empty-icon"><Search :size="22" /></span><p class="ui-empty-title">{{ tr("没有匹配的插件") }}</p><div class="ui-empty-actions"><button class="ui-btn sm" @click="search = ''">{{ tr("清除搜索") }}</button></div></div>
       <template v-else>
-        <section v-for="group in groups" :key="group.key" class="qa-group" :aria-label="`${group.label} ${group.plugins.length} 个插件`">
+        <section v-for="group in groups" :key="group.key" class="qa-group" :aria-label="tr('{0} {1} 个插件', { 0: group.label, 1: group.plugins.length })">
           <div class="qa-group-head">
             <input
               type="checkbox"
@@ -38,7 +38,7 @@
               :checked="checkState(group.plugins) === 'all'"
               :indeterminate="checkState(group.plugins) === 'some'"
               :disabled="submitting || !selectable(group.plugins).length"
-              :aria-label="`全选${group.label}`"
+              :aria-label="tr('全选{0}', { 0: group.label })"
               @change="toggleMany(group.plugins)"
             />
             <button
@@ -67,8 +67,8 @@
                   :class="{ saved: isFavouritePlugin(plugin.id) }"
                   type="button"
                   :disabled="submitting"
-                  :title="isFavouritePlugin(plugin.id) ? '取消收藏' : '收藏'"
-                  :aria-label="`${isFavouritePlugin(plugin.id) ? '取消收藏' : '收藏'} ${plugin.name}`"
+                  :title="isFavouritePlugin(plugin.id) ? tr('取消收藏') : tr('收藏')"
+                  :aria-label="`${isFavouritePlugin(plugin.id) ? tr('取消收藏') : tr('收藏')} ${plugin.name}`"
                   :aria-pressed="isFavouritePlugin(plugin.id)"
                   @click="toggleFavouritePlugin(plugin.id)"
                 ><Star :size="12" /></button>
@@ -85,21 +85,23 @@
 
     <footer class="qa-foot">
       <div v-if="evidenceTasks.length" ref="moreMenuRoot" class="qa-more" @keydown.esc.stop="moreOpen = false">
-        <button class="ui-icon-btn" :aria-expanded="moreOpen" aria-haspopup="menu" aria-label="更多操作" title="更多操作" @click="moreOpen = !moreOpen"><MoreHorizontal :size="16" /></button>
-        <div v-if="moreOpen" class="ui-menu qa-more-menu" role="menu"><button class="ui-menu-item" role="menuitem" :disabled="submitting" @click="onRestartAll"><RotateCcw :size="14" />重新分析全部任务</button></div>
+        <button class="ui-icon-btn" :aria-expanded="moreOpen" aria-haspopup="menu" :aria-label="tr('更多操作')" :title="tr('更多操作')" @click="moreOpen = !moreOpen"><MoreHorizontal :size="16" /></button>
+        <div v-if="moreOpen" class="ui-menu qa-more-menu" role="menu"><button class="ui-menu-item" role="menuitem" :disabled="submitting" @click="onRestartAll"><RotateCcw :size="14" />{{ tr("重新分析全部任务") }}</button></div>
       </div>
       <span class="qa-summary">
-        <span v-if="selectedCount">已选 <strong :key="selectedCount" class="ui-bump">{{ selectedCount }}</strong> 个插件</span>
-        <span v-else>勾选要运行的插件</span>
-        <span v-if="rerunCount" class="qa-rerun">其中 {{ rerunCount }} 个将清理旧结果后重新分析</span>
+        <span v-if="selectedCount">{{ tr("已选") }} <strong :key="selectedCount" class="ui-bump">{{ selectedCount }}</strong> {{ tr("个插件") }}</span>
+        <span v-else>{{ tr("勾选要运行的插件") }}</span>
+        <span v-if="rerunCount" class="qa-rerun">{{ tr("其中") }} {{ rerunCount }} {{ tr("个将清理旧结果后重新分析") }}</span>
       </span>
-      <button v-if="selectedCount" class="ui-btn ghost" :disabled="submitting" @click="selection.clear()">清空</button>
-      <button class="ui-btn primary" :disabled="submitting || !selectedCount" @click="onConfirm"><Loader2 v-if="submitting" :size="13" class="spin" /><Play v-else :size="13" />{{ submitting ? '提交中…' : '开始分析' }}</button>
+      <button v-if="selectedCount" class="ui-btn ghost" :disabled="submitting" @click="selection.clear()">{{ tr("清空") }}</button>
+      <button class="ui-btn primary" :disabled="submitting || !selectedCount" @click="onConfirm"><Loader2 v-if="submitting" :size="13" class="spin" /><Play v-else :size="13" />{{ submitting ? tr("提交中…") : tr("开始分析") }}</button>
     </footer>
   </section>
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 /** 检材级分析插件清单：按分类平铺插件，勾选插件即运行它在当前平台的全部分析功能（不细分子项）；
  *  顶部与每个分类各有一个三态全选框，格子右侧的图标是该插件在当前检材上的最近任务状态。 */
 import UiSelect from '../../../components/ui/UiSelect.vue';
@@ -249,9 +251,9 @@ const STATUS_ICON: Record<SchedTaskStatus, LucideIcon> = {
 };
 
 function statusText(task: SchedTaskRecord): string {
-  if (task.status === 'running') return `执行中 ${taskProgressPercent(task)}%`;
-  if (task.status === 'success') return '已完成';
-  return TASK_STATUS_LABEL[task.status];
+  if (task.status === 'running') return tr("执行中 {0}%", { 0: taskProgressPercent(task) });
+  if (task.status === 'success') return tr("已完成");
+  return tr(TASK_STATUS_LABEL[task.status]);
 }
 
 function badgeOf(plugin: QuickPlugin, latest: SchedTaskRecord[]): PluginBadge | null {
@@ -259,15 +261,15 @@ function badgeOf(plugin: QuickPlugin, latest: SchedTaskRecord[]): PluginBadge | 
   const running = latest.filter(task => task.status === 'running');
   if (running.length) {
     const percent = Math.round(running.reduce((sum, task) => sum + taskProgressPercent(task), 0) / running.length);
-    return { status: 'running', text: `执行中 ${percent}%`, tone: TASK_STATUS_TONE.running };
+    return { status: 'running', text: tr("执行中 {0}%", { 0: percent }), tone: TASK_STATUS_TONE.running };
   }
   const waiting = latest.find(task => !isTerminalStatus(task.status));
-  if (waiting) return { status: waiting.status, text: TASK_STATUS_LABEL[waiting.status], tone: TASK_STATUS_TONE[waiting.status] };
-  if (latest.some(task => task.status === 'failed')) return { status: 'failed', text: '失败', tone: TASK_STATUS_TONE.failed };
+  if (waiting) return { status: waiting.status, text: tr(TASK_STATUS_LABEL[waiting.status]), tone: TASK_STATUS_TONE[waiting.status] };
+  if (latest.some(task => task.status === 'failed')) return { status: 'failed', text: tr("失败"), tone: TASK_STATUS_TONE.failed };
   const succeeded = latest.filter(task => task.status === 'success').length;
-  if (!succeeded) return { status: 'cancel', text: TASK_STATUS_LABEL.cancel, tone: TASK_STATUS_TONE.cancel };
+  if (!succeeded) return { status: 'cancel', text: tr(TASK_STATUS_LABEL.cancel), tone: TASK_STATUS_TONE.cancel };
   const total = plugin.functions.length;
-  return { status: 'success', text: succeeded === total ? '已完成' : `已完成 ${succeeded}/${total}`, tone: TASK_STATUS_TONE.success };
+  return { status: 'success', text: succeeded === total ? tr("已完成") : tr("已完成 {0}/{1}", { 0: succeeded, 1: total }), tone: TASK_STATUS_TONE.success };
 }
 
 const pluginStates = computed(() => {
@@ -298,9 +300,9 @@ function tileTitle(plugin: QuickPlugin): string {
   const state = stateOf(plugin);
   return [
     plugin.name,
-    `包含：${plugin.functions.map(fn => fn.displayName).join('、')}`,
-    state.busy ? '已有未结束的任务，可在任务列表中继续、暂停或取消' : null,
-    state.badge ? `最近任务：${state.badge.text}` : null,
+    tr("包含：{0}", { 0: plugin.functions.map(fn => fn.displayName).join('、') }),
+    state.busy ? tr("已有未结束的任务，可在任务列表中继续、暂停或取消") : null,
+    state.badge ? tr("最近任务：{0}", { 0: state.badge.text }) : null,
     ...state.taskLines,
   ].filter(Boolean).join('\n');
 }
@@ -389,9 +391,9 @@ async function onConfirm(): Promise<void> {
     const rerun = chosen.filter(plugin => stateOf(plugin).stale.length > 0);
     if (rerun.length > 0) {
       const ok = await confirm({
-        title: '任务结果已存在',
-        message: `${rerun.map(plugin => plugin.name).join('、')} 已有任务记录。清理旧任务数据并重新分析吗?`,
-        confirmText: '重新分析',
+        title: tr("任务结果已存在"),
+        message: tr("{0} 已有任务记录。清理旧任务数据并重新分析吗?", { 0: rerun.map(plugin => plugin.name).join('、') }),
+        confirmText: tr("重新分析"),
         danger: true,
       });
       if (!ok || disposed) return;
@@ -415,7 +417,7 @@ async function onConfirm(): Promise<void> {
       }
     }
     if (disposed || !createdTasks) return;
-    notifyInfo('快速分析', `已提交 ${createdTasks} 个分析任务，可在任务列表查看进度`);
+    notifyInfo(tr("快速分析"), tr("已提交 {0} 个分析任务，可在任务列表查看进度", { 0: createdTasks }));
     if (completePlugins === chosen.length) emit('submitted');
   } finally {
     submitting.value = false;
@@ -428,9 +430,9 @@ async function onRestartAll(): Promise<void> {
   const candidates = evidenceTasks.value;
   if (!candidates.length || submitting.value) return;
   const ok = await confirm({
-    title: '重新分析所有任务',
-    message: `将重跑该检材的 ${candidates.length} 个任务,重新分析会清理之前的数据。继续吗?`,
-    confirmText: '重新分析',
+    title: tr("重新分析所有任务"),
+    message: tr("将重跑该检材的 {0} 个任务,重新分析会清理之前的数据。继续吗?", { 0: candidates.length }),
+    confirmText: tr("重新分析"),
     danger: true,
   });
   if (!ok || disposed) return;
@@ -446,7 +448,7 @@ async function onRestartAll(): Promise<void> {
       }
     }
     if (disposed || !restartedCount) return;
-    notifyInfo('快速分析', `已重新排队 ${restartedCount} 个任务`);
+    notifyInfo(tr("快速分析"), tr("已重新排队 {0} 个任务", { 0: restartedCount }));
     emit('submitted');
   } finally {
     submitting.value = false;

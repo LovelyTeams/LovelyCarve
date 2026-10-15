@@ -64,7 +64,7 @@ just --dry-run pack           # 展开依赖与命令，但不执行
 
 | 工作 | 入口 |
 | --- | --- |
-| 前端 | `dev-fe`、`typecheck`、`test-fe`、`build-fe`、`ipc-check`、`frontend-structure-check` |
+| 前端 | `dev-fe`、`typecheck`、`test-fe`、`build-fe`、`ipc-check`、`frontend-structure-check`、`i18n-check` |
 | 后端 | `fmt`、`check`、`clippy`、`test [名称及 Cargo 参数]`、`check-examples` |
 | Windows 桌面 | `dev`、`build`、`build-release`、`pack`、`repack`；含 QR/OCR 的版本使用对应的 `*-full` |
 | CLI | `run-cli`、`build-cli`、`build-cli-full`、`test-cli`、`smoke-cli <exe>`；Windows 另有 `pack-cli`、`pack-cli-full`、`repack-cli` |
@@ -74,15 +74,25 @@ just --dry-run pack           # 展开依赖与命令，但不执行
 | 依赖更新 | `update-fe`、`update-rust`、`update-plugins`、`update-tauri`、`update-file-viewer <版本>` |
 | 资源维护 | `icons`、`qr-env`、`build-opencv-contrib`、`qr-test <图片>` |
 
-`verify-fe` 汇总 IPC、结构、类型检查、前端测试和生产构建；`verify-rust` 汇总格式化、编译、Clippy 和后端测试；`verify-plugins` 汇总格式化、插件 Clippy 和插件测试。按 [贡献指南](../CONTRIBUTING.md#验证) 选择验证范围。
+`verify-fe` 汇总 IPC、结构、中英文词条、类型检查、前端测试和生产构建；`verify-rust` 汇总格式化、编译、Clippy 和后端测试；`verify-plugins` 汇总格式化、插件 Clippy 和插件测试。按 [贡献指南](../CONTRIBUTING.md#验证) 选择验证范围。
 
-`fmt` 覆盖主 crate、插件与维护中的读取器。公共读取接口改动后运行 `check-examples`。参数含空格时，需要保留一层传给子 shell 的引号：
+QCOW 使用 `just test-qcow2` / `just clippy-qcow2`；宿主回归用 `just test qcow --lib --jobs 1`，CLI 用 `just test-cli`。`just generate-qcow-fixtures` 可重建独立 Python zlib/OpenSSL 样本（需 cryptography），能力与边界见 [QCOW](formats/QCOW.md)。
+
+Parallels PHDI 使用 `just test-phdi` / `just clippy-phdi`；宿主回归用 `just test phdi --lib --jobs 1`，真实命令打开 / 导出用 `just test-cli`。可选外部 oracle、56 API 对照及验证边界见 [PHDI](formats/PHDI.md)。
+
+`fmt` 覆盖主 crate、插件与维护中的读取器。独立 GZIP 库的验证入口为 `just test-gzipf` / `just clippy-gzipf`，也可使用 `just test-vendor gzipf`；宿主 GZIP 回归用 `just test gzip --lib`，CLI 接入用 `just test-cli`，格式范围见 [GZIP](formats/GZIP.md)。公共读取接口改动后运行 `check-examples`。参数含空格时，需要保留一层传给子 shell 的引号：
 
 ```powershell
 just run-example probe_partitions '"D:\Evidence Files\disk.E01"'
 ```
 
 后端探针的用途与参数见 [examples/README.md](../src-tauri/examples/README.md)，各读取器的专项测试、可选外部样本与环境变量见 [格式与读取器](formats/README.md)。
+
+分段 RAW 独立库使用 `just test-smraw` / `just clippy-smraw`，宿主回归使用
+`just test smraw --lib --jobs 1` 与 `just test-cli`。Windows rustc 在大型测试 crate
+发生增量编译崩溃时，可通过原配方传入
+`--config profile.test.package.lovelycarve.debug=0 --config profile.test.package.lovelycarve.incremental=false`，
+仅降低宿主测试包调试信息并禁用其增量缓存；不改变发布配置。范围见 [SMRAW](formats/SMRAW.md)。
 
 ## 插件与资源
 

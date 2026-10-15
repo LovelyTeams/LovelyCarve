@@ -1,25 +1,27 @@
 <template>
-  <aside ref="panel" class="preview-dock" :style="{ width: `${width}px` }" aria-label="文件预览" @keydown.esc.stop="$emit('close')">
-    <div class="dock-resize" role="separator" aria-label="调整预览宽度" aria-orientation="vertical"
+  <aside ref="panel" class="preview-dock" :style="{ width: `${width}px` }" :aria-label="tr('文件预览')" @keydown.esc.stop="$emit('close')">
+    <div class="dock-resize" role="separator" :aria-label="tr('调整预览宽度')" aria-orientation="vertical"
       tabindex="0" :aria-valuenow="width" :aria-valuemin="320" :aria-valuemax="800"
       @pointerdown="startResize" @keydown.left.prevent="setWidth(width + 24)"
       @keydown.right.prevent="setWidth(width - 24)" />
-    <header class="dock-header" :class="{ dragging }" title="拖动标题栏可拆分为独立窗口" @pointerdown="startDrag">
+    <header class="dock-header" :class="{ dragging }" :title="tr('拖动标题栏可拆分为独立窗口')" @pointerdown="startDrag">
       <GripVertical :size="16" class="grip" />
       <div class="dock-title">
         <strong :title="name">{{ name }}</strong>
-        <span v-if="dragging">松开以拆分为独立窗口</span>
+        <span v-if="dragging">{{ tr("松开以拆分为独立窗口") }}</span>
       </div>
-      <button class="ui-icon-btn" :disabled="opening || !canDetach" title="拆分为独立窗口" aria-label="拆分为独立窗口" @click="$emit('detach')">
+      <button class="ui-icon-btn" :disabled="opening || !canDetach" :title="tr('拆分为独立窗口')" :aria-label="tr('拆分为独立窗口')" @click="$emit('detach')">
         <Loader2 v-if="opening" :size="16" class="spin" /><ExternalLink v-else :size="16" />
       </button>
-      <button class="ui-icon-btn" title="关闭预览" aria-label="关闭预览" @click="$emit('close')"><X :size="16" /></button>
+      <button class="ui-icon-btn" :title="tr('关闭预览')" :aria-label="tr('关闭预览')" @click="$emit('close')"><X :size="16" /></button>
     </header>
     <div class="dock-content"><slot /></div>
   </aside>
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { onBeforeUnmount, ref } from 'vue';
 import { ExternalLink, GripVertical, Loader2, X } from 'lucide-vue-next';
 

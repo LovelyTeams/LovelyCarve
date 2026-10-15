@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { reactive, computed, type ComputedRef } from 'vue';
 import { notifyError, notifySuccess } from '../../../composables/useToast';
 import { imageHashCompute } from '../../../lib/ipc/image';
@@ -74,11 +76,11 @@ export async function startImageHash(
   algorithms: HashAlgo[],
 ): Promise<boolean> {
   if (jobs.has(imageId)) {
-    notifyError('哈希计算失败', '此镜像已有哈希任务在进行中');
+    notifyError(tr("哈希计算失败"), tr("此镜像已有哈希任务在进行中"));
     return false;
   }
   if (algorithms.length === 0) {
-    notifyError('哈希计算失败', '请至少选择一种算法');
+    notifyError(tr("哈希计算失败"), tr("请至少选择一种算法"));
     return false;
   }
   const taskId = newTaskId();
@@ -130,10 +132,10 @@ export async function startImageHash(
       synthetic_bytes: result.synthetic_bytes,
       read_faults_detected: result.read_faults_detected,
     });
-    notifySuccess('源盘哈希计算完成', `${algorithms.map(a => a.toUpperCase()).join(' / ')}`);
+    notifySuccess(tr("源盘哈希计算完成"), `${algorithms.map(a => a.toUpperCase()).join(' / ')}`);
     return true;
   } catch (err) {
-    if (epoch === generation) notifyError('源盘哈希计算失败', String(err));
+    if (epoch === generation) notifyError(tr("源盘哈希计算失败"), String(err));
     return false;
   } finally {
     if (epoch === generation) {
@@ -154,7 +156,7 @@ export async function cancelImageHash(imageId: string): Promise<void> {
   try {
     await taskCancel({ taskId: job.taskId });
   } catch (err) {
-    notifyError('取消失败', String(err));
+    notifyError(tr("取消失败"), String(err));
     job.cancelling = false;
   }
 }

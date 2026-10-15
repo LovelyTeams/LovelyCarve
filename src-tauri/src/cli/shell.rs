@@ -13,7 +13,7 @@ use crate::{
     state::AppState,
 };
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct Shell {
     pub image_id: Option<String>,
     // Components store both names and opaque backend node IDs; IDs are never

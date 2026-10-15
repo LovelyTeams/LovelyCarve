@@ -1,3 +1,4 @@
+import { sourceText, type Translator } from '../../../i18n/translate';
 /**
  * BitLocker recovery passwords are 48 digits in eight dash-separated groups of
  * six. Every group is divisible by 11 and its quotient fits in 16 bits — the
@@ -30,7 +31,7 @@ export function normalizeRecoveryKey(raw: string): string {
   return /^\d+$/.test(joined) ? joined.replace(/(\d{6})(?=\d)/g, '$1-') : joined;
 }
 
-export function checkRecoveryKey(raw: string): RecoveryKeyCheck {
+export function checkRecoveryKey(raw: string, tr: Translator = sourceText): RecoveryKeyCheck {
   const normalized = normalizeRecoveryKey(raw);
   const groups = normalized ? normalized.split('-') : [];
   let validGroups = 0;
@@ -39,34 +40,34 @@ export function checkRecoveryKey(raw: string): RecoveryKeyCheck {
   for (const [index, group] of groups.entries()) {
     const position = index + 1;
     if (!/^\d+$/.test(group)) {
-      groupError = `只能输入数字，第 ${position} 组含有其他字符`;
+      groupError = tr("只能输入数字，第 {0} 组含有其他字符", { 0: position });
       break;
     }
     if (index >= GROUP_COUNT) {
-      groupError = `恢复密钥只有 ${GROUP_COUNT} 组，请删除多出的第 ${position} 组`;
+      groupError = tr("恢复密钥只有 {0} 组，请删除多出的第 {1} 组", { 0: GROUP_COUNT, 1: position });
       break;
     }
     if (group.length > GROUP_DIGITS) {
-      groupError = `第 ${position} 组超过 ${GROUP_DIGITS} 位，请检查分隔`;
+      groupError = tr("第 {0} 组超过 {1} 位，请检查分隔", { 0: position, 1: GROUP_DIGITS });
       break;
     }
     if (group.length < GROUP_DIGITS) {
-      formatError ??= `第 ${position} 组只有 ${group.length} 位，应为 ${GROUP_DIGITS} 位`;
+      formatError ??= tr("第 {0} 组只有 {1} 位，应为 {2} 位", { 0: position, 1: group.length, 2: GROUP_DIGITS });
       continue;
     }
     const value = Number(group);
     if (value % 11 !== 0) {
-      groupError = `第 ${position} 组「${group}」校验失败（应能被 11 整除），请检查是否输错`;
+      groupError = tr("第 {0} 组「{1}」校验失败（应能被 11 整除），请检查是否输错", { 0: position, 1: group });
       break;
     }
     if (value > MAX_GROUP_VALUE) {
-      groupError = `第 ${position} 组「${group}」超出有效范围（不大于 ${MAX_GROUP_VALUE}）`;
+      groupError = tr("第 {0} 组「{1}」超出有效范围（不大于 {2}）", { 0: position, 1: group, 2: MAX_GROUP_VALUE });
       break;
     }
     validGroups += 1;
   }
   if (groupError === null && formatError === null && groups.length < GROUP_COUNT) {
-    formatError = `还差 ${GROUP_COUNT - groups.length} 组（共 ${GROUP_COUNT} 组 ${GROUP_DIGITS} 位数字）`;
+    formatError = tr("还差 {0} 组（共 {1} 组 {2} 位数字）", { 0: GROUP_COUNT - groups.length, 1: GROUP_COUNT, 2: GROUP_DIGITS });
   }
   return { normalized, validGroups, groupError, formatError };
 }

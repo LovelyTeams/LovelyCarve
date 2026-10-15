@@ -12,29 +12,28 @@
         <header class="ui-modal-header task-head">
           <span class="ui-modal-icon"><Puzzle :size="18" /></span>
           <div class="ui-modal-heading">
-            <h2 id="plugin-task-title" class="ui-modal-title">插件分析任务</h2>
+            <h2 id="plugin-task-title" class="ui-modal-title">{{ tr("插件分析任务") }}</h2>
             <p class="ui-modal-subtitle task-subtitle">
-              为 <span class="mono">{{ fileName }}</span> 选择一个 function。任务进入案件任务表后由调度器派发，
-              可在「任务中心」跟踪进度、取消或重启。
+              {{ tr("为") }} <span class="mono">{{ fileName }}</span> {{ tr("选择一个 function。任务进入案件任务表后由调度器派发， 可在「任务中心」跟踪进度、取消或重启。") }}
             </p>
           </div>
-          <button class="ui-icon-btn" type="button" title="关闭" aria-label="关闭" @click="emit('close')"><X :size="16" /></button>
+          <button class="ui-icon-btn" type="button" :title="tr('关闭')" :aria-label="tr('关闭')" @click="emit('close')"><X :size="16" /></button>
         </header>
 
         <div class="ui-modal-body task-body">
           <label class="ui-check toggle">
             <input v-model="showInternal" type="checkbox" />
-            显示内部 function
+            {{ tr("显示内部 function") }}
           </label>
 
           <div v-if="loading && candidates.length === 0" class="ui-empty state-box">
             <span class="ui-empty-icon accent"><Loader2 :size="22" class="spin" /></span>
-            <p class="ui-empty-desc">正在读取 function 注册表…</p>
+            <p class="ui-empty-desc">{{ tr("正在读取 function 注册表…") }}</p>
           </div>
           <div v-else-if="candidates.length === 0" class="ui-empty state-box">
             <span class="ui-empty-icon"><CircleAlert :size="24" /></span>
-            <p class="ui-empty-title">没有可用的插件分析能力</p>
-            <p class="ui-empty-desc">请将提供文件分析的插件放入应用数据目录的 plugins 文件夹。</p>
+            <p class="ui-empty-title">{{ tr("没有可用的插件分析能力") }}</p>
+            <p class="ui-empty-desc">{{ tr("请将提供文件分析的插件放入应用数据目录的 plugins 文件夹。") }}</p>
           </div>
 
           <div v-else class="function-options">
@@ -69,6 +68,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { computed, ref, watch } from 'vue';
 import { ChevronRight, CircleAlert, Loader2, Puzzle, X } from 'lucide-vue-next';
 import type { SchedFunction } from '../../../lib/ipc/tasks';

@@ -5,6 +5,7 @@ pub mod catalog;
 mod input;
 mod runtime;
 mod search;
+mod session;
 mod shell;
 mod strings;
 mod workflow;
@@ -68,6 +69,7 @@ pub(crate) fn command_error(error: impl Serialize) -> CliError {
             message: details
                 .get("message")
                 .and_then(Value::as_str)
+                .or_else(|| details.as_str())
                 .unwrap_or("命令执行失败")
                 .into(),
             details: Some(details),

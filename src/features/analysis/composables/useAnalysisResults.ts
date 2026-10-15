@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 // 分析结果页状态层:树 检材→分类→功能→结果项,
 // 选中结果项 → 服务端分页表格,点行 → 右侧详情。任务完成只"标脏",
 // 面板激活时整树重拉(WS 只发信号不搬数据,前端无状态视图)。
@@ -291,7 +293,7 @@ export function useAnalysisResults() {
       const record = await analysisRecordDetail({ imageId, artifactId });
       if (requestId !== detailRequestId) return;
       detail.value = record;
-      if (!record) detailError.value = '该记录已不存在，请刷新结果。';
+      if (!record) detailError.value = tr("该记录已不存在，请刷新结果。");
     } catch (error) {
       if (requestId === detailRequestId) detailError.value = String(error);
     } finally {
@@ -312,8 +314,8 @@ export function useAnalysisResults() {
     const collected: AnalysisRecord[] = [];
     let total: number | undefined;
     const assertActive = () => {
-      if (options.signal?.aborted) throw new DOMException('已取消导出', 'AbortError');
-      if (exportCaseVersion !== caseVersion) throw new Error('案件已切换，导出已停止。');
+      if (options.signal?.aborted) throw new DOMException(tr("已取消导出"), 'AbortError');
+      if (exportCaseVersion !== caseVersion) throw new Error(tr("案件已切换，导出已停止。"));
     };
     while (total === undefined || collected.length < total) {
       assertActive();
@@ -327,14 +329,14 @@ export function useAnalysisResults() {
       });
       assertActive();
       if (total !== undefined && total !== page.total) {
-        throw new Error('分析结果数量已变化，请刷新后重新导出。');
+        throw new Error(tr("分析结果数量已变化，请刷新后重新导出。"));
       }
       total = page.total;
       if (page.items.some(item => item.runId !== node.runId)) {
-        throw new Error('分析结果已更新，请刷新后重新导出。');
+        throw new Error(tr("分析结果已更新，请刷新后重新导出。"));
       }
       if ((!page.items.length && collected.length < total) || collected.length + page.items.length > total) {
-        throw new Error('分析结果读取不完整，请刷新后重新导出。');
+        throw new Error(tr("分析结果读取不完整，请刷新后重新导出。"));
       }
       collected.push(...page.items);
       options.onProgress?.({ loaded: collected.length, total });

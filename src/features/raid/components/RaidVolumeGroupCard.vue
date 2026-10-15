@@ -6,10 +6,12 @@
       <span class="array-name" :title="vg.vg_uuid">{{ vg.vg_name }}</span>
       <span class="vg-meta mono">{{ vg.members.length }} PV · {{ vg.logical_volumes.length }} LV</span>
     </div>
-    <details v-disclosure-motion class="array-details"><summary><ChevronRight :size="13" />逻辑卷详情</summary><p class="vg-detail-text">{{ vgSummary(vg) }}</p></details>
+    <details v-disclosure-motion class="array-details"><summary><ChevronRight :size="13" />{{ tr("逻辑卷详情") }}</summary><p class="vg-detail-text">{{ vgSummary(vg) }}</p></details>
   </article>
 </template>
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { ChevronRight } from 'lucide-vue-next';
 import { vDisclosureMotion } from '../../../composables/uiMotionDirectives';
 import type { RaidVolumeGroup } from '../../../lib/ipc/raid';

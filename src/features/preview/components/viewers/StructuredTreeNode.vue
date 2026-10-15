@@ -28,13 +28,15 @@
         class="tn-row tn-more"
         :style="{ paddingLeft: `${(depth + 1) * 14 + 6}px` }"
       >
-        … 其余 {{ hiddenCount.toLocaleString() }} 项已省略
+        {{ tr("… 其余") }} {{ hiddenCount.toLocaleString() }} {{ tr("项已省略") }}
       </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../../composables/useLocale';
+
 // 「树」视图的一行：缩进 + 折叠箭头 + 键/值，容器递归渲染子项。
 // 折叠状态各实例自持（深度 < 2 默认展开），与「图」视图的折叠互不影响。
 import { computed, ref } from 'vue';

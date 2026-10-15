@@ -2,12 +2,12 @@
   <div class="realm-viewer">
     <div v-if="loading" class="state-row mono">
       <Loader2 :size="14" class="spin" />
-      正在解析 Realm 数据库…
+      {{ tr("正在解析 Realm 数据库…") }}
     </div>
-    <div v-else-if="error" class="state-row mono error">Realm 解析失败：{{ error }}</div>
+    <div v-else-if="error" class="state-row mono error">{{ tr("Realm 解析失败：") }}{{ error }}</div>
 
     <div v-else-if="digest && !digest.tables.length" class="empty-db">
-      <div class="state-row mono">库内没有可显示的表。</div>
+      <div class="state-row mono">{{ tr("库内没有可显示的表。") }}</div>
     </div>
 
     <template v-else-if="digest">
@@ -33,10 +33,10 @@
           <div class="realm-title">
             <Database :size="15" />
             <span>Realm</span>
-            <span class="ui-badge sm mono">{{ digest.tables.length }} 表</span>
+            <span class="ui-badge sm mono">{{ digest.tables.length }} {{ tr("表") }}</span>
           </div>
           <div class="realm-meta mono">
-            <span>读取 {{ formatBytes(digest.bytesRead) }}</span>
+            <span>{{ tr("读取") }} {{ formatBytes(digest.bytesRead) }}</span>
           </div>
         </header>
 
@@ -45,10 +45,10 @@
           <span>{{ digest.notes.join(' ') }}</span>
         </div>
 
-        <div v-if="activeTableNumber === null" class="state-row mono">在左侧选择一张表。</div>
+        <div v-if="activeTableNumber === null" class="state-row mono">{{ tr("在左侧选择一张表。") }}</div>
         <div v-else-if="rowsLoading && !rows.length" class="state-row mono">
           <Loader2 :size="14" class="spin" />
-          加载中…
+          {{ tr("加载中…") }}
         </div>
         <div v-else-if="rowsError" class="state-row mono error">{{ rowsError }}</div>
 
@@ -57,7 +57,7 @@
             <table class="data-table realm-table">
               <thead>
                 <tr>
-                  <th class="rownum-th mono">序号</th>
+                  <th class="rownum-th mono">{{ tr("序号") }}</th>
                   <th v-for="column in columns" :key="column.index" :title="columnTitle(column)">
                     <span class="col-head">
                       <span class="col-name mono">{{ columnName(column) }}</span>
@@ -79,7 +79,7 @@
                   </td>
                 </tr>
                 <tr v-if="!rows.length">
-                  <td class="empty mono" :colspan="columns.length + 1">（无数据）</td>
+                  <td class="empty mono" :colspan="columns.length + 1">{{ tr("（无数据）") }}</td>
                 </tr>
               </tbody>
             </table>
@@ -91,11 +91,11 @@
               {{ rangeStart }}–{{ rangeEnd }} / {{ total }}
             </span>
             <span class="pager-spacer" />
-            <button class="ui-icon-btn sm bordered" title="上一页" aria-label="上一页" :disabled="pageIndex <= 0 || rowsLoading" @click="prevPage">
+            <button class="ui-icon-btn sm bordered" :title="tr('上一页')" :aria-label="tr('上一页')" :disabled="pageIndex <= 0 || rowsLoading" @click="prevPage">
               <ChevronLeft :size="14" />
             </button>
             <span class="pager-page mono">{{ pageIndex + 1 }} / {{ pageCount }}</span>
-            <button class="ui-icon-btn sm bordered" title="下一页" aria-label="下一页" :disabled="pageIndex >= pageCount - 1 || rowsLoading" @click="nextPage">
+            <button class="ui-icon-btn sm bordered" :title="tr('下一页')" :aria-label="tr('下一页')" :disabled="pageIndex >= pageCount - 1 || rowsLoading" @click="nextPage">
               <ChevronRight :size="14" />
             </button>
           </footer>
@@ -106,6 +106,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../../composables/useLocale';
+
 import { computed, ref, watch } from 'vue';
 import {
   AlertTriangle,
@@ -147,9 +149,9 @@ function columnName(column: RealmColumn): string {
 }
 
 function columnTitle(column: RealmColumn): string {
-  const parts = [`列 #${column.index}`, column.name ? `名称：${column.name}` : '未命名 backlink'];
-  if (column.nullable) parts.push('可为空');
-  if (column.indexed) parts.push('已索引');
+  const parts = [tr("列 #{0}", { 0: column.index }), column.name ? tr("名称：{0}", { 0: column.name }) : tr("未命名 backlink")];
+  if (column.nullable) parts.push(tr("可为空"));
+  if (column.indexed) parts.push(tr("已索引"));
   return parts.join(' · ');
 }
 

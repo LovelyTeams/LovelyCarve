@@ -4,25 +4,25 @@
       <div class="bcp-toolbar-context">
         <Database :size="16" />
         <span>{{ categoryLabel }}</span>
-        <span v-if="catalog" class="ui-badge info">{{ catalog.totalRows.toLocaleString() }} 条</span>
+        <span v-if="catalog" class="ui-badge info">{{ catalog.totalRows.toLocaleString() }} {{ tr("条") }}</span>
       </div>
       <div class="ui-toolbar-actions">
-        <input v-model="filter" class="ui-search bcp-search" type="search" placeholder="筛选当前页…" aria-label="筛选当前页" />
+        <input v-model="filter" class="ui-search bcp-search" type="search" :placeholder="tr('筛选当前页…')" :aria-label="tr('筛选当前页')" />
       </div>
     </div>
 
     <div v-if="!catalog && catalogError" class="ui-alert danger">{{ catalogError }}</div>
     <div v-else-if="!catalog" class="ui-empty bcp-empty">
       <span class="ui-empty-icon"><Database :size="24" /></span>
-      <p class="ui-empty-title">正在读取 BCP 索引…</p>
+      <p class="ui-empty-title">{{ tr("正在读取 BCP 索引…") }}</p>
     </div>
     <div v-else class="bcp-body">
-      <aside class="bcp-datasets" aria-label="BCP 数据集">
-        <div class="bcp-datasets-heading">数据集 <span>{{ categoryDatasets.length }}</span></div>
+      <aside class="bcp-datasets" :aria-label="tr('BCP 数据集')">
+        <div class="bcp-datasets-heading">{{ tr("数据集") }} <span>{{ categoryDatasets.length }}</span></div>
         <button v-for="dataset in categoryDatasets" :key="dataset.code" type="button"
           class="bcp-dataset" :class="{ active: dataset.code === selectedCode }"
           @click="selectDataset(dataset.code)">
-          <span class="bcp-dataset-label">{{ bcpDatasetLabel(dataset) }}</span>
+          <span class="bcp-dataset-label">{{ bcpDatasetLabel(dataset, tr) }}</span>
           <span class="bcp-dataset-code">{{ bcpSuffix(dataset.code) }}</span>
           <span class="bcp-dataset-count">{{ dataset.rows.toLocaleString() }}</span>
         </button>
@@ -31,21 +31,21 @@
       <main class="bcp-main">
         <div v-if="selectedDataset" class="bcp-dataset-head">
           <div class="bcp-dataset-summary">
-            <strong>{{ bcpDatasetLabel(selectedDataset) }}</strong>
+            <strong>{{ bcpDatasetLabel(selectedDataset, tr) }}</strong>
             <span class="bcp-code">{{ selectedDataset.code }}</span>
-            <span>{{ selectedDataset.files.length }} 个文件 · {{ selectedDataset.rows.toLocaleString() }} 条记录 · {{ selectedDataset.fields.length }} 列</span>
+            <span>{{ selectedDataset.files.length }} {{ tr("个文件 ·") }} {{ selectedDataset.rows.toLocaleString() }} {{ tr("条记录 ·") }} {{ selectedDataset.fields.length }} {{ tr("列") }}</span>
           </div>
           <div class="bcp-page-controls">
-            <button class="ui-btn sm" :disabled="history.length === 0 || loading" @click="previousPage"><ChevronLeft :size="14" />上一页</button>
-            <span>第 {{ history.length + 1 }} 页</span>
-            <button class="ui-btn sm" :disabled="!page?.nextCursor || loading" @click="nextPage">下一页<ChevronRight :size="14" /></button>
+            <button class="ui-btn sm" :disabled="history.length === 0 || loading" @click="previousPage"><ChevronLeft :size="14" />{{ tr("上一页") }}</button>
+            <span>{{ tr("第") }} {{ history.length + 1 }} {{ tr("页") }}</span>
+            <button class="ui-btn sm" :disabled="!page?.nextCursor || loading" @click="nextPage">{{ tr("下一页") }}<ChevronRight :size="14" /></button>
           </div>
         </div>
         <div v-if="error" class="ui-alert danger">{{ error }}</div>
-        <div v-else-if="loading" class="bcp-loading"><Loader2 :size="17" class="spin" /> 正在读取记录…</div>
+        <div v-else-if="loading" class="bcp-loading"><Loader2 :size="17" class="spin" /> {{ tr("正在读取记录…") }}</div>
         <div v-else-if="page && selectedDataset" class="bcp-table-wrap">
           <table class="bcp-table">
-            <thead><tr><th class="bcp-row-number">#</th><th v-for="column in visibleColumns" :key="column.index">{{ column.field.label || column.field.name }}</th><th>来源文件</th></tr></thead>
+            <thead><tr><th class="bcp-row-number">#</th><th v-for="column in visibleColumns" :key="column.index">{{ column.field.label || column.field.name }}</th><th>{{ tr("来源文件") }}</th></tr></thead>
             <tbody>
               <tr v-for="row in filteredRows" :key="`${row.fileName}:${row.number}`" :class="{ selected: selectedRow === row }" @click="selectedRow = row">
                 <td class="bcp-row-number">{{ row.number.toLocaleString() }}</td>
@@ -54,26 +54,26 @@
               </tr>
             </tbody>
           </table>
-          <div v-if="filteredRows.length === 0" class="ui-empty bcp-no-rows"><p class="ui-empty-title">{{ filter ? '当前页没有匹配的记录' : '该数据集没有记录' }}</p></div>
+          <div v-if="filteredRows.length === 0" class="ui-empty bcp-no-rows"><p class="ui-empty-title">{{ filter ? tr("当前页没有匹配的记录") : tr("该数据集没有记录") }}</p></div>
         </div>
 
       </main>
       <UiTransition kind="dock">
-        <DetailDock v-if="selectedRow && selectedDataset" label="记录详情" close-label="关闭详情"
-          :title="`记录 #${selectedRow.number.toLocaleString()}`" :content-key="`${selectedRow.fileName}:${selectedRow.number}`" @close="selectedRow = null">
-          <FileDetailLayout :title="`记录 #${selectedRow.number.toLocaleString()}`">
+        <DetailDock v-if="selectedRow && selectedDataset" :label="tr('记录详情')" :close-label="tr('关闭详情')"
+          :title="tr('记录 #{0}', { 0: selectedRow.number.toLocaleString() })" :content-key="`${selectedRow.fileName}:${selectedRow.number}`" @close="selectedRow = null">
+          <FileDetailLayout :title="tr('记录 #{0}', { 0: selectedRow.number.toLocaleString() })">
             <template #icon><Database :size="20" /></template>
-            <template #badges><span class="ui-badge">BCP 记录</span><span class="ui-badge">{{ bcpDatasetLabel(selectedDataset) }}</span></template>
-            <FileDetailSection title="基本信息" wide>
+            <template #badges><span class="ui-badge">{{ tr("BCP 记录") }}</span><span class="ui-badge">{{ bcpDatasetLabel(selectedDataset, tr) }}</span></template>
+            <FileDetailSection :title="tr('基本信息')" wide>
               <FileDetailFields :fields="[
-                { label: '来源文件', value: selectedRow.fileName, copyable: true },
-                { label: '数据集', value: selectedDataset.code, mono: true, copyable: true },
+                { label: tr('来源文件'), value: selectedRow.fileName, copyable: true },
+                { label: tr('数据集'), value: selectedDataset.code, mono: true, copyable: true },
               ]" />
             </FileDetailSection>
-            <FileDetailSection title="记录内容" wide>
+            <FileDetailSection :title="tr('记录内容')" wide>
               <FileDetailFields :fields="[
                 ...selectedDataset.fields.map((field, index) => ({ key: `${field.key}:${index}`, label: field.label || field.name, value: selectedRow!.values[index], copyable: true })),
-                ...selectedRow.values.slice(selectedDataset.fields.length).map((value, index) => ({ key: `extra:${index}`, label: `附加字段 ${index + 1}`, value, copyable: true })),
+                ...selectedRow.values.slice(selectedDataset.fields.length).map((value, index) => ({ key: `extra:${index}`, label: tr('附加字段 {0}', { 0: index + 1 }), value, copyable: true })),
               ]" />
             </FileDetailSection>
           </FileDetailLayout>
@@ -82,12 +82,14 @@
     </div>
     <div class="ui-footbar bcp-footbar">
       <span class="ui-footbar-stat">{{ catalog?.path ?? '' }}</span>
-      <span class="ui-footbar-stat">{{ page ? `当前页 ${filteredRows.length} / ${page.rows.length} 条` : '' }}</span>
+      <span class="ui-footbar-stat">{{ page ? tr("当前页 {0} / {1} 条", { 0: filteredRows.length, 1: page.rows.length }) : '' }}</span>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import UiTransition from '../../../components/ui/UiTransition.vue';
 import DetailDock from '../../../components/layout/DetailDock.vue';
 import FileDetailLayout from '../../../components/layout/FileDetailLayout.vue';
@@ -108,7 +110,7 @@ const error = ref('');
 const filter = ref('');
 let requestSerial = 0;
 
-const categoryLabel = computed(() => BCP_CATEGORIES.find(category => category.prefix === props.category)?.label ?? 'BCP 数据');
+const categoryLabel = computed(() => BCP_CATEGORIES.find(category => category.prefix === props.category)?.label ?? tr("BCP 数据"));
 const categoryDatasets = computed(() => props.catalog?.datasets.filter(dataset => !props.category || bcpCategory(dataset.code) === props.category) ?? []);
 const selectedDataset = computed(() => categoryDatasets.value.find(dataset => dataset.code === selectedCode.value) ?? null);
 const visibleColumns = computed(() => {

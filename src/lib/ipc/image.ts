@@ -124,11 +124,18 @@ export function imageInfoById(args: { imageId: string }): Promise<LoadedImageSum
   return invokeCmd<LoadedImageSummary>('image_info', args);
 }
 
+/** Legacy QCOW credentials stay in the invocation only; no case persistence. */
+export type ImageLoadArgs = {
+  path: string;
+  qcowPassword?: string;
+  qcowKeyHex?: string;
+};
+
 /** Load an image / folder by path WITHOUT touching the active file session —
  *  registers it in the backend (and the active case, if any) so a subsequent
  *  `raid_auto_detect` can see it. Used to background-load RAID member disks
  *  before reconstruction, so the members never open as their own tabs. */
-export function imageLoad(args: { path: string }): Promise<LoadedImageSummary> {
+export function imageLoad(args: ImageLoadArgs): Promise<LoadedImageSummary> {
   return invokeCmd<LoadedImageSummary>('image_load', args);
 }
 
@@ -171,14 +178,14 @@ export interface ImageLoadDetail {
   partitions: ImageLoadPartition[];
 }
 
-export function imageLoadDetail(args: { path: string }): Promise<ImageLoadDetail> {
+export function imageLoadDetail(args: ImageLoadArgs): Promise<ImageLoadDetail> {
   return invokeCmd<ImageLoadDetail>('image_load', args);
 }
 
 /** Transitional full-shape loader for callers that own their local `ImageInfo`
  *  view model. Keeps `image_load` behind the IPC boundary without forcing all
  *  image metadata types into this RAID-focused module in one refactor. */
-export function imageLoadFull<T>(args: { path: string }): Promise<T> {
+export function imageLoadFull<T>(args: ImageLoadArgs): Promise<T> {
   return invokeCmd<T>('image_load', args);
 }
 

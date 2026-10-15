@@ -192,6 +192,8 @@ pub enum ImageFormat {
     /// QEMU copy-on-write v2/v3 virtual disk, exposed as its sparse logical
     /// guest byte stream through the vendored pure-Rust reader.
     Qcow2,
+    /// Parallels plain/sparse/split/differencing logical guest disk.
+    Phdi,
     /// VirtualBox VDI 1.1 dynamic or fixed disk, exposed as its sparse logical
     /// guest byte stream through the vendored pure-Rust reader.
     Vdi,
@@ -340,5 +342,9 @@ mod metadata;
 pub(crate) use metadata::find_partition;
 
 pub use faults::{BadRegion, ReadFaultPolicy, ReadFaultReport};
+#[cfg(test)]
+mod phdi_tests;
+#[cfg(test)]
+mod smraw_tests;
 #[cfg(test)]
 mod tests;

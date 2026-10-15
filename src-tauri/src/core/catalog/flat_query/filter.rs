@@ -43,7 +43,8 @@ pub fn node_filter_keeps(entry: &FsWalkEntry, filter: &FlatFileFilter) -> bool {
         }
     }
     if let Some(query) = &filter.kind_query {
-        if !kind_label(node).to_lowercase().contains(query) {
+        let (chinese, english) = kind_filter_labels(node);
+        if !chinese.contains(query) && !english.contains(query) {
             return false;
         }
     }

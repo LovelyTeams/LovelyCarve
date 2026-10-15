@@ -1,6 +1,7 @@
 import { installConsoleCapture } from '../composables/useConsoleCapture';
 import { useTheme } from '../composables/useTheme';
 import { initUiMotion } from '../composables/useUiMotion';
+import { initLocale } from '../composables/useLocale';
 
 /** Apply window preferences before either root mounts. */
 export function bootstrapWindow() {
@@ -9,6 +10,7 @@ export function bootstrapWindow() {
   useTheme().initTheme();
 
   initUiMotion();
+  initLocale();
 
   // Capture startup output before mounting; settings can inspect it later.
   installConsoleCapture();

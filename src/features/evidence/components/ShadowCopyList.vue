@@ -1,34 +1,36 @@
 <template>
   <div class="shadow-list">
-    <p v-if="volume.error" class="ui-alert danger" role="alert">VSS 元数据无法读取：{{ volume.error }}</p>
+    <p v-if="volume.error" class="ui-alert danger" role="alert">{{ tr("VSS 元数据无法读取：") }}{{ volume.error }}</p>
     <ul v-else class="copy-list">
       <li v-for="copy in volume.shadow_copies" :key="copy.store_id" class="copy-row">
         <span class="copy-index mono">#{{ copy.index + 1 }}</span>
         <span class="copy-time mono" :title="localTime(copy)">{{ utcTime(copy) }}</span>
         <span class="copy-flags">
-          <span v-if="copy.persistent" class="ui-badge sm">持久</span>
-          <span v-if="copy.client_accessible" class="ui-badge sm">客户端可访问</span>
+          <span v-if="copy.persistent" class="ui-badge sm">{{ tr("持久") }}</span>
+          <span v-if="copy.client_accessible" class="ui-badge sm">{{ tr("客户端可访问") }}</span>
         </span>
         <span class="copy-machine" :title="copyTitle(copy)">{{ copy.operating_machine || copy.shadow_copy_id || copy.store_id }}</span>
         <button
           class="ui-btn sm"
           type="button"
           :disabled="opening !== null || copy.unavailable_reason !== null"
-          :title="copy.unavailable_reason ?? (copy.open_image_id ? '切换到已打开的卷影副本' : '重建为只读镜像并在新标签页打开')"
+          :title="copy.unavailable_reason ?? (copy.open_image_id ? tr('切换到已打开的卷影副本') : tr('重建为只读镜像并在新标签页打开'))"
           @click="emit('open', copy)"
         >
           <Loader2 v-if="opening === shadowCopyKey(volume, copy)" :size="13" class="spin" />
           <ArrowUpRight v-else-if="copy.open_image_id" :size="13" />
           <FolderOpen v-else :size="13" />
-          {{ opening === shadowCopyKey(volume, copy) ? '正在重建…' : copy.open_image_id ? '切换到' : '打开' }}
+          {{ opening === shadowCopyKey(volume, copy) ? tr("正在重建…") : copy.open_image_id ? tr("切换到") : tr("打开") }}
         </button>
       </li>
     </ul>
-    <p v-if="error" class="ui-alert danger" role="alert">打开卷影副本失败：{{ error }}</p>
+    <p v-if="error" class="ui-alert danger" role="alert">{{ tr("打开卷影副本失败：") }}{{ error }}</p>
   </div>
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { ArrowUpRight, FolderOpen, Loader2 } from 'lucide-vue-next';
 import type { ShadowCopyInfo, ShadowVolumeInfo } from '../../../lib/ipc/shadow';
 import { shadowCopyKey } from '../composables/useShadowCopies';
@@ -50,20 +52,20 @@ function seconds(copy: ShadowCopyInfo): number | null {
 }
 
 function utcTime(copy: ShadowCopyInfo): string {
-  return formatEpochSeconds(seconds(copy), { timezone: 'utc', precision: 'seconds', suffix: true, fallback: '创建时间未知' });
+  return formatEpochSeconds(seconds(copy), { timezone: 'utc', precision: 'seconds', suffix: true, fallback: tr("创建时间未知") });
 }
 
 function localTime(copy: ShadowCopyInfo): string {
   const local = formatEpochSeconds(seconds(copy), { precision: 'seconds', fallback: '' });
-  return local ? `${local}（本地）` : '';
+  return local ? tr("{0}（本地）", { 0: local }) : '';
 }
 
 function copyTitle(copy: ShadowCopyInfo): string {
   return [
-    copy.operating_machine && `计算机：${copy.operating_machine}`,
-    copy.shadow_copy_id && `卷影副本 ID：${copy.shadow_copy_id}`,
-    copy.shadow_copy_set_id && `副本集 ID：${copy.shadow_copy_set_id}`,
-    `存储区 ID：${copy.store_id}`,
+    copy.operating_machine && tr("计算机：{0}", { 0: copy.operating_machine }),
+    copy.shadow_copy_id && tr("卷影副本 ID：{0}", { 0: copy.shadow_copy_id }),
+    copy.shadow_copy_set_id && tr("副本集 ID：{0}", { 0: copy.shadow_copy_set_id }),
+    tr("存储区 ID：{0}", { 0: copy.store_id }),
   ].filter(Boolean).join('\n');
 }
 </script>

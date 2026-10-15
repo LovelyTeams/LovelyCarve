@@ -1,13 +1,15 @@
+
+import { tr } from '../../../composables/useLocale';
 import { computed, onScopeDispose, reactive, ref, shallowRef, watch } from 'vue';
 import { timelineTypes, type TimelineBucket, type TimelineQuery, type TimelineTypeGroup, type TimelineTypePair } from '../../../lib/ipc/timeline';
 import { notifyError, notifyInfo } from '../../../composables/useToast';
 import { intersectBucketRange } from '../model/timelineHeatmap';
-import { TIMELINE_UNITS, UNIT_LABELS, bucketRange, drillDown, type TimelineUnitValue } from '../model/timelineView';
+import { TIMELINE_UNITS, bucketRange, drillDown, type TimelineUnitValue } from '../model/timelineView';
 export function useTimelineFilters(options: { imageId: () => string; tzHours: number }) {
   const tzHours = options.tzHours;
   let disposed = false;
   const unit = ref<TimelineUnitValue>('year');
-  const UNIT_OPTIONS = TIMELINE_UNITS.map(candidate => ({ value: candidate, label: `按${UNIT_LABELS[candidate]}查看` }));
+  const UNIT_OPTIONS = TIMELINE_UNITS.map(candidate => ({ value: candidate, get label() { return tr("按{0}查看", { 0: tr(`timeUnits.${candidate}`) }); } }));
   const heatmapYear = ref(new Date().getFullYear());
 
   interface DrillFrame {
@@ -24,7 +26,7 @@ export function useTimelineFilters(options: { imageId: () => string; tzHours: nu
 
   function drillInto(bucket: TimelineBucket) {
     if (unit.value === 'second') {
-      notifyInfo('已到最细粒度', '秒粒度下无法继续下钻。');
+      notifyInfo(tr("已到最细粒度"), tr("秒粒度下无法继续下钻。"));
       return;
     }
     const { start, end } = intersectBucketRange(bucket.date_str, unit.value, tzHours, activeDrill.value);
@@ -110,7 +112,7 @@ export function useTimelineFilters(options: { imageId: () => string; tzHours: nu
       typeGroups.value = groups;
     } catch (error) {
       if (generation !== typeGroupsGeneration || imageId !== options.imageId() || disposed) return;
-      notifyError('读取时间线维度失败', String(error));
+      notifyError(tr("读取时间线维度失败"), String(error));
       typeGroups.value = [];
     }
   }

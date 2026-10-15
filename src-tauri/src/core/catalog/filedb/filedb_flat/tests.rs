@@ -591,6 +591,18 @@ fn sql_matches_rust_predicate_and_comparator() {
             ..FlatFileFilter::default()
         },
         FlatFileFilter {
+            kind_query: Some("symbolic".into()),
+            ..FlatFileFilter::default()
+        },
+        FlatFileFilter {
+            kind_query: Some("FILE".into()),
+            ..FlatFileFilter::default()
+        },
+        FlatFileFilter {
+            kind_query: Some("unallocated".into()),
+            ..FlatFileFilter::default()
+        },
+        FlatFileFilter {
             link_query: Some("target".into()),
             ..FlatFileFilter::default()
         },

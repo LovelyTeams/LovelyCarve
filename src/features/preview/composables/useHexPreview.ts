@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { CHARSETS, type CharsetOption } from '../model/charsets';
 import { computed, onScopeDispose, ref, watch, type Ref } from 'vue';
 import { notifyError, notifyInfo, notifySuccess } from '../../../composables/useToast';
@@ -260,14 +262,14 @@ export function useHexPreview(options: UseHexPreviewOptions) {
       await navigator.clipboard.writeText(text);
       notifySuccess(okMsg);
     } catch (error) {
-      notifyError('复制失败', String(error));
+      notifyError(tr("复制失败"), String(error));
     }
   }
 
   function copySelectionHex() {
     const slice = selectionSlice();
     const hex = Array.from(slice, byte => byte.toString(16).toUpperCase().padStart(2, '0')).join(' ');
-    void writeClipboard(hex, `已复制 ${slice.length} 字节十六进制`);
+    void writeClipboard(hex, tr("已复制 {0} 字节十六进制", { 0: slice.length }));
   }
 
   function copySelectionText(charset: CharsetOption) {
@@ -284,13 +286,13 @@ export function useHexPreview(options: UseHexPreviewOptions) {
       }
       for (const char of raw) if (isReadableCp(char.codePointAt(0) ?? 0)) text += char;
     }
-    void writeClipboard(text, `已复制文本（${charset.label}）· ${text.length} 字`);
+    void writeClipboard(text, tr("已复制文本（{0}）· {1} 字", { 0: charset.label, 1: text.length }));
   }
 
   function onHexContextMenu(event: MouseEvent) {
     event.preventDefault();
     if (!hasSelection.value) {
-      notifyInfo('请先拖选要复制的字节');
+      notifyInfo(tr("请先拖选要复制的字节"));
       return;
     }
     const target = event.target as HTMLElement | null;

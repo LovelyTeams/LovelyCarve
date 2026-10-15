@@ -1,0 +1,17 @@
+[package]
+name = "smraw"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+license = "AGPL-3.0-only"
+description = "Pure Rust single and split RAW image I/O"
+readme = "README.md"
+publish = false
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+uninlined_format_args = "warn"
+
+[workspace]

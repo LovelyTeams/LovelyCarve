@@ -65,7 +65,7 @@ LovelyCarve 面向电子数据取证、应急响应和 CTF 取证题：加载磁
 
 | 类别 | 格式 |
 | --- | --- |
-| 镜像容器 | RAW / DD / IMG / ISO、E01 / Ex01、AD1、VMDK、VHD / VHDX、QCOW2、VDI、DMG、DiskGenius PMFX、雷电模拟器 LDBK、小米 HDR1 固件 |
+| 镜像容器 | RAW / DD / IMG / ISO、E01 / Ex01、AD1、VMDK、VHD / VHDX、QCOW2、VDI、Parallels PHDI、DMG、DiskGenius PMFX、雷电模拟器 LDBK、小米 HDR1 固件 |
 | 逻辑证据 | 文件夹（自动展开其中的小米 `.bak` 备份）、TAR / TAR.GZ、ZIP、7z、Docker / OCI 镜像归档、磁盘内的 Docker 容器、iOS 本地备份、BCP 交换数据 |
 | 分区与卷 | GPT、MBR / EBR、APM、BSD 标签、LVM2 线性卷、mdadm RAID 成员、RAID0 / RAID5 重组 |
 | 文件系统 | NTFS、ext2/3/4、FAT12/16/32、exFAT、APFS、HFS+ / HFSX、Btrfs、ZFS、XFS（v1–v5）、ReFS、UFS / UFS2、SquashFS、ISO 9660 |

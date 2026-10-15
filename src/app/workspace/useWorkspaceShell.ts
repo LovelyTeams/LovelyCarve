@@ -1,3 +1,5 @@
+
+import { tr } from '../../composables/useLocale';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Ref } from 'vue';
 import { systemPathInfo } from '../../lib/ipc/system';
 import { buildImageNavGroups } from './navigation';
@@ -96,7 +98,7 @@ export function useWorkspaceShell(options: WorkspaceShellOptions) {
     }
     if (!outcome.opened && !opts?.quiet) {
       const name = filePath.split(/[\\/]/).pop() || filePath;
-      notifyError('打开证据失败', `${name}：${outcome.error ?? '载入未完成'}`);
+      notifyError(tr("打开证据失败"), `${name}：${outcome.error ?? tr("载入未完成")}`);
     }
     return outcome;
   };
@@ -135,7 +137,7 @@ export function useWorkspaceShell(options: WorkspaceShellOptions) {
         options.onNeedCase();
       }
     } catch (error) {
-      notifyError('打开案件失败', `${entry.name}：${error}`);
+      notifyError(tr("打开案件失败"), `${entry.name}：${error}`);
     } finally {
       isOpeningRecentCase.value = false;
     }
@@ -179,7 +181,7 @@ export function useWorkspaceShell(options: WorkspaceShellOptions) {
   const ensureCaseBeforeOpen = (request: PendingOpenRequest): boolean => {
     if (activeCase.value) return true;
     pendingOpenRequest = request;
-    notifyInfo('请先创建或打开案件', '证据镜像会登记到当前案件，并用于卷快照、标签和哈希结果持久化。');
+    notifyInfo(tr("请先创建或打开案件"), tr("证据镜像会登记到当前案件，并用于卷快照、标签和哈希结果持久化。"));
     options.onNeedCase();
     return false;
   };

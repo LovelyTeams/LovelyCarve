@@ -176,8 +176,49 @@ Get-Content .\workflow.jsonl | lovelycarve-cli --events session
 请求 ID 使用非空唯一字符串；`{"$ref":"id#/json/pointer"}` 引用先前成功结果。
 二进制返回 `{"encoding":"hex","data":"..."}`；请求加 `"output":"D:/output/data.bin"`
 可直接保存原始二进制。请求/参数行上限 16 MiB；单会话最多保存 10000 个结果引用。
-请求顺序执行，异步启动型命令（如雕刻）返回后可继续查询/暂停/取消；同步长命令
-会等待其完成再处理下一行。单条错误后继续处理后续 JSONL，请求全部结束后仍以非零退出。
+默认 `session --jobs 1` 顺序执行；`session --jobs N`（简写 `-j N`，范围 1–64）允许独立查询并发执行。
+目录浏览、文件读取／哈希、内容搜索、结果分页和任务状态等查询支持并发；
+`commands --json` 中每个后端命令的 `parallel` 字段给出本构建的实际支持情况。
+未标为并发的命令是屏障：先完成此前查询，再执行该命令，然后继续读取后续请求。
+因此加载／卸载检材、案件切换、`use/cd/select-partition` 和 `wait` 保持有序；
+并发查询固定使用派发时的当前检材和目录，不会改写会话上下文。
+`$ref` 可引用尚在执行的先前请求，使用前会等待其完成；失败、未知 ID 和不存在的指针明确报错。
+等待依赖期间不继续派发后续请求，独立查询宜放在依赖请求之前。
+并发响应按完成时间输出，每条立即 flush，客户端必须按 `id` 关联，不能按行号配对。
+stdin 保持打开时也会持续返回完成结果；EOF 先等待所有已派发请求，再等待后台任务。
+单条错误后继续处理后续 JSONL，请求全部结束后仍以非零退出。
+
+### AI agent 调用
+
+推荐先调用 `capabilities --json` 和 `commands --json` 发现协议、并发上限、命令名和参数，
+再启动一个长期运行的 JSONL 子进程；无需解析终端表格或中文提示。
+
+```text
+lovelycarve-cli --image "D:\evidence\disk.E01" session --jobs 4
+```
+
+向该进程 stdin 连续写入以下请求（每条必须以换行结束），可在收到结果前提交多条：
+
+```jsonl
+{"id":"info","command":"image_info"}
+{"id":"roots","command":"fs_children","args":{"parentId":""}}
+{"id":"tasks","command":"task_list"}
+{"id":"barrier","command":"wait"}
+```
+
+stdout 只包含逐行 JSON 响应，无进度条、提示符或额外完成消息；无需加 `--json`。
+成功为 `{"id":"info","result":...}`；失败为
+`{"id":"info","error":{"code":"invalidInput","message":"...","details":...}}`，
+`details` 仅在有后端详情时出现。能解析出字符串 ID 的无效请求保留该 ID，
+不可解析的 JSON／输入读取错误使用 `"id":null`。
+`result` 保留各后端命令的原始 JSON 类型与字段，二进制使用明确的 `encoding/data` 包装。
+协议能力位于 `capabilities` 的 `session` 对象；终端／单次命令需要显式 `--json`。
+日志及可选 `--events` 事件写入 stderr，agent 应分别读取 stdout 和 stderr，避免混入响应。
+退出码用于整个会话状态；每个请求是否成功仍以其 `result/error` 字段为准。
+
+`just test-cli` 包含并发、屏障、结果引用、错误关联和保持 stdin 打开的进程级回归。
+可设置 `LOVELYCARVE_CLI_TEST_IMAGE` 为外部镜像路径，再运行 `just test-cli` 或
+`just smoke-cli <可执行文件>`，额外对比顺序／并发的目录和有界文件读取；该样本不加入仓库。
 
 `wait` 和正常 EOF 等待当前进程内任务与活动插件调度任务结束。它只表示任务已不再活动，
 业务结果应读取对应状态/结果接口（例如 `carve-scan-status`、`sched-task-list`），
@@ -189,6 +230,19 @@ CLI 退出不保存内存雕刻记录；应在同一个会话中扫描、分页�
 `call fs_read --args-file params.json --output file.bin` 支持单次低层调用；
 `run commands.txt` 执行逐行终端命令，忽略空行和 `#` 注释，遇错停止。
 命令成功退出 0，运行/协议失败退出 1，命令行语法错误退出 2。
+
+## QCOW 镜像
+
+QCOW v1/v2/v3 的压缩簇和差分父链自动读取；legacy AES 镜像可在 `image_load` 中
+传递 `qcowPassword` 或 `qcowKeyHex`（16 字节 key，二选一），例如：
+
+```jsonl
+{"id":"qcow","command":"image_load","args":{"path":"D:/evidence/disk.qcow2","qcowPassword":"qcow-test"}}
+```
+
+以上密码来自公开测试夹具。真实凭据宜经 stdin 传递；不写入案件、任务描述或日志。
+legacy AES 没有密钥验证器，成功打开不证明密码正确；QCOW 内嵌 LUKS、Zstd、
+extended L2、external data file 和历史快照切换不支持。完整对照见 [QCOW](formats/QCOW.md)。
 
 ## 生命周期与边界
 

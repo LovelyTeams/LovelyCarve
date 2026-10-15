@@ -1,30 +1,30 @@
 <template>
   <section v-if="backup" class="ui-card ios-card" aria-labelledby="ios-backup-title">
     <header class="ui-card-header">
-      <h3 id="ios-backup-title" class="ui-card-title"><Smartphone :size="16" />iOS 备份</h3>
-      <span class="ui-badge sm">{{ backup.locked ? '待解锁' : backup.observed_encrypted ? '已解锁' : '未加密' }}</span>
-      <button v-if="!backup.locked" class="ui-btn sm" :disabled="!!busy" @click="run('audit')"><ShieldCheck :size="14" />检查备份</button>
-      <button v-if="findings" class="ui-btn sm" @click="exportFindings"><Download :size="14" />导出 JSON</button>
+      <h3 id="ios-backup-title" class="ui-card-title"><Smartphone :size="16" />{{ tr("iOS 备份") }}</h3>
+      <span class="ui-badge sm">{{ backup.locked ? tr("待解锁") : backup.observed_encrypted ? tr("已解锁") : tr("未加密") }}</span>
+      <button v-if="!backup.locked" class="ui-btn sm" :disabled="!!busy" @click="run('audit')"><ShieldCheck :size="14" />{{ tr("检查备份") }}</button>
+      <button v-if="findings" class="ui-btn sm" @click="exportFindings"><Download :size="14" />{{ tr("导出 JSON") }}</button>
     </header>
     <div class="ios-body">
       <dl class="metadata">
-        <template v-for="field in fields" :key="field.label"><dt>{{ field.label }}</dt><dd>{{ field.value ?? '未记录' }}</dd></template>
+        <template v-for="field in fields" :key="field.label"><dt>{{ field.label }}</dt><dd>{{ field.value ?? tr("未记录") }}</dd></template>
       </dl>
-      <p v-if="backup.unreadable_rows" class="ui-alert warn">清单有 {{ backup.unreadable_rows }} 条记录无法识别，当前文件树并不完整；请结合原始 Manifest.db 复核。</p>
-      <p v-if="backup.unresolved_sizes" class="ui-alert warn">{{ backup.unresolved_sizes }} 个文件未记录长度且无法读取数据，列表以 0 显示；请结合原始清单和数据文件复核。</p>
+      <p v-if="backup.unreadable_rows" class="ui-alert warn">{{ tr("清单有") }} {{ backup.unreadable_rows }} {{ tr("条记录无法识别，当前文件树并不完整；请结合原始 Manifest.db 复核。") }}</p>
+      <p v-if="backup.unresolved_sizes" class="ui-alert warn">{{ backup.unresolved_sizes }} {{ tr("个文件未记录长度且无法读取数据，列表以 0 显示；请结合原始清单和数据文件复核。") }}</p>
       <form v-if="backup.locked" class="unlock-form" @submit.prevent="run('unlock')">
-        <label :for="passwordId">备份密码</label>
+        <label :for="passwordId">{{ tr("备份密码") }}</label>
         <div class="unlock-controls">
           <input :id="passwordId" v-model="password" class="ui-input" type="password" autocomplete="off" maxlength="4096" :disabled="!!busy" :aria-invalid="error ? 'true' : undefined" :aria-describedby="error ? errorId : undefined" />
-          <button class="ui-btn primary" type="submit" :disabled="!!busy">解锁并打开</button>
+          <button class="ui-btn primary" type="submit" :disabled="!!busy">{{ tr("解锁并打开") }}</button>
         </div>
-        <p class="hint">解锁后打开只读会话，关闭源证据或退出应用后需重新输入密码。</p>
+        <p class="hint">{{ tr("解锁后打开只读会话，关闭源证据或退出应用后需重新输入密码。") }}</p>
       </form>
-      <div v-if="busy" class="operation" role="status"><Loader2 :size="16" class="spin" />{{ busy === 'unlock' ? '正在派生密钥并读取清单…' : '正在检查清单、数据文件与备份状态…' }}<button class="ui-btn sm" :disabled="cancelling" @click="cancel">{{ cancelling ? '正在终止…' : '终止' }}</button></div>
-      <p v-if="busy === 'unlock'" class="hint">密钥派生可能需要较长时间，终止会在当前派生阶段结束后生效。</p>
+      <div v-if="busy" class="operation" role="status"><Loader2 :size="16" class="spin" />{{ busy === 'unlock' ? tr("正在派生密钥并读取清单…") : tr("正在检查清单、数据文件与备份状态…") }}<button class="ui-btn sm" :disabled="cancelling" @click="cancel">{{ cancelling ? tr("正在终止…") : tr("终止") }}</button></div>
+      <p v-if="busy === 'unlock'" class="hint">{{ tr("密钥派生可能需要较长时间，终止会在当前派生阶段结束后生效。") }}</p>
       <p v-if="error" :id="errorId" :class="backup.locked ? 'ui-field-error' : 'ui-alert danger'" role="alert">{{ error }}</p>
       <template v-if="findings">
-        <p class="hint">共 {{ findings.length }} 项观察。应用域缺失仅说明备份未包含该域，原因需结合其他证据判断；原始观察与字段保留上游表述。</p>
+        <p class="hint">{{ tr("共") }} {{ findings.length }} {{ tr("项观察。应用域缺失仅说明备份未包含该域，原因需结合其他证据判断；原始观察与字段保留上游表述。") }}</p>
         <div class="findings">
           <details v-for="(finding, index) in findings" :key="`${finding.code}:${index}`" class="ui-disclosure">
             <summary><span class="ui-badge sm" :class="severityTone(finding.severity)">{{ severityLabel(finding.severity) }}</span><span>{{ findingTitle(finding.code) }}</span></summary>
@@ -41,6 +41,8 @@
 </template>
 
 <script setup lang="ts">
+import { tr } from '../../../composables/useLocale';
+
 import { computed, useId } from 'vue';
 import { Download, Loader2, ShieldCheck, Smartphone } from 'lucide-vue-next';
 import type { ImageInfo } from '../../../lib/ipc/image';
@@ -56,24 +58,24 @@ const passwordId = useId();
 const errorId = useId();
 const backup = computed(() => props.info.ios_backup);
 const fields = computed(() => [
-  { label: '设备', value: backup.value?.device_name },
-  { label: '型号', value: backup.value?.product_type },
-  { label: 'iOS 版本', value: backup.value?.product_version },
-  { label: '序列号', value: backup.value?.serial_number },
-  { label: '设备标识', value: backup.value?.unique_identifier },
-  { label: '备份状态', value: backup.value?.snapshot_state },
-  { label: '清单记录', value: backup.value?.file_count?.toLocaleString() },
+  { get label() { return tr("设备"); }, value: backup.value?.device_name },
+  { get label() { return tr("型号"); }, value: backup.value?.product_type },
+  { get label() { return tr("iOS 版本"); }, value: backup.value?.product_version },
+  { get label() { return tr("序列号"); }, value: backup.value?.serial_number },
+  { get label() { return tr("设备标识"); }, value: backup.value?.unique_identifier },
+  { get label() { return tr("备份状态"); }, value: backup.value?.snapshot_state },
+  { get label() { return tr("清单记录"); }, value: backup.value?.file_count?.toLocaleString() },
 ]);
 const TITLES: Record<string, string> = {
-  'IOS-BACKUP-ENCRYPTED': '备份加密状态', 'IOS-BACKUP-UNENCRYPTED': '未加密备份',
-  'IOS-BACKUP-BLOB-MISSING': '清单引用的数据文件缺失', 'IOS-BACKUP-BLOB-ORPHAN': '未被清单引用的数据文件',
-  'IOS-BACKUP-FILEID-MISMATCH': '文件标识与路径哈希不一致', 'IOS-BACKUP-DOMAIN-ABSENT': '预期应用域未包含在备份中',
-  'IOS-BACKUP-NOT-FINISHED': '备份未记录为完成', 'IOS-BACKUP-NO-FILE-ROWS': '清单没有文件记录',
-  'IOS-BACKUP-ENCRYPTION-STATE-CONTRADICTION': '加密声明与清单内容不一致',
+  get 'IOS-BACKUP-ENCRYPTED'() { return tr("备份加密状态"); }, get 'IOS-BACKUP-UNENCRYPTED'() { return tr("未加密备份"); },
+  get 'IOS-BACKUP-BLOB-MISSING'() { return tr("清单引用的数据文件缺失"); }, get 'IOS-BACKUP-BLOB-ORPHAN'() { return tr("未被清单引用的数据文件"); },
+  get 'IOS-BACKUP-FILEID-MISMATCH'() { return tr("文件标识与路径哈希不一致"); }, get 'IOS-BACKUP-DOMAIN-ABSENT'() { return tr("预期应用域未包含在备份中"); },
+  get 'IOS-BACKUP-NOT-FINISHED'() { return tr("备份未记录为完成"); }, get 'IOS-BACKUP-NO-FILE-ROWS'() { return tr("清单没有文件记录"); },
+  get 'IOS-BACKUP-ENCRYPTION-STATE-CONTRADICTION'() { return tr("加密声明与清单内容不一致"); },
 };
 function findingTitle(code: string) { return TITLES[code] ?? code; }
 function severityLabel(severity: IosBackupFinding['severity']) {
-  return severity ? ({ Info: '信息', Low: '低', Medium: '中', High: '高', Critical: '严重' })[severity] : '未评级';
+  return severity ? ({ Info: tr("信息"), Low: tr("低"), Medium: tr("中"), High: tr("高"), Critical: tr("严重") })[severity] : tr("未评级");
 }
 function severityTone(severity: IosBackupFinding['severity']) {
   return severity === 'Critical' || severity === 'High' ? 'danger' : severity === 'Medium' || severity === 'Low' ? 'warn' : 'info';
@@ -82,10 +84,10 @@ async function exportFindings() {
   if (!findings.value) return;
   await saveTextWithDialog({
     defaultPath: 'ios-backup-audit.json',
-    title: '导出 iOS 备份检查结果',
+    title: tr("导出 iOS 备份检查结果"),
     filters: [{ name: 'JSON', extensions: ['json'] }],
-    content: buildJsonExport('iOS 备份检查', findings.value, { image_id: props.info.id, evidence_path: props.info.path, backup: backup.value }),
-    successLabel: 'iOS 备份检查结果',
+    content: buildJsonExport(tr("iOS 备份检查"), findings.value, { image_id: props.info.id, evidence_path: props.info.path, backup: backup.value }),
+    successLabel: tr("iOS 备份检查结果"),
   });
 }
 </script>

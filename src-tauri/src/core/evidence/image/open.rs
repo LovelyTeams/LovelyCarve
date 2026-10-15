@@ -45,8 +45,43 @@ impl DiskImage {
         path: impl AsRef<Path>,
         progress: OpenObserver<'_>,
     ) -> anyhow::Result<Self> {
+        Self::open_with_id_observed_qcow_key(id, path, progress, None)
+    }
+
+    /// Open a legacy AES-encrypted QCOW disk. The source format has no password
+    /// verifier; decrypted bytes require independent validation by the examiner.
+    pub fn open_with_qcow_key(
+        path: impl AsRef<Path>,
+        key: qcow2::EncryptionKey,
+    ) -> anyhow::Result<Self> {
+        Self::open_with_id_observed_qcow_key(
+            uuid::Uuid::new_v4().to_string(),
+            path,
+            &noop_observer,
+            Some(key),
+        )
+    }
+
+    pub(crate) fn open_with_id_observed_qcow_key(
+        id: String,
+        path: impl AsRef<Path>,
+        progress: OpenObserver<'_>,
+        qcow_key: Option<qcow2::EncryptionKey>,
+    ) -> anyhow::Result<Self> {
         let path = path.as_ref().to_path_buf();
         progress(OpenProgress::Opening);
+        if let Some(key) = qcow_key {
+            let reader = qcow2::Qcow2::open_path_with_key(&path, key).with_context(|| {
+                format!("failed to open encrypted QCOW image: {}", path.display())
+            })?;
+            let size_bytes = reader.guest_size();
+            return Self::from_source(
+                id,
+                path,
+                ImageSource::Qcow2 { reader, size_bytes },
+                progress,
+            );
+        }
         // LDPlayer `.ldbk` backups are 7z containers of VMDK disks, not a single
         // block device — decompress + assemble them on a dedicated path that
         // builds partitions per-VMDK rather than scanning one byte stream.

@@ -365,17 +365,16 @@ pub fn flat_ext_of(node: &FsNode) -> String {
     extension.to_lowercase()
 }
 
-/// 类型列漏斗的匹配文本,与前端 `kindLabel` 同口径(含未分配空间虚拟节点
-/// 的特判)。
-fn kind_label(node: &FsNode) -> &'static str {
+/// Chinese and English type-filter labels, including virtual unallocated spans.
+fn kind_filter_labels(node: &FsNode) -> (&'static str, &'static str) {
     if node.id.starts_with("diskgap:") || node.id.starts_with("unalloc:") {
-        return "未分配空间";
+        return ("未分配空间", "unallocated space");
     }
     match node.kind {
-        NodeKind::Dir => "目录",
-        NodeKind::File => "文件",
-        NodeKind::Symlink => "符号链接",
-        NodeKind::Unallocated => "未分配",
+        NodeKind::Dir => ("目录", "folder"),
+        NodeKind::File => ("文件", "file"),
+        NodeKind::Symlink => ("符号链接", "symbolic link"),
+        NodeKind::Unallocated => ("未分配", "unallocated"),
     }
 }
 

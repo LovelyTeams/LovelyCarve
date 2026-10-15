@@ -1,3 +1,4 @@
+import { sourceText, type Translator } from '../../../i18n/translate';
 // 时间线面板的纯展示逻辑:柱状图钻取时收窄时间范围并降低粒度,
 // 历史范围压栈以支持撤销。
 //
@@ -122,7 +123,7 @@ export function formatEpoch(epoch: number, tzHours: number): string {
 }
 
 /** 柱状图轴标签：最右一段有意义的分量（tooltip 仍显示完整 date_str）。 */
-export function bucketShortLabel(dateStr: string, unit: TimelineUnitValue): string {
+export function bucketShortLabel(dateStr: string, unit: TimelineUnitValue, tr: Translator = sourceText): string {
   switch (unit) {
     case 'year':
       return dateStr;
@@ -131,7 +132,7 @@ export function bucketShortLabel(dateStr: string, unit: TimelineUnitValue): stri
     case 'day':
       return dateStr.slice(8);
     case 'hour':
-      return `${dateStr.slice(11)}时`;
+      return tr("{0}时", { 0: dateStr.slice(11) });
     case 'minute':
       return dateStr.slice(14);
     case 'second':
@@ -145,32 +146,32 @@ export function formatRange(start: number, end: number, tzHours: number): string
 }
 
 /** 状态中文标签。 */
-export function statusLabel(status: string): string {
+export function statusLabel(status: string, tr: Translator = sourceText): string {
   switch (status) {
     case 'buildRequired':
-      return '未创建';
+      return tr("未创建");
     case 'running':
-      return '构建中';
+      return tr("构建中");
     case 'stale':
-      return '有新数据未处理';
+      return tr("有新数据未处理");
     case 'ready':
-      return '已就绪';
+      return tr("已就绪");
     default:
       return status;
   }
 }
 
 /** datatype 编号 → 展示名（后端注册表镜像：1=文件 2=插件时间线）。 */
-export function dataTypeLabel(dataType: number): string {
+export function dataTypeLabel(dataType: number, tr: Translator = sourceText): string {
   switch (dataType) {
     case 1:
-      return '文件';
+      return tr("文件");
     case 2:
-      return '插件时间线';
+      return tr("插件时间线");
     case 3:
-      return 'NTFS 变更日志';
+      return tr("NTFS 变更日志");
     default:
-      return `类型 ${dataType}`;
+      return tr("类型 {0}", { 0: dataType });
   }
 }
 

@@ -1,3 +1,5 @@
+
+import { tr } from '../../../composables/useLocale';
 import { ref } from 'vue';
 import { save, open as openDialog } from '@tauri-apps/plugin-dialog';
 import { readDir } from '@tauri-apps/plugin-fs';
@@ -63,7 +65,7 @@ export function useFileExports(options: UseFileExportsOptions) {
     if (!single || single.kind !== 'file') return;
     try {
       const dest = await save({
-        title: '导出文件',
+        title: tr("导出文件"),
         defaultPath: single.name,
       });
       if (!dest) return;
@@ -73,11 +75,11 @@ export function useFileExports(options: UseFileExportsOptions) {
         destination: dest,
       });
       notifySuccess(
-        result.read_faults_detected ? '导出成功（含补零）' : '导出成功',
+        result.read_faults_detected ? tr("导出成功（含补零）") : tr("导出成功"),
         `${single.name} (${options.formatBytes(result.bytes_written)})${exportFaultDetail(result, options.formatBytes)}`,
       );
     } catch (err) {
-      notifyError('导出失败', String(err));
+      notifyError(tr("导出失败"), String(err));
     }
   }
 
@@ -96,7 +98,7 @@ export function useFileExports(options: UseFileExportsOptions) {
     let target: string;
     if (mode === 'tree') {
       const dest = await openDialog({
-        title: '选择导出目标目录',
+        title: tr("选择导出目标目录"),
         directory: true,
         multiple: false,
       });
@@ -106,7 +108,7 @@ export function useFileExports(options: UseFileExportsOptions) {
       target = joinExportDest(dest, wrapper);
     } else {
       const dest = await save({
-        title: '保存为 ZIP 压缩包',
+        title: tr("保存为 ZIP 压缩包"),
         defaultPath: `${wrapper}.zip`,
         filters: [{ name: 'ZIP', extensions: ['zip'] }],
       });
@@ -119,7 +121,7 @@ export function useFileExports(options: UseFileExportsOptions) {
 
   async function exportCheckedFiles(files: ExportableFsNode[]) {
     const dest = await openDialog({
-      title: '选择导出目标目录',
+      title: tr("选择导出目标目录"),
       directory: true,
       multiple: false,
     });
@@ -128,13 +130,13 @@ export function useFileExports(options: UseFileExportsOptions) {
     let cancelled = false;
     const toast = pushPersistentToast({
       kind: 'info',
-      title: `导出勾选文件中…（${files.length} 个）`,
-      detail: `${dest} · 准备中`,
+      title: tr("导出勾选文件中…（{0} 个）", { 0: files.length }),
+      detail: tr("{0} · 准备中", { 0: dest }),
       action: {
-        label: '取消',
+        get label() { return tr("取消"); },
         onClick: () => {
           cancelled = true;
-          toast.update({ action: { label: '取消中…', onClick: () => {}, disabled: true } });
+          toast.update({ action: { get label() { return tr("取消中…"); }, onClick: () => {}, disabled: true } });
         },
       },
     });
@@ -166,25 +168,25 @@ export function useFileExports(options: UseFileExportsOptions) {
         lastErr = String(err);
       }
       toast.update({
-        detail: `${dest} · ${ok + failed}/${files.length} · ${options.formatBytes(bytes)}${failed > 0 ? ` · 失败 ${failed}` : ''}`,
+        detail: `${dest} · ${ok + failed}/${files.length} · ${options.formatBytes(bytes)}${failed > 0 ? tr(" · 失败 {0}", { 0: failed }) : ''}`,
       });
     }
 
-    const parts = [`${ok} 个文件`, options.formatBytes(bytes)];
+    const parts = [tr("{0} 个文件", { 0: ok }), options.formatBytes(bytes)];
     if (syntheticBytes > 0) {
-      parts.push(`含补零 ${options.formatBytes(syntheticBytes)}（${faultRegionHits} 个坏区命中）`);
+      parts.push(tr("含补零 {0}（{1} 个坏区命中）", { 0: options.formatBytes(syntheticBytes), 1: faultRegionHits }));
     }
-    if (failed > 0) parts.push(`失败 ${failed}（${lastErr}）`);
-    if (cancelled) parts.push(`未导出 ${files.length - ok - failed}`);
+    if (failed > 0) parts.push(tr("失败 {0}（{1}）", { 0: failed, 1: lastErr }));
+    if (cancelled) parts.push(tr("未导出 {0}", { 0: files.length - ok - failed }));
     toast.update({
       kind: failed > 0 ? 'error' : cancelled ? 'info' : 'success',
       title: cancelled
-        ? '导出已取消'
+        ? tr("导出已取消")
         : failed > 0
-          ? '导出完成（部分失败）'
+          ? tr("导出完成（部分失败）")
           : syntheticBytes > 0
-            ? '导出成功（含补零）'
-            : '导出成功',
+            ? tr("导出成功（含补零）")
+            : tr("导出成功"),
       detail: `${dest} · ${parts.join(' · ')}`,
       action: undefined,
     });
@@ -195,7 +197,7 @@ export function useFileExports(options: UseFileExportsOptions) {
     const mode = await pickExportMode();
     if (!mode) return;
     const dest = await openDialog({
-      title: '选择导出目标目录',
+      title: tr("选择导出目标目录"),
       directory: true,
       multiple: false,
     });
@@ -213,20 +215,20 @@ export function useFileExports(options: UseFileExportsOptions) {
 
   async function runExportDir(node: ExportableFsNode, target: string, mode: ExportDirMode) {
     const taskId = newTaskId();
-    const modeLabel = mode === 'zip' ? '导出为 ZIP 中…' : '导出文件夹中…';
+    const modeLabel = mode === 'zip' ? tr("导出为 ZIP 中…") : tr("导出文件夹中…");
     const toast = pushPersistentToast({
       kind: 'info',
       title: modeLabel,
-      detail: `${target} · 准备中`,
+      detail: tr("{0} · 准备中", { 0: target }),
       action: {
-        label: '取消',
+        get label() { return tr("取消"); },
         onClick: () => {
           toast.update({
-            detail: `${target} · 取消中…`,
-            action: { label: '取消中…', onClick: () => {}, disabled: true },
+            detail: tr("{0} · 取消中…", { 0: target }),
+            action: { get label() { return tr("取消中…"); }, onClick: () => {}, disabled: true },
           });
           void taskCancel({ taskId }).catch(err => {
-            notifyError('取消失败', String(err));
+            notifyError(tr("取消失败"), String(err));
           });
         },
       },
@@ -238,17 +240,17 @@ export function useFileExports(options: UseFileExportsOptions) {
         if (event.payload.task_id !== taskId) return;
         const progress = event.payload;
         const parts = [
-          `${progress.files_done} 文件`,
-          `${progress.dirs_done} 目录`,
+          tr("{0} 文件", { 0: progress.files_done }),
+          tr("{0} 目录", { 0: progress.dirs_done }),
           options.formatBytes(progress.bytes_written),
         ];
-        if (progress.skipped > 0) parts.push(`跳过 ${progress.skipped}`);
-        if (progress.skipped_deleted > 0) parts.push(`已删除项 ${progress.skipped_deleted}`);
-        if (progress.current_path) parts.push(`当前: ${progress.current_path}`);
+        if (progress.skipped > 0) parts.push(tr("跳过 {0}", { 0: progress.skipped }));
+        if (progress.skipped_deleted > 0) parts.push(tr("已删除项 {0}", { 0: progress.skipped_deleted }));
+        if (progress.current_path) parts.push(tr("当前: {0}", { 0: progress.current_path }));
         toast.update({ detail: `${target} · ${parts.join(' · ')}` });
       });
     } catch (err) {
-      notifyError('进度监听失败', String(err));
+      notifyError(tr("进度监听失败"), String(err));
     }
 
     try {
@@ -261,23 +263,23 @@ export function useFileExports(options: UseFileExportsOptions) {
       });
 
       const parts = [
-        `${summary.file_count} 个文件`,
-        `${summary.dir_count} 个目录`,
+        tr("{0} 个文件", { 0: summary.file_count }),
+        tr("{0} 个目录", { 0: summary.dir_count }),
         options.formatBytes(summary.bytes_written),
       ];
-      if (summary.skipped_count > 0) parts.push(`跳过 ${summary.skipped_count}`);
-      if (summary.skipped_deleted > 0) parts.push(`已删除项 ${summary.skipped_deleted}`);
-      if (summary.truncated) parts.push('已截断');
+      if (summary.skipped_count > 0) parts.push(tr("跳过 {0}", { 0: summary.skipped_count }));
+      if (summary.skipped_deleted > 0) parts.push(tr("已删除项 {0}", { 0: summary.skipped_deleted }));
+      if (summary.truncated) parts.push(tr("已截断"));
       if (summary.read_faults_detected) {
         parts.push(
-          `含补零 ${options.formatBytes(summary.synthetic_bytes)}（${summary.bad_regions.length} 个坏区命中）`,
+          tr("含补零 {0}（{1} 个坏区命中）", { 0: options.formatBytes(summary.synthetic_bytes), 1: summary.bad_regions.length }),
         );
       }
 
       if (summary.cancelled) {
         toast.update({
           kind: 'info',
-          title: '导出已取消',
+          title: tr("导出已取消"),
           detail: `${target} · ${parts.join(' · ')}`,
           action: undefined,
           progress: undefined,
@@ -296,7 +298,7 @@ export function useFileExports(options: UseFileExportsOptions) {
     } catch (err) {
       toast.update({
         kind: 'error',
-        title: '导出失败',
+        title: tr("导出失败"),
         detail: String(err),
         action: undefined,
         progress: undefined,
@@ -312,7 +314,7 @@ export function useFileExports(options: UseFileExportsOptions) {
     try {
       for (const entry of await readDir(dest)) used.add(entry.name.toLowerCase());
     } catch (err) {
-      notifyError('无法枚举目标目录', `重名检测退化为批内去重：${String(err)}`);
+      notifyError(tr("无法枚举目标目录"), tr("重名检测退化为批内去重：{0}", { 0: String(err) }));
     }
     return used;
   }
@@ -352,14 +354,14 @@ function exportFaultDetail(report: ReadFaultLike, formatBytes: (bytes: number) =
   if (!report.read_faults_detected) {
     return '';
   }
-  return ` · 警告：含 ${formatBytes(report.synthetic_bytes)} 合成零字节（${report.bad_regions.length} 个坏区命中）`;
+  return tr(" · 警告：含 {0} 合成零字节（{1} 个坏区命中）", { 0: formatBytes(report.synthetic_bytes), 1: report.bad_regions.length });
 }
 
 function exportDirDoneTitle(mode: ExportDirMode, readFaultsDetected: boolean): string {
   if (mode === 'zip') {
-    return readFaultsDetected ? 'ZIP 压缩完成（含补零）' : 'ZIP 压缩完成';
+    return readFaultsDetected ? tr("ZIP 压缩完成（含补零）") : tr("ZIP 压缩完成");
   }
-  return readFaultsDetected ? '目录导出完成（含补零）' : '目录导出完成';
+  return readFaultsDetected ? tr("目录导出完成（含补零）") : tr("目录导出完成");
 }
 
 function exportFolderName(raw: string): string {

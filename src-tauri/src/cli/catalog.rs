@@ -14,9 +14,16 @@ pub struct Command {
     pub group: String,
     pub description: String,
     pub parameters: Vec<Parameter>,
+    #[serde(default)]
+    pub parallel: bool,
 }
 pub fn commands() -> Result<Vec<Command>, serde_json::Error> {
-    serde_json::from_str(include_str!(concat!(env!("OUT_DIR"), "/cli_catalog.json")))
+    let mut commands: Vec<Command> =
+        serde_json::from_str(include_str!(concat!(env!("OUT_DIR"), "/cli_catalog.json")))?;
+    for command in &mut commands {
+        command.parallel = super::session::concurrent(&command.name);
+    }
+    Ok(commands)
 }
 
 #[cfg(test)]

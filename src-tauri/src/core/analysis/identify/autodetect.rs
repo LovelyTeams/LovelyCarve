@@ -183,6 +183,7 @@ pub fn detect_image(
         | ImageFormat::Ewf
         | ImageFormat::Vmdk
         | ImageFormat::Qcow2
+        | ImageFormat::Phdi
         | ImageFormat::Vdi
         | ImageFormat::Vhd
         | ImageFormat::Vhdx

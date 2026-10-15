@@ -2,16 +2,26 @@
 name = "qcow2"
 version = "0.1.3-lovelycarve"
 edition = "2021"
+rust-version = "1.88"
 authors = ["Dave Vasilevsky <dave@vasilevsky.ca>"]
 description = "Reading qcow2 virtual disk images"
 keywords = ["qcow2", "qemu", "disk", "image"]
-license = "MIT"
+license = "MIT AND AGPL-3.0-only"
 documentation = "http://vasi.github.io/qcow2-rs/qcow2/"
 repository = "https://github.com/vasi/qcow2-rs"
 homepage = "https://github.com/vasi/qcow2-rs"
 readme = "README.md"
 
 [dependencies]
+aes = { version = "0.9.3", features = ["zeroize"] }
 byteorder = "1.5"
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
 lru = "0.18"
 positioned-io = "0.3"
+zeroize = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.rust]
+unsafe_code = "forbid"
