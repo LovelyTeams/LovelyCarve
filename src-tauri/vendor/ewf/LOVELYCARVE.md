@@ -20,11 +20,32 @@ Local changes:
 - Bound EWF2 geometry and reject offset overflow rather than shifting chunk indices.
 - Fix the upstream no-default-features VerifyResult impl gate.
 - Update the synthetic raw-chunk test to include the format's Adler-32 trailer.
+- Correct the table-header CRC regression expectation and build valid EnCase
+  sectors/table fixtures with independent checksums and exact stored chunk sizes.
 
 Run `just test-ewf` from the repository root. Adapter tests are part of `just test`.
 Large external corpus tests remain opt-in via EWF_TEST_CORPUS; they are not claimed
 as local validation when those files are absent. Small committed fixtures retain
 upstream provenance in tests/data/README.md and the upstream test descriptions.
+
+## EWF1 regression fixtures
+
+The EWF1 table header checksum covers bytes `0..20` (including the second
+reserved word) and is stored at `20..24`, as documented in libewf's
+[`ewf_table.h`](https://github.com/libyal/libewf/blob/33e8dccf18aa0dbb26cee908a3ad122011abbdaf/libewf/ewf_table.h).
+The reader already used this range; the old test and layout comments incorrectly
+expected `0..16`. The test now uses a fixed checksum and checks corruption of the
+reserved word too.
+
+The shared synthetic EnCase fixture now writes `volume`, `sectors`, `table`,
+`table2`, `done`, with independently calculated descriptor, volume, table-header
+and entry checksums. This matches the sectors-before-table layout in the
+[EWF specification](https://github.com/libyal/libewf/blob/33e8dccf18aa0dbb26cee908a3ad122011abbdaf/documentation/Expert%20Witness%20Compression%20Format%20(EWF).asciidoc).
+Previously these fixtures put chunks in a separate sectors section after the
+table, rather than before it or embedded in an early-format table. The two
+failing final-chunk length tests now check exact stored sizes and complete bytes
+in eager and lazy mode; a new case covers compressed data larger than its
+uncompressed chunk. No production chunk-boundary logic changed for these fixes.
 
 ## Header date encodings
 

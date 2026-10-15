@@ -208,112 +208,74 @@ mod tests {
 
     // -- EwfReader synthetic E01 tests --
 
-    /// Build a minimal single-segment E01 file with known data.
-    ///
-    /// Layout:
-    ///   [0..13)     File header (segment 1)
-    ///   [13..89)    Section descriptor: "volume", next -> `table_desc_offset`
-    ///   [89..183)   Volume data (94 bytes)
-    ///   [183..259)  Section descriptor: "table", next -> `sectors_desc_offset`
-    ///   [259..283)  Table header (24 bytes): 1 entry, `base_offset` = `sectors_data_offset`
-    ///   [283..287)  Table entry (4 bytes): compressed bit + offset 0
-    ///   [287..363)  Section descriptor: "sectors"
-    ///   [363..363+N) Sectors data (zlib-compressed chunk)
-    ///   [363+N..)   Section descriptor: "done", next = 0
+    /// Build a single-chunk EnCase 6 fixture with sectors before its tables.
     fn build_synthetic_e01(data: &[u8]) -> NamedTempFile {
+        build_synthetic_e01_chunks(&[data]).0
+    }
+
+    /// Independently serialize the documented EnCase 6 layout and return the
+    /// actual stored lengths as an oracle for eager/lazy chunk metadata.
+    fn build_synthetic_e01_chunks(data: &[&[u8]]) -> (NamedTempFile, Vec<usize>) {
         use flate2::write::ZlibEncoder;
         use flate2::Compression;
 
-        let chunk_size: u32 = 32768; // 64 sectors * 512 bytes
-        let sectors_per_chunk: u32 = 64;
-        let bytes_per_sector: u32 = 512;
-        // Pad data to chunk_size
-        let mut padded = data.to_vec();
-        padded.resize(chunk_size as usize, 0);
-
-        // Compress the chunk
-        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(&padded).unwrap();
-        let compressed = encoder.finish().unwrap();
-
-        let sector_count = u64::from(chunk_size / bytes_per_sector);
-
-        // Calculate offsets
-        let vol_desc_offset: u64 = FILE_HEADER_SIZE as u64; // 13
-        let vol_data_offset: u64 = vol_desc_offset + SECTION_DESCRIPTOR_SIZE as u64; // 89
-        let tbl_desc_offset: u64 = vol_data_offset + 94; // 183
-        let tbl_hdr_offset: u64 = tbl_desc_offset + SECTION_DESCRIPTOR_SIZE as u64; // 259
-        let tbl_entries_offset: u64 = tbl_hdr_offset + 24; // 283
-        let sectors_desc_offset: u64 = tbl_entries_offset + 4; // 287
-        let sectors_data_offset: u64 = sectors_desc_offset + SECTION_DESCRIPTOR_SIZE as u64; // 363
-        let done_desc_offset: u64 = sectors_data_offset + compressed.len() as u64;
-
-        let mut file_data = Vec::new();
-
-        // 1. File header (13 bytes)
-        file_data.extend_from_slice(&EVF_SIGNATURE);
-        file_data.push(0x01); // Fields_start
-        file_data.extend_from_slice(&1u16.to_le_bytes()); // Segment 1
-        file_data.extend_from_slice(&0u16.to_le_bytes()); // Fields_end
-
-        // 2. Volume section descriptor (76 bytes)
-        let mut vol_desc = [0u8; SECTION_DESCRIPTOR_SIZE];
-        vol_desc[..6].copy_from_slice(b"volume");
-        vol_desc[16..24].copy_from_slice(&tbl_desc_offset.to_le_bytes()); // next
-        vol_desc[24..32].copy_from_slice(&(SECTION_DESCRIPTOR_SIZE as u64 + 94).to_le_bytes()); // section_size
-        file_data.extend_from_slice(&vol_desc);
-
-        // 3. Volume data (94 bytes)
-        let mut vol_data = [0u8; 94];
-        // media_type = 1 (fixed) at offset 0
-        vol_data[0..4].copy_from_slice(&1u32.to_le_bytes());
-        vol_data[4..8].copy_from_slice(&1u32.to_le_bytes()); // chunk_count = 1
-        vol_data[8..12].copy_from_slice(&sectors_per_chunk.to_le_bytes());
-        vol_data[12..16].copy_from_slice(&bytes_per_sector.to_le_bytes());
-        vol_data[16..24].copy_from_slice(&sector_count.to_le_bytes());
-        file_data.extend_from_slice(&vol_data);
-
-        // 4. Table section descriptor (76 bytes)
-        let mut tbl_desc = [0u8; SECTION_DESCRIPTOR_SIZE];
-        tbl_desc[..5].copy_from_slice(b"table");
-        tbl_desc[16..24].copy_from_slice(&sectors_desc_offset.to_le_bytes()); // next
-        let tbl_section_size = SECTION_DESCRIPTOR_SIZE as u64 + 24 + 4;
-        tbl_desc[24..32].copy_from_slice(&tbl_section_size.to_le_bytes());
-        file_data.extend_from_slice(&tbl_desc);
-
-        // 5. Table header (24 bytes): u32 entry_count + 4 padding + u64 base_offset
-        let mut tbl_hdr = [0u8; 24];
-        tbl_hdr[0..4].copy_from_slice(&1u32.to_le_bytes()); // entry_count (u32)
-                                                            // [4..8] padding — left as zeros
-        tbl_hdr[8..16].copy_from_slice(&sectors_data_offset.to_le_bytes()); // base_offset
-        file_data.extend_from_slice(&tbl_hdr);
-
-        // 6. Table entry (4 bytes): compressed, chunk_offset = 0
-        let entry: u32 = 0x8000_0000; // compressed bit set, offset = 0
-        file_data.extend_from_slice(&entry.to_le_bytes());
-
-        // 7. Sectors section descriptor (76 bytes)
-        let mut sec_desc = [0u8; SECTION_DESCRIPTOR_SIZE];
-        sec_desc[..7].copy_from_slice(b"sectors");
-        sec_desc[16..24].copy_from_slice(&done_desc_offset.to_le_bytes()); // next
-        let sec_section_size = SECTION_DESCRIPTOR_SIZE as u64 + compressed.len() as u64;
-        sec_desc[24..32].copy_from_slice(&sec_section_size.to_le_bytes());
-        file_data.extend_from_slice(&sec_desc);
-
-        // 8. Compressed chunk data
-        file_data.extend_from_slice(&compressed);
-
-        // 9. Done section descriptor (76 bytes)
-        let mut done_desc = [0u8; SECTION_DESCRIPTOR_SIZE];
-        done_desc[..4].copy_from_slice(b"done");
-        // next = 0 (end of chain)
-        done_desc[24..32].copy_from_slice(&(SECTION_DESCRIPTOR_SIZE as u64).to_le_bytes());
-        file_data.extend_from_slice(&done_desc);
-
-        let mut tmp = tempfile::Builder::new().suffix(".E01").tempfile().unwrap();
-        tmp.write_all(&file_data).unwrap();
-        tmp.flush().unwrap();
-        tmp
+        let stored: Vec<Vec<u8>> = data
+            .iter()
+            .map(|bytes| {
+                let mut padded = bytes.to_vec();
+                padded.resize(32768, 0);
+                let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+                encoder.write_all(&padded).unwrap();
+                encoder.finish().unwrap()
+            })
+            .collect();
+        let lengths = stored.iter().map(Vec::len).collect();
+        let mut output = make_file_header(1).to_vec();
+        let mut section = |kind: &str, body: &[u8]| {
+            let size = (76 + body.len()) as u64;
+            let next = if kind == "done" {
+                output.len() as u64
+            } else {
+                output.len() as u64 + size
+            };
+            let mut descriptor = make_section_descriptor(kind, next, size);
+            let checksum = adler2::adler32_slice(&descriptor[..72]);
+            descriptor[72..76].copy_from_slice(&checksum.to_le_bytes());
+            output.extend_from_slice(&descriptor);
+            output.extend_from_slice(body);
+        };
+        let mut volume = [0u8; 1052];
+        volume[0] = 1;
+        volume[4..8].copy_from_slice(&(data.len() as u32).to_le_bytes());
+        volume[8..12].copy_from_slice(&64u32.to_le_bytes());
+        volume[12..16].copy_from_slice(&512u32.to_le_bytes());
+        volume[16..24].copy_from_slice(&(data.len() as u64 * 64).to_le_bytes());
+        volume[52] = 1;
+        let checksum = adler2::adler32_slice(&volume[..1048]);
+        volume[1048..1052].copy_from_slice(&checksum.to_le_bytes());
+        section("volume", &volume);
+        let data_offset = 13 + 76 + volume.len() as u64 + 76;
+        let sectors: Vec<u8> = stored.iter().flatten().copied().collect();
+        section("sectors", &sectors);
+        let mut table = vec![0u8; 24];
+        table[..4].copy_from_slice(&(data.len() as u32).to_le_bytes());
+        table[8..16].copy_from_slice(&data_offset.to_le_bytes());
+        let checksum = adler2::adler32_slice(&table[..20]);
+        table[20..24].copy_from_slice(&checksum.to_le_bytes());
+        let mut offset = 0u32;
+        for chunk in &stored {
+            table.extend_from_slice(&(0x8000_0000u32 | offset).to_le_bytes());
+            offset += chunk.len() as u32;
+        }
+        let checksum = adler2::adler32_slice(&table[24..]);
+        table.extend_from_slice(&checksum.to_le_bytes());
+        section("table", &table);
+        section("table2", &table);
+        section("done", &[]);
+        let mut file = tempfile::Builder::new().suffix(".E01").tempfile().unwrap();
+        file.write_all(&output).unwrap();
+        file.flush().unwrap();
+        (file, lengths)
     }
 
     /// A synthetic `E01` whose *volume header* declares an arbitrary `chunk_count`,
@@ -1315,110 +1277,8 @@ mod tests {
         assert_eq!(n, 0);
     }
 
-    /// Build a synthetic E01 with two compressed chunks to exercise
-    /// the compressed chunk size delta calculation (lines 461-466).
     fn build_synthetic_e01_two_chunks(data1: &[u8], data2: &[u8]) -> NamedTempFile {
-        use flate2::write::ZlibEncoder;
-        use flate2::Compression;
-
-        let chunk_size: u32 = 32768;
-        let sectors_per_chunk: u32 = 64;
-        let bytes_per_sector: u32 = 512;
-
-        // Pad and compress both chunks
-        let mut padded1 = data1.to_vec();
-        padded1.resize(chunk_size as usize, 0);
-        let mut enc1 = ZlibEncoder::new(Vec::new(), Compression::default());
-        enc1.write_all(&padded1).unwrap();
-        let compressed1 = enc1.finish().unwrap();
-
-        let mut padded2 = data2.to_vec();
-        padded2.resize(chunk_size as usize, 0);
-        let mut enc2 = ZlibEncoder::new(Vec::new(), Compression::default());
-        enc2.write_all(&padded2).unwrap();
-        let compressed2 = enc2.finish().unwrap();
-
-        let total_compressed = compressed1.len() + compressed2.len();
-        let sector_count = (u64::from(chunk_size) * 2) / u64::from(bytes_per_sector);
-
-        // Layout offsets
-        let vol_desc_offset: u64 = FILE_HEADER_SIZE as u64;
-        let vol_data_offset: u64 = vol_desc_offset + SECTION_DESCRIPTOR_SIZE as u64;
-        let tbl_desc_offset: u64 = vol_data_offset + 94;
-        let tbl_hdr_offset: u64 = tbl_desc_offset + SECTION_DESCRIPTOR_SIZE as u64;
-        let tbl_entries_offset: u64 = tbl_hdr_offset + 24;
-        let sectors_desc_offset: u64 = tbl_entries_offset + 8; // 2 entries * 4 bytes
-        let sectors_data_offset: u64 = sectors_desc_offset + SECTION_DESCRIPTOR_SIZE as u64;
-        let done_desc_offset: u64 = sectors_data_offset + total_compressed as u64;
-
-        let mut file_data = Vec::new();
-
-        // File header
-        file_data.extend_from_slice(&EVF_SIGNATURE);
-        file_data.push(0x01);
-        file_data.extend_from_slice(&1u16.to_le_bytes());
-        file_data.extend_from_slice(&0u16.to_le_bytes());
-
-        // Volume descriptor
-        let mut vol_desc = [0u8; SECTION_DESCRIPTOR_SIZE];
-        vol_desc[..6].copy_from_slice(b"volume");
-        vol_desc[16..24].copy_from_slice(&tbl_desc_offset.to_le_bytes());
-        vol_desc[24..32].copy_from_slice(&(SECTION_DESCRIPTOR_SIZE as u64 + 94).to_le_bytes());
-        file_data.extend_from_slice(&vol_desc);
-
-        // Volume data: 2 chunks
-        let mut vol_data = [0u8; 94];
-        vol_data[0..4].copy_from_slice(&1u32.to_le_bytes());
-        vol_data[4..8].copy_from_slice(&2u32.to_le_bytes()); // chunk_count = 2
-        vol_data[8..12].copy_from_slice(&sectors_per_chunk.to_le_bytes());
-        vol_data[12..16].copy_from_slice(&bytes_per_sector.to_le_bytes());
-        vol_data[16..24].copy_from_slice(&sector_count.to_le_bytes());
-        file_data.extend_from_slice(&vol_data);
-
-        // Table descriptor
-        let mut tbl_desc = [0u8; SECTION_DESCRIPTOR_SIZE];
-        tbl_desc[..5].copy_from_slice(b"table");
-        tbl_desc[16..24].copy_from_slice(&sectors_desc_offset.to_le_bytes());
-        tbl_desc[24..32].copy_from_slice(&(SECTION_DESCRIPTOR_SIZE as u64 + 24 + 8).to_le_bytes());
-        file_data.extend_from_slice(&tbl_desc);
-
-        // Table header: 2 entries, base_offset = sectors_data_offset
-        let mut tbl_hdr = [0u8; 24];
-        tbl_hdr[0..4].copy_from_slice(&2u32.to_le_bytes());
-        tbl_hdr[8..16].copy_from_slice(&sectors_data_offset.to_le_bytes());
-        file_data.extend_from_slice(&tbl_hdr);
-
-        // Table entry 1: compressed, offset = 0
-        let entry1: u32 = 0x8000_0000;
-        file_data.extend_from_slice(&entry1.to_le_bytes());
-
-        // Table entry 2: compressed, offset = compressed1.len()
-        let entry2: u32 = 0x8000_0000 | compressed1.len() as u32;
-        file_data.extend_from_slice(&entry2.to_le_bytes());
-
-        // Sectors descriptor
-        let mut sec_desc = [0u8; SECTION_DESCRIPTOR_SIZE];
-        sec_desc[..7].copy_from_slice(b"sectors");
-        sec_desc[16..24].copy_from_slice(&done_desc_offset.to_le_bytes());
-        sec_desc[24..32].copy_from_slice(
-            &(SECTION_DESCRIPTOR_SIZE as u64 + total_compressed as u64).to_le_bytes(),
-        );
-        file_data.extend_from_slice(&sec_desc);
-
-        // Compressed data for both chunks back-to-back
-        file_data.extend_from_slice(&compressed1);
-        file_data.extend_from_slice(&compressed2);
-
-        // Done
-        let mut done_desc = [0u8; SECTION_DESCRIPTOR_SIZE];
-        done_desc[..4].copy_from_slice(b"done");
-        done_desc[24..32].copy_from_slice(&(SECTION_DESCRIPTOR_SIZE as u64).to_le_bytes());
-        file_data.extend_from_slice(&done_desc);
-
-        let mut tmp = tempfile::Builder::new().suffix(".E01").tempfile().unwrap();
-        tmp.write_all(&file_data).unwrap();
-        tmp.flush().unwrap();
-        tmp
+        build_synthetic_e01_chunks(&[data1, data2]).0
     }
 
     #[test]
@@ -2648,59 +2508,83 @@ mod tests {
         );
     }
 
-    // -- last compressed chunk back-fill --
+    // -- Exact compressed chunk sizes for standards-conforming fixtures --
 
     #[test]
     fn last_compressed_chunk_has_correct_size() {
-        // Build a 2-chunk image. Chunk 0 gets back-filled from chunk 1's offset.
-        // Chunk 1 (the LAST) must also be back-filled — its size should be
-        // the actual compressed data length, NOT the full chunk_size (32768).
         let data1 = b"first chunk";
         let data2 = b"second chunk data";
-        let tmp = build_synthetic_e01_two_chunks(data1, data2);
-        let reader = EwfReader::open(tmp.path()).unwrap();
-
-        assert_eq!(reader.chunk_count(), 2);
-
-        // Both chunks are compressed
-        let c0 = reader.chunk_meta(0);
-        let c1 = reader.chunk_meta(1);
-        assert!(c0.compressed());
-        assert!(c1.compressed());
-
-        // Chunk 0: back-filled by the existing logic (offset of chunk 1 - offset of chunk 0)
-        assert!(
-            c0.size() < reader.chunk_size(),
-            "Chunk 0 compressed size should be < chunk_size, got {}",
-            c0.size()
-        );
-
-        // Chunk 1 (LAST): this is the bug — without the fix, size == chunk_size (32768).
-        // With the fix, size should be the actual compressed length (a few hundred bytes).
-        assert!(
-            c1.size() < reader.chunk_size(),
-            "Last chunk compressed size should be < chunk_size ({}), got {}",
-            reader.chunk_size(),
-            c1.size()
-        );
+        let (file, sizes) = build_synthetic_e01_chunks(&[data1, data2]);
+        let mut expected = vec![0; 65536];
+        expected[..data1.len()].copy_from_slice(data1);
+        expected[32768..32768 + data2.len()].copy_from_slice(data2);
+        for reader in [
+            EwfReader::open(file.path()).unwrap(),
+            EwfReader::open_lazy(file.path()).unwrap(),
+        ] {
+            assert_eq!(reader.chunk_count(), 2);
+            for (index, size) in sizes.iter().enumerate() {
+                let chunk = reader.debug_chunk(index).unwrap();
+                assert!(chunk.2);
+                assert_eq!(chunk.1, *size as u64);
+            }
+            let mut bytes = vec![0; expected.len()];
+            assert_eq!(reader.read_at(&mut bytes, 0).unwrap(), expected.len());
+            assert_eq!(bytes, expected);
+            let mut boundary = [0; 32];
+            assert_eq!(
+                reader.read_at(&mut boundary, 32760).unwrap(),
+                boundary.len()
+            );
+            assert_eq!(boundary, expected[32760..32792]);
+        }
     }
 
     #[test]
     fn single_compressed_chunk_has_correct_size() {
-        // Single-chunk image: the only chunk IS the last chunk.
         let data = b"solo chunk data";
-        let tmp = build_synthetic_e01(data);
-        let reader = EwfReader::open(tmp.path()).unwrap();
+        let (file, sizes) = build_synthetic_e01_chunks(&[data]);
+        let mut expected = vec![0; 32768];
+        expected[..data.len()].copy_from_slice(data);
+        for reader in [
+            EwfReader::open(file.path()).unwrap(),
+            EwfReader::open_lazy(file.path()).unwrap(),
+        ] {
+            assert_eq!(reader.chunk_count(), 1);
+            let chunk = reader.debug_chunk(0).unwrap();
+            assert!(chunk.2);
+            assert_eq!(chunk.1, sizes[0] as u64);
+            let mut bytes = vec![0; expected.len()];
+            assert_eq!(reader.read_at(&mut bytes, 0).unwrap(), expected.len());
+            assert_eq!(bytes, expected);
+        }
+    }
 
-        assert_eq!(reader.chunk_count(), 1);
-        let c0 = reader.chunk_meta(0);
-        assert!(c0.compressed());
+    #[test]
+    fn incompressible_final_chunk_keeps_its_full_stored_size() {
+        let mut state = 0x1357_2468u32;
+        let data: Vec<u8> = (0..32768)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                state as u8
+            })
+            .collect();
+        let (file, sizes) = build_synthetic_e01_chunks(&[&data]);
         assert!(
-            c0.size() < reader.chunk_size(),
-            "Single compressed chunk size should be < chunk_size ({}), got {}",
-            reader.chunk_size(),
-            c0.size()
+            sizes[0] > data.len(),
+            "zlib overhead must not be clipped to logical size"
         );
+        for reader in [
+            EwfReader::open(file.path()).unwrap(),
+            EwfReader::open_lazy(file.path()).unwrap(),
+        ] {
+            assert_eq!(reader.debug_chunk(0).unwrap().1, sizes[0] as u64);
+            let mut bytes = vec![0; data.len()];
+            assert_eq!(reader.read_at(&mut bytes, 0).unwrap(), data.len());
+            assert_eq!(bytes, data);
+        }
     }
 
     // -- DoS guard: reject absurd table entry_count --

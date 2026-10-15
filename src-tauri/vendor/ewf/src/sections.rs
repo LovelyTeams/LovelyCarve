@@ -44,7 +44,7 @@ pub const VOLUME_BODY_FULL_SIZE: usize = 1052;
 pub const VOLUME_BODY_CRC_OFFSET: usize = 1048;
 
 /// Number of bytes a table-section header occupies before its entries
-/// (`entry_count`(4) + pad(4) + `base_offset`(8) + adler-32(4) + pad(4)).
+/// (`entry_count`(4) + pad(4) + `base_offset`(8) + pad(4) + adler-32(4)).
 pub const TABLE_HEADER_SIZE: usize = 24;
 
 /// Byte offset of the stored adler-32 within a table header; it covers table
@@ -307,22 +307,22 @@ impl TableEntry {
 /// The 24-byte header that precedes a "table"/"table2" section's entries.
 ///
 /// Layout (little-endian): `entry_count(4) | pad(4) | base_offset(8) |
-/// adler-32(4) | pad(4)`. The checksum covers header bytes `[0..16]` and is
-/// stored at `[16..20]`; a stored value of 0 means the writer omitted it.
+/// pad(4) | adler-32(4)`. The checksum covers header bytes `[0..20]` and is
+/// stored at `[20..24]`; a stored value of 0 means the writer omitted it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TableHeader {
     /// Number of 4-byte chunk-offset entries that follow this header.
     pub entry_count: u32,
     /// Base file offset added to each entry's relative chunk offset.
     pub base_offset: u64,
-    /// Stored adler-32 over `[0..16]`; 0 = the writer did not store one.
+    /// Stored adler-32 over `[0..20]`; 0 = the writer did not store one.
     pub stored_crc: u32,
 }
 
 impl TableHeader {
     /// Parse a table header from the bytes at the start of a table section's
-    /// body (immediately after its section descriptor). Requires ≥ 16 bytes for
-    /// the geometry; the CRC field at `[16..20]` is read when present.
+    /// body (immediately after its section descriptor). Requires all 24 bytes,
+    /// including the CRC field at `[20..24]`.
     pub fn parse(buf: &[u8]) -> Result<Self> {
         if buf.len() < TABLE_HEADER_SIZE {
             return Err(EwfError::BufferTooShort {
@@ -337,13 +337,13 @@ impl TableHeader {
         })
     }
 
-    /// Byte range of the header that the stored adler-32 covers: `[0..16]`.
+    /// Byte range of the header that the stored adler-32 covers: `[0..20]`.
     #[must_use]
     pub fn crc_covers() -> std::ops::Range<usize> {
         0..TABLE_HEADER_CRC_OFFSET
     }
 
-    /// Recompute the header adler-32 over `raw[0..16]` and compare to the stored
+    /// Recompute the header adler-32 over `raw[0..20]` and compare to the stored
     /// value. Returns `None` when no CRC was stored (`stored_crc == 0`), else
     /// `Some(matches)`.
     #[must_use]
@@ -518,14 +518,17 @@ mod crc_tests {
         let mut hdr = [0u8; TABLE_HEADER_SIZE];
         hdr[0..4].copy_from_slice(&7u32.to_le_bytes());
         hdr[8..16].copy_from_slice(&4096u64.to_le_bytes());
-        let crc = adler32(&hdr[..TABLE_HEADER_CRC_OFFSET]);
-        hdr[TABLE_HEADER_CRC_OFFSET..TABLE_HEADER_CRC_OFFSET + 4]
-            .copy_from_slice(&crc.to_le_bytes());
+        // Independent fixed vector: 20 header bytes, CRC at byte 20.
+        hdr[20..24].copy_from_slice(&0x0150_0018u32.to_le_bytes());
         let th = TableHeader::parse(&hdr).unwrap();
-        assert_eq!(EwfVolume::crc_covers().start, 0);
-        assert_eq!(TableHeader::crc_covers(), 0..16);
+        assert_eq!(th.stored_crc, 0x0150_0018);
+        assert_eq!(TableHeader::crc_covers(), 0..20);
         assert_eq!(th.verify_crc(&hdr), Some(true));
 
+        // The four reserved bytes after base_offset are also covered.
+        hdr[16] ^= 1;
+        assert_eq!(th.verify_crc(&hdr), Some(false));
+        hdr[16] ^= 1;
         hdr[0] ^= 0xFF;
         assert_eq!(th.verify_crc(&hdr), Some(false));
     }
