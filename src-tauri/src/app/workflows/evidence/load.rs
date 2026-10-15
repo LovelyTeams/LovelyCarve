@@ -9,6 +9,8 @@ fn emit_load_progress(
     path: &str,
     progress: crate::core::evidence::image::OpenProgress,
     last_emit: &std::sync::Mutex<Option<std::time::Instant>>,
+    tasks: &crate::task_manager::TaskManager,
+    task_id: &str,
 ) {
     use crate::core::evidence::image::OpenProgress;
     let (stage, current, total, is_bytes) = match progress {
@@ -35,7 +37,14 @@ fn emit_load_progress(
         }
         *last = Some(now);
     }
-    let _ = app.emit(
+    tasks.emit_progress(
+        task_id,
+        crate::task_manager::TaskProgressUnit::Bytes,
+        current,
+        (total > 0).then_some(total),
+        Some(stage.clone()),
+    );
+    if let Err(error) = app.emit(
         "image-load-progress",
         ImageLoadProgress {
             path: path.to_string(),
@@ -43,7 +52,9 @@ fn emit_load_progress(
             current,
             total,
         },
-    );
+    ) {
+        tracing::warn!("image load progress delivery failed: {error}");
+    }
 }
 
 pub async fn image_load(
@@ -51,6 +62,8 @@ pub async fn image_load(
     state: State<'_, AppState>,
     path: String,
     qcow_key: Option<qcow2::EncryptionKey>,
+    task_id: Option<String>,
+    case_dir: Option<String>,
 ) -> Result<ImageInfo, AppError> {
     let session_hint = if path.starts_with("decrypted://") {
         Some("decrypted session expired; unlock the source again")
@@ -69,13 +82,38 @@ pub async fn image_load(
             .map(|image| image.info())
             .ok_or_else(|| AppError::not_found(hint));
     }
+    let context = state.image_load_context.lock().await;
+    if let Some(expected) = case_dir {
+        let active = state.active_case.lock().await;
+        if !active.as_ref().is_some_and(|case| {
+            image_load_key(&case.dir.to_string_lossy()) == image_load_key(&expected)
+        }) {
+            return Err(AppError::cancelled(
+                "image load cancelled: originating case closed",
+            ));
+        }
+    }
+    let generation = *context;
+    let task = state
+        .tasks
+        .register_if_absent(
+            task_id.unwrap_or_else(|| format!("image-load:{}", uuid::Uuid::new_v4())),
+            crate::task_manager::TaskKind::ImageLoad,
+            None,
+        )
+        .ok_or_else(|| AppError::invalid_input("image load task id already in use"))?;
+    drop(context);
+    let token = task.token();
     // Resolve the id only after acquiring the per-path lock. Without this,
     // concurrent callers (notably case tab restoration + auto-mount) can both
     // observe a cold path, mint/open the same image independently, and race to
     // overwrite the runtime entry. The follower now sees the first opener's
     // registered image and takes the cheap reuse path below.
     let load_lock = image_load_lock(&state, &path).await;
-    let _load_guard = load_lock.lock().await;
+    let _load_guard = tokio::select! {
+        guard = load_lock.lock() => guard,
+        () = token.cancelled() => return Err(AppError::cancelled("image load cancelled")),
+    };
 
     // Reuse the id of an image already loaded from this path so repeated loads
     // converge on one runtime entry. Failing that, reuse the id this path was
@@ -105,7 +143,7 @@ pub async fn image_load(
             }
         }
     };
-    load_image_runtime(&state, &app, image_id, path, qcow_key).await
+    load_image_runtime(&state, &app, image_id, path, qcow_key, &task, generation).await
 }
 
 async fn image_load_lock(state: &AppState, path: &str) -> Arc<tokio::sync::Mutex<()>> {
@@ -130,7 +168,14 @@ pub(crate) async fn load_image_runtime(
     image_id: String,
     path: String,
     qcow_key: Option<qcow2::EncryptionKey>,
+    task: &crate::task_manager::TaskRegistration,
+    generation: u64,
 ) -> Result<ImageInfo, AppError> {
+    let token = task.token();
+    let context = state.image_load_context.lock().await;
+    if token.is_cancelled() || *context != generation {
+        return Err(AppError::cancelled("image load cancelled: case changed"));
+    }
     if let Some(existing) = {
         let images = state.images.lock().await;
         images.get(&image_id).cloned()
@@ -156,6 +201,11 @@ pub(crate) async fn load_image_runtime(
         }
     }
 
+    drop(context);
+    let resource_permit = state.tasks.acquire_resources(task).await?;
+    let progress_tasks = state.tasks.clone();
+    let progress_task_id = task.record().id().to_owned();
+    let worker_token = token.clone();
     // Partition detection on a real physical drive performs real disk I/O
     // (probing each partition's filesystem signature). Keep it off the
     // tokio worker thread so other IPCs stay responsive while it runs.
@@ -166,16 +216,34 @@ pub(crate) async fn load_image_runtime(
     let started = std::time::Instant::now();
     tracing::info!("image_load begin id={image_id} path={path}");
     let image = tokio::task::spawn_blocking(move || {
+        let _resource_permit = resource_permit;
         let last_emit = std::sync::Mutex::new(None::<std::time::Instant>);
         let observer = move |progress: crate::core::evidence::image::OpenProgress| {
-            emit_load_progress(&progress_app, &progress_path, progress, &last_emit);
+            emit_load_progress(
+                &progress_app,
+                &progress_path,
+                progress,
+                &last_emit,
+                &progress_tasks,
+                &progress_task_id,
+            );
         };
-        crate::core::evidence::image::DiskImage::open_with_id_observed_qcow_key(
-            open_id, &open_path, &observer, qcow_key,
+        crate::core::evidence::image::DiskImage::open_cancellable(
+            open_id,
+            &open_path,
+            &observer,
+            qcow_key,
+            &worker_token,
         )
     })
     .await
     .map_err(|err| AppError::task_panicked("image_load", err))?;
+    // Only publication shares this gate with case transitions; decoding never
+    // holds application locks, so switching cases does not wait for extraction.
+    let context = state.image_load_context.lock().await;
+    if token.is_cancelled() || *context != generation {
+        return Err(AppError::cancelled("image load cancelled: case changed"));
+    }
     let image = match image {
         Ok(image) => image,
         Err(error) => {

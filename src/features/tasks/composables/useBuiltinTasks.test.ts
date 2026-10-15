@@ -4,17 +4,17 @@ import type { GlobalSearchHistoryEntry, GlobalSearchOptions, GlobalSearchProgres
 import type { DockerIndexStatus } from '../../../lib/ipc/fs/types';
 import type { TimelineBuildSummary, TimelineProgress } from '../../../lib/ipc/timeline';
 import type { AutoDetectFailure, AutoDetectReport } from '../../../lib/ipc/autodetect';
-import { resetBuiltinTasksForTests, trackedImageExport, trackedCarveStart, trackedFsChildren, trackedFsFlatPage, trackedGlobalSearchStart, trackedTimelineStart, trackedEncryptedVolumeUnlock, useBuiltinTasks } from './useBuiltinTasks';
+import { resetBuiltinTasksForTests, trackedImageLoad, trackedImageExport, trackedCarveStart, trackedFsChildren, trackedFsFlatPage, trackedGlobalSearchStart, trackedTimelineStart, trackedEncryptedVolumeUnlock, useBuiltinTasks } from './useBuiltinTasks';
 import { IpcCommandError } from '../../../lib/ipc/client';
 import type { EncryptedUnlockResult } from '../../../lib/ipc/encrypted';
 import { resetAutoDetectForTests, runAutoDetect, useAutoDetectReport, ensureAutoDetectListener, isAutoDetectRunPending } from '../../evidence/composables/useAutoDetect';
 
 import { registerTaskContext } from './taskContext';
 
-const ipc = vi.hoisted(() => ({ nativeList: vi.fn(), lifecycle: vi.fn(), snapshotEvents: vi.fn(), children: vi.fn(), docker: vi.fn(), flat: vi.fn(), cancel: vi.fn(), search: vi.fn(), history: vi.fn(), searchEvents: vi.fn(), timeline: vi.fn(), timelineStatus: vi.fn(), timelineEvents: vi.fn(), carve: vi.fn(), carveLatest: vi.fn(), carveStatus: vi.fn(), carveEvents: vi.fn(), carvePause: vi.fn(), carveResume: vi.fn(), detect: vi.fn(), detectFinished: vi.fn(), detectFailed: vi.fn(), reportEvents: vi.fn() }));
+const ipc = vi.hoisted(() => ({ nativeList: vi.fn(), lifecycle: vi.fn(), progress: vi.fn(), snapshotEvents: vi.fn(), children: vi.fn(), docker: vi.fn(), flat: vi.fn(), cancel: vi.fn(), search: vi.fn(), history: vi.fn(), searchEvents: vi.fn(), timeline: vi.fn(), timelineStatus: vi.fn(), timelineEvents: vi.fn(), carve: vi.fn(), carveLatest: vi.fn(), carveStatus: vi.fn(), carveEvents: vi.fn(), carvePause: vi.fn(), carveResume: vi.fn(), detect: vi.fn(), detectFinished: vi.fn(), detectFailed: vi.fn(), reportEvents: vi.fn() }));
 vi.mock('../../../lib/ipc/carve', () => ({ carveStart: ipc.carve, carveLatestScan: ipc.carveLatest, carveScanStatus: ipc.carveStatus, onCarveScanProgress: ipc.carveEvents, carveScanPause: ipc.carvePause, carveScanResume: ipc.carveResume }));
 vi.mock('../../../lib/ipc/fs/query', () => ({ fsChildren: ipc.children, fsDockerPrepare: ipc.docker, fsFlatPage: ipc.flat }));
-vi.mock('../../../lib/ipc/taskRuntime', () => ({ taskCancel: ipc.cancel, taskList: ipc.nativeList, onTaskLifecycle: ipc.lifecycle }));
+vi.mock('../../../lib/ipc/taskRuntime', () => ({ taskCancel: ipc.cancel, taskList: ipc.nativeList, onTaskLifecycle: ipc.lifecycle, onTaskProgress: ipc.progress }));
 vi.mock('../../../lib/ipc/cases', () => ({ onSnapshotProgress: ipc.snapshotEvents }));
 vi.mock('../../../lib/ipc/search', () => ({ globalSearchStart: ipc.search, globalSearchHistoryList: ipc.history, onGlobalSearchProgress: ipc.searchEvents }));
 vi.mock('../../../lib/ipc/timeline', () => ({ timelineStart: ipc.timeline, timelineStatus: ipc.timelineStatus, onTimelineProgress: ipc.timelineEvents }));
@@ -25,6 +25,7 @@ const encrypted = vi.hoisted(() => ({ unlock: vi.fn() }));
 vi.mock('../../../lib/ipc/encrypted', () => ({ encryptedVolumeUnlock: encrypted.unlock }));
 vi.mock('../../cases/composables/useCaseSession', () => ({ useCaseSession: () => ({ activeCase, refreshActive: async () => {} }) }));
 
+let loadProgress: (event: { payload: import('../../../lib/ipc/taskRuntime').BackendTaskProgressEvent }) => void;
 let snapshotProgress: (event: { payload: import('../../../lib/ipc/cases').SnapshotProgress }) => void;
 let nativeLifecycle: (event: { payload: import('../../../lib/ipc/taskRuntime').BackendTaskLifecycleEvent }) => void;
 let carveProgress: (event: { payload: import('../../../lib/ipc/carve').CarveScanSnapshot }) => void;
@@ -53,6 +54,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   activeCase.value = { dir: 'case-a', evidence: [{ image_id: 'disk-a' }] };
   ipc.nativeList.mockResolvedValue([]);
+  ipc.progress.mockImplementation(async callback => { loadProgress = callback; return vi.fn(); });
   ipc.lifecycle.mockImplementation(async callback => { nativeLifecycle = callback; return vi.fn(); });
   ipc.snapshotEvents.mockImplementation(async callback => { snapshotProgress = callback; return vi.fn(); });
   ipc.carveLatest.mockResolvedValue(null);
@@ -73,6 +75,35 @@ beforeEach(() => {
 afterEach(() => { resetBuiltinTasksForTests(); resetAutoDetectForTests(); vi.useRealTimers(); });
 
 describe('built-in task lifecycle', () => {
+  it('tracks extraction progress, queued cancellation and the command cancellation outcome', async () => {
+    const operation = deferred<{ id: string }>();
+    const ready = vi.fn(async () => {});
+    const hub = useBuiltinTasks();
+    const running = trackedImageLoad('unpack-1', 'phone.zip', () => operation.promise, ready);
+    await settle();
+    const native = { id: 'unpack-1', kind: 'imageLoad' as const, imageId: null, status: 'running' as const, resourceClasses: [], elapsedMs: 100 };
+    nativeLifecycle({ payload: { phase: 'running', task: native } });
+    loadProgress({ payload: { task: native, unit: 'bytes', done: 25, total: 100, message: '解压 app.bak' } });
+    expect(hub.tasks.value[0]).toMatchObject({ kind: 'imageLoad', progress: 25, status: 'running' });
+    await hub.cancel('imageLoad:unpack-1');
+    expect(ipc.cancel).toHaveBeenCalledWith({ taskId: 'unpack-1' });
+    nativeLifecycle({ payload: { phase: 'queued', task: native } });
+    await settle();
+    expect(ipc.cancel).toHaveBeenCalledTimes(2);
+    operation.reject(new IpcCommandError({ code: 'cancelled', message: 'cancelled', context: null, retryable: false }));
+    await expect(running).rejects.toThrow('cancelled');
+    expect(hub.tasks.value[0]).toMatchObject({ status: 'cancel', error: null, cancelling: false });
+    expect(ready).not.toHaveBeenCalled();
+  });
+
+  it('records a corrupt archive as failed and never publishes its content', async () => {
+    const hub = useBuiltinTasks();
+    const ready = vi.fn(async () => {});
+    await expect(trackedImageLoad('unpack-bad', 'bad.ab', async () => { throw new Error('bad checksum'); }, ready)).rejects.toThrow('bad checksum');
+    expect(hub.tasks.value[0]).toMatchObject({ status: 'failed', error: 'Error: bad checksum' });
+    expect(ready).not.toHaveBeenCalled();
+  });
+
   it('tracks background unlock completion after page disposal without retaining credentials', async () => {
     const operation = deferred<EncryptedUnlockResult>();
     encrypted.unlock.mockReturnValue(operation.promise);

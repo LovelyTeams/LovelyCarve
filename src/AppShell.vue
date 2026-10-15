@@ -91,6 +91,8 @@
     <div class="editor-area">
       <!-- Main Content Area -->
       <div v-content-motion.rise="activePanel + ':' + imageId" class="content-area">
+        <EvidenceLoadPanel v-if="activeTab?.loadTaskId" :task-id="activeTab.loadTaskId" :path="activeTab.filePath" @tasks="toggleTaskHub" />
+        <template v-else>
         <!-- 文件列表与搜索结果面板使用 KeepAlive：切换界面时保留目录状态，以及在途搜索的
              事件订阅、进度、增量结果和滚动位置。其余面板与欢迎页照常按需挂载。 -->
         <KeepAlive>
@@ -150,13 +152,15 @@
           v-else
           :busy="loading || isSwitching || isOpeningRecentCase"
           :dragging="isDragOver"
-          :load-label="isOpeningRecentCase ? tr('正在打开案件…') : loadLabel"
+          :load-label="loading ? loadLabel : isOpeningRecentCase ? tr('正在打开案件…') : loadLabel"
+          :load-percent="loading && loadProgress?.total ? loadPercent : null"
           :recent-cases="recentCases"
           @open="handleOpenFile"
           @open-case="showCaseManager = true"
           @open-recent="handleOpenRecentCase"
           @clear-recent="clearRecentCases"
         />
+        </template>
         </template>
       </div>
     </div>
@@ -170,6 +174,7 @@ import './styles/workspace.css';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { vContentMotion } from './composables/uiMotionDirectives';
 import WelcomeScreen from './app/components/WelcomeScreen.vue';
+import EvidenceLoadPanel from './app/components/EvidenceLoadPanel.vue';
 import { useResultNavigation } from './app/workflows/useResultNavigation';
 import { type FileListNavigator } from './features/files/model/navigation';
 import TaskHub from './features/tasks/components/TaskHub.vue';
@@ -305,7 +310,7 @@ const { locating: locatingResult, openLocation: openResultLocation } = useResult
   openImage: async targetImageId => {
     const evidence = activeCase.value?.evidence.find(item => item.image_id === targetImageId);
     if (!evidence) throw new Error(tr("来源检材不在当前案件中"));
-    const result = await openImagePath(evidence.path, { forceImage: !evidence.path.startsWith('assembled://'), quiet: true });
+    const result = await openImagePath(evidence.path, { forceImage: !evidence.path.startsWith('assembled://'), quiet: true, waitUntilReady: true });
     if (!result.ok) throw new Error(tr("无法打开来源检材：{0}", { 0: result.error }));
     return true;
   },
@@ -330,7 +335,7 @@ function handleCaseManagerClose() {
 // load / teardown / panel hooks. Doing this once at App setup keeps
 // `useTabManager` itself decoupled from the workspace details — the
 // composable is purely a state machine over `tabs[]`.
-const { tabs, visibleTabs, activeTabId, isSwitching, activateTab, closeTab, closeAllTabs } = useTabManager();
+const { tabs, visibleTabs, activeTab, activeTabId, isSwitching, activateTab, closeTab, closeAllTabs } = useTabManager();
 
 /** Tab × click → tear the tab down. */
 function handleTabClose(tabId: string): void {

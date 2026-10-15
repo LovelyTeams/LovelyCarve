@@ -23,6 +23,7 @@ type OpenFileOptions = {
    *  Set for folder sources, which have no disk-image extension and would
    *  otherwise be rejected by extension sniffing. */
   forceImage?: boolean;
+  caseDir?: string;
   /** Transient legacy QCOW credentials, forwarded only to this load call. */
   qcowPassword?: string;
   qcowKeyHex?: string;
@@ -256,6 +257,7 @@ export function useFileSession() {
           path: filePath,
           qcowPassword: options.qcowPassword,
           qcowKeyHex: options.qcowKeyHex,
+          ...(options.caseDir ? { caseDir: options.caseDir } : {}),
         });
         if (generation !== loadGeneration) return { opened: false };
         imageId.value = info.id;

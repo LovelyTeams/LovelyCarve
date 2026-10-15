@@ -5,7 +5,7 @@ import type { CarveScanSnapshot } from '../../../lib/ipc/carve';
 import { formatBytes } from '../../../utils/format';
 
 export function makeBuiltinTask(kind: BuiltinTask['kind'], id: string, imageId: string, subject: string, now: number, tr: Translator = sourceText): BuiltinTask {
-  return { id, kind, imageId, subject, title: { docker: tr("Docker 分析"), search: tr("全局搜索"), timeline: tr("时间线重建"), carve: tr("文件雕刻"), filesystem: tr("文件系统加载"), index: tr("索引建立"), autodetect: tr("自动识别平台"), encryptedUnlock: tr("加密卷解锁"), imageExport: tr("镜像导出") }[kind],
+  return { id, kind, imageId, subject, title: { docker: tr("Docker 分析"), search: tr("全局搜索"), timeline: tr("时间线重建"), carve: tr("文件雕刻"), filesystem: tr("文件系统加载"), index: tr("索引建立"), autodetect: tr("自动识别平台"), encryptedUnlock: tr("加密卷解锁"), imageExport: tr("镜像导出"), imageLoad: tr("证据加载") }[kind],
     trigger: 'manually', status: 'running', progress: null, message: '', error: null, started: now, finished: null,
     cancelId: kind === 'search' ? id.slice('search:'.length) : kind === 'timeline' ? `timeline-build-${imageId}` : null,
     cancelling: false, results: 0, timelineRows: 0 };

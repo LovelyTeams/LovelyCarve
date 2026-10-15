@@ -50,6 +50,104 @@ fn zip(bytes: &[u8], method: CompressionMethod) -> tempfile::NamedTempFile {
 }
 
 #[test]
+fn standalone_backup_and_gzip_loading_observe_cancellation() {
+    use crate::core::evidence::image::{DiskImage, OpenProgress};
+    let payload = backup(false);
+    let prefix = b"MIUI BACKUP\0prefixANDROID BACKUP\n5\n0\nnone\n";
+    assert!(payload.starts_with(prefix));
+    for suffix in [".ab", ".tar.gz"] {
+        let mut file = tempfile::Builder::new().suffix(suffix).tempfile().unwrap();
+        if suffix == ".ab" {
+            file.write_all(&payload[b"MIUI BACKUP\0prefix".len()..])
+                .unwrap();
+        } else {
+            let mut encoder =
+                flate2::write::GzEncoder::new(file.as_file_mut(), Compression::default());
+            encoder.write_all(&payload[prefix.len()..]).unwrap();
+            encoder.finish().unwrap();
+        }
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let error = DiskImage::open_cancellable(
+            "cancelled".into(),
+            file.path(),
+            &|event| {
+                if matches!(event, OpenProgress::Decompressing { done, .. } if done > 0) {
+                    cancel.cancel();
+                }
+            },
+            None,
+            &cancel,
+        )
+        .unwrap_err();
+        assert!(format!("{error:#}").contains("cancelled"), "{error:#}");
+    }
+}
+
+#[test]
+fn cancelled_backup_loading_never_publishes_a_partial_zip_or_raw_fallback() {
+    use crate::core::evidence::image::{DiskImage, OpenProgress};
+    let file = tempfile::Builder::new().suffix(".zip").tempfile().unwrap();
+    let mut writer = ZipWriter::new(file.reopen().unwrap());
+    writer
+        .start_file("app.bak", SimpleFileOptions::default())
+        .unwrap();
+    writer.write_all(&backup(false)).unwrap();
+    writer.finish().unwrap();
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let error = DiskImage::open_cancellable(
+        "cancelled".into(),
+        file.path(),
+        &|event| {
+            if matches!(event, OpenProgress::Decompressing { done, .. } if done > 0) {
+                cancel.cancel();
+            }
+        },
+        None,
+        &cancel,
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("cancelled"), "{error:#}");
+}
+
+#[test]
+fn reports_backup_progress_through_the_observed_image_open_path() {
+    use crate::core::evidence::image::{DiskImage, OpenProgress};
+
+    let payload = backup(false);
+    let file = tempfile::Builder::new().suffix(".zip").tempfile().unwrap();
+    let mut writer = ZipWriter::new(file.reopen().unwrap());
+    for name in ["first.bak", "second.ab"] {
+        writer
+            .start_file(name, SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(&payload).unwrap();
+    }
+    writer.finish().unwrap();
+    let updates = std::sync::Mutex::new(Vec::new());
+    let image = DiskImage::open_with_id_observed("observed".into(), file.path(), &|event| {
+        if let OpenProgress::Decompressing { label, done, total } = event {
+            updates.lock().unwrap().push((label, done, total));
+        }
+    })
+    .unwrap();
+    assert!(image.zip.is_some());
+    let updates = updates.into_inner().unwrap();
+    let total = 2 * payload.len() as u64;
+    assert_eq!(updates.first().unwrap(), &("first.bak".into(), 0, total));
+    assert_eq!(updates.last().unwrap(), &("second.ab".into(), total, total));
+    assert!(updates
+        .iter()
+        .all(|(_, done, expected)| *expected == total && done <= expected));
+    assert!(updates.windows(2).all(|pair| pair[0].1 <= pair[1].1));
+    assert!(updates
+        .iter()
+        .any(|(label, done, _)| label == "first.bak" && *done == payload.len() as u64));
+    assert!(updates
+        .iter()
+        .any(|(label, done, _)| label == "second.ab" && *done == payload.len() as u64));
+}
+
+#[test]
 fn auto_expands_stored_and_deflated_backups_with_lazy_reads() {
     for method in [CompressionMethod::Stored, CompressionMethod::Deflated] {
         for compressed in [false, true] {

@@ -134,6 +134,12 @@ async fn activate_case(
     dir: &str,
     case: CaseState,
 ) -> Result<(), AppError> {
+    let mut load_context = state.image_load_context.lock().await;
+    *load_context = load_context.wrapping_add(1);
+    state
+        .tasks
+        .cancel_kind(crate::task_manager::TaskKind::ImageLoad);
+
     case_registry::record(
         &registry_dir(app)?,
         dir,
@@ -167,6 +173,12 @@ pub async fn case_close(state: State<'_, AppState>) -> Result<(), AppError> {
 }
 
 async fn exit_active_case(state: &State<'_, AppState>) {
+    let mut load_context = state.image_load_context.lock().await;
+    *load_context = load_context.wrapping_add(1);
+    state
+        .tasks
+        .cancel_kind(crate::task_manager::TaskKind::ImageLoad);
+
     // 任务调度先解绑:运行中任务置 offline、终止插件 worker,再释放案件连接。
     state.scheduler.unbind_case().await;
     let closing = {

@@ -53,6 +53,8 @@ export interface WorkspaceTab {
    *  losing the user's progress. Cleared once the user clicks the tab
    *  (after the current analysis finishes) and the load actually runs. */
   pendingLoad?: boolean;
+  /** Background container opening owns no live file session until it is ready. */
+  loadTaskId?: string;
   /** Force the disk-image load path on (re)load regardless of extension.
    *  Set for folder-backed evidence (no disk-image extension) so a tab that
    *  gets reloaded after snapshot eviction still routes to `image_load`
@@ -80,7 +82,7 @@ const visibleTabs = computed(() => tabs.value.filter(tab => (hooks?.resolveTabPa
 // ── Service-locator hooks ───────────────────────────────────────────
 /** `quiet` asks the load hook not to report a failure itself because the
  *  caller aggregates or annotates it (e.g. re-opening a whole case). */
-export type LoadFileOptions = { forceImage?: boolean; quiet?: boolean };
+export type LoadFileOptions = { forceImage?: boolean; quiet?: boolean; waitUntilReady?: boolean };
 type LoadFileFn = (filePath: string, opts?: LoadFileOptions) => Promise<{ opened: boolean; error?: string }>;
 type Voider = () => void;
 type GetActivePanelFn = () => string;
@@ -168,7 +170,7 @@ function deriveMode(_filePath: string): WorkspaceTab['mode'] {
 function snapshotActivePanel(): void {
   if (!hooks) return;
   const cur = tabs.value.find(t => t.id === activeTabId.value);
-  if (!cur) return;
+  if (!cur || cur.loadTaskId) return;
   cur.lastActivePanel = hooks.getActivePanel();
 }
 
@@ -179,14 +181,37 @@ function stashCurrentSnapshot(): void {
   if (!hooks) return;
   const cur = activeTabId.value;
   if (!cur) return;
-  if (!tabs.value.some(t => t.id === cur)) return;
+  if (!tabs.value.some(t => t.id === cur && !t.loadTaskId)) return;
   snapshots.set(cur, hooks.captureSession());
   evictOldestSnapshot();
 }
 
 /** Outcome of `openNewTab`. A tab queued behind a running analysis
  *  (`pendingLoad`) or an already-open tab counts as success. */
-export type OpenTabResult = { ok: true } | { ok: false; error: string };
+export type OpenTabResult = { ok: true; queued?: boolean } | { ok: false; error: string };
+
+/** Open the tab immediately while its container is prepared independently. */
+async function beginBackgroundLoad(filePath: string, taskId: string, opts?: LoadFileOptions): Promise<string> {
+  const tab: WorkspaceTab = {
+    id: crypto.randomUUID(), filePath, fileName: filePath.split(/[\\/]/).pop() || filePath,
+    mode: 'image', lastActivePanel: '', lastActiveSeq: nextActivationSeq(),
+    forceImage: opts?.forceImage, pendingLoad: true, loadTaskId: taskId,
+  };
+  tabs.value = [...tabs.value, tab];
+  await activateTab(tab.id);
+  return tab.id;
+}
+
+async function finishBackgroundLoad(tabId: string): Promise<void> {
+  const tab = tabs.value.find(tab => tab.id === tabId);
+  if (!tab) return;
+  tab.loadTaskId = undefined;
+  if (activeTabId.value === tabId) {
+    activeTabId.value = null;
+    await activateTab(tabId);
+    if (!tabs.value.some(tab => tab.id === tabId && !tab.pendingLoad)) throw new Error(tr('载入未完成'));
+  }
+}
 
 // ── Public API ──────────────────────────────────────────────────────
 async function openNewTab(filePath: string, opts?: LoadFileOptions): Promise<OpenTabResult> {
@@ -325,6 +350,13 @@ async function activateTab(tabId: string): Promise<void> {
   // fine, the lastActivePanel field on `next` is independent.
   stashCurrentSnapshot();
 
+  if (next.loadTaskId) {
+    hooks.onTeardown();
+    activeTabId.value = next.id;
+    next.lastActiveSeq = nextActivationSeq();
+    return;
+  }
+
   isSwitching.value = true;
   try {
     // Cache hit — restore directly from snapshot, no backend
@@ -456,6 +488,8 @@ export function useTabManager() {
     activeTab,
     isSwitching,
     openNewTab,
+    beginBackgroundLoad,
+    finishBackgroundLoad,
     activateTab,
     closeTab,
     closeAllTabs,

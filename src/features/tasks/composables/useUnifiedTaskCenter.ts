@@ -33,7 +33,8 @@ export function useUnifiedTaskCenter(imageId: MaybeRefOrGetter<string | null>) {
       dependence: '', spendTimeSecs: Math.max(0, ((task.finished ?? builtin.now.value) - task.started) / 1000), remainTimeSecs: null,
       startAt: new Date(task.started).toISOString(), createAt: new Date(task.started).toISOString(), updateAt: '',
     })),
-  ].filter(task => Boolean(toValue(imageId)) && task.info.imageId === toValue(imageId)));
+  ].filter(task => task.builtin && task.info.analyzer === 'imageLoad'
+    || Boolean(toValue(imageId)) && task.info.imageId === toValue(imageId)));
   const notices = computed(() => plugins.notices.value.filter(notice => tasks.value.some(task =>
     !task.builtin && (notice.taskId !== null
       ? task.sourceId === notice.taskId

@@ -9,7 +9,7 @@
         <span v-if="currentImageId" class="hub-evidence" :title="tr('当前检材：{0}', { 0: currentImagePath })"><HardDrive :size="12" /><span>{{ evidenceName || currentImageName }}</span></span>
         <button class="ui-icon-btn hub-close" :aria-label="tr('收起任务中心')" :title="tr('收起，任务继续运行')" @click="emit('close')"><X :size="16" /></button>
       </header>
-      <template v-if="currentImageId">
+      <template v-if="currentImageId || hasCase">
         <div v-show="tab === 'tasks'" id="task-list-panel" v-content-motion.rise="tab" class="hub-body" role="tabpanel" aria-labelledby="task-list-tab">
           <TaskCenterPanel ref="taskCenter" :image-id="currentImageId" @quick-analysis="emit('update:tab', 'quick')" @open-result="(panel, analyzer) => emit('openPanel', panel, analyzer)" />
         </div>

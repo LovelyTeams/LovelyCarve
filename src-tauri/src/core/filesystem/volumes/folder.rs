@@ -108,9 +108,14 @@ fn root_node(image: &Arc<DiskImage>) -> FsNode {
 }
 
 fn entry_to_node(entry: &FolderEntry) -> FsNode {
+    let name = name_of(&entry.rel_path);
     FsNode {
         id: folder_id_for(&entry.rel_path),
-        name: name_of(&entry.rel_path),
+        name: if entry.is_backup_root() {
+            crate::core::evidence::readers::mi_bak::backup_directory_name(&name).to_owned()
+        } else {
+            name
+        },
         parent_id: parent_id_for(&entry.rel_path),
         kind: node_kind_of(entry.kind),
         size: entry.size,

@@ -9,6 +9,8 @@ import WelcomeScreen from './WelcomeScreen.vue';
 let app: App;
 let host: HTMLElement;
 const busy = ref(false);
+const loadLabel = ref('正在打开案件…');
+const loadPercent = ref<number | null>(null);
 const recentCases = ref<RecentCase[]>([]);
 const cleared = vi.fn();
 const entry = { dir: '/cases/example', name: '示例案件', openedAt: '2025-12-31T23:59:00' };
@@ -26,7 +28,8 @@ async function mount() {
         h(WelcomeScreen, {
           busy: busy.value,
           dragging: false,
-          loadLabel: '正在打开案件…',
+          loadLabel: loadLabel.value,
+          loadPercent: loadPercent.value,
           recentCases: recentCases.value,
           onClearRecent: () => {
             cleared();
@@ -52,6 +55,8 @@ function dialogButton(label: string) {
 
 beforeEach(() => {
   busy.value = false;
+  loadLabel.value = '正在打开案件…';
+  loadPercent.value = null;
   recentCases.value = [{ ...entry }];
   cleared.mockReset();
 });
@@ -63,6 +68,25 @@ afterEach(() => {
 });
 
 describe('welcome recent cases', () => {
+  it('updates backup progress during case restoration and clears it after loading', async () => {
+    busy.value = true;
+    loadLabel.value = '解压 first.bak 25%';
+    loadPercent.value = 25;
+    await mount();
+    const progress = host.querySelector('[role="progressbar"]')!;
+    expect(progress.getAttribute('aria-valuenow')).toBe('25');
+    expect(progress.getAttribute('aria-label')).toBe('解压 first.bak 25%');
+    loadLabel.value = '解压 second.bak 75%';
+    loadPercent.value = 75;
+    await settle();
+    expect(progress.getAttribute('aria-valuenow')).toBe('75');
+    expect(progress.querySelector('span')?.style.width).toBe('75%');
+    expect(host.querySelector('.import-action-label')?.textContent).toBe('解压 second.bak 75%');
+    busy.value = false;
+    await settle();
+    expect(host.querySelector('[role="progressbar"]')).toBeNull();
+    expect(clearButton().disabled).toBe(false);
+  });
   it('keeps history until confirmation and returns focus after cancellation', async () => {
     await mount();
     clearButton().click();

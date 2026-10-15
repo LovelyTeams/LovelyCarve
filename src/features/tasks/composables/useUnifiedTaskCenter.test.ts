@@ -27,6 +27,15 @@ beforeEach(() => {
 });
 
 describe('current evidence task scope', () => {
+  it('shows case container loading even before an evidence session exists and across tab switches', () => {
+    builtinTasks.value.push({ id: 'imageLoad:one', kind: 'imageLoad', imageId: '', status: 'running', started: 0, finished: null } as BuiltinTask);
+    const imageId = ref<string | null>(null);
+    const center = useUnifiedTaskCenter(imageId);
+    expect(center.tasks.value.map(task => task.id)).toEqual(['imageLoad:one']);
+    expect(center.activeCount.value).toBe(1);
+    imageId.value = 'disk-a';
+    expect(center.tasks.value.map(task => task.id)).toEqual(['plugin:1', 'imageLoad:one']);
+  });
   it('switches plugin/native tasks, counts and notices together with the active tab', () => {
     const imageId = ref<string | null>('disk-a');
     const center = useUnifiedTaskCenter(imageId);

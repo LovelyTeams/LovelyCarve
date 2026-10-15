@@ -32,6 +32,7 @@ vi.mock('./QuickAnalysisPanel.vue', () => ({
 const evidence: EvidenceRef = { image_id: 'disk-a', path: 'D:\\Evidence\\WIN10-PC.E01', source_format: 'ewf', size_bytes: 1, added_at: '', platform: 'windows', evidence_type: 'disk' };
 const tab = ref<TaskHubTab>('tasks');
 const current = ref<EvidenceRef | undefined>(evidence);
+const hasCaseWithoutImage = ref(false);
 const sessionImage = ref<{ id: string; path: string } | null>(null);
 let app: App | undefined;
 let host: HTMLDivElement;
@@ -46,7 +47,7 @@ async function mount() {
   app = createApp({
     render: () => h(TaskHub, {
       open: true, tab: tab.value, evidence: current.value, sessionImage: sessionImage.value,
-      evidenceName: current.value ? 'WIN10-PC.E01' : '', hasCase: Boolean(current.value), activeCount: 2,
+      evidenceName: current.value ? 'WIN10-PC.E01' : '', hasCase: Boolean(current.value) || hasCaseWithoutImage.value, activeCount: 2,
       'onUpdate:tab': (value: TaskHubTab) => { tab.value = value; },
       onOpenPanel: calls.openPanel, onOpenCaseManager: calls.openCaseManager, onClose: calls.close,
     }),
@@ -60,6 +61,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   tab.value = 'tasks';
   current.value = evidence;
+  hasCaseWithoutImage.value = false;
   sessionImage.value = null;
   host = document.createElement('div');
   document.body.append(host);
@@ -67,6 +69,13 @@ beforeEach(() => {
 afterEach(() => { app?.unmount(); app = undefined; host.remove(); });
 
 describe('task hub', () => {
+  it('opens the task list while the first evidence is still extracting', async () => {
+    current.value = undefined;
+    hasCaseWithoutImage.value = true;
+    await mount();
+    expect(panelVisible('task-list-panel')).toBe(true);
+    expect(host.querySelector('.stub-open')).not.toBeNull();
+  });
   it('names the current evidence and counts active work on the task tab', async () => {
     await mount();
     expect(host.querySelector('.hub-evidence')?.textContent).toBe('WIN10-PC.E01');

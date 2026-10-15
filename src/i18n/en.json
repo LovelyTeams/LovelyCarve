@@ -2118,5 +2118,11 @@
   "timeUnits.second": "Second",
   "镜像导出": "Image export",
   "导出已取消（保留部分文件）": "Export cancelled (partial file retained)",
-  "已导出 {0}{1}": "Exported {0}{1}"
+  "已导出 {0}{1}": "Exported {0}{1}",
+  "证据加载": "Evidence loading",
+  "加载已取消": "Loading cancelled",
+  "证据已就绪": "Evidence ready",
+  "解压完成后自动加载内容，可切换标签页继续操作。": "Contents will load after extraction. You can switch tabs while waiting.",
+  "证据正在后台加载": "Evidence is loading in the background",
+  "{0} 个证据正在加载，可在标签页或任务中心查看进度。": "Loading {0} evidence sources. View progress in their tabs or the task center."
 }

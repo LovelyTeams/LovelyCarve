@@ -40,6 +40,7 @@ pub enum TaskKind {
     FlatList,
     ImageExport,
     ImageHash,
+    ImageLoad,
     IosBackupAudit,
     IosBackupUnlock,
     GlobalSearch,

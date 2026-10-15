@@ -68,6 +68,23 @@ impl DiskImage {
         progress: OpenObserver<'_>,
         qcow_key: Option<qcow2::EncryptionKey>,
     ) -> anyhow::Result<Self> {
+        Self::open_cancellable(
+            id,
+            path,
+            progress,
+            qcow_key,
+            &tokio_util::sync::CancellationToken::new(),
+        )
+    }
+
+    pub(crate) fn open_cancellable(
+        id: String,
+        path: impl AsRef<Path>,
+        progress: OpenObserver<'_>,
+        qcow_key: Option<qcow2::EncryptionKey>,
+        cancel: &tokio_util::sync::CancellationToken,
+    ) -> anyhow::Result<Self> {
+        anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
         let path = path.as_ref().to_path_buf();
         progress(OpenProgress::Opening);
         if let Some(key) = qcow_key {
@@ -86,10 +103,13 @@ impl DiskImage {
         // block device — decompress + assemble them on a dedicated path that
         // builds partitions per-VMDK rather than scanning one byte stream.
         if lower_extension(&path).as_deref() == Some("ldbk") {
-            return Self::open_ldplayer(id, path, progress);
+            return Self::open_ldplayer(id, path, progress, cancel);
         }
-        let source = ImageSource::open(&path)?;
-        Self::from_source(id, path, source, progress)
+        let source = ImageSource::open_observed(&path, progress, cancel)?;
+        anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
+        let image = Self::from_source_cancellable(id, path, source, progress, cancel)?;
+        anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
+        Ok(image)
     }
 
     /// Construct a session-only logical view of an unlocked iOS backup.
@@ -126,6 +146,22 @@ impl DiskImage {
         source: ImageSource,
         progress: OpenObserver<'_>,
     ) -> anyhow::Result<Self> {
+        Self::from_source_cancellable(
+            id,
+            path,
+            source,
+            progress,
+            &tokio_util::sync::CancellationToken::new(),
+        )
+    }
+
+    fn from_source_cancellable(
+        id: String,
+        path: PathBuf,
+        source: ImageSource,
+        progress: OpenObserver<'_>,
+        cancel: &tokio_util::sync::CancellationToken,
+    ) -> anyhow::Result<Self> {
         let block_cache = source
             .is_ffi_backed()
             .then(|| SharedBlockCache::new(configured_block_cache_slot_count()));
@@ -148,10 +184,23 @@ impl DiskImage {
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| path.display().to_string());
+                let report = |done| {
+                    progress(OpenProgress::Decompressing {
+                        label: label.clone(),
+                        done,
+                        total: mmap.len() as u64,
+                    })
+                };
+                let reader = crate::core::evidence::readers::load_reader::LoadReader {
+                    input: std::io::Cursor::new(&mmap[..]),
+                    cancel,
+                    progress: &report,
+                    consumed: 0,
+                };
                 let tar = crate::core::evidence::readers::mi_bak::open_bak_archive_from_reader(
-                    std::io::Cursor::new(&mmap[..]),
+                    reader,
                     &path,
-                    label,
+                    label.clone(),
                 )
                 .with_context(|| format!("open Android backup: {}", path.display()))?;
                 (
@@ -347,9 +396,12 @@ impl DiskImage {
         id: String,
         path: PathBuf,
         progress: OpenObserver<'_>,
+        cancel: &tokio_util::sync::CancellationToken,
     ) -> anyhow::Result<Self> {
-        let prepared = crate::core::evidence::readers::ldplayer_image::open(&path, progress)
-            .with_context(|| format!("failed to open LDPlayer backup: {}", path.display()))?;
+        let prepared = crate::core::evidence::readers::ldplayer_image::open_cancellable(
+            &path, progress, cancel,
+        )
+        .with_context(|| format!("failed to open LDPlayer backup: {}", path.display()))?;
         let crate::core::evidence::readers::ldplayer_image::PreparedLdplayer {
             source,
             partitions,

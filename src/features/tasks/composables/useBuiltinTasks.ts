@@ -4,7 +4,7 @@ import { tr } from '../../../composables/useLocale';
 import { type BuiltinTask, type ImageExportTaskState } from '../model/types';
 import { computed, effectScope, ref, shallowRef, watch } from 'vue';
 import { fsChildren, fsChildrenPage, fsDockerPrepare, fsFlatPage } from '../../../lib/ipc/fs/query';
-import { taskCancel, taskList, onTaskLifecycle } from '../../../lib/ipc/taskRuntime';
+import { taskCancel, taskList, onTaskLifecycle, onTaskProgress } from '../../../lib/ipc/taskRuntime';
 import { globalSearchHistoryList, globalSearchStart, onGlobalSearchProgress } from '../../../lib/ipc/search';
 import { onTimelineProgress, timelineStart, timelineStatus } from '../../../lib/ipc/timeline';
 import { carveLatestScan, carveScanStatus, carveStart, carveScanPause, carveScanResume, onCarveScanProgress, type CarveScanSnapshot } from '../../../lib/ipc/carve';
@@ -211,6 +211,17 @@ function ensureTracking(): Promise<void> {
     }),
     () => onTaskLifecycle(({ payload }) => {
       const task = payload.task;
+      if (epoch === generation && task.kind === 'imageLoad') {
+        const id = `imageLoad:${task.id}`;
+        const current = records.value.get(id);
+        if (!current || !owned.has(id) || payload.phase === 'finished') return;
+        patch(id, { status: payload.phase === 'queued' ? 'queued' : 'running',
+          cancelling: current.cancelling || payload.phase === 'cancellationRequested' });
+        if (payload.phase === 'queued' && current.cancelling) {
+          void taskCancel({ taskId: task.id }).catch(error => console.warn('取消证据加载失败', error));
+        }
+        return;
+      }
       if (epoch !== generation || !task.imageId) return;
       if (task.kind === 'encryptedVolumeUnlock') {
         const id = `encryptedUnlock:${task.id}`;
@@ -254,6 +265,12 @@ function ensureTracking(): Promise<void> {
           });
         }
       }
+    }),
+    () => onTaskProgress(({ payload }) => {
+      const id = `imageLoad:${payload.task.id}`;
+      if (epoch !== generation || payload.task.kind !== 'imageLoad' || !owned.has(id)) return;
+      patch(id, { progress: payload.total ? percent(payload.done, payload.total) : null,
+        message: `${payload.message ?? ''}${payload.total ? ` · ${formatBytes(payload.done)} / ${formatBytes(payload.total)}` : ''}`, status: 'running' });
     }),
     () => onAutoDetectFinished(({ payload }) => {
       if (epoch !== generation || !autoDetectInCase(payload.image_id)) return;
@@ -331,14 +348,26 @@ async function run<T>(task: BuiltinTask, operation: () => Promise<T>, summarize:
     if (current()) patch(task.id, { status: 'success', progress: 100, finished: Date.now(), cancelling: false, ...summarize(result) });
     return result;
   } catch (error) {
-    const cancelled = (task.kind === 'encryptedUnlock' || task.kind === 'imageExport')
+    const cancelled = (task.kind === 'encryptedUnlock' || task.kind === 'imageExport' || task.kind === 'imageLoad')
       && (error instanceof IpcCommandError && error.code === 'cancelled'
-        || task.kind === 'imageExport' && (records.value.get(task.id)?.cancelling || /cancel/i.test(String(error))));
-    if (current()) patch(task.id, { status: cancelled ? 'cancel' : 'failed', error: cancelled ? null : String(error), message: cancelled ? (task.kind === 'imageExport' ? tr("导出已取消（保留部分文件）") : tr("已取消解锁")) : task.message, finished: Date.now(), cancelling: false });
+        || (task.kind === 'imageExport' || task.kind === 'imageLoad') && (records.value.get(task.id)?.cancelling || /cancel/i.test(String(error))));
+    if (current()) patch(task.id, { status: cancelled ? 'cancel' : 'failed', error: cancelled ? null : String(error), message: cancelled ? (task.kind === 'imageLoad' ? tr("加载已取消") : task.kind === 'imageExport' ? tr("导出已取消（保留部分文件）") : tr("已取消解锁")) : task.message, finished: Date.now(), cancelling: false });
     throw error;
   } finally {
     if (current()) owned.delete(task.id);
   }
+}
+
+/** Container opening owns its outcome even while another evidence tab is active. */
+export function trackedImageLoad<T extends { id: string }>(taskId: string, path: string, operation: () => Promise<T>, onReady: () => Promise<void>) {
+  const task = makeTask('imageLoad', `imageLoad:${taskId}`, '', path);
+  task.cancelId = taskId;
+  task.status = 'queued';
+  return run(task, async () => {
+    const result = await operation();
+    await onReady();
+    return result;
+  }, result => ({ imageId: result.id, message: tr("证据已就绪") }));
 }
 
 /** Share live export state and its cancellation path with the task center. */

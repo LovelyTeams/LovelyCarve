@@ -78,6 +78,46 @@ describe('useTabManager', () => {
     expect(tm.activeTab.value).toBeNull();
   });
 
+  it('opens a background tab immediately and loads contents only when ready', async () => {
+    const harness = makeHookHarness();
+    const tabs = useTabManager();
+    const id = await tabs.beginBackgroundLoad('phone.zip', 'unpack-1', { forceImage: true });
+    expect(tabs.activeTab.value).toMatchObject({ id, loadTaskId: 'unpack-1' });
+    expect(tabs.isSwitching.value).toBe(false);
+    expect(harness.calls.load).toEqual([]);
+    await tabs.finishBackgroundLoad(id);
+    expect(harness.calls.load).toEqual(['phone.zip']);
+    expect(tabs.activeTab.value).toMatchObject({ id, pendingLoad: false, loadTaskId: undefined });
+  });
+
+  it('keeps the previous session intact when switching around an extracting tab', async () => {
+    const harness = makeHookHarness();
+    const tabs = useTabManager();
+    await tabs.openNewTab('disk.E01');
+    const disk = tabs.activeTabId.value!;
+    const zip = await tabs.beginBackgroundLoad('phone.zip', 'unpack-1');
+    await tabs.activateTab(disk);
+    expect(harness.liveState().path).toBe('disk.E01');
+    await tabs.activateTab(zip);
+    await tabs.activateTab(disk);
+    expect(harness.liveState().path).toBe('disk.E01');
+    await tabs.finishBackgroundLoad(zip);
+    expect(tabs.activeTabId.value).toBe(disk);
+    expect(harness.calls.load).toEqual(['disk.E01']);
+    await tabs.activateTab(zip);
+    expect(harness.calls.load).toEqual(['disk.E01', 'phone.zip']);
+  });
+
+  it('ignores completion of a closed background tab', async () => {
+    const harness = makeHookHarness();
+    const tabs = useTabManager();
+    const id = await tabs.beginBackgroundLoad('phone.zip', 'unpack-1');
+    tabs.closeAllTabs();
+    await tabs.finishBackgroundLoad(id);
+    expect(tabs.tabs.value).toEqual([]);
+    expect(harness.calls.load).toEqual([]);
+  });
+
   describe('grouped evidence tabs', () => {
     it('hides members without dropping their records and numbers only visible tabs', async () => {
       const aliases = ref(new Map<string, string>());

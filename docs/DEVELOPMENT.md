@@ -118,7 +118,7 @@ Unix 的 `build-cli-full` 启用 `qrcode-wechat ocr`（CPU OCR），需要自行
 
 ## 性能验证
 
-桌面 `release` profile 以体积优先（`opt-level = "s"`、fat LTO），哈希、压缩、SQLCipher 与正则等热点依赖在 `src-tauri/Cargo.toml` 中单独设为 `opt-level = 3`；性能比较使用 `release-fast` profile（`just run-example-fast <名称>`）。开发版的 Argon2 / BLAKE2 同样启用优化，以满足高内存 LUKS2 的密钥派生预算。完整 QR/OCR 构建与轻量构建的耗时不能混作同一基线。
+桌面 `release` profile 以体积优先（`opt-level = "s"`、fat LTO），哈希、压缩、SQLCipher 与正则等热点依赖在 `src-tauri/Cargo.toml` 中单独设为 `opt-level = 3`；性能比较使用 `release-fast` profile（`just run-example-fast <名称>`）。开发版的 Argon2 / BLAKE2 同样启用优化，以满足高内存 LUKS2 的密钥派生预算；flate2 / miniz_oxide / zlib-rs / simd-adler32 / crc32fast 也启用优化，减少大备份 ZIP 在恢复案件时的 debug 解压开销。完整 QR/OCR 构建与轻量构建的耗时不能混作同一基线。
 
 性能结论应基于当前提交的可复现场景。记录提交号、操作系统、CPU / 内存、存储介质、构建 profile、特性组合、镜像格式与逻辑大小；文件系统操作另记录目录项规模、文件大小分布和卷类型，私有检材只记录可公开的规模描述。分别测量冷启动与缓存命中，报告重复次数与耗时分布，并观察吞吐、峰值内存、临时磁盘占用、读取次数、取消延迟和交互延迟。
 

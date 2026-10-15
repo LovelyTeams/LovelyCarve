@@ -132,6 +132,7 @@ impl TaskKind {
             | Self::CarveScan
             | Self::DirectoryExport
             | Self::ImageExport
+            | Self::ImageLoad
             | Self::ImageHash => TaskResourceProfile::background_sequential_io(),
             Self::FlatList
             | Self::MediaMaterialization

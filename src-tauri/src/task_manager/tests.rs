@@ -1,6 +1,18 @@
 //! Task lifecycle, cancellation and resource regressions.
 
 use super::*;
+
+#[test]
+fn case_exit_cancels_queued_and_running_loads_without_an_image_identity() {
+    let manager = TaskManager::default();
+    let first = manager.register("load-a", TaskKind::ImageLoad, None);
+    let second = manager.register("load-b", TaskKind::ImageLoad, None);
+    let unrelated = manager.register("export", TaskKind::ImageExport, Some("disk".into()));
+    assert_eq!(manager.cancel_kind(TaskKind::ImageLoad), 2);
+    assert!(first.token().is_cancelled());
+    assert!(second.token().is_cancelled());
+    assert!(!unrelated.token().is_cancelled());
+}
 use std::time::Duration;
 
 #[test]

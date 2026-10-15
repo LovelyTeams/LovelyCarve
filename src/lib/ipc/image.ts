@@ -136,6 +136,9 @@ export function imageInfoById(args: { imageId: string }): Promise<LoadedImageSum
 /** Legacy QCOW credentials stay in the invocation only; no case persistence. */
 export type ImageLoadArgs = {
   path: string;
+  taskId?: string;
+  /** Reject delayed desktop requests after their originating case has closed. */
+  caseDir?: string;
   qcowPassword?: string;
   qcowKeyHex?: string;
 };

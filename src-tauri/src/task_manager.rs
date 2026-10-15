@@ -221,6 +221,11 @@ impl TaskManager {
         self.cancel_where(|record| record.image_id() == Some(image_id) && record.kind() == kind)
     }
 
+    /// Cancel opens even before they have published an image session.
+    pub fn cancel_kind(&self, kind: TaskKind) -> usize {
+        self.cancel_where(|record| record.kind() == kind)
+    }
+
     pub fn contains(&self, task_id: &str) -> bool {
         self.records().contains_key(task_id)
     }

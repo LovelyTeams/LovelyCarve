@@ -21,6 +21,8 @@ use tokio::sync::Mutex;
 /// timeline results) is persisted by the case layer, not by this struct.
 pub struct AppState {
     pub images: Arc<Mutex<HashMap<String, Arc<EvidenceSession>>>>,
+    /// Case generation and publication gate, never held during decompression.
+    pub image_load_context: Mutex<u64>,
     /// Per-path single-flight locks for `image_load`. The map keeps weak
     /// references so completed/abandoned paths do not accumulate, while every
     /// concurrent caller for the same evidence path serialises behind the
@@ -121,6 +123,7 @@ impl AppState {
         Self {
             images,
             image_load_locks: Arc::default(),
+            image_load_context: Mutex::new(0),
             plugins,
             plugin_open_lock: Arc::default(),
             tasks: TaskManager::default(),

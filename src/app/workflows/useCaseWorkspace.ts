@@ -26,6 +26,7 @@ export function useCaseWorkspace(options: {
     const capturedDirectory = options.caseDirectory?.();
     const current = () => options.caseDirectory?.() === capturedDirectory;
     const failed: string[] = [];
+    let queued = 0;
     const real = paths.filter((p) => !p.startsWith('assembled://'));
     const assembled = paths.filter((p) => p.startsWith('assembled://'));
     const unavailable = new Set<string>();
@@ -33,6 +34,7 @@ export function useCaseWorkspace(options: {
     if (assembled.length > 0) {
       // Register sources before detection without creating member tabs.
       for (const path of real) {
+        if (/\.(?:zip|7z|tar|tgz|gz|bak|ab|ldbk)$/i.test(path)) continue;
         if (!current()) return;
         try {
           await imageLoad({ path });
@@ -57,6 +59,7 @@ export function useCaseWorkspace(options: {
       const result = await openImagePath(path, { forceImage: true, quiet: true });
       if (!current()) return;
       if (!result.ok) failed.push(`${path.split(/[\\/]/).pop() || path}（${result.error}）`);
+      else if (result.queued) queued++;
     }
     if (assembled.length > 0) {
       // Source staging and detection above already registered the synthetic
@@ -74,6 +77,8 @@ export function useCaseWorkspace(options: {
         tr("{0} 个证据镜像未能打开", { 0: failed.length }),
         tr("已打开 {0} 个；以下证据可能被移动、删除，或 RAID 成员不全：{1}", { 0: opened, 1: failed.join('；') }),
       );
+    } else if (queued > 0) {
+      notifyInfo(tr("证据正在后台加载"), tr("{0} 个证据正在加载，可在标签页或任务中心查看进度。", { 0: queued }));
     } else if (opened > 0) {
       notifyInfo(tr("已加载案件证据"), tr("已加载 {0} 个证据镜像", { 0: opened }));
     }

@@ -88,6 +88,16 @@ pub struct ZipEntry {
     bak_source: Option<(usize, String)>,
 }
 
+impl ZipEntry {
+    pub(crate) fn is_backup_root(&self) -> bool {
+        self.kind == ZipEntryKind::Dir
+            && self
+                .bak_source
+                .as_ref()
+                .is_some_and(|(_, path)| path.is_empty())
+    }
+}
+
 pub struct ZipImage {
     path: PathBuf,
     label: String,
@@ -115,10 +125,32 @@ impl std::fmt::Debug for ZipImage {
 }
 
 impl ZipImage {
+    pub(crate) fn backup_archives(&self) -> &[TarImage] {
+        &self.bak_archives
+    }
+
     /// mmap a `.zip` file and index its central directory. Returns an error (so
     /// the caller can fall back to a RAW probe) when the file is not a usable ZIP
     /// or holds no members.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open_with_progress(path, &|_, _, _| {})
+    }
+
+    /// Like `open`, with cumulative logical backup input bytes reported while
+    /// decoding embedded `.bak` / `.ab` members on the opening worker thread.
+    pub fn open_with_progress(
+        path: impl AsRef<Path>,
+        progress: &dyn Fn(&str, u64, u64),
+    ) -> Result<Self> {
+        Self::open_cancellable(path, progress, &tokio_util::sync::CancellationToken::new())
+    }
+
+    pub(crate) fn open_cancellable(
+        path: impl AsRef<Path>,
+        progress: &dyn Fn(&str, u64, u64),
+        cancel: &tokio_util::sync::CancellationToken,
+    ) -> Result<Self> {
+        anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
         let path = path.as_ref().to_path_buf();
         let outer = {
             let file = File::open(&path).with_context(|| format!("open {}", path.display()))?;
@@ -148,7 +180,14 @@ impl ZipImage {
             bail!("no zip members found in {}", path.display());
         }
 
-        let bak_archives = bak::index_backups(&mut archive, &mut entries, &mut total_size, &path);
+        let bak_archives = bak::index_backups(
+            &mut archive,
+            &mut entries,
+            &mut total_size,
+            &path,
+            progress,
+            cancel,
+        )?;
         Ok(Self {
             path,
             label,

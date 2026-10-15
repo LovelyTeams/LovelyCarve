@@ -7,7 +7,7 @@ use lovelycarve_lib::core::{
 
 fn main() -> anyhow::Result<()> {
     let arguments: Vec<_> = std::env::args().skip(1).collect();
-    ensure!(arguments.len() >= 3, "usage: probe_ntfs_metadata <image> <partition-id> <record-or-path> | --mft <exported-MFT> <record>");
+    ensure!(arguments.len() >= 3, "usage: probe_ntfs_metadata <image> <partition-id> <record> | --mft <exported-MFT> <record>");
     let result = if arguments[0] == "--mft" {
         let record: u64 = arguments[2].parse()?;
         let mut file = NtfsMftMetadataFile::open(std::path::Path::new(&arguments[1]))?;

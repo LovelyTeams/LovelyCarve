@@ -210,6 +210,7 @@ describe('useWorkspaceShell case gate', () => {
   it('opens every dropped path and forces image loading for dropped folders', async () => {
     const openByPath = vi.fn().mockResolvedValue({ opened: true, nextPanel: 'dashboard' });
     caseCreateMock.mockResolvedValue(makeCase('case-drag'));
+    caseActiveMock.mockResolvedValueOnce(makeCase('case-drag')).mockResolvedValueOnce(makeCase('case-drag'));
     await useCaseSession().createCase('D:/cases/drag', 'Drag Case');
 
     let shell: ReturnType<typeof useWorkspaceShell> | null = null;
@@ -256,8 +257,8 @@ describe('useWorkspaceShell case gate', () => {
       });
 
       expect(openByPath).toHaveBeenCalledTimes(2);
-      expect(openByPath).toHaveBeenNthCalledWith(1, 'D:/evidence/disk.E01', { forceImage: false });
-      expect(openByPath).toHaveBeenNthCalledWith(2, 'D:/evidence/folder', { forceImage: true });
+      expect(openByPath).toHaveBeenNthCalledWith(1, 'D:/evidence/disk.E01', { forceImage: false, caseDir: 'D:/cases/one' });
+      expect(openByPath).toHaveBeenNthCalledWith(2, 'D:/evidence/folder', { forceImage: true, caseDir: 'D:/cases/one' });
       expect(systemPathInfoMock).toHaveBeenCalledTimes(2);
     } finally {
       app.unmount();

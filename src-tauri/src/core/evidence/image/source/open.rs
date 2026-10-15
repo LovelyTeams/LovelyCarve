@@ -1,7 +1,20 @@
 //! Evidence container recognition and source opening.
 use super::*;
 impl ImageSource {
+    #[cfg(test)]
     pub(in crate::core::evidence::image) fn open(path: &Path) -> anyhow::Result<Self> {
+        Self::open_observed(
+            path,
+            &noop_observer,
+            &tokio_util::sync::CancellationToken::new(),
+        )
+    }
+
+    pub(in crate::core::evidence::image) fn open_observed(
+        path: &Path,
+        progress: OpenObserver<'_>,
+        cancel: &tokio_util::sync::CancellationToken,
+    ) -> anyhow::Result<Self> {
         if path.is_dir()
             && (lower_extension(path).as_deref() == Some("hdd")
                 || path.join("DiskDescriptor.xml").is_file())
@@ -114,13 +127,35 @@ impl ImageSource {
         }
 
         if is_tar_gz_path(path) {
-            match TarImage::open_gzip(path) {
+            let file = std::fs::File::open(path)?;
+            let total = file.metadata()?.len();
+            let label = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+            let report = |done| {
+                progress(OpenProgress::Decompressing {
+                    label: label.clone(),
+                    done,
+                    total,
+                })
+            };
+            let reader = crate::core::evidence::readers::load_reader::LoadReader {
+                input: file,
+                cancel,
+                progress: &report,
+                consumed: 0,
+            };
+            let mut decoder = gzipf::GzipDecoder::new(reader);
+            match TarImage::open_from_tar_reader(path.to_path_buf(), None, &mut decoder) {
                 Ok(tar) => {
                     return Ok(Self::Tar {
                         image: Arc::new(tar),
                     });
                 }
                 Err(tar_err) => {
+                    anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
                     tracing::debug!(
                         "tar.gz probe: {} is not a usable gzip-compressed tar ({tar_err:#}); falling back to RAW",
                         path.display()
@@ -136,13 +171,24 @@ impl ImageSource {
         // `.zip` open as zip evidence. A `.zip`-named file that is not a usable
         // archive falls back to the RAW probe.
         if lower_extension(path).as_deref() == Some("zip") {
-            match ZipImage::open(path) {
+            match ZipImage::open_cancellable(
+                path,
+                &|label, done, total| {
+                    progress(OpenProgress::Decompressing {
+                        label: label.to_owned(),
+                        done,
+                        total,
+                    });
+                },
+                cancel,
+            ) {
                 Ok(zip) => {
                     return Ok(Self::Zip {
                         image: Arc::new(zip),
                     });
                 }
                 Err(zip_err) => {
+                    anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
                     tracing::debug!(
                         "zip probe: {} is not a usable zip archive ({zip_err:#}); falling back to RAW",
                         path.display()

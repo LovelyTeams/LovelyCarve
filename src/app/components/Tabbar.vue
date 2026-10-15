@@ -19,11 +19,12 @@
           type="button"
           class="tab-activate"
           :aria-current="tab.id === activeTabId ? 'page' : undefined"
-          :title="tab.pendingLoad ? tr('{0}（等待当前分析完成）', { 0: tab.filePath }) : tab.filePath"
+          :title="tab.loadTaskId ? tab.filePath : tab.pendingLoad ? tr('{0}（等待当前分析完成）', { 0: tab.filePath }) : tab.filePath"
           :disabled="isBusy && tab.id !== activeTabId"
           @click="$emit('activate', tab.id)"
         >
           <Loader2 v-if="isSwitching && tab.id === activeTabId" :size="14" class="tab-icon spin" />
+          <FileArchive v-else-if="tab.loadTaskId" :size="14" class="tab-icon" />
           <Clock v-else-if="tab.pendingLoad" :size="14" class="tab-icon" />
           <component v-else :is="tab.mode === 'image' ? HardDrive : ClipboardList" :size="14" class="tab-icon" />
           <span class="tab-label">{{ tab.fileName }}</span>
@@ -51,7 +52,7 @@
 import { tr } from '../../composables/useLocale';
 
 import { onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, ref, watch } from 'vue';
-import { ClipboardList, Clock, HardDrive, Loader2, Plus, X } from 'lucide-vue-next';
+import { ClipboardList, Clock, FileArchive, HardDrive, Loader2, Plus, X } from 'lucide-vue-next';
 import type { WorkspaceTab } from '../workspace/useTabManager';
 
 const props = withDefaults(defineProps<{

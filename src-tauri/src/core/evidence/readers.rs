@@ -8,6 +8,7 @@ pub(in crate::core) mod docker_manifest;
 pub mod ewf_image;
 pub mod folder_image;
 pub mod ldplayer_image;
+pub(crate) mod load_reader;
 pub mod mi_bak;
 pub mod pmfx;
 pub mod sevenz_image;

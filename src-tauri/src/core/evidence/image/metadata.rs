@@ -50,6 +50,17 @@ impl DiskImage {
         Ok(())
     }
 
+    /// True when source files have been projected into Android backup folders.
+    pub fn has_expanded_backups(&self) -> bool {
+        self.zip
+            .as_ref()
+            .is_some_and(|zip| !zip.backup_archives().is_empty())
+            || self
+                .folder
+                .as_ref()
+                .is_some_and(|folder| !folder.backup_archives().is_empty())
+    }
+
     /// Stable identity for the exact evidence source observed when this image
     /// was opened. The fingerprint intentionally hashes metadata rather than
     /// the full media: it is cheap enough to attach to every index run while
@@ -66,6 +77,26 @@ impl DiskImage {
         hasher.update(self.on_disk_bytes.unwrap_or(u64::MAX).to_le_bytes());
         hasher.update(self.modified_unix_ms.unwrap_or(i64::MIN).to_le_bytes());
         hasher.update(self.created_unix_ms.unwrap_or(i64::MIN).to_le_bytes());
+
+        // The source bytes may be identical across reader upgrades, but an old
+        // file-only index cannot describe the newly expanded directory view.
+        // Include which backups actually decoded, so partial/failed decoding
+        // also cannot reuse a snapshot of a different projection.
+        let backups = self
+            .zip
+            .as_ref()
+            .map(|zip| zip.backup_archives())
+            .or_else(|| self.folder.as_ref().map(|folder| folder.backup_archives()))
+            .unwrap_or_default();
+        if !backups.is_empty() {
+            hasher.update(b"android-backup-directory-projection-v2\0");
+            for archive in backups {
+                hasher.update((archive.label().len() as u64).to_le_bytes());
+                hasher.update(archive.label().as_bytes());
+                hasher.update((archive.entry_count() as u64).to_le_bytes());
+                hasher.update(archive.total_size().to_le_bytes());
+            }
+        }
 
         let mut snapshots = self.source_file_stability_snapshots_at_open();
         snapshots.sort_by(|left, right| left.path.cmp(&right.path));

@@ -9,8 +9,9 @@ import { useTabManager, type LoadFileOptions, type OpenTabResult } from './useTa
 import { useCaseSession } from '../../features/cases/api';
 import { notifyError, notifyInfo } from '../../composables/useToast';
 import type { RecentCase } from '../../features/cases/api';
+import { useBackgroundEvidenceLoads } from './useBackgroundEvidenceLoads';
 
-type OpenByPath = (filePath: string, options?: { onBeforeLoad?: () => void; forceImage?: boolean }) => Promise<OpenFileOutcome>;
+type OpenByPath = (filePath: string, options?: { onBeforeLoad?: () => void; forceImage?: boolean; caseDir?: string }) => Promise<OpenFileOutcome>;
 
 type WorkspaceShellOptions = {
   /** True once an evidence image/folder is loaded; gates whether the sidebar
@@ -50,6 +51,7 @@ export function useWorkspaceShell(options: WorkspaceShellOptions) {
   // each call site needing to know about the tab abstraction.
   const tabManager = useTabManager();
   const { activeCase, openCase, refreshActive, busy: caseBusy } = useCaseSession();
+  const backgroundLoads = useBackgroundEvidenceLoads(tabManager, () => activeCase.value?.dir ?? null);
   const isOpeningRecentCase = ref(false);
 
   let dragLeaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -90,7 +92,7 @@ export function useWorkspaceShell(options: WorkspaceShellOptions) {
   const loadFileForTab = async (filePath: string, opts?: LoadFileOptions): Promise<OpenFileOutcome> => {
     let outcome: OpenFileOutcome;
     try {
-      outcome = await options.openByPath(filePath, { forceImage: opts?.forceImage });
+      outcome = await options.openByPath(filePath, { forceImage: opts?.forceImage, ...(activeCase.value ? { caseDir: activeCase.value.dir } : {}) });
       await finalizeOpenOutcome(outcome);
     } catch (error) {
       console.error('Failed to open file:', error);
@@ -118,7 +120,7 @@ export function useWorkspaceShell(options: WorkspaceShellOptions) {
    *  already reported unless `quiet`, in which case the caller surfaces
    *  the returned `error`. */
   const openImagePath = (path: string, opts?: LoadFileOptions): Promise<OpenTabResult> =>
-    tabManager.openNewTab(path, opts);
+    backgroundLoads.open(path, opts);
 
   const handleSidebarSelect = (id: string) => {
     activePanel.value = id;
@@ -153,7 +155,7 @@ export function useWorkspaceShell(options: WorkspaceShellOptions) {
         continue;
       }
       const pathInfo = await systemPathInfo(path).catch(() => null);
-      await tabManager.openNewTab(path, { forceImage: pathInfo?.is_directory === true });
+      await openImagePath(path, { forceImage: pathInfo?.is_directory === true });
     }
   }
 

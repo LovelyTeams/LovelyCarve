@@ -16,12 +16,17 @@ use crate::core::filesystem::evidence_session::ImageExportMode;
 use crate::state::AppState;
 
 #[tauri::command]
+/// Opens on a blocking worker; `task_id` opts into a caller-owned task identity.
+/// Emits `image-load-progress` for the legacy loader and `task-progress` for
+/// the task center. `task_cancel` interrupts materialisation and drops tempfiles.
 pub async fn image_load(
     app: AppHandle,
     state: State<'_, AppState>,
     path: String,
     qcow_password: Option<String>,
     qcow_key_hex: Option<String>,
+    task_id: Option<String>,
+    case_dir: Option<String>,
 ) -> Result<ImageInfo, AppError> {
     let password = qcow_password.map(zeroize::Zeroizing::new);
     let key_hex = qcow_key_hex.map(zeroize::Zeroizing::new);
@@ -47,7 +52,7 @@ pub async fn image_load(
         }
         (None, None) => None,
     };
-    crate::app::workflows::evidence::image_load(app, state, path, key).await
+    crate::app::workflows::evidence::image_load(app, state, path, key, task_id, case_dir).await
 }
 
 #[tauri::command]

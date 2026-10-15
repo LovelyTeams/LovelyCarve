@@ -16,6 +16,7 @@ export type BackendTaskKind =
   | 'flatList'
   | 'imageExport'
   | 'imageHash'
+  | 'imageLoad'
   | 'iosBackupAudit'
   | 'iosBackupUnlock'
   | 'globalSearch'

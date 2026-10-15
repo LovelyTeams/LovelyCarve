@@ -54,6 +54,13 @@ pub struct FolderEntry {
     source: Option<FolderEntrySource>,
 }
 
+impl FolderEntry {
+    pub(crate) fn is_backup_root(&self) -> bool {
+        self.kind == FolderEntryKind::Dir
+            && matches!(&self.source, Some(FolderEntrySource::BakArchive { tar_rel_path, .. }) if tar_rel_path.is_empty())
+    }
+}
+
 #[derive(Debug, Clone)]
 enum FolderEntrySource {
     Ios(usize),
@@ -75,6 +82,10 @@ pub struct FolderImage {
 }
 
 impl FolderImage {
+    pub(crate) fn backup_archives(&self) -> &[TarImage] {
+        &self.bak_archives
+    }
+
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         if let Some(image) = Self::detect_ios(path.as_ref())? {
             return Ok(image);
@@ -362,7 +373,7 @@ fn index_bak_files(
                 let archive_index = archives.len();
                 *total_size = total_size.saturating_sub(bak_size);
                 *total_size = total_size.saturating_add(archive.total_size());
-                entries.insert(rel.clone(), bak_root_entry(&rel, &path));
+                entries.insert(rel.clone(), bak_root_entry(&rel, &path, archive_index));
                 index_bak_archive_entries(entries, &mut archives, archive, archive_index, &rel);
                 tracing::info!(
                     "mi-bak: indexed {} under {} (entries={})",
@@ -399,7 +410,7 @@ fn index_bak_archive_entries(
     archives.push(archive);
 }
 
-fn bak_root_entry(rel: &str, path: &Path) -> FolderEntry {
+fn bak_root_entry(rel: &str, path: &Path, archive_index: usize) -> FolderEntry {
     let metadata = fs::metadata(path).ok();
     FolderEntry {
         rel_path: rel.to_string(),
@@ -412,7 +423,10 @@ fn bak_root_entry(rel: &str, path: &Path) -> FolderEntry {
         inode: None,
         mode: None,
         link_target: None,
-        source: None,
+        source: Some(FolderEntrySource::BakArchive {
+            archive_index,
+            tar_rel_path: String::new(),
+        }),
     }
 }
 

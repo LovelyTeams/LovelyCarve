@@ -137,6 +137,7 @@ pub(crate) async fn register_and_snapshot(
         match guard.as_mut() {
             None => Admission::Caseless,
             Some(case) => {
+                retire_outdated_backup_views(case, &image)?;
                 *image.host_docker_cache_dir.write() = Some(
                     crate::core::catalog::host_docker_index::cache_directory(&case.dir, &image.id),
                 );
@@ -209,6 +210,32 @@ pub(crate) async fn register_and_snapshot(
             Ok(())
         }
     }
+}
+
+/// Retire derived metadata before browsing, rather than serving file nodes from
+/// an older reader while a new directory snapshot builds in the background.
+pub(super) fn retire_outdated_backup_views(
+    case: &mut CaseState,
+    image: &EvidenceSession,
+) -> anyhow::Result<()> {
+    if !image.has_expanded_backups() {
+        return Ok(());
+    }
+    let fingerprint = image.evidence_fingerprint();
+    let stale: Vec<_> = case
+        .volumes()
+        .iter()
+        .filter(|record| record.image_id == image.id && record.fingerprint != fingerprint)
+        .map(|record| record.volume_key.clone())
+        .collect();
+    for volume_key in stale {
+        tracing::info!(
+            "retiring outdated backup projection image={} volume={volume_key}",
+            image.id
+        );
+        case.drop_volume(&image.id, &volume_key)?;
+    }
+    Ok(())
 }
 
 /// Registers `image` as evidence of `case` unless it already is, unchanged.

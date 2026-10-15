@@ -37,12 +37,16 @@
             <button class="ui-btn lg primary block" type="button" :title="tr('添加证据 (Ctrl+O)')" :disabled="busy" @click="$emit('open')">
               <Loader2 v-if="busy" :size="18" class="spin" aria-hidden="true" />
               <FolderOpen v-else :size="18" aria-hidden="true" />
-              <span>{{ busy ? loadLabel : tr("选择文件") }}</span>
+              <span class="import-action-label" :title="busy ? loadLabel : undefined">{{ busy ? loadLabel : tr("选择文件") }}</span>
               <ArrowRight v-if="!busy" :size="18" aria-hidden="true" />
             </button>
             <button class="ui-btn lg block" type="button" :disabled="busy" @click="$emit('open-case')">
               <BriefcaseBusiness :size="18" aria-hidden="true" /><span>{{ tr("案件管理") }}</span>
             </button>
+          </div>
+          <div v-if="busy && loadPercent != null" class="ui-progress import-progress" role="progressbar"
+            :aria-label="loadLabel" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="loadPercent">
+            <span :style="{ width: `${loadPercent}%` }" />
           </div>
           <p class="shortcut"><kbd class="ui-kbd">Ctrl</kbd><kbd class="ui-kbd">O</kbd><span>{{ tr("添加镜像、文件夹或磁盘") }}</span></p>
           <span class="sr-only" role="status">{{ busy ? loadLabel : '' }}</span>
@@ -83,7 +87,7 @@ import { confirm } from '../../composables/useConfirm';
 import type { RecentCase } from '../../features/cases/api';
 import { formatEpochSeconds } from '../../utils/format';
 
-const props = defineProps<{ busy: boolean; dragging: boolean; loadLabel: string; recentCases: RecentCase[] }>();
+const props = defineProps<{ busy: boolean; dragging: boolean; loadLabel: string; loadPercent?: number | null; recentCases: RecentCase[] }>();
 const emit = defineEmits<{ open: []; 'open-case': []; 'open-recent': [entry: RecentCase]; 'clear-recent': [] }>();
 const clearingRecent = ref(false);
 const clearRecentButton = ref<HTMLButtonElement | null>(null);
@@ -116,6 +120,8 @@ async function handleClearRecent() {
 </script>
 
 <style scoped>
+.import-action-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.import-progress { width: 100%; margin-top: 12px; }
 .start-page {
   flex: 1;
   min-height: 0;

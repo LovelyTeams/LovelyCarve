@@ -129,6 +129,16 @@ struct Member {
 /// concat stream, and detect every partition across all disks. `progress`
 /// receives decode + detection phases so the loader is never a blank spinner.
 pub fn open(path: &Path, progress: OpenObserver<'_>) -> anyhow::Result<PreparedLdplayer> {
+    open_cancellable(path, progress, &tokio_util::sync::CancellationToken::new())
+}
+
+pub(crate) fn open_cancellable(
+    path: &Path,
+    progress: OpenObserver<'_>,
+    cancel: &tokio_util::sync::CancellationToken,
+) -> anyhow::Result<PreparedLdplayer> {
+    anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
+
     let file = File::open(path).with_context(|| format!("open {}", path.display()))?;
     // SAFETY: the mmap is only read, and the `.ldbk` is evidence we treat as
     // read-only; concurrent truncation by another process is out of scope, as
@@ -146,7 +156,7 @@ pub fn open(path: &Path, progress: OpenObserver<'_>) -> anyhow::Result<PreparedL
     // Decode every compressed member up front, in one streaming pass that
     // reports cumulative byte progress. Stored members are skipped (mmapped in
     // place below), so a fully-stored backup does no decode work at all.
-    let decoded = decode_compressed_members(&mut reader, &members, progress)?;
+    let decoded = decode_compressed_members(&mut reader, &members, progress, cancel)?;
 
     // Build one VMDK reader per member, contiguous in the concat stream.
     let mut segments: Vec<Segment> = Vec::new();
@@ -266,6 +276,7 @@ fn decode_compressed_members(
     reader: &mut ArchiveReader<File>,
     members: &[Member],
     progress: OpenObserver<'_>,
+    cancel: &tokio_util::sync::CancellationToken,
 ) -> anyhow::Result<HashMap<String, Arc<Vec<u8>>>> {
     let wanted: std::collections::HashSet<&str> = members
         .iter()
@@ -291,6 +302,9 @@ fn decode_compressed_members(
             let mut buf: Vec<u8> = Vec::with_capacity(entry.size() as usize);
             let mut chunk = vec![0u8; DECODE_CHUNK];
             loop {
+                if cancel.is_cancelled() {
+                    return Err(std::io::Error::other("image load cancelled").into());
+                }
                 let read = rd.read(&mut chunk)?;
                 if read == 0 {
                     break;

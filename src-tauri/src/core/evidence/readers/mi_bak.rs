@@ -23,6 +23,20 @@ const BACKUP_FILE_V1: u8 = 1;
 const BACKUP_FILE_V5: u8 = 5;
 const ENCRYPTION_NONE: &str = "none";
 
+/// Display an expanded backup as a folder while retaining its source path in IDs.
+pub(crate) fn backup_directory_name(name: &str) -> &str {
+    match name.rsplit_once('.') {
+        Some((stem, extension))
+            if !stem.is_empty()
+                && (extension.eq_ignore_ascii_case("bak")
+                    || extension.eq_ignore_ascii_case("ab")) =>
+        {
+            stem
+        }
+        Some(_) | None => name,
+    }
+}
+
 #[path = "mi_bak/zlib.rs"]
 mod zlib;
 use zlib::ValidatedZlib;

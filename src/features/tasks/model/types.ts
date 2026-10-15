@@ -7,7 +7,7 @@ export type TaskHubTab = 'tasks' | 'quick';
 
 export interface BuiltinTask {
   id: string;
-  kind: 'docker' | 'search' | 'timeline' | 'carve' | 'filesystem' | 'index' | 'autodetect' | 'encryptedUnlock' | 'imageExport';
+  kind: 'docker' | 'search' | 'timeline' | 'carve' | 'filesystem' | 'index' | 'autodetect' | 'encryptedUnlock' | 'imageExport' | 'imageLoad';
   imageId: string;
   title: string;
   subject: string;

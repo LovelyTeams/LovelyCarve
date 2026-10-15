@@ -250,6 +250,19 @@ opt-level = 3
 [profile.dev.package.blake2]
 opt-level = 3
 
+# Reopening logical phone evidence can inflate tens of GiB before showing the
+# file tree. Keep the DEFLATE/CRC hot paths optimised in development as well.
+[profile.dev.package.flate2]
+opt-level = 3
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+[profile.dev.package.zlib-rs]
+opt-level = 3
+[profile.dev.package.simd-adler32]
+opt-level = 3
+[profile.dev.package.crc32fast]
+opt-level = 3
+
 [profile.release]
 # unwind（非 abort）：让 core::xlsx_table 的 catch_unwind 在发行版也能兜住
 # umya-spreadsheet 解析恶意/畸形 .xlsx 时的 panic —— 取证工具处理敌对镜像，
