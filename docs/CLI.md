@@ -112,7 +112,7 @@ lovelycarve-cli --image "D:\evidence\disk.img" image-hash-compute --algorithms '
 | 镜像、物理磁盘、RAID、RAW 导出 | `image-*`、`physical-disks-list`、`raid-*` |
 | NTFS 卷影副本枚举、只读历史会话 | `shadow-copy-list`、`shadow-copy-open`；父/子镜像保持同一会话，见 [VSS](formats/VSS.md) |
 | 文件系统、文件索引、目录分页、定位、Docker | `fs-*`、`filedb-*` |
-| 签名雕刻、状态、暂停/恢复、结果、恢复报告 | `carve-*` |
+| 文件恢复（文件系统记录与签名雕刻）、状态、暂停/恢复、结果、恢复报告 | `carve-*` |
 | 文件/目录/ZIP 导出、命名数据流 | `fs-export*`、`fs-stream-*` |
 | 搜索、历史、结果分页与导出 | `global-search-*` |
 | 时间线、计数、范围、结果与导出 | `timeline-*`、`fs-timeline-export` |
@@ -408,3 +408,19 @@ XTS 密钥对）。可选 `encryptedRootPlistPath` 指向本地 XML / EncryptedR
 应同时传给 inspect 和 unlock。单逻辑卷支持原分区投影；多逻辑卷必须分别使用
 `newImage`，以隔离文件 ID 和索引。完整能力、上游 API 对照和不支持的布局见
 [FileVault](formats/FILEVAULT.md)。APFS 原生加密使用另一种格式，当前不能由此解锁。
+
+## 文件恢复命令
+
+文件系统恢复与签名雕刻是同一个扫描会话的两个阶段，都由 `carve-start` 发起，支持 `carve-scan-pause/resume` 与 `task-cancel`。`options.filesystems` 的 `fat` / `ntfs` / `exfat` 严格控制各族探测（缺省全部关闭，即只做签名雕刻），`include_existing` 同时列出已知分区的现存文件；`signatures` 缺省为 true，设为 false 时只恢复文件系统记录。`scope` 除 `whole` / `partition` / `unallocated` 外还接受 `range`，配合 `start_sector` 与 `sector_count`。以下为 JSONL 示例（先用 `--image` 加载镜像）：
+
+```jsonl
+{"id":"scan","command":"carve_start","args":{"options":{"scope":"whole","filesystems":{"fat":true,"ntfs":true,"exfat":true,"include_existing":false},"signatures":false}}}
+{"id":"done","command":"wait"}
+{"id":"status","command":"carve_scan_status","args":{"scanId":{"$ref":"scan#/scan_id"}}}
+{"id":"files","command":"carve_filesystem_results","args":{"scanId":{"$ref":"scan#/scan_id"}}}
+{"id":"export","command":"carve_recover","args":{"scanId":{"$ref":"scan#/scan_id"},"options":{"artifact_ids":[],"file_ids":["0"],"destination":"D:/output/recovery","task_id":"recover-files-1"}}}
+```
+
+快照的 `phase` 表示正在运行的阶段，`filesystem` 摘要给出阶段进度、卷/目录/文件数、截断、读取故障与阶段错误。`carve-filesystem-results` 在文件系统阶段结束前返回 `null`；NTFS 重建卷的 `reconstruction` 给出 MFT 位置和推导几何，目录在 `directories` 中，文件在 `candidates` 中，回收站还原项包含 `source_node/source_path`，其原始数据映射和身份不变。
+
+`carve-recover` 的 `file_ids` 只接受该会话文件系统结果中的候选编号，且候选必须 `readable`，不能传入任意原始数据映射；`artifact_ids` 为 `null`（缺省）时恢复全部雕刻结果，同时传 `file_ids` 时可用 `[]` 只恢复文件系统记录。顶层计数描述雕刻结果，`files` 描述文件系统记录：输出目录、成功/失败数、JSONL 报告路径与读取故障。文件系统记录在输出目录中按 `v<卷号>-<卷标>/原目录/文件名` 保持目录结构，具体文件状态、来源、`relative_output` 和 SHA-256 见 JSONL 报告。能力和限制见[文件恢复](USAGE.md#文件恢复)。

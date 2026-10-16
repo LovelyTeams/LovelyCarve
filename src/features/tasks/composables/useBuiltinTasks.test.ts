@@ -357,7 +357,7 @@ describe('built-in task lifecycle', () => {
 const carveOptions = { format_ids: ['jpg'], scope: 'whole' as const, partition_id: null, max_file_size: 1024, max_results: 100 };
 function carving(status: import('../../../lib/ipc/carve').CarveSessionStatus = 'running'): import('../../../lib/ipc/carve').CarveScanSnapshot {
   return { scan_id: 'carve-a', task_id: 'native-carve-a', image_id: 'disk-a', created_unix_ms: Date.now() - 1000,
-    status, scope_label: '整个镜像', bytes_scanned: 256, bytes_total: 1024, artifacts_found: 3, signatures_found: 5,
+    status, phase: 'signature', signatures: true, filesystem: null, scope_label: '整个镜像', bytes_scanned: 256, bytes_total: 1024, artifacts_found: 3, signatures_found: 5,
     current_offset: 256, truncated: false, error: null };
 }
 describe('carving tasks', () => {
@@ -366,7 +366,7 @@ describe('carving tasks', () => {
     ipc.carveStatus.mockResolvedValue(carving('queued'));
     const page = effectScope(); const hub = page.run(() => useBuiltinTasks())!;
     await trackedCarveStart({ imageId: 'disk-a', options: carveOptions });
-    expect(hub.tasks.value[0]).toMatchObject({ id: 'carve:carve-a', title: '文件雕刻', status: 'queued', progress: 25, finished: null });
+    expect(hub.tasks.value[0]).toMatchObject({ id: 'carve:carve-a', title: '文件恢复', status: 'queued', progress: 25, finished: null });
     page.stop(); carveProgress({ payload: carving() });
     expect(hub.tasks.value[0]).toMatchObject({ status: 'running', results: 3, progress: 25 });
     carveProgress({ payload: { ...carving('completed'), artifacts_found: 8, truncated: true } });
@@ -374,6 +374,20 @@ describe('carving tasks', () => {
     expect(hub.tasks.value[0].message).toContain('已达结果上限');
     carveProgress({ payload: carving() });
     expect(hub.tasks.value[0].status).toBe('success');
+  });
+  it('reports the filesystem phase and counts recovered records with carved files', async () => {
+    ipc.carve.mockResolvedValue({ scan_id: 'carve-a', task_id: 'native-carve-a' });
+    const filesystem = { options: { fat: true, ntfs: true, exfat: true, include_existing: false }, done: 50, total: 200, finished: false, volumes: 1, directories: 2, files: 4, truncated: false, read_faults_detected: false, error: null };
+    ipc.carveStatus.mockResolvedValue({ ...carving(), phase: 'filesystem', artifacts_found: 0, filesystem });
+    const hub = useBuiltinTasks();
+    await trackedCarveStart({ imageId: 'disk-a', options: carveOptions });
+    expect(hub.tasks.value[0]).toMatchObject({ status: 'running', progress: 25, results: 4 });
+    expect(hub.tasks.value[0].message).toContain('正在扫描文件系统');
+    carveProgress({ payload: { ...carving('completed'), filesystem: { ...filesystem, finished: true, truncated: true } } });
+    expect(hub.tasks.value[0]).toMatchObject({ status: 'success', results: 7, progress: 100 });
+    expect(hub.tasks.value[0].message).toContain('已达结果上限');
+    carveProgress({ payload: { ...carving('completed'), signatures: false, artifacts_found: 0, bytes_scanned: 0, filesystem: { ...filesystem, finished: true } } });
+    expect(hub.tasks.value[0].message).toBe('发现 4 个文件');
   });
   it('restores an existing scan and routes pause, resume and cancellation to its actual IDs', async () => {
     ipc.carveLatest.mockResolvedValue(carving());

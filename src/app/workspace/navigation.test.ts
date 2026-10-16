@@ -8,7 +8,7 @@ describe('buildImageNavGroups', () => {
       pages: group.items.map(item => item.label),
     }))).toEqual([
       { label: '镜像', pages: ['镜像信息', '文件列表'] },
-      { label: '工具', pages: ['全局搜索', '时间线', '文件雕刻'] },
+      { label: '工具', pages: ['全局搜索', '时间线', '文件恢复'] },
       { label: '分析', pages: ['分析结果'] },
     ]);
   });

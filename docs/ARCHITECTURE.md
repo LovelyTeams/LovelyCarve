@@ -2,7 +2,7 @@
 
 LovelyCarve 是一个 Tauri v2 桌面取证工具，另有共用同一后端的无窗口 CLI。前端使用 Vue 3、TypeScript、Vite 和 Composition API；后端使用 Rust、Tauri command、异步任务和纯 Rust 的镜像、文件系统与加密容器读取器。
 
-主流程是：创建或打开案件，添加镜像文件、文件夹证据、物理磁盘或 RAID 成员盘，检测分区和文件系统，浏览文件列表与原类型预览，执行哈希、导出、解锁、卷快照与索引，再运行全局搜索、时间线、文件雕刻和插件分析。
+主流程是：创建或打开案件，添加镜像文件、文件夹证据、物理磁盘或 RAID 成员盘，检测分区和文件系统，浏览文件列表与原类型预览，执行哈希、导出、解锁、卷快照与索引，再运行全局搜索、时间线、文件恢复和插件分析。
 
 原镜像缺失时，`image_load` 可恢复当前案件已发布的文件系统索引：校验索引格式、检材与卷身份、构建时间和指纹后，沿用案件检材 ID 建立 `index_only` 会话。目录分页、过滤与元数据查询仍由只读 filedb 提供；原镜像的分区几何未知，且所有字节读取都明确失败，不触发自动快照、哈希或平台识别。文件预览默认显示索引属性，独立窗口同步这一状态。恢复原路径的镜像后重新打开检材，会替换离线会话并恢复正常读取；没有有效当前索引时仍报告打开失败。
 
@@ -10,7 +10,7 @@ LovelyCarve 是一个 Tauri v2 桌面取证工具，另有共用同一后端的�
 
 使用与构建入口见 [文档导航](README.md) 和 [开发指南](DEVELOPMENT.md)。本文先按代码结构、证据读取、任务与插件、案件存储与索引、分析功能组织后端实现，再记录主窗口的界面与交互约定；各格式的实现范围与读取器维护要求见 [格式与读取器](formats/README.md)。
 
-主要章节：[前端结构](#前端结构)、[后端结构](#后端结构)、[镜像与证据源](#镜像与证据源)、[任务与事件](#任务与事件)、[插件任务调度](#插件任务调度)、[插件运行时](#插件运行时)、[案件数据库](#案件数据库)、[元数据索引](#元数据索引层filedb)、[时间线](#时间线)、[文件雕刻](#文件雕刻)、[界面与交互](#界面与交互)、[功能与 IPC 对照](#功能与-ipc-对照)、[扩展流程](#扩展流程)。
+主要章节：[前端结构](#前端结构)、[后端结构](#后端结构)、[镜像与证据源](#镜像与证据源)、[任务与事件](#任务与事件)、[插件任务调度](#插件任务调度)、[插件运行时](#插件运行时)、[案件数据库](#案件数据库)、[元数据索引](#元数据索引层filedb)、[时间线](#时间线)、[文件恢复与雕刻](#文件恢复与雕刻)、[界面与交互](#界面与交互)、[功能与 IPC 对照](#功能与-ipc-对照)、[扩展流程](#扩展流程)。
 
 ```text
 ┌────────────────────────────────────────────────────────────┐
@@ -147,7 +147,7 @@ LVM 标签/CRC/活动副本位于 `evidence/partitions/lvm2/header.rs`，有界�
 
 - 镜像：`image_load`、`image_info`、`image_unload`、`image_list`、`image_export_raw`
 - RAID/物理磁盘：`raid_auto_detect`、`raid_manual_assemble`、`physical_disks_list`
-- 文件雕刻：`carve_formats`、`carve_start`、`carve_scan_status`、`carve_scan_pause`、`carve_scan_resume`、`carve_scan_list`、`carve_scan_remove`、`carve_results_page`、`carve_preview`、`carve_recover`
+- 文件恢复（文件系统记录与签名雕刻）：`carve_formats`、`carve_start`、`carve_scan_status`、`carve_scan_pause`、`carve_scan_resume`、`carve_scan_list`、`carve_scan_remove`、`carve_results_page`、`carve_filesystem_results`、`carve_preview`、`carve_recover`
 - 文件系统：`fs_children`、`fs_flat_page`、`fs_flat_ext_counts`、`fs_read`、`fs_read_large`、`fs_media_temp`、`fs_preview*`、`fs_export*`、`fs_digest`、`fs_identify_type`
 - 原类型预览：SQLite、Realm、二进制、GGUF、ZIP、CSV、Vim swap 等（后端解析）；文档/办公/邮件/压缩包/CAD/3D/图表等
   「rich」类别由前端 Flyfish File Viewer 渲染，字节经 `fs_read_large`（≤16 MiB，可取消且受任务并发限制的 ArrayBuffer）或
@@ -843,13 +843,15 @@ offset。当前普通目录已提供 `fs_children_page`，案件模式下会优�
 - 趋势视图保留年到秒的粒度与逐层返回，钻取区间与已有选择相交，避免切换到粗粒度后意外放大范围；可收起概览以增加列表空间。
 - 事件列表以单行显示完整时间、事件类型、内容、来源与定位入口；单击在右侧详情栏展开完整摘要和来源标识，双击文件或点击定位回到文件列表。所有导出沿用已应用的查询条件。
 
-## 文件雕刻
+## 文件恢复与雕刻
 
-全局搜索、时间线、文件雕刻和分析结果的初始页共用 `WorkspaceStartState.vue`：居中显示图标、标题、简短说明与主按钮，历史记录或刷新放在左上角插槽。加载期间禁用主按钮；时间线创建前隐藏筛选、空表格和计数，读取失败可在初始页重试，开始构建后进入工作区。
+全局搜索、时间线、文件恢复和分析结果的初始页共用 `WorkspaceStartState.vue`：居中显示图标、标题、简短说明与主按钮，历史记录或刷新放在左上角插槽。加载期间禁用主按钮；时间线创建前隐藏筛选、空表格和计数，读取失败可在初始页重试，开始构建后进入工作区。
 
-全局搜索和文件雕刻通过 `analysis-workspace.css` 共用记录侧栏、工具栏、筛选条、状态条、表格与新建弹窗样式；选中记录的详情由 `DetailDock` 从右侧展开（正文使用共享 `FileDetailLayout` 模板，与时间线事件详情共用）。初次读取已有记录或出现新记录时自动展开侧栏，普通进度刷新保留用户手动收起状态。雕刻页通过 `carve_scan_list` 列出当前检材在本进程中保留的会话（沿用最近三个会话的回收策略，活动扫描不会回收），切换记录时隔离迟到的结果请求；`carve_scan_remove` 仅删除当前检材已结束扫描的内存记录，不删除已恢复文件，也不清除任务中心的执行历史。重启应用后不会保留这些内存记录。
+全局搜索和文件恢复通过 `analysis-workspace.css` 共用记录侧栏、工具栏、筛选条、状态条与新建弹窗样式；选中记录的详情由 `DetailDock` 从右侧展开（正文使用共享 `FileDetailLayout` 模板，与时间线事件详情共用）。初次读取已有记录或出现新记录时自动展开侧栏，普通进度刷新保留用户手动收起状态。恢复页通过 `carve_scan_list` 列出当前检材在本进程中保留的会话（沿用最近三个会话的回收策略，活动扫描不会回收），切换记录时隔离迟到的结果请求；`carve_scan_remove` 仅删除当前检材已结束扫描的内存记录，不删除已恢复文件，也不清除任务中心的执行历史。重启应用后不会保留这些内存记录。
 
-“新建扫描”弹窗先选择按类别分组的文件类型，扫描范围与高级上限默认折叠；Esc / 取消保留原有结果。运行时显示进度、暂停/继续和取消，结果沿用文件列表表格样式。筛选仅作用于已加载结果，底部显示已加载与总数；未勾选时“恢复全部”恢复整个扫描会话，勾选后按钮变为“恢复所选”，行内及右侧详情可恢复单个文件。
+一次扫描是一个 `CarveScanSession`，按 `phase` 依次运行两个可选阶段：`filesystems` 选中任一文件系统族时先做文件系统恢复（见下文），`signatures` 为真时再做签名雕刻。两个阶段共用任务 ID、取消令牌、资源许可与暂停状态（`carve_session::wait_while_paused`）；快照的 `filesystem` 摘要报告阶段进度、卷/目录/文件数、截断与读取故障，阶段失败时记录错误，后面仍有雕刻阶段则继续，否则整个会话失败。扫描范围由 `carve_start` 的 `scope` 解析为字节区域（整盘、分区、分区间隙或 `range` 指定的扇区段），文件系统阶段使用其中的整扇区（`carve_filesystem::sector_ranges`）。
+
+“新建扫描”弹窗先选择恢复方式（文件系统恢复与签名雕刻两张选择卡，文件系统族与“现存文件”开关跟在其后），签名雕刻再选择按类别分组的文件类型，扫描范围与高级上限默认折叠；Esc / 取消保留原有结果。运行时显示阶段进度、暂停/继续和取消。结果区按文件列表组织：`RecoveryTreeRail` 目录树、`RecoveryBrowser` 地址栏与 `RecoveryFileTable` 虚拟表格（沿用 `data-table.css`、`FileNodeIcon` 与已删除行样式）。纯模型 `recoveryTree` 把文件系统结果按卷和记录 ID 建树，签名结果按格式分组为“签名恢复”下的文件夹，行对象按需生成；`useRecoveryBrowser` 持有当前目录、筛选、勾选与目录树展开状态，筛选作用于当前目录的全部后代文件。雕刻结果由 `useCarveResults` 按 `sequence` 游标连续读完，文件系统结果在阶段结束后经 `carve_filesystem_results` 一次读取。勾选键带来源前缀（`f:` 文件系统候选、`a:` 雕刻结果），未勾选时“恢复全部”作用于整个会话。
 
 `core::carving::carver` 以 4 MiB 为读取窗口、以 512 字节为扫描块，仅在块首检查注册格式的
 签名。签名命中后由 `carver_format_*` 模块中的对应结构解析器计算文件长度；解析失败的候选只增加签名
@@ -895,6 +897,18 @@ WAV、SQLite 等）即使有误，也最多让扫描漏看当前窗口剩余部�
 `probe_carve` 示例可导出全部结果（`--dump`）并指定线程数（`--threads`）；镜像带有完好的 ext4 文件系统
 时，`probe_carve_truth` 列出每个文件的首个物理偏移与大小，二者按偏移对照即可统计各格式的召回率与长度
 准确率。
+
+### 文件系统恢复阶段
+
+`core/filesystem/recovery` 负责只读的 FAT/NTFS/exFAT 引导发现、卷目录或 MFT 枚举和逻辑流恢复。`discovery` 在每个扫描扇区段内报告起始扇区落在段内的已知分区，并按扇区查找引导扇区与残留 `$MFT`；遗失卷使用独立的 `Partition` 几何传入既有读取器，不修改源镜像的分区 ID 或分区表。候选身份由扫描和卷索引限定，结果以 `Arc<RecoveryScan>` 挂在会话的 `FilesystemPhase` 上，随会话回收或卸载检材时的 `purge_image_scans` 一并释放。阶段在 `collect_read_faults` 范围内运行，`RecoveryScan.read_faults` 记录本阶段的坏区。
+
+引导扫描阶段按字节、目录/MFT 阶段按条目报告 `task-progress` 与快照进度。扫描错误和目录读取失败保留在卷结果中，达到卷/候选/深度/节点上限标记截断。FAT/exFAT 恢复枚举使用严格的删除元数据入口，普通浏览沿用容错入口。
+
+恢复工作流还按 NTFS 选项扫描残留 `$MFT`。`volumes/ntfs/recovery` 用分配字节数/完整 run 数推导簇大小，用首 run LCN 和物理记录位置推导卷基址，并验证 `$MFTMirr`、根目录与 USA fixup。BootstrapReader 仅在 `Ntfs::new` 初始化时提供推导的 boot；随后所有数据（含 `$Boot`）来自真实来源。`RecoveryVolume.reconstruction` 明确记录推导过程和来源位置，不改变原镜像的分区表。
+
+`recovery/recycle` 用经过边界验证的回收站 `$I` v1/v2 内容配对同父目录 `$R` 项，恢复原名和路径；`source_node/source_path` 保留未投影的节点。父目录无法按当前身份确认时建立独立的虚拟目录，避免把不同时代的同名删除目录合并。
+
+`carve_recover` 在同一任务中先恢复所选雕刻结果（直接写入目标目录并生成 DFXML），再按 `file_ids` 恢复文件系统候选。候选编号必须属于该会话的文件系统结果且具有可读映射，否则在登记任务前拒绝；不能传入任意原始数据映射。文件系统输出写入新建的 `recovery-<UUID>` 子目录，`recovery/layout` 按浏览树的规则还原目录：每卷一个 `v<卷号>-<卷标>` 文件夹，目录身份先按记录、缺少父记录时才按路径补齐，环和过深的父链挂到卷文件夹下；每个组件经 `sanitize_export_component` 处理，同一文件夹内忽略大小写去重并加 `-n` 后缀。输出采用独占创建，逐块检查取消和逻辑长度，并在失败时先关闭再移除未完成文件及其留空的文件夹。报告为 JSONL，逐文件记录来源、原路径、相对输出路径、SHA-256、错误和操作范围的 `ReadFaultReport`。完整读取成功不能证明删除文件未被覆盖。
 
 ## SQLite 预览与删除记录恢复
 
@@ -964,7 +978,7 @@ CLI 可通过同一命令目录调用相关 `fs_mount_*` 命令，保持无窗�
 
 ### 右侧详情栏与固定窗口大小
 
-文件列表预览、全局搜索命中、时间线事件、文件雕刻结果与分析结果记录的详情都在右侧展开，由 `<UiTransition kind="dock">` 包裹。搜索、时间线、雕刻、分析与 BCP 记录共用 `DetailDock.vue`（标题栏、可拖动宽度，共用 `lovelycarve-detail-width`）。文件列表的详细信息页（含独立窗口）及上述五类详情统一使用 `FileDetailLayout.vue`（完整名称、状态、操作区）、`FileDetailSection.vue`（分组与可选折叠）和 `FileDetailFields.vue`（标签/值、长内容换行、复制反馈）。常用信息默认展开，技术标识默认折叠；可用正文宽度达到 640px 时分组可并列，哈希、上下文等宽分组仍占整行。`analysis-detail.css` 仅承载上下文与复核提示样式。
+文件列表预览、全局搜索命中、时间线事件、文件恢复结果与分析结果记录的详情都在右侧展开，由 `<UiTransition kind="dock">` 包裹。搜索、时间线、雕刻、分析与 BCP 记录共用 `DetailDock.vue`（标题栏、可拖动宽度，共用 `lovelycarve-detail-width`）。文件列表的详细信息页（含独立窗口）及上述五类详情统一使用 `FileDetailLayout.vue`（完整名称、状态、操作区）、`FileDetailSection.vue`（分组与可选折叠）和 `FileDetailFields.vue`（标签/值、长内容换行、复制反馈）。常用信息默认展开，技术标识默认折叠；可用正文宽度达到 640px 时分组可并列，哈希、上下文等宽分组仍占整行。`analysis-detail.css` 仅承载上下文与复核提示样式。
 
 - 主窗口大小和位置由用户控制。切换页面（含 KeepAlive 激活/停用）、打开/关闭详情、卸载详情组件都不调用原生窗口缩放或移动接口。
 - 详情在当前窗口内以横向过渡展开/收起；足够宽时与表格并列，窄区域以右侧浮层展示。拖动详情分隔条只调整面板宽度并记住选择。
@@ -1052,7 +1066,7 @@ RAID 成员、当前检材卷快照和案件详情默认折叠，切换与锁定
 
 任务页（`TaskCenterPanel.vue`）按状态分为「进行中」（运行、排队、待派发、暂停）、「需要处理」（失败、离线）和「已结束」（成功、取消）三张卡片，沿用镜像信息页的卡片样式：`ui-card` 标题行为主色图标、标题与 `ui-count` 计数，右侧按钮可折叠该段；卡片内每个任务一行，行间细分隔线，状态由所在分组与行内状态徽标表达。「已结束」超过 6 条时其余折叠为「显示其余 N 项」，搜索时显示全部匹配；调度器最近通知收在末尾一张默认折叠的卡片中。分组、排序与状态色（`TASK_STATUS_TONE`）在 `lib/taskCenterView.ts`。
 任务行第一行是名称和状态徽标（`ui-badge` 按状态色着色，运行中显示进度百分比，成功不显示徽标），第二行是摘要和已用时间（插件提供时加剩余时间）、创建时间或开始时间；只有运行和暂停显示进度条，不定进度显示「处理中」；失败任务的摘要显示错误。
-每行右侧只放一个带文字的直接操作（`ui-btn sm`）：运行中暂停、已暂停或离线继续、排队或运行中取消、失败或取消后重新分析；成功后改为结果跳转：插件任务在产生分析结果后「查看分析结果」（打开分析结果页并定位该功能的结果，见 `focusAnalysisResult`），全局搜索、时间线、文件雕刻打开各自页面，Docker、文件系统加载与索引建立打开文件列表。内置任务在详情中始终提供前往所在页面的入口。
+每行右侧只放一个带文字的直接操作（`ui-btn sm`）：运行中暂停、已暂停或离线继续、排队或运行中取消、失败或取消后重新分析；成功后改为结果跳转：插件任务在产生分析结果后「查看分析结果」（打开分析结果页并定位该功能的结果，见 `focusAnalysisResult`），全局搜索、时间线、文件恢复打开各自页面，Docker、文件系统加载与索引建立打开文件列表。内置任务在详情中始终提供前往所在页面的入口。
 点击任务行展开详情：完整错误（`ui-alert`）、对象或文件、开始（未开始则创建）时间、耗时、未完成时保留的进度、分析产物（字段行与采集记录同样式），以及靠右的取消、重新分析、前往结果和靠左的删除；技术标识再单独折叠。成功不显示进度，失败和取消保留最后进度，不伪装成已完成。重新分析和删除继续使用原确认流程。
 内部任务默认隐藏，有内部任务时工具栏显示「内部 N」开关；搜索匹配当前检材的任务名与文件名。
 调度器以 UTC 写入不带时区的 `YYYY-MM-DD HH:MM:SS`，内置任务使用 ISO 时间；`parseTaskTime` 统一按 UTC 解析，列表时间按本地时区显示（当天只显示时分），插件任务与内置任务按同一时钟排序。
@@ -1060,7 +1074,7 @@ RAID 成员、当前检材卷快照和案件详情默认折叠，切换与锁定
 提交捕获发起时的检材 ID，批量部分失败时保留未完整提交的插件；切换检材会卸载旧组件并停止继续发起批量操作，已经启动的任务仍在原检材下执行。
 插件状态与调度仍由 `useTaskCenter` 和现有 `sched_*` IPC / `sched-task-event` 驱动；`useUnifiedTaskCenter` 将插件与内置任务汇总给任务列表及标题栏计数，快速分析保持使用插件调度接口。
 
-`useBuiltinTasks` 在全局搜索、时间线重建、文件雕刻扫描和文件列表 Docker 容器合并的调用入口登记任务，通过原有搜索/时间线进度事件更新进度，以命令真实返回结果判定成功、取消或失败。跟踪独立于发起页面，关闭面板或切换页面不会丢失完成状态；切换案件清空会话状态并忽略旧案件异步结果。任务标识带来源前缀，避免与插件数字 ID 冲突。
+`useBuiltinTasks` 在全局搜索、时间线重建、文件恢复扫描和文件列表 Docker 容器合并的调用入口登记任务，通过原有搜索/时间线进度事件更新进度，以命令真实返回结果判定成功、取消或失败。跟踪独立于发起页面，关闭面板或切换页面不会丢失完成状态；切换案件清空会话状态并忽略旧案件异步结果。任务标识带来源前缀，避免与插件数字 ID 冲突。
 
 LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提交后立即关闭凭据弹窗。
 任务中心显示「加密卷解锁」、源分区、实际排队/运行状态与不定进度，使用原生任务 ID 取消，
@@ -1089,7 +1103,7 @@ LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提�
 | `src/features/preview/components/DiskFileDetail.vue` | 预览装配与按需 viewer；前缀/解码/识别、媒体租约、搜索、hex、拖拽各自持有资源 |
 | `src/features/search/components/SearchResultsPanel.vue` | 配置、历史/进度、分页、执行和导出分离，36px 结果表由子组件拥有 |
 | `src/features/timeline/components/TimelinePanel.vue` | 构建、聚合、筛选、记录分页和导出分离 |
-| `src/features/carving/components/CarvePanel.vue` | 配置、历史/任务、结果游标、预览与恢复分离 |
+| `src/features/carving/components/CarvePanel.vue` | 配置、历史/任务、雕刻结果游标、文件系统结果、浏览树、预览与恢复分离 |
 | `src/features/files/components/DiskFileTree.vue` / `src/features/preview/components/viewers/ZipViewer.vue` | 树加载/元数据/纯投影、归档/成员读取/虚拟树各自拥有实例生命周期 |
 
 拆分时保持现有行为和 IPC 契约不变，先加边界和测试，再移动逻辑。
@@ -1108,7 +1122,7 @@ LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提�
 | 数据浏览 | 数据库、日志、命名流和 BCP | `fs_sqlite*`、`fs_realm*`、`fs_*journal*`、`fs_stream*`、`bcp_*` |
 | 全局搜索 | `SearchResultsPanel.vue` | `global_search_*` |
 | 时间线 | `TimelinePanel.vue` | `timeline_*`、`fs_timeline_export` |
-| 文件雕刻 | `CarvePanel.vue` | `carve_*`、`carve-scan-progress`、`task-progress` |
+| 文件恢复 | `CarvePanel.vue` | `carve_*`（含 `carve_filesystem_results`）、`carve-scan-progress`、`task-progress` |
 | 加密与历史卷 | 解锁控件、卷影副本 | `bitlocker_*`、`encrypted_volume_unlock`、`shadow_copy_*` |
 | iOS 本地备份 | 镜像信息页的解锁与异常检查 | `ios_backup_unlock`、`ios_backup_audit`，操作与边界见 [iOS 备份](IOS_BACKUPS.md) |
 | 挂载 | 卷挂载与共享控件 | `fs_mount_*`、`fs_unmount_readonly`、`fs_share_mount`、挂载点命令 |

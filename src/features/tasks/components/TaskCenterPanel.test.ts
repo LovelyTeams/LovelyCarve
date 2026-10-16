@@ -157,18 +157,18 @@ describe('task list sections', () => {
   });
 
   it('shows carving progress and exposes native pause, resume and cancellation', async () => {
-    builtinRecords.value = [builtin('carve', { id: 'carve:scan', title: '文件雕刻', subject: '整个镜像', progress: 25,
+    builtinRecords.value = [builtin('carve', { id: 'carve:scan', title: '文件恢复', subject: '整个镜像', progress: 25,
       message: '已扫描 256 B / 1 KB · 发现 3 个文件', cancelId: 'native-scan', results: 3 })];
     await mount();
-    expect(host.querySelector('[aria-label="文件雕刻进度"]')?.getAttribute('aria-valuenow')).toBe('25');
-    await click('暂停 文件雕刻'); expect(actions.nativePause).toHaveBeenCalledWith('carve:scan');
+    expect(host.querySelector('[aria-label="文件恢复进度"]')?.getAttribute('aria-valuenow')).toBe('25');
+    await click('暂停 文件恢复'); expect(actions.nativePause).toHaveBeenCalledWith('carve:scan');
     builtinRecords.value[0].status = 'pause'; await nextTick();
-    expect(row('文件雕刻').querySelector('.task-badge')?.textContent).toBe('已暂停');
-    await click('继续 文件雕刻'); expect(actions.nativeStart).toHaveBeenCalledWith('carve:scan');
-    await click('展开 文件雕刻 详情');
+    expect(row('文件恢复').querySelector('.task-badge')?.textContent).toBe('已暂停');
+    await click('继续 文件恢复'); expect(actions.nativeStart).toHaveBeenCalledWith('carve:scan');
+    await click('展开 文件恢复 详情');
     await click('取消任务');
     expect(actions.nativeCancel).toHaveBeenCalledWith('carve:scan');
-    await click('打开文件雕刻');
+    await click('打开文件恢复');
     expect(actions.openResult).toHaveBeenCalledWith('carve', null);
   });
 

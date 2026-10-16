@@ -127,32 +127,44 @@ impl ExfatVolume {
     /// bit cleared) are decoded from the directory's raw clusters via
     /// [`crate::core::filesystem::volumes::exfat_recover`] and merged with `deleted: true`.
     pub fn children_with_deleted(&self, path: &str) -> Result<Vec<FsNode>> {
+        match self.children_with_deleted_strict(path) {
+            Ok(nodes) => Ok(nodes),
+            Err(error) => {
+                tracing::debug!("exfat deleted listing failed: {error:#}");
+                self.children(path)
+            }
+        }
+    }
+
+    /// Recovery scans must report missing deletion metadata instead of silently
+    /// returning only live entries. Ordinary browsing retains its tolerant fallback.
+    pub(crate) fn children_with_deleted_strict(&self, path: &str) -> Result<Vec<FsNode>> {
+        Ok(self
+            .recovery_children(path)?
+            .into_iter()
+            .map(|(node, _)| node)
+            .collect())
+    }
+
+    /// Strict recovery listing with the initialized length of each deleted file.
+    /// Live entries use their native logical reader and need no override.
+    pub(crate) fn recovery_children(&self, path: &str) -> Result<Vec<(FsNode, Option<u64>)>> {
         use crate::core::filesystem::volumes::exfat_recover as recover;
-        let mut out = self.children(path)?;
-        let geom = match recover::open_geom(&self.image, self.base_offset) {
-            Ok(g) => g,
-            Err(err) => {
-                tracing::debug!("exFAT recover geom failed: {err}");
-                return Ok(out);
-            }
-        };
-        let fat = match recover::ExfatFat::load(&self.image, &geom) {
-            Ok(f) => f,
-            Err(err) => {
-                tracing::debug!("exFAT recover FAT load failed: {err}");
-                return Ok(out);
-            }
-        };
-        let dir_bytes = match recover::read_directory_path(&self.image, &geom, &fat, path) {
-            Ok(bytes) => bytes,
-            Err(err) => {
-                tracing::debug!("exFAT recover resolve {path} failed: {err}");
-                return Ok(out);
-            }
-        };
+        let mut out = self
+            .children(path)?
+            .into_iter()
+            .map(|node| (node, None))
+            .collect::<Vec<_>>();
+        let geom = recover::open_geom(&self.image, self.base_offset)?;
+        let fat = recover::ExfatFat::load(&self.image, &geom)?;
+        let bytes = recover::read_directory_path(&self.image, &geom, &fat, path)?;
         let parent_id = self.node_id(path);
-        for entry in recover::scan_dir_deleted(&dir_bytes, &geom, Some(&fat)) {
-            out.push(recovered_node(self.partition_id, &parent_id, entry));
+        for entry in recover::scan_dir_deleted(&bytes, &geom, Some(&fat)) {
+            let initialized = entry.valid_data_length;
+            out.push((
+                recovered_node(self.partition_id, &parent_id, entry),
+                Some(initialized),
+            ));
         }
         Ok(out)
     }

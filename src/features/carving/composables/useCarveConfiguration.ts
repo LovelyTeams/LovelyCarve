@@ -1,7 +1,7 @@
 
 import { tr } from '../../../composables/useLocale';
 import { computed, nextTick, onDeactivated, onScopeDispose, ref, watch, type Ref } from 'vue';
-import { carveFormats, type CarveCategory, type CarveFormatInfo, type CarveStartOptions, type CarveScope } from '../../../lib/ipc/carve';
+import { carveFormats, type CarveCategory, type CarveFormatInfo, type CarveStartOptions, type CarveScope, type RecoveryFilesystems } from '../../../lib/ipc/carve';
 import type { DiskPartition, ImageInfo } from '../../../lib/ipc/image';
 import { formatBytes } from '../../../utils/format';
 import { categories } from '../model/carveView';
@@ -26,8 +26,13 @@ export function useCarveConfiguration(options: { imageId: () => string; imageInf
   const selectedFormatIds = ref<Set<string>>(new Set());
   const scope = ref<CarveScope>('whole');
   const partitionId = ref<number | null>(null);
+  const startSector = ref('0');
+  const sectorCount = ref('');
   const maxFileSize = ref(10 * GIB);
   const maxResults = ref(20_000);
+  /** Filesystem recovery and signature carving are both on by default. */
+  const filesystems = ref<RecoveryFilesystems>({ fat: true, ntfs: true, exfat: true, include_existing: false });
+  const signatures = ref(true);
   function replaceSet(target: Ref<Set<string>>, update: (next: Set<string>) => void) {
     const next = new Set(target.value);
     update(next);
@@ -55,14 +60,36 @@ export function useCarveConfiguration(options: { imageId: () => string; imageInf
     const name = partition.label?.trim() || tr("分区 {0}", { 0: partition.id });
     return `${name} · ${partition.kind.toUpperCase()} · ${formatBytes(partition.length_lba * (options.imageInfo()?.sector_size ?? 512))}`;
   }
+  const sectorSize = computed(() => options.imageInfo()?.sector_size ?? 512);
+  const totalSectors = computed(() => Math.floor((options.imageInfo()?.size_bytes ?? 0) / sectorSize.value));
+  /** Sector range input problem; empty count scans to the end of the evidence. */
+  const rangeError = computed(() => {
+    if (scope.value !== 'range') return '';
+    const start = Number(startSector.value);
+    const count = sectorCount.value.trim() ? Number(sectorCount.value) : totalSectors.value - start;
+    const valid = /^\d+$/.test(startSector.value) && Number.isSafeInteger(start) && start < totalSectors.value
+      && (!sectorCount.value.trim() || /^\d+$/.test(sectorCount.value.trim()))
+      && Number.isSafeInteger(count) && count > 0 && start + count <= totalSectors.value;
+    return valid ? '' : tr("请输入镜像范围内的整数扇区范围。");
+  });
+  const methodError = computed(() => {
+    const filesystem = filesystems.value.fat || filesystems.value.ntfs || filesystems.value.exfat;
+    if (!filesystem && !signatures.value) return tr("请至少选择一种恢复方式。");
+    if (signatures.value && selectedFormatIds.value.size === 0) return tr("签名雕刻至少需要一种文件类型。");
+    return '';
+  });
 
   watch(partitions, value => {
     if (partitionId.value == null || !value.some(partition => partition.id === partitionId.value)) partitionId.value = value[0]?.id ?? null;
   }, { immediate: true });
   function buildOptions(): CarveStartOptions {
+    const start = Number(startSector.value);
     return {
-      format_ids: [...selectedFormatIds.value], scope: scope.value, partition_id: scope.value === 'partition' ? partitionId.value : null,
-      max_file_size: maxFileSize.value, max_results: maxResults.value
+      format_ids: signatures.value ? [...selectedFormatIds.value] : [], scope: scope.value, partition_id: scope.value === 'partition' ? partitionId.value : null,
+      start_sector: scope.value === 'range' ? start : null,
+      sector_count: scope.value === 'range' ? (sectorCount.value.trim() ? Number(sectorCount.value) : totalSectors.value - start) : null,
+      max_file_size: maxFileSize.value, max_results: maxResults.value,
+      filesystems: { ...filesystems.value }, signatures: signatures.value,
     };
   }
   async function loadFormats() { const loaded = await carveFormats(); if (!disposed) { formats.value = loaded; selectAllFormats(); } }
@@ -76,11 +103,16 @@ export function useCarveConfiguration(options: { imageId: () => string; imageInf
     } else if (!disposed) dialogOpener?.focus();
   });
   function closeConfiguration() { if (!options.starting()) configExpanded.value = false; }
-  watch(options.imageId, () => { focusGeneration++; configExpanded.value = false; }, { flush: 'sync' });
+  watch(options.imageId, () => {
+    focusGeneration++; configExpanded.value = false;
+    startSector.value = '0'; sectorCount.value = '';
+    if (scope.value === 'range') scope.value = 'whole';
+  }, { flush: 'sync' });
   onDeactivated(() => { focusGeneration++; configExpanded.value = false; });
   onScopeDispose(() => { disposed = true; focusGeneration++; });
   return {
-    formats, formatGroups, selectedFormatIds, scope, partitionId, maxFileSize, maxResults, partitions, partitionOptions,
+    formats, formatGroups, selectedFormatIds, scope, partitionId, startSector, sectorCount, sectorSize, maxFileSize, maxResults,
+    filesystems, signatures, partitions, partitionOptions, rangeError, methodError,
     configExpanded, elements: { dialog: configurationDialog }, toggleGroup, toggleFormat, selectAllFormats, clearFormats,
     buildOptions, loadFormats, closeConfiguration
   };

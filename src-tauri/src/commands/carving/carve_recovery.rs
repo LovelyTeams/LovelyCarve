@@ -1,4 +1,5 @@
-//! Recovery/export of signature-carved artifacts plus a DFXML manifest.
+//! Recovery/export of a scan session: signature-carved artifacts plus a DFXML
+//! manifest, and filesystem records with their JSONL provenance report.
 
 use std::collections::HashSet;
 use std::fs::OpenOptions;
@@ -14,8 +15,10 @@ use tokio_util::sync::CancellationToken;
 use crate::app::access::loaded_image_app_error;
 use crate::app::error::AppError;
 use crate::commands::carving::carve::scan_session;
+use crate::commands::carving::carve_filesystem::{filesystem_result, recover_files};
 use crate::core::carving::carver::CarveArtifact;
 use crate::core::filesystem::evidence_session::EvidenceSession;
+use crate::core::filesystem::recovery::export::RecoveryExport;
 use crate::state::AppState;
 use crate::task_manager::{TaskKind, TaskManager, TaskProgressUnit};
 
@@ -24,14 +27,19 @@ const MAX_RECOVERY_ERRORS: usize = 100;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CarveRecoverOptions {
-    /// `None` recovers every result in the scan; an explicit list recovers only
-    /// those artifact ids. An empty list is rejected to avoid accidental "all".
+    /// `None` recovers every carved result in the scan; an explicit list
+    /// recovers only those artifact ids. An empty list is rejected to avoid an
+    /// accidental "all", unless `file_ids` selects filesystem records instead.
     #[serde(default)]
     pub artifact_ids: Option<Vec<String>>,
+    /// Filesystem recovery candidates of the same session.
+    #[serde(default)]
+    pub file_ids: Vec<String>,
     pub destination: String,
     pub task_id: String,
 }
 
+/// Top-level counts describe carved artifacts; `files` describes filesystem records.
 #[derive(Debug, Clone, Serialize)]
 pub struct CarveRecoveryResult {
     pub recovered: usize,
@@ -42,6 +50,7 @@ pub struct CarveRecoveryResult {
     pub report_error: Option<String>,
     pub errors: Vec<String>,
     pub errors_truncated: bool,
+    pub files: Option<RecoveryExport>,
 }
 
 #[derive(Debug)]
@@ -64,12 +73,20 @@ pub async fn carve_recover(
         return Err(AppError::invalid_input("恢复任务 ID 不能为空"));
     }
     let session = scan_session(&state, &scan_id).await?;
-    let (image_id, artifacts) = {
+    let (image_id, artifacts, files) = {
         let scan = session.read();
-        let artifacts = select_artifacts(&scan.artifacts, options.artifact_ids.as_deref())?;
-        (scan.image_id.clone(), artifacts)
+        let artifacts = match options.artifact_ids.as_deref() {
+            Some([]) if !options.file_ids.is_empty() => Vec::new(),
+            selected => select_artifacts(&scan.artifacts, selected)?,
+        };
+        let files = if options.file_ids.is_empty() {
+            None
+        } else {
+            Some(filesystem_result(&scan, &options.file_ids)?)
+        };
+        (scan.image_id.clone(), artifacts, files)
     };
-    if artifacts.is_empty() {
+    if artifacts.is_empty() && files.is_none() {
         return Err(AppError::invalid_input("没有可恢复的雕刻结果"));
     }
     let image = loaded_image_app_error(&state, &image_id).await?;
@@ -88,19 +105,46 @@ pub async fn carve_recover(
     let destination = PathBuf::from(options.destination);
     let source_path = image.path.display().to_string();
     let scan_id_for_worker = scan_id.clone();
+    let file_ids = options.file_ids;
 
     tokio::task::spawn_blocking(move || {
         let _resource_permit = resource_permit;
-        recover_artifacts(
-            &image,
-            &source_path,
-            &scan_id_for_worker,
-            &destination,
-            &artifacts,
-            &task_id,
-            &tasks,
-            &token,
-        )
+        let mut result = if artifacts.is_empty() {
+            CarveRecoveryResult {
+                recovered: 0,
+                failed: 0,
+                bytes_written: 0,
+                synthetic_artifacts: 0,
+                report_path: None,
+                report_error: None,
+                errors: Vec::new(),
+                errors_truncated: false,
+                files: None,
+            }
+        } else {
+            recover_artifacts(
+                &image,
+                &source_path,
+                &scan_id_for_worker,
+                &destination,
+                &artifacts,
+                &task_id,
+                &tasks,
+                &token,
+            )?
+        };
+        if let Some(scan) = files {
+            result.files = Some(recover_files(
+                &image,
+                &scan,
+                &file_ids,
+                &destination,
+                &tasks,
+                &task_id,
+                &token,
+            )?);
+        }
+        Ok(result)
     })
     .await
     .map_err(|error| AppError::task_panicked("carve_recover", error))?
@@ -243,6 +287,7 @@ fn recover_artifacts(
         report_error,
         errors,
         errors_truncated,
+        files: None,
     })
 }
 

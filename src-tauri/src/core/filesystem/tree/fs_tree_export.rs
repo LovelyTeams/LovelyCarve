@@ -520,7 +520,7 @@ fn unique_zip_path(taken: &HashSet<String>, raw: &str) -> String {
     raw.to_string()
 }
 
-fn sanitize_export_component(name: &str) -> String {
+pub(crate) fn sanitize_export_component(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     for ch in name.chars() {
         if matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || (ch as u32) < 0x20

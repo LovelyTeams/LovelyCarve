@@ -25,7 +25,20 @@ export function statusLabel(status: CarveScanSnapshot['status'], tr: Translator 
   return { queued: tr("排队中"), running: tr("扫描中"), paused: tr("已暂停"), completed: tr("已完成"), cancelled: tr("已取消"), failed: tr("失败") }[status];
 }
 export function scanPercent(task: CarveScanSnapshot) {
+  if (task.phase === 'filesystem' && task.filesystem) {
+    return task.filesystem.total ? Math.min(100, task.filesystem.done / task.filesystem.total * 100) : 0;
+  }
   return task.bytes_total > 0 ? Math.min(100, task.bytes_scanned / task.bytes_total * 100) : 0;
+}
+/** Filesystem records plus signature results found by a scan. */
+export function foundFiles(task: CarveScanSnapshot) {
+  return (task.filesystem?.files ?? 0) + task.artifacts_found;
+}
+export function methodLabel(task: CarveScanSnapshot, tr: Translator = sourceText) {
+  const filesystem = !!task.filesystem;
+  const signatures = task.signatures !== false;
+  if (filesystem && signatures) return tr("文件系统 + 签名");
+  return filesystem ? tr("文件系统") : tr("签名雕刻");
 }
 export function formatScanTime(task: CarveScanSnapshot, locale: Locale = 'zh-CN') {
   return new Date(task.created_unix_ms).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });

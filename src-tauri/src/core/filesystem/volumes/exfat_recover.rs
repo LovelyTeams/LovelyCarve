@@ -131,6 +131,7 @@ pub struct RecoveredEntry {
     pub name: String,
     pub is_directory: bool,
     pub size: u64,
+    pub valid_data_length: u64,
     pub first_cluster: u32,
     pub no_fat_chain: bool,
     pub timestamps: Mactb,
@@ -412,6 +413,10 @@ fn parse_entry_set(
         stream[24], stream[25], stream[26], stream[27], stream[28], stream[29], stream[30],
         stream[31],
     ]);
+    let valid_data_length = u64::from_le_bytes(stream[8..16].try_into().ok()?);
+    if valid_data_length > size {
+        return None;
+    }
     let first_cluster = u32::from_le_bytes([stream[20], stream[21], stream[22], stream[23]]);
 
     // File Name entries follow; each carries up to 15 UTF-16 chars.
@@ -447,6 +452,7 @@ fn parse_entry_set(
             name,
             is_directory,
             size,
+            valid_data_length,
             first_cluster,
             no_fat_chain,
             timestamps,

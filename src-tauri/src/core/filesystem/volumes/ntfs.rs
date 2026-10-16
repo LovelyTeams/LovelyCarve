@@ -16,7 +16,10 @@ mod forensic_metadata;
 mod logical_stream;
 mod lznt1;
 mod mft_metadata;
+mod recovery;
 mod reparse;
+pub(crate) use recovery::discover_mft;
+pub use recovery::RecoveredNtfsGeometry;
 mod security;
 mod wof;
 pub use forensic_metadata::{

@@ -11,7 +11,7 @@ export function buildImageNavGroups(options: { supportsRawAnalysis?: boolean } =
     { id: 'timeline', icon: 'BarChart3', get label() { return tr("时间线"); }, badge: null, badgeType: '' },
     ...(options.supportsRawAnalysis === false
       ? []
-      : [{ id: 'carve', icon: 'FileSearch', get label() { return tr("文件雕刻"); }, badge: null, badgeType: '' }]),
+      : [{ id: 'carve', icon: 'FileSearch', get label() { return tr("文件恢复"); }, badge: null, badgeType: '' }]),
   ];
   return [
     {

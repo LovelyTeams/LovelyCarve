@@ -88,7 +88,7 @@ export function groupTaskSections<T extends { id: string | number; status: Sched
 export type TaskResultPanel = 'analysis' | 'search-results' | 'timeline' | 'carve' | 'files' | 'dashboard';
 
 export const TASK_RESULT_LABEL: Record<TaskResultPanel, string> = {
-  analysis: '查看分析结果', 'search-results': '打开全局搜索', timeline: '打开时间线', carve: '打开文件雕刻', files: '打开文件列表', dashboard: '打开镜像信息',
+  analysis: '查看分析结果', 'search-results': '打开全局搜索', timeline: '打开时间线', carve: '打开文件恢复', files: '打开文件列表', dashboard: '打开镜像信息',
 };
 
 const BUILTIN_PANEL: Record<string, TaskResultPanel> = {

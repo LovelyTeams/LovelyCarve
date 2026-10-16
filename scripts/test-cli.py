@@ -456,6 +456,49 @@ export hello.txt "{exported}"
         assert rows[4]["result"]["recovered"] == 1, rows
         assert next(recovered.glob("*.png")).read_bytes() == png
 
+        # Filesystem recovery shares the scan session: a deleted FAT12 entry is
+        # listed by carve_filesystem_results and exported by candidate ID.
+        floppy = bytearray(2880 * 512)
+        floppy[0:3] = b"\xeb\x3c\x90"
+        floppy[3:11] = b"MSDOS5.0"
+        struct.pack_into("<HBHBHHBH", floppy, 11, 512, 1, 1, 2, 224, 2880, 0xF0, 9)
+        floppy[38] = 0x29
+        floppy[43:62] = b"RECOVERY   FAT12   "
+        floppy[510:512] = b"\x55\xaa"
+        for table in (512, 10 * 512):
+            floppy[table:table + 3] = b"\xf0\xff\xff"
+        entry = 19 * 512
+        floppy[entry:entry + 12] = b"\xe5ELETED TXT\x20"
+        struct.pack_into("<HI", floppy, entry + 26, 2, 5)
+        floppy[33 * 512:33 * 512 + 5] = b"hello"
+        deleted_image = root / "deleted-fat.img"
+        deleted_image.write_bytes(bytes(floppy))
+        restored = root / "restored"
+        requests = [
+            {"id": "open", "command": "image_load", "args": {"path": str(deleted_image)}},
+            {"id": "scan", "command": "carve_start", "args": {"options": {"signatures": False, "filesystems": {"fat": True}}}},
+            {"id": "wait", "command": "wait"},
+            {"id": "status", "command": "carve_scan_status", "args": {"scanId": {"$ref": "scan#/scan_id"}}},
+            {"id": "files", "command": "carve_filesystem_results", "args": {"scanId": {"$ref": "scan#/scan_id"}}},
+            {"id": "recover", "command": "carve_recover", "args": {"scanId": {"$ref": "scan#/scan_id"}, "options": {"artifact_ids": [], "file_ids": ["0"], "destination": str(restored), "task_id": "recover-files-1"}}},
+        ]
+        result = run(["session"], "\n".join(json.dumps(request) for request in requests))
+        rows = [json.loads(line) for line in result.stdout.splitlines()]
+        assert rows[3]["result"]["status"] == "completed", rows
+        assert rows[3]["result"]["filesystem"]["files"] == 1, rows
+        candidate = rows[4]["result"]["candidates"][0]
+        assert candidate["node"]["deleted"] and candidate["readable"], rows
+        exported = rows[5]["result"]["files"]
+        assert rows[5]["result"]["recovered"] == 0 and exported["recovered"] == 1, rows
+        # Recovered files keep their folders under one folder per volume.
+        export_root = Path(exported["directory"])
+        outputs = sorted(path for path in export_root.rglob("*") if path.is_file() and path.name != "recovery-report.jsonl")
+        assert [path.read_bytes() for path in outputs] == [b"hello"], outputs
+        relative = outputs[0].relative_to(export_root).parts
+        assert len(relative) == 2 and relative[0].startswith("v0-"), relative
+        report = [json.loads(line) for line in Path(exported["report_path"]).read_text(encoding="utf-8").splitlines()]
+        assert report[1]["relative_output"] == "/".join(relative), report
+
         # Split RAW exports must include every member, including unaligned cuts.
         split_bytes = bytes(range(256)) * 513
         split_first = root / "split evidence.raw.001"

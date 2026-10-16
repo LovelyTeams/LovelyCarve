@@ -34,4 +34,16 @@
 .partition-field { max-width: 360px; }
 .advanced-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .advanced-fields .ui-select { width: 100%; }
-@media (max-width: 600px) { .format-group { flex-direction: column; gap: 4px; } }
+/* 恢复方式：两张选择卡并排，勾选即启用对应阶段。 */
+.method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.method-choice { align-items: flex-start; gap: 10px; padding: 12px; }
+.method-choice > input { margin-top: 2px; }
+.method-choice .ui-choice-icon { width: 32px; height: 32px; }
+.family-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.family-label { width: 84px; flex-shrink: 0; color: var(--text-secondary); font-size: 12px; }
+.existing-check { margin-left: 8px; }
+.method-error { margin: 0; }
+.range-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.range-fields .mono { font-family: var(--font-mono); }
+.range-message { grid-column: 1 / -1; margin: 0; }
+@media (max-width: 600px) { .format-group { flex-direction: column; gap: 4px; } .method-grid { grid-template-columns: 1fr; } }

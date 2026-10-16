@@ -113,6 +113,7 @@ pub(super) fn concurrent(command: &str) -> bool {
             | "carve_latest_scan"
             | "carve_results_page"
             | "carve_preview"
+            | "carve_filesystem_results"
             | "carve_scan_list"
             | "case_active"
             | "case_list"

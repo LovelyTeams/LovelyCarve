@@ -65,14 +65,14 @@ export function useCarveHistory(options: CarveHistoryOptions) {
     if (!isFinished(task) || deletingScanId.value || options.recovering()) return;
     const imageId = options.imageId();
     const captured = generation;
-    if (!await confirm({ title: tr("删除雕刻记录"), message: tr("删除本次扫描及内存中的结果，已恢复到磁盘的文件不受影响。"), confirmText: tr("删除"), danger: true })) return;
+    if (!await confirm({ title: tr("删除扫描记录"), message: tr("删除本次扫描及内存中的结果，已恢复到磁盘的文件不受影响。"), confirmText: tr("删除"), danger: true })) return;
     if (disposed || captured !== generation || options.recovering()) return;
     deletingScanId.value = task.scan_id;
     try {
       await carveScanRemove({ imageId, scanId: task.scan_id });
       if (!disposed && captured === generation) await refreshHistory(imageId);
     } catch (error) {
-      if (!disposed && captured === generation) notifyError(tr("删除雕刻记录失败"), String(error));
+      if (!disposed && captured === generation) notifyError(tr("删除扫描记录失败"), String(error));
     } finally {
       if (!disposed && captured === generation) deletingScanId.value = null;
     }
@@ -80,16 +80,29 @@ export function useCarveHistory(options: CarveHistoryOptions) {
 
   const isActive = computed(() => ['queued', 'running', 'paused'].includes(scan.value?.status ?? ''));
   const hasActiveScan = computed(() => scans.value.some(task => !isFinished(task)));
+  /** The running phase reads directory records; its total is known only while it reads boot sectors. */
+  const filesystemPhase = computed(() => scan.value?.phase === 'filesystem' && !!scan.value.filesystem);
   const progressPercent = computed(() => {
     const current = scan.value;
-    if (!current || current.bytes_total <= 0) return 0;
+    if (!current) return 0;
+    if (filesystemPhase.value) {
+      const { done, total } = current.filesystem!;
+      return total ? Math.min(100, Math.round((done / total) * 1000) / 10) : 0;
+    }
+    if (current.bytes_total <= 0) return 0;
     return Math.min(100, Math.round((current.bytes_scanned / current.bytes_total) * 1000) / 10);
   });
   const progressHeadline = computed(() => {
     const current = scan.value;
     if (!current) return '';
     if (current.status === 'queued') return tr("等待扫描");
-    if (current.status === 'running') return tr("扫描中 · {0}%", { 0: progressPercent.value.toFixed(1) });
+    if (filesystemPhase.value && (current.status === 'running' || current.status === 'paused')) {
+      const prefix = current.status === 'paused' ? tr("扫描已暂停") : tr("正在扫描文件系统");
+      return current.filesystem!.total
+        ? `${prefix} · ${tr("引导扇区 {0}%", { 0: progressPercent.value.toFixed(1) })}`
+        : `${prefix} · ${tr("已检查 {0} 条记录", { 0: current.filesystem!.done.toLocaleString() })}`;
+    }
+    if (current.status === 'running') return tr("签名雕刻中 · {0}%", { 0: progressPercent.value.toFixed(1) });
     if (current.status === 'paused') return tr("扫描已暂停 · {0}%", { 0: progressPercent.value.toFixed(1) });
     if (current.status === 'completed') return current.truncated ? tr("扫描已达到结果上限") : tr("扫描完成");
     if (current.status === 'cancelled') return tr("扫描已取消，已发现结果仍可恢复");
@@ -118,7 +131,7 @@ export function useCarveHistory(options: CarveHistoryOptions) {
       await refreshHistory(imageId, result.scan_id);
       if (!disposed && captured === generation) options.onStarted();
     } catch (error) {
-      if (!disposed && captured === generation) notifyError(tr("无法开始文件雕刻"), String(error));
+      if (!disposed && captured === generation) notifyError(tr("无法开始恢复扫描"), String(error));
     } finally {
       if (!disposed && captured === generation) starting.value = false;
     }
@@ -173,11 +186,11 @@ export function useCarveHistory(options: CarveHistoryOptions) {
       if (!scan.value) void selectScan(event.payload);
       else if (scan.value.scan_id === event.payload.scan_id) options.onMoreResults();
     }).then(cleanup => { if (disposed) cleanup(); else unlisten = cleanup; })
-      .catch(error => { if (!disposed) notifyError(tr("订阅雕刻进度失败"), String(error)); });
+      .catch(error => { if (!disposed) notifyError(tr("订阅扫描进度失败"), String(error)); });
   });
   onScopeDispose(() => { disposed = true; generation++; historyRequest++; unlisten?.(); unlisten = null; });
   return {
-    historyVisible, scans, loadingHistory, historyError, deletingScanId, scan, starting, isActive, hasActiveScan,
+    historyVisible, scans, loadingHistory, historyError, deletingScanId, scan, starting, isActive, hasActiveScan, filesystemPhase,
     progressPercent, progressHeadline, scanStatusTone, refreshHistory, selectScan, deleteScan, startScan, cancelScan, pauseScan, resumeScan
   };
 }

@@ -59,6 +59,7 @@ pub(crate) fn application_builder() -> tauri::Builder<tauri::Wry> {
             commands::carving::carve::carve_results_page,
             commands::carving::carve::carve_preview,
             commands::carving::carve_recovery::carve_recover,
+            commands::carving::carve_filesystem::carve_filesystem_results,
             commands::filesystem::filesystem::fs_children,
             commands::filesystem::filesystem::fs_children_page,
             commands::filesystem::filesystem::fs_child_counts,

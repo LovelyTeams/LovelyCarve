@@ -3,7 +3,7 @@ use std::{io::Write, sync::Arc};
 use super::*;
 use crate::core::evidence::partitions::PartitionKind;
 
-const NAME: &str = "ABCDEFGHIJKLMN😀.bin";
+const NAME: &str = "ABCDEFGHIJKLMN馃榾.bin";
 const HEAP: usize = 26;
 
 fn fixture(contiguous: bool, valid_length: u64) -> Vec<u8> {
@@ -241,4 +241,76 @@ fn exfat_no_fat_chain_directory_keeps_deleted_children() {
     assert_eq!(nodes.len(), 1);
     assert!(nodes[0].deleted);
     assert_eq!(nodes[0].name, NAME);
+}
+
+#[test]
+fn recovery_exfat_deleted_contiguous_volume_exports_logical_bytes() {
+    use crate::core::filesystem::{
+        evidence_session::EvidenceSession,
+        recovery::{self, RecoveryOptions, SectorRange},
+    };
+    use tokio_util::sync::CancellationToken;
+    for valid_length in [0, 700, 1100] {
+        let mut bytes = fixture(true, valid_length);
+        for slot in [96, 128, 160, 192] {
+            bytes[HEAP * 512 + slot] &= 0x7f;
+        }
+        let mut temporary = tempfile::NamedTempFile::new().unwrap();
+        temporary.write_all(&bytes).unwrap();
+        temporary.flush().unwrap();
+        let image = Arc::new(EvidenceSession::open(temporary.path()).unwrap());
+        let token = CancellationToken::new();
+        let options = RecoveryOptions {
+            fat: false,
+            ntfs: false,
+            exfat: true,
+            include_existing: false,
+        };
+        let ranges = vec![SectorRange {
+            start_sector: 0,
+            sector_count: image.len() / image.sector_size as u64,
+        }];
+        let scanned = recovery::scan(
+            &image,
+            "scan".to_string(),
+            options,
+            ranges,
+            &token,
+            &mut |_, _, _| {},
+        )
+        .unwrap();
+        assert_eq!(scanned.candidates.len(), 1, "{scanned:#?}");
+        assert!(scanned.candidates[0].readable);
+        let destination = tempfile::tempdir().unwrap();
+        let exported = recovery::export::recover(
+            &image,
+            &scanned,
+            &[scanned.candidates[0].id.clone()],
+            destination.path(),
+            &token,
+            &mut |_, _, _| {},
+        )
+        .unwrap();
+        assert_eq!(exported.recovered, 1);
+        assert_eq!(exported.failed, 0);
+        let outputs = recovery::tests::exported_files(&exported.directory);
+        let folder = scanned.volumes[0]
+            .partition
+            .label
+            .as_deref()
+            .map(str::trim)
+            .filter(|label| !label.is_empty())
+            .unwrap_or("exFAT")
+            .to_string();
+        assert_eq!(
+            outputs
+                .iter()
+                .map(|(relative, _)| relative.as_str())
+                .collect::<Vec<_>>(),
+            vec![format!("v0-{folder}/{NAME}")]
+        );
+        let mut expected = [vec![0x11; 512], vec![0x22; 512], vec![0x33; 76]].concat();
+        expected[valid_length as usize..].fill(0);
+        assert_eq!(std::fs::read(&outputs[0].1).unwrap(), expected);
+    }
 }

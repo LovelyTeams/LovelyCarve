@@ -42,7 +42,7 @@ describe('SidebarNav', () => {
     category('工具').click();
     await settle();
     expect(activeId.value).toBe('search-results');
-    expect(pages()).toEqual(['全局搜索', '时间线', '文件雕刻']);
+    expect(pages()).toEqual(['全局搜索', '时间线', '文件恢复']);
     host.querySelector<HTMLButtonElement>('[title="时间线"]')!.click();
     await settle();
     category('镜像').click();
@@ -101,7 +101,7 @@ describe('SidebarNav', () => {
     await settle();
     expect(sidebar.classList.contains('hover-preview')).toBe(true);
     expect(pageColumn.style.display).not.toBe('none');
-    expect(pages()).toEqual(['全局搜索', '时间线', '文件雕刻']);
+    expect(pages()).toEqual(['全局搜索', '时间线', '文件恢复']);
     expect(category('工具').getAttribute('aria-expanded')).toBe('true');
     expect(category('镜像').getAttribute('aria-pressed')).toBe('true');
     expect(activeId.value).toBe('files');
@@ -173,7 +173,7 @@ describe('SidebarNav', () => {
     mount();
     category('工具').dispatchEvent(new Event('pointerenter'));
     await settle();
-    expect(pages()).toEqual(['全局搜索', '时间线', '文件雕刻']);
+    expect(pages()).toEqual(['全局搜索', '时间线', '文件恢复']);
     expect(activeId.value).toBe('files');
     expect(selections).toEqual([]);
     expect(category('镜像').getAttribute('aria-pressed')).toBe('true');
@@ -184,7 +184,7 @@ describe('SidebarNav', () => {
     category('工具').dispatchEvent(new Event('pointerleave'));
     host.querySelector('.page-sidebar')!.dispatchEvent(new Event('pointerenter'));
     await settle();
-    expect(pages()).toEqual(['全局搜索', '时间线', '文件雕刻']);
+    expect(pages()).toEqual(['全局搜索', '时间线', '文件恢复']);
     host.querySelector('.sidebar-nav')!.dispatchEvent(new Event('pointerleave'));
     await settle();
     expect(pages()).toEqual(['镜像信息', '文件列表']);
@@ -200,7 +200,7 @@ describe('SidebarNav', () => {
     expect(activeId.value).toBe('timeline');
     host.querySelector('.sidebar-nav')!.dispatchEvent(new Event('pointerleave'));
     await settle();
-    expect(pages()).toEqual(['全局搜索', '时间线', '文件雕刻']);
+    expect(pages()).toEqual(['全局搜索', '时间线', '文件恢复']);
     expect(host.querySelector('.sidebar-nav')?.classList.contains('collapsed')).toBe(false);
   });
 
@@ -208,7 +208,7 @@ describe('SidebarNav', () => {
     mount();
     category('工具').focus();
     await settle();
-    expect(pages()).toEqual(['全局搜索', '时间线', '文件雕刻']);
+    expect(pages()).toEqual(['全局搜索', '时间线', '文件恢复']);
     const child = host.querySelector<HTMLButtonElement>('[title="时间线"]')!;
     child.focus();
     child.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
@@ -236,7 +236,7 @@ describe('SidebarNav', () => {
     expect(pages()).toEqual(['镜像信息', '文件列表']);
     category('工具').click();
     await settle();
-    expect(pages()).toEqual(['全局搜索', '时间线', '文件雕刻']);
+    expect(pages()).toEqual(['全局搜索', '时间线', '文件恢复']);
   });
 
   it('preserves dynamically added BCP categories and their counts', async () => {

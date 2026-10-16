@@ -1,4 +1,4 @@
-//! Background raw-signature carving IPC.
+//! Background recovery scans: optional filesystem recovery, then raw-signature carving.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -8,16 +8,18 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::app::error::AppError;
+use crate::commands::carving::carve_filesystem::{run_filesystem_phase, sector_ranges};
 use crate::core::carving::carve_session::{
-    CarveScanSession, CarveScanSnapshot, CarveSessionStatus,
+    wait_while_paused, CarveScanPhase, CarveScanSession, CarveScanSnapshot, CarveSessionStatus,
 };
 use crate::core::carving::carver::{
-    self, CarveArtifact, CarveRegion, CarveScanConfig, CarveScanError, CarveScanEvent, Carver,
-    DEFAULT_MAX_FILE_SIZE, DEFAULT_MAX_RESULTS,
+    self, CarveArtifact, CarveRegion, CarveScanConfig, CarveScanError, CarveScanEvent,
+    CarveScanOutput, Carver, DEFAULT_MAX_FILE_SIZE, DEFAULT_MAX_RESULTS,
 };
 use crate::core::filesystem::evidence_session::EvidenceSession;
+use crate::core::filesystem::recovery::{RecoveryOptions, SectorRange};
 use crate::state::AppState;
-use crate::task_manager::{TaskKind, TaskProgressUnit};
+use crate::task_manager::{TaskKind, TaskManager, TaskProgressUnit};
 use {crate::app::access::loaded_image_app_error, crate::app::access::reject_if_folder};
 
 pub const CARVE_SCAN_PROGRESS_EVENT: &str = "carve-scan-progress";
@@ -32,6 +34,8 @@ pub enum CarveScope {
     Whole,
     Unallocated,
     Partition,
+    /// `start_sector` and `sector_count` of the options.
+    Range,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -42,10 +46,20 @@ pub struct CarveStartOptions {
     pub scope: CarveScope,
     #[serde(default)]
     pub partition_id: Option<u8>,
+    #[serde(default)]
+    pub start_sector: Option<u64>,
+    #[serde(default)]
+    pub sector_count: Option<u64>,
     #[serde(default = "default_max_file_size")]
     pub max_file_size: u64,
     #[serde(default = "default_max_results")]
     pub max_results: usize,
+    /// Filesystem families recovered before carving; all off skips that phase.
+    #[serde(default)]
+    pub filesystems: RecoveryOptions,
+    /// Raw-signature carving; off recovers filesystem records only.
+    #[serde(default = "default_signatures")]
+    pub signatures: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -86,6 +100,10 @@ fn default_max_results() -> usize {
     DEFAULT_MAX_RESULTS
 }
 
+fn default_signatures() -> bool {
+    true
+}
+
 #[tauri::command]
 pub fn carve_formats() -> Vec<carver::CarveFormatInfo> {
     carver::available_formats()
@@ -100,27 +118,45 @@ pub async fn carve_start(
 ) -> Result<CarveStartResult, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     reject_if_folder(&image)?;
-    let (regions, scope_label) = resolve_regions(&image, options.scope, options.partition_id)?;
+    let filesystem = options.filesystems.enabled();
+    if !filesystem && !options.signatures {
+        return Err(AppError::invalid_input("请至少选择一种恢复方式"));
+    }
+    let (regions, scope_label) = resolve_regions(&image, &options)?;
     let bytes_total = regions.iter().map(|region| region.length).sum();
     if bytes_total == 0 {
-        return Err(AppError::invalid_input("所选雕刻范围为空"));
+        return Err(AppError::invalid_input("所选扫描范围为空"));
     }
-    let config = CarveScanConfig {
-        format_ids: options.format_ids,
-        max_file_size: options.max_file_size,
-        max_results: options.max_results,
-        worker_threads: None,
+    let ranges = sector_ranges(&regions, image.sector_size as u64);
+    if filesystem && ranges.is_empty() {
+        return Err(AppError::invalid_input(
+            "所选范围不足一个扇区，无法扫描文件系统",
+        ));
+    }
+    let carver = if options.signatures {
+        let config = CarveScanConfig {
+            format_ids: options.format_ids,
+            max_file_size: options.max_file_size,
+            max_results: options.max_results,
+            worker_threads: None,
+        };
+        Some(Carver::try_new(&config).map_err(AppError::from_anyhow)?)
+    } else {
+        None
     };
-    let carver = Carver::try_new(&config).map_err(AppError::from_anyhow)?;
     let scan_id = uuid::Uuid::new_v4().to_string();
     let task_id = uuid::Uuid::new_v4().to_string();
-    let session = Arc::new(RwLock::new(CarveScanSession::new(
+    let mut created = CarveScanSession::new(
         scan_id.clone(),
         task_id.clone(),
         image_id.clone(),
         scope_label,
         bytes_total,
-    )));
+    );
+    if filesystem {
+        created = created.with_filesystem_recovery(options.filesystems, options.signatures);
+    }
+    let session = Arc::new(RwLock::new(created));
 
     {
         let mut scans = state.carve_scans.lock().await;
@@ -152,51 +188,16 @@ pub async fn carve_start(
         session.write().status = CarveSessionStatus::Running;
         emit_scan_snapshot(&app, &session);
 
-        let worker_session = Arc::clone(&session);
-        let worker_app = app.clone();
-        let worker_tasks = tasks.clone();
-        let worker_task_id = task.record().id().to_string();
-        let worker_token = token.clone();
+        let worker = ScanWorker {
+            app: app.clone(),
+            session: Arc::clone(&session),
+            tasks: tasks.clone(),
+            task_id: task.record().id().to_string(),
+            token: token.clone(),
+        };
         let outcome = tokio::task::spawn_blocking(move || {
             let _resource_permit = resource_permit;
-            image
-                .validate_source_file_stable()
-                .map_err(CarveScanError::from)?;
-            let mut last_emit = Instant::now()
-                .checked_sub(Duration::from_secs(1))
-                .unwrap_or_else(Instant::now);
-            let output =
-                carver.scan_regions(image.disk_image(), &regions, &worker_token, |event| {
-                    wait_while_scan_paused(&worker_session, &worker_token);
-                    match event {
-                        CarveScanEvent::Artifact(artifact) => {
-                            worker_session.write().artifacts.push(artifact);
-                        }
-                        CarveScanEvent::Progress(progress) => {
-                            worker_session.write().apply_progress(&progress);
-                            if last_emit.elapsed() >= Duration::from_millis(120)
-                                || progress.bytes_scanned >= progress.bytes_total
-                            {
-                                worker_tasks.emit_progress(
-                                    &worker_task_id,
-                                    TaskProgressUnit::Bytes,
-                                    progress.bytes_scanned,
-                                    Some(progress.bytes_total),
-                                    Some(format!(
-                                        "命中 {} 个签名，验证 {} 个文件",
-                                        progress.signatures_found, progress.artifacts_found
-                                    )),
-                                );
-                                emit_scan_snapshot(&worker_app, &worker_session);
-                                last_emit = Instant::now();
-                            }
-                        }
-                    }
-                })?;
-            image
-                .validate_source_file_stable()
-                .map_err(CarveScanError::from)?;
-            Ok::<_, CarveScanError>(output)
+            worker.run(&image, carver, &regions, ranges)
         })
         .await;
 
@@ -204,10 +205,12 @@ pub async fn carve_start(
         match outcome {
             Ok(Ok(output)) => {
                 scan.status = CarveSessionStatus::Completed;
-                scan.bytes_scanned = output.bytes_scanned;
-                scan.bytes_total = output.bytes_total;
-                scan.signatures_found = output.signatures_found;
-                scan.truncated = output.truncated;
+                if let Some(output) = output {
+                    scan.bytes_scanned = output.bytes_scanned;
+                    scan.bytes_total = output.bytes_total;
+                    scan.signatures_found = output.signatures_found;
+                    scan.truncated = output.truncated;
+                }
             }
             Ok(Err(CarveScanError::Cancelled)) => {
                 scan.status = CarveSessionStatus::Cancelled;
@@ -219,7 +222,7 @@ pub async fn carve_start(
             }
             Err(error) => {
                 scan.status = CarveSessionStatus::Failed;
-                scan.error = Some(format!("雕刻任务异常退出: {error}"));
+                scan.error = Some(format!("恢复扫描任务异常退出: {error}"));
             }
         }
         drop(scan);
@@ -227,6 +230,96 @@ pub async fn carve_start(
     });
 
     Ok(CarveStartResult { scan_id, task_id })
+}
+
+/// Blocking side of one session: filesystem recovery, then signature carving.
+struct ScanWorker {
+    app: AppHandle,
+    session: Arc<RwLock<CarveScanSession>>,
+    tasks: TaskManager,
+    task_id: String,
+    token: tokio_util::sync::CancellationToken,
+}
+
+impl ScanWorker {
+    /// Returns the carving summary, or `None` when the session skips carving.
+    fn run(
+        &self,
+        image: &Arc<EvidenceSession>,
+        carver: Option<Carver>,
+        regions: &[CarveRegion],
+        ranges: Vec<SectorRange>,
+    ) -> Result<Option<CarveScanOutput>, CarveScanError> {
+        image
+            .validate_source_file_stable()
+            .map_err(CarveScanError::from)?;
+        let mut last_emit = Instant::now()
+            .checked_sub(Duration::from_secs(1))
+            .unwrap_or_else(Instant::now);
+        run_filesystem_phase(
+            image,
+            &self.session,
+            ranges,
+            &self.token,
+            &mut |done, total| {
+                if last_emit.elapsed() >= Duration::from_millis(120) {
+                    let unit = if total.is_some() {
+                        TaskProgressUnit::Bytes
+                    } else {
+                        TaskProgressUnit::Entries
+                    };
+                    self.tasks.emit_progress(
+                        &self.task_id,
+                        unit,
+                        done,
+                        total,
+                        Some("扫描文件系统记录".to_string()),
+                    );
+                    emit_scan_snapshot(&self.app, &self.session);
+                    last_emit = Instant::now();
+                }
+            },
+        )?;
+        let Some(carver) = carver else {
+            image
+                .validate_source_file_stable()
+                .map_err(CarveScanError::from)?;
+            return Ok(None);
+        };
+        self.session.write().phase = CarveScanPhase::Signature;
+        emit_scan_snapshot(&self.app, &self.session);
+        let output = carver.scan_regions(image.disk_image(), regions, &self.token, |event| {
+            wait_while_paused(&self.session, &self.token);
+            match event {
+                CarveScanEvent::Artifact(artifact) => {
+                    self.session.write().artifacts.push(artifact);
+                }
+                CarveScanEvent::Progress(progress) => {
+                    self.session.write().apply_progress(&progress);
+                    if last_emit.elapsed() >= Duration::from_millis(120)
+                        || progress.bytes_scanned >= progress.bytes_total
+                    {
+                        self.tasks.emit_progress(
+                            &self.task_id,
+                            TaskProgressUnit::Bytes,
+                            progress.bytes_scanned,
+                            Some(progress.bytes_total),
+                            Some(format!(
+                                "命中 {} 个签名，验证 {} 个文件",
+                                progress.signatures_found, progress.artifacts_found
+                            )),
+                        );
+                        emit_scan_snapshot(&self.app, &self.session);
+                        last_emit = Instant::now();
+                    }
+                }
+            }
+        })?;
+        image
+            .validate_source_file_stable()
+            .map_err(CarveScanError::from)?;
+        Ok(Some(output))
+    }
 }
 
 #[tauri::command]
@@ -433,7 +526,7 @@ pub(crate) async fn scan_session(
     scans
         .get(scan_id)
         .cloned()
-        .ok_or_else(|| AppError::not_found("雕刻扫描会话不存在"))
+        .ok_or_else(|| AppError::not_found("恢复扫描会话不存在"))
 }
 
 fn prune_finished_scans(
@@ -461,21 +554,11 @@ fn emit_scan_snapshot(app: &AppHandle, session: &Arc<RwLock<CarveScanSession>>) 
     }
 }
 
-fn wait_while_scan_paused(
-    session: &Arc<RwLock<CarveScanSession>>,
-    cancellation: &tokio_util::sync::CancellationToken,
-) {
-    while session.read().status == CarveSessionStatus::Paused && !cancellation.is_cancelled() {
-        std::thread::sleep(Duration::from_millis(40));
-    }
-}
-
 fn resolve_regions(
     image: &EvidenceSession,
-    scope: CarveScope,
-    partition_id: Option<u8>,
+    options: &CarveStartOptions,
 ) -> Result<(Vec<CarveRegion>, String), AppError> {
-    match scope {
+    match options.scope {
         CarveScope::Whole => Ok((
             vec![CarveRegion {
                 offset: 0,
@@ -485,7 +568,8 @@ fn resolve_regions(
             "整盘字节流".to_string(),
         )),
         CarveScope::Partition => {
-            let partition_id = partition_id
+            let partition_id = options
+                .partition_id
                 .ok_or_else(|| AppError::invalid_input("指定分区扫描必须提供 partition_id"))?;
             let partition = image
                 .partitions
@@ -523,6 +607,30 @@ fn resolve_regions(
             }
             let label = format!("分区表外间隙（{} 段）", regions.len());
             Ok((regions, label))
+        }
+        CarveScope::Range => {
+            let (Some(start_sector), Some(sector_count)) =
+                (options.start_sector, options.sector_count)
+            else {
+                return Err(AppError::invalid_input(
+                    "扇区范围扫描必须提供 start_sector 与 sector_count",
+                ));
+            };
+            let sector_size = image.sector_size as u64;
+            let total_sectors = image.len() / sector_size;
+            let end_sector = start_sector
+                .checked_add(sector_count)
+                .filter(|end| sector_count > 0 && *end <= total_sectors)
+                .ok_or_else(|| AppError::invalid_input("扇区范围超出检材"))?;
+            let label = format!("扇区 {start_sector}–{}", end_sector - 1);
+            Ok((
+                vec![CarveRegion {
+                    offset: start_sector * sector_size,
+                    length: sector_count * sector_size,
+                    label: label.clone(),
+                }],
+                label,
+            ))
         }
     }
 }

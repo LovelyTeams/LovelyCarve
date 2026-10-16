@@ -77,6 +77,8 @@ FAT 本地时间和 OffsetValid 未设置的 exFAT 时间输出为 `YYYY-MM-DDTH
 
 尚未覆盖：按任意裸目录项偏移反向打开、完整的 OEM 多字节代码页、按自定义 exFAT Up-case Table 的 Unicode 比较，以及 Boot Region / entry-set / upcase 全部 checksum 的严格验证链。删除的连续 run 和 FAT32 高字截断重建仍是候选推断，不保证簇未被重用；碎片化的删除正文、缺失父链及删除目录的递归恢复没有完整支持。LFN 序号丢失后的删除项名称是尽力恢复。
 
+「工具 → 文件恢复」使用严格的 FAT/exFAT 删除元数据枚举，目录或分配表无法读取时报告卷错误。该恢复工作流对 exFAT 删除项保留 ValidDataLength，正文超过已初始化前缀的逻辑尾部输出零；导出仍检查逻辑长度并记录读取故障。
+
 ## 验证
 
 ```powershell

@@ -174,45 +174,30 @@ impl FatVolume {
     /// from the directory's raw clusters via [`crate::core::filesystem::volumes::fat_deleted`]
     /// and merged with `deleted: true`, retaining distinct same-name records.
     pub fn children_with_deleted(&self, path: &str) -> Result<Vec<FsNode>> {
+        match self.children_with_deleted_strict(path) {
+            Ok(nodes) => Ok(nodes),
+            Err(error) => {
+                tracing::debug!("fat deleted listing failed: {error:#}");
+                self.children(path)
+            }
+        }
+    }
+
+    /// Recovery scans must report missing deletion metadata instead of silently
+    /// returning only live entries. Ordinary browsing retains its tolerant fallback.
+    pub(crate) fn children_with_deleted_strict(&self, path: &str) -> Result<Vec<FsNode>> {
         use crate::core::filesystem::volumes::fat_deleted as recover;
         let mut out = self.children(path)?;
-        let geom = match recover::open_geom(&self.image, self.base_offset) {
-            Ok(g) => g,
-            Err(err) => {
-                tracing::debug!("FAT recover geom failed: {err}");
-                return Ok(out);
-            }
-        };
-        let fat = match recover::FatTable::load(&self.image, &geom) {
-            Ok(f) => f,
-            Err(err) => {
-                tracing::debug!("FAT recover table load failed: {err}");
-                return Ok(out);
-            }
-        };
-        let cluster = match recover::resolve_dir_cluster(&self.image, &geom, &fat, path) {
-            Ok(c) => c,
-            Err(err) => {
-                tracing::debug!("FAT recover resolve {path} failed: {err}");
-                return Ok(out);
-            }
-        };
-        let directory = match recover::read_dir_bytes(&self.image, &geom, &fat, cluster) {
-            Ok(b) => b,
-            Err(err) => {
-                tracing::debug!("FAT recover read dir {path} failed: {err}");
-                return Ok(out);
-            }
-        };
+        let geom = recover::open_geom(&self.image, self.base_offset)?;
+        let fat = recover::FatTable::load(&self.image, &geom)?;
+        let cluster = recover::resolve_dir_cluster(&self.image, &geom, &fat, path)?;
+        let directory = recover::read_dir_bytes(&self.image, &geom, &fat, cluster)?;
         let parent_id = self.node_id(path);
         let mut recovered = recover::scan_dir_deleted(&directory.bytes, &geom);
-        // Repair start clusters whose high 16 bits Windows zeroed on delete, so
-        // the deleted-entry data run lands on the real bytes instead of garbage deep
-        // inside another file's extent (the `_00W.csv` case).
         recover::apply_cluster_reconstruction(&mut recovered, &geom, &fat);
         for entry in recovered {
-            let entry_offset = directory.entry_offset(entry.slot_offset)?;
-            out.push(self.recovered_node(&parent_id, entry, entry_offset));
+            let offset = directory.entry_offset(entry.slot_offset)?;
+            out.push(self.recovered_node(&parent_id, entry, offset));
         }
         Ok(out)
     }
