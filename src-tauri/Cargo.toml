@@ -26,12 +26,17 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [[bin]]
 name = "LovelyCarve"
 path = "src/main.rs"
+required-features = ["desktop"]
 
+# The standalone CLI never links Tauri: `cargo build --bin lovelycarve-cli`
+# without `desktop` has no WebView, GUI toolkit or desktop event loop.
 [[bin]]
 name = "lovelycarve-cli"
 path = "src/bin/lovelycarve-cli.rs"
 
 [features]
+# 默认只构建无界面的后端与独立 CLI；桌面程序由 `desktop` 打开 Tauri 运行时
+# （tauri.conf.json 的 build.features 让 `tauri dev/build` 自动启用）。
 # 默认不启用 QR/OCR；通过 just 的 *-full 入口显式启用。
 # 原类型视图「二维码识别」（模仿 LoveLy-QRCode-Scanner：WeChat 检测器 + 暴力变换）按需开启。
 # opencv crate 仅是绑定层，编译还需系统预装**带 contrib（wechat_qrcode 模块）的 OpenCV** + LLVM，
@@ -40,6 +45,7 @@ path = "src/bin/lovelycarve-cli.rs"
 # `--no-default-features` 保持 OpenCV-free（`qr_scan` 仍注册，但返回带启用指引的错误）。
 # 运行时优先用 WeChat CNN 检测器，失败回退标准 objdetect::QRCodeDetector（同一构建内即有，无需单独档）。
 default = []
+desktop = ["dep:tauri", "dep:tauri-plugin-dialog", "dep:tauri-plugin-fs", "dep:tauri-build"]
 # Legacy DLL probes only; production ReFS always uses the Rust reader.
 refs-dll-oracle = []
 qrcode-wechat = [
@@ -87,8 +93,12 @@ cdfs = { path = "vendor/cdfs", default-features = false }
 # Encoding）+ encoding_rs 解码为 UTF-8，避免非 UTF-8 文本被当 UTF-8 解出乱码。纯 Rust。
 chardetng = "1.0.0"
 chrono = { version = "0.4.45", features = ["serde"] }
+# 与 Tauri 相同的每用户数据目录（案件登记簿、用户插件），独立 CLI 无需 Tauri 解析路径。
+dirs = "7.0.0"
 # lovelycarve-cli 的子命令、参数解析和帮助信息。
-clap = { version = "4.6.7", features = ["derive", "string"] }
+clap = { version = "4.6.7", features = ["derive", "string", "env"] }
+# lovelycarve-cli 在终端内隐藏输入敏感参数（notatin 已依赖同一版本）。
+crossterm = "0.29.0"
 # 配合 chardetng 把检测出的编码解码为 UTF-8（WHATWG 标准实现，BOM 识别 + 替换字符
 # 反馈）。chardetng 已传递依赖它，这里显式声明供 core::text_decode 直接使用。
 encoding_rs = "0.8.42"
@@ -178,14 +188,14 @@ sm3 = "0.5.0"
 smraw = { path = "vendor/smraw" }
 sqlite-core = { path = "vendor/sqlite-core" }
 tar = "0.4.46"
-tauri = { version = "2.12.3", features = ["protocol-asset"] }
-tauri-plugin-dialog = "2.8.2"
-tauri-plugin-fs = "2.7.0"
+tauri = { version = "2.12.3", features = ["protocol-asset"], optional = true }
+tauri-plugin-dialog = { version = "2.8.2", optional = true }
+tauri-plugin-fs = { version = "2.7.0", optional = true }
 tempfile = "3.27.0"
 
 thiserror = "2.0.21"
 time = { version = "0.3.55", features = ["formatting"] }
-tokio = { version = "1.53.2", features = ["sync", "rt-multi-thread", "macros", "fs", "io-util", "process", "time"] }
+tokio = { version = "1.53.2", features = ["sync", "rt-multi-thread", "macros", "fs", "io-util", "process", "time", "signal"] }
 tokio-util = { version = "0.7.20", features = ["rt"] }
 toml = "1.1.8"
 tracing = "0.1.44"
@@ -210,8 +220,6 @@ zip = { version = "9.0.1", default-features = false, features = ["deflate"] }
 zstd = { version = "0.14.2", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
-# lovelycarve-cli 的 Ctrl+C 处理，确保后台任务和挂载会话干净关闭。
-ctrlc = "3.5.2"
 dokan = "0.3.1"
 dokan-sys = "0.3.1"
 # widestring is pinned to 0.4 by the dokan 0.3.1 FFI boundary: dokan's
@@ -224,9 +232,11 @@ winapi = { version = "0.3.9", features = ["fileapi", "handleapi", "ioapiset", "j
 
 [build-dependencies]
 quote = "1.0.47"
+serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 syn = { version = "3.0.8", features = ["full", "visit"] }
-tauri-build = { version = "2.7.2", features = [] }
+tauri-build = { version = "2.7.2", features = [], optional = true }
+toml = "1.1.8"
 
 [dev-dependencies]
 # The AD1 tests build images with the reader's independent fixture encoder.

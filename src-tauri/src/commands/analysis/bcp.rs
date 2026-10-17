@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use tauri::State;
+use crate::host::State;
 
 use crate::{
     commands::app_error::AppError,
@@ -10,7 +10,7 @@ use crate::{
     state::AppState,
 };
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn bcp_catalog(
     state: State<'_, AppState>,
     image_id: String,
@@ -20,13 +20,13 @@ pub async fn bcp_catalog(
         return Err(AppError::invalid_input("BCP 目录必须作为文件夹证据加载"));
     }
     let path = PathBuf::from(&image.path);
-    tauri::async_runtime::spawn_blocking(move || bcp::catalog(&path))
+    tokio::task::spawn_blocking(move || bcp::catalog(&path))
         .await
         .map_err(|error| AppError::from_message(format!("BCP 索引任务失败: {error}")))?
         .map_err(AppError::from_anyhow)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn bcp_rows(
     state: State<'_, AppState>,
     image_id: String,
@@ -38,7 +38,7 @@ pub async fn bcp_rows(
         return Err(AppError::invalid_input("BCP 目录必须作为文件夹证据加载"));
     }
     let path = PathBuf::from(&image.path);
-    tauri::async_runtime::spawn_blocking(move || bcp::page(&path, &code, cursor))
+    tokio::task::spawn_blocking(move || bcp::page(&path, &code, cursor))
         .await
         .map_err(|error| AppError::from_message(format!("BCP 读取任务失败: {error}")))?
         .map_err(AppError::from_anyhow)

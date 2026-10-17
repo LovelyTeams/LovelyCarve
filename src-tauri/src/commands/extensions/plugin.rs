@@ -1,5 +1,5 @@
+use crate::host::State;
 use serde::Serialize;
-use tauri::State;
 
 use crate::{
     app::{access::loaded_image_app_error, error::AppError},
@@ -57,7 +57,7 @@ pub struct PluginAnalysisRunResponse {
     result: PluginAnalysisResult,
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn plugin_list(state: State<'_, AppState>) -> Result<Vec<PluginInfo>, AppError> {
     let manager = plugin_manager(&state)?;
     // Fingerprints are computed lazily on first listing and hash the plugin
@@ -133,7 +133,7 @@ pub async fn plugin_list(state: State<'_, AppState>) -> Result<Vec<PluginInfo>, 
     .map_err(|err| AppError::task_panicked("plugin_list", err))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn plugin_restart(state: State<'_, AppState>, plugin_id: String) -> Result<(), AppError> {
     plugin_manager(&state)?
         .restart(&plugin_id)
@@ -141,7 +141,7 @@ pub async fn plugin_restart(state: State<'_, AppState>, plugin_id: String) -> Re
         .map_err(plugin_app_error)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn plugin_analyze_file(
     state: State<'_, AppState>,
     plugin_id: String,
@@ -246,7 +246,7 @@ pub async fn plugin_analyze_file(
     })
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn plugin_analysis_list(
     state: State<'_, AppState>,
     image_id: String,

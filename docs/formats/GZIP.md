@@ -96,8 +96,8 @@ Read::take 截出伪 EOF。所有成员、包括尾部空成员的 CRC 都校验
 
 集成回归覆盖 TAR 头/正文跨成员边界、原路径保留与随机读取、Docker
 合层/分块读取、备份索引/提取、错误尾部与 RAW 回退。CLI smoke 用
-Python/C zlib 现场生成独立的多成员 tar.gz / tgz，通过 image_load、
-fs_read、fs_digest 和 image_unload 验证相同路径；运行 `just test-cli`。
+Python/C zlib 现场生成独立的多成员 tar.gz / tgz，通过 `images open`、
+`files read`、`files hash` 和 `images close` 验证相同路径；运行 `just test-cli`。
 
 宿主接入验证已通过 `just check`、`just clippy`、`just check-examples`、
 `just test --lib --jobs 2`（1031 通过、12 项可选测试忽略）和

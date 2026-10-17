@@ -137,17 +137,19 @@ fmt:
 update-rust:
     cargo update --manifest-path src-tauri/Cargo.toml
 
-# Compile-check the backend without QR/OCR.
+# Compile-check the standalone CLI backend and the desktop build, without QR/OCR.
 [group("backend")]
 [working-directory("src-tauri")]
 check:
     {{ cargo_env }}cargo check --no-default-features
+    {{ cargo_env }}cargo check --no-default-features --features desktop
 
-# Lint the backend without QR/OCR.
+# Lint the standalone CLI backend and the desktop build, without QR/OCR.
 [group("backend")]
 [working-directory("src-tauri")]
 clippy:
     {{ cargo_env }}cargo clippy --no-default-features
+    {{ cargo_env }}cargo clippy --no-default-features --features desktop
 
 # Run backend tests; optionally pass a test filter and Cargo arguments.
 [group("backend")]
@@ -208,19 +210,19 @@ dev-full:
     {{ cargo_env }}bun scripts/build-plugins.mjs
     {{ vsenv }}; bun run tauri dev --features qrcode-wechat,ocr-cuda --config '{{ justfile_directory() }}\src-tauri\tauri.full.conf.json'
 
-# Build the backend without QR/OCR (Windows).
+# Build the desktop backend without QR/OCR (Windows).
 [group("desktop")]
 [windows]
 [working-directory("src-tauri")]
 build:
-    {{ windowsenv }}; cargo build --no-default-features
+    {{ windowsenv }}; cargo build --no-default-features --features desktop
 
-# Build the backend with WeChat QR and CUDA OCR (Windows).
+# Build the desktop backend with WeChat QR and CUDA OCR (Windows).
 [group("desktop")]
 [windows]
 [working-directory("src-tauri")]
 build-full:
-    {{ vsenv }}; $env:TAURI_CONFIG=Get-Content -Raw -LiteralPath '{{ justfile_directory() }}\src-tauri\tauri.full.conf.json'; cargo build --no-default-features --features 'qrcode-wechat ocr-cuda'
+    {{ vsenv }}; $env:TAURI_CONFIG=Get-Content -Raw -LiteralPath '{{ justfile_directory() }}\src-tauri\tauri.full.conf.json'; cargo build --no-default-features --features 'desktop qrcode-wechat ocr-cuda'
 
 # Build the desktop release bundle without QR/OCR (Windows).
 [group("desktop")]
@@ -267,37 +269,33 @@ repack-full:
 run-cli *args:
     @{{ cargo_env }}cargo run --no-default-features --bin lovelycarve-cli -- {{ args }}
 
-# Build the release CLI without QR/OCR.
+# Build the standalone release CLI (no Tauri) without QR/OCR.
 [group("cli")]
 [windows]
 [working-directory("src-tauri")]
 build-cli:
-    {{ windowsenv }}; cargo build --jobs 1 --no-default-features --release --bin lovelycarve-cli; \
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; \
-        mt.exe -nologo -manifest cli.manifest '-outputresource:target\release\lovelycarve-cli.exe;#1'
+    {{ windowsenv }}; cargo build --jobs 1 --no-default-features --release --bin lovelycarve-cli
 
-# Build the release CLI without QR/OCR.
+# Build the standalone release CLI (no Tauri) without QR/OCR.
 [group("cli")]
 [unix]
 [working-directory("src-tauri")]
 build-cli:
     cargo build --no-default-features --release --bin lovelycarve-cli
 
-# Build the release CLI with WeChat QR and CUDA OCR.
+# Build the standalone release CLI with WeChat QR and CUDA OCR.
 [group("cli")]
 [windows]
 [working-directory("src-tauri")]
 build-cli-full:
-    {{ vsenv }}; $env:TAURI_CONFIG=Get-Content -Raw -LiteralPath '{{ justfile_directory() }}\src-tauri\tauri.full.conf.json'; cargo build --jobs 1 --no-default-features --features 'qrcode-wechat ocr-cuda' --release --bin lovelycarve-cli; \
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; \
-        mt.exe -nologo -manifest cli.manifest '-outputresource:target\release\lovelycarve-cli.exe;#1'
+    {{ vsenv }}; cargo build --jobs 1 --no-default-features --features 'qrcode-wechat ocr-cuda' --release --bin lovelycarve-cli
 
-# Build the release CLI with WeChat QR and CPU OCR.
+# Build the standalone release CLI with WeChat QR and CPU OCR.
 [group("cli")]
 [unix]
 [working-directory("src-tauri")]
 build-cli-full:
-    TAURI_CONFIG="$(cat '{{ justfile_directory() }}/src-tauri/tauri.full.conf.json')" cargo build --no-default-features --features 'qrcode-wechat ocr' --release --bin lovelycarve-cli
+    cargo build --no-default-features --features 'qrcode-wechat ocr' --release --bin lovelycarve-cli
 
 # Build the development CLI and run end-to-end smoke tests.
 [group("cli")]

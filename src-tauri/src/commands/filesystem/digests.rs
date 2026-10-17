@@ -5,8 +5,8 @@
 
 use std::collections::HashMap;
 
+use crate::host::State;
 use anyhow::Context as _;
-use tauri::State;
 
 use crate::core::casework::facts_store::{self, StoredDigest};
 use crate::state::AppState;
@@ -18,7 +18,7 @@ use {
 /// The persisted digest map for an image, keyed by node id. Empty when no
 /// case is open, nothing was persisted yet, or the store is unreadable —
 /// browsing must not break over a recomputable cache.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_digest_load(
     state: State<'_, AppState>,
     image_id: String,
@@ -43,7 +43,7 @@ pub async fn fs_digest_load(
 
 /// Loads persisted digests only for the requested node ids — the scalable path
 /// for directory pages (point lookups).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_digest_load_nodes(
     state: State<'_, AppState>,
     image_id: String,
@@ -74,7 +74,7 @@ pub async fn fs_digest_load_nodes(
 /// Merges freshly computed digests into the evidence's store. Returns `false`
 /// when no case is open or the image is not evidence of it (results stay
 /// session-only); errors only on a failed write.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_digest_persist(
     state: State<'_, AppState>,
     image_id: String,

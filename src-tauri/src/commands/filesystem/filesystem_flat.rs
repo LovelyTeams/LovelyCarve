@@ -16,8 +16,8 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use crate::host::State;
 use serde::Serialize;
-use tauri::State;
 
 use crate::commands::filesystem::filesystem_snapshot_index::{
     case_index_targets, session_index_targets, IndexCoverage, SnapshotIndexTarget,
@@ -65,7 +65,7 @@ mod indexed_tests;
 
 /// 文件全显的一页。`allow_all_files` 控制是否递归平铺子树;
 /// 未置位的请求就是逐级浏览,应走 `fs_children`。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 #[allow(clippy::too_many_arguments)]
 pub async fn fs_flat_page(
     state: State<'_, AppState>,
@@ -143,7 +143,7 @@ pub async fn fs_flat_page(
 
 /// 起点范围内的扩展名直方图,供文件类别条在全显下按整棵子树计数(与逐级
 /// 浏览按整目录计数同口径,不受列表过滤影响)。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_flat_ext_counts(
     state: State<'_, AppState>,
     image_id: String,

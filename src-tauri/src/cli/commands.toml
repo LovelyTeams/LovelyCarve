@@ -1,0 +1,1821 @@
+# lovelycarve-cli command schema.
+#
+# The CLI is a generic shell over the backend command registry
+# (`generate_handler!` in src/lib.rs). Every registered operation is exposed
+# here as exactly one `<collection> [<collection>…] <verb>` command, or listed
+# under [[superseded]] with the command that replaces it. Hand-written commands
+# (`native`) declare their parameters here as well, so search, `schema`, help,
+# completion and the JSONL session all read one catalogue.
+#
+# build/cli_catalog.rs enforces the rules at build time:
+# - collections are plural kebab-case nouns and the last word is the verb;
+#   get, never info/status/show; delete, never remove/drop/unload; list, never
+#   ls/page/query; update replaces a whole value, edit changes part of it;
+# - `list` commands take no positional arguments; other commands take their
+#   subject (the resource the verb acts on) as the positional argument;
+# - every command path is unique and no command path is the prefix of another;
+# - every parameter named here exists, and option names do not collide with
+#   the reserved CLI options (--image, --case, --quiet, --dry-run, --body,
+#   --force, --text, --json, --output, …); a parameter's `short` alias may not
+#   be -i, -q, -h, -v or -f;
+# - `delete` commands, and commands with `confirm`, ask before running and
+#   take --force; secrets are prompted without echo and redacted in --dry-run.
+#
+# Parameter names are the backend's camelCase argument names: they are the
+# keys of --body, of `schema` output and of JSONL session requests. Options are
+# their kebab-case form unless [options] renames them.
+
+[options]
+# The evidence scope: an image ID or an evidence path.
+imageId = "image"
+
+[descriptions]
+imageId = "检材 ID 或检材路径（路径会先打开）；默认取 --image、LOVELYCARVE_IMAGE 或会话当前检材"
+nodeId = "文件节点 ID（files list 输出的 node.id）；也可改用镜像内路径"
+parentId = "目录节点 ID；也可改用 --path 指定镜像内路径"
+rootId = "根目录节点 ID；也可改用 --path 指定镜像内路径"
+path = "镜像内路径：以 / 开头为绝对路径（/ 下是分区和卷），否则相对会话当前目录"
+taskId = "任务 ID，可交给 tasks cancel；省略时自动生成"
+destination = "主机上的输出路径"
+partitionId = "分区序号（images get 返回的 partitions[].id）"
+scanId = "恢复扫描 ID（carve scans create 返回的 scan_id）"
+searchId = "搜索 ID（searches create 返回的 search_id）"
+cursor = "上一页返回的 next_cursor"
+pageSize = "每页条数"
+limit = "最多返回的条数"
+skip = "跳过的条数"
+offset = "起始偏移"
+maxBytes = "最多读取的字节数"
+volumeKey = "卷键，例如 part:0（见 indexes list）"
+nodeIds = "节点 ID 数组（单次最多 5000 个）"
+parentIds = "目录节点 ID 数组"
+mountId = "挂载 ID（mounts list 返回）"
+pluginId = "插件 ID（plugins list 返回）"
+readFaultPolicy = "坏扇区策略：zeroFillAndReport 补零并报告（默认），strict 遇坏扇区即失败"
+dir = "案件目录"
+key = "SQLCipher 等加密数据库的密钥（JSON）"
+
+[groups]
+"analysis" = "插件分析结果：结果树、记录与详情"
+"analysis records" = "分析记录"
+"analysis tree" = "分析结果树"
+"bcp" = "BCP 数据包"
+"bcp rows" = "BCP 数据表记录"
+"bcp tables" = "BCP 数据表"
+"bitlocker" = "BitLocker 卷：状态、元数据、解锁与解密导出"
+"bitlocker metadata" = "BitLocker 元数据（无需凭据）"
+"bitlocker vmks" = "内存镜像中的卷主密钥（VMK）"
+"carve" = "文件恢复：文件系统记录恢复与签名雕刻"
+"carve artifacts" = "签名雕刻出的文件"
+"carve files" = "文件系统恢复出的文件"
+"carve formats" = "可雕刻的文件格式"
+"carve scans" = "恢复扫描会话"
+"cases" = "案件：创建、打开、设置与检材"
+"cases evidence" = "案件中登记的检材"
+"cases options" = "案件级设置"
+"cli" = "发现命令"
+"context" = "会话上下文：当前检材与镜像内目录"
+"disks" = "主机物理磁盘"
+"encrypted-volumes" = "LUKS、VeraCrypt 与 FileVault 加密容器"
+"files" = "检材内的文件：按路径或节点浏览、读取、解析与导出"
+"files ancestors" = "节点的祖先目录链"
+"files binary" = "可执行文件结构（PE、ELF、Mach-O、ar）"
+"files children" = "目录的子节点"
+"files content" = "文件内容属性（MIME、魔数、熵、数据运行段）"
+"files csv" = "CSV 与 TSV 表格"
+"files directories" = "目录导出"
+"files docker" = "镜像内的 Docker 容器视图"
+"files empty-dirs" = "子树中没有文件的目录"
+"files ext4-journal" = "ext4 jbd2 日志"
+"files ext4-journal blocks" = "ext4 日志块"
+"files extensions" = "扩展名统计"
+"files flat" = "文件全显（递归平铺）"
+"files gguf" = "GGUF 模型文件结构"
+"files media" = "物化到临时文件的媒体预览"
+"files ocr" = "图片文字识别"
+"files qr-codes" = "图片中的二维码"
+"files realm" = "Realm 数据库"
+"files realm rows" = "Realm 表记录"
+"files sqlite" = "SQLite 数据库"
+"files sqlite deleted-records" = "SQLite 删除记录"
+"files sqlite rows" = "SQLite 表记录"
+"files stats" = "目录统计"
+"files streams" = "NTFS 命名数据流"
+"files strings" = "可打印字符串"
+"files text" = "自动识别编码的文本"
+"files timeline" = "文件系统时间线（mactime body file）"
+"files usn-journal" = "NTFS USN 日志"
+"files usn-journal records" = "USN 日志记录"
+"files vim-swap" = "Vim 交换文件"
+"files zip" = "ZIP 归档结构"
+"files zip members" = "ZIP 归档成员"
+"filevault" = "FileVault 2（CoreStorage）"
+"images" = "检材：打开、查看、导出、哈希与识别"
+"images bad-regions" = "读取时补零的坏区域审计"
+"images digests" = "案件中保存的文件哈希"
+"images drive-letters" = "Windows 原盘符映射"
+"images file-types" = "案件中保存的文件类型识别结果"
+"images os" = "操作系统识别"
+"images platform" = "检材平台识别"
+"images tags" = "案件中的文件标签"
+"indexes" = "卷索引：构建、列出与查询"
+"indexes files" = "卷索引中的文件记录"
+"indexes volumes" = "已建索引的卷"
+"ios-backups" = "iOS 本地备份"
+"mounts" = "只读挂载与 SMB 共享（Windows）"
+"mounts points" = "可用的挂载点"
+"plugins" = "插件、插件分析与插件任务"
+"plugins analyses" = "单文件插件分析"
+"plugins functions" = "插件提供的任务函数"
+"plugins post-actions" = "检材登记后的自动任务"
+"plugins tasks" = "插件任务调度"
+"raid" = "RAID 组装"
+"searches" = "全局搜索：任务、命中与导出"
+"searches hits" = "搜索命中"
+"shadow-copies" = "NTFS 卷影副本"
+"system" = "本程序与主机"
+"system modules" = "功能模块目录"
+"system paths" = "主机路径"
+"tasks" = "进程内的后台任务"
+"timeline" = "时间线：构建、查询与导出"
+"timeline buckets" = "按时间桶聚合的事件数"
+"timeline events" = "时间线事件"
+"timeline range" = "时间线的时间范围"
+"timeline types" = "事件类型"
+
+# ── analysis ────────────────────────────────────────────────────────────────
+
+[[command]]
+path = "analysis tree get"
+ipc = "analysis_result_tree"
+summary = "查看分析结果树"
+description = "分析结果树：检材 → 分类 → 功能 → 结果项。未打开案件时返回空树。"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "analysis records list"
+ipc = "analysis_records_page"
+summary = "分页列出分析记录"
+description = "按结果项分页读取记录，始终是该检材与功能的最新一次运行。"
+category = "read"
+concurrent = true
+defaults = { skip = 0, limit = 100 }
+
+[[command]]
+path = "analysis records get"
+ipc = "analysis_record_detail"
+summary = "查看一条分析记录"
+category = "read"
+args = ["artifactId"]
+concurrent = true
+
+# ── bcp ─────────────────────────────────────────────────────────────────────
+
+[[command]]
+path = "bcp tables list"
+ipc = "bcp_catalog"
+summary = "列出检材中的 BCP 数据表"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "bcp rows list"
+ipc = "bcp_rows"
+summary = "分页列出 BCP 数据表记录"
+category = "read"
+concurrent = true
+[command.params.code]
+description = "数据表编码（bcp tables list 返回）"
+[command.params.cursor]
+type = "json"
+description = "上一页返回的游标（JSON）"
+
+# ── bitlocker ───────────────────────────────────────────────────────────────
+
+[[command]]
+path = "bitlocker get"
+ipc = "bitlocker_status"
+summary = "查看 BitLocker 卷的锁定状态"
+category = "read"
+args = ["partitionId"]
+concurrent = true
+
+[[command]]
+path = "bitlocker metadata get"
+ipc = "bitlocker_metadata"
+summary = "查看 BitLocker 元数据"
+description = "读取算法、卷 GUID、FILETIME、卷描述与保护器类型，不需要凭据，也不返回密钥。"
+category = "read"
+args = ["partitionId"]
+concurrent = true
+
+[[command]]
+path = "bitlocker unlock"
+ipc = "bitlocker_unlock"
+summary = "解锁 BitLocker 卷"
+description = "用密码、48 位恢复密码、启动密钥（BEK）或 FVEK 解锁；都不传时尝试卷内的明文密钥。"
+category = "action"
+args = ["partitionId"]
+secret = ["password", "recoveryPassword", "fvekHex", "tweakHex"]
+generated = ["taskId"]
+keywords = ["unlock bitlocker volume", "decrypt", "recovery key", "password", "bek"]
+[command.params.recoveryPassword]
+description = "48 位恢复密码"
+[command.params.password]
+description = "用户密码"
+[command.params.startupKeyPath]
+description = "启动密钥文件（.BEK）路径"
+[command.params.fvekHex]
+description = "完整卷加密密钥（十六进制）"
+[command.params.tweakHex]
+description = "Diffuser 方式的 tweak 密钥（十六进制）"
+
+[[command]]
+path = "bitlocker vmks scan"
+ipc = "bitlocker_scan_memory"
+summary = "在内存镜像中搜索 VMK"
+category = "action"
+args = ["memoryPath"]
+generated = ["taskId"]
+keywords = ["memory dump", "volume master key"]
+[command.params.memoryPath]
+description = "内存镜像文件路径"
+
+[[command]]
+path = "bitlocker vmks unlock"
+ipc = "bitlocker_unlock_with_vmk"
+summary = "用 VMK 解锁 BitLocker 卷"
+category = "action"
+args = ["partitionId"]
+secret = ["vmkHex"]
+generated = ["taskId"]
+[command.params.vmkHex]
+description = "卷主密钥（十六进制）"
+
+[[command]]
+path = "bitlocker export"
+ipc = "bitlocker_export_decrypted_image"
+summary = "导出解密后的 BitLocker 卷"
+category = "action"
+args = ["partitionId"]
+generated = ["taskId"]
+no_clobber = ["destination"]
+
+# ── carve ───────────────────────────────────────────────────────────────────
+
+[[command]]
+path = "carve formats list"
+ipc = "carve_formats"
+summary = "列出可雕刻的文件格式"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "carve scans create"
+ipc = "carve_start"
+summary = "开始文件恢复扫描"
+description = "在后台开始文件系统记录恢复和签名雕刻；options 选择范围、格式和文件系统。"
+category = "create"
+keywords = ["recover deleted files", "carving", "undelete", "signature"]
+[command.params.options]
+description = "扫描选项 JSON，例如 {\"format_ids\":[\"jpeg\",\"png\"],\"scope\":\"whole\",\"filesystems\":{\"ntfs\":true}}"
+
+[[command]]
+path = "carve scans get"
+ipc = "carve_scan_status"
+summary = "查看恢复扫描状态"
+category = "read"
+args = ["scanId"]
+concurrent = true
+
+[[command]]
+path = "carve scans pause"
+ipc = "carve_scan_pause"
+summary = "暂停恢复扫描"
+category = "action"
+args = ["scanId"]
+
+[[command]]
+path = "carve scans resume"
+ipc = "carve_scan_resume"
+summary = "继续恢复扫描"
+category = "action"
+args = ["scanId"]
+
+[[command]]
+path = "carve scans list"
+ipc = "carve_scan_list"
+summary = "列出检材的恢复扫描"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "carve scans delete"
+ipc = "carve_scan_remove"
+summary = "删除已结束的恢复扫描"
+description = "删除扫描会话及其内存结果，已恢复的文件不受影响。"
+category = "delete"
+args = ["scanId"]
+
+[[command]]
+path = "carve scans export"
+ipc = "carve_recover"
+summary = "导出恢复出的文件"
+description = "把雕刻结果和文件系统记录写到 options.destination，并生成 JSONL 恢复报告。"
+category = "action"
+args = ["scanId"]
+keywords = ["recover", "save recovered files"]
+[command.params.options]
+description = "导出选项 JSON，例如 {\"destination\":\"D:/out\",\"artifact_ids\":null,\"file_ids\":[\"0\"]}"
+
+[[command]]
+path = "carve artifacts list"
+ipc = "carve_results_page"
+summary = "分页列出雕刻结果"
+category = "read"
+concurrent = true
+[command.params.filter]
+type = "json"
+
+[[command]]
+path = "carve artifacts get"
+ipc = "carve_preview"
+summary = "读取一个雕刻结果的内容"
+category = "read"
+args = ["artifactId"]
+concurrent = true
+
+[[command]]
+path = "carve files list"
+ipc = "carve_filesystem_results"
+summary = "列出文件系统恢复结果"
+description = "文件系统阶段恢复出的卷、目录与候选文件；该阶段结束前返回 null。"
+category = "read"
+concurrent = true
+
+# ── cases ───────────────────────────────────────────────────────────────────
+
+[[command]]
+path = "cases create"
+ipc = "case_create"
+summary = "创建案件"
+description = "在目录中创建案件台账并打开它；已加载的无案件检材会登记进新案件。"
+category = "create"
+args = ["dir"]
+keywords = ["new case", "investigation"]
+[command.params.name]
+description = "案件名称"
+[command.params.caseNumber]
+description = "案件编号"
+[command.params.description]
+description = "案件描述"
+[command.params.examiner]
+description = "检验人"
+
+[[command]]
+path = "cases open"
+ipc = "case_open"
+summary = "打开案件"
+category = "action"
+args = ["dir"]
+
+[[command]]
+path = "cases close"
+ipc = "case_close"
+summary = "关闭当前案件"
+category = "action"
+
+[[command]]
+path = "cases get"
+ipc = "case_active"
+summary = "查看当前案件"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "cases list"
+ipc = "case_list"
+summary = "列出本机登记的案件"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "cases delete"
+ipc = "case_remove"
+summary = "删除案件"
+description = "删除案件自己的文件（台账、锁、检材数据与暂存区）并注销登记，不触碰原始检材。"
+category = "delete"
+args = ["dir"]
+confirm = "这会删除该案件目录中由 LovelyCarve 创建的台账、检材数据与暂存区。"
+
+[[command]]
+path = "cases edit"
+ipc = "case_rename"
+summary = "修改当前案件名称"
+category = "update"
+[command.params.name]
+description = "新的案件名称"
+
+[[command]]
+path = "cases lock"
+ipc = "case_lock"
+summary = "锁定当前案件"
+category = "action"
+
+[[command]]
+path = "cases unlock"
+ipc = "case_unlock"
+summary = "解除当前案件的锁定"
+category = "action"
+
+[[command]]
+path = "cases options list"
+ipc = "case_option_query"
+summary = "列出案件级设置"
+category = "read"
+concurrent = true
+[command.params.prefix]
+description = "只列出以此为前缀的设置键"
+
+[[command]]
+path = "cases options edit"
+ipc = "case_option_save"
+summary = "写入案件级设置"
+category = "update"
+[command.params.entries]
+description = "设置数组 JSON，例如 [{\"key\":\"k\",\"value\":\"v\"}]"
+
+[[command]]
+path = "cases evidence list"
+ipc = "case_evidence_list"
+summary = "列出案件中的检材"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "cases evidence delete"
+ipc = "case_evidence_remove"
+summary = "从案件中移除检材"
+description = "删除检材在案件中的登记和派生数据（索引、搜索、时间线等），不触碰原始检材。"
+category = "delete"
+args = ["imageId"]
+
+# ── roots (hand-written) ────────────────────────────────────────────────────
+
+[[command]]
+path = "schema"
+native = "schema"
+summary = "查看命令的后端请求结构"
+description = "输出生成命令发送的后端请求：operationId、IPC 命令名与参数（API 名称、类型、是否必填、说明）。--list 列出全部。"
+category = "read"
+args = ["command"]
+concurrent = true
+[command.params.command]
+type = "array"
+description = "命令路径，例如 images open"
+[command.params.list]
+type = "boolean"
+description = "列出全部命令的请求结构"
+
+[[command]]
+path = "complete"
+native = "complete"
+summary = "生成并处理 shell 补全"
+description = "输出补全脚本；按 Tab 时 shell 以 complete -- <单词…> 回调本命令取得候选。"
+category = "read"
+args = ["shell"]
+keywords = ["tab completion", "bash", "zsh", "fish", "powershell"]
+[command.params.shell]
+type = "enum"
+values = ["bash", "zsh", "fish", "powershell"]
+description = "要生成补全脚本的 shell"
+
+[[command]]
+path = "session"
+native = "session"
+summary = "以 JSONL 在一个进程内连续执行命令"
+description = "从标准输入逐行读取 {\"id\",\"command\",\"args\"} 请求，每条结果写成一行 JSON；检材与案件在请求之间保持打开。"
+category = "action"
+keywords = ["jsonl", "batch", "automation", "agent", "stdin"]
+[command.params.jobs]
+type = "number"
+default = 1
+short = "j"
+description = "并发查询数（1–64）；修改上下文的命令按顺序执行"
+[command.params.events]
+type = "boolean"
+description = "把进度与生命周期事件以 JSONL 写到标准错误"
+
+[[command]]
+path = "shell"
+native = "shell"
+summary = "交互式终端"
+description = "逐行执行命令，检材与案件在命令之间保持打开；cd、pwd 切换镜像内目录，exit 退出。"
+category = "action"
+keywords = ["repl", "interactive"]
+
+# ── cli (hand-written) ──────────────────────────────────────────────────────
+
+[[command]]
+path = "cli search"
+native = "cli-search"
+summary = "按意图搜索全部命令"
+description = "用自然语言描述任务，在本地索引中查找命令；返回最多 5 条 JSON 结果，最佳匹配在前。"
+category = "read"
+args = ["query"]
+concurrent = true
+[command.params.query]
+type = "string"
+required = true
+description = "要完成的任务或搜索词（整体加引号）"
+
+# ── context (hand-written) ──────────────────────────────────────────────────
+
+[[command]]
+path = "context get"
+native = "context-get"
+summary = "查看会话上下文"
+description = "当前案件、当前检材与镜像内工作目录。"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "context set"
+native = "context-set"
+summary = "切换当前检材或镜像内目录"
+category = "action"
+[command.params.imageId]
+type = "string"
+description = "切换到的已加载检材 ID 或检材路径"
+[command.params.dir]
+type = "string"
+description = "镜像内工作目录，供后续相对路径使用"
+
+# ── disks ───────────────────────────────────────────────────────────────────
+
+[[command]]
+path = "disks list"
+ipc = "physical_disks_list"
+summary = "列出主机物理磁盘"
+category = "read"
+concurrent = true
+keywords = ["physical drive", "device"]
+
+# ── encrypted volumes ───────────────────────────────────────────────────────
+
+[[command]]
+path = "encrypted-volumes unlock"
+ipc = "encrypted_volume_unlock"
+summary = "解锁 LUKS、VeraCrypt 或 FileVault 容器"
+description = "把检材中的加密区域注册为会话内只读镜像；返回的 image.path（decrypted://…）可再交给 images open。"
+category = "action"
+generated = ["taskId"]
+sensitive_paths = [["options", "password"], ["options", "masterKeyHex"]]
+keywords = ["luks", "veracrypt", "truecrypt", "filevault", "decrypt"]
+[command.params.options]
+description = "解锁选项 JSON，例如 {\"scheme\":\"luks\",\"password\":\"…\"}；密码可改用 --body @文件"
+
+[[command]]
+path = "filevault get"
+ipc = "filevault_inspect"
+summary = "查看 FileVault 逻辑卷与取证观察"
+category = "read"
+generated = ["taskId"]
+[command.params.options]
+description = "检查选项 JSON，可为 {}"
+
+# ── files (hand-written) ────────────────────────────────────────────────────
+
+[[command]]
+path = "files list"
+native = "files-list"
+summary = "列出目录内容"
+description = "按路径列出目录，--depth 递归、--name 按名称过滤（忽略大小写包含匹配）；优先读取卷索引，离线检材可浏览已索引目录。"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+keywords = ["ls", "dir", "directory", "folder", "list files", "browse", "tree", "find file by name"]
+[command.params.path]
+type = "string"
+default = "."
+[command.params.depth]
+type = "number"
+default = 1
+description = "递归深度（1–128）"
+[command.params.name]
+type = "string"
+description = "只返回名称包含此文本的节点（忽略大小写）"
+[command.params.limit]
+type = "number"
+default = 10000
+description = "最多检查的节点数（1–100000）"
+
+[[command]]
+path = "files get"
+native = "files-get"
+summary = "查看文件节点属性"
+description = "名称、类型、大小、inode、时间戳、删除状态与链接目标；来自卷索引，离线可用。"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+keywords = ["stat", "metadata", "timestamps"]
+[command.params.path]
+type = "string"
+
+[[command]]
+path = "files read"
+native = "files-read"
+summary = "读取文件内容"
+description = "把文件字节原样写到标准输出（可重定向到文件）；--offset/--length 读取一段，--text 按 UTF-8 解码。"
+category = "read"
+args = ["path"]
+target = "nodeId"
+raw_output = true
+concurrent = true
+keywords = ["read file content", "cat", "hex", "dump", "bytes"]
+[command.params.path]
+type = "string"
+[command.params.offset]
+type = "number"
+default = 0
+description = "起始字节偏移"
+[command.params.length]
+type = "number"
+description = "读取的字节数；省略时读到文件末尾"
+
+[[command]]
+path = "files search"
+native = "files-search"
+summary = "在文件内容中搜索关键词或正则"
+description = "复用全局搜索检索当前目录子树（或指定路径），需要打开案件且卷索引已建立；完整命中保存在案件中。"
+category = "action"
+args = ["pattern", "path"]
+target = "nodeId"
+concurrent = true
+keywords = ["grep", "keyword", "regex", "content search"]
+[command.params.pattern]
+type = "string"
+required = true
+description = "关键词；配合 --regex 时为正则表达式"
+[command.params.path]
+type = "string"
+default = "."
+[command.params.regex]
+type = "boolean"
+description = "把 pattern 当作正则表达式"
+[command.params.ignoreCase]
+type = "boolean"
+description = "忽略大小写"
+[command.params.excludeDeleted]
+type = "boolean"
+description = "排除已删除文件"
+[command.params.codepage]
+type = "array"
+description = "编码页，可重复；省略时搜索全部支持的编码"
+[command.params.searchId]
+type = "string"
+description = "搜索任务 ID；省略时自动生成"
+[command.params.limit]
+type = "number"
+default = 10000
+description = "最多返回的命中条数（1–100000）"
+
+[[command]]
+path = "files strings list"
+native = "files-strings"
+summary = "提取文件中的可打印字符串"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+keywords = ["strings", "printable text"]
+[command.params.path]
+type = "string"
+[command.params.encoding]
+type = "enum"
+values = ["ascii", "utf-8", "utf-16le", "utf-16be"]
+default = "ascii"
+description = "字符编码"
+[command.params.minLength]
+type = "number"
+default = 4
+description = "最少字符数（1–4096）"
+[command.params.offset]
+type = "number"
+default = 0
+description = "起始字节偏移"
+[command.params.length]
+type = "number"
+description = "扫描的字节数；省略时扫描到文件末尾"
+[command.params.limit]
+type = "number"
+default = 10000
+description = "最多返回的字符串数（1–100000）"
+
+# ── files (generated) ───────────────────────────────────────────────────────
+
+[[command]]
+path = "files children list"
+ipc = "fs_children_page"
+summary = "分页列出目录的子节点"
+description = "一页子节点；--query 可按扩展名、大小、时间等过滤并排序（JSON）。"
+category = "read"
+target = "parentId"
+concurrent = true
+[command.params.query]
+type = "json"
+description = "目录查询 JSON：{\"filter\":{…},\"sort\":\"name\",\"descending\":false}"
+
+[[command]]
+path = "files children count"
+ipc = "fs_child_counts"
+summary = "统计目录的子节点数"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "files empty-dirs list"
+ipc = "fs_subtree_empty_dirs"
+summary = "判断哪些目录的子树中没有文件"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "files ancestors list"
+ipc = "fs_node_locate"
+summary = "列出节点的祖先目录链"
+category = "read"
+target = "nodeId"
+concurrent = true
+
+[[command]]
+path = "files lookup"
+ipc = "fs_source_locate"
+summary = "按根目录相对路径查找节点"
+description = "把插件或报告中的根目录相对路径定位到节点，优先使用实时目录，离线时使用已校验的索引。"
+category = "read"
+concurrent = true
+[command.params.rootId]
+description = "根目录节点 ID"
+[command.params.path]
+description = "相对根目录的路径"
+
+[[command]]
+path = "files flat list"
+ipc = "fs_flat_page"
+summary = "分页平铺列出子树中的文件"
+category = "read"
+target = "parentId"
+concurrent = true
+[command.params.allowAllFiles]
+description = "递归平铺整个子树（否则只列当前目录）"
+[command.params.filter]
+type = "json"
+
+[[command]]
+path = "files extensions count"
+ipc = "fs_flat_ext_counts"
+summary = "统计子树中的扩展名"
+category = "read"
+target = "parentId"
+concurrent = true
+
+[[command]]
+path = "files stats get"
+ipc = "fs_dir_stats"
+summary = "查看目录统计"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+[command.params.pathHint]
+description = "显示用的目录路径；省略时取 <path>"
+
+[[command]]
+path = "files content get"
+ipc = "fs_stat"
+summary = "查看文件内容属性"
+description = "MIME、魔数、熵与数据运行段；需要原检材。"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+keywords = ["mime", "magic", "entropy", "data runs"]
+
+[[command]]
+path = "files hash"
+ipc = "fs_digest"
+summary = "计算文件哈希"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+defaults = { algos = ["md5", "sha1", "sha256", "sm3"] }
+keywords = ["md5", "sha1", "sha256", "sm3", "checksum", "digest"]
+[command.params.algos]
+type = "array"
+values = ["md5", "sha1", "sha256", "sm3"]
+description = "哈希算法，可重复"
+
+[[command]]
+path = "files identify"
+ipc = "fs_identify_type"
+summary = "识别文件内容类型"
+description = "用 Magika 识别内容类型、MIME 与置信度，不依赖扩展名；需要原检材。"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+keywords = ["file type", "magika", "detect format"]
+
+[[command]]
+path = "files text get"
+ipc = "fs_preview_text"
+summary = "读取文件文本（自动识别编码）"
+description = "检测 GBK、Big5、Shift-JIS 等编码并解码为 UTF-8，最多 2 MiB。"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+defaults = { maxBytes = 2097152 }
+keywords = ["gbk", "encoding", "decode text"]
+
+[[command]]
+path = "files export"
+ipc = "fs_export"
+summary = "导出单个文件"
+category = "action"
+args = ["path"]
+target = "nodeId"
+no_clobber = ["destination"]
+keywords = ["export file", "copy out", "save file", "extract"]
+
+[[command]]
+path = "files directories export"
+ipc = "fs_export_dir"
+summary = "导出目录（目录树或 ZIP）"
+category = "action"
+args = ["path"]
+target = "nodeId"
+generated = ["taskId"]
+defaults = { mode = "tree" }
+[command.params.mode]
+type = "enum"
+values = ["tree", "zip"]
+description = "tree 还原目录树，zip 写入单个 ZIP"
+
+[[command]]
+path = "files timeline export"
+ipc = "fs_timeline_export"
+summary = "导出文件系统时间线（mactime 格式）"
+description = "把整个检材或一个子树导出为 TSK mactime body file，逐行流式写入。"
+category = "action"
+args = ["path"]
+target = "nodeId"
+no_clobber = ["destination"]
+keywords = ["mactime", "bodyfile", "sleuthkit"]
+
+[[command]]
+path = "files streams list"
+ipc = "fs_streams"
+summary = "列出 NTFS 命名数据流"
+category = "read"
+target = "nodeId"
+concurrent = true
+keywords = ["ads", "alternate data stream"]
+
+[[command]]
+path = "files streams get"
+ipc = "fs_stream_preview"
+summary = "读取命名数据流内容"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+defaults = { maxBytes = 1048576 }
+[command.params.streamName]
+description = "数据流名称（files streams list 返回）"
+
+[[command]]
+path = "files streams export"
+ipc = "fs_stream_export"
+summary = "导出命名数据流"
+category = "action"
+args = ["path"]
+target = "nodeId"
+no_clobber = ["destination"]
+[command.params.streamName]
+description = "数据流名称"
+
+[[command]]
+path = "files usn-journal records list"
+ipc = "fs_usn_journal_page"
+summary = "分页列出 NTFS USN 日志记录"
+description = "读取文件所在 NTFS 卷的 $UsnJrnl：文件的创建、删除与改名历史。"
+category = "read"
+target = "nodeId"
+concurrent = true
+keywords = ["$usnjrnl", "change journal"]
+
+[[command]]
+path = "files ext4-journal get"
+ipc = "fs_ext4_journal"
+summary = "读取 ext4 jbd2 日志"
+description = "从日志中恢复 inode 表、目录与位图块的历史版本以及撤销块列表。"
+category = "read"
+target = "nodeId"
+concurrent = true
+
+[[command]]
+path = "files ext4-journal blocks list"
+ipc = "fs_ext4_journal_blocks_page"
+summary = "分页列出 ext4 日志块"
+category = "read"
+target = "nodeId"
+concurrent = true
+
+[[command]]
+path = "files sqlite get"
+ipc = "fs_sqlite_preview"
+summary = "查看 SQLite 数据库结构"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+keywords = ["database", "tables", "schema"]
+[command.params.parentId]
+description = "数据库所在目录的节点 ID，用于查找 -wal 与 -journal"
+[command.params.key]
+type = "json"
+
+[[command]]
+path = "files sqlite rows list"
+ipc = "fs_sqlite_table_rows"
+summary = "分页列出 SQLite 表记录"
+category = "read"
+target = "nodeId"
+concurrent = true
+defaults = { offset = 0, limit = 100, descending = false }
+[command.params.parentId]
+description = "数据库所在目录的节点 ID，用于查找 -wal 与 -journal"
+[command.params.table]
+description = "表名"
+[command.params.orderBy]
+description = "排序列"
+[command.params.descending]
+description = "降序排列"
+[command.params.key]
+type = "json"
+
+[[command]]
+path = "files sqlite deleted-records list"
+ipc = "fs_sqlite_deleted_records"
+summary = "恢复 SQLite 删除记录"
+description = "从数据库及其 -wal、-journal 中恢复已删除记录。"
+category = "read"
+target = "nodeId"
+concurrent = true
+keywords = ["deleted rows", "freelist", "recover sqlite"]
+[command.params.parentId]
+description = "数据库所在目录的节点 ID，用于查找 -wal 与 -journal"
+[command.params.key]
+type = "json"
+
+[[command]]
+path = "files realm get"
+ipc = "fs_realm_preview"
+summary = "查看 Realm 数据库结构"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+
+[[command]]
+path = "files realm rows list"
+ipc = "fs_realm_table_rows"
+summary = "分页列出 Realm 表记录"
+category = "read"
+target = "nodeId"
+concurrent = true
+defaults = { offset = 0, limit = 100 }
+[command.params.tableNumber]
+description = "表序号（files realm get 返回）"
+
+[[command]]
+path = "files binary get"
+ipc = "fs_binary_preview"
+summary = "解析可执行文件结构"
+description = "ELF、Mach-O、PE 与 Unix ar，按魔数自动识别。"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+keywords = ["pe", "elf", "mach-o", "executable", "headers"]
+
+[[command]]
+path = "files gguf get"
+ipc = "fs_gguf_preview"
+summary = "解析 GGUF 模型文件结构"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+
+[[command]]
+path = "files zip get"
+ipc = "fs_zip_preview"
+summary = "查看 ZIP 归档结构"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+
+[[command]]
+path = "files zip members get"
+ipc = "fs_zip_member_read"
+summary = "读取 ZIP 成员内容"
+description = "解压一个成员并原样写到标准输出（最多 1 MiB）。"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+defaults = { maxBytes = 1048576 }
+[command.params.memberPath]
+description = "成员路径（files zip get 返回）"
+
+[[command]]
+path = "files csv get"
+ipc = "fs_csv_preview"
+summary = "解析 CSV 或 TSV 表格"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+[command.params.delimiter]
+description = "分隔符；省略或 auto 时自动识别"
+
+[[command]]
+path = "files vim-swap get"
+ipc = "fs_vim_swap_preview"
+summary = "解析 Vim 交换文件"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+
+[[command]]
+path = "files qr-codes scan"
+ipc = "qr_scan"
+summary = "识别图片中的二维码"
+description = "需要完整构建（QR/OCR）；轻量构建返回功能未启用。"
+category = "action"
+args = ["path"]
+target = "nodeId"
+generated = ["taskId"]
+defaults = { expectedCount = 1 }
+keywords = ["qrcode", "barcode"]
+[command.params.expectedCount]
+description = "找到这么多个二维码后提前停止"
+
+[[command]]
+path = "files ocr scan"
+ipc = "ocr_scan"
+summary = "识别图片中的文字"
+description = "需要完整构建（QR/OCR）；轻量构建返回功能未启用。"
+category = "action"
+args = ["path"]
+target = "nodeId"
+generated = ["taskId"]
+keywords = ["ocr", "text recognition"]
+
+[[command]]
+path = "files media create"
+ipc = "fs_media_temp"
+summary = "把媒体文件物化为临时文件"
+description = "供外部播放器按路径读取；临时文件在进程退出或 files media release 后删除。"
+category = "create"
+args = ["path"]
+target = "nodeId"
+generated = ["taskId"]
+[command.params.ext]
+description = "临时文件扩展名，例如 mp4"
+
+[[command]]
+path = "files media release"
+ipc = "fs_media_release"
+summary = "释放媒体临时文件"
+category = "action"
+args = ["taskId"]
+[command.params.taskId]
+description = "files media create 使用的任务 ID"
+
+[[command]]
+path = "files docker get"
+ipc = "fs_docker_prepare"
+summary = "查看 Docker 容器视图状态"
+category = "read"
+target = "rootId"
+hidden = ["caseDir"]
+fixed = { mode = "status" }
+
+[[command]]
+path = "files docker build"
+ipc = "fs_docker_prepare"
+summary = "构建 Docker 容器视图"
+description = "合成并保存所选容器的叠加文件视图（不分析其他容器）。"
+category = "action"
+target = "rootId"
+hidden = ["caseDir"]
+fixed = { mode = "build" }
+
+# ── images ──────────────────────────────────────────────────────────────────
+
+[[command]]
+path = "images open"
+ipc = "image_load"
+summary = "打开检材"
+description = "打开磁盘镜像、目录、归档、iOS 备份、AD1 或物理盘并设为当前检材；有案件时登记为案件检材并在后台建立卷索引。"
+category = "action"
+args = ["path"]
+secret = ["qcowPassword", "qcowKeyHex"]
+hidden = ["caseDir"]
+keywords = ["load", "evidence", "disk image", "e01", "vmdk", "raw", "dd", "add evidence"]
+[command.params.path]
+description = "检材路径"
+[command.params.qcowPassword]
+description = "QCOW legacy AES 密码"
+[command.params.qcowKeyHex]
+description = "QCOW legacy AES 密钥（16 字节十六进制）"
+
+[[command]]
+path = "images get"
+ipc = "image_info"
+summary = "查看检材信息"
+description = "格式、大小、分区与文件系统。"
+category = "read"
+args = ["imageId"]
+concurrent = true
+keywords = ["partitions", "info"]
+
+[[command]]
+path = "images list"
+ipc = "image_list"
+summary = "列出已加载的检材"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "images close"
+ipc = "image_unload"
+summary = "卸载检材"
+description = "释放检材及其解密子镜像、挂载与缓存。"
+category = "action"
+args = ["imageId"]
+
+[[command]]
+path = "images export"
+ipc = "image_export_raw"
+summary = "导出检材为 RAW"
+description = "把检材的逻辑字节流写成 RAW；mode unlockedPartitions 时已解锁分区写入明文。"
+category = "action"
+args = ["imageId"]
+generated = ["taskId"]
+no_clobber = ["destination"]
+keywords = ["dd", "convert", "raw image"]
+[command.params.mode]
+type = "enum"
+values = ["source", "unlockedPartitions"]
+description = "source 导出源字节（默认），unlockedPartitions 导出已解锁分区的明文"
+[command.params.readFaultPolicy]
+type = "enum"
+values = ["zeroFillAndReport", "strict"]
+
+[[command]]
+path = "images hash"
+ipc = "image_hash_compute"
+summary = "计算检材哈希"
+category = "action"
+args = ["imageId"]
+generated = ["taskId"]
+defaults = { algorithms = ["md5", "sha1", "sha256", "sm3"] }
+keywords = ["md5", "sha1", "sha256", "sm3", "verify", "checksum"]
+[command.params.algorithms]
+type = "array"
+values = ["md5", "sha1", "sha256", "sm3"]
+description = "哈希算法，可重复"
+[command.params.readFaultPolicy]
+type = "enum"
+values = ["zeroFillAndReport", "strict"]
+
+[[command]]
+path = "images bad-regions list"
+ipc = "image_bad_regions"
+summary = "列出补零的坏区域"
+description = "读取故障审计：被合成为零字节的源区间；有案件时合并已保存的审计。"
+category = "read"
+concurrent = true
+keywords = ["read errors", "bad sectors"]
+
+[[command]]
+path = "images os detect"
+ipc = "os_detect"
+summary = "识别检材中的操作系统"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "images platform detect"
+ipc = "autodetect_evidence"
+summary = "识别检材平台与类型"
+category = "action"
+
+[[command]]
+path = "images drive-letters list"
+ipc = "win_drive_letters"
+summary = "列出 Windows 原盘符映射"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "images digests list"
+ipc = "fs_digest_load"
+summary = "列出案件中保存的文件哈希"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "images digests get"
+ipc = "fs_digest_load_nodes"
+summary = "按节点读取保存的文件哈希"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "images digests edit"
+ipc = "fs_digest_persist"
+summary = "保存文件哈希到案件"
+category = "update"
+[command.params.entries]
+description = "以节点 ID 为键的哈希对象 JSON"
+
+[[command]]
+path = "images file-types list"
+ipc = "fs_ftype_load"
+summary = "列出案件中保存的类型识别结果"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "images file-types get"
+ipc = "fs_ftype_load_nodes"
+summary = "按节点读取保存的类型识别结果"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "images file-types edit"
+ipc = "fs_ftype_persist"
+summary = "保存类型识别结果到案件"
+category = "update"
+[command.params.entries]
+description = "以节点 ID 为键的识别结果 JSON"
+
+[[command]]
+path = "images tags list"
+ipc = "fs_tags_load"
+summary = "列出案件中的文件标签"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "images tags get"
+ipc = "fs_tags_load_nodes"
+summary = "按节点读取文件标签"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "images tags edit"
+ipc = "fs_tags_apply_changes"
+summary = "增改或删除部分文件标签"
+category = "update"
+[command.params.upserts]
+description = "以节点 ID 为键、标签为值的 JSON 对象"
+[command.params.deleteNodeIds]
+description = "要删除标签的节点 ID 数组"
+
+[[command]]
+path = "images tags update"
+ipc = "fs_tags_save"
+summary = "替换检材的全部文件标签"
+category = "update"
+confirm = "这会用 --entries 替换该检材的全部标签，空对象会清空所有标签。"
+[command.params.entries]
+description = "以节点 ID 为键、标签为值的完整 JSON 对象"
+
+# ── indexes ─────────────────────────────────────────────────────────────────
+
+[[command]]
+path = "indexes list"
+ipc = "snapshot_list"
+summary = "列出案件中的卷索引"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "indexes create"
+ipc = "snapshot_build"
+summary = "构建卷索引"
+category = "create"
+generated = ["taskId"]
+
+[[command]]
+path = "indexes delete"
+ipc = "snapshot_drop"
+summary = "删除卷索引"
+category = "delete"
+
+[[command]]
+path = "indexes volumes list"
+ipc = "filedb_volumes"
+summary = "列出已建索引的卷"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "indexes files list"
+ipc = "filedb_query_files"
+summary = "按条件查询索引中的文件"
+description = "用结构化过滤条件查询文件元数据索引；省略 --volume-key 时依次查询全部已索引卷。"
+category = "read"
+concurrent = true
+keywords = ["find files", "query metadata"]
+[command.params.filter]
+type = "json"
+description = "过滤条件 JSON"
+
+[[command]]
+path = "indexes files lookup"
+ipc = "filedb_resolve_meta_addr"
+summary = "按元数据地址查找文件节点"
+category = "read"
+concurrent = true
+[command.params.query]
+type = "json"
+description = "查询 JSON（MetaAddr 四元组，路径寻址时含 full_path）"
+
+# ── ios backups ─────────────────────────────────────────────────────────────
+
+[[command]]
+path = "ios-backups unlock"
+ipc = "ios_backup_unlock"
+summary = "解锁加密的 iOS 本地备份"
+category = "action"
+secret = ["password"]
+generated = ["taskId"]
+[command.params.password]
+description = "备份密码"
+
+[[command]]
+path = "ios-backups audit"
+ipc = "ios_backup_audit"
+summary = "审计 iOS 本地备份"
+description = "返回上游审计发现：代码、严重程度、证据、来源与说明。"
+category = "action"
+generated = ["taskId"]
+
+# ── mounts ──────────────────────────────────────────────────────────────────
+
+[[command]]
+path = "mounts create"
+ipc = "fs_mount_readonly"
+summary = "只读挂载卷或目录"
+description = "通过 Dokan 只读挂载（仅 Windows）；挂载在进程退出时释放，宜在 session 或 shell 中使用。"
+category = "create"
+args = ["path"]
+target = "nodeId"
+[command.params.mountPoint]
+description = "挂载点：盘符或空目录"
+
+[[command]]
+path = "mounts list"
+ipc = "fs_mounts"
+summary = "列出挂载"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "mounts delete"
+ipc = "fs_unmount_readonly"
+summary = "卸载挂载"
+category = "delete"
+args = ["mountId"]
+confirm = "这会卸载该挂载点，正在读取它的程序会失去访问。"
+
+[[command]]
+path = "mounts share"
+ipc = "fs_share_mount"
+summary = "以 SMB 共享挂载"
+category = "action"
+args = ["mountId"]
+
+[[command]]
+path = "mounts unshare"
+ipc = "fs_unshare_mount"
+summary = "取消挂载的 SMB 共享"
+category = "action"
+args = ["mountId"]
+
+[[command]]
+path = "mounts points get"
+ipc = "fs_suggest_mount_point"
+summary = "推荐一个可用挂载点"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "mounts points list"
+ipc = "fs_available_mount_points"
+summary = "列出可用挂载点"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "mounts points create"
+ipc = "fs_create_mount_dir"
+summary = "创建文件夹挂载点"
+category = "create"
+[command.params.root]
+description = "挂载根目录"
+[command.params.name]
+description = "挂载点文件夹名称"
+
+# ── plugins ─────────────────────────────────────────────────────────────────
+
+[[command]]
+path = "plugins list"
+ipc = "plugin_list"
+summary = "列出插件"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "plugins restart"
+ipc = "plugin_restart"
+summary = "重启插件"
+category = "action"
+args = ["pluginId"]
+
+[[command]]
+path = "plugins analyses create"
+ipc = "plugin_analyze_file"
+summary = "用插件分析一个文件"
+description = "运行插件的文件分析器；有案件时结果保存进案件。"
+category = "create"
+args = ["path"]
+target = "nodeId"
+[command.params.analyzer]
+description = "分析器名称（plugins list 的 capabilities）"
+[command.params.fileName]
+description = "文件名；省略时取 <path> 的最后一段"
+
+[[command]]
+path = "plugins analyses list"
+ipc = "plugin_analysis_list"
+summary = "列出文件已保存的插件分析"
+category = "read"
+target = "nodeId"
+concurrent = true
+
+[[command]]
+path = "plugins functions list"
+ipc = "sched_task_functions"
+summary = "列出插件提供的任务函数"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "plugins tasks list"
+ipc = "sched_task_list"
+summary = "列出插件任务"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "plugins tasks create"
+ipc = "sched_task_create"
+summary = "创建插件任务"
+category = "create"
+[command.params.function]
+description = "任务函数（plugins functions list 返回）"
+
+[[command]]
+path = "plugins tasks cancel"
+ipc = "sched_task_cancel"
+summary = "取消插件任务"
+category = "action"
+args = ["taskId"]
+[command.params.taskId]
+description = "插件任务 ID（plugins tasks list 返回）"
+
+[[command]]
+path = "plugins tasks pause"
+ipc = "sched_task_pause"
+summary = "暂停插件任务"
+category = "action"
+args = ["taskId"]
+[command.params.taskId]
+description = "插件任务 ID"
+
+[[command]]
+path = "plugins tasks start"
+ipc = "sched_task_start"
+summary = "启动插件任务"
+category = "action"
+args = ["taskId"]
+[command.params.taskId]
+description = "插件任务 ID"
+
+[[command]]
+path = "plugins tasks restart"
+ipc = "sched_task_restart"
+summary = "重新运行插件任务"
+category = "action"
+args = ["taskId"]
+[command.params.taskId]
+description = "插件任务 ID"
+
+[[command]]
+path = "plugins tasks delete"
+ipc = "sched_task_remove"
+summary = "删除插件任务"
+category = "delete"
+args = ["taskId"]
+[command.params.taskId]
+description = "插件任务 ID"
+
+[[command]]
+path = "plugins post-actions update"
+ipc = "sched_evidence_post_actions_set"
+summary = "设置检材登记后的自动任务"
+category = "update"
+[command.params.actionsJson]
+description = "自动任务配置 JSON 字符串；省略时清除"
+
+# ── raid ────────────────────────────────────────────────────────────────────
+
+[[command]]
+path = "raid detect"
+ipc = "raid_auto_detect"
+summary = "自动识别并组装 RAID"
+description = "解析已加载检材中的 LVM 与 mdadm 元数据，组装成合成检材；重复调用复用已组装的检材。"
+category = "action"
+keywords = ["mdadm", "lvm", "software raid"]
+
+[[command]]
+path = "raid assemble"
+ipc = "raid_manual_assemble"
+summary = "按指定几何手动组装 RAID"
+category = "create"
+[command.params.params]
+type = "json"
+description = "RAID 几何参数 JSON"
+
+# ── searches ────────────────────────────────────────────────────────────────
+
+[[command]]
+path = "searches create"
+ipc = "global_search_start"
+summary = "运行全局搜索"
+description = "在检材全部已索引卷中搜索关键词或正则，完成后返回摘要；命中保存在案件中。需要打开案件。"
+category = "create"
+generated = ["searchId"]
+keywords = ["keyword search", "regex", "grep", "find text"]
+[command.params.options]
+description = "搜索选项 JSON，例如 {\"keys\":[\"password\"],\"codepages\":[\"UTF-8\"]}"
+[command.params.searchId]
+description = "搜索 ID；省略时自动生成，取消时交给 tasks cancel"
+
+[[command]]
+path = "searches list"
+ipc = "global_search_history_list"
+summary = "列出搜索历史"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "searches delete"
+ipc = "global_search_history_delete"
+summary = "删除一次搜索及其命中"
+category = "delete"
+args = ["searchId"]
+
+[[command]]
+path = "searches export"
+ipc = "global_search_export"
+summary = "导出搜索命中为 CSV"
+category = "action"
+args = ["searchId"]
+no_clobber = ["destination"]
+
+[[command]]
+path = "searches hits list"
+ipc = "global_search_hits_page"
+summary = "分页列出搜索命中"
+category = "read"
+concurrent = true
+[command.params.distinct]
+type = "enum"
+values = ["file", "sha256"]
+description = "按文件或按哈希去重"
+[command.params.afterSeq]
+description = "增量轮询游标"
+
+# ── shadow copies ───────────────────────────────────────────────────────────
+
+[[command]]
+path = "shadow-copies list"
+ipc = "shadow_copy_list"
+summary = "列出 NTFS 卷影副本"
+category = "read"
+concurrent = true
+keywords = ["vss", "volume shadow copy"]
+
+[[command]]
+path = "shadow-copies open"
+ipc = "shadow_copy_open"
+summary = "打开卷影副本为只读检材"
+category = "action"
+args = ["partitionId"]
+generated = ["taskId"]
+[command.params.index]
+description = "卷影副本序号（shadow-copies list 返回）"
+
+# ── system ──────────────────────────────────────────────────────────────────
+
+[[command]]
+path = "system get"
+native = "system-get"
+summary = "查看版本、构建功能与会话协议"
+category = "read"
+concurrent = true
+keywords = ["capabilities", "version", "features"]
+
+[[command]]
+path = "system modules list"
+ipc = "module_summary"
+summary = "列出功能模块"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "system paths get"
+ipc = "system_path_info"
+summary = "查看主机路径信息"
+category = "read"
+args = ["path"]
+concurrent = true
+[command.params.path]
+description = "主机路径"
+
+[[command]]
+path = "system paths reveal"
+ipc = "reveal_path"
+summary = "在系统文件管理器中显示路径"
+category = "action"
+args = ["path"]
+defaults = { select = false }
+[command.params.path]
+description = "主机路径"
+[command.params.select]
+description = "在上级目录中选中该项"
+
+# ── tasks ───────────────────────────────────────────────────────────────────
+
+[[command]]
+path = "tasks list"
+ipc = "task_list"
+summary = "列出后台任务"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "tasks get"
+ipc = "task_status"
+summary = "查看后台任务"
+category = "read"
+args = ["taskId"]
+concurrent = true
+
+[[command]]
+path = "tasks cancel"
+ipc = "task_cancel"
+summary = "取消后台任务"
+category = "action"
+args = ["taskId"]
+concurrent = true
+
+[[command]]
+path = "tasks wait"
+native = "tasks-wait"
+summary = "等待后台任务与插件任务结束"
+description = "只表示任务不再活动；结果请读取对应的状态或结果命令。"
+category = "action"
+
+# ── timeline ────────────────────────────────────────────────────────────────
+
+[[command]]
+path = "timeline get"
+ipc = "timeline_status"
+summary = "查看时间线状态"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "timeline build"
+ipc = "timeline_start"
+summary = "构建时间线"
+description = "重建检材时间线并等待完成；取消时保留已写入的部分。需要打开案件。"
+category = "action"
+
+[[command]]
+path = "timeline types list"
+ipc = "timeline_types"
+summary = "列出时间线事件类型"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "timeline buckets list"
+ipc = "timeline_count"
+summary = "按时间桶统计事件"
+category = "read"
+concurrent = true
+[command.params.query]
+type = "json"
+description = "时间线查询 JSON"
+
+[[command]]
+path = "timeline events list"
+ipc = "timeline_datas"
+summary = "分页列出时间线事件"
+category = "read"
+concurrent = true
+[command.params.query]
+type = "json"
+description = "时间线查询 JSON"
+[command.params.order]
+type = "enum"
+values = ["asc", "desc"]
+description = "时间排序"
+
+[[command]]
+path = "timeline events export"
+ipc = "timeline_export"
+summary = "导出时间线事件为 CSV"
+category = "action"
+no_clobber = ["destination"]
+[command.params.query]
+type = "json"
+description = "时间线查询 JSON"
+
+[[command]]
+path = "timeline range get"
+ipc = "timeline_range"
+summary = "查看时间线的时间范围"
+category = "read"
+concurrent = true
+
+# ── superseded operations ───────────────────────────────────────────────────
+# Variants of an operation that a command above covers completely.
+
+[[superseded]]
+ipc = "fs_children"
+by = "files children list"
+
+[[superseded]]
+ipc = "fs_read"
+by = "files read"
+
+[[superseded]]
+ipc = "fs_read_range"
+by = "files read"
+
+[[superseded]]
+ipc = "fs_read_large"
+by = "files read"
+
+[[superseded]]
+ipc = "fs_preview"
+by = "files read"
+
+[[superseded]]
+ipc = "fs_usn_journal"
+by = "files usn-journal records list"
+
+[[superseded]]
+ipc = "carve_latest_scan"
+by = "carve scans list"

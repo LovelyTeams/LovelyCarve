@@ -24,8 +24,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::host::{AppHandle, State};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
 
 use crate::app::error::AppError;
 use crate::commands::quote_csv_field;
@@ -82,7 +82,7 @@ async fn active_case_dir(state: &AppState) -> Result<PathBuf, AppError> {
 }
 
 /// 查询投影状态、时间范围与计数。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn timeline_status(
     state: State<'_, AppState>,
     image_id: String,
@@ -101,7 +101,7 @@ pub async fn timeline_status(
 /// 创建重建任务并等待完成（长任务，取消走
 /// `taskCancel({taskId: 'timeline-build-<imageId>'})`）。取消保留已落库的
 /// 部分投影（`status=cancelled`）。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn timeline_start(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -189,7 +189,7 @@ pub async fn timeline_start(
 }
 
 /// 两级维度清单。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn timeline_types(
     state: State<'_, AppState>,
     image_id: String,
@@ -207,7 +207,7 @@ pub async fn timeline_types(
 }
 
 /// strftime 时间桶聚合（`limit` 为 `None` = 全部桶）。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn timeline_count(
     state: State<'_, AppState>,
     image_id: String,
@@ -229,7 +229,7 @@ pub async fn timeline_count(
 }
 
 /// 明细分页（默认 `tl_time desc`；`order` = `asc|desc`）。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn timeline_datas(
     state: State<'_, AppState>,
     image_id: String,
@@ -265,7 +265,7 @@ pub async fn timeline_datas(
 }
 
 /// 检材时间线的时间范围 `min/max(tl_time)`。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn timeline_range(
     state: State<'_, AppState>,
     image_id: String,
@@ -288,7 +288,7 @@ pub async fn timeline_range(
 }
 
 /// 导出为 UTF-8 BOM CSV，沿用明细表当前过滤（`tl_time asc` 流式逐行）。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn timeline_export(
     state: State<'_, AppState>,
     image_id: String,

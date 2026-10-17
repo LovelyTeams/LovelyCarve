@@ -6,8 +6,8 @@
 
 use std::collections::HashMap;
 
+use crate::host::State;
 use anyhow::Context as _;
-use tauri::State;
 
 use crate::core::analysis::identify::magika_ident::TypeIdentReport;
 use crate::core::casework::facts_store;
@@ -20,7 +20,7 @@ use {
 /// The persisted identification map for an image, keyed by node id. Empty when
 /// no case is open, nothing was persisted yet, or the store is unreadable —
 /// browsing must not break over a recomputable cache.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_ftype_load(
     state: State<'_, AppState>,
     image_id: String,
@@ -46,7 +46,7 @@ pub async fn fs_ftype_load(
 /// Loads persisted type-identification reports only for the requested node
 /// ids. New UI should prefer this over whole-image map hydration when entering
 /// a directory or receiving a flat-list batch.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_ftype_load_nodes(
     state: State<'_, AppState>,
     image_id: String,
@@ -77,7 +77,7 @@ pub async fn fs_ftype_load_nodes(
 /// Merges freshly identified types into the evidence's store. Returns `false`
 /// when no case is open or the image is not evidence of it (results stay
 /// session-only); errors only on a failed write.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_ftype_persist(
     state: State<'_, AppState>,
     image_id: String,

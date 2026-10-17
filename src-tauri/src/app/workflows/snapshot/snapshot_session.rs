@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use tauri::AppHandle;
+use crate::host::AppHandle;
 use tokio::sync::Mutex;
 
 use crate::app::workflows::snapshot::case_snapshot::{

@@ -4,7 +4,7 @@ This file guides AI agents and contributors working in this repository. Follow t
 
 ## Project Overview
 
-`lovelycarve` is a Tauri v2 desktop forensic evidence tool with a window-free CLI. The backend is Rust with async tasks, memory-mapped raw image access, and pure Rust image, filesystem and encrypted-container readers. Evidence includes disk images, folders, archives, AD1 logical images, iOS local backups, physical disks and assembled RAID arrays. The frontend is Vue 3 (Composition API), TypeScript, and Vite. The app targets Windows, macOS, and Linux, but the current desktop development and release recipes are Windows-only; macOS/Linux artifacts need separate verification. UI copy supports Simplified Chinese and English through `src/composables/useLocale.ts` and the catalogs in `src/i18n/`; Chinese is the default.
+`lovelycarve` is a Tauri v2 desktop forensic evidence tool with a standalone CLI that does not link Tauri. The backend is Rust with async tasks, memory-mapped raw image access, and pure Rust image, filesystem and encrypted-container readers. Evidence includes disk images, folders, archives, AD1 logical images, iOS local backups, physical disks and assembled RAID arrays. The frontend is Vue 3 (Composition API), TypeScript, and Vite. The app targets Windows, macOS, and Linux, but the current desktop development and release recipes are Windows-only; macOS/Linux artifacts need separate verification. UI copy supports Simplified Chinese and English through `src/composables/useLocale.ts` and the catalogs in `src/i18n/`; Chinese is the default.
 
 Core workflow: open or create a case, load evidence, detect partitions, browse filesystem data, preview native file types, hash / export / carve, build volume snapshots, run global search and timeline projections, and run LPP plugins. Read `docs/ARCHITECTURE.md` before adding backend modules. Read `docs/FRONTEND.md` (the frontend spec: principles, tokens and contrast, type scale, spacing, primitives, states and feedback, tables, dialogs and layering, motion, copy, accessibility, review checklist) before changing UI; the design system itself is the CSS tokens in `src/styles/themes.css` plus the shared `ui-*` primitives in `src/styles/ui.css` and the motion layer in `src/styles/motion.css` — read them too.
 
@@ -28,7 +28,8 @@ Use `docs/README.md` for the documentation map and `CONTRIBUTING.md` / `docs/DEV
 - `src-tauri/src/`: Rust backend.
 - `src-tauri/src/commands/`: per-domain `#[tauri::command]` handlers.
 - `src-tauri/src/app/`: startup, shutdown, shared application access/error types, and cross-domain workflows.
-- `src-tauri/src/bin/` and `src-tauri/src/cli/`: CLI entry, input, shell, workflows and command discovery; dispatch is generated from the desktop command registry.
+- `src-tauri/src/bin/` and `src-tauri/src/cli/`: the standalone CLI — entry, the `commands.toml` command schema, argument parsing, the shared execution steps, output, prompts, search, the JSONL session and the shell; dispatch and the command catalogue are generated from the command registry and `commands.toml`.
+- `src-tauri/src/host.rs` and `src-tauri/src/host/`: the Tauri-free host interface commands receive (`State`, `AppHandle`, `LeaseOwner`, `Response`) and its `desktop`-only Tauri adapter.
 - `src-tauri/src/core/`: forensic engines, parsers, indexing, filesystems, search, timeline, carving, and plugin runtime.
 - `src-tauri/src/state.rs`: shared application state.
 - `src-tauri/src/task_manager.rs` and `src-tauri/src/task_manager/`: immediate task registration, cancellation, resource limits and task models.
@@ -53,9 +54,9 @@ Use the repository-root `Justfile` as the task entry point. Do not replace an ex
 - `just i18n-check`: check translation coverage, interpolation parameters, and untranslated template text.
 - `just frontend-structure-check`: enforce feature/shared/model dependency boundaries, valid import/style paths, and absence of runtime dependency cycles.
 - `just fmt`: format the main Rust crate, the plugin workspace and the maintained vendored reader crates.
-- `just check`: compile-check the Rust backend without the optional OpenCV QR feature.
+- `just check`: compile-check the Rust backend in both the standalone CLI and the `desktop` configurations, without the optional OpenCV QR feature.
 - `just check-examples`: compile-check every explicitly declared example without the optional OpenCV QR feature.
-- `just clippy`: lint the Rust backend without the optional OpenCV QR feature.
+- `just clippy`: lint the Rust backend in both the standalone CLI and the `desktop` configurations, without the optional OpenCV QR feature.
 - `just test`: run the Rust backend tests without the optional OpenCV QR feature.
 - `just test <name>`: run a targeted Rust test by substring.
 - `just test-ewf`: test the vendored pure Rust EWF reader and sample corpus.
@@ -71,13 +72,13 @@ Use the repository-root `Justfile` as the task entry point. Do not replace an ex
 - `just test-vendor <directory> [args]`: run library tests for a vendored crate without a dedicated reader recipe, such as `fatfs`, `exfat` or `ext4-view`.
 - `just build-plugins [--release]`: build the plugin workspace (`lc-plugin-host` and the plugin libraries) and copy each library next to its `plugin.toml`; `just dev`, `just build-release` and `just pack-cli` run it first.
 - `just test-plugins` / `just clippy-plugins`: test / lint the plugin workspace.
-- `just build` / `just build-full`: build the backend without / with QR/OCR. Cargo default features are empty.
+- `just build` / `just build-full`: build the desktop backend (`desktop` feature) without / with QR/OCR. Cargo default features are empty; `desktop` brings in Tauri, its dialog and fs plugins and tauri-build, and `tauri.conf.json` enables it for `tauri dev` / `tauri build`.
 - `just build-release` / `just build-release-full`: create the Windows release desktop bundle without / with QR/OCR; both merge `src-tauri/tauri.plugins.conf.json`, and the full entry also merges `src-tauri/tauri.full.conf.json` for OpenCV and models. Tauri's MSI bundler also packs every DLL left in `src-tauri/target/release`, so the default entry first removes the undeclared ones (`scripts/prune-bundle-dlls.ps1`).
 - `just run-example probe_partitions <image-path>`: run the standalone partition probe.
 - `just run-example probe_partitions <image-path> --mbr`: inspect raw MBR/EBR slots, provenance and recovery warnings.
 - `just run-example-fast <name> [args]`: run a probe with `release-fast` and one Cargo build job.
-- `just run-cli [args]`: run the window-free `lovelycarve-cli` shell / complete command surface (development build without QR/OCR). See `docs/CLI.md`.
-- `just build-cli`: build the QR/OCR-free release CLI; `just build-cli-full` enables QR/OCR. `just pack-cli` / `just pack-cli-full` package the matching Windows CLI.
+- `just run-cli [args]`: run the standalone `lovelycarve-cli` (development build without QR/OCR). See `docs/CLI.md`.
+- `just build-cli`: build the QR/OCR-free standalone release CLI; `just build-cli-full` enables QR/OCR. Neither enables `desktop`; the build script embeds the `asInvoker` Windows manifest. `just pack-cli` / `just pack-cli-full` package the matching Windows CLI.
 - `just test-cli`: build and smoke-test CLI navigation, JSONL sessions, encrypted-volume unlock/export, carving and clean shutdown.
 - `just smoke-cli <executable>`: smoke-test an existing CLI binary; `just repack-cli` packages an existing Windows release according to its actual capabilities.
 - `just test-luks` / `just clippy-luks` / `just test-veracrypt`: test / lint the standalone vendored encrypted-container readers.
@@ -108,7 +109,9 @@ ReFS uses the vendored pure Rust `refs-reader`; production builds do not load or
 
 ## Backend Architecture
 
-`src-tauri/src/lib.rs` owns the Tauri builder, plugins, shared state registration, and the `invoke_handler!` list. Every new command must be registered there.
+`src-tauri/src/lib.rs` owns the `invoke_handler!` list, the single command registry, and, under the `desktop` feature, the Tauri builder, plugins and shared state registration. Every new command must be registered there.
+
+Commands do not depend on Tauri. Annotate them with `#[cfg_attr(feature = "desktop", tauri::command)]` and take `crate::host::{State, AppHandle, LeaseOwner, Response}` instead of Tauri types; `host/tauri_adapter.rs` adapts these under `desktop`, and the CLI supplies its own. Never import `tauri` in `commands/`, `app/` or `core/` outside `desktop`-gated entry code; extend `host` when a command needs a new host capability.
 
 `src-tauri/src/commands.rs` is the command facade and transport helper location. Command implementations live under the ten domain modules in `src-tauri/src/commands/`. Cross-domain orchestration lives in `src-tauri/src/app/workflows/`; application workflows must not depend on commands. Startup and shared shutdown helpers live in `app/setup.rs` and `app/lifecycle.rs`.
 
@@ -124,7 +127,7 @@ Plugin execution, analysis publication, timeline projection and result cleanup a
 
 Long tasks should return a task identifier or useful result and propagate errors to the UI. Progress or completion events must be intentional and documented by the command that emits them.
 
-CLI command discovery and dispatch are generated from the registered Rust handlers during the build. Keep command names, argument serialization and help groups stable, and verify CLI behavior when changing a shared command or workflow. Do not edit generated dispatch output.
+The CLI uses `<collection>… <verb>` commands, writes results to stdout and messages to stderr. Its dispatch and catalogue are generated from the registered Rust handlers and `src-tauri/src/cli/commands.toml`. Every registered command maps to exactly one CLI command (or a `[[superseded]]` entry naming the command that covers it), and the build script enforces the rules: plural kebab-case collections, the fixed verb vocabulary (`get`, never info/status/show; `delete`, never remove/drop; `list`, never ls/page/query; `update` replaces, `edit` changes part), unique paths, no positional arguments on `list` / `count`, and no collisions with the reserved CLI options and short aliases. Mark a command `concurrent` only after checking its lifecycle under parallel session queries. Verify CLI behavior with `just test-cli` when changing a shared command or workflow. Do not edit generated dispatch output.
 
 ### Backend invariants
 
@@ -150,10 +153,11 @@ These are easy to break silently; check them when touching the related code.
 A feature crossing the frontend/backend boundary normally requires all of these in the same change:
 
 1. Rust core logic in `src-tauri/src/core/`.
-2. A Tauri command wrapper under `src-tauri/src/commands/`.
+2. A command wrapper under `src-tauri/src/commands/` (`#[cfg_attr(feature = "desktop", tauri::command)]`, host arguments from `crate::host`).
 3. Registration in `src-tauri/src/lib.rs`.
-4. A typed command function and matching types in the relevant `src/lib/ipc/<domain>.ts`.
-5. A composable or component that consumes the wrapper.
+4. A CLI command for it in `src-tauri/src/cli/commands.toml`; the build fails until the command is mapped.
+5. A typed command function and matching types in the relevant `src/lib/ipc/<domain>.ts`.
+6. A composable or component that consumes the wrapper.
 
 Skipping one link often fails only at runtime. After IPC changes, run `just ipc-check`, `just typecheck`, and the relevant frontend/backend build or test recipes.
 

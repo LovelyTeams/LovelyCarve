@@ -1,3 +1,4 @@
+use crate::host::State;
 use crate::{
     core::{
         filesystem::fs_source_location::{indexed_source_chain, source_chain},
@@ -5,7 +6,6 @@ use crate::{
     },
     state::AppState,
 };
-use tauri::State;
 use {
     crate::app::access::loaded_image_app_error,
     crate::app::error::AppError,
@@ -14,7 +14,7 @@ use {
 };
 
 /// Locate a root-relative plugin source using live directories or verified offline indexes.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_source_locate(
     state: State<'_, AppState>,
     image_id: String,

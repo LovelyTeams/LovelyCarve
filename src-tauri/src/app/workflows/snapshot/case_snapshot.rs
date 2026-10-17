@@ -30,8 +30,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::host::{AppHandle, State};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 

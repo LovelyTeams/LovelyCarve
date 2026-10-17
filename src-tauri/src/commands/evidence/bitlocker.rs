@@ -14,7 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tauri::{AppHandle, Emitter, State};
+use crate::host::{AppHandle, State};
 
 use crate::app::workflows::evidence::ImageExportProgress;
 use crate::core::evidence::crypto::bde_image::BdeUnlockKey;
@@ -37,7 +37,7 @@ const EXPORT_CHUNK_BYTES: usize = 16 * 1024 * 1024;
 const EXPORT_PROGRESS_THROTTLE: Duration = Duration::from_millis(150);
 
 /// Inspect format, protector kinds and volume identity without credentials.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn bitlocker_metadata(
     state: State<'_, AppState>,
     image_id: String,
@@ -75,7 +75,7 @@ pub async fn bitlocker_metadata(
     .map_err(|error| AppError::task_panicked("bitlocker_metadata", error))?
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn bitlocker_status(
     state: State<'_, AppState>,
     image_id: String,
@@ -88,7 +88,7 @@ pub async fn bitlocker_status(
         .map_err(AppError::from_anyhow)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 #[allow(clippy::too_many_arguments)]
 pub async fn bitlocker_unlock(
     app: AppHandle,
@@ -233,7 +233,7 @@ pub async fn bitlocker_unlock(
     Ok(status)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn bitlocker_scan_memory(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -350,7 +350,7 @@ pub async fn bitlocker_scan_memory(
     scan_outcome
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn bitlocker_unlock_with_vmk(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -442,7 +442,7 @@ pub async fn bitlocker_unlock_with_vmk(
     })
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn bitlocker_export_decrypted_image(
     app: AppHandle,
     state: State<'_, AppState>,

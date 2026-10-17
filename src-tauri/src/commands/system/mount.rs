@@ -1,11 +1,11 @@
 //! Read-only filesystem projection commands.
 
+use crate::host::State;
 use crate::state::AppState;
-use tauri::State;
 
 use crate::app::error::AppError;
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_mount_readonly(
     state: State<'_, AppState>,
     image_id: String,
@@ -15,7 +15,7 @@ pub async fn fs_mount_readonly(
     crate::app::workflows::mount::fs_mount_readonly(state, image_id, node_id, mount_point).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_unmount_readonly(
     state: State<'_, AppState>,
     mount_id: String,
@@ -23,24 +23,24 @@ pub async fn fs_unmount_readonly(
     crate::app::workflows::mount::fs_unmount_readonly(state, mount_id).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_mounts(state: State<'_, AppState>) -> Result<Vec<DokanMountView>, AppError> {
     crate::app::workflows::mount::fs_mounts(state).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_suggest_mount_point(state: State<'_, AppState>) -> Result<String, AppError> {
     crate::app::workflows::mount::fs_suggest_mount_point(state).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_available_mount_points(
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
     crate::app::workflows::mount::fs_available_mount_points(state).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_share_mount(
     state: State<'_, AppState>,
     mount_id: String,
@@ -49,7 +49,7 @@ pub async fn fs_share_mount(
     crate::app::workflows::mount::fs_share_mount(state, mount_id, share_name).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_unshare_mount(
     state: State<'_, AppState>,
     mount_id: String,
@@ -67,7 +67,7 @@ pub async fn fs_unshare_mount(
 /// image layer is created if missing (idempotent), only the leaf is the fresh
 /// mount point. Cross-platform (`std::fs`); the Windows-only mount validates
 /// NTFS/emptiness afterwards.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn fs_create_mount_dir(
     root: String,
     image_id: String,

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use tauri::AppHandle;
+use crate::host::AppHandle;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 

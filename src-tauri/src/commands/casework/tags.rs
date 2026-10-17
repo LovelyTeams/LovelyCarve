@@ -6,8 +6,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::host::State;
 use anyhow::Context as _;
-use tauri::State;
 
 use crate::core::casework::tag_store;
 use crate::state::AppState;
@@ -19,7 +19,7 @@ use {
 /// The persisted tag map for an image, keyed by node id. Empty when no case
 /// is open, nothing was tagged yet, or the store is unreadable — browsing
 /// must not break over a re-creatable bookmark list.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_tags_load(
     state: State<'_, AppState>,
     image_id: String,
@@ -51,7 +51,7 @@ pub async fn fs_tags_load(
 /// Loads persisted tags only for the requested node ids. The existing
 /// whole-image load remains available for full replacement semantics; this
 /// endpoint is the scalable read side for current-directory or page hydration.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_tags_load_nodes(
     state: State<'_, AppState>,
     image_id: String,
@@ -87,7 +87,7 @@ pub async fn fs_tags_load_nodes(
 
 /// Applies node-level tag changes without replacing the whole image map.
 /// Upserts win over deletes if the same node id is present in both lists.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_tags_apply_changes(
     state: State<'_, AppState>,
     image_id: String,
@@ -141,7 +141,7 @@ pub async fn fs_tags_apply_changes(
 /// clears them — unlike digests, removal must stick). Returns `false` when no
 /// case is open or the image is not evidence of it; errors only on a failed
 /// write to the case ledger.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_tags_save(
     state: State<'_, AppState>,
     image_id: String,

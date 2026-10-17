@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use tauri::State;
+use crate::host::State;
 
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree;
@@ -14,7 +14,7 @@ use crate::core::preview::vim_swap::{self, VimSwapDigest};
 use crate::state::AppState;
 use {crate::app::access::loaded_image_app_error, crate::app::error::AppError};
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_sqlite_preview(
     state: State<'_, AppState>,
     image_id: String,
@@ -43,7 +43,7 @@ pub async fn fs_sqlite_preview(
 /// Recover deleted records from a SQLite database (and its `-wal` or
 /// `-journal`). `key` is the key the browser decrypted an encrypted database
 /// with; the pages are decrypted again for carving.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_sqlite_deleted_records(
     state: State<'_, AppState>,
     image_id: String,
@@ -66,7 +66,7 @@ pub async fn fs_sqlite_deleted_records(
 /// on first call). `order_by` is validated against the table's real columns
 /// server-side before it touches SQL. `key` decrypts an encrypted (SQLCipher)
 /// database.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 #[allow(clippy::too_many_arguments)]
 pub async fn fs_sqlite_table_rows(
     state: State<'_, AppState>,
@@ -145,7 +145,7 @@ fn realm_bytes_cached(
     Ok((bytes, stat.size))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_realm_preview(
     state: State<'_, AppState>,
     image_id: String,
@@ -164,7 +164,7 @@ pub async fn fs_realm_preview(
     .map_err(|err| AppError::task_panicked("fs_realm_preview", err))?
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_realm_table_rows(
     state: State<'_, AppState>,
     image_id: String,
@@ -192,7 +192,7 @@ const BINARY_READ_CAP: usize = 64 * 1024 * 1024;
 
 /// 解析镜像内文件的二进制结构（ELF / Mach-O / PE / Unix ar，自动按魔数分派），
 /// 供「原类型视图」渲染。节点须是受支持的二进制，否则返回解释性错误字符串。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_binary_preview(
     state: State<'_, AppState>,
     image_id: String,
@@ -220,7 +220,7 @@ const GGUF_READ_CAP: usize = 64 * 1024 * 1024;
 
 /// 解析镜像内文件的 GGUF 结构，供「原类型视图」渲染（节点须是 GGUF 文件，
 /// 否则返回解释性错误字符串）。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_gguf_preview(
     state: State<'_, AppState>,
     image_id: String,
@@ -284,7 +284,7 @@ fn zip_bytes_cached(
 
 /// 解析镜像内 ZIP 文件的内部结构（中央目录），供「原类型视图」的目录树渲染。
 /// 节点须是有效 ZIP，否则返回解释性错误字符串。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_zip_preview(
     state: State<'_, AppState>,
     image_id: String,
@@ -315,16 +315,16 @@ pub async fn fs_zip_preview(
 }
 
 /// 解压镜像内 ZIP 文件的某一个成员，回传其内容（限 1 MiB）作文本/十六进制预览。
-/// 原始字节经 `tauri::ipc::Response` 回传（前端收 `ArrayBuffer`），避免 JSON 整数
+/// 原始字节经 `crate::host::Response` 回传（前端收 `ArrayBuffer`），避免 JSON 整数
 /// 数组膨胀。目录/符号链接/加密/不支持压缩方法的成员返回解释性错误。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_zip_member_read(
     state: State<'_, AppState>,
     image_id: String,
     node_id: String,
     member_path: String,
     max_bytes: usize,
-) -> Result<tauri::ipc::Response, AppError> {
+) -> Result<crate::host::Response, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     let cache = state.zip_session.clone();
     let data = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, AppError> {
@@ -341,7 +341,7 @@ pub async fn fs_zip_member_read(
     })
     .await
     .map_err(|err| AppError::task_panicked("fs_zip_member_read", err))??;
-    Ok(tauri::ipc::Response::new(data))
+    Ok(crate::host::Response::new(data))
 }
 
 /// CSV / TSV 解析的读取上限。表格视图在内存里全量持有解析结果（含前端排序/
@@ -352,7 +352,7 @@ const CSV_READ_CAP: usize = 16 * 1024 * 1024;
 /// 解析镜像内文件的 CSV / TSV 结构，供「原类型视图」表格渲染。`delimiter` 为
 /// None / 空 / "auto" 时自动嗅探分隔符，否则按给定分隔符解析（前端切换分隔符时
 /// 重新调用）。解析在后端，前端只负责渲染与搜索/排序交互。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_csv_preview(
     state: State<'_, AppState>,
     image_id: String,
@@ -381,7 +381,7 @@ pub async fn fs_csv_preview(
     .map_err(|err| AppError::task_panicked("fs_csv_preview", err))?
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_vim_swap_preview(
     state: State<'_, AppState>,
     image_id: String,

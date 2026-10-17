@@ -76,6 +76,8 @@ just --dry-run pack           # 展开依赖与命令，但不执行
 
 `verify-fe` 汇总 IPC、结构、中英文词条、类型检查、前端测试和生产构建；`verify-rust` 汇总格式化、编译、Clippy 和后端测试；`verify-plugins` 汇总格式化、插件 Clippy 和插件测试。按 [贡献指南](../CONTRIBUTING.md#验证) 选择验证范围。
 
+Cargo 默认特性为空。`desktop` 特性引入 Tauri、对话框与文件插件和 tauri-build，桌面二进制 `LovelyCarve` 只在该特性下构建：`tauri dev` / `tauri build` 通过 `tauri.conf.json` 的 `build.features` 开启，`just build` / `build-full` 显式传入。`lovelycarve-cli` 不启用它，是不链接 Tauri、WebView 或 GTK 的独立程序。`just check` 和 `just clippy` 依次检查独立 CLI 与桌面两种配置；`just test` 在不含桌面运行时的配置下运行后端测试。新增后端命令还要在 `src-tauri/src/cli/commands.toml` 中映射为 CLI 命令，命名规则不满足时构建脚本报错，规则见[架构说明](ARCHITECTURE.md#命令行与桌面只读挂载)。
+
 QCOW 使用 `just test-qcow2` / `just clippy-qcow2`；宿主回归用 `just test qcow --lib --jobs 1`，CLI 用 `just test-cli`。`just generate-qcow-fixtures` 可重建独立 Python zlib/OpenSSL 样本（需 cryptography），能力与边界见 [QCOW](formats/QCOW.md)。
 
 Parallels PHDI 使用 `just test-phdi` / `just clippy-phdi`；宿主回归用 `just test phdi --lib --jobs 1`，真实命令打开 / 导出用 `just test-cli`。可选外部 oracle、56 API 对照及验证边界见 [PHDI](formats/PHDI.md)。
@@ -110,7 +112,7 @@ ReFS 使用纯 Rust 读取器；旧的 `librefs-13.dll` 只在显式的 `refs-dl
 
 Windows 的 `dev-full`、`build-full`、`build-release-full` 和 `build-cli-full` 启用 WeChat 二维码识别和带 CPU 回退的 CUDA OCR。需要准备版本匹配的 OpenCV 及 contrib 源码，用 `just build-opencv-contrib` 构建含 `wechat_qrcode` 的 OpenCV；核对安装目录中的 `vc*` 与 world 库名称后设置对应变量。官方的核心 OpenCV 发行包不包含所需模块。
 
-Unix 的 `build-cli-full` 启用 `qrcode-wechat ocr`（CPU OCR），需要自行配置系统依赖。Windows 发布 CLI 使用 `mt.exe` 嵌入清单，Cargo 构建失败时不会执行这一步。
+Unix 的 `build-cli-full` 启用 `qrcode-wechat ocr`（CPU OCR），需要自行配置系统依赖。CLI 的 `asInvoker` 清单（`src-tauri/cli.manifest`）由构建脚本在 MSVC 链接时嵌入，开发版与发布版相同。
 
 `pack` / `pack-cli` 默认不带 QR/OCR 资源；完整包使用 `pack-full` / `pack-cli-full`，额外资源来自 `src-tauri/tauri.full.conf.json`。`repack` / `repack-full` 复用已有的桌面产物，必须与编译特性一致；`repack-cli` 按 CLI 的实际能力选择资源。便携包输出到 `dist-pack/`，安装包输出到 `src-tauri/target/release/bundle/`。
 

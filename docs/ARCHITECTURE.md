@@ -1,6 +1,6 @@
 # LovelyCarve 架构说明
 
-LovelyCarve 是一个 Tauri v2 桌面取证工具，另有共用同一后端的无窗口 CLI。前端使用 Vue 3、TypeScript、Vite 和 Composition API；后端使用 Rust、Tauri command、异步任务和纯 Rust 的镜像、文件系统与加密容器读取器。
+LovelyCarve 是一个 Tauri v2 桌面取证工具，另有共用同一后端、不链接 Tauri 的独立 CLI。前端使用 Vue 3、TypeScript、Vite 和 Composition API；后端使用 Rust、异步任务和纯 Rust 的镜像、文件系统与加密容器读取器，命令函数在 `desktop` 特性下注册为 Tauri command。
 
 主流程是：创建或打开案件，添加镜像文件、文件夹证据、物理磁盘或 RAID 成员盘，检测分区和文件系统，浏览文件列表与原类型预览，执行哈希、导出、解锁、卷快照与索引，再运行全局搜索、时间线、文件恢复和插件分析。
 
@@ -90,15 +90,16 @@ just ipc-check
 
 ```text
 src-tauri/src/
-├── lib.rs                  Tauri builder、状态注册、invoke_handler!
-├── main.rs                 桌面入口
+├── lib.rs                  唯一的命令注册表（invoke_handler!）；desktop 特性下的 Tauri builder
+├── main.rs                 桌面入口（desktop 特性）
 ├── bin/                    lovelycarve-cli 入口
-├── cli/                    输入、运行、shell、工作流与生成的命令目录
+├── host.rs + host/         与 Tauri 无关的宿主接口（State、AppHandle、LeaseOwner、Response）及 desktop 适配
+├── cli/                    独立 CLI：commands.toml、参数解析、执行、输出、会话、shell 与生成的分发
 ├── app.rs + app/           setup、lifecycle、access、error、module_catalog
 │   └── workflows/          证据加载/卸载、案件、快照、识别、Docker、挂载、外部卷和插件任务编排
 ├── state.rs + state/       AppState；预览、快照、遍历与运行状态辅助类型
 ├── task_manager.rs + task_manager/  即时任务登记、取消、资源、模型和测试
-├── commands.rs + commands/ Tauri 传输层，按十个业务域组织
+├── commands.rs + commands/ 命令层，按十个业务域组织；desktop 特性下注册为 Tauri command
 └── core/mod.rs             只声明十二个职责域
     ├── evidence.rs + evidence/     镜像、读者、加密、分区、RAID、物理盘
     ├── filesystem.rs + filesystem/ 卷适配、文件树、读写投影、Docker
@@ -116,9 +117,11 @@ src-tauri/src/
 
 `commands` 的十个域是 `evidence`、`casework`、`filesystem`、`preview`、`analysis`、`carving`、`search`、`timeline`、`extensions`、`system`。跨域流程在 `app/workflows` 中复用；应用层不调用命令层，`core` 不依赖 app、commands、state、cli 或 Tauri。应用错误定义在 `app/error.rs`，`commands/app_error.rs` 保留传输层导出。
 
-`lib.rs` 保留 builder 和唯一的命令注册表。启动接线在 `app/setup.rs`，桌面退出和 CLI 共用 `app/lifecycle.rs` 的媒体、插件清理步骤，各入口保持原有收尾顺序。CLI 生成器沿模块声明解析嵌套命令路径，命令名、参数和帮助分组保持稳定。
+`lib.rs` 保留唯一的命令注册表，以及 `desktop` 特性下的 Tauri builder。`app/setup.rs` 的 `initialize`（插件发现、任务调度、媒体缓存）由桌面 `setup` 和 CLI 共用，桌面退出和 CLI 共用 `app/lifecycle.rs` 的媒体、插件清理步骤。CLI 生成器沿模块声明解析嵌套命令路径和真实函数签名，与 `cli/commands.toml` 的命令定义一起生成分发代码与命令目录（见[命令行与桌面只读挂载](#命令行与桌面只读挂载)）。
 
-CLI JSONL 调度位于 `cli/session.rs`。`session --jobs N` 使用有界输入队列和查询工作线程，主协调器统一发布按请求 ID 关联的 JSON 响应；stdin 等待不会阻塞完成结果输出。并发查询复制派发时的 Shell 上下文，案件／检材／目录切换及其他未列入并发清单的命令先等待已有查询完成。结构化 `$ref` 等待先前请求结果，EOF 收齐请求后再等待后台任务。新增命令默认是屏障；确认其生命周期与并发安全后，才加入查询清单并通过命令目录的 `parallel` 字段公开。
+命令函数不直接依赖 Tauri：状态、应用句柄、二进制响应和媒体租约所有者分别使用 `host::State`、`host::AppHandle`、`host::Response` 和 `host::LeaseOwner`，函数以 `#[cfg_attr(feature = "desktop", tauri::command)]` 标注。`desktop` 特性（`tauri.conf.json` 的 `build.features` 为 `tauri dev/build` 开启）引入 tauri、对话框与文件插件和 tauri-build，并由 `host/tauri_adapter.rs` 为这些类型实现 `CommandArg` / `IpcResponse`：状态取自 Tauri 托管状态，`AppHandle` 把事件转给 Tauri `emit` 并提供应用数据目录，`LeaseOwner` 对应调用窗口（窗口关闭即租约结束），`Response` 以原始字节返回。CLI 构建不启用该特性，`AppHandle` 的事件写到 `session --events` 的标准错误或直接丢弃，`LeaseOwner` 归进程所有。两种构建使用同一个应用数据目录，目录名取自 `tauri.conf.json` 的 identifier（构建脚本导出为 `LOVELYCARVE_APP_IDENTIFIER`）。命令需要新的宿主能力时扩展 `host` 类型，不在命令中引用 Tauri 类型。
+
+CLI JSONL 调度位于 `cli/session.rs`。`session --jobs N` 使用有界输入队列和查询工作线程，主协调器统一发布按请求 ID 关联的 JSON 响应；stdin 等待不会阻塞完成结果输出。并发查询复制派发时的会话上下文，案件／检材／目录切换及其他未标记并发的命令先等待已有查询完成。结构化 `$ref` 等待先前请求结果，EOF 收齐请求后再等待后台任务。新增命令默认是屏障；确认其生命周期与并发安全后，才在 `cli/commands.toml` 中标记 `concurrent = true`，并通过命令目录的 `concurrent` 字段公开。
 
 `src-tauri/examples/` 按用途分类，所有 example 目标在 Cargo 中显式声明，通过 `just run-example <名称>` 调用；`just check-examples` 检查这些目标，用法见 [后端探针](../src-tauri/examples/README.md)。新增模块使用 `<name>.rs` 加 `<name>/`，不新增 `mod.rs`。
 
@@ -296,7 +299,7 @@ LUKS 扇区密码套件由 vendored `sector_cipher` 统一分派，密码槽与�
 路径只查找已注册会话，不写入案件检材清单；RAID 检测不把卷影副本当作候选成员。
 前端由 `useShadowCopies` 读取列表，镜像信息页在对应分区行显示副本数（有 VSS 区而无副本时显示「无卷影副本」），
 展开后由 `ShadowCopyList.vue` 列出副本，打开后在新标签页浏览；解锁 BitLocker 后重新读取列表。
-CLI 注册表提供 `shadow-copy-list` / `shadow-copy-open`，在同一会话中保留父镜像与副本。
+CLI 的 `shadow-copies list` / `shadow-copies open` 在同一会话中保留父镜像与副本。
 读取器公开 `store_blocks` / `store_ranges` 原始枚举和 `Snapshot: Read + Seek`；完整 API 对照与
 验证边界见 [VSS](formats/VSS.md)。catalog 损坏或循环时报错而不是返回部分列表，存储头整块读取并校验。
 原始 catalog 尺寸保留用于调查，布局尺寸独立求值；异常时要求主备 NTFS 几何一致。
@@ -946,19 +949,32 @@ SecurityRonin/sqlite-forensic），为 SQLite 浏览器的「已删除记录」�
 
 ## 命令行与桌面只读挂载
 
-完整无窗口命令行入口为 `src-tauri/src/bin/lovelycarve-cli.rs`，交互用法与脚本协议见
-[`CLI.md`](CLI.md)。`cli/` 管理交互目录上下文、参数解析、JSONL 结果引用和退出清理。
-`build/cli_catalog.rs` 在构建时读取本文件所述的 `lib.rs` Tauri 注册列表和真实函数签名，
-生成全部命令的直接 Rust 调用与参数元数据；不经 WebView、HTTP 服务或运行中的桌面程序。
-CLI 复用 `application_builder()` 的状态/插件初始化，但清空窗口配置。唯一依赖 WebView
-参数的媒体租约命令通过显式 CLI owner 适配，保持 GUI 的窗口存活检查。可执行文件旁的
-`plugins/` 同样参与插件发现，`lc-plugin-host` 也从可执行文件旁查找。`just build-cli-full` 构建完整功能，`just build-cli` 与 `just run-cli` 是无 QR/OCR 的
-开发入口；`just test-cli` 验证真正的无窗口进程与脚本工作流。
+独立命令行入口为 `src-tauri/src/bin/lovelycarve-cli.rs`，用法见 [`CLI.md`](CLI.md)。
+CLI 构建不启用 `desktop` 特性，不链接 Tauri、WebView 或 GUI 工具包；进程在 16 MiB 栈的专用线程上
+运行 tokio 多线程运行时，自行创建 `AppState` 并调用 `app::setup::initialize`，退出时取消任务、
+关闭案件、停止插件并释放媒体缓存。Windows 的 `asInvoker` 清单由构建脚本在链接时嵌入。
 
-桌面只读挂载仍由 `app/workflows/mount.rs` 编排，`commands/system/mount.rs` 提供 IPC，
+命令目录由构建脚本生成：`build/cli_catalog.rs` 读取 `lib.rs` 的 `generate_handler!` 注册表和各命令的
+真实函数签名，与 `src/cli/commands.toml` 中逐条审阅的命令定义合并，生成按 API 参数名调用命令函数的
+`cli_dispatch.rs` 和命令目录 `cli_catalog.json`（命令、参数、用法、类别、并发与敏感字段）。构建时检查：每个注册命令映射到恰好一个 `<集合>… <动词>` 命令，或在
+`[[superseded]]` 中注明替代命令；动词在固定动词表内，不使用同义词（info/status→get、remove→delete、
+ls/query→list 等）；命令路径唯一且不是其他命令的前缀；`list`/`count` 不带位置参数；选项名与短选项
+不与 CLI 保留选项冲突；命令签名中出现不支持的注入参数时构建失败。手写命令（`files list/get/read/search`、
+`files strings list`、`context`、`tasks wait`、`system get`、`cli search` 等）也在该文件中声明参数，
+命令搜索、`schema`、帮助、补全和 JSONL 会话读取同一份目录。
+
+`cli/` 按职责分为：`argv`（由目录构建 clap 命令树、帮助与命令行错误）、`context`（一次执行的统一步骤：
+dry-run、删除确认、默认值与生成 ID、提问、`--image` 作用域、镜像内路径解析、不覆盖检查、调用和
+上下文更新）、`native` / `browsing` / `grep` / `strings`（手写命令）、`output` / `prompt` / `progress` /
+`interactive`（标准输出与标准错误、交互提问、进度、终端与代理检测）、`search`（BM25+ 命令搜索）、
+`schema`、`complete`、`dotenv`、`session`、`shell` 和 `runtime`（进程入口、后端启动与关闭、中断处理）。
+可执行文件旁的 `plugins/` 同样参与插件发现，`lc-plugin-host` 也从可执行文件旁查找。
+`just test-cli` 以真实进程验证无窗口启动、会话协议、脚本与中断退出码。
+
+桌面只读挂载由 `app/workflows/mount.rs` 编排，`commands/system/mount.rs` 提供命令，
 `core/platform/dokan_mount/` 负责 Windows Dokan 投影。挂载使用 evidence session，
 范围读取复用文件系统适配器；共享、句柄和挂载点在卸载证据及关闭应用时清理。
-CLI 可通过同一命令目录调用相关 `fs_mount_*` 命令，保持无窗口会话的退出清理。
+CLI 的 `mounts create/list/delete/share/unshare` 调用同一组命令，进程退出时释放挂载与共享。
 
 ## 界面与交互
 
@@ -1135,10 +1151,11 @@ LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提�
 新增跨 IPC 功能通常需要同一改动完成：
 
 1. `src-tauri/src/core/` 增加核心逻辑。
-2. `src-tauri/src/commands/` 增加命令 wrapper。
+2. `src-tauri/src/commands/` 增加命令 wrapper（`#[cfg_attr(feature = "desktop", tauri::command)]`，宿主参数使用 `crate::host` 类型）。
 3. `src-tauri/src/lib.rs` 注册到 `tauri::generate_handler!`。
-4. `src/lib/ipc/<domain>.ts` 增加类型化封装。
-5. 组件或 composable 调用封装。
-6. 运行 `just ipc-check`、`just typecheck`、`just test-fe`、`just build-fe` 和相关 Rust 检查，完整矩阵见 [贡献指南](../CONTRIBUTING.md)。
+4. `src-tauri/src/cli/commands.toml` 把它映射为一条 CLI 命令（集合、动词、位置参数、敏感与生成字段），否则构建失败。
+5. `src/lib/ipc/<domain>.ts` 增加类型化封装。
+6. 组件或 composable 调用封装。
+7. 运行 `just ipc-check`、`just typecheck`、`just test-fe`、`just build-fe` 和相关 Rust 检查，完整矩阵见 [贡献指南](../CONTRIBUTING.md)。
 
 事件需要明确的 payload、归属、清理和错误处理；插件能力与 QR/OCR 等可选能力要显示准确的可用状态。新增入口必须有已注册的后端命令，不保留“暂未接入”的空壳菜单。修改后检查切换镜像、面板卸载与迟到响应，避免旧任务的结果写入新的上下文。

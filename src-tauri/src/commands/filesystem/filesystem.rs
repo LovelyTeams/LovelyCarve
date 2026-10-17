@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::host::State;
 use serde::Serialize;
-use tauri::State;
 
 use crate::app::workflows::filesystem::prepare_remote_partition;
 use crate::commands::filesystem::filesystem_page::{
@@ -30,7 +30,7 @@ pub use crate::commands::filesystem::filesystem_journal::{
     Ext4JournalBlocksPage, UsnJournalPage,
 };
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_children(
     state: State<'_, AppState>,
     image_id: String,
@@ -134,7 +134,7 @@ pub async fn fs_children(
     result
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_children_page(
     state: State<'_, AppState>,
     image_id: String,
@@ -292,7 +292,7 @@ pub async fn fs_children_page(
 /// from the map, so the frontend can fall back to a bounded live probe only
 /// for those. This collapses the per-directory count fan-out (one `fs_children`
 /// per subdir) into a single call whenever a snapshot exists.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_child_counts(
     state: State<'_, AppState>,
     image_id: String,
@@ -373,7 +373,7 @@ pub async fn fs_child_counts(
 /// the frontend falls back to its direct child-count signal for those. Reads
 /// snapshot indices only (no filesystem I/O); see
 /// [`crate::core::catalog::snapshot::volume_snapshot::VolumeSnapshot::subtree_has_file`].
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_subtree_empty_dirs(
     state: State<'_, AppState>,
     image_id: String,
@@ -467,7 +467,7 @@ pub struct FsLocateResult {
 /// 文件走所在卷索引的 pid 链；分区/未分配/系统区/
 /// 磁盘间隙虚拟节点按 id 前缀合成。解析不到（索引缺行）时报错，前端回退
 /// 为提示而不跳转。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_node_locate(
     state: State<'_, AppState>,
     image_id: String,

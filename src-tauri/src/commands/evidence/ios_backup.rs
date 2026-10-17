@@ -1,7 +1,7 @@
 //! Read-only iOS backup unlock and upstream anomaly audit.
 use std::sync::Arc;
 
-use tauri::State;
+use crate::host::State;
 
 use crate::app::{access::loaded_image_app_error, error::AppError};
 use crate::core::evidence::image::ImageInfo;
@@ -11,7 +11,7 @@ use crate::task_manager::TaskKind;
 
 /// Unlock into a child session. Cancellation is checked around the upstream
 /// key derivation, which cannot be interrupted inside a PBKDF2 round.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn ios_backup_unlock(
     state: State<'_, AppState>,
     image_id: String,
@@ -62,7 +62,7 @@ pub async fn ios_backup_unlock(
 
 /// Return native upstream findings (code, severity, evidence, source and note).
 /// Cancellation is polled during the manifest and blob directory traversals.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn ios_backup_audit(
     state: State<'_, AppState>,
     image_id: String,

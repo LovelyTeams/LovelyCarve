@@ -1,7 +1,7 @@
 //! List an image's Volume Shadow Copies and open one as a session image.
 
+use crate::host::State;
 use std::sync::Arc;
-use tauri::State;
 
 use crate::core::evidence::image::ImageInfo;
 use crate::core::evidence::vss_image::{self, ShadowVolumeInfo};
@@ -14,7 +14,7 @@ use {
 
 /// Shadow copies of every NTFS volume of the image, oldest first, with any
 /// session image already open for each.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn shadow_copy_list(
     state: State<'_, AppState>,
     image_id: String,
@@ -41,7 +41,7 @@ pub async fn shadow_copy_list(
 /// Reconstruct shadow copy `index` of the NTFS volume in `partition_id` and
 /// register it as a read-only session image. Reuses an already open session
 /// for the same shadow copy.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn shadow_copy_open(
     state: State<'_, AppState>,
     image_id: String,

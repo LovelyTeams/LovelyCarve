@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $executable = Join-Path $Root 'src-tauri/target/release/lovelycarve-cli.exe'
 if (-not (Test-Path -LiteralPath $executable)) { throw 'Run just build-cli first.' }
-$capabilities = & $executable capabilities --json | ConvertFrom-Json
+$capabilities = & $executable system get | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0) { throw 'Cannot read CLI capabilities.' }
 if ($RequireQrOcr -and (-not $capabilities.qrcode -or -not $capabilities.ocr)) {
     throw 'The binary does not enable QR/OCR. Run just build-cli-full before packaging.'
@@ -39,7 +39,7 @@ foreach ($resource in $pluginBundle.bundle.resources.PSObject.Properties) {
 Copy-Item -LiteralPath (Join-Path $Root 'docs/CLI.md') -Destination (Join-Path $stage 'README.md')
 Copy-Item -LiteralPath (Join-Path $Root 'LICENSE') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $Root 'THIRD_PARTY_NOTICES.md') -Destination $stage
-$stagedCapabilities = & (Join-Path $stage 'lovelycarve-cli.exe') capabilities --json | ConvertFrom-Json
+$stagedCapabilities = & (Join-Path $stage 'lovelycarve-cli.exe') system get | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0 -or $stagedCapabilities.qrcode -ne $capabilities.qrcode -or $stagedCapabilities.ocr -ne $capabilities.ocr) {
     throw 'The staged CLI cannot report matching capabilities; check its runtime dependencies.'
 }

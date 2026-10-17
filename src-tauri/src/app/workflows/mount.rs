@@ -1,6 +1,6 @@
 //! Read-only filesystem projection commands.
 
-use tauri::State;
+use crate::host::State;
 
 use crate::app::error::AppError;
 #[cfg(not(target_os = "windows"))]

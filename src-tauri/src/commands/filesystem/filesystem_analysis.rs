@@ -5,8 +5,8 @@
 
 use std::time::Instant;
 
+use crate::host::State;
 use serde::{Deserialize, Serialize};
-use tauri::State;
 
 use crate::core::analysis::identify::magika_ident;
 use crate::core::common::hash::{HashAlgo, MultiHasher};
@@ -26,7 +26,7 @@ pub struct FsDigest {
     pub truncated: bool,
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_digest(
     state: State<'_, AppState>,
     image_id: String,
@@ -93,7 +93,7 @@ pub async fn fs_digest(
 
 /// AI 文件类型识别（Magika）。读盘 + 推理都在阻塞线程里做；模型只在首次
 /// 调用时加载一次。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_identify_type(
     state: State<'_, AppState>,
     image_id: String,

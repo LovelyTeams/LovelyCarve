@@ -1,8 +1,8 @@
 //! Runtime evidence queries shared by application workflows and commands.
 use crate::core::filesystem::evidence_session::EvidenceSession;
+use crate::host::State;
 use crate::{app::error as app_error, core::evidence::image::ReadFaultReport, state::AppState};
 use std::{path::PathBuf, sync::Arc};
-use tauri::State;
 
 pub(crate) async fn loaded_image_app_error(
     state: &State<'_, AppState>,

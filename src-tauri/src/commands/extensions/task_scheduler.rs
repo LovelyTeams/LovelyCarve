@@ -13,8 +13,8 @@
 //! 读写台账的同步调度器方法都放到阻塞线程池执行([`on_blocking`]),
 //! 插件任务密集提交时不会占住异步运行时。
 
+use crate::host::State;
 use serde::Serialize;
-use tauri::State;
 
 use crate::{
     commands::app_error::AppError,
@@ -36,14 +36,14 @@ pub struct SchedTaskCreateResponse {
     pub created: bool,
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn sched_task_functions(
     state: State<'_, AppState>,
 ) -> Result<Vec<SchedFunction>, AppError> {
     Ok(state.scheduler.registry().all().to_vec())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn sched_task_list(
     state: State<'_, AppState>,
     image_id: Option<String>,
@@ -55,7 +55,7 @@ pub async fn sched_task_list(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn sched_task_create(
     state: State<'_, AppState>,
     function: String,
@@ -82,7 +82,7 @@ pub async fn sched_task_create(
     })
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn sched_task_cancel(
     state: State<'_, AppState>,
     task_id: i64,
@@ -94,7 +94,7 @@ pub async fn sched_task_cancel(
         .map_err(sched_app_error)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn sched_task_pause(
     state: State<'_, AppState>,
     task_id: i64,
@@ -106,7 +106,7 @@ pub async fn sched_task_pause(
         .map_err(sched_app_error)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn sched_task_start(
     state: State<'_, AppState>,
     task_id: i64,
@@ -118,7 +118,7 @@ pub async fn sched_task_start(
         .map_err(sched_app_error)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn sched_task_restart(
     state: State<'_, AppState>,
     task_id: i64,
@@ -130,7 +130,7 @@ pub async fn sched_task_restart(
         .map_err(sched_app_error)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn sched_task_remove(
     state: State<'_, AppState>,
     task_id: i64,
@@ -142,7 +142,7 @@ pub async fn sched_task_remove(
         .map_err(sched_app_error)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn sched_evidence_post_actions_set(
     state: State<'_, AppState>,
     image_id: String,

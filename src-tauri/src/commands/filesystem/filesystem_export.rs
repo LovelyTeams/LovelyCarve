@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::host::{AppHandle, State};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, State};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::filesystem::tree::fs_tree::{self, FsExportResult, FsExportSummary};
@@ -18,7 +18,7 @@ use {
     crate::app::error::AppError,
 };
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_export(
     state: State<'_, AppState>,
     image_id: String,
@@ -84,7 +84,7 @@ pub enum ExportDirMode {
 
 const EXPORT_DIR_PROGRESS_THROTTLE: Duration = Duration::from_millis(150);
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_export_dir(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -218,7 +218,7 @@ pub async fn fs_export_dir(
 /// Read-only, streaming: the walk writes one pipe-delimited line per node
 /// directly to `destination` so a multi-hundred-thousand-entry tree never
 /// materialises in memory.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_timeline_export(
     state: State<'_, AppState>,
     image_id: String,

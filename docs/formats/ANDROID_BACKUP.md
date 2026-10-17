@@ -6,7 +6,7 @@
 
 ## 入口与能力
 
-- 「添加检材 → 镜像文件」可选 `.ab` 与小米 `.bak`；拖入文件和 CLI `image_load`
+- 「添加检材 → 镜像文件」可选 `.ab` 与小米 `.bak`；拖入文件和 CLI `images open`
   共用同一后端。标准 `ANDROID BACKUP\n` 与 `MIUI BACKUP\n` 魔数也可识别改名文件。
 - 版本支持 1–5，头字段是魔数、版本、压缩标志和加密方式。支持 `compression=0`
   的原始 TAR，以及 `compression=1` 的 zlib；沿用小米兼容路径的 GZIP 载荷支持。

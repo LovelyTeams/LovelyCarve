@@ -1,4 +1,6 @@
-//! Tauri resources, plugin discovery and runtime event bridges.
+//! Backend startup shared by the desktop app and the CLI: preview scratch
+//! space, plugin discovery and runtime event bridges. The desktop `setup`
+//! hook adds its Tauri-only resources on top.
 use crate::app::workflows::scheduler::PluginTaskRunner;
 use crate::{
     core::{
@@ -10,23 +12,65 @@ use crate::{
             },
         },
         filesystem::evidence_session::EvidenceSession,
+        preview::media_cache::MediaScratch,
     },
+    host::AppHandle,
     state::AppState,
 };
 use std::{collections::HashMap, path::Path, sync::Arc};
 use tokio::sync::Mutex;
 
-pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    use tauri::Emitter as _;
-    use tauri::Manager as _;
-    let scratch = std::sync::Arc::new(crate::core::preview::media_cache::MediaScratch::open(
+/// Prepare `state` for commands: create the preview scratch directory,
+/// discover plugins and route task, scheduler and plugin events to `host`.
+/// Returns the scratch directory so the desktop can expose it to its asset
+/// protocol.
+pub(crate) fn initialize(
+    state: &AppState,
+    host: &AppHandle,
+) -> Result<Arc<MediaScratch>, Box<dyn std::error::Error>> {
+    let scratch = Arc::new(MediaScratch::open(
         &std::env::temp_dir().join("lovelycarve-preview-cache"),
     )?);
-    app.asset_protocol_scope()
-        .allow_directory(scratch.path(), true)?;
-    *app.state::<AppState>().media_scratch.lock() = Some(scratch);
-    let app_data_dir = app.path().app_data_dir()?;
-    let mut plugin_roots = vec![app_data_dir.join("plugins")];
+    *state.media_scratch.lock() = Some(Arc::clone(&scratch));
+    discover_plugins(state, host);
+    let events = host.clone();
+    state.scheduler.set_event_sink(move |event| {
+        if let Err(err) = events.emit(
+            crate::core::extensions::task_scheduler::SCHED_TASK_EVENT,
+            event,
+        ) {
+            tracing::debug!(
+                "emit {} failed: {err}",
+                crate::core::extensions::task_scheduler::SCHED_TASK_EVENT
+            );
+        }
+    });
+    let events = host.clone();
+    state.tasks.set_event_sink(move |event| {
+        if let Err(err) = events.emit(crate::task_manager::TASK_LIFECYCLE_EVENT, event) {
+            tracing::debug!(
+                "emit {} failed: {err}",
+                crate::task_manager::TASK_LIFECYCLE_EVENT
+            );
+        }
+    });
+    let events = host.clone();
+    state.tasks.set_progress_sink(move |event| {
+        if let Err(err) = events.emit(crate::task_manager::TASK_PROGRESS_EVENT, event) {
+            tracing::debug!(
+                "emit {} failed: {err}",
+                crate::task_manager::TASK_PROGRESS_EVENT
+            );
+        }
+    });
+    Ok(scratch)
+}
+
+fn discover_plugins(state: &AppState, host: &AppHandle) {
+    let mut plugin_roots = host
+        .app_data_dir()
+        .map(|directory| vec![directory.join("plugins")])
+        .unwrap_or_default();
     if let Ok(executable) = std::env::current_exe() {
         if let Some(directory) = executable.parent() {
             plugin_roots.push(directory.join("plugins"));
@@ -52,17 +96,17 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
             }
         }
     }
-    match crate::core::extensions::plugin::PluginManager::discover(&plugin_roots) {
+    match PluginManager::discover(&plugin_roots) {
         Ok(manager) => {
             tracing::info!(
                 plugins = manager.definitions().len(),
                 "LPP plugin discovery complete"
             );
-            let app_handle = app.handle().clone();
+            let events = host.clone();
             // 共享实例(直接分析)的进度;调度任务的进度经各自的
             // worker 回到所属任务,不走这里。
             manager.set_progress_sink(move |event| {
-                if let Err(err) = app_handle.emit("plugin-progress", event) {
+                if let Err(err) = events.emit("plugin-progress", event) {
                     tracing::debug!("emit plugin-progress failed: {err}");
                 }
             });
@@ -70,44 +114,22 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
                 Ok(store) => manager.set_log_store(store),
                 Err(err) => tracing::warn!("plugin log files are unavailable: {err}"),
             }
-            *app.state::<AppState>().plugins.write() = Some(std::sync::Arc::new(manager));
+            *state.plugins.write() = Some(Arc::new(manager));
         }
         Err(err) => tracing::warn!("LPP plugin discovery failed: {err}"),
     }
-    let app_handle = app.handle().clone();
-    app.state::<AppState>()
-        .scheduler
-        .set_event_sink(move |event| {
-            if let Err(err) = app_handle.emit(
-                crate::core::extensions::task_scheduler::SCHED_TASK_EVENT,
-                event,
-            ) {
-                tracing::debug!(
-                    "emit {} failed: {err}",
-                    crate::core::extensions::task_scheduler::SCHED_TASK_EVENT
-                );
-            }
-        });
-    let app_handle = app.handle().clone();
-    app.state::<AppState>().tasks.set_event_sink(move |event| {
-        if let Err(err) = app_handle.emit(crate::task_manager::TASK_LIFECYCLE_EVENT, event) {
-            tracing::debug!(
-                "emit {} failed: {err}",
-                crate::task_manager::TASK_LIFECYCLE_EVENT
-            );
-        }
-    });
-    let app_handle = app.handle().clone();
-    app.state::<AppState>()
-        .tasks
-        .set_progress_sink(move |event| {
-            if let Err(err) = app_handle.emit(crate::task_manager::TASK_PROGRESS_EVENT, event) {
-                tracing::debug!(
-                    "emit {} failed: {err}",
-                    crate::task_manager::TASK_PROGRESS_EVENT
-                );
-            }
-        });
+}
+
+/// Desktop setup hook: register the host handle for commands and let the
+/// asset protocol stream materialised media previews.
+#[cfg(feature = "desktop")]
+pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::Manager as _;
+    let host = crate::host::desktop_handle(app.handle());
+    let scratch = initialize(&app.state::<AppState>(), &host)?;
+    app.asset_protocol_scope()
+        .allow_directory(scratch.path(), true)?;
+    app.manage(host);
     Ok(())
 }
 

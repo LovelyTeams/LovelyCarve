@@ -3,9 +3,9 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::host::{AppHandle, State};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, State};
 
 use crate::app::error::AppError;
 use crate::commands::carving::carve_filesystem::{run_filesystem_phase, sector_ranges};
@@ -104,12 +104,12 @@ fn default_signatures() -> bool {
     true
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn carve_formats() -> Vec<carver::CarveFormatInfo> {
     carver::available_formats()
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn carve_start(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -169,7 +169,7 @@ pub async fn carve_start(
         .register(task_id.clone(), TaskKind::CarveScan, Some(image_id));
     let token = task.token();
     let tasks = state.tasks.clone();
-    tauri::async_runtime::spawn(async move {
+    tokio::spawn(async move {
         let resource_permit = match tasks.acquire_resources(&task).await {
             Ok(permit) => permit,
             Err(error) => {
@@ -322,7 +322,7 @@ impl ScanWorker {
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn carve_scan_status(
     state: State<'_, AppState>,
     scan_id: String,
@@ -332,7 +332,7 @@ pub async fn carve_scan_status(
     Ok(snapshot)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn carve_scan_pause(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -359,7 +359,7 @@ pub async fn carve_scan_pause(
     Ok(snapshot)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn carve_scan_resume(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -386,7 +386,7 @@ pub async fn carve_scan_resume(
     Ok(snapshot)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn carve_latest_scan(
     state: State<'_, AppState>,
     image_id: String,
@@ -404,7 +404,7 @@ pub async fn carve_latest_scan(
         .max_by_key(|snapshot| snapshot.created_unix_ms))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn carve_results_page(
     state: State<'_, AppState>,
     scan_id: String,
@@ -486,13 +486,13 @@ pub async fn carve_results_page(
     })
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn carve_preview(
     state: State<'_, AppState>,
     scan_id: String,
     artifact_id: String,
     max_bytes: Option<u64>,
-) -> Result<tauri::ipc::Response, AppError> {
+) -> Result<crate::host::Response, AppError> {
     let session = scan_session(&state, &scan_id).await?;
     let (image_id, artifact) = {
         let scan = session.read();
@@ -515,7 +515,7 @@ pub async fn carve_preview(
         .await
         .map_err(|error| AppError::task_panicked("carve_preview", error))?
         .map_err(AppError::from_anyhow)?;
-    Ok(tauri::ipc::Response::new(data))
+    Ok(crate::host::Response::new(data))
 }
 
 pub(crate) async fn scan_session(

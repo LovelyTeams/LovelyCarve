@@ -12,8 +12,8 @@
 
 use std::sync::Arc;
 
+use crate::host::State;
 use serde::Serialize;
-use tauri::State;
 
 use crate::app::access::loaded_image_app_error;
 use crate::app::error::AppError;
@@ -37,7 +37,7 @@ pub struct FiledbVolume {
 }
 
 /// The image's filesystem array: `volId` is the index.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn filedb_volumes(
     state: State<'_, AppState>,
     image_id: String,
@@ -100,7 +100,7 @@ fn fs_all_volumes(image: &Arc<EvidenceSession>) -> anyhow::Result<Vec<FiledbVolu
 /// Query the metadata index with structured filters. With no
 /// `volume_key`, every indexed volume of the image is scanned and the results
 /// concatenated (natural order within each volume).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn filedb_query_files(
     state: State<'_, AppState>,
     image_id: String,
@@ -132,7 +132,7 @@ pub async fn filedb_query_files(
 /// `QueryFileSt` channel: map a MetaAddr four-tuple back to the node id that
 /// `fs_read*` / `fs_stat` accept. Path-addressed entries (`metaAddr = 0`)
 /// require `full_path`.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn filedb_resolve_meta_addr(
     state: State<'_, AppState>,
     query: FileQuery,

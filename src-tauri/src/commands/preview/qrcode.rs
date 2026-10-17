@@ -2,8 +2,8 @@
 //! WeChat 检测器 + 暴力变换扫描（见 `core::preview::qrcode`），进度走 `qr-scan-progress`
 //! 事件，可经 `task_cancel` 协作取消。结果同步作为返回值回给前端。
 
+use crate::host::{AppHandle, State};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
 
 use crate::core::filesystem::tree::fs_tree;
 use crate::core::preview::qrcode::{self, QrScanOutcome};
@@ -25,7 +25,7 @@ pub struct QrScanProgress {
 
 /// 扫描指定文件节点中的二维码。`expected_count` 达到即提前停止；`task_id` 由前端
 /// 生成，用于进度过滤与取消。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn qr_scan(
     app: AppHandle,
     state: State<'_, AppState>,

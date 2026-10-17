@@ -10,8 +10,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::host::{AppHandle, State};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
 
 use crate::core::evidence::image::{
     DerivedImage, ImageInfo, Partition, ReadFaultPolicy, ReadFaultReport,

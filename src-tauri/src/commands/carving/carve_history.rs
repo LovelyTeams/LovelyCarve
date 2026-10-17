@@ -2,8 +2,8 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use crate::host::State;
 use parking_lot::RwLock;
-use tauri::State;
 
 use crate::{
     commands::app_error::AppError,
@@ -52,7 +52,7 @@ fn remove_finished_scan(
 }
 
 /// Lists retained scans for this image; does not include other evidence or emit events.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn carve_scan_list(
     state: State<'_, AppState>,
     image_id: String,
@@ -64,7 +64,7 @@ pub async fn carve_scan_list(
 }
 
 /// Removes a finished session and its in-memory results, leaving recovered files untouched.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn carve_scan_remove(
     state: State<'_, AppState>,
     image_id: String,

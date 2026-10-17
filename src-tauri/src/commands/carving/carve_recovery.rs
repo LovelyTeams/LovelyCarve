@@ -7,9 +7,9 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::host::State;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tauri::State;
 use tokio_util::sync::CancellationToken;
 
 use crate::app::access::loaded_image_app_error;
@@ -60,7 +60,7 @@ struct RecoveredArtifact {
     sha256: String,
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn carve_recover(
     state: State<'_, AppState>,
     scan_id: String,

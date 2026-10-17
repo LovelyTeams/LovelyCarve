@@ -1,0 +1,522 @@
+//! Running one command: the session context it reads and updates, and the
+//! steps every command goes through, in order: dry run, confirmation, values
+//! and prompts, scope, then the call.
+use std::{io::IsTerminal, path::Path, sync::Arc};
+
+use serde_json::{json, Map, Value};
+
+use super::{
+    browsing,
+    catalog::{Command, Kind},
+    generated, native, progress, prompt, CliError, Output,
+};
+use crate::{commands::filesystem::filesystem_page::FsNodePage, host::AppHandle, state::AppState};
+
+/// How a command reaches the user: a single invocation, the JSONL session,
+/// or the interactive shell.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Mode {
+    OneShot,
+    Session,
+    Shell,
+}
+
+/// What persists between commands in one process.
+#[derive(Clone, Default, Debug)]
+pub struct Context {
+    /// The evidence scope as given (`--image`, `LOVELYCARVE_IMAGE`), opened on
+    /// first use.
+    pub scope: Option<String>,
+    /// The current image.
+    pub image_id: Option<String>,
+    /// The working directory inside the image: names with their node IDs.
+    pub location: Vec<(String, String)>,
+}
+
+impl Context {
+    pub fn pwd(&self) -> String {
+        format!(
+            "/{}",
+            self.location
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>()
+                .join("/")
+        )
+    }
+}
+
+/// One command to run, with values keyed by API parameter name.
+pub struct Request<'a> {
+    pub command: &'a Command,
+    pub values: Map<String, Value>,
+    pub ask: Vec<String>,
+    pub force: bool,
+    pub dry_run: bool,
+    pub text: bool,
+}
+
+/// A path inside the image, resolved to its node.
+pub struct Target {
+    pub node_id: String,
+    /// The node's ancestors and itself, when the path named them.
+    pub location: Option<Vec<(String, String)>>,
+}
+
+#[derive(Clone)]
+pub struct Exec {
+    pub host: AppHandle,
+    pub state: Arc<AppState>,
+    pub mode: Mode,
+    pub quiet: bool,
+}
+
+/// What `--dry-run` prints: the backend request, without running it or
+/// touching evidence. Sensitive values are redacted.
+pub fn preview(command: &Command, values: &Map<String, Value>, scope: Option<&str>) -> Value {
+    if command.ipc_command.is_none() {
+        return json!({
+            "command": command.command,
+            "dryRun": true,
+            "executed": false,
+            "validated": "arguments only",
+        });
+    }
+    let mut body = values.clone();
+    for param in &command.params {
+        if let Some(fixed) = &param.fixed {
+            body.insert(param.name.clone(), fixed.clone());
+        } else if let Some(default) = &param.default {
+            body.entry(param.name.clone())
+                .or_insert_with(|| default.clone());
+        }
+        if param.scope && !body.contains_key(&param.name) {
+            body.insert(param.name.clone(), json!(scope.unwrap_or("<image>")));
+        }
+    }
+    let mut body = Value::Object(body);
+    for path in &command.sensitive_paths {
+        redact(&mut body, path);
+    }
+    json!({
+        "command": command.command,
+        "ipcCommand": command.ipc_command,
+        "body": body,
+    })
+}
+
+fn redact(value: &mut Value, path: &[String]) {
+    let Some((first, rest)) = path.split_first() else {
+        return;
+    };
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                redact(item, path);
+            }
+        }
+        Value::Object(map) => {
+            if let Some(child) = map.get_mut(first) {
+                if rest.is_empty() {
+                    *child = json!("<redacted>");
+                } else {
+                    redact(child, rest);
+                }
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+    }
+}
+
+fn generated_id(command: &Command) -> String {
+    format!(
+        "cli-{}-{}",
+        command.path().replace(' ', "-"),
+        uuid::Uuid::new_v4()
+    )
+}
+
+fn missing(value: Option<&Value>) -> bool {
+    value.is_none_or(Value::is_null)
+}
+
+impl Exec {
+    /// Whether missing values may be asked for (or, for secrets, read from
+    /// piped stdin). A shell script on stdin is the shell's input, not data.
+    pub fn interactive(&self) -> bool {
+        match self.mode {
+            Mode::OneShot => true,
+            Mode::Shell => std::io::stdin().is_terminal(),
+            Mode::Session => false,
+        }
+    }
+
+    /// Load the image `reference` names unless it is already loaded, and
+    /// return its ID. An image opened this way becomes the current image.
+    pub async fn resolve_image(
+        &self,
+        context: &mut Context,
+        reference: &str,
+    ) -> Result<String, CliError> {
+        if self.state.images.lock().await.contains_key(reference) {
+            return Ok(reference.to_owned());
+        }
+        let args = Map::from_iter([("path".to_owned(), json!(reference))]);
+        let output = generated::dispatch(&self.host, &self.state, "image_load", args).await?;
+        let Output::Json(info) = output else {
+            return Err(super::internal_error("images open 返回了非 JSON 结果"));
+        };
+        let id = info["id"]
+            .as_str()
+            .ok_or_else(|| super::internal_error("images open 没有返回检材 ID"))?
+            .to_owned();
+        context.image_id = Some(id.clone());
+        context.location.clear();
+        Ok(id)
+    }
+
+    /// The current image, opening the scope on first use.
+    pub async fn current_image(&self, context: &mut Context) -> Result<Option<String>, CliError> {
+        if let Some(id) = &context.image_id {
+            if self.state.images.lock().await.contains_key(id) {
+                return Ok(Some(id.clone()));
+            }
+            context.image_id = None;
+            context.location.clear();
+        }
+        match context.scope.take() {
+            Some(scope) => self.resolve_image(context, &scope).await.map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub async fn page(
+        &self,
+        image_id: &str,
+        parent_id: String,
+        cursor: Option<String>,
+        page_size: usize,
+    ) -> Result<FsNodePage, CliError> {
+        crate::commands::filesystem::filesystem::fs_children_page(
+            crate::host::State::new(&self.state),
+            image_id.to_owned(),
+            parent_id,
+            cursor,
+            Some(page_size),
+            None,
+        )
+        .await
+        .map_err(super::command_error)
+    }
+
+    /// Resolve `path` against the working directory.
+    pub async fn locate(
+        &self,
+        context: &Context,
+        image_id: &str,
+        path: &str,
+    ) -> Result<Vec<(String, String)>, CliError> {
+        let mut page =
+            |parent_id, cursor, page_size| self.page(image_id, parent_id, cursor, page_size);
+        browsing::resolve(&context.location, path, &mut page).await
+    }
+
+    pub async fn execute(
+        &self,
+        context: &mut Context,
+        request: Request<'_>,
+    ) -> Result<Output, CliError> {
+        let command = request.command;
+        let mut values = request.values;
+        if request.dry_run {
+            return Ok(Output::Json(preview(
+                command,
+                &values,
+                context.image_id.as_deref().or(context.scope.as_deref()),
+            )));
+        }
+        if command.destructive {
+            if self.mode == Mode::Session {
+                if !request.force {
+                    return Err(CliError::new(
+                        "aborted",
+                        format!(
+                            "{} 会删除数据；确认后在请求中加 \"force\": true",
+                            command.command
+                        ),
+                    ));
+                }
+            } else if !prompt::confirm_delete(request.force, command.confirm.as_deref())? {
+                eprintln!("Aborted.");
+                return Ok(Output::Written);
+            }
+        }
+        for param in &command.params {
+            if let Some(fixed) = &param.fixed {
+                values.insert(param.name.clone(), fixed.clone());
+            } else if missing(values.get(&param.name)) {
+                if let Some(default) = &param.default {
+                    if !param.synthetic {
+                        values.insert(param.name.clone(), default.clone());
+                    }
+                } else if param.generated {
+                    values.insert(param.name.clone(), json!(generated_id(command)));
+                }
+            }
+        }
+        for name in &request.ask {
+            let param = command
+                .param(name)
+                .ok_or_else(|| CliError::invalid(format!("未知参数：{name}")))?;
+            let value = if self.interactive() {
+                prompt::required_field(&param.option, &param.description, true)?
+            } else {
+                return Err(CliError::invalid(format!("缺少参数：{name}")));
+            };
+            values.insert(name.clone(), json!(value));
+        }
+        // A path is one of two ways to name the target node; `target` below
+        // reports when neither was given.
+        for param in &command.params {
+            if !param.required
+                || param.synthetic
+                || param.position.is_some()
+                || !missing(values.get(&param.name))
+            {
+                continue;
+            }
+            if !self.interactive() {
+                return Err(CliError::invalid(format!("缺少参数：{}", param.name)));
+            }
+            let value = match (&param.values, param.kind) {
+                (Some(choices), Kind::Enum) => {
+                    json!(prompt::required_choice(
+                        &param.option,
+                        &param.description,
+                        choices
+                    )?)
+                }
+                (_, Kind::String) => {
+                    json!(prompt::required_field(
+                        &param.option,
+                        &param.description,
+                        param.secret
+                    )?)
+                }
+                (_, Kind::Number) => {
+                    let raw = prompt::required_field(&param.option, &param.description, false)?;
+                    raw.parse::<serde_json::Number>()
+                        .map(Value::Number)
+                        .map_err(|_| {
+                            CliError::invalid(format!("--{} 需要数字：{raw}", param.option))
+                        })?
+                }
+                _ => {
+                    return Err(CliError::invalid(format!(
+                        "缺少 --{0}（或在 --body 中提供 {1}）",
+                        param.option, param.name
+                    )))
+                }
+            };
+            values.insert(param.name.clone(), value);
+        }
+        let mut target = None;
+        let image = command.params.iter().find(|param| param.scope);
+        if image.is_some() || command.target.is_some() {
+            let given = image
+                .and_then(|image| values.get(&image.name))
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            let id = match given {
+                Some(reference) => Some(self.resolve_image(context, &reference).await?),
+                None => self.current_image(context).await?,
+            };
+            match id {
+                Some(id) => {
+                    values.insert("imageId".into(), json!(id));
+                }
+                None if image.is_some_and(|image| image.api_required)
+                    || command.target.is_some() =>
+                {
+                    return Err(CliError::new(
+                        "noImage",
+                        "需要检材：使用 --image <检材路径或 ID>、设置 LOVELYCARVE_IMAGE，或先运行 images open",
+                    ))
+                }
+                None => {}
+            }
+        }
+        if let Some(name) = &command.target {
+            target = Some(self.target(context, command, name, &mut values).await?);
+        }
+        for name in &command.no_clobber {
+            if let Some(path) = values.get(name).and_then(Value::as_str) {
+                if Path::new(path).exists() {
+                    return Err(CliError::new(
+                        "alreadyExists",
+                        format!("{path} 已存在；为避免覆盖，请换一个输出路径"),
+                    ));
+                }
+            }
+        }
+        let (running, _) = command.category.labels();
+        let label = format!("{running} {}", command.summary);
+        let quiet = self.quiet || self.mode == Mode::Session;
+        let output = match command.ipc_command.as_deref() {
+            Some(ipc) => {
+                let values = values.clone();
+                progress::with_progress(&label, quiet, async {
+                    generated::dispatch(&self.host, &self.state, ipc, values).await
+                })
+                .await?
+            }
+            None => {
+                native::run(self, context, command, values.clone(), target, request.text).await?
+            }
+        };
+        self.after(context, command, &values, &output);
+        Ok(output)
+    }
+
+    /// Resolve the command's node parameter from `path` when it was not given.
+    async fn target(
+        &self,
+        context: &mut Context,
+        command: &Command,
+        name: &str,
+        values: &mut Map<String, Value>,
+    ) -> Result<Target, CliError> {
+        let path = values
+            .remove("path")
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .or_else(|| {
+                command
+                    .param("path")
+                    .and_then(|param| param.default.as_ref())
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            });
+        if let Some(node_id) = values.get(name).and_then(Value::as_str).map(str::to_owned) {
+            if command.ipc_command.is_none() {
+                values.remove(name);
+            }
+            return Ok(Target {
+                node_id,
+                location: None,
+            });
+        }
+        let Some(path) = path else {
+            if command.param(name).is_some_and(|param| param.api_required)
+                || command.ipc_command.is_none()
+            {
+                return Err(CliError::invalid(format!(
+                    "需要镜像内路径 <path>，或用 --{} 指定节点 ID",
+                    command
+                        .param(name)
+                        .map_or("node-id", |param| param.option.as_str())
+                )));
+            }
+            return Ok(Target {
+                node_id: String::new(),
+                location: None,
+            });
+        };
+        let image_id = values
+            .get("imageId")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| CliError::new("noImage", "解析镜像内路径需要检材"))?;
+        let location = self.locate(context, &image_id, &path).await?;
+        let node_id = location
+            .last()
+            .map(|(_, id)| id.clone())
+            .unwrap_or_default();
+        if command.ipc_command.is_some() {
+            values.insert(name.to_owned(), json!(node_id));
+            if command.param("pathHint").is_some() && missing(values.get("pathHint")) {
+                values.insert("pathHint".into(), json!(path));
+            }
+            if command.param("fileName").is_some() && missing(values.get("fileName")) {
+                if let Some((file_name, _)) = location.last() {
+                    values.insert("fileName".into(), json!(file_name));
+                }
+            }
+        } else {
+            values.insert("path".into(), json!(path));
+        }
+        Ok(Target {
+            node_id,
+            location: Some(location),
+        })
+    }
+
+    /// Keep the context in step with the image and case the command changed.
+    fn after(
+        &self,
+        context: &mut Context,
+        command: &Command,
+        values: &Map<String, Value>,
+        output: &Output,
+    ) {
+        match command.ipc_command.as_deref() {
+            Some("image_load") => {
+                if let Output::Json(info) = output {
+                    context.image_id = info["id"].as_str().map(str::to_owned);
+                    context.location.clear();
+                }
+            }
+            Some("case_open" | "case_create" | "case_close") => {
+                context.image_id = None;
+                context.scope = None;
+                context.location.clear();
+            }
+            Some("image_unload")
+                if values.get("imageId").and_then(Value::as_str) == context.image_id.as_deref() =>
+            {
+                context.image_id = None;
+                context.location.clear();
+            }
+            _ => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::catalog::catalog;
+
+    #[test]
+    fn dry_run_shows_the_request_and_redacts_secrets() {
+        let catalog = catalog().unwrap();
+        let unlock = catalog.find(&["bitlocker", "unlock"]).unwrap();
+        let values = Map::from_iter([
+            ("partitionId".to_owned(), json!(1)),
+            ("password".to_owned(), json!("hunter2")),
+        ]);
+        assert_eq!(
+            preview(unlock, &values, Some(r"D:\disk.E01")),
+            json!({
+                "command": "lovelycarve-cli bitlocker unlock",
+                "ipcCommand": "bitlocker_unlock",
+                "body": {"partitionId": 1, "password": "<redacted>", "imageId": r"D:\disk.E01"},
+            })
+        );
+        let volumes = catalog.find(&["encrypted-volumes", "unlock"]).unwrap();
+        let values = Map::from_iter([(
+            "options".to_owned(),
+            json!({"scheme": "luks", "password": "secret"}),
+        )]);
+        assert_eq!(
+            preview(volumes, &values, None)["body"],
+            json!({"options": {"scheme": "luks", "password": "<redacted>"}, "imageId": "<image>"})
+        );
+        let docker = catalog.find(&["files", "docker", "get"]).unwrap();
+        assert_eq!(
+            preview(docker, &Map::new(), Some("x"))["body"]["mode"],
+            "status"
+        );
+        let list = catalog.find(&["files", "list"]).unwrap();
+        assert_eq!(preview(list, &Map::new(), None)["executed"], false);
+    }
+}

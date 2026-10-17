@@ -15,8 +15,8 @@
 
 use std::sync::Arc;
 
+use crate::host::{AppHandle, State};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
 
 use crate::app::access::loaded_image_app_error;

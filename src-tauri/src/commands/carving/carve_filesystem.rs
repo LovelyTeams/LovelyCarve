@@ -4,8 +4,8 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::host::State;
 use parking_lot::RwLock;
-use tauri::State;
 use tokio_util::sync::CancellationToken;
 
 use crate::app::error::AppError;
@@ -90,7 +90,7 @@ pub(crate) fn run_filesystem_phase(
 }
 
 /// Recovered volumes, directories and files of a session; `None` until that phase finishes.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn carve_filesystem_results(
     state: State<'_, AppState>,
     scan_id: String,

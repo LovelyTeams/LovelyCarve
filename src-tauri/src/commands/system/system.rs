@@ -2,22 +2,22 @@
 
 use std::path::PathBuf;
 
+use crate::host::State;
 use serde::Serialize;
 use serde_json::json;
-use tauri::State;
 
 use crate::app::error::AppError;
 use crate::app::module_catalog::{self as module_summary, ModuleSummary};
 use crate::state::AppState;
 use crate::task_manager::TaskSnapshot;
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn task_cancel(state: State<'_, AppState>, task_id: String) -> Result<(), AppError> {
     state.tasks.cancel(&task_id);
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn task_status(
     state: State<'_, AppState>,
     task_id: String,
@@ -25,12 +25,12 @@ pub async fn task_status(
     Ok(state.tasks.status(&task_id))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn task_list(state: State<'_, AppState>) -> Result<Vec<TaskSnapshot>, AppError> {
     Ok(state.tasks.list())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn module_summary() -> Result<Vec<ModuleSummary>, AppError> {
     Ok(module_summary::summary())
 }
@@ -43,7 +43,7 @@ pub struct PathInfo {
     pub is_symlink: bool,
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn system_path_info(path: String) -> Result<PathInfo, AppError> {
     let worker_path = path.clone();
     tokio::task::spawn_blocking(move || match std::fs::symlink_metadata(&worker_path) {
@@ -73,7 +73,7 @@ pub async fn system_path_info(path: String) -> Result<PathInfo, AppError> {
 /// highlighted inside its parent (Explorer `/select`, Finder `-R`); when
 /// false, directories open in place. Used by the FsTree export-complete
 /// dialog to jump to the destination.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn reveal_path(path: String, select: bool) -> Result<(), AppError> {
     let target = PathBuf::from(&path);
     if !target.exists() {

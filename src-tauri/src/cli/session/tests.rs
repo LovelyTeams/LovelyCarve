@@ -23,29 +23,46 @@ fn references_are_structural_and_wait_only_for_pending_dependencies() {
 #[test]
 fn mutations_and_unknown_commands_are_barriers() {
     for command in [
-        "image-load",
-        "image_unload",
-        "case_open",
-        "case_close",
-        "use",
-        "cd",
-        "wait",
-        "snapshot_drop",
-        "global_search_history_delete",
-        "future_command",
+        "images open",
+        "images close",
+        "cases open",
+        "cases close",
+        "context set",
+        "tasks wait",
+        "indexes delete",
+        "searches delete",
+        "future command",
     ] {
         assert!(!concurrent(command), "{command}");
     }
     for command in [
-        "fs-children",
-        "fs_read_range",
-        "fs_digest",
-        "grep",
-        "task_cancel",
-        "global-search-start",
+        "files list",
+        "files read",
+        "files hash",
+        "files search",
+        "tasks cancel",
+        "images get",
     ] {
         assert!(concurrent(command), "{command}");
     }
+}
+
+#[test]
+fn arguments_accept_api_option_and_snake_case_names() {
+    let catalog = catalog::catalog().unwrap();
+    let read = catalog.find_path("files read").unwrap();
+    let args = json!({"node_id": "n", "image": "i", "offset": 1, "length": 2});
+    let Value::Object(args) = args else {
+        unreachable!()
+    };
+    assert_eq!(
+        Value::Object(normalize(read, args).unwrap()),
+        json!({"nodeId": "n", "imageId": "i", "offset": 1, "length": 2})
+    );
+    let Value::Object(typo) = json!({"typo": true}) else {
+        unreachable!()
+    };
+    assert!(normalize(read, typo).is_err());
 }
 
 #[tokio::test]
@@ -57,7 +74,7 @@ async fn queries_overlap_flush_with_open_input_and_barriers_preserve_context() {
     let active = Arc::new(AtomicUsize::new(0));
     let executor = {
         let active = active.clone();
-        move |shell: &mut Shell, request: Request| match request.id.as_str() {
+        move |context: &mut Context, request: Request| match request.id.as_str() {
             "slow" => {
                 active.fetch_add(1, Ordering::SeqCst);
                 finished_sender.send("started").unwrap();
@@ -70,7 +87,7 @@ async fn queries_overlap_flush_with_open_input_and_barriers_preserve_context() {
                 Ok(json!({"id":"source"}))
             }
             "fast" => {
-                assert_eq!(shell.image_id.as_deref(), Some("initial"));
+                assert_eq!(context.image_id.as_deref(), Some("initial"));
                 finished_sender.send("fast").unwrap();
                 Ok(Value::Null)
             }
@@ -80,11 +97,11 @@ async fn queries_overlap_flush_with_open_input_and_barriers_preserve_context() {
             }
             "switch" => {
                 assert_eq!(active.load(Ordering::SeqCst), 0);
-                shell.image_id = Some("next".into());
+                context.image_id = Some("next".into());
                 Ok(Value::Null)
             }
             "after" => {
-                assert_eq!(shell.image_id.as_deref(), Some("next"));
+                assert_eq!(context.image_id.as_deref(), Some("next"));
                 finished_sender.send("after").unwrap();
                 Ok(Value::Null)
             }
@@ -92,19 +109,23 @@ async fn queries_overlap_flush_with_open_input_and_barriers_preserve_context() {
         }
     };
     let worker = tokio::spawn(async move {
-        let mut shell = Shell::default();
-        shell.image_id = Some("initial".into());
-        let failed = run_lines(&mut shell, receiver, 2, executor).await.unwrap();
+        let mut context = Context {
+            image_id: Some("initial".into()),
+            ..Context::default()
+        };
+        let failed = run_lines(&mut context, receiver, 2, executor)
+            .await
+            .unwrap();
         assert!(!failed);
-        assert_eq!(shell.image_id.as_deref(), Some("next"));
+        assert_eq!(context.image_id.as_deref(), Some("next"));
     });
     sender
-        .send(Ok(json!({"id":"slow","command":"image_info"}).to_string()))
+        .send(Ok(json!({"id":"slow","command":"images get"}).to_string()))
         .await
         .unwrap();
     assert_eq!(finished_receiver.recv().await.unwrap(), "started");
     sender
-        .send(Ok(json!({"id":"fast","command":"task_list"}).to_string()))
+        .send(Ok(json!({"id":"fast","command":"tasks list"}).to_string()))
         .await
         .unwrap();
     assert_eq!(
@@ -116,9 +137,9 @@ async fn queries_overlap_flush_with_open_input_and_barriers_preserve_context() {
     );
     assert!(!worker.is_finished()); // stdin is still open; slow query is still running.
     for request in [
-        json!({"id":"dependent","command":"image_info","args":{"imageId":{"$ref":"slow#/id"}}}),
-        json!({"id":"switch","command":"use"}),
-        json!({"id":"after","command":"pwd"}),
+        json!({"id":"dependent","command":"images get","args":{"imageId":{"$ref":"slow#/id"}}}),
+        json!({"id":"switch","command":"context set"}),
+        json!({"id":"after","command":"context get"}),
     ] {
         sender.send(Ok(request.to_string())).await.unwrap();
     }
@@ -133,12 +154,12 @@ async fn failed_dependencies_duplicates_and_panics_do_not_stop_other_queries() {
     let (sender, receiver) = mpsc::channel(12);
     for line in [
         "invalid JSON".to_owned(),
-        json!({"id":"bad","command":"image_info"}).to_string(),
-        json!({"id":"dependent","command":"image_info","args":{"imageId":{"$ref":"bad#/id"}}})
+        json!({"id":"bad","command":"images get"}).to_string(),
+        json!({"id":"dependent","command":"images get","args":{"imageId":{"$ref":"bad#/id"}}})
             .to_string(),
-        json!({"id":"bad","command":"image_info"}).to_string(),
-        json!({"id":"panic","command":"task_list"}).to_string(),
-        json!({"id":"good","command":"task_list"}).to_string(),
+        json!({"id":"bad","command":"images get"}).to_string(),
+        json!({"id":"panic","command":"tasks list"}).to_string(),
+        json!({"id":"good","command":"tasks list"}).to_string(),
     ] {
         sender.send(Ok(line)).await.unwrap();
     }
@@ -146,7 +167,7 @@ async fn failed_dependencies_duplicates_and_panics_do_not_stop_other_queries() {
     let executed = Arc::new(Mutex::new(Vec::new()));
     let observed = executed.clone();
     assert!(
-        run_lines(&mut Shell::default(), receiver, 2, move |_, request| {
+        run_lines(&mut Context::default(), receiver, 2, move |_, request| {
             observed.lock().unwrap().push(request.id.clone());
             match request.id.as_str() {
                 "bad" => Err(CliError::invalid("failed")),
@@ -170,7 +191,7 @@ async fn sequential_default_and_parallel_limit_bound_active_queries() {
         for index in 0..10 {
             sender
                 .send(Ok(
-                    json!({"id":index.to_string(),"command":"image_info"}).to_string()
+                    json!({"id":index.to_string(),"command":"images get"}).to_string()
                 ))
                 .await
                 .unwrap();
@@ -180,7 +201,7 @@ async fn sequential_default_and_parallel_limit_bound_active_queries() {
         let maximum = Arc::new(AtomicUsize::new(0));
         let observed = maximum.clone();
         assert!(
-            !run_lines(&mut Shell::default(), receiver, jobs, move |_, _| {
+            !run_lines(&mut Context::default(), receiver, jobs, move |_, _| {
                 let count = active.fetch_add(1, Ordering::SeqCst) + 1;
                 observed.fetch_max(count, Ordering::SeqCst);
                 std::thread::sleep(Duration::from_millis(20));

@@ -2,7 +2,7 @@
 //! （见 `core::preview::ocr`），结果同步作为返回值回给前端。`predict` 是单次不可中断调用，故不发进度
 //! 事件；命令仍注册到 `TaskManager` 以参与后台 CPU/GPU 资源限流。
 
-use tauri::State;
+use crate::host::State;
 
 use crate::core::filesystem::tree::fs_tree;
 use crate::core::preview::ocr::{self, OcrOutcome};
@@ -11,7 +11,7 @@ use crate::task_manager::{TaskKind, TaskProgressUnit};
 use {crate::app::access::loaded_image_app_error, crate::app::error::AppError};
 
 /// 识别指定图片文件节点中的文字。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn ocr_scan(
     state: State<'_, AppState>,
     image_id: String,

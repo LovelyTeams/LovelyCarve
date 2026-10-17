@@ -1,7 +1,7 @@
 //! 分析结果浏览 IPC:结果树、分页表格与单条详情。
 //! 节点名/列定义全部来自插件提交,前端零硬编码。
 
-use tauri::State;
+use crate::host::State;
 
 use crate::{
     app::{error::AppError, workflows::casework::active_case_dir},
@@ -15,7 +15,7 @@ use crate::{
 
 /// 分析结果树:检材 → 分类 → 功能 →
 /// 结果项。未打开案件返回空树。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn analysis_result_tree(
     state: State<'_, AppState>,
 ) -> Result<Vec<AnalysisTreeNode>, AppError> {
@@ -46,7 +46,7 @@ pub async fn analysis_result_tree(
 }
 
 /// 按结果项分页读取记录(始终是该检材+功能的最新 run)。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn analysis_records_page(
     state: State<'_, AppState>,
     image_id: String,
@@ -74,7 +74,7 @@ pub async fn analysis_records_page(
 }
 
 /// 单条记录详情(表格行 → 右侧预览)。结果按检材存放,带上记录所属检材。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn analysis_record_detail(
     state: State<'_, AppState>,
     image_id: String,

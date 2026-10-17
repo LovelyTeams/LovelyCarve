@@ -13,15 +13,15 @@
 //! 把结论写回台账的检材行(平台、类型与完整报告 JSON);无案件时只返回报告。识别在
 //! `spawn_blocking` 上跑——分区根目录列举与归档条目走查都是同步 I/O。
 
-use tauri::AppHandle;
-use tauri::State;
+use crate::host::AppHandle;
+use crate::host::State;
 
 use crate::app::error::AppError;
 use crate::core::analysis::identify::autodetect::AutoDetectReport;
 use crate::state::AppState;
 
 /// 手动触发识别。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn autodetect_evidence(
     app: AppHandle,
     state: State<'_, AppState>,

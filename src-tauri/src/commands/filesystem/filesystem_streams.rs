@@ -6,14 +6,14 @@
 
 use std::path::PathBuf;
 
-use tauri::State;
+use crate::host::State;
 
 use crate::core::filesystem::tree::fs_tree::{self, FsDirStats};
 use crate::core::filesystem::volumes::ntfs::NtfsDataStream;
 use crate::state::AppState;
 use {crate::app::access::loaded_image_app_error, crate::app::error::AppError};
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_streams(
     state: State<'_, AppState>,
     image_id: String,
@@ -27,7 +27,7 @@ pub async fn fs_streams(
     .map_err(|error| AppError::task_panicked("fs_streams", error))?
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_stream_preview(
     state: State<'_, AppState>,
     image_id: String,
@@ -49,7 +49,7 @@ pub async fn fs_stream_preview(
     .map_err(|error| AppError::task_panicked("fs_stream_preview", error))?
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_stream_export(
     state: State<'_, AppState>,
     image_id: String,
@@ -66,7 +66,7 @@ pub async fn fs_stream_export(
     .map_err(|error| AppError::task_panicked("fs_stream_export", error))?
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_dir_stats(
     state: State<'_, AppState>,
     image_id: String,

@@ -16,8 +16,8 @@
 
 use std::path::PathBuf;
 
+use crate::host::{AppHandle, State};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State};
 
 use crate::app::error::{AppError, ErrorCode};
 use crate::app::workflows::snapshot::case_snapshot::snapshot_already_loaded_images;
@@ -51,9 +51,9 @@ pub struct CaseOption {
 }
 
 fn registry_dir(app: &AppHandle) -> Result<PathBuf, AppError> {
-    app.path()
-        .app_data_dir()
-        .map_err(|err| AppError::new(ErrorCode::Internal, format!("resolve app data dir: {err}")))
+    app.app_data_dir()
+        .map(std::path::Path::to_path_buf)
+        .ok_or_else(|| AppError::new(ErrorCode::Internal, "resolve app data dir: unavailable"))
 }
 
 async fn active_case_info(

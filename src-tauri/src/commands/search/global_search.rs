@@ -14,8 +14,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use crate::host::{AppHandle, State};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
 
 use crate::app::error::AppError;
 use crate::core::search::global_search::{
@@ -79,7 +79,7 @@ fn normalize_patterns(raw: &[String]) -> Vec<String> {
 
 /// 启动一次全局搜索任务。长任务：命令在扫描完成后返回摘要（含
 /// `status=cancelled` 的部分结果摘要）；取消走 `taskCancel({taskId: searchId})`。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn global_search_start(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -314,7 +314,7 @@ fn serialize_scope(options: &GlobalSearchOptions) -> serde_json::Value {
 
 /// 命中分页：服务端过滤/去重/增量。`distinct` 为 `file`（按文件）或
 /// `sha256`（按哈希）；`after_seq` 为增量轮询游标。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 #[allow(clippy::too_many_arguments)]
 pub async fn global_search_hits_page(
     state: State<'_, AppState>,
@@ -345,7 +345,7 @@ pub async fn global_search_hits_page(
 /// 任务列表（含运行中；孤儿 running 行改判 failed）。任务面板运行期间每 2 s
 /// 轮询一次：读路径不建库、不建表，孤儿修复只短等写锁（见
 /// [`global_search_store::history_list`]）。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn global_search_history_list(
     state: State<'_, AppState>,
     image_id: String,
@@ -366,7 +366,7 @@ pub async fn global_search_history_list(
 
 /// 删除整次搜索：运行中的先取消并等扫描停下，
 /// 再删除任务行与全部命中。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn global_search_history_delete(
     state: State<'_, AppState>,
     image_id: String,
@@ -407,7 +407,7 @@ pub async fn global_search_history_delete(
 
 /// 导出命中为 UTF-8 BOM CSV，沿用表格当前的过滤与去重。
 /// 逐行流式写入，不整表驻留内存。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn global_search_export(
     state: State<'_, AppState>,
     image_id: String,

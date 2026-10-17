@@ -12,7 +12,8 @@ use crate::core::platform::dokan_mount::{DokanMountSession, MountShareView};
 use crate::task_manager::TaskManager;
 use tokio::sync::Mutex;
 
-/// Shared app state, accessible from every #[tauri::command].
+/// Shared app state, handed to every backend command by the desktop app and
+/// by the standalone CLI alike.
 /// Wrapped in `Arc<Mutex<…>>` at the field level so individual sections can be
 /// locked independently during long-running work.
 ///

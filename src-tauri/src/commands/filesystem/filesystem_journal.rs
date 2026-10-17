@@ -6,9 +6,9 @@
 
 use std::time::Instant;
 
+use crate::host::State;
 use ::hex::{decode as hex_decode, encode as hex_encode};
 use serde::{Deserialize, Serialize};
-use tauri::State;
 
 use crate::core::filesystem::tree::fs_tree;
 use crate::core::filesystem::volumes::ext4_journal::{Ext4Journal, JournalBlockRef};
@@ -51,7 +51,7 @@ pub struct Ext4JournalBlocksPage {
 /// Returns historical block revisions and revoked-block lists recovered from
 /// the journal — prior versions of inode-table / directory / bitmap blocks the
 /// live filesystem has since overwritten.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_ext4_journal(
     state: State<'_, AppState>,
     image_id: String,
@@ -78,7 +78,7 @@ pub async fn fs_ext4_journal(
     result
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_ext4_journal_blocks_page(
     state: State<'_, AppState>,
     image_id: String,
@@ -115,7 +115,7 @@ pub async fn fs_ext4_journal_blocks_page(
 /// belongs to (pass a `"part:N"` / `"lvm:N:M"` volume key or any `ntfs:` node
 /// id on that volume). Returns decoded USN records — per-file create / delete
 /// / rename history that survives MFT-record reuse.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_usn_journal(
     state: State<'_, AppState>,
     image_id: String,
@@ -140,7 +140,7 @@ pub async fn fs_usn_journal(
     result
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_usn_journal_page(
     state: State<'_, AppState>,
     image_id: String,

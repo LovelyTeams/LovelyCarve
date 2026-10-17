@@ -1,7 +1,7 @@
 //! Filesystem read and lightweight preview IPC: bounded file reads, raw/text
 //! previews, media materialisation, preview cache, and file stat.
 
-use tauri::State;
+use crate::host::{LeaseOwner, State};
 
 use crate::core::filesystem::tree::fs_tree::{self, FsStat};
 use crate::state::AppState;
@@ -16,12 +16,12 @@ const FS_READ_MAX_BYTES: u64 = 16 * 1024 * 1024;
 /// Read a whole, bounded file. Files larger than [`FS_READ_MAX_BYTES`] are
 /// rejected instead of silently returning a prefix; callers must use ranged
 /// reads, streaming export, or the media asset path for larger files.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_read(
     state: State<'_, AppState>,
     image_id: String,
     node_id: String,
-) -> Result<tauri::ipc::Response, AppError> {
+) -> Result<crate::host::Response, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     let data = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, AppError> {
         let mut session = fs_tree::FsSession::new(&image);
@@ -38,20 +38,20 @@ pub async fn fs_read(
     })
     .await
     .map_err(|err| AppError::task_panicked("fs_read", err))??;
-    Ok(tauri::ipc::Response::new(data))
+    Ok(crate::host::Response::new(data))
 }
 
 /// Read a bounded logical file range. Offset and length are validated in u64
 /// space before converting the allocation size to `usize`, so 32-bit targets
 /// cannot truncate an untrusted IPC length.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_read_range(
     state: State<'_, AppState>,
     image_id: String,
     node_id: String,
     offset: u64,
     length: u64,
-) -> Result<tauri::ipc::Response, AppError> {
+) -> Result<crate::host::Response, AppError> {
     if length > FS_READ_MAX_BYTES {
         return Err(AppError::resource_limit(format!(
             "分段读取长度 {length} 字节，超过单次读取上限 {FS_READ_MAX_BYTES} 字节。"
@@ -71,20 +71,20 @@ pub async fn fs_read_range(
     })
     .await
     .map_err(|err| AppError::task_panicked("fs_read_range", err))??;
-    Ok(tauri::ipc::Response::new(data))
+    Ok(crate::host::Response::new(data))
 }
 
 /// Rich previews use a bounded, cancellable memory read for small documents.
 /// Larger stream-capable documents use the leased asset path.
 const FS_READ_LARGE_MAX_BYTES: u64 = 16 * 1024 * 1024;
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_read_large(
     state: State<'_, AppState>,
     image_id: String,
     node_id: String,
     task_id: String,
-) -> Result<tauri::ipc::Response, AppError> {
+) -> Result<crate::host::Response, AppError> {
     let task = state
         .tasks
         .register_if_absent(
@@ -127,7 +127,7 @@ pub async fn fs_read_large(
     })
     .await
     .map_err(|error| AppError::task_panicked("fs_read_large", error))??;
-    Ok(tauri::ipc::Response::new(data))
+    Ok(crate::host::Response::new(data))
 }
 
 /// Pick the temp-file extension the asset protocol uses to content-type a
@@ -141,22 +141,12 @@ fn sanitize_media_ext(ext: Option<&str>) -> String {
 }
 
 /// Materialise one leased preview. Requests for the same key serialize before
-/// checking the cache; each caller owns an independent cancellation token.
-#[tauri::command]
+/// checking the cache; each caller owns an independent cancellation token, and
+/// an owner that closes (a desktop window) abandons its lease. The CLI process
+/// owns its leases until explicit release or exit.
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_media_temp(
-    window: tauri::WebviewWindow,
-    state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
-    ext: Option<String>,
-    task_id: String,
-) -> Result<String, AppError> {
-    fs_media_temp_for_owner(Some(window), state, image_id, node_id, ext, task_id).await
-}
-
-/// A headless CLI session owns its leases until explicit release or shutdown.
-pub(crate) async fn fs_media_temp_for_owner(
-    window: Option<tauri::WebviewWindow>,
+    owner: LeaseOwner,
     state: State<'_, AppState>,
     image_id: String,
     node_id: String,
@@ -164,11 +154,11 @@ pub(crate) async fn fs_media_temp_for_owner(
     task_id: String,
 ) -> Result<String, AppError> {
     use std::io::Write;
-    use tauri::Manager;
-    let owner = window
-        .as_ref()
-        .map(|window| window.label().to_string())
-        .unwrap_or_else(|| "cli".to_string());
+    let window_closed = {
+        let owner = owner.clone();
+        move || owner.is_closed()
+    };
+    let owner = owner.label().to_owned();
     let task = state
         .tasks
         .register_if_absent(
@@ -187,11 +177,7 @@ pub(crate) async fn fs_media_temp_for_owner(
         _ = token.cancelled() => return Err(AppError::cancelled("预览已取消")),
         guard = key_lock.lock_owned() => guard,
     };
-    if token.is_cancelled()
-        || window
-            .as_ref()
-            .is_some_and(|window| window.app_handle().get_webview_window(&owner).is_none())
-    {
+    if token.is_cancelled() || window_closed() {
         return Err(AppError::cancelled("预览已取消"));
     }
     if let Some(path) = state
@@ -263,10 +249,7 @@ pub(crate) async fn fs_media_temp_for_owner(
         if token.is_cancelled() {
             return Err(AppError::cancelled("预览已取消"));
         }
-        if window
-            .as_ref()
-            .is_some_and(|window| window.app_handle().get_webview_window(&owner).is_none())
-        {
+        if window_closed() {
             return Err(AppError::cancelled("预览窗口已关闭"));
         }
         let path = cache.insert(key, file.into_temp_path(), written, task_id, owner);
@@ -277,23 +260,23 @@ pub(crate) async fn fs_media_temp_for_owner(
 }
 
 /// Release only this viewer's lease; other windows continue using the file.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_media_release(state: State<'_, AppState>, task_id: String) -> Result<(), AppError> {
     state.media_temp.lock().await.release(&task_id);
     Ok(())
 }
 
 /// Read up to `max_bytes` (hard-capped at 2 MiB) of a file's bytes. Returns raw
-/// binary via `tauri::ipc::Response` (`ArrayBuffer` on the JS side) rather than a
+/// binary via `crate::host::Response` (`ArrayBuffer` on the JS side) rather than a
 /// JSON `Vec<u8>`, avoiding the ~4x integer-array bloat on every preview. Drives
 /// the hex view; text views use `fs_preview_text` instead.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_preview(
     state: State<'_, AppState>,
     image_id: String,
     node_id: String,
     max_bytes: usize,
-) -> Result<tauri::ipc::Response, AppError> {
+) -> Result<crate::host::Response, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     let data = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, AppError> {
         let mut session = fs_tree::FsSession::new(&image);
@@ -303,7 +286,7 @@ pub async fn fs_preview(
     })
     .await
     .map_err(|error| AppError::task_panicked("fs_preview", error))??;
-    Ok(tauri::ipc::Response::new(data))
+    Ok(crate::host::Response::new(data))
 }
 
 /// 检测文件文本的字符编码（chardetng）并解码为 UTF-8 回传，让 GBK/GB18030/Big5/
@@ -311,7 +294,7 @@ pub async fn fs_preview(
 /// `fs_preview` 一致（由调用方 `max_bytes` 传入、后端再以 2 MiB 封顶；前端两者都传同一个
 /// PREVIEW_CAP），故与十六进制视图所用的原始字节是同一段前缀，二者一致。十六进制视图仍用
 /// `fs_preview` 的原始字节；文本类视图用本命令的解码结果。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_preview_text(
     state: State<'_, AppState>,
     image_id: String,
@@ -332,7 +315,7 @@ pub async fn fs_preview_text(
     .map_err(|err| AppError::task_panicked("fs_preview_text", err))?
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_stat(
     state: State<'_, AppState>,
     image_id: String,

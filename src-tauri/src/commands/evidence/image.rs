@@ -2,8 +2,8 @@
 //! auto-detection. The exporter emits `image-export-progress` events so
 //! the frontend renders a progress bar without polling.
 
-use tauri::AppHandle;
-use tauri::State;
+use crate::host::AppHandle;
+use crate::host::State;
 
 use crate::app::error::AppError;
 use crate::core::evidence::image::ImageInfo;
@@ -15,7 +15,7 @@ use crate::core::evidence::raid::RaidStack;
 use crate::core::filesystem::evidence_session::ImageExportMode;
 use crate::state::AppState;
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 /// Opens on a blocking worker; `task_id` opts into a caller-owned task identity.
 /// Emits `image-load-progress` for the legacy loader and `task-progress` for
 /// the task center. `task_cancel` interrupts materialisation and drops tempfiles.
@@ -55,7 +55,7 @@ pub async fn image_load(
     crate::app::workflows::evidence::image_load(app, state, path, key, task_id, case_dir).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn image_info(
     state: State<'_, AppState>,
     image_id: String,
@@ -63,12 +63,12 @@ pub async fn image_info(
     crate::app::workflows::evidence::image_info(state, image_id).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn image_unload(state: State<'_, AppState>, image_id: String) -> Result<(), AppError> {
     crate::app::workflows::evidence::image_unload(state, image_id).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn image_list(state: State<'_, AppState>) -> Result<Vec<ImageInfo>, AppError> {
     crate::app::workflows::evidence::image_list(state).await
 }
@@ -83,7 +83,7 @@ pub async fn image_list(state: State<'_, AppState>) -> Result<Vec<ImageInfo>, Ap
 /// tree, hex view, and image switcher just like a regular image.
 /// Idempotent: re-running on the same image set reuses the previously
 /// registered synthetic image instead of allocating a duplicate.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn raid_auto_detect(state: State<'_, AppState>) -> Result<RaidStack, AppError> {
     crate::app::workflows::evidence::raid_auto_detect(state).await
 }
@@ -93,7 +93,7 @@ pub async fn raid_auto_detect(state: State<'_, AppState>) -> Result<RaidStack, A
 /// register it as a synthetic image so the rest of the app can browse / export
 /// it. Idempotent on the geometry: re-running with the same parameters reuses
 /// the previously registered synthetic image.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn raid_manual_assemble(
     state: State<'_, AppState>,
     params: raid::ManualRaidParams,
@@ -111,7 +111,7 @@ pub async fn raid_manual_assemble(
 /// not deleted — leaving artefact recovery to the user).
 /// `mode: unlockedPartitions` snapshots all currently unlocked partitions and
 /// writes their plaintext into the original disk layout. Omitted mode is source.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn image_export_raw(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -136,7 +136,7 @@ pub async fn image_export_raw(
 /// Return every source span known to have been synthesized as zero bytes.
 /// When a case is active this also loads/merges the persisted audit, so the
 /// report survives app restarts and evidence reloads.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn image_bad_regions(
     state: State<'_, AppState>,
     image_id: String,
@@ -148,7 +148,7 @@ pub async fn image_bad_regions(
 /// list — disks that fail to open (permission denied, removed mid-scan) are
 /// silently skipped so the UI still shows the rest. The enumeration runs on
 /// a blocking thread because Windows' IOCTL calls are synchronous.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn physical_disks_list() -> Result<Vec<PhysicalDisk>, AppError> {
     crate::app::workflows::evidence::physical_disks_list().await
 }

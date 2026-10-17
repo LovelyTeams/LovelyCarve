@@ -24,7 +24,7 @@ just --list
 - 沿用现有模块和接口，保持改动聚焦，保留与本次工作无关的变更。
 - Rust 核心逻辑放在 `src-tauri/src/core/` 的所属领域，命令包装放在 `commands/`，跨域编排放在 `app/workflows/`，长期状态由 `AppState` 管理；核心不依赖应用层或 Tauri。
 - Vue 使用 Composition API；业务状态放在 `src/features/<功能>/composables/`，通用能力放在 `src/composables/`，跨功能接线由 `src/app/` 持有。Tauri 调用和事件只通过 `src/lib/ipc/`。
-- 跨 IPC 功能同时更新核心实现、命令、注册表、TypeScript 类型和调用方。
+- 跨 IPC 功能同时更新核心实现、命令、注册表、`src-tauri/src/cli/commands.toml` 中的 CLI 命令、TypeScript 类型和调用方。
 - 长任务接入取消、进度和错误反馈。整盘哈希与导出检查完整长度，失败或取消清理部分输出。
 - 界面文案通过 `tr()` 提供中英文版本，默认中文；新增文案同步维护词典并运行 `just i18n-check`。使用已有主题 token、`ui-*` 控件和 lucide 图标，验证三套主题、两种语言与窄窗口。
 - 用户可见变化按 [Keep a Changelog 0.3.0](https://keepachangelog.com/zh-CN/0.3.0/) 更新 `CHANGELOG.md` 的 `[Unreleased]`，使用英文变更分类并概括用户影响；行为、配置或流程变化同步更新对应文档（文档分工见 [文档导航](docs/README.md)）。

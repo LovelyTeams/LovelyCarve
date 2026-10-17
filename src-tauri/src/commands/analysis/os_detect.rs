@@ -5,13 +5,13 @@
 //! that it runs on `tokio::task::spawn_blocking` so we never block the
 //! tokio runtime while the user waits.
 
-use tauri::State;
+use crate::host::State;
 
 use crate::core::analysis::identify::os_detect_adapters::{self, OsDetectionResult};
 use crate::state::AppState;
 use {crate::app::access::loaded_image_app_error, crate::app::error::AppError};
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn os_detect(
     state: State<'_, AppState>,
     image_id: String,

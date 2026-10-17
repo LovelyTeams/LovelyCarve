@@ -4,11 +4,13 @@ pub(crate) mod app;
 pub mod cli;
 pub mod commands;
 pub mod core;
+pub mod host;
 pub mod state;
 pub mod task_manager;
 
-use state::AppState;
-
+/// Desktop entry point. The standalone CLI (`cli::run`) shares the command
+/// registry below but never starts Tauri.
+#[cfg(feature = "desktop")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -29,12 +31,16 @@ pub fn run() {
     app.run(crate::app::lifecycle::on_event);
 }
 
-/// Shared backend initialization; the CLI supplies a context with no windows.
-pub(crate) fn application_builder() -> tauri::Builder<tauri::Wry> {
+/// The desktop builder and the backend command registry. The CLI build script
+/// reads this `generate_handler!` list to generate its dispatch, so every
+/// command registered here is also mapped (or explicitly excluded) in
+/// `src/cli/commands.toml`.
+#[cfg(feature = "desktop")]
+fn application_builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .manage(AppState::new())
+        .manage(state::AppState::new())
         .setup(crate::app::setup::setup)
         .invoke_handler(tauri::generate_handler![
             commands::analysis::bcp::bcp_catalog,

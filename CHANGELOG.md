@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **破坏性变更**：`lovelycarve-cli` 命令行重新设计。命令统一为 `<集合>… <动词>`（如 `images open`、`files read`、`carve scans create`），标准输出只放 JSON 或原始字节，提示与错误写标准错误；新增 `cli search` 按意图查找命令、`schema` 查看后端请求、`complete` 生成 shell 补全；所有命令支持 `--dry-run` 与 `--body`，删除类命令需确认或 `--force`，缺少的值在终端中提问，密码遮盖输入。交互浏览改为 `lovelycarve-cli shell`，JSONL 会话协议升级到 v2（请求写命令路径，参数以 API 名称为键）。原 IPC 名称命令（`image_load`、`fs_read_range` 等）、`call`、`run`、`commands`、`capabilities` 和 `ls`、`cat`、`grep` 等快捷词不再可用，输入旧名称时会提示对应的新命令。
+- `lovelycarve-cli` 成为不链接 Tauri 的独立程序，不包含 WebView、GTK 或桌面运行时；Windows `asInvoker` 清单在链接时嵌入。桌面构建通过新的 `desktop` Cargo 特性启用 Tauri。
+
 ## [1.1.1] - 2026-10-16
 
 ### Added

@@ -10,12 +10,12 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::host::{AppHandle, State};
 use md5::{Digest as _, Md5};
 use serde::Serialize;
 use sha1::Sha1;
 use sha2::Sha256;
 use sm3::Sm3;
-use tauri::{AppHandle, Emitter, State};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::common::hash::{HashAlgo, MultiHashOutput};
@@ -55,7 +55,7 @@ pub struct ImageHashResult {
     pub read_faults: ReadFaultReport,
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn image_hash_compute(
     app: AppHandle,
     state: State<'_, AppState>,

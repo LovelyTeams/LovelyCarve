@@ -1,10 +1,8 @@
 //! Bounded string results extracted from the shared seekable/streaming file reader.
 use std::sync::Arc;
 
-use clap::{ArgMatches, ValueEnum};
-use serde::Serialize;
-use serde_json::json;
-use tauri::Manager;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Map, Value};
 
 use super::{CliError, Output};
 use crate::{
@@ -16,17 +14,14 @@ use crate::{
 const MAX_STRING_BYTES: usize = 64 * 1024;
 const MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 
-#[derive(Clone, Copy, Debug, ValueEnum, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub(super) enum Encoding {
     Ascii,
-    #[value(name = "utf-8")]
     #[serde(rename = "utf-8")]
     Utf8,
-    #[value(name = "utf-16le")]
     #[serde(rename = "utf-16le")]
     Utf16le,
-    #[value(name = "utf-16be")]
     #[serde(rename = "utf-16be")]
     Utf16be,
 }
@@ -209,19 +204,23 @@ impl std::fmt::Display for ResultLimitReached {
 impl std::error::Error for ResultLimitReached {}
 
 pub(super) async fn read(
-    app: &tauri::AppHandle,
+    state: &AppState,
     image: Arc<EvidenceSession>,
     node_id: String,
-    args: &ArgMatches,
+    values: &Map<String, Value>,
 ) -> Result<Output, CliError> {
-    let encoding = *args
-        .get_one::<Encoding>("encoding")
-        .ok_or_else(|| CliError::invalid("缺少字符串编码"))?;
-    let minimum = *args.get_one::<u32>("min-length").unwrap_or(&4) as usize;
-    let limit = *args.get_one::<u32>("limit").unwrap_or(&10000) as usize;
-    let offset = *args.get_one::<u64>("offset").unwrap_or(&0);
-    let length = args.get_one::<u64>("length").copied();
-    let state = app.state::<AppState>();
+    let encoding: Encoding = serde_json::from_value(
+        values
+            .get("encoding")
+            .cloned()
+            .unwrap_or_else(|| json!("ascii")),
+    )
+    .map_err(|_| CliError::invalid("编码只能是 ascii、utf-8、utf-16le 或 utf-16be"))?;
+    let number = |name: &str| values.get(name).and_then(Value::as_u64);
+    let minimum = number("minLength").unwrap_or(4).clamp(1, 4096) as usize;
+    let limit = number("limit").unwrap_or(10_000).clamp(1, 100_000) as usize;
+    let offset = number("offset").unwrap_or(0);
+    let length = number("length").filter(|length| *length > 0);
     let task_id = format!("cli-strings-{}", uuid::Uuid::new_v4());
     let task = state.tasks.register(
         task_id.clone(),

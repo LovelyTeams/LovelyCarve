@@ -14,15 +14,15 @@
 //! Snapshot orchestration and the `snapshot_*` commands live in
 //! `commands::casework::case_snapshot`.
 
-use tauri::AppHandle;
-use tauri::State;
+use crate::host::AppHandle;
+use crate::host::State;
 
 use crate::app::error::AppError;
 use crate::core::casework::case::CaseInfo;
 use crate::core::casework::case::EvidenceRef;
 use crate::state::AppState;
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn case_create(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -44,7 +44,7 @@ pub async fn case_create(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn case_open(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -55,19 +55,19 @@ pub async fn case_open(
 
 /// Exit the active case: journal the close, release the ledger connection and
 /// the process lock, and unload the case's runtime images.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn case_close(state: State<'_, AppState>) -> Result<(), AppError> {
     crate::app::workflows::casework::case_close(state).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn case_active(state: State<'_, AppState>) -> Result<Option<CaseInfo>, AppError> {
     crate::app::workflows::casework::case_active(state).await
 }
 
 /// Locally registered cases, most recently opened first, each with its ledger
 /// profile.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn case_list(app: AppHandle) -> Result<Vec<CaseListItem>, AppError> {
     crate::app::workflows::casework::case_list(app).await
 }
@@ -77,7 +77,7 @@ pub async fn case_list(app: AppHandle) -> Result<Vec<CaseListItem>, AppError> {
 /// the registry entry. A directory that no longer exists is only
 /// unregistered; a directory without a case ledger is refused — arbitrary
 /// directories are never deleted.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn case_remove(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -87,19 +87,19 @@ pub async fn case_remove(
 }
 
 /// Lock the active case (logical lock).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn case_lock(state: State<'_, AppState>) -> Result<CaseInfo, AppError> {
     crate::app::workflows::casework::case_lock(state).await
 }
 
 /// Unlock the active case.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn case_unlock(state: State<'_, AppState>) -> Result<CaseInfo, AppError> {
     crate::app::workflows::casework::case_unlock(state).await
 }
 
 /// Rename the active case and its registry entry. Locked cases refuse edits.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn case_rename(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -109,7 +109,7 @@ pub async fn case_rename(
 }
 
 /// Case-level settings; an empty `prefix` returns all of them.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn case_option_query(
     state: State<'_, AppState>,
     prefix: Option<String>,
@@ -118,7 +118,7 @@ pub async fn case_option_query(
 }
 
 /// Upsert case-level settings.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn case_option_save(
     state: State<'_, AppState>,
     entries: Vec<CaseOption>,
@@ -126,12 +126,12 @@ pub async fn case_option_save(
     crate::app::workflows::casework::case_option_save(state, entries).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn case_evidence_list(state: State<'_, AppState>) -> Result<Vec<EvidenceRef>, AppError> {
     crate::app::workflows::casework::case_evidence_list(state).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn case_evidence_remove(
     state: State<'_, AppState>,
     image_id: String,

@@ -102,12 +102,12 @@ Rust 实现位于 `src-tauri/vendor/qcow2`；宿主仍保留 `ImageFormat::Qcow2
 ## 宿主与 CLI
 
 普通打开自动支持 v1/v2/v3、压缩簇和 RAW/QCOW 差分父链，沿用原证据身份和逻辑尺寸。
-`image_load` 的两个可选参数是 `qcowPassword` / `qcowKeyHex`，不可同时提供；
-keyHex 必须恰好 16 字节（32 个十六进制字符）。原无参数调用完全兼容。
-JSONL `session` 示例（密码是公开测试夹具密码）：
+`image_load`（CLI 的 `images open`）的两个可选参数是 `qcowPassword` / `qcowKeyHex`，不可同时提供；
+keyHex 必须恰好 16 字节（32 个十六进制字符）。原无参数调用完全兼容。命令行中单写
+`--qcow-password` 时在终端中提问或读取管道输入。JSONL `session` 示例（密码是公开测试夹具密码）：
 
 ```jsonl
-{"id":"qcow","command":"image_load","args":{"path":"D:/evidence/encrypted.qcow2","qcowPassword":"qcow-test"}}
+{"id":"qcow","command":"images open","args":{"path":"D:/evidence/encrypted.qcow2","qcowPassword":"qcow-test"}}
 ```
 
 凭据只进入本次调用和内存读取器，不进入案件清单、task 描述或日志；程序重启后需重新提供。
@@ -120,7 +120,7 @@ QCOW 专用密码输入弹窗。现有分区解锁弹窗也不用于整个 QCOW 
 `just test-qcow2` / `just clippy-qcow2` 验证独立库；
 `just test qcow --lib --jobs 1` 验证宿主 signature / 压缩 / 差分 / AES。
 IPC 改动使用 `just verify-fe`、`just check`、`just clippy` 和 `just check-examples`。
-CLI 命令从 Rust 注册表自动生成；可通过 JSONL session / call image_load 传递上述可选参数。
+CLI 的 `images open` 由命令注册表与 `cli/commands.toml` 生成：命令行用 `--qcow-password` / `--qcow-key-hex`，JSONL 会话用 `qcowPassword` / `qcowKeyHex`。
 
 生成样本来自独立 Python zlib / cryptography-OpenSSL，实现及 SHA-256 见
 [测试夹具记录](../../src-tauri/vendor/qcow2/tests/data/README.md)，覆盖各版本、扇区跨界、

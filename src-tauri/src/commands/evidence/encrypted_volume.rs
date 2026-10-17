@@ -2,8 +2,8 @@
 //! Source-partition unlock also starts the existing snapshot/index workflow,
 //! whose `snapshot-build-progress` events report its independent completion.
 
+use crate::host::{AppHandle, State};
 use std::sync::Arc;
-use tauri::{AppHandle, State};
 
 use crate::core::evidence::crypto::encrypted_image::{
     self, UnlockOptions, UnlockResult, UnlockTarget,
@@ -16,7 +16,7 @@ use {
 };
 
 /// Inspect locked CoreStorage metadata and run the upstream forensic auditor.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn filevault_inspect(
     state: State<'_, AppState>,
     image_id: String,
@@ -65,7 +65,7 @@ pub async fn filevault_inspect(
     result.map_err(AppError::from_anyhow)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn encrypted_volume_unlock(
     app: AppHandle,
     state: State<'_, AppState>,

@@ -1,6 +1,10 @@
-//! Bounded JSONL queries, with ordered barriers for shared-context operations.
+//! `session`: JSONL requests on stdin, one JSON response per line on stdout.
+//! Commands are the same `<collection>… <verb>` paths with arguments keyed by
+//! API parameter name. Independent queries may run concurrently; anything
+//! not marked concurrent in the catalogue is a barrier.
 use std::{
     collections::{HashMap, HashSet},
+    io::{BufRead, Write},
     path::Path,
 };
 
@@ -8,128 +12,78 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use tokio::{sync::mpsc, task::JoinSet};
 
-use super::{input, shell::Shell, workflow, CliError, Output};
+use super::{
+    catalog::{self, Command},
+    context::{Context, Exec, Request as Run},
+    CliError, Output,
+};
+
+const MAX_LINE: usize = 16 * 1024 * 1024;
+const MAX_REQUESTS: usize = 10_000;
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Request {
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(super) struct Request {
     id: String,
     command: String,
     #[serde(default)]
     args: Map<String, Value>,
+    /// Save the result to this file instead of returning it.
     #[serde(default)]
     output: Option<String>,
+    /// Confirms a destructive command, like `--force`.
+    #[serde(default)]
+    force: bool,
+    #[serde(default)]
+    dry_run: bool,
 }
 
-// Explicitly reviewed queries only. New commands default to a barrier so that
-// adding a command cannot accidentally race an unload or mutate shared context.
+/// Whether `command` may overlap other queries.
 pub(super) fn concurrent(command: &str) -> bool {
-    matches!(
-        command.replace('-', "_").as_str(),
-        "pwd"
-            | "ls"
-            | "tree"
-            | "find"
-            | "stat"
-            | "hex"
-            | "cat"
-            | "strings"
-            | "file"
-            | "grep"
-            | "hash"
-            | "md5sum"
-            | "sha1sum"
-            | "sha256sum"
-            | "info"
-            | "list_partitions"
-            | "list_devices"
-            | "tasks"
-            | "image_info"
-            | "image_list"
-            | "image_bad_regions"
-            | "physical_disks_list"
-            | "fs_children"
-            | "fs_children_page"
-            | "fs_child_counts"
-            | "fs_subtree_empty_dirs"
-            | "fs_node_locate"
-            | "fs_flat_page"
-            | "fs_flat_ext_counts"
-            | "fs_dir_stats"
-            | "fs_source_locate"
-            | "fs_read"
-            | "fs_read_range"
-            | "fs_read_large"
-            | "fs_preview"
-            | "fs_preview_text"
-            | "fs_stat"
-            | "fs_streams"
-            | "fs_stream_preview"
-            | "fs_digest"
-            | "fs_digest_load"
-            | "fs_digest_load_nodes"
-            | "fs_identify_type"
-            | "fs_tags_load"
-            | "fs_tags_load_nodes"
-            | "fs_ftype_load"
-            | "fs_ftype_load_nodes"
-            | "fs_sqlite_preview"
-            | "fs_sqlite_deleted_records"
-            | "fs_sqlite_table_rows"
-            | "fs_realm_preview"
-            | "fs_realm_table_rows"
-            | "fs_binary_preview"
-            | "fs_gguf_preview"
-            | "fs_zip_preview"
-            | "fs_zip_member_read"
-            | "fs_csv_preview"
-            | "fs_vim_swap_preview"
-            | "fs_ext4_journal"
-            | "fs_ext4_journal_blocks_page"
-            | "fs_usn_journal"
-            | "fs_usn_journal_page"
-            | "filedb_volumes"
-            | "filedb_query_files"
-            | "filedb_resolve_meta_addr"
-            | "global_search_start"
-            | "global_search_hits_page"
-            | "global_search_history_list"
-            | "timeline_status"
-            | "timeline_types"
-            | "timeline_count"
-            | "timeline_datas"
-            | "timeline_range"
-            | "analysis_result_tree"
-            | "analysis_records_page"
-            | "analysis_record_detail"
-            | "bcp_catalog"
-            | "bcp_rows"
-            | "bitlocker_metadata"
-            | "bitlocker_status"
-            | "filevault_inspect"
-            | "shadow_copy_list"
-            | "carve_formats"
-            | "carve_scan_status"
-            | "carve_latest_scan"
-            | "carve_results_page"
-            | "carve_preview"
-            | "carve_filesystem_results"
-            | "carve_scan_list"
-            | "case_active"
-            | "case_list"
-            | "case_option_query"
-            | "case_evidence_list"
-            | "snapshot_list"
-            | "plugin_list"
-            | "plugin_analysis_list"
-            | "sched_task_functions"
-            | "sched_task_list"
-            | "module_summary"
-            | "system_path_info"
-            | "task_list"
-            | "task_status"
-            | "task_cancel"
-    )
+    catalog::catalog()
+        .ok()
+        .and_then(|catalog| catalog.find_path(command))
+        .is_some_and(|command| command.concurrent)
+}
+
+fn camel(name: &str) -> String {
+    let mut output = String::new();
+    let mut upper = false;
+    for character in name.chars() {
+        if character == '-' || character == '_' {
+            upper = true;
+        } else if upper {
+            output.extend(character.to_uppercase());
+            upper = false;
+        } else {
+            output.push(character);
+        }
+    }
+    output
+}
+
+/// Accept API names, option names and snake_case alike.
+fn normalize(command: &Command, args: Map<String, Value>) -> Result<Map<String, Value>, CliError> {
+    let mut normalized = Map::new();
+    for (key, value) in args {
+        let name = command
+            .params
+            .iter()
+            .find(|param| param.name == key || param.option == key)
+            .map(|param| param.name.clone())
+            .unwrap_or_else(|| camel(&key));
+        if !command
+            .params
+            .iter()
+            .any(|param| param.name == name && param.visible())
+        {
+            return Err(CliError::invalid(format!("未知参数: {key}")));
+        }
+        if normalized.insert(name.clone(), value).is_some() {
+            return Err(CliError::invalid(format!("重复参数: {name}")));
+        }
+    }
+    Ok(normalized)
 }
 
 /// Only structural references are expanded; literal evidence text stays exact.
@@ -174,9 +128,17 @@ fn pending_ref(value: &Value, pending: &HashSet<String>) -> bool {
     }
 }
 
+fn print(response: &Value) -> Result<(), CliError> {
+    let mut stdout = std::io::stdout().lock();
+    serde_json::to_writer(&mut stdout, response)?;
+    writeln!(stdout)?;
+    stdout.flush()?;
+    Ok(())
+}
+
 struct Completion {
     id: String,
-    shell: Shell,
+    context: Context,
     result: Result<Value, CliError>,
 }
 
@@ -198,14 +160,14 @@ impl Responses {
                 if let Some(id) = &id {
                     self.results.insert(id.clone(), value.clone());
                 }
-                json!({"id":id,"result":value})
+                json!({"id": id, "result": value})
             }
             Err(error) => {
                 self.failed = true;
-                json!({"id":id,"error":error})
+                json!({"id": id, "error": error})
             }
         };
-        workflow::print_output(Output::Json(response), true)
+        print(&response)
     }
 
     async fn finish_one(&mut self, tasks: &mut JoinSet<Completion>) -> Result<(), CliError> {
@@ -218,30 +180,34 @@ impl Responses {
     }
 }
 
-fn launch<F>(tasks: &mut JoinSet<Completion>, shell: Shell, request: Request, execute: F)
+fn launch<F>(tasks: &mut JoinSet<Completion>, context: Context, request: Request, execute: F)
 where
-    F: Fn(&mut Shell, Request) -> Result<Value, CliError> + Send + 'static,
+    F: Fn(&mut Context, Request) -> Result<Value, CliError> + Send + 'static,
 {
     tasks.spawn_blocking(move || {
-        let mut shell = shell;
+        let mut context = context;
         let id = request.id.clone();
         // Keep the request ID even when a handler panics, and let other queries finish.
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            execute(&mut shell, request)
+            execute(&mut context, request)
         }))
-        .unwrap_or_else(|_| Err(super::internal_error("CLI 查询工作线程异常退出")));
-        Completion { id, shell, result }
+        .unwrap_or_else(|_| Err(super::internal_error("会话请求的工作线程异常退出")));
+        Completion {
+            id,
+            context,
+            result,
+        }
     });
 }
 
 async fn run_lines<F>(
-    shell: &mut Shell,
+    context: &mut Context,
     mut lines: mpsc::Receiver<Result<String, CliError>>,
     jobs: usize,
     execute: F,
 ) -> Result<bool, CliError>
 where
-    F: Fn(&mut Shell, Request) -> Result<Value, CliError> + Clone + Send + 'static,
+    F: Fn(&mut Context, Request) -> Result<Value, CliError> + Clone + Send + 'static,
 {
     let mut responses = Responses::default();
     let mut request_ids = HashSet::new();
@@ -284,7 +250,7 @@ where
         };
         let validation = if request.id.is_empty() || request_ids.contains(&request.id) {
             Err(CliError::invalid("请求 ID 必须非空且唯一"))
-        } else if request_ids.len() >= 10000 {
+        } else if request_ids.len() >= MAX_REQUESTS {
             Err(CliError::invalid("单会话最多保留 10000 个结果引用"))
         } else {
             request_ids.insert(request.id.clone());
@@ -294,7 +260,7 @@ where
             responses.publish(Some(request.id), Err(error))?;
             continue;
         }
-        let mut args = Value::Object(request.args);
+        let mut args = Value::Object(std::mem::take(&mut request.args));
         let parallel = jobs > 1 && concurrent(&request.command);
         while (!parallel && !tasks.is_empty())
             || tasks.len() >= jobs
@@ -312,15 +278,15 @@ where
         request.args = args;
         if parallel {
             responses.pending.insert(request.id.clone());
-            launch(&mut tasks, shell.clone(), request, execute.clone());
+            launch(&mut tasks, context.clone(), request, execute.clone());
         } else {
-            launch(&mut tasks, shell.clone(), request, execute.clone());
+            launch(&mut tasks, context.clone(), request, execute.clone());
             let completion = tasks
                 .join_next()
                 .await
-                .ok_or_else(|| super::internal_error("CLI 请求未完成"))?
+                .ok_or_else(|| super::internal_error("会话请求未完成"))?
                 .map_err(super::internal_error)?;
-            *shell = completion.shell;
+            *context = completion.context;
             responses.publish(Some(completion.id), completion.result)?;
         }
     }
@@ -330,9 +296,38 @@ where
     Ok(responses.failed)
 }
 
+fn save(path: &Path, output: Output) -> Result<(), CliError> {
+    let parent = path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let mut file = tempfile::NamedTempFile::new_in(parent)?;
+    match output {
+        Output::Json(value) => {
+            serde_json::to_writer_pretty(&mut file, &value)?;
+            writeln!(file)?;
+        }
+        Output::Bytes(bytes) => file.write_all(&bytes)?,
+        Output::Written => {}
+    }
+    file.as_file().sync_all()?;
+    file.persist_noclobber(path)
+        .map_err(|error| CliError::from(error.error))?;
+    Ok(())
+}
+
+fn read_line(reader: &mut impl std::io::BufRead) -> Result<Option<String>, CliError> {
+    let mut text = String::new();
+    let bytes = std::io::Read::take(&mut *reader, (MAX_LINE + 1) as u64).read_line(&mut text)?;
+    if bytes > MAX_LINE {
+        return Err(CliError::invalid("单行请求超过 16 MiB"));
+    }
+    Ok((bytes != 0).then_some(text))
+}
+
 pub(super) async fn json_lines(
-    app: &tauri::AppHandle,
-    shell: &mut Shell,
+    exec: Exec,
+    context: &mut Context,
     jobs: usize,
 ) -> Result<bool, CliError> {
     // Blocking stdin runs outside the coordinator: results flush even while the
@@ -343,7 +338,7 @@ pub(super) async fn json_lines(
         .spawn(move || {
             let mut reader = std::io::stdin().lock();
             loop {
-                let line = workflow::line(&mut reader);
+                let line = read_line(&mut reader);
                 let stop = line.is_err();
                 let item = match line {
                     Ok(Some(line)) => Ok(line),
@@ -355,30 +350,47 @@ pub(super) async fn json_lines(
                 }
             }
         })?;
-    let app = app.clone();
-    run_lines(shell, receiver, jobs, move |shell, request| {
-        tauri::async_runtime::block_on(async {
-            let output = if request.command == "wait" {
-                if !request.args.is_empty() {
-                    return Err(CliError::invalid("wait 不接受参数"));
-                }
-                workflow::wait_idle(&app).await?;
-                Output::Json(Value::Null)
-            } else if let Some(matches) = input::shell_matches(&request.command, &request.args)? {
-                shell
-                    .execute(&app, &matches)
-                    .await?
-                    .unwrap_or(Output::Json(Value::Null))
-            } else {
-                shell.invoke(&app, &request.command, request.args).await?
-            };
-            if let Some(path) = request.output {
-                workflow::save_output(Path::new(&path), output)?;
-                Ok(json!({"output":path}))
-            } else {
-                Ok(output.json())
+    let runtime = tokio::runtime::Handle::current();
+    run_lines(context, receiver, jobs, move |context, request| {
+        let catalog = catalog::catalog()?;
+        let command = catalog.find_path(&request.command).ok_or_else(|| {
+            CliError::invalid(match catalog.replacement(&request.command) {
+                Some(replacement) => format!(
+                    "未知命令: {}；现在的命令是 {}",
+                    request.command,
+                    replacement.trim_start_matches("lovelycarve-cli ")
+                ),
+                None => format!("未知命令: {}", request.command),
+            })
+        })?;
+        if matches!(
+            command.native.as_deref(),
+            Some("session" | "shell" | "complete")
+        ) {
+            return Err(CliError::invalid(format!(
+                "{} 不能在会话中运行",
+                request.command
+            )));
+        }
+        let values = normalize(command, request.args)?;
+        let output = runtime.block_on(exec.execute(
+            context,
+            Run {
+                command,
+                values,
+                ask: Vec::new(),
+                force: request.force,
+                dry_run: request.dry_run,
+                text: false,
+            },
+        ))?;
+        match request.output {
+            Some(path) => {
+                save(Path::new(&path), output)?;
+                Ok(json!({"output": path}))
             }
-        })
+            None => Ok(output.into_json()),
+        }
     })
     .await
 }

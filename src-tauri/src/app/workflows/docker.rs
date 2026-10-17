@@ -1,7 +1,7 @@
 //! Awaitable preparation of one Docker container; completion includes durable indexes.
 
+use crate::host::State;
 use serde::Serialize;
-use tauri::State;
 
 use crate::core::casework::case_ledger;
 use crate::core::catalog::host_docker_index::{self, CaseTarget, PrepareMode};

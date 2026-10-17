@@ -40,12 +40,13 @@ CBC 范围读取借用前一个密文块恢复 IV，SQLite 等分页预览不必
 
 ## CLI
 
-两个命令与桌面共用实现，自动进入 CLI 命令目录：
+两个命令与桌面共用实现：
 
-- `ios_backup_unlock`：`imageId`、`password`，可选 `taskId`；返回解锁会话的 `ImageInfo`。
-- `ios_backup_audit`：`imageId`，可选 `taskId`；返回上游观察数组。
+- `ios-backups unlock [--password]`（`ios_backup_unlock`）：作用于 `--image` 指定的备份，可选 `--task-id`；
+  返回解锁会话的 `ImageInfo`。单写 `--password` 时在终端中以遮盖方式提问，或读取管道传入的标准输入。
+- `ios-backups audit`（`ios_backup_audit`）：可选 `--task-id`；返回上游观察数组。
 
-在 JSONL 会话中先加载备份，再传入源 ID 解锁、使用返回的子会话 ID 浏览或检查。
+在 `shell` 或 JSONL 会话中先 `images open` 备份，再解锁，并用返回的子会话 ID 浏览或检查。
 不要将密码写入共享脚本、报告或命令行历史。
 
 ## 来源与验证

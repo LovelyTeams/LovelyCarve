@@ -1,5 +1,6 @@
 //! Filtered directory pages, using the volume indexes before the snapshot/live
 //! fallback.
+use crate::host::State;
 use crate::{
     core::{
         catalog::directory_query::{self, DirectoryQuery},
@@ -7,7 +8,6 @@ use crate::{
     },
     state::AppState,
 };
-use tauri::State;
 use {
     crate::app::access::loaded_image_app_error,
     crate::app::error::AppError,

@@ -9,7 +9,7 @@
 //! 无 MountedDevices）保持可重算，否则解锁 BitLocker 后会被钉死在「什么都没找到」
 //! 上。无案件时退回会话级实时解析。
 
-use tauri::State;
+use crate::host::State;
 
 use crate::core::analysis::identify::win_drive_letters::{
     read_image_drive_letters, DriveLetterReport,
@@ -18,7 +18,7 @@ use crate::core::casework::drive_letter_store;
 use crate::state::AppState;
 use {crate::app::access::loaded_image_app_error, crate::app::error::AppError};
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn win_drive_letters(
     state: State<'_, AppState>,
     image_id: String,

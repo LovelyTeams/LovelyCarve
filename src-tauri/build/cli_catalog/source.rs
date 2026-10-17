@@ -114,13 +114,7 @@ impl Sources {
                 _ => None,
             })
             .ok_or_else(|| format!("command function missing: {name}"))?;
-        if !function.attrs.iter().any(|attribute| {
-            attribute
-                .path()
-                .segments
-                .last()
-                .is_some_and(|segment| segment.ident == "command")
-        }) {
+        if !function.attrs.iter().any(is_command_attribute) {
             return Err(format!("registered function is not a command: {name}").into());
         }
         Ok(function)
@@ -129,4 +123,23 @@ impl Sources {
     pub fn files(&self) -> impl Iterator<Item = &PathBuf> {
         self.files.keys()
     }
+}
+
+/// `#[tauri::command]`, or `#[cfg_attr(feature = "desktop", tauri::command)]`
+/// as the Tauri-free command modules write it.
+fn is_command_attribute(attribute: &syn::Attribute) -> bool {
+    let names_command = |path: &syn::Path| {
+        path.segments
+            .last()
+            .is_some_and(|segment| segment.ident == "command")
+    };
+    if names_command(attribute.path()) {
+        return true;
+    }
+    if !attribute.path().is_ident("cfg_attr") {
+        return false;
+    }
+    attribute
+        .parse_args_with(syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)
+        .is_ok_and(|metas| metas.iter().skip(1).any(|meta| names_command(meta.path())))
 }

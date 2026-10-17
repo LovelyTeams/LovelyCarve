@@ -77,7 +77,7 @@ where
             {
                 if child.is_some() {
                     return Err(CliError::invalid(
-                        "同名节点不唯一，请使用完整后端命令和 nodeId",
+                        "同名节点不唯一，请改用节点 ID 指定（files list 输出的 node.id）",
                     ));
                 }
                 child = Some(node);
@@ -88,7 +88,9 @@ where
             }
         }
         let child = child.ok_or_else(|| {
-            CliError::invalid(format!("找不到路径分量: {component}；使用 ls 查看名称"))
+            CliError::invalid(format!(
+                "找不到路径分量: {component}；使用 files list 查看名称"
+            ))
         })?;
         location.push((child.name, child.id));
     }
