@@ -10,7 +10,7 @@
 //!     analysis.db              插件分析结果(core::analysis::results::plugin_result_store)
 //!     timeline.db              时间线投影(core::timeline::timeline_store)
 //!     search.db                全局搜索任务与命中(core::search::global_search_store)
-//!     cache/                   可随时删除的缓存(Docker 容器来源映射等)
+//!     cache/                   可随时删除的缓存(Docker 容器来源映射、ZIP 备份展开清单等)
 //!     volumes/<卷名>/          一卷一目录
 //!       tree-<token>.dirz      卷快照(目录树交换格式)
 //!       index-<token>.db       由快照导入的文件系统索引,发布后不再修改

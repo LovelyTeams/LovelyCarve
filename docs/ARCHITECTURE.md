@@ -207,6 +207,11 @@ ZIP 与本机目录检材中的小米 `.bak` / Android `.ab` 复用 `readers::mi
 读取与流式导出转给对应 `TarImage`。解码后的偏移不作为原 ZIP 的数据位置。
 未识别、加密、解码失败或超出条目上限的备份保留原始文件节点；ZIP 成员完整读取、
 CRC 与逻辑长度核对成功后才发布目录。格式与外部参考见 [小米备份](formats/MIUI_BAK.md)。
+案件内的 `image_load` 把检材缓存目录（`EvidenceCache::Directory`）交给打开器：
+`zip_image::bak::listing` 把一次完整解码得到的投影存为 `cache/zip-backups.zst`，按 ZIP 长度与
+候选成员的路径、目录序号、本地头偏移、CRC-32 和大小绑定。再次打开时直接投影清单，备份在首次读取
+内容时才解码，解出的 TAR 与清单逐条一致才对外提供；还原的备份参与证据指纹的值与即时解码相同，
+案件索引照常复用。
 
 分区识别不能仅凭首扇区末尾的 `0x55AA` 判断 MBR：NTFS 等卷引导扇区也含此标记。
 MBR 解析先校验四个分区项的启动标志（`0x00` / `0x80`），拒绝将引导代码或提示文字解释为分区表；
@@ -590,7 +595,9 @@ iOS 整盘镜像没有独立判定路径。复核结论时查看案件回写的 
     analysis.db              插件分析结果（core::analysis::results::plugin_result_store）
     timeline.db              时间线投影（core::timeline::timeline_store）
     search.db                全局搜索任务与命中（core::search::global_search_store）
-    cache/docker/            可随时删除的缓存（Docker 容器来源映射）
+    cache/                   可随时删除的缓存
+      docker/                Docker 容器来源映射
+      zip-backups.zst        ZIP 检材内小米 / Android 备份的展开清单
     volumes/<卷名>/          一卷一目录（part:1 → part-1，过长的卷键截断后接哈希）
       tree-<token>.dirz      卷快照（目录树交换格式）
       index-<token>.db       由快照导入的文件系统索引，发布后不再修改

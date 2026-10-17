@@ -1,5 +1,6 @@
 //! load implementation.
 use super::*;
+use crate::core::evidence::image::EvidenceCache;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 
 /// Map an [`OpenProgress`] to a localized `image-load-progress` event, throttling
@@ -202,6 +203,13 @@ pub(crate) async fn load_image_runtime(
     }
 
     drop(context);
+    // Listings derived from the source (such as the backup projection of a
+    // ZIP) persist in the evidence's case cache, so reopening skips them.
+    let evidence_cache = {
+        let case = state.active_case.lock().await;
+        case.as_ref()
+            .map(|case| crate::core::casework::case_paths::cache_dir(&case.dir, &image_id))
+    };
     let resource_permit = state.tasks.acquire_resources(task).await?;
     let progress_tasks = state.tasks.clone();
     let progress_task_id = task.record().id().to_owned();
@@ -228,11 +236,16 @@ pub(crate) async fn load_image_runtime(
                 &progress_task_id,
             );
         };
+        let cache = match evidence_cache.as_deref() {
+            Some(directory) => EvidenceCache::Directory(directory),
+            None => EvidenceCache::Disabled,
+        };
         crate::core::evidence::image::DiskImage::open_cancellable(
             open_id,
             &open_path,
             &observer,
             qcow_key,
+            cache,
             &worker_token,
         )
     })

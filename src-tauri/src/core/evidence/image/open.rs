@@ -73,6 +73,7 @@ impl DiskImage {
             path,
             progress,
             qcow_key,
+            EvidenceCache::Disabled,
             &tokio_util::sync::CancellationToken::new(),
         )
     }
@@ -82,6 +83,7 @@ impl DiskImage {
         path: impl AsRef<Path>,
         progress: OpenObserver<'_>,
         qcow_key: Option<qcow2::EncryptionKey>,
+        cache: EvidenceCache<'_>,
         cancel: &tokio_util::sync::CancellationToken,
     ) -> anyhow::Result<Self> {
         anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
@@ -105,7 +107,7 @@ impl DiskImage {
         if lower_extension(&path).as_deref() == Some("ldbk") {
             return Self::open_ldplayer(id, path, progress, cancel);
         }
-        let source = ImageSource::open_observed(&path, progress, cancel)?;
+        let source = ImageSource::open_observed(&path, progress, cache, cancel)?;
         anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
         let image = Self::from_source_cancellable(id, path, source, progress, cancel)?;
         anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");

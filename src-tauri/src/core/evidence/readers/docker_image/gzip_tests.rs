@@ -1,6 +1,7 @@
 use super::*;
 use flate2::{write::GzEncoder, Compression};
 use std::io::Write;
+use tempfile::NamedTempFile;
 
 fn gzip(chunks: &[&[u8]]) -> Vec<u8> {
     let mut bytes = Vec::new();

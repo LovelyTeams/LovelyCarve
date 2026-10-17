@@ -6,6 +6,7 @@ impl ImageSource {
         Self::open_observed(
             path,
             &noop_observer,
+            EvidenceCache::Disabled,
             &tokio_util::sync::CancellationToken::new(),
         )
     }
@@ -13,6 +14,7 @@ impl ImageSource {
     pub(in crate::core::evidence::image) fn open_observed(
         path: &Path,
         progress: OpenObserver<'_>,
+        cache: EvidenceCache<'_>,
         cancel: &tokio_util::sync::CancellationToken,
     ) -> anyhow::Result<Self> {
         if path.is_dir()
@@ -173,6 +175,7 @@ impl ImageSource {
         if lower_extension(path).as_deref() == Some("zip") {
             match ZipImage::open_cancellable(
                 path,
+                cache,
                 &|label, done, total| {
                     progress(OpenProgress::Decompressing {
                         label: label.to_owned(),

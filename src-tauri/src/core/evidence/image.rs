@@ -19,7 +19,6 @@ use memmap2::Mmap;
 use parking_lot::{Condvar, Mutex as FairMutex};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
-use tempfile::NamedTempFile;
 
 use crate::core::evidence::crypto::bde_image::{
     BdeEncryptionMethod, BdeUnlockKey, VolumeByteReader,
@@ -284,6 +283,17 @@ pub type OpenObserver<'a> = &'a (dyn Fn(OpenProgress) + Send + Sync);
 /// A no-op observer for the many callers (tests, RAID assembly) that don't care
 /// about open progress.
 fn noop_observer(_: OpenProgress) {}
+
+/// Where an opener may keep listings derived from the evidence, so the next
+/// open of the same source skips rebuilding them. Losing such a listing only
+/// costs that rebuild.
+#[derive(Debug, Clone, Copy)]
+pub enum EvidenceCache<'a> {
+    /// The open belongs to no case: derive everything again on every open.
+    Disabled,
+    /// The case's cache directory of this evidence (`evidence/<uid>/cache`).
+    Directory(&'a Path),
+}
 
 /// Reads a BitLocker volume directly out of the decoded image
 /// (raw / E01 / VMDK alike) through a bounded Rust reader — see

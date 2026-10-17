@@ -4,6 +4,7 @@ use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Barrier;
 use std::time::Duration;
+use tempfile::NamedTempFile;
 
 #[test]
 fn bitlocker_source_rejects_audited_synthetic_ciphertext() {

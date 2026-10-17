@@ -81,20 +81,29 @@ impl DiskImage {
         // The source bytes may be identical across reader upgrades, but an old
         // file-only index cannot describe the newly expanded directory view.
         // Include which backups actually decoded, so partial/failed decoding
-        // also cannot reuse a snapshot of a different projection.
-        let backups = self
-            .zip
-            .as_ref()
-            .map(|zip| zip.backup_archives())
-            .or_else(|| self.folder.as_ref().map(|folder| folder.backup_archives()))
-            .unwrap_or_default();
+        // also cannot reuse a snapshot of a different projection. A ZIP backup
+        // restored from its saved listing hashes the same values as one
+        // decoded at open.
+        let backups: Vec<(&str, usize, u64)> = match (&self.zip, &self.folder) {
+            (Some(zip), _) => zip
+                .backup_archives()
+                .iter()
+                .map(|backup| (backup.label(), backup.entry_count(), backup.total_size()))
+                .collect(),
+            (None, Some(folder)) => folder
+                .backup_archives()
+                .iter()
+                .map(|archive| (archive.label(), archive.entry_count(), archive.total_size()))
+                .collect(),
+            (None, None) => Vec::new(),
+        };
         if !backups.is_empty() {
             hasher.update(b"android-backup-directory-projection-v2\0");
-            for archive in backups {
-                hasher.update((archive.label().len() as u64).to_le_bytes());
-                hasher.update(archive.label().as_bytes());
-                hasher.update((archive.entry_count() as u64).to_le_bytes());
-                hasher.update(archive.total_size().to_le_bytes());
+            for (label, entry_count, total_size) in backups {
+                hasher.update((label.len() as u64).to_le_bytes());
+                hasher.update(label.as_bytes());
+                hasher.update((entry_count as u64).to_le_bytes());
+                hasher.update(total_size.to_le_bytes());
             }
         }
 

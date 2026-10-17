@@ -34,7 +34,6 @@ use std::sync::Arc;
 use anyhow::{anyhow, bail, Context, Result};
 use memmap2::Mmap;
 use serde::{Deserialize, Serialize};
-use tempfile::NamedTempFile;
 
 use crate::core::evidence::readers::docker_manifest::{
     load_manifest, OuterMemberIndex, ResolvedLayer, ResolvedManifest,
@@ -152,7 +151,8 @@ pub struct HistoryEntry {
 pub struct DockerImage {
     path: PathBuf,
     outer: Mmap,
-    _tempfile: Option<NamedTempFile>,
+    /// Delete-on-close file of a decoded outer tar (see `TarImage`).
+    _tempfile: Option<File>,
     layers: Vec<Layer>,
     entries: BTreeMap<String, FileEntry>,
     config: ImageConfig,
@@ -215,7 +215,7 @@ impl DockerImage {
     fn from_backing<I: OuterMemberIndex + ?Sized>(
         path: PathBuf,
         outer: Mmap,
-        tempfile: Option<NamedTempFile>,
+        tempfile: Option<File>,
         outer_index: &I,
     ) -> Result<Self> {
         let composed = compose_image(&outer, outer_index)?;

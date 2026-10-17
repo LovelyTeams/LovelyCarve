@@ -31,12 +31,15 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context, Result};
 use memmap2::Mmap;
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use zip::{CompressionMethod, ZipArchive};
 
+use crate::core::evidence::image::EvidenceCache;
 use crate::core::evidence::readers::tar_image::TarImage;
 
 mod bak;
@@ -50,7 +53,7 @@ const MAX_ENTRIES: usize = 2_000_000;
 /// so a member mislabelled as a symlink can't pull a large blob into memory.
 const MAX_SYMLINK_TARGET: u64 = 4096;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ZipEntryKind {
     File,
     Dir,
@@ -61,7 +64,7 @@ pub enum ZipEntryKind {
     Other,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ZipEntry {
     /// Normalised archive path, `/`-separated, no leading/trailing slash. The
     /// synthetic root member uses the empty string.
@@ -98,19 +101,38 @@ impl ZipEntry {
     }
 }
 
+/// The archive's single read-only mapping, shared by borrowed `outer` slices
+/// and every archive cursor.
+#[derive(Clone)]
+struct ArchiveBytes(Arc<Mmap>);
+
+impl AsRef<[u8]> for ArchiveBytes {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for ArchiveBytes {
+    type Target = [u8];
+
+    fn deref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 pub struct ZipImage {
     path: PathBuf,
     label: String,
     /// Raw bytes of the on-disk archive, for the hex view / sector-source layer.
-    outer: Mmap,
-    /// Backing archive for decompressing reads. A second, independent mmap of
-    /// the same file lives inside the cursor (cheap — both map the same read-only
-    /// pages), keeping `outer` free to hand out borrowed slices. Guarded by a
-    /// mutex because `ZipArchive::by_index` needs `&mut self`.
-    archive: Mutex<ZipArchive<Cursor<Mmap>>>,
+    outer: ArchiveBytes,
+    /// Backing archive for decompressing reads, over the same mapping as
+    /// `outer`. Guarded by a mutex because `ZipArchive::by_index` needs
+    /// `&mut self`; a long backup decode works on a clone (sharing the parsed
+    /// central directory) instead of holding it.
+    archive: Mutex<ZipArchive<Cursor<ArchiveBytes>>>,
     entries: BTreeMap<String, ZipEntry>,
     total_size: u64,
-    bak_archives: Vec<TarImage>,
+    bak_archives: Vec<bak::ZipBackup>,
 }
 
 impl std::fmt::Debug for ZipImage {
@@ -125,7 +147,7 @@ impl std::fmt::Debug for ZipImage {
 }
 
 impl ZipImage {
-    pub(crate) fn backup_archives(&self) -> &[TarImage] {
+    pub(crate) fn backup_archives(&self) -> &[bak::ZipBackup] {
         &self.bak_archives
     }
 
@@ -142,11 +164,21 @@ impl ZipImage {
         path: impl AsRef<Path>,
         progress: &dyn Fn(&str, u64, u64),
     ) -> Result<Self> {
-        Self::open_cancellable(path, progress, &tokio_util::sync::CancellationToken::new())
+        Self::open_cancellable(
+            path,
+            EvidenceCache::Disabled,
+            progress,
+            &tokio_util::sync::CancellationToken::new(),
+        )
     }
 
+    /// With a case cache directory, embedded backups are restored from the
+    /// listing saved there by an earlier open of the same archive (see
+    /// `bak::listing`) and decode on their first content read; otherwise they
+    /// all decode now and the listing is saved for the next open.
     pub(crate) fn open_cancellable(
         path: impl AsRef<Path>,
+        cache: EvidenceCache<'_>,
         progress: &dyn Fn(&str, u64, u64),
         cancel: &tokio_util::sync::CancellationToken,
     ) -> Result<Self> {
@@ -154,24 +186,18 @@ impl ZipImage {
         let path = path.as_ref().to_path_buf();
         let outer = {
             let file = File::open(&path).with_context(|| format!("open {}", path.display()))?;
-            unsafe { Mmap::map(&file) }.with_context(|| format!("mmap {}", path.display()))?
-        };
-        // Second independent mapping moved into the archive cursor, so the
-        // archive owns its bytes while `outer` keeps handing out slices.
-        let archive = {
-            let file = File::open(&path).with_context(|| format!("open {}", path.display()))?;
             let mmap =
                 unsafe { Mmap::map(&file) }.with_context(|| format!("mmap {}", path.display()))?;
-            ZipArchive::new(Cursor::new(mmap))
-                .with_context(|| format!("read zip central directory: {}", path.display()))?
+            ArchiveBytes(Arc::new(mmap))
         };
+        let mut archive = ZipArchive::new(Cursor::new(outer.clone()))
+            .with_context(|| format!("read zip central directory: {}", path.display()))?;
 
         let label = path
             .file_name()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| path.display().to_string());
 
-        let mut archive = archive;
         let (mut entries, mut total_size) = scan_zip(&mut archive)
             .with_context(|| format!("scan zip archive: {}", path.display()))?;
         if entries.len() <= 1 {
@@ -180,11 +206,19 @@ impl ZipImage {
             bail!("no zip members found in {}", path.display());
         }
 
+        let listing = match cache {
+            EvidenceCache::Directory(directory) => Some(bak::listing_path(directory)),
+            EvidenceCache::Disabled => None,
+        };
         let bak_archives = bak::index_backups(
             &mut archive,
             &mut entries,
             &mut total_size,
-            &path,
+            bak::BackupSource {
+                path: &path,
+                archive_len: outer.len() as u64,
+                listing: listing.as_deref(),
+            },
             progress,
             cancel,
         )?;
@@ -282,9 +316,7 @@ impl ZipImage {
         let entry = self.resolve(rel)?;
         if let Some((index, path)) = &entry.bak_source {
             return self
-                .bak_archives
-                .get(*index)
-                .context("backup archive index out of range")?
+                .backup_tar(*index)?
                 .stream_file(path, chunk_size, visitor);
         }
         if let Some((offset, size)) = entry.stored_location {
@@ -357,11 +389,7 @@ impl ZipImage {
 
     fn read_entry(&self, entry: &ZipEntry, max_bytes: usize) -> Result<Vec<u8>> {
         if let Some((index, path)) = &entry.bak_source {
-            return self
-                .bak_archives
-                .get(*index)
-                .context("backup archive index out of range")?
-                .read(path, max_bytes);
+            return self.backup_tar(*index)?.read(path, max_bytes);
         }
         if let Some((offset, size)) = entry.stored_location {
             let data = self.slice(offset, size)?;
@@ -382,6 +410,23 @@ impl ZipImage {
         Ok(buf)
     }
 
+    /// The decoded TAR of backup `index`, decoding it now when the backup was
+    /// restored from a listing. Concurrent readers of one backup wait for a
+    /// single decode; different backups decode independently.
+    fn backup_tar(&self, index: usize) -> Result<&TarImage> {
+        let backup = self
+            .bak_archives
+            .get(index)
+            .context("backup archive index out of range")?;
+        if let Some(tar) = backup.decoded() {
+            return Ok(tar);
+        }
+        let mut archive = self.archive.lock().clone();
+        backup.decode(&mut archive, &self.path, |tar| {
+            bak::verify_projection(&self.entries, index, backup, tar)
+        })
+    }
+
     fn slice(&self, offset: u64, size: u64) -> Result<&[u8]> {
         let start = usize::try_from(offset).context("zip offset out of range")?;
         let end = start
@@ -396,7 +441,9 @@ impl ZipImage {
 /// Walk the archive's central directory once, returning the indexed members
 /// (including a synthetic root and synthesised ancestor directories) and the
 /// summed uncompressed regular-file size.
-fn scan_zip(archive: &mut ZipArchive<Cursor<Mmap>>) -> Result<(BTreeMap<String, ZipEntry>, u64)> {
+fn scan_zip(
+    archive: &mut ZipArchive<Cursor<ArchiveBytes>>,
+) -> Result<(BTreeMap<String, ZipEntry>, u64)> {
     let mut entries: BTreeMap<String, ZipEntry> = BTreeMap::new();
     entries.insert(String::new(), dir_entry(String::new()));
 

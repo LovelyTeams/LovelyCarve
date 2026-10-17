@@ -51,7 +51,7 @@ fn zip(bytes: &[u8], method: CompressionMethod) -> tempfile::NamedTempFile {
 
 #[test]
 fn standalone_backup_and_gzip_loading_observe_cancellation() {
-    use crate::core::evidence::image::{DiskImage, OpenProgress};
+    use crate::core::evidence::image::{DiskImage, EvidenceCache, OpenProgress};
     let payload = backup(false);
     let prefix = b"MIUI BACKUP\0prefixANDROID BACKUP\n5\n0\nnone\n";
     assert!(payload.starts_with(prefix));
@@ -76,6 +76,7 @@ fn standalone_backup_and_gzip_loading_observe_cancellation() {
                 }
             },
             None,
+            EvidenceCache::Disabled,
             &cancel,
         )
         .unwrap_err();
@@ -85,7 +86,7 @@ fn standalone_backup_and_gzip_loading_observe_cancellation() {
 
 #[test]
 fn cancelled_backup_loading_never_publishes_a_partial_zip_or_raw_fallback() {
-    use crate::core::evidence::image::{DiskImage, OpenProgress};
+    use crate::core::evidence::image::{DiskImage, EvidenceCache, OpenProgress};
     let file = tempfile::Builder::new().suffix(".zip").tempfile().unwrap();
     let mut writer = ZipWriter::new(file.reopen().unwrap());
     writer
@@ -93,6 +94,7 @@ fn cancelled_backup_loading_never_publishes_a_partial_zip_or_raw_fallback() {
         .unwrap();
     writer.write_all(&backup(false)).unwrap();
     writer.finish().unwrap();
+    let cache = tempfile::tempdir().unwrap();
     let cancel = tokio_util::sync::CancellationToken::new();
     let error = DiskImage::open_cancellable(
         "cancelled".into(),
@@ -103,10 +105,13 @@ fn cancelled_backup_loading_never_publishes_a_partial_zip_or_raw_fallback() {
             }
         },
         None,
+        EvidenceCache::Directory(cache.path()),
         &cancel,
     )
     .unwrap_err();
     assert!(error.to_string().contains("cancelled"), "{error:#}");
+    // A cancelled decode leaves no listing for the next open to trust.
+    assert!(!listing_path(cache.path()).exists());
 }
 
 #[test]
@@ -254,12 +259,227 @@ fn bad_zip_crc_does_not_publish_backup_tree() {
     );
 }
 
+/// Two backups (DEFLATE and STORED members, plain and zlib payloads), an
+/// ordinary `.bak` that stays a file, and a plain member.
+fn write_phone_zip(path: &Path, first_backup: &[u8]) {
+    let mut writer = ZipWriter::new(File::create(path).unwrap());
+    let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+    writer
+        .start_file("MIUI/backup/first.bak", deflated)
+        .unwrap();
+    writer.write_all(first_backup).unwrap();
+    writer.start_file("MIUI/backup/second.bak", stored).unwrap();
+    writer.write_all(&backup(true)).unwrap();
+    writer.start_file("ordinary.bak", deflated).unwrap();
+    writer.write_all(b"opaque database backup").unwrap();
+    writer.start_file("notes.txt", deflated).unwrap();
+    writer.write_all(b"plain member").unwrap();
+    writer.finish().unwrap();
+}
+
+/// Opens `path` with `cache` as its evidence cache; returns the image and how
+/// many decode progress updates the open reported.
+fn open_with_cache(path: &Path, cache: &Path) -> (ZipImage, usize) {
+    let updates = std::cell::Cell::new(0);
+    let image = ZipImage::open_cancellable(
+        path,
+        EvidenceCache::Directory(cache),
+        &|_, _, _| updates.set(updates.get() + 1),
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .unwrap();
+    (image, updates.get())
+}
+
+fn backup_summary(image: &ZipImage) -> Vec<(String, usize, u64)> {
+    image
+        .bak_archives
+        .iter()
+        .map(|backup| {
+            (
+                backup.label().to_owned(),
+                backup.entry_count(),
+                backup.total_size(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn reopening_restores_backup_directories_from_the_listing_and_decodes_on_first_read() {
+    let directory = tempfile::tempdir().unwrap();
+    let archive = directory.path().join("phone.zip");
+    let cache = directory.path().join("cache");
+    write_phone_zip(&archive, &backup(false));
+
+    let (decoded, decode_updates) = open_with_cache(&archive, &cache);
+    assert!(decode_updates > 0);
+    assert_eq!(decoded.bak_archives.len(), 2);
+    assert!(decoded
+        .bak_archives
+        .iter()
+        .all(|backup| backup.decoded().is_some()));
+    assert!(listing_path(&cache).is_file());
+
+    let (restored, restore_updates) = open_with_cache(&archive, &cache);
+    assert_eq!(restore_updates, 0);
+    assert!(restored
+        .bak_archives
+        .iter()
+        .all(|backup| backup.decoded().is_none()));
+    assert_eq!(restored.entries, decoded.entries);
+    assert_eq!(restored.total_size(), decoded.total_size());
+    assert_eq!(backup_summary(&restored), backup_summary(&decoded));
+    assert_eq!(
+        restored.children("MIUI/backup/first.bak").len(),
+        decoded.children("MIUI/backup/first.bak").len()
+    );
+
+    // Content reads decode only the backup they touch.
+    let data = "MIUI/backup/second.bak/apps/com.example/db/data";
+    assert_eq!(restored.read(data, 3).unwrap(), b"pay");
+    assert!(restored.bak_archives[1].decoded().is_some());
+    assert!(restored.bak_archives[0].decoded().is_none());
+    let mut streamed = Vec::new();
+    restored
+        .stream_file("MIUI/backup/first.bak/apps/com.example/link", 2, |chunk| {
+            streamed.extend_from_slice(chunk);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(streamed, b"payload");
+    assert!(restored
+        .read("MIUI/backup/first.bak/escape", usize::MAX)
+        .is_err());
+    assert_eq!(
+        restored.lookup("ordinary.bak").unwrap().kind,
+        ZipEntryKind::File
+    );
+    assert_eq!(
+        restored.read("ordinary.bak", usize::MAX).unwrap(),
+        b"opaque database backup"
+    );
+}
+
+#[test]
+fn a_changed_archive_decodes_again_instead_of_restoring_its_old_listing() {
+    let directory = tempfile::tempdir().unwrap();
+    let archive = directory.path().join("phone.zip");
+    let cache = directory.path().join("cache");
+    write_phone_zip(&archive, &backup(false));
+    open_with_cache(&archive, &cache);
+
+    write_phone_zip(&archive, &backup(true));
+    let (changed, updates) = open_with_cache(&archive, &cache);
+    assert!(updates > 0);
+    assert!(changed
+        .bak_archives
+        .iter()
+        .all(|backup| backup.decoded().is_some()));
+
+    // The refreshed listing serves the next open.
+    let (restored, updates) = open_with_cache(&archive, &cache);
+    assert_eq!(updates, 0);
+    assert_eq!(restored.entries, changed.entries);
+}
+
+#[test]
+fn a_backup_that_differs_from_its_listing_refuses_content_reads() {
+    let directory = tempfile::tempdir().unwrap();
+    let archive = directory.path().join("phone.zip");
+    let cache = directory.path().join("cache");
+    write_phone_zip(&archive, &backup(false));
+    open_with_cache(&archive, &cache);
+
+    // Make the listing describe a member the backup does not hold.
+    let listing = listing_path(&cache);
+    let mut json = Vec::new();
+    zstd::stream::read::Decoder::new(File::open(&listing).unwrap())
+        .unwrap()
+        .read_to_end(&mut json)
+        .unwrap();
+    let mut value: serde_json::Value = serde_json::from_slice(&json).unwrap();
+    let entries = value["members"][0]["expansion"]["entries"]
+        .as_array_mut()
+        .unwrap();
+    let data = entries
+        .iter_mut()
+        .find(|entry| entry["path"] == "apps/com.example/db/data")
+        .unwrap();
+    data["mtime"] = serde_json::json!(1);
+    let mut encoder =
+        zstd::stream::write::Encoder::new(File::create(&listing).unwrap(), 3).unwrap();
+    serde_json::to_writer(&mut encoder, &value).unwrap();
+    encoder.finish().unwrap();
+
+    let (restored, _) = open_with_cache(&archive, &cache);
+    let path = "MIUI/backup/first.bak/apps/com.example/db/data";
+    assert_eq!(restored.lookup(path).unwrap().mtime, 1);
+    let error = restored.read(path, usize::MAX).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("no longer matches its listing"),
+        "{error:#}"
+    );
+    assert!(restored.bak_archives[0].decoded().is_none());
+    // Other backups are unaffected.
+    assert_eq!(
+        restored
+            .read(
+                "MIUI/backup/second.bak/apps/com.example/db/data",
+                usize::MAX
+            )
+            .unwrap(),
+        b"payload"
+    );
+}
+
+#[test]
+fn restored_backups_keep_the_evidence_fingerprint() {
+    use crate::core::evidence::image::DiskImage;
+    let directory = tempfile::tempdir().unwrap();
+    let archive = directory.path().join("phone.zip");
+    let cache = directory.path().join("cache");
+    write_phone_zip(&archive, &backup(false));
+    let open = |evidence_cache| {
+        DiskImage::open_cancellable(
+            "phone".into(),
+            &archive,
+            &|_| {},
+            None,
+            evidence_cache,
+            &tokio_util::sync::CancellationToken::new(),
+        )
+        .unwrap()
+    };
+    let uncached = open(EvidenceCache::Disabled);
+    let decoded = open(EvidenceCache::Directory(&cache));
+    let restored = open(EvidenceCache::Directory(&cache));
+    assert!(restored
+        .zip
+        .as_ref()
+        .unwrap()
+        .bak_archives
+        .iter()
+        .all(|backup| backup.decoded().is_none()));
+    assert!(restored.has_expanded_backups());
+    assert_eq!(
+        restored.evidence_fingerprint(),
+        decoded.evidence_fingerprint()
+    );
+    assert_eq!(
+        uncached.evidence_fingerprint(),
+        decoded.evidence_fingerprint()
+    );
+}
+
 #[test]
 fn indexes_real_xiaomi_zip_when_env_path_is_set() {
     let Some(path) = std::env::var_os("LOVELYCARVE_MI_ZIP_TEST") else {
         return;
     };
-    let image = ZipImage::open(&path).expect("open real Xiaomi ZIP");
+    let cache = tempfile::tempdir().unwrap();
+    let (image, _) = open_with_cache(Path::new(&path), cache.path());
     let mut archive = ZipArchive::new(File::open(&path).unwrap()).unwrap();
     let mut count = 0;
     for index in 0..archive.len() {
@@ -274,7 +494,8 @@ fn indexes_real_xiaomi_zip_when_env_path_is_set() {
     assert!(count > 0);
     assert_eq!(image.bak_archives.len(), count);
     let mut files = 0usize;
-    for backup in &image.bak_archives {
+    for index in 0..image.bak_archives.len() {
+        let backup = image.backup_tar(index).unwrap();
         for entry in backup
             .entries()
             .filter(|entry| entry.kind == TarEntryKind::File)
@@ -308,7 +529,8 @@ fn indexes_real_xiaomi_zip_when_env_path_is_set() {
             let backup = image
                 .bak_archives
                 .iter()
-                .find(|backup| backup.label() == root)
+                .position(|backup| backup.label() == root)
+                .map(|index| image.backup_tar(index).unwrap())
                 .unwrap();
             let actual_files: Vec<_> = backup
                 .entries()
@@ -331,8 +553,30 @@ fn indexes_real_xiaomi_zip_when_env_path_is_set() {
             }
         }
     }
+
+    // Reopening restores the same projection from the listing; every backup
+    // then decodes on demand and must match what the listing projected.
+    let started = std::time::Instant::now();
+    let (restored, updates) = open_with_cache(Path::new(&path), cache.path());
+    let restore_elapsed = started.elapsed();
+    assert_eq!(updates, 0);
+    assert_eq!(restored.entries, image.entries);
+    assert_eq!(backup_summary(&restored), backup_summary(&image));
+    for index in 0..restored.bak_archives.len() {
+        let tar = restored.backup_tar(index).unwrap();
+        if let Some(entry) = tar
+            .entries()
+            .find(|entry| entry.kind == TarEntryKind::File && entry.size > 0)
+        {
+            let member = format!("{}/{}", tar.label(), entry.rel_path);
+            assert_eq!(
+                restored.read(&member, 4096).unwrap(),
+                image.read(&member, 4096).unwrap()
+            );
+        }
+    }
     eprintln!(
-        "Xiaomi ZIP: {count} backups, {files} files, {} total entries",
+        "Xiaomi ZIP: {count} backups, {files} files, {} total entries; restored from listing in {restore_elapsed:.3?}",
         image.entry_count()
     );
 }

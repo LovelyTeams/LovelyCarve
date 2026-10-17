@@ -170,19 +170,19 @@ pub(super) fn open_dmg(path: &Path) -> anyhow::Result<ImageSource> {
     })?;
 
     let mut tmp =
-        NamedTempFile::new().with_context(|| "failed to create tempfile for DMG extraction")?;
+        tempfile::tempfile().with_context(|| "failed to create tempfile for DMG extraction")?;
 
     let extracted = archive
-        .extract_partition_to(partition_id, tmp.as_file_mut())
+        .extract_partition_to(partition_id, &mut tmp)
         .with_context(|| {
             format!(
                 "failed to decompress DMG main partition: {}",
                 path.display()
             )
         })?;
-    tmp.as_file_mut().flush()?;
+    tmp.flush()?;
 
-    let mmap = unsafe { Mmap::map(tmp.as_file())? };
+    let mmap = unsafe { Mmap::map(&tmp)? };
     let mmap_len = mmap.len() as u64;
     if mmap_len == 0 {
         anyhow::bail!(

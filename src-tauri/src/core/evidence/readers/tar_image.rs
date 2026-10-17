@@ -29,7 +29,6 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, bail, Context, Result};
 use gzipf::GzipDecoder;
 use memmap2::Mmap;
-use tempfile::NamedTempFile;
 
 /// Soft cap on recorded members. A 63 GiB Android system tar holds a few
 /// hundred thousand entries; this bound keeps a pathological / corrupt archive
@@ -75,7 +74,10 @@ pub struct TarImage {
     path: PathBuf,
     label: String,
     outer: Mmap,
-    _tempfile: Option<NamedTempFile>,
+    /// Anonymous delete-on-close file holding a decoded tar. The OS removes it
+    /// once its handle closes, even when the process exits without dropping
+    /// this image (the desktop app ends without unloading its evidence).
+    _tempfile: Option<File>,
     entries: BTreeMap<String, TarEntry>,
     total_size: u64,
 }
@@ -130,8 +132,7 @@ impl TarImage {
         label: Option<String>,
         reader: &mut impl Read,
     ) -> Result<Self> {
-        let mut tmp =
-            NamedTempFile::new().with_context(|| "create tempfile for tar.gz extraction")?;
+        let mut tmp = tempfile::tempfile().context("create tempfile for decoded tar")?;
         let mut buf = vec![0u8; 1024 * 1024];
         loop {
             let read = reader
@@ -140,12 +141,11 @@ impl TarImage {
             if read == 0 {
                 break;
             }
-            tmp.as_file_mut()
-                .write_all(&buf[..read])
+            tmp.write_all(&buf[..read])
                 .with_context(|| format!("write decompressed tar for {}", path.display()))?;
         }
-        tmp.as_file_mut().flush()?;
-        let outer = unsafe { Mmap::map(tmp.as_file()) }.with_context(|| "mmap decompressed tar")?;
+        tmp.flush()?;
+        let outer = unsafe { Mmap::map(&tmp) }.with_context(|| "mmap decompressed tar")?;
 
         let label = label.unwrap_or_else(|| {
             path.file_name()
@@ -160,7 +160,7 @@ impl TarImage {
         path: PathBuf,
         label: String,
         outer: Mmap,
-        tempfile: Option<NamedTempFile>,
+        tempfile: Option<File>,
     ) -> Result<Self> {
         let (entries, total_size) =
             scan_tar(&outer).with_context(|| format!("scan tar archive: {}", path.display()))?;
@@ -203,7 +203,7 @@ impl TarImage {
     /// detection first builds this index so ordinary multi-GiB tar evidence is
     /// scanned only once; a confirmed container archive can then reuse the
     /// same mmap while composing layers instead of reopening and rescanning it.
-    pub(crate) fn into_backing(self) -> (PathBuf, Mmap, Option<NamedTempFile>) {
+    pub(crate) fn into_backing(self) -> (PathBuf, Mmap, Option<File>) {
         (self.path, self.outer, self._tempfile)
     }
 

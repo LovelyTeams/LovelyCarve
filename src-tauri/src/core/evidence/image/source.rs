@@ -56,11 +56,12 @@ pub(super) enum ImageSource {
     /// a plain RAW image. `_tempfile` keeps the file alive on disk for as
     /// long as `mmap` is borrowing it; `Mmap`'s docs require the backing
     /// file to outlive the mapping, otherwise the reader dereferences a
-    /// pointer to a deleted handle.
+    /// pointer to a deleted handle. It is an anonymous delete-on-close file,
+    /// so the OS removes it even if the process exits without dropping it.
     Dmg {
         mmap: Mmap,
         size_bytes: u64,
-        _tempfile: NamedTempFile,
+        _tempfile: File,
     },
     Pmfx {
         reader: FairMutex<PmfxImage>,
