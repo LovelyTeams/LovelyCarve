@@ -5,20 +5,22 @@ use super::*;
 /// winning candidate (and its deep score / probe count) without emitting, so
 /// the subset-selection driver can decide whether to accept it. `None` when no
 /// `(level, chunk, layout, order, offset, missing)` combination yields a
-/// deep-validated filesystem.
+/// deep-validated filesystem. `samples` are the members' pre-read samples, in
+/// `group` order.
 pub(super) fn reconstruct_one(
     group: &[Arc<DiskImage>],
+    samples: &[&MemberSamples],
     size: u64,
 ) -> Option<(Candidate, u32, usize)> {
     let n = group.len();
     let orderings = orderings(n);
-    let data_offsets = derive_data_offsets(group);
+    let data_offsets = derive_data_offsets(samples);
     // A strong low-occupancy outlier is the likely dropped/stale member; the
     // RAID5 search additionally tries reconstructing it from parity.
-    let seed = stale_seed(group);
+    let seed = stale_seed(samples);
 
     let mut survivors: Vec<Candidate> = Vec::new();
-    let parity = n >= 3 && (parity_vote(group, size) >= PARITY_VOTE_MIN || seed.is_some());
+    let parity = n >= 3 && (parity_vote(samples) >= PARITY_VOTE_MIN || seed.is_some());
     tracing::debug!(
         members = n,
         ?data_offsets,
@@ -129,41 +131,22 @@ pub(super) fn search(
     survivors
 }
 
-/// Per-member data-area offsets to try, derived by scanning each member at a
+/// Per-member data-area offsets to try, derived from each member's probes at a
 /// small set of offsets plus a bounded aligned scan for an MBR / NTFS / ext4
-/// boot signature. The
+/// boot signature (read into [`MemberSamples::signature_offsets`]). The
 /// array's logical block 0 (an MBR or bare-FS boot sector) sits at the data
 /// offset on whichever member holds column 0, so a hit directly reveals the
 /// reserve size. `0` is always included as a fallback.
-pub(super) fn derive_data_offsets(group: &[Arc<DiskImage>]) -> Vec<u64> {
+pub(super) fn derive_data_offsets(samples: &[&MemberSamples]) -> Vec<u64> {
     let mut found = std::collections::BTreeSet::new();
     found.insert(0u64);
-    for image in group {
-        let scan_end = image.len().min(DATA_OFFSET_SCAN_BYTES);
-        let offsets = DATA_OFFSET_PROBE_SECTORS
-            .iter()
-            .map(|sector| sector * 512)
-            .chain((DATA_OFFSET_SCAN_STEP..=scan_end).step_by(DATA_OFFSET_SCAN_STEP as usize));
-        for off in offsets {
-            if off.checked_add(2048).is_none_or(|end| end > image.len()) {
-                continue;
-            }
-            let Ok(buf) = image.read_range(off, 2048) else {
-                continue;
-            };
-            if buf.len() < 0x440 {
-                continue;
-            }
-            let mbr = buf[510] == 0x55 && buf[511] == 0xAA;
-            let ntfs = &buf[3..11] == b"NTFS    ";
-            let ext4 = buf[0x438] == 0x53 && buf[0x439] == 0xEF;
-            if mbr || ntfs || ext4 {
-                found.insert(off);
-                // Bound the expensive geometry search even for a source full
-                // of coincidental or deliberately repeated signatures.
-                if found.len() >= MAX_DATA_OFFSETS {
-                    return found.into_iter().collect();
-                }
+    for member in samples {
+        for &offset in &member.signature_offsets {
+            found.insert(offset);
+            // Bound the expensive geometry search even for a source full of
+            // coincidental or deliberately repeated signatures.
+            if found.len() >= MAX_DATA_OFFSETS {
+                return found.into_iter().collect();
             }
         }
     }

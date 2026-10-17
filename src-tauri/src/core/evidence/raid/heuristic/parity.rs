@@ -1,46 +1,41 @@
-//! Parity voting, occupancy samples and sample caching.
+//! Parity voting, occupancy outliers and subset ranking on member samples.
 use super::*;
 
 // ---------------------------------------------------------------------------
 // RAID5 parity vote, occupancy, data-offset derivation
 // ---------------------------------------------------------------------------
 
-/// Sample dense stripe rows and return the fraction whose all-member XOR is
+/// Return the fraction of dense sampled stripe rows whose all-member XOR is
 /// zero — the RAID5 parity vote. Sampling concentrates on the densely written
 /// front of the device plus a spread across the whole disk; rows where fewer
 /// than two members carry data are skipped (parity == data there is
-/// uninformative). Returns `1.0` when no dense row is found at all (a wholly
-/// empty group is inconclusive, so the RAID5 search still gets to try, gated by
-/// filesystem validation). A single stale/dropped member depresses but does
-/// not zero the ratio — its post-dropout rows break parity — so callers
-/// threshold at [`PARITY_VOTE_MIN`] rather than requiring a perfect `1.0`.
-pub(super) fn parity_vote(group: &[Arc<DiskImage>], size: u64) -> f64 {
-    const BLOCK: usize = 4096;
-    let offsets = parity_sample_offsets(size);
+/// uninformative), as are rows where any member's sample is missing or short.
+/// Returns `1.0` when no dense row is found at all (a wholly empty group is
+/// inconclusive, so the RAID5 search still gets to try, gated by filesystem
+/// validation). A single stale/dropped member depresses but does not zero the
+/// ratio — its post-dropout rows break parity — so callers threshold at
+/// [`PARITY_VOTE_MIN`] rather than requiring a perfect `1.0`.
+pub(super) fn parity_vote(members: &[&MemberSamples]) -> f64 {
+    let rows = members.first().map_or(0, |member| member.blocks.len());
     let mut dense = 0u64;
     let mut zero = 0u64;
-    for offset in offsets {
-        let mut bufs = Vec::with_capacity(group.len());
-        for image in group {
-            match image.read_range(offset, BLOCK) {
-                Ok(b) if b.len() == BLOCK => bufs.push(b),
-                _ => {
-                    bufs.clear();
-                    break;
-                }
+    let mut xor = vec![0u8; SAMPLE_BLOCK];
+    'rows: for row in 0..rows {
+        let mut data: Vec<&[u8]> = Vec::with_capacity(members.len());
+        for member in members {
+            match member.blocks.get(row) {
+                Some(Sample::Zero(len)) if *len == SAMPLE_BLOCK => {}
+                Some(Sample::Data(bytes)) if bytes.len() == SAMPLE_BLOCK => data.push(bytes),
+                Some(Sample::Zero(_) | Sample::Data(_) | Sample::Failed) | None => continue 'rows,
             }
         }
-        if bufs.len() != group.len() {
-            continue;
-        }
-        let nonzero_members = bufs.iter().filter(|b| b.iter().any(|&x| x != 0)).count();
-        if nonzero_members < 2 {
+        if data.len() < 2 {
             continue;
         }
         dense += 1;
-        let mut xor = vec![0u8; BLOCK];
-        for b in &bufs {
-            for (x, &y) in xor.iter_mut().zip(b.iter()) {
+        xor.fill(0);
+        for bytes in &data {
+            for (x, &y) in xor.iter_mut().zip(bytes.iter()) {
                 *x ^= y;
             }
         }
@@ -59,7 +54,7 @@ pub(super) fn parity_vote(group: &[Arc<DiskImage>], size: u64) -> f64 {
 /// filesystem metadata and small files live on a fresh install) plus 64 evenly
 /// spaced rows across the remainder.
 pub(super) fn parity_sample_offsets(size: u64) -> Vec<u64> {
-    const BLOCK: u64 = 4096;
+    const BLOCK: u64 = SAMPLE_BLOCK as u64;
     let mut offsets = Vec::new();
     let front = size.min(512 * 1024 * 1024);
     let mut off = 0u64;
@@ -76,34 +71,27 @@ pub(super) fn parity_sample_offsets(size: u64) -> Vec<u64> {
     offsets
 }
 
-/// Count of sampled non-zero 4 KiB blocks on a member — a cheap proxy for how
-/// much data the disk carries. A dropped/stale RAID5 member stopped receiving
-/// writes and is far emptier than its live peers.
-pub(super) fn occupancy(image: &Arc<DiskImage>) -> u64 {
-    const BLOCK: usize = 4096;
-    let mut count = 0u64;
-    for off in parity_sample_offsets(image.len()) {
-        if let Ok(b) = image.read_range(off, BLOCK) {
-            if b.iter().any(|&x| x != 0) {
-                count += 1;
-            }
-        }
-    }
-    count
-}
-
 /// Identify a single strong low-occupancy outlier in the group — the likely
 /// dropped/stale RAID5 member — to seed degraded reconstruction. Returns its
-/// index when one disk is far emptier than the rest (< 0.3× the median of the
-/// others, and the others are themselves non-trivially filled); `None`
-/// otherwise (no clear outlier, or the group is uniformly sparse).
-pub(super) fn stale_seed(group: &[Arc<DiskImage>]) -> Option<usize> {
-    if group.len() < 3 {
+/// index within `members` when one disk is far emptier than the rest (< 0.3×
+/// the median of the others, and the others are themselves non-trivially
+/// filled); `None` otherwise (no clear outlier, or the group is uniformly
+/// sparse).
+pub(super) fn stale_seed(members: &[&MemberSamples]) -> Option<usize> {
+    let occupancy: Vec<u64> = members.iter().map(|member| member.occupancy()).collect();
+    low_occupancy_outlier(&occupancy)
+}
+
+/// Position of the strong low-occupancy outlier among `occupancy` (≥ 3
+/// members): a partially-stale dropped disk (< 0.3× the median of the others,
+/// which hold at least 8 sampled data blocks), or a fully-empty member among
+/// ≥ 2 filled peers (a blank/wiped column).
+pub(super) fn low_occupancy_outlier(occupancy: &[u64]) -> Option<usize> {
+    if occupancy.len() < 3 {
         return None;
     }
-    let occ: Vec<u64> = group.iter().map(occupancy).collect();
-    let (min_idx, &min_occ) = occ.iter().enumerate().min_by_key(|(_, &v)| v)?;
-    let mut others: Vec<u64> = occ
+    let (min_idx, &min_occ) = occupancy.iter().enumerate().min_by_key(|(_, &v)| v)?;
+    let mut others: Vec<u64> = occupancy
         .iter()
         .enumerate()
         .filter(|(i, _)| *i != min_idx)
@@ -112,8 +100,6 @@ pub(super) fn stale_seed(group: &[Arc<DiskImage>]) -> Option<usize> {
     others.sort_unstable();
     let median = others[others.len() / 2];
     let nonzero_others = others.iter().filter(|&&v| v > 0).count();
-    // Strong relative outlier (a partially-stale dropped disk, the real case),
-    // or a fully-empty member among ≥2 filled peers (a blank/wiped column).
     let strong_outlier = median >= 8 && (min_occ as f64) < 0.3 * (median as f64);
     let empty_member = min_occ == 0 && nonzero_others >= 2;
     if strong_outlier || empty_member {
@@ -123,41 +109,37 @@ pub(super) fn stale_seed(group: &[Arc<DiskImage>]) -> Option<usize> {
     }
 }
 
-/// Per-disk XOR-folded sample blocks, read once so subset ranking scores
-/// candidates in memory instead of re-reading the disks for every subset. The
-/// 64-bit fold is linear under XOR, so it preserves the RAID5 parity-zero
-/// invariant exactly (no false negatives); rare fold collisions only add a
-/// little noise to non-RAID5 subsets, which the exact reconstruction then
-/// rejects anyway.
+/// Per-disk XOR-folded sample blocks, so subset ranking scores candidates in
+/// memory. The 64-bit fold is linear under XOR, so it preserves the RAID5
+/// parity-zero invariant exactly (no false negatives); rare fold collisions
+/// only add a little noise to non-RAID5 subsets, which the exact
+/// reconstruction then rejects anyway.
 pub(super) struct SampleCache {
     /// `fold[disk][i]` = XOR-fold of the 4 KiB block at sample offset `i`
-    /// (`0` for an all-zero or short block).
+    /// (`0` for an all-zero, failed or short block).
     pub(super) fold: Vec<Vec<u64>>,
     pub(super) occ: Vec<u64>,
 }
 
 impl SampleCache {
-    pub(super) fn build(group: &[Arc<DiskImage>], size: u64) -> Self {
-        const BLOCK: usize = 4096;
-        let offsets = parity_sample_offsets(size);
-        let mut fold = Vec::with_capacity(group.len());
-        let mut occ = Vec::with_capacity(group.len());
-        for image in group {
-            let mut disk = Vec::with_capacity(offsets.len());
-            let mut nonzero = 0u64;
-            for &off in &offsets {
-                let f = match image.read_range(off, BLOCK) {
-                    Ok(b) if b.len() == BLOCK => fold64(&b),
-                    _ => 0,
-                };
-                if f != 0 {
-                    nonzero += 1;
-                }
-                disk.push(f);
-            }
-            fold.push(disk);
-            occ.push(nonzero);
-        }
+    pub(super) fn from_samples(members: &[MemberSamples]) -> Self {
+        let fold: Vec<Vec<u64>> = members
+            .iter()
+            .map(|member| {
+                member
+                    .blocks
+                    .iter()
+                    .map(|sample| match sample {
+                        Sample::Data(bytes) if bytes.len() == SAMPLE_BLOCK => fold64(bytes),
+                        Sample::Data(_) | Sample::Zero(_) | Sample::Failed => 0,
+                    })
+                    .collect()
+            })
+            .collect();
+        let occ = fold
+            .iter()
+            .map(|disk| disk.iter().filter(|&&f| f != 0).count() as u64)
+            .collect();
         Self { fold, occ }
     }
 
@@ -187,27 +169,8 @@ impl SampleCache {
     /// Stale-member detection within a subset (mirrors [`stale_seed`] on cached
     /// occupancy). Returns the position WITHIN `subset`, not the disk index.
     pub(super) fn subset_seed(&self, subset: &[usize]) -> Option<usize> {
-        if subset.len() < 3 {
-            return None;
-        }
-        let occ: Vec<u64> = subset.iter().map(|&d| self.occ[d]).collect();
-        let (min_pos, &min_occ) = occ.iter().enumerate().min_by_key(|(_, &v)| v)?;
-        let mut others: Vec<u64> = occ
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| *i != min_pos)
-            .map(|(_, &v)| v)
-            .collect();
-        others.sort_unstable();
-        let median = others[others.len() / 2];
-        let nonzero_others = others.iter().filter(|&&v| v > 0).count();
-        if (median >= 8 && (min_occ as f64) < 0.3 * (median as f64))
-            || (min_occ == 0 && nonzero_others >= 2)
-        {
-            Some(min_pos)
-        } else {
-            None
-        }
+        let occupancy: Vec<u64> = subset.iter().map(|&d| self.occ[d]).collect();
+        low_occupancy_outlier(&occupancy)
     }
 }
 

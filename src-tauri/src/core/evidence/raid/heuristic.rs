@@ -12,7 +12,10 @@
 //!
 //! 1. **Candidate grouping.** Take every loaded image that carries no RAID
 //!    metadata and was not already consumed by an mdadm/LVM array, and group
-//!    by exact size — RAID members are equal-sized.
+//!    by exact size — RAID members are equal-sized. Each member's parity rows,
+//!    occupancy samples and data-offset probes are read once per group,
+//!    members in parallel ([`samples`]); every later check scores them in
+//!    memory.
 //! 2. **RAID5 gate.** For a group of ≥3, test the RAID5 parity invariant
 //!    (XOR of all members at the same physical offset is zero across every
 //!    stripe row). It holds for any clean RAID5 regardless of chunk/layout/
@@ -44,6 +47,8 @@ mod search;
 use search::*;
 mod parity;
 use parity::*;
+mod samples;
+use samples::*;
 mod validation;
 use validation::*;
 mod output;
@@ -186,18 +191,22 @@ const MAX_SUBSET_SEARCHES: usize = 24;
 /// filesystem validation rather than a human.
 fn attempt_size_group(group: &[Arc<DiskImage>], size: u64, out: &mut HeuristicOutput) {
     let n = group.len();
+    // Ranking and every reconstruction attempt below score these samples in
+    // memory; each member is read once per group.
+    let samples = read_group_samples(group, size);
     if n > SUBSET_ENUM_MAX_DISKS {
         out.diagnostics.push(format!(
             "metadata-less RAID: {n} equal-sized images ({size} bytes) exceed the subset-search \
              limit ({SUBSET_ENUM_MAX_DISKS}); trying the whole group only"
         ));
-        if let Some((winner, deep, probed)) = reconstruct_one(group, size) {
+        let members: Vec<&MemberSamples> = samples.iter().collect();
+        if let Some((winner, deep, probed)) = reconstruct_one(group, &members, size) {
             emit(group, winner, deep, probed, out);
         }
         return;
     }
 
-    let cache = SampleCache::build(group, size);
+    let cache = SampleCache::from_samples(&samples);
     let mut used = vec![false; n];
     let mut found_any = false;
     loop {
@@ -211,7 +220,11 @@ fn attempt_size_group(group: &[Arc<DiskImage>], size: u64, out: &mut HeuristicOu
             .take(MAX_SUBSET_SEARCHES)
         {
             let subgroup: Vec<Arc<DiskImage>> = subset.iter().map(|&i| group[i].clone()).collect();
-            if let Some((winner, deep, probed)) = reconstruct_one(&subgroup, size) {
+            let subgroup_samples: Vec<&MemberSamples> =
+                subset.iter().map(|&i| &samples[i]).collect();
+            if let Some((winner, deep, probed)) =
+                reconstruct_one(&subgroup, &subgroup_samples, size)
+            {
                 emit(&subgroup, winner, deep, probed, out);
                 accepted = Some(subset);
                 found_any = true;

@@ -20,6 +20,19 @@ fn mem_image(bytes: Vec<u8>) -> Arc<DiskImage> {
     )
 }
 
+/// Parity vote of an equal-size group, read the way the heuristic reads it.
+fn group_parity_vote(group: &[Arc<DiskImage>], size: u64) -> f64 {
+    let samples = read_group_samples(group, size);
+    parity_vote(&samples.iter().collect::<Vec<_>>())
+}
+
+/// Data offsets derived for `group`, read the way the heuristic reads them.
+fn group_data_offsets(group: &[Arc<DiskImage>]) -> Vec<u64> {
+    let size = group.first().map_or(0, |image| image.len());
+    let samples = read_group_samples(group, size);
+    derive_data_offsets(&samples.iter().collect::<Vec<_>>())
+}
+
 #[test]
 fn orderings_small_is_factorial() {
     assert_eq!(orderings(3).len(), 6);
@@ -52,7 +65,7 @@ fn parity_vote_is_unanimous_for_xor_member() {
     let m2: Vec<u8> = m0.iter().zip(&m1).map(|(a, b)| a ^ b).collect();
     let group = [mem_image(m0), mem_image(m1), mem_image(m2)];
     // Clean RAID5: every dense row XORs to zero.
-    assert_eq!(parity_vote(&group, size as u64), 1.0);
+    assert_eq!(group_parity_vote(&group, size as u64), 1.0);
 }
 
 #[test]
@@ -64,7 +77,7 @@ fn parity_vote_low_for_non_raid5() {
     let m1: Vec<u8> = (0..size).map(|i| (i * 17 + 3) as u8).collect();
     let m2: Vec<u8> = (0..size).map(|i| (i * 5 + 11) as u8).collect();
     let group = [mem_image(m0), mem_image(m1), mem_image(m2)];
-    assert!(parity_vote(&group, size as u64) < PARITY_VOTE_MIN);
+    assert!(group_parity_vote(&group, size as u64) < PARITY_VOTE_MIN);
 }
 
 #[test]
@@ -80,7 +93,7 @@ fn parity_vote_tolerates_one_stale_member() {
         *b ^= 0xFF; // diverge the back half only
     }
     let group = [mem_image(m0), mem_image(m1), mem_image(m2)];
-    let vote = parity_vote(&group, size as u64);
+    let vote = group_parity_vote(&group, size as u64);
     assert!(
         vote >= PARITY_VOTE_MIN,
         "vote {vote} should clear threshold"
@@ -206,12 +219,12 @@ fn detect_reconstructs_raid5_after_large_erased_reserve() {
 #[test]
 fn data_offset_scan_is_bounded_and_skips_empty_members() {
     let image = mem_image(vec![0; 10 * 1024 * 1024]);
-    assert_eq!(derive_data_offsets(&[image]), vec![0]);
+    assert_eq!(group_data_offsets(&[image]), vec![0]);
     let mut bytes = vec![0; 20 * 1024 * 1024];
     for offset in (0..bytes.len() - 2048).step_by(DATA_OFFSET_SCAN_STEP as usize) {
         bytes[offset + 510..offset + 512].copy_from_slice(&[0x55, 0xaa]);
     }
-    let offsets = derive_data_offsets(&[mem_image(bytes)]);
+    let offsets = group_data_offsets(&[mem_image(bytes)]);
     assert_eq!(offsets.len(), MAX_DATA_OFFSETS);
     assert_eq!(offsets.first(), Some(&0));
 }
