@@ -627,6 +627,7 @@ pub struct NtfsAttributes<'n, 'f> {
     list_entries: Option<NtfsAttributeListEntries<'n, 'f>>,
     list_skip_info: Option<(Vec<u8>, u32)>,
     listed_base_instances: Vec<u16>,
+    type_filter: Option<NtfsAttributeType>,
 }
 
 impl<'n, 'f> NtfsAttributes<'n, 'f> {
@@ -636,7 +637,16 @@ impl<'n, 'f> NtfsAttributes<'n, 'f> {
             list_entries: None,
             list_skip_info: None,
             listed_base_instances: Vec::new(),
+            type_filter: None,
         }
+    }
+
+    /// Restricts this fresh iterator to one attribute type before resolving
+    /// attribute-list references. Unrelated references are never opened;
+    /// matching references and connected extents retain all validation.
+    pub fn of_type(mut self, ty: NtfsAttributeType) -> Self {
+        self.type_filter = Some(ty);
+        self
     }
 
     /// Returns a variant of this iterator that implements [`Iterator`] and [`FusedIterator`]
@@ -672,6 +682,9 @@ impl<'n, 'f> NtfsAttributes<'n, 'f> {
                     let entry_instance = entry.instance();
                     let entry_record_number = entry.base_file_reference().file_record_number();
                     let entry_ty = entry.raw_type();
+                    if self.type_filter.is_some_and(|ty| entry_ty != ty as u32) {
+                        continue;
+                    }
 
                     // The first extent may live in the base record. It must
                     // retain the list reader too, otherwise its continuation
@@ -723,6 +736,12 @@ impl<'n, 'f> NtfsAttributes<'n, 'f> {
                     iter_try!(attribute.structured_value::<T, NtfsAttributeList>(fs));
                 self.list_entries = Some(attribute_list.entries());
             } else {
+                if self
+                    .type_filter
+                    .is_some_and(|ty| attribute.raw_type() != ty as u32)
+                {
+                    continue;
+                }
                 let item = NtfsAttributeItem {
                     attribute_file: self.raw_iter.file,
                     attribute_value_file: None,

@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "reparse_volume_tests.rs"]
+mod reparse;
+
 fn named_resident(ty: u32, name: &str, data: &[u8]) -> Vec<u8> {
     let name: Vec<_> = name.encode_utf16().flat_map(u16::to_le_bytes).collect();
     let offset = (24 + name.len()).next_multiple_of(8);

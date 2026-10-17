@@ -62,6 +62,15 @@ just run-example probe_ntfs_stream '<镜像路径>' <分区ID> <MFT记录号> '<
 `read_file` / `stream_file` / `read_range`。扩展属性头可按其物理 record/instance 查询。
 映射中的 offset 是卷内偏移；BitLocker 解密卷也采用该坐标，不能误当原镜像物理字节。
 
+重解析点按头部声明的数据长度解析，允许属性值保留尾部字节（例如 AF_UNIX 标签
+`0x80000023` 的零长度数据加 16 字节零尾部），但尾部不参与名称、偏移或 WOF 解码。
+声明长度越界、短读和超过 16 KiB 的属性仍明确失败。重解析查询在解引用前过滤
+`$ATTRIBUTE_LIST` 的属性类型，不因已删除目录中无关属性的旧引用产生重解析警告；
+真正的重解析引用仍校验序列号、instance、名称和 VCN，并连接跨记录的非驻留属性段。
+已删除记录的标准信息明确没有重解析标志、且记录内也没有重解析属性时，查询不再读取
+可能已释放/复用的外置属性表；缺少标准信息、有重解析标志或存在本地重解析属性时仍走
+校验路径。此优化不放宽普通属性链或文件内容的读取校验。
+
 ## 验证边界
 
 - 严格 reader 对损坏属性/USA/BAAD 返回具体错误；未提供 libfsntfs 损坏条目的部分恢复对象。
@@ -91,6 +100,12 @@ just test-vendor ntfs
 
 vendor 测试不会随主工程的 `just test` 执行，修改 `src-tauri/vendor/ntfs` 时需要单独运行。
 公共读取接口改动另跑 `just check-examples`。
+
+可选真实镜像回归：设置 `NTFS_REPARSE_IMAGE` 为本地 AF_UNIX / 已删除目录旧属性链
+回归镜像后，运行 `just test external_reparse_image_regression --lib -- --nocapture`。
+测试检查已知记录的两类布局、全 MFT 重解析读取和完整树扫描；未设置变量时跳过，
+不计为真实镜像验证。真实检材及其字节不提交到仓库，常规回归使用合成卷覆盖尾部边界、
+无关过期引用、实际过期重解析引用、跨记录属性和 WOF 全量/流式/范围读取。
 
 ## 公开 C API 逐项索引
 

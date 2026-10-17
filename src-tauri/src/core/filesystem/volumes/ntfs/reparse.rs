@@ -1,6 +1,7 @@
 //! Bounded NTFS reparse metadata. Targets remain evidence paths, never host paths.
 use super::*;
 use anyhow::{ensure, Context};
+use ntfs::structured_values::NtfsFileAttributeFlags;
 
 pub(super) const WOF_TAG: u32 = 0x8000_0017;
 
@@ -16,12 +17,16 @@ impl ReparsePoint {
         let tag = u32::from_le_bytes(bytes[..4].try_into()?);
         let size = usize::from(u16::from_le_bytes(bytes[4..6].try_into()?));
         ensure!(
-            size <= 16 * 1024 - 8 && bytes.len() == 8 + size,
-            "invalid NTFS reparse length"
+            bytes.len() <= 16 * 1024 && 8 + size <= bytes.len(),
+            "invalid NTFS reparse length: tag {tag:#010x}, declared {size}, attribute {}",
+            bytes.len()
         );
         Ok(Self {
             tag,
-            data: bytes[8..].to_vec(),
+            // Attribute values can retain trailing bytes (including a 16-byte
+            // zero tail on AF_UNIX points). Only the declared payload belongs
+            // to the reparse data; names and WOF must never read into that tail.
+            data: bytes[8..8 + size].to_vec(),
         })
     }
 
@@ -80,13 +85,35 @@ pub(super) fn read_reparse<T: Read + Seek>(
     file: &ntfs::NtfsFile,
     fs: &mut T,
 ) -> Result<Option<ReparsePoint>> {
-    let mut attributes = file.attributes();
-    while let Some(item) = attributes.next(fs) {
+    // Deleted files can retain non-resident attribute lists whose clusters
+    // have been freed or reused. Do not read those clusters just to establish
+    // the absence of a reparse point. Missing SI or a physical reparse
+    // attribute still takes the validated lookup path below.
+    if !file.flags().contains(NtfsFileFlags::IN_USE)
+        && file.info().is_ok_and(|info| {
+            !info
+                .file_attributes()
+                .contains(NtfsFileAttributeFlags::REPARSE_POINT)
+        })
+    {
+        let mut has_local_reparse = false;
+        for attribute in file.attributes_raw() {
+            if attribute?.raw_type() == NtfsAttributeType::ReparsePoint as u32 {
+                has_local_reparse = true;
+                break;
+            }
+        }
+        if !has_local_reparse {
+            return Ok(None);
+        }
+    }
+    // Filter before resolving attribute-list references: deleted files may
+    // retain stale references for unrelated attributes. Matching reparse
+    // references still validate their identity and join connected extents.
+    let mut attributes = file.attributes().of_type(NtfsAttributeType::ReparsePoint);
+    if let Some(item) = attributes.next(fs) {
         let item = item?;
         let attribute = item.to_attribute()?;
-        if attribute.raw_type() != NtfsAttributeType::ReparsePoint as u32 {
-            continue;
-        }
         ensure!(
             attribute.value_length() <= 16 * 1024,
             "NTFS reparse point exceeds 16 KiB"

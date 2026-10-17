@@ -26,6 +26,10 @@ The host owns the pure Rust decoder and its regression fixtures. Validate with
 - Expose raw attribute type/flags, all storage extents, record base reference
   and LSN. Validate full resident/nonresident headers before field access.
 - Named streams still work by exact name when a damaged $UpCase cannot load.
+- `NtfsAttributes::of_type` filters attribute-list entries before dereferencing
+  them. Reparse lookup no longer opens stale references for unrelated deleted
+  attributes; matching references retain sequence/name/VCN validation and the
+  connected non-resident reader.
 
 Reader-level regression: `just test-vendor ntfs`; host capability regressions:
 `just test ntfs --lib`. Full comparison: `docs/formats/NTFS.md`.
