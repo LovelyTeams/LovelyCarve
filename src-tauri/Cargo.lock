@@ -3784,6 +3784,7 @@ dependencies = [
  "tracing-subscriber",
  "udif",
  "umya-spreadsheet",
+ "unicode-width",
  "uuid",
  "vdi",
  "veracrypt-core",

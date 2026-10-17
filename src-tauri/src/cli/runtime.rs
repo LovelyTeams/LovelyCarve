@@ -14,9 +14,9 @@ use super::{
     catalog::{self, Catalog},
     complete,
     context::{self, Context, Exec, Mode, Request},
-    dotenv, generated, native,
+    dotenv, generated, interactive, native,
     output::{self, Role},
-    schema, session, shell, CliError, Output,
+    session, shell, CliError, Output,
 };
 use crate::{host::AppHandle, state::AppState, task_manager::TaskKind};
 
@@ -98,6 +98,7 @@ fn splash(catalog: &Catalog) {
         line("images open <检材路径>", "打开检材"),
         line("files list / --image <检材路径>", "浏览检材"),
         line("cli search \"<要完成的任务>\"", "按意图查找命令"),
+        line("docs search \"<问题>\"", "搜索内置文档"),
         line("--help", "浏览全部命令"),
         line("<命令> --help", "查看单个命令"),
         line("complete powershell", "安装 shell 补全"),
@@ -157,7 +158,12 @@ fn command(
     invocation: Invocation,
 ) -> Result<i32, CliError> {
     let native = invocation.command.native.as_deref();
+    // Completion output must stay parseable: no banner, no hint.
     if native == Some("complete") {
+        if invocation.dry_run {
+            let preview = context::preview(invocation.command, &invocation.values, None)?;
+            return print(Output::Json(preview), &invocation, true);
+        }
         return match invocation.values.get("shell").and_then(Value::as_str) {
             Some(shell) => {
                 let script = complete::script(&catalog.binary, shell)
@@ -181,40 +187,13 @@ fn command(
             .image
             .clone()
             .or_else(|| dotenv::variable("LOVELYCARVE_IMAGE"));
-        let preview = context::preview(invocation.command, &invocation.values, scope.as_deref());
+        let preview = context::preview(invocation.command, &invocation.values, scope.as_deref())?;
         return print(Output::Json(preview), &invocation, globals.quiet);
     }
+    if let Some(output) = native::offline(invocation.command, &invocation.values, Mode::OneShot) {
+        return print(output?, &invocation, globals.quiet);
+    }
     match native {
-        Some("schema") => {
-            let words: Vec<String> = invocation
-                .values
-                .get("command")
-                .and_then(Value::as_array)
-                .map(|words| {
-                    words
-                        .iter()
-                        .filter_map(|word| word.as_str().map(str::to_owned))
-                        .collect()
-                })
-                .unwrap_or_default();
-            let list = invocation.values.get("list") == Some(&Value::Bool(true));
-            let output = schema::run(catalog, &words, list)?;
-            print(output, &invocation, globals.quiet)
-        }
-        Some("cli-search") => {
-            let query = invocation
-                .values
-                .get("query")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            let output = Output::Json(json!(super::search::search(catalog, query)));
-            print(output, &invocation, globals.quiet)
-        }
-        Some("system-get") => print(
-            Output::Json(native::capabilities()?),
-            &invocation,
-            globals.quiet,
-        ),
         Some("session") => {
             let jobs = invocation
                 .values
@@ -332,17 +311,23 @@ async fn serve(globals: Globals, work: Work) -> i32 {
         mode,
         quiet: globals.quiet,
     };
+    let (scope, scope_source) = match globals.image.clone() {
+        Some(image) => (Some(image), None),
+        None => match dotenv::lookup("LOVELYCARVE_IMAGE") {
+            Some((image, source)) => (Some(image), Some(source.describe("LOVELYCARVE_IMAGE"))),
+            None => (None, None),
+        },
+    };
     let mut context = Context {
-        scope: globals
-            .image
-            .clone()
-            .or_else(|| dotenv::variable("LOVELYCARVE_IMAGE")),
+        scope,
+        scope_source,
         ..Context::default()
     };
-    let case = globals
-        .case
-        .clone()
-        .or_else(|| dotenv::variable("LOVELYCARVE_CASE"));
+    let case = match globals.case.clone() {
+        Some(dir) => Some((dir, "--case".to_owned())),
+        None => dotenv::lookup("LOVELYCARVE_CASE")
+            .map(|(dir, source)| (dir, source.describe("LOVELYCARVE_CASE"))),
+    };
     let outcome = tokio::select! {
         outcome = perform(&exec, &mut context, case, work) => outcome,
         () = interrupted() => {
@@ -363,13 +348,18 @@ async fn serve(globals: Globals, work: Work) -> i32 {
     code
 }
 
+/// The case to open before the command, with where it was given; announced
+/// under `DEBUG`, as cf announces the account.
 async fn perform(
     exec: &Exec,
     context: &mut Context,
-    case: Option<String>,
+    case: Option<(String, String)>,
     work: Work,
 ) -> Result<i32, CliError> {
-    if let Some(dir) = case {
+    if let Some((dir, source)) = case {
+        if interactive::debug() {
+            eprintln!("使用案件：{}（来自 {source}）", output::sanitize(&dir));
+        }
         let args = Map::from_iter([("dir".to_owned(), json!(dir))]);
         generated::dispatch(&exec.host, &exec.state, "case_open", args).await?;
     }

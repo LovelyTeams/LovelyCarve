@@ -1,18 +1,23 @@
 //! Hand-written commands: path-based browsing and reading over the index-first
-//! directory pages, content search, context and task control. Each one is
-//! declared in `cli/commands.toml` alongside the generated commands.
+//! directory pages, content search, context and task control, and the
+//! discovery commands that need no evidence. Each one is declared in
+//! `cli/commands.toml` alongside the generated commands.
 use std::{io::Write, sync::Arc, time::Duration};
 
+use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use super::{
-    browsing,
+    browsing::{self, Entry},
     catalog::{self, Command},
     context::{Context, Exec, Mode, Target},
-    generated, search, strings, CliError, Output,
+    docs, generated, json_output, schema, search, strings, tools, CliError, Output,
 };
 use crate::{
-    core::filesystem::{evidence_session::EvidenceSession, tree::fs_tree::FsSession},
+    core::filesystem::{
+        evidence_session::EvidenceSession,
+        tree::fs_tree::{FsNode, FsSession},
+    },
     state::AppState,
     task_manager::TaskKind,
 };
@@ -98,6 +103,50 @@ pub fn capabilities() -> Result<Value, CliError> {
     }))
 }
 
+/// Hand-written commands that need neither the backend nor evidence, run
+/// before anything starts; `None` for every other command.
+pub fn offline(
+    command: &Command,
+    values: &Map<String, Value>,
+    mode: Mode,
+) -> Option<Result<Output, CliError>> {
+    let result = match command.native.as_deref()? {
+        "cli-search" => catalog::catalog().and_then(|catalog| {
+            json_output(search::search(
+                catalog,
+                &text(values, "query").unwrap_or_default(),
+            ))
+        }),
+        "docs-search" => json_output(docs::search(&text(values, "query").unwrap_or_default())),
+        "docs-list" => json_output(docs::list()),
+        "docs-get" => text(values, "page")
+            .ok_or_else(|| CliError::invalid("缺少参数：page"))
+            .and_then(|page| docs::get(&page, text(values, "section").as_deref()))
+            .and_then(|reading| match mode {
+                Mode::Session => json_output(reading),
+                Mode::OneShot | Mode::Shell => Ok(Output::Bytes(reading.markdown.into_bytes())),
+            }),
+        "tools" => catalog::catalog().and_then(|catalog| json_output(tools::definitions(catalog))),
+        "schema" => catalog::catalog().and_then(|catalog| {
+            let words: Vec<String> = values
+                .get("command")
+                .and_then(Value::as_array)
+                .map(|words| {
+                    words
+                        .iter()
+                        .filter_map(|word| word.as_str().map(str::to_owned))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let list = values.get("list") == Some(&Value::Bool(true));
+            schema::run(catalog, &words, list, mode)
+        }),
+        "system-get" => capabilities().map(Output::json),
+        _ => return None,
+    };
+    Some(result)
+}
+
 pub async fn run(
     exec: &Exec,
     context: &mut Context,
@@ -106,18 +155,13 @@ pub async fn run(
     target: Option<Target>,
     text_output: bool,
 ) -> Result<Output, CliError> {
+    if let Some(result) = offline(command, &values, exec.mode) {
+        return result;
+    }
     match command.native.as_deref() {
-        Some("cli-search") => {
-            let query = text(&values, "query").unwrap_or_default();
-            Ok(Output::Json(json!(search::search(
-                catalog::catalog()?,
-                &query
-            ))))
-        }
-        Some("system-get") => Ok(Output::Json(capabilities()?)),
         Some("tasks-wait") => {
             wait_idle(&exec.state).await?;
-            Ok(Output::Json(Value::Null))
+            Ok(Output::json(Value::Null))
         }
         Some("context-get") => context_get(exec, context).await,
         Some("context-set") => {
@@ -131,7 +175,7 @@ pub async fn run(
                     .ok_or_else(|| CliError::new("noImage", "切换目录需要检材"))?;
                 let location = exec.locate(context, &image_id, &dir).await?;
                 if let Some(node) = node(exec, &image_id, &location).await? {
-                    if node["kind"] != "dir" {
+                    if node.kind != crate::core::filesystem::tree::fs_tree::NodeKind::Dir {
                         return Err(CliError::invalid("目标必须是目录；不会跟随符号链接"));
                     }
                 }
@@ -179,10 +223,18 @@ pub async fn run(
     }
 }
 
+#[derive(Serialize)]
+struct ContextInfo {
+    case: Value,
+    image: Value,
+    scope: Option<String>,
+    dir: String,
+}
+
 async fn context_get(exec: &Exec, context: &Context) -> Result<Output, CliError> {
     let case = match generated::dispatch(&exec.host, &exec.state, "case_active", Map::new()).await?
     {
-        Output::Json(case) => case,
+        Output::Json(case) => case.value().clone(),
         Output::Bytes(_) | Output::Written => Value::Null,
     };
     let image = match &context.image_id {
@@ -190,6 +242,7 @@ async fn context_get(exec: &Exec, context: &Context) -> Result<Output, CliError>
             let args = Map::from_iter([("imageId".to_owned(), json!(id))]);
             match generated::dispatch(&exec.host, &exec.state, "image_info", args).await {
                 Ok(Output::Json(info)) => {
+                    let info = info.value();
                     json!({"id": id, "path": info["path"], "source_format": info["source_format"]})
                 }
                 Ok(_) | Err(_) => json!({"id": id}),
@@ -197,12 +250,12 @@ async fn context_get(exec: &Exec, context: &Context) -> Result<Output, CliError>
         }
         None => Value::Null,
     };
-    Ok(Output::Json(json!({
-        "case": case,
-        "image": image,
-        "scope": context.scope,
-        "dir": context.pwd(),
-    })))
+    json_output(ContextInfo {
+        case,
+        image,
+        scope: context.scope.clone(),
+        dir: context.pwd(),
+    })
 }
 
 /// The directory entry for the last node of `location`; `None` at `/`.
@@ -210,11 +263,9 @@ async fn node(
     exec: &Exec,
     image_id: &str,
     location: &[(String, String)],
-) -> Result<Option<Value>, CliError> {
+) -> Result<Option<FsNode>, CliError> {
     let mut page = |parent_id, cursor, page_size| exec.page(image_id, parent_id, cursor, page_size);
-    Ok(browsing::node(location, &mut page)
-        .await?
-        .map(|node| serde_json::to_value(node).unwrap_or(Value::Null)))
+    browsing::node(location, &mut page).await
 }
 
 /// A location for a bare node ID, from the case's ancestor chain.
@@ -234,6 +285,7 @@ async fn locate_node(
             "files ancestors list 返回了非 JSON 结果",
         ));
     };
+    let located = located.value();
     let mut location: Vec<(String, String)> = located["frames"]
         .as_array()
         .into_iter()
@@ -249,6 +301,12 @@ async fn locate_node(
         location.push((String::new(), file.to_owned()));
     }
     Ok(location)
+}
+
+#[derive(Serialize)]
+struct Listing {
+    items: Vec<Entry>,
+    truncated: bool,
 }
 
 async fn files_list(
@@ -285,9 +343,26 @@ async fn files_list(
         &mut page,
     )
     .await?;
-    Ok(Output::Json(
-        json!({"items": items, "truncated": truncated}),
-    ))
+    json_output(Listing { items, truncated })
+}
+
+/// The synthetic root of an image.
+#[derive(Serialize)]
+struct Root {
+    id: &'static str,
+    name: &'static str,
+    kind: &'static str,
+    size: u64,
+    deleted: bool,
+}
+
+#[derive(Serialize)]
+struct NodeInfo<N> {
+    #[serde(flatten)]
+    node: N,
+    node_id: String,
+    path: String,
+    index_only: bool,
 }
 
 async fn files_get(
@@ -302,26 +377,40 @@ async fn files_get(
         Some(location) => location,
         None => locate_node(exec, &image_id, &target.node_id).await?,
     };
-    let mut value = match node(exec, &image_id, &location).await? {
-        Some(node) => node,
-        None => {
-            json!({"id": "", "name": "/", "kind": "dir", "size": image.len(), "deleted": false})
-        }
-    };
-    let names: Vec<String> = location
+    let found = node(exec, &image_id, &location).await?;
+    let own_name = found.as_ref().map_or("/", |node| node.name.as_str());
+    let names: Vec<&str> = location
         .iter()
         .map(|(name, id)| {
             if name.is_empty() && id == &target.node_id {
-                value["name"].as_str().unwrap_or_default().to_owned()
+                own_name
             } else {
-                name.clone()
+                name.as_str()
             }
         })
         .collect();
-    value["node_id"] = json!(target.node_id);
-    value["path"] = json!(format!("/{}", names.join("/")));
-    value["index_only"] = json!(image.is_index_only());
-    Ok(Output::Json(value))
+    let path = format!("/{}", names.join("/"));
+    let index_only = image.is_index_only();
+    match found {
+        Some(node) => json_output(NodeInfo {
+            node,
+            node_id: target.node_id,
+            path,
+            index_only,
+        }),
+        None => json_output(NodeInfo {
+            node: Root {
+                id: "",
+                name: "/",
+                kind: "dir",
+                size: image.len(),
+                deleted: false,
+            },
+            node_id: target.node_id,
+            path,
+            index_only,
+        }),
+    }
 }
 
 /// Decodes UTF-8 across chunk boundaries, replacing invalid sequences.
@@ -473,5 +562,35 @@ mod tests {
         decoder.push(b"a\xffb\xe4", &mut out);
         decoder.finish(&mut out);
         assert_eq!(out, "a\u{FFFD}b\u{FFFD}");
+    }
+
+    #[test]
+    fn discovery_commands_run_without_the_backend() {
+        let catalog = catalog::catalog().unwrap();
+        let docs = catalog.find(&["docs", "get"]).unwrap();
+        let values = Map::from_iter([("page".to_owned(), json!("CLI.md"))]);
+        match offline(docs, &values, Mode::OneShot) {
+            Some(Ok(Output::Bytes(markdown))) => {
+                assert!(markdown.starts_with("# LovelyCarve CLI".as_bytes()))
+            }
+            other => panic!("{other:?}"),
+        }
+        match offline(docs, &values, Mode::Session) {
+            Some(Ok(Output::Json(reading))) => assert_eq!(reading.value()["page"], "CLI.md"),
+            other => panic!("{other:?}"),
+        }
+        let tools = catalog.find(&["tools"]).unwrap();
+        assert!(matches!(
+            offline(tools, &Map::new(), Mode::Session),
+            Some(Ok(Output::Json(_)))
+        ));
+        let schema = catalog.find(&["schema"]).unwrap();
+        let values = Map::from_iter([("command".to_owned(), json!(["images", "open"]))]);
+        match offline(schema, &values, Mode::Session) {
+            Some(Ok(Output::Json(info))) => assert_eq!(info.value()["ipcCommand"], "image_load"),
+            other => panic!("{other:?}"),
+        }
+        let wait = catalog.find(&["tasks", "wait"]).unwrap();
+        assert!(offline(wait, &Map::new(), Mode::OneShot).is_none());
     }
 }

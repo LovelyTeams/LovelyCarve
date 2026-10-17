@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 use serde_json::Value;
 
+use super::emit::BINARY;
 use super::manifest::{Category, CommandSpec, Kind, Manifest};
 use super::operation::Operation;
 
@@ -54,11 +55,15 @@ pub const RESERVED_OPTIONS: &[&str] = &[
 /// Global options that supply a parameter when a command does not.
 pub const SCOPE_OPTIONS: &[(&str, &str)] = &[("imageId", "image")];
 
-/// One-letter aliases the CLI owns: `-i`, `-q`, `-h`, `-v` and `-f` (`--force`).
-pub const RESERVED_SHORTS: &[char] = &['i', 'q', 'h', 'v', 'f'];
+/// Option names reserved as a namespace, such as opt-in feature gates.
+pub const RESERVED_PREFIXES: &[&str] = &["experimental-"];
+
+/// One-letter aliases the CLI owns: `-i`, `-q`, `-h`, `-v`, `-f` (`--force`)
+/// and `-c`, kept for a configuration file option.
+pub const RESERVED_SHORTS: &[char] = &['i', 'q', 'h', 'v', 'f', 'c'];
 
 /// Hand-written commands that stand alone at the root instead of under a collection.
-pub const ROOT_COMMANDS: &[&str] = &["schema", "complete", "session", "shell"];
+pub const ROOT_COMMANDS: &[&str] = &["schema", "complete", "session", "shell", "tools"];
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -213,6 +218,14 @@ fn command<'a>(
         errors.push(format!(
             "{at}: `{verb}` commands take no positional arguments; pass the parent as an option"
         ));
+    }
+    for example in &spec.examples {
+        if !example.command.starts_with(&format!("{BINARY} ")) {
+            errors.push(format!(
+                "{at}: example `{}` must start with `{BINARY} `",
+                example.command
+            ));
+        }
     }
 
     let mut params = Vec::new();
@@ -432,7 +445,11 @@ fn command<'a>(
                 param.name
             ));
         }
-        if RESERVED_OPTIONS.contains(&param.option.as_str())
+        let reserved = RESERVED_OPTIONS.contains(&param.option.as_str())
+            || RESERVED_PREFIXES
+                .iter()
+                .any(|prefix| param.option.starts_with(prefix));
+        if reserved
             && !(param.scope
                 && SCOPE_OPTIONS
                     .iter()

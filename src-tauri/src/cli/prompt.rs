@@ -1,31 +1,175 @@
 //! Forms and confirmations: a person at a terminal fills in missing values,
 //! while scripts, CI and agents must pass them as options (secrets may also
-//! arrive on stdin).
+//! arrive on stdin). Prompts are drawn the way cf's clack prompts are: a gray
+//! guide line, a cyan `◆` while active, then a green `◇` with the answer, a
+//! red `■` when cancelled, or a yellow `▲` with the problem.
 use std::io::{IsTerminal, Read, Write};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use super::{
-    interactive,
-    output::{self, paint, Role},
+    help, interactive,
+    output::{self, paint, tone, Role, Tone},
     CliError,
 };
 
-struct RawMode;
+/// Raw keyboard input with the cursor hidden, restored when dropped.
+struct Terminal;
 
-impl RawMode {
-    fn enable() -> Result<Self, CliError> {
+impl Terminal {
+    fn enter() -> Result<Self, CliError> {
+        #[cfg(windows)]
+        if !crossterm::ansi_support::supports_ansi() {
+            return Err(CliError::invalid("终端不支持交互输入；请用选项传入参数"));
+        }
         crossterm::terminal::enable_raw_mode()?;
+        let mut stderr = std::io::stderr();
+        write!(stderr, "\x1b[?25l")?;
+        stderr.flush()?;
         Ok(Self)
     }
 }
 
-impl Drop for RawMode {
+impl Drop for Terminal {
     fn drop(&mut self) {
+        let mut stderr = std::io::stderr();
+        if let Err(error) = write!(stderr, "\x1b[?25h").and_then(|()| stderr.flush()) {
+            tracing::warn!("show cursor: {error}");
+        }
         if let Err(error) = crossterm::terminal::disable_raw_mode() {
             tracing::warn!("restore terminal mode: {error}");
         }
     }
+}
+
+fn columns() -> usize {
+    crossterm::terminal::size()
+        .map(|(columns, _)| usize::from(columns))
+        .unwrap_or(80)
+        .max(10)
+}
+
+fn strip_ansi(text: &str) -> String {
+    let mut plain = String::with_capacity(text.len());
+    let mut characters = text.chars();
+    while let Some(character) = characters.next() {
+        if character == '\x1b' {
+            if characters.next() == Some('[') {
+                for code in characters.by_ref() {
+                    if ('@'..='~').contains(&code) {
+                        break;
+                    }
+                }
+            }
+        } else {
+            plain.push(character);
+        }
+    }
+    plain
+}
+
+/// Redraws a prompt in place: each frame replaces the rows of the last one.
+#[derive(Default)]
+struct Screen {
+    rows: usize,
+}
+
+impl Screen {
+    fn draw(&mut self, frame: &str) -> Result<(), CliError> {
+        let columns = columns();
+        let mut stderr = std::io::stderr().lock();
+        if self.rows > 1 {
+            write!(stderr, "\x1b[{}A", self.rows - 1)?;
+        }
+        write!(stderr, "\r\x1b[J{}", frame.replace('\n', "\r\n"))?;
+        stderr.flush()?;
+        self.rows = frame
+            .split('\n')
+            .map(|line| {
+                output::display_width(&strip_ansi(line))
+                    .div_ceil(columns)
+                    .max(1)
+            })
+            .sum();
+        Ok(())
+    }
+
+    /// The final frame, after which output continues on a new line.
+    fn finish(&mut self, frame: &str) -> Result<(), CliError> {
+        self.draw(frame)?;
+        let mut stderr = std::io::stderr().lock();
+        write!(stderr, "\r\n")?;
+        stderr.flush()?;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum State {
+    Active,
+    Error,
+    Submit,
+    Cancel,
+}
+
+impl State {
+    fn symbol(self) -> String {
+        match self {
+            Self::Active => tone(Tone::Cyan, "◆"),
+            Self::Error => tone(Tone::Yellow, "▲"),
+            Self::Submit => tone(Tone::Green, "◇"),
+            Self::Cancel => tone(Tone::Red, "■"),
+        }
+    }
+
+    fn bar(self) -> String {
+        match self {
+            Self::Active => tone(Tone::Cyan, "│"),
+            Self::Error => tone(Tone::Yellow, "│"),
+            Self::Submit | Self::Cancel => tone(Tone::Gray, "│"),
+        }
+    }
+
+    fn end(self) -> String {
+        match self {
+            Self::Error => tone(Tone::Yellow, "└"),
+            Self::Active | Self::Submit | Self::Cancel => tone(Tone::Cyan, "└"),
+        }
+    }
+}
+
+/// The guide line and the question, wrapped under its symbol.
+fn header(message: &str, state: State) -> String {
+    let mut lines = vec![tone(Tone::Gray, "│")];
+    for (index, line) in help::wrap(message, columns().saturating_sub(3))
+        .into_iter()
+        .enumerate()
+    {
+        let prefix = if index == 0 {
+            state.symbol()
+        } else {
+            state.bar()
+        };
+        lines.push(format!("{prefix}  {line}"));
+    }
+    lines.join("\n")
+}
+
+/// The answer under a finished prompt: dim, or struck through when cancelled.
+fn answer(message: &str, state: State, value: &str) -> String {
+    let mut frame = header(message, state);
+    let shown = match state {
+        State::Cancel => tone(Tone::Strike, &tone(Tone::Dim, value)),
+        _ => tone(Tone::Dim, value),
+    };
+    frame.push_str(&format!("\n{}", tone(Tone::Gray, "│")));
+    if !value.is_empty() {
+        frame.push_str(&format!("  {shown}"));
+    }
+    if state == State::Cancel && !value.is_empty() {
+        frame.push_str(&format!("\n{}", tone(Tone::Gray, "│")));
+    }
+    frame
 }
 
 fn next_key() -> Result<KeyEvent, CliError> {
@@ -44,35 +188,14 @@ fn cancelled(key: &KeyEvent) -> bool {
             && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('d')))
 }
 
-fn finish(message: &str, value: &str, rows: usize) -> Result<(), CliError> {
-    let mut stderr = std::io::stderr().lock();
-    // Back to the header row, then replace the active prompt with its result.
-    write!(stderr, "\r\x1b[{rows}A\x1b[J")?;
-    write!(
-        stderr,
-        "{}  {}\r\n{}  {}\r\n",
-        paint(Role::Muted, "◇"),
-        message,
-        paint(Role::Muted, "│"),
-        paint(Role::Muted, value)
-    )?;
-    stderr.flush()?;
-    Ok(())
-}
-
-fn abort(message: &str, rows: usize) -> CliError {
-    let mut stderr = std::io::stderr().lock();
-    let rendered = write!(
-        stderr,
-        "\r\x1b[{rows}A\x1b[J{}  {}\r\n",
-        paint(Role::Error, "■"),
-        message
-    )
-    .and_then(|()| stderr.flush());
-    if let Err(error) = rendered {
-        tracing::debug!("render cancelled prompt: {error}");
+/// A visible cursor drawn in the input, as clack does while it hides the
+/// terminal's own.
+fn cursor() -> String {
+    if output::styled() {
+        "\x1b[7m \x1b[27m".to_owned()
+    } else {
+        "_".to_owned()
     }
-    CliError::cancelled()
 }
 
 /// A single-line text field; `secret` masks the input with `•`.
@@ -82,50 +205,40 @@ pub fn text(
     validate: &dyn Fn(&str) -> Option<String>,
 ) -> Result<String, CliError> {
     let message = output::sanitize(message);
-    let mut stderr = std::io::stderr();
-    write!(
-        stderr,
-        "{}  {}\n{}  \n{}\x1b[1A\r",
-        paint(Role::Brand, "◆"),
-        message,
-        paint(Role::Brand, "│"),
-        paint(Role::Brand, "└")
-    )?;
-    let _raw = RawMode::enable()?;
+    let _terminal = Terminal::enter()?;
+    let mut screen = Screen::default();
     let mut value = String::new();
     let mut problem: Option<String> = None;
-    loop {
-        let shown = if secret {
+    let shown = |value: &str| {
+        if secret {
             "•".repeat(value.chars().count())
         } else {
-            value.clone()
+            output::sanitize(value)
+        }
+    };
+    loop {
+        let state = if problem.is_some() {
+            State::Error
+        } else {
+            State::Active
         };
-        let footer = problem
-            .as_deref()
-            .map(|text| paint(Role::Warning, text))
-            .unwrap_or_default();
-        write!(
-            stderr,
-            "\r\x1b[2K{}  {shown}\x1b[1B\r\x1b[2K{}  {footer}\x1b[1A\r\x1b[{}C",
-            paint(Role::Brand, "│"),
-            paint(Role::Brand, "└"),
-            3 + output::display_width(&shown)
-        )?;
-        stderr.flush()?;
+        let mut frame = header(&message, state);
+        frame.push_str(&format!("\n{}  {}{}", state.bar(), shown(&value), cursor()));
+        frame.push_str(&format!("\n{}", state.end()));
+        if let Some(problem) = &problem {
+            frame.push_str(&format!("  {}", tone(Tone::Yellow, problem)));
+        }
+        screen.draw(&frame)?;
         let key = next_key()?;
         if cancelled(&key) {
-            return Err(abort(&message, 1));
+            screen.finish(&answer(&message, State::Cancel, &shown(&value)))?;
+            return Err(CliError::cancelled());
         }
         match key.code {
             KeyCode::Enter => match validate(&value) {
                 Some(error) => problem = Some(error),
                 None => {
-                    let shown = if secret {
-                        "•".repeat(8)
-                    } else {
-                        value.clone()
-                    };
-                    finish(&message, &shown, 1)?;
+                    screen.finish(&answer(&message, State::Submit, &shown(&value)))?;
                     return Ok(value);
                 }
             },
@@ -145,70 +258,88 @@ pub fn text(
 /// Pick one of `choices` with the arrow keys.
 pub fn select(message: &str, choices: &[String]) -> Result<String, CliError> {
     let message = output::sanitize(message);
-    let mut stderr = std::io::stderr();
-    let _raw = RawMode::enable()?;
+    let choices: Vec<String> = choices
+        .iter()
+        .map(|choice| output::sanitize(choice))
+        .collect();
+    if choices.is_empty() {
+        return Err(CliError::invalid("没有可选的值"));
+    }
+    let _terminal = Terminal::enter()?;
+    let mut screen = Screen::default();
     let mut cursor = 0usize;
-    let rows = choices.len() + 1;
-    write!(stderr, "{}  {}\r\n", paint(Role::Brand, "◆"), message)?;
     loop {
+        let bar = State::Active.bar();
+        let mut frame = header(&message, State::Active);
         for (index, choice) in choices.iter().enumerate() {
-            let marker = if index == cursor {
-                paint(Role::Success, "●")
+            let option = if index == cursor {
+                format!("{} {choice}", tone(Tone::Green, "●"))
             } else {
-                paint(Role::Muted, "○")
+                format!("{} {}", tone(Tone::Dim, "○"), tone(Tone::Dim, choice))
             };
-            write!(
-                stderr,
-                "\r\x1b[2K{}  {marker} {}\r\n",
-                paint(Role::Brand, "│"),
-                output::sanitize(choice)
-            )?;
+            frame.push_str(&format!("\n{bar}  {option}"));
         }
-        write!(stderr, "\r\x1b[2K{}", paint(Role::Brand, "└"))?;
-        stderr.flush()?;
+        frame.push_str(&format!(
+            "\n{bar}  {} 切换 • {} 确认\n{}",
+            tone(Tone::Dim, "↑/↓"),
+            tone(Tone::Dim, "Enter:"),
+            State::Active.end()
+        ));
+        screen.draw(&frame)?;
         let key = next_key()?;
         if cancelled(&key) {
-            return Err(abort(&message, rows));
+            screen.finish(&answer(&message, State::Cancel, &choices[cursor]))?;
+            return Err(CliError::cancelled());
         }
         match key.code {
-            KeyCode::Up | KeyCode::Left => {
+            KeyCode::Up | KeyCode::Left | KeyCode::Char('k') | KeyCode::Char('h') => {
                 cursor = cursor.checked_sub(1).unwrap_or(choices.len() - 1)
             }
-            KeyCode::Down | KeyCode::Right | KeyCode::Tab => cursor = (cursor + 1) % choices.len(),
+            KeyCode::Down
+            | KeyCode::Right
+            | KeyCode::Tab
+            | KeyCode::Char('j')
+            | KeyCode::Char('l') => cursor = (cursor + 1) % choices.len(),
             KeyCode::Enter => {
-                let choice = choices[cursor].clone();
-                finish(&message, &output::sanitize(&choice), rows)?;
-                return Ok(choice);
+                screen.finish(&answer(&message, State::Submit, &choices[cursor]))?;
+                return Ok(choices[cursor].clone());
             }
             _ => {}
         }
-        write!(stderr, "\r\x1b[{}A", choices.len())?;
     }
 }
 
 /// Yes or no, starting at `initial`.
 pub fn confirm(message: &str, initial: bool) -> Result<bool, CliError> {
     let message = output::sanitize(message);
-    let mut stderr = std::io::stderr();
-    let _raw = RawMode::enable()?;
+    let _terminal = Terminal::enter()?;
+    let mut screen = Screen::default();
     let mut accepted = initial;
-    write!(stderr, "{}  {}\r\n", paint(Role::Brand, "◆"), message)?;
+    let label = |accepted: bool| if accepted { "是" } else { "否" };
     loop {
         let (yes, no) = if accepted {
-            (paint(Role::Success, "● 是"), paint(Role::Muted, "○ 否"))
+            (
+                format!("{} 是", tone(Tone::Green, "●")),
+                format!("{} {}", tone(Tone::Dim, "○"), tone(Tone::Dim, "否")),
+            )
         } else {
-            (paint(Role::Muted, "○ 是"), paint(Role::Success, "● 否"))
+            (
+                format!("{} {}", tone(Tone::Dim, "○"), tone(Tone::Dim, "是")),
+                format!("{} 否", tone(Tone::Green, "●")),
+            )
         };
-        write!(
-            stderr,
-            "\r\x1b[2K{}  {yes} / {no}\r\n\r\x1b[2K{}",
-            paint(Role::Brand, "│"),
-            paint(Role::Brand, "└")
-        )?;
-        stderr.flush()?;
+        let mut frame = header(&message, State::Active);
+        frame.push_str(&format!(
+            "\n{}  {yes} {} {no}\n{}",
+            State::Active.bar(),
+            tone(Tone::Dim, "/"),
+            State::Active.end()
+        ));
+        screen.draw(&frame)?;
         let key = next_key()?;
         if cancelled(&key) {
-            return Err(abort(&message, 2));
+            screen.finish(&answer(&message, State::Cancel, label(accepted)))?;
+            return Err(CliError::cancelled());
         }
         match key.code {
             KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down | KeyCode::Tab => {
@@ -217,12 +348,11 @@ pub fn confirm(message: &str, initial: bool) -> Result<bool, CliError> {
             KeyCode::Char('y') | KeyCode::Char('Y') => accepted = true,
             KeyCode::Char('n') | KeyCode::Char('N') => accepted = false,
             KeyCode::Enter => {
-                finish(&message, if accepted { "是" } else { "否" }, 2)?;
+                screen.finish(&answer(&message, State::Submit, label(accepted)))?;
                 return Ok(accepted);
             }
             _ => {}
         }
-        write!(stderr, "\r\x1b[1A")?;
     }
 }
 
@@ -310,4 +440,23 @@ pub fn confirm_delete(force: bool, message: Option<&str>) -> Result<bool, CliErr
     }
     output::open_session(false);
     confirm(&question, false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finished_prompts_show_the_answer_like_clack() {
+        assert_eq!(
+            answer("检材路径", State::Submit, "D:/disk.E01"),
+            "│\n◇  检材路径\n│  D:/disk.E01"
+        );
+        assert_eq!(
+            answer("密码", State::Cancel, "•••"),
+            "│\n■  密码\n│  •••\n│"
+        );
+        assert_eq!(answer("密码", State::Cancel, ""), "│\n■  密码\n│");
+        assert_eq!(strip_ansi("\x1b[36m◆\x1b[39m  问题"), "◆  问题");
+    }
 }

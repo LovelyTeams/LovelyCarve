@@ -92,8 +92,23 @@ pub struct CommandSpec {
     /// The command writes raw bytes to stdout (native commands only).
     #[serde(default)]
     pub raw_output: bool,
+    /// Runnable and searchable, but left out of help, completion and
+    /// command suggestions.
+    #[serde(default)]
+    pub hide_command: bool,
+    /// Invocations shown under the help's examples.
+    #[serde(default)]
+    pub examples: Vec<Example>,
     #[serde(default)]
     pub params: BTreeMap<String, ParamSpec>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Example {
+    /// The whole command line, starting with the program name.
+    pub command: String,
+    pub description: String,
 }
 
 impl CommandSpec {

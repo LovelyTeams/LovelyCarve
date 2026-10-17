@@ -6,13 +6,13 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use serde_json::Value;
-
-use super::{interactive, CliError, Output};
+use super::{help, interactive, CliError, Json, Origin, Output};
 
 /// Larger JSON is printed without highlighting.
 const MAX_HIGHLIGHTED_JSON: usize = 50_000;
 
+/// The semantic palette: mid-luminance colours that read on light and dark
+/// backgrounds alike.
 #[derive(Clone, Copy)]
 pub enum Role {
     Brand,
@@ -36,6 +36,34 @@ impl Role {
             Self::Muted => (0x7F, 0x7F, 0x7F),
             Self::Code | Self::JsonKey => (0x3D, 0x82, 0xBB),
             Self::JsonBoolean => (0x92, 0x6C, 0xC1),
+        }
+    }
+}
+
+/// The terminal's own colours, which prompts and the spinner use.
+#[derive(Clone, Copy)]
+pub enum Tone {
+    Cyan,
+    Green,
+    Red,
+    Yellow,
+    Magenta,
+    Gray,
+    Dim,
+    Strike,
+}
+
+impl Tone {
+    fn codes(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Cyan => ("36", "39"),
+            Self::Green => ("32", "39"),
+            Self::Red => ("31", "39"),
+            Self::Yellow => ("33", "39"),
+            Self::Magenta => ("35", "39"),
+            Self::Gray => ("90", "39"),
+            Self::Dim => ("2", "22"),
+            Self::Strike => ("9", "29"),
         }
     }
 }
@@ -82,6 +110,14 @@ pub fn paint(role: Role, text: &str) -> String {
     }
 }
 
+pub fn tone(tone: Tone, text: &str) -> String {
+    if !styled() || text.is_empty() {
+        return text.to_owned();
+    }
+    let (open, close) = tone.codes();
+    format!("\x1b[{open}m{text}\x1b[{close}m")
+}
+
 pub fn bold(text: &str) -> String {
     if styled() {
         format!("\x1b[1m{text}\x1b[22m")
@@ -100,18 +136,44 @@ pub fn italic(text: &str) -> String {
 
 /// Terminal columns `text` occupies: wide (CJK) characters take two.
 pub fn display_width(text: &str) -> usize {
-    text.chars()
-        .map(|character| if (character as u32) >= 0x1100 { 2 } else { 1 })
-        .sum()
+    help::display_width(text)
 }
 
-/// Replace characters that could alter or control terminal display.
+/// Characters of the Unicode format category (Cf), by range.
+const FORMAT_CHARACTERS: &[(u32, u32)] = &[
+    (0x00AD, 0x00AD),
+    (0x0600, 0x0605),
+    (0x061C, 0x061C),
+    (0x06DD, 0x06DD),
+    (0x070F, 0x070F),
+    (0x0890, 0x0891),
+    (0x08E2, 0x08E2),
+    (0x180E, 0x180E),
+    (0x200B, 0x200F),
+    (0x202A, 0x202E),
+    (0x2060, 0x2064),
+    (0x2066, 0x206F),
+    (0xFEFF, 0xFEFF),
+    (0xFFF9, 0xFFFB),
+    (0x110BD, 0x110BD),
+    (0x110CD, 0x110CD),
+    (0x13430, 0x1343F),
+    (0x1BCA0, 0x1BCA3),
+    (0x1D173, 0x1D17A),
+    (0xE0001, 0xE0001),
+    (0xE0020, 0xE007F),
+];
+
+/// Replace characters that could alter or control terminal display: the
+/// control, format, line separator and paragraph separator categories.
 pub fn sanitize(text: &str) -> String {
     text.chars()
         .map(|character| {
-            if character.is_control()
-                || matches!(character, '\u{200b}'..='\u{200f}' | '\u{2028}'..='\u{202e}' | '\u{2060}'..='\u{206f}' | '\u{feff}')
-            {
+            let code = character as u32;
+            let format = FORMAT_CHARACTERS
+                .iter()
+                .any(|(first, last)| (*first..=*last).contains(&code));
+            if character.is_control() || format || matches!(character, '\u{2028}' | '\u{2029}') {
                 ' '
             } else {
                 character
@@ -147,60 +209,136 @@ pub fn headline() -> String {
         paint(Role::Muted, "·"),
         paint(Role::Muted, &version)
     );
-    let width = "lovelycarve-cli · ".chars().count() + version.chars().count();
+    let width = display_width("lovelycarve-cli · ") + display_width(&version);
     format!("{text}\n{}", paint(Role::Brand, &"─".repeat(width)))
 }
 
-fn write_json(value: &Value, indent: usize, out: &mut String) {
-    let pad = "  ".repeat(indent);
-    let inner = "  ".repeat(indent + 1);
-    match value {
-        Value::Null => out.push_str(&paint(Role::Muted, "null")),
-        Value::Bool(flag) => out.push_str(&paint(Role::JsonBoolean, &flag.to_string())),
-        Value::Number(number) => out.push_str(&paint(Role::JsonNumber, &number.to_string())),
-        Value::String(text) => out.push_str(&paint(
-            Role::JsonString,
-            &serde_json::to_string(text).unwrap_or_default(),
-        )),
-        Value::Array(items) if items.is_empty() => out.push_str("[]"),
-        Value::Array(items) => {
-            out.push_str("[\n");
-            for (index, item) in items.iter().enumerate() {
-                out.push_str(&inner);
-                write_json(item, indent + 1, out);
-                out.push_str(if index + 1 < items.len() { ",\n" } else { "\n" });
-            }
-            out.push_str(&pad);
-            out.push(']');
-        }
-        Value::Object(map) if map.is_empty() => out.push_str("{}"),
-        Value::Object(map) => {
-            out.push_str("{\n");
-            for (index, (key, item)) in map.iter().enumerate() {
-                out.push_str(&inner);
-                out.push_str(&paint(
-                    Role::JsonKey,
-                    &serde_json::to_string(key).unwrap_or_default(),
-                ));
-                out.push_str(": ");
-                write_json(item, indent + 1, out);
-                out.push_str(if index + 1 < map.len() { ",\n" } else { "\n" });
-            }
-            out.push_str(&pad);
-            out.push('}');
-        }
-    }
+/// One JSON token of compact or pretty JSON text.
+enum Token<'a> {
+    Open(char),
+    Close(char),
+    Colon,
+    Comma,
+    Text(&'a str),
+    Scalar(&'a str),
 }
 
-/// Indented JSON, highlighted only for a person at a color terminal.
-pub fn format_json(value: &Value) -> Result<String, CliError> {
-    let plain = serde_json::to_string_pretty(value)?;
-    if interactive::is_non_interactive_or_ci() || !styled() || plain.len() > MAX_HIGHLIGHTED_JSON {
-        return Ok(plain);
+fn tokens(text: &str) -> Vec<Token<'_>> {
+    let mut tokens = Vec::new();
+    let mut characters = text.char_indices().peekable();
+    while let Some((start, character)) = characters.next() {
+        match character {
+            '{' | '[' => tokens.push(Token::Open(character)),
+            '}' | ']' => tokens.push(Token::Close(character)),
+            ':' => tokens.push(Token::Colon),
+            ',' => tokens.push(Token::Comma),
+            '"' => {
+                let mut end = text.len();
+                let mut escaped = false;
+                for (index, inner) in characters.by_ref() {
+                    if escaped {
+                        escaped = false;
+                    } else if inner == '\\' {
+                        escaped = true;
+                    } else if inner == '"' {
+                        end = index + 1;
+                        break;
+                    }
+                }
+                tokens.push(Token::Text(&text[start..end]));
+            }
+            _ if character.is_whitespace() => {}
+            _ => {
+                let mut end = start + character.len_utf8();
+                while let Some((index, next)) = characters.peek().copied() {
+                    if matches!(next, ',' | ':' | '{' | '}' | '[' | ']') || next.is_whitespace() {
+                        break;
+                    }
+                    end = index + next.len_utf8();
+                    characters.next();
+                }
+                tokens.push(Token::Scalar(&text[start..end]));
+            }
+        }
     }
-    let mut highlighted = String::with_capacity(plain.len() * 2);
-    write_json(value, 0, &mut highlighted);
-    Ok(highlighted)
+    tokens
+}
+
+/// JSON text laid out as `serde_json::to_string_pretty` would (two-space
+/// indent, `": "`, empty `[]` and `{}`), keeping the key order, with each
+/// token painted when `highlight` is set.
+fn pretty(text: &str, highlight: bool) -> String {
+    let paint_if = |role: Role, token: &str| {
+        if highlight {
+            paint(role, token)
+        } else {
+            token.to_owned()
+        }
+    };
+    let tokens = tokens(text);
+    let mut out = String::with_capacity(text.len() * 2);
+    let mut depth = 0usize;
+    let newline = |out: &mut String, depth: usize| {
+        out.push('\n');
+        out.push_str(&"  ".repeat(depth));
+    };
+    let mut index = 0;
+    while index < tokens.len() {
+        match &tokens[index] {
+            Token::Open(open) => {
+                out.push(*open);
+                if let Some(Token::Close(close)) = tokens.get(index + 1) {
+                    out.push(*close);
+                    index += 1;
+                } else {
+                    depth += 1;
+                    newline(&mut out, depth);
+                }
+            }
+            Token::Close(close) => {
+                depth = depth.saturating_sub(1);
+                newline(&mut out, depth);
+                out.push(*close);
+            }
+            Token::Colon => out.push_str(": "),
+            Token::Comma => {
+                out.push(',');
+                newline(&mut out, depth);
+            }
+            Token::Text(token) => {
+                let role = if matches!(tokens.get(index + 1), Some(Token::Colon)) {
+                    Role::JsonKey
+                } else {
+                    Role::JsonString
+                };
+                out.push_str(&paint_if(role, token));
+            }
+            Token::Scalar(token) => {
+                let role = match *token {
+                    "true" | "false" => Role::JsonBoolean,
+                    "null" => Role::Muted,
+                    _ => Role::JsonNumber,
+                };
+                out.push_str(&paint_if(role, token));
+            }
+        }
+        index += 1;
+    }
+    out
+}
+
+/// Indented JSON in the order the command wrote it, highlighted only for a
+/// person at a colour terminal.
+pub fn format_json(json: &Json) -> String {
+    let text = json.text();
+    let highlight =
+        !interactive::is_non_interactive_or_ci() && styled() && text.len() <= MAX_HIGHLIGHTED_JSON;
+    pretty(&text, highlight)
+}
+
+/// Indented JSON without colour, for files.
+pub fn plain_json(json: &Json) -> String {
+    pretty(&json.text(), false)
 }
 
 /// Print a result. Structured data is JSON; a command that returned nothing
@@ -213,14 +351,14 @@ pub fn print_output(
     text: bool,
 ) -> Result<(), CliError> {
     match output {
-        Output::Json(Value::Null) => {
+        Output::Json(json) if json.is_null() => {
             if !quiet && std::io::stderr().is_terminal() {
                 eprintln!("{} {success_label}", paint(Role::Success, "✓"));
             }
         }
-        Output::Json(value) => {
+        Output::Json(json) => {
             let mut stdout = std::io::stdout().lock();
-            writeln!(stdout, "{}", format_json(&value)?)?;
+            writeln!(stdout, "{}", format_json(&json))?;
             stdout.flush()?;
         }
         Output::Bytes(bytes) => {
@@ -237,30 +375,16 @@ pub fn print_output(
     Ok(())
 }
 
-fn wrap(text: &str, width: usize) -> Vec<String> {
-    let mut lines = Vec::new();
-    for paragraph in text.split('\n') {
-        if paragraph.chars().count() <= width {
-            lines.push(paragraph.to_owned());
-            continue;
-        }
-        let mut line = String::new();
-        for character in paragraph.chars() {
-            if line.chars().count() >= width {
-                lines.push(std::mem::take(&mut line));
-            }
-            line.push(character);
-        }
-        if !line.is_empty() {
-            lines.push(line);
-        }
-    }
-    lines
+/// A block's content: either plain text that the block wraps and paints, or
+/// lines the caller already styled.
+pub enum Content<'a> {
+    Plain(&'a str),
+    Styled(Vec<String>),
 }
 
 /// The framed error block: a blank line, `┌ Title`, the message, optional
-/// muted details, `└`.
-pub fn error_block(title: &str, message: &str, details: Option<&str>) -> String {
+/// muted details after a blank gutter line, `└`.
+pub fn error_block(title: &str, content: Content<'_>, details: Option<&str>) -> String {
     let width = crossterm::terminal::size()
         .map(|(columns, _)| usize::from(columns))
         .unwrap_or(80)
@@ -275,16 +399,29 @@ pub fn error_block(title: &str, message: &str, details: Option<&str>) -> String 
             paint(Role::Error, &bold(title))
         ),
     ];
-    for line in wrap(message, width) {
+    let body = match content {
+        Content::Plain(message) => help::wrap(message, width)
+            .into_iter()
+            .map(|line| {
+                if line.is_empty() {
+                    line
+                } else {
+                    paint(Role::Error, &bold(&line))
+                }
+            })
+            .collect(),
+        Content::Styled(lines) => lines,
+    };
+    for line in body {
         lines.push(if line.is_empty() {
             bar.clone()
         } else {
-            format!("{bar} {}", paint(Role::Error, &bold(&line)))
+            format!("{bar} {line}")
         });
     }
     if let Some(details) = details {
         lines.push(bar.clone());
-        for line in wrap(details, width) {
+        for line in help::wrap(details, width) {
             lines.push(if line.is_empty() {
                 bar.clone()
             } else {
@@ -305,28 +442,6 @@ pub fn hint(message: &str) -> String {
     )
 }
 
-/// Render an error once, on stderr.
-pub fn report_error(error: &CliError) {
-    if error.reported {
-        return;
-    }
-    open_session(false);
-    let message = if error.code.is_empty() || matches!(error.code.as_str(), "usage" | "io") {
-        sanitize_lines(&error.message)
-    } else {
-        format!("[{}] {}", error.code, sanitize_lines(&error.message))
-    };
-    let details = if interactive::debug() {
-        error
-            .details
-            .as_ref()
-            .and_then(|details| serde_json::to_string_pretty(details).ok())
-    } else {
-        None
-    };
-    eprintln!("{}", error_block("错误", &message, details.as_deref()));
-}
-
 fn sanitize_lines(text: &str) -> String {
     text.split('\n')
         .map(sanitize)
@@ -334,35 +449,100 @@ fn sanitize_lines(text: &str) -> String {
         .join("\n")
 }
 
+/// The error as rendered: a plain block for the CLI's own failures, and for a
+/// backend command's failure `[code] message` with the operation underneath.
+pub fn render_error(error: &CliError, debug: bool) -> String {
+    let details = if debug {
+        error
+            .details
+            .as_ref()
+            .and_then(|details| serde_json::to_string_pretty(details).ok())
+    } else {
+        None
+    };
+    let message = sanitize_lines(&error.message);
+    match &error.origin {
+        Origin::Cli => error_block("错误", Content::Plain(&message), details.as_deref()),
+        Origin::Backend(operation) => {
+            let mut lines: Vec<String> = message.split('\n').map(bold).collect();
+            if let Some(first) = lines.first_mut() {
+                let code = paint(Role::Error, &bold(&format!("[{}]", sanitize(&error.code))));
+                *first = format!("{code} {first}");
+            }
+            if let Some(operation) = operation {
+                lines.push(paint(Role::Muted, &format!("IPC {operation}")));
+            }
+            error_block("后端错误", Content::Styled(lines), details.as_deref())
+        }
+    }
+}
+
+/// Render an error once, on stderr.
+pub fn report_error(error: &CliError) {
+    if error.reported {
+        return;
+    }
+    open_session(false);
+    eprintln!("{}", render_error(error, interactive::debug()));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn highlighted_json_keeps_the_pretty_layout() {
-        let value = serde_json::json!({"a": [1, {"b": null}], "c": "x\"y", "d": {}, "e": []});
-        let mut highlighted = String::new();
-        write_json(&value, 0, &mut highlighted);
-        let stripped = highlighted
-            .split('\x1b')
-            .enumerate()
-            .map(|(index, part)| {
-                if index == 0 {
-                    part
-                } else {
-                    part.split_once('m').map_or("", |(_, rest)| rest)
-                }
-            })
-            .collect::<String>();
-        assert_eq!(stripped, serde_json::to_string_pretty(&value).unwrap());
+    fn pretty_matches_serde_layout_and_keeps_key_order() {
+        let value = serde_json::json!({"a": [1, {"b": null}], "c": "x\"y\\", "d": {}, "e": [], "f": -1.5e3, "g": true});
+        assert_eq!(
+            pretty(&value.to_string(), false),
+            serde_json::to_string_pretty(&value).unwrap()
+        );
+        assert_eq!(
+            pretty(r#"{"z":1,"a":{"m":"中文,:{}","b":[true,false]}}"#, false),
+            "{\n  \"z\": 1,\n  \"a\": {\n    \"m\": \"中文,:{}\",\n    \"b\": [\n      true,\n      false\n    ]\n  }\n}"
+        );
+        assert_eq!(pretty("null", false), "null");
+        assert_eq!(pretty("[]", false), "[]");
     }
 
     #[test]
-    fn error_block_frames_the_message() {
-        let block = error_block("错误", "first\nsecond", Some("detail"));
-        let lines: Vec<&str> = block.lines().collect();
-        assert_eq!(lines.len(), 7);
-        assert!(lines[1].contains("┌"));
-        assert!(lines[6].contains("└"));
+    fn error_blocks_distinguish_cli_and_backend_failures() {
+        let cli = render_error(&CliError::invalid("缺少 --path"), false);
+        let lines: Vec<&str> = cli.lines().collect();
+        assert_eq!(lines, ["", "┌ 错误", "│ 缺少 --path", "└"]);
+        let backend = CliError {
+            details: Some(
+                serde_json::json!({"code": "notFound", "message": "找不到检材", "path": "D:/x"}),
+            ),
+            ..super::super::command_error(
+                serde_json::json!({"code": "notFound", "message": "找不到检材"}),
+            )
+            .in_operation("image_info")
+        };
+        let lines: Vec<String> = render_error(&backend, false)
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        assert_eq!(
+            lines,
+            [
+                "",
+                "┌ 后端错误",
+                "│ [notFound] 找不到检材",
+                "│ IPC image_info",
+                "└"
+            ]
+        );
+        let debug = render_error(&backend, true);
+        assert!(debug.contains("│ ") && debug.contains("\"path\": \"D:/x\""));
+    }
+
+    #[test]
+    fn sanitize_replaces_control_and_format_characters() {
+        assert_eq!(
+            sanitize("a\u{1b}[31mb\u{202e}c\u{00ad}d\u{2029}e\u{e0041}f\u{200d}"),
+            "a [31mb c d e f "
+        );
+        assert_eq!(sanitize("检材 E01"), "检材 E01");
     }
 }

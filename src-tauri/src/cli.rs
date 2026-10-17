@@ -4,15 +4,17 @@
 //! schema in `cli/commands.toml` (see build/cli_catalog.rs).
 //!
 //! Commands are `<collection>… <verb>`, with JSON results on stdout, messages
-//! on stderr, `cli search` and `schema` for discovery, and `--dry-run`,
-//! `--body` and `--force` on every command.
+//! on stderr, `cli search`, `docs search` and `schema` for discovery, and
+//! `--dry-run`, `--body` and `--force` on every command.
 mod argv;
 mod browsing;
 mod catalog;
 mod complete;
 mod context;
+mod docs;
 mod dotenv;
 mod grep;
+mod help;
 mod interactive;
 mod native;
 mod output;
@@ -24,6 +26,9 @@ mod search;
 mod session;
 mod shell;
 mod strings;
+mod tools;
+
+use std::{borrow::Cow, sync::OnceLock};
 
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{Map, Value};
@@ -33,6 +38,16 @@ mod generated {
 }
 
 pub use runtime::run;
+
+/// Where a failure came from.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum Origin {
+    /// The command line, its values or the CLI itself.
+    #[default]
+    Cli,
+    /// A backend command, named by its operation when known.
+    Backend(Option<String>),
+}
 
 /// A failure reported to the user, with the process status it ends with.
 #[derive(Debug, Serialize)]
@@ -46,6 +61,8 @@ pub struct CliError {
     /// Already reported (for example `Aborted.`): nothing more to render.
     #[serde(skip)]
     pub reported: bool,
+    #[serde(skip)]
+    pub origin: Origin,
 }
 
 impl CliError {
@@ -56,6 +73,7 @@ impl CliError {
             details: None,
             exit_code: 1,
             reported: false,
+            origin: Origin::Cli,
         }
     }
 
@@ -72,10 +90,20 @@ impl CliError {
         }
     }
 
+    /// A prompt the user cancelled; the prompt already shows it.
     pub fn cancelled() -> Self {
         Self {
             exit_code: 130,
+            reported: true,
             ..Self::new("cancelled", "已取消")
+        }
+    }
+
+    /// The backend operation this failure came from.
+    pub fn in_operation(self, operation: &str) -> Self {
+        Self {
+            origin: Origin::Backend(Some(operation.to_owned())),
+            ..self
         }
     }
 }
@@ -106,6 +134,7 @@ pub(crate) fn command_error(error: impl Serialize) -> CliError {
         Ok(details) => CliError {
             details: (details.as_object().is_some_and(|object| object.len() > 2))
                 .then(|| details.clone()),
+            origin: Origin::Backend(None),
             ..CliError::new(
                 details
                     .get("code")
@@ -126,11 +155,62 @@ pub(crate) fn internal_error(error: impl std::fmt::Display) -> CliError {
     CliError::new("operationFailed", error.to_string())
 }
 
+/// Structured data. Its JSON text keeps object keys in the order the command
+/// wrote them, as cf prints an API response; the value is parsed on demand.
+#[derive(Debug)]
+pub(crate) struct Json {
+    text: Option<String>,
+    value: OnceLock<Value>,
+}
+
+impl Json {
+    pub fn serialize(data: &impl Serialize) -> Result<Self, CliError> {
+        Ok(Self {
+            text: Some(serde_json::to_string(data)?),
+            value: OnceLock::new(),
+        })
+    }
+
+    pub fn value(&self) -> &Value {
+        self.value.get_or_init(|| match &self.text {
+            Some(text) => serde_json::from_str(text).unwrap_or_else(|error| {
+                tracing::warn!("command output is not JSON: {error}");
+                Value::Null
+            }),
+            None => Value::Null,
+        })
+    }
+
+    /// Compact JSON text.
+    pub fn text(&self) -> Cow<'_, str> {
+        match &self.text {
+            Some(text) => Cow::Borrowed(text),
+            None => Cow::Owned(self.value().to_string()),
+        }
+    }
+
+    pub fn is_null(&self) -> bool {
+        match &self.text {
+            Some(text) => text == "null",
+            None => self.value().is_null(),
+        }
+    }
+}
+
+impl From<Value> for Json {
+    fn from(value: Value) -> Self {
+        Self {
+            text: None,
+            value: OnceLock::from(value),
+        }
+    }
+}
+
 /// A command result.
 #[derive(Debug)]
 pub(crate) enum Output {
     /// Structured data; `null` means the command returned nothing.
-    Json(Value),
+    Json(Json),
     /// Raw content for stdout.
     Bytes(Vec<u8>),
     /// Raw content the command already wrote to stdout.
@@ -138,20 +218,24 @@ pub(crate) enum Output {
 }
 
 impl Output {
+    pub fn json(value: Value) -> Self {
+        Self::Json(value.into())
+    }
+
     /// The JSONL session form: raw bytes are hex encoded.
-    fn into_json(self) -> Value {
+    fn into_json(self) -> Json {
         match self {
-            Self::Json(value) => value,
+            Self::Json(json) => json,
             Self::Bytes(bytes) => {
-                serde_json::json!({"encoding": "hex", "data": hex::encode(bytes)})
+                serde_json::json!({"encoding": "hex", "data": hex::encode(bytes)}).into()
             }
-            Self::Written => Value::Null,
+            Self::Written => Value::Null.into(),
         }
     }
 }
 
 pub(crate) fn json_output(value: impl Serialize) -> Result<Output, CliError> {
-    Ok(Output::Json(serde_json::to_value(value)?))
+    Ok(Output::Json(Json::serialize(&value)?))
 }
 
 fn validate_keys(args: &Map<String, Value>, allowed: &[&str]) -> Result<(), CliError> {
@@ -172,4 +256,33 @@ fn argument<T: DeserializeOwned>(
         None => Value::Null,
     };
     serde_json::from_value(value).map_err(|error| CliError::invalid(format!("参数 {key}: {error}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn json_output_keeps_field_order_and_parses_on_demand() {
+        #[derive(Serialize)]
+        struct Image {
+            id: &'static str,
+            path: &'static str,
+            bytes: u64,
+        }
+        let json = Json::serialize(&Image {
+            id: "x",
+            path: "D:/disk.E01",
+            bytes: 7,
+        })
+        .unwrap();
+        assert_eq!(json.text(), r#"{"id":"x","path":"D:/disk.E01","bytes":7}"#);
+        assert_eq!(json.value()["bytes"], 7);
+        assert!(Json::serialize(&()).unwrap().is_null());
+        assert!(Json::from(Value::Null).is_null());
+        assert_eq!(
+            Json::from(serde_json::json!({"b": 1, "a": 2})).text(),
+            r#"{"a":2,"b":1}"#
+        );
+    }
 }

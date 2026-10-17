@@ -1,40 +1,22 @@
-//! Command-line parsing: a clap tree built from the catalogue, the help
-//! screens, and argument values keyed by API parameter name.
+//! Command-line parsing: a clap tree built from the catalogue, and argument
+//! values keyed by API parameter name. Help screens come from `help`.
 use std::collections::BTreeMap;
 
 use clap::{
-    builder::{
-        styling::{AnsiColor, Color, RgbColor, Style, Styles},
-        PossibleValuesParser,
-    },
+    builder::PossibleValuesParser,
     error::{ContextKind, ContextValue, ErrorKind},
-    Arg, ArgAction, ArgMatches, ColorChoice,
+    Arg, ArgAction, ArgMatches,
 };
 use serde_json::{Map, Value};
 
 use super::{
     catalog::{Catalog, Command, Kind, Param},
     complete::GLOBAL_OPTIONS,
-    interactive,
-    output::{self, Role},
-    CliError,
+    help, CliError,
 };
 
 /// The value of a secret option passed without one: ask, or read stdin.
 pub const ASK: &str = "-";
-
-const GLOBAL_HEADING: &str = "全局选项";
-const AGENT_DISCOVERY: &str = "=== STOP: AGENT COMMAND DISCOVERY ===
-AGENTS: Do not explore commands by chaining nested --help calls.
-Your first port of call and the best way to discover commands is:
-AGENTS: Keep cli search queries anonymous; describe the action and resource type only.
-Never include evidence paths, case names or numbers, file names, hashes, passwords or other identifying values.
-  lovelycarve-cli cli search \"<describe the task you want to accomplish>\"
-It returns five compact JSON matches with short descriptions. Pick the best match instead of repeating similar searches.
-Run `<discovered command> --help` for detailed command help.
-For backend request details, replace the result's leading `lovelycarve-cli` with `lovelycarve-cli schema`.
-Run several commands against one opened image in a single `lovelycarve-cli session` (JSONL on stdin).
-=== END AGENT COMMAND DISCOVERY ===";
 
 #[derive(Debug, Default, Clone)]
 pub struct Globals {
@@ -74,45 +56,19 @@ pub enum Parsed {
     },
 }
 
-fn styles() -> Styles {
-    let brand = Color::Rgb(RgbColor(0xBF, 0x66, 0x00));
-    let code = Color::Rgb(RgbColor(0x3D, 0x82, 0xBB));
-    Styles::styled()
-        .header(Style::new().bold().fg_color(Some(brand)))
-        .usage(Style::new().bold().fg_color(Some(brand)))
-        .literal(Style::new().fg_color(Some(code)))
-        .placeholder(Style::new().fg_color(Some(Color::Ansi(AnsiColor::BrightBlack))))
-        .error(
-            Style::new()
-                .bold()
-                .fg_color(Some(Color::Rgb(RgbColor(0xD4, 0x53, 0x50)))),
-        )
-}
-
-const TEMPLATE: &str = "{about-with-newline}\n用法：{usage}\n\n{all-args}{after-help}";
-
 fn global_args(command: clap::Command) -> clap::Command {
     let mut command = command
         .disable_help_flag(true)
         .disable_version_flag(true)
         .disable_help_subcommand(true);
-    for (long, short, help, takes_value) in GLOBAL_OPTIONS {
-        let mut arg = Arg::new(*long)
-            .long(*long)
-            .help(*help)
-            .global(true)
-            .help_heading(GLOBAL_HEADING);
+    for (long, short, _, takes_value) in GLOBAL_OPTIONS {
+        let mut arg = Arg::new(*long).long(*long).global(true);
         if let Some(short) = short {
             arg = arg.short(*short);
         }
         arg = match *long {
             "help" => arg.action(ArgAction::Help),
-            "version" | "quiet" => arg.action(ArgAction::SetTrue),
-            _ if *takes_value => arg.value_name(if *long == "case" {
-                "目录"
-            } else {
-                "ID|路径"
-            }),
+            _ if *takes_value => arg,
             _ => arg.action(ArgAction::SetTrue),
         };
         command = command.arg(arg);
@@ -120,57 +76,31 @@ fn global_args(command: clap::Command) -> clap::Command {
     command
 }
 
-fn param_help(param: &Param) -> String {
-    let mut help = param.description.clone();
-    if let Some(values) = &param.values {
-        help.push_str(&format!("（可选：{}）", values.join("、")));
-    }
-    if let Some(default) = &param.default {
-        help.push_str(&format!(" [默认: {}]", compact(default)));
-    }
-    if param.secret {
-        help.push_str("（敏感：不带值时在终端中隐藏输入，否则从标准输入读取；也可写 @文件）");
-    }
-    if param.kind == Kind::Json {
-        help.push_str("（JSON，或 @文件路径）");
-    }
-    help
-}
-
-fn compact(value: &Value) -> String {
-    match value {
-        Value::String(text) => text.clone(),
-        other => other.to_string(),
-    }
-}
-
 fn param_arg(command: &Command, param: &Param) -> Option<Arg> {
     if !param.visible() || (param.scope && param.position.is_none()) {
         return None;
     }
-    let mut arg = Arg::new(param.name.clone()).help(param_help(param));
+    let mut arg = Arg::new(param.name.clone());
     if let Some(position) = param.position {
-        arg = arg
-            .index(position + 1)
-            .value_name(param.option.clone())
-            .help_heading("参数");
+        arg = arg.index(position + 1).value_name(param.option.clone());
+        // `--body` may supply a required subject instead; the command then
+        // checks it before running.
+        let mut alternatives = Vec::new();
         if param.synthetic {
-            if let (true, Some(target)) = (param.required, command.target.as_deref()) {
-                arg = arg.required_unless_present(target.to_owned());
-            }
-        } else if param.required {
-            arg = arg.required(true);
+            alternatives.extend(command.target.clone());
+        }
+        if command.takes_body() {
+            alternatives.push("body".to_owned());
+        }
+        if param.required {
+            arg = if alternatives.is_empty() {
+                arg.required(true)
+            } else {
+                arg.required_unless_present_any(alternatives)
+            };
         }
     } else {
-        arg = arg
-            .long(param.option.clone())
-            .value_name(match param.kind {
-                Kind::Json => "JSON",
-                Kind::Number => "N",
-                Kind::Boolean => "true|false",
-                _ => "值",
-            })
-            .help_heading("选项");
+        arg = arg.long(param.option.clone());
         if let Some(short) = param.short {
             arg = arg.short(short);
         }
@@ -181,17 +111,15 @@ fn param_arg(command: &Command, param: &Param) -> Option<Arg> {
             .num_args(0..=1)
             .require_equals(true)
             .default_missing_value("true")
-            .value_parser(clap::value_parser!(bool))
-            .hide_possible_values(true),
-        Kind::Enum => arg
-            .value_parser(PossibleValuesParser::new(
-                param.values.clone().unwrap_or_default(),
-            ))
-            .hide_possible_values(true),
+            .value_parser(clap::value_parser!(bool)),
+        Kind::Enum => arg.value_parser(PossibleValuesParser::new(
+            param.values.clone().unwrap_or_default(),
+        )),
         Kind::Array if param.position.is_some() => {
             arg.num_args(if param.required { 1.. } else { 0.. })
         }
-        Kind::Array => arg.action(ArgAction::Append),
+        // `--algos md5 sha256`, `--algos md5 --algos sha256` or a JSON array.
+        Kind::Array => arg.num_args(1..).action(ArgAction::Append),
         Kind::String if param.secret && param.position.is_none() => {
             arg.num_args(0..=1).default_missing_value(ASK)
         }
@@ -200,12 +128,15 @@ fn param_arg(command: &Command, param: &Param) -> Option<Arg> {
     Some(arg)
 }
 
+fn switch(id: &str) -> Arg {
+    Arg::new(id.to_owned())
+        .long(id.to_owned())
+        .action(ArgAction::SetTrue)
+}
+
 fn leaf(name: &str, command: &Command) -> clap::Command {
     let mut leaf = clap::Command::new(name.to_owned())
-        .about(command.summary.clone())
-        .long_about(command.description.clone())
-        .override_usage(command.usage.clone())
-        .help_template(TEMPLATE)
+        .hide(command.hide_command)
         .disable_help_flag(true);
     for param in &command.params {
         if let Some(arg) = param_arg(command, param) {
@@ -213,43 +144,15 @@ fn leaf(name: &str, command: &Command) -> clap::Command {
         }
     }
     if command.raw_output {
-        leaf = leaf.arg(
-            Arg::new("text")
-                .long("text")
-                .action(ArgAction::SetTrue)
-                .help("按 UTF-8 解码原始字节后输出")
-                .help_heading("选项"),
-        );
+        leaf = leaf.arg(switch("text"));
     }
     if command.destructive {
-        leaf = leaf.arg(
-            Arg::new("force")
-                .long("force")
-                .short('f')
-                .action(ArgAction::SetTrue)
-                .help("跳过确认直接执行")
-                .help_heading("选项"),
-        );
+        leaf = leaf.arg(switch("force").short('f'));
     }
-    if command.ipc_command.is_some() && command.params.iter().any(Param::visible) {
-        leaf = leaf.arg(
-            Arg::new("body")
-                .long("body")
-                .value_name("JSON")
-                .help("原始 JSON 参数对象，键为 API 参数名（见 schema）；可写 @文件路径")
-                .help_heading("选项"),
-        );
+    if command.takes_body() {
+        leaf = leaf.arg(Arg::new("body").long("body"));
     }
-    if command.native.as_deref() != Some("complete") {
-        leaf = leaf.arg(
-            Arg::new("dry-run")
-                .long("dry-run")
-                .action(ArgAction::SetTrue)
-                .help("解析参数并显示将执行的请求，不实际执行")
-                .help_heading("选项"),
-        );
-    }
-    leaf
+    leaf.arg(switch("dry-run"))
 }
 
 #[derive(Default)]
@@ -262,17 +165,9 @@ fn to_clap(catalog: &Catalog, name: &str, path: &[String], node: &Node<'_>) -> c
     if let Some(command) = node.command {
         return leaf(name, command);
     }
+    let words: Vec<&str> = path.iter().map(String::as_str).collect();
     let mut group = clap::Command::new(name.to_owned())
-        .about(
-            catalog
-                .description(&path.join(" "))
-                .unwrap_or_default()
-                .to_owned(),
-        )
-        .subcommand_help_heading("命令")
-        .subcommand_value_name("command")
-        .override_usage(format!("{} {} <command>", catalog.binary, path.join(" ")))
-        .help_template(TEMPLATE)
+        .hide(catalog.is_hidden(&words))
         .disable_help_flag(true)
         .disable_help_subcommand(true);
     for (child, node) in &node.children {
@@ -292,20 +187,7 @@ pub fn build(catalog: &'static Catalog) -> clap::Command {
         }
         node.command = Some(command);
     }
-    let mut root = clap::Command::new(catalog.binary.clone())
-        .bin_name(catalog.binary.clone())
-        .about("LovelyCarve 取证命令行：打开检材、浏览与解析文件、搜索、恢复与导出")
-        .after_help("更多信息：https://github.com/LovelyTeams/LovelyCarve 与安装包内的 README.md")
-        .subcommand_help_heading("命令")
-        .subcommand_value_name("command")
-        .override_usage(format!("{} <command> [options]", catalog.binary))
-        .help_template(TEMPLATE)
-        .styles(styles())
-        .color(if output::styled() {
-            ColorChoice::Always
-        } else {
-            ColorChoice::Never
-        });
+    let mut root = clap::Command::new(catalog.binary.clone()).bin_name(catalog.binary.clone());
     root = global_args(root);
     for (name, node) in &tree.children {
         root = root.subcommand(to_clap(catalog, name, std::slice::from_ref(name), node));
@@ -344,44 +226,6 @@ pub fn scan_path(catalog: &Catalog, args: &[String]) -> Vec<String> {
     path
 }
 
-/// Help, decorated with the agent discovery block on root and group help
-/// when an agent runs this process, and a `schema` hint on generated commands.
-pub fn help(catalog: &'static Catalog, path: &[String]) -> String {
-    let mut command = build(catalog);
-    // Propagates the global options and settings into every subcommand.
-    command.build();
-    for word in path {
-        command = match command.find_subcommand(word) {
-            Some(child) => child.clone(),
-            None => break,
-        };
-    }
-    let rendered = command.render_long_help();
-    let mut help = if output::styled() {
-        rendered.ansi().to_string()
-    } else {
-        rendered.to_string()
-    };
-    let words: Vec<&str> = path.iter().map(String::as_str).collect();
-    let found = catalog.find(&words);
-    if found.is_some_and(|command| command.ipc_command.is_some()) {
-        help.push_str(&format!(
-            "\n{}\n",
-            output::italic(&format!(
-                "如需查看确切的后端请求，运行 {}",
-                output::paint(
-                    Role::Code,
-                    &format!("{} schema {}", catalog.binary, path.join(" "))
-                )
-            ))
-        ));
-    }
-    if interactive::is_agentic() {
-        help = format!("{AGENT_DISCOVERY}\n{help}");
-    }
-    help
-}
-
 fn context_text(error: &clap::Error, kind: ContextKind) -> Option<String> {
     match error.get(kind)? {
         ContextValue::String(text) => Some(text.clone()),
@@ -398,6 +242,23 @@ fn context_text(error: &clap::Error, kind: ContextKind) -> Option<String> {
     }
 }
 
+/// Command names clap suggests, without hidden commands.
+fn suggested_commands(catalog: &Catalog, path: &[String], error: &clap::Error) -> Vec<String> {
+    let suggestions = match error.get(ContextKind::SuggestedSubcommand) {
+        Some(ContextValue::String(name)) => vec![name.clone()],
+        Some(ContextValue::Strings(names)) => names.clone(),
+        _ => Vec::new(),
+    };
+    suggestions
+        .into_iter()
+        .filter(|name| {
+            let mut words: Vec<&str> = path.iter().map(String::as_str).collect();
+            words.push(name);
+            !catalog.is_hidden(&words)
+        })
+        .collect()
+}
+
 fn usage_error(catalog: &'static Catalog, path: &[String], error: &clap::Error) -> Parsed {
     let invalid = context_text(error, ContextKind::InvalidArg);
     let value = context_text(error, ContextKind::InvalidValue);
@@ -412,7 +273,7 @@ fn usage_error(catalog: &'static Catalog, path: &[String], error: &clap::Error) 
         ErrorKind::UnknownArgument => {
             format!("未知选项或多余参数：{}", invalid.unwrap_or_default())
         }
-        ErrorKind::InvalidValue => format!(
+        ErrorKind::InvalidValue | ErrorKind::ValueValidation => format!(
             "{} 的值无效：{}",
             invalid.unwrap_or_default(),
             value.unwrap_or_default()
@@ -420,11 +281,6 @@ fn usage_error(catalog: &'static Catalog, path: &[String], error: &clap::Error) 
         ErrorKind::MissingRequiredArgument => {
             format!("缺少参数：{}", invalid.unwrap_or_default())
         }
-        ErrorKind::ValueValidation => format!(
-            "{} 的值无效：{}",
-            invalid.unwrap_or_default(),
-            value.unwrap_or_default()
-        ),
         ErrorKind::NoEquals => format!("{} 需要写成 --选项=值", invalid.unwrap_or_default()),
         _ => error
             .to_string()
@@ -437,18 +293,22 @@ fn usage_error(catalog: &'static Catalog, path: &[String], error: &clap::Error) 
     if let Some(valid) = context_text(error, ContextKind::ValidValue) {
         message.push_str(&format!("（可选：{valid}）"));
     }
-    for kind in [ContextKind::SuggestedSubcommand, ContextKind::SuggestedArg] {
-        if let Some(suggestion) = context_text(error, kind) {
-            let prefix = if path.is_empty() {
-                String::new()
-            } else {
-                format!("{} ", path.join(" "))
-            };
-            message.push_str(&format!(
-                "\n你是否要找：{} {prefix}{suggestion}？",
-                catalog.binary
-            ));
-        }
+    let prefix = if path.is_empty() {
+        String::new()
+    } else {
+        format!("{} ", path.join(" "))
+    };
+    for suggestion in suggested_commands(catalog, path, error) {
+        message.push_str(&format!(
+            "\n你是否要找：{} {prefix}{suggestion}？",
+            catalog.binary
+        ));
+    }
+    if let Some(suggestion) = context_text(error, ContextKind::SuggestedArg) {
+        message.push_str(&format!(
+            "\n你是否要找：{} {prefix}{suggestion}？",
+            catalog.binary
+        ));
     }
     if error.kind() == ErrorKind::InvalidSubcommand {
         message.push_str(&format!(
@@ -457,7 +317,7 @@ fn usage_error(catalog: &'static Catalog, path: &[String], error: &clap::Error) 
         ));
     }
     Parsed::UsageError {
-        help: Some(help(catalog, path)),
+        help: Some(help::render(catalog, path)),
         error: CliError::new("usage", message),
     }
 }
@@ -640,7 +500,7 @@ pub fn parse(catalog: &'static Catalog, args: &[String]) -> Parsed {
     {
         Ok(matches) => matches,
         Err(error) if error.kind() == ErrorKind::DisplayHelp => {
-            return Parsed::Help(help(catalog, &path))
+            return Parsed::Help(help::render(catalog, &path))
         }
         Err(error) => return usage_error(catalog, &path, &error),
     };
@@ -654,7 +514,7 @@ pub fn parse(catalog: &'static Catalog, args: &[String]) -> Parsed {
     let found: Vec<&str> = words.iter().map(String::as_str).collect();
     let Some(command) = catalog.find(&found) else {
         // A group without its command: show what it contains.
-        return Parsed::Help(help(catalog, &words));
+        return Parsed::Help(help::render(catalog, &words));
     };
     match invocation(command, current) {
         Ok(invocation) => Parsed::Run {
@@ -755,6 +615,24 @@ mod tests {
     }
 
     #[test]
+    fn arrays_take_several_values_after_one_option() {
+        let (_, invocation) = run(&[
+            "files",
+            "hash",
+            "/C/Windows/notepad.exe",
+            "--algos",
+            "md5",
+            "sha256",
+        ]);
+        assert_eq!(
+            invocation.values["algos"],
+            serde_json::json!(["md5", "sha256"])
+        );
+        let (_, invocation) = run(&["files", "hash", "/a", "--algos", r#"["sm3"]"#]);
+        assert_eq!(invocation.values["algos"], serde_json::json!(["sm3"]));
+    }
+
+    #[test]
     fn body_supplies_arguments_and_options_override_it() {
         let (_, invocation) = run(&[
             "carve",
@@ -767,6 +645,11 @@ mod tests {
         ]);
         assert_eq!(invocation.values["options"]["scope"], "unallocated");
         assert_eq!(invocation.values["imageId"], "x");
+        // A required subject may come from --body instead of the command line.
+        let (_, invocation) = run(&["images", "open", "--body", r#"{"path":"D:/disk.E01"}"#]);
+        assert_eq!(invocation.values["path"], "D:/disk.E01");
+        let (_, invocation) = run(&["files", "export", "--body", r#"{"nodeId":"n1"}"#]);
+        assert_eq!(invocation.values["nodeId"], "n1");
     }
 
     #[test]
@@ -795,6 +678,30 @@ mod tests {
         }
         match parse(catalog, &["complete".into(), "--".into(), "ima".into()]) {
             Parsed::Complete(words) => assert_eq!(words, ["ima"]),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn hidden_commands_run_but_are_never_suggested() {
+        let catalog = catalog().unwrap();
+        assert_eq!(run(&["tools"]).1.command.path(), "tools");
+        assert!(matches!(
+            parse(catalog, &["tools".into(), "--help".into()]),
+            Parsed::Help(_)
+        ));
+        match parse(catalog, &["toolz".into()]) {
+            Parsed::UsageError { error, .. } => {
+                assert!(!error.message.contains("tools"), "{}", error.message)
+            }
+            other => panic!("{other:?}"),
+        }
+        match parse(catalog, &["imagez".into()]) {
+            Parsed::UsageError { error, .. } => assert!(
+                error.message.contains("lovelycarve-cli images？"),
+                "{}",
+                error.message
+            ),
             other => panic!("{other:?}"),
         }
     }

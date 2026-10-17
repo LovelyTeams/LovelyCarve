@@ -92,9 +92,10 @@ lovelycarve-cli images open "D:\evidence\disk.E01"
 lovelycarve-cli --image "D:\evidence\disk.E01" files list / --depth 2
 lovelycarve-cli --image "D:\evidence\disk.E01" files read "/<卷名称>/Users/alice/report.txt" > report.txt
 lovelycarve-cli cli search "recover deleted files"
+lovelycarve-cli docs search "BitLocker 恢复密码"
 ```
 
-桌面端的每个后端命令都有对应的 CLI 命令；`shell` 在一个进程中逐行执行命令，JSONL 会话适合脚本与代理编排一系列分析：
+桌面端的每个后端命令都有对应的 CLI 命令；`cli search` 按意图查找命令，`docs search` 离线搜索随程序附带的使用文档与格式专题。`shell` 在一个进程中逐行执行命令，JSONL 会话适合脚本与代理编排一系列分析：
 
 ```powershell
 Get-Content .\workflow.jsonl | lovelycarve-cli session --events

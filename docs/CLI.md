@@ -3,7 +3,8 @@
 `lovelycarve-cli` 是独立的取证命令行工具：不链接 Tauri、WebView 或任何桌面窗口运行时，
 自行初始化后端状态，直接调用与桌面端相同的解析器、案件库、插件和任务调度。
 命令统一为 `<集合>… <动词>` 形式，标准输出只放结果（JSON 或原始字节），提示与错误走标准错误，
-用 `cli search` 与 `schema` 发现命令，`--dry-run`、`--body`、`--force` 在所有命令上含义一致。
+用 `cli search`、`docs search` 与 `schema` 发现命令和文档，`--dry-run`、`--body`、`--force`
+在所有命令上含义一致。
 
 常用章节：[构建与运行](#构建与运行)、[命令结构](#命令结构)、[发现命令](#发现命令)、
 [输出与退出码](#输出与退出码)、[参数](#参数)、[浏览检材](#浏览检材)、[交互 shell](#交互-shell)、
@@ -86,64 +87,90 @@ CLI 不会静默漏接功能。
 | `-q, --quiet` | 不输出横幅、进度等非必要信息 |
 | `-h, --help` / `-v, --version` | 帮助与版本 |
 
-省略 `--image` 时依次取环境变量 `LOVELYCARVE_IMAGE`、当前目录 `.env` 中的同名变量和会话当前检材；
-`--case` 同理取 `LOVELYCARVE_CASE`。进程环境优先于 `.env`，`.env` 只读取这两个变量。
+省略 `--image` 时依次取环境变量 `LOVELYCARVE_IMAGE`、当前目录 `.env.local` 与 `.env` 中的同名变量
+（`.env.local` 优先）和会话当前检材；`--case` 同理取 `LOVELYCARVE_CASE`。进程环境优先于这两个文件，
+文件只读取这两个变量，也不会传给插件等子进程。检材取自环境变量或文件时，第一次用到它时在标准错误
+提示 `使用检材：<值>（来自 .env.local 中的 LOVELYCARVE_IMAGE）`，`--quiet` 关闭该提示；设置 `DEBUG=1`
+时还会提示 `使用案件：<目录>（来自 --case）`。命令需要检材却没有指定时，错误逐条列出可用的指定方式。
 有案件时，`images open` 把检材登记进案件并在后台建立卷索引；没有案件时索引只在本进程内使用，
 退出即丢弃。
 
 ## 发现命令
 
 ```powershell
-lovelycarve-cli                              # 入门提示
-lovelycarve-cli --help                       # 全部集合
-lovelycarve-cli files --help                 # 一个集合的命令
-lovelycarve-cli files read --help            # 一条命令的参数与选项
-lovelycarve-cli cli search "export a file"   # 按意图查找
-lovelycarve-cli schema files hash            # 后端请求结构
+lovelycarve-cli                                  # 入门提示
+lovelycarve-cli --help                           # 全部集合
+lovelycarve-cli files --help                     # 一个集合的命令
+lovelycarve-cli files read --help                # 一条命令的参数、选项与示例
+lovelycarve-cli cli search "export a file"       # 按意图查找命令
+lovelycarve-cli docs search "BitLocker 恢复密码"  # 搜索内置文档
+lovelycarve-cli schema files hash                # 后端请求结构
 lovelycarve-cli complete powershell >> $PROFILE
 ```
+
+帮助采用 yargs 的版式：先是用法行与说明，再依次是「命令」（集合帮助）或「位置参数」「全局选项」「选项」
+「示例」表格。说明按终端宽度换行，标准输出不是终端时按 80 列；每行右侧标注 `[字符串]`、`[必填]`、
+`[可选值: …]`、`[默认: …]` 等。集合帮助列出完整的命令行（如 `lovelycarve-cli images open <path>`），
+生成命令的帮助末尾提示对应的 `schema` 命令。只输入集合名（如 `lovelycarve-cli images`）时显示该集合的帮助。
 
 `cli search "<任务>"` 在本地索引中查找命令，中英文均可（`"计算文件哈希"`、`"recover deleted files"`），
 返回最多 5 条 `{command, summary}` JSON，最佳匹配在前。
 
-`schema <命令…>` 输出该命令发送的后端请求：`operationId`、`ipcCommand`、`category`、`output`
-（`json` 或 `bytes`），以及 `requestBodyFields` 中每个参数的 API 名称、Rust 类型、是否必填、说明、
-对应的命令行写法，和可选的 `enum`、`default`、`generated`（省略时自动生成）、`sensitive`（会脱敏）。
-路径参数解析到的节点参数记在 `pathResolvesTo`，删除类命令带 `destructive`。
+`docs search "<问题>"` 在随程序附带的文档中按章节搜索：使用指南、本手册、iOS 备份、Linux 基本信息插件
+和全部格式专题，返回最多 5 条 `{title, section, description, page}`，无需联网。`docs get <page>` 把页面的
+Markdown 原样写到标准输出，`--section <章节>` 只输出一个章节；`docs list` 列出全部页面。JSONL 会话中
+`docs get` 返回 `{page, title, section, markdown}`。文档随构建嵌入程序，与该版本的行为一致。
+
+`schema <命令…>` 输出该命令发送的后端请求：`operationId`、`ipcCommand`、`category`、
+`hasRequestBody`、`requestBodyFields`（每个参数的 API 名称、Rust 类型、是否必填、说明、
+对应的命令行写法，和可选的 `enum`、`default`、`generated`（省略时自动生成）、`sensitive`（会脱敏））
+与 `output`（`json` 或 `bytes`）。路径参数解析到的节点参数记在 `pathResolvesTo`，删除类命令带 `destructive`。
 `schema --list` 列出全部生成命令；手写命令（`files list` 等）没有后端请求结构，用 `--help` 查看。
 
 `complete <bash|zsh|fish|powershell>` 输出补全脚本；按 Tab 时 shell 以 `complete -- <单词…>`
-回调本程序取候选，候选来自同一份命令目录。
+回调本程序取候选，候选来自同一份命令目录，包括 `-q`、`-f`、`-j` 等短选项和枚举值。
+
+隐藏命令 `tools` 把全部命令输出为 MCP 工具定义 `{version, tools: [{name, description, inputSchema}]}`，
+供 MCP 服务器包装本程序；属性名就是命令行的参数与选项名，检材照常取 `LOVELYCARVE_IMAGE`。
+隐藏命令可以运行，也能被 `cli search` 找到，但不出现在帮助、补全和拼写建议中。
 
 由编码代理运行时（`CLAUDECODE=1`、`CODEX_THREAD_ID`、`GEMINI_CLI=1`、`CURSOR_AGENT=1` 等代理文档化的
-环境变量），帮助开头附加一段英文说明：优先用 `cli search` 查找命令、搜索词不要包含检材路径、
-案件名、文件名、哈希或密码等识别信息，并用 `schema` 查看请求结构。
+环境变量），帮助开头附加一段英文说明：优先用 `cli search` 查找命令、用 `docs search` 查阅文档，
+搜索词不要包含检材路径、案件名、文件名、哈希或密码等识别信息，并用 `schema` 查看请求结构。
 
 ## 输出与退出码
 
-- 结果写标准输出。结构化结果是缩进两格的 JSON，只有标准输出是终端且不在 CI 中时才着色
-  （`NO_COLOR` 关闭、`FORCE_COLOR` 强制）。内容类命令（`files read`、`files zip members get`、
-  `carve artifacts get` 等）输出原始字节，可直接重定向到文件；`--text` 按 UTF-8 解码，
-  无效字节替换为 U+FFFD。
+- 结果写标准输出。结构化结果是缩进两格的 JSON，字段顺序与后端返回的一致；只有标准输出是终端且
+  不在 CI 中时才着色（`NO_COLOR` 关闭、`FORCE_COLOR` 强制）。内容类命令（`files read`、
+  `files zip members get`、`carve artifacts get`、`docs get` 等）输出原始字节，可直接重定向到文件；
+  `--text` 按 UTF-8 解码，无效字节替换为 U+FFFD。
 - 没有返回值的命令标准输出为空；在终端中标准错误显示一行 `✓ 完成` 之类的确认。
-- 横幅 `lovelycarve-cli · v<版本>`、旋转进度与耗时、交互提问、提示和错误都写标准错误；
-  横幅与进度只在终端中出现，`--quiet` 或 `LOVELYCARVE_QUIET=1` 关闭。Windows Terminal 等支持
-  OSC 9;4 的终端会在标签页或任务栏显示进度，`LOVELYCARVE_NO_OSC_PROGRESS=1` 关闭。
-- 错误显示为带边框的块：`┌ 错误`、`│ [错误代码] 说明`、`└`。设置 `DEBUG=1` 时附带后端详情。
+- 横幅 `lovelycarve-cli · v<版本>`、进度、交互提问、提示和错误都写标准错误。横幅只在标准错误是终端时
+  出现，`--quiet` 关闭横幅与提示。标准输出和标准错误都是彩色终端时，运行中的命令先显示一条 `│`，
+  再显示 `⠋  读取中 [3s]` 式的旋转进度（标签只写动作，命令本身已说明对象），结束时变为
+  `◇  读取中 [3s]`，失败时为红色的 `▲`。`LOVELYCARVE_QUIET=1` 同时关闭横幅、旋转进度和终端进度；
+  终端进度指 Windows Terminal 等支持 OSC 9;4 的终端在标签页或任务栏显示的进度，`--quiet` 或
+  `LOVELYCARVE_NO_OSC_PROGRESS=1` 关闭。
+- 错误显示为带边框的块：命令行、参数与本程序的错误为 `┌ 错误` 加说明；后端命令失败为 `┌ 后端错误`、
+  `│ [错误代码] 说明`，以及一行 `IPC <后端命令>`。设置 `DEBUG=1` 时附带后端详情。
 - 退出码：`0` 成功；`1` 失败（命令行错误、后端错误、未确认的删除、会话中任一请求失败）；
-  `130` 被 Ctrl+C / Ctrl+Break / SIGINT / SIGTERM 中断，或在提问时按 Esc / Ctrl+C 取消。
+  `130` 被 Ctrl+C / Ctrl+Break / SIGINT / SIGTERM 中断，或在提问时按 Esc / Ctrl+C 取消
+  （提问处显示 `■`，不再另外显示错误块）。
 
 ## 参数
 
 - 位置参数是命令的主体，选项用 kebab-case（`--read-fault-policy`）。API 名称是后端的 camelCase
   参数名（`readFaultPolicy`），也是 `--body`、`schema` 和 JSONL 会话使用的键。
-- 数字直接写；布尔选项单写 `--descending` 为真，`--descending=false` 为假；数组可重复选项
-  （`--algos md5 --algos sha256`）或传一个 JSON 数组；枚举的可选值列在帮助中。
+- 数字直接写；布尔选项单写 `--descending` 为真，`--descending=false` 为假；数组可在一个选项后
+  列出多个值（`--algos md5 sha256`）、重复选项（`--algos md5 --algos sha256`）或传一个 JSON 数组，
+  列出多个值时把位置参数写在数组选项之前；枚举的可选值列在帮助中。
   结构体参数传 JSON 文本或 `@文件路径`；不是 JSON 的单个词按字符串处理。
   顶层参数名是 camelCase，嵌套选项沿用原类型的 serde 命名（很多为 snake_case）。
-- `--body '<JSON 对象>'` 或 `--body @request.json` 一次给出全部参数，显式选项覆盖其中的同名键。
-- 缺少必填值时，终端中逐项提问（枚举给出选择列表）；脚本、CI 和代理中直接报
-  `缺少 --<选项>`，不会猜测。
+- `--body '<JSON 对象>'` 或 `--body @request.json` 一次给出全部参数，显式选项覆盖其中的同名键；
+  必填的位置参数也可以写在其中（`images open --body '{"path":"D:/evidence/disk.E01"}'`），两处都没有时
+  报 `缺少参数`。
+- 缺少必填值时，终端中逐项提问：`◆` 提出问题，回车后变为 `◇` 并显示答案，枚举给出选择列表；
+  脚本、CI 和代理中直接报 `缺少 --<选项>`，不会猜测。
 - 密码与密钥类参数（`--password`、`--qcow-password`、`--vmk-hex` 等）：`--password <值>`；
   `--password @文件` 读取文件并去掉末尾换行；单写 `--password` 或 `--password -` 时，
   终端中以 `•` 遮盖输入，否则读取管道传入的标准输入，例如

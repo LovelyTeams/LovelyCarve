@@ -1,8 +1,9 @@
 //! `files search` delegates matching, cancellation and persistence to the
 //! global search, scoped to one subtree, and collects the hits it stored.
+use serde::Serialize;
 use serde_json::{json, Map, Value};
 
-use super::{context::Exec, CliError, Output};
+use super::{context::Exec, json_output, CliError, Output};
 use crate::commands::search::global_search::{global_search_hits_page, global_search_start};
 
 pub async fn run(
@@ -43,7 +44,7 @@ pub async fn run(
         options,
     )
     .await
-    .map_err(super::command_error)?;
+    .map_err(|error| super::command_error(error).in_operation("global_search_start"))?;
     let limit = values
         .get("limit")
         .and_then(Value::as_u64)
@@ -62,7 +63,7 @@ pub async fn run(
             None,
         )
         .await
-        .map_err(super::command_error)?;
+        .map_err(|error| super::command_error(error).in_operation("global_search_hits_page"))?;
         let empty = page.items.is_empty();
         hits.extend(page.items);
         if empty || hits.len() as u64 >= page.total || hits.len() as u64 >= limit {
@@ -70,7 +71,18 @@ pub async fn run(
         }
     };
     let truncated = summary.truncated || summary.status != "success" || (hits.len() as u64) < total;
-    Ok(Output::Json(
-        json!({"summary": summary, "hits": hits, "total": total, "truncated": truncated}),
-    ))
+    json_output(Found {
+        summary,
+        hits,
+        total,
+        truncated,
+    })
+}
+
+#[derive(Serialize)]
+struct Found<S, H> {
+    summary: S,
+    hits: Vec<H>,
+    total: u64,
+    truncated: bool,
 }

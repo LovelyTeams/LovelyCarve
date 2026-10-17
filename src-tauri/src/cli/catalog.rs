@@ -114,7 +114,19 @@ pub struct Command {
     pub no_clobber: Vec<String>,
     #[serde(default)]
     pub sensitive_paths: Vec<Vec<String>>,
+    /// Runnable and searchable, but not listed in help, completion or
+    /// command suggestions.
+    #[serde(default)]
+    pub hide_command: bool,
+    #[serde(default)]
+    pub examples: Vec<Example>,
     pub params: Vec<Param>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Example {
+    pub command: String,
+    pub description: String,
 }
 
 impl Command {
@@ -124,6 +136,11 @@ impl Command {
 
     pub fn param(&self, name: &str) -> Option<&Param> {
         self.params.iter().find(|param| param.name == name)
+    }
+
+    /// Whether `--body` can supply this command's parameters.
+    pub fn takes_body(&self) -> bool {
+        self.ipc_command.is_some() && self.params.iter().any(Param::visible)
     }
 
     pub fn positionals(&self) -> Vec<&Param> {
@@ -229,10 +246,10 @@ impl Catalog {
         self.descriptions.get(path).map(String::as_str)
     }
 
-    /// The commands and groups directly below `prefix`, sorted by name.
+    /// The listed commands and groups directly below `prefix`, sorted by name.
     pub fn children(&self, prefix: &[&str]) -> Vec<(String, String)> {
         let mut children = BTreeMap::new();
-        for command in &self.commands {
+        for command in self.commands.iter().filter(|command| !command.hide_command) {
             let path = &command.full_path;
             if path.len() <= prefix.len() || !path.iter().zip(prefix).all(|(a, b)| a == b) {
                 continue;
@@ -251,6 +268,23 @@ impl Catalog {
 
     pub fn is_group(&self, words: &[&str]) -> bool {
         !words.is_empty() && self.descriptions.contains_key(&words.join(" "))
+    }
+
+    /// Whether `words` name a hidden command, or a group with only hidden commands.
+    pub fn is_hidden(&self, words: &[&str]) -> bool {
+        let below: Vec<&Command> = self
+            .commands
+            .iter()
+            .filter(|command| {
+                command.full_path.len() >= words.len()
+                    && command
+                        .full_path
+                        .iter()
+                        .zip(words)
+                        .all(|(word, given)| word == given)
+            })
+            .collect();
+        !below.is_empty() && below.iter().all(|command| command.hide_command)
     }
 }
 

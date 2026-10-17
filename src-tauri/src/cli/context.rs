@@ -3,12 +3,15 @@
 //! and prompts, scope, then the call.
 use std::{io::IsTerminal, path::Path, sync::Arc};
 
+use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use super::{
     browsing,
     catalog::{Command, Kind},
-    generated, native, progress, prompt, CliError, Output,
+    generated, native, output,
+    progress::{self, Progress},
+    prompt, CliError, Json, Output,
 };
 use crate::{commands::filesystem::filesystem_page::FsNodePage, host::AppHandle, state::AppState};
 
@@ -27,6 +30,9 @@ pub struct Context {
     /// The evidence scope as given (`--image`, `LOVELYCARVE_IMAGE`), opened on
     /// first use.
     pub scope: Option<String>,
+    /// Where the scope came from when it was not `--image`, named in the
+    /// notice printed when it is opened.
+    pub scope_source: Option<String>,
     /// The current image.
     pub image_id: Option<String>,
     /// The working directory inside the image: names with their node IDs.
@@ -71,17 +77,38 @@ pub struct Exec {
     pub quiet: bool,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Preview<'a> {
+    command: &'a str,
+    ipc_command: &'a str,
+    body: Value,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ArgumentsOnly<'a> {
+    command: &'a str,
+    dry_run: bool,
+    executed: bool,
+    validated: &'static str,
+}
+
 /// What `--dry-run` prints: the backend request, without running it or
 /// touching evidence. Sensitive values are redacted.
-pub fn preview(command: &Command, values: &Map<String, Value>, scope: Option<&str>) -> Value {
-    if command.ipc_command.is_none() {
-        return json!({
-            "command": command.command,
-            "dryRun": true,
-            "executed": false,
-            "validated": "arguments only",
+pub fn preview(
+    command: &Command,
+    values: &Map<String, Value>,
+    scope: Option<&str>,
+) -> Result<Json, CliError> {
+    let Some(ipc_command) = command.ipc_command.as_deref() else {
+        return Json::serialize(&ArgumentsOnly {
+            command: &command.command,
+            dry_run: true,
+            executed: false,
+            validated: "arguments only",
         });
-    }
+    };
     let mut body = values.clone();
     for param in &command.params {
         if let Some(fixed) = &param.fixed {
@@ -98,10 +125,10 @@ pub fn preview(command: &Command, values: &Map<String, Value>, scope: Option<&st
     for path in &command.sensitive_paths {
         redact(&mut body, path);
     }
-    json!({
-        "command": command.command,
-        "ipcCommand": command.ipc_command,
-        "body": body,
+    Json::serialize(&Preview {
+        command: &command.command,
+        ipc_command,
+        body,
     })
 }
 
@@ -140,6 +167,36 @@ fn missing(value: Option<&Value>) -> bool {
     value.is_none_or(Value::is_null)
 }
 
+/// Every way to give a command its evidence, as cf lists the ways to give a
+/// zone.
+fn no_image(command: &Command, mode: Mode) -> CliError {
+    let mut ways = Vec::new();
+    if command
+        .params
+        .iter()
+        .any(|param| param.scope && param.position.is_some())
+    {
+        ways.push(format!("位置参数：{} <检材路径或 ID>", command.command));
+    }
+    ways.push(format!(
+        "--image（或 -i）：{} --image <检材路径或 ID>",
+        command.command
+    ));
+    ways.push("环境变量 LOVELYCARVE_IMAGE（也可写在当前目录的 .env 或 .env.local）".to_owned());
+    if mode != Mode::OneShot {
+        ways.push("在当前会话中先运行 images open <检材路径>".to_owned());
+    }
+    let ways: Vec<String> = ways
+        .iter()
+        .enumerate()
+        .map(|(index, way)| format!("  {}. {way}", index + 1))
+        .collect();
+    CliError::new(
+        "noImage",
+        format!("未指定检材。\n\n请提供以下任意一项：\n{}", ways.join("\n")),
+    )
+}
+
 impl Exec {
     /// Whether missing values may be asked for (or, for secrets, read from
     /// piped stdin). A shell script on stdin is the shell's input, not data.
@@ -166,7 +223,7 @@ impl Exec {
         let Output::Json(info) = output else {
             return Err(super::internal_error("images open 返回了非 JSON 结果"));
         };
-        let id = info["id"]
+        let id = info.value()["id"]
             .as_str()
             .ok_or_else(|| super::internal_error("images open 没有返回检材 ID"))?
             .to_owned();
@@ -175,7 +232,8 @@ impl Exec {
         Ok(id)
     }
 
-    /// The current image, opening the scope on first use.
+    /// The current image, opening the scope on first use. A scope from the
+    /// environment is announced when it is opened, unless quiet.
     pub async fn current_image(&self, context: &mut Context) -> Result<Option<String>, CliError> {
         if let Some(id) = &context.image_id {
             if self.state.images.lock().await.contains_key(id) {
@@ -184,10 +242,15 @@ impl Exec {
             context.image_id = None;
             context.location.clear();
         }
-        match context.scope.take() {
-            Some(scope) => self.resolve_image(context, &scope).await.map(Some),
-            None => Ok(None),
+        let Some(scope) = context.scope.take() else {
+            return Ok(None);
+        };
+        if let Some(source) = context.scope_source.take() {
+            if !self.quiet && self.mode != Mode::Session {
+                eprintln!("使用检材：{}（来自 {source}）", output::sanitize(&scope));
+            }
         }
+        self.resolve_image(context, &scope).await.map(Some)
     }
 
     pub async fn page(
@@ -206,7 +269,7 @@ impl Exec {
             None,
         )
         .await
-        .map_err(super::command_error)
+        .map_err(|error| super::command_error(error).in_operation("fs_children_page"))
     }
 
     /// Resolve `path` against the working directory.
@@ -233,7 +296,7 @@ impl Exec {
                 command,
                 &values,
                 context.image_id.as_deref().or(context.scope.as_deref()),
-            )));
+            )?));
         }
         if command.destructive {
             if self.mode == Mode::Session {
@@ -276,14 +339,20 @@ impl Exec {
             values.insert(name.clone(), json!(value));
         }
         // A path is one of two ways to name the target node; `target` below
-        // reports when neither was given.
+        // reports when neither was given. A subject `--body` should have
+        // supplied is reported, not asked for.
         for param in &command.params {
-            if !param.required
-                || param.synthetic
-                || param.position.is_some()
-                || !missing(values.get(&param.name))
-            {
+            if !param.required || param.synthetic || !missing(values.get(&param.name)) {
                 continue;
+            }
+            if param.position.is_some() {
+                return Err(CliError::invalid(match self.mode {
+                    Mode::Session => format!("缺少参数：{}", param.name),
+                    Mode::OneShot | Mode::Shell => format!(
+                        "缺少参数：<{}>（写在命令行上，或在 --body 中提供 {}）",
+                        param.option, param.name
+                    ),
+                }));
             }
             if !self.interactive() {
                 return Err(CliError::invalid(format!("缺少参数：{}", param.name)));
@@ -338,10 +407,7 @@ impl Exec {
                 None if image.is_some_and(|image| image.api_required)
                     || command.target.is_some() =>
                 {
-                    return Err(CliError::new(
-                        "noImage",
-                        "需要检材：使用 --image <检材路径或 ID>、设置 LOVELYCARVE_IMAGE，或先运行 images open",
-                    ))
+                    return Err(no_image(command, self.mode))
                 }
                 None => {}
             }
@@ -360,12 +426,14 @@ impl Exec {
             }
         }
         let (running, _) = command.category.labels();
-        let label = format!("{running} {}", command.summary);
-        let quiet = self.quiet || self.mode == Mode::Session;
+        let progress = Progress {
+            quiet: self.quiet || self.mode == Mode::Session,
+            spinner: self.mode != Mode::Session,
+        };
         let output = match command.ipc_command.as_deref() {
             Some(ipc) => {
                 let values = values.clone();
-                progress::with_progress(&label, quiet, async {
+                progress::with_progress(running, progress, async {
                     generated::dispatch(&self.host, &self.state, ipc, values).await
                 })
                 .await?
@@ -461,13 +529,14 @@ impl Exec {
         match command.ipc_command.as_deref() {
             Some("image_load") => {
                 if let Output::Json(info) = output {
-                    context.image_id = info["id"].as_str().map(str::to_owned);
+                    context.image_id = info.value()["id"].as_str().map(str::to_owned);
                     context.location.clear();
                 }
             }
             Some("case_open" | "case_create" | "case_close") => {
                 context.image_id = None;
                 context.scope = None;
+                context.scope_source = None;
                 context.location.clear();
             }
             Some("image_unload")
@@ -494,29 +563,51 @@ mod tests {
             ("partitionId".to_owned(), json!(1)),
             ("password".to_owned(), json!("hunter2")),
         ]);
+        let shown = preview(unlock, &values, Some(r"D:\disk.E01")).unwrap();
         assert_eq!(
-            preview(unlock, &values, Some(r"D:\disk.E01")),
-            json!({
+            shown.value(),
+            &json!({
                 "command": "lovelycarve-cli bitlocker unlock",
                 "ipcCommand": "bitlocker_unlock",
                 "body": {"partitionId": 1, "password": "<redacted>", "imageId": r"D:\disk.E01"},
             })
         );
+        assert!(shown
+            .text()
+            .starts_with(r#"{"command":"lovelycarve-cli bitlocker unlock","ipcCommand":"#));
         let volumes = catalog.find(&["encrypted-volumes", "unlock"]).unwrap();
         let values = Map::from_iter([(
             "options".to_owned(),
             json!({"scheme": "luks", "password": "secret"}),
         )]);
         assert_eq!(
-            preview(volumes, &values, None)["body"],
+            preview(volumes, &values, None).unwrap().value()["body"],
             json!({"options": {"scheme": "luks", "password": "<redacted>"}, "imageId": "<image>"})
         );
         let docker = catalog.find(&["files", "docker", "get"]).unwrap();
         assert_eq!(
-            preview(docker, &Map::new(), Some("x"))["body"]["mode"],
+            preview(docker, &Map::new(), Some("x")).unwrap().value()["body"]["mode"],
             "status"
         );
         let list = catalog.find(&["files", "list"]).unwrap();
-        assert_eq!(preview(list, &Map::new(), None)["executed"], false);
+        assert_eq!(
+            preview(list, &Map::new(), None).unwrap().value()["executed"],
+            false
+        );
+    }
+
+    #[test]
+    fn a_missing_image_lists_every_way_to_give_one() {
+        let catalog = catalog().unwrap();
+        let get = catalog.find(&["images", "get"]).unwrap();
+        let error = no_image(get, Mode::OneShot);
+        assert_eq!(error.code, "noImage");
+        assert_eq!(
+            error.message,
+            "未指定检材。\n\n请提供以下任意一项：\n  1. 位置参数：lovelycarve-cli images get <检材路径或 ID>\n  2. --image（或 -i）：lovelycarve-cli images get --image <检材路径或 ID>\n  3. 环境变量 LOVELYCARVE_IMAGE（也可写在当前目录的 .env 或 .env.local）"
+        );
+        let read = catalog.find(&["files", "read"]).unwrap();
+        let shell = no_image(read, Mode::Shell).message;
+        assert!(!shell.contains("位置参数") && shell.contains("3. 在当前会话中先运行 images open"));
     }
 }

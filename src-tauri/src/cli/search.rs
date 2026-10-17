@@ -1,15 +1,16 @@
 //! `cli search`: find commands from a plain-language task description.
 //! BM25+ over the command, its summary, description and context (group
 //! descriptions, arguments, options, keywords), with prefix and fuzzy matching
-//! and per-field boosts. Han text is indexed as character bigrams so Chinese
-//! queries match too.
-use std::collections::{BTreeMap, HashMap};
+//! and per-field boosts, as cf ranks with MiniSearch. Han text is indexed as
+//! character bigrams so Chinese queries match too. `docs search` ranks
+//! documentation sections with the same scoring.
+use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 
 use super::catalog::{Catalog, Command};
 
-const RESULTS: usize = 5;
+pub const RESULTS: usize = 5;
 const K: f64 = 1.2;
 const B: f64 = 0.7;
 const D: f64 = 0.5;
@@ -21,20 +22,11 @@ const STOP_WORDS: &[&str] = &[
     "a", "an", "the", "in", "of", "to", "for", "on", "at", "by", "from", "into", "with", "and",
     "or", "is", "are", "be", "it", "its", "my", "me", "i", "this", "that", "how", "do", "can",
 ];
-const FIELDS: [(Field, f64); 4] = [
-    (Field::Command, 8.0),
-    (Field::Summary, 5.0),
-    (Field::Description, 2.0),
-    (Field::Context, 0.5),
-];
+/// Field boosts: the name, its summary, its description and its context.
+const BOOSTS: [f64; 4] = [8.0, 5.0, 2.0, 0.5];
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-enum Field {
-    Command,
-    Summary,
-    Description,
-    Context,
-}
+/// A searchable document: the tokens of each boosted field.
+pub type Document = [Vec<String>; 4];
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct Match {
@@ -104,65 +96,50 @@ fn edit_distance(left: &str, right: &str, limit: usize) -> Option<usize> {
     (distance <= limit).then_some(distance)
 }
 
-fn documents(catalog: &Catalog) -> Vec<(&Command, BTreeMap<Field, Vec<String>>)> {
-    catalog
-        .commands
-        .iter()
-        .map(|command| {
-            let mut context = Vec::new();
-            for length in 1..command.full_path.len() {
-                if let Some(description) =
-                    catalog.description(&command.full_path[..length].join(" "))
-                {
-                    context.push(description.to_owned());
-                }
-            }
-            for param in command.params.iter().filter(|param| param.visible()) {
-                context.push(format!("{} {}", param.option, param.description));
-            }
-            // The descriptions are Chinese: the English keywords and the
-            // backend operation name describe the command for English queries.
-            let mut description = vec![command.description.clone()];
-            description.extend(command.keywords.iter().cloned());
-            description.extend(command.ipc_command.iter().cloned());
-            let fields = BTreeMap::from([
-                (Field::Command, tokenize(&command.command)),
-                (Field::Summary, tokenize(&command.summary)),
-                (Field::Description, tokenize(&description.join(" "))),
-                (Field::Context, tokenize(&context.join(" "))),
-            ]);
-            (command, fields)
-        })
-        .collect()
+fn document(catalog: &Catalog, command: &Command) -> Document {
+    let mut context = Vec::new();
+    for length in 1..command.full_path.len() {
+        if let Some(description) = catalog.description(&command.full_path[..length].join(" ")) {
+            context.push(description.to_owned());
+        }
+    }
+    for param in command.params.iter().filter(|param| param.visible()) {
+        context.push(format!("{} {}", param.option, param.description));
+    }
+    // The descriptions are Chinese: the English keywords and the backend
+    // operation name describe the command for English queries.
+    let mut description = vec![command.description.clone()];
+    description.extend(command.keywords.iter().cloned());
+    description.extend(command.ipc_command.iter().cloned());
+    [
+        tokenize(&command.command),
+        tokenize(&command.summary),
+        tokenize(&description.join(" ")),
+        tokenize(&context.join(" ")),
+    ]
 }
 
-/// Up to five commands for `query`, best first.
-pub fn search(catalog: &Catalog, query: &str) -> Vec<Match> {
-    let documents = documents(catalog);
+/// The indexes of the best `limit` documents for `query`, best first.
+pub fn rank(documents: &[Document], query: &str, limit: usize) -> Vec<usize> {
     let total = documents.len() as f64;
-    let mut frequency: HashMap<(Field, &str), usize> = HashMap::new();
-    let mut lengths: HashMap<Field, f64> = HashMap::new();
-    for (_, fields) in &documents {
-        for (field, tokens) in fields {
-            *lengths.entry(*field).or_default() += tokens.len() as f64;
-            let mut seen: Vec<&str> = tokens.iter().map(String::as_str).collect();
-            seen.sort_unstable();
-            seen.dedup();
+    let mut frequency: HashMap<(usize, &str), usize> = HashMap::new();
+    let mut lengths = [0.0f64; 4];
+    for fields in documents {
+        for (field, tokens) in fields.iter().enumerate() {
+            lengths[field] += tokens.len() as f64;
+            let seen: HashSet<&str> = tokens.iter().map(String::as_str).collect();
             for token in seen {
-                *frequency.entry((*field, token)).or_default() += 1;
+                *frequency.entry((field, token)).or_default() += 1;
             }
         }
     }
-    let averages: HashMap<Field, f64> = lengths
-        .into_iter()
-        .map(|(field, length)| (field, (length / total).max(1.0)))
-        .collect();
+    let averages = lengths.map(|length| (length / total.max(1.0)).max(1.0));
     let terms: Vec<String> = tokenize(query)
         .into_iter()
         .filter(|term| !STOP_WORDS.contains(&term.as_str()))
         .collect();
     let mut scores: Vec<(f64, usize)> = Vec::new();
-    for (index, (_, fields)) in documents.iter().enumerate() {
+    for (index, fields) in documents.iter().enumerate() {
         let mut score = 0.0;
         for term in &terms {
             // Short words would prefix-match half the vocabulary.
@@ -172,9 +149,8 @@ pub fn search(catalog: &Catalog, query: &str) -> Vec<Match> {
             } else {
                 0
             };
-            for (field, boost) in FIELDS {
-                let tokens = &fields[&field];
-                let average = averages.get(&field).copied().unwrap_or(1.0);
+            for (field, boost) in BOOSTS.iter().enumerate() {
+                let tokens = &fields[field];
                 let length = tokens.len() as f64;
                 let mut best: HashMap<&str, f64> = HashMap::new();
                 for token in tokens {
@@ -206,7 +182,7 @@ pub fn search(catalog: &Catalog, query: &str) -> Vec<Match> {
                     let idf = (1.0 + (total - documents_with + 0.5) / (documents_with + 0.5)).ln();
                     let bm25 = idf
                         * (D + term_frequency * (K + 1.0)
-                            / (term_frequency + K * (1.0 - B + B * length / average)));
+                            / (term_frequency + K * (1.0 - B + B * length / averages[field])));
                     score += boost * weight * bm25;
                 }
             }
@@ -218,9 +194,22 @@ pub fn search(catalog: &Catalog, query: &str) -> Vec<Match> {
     scores.sort_by(|left, right| right.0.total_cmp(&left.0).then(left.1.cmp(&right.1)));
     scores
         .into_iter()
-        .take(RESULTS)
-        .map(|(_, index)| {
-            let command = documents[index].0;
+        .take(limit)
+        .map(|(_, index)| index)
+        .collect()
+}
+
+/// Up to five commands for `query`, best first; hidden commands included.
+pub fn search(catalog: &Catalog, query: &str) -> Vec<Match> {
+    let documents: Vec<Document> = catalog
+        .commands
+        .iter()
+        .map(|command| document(catalog, command))
+        .collect();
+    rank(&documents, query, RESULTS)
+        .into_iter()
+        .map(|index| {
+            let command = &catalog.commands[index];
             Match {
                 command: command.command.clone(),
                 summary: command.summary.clone(),
@@ -276,5 +265,11 @@ mod tests {
         assert!(recovered.contains(&"lovelycarve-cli carve scans create".to_owned()));
         assert!(search(catalog().unwrap(), "zzzz-no-such-thing").is_empty());
         assert!(search(catalog().unwrap(), "list").len() <= 5);
+        // Hidden commands are found too.
+        assert_eq!(top("mcp tool definitions"), "lovelycarve-cli tools");
+        assert_eq!(
+            top("search the documentation"),
+            "lovelycarve-cli docs search"
+        );
     }
 }

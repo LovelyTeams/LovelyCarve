@@ -90,11 +90,10 @@ fn takes_value(catalog: &Catalog, path: &[&str], option: &str) -> bool {
         return *value;
     }
     catalog.find(path).is_some_and(|command| {
-        command
-            .params
-            .iter()
-            .any(|param| param.option == name && param.kind != Kind::Boolean)
-            || name == "body"
+        command.params.iter().any(|param| {
+            (param.option == name || param.short.is_some_and(|short| name == short.to_string()))
+                && param.kind != Kind::Boolean
+        }) || name == "body"
     })
 }
 
@@ -120,7 +119,8 @@ pub fn candidates(catalog: &Catalog, words: &[String]) -> Vec<(String, String)> 
         let mut next = path.clone();
         next.push(word);
         let at_leaf = catalog.find(&path).is_some();
-        if catalog.is_group(&next) || (!at_leaf && catalog.find(&next).is_some()) {
+        let listed = !catalog.is_hidden(&next);
+        if listed && (catalog.is_group(&next) || (!at_leaf && catalog.find(&next).is_some())) {
             path = next;
         } else {
             positionals += 1;
@@ -149,14 +149,16 @@ pub fn candidates(catalog: &Catalog, words: &[String]) -> Vec<(String, String)> 
                 found.push((format!("--{}", param.option), param.description.clone()));
             }
             for option in &command.options {
-                if let Some(name) = option["name"].as_str() {
-                    let flag = format!("--{name}");
-                    if !found.iter().any(|(existing, _)| existing == &flag) {
-                        found.push((
-                            flag,
-                            option["description"].as_str().unwrap_or_default().into(),
-                        ));
-                    }
+                let Some(name) = option["name"].as_str() else {
+                    continue;
+                };
+                let description = option["description"].as_str().unwrap_or_default();
+                let flag = format!("--{name}");
+                if !found.iter().any(|(existing, _)| existing == &flag) {
+                    found.push((flag, description.to_owned()));
+                }
+                if let Some(alias) = option["alias"].as_str() {
+                    found.push((format!("-{alias}"), description.to_owned()));
                 }
             }
         } else if let Some(values) = command
@@ -170,8 +172,11 @@ pub fn candidates(catalog: &Catalog, words: &[String]) -> Vec<(String, String)> 
         found.extend(catalog.children(&path));
     }
     if current.starts_with('-') && expecting.is_none() {
-        for (long, _, description, _) in GLOBAL_OPTIONS {
+        for (long, short, description, _) in GLOBAL_OPTIONS {
             found.push((format!("--{long}"), (*description).to_owned()));
+            if let Some(short) = short {
+                found.push((format!("-{short}"), format!("--{long} 的简写")));
+            }
         }
     }
     found.retain(|(value, _)| value.starts_with(current.as_str()));
@@ -202,6 +207,14 @@ mod tests {
             ["source", "unlockedPartitions"]
         );
         assert_eq!(complete(&["complete", "p"]), ["powershell"]);
+        assert!(complete(&["session", "-"]).contains(&"-j".to_owned()));
+        assert!(complete(&["cases", "delete", "x", "-"]).contains(&"-f".to_owned()));
+        assert!(complete(&["files", "list", "-"]).contains(&"-q".to_owned()));
+        assert!(
+            !complete(&["t"]).contains(&"tools".to_owned()),
+            "hidden commands are not offered"
+        );
+        assert!(complete(&["docs", ""]).contains(&"search".to_owned()));
         assert!(script("lovelycarve-cli", "bash")
             .unwrap()
             .contains("complete -o default -F _lovelycarve_cli lovelycarve-cli"));

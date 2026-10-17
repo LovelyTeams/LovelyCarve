@@ -45,7 +45,12 @@ path = "src/bin/lovelycarve-cli.rs"
 # `--no-default-features` 保持 OpenCV-free（`qr_scan` 仍注册，但返回带启用指引的错误）。
 # 运行时优先用 WeChat CNN 检测器，失败回退标准 objdetect::QRCodeDetector（同一构建内即有，无需单独档）。
 default = []
-desktop = ["dep:tauri", "dep:tauri-plugin-dialog", "dep:tauri-plugin-fs", "dep:tauri-build"]
+desktop = [
+    "dep:tauri",
+    "dep:tauri-plugin-dialog",
+    "dep:tauri-plugin-fs",
+    "dep:tauri-build",
+]
 # Legacy DLL probes only; production ReFS always uses the Rust reader.
 refs-dll-oracle = []
 qrcode-wechat = [
@@ -93,12 +98,12 @@ cdfs = { path = "vendor/cdfs", default-features = false }
 # Encoding）+ encoding_rs 解码为 UTF-8，避免非 UTF-8 文本被当 UTF-8 解出乱码。纯 Rust。
 chardetng = "1.0.0"
 chrono = { version = "0.4.45", features = ["serde"] }
+# lovelycarve-cli 的子命令与参数解析；帮助由 cli/help.rs 按命令目录渲染。
+clap = { version = "4.6.7", features = ["derive", "string", "env"] }
+# lovelycarve-cli 的交互提问、遮盖输入与终端尺寸（notatin 已依赖同一版本）。
+crossterm = "0.29.0"
 # 与 Tauri 相同的每用户数据目录（案件登记簿、用户插件），独立 CLI 无需 Tauri 解析路径。
 dirs = "7.0.0"
-# lovelycarve-cli 的子命令、参数解析和帮助信息。
-clap = { version = "4.6.7", features = ["derive", "string", "env"] }
-# lovelycarve-cli 在终端内隐藏输入敏感参数（notatin 已依赖同一版本）。
-crossterm = "0.29.0"
 # 配合 chardetng 把检测出的编码解码为 UTF-8（WHATWG 标准实现，BOM 识别 + 替换字符
 # 反馈）。chardetng 已传递依赖它，这里显式声明供 core::text_decode 直接使用。
 encoding_rs = "0.8.42"
@@ -205,6 +210,8 @@ udif = { path = "vendor/udif" }
 # 内置主题色(+tint)→RGB 解析。calamine 不暴露样式，二者优势互补。纯 Rust。
 # 注：3.0 的加密/imagesize 依赖未做 feature 门，default-features=false 无收益。
 umya-spreadsheet = "3.1.0"
+# lovelycarve-cli 帮助与提示的列宽：中日韩全角字符占两列（已在依赖树中）。
+unicode-width = "0.2.2"
 uuid = { version = "1.28.0", features = ["v4", "serde"] }
 vdi = { path = "vendor/vdi" }
 veracrypt = { path = "vendor/veracrypt", package = "veracrypt-core" }

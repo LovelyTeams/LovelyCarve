@@ -7,7 +7,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- `lovelycarve-cli docs search` 离线搜索随程序附带的使用指南、CLI 手册与格式专题，`docs get` / `docs list` 阅读与列出页面；隐藏命令 `tools` 把全部命令输出为 MCP 工具定义，便于 MCP 服务器包装命令行。
+
 ### Changed
+
+- `lovelycarve-cli` 的帮助改为 yargs 版式：用法与说明之后是命令、位置参数、全局选项、选项与示例表格，右侧标注类型、必填、可选值与默认值，按终端宽度换行。提问与进度改为 clack 样式，进度标签只写动作并显示秒数，提问时取消以 130 退出且不再另显示错误块；后端命令失败显示为带错误代码与 IPC 名称的「后端错误」块；JSON 结果保留后端字段顺序。数组选项可在一个选项后列出多个值，`--body` 可以给出必填的位置参数，`.env.local` 覆盖 `.env`，检材取自环境变量或文件时提示来源，缺少检材时列出全部指定方式。
 
 - **破坏性变更**：`lovelycarve-cli` 命令行重新设计。命令统一为 `<集合>… <动词>`（如 `images open`、`files read`、`carve scans create`），标准输出只放 JSON 或原始字节，提示与错误写标准错误；新增 `cli search` 按意图查找命令、`schema` 查看后端请求、`complete` 生成 shell 补全；所有命令支持 `--dry-run` 与 `--body`，删除类命令需确认或 `--force`，缺少的值在终端中提问，密码遮盖输入。交互浏览改为 `lovelycarve-cli shell`，JSONL 会话协议升级到 v2（请求写命令路径，参数以 API 名称为键）。原 IPC 名称命令（`image_load`、`fs_read_range` 等）、`call`、`run`、`commands`、`capabilities` 和 `ls`、`cat`、`grep` 等快捷词不再可用，输入旧名称时会提示对应的新命令。
 - `lovelycarve-cli` 成为不链接 Tauri 的独立程序，不包含 WebView、GTK 或桌面运行时；Windows `asInvoker` 清单在链接时嵌入。桌面构建通过新的 `desktop` Cargo 特性启用 Tauri。

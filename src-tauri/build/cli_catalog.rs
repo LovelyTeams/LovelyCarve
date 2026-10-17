@@ -5,6 +5,8 @@ use std::{collections::BTreeMap, error::Error, fs, path::PathBuf};
 
 use syn::{parse::Parser, punctuated::Punctuated, visit::Visit, Token};
 
+#[path = "cli_catalog/docs.rs"]
+mod docs;
 #[path = "cli_catalog/emit.rs"]
 mod emit;
 #[path = "cli_catalog/manifest.rs"]
@@ -75,6 +77,7 @@ pub fn generate() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed={MANIFEST}");
     for file in [
         "build/cli_catalog.rs",
+        "build/cli_catalog/docs.rs",
         "build/cli_catalog/emit.rs",
         "build/cli_catalog/manifest.rs",
         "build/cli_catalog/operation.rs",
@@ -101,5 +104,8 @@ pub fn generate() -> Result<(), Box<dyn Error>> {
         out.join("cli_catalog.json"),
         serde_json::to_vec(&emit::catalog(&manifest, &resolved, &version))?,
     )?;
+    let manifest_dir =
+        PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").ok_or("CARGO_MANIFEST_DIR missing")?);
+    docs::emit(&manifest_dir, &out)?;
     Ok(())
 }

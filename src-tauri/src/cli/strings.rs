@@ -237,30 +237,62 @@ pub(super) async fn read(
     tokio::task::spawn_blocking(move || -> Result<Output, CliError> {
         let _permit = permit;
         let mut session = FsSession::new(&image);
-        let size = session.file_stat(&node_id).map_err(super::internal_error)?.size;
-        if offset > size { return Err(CliError::invalid("偏移超过文件大小")); }
+        let size = session
+            .file_stat(&node_id)
+            .map_err(super::internal_error)?
+            .size;
+        if offset > size {
+            return Err(CliError::invalid("偏移超过文件大小"));
+        }
         let length = length.unwrap_or(size - offset).min(size - offset);
         let mut scanner = Scanner::new(encoding, minimum, limit, offset);
-        let (result, faults) = image.collect_read_faults(|| session.stream_file_range(
-            &node_id, offset, length, 1024 * 1024, |chunk| {
+        let (result, faults) = image.collect_read_faults(|| {
+            session.stream_file_range(&node_id, offset, length, 1024 * 1024, |chunk| {
                 anyhow::ensure!(!cancellation.is_cancelled(), "字符串提取已取消");
-                if !scanner.push(chunk) { return Err(ResultLimitReached.into()); }
+                if !scanner.push(chunk) {
+                    return Err(ResultLimitReached.into());
+                }
                 Ok(())
-            },
-        ));
+            })
+        });
         match result {
             Ok(bytes_read) if bytes_read == length => scanner.finish(),
-            Ok(bytes_read) => return Err(CliError::invalid(format!("文件未完整读取：期望 {length} 字节，实际 {bytes_read} 字节"))),
-            Err(error) if error.downcast_ref::<ResultLimitReached>().is_some() => {},
+            Ok(bytes_read) => {
+                return Err(CliError::invalid(format!(
+                    "文件未完整读取：期望 {length} 字节，实际 {bytes_read} 字节"
+                )))
+            }
+            Err(error) if error.downcast_ref::<ResultLimitReached>().is_some() => {}
             Err(error) => return Err(super::internal_error(error)),
         }
-        image.validate_source_file_stable().map_err(super::internal_error)?;
-        Ok(Output::Json(json!({
-            "strings":scanner.records, "encoding":encoding, "offset":offset, "size":size,
-            "bytes_read":scanner.position - offset, "truncated":scanner.truncated || offset + length < size,
-            "task_id":task_id, "read_faults":faults,
-        })))
-    }).await.map_err(super::internal_error)?
+        image
+            .validate_source_file_stable()
+            .map_err(super::internal_error)?;
+        super::json_output(Extracted {
+            strings: scanner.records,
+            encoding,
+            offset,
+            size,
+            bytes_read: scanner.position - offset,
+            truncated: scanner.truncated || offset + length < size,
+            task_id,
+            read_faults: faults,
+        })
+    })
+    .await
+    .map_err(super::internal_error)?
+}
+
+#[derive(Serialize)]
+struct Extracted<R, E, F> {
+    strings: R,
+    encoding: E,
+    offset: u64,
+    size: u64,
+    bytes_read: u64,
+    truncated: bool,
+    task_id: String,
+    read_faults: F,
 }
 
 #[cfg(test)]

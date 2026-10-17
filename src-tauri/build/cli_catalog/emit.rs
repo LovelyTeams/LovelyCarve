@@ -53,7 +53,7 @@ pub fn dispatch(resolved: &[Resolved<'_>]) -> String {
             call = quote!(#call.await);
         }
         if operation.returns_result {
-            call = quote!(#call.map_err(super::command_error)?);
+            call = quote!(#call.map_err(|error| super::command_error(error).in_operation(#name))?);
         }
         let result = match operation.output {
             Output::Json => quote!(super::json_output(#call)),
@@ -166,7 +166,7 @@ fn command_meta(command: &Resolved<'_>) -> Value {
         options.push(flag("text", "按 UTF-8 解码原始字节后输出"));
     }
     if command.destructive {
-        let mut force = flag("force", "跳过确认直接执行");
+        let mut force = flag("force", "跳过确认（用于脚本和 CI）");
         force["alias"] = json!("f");
         options.push(force);
     }
@@ -208,6 +208,10 @@ fn command_meta(command: &Resolved<'_>) -> Value {
     meta.insert("options".into(), json!(options));
     meta.insert("category".into(), json!(spec.category));
     meta.insert("operationId".into(), json!(words.join(".")));
+    meta.insert("hideCommand".into(), json!(spec.hide_command));
+    if !spec.examples.is_empty() {
+        meta.insert("examples".into(), json!(spec.examples));
+    }
     if let Some(operation) = command.operation {
         meta.insert("ipcCommand".into(), json!(operation.name));
         if !operation.docs.is_empty() {

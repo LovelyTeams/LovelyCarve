@@ -8,7 +8,7 @@ use super::*;
 
 #[test]
 fn references_are_structural_and_wait_only_for_pending_dependencies() {
-    let results = HashMap::from([("open".into(), json!({"id":"image-1"}))]);
+    let results = HashMap::from([("open".to_owned(), Json::from(json!({"id":"image-1"})))]);
     let pending = HashSet::from(["open".to_owned()]);
     let mut args = json!({"imageId":{"$ref":"open#/id"},"text":"$open/id"});
     assert!(pending_ref(&args, &pending));
@@ -18,6 +18,24 @@ fn references_are_structural_and_wait_only_for_pending_dependencies() {
     assert!(resolve_refs(&mut json!({"$ref":"missing#/id"}), &results).is_err());
     assert!(resolve_refs(&mut json!({"$ref":true}), &results).is_err());
     assert!(resolve_refs(&mut json!({"$ref":"open#/missing"}), &results).is_err());
+}
+
+#[test]
+fn responses_carry_results_in_the_order_the_command_wrote_them() {
+    #[derive(serde::Serialize)]
+    struct Image {
+        id: &'static str,
+        bytes: u64,
+    }
+    let result = Json::serialize(&Image { id: "x", bytes: 3 });
+    assert_eq!(
+        response(Some("open"), &result).unwrap(),
+        r#"{"id":"open","result":{"id":"x","bytes":3}}"#
+    );
+    assert_eq!(
+        response(None, &Err(CliError::invalid("bad"))).unwrap(),
+        r#"{"id":null,"error":{"code":"invalidInput","message":"bad"}}"#
+    );
 }
 
 #[test]
@@ -84,26 +102,26 @@ async fn queries_overlap_flush_with_open_input_and_barriers_preserve_context() {
                     .recv_timeout(Duration::from_secs(5))
                     .unwrap();
                 active.fetch_sub(1, Ordering::SeqCst);
-                Ok(json!({"id":"source"}))
+                Ok(json!({"id":"source"}).into())
             }
             "fast" => {
                 assert_eq!(context.image_id.as_deref(), Some("initial"));
                 finished_sender.send("fast").unwrap();
-                Ok(Value::Null)
+                Ok(Value::Null.into())
             }
             "dependent" => {
                 assert_eq!(request.args["imageId"], "source");
-                Ok(Value::Null)
+                Ok(Value::Null.into())
             }
             "switch" => {
                 assert_eq!(active.load(Ordering::SeqCst), 0);
                 context.image_id = Some("next".into());
-                Ok(Value::Null)
+                Ok(Value::Null.into())
             }
             "after" => {
                 assert_eq!(context.image_id.as_deref(), Some("next"));
                 finished_sender.send("after").unwrap();
-                Ok(Value::Null)
+                Ok(Value::Null.into())
             }
             _ => panic!("unexpected request"),
         }
@@ -172,7 +190,7 @@ async fn failed_dependencies_duplicates_and_panics_do_not_stop_other_queries() {
             match request.id.as_str() {
                 "bad" => Err(CliError::invalid("failed")),
                 "panic" => panic!("test handler panic"),
-                "good" => Ok(Value::Null),
+                "good" => Ok(Value::Null.into()),
                 _ => panic!("invalid request reached executor"),
             }
         })
@@ -206,7 +224,7 @@ async fn sequential_default_and_parallel_limit_bound_active_queries() {
                 observed.fetch_max(count, Ordering::SeqCst);
                 std::thread::sleep(Duration::from_millis(20));
                 active.fetch_sub(1, Ordering::SeqCst);
-                Ok(Value::Null)
+                Ok(Value::Null.into())
             })
             .await
             .unwrap()

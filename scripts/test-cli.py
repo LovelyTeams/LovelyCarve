@@ -103,6 +103,49 @@ def main():
         # Destructive commands need --force where nobody can be asked.
         refused = run(["cases", "delete", str(root / "no such case")], expected=1)
         assert "Aborted." in refused.stderr, refused.stderr
+        # Results keep the order the backend wrote their fields in.
+        assert run(["schema", "images", "open"]).stdout.startswith('{\n  "operationId": "images.open",')
+        # A required subject may come from --body; arrays take several values after one option.
+        preview = json.loads(run(["images", "open", "--body", json.dumps({"path": str(missing)}), "--dry-run"]).stdout)
+        assert preview["body"]["path"] == str(missing), preview
+        preview = json.loads(run(["files", "hash", "/x", "--algos", "md5", "sha256", "--dry-run"]).stdout)
+        assert preview["body"]["algos"] == ["md5", "sha256"], preview
+        assert json.loads(run(["complete", "bash", "--dry-run"]).stdout)["executed"] is False
+        # Hidden MCP tool definitions: every command, none of them listed in help or completion.
+        tools = json.loads(run(["tools"]).stdout)
+        assert tools["version"] == "1.0" and len(tools["tools"]) == system["commands"], len(tools["tools"])
+        assert next(tool for tool in tools["tools"]
+                    if tool["name"] == "lovelycarve_cli_images_open")["inputSchema"]["required"] == ["path"]
+        assert "lovelycarve-cli tools" not in run(["--help"]).stdout
+        assert "tools" not in run(["complete", "--", "t"]).stdout.split()
+        assert "tools" not in run(["toolz"], expected=1).stderr.split("未知命令：toolz")[1]
+        # The bundled documentation is searchable and readable offline.
+        hits = json.loads(run(["docs", "search", "JSONL 会话"]).stdout)
+        assert hits and {"title", "section", "description", "page"} == set(hits[0]), hits
+        assert {"page": "CLI.md", "title": "LovelyCarve CLI"} in json.loads(run(["docs", "list"]).stdout)
+        assert run(["docs", "get", "CLI.md", "--section", "JSONL 会话"]).stdout.startswith("## JSONL 会话")
+        run(["docs", "get", "missing.md"], expected=1)
+        _, rows = session([
+            {"id": "schema", "command": "schema", "args": {"command": ["files", "hash"]}},
+            {"id": "docs", "command": "docs get", "args": {"page": "CLI.md", "section": "JSONL 会话"}},
+            {"id": "tools", "command": "tools"},
+        ])
+        assert rows[0]["result"]["ipcCommand"] == "fs_digest", rows[0]
+        assert rows[1]["result"]["markdown"].startswith("## JSONL 会话"), rows[1]
+        assert len(rows[2]["result"]["tools"]) == system["commands"]
+        # .env.local overrides .env, and a scope taken from either is announced.
+        (root / ".env").write_text(f"LOVELYCARVE_IMAGE={root / 'missing.E01'}\n", encoding="utf-8")
+        (root / ".env.local").write_text(f"LOVELYCARVE_IMAGE={evidence}\n", encoding="utf-8")
+        try:
+            scoped = run(["images", "get"])
+            assert Path(json.loads(scoped.stdout)["path"]).name == evidence.name, scoped.stdout
+            assert "来自 .env.local 中的 LOVELYCARVE_IMAGE" in scoped.stderr, scoped.stderr
+            assert "使用检材" not in run(["--quiet", "images", "get"]).stderr
+        finally:
+            (root / ".env").unlink()
+            (root / ".env.local").unlink()
+        missing_scope = run(["images", "get"], expected=1).stderr
+        assert "未指定检材" in missing_scope and "LOVELYCARVE_IMAGE" in missing_scope, missing_scope
 
         concurrent_requests = [
             {"id": "open", "command": "images open", "args": {"path": str(evidence)}},

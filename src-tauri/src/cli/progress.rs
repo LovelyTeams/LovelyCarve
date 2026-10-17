@@ -1,7 +1,9 @@
-//! Progress for a running command: a braille spinner with an elapsed timer on
-//! stderr, and OSC 9;4 progress in the tab or taskbar of terminals that support
-//! it. Both stay silent for pipes, CI and `--quiet`, so results remain
-//! machine-readable.
+//! Progress for a running command, drawn as cf's clack spinner: a gray guide
+//! line, then a braille frame, the verb-only label and an elapsed `[Ns]`
+//! timer on stderr, ending as a green `◇` line (a red `▲` one on failure);
+//! and OSC 9;4 progress in the tab or taskbar of terminals that support it.
+//! The spinner needs colour terminals on stdout and stderr and stays off with
+//! `LOVELYCARVE_QUIET=1`; `--quiet` turns only the terminal progress off.
 use std::{
     future::Future,
     io::{IsTerminal, Write},
@@ -14,14 +16,23 @@ use std::{
 
 use super::{
     interactive,
-    output::{self, paint, Role},
+    output::{self, Tone},
 };
 
 const FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const FRAME_DELAY: Duration = Duration::from_millis(80);
 
-fn can_animate(quiet: bool) -> bool {
-    !quiet
+/// How a command may show that it is running.
+#[derive(Clone, Copy)]
+pub struct Progress {
+    /// `--quiet`: no terminal progress.
+    pub quiet: bool,
+    /// Whether the spinner may draw at all (never in a JSONL session).
+    pub spinner: bool,
+}
+
+fn can_animate(progress: Progress) -> bool {
+    progress.spinner
         && !interactive::quiet_env()
         && output::styled()
         && std::io::stdout().is_terminal()
@@ -56,25 +67,36 @@ fn osc(state: u8) {
     }
 }
 
-/// Run `task` with a live spinner labelled `label`; on completion the line
-/// becomes `◇ label`, or a red `■ label` when the task fails.
+/// `[12s]`, or `[1m 5s]` past a minute.
+fn timer(elapsed: Duration) -> String {
+    let seconds = elapsed.as_secs();
+    if seconds >= 60 {
+        format!("[{}m {}s]", seconds / 60, seconds % 60)
+    } else {
+        format!("[{seconds}s]")
+    }
+}
+
+/// Run `task` with a live spinner labelled `label`.
 pub async fn with_progress<T, E>(
     label: &str,
-    quiet: bool,
+    progress: Progress,
     task: impl Future<Output = Result<T, E>>,
 ) -> Result<T, E> {
-    let osc_enabled = osc_supported(quiet);
+    let osc_enabled = osc_supported(progress.quiet);
     if osc_enabled {
         osc(3);
     }
-    if !can_animate(quiet) {
+    if !can_animate(progress) {
         let result = task.await;
         if osc_enabled {
             osc(0);
         }
         return result;
     }
-    output::open_session(quiet);
+    output::open_session(progress.quiet);
+    let started = Instant::now();
+    eprintln!("{}", output::tone(Tone::Gray, "│"));
     let stop = Arc::new(AtomicBool::new(false));
     let spinner = {
         let stop = Arc::clone(&stop);
@@ -82,19 +104,13 @@ pub async fn with_progress<T, E>(
         std::thread::Builder::new()
             .name("lovelycarve-cli-progress".into())
             .spawn(move || {
-                let started = Instant::now();
                 let mut frame = 0usize;
                 while !stop.load(Ordering::SeqCst) {
                     let mut stderr = std::io::stderr().lock();
                     let line = format!(
-                        "\r\x1b[2K{}  {}  {} {}",
-                        paint(Role::Muted, "│"),
-                        paint(Role::Brand, FRAMES[frame % FRAMES.len()]),
-                        label,
-                        paint(
-                            Role::Muted,
-                            &format!("({:.1}s)", started.elapsed().as_secs_f64())
-                        )
+                        "\r\x1b[2K{}  {label} {}",
+                        output::tone(Tone::Magenta, FRAMES[frame % FRAMES.len()]),
+                        timer(started.elapsed())
                     );
                     if write!(stderr, "{line}")
                         .and_then(|()| stderr.flush())
@@ -119,10 +135,22 @@ pub async fn with_progress<T, E>(
         osc(0);
     }
     let marker = if result.is_ok() {
-        paint(Role::Muted, "◇")
+        output::tone(Tone::Green, "◇")
     } else {
-        paint(Role::Error, "■")
+        output::tone(Tone::Red, "▲")
     };
-    eprintln!("\r\x1b[2K{marker}  {label}");
+    eprintln!("\r\x1b[2K{marker}  {label} {}", timer(started.elapsed()));
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn timer_counts_whole_seconds_and_minutes() {
+        assert_eq!(timer(Duration::from_millis(900)), "[0s]");
+        assert_eq!(timer(Duration::from_secs(59)), "[59s]");
+        assert_eq!(timer(Duration::from_secs(65)), "[1m 5s]");
+    }
 }

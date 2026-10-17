@@ -1,7 +1,7 @@
 //! Shell navigation and bounded walks over the shared index-first directory pages.
 use std::{collections::HashSet, future::Future};
 
-use serde_json::{json, Value};
+use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
 use super::CliError;
@@ -11,6 +11,13 @@ use crate::{
 };
 
 const PAGE_SIZE: usize = 500;
+
+/// A node a walk found, with its path below the walk's root.
+#[derive(Debug, Serialize)]
+pub struct Entry {
+    pub path: String,
+    pub node: FsNode,
+}
 
 pub(super) async fn node<F, Fut>(
     location: &[(String, String)],
@@ -104,7 +111,7 @@ pub(super) async fn walk<F, Fut>(
     filter: Option<&str>,
     cancellation: &CancellationToken,
     page: &mut F,
-) -> Result<(Vec<Value>, bool), CliError>
+) -> Result<(Vec<Entry>, bool), CliError>
 where
     F: FnMut(String, Option<String>, usize) -> Fut,
     Fut: Future<Output = Result<FsNodePage, CliError>>,
@@ -132,15 +139,15 @@ where
             for node in result.items {
                 examined += 1;
                 let path = format!("{prefix}/{}", node.name);
-                if filter.is_none_or(|filter| node.name.to_lowercase().contains(filter)) {
-                    items.push(json!({"path":path,"node":node}));
-                }
                 if node.kind == NodeKind::Dir {
                     if depth + 1 < max_depth {
-                        directories.push((node.id, path, depth + 1));
+                        directories.push((node.id.clone(), path.clone(), depth + 1));
                     } else if max_depth > 1 {
                         truncated = true;
                     }
+                }
+                if filter.is_none_or(|filter| node.name.to_lowercase().contains(filter)) {
+                    items.push(Entry { path, node });
                 }
             }
             cursor = result.next_cursor;
@@ -233,8 +240,8 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(
-            (items.len(), items[0]["path"].as_str(), truncated),
-            (1, Some("/nested/REPORT.txt"), false)
+            (items.len(), items[0].path.as_str(), truncated),
+            (1, "/nested/REPORT.txt", false)
         );
         let (items, truncated) = walk("part:0", 1, 503, None, &cancellation, &mut page)
             .await

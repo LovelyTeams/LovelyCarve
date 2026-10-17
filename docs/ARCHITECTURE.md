@@ -956,18 +956,24 @@ CLI 构建不启用 `desktop` 特性，不链接 Tauri、WebView 或 GUI 工具�
 
 命令目录由构建脚本生成：`build/cli_catalog.rs` 读取 `lib.rs` 的 `generate_handler!` 注册表和各命令的
 真实函数签名，与 `src/cli/commands.toml` 中逐条审阅的命令定义合并，生成按 API 参数名调用命令函数的
-`cli_dispatch.rs` 和命令目录 `cli_catalog.json`（命令、参数、用法、类别、并发与敏感字段）。构建时检查：每个注册命令映射到恰好一个 `<集合>… <动词>` 命令，或在
+`cli_dispatch.rs` 和命令目录 `cli_catalog.json`（命令、参数、用法、类别、并发、敏感字段、隐藏标记与示例）。构建时检查：每个注册命令映射到恰好一个 `<集合>… <动词>` 命令，或在
 `[[superseded]]` 中注明替代命令；动词在固定动词表内，不使用同义词（info/status→get、remove→delete、
 ls/query→list 等）；命令路径唯一且不是其他命令的前缀；`list`/`count` 不带位置参数；选项名与短选项
-不与 CLI 保留选项冲突；命令签名中出现不支持的注入参数时构建失败。手写命令（`files list/get/read/search`、
-`files strings list`、`context`、`tasks wait`、`system get`、`cli search` 等）也在该文件中声明参数，
-命令搜索、`schema`、帮助、补全和 JSONL 会话读取同一份目录。
+不与 CLI 保留选项冲突；示例以程序名开头；命令签名中出现不支持的注入参数时构建失败。手写命令（`files list/get/read/search`、
+`files strings list`、`context`、`tasks wait`、`system get`、`cli search`、`docs`、`tools` 等）也在该文件中声明参数，
+命令搜索、`schema`、帮助、补全、MCP 工具定义和 JSONL 会话读取同一份目录。`hide_command = true` 的命令
+（如 `tools`）可以运行和搜索，但不进入帮助、补全和拼写建议。构建脚本还把 `docs/` 中的使用指南、CLI 手册、
+iOS 备份、Linux 基本信息插件和全部格式专题嵌入 `cli_docs.rs`，供离线的 `docs search/list/get` 使用；
+这些页面缺失时构建失败。
 
-`cli/` 按职责分为：`argv`（由目录构建 clap 命令树、帮助与命令行错误）、`context`（一次执行的统一步骤：
-dry-run、删除确认、默认值与生成 ID、提问、`--image` 作用域、镜像内路径解析、不覆盖检查、调用和
-上下文更新）、`native` / `browsing` / `grep` / `strings`（手写命令）、`output` / `prompt` / `progress` /
-`interactive`（标准输出与标准错误、交互提问、进度、终端与代理检测）、`search`（BM25+ 命令搜索）、
-`schema`、`complete`、`dotenv`、`session`、`shell` 和 `runtime`（进程入口、后端启动与关闭、中断处理）。
+`cli/` 按职责分为：`argv`（由目录构建 clap 命令树并解析参数、命令行错误）、`help`（yargs 版式的帮助：
+用法、说明、命令／位置参数／全局选项／选项／示例表格与右对齐的类型标注）、`context`（一次执行的统一步骤：
+dry-run、删除确认、默认值与生成 ID、提问、`--image` 作用域与来源提示、镜像内路径解析、不覆盖检查、调用和
+上下文更新）、`native` / `browsing` / `grep` / `strings`（手写命令；`native::offline` 处理无需后端的发现命令）、
+`output` / `prompt` / `progress` / `interactive`（标准输出与标准错误、clack 式提问与进度、终端与代理检测）、
+`search`（BM25+ 排序，命令搜索与文档搜索共用）、`docs`、`tools`、`schema`、`complete`、`dotenv`、`session`、
+`shell` 和 `runtime`（进程入口、后端启动与关闭、中断处理）。结构化结果以 `cli::Json` 保存后端序列化的 JSON
+文本，打印和会话响应保留字段顺序，需要读取时才解析为值；后端命令的错误带上 IPC 名称，渲染为「后端错误」块。
 可执行文件旁的 `plugins/` 同样参与插件发现，`lc-plugin-host` 也从可执行文件旁查找。
 `just test-cli` 以真实进程验证无窗口启动、会话协议、脚本与中断退出码。
 

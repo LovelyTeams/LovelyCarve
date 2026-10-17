@@ -15,7 +15,7 @@ use tokio::{sync::mpsc, task::JoinSet};
 use super::{
     catalog::{self, Command},
     context::{Context, Exec, Request as Run},
-    CliError, Output,
+    output, CliError, Json, Output,
 };
 
 const MAX_LINE: usize = 16 * 1024 * 1024;
@@ -87,7 +87,7 @@ fn normalize(command: &Command, args: Map<String, Value>) -> Result<Map<String, 
 }
 
 /// Only structural references are expanded; literal evidence text stays exact.
-fn resolve_refs(value: &mut Value, results: &HashMap<String, Value>) -> Result<(), CliError> {
+fn resolve_refs(value: &mut Value, results: &HashMap<String, Json>) -> Result<(), CliError> {
     match value {
         Value::Object(object) if object.len() == 1 && object.contains_key("$ref") => {
             let reference = object["$ref"]
@@ -96,7 +96,7 @@ fn resolve_refs(value: &mut Value, results: &HashMap<String, Value>) -> Result<(
             let (id, pointer) = reference.split_once('#').unwrap_or((reference, ""));
             *value = results
                 .get(id)
-                .and_then(|result| result.pointer(pointer))
+                .and_then(|result| result.value().pointer(pointer))
                 .cloned()
                 .ok_or_else(|| CliError::invalid(format!("无效结果引用: {reference}")))?;
         }
@@ -128,10 +128,22 @@ fn pending_ref(value: &Value, pending: &HashSet<String>) -> bool {
     }
 }
 
-fn print(response: &Value) -> Result<(), CliError> {
+/// One response line: `{"id":…,"result":…}` with the result's JSON text as
+/// the command wrote it, or `{"id":…,"error":…}`.
+fn response(id: Option<&str>, result: &Result<Json, CliError>) -> Result<String, CliError> {
+    let id = serde_json::to_string(&id)?;
+    Ok(match result {
+        Ok(json) => format!("{{\"id\":{id},\"result\":{}}}", json.text()),
+        Err(error) => format!(
+            "{{\"id\":{id},\"error\":{}}}",
+            serde_json::to_string(error)?
+        ),
+    })
+}
+
+fn print(line: &str) -> Result<(), CliError> {
     let mut stdout = std::io::stdout().lock();
-    serde_json::to_writer(&mut stdout, response)?;
-    writeln!(stdout)?;
+    writeln!(stdout, "{line}")?;
     stdout.flush()?;
     Ok(())
 }
@@ -139,12 +151,12 @@ fn print(response: &Value) -> Result<(), CliError> {
 struct Completion {
     id: String,
     context: Context,
-    result: Result<Value, CliError>,
+    result: Result<Json, CliError>,
 }
 
 #[derive(Default)]
 struct Responses {
-    results: HashMap<String, Value>,
+    results: HashMap<String, Json>,
     pending: HashSet<String>,
     failed: bool,
 }
@@ -153,21 +165,18 @@ impl Responses {
     fn publish(
         &mut self,
         id: Option<String>,
-        result: Result<Value, CliError>,
+        result: Result<Json, CliError>,
     ) -> Result<(), CliError> {
-        let response = match result {
-            Ok(value) => {
-                if let Some(id) = &id {
-                    self.results.insert(id.clone(), value.clone());
+        print(&response(id.as_deref(), &result)?)?;
+        match result {
+            Ok(json) => {
+                if let Some(id) = id {
+                    self.results.insert(id, json);
                 }
-                json!({"id": id, "result": value})
             }
-            Err(error) => {
-                self.failed = true;
-                json!({"id": id, "error": error})
-            }
-        };
-        print(&response)
+            Err(_) => self.failed = true,
+        }
+        Ok(())
     }
 
     async fn finish_one(&mut self, tasks: &mut JoinSet<Completion>) -> Result<(), CliError> {
@@ -182,7 +191,7 @@ impl Responses {
 
 fn launch<F>(tasks: &mut JoinSet<Completion>, context: Context, request: Request, execute: F)
 where
-    F: Fn(&mut Context, Request) -> Result<Value, CliError> + Send + 'static,
+    F: Fn(&mut Context, Request) -> Result<Json, CliError> + Send + 'static,
 {
     tasks.spawn_blocking(move || {
         let mut context = context;
@@ -207,7 +216,7 @@ async fn run_lines<F>(
     execute: F,
 ) -> Result<bool, CliError>
 where
-    F: Fn(&mut Context, Request) -> Result<Value, CliError> + Clone + Send + 'static,
+    F: Fn(&mut Context, Request) -> Result<Json, CliError> + Clone + Send + 'static,
 {
     let mut responses = Responses::default();
     let mut request_ids = HashSet::new();
@@ -303,10 +312,7 @@ fn save(path: &Path, output: Output) -> Result<(), CliError> {
         .unwrap_or(Path::new("."));
     let mut file = tempfile::NamedTempFile::new_in(parent)?;
     match output {
-        Output::Json(value) => {
-            serde_json::to_writer_pretty(&mut file, &value)?;
-            writeln!(file)?;
-        }
+        Output::Json(json) => writeln!(file, "{}", output::plain_json(&json))?,
         Output::Bytes(bytes) => file.write_all(&bytes)?,
         Output::Written => {}
     }
@@ -387,7 +393,7 @@ pub(super) async fn json_lines(
         match request.output {
             Some(path) => {
                 save(Path::new(&path), output)?;
-                Ok(json!({"output": path}))
+                Ok(json!({"output": path}).into())
             }
             None => Ok(output.into_json()),
         }

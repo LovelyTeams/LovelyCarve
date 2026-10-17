@@ -16,10 +16,15 @@
 # - every command path is unique and no command path is the prefix of another;
 # - every parameter named here exists, and option names do not collide with
 #   the reserved CLI options (--image, --case, --quiet, --dry-run, --body,
-#   --force, --text, --json, --output, …); a parameter's `short` alias may not
+#   --force, --text, --json, --output, --experimental-*, …); a parameter's
+#   `short` alias may not be -i, -q, -h, -v, -f or -c;
 #   be -i, -q, -h, -v or -f;
 # - `delete` commands, and commands with `confirm`, ask before running and
-#   take --force; secrets are prompted without echo and redacted in --dry-run.
+#   take --force; secrets are prompted without echo and redacted in --dry-run;
+# - every `examples` entry starts with `lovelycarve-cli `.
+#
+# `hide_command = true` keeps a command runnable and searchable but out of
+# help, completion and command suggestions; `examples` appear in its help.
 #
 # Parameter names are the backend's camelCase argument names: they are the
 # keys of --body, of `schema` output and of JSONL session requests. Options are
@@ -76,6 +81,7 @@ key = "SQLCipher 等加密数据库的密钥（JSON）"
 "cli" = "发现命令"
 "context" = "会话上下文：当前检材与镜像内目录"
 "disks" = "主机物理磁盘"
+"docs" = "随程序附带的使用文档：搜索、列出与阅读"
 "encrypted-volumes" = "LUKS、VeraCrypt 与 FileVault 加密容器"
 "files" = "检材内的文件：按路径或节点浏览、读取、解析与导出"
 "files ancestors" = "节点的祖先目录链"
@@ -471,6 +477,10 @@ description = "输出生成命令发送的后端请求：operationId、IPC 命�
 category = "read"
 args = ["command"]
 concurrent = true
+examples = [
+    { command = "lovelycarve-cli schema images open", description = "查看 images open 发送的后端请求" },
+    { command = "lovelycarve-cli schema --list", description = "列出全部生成命令的请求结构" },
+]
 [command.params.command]
 type = "array"
 description = "命令路径，例如 images open"
@@ -486,10 +496,27 @@ description = "输出补全脚本；按 Tab 时 shell 以 complete -- <单词…
 category = "read"
 args = ["shell"]
 keywords = ["tab completion", "bash", "zsh", "fish", "powershell"]
+examples = [
+    { command = "lovelycarve-cli complete powershell >> $PROFILE", description = "安装 PowerShell 补全（重开终端后生效）" },
+    { command = "lovelycarve-cli complete bash >> ~/.bashrc", description = "安装 bash 补全（重开终端后生效）" },
+    { command = "lovelycarve-cli complete zsh >> ~/.zshrc", description = "安装 zsh 补全（重开终端后生效）" },
+    { command = "lovelycarve-cli complete fish > ~/.config/fish/completions/lovelycarve-cli.fish", description = "安装 fish 补全" },
+]
 [command.params.shell]
 type = "enum"
 values = ["bash", "zsh", "fish", "powershell"]
 description = "要生成补全脚本的 shell"
+
+[[command]]
+path = "tools"
+native = "tools"
+summary = "输出 MCP 工具定义"
+description = "把全部命令转换成 MCP 工具定义（名称、说明与输入结构），供 MCP 服务器包装本程序。"
+category = "read"
+concurrent = true
+hide_command = true
+keywords = ["mcp", "model context protocol", "tool definitions"]
+examples = [{ command = "lovelycarve-cli tools > tools.json", description = "保存全部工具定义" }]
 
 [[command]]
 path = "session"
@@ -498,6 +525,10 @@ summary = "以 JSONL 在一个进程内连续执行命令"
 description = "从标准输入逐行读取 {\"id\",\"command\",\"args\"} 请求，每条结果写成一行 JSON；检材与案件在请求之间保持打开。"
 category = "action"
 keywords = ["jsonl", "batch", "automation", "agent", "stdin"]
+examples = [
+    { command = "lovelycarve-cli --image D:\\evidence\\disk.E01 session --jobs 4", description = "对一个检材连续提交 JSONL 请求，最多 4 条查询并发" },
+    { command = "lovelycarve-cli --case D:\\cases\\demo session --events", description = "同时把进度事件以 JSONL 写到标准错误" },
+]
 [command.params.jobs]
 type = "number"
 default = 1
@@ -514,6 +545,7 @@ summary = "交互式终端"
 description = "逐行执行命令，检材与案件在命令之间保持打开；cd、pwd 切换镜像内目录，exit 退出。"
 category = "action"
 keywords = ["repl", "interactive"]
+examples = [{ command = "lovelycarve-cli --case D:\\cases\\demo shell", description = "打开案件后进入交互终端" }]
 
 # ── cli (hand-written) ──────────────────────────────────────────────────────
 
@@ -525,10 +557,62 @@ description = "用自然语言描述任务，在本地索引中查找命令；�
 category = "read"
 args = ["query"]
 concurrent = true
+examples = [
+    { command = "lovelycarve-cli cli search \"export a file\"", description = "按任务查找命令" },
+    { command = "lovelycarve-cli cli search \"恢复删除的文件\"", description = "中文描述同样可以" },
+]
 [command.params.query]
 type = "string"
 required = true
 description = "要完成的任务或搜索词（整体加引号）"
+
+# ── docs (hand-written) ─────────────────────────────────────────────────────
+
+[[command]]
+path = "docs search"
+native = "docs-search"
+summary = "搜索随程序附带的使用文档"
+description = "在内置的使用指南、CLI 手册与格式专题中按问题搜索，返回最多 5 条 JSON 结果（标题、章节、说明与页面），无需联网；用 docs get 阅读结果页面。"
+category = "read"
+args = ["query"]
+concurrent = true
+keywords = ["documentation", "guide", "manual", "format support", "limitations", "how to"]
+examples = [
+    { command = "lovelycarve-cli docs search \"BitLocker 恢复密码\"", description = "查找 BitLocker 解锁的说明" },
+    { command = "lovelycarve-cli docs search \"which NTFS features are supported\"", description = "查找格式能力与限制" },
+]
+[command.params.query]
+type = "string"
+required = true
+description = "问题或搜索词（整体加引号）"
+
+[[command]]
+path = "docs list"
+native = "docs-list"
+summary = "列出内置文档页面"
+description = "每个页面的路径与标题；路径可交给 docs get。"
+category = "read"
+concurrent = true
+
+[[command]]
+path = "docs get"
+native = "docs-get"
+summary = "阅读一页内置文档"
+description = "把文档页面的 Markdown 原样写到标准输出；--section 只输出一个章节。JSONL 会话中返回 {page, title, markdown}。"
+category = "read"
+args = ["page"]
+concurrent = true
+examples = [
+    { command = "lovelycarve-cli docs get CLI.md", description = "阅读 CLI 手册" },
+    { command = "lovelycarve-cli docs get formats/NTFS.md --section 验证边界", description = "只看一个章节" },
+]
+[command.params.page]
+type = "string"
+required = true
+description = "页面路径（docs search 或 docs list 返回的 page，如 formats/NTFS.md）"
+[command.params.section]
+type = "string"
+description = "章节标题（docs search 返回的 section）；省略时输出整页"
 
 # ── context (hand-written) ──────────────────────────────────────────────────
 
@@ -597,6 +681,10 @@ args = ["path"]
 target = "nodeId"
 concurrent = true
 keywords = ["ls", "dir", "directory", "folder", "list files", "browse", "tree", "find file by name"]
+examples = [
+    { command = "lovelycarve-cli --image D:\\evidence\\disk.E01 files list /", description = "列出检材根下的分区与卷" },
+    { command = "lovelycarve-cli --image D:\\evidence\\disk.E01 files list /<卷名称>/Users --depth 8 --name report", description = "在子树中按名称查找" },
+]
 [command.params.path]
 type = "string"
 default = "."
@@ -636,6 +724,10 @@ target = "nodeId"
 raw_output = true
 concurrent = true
 keywords = ["read file content", "cat", "hex", "dump", "bytes"]
+examples = [
+    { command = "lovelycarve-cli --image D:\\evidence\\disk.E01 files read /<卷名称>/Windows/System32/config/SAM > SAM", description = "把文件原样保存到主机" },
+    { command = "lovelycarve-cli --image D:\\evidence\\disk.E01 files read /<卷名称>/notes.txt --length 4096 --text", description = "以 UTF-8 文本查看开头 4 KiB" },
+]
 [command.params.path]
 type = "string"
 [command.params.offset]
@@ -656,6 +748,9 @@ args = ["pattern", "path"]
 target = "nodeId"
 concurrent = true
 keywords = ["grep", "keyword", "regex", "content search"]
+examples = [
+    { command = "lovelycarve-cli --case D:\\cases\\demo --image D:\\evidence\\disk.E01 files search password / --ignore-case", description = "在全部已索引卷中搜索关键词" },
+]
 [command.params.pattern]
 type = "string"
 required = true
@@ -674,7 +769,7 @@ type = "boolean"
 description = "排除已删除文件"
 [command.params.codepage]
 type = "array"
-description = "编码页，可重复；省略时搜索全部支持的编码"
+description = "编码页，可列出多个；省略时搜索全部支持的编码"
 [command.params.searchId]
 type = "string"
 description = "搜索任务 ID；省略时自动生成"
@@ -815,10 +910,13 @@ target = "nodeId"
 concurrent = true
 defaults = { algos = ["md5", "sha1", "sha256", "sm3"] }
 keywords = ["md5", "sha1", "sha256", "sm3", "checksum", "digest"]
+examples = [
+    { command = "lovelycarve-cli --image D:\\evidence\\disk.E01 files hash /<卷名称>/Users/alice/report.docx --algos md5 sha256", description = "只计算 MD5 与 SHA-256" },
+]
 [command.params.algos]
 type = "array"
 values = ["md5", "sha1", "sha256", "sm3"]
-description = "哈希算法，可重复"
+description = "哈希算法，可列出多个"
 
 [[command]]
 path = "files identify"
@@ -1143,6 +1241,10 @@ args = ["path"]
 secret = ["qcowPassword", "qcowKeyHex"]
 hidden = ["caseDir"]
 keywords = ["load", "evidence", "disk image", "e01", "vmdk", "raw", "dd", "add evidence"]
+examples = [
+    { command = "lovelycarve-cli images open D:\\evidence\\disk.E01", description = "打开检材并显示其信息" },
+    { command = "lovelycarve-cli images open D:\\evidence\\disk.qcow2 --qcow-password", description = "在终端中隐藏输入 QCOW 密码" },
+]
 [command.params.path]
 description = "检材路径"
 [command.params.qcowPassword]
@@ -1205,7 +1307,7 @@ keywords = ["md5", "sha1", "sha256", "sm3", "verify", "checksum"]
 [command.params.algorithms]
 type = "array"
 values = ["md5", "sha1", "sha256", "sm3"]
-description = "哈希算法，可重复"
+description = "哈希算法，可列出多个"
 [command.params.readFaultPolicy]
 type = "enum"
 values = ["zeroFillAndReport", "strict"]
