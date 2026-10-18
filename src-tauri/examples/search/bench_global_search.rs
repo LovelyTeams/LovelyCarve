@@ -22,6 +22,8 @@
 //!   --explain            打印可扫源查询的执行计划与行序样本
 //!   --check-context      搜索后逐条回读命中区间：重建上下文与扫描时截取的比对，
 //!                        并校验命中字节按其编码解码后确实匹配模式（偏移正确）
+//!   --result-digest      输出全部记录的规范化 SHA-256（忽略调度产生的 hit_seq），
+//!                        用于比较优化前后的命中、编码、上下文与每文件计数
 //!   --verify N           抽样 N 个文件（另加全部 ≥128 MiB 的文件），比对整文件流式读、
 //!                        `read_file_range` 分片读与 `stream_file_range` 奇数分片读的
 //!                        SHA-256，校验随机读路径与流式读逐字节一致
@@ -75,6 +77,7 @@ struct Args {
     explain: bool,
     verify: usize,
     check_context: bool,
+    result_digest: bool,
 }
 
 fn split_list(value: &str) -> Vec<String> {
@@ -109,6 +112,7 @@ fn parse_args() -> anyhow::Result<Args> {
         explain: false,
         verify: 0,
         check_context: false,
+        result_digest: false,
     };
     while let Some(flag) = raw.next() {
         let mut value = |name: &str| raw.next().with_context(|| format!("{name} needs a value"));
@@ -128,6 +132,7 @@ fn parse_args() -> anyhow::Result<Args> {
             "--explain" => args.explain = true,
             "--verify" => args.verify = value("--verify")?.parse()?,
             "--check-context" => args.check_context = true,
+            "--result-digest" => args.result_digest = true,
             other => anyhow::bail!("unknown option {other}\n{usage}"),
         }
     }
@@ -456,6 +461,48 @@ fn check_contexts(
     Ok(())
 }
 
+fn result_digest(case_dir: &Path, search_id: &str) -> anyhow::Result<()> {
+    use global_search_store::{GlobalSearchDistinct, GlobalSearchPageQuery};
+    use sha2::Digest as _;
+
+    let mut records = Vec::new();
+    let mut after_seq = None;
+    loop {
+        let page = global_search_store::page(
+            case_dir,
+            BENCH_IMAGE_ID,
+            &GlobalSearchPageQuery {
+                search_id: search_id.to_string(),
+                skip: 0,
+                limit: 2000,
+                keyword: None,
+                distinct: GlobalSearchDistinct::None,
+                after_seq,
+            },
+        )?;
+        let Some(last) = page.items.last() else {
+            break;
+        };
+        after_seq = Some(last.hit_seq);
+        for mut record in page.items {
+            record.hit_seq = 0;
+            records.push(serde_json::to_vec(&record)?);
+        }
+    }
+    records.sort();
+    let mut hash = sha2::Sha256::new();
+    for record in &records {
+        hash.update((record.len() as u64).to_le_bytes());
+        hash.update(record);
+    }
+    println!(
+        "digest:  {} records {}",
+        records.len(),
+        hex::encode(hash.finalize())
+    );
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -565,6 +612,9 @@ fn main() -> anyhow::Result<()> {
         );
         if args.check_context {
             check_contexts(&image, &case_dir, &search_id)?;
+        }
+        if args.result_digest {
+            result_digest(&case_dir, &search_id)?;
         }
         global_search_store::delete(&case_dir, BENCH_IMAGE_ID, &search_id)?;
     }

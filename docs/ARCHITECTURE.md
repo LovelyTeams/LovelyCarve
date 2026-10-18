@@ -705,7 +705,11 @@ Windows 上仍被打开的文件删不掉时短暂重试，残留留给下次打
 `after_seq` 支持增量轮询）。引擎 `core::search::global_search` 从台账读出检材各卷当前的索引文件，按范围（分区/
 标签/树节点或卷内路径）解析可扫对象——树节点在所在卷的索引里定位，目录解析成 `full_path_low` 半开
 前缀子树——可选已删除文件（`is_delete=1`）、未分配空间（`$未分配簇`/`diskgap:` 虚拟节点直读镜像字节）
-与命中源 MD5/SHA256 回填；关键词走 Aho-Corasick（`core::search::keyword::keyword_search`，编码页可选），正则走
+与命中源 MD5/SHA256 回填；关键词走 Aho-Corasick（`core::search::keyword::keyword_search`，编码页可选），
+各编码字节变体在编译时合并到原样与纯 ASCII 忽略大小写两台自动机（`keyword_literals`），相同字节只保留
+最高优先级编码的来源。纯 ASCII 词直接使用自动机的 ASCII 大小写等价表，不复制并折叠扫描缓冲区；非 ASCII
+词按原样及整词大小写变体精确匹配，避免折叠 GBK 尾字节或 UTF-16 高字节。单通道的模式已在编译时去重，
+命中无需再逐条哈希；双通道仍按编码优先级对区间去重，重叠命中与跨块 carry 规则不变。正则走
 `core::search::keyword::keyword_regex`（ASCII/UTF-8 字节直扫，GBK/UTF-16 解码文本匹配后映射回字节偏移——GBK 按解码器
 实际消耗的字节数逐字符对齐（`core::search::keyword::gbk_units`：单字节 0x80 的「€」、GB18030 四字节字符与各类错误都
 不是两字节）；同一编码的全部正则每块只解码一次，并先用从语法树推出的必含字面量在原始字节上预筛，
