@@ -154,7 +154,7 @@ async function startImageExport(opts: {
     else { unlisten(); unlisten = null; }
   } catch (err) {
     // Losing live progress shouldn't abort the export itself.
-    notifyError(tr("进度监听失败"), String(err));
+    notifyError(tr("订阅导出进度失败"), String(err));
   }
 
   if (epoch !== generation || context !== evidenceContext()) {
@@ -173,11 +173,11 @@ async function startImageExport(opts: {
     if (epoch !== generation) return true;
     const written = typeof outcome === 'number' ? outcome : outcome.bytes_written;
     const faultDetail = typeof outcome !== 'number' && outcome.read_faults_detected
-      ? tr(" · 警告：含 {0} 合成零字节（{1} 个坏区）", { 0: formatBytes(outcome.synthetic_bytes), 1: outcome.bad_regions.length })
+      ? tr(" · 警告：含 {0} 补零字节（{1} 个坏区）", { 0: formatBytes(outcome.synthetic_bytes), 1: outcome.bad_regions.length })
       : '';
     toast.update({
       kind: faultDetail ? 'info' : 'success',
-      title: faultDetail ? tr("导出完成，但包含合成零字节") : (opts.doneTitle ?? tr("重组镜像导出完成")),
+      title: faultDetail ? tr("导出完成，但包含补零字节") : (opts.doneTitle ?? tr("重组镜像导出完成")),
       detail: tr("{0} · {1} · 平均 {2}{3}", { 0: destination, 1: formatBytes(written), 2: exportSpeedText(job, written), 3: faultDetail }),
       action: undefined,
       progress: 100,

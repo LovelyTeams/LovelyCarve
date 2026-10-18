@@ -92,7 +92,7 @@
           @click="canHash && $emit('update:hashMenuOpen', !hashMenuOpen)"
         >
           <Fingerprint :size="13" />
-          <span>{{ checkedFileCount > 1 ? tr("计算勾选文件哈希（{0}）", { 0: checkedFileCount }) : tr("计算哈希值") }}</span>
+          <span>{{ checkedFileCount > 1 ? tr("计算勾选文件哈希（{0}）", { 0: checkedFileCount }) : tr("计算哈希") }}</span>
           <ChevronRight :size="12" class="submenu-caret" />
         </button>
         <div v-if="hashMenuOpen && canHash" class="ui-menu disk-row-submenu" :class="{ flip: hashMenuFlip }" role="menu">
@@ -111,7 +111,7 @@
         class="ui-menu-item disk-row-menu-item"
         role="menuitem"
         :disabled="!canIdentify"
-        :title="tr('Magika 按文件内容识别真实类型，与扩展名无关——可发现改后缀伪装')"
+        :title="tr('Magika 按文件内容识别真实类型，不依赖扩展名，可发现修改扩展名伪装的文件')"
         @click="$emit('identify-type')"
       >
         <ScanSearch :size="13" />

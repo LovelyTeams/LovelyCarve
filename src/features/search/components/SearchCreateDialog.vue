@@ -55,7 +55,7 @@
                       <Loader2 :size="13" class="spin" /><span>{{ tr("正在读取分区…") }}</span>
                     </div>
                     <div v-else-if="partitionOptions.length === 0" class="gs-scope-empty">
-                      {{ tr("未检出分区（整镜像按单一文件系统处理，范围保持默认即可）") }}
+                      {{ tr("未检测到分区（整个镜像按单一文件系统处理，保持默认范围即可）") }}
                     </div>
                     <label v-else class="ui-check">
                       <input
@@ -101,7 +101,7 @@
                       spellcheck="false"
                       :placeholder="tr('每行一个卷内目录或文件路径，例如：\n/Users/alice/Documents\n/Windows/System32/config')"
                     ></textarea>
-                    <span class="gs-scope-hint">{{ tr("目录按子树搜索；留空 = 不限制") }}</span>
+                    <span class="gs-scope-hint">{{ tr("目录会连同子目录一起搜索；留空表示不限制") }}</span>
                   </div>
                 </div>
 
@@ -146,7 +146,7 @@
                     <input type="checkbox" v-model="draft.searchDeleted" />
                     <span>{{ tr("搜索已删除文件") }}</span>
                   </label>
-                  <label class="ui-check" :title="tr('同时搜索各分区未分配空间和分区之间的空隙')">
+                  <label class="ui-check" :title="tr('同时搜索各分区的未分配空间和分区间隙')">
                     <input type="checkbox" v-model="draft.searchEmptySpace" />
                     <span>{{ tr("搜索未分配空间") }}</span>
                   </label>
@@ -158,7 +158,7 @@
                     <input type="checkbox" v-model="draft.matchCase" />
                     <span>{{ tr("匹配大小写") }}</span>
                   </label>
-                  <label class="ui-check" :title="tr('每个文件找到首处匹配后继续搜索下一个文件')">
+                  <label class="ui-check" :title="tr('每个文件找到首个命中后即转到下一个文件')">
                     <input type="checkbox" v-model="draft.stopAfterFirst" />
                     <span>{{ tr("每个文件只保留首个命中") }}</span>
                   </label>

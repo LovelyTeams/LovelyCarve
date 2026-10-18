@@ -14,7 +14,7 @@ describe('search draft serialization', () => {
   });
   it('retains missing-pattern, encoding and positive integer limit validation', () => {
     const draft = createSearchDraft(); expect(searchConfigurationError(draft)).toBe('至少输入一个关键词或正则'); draft.keysText = 'key'; draft.codepages = [];
-    expect(searchConfigurationError(draft)).toBe('至少选择一个编码页'); draft.codepages = ['ASCII']; draft.perFileCap = 1.5;
+    expect(searchConfigurationError(draft)).toBe('至少选择一种编码'); draft.codepages = ['ASCII']; draft.perFileCap = 1.5;
     expect(searchConfigurationError(draft)).toBe('每文件上限须为正整数'); draft.perFileCap = 1; draft.globalCap = 0;
     expect(searchConfigurationError(draft)).toBe('全局上限须为正整数');
   });

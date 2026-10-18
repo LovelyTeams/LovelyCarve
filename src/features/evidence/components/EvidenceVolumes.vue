@@ -39,7 +39,7 @@
         @mount="drive => syntheticRoot && finishMountAt(syntheticRoot.id, SYNTHETIC_MOUNT_KEY, syntheticRoot.label, drive)" @copy="value => emit('copy', tr('共享名'), value)" />
     </div>
     <p class="synthetic-root-hint">
-      {{ tr("逻辑证据以单一合成根呈现（无分区表），可只读挂载为 Windows 盘符 / 文件夹后用资源管理器浏览。") }}
+      {{ tr("逻辑检材以单一合成根呈现（无分区表），可只读挂载为 Windows 盘符或文件夹后用资源管理器浏览。") }}
     </p>
   </div>
   <div v-else-if="info.partitions.length === 0" class="ui-empty volume-empty">
@@ -140,7 +140,7 @@
           </div>
         </div>
         <p v-if="shadowLoadError" class="ui-alert danger shadow-alert" role="alert">
-          <span>{{ tr("读取卷影副本失败：") }}{{ shadowLoadError }}</span>
+          <span>{{ tr("读取卷影副本失败：{0}", { 0: shadowLoadError }) }}</span>
           <button class="ui-btn sm" type="button" @click="loadShadowCopies()">{{ tr("重试") }}</button>
         </p>
       </section>

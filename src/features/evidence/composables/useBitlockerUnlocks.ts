@@ -159,7 +159,7 @@ export function startBitlockerRecoveryUnlock(
     'recovery',
     { recoveryPassword, password: null },
     'bitlocker_unlock',
-    tr("Partition {0} 已通过恢复密钥解锁", { 0: partitionId }),
+    tr("分区 {0} 已通过恢复密钥解锁", { 0: partitionId }),
   );
 }
 
@@ -175,7 +175,7 @@ export function startBitlockerPasswordUnlock(
     'password',
     { recoveryPassword: null, password },
     'bitlocker_unlock',
-    tr("Partition {0} 已通过用户密码解锁", { 0: partitionId }),
+    tr("分区 {0} 已通过用户密码解锁", { 0: partitionId }),
   );
 }
 
@@ -191,7 +191,7 @@ export function startBitlockerVmkUnlock(
     'vmk',
     { vmkHex },
     'bitlocker_unlock_with_vmk',
-    tr("Partition {0} 已通过 VMK 解锁", { 0: partitionId }),
+    tr("分区 {0} 已通过 VMK 解锁", { 0: partitionId }),
   );
 }
 

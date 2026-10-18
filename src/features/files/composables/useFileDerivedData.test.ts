@@ -75,6 +75,6 @@ describe('derived column hydration', () => {
     data.persistFtypes('original-disk', { file: ident('text') });
     await Promise.resolve();
     expect(mocks.persistType).toHaveBeenCalledWith({ imageId: 'original-disk', entries: { file: ident('text') } });
-    expect(mocks.error).toHaveBeenCalledWith('类型识别持久化失败', 'Error: disk full');
+    expect(mocks.error).toHaveBeenCalledWith('保存类型识别结果失败', 'Error: disk full');
   });
 });

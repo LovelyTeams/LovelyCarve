@@ -12,7 +12,7 @@
     </p>
     <p class="evidence-size">
       <strong class="mono">{{ formatBytes(info.size_bytes) }}</strong>
-      <template v-if="onDiskSummary">{{ ' ' + tr("· 实际占用") }} <span class="mono">{{ onDiskSummary.size }}</span>（{{ onDiskSummary.ratio }}）
+      <template v-if="onDiskSummary">{{ ' ' + tr("· 实际占用") }} <span class="mono">{{ onDiskSummary.size }}</span>{{ tr("（{0}）", { 0: onDiskSummary.ratio }) }}
       </template>
     </p>
   </div>
@@ -21,7 +21,7 @@
       <button v-if="canExport" class="ui-btn"
         :disabled="exporting" :aria-busy="exporting" :title="tr('导出完整 RAW 镜像；已解锁分区使用解密内容')" @click="exportRawImage">
         <Loader2 v-if="exporting" :size="14" class="spin" />
-        <HardDriveDownload v-else :size="14" />{{ tr("导出原始镜像") }}
+        <HardDriveDownload v-else :size="14" />{{ tr("导出源镜像") }}
       </button>
     </AutoDetectBadge>
   </div>
@@ -56,9 +56,9 @@ async function exportRawImage() {
       imageId: info.id,
       defaultFileName: `${fileName.value.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_')}.dd`,
       mode: 'unlockedPartitions',
-      title: tr("导出原始镜像为 RAW"),
-      runningTitle: tr("导出原始镜像中…"),
-      doneTitle: tr("原始镜像导出完成"),
+      title: tr("导出源镜像为 RAW"),
+      runningTitle: tr("导出源镜像中…"),
+      doneTitle: tr("源镜像导出完成"),
     });
   } catch (error) {
     notifyError(tr("导出失败"), String(error));

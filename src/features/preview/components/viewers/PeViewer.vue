@@ -50,8 +50,8 @@
           <div><span class="dk">{{ tr("目标系统版本") }}</span><span class="dv mono">{{ report.os_version }}</span></div>
           <div><span class="dk">{{ tr("校验和") }}</span><span class="dv mono">{{ hex(report.checksum) }}</span></div>
           <div><span class="dk">{{ tr("头部大小") }}</span><span class="dv mono">{{ formatBytes(report.size_of_headers) }}</span></div>
-          <div class="wide"><span class="dk">{{ tr("文件特性") }}</span><span class="dv mono">{{ report.characteristic_flags.join('、') || '—' }}</span></div>
-          <div class="wide"><span class="dk">{{ tr("安全特性") }}</span><span class="dv mono">{{ report.dll_characteristic_flags.join('、') || '—' }}</span></div>
+          <div class="wide"><span class="dk">{{ tr("文件特性") }}</span><span class="dv mono">{{ joinList(report.characteristic_flags, tr) || '—' }}</span></div>
+          <div class="wide"><span class="dk">{{ tr("安全特性") }}</span><span class="dv mono">{{ joinList(report.dll_characteristic_flags, tr) || '—' }}</span></div>
         </div>
       </section>
 
@@ -71,7 +71,7 @@
                 :key="s.name + s.virtual_address"
                 :class="{ 'row-flag': s.is_code && s.entropy != null && s.entropy > 7.2 }"
               >
-                <td class="mono strong">{{ s.name || tr("(未命名)") }}</td>
+                <td class="mono strong">{{ s.name || tr("（未命名）") }}</td>
                 <td class="mono">{{ hex(s.virtual_address) }}</td>
                 <td class="mono">{{ hex(s.virtual_size) }}</td>
                 <td class="mono">{{ hex(s.raw_offset) }}</td>
@@ -130,7 +130,7 @@
             <tbody>
               <tr v-for="(e, ei) in filteredExports" :key="ei">
                 <td class="mono ralign">{{ e.ordinal }}</td>
-                <td class="mono">{{ e.name ?? tr("(仅序号)") }}<span v-if="e.forwarder" class="dim"> → {{ e.forwarder }}</span></td>
+                <td class="mono">{{ e.name ?? tr("（仅序号）") }}<span v-if="e.forwarder" class="dim"> → {{ e.forwarder }}</span></td>
                 <td class="mono">{{ hex(e.rva) }}</td>
               </tr>
               <tr v-if="filteredExports.length === 0">
@@ -192,6 +192,7 @@
 
 <script setup lang="ts">
 import { tr } from '../../../../composables/useLocale';
+import { joinList } from '../../../../i18n/translate';
 
 import { vDisclosureMotion } from '../../../../composables/uiMotionDirectives';
 // PE 文件的「原类型视图」：由 BinaryViewer 传入已解析的 PeReport，按取证视角渲染

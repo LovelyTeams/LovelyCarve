@@ -5,7 +5,7 @@
         <div class="ui-modal-body gs-modal-body">
         <h3 class="ui-section-title">{{ tr("恢复方式") }}</h3>
         <div class="method-grid" role="group" :aria-label="tr('恢复方式')" :aria-describedby="methodError ? 'carve-method-error' : undefined">
-          <label class="ui-choice method-choice"><input v-model="filesystemOn" type="checkbox" /><span class="ui-choice-icon"><FolderTree :size="18" /></span><span class="ui-choice-text"><span class="ui-choice-title">{{ tr("文件系统恢复") }}</span><span class="ui-choice-desc">{{ tr("读取删除记录并重建遗失分区，保留原文件名和目录") }}</span></span></label>
+          <label class="ui-choice method-choice"><input v-model="filesystemOn" type="checkbox" /><span class="ui-choice-icon"><FolderTree :size="18" /></span><span class="ui-choice-text"><span class="ui-choice-title">{{ tr("文件系统恢复") }}</span><span class="ui-choice-desc">{{ tr("读取已删除记录并重建丢失分区，保留原文件名和目录结构") }}</span></span></label>
           <label class="ui-choice method-choice"><input v-model="signatures" type="checkbox" /><span class="ui-choice-icon"><FileSearch :size="18" /></span><span class="ui-choice-text"><span class="ui-choice-title">{{ tr("签名雕刻") }}</span><span class="ui-choice-desc">{{ tr("按文件签名查找没有目录记录的文件") }}</span></span></label>
         </div>
         <div v-if="filesystemOn" class="family-row" role="group" :aria-label="tr('文件系统')">
@@ -106,7 +106,7 @@ function setFilesystem(key: keyof RecoveryFilesystems, checked: boolean) {
 const scopeNote = computed(() => ({
   whole: tr("扫描整个镜像，覆盖所有分区。"),
   partition: tr("只扫描所选分区。"),
-  unallocated: tr("仅扫描分区之间的空隙，适合查找遗失分区；不含文件系统内部的空闲空间。"),
+  unallocated: tr("仅扫描分区间隙，适合查找丢失分区；不含文件系统内部的空闲空间。"),
   range: tr("只扫描指定的扇区范围。"),
 }[scope.value]));
 </script>

@@ -48,9 +48,9 @@ describe('case manager feedback and focus', () => {
 
   it('reports snapshot submission and cancellation failures and lets the user retry', async () => {
     await mount(); host.querySelector<HTMLDetailsElement>('.section-fold')!.open = true;
-    session.buildSnapshot.mockRejectedValueOnce(new Error('检材未载入')); button('建立').click(); await settle();
+    session.buildSnapshot.mockRejectedValueOnce(new Error('检材未载入')); button('构建').click(); await settle();
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('检材未载入');
-    expect(button('建立').disabled).toBe(false);
+    expect(button('构建').disabled).toBe(false);
     session.buildProgress.value = new Map([['image:root', { entries: 20, phase: 'walking' } as SnapshotProgress]]); await settle();
     session.cancelBuild.mockRejectedValueOnce(new Error('任务已结束')); button('取消').click(); await settle();
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('任务已结束');
@@ -69,8 +69,8 @@ describe('case manager feedback and focus', () => {
     session.buildSnapshot.mockReturnValueOnce(new Promise((_resolve, reject) => { fail = reject; }));
     const imageId = ref('image');
     app = createApp({ render: () => h(CaseManagerModal, { visible: true, imageId: imageId.value, imageInfo }) });
-    app.mount(host); await settle(); button('建立').click(); await settle();
-    imageId.value = 'other'; await settle(); expect(button('建立').disabled).toBe(false);
+    app.mount(host); await settle(); button('构建').click(); await settle();
+    imageId.value = 'other'; await settle(); expect(button('构建').disabled).toBe(false);
     fail(new Error('旧检材不可用')); await settle(); expect(host.querySelector('[role="alert"]')).toBeNull();
   });
 });

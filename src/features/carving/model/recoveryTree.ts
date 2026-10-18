@@ -132,7 +132,7 @@ export function groupArtifacts(artifacts: readonly CarveArtifact[], formatLabel:
     if (list) list.push(artifact); else byFormat.set(artifact.format_id, [artifact]);
   }
   if (!visible && artifacts.length === 0) return { root: null, formats: [], byFormat, byId };
-  const root = entry({ key: SIGNATURE_ROOT, name: tr("签名恢复"), path: '/', kind: 'signatures', fileCount: artifacts.length, bytes });
+  const root = entry({ key: SIGNATURE_ROOT, name: tr("签名雕刻"), path: '/', kind: 'signatures', fileCount: artifacts.length, bytes });
   const formats = [...byFormat].map(([formatId, list]) => entry({
     key: `${SIGNATURE_ROOT}:${formatId}`, parentKey: SIGNATURE_ROOT, name: formatLabel(formatId), path: `/${formatLabel(formatId)}`,
     kind: 'format', fileCount: list.length, bytes: list.reduce((total, artifact) => total + artifact.length, 0),

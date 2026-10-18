@@ -160,7 +160,7 @@ describe('useTaskCenter', () => {
       notice: { kind: 'allTasksFinished', taskId: null, evidenceId: 7, message: '全部完成' },
     });
 
-    expect(toastMock.notifyError).toHaveBeenCalledWith('任务 worker 离线', 'worker 离线');
+    expect(toastMock.notifyError).toHaveBeenCalledWith('任务执行器离线', 'worker 离线');
     expect(toastMock.notifySuccess).toHaveBeenCalledWith('检材任务全部完成', '全部完成');
     expect(center.notices.value.map(notice => notice.kind)).toEqual(['allTasksFinished', 'taskOffline']);
   });

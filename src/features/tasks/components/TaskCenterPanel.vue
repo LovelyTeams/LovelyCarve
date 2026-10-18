@@ -65,7 +65,7 @@
           <header class="card-head">
             <h3 class="ui-card-title"><Bell :size="15" />{{ tr("最近通知") }}</h3>
             <span class="ui-count">{{ notices.length }}</span>
-            <button type="button" class="ui-icon-btn sm card-toggle" :aria-expanded="noticesOpen" :aria-label="tr('{0}最近通知', { 0: noticesOpen ? tr('收起') : tr('展开') })" :title="noticesOpen ? tr('收起') : tr('展开')" @click="noticesOpen = !noticesOpen"><ChevronDown :size="14" /></button>
+            <button type="button" class="ui-icon-btn sm card-toggle" :aria-expanded="noticesOpen" :aria-label="noticesOpen ? tr('收起最近通知') : tr('展开最近通知')" :title="noticesOpen ? tr('收起') : tr('展开')" @click="noticesOpen = !noticesOpen"><ChevronDown :size="14" /></button>
           </header>
           <UiTransition><dl v-if="noticesOpen" class="detail-list notice-list"><div v-for="(notice, index) in notices" :key="index" class="detail-row"><dt>{{ NOTICE_LABEL[notice.kind] }}</dt><dd>{{ notice.message }}</dd></div></dl></UiTransition>
         </section>

@@ -33,7 +33,7 @@ describe('search dialog composition', () => {
   it('keeps encoding validation and the pressed state of its controls', async () => {
     await mount(); keyword('password'); await settle();
     for (const page of ['UTF-8', 'GBK', 'UTF-16LE', 'UTF-16BE']) { button(page).click(); await settle(); }
-    expect(button('开始搜索').disabled).toBe(true); expect(popup().textContent).toContain('至少选择一个编码页');
+    expect(button('开始搜索').disabled).toBe(true); expect(popup().textContent).toContain('至少选择一种编码');
     button('ASCII').click(); await settle(); expect(button('ASCII').getAttribute('aria-pressed')).toBe('true');
     button('开始搜索').click(); await settle(); expect(submitted.mock.calls[0]?.[0].codepages).toEqual(['ASCII']);
   });

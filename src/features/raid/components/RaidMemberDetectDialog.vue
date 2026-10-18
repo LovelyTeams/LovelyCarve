@@ -13,7 +13,7 @@
           <span class="ui-modal-icon"><Layers :size="18" /></span>
           <div class="ui-modal-heading">
             <h2 id="raid-detect-title" class="ui-modal-title">{{ tr("RAID 自动检测") }}</h2>
-            <p class="ui-modal-subtitle">{{ tr("逐块放入成员盘，自动识别阵列；确认后再打开重组镜像") }}</p>
+            <p class="ui-modal-subtitle">{{ tr("逐块放入成员盘，自动检测阵列；确认后再打开重组镜像") }}</p>
           </div>
           <button class="ui-icon-btn" :title="tr('重新检测')" :aria-label="tr('重新检测')" :disabled="detecting || members.length === 0" @click="emit('redetect')">
             <RefreshCw :size="16" :class="{ spin: detecting }" />
@@ -136,7 +136,7 @@
             </div>
 
             <details v-disclosure-motion v-if="diagnostics.length" class="diagnostics">
-              <summary class="mono">{{ tr("诊断信息（") }}{{ diagnostics.length }}）</summary>
+              <summary class="mono">{{ tr("诊断信息（{0}）", { 0: diagnostics.length }) }}</summary>
               <ul>
                 <li v-for="(item, index) in diagnostics" :key="index" class="mono">{{ item }}</li>
               </ul>
@@ -243,8 +243,8 @@ function memberState(member: RaidMemberQueueItem): 'loading' | 'success' | 'warn
 }
 
 function memberStatusLabel(member: RaidMemberQueueItem): string {
-  if (member.status === 'loading') return tr("载入中");
-  if (member.status === 'failed') return tr("载入失败");
+  if (member.status === 'loading') return tr("加载中");
+  if (member.status === 'failed') return tr("加载失败");
   if (member.isMember) return tr("已匹配");
   if (props.stack && relatedArrays.value.length > 0) return tr("非成员");
   return tr("待匹配");

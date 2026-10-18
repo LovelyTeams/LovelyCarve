@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import english from './en.json';
 import chinese from './zh-CN.json';
-import { sourceText, translate } from './translate';
+import { joinList, sourceText, translate } from './translate';
 
 describe('message catalogs', () => {
   it('preserves interpolation parameters in every English translation', () => {
@@ -19,6 +19,13 @@ describe('message catalogs', () => {
     expect(sourceText('motion.off')).toBe('关闭');
     expect(translate('日', 'en')).toBe('Sun');
     expect(translate('timeUnits.day', 'en')).toBe('Day');
+  });
+
+  it('joins list items with the locale separator', () => {
+    expect(joinList(['密码', '恢复密钥'])).toBe('密码、恢复密钥');
+    expect(joinList(['Password', 'Recovery key'], (message, params) => translate(message, 'en', params))).toBe('Password, Recovery key');
+    expect(joinList(['单项'])).toBe('单项');
+    expect(joinList([])).toBe('');
   });
 
   it('interpolates once, leaving evidence text and unprovided parameters intact', () => {

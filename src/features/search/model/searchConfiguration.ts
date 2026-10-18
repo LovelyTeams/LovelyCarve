@@ -43,7 +43,7 @@ export function searchConfigurationErrors(dialog: SearchDraft, tr: Translator = 
   const regexes = parseSearchPatterns(dialog.regexesText);
   return {
     patterns: keys.length === 0 && regexes.length === 0 ? tr("至少输入一个关键词或正则") : null,
-    codepages: dialog.codepages.length === 0 ? tr("至少选择一个编码页") : null,
+    codepages: dialog.codepages.length === 0 ? tr("至少选择一种编码") : null,
     perFileCap: !Number.isInteger(dialog.perFileCap) || dialog.perFileCap < 1 ? tr("每文件上限须为正整数") : null,
     globalCap: !Number.isInteger(dialog.globalCap) || dialog.globalCap < 1 ? tr("全局上限须为正整数") : null,
   };

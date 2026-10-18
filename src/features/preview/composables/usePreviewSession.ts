@@ -43,7 +43,7 @@ export function usePreviewSession(options: {
     previousWasFile = node.kind === 'file';
     if (options.indexOnly?.()) {
       options.activeTab.value = 'detail';
-      error.value = tr("原镜像不可用，仅能查看索引中的文件属性；请恢复原镜像后重试。");
+      error.value = tr("源镜像不可用，仅能查看索引中的文件属性；请恢复源镜像后重试。");
       return;
     }
     options.activeTab.value = previousWasFile ? fileTab : 'detail';

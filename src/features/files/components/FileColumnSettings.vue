@@ -8,11 +8,11 @@
         <div class="settings-list">
           <label v-for="column in visibleSettingsList" :key="column.key" class="settings-item"
             :class="{ unready: column.ready === false }"
-            :title="column.ready === false ? tr('该列的数据来源尚未接通，接通后自动开放') : undefined">
+            :title="column.ready === false ? tr('该列的数据来源暂不可用，可用后自动开放') : undefined">
             <input type="checkbox" :checked="columnVisible[column.key]" :disabled="column.ready === false"
               @change="emit('toggle', column.key)" />
             <span class="settings-label">{{ tr(column.label) }}</span>
-            <span v-if="column.ready === false" class="ui-badge sm info">{{ tr("未接通") }}</span>
+            <span v-if="column.ready === false" class="ui-badge sm info">{{ tr("暂不可用") }}</span>
           </label>
         </div>
       </div>

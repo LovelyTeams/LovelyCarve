@@ -63,7 +63,7 @@ async function promptAssembledArrays(result: RaidStack, arrays: RaidArray[]) {
         ? tr("{0} {1} 已在缺少成员的情况下重组为虚拟镜像（{2}），缺失部分由校验或镜像数据重建。是否打开重组镜像？", params)
         : tr("{0} {1} 已重组为虚拟镜像（{2}）。是否打开重组镜像？", params),
       confirmText: tr("打开重组镜像"),
-      cancelText: tr("暂不"),
+      cancelText: tr("暂不打开"),
     });
     if (captured !== generation) return;
     if (!ok || !arr.assembled_image_id) continue;

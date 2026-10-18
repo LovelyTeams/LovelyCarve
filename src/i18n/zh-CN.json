@@ -1,5 +1,7 @@
 {
   "motion.off": "关闭",
+  "list.separator": "、",
+  "search.foundIn": "命中",
   "timeUnits.year": "年",
   "timeUnits.month": "月",
   "timeUnits.day": "日",

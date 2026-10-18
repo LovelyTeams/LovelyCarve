@@ -33,7 +33,7 @@
 
       <div v-else-if="error" class="ui-alert danger">
         <AlertTriangle :size="15" />
-        <span>{{ tr("检测失败：") }}{{ error }}</span>
+        <span>{{ tr("检测失败：{0}", { 0: error }) }}</span>
       </div>
 
       <template v-else-if="stack">

@@ -6,7 +6,7 @@
       <button
         class="ui-icon-btn sm tree-header-toggle"
         :class="{ active: hideEmptyDirs }"
-        :title="hideEmptyDirs ? tr('显示空目录') : tr('隐藏空目录（其下没有任何文件的目录，含只有空目录的）')"
+        :title="hideEmptyDirs ? tr('显示空目录') : tr('隐藏空目录（不含任何文件的目录，包括只含空子目录的目录）')"
         :aria-pressed="hideEmptyDirs"
         @click="hideEmptyDirs = !hideEmptyDirs"
       >

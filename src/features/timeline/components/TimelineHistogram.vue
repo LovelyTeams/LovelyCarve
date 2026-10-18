@@ -66,7 +66,7 @@ function shouldLabel(index: number): boolean {
     <template v-else>
       <div class="tl-chart-meta">
         <span class="tl-chart-max mono">{{ tr("峰值") }} {{ maxCount.toLocaleString() }}</span>
-        <span v-if="truncated" class="tl-chart-truncated">{{ tr("桶数已达上限，数据被截断") }}</span>
+        <span v-if="truncated" class="tl-chart-truncated">{{ tr("时间分段数已达上限，数据已截断") }}</span>
       </div>
       <div class="tl-bars" :style="{ height: `${height}px` }" role="group" :aria-label="tr('时间线柱状图')">
         <button

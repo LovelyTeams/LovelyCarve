@@ -17,7 +17,7 @@
           <HardDriveDownload v-else :size="14" />{{ tr("导出重组镜像") }}
         </button>
         <button class="ui-btn primary" :disabled="opening" :aria-busy="opening"
-          :title="tr('打开重组镜像标签')" @click="emit('open')">
+          :title="tr('打开重组镜像标签页')" @click="emit('open')">
           <Loader2 v-if="opening" :size="14" class="spin" />
           <ExternalLink v-else :size="14" />{{ tr("打开重组镜像") }}
         </button>

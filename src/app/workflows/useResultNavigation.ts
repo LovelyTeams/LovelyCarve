@@ -31,7 +31,7 @@ export function useResultNavigation(options: {
         throw new Error(tr("无法打开来源检材，请检查检材文件是否可用"));
       }
       if (caseVersion !== version || options.caseKey() !== caseKey) return;
-      if (options.imageId() !== target.imageId) throw new Error(tr("来源检材未能激活，请重试"));
+      if (options.imageId() !== target.imageId) throw new Error(tr("未能切换到来源检材，请重试"));
       options.showFiles();
       await nextTick();
       for (let attempt = 0; attempt < 100; attempt++) {

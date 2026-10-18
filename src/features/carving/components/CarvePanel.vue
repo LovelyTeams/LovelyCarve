@@ -3,7 +3,7 @@
     <UiTransition kind="horizontal"><CarveHistoryList v-show="historyVisible" :scans="scans" :loading-history="loadingHistory" :history-error="historyError" :scan="scan"
       :recovering="recovering" :deleting-scan-id="deletingScanId" @close="historyVisible = false" @select="selectScan" @delete="deleteScan" /></UiTransition>
     <div class="result-pane">
-      <div v-if="historyError && scan" class="ui-alert danger result-read-error" role="alert"><CircleAlert :size="14" /><span>{{ tr("读取扫描记录失败：") }}{{ historyError }}</span><button class="ui-btn sm" :disabled="loadingHistory" @click="history.refreshHistory(imageId)">{{ tr("重试") }}</button></div>
+      <div v-if="historyError && scan" class="ui-alert danger result-read-error" role="alert"><CircleAlert :size="14" /><span>{{ tr("读取扫描记录失败：{0}", { 0: historyError }) }}</span><button class="ui-btn sm" :disabled="loadingHistory" @click="history.refreshHistory(imageId)">{{ tr("重试") }}</button></div>
       <template v-if="scan">
         <!-- 页面不设标题栏：顶部工具条放筛选与操作，扫描范围、状态与计数放在底部状态栏。 -->
         <form class="ui-toolbar result-toolbar result-filters" @submit.prevent="applyFilters">
@@ -32,24 +32,24 @@
         <!-- 目录树、文件表与状态栏在左，单击文件后详情从右侧展开。 -->
         <div class="result-body">
           <div class="result-main">
-            <div v-if="filesystemError" class="ui-alert danger result-read-error" role="alert"><CircleAlert :size="14" /><span>{{ tr("读取文件系统恢复结果失败：") }}{{ filesystemError }}</span><button class="ui-btn sm" :disabled="filesystemLoading" @click="retryFilesystem">{{ tr("重试") }}</button></div>
-            <div v-if="resultsError" class="ui-alert danger result-read-error" role="alert"><CircleAlert :size="14" /><span>{{ tr("读取雕刻结果失败：") }}{{ resultsError }}</span><button class="ui-btn sm" :disabled="syncingResults" @click="retryResults">{{ tr("重试") }}</button></div>
+            <div v-if="filesystemError" class="ui-alert danger result-read-error" role="alert"><CircleAlert :size="14" /><span>{{ tr("读取文件系统恢复结果失败：{0}", { 0: filesystemError }) }}</span><button class="ui-btn sm" :disabled="filesystemLoading" @click="retryFilesystem">{{ tr("重试") }}</button></div>
+            <div v-if="resultsError" class="ui-alert danger result-read-error" role="alert"><CircleAlert :size="14" /><span>{{ tr("读取雕刻结果失败：{0}", { 0: resultsError }) }}</span><button class="ui-btn sm" :disabled="syncingResults" @click="retryResults">{{ tr("重试") }}</button></div>
             <div v-if="isActive" class="status-banner" :class="scan.status === 'paused' ? 'warn' : 'running'" role="status">
               <Pause v-if="scan.status === 'paused'" :size="13" /><Loader2 v-else :size="13" class="spin" /><span>{{ progressHeadline }}<template v-if="!filesystemPhase && scan.status !== 'queued'"> · {{ formatBytes(scan.bytes_scanned) }} / {{ formatBytes(scan.bytes_total) }}</template></span>
               <div class="banner-progress" :class="{ indeterminate: filesystemPhase && !scan.filesystem?.total && scan.status === 'running' }" role="progressbar" :aria-label="tr('恢复扫描进度')" :aria-valuenow="progressPercent" aria-valuemin="0" aria-valuemax="100"><span :style="{ width: `${progressPercent}%` }"></span></div>
               <span class="banner-percent mono">{{ progressPercent.toFixed(1) }}%</span>
             </div>
-            <div v-if="scan.status === 'failed'" class="status-banner error" role="alert"><CircleAlert :size="13" /><span>{{ tr("扫描失败：") }}{{ scan.error || tr("未知错误") }}</span></div>
+            <div v-if="scan.status === 'failed'" class="status-banner error" role="alert"><CircleAlert :size="13" /><span>{{ tr("扫描失败：{0}", { 0: scan.error || tr("未知错误") }) }}</span></div>
             <div v-if="scan.status === 'cancelled'" class="status-banner warn" role="status"><CircleSlash :size="13" /><span>{{ tr("扫描已取消，以下为部分结果") }}</span></div>
-            <div v-if="scan.filesystem?.error && scan.status !== 'failed'" class="status-banner error" role="alert"><CircleAlert :size="13" /><span>{{ tr("文件系统扫描失败：") }}{{ scan.filesystem.error }}</span></div>
-            <div v-for="volume in failedVolumes" :key="volume.key" class="status-banner warn" role="alert"><AlertTriangle :size="13" /><span>{{ volume.name }} · LBA {{ volume.volume!.partition.start_lba }}：{{ volume.volume!.error }}</span></div>
+            <div v-if="scan.filesystem?.error && scan.status !== 'failed'" class="status-banner error" role="alert"><CircleAlert :size="13" /><span>{{ tr("文件系统扫描失败：{0}", { 0: scan.filesystem.error }) }}</span></div>
+            <div v-for="volume in failedVolumes" :key="volume.key" class="status-banner warn" role="alert"><AlertTriangle :size="13" /><span>{{ tr("{0} · LBA {1}：{2}", { 0: volume.name, 1: volume.volume!.partition.start_lba, 2: volume.volume!.error }) }}</span></div>
             <div v-if="scan.filesystem?.truncated" class="status-banner warn" role="alert"><AlertTriangle :size="13" /><span>{{ tr("文件系统记录达到安全上限，结果不完整。请缩小扫描范围。") }}</span></div>
-            <div v-if="scan.filesystem?.read_faults_detected" class="status-banner warn" role="alert"><AlertTriangle :size="13" /><span>{{ tr("文件系统扫描遇到读取故障，部分记录可能缺失或来自合成数据。") }}</span></div>
+            <div v-if="scan.filesystem?.read_faults_detected" class="status-banner warn" role="alert"><AlertTriangle :size="13" /><span>{{ tr("文件系统扫描遇到读取故障，部分记录可能缺失或来自补零数据。") }}</span></div>
             <div v-if="scan.truncated" class="status-banner warn" role="alert"><AlertTriangle :size="13" /><span>{{ tr("签名雕刻已达到结果数量上限，以下结果仍可恢复") }}</span></div>
             <div v-if="recoveryProgress" class="status-banner running" role="status"><Loader2 :size="13" class="spin" /><span>{{ recoveryProgress.message || tr("正在恢复文件") }}</span><div class="banner-progress"><span :style="{ width: `${recoveryPercent}%` }"></span></div><button class="ui-btn link sm" @click="cancelRecovery">{{ tr("取消恢复") }}</button></div>
             <div v-if="recoveryResult && recoveryTotals" class="status-banner recovery-result" :class="recoveryTotals.failed || recoveryResult.report_error || recoveryResult.files?.read_faults.read_faults_detected ? 'warn' : 'running'" role="status">
               <CheckCircle2 :size="13" />
-              <span>{{ tr("已恢复") }} {{ recoveryTotals.recovered }} {{ tr("个文件") }}<template v-if="recoveryTotals.failed">{{ tr("，失败") }} {{ recoveryTotals.failed }} {{ tr("个") }}</template><template v-if="recoveryResult.report_error">{{ tr("；报告生成失败：") }}{{ recoveryResult.report_error }}</template><template v-else-if="recoveryResult.report_path"> · DFXML：{{ recoveryResult.report_path }}</template><template v-if="recoveryResult.files"> · {{ tr("恢复报告") }}：{{ recoveryResult.files.report_path }}</template><template v-if="recoveryResult.files?.read_faults.read_faults_detected"> · {{ tr("读取故障产生了合成数据，请查看恢复报告。") }}</template></span>
+              <span>{{ tr("已恢复 {0} 个文件", { 0: recoveryTotals.recovered }) }}<template v-if="recoveryTotals.failed">{{ tr("，失败 {0} 个", { 0: recoveryTotals.failed }) }}</template><template v-if="recoveryResult.report_error">{{ tr("；报告生成失败：{0}", { 0: recoveryResult.report_error }) }}</template><template v-else-if="recoveryResult.report_path">{{ tr(" · DFXML：{0}", { 0: recoveryResult.report_path }) }}</template><template v-if="recoveryResult.files">{{ tr(" · 恢复报告：{0}", { 0: recoveryResult.files.report_path }) }}</template><template v-if="recoveryResult.files?.read_faults.read_faults_detected"> · {{ tr("读取故障产生了补零数据，请查看恢复报告。") }}</template></span>
             </div>
             <RecoveryBrowser :tree-rows="treeRows" :expanded="expanded" :current-key="currentKey" :breadcrumbs="breadcrumbs" :rows="rows"
               :signature-columns="signatureColumns" :selected-key="selectedKey" :table-context="tableContext"
@@ -78,7 +78,7 @@
       </template>
       <WorkspaceStartState v-else :icon="ScanSearch" :loading="initializing || loadingHistory"
         :title="initializationError || historyError ? tr('读取扫描记录失败') : initializing || loadingHistory ? tr('正在读取扫描记录…') : tr('还没有恢复扫描')"
-        :description="initializationError || historyError || tr('读取删除记录、重建遗失分区，并按文件签名查找残留文件')"
+        :description="initializationError || historyError || tr('读取已删除记录、重建丢失分区，并按文件签名查找残留文件')"
         :action-label="initializationError || historyError ? tr('重试') : tr('新建扫描')" :action-icon="initializationError || historyError ? RefreshCw : Plus" @action="initializationError || historyError ? initializePanel() : configExpanded = true">
         <template #toolbar><button class="ui-btn ghost" :aria-pressed="historyVisible" @click="historyVisible = !historyVisible"><PanelLeft :size="14" />{{ tr("扫描记录") }}</button></template>
       </WorkspaceStartState>

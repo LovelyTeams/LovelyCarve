@@ -174,7 +174,7 @@ export function useFileExports(options: UseFileExportsOptions) {
 
     const parts = [tr("{0} 个文件", { 0: ok }), options.formatBytes(bytes)];
     if (syntheticBytes > 0) {
-      parts.push(tr("含补零 {0}（{1} 个坏区命中）", { 0: options.formatBytes(syntheticBytes), 1: faultRegionHits }));
+      parts.push(tr("含 {0} 补零字节（{1} 个坏区命中）", { 0: options.formatBytes(syntheticBytes), 1: faultRegionHits }));
     }
     if (failed > 0) parts.push(tr("失败 {0}（{1}）", { 0: failed, 1: lastErr }));
     if (cancelled) parts.push(tr("未导出 {0}", { 0: files.length - ok - failed }));
@@ -246,11 +246,11 @@ export function useFileExports(options: UseFileExportsOptions) {
         ];
         if (progress.skipped > 0) parts.push(tr("跳过 {0}", { 0: progress.skipped }));
         if (progress.skipped_deleted > 0) parts.push(tr("已删除项 {0}", { 0: progress.skipped_deleted }));
-        if (progress.current_path) parts.push(tr("当前: {0}", { 0: progress.current_path }));
+        if (progress.current_path) parts.push(tr("当前：{0}", { 0: progress.current_path }));
         toast.update({ detail: `${target} · ${parts.join(' · ')}` });
       });
     } catch (err) {
-      notifyError(tr("进度监听失败"), String(err));
+      notifyError(tr("订阅导出进度失败"), String(err));
     }
 
     try {
@@ -272,7 +272,7 @@ export function useFileExports(options: UseFileExportsOptions) {
       if (summary.truncated) parts.push(tr("已截断"));
       if (summary.read_faults_detected) {
         parts.push(
-          tr("含补零 {0}（{1} 个坏区命中）", { 0: options.formatBytes(summary.synthetic_bytes), 1: summary.bad_regions.length }),
+          tr("含 {0} 补零字节（{1} 个坏区命中）", { 0: options.formatBytes(summary.synthetic_bytes), 1: summary.bad_regions.length }),
         );
       }
 
@@ -314,7 +314,7 @@ export function useFileExports(options: UseFileExportsOptions) {
     try {
       for (const entry of await readDir(dest)) used.add(entry.name.toLowerCase());
     } catch (err) {
-      notifyError(tr("无法枚举目标目录"), tr("重名检测退化为批内去重：{0}", { 0: String(err) }));
+      notifyError(tr("无法枚举目标目录"), tr("将仅在本批文件内检查重名：{0}", { 0: String(err) }));
     }
     return used;
   }
@@ -354,7 +354,7 @@ function exportFaultDetail(report: ReadFaultLike, formatBytes: (bytes: number) =
   if (!report.read_faults_detected) {
     return '';
   }
-  return tr(" · 警告：含 {0} 合成零字节（{1} 个坏区命中）", { 0: formatBytes(report.synthetic_bytes), 1: report.bad_regions.length });
+  return tr(" · 警告：含 {0} 补零字节（{1} 个坏区命中）", { 0: formatBytes(report.synthetic_bytes), 1: report.bad_regions.length });
 }
 
 function exportDirDoneTitle(mode: ExportDirMode, readFaultsDetected: boolean): string {

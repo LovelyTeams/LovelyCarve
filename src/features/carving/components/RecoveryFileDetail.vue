@@ -6,7 +6,7 @@
         <span class="ui-badge" :class="{ danger: node.deleted }">{{ node.deleted ? tr("已删除") : tr("现存文件") }}</span>
         <span v-if="candidate.source_node" class="ui-badge info">{{ tr("回收站还原") }}</span>
         <span v-if="volume?.reconstruction" class="ui-badge warn">{{ tr("MFT 重建") }}</span>
-        <span v-else-if="volume?.lost" class="ui-badge warn">{{ tr("遗失分区") }}</span>
+        <span v-else-if="volume?.lost" class="ui-badge warn">{{ tr("丢失分区") }}</span>
         <span v-if="!candidate.readable" class="ui-badge warn">{{ tr("无可读映射") }}</span>
       </template>
       <template #actions><button class="ui-btn sm" :disabled="recovering || !candidate.readable" @click="$emit('recover', entry)"><Loader2 v-if="recovering" :size="14" class="spin" /><Download v-else :size="14" />{{ recovering ? tr("恢复中…") : tr("恢复此文件") }}</button></template>
@@ -30,7 +30,7 @@
         ]" />
       </FileDetailSection>
       <FileDetailSection :title="tr('复核提示')" wide>
-        <p class="detail-note">{{ node.deleted ? tr("删除文件的簇可能已被覆盖。可读映射只表示可以尝试读取，请用导出哈希和内容复核。") : tr("现存文件按文件系统记录读取。") }}</p>
+        <p class="detail-note">{{ node.deleted ? tr("已删除文件的簇可能已被覆盖。可读映射只表示可以尝试读取，请用导出哈希和内容复核。") : tr("现存文件按文件系统记录读取。") }}</p>
         <p v-if="!candidate.readable" class="ui-alert warn detail-alert">{{ tr("该记录没有可读的数据映射，无法恢复内容。可尝试签名雕刻查找残留数据。") }}</p>
       </FileDetailSection>
     </FileDetailLayout>

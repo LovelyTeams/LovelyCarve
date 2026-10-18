@@ -14,7 +14,7 @@
         <button class="ui-icon-btn" :disabled="treeLoading" :aria-label="tr('刷新分析结果')" :title="tr('刷新')" @click="reload"><Loader2 v-if="treeLoading" :size="16" class="spin" /><RefreshCw v-else :size="16" /></button>
       </div>
     </div>
-    <div v-if="treeError" class="ui-empty state-box error" role="alert"><span class="ui-empty-icon"><CircleAlert :size="24" /></span><p class="ui-empty-desc">{{ tr("分析结果读取失败：") }}{{ treeError }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="reload">{{ tr("重试") }}</button></div></div>
+    <div v-if="treeError" class="ui-empty state-box error" role="alert"><span class="ui-empty-icon"><CircleAlert :size="24" /></span><p class="ui-empty-desc">{{ tr("分析结果读取失败：{0}", { 0: treeError }) }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="reload">{{ tr("重试") }}</button></div></div>
     <WorkspaceStartState v-else-if="!selectedNode" :icon="DatabaseZap" :loading="treeLoading"
       :title="treeLoading ? tr('正在读取分析结果…') : tree.length ? tr('选择一个结果项') : tr('当前检材还没有分析结果')"
       :description="tree.length ? tr('在左侧结果目录中选择结果项，查看解析出的记录。') : tr('选择分析功能，完成后结果会显示在这里。')"
@@ -25,7 +25,7 @@
       <div class="result-table">
         <div class="table-scroll" :aria-busy="recordsLoading">
           <div v-if="recordsLoading" class="ui-empty state-box" role="status"><span class="ui-empty-icon accent"><Loader2 :size="22" class="spin" /></span><p class="ui-empty-desc">{{ tr("正在读取记录…") }}</p></div>
-          <div v-else-if="recordsError" class="ui-empty state-box error" role="alert"><span class="ui-empty-icon"><CircleAlert :size="22" /></span><p class="ui-empty-desc">{{ tr("记录读取失败：") }}{{ recordsError }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="retryRecords">{{ tr("重试") }}</button></div></div>
+          <div v-else-if="recordsError" class="ui-empty state-box error" role="alert"><span class="ui-empty-icon"><CircleAlert :size="22" /></span><p class="ui-empty-desc">{{ tr("记录读取失败：{0}", { 0: recordsError }) }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="retryRecords">{{ tr("重试") }}</button></div></div>
           <div v-else-if="records.length === 0" class="ui-empty state-box" role="status"><span class="ui-empty-icon"><Inbox :size="24" /></span><p class="ui-empty-desc">{{ keyword ? tr("没有匹配的记录") : tr("此结果项暂无记录") }}</p><div v-if="keyword" class="ui-empty-actions"><button class="ui-btn" @click="keywordInput = ''; applyKeyword('')">{{ tr("清除搜索") }}</button></div></div>
           <table v-else class="data-table records-table" :style="{ minWidth: `${424 + selectedNode.columns.length * 200}px` }" :aria-label="selectedNode.label">
             <colgroup>
@@ -52,7 +52,7 @@
       <UiTransition kind="dock">
         <DetailDock v-if="selectedRecordId" :label="tr('记录详情')" :close-label="tr('关闭详情')" :title="detail?.title || tr('记录详情')" :content-key="selectedRecordId" @close="closeDetail">
           <div v-if="detailLoading" class="ui-empty state-box" role="status"><span class="ui-empty-icon accent"><Loader2 :size="20" class="spin" /></span><p class="ui-empty-desc">{{ tr("加载中…") }}</p></div>
-          <div v-else-if="detailError" class="ui-empty state-box error" role="alert"><p class="ui-empty-desc">{{ tr("详情读取失败：") }}{{ detailError }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="openRecord(selectedRecordId)">{{ tr("重试") }}</button></div></div>
+          <div v-else-if="detailError" class="ui-empty state-box error" role="alert"><p class="ui-empty-desc">{{ tr("详情读取失败：{0}", { 0: detailError }) }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="openRecord(selectedRecordId)">{{ tr("重试") }}</button></div></div>
           <FileDetailLayout v-else-if="detail" :title="detail.title">
             <template #icon><Table2 :size="20" /></template>
             <template #badges><span class="ui-badge">{{ tr("分析记录") }}</span><span class="ui-badge">{{ selectedNode.label }}</span></template>

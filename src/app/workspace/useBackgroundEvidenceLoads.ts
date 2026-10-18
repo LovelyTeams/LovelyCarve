@@ -29,7 +29,7 @@ export function useBackgroundEvidenceLoads(tabs: ReturnType<typeof useTabManager
       if (opts?.waitUntilReady && existing.loadTaskId) {
         try { await pending.get(key)?.completion; }
         catch (error) { return { ok: false, error: String(error) }; }
-        if (existing.loadTaskId) return { ok: false, error: tr('载入未完成') };
+        if (existing.loadTaskId) return { ok: false, error: tr('加载未完成') };
       }
       return tabs.openNewTab(path, opts);
     }
@@ -52,11 +52,11 @@ export function useBackgroundEvidenceLoads(tabs: ReturnType<typeof useTabManager
     load.completion = completion;
     void completion.catch(error => {
       if (current() && !(error instanceof IpcCommandError && error.code === 'cancelled')) {
-        notifyError(tr('打开证据失败'), `${path.split(/[\\/]/).pop()}：${error}`);
+        notifyError(tr('打开检材失败'), `${path.split(/[\\/]/).pop()}：${error}`);
       }
     }).finally(() => { if (pending.get(key) === load) pending.delete(key); });
     if (opts?.waitUntilReady) {
-      try { await completion; return current() ? { ok: true } : { ok: false, error: tr('载入未完成') }; }
+      try { await completion; return current() ? { ok: true } : { ok: false, error: tr('加载未完成') }; }
       catch (error) { return { ok: false, error: String(error) }; }
     }
     return { ok: true, queued: true };

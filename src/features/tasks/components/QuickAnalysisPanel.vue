@@ -101,6 +101,7 @@
 
 <script setup lang="ts">
 import { tr } from '../../../composables/useLocale';
+import { joinList } from '../../../i18n/translate';
 
 /** 检材级分析插件清单：按分类平铺插件，勾选插件即运行它在当前平台的全部分析功能（不细分子项）；
  *  顶部与每个分类各有一个三态全选框，格子右侧的图标是该插件在当前检材上的最近任务状态。 */
@@ -300,7 +301,7 @@ function tileTitle(plugin: QuickPlugin): string {
   const state = stateOf(plugin);
   return [
     plugin.name,
-    tr("包含：{0}", { 0: plugin.functions.map(fn => fn.displayName).join('、') }),
+    tr("包含：{0}", { 0: joinList(plugin.functions.map(fn => fn.displayName), tr) }),
     state.busy ? tr("已有未结束的任务，可在任务列表中继续、暂停或取消") : null,
     state.badge ? tr("最近任务：{0}", { 0: state.badge.text }) : null,
     ...state.taskLines,
@@ -392,7 +393,7 @@ async function onConfirm(): Promise<void> {
     if (rerun.length > 0) {
       const ok = await confirm({
         title: tr("任务结果已存在"),
-        message: tr("{0} 已有任务记录。清理旧任务数据并重新分析吗?", { 0: rerun.map(plugin => plugin.name).join('、') }),
+        message: tr("{0} 已有任务记录。是否清理旧数据并重新分析？", { 0: joinList(rerun.map(plugin => plugin.name), tr) }),
         confirmText: tr("重新分析"),
         danger: true,
       });
@@ -430,8 +431,8 @@ async function onRestartAll(): Promise<void> {
   const candidates = evidenceTasks.value;
   if (!candidates.length || submitting.value) return;
   const ok = await confirm({
-    title: tr("重新分析所有任务"),
-    message: tr("将重跑该检材的 {0} 个任务,重新分析会清理之前的数据。继续吗?", { 0: candidates.length }),
+    title: tr("重新分析全部任务"),
+    message: tr("将重新运行该检材的 {0} 个任务，并清理之前的分析数据。是否继续？", { 0: candidates.length }),
     confirmText: tr("重新分析"),
     danger: true,
   });

@@ -116,7 +116,7 @@
           <div v-if="recognition.qrScanning" class="qr-progress mono">
             {{ tr("扫描中") }}
             <template v-if="recognition.qrProgress">
-              {{ recognition.qrProgress.attempts }}/{{ recognition.qrProgress.total }}{{ tr("（已找到") }} {{ recognition.qrProgress.found }}）
+              {{ tr("{0}/{1}（已找到 {2}）", { 0: recognition.qrProgress.attempts, 1: recognition.qrProgress.total, 2: recognition.qrProgress.found }) }}
             </template>
           </div>
           <div v-else-if="recognition.qrError" class="qr-empty mono">{{ recognition.qrError }}</div>

@@ -85,7 +85,7 @@
         <div class="disk-filter-actions">
           <button class="ui-btn sm primary" @click="applySizeFilter">
             <Filter :size="12" />
-            <span>{{ tr("激活") }}</span>
+            <span>{{ tr("启用") }}</span>
           </button>
           <button class="ui-btn sm" :disabled="!sizeFilter.active" @click="disableSizeFilter">
             {{ tr("禁用") }}
@@ -224,7 +224,7 @@
         <div class="disk-filter-actions">
           <button class="ui-btn sm primary" @click="applyPopoverTimeFilter">
             <Filter :size="12" />
-            <span>{{ tr("激活") }}</span>
+            <span>{{ tr("启用") }}</span>
           </button>
           <button
             class="ui-btn sm"
@@ -257,7 +257,7 @@
         <input
           class="ui-input sm mono disk-filter-input"
           type="text"
-          :placeholder="filterPopover.key === 'path' ? tr('输入 / 逐级补全，Tab 补全 ↑↓ 选择') : filterPopover.key === 'name' ? tr('关键字，支持 * ? 通配符') : tr('输入关键字')"
+          :placeholder="filterPopover.key === 'path' ? tr('输入路径逐级补全，Tab 补全，↑↓ 选择') : filterPopover.key === 'name' ? tr('关键词，支持 * 和 ? 通配符') : tr('输入关键词')"
           v-model="filters[filterPopover.key]"
           @input="onTextFilterInput"
           @focus="onTextFilterFocus"

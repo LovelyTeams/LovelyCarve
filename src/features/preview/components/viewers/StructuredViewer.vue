@@ -29,7 +29,7 @@
 
     <!-- 错误 / 空 -->
     <div v-if="scene.kind === 'error'" class="state-row mono error">
-      <AlertTriangle :size="14" /> {{ tr("无法解析为") }} {{ format.toUpperCase() }} {{ tr("结构：") }}{{ scene.message }}{{ tr("。请切换到「文本 / 十六进制」视图。") }}
+      <AlertTriangle :size="14" /> {{ tr("无法解析为 {0} 结构：{1}。请切换到「文本 / 十六进制」视图。", { 0: format.toUpperCase(), 1: scene.message }) }}
     </div>
     <div v-else-if="scene.kind === 'empty'" class="state-row mono">{{ tr("空文档，无可视化内容。") }}</div>
 

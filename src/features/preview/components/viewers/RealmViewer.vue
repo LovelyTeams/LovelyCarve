@@ -4,7 +4,7 @@
       <Loader2 :size="14" class="spin" />
       {{ tr("正在解析 Realm 数据库…") }}
     </div>
-    <div v-else-if="error" class="state-row mono error">{{ tr("Realm 解析失败：") }}{{ error }}</div>
+    <div v-else-if="error" class="state-row mono error">{{ tr("Realm 解析失败：{0}", { 0: error }) }}</div>
 
     <div v-else-if="digest && !digest.tables.length" class="empty-db">
       <div class="state-row mono">{{ tr("库内没有可显示的表。") }}</div>

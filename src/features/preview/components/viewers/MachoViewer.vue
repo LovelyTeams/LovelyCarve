@@ -63,7 +63,7 @@
         <div class="card-head"><h4 class="card-title">{{ tr("段") }} <span class="count-badge mono">{{ report.segments.length }}</span></h4></div>
         <details v-disclosure-motion v-for="(seg, i) in report.segments" :key="i" class="disclosure" :open="report.segments.length <= 4">
           <summary>
-            <span class="mono strong">{{ seg.name || tr("(无名段)") }}</span>
+            <span class="mono strong">{{ seg.name || tr("（未命名段）") }}</span>
             <span class="chip">{{ seg.initprot }}</span>
             <span class="dim mono">vm {{ seg.vmaddr }} · {{ formatBytes(seg.vmsize) }} · {{ seg.nsects }} {{ tr("节") }}</span>
           </summary>

@@ -1,7 +1,7 @@
 <template>
   <div class="sqlite-viewer">
     <div v-if="loading" class="state-row mono"><Loader2 :size="14" class="spin" /> {{ tr("正在解析 SQLite 数据库…") }}</div>
-    <div v-else-if="error" class="state-row mono error">{{ tr("SQLite 解析失败：") }}{{ error }}</div>
+    <div v-else-if="error" class="state-row mono error">{{ tr("SQLite 解析失败：{0}", { 0: error }) }}</div>
 
     <!-- 加密库：密钥输入表单 -->
     <div v-else-if="locked" class="lock-wrap">
@@ -10,7 +10,7 @@
           <Lock :size="15" />
           <span>{{ tr("数据库已加密（SQLCipher）") }}</span>
         </div>
-        <p class="lock-hint mono">{{ tr("输入密钥以解密预览。多数 App 用文本口令；部分 IM 用 32 字节 raw key（hex）。旧版/微信库见下方高级参数。") }}</p>
+        <p class="lock-hint mono">{{ tr("输入密钥以解密预览。多数应用使用文本口令，部分即时通信应用使用 32 字节原始密钥（十六进制）；旧版或微信数据库请设置下方高级参数。") }}</p>
 
         <div class="ui-seg seg">
           <button type="button" class="ui-seg-item" :class="{ active: keyMode === 'passphrase' }" @click="keyMode = 'passphrase'">{{ tr("口令") }}</button>
@@ -103,7 +103,7 @@
       <div class="grid-pane">
         <div v-if="digest.encrypted" class="decrypted-bar"><LockOpen :size="12" /> {{ tr("已解密（SQLCipher）") }}</div>
         <div v-if="digest.sidecars.length" class="wal-bar" :title="tr('预览是 SQLite 回放 WAL 中已提交事务后的状态，比主库文件更新')">
-          <History :size="12" /> {{ tr("已回放") }} {{ digest.sidecars.join('、') }}
+          <History :size="12" /> {{ tr("已回放") }} {{ joinList(digest.sidecars, tr) }}
         </div>
         <SqliteDeletedRecords
           v-if="deletedOpened"
@@ -182,6 +182,7 @@
 
 <script setup lang="ts">
 import { tr } from '../../../../composables/useLocale';
+import { joinList } from '../../../../i18n/translate';
 
 import { vDisclosureMotion } from '../../../../composables/uiMotionDirectives';
 // SQLite 库的「原类型视图」：左侧表清单（名称 + 行数），右侧按需分页取
@@ -221,7 +222,7 @@ const passphrase = ref('');
 const rawHexKey = ref('');
 const compatibility = ref<number | ''>('');
 const COMPATIBILITY_OPTIONS: UiSelectOption<number | ''>[] = [
-  { value: '', get label() { return tr("默认 (4)"); } },
+  { value: '', get label() { return tr("默认（4）"); } },
   ...[4, 3, 2, 1].map(version => ({ value: version, label: `SQLCipher ${version}` })),
 ];
 const pageSize = ref<number | ''>('');

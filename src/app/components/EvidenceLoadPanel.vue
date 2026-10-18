@@ -5,7 +5,7 @@
     <p class="ui-empty-title">{{ name }}</p>
     <p class="ui-empty-desc">{{ task?.error || task?.message || tr('等待加载') }}</p>
     <div v-if="running" class="ui-progress" :class="{ indeterminate: task?.progress == null }"
-      role="progressbar" :aria-label="tr('证据加载')" :aria-valuenow="task?.progress ?? undefined" aria-valuemin="0" aria-valuemax="100">
+      role="progressbar" :aria-label="tr('检材加载')" :aria-valuenow="task?.progress ?? undefined" aria-valuemin="0" aria-valuemax="100">
       <span :style="task?.progress != null ? { width: `${task.progress}%` } : undefined" />
     </div>
     <p v-if="running" class="ui-empty-desc">{{ tr('解压完成后自动加载内容，可切换标签页继续操作。') }}</p>

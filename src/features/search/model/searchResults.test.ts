@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { translate } from '../../../i18n/translate';
 import type { GlobalSearchHit } from '../../../lib/ipc/search';
 import {
   buildSearchContextPreview,
@@ -47,13 +48,14 @@ describe('global search presentation helpers', () => {
   it('labels source kinds', () => {
     expect(sourceKindLabel('file')).toBe('文件');
     expect(sourceKindLabel('unallocated')).toBe('未分配');
-    expect(sourceKindLabel('diskgap')).toBe('磁盘间隙');
+    expect(sourceKindLabel('diskgap')).toBe('分区间隙');
   });
 
   it('builds task titles with keywords first and regex tail', () => {
     expect(taskDisplayTitle(['password'], [])).toBe('password');
     expect(taskDisplayTitle(['a', 'b'], ['\\d{4}'])).toBe('a、b + /\\d{4}');
-    expect(taskDisplayTitle([], ['\\d+', '[x'])).toBe('/\\d+ 等2条');
+    expect(taskDisplayTitle([], ['\\d+', '[x'])).toBe('/\\d+ 等 2 条');
+    expect(taskDisplayTitle(['a', 'b'], ['\\d+', '[x'], (message, params) => translate(message, 'en', params))).toBe('a, b + /\\d+ and 2 more');
   });
 
   it('parses newline and comma separated patterns while preserving order', () => {

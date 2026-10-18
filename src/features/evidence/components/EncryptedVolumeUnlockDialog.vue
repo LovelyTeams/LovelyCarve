@@ -33,12 +33,16 @@
                   </label>
                   <div class="wide"><button class="ui-btn ghost sm" type="button" :disabled="inventoryBusy" @click="loadInventory">{{ inventoryBusy ? tr("正在读取卷信息…") : tr("读取卷信息") }}</button></div>
                   <div v-if="inventoryError" :id="inventoryNoteId" class="wide ui-field-error" role="alert">{{ inventoryError }}</div>
-                  <p v-if="inventory && inventory.header_offset > 0" class="wide ui-alert">{{ tr("已从备用卷头恢复元数据（区域内偏移") }} {{ inventory.header_offset }}）。</p>
+                  <p v-if="inventory && inventory.header_offset > 0" class="wide ui-alert">{{ tr("已从备用卷头恢复元数据（区域内偏移 {0}）。", { 0: inventory.header_offset }) }}</p>
                   <label v-if="inventory" class="wide">{{ tr("逻辑卷") }}
                     <UiSelect v-model="logicalVolumeIndex" :options="logicalVolumeOptions" />
                   </label>
                   <div v-if="selectedLogicalVolume" class="wide ui-field-hint" role="status">
-                    {{ tr("状态：") }}{{ selectedLogicalVolume.conversion_status === 'Complete' ? tr("已完成加密") : selectedLogicalVolume.conversion_status || tr("未知") }} {{ tr("· PBKDF2 最低迭代数：") }}{{ selectedLogicalVolume.pbkdf2_iterations.toLocaleString() }} {{ tr("次 · 保护器：") }}{{ selectedLogicalVolume.protectors.map(protectorLabel).join('、') || tr("未发现") }}
+                    {{ tr("状态：{0} · PBKDF2 最低迭代数：{1} 次 · 保护器：{2}", {
+                      0: selectedLogicalVolume.conversion_status === 'Complete' ? tr("已完成加密") : selectedLogicalVolume.conversion_status || tr("未知"),
+                      1: selectedLogicalVolume.pbkdf2_iterations.toLocaleString(),
+                      2: joinList(selectedLogicalVolume.protectors.map(protectorLabel), tr) || tr("未发现"),
+                    }) }}
                     <p v-if="selectedLogicalVolume.findings.some(finding => finding.code === 'FVDE-WEAK-KDF-ITERATIONS')" class="ui-alert">{{ tr("密码派生迭代数低于 20,000；这是强度观察项，不能据此判断卷已被破解。") }}</p>
                   </div>
                   <p v-if="inventory && inventory.volumes.length > 1" class="wide ui-field-hint">{{ tr("该容器包含多个逻辑卷，所选卷会打开为独立的只读明文会话。") }}</p>
@@ -73,6 +77,7 @@
 
 <script setup lang="ts">
 import { tr } from '../../../composables/useLocale';
+import { joinList } from '../../../i18n/translate';
 
 import { computed, onBeforeUnmount, ref, useId, watch } from 'vue';
 import { LockKeyhole, X } from 'lucide-vue-next';

@@ -4,7 +4,7 @@
 
     <div v-else-if="error" class="ui-alert danger load-alert" role="alert">
       <AlertCircle :size="14" />
-      <span class="alert-text">{{ tr("扫描已删除记录失败：") }}{{ error }}</span>
+      <span class="alert-text">{{ tr("扫描已删除记录失败：{0}", { 0: error }) }}</span>
       <button type="button" class="ui-btn sm" @click="load">{{ tr("重试") }}</button>
     </div>
 
@@ -125,6 +125,7 @@
 
 <script setup lang="ts">
 import { tr } from '../../../../composables/useLocale';
+import { joinList } from '../../../../i18n/translate';
 
 // SQLite 浏览器的「已删除记录」：后端从空闲页、页内空闲区、溢出链、未检查点
 // 的 -wal 和回滚 -journal 中恢复的行（不含现存行）。按表、来源筛选，前端分页；
@@ -273,7 +274,7 @@ const facts = computed(() => {
     tr("{0} 页", { 0: recovery.page_count.toLocaleString() }),
     tr("空闲页 {0}", { 0: recovery.freelist_pages.toLocaleString() }),
   ];
-  if (recovery.sidecars.length) parts.push(tr("已结合 {0}", { 0: recovery.sidecars.join('、') }));
+  if (recovery.sidecars.length) parts.push(tr("已结合 {0}", { 0: joinList(recovery.sidecars, tr) }));
   return parts.join(' · ');
 });
 

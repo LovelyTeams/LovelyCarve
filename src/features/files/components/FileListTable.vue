@@ -121,12 +121,12 @@
             <span
               v-if="vi.item.has_snapshot && vi.item.id.startsWith('ntfs:')"
               class="tag-pill mono snapshot-pill"
-              :title="tr('该文件含 NTFS 命名数据流（ADS / Alternate Data Stream），可能隐藏额外内容；下方独立行可查看/导出')"
+              :title="tr('该文件含 NTFS 命名数据流（ADS / Alternate Data Stream），可能隐藏额外内容；下方独立行可查看或导出')"
             >{{ tr("数据流") }}</span>
             <span
               v-else-if="vi.item.has_snapshot"
               class="tag-pill mono snapshot-pill"
-              :title="tr('该文件含 ReFS 文件快照流（refsutil streamsnapshot），保存了替换前的原始内容；下方独立行可查看/导出')"
+              :title="tr('该文件含 ReFS 文件快照流（refsutil streamsnapshot），保存了替换前的原始内容；下方独立行可查看或导出')"
             >{{ tr("快照") }}</span>
             <span
               v-if="vi.item.kind === 'dir' && dirCounts[vi.item.id] != null && dirCounts[vi.item.id] > 0"

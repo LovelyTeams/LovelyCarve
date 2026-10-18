@@ -55,7 +55,7 @@ export function useAutoMount() {
         // 拿不到现有挂载列表不致命——大不了对已挂的再试一次（会失败计入 failed）。
       }
 
-      notifyInfo(tr("自动挂载案件分区"), tr("正在载入并挂载 {0} 块证据磁盘…", { 0: caseInfo.evidence.length }));
+      notifyInfo(tr("自动挂载案件分区"), tr("正在加载 {0} 个检材并挂载其分区…", { 0: caseInfo.evidence.length }));
 
       for (const ev of caseInfo.evidence) {
         let detail;
@@ -73,7 +73,7 @@ export function useAutoMount() {
             continue;
           }
           try {
-            const name = p.label ?? tr("分区{0}", { 0: p.id });
+            const name = p.label ?? tr("分区 {0}", { 0: p.id });
             const dir = await fsCreateMountDir({ root, imageId: detail.id, name });
             await fsMountReadonly({ imageId: detail.id, nodeId, mountPoint: dir });
             mounted += 1;

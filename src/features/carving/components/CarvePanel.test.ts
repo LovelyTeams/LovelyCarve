@@ -107,8 +107,8 @@ describe('recovery workspace', () => {
     ipc.list.mockResolvedValue([filesystemScan]); ipc.page.mockResolvedValue({ items: [], total: 0, next_cursor: null, resume_cursor: null });
     await mount();
     expect(ipc.filesystem).toHaveBeenCalledWith({ scanId: 'scan-fs' });
-    expect(rowNames()).toEqual(['FAT32', '新加卷', '签名恢复']);
-    expect([...document.querySelectorAll('.tree-row')].map(item => item.querySelector('.tree-name')?.textContent)).toEqual(['FAT32', '新加卷', '签名恢复']);
+    expect(rowNames()).toEqual(['FAT32', '新加卷', '签名雕刻']);
+    expect([...document.querySelectorAll('.tree-row')].map(item => item.querySelector('.tree-name')?.textContent)).toEqual(['FAT32', '新加卷', '签名雕刻']);
     await openFolder('新加卷');
     expect(rowNames()).toEqual(['apk', 'full.bin']);
     expect(document.querySelector('.breadcrumb')?.textContent).toContain('新加卷');
@@ -133,8 +133,8 @@ describe('recovery workspace', () => {
 
   it('opens and closes details on demand, filters by filename, and recovers only checked results', async () => {
     ipc.list.mockResolvedValue([scan]); await mount();
-    expect(rowNames()).toEqual(['签名恢复']);
-    await openFolder('签名恢复', 'PDF');
+    expect(rowNames()).toEqual(['签名雕刻']);
+    await openFolder('签名雕刻', 'PDF');
     expect(document.querySelector('.detail-dock')).toBeNull();
     row('one.pdf').click(); await settle();
     expect(document.querySelector('.detail-dock')?.textContent).toContain('one.pdf');
@@ -160,7 +160,7 @@ describe('recovery workspace', () => {
     expect(document.querySelector('[role=dialog]')).not.toBeNull();
     button('取消').click(); await settle();
     await vi.waitFor(() => expect(document.querySelector('[role=dialog]')).toBeNull());
-    expect(rowNames()).toEqual(['签名恢复']);
+    expect(rowNames()).toEqual(['签名雕刻']);
     expect(ipc.start).not.toHaveBeenCalled();
   });
 });
@@ -177,7 +177,7 @@ describe('scan history', () => {
     ipc.page.mockResolvedValue({ items: [{ ...artifacts[1], name: 'older.pdf' }], total: 1, next_cursor: null });
     (document.querySelectorAll('.task-open')[1] as HTMLButtonElement).click(); await settle();
     expect(ipc.page).toHaveBeenLastCalledWith({ scanId: 'scan-b', cursor: null, limit: 500 });
-    await openFolder('签名恢复', 'PDF');
+    await openFolder('签名雕刻', 'PDF');
     expect(rowNames()).toEqual(['older.pdf']);
     resolve({ items: artifacts, total: 2, next_cursor: null }); await settle();
     expect(rowNames()).toEqual(['older.pdf']);
@@ -227,7 +227,7 @@ it('fetches final results even when completion arrives during an earlier page re
   resolve({ items: [artifacts[0]], total: 1, next_cursor: null, resume_cursor: 'cursor-1' });
   await settle();
   expect(ipc.page).toHaveBeenLastCalledWith({ scanId: 'scan-a', cursor: 'cursor-1', limit: 500 });
-  await openFolder('签名恢复', 'PDF');
+  await openFolder('签名雕刻', 'PDF');
   expect(rowNames()).toEqual(['one.pdf', 'two.pdf']);
 });
 
@@ -251,7 +251,7 @@ it('reads every result page before building the signature folders', async () => 
     .mockResolvedValueOnce({ items: [artifacts[1]], total: 2, next_cursor: null, resume_cursor: 'last' });
   await mount();
   expect(ipc.page).toHaveBeenLastCalledWith({ scanId: 'scan-a', cursor: 'next', limit: 500 });
-  await openFolder('签名恢复', 'PDF');
+  await openFolder('签名雕刻', 'PDF');
   expect(rowNames()).toEqual(['one.pdf', 'two.pdf']);
   expect(document.querySelector('.footer-total')?.textContent).toContain('2');
 });
@@ -263,7 +263,7 @@ it('keeps read failure separate from an empty scan and retries in place', async 
   expect(document.body.textContent).not.toContain('本次扫描没有发现可恢复的文件');
   button('重试').click(); await settle();
   expect(document.querySelector('.result-read-error')).toBeNull();
-  await openFolder('签名恢复', 'PDF');
+  await openFolder('签名雕刻', 'PDF');
   expect(rowNames()).toEqual(['one.pdf', 'two.pdf']);
 });
 
@@ -273,7 +273,7 @@ it('retains loaded rows and resumes a failed page on retry', async () => {
     .mockRejectedValueOnce(new Error('分页中断'));
   await mount();
   expect(document.querySelector('.result-read-error')?.textContent).toContain('分页中断');
-  await openFolder('签名恢复', 'PDF');
+  await openFolder('签名雕刻', 'PDF');
   expect(rowNames()).toEqual(['one.pdf']);
   ipc.page.mockResolvedValueOnce({ items: [artifacts[1]], total: 2, next_cursor: null, resume_cursor: 'last' });
   button('重试').click(); await settle();
@@ -287,7 +287,7 @@ it('virtualizes a large scan while selecting every listed result for recovery', 
   ipc.list.mockResolvedValue([{ ...scan, artifacts_found: many.length }]);
   ipc.page.mockResolvedValue({ items: many, total: many.length, next_cursor: null });
   await mount();
-  await openFolder('签名恢复', 'PDF');
+  await openFolder('签名雕刻', 'PDF');
   expect(document.querySelectorAll('tbody tr:not(.virtual-spacer)').length).toBeLessThan(100);
   expect(document.querySelector('.virtual-spacer')).not.toBeNull();
   (document.querySelector('thead input') as HTMLInputElement).click(); await settle();
@@ -300,5 +300,5 @@ it('offers retry when history cannot be read instead of showing an empty history
   expect(document.querySelector('.workspace-start')?.textContent).toContain('记录不可读');
   expect(document.body.textContent).not.toContain('还没有恢复扫描');
   ipc.list.mockResolvedValue([scan]); button('重试').click(); await settle();
-  expect(rowNames()).toEqual(['签名恢复']);
+  expect(rowNames()).toEqual(['签名雕刻']);
 });

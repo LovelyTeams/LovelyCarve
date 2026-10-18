@@ -452,7 +452,7 @@ just test-cli
 从分区行进入时固定该分区。CLI 命令等待解锁结果，便于后续 JSONL 引用。
 桌面使用 `options.target: "sourcePartition"`，返回原 `image.id` 与 `volume_key`，文件节点沿用
 `part:N`；原镜像哈希仍读取源密文，RAW 导出省略 `mode` 或使用 `"source"` 时也读取源字节。
-桌面「导出原始镜像」使用 `images export` 的 `mode: "unlockedPartitions"`：以导出开始时的
+桌面「导出源镜像」使用 `images export` 的 `mode: "unlockedPartitions"`：以导出开始时的
 已解锁状态投影所有 LUKS / VeraCrypt / BitLocker 分区，明文从原分区起始位置写入，
 较短明文后的分区尾部补零；分区表、其他分区及整盘大小保留。导出开始后的解锁不改变本次输出，
 解密会话关闭、短读或越界时报错。目标文件必须不存在，避免覆盖源镜像或已有导出。

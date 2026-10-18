@@ -28,7 +28,7 @@ describe('content preview session', () => {
     const state = setup(true); state.activeTab.value = 'hex';
     await state.session.loadPreview(); await state.session.identifyType();
     expect(state.activeTab.value).toBe('detail'); expect(state.session.loading.value).toBe(false);
-    expect(state.session.error.value).toContain('原镜像不可用');
+    expect(state.session.error.value).toContain('源镜像不可用');
     expect(mocks.preview).not.toHaveBeenCalled(); expect(mocks.identify).not.toHaveBeenCalled();
     expect(state.media).not.toHaveBeenCalled(); expect(state.decode).not.toHaveBeenCalled();
     state.node.value = file('file-b'); await state.session.loadPreview();

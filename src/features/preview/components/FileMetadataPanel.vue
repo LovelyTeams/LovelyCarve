@@ -21,9 +21,9 @@
       <FileDetailFields :fields="[
         { label: tr('识别类型'), value: ident.label, mono: true },
         { label: tr('说明'), value: ident.description },
-        { label: tr('判定依据'), value: ident.inferred ? tr('置信度 {0}%', { 0: (ident.score * 100).toFixed(1) }) : tr('规则直判') },
+        { label: tr('判定依据'), value: ident.inferred ? tr('置信度 {0}%', { 0: (ident.score * 100).toFixed(1) }) : tr('规则判定') },
       ]" />
-      <p v-if="extMismatch" class="ui-alert warn detail-alert">{{ tr("扩展名 .") }}{{ extension }} {{ tr("与识别类型（") }}{{ ident.label }}{{ tr("）不符，可能是改后缀伪装。") }}</p>
+      <p v-if="extMismatch" class="ui-alert warn detail-alert">{{ tr("扩展名 .{0} 与识别类型（{1}）不符，可能是修改扩展名伪装的文件。", { 0: extension, 1: ident.label }) }}</p>
     </FileDetailSection>
     <FileDetailSection v-if="hashRows.length" :title="tr('文件哈希')" wide>
       <FileDetailFields :fields="hashRows.map(row => ({ ...row, mono: true, copyable: true }))" />

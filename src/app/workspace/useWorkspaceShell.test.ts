@@ -172,7 +172,7 @@ describe('useWorkspaceShell case gate', () => {
     expect(onRequestAddImage).not.toHaveBeenCalled();
     expect(notifyInfoMock).toHaveBeenCalledWith(
       '请先创建或打开案件',
-      '证据镜像会登记到当前案件，并用于卷快照、标签和哈希结果持久化。',
+      '检材会登记到当前案件，卷快照、标签和哈希结果也会随案件保存。',
     );
 
     caseCreateMock.mockResolvedValue(makeCase());
@@ -345,7 +345,7 @@ describe('useWorkspaceShell case gate', () => {
     });
 
     expect(await shell.loadFileForTab('D:\\evidence\\disk.E01')).toEqual({ opened: false, error: '镜像头损坏' });
-    expect(notifyError).toHaveBeenCalledExactlyOnceWith('打开证据失败', 'disk.E01：镜像头损坏');
+    expect(notifyError).toHaveBeenCalledExactlyOnceWith('打开检材失败', 'disk.E01：镜像头损坏');
 
     vi.mocked(notifyError).mockClear();
     openByPath.mockResolvedValue({ opened: false, error: '暂不支持该文件类型' });

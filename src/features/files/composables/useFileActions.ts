@@ -75,7 +75,7 @@ export function useFileActions(options: {
     const nodes = copyMenuNodes();
     options.closeMenu();
     if (nodes.length === 0) return;
-    const header = tr("全路径\t类型\t大小(字节)\t创建时间\t修改时间\t访问时间\t元数据地址\t已删除");
+    const header = tr("全路径\t类型\t大小（字节）\t创建时间\t修改时间\t访问时间\t元数据地址\t已删除");
     const lines = nodes.map(n =>
       [
         fullPathOf(n),
@@ -165,7 +165,7 @@ export function useFileActions(options: {
     );
     if (tag) {
       options.revealTagColumn();
-      notifySuccess(tr("已打标"), tr("{0} 项 → {1}", { 0: nodes.length, 1: tag }));
+      notifySuccess(tr("已添加标签"), tr("{0} 项 → {1}", { 0: nodes.length, 1: tag }));
     } else {
       notifySuccess(tr("已清除标签"), tr("{0} 项", { 0: nodes.length }));
     }

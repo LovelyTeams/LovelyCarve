@@ -13,7 +13,7 @@
           <span class="ui-modal-icon"><HardDrive :size="18" /></span>
           <div class="ui-modal-heading">
             <h2 id="physical-disk-title" class="ui-modal-title">{{ tr("打开物理磁盘") }}</h2>
-            <p class="ui-modal-subtitle">{{ tr("选择要作为证据加载的本机物理磁盘") }}</p>
+            <p class="ui-modal-subtitle">{{ tr("选择要作为检材加载的本机物理磁盘") }}</p>
           </div>
           <button class="ui-icon-btn" :title="tr('刷新')" :aria-label="tr('刷新磁盘列表')" :disabled="loading" @click="refresh">
             <RotateCw :size="16" :class="{ spin: loading }" />

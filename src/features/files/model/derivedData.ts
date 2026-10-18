@@ -9,7 +9,7 @@ export function ftypeCellText(t: FsTypeIdent): string {
 export function ftypeTitle(t: FsTypeIdent, tr: Translator = sourceText): string {
   const parts = [t.description, t.mime_type];
   if (t.extensions.length > 0) parts.push(tr("常见扩展名 {0}", { 0: t.extensions.join('/') }));
-  parts.push(t.inferred ? tr("模型置信度 {0}%", { 0: (t.score * 100).toFixed(1) }) : tr("规则直判"));
+  parts.push(t.inferred ? tr("模型置信度 {0}%", { 0: (t.score * 100).toFixed(1) }) : tr("规则判定"));
   return parts.join(' · ');
 }
 

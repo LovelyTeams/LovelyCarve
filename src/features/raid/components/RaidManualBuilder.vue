@@ -13,7 +13,7 @@
 
       <div class="ui-modal-body manual-body">
         <p class="hint">
-          {{ tr("自动检测啃不动的阵列（未知偏移 / 缺盘 / 任意盘序）可在此手动指定几何参数，按列序选择成员盘后预览重组结果。") }}
+          {{ tr("自动检测无法识别的阵列（未知偏移、缺盘或任意盘序）可在此手动指定几何参数，按列序选择成员盘后预览重组结果。") }}
         </p>
 
         <!-- Member selection + column order -->
@@ -94,12 +94,12 @@
             </label>
           </template>
           <label v-if="level !== 1" class="param">
-            <span>{{ level === -1 ? tr("成员取整 (KiB，0 不取整)") : tr("块大小 (KiB)") }}</span>
+            <span>{{ level === -1 ? tr("成员取整（KiB，0 表示不取整）") : tr("块大小（KiB）") }}</span>
             <input v-model.number="chunkKiB" class="ui-input sm mono" type="number" :min="level === -1 ? 0 : 1" step="1"
               :aria-invalid="chunkInvalid || undefined" :aria-describedby="chunkInvalid ? 'raid-manual-problem' : undefined" />
           </label>
           <label class="param">
-            <span>{{ tr("数据偏移 (扇区)") }}</span>
+            <span>{{ tr("数据偏移（扇区）") }}</span>
             <input v-model.number="dataOffsetSectors" class="ui-input sm mono" type="number" min="0" step="1" />
           </label>
         </div>
@@ -136,7 +136,7 @@
               <span v-if="p.label" class="part-label">{{ p.label }}</span>
             </li>
           </ul>
-          <p v-else class="empty mono">{{ tr("该几何未产生可识别的分区/文件系统，请调整参数后重试。") }}</p>
+          <p v-else class="empty mono">{{ tr("当前几何参数下未识别出分区或文件系统，请调整参数后重试。") }}</p>
         </div>
       </div>
 
@@ -304,7 +304,7 @@ const canOpen = computed(
   () => result.value != null && result.value.partitions.some(p => isBrowsable(p.kind)),
 );
 
-const rebuildBadge = computed(() => (level.value === 1 || level.value === 10 ? tr("缺失·镜像读取") : tr("掉线·重建")));
+const rebuildBadge = computed(() => (level.value === 1 || level.value === 10 ? tr("缺失 · 镜像读取") : tr("缺失 · 校验重建")));
 
 /** Column labels for the live diagram, in the current column order. */
 const diagramLabels = computed(() => order.value.map(key => (isAbsent(key) ? tr("（缺盘）") : baseName(pathOf(key)))));

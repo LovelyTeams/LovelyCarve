@@ -8,6 +8,11 @@ export type Translator = (message: string, params?: MessageParams) => string;
 /** Default translator for pure presentation models and their tests. */
 export const sourceText: Translator = (message, params) => translate(message, 'zh-CN', params);
 
+/** Joins application-rendered list items with the locale's enumeration separator (「、」 / ", "). */
+export function joinList(items: readonly string[], tr: Translator = sourceText): string {
+  return items.join(tr('list.separator'));
+}
+
 /** Source messages are the Chinese catalog. Interpolation never evaluates HTML or code. */
 export function translate(message: string, locale: Locale, params: MessageParams = {}): string {
   const catalog: Readonly<Record<string, string>> = locale === 'en' ? english : chinese;

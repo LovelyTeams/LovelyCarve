@@ -95,7 +95,7 @@
           </section>
         </main>
         <footer class="ui-modal-footer">
-          <button v-if="activeSection === 'appearance'" class="ui-btn ghost start" type="button" @click="resetCurrentSection">{{ tr("恢复当前页默认") }}</button>
+          <button v-if="activeSection === 'appearance'" class="ui-btn ghost start" type="button" @click="resetCurrentSection">{{ tr("恢复本页默认设置") }}</button>
           <button class="ui-btn primary" type="button" @click="$emit('close')">{{ tr("完成") }}</button>
         </footer>
       </div>

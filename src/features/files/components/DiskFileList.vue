@@ -9,7 +9,7 @@
       @clear-search="clearSearchKeyword" @toggle-deepsearch="toggleDeepsearch" @refresh="refresh" @toggle-preview="togglePreview"
     />
 
-    <div v-if="indexOnly" class="ui-alert info offline-notice" role="status"><CircleAlert :size="16" /><span>{{ tr("离线索引 · 原镜像不可用，可浏览已索引目录、筛选文件和查看属性。正文预览、导出、哈希及分析需恢复原镜像。") }}</span></div>
+    <div v-if="indexOnly" class="ui-alert info offline-notice" role="status"><CircleAlert :size="16" /><span>{{ tr("离线索引 · 源镜像不可用，可浏览已索引目录、筛选文件和查看属性。正文预览、导出、哈希及分析需恢复源镜像。") }}</span></div>
     <div v-if="error" class="error-banner" role="alert"><CircleAlert :size="14" /><span class="mono">{{ error }}</span></div>
 
     <div class="body">

@@ -63,7 +63,7 @@ function pushNotice(notice: SchedNotice) {
   notices.value = next;
   switch (notice.kind) {
     case 'taskOffline':
-      notifyError(tr("任务 worker 离线"), notice.message);
+      notifyError(tr("任务执行器离线"), notice.message);
       break;
     case 'taskTimeout':
       notifyError(tr("任务进度超时"), notice.message);

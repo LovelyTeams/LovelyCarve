@@ -44,7 +44,7 @@ export function useEvidenceOpen(options: {
     physicalDiskResolve = null;
   }
 
-  /** Route the "添加证据" chooser pick to the matching load flow. Closing first
+  /** Route the "添加检材" chooser pick to the matching load flow. Closing first
    *  keeps the dialog from sitting over the native file picker. The case gate
    *  already ran in `handleOpenFile` before the dialog opened. */
   async function onAddImageSelect(kind: AddImageKind) {

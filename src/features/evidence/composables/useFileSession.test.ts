@@ -27,7 +27,7 @@ it('opens an indexed offline image directly in the file list with the saved iden
   invokeMock.mockResolvedValue({ id: 'saved-id', source_format: 'ewf', partitions: [], index_only: true });
   const session = useFileSession();
   expect(await session.openByPath('missing.E01', { forceImage: true })).toEqual({ opened: true, mode: 'image', nextPanel: 'files', imageId: 'saved-id' });
-  expect(session.imageInfo.value?.index_only).toBe(true); expect(session.parserName.value).toBe('离线索引 (ewf)');
+  expect(session.imageInfo.value?.index_only).toBe(true); expect(session.parserName.value).toBe('离线索引（ewf）');
 });
 
 beforeEach(() => {

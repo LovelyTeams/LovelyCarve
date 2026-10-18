@@ -70,7 +70,7 @@ export async function requestPreviewDock(ownerId: string, previewId: string, rea
   const response = new Promise<void>((resolve, reject) => {
     finish = result => result.accepted
       ? resolve()
-      : reject(new Error('原文件列表已切换检材或关闭，请返回原检材后再停靠。'));
+      : reject(new Error('原文件列表已切换到其他检材或已关闭，请返回原来的检材后再停靠。'));
     timer = setTimeout(() => reject(new Error('原文件列表未响应，请确认主窗口仍然打开。')), 3000);
   });
   // Attach the rejection handler immediately, even if registering IPC is slow.

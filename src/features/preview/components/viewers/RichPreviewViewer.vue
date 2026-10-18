@@ -4,11 +4,11 @@
       <IndeterminateBar :label="phaseLabel" />
     </div>
     <div v-else-if="tooLarge" class="state-row mono">
-      {{ tr("文件过大（") }}{{ formatBytes(node.size) }}{{ tr("），不渲染预览以免占用过多内存；请导出后查看，或切换到 「文本 / 十六进制」视图。") }}
+      {{ tr("文件过大（") }}{{ formatBytes(node.size) }}{{ tr("），不渲染预览以免占用过多内存；请导出后查看，或切换到「文本 / 十六进制」视图。") }}
     </div>
     <div v-else-if="empty" class="state-row mono">{{ tr("空文件（0 字节），无可渲染内容。") }}</div>
     <div v-else-if="error" class="state-row mono error">
-      <AlertTriangle :size="14" /> {{ tr("无法渲染为「") }}{{ node.name }}」：{{ error }}{{ tr("。请切换到「文本 / 十六进制」视图。") }}
+      <AlertTriangle :size="14" /> {{ tr("无法渲染「{0}」：{1}。请切换到「文本 / 十六进制」视图。", { 0: node.name, 1: error }) }}
     </div>
     <!-- Flyfish File Viewer 自带工具栏 / 渲染面与 Shadow DOM 隔离，整个容器交由其管理；
          theme 经 options 注入，切换主题时以 :key 重挂（库对 options 的响应性未验证）。 -->

@@ -74,7 +74,7 @@
     <div v-if="isDragOver && !showRaidMemberDialog" class="drag-overlay">
       <div class="drag-overlay-content">
         <Upload :size="48" />
-        <span>{{ tr("松开以添加证据") }}</span>
+        <span>{{ tr("松开以添加检材") }}</span>
       </div>
     </div>
   </Transition>
@@ -357,7 +357,7 @@ const loadPercent = computed(() => {
 // a generic spinner label before any image-load progress event arrives.
 const loadLabel = computed(() => {
   const p = loadProgress.value;
-  if (!p) return tr("正在载入镜像...");
+  if (!p) return tr("正在加载镜像…");
   let label = p.stage;
   if (p.total > 0) label += ` ${loadPercent.value}%`;
   if (p.entries > 0) label += tr(" · {0} 条", { 0: p.entries.toLocaleString() });

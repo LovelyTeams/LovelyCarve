@@ -251,7 +251,7 @@ export function useRaidMemberOpen(options: {
       if (opened > 0) {
         const notes: string[] = [];
         if (strays.length > 0) notes.push(tr("{0} 块非成员盘未加入案件", { 0: strays.length }));
-        notifyInfo(tr("RAID 重组镜像已打开"), notes.join('；') || tr("已打开 {0} 个重组镜像页", { 0: opened }));
+        notifyInfo(tr("RAID 重组镜像已打开"), notes.join('；') || tr("已打开 {0} 个重组镜像标签页", { 0: opened }));
         showRaidMemberDialog.value = false;
       }
     } finally {

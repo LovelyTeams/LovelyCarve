@@ -78,7 +78,7 @@ export function useDirectoryQuery(options: {
       entries.value = entries.value.concat(page.items);
       options.hydrated(page.items, gen);
     } catch (error) {
-      if (current(gen)) notifyError(tr("目录补页失败"), String(error));
+      if (current(gen)) notifyError(tr("加载更多目录条目失败"), String(error));
     } finally {
       directoryFetching = false;
       if (!disposed && !current(gen) && !loading.value && options.wantedThrough() >= entries.value.length) {

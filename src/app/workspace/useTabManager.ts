@@ -209,7 +209,7 @@ async function finishBackgroundLoad(tabId: string): Promise<void> {
   if (activeTabId.value === tabId) {
     activeTabId.value = null;
     await activateTab(tabId);
-    if (!tabs.value.some(tab => tab.id === tabId && !tab.pendingLoad)) throw new Error(tr('载入未完成'));
+    if (!tabs.value.some(tab => tab.id === tabId && !tab.pendingLoad)) throw new Error(tr('加载未完成'));
   }
 }
 
@@ -230,7 +230,7 @@ async function openNewTab(filePath: string, opts?: LoadFileOptions): Promise<Ope
     await activateTab(existing.id);
     return tabs.value.some(t => t.id === existing.id)
       ? { ok: true }
-      : { ok: false, error: tr("已打开的标签页重新载入失败") };
+      : { ok: false, error: tr("已打开的标签页重新加载失败") };
   }
 
   const mode = deriveMode(filePath);
@@ -317,7 +317,7 @@ async function openNewTab(filePath: string, opts?: LoadFileOptions): Promise<Ope
     // Backend refused — yank the tab back out and restore the active tab.
     // The load hook has already reported the reason unless `quiet`.
     rollback();
-    return { ok: false, error: outcome.error ?? tr("载入未完成") };
+    return { ok: false, error: outcome.error ?? tr("加载未完成") };
   } catch (e) {
     // The workspace shell's load hook catches load errors itself, so this
     // only fires on an unexpected teardown/hook failure. Roll back the

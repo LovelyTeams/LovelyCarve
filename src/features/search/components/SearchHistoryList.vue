@@ -27,7 +27,7 @@
                 <CircleSlash v-else-if="task.status === 'cancelled'" :size="13" />
                 <CircleAlert v-else :size="13" />
               </span>
-              <span class="task-title" :title="taskFullTitle(task)">
+              <span class="task-title" :title="taskFullTitle(task, tr)">
                 {{ taskDisplayTitle(task.keywords, task.regexes, tr) }}
               </span>
               <span class="task-count mono">

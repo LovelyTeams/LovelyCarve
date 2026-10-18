@@ -126,11 +126,11 @@ describe('DiskImageInfo evidence overview', () => {
     expect(section('details')?.textContent).toContain(path);
     expect(section('details')?.querySelector('[aria-label="复制重组镜像标识"]')).not.toBeNull();
     expect(row(0).querySelector('.part-index')).toBeNull();
-    const exportButton = button(host.querySelector('.evidence-head')!, '导出原始镜像')!;
+    const exportButton = button(host.querySelector('.evidence-head')!, '导出源镜像')!;
     expect(exportButton.disabled).toBe(false);
     exportButton.click(); await settle();
     expect(imageExport.start).toHaveBeenCalledWith({ imageId: fixture.id, defaultFileName: 'RAID_5_重组镜像.dd',
-      mode: 'unlockedPartitions', title: '导出原始镜像为 RAW', runningTitle: '导出原始镜像中…', doneTitle: '原始镜像导出完成' });
+      mode: 'unlockedPartitions', title: '导出源镜像为 RAW', runningTitle: '导出源镜像中…', doneTitle: '源镜像导出完成' });
     expect(opened).not.toHaveBeenCalled();
   });
   it('keeps the drive picker open inside the extracted mount control and dispatches the selected drive', async () => {
@@ -152,8 +152,8 @@ describe('DiskImageInfo evidence overview', () => {
     expect(host.querySelector('.evidence-head')?.textContent).toContain('EWF');
     expect(host.querySelector('.evidence-head')?.textContent).toContain('平台结论');
     const actions = host.querySelector('.evidence-actions')!;
-    expect([...actions.querySelectorAll('button')].map(item => item.textContent?.trim())).toEqual(['导出原始镜像', '刷新']);
-    button(actions, '导出原始镜像')!.click(); await settle();
+    expect([...actions.querySelectorAll('button')].map(item => item.textContent?.trim())).toEqual(['导出源镜像', '刷新']);
+    button(actions, '导出源镜像')!.click(); await settle();
     expect(imageExport.start).toHaveBeenCalledWith(expect.objectContaining({ imageId: fixture.id, mode: 'unlockedPartitions', defaultFileName: 'disk.E01.dd' }));
     expect(host.querySelector('.evidence-path')?.textContent).toContain('D:/evidence/disk.E01');
     expect(host.querySelector('.evidence-size')?.textContent?.trim()).toBe('1.00 GiB · 实际占用 512.00 MiB（50.0%）');
@@ -290,7 +290,7 @@ describe('DiskImageInfo evidence overview', () => {
     expect(host.querySelector('.synthetic-root-mount .mount-btn')).not.toBeNull();
     expect(host.querySelector('.partition-table')).toBeNull();
     expect(button(host, '解锁加密容器')).toBeUndefined();
-    expect(button(host, '导出原始镜像')).toBeUndefined();
+    expect(button(host, '导出源镜像')).toBeUndefined();
     expect(shadow.list).not.toHaveBeenCalled();
     if (sourceFormat === 'android_backup') expect(host.querySelector('.evidence-head .ui-badge')?.textContent).toBe('Android 备份');
   });

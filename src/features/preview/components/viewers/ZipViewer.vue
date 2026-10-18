@@ -35,7 +35,7 @@
             </div>
           </div>
         </div>
-        <div v-if="report.comment" class="ov-comment mono" :title="report.comment">{{ tr("注释：") }}{{ report.comment }}</div>
+        <div v-if="report.comment" class="ov-comment mono" :title="report.comment">{{ tr("注释：{0}", { 0: report.comment }) }}</div>
         <div v-for="(w, i) in report.warnings" :key="i" class="ov-warn mono"><AlertTriangle :size="12" /> {{ w }}</div>
       </header>
 
@@ -78,7 +78,7 @@
               <div v-else-if="memberError" class="state-row mono error">{{ memberError }}</div>
               <template v-else-if="memberBytes">
                 <div v-if="memberTruncated" class="trunc-note mono">
-                  {{ tr("已截断：仅读取前") }} {{ formatBytes(memberBytes.length) }}{{ tr("（成员共") }} {{ formatBytes(selected.size) }}）
+                  {{ tr("已截断：仅读取前 {0}（成员共 {1}）", { 0: formatBytes(memberBytes.length), 1: formatBytes(selected.size) }) }}
                 </div>
 
                 <div v-if="memberTab === 'text'" class="text-view mono">

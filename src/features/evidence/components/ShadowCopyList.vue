@@ -1,6 +1,6 @@
 <template>
   <div class="shadow-list">
-    <p v-if="volume.error" class="ui-alert danger" role="alert">{{ tr("VSS 元数据无法读取：") }}{{ volume.error }}</p>
+    <p v-if="volume.error" class="ui-alert danger" role="alert">{{ tr("VSS 元数据无法读取：{0}", { 0: volume.error }) }}</p>
     <ul v-else class="copy-list">
       <li v-for="copy in volume.shadow_copies" :key="copy.store_id" class="copy-row">
         <span class="copy-index mono">#{{ copy.index + 1 }}</span>
@@ -24,7 +24,7 @@
         </button>
       </li>
     </ul>
-    <p v-if="error" class="ui-alert danger" role="alert">{{ tr("打开卷影副本失败：") }}{{ error }}</p>
+    <p v-if="error" class="ui-alert danger" role="alert">{{ tr("打开卷影副本失败：{0}", { 0: error }) }}</p>
   </div>
 </template>
 

@@ -82,7 +82,7 @@ export function useFileDerivedData(options: {
 
   function persistDigests(imageId: string, entries: Record<string, StoredDigest>) {
     if (Object.keys(entries).length === 0) return;
-    trackWrite(fsDigestPersist({ imageId, entries }), tr("哈希持久化失败"));
+    trackWrite(fsDigestPersist({ imageId, entries }), tr("保存哈希结果失败"));
   }
 
   async function hydrateFtypes(nodes: FsNode[], loadGen: number) {
@@ -113,7 +113,7 @@ export function useFileDerivedData(options: {
 
   function persistFtypes(imageId: string, entries: Record<string, FsTypeIdent>) {
     if (Object.keys(entries).length === 0) return;
-    trackWrite(fsFtypePersist({ imageId, entries }), tr("类型识别持久化失败"));
+    trackWrite(fsFtypePersist({ imageId, entries }), tr("保存类型识别结果失败"));
   }
 
   return { digestCache, ftypeCache, hydrateDigests, hydrateFtypes, persistDigests, persistFtypes, clearHydration, reset, generation: () => hashGeneration };

@@ -1,9 +1,8 @@
-import { sourceText, type Translator } from '../../../i18n/translate';
+import { joinList, sourceText, type Translator } from '../../../i18n/translate';
 import type { GlobalSearchHistoryEntry, GlobalSearchProgress } from '../../../lib/ipc/search';
 
-export function taskFullTitle(task: GlobalSearchHistoryEntry): string {
-  const patterns = [...task.keywords, ...task.regexes.map(pattern => `/${pattern}`)];
-  return patterns.join('、');
+export function taskFullTitle(task: GlobalSearchHistoryEntry, tr: Translator = sourceText): string {
+  return joinList([...task.keywords, ...task.regexes.map(pattern => `/${pattern}`)], tr);
 }
 
 export function formatTaskTime(task: GlobalSearchHistoryEntry): string {

@@ -13,7 +13,7 @@ import { Loader2 } from 'lucide-vue-next';
 withDefaults(defineProps<{
   label?: string;
 }>(), {
-  get label() { return tr("正在加载面板..."); },
+  get label() { return tr("正在加载面板…"); },
 });
 </script>
 

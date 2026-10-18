@@ -12,8 +12,8 @@
         <header class="ui-modal-header">
           <span class="ui-modal-icon"><Plus :size="18" /></span>
           <div class="ui-modal-heading">
-            <h2 id="add-image-title" class="ui-modal-title">{{ tr("添加证据") }}</h2>
-            <p class="ui-modal-subtitle">{{ tr("选择证据来源后会登记到当前案件") }}</p>
+            <h2 id="add-image-title" class="ui-modal-title">{{ tr("添加检材") }}</h2>
+            <p class="ui-modal-subtitle">{{ tr("选择检材来源后会登记到当前案件") }}</p>
           </div>
           <button class="ui-icon-btn" :title="tr('关闭')" :aria-label="tr('关闭')" @click="emit('close')"><X :size="16" /></button>
         </header>
@@ -50,7 +50,7 @@
             <span class="ui-choice-icon"><Layers :size="20" /></span>
             <span class="ui-choice-text">
               <span class="ui-choice-title">{{ tr("RAID 磁盘") }}</span>
-              <span class="ui-choice-desc">{{ tr("逐块放入成员盘，自动检测阵列，确认后再打开重组镜像") }}</span>
+              <span class="ui-choice-desc">{{ tr("逐块放入成员盘，自动检测阵列；确认后再打开重组镜像") }}</span>
             </span>
             <ChevronRight :size="18" class="ui-choice-arrow" />
           </button>

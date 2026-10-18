@@ -268,13 +268,13 @@ export function useFileSession() {
         // BitLocker partition. Must not block the load / panel switch on the
         // per-partition status probes.
         if (!info.index_only) void maybeAlertLockedBitlocker(info);
-        parserName.value = info.index_only ? tr("离线索引 ({0})", { 0: info.source_format }) : `Disk Image (${info.source_format})`;
+        parserName.value = info.index_only ? tr("离线索引（{0}）", { 0: info.source_format }) : `Disk Image (${info.source_format})`;
         return { opened: true, mode: 'image', nextPanel: info.index_only ? 'files' : 'dashboard', imageId: info.id };
       }
 
       return {
         opened: false,
-        error: tr("暂不支持该文件类型。当前构建只接入磁盘镜像、逻辑证据归档和文件夹证据；请选择镜像文件，或通过“添加证据”选择文件夹/物理磁盘"),
+        error: tr("暂不支持该文件类型。当前版本支持磁盘镜像、逻辑镜像与归档文件，以及文件夹；请选择镜像文件，或通过「添加检材」选择文件夹或物理磁盘。"),
       };
     } finally {
       if (generation === loadGeneration) { cleanupLoadProgressListener(); loading.value = false; }
@@ -288,7 +288,7 @@ export function useFileSession() {
     const selected = await open({
       directory: true,
       multiple: false,
-      title: tr("选择文件夹作为逻辑证据"),
+      title: tr("选择文件夹作为逻辑检材"),
     });
     if (!selected || typeof selected !== 'string') return null;
     return selected;

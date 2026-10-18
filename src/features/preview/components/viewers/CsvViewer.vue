@@ -5,7 +5,7 @@
       <IndeterminateBar :label="tr('正在解析表格…')" />
     </div>
     <div v-else-if="error" class="state-row mono error">
-      <AlertTriangle :size="14" /> {{ tr("无法解析为表格：") }}{{ error }}
+      <AlertTriangle :size="14" /> {{ tr("无法解析为表格：{0}", { 0: error }) }}
     </div>
     <div v-else-if="isEmpty" class="state-row mono">{{ tr("空文档，无可视化内容。") }}</div>
 
@@ -28,7 +28,7 @@
         </label>
 
         <span v-if="sortCol !== null" class="sort-tag" :title="tr('点击列头切换排序，再点一次可清除')">
-          {{ tr("按「") }}{{ headerCells[sortCol] }}」{{ sortDir === 'asc' ? tr("升序") : tr("降序") }}
+          {{ sortDir === 'asc' ? tr("按「{0}」升序", { 0: headerCells[sortCol] }) : tr("按「{0}」降序", { 0: headerCells[sortCol] }) }}
           <button class="sort-clear" :title="tr('清除排序')" @click="clearSort"><X :size="11" /></button>
         </span>
 

@@ -36,7 +36,7 @@ describe('evidence overview projections', () => {
   });
   it('clips the disk layout to image bytes while preserving the original partition colours', () => {
     expect(evidenceLayout(info)).toEqual([
-      { key: 'part-2', leftPct: 0, widthPct: 20, lenBytes: 200, color: partColor(1), tooltip: '分区2 · Ext4 · 200 B', partition: info.partitions[1] },
+      { key: 'part-2', leftPct: 0, widthPct: 20, lenBytes: 200, color: partColor(1), tooltip: '分区 2 · Ext4 · 200 B', partition: info.partitions[1] },
       { key: 'part-1', leftPct: 80, widthPct: 20, lenBytes: 200, color: partColor(0), tooltip: '末尾 · NTFS · 200 B', partition: info.partitions[0] },
     ]);
     expect(evidenceLayout({ ...info, size_bytes: 0 })).toEqual([]);

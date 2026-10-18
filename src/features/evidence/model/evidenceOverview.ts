@@ -36,7 +36,7 @@ export function partitionTitle(p: { id: number; kind: string; start_lba: number;
   if (p.label) return p.label;
   // 与后端 fs_tree.rs::partition_name 一致：只留序号。类型在徽章、
   // 几何在起始扇区列，都不进标题。
-  return tr("分区{0}", { 0: p.id });
+  return tr("分区 {0}", { 0: p.id });
 }
 
 /** 起始扇区的悬停提示：完整范围、长度与字节偏移。 */
@@ -141,7 +141,7 @@ export function acquisitionRows(info: ImageInfo | null, tr: Translator = sourceT
   const candidates: Array<[string, string | null, boolean?]> = [
     ['案件编号', ewf.case_number, true],
     ['证据编号', ewf.evidence_number, true],
-    ['取证员', ewf.examiner_name],
+    ['检验人', ewf.examiner_name],
     ['采集时间', dateValue(ewf.acquiry_date, ewf.acquiry_date_parsed), true],
     ['设备型号', ewf.model],
     ['序列号', ewf.serial_number, true],
@@ -166,7 +166,7 @@ export function acquisitionRows(info: ImageInfo | null, tr: Translator = sourceT
 }
 
 /** 直接显示的采集字段；其余放进「更多采集信息」。 */
-export const ACQUISITION_HIGHLIGHTS = new Set(['案件编号', '证据编号', '取证员', '采集时间', '设备型号', '序列号']);
+export const ACQUISITION_HIGHLIGHTS = new Set(['案件编号', '证据编号', '检验人', '采集时间', '设备型号', '序列号']);
 
 export type HashVerdict = 'match' | 'mismatch' | 'pending';
 export interface StoredHashRow { label: string; value: string; verdict: HashVerdict; }

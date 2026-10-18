@@ -1,4 +1,4 @@
-import { sourceText, type Translator } from '../../../i18n/translate';
+import { joinList, sourceText, type Translator } from '../../../i18n/translate';
 import type { RaidStack, RaidArray, RaidArrayMember, RaidMemberOrigin, RaidMemberState, RaidVolumeGroup } from '../../../lib/ipc/raid';
 import { formatBinaryBytes as formatBytes } from '../../../utils/format';
 import { decodeRaid10Layout, hasStripeLayout } from './stripeLayout';
@@ -82,10 +82,10 @@ export function arrayStatus(arr: RaidArray, tr: Translator = sourceText): { labe
     return { label: tr("成员不全 {0}/{1}", { 0: activeMembers(arr), 1: arr.raid_disks }), sev: 'warn' };
   }
   if (!SUPPORTED_LEVELS.has(arr.level)) {
-    return { label: tr("RAID{0} 暂不支持重组", { 0: arr.level }), sev: 'info' };
+    return { label: tr("RAID {0} 暂不支持重组", { 0: arr.level }), sev: 'info' };
   }
   if (!layoutSupported(arr)) {
-    return { label: tr("RAID{0} 布局 {1} 暂不支持重组", { 0: arr.level, 1: arr.layout }), sev: 'info' };
+    return { label: tr("RAID {0} 布局 {1} 暂不支持重组", { 0: arr.level, 1: arr.layout }), sev: 'info' };
   }
   // Remaining causes (reshape in progress, member geometry conflicts, probe
   // read errors) are only distinguishable via the diagnostics list.
@@ -247,8 +247,8 @@ export function chunkLabelFor(arr: RaidArray): string {
   return `${arr.chunksize_sectors / 2}K`;
 }
 
-export function vgSummary(vg: RaidVolumeGroup): string {
-  const lvs = vg.logical_volumes.map(lv => `${lv.name} ${formatBytes(lv.size_bytes)}`).join('、');
+export function vgSummary(vg: RaidVolumeGroup, tr: Translator = sourceText): string {
+  const lvs = joinList(vg.logical_volumes.map(lv => `${lv.name} ${formatBytes(lv.size_bytes)}`), tr);
   return lvs ? `${vg.members.length} PV · LV ${lvs}` : `${vg.members.length} PV`;
 }
 
@@ -260,7 +260,7 @@ function baseName(path: string): string {
 export function originTitle(origin: RaidMemberOrigin, imagePaths: ReadonlyMap<string, string>, tr: Translator = sourceText): string {
   if (origin.kind === 'lv') return tr("逻辑卷 {0}/{1}（VG {2}）", { 0: origin.vg_name, 1: origin.lv_name, 2: origin.vg_uuid });
   const path = imagePaths.get(origin.image_id) ?? origin.image_id;
-  return tr("{0} · 分区{1} · 偏移 0x{2}", { 0: path, 1: origin.partition_id, 2: origin.byte_offset.toString(16).toUpperCase() });
+  return tr("{0} · 分区 {1} · 偏移 0x{2}", { 0: path, 1: origin.partition_id, 2: origin.byte_offset.toString(16).toUpperCase() });
 }
 
 /** Suggested RAW filename for a reconstructed array: array name (or a short

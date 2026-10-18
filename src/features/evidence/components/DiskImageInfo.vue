@@ -8,7 +8,7 @@
       <!-- 检材头部：哪份检材（文件名、格式、完整路径、容量），右侧是平台识别结论与原始镜像导出。
            不做卡片；页面名由侧栏给出。 -->
       <EvidenceHeader :info="info" @copy="copyText" />
-      <div v-if="info.index_only" class="ui-alert info" role="status">{{ tr("离线索引 · 原镜像不可用。容量与格式来自案件记录；目录和属性可在文件列表查看，恢复原路径的镜像后重新打开即可读取正文。") }}</div>
+      <div v-if="info.index_only" class="ui-alert info" role="status">{{ tr("离线索引 · 源镜像不可用。容量与格式来自案件记录；目录和属性可在文件列表查看，将源镜像恢复到原路径后重新打开即可读取正文。") }}</div>
       <IosBackupCard v-if="info.ios_backup" :key="info.id" :info="info" @open-image="emit('open-image', $event)" />
 
       <EvidenceVolumes v-if="!info.index_only && !info.ios_backup" :key="info.id" :info="info" :can-unlock-container="supportsBlockOperations" :case-directory="activeCase?.dir"

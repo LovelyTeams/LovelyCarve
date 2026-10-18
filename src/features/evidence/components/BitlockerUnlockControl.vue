@@ -83,15 +83,15 @@
         :can-submit-password="canSubmitPassword" :can-submit-recovery="canSubmitRecovery" @password="submitPassword" @recovery="submitRecovery" @blur="onRecoveryBlur" @close="closePopover" />
 
       <BitlockerKeyForm v-if="!job && !scanJob && mode === 'key'" :key="`${imageId}:${partition.id}`" @submit="submitKey" @close="closePopover" />
-      <p v-if="metadata && !job && !scanJob" class="ui-field-hint">{{ tr("元数据 v") }}{{ metadata.version }} · {{ metadata.bytes_per_sector }} {{ tr("字节扇区") }}{{ metadata.used_space_only ? tr(" · 仅加密已用空间") : '' }} {{ tr("· 保护器") }} {{ metadata.protector_types.map(protectorLabel).join('、') || tr("无") }}</p>
+      <p v-if="metadata && !job && !scanJob" class="ui-field-hint">{{ tr("元数据 v") }}{{ metadata.version }} · {{ metadata.bytes_per_sector }} {{ tr("字节扇区") }}{{ metadata.used_space_only ? tr(" · 仅加密已用空间") : '' }} {{ tr("· 保护器") }} {{ joinList(metadata.protector_types.map(protectorLabel), tr) || tr("无") }}</p>
 
       <BitlockerMemoryCandidates v-if="!job && !scanJob && mode === 'memory'" :memory-path="memoryPath" :candidates="candidates"
         @pick="pickMemoryFile" @scan="startScan" @reset="resetMemory" @close="closePopover" @unlock="unlockWithCandidate" />
 
       <BitlockerJobProgress v-if="job" :label="job.cancelling ? tr('取消中…') : unlockLabel" :percent="unlockProgress.percent" :percent-text="unlockProgress.percentText" :bytes-text="unlockProgress.bytesText"
-        :cancelling="job.cancelling" :note="tr('解锁任务会在后台继续，关闭面板不会中断。')" :cancel-label="tr('终止任务')" @cancel="onCancelUnlock" />
+        :cancelling="job.cancelling" :note="tr('解锁任务会在后台继续，关闭面板不会中断。')" :cancel-label="tr('取消解锁')" @cancel="onCancelUnlock" />
       <BitlockerJobProgress v-if="!job && scanJob" :label="scanJob.cancelling ? tr('取消中…') : tr('扫描内存镜像')" :percent="scanProgress.percent" :percent-text="scanProgress.percentText" :bytes-text="scanProgress.bytesText"
-        :cancelling="scanJob.cancelling" :note="tr('扫描会在后台继续，关闭面板不会中断。')" :cancel-label="tr('终止扫描')" @cancel="onCancelScan" />
+        :cancelling="scanJob.cancelling" :note="tr('扫描会在后台继续，关闭面板不会中断。')" :cancel-label="tr('取消扫描')" @cancel="onCancelScan" />
       </div>
     </Teleport>
   </div>
@@ -99,6 +99,7 @@
 
 <script setup lang="ts">
 import { tr } from '../../../composables/useLocale';
+import { joinList } from '../../../i18n/translate';
 
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';

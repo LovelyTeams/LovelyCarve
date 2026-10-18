@@ -26,7 +26,7 @@
         <FileMetadataPanel v-if="activeTab === 'detail'" :node="node" :full-path="fullPath" :extension="ext"
           :ident="effectiveIdent" :digest="digest" :ext-mismatch="extMismatch" />
         <template v-else>
-          <div v-if="indexOnly" class="state-row mono">{{ tr("原镜像不可用，仅能查看索引中的文件属性。") }}</div>
+          <div v-if="indexOnly" class="state-row mono">{{ tr("源镜像不可用，仅能查看索引中的文件属性。") }}</div>
           <FileRangePreview v-else-if="activeTab === 'hex' && focusTarget" :image-id="imageId" :node-id="node.id" :size="node.size" :target="focusTarget" />
           <div v-else-if="loading" class="state-row mono">{{ tr("加载中…") }}</div>
           <div v-else-if="error" class="state-row mono error">{{ error }}</div>
@@ -129,7 +129,7 @@
           </template>
 
           <template v-else-if="activeTab === 'text'">
-            <div v-if="truncated" class="trunc-note mono">{{ tr("已截断：仅显示前") }} {{ formatBytes(bytes.length) }}{{ tr("（共") }} {{ formatBytes(node.size) }}）</div>
+            <div v-if="truncated" class="trunc-note mono">{{ tr("已截断：仅显示前 {0}（共 {1}）", { 0: formatBytes(bytes.length), 1: formatBytes(node.size) }) }}</div>
             <!-- 无关键字时按纯文本渲染，且切成块、用 content-visibility 让浏览器只布局可视块——
                  否则上百万字符（尤其二进制文件解码后几乎无换行）一次性整体布局会卡死（切到文本视图很卡）。
                  仅在搜索时才走单个 <pre v-html>（注入 <mark> 高亮，命中导航需整块在 DOM 里）。 -->
@@ -322,10 +322,10 @@ const renderedMarkdown = computed(() => renderMarkdownPreview(decodedText.value)
 // 「识别真实类型」按钮的状态：识别中、是否检出伪装、按钮文案与提示。
 const identBtnTitle = computed<string>(() => {
   const t = effectiveIdent.value;
-  if (!t) return tr("Magika 按文件内容识别真实类型，与扩展名无关——可发现改后缀伪装");
+  if (!t) return tr("Magika 按文件内容识别真实类型，不依赖扩展名，可发现修改扩展名伪装的文件");
   const parts = [`${t.label}（${t.mime_type}）`, t.description];
-  parts.push(t.inferred ? tr("模型置信度 {0}%", { 0: (t.score * 100).toFixed(1) }) : tr("规则直判"));
-  if (extMismatch.value) parts.push(tr("扩展名 .{0} 与识别类型不符，疑似改后缀伪装", { 0: ext.value }));
+  parts.push(t.inferred ? tr("模型置信度 {0}%", { 0: (t.score * 100).toFixed(1) }) : tr("规则判定"));
+  if (extMismatch.value) parts.push(tr("扩展名 .{0} 与识别类型不符，疑似修改扩展名伪装", { 0: ext.value }));
   return parts.join(' · ');
 });
 

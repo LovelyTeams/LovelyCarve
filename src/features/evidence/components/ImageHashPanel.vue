@@ -32,7 +32,7 @@
         :disabled="job.cancelling"
         @click="cancel"
       >
-        <span>{{ job.cancelling ? tr("取消中…") : tr("终止") }}</span>
+        <span>{{ job.cancelling ? tr("取消中…") : tr("取消") }}</span>
       </button>
     </div>
 
@@ -67,8 +67,8 @@
     <div v-if="result?.read_faults_detected" class="ui-alert warn hash-fault-warning">
       <AlertTriangle :size="15" />
       <span>
-        {{ tr("哈希包含") }} {{ formatBytes(result.synthetic_bytes) }} {{ tr("合成零字节，涉及") }}
-        {{ result.bad_regions.length }} {{ tr("个坏区；结果不可视为无错误的原始介质哈希。") }}
+        {{ tr("哈希包含") }} {{ formatBytes(result.synthetic_bytes) }} {{ tr("补零字节，涉及") }}
+        {{ result.bad_regions.length }} {{ tr("个坏区；结果不能视为无错误的源盘哈希。") }}
       </span>
     </div>
   </div>

@@ -90,7 +90,7 @@ describe('useAutoDetect labels', () => {
     expect(routeLabel('archive')).toBe('归档/备份文件路');
     expect(routeLabel('phone_image')).toBe('手机镜像路');
     expect(evidenceTypeLabel('disk')).toBe('磁盘镜像');
-    expect(evidenceTypeLabel('compressfile')).toBe('归档 / 逻辑证据');
+    expect(evidenceTypeLabel('compressfile')).toBe('归档 / 逻辑检材');
     expect(evidenceTypeLabel('backup')).toBe('备份文件');
     expect(evidenceTypeLabel('huaweiotgbackuptotar')).toBe('huaweiotgbackuptotar');
     expect(manufactorLabel('huawei')).toBe('Huawei');

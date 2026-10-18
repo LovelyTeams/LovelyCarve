@@ -1,5 +1,6 @@
 
 import { tr } from '../../../composables/useLocale';
+import { joinList } from '../../../i18n/translate';
 
 import { type BuiltinTask, type ImageExportTaskState } from '../model/types';
 import { computed, effectScope, ref, shallowRef, watch } from 'vue';
@@ -87,7 +88,7 @@ export async function trackedCarveStart(args: Parameters<typeof carveStart>[0]) 
   const result = await carveStart(args);
   carveCases.set(result.scan_id, caseDir);
   if (epoch !== caseRevision) {
-    throw new Error(tr("案件已切换，请在原检材查看扫描任务"));
+    throw new Error(tr("案件已切换，请回到发起扫描的检材查看扫描任务"));
   }
   const id = `carve:${result.scan_id}`;
   if (!records.value.has(id)) put({ ...makeTask('carve', id, args.imageId), status: 'queued', cancelId: result.task_id, message: tr("等待扫描") });
@@ -166,7 +167,7 @@ async function refresh() {
           persistedSearches.add(id);
           if (!unchanged(id)) continue;
           put({
-            ...makeTask('search', id, row.image_id, [...row.keywords, ...row.regexes].join('、')),
+            ...makeTask('search', id, row.image_id, joinList([...row.keywords, ...row.regexes], tr)),
             status: status(row.status), error: row.error, started: row.started_ms, finished: row.finished_ms,
             cancelling: row.status === 'running' && !!snapshot.get(id)?.cancelling,
             progress: row.status === 'success' ? 100 : percent(row.files_scanned, row.files_total),
@@ -367,7 +368,7 @@ export function trackedImageLoad<T extends { id: string }>(taskId: string, path:
     const result = await operation();
     await onReady();
     return result;
-  }, result => ({ imageId: result.id, message: tr("证据已就绪") }));
+  }, result => ({ imageId: result.id, message: tr("检材已就绪") }));
 }
 
 /** Share live export state and its cancellation path with the task center. */
@@ -382,7 +383,7 @@ export async function trackedImageExport<T extends number | ImageExportResult>(
   const completion = run(task, operation, outcome => {
     const written = typeof outcome === 'number' ? outcome : outcome.bytes_written;
     const warning = typeof outcome !== 'number' && outcome.read_faults_detected
-      ? tr(" · 警告：含 {0} 合成零字节（{1} 个坏区）", { 0: formatBytes(outcome.synthetic_bytes), 1: outcome.bad_regions.length })
+      ? tr(" · 警告：含 {0} 补零字节（{1} 个坏区）", { 0: formatBytes(outcome.synthetic_bytes), 1: outcome.bad_regions.length })
       : '';
     return { message: tr("已导出 {0}{1}", { 0: formatBytes(written), 1: warning }) };
   });
@@ -419,10 +420,10 @@ export function trackedEncryptedVolumeUnlock(args: Parameters<typeof encryptedVo
 }
 
 export function trackedGlobalSearchStart(args: Parameters<typeof globalSearchStart>[0]) {
-  return run(makeTask('search', `search:${args.searchId}`, args.imageId, [...args.options.keys, ...args.options.regexes].join('、')),
+  return run(makeTask('search', `search:${args.searchId}`, args.imageId, joinList([...args.options.keys, ...args.options.regexes], tr)),
     () => globalSearchStart(args), result => ({
       status: status(result.status), progress: result.status === 'success' ? 100 : percent(result.files_scanned, result.files_total),
-      results: result.total_matches, message: tr("{0} 个匹配文件 · {1} 处命中", { 0: result.matched_file_count.toLocaleString(), 1: result.total_matches.toLocaleString() })
+      results: result.total_matches, message: tr("{0} 个命中文件 · {1} 处命中", { 0: result.matched_file_count.toLocaleString(), 1: result.total_matches.toLocaleString() })
     }));
 }
 export function trackedTimelineStart(args: Parameters<typeof timelineStart>[0]) {

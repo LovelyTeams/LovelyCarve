@@ -36,7 +36,7 @@
 
       <!-- 依赖库 -->
       <section v-if="report.needed.length" class="card">
-        <div class="card-head"><h4 class="card-title">{{ tr("依赖库 (DT_NEEDED)") }} <span class="count-badge mono">{{ report.needed.length }}</span></h4></div>
+        <div class="card-head"><h4 class="card-title">{{ tr("依赖库（DT_NEEDED）") }} <span class="count-badge mono">{{ report.needed.length }}</span></h4></div>
         <div class="tag-list mono">
           <span v-for="(lib, i) in report.needed" :key="i" class="tag">{{ lib }}</span>
         </div>
@@ -79,7 +79,7 @@
             <thead><tr><th>{{ tr("名称") }}</th><th>{{ tr("类型") }}</th><th>{{ tr("标志") }}</th><th>{{ tr("地址") }}</th><th>{{ tr("文件偏移") }}</th><th>{{ tr("大小") }}</th><th class="th-entropy">{{ tr("熵") }}</th></tr></thead>
             <tbody>
               <tr v-for="(s, i) in report.sections" :key="i" :class="{ 'row-flag': s.entropy != null && s.entropy > 7.2 }">
-                <td class="mono strong">{{ s.name || tr("(无名)") }}</td>
+                <td class="mono strong">{{ s.name || tr("（未命名）") }}</td>
                 <td class="mono">{{ s.sh_type }}</td>
                 <td class="mono">{{ s.flags }}</td>
                 <td class="mono">{{ s.addr }}</td>

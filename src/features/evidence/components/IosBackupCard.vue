@@ -18,10 +18,10 @@
           <input :id="passwordId" v-model="password" class="ui-input" type="password" autocomplete="off" maxlength="4096" :disabled="!!busy" :aria-invalid="error ? 'true' : undefined" :aria-describedby="error ? errorId : undefined" />
           <button class="ui-btn primary" type="submit" :disabled="!!busy">{{ tr("解锁并打开") }}</button>
         </div>
-        <p class="hint">{{ tr("解锁后打开只读会话，关闭源证据或退出应用后需重新输入密码。") }}</p>
+        <p class="hint">{{ tr("解锁后打开只读会话，关闭来源检材或退出应用后需重新输入密码。") }}</p>
       </form>
-      <div v-if="busy" class="operation" role="status"><Loader2 :size="16" class="spin" />{{ busy === 'unlock' ? tr("正在派生密钥并读取清单…") : tr("正在检查清单、数据文件与备份状态…") }}<button class="ui-btn sm" :disabled="cancelling" @click="cancel">{{ cancelling ? tr("正在终止…") : tr("终止") }}</button></div>
-      <p v-if="busy === 'unlock'" class="hint">{{ tr("密钥派生可能需要较长时间，终止会在当前派生阶段结束后生效。") }}</p>
+      <div v-if="busy" class="operation" role="status"><Loader2 :size="16" class="spin" />{{ busy === 'unlock' ? tr("正在派生密钥并读取清单…") : tr("正在检查清单、数据文件与备份状态…") }}<button class="ui-btn sm" :disabled="cancelling" @click="cancel">{{ cancelling ? tr("正在取消…") : tr("取消") }}</button></div>
+      <p v-if="busy === 'unlock'" class="hint">{{ tr("密钥派生可能需要较长时间，取消会在当前派生阶段结束后生效。") }}</p>
       <p v-if="error" :id="errorId" :class="backup.locked ? 'ui-field-error' : 'ui-alert danger'" role="alert">{{ error }}</p>
       <template v-if="findings">
         <p class="hint">{{ tr("共") }} {{ findings.length }} {{ tr("项观察。应用域缺失仅说明备份未包含该域，原因需结合其他证据判断；原始观察与字段保留上游表述。") }}</p>

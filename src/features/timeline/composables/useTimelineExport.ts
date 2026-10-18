@@ -12,7 +12,7 @@ export function useTimelineExport(options: { imageId: () => string; buildQuery: 
     const imageId = options.imageId(); const query = options.buildQuery(); const captured = ++generation;
     exporting.value = true;
     try {
-      const destination = await save({ defaultPath: tr("时间线_{0}.csv", { 0: imageId }), filters: [{ name: 'CSV', extensions: ['csv'] }] });
+      const destination = await save({ defaultPath: tr("时间线-{0}.csv", { 0: imageId }), filters: [{ name: 'CSV', extensions: ['csv'] }] });
       if (!destination || disposed || captured !== generation) return;
       const result = await timelineExport({ imageId, query, destination });
       if (!disposed) notifyExportSuccess(result.output_path, tr("已导出 {0} 条记录", { 0: result.record_count.toLocaleString() }));

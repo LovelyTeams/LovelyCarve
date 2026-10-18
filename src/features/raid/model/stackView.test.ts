@@ -32,8 +32,8 @@ describe('RAID view projections', () => {
     expect(arrayStatus({ ...array, assembled_image_id: 'assembled' })).toEqual({ label: '已重组', sev: 'success' });
     expect(arrayStatus({ ...array, assembled_image_id: 'assembled', degraded: true })).toEqual({ label: '已降级重组', sev: 'warn' });
     expect(arrayStatus({ ...array, degradable: true })).toEqual({ label: '缺 2 块，可降级重组', sev: 'warn' });
-    expect(arrayStatus({ ...array, raid_disks: 1, level: 7 })).toEqual({ label: 'RAID7 暂不支持重组', sev: 'info' });
-    expect(arrayStatus({ ...array, raid_disks: 1, layout: 9 })).toEqual({ label: 'RAID5 布局 9 暂不支持重组', sev: 'info' });
+    expect(arrayStatus({ ...array, raid_disks: 1, level: 7 })).toEqual({ label: 'RAID 7 暂不支持重组', sev: 'info' });
+    expect(arrayStatus({ ...array, raid_disks: 1, layout: 9 })).toEqual({ label: 'RAID 5 布局 9 暂不支持重组', sev: 'info' });
     expect(arrayStatus({ ...array, raid_disks: 1, level: 6, layout: 18 })).toEqual({ label: '未能重组，见诊断', sev: 'warn' });
     expect(arrayStatus({ ...array, raid_disks: 1 })).toEqual({ label: '未能重组，见诊断', sev: 'warn' });
     const unmatched = { ...member, slot: null, state: 'unidentified' as const };

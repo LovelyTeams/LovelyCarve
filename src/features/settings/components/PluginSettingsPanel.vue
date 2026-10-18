@@ -9,7 +9,7 @@
     <p class="plugin-hint">{{ tr("查看插件状态；展开详情查看能力、权限与安装位置。") }}</p>
     <div v-if="error" class="ui-alert danger" role="alert">
       <CircleAlert :size="16" aria-hidden="true" />
-      <span class="error-text">{{ tr("读取插件失败：") }}{{ error }}</span>
+      <span class="error-text">{{ tr("读取插件失败：{0}", { 0: error }) }}</span>
       <button class="ui-btn sm" type="button" :disabled="loading || busyPluginId !== null" @click="loadPlugins">{{ tr("重试") }}</button>
     </div>
     <div v-if="loading && plugins.length === 0" class="ui-empty plugin-state" role="status">
@@ -44,7 +44,7 @@
             <dl class="plugin-details">
               <dt>{{ tr("标识") }}</dt><dd>{{ plugin.id }}</dd>
               <dt>{{ tr("加载方式") }}</dt><dd>{{ isolationLabel(plugin) }}</dd>
-              <dt>{{ tr("权限") }}</dt><dd>{{ plugin.permissions.length ? plugin.permissions.map(permissionLabel).join('、') : tr("无需额外权限") }}</dd>
+              <dt>{{ tr("权限") }}</dt><dd>{{ plugin.permissions.length ? joinList(plugin.permissions.map(permissionLabel), tr) : tr("无需额外权限") }}</dd>
               <dt>{{ tr("代码指纹") }}</dt><dd>{{ plugin.fingerprint || tr("暂无") }}</dd>
               <dt>{{ tr("安装目录") }}</dt><dd>{{ plugin.directory }}</dd>
               <dt>{{ tr("库文件") }}</dt><dd>{{ plugin.library }}</dd>
@@ -58,6 +58,7 @@
 
 <script setup lang="ts">
 import { tr } from '../../../composables/useLocale';
+import { joinList } from '../../../i18n/translate';
 
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { vDisclosureMotion } from '../../../composables/uiMotionDirectives';

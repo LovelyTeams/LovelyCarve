@@ -36,7 +36,7 @@ export function evidenceTypeLabel(evidenceType: string, tr: Translator = sourceT
     case 'disk':
       return tr("磁盘镜像");
     case 'compressfile':
-      return tr("归档 / 逻辑证据");
+      return tr("归档 / 逻辑检材");
     case 'backup':
       return tr("备份文件");
     default:

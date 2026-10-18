@@ -18,7 +18,7 @@
         </button>
       </li>
     </ul>
-    <details v-disclosure-motion class="array-details"><summary><ChevronRight :size="13" />{{ tr("逻辑卷详情") }}</summary><p class="vg-detail-text">{{ vgSummary(vg) }}</p></details>
+    <details v-disclosure-motion class="array-details"><summary><ChevronRight :size="13" />{{ tr("逻辑卷详情") }}</summary><p class="vg-detail-text">{{ vgSummary(vg, tr) }}</p></details>
   </article>
 </template>
 <script setup lang="ts">

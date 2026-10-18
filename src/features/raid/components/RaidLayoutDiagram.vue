@@ -111,7 +111,7 @@ const droppedSlots = computed(() => (props.level === 0 ? new Set<number>() : new
 const hasP = computed(() => [4, 5, 6].includes(props.level));
 const hasQ = computed(() => props.level === 6);
 const hasCopies = computed(() => props.level === 1 || props.level === 10);
-const droppedLegend = computed(() => (hasCopies.value ? tr("缺失盘（由镜像读取）") : tr("掉线盘（校验重建）")));
+const droppedLegend = computed(() => (hasCopies.value ? tr("缺失盘（由镜像读取）") : tr("缺失盘（由校验重建）")));
 
 function labelFor(slot: number): string {
   return props.diskLabels?.[slot] || tr("槽位 {0}", { 0: slot });

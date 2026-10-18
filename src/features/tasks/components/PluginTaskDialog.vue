@@ -14,7 +14,7 @@
           <div class="ui-modal-heading">
             <h2 id="plugin-task-title" class="ui-modal-title">{{ tr("插件分析任务") }}</h2>
             <p class="ui-modal-subtitle task-subtitle">
-              {{ tr("为") }} <span class="mono">{{ fileName }}</span> {{ tr("选择一个 function。任务进入案件任务表后由调度器派发， 可在「任务中心」跟踪进度、取消或重启。") }}
+              {{ tr("为") }} <span class="mono">{{ fileName }}</span> {{ tr("选择一个 function。任务进入案件任务表后由调度器派发，可在「任务中心」跟踪进度、取消或重启。") }}
             </p>
           </div>
           <button class="ui-icon-btn" type="button" :title="tr('关闭')" :aria-label="tr('关闭')" @click="emit('close')"><X :size="16" /></button>

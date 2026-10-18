@@ -60,14 +60,14 @@ describe('titlebar evidence navigation', () => {
     activation('last').click();
     expect(onActivate.mock.calls).toEqual([['last']]);
     expect(activation('last').title).toContain('等待当前分析完成');
-    host.querySelector<HTMLButtonElement>('[aria-label="新标签"]')!.click();
+    host.querySelector<HTMLButtonElement>('[aria-label="新标签页"]')!.click();
     expect(onNewTab).toHaveBeenCalledOnce();
   });
 
   it('keeps the new action outside the scroll viewport', () => {
     mount();
-    expect(host.querySelector('.tabbar-scroll [aria-label="新标签"]')).toBeNull();
-    expect(host.querySelector('.tabbar > [aria-label="新标签"]')).not.toBeNull();
+    expect(host.querySelector('.tabbar-scroll [aria-label="新标签页"]')).toBeNull();
+    expect(host.querySelector('.tabbar > [aria-label="新标签页"]')).not.toBeNull();
   });
 
   it('reveals evidence when switching in either direction and after resizing', async () => {
@@ -112,7 +112,7 @@ describe('titlebar evidence navigation', () => {
     expect(onClose).not.toHaveBeenCalled();
     closeButton('first').dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true }));
     expect(onClose.mock.calls).toEqual([['first']]);
-    expect(host.querySelector<HTMLButtonElement>('[aria-label="新标签"]')!.disabled).toBe(false);
+    expect(host.querySelector<HTMLButtonElement>('[aria-label="新标签页"]')!.disabled).toBe(false);
   });
 
   it('restores focus after an asynchronous close removes the focused tab', async () => {
@@ -134,7 +134,7 @@ describe('titlebar evidence navigation', () => {
     tabs.value = [];
     activeTabId.value = null;
     await settle();
-    expect(document.activeElement).toBe(host.querySelector('[aria-label="新标签"]'));
+    expect(document.activeElement).toBe(host.querySelector('[aria-label="新标签页"]'));
   });
 
   it('uses a stable Chinese case entry and puts the name in its tooltip', () => {

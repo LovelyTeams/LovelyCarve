@@ -74,13 +74,13 @@ export function useCaseWorkspace(options: {
     const opened = paths.length - failed.length;
     if (failed.length > 0) {
       notifyError(
-        tr("{0} 个证据镜像未能打开", { 0: failed.length }),
-        tr("已打开 {0} 个；以下证据可能被移动、删除，或 RAID 成员不全：{1}", { 0: opened, 1: failed.join('；') }),
+        tr("{0} 个检材未能打开", { 0: failed.length }),
+        tr("已打开 {0} 个；以下检材可能已被移动或删除，或 RAID 成员不全：{1}", { 0: opened, 1: failed.join('；') }),
       );
     } else if (queued > 0) {
-      notifyInfo(tr("证据正在后台加载"), tr("{0} 个证据正在加载，可在标签页或任务中心查看进度。", { 0: queued }));
+      notifyInfo(tr("检材正在后台加载"), tr("{0} 个检材正在加载，可在标签页或任务中心查看进度。", { 0: queued }));
     } else if (opened > 0) {
-      notifyInfo(tr("已加载案件证据"), tr("已加载 {0} 个证据镜像", { 0: opened }));
+      notifyInfo(tr("已加载案件检材"), tr("已加载 {0} 个检材", { 0: opened }));
     }
   }
 

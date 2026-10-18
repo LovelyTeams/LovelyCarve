@@ -55,7 +55,7 @@ describe('settings entry and preferences', () => {
     await settle();
     expect(host.querySelector('[aria-label="软件信息"]')?.textContent).toContain('v2.3.4');
     expect(host.textContent).toContain('构建时间（本地）');
-    expect(button('恢复当前页默认')).toBeUndefined();
+    expect(button('恢复本页默认设置')).toBeUndefined();
     button('日志').click();
     await settle();
     expect(host.querySelector('[aria-label="搜索日志"]')).not.toBeNull();
@@ -95,7 +95,7 @@ describe('settings entry and preferences', () => {
     preferences.mountFolderRoot.value = 'D:\\挂载';
     preferences.autoMountCaseEvidence.value = true;
     await settle();
-    button('恢复当前页默认').click();
+    button('恢复本页默认设置').click();
     await settle();
     expect(document.documentElement.dataset.theme).toBe('light');
     expect([preferences.motionPreference.value, preferences.mountTarget.value, preferences.mountFolderRoot.value, preferences.autoMountCaseEvidence.value]).toEqual(['system', 'drive', '', false]);
@@ -104,11 +104,11 @@ describe('settings entry and preferences', () => {
   it('supports opening plugin settings and switching back to interface settings', async () => {
     app = createApp(ToolSettingsModal, { visible: true, initialSection: 'plugins' }); app.mount(host);
     expect(host.querySelector('[data-plugins]')).not.toBeNull();
-    expect(button('恢复当前页默认')).toBeUndefined();
+    expect(button('恢复本页默认设置')).toBeUndefined();
     [...host.querySelectorAll<HTMLButtonElement>('.settings-nav-item')].find(element => element.querySelector('strong')?.textContent === '界面')!.click();
     await settle();
     expect(host.querySelector('.theme-options')).not.toBeNull();
-    expect(button('恢复当前页默认').disabled).toBe(false);
+    expect(button('恢复本页默认设置').disabled).toBe(false);
   });
 
   it('labels the mount path, groups mount choices and reports picker failures inline', async () => {

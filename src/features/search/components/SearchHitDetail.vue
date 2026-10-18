@@ -13,7 +13,7 @@
       <FileDetailSection :title="tr('命中信息')">
         <FileDetailFields :fields="[
           { label: tr('匹配方式'), value: hit.pattern_kind === 'regex' ? tr('正则表达式') : tr('关键词') },
-          { label: tr('匹配内容'), value: hit.pattern, copyable: true },
+          { label: tr('搜索词'), value: hit.pattern, copyable: true },
           { label: tr('偏移'), value: formatHitOffset(hit), mono: true, copyable: true },
           { label: tr('编码'), value: hit.encoding || tr('未知'), mono: true },
         ]" />

@@ -79,7 +79,7 @@ function volumeBytes(item: RecoveryEntry) {
 function typeLabel(item: RecoveryEntry): string {
   switch (item.kind) {
     case 'volume': return item.volume?.partition.kind.toUpperCase() ?? tr("卷");
-    case 'signatures': return tr("签名恢复");
+    case 'signatures': return tr("签名雕刻");
     case 'format': case 'dir': return tr("文件夹");
     case 'file': {
       if (item.artifact) return props.formatLabel(item.artifact.format_id);
@@ -93,11 +93,11 @@ function statusBadges(item: RecoveryEntry): { label: string; tone: string }[] {
   if (item.node?.deleted) badges.push({ label: tr("已删除"), tone: 'danger' });
   if (item.volume) {
     if (item.volume.reconstruction) badges.push({ label: tr("MFT 重建"), tone: 'warn' });
-    else if (item.volume.lost) badges.push({ label: tr("遗失分区"), tone: 'warn' });
+    else if (item.volume.lost) badges.push({ label: tr("丢失分区"), tone: 'warn' });
     else badges.push({ label: tr("已知分区"), tone: 'info' });
     if (item.volume.error) badges.push({ label: tr("读取失败"), tone: 'danger' });
   }
-  if (item.artifact) badges.push({ label: tr("签名恢复"), tone: 'info' });
+  if (item.artifact) badges.push({ label: tr("签名雕刻"), tone: 'info' });
   if (item.candidate?.source_node) badges.push({ label: tr("回收站还原"), tone: 'info' });
   if (item.candidate && !item.candidate.readable) badges.push({ label: tr("无可读映射"), tone: 'warn' });
   if (item.artifact?.read_fault) badges.push({ label: tr("读取异常"), tone: 'warn' });

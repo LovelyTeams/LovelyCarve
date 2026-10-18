@@ -23,7 +23,7 @@ describe('case evidence restoration', () => {
     });
     await flow.onOpenCaseEvidence(['assembled://set', 'D:/member.dd', 'D:/ordinary.E01']);
     expect(operations).toEqual(['stage:D:/member.dd', 'stage:D:/ordinary.E01', 'detect', 'open:D:/ordinary.E01', 'open:assembled://set']);
-    expect(notifications.info).toHaveBeenCalledWith('已加载案件证据', '已加载 3 个证据镜像');
+    expect(notifications.info).toHaveBeenCalledWith('已加载案件检材', '已加载 3 个检材');
   });
 
   it('continues restoration after a failed member load without opening its tab', async () => {
@@ -64,7 +64,7 @@ describe('case evidence restoration', () => {
       ['open', 'assembled://set', { quiet: true }],
     ]);
     expect(sources.load.mock.calls).toEqual([[{ path: 'D:/folder' }], [{ path: 'D:/member.dd' }]]);
-    expect(notifications.info).toHaveBeenCalledWith('已加载案件证据', '已加载 3 个证据镜像');
+    expect(notifications.info).toHaveBeenCalledWith('已加载案件检材', '已加载 3 个检材');
   });
 
   it('continues after a missing source and aggregates failures once', async () => {
@@ -74,7 +74,7 @@ describe('case evidence restoration', () => {
     await flow.onOpenCaseEvidence(['D:/missing.dd', 'D:/good.dd']);
     expect(openImagePath).toHaveBeenCalledTimes(2);
     expect(notifications.error.mock.calls).toEqual([
-      ['1 个证据镜像未能打开', '已打开 1 个；以下证据可能被移动、删除，或 RAID 成员不全：missing.dd（文件不存在）'],
+      ['1 个检材未能打开', '已打开 1 个；以下检材可能已被移动或删除，或 RAID 成员不全：missing.dd（文件不存在）'],
     ]);
     expect(notifications.info).not.toHaveBeenCalled();
   });

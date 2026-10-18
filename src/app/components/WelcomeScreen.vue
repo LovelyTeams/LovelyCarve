@@ -28,13 +28,13 @@
             </svg>
             <FileDown :size="64" :stroke-width="0.75" class="art-image" />
           </div>
-          <h2 id="import-title">{{ dragging ? tr("松开以添加证据") : tr("拖入文件") }}</h2>
+          <h2 id="import-title">{{ dragging ? tr("松开以添加检材") : tr("拖入文件") }}</h2>
           <p class="format-label">{{ tr("支持镜像与归档格式") }}</p>
           <div class="format-list" :aria-label="tr('常用支持格式')">
             <span v-for="format in formats" :key="format" class="ui-badge mono outline">{{ format }}</span>
           </div>
           <div class="import-actions">
-            <button class="ui-btn lg primary block" type="button" :title="tr('添加证据 (Ctrl+O)')" :disabled="busy" @click="$emit('open')">
+            <button class="ui-btn lg primary block" type="button" :title="tr('添加检材 (Ctrl+O)')" :disabled="busy" @click="$emit('open')">
               <Loader2 v-if="busy" :size="18" class="spin" aria-hidden="true" />
               <FolderOpen v-else :size="18" aria-hidden="true" />
               <span class="import-action-label" :title="busy ? loadLabel : undefined">{{ busy ? loadLabel : tr("选择文件") }}</span>

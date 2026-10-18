@@ -30,7 +30,7 @@
                   <span class="recent-dir mono">{{ item.dir }}</span>
                 </span>
               </button>
-              <button class="ui-icon-btn danger" :aria-label="(item.missing ? tr('移除记录 ') : tr('删除案件 ')) + item.name" :title="item.missing ? tr('移除缺失案件记录') : tr('删除案件数据（保留源镜像与其他文件）')" :disabled="actionBusy" @click="onRemoveCase(item)"><Trash2 :size="14" /></button>
+              <button class="ui-icon-btn danger" :aria-label="(item.missing ? tr('移除记录 ') : tr('删除案件 ')) + item.name" :title="item.missing ? tr('移除缺失案件记录') : tr('删除案件数据（保留原始检材与其他文件）')" :disabled="actionBusy" @click="onRemoveCase(item)"><Trash2 :size="14" /></button>
             </div>
           </div>
         </section>
@@ -75,10 +75,10 @@
                         <span v-if="!snapshotFor(vol.key)!.indexed" class="ui-badge sm warn" :title="tr('文件索引不可用，浏览回退到内存目录')">{{ tr("未索引") }}</span>
                         <span v-if="snapshotFor(vol.key)!.stale" class="ui-badge sm danger">{{ tr("过期") }}</span>
                       </template>
-                      <template v-else>{{ tr("未建立") }}</template>
+                      <template v-else>{{ tr("未构建") }}</template>
                     </span>
                     <button v-if="progressFor(vol.key)" class="ui-btn sm" :disabled="snapshotActions.has(`${imageId}:${vol.key}`)" @click="onSnapshotAction(vol.key, 'cancel')"><Loader2 v-if="snapshotActions.has(`${imageId}:${vol.key}`)" :size="13" class="spin" />{{ tr("取消") }}</button>
-                    <button v-else class="ui-btn sm" :disabled="actionBusy || activeCase.locked || snapshotActions.has(`${imageId}:${vol.key}`)" @click="onSnapshotAction(vol.key, 'build')"><Loader2 v-if="snapshotActions.has(`${imageId}:${vol.key}`)" :size="13" class="spin" />{{ snapshotActions.has(`${imageId}:${vol.key}`) ? tr("提交中") : snapshotFor(vol.key) ? tr("重建") : tr("建立") }}</button>
+                    <button v-else class="ui-btn sm" :disabled="actionBusy || activeCase.locked || snapshotActions.has(`${imageId}:${vol.key}`)" @click="onSnapshotAction(vol.key, 'build')"><Loader2 v-if="snapshotActions.has(`${imageId}:${vol.key}`)" :size="13" class="spin" />{{ snapshotActions.has(`${imageId}:${vol.key}`) ? tr("提交中") : snapshotFor(vol.key) ? tr("重建") : tr("构建") }}</button>
                   </li>
                 </ul>
                 <p v-else class="hint">{{ tr("当前检材没有可快照的卷。") }}</p>
@@ -405,7 +405,7 @@ async function onRemoveCase(item: CaseListItem) {
     title: tr("删除案件"),
     message: item.missing
       ? tr("「{0}」的案件目录已不可读，是否从案件列表中移除？", { 0: item.name })
-      : tr("确定删除案件「{0}」（{1}）吗？将删除目录 {2} 中的案件数据，包括案件台账、索引、标签、分析结果与快照；目录里的其它文件保留。镜像文件本身不受影响。此操作不可恢复。", { 0: item.name, 1: item.case_number, 2: item.dir }),
+      : tr("确定删除案件「{0}」（{1}）吗？将删除目录 {2} 中的案件数据，包括案件台账、索引、标签、分析结果与快照；目录里的其他文件和原始检材均不受影响。此操作不可恢复。", { 0: item.name, 1: item.case_number, 2: item.dir }),
     confirmText: item.missing ? tr("移除") : tr("删除"),
     danger: true,
   });
@@ -429,7 +429,9 @@ async function onToggleLock() {
   try {
     await setLocked(locked);
   } catch (err) {
-    operationError.value = tr("{0}案件失败：{1}。请重试。", { 0: locked ? tr("锁定") : tr("解锁"), 1: err });
+    operationError.value = locked
+      ? tr("锁定案件失败：{0}。请重试。", { 0: err })
+      : tr("解锁案件失败：{0}。请重试。", { 0: err });
   } finally {
     pendingAction.value = '';
   }
@@ -463,9 +465,9 @@ async function onRemoveEvidence(ev: EvidenceRef) {
   const caseDirectory = activeCase.value?.dir;
   if (!skipCaseEvidenceRemoveConfirm.value) {
     const result = await confirmWithResult({
-      title: tr("从案件卸载镜像"),
-      message: tr("确定从案件移除「{0}」吗？该镜像在案件内的快照会一并删除，已打开的镜像标签页也会关闭。镜像文件本身不受影响。", { 0: baseName(ev.path) }),
-      confirmText: tr("卸载"),
+      title: tr("从案件移除检材"),
+      message: tr("确定从案件移除「{0}」吗？该检材在案件内的快照会一并删除，已打开的检材标签页也会关闭。原始检材不受影响。", { 0: baseName(ev.path) }),
+      confirmText: tr("移除"),
       danger: true,
       checkbox: {
         get label() { return tr("后续不再提醒"); },
@@ -500,7 +502,9 @@ async function onSnapshotAction(volumeKey: string, action: 'build' | 'cancel') {
     else await cancelBuild(imageId, volumeKey);
   } catch (cause) {
     if (props.imageId === imageId && activeCase.value?.dir === directory) {
-      operationError.value = tr("{0}快照失败：{1}。请重试。", { 0: action === 'build' ? tr("建立") : tr("取消"), 1: String(cause) });
+      operationError.value = action === 'build'
+        ? tr("构建快照失败：{0}。请重试。", { 0: String(cause) })
+        : tr("取消快照构建失败：{0}。请重试。", { 0: String(cause) });
     }
   } finally {
     const next = new Set(snapshotActions.value);

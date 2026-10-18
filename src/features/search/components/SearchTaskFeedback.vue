@@ -1,7 +1,7 @@
 <template>
             <div v-if="selectedRunning" class="status-banner running" role="status">
               <Loader2 :size="13" class="spin" />
-              <span>{{ tr("正在扫描") }} {{ filesDoneLabel }} / {{ filesTotalLabel }} {{ tr("个对象，已命中") }} {{ totalMatchesLabel }} {{ tr("处") }}</span>
+              <span>{{ tr("正在扫描 {0} / {1} 个对象，已命中 {2} 处", { 0: filesDoneLabel, 1: filesTotalLabel, 2: totalMatchesLabel }) }}</span>
               <div class="banner-progress" :class="{ indeterminate: progressPercent === null }" role="progressbar" :aria-label="tr('搜索进度')" :aria-valuenow="progressPercent ?? undefined" aria-valuemin="0" aria-valuemax="100">
                 <span :style="progressPercent === null ? undefined : { width: `${progressPercent}%` }"></span>
               </div>
@@ -20,7 +20,7 @@
             </div>
             <div v-if="selectedTask.status === 'failed'" class="status-banner error" role="alert">
               <CircleAlert :size="13" />
-              <span>{{ tr("搜索失败：") }}{{ selectedTask.error ?? tr("未知错误") }}</span>
+              <span>{{ tr("搜索失败：{0}", { 0: selectedTask.error ?? tr("未知错误") }) }}</span>
             </div>
             <div v-if="selectedTask.status === 'cancelled'" class="status-banner warn" role="status">
               <CircleSlash :size="13" />

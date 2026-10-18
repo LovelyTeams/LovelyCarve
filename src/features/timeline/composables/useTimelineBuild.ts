@@ -71,7 +71,7 @@ export function useTimelineBuild(options: { imageId: () => string; onBuilt: () =
       const summary = await timelineStart({ imageId });
       if (captured !== generation || disposed) return;
       if (summary.status === 'cancelled') {
-        notifyInfo(tr("时间线构建已取消"), tr("已落库的部分投影保留，可随时重建。"));
+        notifyInfo(tr("时间线构建已取消"), tr("已写入的部分时间线数据会保留，可随时重建。"));
       } else {
         notifyInfo(
           tr("时间线构建完成"),

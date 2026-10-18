@@ -26,7 +26,7 @@
   <a href="docs/README.md">文档</a>
 </p>
 
-LovelyCarve 面向电子数据取证、应急响应和 CTF 取证题：加载磁盘镜像、逻辑证据或物理磁盘，识别分区与文件系统，浏览、预览、检索、校验并导出证据，再用时间线、文件恢复和插件分析补全线索。镜像、文件系统与加密容器的读取器均为纯 Rust 实现，证据始终只读打开；界面以中文为主，提供浅色、深色和樱花色三套主题。
+LovelyCarve 面向电子数据取证、应急响应和 CTF 取证题：加载磁盘镜像、逻辑检材或物理磁盘，识别分区与文件系统，浏览、预览、检索、校验并导出检材中的数据，再用时间线、文件恢复和插件分析补全线索。镜像、文件系统与加密容器的读取器均为纯 Rust 实现，检材始终只读打开；界面以中文为主，提供浅色、深色和樱花色三套主题。
 
 <p align="center">
   <img src="docs/images/file-browser.png" alt="文件浏览：目录树、文件列表与原类型预览">
@@ -34,15 +34,15 @@ LovelyCarve 面向电子数据取证、应急响应和 CTF 取证题：加载磁
 
 ## 功能
 
-- **案件管理**：一个目录就是一个案件，登记多份检材，记录标签和带哈希链的操作审计；卷快照与文件索引落盘复用，原始镜像暂时缺失时仍可浏览已索引的目录和元数据。
-- **证据接入**：磁盘镜像、文件夹、归档、AD1 逻辑镜像、Docker/OCI 镜像、iOS 本地备份、Windows 物理磁盘，以及由成员盘重组的 RAID。
+- **案件管理**：一个目录就是一个案件，登记多份检材，记录标签和带哈希链的操作审计；卷快照与文件索引落盘复用，源镜像暂时缺失时仍可浏览已索引的目录和元数据。
+- **检材接入**：磁盘镜像、文件夹、归档、AD1 逻辑镜像、Docker/OCI 镜像、iOS 本地备份、Windows 物理磁盘，以及由成员盘重组的 RAID。
 - **分区、卷与加密**：GPT、MBR/EBR、APM、BSD 分区与 LVM2 逻辑卷；mdadm（元数据 0.90 / 1.x）linear 与 RAID0/1/4/5/6/10 重组，含降级重建、RAID6 双盘恢复与 md 上的 LVM，Intel RST / VROC（IMSM）与 PERC、MegaRAID 等控制器（SNIA DDF）的固件 RAID 卷按元数据重组，无元数据成员盘按 RAID0/RAID5 推定；解锁 BitLocker、LUKS、VeraCrypt、FileVault 2 和加密的 iOS 备份，浏览 NTFS 卷影副本。解密视图按需读取，不生成整卷明文。
 - **文件浏览**：目录树与分页文件列表，排序、列筛选和递归“全显”；按文件系统能力展示删除项、未分配空间、命名流、符号链接与元数据节点。
 - **原类型预览**：文本、十六进制、图片、音视频、PDF、Office 文档和归档；SQLite（含 WAL 回放与删除记录恢复）、Realm、PE / ELF / Mach-O / GGUF 等结构化视图；预览可拆出为独立窗口。
-- **校验与导出**：MD5、SHA-1、SHA-256、SM3；E01 采集哈希核对；导出文件、目录、ZIP、RAW 镜像与解密镜像。读取遇到坏区时报告合成零字节，短读不会被当作完整结果。
+- **校验与导出**：MD5、SHA-1、SHA-256、SM3；E01 采集哈希核对；导出文件、目录、ZIP、RAW 镜像与解密镜像。读取遇到坏区时报告补零字节，短读不会被当作完整结果。
 - **全局搜索**：关键词与正则，覆盖 ASCII、UTF-8、UTF-16LE/BE、GBK，可包含删除文件与未分配空间；命中可回到源文件并定位字节偏移，支持去重与 CSV 导出。
 - **时间线**：投影文件修改时间、插件事件与 NTFS USN 日志，提供年度活动热力图、趋势钻取、筛选和导出。
-- **文件恢复**：读取 FAT、NTFS、exFAT 的删除记录并重建遗失分区，同时按签名雕刻 JPEG、PNG、GIF、PDF、ZIP/Office、SQLite 等 14 种格式；结果像文件列表一样按目录浏览，扫描可暂停、继续和取消，恢复文件时生成 SHA-256 与来源报告。
+- **文件恢复**：读取 FAT、NTFS、exFAT 的删除记录并重建丢失分区，同时按签名雕刻 JPEG、PNG、GIF、PDF、ZIP/Office、SQLite 等 14 种格式；结果像文件列表一样按目录浏览，扫描可暂停、继续和取消，恢复文件时生成 SHA-256 与来源报告。
 - **插件分析**：基于 C ABI 的 LPP 动态库插件，默认在独立宿主进程中运行；内置 `linuxinfo`，提取 Linux 系统、用户、登录、网络、服务、软件、定时任务与命令历史等信息。
 - **命令行与挂载**：独立的 `lovelycarve-cli` 不依赖桌面运行时，以 `images open`、`files read` 这样的命令覆盖桌面端全部后端功能，支持交互 shell 和 JSONL 自动化；Windows 下可借助 Dokany 把卷只读挂载为盘符或文件夹。
 
@@ -66,7 +66,7 @@ LovelyCarve 面向电子数据取证、应急响应和 CTF 取证题：加载磁
 | 类别 | 格式 |
 | --- | --- |
 | 镜像容器 | RAW / DD / IMG / ISO、E01 / Ex01、AD1、VMDK、VHD / VHDX、QCOW2、VDI、Parallels PHDI、DMG、DiskGenius PMFX、雷电模拟器 LDBK、小米 HDR1 固件 |
-| 逻辑证据 | 文件夹（自动展开其中的小米 `.bak` 备份）、TAR / TAR.GZ、ZIP、7z、Docker / OCI 镜像归档、磁盘内的 Docker 容器、iOS 本地备份、BCP 交换数据 |
+| 逻辑检材 | 文件夹（自动展开其中的小米 `.bak` 备份）、TAR / TAR.GZ、ZIP、7z、Docker / OCI 镜像归档、磁盘内的 Docker 容器、iOS 本地备份、BCP 交换数据 |
 | 分区与卷 | GPT、MBR / EBR、APM、BSD 标签、LVM2 线性卷（含跨 PV / 跨阵列）、mdadm RAID 成员（0.90 / 1.x）、Intel IMSM 与 SNIA DDF 固件 RAID、linear / RAID0 / 1 / 4 / 5 / 6 / 10 重组 |
 | 文件系统 | NTFS、ext2/3/4、FAT12/16/32、exFAT、APFS、HFS+ / HFSX、Btrfs、ZFS、XFS（v1–v5）、ReFS、UFS / UFS2、SquashFS、ISO 9660 |
 | 加密与快照 | BitLocker（密码、恢复密钥、BEK、明文密钥、FVEK / VMK）、LUKS1 / LUKS2、VeraCrypt、FileVault 2（CoreStorage）、加密 iOS 备份、NTFS 卷影副本（VSS） |
@@ -105,7 +105,7 @@ Get-Content .\workflow.jsonl | lovelycarve-cli session --events
 
 ## 插件
 
-插件是导出 `lovelycarve_plugin_v1` C ABI 的动态库，通过 LPP（LovelyCarve Plugin Protocol）只读访问证据，并把产物、时间线事件和线索交给宿主落库。SDK、隔离宿主 `lc-plugin-host` 和内置的 `linuxinfo` 由子模块 [LovelyCarve-Plugins](https://github.com/LovelyTeams/LovelyCarve-Plugins) 维护。已发现的插件被视为可信代码，进程隔离用于故障隔离，不是权限沙箱。
+插件是导出 `lovelycarve_plugin_v1` C ABI 的动态库，通过 LPP（LovelyCarve Plugin Protocol）只读访问检材，并把产物、时间线事件和线索交给宿主保存。SDK、隔离宿主 `lc-plugin-host` 和内置的 `linuxinfo` 由子模块 [LovelyCarve-Plugins](https://github.com/LovelyTeams/LovelyCarve-Plugins) 维护。已发现的插件被视为可信代码，进程隔离用于故障隔离，不是权限沙箱。
 
 协议与开发说明见 [插件协议](docs/PLUGIN_PROTOCOL.md) 和 [Linux 基本信息插件](docs/LINUXINFO.md)。
 

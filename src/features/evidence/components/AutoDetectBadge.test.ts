@@ -23,7 +23,7 @@ let host: HTMLDivElement;
 function mount(action?: boolean) {
   host = document.createElement('div');
   document.body.append(host);
-  app = createApp({ render: () => h(AutoDetectBadge, { imageId: 'disk-one' }, action ? { default: () => h('button', '导出原始镜像') } : undefined) });
+  app = createApp({ render: () => h(AutoDetectBadge, { imageId: 'disk-one' }, action ? { default: () => h('button', '导出源镜像') } : undefined) });
   app.mount(host);
 }
 
@@ -64,7 +64,7 @@ describe('platform badge', () => {
     expect(host.querySelector('.platform-chip')?.textContent).toContain('Windows');
     expect(host.querySelector('.platform-chip')?.textContent).toContain('磁盘镜像');
     expect(host.textContent).toContain('Linux');
-    expect([...host.querySelectorAll('button')].map(item => item.textContent?.trim())).toEqual(['导出原始镜像', '']);
+    expect([...host.querySelectorAll('button')].map(item => item.textContent?.trim())).toEqual(['导出源镜像', '']);
     host.querySelector<HTMLButtonElement>('[aria-label="重新识别平台"]')!.click();
     expect(detect.run).toHaveBeenCalledWith('disk-one');
 

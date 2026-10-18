@@ -27,7 +27,7 @@
     class="snapshot-chip"
     :class="`snap-${snapshotStatus.state}`"
     :title="snapshotStatus.state === 'building'
-      ? tr('正在后台建立卷快照，目录加载将从实时遍历切换为快照')
+      ? tr('正在后台构建卷快照，目录加载将从实时遍历切换为快照')
       : snapshotStatus.state === 'stale'
         ? tr('源卷已变化，快照可能与当前镜像不一致，需重建')
         : tr('目录列表由卷快照直接返回，无需重新遍历文件系统')"
@@ -44,8 +44,8 @@
         <span class="selection-name" :title="activeRow.name">{{ activeRow.name }}</span>
       </template>
     </span>
-    <button v-if="checkedFiles.length || (!checkedStats.count && activeRow?.kind === 'file')" class="ui-btn sm primary" :disabled="indexOnly" :title="indexOnly ? tr('导出需恢复原镜像') : undefined" @click="emit('exportFile', activeRow, checkedFiles)"><Download :size="14" />{{ tr("导出") }}{{ checkedFiles.length ? tr("文件 ({0})", { 0: checkedFiles.length }) : tr("文件") }}</button>
-    <button v-if="checkedDirs.length || (!checkedStats.count && activeRow?.kind === 'dir')" class="ui-btn sm" :disabled="indexOnly" :title="indexOnly ? tr('导出需恢复原镜像') : undefined" @click="emit('exportDirectory', activeRow, checkedDirs)"><Download :size="14" />{{ tr("导出") }}{{ checkedDirs.length ? tr("目录 ({0})", { 0: checkedDirs.length }) : tr("目录") }}</button>
+    <button v-if="checkedFiles.length || (!checkedStats.count && activeRow?.kind === 'file')" class="ui-btn sm primary" :disabled="indexOnly" :title="indexOnly ? tr('导出需恢复源镜像') : undefined" @click="emit('exportFile', activeRow, checkedFiles)"><Download :size="14" />{{ tr("导出") }}{{ checkedFiles.length ? tr("文件（{0}）", { 0: checkedFiles.length }) : tr("文件") }}</button>
+    <button v-if="checkedDirs.length || (!checkedStats.count && activeRow?.kind === 'dir')" class="ui-btn sm" :disabled="indexOnly" :title="indexOnly ? tr('导出需恢复源镜像') : undefined" @click="emit('exportDirectory', activeRow, checkedDirs)"><Download :size="14" />{{ tr("导出") }}{{ checkedDirs.length ? tr("目录（{0}）", { 0: checkedDirs.length }) : tr("目录") }}</button>
     <button v-if="activeRow" class="ui-btn sm" @click="emit('preview')"><Eye :size="14" />{{ tr("预览") }}</button>
     <button v-if="checkedStats.count" class="ui-btn sm ghost" @click="emit('clearChecked')">{{ tr("取消勾选") }}</button>
   </div>

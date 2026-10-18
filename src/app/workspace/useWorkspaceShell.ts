@@ -24,7 +24,7 @@ type WorkspaceShellOptions = {
   /** Open the case-manager modal. Called when the user tries to open a file
    *  with no active case — they must create / open a case there first. */
   onNeedCase: () => void;
-  /** Show the "添加证据" chooser (镜像文件 / 文件夹 / RAID 磁盘). The shell only
+  /** Show the "添加检材" chooser (镜像文件 / 文件夹 / RAID 磁盘). The shell only
    *  gates on the active case and delegates the actual pick + load to AppShell.vue,
    *  which owns the dialog state and the RAID-reconstruction orchestration. */
   onRequestAddImage: () => void;
@@ -100,7 +100,7 @@ export function useWorkspaceShell(options: WorkspaceShellOptions) {
     }
     if (!outcome.opened && !opts?.quiet) {
       const name = filePath.split(/[\\/]/).pop() || filePath;
-      notifyError(tr("打开证据失败"), `${name}：${outcome.error ?? tr("载入未完成")}`);
+      notifyError(tr("打开检材失败"), `${name}：${outcome.error ?? tr("加载未完成")}`);
     }
     return outcome;
   };
@@ -183,7 +183,7 @@ export function useWorkspaceShell(options: WorkspaceShellOptions) {
   const ensureCaseBeforeOpen = (request: PendingOpenRequest): boolean => {
     if (activeCase.value) return true;
     pendingOpenRequest = request;
-    notifyInfo(tr("请先创建或打开案件"), tr("证据镜像会登记到当前案件，并用于卷快照、标签和哈希结果持久化。"));
+    notifyInfo(tr("请先创建或打开案件"), tr("检材会登记到当前案件，卷快照、标签和哈希结果也会随案件保存。"));
     options.onNeedCase();
     return false;
   };

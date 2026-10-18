@@ -2,7 +2,7 @@
 
 ## 添加与浏览
 
-添加证据时选择「文件夹」，定位到同时包含 `Manifest.plist` 和 `Manifest.db` 的单个
+添加检材时选择「文件夹」，定位到同时包含 `Manifest.plist` 和 `Manifest.db` 的单个
 iTunes / Finder / MobileSync 备份目录（通常以设备 UDID 命名），不要选它的父目录。
 
 未加密备份直接展示 `HomeDomain/Library/SMS/sms.db`、`AppDomain-…/Documents/…`

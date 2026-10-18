@@ -8,7 +8,7 @@
 
     <!-- 右：任务命中表（服务端分页 / 过滤 / 去重）。 -->
     <div class="result-pane">
-      <div v-if="historyError && selectedTask" class="ui-alert danger result-read-error" role="alert"><CircleAlert :size="14" /><span>{{ tr("读取搜索记录失败：") }}{{ historyError }}</span><button class="ui-btn sm" :disabled="loadingTasks" @click="history.refreshTasks()">{{ tr("重试") }}</button></div>
+      <div v-if="historyError && selectedTask" class="ui-alert danger result-read-error" role="alert"><CircleAlert :size="14" /><span>{{ tr("读取搜索记录失败：{0}", { 0: historyError }) }}</span><button class="ui-btn sm" :disabled="loadingTasks" @click="history.refreshTasks()">{{ tr("重试") }}</button></div>
       <template v-if="selectedTask">
         <!-- 页面不设标题栏：顶部一行即工作工具条（筛选在左、操作在右），
              当前任务的模式、状态与命中数放在底部状态栏。 -->
@@ -73,7 +73,7 @@
         <div class="result-body">
           <div class="result-main">
             <div v-if="hitsError" class="ui-alert danger result-read-error" role="alert">
-              <CircleAlert :size="14" /><span>{{ tr("读取搜索结果失败：") }}{{ hitsError }}</span>
+              <CircleAlert :size="14" /><span>{{ tr("读取搜索结果失败：{0}", { 0: hitsError }) }}</span>
               <button class="ui-btn sm" @click="retryHits">{{ tr("重试") }}</button>
             </div>
             <SearchTaskFeedback :selected-task="selectedTask" :selected-running="selectedRunning" :progress-percent="progressPercent"

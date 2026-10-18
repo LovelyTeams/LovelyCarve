@@ -104,7 +104,7 @@ export function notifyInfo(title: string, detail?: string) {
 }
 
 export function notifyExportSuccess(path: string, label = tr("导出成功")) {
-  return notifySuccess(label, tr("已导出到: {0}", { 0: path }));
+  return notifySuccess(label, tr("已导出到：{0}", { 0: path }));
 }
 
 export interface PersistentToastOptions {

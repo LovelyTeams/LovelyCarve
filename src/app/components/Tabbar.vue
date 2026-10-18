@@ -1,5 +1,5 @@
 <template>
-  <nav class="tabbar" :aria-label="tr('证据标签页')" data-tauri-drag-region>
+  <nav class="tabbar" :aria-label="tr('检材标签页')" data-tauri-drag-region>
     <div ref="scrollRegion" class="tabbar-scroll">
       <div
         v-for="tab in tabs"
@@ -42,7 +42,7 @@
         </button>
       </div>
     </div>
-    <button ref="newTabButton" type="button" class="ui-icon-btn tab-new" :title="tr('新标签（Ctrl+T）')" :aria-label="tr('新标签')" @click="$emit('new-tab')">
+    <button ref="newTabButton" type="button" class="ui-icon-btn tab-new" :title="tr('新标签页 (Ctrl+T)')" :aria-label="tr('新标签页')" @click="$emit('new-tab')">
       <Plus :size="16" />
     </button>
   </nav>

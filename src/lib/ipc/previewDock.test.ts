@@ -67,7 +67,7 @@ describe('preview docking handshake', () => {
 
   it('keeps the independent preview open when the evidence has changed', async () => {
     await onPreviewDockRequest('owner', () => false);
-    await expect(requestPreviewDock('owner', 'file-a')).rejects.toThrow('已切换检材');
+    await expect(requestPreviewDock('owner', 'file-a')).rejects.toThrow('已切换到其他检材');
     expect(bus.handlers.get('file-preview-dock-response')?.size).toBe(0);
   });
 

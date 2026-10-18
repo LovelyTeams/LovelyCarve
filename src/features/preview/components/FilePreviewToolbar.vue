@@ -9,12 +9,12 @@
         role="tab"
         :aria-selected="activeTab === t.key"
         :disabled="indexOnly && t.key !== 'detail'"
-        :title="indexOnly && t.key !== 'detail' ? tr('正文预览需恢复原镜像') : undefined"
+        :title="indexOnly && t.key !== 'detail' ? tr('正文预览需恢复源镜像') : undefined"
         :class="{ active: activeTab === t.key }"
         @click="activeTab = t.key"
       >{{ tr(t.label) }}</button>
     </div>
-    <span v-if="indexOnly" class="ui-badge sm info" :title="tr('属性来自已有索引，正文预览需恢复原镜像')">{{ tr("离线索引") }}</span>
+    <span v-if="indexOnly" class="ui-badge sm info" :title="tr('属性来自已有索引，正文预览需恢复源镜像')">{{ tr("离线索引") }}</span>
     <div v-if="!standalone" class="window-actions">
       <button class="ui-icon-btn sm" :title="tr('在独立窗口打开')" :aria-label="tr('在独立窗口打开')" @click="emit('external')">
         <ExternalLink :size="14" />
@@ -68,7 +68,7 @@
           <input
             class="mono search-input"
             type="text"
-            :placeholder="tr('请输入关键字')"
+            :placeholder="tr('请输入关键词')"
             :aria-label="tr('搜索预览内容')"
             v-model="searchQuery"
             @keydown="emit('searchKeydown', $event)"
@@ -109,7 +109,7 @@
         v-if="activeTab === 'raw' && category === 'image'"
         class="ui-btn sm ident-btn qr-scan-btn"
         :disabled="qrScanning"
-        :title="qrScanning ? tr('正在扫描二维码…') : tr('扫描图中的二维码（WeChat 检测器 + 暴力变换）')"
+        :title="qrScanning ? tr('正在扫描二维码…') : tr('扫描图中的二维码（WeChat 检测器 + 多种图像变换）')"
         @click="emit('qrScan')"
       >
         <Loader2 v-if="qrScanning" :size="13" class="spin" />
