@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AnalysisResultNode } from '../../../lib/ipc/analysisResults';
 import { buildAnalysisGroups } from './analysisResultView';
 function node(nodeId: string, kind: AnalysisResultNode['kind'], label: string, children: AnalysisResultNode[] = [], imageId = 'one'): AnalysisResultNode {
-  return { nodeId, kind, label, children, imageId, typeName: '', analyzer: 'linux', artifactType: '', runId: '', completedAt: '', childCount: children.length, columns: [] };
+  return { nodeId, kind, label, children, imageId, typeName: '', analyzer: 'linux', function: 'plugin/linux', sourceNodeId: null, artifactType: '', runId: '', completedAt: '', childCount: children.length, columns: [] };
 }
 const users = node('users', 'result', '用户列表');
 const logins = node('logins', 'result', '登录记录');

@@ -176,6 +176,35 @@ impl RemoteVolume {
         )
     }
 
+    fn read_bytes(&self, id: &str, offset: u64, length: usize) -> Result<Vec<u8>> {
+        let opaque_id = self.opaque_node(id)?;
+        let size = self.file_stat(id, id)?.size;
+        let length = (size.saturating_sub(offset)).min(length as u64) as usize;
+        let mut bytes = Vec::with_capacity(length);
+        while bytes.len() < length {
+            let requested = (length - bytes.len()).min(REMOTE_READ_CHUNK);
+            let position = offset
+                .checked_add(bytes.len() as u64)
+                .context("remote range offset overflow")?;
+            let result = self.call(
+                "fs.read_range",
+                self.params(
+                    &opaque_id,
+                    &[
+                        ("offset", Value::from(position)),
+                        ("length", Value::from(requested as u64)),
+                    ],
+                ),
+            )?;
+            let chunk = binary_result_with_limit(result, "fs.read_range", requested as u64)?;
+            if chunk.is_empty() {
+                anyhow::bail!("short remote file read at {position}, expected {requested} bytes");
+            }
+            bytes.extend(chunk);
+        }
+        Ok(bytes)
+    }
+
     fn children_page_remote(
         &self,
         id: &str,
@@ -285,17 +314,7 @@ impl Volume for RemoteVolume {
     }
 
     fn read_file(&self, id: &str, max_bytes: usize) -> Result<Vec<u8>> {
-        let opaque_id = self.opaque_node(id)?;
-        let stat = self.file_stat(id, id)?;
-        let length = stat.size.min(max_bytes as u64);
-        let result = self.call(
-            "fs.read_range",
-            self.params(
-                &opaque_id,
-                &[("offset", Value::from(0)), ("length", Value::from(length))],
-            ),
-        )?;
-        binary_result_with_limit(result, "fs.read_range", length)
+        self.read_bytes(id, 0, max_bytes)
     }
 
     fn file_stat(&self, id: &str, node_id: &str) -> Result<FsStat> {
@@ -304,6 +323,10 @@ impl Volume for RemoteVolume {
         let stat: LppFsStatV1 = rmpv::ext::from_value(result)
             .map_err(|error| anyhow!("invalid fs.stat result: {error}"))?;
         stat.into_host(node_id)
+    }
+
+    fn read_range(&self, id: &str, offset: u64, length: usize) -> Result<Option<Vec<u8>>> {
+        self.read_bytes(id, offset, length).map(Some)
     }
 
     fn stream_file(
@@ -330,7 +353,7 @@ impl Volume for RemoteVolume {
             )?;
             let bytes = binary_result_with_limit(result, "fs.read_range", length)?;
             if bytes.is_empty() {
-                break;
+                anyhow::bail!("short remote file stream at {offset}, expected {size} bytes");
             }
             visitor(&bytes)?;
             offset = offset
@@ -559,7 +582,7 @@ mod tests {
             .await
             .expect("hello");
             read_frame(&mut plugin_reader).await.expect("host hello");
-            for _ in 0..9 {
+            for _ in 0..11 {
                 let LppMessage::Request {
                     id, method, params, ..
                 } = read_frame(&mut plugin_reader).await.expect("request")
@@ -672,6 +695,10 @@ mod tests {
         let node_id = children[0].id.clone();
         assert_eq!(volume.file_stat(&node_id, &node_id).expect("stat").size, 5);
         assert_eq!(volume.read_file(&node_id, 16).expect("read"), b"hello");
+        assert_eq!(
+            volume.read_range(&node_id, 3, 16).expect("range"),
+            Some(b"lo".to_vec())
+        );
         let mut streamed = Vec::new();
         assert_eq!(
             volume

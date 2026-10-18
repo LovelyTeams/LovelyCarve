@@ -1,7 +1,7 @@
 //! 分析结果查询:结果树、分页表格与单条详情。
 //!
 //! 树层级 检材 → 分类(Type,如 baseinfo) → 功能(analyzer,如 linuxbaseinfo)
-//! → 结果项(artifact_type,如 linux.user):每个 (检材, 功能) 只展示最新
+//! → 结果项(artifact_type,如 linux.user):每个 (检材, 插件, 功能, 输入文件) 只展示最新
 //! run;结果项节点名与列定义全部来自插件提交(`plugin_result_nodes`),
 //! 前端零硬编码。ChildCount 徽标 = 该结果项的记录数。
 
@@ -31,6 +31,9 @@ pub struct AnalysisTreeNode {
     pub image_id: String,
     pub type_name: String,
     pub analyzer: String,
+    /// Fully qualified plugin/analyzer identity.
+    pub function: String,
+    pub source_node_id: Option<String>,
     pub artifact_type: String,
     /// function 级起非空:该结果项/功能归属的最新 run。
     pub run_id: String,
@@ -71,13 +74,30 @@ pub struct AnalysisRecordPage {
 
 struct LatestRun {
     run_id: String,
+    plugin_id: String,
+    node_id: String,
+    file_name: String,
     analyzer: String,
     display_name: String,
     type_name: String,
     completed_at: String,
 }
 
-/// 构建整棵分析结果树。只包含有结果 run 的检材;同一 (检材, analyzer)
+impl LatestRun {
+    fn function(&self) -> String {
+        format!("{}/{}", self.plugin_id, self.analyzer)
+    }
+    fn scope_id(&self, image_id: &str) -> String {
+        format!(
+            "{image_id}::{}/{}::{}",
+            self.plugin_id,
+            self.analyzer,
+            hex::encode(self.node_id.as_bytes())
+        )
+    }
+}
+
+/// 构建整棵分析结果树。只包含有结果 run 的检材;同一 (检材, plugin_id, analyzer, node_id)
 /// 取最新 run,一个功能保留一份当前结果。逐检材读各自的 `analysis.db`。
 pub fn analysis_tree(
     case_dir: &std::path::Path,
@@ -110,23 +130,38 @@ pub fn analysis_tree(
             for run in function_runs {
                 let nodes = load_nodes(&connection, &run.run_id)?;
                 let counts = artifact_counts(&connection, &run.run_id)?;
-                let result_children =
-                    merge_result_nodes(&nodes, &counts, &item.image_id, &run.analyzer, &run.run_id);
+                let result_children = merge_result_nodes(&nodes, &counts, &item.image_id, run);
                 if result_children.is_empty() {
                     continue;
                 }
                 let child_count = result_children.len() as u64;
                 function_nodes.push(AnalysisTreeNode {
-                    node_id: format!("{}::{}/{}", item.image_id, class_key, run.analyzer),
+                    node_id: run.scope_id(&item.image_id),
                     kind: "function",
-                    label: if run.display_name.is_empty() {
-                        run.analyzer.clone()
-                    } else {
-                        run.display_name.clone()
+                    label: {
+                        let label = if run.display_name.is_empty() {
+                            &run.analyzer
+                        } else {
+                            &run.display_name
+                        };
+                        if run.node_id.is_empty() {
+                            label.clone()
+                        } else {
+                            format!(
+                                "{label} · {}",
+                                if run.file_name.is_empty() {
+                                    &run.node_id
+                                } else {
+                                    &run.file_name
+                                }
+                            )
+                        }
                     },
                     image_id: item.image_id.clone(),
                     type_name: class_key.clone(),
                     analyzer: run.analyzer.clone(),
+                    function: run.function(),
+                    source_node_id: (!run.node_id.is_empty()).then(|| run.node_id.clone()),
                     artifact_type: String::new(),
                     run_id: run.run_id.clone(),
                     completed_at: run.completed_at.clone(),
@@ -146,6 +181,8 @@ pub fn analysis_tree(
                 image_id: item.image_id.clone(),
                 type_name: class_key.clone(),
                 analyzer: String::new(),
+                function: String::new(),
+                source_node_id: None,
                 artifact_type: String::new(),
                 run_id: String::new(),
                 completed_at: String::new(),
@@ -165,6 +202,8 @@ pub fn analysis_tree(
             image_id: item.image_id.clone(),
             type_name: String::new(),
             analyzer: String::new(),
+            function: String::new(),
+            source_node_id: None,
             artifact_type: String::new(),
             run_id: String::new(),
             completed_at: String::new(),
@@ -183,8 +222,7 @@ fn merge_result_nodes(
     declared: &[PluginResultNode],
     counts: &HashMap<String, u64>,
     image_id: &str,
-    analyzer: &str,
-    run_id: &str,
+    run: &LatestRun,
 ) -> Vec<AnalysisTreeNode> {
     fn result_node(
         node_type: String,
@@ -192,18 +230,19 @@ fn merge_result_nodes(
         count: u64,
         columns: Vec<PluginResultNodeColumn>,
         image_id: &str,
-        analyzer: &str,
-        run_id: &str,
+        run: &LatestRun,
     ) -> AnalysisTreeNode {
         AnalysisTreeNode {
-            node_id: format!("{image_id}::{analyzer}::{node_type}"),
+            node_id: format!("{}::{node_type}", run.scope_id(image_id)),
             kind: "result",
             label,
             image_id: image_id.to_owned(),
             type_name: String::new(),
-            analyzer: analyzer.to_owned(),
+            analyzer: run.analyzer.clone(),
+            function: run.function(),
+            source_node_id: (!run.node_id.is_empty()).then(|| run.node_id.clone()),
             artifact_type: node_type,
-            run_id: run_id.to_owned(),
+            run_id: run.run_id.clone(),
             completed_at: String::new(),
             child_count: count,
             columns,
@@ -227,8 +266,7 @@ fn merge_result_nodes(
             *count,
             node.columns.clone(),
             image_id,
-            analyzer,
-            run_id,
+            run,
         ));
     }
     let mut undeclared: Vec<(&String, &u64)> = counts
@@ -243,8 +281,7 @@ fn merge_result_nodes(
             *count,
             Vec::new(),
             image_id,
-            analyzer,
-            run_id,
+            run,
         ));
     }
     children
@@ -253,6 +290,7 @@ fn merge_result_nodes(
 pub struct AnalysisRecordsQuery<'a> {
     pub image_id: &'a str,
     pub analyzer: &'a str,
+    pub run_id: &'a str,
     pub artifact_type: &'a str,
     pub keyword: Option<&'a str>,
     pub skip: i64,
@@ -260,7 +298,7 @@ pub struct AnalysisRecordsQuery<'a> {
 }
 
 /// 按结果项分页读取记录,关键词过滤命中内容/标题。
-/// 始终读该 (检材, 功能) 最新 run。
+/// 固定读取选中结果树节点的 run,避免分页期间混入另一份结果。
 pub fn records_page(
     case_dir: &std::path::Path,
     query: &AnalysisRecordsQuery<'_>,
@@ -271,7 +309,7 @@ pub fn records_page(
             items: Vec::new(),
         });
     };
-    let Some(run_id) = latest_run_for(&connection, query.analyzer)? else {
+    let Some(run_id) = selected_run(&connection, query.run_id, query.analyzer)? else {
         return Ok(AnalysisRecordPage {
             total: 0,
             items: Vec::new(),
@@ -388,10 +426,10 @@ fn open_readonly(case_dir: &std::path::Path, image_id: &str) -> anyhow::Result<O
     evidence_db::open_reader(case_dir, image_id, &plugin_result_store::SCHEMA)
 }
 
-/// 每个功能(analyzer)最新的一次运行。
+/// 每个插件功能和输入文件各自最新的一次运行。
 fn latest_runs(connection: &Connection) -> anyhow::Result<Vec<LatestRun>> {
     let mut statement = connection.prepare(
-        "SELECT run_id, analyzer, display_name, type_name, completed_at
+        "SELECT run_id, analyzer, display_name, type_name, completed_at, plugin_id, node_id, file_name
          FROM plugin_analysis_runs
          ORDER BY analyzer, completed_at DESC, run_id DESC",
     )?;
@@ -402,26 +440,37 @@ fn latest_runs(connection: &Connection) -> anyhow::Result<Vec<LatestRun>> {
             display_name: row.get(2)?,
             type_name: row.get(3)?,
             completed_at: row.get(4)?,
+            plugin_id: row.get(5)?,
+            node_id: row.get(6)?,
+            file_name: row.get(7)?,
         })
     })?;
     let mut latest: Vec<LatestRun> = Vec::new();
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen: std::collections::HashSet<(String, String, String)> =
+        std::collections::HashSet::new();
     for row in rows {
         let run = row?;
-        if seen.insert(run.analyzer.clone()) {
+        if seen.insert((
+            run.plugin_id.clone(),
+            run.analyzer.clone(),
+            run.node_id.clone(),
+        )) {
             latest.push(run);
         }
     }
     Ok(latest)
 }
 
-fn latest_run_for(connection: &Connection, analyzer: &str) -> anyhow::Result<Option<String>> {
+fn selected_run(
+    connection: &Connection,
+    run_id: &str,
+    analyzer: &str,
+) -> anyhow::Result<Option<String>> {
     let mut statement = connection.prepare(
         "SELECT run_id FROM plugin_analysis_runs
-         WHERE analyzer = ?1
-         ORDER BY completed_at DESC, run_id DESC LIMIT 1",
+         WHERE run_id = ?1 AND analyzer = ?2",
     )?;
-    let mut rows = statement.query([analyzer])?;
+    let mut rows = statement.query([run_id, analyzer])?;
     Ok(rows.next()?.map(|row| row.get(0)).transpose()?)
 }
 
@@ -617,6 +666,13 @@ mod tests {
             &AnalysisRecordsQuery {
                 image_id: "image-1",
                 analyzer: "linuxbaseinfo",
+                run_id: &latest_runs(
+                    &open_readonly(directory.path(), "image-1")
+                        .expect("open")
+                        .expect("database"),
+                )
+                .expect("runs")[0]
+                    .run_id,
                 artifact_type: "linux.user",
                 keyword: Some("daemon"),
                 skip: 0,
@@ -663,6 +719,7 @@ mod tests {
             &AnalysisRecordsQuery {
                 image_id: "image-1",
                 analyzer: "file-analyzer",
+                run_id: &latest_runs(&connection).expect("runs")[0].run_id,
                 artifact_type: "demo.record",
                 keyword: None,
                 skip: 0,
@@ -705,6 +762,7 @@ mod tests {
             &AnalysisRecordsQuery {
                 image_id: "image-1",
                 analyzer: "linuxbaseinfo",
+                run_id: "missing",
                 artifact_type: "linux.user",
                 keyword: None,
                 skip: 0,
@@ -714,5 +772,75 @@ mod tests {
         .expect("page");
         assert_eq!(page.total, 0);
         assert!(page.items.is_empty());
+    }
+    #[test]
+    fn result_scopes_and_pages_preserve_plugin_input_and_run_identity() {
+        let directory = tempfile::tempdir().expect("case");
+        let result = PluginAnalysisResult {
+            artifacts: vec![artifact("demo.record", "row", "")],
+            ..PluginAnalysisResult::default()
+        };
+        let save = |plugin_id, node_id, completed_at| {
+            persist(
+                directory.path(),
+                NewPluginAnalysis {
+                    plugin_id,
+                    plugin_version: "1",
+                    analyzer: "shared",
+                    display_name: "Shared",
+                    type_name: "analysis",
+                    image_id: "image",
+                    node_id,
+                    file_name: node_id,
+                    started_at: "2026-10-18T00:00:00Z",
+                    completed_at,
+                    result: &result,
+                },
+            )
+            .expect("save")
+        };
+        let old = save("plugin.a", "file1", "2026-10-18T00:00:01Z");
+        let latest = save("plugin.a", "file1", "2026-10-18T00:00:02Z");
+        let second = save("plugin.a", "file2", "2026-10-18T00:00:03Z");
+        let other = save("plugin.b", "file1", "2026-10-18T00:00:04Z");
+        let tree = analysis_tree(
+            directory.path(),
+            &[AnalysisTreeEvidence {
+                image_id: "image".into(),
+                label: "Evidence".into(),
+            }],
+        )
+        .expect("tree");
+        let functions = &tree[0].children[0].children;
+        let ids: std::collections::HashSet<_> =
+            functions.iter().map(|node| node.run_id.clone()).collect();
+        assert_eq!(ids, [latest, second, other].into_iter().collect());
+        assert_eq!(
+            functions
+                .iter()
+                .map(|node| &node.node_id)
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            3
+        );
+        for node in functions {
+            assert!(node.function.starts_with("plugin."));
+            assert!(node.source_node_id.is_some());
+        }
+        let page = records_page(
+            directory.path(),
+            &AnalysisRecordsQuery {
+                image_id: "image",
+                analyzer: "shared",
+                run_id: &old,
+                artifact_type: "demo.record",
+                keyword: None,
+                skip: 0,
+                limit: 100,
+            },
+        )
+        .expect("pinned page");
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].run_id, old);
     }
 }

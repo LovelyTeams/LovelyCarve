@@ -69,7 +69,7 @@ async fn main() -> anyhow::Result<()> {
     // in a temporary case rather than changing the user's open case.
     let case = tempfile::tempdir()?;
     let completed_at = chrono::Utc::now().to_rfc3339();
-    plugin_result_store::persist(
+    let run_id = plugin_result_store::persist(
         case.path(),
         NewPluginAnalysis {
             plugin_id: &arguments[1],
@@ -91,6 +91,7 @@ async fn main() -> anyhow::Result<()> {
             &AnalysisRecordsQuery {
                 image_id: &image_id,
                 analyzer: &arguments[2],
+                run_id: &run_id,
                 artifact_type,
                 keyword: None,
                 skip: 0,

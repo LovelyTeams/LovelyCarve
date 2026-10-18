@@ -65,6 +65,7 @@ impl TaskScheduler {
             .await;
         if let Err(error) = committed {
             tracing::warn!("commit task {task_id}: {error}");
+            bound.runner.discard_execution(task_id, seq);
             self.remove_running(task_id, seq);
         }
     }
@@ -114,6 +115,11 @@ impl TaskScheduler {
         seq: u64,
         outcome: ExecutionOutcome,
     ) {
+        let Some(publication) = self.publication_gate(task_id) else {
+            bound.runner.discard_execution(task_id, seq);
+            return;
+        };
+        let _publication = publication.lock();
         let owned = self
             .inner
             .running
@@ -124,8 +130,29 @@ impl TaskScheduler {
             tracing::debug!(
                 "commit: execution {seq} of task {task_id} was superseded, result dropped"
             );
+            bound.runner.discard_execution(task_id, seq);
             return;
         }
+        let task = match bound.store.get(task_id) {
+            Ok(Some(task)) if task.status == SchedTaskStatus::Running => task,
+            other => {
+                if let Err(error) = other {
+                    tracing::warn!("read task before publication: {error:#}");
+                }
+                bound.runner.discard_execution(task_id, seq);
+                self.remove_running(task_id, seq);
+                return;
+            }
+        };
+        let outcome = match outcome {
+            ExecutionOutcome::Success(result) => {
+                match bound.runner.publish_results(&task, seq, result) {
+                    Ok(result) => ExecutionOutcome::Success(result),
+                    Err(error) => ExecutionOutcome::Failed(format!("分析结果发布失败: {error:#}")),
+                }
+            }
+            failed @ ExecutionOutcome::Failed(_) => failed,
+        };
         let committed = self.write_task(|| match &outcome {
             ExecutionOutcome::Success(result) => {
                 bound
@@ -138,7 +165,16 @@ impl TaskScheduler {
                     .complete(task_id, SchedTaskStatus::Failed, None, Some(error))
             }
         });
-        self.remove_running(task_id, seq);
+        bound.runner.discard_execution(task_id, seq);
+        if !matches!(&committed, Ok(Some(_))) {
+            if let ExecutionOutcome::Success(result) = &outcome {
+                let mut unpublished = task.clone();
+                unpublished.result = Some(result.clone());
+                if let Err(error) = bound.runner.remove_results(&unpublished) {
+                    tracing::error!("rollback unpublished task {task_id} outputs: {error:#}");
+                }
+            }
+        }
         match committed {
             Ok(Some(finished)) => self.after_finish(bound, &finished),
             Ok(None) => {
@@ -146,6 +182,9 @@ impl TaskScheduler {
             }
             Err(error) => tracing::warn!("commit task error:{error:#}"),
         }
+        // Keep the gate discoverable until follow-ups and bookkeeping finish,
+        // so case close also drains the final publication work.
+        self.remove_running(task_id, seq);
     }
 
     /// OnTaskFinish:PostActionWatcher 计数、依赖链建下一级任务。

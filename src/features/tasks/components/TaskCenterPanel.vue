@@ -207,7 +207,7 @@ const sections = computed(() => groupTaskSections(visibleTasks.value).map(sectio
 
 function openResult(task: UnifiedTask) {
   const target = taskResultPanel(task);
-  if (target) emit('openResult', target, task.builtin ? null : task.info.analyzer);
+  if (target) emit('openResult', target, task.builtin ? null : task.result?.runId ?? task.name);
 }
 
 async function runTaskAction(task: UnifiedTask, action: RowAction | 'remove') {

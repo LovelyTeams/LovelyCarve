@@ -325,6 +325,8 @@ impl TaskScheduler {
         task_id: i64,
         control: Control,
     ) -> SchedResult<(SchedTaskRecord, SchedTaskRecord)> {
+        let publication = self.publication_gate(task_id);
+        let _publication = publication.as_ref().map(|gate| gate.lock());
         let task = bound
             .store
             .get(task_id)?
@@ -405,6 +407,8 @@ impl TaskScheduler {
     }
 
     fn remove_task(&self, bound: &BoundCase, task_id: i64) -> SchedResult<SchedTaskRecord> {
+        let publication = self.publication_gate(task_id);
+        let _publication = publication.as_ref().map(|gate| gate.lock());
         let task = bound
             .store
             .get(task_id)?

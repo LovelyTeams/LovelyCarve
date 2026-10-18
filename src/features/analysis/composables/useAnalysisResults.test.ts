@@ -80,6 +80,8 @@ function resultNode(overrides: Partial<AnalysisResultNode> = {}): AnalysisResult
     imageId: 'image-1',
     typeName: '',
     analyzer: 'linuxbaseinfo',
+    function: 'org.lovelycarve.linuxinfo/linuxbaseinfo',
+    sourceNodeId: null,
     artifactType: 'linux.user',
     runId: 'run-1',
     completedAt: '',
@@ -195,6 +197,7 @@ describe('useAnalysisResults', () => {
     expect(invokeMock).toHaveBeenCalledWith('analysis_records_page', {
       imageId: 'image-1',
       analyzer: 'linuxbaseinfo',
+      runId: 'run-1',
       artifactType: 'linux.user',
       keyword: null,
       skip: 0,
@@ -206,6 +209,7 @@ describe('useAnalysisResults', () => {
     expect(invokeMock).toHaveBeenLastCalledWith('analysis_records_page', {
       imageId: 'image-1',
       analyzer: 'linuxbaseinfo',
+      runId: 'run-1',
       artifactType: 'linux.user',
       keyword: 'root',
       skip: 0,
@@ -216,6 +220,7 @@ describe('useAnalysisResults', () => {
     expect(invokeMock).toHaveBeenLastCalledWith('analysis_records_page', {
       imageId: 'image-1',
       analyzer: 'linuxbaseinfo',
+      runId: 'run-1',
       artifactType: 'linux.user',
       keyword: 'root',
       skip: 2 * ANALYSIS_PAGE_SIZE,
@@ -370,23 +375,38 @@ describe('analysis navigation and asynchronous state', () => {
     expect(results.records.value).toEqual([]);
   });
 
+  it('focuses the exact input run and keeps page requests pinned to it', async () => {
+    const results = useAnalysisResults();
+    treeResponse = sampleTree();
+    const owner = treeResponse[0].children[0].children[0];
+    treeResponse[0].children[0].children.push({ ...owner, nodeId: 'file-two', sourceNodeId: 'file-two',
+      children: [resultNode({ nodeId: 'file-two::users', runId: 'run-2', sourceNodeId: 'file-two' })] });
+    pageResponse = { total: 250, items: [record('a1', 'root')] };
+    results.setImageId('image-1');
+    focusAnalysisResult('run-2');
+    results.ensureFresh();
+    await vi.waitFor(() => expect(results.selectedNode.value?.runId).toBe('run-2'));
+    results.goToPage(1);
+    expect(invokeMock).toHaveBeenLastCalledWith('analysis_records_page', expect.objectContaining({ runId: 'run-2', skip: 100 }));
+  });
+
   it('opens the results of a requested analyzer once, then keeps the user selection', async () => {
     const results = useAnalysisResults();
     treeResponse = sampleTree();
     treeResponse[0].children.push({
       ...treeResponse[0].children[0], nodeId: 'image-1::web', label: '上网记录',
       children: [{ ...treeResponse[0].children[0].children[0], nodeId: 'image-1::web/browser', label: '浏览器', analyzer: 'browser',
-        children: [resultNode({ nodeId: 'image-1::browser::history', label: '历史记录', analyzer: 'browser', artifactType: 'history' })] }],
+        children: [resultNode({ nodeId: 'image-1::browser::history', label: '历史记录', analyzer: 'browser', function: 'org.browser/browser', artifactType: 'history' })] }],
     });
     pageResponse = { total: 1, items: [record('a1', 'root')] };
     results.setImageId('image-1');
     results.ensureFresh();
     await vi.waitFor(() => expect(results.selectedNode.value?.label).toBe('用户列表'));
-    focusAnalysisResult('browser');
+    focusAnalysisResult('org.browser/browser');
     expect(results.dirty.value).toBe(true);
     results.ensureFresh();
     await vi.waitFor(() => expect(results.selectedNode.value?.label).toBe('历史记录'));
-    expect(invokeMock).toHaveBeenLastCalledWith('analysis_records_page', expect.objectContaining({ analyzer: 'browser', artifactType: 'history' }));
+    expect(invokeMock).toHaveBeenLastCalledWith('analysis_records_page', expect.objectContaining({ analyzer: 'browser', runId: 'run-1', artifactType: 'history' }));
     await results.selectNode(resultNode());
     results.reload();
     await vi.waitFor(() => expect(results.treeLoading.value).toBe(false));

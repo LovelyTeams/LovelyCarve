@@ -47,10 +47,10 @@ let treeRequestId = 0;
 let recordsRequestId = 0;
 let detailRequestId = 0;
 let caseVersion = 0;
-/** Analyzer whose results the next tree load opens (任务中心「查看分析结果」). */
+/** Run ID or fully qualified function whose results the next tree load opens (任务中心「查看分析结果」). */
 let requestedAnalyzer: string | null = null;
 
-/** Show one analyzer's results instead of the default first populated item.
+/** Show one run or fully qualified function's results instead of the default first populated item.
  *  Marks the tree dirty, so the panel reloads it and the new run is included. */
 export function focusAnalysisResult(analyzer: string): void {
   requestedAnalyzer = analyzer;
@@ -168,7 +168,7 @@ async function refreshTree(): Promise<void> {
     dirty.value = false;
     if (requestedAnalyzer === analyzer) requestedAnalyzer = null;
     const results = currentImageId.value ? buildAnalysisGroups(next, currentImageId.value).flatMap(group => group.results) : [];
-    const focused = analyzer ? firstPopulated(results.filter(node => node.analyzer === analyzer)) : null;
+    const focused = analyzer ? firstPopulated(results.filter(node => node.runId === analyzer || node.function === analyzer)) : null;
     const current = selectedNode.value;
     const again = current ? findResultNode(next, current.nodeId) : null;
     if (focused) {
@@ -200,7 +200,7 @@ async function loadRecords(): Promise<void> {
   closeDetail();
   try {
     const page = await analysisRecordsPage({
-      imageId: node.imageId, analyzer: node.analyzer, artifactType: node.artifactType,
+      imageId: node.imageId, analyzer: node.analyzer, runId: node.runId, artifactType: node.artifactType,
       keyword: keyword.value.trim() || undefined,
       skip: pageIndex.value * ANALYSIS_PAGE_SIZE, limit: ANALYSIS_PAGE_SIZE,
     });
@@ -321,7 +321,7 @@ export function useAnalysisResults() {
       assertActive();
       const page = await analysisRecordsPage({
         imageId: node.imageId,
-        analyzer: node.analyzer,
+        analyzer: node.analyzer, runId: node.runId,
         artifactType: node.artifactType,
         keyword: exportKeyword,
         skip: collected.length,

@@ -83,12 +83,28 @@ impl Script {
 }
 
 #[derive(Default)]
+struct PublicationHold {
+    entered: tokio::sync::Notify,
+    released: Mutex<bool>,
+    changed: parking_lot::Condvar,
+}
+
+impl PublicationHold {
+    fn release(&self) {
+        *self.released.lock() = true;
+        self.changed.notify_all();
+    }
+}
+
+#[derive(Default)]
 struct ScriptedRunner {
     scripts: RwLock<Vec<(String, Script)>>,
     started: Mutex<Vec<i64>>,
     terminated: Mutex<Vec<i64>>,
     removed_results: Mutex<Vec<i64>>,
     cleanup_error: Mutex<Option<String>>,
+    published_results: Mutex<Vec<i64>>,
+    publication_hold: Mutex<Option<Arc<PublicationHold>>>,
     alive: AtomicBool,
     /// Progress channel of each started execution, by task id.
     progress: Mutex<HashMap<i64, TaskProgress>>,
@@ -145,6 +161,30 @@ impl TaskRunner for ScriptedRunner {
                 () = token.cancelled() => ExecutionOutcome::Failed("任务已取消".to_owned()),
             }
         })
+    }
+
+    fn publish_results(
+        &self,
+        task: &SchedTaskRecord,
+        _seq: u64,
+        result: TaskResult,
+    ) -> anyhow::Result<TaskResult> {
+        let hold = self.publication_hold.lock().clone();
+        if let Some(hold) = hold {
+            hold.entered.notify_one();
+            let mut released = hold.released.lock();
+            while !*released {
+                if hold
+                    .changed
+                    .wait_for(&mut released, Duration::from_secs(5))
+                    .timed_out()
+                {
+                    anyhow::bail!("test publication was never released");
+                }
+            }
+        }
+        self.published_results.lock().push(task.id);
+        Ok(result)
     }
 
     fn remove_results(&self, task: &SchedTaskRecord) -> anyhow::Result<()> {
@@ -941,4 +981,79 @@ async fn result_cleanup_failure_keeps_terminal_task_deletion_and_event() {
         SchedEvent::TaskRemoved { task_id, .. } if *task_id == task.id
     )));
     harness.scheduler.unbind_case().await;
+}
+
+#[tokio::test]
+async fn cancelled_execution_never_publishes_a_late_result() {
+    let harness = harness().await;
+    let function = "org.test.manual/manual.scan";
+    harness.runner.script(function, Script::slow());
+    let task = harness.create(function, "image-1");
+    harness.scheduler.dispatch_tick().await;
+    assert!(harness.wait_started(&[task.id]).await);
+    let seq = harness
+        .scheduler
+        .inner
+        .running
+        .lock()
+        .get(&task.id)
+        .expect("running")
+        .seq;
+    let bound = harness.scheduler.require_bound().expect("bound");
+    harness.scheduler.cancel(task.id).await.expect("cancel");
+    harness.scheduler.commit(
+        &bound,
+        task.id,
+        seq,
+        ExecutionOutcome::Success(TaskResult::default()),
+    );
+    assert!(harness.runner.published_results.lock().is_empty());
+    assert_eq!(harness.status(task.id), SchedTaskStatus::Cancel);
+    harness.scheduler.unbind_case().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn publication_finishes_before_cancellation_or_case_close_can_return() {
+    for closing in [false, true] {
+        let harness = harness().await;
+        let hold = Arc::new(PublicationHold::default());
+        *harness.runner.publication_hold.lock() = Some(Arc::clone(&hold));
+        let task = harness.create("org.test.manual/manual.scan", "image-1");
+        harness.scheduler.dispatch_tick().await;
+        tokio::time::timeout(Duration::from_secs(3), hold.entered.notified())
+            .await
+            .expect("publishing");
+        let scheduler = harness.scheduler.clone();
+        let mut control = tokio::spawn(async move {
+            if closing {
+                scheduler.unbind_case().await;
+                Ok(())
+            } else {
+                scheduler.cancel(task.id).await.map(drop)
+            }
+        });
+        assert!(
+            tokio::time::timeout(Duration::from_millis(30), &mut control)
+                .await
+                .is_err()
+        );
+        hold.release();
+        let outcome = control.await.expect("control task");
+        if closing {
+            outcome.expect("closed");
+        } else {
+            assert!(matches!(
+                outcome,
+                Err(super::SchedError::InvalidState { .. })
+            ));
+        }
+        let stored = TaskStore::open(&harness.ledger_path)
+            .expect("store")
+            .get(task.id)
+            .expect("get")
+            .expect("task");
+        assert_eq!(stored.status, SchedTaskStatus::Success);
+        assert_eq!(*harness.runner.published_results.lock(), vec![task.id]);
+        harness.scheduler.unbind_case().await;
+    }
 }

@@ -521,3 +521,7 @@ XTS 密钥对）。可选 `encryptedRootPlistPath` 指向本地 XML / EncryptedR
 快照的 `phase` 表示正在运行的阶段，`filesystem` 摘要给出阶段进度、卷/目录/文件数、截断、读取故障与阶段错误。`carve files list` 在文件系统阶段结束前返回 `null`；NTFS 重建卷的 `reconstruction` 给出 MFT 位置和推导几何，目录在 `directories` 中，文件在 `candidates` 中，回收站还原项包含 `source_node/source_path`，其原始数据映射和身份不变。
 
 `carve scans export` 的 `file_ids` 只接受该会话文件系统结果中的候选编号，且候选必须 `readable`，不能传入任意原始数据映射；`artifact_ids` 为 `null`（缺省）时恢复全部雕刻结果，同时传 `file_ids` 时可用 `[]` 只恢复文件系统记录。顶层计数描述雕刻结果，`files` 描述文件系统记录：输出目录、成功/失败数、JSONL 报告路径与读取故障。文件系统记录在输出目录中按 `v<卷号>-<卷标>/原目录/文件名` 保持目录结构，具体文件状态、来源、`relative_output` 和 SHA-256 见 JSONL 报告。能力和限制见[文件恢复](USAGE.md#文件恢复)。
+
+### 插件分析结果的分页身份
+
+`analysis tree get` 返回各插件功能、输入文件的当前结果及 `runId`。`analysis records list` 必须传 `--run-id`，并传匹配的 `--analyzer`、检材与结果类型；同一次分页或导出固定 runId，不在新任务完成时自动切换。删除插件任务只清理该任务记录的运行结果。

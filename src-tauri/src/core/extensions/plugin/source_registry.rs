@@ -10,7 +10,8 @@ use super::{PluginError, Result};
 
 pub const MAX_SOURCE_READ: usize = 4 * 1024 * 1024;
 pub const MAX_SOURCE_READV_RANGES: usize = 128;
-pub const MAX_SOURCE_READV_BYTES: usize = 8 * 1024 * 1024;
+// Leave room for the response envelope and up to 128 binary value headers.
+pub const MAX_SOURCE_READV_BYTES: usize = super::MAX_FRAME_SIZE - 4096;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct SourceHandle {
@@ -354,5 +355,47 @@ impl SourceRegistry {
             .iter()
             .map(|(offset, length)| self.read(source_id, *offset, *length))
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod frame_budget_tests {
+    use super::*;
+    use crate::core::extensions::plugin::LppMessage;
+    use rmpv::Value;
+
+    struct ZeroSource;
+    impl SectorSource for ZeroSource {
+        fn size(&self) -> u64 {
+            16 * 1024 * 1024
+        }
+        fn read(&self, _offset: u64, length: usize) -> anyhow::Result<Vec<u8>> {
+            Ok(vec![0; length])
+        }
+    }
+
+    #[test]
+    fn largest_readv_response_fits_and_eight_mib_is_rejected_before_reading() {
+        let registry = SourceRegistry::default();
+        let source: Arc<dyn SectorSource + Send + Sync> = Arc::new(ZeroSource);
+        let handle = registry.register(Arc::clone(&source), 512);
+        let mut ranges =
+            vec![(0, MAX_SOURCE_READV_BYTES / MAX_SOURCE_READV_RANGES); MAX_SOURCE_READV_RANGES];
+        ranges[0].1 += MAX_SOURCE_READV_BYTES % MAX_SOURCE_READV_RANGES;
+        let chunks = registry
+            .readv(&handle.source_id, &ranges)
+            .expect("largest valid request");
+        let response = LppMessage::success(
+            u64::MAX,
+            Value::Array(chunks.into_iter().map(Value::Binary).collect()),
+        );
+        lovelycarve_plugin::wire::encode_frame(&response)
+            .expect("valid request always fits its reply frame");
+        assert!(registry
+            .readv(
+                &handle.source_id,
+                &[(0, MAX_SOURCE_READ), (0, MAX_SOURCE_READ)]
+            )
+            .is_err());
     }
 }

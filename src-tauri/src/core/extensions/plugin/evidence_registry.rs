@@ -27,7 +27,7 @@ use super::{PluginError, Result};
 
 pub const MAX_EVIDENCE_READ: usize = 4 * 1024 * 1024;
 pub const MAX_EVIDENCE_READV_RANGES: usize = 64;
-pub const MAX_EVIDENCE_READV_TOTAL: usize = 16 * 1024 * 1024;
+pub const MAX_EVIDENCE_READV_TOTAL: usize = super::source_registry::MAX_SOURCE_READV_BYTES;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]

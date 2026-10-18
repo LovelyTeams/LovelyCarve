@@ -263,6 +263,21 @@ impl PluginManifest {
         for capability in self.evidence_analyzer_capabilities() {
             validate_identifier("analyzer", &capability.analyzer)?;
         }
+        let mut analyzers = HashSet::new();
+        for analyzer in self
+            .file_analyzer_capabilities()
+            .map(|item| &item.analyzer)
+            .chain(
+                self.evidence_analyzer_capabilities()
+                    .map(|item| &item.analyzer),
+            )
+        {
+            if !analyzers.insert(analyzer) {
+                return Err(PluginError::Manifest(format!(
+                    "analyzer {analyzer} is declared more than once"
+                )));
+            }
+        }
         let mut permissions = HashSet::new();
         if let Some(permission) = self
             .permissions
@@ -722,5 +737,31 @@ path = "test"
             .expect("parse manifest");
             assert!(matches!(manifest.validate(), Err(PluginError::Manifest(_))));
         }
+    }
+    #[test]
+    fn duplicate_analyzer_names_across_scopes_are_rejected() {
+        let mut manifest: PluginManifest = toml::from_str(
+            r#"
+            id = "org.test"
+            name = "Test"
+            version = "1"
+            protocol_min = 1
+            protocol_max = 1
+            [library]
+            path = "test"
+            [[capabilities]]
+            type = "file_analyzer"
+            analyzer = "shared"
+        "#,
+        )
+        .expect("manifest");
+        manifest
+            .capabilities
+            .push(Capability::EvidenceAnalyzer(EvidenceAnalyzerCapability {
+                analyzer: "shared".into(),
+                display: None,
+                priority: 0,
+            }));
+        assert!(manifest.validate().is_err());
     }
 }

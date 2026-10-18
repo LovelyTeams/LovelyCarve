@@ -151,6 +151,7 @@ pub async fn plugin_analyze_file(
     file_name: String,
 ) -> Result<PluginAnalysisRunResponse, AppError> {
     let manager = plugin_manager(&state)?;
+    let context = AnalysisCaseContext::capture(&state).await;
     let image = loaded_image_app_error(&state, &image_id).await?;
     let definition = manager
         .definitions()
@@ -165,7 +166,7 @@ pub async fn plugin_analyze_file(
         .registry()
         .all()
         .iter()
-        .find(|function| function.analyzer == analyzer)
+        .find(|function| function.plugin_id == plugin_id && function.analyzer == analyzer)
         .cloned();
     let display_name = function
         .as_ref()
@@ -187,13 +188,8 @@ pub async fn plugin_analyze_file(
         .await
         .map_err(plugin_app_error)?;
     let completed_at = chrono::Utc::now().to_rfc3339();
-    let case_dir = state
-        .active_case
-        .lock()
-        .await
-        .as_ref()
-        .map(|active_case| active_case.dir.clone());
-    let run_id = if let Some(case_dir) = case_dir {
+    let _publication = context.lock_publication(&state, &image_id).await?;
+    let run_id = if let Some(case_dir) = context.case_dir {
         let result_for_store = result.clone();
         let plugin_id_for_store = plugin_id.clone();
         let plugin_version_for_store = plugin_version.clone();
@@ -269,6 +265,53 @@ pub async fn plugin_analysis_list(
     .map_err(AppError::from_anyhow)
 }
 
+/// Captured before analysis; the gate also fences writes against case closure
+/// and evidence withdrawal, including reopening the same case directory.
+struct AnalysisCaseContext {
+    generation: u64,
+    case_dir: Option<std::path::PathBuf>,
+}
+
+impl AnalysisCaseContext {
+    async fn capture(state: &AppState) -> Self {
+        let generation = state.image_load_context.lock().await;
+        let case_dir = state
+            .active_case
+            .lock()
+            .await
+            .as_ref()
+            .map(|case| case.dir.clone());
+        Self {
+            generation: *generation,
+            case_dir,
+        }
+    }
+
+    async fn lock_publication<'a>(
+        &self,
+        state: &'a AppState,
+        image_id: &str,
+    ) -> Result<tokio::sync::MutexGuard<'a, u64>, AppError> {
+        let generation = state.image_load_context.lock().await;
+        let case_dir = state
+            .active_case
+            .lock()
+            .await
+            .as_ref()
+            .map(|case| case.dir.clone());
+        if *generation != self.generation
+            || case_dir != self.case_dir
+            || !state.images.lock().await.contains_key(image_id)
+            || state.removed_case_evidence.lock().await.contains(image_id)
+        {
+            return Err(AppError::invalid_input(
+                "分析期间案件或检材已改变，请重新分析",
+            ));
+        }
+        Ok(generation)
+    }
+}
+
 fn plugin_manager(state: &AppState) -> Result<std::sync::Arc<PluginManager>, AppError> {
     state
         .plugins
@@ -288,4 +331,66 @@ fn state_view(state: &PluginState) -> (String, Option<String>) {
 
 fn plugin_app_error(error: crate::core::extensions::plugin::PluginError) -> AppError {
     AppError::from_anyhow(anyhow::Error::new(error))
+}
+
+#[cfg(test)]
+mod publication_tests {
+    use super::*;
+    use crate::core::{
+        casework::case::{self, CreateCaseOptions},
+        filesystem::evidence_session::EvidenceSession,
+    };
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn publication_rejects_case_switch_reopen_and_evidence_withdrawal() {
+        let temporary = tempfile::tempdir().expect("fixture");
+        let state = AppState::new();
+        let open_case = |name: &str| {
+            case::create_case(
+                &temporary.path().join(name),
+                CreateCaseOptions {
+                    name: name.into(),
+                    case_number: None,
+                    description: None,
+                    examiner: None,
+                },
+            )
+            .expect("case")
+        };
+        *state.active_case.lock().await = Some(open_case("a"));
+        let path = temporary.path().join("image.raw");
+        std::fs::write(&path, vec![0; 4096]).expect("raw");
+        let image = Arc::new(EvidenceSession::open(&path).expect("image"));
+        let image_id = image.id.clone();
+        state.images.lock().await.insert(image_id.clone(), image);
+        let context = AnalysisCaseContext::capture(&state).await;
+        drop(
+            context
+                .lock_publication(&state, &image_id)
+                .await
+                .expect("same context"),
+        );
+        *state.active_case.lock().await = Some(open_case("b"));
+        assert!(context.lock_publication(&state, &image_id).await.is_err());
+        let context = AnalysisCaseContext::capture(&state).await;
+        *state.image_load_context.lock().await += 1;
+        assert!(context.lock_publication(&state, &image_id).await.is_err());
+        let context = AnalysisCaseContext::capture(&state).await;
+        state
+            .removed_case_evidence
+            .lock()
+            .await
+            .insert(image_id.clone());
+        assert!(context.lock_publication(&state, &image_id).await.is_err());
+        assert!(
+            !crate::core::casework::case_paths::evidence_db_path(
+                &temporary.path().join("b"),
+                &image_id,
+                crate::core::casework::case_paths::EvidenceDb::Analysis
+            )
+            .exists(),
+            "stale analysis never creates derived outputs"
+        );
+    }
 }

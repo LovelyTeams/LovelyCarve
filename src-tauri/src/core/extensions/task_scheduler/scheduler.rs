@@ -48,6 +48,8 @@ pub(super) struct BoundCase {
 pub(super) struct RunningTask {
     pub(super) seq: u64,
     pub(super) token: CancellationToken,
+    /// Serializes publication + terminal state with withdrawal of this execution.
+    pub(super) publication: Arc<parking_lot::Mutex<()>>,
     pub(super) started_at: Instant,
     /// 最近一次进度回报(看门狗的进度超时计时)。
     pub(super) last_update: Instant,
@@ -258,24 +260,35 @@ impl TaskScheduler {
     /// 解绑案件:终止运行中的执行,任务置 `offline`(重开案件时由恢复流程
     /// 重排队或判失败),清空进程内登记。
     pub async fn unbind_case(&self) {
+        let _guard = self.inner.tick_lock.lock().await;
         let Some(bound) = self.inner.bound.lock().take() else {
             return;
         };
-        let _guard = self.inner.tick_lock.lock().await;
-        let running = std::mem::take(&mut *self.inner.running.lock());
-        let executions: Vec<(i64, u64)> = running
+        let executions: Vec<(i64, u64, Arc<parking_lot::Mutex<()>>)> = self
+            .inner
+            .running
+            .lock()
             .iter()
-            .map(|(task_id, entry)| {
-                entry.token.cancel();
-                (*task_id, entry.seq)
-            })
+            .map(|(id, entry)| (*id, entry.seq, Arc::clone(&entry.publication)))
             .collect();
         let settled = self
             .on_blocking({
                 let bound = Arc::clone(&bound);
-                let task_ids: Vec<i64> = executions.iter().map(|(task_id, _)| *task_id).collect();
+                let executions = executions.clone();
                 move |scheduler| {
-                    for task_id in task_ids {
+                    for (task_id, seq, publication) in executions {
+                        let _publication = publication.lock();
+                        let entry = {
+                            let mut running = scheduler.inner.running.lock();
+                            if running.get(&task_id).is_some_and(|entry| entry.seq == seq) {
+                                running.remove(&task_id)
+                            } else {
+                                None
+                            }
+                        };
+                        if let Some(entry) = entry {
+                            entry.token.cancel();
+                        }
                         let offline = scheduler.write_task(|| {
                             bound.store.transition(
                                 task_id,
@@ -294,7 +307,7 @@ impl TaskScheduler {
         if let Err(error) = settled {
             tracing::warn!("unbind: {error}");
         }
-        for (task_id, seq) in executions {
+        for (task_id, seq, _) in executions {
             bound.runner.terminate_worker(task_id, seq).await;
         }
         self.inner.post_actions.reset();
@@ -336,10 +349,10 @@ impl TaskScheduler {
     /// 落库最新进度,按创建顺序把 `created` 任务派发出去(`created → queued`,
     /// 不超过 `max_running`),并推进到期的收尾动作。
     pub async fn dispatch_tick(&self) {
+        let _guard = self.inner.tick_lock.lock().await;
         let Some(bound) = self.bound() else {
             return;
         };
-        let _guard = self.inner.tick_lock.lock().await;
         let dispatched = self
             .on_blocking({
                 let bound = Arc::clone(&bound);
@@ -412,6 +425,7 @@ impl TaskScheduler {
                         RunningTask {
                             seq,
                             token: token.clone(),
+                            publication: Arc::default(),
                             started_at: now,
                             last_update: now,
                             progress: 0,
@@ -460,5 +474,13 @@ impl TaskScheduler {
         } else {
             false
         }
+    }
+
+    pub(super) fn publication_gate(&self, task_id: i64) -> Option<Arc<parking_lot::Mutex<()>>> {
+        self.inner
+            .running
+            .lock()
+            .get(&task_id)
+            .map(|entry| Arc::clone(&entry.publication))
     }
 }

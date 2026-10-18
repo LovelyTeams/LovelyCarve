@@ -15,7 +15,7 @@ use super::{PluginError, Result};
 
 pub(super) const MAX_FILE_READ: usize = 4 * 1024 * 1024;
 pub(super) const MAX_FILE_READV_RANGES: usize = 64;
-pub(super) const MAX_FILE_READV_TOTAL: usize = 16 * 1024 * 1024;
+pub(super) const MAX_FILE_READV_TOTAL: usize = super::source_registry::MAX_SOURCE_READV_BYTES;
 const MAX_MATERIALIZED_FILE: u64 = 4 * 1024 * 1024 * 1024;
 const MAX_PLUGIN_MATERIALIZED_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const MAX_PLUGIN_MATERIALIZED_LEASES: usize = 16;

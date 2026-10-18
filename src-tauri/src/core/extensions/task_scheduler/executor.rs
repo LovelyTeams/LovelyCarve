@@ -38,8 +38,24 @@ pub trait TaskRunner: Send + Sync {
         execution: TaskExecution,
     ) -> BoxFuture<'static, ExecutionOutcome>;
 
-    /// Remove this runner's published outputs after the terminal task row is
-    /// deleted. Errors are logged by the scheduler without undoing deletion.
+    /// Publish prepared outputs only after the scheduler fences this execution
+    /// against cancellation, pause, timeout and case close. Runs on a blocking
+    /// worker; return the persisted output identity in the resulting TaskResult.
+    /// An error must leave no published outputs behind.
+    fn publish_results(
+        &self,
+        _task: &SchedTaskRecord,
+        _seq: u64,
+        result: TaskResult,
+    ) -> anyhow::Result<TaskResult> {
+        Ok(result)
+    }
+
+    /// Release unpublished output held for a completed or superseded execution.
+    fn discard_execution(&self, _task_id: i64, _seq: u64) {}
+
+    /// Remove only the outputs identified by task.result after task deletion
+    /// or failed ledger commit. Errors are logged without undoing deletion.
     /// Runners that publish no external outputs can keep the default no-op.
     fn remove_results(&self, _task: &SchedTaskRecord) -> anyhow::Result<()> {
         Ok(())

@@ -45,12 +45,14 @@ pub async fn analysis_result_tree(
         .map_err(AppError::from_anyhow)
 }
 
-/// 按结果项分页读取记录(始终是该检材+功能的最新 run)。
+/// 按选中结果项的 run_id 分页读取记录,翻页期间不切换运行。
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[allow(clippy::too_many_arguments)] // Flat IPC fields also generate the CLI options.
 pub async fn analysis_records_page(
     state: State<'_, AppState>,
     image_id: String,
     analyzer: String,
+    run_id: String,
     artifact_type: String,
     keyword: Option<String>,
     skip: i64,
@@ -61,6 +63,7 @@ pub async fn analysis_records_page(
         let query = AnalysisRecordsQuery {
             image_id: &image_id,
             analyzer: &analyzer,
+            run_id: &run_id,
             artifact_type: &artifact_type,
             keyword: keyword.as_deref(),
             skip,

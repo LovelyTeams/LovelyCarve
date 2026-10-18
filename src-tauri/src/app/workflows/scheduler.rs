@@ -32,6 +32,7 @@ pub struct PluginTaskRunner {
     plugins: Arc<parking_lot::RwLock<Option<Arc<PluginManager>>>>,
     case_dir: PathBuf,
     workers: WorkerSlots,
+    prepared: Arc<Mutex<HashMap<(i64, u64), Analysis>>>,
 }
 
 impl PluginTaskRunner {
@@ -45,6 +46,7 @@ impl PluginTaskRunner {
             plugins,
             case_dir,
             workers: WorkerSlots::default(),
+            prepared: Arc::default(),
         }
     }
 
@@ -57,8 +59,8 @@ impl PluginTaskRunner {
 struct Execution {
     images: Arc<tokio::sync::Mutex<HashMap<String, Arc<EvidenceSession>>>>,
     manager: Arc<PluginManager>,
-    case_dir: PathBuf,
     workers: WorkerSlots,
+    prepared: Arc<Mutex<HashMap<(i64, u64), Analysis>>>,
 }
 
 /// 插件分析完成、尚未落库的结果。
@@ -90,7 +92,15 @@ impl Execution {
         if token.is_cancelled() {
             return ExecutionOutcome::Failed("任务已取消".to_owned());
         }
-        self.persist(task, analysis).await
+        let result = TaskResult {
+            summary: analysis.result.summary.clone(),
+            artifact_count: analysis.result.artifacts.len() as u64,
+            timeline_count: analysis.result.timeline.len() as u64,
+            finding_count: analysis.result.findings.len() as u64,
+            run_id: None,
+        };
+        self.prepared.lock().insert((task.id, seq), analysis);
+        ExecutionOutcome::Success(result)
     }
 
     async fn analyze(
@@ -193,64 +203,6 @@ impl Execution {
             completed_at: chrono::Utc::now().to_rfc3339(),
         })
     }
-
-    async fn persist(&self, task: SchedTaskRecord, analysis: Analysis) -> ExecutionOutcome {
-        let mut result = TaskResult {
-            summary: analysis.result.summary.clone(),
-            artifact_count: analysis.result.artifacts.len() as u64,
-            timeline_count: analysis.result.timeline.len() as u64,
-            finding_count: analysis.result.findings.len() as u64,
-            run_id: None,
-        };
-        let case_dir = self.case_dir.clone();
-        let image_id = task.info.image_id.clone();
-        // 落库在阻塞线程池上进行;同一检材的并行任务同时提交时在该检材
-        // `analysis.db` 的写锁上排队(`plugin_result_store::persist` 用 IMMEDIATE
-        // 事务),不同检材互不等待。
-        let persisted = tokio::task::spawn_blocking(move || {
-            plugin_result_store::persist(
-                &case_dir,
-                NewPluginAnalysis {
-                    plugin_id: &task.info.plugin_id,
-                    plugin_version: &analysis.plugin_version,
-                    analyzer: &task.info.analyzer,
-                    display_name: &task.display_name,
-                    type_name: &task.type_name,
-                    image_id: &task.info.image_id,
-                    node_id: &analysis.node_id,
-                    file_name: &analysis.file_name,
-                    started_at: &analysis.started_at,
-                    completed_at: &analysis.completed_at,
-                    result: &analysis.result,
-                },
-            )
-        })
-        .await;
-        let run_id = match persisted {
-            Ok(Ok(run_id)) => run_id,
-            Ok(Err(error)) => {
-                return ExecutionOutcome::Failed(format!("分析结果落库失败: {error:#}"))
-            }
-            Err(error) => {
-                return ExecutionOutcome::Failed(format!("分析结果落库线程崩溃: {error}"))
-            }
-        };
-        result.run_id = Some(run_id.clone());
-        // 时间线写路径增量投影：按 run_id 级联删旧投影 + 重投影该 run 的事件。
-        // 尽力而为——失败只降级为时间线待重建（staleness 兜底），
-        // 不影响任务提交结果。
-        let case_dir = self.case_dir.clone();
-        tokio::task::spawn_blocking(move || {
-            if let Err(error) =
-                crate::core::timeline::timeline_project::project_run(&case_dir, &image_id, &run_id)
-            {
-                tracing::warn!(
-                    "timeline project_run {run_id} failed (will rebuild later): {error:#}"
-                );
-            }
-        });
-        ExecutionOutcome::Success(result)
-    }
 }
 
 /// 分析期间登记执行的插件实例,供 `terminate_worker` / `worker_alive`
@@ -304,10 +256,59 @@ impl TaskRunner for PluginTaskRunner {
         let execution_state = Execution {
             images: Arc::clone(&self.images),
             manager,
-            case_dir: self.case_dir.clone(),
             workers: Arc::clone(&self.workers),
+            prepared: Arc::clone(&self.prepared),
         };
         Box::pin(execution_state.run(task, execution))
+    }
+
+    fn publish_results(
+        &self,
+        task: &SchedTaskRecord,
+        seq: u64,
+        mut result: TaskResult,
+    ) -> anyhow::Result<TaskResult> {
+        let analysis = self
+            .prepared
+            .lock()
+            .remove(&(task.id, seq))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "prepared analysis missing for task {} execution {seq}",
+                    task.id
+                )
+            })?;
+        let run_id = plugin_result_store::persist(
+            &self.case_dir,
+            NewPluginAnalysis {
+                plugin_id: &task.info.plugin_id,
+                plugin_version: &analysis.plugin_version,
+                analyzer: &task.info.analyzer,
+                display_name: &task.display_name,
+                type_name: &task.type_name,
+                image_id: &task.info.image_id,
+                node_id: &analysis.node_id,
+                file_name: &analysis.file_name,
+                started_at: &analysis.started_at,
+                completed_at: &analysis.completed_at,
+                result: &analysis.result,
+            },
+        )?;
+        // Project while the same execution publication gate is held; deleting
+        // a terminal task cannot race a detached projection and resurrect it.
+        if let Err(error) = crate::core::timeline::timeline_project::project_run(
+            &self.case_dir,
+            &task.info.image_id,
+            &run_id,
+        ) {
+            tracing::warn!("timeline project_run {run_id} failed (will rebuild later): {error:#}");
+        }
+        result.run_id = Some(run_id);
+        Ok(result)
+    }
+
+    fn discard_execution(&self, task_id: i64, seq: u64) {
+        self.prepared.lock().remove(&(task_id, seq));
     }
 
     fn remove_results(&self, task: &SchedTaskRecord) -> anyhow::Result<()> {
@@ -346,15 +347,14 @@ impl TaskRunner for PluginTaskRunner {
 /// 删除任务已落库的分析结果与时间线投影。
 /// 时间线只在已建立时按 tid 级联删。
 fn remove_task_results(case_dir: &std::path::Path, task: &SchedTaskRecord) -> anyhow::Result<()> {
-    let run_ids = plugin_result_store::remove_function_results(
-        case_dir,
-        &task.info.image_id,
-        &task.info.analyzer,
-        &task.params.node_id.clone().unwrap_or_default(),
-    )?;
-    if run_ids.is_empty() {
+    let Some(run_id) = task
+        .result
+        .as_ref()
+        .and_then(|result| result.run_id.as_deref())
+    else {
         return Ok(());
-    }
+    };
+    plugin_result_store::remove_run(case_dir, &task.info.image_id, run_id)?;
     let Some(conn) = timeline_store::open_existing(
         case_dir,
         &task.info.image_id,
@@ -363,7 +363,7 @@ fn remove_task_results(case_dir: &std::path::Path, task: &SchedTaskRecord) -> an
     else {
         return Ok(());
     };
-    timeline_store::delete_runs(&conn, &run_ids)?;
+    timeline_store::delete_runs(&conn, &[run_id.to_owned()])?;
     Ok(())
 }
 

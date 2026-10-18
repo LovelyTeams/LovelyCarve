@@ -224,28 +224,20 @@ pub fn list_for_node(
     Ok(analyses)
 }
 
-/// 删除一个功能在检材上的全部落库结果:按 (analyzer, node_id) 匹配 runs,
-/// 级联清空产物 / 节点 / 事件 / 线索。返回被删除的 run_id(供时间线投影
-/// 级联)。
-pub fn remove_function_results(
-    case_dir: &Path,
-    image_id: &str,
-    analyzer: &str,
-    node_id: &str,
-) -> anyhow::Result<Vec<String>> {
+/// 删除一次运行,级联清空其产物 / 节点 / 事件 / 线索。
+pub fn remove_run(case_dir: &Path, image_id: &str, run_id: &str) -> anyhow::Result<Vec<String>> {
     let Some(connection) =
         evidence_db::open_existing(case_dir, image_id, &SCHEMA, SCHEMA.busy_timeout)?
     else {
         return Ok(Vec::new());
     };
-    // 同一事务内选出并删除:并发提交的新 run 要么一并列出,要么不被删除。
+    // 同一事务内按固定运行身份选出并删除,不触碰同功能的其他运行。
     let transaction = evidence_db::write_transaction(&connection)?;
     let run_ids: Vec<String> = {
-        let mut statement = transaction.prepare(
-            "SELECT run_id FROM plugin_analysis_runs WHERE analyzer = ?1 AND node_id = ?2",
-        )?;
+        let mut statement =
+            transaction.prepare("SELECT run_id FROM plugin_analysis_runs WHERE run_id = ?1")?;
         let ids = statement
-            .query_map(params![analyzer, node_id], |row| row.get(0))?
+            .query_map(params![run_id], |row| row.get(0))?
             .collect::<Result<_, _>>()?;
         ids
     };
@@ -253,8 +245,8 @@ pub fn remove_function_results(
         return Ok(run_ids);
     }
     transaction.execute(
-        "DELETE FROM plugin_analysis_runs WHERE analyzer = ?1 AND node_id = ?2",
-        params![analyzer, node_id],
+        "DELETE FROM plugin_analysis_runs WHERE run_id = ?1",
+        params![run_id],
     )?;
     transaction.commit()?;
     Ok(run_ids)
@@ -726,7 +718,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_function_results_cascades_children() {
+    fn remove_run_preserves_later_and_other_plugin_results() {
         let directory = tempfile::tempdir().expect("temp directory");
         let result = PluginAnalysisResult {
             summary: None,
@@ -740,28 +732,45 @@ mod tests {
             timeline: Vec::new(),
             findings: Vec::new(),
         };
-        persist(
-            directory.path(),
-            NewPluginAnalysis {
-                plugin_id: "org.test",
-                plugin_version: "1",
-                analyzer: "linuxbaseinfo",
-                display_name: "Linux基本信息",
-                type_name: "baseinfo",
-                image_id: "image",
-                node_id: "",
-                file_name: "",
-                started_at: "2026-08-11T00:00:00Z",
-                completed_at: "2026-08-11T00:00:01Z",
-                result: &result,
-            },
-        )
-        .expect("persist");
-        let removed = remove_function_results(directory.path(), "image", "linuxbaseinfo", "")
-            .expect("remove");
-        assert_eq!(removed.len(), 1);
-        assert!(list_for_node(directory.path(), "image", "")
-            .expect("list")
-            .is_empty());
+        let save = |plugin_id| {
+            persist(
+                directory.path(),
+                NewPluginAnalysis {
+                    plugin_id,
+                    plugin_version: "1",
+                    analyzer: "shared",
+                    display_name: "Analysis",
+                    type_name: "analysis",
+                    image_id: "image",
+                    node_id: "input",
+                    file_name: "input.db",
+                    started_at: "2026-10-18T00:00:00Z",
+                    completed_at: "2026-10-18T00:00:01Z",
+                    result: &result,
+                },
+            )
+            .expect("persist")
+        };
+        let old = save("plugin.a");
+        let later = save("plugin.a");
+        let other = save("plugin.b");
+        assert_eq!(
+            remove_run(directory.path(), "image", &old).expect("remove"),
+            vec![old]
+        );
+        let remaining = list_for_node(directory.path(), "image", "input").expect("list");
+        let ids: std::collections::HashSet<_> =
+            remaining.iter().map(|run| run.run_id.clone()).collect();
+        assert_eq!(ids, [later, other].into_iter().collect());
+        assert!(remaining.iter().all(|run| run.result == result));
+        let connection = evidence_db::open_reader(directory.path(), "image", &SCHEMA)
+            .expect("reader")
+            .expect("exists");
+        let count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM plugin_artifacts", [], |row| {
+                row.get(0)
+            })
+            .expect("count");
+        assert_eq!(count, 2);
     }
 }

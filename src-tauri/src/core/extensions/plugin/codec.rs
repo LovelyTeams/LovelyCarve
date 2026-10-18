@@ -23,7 +23,20 @@ pub async fn write_frame(
     writer: &mut (impl AsyncWrite + Unpin),
     message: &LppMessage,
 ) -> Result<()> {
-    let payload = rmp_serde::to_vec_named(message)?;
+    let mut payload = rmp_serde::to_vec_named(message)?;
+    // A host service can exceed the frame budget (e.g. legacy directory
+    // enumeration). Fail this RPC without tearing down every other call.
+    if payload.len() > MAX_FRAME_SIZE {
+        if let LppMessage::Response { id, .. } = message {
+            payload = rmp_serde::to_vec_named(&LppMessage::failure(
+                *id,
+                super::RpcError::new(
+                    "RESOURCE_LIMIT",
+                    "response exceeds the LPP frame limit; use smaller pages or reads",
+                ),
+            ))?;
+        }
+    }
     if payload.is_empty() || payload.len() > MAX_FRAME_SIZE {
         return Err(PluginError::InvalidFrame(format!(
             "encoded payload length {} is outside 1..={MAX_FRAME_SIZE}",
@@ -44,6 +57,31 @@ mod tests {
     use tokio::io::duplex;
 
     use super::*;
+
+    #[tokio::test]
+    async fn oversized_response_fails_only_that_rpc() {
+        let (mut writer, mut reader) = duplex(1024);
+        let writing = tokio::spawn(async move {
+            write_frame(
+                &mut writer,
+                &LppMessage::success(3, Value::Binary(vec![0; MAX_FRAME_SIZE])),
+            )
+            .await
+            .expect("limit response");
+            write_frame(&mut writer, &LppMessage::success(5, Value::from("next")))
+                .await
+                .expect("next response");
+        });
+        let response = read_frame(&mut reader).await.expect("failure frame");
+        assert!(
+            matches!(response, LppMessage::Response { id: 3, error: Some(error), .. } if error.code == "RESOURCE_LIMIT")
+        );
+        assert_eq!(
+            read_frame(&mut reader).await.expect("next frame"),
+            LppMessage::success(5, Value::from("next"))
+        );
+        writing.await.expect("writer");
+    }
 
     #[tokio::test]
     async fn frame_round_trip_preserves_binary_values() {

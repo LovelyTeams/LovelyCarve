@@ -110,3 +110,107 @@ async fn plugin_tasks_run_and_persist_side_by_side_on_a_real_image() {
     scheduler.unbind_case().await;
     manager.shutdown().await;
 }
+
+#[test]
+fn prepared_outputs_publish_and_delete_only_the_task_run() {
+    use super::{Analysis, PluginTaskRunner};
+    use crate::core::{
+        analysis::results::{
+            models::{PluginAnalysisResult, PluginAnalysisTimelineEvent},
+            plugin_result_store,
+        },
+        casework::{
+            case_ledger, case_ledger_evidence,
+            case_paths::{self, EvidenceDb},
+        },
+        extensions::plugin::TaskTrigger,
+        timeline::timeline_store,
+    };
+    let directory = tempfile::tempdir().expect("case");
+    let ledger = case_ledger::test_support::ledger(directory.path());
+    let evidence = case_ledger_evidence::test_support::add(&ledger, "image");
+    let store = TaskStore::open(&directory.path().join("case.db")).expect("store");
+    let mut task = store
+        .insert_task(&NewTask {
+            name: "org.test/shared".into(),
+            display_name: "Shared".into(),
+            type_name: "analysis".into(),
+            evidence_id: evidence.id,
+            plugin_id: "org.test".into(),
+            analyzer: "shared".into(),
+            trigger: TaskTrigger::Manually,
+            parent_tid: None,
+            params: TaskParams::default(),
+            dependence: String::new(),
+            can_pause: false,
+            single_instance: false,
+            internal: false,
+        })
+        .expect("task")
+        .into_record();
+    let runner = PluginTaskRunner::new(Arc::default(), Arc::default(), directory.path().into());
+    let prepare = || Analysis {
+        result: PluginAnalysisResult {
+            timeline: vec![PluginAnalysisTimelineEvent {
+                timestamp: "2026-10-18T00:00:00Z".into(),
+                event_type: "demo.event".into(),
+                description: "event".into(),
+                attributes: HashMap::new(),
+            }],
+            ..PluginAnalysisResult::default()
+        },
+        plugin_version: "1".into(),
+        node_id: String::new(),
+        file_name: String::new(),
+        started_at: "2026-10-18T00:00:00Z".into(),
+        completed_at: "2026-10-18T00:00:01Z".into(),
+    };
+    runner.prepared.lock().insert((task.id, 1), prepare());
+    runner.discard_execution(task.id, 1);
+    assert!(
+        !case_paths::evidence_db_path(directory.path(), "image", EvidenceDb::Analysis).exists()
+    );
+    let timeline = timeline_store::open_writer(directory.path(), "image").expect("timeline");
+    timeline_store::meta_begin(&timeline, 0).expect("begin");
+    let mut meta = timeline_store::meta_get(&timeline)
+        .expect("meta")
+        .expect("meta");
+    meta.status = "success".into();
+    timeline_store::meta_finish(&timeline, &meta, 0).expect("ready");
+    drop(timeline);
+    runner.prepared.lock().insert((task.id, 2), prepare());
+    task.result = Some(
+        runner
+            .publish_results(&task, 2, TaskResult::default())
+            .expect("first run"),
+    );
+    runner.prepared.lock().insert((task.id, 3), prepare());
+    let later = runner
+        .publish_results(&task, 3, TaskResult::default())
+        .expect("later run");
+    runner.remove_results(&task).expect("delete first run");
+    let runs = plugin_result_store::list_for_node(directory.path(), "image", "").expect("runs");
+    assert_eq!(runs.len(), 1);
+    assert_eq!(Some(runs[0].run_id.clone()), later.run_id);
+    let timeline = timeline_store::open_reader(directory.path(), "image")
+        .expect("open")
+        .expect("timeline");
+    let projected: Vec<String> = timeline
+        .prepare("SELECT tid FROM timeline")
+        .expect("statement")
+        .query_map([], |row| row.get(0))
+        .expect("rows")
+        .collect::<Result<_, _>>()
+        .expect("rows");
+    assert_eq!(projected, vec![runs[0].run_id.clone()]);
+    task.result = None;
+    runner
+        .remove_results(&task)
+        .expect("unpublished task has nothing to delete");
+    assert_eq!(
+        plugin_result_store::list_for_node(directory.path(), "image", "")
+            .expect("remaining")
+            .len(),
+        1
+    );
+}

@@ -377,9 +377,22 @@ unsafe extern "C" fn host_call(
         Err(_) => (abi::STATUS_PANIC, Value::Nil),
     };
     match value::encode(&payload) {
-        Ok(bytes) => {
+        Ok(bytes) if bytes.len() <= MAX_FRAME_SIZE => {
             unsafe { out.write(Buffer::from_vec(bytes)) };
             status
+        }
+        Ok(_) => {
+            let error = lovelycarve_plugin::Error::new(
+                "RESOURCE_LIMIT",
+                "response exceeds the LPP frame limit; use smaller pages or reads",
+            );
+            match value::encode(&error.to_value()) {
+                Ok(bytes) => {
+                    unsafe { out.write(Buffer::from_vec(bytes)) };
+                    abi::STATUS_ERROR
+                }
+                Err(_) => abi::STATUS_INVALID_ARGUMENT,
+            }
         }
         Err(_) => abi::STATUS_INVALID_ARGUMENT,
     }

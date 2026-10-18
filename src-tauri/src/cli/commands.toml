@@ -163,7 +163,7 @@ concurrent = true
 path = "analysis records list"
 ipc = "analysis_records_page"
 summary = "分页列出分析记录"
-description = "按结果项分页读取记录，始终是该检材与功能的最新一次运行。"
+description = "按结果项分页读取指定 runId 的记录；runId 来自分析结果树，分页期间固定运行身份。"
 category = "read"
 concurrent = true
 defaults = { skip = 0, limit = 100 }

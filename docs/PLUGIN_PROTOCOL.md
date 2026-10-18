@@ -246,7 +246,7 @@ or a declared capability the plugin does not advertise ends startup.
 - `source.info`: returns `source_id`, size, sector size, and `read_only: true`.
 - `source.read`: returns bytes from a registered logical source. Reads clamp at
   the logical source boundary.
-- `source.readv`: reads at most 128 ranges and 8 MiB total; every individual
+- `source.readv`: reads at most 128 ranges and (8 MiB - 4 KiB) total; every individual
   range is also bounded by the 4 MiB single-read limit. All ranges are validated
   before evidence is read.
 - `fs.probe`: identifies a logical source and returns filesystem, confidence,
@@ -296,7 +296,7 @@ evidence path. During that call the plugin can use:
 
 - `file.info`: return handle metadata after owner validation.
 - `file.read`: read at most 4 MiB, clamped to the logical file boundary.
-- `file.readv`: read at most 64 ranges and 16 MiB total.
+- `file.readv`: read at most 64 ranges and (8 MiB - 4 KiB) total.
 - `file.materialize`: create a host-owned temporary path if
   `file_materialize` was approved. One file is capped at 4 GiB; each plugin is
   capped at 16 active leases and 8 GiB total.
@@ -367,7 +367,7 @@ that call the plugin can additionally use:
   volume root); listed entries are not followed, so `/etc/localtime` keeps its
   `link_target`.
 - `evidence.read {root, path, offset, length}` / `evidence.readv`: bounded like
-  `file.read` (4 MiB per call, 64 ranges / 16 MiB per readv), clamped to the
+  `file.read` (4 MiB per call, 64 ranges / (8 MiB - 4 KiB) per readv), clamped to the
   file boundary.
 
 Evidence handles are owner-scoped and removed when the analysis ends (also when
@@ -528,7 +528,7 @@ browses stored results through `analysis_result_tree`,
 `src/lib/ipc/analysisResults.ts`, backed by
 `src-tauri/src/core/analysis/results/analysis_query.rs`): a tree of
 evidence → class → function → result item (ChildCount badges, latest run per
-function), a server-paged record table whose columns come from the
+(plugin, analyzer, input node)), a server-paged record table whose columns come from the
 plugin-submitted node declarations, and a per-record detail pane. Completing a
 task only marks the tree dirty; the panel re-pulls the whole tree when
 activated.
@@ -557,3 +557,13 @@ Private evidence and generated results stay outside version control.
 checks execution, result persistence and pagination.
 `just run-example probe_evidence_path <image> <root-id> <path>...`
 checks the same read-only source paths.
+
+## 结果归属与发布边界
+
+- 调度功能身份是 `plugin_id/analyzer`，结果树按 `(检材, plugin_id, analyzer, 输入 node_id)` 各自保留最新运行；不同输入文件显示独立功能组。分页与 CSV 导出必须传结果树的 `runId`，始终读取同一次运行。
+- 删除任务只删除 `task.result.runId` 指定的一次运行及其时间线投影；无 runId 的任务不推测或删除同功能的其他结果。
+- 执行器先准备结果，调度器按 `(task_id, seq)` 检查有效性，再在该执行的发布锁内落库、投影并提交终态。取消、暂停、超时或关闭案件先于发布生效时丢弃准备的结果；发布已经开始时控制操作等待收尾，并重新检查任务状态。不同任务的发布锁独立。
+- 直接文件分析固定发起时的案件上下文；关闭、切换、重新打开案件或移除检材后，旧调用不能发布结果。
+- 注册调度功能时排除自依赖、依赖环及前驱不存在的功能，并记录原因；同插件的 analyzer 名不能重复，包括文件级与检材级能力之间。
+- 三类 `readv` 的总数据预算统一为 8 MiB 减 4 KiB，预留 MessagePack 数组、二进制值和响应头开销。超大宿主响应返回 `RESOURCE_LIMIT`，保留连接以继续服务其他 RPC；进程内模式执行相同响应限额。
+- 插件文件系统的 `fs.read_range` 直接服务随机读取；大范围按至多 4 MiB 分块，提前结束的文件读取和流式读取明确报错。

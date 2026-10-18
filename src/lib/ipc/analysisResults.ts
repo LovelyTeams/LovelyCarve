@@ -16,6 +16,8 @@ export interface AnalysisResultNode {
   imageId: string;
   typeName: string;
   analyzer: string;
+  function: string;
+  sourceNodeId: string | null;
   artifactType: string;
   runId: string;
   completedAt: string;
@@ -46,10 +48,11 @@ export function analysisResultTree(): Promise<AnalysisResultNode[]> {
   return invokeCmd<AnalysisResultNode[]>('analysis_result_tree');
 }
 
-/** 按结果项服务端分页读取记录(始终为该检材+功能的最新 run)。 */
+/** 按选中结果项的 runId 服务端分页读取记录。 */
 export function analysisRecordsPage(args: {
   imageId: string;
   analyzer: string;
+  runId: string;
   artifactType: string;
   keyword?: string;
   skip: number;
@@ -58,6 +61,7 @@ export function analysisRecordsPage(args: {
   return invokeCmd<AnalysisRecordsPage>('analysis_records_page', {
     imageId: args.imageId,
     analyzer: args.analyzer,
+    runId: args.runId,
     artifactType: args.artifactType,
     keyword: args.keyword ?? null,
     skip: args.skip,

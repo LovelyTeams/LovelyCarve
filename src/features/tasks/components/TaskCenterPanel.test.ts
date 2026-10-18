@@ -271,7 +271,7 @@ describe('task actions', () => {
     await mount();
     expect(row('任务 1').textContent).toContain('12 条结果 · 3 条时间线');
     await click('查看分析结果 任务 1');
-    expect(actions.openResult).toHaveBeenCalledWith('analysis', 'base');
+    expect(actions.openResult).toHaveBeenCalledWith('analysis', 'run-1');
     await click('展开 任务 1 详情');
     await click('重新分析');
     expect(actions.restart).toHaveBeenCalledWith(1);

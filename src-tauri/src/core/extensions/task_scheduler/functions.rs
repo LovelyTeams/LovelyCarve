@@ -123,6 +123,29 @@ impl FunctionRegistry {
             }
         }
         functions.sort_by(|left, right| left.function.cmp(&right.function));
+        // Validate the entire graph before exposing functions: single-instance
+        // only limits active rows and cannot stop a cycle of successful tasks.
+        let by_name: std::collections::HashMap<_, _> = functions
+            .iter()
+            .map(|function| (function.function.as_str(), function))
+            .collect();
+        let invalid: std::collections::HashSet<String> = functions.iter().filter_map(|function| {
+            let mut visited = std::collections::HashSet::new();
+            let mut current = function;
+            loop {
+                if !visited.insert(current.function.as_str()) {
+                    tracing::warn!(function = %function.function, "task function ignored: dependency cycle");
+                    return Some(function.function.clone());
+                }
+                let dependency = current.dependence.as_deref()?;
+                let Some(next) = by_name.get(dependency).copied() else {
+                    tracing::warn!(function = %function.function, %dependency, "task function ignored: missing dependency");
+                    return Some(function.function.clone());
+                };
+                current = next;
+            }
+        }).collect();
+        functions.retain(|function| !invalid.contains(&function.function));
         Self { functions }
     }
 
@@ -329,5 +352,22 @@ display = "Linux基本信息"
                 .map(|function| function.type_name.as_str()),
             Some(DEFAULT_TYPE_NAME)
         );
+    }
+    #[test]
+    fn dependency_cycles_and_missing_predecessors_are_not_dispatchable() {
+        let mut definitions = chain_definitions();
+        let mut self_dependent = definitions[2].clone();
+        self_dependent.manifest.task.dependence = Some("org.test.manual/manual.scan".into());
+        definitions[2] = self_dependent;
+        let mut cycle = definitions.clone();
+        cycle[0].manifest.task.dependence = Some("org.test.second/stage.two".into());
+        assert!(FunctionRegistry::from_definitions(&cycle).all().is_empty());
+        let registry = FunctionRegistry::from_definitions(&definitions);
+        assert!(registry.get("org.test.manual/manual.scan").is_none());
+        assert_eq!(registry.all().len(), 2);
+        definitions[0].manifest.task.dependence = Some("missing/function".into());
+        assert!(FunctionRegistry::from_definitions(&definitions)
+            .all()
+            .is_empty());
     }
 }

@@ -33,10 +33,10 @@ enum Verdict {
 
 impl TaskScheduler {
     pub async fn watchdog_tick(&self) {
+        let _guard = self.inner.tick_lock.lock().await;
         let Some(bound) = self.bound() else {
             return;
         };
-        let _guard = self.inner.tick_lock.lock().await;
         let snapshot: Vec<RunningSnapshot> = self
             .inner
             .running
@@ -123,7 +123,9 @@ impl TaskScheduler {
             };
             if task.status != SchedTaskStatus::Running {
                 // queued 尚在拉起;终态/暂停由控制面负责清理。
-                if !task.status.is_active() {
+                let publication = self.publication_gate(entry.task_id);
+                let idle = publication.as_ref().and_then(|gate| gate.try_lock());
+                if !task.status.is_active() && idle.is_some() {
                     self.remove_running(entry.task_id, entry.seq);
                 }
                 continue;
@@ -136,15 +138,26 @@ impl TaskScheduler {
     /// 撤销这次执行(不触碰任务状态):撤销 token、移除登记,终止它的插件
     /// 实例。
     async fn cancel_execution(&self, bound: &Arc<BoundCase>, task: &SchedTaskRecord, seq: u64) {
-        let entry = {
-            let mut running = self.inner.running.lock();
-            match running.get(&task.id) {
-                Some(entry) if entry.seq == seq => running.remove(&task.id),
-                Some(_) | None => None,
-            }
-        };
-        if let Some(entry) = entry {
-            entry.token.cancel();
+        let task_id = task.id;
+        let withdrawn = self
+            .on_blocking(move |scheduler| {
+                let publication = scheduler.publication_gate(task_id);
+                let _publication = publication.as_ref().map(|gate| gate.lock());
+                let entry = {
+                    let mut running = scheduler.inner.running.lock();
+                    if running.get(&task_id).is_some_and(|entry| entry.seq == seq) {
+                        running.remove(&task_id)
+                    } else {
+                        None
+                    }
+                };
+                if let Some(entry) = entry {
+                    entry.token.cancel();
+                }
+            })
+            .await;
+        if let Err(error) = withdrawn {
+            tracing::warn!("withdraw timed out task {task_id}: {error}");
         }
         bound.runner.terminate_worker(task.id, seq).await;
     }
