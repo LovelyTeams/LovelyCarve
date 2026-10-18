@@ -1,8 +1,9 @@
 //! Hash computation helpers. Streaming for large inputs, one-shot for small.
 
-use md5::{Digest as _, Md5};
+// Shared backend for source-image, file and search-result MD5 streams.
+pub(crate) use fast_md5::Md5;
 use serde::{Deserialize, Serialize};
-use sha1::Sha1;
+use sha1::{Digest as _, Sha1};
 use sha2::{Sha256, Sha512};
 use sm3::Sm3;
 
@@ -53,8 +54,8 @@ pub enum HashAlgo {
 
 /// Streaming hasher that drives several algorithms from a single byte
 /// stream. Each chunk is fed once; the digests are finalised together via
-/// [`MultiHasher::finalize`]. Used by `image_hash_compute` so a 100 GB
-/// image is decoded and read exactly once for all selected algorithms.
+/// [`MultiHasher::finalize`]. File digest operations share this MD5 backend
+/// with the source-image command's parallel, single-read pipeline.
 pub struct MultiHasher {
     md5: Option<Md5>,
     sha1: Option<Sha1>,
@@ -117,6 +118,55 @@ impl MultiHasher {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn md5_matches_rfc_1321_vectors() {
+        for (input, expected) in [
+            ("", "d41d8cd98f00b204e9800998ecf8427e"),
+            ("a", "0cc175b9c0f1b6a831c399e269772661"),
+            ("abc", "900150983cd24fb0d6963f7d28e17f72"),
+            ("message digest", "f96b697d7cb7938d525a2f31aaf161d0"),
+            (
+                "abcdefghijklmnopqrstuvwxyz",
+                "c3fcd3d76192e4007dfb496cca67e13b",
+            ),
+            (
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+                "d174ab98d277d9f5a5611c2c9f419d9f",
+            ),
+            (
+                "12345678901234567890123456789012345678901234567890123456789012345678901234567890",
+                "57edf4a22be3c955ac49da2e2107b67a",
+            ),
+        ] {
+            assert_eq!(md5_hex(input.as_bytes()), expected);
+        }
+    }
+
+    #[test]
+    fn md5_streaming_matches_independent_backend_at_block_and_padding_boundaries() {
+        let data: Vec<u8> = (0..65537).map(|index| (index * 131 + 17) as u8).collect();
+        for length in [
+            0, 1, 55, 56, 63, 64, 65, 119, 120, 127, 128, 129, 4095, 4096, 65537,
+        ] {
+            let data = &data[..length];
+            let expected = hex::encode(md5::Md5::digest(data));
+            assert_eq!(md5_hex(data), expected);
+            for chunk_size in [1, 3, 63, 64, 65, 4096, 65537] {
+                let mut hasher = MultiHasher::new(&[HashAlgo::Md5]);
+                for chunk in data.chunks(chunk_size) {
+                    hasher.update(&[]);
+                    hasher.update(chunk);
+                }
+                hasher.update(&[]);
+                assert_eq!(
+                    hasher.finalize().md5.as_deref(),
+                    Some(expected.as_str()),
+                    "length={length}, chunk_size={chunk_size}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn hash_algorithms_match_known_abc_digests() {

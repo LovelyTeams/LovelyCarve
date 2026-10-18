@@ -23,6 +23,9 @@ use crate::segment_source::{SegmentCursor, SegmentSource};
 use crate::types::VerifyResult;
 use crate::types::{AcquisitionError, EwfMetadata, StoredHashes};
 
+#[path = "reader/bulk.rs"]
+mod bulk;
+
 // ---------------------------------------------------------------------------
 // Positioned read (thread-safe, cursor-free)
 // ---------------------------------------------------------------------------
@@ -1224,7 +1227,12 @@ impl EwfReader {
     /// own chunks. Returns the number of bytes read (short only at end of
     /// image). This is the concurrency-safe counterpart to the cursor-based
     /// [`Read`] impl, which layers position tracking on top.
+    /// Requests of at least 1 MiB decode in up to four coarse parallel jobs,
+    /// bypassing the decompressed-chunk LRU to preserve hot metadata pages.
     pub fn read_at(&self, buf: &mut [u8], offset: u64) -> Result<usize> {
+        if buf.len() >= 1024 * 1024 {
+            return self.read_bulk_at(buf, offset);
+        }
         let mut buf_idx = 0usize;
         let mut off = offset;
 

@@ -52,8 +52,10 @@ fn v1(stored: &[u8], compressed: bool) -> Vec<u8> {
 
 fn read_v1(bytes: Vec<u8>) -> Result<Vec<u8>, ewf::EwfError> {
     let reader = EwfReader::open_from_sources(vec![SegmentSource::from_bytes(bytes)])?;
-    let mut output = vec![0; reader.total_size() as usize];
-    reader.read_at(&mut output, 0)?;
+    // Request the bulk path even for tiny malformed/final-chunk fixtures.
+    let mut output = vec![0; (reader.total_size() as usize).max(1024 * 1024)];
+    let count = reader.read_at(&mut output, 0)?;
+    output.truncate(count);
     Ok(output)
 }
 

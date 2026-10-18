@@ -42,8 +42,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
-use md5::Digest as _;
 use serde::Deserialize;
+use sha2::Digest as _;
 use tokio_util::sync::CancellationToken;
 
 use crate::core::casework::case_ledger_volumes::{indexed_volumes, IndexedVolume};

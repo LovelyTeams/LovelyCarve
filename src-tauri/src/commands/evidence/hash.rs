@@ -11,14 +11,13 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::host::{AppHandle, State};
-use md5::{Digest as _, Md5};
 use serde::Serialize;
-use sha1::Sha1;
+use sha1::{Digest as _, Sha1};
 use sha2::Sha256;
 use sm3::Sm3;
 use tokio_util::sync::CancellationToken;
 
-use crate::core::common::hash::{HashAlgo, MultiHashOutput};
+use crate::core::common::hash::{HashAlgo, Md5, MultiHashOutput};
 use crate::core::evidence::image::{ReadFaultPolicy, ReadFaultReport};
 use crate::state::AppState;
 use crate::task_manager::{TaskKind, TaskProgressUnit};
@@ -353,3 +352,7 @@ fn run_parallel_hash(
 
     Ok(output)
 }
+
+#[cfg(test)]
+#[path = "hash_tests.rs"]
+mod tests;

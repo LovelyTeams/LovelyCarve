@@ -641,7 +641,7 @@ files export hello.txt --destination "{exported}"
         assert "result" in rows[1] and "error" in rows[2] and "result" in rows[3], rows
         assert forced_export.read_bytes() == split_bytes[:517]
 
-        # Read and export actual EWF evidence through the public headless commands.
+        # Hash and export actual EWF evidence through the public headless commands.
         fixtures = Path(__file__).resolve().parents[1] / "src-tauri/vendor/ewf/tests/data"
         for name, expected_md5 in [
             ("ntfs_sample.E01", "e4e9578a9c8bf6c6b375a80c630196a4"),
@@ -650,10 +650,16 @@ files export hello.txt --destination "{exported}"
             raw_export = root / (name + ".raw")
             result, rows = session([
                 {"id": "open", "command": "images open", "args": {"path": str(fixtures / name)}},
+                {"id": "hash", "command": "images hash", "args": {"algorithms": ["md5", "sha1"], "taskId": "ewf-hash", "readFaultPolicy": "strict"}},
                 {"id": "export", "command": "images export", "args": {"destination": str(raw_export), "taskId": "ewf-export"}},
             ])
             assert all("result" in row for row in rows), rows
-            assert hashlib.md5(raw_export.read_bytes()).hexdigest() == expected_md5
+            raw_bytes = raw_export.read_bytes()
+            assert hashlib.md5(raw_bytes).hexdigest() == expected_md5
+            hashes = rows[1]["result"]
+            assert hashes["md5"] == expected_md5, hashes
+            assert hashes["sha1"] == hashlib.sha1(raw_bytes).hexdigest(), hashes
+            assert not hashes["read_faults_detected"], hashes
 
         # VMDK compressed and split extents must export the original virtual bytes.
         fixtures = Path(__file__).resolve().parents[1] / "src-tauri/vendor/vmdk/tests/data"

@@ -2863,6 +2863,7 @@ mod tests {
 
     // --- Verify on truncated image handles decompression errors gracefully ---
 
+    #[cfg(feature = "verify")]
     #[test]
     fn verify_truncated_image_handles_decompression_error() {
         // Same truncate-after-open strategy: open full file, truncate on disk,

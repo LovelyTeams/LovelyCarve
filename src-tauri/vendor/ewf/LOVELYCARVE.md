@@ -19,14 +19,41 @@ Local changes:
   and reject short/oversized decoded chunks instead of returning fabricated zeroes.
 - Bound EWF2 geometry and reject offset overflow rather than shifting chunk indices.
 - Fix the upstream no-default-features VerifyResult impl gate.
+- Gate the truncated-image verify test with `verify`, so the host's
+  no-default-features configuration can run the library regression suite.
 - Update the synthetic raw-chunk test to include the format's Adler-32 trailer.
 - Correct the table-header CRC regression expectation and build valid EnCase
   sectors/table fixtures with independent checksums and exact stored chunk sizes.
+- Decode reads of at least 1 MiB in up to four coarse Rayon jobs directly into
+  disjoint output spans. Bulk reads bypass the decoded-chunk LRU; small random
+  reads retain it. Both paths use the same bounded, checksum-validating decoder,
+  including unaligned ranges and final partial chunks. Worker errors propagate
+  to the host's existing tolerant-read/fault-audit layer.
 
 Run `just test-ewf` from the repository root. Adapter tests are part of `just test`.
 Large external corpus tests remain opt-in via EWF_TEST_CORPUS; they are not claimed
 as local validation when those files are absent. Small committed fixtures retain
 upstream provenance in tests/data/README.md and the upstream test descriptions.
+
+## Bulk-read verification and benchmark
+
+`tests/bulk_reads.rs` compares bulk and serial bytes on committed EWF1/EWF2,
+raw/compressed and multi-segment fixtures, checks acquisition MD5 when present,
+and covers unaligned ranges, EOF, hot-cache preservation and injected worker I/O
+failure. The compatibility suite covers checksum and decoded-length rejection.
+
+Set `EWF_BENCH_IMAGE=<image path>` and run
+`just test-ewf --release --features flate2/zlib-rs --test bulk_throughput -- --ignored --nocapture`
+for an opt-in full logical-stream benchmark. `EWF_BENCH_MODE` selects `md5`
+(default), `sha1` or `read`; `EWF_BENCH_PASSES` controls repetitions, and
+`EWF_BENCH_READERS` selects `serial,bulk` (default) or the reverse order. The
+serial control uses cached per-chunk reads below the bulk threshold; both paths
+use the same open reader and decoder. The benchmark models the host's 16 MiB
+reader/hasher pipeline with a bounded channel, but uses this standalone crate's
+hash dependencies and release profile; it is not a desktop end-to-end timing.
+The explicit `flate2/zlib-rs` feature matches the host's unified backend. Report
+read-only decode throughput separately from end-to-end hashing, and distinguish
+warm-cache runs from cold reads; the benchmark does not flush the OS cache.
 
 ## EWF1 regression fixtures
 

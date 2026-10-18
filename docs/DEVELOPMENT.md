@@ -144,6 +144,12 @@ just run-example probe_carve <image-path>
 
 优化前后核对结果、长度和校验值：分页需要稳定顺序，并行扫描需要稳定合并，缓存需要有界容量和明确的清理点。增加并发时同时测量目录浏览等前台交互，不能只提高后台吞吐。失败、取消、短读和 SQLite 忙等待同样属于性能验证范围。
 
+源盘 MD5 的可选全量对比测试使用 `EWF_HASH_IMAGE=<镜像路径>` 和
+`just test image_hash_external_benchmark --lib --release -- --ignored --nocapture`。
+测试在相同读取器上交替运行当前 `fast-md5` 命令流水线与 RustCrypto 对照流水线，
+核对完整逻辑长度、证据稳定性、严格读取及内嵌采集 MD5；未提供样本时不会执行。
+它不清除系统文件缓存，应把缓存状态和构建 profile 一并记录。
+
 ## 更新依赖
 
 先审查清单约束，再用 `update-fe`、`update-rust` 或 `update-plugins` 更新对应的锁文件。`update-tauri` 同步前后端的 Tauri 包族，各包独立发布，补丁版本号不必一致。vendor 的来源与补丁见 [UPSTREAM.md](../src-tauri/vendor/UPSTREAM.md)，更新后用对应读取器的配方验证。

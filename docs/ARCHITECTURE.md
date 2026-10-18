@@ -266,6 +266,16 @@ Dokan 挂载层直接解析
 上游的完整块表。缺失分卷在打开时拒绝，解码 / 校验故障交由 tolerant read
 层报告。上游版本及本地补丁见 `src-tauri/vendor/ewf/LOVELYCARVE.md`。
 
+至少 1 MiB 的 EWF 读取绕过解码块 LRU，按最多四个较大的任务并行解码，直接填入
+调用方缓冲区的互不重叠区间；小范围读取继续复用缓存。源盘哈希仍按逻辑偏移顺序
+把完整解码字节流交给各算法，保留每块校验、长度检查及原有坏区审计。解压吞吐的
+提高不等于所有算法等比例加速，MD5、SM3 等算法本身仍可能限制整条流水线。
+
+源盘哈希、文件摘要和全局搜索结果的 MD5 统一使用 `core/common/hash.rs` 导出的
+`fast-md5` 后端；x86_64 / aarch64 使用内联汇编，其他架构使用库的 Rust 回退实现，
+不引入哈希 DLL。SHA-1、SHA-256 与 SM3 沿用原有实现。RustCrypto `md-5` 仅用于
+测试和探针中的独立对照；MD5 块边界、填充边界、空更新及多算法流水线有回归覆盖。
+
 ### 加密容器的会话视图
 
 `core/evidence/crypto/encrypted_image.rs` 接入 vendored `luks-core` 与 `veracrypt-core`。

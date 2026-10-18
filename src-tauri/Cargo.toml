@@ -110,6 +110,7 @@ encoding_rs = "0.8.42"
 ewf = { path = "vendor/ewf", default-features = false }
 exfat = { path = "vendor/exfat", default-features = false, features = ["std"] }
 ext4-view = { path = "vendor/ext4-view", default-features = false, features = ["std"] }
+fast-md5 = "=1.0.0"
 fatfs = { path = "vendor/fatfs", default-features = false, features = ["std", "alloc", "lfn", "unicode"] }
 filevault = { package = "filevault-core", path = "vendor/filevault/core" }
 filevault-forensic = { path = "vendor/filevault/forensic" }
@@ -137,7 +138,6 @@ lru = "0.18.5"
 luks = { path = "vendor/luks", package = "luks-core" }
 lzokay = { version = "2.0.1", default-features = false, features = ["decompress", "std"] }
 magika = { path = "vendor/magika" }
-md-5 = "0.11.0"
 
 memchr = "2.8.3"
 memmap2 = "0.9.11"
@@ -250,6 +250,8 @@ toml = "1.1.8"
 ad1 = { package = "ad1-core", path = "vendor/ad1", features = ["testfix"] }
 # ReFS replacement candidates are probe-only until real-image parity is demonstrated.
 librefs-rust = { package = "librefs", version = "=0.1.0", default-features = false, features = ["std", "sha2"] }
+# Independent MD5 oracle for tests and filesystem probes.
+md-5 = "0.11.0"
 refs-core = "=0.1.0"
 syn = { version = "3.0.8", features = ["full"] }
 
@@ -335,6 +337,8 @@ opt-level = 3
 [profile.release.package.blake2]
 opt-level = 3
 [profile.release.package.md-5]
+opt-level = 3
+[profile.release.package.fast-md5]
 opt-level = 3
 [profile.release.package.sm3]
 opt-level = 3

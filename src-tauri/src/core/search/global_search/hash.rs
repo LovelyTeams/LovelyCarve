@@ -89,7 +89,7 @@ pub(super) fn hash_source(
     session: &mut FsSession<'_>,
     source: &ScanSource,
 ) -> anyhow::Result<(String, String)> {
-    let mut md5_hasher = md5::Md5::new();
+    let mut md5_hasher = crate::core::common::hash::Md5::new();
     let mut sha256_hasher = sha2::Sha256::new();
     session.stream_file(source.read_id(), HASH_CHUNK_BYTES, |chunk| {
         md5_hasher.update(chunk);
