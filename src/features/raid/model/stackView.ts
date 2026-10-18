@@ -73,6 +73,11 @@ export function arrayStatus(arr: RaidArray, tr: Translator = sourceText): { labe
   if (arr.degradable) {
     return { label: tr("缺 {0} 块，可降级重组", { 0: arr.raid_disks - activeMembers(arr) }), sev: 'warn' };
   }
+  // Firmware RAID members whose disk record is unknown: present, but their
+  // slots cannot be told.
+  if (arr.members.some(m => m.state === 'unidentified')) {
+    return { label: tr("成员顺序未知，见诊断"), sev: 'warn' };
+  }
   if (activeMembers(arr) < arr.raid_disks) {
     return { label: tr("成员不全 {0}/{1}", { 0: activeMembers(arr), 1: arr.raid_disks }), sev: 'warn' };
   }
@@ -115,6 +120,7 @@ const MEMBER_STATE_LABELS: Record<Exclude<RaidMemberState, 'active'>, string> = 
   stale: '陈旧',
   rebuilding: '重建中',
   duplicate: '重复加载',
+  unidentified: '未匹配',
 };
 
 /** Badge text for a member that is not simply read; null for active members. */

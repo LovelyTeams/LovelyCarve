@@ -1579,6 +1579,8 @@
   "陈旧": "Stale",
   "重建中": "Rebuilding",
   "重复加载": "Loaded twice",
+  "未匹配": "Unmatched",
+  "成员顺序未知，见诊断": "Member order unknown; see diagnostics",
   "成员不全 {0}/{1}": "Members missing {0}/{1}",
   "RAID{0} 暂不支持重组": "RAID{0} reconstruction is not supported yet",
   "RAID{0} 布局 {1} 暂不支持重组": "RAID{0} layout {1} reconstruction is not supported yet",

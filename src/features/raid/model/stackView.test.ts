@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { RaidArray, RaidArrayMember, RaidStack } from '../../../lib/ipc/raid';
 import {
-  activeMembers, arrayStatus, diskLabelsFor, exportBaseName, layoutLabel, levelShortLabel, missingSlotsFor,
-  orderedMembers, relevantRaidArrays, relevantRaidVolumeGroups, slotlessMembers,
+  activeMembers, arrayStatus, diskLabelsFor, exportBaseName, layoutLabel, levelShortLabel, memberStateLabel,
+  missingSlotsFor, orderedMembers, relevantRaidArrays, relevantRaidVolumeGroups, slotlessMembers,
 } from './stackView';
 
 const member: RaidArrayMember = { dev_number: 0, slot: 0, device_uuid: 'member-a', data_size_sectors: 1000, reconstructed: false, state: 'active', events: 12, origin: { kind: 'whole', image_id: 'a', partition_id: 1, byte_offset: 0, byte_length: 512000 } };
@@ -36,6 +36,9 @@ describe('RAID view projections', () => {
     expect(arrayStatus({ ...array, raid_disks: 1, layout: 9 })).toEqual({ label: 'RAID5 布局 9 暂不支持重组', sev: 'info' });
     expect(arrayStatus({ ...array, raid_disks: 1, level: 6, layout: 18 })).toEqual({ label: '未能重组，见诊断', sev: 'warn' });
     expect(arrayStatus({ ...array, raid_disks: 1 })).toEqual({ label: '未能重组，见诊断', sev: 'warn' });
+    const unmatched = { ...member, slot: null, state: 'unidentified' as const };
+    expect(arrayStatus({ ...array, raid_disks: 2, members: [unmatched, unmatched] })).toEqual({ label: '成员顺序未知，见诊断', sev: 'warn' });
+    expect(memberStateLabel(unmatched)).toBe('未匹配');
     expect(exportBaseName(array)).toBe('array_a_RAID5');
     expect(exportBaseName({ ...array, level: -1 })).toBe('array_a_linear');
   });

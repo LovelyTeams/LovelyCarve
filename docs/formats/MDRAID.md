@@ -41,7 +41,7 @@ Linux 软件 RAID（md / mdadm）由纯 Rust 代码识别与重组，结果注�
 
 - 正在 reshape（扩容、改级别、改块大小）的阵列新旧布局混合，只列出成员与诊断，不组装。
 - 写日志设备、PPL 与写意图位图不回放；md 坏块日志不应用，标为坏块的扇区仍按成员内容读取。
-- 外部元数据容器（Intel IMSM、DDF 容器）、硬件 RAID 控制器的私有元数据、Windows 动态磁盘、ZFS 与 Btrfs 的多设备冗余不走此流程；无元数据的等大成员盘由启发式按 RAID0 / RAID5 推定（见 [架构说明](../ARCHITECTURE.md)）。
+- Intel IMSM 与 SNIA DDF 容器（mdadm 的外部元数据）由固件 RAID 流程按各自的元数据组装，读取器与降级规则相同，见 [固件 RAID](FIRMWARE_RAID.md)。其他硬件 RAID 控制器的私有元数据、Windows 动态磁盘、ZFS 与 Btrfs 的多设备冗余不走此流程；无元数据的等大成员盘由启发式按 RAID0 / RAID5 推定（见 [架构说明](../ARCHITECTURE.md)）。
 - LVM 非线性段（striped、mirror、raid、thin 等）仍只保留元数据，见 [LVM2](LVM.md)。
 
 ## 实现入口与验证

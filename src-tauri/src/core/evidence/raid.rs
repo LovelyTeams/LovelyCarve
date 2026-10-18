@@ -12,16 +12,21 @@
 //!    the event counters and the freshest role table, and build the reader
 //!    for its level — linear, RAID0/1/4/5/6/10 ([`md_array`]). The assembled
 //!    device is scanned for a partition table or bare volume.
-//! 4. **LVM over arrays.** PVs found on assembled arrays join the volume
+//! 4. **Firmware RAID.** Whole images not used by md are probed for Intel
+//!    IMSM ([`imsm`]) and SNIA DDF ([`ddf`]) container metadata; every volume
+//!    they describe is assembled with the same readers ([`firmware`]).
+//! 5. **LVM over arrays.** PVs found on assembled arrays join the volume
 //!    groups; LVs spanning more than one PV become devices of their own.
-//! 5. **Metadata-less arrays.** Remaining equal-size images are searched for
+//! 6. **Metadata-less arrays.** Remaining equal-size images are searched for
 //!    hardware-RAID layouts ([`heuristic`]).
 //!
 //! The output is descriptive (`RaidStack`) plus the assembled readers; no
 //! persistent state is mutated and the IPC layer can re-run detection on
 //! demand.
 
+pub mod ddf;
 pub mod heuristic;
+pub mod imsm;
 pub mod lvm_meta;
 pub mod mdadm_super;
 pub mod source;
@@ -29,8 +34,13 @@ pub mod xfs_probe;
 
 mod manual;
 pub use manual::manual_assemble;
+mod ddf_array;
+mod ddf_geometry;
 mod detect;
 pub use detect::{detect_with_options, detect_with_sources};
+mod firmware;
+mod imsm_array;
+mod imsm_identity;
 mod lvm_stack;
 mod md_array;
 mod members;
@@ -144,7 +154,8 @@ pub struct RaidArray {
     /// surfaces this so an examiner knows the layout was inferred.
     #[serde(default)]
     pub heuristic: bool,
-    /// md metadata version (`0.90`, `1.0`, `1.1`, `1.2`); empty for
+    /// Metadata the array was read from: the md superblock version (`0.90`,
+    /// `1.0`, `1.1`, `1.2`), `imsm <version>` or `ddf <revision>`; empty for
     /// metadata-less arrays.
     #[serde(default)]
     pub metadata_version: String,
@@ -179,6 +190,10 @@ pub enum RaidMemberState {
     Rebuilding,
     /// The same device loaded twice; another copy is read.
     Duplicate,
+    /// Carries the container's firmware RAID metadata but cannot be matched
+    /// to one of its disk records (IMSM without the drive's serial number);
+    /// not read.
+    Unidentified,
 }
 
 #[derive(Debug, Clone, Serialize)]

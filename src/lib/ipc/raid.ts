@@ -75,7 +75,8 @@ export interface RaidArray {
    *  order were *recovered* by brute force and verified against the
    *  filesystem, not read from on-disk metadata. */
   heuristic: boolean;
-  /** md metadata version (`0.90`, `1.0`, `1.1`, `1.2`); empty for
+  /** Metadata the array was read from: the md superblock version (`0.90`,
+   *  `1.0`, `1.1`, `1.2`), `imsm <version>` or `ddf <revision>`; empty for
    *  metadata-less arrays. */
   metadata_version: string;
   /** The assembled device lacks members: their data comes from parity or the
@@ -87,8 +88,10 @@ export interface RaidArray {
   degradable: boolean;
 }
 
-/** What a member contributes to its array. */
-export type RaidMemberState = 'active' | 'spare' | 'faulty' | 'journal' | 'stale' | 'rebuilding' | 'duplicate';
+/** What a member contributes to its array. `unidentified`: carries the
+ *  container's firmware RAID metadata but matches none of its disk records
+ *  (IMSM without the drive serial number), so it is not read. */
+export type RaidMemberState = 'active' | 'spare' | 'faulty' | 'journal' | 'stale' | 'rebuilding' | 'duplicate' | 'unidentified';
 
 export interface RaidArrayMember {
   dev_number: number;

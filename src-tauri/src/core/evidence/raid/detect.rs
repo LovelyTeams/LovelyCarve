@@ -1,8 +1,10 @@
 //! Metadata-driven RAID detection and assembly.
 use std::collections::{HashMap, HashSet};
 
+use super::firmware::assemble_firmware_sets;
 use super::lvm_stack::{assemble_lvm_stack, label_whole_volume};
 use super::mdadm_super::ProbeHit;
+use super::source::BuiltVolume;
 use super::*;
 
 /// [`detect_with_options`] with the default options: arrays whose metadata
@@ -104,36 +106,69 @@ pub fn detect_with_options(
             } else {
                 format!("md/{}", array.set_name)
             };
-            let mut description = describe_device(volume.source.as_ref(), &tag, &mut diagnostics);
-            label_whole_volume(&mut description.partitions, volume.size_bytes, &tag);
-            if let Some(filesystem) = &description.filesystem {
-                filesystems.push(filesystem.record(&set_uuid));
-            }
-            // A degraded assembly is a different reconstruction from the
-            // complete one: it gets its own image, so loading the missing
-            // member later yields a fresh, fully read image.
-            let mut label = array_label(&array.set_name, &set_uuid);
-            if !outcome.absent_slots.is_empty() {
-                let slots: Vec<String> = outcome
-                    .absent_slots
-                    .iter()
-                    .map(|slot| slot.to_string())
-                    .collect();
-                label.push_str(&format!("~without-{}", slots.join(",")));
-            }
-            assembled.push(AssembledArray {
-                label,
-                set_uuid: set_uuid.clone(),
-                set_name: array.set_name.clone(),
-                target: AssembledTarget::Array,
-                source: volume.source,
-                size_bytes: volume.size_bytes,
-                fs_kind: description.fs_kind,
-                partitions: Some(description.partitions),
-            });
+            let identity = VolumeIdentity {
+                set_uuid: &set_uuid,
+                set_name: &array.set_name,
+                tag: &tag,
+                label: array_label(&array.set_name, &set_uuid),
+            };
+            assembled.push(register_volume(
+                identity,
+                volume,
+                &outcome.absent_slots,
+                &mut filesystems,
+                &mut diagnostics,
+            ));
         }
         arrays.push(array);
     }
+
+    // Pass 3b — firmware RAID (Intel IMSM, SNIA DDF) on whole images that are
+    // not whole-disk md members.
+    let image_sizes: HashMap<&str, u64> = images
+        .iter()
+        .map(|image| (image.id.as_str(), image.len()))
+        .collect();
+    let md_whole_disks: HashSet<String> = arrays
+        .iter()
+        .flat_map(|array| &array.members)
+        .filter_map(|member| match &member.origin {
+            RaidMemberOrigin::Whole {
+                image_id,
+                byte_offset: 0,
+                byte_length,
+                ..
+            } if image_sizes.get(image_id.as_str()) == Some(byte_length) => Some(image_id.clone()),
+            RaidMemberOrigin::Whole { .. } | RaidMemberOrigin::Lv { .. } => None,
+        })
+        .collect();
+    let firmware = assemble_firmware_sets(images, &md_whole_disks, options);
+    diagnostics.extend(firmware.diagnostics);
+    for outcome in firmware.volumes {
+        if let Some(volume) = outcome.volume {
+            let identity = VolumeIdentity {
+                set_uuid: &outcome.array.set_uuid,
+                set_name: &outcome.array.set_name,
+                tag: &outcome.tag,
+                label: outcome.label,
+            };
+            assembled.push(register_volume(
+                identity,
+                volume,
+                &outcome.absent_slots,
+                &mut filesystems,
+                &mut diagnostics,
+            ));
+        }
+        arrays.push(outcome.array);
+    }
+    // A firmware member disk shows its volume's partitions (a RAID1 mirror,
+    // or the first strip of a striped volume); PVs read through them repeat
+    // the PVs on the assembled volume.
+    let image_pvs: Vec<LvmPvMetadata> = image_pvs
+        .into_iter()
+        .filter(|pv| !firmware.claimed_images.contains(&pv.image_id))
+        .collect();
 
     // Pass 4 — PVs on assembled arrays and LVs spanning several PVs.
     let md_member_lvs: HashSet<(String, String)> = arrays
@@ -157,8 +192,9 @@ pub fn detect_with_options(
     assembled.extend(lvm.assembled);
 
     // Pass 5 — metadata-less reconstruction. Images already claimed by an md
-    // set or a volume group are excluded so a disk is never assigned twice.
-    let mut consumed: HashSet<String> = HashSet::new();
+    // set, a firmware container or a volume group are excluded so a disk is
+    // never assigned twice.
+    let mut consumed: HashSet<String> = firmware.claimed_images;
     for array in &arrays {
         for member in &array.members {
             if let RaidMemberOrigin::Whole { image_id, .. } = &member.origin {
@@ -185,6 +221,49 @@ pub fn detect_with_options(
         diagnostics,
     };
     (stack, assembled)
+}
+
+/// Names of an assembled array: its set identity, the origin shown in volume
+/// labels (`md/home`, `imsm/Volume0`) and its `assembled://` label.
+struct VolumeIdentity<'a> {
+    set_uuid: &'a str,
+    set_name: &'a str,
+    tag: &'a str,
+    label: String,
+}
+
+/// Describe what an assembled array holds and build the record that
+/// registers it as a synthetic image.
+fn register_volume(
+    identity: VolumeIdentity<'_>,
+    volume: BuiltVolume,
+    absent_slots: &[usize],
+    filesystems: &mut Vec<RaidFilesystem>,
+    diagnostics: &mut Vec<String>,
+) -> AssembledArray {
+    let mut description = describe_device(volume.source.as_ref(), identity.tag, diagnostics);
+    label_whole_volume(&mut description.partitions, volume.size_bytes, identity.tag);
+    if let Some(filesystem) = &description.filesystem {
+        filesystems.push(filesystem.record(identity.set_uuid));
+    }
+    // A degraded assembly is a different reconstruction from the complete
+    // one: it gets its own image, so loading the missing member later yields
+    // a fresh, fully read image.
+    let mut label = identity.label;
+    if !absent_slots.is_empty() {
+        let slots: Vec<String> = absent_slots.iter().map(|slot| slot.to_string()).collect();
+        label.push_str(&format!("~without-{}", slots.join(",")));
+    }
+    AssembledArray {
+        label,
+        set_uuid: identity.set_uuid.to_string(),
+        set_name: identity.set_name.to_string(),
+        target: AssembledTarget::Array,
+        source: volume.source,
+        size_bytes: volume.size_bytes,
+        fs_kind: description.fs_kind,
+        partitions: Some(description.partitions),
+    }
 }
 
 /// A superblock at the end of a partition that ends where its disk ends is
