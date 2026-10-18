@@ -154,7 +154,7 @@ pub fn build(mach: &Mach, data: &[u8], file_size: u64) -> MachoReport {
             match multi.get(0) {
                 Ok(SingleArch::MachO(m)) => {
                     let mut r = macho_report(&m, data, file_size, true, arches, warnings);
-                    r.format = "Mach-O 通用二进制 (Fat)".to_string();
+                    r.format = "Mach-O 通用二进制（Fat）".to_string();
                     r
                 }
                 Ok(SingleArch::Archive(_)) => {
@@ -204,7 +204,7 @@ fn collect_arches(multi: &MultiArch, warnings: &mut Vec<String>) -> Vec<MachoArc
 
 fn fat_stub(arches: Vec<MachoArch>, file_size: u64, warnings: Vec<String>) -> MachoReport {
     MachoReport {
-        format: "Mach-O 通用二进制 (Fat)".to_string(),
+        format: "Mach-O 通用二进制（Fat）".to_string(),
         is_fat: true,
         arches,
         cpu: 0,

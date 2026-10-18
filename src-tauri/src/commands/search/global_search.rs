@@ -144,7 +144,7 @@ pub async fn global_search_start(
         search_empty_space: options.search_empty_space,
         calc_hash: options.calc_hash,
         scope_json: serde_json::to_string(&serialize_scope(&options))
-            .map_err(|err| AppError::from_message(format!("序列化搜索范围失败: {err}")))?,
+            .map_err(|err| AppError::from_message(format!("序列化搜索范围失败：{err}")))?,
         status: "running".to_string(),
         error: None,
         started_ms,
@@ -459,7 +459,7 @@ pub async fn global_search_export(
             writer
                 .write_all(row.as_bytes())
                 .and_then(|_| writer.write_all(b"\r\n"))
-                .map_err(|err| anyhow::anyhow!("导出全局搜索结果: {err}"))?;
+                .map_err(|err| anyhow::anyhow!("导出全局搜索结果失败：{err}"))?;
             count += 1;
             Ok(())
         })
@@ -479,7 +479,7 @@ pub async fn global_search_export(
 fn source_kind_label(source_kind: &str) -> &'static str {
     match source_kind {
         "unallocated" => "未分配",
-        "diskgap" => "磁盘间隙",
+        "diskgap" => "分区间隙",
         _ => "文件",
     }
 }

@@ -169,7 +169,7 @@ impl TaskScheduler {
                     task.id,
                     &[SchedTaskStatus::Running],
                     SchedTaskStatus::Failed,
-                    Some("进度更新超时,worker 无响应"),
+                    Some("进度更新超时，执行器无响应"),
                 )
             }) {
                 Ok(Some(failed)) => {
@@ -177,14 +177,14 @@ impl TaskScheduler {
                         SchedNoticeKind::TaskTimeout,
                         Some(failed.id),
                         Some(failed.evidence_id),
-                        format!("任务 {} 进度更新超时,已判定失败", failed.display_name),
+                        format!("任务 {} 进度更新超时，已判定为失败", failed.display_name),
                     );
                     self.after_finish(bound, &failed);
                 }
                 Ok(None) => {}
                 Err(error) => tracing::warn!("watchdog: fail task {}: {error:#}", task.id),
             },
-            Verdict::Offline => self.mark_offline(bound, task.id, "worker 进程离线"),
+            Verdict::Offline => self.mark_offline(bound, task.id, "执行器进程离线"),
         }
     }
 
@@ -203,7 +203,7 @@ impl TaskScheduler {
                     SchedNoticeKind::TaskOffline,
                     Some(offline.id),
                     Some(offline.evidence_id),
-                    format!("任务 {} 的 worker 已离线", offline.display_name),
+                    format!("任务 {} 的执行器已离线", offline.display_name),
                 );
                 self.handle_offline(bound, &offline);
             }
@@ -242,7 +242,7 @@ impl TaskScheduler {
                 task.id,
                 task.name
             );
-            self.mark_offline(bound, task.id, "worker 登记丢失");
+            self.mark_offline(bound, task.id, "执行器登记丢失");
         }
     }
 }

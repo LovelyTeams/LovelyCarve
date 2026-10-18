@@ -147,7 +147,7 @@ fn classify_message(message: &str) -> ErrorCode {
         || lower.contains("synthetic zero")
         || message.contains("损坏")
         || message.contains("校验和")
-        || message.contains("合成零字节")
+        || message.contains("补零字节")
     {
         ErrorCode::CorruptData
     } else if lower.contains("too large")
@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn classifies_common_command_messages() {
         assert_eq!(
-            AppError::from_message("源盘哈希前校验失败: 源镜像文件已变化").code,
+            AppError::from_message("源盘哈希前校验失败：源镜像文件已变化").code,
             ErrorCode::SourceChanged
         );
         assert_eq!(
@@ -233,7 +233,7 @@ mod tests {
             ErrorCode::Cancelled
         );
         assert_eq!(
-            AppError::from_message("严格读取在偏移 0 的数据块检测到合成零字节").code,
+            AppError::from_message("严格读取在偏移 0 的数据块检测到补零字节").code,
             ErrorCode::CorruptData
         );
         assert_eq!(

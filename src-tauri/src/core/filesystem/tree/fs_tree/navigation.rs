@@ -47,7 +47,7 @@ pub(super) fn children_for_image_with_options(
                 .cloned()
                 .collect());
         }
-        anyhow::bail!("此目录未收录在已有索引中，原镜像不可用。请恢复原镜像后重试。");
+        anyhow::bail!("此目录未收录在已有索引中，源镜像不可用。请恢复源镜像后重试。");
     }
     // Docker / OCI archives short-circuit the partition list. The whole
     // image surfaces as a single synthetic root; descending into that

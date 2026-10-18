@@ -96,7 +96,7 @@ where
         }
         let child = child.ok_or_else(|| {
             CliError::invalid(format!(
-                "找不到路径分量: {component}；使用 files list 查看名称"
+                "找不到路径分量：{component}；使用 files list 查看名称"
             ))
         })?;
         location.push((child.name, child.id));

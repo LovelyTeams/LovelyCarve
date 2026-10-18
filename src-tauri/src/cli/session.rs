@@ -77,10 +77,10 @@ fn normalize(command: &Command, args: Map<String, Value>) -> Result<Map<String, 
             .iter()
             .any(|param| param.name == name && param.visible())
         {
-            return Err(CliError::invalid(format!("未知参数: {key}")));
+            return Err(CliError::invalid(format!("未知参数：{key}")));
         }
         if normalized.insert(name.clone(), value).is_some() {
-            return Err(CliError::invalid(format!("重复参数: {name}")));
+            return Err(CliError::invalid(format!("重复参数：{name}")));
         }
     }
     Ok(normalized)
@@ -98,7 +98,7 @@ fn resolve_refs(value: &mut Value, results: &HashMap<String, Json>) -> Result<()
                 .get(id)
                 .and_then(|result| result.value().pointer(pointer))
                 .cloned()
-                .ok_or_else(|| CliError::invalid(format!("无效结果引用: {reference}")))?;
+                .ok_or_else(|| CliError::invalid(format!("无效结果引用：{reference}")))?;
         }
         Value::Object(object) => {
             for value in object.values_mut() {
@@ -362,11 +362,11 @@ pub(super) async fn json_lines(
         let command = catalog.find_path(&request.command).ok_or_else(|| {
             CliError::invalid(match catalog.replacement(&request.command) {
                 Some(replacement) => format!(
-                    "未知命令: {}；现在的命令是 {}",
+                    "未知命令：{}；现在的命令是 {}",
                     request.command,
                     replacement.trim_start_matches("lovelycarve-cli ")
                 ),
-                None => format!("未知命令: {}", request.command),
+                None => format!("未知命令：{}", request.command),
             })
         })?;
         if matches!(

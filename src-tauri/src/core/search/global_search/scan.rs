@@ -173,7 +173,7 @@ pub fn run_global_search(params: &GlobalSearchParams<'_>) -> anyhow::Result<Glob
     if let Some(err) = write_error {
         return Err(err);
     }
-    final_flush.with_context(|| format!("保存搜索命中失败（{} 条未落库）", pending_hits.len()))?;
+    final_flush.with_context(|| format!("保存搜索命中失败（{} 条未保存）", pending_hits.len()))?;
 
     let cancelled = params.cancel_flag.is_cancelled();
 
@@ -245,5 +245,5 @@ pub(super) fn flush_hits(
     pending: &mut Vec<GlobalSearchHit>,
 ) -> anyhow::Result<()> {
     write_batch_or_defer(pending, HIT_RETRY_BACKLOG, |hits| writer.append(hits))
-        .with_context(|| format!("保存搜索命中失败（{} 条未落库）", pending.len()))
+        .with_context(|| format!("保存搜索命中失败（{} 条未保存）", pending.len()))
 }

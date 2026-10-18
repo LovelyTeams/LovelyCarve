@@ -93,7 +93,7 @@ fn safe_file(root: &Path, name: &str) -> Result<PathBuf> {
         || relative.components().count() != 1
         || !name.to_ascii_lowercase().ends_with(".bcp")
     {
-        bail!("BCP 索引包含不安全的文件名: {name}");
+        bail!("BCP 索引包含不安全的文件名：{name}");
     }
     Ok(root.join(relative))
 }

@@ -240,7 +240,7 @@ impl TaskScheduler {
     fn recover(&self, bound: &Arc<BoundCase>) -> anyhow::Result<()> {
         let offline = bound
             .store
-            .reset_active_to_offline("上次会话异常结束,worker 已丢失")?;
+            .reset_active_to_offline("上次会话异常结束，执行器已丢失")?;
         if !offline.is_empty() {
             tracing::info!(
                 "task scheduler recovery: {} tasks set offline",
@@ -388,7 +388,11 @@ impl TaskScheduler {
                     .saturating_sub(self.inner.running.lock().len());
                 for task in created {
                     if registry.get(&task.name).is_none() {
-                        self.fail_before_dispatch(bound, &task, "function 已不存在(插件被移除)");
+                        self.fail_before_dispatch(
+                            bound,
+                            &task,
+                            "function 已不存在（插件已被移除）",
+                        );
                         continue;
                     }
                     if free_slots == 0 {

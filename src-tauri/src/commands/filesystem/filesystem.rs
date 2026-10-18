@@ -486,7 +486,7 @@ pub async fn fs_node_locate(
     tokio::task::spawn_blocking(move || locate_node(&image_for_locate, &targets, &locate_node_id))
         .await
         .map_err(|err| AppError::task_panicked("fs_node_locate", err))?
-        .map_err(|err| AppError::not_found(format!("无法定位节点 {node_id}: {err:#}")))
+        .map_err(|err| AppError::not_found(format!("无法定位节点 {node_id}：{err:#}")))
 }
 
 /// 阻塞侧定位实现。

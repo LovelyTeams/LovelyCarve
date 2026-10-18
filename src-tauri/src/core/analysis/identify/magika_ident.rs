@@ -42,7 +42,7 @@ fn session() -> anyhow::Result<&'static Mutex<magika::Session>> {
     let slot = SESSION.get_or_init(|| {
         magika::Session::new()
             .map(Mutex::new)
-            .map_err(|e| format!("magika 模型初始化失败: {e}"))
+            .map_err(|e| format!("Magika 模型初始化失败：{e}"))
     });
     match slot {
         Ok(session) => Ok(session),
@@ -108,10 +108,10 @@ pub fn identify_file(
     let session = session()?;
     let mut session = session
         .lock()
-        .map_err(|_| anyhow::anyhow!("magika 会话锁中毒"))?;
+        .map_err(|_| anyhow::anyhow!("Magika 会话不可用（锁已失效）"))?;
     let file_type = session
         .identify_content_sync(&mut input)
-        .context("magika 推理失败")?;
+        .context("Magika 推理失败")?;
     drop(session);
 
     let inferred = match &file_type {

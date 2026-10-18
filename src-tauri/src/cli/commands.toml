@@ -769,7 +769,7 @@ type = "boolean"
 description = "排除已删除文件"
 [command.params.codepage]
 type = "array"
-description = "编码页，可列出多个；省略时搜索全部支持的编码"
+description = "搜索编码，可列出多个；省略时搜索全部支持的编码"
 [command.params.searchId]
 type = "string"
 description = "搜索任务 ID；省略时自动生成"

@@ -63,7 +63,7 @@ pub(crate) async fn prepare_remote_partition(
         Err(error) => {
             manager.sources().remove(&source.source_id);
             return Err(AppError::from_anyhow(anyhow::anyhow!(
-                "插件无法打开未知分区 {partition_id}: {error}"
+                "插件无法打开未知分区 {partition_id}：{error}"
             )));
         }
     }

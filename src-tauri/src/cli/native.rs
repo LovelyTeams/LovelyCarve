@@ -44,7 +44,7 @@ async fn loaded_image(state: &AppState, image_id: &str) -> Result<Arc<EvidenceSe
         .await
         .get(image_id)
         .cloned()
-        .ok_or_else(|| CliError::invalid("检材已卸载；请重新 images open"))
+        .ok_or_else(|| CliError::invalid("检材已关闭；请重新运行 images open"))
 }
 
 /// Byte-level commands need the original evidence; index-only sessions can

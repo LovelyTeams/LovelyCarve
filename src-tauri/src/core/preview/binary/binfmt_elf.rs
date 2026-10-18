@@ -86,7 +86,7 @@ pub struct ElfSymbolSummary {
 
 fn machine_label(machine: u16) -> String {
     match machine {
-        header::EM_NONE => "未知 (0)".into(),
+        header::EM_NONE => "未知（0）".into(),
         header::EM_386 => "x86 (i386)".into(),
         header::EM_X86_64 => "x64 (AMD64)".into(),
         header::EM_ARM => "ARM".into(),
@@ -121,11 +121,11 @@ fn os_abi_label(abi: u8) -> String {
 
 fn elf_type_label(e_type: u16) -> String {
     match e_type {
-        header::ET_REL => "可重定位目标 (REL)".into(),
-        header::ET_EXEC => "可执行 (EXEC)".into(),
-        header::ET_DYN => "共享对象 / PIE (DYN)".into(),
-        header::ET_CORE => "核心转储 (CORE)".into(),
-        header::ET_NONE => "无 (NONE)".into(),
+        header::ET_REL => "可重定位目标（REL）".into(),
+        header::ET_EXEC => "可执行（EXEC）".into(),
+        header::ET_DYN => "共享对象 / PIE（DYN）".into(),
+        header::ET_CORE => "核心转储（CORE）".into(),
+        header::ET_NONE => "无（NONE）".into(),
         other => format!("{} (0x{other:x})", header::et_to_str(other)),
     }
 }
@@ -166,9 +166,9 @@ pub fn build(elf: &Elf, data: &[u8], file_size: u64) -> ElfReport {
     }
     if has_gnu_stack {
         security_flags.push(if nx_stack {
-            "NX (不可执行栈)".into()
+            "NX（不可执行栈）".into()
         } else {
-            "可执行栈 (危险)".into()
+            "可执行栈（危险）".into()
         });
     }
     if relro {
@@ -182,7 +182,7 @@ pub fn build(elf: &Elf, data: &[u8], file_size: u64) -> ElfReport {
     }
     let stripped = elf.syms.is_empty();
     if stripped {
-        security_flags.push("已剥离符号 (stripped)".into());
+        security_flags.push("已剥离符号（stripped）".into());
     }
 
     // build-id（GNU note）
@@ -284,9 +284,9 @@ pub fn build(elf: &Elf, data: &[u8], file_size: u64) -> ElfReport {
     ElfReport {
         format: if elf.is_64 { "ELF64" } else { "ELF32" }.to_string(),
         endianness: if elf.little_endian {
-            "小端 (LSB)".into()
+            "小端（LSB）".into()
         } else {
-            "大端 (MSB)".into()
+            "大端（MSB）".into()
         },
         machine: h.e_machine,
         machine_label: machine_label(h.e_machine),

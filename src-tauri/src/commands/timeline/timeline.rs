@@ -242,7 +242,7 @@ pub async fn timeline_datas(
     let ascending = match order.as_deref() {
         None | Some("desc") => false,
         Some("asc") => true,
-        Some(other) => return Err(AppError::invalid_input(format!("未知排序方向: {other}"))),
+        Some(other) => return Err(AppError::invalid_input(format!("未知排序方向：{other}"))),
     };
     let page_query = timeline_store::TimelinePageQuery {
         query,
@@ -299,7 +299,7 @@ pub async fn timeline_export(
     tokio::task::spawn_blocking(move || -> Result<TimelineExportResult, AppError> {
         let conn = timeline_store::open_reader(&case_dir, &image_id)
             .map_err(|err| AppError::from_anyhow(err.context("导出时间线失败")))?
-            .ok_or_else(|| AppError::invalid_input("该检材还没有建立时间线"))?;
+            .ok_or_else(|| AppError::invalid_input("该检材还没有创建时间线"))?;
         let file = std::fs::File::create(&destination)
             .map_err(|err| AppError::from_io("导出时间线", err))?;
         let mut writer = std::io::BufWriter::new(file);
@@ -326,7 +326,7 @@ pub async fn timeline_export(
             writer
                 .write_all(line.as_bytes())
                 .and_then(|_| writer.write_all(b"\r\n"))
-                .map_err(|err| anyhow::anyhow!("导出时间线: {err}"))?;
+                .map_err(|err| anyhow::anyhow!("导出时间线失败：{err}"))?;
             count += 1;
             Ok(())
         })

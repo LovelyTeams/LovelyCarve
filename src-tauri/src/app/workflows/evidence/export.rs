@@ -35,7 +35,7 @@ pub async fn image_export_raw(
         tokio::task::spawn_blocking(move || -> Result<(u64, ReadFaultReport), AppError> {
             let _resource_permit = resource_permit;
             worker_image.validate_source_file_stable().map_err(|err| {
-                AppError::source_changed(format!("RAW 镜像导出前校验失败: {err}"))
+                AppError::source_changed(format!("RAW 镜像导出前校验失败：{err}"))
             })?;
             let total = worker_image.len();
             let reader = worker_image
@@ -136,7 +136,7 @@ pub async fn image_export_raw(
                 ));
             }
             worker_image.validate_source_file_stable().map_err(|err| {
-                AppError::source_changed(format!("RAW 镜像导出后校验失败: {err}"))
+                AppError::source_changed(format!("RAW 镜像导出后校验失败：{err}"))
             })?;
             Ok((offset, ReadFaultReport::from_regions(bad_regions)))
         })

@@ -134,7 +134,7 @@ impl EwfHandle {
                 1 => "固定磁盘".into(),
                 3 => "光盘".into(),
                 0x0e => "逻辑文件".into(),
-                0x10 => "内存 (RAM)".into(),
+                0x10 => "内存（RAM）".into(),
                 other => format!("0x{other:02X}"),
             }),
             compression: metadata.compression.clone(),

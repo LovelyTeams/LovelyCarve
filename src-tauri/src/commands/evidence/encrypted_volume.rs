@@ -138,7 +138,7 @@ pub async fn encrypted_volume_unlock(
                     && result.source_length == source.len())
                 .then_some(0)
             })
-            .ok_or_else(|| AppError::invalid_input("请选择原镜像中的完整加密分区"))?;
+            .ok_or_else(|| AppError::invalid_input("请选择源镜像中的完整加密分区"))?;
         source
             .attach_decrypted_partition(partition_id, image, result.read_cancellation.clone())
             .map_err(AppError::from_anyhow)?;

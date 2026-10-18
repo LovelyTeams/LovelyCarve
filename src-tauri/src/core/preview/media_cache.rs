@@ -136,7 +136,7 @@ impl MediaScratch {
                 .open(root.join(format!("{name}.lock")))?;
             if lock.try_lock_exclusive().is_ok() {
                 if let Err(error) = std::fs::remove_dir_all(entry.path()) {
-                    tracing::warn!("清理旧预览缓存失败: {error}");
+                    tracing::warn!("清理旧预览缓存失败：{error}");
                 }
             }
         }
@@ -160,7 +160,7 @@ impl MediaScratch {
     pub fn cleanup(&self) {
         if let Err(error) = std::fs::remove_dir_all(&self.directory) {
             if error.kind() != std::io::ErrorKind::NotFound {
-                tracing::warn!("清理预览缓存失败: {error}");
+                tracing::warn!("清理预览缓存失败：{error}");
             }
         }
     }

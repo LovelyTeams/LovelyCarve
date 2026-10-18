@@ -222,7 +222,7 @@ pub async fn carve_start(
             }
             Err(error) => {
                 scan.status = CarveSessionStatus::Failed;
-                scan.error = Some(format!("恢复扫描任务异常退出: {error}"));
+                scan.error = Some(format!("恢复扫描任务异常退出：{error}"));
             }
         }
         drop(scan);
@@ -563,9 +563,9 @@ fn resolve_regions(
             vec![CarveRegion {
                 offset: 0,
                 length: image.len(),
-                label: "整盘".to_string(),
+                label: "整个镜像".to_string(),
             }],
-            "整盘字节流".to_string(),
+            "整个镜像".to_string(),
         )),
         CarveScope::Partition => {
             let partition_id = options
@@ -603,9 +603,9 @@ fn resolve_regions(
         CarveScope::Unallocated => {
             let regions = unallocated_regions(image);
             if regions.is_empty() {
-                return Err(AppError::invalid_input("当前分区表没有可扫描的外部间隙"));
+                return Err(AppError::invalid_input("当前分区表没有可扫描的分区间隙"));
             }
-            let label = format!("分区表外间隙（{} 段）", regions.len());
+            let label = format!("分区间隙（{} 段）", regions.len());
             Ok((regions, label))
         }
         CarveScope::Range => {

@@ -240,7 +240,7 @@ pub(crate) fn json_output(value: impl Serialize) -> Result<Output, CliError> {
 
 fn validate_keys(args: &Map<String, Value>, allowed: &[&str]) -> Result<(), CliError> {
     if let Some(key) = args.keys().find(|key| !allowed.contains(&key.as_str())) {
-        return Err(CliError::invalid(format!("未知参数: {key}")));
+        return Err(CliError::invalid(format!("未知参数：{key}")));
     }
     Ok(())
 }
@@ -252,10 +252,10 @@ fn argument<T: DeserializeOwned>(
 ) -> Result<T, CliError> {
     let value = match args.remove(key) {
         Some(value) => value,
-        None if required => return Err(CliError::invalid(format!("缺少参数: {key}"))),
+        None if required => return Err(CliError::invalid(format!("缺少参数：{key}"))),
         None => Value::Null,
     };
-    serde_json::from_value(value).map_err(|error| CliError::invalid(format!("参数 {key}: {error}")))
+    serde_json::from_value(value).map_err(|error| CliError::invalid(format!("参数 {key}：{error}")))
 }
 
 #[cfg(test)]

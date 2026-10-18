@@ -217,7 +217,7 @@ mod tests {
             "scan".into(),
             "task".into(),
             "image".into(),
-            "整盘字节流".into(),
+            "整个镜像".into(),
             1024,
         )
         .with_filesystem_recovery(options, false);

@@ -154,7 +154,7 @@ pub(crate) async fn register_and_snapshot(
         // `image_load` callers can already be queued behind the single-flight
         // lock; consuming it here would let the next waiter reopen and
         // resurrect evidence the user just removed.
-        Admission::Removed => Err(AppError::cancelled("镜像已从案件移除，跳过重新加载")),
+        Admission::Removed => Err(AppError::cancelled("检材已从案件移除，跳过重新加载")),
         Admission::SourceTaken { existing_image_id } => Err(AppError::invalid_input(format!(
             "该来源已作为检材 {existing_image_id} 登记在当前案件中"
         ))),

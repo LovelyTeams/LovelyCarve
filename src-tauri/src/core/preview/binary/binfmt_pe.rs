@@ -170,7 +170,7 @@ fn machine_label(machine: u16) -> String {
         0x0200 => "Itanium (IA64)".into(),
         0x5064 => "RISC-V 64".into(),
         0x6264 => "LoongArch64".into(),
-        0x0000 => "未知 (0x0000)".into(),
+        0x0000 => "未知（0x0000）".into(),
         other => format!("0x{other:04x}"),
     }
 }

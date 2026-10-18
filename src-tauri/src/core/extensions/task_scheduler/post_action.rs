@@ -275,7 +275,7 @@ impl PostActionReport {
                 kind: SchedNoticeKind::PostActionFailed,
                 task_id: None,
                 evidence_id: Some(self.evidence_id),
-                message: format!("收尾动作 {action} 执行失败: {error}"),
+                message: format!("收尾动作 {action} 执行失败：{error}"),
             })
             .collect()
     }

@@ -184,7 +184,7 @@ pub fn parse_swap(bytes: &[u8], truncated: bool) -> anyhow::Result<VimSwapDigest
 
     if hit_line_cap {
         notes.push(format!(
-            "已抽取 {MAX_RECOVERED_LINES} 行,后续 data block 不再展开"
+            "已提取 {MAX_RECOVERED_LINES} 行，后续 data block 不再展开"
         ));
         lines.truncate(MAX_RECOVERED_LINES);
     }
@@ -192,7 +192,7 @@ pub fn parse_swap(bytes: &[u8], truncated: bool) -> anyhow::Result<VimSwapDigest
     let encrypted = data_blocks == 0 && (pointer_blocks > 0 || unknown_blocks > 0);
     if encrypted {
         notes.push(
-            "未发现 data block(id 'ad')。swap 可能使用 blowfish/sodium 加密,或已被覆盖损坏。"
+            "未发现 data block（id 'ad'）。swap 文件可能使用 blowfish / sodium 加密，或已被覆盖损坏。"
                 .to_string(),
         );
     }

@@ -225,10 +225,10 @@ pub fn detect_android_backup_header(head: &[u8]) -> Option<BackupConclusion> {
         format!("encryption={encryption}"),
     ];
     let (tool, manufactor) = if offset == 0 {
-        ("adb 备份(.ab)", None)
+        ("ADB 备份（.ab）", None)
     } else {
         features.push("xiaomi bak prefix".to_owned());
-        ("小米备份(.bak)", Some("xiaomi".to_owned()))
+        ("小米备份（.bak）", Some("xiaomi".to_owned()))
     };
     Some(BackupConclusion {
         backup_type: BACKUP_TYPE_GENERIC.to_owned(),
@@ -536,7 +536,7 @@ mod tests {
             conclusion,
             BackupConclusion {
                 backup_type: "backup".into(),
-                tool: "adb 备份(.ab)".into(),
+                tool: "ADB 备份（.ab）".into(),
                 platform: EvidencePlatform::Android,
                 manufactor: None,
                 features: vec![
@@ -563,7 +563,7 @@ mod tests {
         head.extend_from_slice(b"MIUI-BACKUP-PREFIX");
         head.extend_from_slice(b"ANDROID BACKUP\n5\n0\nnone\n");
         let conclusion = detect_android_backup_header(&head).expect("xiaomi bak");
-        assert_eq!(conclusion.tool, "小米备份(.bak)");
+        assert_eq!(conclusion.tool, "小米备份（.bak）");
         assert_eq!(conclusion.manufactor.as_deref(), Some("xiaomi"));
         assert!(conclusion
             .features

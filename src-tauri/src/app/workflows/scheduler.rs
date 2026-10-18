@@ -154,7 +154,7 @@ impl Execution {
                 progress(event.current, event.total)
             })
             .await
-            .map_err(|error| format!("插件实例启动失败: {error}"))?;
+            .map_err(|error| format!("插件实例启动失败：{error}"))?;
         let worker = Arc::new(worker);
         let registration = WorkerRegistration::new(&self.workers, task.id, seq, &worker);
         let result = if evidence_level {

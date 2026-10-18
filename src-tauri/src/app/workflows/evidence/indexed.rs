@@ -78,7 +78,7 @@ fn restore_indexed_session(
                 id: record.volume_key.clone(),
                 name: record.volume_key.strip_prefix("part:").map_or_else(
                     || record.volume_key.clone(),
-                    |number| format!("分区 {number}"),
+                    |number| format!("分区{number}"),
                 ),
                 parent_id: None,
                 kind: NodeKind::Dir,

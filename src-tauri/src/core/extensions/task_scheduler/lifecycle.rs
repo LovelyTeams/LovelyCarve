@@ -148,7 +148,7 @@ impl TaskScheduler {
             ExecutionOutcome::Success(result) => {
                 match bound.runner.publish_results(&task, seq, result) {
                     Ok(result) => ExecutionOutcome::Success(result),
-                    Err(error) => ExecutionOutcome::Failed(format!("分析结果发布失败: {error:#}")),
+                    Err(error) => ExecutionOutcome::Failed(format!("分析结果发布失败：{error:#}")),
                 }
             }
             failed @ ExecutionOutcome::Failed(_) => failed,
@@ -274,7 +274,7 @@ impl TaskScheduler {
                 None,
                 Some(evidence_id),
                 format!(
-                    "检材 {evidence_id} 的 {} 个任务已全部完成(成功 {},失败 {},取消 {})",
+                    "检材 {evidence_id} 的 {} 个任务已全部完成（成功 {}，失败 {}，取消 {}）",
                     aggregate.total, aggregate.success, aggregate.failed, aggregate.cancel
                 ),
             );

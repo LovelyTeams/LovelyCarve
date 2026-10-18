@@ -187,7 +187,7 @@ impl TimelineUnit {
             "hour" => Ok(Self::Hour),
             "minute" => Ok(Self::Minute),
             "second" => Ok(Self::Second),
-            other => anyhow::bail!("未知时间粒度: {other}"),
+            other => anyhow::bail!("未知时间粒度：{other}"),
         }
     }
 }

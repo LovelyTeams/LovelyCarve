@@ -115,11 +115,11 @@ pub(super) fn apply_key(conn: &Connection, key: &SqliteKey) -> anyhow::Result<()
             || !cleaned.bytes().all(|b| b.is_ascii_hexdigit())
         {
             anyhow::bail!(
-                "raw key 必须是偶数长度的十六进制字符串（如 32 字节 = 64 个十六进制字符）"
+                "原始密钥必须是偶数长度的十六进制字符串（例如 32 字节为 64 个十六进制字符）"
             );
         }
         conn.execute_batch(&format!("PRAGMA key = \"x'{cleaned}'\";"))
-            .map_err(|_| anyhow::anyhow!("应用 raw key 失败（格式或长度不被接受）"))?;
+            .map_err(|_| anyhow::anyhow!("应用原始密钥失败（格式或长度不被接受）"))?;
     } else if let Some(pass) = key.passphrase.as_deref().filter(|s| !s.is_empty()) {
         // rusqlite quotes/escapes the value as a string literal — the
         // exact form SQLCipher expects for a passphrase. Drop the source

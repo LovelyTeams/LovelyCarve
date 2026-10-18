@@ -129,7 +129,7 @@ impl FolderImage {
             while let Some((prefix, _)) = parent.rsplit_once('/') {
                 if let Some(existing) = entries.get(prefix) {
                     if existing.kind != FolderEntryKind::Dir {
-                        bail!("iOS 清单路径的父节点不是目录: {prefix}");
+                        bail!("iOS 清单路径的父节点不是目录：{prefix}");
                     }
                 } else {
                     entries.insert(prefix.to_owned(), directory(prefix.to_owned()));
@@ -146,7 +146,7 @@ impl FolderImage {
                 .get(&rel)
                 .is_some_and(|existing| existing.source.is_some() || kind != FolderEntryKind::Dir)
             {
-                bail!("iOS 清单存在重复或冲突路径: {rel}");
+                bail!("iOS 清单存在重复或冲突路径：{rel}");
             }
             let size = if file.kind.has_content() {
                 match backup.content_size(file) {

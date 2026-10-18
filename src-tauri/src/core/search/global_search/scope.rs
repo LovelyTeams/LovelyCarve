@@ -12,7 +12,7 @@ pub fn resolve_encodings(labels: &[String]) -> anyhow::Result<Vec<SearchEncoding
     let mut encodings = Vec::new();
     for label in labels {
         let encoding = SearchEncoding::from_label(label)
-            .ok_or_else(|| anyhow::anyhow!("未知编码页: {label}"))?;
+            .ok_or_else(|| anyhow::anyhow!("未知编码：{label}"))?;
         if !encodings.contains(&encoding) {
             encodings.push(encoding);
         }
@@ -221,5 +221,5 @@ pub(super) fn resolve_tree_node(
         }
         return Ok(());
     }
-    anyhow::bail!("树节点不在文件索引中（索引可能已过期）: {node_or_path}")
+    anyhow::bail!("树节点不在文件索引中（索引可能已过期）：{node_or_path}")
 }

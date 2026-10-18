@@ -122,11 +122,11 @@ pub fn indexed_source_chain(
         ancestors.reverse();
         return resolve_source_path(root, path, ancestors, |parent| {
             filedb_query::children(index, parent)?.ok_or_else(|| {
-                anyhow::anyhow!("此目录未收录在已有索引中，请恢复原镜像后重试：{parent}")
+                anyhow::anyhow!("此目录未收录在已有索引中，请恢复源镜像后重试：{parent}")
             })
         });
     }
-    anyhow::bail!("来源卷未收录在已有索引中，请恢复原镜像后重试：{root}")
+    anyhow::bail!("来源卷未收录在已有索引中，请恢复源镜像后重试：{root}")
 }
 
 fn resolve_source_path(
@@ -250,7 +250,7 @@ mod tests {
         )?;
         let boundary = FsNode {
             id: "part:1".into(),
-            name: "分区 1".into(),
+            name: "分区1".into(),
             parent_id: None,
             ..volume.node.clone()
         };
@@ -310,7 +310,7 @@ mod tests {
         let metadata = filedb_file::read_meta(&connection)?;
         let boundary = FsNode {
             id: metadata.volume_key.clone(),
-            name: "分区 1".into(),
+            name: "分区1".into(),
             parent_id: None,
             kind: NodeKind::Dir,
             size: 0,
@@ -336,7 +336,7 @@ mod tests {
                 .map(|node| (node.id.as_str(), node.name.as_str()))
                 .collect::<Vec<_>>(),
             vec![
-                ("part:1", "分区 1"),
+                ("part:1", "分区1"),
                 ("lvm:1:1", "root"),
                 ("xfs:lvm:1:1:2f657463", "etc"),
                 ("xfs:lvm:1:1:2f6574632f706173737764", "passwd"),

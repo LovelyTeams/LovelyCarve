@@ -40,7 +40,7 @@ use crate::core::evidence::readers::zip_image::ZipImage;
 
 pub use crate::core::evidence::partitions::{detect_filesystem, Partition, PartitionKind};
 
-pub const INDEX_ONLY_READ_ERROR: &str = "原镜像不可用，当前仅能浏览已有索引；请恢复原镜像后重试。";
+pub const INDEX_ONLY_READ_ERROR: &str = "源镜像不可用，当前仅能浏览已有索引；请恢复源镜像后重试。";
 
 /// Provenance of a session-only image derived from another loaded image.
 /// Derived images are never written to the case evidence list and are

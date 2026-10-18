@@ -466,7 +466,7 @@ pub async fn bitlocker_export_decrypted_image(
     let result = tokio::task::spawn_blocking(move || -> Result<u64, AppError> {
         let _resource_permit = resource_permit;
         image.validate_source_file_stable().map_err(|err| {
-            AppError::source_changed(format!("BitLocker 镜像导出前校验失败: {err}"))
+            AppError::source_changed(format!("BitLocker 镜像导出前校验失败：{err}"))
         })?;
         let partition = image
             .partitions
@@ -590,7 +590,7 @@ pub async fn bitlocker_export_decrypted_image(
             ));
         }
         image.validate_source_file_stable().map_err(|err| {
-            AppError::source_changed(format!("BitLocker 镜像导出后校验失败: {err}"))
+            AppError::source_changed(format!("BitLocker 镜像导出后校验失败：{err}"))
         })?;
         Ok(offset)
     })

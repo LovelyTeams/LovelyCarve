@@ -107,7 +107,7 @@ pub async fn image_hash_compute(
         let result = (|| {
             image_for_call
                 .validate_source_file_stable()
-                .map_err(|err| AppError::source_changed(format!("源盘哈希前校验失败: {err}")))?;
+                .map_err(|err| AppError::source_changed(format!("源盘哈希前校验失败：{err}")))?;
             let result = run_parallel_hash(
                 image_for_call.as_ref(),
                 &algorithms,
@@ -119,7 +119,7 @@ pub async fn image_hash_compute(
                 image_for_call
                     .validate_source_file_stable()
                     .map_err(|err| {
-                        AppError::source_changed(format!("源盘哈希后校验失败: {err}"))
+                        AppError::source_changed(format!("源盘哈希后校验失败：{err}"))
                     })?;
             }
             result
@@ -259,7 +259,7 @@ fn run_parallel_hash(
             {
                 return Err(AppError::new(
                     ErrorCode::CorruptData,
-                    format!("严格读取在偏移 {offset} 的数据块检测到合成零字节，哈希计算已终止。"),
+                    format!("严格读取在偏移 {offset} 的数据块检测到补零字节，哈希计算已停止。"),
                 ));
             }
             bytes.truncate(read_len);
@@ -317,7 +317,9 @@ fn run_parallel_hash(
         if offset != total {
             return Err(AppError::new(
                 ErrorCode::Io,
-                format!("源盘只读到 {offset} / {total} 字节（短读），哈希未覆盖完整镜像，已终止。"),
+                format!(
+                    "源盘只读到 {offset} / {total} 字节（短读），哈希未覆盖完整镜像，已停止计算。"
+                ),
             ));
         }
 

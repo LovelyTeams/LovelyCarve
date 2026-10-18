@@ -61,11 +61,11 @@ impl Default for SchedulerConfig {
 /// 调度器控制面错误;命令层映射为 IPC 错误码。
 #[derive(Debug, thiserror::Error)]
 pub enum SchedError {
-    #[error("没有打开的案件,任务调度未启用")]
+    #[error("没有打开的案件，任务调度未启用")]
     NoCase,
     #[error("任务 {0} 不存在")]
     TaskNotFound(i64),
-    #[error("任务 {task_id} 当前状态为 {status},不能{action}")]
+    #[error("任务 {task_id} 当前状态为 {status}，不能{action}")]
     InvalidState {
         task_id: i64,
         status: &'static str,

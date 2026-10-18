@@ -315,7 +315,7 @@ mod enabled {
             match wechat_detector() {
                 Ok(d) => return Ok((Detector::WeChat(d), "wechat".to_string())),
                 Err(err) => {
-                    tracing::warn!("WeChat 二维码检测器不可用，回退标准检测器: {err}");
+                    tracing::warn!("WeChat 二维码检测器不可用，改用标准检测器：{err}");
                 }
             }
         }

@@ -342,7 +342,7 @@ pub(super) fn collect_merges(
                                 .collect(),
                         );
                     }
-                    Err(error) => tracing::warn!("读取工作表 {name} 的合并区域失败: {error}"),
+                    Err(error) => tracing::warn!("读取工作表 {name} 的合并区域失败：{error}"),
                 }
             }
         }
@@ -365,7 +365,7 @@ pub(super) fn collect_merges(
                                 .collect(),
                         );
                     }
-                    Err(error) => tracing::warn!("读取工作表 {name} 的合并区域失败: {error}"),
+                    Err(error) => tracing::warn!("读取工作表 {name} 的合并区域失败：{error}"),
                 }
             }
         }

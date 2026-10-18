@@ -192,12 +192,12 @@ fn cipher_key(key: &SqliteKey) -> anyhow::Result<Option<SqlCipherKey>> {
             .filter(|c| !c.is_whitespace())
             .collect();
         if cleaned.len() == 96 {
-            bail!("暂不支持用带 salt 的 raw key 恢复删除记录");
+            bail!("暂不支持用带 salt 的原始密钥恢复已删除记录");
         }
-        let bytes = hex::decode(&cleaned).context("raw key 不是有效的十六进制字符串")?;
+        let bytes = hex::decode(&cleaned).context("原始密钥不是有效的十六进制字符串")?;
         let raw: [u8; 32] = bytes
             .try_into()
-            .map_err(|_| anyhow!("raw key 必须是 32 字节（64 个十六进制字符）"))?;
+            .map_err(|_| anyhow!("原始密钥必须是 32 字节（64 个十六进制字符）"))?;
         return Ok(Some(SqlCipherKey::RawKey(raw)));
     }
     Ok(key
@@ -276,7 +276,7 @@ pub fn recover(
 ) -> anyhow::Result<SqliteRecovery> {
     let (bytes, truncated) = sqlite_preview::read_node_prefix(image, node_id)?;
     if truncated {
-        bail!("数据库超过 512 MiB，暂不支持删除记录恢复");
+        bail!("数据库超过 512 MiB，暂不支持恢复已删除记录");
     }
     let mut notes = Vec::new();
     let mut sidecars = Vec::new();

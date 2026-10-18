@@ -82,7 +82,7 @@ pub async fn fs_flat_page(
 ) -> Result<FsFlatPage, AppError> {
     if !allow_all_files {
         return Err(AppError::invalid_input(
-            "全显请求未携带 allowAllFiles 标志;逐级浏览请使用 fs_children",
+            "全显请求未携带 allowAllFiles 标志；逐级浏览请使用 fs_children",
         ));
     }
     let sort_key =
@@ -339,7 +339,7 @@ fn compute_flat_page(
 
     if image.is_index_only() {
         return Err(AppError::not_found(
-            "此目录未收录在已有索引中，原镜像不可用。",
+            "此目录未收录在已有索引中，源镜像不可用。",
         ));
     }
     if let Some(snapshot) = &sources.snapshot {

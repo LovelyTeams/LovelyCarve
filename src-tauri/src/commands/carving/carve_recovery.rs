@@ -185,7 +185,7 @@ fn recover_artifacts(
 ) -> Result<CarveRecoveryResult, AppError> {
     image
         .validate_source_file_stable()
-        .map_err(|error| AppError::source_changed(format!("雕刻恢复前校验失败: {error:#}")))?;
+        .map_err(|error| AppError::source_changed(format!("雕刻恢复前校验失败：{error:#}")))?;
     std::fs::create_dir_all(destination)
         .map_err(|error| AppError::from_io(format!("create {}", destination.display()), error))?;
     if !destination.is_dir() {
@@ -265,7 +265,7 @@ fn recover_artifacts(
 
     image
         .validate_source_file_stable()
-        .map_err(|error| AppError::source_changed(format!("雕刻恢复后校验失败: {error:#}")))?;
+        .map_err(|error| AppError::source_changed(format!("雕刻恢复后校验失败：{error:#}")))?;
     let (report_path, report_error) =
         match write_dfxml_report(destination, source_path, scan_id, &recovered) {
             Ok(path) => (Some(path.display().to_string()), None),

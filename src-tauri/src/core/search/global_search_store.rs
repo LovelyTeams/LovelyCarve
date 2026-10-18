@@ -192,7 +192,7 @@ impl GlobalSearchDistinct {
             "none" | "" => Ok(Self::None),
             "file" => Ok(Self::File),
             "sha256" => Ok(Self::Sha256),
-            other => anyhow::bail!("未知去重模式: {other}"),
+            other => anyhow::bail!("未知去重模式：{other}"),
         }
     }
 }

@@ -66,7 +66,7 @@ mod enabled {
         let result = {
             let guard = engine
                 .lock()
-                .map_err(|_| anyhow::anyhow!("OCR 引擎锁中毒"))?;
+                .map_err(|_| anyhow::anyhow!("OCR 引擎不可用（锁已失效）"))?;
             let results = guard
                 .predict(vec![img])
                 .map_err(|e| anyhow::anyhow!("OCR 推理失败：{e}"))?;

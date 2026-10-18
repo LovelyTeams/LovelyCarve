@@ -77,7 +77,7 @@ pub async fn system_path_info(path: String) -> Result<PathInfo, AppError> {
 pub async fn reveal_path(path: String, select: bool) -> Result<(), AppError> {
     let target = PathBuf::from(&path);
     if !target.exists() {
-        return Err(AppError::not_found(format!("路径不存在: {path}"))
+        return Err(AppError::not_found(format!("路径不存在：{path}"))
             .with_context_value(json!({ "path": path })));
     }
     spawn_reveal(&target, select)

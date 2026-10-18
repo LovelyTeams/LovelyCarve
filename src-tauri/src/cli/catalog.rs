@@ -294,7 +294,7 @@ pub fn catalog() -> Result<&'static Catalog, CliError> {
     CATALOG
         .get_or_init(|| {
             serde_json::from_str(include_str!(concat!(env!("OUT_DIR"), "/cli_catalog.json")))
-                .map_err(|error| format!("命令目录损坏: {error}"))
+                .map_err(|error| format!("命令目录损坏：{error}"))
         })
         .as_ref()
         .map_err(|error| CliError::new("operationFailed", error.clone()))

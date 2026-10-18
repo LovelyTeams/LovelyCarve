@@ -296,25 +296,25 @@ pub fn read_member(data: &[u8], member_path: &str, max_bytes: usize) -> Result<V
             continue;
         }
         if file.is_dir() {
-            bail!("该成员是目录，无法预览内容: {want}");
+            bail!("该成员是目录，无法预览内容：{want}");
         }
         if file.is_symlink() {
-            bail!("该成员是符号链接，仅显示其目标，不读取内容: {want}");
+            bail!("该成员是符号链接，仅显示其目标，不读取内容：{want}");
         }
         if file.encrypted() {
-            bail!("该成员已加密，无法解压预览: {want}");
+            bail!("该成员已加密，无法解压预览：{want}");
         }
         if !matches!(
             file.compression(),
             CompressionMethod::Stored | CompressionMethod::Deflated
         ) {
-            bail!("该成员使用了未编译支持的压缩方法，无法解压预览: {want}");
+            bail!("该成员使用了未编译支持的压缩方法，无法解压预览：{want}");
         }
         target = Some(index);
         break;
     }
 
-    let index = target.ok_or_else(|| anyhow!("压缩包内未找到成员: {want}"))?;
+    let index = target.ok_or_else(|| anyhow!("压缩包内未找到成员：{want}"))?;
     let mut reader = archive.by_index(index)?;
     // `take` bounds decompression to the requested window: a preview never
     // inflates the whole member.

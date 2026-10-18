@@ -68,7 +68,7 @@ pub(super) fn fill_source_hashes(
         match write_error {
             Some(err) => Err(err),
             None => final_write
-                .with_context(|| format!("保存命中源哈希失败（{} 个源未落库）", batch.len())),
+                .with_context(|| format!("保存命中源哈希失败（{} 个源未保存）", batch.len())),
         }
     })
 }
@@ -81,7 +81,7 @@ pub(super) fn write_hashes(
     write_batch_or_defer(batch, HASH_RETRY_BACKLOG, |hashes| {
         writer.set_source_hashes(hashes)
     })
-    .with_context(|| format!("保存命中源哈希失败（{} 个源未落库）", batch.len()))
+    .with_context(|| format!("保存命中源哈希失败（{} 个源未保存）", batch.len()))
 }
 
 /// 流式计算源的 MD5 + SHA256。
