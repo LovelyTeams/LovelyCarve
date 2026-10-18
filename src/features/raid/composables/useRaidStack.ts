@@ -12,6 +12,7 @@ import { raidAutoDetect, type RaidArray, type RaidStack } from '../../../lib/ipc
 import { formatBinaryBytes as formatBytes } from '../../../utils/format';
 import { confirm } from '../../../composables/useConfirm';
 import { notifyError, pushPersistentToast, type PersistentToastHandle } from '../../../composables/useToast';
+import { activeMembers, levelShortLabel } from '../model/stackView';
 
 const stack = ref<RaidStack | null>(null);
 const loading = ref(false);
@@ -19,6 +20,10 @@ const error = ref<string | null>(null);
 // Stale-response guard: only the latest detect() run may publish its result
 // (panels in several tabs can trigger overlapping runs).
 let generation = 0;
+// md sets the examiner chose to assemble without the members their metadata
+// still expects. Every later run in this case keeps honouring the choice, so
+// a re-detect never silently drops the degraded image again.
+const degradedSets = new Set<string>();
 // Per-array announcement state, keyed by mdadm set UUID. An incomplete array
 // keeps a PERSISTENT toast alive (an auto-dismissing one fires while the
 // image-load overlay still has the user's eyes and vanishes unseen); once
@@ -42,10 +47,6 @@ function arrayTitle(arr: RaidArray): string {
   return arr.set_name || `md/${arr.set_uuid.slice(0, 12)}`;
 }
 
-function activeMembers(arr: RaidArray): number {
-  return arr.members.filter(m => m.slot !== null).length;
-}
-
 /** Sequential "open the assembled image?" dialogs, one per newly completed
  *  array (the confirm host shows one dialog at a time). Fire-and-forget from
  *  detect() — opening happens via the injected tab opener. */
@@ -55,9 +56,12 @@ async function promptAssembledArrays(result: RaidStack, arrays: RaidArray[]) {
     if (captured !== generation) return;
     const fs = result.filesystems.find(f => f.set_uuid === arr.set_uuid);
     const detail = [formatBytes(arr.assembled_bytes), fs?.kind].filter(Boolean).join(' · ');
+    const params = { 0: levelShortLabel(arr.level), 1: arrayTitle(arr), 2: detail };
     const ok = await confirm({
-      title: tr("检测到完整 RAID 阵列"),
-      message: tr("RAID{0} {1} 已重组为虚拟镜像（{2}）。是否打开重组镜像？", { 0: arr.level, 1: arrayTitle(arr), 2: detail }),
+      title: arr.degraded ? tr("RAID 阵列已降级重组") : tr("检测到完整 RAID 阵列"),
+      message: arr.degraded
+        ? tr("{0} {1} 已在缺少成员的情况下重组为虚拟镜像（{2}），缺失部分由校验或镜像数据重建。是否打开重组镜像？", params)
+        : tr("{0} {1} 已重组为虚拟镜像（{2}）。是否打开重组镜像？", params),
       confirmText: tr("打开重组镜像"),
       cancelText: tr("暂不"),
     });
@@ -80,6 +84,7 @@ export function disposeRaidStack() {
   stack.value = null;
   loading.value = false;
   error.value = null;
+  degradedSets.clear();
   for (const toast of incompleteToasts.values()) toast.dismiss();
   incompleteToasts.clear();
   promptedAssembled.clear();
@@ -98,15 +103,16 @@ function announceArrays(result: RaidStack, prompt: boolean) {
     }
     if (incompleteToasts.has(arr.set_uuid)) continue;
     const active = activeMembers(arr);
-    const status =
-      active < arr.raid_disks
+    const status = arr.degradable
+      ? tr("成员不全 {0}/{1}，加载其余成员盘后将自动重组，也可在 RAID 检测卡片中降级重组", { 0: active, 1: arr.raid_disks })
+      : active < arr.raid_disks
         ? tr("成员不全 {0}/{1}，加载其余成员盘后将自动重组", { 0: active, 1: arr.raid_disks })
         : tr("未能重组，详见镜像信息页的 RAID 检测卡片");
     incompleteToasts.set(
       arr.set_uuid,
       pushPersistentToast({
         title: tr("检测到 RAID 阵列"),
-        detail: `RAID${arr.level} ${arrayTitle(arr)} · ${status}`,
+        detail: `${levelShortLabel(arr.level)} ${arrayTitle(arr)} · ${status}`,
       }),
     );
   }
@@ -130,7 +136,7 @@ export function useRaidStack() {
     loading.value = true;
     error.value = null;
     try {
-      const result = await raidAutoDetect();
+      const result = await raidAutoDetect([...degradedSets]);
       if (runGeneration !== generation) return null;
       stack.value = result;
       announceArrays(result, opts?.promptAssembled !== false);
@@ -144,5 +150,12 @@ export function useRaidStack() {
     }
   }
 
-  return { stack, loading, error, detect };
+  /** The examiner's consent to assemble `setUuid` without the members its
+   *  metadata still expects; re-runs detection with the choice applied. */
+  async function assembleDegraded(setUuid: string): Promise<RaidStack | null> {
+    degradedSets.add(setUuid);
+    return detect();
+  }
+
+  return { stack, loading, error, detect, assembleDegraded };
 }

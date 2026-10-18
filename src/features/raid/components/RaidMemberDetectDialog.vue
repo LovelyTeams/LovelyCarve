@@ -104,7 +104,7 @@
                 :class="`array-${arrayStatus(array).severity}`"
               >
                 <div class="array-top">
-                  <span class="ui-badge info mono level-pill">RAID{{ array.level }}</span>
+                  <span class="ui-badge info mono level-pill">{{ levelShortLabel(array.level) }}</span>
                   <div class="array-title">
                     <span class="array-name" :title="array.set_uuid">{{ arrayTitle(array) }}</span>
                     <span class="array-sub mono">{{ activeMembers(array) }}/{{ array.raid_disks }} {{ tr("成员盘") }}</span>
@@ -167,6 +167,7 @@ import { tr } from '../../../composables/useLocale';
 import { formatBinaryBytes as formatBytes } from '../../../utils/format';
 import { filesystemLabel } from '../../../lib/models/filesystemLabels';
 import { type RaidMemberQueueItem } from '../model/types';
+import { activeMembers, levelShortLabel } from '../model/stackView';
 
 import { vDisclosureMotion } from '../../../composables/uiMotionDirectives';
 import { computed, onUnmounted, watch } from 'vue';
@@ -249,12 +250,13 @@ function memberStatusLabel(member: RaidMemberQueueItem): string {
   return tr("待匹配");
 }
 
-function activeMembers(array: RaidArray): number {
-  return array.members.filter(member => member.slot !== null).length;
-}
-
 function arrayStatus(array: RaidArray): { label: string; severity: 'success' | 'warn' | 'info' } {
-  if (array.assembled_image_id) return { get label() { return tr("可打开"); }, severity: 'success' };
+  if (array.assembled_image_id) {
+    return array.degraded
+      ? { get label() { return tr("可打开（降级）"); }, severity: 'warn' }
+      : { get label() { return tr("可打开"); }, severity: 'success' };
+  }
+  if (array.degradable) return { get label() { return tr("可降级重组"); }, severity: 'warn' };
   if (activeMembers(array) < array.raid_disks) return { get label() { return tr("成员不全"); }, severity: 'warn' };
   return { get label() { return tr("未重组"); }, severity: 'info' };
 }

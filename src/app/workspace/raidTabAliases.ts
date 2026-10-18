@@ -8,13 +8,16 @@ export function raidTabPathKey(path: string): string {
     : path;
 }
 
-/** Use the case's recorded synthetic path; hiding sources never unloads them. */
+/** Use the case's recorded synthetic path; hiding sources never unloads them.
+ *  A disk holding members of several arrays (NAS system, swap and data
+ *  partitions) opens the largest one. */
 export function raidMemberTabAliases(stack: RaidStack | null, evidence: readonly EvidenceRef[]): ReadonlyMap<string, string> {
   const aliases = new Map<string, string>();
   if (!stack) return aliases;
   const evidencePaths = new Map(evidence.map(item => [item.image_id, item.path]));
   const sourcePaths = new Map(stack.images.map(image => [image.image_id, image.path]));
-  for (const array of stack.arrays) {
+  const largestFirst = [...stack.arrays].sort((a, b) => b.assembled_bytes - a.assembled_bytes);
+  for (const array of largestFirst) {
     if (!array.assembled_image_id) continue;
     const targetPath = evidencePaths.get(array.assembled_image_id);
     if (!targetPath?.startsWith('assembled://')) continue;

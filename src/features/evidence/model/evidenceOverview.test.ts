@@ -51,6 +51,7 @@ describe('evidence overview projections', () => {
     expect(evidenceFacts(evidence)).toContainEqual({ label: '重组镜像标识', value: evidence.path, mono: true, copyable: true });
     expect(evidenceDisplayName({ ...info, path: 'D:\\evidence\\disk.E01' })).toBe('disk.E01');
     expect(evidenceDisplayName({ ...evidence, path: 'assembled://md:custom-array' })).toBe('RAID 重组镜像');
+    expect(evidenceDisplayName({ ...evidence, path: 'assembled://lvm:Ab12-Cd34:vg1000/lv' })).toBe('逻辑卷 vg1000/lv');
   });
   it('normalizes recorded hashes and judges only algorithms with a computed result', () => {
     const evidence = { ...info, ewf: { stored_md5: ' AA BB ', stored_sha1: 'ccdd' } as NonNullable<ImageInfo['ewf']> };

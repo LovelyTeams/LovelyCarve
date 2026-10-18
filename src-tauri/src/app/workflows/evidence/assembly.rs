@@ -3,17 +3,18 @@ use super::*;
 use crate::core::evidence::image::DiskImage;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 
-/// Walk every loaded image, parse LVM PV metadata, join PVs across images
-/// by VG UUID, materialise LVs as virtual block devices, scan LV offset
-/// 0x1000 for mdadm v1.2 superblocks, group members by `set_uuid`, and
-/// finally probe the assembled RAID0 device for a btrfs primary superblock.
-///
-/// For each successfully assembled RAID0, this also registers the result
-/// as a synthetic `DiskImage` in `state.images` so it shows up in the FS
-/// tree, hex view, and image switcher just like a regular image.
+/// Detect LVM / md stacks across every loaded image (see
+/// `raid::detect_with_options`) and register each assembled array — and each
+/// LV spanning several physical volumes — as a synthetic `DiskImage` in
+/// `state.images`, so it shows up in the FS tree, hex view and image switcher
+/// just like a regular image. `degraded_sets` names md sets the examiner chose
+/// to assemble without members their metadata still expects.
 /// Idempotent: re-running on the same image set reuses the previously
-/// registered synthetic image instead of allocating a duplicate.
-pub async fn raid_auto_detect(state: State<'_, AppState>) -> Result<RaidStack, AppError> {
+/// registered synthetic images instead of allocating duplicates.
+pub async fn raid_auto_detect(
+    state: State<'_, AppState>,
+    degraded_sets: Vec<String>,
+) -> Result<RaidStack, AppError> {
     // Snapshot only "real" loaded images — feeding a previously assembled
     // synthetic image back into detection would be double-counting and
     // could even infinite-loop when LVM PV labels happen to match. A shadow
@@ -29,8 +30,9 @@ pub async fn raid_auto_detect(state: State<'_, AppState>) -> Result<RaidStack, A
             .map(|image| Arc::clone(image.disk_image()))
             .collect()
     };
+    let options = raid::DetectOptions { degraded_sets };
     let (mut stack, assembled) =
-        tokio::task::spawn_blocking(move || raid::detect_with_sources(&snapshot))
+        tokio::task::spawn_blocking(move || raid::detect_with_options(&snapshot, &options))
             .await
             .map_err(|err| AppError::task_panicked("raid_auto_detect", err))?;
 
@@ -71,65 +73,54 @@ pub async fn raid_auto_detect(state: State<'_, AppState>) -> Result<RaidStack, A
             .unwrap_or_default()
     };
 
-    // Built synthetic images awaiting registration, paired with the array
-    // slot they belong to. Construction (from_assembled) happens here,
-    // lock-free.
+    // Built synthetic images awaiting registration, paired with the device
+    // they belong to. Construction (from_assembled) happens here, lock-free.
     struct PendingRegistration {
-        array_index: usize,
+        assembled_index: usize,
         cache_key: String,
         image: DiskImage,
     }
     let mut pending: Vec<PendingRegistration> = Vec::new();
-    // Ids already adopted by an earlier array in THIS loop — `live_image_ids`
+    // Ids already adopted by an earlier device in THIS loop — `live_image_ids`
     // is a pre-loop snapshot and can't see them.
     let mut adopted_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for (array_index, array) in stack.arrays.iter_mut().enumerate() {
-        let Some(materialised) = assembled.iter().find(|a| a.set_uuid == array.set_uuid) else {
-            continue;
-        };
-        let cache_key = array.set_uuid.clone();
+    for (assembled_index, materialised) in assembled.iter().enumerate() {
+        // Keyed by label, not set UUID: a degraded and a complete assembly of
+        // one set are different devices with different labels.
+        let cache_key = materialised.label.clone();
         if let Some(existing) = cache_snapshot.get(&cache_key) {
             if live_image_ids.contains(existing) {
-                array.assembled_image_id = Some(existing.clone());
+                record_assembled_image(&mut stack, materialised, existing.clone());
                 continue;
             }
         }
-        // The label doubles as the synthetic image's `assembled://<label>`
-        // path, which case evidence AND `image_load`'s by-path reuse key on —
-        // so it must be injective per array. The full set_uuid (not a
-        // prefix) is required: set_uuid is read verbatim from on-disk
-        // superblocks, so crafted evidence can collide any shorter prefix,
-        // while two *registered* arrays can never share a full set_uuid
-        // (detection groups members by it).
-        let label = if materialised.set_name.is_empty() {
-            format!("md:{}", materialised.set_uuid)
-        } else {
-            format!("md:{}-{}", materialised.set_name, materialised.set_uuid)
-        };
         let sector_size = 512_usize;
-        let length_lba = materialised.size_bytes / sector_size as u64;
-        // A metadata-less hardware-RAID array carries its own partition table
-        // (MBR/GPT with several filesystems); the mdadm/LVM path leaves it
-        // `None` and the array is a single bare filesystem on the md device.
         let partitions = match &materialised.partitions {
             Some(parts) => parts.clone(),
             None => vec![Partition {
                 id: 0,
                 kind: materialised.fs_kind,
                 start_lba: 0,
-                length_lba,
+                length_lba: materialised.size_bytes / sector_size as u64,
                 label: Some(raid::synthetic_partition_label(materialised)),
                 unique_guid: None,
             }],
         };
-        let mut synthetic =
-            DiskImage::from_assembled(label, materialised.source.clone(), partitions, sector_size)
-                .map_err(|err| {
-                    AppError::new(
-                        ErrorCode::Internal,
-                        format!("registering assembled array failed: {err:#}"),
-                    )
-                })?;
+        // The label doubles as the synthetic image's `assembled://<label>`
+        // path, which case evidence AND `image_load`'s by-path reuse key on;
+        // core builds it injectively from the full set UUID or LV identity.
+        let mut synthetic = DiskImage::from_assembled(
+            materialised.label.clone(),
+            materialised.source.clone(),
+            partitions,
+            sector_size,
+        )
+        .map_err(|err| {
+            AppError::new(
+                ErrorCode::Internal,
+                format!("registering assembled array failed: {err:#}"),
+            )
+        })?;
         // Adopt the case-recorded id unless something live already owns it
         // or an earlier array in this loop claimed it (then the fresh uuid
         // stands — never overwrite a loaded image's slot).
@@ -140,7 +131,7 @@ pub async fn raid_auto_detect(state: State<'_, AppState>) -> Result<RaidStack, A
             }
         }
         pending.push(PendingRegistration {
-            array_index,
+            assembled_index,
             cache_key,
             image: synthetic,
         });
@@ -149,20 +140,21 @@ pub async fn raid_auto_detect(state: State<'_, AppState>) -> Result<RaidStack, A
     // Phase 2: publish freshly built images. Lock images→assembled (the same
     // order `image_list` uses) and hold both only for cheap map inserts —
     // never across from_assembled. Re-check the cache under lock so two
-    // concurrent detect calls converge on one synthetic image per set_uuid
+    // concurrent detect calls converge on one synthetic image per device
     // instead of leaking duplicates.
     if !pending.is_empty() {
         let mut images = state.images.lock().await;
         let mut cache = state.assembled_arrays.lock().await;
         for PendingRegistration {
-            array_index,
+            assembled_index,
             cache_key,
             mut image,
         } in pending
         {
+            let materialised = &assembled[assembled_index];
             if let Some(existing) = cache.get(&cache_key) {
                 if images.contains_key(existing) {
-                    stack.arrays[array_index].assembled_image_id = Some(existing.clone());
+                    record_assembled_image(&mut stack, materialised, existing.clone());
                     continue;
                 }
                 cache.remove(&cache_key);
@@ -176,11 +168,43 @@ pub async fn raid_auto_detect(state: State<'_, AppState>) -> Result<RaidStack, A
             let image_id = image.id.clone();
             images.insert(image_id.clone(), Arc::new(EvidenceSession::from(image)));
             cache.insert(cache_key, image_id.clone());
-            stack.arrays[array_index].assembled_image_id = Some(image_id);
+            record_assembled_image(&mut stack, materialised, image_id);
         }
     }
 
+    // PVs and LV segments on assembled arrays name the arrays' images.
+    raid::resolve_array_sources(&mut stack);
     Ok(stack)
+}
+
+/// Point the stack record a synthetic image was built from at that image.
+fn record_assembled_image(
+    stack: &mut RaidStack,
+    assembled: &raid::AssembledArray,
+    image_id: String,
+) {
+    match &assembled.target {
+        raid::AssembledTarget::Array => {
+            if let Some(array) = stack
+                .arrays
+                .iter_mut()
+                .find(|array| array.set_uuid == assembled.set_uuid)
+            {
+                array.assembled_image_id = Some(image_id);
+            }
+        }
+        raid::AssembledTarget::LogicalVolume { vg_uuid, lv_name } => {
+            if let Some(lv) = stack
+                .volume_groups
+                .iter_mut()
+                .filter(|vg| &vg.vg_uuid == vg_uuid)
+                .flat_map(|vg| vg.logical_volumes.iter_mut())
+                .find(|lv| &lv.name == lv_name)
+            {
+                lv.assembled_image_id = Some(image_id);
+            }
+        }
+    }
 }
 
 /// Assemble a RAID device from an explicit, user-supplied geometry (the manual
@@ -234,11 +258,7 @@ async fn register_assembled_image(
     state: &State<'_, AppState>,
     array: &raid::AssembledArray,
 ) -> Result<String, AppError> {
-    let label = if array.set_name.is_empty() {
-        format!("md:{}", array.set_uuid)
-    } else {
-        format!("md:{}-{}", array.set_name, array.set_uuid)
-    };
+    let label = array.label.clone();
     let path_str = format!("assembled://{label}");
     {
         let images = state.images.lock().await;

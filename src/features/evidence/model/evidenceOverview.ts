@@ -8,7 +8,9 @@ export { formatBytes, KIND_LABELS };
 export function evidenceDisplayName(info: Pick<ImageInfo, 'path' | 'source_format'>, tr: Translator = sourceText): string {
   if (info.source_format === 'assembled') {
     const automatic = /^assembled:\/\/md:auto-raid(\d+)-[a-f0-9]{32}$/i.exec(info.path);
-    return automatic ? tr("RAID {0} 重组镜像", { 0: automatic[1] }) : tr("RAID 重组镜像");
+    if (automatic) return tr("RAID {0} 重组镜像", { 0: automatic[1] });
+    const logicalVolume = /^assembled:\/\/lvm:[^:]+:(.+)$/.exec(info.path);
+    return logicalVolume ? tr("逻辑卷 {0}", { 0: logicalVolume[1] }) : tr("RAID 重组镜像");
   }
   return info.path.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? info.path;
 }

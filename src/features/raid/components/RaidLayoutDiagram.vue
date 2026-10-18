@@ -1,5 +1,5 @@
 <template>
-  <div v-if="usable" class="raid-diagram" :style="{ '--disk-count': cols }" :aria-label="tr('RAID {0} 条带布局示意', { 0: level })">
+  <div v-if="usable" class="raid-diagram" :style="{ '--disk-count': cols }" :aria-label="tr('{0} 条带布局示意', { 0: levelShortLabel(level) })">
     <div class="diagram-scroll">
       <div class="diagram-board">
         <div class="array-grid">
@@ -25,13 +25,13 @@
               v-for="s in slotIdx"
               :key="s"
               class="disk"
-              :class="{ dropped: s === droppedSlot }"
+              :class="{ dropped: droppedSlots.has(s) }"
             >
               <div class="disk-head">
                 <span class="disk-col mono">{{ tr("槽位") }} {{ s }}</span>
                 <span class="disk-id">
                   <component
-                    :is="s === droppedSlot ? AlertTriangle : HardDrive"
+                    :is="droppedSlots.has(s) ? AlertTriangle : HardDrive"
                     :size="11"
                     class="disk-icon"
                   />
@@ -61,9 +61,10 @@
 
     <div class="legend">
       <span class="lg mono"><i class="sw data"></i>{{ tr("数据") }}</span>
-      <span class="lg mono"><i class="sw p"></i>{{ tr("P 校验") }}</span>
+      <span v-if="hasCopies" class="lg mono"><i class="sw copy"></i>{{ tr("镜像副本") }}</span>
+      <span v-if="hasP" class="lg mono"><i class="sw p"></i>{{ tr("P 校验") }}</span>
       <span v-if="hasQ" class="lg mono"><i class="sw q"></i>{{ tr("Q 校验") }}</span>
-      <span v-if="droppedSlot != null" class="lg mono"><i class="sw dropped"></i>{{ tr("掉线盘（校验重建）") }}</span>
+      <span v-if="droppedSlots.size > 0" class="lg mono"><i class="sw dropped"></i>{{ droppedLegend }}</span>
     </div>
     <p class="caption">{{ tr("前") }} {{ rows }} {{ tr("条带示意") }}<span v-if="chunkLabel"> {{ tr("· 每块") }} {{ chunkLabel }}</span></p>
   </div>
@@ -74,103 +75,54 @@ import { tr } from '../../../composables/useLocale';
 
 import { computed, ref } from 'vue';
 import { AlertTriangle, HardDrive } from 'lucide-vue-next';
+import { hasStripeLayout, stripeGrid, stripeRows, type StripeCell } from '../model/stripeLayout';
+import { levelShortLabel } from '../model/stackView';
 
-// Pure-presentation stripe-layout diagram: it recomputes the mdadm parity map
-// from the recovered geometry so the picture *is* the reconstruction, not a
-// stock illustration. Reproduces the four RAID5/6 layouts (0=左异步/Left-Asym,
-// 1=右异步/Right-Asym, 2=左同步/Left-Sym, 3=右同步/Right-Sym; 异步=asymmetric,
-// 同步=symmetric) verified against the standard chart.
+// Pure-presentation stripe-layout diagram: it recomputes md's chunk placement
+// from the array geometry so the picture *is* the reconstruction, not a stock
+// illustration — every md RAID5/6 rotation (异步 = asymmetric, 同步 =
+// symmetric), RAID4, RAID10 copies and RAID1 mirrors.
 const props = defineProps<{
-  /** RAID level: 0 (striped), 5 (single parity) or 6 (dual parity). */
+  /** md level: 0, 1, 4, 5, 6 or 10. */
   level: number;
-  /** mdadm layout 0..3 — only meaningful for level 5/6. */
+  /** md layout field: the RAID5/6 rotation or the RAID10 copy layout. */
   layout: number;
   /** Number of columns (= raid_disks). */
   numDisks: number;
   /** Per-slot disk label (index = slot); falls back to `槽位 N`. */
   diskLabels?: (string | null)[];
-  /** Slot of a dropped/reconstructed column, or null. Ignored for RAID0. */
-  missingSlot?: number | null;
+  /** Slots whose data is rebuilt or served by other members. */
+  missingSlots?: number[];
   /** Chunk size caption, e.g. `512 KiB`. */
   chunkLabel?: string | null;
 }>();
-
-type CellKind = 'data' | 'p' | 'q' | 'empty';
-interface Cell {
-  kind: CellKind;
-  dataIndex?: number;
-}
 
 // Hovered stripe row (index into `grid`); drives the cross-disk highlight that
 // highlights that stripe across every disk. Pure presentation.
 const hoveredRow = ref<number | null>(null);
 
 const cols = computed(() => Math.max(0, Math.floor(props.numDisks)));
-const usable = computed(() => cols.value >= 2 && [0, 5, 6].includes(props.level));
+const usable = computed(() => cols.value >= 1 && hasStripeLayout(props.level));
 const slotIdx = computed(() => Array.from({ length: cols.value }, (_, i) => i));
+const rows = computed(() => stripeRows(props.level, props.layout, cols.value));
+const grid = computed(() => stripeGrid(props.level, props.layout, cols.value, rows.value));
 
-// Enough rows to show one full parity rotation (parity returns to its start
-// after `n` stripes); RAID0 has none, so 4 rows is plenty. Capped so a wide
-// array stays a readable thumbnail rather than a wall of cells.
-const rows = computed(() => (props.level === 0 ? 4 : Math.min(Math.max(cols.value, 4), 8)));
-
-const droppedSlot = computed(() => (props.level === 0 ? null : props.missingSlot ?? null));
+const droppedSlots = computed(() => (props.level === 0 ? new Set<number>() : new Set(props.missingSlots ?? [])));
+const hasP = computed(() => [4, 5, 6].includes(props.level));
 const hasQ = computed(() => props.level === 6);
-
-function mod(a: number, n: number): number {
-  return ((a % n) + n) % n;
-}
-
-const grid = computed<Cell[][]>(() => {
-  const n = cols.value;
-  const out: Cell[][] = [];
-  let data = 0;
-  for (let r = 0; r < rows.value; r++) {
-    const rowCells: Cell[] = Array.from({ length: n }, () => ({ kind: 'empty' as CellKind }));
-    let pd = -1;
-    let qd = -1;
-    if (props.level === 5) {
-      // Left layouts walk parity right→left; right layouts left→right.
-      pd = props.layout === 0 || props.layout === 2 ? mod(n - 1 - r, n) : mod(r, n);
-    } else if (props.level === 6) {
-      pd = props.layout === 0 || props.layout === 2 ? mod(n - 2 - r, n) : mod(r, n);
-      qd = mod(pd + 1, n);
-    }
-    if (pd >= 0) rowCells[pd] = { kind: 'p' };
-    if (qd >= 0) rowCells[qd] = { kind: 'q' };
-
-    const symmetric = props.level !== 0 && (props.layout === 2 || props.layout === 3);
-    if (props.level === 0) {
-      for (let c = 0; c < n; c++) rowCells[c] = { kind: 'data', dataIndex: data++ };
-    } else if (symmetric) {
-      // Data continues just past the parity block(s), wrapping — the rotation
-      // that distinguishes symmetric from asymmetric.
-      const start = props.level === 6 ? mod(qd + 1, n) : mod(pd + 1, n);
-      for (let i = 0; i < n; i++) {
-        const c = mod(start + i, n);
-        if (rowCells[c].kind === 'empty') rowCells[c] = { kind: 'data', dataIndex: data++ };
-      }
-    } else {
-      // Asymmetric: data fills the non-parity slots in ascending order.
-      for (let c = 0; c < n; c++) {
-        if (rowCells[c].kind === 'empty') rowCells[c] = { kind: 'data', dataIndex: data++ };
-      }
-    }
-    out.push(rowCells);
-  }
-  return out;
-});
+const hasCopies = computed(() => props.level === 1 || props.level === 10);
+const droppedLegend = computed(() => (hasCopies.value ? tr("缺失盘（由镜像读取）") : tr("掉线盘（校验重建）")));
 
 function labelFor(slot: number): string {
   return props.diskLabels?.[slot] || tr("槽位 {0}", { 0: slot });
 }
 
-function cellClass(cell: Cell): Record<string, boolean> {
-  return { data: cell.kind === 'data', p: cell.kind === 'p', q: cell.kind === 'q' };
+function cellClass(cell: StripeCell): Record<string, boolean> {
+  return { data: cell.kind === 'data', copy: cell.kind === 'copy', p: cell.kind === 'p', q: cell.kind === 'q' };
 }
 
-function cellText(cell: Cell): string {
-  if (cell.kind === 'data') return `D${(cell.dataIndex ?? 0) + 1}`;
+function cellText(cell: StripeCell): string {
+  if (cell.kind === 'data' || cell.kind === 'copy') return `D${(cell.dataIndex ?? 0) + 1}`;
   if (cell.kind === 'p') return 'P';
   if (cell.kind === 'q') return 'Q';
   return '';
@@ -330,6 +282,14 @@ function cellText(cell: Cell): string {
   border-color: var(--sev-info-border);
 }
 
+/* A mirror copy repeats a data chunk: same hue, dashed and lighter. */
+.cell.copy {
+  background: var(--surface-secondary);
+  color: var(--sev-info-fg);
+  border-color: var(--sev-info-border);
+  border-style: dashed;
+}
+
 .cell.p {
   background: var(--sev-warn-bg);
   color: var(--sev-warn-fg);
@@ -393,6 +353,12 @@ function cellText(cell: Cell): string {
 .sw.data {
   background: var(--sev-info-bg);
   border-color: var(--sev-info-border);
+}
+
+.sw.copy {
+  background: var(--surface-secondary);
+  border-color: var(--sev-info-border);
+  border-style: dashed;
 }
 
 .sw.p {

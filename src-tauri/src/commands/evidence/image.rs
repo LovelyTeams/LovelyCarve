@@ -73,19 +73,22 @@ pub async fn image_list(state: State<'_, AppState>) -> Result<Vec<ImageInfo>, Ap
     crate::app::workflows::evidence::image_list(state).await
 }
 
-/// Walk every loaded image, parse LVM PV metadata, join PVs across images
-/// by VG UUID, materialise LVs as virtual block devices, scan LV offset
-/// 0x1000 for mdadm v1.2 superblocks, group members by `set_uuid`, and
-/// finally probe the assembled RAID0 device for a btrfs primary superblock.
+/// Detect LVM volume groups and Linux md arrays (metadata 0.90 / 1.x, linear
+/// and RAID0/1/4/5/6/10) across every loaded image, plus metadata-less
+/// RAID0/5 member sets, and register each assembled array — and each LV that
+/// spans several physical volumes — as a synthetic `DiskImage` so it shows up
+/// in the FS tree, hex view and image switcher like a regular image.
 ///
-/// For each successfully assembled RAID0, this also registers the result
-/// as a synthetic `DiskImage` in `state.images` so it shows up in the FS
-/// tree, hex view, and image switcher just like a regular image.
-/// Idempotent: re-running on the same image set reuses the previously
-/// registered synthetic image instead of allocating a duplicate.
+/// `degraded_sets` lists md set UUIDs the examiner chose to assemble without
+/// the members their metadata still expects. Idempotent: re-running on the
+/// same image set reuses the previously registered synthetic images.
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub async fn raid_auto_detect(state: State<'_, AppState>) -> Result<RaidStack, AppError> {
-    crate::app::workflows::evidence::raid_auto_detect(state).await
+pub async fn raid_auto_detect(
+    state: State<'_, AppState>,
+    degraded_sets: Option<Vec<String>>,
+) -> Result<RaidStack, AppError> {
+    crate::app::workflows::evidence::raid_auto_detect(state, degraded_sets.unwrap_or_default())
+        .await
 }
 
 /// Assemble a RAID device from an explicit, user-supplied geometry (the manual

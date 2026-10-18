@@ -230,10 +230,17 @@ export function useRaidMemberOpen(options: {
         }
       }
 
+      // Logical volumes spanning PVs on these arrays (NAS hybrid volumes) open
+      // with them: their arrays alone only show a partial LVM volume group.
+      const arrayImages = assembled.map(array => array.assembled_image_id!);
+      const spanningVolumes = stack.volume_groups
+        .filter(vg => vg.members.some(member => arrayImages.includes(member.image_id)))
+        .flatMap(vg => vg.logical_volumes.map(lv => lv.assembled_image_id))
+        .filter((id): id is string => Boolean(id));
       let opened = 0;
-      for (const array of assembled) {
+      for (const imageId of [...arrayImages, ...spanningVolumes]) {
         try {
-          const summary = await imageInfoById({ imageId: array.assembled_image_id! });
+          const summary = await imageInfoById({ imageId });
           const result = await openImagePath(summary.path);
           if (result.ok) opened += 1;
         } catch (e) {

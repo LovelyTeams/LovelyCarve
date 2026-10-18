@@ -41,12 +41,14 @@
         <RaidArrayCard v-for="arr in relevantArrays" :key="arr.set_uuid" :arr="arr" :image-id="info.id" :image-paths="imagePaths"
           :diagnostics="relevantArrays.length === 1 ? stack.diagnostics : undefined"
           :opening="openingId === arr.assembled_image_id" :exporting="!!arr.assembled_image_id && !!jobFor(arr.assembled_image_id)"
+          :assembling="loading && assemblingSet === arr.set_uuid"
           :diagram-open="diagramOverrides[arr.set_uuid] ?? !arr.assembled_image_id" @diagram-toggle="open => diagramOverrides[arr.set_uuid] = open"
-          @open="openAssembled(arr)" @export="exportAssembled(arr)" />
+          @open="openImage(arr.assembled_image_id)" @export="exportAssembled(arr)" @assemble-degraded="assembleDegraded(arr)" />
 
         <!-- LVM volume groups on this image, one line each (the layer RAID
              members may sit on — slot rows above already name the LVs) -->
-        <RaidVolumeGroupCard v-for="vg in relevantVgs" :key="vg.vg_uuid" :vg="vg" />
+        <RaidVolumeGroupCard v-for="vg in relevantVgs" :key="vg.vg_uuid" :vg="vg" :image-id="info.id"
+          :opening-id="openingId" @open="openImage" />
 
         <div v-if="!hasFindings" class="status-row">
           <span>{{ tr("未检测到与该镜像相关的 LVM 卷组或 mdadm RAID 阵列。") }}</span>
@@ -102,9 +104,10 @@ const emit = defineEmits<{ 'open-image': [path: string] }>();
 // shared across panel instances — see useRaidStack. Rendering, however, is
 // per-image: only arrays/VGs this image participates in are shown, so a
 // plain single-disk image never grows a card describing other tabs' RAID.
-const { stack, loading, error, detect } = useRaidStack();
+const { stack, loading, error, detect, assembleDegraded: assembleSetDegraded } = useRaidStack();
 const { startImageExport, jobFor } = useImageExport();
 const openingId = ref<string | null>(null);
+const assemblingSet = ref<string | null>(null);
 const showManual = ref(false);
 let generation = 0;
 let disposed = false;
@@ -148,23 +151,41 @@ const visible = computed(
     (hasRaidHints.value && (loading.value || error.value !== null || stack.value !== null)),
 );
 
+// An image the last scan has not seen may be a member whose metadata sits at
+// the device end (md 0.90 / 1.0), behind a filesystem that hides the hint.
+// Assembled devices and shadow copies are never scanned, so they never count.
+const unscanned = computed(() => {
+  const info = props.info;
+  if (!stack.value || info.source_format === 'assembled' || info.shadow_copy) return false;
+  return !stack.value.images.some(image => image.image_id === info.id);
+});
+
 // Auto-detect when an image with RAID hints (mdadm/LVM partitions or
-// whole-disk scheme) shows, and once per session even without hints so the
-// cross-image case still surfaces (the shared stack makes remounts free —
-// no re-fire on every dashboard round-trip). The manual refresh button
-// re-runs unconditionally.
+// whole-disk scheme) shows, when the image is new to the last scan, and once
+// per session even without hints so the cross-image case still surfaces (the
+// shared stack makes remounts free — no re-fire on every dashboard
+// round-trip). The manual refresh button re-runs unconditionally.
 watch(
   () => props.info.id,
   () => {
     generation += 1;
     openingId.value = null;
-    if (hasRaidHints.value || stack.value === null) void detect();
+    if (hasRaidHints.value || stack.value === null || unscanned.value) void detect();
   },
   { immediate: true, flush: 'sync' },
 );
 
-async function openAssembled(arr: RaidArray) {
-  const imageId = arr.assembled_image_id;
+async function assembleDegraded(arr: RaidArray) {
+  if (loading.value) return;
+  assemblingSet.value = arr.set_uuid;
+  try {
+    await assembleSetDegraded(arr.set_uuid);
+  } finally {
+    if (!disposed) assemblingSet.value = null;
+  }
+}
+
+async function openImage(imageId: string | null) {
   if (!imageId || openingId.value) return;
   const captured = generation;
   openingId.value = imageId;

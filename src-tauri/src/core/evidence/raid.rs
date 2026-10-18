@@ -1,30 +1,25 @@
-//! End-to-end RAID auto-detection across multiple loaded disk images.
+//! End-to-end RAID detection and assembly across loaded disk images.
 //!
-//! The pipeline runs in three passes:
+//! The pipeline runs in passes:
 //!
-//! 1. **Candidate enumeration.** Walk every loaded image's MBR and LVM
-//!    text metadata, materialising every potential RAID member as an
-//!    `Arc<dyn SectorSource>`. LV-on-LVM members use `LinearLvSource`
-//!    to concatenate PVs across images; whole-disk / whole-partition
-//!    members expose devices tagged `Mdadm`.
-//!    The two shapes converge into a single `CandidateMember` list so
-//!    Pass 2 has one code path instead of two.
-//! 2. **Superblock probe.** Each candidate is fed through the
-//!    `mdadm_super::probe` registry — a static, priority-ordered table
-//!    of `MdadmSuperblockProbe` impls (currently v1.2 sector-8 and v1.1
-//!    sector-0). The first match wins and the candidate is grouped
-//!    into `members_by_set` keyed by the SB's `set_uuid`.
-//! 3. **Assembly.** Each set's members are slot-ordered via the
-//!    superblock's `dev_roles[dev_number]` table (so a spare-replaces
-//!    event that bumps `dev_number` past `raid_disks` still maps to the
-//!    right slot), and materialised as a `Raid0Source` or
-//!    `Raid5Source` virtual device. The assembled device is then
-//!    probed for ext4 and btrfs.
+//! 1. **LVM.** Walk every loaded image's partitions for LVM PV labels, join
+//!    PVs into volume groups and materialise complete linear LVs as
+//!    `LinearLvSource` devices (md members may live inside LVs).
+//! 2. **md superblocks.** Probe every LV, partition and whole image for a
+//!    Linux md superblock (versions 0.90, 1.0, 1.1, 1.2) and group members
+//!    by set UUID.
+//! 3. **md assembly.** For each set, decide which members are current from
+//!    the event counters and the freshest role table, and build the reader
+//!    for its level — linear, RAID0/1/4/5/6/10 ([`md_array`]). The assembled
+//!    device is scanned for a partition table or bare volume.
+//! 4. **LVM over arrays.** PVs found on assembled arrays join the volume
+//!    groups; LVs spanning more than one PV become devices of their own.
+//! 5. **Metadata-less arrays.** Remaining equal-size images are searched for
+//!    hardware-RAID layouts ([`heuristic`]).
 //!
-//! The output is purely descriptive — every layer is reported via
-//! `RaidStack` so the frontend can render the same picture that UFS
-//! Explorer's left rail shows. No persistent state is mutated; the IPC
-//! layer can re-run detection on demand.
+//! The output is descriptive (`RaidStack`) plus the assembled readers; no
+//! persistent state is mutated and the IPC layer can re-run detection on
+//! demand.
 
 pub mod heuristic;
 pub mod lvm_meta;
@@ -35,8 +30,11 @@ pub mod xfs_probe;
 mod manual;
 pub use manual::manual_assemble;
 mod detect;
-pub use detect::detect_with_sources;
+pub use detect::{detect_with_options, detect_with_sources};
+mod lvm_stack;
+mod md_array;
 mod members;
+pub use members::resolve_array_sources;
 use members::*;
 mod probe;
 use probe::*;
@@ -50,14 +48,11 @@ use serde::{Deserialize, Serialize};
 use crate::core::evidence::image::DiskImage;
 use crate::core::evidence::partitions::{
     detect_partitions_with_meta, refine_partition_kinds, Partition, PartitionKind, SectorSource,
-    BTRFS_MAGIC, BTRFS_PRIMARY_SUPERBLOCK, BTRFS_PROBE_END_OFFSET,
+    BTRFS_MAGIC, BTRFS_PRIMARY_SUPERBLOCK,
 };
 use lvm_meta::LvmPvMetadata;
 use mdadm_super::MdadmSuperblock;
-use source::{
-    LinearLvSource, LvByteSegment, MemberReader, RaidLevel, RaidVolume, StripedMember,
-    WholeDiskMember,
-};
+use source::{LinearLvSource, LvByteSegment, MemberReader, StripedMember, WholeDiskMember};
 
 /// Top-level result. Every section is filled in best-effort: if PV parsing
 /// fails on one image, we still report whatever else worked. Empty
@@ -89,6 +84,9 @@ pub struct RaidVolumeGroup {
     pub logical_volumes: Vec<RaidLogicalVolume>,
 }
 
+/// One PV of a volume group. `image_id` names the loaded image holding it, or
+/// — for a PV on an assembled array — the array's synthetic image once the
+/// IPC layer has registered it.
 #[derive(Debug, Clone, Serialize)]
 pub struct RaidVgMember {
     pub image_id: String,
@@ -105,6 +103,10 @@ pub struct RaidLogicalVolume {
     pub name: String,
     pub size_bytes: u64,
     pub segments: Vec<RaidLvSegment>,
+    /// Synthetic image of an LV that spans several PVs, once registered.
+    /// Single-PV LVs are browsed through their PV's partition instead.
+    #[serde(default)]
+    pub assembled_image_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -120,15 +122,11 @@ pub struct RaidLvSegment {
 pub struct RaidArray {
     pub set_uuid: String,
     pub set_name: String,
-    /// `0` for RAID0, `1` for RAID1, `5` for RAID5, etc. RAID0 and RAID5
-    /// are currently materialised; other levels surface as descriptive
-    /// records with `assembled_image_id == None`.
+    /// md personality: `-1` linear, `0` RAID0, `1` RAID1, `4`/`5`/`6` parity
+    /// RAID, `10` RAID10.
     pub level: i32,
-    /// Raw `layout` field from the v1.2 SB — only meaningful for RAID5/6
-    /// (0..3 select left/right × symmetric/asymmetric). Reported so the
-    /// frontend can disclose it, but assembly currently relies on the
-    /// kernel default (`2` LEFT_SYMMETRIC) for any value the parser
-    /// recognises.
+    /// Raw md `layout` field: the parity rotation for RAID5/6, the copy
+    /// layout for RAID10, the zone layout for RAID0.
     pub layout: u32,
     pub chunksize_sectors: u32,
     pub raid_disks: u32,
@@ -137,8 +135,8 @@ pub struct RaidArray {
     pub assembled_bytes: u64,
     pub members: Vec<RaidArrayMember>,
     /// `Some(image_id)` after the IPC layer has materialised this array as a
-    /// synthetic `DiskImage`. `None` for unsupported levels (mirrors etc.)
-    /// or when assembly succeeded but no recognised filesystem was found.
+    /// synthetic `DiskImage`. `None` for unsupported levels, sets missing
+    /// members, or degraded sets awaiting the examiner's decision.
     pub assembled_image_id: Option<String>,
     /// `true` when this array was reconstructed by the metadata-less heuristic
     /// (`raid::heuristic`) — its parameters were *recovered* by brute-force +
@@ -146,24 +144,61 @@ pub struct RaidArray {
     /// surfaces this so an examiner knows the layout was inferred.
     #[serde(default)]
     pub heuristic: bool,
+    /// md metadata version (`0.90`, `1.0`, `1.1`, `1.2`); empty for
+    /// metadata-less arrays.
+    #[serde(default)]
+    pub metadata_version: String,
+    /// The assembled device lacks at least one member: its data comes from
+    /// parity or from the remaining mirrors.
+    #[serde(default)]
+    pub degraded: bool,
+    /// Not assembled because members the metadata still expects are absent,
+    /// though the present ones would suffice. Assembly needs the examiner's
+    /// consent (`DetectOptions::degraded_sets`).
+    #[serde(default)]
+    pub degradable: bool,
+}
+
+/// What a member contributes to its array.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RaidMemberState {
+    /// Current and read.
+    #[default]
+    Active,
+    /// Hot spare without a slot.
+    Spare,
+    /// Marked failed by md.
+    Faulty,
+    /// Write journal device.
+    Journal,
+    /// Missed superblock updates (or, for metadata-less arrays, dropped out of
+    /// the array); its slot is rebuilt instead of read.
+    Stale,
+    /// Still being rebuilt or replacing another member; not read.
+    Rebuilding,
+    /// The same device loaded twice; another copy is read.
+    Duplicate,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RaidArrayMember {
     pub dev_number: u32,
-    /// Slot this member occupies within the array (0..raid_disks-1),
-    /// derived from `dev_roles[dev_number]`. `None` only when the
-    /// superblock's role table marks the entry as spare/faulty or the
-    /// recorded slot exceeds `raid_disks`; such members are skipped
-    /// during assembly.
+    /// Slot this member occupies within the array (0..raid_disks-1), from
+    /// the authoritative role table. `None` for spare, faulty and journal
+    /// devices.
     pub slot: Option<u32>,
     pub device_uuid: String,
     pub data_size_sectors: u64,
-    /// `true` when this member's payload was rebuilt from parity rather than
-    /// read from the disk — i.e. a dropped/stale RAID5 column reconstructed by
-    /// the metadata-less heuristic. Always `false` for mdadm-assembled members.
+    /// `true` when this member's slot is rebuilt from parity rather than read
+    /// from the disk: a stale or rebuilding member of a parity array.
     #[serde(default)]
     pub reconstructed: bool,
+    #[serde(default)]
+    pub state: RaidMemberState,
+    /// md event counter; `None` for metadata-less members.
+    #[serde(default)]
+    pub events: Option<u64>,
     /// Origin describing where the member's payload comes from. Either an
     /// LV-on-LVM identifier (`检材3` shape) or a whole-disk byte range
     /// (`服务器部分/server*.001` shape).
@@ -179,10 +214,9 @@ pub enum RaidMemberOrigin {
         lv_name: String,
         size_bytes: u64,
     },
-    /// Whole-image (or whole-partition) member: the SB sits at byte
-    /// `0x1000` of a `PartitionKind::Mdadm` partition slice rather than
-    /// inside an LV. `byte_offset` / `byte_length` are absolute against
-    /// the source `DiskImage`.
+    /// Whole-image or partition member. `byte_offset` / `byte_length` are
+    /// absolute against the source `DiskImage`; `partition_id` 0 with offset 0
+    /// covering the image is the whole disk.
     Whole {
         image_id: String,
         partition_id: u8,
@@ -203,33 +237,48 @@ pub struct RaidFilesystem {
     pub node_size: Option<u32>,
 }
 
-/// Concrete materialisation of one RAID0 / RAID5 array — the assembled
-/// virtual block device plus the metadata the IPC layer needs to register
-/// it as a synthetic `DiskImage`. Emitted by `detect_with_sources` for
-/// every array whose filesystem probe succeeds; not emitted for
-/// unassembled mirror/parity arrays where the layout cannot be replayed
-/// (RAID1 chooses any member; RAID6 needs Q-recovery for missing data
-/// disks).
+/// Which stack record an assembled device belongs to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AssembledTarget {
+    /// The `RaidStack::arrays` entry with the same `set_uuid`.
+    Array,
+    /// Logical volume `lv_name` of the volume group `vg_uuid`.
+    LogicalVolume { vg_uuid: String, lv_name: String },
+}
+
+/// One assembled device — an array or a cross-device LV — plus the metadata
+/// the IPC layer needs to register it as a synthetic `DiskImage`.
 #[derive(Clone)]
 pub struct AssembledArray {
+    /// Stable identity: the md set UUID, a metadata-less array's id, or
+    /// `lv:<vg uuid>:<lv name>`. Keys the registration cache.
     pub set_uuid: String,
     pub set_name: String,
+    /// `assembled://<label>` path of the synthetic image; unique per device.
+    pub label: String,
+    pub target: AssembledTarget,
     /// Wrapped in `Arc` so the `ImageSource::Assembled` variant can take an
     /// owned `Arc<dyn SectorSource + Send + Sync>` and the caller can keep
     /// other handles for diagnostics or testing.
     pub source: Arc<dyn SectorSource + Send + Sync>,
     pub size_bytes: u64,
-    /// Filesystem detected on the assembled device — currently `Btrfs` or
-    /// `Ext4`. Future probes (XFS, NTFS, …) drop in without changing this
-    /// signature.
+    /// Kind of the largest recognised volume on the device (`Unknown` when
+    /// nothing was recognised).
     pub fs_kind: PartitionKind,
-    /// Partition table detected on the assembled device, when the array is a
-    /// partitioned disk (e.g. a hardware-RAID member set carrying an MBR/GPT
-    /// rather than a bare filesystem). `Some(parts)` makes the IPC layer
-    /// register the synthetic image with this table instead of a single
-    /// whole-disk `fs_kind` partition; `None` preserves the bare-filesystem
-    /// behaviour used by the mdadm/LVM path.
+    /// Partition table or whole-device volume detected on the device. `None`
+    /// registers a single whole-device `fs_kind` partition.
     pub partitions: Option<Vec<Partition>>,
+}
+
+/// `md:<name>-<uuid>` (or `md:<uuid>`) label of an array's synthetic image.
+/// The full set UUID keeps it injective: a shorter prefix could be forged by
+/// crafted superblocks.
+pub fn array_label(set_name: &str, set_uuid: &str) -> String {
+    if set_name.is_empty() {
+        format!("md:{set_uuid}")
+    } else {
+        format!("md:{set_name}-{set_uuid}")
+    }
 }
 
 /// Format the `Partition.label` shown on a synthetic assembled-image
@@ -279,8 +328,16 @@ pub fn kind_label(kind: PartitionKind) -> &'static str {
     }
 }
 
-/// Scan every loaded image and assemble whatever LVM-on-disk → mdadm →
-/// filesystem stack is hiding inside.
+/// Examiner choices that change what detection assembles.
+#[derive(Debug, Clone, Default)]
+pub struct DetectOptions {
+    /// md set UUIDs to assemble without the members their metadata still
+    /// expects (the present members must suffice for the level).
+    pub degraded_sets: Vec<String>,
+}
+
+/// Scan every loaded image and assemble whatever LVM / md / filesystem stack
+/// is hiding inside.
 pub fn detect(images: &[Arc<DiskImage>]) -> RaidStack {
     let (stack, _assembled) = detect_with_sources(images);
     stack
@@ -291,17 +348,23 @@ pub fn detect(images: &[Arc<DiskImage>]) -> RaidStack {
 /// in column/slot order; the geometry is taken verbatim, not searched.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ManualRaidParams {
-    /// Member image ids (already loaded), in column (slot) order.
+    /// Member image ids (already loaded), in column (slot) order. An empty
+    /// string stands for a column whose disk is not available.
     pub member_image_ids: Vec<String>,
-    /// RAID level: `0` (striped) or `5` (single parity).
+    /// md level: `-1` linear, `0`, `1`, `4`, `5`, `6` or `10`.
     pub level: i32,
-    /// RAID5 layout 0..3 (left/right × asymmetric/symmetric); ignored for RAID0.
+    /// md layout: the RAID5/RAID6 rotation or the RAID10 copy layout
+    /// (`near | far << 8 | offset << 16`); ignored for other levels.
     pub layout: u32,
-    /// Stripe/chunk size in 512-byte sectors.
+    /// Stripe/chunk size in 512-byte sectors (ignored by RAID1).
     pub chunk_sectors: u32,
     /// Per-member reserved-header size in 512-byte sectors (data offset).
     pub data_offset_sectors: u64,
-    /// Column (slot) index of a dropped member to rebuild from parity, if any
-    /// (RAID5 only). `None` assembles with every member read directly.
+    /// Column of a dropped member to rebuild instead of read (older single
+    /// slot form of `missing_slots`).
+    #[serde(default)]
     pub missing_slot: Option<usize>,
+    /// Columns to rebuild instead of read, up to the level's redundancy.
+    #[serde(default)]
+    pub missing_slots: Vec<usize>,
 }

@@ -65,9 +65,13 @@ use crate::core::evidence::partitions::{
     TableScheme,
 };
 
+use super::probe::filesystem_summary;
 use super::source::{Raid5Layout, RaidLevel, RaidVolume, StripedMember, WholeDiskMember};
 use super::xfs_probe::xfs_descend_score;
-use super::{AssembledArray, RaidArray, RaidArrayMember, RaidFilesystem, RaidMemberOrigin};
+use super::{
+    array_label, kind_label, AssembledArray, AssembledTarget, RaidArray, RaidArrayMember,
+    RaidFilesystem, RaidMemberOrigin, RaidMemberState,
+};
 use crate::core::evidence::partitions::lvm2::metadata::lv_regions_from_source;
 
 /// Stripe sizes (KiB) stock `mdadm --create` and common hardware controllers
@@ -331,39 +335,6 @@ impl LevelVariants for Raid0Variant {
     fn supports_degraded(&self) -> bool {
         false
     }
-}
-
-// ---------------------------------------------------------------------------
-// ext4 deep validation (panic-free, bounds-checked walker)
-// ---------------------------------------------------------------------------
-//
-
-struct Ext4SbInfo {
-    uuid_hex: String,
-    total_bytes: u64,
-    block_size: u32,
-}
-
-/// Filesystem identity/size pulled from an assembled candidate's superblock,
-/// normalised across filesystems for the [`RaidFilesystem`] record and a
-/// stable `set_uuid`.
-struct FsSummary {
-    kind: &'static str,
-    fsid: Option<String>,
-    total_bytes: Option<u64>,
-    sector_size: Option<u32>,
-}
-
-struct XfsSbInfo {
-    uuid_hex: String,
-    total_bytes: u64,
-    block_size: u32,
-}
-
-struct NtfsSbInfo {
-    serial_hex: String,
-    total_bytes: u64,
-    bytes_per_sector: u32,
 }
 
 #[cfg(test)]

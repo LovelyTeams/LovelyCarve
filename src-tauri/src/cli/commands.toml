@@ -1673,18 +1673,27 @@ description = "自动任务配置 JSON 字符串；省略时清除"
 path = "raid detect"
 ipc = "raid_auto_detect"
 summary = "自动识别并组装 RAID"
-description = "解析已加载检材中的 LVM 与 mdadm 元数据，组装成合成检材；重复调用复用已组装的检材。"
+description = "解析已加载检材中的 LVM 与 mdadm 元数据（0.90 / 1.x，linear、RAID0/1/4/5/6/10），组装成合成检材；跨多个物理卷的逻辑卷单独组装，无元数据的等大成员盘按 RAID0/5 推定。元数据仍登记、但未加载或已陈旧的成员会让阵列停在待确认状态，用 --degraded-sets 指定的阵列才降级组装。重复调用复用已组装的检材。"
 category = "action"
-keywords = ["mdadm", "lvm", "software raid"]
+keywords = ["mdadm", "lvm", "software raid", "raid1", "raid6", "raid10", "degraded", "nas"]
+examples = [
+    { command = "lovelycarve-cli raid detect", description = "识别并组装所有已加载成员盘" },
+    { command = "lovelycarve-cli raid detect --degraded-sets 880f205730e64da65bfdb06f700131bb", description = "缺一块盘时按校验降级组装指定阵列" },
+]
+[command.params.degradedSets]
+description = "允许降级组装的 md 阵列 set UUID 列表（raid detect 输出的 arrays[].set_uuid）"
 
 [[command]]
 path = "raid assemble"
 ipc = "raid_manual_assemble"
 summary = "按指定几何手动组装 RAID"
 category = "create"
+examples = [
+    { command = "lovelycarve-cli raid assemble --params '{\"member_image_ids\":[\"<ID1>\",\"<ID2>\",\"\"],\"level\":5,\"layout\":2,\"chunk_sectors\":128,\"data_offset_sectors\":2048}'", description = "三盘 RAID5 左同步、64 KiB 块，第三块盘缺失（空字符串）按校验重建" },
+]
 [command.params.params]
 type = "json"
-description = "RAID 几何参数 JSON"
+description = "RAID 几何参数 JSON：member_image_ids（按列序，空字符串表示缺失的列）、level（-1 linear / 0 / 1 / 4 / 5 / 6 / 10）、layout（RAID5/6 布局号，RAID10 为 near | far<<8 | offset<<16）、chunk_sectors、data_offset_sectors、missing_slots（按校验或镜像重建、不读取的列）"
 
 # ── searches ────────────────────────────────────────────────────────────────
 

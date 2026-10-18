@@ -272,7 +272,6 @@ pub(super) fn ntfs_backup_matches(
     primary.get(3..0x50) == backup.get(3..0x50)
 }
 
-/// Largest partition carrying a filesystem we can deep-validate (ext4 / NTFS).
 /// Largest partition carrying a filesystem we can summarise for the array
 /// label / `RaidFilesystem` record (ext4 / NTFS / XFS).
 pub(super) fn largest_validatable_fs(partitions: &[Partition]) -> Option<&Partition> {
@@ -285,104 +284,4 @@ pub(super) fn largest_validatable_fs(partitions: &[Partition]) -> Option<&Partit
             )
         })
         .max_by_key(|p| p.length_lba)
-}
-
-/// Pull UUID / size / block size straight from the ext4 superblock at
-/// `part_offset + 1024` for the [`RaidFilesystem`] record and a stable
-/// `set_uuid`.
-pub(super) fn read_ext4_sb_info(
-    source: &(dyn SectorSource + Send + Sync),
-    part_offset: u64,
-) -> Option<Ext4SbInfo> {
-    let sb = source.read(part_offset + 1024, 0x100).ok()?;
-    if sb.len() < 0x100 || sb[0x38] != 0x53 || sb[0x39] != 0xEF {
-        return None;
-    }
-    let blocks_lo = u32::from_le_bytes(sb[0x04..0x08].try_into().ok()?) as u64;
-    let log_block_size = u32::from_le_bytes(sb[0x18..0x1C].try_into().ok()?);
-    let block_size = 1024u32 << log_block_size.min(20);
-    let uuid_hex = sb[0x68..0x78].iter().map(|b| format!("{b:02x}")).collect();
-    Some(Ext4SbInfo {
-        uuid_hex,
-        total_bytes: blocks_lo.saturating_mul(block_size as u64),
-        block_size,
-    })
-}
-
-/// Read a normalised [`FsSummary`] for a partition, dispatching on its kind.
-pub(super) fn read_fs_summary(
-    source: &(dyn SectorSource + Send + Sync),
-    part: &Partition,
-) -> Option<FsSummary> {
-    let base = part.start_lba * 512;
-    match part.kind {
-        PartitionKind::Ext4 => {
-            let info = read_ext4_sb_info(source, base)?;
-            Some(FsSummary {
-                kind: "ext4",
-                fsid: Some(info.uuid_hex),
-                total_bytes: Some(info.total_bytes),
-                sector_size: Some(info.block_size),
-            })
-        }
-        PartitionKind::Ntfs => {
-            let info = read_ntfs_sb_info(source, base)?;
-            Some(FsSummary {
-                kind: "ntfs",
-                fsid: Some(info.serial_hex),
-                total_bytes: Some(info.total_bytes),
-                sector_size: Some(info.bytes_per_sector),
-            })
-        }
-        PartitionKind::Xfs => {
-            let info = read_xfs_sb_info(source, base)?;
-            Some(FsSummary {
-                kind: "xfs",
-                fsid: Some(info.uuid_hex),
-                total_bytes: Some(info.total_bytes),
-                sector_size: Some(info.block_size),
-            })
-        }
-        _ => None,
-    }
-}
-
-/// Pull UUID / size / block size from the XFS superblock at `part_offset` (all
-/// big-endian) for the [`RaidFilesystem`] record and a stable `set_uuid`.
-pub(super) fn read_xfs_sb_info(
-    source: &(dyn SectorSource + Send + Sync),
-    part_offset: u64,
-) -> Option<XfsSbInfo> {
-    let sb = source.read(part_offset, 512).ok()?;
-    if sb.len() < 0x70 || sb.get(0..4)? != [0x58, 0x46, 0x53, 0x42] {
-        return None;
-    }
-    let block_size = u32::from_be_bytes(sb[0x04..0x08].try_into().ok()?);
-    let dblocks = u64::from_be_bytes(sb[0x08..0x10].try_into().ok()?);
-    let uuid_hex = sb[0x20..0x30].iter().map(|b| format!("{b:02x}")).collect();
-    Some(XfsSbInfo {
-        uuid_hex,
-        total_bytes: dblocks.saturating_mul(block_size as u64),
-        block_size,
-    })
-}
-
-/// Pull volume serial / size / sector size from the NTFS boot sector at
-/// `part_offset` for the [`RaidFilesystem`] record and a stable `set_uuid`.
-pub(super) fn read_ntfs_sb_info(
-    source: &(dyn SectorSource + Send + Sync),
-    part_offset: u64,
-) -> Option<NtfsSbInfo> {
-    let boot = source.read(part_offset, 512).ok()?;
-    if boot.len() < 0x50 || boot.get(3..11)? != b"NTFS    " {
-        return None;
-    }
-    let bytes_per_sector = u16::from_le_bytes(boot[0x0B..0x0D].try_into().ok()?) as u64;
-    let total_sectors = u64::from_le_bytes(boot[0x28..0x30].try_into().ok()?);
-    let serial = u64::from_le_bytes(boot[0x48..0x50].try_into().ok()?);
-    Some(NtfsSbInfo {
-        serial_hex: format!("{serial:016x}"),
-        total_bytes: total_sectors.saturating_mul(bytes_per_sector),
-        bytes_per_sector: bytes_per_sector as u32,
-    })
 }

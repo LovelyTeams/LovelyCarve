@@ -42,9 +42,10 @@ pub struct AppState {
     /// Raw signature-carving sessions. Workers update one session through a
     /// short-lived parking_lot lock while IPC readers page stable results.
     pub carve_scans: Arc<Mutex<HashMap<String, Arc<parking_lot::RwLock<CarveScanSession>>>>>,
-    /// Idempotency cache for `raid_auto_detect`: maps an mdadm `set_uuid` →
-    /// already-registered synthetic image id. Repeated detect calls reuse the
-    /// existing assembled `EvidenceSession` instead of allocating a duplicate.
+    /// Idempotency cache for `raid_auto_detect`: maps an assembled device's
+    /// label (its `assembled://` path) → already-registered synthetic image
+    /// id. Repeated detect calls reuse the existing assembled `EvidenceSession`
+    /// instead of allocating a duplicate.
     pub assembled_arrays: Arc<Mutex<HashMap<String, String>>>,
     /// Live read-only Dokan projections keyed by mount id.
     #[cfg(target_os = "windows")]

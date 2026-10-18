@@ -10,11 +10,11 @@ pub(super) fn emit(
 ) {
     let n = group.len();
     let fs_part = largest_validatable_fs(&winner.partitions);
-    let fs_summary = fs_part.and_then(|p| read_fs_summary(winner.source.as_ref(), p));
+    let fs_summary = fs_part.and_then(|p| filesystem_summary(winner.source.as_ref(), p));
 
     let set_uuid = fs_summary
         .as_ref()
-        .and_then(|s| s.fsid.clone())
+        .and_then(|s| s.fsid_hex.clone())
         .unwrap_or_else(|| synthetic_set_uuid(group, &winner));
     let set_name = format!("auto-raid{}", winner.level_tag);
 
@@ -24,12 +24,19 @@ pub(super) fn emit(
         .enumerate()
         .map(|(slot, &disk)| {
             let image = &group[disk];
+            let reconstructed = winner.missing_disk == Some(disk);
             RaidArrayMember {
                 dev_number: slot as u32,
                 slot: Some(slot as u32),
                 device_uuid: String::new(),
                 data_size_sectors: (image.len().saturating_sub(winner.data_offset_bytes)) / 512,
-                reconstructed: winner.missing_disk == Some(disk),
+                reconstructed,
+                state: if reconstructed {
+                    RaidMemberState::Stale
+                } else {
+                    RaidMemberState::Active
+                },
+                events: None,
                 origin: RaidMemberOrigin::Whole {
                     image_id: image.id.clone(),
                     partition_id: 0,
@@ -52,25 +59,21 @@ pub(super) fn emit(
         members,
         assembled_image_id: None,
         heuristic: true,
+        metadata_version: String::new(),
+        degraded: winner.missing_disk.is_some(),
+        degradable: false,
     });
 
     let fs_kind = fs_part.map(|p| p.kind).unwrap_or(PartitionKind::Unknown);
     if let Some(s) = &fs_summary {
-        out.filesystems.push(RaidFilesystem {
-            set_uuid: set_uuid.clone(),
-            kind: s.kind,
-            fsid: s.fsid.clone(),
-            total_bytes: s.total_bytes,
-            bytes_used: None,
-            num_devices: None,
-            sector_size: s.sector_size,
-            node_size: None,
-        });
+        out.filesystems.push(s.record(&set_uuid));
     }
 
     out.assembled.push(AssembledArray {
+        label: array_label(&set_name, &set_uuid),
         set_uuid,
         set_name,
+        target: AssembledTarget::Array,
         source: winner.source,
         size_bytes: winner.capacity,
         fs_kind,
@@ -89,7 +92,10 @@ pub(super) fn emit(
         .missing_disk
         .map(|d| format!("disk {d} (parity-rebuilt)"))
         .unwrap_or_else(|| "none".to_string());
-    let fs_label = fs_summary.as_ref().map(|s| s.kind).unwrap_or("unknown");
+    let fs_label = fs_summary
+        .as_ref()
+        .map(|s| kind_label(s.kind))
+        .unwrap_or("unknown");
     out.diagnostics.push(format!(
         "metadata-less RAID{level} reconstructed: {n} disks, {chunk}K chunk, {layout}, \
          order [{order}], data_offset {off} sectors, missing {missing}; \

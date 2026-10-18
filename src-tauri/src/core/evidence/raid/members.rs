@@ -1,57 +1,69 @@
-//! LVM member enumeration and RAID member sizing.
+//! LVM volume-group joining and RAID member enumeration.
+use std::collections::HashMap;
+
 use super::*;
 #[cfg(test)]
 #[path = "lvm_tests.rs"]
 mod lvm_tests;
 
-pub(super) fn assembled_bytes_for(level: i32, raid_disks: u32, per_member_bytes: u64) -> u64 {
-    match level {
-        // RAID0: capacity is the sum of all members. We store the head
-        // member's `data_size_sectors` here as an approximation; mdadm
-        // requires equal-sized members, so this is exact in practice.
-        0 => per_member_bytes.saturating_mul(raid_disks as u64),
-        // RAID5: one disk's worth of capacity goes to parity.
-        5 => per_member_bytes.saturating_mul(raid_disks.saturating_sub(1) as u64),
-        // RAID1: capacity equals one mirror member.
-        1 => per_member_bytes,
-        // Anything else — RAID6, RAID10, linear — gets the conservative
-        // single-disk size so the report still has a non-zero number.
-        _ => per_member_bytes,
+/// Block sources PV metadata can point at: loaded images by id, plus
+/// assembled arrays under [`array_source_id`].
+#[derive(Default)]
+pub(super) struct PvSources {
+    sources: HashMap<String, MemberReader>,
+}
+
+impl PvSources {
+    pub(super) fn from_images(images: &[Arc<DiskImage>]) -> Self {
+        let mut sources = Self::default();
+        for image in images {
+            sources.insert(image.id.clone(), image.clone());
+        }
+        sources
+    }
+
+    pub(super) fn insert(&mut self, id: String, source: MemberReader) {
+        self.sources.insert(id, source);
+    }
+
+    fn get(&self, id: &str) -> Option<&MemberReader> {
+        self.sources.get(id)
     }
 }
 
-pub(super) fn collect_striped_members(
-    members: &[AssembledMember],
-    raid_disks: u32,
-) -> anyhow::Result<Vec<StripedMember>> {
-    // Build a slot → member map then materialise in slot order so the
-    // striping math indexes members by slot, not by `dev_number`.
-    let mut by_slot: Vec<Option<&AssembledMember>> = vec![None; raid_disks as usize];
-    for member in members {
-        let Some(slot) = member.sb.slot_index() else {
-            continue;
-        };
-        let idx = slot as usize;
-        if idx >= by_slot.len() {
-            anyhow::bail!("member slot {slot} exceeds raid_disks={raid_disks}");
+/// Source id of an assembled array in PV metadata and LV segments, until
+/// [`resolve_array_sources`] replaces it with the array's synthetic image id.
+pub(super) fn array_source_id(set_uuid: &str) -> String {
+    format!("md:{set_uuid}")
+}
+
+/// Once assembled arrays are registered, point the PVs and LV segments that
+/// live on them at the arrays' synthetic image ids.
+pub fn resolve_array_sources(stack: &mut RaidStack) {
+    let images: HashMap<String, String> = stack
+        .arrays
+        .iter()
+        .filter_map(|array| {
+            let image_id = array.assembled_image_id.clone()?;
+            Some((array_source_id(&array.set_uuid), image_id))
+        })
+        .collect();
+    for vg in &mut stack.volume_groups {
+        for member in &mut vg.members {
+            if let Some(image_id) = images.get(&member.image_id) {
+                member.image_id = image_id.clone();
+            }
         }
-        if by_slot[idx].is_some() {
-            anyhow::bail!("two members claim slot {slot}");
+        for segment in vg
+            .logical_volumes
+            .iter_mut()
+            .flat_map(|lv| lv.segments.iter_mut())
+        {
+            if let Some(image_id) = images.get(&segment.image_id) {
+                segment.image_id = image_id.clone();
+            }
         }
-        by_slot[idx] = Some(member);
     }
-    let mut out = Vec::with_capacity(raid_disks as usize);
-    for (slot, slot_member) in by_slot.into_iter().enumerate() {
-        let Some(member) = slot_member else {
-            anyhow::bail!("slot {slot} has no member");
-        };
-        out.push(StripedMember {
-            reader: member.reader.clone(),
-            data_offset_bytes: member.sb.data_offset_sectors.saturating_mul(512),
-            data_size_bytes: member.sb.data_size_sectors.saturating_mul(512),
-        });
-    }
-    Ok(out)
 }
 
 pub(super) fn group_pvs_into_vgs(
@@ -192,6 +204,7 @@ pub(super) fn group_pvs_into_vgs(
                         name: lv.name.clone(),
                         size_bytes,
                         segments,
+                        assembled_image_id: None,
                     })
                 })
                 .collect();
@@ -223,8 +236,11 @@ pub(super) fn group_pvs_into_vgs(
         .collect()
 }
 
+/// Every complete LV of `vgs`, as a device reading through `sources`. An LV
+/// whose segments are incomplete, reach past their source, or do not add up
+/// to its size is skipped rather than shortened.
 pub(super) fn materialise_logical_volumes(
-    images: &[Arc<DiskImage>],
+    sources: &PvSources,
     vgs: &[RaidVolumeGroup],
 ) -> Vec<LinearLvSource> {
     let mut out = Vec::new();
@@ -233,7 +249,7 @@ pub(super) fn materialise_logical_volumes(
             let mut segments = Vec::with_capacity(lv.segments.len());
             let mut total: u64 = 0;
             for seg in &lv.segments {
-                let Some(image) = images.iter().find(|img| img.id == seg.image_id) else {
+                let Some(source) = sources.get(&seg.image_id) else {
                     continue;
                 };
                 let Some(next_total) = total.checked_add(seg.byte_length) else {
@@ -243,14 +259,14 @@ pub(super) fn materialise_logical_volumes(
                 if seg
                     .byte_offset
                     .checked_add(seg.byte_length)
-                    .is_none_or(|end| end > image.len())
+                    .is_none_or(|end| end > source.size())
                 {
                     segments.clear();
                     break;
                 }
                 total = next_total;
                 segments.push(LvByteSegment {
-                    image: image.clone(),
+                    source: source.clone(),
                     byte_offset: seg.byte_offset,
                     byte_length: seg.byte_length,
                 });
@@ -270,6 +286,36 @@ pub(super) fn materialise_logical_volumes(
     out
 }
 
+/// Whether the image exposes block bytes that can hold RAID members. Logical
+/// evidence (folders, archives, AD1, Docker) and metadata-only sessions do
+/// not.
+pub(super) fn is_block_evidence(image: &DiskImage) -> bool {
+    !image.is_index_only()
+        && image.folder.is_none()
+        && image.tar.is_none()
+        && image.zip.is_none()
+        && image.sevenz.is_none()
+        && image.ad1.is_none()
+        && image.docker.is_none()
+}
+
+/// Partition kinds whose bytes cannot be an md member themselves: containers
+/// whose payload is something else (LVs, extended chains, ciphertext).
+fn never_member(kind: PartitionKind) -> bool {
+    matches!(
+        kind,
+        PartitionKind::Extended
+            | PartitionKind::Lvm
+            | PartitionKind::Luks
+            | PartitionKind::Bitlocker
+            | PartitionKind::Filevault
+    )
+}
+
+/// Every device that could carry an md superblock: complete LVs, partitions
+/// and whole images. A superblock can be visible through more than one of
+/// them (a partition ending at the disk end shares its tail superblock with
+/// the disk); the caller keeps the innermost.
 pub(super) fn enumerate_candidates(
     images: &[Arc<DiskImage>],
     lv_devices: &[LinearLvSource],
@@ -287,24 +333,33 @@ pub(super) fn enumerate_candidates(
             },
         });
     }
-    for image in images {
+    for image in images.iter().filter(|image| is_block_evidence(image)) {
         let sector_size = image.sector_size as u64;
-        for partition in &image.partitions {
-            if partition.kind != PartitionKind::Mdadm {
+        let ranges = image
+            .partitions
+            .iter()
+            .filter(|partition| !never_member(partition.kind))
+            .map(|partition| {
+                (
+                    partition.id,
+                    partition.start_lba.saturating_mul(sector_size),
+                    partition.length_lba.saturating_mul(sector_size),
+                )
+            })
+            .chain(std::iter::once((0, 0, image.len())));
+        for (partition_id, byte_offset, byte_length) in ranges {
+            if byte_length == 0 || byte_offset.saturating_add(byte_length) > image.len() {
                 continue;
             }
-            let byte_offset = partition.start_lba.saturating_mul(sector_size);
-            let byte_length = partition.length_lba.saturating_mul(sector_size);
-            let member = WholeDiskMember {
-                image: image.clone(),
-                byte_offset,
-                byte_length,
-            };
             out.push(CandidateMember {
-                reader: Arc::new(member),
+                reader: Arc::new(WholeDiskMember {
+                    image: image.clone(),
+                    byte_offset,
+                    byte_length,
+                }),
                 origin: RaidMemberOrigin::Whole {
                     image_id: image.id.clone(),
-                    partition_id: partition.id,
+                    partition_id,
                     byte_offset,
                     byte_length,
                 },
@@ -322,8 +377,9 @@ pub(super) fn describe_origin(origin: &RaidMemberOrigin) -> String {
         RaidMemberOrigin::Whole {
             image_id,
             partition_id,
+            byte_offset,
             ..
-        } => format!("image {image_id} partition {partition_id}"),
+        } => format!("image {image_id} partition {partition_id} (offset {byte_offset})"),
     }
 }
 
@@ -334,9 +390,9 @@ pub(super) struct AssembledMember {
     pub(super) reader: MemberReader,
 }
 
-/// One enumerated RAID-member candidate. Both LV-on-LVM and whole-disk
-/// shapes converge on this struct so the probe loop in
-/// `detect_with_sources` runs once over a uniform input list.
+/// One enumerated RAID-member candidate. LVs, partitions and whole images
+/// converge on this struct so the probe loop in `detect_with_options` runs
+/// once over a uniform input list.
 pub(super) struct CandidateMember {
     pub(super) reader: MemberReader,
     pub(super) origin: RaidMemberOrigin,

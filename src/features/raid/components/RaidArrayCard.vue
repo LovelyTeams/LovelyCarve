@@ -2,7 +2,7 @@
   <article class="raid-array">
     <header class="array-header">
       <div class="array-identity">
-        <h4 class="array-title" :title="`${arrayTitle(arr)} · ${arr.set_uuid}`">RAID {{ arr.level }}</h4>
+        <h4 class="array-title" :title="`${arrayTitle(arr)} · ${arr.set_uuid}`">{{ levelShortLabel(arr.level) }}</h4>
         <span v-if="customName" class="array-name">{{ customName }}</span>
         <span class="ui-badge array-status" :class="status.sev">
           <component :is="statusIcons[status.sev]" :size="12" />{{ status.label }}
@@ -22,19 +22,33 @@
           <ExternalLink v-else :size="14" />{{ tr("打开重组镜像") }}
         </button>
       </div>
+      <div v-else-if="arr.degradable" class="array-actions">
+        <button class="ui-btn" :disabled="assembling" :aria-busy="assembling"
+          :title="tr('不等待缺失成员，用其余成员的校验或镜像数据重组')" @click="emit('assemble-degraded')">
+          <Loader2 v-if="assembling" :size="14" class="spin" />
+          <Wrench v-else :size="14" />{{ tr("降级重组") }}
+        </button>
+      </div>
     </header>
 
     <section class="members-section" :aria-label="tr('成员盘顺序')">
       <ol class="member-order">
         <li v-for="entry in memberSlots" :key="entry.slot" class="member-order-item">
           <span class="ui-badge outline mono slot-number" :title="tr('槽位 {0}', { 0: entry.slot })">{{ entry.slot }}</span>
-          <span v-if="entry.member" class="chip-name" :title="originTitle(entry.member.origin, imagePaths, tr)">
+          <span v-if="entry.member" class="chip-name" :title="memberTitle(entry.member)">
             {{ memberShortLabel(entry.member, imagePaths) }}
           </span>
           <span v-else class="missing-member">{{ tr("缺失成员") }}</span>
           <span v-if="entry.member?.reconstructed" class="ui-badge sm warn">{{ tr("校验重建") }}</span>
+          <span v-else-if="entry.member && memberStateLabel(entry.member, tr)" class="ui-badge sm warn">{{ memberStateLabel(entry.member, tr) }}</span>
         </li>
       </ol>
+      <ul v-if="extraMembers.length" class="extra-members">
+        <li v-for="member in extraMembers" :key="`${member.dev_number}:${member.device_uuid}:${originKey(member)}`" class="member-order-item">
+          <span class="chip-name" :title="memberTitle(member)">{{ memberShortLabel(member, imagePaths) }}</span>
+          <span v-if="memberStateLabel(member, tr)" class="ui-badge sm outline">{{ memberStateLabel(member, tr) }}</span>
+        </li>
+      </ul>
     </section>
 
     <details v-disclosure-motion :key="`${imageId}:${arr.set_uuid}`"
@@ -42,13 +56,15 @@
       <summary><ChevronRight :size="14" class="ui-chevron" />{{ tr("重组详情") }}</summary>
       <div class="details-content" :class="{ 'with-diagram': showDiagram(arr) }">
         <dl class="geometry-fields">
-          <div><dt>{{ tr("数据块大小") }}</dt><dd class="mono">{{ chunkDisplay(arr) }}</dd></div>
-          <div v-if="arr.level === 5 || arr.level === 6"><dt>{{ tr("校验布局") }}</dt><dd>{{ layoutLabel(arr, tr) }}</dd></div>
+          <div><dt>{{ tr("级别") }}</dt><dd>{{ levelLabel(arr, tr) }}</dd></div>
+          <div v-if="hasChunk(arr)"><dt>{{ tr("数据块大小") }}</dt><dd class="mono">{{ chunkDisplay(arr) }}</dd></div>
+          <div v-if="hasLayout(arr)"><dt>{{ arr.level === 10 ? tr("副本布局") : tr("校验布局") }}</dt><dd>{{ layoutLabel(arr, tr) }}</dd></div>
           <div><dt>{{ tr("数据偏移") }}</dt><dd class="mono">{{ dataOffsetDisplay(arr, tr) }}</dd></div>
+          <div v-if="arr.metadata_version"><dt>{{ tr("元数据版本") }}</dt><dd class="mono">{{ arr.metadata_version }}</dd></div>
         </dl>
         <RaidLayoutDiagram v-if="showDiagram(arr)" :level="arr.level" :layout="arr.layout"
           :num-disks="arr.raid_disks" :disk-labels="diskLabelsFor(arr, imagePaths)"
-          :missing-slot="missingSlotFor(arr)" :chunk-label="chunkDisplay(arr)" />
+          :missing-slots="missingSlotsFor(arr)" :chunk-label="hasChunk(arr) ? chunkDisplay(arr) : null" />
       </div>
       <div v-if="diagnostics?.length" class="details-diagnostics diagnostics">
         <h5>{{ tr("检测说明") }}</h5>
@@ -62,22 +78,43 @@
 import { tr } from '../../../composables/useLocale';
 
 import { computed } from 'vue';
-import { CircleAlert, CircleCheck, CircleDot, ChevronRight, ExternalLink, HardDriveDownload, Loader2 } from 'lucide-vue-next';
+import { CircleAlert, CircleCheck, CircleDot, ChevronRight, ExternalLink, HardDriveDownload, Loader2, Wrench } from 'lucide-vue-next';
 import { vDisclosureMotion } from '../../../composables/uiMotionDirectives';
-import type { RaidArray } from '../../../lib/ipc/raid';
-import { activeMembers, arrayStatus, arrayTitle, chunkDisplay, dataOffsetDisplay, diskLabelsFor, heuristicTitle, layoutLabel, memberShortLabel, missingSlotFor, orderedMembers, originTitle, showDiagram } from '../model/stackView';
+import type { RaidArray, RaidArrayMember } from '../../../lib/ipc/raid';
+import {
+  activeMembers, arrayStatus, arrayTitle, chunkDisplay, dataOffsetDisplay, diskLabelsFor, hasChunk, hasLayout,
+  heuristicTitle, layoutLabel, levelLabel, levelShortLabel, memberShortLabel, memberStateLabel, missingSlotsFor,
+  orderedMembers, originTitle, showDiagram, slotlessMembers,
+} from '../model/stackView';
 import RaidLayoutDiagram from './RaidLayoutDiagram.vue';
 
-const props = defineProps<{ arr: RaidArray; imageId: string; imagePaths: ReadonlyMap<string, string>; opening: boolean; exporting: boolean; diagramOpen: boolean; diagnostics?: string[] }>();
-const emit = defineEmits<{ open: []; export: []; 'diagram-toggle': [open: boolean] }>();
+const props = defineProps<{ arr: RaidArray; imageId: string; imagePaths: ReadonlyMap<string, string>; opening: boolean; exporting: boolean; assembling?: boolean; diagramOpen: boolean; diagnostics?: string[] }>();
+const emit = defineEmits<{ open: []; export: []; 'assemble-degraded': []; 'diagram-toggle': [open: boolean] }>();
 const isCurrentImage = computed(() => props.arr.assembled_image_id === props.imageId);
 const statusIcons = { success: CircleCheck, warn: CircleAlert, info: CircleDot };
 const status = computed(() => arrayStatus(props.arr, tr));
 const customName = computed(() => props.arr.set_name === `auto-raid${props.arr.level}` ? null : props.arr.set_name);
+// One entry per slot: the member read there, else the stale/rebuilding one
+// whose slot is rebuilt.
 const memberSlots = computed(() => {
-  const members = new Map(orderedMembers(props.arr).map(member => [member.slot, member]));
+  const members = new Map<number | null, RaidArrayMember>();
+  for (const member of orderedMembers(props.arr)) {
+    const current = members.get(member.slot);
+    if (!current || (current.state !== 'active' && member.state === 'active')) members.set(member.slot, member);
+  }
   return Array.from({ length: props.arr.raid_disks }, (_, slot) => ({ slot, member: members.get(slot) }));
 });
+const extraMembers = computed(() => {
+  const shown = new Set(memberSlots.value.map(entry => entry.member).filter(Boolean));
+  return [...slotlessMembers(props.arr), ...orderedMembers(props.arr).filter(member => !shown.has(member))];
+});
+function memberTitle(member: RaidArrayMember): string {
+  const origin = originTitle(member.origin, props.imagePaths, tr);
+  return member.events == null ? origin : `${origin} · events ${member.events}`;
+}
+function originKey(member: RaidArrayMember): string {
+  return member.origin.kind === 'whole' ? `${member.origin.image_id}:${member.origin.byte_offset}` : `${member.origin.vg_uuid}:${member.origin.lv_name}`;
+}
 function onDiagramToggle(event: Event) { emit('diagram-toggle', (event.target as HTMLDetailsElement).open); }
 </script>
 
@@ -92,10 +129,12 @@ function onDiagramToggle(event: Event) { emit('diagram-toggle', (event.target as
 dt { color: var(--text-secondary); font-size: 11px; }
 dd { margin: 0; color: var(--text-primary); font-size: 12px; }
 .member-count { font-size: 11px; color: var(--text-secondary); }
-.member-order { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px 16px; padding: 0; margin: 0; list-style: none; }
+.members-section { display: flex; flex-direction: column; gap: 8px; }
+.member-order, .extra-members { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px 16px; padding: 0; margin: 0; list-style: none; }
 .member-order-item { min-width: 0; display: flex; align-items: center; gap: 8px; min-height: 24px; }
 .slot-number { padding-inline: 6px; }
 .chip-name { min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.extra-members .chip-name { color: var(--text-secondary); }
 .missing-member { font-size: 12px; color: var(--sev-warn-fg); }
 .array-details { border-top: 1px solid var(--border-color); }
 .array-details > summary { min-height: 36px; color: var(--text-secondary); font-size: 12px; }

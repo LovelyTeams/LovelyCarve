@@ -32,7 +32,8 @@ fn lvm_cross_image_same_size_pvs_preserve_complete_logical_bytes() {
     let mut diagnostics = Vec::new();
     let groups = group_pvs_into_vgs(&metadata, &mut diagnostics);
     assert!(diagnostics.is_empty());
-    let volumes = materialise_logical_volumes(&images, &groups);
+    let sources = PvSources::from_images(&images);
+    let volumes = materialise_logical_volumes(&sources, &groups);
     assert_eq!(volumes.len(), 1);
     let expected = [vec![0x11; 8192], vec![0x22; 8192]].concat();
     assert_eq!(volumes[0].read_at(0, usize::MAX).unwrap(), expected);
@@ -42,8 +43,9 @@ fn lvm_cross_image_same_size_pvs_preserve_complete_logical_bytes() {
     );
     let missing = group_pvs_into_vgs(&metadata[..1], &mut diagnostics);
     assert!(!diagnostics.is_empty());
-    assert!(materialise_logical_volumes(&images, &missing).is_empty());
-    assert!(materialise_logical_volumes(&images[..1], &groups).is_empty());
+    assert!(materialise_logical_volumes(&sources, &missing).is_empty());
+    let first_only = PvSources::from_images(&images[..1]);
+    assert!(materialise_logical_volumes(&first_only, &groups).is_empty());
 }
 
 #[test]
@@ -64,19 +66,20 @@ fn lvm_assembly_uses_latest_uuid_bindings_and_rejects_conflicts() {
         })
         .collect();
     let mut diagnostics = Vec::new();
+    let sources = PvSources::from_images(&images);
     let groups = group_pvs_into_vgs(&metadata, &mut diagnostics);
     assert_eq!(groups[0].members[0].pv_local_id, "renamed");
-    assert_eq!(materialise_logical_volumes(&images, &groups).len(), 1);
+    assert_eq!(materialise_logical_volumes(&sources, &groups).len(), 1);
     metadata[0].volume_group.sequence_number = 8;
     let groups = group_pvs_into_vgs(&metadata, &mut diagnostics);
-    assert!(materialise_logical_volumes(&images, &groups).is_empty());
+    assert!(materialise_logical_volumes(&sources, &groups).is_empty());
     assert!(diagnostics
         .iter()
         .any(|message| message.contains("conflicting")));
     metadata[0].volume_group = metadata[1].volume_group.clone();
     metadata.push(metadata[0].clone());
     let groups = group_pvs_into_vgs(&metadata, &mut diagnostics);
-    assert!(materialise_logical_volumes(&images, &groups).is_empty());
+    assert!(materialise_logical_volumes(&sources, &groups).is_empty());
     assert!(diagnostics
         .iter()
         .any(|message| message.contains("ambiguous")));
@@ -91,7 +94,7 @@ fn lvm_linear_source_never_returns_partial_allocated_content() {
         lv_name: "root".into(),
         size_bytes: 8,
         segments: vec![LvByteSegment {
-            image: image.clone(),
+            source: image.clone(),
             byte_offset: image.len() - 1,
             byte_length: 8,
         }],
@@ -100,7 +103,7 @@ fn lvm_linear_source_never_returns_partial_allocated_content() {
     let source = LinearLvSource {
         size_bytes: 9,
         segments: vec![LvByteSegment {
-            image,
+            source: image,
             byte_offset: 0,
             byte_length: 8,
         }],

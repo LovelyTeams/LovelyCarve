@@ -7,8 +7,10 @@
 //! - v1.1 — sector 0 (byte `0x0`).
 //! - v1.0 / v0.90 — towards end-of-device, end-aligned.
 //!
-//! This parser only handles the head-of-device variants; v1.0 / v0.90 need a
-//! separate read pass past the probe buffer. The probe order checks `0x1000`
+//! This parser only handles the head-of-device variants: a v1.0 / v0.90
+//! member keeps its data from sector 0, so its partition table or filesystem
+//! stays recognisable here and RAID detection probes the superblock at the
+//! device end (`raid::mdadm_super`). The probe order checks `0x1000`
 //! first because it's the variant that shows up in real-world Linux RAID,
 //! including the case that motivated this module — mdadm built on LVM LVs
 //! where the v1.2 SB lives at LV offset `0x1000` (see

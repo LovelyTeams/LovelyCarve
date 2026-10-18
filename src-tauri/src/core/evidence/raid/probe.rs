@@ -1,9 +1,10 @@
-//! Filesystem probes on assembled RAID sources.
+//! Partition and filesystem description of assembled devices.
 use super::*;
 
+/// Identity and size of the filesystem an assembled device carries.
 #[derive(Debug, Clone)]
 pub(super) struct AssembledFilesystem {
-    pub(super) family: AssembledFsFamily,
+    pub(super) kind: PartitionKind,
     pub(super) fsid_hex: Option<String>,
     pub(super) bytes_used: Option<u64>,
     pub(super) total_bytes: Option<u64>,
@@ -12,108 +13,182 @@ pub(super) struct AssembledFilesystem {
     pub(super) node_size: Option<u32>,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(super) enum AssembledFsFamily {
-    Btrfs,
-    Ext4,
-}
-
 impl AssembledFilesystem {
-    pub(super) fn kind_str(&self) -> &'static str {
-        match self.family {
-            AssembledFsFamily::Btrfs => "btrfs",
-            AssembledFsFamily::Ext4 => "ext4",
+    pub(super) fn record(&self, set_uuid: &str) -> RaidFilesystem {
+        RaidFilesystem {
+            set_uuid: set_uuid.to_string(),
+            kind: kind_label(self.kind),
+            fsid: self.fsid_hex.clone(),
+            total_bytes: self.total_bytes,
+            bytes_used: self.bytes_used,
+            num_devices: self.num_devices,
+            sector_size: self.sector_size,
+            node_size: self.node_size,
         }
     }
+}
 
-    pub(super) fn kind_enum(&self) -> PartitionKind {
-        match self.family {
-            AssembledFsFamily::Btrfs => PartitionKind::Btrfs,
-            AssembledFsFamily::Ext4 => PartitionKind::Ext4,
+/// What an assembled device holds: its partition table (or the single
+/// whole-device volume), the kind used to label it, and the filesystem
+/// summary of its largest recognised volume.
+pub(super) struct DeviceDescription {
+    pub(super) partitions: Vec<Partition>,
+    pub(super) fs_kind: PartitionKind,
+    pub(super) filesystem: Option<AssembledFilesystem>,
+}
+
+/// Detect the partition table / bare volume on an assembled device. Read
+/// errors are reported in `diagnostics`; the device is still registered so it
+/// stays reachable for hex view, carving and export.
+pub(super) fn describe_device(
+    source: &(dyn SectorSource + Send + Sync),
+    name: &str,
+    diagnostics: &mut Vec<String>,
+) -> DeviceDescription {
+    let mut partitions = match detect_partitions_with_meta(source, 512) {
+        Ok(table) => table.partitions,
+        Err(error) => {
+            diagnostics.push(format!("{name}: partition scan failed: {error:#}"));
+            Vec::new()
         }
+    };
+    if let Err(error) = refine_partition_kinds(source, &mut partitions, 512) {
+        diagnostics.push(format!("{name}: volume detection failed: {error:#}"));
+    }
+    let primary = partitions
+        .iter()
+        .filter(|partition| manual::is_browsable_fs(partition.kind))
+        .max_by_key(|partition| partition.length_lba)
+        .or_else(|| {
+            partitions
+                .iter()
+                .filter(|partition| partition.kind != PartitionKind::Unknown)
+                .max_by_key(|partition| partition.length_lba)
+        });
+    let fs_kind = primary.map_or(PartitionKind::Unknown, |partition| partition.kind);
+    let filesystem = primary.and_then(|partition| filesystem_summary(source, partition));
+    DeviceDescription {
+        partitions,
+        fs_kind,
+        filesystem,
     }
 }
 
-pub(super) fn probe_assembled_filesystem(
-    raid: &(dyn SectorSource + Send + Sync),
-) -> anyhow::Result<Option<AssembledFilesystem>> {
-    if let Some(fs) = probe_btrfs(raid)? {
-        return Ok(Some(fs));
+/// Read the superblock of the filesystem on `partition` for its identity and
+/// size. Btrfs, ext2/3/4, XFS and NTFS are summarised; other kinds return
+/// `None`.
+pub(super) fn filesystem_summary(
+    source: &(dyn SectorSource + Send + Sync),
+    partition: &Partition,
+) -> Option<AssembledFilesystem> {
+    let base = partition.start_lba.checked_mul(512)?;
+    match partition.kind {
+        PartitionKind::Btrfs => btrfs_summary(source, base),
+        PartitionKind::Ext4 => ext4_summary(source, base),
+        PartitionKind::Xfs => xfs_summary(source, base),
+        PartitionKind::Ntfs => ntfs_summary(source, base),
+        _ => None,
     }
-    if let Some(fs) = probe_ext4(raid)? {
-        return Ok(Some(fs));
-    }
-    Ok(None)
 }
 
-pub(super) fn probe_btrfs(
-    raid: &(dyn SectorSource + Send + Sync),
-) -> anyhow::Result<Option<AssembledFilesystem>> {
-    if raid.size() < BTRFS_PROBE_END_OFFSET + 0x300 {
-        return Ok(None);
-    }
-    let buf = raid
-        .read(BTRFS_PRIMARY_SUPERBLOCK, 0x1000)
-        .context("reading btrfs superblock from assembled array")?;
-    if buf.len() < 0x100 || &buf[0x40..0x48] != BTRFS_MAGIC {
-        return Ok(None);
-    }
-    // Field layout: offset relative to superblock start (0x10000 logical /
-    // 0 in `buf`). See `struct btrfs_super_block` in
-    // include/uapi/linux/btrfs_tree.h:
-    //   csum 0..0x20, fsid 0x20..0x30, bytenr 0x30..0x38, flags 0x38..0x40,
-    //   magic 0x40..0x48, generation 0x48..0x50, root 0x50..0x58,
-    //   chunk_root 0x58..0x60, log_root 0x60..0x68,
-    //   log_root_transid 0x68..0x70, total_bytes 0x70..0x78,
-    //   bytes_used 0x78..0x80, root_dir_objectid 0x80..0x88,
-    //   num_devices 0x88..0x90, sectorsize 0x90..0x94, nodesize 0x94..0x98.
-    let fsid_bytes = &buf[0x20..0x30];
-    let fsid_hex = fsid_bytes.iter().map(|b| format!("{b:02x}")).collect();
-    let total_bytes = u64::from_le_bytes(buf[0x70..0x78].try_into().unwrap_or([0; 8]));
-    let bytes_used = u64::from_le_bytes(buf[0x78..0x80].try_into().unwrap_or([0; 8]));
-    let num_devices = u64::from_le_bytes(buf[0x88..0x90].try_into().unwrap_or([0; 8]));
-    let sector_size = u32::from_le_bytes(buf[0x90..0x94].try_into().unwrap_or([0; 4]));
-    let node_size = u32::from_le_bytes(buf[0x94..0x98].try_into().unwrap_or([0; 4]));
-    Ok(Some(AssembledFilesystem {
-        family: AssembledFsFamily::Btrfs,
-        fsid_hex: Some(fsid_hex),
-        bytes_used: Some(bytes_used),
-        total_bytes: Some(total_bytes),
-        num_devices: Some(num_devices),
-        sector_size: Some(sector_size),
-        node_size: Some(node_size),
-    }))
+fn le_u32(bytes: &[u8], at: usize) -> Option<u32> {
+    Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?))
 }
 
-pub(super) fn probe_ext4(
-    raid: &(dyn SectorSource + Send + Sync),
-) -> anyhow::Result<Option<AssembledFilesystem>> {
-    // Ext{2,3,4} primary superblock at offset 0x400; magic `0xEF53` lives
-    // at superblock offset 0x38 (= absolute 0x438).
-    if raid.size() < 0x500 {
-        return Ok(None);
+fn le_u64(bytes: &[u8], at: usize) -> Option<u64> {
+    Some(u64::from_le_bytes(bytes.get(at..at + 8)?.try_into().ok()?))
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn btrfs_summary(
+    source: &(dyn SectorSource + Send + Sync),
+    base: u64,
+) -> Option<AssembledFilesystem> {
+    // `struct btrfs_super_block`: fsid 0x20, magic 0x40, total_bytes 0x70,
+    // bytes_used 0x78, num_devices 0x88, sectorsize 0x90, nodesize 0x94.
+    let buf = source.read(base + BTRFS_PRIMARY_SUPERBLOCK, 0x100).ok()?;
+    if buf.get(0x40..0x48)? != BTRFS_MAGIC {
+        return None;
     }
-    let buf = raid
-        .read(0x400, 0x100)
-        .context("reading ext4 superblock from assembled array")?;
-    if buf.len() < 0x80 || buf[0x38] != 0x53 || buf[0x39] != 0xEF {
-        return Ok(None);
+    Some(AssembledFilesystem {
+        kind: PartitionKind::Btrfs,
+        fsid_hex: Some(hex(buf.get(0x20..0x30)?)),
+        bytes_used: le_u64(&buf, 0x78),
+        total_bytes: le_u64(&buf, 0x70),
+        num_devices: le_u64(&buf, 0x88),
+        sector_size: le_u32(&buf, 0x90),
+        node_size: le_u32(&buf, 0x94),
+    })
+}
+
+fn ext4_summary(
+    source: &(dyn SectorSource + Send + Sync),
+    base: u64,
+) -> Option<AssembledFilesystem> {
+    // `struct ext2_super_block` at +1024: blocks_count_lo 0x04,
+    // log_block_size 0x18, magic 0x38, uuid 0x68.
+    let sb = source.read(base + 1024, 0x100).ok()?;
+    if sb.get(0x38..0x3A)? != [0x53, 0xEF] {
+        return None;
     }
-    // Layout per `struct ext2_super_block` (fs/ext4/ext4.h, all LE):
-    //   s_inodes_count 0x00, s_blocks_count_lo 0x04, s_log_block_size 0x18,
-    //   s_magic 0x38, s_uuid 0x68..0x78, s_volume_name 0x78..0x88.
-    let blocks_count_lo = u32::from_le_bytes(buf[0x04..0x08].try_into().unwrap_or([0; 4])) as u64;
-    let log_block_size = u32::from_le_bytes(buf[0x18..0x1C].try_into().unwrap_or([0; 4]));
-    let block_size = 1024u64 << log_block_size.min(20); // clamp absurd values
-    let total_bytes = blocks_count_lo.saturating_mul(block_size);
-    let fsid_hex: String = buf[0x68..0x78].iter().map(|b| format!("{b:02x}")).collect();
-    Ok(Some(AssembledFilesystem {
-        family: AssembledFsFamily::Ext4,
-        fsid_hex: Some(fsid_hex),
+    let blocks = u64::from(le_u32(&sb, 0x04)?);
+    let block_size = 1024u32 << le_u32(&sb, 0x18)?.min(20);
+    Some(AssembledFilesystem {
+        kind: PartitionKind::Ext4,
+        fsid_hex: Some(hex(sb.get(0x68..0x78)?)),
         bytes_used: None,
-        total_bytes: Some(total_bytes),
+        total_bytes: Some(blocks.saturating_mul(u64::from(block_size))),
         num_devices: None,
-        sector_size: Some(block_size as u32),
+        sector_size: Some(block_size),
         node_size: None,
-    }))
+    })
+}
+
+fn xfs_summary(
+    source: &(dyn SectorSource + Send + Sync),
+    base: u64,
+) -> Option<AssembledFilesystem> {
+    // XFS superblock fields are big-endian: blocksize 0x04, dblocks 0x08,
+    // uuid 0x20.
+    let sb = source.read(base, 512).ok()?;
+    if sb.get(0..4)? != b"XFSB" {
+        return None;
+    }
+    let block_size = u32::from_be_bytes(sb.get(0x04..0x08)?.try_into().ok()?);
+    let blocks = u64::from_be_bytes(sb.get(0x08..0x10)?.try_into().ok()?);
+    Some(AssembledFilesystem {
+        kind: PartitionKind::Xfs,
+        fsid_hex: Some(hex(sb.get(0x20..0x30)?)),
+        bytes_used: None,
+        total_bytes: Some(blocks.saturating_mul(u64::from(block_size))),
+        num_devices: None,
+        sector_size: Some(block_size),
+        node_size: None,
+    })
+}
+
+fn ntfs_summary(
+    source: &(dyn SectorSource + Send + Sync),
+    base: u64,
+) -> Option<AssembledFilesystem> {
+    // NTFS boot sector: bytes per sector 0x0B, total sectors 0x28, serial 0x48.
+    let boot = source.read(base, 512).ok()?;
+    if boot.get(3..11)? != b"NTFS    " {
+        return None;
+    }
+    let bytes_per_sector = u16::from_le_bytes(boot.get(0x0B..0x0D)?.try_into().ok()?);
+    let total_sectors = le_u64(&boot, 0x28)?;
+    let serial = le_u64(&boot, 0x48)?;
+    Some(AssembledFilesystem {
+        kind: PartitionKind::Ntfs,
+        fsid_hex: Some(format!("{serial:016x}")),
+        bytes_used: None,
+        total_bytes: Some(total_sectors.saturating_mul(u64::from(bytes_per_sector))),
+        num_devices: None,
+        sector_size: Some(u32::from(bytes_per_sector)),
+        node_size: None,
+    })
 }

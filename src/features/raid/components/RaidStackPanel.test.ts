@@ -5,16 +5,16 @@ import type { RaidArray, RaidStack } from '../../../lib/ipc/raid';
 import type { ImageInfo } from '../../../lib/ipc/image';
 import RaidStackPanel from './RaidStackPanel.vue';
 
-const calls = vi.hoisted(() => ({ detect: vi.fn(), info: vi.fn(), export: vi.fn() }));
+const calls = vi.hoisted(() => ({ detect: vi.fn(), assemble: vi.fn(), info: vi.fn(), export: vi.fn() }));
 const detection = shallowRef<RaidStack | null>(null); const loading = ref(false); const error = ref<string | null>(null);
-vi.mock('../composables/useRaidStack', () => ({ useRaidStack: () => ({ stack: detection, loading, error, detect: calls.detect }) }));
+vi.mock('../composables/useRaidStack', () => ({ useRaidStack: () => ({ stack: detection, loading, error, detect: calls.detect, assembleDegraded: calls.assemble }) }));
 vi.mock('../../evidence/composables/useImageExport', () => ({ useImageExport: () => ({ startImageExport: calls.export, jobFor: () => undefined }) }));
 vi.mock('../../../lib/ipc/image', () => ({ imageInfoById: calls.info }));
 vi.mock('../../../composables/useToast', () => ({ notifyError: vi.fn() }));
 vi.mock('./RaidManualBuilder.vue', () => ({ default: { render: () => h('div', { class: 'manual-builder' }) } }));
 vi.mock('./RaidLayoutDiagram.vue', () => ({ default: { render: () => h('div', { class: 'diagram-content' }) } }));
 
-const array: RaidArray = { set_uuid: 'array-a', set_name: 'array/a', level: 5, layout: 0, chunksize_sectors: 128, raid_disks: 3, data_offset_sectors: 0, assembled_bytes: 1024000, assembled_image_id: null, heuristic: false, members: [{ dev_number: 0, slot: 0, device_uuid: 'member-a', data_size_sectors: 1000, reconstructed: false, origin: { kind: 'whole', image_id: 'a', partition_id: 1, byte_offset: 0, byte_length: 512000 } }] };
+const array: RaidArray = { set_uuid: 'array-a', set_name: 'array/a', level: 5, layout: 0, chunksize_sectors: 128, raid_disks: 3, data_offset_sectors: 0, assembled_bytes: 1024000, assembled_image_id: null, heuristic: false, metadata_version: '1.2', degraded: false, degradable: false, members: [{ dev_number: 0, slot: 0, device_uuid: 'member-a', data_size_sectors: 1000, reconstructed: false, state: 'active', events: 7, origin: { kind: 'whole', image_id: 'a', partition_id: 1, byte_offset: 0, byte_length: 512000 } }] };
 const stack: RaidStack = { images: [{ image_id: 'a', path: 'D:/member-a.dd', size_bytes: 512000, partition_count: 1, lvm_pv_count: 0 }], volume_groups: [], arrays: [array], filesystems: [], diagnostics: ['diagnostic'] };
 const info = shallowRef<ImageInfo>({ id: 'a', path: 'D:/member-a.dd', source_format: 'raw', size_bytes: 512000, sector_size: 512, partitions: [{ id: 1, kind: 'ntfs', label: null, start_lba: 0, length_lba: 1000 }], table_scheme: 'gpt', disk_id: null, on_disk_bytes: null, created_unix_ms: null, modified_unix_ms: null, ewf: null });
 let app: App; let host: HTMLElement; const opened = vi.fn();
@@ -61,13 +61,27 @@ describe('RAID panel composition', () => {
     expect([...host.querySelectorAll('.chip-name')].map(element => element.textContent?.trim())).toEqual(['member-b.dd', 'member-a.dd', 'member-c.dd']);
   });
   it('shows missing positions and parity reconstruction without shifting the member order', async () => {
-    detection.value = { ...stack, arrays: [{ ...array, members: [array.members[0], { ...array.members[0], slot: 2, reconstructed: true }] }] };
+    detection.value = { ...stack, arrays: [{ ...array, members: [array.members[0], { ...array.members[0], slot: 2, reconstructed: true, state: 'stale' }] }] };
     await mount();
     const rows = [...host.querySelectorAll('.member-order-item')];
     expect(rows.map(row => row.querySelector('.slot-number')?.textContent)).toEqual(['0', '1', '2']);
     expect(rows[1].textContent).toContain('缺失成员');
     expect(rows[2].textContent).toContain('校验重建');
-    expect(host.querySelector('.member-count')?.textContent).toBe('2 / 3 成员盘');
+    expect(host.querySelector('.member-count')?.textContent).toBe('1 / 3 成员盘');
+  });
+  it('lists slotless members with their state and offers degraded assembly', async () => {
+    const spare = { ...array.members[0], slot: null, state: 'spare' as const, device_uuid: 'spare' };
+    detection.value = { ...stack, arrays: [{ ...array, degradable: true, members: [array.members[0], spare] }] };
+    await mount();
+    expect(host.querySelector('.extra-members')?.textContent).toContain('备用');
+    expect(host.querySelector('.array-status')?.textContent).toContain('可降级重组');
+    button('降级重组').click(); await settle();
+    expect(calls.assemble).toHaveBeenCalledWith('array-a');
+  });
+  it('rescans when an image the last scan has not seen is shown', async () => {
+    info.value = { ...info.value, id: 'fresh' };
+    await mount();
+    expect(calls.detect).toHaveBeenCalledOnce();
   });
   it('routes open/export intents through the original image services', async () => {
     detection.value = { ...stack, arrays: [{ ...array, assembled_image_id: 'assembled-a' }] }; calls.info.mockResolvedValue({ path: 'assembled://array-a' });

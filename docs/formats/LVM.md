@@ -19,7 +19,7 @@ LVM2 元数据与线性逻辑卷由纯 Rust 代码解析，文件系统读取与
 | VG/PV/LV/segment/stripe 元数据 | VG 名称/UUID/seqno/extent size，PV 名称/UUID/device/dev_size/pe_start/pe_count，LV 名称/UUID、全部 segments 与 stripes |
 | LV 顺序与长度 | 保持文本 LV 声明顺序和 `lvm:N:M` 身份；segments 按 start_extent 排序，严格验证完整覆盖和 segment_count；长度累计全部段 |
 | 单 PV 多段、碎片 LV | 完整线性 map；ext、XFS、Btrfs、NTFS 的元数据与正文均通过映射；完整、流式、范围读取共用字节来源 |
-| 多 PV 线性 LV | RAID 候选按最新 VG 的 UUID 定义解析全部成员；缺失、重复、冲突、越界时不构造残缺 LV；通过 RAID 重组流程打开，没有跨检材的独立 LV 导航入口 |
+| 多 PV 线性 LV | RAID 检测按最新 VG 的 UUID 定义解析全部成员，PV 可以在不同检材、同一检材的不同分区或已组装的 md 阵列上；缺失、重复、冲突、越界时不构造残缺 LV。完整的跨 PV LV 组装为「逻辑卷 <卷组>/<卷>」合成检材（作为 md 成员的 LV 除外），见 [Linux md RAID](MDRAID.md) |
 | 扇区单位 | 分区 LBA 按镜像 sector_size；所有 LVM metadata sector 值始终乘 512，覆盖 4Kn |
 | LV 原始字节 | `lvm:N:M` 支持原始全量、范围、流式读取和 stat；未知文件系统的可读 LV 显示为文件，已识别文件系统继续作为目录 |
 | 来源范围 | raw LV、ext 和 Btrfs stat 分拆回原镜像 offsets；NTFS 删除数据 runs 也跨 LV 段分拆；`absolute_offset` / fs_all offset 仅表示首物理段，完整来源以 map/runs 为准 |
@@ -60,7 +60,7 @@ LVM2 元数据与线性逻辑卷由纯 Rust 代码解析，文件系统读取与
 | `handle_open` | 支持 | DiskImage 打开后，header::read_metadata 读取 PV |
 | `handle_open_wide` | 支持 | Rust Path 支持宿主 Unicode 文件名 |
 | `handle_open_file_io_handle` | 支持 | SectorSource 支持 RAW、容器、物理盘与组装源 |
-| `handle_open_physical_volume_files` | 支持，限线性 | raid::lvm_meta + members，按 UUID 绑定 Arc<DiskImage>，缺员不组装 |
+| `handle_open_physical_volume_files` | 支持，限线性 | raid::lvm_meta + members，按 UUID 绑定检材或已组装的 md 阵列，缺员不组装 |
 | `handle_open_physical_volume_files_wide` | 支持，限线性 | 同上，使用 Rust Path，不依赖窄字节路径 |
 | `handle_open_physical_volume_files_file_io_pool` | 支持，限线性 | 同上，Arc / SectorSource 代替 C IO pool |
 | `handle_close` | 宿主对应 | EvidenceSession 卸载流程与 Arc 生命周期 |
@@ -113,7 +113,7 @@ LVM2 元数据与线性逻辑卷由纯 Rust 代码解析，文件系统读取与
 
 - `core/evidence/partitions/lvm2/header.rs`：二进制标签、弱 CRC、完整 MDA、活动文本和来源范围。`text.rs`：共享 grammar 与全部元数据模型。`layout.rs`：完整线性 byte map、范围拆分、独立 read/seek cursor。
 - `core/filesystem/volumes/lvm.rs`：导航、原始 LV 字节、读取错误和空闲 PE 投影。ext/XFS/Btrfs/NTFS 原生读者复用这个 map；不会替换证据 ID、分区 ID 或原始分区几何。
-- `core/evidence/raid/lvm_meta.rs` 和 `members.rs`：跨镜像读取相同模型，选择最新定义、验证成员完整性；`LinearLvSource` 不返回静默截断。
+- `core/evidence/raid/lvm_meta.rs`、`members.rs` 和 `lvm_stack.rs`：跨镜像与 md 阵列读取相同模型，选择最新定义、验证成员完整性，跨 PV 的 LV 组装为合成检材；`LinearLvSource` 不返回静默截断。
 - `just run-example probe_lvm_active <image>`：输出经过校验的当前 VG/PV/LV/segment、文本来源与副本诊断。`probe_lvm_meta` 保留历史 ring 的调查用途，其扫描结果不用于激活卷。
 
 合成测试覆盖四个标签 sector、CRC 已知向量（独立用 Python zlib seed/final-XOR 转换核对）、label/MDA/text 损坏、ignored/未知 flags、历史和 precommitted 高 seqno、wrapped active text、8 MiB 外备份及同 seqno 冲突、同大小 PV UUID、空 VG、注释/引号/转义、重复 key、段计数/覆盖/数值范围、缺失/重复成员、UUID 重命名与最新副本、4Kn 固定 sector 单位、跨段 full/range/stream/seek，以及 short read。

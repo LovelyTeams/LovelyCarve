@@ -78,8 +78,10 @@ pub(super) fn search(
             if data_offset_bytes >= size {
                 continue;
             }
+            // Only whole chunks of each member are addressable; a partial
+            // last stripe row has holes in the logical space.
             let per_member = size - data_offset_bytes;
-            let capacity = level.capacity(n as u64, per_member);
+            let capacity = level.capacity(n as u64, per_member - per_member % chunk_bytes);
             if capacity == 0 {
                 continue;
             }

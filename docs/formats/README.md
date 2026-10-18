@@ -19,6 +19,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | GPT | [GPT.md](GPT.md) | libvsgpt 对照；主备头与数组 CRC、扇区大小推断、备份恢复、原始槽位与属性 |
 | MBR / EBR | [MBR.md](MBR.md) | libvsmbr 对照；原始槽位与 CHS、多扩展入口、循环与分叉检测、大扇区几何 |
 | LVM2 | [LVM.md](LVM.md) | libvslvm 对照；标签与元数据 CRC、活动副本、环形缓冲回绕、碎片线性卷映射 |
+| Linux md RAID | [MDRAID.md](MDRAID.md) | 元数据 0.90 / 1.0 / 1.1 / 1.2；linear 与 RAID0/1/4/5/6/10 全部布局；陈旧成员、降级重建与 RAID6 双盘恢复；md 上的 LVM |
 | LUKS | [LUKS.md](LUKS.md) | libluksde 对照；LUKS1/2、AES / Serpent / Blowfish / ARC4、IV 方案、主密钥解锁 |
 | BitLocker | [BITLOCKER.md](BITLOCKER.md) | libbde 对照；Vista、Windows 7+ 与 To Go 卷，六种加密方法、EOW 与各种解锁方式 |
 | 卷影副本 | [VSS.md](VSS.md) | libvshadow 对照；存储区链重建、原始块枚举、catalog 校验与尺寸恢复 |
