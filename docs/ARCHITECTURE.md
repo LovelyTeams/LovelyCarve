@@ -331,6 +331,13 @@ AD1 是 FTK Imager 的逻辑镜像（「Custom Content Image」），不是扇�
 
 ## 取证读故障审计
 
+`image_load.rawReadMode` 默认为 `strict`。显式 `force` 通过 `image/forced_raw.rs` 与
+`smraw::RawImage::open_forced` 把普通文件作为所选起点的 RAW 连续前缀，以 positioned I/O
+惰性打开段；跨容量读截短、短读返回前缀，完全越界明确补零并报告绝对偏移的 `BadRegion`。
+`OpenSectorSource` 的非缓存读取也保存探测阶段的坏区。该模式只在当前会话有效并进入证据指纹，
+`ImageInfo.raw_read_mode` 明示模式；哈希、导出的源稳定性和最终长度校验继续生效。
+发现规则、一次性容量警告与 Windows 单次重试见 [SMRAW](formats/SMRAW.md#不完整-raw-的强行读取)。
+
 E01、VMDK、VHD/VHDX、PMFX 等容错后端遇到源读取错误时，先沿绝对源盘的 512 字节扇区边界二分失败范围，
 成功的子范围保留原始字节，只有缩小至单个扇区后仍失败的范围才补零；非对齐请求只补零该扇区与请求的交集。
 失败调用已写入的字节不会直接采信，必须重读或明确补零。待重试范围按顺序处理，可读范围恢复整块读取，避免逐扇区

@@ -147,6 +147,9 @@ struct SourceFileSnapshot {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageInfo {
+    /// Session-only RAW compatibility policy; never inferred from source bytes.
+    #[serde(default)]
+    pub raw_read_mode: RawReadMode,
     /// Session-unlocked partitions; source bytes and original disk geometry remain unchanged.
     #[serde(default)]
     pub unlocked_partitions: Vec<u8>,
@@ -183,6 +186,14 @@ pub struct ImageInfo {
     /// iTunes/Finder backup metadata, including whether its logical view is locked.
     #[serde(default)]
     pub ios_backup: Option<crate::core::evidence::readers::folder_image::IosBackupInfo>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum RawReadMode {
+    #[default]
+    Strict,
+    Force,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -352,6 +363,7 @@ mod open;
 
 mod encryption;
 
+mod forced_raw;
 mod read;
 
 mod metadata;

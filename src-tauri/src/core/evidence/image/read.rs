@@ -40,9 +40,7 @@ impl DiskImage {
 
     pub fn read_range(&self, offset: u64, len: usize) -> anyhow::Result<Vec<u8>> {
         self.require_source()?;
-        let image_len = self.source.len();
-        let start = offset.min(image_len);
-        let available = image_len.saturating_sub(start).min(len as u64) as usize;
+        let available = self.source.read_length(offset, len);
         if available == 0 {
             return Ok(Vec::new());
         }
@@ -73,9 +71,7 @@ impl DiskImage {
         len: usize,
     ) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
         self.require_source()?;
-        let image_len = self.source.len();
-        let start = offset.min(image_len);
-        let available = image_len.saturating_sub(start).min(len as u64) as usize;
+        let available = self.source.read_length(offset, len);
         if available == 0 {
             return Ok((Vec::new(), Vec::new()));
         }
@@ -86,11 +82,11 @@ impl DiskImage {
     }
 
     /// Fill `dst` from the source and record the spans the backend had to
-    /// fabricate. Returns the clamped start offset and the bytes filled.
+    /// fabricate. Returns the requested start offset and the bytes filled.
     fn fill_from_source(&self, offset: u64, dst: &mut [u8]) -> anyhow::Result<(u64, usize)> {
         self.require_source()?;
         let image_len = self.source.len();
-        let start = offset.min(image_len);
+        let start = offset;
         // Bulk sequential reads (hash / export / search, typically 1–16 MiB)
         // bypass the small located cache: they would evict every hot MFT /
         // hex block and split one backend call into hundreds of 64 KiB ones.

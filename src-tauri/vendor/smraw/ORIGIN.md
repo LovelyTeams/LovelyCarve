@@ -12,6 +12,8 @@
 - 独立 vendor 工作区同时作为宿主 path 依赖；两份 Cargo.lock 固定 smraw 0.1.0。
 
 当前范围是 RAW 字节读写、分段发现、句柄资源上限、取消与调用者元数据。
+显式强行模式支持所选分片起点的连续前缀、短读诊断、完全越界清零与 Windows 单次临时错误重试；
+宿主负责合成字节审计。其行为与默认严格读取独立，不宣称 CD 裸扇区或 EWF 兼容性。
 `.info` sidecar、C 错误/日志对象、libbfio 池和已有检材原位写入不在范围内。
 全部 72 个公开 API 的对应与主动差异见
 [docs/formats/SMRAW.md](../../../docs/formats/SMRAW.md)。

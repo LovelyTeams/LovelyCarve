@@ -393,6 +393,9 @@ impl ImageSource {
         if matches!(self, Self::Indexed { .. }) {
             anyhow::bail!(INDEX_ONLY_READ_ERROR);
         }
+        if let Some(reader) = self.forced_raw_reader() {
+            return self.read_forced_raw(reader, offset, dst);
+        }
         let image_len = self.len();
         let start = offset.min(image_len);
         let available = image_len.saturating_sub(start).min(dst.len() as u64) as usize;
@@ -504,9 +507,8 @@ impl ImageSource {
 
     /// Like [`Self::read_range`], but also returns the absolute-offset spans
     /// that had to be fabricated as zeros because the backend could not read
-    /// them. Only the bad-sector-tolerant FFI/native readers produce faults,
-    /// and assembled devices pass on the faults of their members; every other
-    /// source returns an empty fault list.
+    /// them. Bad-sector-tolerant readers and explicitly forced RAW produce
+    /// faults; assembled devices pass on the faults of their members.
     pub(super) fn read_range_traced(
         &self,
         offset: u64,
@@ -514,6 +516,12 @@ impl ImageSource {
     ) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
         if matches!(self, Self::Indexed { .. }) {
             anyhow::bail!(INDEX_ONLY_READ_ERROR);
+        }
+        if let Some(reader) = self.forced_raw_reader() {
+            let mut output = vec![0; self.read_length(offset, len)];
+            let (filled, faults) = self.read_forced_raw(reader, offset, &mut output)?;
+            output.truncate(filled);
+            return Ok((output, faults));
         }
         let image_len = self.len();
         let start = offset.min(image_len);
@@ -804,7 +812,16 @@ pub(super) struct OpenSectorSource<'a> {
 impl SectorSource for OpenSectorSource<'_> {
     fn read(&self, offset: u64, len: usize) -> anyhow::Result<Vec<u8>> {
         let Some(cache) = self.cache else {
-            return self.source.read_range(offset, len);
+            let (data, faults) = self.source.read_range_traced(offset, len)?;
+            if !faults.is_empty() {
+                let mut regions = self
+                    .bad_regions
+                    .lock()
+                    .map_err(|_| anyhow!("image read-fault lock poisoned"))?;
+                regions.extend(faults);
+                *regions = normalize_bad_regions(std::mem::take(&mut *regions));
+            }
+            return Ok(data);
         };
 
         let image_len = self.source.len();

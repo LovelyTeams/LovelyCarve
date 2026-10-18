@@ -1,7 +1,13 @@
 //! load implementation.
 use super::*;
 use crate::core::evidence::image::EvidenceCache;
+use crate::core::evidence::image::RawReadMode;
 use crate::core::filesystem::evidence_session::EvidenceSession;
+
+struct ImageOpenOptions {
+    qcow_key: Option<qcow2::EncryptionKey>,
+    raw_read_mode: RawReadMode,
+}
 
 /// Map an [`OpenProgress`] to a localized `image-load-progress` event, throttling
 /// intermediate byte updates. Called from the `spawn_blocking` open thread.
@@ -65,6 +71,7 @@ pub async fn image_load(
     qcow_key: Option<qcow2::EncryptionKey>,
     task_id: Option<String>,
     case_dir: Option<String>,
+    raw_read_mode: RawReadMode,
 ) -> Result<ImageInfo, AppError> {
     let session_hint = if path.starts_with("decrypted://") {
         Some("decrypted session expired; unlock the source again")
@@ -74,6 +81,11 @@ pub async fn image_load(
         None
     };
     if let Some(hint) = session_hint {
+        if raw_read_mode == RawReadMode::Force {
+            return Err(AppError::invalid_input(
+                "forced RAW mode requires a regular source file",
+            ));
+        }
         return state
             .images
             .lock()
@@ -144,7 +156,19 @@ pub async fn image_load(
             }
         }
     };
-    load_image_runtime(&state, &app, image_id, path, qcow_key, &task, generation).await
+    load_image_runtime(
+        &state,
+        &app,
+        image_id,
+        path,
+        ImageOpenOptions {
+            qcow_key,
+            raw_read_mode,
+        },
+        &task,
+        generation,
+    )
+    .await
 }
 
 async fn image_load_lock(state: &AppState, path: &str) -> Arc<tokio::sync::Mutex<()>> {
@@ -163,15 +187,19 @@ fn image_load_key(path: &str) -> String {
     crate::core::casework::case::evidence_path_key(path)
 }
 
-pub(crate) async fn load_image_runtime(
+async fn load_image_runtime(
     state: &State<'_, AppState>,
     app: &AppHandle,
     image_id: String,
     path: String,
-    qcow_key: Option<qcow2::EncryptionKey>,
+    options: ImageOpenOptions,
     task: &crate::task_manager::TaskRegistration,
     generation: u64,
 ) -> Result<ImageInfo, AppError> {
+    let ImageOpenOptions {
+        qcow_key,
+        raw_read_mode,
+    } = options;
     let token = task.token();
     let context = state.image_load_context.lock().await;
     if token.is_cancelled() || *context != generation {
@@ -181,6 +209,11 @@ pub(crate) async fn load_image_runtime(
         let images = state.images.lock().await;
         images.get(&image_id).cloned()
     } {
+        if !existing.is_index_only() && existing.disk_image().raw_read_mode() != raw_read_mode {
+            return Err(AppError::invalid_input(
+                "image already loaded with another RAW read mode; close it before reopening",
+            ));
+        }
         if existing.is_index_only() {
             // Retry the real opener: a restored source switches back online,
             // while a still-missing source revalidates the current case indexes.
@@ -240,6 +273,14 @@ pub(crate) async fn load_image_runtime(
             Some(directory) => EvidenceCache::Directory(directory),
             None => EvidenceCache::Disabled,
         };
+        if raw_read_mode == RawReadMode::Force {
+            return crate::core::evidence::image::DiskImage::open_forced_raw_cancellable(
+                open_id,
+                std::path::Path::new(&open_path),
+                &observer,
+                &worker_token,
+            );
+        }
         crate::core::evidence::image::DiskImage::open_cancellable(
             open_id,
             &open_path,

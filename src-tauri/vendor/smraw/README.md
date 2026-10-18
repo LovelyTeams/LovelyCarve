@@ -27,6 +27,9 @@ cursor.read_exact(&mut buffer)?;
   记录路径、长度、时间及逻辑偏移；拒绝空列表、重复路径、非文件和多段中的空段。
 - `read_at` / `RawCursor`：并发 positioned I/O、独立 `Read + Seek` 游标、
   严格短读/源变更错误、可取消、默认最多缓存 64 个文件句柄。
+- `discover_contiguous` / `RawImage::open_forced` / `read_at_forced`：显式的 RAW
+  连续前缀兼容模式，不向前补片；短读返回已读数与诊断，完全越界主动清零并以
+  `ForcedRead.synthetic` 标识。调用宿主必须审计合成字节；`read_at` 与源稳定性检查仍严格。
 - `RawWriter`：只用 `create_new` 创建新输出，支持顺序、seek 和随机回写；
   单段 `<basename>.raw`，多段 `<basename>.raw.001` 起。`finish` 核对完整长度并
   sync 后才保留输出，未完成输出在 Drop 中清理；清理失败会打印错误。

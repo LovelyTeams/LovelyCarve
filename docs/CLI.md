@@ -95,6 +95,22 @@ CLI 不会静默漏接功能。
 有案件时，`images open` 把检材登记进案件并在后台建立卷索引；没有案件时索引只在本进程内使用，
 退出即丢弃。
 
+### 不完整 RAW
+
+默认打开会检查可观察到的 RAW 编号缺口。需要读取不完整镜像时显式使用：
+
+```powershell
+lovelycarve-cli images open "D:\evidence\disk.001" --raw-read-mode force
+```
+
+强行模式只拼接从所选文件开始的连续前缀，遇到缺片即停止；也支持 `disk.dd` 接
+`disk.001` 或 `disk.002`。跨容量读取截短，完全越界读取返回有坏区审计的零字节，
+运行中短读保留已读部分。`raw_read_mode` 返回 `force`；默认值为 `strict`。
+模式只在当前进程的已打开检材上生效；用 `shell` 或 JSONL `session` 继续浏览、哈希与导出，
+JSONL 参数为 `rawReadMode: "force"`。关闭后需再次指定，不能与 QCOW 凭据一起使用。
+已加载为另一模式时先 `images close` 再打开。源变化和最终短读仍会使哈希、导出失败；
+导出的可用前缀不表示原始镜像完整。详细边界见 [SMRAW](formats/SMRAW.md#不完整-raw-的强行读取)。
+
 ## 发现命令
 
 ```powershell

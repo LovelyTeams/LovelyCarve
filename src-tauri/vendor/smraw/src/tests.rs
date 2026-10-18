@@ -4,6 +4,9 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[path = "force_tests.rs"]
+mod force_tests;
+
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
 struct Fixture(PathBuf);

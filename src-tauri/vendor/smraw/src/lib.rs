@@ -4,11 +4,15 @@
 //! observable numbering gaps; callers needing completeness must provide an
 //! expected length or an independently known explicit segment list.
 mod discovery;
+mod force_discovery;
+mod force_read;
 mod metadata;
 mod reader;
 mod writer;
 
 pub use discovery::{discover, Discovery, MAX_SEGMENTS};
+pub use force_discovery::discover_contiguous;
+pub use force_read::ForcedRead;
 pub use metadata::{MediaMetadata, MetadataValues};
 pub use reader::{RawCursor, RawImage, Segment};
 pub use writer::RawWriter;

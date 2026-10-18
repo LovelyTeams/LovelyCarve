@@ -628,6 +628,19 @@ files export hello.txt --destination "{exported}"
         result, rows = session([{"id": "open", "command": "images open", "args": {"path": str(split_first)}}], expected=1)
         assert "error" in rows[0], result.stdout
 
+        # Forced RAW opens and exports the prefix, without silently changing a live policy.
+        forced_export = root / "forced-prefix.raw"
+        result, rows = session([
+            {"id": "open", "command": "images open", "args": {"path": str(split_first), "rawReadMode": "force"}},
+            {"id": "export", "command": "images export", "args": {"destination": str(forced_export), "taskId": "forced-export", "readFaultPolicy": "strict"}},
+            {"id": "mode-conflict", "command": "images open", "args": {"path": str(split_first), "rawReadMode": "strict"}},
+            {"id": "close", "command": "images close", "args": {"imageId": {"$ref": "open#/id"}}},
+        ], expected=1)
+        assert rows[0]["result"]["raw_read_mode"] == "force", rows
+        assert rows[0]["result"]["size_bytes"] == 517, rows
+        assert "result" in rows[1] and "error" in rows[2] and "result" in rows[3], rows
+        assert forced_export.read_bytes() == split_bytes[:517]
+
         # Read and export actual EWF evidence through the public headless commands.
         fixtures = Path(__file__).resolve().parents[1] / "src-tauri/vendor/ewf/tests/data"
         for name, expected_md5 in [

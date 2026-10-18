@@ -4,6 +4,7 @@ use super::*;
 impl DiskImage {
     pub fn info(&self) -> ImageInfo {
         ImageInfo {
+            raw_read_mode: self.raw_read_mode(),
             unlocked_partitions: Vec::new(),
             index_only: self.is_index_only(),
             id: self.id.clone(),
@@ -73,6 +74,9 @@ impl DiskImage {
         hasher.update(self.path.to_string_lossy().as_bytes());
         hasher.update([0]);
         hasher.update(self.len().to_le_bytes());
+        if self.raw_read_mode() == RawReadMode::Force {
+            hasher.update(b"forced-raw-v1\0");
+        }
         hasher.update((self.sector_size as u64).to_le_bytes());
         hasher.update(self.on_disk_bytes.unwrap_or(u64::MAX).to_le_bytes());
         hasher.update(self.modified_unix_ms.unwrap_or(i64::MIN).to_le_bytes());

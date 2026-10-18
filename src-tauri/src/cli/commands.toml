@@ -1244,6 +1244,7 @@ keywords = ["load", "evidence", "disk image", "e01", "vmdk", "raw", "dd", "add e
 examples = [
     { command = "lovelycarve-cli images open D:\\evidence\\disk.E01", description = "打开检材并显示其信息" },
     { command = "lovelycarve-cli images open D:\\evidence\\disk.qcow2 --qcow-password", description = "在终端中隐藏输入 QCOW 密码" },
+    { command = "lovelycarve-cli images open D:\\evidence\\disk.001 --raw-read-mode force", description = "按连续分片前缀强行读取不完整 RAW 镜像" },
 ]
 [command.params.path]
 description = "检材路径"
@@ -1251,6 +1252,9 @@ description = "检材路径"
 description = "QCOW legacy AES 密码"
 [command.params.qcowKeyHex]
 description = "QCOW legacy AES 密钥（16 字节十六进制）"
+[command.params.rawReadMode]
+description = "RAW 读取模式：strict 完整性检查（默认），force 仅打开连续前缀并容忍短读；仅当前会话有效"
+values = ["strict", "force"]
 
 [[command]]
 path = "images get"

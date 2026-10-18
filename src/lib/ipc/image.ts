@@ -54,6 +54,7 @@ export interface ShadowCopyOrigin {
 }
 
 export interface ImageInfo {
+  raw_read_mode?: 'strict' | 'force';
   unlocked_partitions?: number[];
   /** Source unavailable; the session serves published case metadata indexes. */
   index_only?: boolean;
@@ -141,6 +142,8 @@ export type ImageLoadArgs = {
   caseDir?: string;
   qcowPassword?: string;
   qcowKeyHex?: string;
+  /** Session-only compatibility mode for incomplete RAW; source bytes remain audited. */
+  rawReadMode?: 'strict' | 'force';
 };
 
 /** Load an image / folder by path WITHOUT touching the active file session —

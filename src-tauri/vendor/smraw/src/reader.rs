@@ -38,15 +38,23 @@ struct HandleCache {
     handles: VecDeque<(usize, Arc<File>)>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OpenMode {
+    Strict,
+    Force,
+}
+
 /// Read-only logical concatenation with positioned, concurrent I/O.
 /// The cache bounds idle handles; outstanding reads may temporarily retain
 /// evicted handles. I/O runs outside the cache lock.
 #[derive(Debug)]
 pub struct RawImage {
-    segments: Vec<Segment>,
+    pub(crate) segments: Vec<Segment>,
     media_size: u64,
     handles: Mutex<HandleCache>,
-    abort: AbortHandle,
+    pub(crate) abort: AbortHandle,
+    mode: OpenMode,
+    pub(crate) capacity_warned: std::sync::atomic::AtomicBool,
     /// Optional caller declarations; never populated from RAW source bytes.
     pub metadata: MediaMetadata,
 }
@@ -59,6 +67,13 @@ impl RawImage {
     /// Open in caller-supplied order. Unequal segment lengths are supported;
     /// empty members are rejected except for a single empty RAW file.
     pub fn open_segments(paths: impl IntoIterator<Item = PathBuf>) -> io::Result<Self> {
+        Self::from_paths(paths, OpenMode::Strict)
+    }
+
+    pub(crate) fn from_paths(
+        paths: impl IntoIterator<Item = PathBuf>,
+        mode: OpenMode,
+    ) -> io::Result<Self> {
         let mut segments = Vec::new();
         let mut identities = HashSet::new();
         let mut media_size = 0u64;
@@ -74,8 +89,11 @@ impl RawImage {
                     path.display()
                 )));
             }
-            let file = File::open(&path)?;
-            let metadata = file.metadata()?;
+            let metadata = if mode == OpenMode::Force {
+                fs::metadata(&path)?
+            } else {
+                File::open(&path)?.metadata()?
+            };
             if !metadata.is_file() {
                 return Err(invalid(format!(
                     "RAW segment is not a regular file: {}",
@@ -96,7 +114,10 @@ impl RawImage {
         if segments.is_empty() {
             return Err(invalid("RAW segment list is empty"));
         }
-        if segments.len() > 1 && segments.iter().any(|segment| segment.len == 0) {
+        if mode == OpenMode::Strict
+            && segments.len() > 1
+            && segments.iter().any(|segment| segment.len == 0)
+        {
             return Err(invalid("empty member in split RAW image"));
         }
         Ok(Self {
@@ -107,12 +128,18 @@ impl RawImage {
                 handles: VecDeque::new(),
             }),
             abort: AbortHandle::default(),
+            mode,
+            capacity_warned: std::sync::atomic::AtomicBool::new(false),
             metadata: MediaMetadata::default(),
         })
     }
 
     pub fn media_size(&self) -> u64 {
         self.media_size
+    }
+
+    pub fn is_forced(&self) -> bool {
+        self.mode == OpenMode::Force
     }
     pub fn is_empty(&self) -> bool {
         self.media_size == 0
@@ -170,6 +197,10 @@ impl RawImage {
     }
 
     fn handle(&self, index: usize) -> io::Result<Arc<File>> {
+        self.open_handle(index, OpenMode::Strict)
+    }
+
+    pub(crate) fn open_handle(&self, index: usize, mode: OpenMode) -> io::Result<Arc<File>> {
         let mut cache = self
             .handles
             .lock()
@@ -191,11 +222,22 @@ impl RawImage {
             .get(index)
             .ok_or_else(|| invalid("RAW segment index out of bounds"))?;
         let file = Arc::new(File::open(&segment.path)?);
-        segment.validate(&file.metadata()?)?;
+        if mode == OpenMode::Strict {
+            segment.validate(&file.metadata()?)?;
+        }
         cache.handles.push_front((index, Arc::clone(&file)));
         let limit = cache.limit;
         cache.handles.truncate(limit);
         Ok(file)
+    }
+
+    pub(crate) fn reset_handles(&self) -> io::Result<()> {
+        self.handles
+            .lock()
+            .map_err(|_| io::Error::other("RAW cache lock poisoned"))?
+            .handles
+            .clear();
+        Ok(())
     }
 
     pub fn validate_sources(&self) -> io::Result<()> {

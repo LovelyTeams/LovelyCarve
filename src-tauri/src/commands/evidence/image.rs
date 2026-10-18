@@ -16,6 +16,10 @@ use crate::core::filesystem::evidence_session::ImageExportMode;
 use crate::state::AppState;
 
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Flat IPC fields are shared by desktop and the generated CLI"
+)]
 /// Opens on a blocking worker; `task_id` opts into a caller-owned task identity.
 /// Emits `image-load-progress` for the legacy loader and `task-progress` for
 /// the task center. `task_cancel` interrupts materialisation and drops tempfiles.
@@ -27,7 +31,16 @@ pub async fn image_load(
     qcow_key_hex: Option<String>,
     task_id: Option<String>,
     case_dir: Option<String>,
+    raw_read_mode: Option<crate::core::evidence::image::RawReadMode>,
 ) -> Result<ImageInfo, AppError> {
+    let raw_read_mode = raw_read_mode.unwrap_or_default();
+    if raw_read_mode == crate::core::evidence::image::RawReadMode::Force
+        && (qcow_password.is_some() || qcow_key_hex.is_some())
+    {
+        return Err(AppError::invalid_input(
+            "forced RAW mode cannot use QCOW credentials",
+        ));
+    }
     let password = qcow_password.map(zeroize::Zeroizing::new);
     let key_hex = qcow_key_hex.map(zeroize::Zeroizing::new);
     let key = match (password, key_hex) {
@@ -52,7 +65,16 @@ pub async fn image_load(
         }
         (None, None) => None,
     };
-    crate::app::workflows::evidence::image_load(app, state, path, key, task_id, case_dir).await
+    crate::app::workflows::evidence::image_load(
+        app,
+        state,
+        path,
+        key,
+        task_id,
+        case_dir,
+        raw_read_mode,
+    )
+    .await
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]

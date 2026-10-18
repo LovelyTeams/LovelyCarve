@@ -157,7 +157,7 @@ impl DiskImage {
         )
     }
 
-    fn from_source_cancellable(
+    pub(super) fn from_source_cancellable(
         id: String,
         path: PathBuf,
         source: ImageSource,
