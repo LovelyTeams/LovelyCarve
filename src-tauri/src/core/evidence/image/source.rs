@@ -504,8 +504,9 @@ impl ImageSource {
 
     /// Like [`Self::read_range`], but also returns the absolute-offset spans
     /// that had to be fabricated as zeros because the backend could not read
-    /// them. Only the bad-sector-tolerant FFI/native readers can produce
-    /// faults; every other source returns an empty fault list.
+    /// them. Only the bad-sector-tolerant FFI/native readers produce faults,
+    /// and assembled devices pass on the faults of their members; every other
+    /// source returns an empty fault list.
     pub(super) fn read_range_traced(
         &self,
         offset: u64,
@@ -602,7 +603,13 @@ impl ImageSource {
                 buf.truncate(filled);
                 Ok((buf, faults))
             }
-            Self::Assembled { source, .. } => Ok((source.read(start, available)?, Vec::new())),
+            Self::Assembled { source, .. } => {
+                // Composite devices (RAID, LVM) report member faults at their
+                // own offsets; keep the spans inside the bytes returned.
+                let (bytes, faults) = source.read_traced(start, available)?;
+                let faults = collect_read_fault_intersections(&faults, start, bytes.len() as u64);
+                Ok((bytes, faults))
+            }
             Self::Ldplayer { source, .. } => Ok((source.read(start, available)?, Vec::new())),
             Self::Docker { image } => {
                 let start = usize::try_from(start)
@@ -677,6 +684,9 @@ impl SectorSource for ImageSource {
     }
     fn size(&self) -> u64 {
         self.len()
+    }
+    fn read_traced(&self, offset: u64, len: usize) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
+        self.read_range_traced(offset, len)
     }
 }
 
@@ -852,6 +862,10 @@ impl SectorSource for DiskImage {
 
     fn size(&self) -> u64 {
         self.len()
+    }
+
+    fn read_traced(&self, offset: u64, len: usize) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
+        self.read_range_traced(offset, len)
     }
 }
 

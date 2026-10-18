@@ -6,15 +6,26 @@
 //!
 //! Reads touch only data chunks. An absent column (`None`, or the slot passed
 //! to [`RaidVolume::set_degraded`]) is rebuilt per stripe row from the
-//! surviving columns: XOR with P for one missing data column, the Q syndrome
-//! when P is gone too, and the two-erasure RAID6 solution for two missing data
-//! columns. RAID0 has no redundancy, so every slot must be present.
+//! surviving columns ([`super::rebuild`]): XOR with P for one missing data
+//! column, the Q syndrome when P is gone too, and the two-erasure RAID6
+//! solution for two missing data columns. RAID0 has no redundancy, so every
+//! slot must be present.
+//!
+//! Bytes a member synthesized (zero-filled bad sectors) count as erased too:
+//! a data chunk read with synthesized bytes is repaired from parity where the
+//! row's redundancy covers them, and a rebuild never computes data from
+//! synthesized bytes. What no authentic column can supply stays zero and is
+//! reported at its logical offset.
+
+use std::ops::Range;
 
 use anyhow::bail;
 
-use super::gf256;
 use super::parity_layout::{place, ParityKind, Raid5Layout, Raid6Layout, RowPlacement};
+use super::rebuild::{self, Plan};
+use super::traced::{RepairLog, TracedBytes, TracedRead};
 use super::{present_member, smallest_present, StripedMember};
+use crate::core::evidence::image::BadRegion;
 use crate::core::evidence::partitions::SectorSource;
 
 /// Striped level and its parity rotation.
@@ -93,6 +104,7 @@ pub struct RaidVolume {
     /// Logical capacity reported to the filesystem layer: `Some` honours a
     /// size recorded in metadata, `None` derives it from the members.
     logical_size_bytes: Option<u64>,
+    repair_log: RepairLog,
 }
 
 impl RaidVolume {
@@ -147,6 +159,7 @@ impl RaidVolume {
             members,
             chunk_bytes,
             logical_size_bytes,
+            repair_log: RepairLog::default(),
         }
     }
 
@@ -180,12 +193,21 @@ impl RaidVolume {
     /// Inherent reader; named `read_at` to leave `read` for the
     /// `SectorSource` trait impl.
     pub fn read_at(&self, offset: u64, len: usize) -> anyhow::Result<Vec<u8>> {
+        self.read_traced_at(offset, len).map(|(bytes, _)| bytes)
+    }
+
+    /// [`Self::read_at`] plus the synthesized spans, as logical offsets.
+    pub fn read_traced_at(
+        &self,
+        offset: u64,
+        len: usize,
+    ) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
         if self.chunk_bytes == 0 || len == 0 {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), Vec::new()));
         }
         let total = self.total_bytes();
         if offset >= total {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), Vec::new()));
         }
         let n = self.members.len();
         if n < self.level.min_members() {
@@ -196,20 +218,30 @@ impl RaidVolume {
             );
         }
         let mut remaining = (total - offset).min(len as u64) as usize;
-        let mut out = Vec::with_capacity(remaining);
+        let mut out = TracedRead::new(offset, remaining);
         let mut cursor = offset;
         while remaining > 0 {
             let step = self.step(cursor, remaining);
-            let bytes = match self.members.get(step.column) {
-                Some(Some(member)) => member.read_exact(step.member_offset, step.take_len)?,
-                Some(None) => self.reconstruct(&step)?,
+            let piece = match self.members.get(step.column) {
+                Some(Some(member)) => {
+                    let mut piece = member.read_exact_traced(step.member_offset, step.take_len)?;
+                    if !piece.is_authentic() && self.level.parity_kind().is_some() {
+                        let repaired = piece.repair_from(|range| self.rebuild(&step, range));
+                        if repaired > 0 {
+                            let device = format!("{:?}", self.level);
+                            self.repair_log.note(&device, step.column, cursor, repaired);
+                        }
+                    }
+                    piece
+                }
+                Some(None) => self.rebuild(&step, 0..step.take_len)?,
                 None => bail!("RAID column {} is outside the array", step.column),
             };
-            out.extend_from_slice(&bytes);
+            out.push(piece);
             cursor += step.take_len as u64;
             remaining -= step.take_len;
         }
-        Ok(out)
+        Ok(out.finish())
     }
 
     fn step(&self, cursor: u64, remaining: usize) -> StripeStep {
@@ -220,9 +252,12 @@ impl RaidVolume {
         }
     }
 
-    /// Rebuild an absent data chunk of one stripe row from the surviving
-    /// columns at the same member offset.
-    fn reconstruct(&self, step: &StripeStep) -> anyhow::Result<Vec<u8>> {
+    /// Rebuild `range` (step-relative) of the step's data chunk from the rest
+    /// of its stripe row, with the chunk itself and absent members erased.
+    /// Fails when absent members alone leave the row without the redundancy
+    /// to rebuild it; spans only synthesized member bytes leave uncovered
+    /// come back synthesized.
+    fn rebuild(&self, step: &StripeStep, range: Range<usize>) -> anyhow::Result<TracedBytes> {
         let Some(kind) = self.level.parity_kind() else {
             bail!(
                 "RAID0 member slot {} is absent; striping has no redundancy",
@@ -231,81 +266,58 @@ impl RaidVolume {
         };
         let n = self.members.len();
         let row = RowPlacement::new(kind, n as u64, step.stripe);
-        let absent: Vec<usize> = row
+        let unread = |column: usize| {
+            column == step.column || !matches!(self.members.get(column), Some(Some(_)))
+        };
+        let Some(plan) = rebuild::plan(&row, step.column, unread) else {
+            let absent_data = row.data.iter().filter(|&&column| unread(column)).count();
+            bail!(
+                "stripe row {} cannot rebuild column {}: {absent_data} data column(s) unavailable, P {}, Q {}",
+                step.stripe,
+                step.column,
+                if unread(row.p) { "absent" } else { "present" },
+                if row.q.is_some_and(|q| !unread(q)) { "present" } else { "absent" },
+            );
+        };
+
+        let member_offset = step.member_offset + range.start as u64;
+        let len = range.len();
+        let mut columns: Vec<Option<TracedBytes>> = (0..n).map(|_| None).collect();
+        let read = |column: usize| {
+            present_member(&self.members, column)?.read_exact_traced(member_offset, len)
+        };
+        // Q only when the plan needs it: a single erasure with P present is
+        // the XOR of the row, as md computes it.
+        let reads_q = matches!(plan, Plan::FromQ | Plan::FromPq { .. });
+        let needed = row
             .data
             .iter()
             .copied()
-            .filter(|&column| self.members[column].is_none())
-            .collect();
-        let read = |column: usize| {
-            present_member(&self.members, column)?.read_exact(step.member_offset, step.take_len)
+            .chain([row.p])
+            .chain(row.q.filter(|_| reads_q));
+        for column in needed.filter(|&column| !unread(column)) {
+            columns[column] = Some(read(column)?);
+        }
+        let rebuilt = rebuild::rebuild(&row, n, step.column, &columns, len)?;
+        if rebuilt.is_authentic() || reads_q {
+            return Ok(rebuilt);
+        }
+        // Synthesized bytes in another column may still be covered by Q.
+        let Some(q) = row.q.filter(|&q| !unread(q)) else {
+            return Ok(rebuilt);
         };
-        let p_present = self.members[row.p].is_some();
-        let q_present = row.q.is_some_and(|q| self.members[q].is_some());
-
-        // P ⊕ every present data column = XOR of the absent data columns.
-        let p_delta = || -> anyhow::Result<Vec<u8>> {
-            let mut acc = read(row.p)?;
-            for &column in row.data.iter().filter(|column| !absent.contains(column)) {
-                xor_into(&mut acc, &read(column)?);
+        match read(q) {
+            Ok(bytes) => {
+                columns[q] = Some(bytes);
+                rebuild::rebuild(&row, n, step.column, &columns, len)
             }
-            Ok(acc)
-        };
-        // Q ⊕ Σ g^e·D over present data columns = Σ g^e·D over absent ones.
-        let q_delta = |q: usize| -> anyhow::Result<Vec<u8>> {
-            let mut acc = read(q)?;
-            for &column in row.data.iter().filter(|column| !absent.contains(column)) {
-                let coefficient = gf256::pow2(row.q_exponent(column, n));
-                gf256::mul_xor_into(&mut acc, &read(column)?, coefficient);
+            Err(error) => {
+                tracing::debug!(
+                    "RAID6 Q column {q} unavailable for stripe row {} ({error:#})",
+                    step.stripe
+                );
+                Ok(rebuilt)
             }
-            Ok(acc)
-        };
-
-        match (absent.as_slice(), p_present, q_present) {
-            ([_], true, _) => p_delta(),
-            ([missing], false, true) => {
-                let Some(q) = row.q else {
-                    bail!("stripe row {} has no Q column", step.stripe);
-                };
-                let mut bytes = q_delta(q)?;
-                let coefficient = gf256::pow2(row.q_exponent(*missing, n));
-                let Some(inverse) = gf256::inverse(coefficient) else {
-                    bail!("RAID6 Q coefficient has no inverse");
-                };
-                gf256::scale(&mut bytes, inverse);
-                Ok(bytes)
-            }
-            ([first, second], true, true) => {
-                let Some(q) = row.q else {
-                    bail!("stripe row {} has no Q column", step.stripe);
-                };
-                let (wanted, other) = if *first == step.column {
-                    (*first, *second)
-                } else {
-                    (*second, *first)
-                };
-                // With x the wanted column and y the other:
-                //   p = Dx ⊕ Dy,  q = g^ex·Dx ⊕ g^ey·Dy
-                //   Dx = (q ⊕ g^ey·p) / (g^ex ⊕ g^ey)
-                let g_wanted = gf256::pow2(row.q_exponent(wanted, n));
-                let g_other = gf256::pow2(row.q_exponent(other, n));
-                let p = p_delta()?;
-                let mut bytes = q_delta(q)?;
-                gf256::mul_xor_into(&mut bytes, &p, g_other);
-                let Some(inverse) = gf256::inverse(g_wanted ^ g_other) else {
-                    bail!("RAID6 columns {wanted} and {other} share a Q coefficient");
-                };
-                gf256::scale(&mut bytes, inverse);
-                Ok(bytes)
-            }
-            _ => bail!(
-                "stripe row {} cannot rebuild column {}: {} data column(s) absent, P {}, Q {}",
-                step.stripe,
-                step.column,
-                absent.len(),
-                if p_present { "present" } else { "absent" },
-                if q_present { "present" } else { "absent" },
-            ),
         }
     }
 }
@@ -317,11 +329,8 @@ impl SectorSource for RaidVolume {
     fn size(&self) -> u64 {
         self.total_bytes()
     }
-}
-
-fn xor_into(target: &mut [u8], source: &[u8]) {
-    for (byte, &value) in target.iter_mut().zip(source) {
-        *byte ^= value;
+    fn read_traced(&self, offset: u64, len: usize) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
+        self.read_traced_at(offset, len)
     }
 }
 
@@ -380,6 +389,9 @@ pub(crate) fn encode_striped(
     n: usize,
     chunk: usize,
 ) -> Vec<Vec<u8>> {
+    use super::gf256;
+    use super::rebuild::xor_into;
+
     let Some(kind) = level.parity_kind() else {
         let rows = logical.len().div_ceil(chunk * n);
         let mut members = vec![vec![0u8; rows * chunk]; n];

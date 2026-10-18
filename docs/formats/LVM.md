@@ -19,7 +19,7 @@ LVM2 元数据与线性逻辑卷由纯 Rust 代码解析，文件系统读取与
 | VG/PV/LV/segment/stripe 元数据 | VG 名称/UUID/seqno/extent size，PV 名称/UUID/device/dev_size/pe_start/pe_count，LV 名称/UUID、全部 segments 与 stripes |
 | LV 顺序与长度 | 保持文本 LV 声明顺序和 `lvm:N:M` 身份；segments 按 start_extent 排序，严格验证完整覆盖和 segment_count；长度累计全部段 |
 | 单 PV 多段、碎片 LV | 完整线性 map；ext、XFS、Btrfs、NTFS 的元数据与正文均通过映射；完整、流式、范围读取共用字节来源 |
-| 多 PV 线性 LV | RAID 检测按最新 VG 的 UUID 定义解析全部成员，PV 可以在不同检材、同一检材的不同分区或已组装的 md 阵列上；缺失、重复、冲突、越界时不构造残缺 LV。完整的跨 PV LV 组装为「逻辑卷 <卷组>/<卷>」合成检材（作为 md 成员的 LV 除外），见 [Linux md RAID](MDRAID.md) |
+| 多 PV 线性 LV | RAID 检测按最新 VG 的 UUID 定义解析全部成员，PV 可以在不同检材、同一检材的不同分区或已组装的 md 阵列上；缺失、重复、冲突、越界时不构造残缺 LV。完整的跨 PV LV 组装为「逻辑卷 <卷组>/<卷>」合成检材（作为 md 成员的 LV 除外），成员检材补零的坏区按逻辑卷偏移记入该检材的坏区报告，见 [Linux md RAID](MDRAID.md) |
 | 扇区单位 | 分区 LBA 按镜像 sector_size；所有 LVM metadata sector 值始终乘 512，覆盖 4Kn |
 | LV 原始字节 | `lvm:N:M` 支持原始全量、范围、流式读取和 stat；未知文件系统的可读 LV 显示为文件，已识别文件系统继续作为目录 |
 | 来源范围 | raw LV、ext 和 Btrfs stat 分拆回原镜像 offsets；NTFS 删除数据 runs 也跨 LV 段分拆；`absolute_offset` / fs_all offset 仅表示首物理段，完整来源以 map/runs 为准 |

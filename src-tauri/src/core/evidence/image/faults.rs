@@ -101,6 +101,19 @@ pub(super) fn collect_read_fault_intersections(
         .collect()
 }
 
+/// `regions` of a read of `len` bytes at `from`, clipped to that read and moved
+/// to the address space in which the same bytes start at `to`. Composite
+/// devices report a member's synthesized spans at their own offsets this way.
+pub fn rebase_bad_regions(regions: &[BadRegion], from: u64, len: u64, to: u64) -> Vec<BadRegion> {
+    collect_read_fault_intersections(regions, from, len)
+        .into_iter()
+        .map(|region| BadRegion {
+            offset: to.saturating_add(region.offset - from),
+            len: region.len,
+        })
+        .collect()
+}
+
 pub(super) fn record_collected_read_faults(regions: Vec<BadRegion>) {
     if regions.is_empty() {
         return;

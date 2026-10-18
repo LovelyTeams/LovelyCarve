@@ -354,7 +354,7 @@ mod read;
 mod metadata;
 pub(crate) use metadata::find_partition;
 
-pub use faults::{BadRegion, ReadFaultPolicy, ReadFaultReport};
+pub use faults::{rebase_bad_regions, BadRegion, ReadFaultPolicy, ReadFaultReport};
 #[cfg(test)]
 mod android_backup_tests;
 #[cfg(test)]

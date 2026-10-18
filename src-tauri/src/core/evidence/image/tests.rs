@@ -26,6 +26,32 @@ fn bitlocker_source_rejects_audited_synthetic_ciphertext() {
 }
 
 #[test]
+fn traced_reads_hand_faults_to_the_caller_instead_of_the_scope() {
+    let mut file = NamedTempFile::new().unwrap();
+    file.write_all(&[0; 4096]).unwrap();
+    file.flush().unwrap();
+    let image = DiskImage::open(file.path()).unwrap();
+    image.record_faults(vec![BadRegion {
+        offset: 512,
+        len: 512,
+    }]);
+    let clipped = vec![BadRegion {
+        offset: 512,
+        len: 256,
+    }];
+
+    let ((bytes, faults), report) =
+        image.collect_read_faults(|| image.read_range_traced(256, 512).unwrap());
+    assert_eq!(bytes.len(), 512);
+    assert_eq!(faults, clipped);
+    assert_eq!(report, ReadFaultReport::default());
+
+    let (bytes, report) = image.collect_read_faults(|| image.read_range(256, 512).unwrap());
+    assert_eq!(bytes.len(), 512);
+    assert_eq!(report.bad_regions, clipped);
+}
+
+#[test]
 fn opens_raw_gpt_with_crc_validated_geometry_and_backup_recovery() {
     for sector_size in [512, 1024, 2048, 4096] {
         for populated in [0, 1] {

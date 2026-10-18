@@ -14,7 +14,7 @@ use std::{
 use super::docker::host_docker::HostDocker;
 use super::external_volume::ExternalVolume;
 use super::volumes::ntfs::{NtfsDeletedSnapshot, NtfsSource};
-use crate::core::evidence::image::DiskImage;
+use crate::core::evidence::image::{BadRegion, DiskImage};
 use crate::core::evidence::partitions::SectorSource;
 mod encrypted;
 use encrypted::AttachedEncryptedVolume;
@@ -142,6 +142,10 @@ impl SectorSource for EvidenceSession {
 
     fn size(&self) -> u64 {
         self.image.len()
+    }
+
+    fn read_traced(&self, offset: u64, length: usize) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
+        self.image.read_range_traced(offset, length)
     }
 }
 

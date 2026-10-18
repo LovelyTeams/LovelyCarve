@@ -4,16 +4,21 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::bail;
 
+use super::traced::{RepairLog, TracedBytes};
 use super::StripedMember;
+use crate::core::evidence::image::BadRegion;
 use crate::core::evidence::partitions::SectorSource;
 
 /// Mirror reader. Reads come from the lowest present slot; another mirror is
 /// used only when that read fails (a truncated or unreadable member), and the
-/// first such fallback per mirror is logged.
+/// first such fallback per mirror is logged. Bytes the serving mirror
+/// synthesized are taken from the other mirrors where they hold them
+/// authentically.
 pub struct MirrorVolume {
     members: Vec<Option<StripedMember>>,
     size_bytes: u64,
     fallback_logged: Vec<AtomicBool>,
+    repair_log: RepairLog,
 }
 
 impl MirrorVolume {
@@ -36,12 +41,22 @@ impl MirrorVolume {
             members,
             size_bytes,
             fallback_logged,
+            repair_log: RepairLog::default(),
         })
     }
 
     pub fn read_at(&self, offset: u64, len: usize) -> anyhow::Result<Vec<u8>> {
+        self.read_traced_at(offset, len).map(|(bytes, _)| bytes)
+    }
+
+    /// [`Self::read_at`] plus the spans no mirror holds authentically.
+    pub fn read_traced_at(
+        &self,
+        offset: u64,
+        len: usize,
+    ) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
         if len == 0 || offset >= self.size_bytes {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), Vec::new()));
         }
         let take = (self.size_bytes - offset).min(len as u64) as usize;
         let mut failure: Option<(usize, anyhow::Error)> = None;
@@ -49,8 +64,8 @@ impl MirrorVolume {
             let Some(member) = member else {
                 continue;
             };
-            match member.read_exact(offset, take) {
-                Ok(bytes) => {
+            match member.read_exact_traced(offset, take) {
+                Ok(mut piece) => {
                     if let Some((failed_slot, error)) = &failure {
                         let first = self
                             .fallback_logged
@@ -65,7 +80,10 @@ impl MirrorVolume {
                             );
                         }
                     }
-                    return Ok(bytes);
+                    if !piece.is_authentic() {
+                        self.repair(slot, offset, &mut piece);
+                    }
+                    return Ok(piece.into_read(offset));
                 }
                 Err(error) => {
                     if failure.is_none() {
@@ -81,6 +99,26 @@ impl MirrorVolume {
             None => bail!("RAID1 has no present mirror"),
         }
     }
+
+    /// Take the bytes `slot` synthesized in `piece` (read at array `offset`)
+    /// from the other mirrors, in slot order.
+    fn repair(&self, slot: usize, offset: u64, piece: &mut TracedBytes) {
+        let mut repaired = 0;
+        for (other, member) in self.members.iter().enumerate() {
+            if piece.is_authentic() {
+                break;
+            }
+            let Some(member) = member.as_ref().filter(|_| other != slot) else {
+                continue;
+            };
+            repaired += piece.repair_from(|range| {
+                member.read_exact_traced(offset + range.start as u64, range.len())
+            });
+        }
+        if repaired > 0 {
+            self.repair_log.note("RAID1", slot, offset, repaired);
+        }
+    }
 }
 
 impl SectorSource for MirrorVolume {
@@ -90,14 +128,64 @@ impl SectorSource for MirrorVolume {
     fn size(&self) -> u64 {
         self.size_bytes
     }
+    fn read_traced(&self, offset: u64, len: usize) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
+        self.read_traced_at(offset, len)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Range;
     use std::sync::Arc;
 
     use super::*;
-    use crate::core::evidence::raid::source::test_support::{pattern, vec_member, VecMember};
+    use crate::core::evidence::raid::source::test_support::{
+        assert_audited, faulty_member, pattern, regions_where, vec_member, Lcg, VecMember,
+    };
+
+    #[test]
+    fn synthesized_bytes_come_from_another_mirror() {
+        let data = pattern(64, 4);
+        let mirror = MirrorVolume::new(
+            vec![
+                Some(faulty_member(data.clone(), &[8..16])),
+                None,
+                Some(faulty_member(data.clone(), &[12..20, 40..48])),
+            ],
+            64,
+        )
+        .expect("mirror");
+        let (bytes, faults) = mirror.read_traced_at(0, 64).expect("read");
+        // Only 12..16 is unreadable on both present mirrors.
+        assert_eq!(faults, vec![BadRegion { offset: 12, len: 4 }]);
+        assert_audited(&bytes, &faults, &data, "RAID1");
+        assert_eq!(mirror.read_at(0, 64).expect("plain read"), bytes);
+
+        let (_, faults) = mirror.read_traced_at(14, 10).expect("partial read");
+        assert_eq!(faults, vec![BadRegion { offset: 14, len: 2 }]);
+    }
+
+    #[test]
+    fn a_byte_is_synthesized_only_where_every_mirror_is() {
+        let mut rng = Lcg(7);
+        for case in 0..200u8 {
+            let data = pattern(96, case);
+            let mirrors = 2 + rng.below(2) as usize;
+            let bad: Vec<Vec<Range<u64>>> = (0..mirrors).map(|_| rng.spans(96, 3, 40)).collect();
+            let members = bad
+                .iter()
+                .map(|spans| Some(faulty_member(data.clone(), spans)))
+                .collect();
+            let mirror = MirrorVolume::new(members, 96).expect("mirror");
+            let (bytes, faults) = mirror.read_traced_at(0, 96).expect("read");
+            let expected = regions_where(96, |index| {
+                bad.iter()
+                    .all(|spans| spans.iter().any(|span| span.contains(&(index as u64))))
+            });
+            assert_eq!(faults, expected, "case {case}: {bad:?}");
+            assert_audited(&bytes, &faults, &data, &format!("case {case}"));
+        }
+    }
 
     #[test]
     fn reads_the_first_present_mirror() {

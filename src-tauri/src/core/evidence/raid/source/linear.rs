@@ -8,7 +8,9 @@
 
 use anyhow::bail;
 
+use super::traced::TracedRead;
 use super::{present_member, StripedMember};
+use crate::core::evidence::image::BadRegion;
 use crate::core::evidence::partitions::SectorSource;
 
 /// Concatenation of whole member data areas in slot order (md "linear").
@@ -50,13 +52,22 @@ impl ConcatVolume {
     }
 
     pub fn read_at(&self, offset: u64, len: usize) -> anyhow::Result<Vec<u8>> {
+        self.read_traced_at(offset, len).map(|(bytes, _)| bytes)
+    }
+
+    /// [`Self::read_at`] plus the members' synthesized spans, as array offsets.
+    pub fn read_traced_at(
+        &self,
+        offset: u64,
+        len: usize,
+    ) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
         let size = self.size_bytes();
         if len == 0 || offset >= size {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), Vec::new()));
         }
         let mut remaining = (size - offset).min(len as u64) as usize;
         let mut cursor = offset;
-        let mut out = Vec::with_capacity(remaining);
+        let mut out = TracedRead::new(offset, remaining);
         while remaining > 0 {
             let index = self.ends.partition_point(|&end| end <= cursor);
             let (Some(member), Some(&end)) = (self.members.get(index), self.ends.get(index)) else {
@@ -64,11 +75,11 @@ impl ConcatVolume {
             };
             let start = end - member.data_size_bytes;
             let take = (end - cursor).min(remaining as u64) as usize;
-            out.extend_from_slice(&member.read_exact(cursor - start, take)?);
+            out.push(member.read_exact_traced(cursor - start, take)?);
             cursor += take as u64;
             remaining -= take;
         }
-        Ok(out)
+        Ok(out.finish())
     }
 }
 
@@ -78,6 +89,9 @@ impl SectorSource for ConcatVolume {
     }
     fn size(&self) -> u64 {
         self.size_bytes()
+    }
+    fn read_traced(&self, offset: u64, len: usize) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
+        self.read_traced_at(offset, len)
     }
 }
 
@@ -168,14 +182,23 @@ impl ZonedStripeVolume {
     }
 
     pub fn read_at(&self, offset: u64, len: usize) -> anyhow::Result<Vec<u8>> {
+        self.read_traced_at(offset, len).map(|(bytes, _)| bytes)
+    }
+
+    /// [`Self::read_at`] plus the members' synthesized spans, as array offsets.
+    pub fn read_traced_at(
+        &self,
+        offset: u64,
+        len: usize,
+    ) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
         let size = self.size_bytes();
         if len == 0 || offset >= size {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), Vec::new()));
         }
         let chunk = self.chunk_bytes;
         let mut remaining = (size - offset).min(len as u64) as usize;
         let mut cursor = offset;
-        let mut out = Vec::with_capacity(remaining);
+        let mut out = TracedRead::new(offset, remaining);
         while remaining > 0 {
             let index = self.zones.partition_point(|zone| zone.end <= cursor);
             let Some(zone) = self.zones.get(index) else {
@@ -197,11 +220,11 @@ impl ZonedStripeVolume {
             let in_chunk = cursor % chunk;
             let member_offset = zone.member_start + (in_zone / (width * chunk)) * chunk + in_chunk;
             let take = (chunk - in_chunk).min(remaining as u64) as usize;
-            out.extend_from_slice(&self.members[slot].read_exact(member_offset, take)?);
+            out.push(self.members[slot].read_exact_traced(member_offset, take)?);
             cursor += take as u64;
             remaining -= take;
         }
-        Ok(out)
+        Ok(out.finish())
     }
 }
 
@@ -211,6 +234,9 @@ impl SectorSource for ZonedStripeVolume {
     }
     fn size(&self) -> u64 {
         self.size_bytes()
+    }
+    fn read_traced(&self, offset: u64, len: usize) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
+        self.read_traced_at(offset, len)
     }
 }
 
@@ -247,7 +273,52 @@ fn build_zones(sizes: &[u64]) -> anyhow::Result<Vec<Zone>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::evidence::raid::source::test_support::{pattern, vec_member};
+    use crate::core::evidence::raid::source::test_support::{
+        assert_audited, faulty_member, pattern, vec_member,
+    };
+
+    fn region(offset: u64, len: u64) -> BadRegion {
+        BadRegion { offset, len }
+    }
+
+    #[test]
+    fn member_faults_land_at_array_offsets() {
+        let first = pattern(40, 1);
+        let second = pattern(24, 2);
+        let linear = ConcatVolume::new(
+            vec![
+                Some(vec_member(first.clone())),
+                Some(faulty_member(second.clone(), &[4..6])),
+            ],
+            0,
+        )
+        .expect("linear");
+        let (bytes, faults) = linear.read_traced_at(0, 64).expect("read");
+        assert_eq!(faults, vec![region(44, 2)]);
+        assert_audited(&bytes, &faults, &[first, second].concat(), "linear");
+
+        // Member 2 offset 2 is zone-0 chunk 2; offsets 40..44 sit in zone 1,
+        // which only member 2 reaches (array 96..112).
+        let members = [pattern(32, 1), pattern(32, 2), pattern(48, 3)];
+        let open = |bad: &[std::ops::Range<u64>]| {
+            ZonedStripeVolume::new(
+                vec![
+                    Some(vec_member(members[0].clone())),
+                    Some(vec_member(members[1].clone())),
+                    Some(faulty_member(members[2].clone(), bad)),
+                ],
+                8,
+                Raid0ZoneLayout::Original,
+            )
+            .expect("raid0")
+        };
+        let clean = open(&[]).read_at(0, usize::MAX).expect("clean read");
+        let raid0 = open(&[2..3, 40..44]);
+        let (bytes, faults) = raid0.read_traced_at(0, usize::MAX).expect("read");
+        assert_eq!(faults, vec![region(18, 1), region(104, 4)]);
+        assert_audited(&bytes, &faults, &clean, "zoned RAID0");
+        assert_eq!(raid0.read_at(0, usize::MAX).expect("plain read"), bytes);
+    }
 
     #[test]
     fn linear_concatenates_members_in_slot_order() {

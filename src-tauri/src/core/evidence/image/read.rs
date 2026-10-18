@@ -57,7 +57,40 @@ impl DiskImage {
     /// [`Self::read_range`] for hot sequential I/O paths such as hashing,
     /// exporting and in-place BitLocker reads.
     pub fn read_into(&self, offset: u64, dst: &mut [u8]) -> anyhow::Result<usize> {
+        let (start, filled) = self.fill_from_source(offset, dst)?;
+        self.collect_known_faults_in_range(start, filled as u64);
+        Ok(filled)
+    }
+
+    /// [`Self::read_range`] for a composite device that reads this image as
+    /// one of its members: the recorded synthesized spans intersecting the
+    /// bytes read come back as absolute image offsets instead of going to the
+    /// current thread's read-fault collection scope, whose offsets belong to
+    /// the device the operation reads. They are still recorded on this image.
+    pub fn read_range_traced(
+        &self,
+        offset: u64,
+        len: usize,
+    ) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
         self.require_source()?;
+        let image_len = self.source.len();
+        let start = offset.min(image_len);
+        let available = image_len.saturating_sub(start).min(len as u64) as usize;
+        if available == 0 {
+            return Ok((Vec::new(), Vec::new()));
+        }
+        let mut out = vec![0u8; available];
+        let (start, filled) = self.fill_from_source(offset, &mut out)?;
+        out.truncate(filled);
+        Ok((out, self.known_faults_in_range(start, filled as u64)))
+    }
+
+    /// Fill `dst` from the source and record the spans the backend had to
+    /// fabricate. Returns the clamped start offset and the bytes filled.
+    fn fill_from_source(&self, offset: u64, dst: &mut [u8]) -> anyhow::Result<(u64, usize)> {
+        self.require_source()?;
+        let image_len = self.source.len();
+        let start = offset.min(image_len);
         // Bulk sequential reads (hash / export / search, typically 1–16 MiB)
         // bypass the small located cache: they would evict every hot MFT /
         // hex block and split one backend call into hundreds of 64 KiB ones.
@@ -68,19 +101,14 @@ impl DiskImage {
         let Some(cache) = cache else {
             // Non-cached sources (and bulk reads) go straight through; still
             // record any fabricated bad-sector spans so they stay auditable.
-            let image_len = self.source.len();
-            let start = offset.min(image_len);
             let (filled, faults) = self.source.read_into_range_traced(offset, dst)?;
             self.record_faults(faults);
-            self.collect_known_faults_in_range(start, filled as u64);
-            return Ok(filled);
+            return Ok((start, filled));
         };
 
-        let image_len = self.source.len();
-        let start = offset.min(image_len);
         let available = image_len.saturating_sub(start).min(dst.len() as u64) as usize;
         if available == 0 {
-            return Ok(0);
+            return Ok((start, 0));
         }
         let end = start + available as u64;
 
@@ -120,8 +148,7 @@ impl DiskImage {
             }
             block += CACHE_BLOCK;
         }
-        self.collect_known_faults_in_range(start, filled as u64);
-        Ok(filled)
+        Ok((start, filled))
     }
 
     /// Runs an operation while collecting source-read faults intersecting the
@@ -178,14 +205,17 @@ impl DiskImage {
     }
 
     pub(super) fn collect_known_faults_in_range(&self, offset: u64, len: u64) {
+        record_collected_read_faults(self.known_faults_in_range(offset, len));
+    }
+
+    /// Recorded synthesized spans intersecting `[offset, offset + len)`.
+    fn known_faults_in_range(&self, offset: u64, len: u64) -> Vec<BadRegion> {
         if len == 0 {
-            return;
+            return Vec::new();
         }
-        let intersections = self
-            .bad_regions
+        self.bad_regions
             .lock()
             .map(|regions| collect_read_fault_intersections(&regions, offset, len))
-            .unwrap_or_default();
-        record_collected_read_faults(intersections);
+            .unwrap_or_default()
     }
 }

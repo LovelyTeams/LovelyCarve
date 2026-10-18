@@ -39,6 +39,8 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
+use crate::core::evidence::image::{rebase_bad_regions, BadRegion};
+
 use apm::ApmParser;
 use bsd::BsdParser;
 use gpt::GptParser;
@@ -125,6 +127,17 @@ pub enum PartitionKind {
 pub trait SectorSource {
     fn read(&self, offset: u64, len: usize) -> anyhow::Result<Vec<u8>>;
     fn size(&self) -> u64;
+
+    /// [`Self::read`] plus the spans of the returned bytes that a tolerant
+    /// backend synthesized as zeros for unreadable source sectors, as absolute
+    /// offsets of this source within the bytes returned. The caller owns the
+    /// spans: a composite device maps them into its own address space, and
+    /// nothing on this path reports them to a read-fault collection scope. A
+    /// source that wraps others forwards the call; one that never synthesizes
+    /// bytes keeps this default.
+    fn read_traced(&self, offset: u64, len: usize) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
+        Ok((self.read(offset, len)?, Vec::new()))
+    }
 }
 
 /// Bundle handed to each `PartParser`: the underlying block device, a cached
@@ -456,21 +469,40 @@ impl<'a> PartitionSlice<'a> {
             length: partition.length_lba * sector_size as u64,
         }
     }
+
+    /// Parent offset and length of a slice read; `None` when nothing is left.
+    fn parent_span(&self, offset: u64, len: usize) -> Option<(u64, usize)> {
+        let clamped_offset = offset.min(self.length);
+        let available = self.length.saturating_sub(clamped_offset);
+        let read_len = (len as u64).min(available) as usize;
+        (read_len != 0).then_some((self.base + clamped_offset, read_len))
+    }
 }
 
 impl<'a> SectorSource for PartitionSlice<'a> {
     fn read(&self, offset: u64, len: usize) -> anyhow::Result<Vec<u8>> {
-        let clamped_offset = offset.min(self.length);
-        let available = self.length.saturating_sub(clamped_offset);
-        let read_len = (len as u64).min(available) as usize;
-        if read_len == 0 {
-            return Ok(Vec::new());
+        match self.parent_span(offset, len) {
+            Some((parent_offset, read_len)) => self.parent.read(parent_offset, read_len),
+            None => Ok(Vec::new()),
         }
-        self.parent.read(self.base + clamped_offset, read_len)
     }
 
     fn size(&self) -> u64 {
         self.length
+    }
+
+    fn read_traced(&self, offset: u64, len: usize) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
+        let Some((parent_offset, read_len)) = self.parent_span(offset, len) else {
+            return Ok((Vec::new(), Vec::new()));
+        };
+        let (bytes, faults) = self.parent.read_traced(parent_offset, read_len)?;
+        let faults = rebase_bad_regions(
+            &faults,
+            parent_offset,
+            bytes.len() as u64,
+            parent_offset - self.base,
+        );
+        Ok((bytes, faults))
     }
 }
 
@@ -528,6 +560,50 @@ mod tests {
         assert_eq!(bytes, (8u8..20u8).collect::<Vec<_>>());
         let beyond = slice.read(20, 4).expect("read past end");
         assert!(beyond.is_empty());
+    }
+
+    #[test]
+    fn partition_slice_reports_parent_faults_in_slice_offsets() {
+        /// Zero bytes with a synthesized span at 1000..1100.
+        struct Faulty;
+        impl SectorSource for Faulty {
+            fn read(&self, offset: u64, len: usize) -> anyhow::Result<Vec<u8>> {
+                Ok(vec![
+                    0;
+                    (len as u64).min(4096u64.saturating_sub(offset))
+                        as usize
+                ])
+            }
+            fn size(&self) -> u64 {
+                4096
+            }
+            fn read_traced(
+                &self,
+                offset: u64,
+                len: usize,
+            ) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
+                let bytes = self.read(offset, len)?;
+                let bad = [BadRegion {
+                    offset: 1000,
+                    len: 100,
+                }];
+                let faults = rebase_bad_regions(&bad, offset, bytes.len() as u64, offset);
+                Ok((bytes, faults))
+            }
+        }
+        let slice = PartitionSlice::new(&Faulty, 512, 1024);
+        let (bytes, faults) = slice.read_traced(400, 400).expect("read");
+        assert_eq!(bytes.len(), 400);
+        assert_eq!(
+            faults,
+            vec![BadRegion {
+                offset: 488,
+                len: 100,
+            }]
+        );
+        let (bytes, faults) = slice.read_traced(1000, 100).expect("tail");
+        assert_eq!(bytes.len(), 24);
+        assert!(faults.is_empty());
     }
 
     #[test]

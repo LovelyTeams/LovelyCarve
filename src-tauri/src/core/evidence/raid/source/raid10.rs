@@ -8,7 +8,9 @@
 
 use anyhow::{bail, Context};
 
+use super::traced::{RepairLog, TracedRead};
 use super::StripedMember;
+use crate::core::evidence::image::BadRegion;
 use crate::core::evidence::partitions::SectorSource;
 
 /// How far copies are grouped across devices (layout bits 17–18).
@@ -215,11 +217,14 @@ impl Geometry {
     }
 }
 
-/// md RAID10 reader. Each chunk is served by its first present copy.
+/// md RAID10 reader. Each chunk is served by its first readable copy; bytes
+/// that copy synthesized are taken from the other copies where they hold them
+/// authentically.
 pub struct Raid10Volume {
     geometry: Geometry,
     members: Vec<Option<StripedMember>>,
     size_bytes: u64,
+    repair_log: RepairLog,
 }
 
 impl Raid10Volume {
@@ -242,6 +247,7 @@ impl Raid10Volume {
             geometry,
             members,
             size_bytes,
+            repair_log: RepairLog::default(),
         })
     }
 
@@ -250,26 +256,43 @@ impl Raid10Volume {
     }
 
     pub fn read_at(&self, offset: u64, len: usize) -> anyhow::Result<Vec<u8>> {
+        self.read_traced_at(offset, len).map(|(bytes, _)| bytes)
+    }
+
+    /// [`Self::read_at`] plus the spans no copy holds authentically.
+    pub fn read_traced_at(
+        &self,
+        offset: u64,
+        len: usize,
+    ) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
         if len == 0 || offset >= self.size_bytes {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), Vec::new()));
         }
         let chunk_bytes = self.geometry.chunk_bytes;
         let mut remaining = (self.size_bytes - offset).min(len as u64) as usize;
         let mut cursor = offset;
-        let mut out = Vec::with_capacity(remaining);
+        let mut out = TracedRead::new(offset, remaining);
         while remaining > 0 {
             let chunk = cursor / chunk_bytes;
             let in_chunk = cursor % chunk_bytes;
             let take = (chunk_bytes - in_chunk).min(remaining as u64) as usize;
+            // Present copies in the kernel's preference order, as (device,
+            // member, member offset of this piece).
+            let copies: Vec<(usize, &StripedMember, u64)> = self
+                .geometry
+                .copies(chunk)
+                .into_iter()
+                .filter_map(|(device, chunk_offset)| match self.members.get(device) {
+                    Some(Some(member)) => Some((device, member, chunk_offset + in_chunk)),
+                    Some(None) | None => None,
+                })
+                .collect();
             let mut failure = None;
-            let mut bytes = None;
-            for (device, chunk_offset) in self.geometry.copies(chunk) {
-                let Some(Some(member)) = self.members.get(device) else {
-                    continue;
-                };
-                match member.read_exact(chunk_offset + in_chunk, take) {
-                    Ok(read) => {
-                        bytes = Some(read);
+            let mut served = None;
+            for (index, &(device, member, member_offset)) in copies.iter().enumerate() {
+                match member.read_exact_traced(member_offset, take) {
+                    Ok(piece) => {
+                        served = Some((index, device, piece));
                         break;
                     }
                     Err(error) => {
@@ -279,17 +302,35 @@ impl Raid10Volume {
                     }
                 }
             }
-            match (bytes, failure) {
-                (Some(read), _) => out.extend_from_slice(&read),
+            let (served_index, device, mut piece) = match (served, failure) {
+                (Some(served), _) => served,
                 (None, Some(error)) => {
                     return Err(error.context(format!("every RAID10 copy of chunk {chunk} failed")))
                 }
                 (None, None) => bail!("RAID10 chunk {chunk} has no present copy"),
+            };
+            if !piece.is_authentic() {
+                let mut repaired = 0;
+                for (index, &(_, member, member_offset)) in copies.iter().enumerate() {
+                    if piece.is_authentic() {
+                        break;
+                    }
+                    if index == served_index {
+                        continue;
+                    }
+                    repaired += piece.repair_from(|range| {
+                        member.read_exact_traced(member_offset + range.start as u64, range.len())
+                    });
+                }
+                if repaired > 0 {
+                    self.repair_log.note("RAID10", device, cursor, repaired);
+                }
             }
+            out.push(piece);
             cursor += take as u64;
             remaining -= take;
         }
-        Ok(out)
+        Ok(out.finish())
     }
 }
 
@@ -299,6 +340,9 @@ impl SectorSource for Raid10Volume {
     }
     fn size(&self) -> u64 {
         self.size_bytes
+    }
+    fn read_traced(&self, offset: u64, len: usize) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
+        self.read_traced_at(offset, len)
     }
 }
 
@@ -330,7 +374,9 @@ pub(crate) fn encode_raid10(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::evidence::raid::source::test_support::vec_member;
+    use crate::core::evidence::raid::source::test_support::{
+        assert_audited, faulty_member, regions_where, vec_member, Lcg,
+    };
 
     const NEAR2: u32 = 0x102;
     const FAR2: u32 = 0x201;
@@ -434,5 +480,51 @@ mod tests {
         let (_, members) = encode(layout, 4, 512, 4096);
         assert!(open(layout, 512, 4096, &members, &[0, 1]).is_err());
         assert!(open(layout, 512, 4096, &members, &[0, 2]).is_ok());
+    }
+
+    /// A byte is synthesized only where every copy of its chunk is: other
+    /// copies serve the rest, and what is left is reported at its logical
+    /// offset.
+    #[test]
+    fn synthesized_bytes_come_from_other_copies() {
+        let mut rng = Lcg(11);
+        for raw in [NEAR2, FAR2, OFFSET2, 0x103, 0x202] {
+            let layout = Raid10Layout::from_raw(raw).expect("layout");
+            for disks in [3usize, 4, 5] {
+                if layout.copies() as usize > disks {
+                    continue;
+                }
+                let (logical, members) = encode(layout, disks, 512, 8192);
+                let (geometry, _) =
+                    Geometry::new(layout, disks as u64, 512, 8192).expect("geometry");
+                for case in 0..8 {
+                    let bad: Vec<Vec<std::ops::Range<u64>>> =
+                        (0..disks).map(|_| rng.spans(8192, 3, 700)).collect();
+                    let slots = members
+                        .iter()
+                        .zip(&bad)
+                        .map(|(bytes, spans)| Some(faulty_member(bytes.clone(), spans)))
+                        .collect();
+                    let volume = Raid10Volume::new(layout, 512, 8192, slots).expect("volume");
+                    let (bytes, faults) = volume.read_traced_at(0, usize::MAX).expect("read");
+
+                    let mut synthesized = vec![false; logical.len()];
+                    for (chunk, flags) in synthesized.chunks_mut(512).enumerate() {
+                        let copies = geometry.copies(chunk as u64);
+                        for (in_chunk, flag) in flags.iter_mut().enumerate() {
+                            *flag = copies.iter().all(|&(device, offset)| {
+                                let position = offset + in_chunk as u64;
+                                bad[device].iter().any(|span| span.contains(&position))
+                            });
+                        }
+                    }
+                    let expected = regions_where(logical.len(), |index| synthesized[index]);
+                    let context = format!("{raw:#x} disks={disks} case={case}");
+                    assert_eq!(faults, expected, "{context}: {bad:?}");
+                    assert_audited(&bytes, &faults, &logical, &context);
+                    assert_eq!(volume.read_at(0, usize::MAX).expect("plain read"), bytes);
+                }
+            }
+        }
     }
 }
