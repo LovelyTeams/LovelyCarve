@@ -476,36 +476,6 @@ fn synth_monolithic_sparse_vmdk() -> Vec<u8> {
 }
 
 #[test]
-fn tolerant_fill_zeroes_bad_sector_in_reused_buffer() {
-    const START: u64 = 4096;
-    let bad_sector = START + FAULT_GRANULARITY as u64;
-    // A dirty buffer, as a hash / export loop reuses between chunks.
-    let mut buf = vec![0xAA; FAULT_GRANULARITY * 3];
-    let outcome = tolerant_fill(START, &mut buf, |offset, dst| {
-        if offset == bad_sector {
-            anyhow::bail!("unreadable sector");
-        }
-        let read = dst.len().min(FAULT_GRANULARITY);
-        dst[..read].fill(0x11);
-        Ok(read)
-    });
-
-    let mut expected = vec![0x11; FAULT_GRANULARITY * 3];
-    expected[FAULT_GRANULARITY..FAULT_GRANULARITY * 2].fill(0);
-    assert_eq!(
-        outcome,
-        (
-            FAULT_GRANULARITY * 3,
-            vec![BadRegion {
-                offset: bad_sector,
-                len: FAULT_GRANULARITY as u64,
-            }],
-        )
-    );
-    assert_eq!(buf, expected);
-}
-
-#[test]
 fn block_cache_hits_share_the_cached_allocation() {
     let mut cache = BlockCache::new(32);
     let data: Arc<[u8]> = vec![1, 2, 3, 4].into();

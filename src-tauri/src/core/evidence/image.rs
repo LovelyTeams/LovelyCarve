@@ -358,6 +358,8 @@ pub use faults::{rebase_bad_regions, BadRegion, ReadFaultPolicy, ReadFaultReport
 #[cfg(test)]
 mod android_backup_tests;
 #[cfg(test)]
+mod faults_tests;
+#[cfg(test)]
 mod phdi_tests;
 #[cfg(test)]
 mod smraw_tests;

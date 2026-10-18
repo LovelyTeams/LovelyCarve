@@ -147,11 +147,12 @@ pub(super) fn normalize_bad_regions(mut regions: Vec<BadRegion>) -> Vec<BadRegio
 /// 512-byte sector shouldn't poison the surrounding kilobytes.
 pub(super) const FAULT_GRANULARITY: usize = 512;
 
-/// Fills `buf` from `read_at`, tolerating bad sectors. On a read error the
-/// faulting span (one [`FAULT_GRANULARITY`] sector) is zero-filled, logged,
-/// and the fill continues past it — so one unreadable sector no longer aborts
-/// an entire filesystem walk, search, or carve. Mirrors the short-read /
-/// zero-fill behaviour of TSK's image layer. Gaps are zeroed explicitly
+/// Fills `buf` from `read_at`, tolerating bad sectors. Failed requests are
+/// bisected at absolute [`FAULT_GRANULARITY`] sector boundaries until only
+/// an unreadable sector (or the requested part of it) remains. Only that span
+/// is zero-filled and logged; successful spans are accepted in full. Backends
+/// may modify the buffer before returning an error, so every failed span must
+/// be retried or explicitly zeroed. Gaps are zeroed explicitly
 /// because bulk [`DiskImage::read_into`] calls pass the caller's reused
 /// hash / export buffer straight through; skipping would leave stale bytes
 /// from the previous chunk where the report claims zeros.
@@ -170,14 +171,27 @@ where
     F: FnMut(u64, &mut [u8]) -> anyhow::Result<usize>,
 {
     let mut filled = 0usize;
+    let mut end = buf.len();
+    // Visit the left half first, then resume the deferred right halves. The
+    // stack is O(log(sectors)); even an entirely unreadable request takes at
+    // most 2 * sectors - 1 calls and O(bytes * log(sectors)) requested bytes,
+    // rather than retrying the whole remaining suffix for every bad sector.
+    let mut pending_ends = Vec::new();
     let mut faults: Vec<BadRegion> = Vec::new();
     while filled < buf.len() {
-        match read_at(start + filled as u64, &mut buf[filled..]) {
+        let offset = start + filled as u64;
+        match read_at(offset, &mut buf[filled..end]) {
             Ok(0) => break,
             Ok(read) => filled += read,
             Err(err) => {
-                let skip = FAULT_GRANULARITY.min(buf.len() - filled);
-                let offset = start + filled as u64;
+                let within_sector = (offset % FAULT_GRANULARITY as u64) as usize;
+                let sectors = (within_sector + end - filled).div_ceil(FAULT_GRANULARITY);
+                if sectors > 1 {
+                    pending_ends.push(end);
+                    end = filled + (sectors / 2) * FAULT_GRANULARITY - within_sector;
+                    continue;
+                }
+                let skip = end - filled;
                 tracing::warn!(
                     "image read error at offset {offset} (+{skip} bytes): {err}; zero-filling gap",
                 );
@@ -192,6 +206,9 @@ where
                 buf[filled..filled + skip].fill(0);
                 filled += skip;
             }
+        }
+        if filled == end {
+            end = pending_ends.pop().unwrap_or(buf.len());
         }
     }
     (filled, faults)
