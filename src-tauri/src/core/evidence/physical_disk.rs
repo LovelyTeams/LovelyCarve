@@ -14,6 +14,26 @@ use std::path::Path;
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
 
+mod descriptor;
+#[cfg(test)]
+pub(crate) use descriptor::parse as parse_descriptor;
+pub use descriptor::DriveSerial;
+
+/// Read the serial reported by this already-open read-only device handle.
+/// Windows uses StorageDeviceProperty; other platforms currently return None.
+/// Unsupported queries and malformed or absent serials also return None.
+pub fn drive_serial(file: &File) -> Option<DriveSerial> {
+    #[cfg(target_os = "windows")]
+    {
+        windows_device_descriptor(file)?.serial
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _file = file;
+        None
+    }
+}
+
 /// Public description of one attached physical disk, surfaced to the
 /// frontend by `commands::evidence::image::physical_disks_list`.
 #[derive(Debug, Clone, Serialize)]
@@ -231,7 +251,9 @@ fn enumerate_platform() -> Vec<PhysicalDisk> {
         let Ok((file, size_bytes, sector_size)) = open_block_device(p) else {
             continue;
         };
-        let (model, is_removable) = windows_device_descriptor(&file).unwrap_or((None, false));
+        let descriptor = windows_device_descriptor(&file);
+        let is_removable = descriptor.as_ref().is_some_and(|info| info.is_removable);
+        let model = descriptor.and_then(|info| info.model);
         out.push(PhysicalDisk {
             path: path.clone(),
             display: format!("PhysicalDrive{n}"),
@@ -245,7 +267,7 @@ fn enumerate_platform() -> Vec<PhysicalDisk> {
 }
 
 #[cfg(target_os = "windows")]
-fn windows_device_descriptor(file: &File) -> Option<(Option<String>, bool)> {
+fn windows_device_descriptor(file: &File) -> Option<descriptor::DeviceDescriptor> {
     use std::mem::size_of;
     use std::os::windows::io::AsRawHandle;
     use winapi::shared::minwindef::DWORD;
@@ -259,23 +281,6 @@ fn windows_device_descriptor(file: &File) -> Option<(Option<String>, bool)> {
         additional_parameters: [u8; 1],
     }
 
-    #[repr(C)]
-    struct StorageDeviceDescriptor {
-        version: DWORD,
-        size: DWORD,
-        device_type: u8,
-        device_type_modifier: u8,
-        removable_media: u8,
-        command_queueing: u8,
-        vendor_id_offset: DWORD,
-        product_id_offset: DWORD,
-        product_revision_offset: DWORD,
-        serial_number_offset: DWORD,
-        bus_type: DWORD,
-        raw_properties_length: DWORD,
-        raw_device_properties: [u8; 1],
-    }
-
     let query = StoragePropertyQuery {
         property_id: 0, // StorageDeviceProperty
         query_type: 0,  // PropertyStandardQuery
@@ -283,51 +288,35 @@ fn windows_device_descriptor(file: &File) -> Option<(Option<String>, bool)> {
     };
     let mut buf = vec![0u8; 1024];
     let mut returned: DWORD = 0;
-    let ok = unsafe {
-        DeviceIoControl(
-            file.as_raw_handle() as _,
-            IOCTL_STORAGE_QUERY_PROPERTY,
-            &query as *const _ as *mut _,
-            size_of::<StoragePropertyQuery>() as DWORD,
-            buf.as_mut_ptr() as *mut _,
-            buf.len() as DWORD,
-            &mut returned,
-            std::ptr::null_mut(),
-        )
-    };
-    if ok == 0 || (returned as usize) < size_of::<StorageDeviceDescriptor>() {
-        return None;
+    // Retry once when the returned header advertises a larger descriptor.
+    // Cap allocation even when a driver reports an unreasonable size.
+    for _attempt in 0..2 {
+        let ok = unsafe {
+            DeviceIoControl(
+                file.as_raw_handle() as _,
+                IOCTL_STORAGE_QUERY_PROPERTY,
+                &query as *const _ as *mut _,
+                size_of::<StoragePropertyQuery>() as DWORD,
+                buf.as_mut_ptr() as *mut _,
+                buf.len() as DWORD,
+                &mut returned,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 || returned < 8 || returned as usize > buf.len() {
+            return None;
+        }
+        let size = u32::from_le_bytes(buf[4..8].try_into().ok()?) as usize;
+        if size > buf.len() {
+            if size > 64 * 1024 {
+                return None;
+            }
+            buf.resize(size, 0);
+            continue;
+        }
+        return descriptor::parse(&buf[..returned as usize]);
     }
-    let header = unsafe { &*(buf.as_ptr() as *const StorageDeviceDescriptor) };
-    let read_cstr = |offset: DWORD| -> Option<String> {
-        if offset == 0 {
-            return None;
-        }
-        let start = offset as usize;
-        if start >= buf.len() {
-            return None;
-        }
-        let end = buf[start..]
-            .iter()
-            .position(|&b| b == 0)
-            .map(|i| start + i)
-            .unwrap_or(buf.len());
-        let s = String::from_utf8_lossy(&buf[start..end]).trim().to_string();
-        if s.is_empty() {
-            None
-        } else {
-            Some(s)
-        }
-    };
-    let vendor = read_cstr(header.vendor_id_offset);
-    let product = read_cstr(header.product_id_offset);
-    let model = match (vendor, product) {
-        (Some(v), Some(p)) => Some(format!("{v} {p}")),
-        (Some(v), None) => Some(v),
-        (None, Some(p)) => Some(p),
-        _ => None,
-    };
-    Some((model, header.removable_media != 0))
+    None
 }
 
 #[cfg(target_os = "linux")]

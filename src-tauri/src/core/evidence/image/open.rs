@@ -361,6 +361,10 @@ impl DiskImage {
             ImageSource::Ewf { reader, .. } => Some(reader.lock().acquiry_info().clone()),
             _ => None,
         };
+        let physical_drive_serial = match &source {
+            ImageSource::Block { reader, .. } => physical_disk::drive_serial(&reader.lock()),
+            _ => None,
+        };
 
         Ok(Self {
             id,
@@ -383,6 +387,7 @@ impl DiskImage {
             modified_unix_ms,
             created_unix_ms,
             ewf_acquiry,
+            physical_drive_serial,
             derived: None,
         })
     }
@@ -433,6 +438,7 @@ impl DiskImage {
             modified_unix_ms,
             created_unix_ms,
             ewf_acquiry: None,
+            physical_drive_serial: None,
             derived: None,
         })
     }
@@ -480,6 +486,7 @@ impl DiskImage {
             modified_unix_ms: None,
             created_unix_ms: None,
             ewf_acquiry: None,
+            physical_drive_serial: None,
             derived: None,
         })
     }

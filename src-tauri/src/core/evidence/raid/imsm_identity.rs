@@ -3,8 +3,9 @@
 //! IMSM names its member disks only by their drive serial numbers, and a disk
 //! does not store its own serial: the drive reports it. A loaded image is
 //! therefore matched to its disk record by the serial number its acquisition
-//! recorded (the EWF header), or by its size when exactly one disk record has
-//! that size. Images matched neither way stay unknown; [`imsm_array`] decides
+//! recorded (the EWF header) or the physical drive reports on Windows, or by
+//! its size when exactly one disk record has that size. Images matched neither
+//! way stay unknown; [`imsm_array`] decides
 //! where an unknown image can still be read.
 //!
 //! [`imsm_array`]: super::imsm_array
@@ -40,22 +41,34 @@ pub(super) fn identify(
             claims.push(None);
             continue;
         };
-        let found: Vec<usize> = normalize_serial(raw)
-            .map(|serial| {
-                mpb.disks
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, disk)| serial_eq(&disk.serial, &serial))
-                    .map(|(index, _)| index)
-                    .collect()
-            })
-            .unwrap_or_default();
+        let swapped = member
+            .disk
+            .image
+            .physical_drive_serial
+            .as_ref()
+            .and_then(crate::core::evidence::physical_disk::DriveSerial::word_swapped);
+        let serials: Vec<_> = std::iter::once(raw)
+            .chain(swapped)
+            .filter_map(normalize_serial)
+            .collect();
+        let found: Vec<usize> = mpb
+            .disks
+            .iter()
+            .enumerate()
+            .filter(|(_, disk)| serials.iter().any(|serial| serial_eq(&disk.serial, serial)))
+            .map(|(index, _)| index)
+            .collect();
         if let [index] = found[..] {
             claims.push(Some(index));
             by_serial[position] = true;
         } else {
+            let reason = if found.is_empty() {
+                "matches no disk record"
+            } else {
+                "matches multiple disk records"
+            };
             diagnostics.push(format!(
-                "{container}: drive serial {raw:?} recorded for {} matches no disk record",
+                "{container}: drive serial {raw:?} recorded for {} {reason}",
                 member.disk.describe()
             ));
             claims.push(None);

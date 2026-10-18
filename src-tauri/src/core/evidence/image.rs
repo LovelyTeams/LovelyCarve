@@ -132,6 +132,9 @@ pub struct DiskImage {
     pub created_unix_ms: Option<i64>,
     /// EWF acquisition metadata captured at open; `None` for non-EWF sources.
     pub ewf_acquiry: Option<EwfAcquiryInfo>,
+    /// Device-reported serial captured from a physical-disk handle on Windows.
+    /// None for other source types, unsupported queries and other platforms.
+    pub physical_drive_serial: Option<physical_disk::DriveSerial>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

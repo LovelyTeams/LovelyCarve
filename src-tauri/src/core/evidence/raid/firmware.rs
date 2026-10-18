@@ -58,14 +58,20 @@ impl FirmwareDisk {
         self.reader.size()
     }
 
-    /// Serial number of the source drive, as the acquisition recorded it.
+    /// Serial reported by the physical source, or recorded in its EWF header.
     pub(super) fn drive_serial(&self) -> Option<&str> {
         self.image
-            .ewf_acquiry
-            .as_ref()?
-            .serial_number
-            .as_deref()
-            .filter(|serial| !serial.trim().is_empty())
+            .physical_drive_serial
+            .as_ref()
+            .map(crate::core::evidence::physical_disk::DriveSerial::as_str)
+            .or_else(|| {
+                self.image
+                    .ewf_acquiry
+                    .as_ref()?
+                    .serial_number
+                    .as_deref()
+                    .filter(|serial| !serial.trim().is_empty())
+            })
     }
 
     pub(super) fn describe(&self) -> String {

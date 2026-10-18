@@ -112,6 +112,59 @@ fn raid5_members_are_placed_by_drive_serial() {
 }
 
 #[test]
+fn raid5_members_are_placed_by_physical_drive_serial() {
+    let set = raid5_set();
+    // Equal-sized disks loaded in the wrong order; there is no EWF metadata.
+    for word_swapped in [false, true] {
+        let images: Vec<_> = [2usize, 0, 1]
+            .iter()
+            .map(|&slot| {
+                let mut serial = format!("  {}  ", SERIALS[slot]).into_bytes();
+                if word_swapped {
+                    for word in serial.as_chunks_mut::<2>().0 {
+                        word.swap(0, 1);
+                    }
+                }
+                physical_disk(member(&set.mpb, &set.data[slot], set.len), &serial, 11)
+            })
+            .collect();
+        assert!(images.iter().all(|image| image.ewf_acquiry.is_none()));
+        let (stack, assembled) = detect_with_sources(&images);
+        let array = &stack.arrays[0];
+        assert_eq!(
+            slots(array),
+            [
+                (Some(2), RaidMemberState::Active),
+                (Some(0), RaidMemberState::Active),
+                (Some(1), RaidMemberState::Active)
+            ],
+            "{:?}",
+            stack.diagnostics
+        );
+        assert_eq!(read_all(device_of(&assembled, array)), set.logical);
+    }
+}
+
+#[test]
+fn conflicting_physical_serial_word_orders_do_not_choose_a_member() {
+    let mut set = raid5_set();
+    set.mpb.disks[0].serial = "ABCD";
+    set.mpb.disks[1].serial = "BADC";
+    let images = [
+        physical_disk(member(&set.mpb, &set.data[0], set.len), b"ABCD", 11),
+        physical_disk(member(&set.mpb, &set.data[1], set.len), b"BADC", 11),
+        disk(member(&set.mpb, &set.data[2], set.len), Some(SERIALS[2])),
+    ];
+    let (stack, assembled) = detect_with_sources(&images);
+    assert!(assembled.is_empty());
+    assert!(mentions(
+        &stack.diagnostics,
+        "matches multiple disk records"
+    ));
+    assert!(mentions(&stack.diagnostics, "slot order is unknown"));
+}
+
+#[test]
 fn striped_volume_with_unmatched_images_is_listed_not_assembled() {
     const COMPONENT: usize = 32 * 1024;
     let logical = pattern(2 * COMPONENT, 2);
