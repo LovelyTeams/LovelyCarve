@@ -36,7 +36,7 @@ use crate::core::catalog::snapshot::volume_snapshot::{
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::fs_all;
 use crate::state::{SessionIndex, SessionSnapshot, SessionSnapshots};
-use crate::task_manager::{TaskKind, TaskManager};
+use crate::task_manager::{TaskFlag, TaskKind, TaskManager};
 
 type ImageStore = Arc<Mutex<HashMap<String, Arc<EvidenceSession>>>>;
 type TaskStore = TaskManager;
@@ -173,6 +173,7 @@ pub(crate) fn spawn_session_snapshot(
     ) else {
         return;
     };
+    task.set_automatic();
     tokio::spawn(async move {
         let key = (image.id.clone(), volume_key.clone());
         let current_size = volume_size_for_key(&image, &volume_key);
@@ -193,6 +194,9 @@ pub(crate) fn spawn_session_snapshot(
                 })
             };
             if let Some((entries, truncated, indexed)) = reuse {
+                task.update(|view| {
+                    view.flags.insert(TaskFlag::Reused);
+                });
                 // The directory is available even when a previous index build failed.
                 let mut payload =
                     SnapshotProgressPayload::new(&token_id, &image.id, &volume_key, "indexing");

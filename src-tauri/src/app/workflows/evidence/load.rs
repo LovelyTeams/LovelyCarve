@@ -20,16 +20,38 @@ fn emit_load_progress(
     task_id: &str,
 ) {
     use crate::core::evidence::image::OpenProgress;
-    let (stage, current, total, is_bytes) = match progress {
+    use crate::task_manager::{TaskLabel, TaskStage};
+    let (stage, current, total, is_bytes) = match &progress {
         OpenProgress::Opening => ("打开镜像".to_string(), 0u64, 0u64, false),
         OpenProgress::Decompressing { label, done, total } => {
-            (format!("解压 {label}"), done, total, true)
+            (format!("解压 {label}"), *done, *total, true)
         }
         OpenProgress::DetectingPartitions => ("检测分区".to_string(), 0, 0, false),
-        OpenProgress::DetectingFilesystems { done, total } => {
-            ("检测文件系统".to_string(), done as u64, total as u64, false)
-        }
+        OpenProgress::DetectingFilesystems { done, total } => (
+            "检测文件系统".to_string(),
+            *done as u64,
+            *total as u64,
+            false,
+        ),
     };
+    tasks.update(task_id, |view| {
+        view.stage = Some(match &progress {
+            OpenProgress::Opening => TaskStage::Opening,
+            OpenProgress::Decompressing { .. } => TaskStage::Decompressing,
+            OpenProgress::DetectingPartitions => TaskStage::DetectingPartitions,
+            OpenProgress::DetectingFilesystems { .. } => TaskStage::DetectingFilesystems,
+        });
+        match &progress {
+            OpenProgress::Decompressing { label, .. } => {
+                view.labels.insert(TaskLabel::Item, label.clone());
+            }
+            OpenProgress::Opening
+            | OpenProgress::DetectingPartitions
+            | OpenProgress::DetectingFilesystems { .. } => {
+                view.labels.remove(&TaskLabel::Item);
+            }
+        }
+    });
     // Phase changes and the final byte update emit immediately; intermediate
     // byte updates are rate-limited.
     if is_bytes && current < total {
@@ -116,6 +138,7 @@ pub async fn image_load(
         )
         .ok_or_else(|| AppError::invalid_input("image load task id already in use"))?;
     drop(context);
+    task.update(|view| view.subject = vec![path.clone()]);
     let token = task.token();
     // Resolve the id only after acquiring the per-path lock. Without this,
     // concurrent callers (notably case tab restoration + auto-mount) can both
@@ -156,7 +179,7 @@ pub async fn image_load(
             }
         }
     };
-    load_image_runtime(
+    let loaded = load_image_runtime(
         &state,
         &app,
         image_id,
@@ -168,7 +191,9 @@ pub async fn image_load(
         &task,
         generation,
     )
-    .await
+    .await;
+    task.finish_with(&loaded);
+    loaded
 }
 
 async fn image_load_lock(state: &AppState, path: &str) -> Arc<tokio::sync::Mutex<()>> {

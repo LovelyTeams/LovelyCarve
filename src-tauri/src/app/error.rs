@@ -8,7 +8,8 @@
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::task_manager::TaskResourceAcquireError;
+use crate::core::extensions::task_scheduler::SchedError;
+use crate::task_manager::{TaskFailure, TaskResourceAcquireError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +34,16 @@ pub struct AppError {
     pub message: String,
     pub context: Option<Value>,
     pub retryable: bool,
+}
+
+impl TaskFailure for AppError {
+    fn is_cancellation(&self) -> bool {
+        self.code == ErrorCode::Cancelled
+    }
+
+    fn describe(&self) -> String {
+        self.message.clone()
+    }
 }
 
 impl AppError {
@@ -116,6 +127,19 @@ impl From<TaskResourceAcquireError> for AppError {
             TaskResourceAcquireError::SemaphoreClosed { label } => {
                 Self::new(ErrorCode::Internal, format!("{label} semaphore closed")).retryable(true)
             }
+        }
+    }
+}
+
+impl From<SchedError> for AppError {
+    fn from(error: SchedError) -> Self {
+        match error {
+            SchedError::NoCase | SchedError::TaskNotFound(_) => Self::not_found(error.to_string()),
+            SchedError::InvalidState { .. }
+            | SchedError::FunctionUnknown(_)
+            | SchedError::EvidenceUnknown(_)
+            | SchedError::InvalidParams(_) => Self::invalid_input(error.to_string()),
+            SchedError::Store(inner) => Self::from_anyhow(inner),
         }
     }
 }

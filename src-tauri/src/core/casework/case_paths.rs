@@ -7,7 +7,8 @@
 //!   staging/                   构建中的快照与索引;打开案件时清空
 //!   evidence/<uid>/            一检材一目录,uid = 检材 image id;移除检材即删除该目录
 //!     facts.db                 文件哈希与类型识别(core::casework::facts_store)
-//!     analysis.db              插件分析结果(core::analysis::results::plugin_result_store)
+//!     records.db               插件运行与类型化记录(core::analysis::results::record_store)
+//!     analysis.db              旧版插件结果,只读展示(core::analysis::results::legacy_store)
 //!     timeline.db              时间线投影(core::timeline::timeline_store)
 //!     search.db                全局搜索任务与命中(core::search::global_search_store)
 //!     cache/                   可随时删除的缓存(Docker 容器来源映射、ZIP 备份展开清单等)
@@ -52,23 +53,32 @@ const VOLUME_SEGMENT_MAX: usize = 32;
 /// | 库 | 写者 | 写入形态 |
 /// |---|---|---|
 /// | `facts.db` | 哈希 / 类型识别命令 | 批量 upsert,短事务 |
-/// | `analysis.db` | 插件任务提交 | 每次运行一个 IMMEDIATE 事务 |
+/// | `records.db` | 运行中的插件任务 | 记录分批落库,收尾一次条件发布 |
+/// | `analysis.db` | 无(旧版结果只读展示,任务删除时删除其运行) | — |
 /// | `timeline.db` | 重建任务、插件收尾投影 | 分批事务 |
 /// | `search.db` | 运行中的全局搜索 | 命中分批落库 |
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum EvidenceDb {
     Facts,
+    Records,
     Analysis,
     Timeline,
     Search,
 }
 
 impl EvidenceDb {
-    pub const ALL: [Self; 4] = [Self::Facts, Self::Analysis, Self::Timeline, Self::Search];
+    pub const ALL: [Self; 5] = [
+        Self::Facts,
+        Self::Records,
+        Self::Analysis,
+        Self::Timeline,
+        Self::Search,
+    ];
 
     pub fn file_name(self) -> &'static str {
         match self {
             Self::Facts => "facts.db",
+            Self::Records => "records.db",
             Self::Analysis => "analysis.db",
             Self::Timeline => "timeline.db",
             Self::Search => "search.db",

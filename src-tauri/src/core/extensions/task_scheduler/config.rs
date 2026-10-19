@@ -6,8 +6,8 @@
 
 use std::time::Duration;
 
-/// 默认同时执行的任务数:每条任务一个插件 worker(独立进程各有 512 MiB
-/// 内存上限),多数插件以检材 I/O 为主,4 条并行不至于拖垮单块磁盘。
+/// 默认同时执行的任务数:每条任务一个插件 worker(独立进程,内存上限由
+/// 插件包声明),多数插件以检材 I/O 为主,4 条并行不至于拖垮单块磁盘。
 pub const DEFAULT_MAX_RUNNING: usize = 4;
 /// `LOVELYCARVE_TASK_MAX_RUNNING` 的上限。
 const MAX_RUNNING_CEILING: usize = 32;
@@ -75,6 +75,8 @@ pub enum SchedError {
     FunctionUnknown(String),
     #[error("检材 {0} 不在当前案件中")]
     EvidenceUnknown(String),
+    #[error("任务参数无效：{0}")]
+    InvalidParams(String),
     #[error(transparent)]
     Store(#[from] anyhow::Error),
 }

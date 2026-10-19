@@ -4,8 +4,8 @@ import { shallowRef } from 'vue';
 
 interface TaskContext {
   activeCase: () => Pick<CaseInfo, 'dir' | 'evidence'> | null;
+  /** Starts the platform-detection report listener of the image-info page. */
   ensureDetection: () => void;
-  detectionPending: (imageId: string) => boolean;
 }
 const context = shallowRef<TaskContext | null>(null);
 /** Main-window wiring supplies read-only case and detection inputs, without owning their state. */
@@ -16,4 +16,3 @@ export function registerTaskContext(value: TaskContext): () => void {
 }
 export function taskCaseContext() { return context.value?.activeCase() ?? null; }
 export function ensureTaskDetection() { context.value?.ensureDetection(); }
-export function taskDetectionPending(imageId: string) { return context.value?.detectionPending(imageId) ?? false; }

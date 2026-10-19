@@ -68,6 +68,8 @@ pub struct CarveScanSession {
     pub task_id: String,
     pub image_id: String,
     pub created_unix_ms: i64,
+    /// Set by [`Self::finish`].
+    pub finished_unix_ms: Option<i64>,
     pub status: CarveSessionStatus,
     pub phase: CarveScanPhase,
     /// Whether the raw-signature phase runs after the optional filesystem phase.
@@ -89,6 +91,7 @@ pub struct CarveScanSnapshot {
     pub task_id: String,
     pub image_id: String,
     pub created_unix_ms: i64,
+    pub finished_unix_ms: Option<i64>,
     pub status: CarveSessionStatus,
     pub phase: CarveScanPhase,
     pub signatures: bool,
@@ -117,6 +120,7 @@ impl CarveScanSession {
             task_id,
             image_id,
             created_unix_ms: chrono::Utc::now().timestamp_millis(),
+            finished_unix_ms: None,
             status: CarveSessionStatus::Queued,
             phase: CarveScanPhase::Signature,
             signatures: true,
@@ -152,6 +156,7 @@ impl CarveScanSession {
             task_id: self.task_id.clone(),
             image_id: self.image_id.clone(),
             created_unix_ms: self.created_unix_ms,
+            finished_unix_ms: self.finished_unix_ms,
             status: self.status,
             phase: self.phase,
             signatures: self.signatures,
@@ -172,6 +177,13 @@ impl CarveScanSession {
         self.bytes_total = progress.bytes_total;
         self.signatures_found = progress.signatures_found;
         self.current_offset = progress.current_offset;
+    }
+
+    /// Ends the session with `status` (completed, cancelled or failed).
+    pub fn finish(&mut self, status: CarveSessionStatus, error: Option<String>) {
+        self.status = status;
+        self.error = error;
+        self.finished_unix_ms = Some(chrono::Utc::now().timestamp_millis());
     }
 }
 

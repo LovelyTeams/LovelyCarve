@@ -31,8 +31,7 @@ import { computed, watch } from 'vue';
 import { Archive, Loader2, Monitor, RefreshCw, Smartphone, TriangleAlert } from 'lucide-vue-next';
 import { evidenceTypeLabel, manufactorLabel, platformLabel } from '../model/autodetectLabels';
 import { runAutoDetect, useAutoDetectError, useAutoDetectPending, useAutoDetectReport } from '../composables/useAutoDetect';
-import { useBuiltinTasks } from '../../tasks/api';
-import { autoDetectTaskId } from '../../tasks/model/autodetectTasks';
+import { useTaskEntries } from '../../tasks/api';
 
 // 镜像信息页头部的平台结论（平台 · 厂商 · 检材类型）与重新识别按钮。
 // 逐分区判定与告警随回写存入案件，页面只显示结论。
@@ -41,11 +40,12 @@ const props = defineProps<{ imageId: string }>();
 const report = useAutoDetectReport(() => props.imageId);
 const manualPending = useAutoDetectPending(() => props.imageId);
 const error = useAutoDetectError(() => props.imageId);
-const { tasks } = useBuiltinTasks();
+const { entries } = useTaskEntries();
 // The first task that runs when evidence joins a case counts as well, so the
 // page neither starts a second run nor offers one while it is in progress.
-const pending = computed(() => manualPending.value || tasks.value.some(task =>
-  task.id === autoDetectTaskId(props.imageId) && (task.status === 'queued' || task.status === 'running')));
+// Detection is registered as `autodetect:<image id>` (one task per evidence).
+const pending = computed(() => manualPending.value || entries.value.some(entry =>
+  entry.id === `autodetect:${props.imageId}` && (entry.status === 'queued' || entry.status === 'running')));
 
 const manufactor = computed(() => manufactorLabel(report.value?.manufactor));
 const conclusionType = computed(() => {

@@ -29,7 +29,7 @@ describe('frontend architecture verifier', () => {
     expect(result.violations.map(item => item.message)).toEqual(['Pure model uses host global localStorage.']);
   });
   it('allows declared component and API edges and catches self-barrel loops', () => {
-    expect(auditModule('src/features/files/components/Page.vue', `<script setup lang="ts">import Preview from '../../preview/components/DiskFileDetail.vue'; import { trackedFsChildren } from '../../tasks/api';</script>`).violations).toEqual([]);
+    expect(auditModule('src/features/files/components/Page.vue', `<script setup lang="ts">import Preview from '../../preview/components/DiskFileDetail.vue'; import { useCaseSession } from '../../cases/api';</script>`).violations).toEqual([]);
     expect(auditModule('src/features/tasks/composables/example.ts', `export { useTaskCenter } from '../api';`).violations[0].message).toContain('own API barrel');
   });
 });

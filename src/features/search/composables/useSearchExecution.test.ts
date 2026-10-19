@@ -5,8 +5,7 @@ import { useSearchExecution } from './useSearchExecution';
 import { buildSearchOptions, createSearchDraft } from '../model/searchConfiguration';
 import type { GlobalSearchSummary } from '../../../lib/ipc/search';
 const calls = vi.hoisted(() => ({ start: vi.fn(), subscribe: vi.fn(), cleanup: vi.fn(), error: vi.fn(), info: vi.fn() }));
-vi.mock('../../tasks/composables/useBuiltinTasks', () => ({ trackedGlobalSearchStart: calls.start }));
-vi.mock('../../../lib/ipc/search', () => ({ onGlobalSearchProgress: calls.subscribe }));
+vi.mock('../../../lib/ipc/search', () => ({ globalSearchStart: calls.start, onGlobalSearchProgress: calls.subscribe }));
 vi.mock('../../../composables/useToast', () => ({ notifyError: calls.error, notifyInfo: calls.info }));
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
 let scope: EffectScope; const image = ref('a'); const selected = ref<string | null>('search');

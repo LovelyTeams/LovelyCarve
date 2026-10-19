@@ -1,4 +1,13 @@
-//! Plugin task execution and analysis publication, wired into TaskRunner.
+//! Plugin task execution and result publication, wired into TaskRunner.
+//!
+//! An execution starts a worker for the task's plugin, prepares the run
+//! (target view, declared inputs, facts, a staging run in the evidence's
+//! `records.db`; see [`prepare_run`]) and waits for `run.start` while the
+//! plugin streams its records. Publication — under the scheduler's
+//! publication gate — swaps the staging run in and projects its timeline
+//! points; an execution that is cancelled, fails or is superseded has its
+//! staging run deleted.
+
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use parking_lot::Mutex;
@@ -8,14 +17,16 @@ use crate::core::extensions::task_scheduler::{
     TaskRunner,
 };
 use crate::core::{
-    analysis::results::models::PluginAnalysisResult,
-    analysis::results::plugin_result_store::{self, NewPluginAnalysis},
+    analysis::{
+        identify::systems::SystemCache,
+        results::{legacy_store, record_store},
+    },
+    evidence::image::ReadFaultReport,
     extensions::plugin::{
-        EvidenceAnalysisRequest, FileAnalysisRequest, PluginManager, PluginProgressEvent,
-        TaskWorker,
+        prepare_run, AnalyzerScope, PluginManager, ProgressSink, RunPlan, RunTargetSpec, TaskWorker,
     },
     filesystem::evidence_session::EvidenceSession,
-    timeline::timeline_store,
+    timeline::{timeline_project, timeline_store},
 };
 
 /// 执行中的插件实例,按任务 id 登记(附执行 `seq`)。
@@ -26,27 +37,46 @@ struct WorkerSlot {
     worker: Arc<TaskWorker>,
 }
 
-/// 生产执行器:把任务交给插件的 `analyzer.analyze` / `analyze_evidence`。
+/// The staging run of one execution, until it is published or discarded.
+struct StagedRun {
+    image_id: String,
+    run_id: String,
+    /// Set once the plugin finished the run.
+    finished: Option<FinishedRun>,
+}
+
+struct FinishedRun {
+    summary: Option<String>,
+    finished_at: String,
+    read_faults: ReadFaultReport,
+}
+
+type StagedRuns = Arc<Mutex<HashMap<(i64, u64), StagedRun>>>;
+
+/// 生产执行器:把任务交给插件 worker 的 `run.start`。
 pub struct PluginTaskRunner {
     images: Arc<tokio::sync::Mutex<HashMap<String, Arc<EvidenceSession>>>>,
     plugins: Arc<parking_lot::RwLock<Option<Arc<PluginManager>>>>,
+    systems: Arc<SystemCache>,
     case_dir: PathBuf,
     workers: WorkerSlots,
-    prepared: Arc<Mutex<HashMap<(i64, u64), Analysis>>>,
+    staged: StagedRuns,
 }
 
 impl PluginTaskRunner {
     pub fn new(
         images: Arc<tokio::sync::Mutex<HashMap<String, Arc<EvidenceSession>>>>,
         plugins: Arc<parking_lot::RwLock<Option<Arc<PluginManager>>>>,
+        systems: Arc<SystemCache>,
         case_dir: PathBuf,
     ) -> Self {
         Self {
             images,
             plugins,
+            systems,
             case_dir,
             workers: WorkerSlots::default(),
-            prepared: Arc::default(),
+            staged: Arc::default(),
         }
     }
 
@@ -59,18 +89,10 @@ impl PluginTaskRunner {
 struct Execution {
     images: Arc<tokio::sync::Mutex<HashMap<String, Arc<EvidenceSession>>>>,
     manager: Arc<PluginManager>,
+    systems: Arc<SystemCache>,
+    case_dir: PathBuf,
     workers: WorkerSlots,
-    prepared: Arc<Mutex<HashMap<(i64, u64), Analysis>>>,
-}
-
-/// 插件分析完成、尚未落库的结果。
-struct Analysis {
-    result: PluginAnalysisResult,
-    plugin_version: String,
-    node_id: String,
-    file_name: String,
-    started_at: String,
-    completed_at: String,
+    staged: StagedRuns,
 }
 
 impl Execution {
@@ -80,27 +102,16 @@ impl Execution {
             token,
             progress,
         } = execution;
-        let analysis = tokio::select! {
-            analysis = self.analyze(&task, seq, progress) => analysis,
-            () = token.cancelled() => return ExecutionOutcome::Failed("任务已取消".to_owned()),
+        let outcome = tokio::select! {
+            outcome = self.analyze(&task, seq, progress, &token) => outcome,
+            () = token.cancelled() => Err("任务已取消".to_owned()),
         };
-        let analysis = match analysis {
-            Ok(analysis) => analysis,
-            Err(message) => return ExecutionOutcome::Failed(message),
-        };
-        // 取消落在分析返回之后:不再落库,免得已取消的任务留下分析结果。
-        if token.is_cancelled() {
-            return ExecutionOutcome::Failed("任务已取消".to_owned());
+        match outcome {
+            // A cancellation that lands after the run finished publishes nothing.
+            Ok(_) if token.is_cancelled() => ExecutionOutcome::Failed("任务已取消".to_owned()),
+            Ok(result) => ExecutionOutcome::Success(result),
+            Err(message) => ExecutionOutcome::Failed(message),
         }
-        let result = TaskResult {
-            summary: analysis.result.summary.clone(),
-            artifact_count: analysis.result.artifacts.len() as u64,
-            timeline_count: analysis.result.timeline.len() as u64,
-            finding_count: analysis.result.findings.len() as u64,
-            run_id: None,
-        };
-        self.prepared.lock().insert((task.id, seq), analysis);
-        ExecutionOutcome::Success(result)
     }
 
     async fn analyze(
@@ -108,7 +119,8 @@ impl Execution {
         task: &SchedTaskRecord,
         seq: u64,
         progress: TaskProgress,
-    ) -> Result<Analysis, String> {
+        token: &tokio_util::sync::CancellationToken,
+    ) -> Result<TaskResult, String> {
         let image = self
             .images
             .lock()
@@ -116,92 +128,135 @@ impl Execution {
             .get(&task.info.image_id)
             .cloned()
             .ok_or_else(|| format!("检材 {} 未加载", task.info.image_id))?;
-        let manifest = self
+        let definition = self
             .manager
-            .definitions()
-            .iter()
-            .find(|definition| definition.manifest.id == task.info.plugin_id)
-            .map(|definition| &definition.manifest);
-        let plugin_version = manifest
-            .map(|manifest| manifest.version.clone())
-            .unwrap_or_default();
-        // 检材级 function 没有目标文件,插件经
-        // `evidence.*` 自行遍历检材;文件级 function 仍走 FileHandle。
-        let evidence_level = manifest.is_some_and(|manifest| {
-            manifest
-                .evidence_analyzer_capabilities()
-                .any(|capability| capability.analyzer == task.info.analyzer)
-        });
-        let (node_id, file_name) = if evidence_level {
-            (String::new(), String::new())
-        } else {
-            let node_id = task
-                .params
-                .node_id
-                .clone()
-                .ok_or_else(|| "任务缺少目标文件 nodeId".to_owned())?;
-            let file_name = task
-                .params
-                .file_name
-                .clone()
-                .unwrap_or_else(|| node_id.clone());
-            (node_id, file_name)
+            .definition(&task.info.plugin_id)
+            .map_err(|error| error.to_string())?;
+        let analyzer = definition
+            .manifest
+            .analyzer(&task.info.analyzer)
+            .cloned()
+            .ok_or_else(|| format!("插件不再提供分析器 {}", task.info.analyzer))?;
+        let target = match analyzer.scope {
+            AnalyzerScope::System => RunTargetSpec::System {
+                system_id: task
+                    .params
+                    .system_id
+                    .clone()
+                    .ok_or_else(|| "任务缺少目标系统".to_owned())?,
+            },
+            AnalyzerScope::Evidence => RunTargetSpec::Evidence,
+            AnalyzerScope::Files => {
+                let node_id = task
+                    .params
+                    .node_id
+                    .clone()
+                    .ok_or_else(|| "任务缺少目标文件".to_owned())?;
+                RunTargetSpec::File {
+                    name: task
+                        .params
+                        .file_name
+                        .clone()
+                        .unwrap_or_else(|| node_id.clone()),
+                    node_id,
+                }
+            }
         };
-        let started_at = chrono::Utc::now().to_rfc3339();
         let worker = self
             .manager
-            .start_task_worker(&task.info.plugin_id, move |event: PluginProgressEvent| {
-                progress(event.current, event.total)
-            })
+            .start_worker(&task.info.plugin_id)
             .await
             .map_err(|error| format!("插件实例启动失败：{error}"))?;
         let worker = Arc::new(worker);
         let registration = WorkerRegistration::new(&self.workers, task.id, seq, &worker);
-        let result = if evidence_level {
-            let params = serde_json::to_value(&task.params).unwrap_or(serde_json::Value::Null);
-            self.manager
-                .analyze_evidence_on(
-                    &worker,
-                    EvidenceAnalysisRequest {
-                        plugin_id: task.info.plugin_id.clone(),
-                        analyzer: task.info.analyzer.clone(),
-                        image_id: task.info.image_id.clone(),
-                        image,
-                        params,
+
+        let run_id = format!("run_{}", uuid::Uuid::new_v4().simple());
+        self.staged.lock().insert(
+            (task.id, seq),
+            StagedRun {
+                image_id: image.id.clone(),
+                run_id: run_id.clone(),
+                finished: None,
+            },
+        );
+        let prepared = {
+            let image = Arc::clone(&image);
+            let systems = Arc::clone(&self.systems);
+            let case_dir = self.case_dir.clone();
+            let options = task.params.options.clone();
+            let hello = worker.hello().clone();
+            let run_id = run_id.clone();
+            let token = token.clone();
+            let progress: ProgressSink = Arc::new(move |current, total| progress(current, total));
+            tokio::task::spawn_blocking(move || {
+                let systems = if analyzer.scope == AnalyzerScope::System {
+                    systems.get_or_discover(&image)
+                } else {
+                    Arc::default()
+                };
+                let evidence_label = image
+                    .path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| image.id.clone());
+                prepare_run(
+                    &RunPlan {
+                        case_dir: &case_dir,
+                        image: &image,
+                        definition: &definition,
+                        analyzer: &analyzer,
+                        target: &target,
+                        options: &options,
+                        systems: &systems,
+                        hello: &hello,
+                        evidence_label: &evidence_label,
                     },
+                    &run_id,
+                    progress,
+                    &token,
                 )
-                .await
-        } else {
-            self.manager
-                .analyze_file_on(
-                    &worker,
-                    FileAnalysisRequest {
-                        plugin_id: task.info.plugin_id.clone(),
-                        analyzer: task.info.analyzer.clone(),
-                        image_id: task.info.image_id.clone(),
-                        image,
-                        node_id: node_id.clone(),
-                        name: file_name.clone(),
-                    },
-                )
-                .await
+            })
+            .await
+            .map_err(|error| format!("运行准备失败：{error}"))?
+            .map_err(|error| format!("运行准备失败：{error:#}"))?
         };
+        // Discarded while it was being prepared: drop the staging run.
+        if !self.staged.lock().contains_key(&(task.id, seq)) {
+            discard_in_background(&self.case_dir, &image.id, &run_id);
+            return Err("任务已取消".to_owned());
+        }
+        let finish = worker
+            .run(Arc::clone(&prepared.context), &prepared.start)
+            .await;
         drop(registration);
-        // 结果已经拿到:实例在后台退出,不拖慢 commit。
+        // The results are in: let the worker exit in the background.
         tokio::spawn(async move {
             if let Err(error) = worker.shutdown().await {
                 tracing::debug!(plugin_id = %worker.plugin_id(), "task worker shutdown failed: {error}");
             }
         });
-        let result = result.map_err(|error| error.to_string())?;
-        Ok(Analysis {
-            result,
-            plugin_version,
-            node_id,
-            file_name,
-            started_at,
-            completed_at: chrono::Utc::now().to_rfc3339(),
-        })
+        let finish = finish.map_err(|error| error.to_string())?;
+        let (records, warnings, time_points) = prepared.context.counts();
+        let read_faults = prepared.context.read_faults();
+        let result = TaskResult {
+            summary: finish.summary.clone(),
+            record_count: records,
+            timeline_count: time_points,
+            warning_count: warnings,
+            synthetic_bytes: read_faults.synthetic_bytes,
+            run_id: None,
+        };
+        match self.staged.lock().get_mut(&(task.id, seq)) {
+            Some(staged) => {
+                staged.finished = Some(FinishedRun {
+                    summary: finish.summary,
+                    finished_at: chrono::Utc::now().to_rfc3339(),
+                    read_faults,
+                });
+            }
+            None => return Err("任务已取消".to_owned()),
+        }
+        Ok(result)
     }
 }
 
@@ -242,6 +297,16 @@ impl Drop for WorkerRegistration {
     }
 }
 
+fn discard_in_background(case_dir: &std::path::Path, image_id: &str, run_id: &str) {
+    let (case_dir, image_id, run_id) =
+        (case_dir.to_owned(), image_id.to_owned(), run_id.to_owned());
+    tokio::task::spawn_blocking(move || {
+        if let Err(error) = record_store::discard(&case_dir, &image_id, &run_id) {
+            tracing::warn!(%run_id, "staging run not discarded: {error:#}");
+        }
+    });
+}
+
 impl TaskRunner for PluginTaskRunner {
     fn run(
         &self,
@@ -256,8 +321,10 @@ impl TaskRunner for PluginTaskRunner {
         let execution_state = Execution {
             images: Arc::clone(&self.images),
             manager,
+            systems: Arc::clone(&self.systems),
+            case_dir: self.case_dir.clone(),
             workers: Arc::clone(&self.workers),
-            prepared: Arc::clone(&self.prepared),
+            staged: Arc::clone(&self.staged),
         };
         Box::pin(execution_state.run(task, execution))
     }
@@ -268,47 +335,50 @@ impl TaskRunner for PluginTaskRunner {
         seq: u64,
         mut result: TaskResult,
     ) -> anyhow::Result<TaskResult> {
-        let analysis = self
-            .prepared
-            .lock()
-            .remove(&(task.id, seq))
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "prepared analysis missing for task {} execution {seq}",
-                    task.id
-                )
+        let staged =
+            self.staged.lock().remove(&(task.id, seq)).ok_or_else(|| {
+                anyhow::anyhow!("no staged run for task {} execution {seq}", task.id)
             })?;
-        let run_id = plugin_result_store::persist(
+        let Some(finished) = &staged.finished else {
+            record_store::discard(&self.case_dir, &staged.image_id, &staged.run_id)?;
+            anyhow::bail!("run {} did not finish", staged.run_id);
+        };
+        let published = record_store::publish(
             &self.case_dir,
-            NewPluginAnalysis {
-                plugin_id: &task.info.plugin_id,
-                plugin_version: &analysis.plugin_version,
-                analyzer: &task.info.analyzer,
-                display_name: &task.display_name,
-                type_name: &task.type_name,
-                image_id: &task.info.image_id,
-                node_id: &analysis.node_id,
-                file_name: &analysis.file_name,
-                started_at: &analysis.started_at,
-                completed_at: &analysis.completed_at,
-                result: &analysis.result,
+            &staged.image_id,
+            &staged.run_id,
+            &record_store::RunCompletion {
+                summary: finished.summary.as_deref(),
+                finished_at: &finished.finished_at,
+                read_faults: &finished.read_faults,
             },
-        )?;
-        // Project while the same execution publication gate is held; deleting
-        // a terminal task cannot race a detached projection and resurrect it.
-        if let Err(error) = crate::core::timeline::timeline_project::project_run(
+        )?
+        .ok_or_else(|| anyhow::anyhow!("run {} was discarded before publication", staged.run_id))?;
+        // Project under the same publication gate, so deleting the task cannot
+        // race a detached projection and resurrect it.
+        if let Err(error) = timeline_project::project_published_run(
             &self.case_dir,
-            &task.info.image_id,
-            &run_id,
+            &staged.image_id,
+            &staged.run_id,
+            &published.superseded,
         ) {
-            tracing::warn!("timeline project_run {run_id} failed (will rebuild later): {error:#}");
+            tracing::warn!(
+                "timeline projection of run {} failed (rebuild the timeline to include it): {error:#}",
+                staged.run_id
+            );
         }
-        result.run_id = Some(run_id);
+        result.run_id = Some(staged.run_id);
         Ok(result)
     }
 
     fn discard_execution(&self, task_id: i64, seq: u64) {
-        self.prepared.lock().remove(&(task_id, seq));
+        let Some(staged) = self.staged.lock().remove(&(task_id, seq)) else {
+            return;
+        };
+        if let Err(error) = record_store::discard(&self.case_dir, &staged.image_id, &staged.run_id)
+        {
+            tracing::warn!(run_id = %staged.run_id, "staging run not discarded: {error:#}");
+        }
     }
 
     fn remove_results(&self, task: &SchedTaskRecord) -> anyhow::Result<()> {
@@ -344,8 +414,8 @@ impl TaskRunner for PluginTaskRunner {
     }
 }
 
-/// 删除任务已落库的分析结果与时间线投影。
-/// 时间线只在已建立时按 tid 级联删。
+/// 删除任务已发布的运行(新版 `records.db`,旧案件的 `analysis.db`)与它的
+/// 时间线投影。时间线只在已建立时按 tid 删。
 fn remove_task_results(case_dir: &std::path::Path, task: &SchedTaskRecord) -> anyhow::Result<()> {
     let Some(run_id) = task
         .result
@@ -354,7 +424,9 @@ fn remove_task_results(case_dir: &std::path::Path, task: &SchedTaskRecord) -> an
     else {
         return Ok(());
     };
-    plugin_result_store::remove_run(case_dir, &task.info.image_id, run_id)?;
+    if !record_store::remove_run(case_dir, &task.info.image_id, run_id)? {
+        legacy_store::remove_run(case_dir, &task.info.image_id, run_id)?;
+    }
     let Some(conn) = timeline_store::open_existing(
         case_dir,
         &task.info.image_id,

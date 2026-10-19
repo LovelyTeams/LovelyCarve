@@ -1,8 +1,7 @@
 
 import { tr } from '../../../composables/useLocale';
 import { computed, onMounted, onScopeDispose, ref, watch } from 'vue';
-import { trackedCarveStart as carveStart } from '../../tasks/api';
-import { carveScanList, carveScanRemove, carveScanStatus, carveScanPause, carveScanResume, onCarveScanProgress, type CarveStartOptions, type CarveScanSnapshot } from '../../../lib/ipc/carve';
+import { carveScanList, carveScanRemove, carveScanStatus, carveScanPause, carveScanResume, carveStart, onCarveScanProgress, type CarveStartOptions, type CarveScanSnapshot } from '../../../lib/ipc/carve';
 import { taskCancel } from '../../../lib/ipc/taskRuntime';
 import { confirm } from '../../../composables/useConfirm';
 import { notifyError, notifyInfo } from '../../../composables/useToast';

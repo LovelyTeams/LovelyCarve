@@ -27,6 +27,7 @@ pub async fn image_export_raw(
         TaskKind::ImageExport,
         Some(image_id.clone()),
     );
+    task.update(|view| view.subject = vec![destination.clone()]);
     let resource_permit = state.tasks.acquire_resources(&task).await?;
     let token = task.token();
     let task_id_for_worker = task_id.clone();
@@ -141,23 +142,33 @@ pub async fn image_export_raw(
             Ok((offset, ReadFaultReport::from_regions(bad_regions)))
         })
         .await;
-    let outcome = result.map_err(|err| AppError::task_panicked("image_export_raw", err))?;
-    let read_faults = image_read_fault_report(&state, &image_id, &image).await;
-    let (bytes_written, operation_faults) = match outcome {
-        Ok(result) => result,
-        Err(error) => {
-            if let Err(store_error) = read_faults {
-                tracing::warn!(
-                    "export fault audit persistence failed after error: {}",
-                    store_error.message
-                );
+    let exported = async {
+        let outcome = result.map_err(|err| AppError::task_panicked("image_export_raw", err))?;
+        let read_faults = image_read_fault_report(&state, &image_id, &image).await;
+        let (bytes_written, operation_faults) = match outcome {
+            Ok(result) => result,
+            Err(error) => {
+                if let Err(store_error) = read_faults {
+                    tracing::warn!(
+                        "export fault audit persistence failed after error: {}",
+                        store_error.message
+                    );
+                }
+                return Err(error);
             }
-            return Err(error);
-        }
-    };
-    read_faults?;
-    Ok(ImageExportResult {
-        bytes_written,
-        read_faults: operation_faults,
-    })
+        };
+        read_faults?;
+        Ok(ImageExportResult {
+            bytes_written,
+            read_faults: operation_faults,
+        })
+    }
+    .await;
+    if let Ok(exported) = &exported {
+        task.update(|view| {
+            crate::app::workflows::task_center::count_read_faults(view, &exported.read_faults);
+        });
+    }
+    task.finish_with(&exported);
+    exported
 }

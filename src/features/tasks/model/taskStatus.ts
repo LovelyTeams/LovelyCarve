@@ -37,10 +37,12 @@ export function canCancelStatus(status: SchedTaskStatus): boolean {
   return status === 'created' || status === 'queued' || status === 'running' || status === 'pause' || status === 'offline';
 }
 
+/** Built-in recoveries pause and resume; plugin tasks do not pause. */
 export function canPauseStatus(status: SchedTaskStatus): boolean {
   return status === 'created' || status === 'queued' || status === 'running';
 }
 
+/** Plugin tasks offline, or paused by an older version, start again from the beginning. */
 export function canStartStatus(status: SchedTaskStatus): boolean {
   return status === 'pause' || status === 'offline';
 }

@@ -1,5 +1,5 @@
-//! Per-evidence directory cache for path-based plugin scans. Registry cleanup
-//! drops the cache with the evidence handle; node and directory budgets bound memory.
+//! Per-view directory cache for path-based plugin access. The cache ends
+//! with its run's view; node and directory budgets bound memory.
 use crate::core::filesystem::tree::fs_tree::FsNode;
 use lru::LruCache;
 use std::sync::Arc;

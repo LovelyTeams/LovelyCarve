@@ -1,5 +1,5 @@
 import { computed, nextTick, reactive, ref, type Ref } from 'vue';
-import { trackedFsChildren as fsChildren } from '../../tasks/api';
+import { containerFsChildren as fsChildren } from './containerReads';
 import type { DiskFsNode } from '../model/model';
 
 export interface PathFilterStackFrame {

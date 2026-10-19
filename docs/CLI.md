@@ -34,8 +34,8 @@ Linux 上也不需要桌面库。Windows 构建在链接时嵌入 `asInvoker` �
 `just pack-cli` 构建并打包轻量 Windows CLI，包含运行库、`lc-plugin-host`、插件及本手册；
 `just pack-cli-full` 另启用 QR/OCR 并携带 OpenCV 与模型。`just repack-cli` 按现有二进制
 `system get` 报告的实际功能打包。开发配方在 `src-tauri` 目录执行，建议向 `just run-cli`
-传绝对检材路径；直接运行 exe 时相对路径以当前工作目录为准。插件是原生动态库，从程序旁的
-`plugins/` 发现，默认由程序旁的 `lc-plugin-host` 隔离加载。
+传绝对检材路径；直接运行 exe 时相对路径以当前工作目录为准。插件包从程序旁的 `plugins/` 与用户数据目录的
+`plugins/` 发现，每个插件实例都在程序旁的 `lc-plugin-host` 进程中运行；`plugins create <插件包.lcpkg>` 安装插件包。
 
 ## 命令结构
 
@@ -70,7 +70,7 @@ lovelycarve-cli --case "D:\cases\demo" cases get
 | `mounts` | 只读挂载与 SMB 共享（Windows） |
 | `plugins`、`analysis`、`bcp` | 插件、插件任务、分析结果与 BCP 数据 |
 | `raid`、`disks` | RAID 组装与主机物理磁盘 |
-| `tasks` | 进程内后台任务：列出、查看、取消、等待 |
+| `tasks` | 任务中心：插件任务与内置任务的列出、查看、取消，以及等待后台任务结束 |
 | `system`、`context`、`cli` | 本程序与主机、会话上下文、命令搜索 |
 | `schema`、`complete`、`session`、`shell` | 根命令：请求结构、shell 补全、JSONL 会话、交互 shell |
 
@@ -522,6 +522,20 @@ XTS 密钥对）。可选 `encryptedRootPlistPath` 指向本地 XML / EncryptedR
 
 `carve scans export` 的 `file_ids` 只接受该会话文件系统结果中的候选编号，且候选必须 `readable`，不能传入任意原始数据映射；`artifact_ids` 为 `null`（缺省）时恢复全部雕刻结果，同时传 `file_ids` 时可用 `[]` 只恢复文件系统记录。顶层计数描述雕刻结果，`files` 描述文件系统记录：输出目录、成功/失败数、JSONL 报告路径与读取故障。文件系统记录在输出目录中按 `v<卷号>-<卷标>/原目录/文件名` 保持目录结构，具体文件状态、来源、`relative_output` 和 SHA-256 见 JSONL 报告。能力和限制见[文件恢复](USAGE.md#文件恢复)。
 
-### 插件分析结果的分页身份
+### 插件分析
 
-`analysis tree get` 返回各插件功能、输入文件的当前结果及 `runId`。`analysis records list` 必须传 `--run-id`，并传匹配的 `--analyzer`、检材与结果类型；同一次分页或导出固定 runId，不在新任务完成时自动切换。删除插件任务只清理该任务记录的运行结果。
+系统级分析器在检材上识别出的操作系统上运行：`plugins systems list` 列出系统 ID（如 `linux@part:2`）及其挂载的卷，`plugins functions list` 列出分析器的作用域、适用平台与选项。
+
+```bash
+lovelycarve-cli plugins tasks create --function org.lovelycarve.linuxinfo/linuxbaseinfo --system-id linux@part:2 --options '{"items":["users","logins"]}'
+lovelycarve-cli tasks wait
+lovelycarve-cli analysis tree get
+lovelycarve-cli analysis records list --run-id <runId> --record-type linux.user --sort uid --descending
+lovelycarve-cli analysis runs get <runId>
+```
+
+检材级分析器不需要 `--system-id`，文件级分析器给 `--node-id` 与 `--file-name`；省略的选项取默认值。同一（分析器、检材、目标）最多一个未结束的任务，重复创建返回已有任务。插件任务不能暂停：`plugins tasks cancel` 结束执行，`plugins tasks restart` 从头再跑，成功后新结果替换旧结果。
+
+`tasks list` 与桌面任务中心列出同一份任务：插件任务（id 为 `plugin:<任务 id>`，带完整任务行）与内置任务（带种类、对象、阶段、进度、计数与结局），`--image-id` 只列一份检材的任务。`tasks get <id>` 查看一条，`tasks cancel <id>` 取消内置任务或插件任务。全局搜索与时间线构建的记录来自案件，其余内置任务只列出本进程运行过的。
+
+`analysis tree get` 按检材 → 分类 → 分析器运行 → 记录类型返回已发布的结果及其 `runId`。`analysis records list` 必须传 `--run-id` 与 `--record-type`，可用 `--keyword` 检索标题与文本类列、`--sort <列 id 或 title>` 与 `--descending` 排序；同一次分页或导出固定 runId，新任务完成时不会切换。`analysis runs get` 给出运行的输入文件、选项、画像事实、告警与读不出而以零填充的源字节。旧版本插件写下的结果在树中带 `legacy: true`，读取时加 `--legacy`。删除插件任务只删除该任务发布的运行结果。

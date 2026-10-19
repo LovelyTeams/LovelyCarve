@@ -17,7 +17,7 @@ import { notifyError } from '../../../composables/useToast';
 // background first task whenever evidence first joins a case and broadcasts
 // the report or the failure; manual re-runs go through `runAutoDetect`.
 // Reports are keyed by image id so switching panels never loses a result.
-// The task center tracks the same runs through `useBuiltinTasks`.
+// The task center lists the same runs from the backend (`autodetect:<image id>`).
 
 const reports = reactive(new Map<string, AutoDetectReport>());
 const pending = reactive(new Set<string>());
@@ -88,11 +88,6 @@ export function useAutoDetectError(
     const id = imageId();
     return id ? errors.get(id) : undefined;
   });
-}
-
-/** Whether a manual run for the image is awaiting its command response. */
-export function isAutoDetectRunPending(imageId: string): boolean {
-  return pending.has(imageId);
 }
 
 /** 手动触发识别。 */

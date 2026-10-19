@@ -4,7 +4,8 @@
 //! `created/queued/running/success/failed/cancel/pause/offline` 原样存进
 //! `status` 列,台账以 CHECK 约束;插件、分析器、触发方式、父任务与失败原因
 //! 各有独立列,只有 `params` / `result` 是 JSON。线上形态 [`SchedTaskRecord`]
-//! 仍把它们收在 `info` 里。
+//! 仍把它们收在 `info` 里。新任务不再暂停:`pause` 只出现在旧案件的任务行里,
+//! 这样的任务可以启动或取消。
 
 use serde::{Deserialize, Serialize};
 
@@ -73,12 +74,7 @@ impl SchedTaskStatus {
         )
     }
 
-    /// 暂停任务允许的起始状态(还需插件声明 `can_pause`)。
-    pub fn can_pause(self) -> bool {
-        matches!(self, Self::Created | Self::Queued | Self::Running)
-    }
-
-    /// 启动任务允许的起始状态(恢复暂停/离线任务)。
+    /// 启动任务允许的起始状态(离线任务,以及旧案件里暂停的任务)。
     pub fn can_start(self) -> bool {
         matches!(self, Self::Pause | Self::Offline)
     }
@@ -94,21 +90,36 @@ impl SchedTaskStatus {
     }
 }
 
-/// 任务参数(`task.params` JSON):文件分析任务的目标文件;检材级任务
-/// 只带平台与子项勾选。
+/// 任务参数(`task.params` JSON):作业的目标与用户选定的选项。旧案件任务行
+/// 里的其他字段(平台、子项)读取时忽略。
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskParams {
+    /// 文件作用域:分析的文件节点。
     #[serde(default)]
     pub node_id: Option<String>,
     #[serde(default)]
     pub file_name: Option<String>,
-    /// 快速分析对话框选定的平台。
+    /// 系统作用域:识别出的系统(`linux@part:2`)。
     #[serde(default)]
-    pub platform: Option<String>,
-    /// 快速分析对话框勾选的功能子项;空 = 全部。
+    pub system_id: Option<String>,
+    /// 目标的展示名(系统名或文件名)。
     #[serde(default)]
-    pub sub_items: Vec<String>,
+    pub target_label: Option<String>,
+    /// 分析器选项(按清单 `[[analyzer.option]]` 校验)。
+    #[serde(default)]
+    pub options: serde_json::Map<String, serde_json::Value>,
+}
+
+impl TaskParams {
+    /// 作业在检材内的目标:系统 id、文件节点,整个检材为空串。同一
+    /// (function, 检材, 目标) 是同一个作业,单实例约束与结果替换都按它算。
+    pub fn target_key(&self) -> &str {
+        self.system_id
+            .as_deref()
+            .or(self.node_id.as_deref())
+            .unwrap_or_default()
+    }
 }
 
 /// 任务的插件与调度元数据(线上形态;台账里各是一列,`image_id` 来自检材行)。
@@ -127,27 +138,26 @@ pub struct TaskInfo {
     pub error: Option<String>,
 }
 
-/// 提交结果(`task.result` JSON)。
+/// 提交结果(`task.result` JSON)。旧案件的 `artifactCount` 读作记录数。
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskResult {
     #[serde(default)]
     pub summary: Option<String>,
-    #[serde(default)]
-    pub artifact_count: u64,
+    #[serde(default, alias = "artifactCount")]
+    pub record_count: u64,
+    /// 进入时间线的时间点数。
     #[serde(default)]
     pub timeline_count: u64,
+    /// 运行留下的告警数(运行审计里可查看)。
     #[serde(default)]
-    pub finding_count: u64,
-    /// 检材 `analysis.db` 中持久化的分析运行 id。
+    pub warning_count: u64,
+    /// 合成(读不出、以零填充)的源字节数。
+    #[serde(default)]
+    pub synthetic_bytes: u64,
+    /// 检材 `records.db`(旧案件为 `analysis.db`)里的运行 id。
     #[serde(default)]
     pub run_id: Option<String>,
-}
-
-impl TaskResult {
-    pub fn data_count(&self) -> u64 {
-        self.artifact_count + self.timeline_count + self.finding_count
-    }
 }
 
 /// 一条任务的完整视图,也是前端任务列表/广播事件的载荷。时间戳是台账的
@@ -191,11 +201,9 @@ pub struct NewTask {
     pub plugin_id: String,
     pub analyzer: String,
     pub trigger: TaskTrigger,
-    /// 依赖链/重启时的上一级任务 id。
+    /// 触发它的上一个任务(事实发布者或重启前的任务)。
     pub parent_tid: Option<i64>,
     pub params: TaskParams,
-    pub dependence: String,
-    pub can_pause: bool,
     pub single_instance: bool,
     pub internal: bool,
 }
@@ -293,8 +301,6 @@ mod tests {
         assert!(SchedTaskStatus::Running.can_cancel());
         assert!(SchedTaskStatus::Pause.can_cancel());
         assert!(!SchedTaskStatus::Success.can_cancel());
-        assert!(SchedTaskStatus::Running.can_pause());
-        assert!(!SchedTaskStatus::Pause.can_pause());
         assert!(SchedTaskStatus::Pause.can_start());
         assert!(SchedTaskStatus::Offline.can_start());
         assert!(!SchedTaskStatus::Running.can_start());
@@ -331,5 +337,26 @@ mod tests {
         assert!(!aggregate.all_finished());
         assert!(EvidenceTaskStatus::from_statuses([SchedTaskStatus::Success]).all_finished());
         assert!(!EvidenceTaskStatus::default().all_finished());
+    }
+
+    #[test]
+    fn old_task_rows_still_parse() {
+        let params: TaskParams = serde_json::from_str(
+            r#"{"nodeId":null,"fileName":null,"platform":"linux","subItems":["用户列表"]}"#,
+        )
+        .expect("old params");
+        assert_eq!(params, TaskParams::default());
+        let result: TaskResult = serde_json::from_str(
+            r#"{"summary":"done","artifactCount":7,"timelineCount":2,"findingCount":0,"runId":"run_1"}"#,
+        )
+        .expect("old result");
+        assert_eq!(result.record_count, 7);
+        assert_eq!(result.run_id.as_deref(), Some("run_1"));
+        let system = TaskParams {
+            system_id: Some("linux@part:2".to_owned()),
+            node_id: Some("ignored".to_owned()),
+            ..TaskParams::default()
+        };
+        assert_eq!(system.target_key(), "linux@part:2");
     }
 }

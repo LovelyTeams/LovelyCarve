@@ -26,6 +26,11 @@ pub(crate) fn spawn_volume_snapshot(
         );
         return;
     };
+    // Evidence joining the case builds its snapshots on its own; a rebuild
+    // is the user's.
+    if !force_rebuild {
+        task.set_automatic();
+    }
     tokio::spawn(async move {
         run_volume_snapshot(
             &app,
@@ -112,6 +117,9 @@ pub(super) async fn run_volume_snapshot(
     }) {
         let record = published.record;
         if published.index_path.is_some_and(|index| index.is_file()) {
+            task.update(|view| {
+                view.flags.insert(TaskFlag::Reused);
+            });
             let mut payload = SnapshotProgressPayload::new(token_id, &image.id, volume_key, "done");
             payload.entries = record.entry_count;
             payload.truncated = record.truncated;

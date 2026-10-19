@@ -1,7 +1,7 @@
 
 import { tr } from '../../../composables/useLocale';
 import { onScopeDispose, ref, type Ref } from 'vue';
-import { trackedFsChildrenPage as fsChildrenPage } from '../../tasks/api';
+import { containerFsChildrenPage as fsChildrenPage } from './containerReads';
 import { notifyError } from '../../../composables/useToast';
 import type { FlatFileFilter, FlatSortColumn } from '../../../lib/ipc/fs/types';
 import type { DiskFsNode as FsNode } from '../model/model';

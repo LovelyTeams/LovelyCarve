@@ -2,13 +2,12 @@ use tokio::process::Child;
 
 use super::Result;
 
-const MAX_PLUGIN_MEMORY: usize = 512 * 1024 * 1024;
-
 /// Keeps a plugin inside the host-owned process resource boundary.
 ///
 /// Windows Job Objects provide kill-on-close, a single-process ceiling, and a
-/// per-process memory limit. Other platforms retain Tokio's parent
-/// `kill_on_drop` behaviour until their native sandbox adapters are added.
+/// per-process memory limit (the package's `memory`). Other platforms retain
+/// Tokio's parent `kill_on_drop` behaviour until their native sandbox
+/// adapters are added.
 pub(super) struct ProcessGuard {
     #[cfg(windows)]
     job: winapi::um::winnt::HANDLE,
@@ -16,7 +15,7 @@ pub(super) struct ProcessGuard {
 
 impl ProcessGuard {
     #[cfg(windows)]
-    pub(super) fn attach(child: &Child) -> Result<Self> {
+    pub(super) fn attach(child: &Child, memory_limit: u64) -> Result<Self> {
         use std::{mem::size_of, ptr};
 
         use winapi::{
@@ -46,7 +45,7 @@ impl ProcessGuard {
             | JOB_OBJECT_LIMIT_ACTIVE_PROCESS
             | JOB_OBJECT_LIMIT_PROCESS_MEMORY;
         limits.BasicLimitInformation.ActiveProcessLimit = 1;
-        limits.ProcessMemoryLimit = MAX_PLUGIN_MEMORY;
+        limits.ProcessMemoryLimit = usize::try_from(memory_limit).unwrap_or(usize::MAX);
         let configured = unsafe {
             SetInformationJobObject(
                 job,
@@ -68,7 +67,7 @@ impl ProcessGuard {
     }
 
     #[cfg(not(windows))]
-    pub(super) fn attach(_child: &Child) -> Result<Self> {
+    pub(super) fn attach(_child: &Child, _memory_limit: u64) -> Result<Self> {
         Ok(Self {})
     }
 }

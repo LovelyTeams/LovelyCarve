@@ -4,7 +4,9 @@
     "resources": {
       "../plugins/target/release/lc-plugin-host.exe": "lc-plugin-host.exe",
       "../plugins/linuxinfo/plugin.toml": "plugins/linuxinfo/plugin.toml",
-      "../plugins/linuxinfo/linuxinfo.dll": "plugins/linuxinfo/linuxinfo.dll"
+      "../plugins/linuxinfo/linuxinfo.dll": "plugins/linuxinfo/linuxinfo.dll",
+      "../plugins/linuxinfo/schema.json": "plugins/linuxinfo/schema.json",
+      "../plugins/linuxinfo/locales/en.toml": "plugins/linuxinfo/locales/en.toml"
     }
   }
 }

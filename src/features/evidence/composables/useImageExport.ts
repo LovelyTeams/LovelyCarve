@@ -16,7 +16,6 @@ import { onEvent, type UnlistenFn } from '../../../lib/ipc/events';
 import { tr } from '../../../composables/useLocale';
 import { notifyError, pushPersistentToast } from '../../../composables/useToast';
 import { formatBytes } from '../../../utils/format';
-import { trackedImageExport } from '../../tasks/api';
 import { evidenceContext } from './evidenceContext';
 
 export interface ImageExportJob {
@@ -163,13 +162,15 @@ async function startImageExport(opts: {
     toast.dismiss(); return false;
   }
   try {
+    // The task center lists the export under `job.taskId`; cancelling there
+    // ends this call like the toast's cancel button.
     const exporter = opts.exporter ?? imageExportRaw;
-    const outcome = await trackedImageExport(job, () => exporter({
+    const outcome = await exporter({
       imageId: opts.imageId,
       destination,
       taskId: job.taskId,
       ...(opts.mode ? { mode: opts.mode } : {}),
-    }), () => cancelExportJob(job));
+    });
     if (epoch !== generation) return true;
     const written = typeof outcome === 'number' ? outcome : outcome.bytes_written;
     const faultDetail = typeof outcome !== 'number' && outcome.read_faults_detected

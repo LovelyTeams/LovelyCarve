@@ -20,7 +20,7 @@ use crate::core::carving::carver::CarveArtifact;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::recovery::export::RecoveryExport;
 use crate::state::AppState;
-use crate::task_manager::{TaskKind, TaskManager, TaskProgressUnit};
+use crate::task_manager::{TaskCount, TaskKind, TaskManager, TaskProgressUnit};
 
 const RECOVERY_BUFFER_BYTES: usize = 4 * 1024 * 1024;
 const MAX_RECOVERY_ERRORS: usize = 100;
@@ -98,6 +98,7 @@ pub async fn carve_recover(
             Some(image_id),
         )
         .ok_or_else(|| AppError::invalid_input("恢复任务 ID 正在使用中"))?;
+    task.update(|view| view.subject = vec![options.destination.clone()]);
     let resource_permit = state.tasks.acquire_resources(&task).await?;
     let token = task.token();
     let tasks = state.tasks.clone();
@@ -107,7 +108,7 @@ pub async fn carve_recover(
     let scan_id_for_worker = scan_id.clone();
     let file_ids = options.file_ids;
 
-    tokio::task::spawn_blocking(move || {
+    let recovered = tokio::task::spawn_blocking(move || {
         let _resource_permit = resource_permit;
         let mut result = if artifacts.is_empty() {
             CarveRecoveryResult {
@@ -147,7 +148,20 @@ pub async fn carve_recover(
         Ok(result)
     })
     .await
-    .map_err(|error| AppError::task_panicked("carve_recover", error))?
+    .map_err(|error| AppError::task_panicked("carve_recover", error))
+    .and_then(std::convert::identity);
+    if let Ok(result) = &recovered {
+        task.update(|view| {
+            let files = result.files.as_ref().map_or(0, |files| files.recovered);
+            view.counts
+                .insert(TaskCount::Files, (result.recovered + files) as u64);
+            if let Some(files) = &result.files {
+                crate::app::workflows::task_center::count_read_faults(view, &files.read_faults);
+            }
+        });
+    }
+    task.finish_with(&recovered);
+    recovered
 }
 
 fn select_artifacts(

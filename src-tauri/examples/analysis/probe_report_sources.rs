@@ -1,10 +1,10 @@
-//! Inventory report source candidates through the plugin's read-only path API.
+//! Inventory report source candidates through the read-only view plugins use.
 use anyhow::Context;
 use lovelycarve_lib::core::{
-    extensions::plugin::EvidenceRegistry, filesystem::evidence_session::EvidenceSession,
+    extensions::plugin::HostView, filesystem::evidence_session::EvidenceSession,
 };
 use serde_json::json;
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 fn main() -> anyhow::Result<()> {
     let arguments: Vec<_> = std::env::args().skip(1).collect();
@@ -13,28 +13,26 @@ fn main() -> anyhow::Result<()> {
         "usage: probe_report_sources <image> <root> <output-json>"
     );
     let image = Arc::new(EvidenceSession::open(&arguments[0])?);
-    let registry = EvidenceRegistry::default();
-    let handle = registry.register("probe", image.id.clone(), image);
-    let mut stack = vec![(String::new(), 0)];
-    let mut visited = HashSet::new();
+    let view = HostView::evidence("probe".to_owned(), "probe".to_owned(), image);
+    let mut stack = vec![(arguments[1].clone(), 0)];
+    let mut directories = 0_usize;
     let mut candidates = Vec::new();
     while let Some((path, depth)) = stack.pop() {
         anyhow::ensure!(depth <= 128, "directory depth exceeded");
-        let entries = registry
-            .list("probe", &handle.evidence_id, &arguments[1], &path)
-            .with_context(|| format!("list {path}"))?;
+        let entries = view
+            .list(&path, 0, u64::MAX)
+            .with_context(|| format!("list {path}"))?
+            .nodes;
         for entry in entries {
             if entry.deleted {
                 continue;
             }
-            let path = if path.is_empty() {
-                entry.name.clone()
-            } else {
-                format!("{path}/{}", entry.name)
-            };
-            if entry.kind == "dir" && visited.insert(entry.node_id.clone()) {
-                anyhow::ensure!(visited.len() <= 100_000, "directory count exceeded");
-                stack.push((path, depth + 1));
+            let child = format!("{path}/{}", entry.name);
+            // Links are listed, never followed, so the walk cannot loop.
+            if entry.kind == "dir" {
+                directories += 1;
+                anyhow::ensure!(directories <= 100_000, "directory count exceeded");
+                stack.push((child, depth + 1));
                 continue;
             }
             let name = entry.name.to_lowercase();
@@ -52,15 +50,18 @@ fn main() -> anyhow::Result<()> {
                 || name == "repositories.json"
                 || name == "local-kv.db"
             {
-                candidates.push(json!({"path":path,"node":entry}));
+                let relative = child
+                    .strip_prefix(&format!("{}/", arguments[1]))
+                    .unwrap_or(&child)
+                    .to_owned();
+                candidates.push(json!({"path":relative,"node":entry}));
             }
         }
     }
     std::fs::write(&arguments[2], serde_json::to_vec_pretty(&candidates)?)?;
     println!(
-        "{} source candidates in {} directories",
-        candidates.len(),
-        visited.len()
+        "{} source candidates in {directories} directories",
+        candidates.len()
     );
     Ok(())
 }

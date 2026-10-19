@@ -1,5 +1,7 @@
-//! Audit every declared source in saved plugin results using the UI's live resolver.
-//! Inputs are local probe outputs; the evidence is only opened for reading.
+//! Audit the provenance of every record in `probe_plugin` outputs: each
+//! record's sources must resolve to a file of the image through the same
+//! locator the UI uses. Inputs are local probe outputs; the evidence is only
+//! opened for reading.
 use anyhow::Context;
 use lovelycarve_lib::core::{
     filesystem::evidence_session::EvidenceSession, filesystem::fs_source_location::source_chain,
@@ -14,56 +16,41 @@ fn main() -> anyhow::Result<()> {
     let arguments: Vec<_> = std::env::args().skip(1).collect();
     anyhow::ensure!(
         arguments.len() >= 2,
-        "usage: probe_plugin_sources <image> <result-json>..."
+        "usage: probe_plugin_sources <image> <probe-json>..."
     );
     let image = Arc::new(EvidenceSession::open(&arguments[0])?);
     let mut sources: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
     let mut failures = Vec::new();
     let mut total = 0;
     for file in &arguments[1..] {
-        let result: Value = serde_json::from_slice(&std::fs::read(file)?)
-            .with_context(|| format!("invalid result JSON: {file}"))?;
+        let output: Value = serde_json::from_slice(&std::fs::read(file)?)
+            .with_context(|| format!("invalid probe JSON: {file}"))?;
+        let groups = output["records"]
+            .as_object()
+            .with_context(|| format!("missing records: {file}"))?;
         let mut records = 0;
         let mut missing = 0;
-        for group in ["artifacts", "timeline", "findings"] {
-            let records_in_group = result
-                .get(group)
-                .and_then(Value::as_array)
-                .with_context(|| format!("missing result array {group}: {file}"))?;
-            for (index, record) in records_in_group.iter().enumerate() {
+        for (record_type, items) in groups {
+            for (index, record) in items.as_array().into_iter().flatten().enumerate() {
                 records += 1;
-                let attributes = &record["attributes"];
-                let root = attributes["source.root"]
-                    .as_str()
-                    .filter(|text| !text.trim().is_empty());
-                let path = attributes["source.path"]
-                    .as_str()
-                    .filter(|text| !text.trim().is_empty());
-                let owner = format!("{file}:{group}[{index}]");
-                let (Some(root), Some(path)) = (root, path) else {
+                let owner = format!("{file}:{record_type}[{index}]");
+                let cited: Vec<(String, String)> = record["sources"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|source| {
+                        Some((
+                            source["root"].as_str()?.to_owned(),
+                            source["path"].as_str()?.to_owned(),
+                        ))
+                    })
+                    .collect();
+                if cited.is_empty() {
                     missing += 1;
-                    failures.push(format!("missing source.root/source.path: {owner}"));
-                    continue;
-                };
-                sources
-                    .entry((root.into(), path.into()))
-                    .or_default()
-                    .insert(file.clone());
-                if let Some(paths) = attributes.get("source.paths") {
-                    let Some(paths) = paths.as_array() else {
-                        failures.push(format!("source.paths is not an array: {owner}"));
-                        continue;
-                    };
-                    for path in paths {
-                        if let Some(path) = path.as_str().filter(|text| !text.trim().is_empty()) {
-                            sources
-                                .entry((root.into(), path.into()))
-                                .or_default()
-                                .insert(file.clone());
-                        } else {
-                            failures.push(format!("invalid source.paths member: {owner}"));
-                        }
-                    }
+                    failures.push(format!("no source with root and path: {owner}"));
+                }
+                for key in cited {
+                    sources.entry(key).or_default().insert(file.clone());
                 }
             }
         }
@@ -76,9 +63,6 @@ fn main() -> anyhow::Result<()> {
             Ok(chain) if !chain.is_empty() => resolved += 1,
             Ok(_) => failures.push(format!("empty navigation chain: {root} {path} {owners:?}")),
             Err(error) => failures.push(format!("{root} {path}: {error:#}; {owners:?}")),
-        }
-        if (resolved + failures.len()) % 100 == 0 {
-            println!("resolved={resolved}/{}", sources.len());
         }
     }
     println!(

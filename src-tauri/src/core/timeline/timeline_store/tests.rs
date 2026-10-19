@@ -308,7 +308,7 @@ fn meta_round_trip_and_watermark_only_moves_forward() {
 
     // 两条任务的钩子乱序提交：较早完成的 run 不会把水位拉回去。
     for completed_at in ["2026-02-01T00:00:00Z", "2026-01-15T00:00:00Z"] {
-        project_run_rows(&store.conn, "run-x", &[], completed_at)
+        project_run_rows(&store.conn, "run-x", &[], &[], completed_at)
             .expect("project")
             .expect("timeline is built");
     }
@@ -327,25 +327,25 @@ fn run_projection_replaces_rows_by_tid_and_skips_unbuilt_or_rebuilding_timelines
     let run_rows = |n: i32| vec![event_row(&format!("event-{n}"), 100, "run-1")];
     // 时间线未建：钩子跳过，交给全量重建。
     assert_eq!(
-        project_run_rows(&store.conn, "run-1", &run_rows(1), "t1").expect("skip"),
+        project_run_rows(&store.conn, "run-1", &[], &run_rows(1), "t1").expect("skip"),
         None
     );
     meta_begin(&store.conn, 1).expect("begin");
     // 重建进行中：同样跳过，重建会投影这个 run。
     assert_eq!(
-        project_run_rows(&store.conn, "run-1", &run_rows(1), "t1").expect("skip"),
+        project_run_rows(&store.conn, "run-1", &[], &run_rows(1), "t1").expect("skip"),
         None
     );
     let mut meta = meta_get(&store.conn).expect("meta").unwrap();
     meta.status = "success".into();
     meta_finish(&store.conn, &meta, 2).expect("finish");
 
-    project_run_rows(&store.conn, "run-1", &run_rows(2), "t1")
+    project_run_rows(&store.conn, "run-1", &[], &run_rows(2), "t1")
         .expect("project")
         .expect("projected");
     // 重投影同一 run：先按 tid 删旧，再插新，行数不膨胀。
     assert_eq!(
-        project_run_rows(&store.conn, "run-1", &run_rows(1), "t2").expect("again"),
+        project_run_rows(&store.conn, "run-1", &[], &run_rows(1), "t2").expect("again"),
         Some(1)
     );
     let page_all = page(

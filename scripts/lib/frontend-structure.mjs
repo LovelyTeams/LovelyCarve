@@ -9,14 +9,12 @@ const componentEdges = new Set([
   'evidence>raid/components/RaidStackPanel.vue',
 ]);
 const apiEdges = new Set([
-  'files>preview', 'files>tasks', 'files>cases', 'search>tasks',
-  'timeline>tasks', 'carving>tasks', 'evidence>tasks', 'evidence>cases',
-  'settings>cases', 'cases>raid', 'raid>evidence',
+  'files>preview', 'files>cases', 'evidence>tasks', 'evidence>cases',
+  'settings>cases', 'cases>raid', 'raid>evidence', 'analysis>tasks', 'settings>tasks',
 ]);
 const modelEdges = new Set([
   'search>files/model/tags',
   'tasks>evidence/model/autodetectLabels',
-  'evidence>tasks/model/autodetectTasks',
 ]);
 const pureGlobals = new Set(['window', 'document', 'localStorage', 'sessionStorage', 'navigator', 'fetch']);
 const featureOf = path => path.match(/^src\/features\/([^/]+)\//)?.[1];

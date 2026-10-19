@@ -27,35 +27,30 @@
             <button type="button" class="ui-icon-btn sm card-toggle" :aria-expanded="!collapsed.has(section.key)" :aria-label="`${collapsed.has(section.key) ? tr('展开') : tr('收起')}${tr(section.label)}`" :title="collapsed.has(section.key) ? tr('展开') : tr('收起')" @click="toggleSection(section.key)"><ChevronDown :size="14" /></button>
           </header>
           <UiTransition><div v-if="!collapsed.has(section.key)" class="task-list">
-            <article v-for="{ task, action, target } in section.rows" :key="task.id" class="task-row" :class="{ expanded: expandedIds.has(task.id) }" :style="{ '--tone': TASK_STATUS_TONE[task.status] }" :aria-label="task.displayName">
+            <article v-for="row in section.rows" :key="row.entry.id" class="task-row" :class="{ expanded: expandedIds.has(row.entry.id) }" :style="{ '--tone': TASK_STATUS_TONE[row.entry.status] }" :aria-label="row.name">
               <div class="task-main">
-                <button class="task-open" :aria-expanded="expandedIds.has(task.id)" :aria-controls="`task-detail-${task.id}`" :aria-label="tr('{0} {1} 详情', { 0: expandedIds.has(task.id) ? tr('收起') : tr('展开'), 1: task.displayName })" @click="toggleDetail(task.id)">
+                <button class="task-open" :aria-expanded="expandedIds.has(row.entry.id)" :aria-controls="detailId(row.entry)" :aria-label="tr('{0} {1} 详情', { 0: expandedIds.has(row.entry.id) ? tr('收起') : tr('展开'), 1: row.name })" @click="toggleDetail(row.entry.id)">
                   <span class="task-line">
-                    <strong class="task-name" :title="task.displayName">{{ task.displayName }}</strong>
-                    <span v-if="badgeLabel(task)" class="ui-badge sm tone task-badge"><Loader2 v-if="task.status === 'running' && !task.cancelling" :size="11" class="spin" />{{ badgeLabel(task) }}</span>
+                    <strong class="task-name" :title="row.name">{{ row.name }}</strong>
+                    <span v-if="row.badge" class="ui-badge sm tone task-badge"><Loader2 v-if="row.entry.status === 'running' && !row.entry.cancelling" :size="11" class="spin" />{{ row.badge }}</span>
                   </span>
-                  <span v-if="!(task.info.error && expandedIds.has(task.id))" class="task-line task-sub"><span class="task-summary" :title="taskSummary(task)">{{ taskSummary(task) }}</span><span class="task-meta mono">{{ taskMeta(task) }}</span></span>
-                  <span v-if="showsProgress(task)" class="ui-progress task-progress" :class="{ indeterminate: task.indeterminate }" role="progressbar" :aria-label="tr('{0}进度', { 0: task.displayName })" :aria-valuenow="task.indeterminate ? undefined : taskProgressPercent(task)" :aria-valuetext="task.indeterminate ? tr('处理中') : undefined" aria-valuemin="0" aria-valuemax="100"><span :style="task.indeterminate ? undefined : { width: `${taskProgressPercent(task)}%` }" /></span>
+                  <span v-if="!(row.entry.error && expandedIds.has(row.entry.id))" class="task-line task-sub"><span class="task-summary" :title="row.summary">{{ row.summary }}</span><span class="task-meta mono">{{ row.meta }}</span></span>
+                  <span v-if="row.showsProgress" class="ui-progress task-progress" :class="{ indeterminate: row.indeterminate }" role="progressbar" :aria-label="tr('{0}进度', { 0: row.name })" :aria-valuenow="row.indeterminate ? undefined : row.percent" :aria-valuetext="row.indeterminate ? tr('处理中') : undefined" aria-valuemin="0" aria-valuemax="100"><span :style="row.indeterminate ? undefined : { width: `${row.percent}%` }" /></span>
                 </button>
-                <button v-if="action" class="ui-btn sm task-action" :disabled="pendingIds.has(task.id)" :title="actionLabel(action, target)" :aria-label="`${actionLabel(action, target)} ${task.displayName}`" @click="runTaskAction(task, action)"><Loader2 v-if="pendingIds.has(task.id)" :size="13" class="spin" /><component v-else :is="ACTION_ICON[action]" :size="13" />{{ ACTION_TEXT[action] }}</button>
+                <button v-if="row.action" class="ui-btn sm task-action" :disabled="pendingIds.has(row.entry.id)" :title="actionLabel(row.action, row.target)" :aria-label="`${actionLabel(row.action, row.target)} ${row.name}`" @click="runTaskAction(row.entry, row.action)"><Loader2 v-if="pendingIds.has(row.entry.id)" :size="13" class="spin" /><component v-else :is="ACTION_ICON[row.action]" :size="13" />{{ ACTION_TEXT[row.action] }}</button>
               </div>
-              <UiTransition><div v-if="expandedIds.has(task.id)" :id="`task-detail-${task.id}`" class="task-detail">
-                <div v-if="task.info.error" class="ui-alert danger detail-error"><CircleAlert :size="14" /><span>{{ task.info.error }}</span></div>
+              <UiTransition><div v-if="expandedIds.has(row.entry.id)" :id="detailId(row.entry)" class="task-detail">
+                <div v-if="row.entry.error" class="ui-alert danger detail-error"><CircleAlert :size="14" /><span>{{ row.entry.error }}</span></div>
                 <dl class="detail-list">
-                  <div v-if="task.params.fileName" class="detail-row"><dt>{{ task.builtin ? tr("对象") : tr("文件") }}</dt><dd>{{ task.params.fileName }}</dd></div>
-                  <div class="detail-row"><dt>{{ task.startAt ? tr("开始") : tr("创建") }}</dt><dd class="mono">{{ formatTaskDateTime(task.startAt || task.createAt) }}</dd></div>
-                  <div class="detail-row"><dt>{{ tr("耗时") }}</dt><dd class="mono">{{ formatTaskDuration(task.spendTimeSecs) }}</dd></div>
-                  <div v-if="task.status !== 'success' && !task.indeterminate && taskProgressPercent(task) > 0" class="detail-row"><dt>{{ tr("进度") }}</dt><dd class="mono">{{ taskProgressPercent(task) }}%</dd></div>
-                  <div v-if="task.result && !task.builtin" class="detail-row"><dt>{{ tr("产物") }}</dt><dd>{{ artifactSummary(task) }}</dd></div>
-                  <div v-else-if="task.builtin && task.result?.summary" class="detail-row"><dt>{{ tr("结果") }}</dt><dd>{{ task.result.summary }}</dd></div>
+                  <div v-for="field in row.details" :key="field.label" class="detail-row"><dt>{{ field.label }}</dt><dd :class="{ mono: field.mono }">{{ field.value }}</dd></div>
                 </dl>
                 <div class="detail-actions">
-                  <button v-if="!task.builtin && isTerminalStatus(task.status)" class="ui-btn sm ghost danger-soft detail-remove" :disabled="pendingIds.has(task.id)" @click="runTaskAction(task, 'remove')"><Trash2 :size="13" />{{ tr("删除任务") }}</button>
-                  <button v-if="task.cancellable && !task.cancelling && canCancelStatus(task.status) && action !== 'cancel'" class="ui-btn sm" :disabled="pendingIds.has(task.id)" @click="runTaskAction(task, 'cancel')"><X :size="13" />{{ tr("取消任务") }}</button>
-                  <button v-if="!task.builtin && canRestartStatus(task.status) && action !== 'restart'" class="ui-btn sm" :disabled="pendingIds.has(task.id)" @click="runTaskAction(task, 'restart')"><RotateCcw :size="13" />{{ tr("重新分析") }}</button>
-                  <button v-if="target && action !== 'open'" class="ui-btn sm" @click="openResult(task)"><ArrowUpRight :size="13" />{{ tr(TASK_RESULT_LABEL[target]) }}</button>
+                  <button v-if="row.removable" class="ui-btn sm ghost danger-soft detail-remove" :disabled="pendingIds.has(row.entry.id)" @click="runTaskAction(row.entry, 'remove')"><Trash2 :size="13" />{{ tr("删除任务") }}</button>
+                  <button v-if="row.action !== 'cancel' && offers(row.entry, 'cancel')" class="ui-btn sm" :disabled="pendingIds.has(row.entry.id)" @click="runTaskAction(row.entry, 'cancel')"><X :size="13" />{{ tr("取消任务") }}</button>
+                  <button v-if="row.entry.source === 'plugin' && row.action !== 'restart' && offers(row.entry, 'restart')" class="ui-btn sm" :disabled="pendingIds.has(row.entry.id)" @click="runTaskAction(row.entry, 'restart')"><RotateCcw :size="13" />{{ tr("重新分析") }}</button>
+                  <button v-if="row.target && row.action !== 'open'" class="ui-btn sm" @click="openResult(row.entry)"><ArrowUpRight :size="13" />{{ tr(TASK_RESULT_LABEL[row.target]) }}</button>
                 </div>
-                <details v-disclosure-motion class="card-disclosure technical-details"><summary><ChevronDown :size="14" />{{ tr("技术信息") }}</summary><dl class="detail-list"><div class="detail-row"><dt>{{ tr("任务") }}</dt><dd class="mono">{{ task.sourceId }} · {{ task.name }}</dd></div><div class="detail-row"><dt>{{ tr("检材 ID") }}</dt><dd class="mono">{{ task.info.imageId }}</dd></div><div class="detail-row"><dt>{{ tr("触发") }}</dt><dd>{{ task.info.trigger === 'auto' ? tr("自动") : tr("手动") }}</dd></div><div v-if="task.dependence" class="detail-row"><dt>{{ tr("依赖") }}</dt><dd class="mono">{{ task.dependence }}</dd></div><div v-if="task.info.parentTid !== null" class="detail-row"><dt>{{ tr("父任务") }}</dt><dd class="mono">#{{ task.info.parentTid }}</dd></div></dl></details>
+                <details v-disclosure-motion class="card-disclosure technical-details"><summary><ChevronDown :size="14" />{{ tr("技术信息") }}</summary><dl class="detail-list"><div v-for="field in row.technical" :key="field.label" class="detail-row"><dt>{{ field.label }}</dt><dd :class="{ mono: field.mono }">{{ field.value }}</dd></div></dl></details>
               </div></UiTransition>
             </article>
             <button v-if="section.hidden" type="button" class="card-more" @click="showAllFinished = true"><ChevronDown :size="14" />{{ tr("显示其余") }} {{ section.hidden }} {{ tr("项") }}</button>
@@ -76,6 +71,7 @@
 
 <script setup lang="ts">
 import { tr } from '../../../composables/useLocale';
+import { joinList } from '../../../i18n/translate';
 
 import UiTransition from '../../../components/ui/UiTransition.vue';
 import { vDisclosureMotion } from '../../../composables/uiMotionDirectives';
@@ -101,7 +97,10 @@ import {
   X,
   Zap,
 } from 'lucide-vue-next';
-import { useUnifiedTaskCenter, type UnifiedTask } from '../composables/useUnifiedTaskCenter';
+import { useUnifiedTaskCenter } from '../composables/useUnifiedTaskCenter';
+import { useTaskCenter } from '../composables/useTaskCenter';
+import { usePluginCatalog } from '../composables/usePluginCatalog';
+import { pluginTextKey } from '../../../lib/models/pluginText';
 import { confirm } from '../../../composables/useConfirm';
 import {
   TASK_RESULT_LABEL,
@@ -110,16 +109,24 @@ import {
   formatTaskDateTime,
   formatTaskDuration,
   groupTaskSections,
-  taskProgressPercent,
-  taskResultPanel,
   type TaskResultPanel,
   type TaskSectionKey,
 } from '../model/taskCenterView';
-import type { SchedNoticeKind, SchedTaskStatus } from '../../../lib/ipc/tasks';
-import { TASK_STATUS_LABEL, canCancelStatus, canPauseStatus, canRestartStatus, canStartStatus, isTerminalStatus } from '../model/taskStatus';
+import {
+  builtinMessage,
+  builtinSubject,
+  builtinTaskTitle,
+  taskEntryElapsedSecs,
+  taskEntryIndeterminate,
+  taskEntryPercent,
+  taskEntryResultPanel,
+} from '../model/taskEntryView';
+import type { SchedNoticeKind, SchedTaskRecord, SchedTaskStatus } from '../../../lib/ipc/tasks';
+import type { PluginTaskEntry, TaskAction, TaskEntry } from '../../../lib/ipc/taskRuntime';
+import { TASK_STATUS_LABEL } from '../model/taskStatus';
 
 const props = defineProps<{ imageId: string | null }>();
-/** `openResult` carries the plugin analyzer so the analysis page can open its results. */
+/** `openResult` carries the plugin run so the analysis page can open its results. */
 const emit = defineEmits<{ quickAnalysis: []; openResult: [panel: TaskResultPanel, analyzer: string | null] }>();
 
 /** Finished history beyond this stays folded until asked for (searching shows every match). */
@@ -135,9 +142,37 @@ const expandedIds = ref(new Set<string>());
 let disposed = false;
 onBeforeUnmount(() => { disposed = true; });
 
-const { tasks, notices, loading, error, refresh, cancel, pause, start, restart, remove } =
+const { tasks, notices, loading, error, refresh, now, cancel, pause, resume, start, restart, remove } =
   useUnifiedTaskCenter(() => props.imageId);
+const { functions } = useTaskCenter();
+const catalog = usePluginCatalog();
 
+/** Plugin analyzer names in the interface language; built-in titles by their kind. */
+function taskName(entry: TaskEntry): string {
+  return entry.source === 'plugin'
+    ? catalog.text(entry.job.info.pluginId, pluginTextKey.analyzer(entry.job.info.analyzer), entry.job.displayName)
+    : builtinTaskTitle(entry.kind, tr);
+}
+
+/** The options a plugin task runs with, by their declared labels. */
+function optionSummary(entry: PluginTaskEntry): string {
+  const { job } = entry;
+  const declared = functions.value.find(fn => fn.function === job.name)?.options ?? [];
+  return Object.entries(job.params.options).map(([id, value]) => {
+    const option = declared.find(item => item.id === id);
+    const label = option ? catalog.text(job.info.pluginId, pluginTextKey.option(job.info.analyzer, id), option.label) : id;
+    const choice = (item: unknown) => {
+      const known = option?.choices.find(candidate => candidate.id === item);
+      return known ? catalog.text(job.info.pluginId, pluginTextKey.choice(job.info.analyzer, id, known.id), known.label) : String(item);
+    };
+    const shown = Array.isArray(value) ? (value.length ? joinList(value.map(choice), tr) : tr("全部")) : typeof value === 'boolean' ? (value ? tr("是") : tr("否")) : choice(value);
+    return `${label}: ${shown}`;
+  }).join('; ');
+}
+
+function detailId(entry: TaskEntry): string {
+  return `task-detail-${entry.id.replace(/[^\w-]/g, '_')}`;
+}
 function toggleDetail(id: string) {
   if (expandedIds.value.has(id)) expandedIds.value.delete(id);
   else expandedIds.value.add(id);
@@ -158,39 +193,170 @@ onMounted(() => {
   void refresh();
 });
 
-const internalCount = computed(() => tasks.value.filter(task => task.internal).length);
-const scopedTasks = computed(() => tasks.value.filter(task => showInternal.value || !task.internal));
+const internalCount = computed(() => tasks.value.filter(entry => entry.source === 'plugin' && entry.job.internal).length);
+const scopedTasks = computed(() => tasks.value.filter(entry => showInternal.value || !(entry.source === 'plugin' && entry.job.internal)));
+function searchText(entry: TaskEntry): string {
+  return entry.source === 'plugin'
+    ? `${taskName(entry)} ${entry.job.displayName} ${entry.job.params.fileName ?? ''} ${entry.job.params.targetLabel ?? ''}`
+    : `${taskName(entry)} ${builtinSubject(entry, tr)}`;
+}
 const visibleTasks = computed(() => {
   const keyword = search.value.trim().toLowerCase();
   if (!keyword) return scopedTasks.value;
-  return scopedTasks.value.filter(task => `${task.displayName} ${task.params.fileName ?? ''}`.toLowerCase().includes(keyword));
+  return scopedTasks.value.filter(entry => searchText(entry).toLowerCase().includes(keyword));
 });
 
 const SECTION_ICON: Record<TaskSectionKey, Component> = { active: Activity, attention: TriangleAlert, finished: History };
 
-type RowAction = 'pause' | 'start' | 'restart' | 'cancel' | 'open';
-const ACTION_LABEL: Record<Exclude<RowAction, 'open'>, string> = { get pause() { return tr("暂停"); }, get start() { return tr("继续"); }, get restart() { return tr("重新分析"); }, get cancel() { return tr("取消"); } };
+/** `pause` / `resume` are carving controls; `start` runs a plugin task again from the beginning. */
+type RowAction = 'pause' | 'resume' | 'start' | 'restart' | 'cancel' | 'open';
+const ACTION_LABEL: Record<Exclude<RowAction, 'open'>, string> = { get pause() { return tr("暂停"); }, get resume() { return tr("继续"); }, get start() { return tr("开始"); }, get restart() { return tr("重新分析"); }, get cancel() { return tr("取消"); } };
 /** Button text; `open` is spelled out in the tooltip and accessible name. */
-const ACTION_TEXT: Record<RowAction, string> = { get pause() { return ACTION_LABEL.pause; }, get start() { return ACTION_LABEL.start; }, get restart() { return ACTION_LABEL.restart; }, get cancel() { return ACTION_LABEL.cancel; }, get open() { return tr("查看"); } };
-const ACTION_ICON: Record<RowAction, Component> = { pause: Pause, start: Play, restart: RotateCcw, cancel: X, open: ArrowUpRight };
+const ACTION_TEXT: Record<RowAction, string> = { get pause() { return ACTION_LABEL.pause; }, get resume() { return ACTION_LABEL.resume; }, get start() { return ACTION_LABEL.start; }, get restart() { return ACTION_LABEL.restart; }, get cancel() { return ACTION_LABEL.cancel; }, get open() { return tr("查看"); } };
+const ACTION_ICON: Record<RowAction, Component> = { pause: Pause, resume: Play, start: Play, restart: RotateCcw, cancel: X, open: ArrowUpRight };
 function actionLabel(action: RowAction, target: TaskResultPanel | null): string {
+  if (action === 'start') return tr("从头重新分析");
   return action === 'open' && target ? tr(TASK_RESULT_LABEL[target]) : ACTION_LABEL[action as Exclude<RowAction, 'open'>];
 }
 
+function offers(entry: TaskEntry, action: TaskAction): boolean {
+  return !entry.cancelling && entry.actions.includes(action);
+}
+
 /** One direct control per row: run state first, then the way to the results, then recovery. */
-function primaryAction(task: UnifiedTask, target: TaskResultPanel | null): RowAction | null {
-  if (task.builtin) {
-    if (task.cancelling) return null;
-    if (task.canPause && task.status === 'running') return 'pause';
-    if (task.canPause && task.status === 'pause') return 'start';
-    if (task.cancellable && ['queued', 'running', 'pause'].includes(task.status)) return 'cancel';
-    return task.status === 'success' && target ? 'open' : null;
+function primaryAction(entry: TaskEntry, target: TaskResultPanel | null): RowAction | null {
+  if (entry.cancelling) return null;
+  if (entry.source === 'builtin') {
+    if (offers(entry, 'pause')) return 'pause';
+    if (offers(entry, 'resume')) return 'resume';
+    if (offers(entry, 'cancel')) return 'cancel';
+    return entry.status === 'success' && target ? 'open' : null;
   }
-  if (task.canPause && canPauseStatus(task.status)) return 'pause';
-  if (canStartStatus(task.status)) return 'start';
-  if (task.status === 'success' && target) return 'open';
-  if (canRestartStatus(task.status)) return 'restart';
-  return canCancelStatus(task.status) ? 'cancel' : null;
+  if (offers(entry, 'start')) return 'start';
+  if (entry.status === 'success' && target) return 'open';
+  if (offers(entry, 'restart')) return 'restart';
+  return offers(entry, 'cancel') ? 'cancel' : null;
+}
+
+/** What a plugin run published: records, timeline points, warnings and unreadable source bytes. */
+function resultSummary(job: SchedTaskRecord): string {
+  const result = job.result;
+  if (!result) return '';
+  const parts = [tr("{0} 条记录", { 0: result.recordCount.toLocaleString() })];
+  if (result.timelineCount) parts.push(tr("{0} 个时间点", { 0: result.timelineCount.toLocaleString() }));
+  if (result.warningCount) parts.push(tr("{0} 条告警", { 0: result.warningCount.toLocaleString() }));
+  if (result.syntheticBytes) parts.push(tr("{0} 字节读不出、以零填充", { 0: result.syntheticBytes.toLocaleString() }));
+  return parts.join(' · ');
+}
+
+const STATUS_HINT: Record<SchedTaskStatus, string> = {
+  get created() { return tr("等待派发"); }, get queued() { return tr("等待可用执行器"); }, get running() { return tr("正在分析检材…"); },
+  get success() { return tr("分析已完成"); }, get failed() { return tr("分析失败"); }, get cancel() { return tr("任务已取消"); },
+  get pause() { return tr("旧版本暂停的任务，开始后从头分析"); }, get offline() { return tr("执行器离线，可从头重新分析"); },
+};
+
+/** The native task's status line: its message, or a stopping note. */
+function builtinLine(entry: TaskEntry): string {
+  if (entry.source !== 'builtin') return '';
+  return entry.cancelling ? tr("正在取消，请稍候…") : builtinMessage(entry, tr);
+}
+
+function taskSummary(entry: TaskEntry): string {
+  if (entry.error) return entry.error;
+  if (entry.source === 'builtin') {
+    const line = [builtinSubject(entry, tr), builtinLine(entry)].filter(Boolean).join(' · ');
+    if (line) return line;
+    return entry.status === 'pause' ? tr("进度已保留，可继续") : tr(TASK_STATUS_LABEL[entry.status]);
+  }
+  const { job } = entry;
+  if (entry.status === 'success' && job.result) return resultSummary(job);
+  const target = job.params.fileName ?? job.params.targetLabel;
+  if (target) return target;
+  if (job.result?.summary) return job.result.summary;
+  return STATUS_HINT[entry.status];
+}
+
+/** Right-hand note: how long live work has run, when queued work was created, when the rest started. */
+function taskMeta(entry: TaskEntry, elapsed: number | null): string {
+  if (entry.status === 'running' || entry.status === 'pause') {
+    const remain = entry.source === 'plugin' && entry.status === 'running' && entry.job.remainTimeSecs
+      ? tr(" · 剩余 {0}", { 0: formatTaskDuration(entry.job.remainTimeSecs) }) : '';
+    return tr("已用 {0}{1}", { 0: formatTaskDuration(elapsed), 1: remain });
+  }
+  if (entry.status === 'created' || entry.status === 'queued') return tr("{0} 创建", { 0: formatTaskClock(entry.createdAtMs) });
+  return formatTaskClock(entry.startedAtMs ?? entry.createdAtMs);
+}
+
+/** Status badge; a finished success needs none, the section already says so. */
+function badgeLabel(entry: TaskEntry, indeterminate: boolean, percent: number): string | null {
+  if (entry.cancelling) return tr("取消中");
+  if (entry.status === 'running') return indeterminate ? tr("处理中") : tr("执行中 {0}%", { 0: percent });
+  if (entry.status === 'success') return null;
+  return tr(TASK_STATUS_LABEL[entry.status]);
+}
+
+interface Field { label: string; value: string; mono?: boolean }
+
+function detailFields(entry: TaskEntry, elapsed: number | null, percent: number, indeterminate: boolean): Field[] {
+  const fields: Field[] = [];
+  if (entry.source === 'plugin') {
+    const { params } = entry.job;
+    if (params.fileName) fields.push({ label: tr("文件"), value: params.fileName });
+    else if (params.targetLabel) fields.push({ label: tr("系统"), value: params.targetLabel });
+    const options = optionSummary(entry);
+    if (options) fields.push({ label: tr("选项"), value: options });
+  } else {
+    const subject = builtinSubject(entry, tr);
+    if (subject) fields.push({ label: tr("对象"), value: subject });
+  }
+  fields.push({ label: entry.startedAtMs !== null ? tr("开始") : tr("创建"), value: formatTaskDateTime(entry.startedAtMs ?? entry.createdAtMs), mono: true });
+  fields.push({ label: tr("耗时"), value: formatTaskDuration(elapsed), mono: true });
+  if (entry.status !== 'success' && !indeterminate && percent > 0) fields.push({ label: tr("进度"), value: `${percent}%`, mono: true });
+  const result = entry.source === 'plugin' ? resultSummary(entry.job) : builtinLine(entry);
+  if (result) fields.push({ label: tr("结果"), value: result });
+  return fields;
+}
+
+function technicalFields(entry: TaskEntry): Field[] {
+  const fields: Field[] = [];
+  if (entry.source === 'plugin') {
+    const { job } = entry;
+    fields.push({ label: tr("任务"), value: `${job.id} · ${job.name}`, mono: true });
+    fields.push({ label: tr("检材 ID"), value: job.info.imageId, mono: true });
+    if (job.params.systemId) fields.push({ label: tr("系统 ID"), value: job.params.systemId, mono: true });
+    if (job.result?.runId) fields.push({ label: tr("运行 ID"), value: job.result.runId, mono: true });
+    fields.push({ label: tr("触发"), value: entry.automatic ? tr("自动") : tr("手动") });
+    if (job.dependence) fields.push({ label: tr("依赖"), value: job.dependence, mono: true });
+    if (job.info.parentTid !== null) fields.push({ label: tr("父任务"), value: `#${job.info.parentTid}`, mono: true });
+    return fields;
+  }
+  fields.push({ label: tr("任务"), value: `${entry.id} · ${entry.kind}`, mono: true });
+  if (entry.imageId) fields.push({ label: tr("检材 ID"), value: entry.imageId, mono: true });
+  fields.push({ label: tr("触发"), value: entry.automatic ? tr("自动") : tr("手动") });
+  return fields;
+}
+
+/** Everything a row shows, computed once per render. */
+function rowView(entry: TaskEntry) {
+  const target = taskEntryResultPanel(entry);
+  const indeterminate = taskEntryIndeterminate(entry);
+  const percent = taskEntryPercent(entry);
+  const elapsed = taskEntryElapsedSecs(entry, now.value);
+  return {
+    entry,
+    name: taskName(entry),
+    summary: taskSummary(entry),
+    meta: taskMeta(entry, elapsed),
+    badge: badgeLabel(entry, indeterminate, percent),
+    showsProgress: entry.status === 'running' || entry.status === 'pause',
+    indeterminate,
+    percent,
+    target,
+    action: primaryAction(entry, target),
+    removable: entry.source === 'plugin' && offers(entry, 'remove'),
+    details: detailFields(entry, elapsed, percent, indeterminate),
+    technical: technicalFields(entry),
+  };
 }
 
 const sections = computed(() => groupTaskSections(visibleTasks.value).map(section => {
@@ -198,77 +364,32 @@ const sections = computed(() => groupTaskSections(visibleTasks.value).map(sectio
   return {
     ...section,
     hidden: Math.max(0, section.tasks.length - limit),
-    rows: section.tasks.slice(0, limit).map(task => {
-      const target = taskResultPanel(task);
-      return { task, target, action: primaryAction(task, target) };
-    }),
+    rows: section.tasks.slice(0, limit).map(rowView),
   };
 }));
 
-function openResult(task: UnifiedTask) {
-  const target = taskResultPanel(task);
-  if (target) emit('openResult', target, task.builtin ? null : task.result?.runId ?? task.name);
+function openResult(entry: TaskEntry) {
+  const target = taskEntryResultPanel(entry);
+  if (target) emit('openResult', target, entry.source === 'plugin' ? entry.job.result?.runId ?? entry.job.name : null);
 }
 
-async function runTaskAction(task: UnifiedTask, action: RowAction | 'remove') {
+async function runTaskAction(entry: TaskEntry, action: RowAction | 'remove') {
   if (action === 'open') {
-    openResult(task);
+    openResult(entry);
     return;
   }
-  const id = task.id;
+  const id = entry.id;
   if (pendingIds.value.has(id)) return;
   pendingIds.value.add(id);
   try {
     if (action === 'remove' || action === 'restart') {
       const ok = await confirm({ title: action === 'remove' ? tr("删除任务") : tr("重新分析"),
-        message: action === 'remove' ? tr("将删除该任务及其分析数据，是否继续？") : tr("重新分析会清理该任务之前的结果，是否继续？"),
+        message: action === 'remove' ? tr("将删除该任务及其分析结果，是否继续？") : tr("重新分析成功后，新结果会替换之前的结果，是否继续？"),
         confirmText: action === 'remove' ? tr("删除") : tr("重新分析"), danger: true });
       if (!ok || disposed) return;
     }
-    await ({ cancel, pause, start, restart, remove })[action](id);
+    await ({ cancel, pause, resume, start, restart, remove })[action](id);
   } finally { pendingIds.value.delete(id); }
-}
-
-function showsProgress(task: UnifiedTask): boolean {
-  return task.status === 'running' || task.status === 'pause';
-}
-
-/** Status badge; a finished success needs none, the section already says so. */
-function badgeLabel(task: UnifiedTask): string | null {
-  if (task.cancelling) return tr("取消中");
-  if (task.status === 'running') return task.indeterminate ? tr("处理中") : tr("执行中 {0}%", { 0: taskProgressPercent(task) });
-  if (task.status === 'success') return null;
-  return tr(TASK_STATUS_LABEL[task.status]);
-}
-
-function artifactSummary(task: UnifiedTask): string {
-  const result = task.result;
-  if (!result) return '';
-  return tr("{0} 条结果 · {1} 条时间线 · {2} 项发现", { 0: result.artifactCount.toLocaleString(), 1: result.timelineCount.toLocaleString(), 2: result.findingCount.toLocaleString() });
-}
-
-const STATUS_HINT: Record<SchedTaskStatus, string> = {
-  get created() { return tr("等待派发"); }, get queued() { return tr("等待可用执行器"); }, get running() { return tr("正在分析检材…"); },
-  get success() { return tr("分析已完成"); }, get failed() { return tr("分析失败"); }, get cancel() { return tr("任务已取消"); },
-  get pause() { return tr("进度已保留，可继续分析"); }, get offline() { return tr("执行器离线，可尝试继续"); },
-};
-function taskSummary(task: UnifiedTask): string {
-  if (task.info.error) return task.info.error;
-  if (task.builtin && task.result?.summary) return [task.params.fileName, task.result.summary].filter(Boolean).join(' · ');
-  if (task.status === 'success' && task.result) return artifactSummary(task);
-  if (task.params.fileName) return task.params.fileName;
-  if (task.result?.summary) return task.result.summary;
-  return STATUS_HINT[task.status];
-}
-
-/** Right-hand note: how long live work has run, when queued work was created, when the rest started. */
-function taskMeta(task: UnifiedTask): string {
-  if (task.status === 'running' || task.status === 'pause') {
-    const remain = task.status === 'running' && task.remainTimeSecs ? tr(" · 剩余 {0}", { 0: formatTaskDuration(task.remainTimeSecs) }) : '';
-    return tr("已用 {0}{1}", { 0: formatTaskDuration(task.spendTimeSecs), 1: remain });
-  }
-  if (task.status === 'created' || task.status === 'queued') return tr("{0} 创建", { 0: formatTaskClock(task.createAt) });
-  return formatTaskClock(task.startAt || task.createAt);
 }
 
 /** 调度通知的展示标签。 */

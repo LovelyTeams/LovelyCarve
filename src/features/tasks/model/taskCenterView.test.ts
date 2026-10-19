@@ -7,7 +7,6 @@ import {
   groupTaskSections,
   parseTaskTime,
   taskProgressPercent,
-  taskResultPanel,
 } from './taskCenterView';
 import type { SchedTaskStatus } from '../../../lib/ipc/tasks';
 
@@ -22,9 +21,9 @@ describe('task center order', () => {
     expect(tasks.sort(compareTaskPriority).map(task => task.id)).toEqual([5, 2, 1]);
     expect(compareTaskPriority(tasks[0], tasks[0])).toBe(0);
   });
-  it('orders scheduler UTC times and built-in ISO times on one clock', () => {
-    const plugin = { id: 'plugin:1', status: 'success' as const, createAt: '2026-10-02 06:00:00' };
-    const builtin = { id: 'search:1', status: 'success' as const, createAt: '2026-10-02T05:30:00.000Z' };
+  it('orders plugin and built-in tasks on one clock, newest first', () => {
+    const plugin = { id: 'plugin:1', status: 'success' as const, createdAtMs: Date.UTC(2026, 9, 2, 6) };
+    const builtin = { id: 'search:1', status: 'success' as const, createdAtMs: Date.UTC(2026, 9, 2, 5, 30) };
     expect([builtin, plugin].sort(compareTaskPriority).map(task => task.id)).toEqual(['plugin:1', 'search:1']);
   });
 });
@@ -39,21 +38,6 @@ describe('task sections', () => {
       ['已结束', ['cancel', 'success']],
     ]);
     expect(groupTaskSections([{ id: 1, status: 'success' }]).map(section => section.key)).toEqual(['finished']);
-  });
-});
-
-describe('task result pages', () => {
-  const task = (builtin: boolean, analyzer: string, status: SchedTaskStatus, artifactCount = 0) =>
-    ({ builtin, status, info: { analyzer }, result: { artifactCount } });
-  it('links built-in operations to their page in every state', () => {
-    expect(['search', 'timeline', 'carve', 'docker', 'filesystem', 'index'].map(kind => taskResultPanel(task(true, kind, 'failed'))))
-      .toEqual(['search-results', 'timeline', 'carve', 'files', 'files', 'files']);
-  });
-  it('opens analysis results only after a plugin run stored records', () => {
-    expect(taskResultPanel(task(false, 'wechat', 'success', 12))).toBe('analysis');
-    expect(taskResultPanel(task(false, 'wechat', 'success', 0))).toBeNull();
-    expect(taskResultPanel(task(false, 'wechat', 'failed', 12))).toBeNull();
-    expect(taskResultPanel({ builtin: false, status: 'success', info: { analyzer: 'wechat' }, result: null })).toBeNull();
   });
 });
 
@@ -72,9 +56,10 @@ describe('task progress and duration', () => {
 });
 
 describe('task times', () => {
-  it('reads scheduler timestamps as UTC and ISO timestamps as written', () => {
+  it('reads scheduler timestamps as UTC, ISO timestamps as written and milliseconds as they are', () => {
     expect(parseTaskTime('2026-10-02 05:52:07')).toBe(Date.UTC(2026, 9, 2, 5, 52, 7));
     expect(parseTaskTime('2026-10-02T05:52:07.250Z')).toBe(Date.UTC(2026, 9, 2, 5, 52, 7, 250));
+    expect(parseTaskTime(1_700_000_000_000)).toBe(1_700_000_000_000);
     expect(parseTaskTime('')).toBeNaN();
   });
   it('shortens list times by distance from today and keeps unparseable values', () => {

@@ -75,6 +75,20 @@ pub async fn image_hash_compute(
     let task = state
         .tasks
         .register(task_id.clone(), TaskKind::ImageHash, Some(image_id.clone()));
+    task.update(|view| {
+        view.subject = algorithms
+            .iter()
+            .map(|algorithm| {
+                match algorithm {
+                    HashAlgo::Md5 => "MD5",
+                    HashAlgo::Sha1 => "SHA-1",
+                    HashAlgo::Sha256 => "SHA-256",
+                    HashAlgo::Sm3 => "SM3",
+                }
+                .to_owned()
+            })
+            .collect();
+    });
     let resource_permit = state.tasks.acquire_resources(&task).await?;
     let token = task.token();
 
@@ -87,14 +101,16 @@ pub async fn image_hash_compute(
         let _resource_permit = resource_permit;
 
         let on_progress = |done: u64, total: u64| {
-            let _ = app_for_call.emit(
+            if let Err(error) = app_for_call.emit(
                 "image-hash-progress",
                 ImageHashProgress {
                     task_id: task_id_for_call.clone(),
                     bytes_done: done,
                     bytes_total: total,
                 },
-            );
+            ) {
+                tracing::debug!("emit image-hash-progress failed: {error}");
+            }
             tasks_for_call.emit_progress(
                 &task_id_for_call,
                 TaskProgressUnit::Bytes,
@@ -128,24 +144,34 @@ pub async fn image_hash_compute(
         result
     })
     .await;
-    let outcome = outcome.map_err(|err| AppError::task_panicked("image_hash_compute", err))?;
-    let read_faults = image_read_fault_report(&state, &image_id, &image).await;
-    let hashes = match outcome {
-        Ok(hashes) => hashes,
-        Err(error) => {
-            if let Err(store_error) = read_faults {
-                tracing::warn!(
-                    "hash fault audit persistence failed after error: {}",
-                    store_error.message
-                );
+    let hashed = async {
+        let outcome = outcome.map_err(|err| AppError::task_panicked("image_hash_compute", err))?;
+        let read_faults = image_read_fault_report(&state, &image_id, &image).await;
+        let hashes = match outcome {
+            Ok(hashes) => hashes,
+            Err(error) => {
+                if let Err(store_error) = read_faults {
+                    tracing::warn!(
+                        "hash fault audit persistence failed after error: {}",
+                        store_error.message
+                    );
+                }
+                return Err(error);
             }
-            return Err(error);
-        }
-    };
-    Ok(ImageHashResult {
-        hashes,
-        read_faults: read_faults?,
-    })
+        };
+        Ok(ImageHashResult {
+            hashes,
+            read_faults: read_faults?,
+        })
+    }
+    .await;
+    if let Ok(hashed) = &hashed {
+        task.update(|view| {
+            crate::app::workflows::task_center::count_read_faults(view, &hashed.read_faults);
+        });
+    }
+    task.finish_with(&hashed);
+    hashed
 }
 
 /// Reader-producer + N hasher-consumer pipeline. The reader pulls 16 MiB

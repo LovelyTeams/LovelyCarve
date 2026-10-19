@@ -1,8 +1,7 @@
 
 import { tr } from '../../../composables/useLocale';
 import { computed, onActivated, onMounted, onScopeDispose, ref, shallowRef, watch } from 'vue';
-import { trackedTimelineStart as timelineStart } from '../../tasks/api';
-import { timelineStatus, onTimelineProgress, type TimelineStatusInfo } from '../../../lib/ipc/timeline';
+import { timelineStart, timelineStatus, onTimelineProgress, type TimelineStatusInfo } from '../../../lib/ipc/timeline';
 import { taskCancel } from '../../../lib/ipc/taskRuntime';
 import { notifyError, notifyInfo } from '../../../composables/useToast';
 export function useTimelineBuild(options: { imageId: () => string; onBuilt: () => void }) {

@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::evidence::partitions::PartitionKind;
 use crate::core::filesystem::evidence_session::EvidenceSession;
+use crate::core::filesystem::tree::fs_tree::{self, NodeKind};
 use crate::core::filesystem::volumes::lvm::LvmVolume;
 
 /// Synthetic volume key for evidence that exposes a single root instead of a
@@ -138,6 +139,28 @@ impl FsAll {
 
     pub fn volume_key_of(&self, vol_id: i64) -> Option<&str> {
         self.entry(vol_id).map(|entry| entry.volume_key.as_str())
+    }
+}
+
+/// The node whose children are the top-level entries of a volume. Partition,
+/// logical-volume and Docker-container volumes list their own root
+/// directory; the root volume of a logical source (folder, archive, AD1,
+/// Docker image) holds one synthetic node for the whole source, and the
+/// source's entries sit below that node.
+pub fn directory_root(image: &Arc<EvidenceSession>, volume_key: &str) -> anyhow::Result<String> {
+    let logical = image.docker.is_some()
+        || image.folder.is_some()
+        || image.tar.is_some()
+        || image.zip.is_some()
+        || image.sevenz.is_some()
+        || image.ad1.is_some();
+    if volume_key != ROOT_VOLUME_KEY || !logical {
+        return Ok(volume_key.to_owned());
+    }
+    let nodes = fs_tree::children_for_image(image, ROOT_VOLUME_KEY)?;
+    match nodes.as_slice() {
+        [source] if source.kind == NodeKind::Dir => Ok(source.id.clone()),
+        _ => anyhow::bail!("the logical evidence root lists {} nodes", nodes.len()),
     }
 }
 

@@ -1,3 +1,12 @@
+//! `plugin.toml` of an LPP v2 package: identity, the library, resource
+//! limits, permissions, analyzers and the frozen filesystem capability.
+//!
+//! The manifest says what the host may schedule: scope (`system`,
+//! `evidence` or `files`), trigger, platforms, declared inputs, options and
+//! the facts an analyzer provides or requires. What the library implements
+//! (analyzer ids, record schemas) comes from its own `plugin.hello` and is
+//! checked against the manifest at every handshake.
+
 use std::{
     collections::HashSet,
     env::consts::{DLL_PREFIX, DLL_SUFFIX},
@@ -6,163 +15,201 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-use lovelycarve_plugin::wire::PROTOCOL_VERSION;
+use lovelycarve_plugin::{glob::Glob, schema::validate_identifier, wire::PROTOCOL_VERSION};
 use serde::{Deserialize, Serialize};
 
 use super::{PluginError, Result};
 
+/// OS families a system-scope analyzer may name (`SystemInfo::family`).
+pub const SYSTEM_FAMILIES: [&str; 7] = [
+    "linux", "windows", "macos", "esxi", "mikrotik", "openwrt", "dingtalk",
+];
+
+/// Smallest and largest memory limit a package may declare.
+const MIN_MEMORY: u64 = 64 * 1024 * 1024;
+const MAX_MEMORY: u64 = 64 * 1024 * 1024 * 1024;
+/// Memory limit of a package that declares none.
+pub const DEFAULT_MEMORY: u64 = 2 * 1024 * 1024 * 1024;
+
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct PluginManifest {
     pub id: String,
     pub name: String,
     pub version: String,
-    pub protocol_min: u16,
-    pub protocol_max: u16,
-    pub library: LibraryManifest,
-    #[serde(default)]
-    pub permissions: Vec<PluginPermission>,
-    #[serde(default)]
-    pub capabilities: Vec<Capability>,
-    /// 任务调度元数据:依赖、触发方式、可见性、实例限制、暂停能力与任务类型。
-    #[serde(default)]
-    pub task: TaskManifest,
-}
-
-/// The plugin library and where it runs.
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-pub struct LibraryManifest {
-    /// Library path relative to the plugin directory. A name without a
+    /// LPP protocol version; must be 2.
+    pub protocol: u16,
+    /// Library path relative to the package directory. A name without a
     /// library extension (`linuxinfo`) resolves to the platform file name:
     /// `linuxinfo.dll`, `liblinuxinfo.so` or `liblinuxinfo.dylib`.
-    pub path: String,
+    pub library: String,
+    /// Memory limit of the plugin process (`512MiB`, `1GiB`).
     #[serde(default)]
-    pub isolation: PluginIsolation,
-}
-
-/// Where a plugin library runs.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PluginIsolation {
-    /// Inside `lc-plugin-host`: crashes, hangs and memory use stay outside
-    /// LovelyCarve, and cancelling a task kills the process.
-    #[default]
-    Process,
-    /// Loaded into LovelyCarve: no IPC, but a crash ends the application,
-    /// cancellation is cooperative and no memory limit applies.
-    InProcess,
-}
-
-/// 任务触发方式:`auto` 任务在证据上线或依赖链前驱
-/// 成功后由调度器自动创建;`manually` 任务只由用户显式创建。
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum TaskTrigger {
-    Auto,
-    Manually,
-}
-
-/// 插件级任务调度声明。所有字段可省略,默认值为:
-/// 手动触发、非内部、单实例、不可暂停。
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-pub struct TaskManifest {
-    /// 前驱 function 名,空表示依赖链第一环。
+    pub memory: Option<String>,
     #[serde(default)]
-    pub dependence: Option<String>,
-    #[serde(default = "TaskManifest::default_trigger")]
-    pub trigger: TaskTrigger,
-    /// 内部任务:前端任务列表默认隐藏。
-    #[serde(default)]
-    pub internal: bool,
-    /// 同一 (function, evidence) 同时最多一个未终结任务。
-    #[serde(default = "TaskManifest::default_single_instance")]
-    pub single_instance: bool,
-    /// 允许暂停/恢复。
-    #[serde(default)]
-    pub can_pause: bool,
-    /// 任务类型名,如 `longtime`/`analysis`;缺省按能力推导。
-    #[serde(default, rename = "type")]
-    pub type_name: Option<String>,
-    /// 适用平台,如 `linux`/`windows`;缺省 `all` 表示全平台。
-    #[serde(default)]
-    pub platform: Option<String>,
-    /// 功能子项,按数组声明;快速分析对话框据此渲染子项勾选。
-    #[serde(default)]
-    pub support: Vec<String>,
-    /// 适用检材类型;空数组 = 全部。
-    #[serde(default)]
-    pub evidence_types: Vec<String>,
-}
-
-impl TaskManifest {
-    fn default_trigger() -> TaskTrigger {
-        TaskTrigger::Manually
-    }
-
-    fn default_single_instance() -> bool {
-        true
-    }
-}
-
-impl Default for TaskManifest {
-    fn default() -> Self {
-        Self {
-            dependence: None,
-            trigger: Self::default_trigger(),
-            internal: false,
-            single_instance: Self::default_single_instance(),
-            can_pause: false,
-            type_name: None,
-            platform: None,
-            support: Vec::new(),
-            evidence_types: Vec::new(),
-        }
-    }
+    pub permissions: Vec<PluginPermission>,
+    #[serde(default, rename = "analyzer")]
+    pub analyzers: Vec<AnalyzerManifest>,
+    #[serde(default, rename = "filesystem")]
+    pub filesystems: Vec<FilesystemManifest>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PluginPermission {
+    /// `file.materialize`: host-owned temporary copies of input files.
     FileMaterialize,
-    EmitArtifacts,
+    /// The plugin process may use the network (`LOVELYCARVE_NETWORK_PERMISSION`).
     Network,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum Capability {
-    Filesystem(FilesystemCapability),
-    FileAnalyzer(FileAnalyzerCapability),
-    EvidenceAnalyzer(EvidenceAnalyzerCapability),
-    Test,
+/// How tasks of an analyzer are created: `auto` when evidence comes online
+/// or the facts it requires are published, `manual` only by the user.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskTrigger {
+    Auto,
+    #[default]
+    #[serde(alias = "manual")]
+    Manually,
+}
+
+/// What one run of an analyzer looks at.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalyzerScope {
+    /// One detected operating system, its volumes mounted in one tree.
+    System,
+    /// Every volume of an evidence item.
+    Evidence,
+    /// The files the user selected.
+    Files,
+}
+
+impl AnalyzerScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::Evidence => "evidence",
+            Self::Files => "files",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-pub struct FilesystemCapability {
-    pub filesystem: String,
+#[serde(deny_unknown_fields)]
+pub struct AnalyzerManifest {
+    pub id: String,
+    /// Default (Chinese) display name.
+    pub name: String,
+    pub scope: AnalyzerScope,
+    /// System scope: OS families the analyzer applies to; empty = all.
     #[serde(default)]
-    pub priority: i32,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-pub struct FileAnalyzerCapability {
-    pub analyzer: String,
+    pub platforms: Vec<String>,
+    #[serde(default)]
+    pub trigger: TaskTrigger,
+    /// Result tree category (`baseinfo`, `vehicle`, …).
+    #[serde(default = "AnalyzerManifest::default_category")]
+    pub category: String,
+    /// Profile facts a successful run publishes.
+    #[serde(default)]
+    pub provides: Vec<String>,
+    /// Profile facts an automatic run waits for.
+    #[serde(default)]
+    pub requires: Vec<String>,
+    /// System / evidence scope: view path patterns the host resolves into
+    /// the run's inputs (evidence scope: under every volume).
+    #[serde(default)]
+    pub inputs: Vec<String>,
+    /// Files scope: file name extensions the analyzer accepts.
     #[serde(default)]
     pub extensions: Vec<String>,
+    /// Files scope: MIME types the analyzer accepts.
     #[serde(default)]
     pub mime_types: Vec<String>,
+    /// Hidden from the default task list.
     #[serde(default)]
-    pub priority: i32,
+    pub internal: bool,
+    /// At most one unfinished task per target.
+    #[serde(default = "AnalyzerManifest::default_single_instance")]
+    pub single_instance: bool,
+    #[serde(default, rename = "option")]
+    pub options: Vec<OptionManifest>,
 }
 
-/// 检材级分析能力:任务不指向单个文件,
-/// 插件拿到整个检材的只读文件视图自行定位数据。
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-pub struct EvidenceAnalyzerCapability {
-    pub analyzer: String,
-    /// function 显示名,如「Linux基本信息」;
-    /// 缺省用 `<插件名> · <analyzer>`。
+impl AnalyzerManifest {
+    fn default_category() -> String {
+        "analysis".to_owned()
+    }
+
+    fn default_single_instance() -> bool {
+        true
+    }
+
+    /// Whether this analyzer applies to an OS family.
+    pub fn applies_to_family(&self, family: &str) -> bool {
+        self.platforms.is_empty()
+            || self
+                .platforms
+                .iter()
+                .any(|platform| platform.eq_ignore_ascii_case(family))
+    }
+
+    /// Whether a files-scope analyzer accepts a file by name or MIME type.
+    pub fn accepts_file(&self, name: &str, mime: Option<&str>) -> bool {
+        if self.extensions.is_empty() && self.mime_types.is_empty() {
+            return true;
+        }
+        let extension = Path::new(name)
+            .extension()
+            .and_then(OsStr::to_str)
+            .map(str::to_ascii_lowercase);
+        extension.is_some_and(|extension| self.extensions.contains(&extension))
+            || mime.is_some_and(|mime| {
+                self.mime_types
+                    .iter()
+                    .any(|accepted| accepted.eq_ignore_ascii_case(mime))
+            })
+    }
+}
+
+/// An option shown before a run and passed in `run.start`.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct OptionManifest {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub kind: OptionKind,
+    pub label: String,
     #[serde(default)]
-    pub display: Option<String>,
+    pub choices: Vec<OptionChoice>,
+    #[serde(default)]
+    pub default: Option<toml::Value>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OptionKind {
+    /// Any subset of the choices (empty = all).
+    Multi,
+    /// One of the choices.
+    Choice,
+    Flag,
+    Text,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct OptionChoice {
+    pub id: String,
+    pub label: String,
+}
+
+/// A filesystem the library parses (frozen `fs.*` methods).
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct FilesystemManifest {
+    pub id: String,
     #[serde(default)]
     pub priority: i32,
 }
@@ -170,154 +217,131 @@ pub struct EvidenceAnalyzerCapability {
 impl PluginManifest {
     pub fn load(path: &Path) -> Result<Self> {
         let text = fs::read_to_string(path)?;
-        let manifest: Self = toml::from_str(&text).map_err(|error| {
-            let legacy_process = toml::from_str::<toml::Table>(&text)
-                .is_ok_and(|table| table.contains_key("process"));
-            let message = if legacy_process {
-                "[process] plugins are no longer supported; build the plugin as a library and \
-                 declare [library] (docs/PLUGIN_PROTOCOL.md)"
+        Self::parse(&text).map_err(|error| match error {
+            PluginError::Manifest(message) => {
+                PluginError::Manifest(format!("{}: {message}", path.display()))
+            }
+            error => error,
+        })
+    }
+
+    pub fn parse(text: &str) -> Result<Self> {
+        let manifest: Self = toml::from_str(text).map_err(|error| {
+            let legacy = toml::from_str::<toml::Table>(text).is_ok_and(|table| {
+                ["protocol_min", "capabilities", "task", "process"]
+                    .iter()
+                    .any(|key| table.contains_key(*key))
+                    || table.get("library").is_some_and(toml::Value::is_table)
+            });
+            PluginError::Manifest(if legacy {
+                "this is an LPP v1 manifest; LovelyCarve loads LPP v2 packages only \
+                 (rebuild the plugin with SDK 0.2, see docs/PLUGIN_PROTOCOL.md)"
                     .to_owned()
             } else {
                 error.to_string()
-            };
-            PluginError::Manifest(format!("{}: {message}", path.display()))
+            })
         })?;
         manifest.validate()?;
         Ok(manifest)
     }
 
     pub fn validate(&self) -> Result<()> {
+        let invalid = |message: String| Err(PluginError::Manifest(message));
         if self.id.is_empty()
+            || self.id.len() > 128
             || !self
                 .id
                 .bytes()
                 .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
         {
-            return Err(PluginError::Manifest(
-                "id must contain only ASCII letters, digits, '.', '-' or '_'".to_owned(),
-            ));
+            return invalid("id must be 1..=128 ASCII letters, digits, '.', '-' or '_'".to_owned());
         }
         if self.name.trim().is_empty() || self.version.trim().is_empty() {
-            return Err(PluginError::Manifest(
-                "name and version must not be empty".to_owned(),
+            return invalid("name and version must not be empty".to_owned());
+        }
+        if self.protocol != PROTOCOL_VERSION {
+            return invalid(format!(
+                "plugin protocol {} is not supported; LovelyCarve speaks LPP {PROTOCOL_VERSION}",
+                self.protocol
             ));
         }
-        if self.protocol_min == 0 || self.protocol_min > self.protocol_max {
-            return Err(PluginError::Manifest(
-                "protocol range is invalid".to_owned(),
-            ));
-        }
-        if self.protocol_min > PROTOCOL_VERSION || self.protocol_max < PROTOCOL_VERSION {
-            return Err(PluginError::Manifest(format!(
-                "plugin protocol range {}..{} does not include host protocol {PROTOCOL_VERSION}",
-                self.protocol_min, self.protocol_max
-            )));
-        }
-        let library = Path::new(&self.library.path);
-        if self.library.path.trim().is_empty()
+        let library = Path::new(&self.library);
+        if self.library.trim().is_empty()
             || library
                 .components()
                 .any(|component| !matches!(component, Component::Normal(_)))
         {
-            return Err(PluginError::Manifest(
-                "library.path must be a relative path inside the plugin directory".to_owned(),
-            ));
+            return invalid(
+                "library must be a relative path inside the package directory".to_owned(),
+            );
         }
-        for capability in self.filesystem_capabilities() {
-            if capability.filesystem.trim().is_empty()
-                || !capability.filesystem.bytes().all(|byte| {
-                    byte.is_ascii_lowercase()
-                        || byte.is_ascii_digit()
-                        || matches!(byte, b'-' | b'_' | b'.')
-                })
-            {
-                return Err(PluginError::Manifest(
-                    "filesystem capability names must be non-empty lowercase ASCII identifiers"
-                        .to_owned(),
-                ));
-            }
-        }
-        for capability in self.file_analyzer_capabilities() {
-            validate_identifier("analyzer", &capability.analyzer)?;
-            for extension in &capability.extensions {
-                if extension.is_empty()
-                    || !extension.bytes().all(|byte| {
-                        byte.is_ascii_lowercase()
-                            || byte.is_ascii_digit()
-                            || matches!(byte, b'-' | b'_')
-                    })
-                {
-                    return Err(PluginError::Manifest(
-                        "analyzer extensions must be lowercase without a leading dot".to_owned(),
-                    ));
-                }
-            }
-            for mime in &capability.mime_types {
-                if !mime.contains('/') || !mime.is_ascii() || mime.contains(char::is_whitespace) {
-                    return Err(PluginError::Manifest(
-                        "analyzer MIME types must be ASCII type/subtype values".to_owned(),
-                    ));
-                }
-            }
-        }
-        for capability in self.evidence_analyzer_capabilities() {
-            validate_identifier("analyzer", &capability.analyzer)?;
-        }
-        let mut analyzers = HashSet::new();
-        for analyzer in self
-            .file_analyzer_capabilities()
-            .map(|item| &item.analyzer)
-            .chain(
-                self.evidence_analyzer_capabilities()
-                    .map(|item| &item.analyzer),
-            )
-        {
-            if !analyzers.insert(analyzer) {
-                return Err(PluginError::Manifest(format!(
-                    "analyzer {analyzer} is declared more than once"
-                )));
-            }
-        }
+        self.memory_limit()?;
         let mut permissions = HashSet::new();
         if let Some(permission) = self
             .permissions
             .iter()
             .find(|permission| !permissions.insert(**permission))
         {
-            return Err(PluginError::Manifest(format!(
+            return invalid(format!(
                 "permission {permission:?} is declared more than once"
-            )));
-        }
-        if let Some(dependence) = &self.task.dependence {
-            validate_function_name("task.dependence", dependence)?;
-        }
-        if let Some(type_name) = &self.task.type_name {
-            validate_identifier("task.type", type_name)?;
-        }
-        if let Some(platform) = &self.task.platform {
-            validate_identifier("task.platform", platform)?;
-        }
-        if self.task.support.iter().any(|item| item.trim().is_empty()) {
-            return Err(PluginError::Manifest(
-                "task.support entries must not be empty".to_owned(),
             ));
         }
-        if self
-            .task
-            .evidence_types
-            .iter()
-            .any(|item| item.trim().is_empty())
-        {
-            return Err(PluginError::Manifest(
-                "task.evidence_types entries must not be empty".to_owned(),
-            ));
+        let mut analyzers = HashSet::new();
+        for analyzer in &self.analyzers {
+            if !analyzers.insert(analyzer.id.as_str()) {
+                return invalid(format!(
+                    "analyzer {} is declared more than once",
+                    analyzer.id
+                ));
+            }
+            analyzer.validate().map_err(|message| {
+                PluginError::Manifest(format!("analyzer {}: {message}", analyzer.id))
+            })?;
+        }
+        let mut filesystems = HashSet::new();
+        for filesystem in &self.filesystems {
+            if filesystem.id.is_empty()
+                || !filesystem.id.bytes().all(|byte| {
+                    byte.is_ascii_lowercase()
+                        || byte.is_ascii_digit()
+                        || matches!(byte, b'-' | b'_' | b'.')
+                })
+            {
+                return invalid(
+                    "filesystem ids must be non-empty lowercase ASCII identifiers".to_owned(),
+                );
+            }
+            if !filesystems.insert(filesystem.id.as_str()) {
+                return invalid(format!(
+                    "filesystem {} is declared more than once",
+                    filesystem.id
+                ));
+            }
         }
         Ok(())
     }
 
+    /// The plugin process memory limit in bytes.
+    pub fn memory_limit(&self) -> Result<u64> {
+        let Some(text) = &self.memory else {
+            return Ok(DEFAULT_MEMORY);
+        };
+        let bytes = parse_size(text).ok_or_else(|| {
+            PluginError::Manifest(format!(
+                "memory {text:?} must be a size such as 512MiB or 2GiB"
+            ))
+        })?;
+        if !(MIN_MEMORY..=MAX_MEMORY).contains(&bytes) {
+            return Err(PluginError::Manifest(format!(
+                "memory {text:?} must be between 64MiB and 64GiB"
+            )));
+        }
+        Ok(bytes)
+    }
+
     /// The plugin library inside `plugin_directory`.
     pub fn library_path(&self, plugin_directory: &Path) -> PathBuf {
-        let relative = Path::new(&self.library.path);
+        let relative = Path::new(&self.library);
         let has_library_extension =
             relative
                 .extension()
@@ -337,431 +361,207 @@ impl PluginManifest {
         plugin_directory.join(relative.with_file_name(file_name))
     }
 
-    pub fn filesystem_capabilities(&self) -> impl Iterator<Item = &FilesystemCapability> {
-        self.capabilities
-            .iter()
-            .filter_map(|capability| match capability {
-                Capability::Filesystem(filesystem) => Some(filesystem),
-                Capability::FileAnalyzer(_) => None,
-                Capability::EvidenceAnalyzer(_) => None,
-                Capability::Test => None,
-            })
-    }
-
-    pub fn file_analyzer_capabilities(&self) -> impl Iterator<Item = &FileAnalyzerCapability> {
-        self.capabilities
-            .iter()
-            .filter_map(|capability| match capability {
-                Capability::FileAnalyzer(analyzer) => Some(analyzer),
-                Capability::Filesystem(_) | Capability::EvidenceAnalyzer(_) | Capability::Test => {
-                    None
-                }
-            })
-    }
-
-    pub fn evidence_analyzer_capabilities(
-        &self,
-    ) -> impl Iterator<Item = &EvidenceAnalyzerCapability> {
-        self.capabilities
-            .iter()
-            .filter_map(|capability| match capability {
-                Capability::EvidenceAnalyzer(analyzer) => Some(analyzer),
-                Capability::Filesystem(_) | Capability::FileAnalyzer(_) | Capability::Test => None,
-            })
+    pub fn analyzer(&self, id: &str) -> Option<&AnalyzerManifest> {
+        self.analyzers.iter().find(|analyzer| analyzer.id == id)
     }
 
     pub fn has_permission(&self, permission: PluginPermission) -> bool {
         self.permissions.contains(&permission)
     }
+}
 
-    pub(crate) fn capability_names(&self) -> impl Iterator<Item = &'static str> + '_ {
-        self.capabilities.iter().map(|capability| match capability {
-            Capability::Filesystem(_) => "filesystem",
-            Capability::FileAnalyzer(_) => "file_analyzer",
-            Capability::EvidenceAnalyzer(_) => "evidence_analyzer",
-            Capability::Test => "test",
-        })
+impl AnalyzerManifest {
+    fn validate(&self) -> std::result::Result<(), String> {
+        validate_identifier("analyzer id", &self.id)?;
+        if self.name.trim().is_empty() || self.name.len() > 256 {
+            return Err("name must be 1..=256 bytes".to_owned());
+        }
+        validate_identifier("category", &self.category)?;
+        for fact in self.provides.iter().chain(&self.requires) {
+            validate_identifier("fact", fact)?;
+        }
+        match self.scope {
+            AnalyzerScope::System => {
+                for platform in &self.platforms {
+                    if !SYSTEM_FAMILIES.contains(&platform.as_str()) {
+                        return Err(format!(
+                            "platform {platform:?} is not one of {}",
+                            SYSTEM_FAMILIES.join(", ")
+                        ));
+                    }
+                }
+            }
+            AnalyzerScope::Evidence | AnalyzerScope::Files if !self.platforms.is_empty() => {
+                return Err("platforms apply to system-scope analyzers only".to_owned());
+            }
+            AnalyzerScope::Evidence | AnalyzerScope::Files => {}
+        }
+        if self.scope == AnalyzerScope::Files {
+            if !self.inputs.is_empty() {
+                return Err("files-scope analyzers take the selected files, not inputs".to_owned());
+            }
+            if !self.requires.is_empty() {
+                return Err("files-scope analyzers cannot require facts".to_owned());
+            }
+        } else if !self.extensions.is_empty() || !self.mime_types.is_empty() {
+            return Err("extensions and mime_types apply to files-scope analyzers only".to_owned());
+        }
+        if self.scope == AnalyzerScope::Files && self.trigger == TaskTrigger::Auto {
+            return Err("files-scope analyzers run only when the user selects files".to_owned());
+        }
+        if self.inputs.len() > 64 {
+            return Err("an analyzer declares at most 64 input patterns".to_owned());
+        }
+        for pattern in &self.inputs {
+            Glob::new(pattern).map_err(|error| format!("input {pattern:?}: {error}"))?;
+        }
+        for extension in &self.extensions {
+            if extension.is_empty()
+                || !extension.bytes().all(|byte| {
+                    byte.is_ascii_lowercase()
+                        || byte.is_ascii_digit()
+                        || matches!(byte, b'-' | b'_')
+                })
+            {
+                return Err("extensions must be lowercase without a leading dot".to_owned());
+            }
+        }
+        for mime in &self.mime_types {
+            if !mime.contains('/') || !mime.is_ascii() || mime.contains(char::is_whitespace) {
+                return Err("MIME types must be ASCII type/subtype values".to_owned());
+            }
+        }
+        let mut options = HashSet::new();
+        for option in &self.options {
+            if !options.insert(option.id.as_str()) {
+                return Err(format!("option {} is declared more than once", option.id));
+            }
+            option.validate()?;
+        }
+        Ok(())
     }
 }
 
-fn validate_identifier(label: &str, value: &str) -> Result<()> {
-    if value.is_empty()
-        || !value.bytes().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
-        })
-    {
-        return Err(PluginError::Manifest(format!(
-            "{label} must be a non-empty lowercase ASCII identifier"
-        )));
+impl OptionManifest {
+    fn validate(&self) -> std::result::Result<(), String> {
+        validate_identifier("option id", &self.id)?;
+        if self.label.trim().is_empty() {
+            return Err(format!("option {} needs a label", self.id));
+        }
+        let mut choices = HashSet::new();
+        for choice in &self.choices {
+            validate_identifier("choice id", &choice.id)?;
+            if !choices.insert(choice.id.as_str()) {
+                return Err(format!("choice {} is declared more than once", choice.id));
+            }
+        }
+        match self.kind {
+            OptionKind::Multi | OptionKind::Choice if self.choices.is_empty() => {
+                return Err(format!("option {} needs choices", self.id));
+            }
+            OptionKind::Flag | OptionKind::Text if !self.choices.is_empty() => {
+                return Err(format!("option {} takes no choices", self.id));
+            }
+            OptionKind::Multi | OptionKind::Choice | OptionKind::Flag | OptionKind::Text => {}
+        }
+        if let Some(default) = &self.default {
+            let valid = match (self.kind, default) {
+                (OptionKind::Flag, toml::Value::Boolean(_)) => true,
+                (OptionKind::Text, toml::Value::String(_)) => true,
+                (OptionKind::Choice, toml::Value::String(choice)) => {
+                    choices.contains(choice.as_str())
+                }
+                (OptionKind::Multi, toml::Value::Array(items)) => items
+                    .iter()
+                    .all(|item| item.as_str().is_some_and(|choice| choices.contains(choice))),
+                _ => false,
+            };
+            if !valid {
+                return Err(format!(
+                    "option {} has a default of the wrong type",
+                    self.id
+                ));
+            }
+        }
+        Ok(())
     }
-    Ok(())
+
+    /// The default as JSON (empty selection, `false`, empty text when absent).
+    pub fn default_json(&self) -> serde_json::Value {
+        match (&self.default, self.kind) {
+            (Some(value), _) => toml_to_json(value),
+            (None, OptionKind::Multi) => serde_json::Value::Array(Vec::new()),
+            (None, OptionKind::Flag) => serde_json::Value::Bool(false),
+            (None, OptionKind::Choice) => self
+                .choices
+                .first()
+                .map_or(serde_json::Value::Null, |choice| {
+                    serde_json::Value::String(choice.id.clone())
+                }),
+            (None, OptionKind::Text) => serde_json::Value::String(String::new()),
+        }
+    }
+
+    /// Checks a value the user picked.
+    pub fn check(&self, value: &serde_json::Value) -> std::result::Result<(), String> {
+        let known = |choice: &str| self.choices.iter().any(|item| item.id == choice);
+        let valid = match (self.kind, value) {
+            (OptionKind::Flag, serde_json::Value::Bool(_)) => true,
+            (OptionKind::Text, serde_json::Value::String(text)) => text.len() <= 4096,
+            (OptionKind::Choice, serde_json::Value::String(choice)) => known(choice),
+            (OptionKind::Multi, serde_json::Value::Array(items)) => {
+                items.iter().all(|item| item.as_str().is_some_and(known))
+            }
+            _ => false,
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(format!("option {} has an invalid value", self.id))
+        }
+    }
 }
 
-/// Function 名形如 `<plugin id>/<analyzer>`;plugin id 允许大小写字母,
-/// analyzer 段沿用小写标识符规则。
-fn validate_function_name(label: &str, value: &str) -> Result<()> {
-    let Some((plugin_id, analyzer)) = value.split_once('/') else {
-        return Err(PluginError::Manifest(format!(
-            "{label} must be written as <plugin id>/<analyzer>"
-        )));
+fn toml_to_json(value: &toml::Value) -> serde_json::Value {
+    match value {
+        toml::Value::String(text) => serde_json::Value::String(text.clone()),
+        toml::Value::Integer(number) => serde_json::Value::from(*number),
+        toml::Value::Float(number) => serde_json::Number::from_f64(*number)
+            .map_or(serde_json::Value::Null, serde_json::Value::Number),
+        toml::Value::Boolean(flag) => serde_json::Value::Bool(*flag),
+        toml::Value::Datetime(datetime) => serde_json::Value::String(datetime.to_string()),
+        toml::Value::Array(items) => {
+            serde_json::Value::Array(items.iter().map(toml_to_json).collect())
+        }
+        toml::Value::Table(table) => serde_json::Value::Object(
+            table
+                .iter()
+                .map(|(key, item)| (key.clone(), toml_to_json(item)))
+                .collect(),
+        ),
+    }
+}
+
+/// `512MiB`, `1GiB`, `2048MB`, `1073741824`.
+fn parse_size(text: &str) -> Option<u64> {
+    let text = text.trim();
+    let split = text
+        .find(|character: char| !character.is_ascii_digit())
+        .unwrap_or(text.len());
+    let (number, unit) = text.split_at(split);
+    let number: u64 = number.parse().ok()?;
+    let multiplier: u64 = match unit.trim().to_ascii_lowercase().as_str() {
+        "" | "b" => 1,
+        "kib" | "k" => 1 << 10,
+        "mib" | "m" => 1 << 20,
+        "gib" | "g" => 1 << 30,
+        "kb" => 1_000,
+        "mb" => 1_000_000,
+        "gb" => 1_000_000_000,
+        _ => return None,
     };
-    if plugin_id.is_empty()
-        || !plugin_id
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
-    {
-        return Err(PluginError::Manifest(format!(
-            "{label} plugin id segment contains unsupported characters"
-        )));
-    }
-    validate_identifier(label, analyzer)
+    number.checked_mul(multiplier)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_filesystem_manifest() {
-        let manifest: PluginManifest = toml::from_str(
-            r#"
-id = "org.lovelycarve.f2fs"
-name = "F2FS"
-version = "0.1.0"
-protocol_min = 1
-protocol_max = 1
-[library]
-path = "plugin"
-[[capabilities]]
-type = "filesystem"
-filesystem = "f2fs"
-priority = 100
-"#,
-        )
-        .expect("parse manifest");
-        manifest.validate().expect("validate manifest");
-        assert_eq!(
-            manifest.filesystem_capabilities().collect::<Vec<_>>(),
-            vec![&FilesystemCapability {
-                filesystem: "f2fs".to_owned(),
-                priority: 100,
-            }]
-        );
-    }
-
-    #[test]
-    fn rejects_unsafe_plugin_id() {
-        let mut manifest: PluginManifest = toml::from_str(
-            r#"
-id = "valid"
-name = "Test"
-version = "1"
-protocol_min = 1
-protocol_max = 1
-[library]
-path = "test"
-"#,
-        )
-        .expect("parse manifest");
-        manifest.id = "../escape".to_owned();
-        assert!(matches!(manifest.validate(), Err(PluginError::Manifest(_))));
-    }
-
-    #[test]
-    fn rejects_duplicate_permissions() {
-        let manifest: PluginManifest = toml::from_str(
-            r#"
-id = "valid"
-name = "Test"
-version = "1"
-protocol_min = 1
-protocol_max = 1
-permissions = ["network", "network"]
-[library]
-path = "test"
-"#,
-        )
-        .expect("parse manifest");
-        assert!(matches!(manifest.validate(), Err(PluginError::Manifest(_))));
-    }
-
-    #[test]
-    fn parses_file_analyzer_capability_and_permissions() {
-        let manifest: PluginManifest = toml::from_str(
-            r#"
-id = "org.test.analyzer"
-name = "Analyzer"
-version = "1"
-protocol_min = 1
-protocol_max = 1
-permissions = ["file_materialize", "emit_artifacts"]
-[library]
-path = "plugin"
-[[capabilities]]
-type = "file_analyzer"
-analyzer = "browser.sqlite"
-extensions = ["db", "sqlite"]
-mime_types = ["application/vnd.sqlite3"]
-priority = 10
-"#,
-        )
-        .expect("parse manifest");
-        manifest.validate().expect("validate manifest");
-        assert!(manifest.has_permission(PluginPermission::FileMaterialize));
-        assert_eq!(
-            manifest
-                .file_analyzer_capabilities()
-                .next()
-                .expect("analyzer")
-                .analyzer,
-            "browser.sqlite"
-        );
-    }
-
-    #[test]
-    fn repository_plugin_manifests_stay_valid() {
-        let plugins = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("plugins");
-        let linuxinfo = PluginManifest::load(&plugins.join("linuxinfo").join("plugin.toml"))
-            .expect("load linuxinfo manifest");
-        assert_eq!(linuxinfo.id, "org.lovelycarve.linuxinfo");
-        assert!(linuxinfo.has_permission(PluginPermission::EmitArtifacts));
-        assert_eq!(linuxinfo.library.isolation, PluginIsolation::Process);
-        assert_eq!(linuxinfo.evidence_analyzer_capabilities().count(), 1);
-    }
-
-    #[test]
-    fn library_paths_resolve_to_platform_file_names() {
-        let manifest = |path: &str| {
-            toml::from_str::<PluginManifest>(&format!(
-                r#"
-id = "org.test.library"
-name = "Library"
-version = "1"
-protocol_min = 1
-protocol_max = 1
-[library]
-path = "{path}"
-"#
-            ))
-            .expect("parse manifest")
-        };
-        let directory = Path::new("plugins").join("demo");
-        assert_eq!(
-            manifest("demo").library_path(&directory),
-            directory.join(format!("{DLL_PREFIX}demo{DLL_SUFFIX}"))
-        );
-        assert_eq!(
-            manifest("bin/demo").library_path(&directory),
-            directory
-                .join("bin")
-                .join(format!("{DLL_PREFIX}demo{DLL_SUFFIX}"))
-        );
-        assert_eq!(
-            manifest("custom.DLL").library_path(&directory),
-            directory.join("custom.DLL")
-        );
-        assert_eq!(manifest("demo").library.isolation, PluginIsolation::Process);
-        for escaping in ["../demo", "", "/abs/demo"] {
-            assert!(
-                matches!(manifest(escaping).validate(), Err(PluginError::Manifest(_))),
-                "{escaping:?} must be rejected"
-            );
-        }
-    }
-
-    #[test]
-    fn legacy_process_manifests_explain_the_library_requirement() {
-        let temporary = tempfile::tempdir().expect("temp directory");
-        let path = temporary.path().join("plugin.toml");
-        fs::write(
-            &path,
-            r#"id = "org.test.legacy"
-name = "Legacy"
-version = "1"
-protocol_min = 1
-protocol_max = 1
-[process]
-command = "python"
-"#,
-        )
-        .expect("write manifest");
-        let Err(PluginError::Manifest(message)) = PluginManifest::load(&path) else {
-            panic!("legacy manifest must be rejected");
-        };
-        assert!(message.contains("[library]"), "{message}");
-    }
-
-    #[test]
-    fn task_section_defaults_match_reference_plugins() {
-        let manifest: PluginManifest = toml::from_str(
-            r#"
-id = "org.test.plain"
-name = "Plain"
-version = "1"
-protocol_min = 1
-protocol_max = 1
-[library]
-path = "test"
-"#,
-        )
-        .expect("parse manifest");
-        assert_eq!(
-            manifest.task,
-            TaskManifest {
-                dependence: None,
-                trigger: TaskTrigger::Manually,
-                internal: false,
-                single_instance: true,
-                can_pause: false,
-                type_name: None,
-                platform: None,
-                support: Vec::new(),
-                evidence_types: Vec::new(),
-            }
-        );
-    }
-
-    #[test]
-    fn task_section_parses_dependence_chain_fields() {
-        let manifest: PluginManifest = toml::from_str(
-            r#"
-id = "org.test.chained"
-name = "Chained"
-version = "1"
-protocol_min = 1
-protocol_max = 1
-[library]
-path = "test"
-[task]
-dependence = "org.test.first/stage.one"
-trigger = "auto"
-internal = true
-single_instance = false
-can_pause = true
-type = "longtime"
-"#,
-        )
-        .expect("parse manifest");
-        manifest.validate().expect("validate manifest");
-        assert_eq!(
-            manifest.task,
-            TaskManifest {
-                dependence: Some("org.test.first/stage.one".to_owned()),
-                trigger: TaskTrigger::Auto,
-                internal: true,
-                single_instance: false,
-                can_pause: true,
-                type_name: Some("longtime".to_owned()),
-                platform: None,
-                support: Vec::new(),
-                evidence_types: Vec::new(),
-            }
-        );
-    }
-
-    #[test]
-    fn task_dependence_must_name_a_function() {
-        let manifest: PluginManifest = toml::from_str(
-            r#"
-id = "org.test.bad"
-name = "Bad"
-version = "1"
-protocol_min = 1
-protocol_max = 1
-[library]
-path = "test"
-[task]
-dependence = "not-a-function"
-"#,
-        )
-        .expect("parse manifest");
-        assert!(matches!(manifest.validate(), Err(PluginError::Manifest(_))));
-    }
-
-    #[test]
-    fn parses_evidence_analyzer_with_task_metadata() {
-        let manifest: PluginManifest = toml::from_str(
-            r#"
-id = "org.lovelycarve.linuxinfo"
-name = "Linux信息"
-version = "2.0.6"
-protocol_min = 1
-protocol_max = 1
-permissions = ["emit_artifacts"]
-[library]
-path = "plugin"
-[task]
-type = "baseinfo"
-platform = "linux"
-support = ["系统信息", "用户列表"]
-[[capabilities]]
-type = "evidence_analyzer"
-analyzer = "linuxbaseinfo"
-display = "Linux基本信息"
-"#,
-        )
-        .expect("parse manifest");
-        manifest.validate().expect("validate manifest");
-        let capability = manifest
-            .evidence_analyzer_capabilities()
-            .next()
-            .expect("evidence analyzer");
-        assert_eq!(capability.analyzer, "linuxbaseinfo");
-        assert_eq!(capability.display.as_deref(), Some("Linux基本信息"));
-        assert_eq!(manifest.task.platform.as_deref(), Some("linux"));
-        assert_eq!(
-            manifest.task.support,
-            vec!["系统信息".to_owned(), "用户列表".to_owned()]
-        );
-        assert!(manifest.file_analyzer_capabilities().next().is_none());
-    }
-
-    #[test]
-    fn task_platform_and_support_are_validated() {
-        for task_section in ["platform = \"Linux!\"", "support = [\"\", \"用户\"]"] {
-            let manifest: PluginManifest = toml::from_str(&format!(
-                r#"
-id = "org.test.bad"
-name = "Bad"
-version = "1"
-protocol_min = 1
-protocol_max = 1
-[library]
-path = "test"
-[task]
-{task_section}
-"#
-            ))
-            .expect("parse manifest");
-            assert!(matches!(manifest.validate(), Err(PluginError::Manifest(_))));
-        }
-    }
-    #[test]
-    fn duplicate_analyzer_names_across_scopes_are_rejected() {
-        let mut manifest: PluginManifest = toml::from_str(
-            r#"
-            id = "org.test"
-            name = "Test"
-            version = "1"
-            protocol_min = 1
-            protocol_max = 1
-            [library]
-            path = "test"
-            [[capabilities]]
-            type = "file_analyzer"
-            analyzer = "shared"
-        "#,
-        )
-        .expect("manifest");
-        manifest
-            .capabilities
-            .push(Capability::EvidenceAnalyzer(EvidenceAnalyzerCapability {
-                analyzer: "shared".into(),
-                display: None,
-                priority: 0,
-            }));
-        assert!(manifest.validate().is_err());
-    }
-}
+mod tests;

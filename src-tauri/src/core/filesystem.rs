@@ -11,4 +11,5 @@ pub mod meta_addr;
 pub mod recovery;
 pub mod tree;
 pub mod unalloc;
+pub mod volume_identity;
 pub mod volumes;

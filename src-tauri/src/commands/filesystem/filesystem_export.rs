@@ -12,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::core::filesystem::tree::fs_tree::{self, FsExportResult, FsExportSummary};
 use crate::state::AppState;
-use crate::task_manager::{TaskKind, TaskProgressUnit};
+use crate::task_manager::{TaskCount, TaskFlag, TaskKind, TaskOutcome, TaskProgressUnit};
 use {
     crate::app::access::image_read_fault_report, crate::app::access::loaded_image_app_error,
     crate::app::error::AppError,
@@ -108,6 +108,7 @@ pub async fn fs_export_dir(
         TaskKind::DirectoryExport,
         Some(image_id.clone()),
     );
+    task.update(|view| view.subject = vec![destination.clone()]);
     let resource_permit = state.tasks.acquire_resources(&task).await?;
     let token = task.token();
 
@@ -143,7 +144,7 @@ pub async fn fs_export_dir(
             if !should_emit {
                 return;
             }
-            let _ = app_for_walk.emit(
+            if let Err(error) = app_for_walk.emit(
                 "fs-export-dir-progress",
                 FsExportDirProgress {
                     task_id: task_id_for_walk.clone(),
@@ -154,7 +155,12 @@ pub async fn fs_export_dir(
                     skipped_deleted: summary.skipped_deleted,
                     current_path: current.map(String::from),
                 },
-            );
+            ) {
+                tracing::debug!("emit fs-export-dir-progress failed: {error}");
+            }
+            tasks_for_walk.update(&task_id_for_walk, |view| {
+                view.counts.insert(TaskCount::Files, summary.file_count);
+            });
             tasks_for_walk.emit_progress(
                 &task_id_for_walk,
                 TaskProgressUnit::Bytes,
@@ -210,6 +216,23 @@ pub async fn fs_export_dir(
             started.elapsed(),
             err.message,
         ),
+    }
+    match &result {
+        Ok(summary) => {
+            task.update(|view| {
+                view.counts.insert(TaskCount::Files, summary.file_count);
+                if summary.truncated {
+                    view.flags.insert(TaskFlag::Truncated);
+                }
+                crate::app::workflows::task_center::count_read_faults(view, &summary.read_faults);
+            });
+            task.finish(if summary.cancelled {
+                TaskOutcome::Cancelled
+            } else {
+                TaskOutcome::Succeeded
+            });
+        }
+        Err(_) => task.finish_with(&result),
     }
     result
 }

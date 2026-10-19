@@ -3811,12 +3811,23 @@ dependencies = [
 
 [[package]]
 name = "lovelycarve-plugin"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libloading 0.9.0",
+ "lovelycarve-plugin-derive",
+ "rmp",
  "rmp-serde",
  "rmpv",
  "serde",
+]
+
+[[package]]
+name = "lovelycarve-plugin-derive"
+version = "0.2.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

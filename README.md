@@ -43,7 +43,7 @@ LovelyCarve 面向电子数据取证、应急响应和 CTF 取证题：加载磁
 - **全局搜索**：关键词与正则，覆盖 ASCII、UTF-8、UTF-16LE/BE、GBK，可包含删除文件与未分配空间；命中可回到源文件并定位字节偏移，支持去重与 CSV 导出。
 - **时间线**：投影文件修改时间、插件事件与 NTFS USN 日志，提供年度活动热力图、趋势钻取、筛选和导出。
 - **文件恢复**：读取 FAT、NTFS、exFAT 的删除记录并重建丢失分区，同时按签名雕刻 JPEG、PNG、GIF、PDF、ZIP/Office、SQLite 等 14 种格式；结果像文件列表一样按目录浏览，扫描可暂停、继续和取消，恢复文件时生成 SHA-256 与来源报告。
-- **插件分析**：基于 C ABI 的 LPP 动态库插件，默认在独立宿主进程中运行；内置 `linuxinfo`，提取 Linux 系统、用户、登录、网络、服务、软件、定时任务与命令历史等信息。
+- **插件分析**：基于 C ABI 的 LPP v2 动态库插件，每个任务在独立宿主进程中运行；插件在识别出的操作系统（按 fstab、盘符组装的卷）、整个检材或选中的文件上分析，输出带类型的记录，结果可排序、检索、回溯来源并查看运行审计；`.lcpkg` 插件包可在设置中安装。内置 `linuxinfo`，提取 Linux 系统、用户、登录、网络、服务、软件、定时任务与命令历史等信息。
 - **命令行与挂载**：独立的 `lovelycarve-cli` 不依赖桌面运行时，以 `images open`、`files read` 这样的命令覆盖桌面端全部后端功能，支持交互 shell 和 JSONL 自动化；Windows 下可借助 Dokany 把卷只读挂载为盘符或文件夹。
 
 ## 界面
@@ -105,7 +105,7 @@ Get-Content .\workflow.jsonl | lovelycarve-cli session --events
 
 ## 插件
 
-插件是导出 `lovelycarve_plugin_v1` C ABI 的动态库，通过 LPP（LovelyCarve Plugin Protocol）只读访问检材，并把产物、时间线事件和线索交给宿主保存。SDK、隔离宿主 `lc-plugin-host` 和内置的 `linuxinfo` 由子模块 [LovelyCarve-Plugins](https://github.com/LovelyTeams/LovelyCarve-Plugins) 维护。已发现的插件被视为可信代码，进程隔离用于故障隔离，不是权限沙箱。
+插件是导出 `lovelycarve_plugin_v1` C ABI 的动态库，连同清单、记录结构与语言包打成插件包。插件通过 LPP v2（LovelyCarve Plugin Protocol）经只读视图访问检材，按声明的记录结构输出带类型的记录，由宿主保存、投影时间线并保留来源。SDK、隔离宿主 `lc-plugin-host`、内置的 `linuxinfo` 与汽车取证插件由子模块 [LovelyCarve-Plugins](https://github.com/LovelyTeams/LovelyCarve-Plugins) 维护。已发现的插件被视为可信代码，进程隔离用于故障隔离，不是权限沙箱。
 
 协议与开发说明见 [插件协议](docs/PLUGIN_PROTOCOL.md) 和 [Linux 基本信息插件](docs/LINUXINFO.md)。
 

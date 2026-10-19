@@ -2,13 +2,13 @@ import { watch } from 'vue';
 import { imageLoad } from '../../lib/ipc/image';
 import { taskCancel } from '../../lib/ipc/taskRuntime';
 import { IpcCommandError } from '../../lib/ipc/client';
-import { trackedImageLoad } from '../../features/tasks/api';
 import { notifyError } from '../../composables/useToast';
 import { tr } from '../../composables/useLocale';
 import type { LoadFileOptions, OpenTabResult, useTabManager } from './useTabManager';
 import { raidTabPathKey } from './raidTabAliases';
 
-/** Container preparation runs outside the singleton active file-session loader. */
+/** Container preparation runs outside the singleton active file-session loader.
+ *  The task center lists each load under the task id its tab carries. */
 export function useBackgroundEvidenceLoads(tabs: ReturnType<typeof useTabManager>, caseDirectory: () => string | null) {
   const pending = new Map<string, { taskId: string; tabId: string | null; cancelling: boolean; completion?: Promise<unknown> }>();
   let revision = 0;
@@ -43,12 +43,12 @@ export function useBackgroundEvidenceLoads(tabs: ReturnType<typeof useTabManager
     load.tabId = await tabs.beginBackgroundLoad(path, load.taskId, opts);
     const current = () => epoch === revision && directory === caseDirectory()
       && tabs.tabs.value.some(tab => tab.id === load.tabId);
-    const completion = trackedImageLoad(load.taskId, path, () => {
+    const completion = (async () => {
       if (!current()) throw new Error('image load cancelled');
-      return imageLoad({ path, taskId: load.taskId, ...(directory ? { caseDir: directory } : {}) });
-    }, async () => {
+      const loaded = await imageLoad({ path, taskId: load.taskId, ...(directory ? { caseDir: directory } : {}) });
       if (current() && load.tabId) await tabs.finishBackgroundLoad(load.tabId);
-    });
+      return loaded;
+    })();
     load.completion = completion;
     void completion.catch(error => {
       if (current() && !(error instanceof IpcCommandError && error.code === 'cancelled')) {

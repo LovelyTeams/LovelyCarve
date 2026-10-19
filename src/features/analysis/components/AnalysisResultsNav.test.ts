@@ -12,16 +12,26 @@ const treeError = ref<string | null>(null);
 vi.mock('../composables/useAnalysisResults', () => ({
   useAnalysisResults: () => ({ tree, selectedNode, treeLoading, treeError, ...state }),
 }));
+vi.mock('../composables/useAnalysisLabels', () => ({
+  useAnalysisLabels: () => {
+    const nodeLabel = (node: AnalysisResultNode) => node.label;
+    return { nodeLabel, nodeLabels: { node: nodeLabel, category: (node: AnalysisResultNode) => node.typeName } };
+  },
+}));
 let app: App | null = null;
 let host: HTMLElement;
 const imageId = ref('one');
 function result(nodeId: string, imageId: string, label: string): AnalysisResultNode {
-  return { nodeId, imageId, label, kind: 'result', analyzer: 'linuxinfo', artifactType: nodeId, typeName: '', runId: 'run', completedAt: '', childCount: 3, columns: [], children: [] };
+  return {
+    nodeId, imageId, label, kind: 'result', pluginId: 'p', analyzer: 'linuxinfo', function: 'p/linuxinfo', artifactType: nodeId, typeName: 'baseinfo',
+    sourceNodeId: null, targetLabel: 'Kali · part:2', runId: 'run', completedAt: '', childCount: 3, warningCount: 0, legacy: false, children: [],
+  };
 }
 const users = result('users', 'one', '用户列表');
 const logins = result('logins', 'one', '登录记录');
+const run = { ...users, nodeId: 'linuxinfo', kind: 'function' as const, label: 'Linux 系统信息', warningCount: 2, children: [users, logins] };
 beforeEach(() => {
-  tree.value = [{ ...users, nodeId: 'linuxinfo', kind: 'function', label: 'Linux 系统信息', children: [users, logins] }, result('other', 'two', '其他检材结果')];
+  tree.value = [run, result('other', 'two', '其他检材结果')];
   selectedNode.value = users;
   treeLoading.value = false;
   treeError.value = null;
@@ -43,6 +53,13 @@ describe('AnalysisResultsNav', () => {
     items[1].click();
     expect(state.selectNode).toHaveBeenCalledWith(logins);
     expect(state.openPage).toHaveBeenCalledOnce();
+  });
+  it('names the run target, counts its warnings and opens its audit', () => {
+    const heading = host.querySelector<HTMLElement>('.group-heading')!;
+    expect(heading.querySelector('small')?.textContent).toBe('Kali · part:2');
+    expect(heading.querySelector('.ui-badge.warn')?.textContent).toBe('2');
+    host.querySelector<HTMLButtonElement>('.run-info')!.click();
+    expect(state.selectNode).toHaveBeenCalledWith(run);
   });
   it('loads results independently of the right panel and refreshes the context when evidence changes', async () => {
     expect(state.setImageId).toHaveBeenCalledWith('one');

@@ -5,7 +5,6 @@ import { registerEvidenceContext } from './evidenceContext';
 import { disposeImageExportJobs, useImageExport } from './useImageExport';
 
 const ipc = vi.hoisted(() => ({
-  trackExport: vi.fn(),
   save: vi.fn(),
   exportRaw: vi.fn(),
   exportBitlocker: vi.fn(),
@@ -16,7 +15,6 @@ const ipc = vi.hoisted(() => ({
   update: vi.fn(),
   dismiss: vi.fn(),
 }));
-vi.mock('../../tasks/api', () => ({ trackedImageExport: ipc.trackExport }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ save: ipc.save }));
 vi.mock('../../../lib/ipc/image', () => ({
   imageExportRaw: ipc.exportRaw,
@@ -52,7 +50,6 @@ function deferred<T>() {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  ipc.trackExport.mockImplementation((_job: unknown, operation: () => Promise<unknown>) => operation());
   context = 0;
   stopContext = registerEvidenceContext(() => context);
   ipc.save.mockResolvedValue('D:/exports/raid.dd');
@@ -152,27 +149,18 @@ describe('image export task lifecycle', () => {
     expect(ipc.dismiss).toHaveBeenCalledOnce();
   });
 
-  it('binds task-center cancellation to the original task after another export starts', async () => {
-    const earlier = deferred<ImageExportResult>();
-    const newer = deferred<ImageExportResult>();
-    ipc.exportRaw.mockReturnValueOnce(earlier.promise).mockReturnValueOnce(newer.promise);
+  it('ends as cancelled when the task center cancels the export', async () => {
+    const pending = deferred<ImageExportResult>();
+    ipc.exportRaw.mockReturnValueOnce(pending.promise);
     const { startImageExport, jobFor } = useImageExport();
-    const first = startImageExport(options);
+    const operation = startImageExport(options);
     await vi.waitFor(() => expect(ipc.exportRaw).toHaveBeenCalledOnce());
-    const previousTaskId = jobFor(options.imageId)!.taskId;
-    const cancelPrevious = ipc.trackExport.mock.calls[0]![2] as () => Promise<void>;
-    disposeImageExportJobs();
-    const second = startImageExport(options);
-    await vi.waitFor(() => expect(ipc.exportRaw).toHaveBeenCalledTimes(2));
-    const currentTaskId = jobFor(options.imageId)!.taskId;
-
-    await cancelPrevious();
-    expect(ipc.cancel).toHaveBeenCalledExactlyOnceWith({ taskId: previousTaskId });
-    expect(jobFor(options.imageId)).toMatchObject({ taskId: currentTaskId, cancelling: false });
-    earlier.reject(new Error('export cancelled'));
-    expect(await first).toBe(false);
-    newer.resolve(result);
-    expect(await second).toBe(true);
+    // The task center cancels the backend task by its id; the command ends with a cancellation.
+    expect(ipc.exportRaw.mock.calls[0]![0]).toMatchObject({ taskId: jobFor(options.imageId)!.taskId });
+    pending.reject(new Error('export cancelled'));
+    expect(await operation).toBe(false);
+    expect(ipc.update).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'info', title: '导出已取消' }));
+    expect(jobFor(options.imageId)).toBeUndefined();
   });
 
   it('does not clear a newer job when an earlier session completes late', async () => {

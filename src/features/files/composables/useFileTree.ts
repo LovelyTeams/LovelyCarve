@@ -1,7 +1,7 @@
 
 import { tr } from '../../../composables/useLocale';
 import { computed, onScopeDispose, reactive, ref, watch } from 'vue';
-import { trackedFsChildren as fsChildren } from '../../tasks/api';
+import { containerFsChildren as fsChildren } from './containerReads';
 import { notifyError } from '../../../composables/useToast';
 import { isHostDockerContainerRootId } from '../model/model';
 import { fileTreePathFor, visibleFileTreeRows, type TreeNodeData, type TreeStackFrame } from '../model/fileTree';

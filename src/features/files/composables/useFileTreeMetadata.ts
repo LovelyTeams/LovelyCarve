@@ -1,4 +1,4 @@
-import { trackedFsChildren as fsChildren } from '../../tasks/api';
+import { containerFsChildren as fsChildren } from './containerReads';
 import { fsChildCounts, fsSubtreeEmptyDirs } from '../../../lib/ipc/fs/query';
 import { winDriveLetters } from '../../../lib/ipc/filesystemMetadata';
 import { isHostDockerContainerRootId } from '../model/model';

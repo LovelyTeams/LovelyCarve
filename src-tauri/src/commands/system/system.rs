@@ -1,4 +1,5 @@
-//! Cross-cutting IPC: task cancellation and status, module catalogue.
+//! Cross-cutting IPC: the task center (every task, plugin jobs included),
+//! task cancellation, module catalogue.
 
 use std::path::PathBuf;
 
@@ -8,26 +9,35 @@ use serde_json::json;
 
 use crate::app::error::AppError;
 use crate::app::module_catalog::{self as module_summary, ModuleSummary};
+use crate::app::workflows::task_center::{self, TaskEntry};
 use crate::state::AppState;
-use crate::task_manager::TaskSnapshot;
 
+/// Cancels a task: a native task id, or `plugin:<job id>`.
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn task_cancel(state: State<'_, AppState>, task_id: String) -> Result<(), AppError> {
-    state.tasks.cancel(&task_id);
-    Ok(())
+    task_center::cancel(&state, &task_id).await
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn task_status(
     state: State<'_, AppState>,
     task_id: String,
-) -> Result<Option<TaskSnapshot>, AppError> {
-    Ok(state.tasks.status(&task_id))
+) -> Result<Option<TaskEntry>, AppError> {
+    Ok(task_center::list(&state, None)
+        .await?
+        .into_iter()
+        .find(|entry| entry.id == task_id))
 }
 
+/// The task center's tasks of `image_id` (of every evidence when absent);
+/// tasks of no evidence are always included. Changes follow on the
+/// `task-entry` event.
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub async fn task_list(state: State<'_, AppState>) -> Result<Vec<TaskSnapshot>, AppError> {
-    Ok(state.tasks.list())
+pub async fn task_list(
+    state: State<'_, AppState>,
+    image_id: Option<String>,
+) -> Result<Vec<TaskEntry>, AppError> {
+    task_center::list(&state, image_id.as_deref()).await
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]

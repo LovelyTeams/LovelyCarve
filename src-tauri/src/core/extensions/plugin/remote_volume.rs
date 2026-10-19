@@ -81,7 +81,7 @@ impl RemoteVolume {
         source_id: String,
     ) -> Self {
         Self {
-            plugin_id: client.identity().id.clone(),
+            plugin_id: client.hello().plugin.clone(),
             client,
             session_id,
             root_node,
@@ -389,11 +389,43 @@ mod tests {
     use tokio::io::{duplex, split};
 
     use crate::core::extensions::plugin::{
+        client::{HostRpcServices, PluginClient},
         codec::{read_frame, write_frame},
         LppMessage, SourceRegistry,
     };
 
     use super::*;
+
+    /// The `plugin.hello` of a filesystem-only test plugin.
+    fn hello(plugin: &str) -> Value {
+        lovelycarve_plugin::protocol::to_value(&lovelycarve_plugin::protocol::Hello {
+            protocol: lovelycarve_plugin::wire::PROTOCOL_VERSION,
+            plugin: plugin.to_owned(),
+            sdk: "0.2.0".to_owned(),
+            analyzers: Vec::new(),
+            filesystems: vec!["test".to_owned()],
+            records: Vec::new(),
+            schema_hash: lovelycarve_plugin::schema::schema_hash(&[]),
+        })
+        .expect("hello")
+    }
+
+    fn connect(
+        runtime: &tokio::runtime::Runtime,
+        reader: tokio::io::ReadHalf<tokio::io::DuplexStream>,
+        writer: tokio::io::WriteHalf<tokio::io::DuplexStream>,
+    ) -> PluginConnection {
+        let client = runtime
+            .block_on(PluginClient::connect(
+                Box::new(reader),
+                Box::new(writer),
+                HostRpcServices::new(SourceRegistry::default()),
+                None,
+                None,
+            ))
+            .expect("client");
+        PluginConnection::from_client(client)
+    }
 
     #[test]
     fn binary_result_rejects_more_than_requested() {
@@ -428,25 +460,9 @@ mod tests {
         let (host_reader, host_writer) = split(host_stream);
         let (mut plugin_reader, mut plugin_writer) = split(plugin_stream);
         runtime.spawn(async move {
-            let hello = Value::Map(vec![
-                (Value::from("protocol_min"), Value::from(1)),
-                (Value::from("protocol_max"), Value::from(1)),
-                (
-                    Value::from("plugin"),
-                    Value::Map(vec![
-                        (Value::from("id"), Value::from("org.test.paged")),
-                        (Value::from("name"), Value::from("Paged FS")),
-                        (Value::from("version"), Value::from("1")),
-                    ]),
-                ),
-                (
-                    Value::from("capabilities"),
-                    Value::Array(vec![Value::from("filesystem")]),
-                ),
-            ]);
             write_frame(
                 &mut plugin_writer,
-                &LppMessage::request(1, "plugin.hello", hello),
+                &LppMessage::request(1, "plugin.hello", hello("org.test.paged")),
             )
             .await
             .expect("hello");
@@ -502,23 +518,8 @@ mod tests {
                     .expect("page response");
             }
         });
-        let client = runtime
-            .block_on(super::super::client::PluginClient::connect(
-                Box::new(host_reader),
-                Box::new(host_writer),
-                super::super::client::HostRpcServices::new(
-                    SourceRegistry::default(),
-                    super::super::FileRegistry::default(),
-                    super::super::EvidenceRegistry::default(),
-                    [],
-                ),
-                None,
-                None,
-                None,
-            ))
-            .expect("client");
         let volume = RemoteVolume::new(
-            PluginConnection::Process(client),
+            connect(&runtime, host_reader, host_writer),
             "session:1".to_owned(),
             "root".to_owned(),
             "part:1".to_owned(),
@@ -559,25 +560,9 @@ mod tests {
         let (host_reader, host_writer) = split(host_stream);
         let (mut plugin_reader, mut plugin_writer) = split(plugin_stream);
         runtime.spawn(async move {
-            let hello = Value::Map(vec![
-                (Value::from("protocol_min"), Value::from(1)),
-                (Value::from("protocol_max"), Value::from(1)),
-                (
-                    Value::from("plugin"),
-                    Value::Map(vec![
-                        (Value::from("id"), Value::from("org.test.fs")),
-                        (Value::from("name"), Value::from("Test FS")),
-                        (Value::from("version"), Value::from("1")),
-                    ]),
-                ),
-                (
-                    Value::from("capabilities"),
-                    Value::Array(vec![Value::from("filesystem")]),
-                ),
-            ]);
             write_frame(
                 &mut plugin_writer,
-                &LppMessage::request(1, "plugin.hello", hello),
+                &LppMessage::request(1, "plugin.hello", hello("org.test.fs")),
             )
             .await
             .expect("hello");
@@ -636,23 +621,8 @@ mod tests {
                     .expect("response");
             }
         });
-        let client = runtime
-            .block_on(super::super::client::PluginClient::connect(
-                Box::new(host_reader),
-                Box::new(host_writer),
-                super::super::client::HostRpcServices::new(
-                    SourceRegistry::default(),
-                    super::super::FileRegistry::default(),
-                    super::super::EvidenceRegistry::default(),
-                    [],
-                ),
-                None,
-                None,
-                None,
-            ))
-            .expect("client");
         let volume = RemoteVolume::new(
-            PluginConnection::Process(client),
+            connect(&runtime, host_reader, host_writer),
             "session:1".to_owned(),
             "root".to_owned(),
             "part:1".to_owned(),

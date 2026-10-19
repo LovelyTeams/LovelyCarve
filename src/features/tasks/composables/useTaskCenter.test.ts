@@ -31,8 +31,11 @@ vi.mock('../../cases/composables/useCaseSession', async () => {
 import { useCaseSession } from '../../cases/composables/useCaseSession';
 import { registerTaskContext } from './taskContext';
 
-import type { SchedEvent, SchedTaskRecord } from '../../../lib/ipc/tasks';
-import { applySchedEventForTests, resetTaskCenterForTests, useTaskCenter } from './useTaskCenter';
+import type { TaskEntry } from '../../../lib/ipc/taskRuntime';
+import type { SchedTaskRecord } from '../../../lib/ipc/tasks';
+import { pluginTaskEntry } from '../model/taskEntryView';
+import { resetTaskCenterForTests, useTaskCenter } from './useTaskCenter';
+import { applyTaskEntryEventForTests, cancelTaskEntry, useTaskEntries } from './useTaskEntries';
 import { canCancelStatus, canRestartStatus, isTerminalStatus, taskGroupOf } from '../model/taskStatus';
 
 function record(overrides: Partial<SchedTaskRecord> = {}): SchedTaskRecord {
@@ -43,7 +46,7 @@ function record(overrides: Partial<SchedTaskRecord> = {}): SchedTaskRecord {
     typeName: 'fileanalyzer',
     evidenceId: 7,
     progress: 0,
-    params: { nodeId: 'node-1', fileName: 'file.bin', platform: null, subItems: [] },
+    params: { nodeId: 'node-1', fileName: 'file.bin', systemId: null, targetLabel: null, options: {} },
     result: null,
     dependence: '',
     status: 'created',
@@ -66,11 +69,21 @@ function record(overrides: Partial<SchedTaskRecord> = {}): SchedTaskRecord {
     ...overrides,
   };
 }
+const entry = (overrides: Partial<SchedTaskRecord> = {}): TaskEntry => pluginTaskEntry(record(overrides));
+
+function hash(): TaskEntry {
+  return {
+    id: 'hash-1', imageId: 'image-1', status: 'running', cancelling: false, automatic: false, createdAtMs: 1, startedAtMs: 1,
+    finishedAtMs: null, progress: null, error: null, actions: ['cancel'], source: 'builtin', kind: 'imageHash',
+    view: { subject: ['MD5'], stage: null, progress: null, counts: {}, labels: {}, flags: [] },
+  };
+}
 
 beforeEach(() => {
   resetTaskCenterForTests();
-  registerTaskContext({ activeCase: () => useCaseSession().activeCase.value, ensureDetection: () => {}, detectionPending: () => false });
+  registerTaskContext({ activeCase: () => useCaseSession().activeCase.value, ensureDetection: () => {} });
   invokeMock.mockReset();
+  invokeMock.mockResolvedValue([]);
   listenMock.mockReset();
   listenMock.mockResolvedValue(() => {});
   toastMock.notifyError.mockReset();
@@ -95,67 +108,69 @@ describe('task status helpers', () => {
 
 describe('useTaskCenter', () => {
   it('replays changed and removed events over an older refresh snapshot', async () => {
-    let resolveList!: (records: SchedTaskRecord[]) => void;
-    invokeMock.mockImplementation(command => command === 'sched_task_list'
+    let resolveList!: (entries: TaskEntry[]) => void;
+    invokeMock.mockImplementation(command => command === 'task_list'
       ? new Promise(resolve => { resolveList = resolve; }) : Promise.resolve([]));
     const center = useTaskCenter();
     const pending = center.refresh();
-    applySchedEventForTests({ kind: 'taskChanged', task: record({ id: 1, status: 'success' }) });
-    applySchedEventForTests({ kind: 'taskRemoved', taskId: 2, evidenceId: 7 });
-    resolveList([record({ id: 1, status: 'running' }), record({ id: 2 })]);
+    applyTaskEntryEventForTests({ kind: 'changed', entry: entry({ id: 1, status: 'success' }) });
+    applyTaskEntryEventForTests({ kind: 'removed', id: 'plugin:2' });
+    resolveList([entry({ id: 1, status: 'running' }), entry({ id: 2 })]);
     await pending;
     expect(center.tasks.value).toEqual([record({ id: 1, status: 'success' })]);
   });
 
   it('ignores out-of-order refreshes and responses after closing a case', async () => {
-    const { useCaseSession } = await import('../../cases/composables/useCaseSession');
     const activeCase = useCaseSession().activeCase;
-    const resolvers: Array<(records: SchedTaskRecord[]) => void> = [];
-    invokeMock.mockImplementation(command => command === 'sched_task_list'
+    const resolvers: Array<(entries: TaskEntry[]) => void> = [];
+    invokeMock.mockImplementation(command => command === 'task_list'
       ? new Promise(resolve => { resolvers.push(resolve); }) : Promise.resolve([]));
     const center = useTaskCenter();
     const first = center.refresh();
     const second = center.refresh();
-    resolvers[1]([record({ id: 2 })]); await second;
-    resolvers[0]([record({ id: 1 })]); await first;
+    resolvers.at(-1)!([entry({ id: 2 })]); await second;
+    resolvers.at(-2)!([entry({ id: 1 })]); await first;
     expect(center.tasks.value.map(task => task.id)).toEqual([2]);
     activeCase.value = { dir: 'case-a' } as typeof activeCase.value;
     activeCase.value = null;
-    resolvers[2]([record({ id: 3 })]);
+    // The caseless list is current; the closed case's answer arrives late and is dropped.
+    resolvers.at(-1)!([entry({ id: 3 })]);
+    resolvers.at(-2)!([entry({ id: 4 })]);
     await Promise.resolve(); await Promise.resolve();
-    expect(center.tasks.value).toEqual([]);
+    expect(center.tasks.value.map(task => task.id)).toEqual([3]);
   });
-  it('loads tasks and functions, then merges backend events by id', async () => {
+
+  it('loads every task and the functions, then merges backend events by id', async () => {
     invokeMock.mockImplementation(async (command: string) => {
-      if (command === 'sched_task_list') return [record({ id: 1 }), record({ id: 2, status: 'running', progress: 40 })];
-      if (command === 'sched_task_functions') return [{ function: 'org.test.plugin/demo', enabled: true }];
+      if (command === 'task_list') return [entry({ id: 1 }), entry({ id: 2, status: 'running', progress: 40 }), hash()];
+      if (command === 'sched_task_functions') return [{ function: 'org.test.plugin/demo' }];
       throw new Error(`unexpected ${command}`);
     });
     const center = useTaskCenter();
     await center.refresh();
 
-    expect(invokeMock).toHaveBeenCalledWith('sched_task_list', { imageId: null, includeInternal: true });
+    expect(invokeMock).toHaveBeenCalledWith('task_list', { imageId: null });
     expect(center.tasks.value.map(task => task.id)).toEqual([2, 1]);
+    expect(useTaskEntries().entries.value.map(item => item.id)).toContain('hash-1');
     expect(center.activeCount.value).toBe(2);
     expect(center.runningCount.value).toBe(1);
     expect(center.functions.value).toHaveLength(1);
 
-    const changed: SchedEvent = { kind: 'taskChanged', task: record({ id: 2, status: 'success', progress: 100 }) };
-    applySchedEventForTests(changed);
+    applyTaskEntryEventForTests({ kind: 'changed', entry: entry({ id: 2, status: 'success', progress: 100 }) });
     expect(center.tasks.value.find(task => task.id === 2)?.status).toBe('success');
     expect(center.activeCount.value).toBe(1);
 
-    applySchedEventForTests({ kind: 'taskRemoved', taskId: 1, evidenceId: 7 });
+    applyTaskEntryEventForTests({ kind: 'removed', id: 'plugin:1' });
     expect(center.tasks.value.map(task => task.id)).toEqual([2]);
   });
 
   it('turns scheduler notices into toasts and keeps a bounded history', () => {
     const center = useTaskCenter();
-    applySchedEventForTests({
+    applyTaskEntryEventForTests({
       kind: 'notice',
       notice: { kind: 'taskOffline', taskId: 3, evidenceId: 7, message: 'worker 离线' },
     });
-    applySchedEventForTests({
+    applyTaskEntryEventForTests({
       kind: 'notice',
       notice: { kind: 'allTasksFinished', taskId: null, evidenceId: 7, message: '全部完成' },
     });
@@ -167,7 +182,7 @@ describe('useTaskCenter', () => {
 
   it('applies control results locally and reports failures as toasts', async () => {
     const center = useTaskCenter();
-    applySchedEventForTests({ kind: 'taskChanged', task: record({ id: 5, status: 'running' }) });
+    applyTaskEntryEventForTests({ kind: 'changed', entry: entry({ id: 5, status: 'running' }) });
     invokeMock.mockResolvedValueOnce(record({ id: 5, status: 'cancel' }));
 
     const cancelled = await center.cancel(5);
@@ -178,25 +193,37 @@ describe('useTaskCenter', () => {
     invokeMock.mockRejectedValueOnce(new Error('任务 5 当前状态为 cancel,不能取消'));
     expect(await center.cancel(5)).toBeNull();
     expect(toastMock.notifyError).toHaveBeenCalledWith('取消任务失败', '任务 5 当前状态为 cancel,不能取消');
+
+    invokeMock.mockResolvedValueOnce(record({ id: 5, status: 'cancel' }));
+    expect(await center.remove(5)).toBe(true);
+    expect(center.tasks.value).toEqual([]);
   });
 
   it('creates tasks and distinguishes single-instance hits', async () => {
     const center = useTaskCenter();
     invokeMock.mockResolvedValueOnce({ task: record({ id: 9 }), created: true });
-    await center.create({ function: 'org.test.plugin/demo', imageId: 'image-1', nodeId: 'node-1', fileName: 'a.db' });
+    await center.create({ function: 'org.test.plugin/demo', imageId: 'image-1', nodeId: 'node-1', fileName: 'a.db', options: { items: ['users'] } });
     expect(invokeMock).toHaveBeenCalledWith('sched_task_create', {
       function: 'org.test.plugin/demo',
       imageId: 'image-1',
-      platform: null,
-      subItems: [],
       nodeId: 'node-1',
       fileName: 'a.db',
+      systemId: null,
+      options: { items: ['users'] },
     });
     expect(toastMock.notifyInfo).toHaveBeenCalledWith('任务已创建', 'Demo · demo · #9');
 
     invokeMock.mockResolvedValueOnce({ task: record({ id: 9 }), created: false });
-    await center.create({ function: 'org.test.plugin/demo', imageId: 'image-1' });
-    expect(toastMock.notifyInfo).toHaveBeenLastCalledWith('任务已存在', 'Demo · demo 已有未完成任务 #9');
+    await center.create({ function: 'org.test.plugin/demo', imageId: 'image-1', systemId: 'linux@part:2' });
+    expect(invokeMock).toHaveBeenLastCalledWith('sched_task_create', {
+      function: 'org.test.plugin/demo',
+      imageId: 'image-1',
+      nodeId: null,
+      fileName: null,
+      systemId: 'linux@part:2',
+      options: null,
+    });
+    expect(toastMock.notifyInfo).toHaveBeenLastCalledWith('任务已存在', 'Demo · demo 在同一目标上已有未完成任务 #9');
     expect(center.tasks.value).toHaveLength(1);
   });
 
@@ -212,24 +239,38 @@ describe('useTaskCenter', () => {
   });
 });
 
-it('releases a late scheduler subscription and rejects its old callback after disposal', async () => {
+it('releases a late subscription and rejects its old callback after disposal', async () => {
   let resolve!: (stop: () => void) => void; const stop = vi.fn();
   listenMock.mockReturnValueOnce(new Promise(yes => { resolve = yes; }));
   useTaskCenter(); const callback = listenMock.mock.calls[0][1]; resetTaskCenterForTests();
   const replacement = useTaskCenter(); resolve(stop);
   for (let index = 0; index < 8; index++) await Promise.resolve();
-  callback({ payload: { kind: 'taskChanged', task: record() } });
+  callback({ payload: { kind: 'changed', entry: entry() } });
   expect(stop).toHaveBeenCalledOnce(); expect(replacement.tasks.value).toEqual([]);
 });
 
 it('starts following a case context registered after its first consumer', async () => {
-  const release = registerTaskContext({ activeCase: () => null, ensureDetection: () => {}, detectionPending: () => false });
+  const release = registerTaskContext({ activeCase: () => null, ensureDetection: () => {} });
   const center = useTaskCenter(); release();
   const active = useCaseSession().activeCase; active.value = { dir: 'late-case' } as NonNullable<typeof active.value>;
-  invokeMock.mockResolvedValue([]);
-  registerTaskContext({ activeCase: () => active.value, ensureDetection: () => {}, detectionPending: () => false });
+  registerTaskContext({ activeCase: () => active.value, ensureDetection: () => {} });
   for (let index = 0; index < 10; index++) await Promise.resolve();
-  expect(invokeMock).toHaveBeenCalledWith('sched_task_list', { imageId: null, includeInternal: true });
-  applySchedEventForTests({ kind: 'taskChanged', task: record() });
+  expect(invokeMock).toHaveBeenCalledWith('task_list', { imageId: null });
+  applyTaskEntryEventForTests({ kind: 'changed', entry: entry() });
   active.value = null; expect(center.tasks.value).toEqual([]);
+});
+
+it('cancels a task that registers after the click', async () => {
+  useTaskEntries();
+  await Promise.resolve();
+  invokeMock.mockClear();
+  invokeMock.mockResolvedValue(undefined);
+  await cancelTaskEntry('load-1');
+  applyTaskEntryEventForTests({ kind: 'changed', entry: { ...hash(), id: 'load-1', kind: 'imageLoad', imageId: null, status: 'queued' } });
+  // Seen once, the task is cancelled once more; later events send nothing.
+  applyTaskEntryEventForTests({ kind: 'changed', entry: { ...hash(), id: 'load-1', kind: 'imageLoad', imageId: null, status: 'running' } });
+  expect(invokeMock.mock.calls).toEqual([
+    ['task_cancel', { taskId: 'load-1' }],
+    ['task_cancel', { taskId: 'load-1' }],
+  ]);
 });

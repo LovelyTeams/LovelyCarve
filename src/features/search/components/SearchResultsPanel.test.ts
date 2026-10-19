@@ -9,12 +9,11 @@ const ipc = vi.hoisted(() => ({
   history: vi.fn(), start: vi.fn(), hits: vi.fn(), progress: vi.fn(), unlisten: vi.fn(), notify: vi.fn(),
 }));
 vi.mock('../../../lib/ipc/search', () => ({
-  globalSearchHistoryList: ipc.history, globalSearchHitsPage: ipc.hits,
+  globalSearchHistoryList: ipc.history, globalSearchHitsPage: ipc.hits, globalSearchStart: ipc.start,
   onGlobalSearchProgress: ipc.progress, globalSearchExport: vi.fn(), globalSearchHistoryDelete: vi.fn(),
 }));
 vi.mock('../../../lib/ipc/fs/query', () => ({ fsChildren: vi.fn(async () => []) }));
 vi.mock('../../../lib/ipc/taskRuntime', () => ({ taskCancel: vi.fn() }));
-vi.mock('../../tasks/composables/useBuiltinTasks', () => ({ trackedGlobalSearchStart: ipc.start }));
 vi.mock('../../../composables/useToast', () => ({ notifyError: ipc.notify, notifyInfo: vi.fn(), notifyExportSuccess: vi.fn() }));
 
 const runningTask: GlobalSearchHistoryEntry = {

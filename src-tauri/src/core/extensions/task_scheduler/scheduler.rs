@@ -27,6 +27,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     config::{SchedError, SchedResult, SchedulerConfig},
+    dependence::SystemTarget,
     executor::TaskRunner,
     functions::FunctionRegistry,
     model::{SchedEvent, SchedNotice, SchedNoticeKind, SchedTaskRecord, SchedTaskStatus},
@@ -36,6 +37,8 @@ use super::{
 
 pub type RegistrySource = Arc<dyn Fn() -> FunctionRegistry + Send + Sync>;
 pub type RunnerFactory = Arc<dyn Fn(&Path) -> Arc<dyn TaskRunner> + Send + Sync>;
+/// The systems detected on an evidence item (by image id). Blocking.
+pub type SystemsSource = Arc<dyn Fn(&str) -> Vec<SystemTarget> + Send + Sync>;
 type EventSink = Arc<dyn Fn(SchedEvent) + Send + Sync>;
 
 pub(super) struct BoundCase {
@@ -77,6 +80,7 @@ pub(super) struct SchedulerInner {
     run_seq: AtomicU64,
     pub(super) post_actions: PostActionWatcher,
     event_sink: parking_lot::Mutex<Option<EventSink>>,
+    systems_source: parking_lot::RwLock<Option<SystemsSource>>,
     loops_started: AtomicBool,
     /// 派发/巡检/控制面互斥,避免同一任务被并发改写。
     pub(super) tick_lock: tokio::sync::Mutex<()>,
@@ -106,6 +110,7 @@ impl TaskScheduler {
                 run_seq: AtomicU64::new(0),
                 post_actions,
                 event_sink: parking_lot::Mutex::new(None),
+                systems_source: parking_lot::RwLock::new(None),
                 loops_started: AtomicBool::new(false),
                 tick_lock: tokio::sync::Mutex::new(()),
                 row_events: parking_lot::Mutex::new(()),
@@ -115,6 +120,22 @@ impl TaskScheduler {
 
     pub fn set_event_sink(&self, sink: impl Fn(SchedEvent) + Send + Sync + 'static) {
         *self.inner.event_sink.lock() = Some(Arc::new(sink));
+    }
+
+    /// Where system-scope tasks find the systems of an evidence item.
+    /// Without a source no system is known and system tasks cannot be
+    /// created.
+    pub fn set_systems_source(
+        &self,
+        source: impl Fn(&str) -> Vec<SystemTarget> + Send + Sync + 'static,
+    ) {
+        *self.inner.systems_source.write() = Some(Arc::new(source));
+    }
+
+    /// The systems of `image_id` (blocking; see [`SystemsSource`]).
+    pub(super) fn systems_for(&self, image_id: &str) -> Vec<SystemTarget> {
+        let source = self.inner.systems_source.read().clone();
+        source.map(|source| source(image_id)).unwrap_or_default()
     }
 
     pub fn register_post_action_handler(

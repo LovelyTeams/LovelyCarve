@@ -1,569 +1,363 @@
-# LovelyCarve Plugin Protocol (LPP) v1
+# LovelyCarve 插件协议（LPP）v2
 
-LovelyCarve plugins are native libraries (`.dll` / `.so` / `.dylib`) that
-parse filesystems and analyze files or whole evidence items. A plugin exports
-one C ABI entry point; every call carries an LPP v1 method name and a
-MessagePack payload. Plugins receive opaque, read-only logical handles and
-never receive the evidence path. A logical source may represent a raw image,
-partition slice, decrypted view, RAID volume, or another host-managed source;
-a logical file may come from any built-in or plugin-backed filesystem.
+LovelyCarve 插件是原生动态库（`.dll` / `.so` / `.dylib`），连同清单、记录结构与语言包组成一个**插件包**。插件可以分析一个识别出的操作系统、整个检材或用户选中的文件，也可以解析文件系统。插件通过只读视图与文件句柄读取检材，拿不到检材路径；分析结果是带类型的**记录**，按插件声明的记录结构存进检材的 `records.db`。
 
-The same library runs in one of two isolation modes, chosen in its manifest:
+每个插件实例运行在独立的 `lc-plugin-host` 进程里，LovelyCarve 通过它的标准输入输出交换 LPP 帧。只支持 LPP v2：LPP v1 的插件包会被拒绝并提示重新构建；旧案件里 v1 插件写下的结果只读展示（见[旧版本数据](#旧版本数据)）。
 
-| | `isolation = "process"` (default) | `isolation = "in_process"` |
-|---|---|---|
-| Where the library runs | `lc-plugin-host`, a small loader process next to LovelyCarve | inside LovelyCarve |
-| Transport | LPP frames over the loader's stdin/stdout | direct C calls |
-| A crash in the plugin | marks the plugin `crashed`; the next use starts a new loader | ends LovelyCarve |
-| Task cancel / pause / timeout | kills the loader process | asks the call to stop (`cancel`); a plugin that never checks keeps running |
-| Memory limit | Windows Job Object, 512 MiB | none |
-| Restart | new process, new instance | new instance; the library stays loaded |
+## 插件包
 
-Keep the default for anything that parses untrusted evidence. `in_process`
-is meant for trusted, performance-sensitive plugins such as filesystem
-parsers that issue many small reads.
-
-## Discovery, manifest, and trust
-
-LovelyCarve discovers immediate plugin directories under the per-user app-data
-`plugins` directory and the `plugins` directory next to the executable (where
-the installer puts the bundled plugins). Development builds additionally
-inspect `./plugins` and the repository's `plugins/`; an extra root may be
-provided through `LOVELYCARVE_PLUGIN_DIR`. Each directory must contain a
-`plugin.toml` and the library it names:
-
-```toml
-id = "org.example.parser"
-name = "Example Parser"
-version = "0.1.0"
-protocol_min = 1
-protocol_max = 1
-permissions = ["file_materialize", "emit_artifacts"]
-
-[library]
-path = "example"          # example.dll / libexample.so / libexample.dylib
-isolation = "process"     # default; "in_process" loads it into LovelyCarve
-
-# Optional task-scheduling metadata (see "Task scheduling lifecycle"). Every
-# field has a default: manual trigger, not internal, single instance, no pause.
-[task]
-dependence = "org.example.first/stage.one"   # upstream function; omit for a chain root
-trigger = "manually"                         # "auto" roots are created when evidence comes online
-internal = false                             # true hides the task from the default task list
-single_instance = true                       # one active task per (function, evidence)
-can_pause = false                            # allow /task/pause; resume re-runs from scratch
-type = "fileanalyzer"                        # display category (e.g. "longtime", "analysis")
-platform = "linux"                           # target platform; omit for "all"
-support = ["系统信息", "用户列表"]             # sub-items the function covers
-evidence_types = ["disk"]                    # supported evidence types; omit for all
-
-[[capabilities]]
-type = "filesystem"
-filesystem = "vendorfs"
-priority = 100
-
-[[capabilities]]
-type = "file_analyzer"
-analyzer = "vendor.record"
-extensions = ["dat"]
-mime_types = ["application/octet-stream"]
-priority = 10
-
-[[capabilities]]
-type = "evidence_analyzer"
-analyzer = "vendor.baseinfo"
-display = "厂商基本信息"                      # function display name; defaults to "<plugin> · <analyzer>"
+```text
+org.example.demo/
+├── plugin.toml        # 清单：身份、库、内存上限、权限、分析器与选项
+├── demo.dll           # 库（Linux 为 libdemo.so，macOS 为 libdemo.dylib）
+├── schema.json        # 构建时从库导出的分析器与记录结构
+└── locales/
+    ├── en.toml        # 英文标签
+    └── zh-CN.toml     # 可选：清单无字段承载的中文名（如分类名）
 ```
 
-`library.path` is relative to the plugin directory and may not leave it. A
-path without a `.dll` / `.so` / `.dylib` extension is a library name and gets
-the platform prefix and suffix (`linuxinfo` → `linuxinfo.dll` on Windows,
-`liblinuxinfo.so` on Linux, `liblinuxinfo.dylib` on macOS); a path with one
-is used as written. On Windows the library's own directory is searched first
-for its dependent DLLs. Manifests with the former `[process]` section are
-rejected with a message that points here.
+### 发现
 
-Discovered plugins are trusted on discovery — every plugin with a valid
-manifest starts in the `configured` state and can be probed, dispatched, and
-analyzed with immediately. There is no approval step and no disable switch; a
-SHA-256 fingerprint of the complete directory is computed for display only
-(settings page, `PluginDefinition`) and deliberately does not gate execution.
-Symlinks and special filesystem entries are rejected, and fingerprinting is
-capped at 10,000 files and 512 MiB. A loaded library is never unloaded (an
-abandoned call may still run inside it), so replacing a plugin library takes
-effect on the next application start. Restarting a plugin ends its instance —
-the `lc-plugin-host` process, or the in-process instance once its calls have
-returned — closes sessions, unregisters logical sources, and removes
-file/materialization leases.
+LovelyCarve 启动时扫描以下根目录，每个根目录本身可以是插件包，也可以包含若干插件包目录：
 
-Permissions in v1 are:
+1. 用户数据目录的 `plugins`（安装位置，排在最前）；
+2. 程序目录旁的 `plugins`（安装包附带的内置插件）；
+3. 环境变量 `LOVELYCARVE_PLUGIN_DIR` 指定的目录；
+4. 开发构建另外扫描当前目录的 `plugins` 与仓库的 `plugins/`。
 
-- `file_materialize`: permits a logical file to be copied into a host-owned
-  temporary lease when a native library strictly requires a path.
-- `emit_artifacts`: permits the plugin to return artifacts, timeline events, or
-  findings. Summary-only analysis does not need this permission.
-- `network`: makes network intent visible in the settings page and, for the
-  process mode, to the loader (`LOVELYCARVE_NETWORK_PERMISSION`). It is a
-  declaration/consent boundary in v1, not an OS firewall; installations
-  requiring network denial must add an operating-system sandbox.
+同一插件 ID 以先扫描到的为准。清单、`schema.json` 或语言包无效的插件包不会加载，原因列在「设置 → 插件」；LPP v1 清单得到明确的“请用 SDK 0.2 重新构建”提示。
+
+发现即信任：没有审批或停用开关。插件目录的 SHA-256 指纹只用于展示，首次列出插件时计算（上限 10,000 个文件、512 MiB），不参与执行判断。已加载的库不会卸载，替换库文件需要重启应用或重新安装插件包。
+
+### 安装与卸载
+
+`.lcpkg` 是插件包目录的 ZIP 压缩包：`plugin.toml` 位于压缩包根部，或位于唯一的顶层目录中。安装时：
+
+- 压缩包最多 4096 个条目、单个条目 512 MiB、解压后总计 2 GiB；条目路径不能离开包目录，不能是链接；
+- 先解压到安装根目录下的临时目录，校验清单、`schema.json`、语言包与当前平台的库文件，全部通过后再以 `<安装根目录>/<插件 ID>` 原子替换；
+- 同 ID 的已安装版本被替换，替换前停止它的共享实例；内置插件不能被替换或卸载；
+- 卸载删除插件包目录；已发布的分析结果保留在案件里，结果树与列名继续使用存下的标签。
+
+### 日志
+
+插件进程的 stderr 记入 LovelyCarve 日志（target `plugin`），同时写入程序目录下的 `logs/plugins/<插件 ID>.log`（8 MiB 轮转、保留一代）。SDK 的日志调用带 `ERROR` / `WARN` / `INFO` / `DEBUG` 前缀，加载器自身的诊断记为 `HOST`。
+
+## plugin.toml
+
+```toml
+id = "org.example.demo"
+name = "示例插件"
+version = "1.2.0"
+protocol = 2
+library = "demo"          # demo.dll / libdemo.so / libdemo.dylib
+memory = "1GiB"           # 插件进程内存上限，缺省 2GiB
+permissions = []          # file_materialize、network
+
+[[analyzer]]
+id = "base"
+name = "基本信息"
+scope = "system"          # system、evidence 或 files
+platforms = ["linux"]     # 仅 system：适用的系统族，缺省为全部
+trigger = "manual"        # manual（缺省）或 auto
+category = "baseinfo"     # 结果树分类，缺省 analysis
+provides = ["timezone"]   # 成功运行后发布的画像事实
+requires = []             # 自动运行等待的画像事实
+inputs = ["etc/passwd", "home/*/.bash_history"]
+
+[[analyzer.option]]
+id = "items"
+type = "multi"            # multi、choice、flag 或 text
+label = "子项"
+choices = [{ id = "users", label = "用户" }, { id = "groups", label = "用户组" }]
+default = []              # multi 为空 = 全部
+
+[[analyzer]]
+id = "mail"
+name = "邮件文件"
+scope = "files"
+extensions = ["eml", "msg"]
+mime_types = ["message/rfc822"]
+
+[[filesystem]]            # 文件系统解析（冻结的 fs.* 方法）
+id = "vendorfs"
+priority = 100
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` | 1–128 个 ASCII 字母、数字、`.`、`-`、`_` |
+| `protocol` | 必须为 `2` |
+| `library` | 包目录内的相对路径；没有库扩展名时按平台补前后缀 |
+| `memory` | `64MiB`–`64GiB`，缺省 `2GiB`，Windows 以 Job Object 强制 |
+| `permissions` | `file_materialize`：允许 `file.materialize`；`network`：向加载器声明联网意图（`LOVELYCARVE_NETWORK_PERMISSION`），不是操作系统防火墙 |
+| `analyzer.scope` | `system`：一个识别出的系统；`evidence`：检材的全部卷；`files`：用户选中的文件 |
+| `analyzer.platforms` | 仅 system 作用域，取值 `linux`、`windows`、`macos`、`esxi`、`mikrotik`、`openwrt`、`dingtalk` |
+| `analyzer.trigger` | `auto` 的分析器在检材上线或所需事实发布时自动建任务；files 作用域只能手动 |
+| `analyzer.inputs` | system / evidence 作用域的输入路径模式（最多 64 个），宿主在运行前解析成输入文件；evidence 作用域的模式在每个卷下匹配 |
+| `analyzer.extensions` / `mime_types` | 仅 files 作用域：接受的扩展名（小写、无点）与 MIME |
+| `analyzer.internal` | 默认任务列表中隐藏 |
+| `analyzer.single_instance` | 缺省 `true`：同一作业最多一个未结束的任务 |
+| `analyzer.option` | 运行前可选的选项；`multi` / `choice` 必须有 `choices`，`default` 类型须与 `type` 一致 |
+
+清单中的名称与标签是中文默认值；其他语言放在 `locales/` 中。
+
+## 记录结构
+
+分析结果由带类型的记录组成。每种记录类型有一份结构（`RecordSchema`）：
+
+```json
+{
+  "type": "linux.login",
+  "label": "登录记录",
+  "title": "{user} @ {terminal}",
+  "fields": [
+    { "id": "user", "label": "用户", "kind": "text", "key": true },
+    { "id": "terminal", "label": "终端", "kind": "text" },
+    { "id": "time", "label": "登录时间", "kind": "timestamp", "timeline": "login" },
+    { "id": "raw", "label": "原始记录", "kind": "json", "hidden": true },
+    { "id": "result", "label": "结果", "kind": "enum", "choices": [{ "id": "ok", "label": "成功" }] }
+  ]
+}
+```
+
+- `type` 是带命名空间的小写标识（`linux.login`）；一个插件最多 256 种记录类型，每种最多 128 个字段。
+- 字段类型（`kind`）决定存储、显示、排序与检索：`text`、`int`、`float`、`bool`、`timestamp`、`size`（字节数）、`duration`（秒）、`path`、`hash`、`ip`、`enum`、`list`（文本列表）、`json`。文本类值最长 256 KiB，`list` 最多 4096 项，`json` 最深 8 层、4096 个条目。
+- `key` 字段组成记录身份与缺省标题；`title` 是基于字段 id 的标题模板；`hidden` 字段只在详情中显示；`category` 覆盖结果项的分类。
+- `timestamp` 值为 RFC 3339。带时区偏移的时间可设 `timeline` 角色（`login`、`modified` 等），并投影到案件时间线；没有偏移的本地时间（时区未知）照常存储、显示与排序，但不进入全局时间线，避免被当作 UTC。
+
+宿主为每种记录类型建一张类型化的表（时间戳另有排序列），按字段类型排序与检索；结构随结果一起保存，插件卸载后结果仍可读。
+
+### schema.json 与结构哈希
+
+库在 `plugin.hello` 中报告自己实现的分析器、文件系统和记录结构，以及结构哈希 `schema_hash`（`fnv1a64:` 前缀）。插件构建（`just build-plugins`）运行 `lc-plugin-host --describe --library <库>`，把这份信息写成包内的 `schema.json`：界面在首次运行前就能显示记录类型与列，每次握手也用它核对库——库的分析器与清单不符、结构与 `schema.json` 不一致或哈希不匹配时，启动失败并提示重新构建插件包。
+
+## 语言包
+
+`locales/<语言>.toml` 是键值表，键使用稳定 id：
+
+| 键 | 内容 |
+| --- | --- |
+| `plugin.name` | 插件名 |
+| `analyzer.<分析器>` | 分析器名 |
+| `category.<分类>` | 分类名（清单没有分类名字段，中文名也放在 `zh-CN.toml`） |
+| `option.<分析器>.<选项>`、`option.<分析器>.<选项>.<选项值>` | 选项及其取值 |
+| `record.<记录类型>`、`field.<记录类型>.<字段>` | 记录类型与列 |
+| `choice.<记录类型>.<字段>.<取值>` | 枚举字段的取值 |
+
+文件名形如 `en.toml`、`zh-CN.toml`；单个键最长 256 字节、文本最长 4096 字节。界面按当前语言取包内译文，缺失时显示插件声明的中文。常见分类（`baseinfo`、`system`、`browserinfo` 等）由 LovelyCarve 命名。
 
 ## C ABI v1
 
-The library exports `lovelycarve_plugin_v1`. The host calls it with its
-function table (`call`, `free_buffer`, `log` plus an opaque context) and
-receives the plugin table (`describe`, `call`, `cancel`, `free_buffer`,
-`destroy` plus an opaque instance). Each table starts with its ABI version and
-struct size; a host or plugin that does not support the other side's version
-fails the handshake. `plugins/sdk/include/lovelycarve_plugin.h` declares the
-layout for C and C++; `plugins/sdk/src/abi.rs` is the reference definition.
+库导出 `lovelycarve_plugin_v1`。宿主传入自己的函数表（`call`、`free_buffer`、`log` 与不透明上下文），得到插件函数表（`describe`、`call`、`cancel`、`free_buffer`、`destroy` 与不透明实例）。每张表以 ABI 版本和结构体大小开头，版本不支持时握手失败。`plugins/sdk/include/lovelycarve_plugin.h` 为 C / C++ 声明布局，`plugins/sdk/src/abi.rs` 是参考定义。
 
-- A plugin call (`call(instance, call_id, method, params, out)`) runs one
-  host → plugin method (`fs.*`, `analyzer.*`, `plugin.shutdown`) on the
-  calling thread and fills `out` with the MessagePack result
-  (`LC_STATUS_OK`) or a `{code, message}` error (`LC_STATUS_ERROR`). The
-  `call_id` identifies the call for `cancel`.
-- A host call (`call(context, method, params, out)`) serves one plugin → host
-  method (`source.*`, `file.*`, `evidence.*`, `host.progress`) the same way.
-- `describe` returns the `plugin.hello` params (protocol range, identity and
-  capabilities); the host checks them against the manifest.
-- A reply buffer is filled by the callee and released by the caller through
-  the callee's `free_buffer`, so the two sides may use different allocators.
-- Every function may be called concurrently from any thread. Calls are
-  re-entrant: a plugin call may make host calls, and an in-process host call
-  may in turn browse a filesystem served by the same plugin.
-- The entry point may be called again after a restart to create a fresh,
-  independent instance, possibly while an abandoned one is still finishing;
-  instances must not share process-global state.
-- Panics and other internal failures must not cross the boundary; the Rust
-  SDK reports them as `PLUGIN_PANIC` errors.
+- 插件调用 `call(instance, call_id, method, params, out)` 在调用线程上执行一个宿主 → 插件方法，`out` 填 MessagePack 结果（`LC_STATUS_OK`）或 `{code, message}` 错误（`LC_STATUS_ERROR`）；`call_id` 供 `cancel` 使用。
+- 宿主调用 `call(context, method, params, out)` 以同样方式服务一个插件 → 宿主方法。
+- 回复缓冲由被调方填充、调用方通过被调方的 `free_buffer` 释放，两侧可用不同分配器。
+- 所有函数都可能被多线程并发调用；调用可重入：插件调用中可以发起宿主调用。
+- 重启后入口可能再次被调用以创建新实例，旧实例可能仍在收尾；实例不得共享进程级全局状态。
+- panic 等内部故障不得越过边界；Rust SDK 把它们报告为 `PLUGIN_PANIC`。
+
+C / C++ 插件按本文手写载荷：载荷是以字段名为键的 MessagePack map，未知字段被忽略，可选字段可以省略。
+
+## 传输与握手
+
+LovelyCarve 以 `lc-plugin-host --library <库>` 启动加载器（在程序目录查找；开发构建另查 `plugins/target/{debug,release}`；`LOVELYCARVE_PLUGIN_HOST` 可覆盖位置）。加载器把宿主请求转成工作线程上的插件调用，把插件的宿主调用转成发回 LovelyCarve 的请求：
+
+- stdin 是协议输入、stdout 是协议输出、stderr 是日志；
+- 每帧是 4 字节大端长度加 MessagePack，帧版本字段为 `2`，单帧上限 8 MiB；
+- 宿主请求 ID 为偶数，加载器请求 ID 为奇数；二进制数据使用 MessagePack bin，不用 Base64；
+- 读写循环在等待回复期间保持运行，插件处理宿主请求时可以继续调用宿主；
+- 宿主最多 256 个待回复的出站请求，同时处理最多 16 个插件 → 宿主请求。版本、ID 奇偶、重复 ID、超大帧或意外消息会关闭连接并让待回复调用失败。超过帧上限的回复返回 `RESOURCE_LIMIT`。
+
+加载器的第一条消息是奇数 ID 的 `plugin.hello`（库的 `describe` 输出：协议版本、插件 ID、SDK 版本、分析器、文件系统、记录结构与结构哈希）。宿主核对清单与 `schema.json` 后回复 `{protocol: 2, host, version}`；协议不符、ID 不符、分析器或文件系统缺失、结构不一致都会结束启动。握手必须在 5 秒内完成。
+
+## 分析运行
+
+每个任务启动一个专属插件实例（独立的 `lc-plugin-host` 进程，带清单的内存上限）；同一插件的多个任务并行运行，停止一个任务只结束它自己的进程。宿主先准备运行，再发送 `run.start`：
+
+1. **目标与视图**：system 作用域打开所选系统的系统视图，evidence 作用域打开检材视图，files 作用域没有视图，输入就是选中的文件。
+2. **输入**：system / evidence 作用域按清单 `inputs` 在视图中查找文件（evidence 作用域的模式加上 `*/` 前缀，在每个卷下匹配），按路径排序，最多 100,000 个；打不开的输入记为告警。
+3. **选项与画像事实**：用户选项按清单校验，缺省值补齐；画像事实取整个检材与该目标已发布的事实。
+4. **暂存运行**：在 `records.db` 中写入一条暂存运行，记录插件版本、目标、选项、事实、输入清单与结构哈希。
+
+```text
+run.start  → { run_id, analyzer, target, inputs: [FileInfo], options, profile, locale }
+           ← { summary? }
+target     = { kind: "files" }
+           | { kind: "system",   view: ViewInfo }
+           | { kind: "evidence", view: ViewInfo }
+ViewInfo   = { view_id, label, system?: { id, family, product, version?, root }, mounts: [{ path, root, source }] }
+FileInfo   = { file_id, name, size, mime?, view_path?, root?, root_path?, node_id?, deleted, timestamps }
+```
+
+`locale` 是界面语言，供插件自己生成的文字使用。单次运行最长 24 小时；进度上报让调度器的看门狗知道运行仍在进行。
+
+运行期间插件可以调用：
+
+| 方法 | 载荷 | 说明 |
+| --- | --- | --- |
+| `run.emit` | `{ run_id, records: [{ type, values, title?, severity?, sources? }] }` → `{ accepted }` | 一批最多 4096 条记录；`values` 按结构字段顺序；宿主写入后才回复，批次即背压 |
+| `run.warn` | `{ run_id, code, message, file_id? }` | 运行无法完成的部分，随结果保存，不使运行失败；每次运行最多保存 10,000 条 |
+| `run.progress` | `{ run_id, current, total?, message? }` | 任务进度 |
+| `file.read` / `file.readv` | `{ file_id, offset, length }` / `{ file_id, ranges }` | 单次读取最多 4 MiB；`readv` 最多 64 段、合计 8 MiB 减 4 KiB；读到文件末尾截断 |
+| `file.materialize` / `file.release` | `{ file_id }` / `{ lease_id }` | 需要 `file_materialize` 权限：在宿主临时目录生成副本；单个文件 4 GiB，每次运行最多 16 个租约、合计 8 GiB；运行结束时全部清理 |
+| `view.stat` / `view.open` | `{ view_id, path }` | 节点信息，或打开文件得到 `FileInfo`；不存在时返回 nil |
+| `view.list` | `{ view_id, path, skip, limit }` → `{ nodes, total }` | 目录分页，每页最多 512 个节点 |
+| `view.find` | `{ view_id, patterns, cursor? }` → `{ paths, visited, cursor? }` | 1–64 个 glob 模式（`**` 跨目录，`*` / `?` 限于一级名称，ASCII 大小写不敏感）；游标一次性；每次最多遍历 64 个目录、返回 1024 条路径，总计最多访问 400 万个节点、深度 128；每次运行最多 8 个未完成的查找 |
+
+记录的 `sources` 是来源：`{ root, path, node_id?, offset?, length?, note? }`，`root` 是卷键、`path` 是卷内路径，`note` 说明记录在来源中的位置（如“第 12 行”）。每条记录最多 16 个来源。从视图或输入打开的文件，SDK 自动填写卷键、卷内路径与节点 ID；界面据此定位源文件。
+
+插件读取检材遇到坏扇区时，宿主按检材的容错规则以零填充并记录坏区，这些位置随运行保存（运行审计中的“读不出的源字节”）；完全读不出的位置返回错误。
+
+### 视图
+
+视图是一棵只读路径树，路径为 POSIX 风格、相对视图根：
+
+- **系统视图**：所选系统的系统卷在根部，它挂载的卷出现在挂载点——Linux 按 `/etc/fstab` 匹配 `UUID=` / `LABEL=`（超级块）、`PARTUUID=`（GPT 分区 GUID）、`/dev/mapper/<vg>-<lv>` 与 `/dev/<vg>/<lv>`（LVM 名称），`subvol=` 挂载 Btrfs 子卷；`/dev/sda2` 这类依赖启动顺序的设备路径不映射。Windows 按 `MountedDevices` 的盘符挂载，系统卷同时在自己的盘符下可达。
+- **检材视图**：检材的每个卷是一个以卷键命名的顶层目录（`part:2/etc/passwd`）；LVM 容器本身不列出，它的逻辑卷各是一个卷。文件夹、压缩包、AD1 等逻辑检材的根卷 `root` 直接是其内容。
+
+名称先精确匹配，再按 ASCII 大小写不敏感匹配；同名时现存条目优先于已删除条目。`stat` / `open` 跟随符号链接（最多 16 跳），绝对链接目标按视图根解析，因此 `/etc/os-release → ../usr/lib/os-release` 或指向另一挂载卷的链接与运行中的系统一致；`list` 不跟随链接。`..` 只在链接目标中生效，不能离开视图。
+
+### 系统识别
+
+识别对检材的每个卷运行操作系统识别；Btrfs 卷与逻辑检材的根卷还会向下探查一级目录（Btrfs 子卷 `@`、文件夹检材中的 `rootfs/`）。每个系统得到一个检材内稳定的 ID（`linux@part:2`、`linux@root/rootfs`）。识别结果按检材缓存，卸载检材时清除。
+
+## 结果发布
+
+运行成功后，宿主在一个事务中把暂存运行发布为该**作业**的当前结果。作业是（分析器、检材、目标），目标是系统 ID、文件节点或整个检材：
+
+- 同一作业的上一次已发布运行变为“已替换”：保留审计行，删除记录及其时间线投影；
+- 带时区偏移、声明了时间线角色的时间戳投影到案件时间线；
+- 写入运行摘要、记录数、告警数与读不出的源字节；
+- 失败、取消或超时时丢弃暂存运行；暂存运行带应用实例的所有者标记，异常退出遗留的暂存运行在该检材下一次开始运行时清理。
+
+删除任务会删除它发布的运行及其时间线投影。结果树按检材 → 分类 → 分析器运行 → 记录类型组织，分页查询固定在结果树节点给出的运行上，翻页或导出期间不会混入新发布的结果。
+
+### 画像事实与自动任务
+
+画像事实（`timezone`、`hostname`、`users` 等）是记录类型 `profile.fact` 的记录，按目标保存；Rust SDK 的 `run.provide(key, value)` 写入它们。分析器在清单 `provides` 中声明会发布的事实，在 `requires` 中声明自动运行前需要的事实：
+
+- 检材上线时，为每个自动触发、无需事实的分析器建任务：evidence 作用域一个，system 作用域在每个适用的识别系统上各一个；
+- 任务成功后，等待它所发布事实的自动分析器在同一系统（或整个检材）上建任务；所需事实都要有成功的发布者；同一作业已有过任务时不再自动创建，自动链因此不会循环；
+- 失败或取消不创建后续任务；files 作用域只由用户发起。
+
+运行开始时，`run.start` 的 `profile` 带上整个检材与该目标已发布的事实，同名时目标自身的事实优先。
+
+## 任务调度
+
+调度器（`src-tauri/src/core/extensions/task_scheduler/`）把任务保存在案件台账 `case.db` 的 `task` 表中：
+
+- **状态**：`created → queued → running → success | failed | cancel`，`offline` 为可恢复的中间态。任务不能暂停：取消即结束执行，重新分析从头开始。旧案件里处于 `pause` 的任务行可以开始（从头再跑）或取消。
+- **作业唯一**：同一作业最多一个未结束的任务；`sched_task_create` 命中时返回已有任务（`created: false`）。整个检材的作业另有台账的部分唯一索引兜底。
+- **并发**：派发循环按创建顺序领取 `created` 任务，排队与运行中的任务总数不超过 `LOVELYCARVE_TASK_MAX_RUNNING`（缺省 4，最多 32）。
+- **取消与重启**：取消运行中的任务会撤销其令牌并结束它的插件进程，同插件的其他任务继续；被替代的执行迟到的结果被丢弃。终态任务重启时创建新任务（`info.parentTid` 指向原任务），离线任务重新排队。只有终态任务可以删除。
+- **看门狗**：运行中的任务在更新超时（`LOVELYCARVE_TASK_UPDATE_TIMEOUT`，缺省 900 秒）内没有进度时判为失败（通知 `taskTimeout`）；插件进程消失超过离线超时（`LOVELYCARVE_TASK_OFFLINE_TIMEOUT`，缺省 60 秒）时判为离线（通知 `taskOffline`），自动任务重新排队、手动任务判失败。打开案件时，上次会话遗留的 `queued` / `running` 任务按同样规则处理。
+- **收尾动作**：检材的全部任务结束后去抖 5 秒，发出 `allTasksFinished` 通知并执行 `task_followup.actions` 中的动作。
+- **任务中心**：插件任务与内置任务一起由 `task_list` 列出（插件任务的 id 为 `plugin:<任务 id>`，条目带完整任务行），变更走 `task-entry` 事件：`{ kind: "changed", entry }`、`{ kind: "removed", id }` 或 `{ kind: "notice", notice }`；`task_cancel` 也接受 `plugin:<任务 id>`。
+
+任务行的 `params` 是作业目标与选项（`nodeId` / `fileName`、`systemId` / `targetLabel`、`options`），`result` 是摘要、记录数、时间点数、告警数、读不出的源字节数与运行 ID。
+
+## 文件系统插件
+
+声明 `[[filesystem]]` 的插件包为浏览提供一个共享实例（与任务实例分开），沿用冻结的方法：
+
+- `fs.probe`：识别逻辑源，返回文件系统、置信度与可选标签；置信度 0 表示不匹配。
+- `fs.open`：创建会话并返回不透明根节点；`fs.children`、`fs.children_page`（每页 1000 项，单目录上限 1,000,000 项）、`fs.stat`、`fs.read_range`（大范围按 4 MiB 分块）、`fs.close`。
+- 插件 → 宿主：`source.info`、`source.read`（单次 4 MiB）、`source.readv`（最多 128 段、合计 8 MiB 减 4 KiB）。
+
+元数据调用 15 秒超时，目录调用 60 秒，打开与读取 120 秒；超时的请求被取消。插件节点 ID 在到达前端前包上插件与会话身份，宿主不让插件解释宿主的路由 ID。共享实例按需启动；崩溃时状态记为 `crashed`，下次使用时重新启动。
+
+## 进程边界与资源限制
+
+`lc-plugin-host` 以清空的环境变量启动（只保留定位系统库与临时目录所需的少数变量），Windows 上不带控制台窗口，并加入 Job Object：关闭即终止、单进程、清单声明的内存上限。所有平台都有 kill-on-drop、RPC / 帧 / 并发上限、超时、句柄归属与读取范围检查。非 Windows 构建尚无原生的进程树或内存沙箱，不受信任的插件应部署在操作系统沙箱中。
+
+句柄（文件、视图、租约、查找游标）属于发起的运行；运行结束、任务取消、插件重启或检材卸载时全部失效。
 
 ## Rust SDK
 
-`EvidenceVolume::list` prefers `evidence.list_page` (`evidence_id`, `root`, `path`,
-`skip`, `limit`); replies contain `nodes` and `total`, with at most 512 nodes.
-This additive LPP v1 method keeps large directories below the 8 MiB frame
-limit. The SDK checks progress and a stable total, supports cancellation on
-every page, and falls back to `evidence.list` on older hosts returning
-`METHOD_NOT_FOUND`. The original unpaged method remains available to old DLLs.
-
-`EvidenceVolume::find_files_by_name(names, prefixes, suffixes)` uses the additive
-`evidence.find_names_page` method. Filters are literal ASCII case-insensitive
-file-name matches, not glob patterns: 1..32 strings total, each nonempty and at
-most 128 bytes without separators or NUL. Requests carry `evidence_id`, `root`,
-the three arrays and nil/string `cursor`; replies carry `paths`, cumulative
-`visited`, and nil/string `cursor`. A cursor is single-use, owner/root scoped.
-Each call traverses up to 64 directories by native node ID, skips deleted nodes
-and links, checks cancellation per directory/node, and reports unreadable
-directories as errors. Bounds are 4 million nodes, depth 128, 262144 directories,
-4096 matches, 4096 bytes per path and 2 MiB total paths; each evidence handle
-allows 8 pending scans. Handle cleanup/image unload drops cursors. Both isolation
-modes use the same dispatcher; process task cancellation and in-process connection
-closure cancel native batches. The SDK checks cancellation between batches,
-monotonic counts, cursor reuse and response budgets, and returns only completed
-sorted results. Older hosts return `METHOD_NOT_FOUND`; callers may explicitly
-fall back to a bounded directory walk.
-
-`plugins/sdk` (crate `lovelycarve-plugin`) implements the ABI. Plugin authors
-implement `FileSystemParser` (with a `Volume` per opened session),
-`FileAnalyzer`, `EvidenceAnalyzer`, or any combination, register them on a
-`Plugin` whose id, name and version match `plugin.toml`, and export it:
+`plugins/sdk`（crate `lovelycarve-plugin`）实现 ABI 与协议，`plugins/sdk-derive` 提供 `#[derive(Record)]`：
 
 ```rust
-fn plugin() -> lovelycarve_plugin::Plugin {
-    lovelycarve_plugin::Plugin::new("org.example.parser", "Example Parser", "0.1.0")
-        .filesystem(ExampleParser)
-        .file_analyzer(ExampleAnalyzer)
+use lovelycarve_plugin::{export_plugin, Plugin, Record, Result, Run, Timestamp};
+
+#[derive(Record)]
+#[record(id = "demo.user", label = "用户", title = "{name}")]
+struct User {
+    #[field(label = "用户名", key)]
+    name: String,
+    #[field(label = "UID")]
+    uid: i64,
+    #[field(label = "最后登录", timeline = "login")]
+    last_login: Option<Timestamp>,
 }
 
-lovelycarve_plugin::export_plugin!(plugin);
+fn base(run: &Run) -> Result<()> {
+    let view = run.require_view()?;
+    if let Some(passwd) = view.open("etc/passwd")? {
+        for (index, line) in passwd.read_lines(1 << 20)?.iter().enumerate() {
+            let fields: Vec<&str> = line.split(':').collect();
+            if fields.len() < 7 {
+                run.warn_file(&passwd, "MALFORMED_LINE", format!("第 {} 行字段不足", index + 1))?;
+                continue;
+            }
+            run.record(&User { name: fields[0].to_owned(), uid: fields[2].parse().unwrap_or(-1), last_login: None })
+                .from(&passwd)
+                .note(format!("第 {} 行", index + 1))
+                .emit()?;
+        }
+    }
+    if let Some(hostname) = view.read_text("etc/hostname", 256)? {
+        run.provide("hostname", hostname.trim())?;
+    }
+    Ok(())
+}
+
+fn plugin() -> Plugin {
+    Plugin::new("org.example.demo").record::<User>().analyzer("base", base)
+}
+
+export_plugin!(plugin);
 ```
 
-The crate is a `cdylib` whose `[lib] name` matches `library.path`. Plugin
-code runs on host worker threads and may block; all API calls are
-synchronous. The SDK provides:
+- `#[record(id, label, title?, category?)]`；`#[field(label, key, hidden, timeline = "…", kind = "…", choices = "…", rename = "…", skip)]`；字段类型由 Rust 类型推断（`String`、整数、浮点、`bool`、`Timestamp`、`Vec<String>`、`Json`，`Option<_>` 表示可缺失），`kind` 可在同一表示下选更具体的类型（`size`、`duration`、`path`、`hash`、`ip`、`enum`）；枚举取值写成 `kind = "enum", choices = "success=成功,failure=失败"`。只在运行时才知道列的解析器使用 `DynamicRecord` 与 `Plugin::schema`。
+- `Run`：`view` / `require_view`、`system`、`inputs`、`options`（`list`、`wants`、`flag`、`text`）、`profile`（`timezone`、`hostname`）、`record` / `emit` / `emit_from`、`provide`、`warn` / `warn_file`、`progress`、`set_summary`、`check_cancelled`、`log`。记录在 SDK 中按结构校验后成批发送。
+- `View`：`stat`、`exists`、`is_file`、`is_dir`、`list`（自动分页）、`open`、`read` / `read_text` / `read_lines`、`find`（最多 4096 条结果）、`source`。
+- `FileRef`：`read_at`、`read_all`、`read_text`、`read_lines`、`readv`、`reader`（`Read + Seek`）、`materialize`、`source` / `source_at`。
+- `Timestamp`：`from_unix`、`from_unix_millis`、`from_unix_nanos`、`with_offset`、`local`（时区未知的本地时间）、`parse`。
+- 文件系统：实现 `FileSystemParser` 与 `Volume`，以 `Plugin::filesystem` 注册。
+- 测试：feature `testing` 的 `Harness` 通过真实的 C ABI 入口扮演宿主，在本地目录上运行分析器（`Fixture::system`、`Fixture::evidence`、`Fixture::files`），并按结构校验每条记录。
 
-- `Source` (block device of `fs.probe` / `fs.open`) with a 64 KiB × 64-block
-  LRU cache, 4 MiB host-read chunking and `readv`;
-- `File` (`read`, `readv`, `materialize` with a lease released on drop);
-- `Evidence` / `EvidenceVolume` (`roots`, `find_root`, `stat`, `list`,
-  `read`, `read_text`, `read_lines`, `sub_items` / `wants`, `progress`);
-- `Context`: every host call made through a handle bound to the running
-  request fails with `CANCELLED` once the host cancels it, so analyzers that
-  read evidence stop promptly; CPU-only loops should poll
-  `context.check_cancelled()`;
-- result types (`AnalysisResult`, `Artifact`, `TimelineEvent`, `Finding`,
-  `ResultNode`, an ordered `Attributes` map) and `LogLevel` logging to the
-  LovelyCarve log (target `plugin`) and to that plugin's own file under the
-  executable directory (`logs/plugins/<plugin id>.log`, rotated at
-  8 MiB, keeping one previous generation).
+插件 crate 是 `cdylib`，`[lib] name` 与清单的 `library` 一致。插件代码在宿主工作线程上运行，可以阻塞；宿主取消运行后，所有宿主调用返回 `CANCELLED`，纯计算循环应轮询 `check_cancelled()`。
 
-The workspace in `plugins/` holds the SDK, `lc-plugin-host` and the bundled
-plugins. `just build-plugins` builds it and copies each plugin library next to
-its `plugin.toml`; `just build-plugins --release` does the same for bundles.
-`just test-plugins` and `just clippy-plugins` test and lint the workspace.
+## 应用接口
 
-## Transport (process mode)
+| 命令 | CLI | 用途 |
+| --- | --- | --- |
+| `plugin_list` | `plugins list` | 插件包、分析器、记录类型、语言包、加载失败的包与安装目录 |
+| `plugin_install` / `plugin_uninstall` | `plugins create` / `plugins delete` | 安装 `.lcpkg`、卸载已安装的插件包 |
+| `plugin_restart` | `plugins restart` | 重启文件系统插件的共享实例 |
+| `sched_task_functions` | `plugins functions list` | 可调度的分析器：作用域、平台、选项与画像事实 |
+| `sched_systems_list` | `plugins systems list` | 检材上识别出的系统及其挂载 |
+| `sched_task_create` / `cancel` / `start` / `restart` / `remove` | `plugins tasks …` | 任务生命周期 |
+| `task_list` / `task_status` / `task_cancel` | `tasks list` / `get` / `cancel` | 任务中心：插件任务与内置任务的统一列表 |
+| `analysis_result_tree`、`analysis_records_page`、`analysis_record_detail`、`analysis_run_get` | `analysis tree get`、`analysis records list` / `get`、`analysis runs get` | 结果树、按列排序与检索的分页记录、记录详情、运行审计 |
 
-LovelyCarve starts `lc-plugin-host --library <path>` from the executable's
-directory (development builds also look in `plugins/target/{debug,release}`;
-`LOVELYCARVE_PLUGIN_HOST` overrides the location). The loader turns host
-requests into plugin calls on worker threads and plugin host calls into
-requests back to LovelyCarve:
+前端经 `src/lib/ipc/plugins.ts`、`tasks.ts`、`taskRuntime.ts`、`analysisResults.ts` 调用。界面：「设置 → 插件」安装、卸载并查看插件包；任务中心的「快速分析」按所选系统列出系统级与检材级分析器；文件列表右键「插件分析任务…」运行文件级分析器（有选项时先填写）；「分析结果」按分析器运行列出记录类型，表格列与排序来自记录结构，运行信息显示审计。
 
-- stdin is protocol input, stdout is protocol output, and stderr is logs;
-  SDK log calls carry an `ERROR` / `WARN` / `INFO` / `DEBUG` prefix;
-  unprefixed loader diagnostics are recorded as `HOST`.
-- Each frame is a four-byte big-endian payload length followed by MessagePack.
-- Frames are limited to 8 MiB. `source.read` is limited to 4 MiB.
-- Host request IDs are even; loader request IDs are odd.
-- Binary data uses MessagePack binary values, never Base64.
+## 旧版本数据
 
-The reader and writer loops remain active while an RPC awaits its response. A
-plugin may therefore call `source.read` while handling an outer host request
-without deadlocking the connection.
+- LPP v1 插件包（`protocol_min` / `[[capabilities]]` / `[task]` / `[library]` 表）不再加载，需用 SDK 0.2 重新构建。
+- 旧案件中 v1 插件写进检材 `analysis.db` 的结果在结果树中以“旧版”标记只读展示：没有字段类型、排序只按文本、来源取自旧的 `source.*` 属性，也没有运行审计。新运行一律写入 `records.db`，旧结果不迁移、不改写。
+- 旧任务行中的平台与子项参数在读取时忽略；旧结果的 `artifactCount` 读作记录数。
 
-The host keeps at most 256 outbound requests pending and processes at most 16
-concurrent plugin-to-host requests. Invalid versions, request-ID parity,
-duplicate IDs, oversized frames, or unexpected messages close the connection
-and fail pending calls. Replies larger than the 8 MiB frame limit fail with
-`RESOURCE_LIMIT`; the in-process mode applies the same limit to plugin
-replies, so both modes accept the same results.
+## 工作区插件
 
-## Handshake
+`plugins/` 是独立的 Cargo 工作区（Git 子模块）：`sdk`、`sdk-derive`、`host`（`lc-plugin-host`）、`linuxinfo`（随安装包附带的 Linux 系统分析，见 [LINUXINFO.md](LINUXINFO.md)）与 `vehicle`（汽车取证，以 `.lcpkg` 安装）。
 
-In process mode the loader's first message is an odd-ID `plugin.hello`
-request carrying the plugin's `describe` output: its protocol range,
-identity, and capabilities. The host selects LPP v1 and returns its
-frame/read limits. In-process instances are checked the same way. An
-incompatible protocol range, an identity that differs from the manifest id,
-or a declared capability the plugin does not advertise ends startup.
+- `just build-plugins [--release]`：构建工作区，把各插件库复制到其 `plugin.toml` 旁，并写出 `schema.json`；`--plugin <目录>` 只构建一个插件库（沿用已构建的加载器）。
+- `just pack-plugins`：为每个工作区插件生成可安装的 `.lcpkg`（含说明、许可证、构建信息与 SHA-256 校验），输出到 `dist-pack/`。
+- `just test-plugins`、`just clippy-plugins`：测试与检查工作区。
+- `just run-example probe_plugin <镜像路径> <插件 ID> <分析器> <输出 JSON> [--system <系统 ID> | --file <卷键> <路径>]`：在临时案件中走完整的任务流程（加载器、视图、输入、`records.db`），输出已发布的记录与运行审计。
+- `just run-example probe_evidence_path <镜像路径> <卷键> <路径>...`：以插件看到的检材视图读取路径。
 
-## Lifecycle, source, and filesystem methods
-
-- `plugin.shutdown`: closes plugin sessions during application shutdown or a
-  restart. The host waits five seconds for the reply; a loader is then given
-  two seconds to exit before it is killed.
-- `source.info`: returns `source_id`, size, sector size, and `read_only: true`.
-- `source.read`: returns bytes from a registered logical source. Reads clamp at
-  the logical source boundary.
-- `source.readv`: reads at most 128 ranges and (8 MiB - 4 KiB) total; every individual
-  range is also bounded by the 4 MiB single-read limit. All ranges are validated
-  before evidence is read.
-- `fs.probe`: identifies a logical source and returns filesystem, confidence,
-  and an optional label. A confidence of 0 means "no match"; any other result
-  must name a declared filesystem.
-- `fs.open`: creates a cached plugin session and returns its opaque root node.
-- `fs.children`, `fs.stat`, and `fs.read_range`: implement the existing host
-  `Volume` operations. Large host streams are composed from bounded range reads.
-- `fs.children_page`: returns up to the requested limit and an opaque
-  `next_cursor`. The host requests 1,000 entries per page, rejects repeated
-  cursors, and caps a directory at 1,000,000 entries. For LPP v1 compatibility,
-  `METHOD_NOT_FOUND` falls back to `fs.children`.
-- `host.progress`: forwards `current`, optional `total`, and optional `message`
-  to the frontend as the `plugin-progress` event, together with `pluginId`.
-
-Metadata calls time out after 15 seconds, directory calls after 60 seconds,
-and open/read calls after 120 seconds. A timed-out request is cancelled: in
-process mode the host removes it from the pending table and sends a `cancel`
-message, which the loader turns into the plugin's `cancel`; in-process the
-host calls `cancel` directly. The SDK then fails the request's host calls with
-`CANCELLED`.
-
-Opaque plugin node IDs are wrapped with the plugin and session identity before
-they reach the frontend. LovelyCarve validates that an ID belongs to the target
-session and never asks plugins to interpret host routing IDs.
-
-`fs.children` and `fs.children_page` return the stable LPP v1 `FsNode` DTO.
-Required fields are `id`, `name`, and `kind`; optional fields include `size`,
-`parent_id`, `deleted`, `inode`, `timestamps`, `link_target`, and
-namespaced `attributes`. Host-only implementation fields are not part of the
-wire contract. `fs.stat` similarly uses the stable `FsStat` DTO instead of
-serializing LovelyCarve's internal Rust type.
-
-Plugins start lazily. Loader EOF, malformed output, and RPC failures fail
-pending calls without crashing LovelyCarve. The manager records a `Crashed`
-state (also when a library is missing or fails to start); expanding the
-Unknown partition again discards its stale session and starts a fresh
-instance. Unloading an image sends `fs.close`, unregisters its logical
-sources, and application exit sends `plugin.shutdown`.
-
-## File analyzer methods
-
-The host invokes a declared analyzer through `analyzer.analyze` with its
-analyzer ID and an opaque `FileHandle`. The handle contains `file_id`, a safe
-display name, logical size, MIME type, and `read_only: true`; it contains no
-evidence path. During that call the plugin can use:
-
-- `file.info`: return handle metadata after owner validation.
-- `file.read`: read at most 4 MiB, clamped to the logical file boundary.
-- `file.readv`: read at most 64 ranges and (8 MiB - 4 KiB) total.
-- `file.materialize`: create a host-owned temporary path if
-  `file_materialize` was approved. One file is capped at 4 GiB; each plugin is
-  capped at 16 active leases and 8 GiB total.
-- `file.release`: release a lease early. The host also removes all outstanding
-  handles and leases after analysis, plugin restart/crash, image unload, and
-  shutdown.
-
-Analysis has a ten-minute deadline. Its LPP v1 response is a map containing an
-optional `summary` and zero or more `nodes`, `artifacts`, `timeline`, and
-`findings`:
-
-```text
-node     = { type, name, columns?: [{ key, label }] }   # 结果树数据项 + 表格列
-artifact = { type, title, value?, attributes? }
-timeline = { timestamp, type, description, attributes? }
-finding  = { severity, title, description, attributes? }
-```
-
-`nodes` declares the analysis-results tree and its columns: each entry is one data item
-(`linux.user` → 用户列表) and carries the record-table column definitions
-(attribute key + display label), so the frontend renders plugin output with
-zero hardcoded columns. Nodes with zero matching artifacts are not shown.
-
-Types and attribute keys are namespaced lowercase identifiers. Timeline values
-must use RFC 3339. Finding severity is `info`, `low`, `medium`, `high`, or
-`critical`. Binary/extension values, duplicate object keys, non-finite numbers,
-excessive nesting, and oversized results are rejected. At most 10,000 total
-items and 64 result nodes (64 columns each) are accepted. With an active case,
-accepted results are transactionally stored in `plugin_analysis_runs`,
-`plugin_result_nodes`, `plugin_artifacts`, `plugin_timeline_events`, and
-`plugin_findings`; removing a task removes its stored runs, and removing evidence cascades to
-all associated plugin analysis rows.
-
-## Evidence-level analyzer methods
-
-### Source-file navigation in analysis results
-
-Artifacts can declare evidence-relative provenance in their existing attributes:
-
-- `source.root`: an `EvidenceRoot.root_id`, preserving partition, LVM or Docker container identity.
-- `source.path`: the exact POSIX path relative to that root; preserve case and filename whitespace.
-- `source.paths`: optional additional paths in the same root (the primary path remains first).
-- `source.node`: optional native `EvidenceNode.node_id`, used when no root/path address is available.
-
-The results table locates the primary source; details expose each path separately. Live path resolution
-does not require a filedb index, follows intermediate directory symlinks within the selected root,
-and reveals final symlinks themselves. Node-only navigation uses the existing filedb lookup.
-For file-level runs, the host also returns the persisted input node as a fallback, including older
-results. Artifact IDs, titles and arbitrary values are never interpreted as file addresses.
-
-
-`type = "evidence_analyzer"` capabilities declare functions that analyze the
-whole evidence instead of one target file. The host invokes them
-through `analyzer.analyze_evidence` with the analyzer id, an evidence handle
-(`evidence_id`, `image_id`, and the task params map, whose `subItems` names the
-sub-items to run; empty means all, which is what the desktop quick analysis
-always sends), and a thirty-minute deadline. During
-that call the plugin can additionally use:
-
-- `evidence.roots`: the browsable volume roots of the evidence
-  (`root_id` is the volume key `part:N` / `lvm:N:M` / `root`, plus `fs_prefix`,
-  `kind`, `size`) — the "@rootfs" search enumerates these.
-- `evidence.stat {root, path}`: node DTO (`node_id`, `name`, `kind` of
-  `file`/`dir`/`link`, `size`, `deleted`, `link_target`, RFC 3339
-  `timestamps`) or nil when the path does not exist. Symlinks are followed
-  (`/etc/os-release` → `/usr/lib/os-release`), bounded at 16 hops.
-- `evidence.list {root, path}`: children of a directory (empty path = the
-  volume root); listed entries are not followed, so `/etc/localtime` keeps its
-  `link_target`.
-- `evidence.read {root, path, offset, length}` / `evidence.readv`: bounded like
-  `file.read` (4 MiB per call, 64 ranges / (8 MiB - 4 KiB) per readv), clamped to the
-  file boundary.
-
-Evidence handles are owner-scoped and removed when the analysis ends (also when
-the task is cancelled and the host stops waiting) or the image unloads. `host.progress` works the same as
-for file analyzers. The result contract and `emit_artifacts` permission check
-are identical to file analysis. Evidence-level functions are scheduled without
-a target `nodeId`; the task params JSON (`platform`, `subItems`) is forwarded to
-the plugin verbatim.
-
-## Process boundary and resource limits
-
-`lc-plugin-host` starts with a cleared environment and a small allowlist needed
-to locate system libraries and temporary directories, and on Windows without a
-console window. A Windows Job Object applies kill-on-close, a single-process
-limit, and a 512 MiB per-process memory limit. All platforms use Tokio
-kill-on-drop, RPC/frame/concurrency limits, timeouts, handle ownership,
-logical range checks, and temporary-file quotas. The current non-Windows build
-does not yet provide a native process-tree or memory sandbox; deploy untrusted
-plugins inside an OS sandbox there.
-
-An in-process plugin shares LovelyCarve's address space, environment and
-memory: the handle ownership, range checks, limits and timeouts still apply,
-but nothing contains a crash, and a call that ignores `cancel` keeps its
-thread until it returns. The instance is destroyed only after its last call
-has returned.
-
-## Task scheduling lifecycle
-
-Analyzer runs can be submitted as **scheduled tasks** instead of a blocking
-`plugin_analyze_file` call. The scheduler (`src-tauri/src/core/extensions/task_scheduler/`)
-persists task state in the case ledger (`case.db`) and creates a plugin
-instance for each execution. Its main components are listed below.
-
-| Component | Implementation |
-|---|---|
-| Persistence | `task` / `task_followup` tables in the case ledger `case.db` (`store.rs`, `store_evidence.rs`) |
-| Functions | `FunctionRegistry` built from manifests: one function per `file_analyzer` **or** `evidence_analyzer` capability, named `<plugin id>/<analyzer>`, with `platform`/`support`/`evidence_types` metadata |
-| Execution | Dispatch loop → `PluginTaskRunner` → task-specific instance → `analyzer.analyze` or `analyzer.analyze_evidence`; progress belongs to the task, and results are persisted before completion |
-| Notifications | `sched-task-event` Tauri event |
-| Controls | `sched_task_*` commands for create, cancel, pause, start, restart and remove |
-| Offline and timeout handling | `watchdog.rs` + `handle_offline` |
-| Dependencies and first tasks | `dependence.rs` |
-| Completion actions | `post_action.rs` |
-
-**State machine** (`task.status`, enforced by a CHECK constraint): `created → queued
-→ running → success | failed | cancel`, with `pause` and `offline` as recoverable
-intermediate states. `created` means not yet dispatched; `queued` means claimed
-for a plugin worker; `running` stamps the start time; terminal states stamp the
-finish time, from which `spendTimeSecs` is derived. Plugin instances are tracked
-in memory only. A task's `params` JSON carries the target `nodeId` / `fileName`;
-the plugin, analyzer, trigger, parent task and last error are columns of their
-own, reported on the wire as `info` together with the evidence's `imageId`;
-`result` JSON carries the summary, artifact / timeline / finding counts and the
-run id persisted in the evidence's `analysis.db`. Timestamps are RFC 3339 UTC.
-
-**Concurrency.** Every execution gets a plugin instance of its own
-(`PluginManager::start_task_worker`): a separate `lc-plugin-host` process with
-its own 512 MiB limit, or a separate instance of an in-process library. Tasks
-of one plugin therefore run side by side. The dispatcher claims `created` tasks
-in creation order while fewer than `LOVELYCARVE_TASK_MAX_RUNNING` (default 4,
-at most 32) tasks are queued or running, across all plugins. `host.progress`
-from a task's instance belongs to that task alone; it only updates the
-scheduler's in-memory record (the watchdog sees it at once), and the dispatch
-loop writes the latest percentage to the case ledger, so a plugin never waits
-on SQLite for its progress acknowledgement. The plugin's shared instance, used
-for filesystem browsing and `plugin_analyze_file`, is separate from task
-instances. `single_instance` functions additionally refuse a second active task
-for the same `(function, evidence)` — `sched_task_create` then returns the
-existing task with `created: false`; a partial unique index on the ledger backs
-the rule.
-
-**Database writes.** The scheduler runs all ledger reads and writes on the
-blocking thread pool. Status changes check the current status and write in one
-`BEGIN IMMEDIATE` transaction, so a commit, a cancel and the watchdog racing on
-one task cannot overwrite each other's terminal state, and progress writes only
-touch `running` rows. A task-row write and its `sched-task-event` happen under
-one ordering lock, so events arrive in write order and a stale "running"
-progress event never follows a terminal one. Result persistence and removal in
-the evidence's `analysis.db` and the timeline hook (built-and-not-rebuilding
-check, replace by run, watermark) are each one `BEGIN IMMEDIATE` transaction on
-that evidence's own database: tasks of one evidence finishing together queue on
-its write lock, other evidence is unaffected, the event watermark only moves
-forward, and WAL readers are never blocked.
-
-**Controls.** Cancel is allowed from `created/queued/running/pause/offline`; a
-running execution has its token revoked and its own plugin instance ended: a
-process-mode instance's loader is killed, while an in-process instance's running calls are cancelled
-cooperatively. Other tasks of the plugin keep running. A late commit from the
-superseded execution is discarded. Pause requires `task.can_pause`; because LPP has no
-cooperative pause yet, pause stops the execution and `start` re-queues it from
-scratch. Restart of a terminal task creates a new task whose `info.parentTid`
-points at the original; restart of an offline task simply re-queues it. Remove
-only accepts terminal tasks. Removing evidence first cancels its unfinished
-tasks; deleting the evidence row then removes its tasks by cascade and the
-scheduler emits `taskRemoved` for each.
-
-**Dependence chain.** When a task succeeds, every function whose `dependence`
-equals the finished function gets a new task on the same evidence with the same
-file params and `trigger = auto`. Failure or cancel blocks the chain
-(`TaskFailedBlocked`). When evidence is registered in a case for the first time,
-every `trigger = "auto"` function without a `dependence` gets a first task;
-an evidence-level analyzer can run without a target file. A file-scoped root
-task without `nodeId` fails with "任务缺少目标文件 nodeId"; use automatic
-file-scoped analyzers downstream in a chain that supplies file parameters.
-
-**Watchdog.** A periodic scan of running tasks marks a task `failed` (notice
-`taskTimeout`) when no progress arrived within the update timeout, and marks it
-`offline` (notice `taskOffline`) when the task's plugin instance is gone after
-the offline timeout. The offline handler then re-queues `auto` tasks and fails
-manual ones. On case open
-the scheduler also converts any `queued`/`running` rows left by a previous
-session to `offline` and runs the same split. Timeouts are read from
-`LOVELYCARVE_TASK_CHECK_INTERVAL` (default 15 s), `LOVELYCARVE_TASK_OFFLINE_TIMEOUT`
-(60 s) and `LOVELYCARVE_TASK_UPDATE_TIMEOUT` (900 s).
-
-**Post actions.** The `PostActionWatcher` counts created/finished tasks per
-evidence (restored from the ledger on case open). When every task of an
-evidence is finished it starts a debounce (5 s); when it fires it emits an
-`allTasksFinished` notice and executes the JSON list in `task_followup.actions`
-through registered handlers, stamping `done_at` only after all actions succeed
-so retries stay idempotent. `sched_evidence_post_actions_set` writes that row.
-
-**Events.** `sched-task-event` carries `{ kind: "taskChanged", task }` on every
-status/progress change, `{ kind: "taskRemoved", taskId, evidenceId }` on delete,
-and `{ kind: "notice", notice }` for `taskOffline` / `taskTimeout` /
-`allTasksFinished` / `postActionFailed`.
-
-## Application IPC and management UI
-
-The Tauri IPC layer exposes `plugin_list`, `plugin_restart`,
-`plugin_analyze_file`, and `plugin_analysis_list`. Frontend code calls the
-typed wrappers in `src/lib/ipc/plugins.ts`. The settings plugin page shows
-state, capabilities (filesystem, file and evidence analyzers), permissions,
-directory, library file, isolation mode, and fingerprint, and can restart a
-plugin without restarting LovelyCarve. Plugins are trusted on discovery —
-there is no approval or disable flow.
-
-Scheduled tasks use `sched_task_functions`, `sched_task_list`,
-`sched_task_create`, `sched_task_cancel`, `sched_task_pause`, `sched_task_start`,
-`sched_task_restart`, `sched_task_remove`, and
-`sched_evidence_post_actions_set`, wrapped by `src/lib/ipc/tasks.ts` and consumed
-through `src/features/tasks/composables/useTaskCenter.ts`. The file list's
-context menu entry「插件分析任务…」submits the selected file to a chosen
-function. The titlebar「任务中心」panel
-groups the current evidence's tasks into running, attention and finished
-sections with progress, remaining-time estimates and the cancel / pause /
-start / restart / remove controls, links successful runs to their analysis
-results, and lists recent scheduler notices. The hub follows the current
-evidence tab; closing it leaves background tasks running. Its「快速分析」tab
-groups applicable evidence analyzers by plugin and category. Selecting a
-plugin submits all of its applicable functions for the current platform,
-without sub-item selection; each plugin tile shows its latest task status.
-File analyzers that require a target file use the context menu instead.
-
-The「分析结果」panel (`src/features/analysis/components/AnalysisResultsPanel.vue`)
-browses stored results through `analysis_result_tree`,
-`analysis_records_page`, and `analysis_record_detail` (wrapped by
-`src/lib/ipc/analysisResults.ts`, backed by
-`src-tauri/src/core/analysis/results/analysis_query.rs`): a tree of
-evidence → class → function → result item (ChildCount badges, latest run per
-(plugin, analyzer, input node)), a server-paged record table whose columns come from the
-plugin-submitted node declarations, and a per-record detail pane. Completing a
-task only marks the tree dirty; the panel re-pulls the whole tree when
-activated.
-
-## Bundled plugin
-
-`plugins/linuxinfo/` is the only bundled analyzer. Its process-isolated
-`linuxbaseinfo` capability covers fifteen sub-items: system information,
-timezone, users and groups, login records, history, network, USB, services,
-software, scheduled tasks, startup entries and recent access.
-See [LINUXINFO.md](LINUXINFO.md) for evidence sources and parsing limits.
-
-The workspace also retains `plugins/sdk` and `plugins/host` as infrastructure.
-Both process and in-process isolation remain supported by the SDK and host.
-`just build-plugins` builds the loader and stages the platform library beside
-`plugins/linuxinfo/plugin.toml`. `just pack-plugins` creates a Windows ZIP with
-linuxinfo, the process host, license notices and SHA-256 checksums.
-
-`just test-plugins` tests the SDK, process host and linuxinfo.
-For the optional real-image integration test, set `LOVELYCARVE_TEST_LINUX_IMAGE`
-to a local Linux image, run `just build-plugins`, then
-`just test linuxinfo_plugin_analyzes_real_image -- --ignored --nocapture`.
-Private evidence and generated results stay outside version control.
-
-`just run-example probe_plugin <image> org.lovelycarve.linuxinfo linuxbaseinfo <output-json>`
-checks execution, result persistence and pagination.
-`just run-example probe_evidence_path <image> <root-id> <path>...`
-checks the same read-only source paths.
-
-## 结果归属与发布边界
-
-- 调度功能身份是 `plugin_id/analyzer`，结果树按 `(检材, plugin_id, analyzer, 输入 node_id)` 各自保留最新运行；不同输入文件显示独立功能组。分页与 CSV 导出必须传结果树的 `runId`，始终读取同一次运行。
-- 删除任务只删除 `task.result.runId` 指定的一次运行及其时间线投影；无 runId 的任务不推测或删除同功能的其他结果。
-- 执行器先准备结果，调度器按 `(task_id, seq)` 检查有效性，再在该执行的发布锁内落库、投影并提交终态。取消、暂停、超时或关闭案件先于发布生效时丢弃准备的结果；发布已经开始时控制操作等待收尾，并重新检查任务状态。不同任务的发布锁独立。
-- 直接文件分析固定发起时的案件上下文；关闭、切换、重新打开案件或移除检材后，旧调用不能发布结果。
-- 注册调度功能时排除自依赖、依赖环及前驱不存在的功能，并记录原因；同插件的 analyzer 名不能重复，包括文件级与检材级能力之间。
-- 三类 `readv` 的总数据预算统一为 8 MiB 减 4 KiB，预留 MessagePack 数组、二进制值和响应头开销。超大宿主响应返回 `RESOURCE_LIMIT`，保留连接以继续服务其他 RPC；进程内模式执行相同响应限额。
-- 插件文件系统的 `fs.read_range` 直接服务随机读取；大范围按至多 4 MiB 分块，提前结束的文件读取和流式读取明确报错。
+可选的真实镜像测试：设置 `LOVELYCARVE_TEST_LINUX_IMAGE` 指向本地 Linux 镜像并运行 `just build-plugins` 后，执行 `just test linuxinfo_analyzes_every_linux_system_of_a_real_image -- --ignored --nocapture`；设置 `LOVELYCARVE_TEST_LCPKG` 指向 `just pack-plugins` 生成的插件包后，执行 `just test built_package_installs_and_starts` 检查它能否安装与启动。私有检材与生成的结果不进入版本库。

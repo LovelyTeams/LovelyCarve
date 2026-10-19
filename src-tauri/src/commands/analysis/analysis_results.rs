@@ -1,20 +1,20 @@
-//! 分析结果浏览 IPC:结果树、分页表格与单条详情。
-//! 节点名/列定义全部来自插件提交,前端零硬编码。
+//! 分析结果浏览 IPC:结果树、分页表格、单条详情与运行审计。
+//! 节点名与列定义来自插件声明;旧案件的结果只读展示。
 
 use crate::host::State;
 
 use crate::{
     app::{error::AppError, workflows::casework::active_case_dir},
-    core::analysis::results::analysis_query::{
-        self, AnalysisRecord, AnalysisRecordPage, AnalysisRecordsQuery, AnalysisTreeEvidence,
-        AnalysisTreeNode,
+    core::analysis::results::{
+        analysis_query::{self, AnalysisRecordsQuery, AnalysisTreeEvidence},
+        models::{AnalysisRecordDetail, AnalysisRecordsPage, AnalysisTreeNode},
+        record_query::RunAudit,
     },
     core::casework::case::EvidenceRef,
     state::AppState,
 };
 
-/// 分析结果树:检材 → 分类 → 功能 →
-/// 结果项。未打开案件返回空树。
+/// 分析结果树:检材 → 分类 → 分析器运行 → 记录类型。未打开案件返回空树。
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn analysis_result_tree(
     state: State<'_, AppState>,
@@ -45,27 +45,31 @@ pub async fn analysis_result_tree(
         .map_err(AppError::from_anyhow)
 }
 
-/// 按选中结果项的 run_id 分页读取记录,翻页期间不切换运行。
+/// 按选中节点的 runId 分页读取一种记录,翻页期间不切换运行。
 #[cfg_attr(feature = "desktop", tauri::command)]
 #[allow(clippy::too_many_arguments)] // Flat IPC fields also generate the CLI options.
 pub async fn analysis_records_page(
     state: State<'_, AppState>,
     image_id: String,
-    analyzer: String,
     run_id: String,
-    artifact_type: String,
+    record_type: String,
+    legacy: Option<bool>,
     keyword: Option<String>,
+    sort: Option<String>,
+    descending: Option<bool>,
     skip: i64,
     limit: i64,
-) -> Result<AnalysisRecordPage, AppError> {
+) -> Result<AnalysisRecordsPage, AppError> {
     let case_dir = active_case_dir(&state).await?;
     tokio::task::spawn_blocking(move || {
         let query = AnalysisRecordsQuery {
             image_id: &image_id,
-            analyzer: &analyzer,
             run_id: &run_id,
-            artifact_type: &artifact_type,
+            record_type: &record_type,
+            legacy: legacy.unwrap_or(false),
             keyword: keyword.as_deref(),
+            sort: sort.as_deref(),
+            descending: descending.unwrap_or(false),
             skip,
             limit,
         };
@@ -76,20 +80,34 @@ pub async fn analysis_records_page(
     .map_err(AppError::from_anyhow)
 }
 
-/// 单条记录详情(表格行 → 右侧预览)。结果按检材存放,带上记录所属检材。
+/// 单条记录详情(表格行 → 右侧预览),带它所属类型的列。
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn analysis_record_detail(
     state: State<'_, AppState>,
     image_id: String,
-    artifact_id: String,
-) -> Result<Option<AnalysisRecord>, AppError> {
+    record_id: String,
+) -> Result<Option<AnalysisRecordDetail>, AppError> {
     let case_dir = active_case_dir(&state).await?;
     tokio::task::spawn_blocking(move || {
-        analysis_query::record_detail(&case_dir, &image_id, &artifact_id)
+        analysis_query::record_detail(&case_dir, &image_id, &record_id)
     })
     .await
     .map_err(|error| AppError::task_panicked("analysis_record_detail", error))?
     .map_err(AppError::from_anyhow)
+}
+
+/// 一次运行的审计:目标、输入、选项、画像事实、告警与合成字节。
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn analysis_run_get(
+    state: State<'_, AppState>,
+    image_id: String,
+    run_id: String,
+) -> Result<Option<RunAudit>, AppError> {
+    let case_dir = active_case_dir(&state).await?;
+    tokio::task::spawn_blocking(move || analysis_query::run_audit(&case_dir, &image_id, &run_id))
+        .await
+        .map_err(|error| AppError::task_panicked("analysis_run_get", error))?
+        .map_err(AppError::from_anyhow)
 }
 
 /// 检材节点展示名:镜像文件名(与案件管理列表一致)。

@@ -51,7 +51,10 @@ use crate::core::evidence::image::{ImageFormat, PartitionKind};
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::fs_all;
 use crate::state::AppState;
-use crate::task_manager::{TaskKind, TaskManager, TaskProgressUnit, TaskRegistration};
+use crate::task_manager::{
+    TaskCount, TaskFlag, TaskKind, TaskManager, TaskOutcome, TaskProgressUnit, TaskRegistration,
+    TaskStage,
+};
 
 /// Event name carrying snapshot-build progress to the frontend.
 pub const SNAPSHOT_PROGRESS_EVENT: &str = "snapshot-build-progress";

@@ -1,49 +1,72 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ref, shallowRef } from 'vue';
-import type { SchedTaskRecord, SchedNotice } from '../../../lib/ipc/tasks';
-import type { BuiltinTask } from '../model/types';
+import { ref } from 'vue';
+import type { BuiltinTaskEntry, TaskEntry } from '../../../lib/ipc/taskRuntime';
+import type { SchedTaskRecord } from '../../../lib/ipc/tasks';
+import { pluginTaskEntry } from '../model/taskEntryView';
+import { registerTaskContext } from './taskContext';
+import { resetTaskCenterForTests } from './useTaskCenter';
+import { applyTaskEntryEventForTests, useTaskEntries } from './useTaskEntries';
 import { useUnifiedTaskCenter } from './useUnifiedTaskCenter';
 
-const pluginTasks = shallowRef<SchedTaskRecord[]>([]);
-const builtinTasks = shallowRef<BuiltinTask[]>([]);
-const notices = shallowRef<SchedNotice[]>([]);
-const actions = vi.hoisted(() => ({ cancel: vi.fn(), pause: vi.fn(), start: vi.fn(), restart: vi.fn(), remove: vi.fn(), refresh: vi.fn() }));
-vi.mock('./useTaskCenter', () => ({ useTaskCenter: () => ({ tasks: pluginTasks, notices, loading: ref(false), error: ref(null), ...actions }) }));
-vi.mock('./useBuiltinTasks', () => ({ useBuiltinTasks: () => ({ tasks: builtinTasks, now: ref(1000), refresh: vi.fn(), cancel: vi.fn() }) }));
-vi.mock('../../../composables/useToast', () => ({ notifyError: vi.fn() }));
+const ipc = vi.hoisted(() => ({ invoke: vi.fn(), listen: vi.fn(), error: vi.fn() }));
+vi.mock('../../../lib/ipc/client', () => ({ invokeCmd: ipc.invoke }));
+vi.mock('../../../lib/ipc/events', () => ({ onEvent: ipc.listen }));
+vi.mock('../../../composables/useToast', () => ({ notifyError: ipc.error, notifyInfo: vi.fn(), notifySuccess: vi.fn() }));
 
-function task(id: number, imageId: string): SchedTaskRecord {
-  return { id, status: 'running', evidenceId: id, info: { imageId } } as SchedTaskRecord;
+function job(id: number, imageId: string): TaskEntry {
+  return pluginTaskEntry({
+    id, status: 'running', evidenceId: id, progress: 0, name: `test/${id}`, displayName: `任务 ${id}`,
+    params: { nodeId: null, fileName: null, systemId: null, targetLabel: null, options: {} },
+    info: { imageId, pluginId: 'test', analyzer: 'demo', trigger: 'manually', parentTid: null, error: null },
+    createAt: '2026-01-01T00:00:00.000Z', updateAt: '2026-01-01T00:00:00.000Z', startAt: null,
+  } as SchedTaskRecord);
 }
-beforeEach(() => {
+function native(id: string, kind: BuiltinTaskEntry['kind'], imageId: string | null, extra: Partial<BuiltinTaskEntry> = {}): TaskEntry {
+  return {
+    id, imageId, status: 'running', cancelling: false, automatic: false, createdAtMs: 1, startedAtMs: 1, finishedAtMs: null,
+    progress: null, error: null, actions: ['cancel'], source: 'builtin', kind,
+    view: { subject: [], stage: null, progress: null, counts: {}, labels: {}, flags: [] }, ...extra,
+  };
+}
+
+beforeEach(async () => {
   vi.clearAllMocks();
-  pluginTasks.value = [task(1, 'disk-a'), task(2, 'disk-b')];
-  builtinTasks.value = [{ id: 'docker:disk-b:container', kind: 'docker', imageId: 'disk-b', status: 'running', started: 0, finished: null }] as BuiltinTask[];
-  notices.value = [
-    { kind: 'taskTimeout', taskId: 1, evidenceId: 1, message: 'A 通知' },
-    { kind: 'taskTimeout', taskId: 2, evidenceId: 2, message: 'B 通知' },
-    { kind: 'allTasksFinished', taskId: null, evidenceId: null, message: '全局通知' },
-  ];
+  resetTaskCenterForTests();
+  registerTaskContext({ activeCase: () => null, ensureDetection: () => {} });
+  ipc.invoke.mockResolvedValue([]);
+  ipc.listen.mockResolvedValue(() => {});
+  // The store starts from the backend's (empty) list; events then arrive.
+  useTaskEntries();
+  await Promise.resolve();
+  for (const entry of [job(1, 'disk-a'), job(2, 'disk-b'), native('docker:disk-b', 'dockerPrepare', 'disk-b', { actions: [] })]) {
+    applyTaskEntryEventForTests({ kind: 'changed', entry });
+  }
+  for (const notice of [
+    { kind: 'taskTimeout' as const, taskId: 1, evidenceId: 1, message: 'A 通知' },
+    { kind: 'taskTimeout' as const, taskId: 2, evidenceId: 2, message: 'B 通知' },
+    { kind: 'allTasksFinished' as const, taskId: null, evidenceId: null, message: '全局通知' },
+  ]) applyTaskEntryEventForTests({ kind: 'notice', notice });
 });
 
 describe('current evidence task scope', () => {
-  it('shows case container loading even before an evidence session exists and across tab switches', () => {
-    builtinTasks.value.push({ id: 'imageLoad:one', kind: 'imageLoad', imageId: '', status: 'running', started: 0, finished: null } as BuiltinTask);
+  it('shows evidence loading before an evidence session exists and across tab switches', () => {
+    applyTaskEntryEventForTests({ kind: 'changed', entry: native('load-1', 'imageLoad', null) });
     const imageId = ref<string | null>(null);
     const center = useUnifiedTaskCenter(imageId);
-    expect(center.tasks.value.map(task => task.id)).toEqual(['imageLoad:one']);
+    expect(center.tasks.value.map(task => task.id)).toEqual(['load-1']);
     expect(center.activeCount.value).toBe(1);
     imageId.value = 'disk-a';
-    expect(center.tasks.value.map(task => task.id)).toEqual(['plugin:1', 'imageLoad:one']);
+    expect(center.tasks.value.map(task => task.id).sort()).toEqual(['load-1', 'plugin:1']);
   });
-  it('switches plugin/native tasks, counts and notices together with the active tab', () => {
+
+  it('switches plugin and native tasks, counts and notices together with the active tab', () => {
     const imageId = ref<string | null>('disk-a');
     const center = useUnifiedTaskCenter(imageId);
     expect(center.tasks.value.map(task => task.id)).toEqual(['plugin:1']);
     expect(center.activeCount.value).toBe(1);
     expect(center.notices.value.map(notice => notice.message)).toEqual(['A 通知']);
     imageId.value = 'disk-b';
-    expect(center.tasks.value.map(task => task.id)).toEqual(['plugin:2', 'docker:disk-b:container']);
+    expect(center.tasks.value.map(task => task.id).sort()).toEqual(['docker:disk-b', 'plugin:2']);
     expect(center.activeCount.value).toBe(2);
     expect(center.notices.value.map(notice => notice.message)).toEqual(['B 通知']);
     imageId.value = null;
@@ -51,14 +74,32 @@ describe('current evidence task scope', () => {
     expect(center.activeCount.value).toBe(0);
     expect(center.notices.value).toEqual([]);
   });
+});
 
+describe('task actions', () => {
   it('does not operate on the previous evidence after a tab switch', async () => {
     const imageId = ref<string | null>('disk-a');
     const center = useUnifiedTaskCenter(() => imageId.value);
     imageId.value = 'disk-b';
+    ipc.invoke.mockResolvedValue({ ...((job(2, 'disk-b') as { job: SchedTaskRecord }).job), status: 'cancel' });
     await center.cancel('plugin:1');
-    expect(actions.cancel).not.toHaveBeenCalled();
+    expect(ipc.invoke).not.toHaveBeenCalledWith('sched_task_cancel', expect.anything());
     await center.cancel('plugin:2');
-    expect(actions.cancel).toHaveBeenCalledExactlyOnceWith(2);
+    expect(ipc.invoke).toHaveBeenCalledWith('sched_task_cancel', { taskId: 2 });
+  });
+
+  it('cancels native work by its id, pauses and resumes carving by its scan and offers nothing it does not list', async () => {
+    applyTaskEntryEventForTests({ kind: 'changed', entry: native('carve-task', 'carveScan', 'disk-a', { actions: ['cancel', 'pause'], scanId: 'scan-1' }) });
+    const center = useUnifiedTaskCenter(() => 'disk-a');
+    ipc.invoke.mockResolvedValue(undefined);
+    await center.pause('carve-task');
+    expect(ipc.invoke).toHaveBeenLastCalledWith('carve_scan_pause', { scanId: 'scan-1' });
+    await center.resume('carve-task');
+    expect(ipc.invoke).not.toHaveBeenCalledWith('carve_scan_resume', expect.anything());
+    await center.cancel('carve-task');
+    expect(ipc.invoke).toHaveBeenLastCalledWith('task_cancel', { taskId: 'carve-task' });
+    ipc.invoke.mockRejectedValueOnce(new Error('已结束的雕刻扫描不能暂停'));
+    await center.pause('carve-task');
+    expect(ipc.error).toHaveBeenCalledWith('暂停任务失败', 'Error: 已结束的雕刻扫描不能暂停');
   });
 });

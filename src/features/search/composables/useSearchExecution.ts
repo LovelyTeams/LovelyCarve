@@ -1,8 +1,7 @@
 
 import { tr } from '../../../composables/useLocale';
 import { onScopeDispose, watch } from 'vue';
-import { trackedGlobalSearchStart } from '../../tasks/api';
-import { onGlobalSearchProgress, type GlobalSearchOptions, type GlobalSearchProgress } from '../../../lib/ipc/search';
+import { globalSearchStart, onGlobalSearchProgress, type GlobalSearchOptions, type GlobalSearchProgress } from '../../../lib/ipc/search';
 import type { UnlistenFn } from '../../../lib/ipc/events';
 import { notifyError, notifyInfo } from '../../../composables/useToast';
 let searchSequence = 0;
@@ -12,7 +11,7 @@ interface SearchExecutionOptions {
   acceptProgress: (progress: GlobalSearchProgress) => boolean;
   pollIncremental: () => Promise<void>; loadFirstPage: () => Promise<void>;
 }
-/** The UI observes an existing tracked task; destroying it does not cancel the task. */
+/** The UI observes a search the task center also lists; destroying it does not cancel the search. */
 export function useSearchExecution(options: SearchExecutionOptions) {
   let disposed = false;
   let generation = 0;
@@ -46,7 +45,7 @@ export function useSearchExecution(options: SearchExecutionOptions) {
     const searchId = `search-${Date.now()}-${++searchSequence}`;
     void (async () => {
       try {
-        const summary = await trackedGlobalSearchStart({ imageId, searchId, options: configured });
+        const summary = await globalSearchStart({ imageId, searchId, options: configured });
         if (current(captured) && summary.status === 'cancelled') notifyInfo(tr("搜索已取消"), tr("已保留 {0} 条部分结果。", { 0: summary.record_count.toLocaleString() }));
       } catch (error) { if (current(captured)) notifyError(tr("全局搜索失败"), String(error)); }
       finally {

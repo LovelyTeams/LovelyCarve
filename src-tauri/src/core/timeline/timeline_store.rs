@@ -77,7 +77,8 @@ const SCHEMA: StoreSchema = StoreSchema {
 /// `file`：文件系统元数据记录（filedb）,投影 Mtime。
 /// Ctime/Atime 不进时间线,每种 datatype 只绑定一个时间字段。
 pub const DATA_TYPE_FILE: i32 = 1;
-/// `plugin_event`:插件结构化时间线事件(检材 `analysis.db` 的 `plugin_timeline_events`)。
+/// `plugin_event`:插件记录的时间线时间点(`records.db` 里带时间线角色的时间戳字段),
+/// 以及旧案件 `analysis.db` 的插件时间线事件。
 pub const DATA_TYPE_PLUGIN_EVENT: i32 = 2;
 /// Retained native NTFS change journal events (historical names and references).
 pub const DATA_TYPE_NTFS_USN: i32 = 3;
@@ -269,7 +270,8 @@ pub struct TimelineMetaRow {
     pub event_rows: u64,
     /// 文件源水位(已索引卷的快照构建时间),staleness 判定。
     pub source_file_watermark: String,
-    /// 插件事件源水位(plugin_analysis_runs 的 max(completed_at))。
+    /// 插件事件源水位:`records.db` 已发布运行的发布时间与旧版
+    /// `analysis.db` 运行完成时间的最大值。
     pub source_event_watermark: String,
 }
 

@@ -1,4 +1,5 @@
 //! Incoming LPP message routing and pending-call cancellation.
+use super::host_requests::{dispatch_host_request, plugin_error_to_rpc};
 use super::*;
 
 pub(super) async fn route_message(message: LppMessage, context: &RouterContext) {
@@ -10,9 +11,9 @@ pub(super) async fn route_message(message: LppMessage, context: &RouterContext) 
             error,
         } if v == PROTOCOL_VERSION && id % 2 == 0 => {
             let Some(response_tx) = context.pending.lock().remove(&id) else {
-                tracing::warn!(
+                tracing::debug!(
                     request_id = id,
-                    "received response for unknown plugin request"
+                    "received a response for a plugin request nobody waits for"
                 );
                 return;
             };
@@ -74,20 +75,10 @@ pub(super) async fn route_message(message: LppMessage, context: &RouterContext) 
             }
             let outbound = context.outbound.clone();
             let services = context.services.clone();
-            let plugin_id = context.plugin_id.clone();
-            let progress_sink = context.progress_sink.clone();
             let inbound = Arc::clone(&context.inbound);
-            let host_cancellation = cancellation.clone();
             tokio::spawn(async move {
                 let work = tokio::task::spawn_blocking(move || {
-                    dispatch_host_request_with_cancellation(
-                        &method,
-                        params,
-                        &services,
-                        &plugin_id,
-                        &progress_sink,
-                        &host_cancellation,
-                    )
+                    dispatch_host_request(&method, params, &services)
                 });
                 let result = work.await.unwrap_or_else(|error| {
                     Err(PluginError::Rpc {
@@ -109,7 +100,7 @@ pub(super) async fn route_message(message: LppMessage, context: &RouterContext) 
                     .map(|result| LppMessage::success(id, result))
                     .unwrap_or_else(|error| LppMessage::failure(id, plugin_error_to_rpc(error)));
                 if outbound.send(response).await.is_err() {
-                    tracing::warn!(request_id = id, "could not send host RPC response");
+                    tracing::debug!(request_id = id, "could not send host RPC response");
                 }
             });
         }

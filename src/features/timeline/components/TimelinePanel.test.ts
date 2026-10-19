@@ -4,8 +4,7 @@ import { createApp, defineComponent, h, nextTick, ref, type App } from 'vue';
 import TimelinePanel from './TimelinePanel.vue';
 
 const ipc = vi.hoisted(() => ({ count: vi.fn(), datas: vi.fn(), types: vi.fn(), status: vi.fn(), start: vi.fn(), export: vi.fn(), save: vi.fn() }));
-vi.mock('../../../lib/ipc/timeline', () => ({ timelineCount: ipc.count, timelineDatas: ipc.datas, timelineTypes: ipc.types, timelineStatus: ipc.status, timelineExport: ipc.export, onTimelineProgress: vi.fn(async () => () => {}) }));
-vi.mock('../../tasks/composables/useBuiltinTasks', () => ({ trackedTimelineStart: ipc.start }));
+vi.mock('../../../lib/ipc/timeline', () => ({ timelineCount: ipc.count, timelineDatas: ipc.datas, timelineTypes: ipc.types, timelineStatus: ipc.status, timelineStart: ipc.start, timelineExport: ipc.export, onTimelineProgress: vi.fn(async () => () => {}) }));
 vi.mock('../../../lib/ipc/taskRuntime', () => ({ taskCancel: vi.fn() }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ save: ipc.save }));
 vi.mock('../../../composables/useToast', () => ({ notifyInfo: vi.fn(), notifyError: vi.fn(), notifyExportSuccess: vi.fn() }));

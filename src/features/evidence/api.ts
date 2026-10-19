@@ -2,7 +2,7 @@ export { useFileSession, registerBitlockerUnlockNavigator } from './composables/
 export type { OpenFileOutcome } from './composables/useFileSession';
 export { useAutoMount } from './composables/useAutoMount';
 export { useImageExport } from './composables/useImageExport';
-export { ensureAutoDetectListener, isAutoDetectRunPending, registerAutoDetectReportPublished, disposeAutoDetect } from './composables/useAutoDetect';
+export { ensureAutoDetectListener, registerAutoDetectReportPublished, disposeAutoDetect } from './composables/useAutoDetect';
 
 export { registerBitlockerSnapshotWorkflow, disposeBitlockerJobs } from './composables/useBitlockerUnlocks';
 

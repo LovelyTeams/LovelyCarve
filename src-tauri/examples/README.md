@@ -41,6 +41,8 @@
 
 `probe_plugin`, `probe_plugin_sources`
 
+`just run-example probe_plugin <image> <plugin-id> <analyzer> <output-json> [--system <system id> | --file <root> <path>]` 在临时案件中走完整的任务流程：启动 `lc-plugin-host`、打开系统或检材视图、解析声明的输入、写入并发布 `records.db`，输出已发布的记录与运行审计，并打印识别出的系统。`probe_plugin_sources <image> <output-json>...` 检查这些输出中每条来源都能定位到镜像中的文件。`probe_evidence_path`、`probe_report_sources` 与 `probe_access_bitmap` 以插件看到的检材视图（每个卷是以卷键命名的目录）读取路径。
+
 ## platform
 
 `probe_dokan_docker`, `probe_dokan_mount`, `probe_dokan_slice`

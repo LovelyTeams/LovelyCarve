@@ -79,6 +79,8 @@ export interface CarveScanSnapshot {
   task_id: string;
   image_id: string;
   created_unix_ms: number;
+  /** Set once the scan ended. */
+  finished_unix_ms: number | null;
   status: CarveSessionStatus;
   phase: CarveScanPhase;
   /** Whether the session runs signature carving. */

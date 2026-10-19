@@ -8,7 +8,7 @@ const ipc = vi.hoisted(() => ({ invoke: vi.fn(), open: vi.fn(), focus: vi.fn(), 
 vi.mock('../../../lib/ipc/client', () => ({ invokeCmd: ipc.invoke }));
 vi.mock('../../../lib/ipc/events', () => ({ onEvent: async () => () => {}, emitEvent: ipc.emit }));
 vi.mock('../../../lib/ipc/windows', () => ({ openFilePreviewWindow: ipc.open, focusFilePreviewWindow: ipc.focus }));
-vi.mock('../../tasks/composables/useBuiltinTasks', () => ({ trackedFsChildrenPage: (args: unknown) => ipc.invoke('fs_children_page', args), trackedFsChildren: (args: unknown) => ipc.invoke('fs_children', args), trackedFsFlatPage: (args: unknown) => ipc.invoke('fs_flat_page', args) }));
+vi.mock('../composables/containerReads', () => ({ containerFsChildrenPage: (args: unknown) => ipc.invoke('fs_children_page', args), containerFsChildren: (args: unknown) => ipc.invoke('fs_children', args), containerFsFlatPage: (args: unknown) => ipc.invoke('fs_flat_page', args) }));
 vi.mock('../../cases/composables/useCaseSession', () => ({ useCaseSession: () => ({ activeCase: ref(null), snapshots: ref([]), buildProgress: ref(new Map()) }) }));
 vi.mock('../../preview/composables/usePreviewSync', () => ({ broadcastPreview: vi.fn(), onPreviewBroadcast: async () => () => {} }));
 vi.mock('./DiskFileTree.vue', () => ({ default: { render: () => null } }));

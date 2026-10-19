@@ -8,7 +8,7 @@ import { disposeEncryptedVolumeUnlockJobs, registerEncryptedVolumeImageUpdater, 
 import { latestUnlockedImageInfo } from './unlockedImageInfo';
 
 const ipc = vi.hoisted(() => ({ unlock: vi.fn(), unload: vi.fn(), success: vi.fn(), error: vi.fn(), info: vi.fn() }));
-vi.mock('../../tasks/api', () => ({ trackedEncryptedVolumeUnlock: ipc.unlock }));
+vi.mock('../../../lib/ipc/encrypted', () => ({ encryptedVolumeUnlock: ipc.unlock }));
 vi.mock('../../../lib/ipc/image', () => ({ imageUnload: ipc.unload }));
 vi.mock('../../../composables/useToast', () => ({ notifySuccess: ipc.success, notifyError: ipc.error, notifyInfo: ipc.info }));
 const source = { id: 'source', partitions: [{ id: 2, kind: 'luks', label: 'Linux' }] } as ImageInfo;
@@ -87,7 +87,8 @@ describe('background encrypted volume unlock ownership', () => {
     const options = { scheme: 'luks' as const, password: 'secret', partitionId: 2 };
     const page = effectScope();
     expect(page.run(() => startEncryptedVolumeUnlock(source, options))).toBe(true);
-    expect(ipc.unlock).toHaveBeenCalledWith({ imageId: 'source', options, taskId: expect.any(String) }, 'LUKS · 分区 2 · Linux');
+    await settle();
+    expect(ipc.unlock).toHaveBeenCalledWith({ imageId: 'source', options: { ...options, password: 'secret', target: 'sourcePartition' }, taskId: expect.any(String) });
     expect(updateImage).not.toHaveBeenCalled();
     page.stop();
     operation.resolve(result);

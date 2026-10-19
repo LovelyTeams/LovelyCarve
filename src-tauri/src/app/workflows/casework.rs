@@ -139,6 +139,7 @@ async fn activate_case(
     state
         .tasks
         .cancel_kind(crate::task_manager::TaskKind::ImageLoad);
+    state.tasks.forget_unowned();
 
     case_registry::record(
         &registry_dir(app)?,
@@ -178,6 +179,7 @@ async fn exit_active_case(state: &State<'_, AppState>) {
     state
         .tasks
         .cancel_kind(crate::task_manager::TaskKind::ImageLoad);
+    state.tasks.forget_unowned();
 
     // 任务调度先解绑:运行中任务置 offline、终止插件 worker,再释放案件连接。
     state.scheduler.unbind_case().await;

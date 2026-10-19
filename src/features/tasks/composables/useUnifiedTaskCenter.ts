@@ -1,56 +1,66 @@
+// 当前检材的任务中心:统一列表中属于这份检材的任务(以及尚未属于任何检材的
+// 打开检材任务)、进行中的计数与相关的调度通知,和按任务提供的操作。
+import { computed, toValue, type MaybeRefOrGetter } from 'vue';
 
 import { tr } from '../../../composables/useLocale';
-import { computed, toValue, type MaybeRefOrGetter } from 'vue';
-import type { SchedTaskRecord } from '../../../lib/ipc/tasks';
-import { useTaskCenter } from './useTaskCenter';
-import { useBuiltinTasks } from './useBuiltinTasks';
 import { notifyError } from '../../../composables/useToast';
+import { carveScanPause, carveScanResume } from '../../../lib/ipc/carve';
+import type { TaskAction, TaskEntry } from '../../../lib/ipc/taskRuntime';
+import { cancelTaskEntry, useTaskEntries } from './useTaskEntries';
+import { useTaskCenter } from './useTaskCenter';
 
-/** UI identity is namespaced: native task ids never collide with plugin ids. */
-export interface UnifiedTask extends Omit<SchedTaskRecord, 'id'> {
-  id: string;
-  sourceId: number | string;
-  builtin: boolean;
-  cancellable: boolean;
-  indeterminate: boolean;
-  cancelling: boolean;
-}
+const FAILURE: Record<TaskAction, string> = {
+  get cancel() { return tr("取消任务失败"); }, get pause() { return tr("暂停任务失败"); }, get resume() { return tr("继续任务失败"); },
+  get start() { return tr("启动任务失败"); }, get restart() { return tr("重启任务失败"); }, get remove() { return tr("删除任务失败"); },
+};
 
 export function useUnifiedTaskCenter(imageId: MaybeRefOrGetter<string | null>) {
+  const store = useTaskEntries();
   const plugins = useTaskCenter();
-  const builtin = useBuiltinTasks();
-  const tasks = computed<UnifiedTask[]>(() => [
-    ...plugins.tasks.value.map(task => ({ ...task, id: `plugin:${task.id}`, sourceId: task.id,
-      builtin: false, cancellable: true, indeterminate: false, cancelling: false })),
-    ...builtin.tasks.value.map(task => ({
-      id: task.id, sourceId: task.id, builtin: true, cancellable: !!task.cancelId,
-      indeterminate: task.progress === null && task.status === 'running', cancelling: task.cancelling,
-      name: task.id, displayName: task.title, typeName: tr("内置任务"), evidenceId: 0,
-      status: task.status, progress: task.progress ?? 0, internal: false, canPause: task.kind === 'carve', singleInstance: false,
-      params: { nodeId: null, fileName: task.subject || null, platform: null, subItems: [] },
-      result: { summary: task.cancelling ? tr("正在取消，请稍候…") : task.message, artifactCount: task.results, timelineCount: task.timelineRows, findingCount: 0, runId: null },
-      info: { pluginId: '', analyzer: task.kind, imageId: task.imageId, trigger: task.trigger, parentTid: null, error: task.error },
-      dependence: '', spendTimeSecs: Math.max(0, ((task.finished ?? builtin.now.value) - task.started) / 1000), remainTimeSecs: null,
-      startAt: new Date(task.started).toISOString(), createAt: new Date(task.started).toISOString(), updateAt: '',
-    })),
-  ].filter(task => task.builtin && task.info.analyzer === 'imageLoad'
-    || Boolean(toValue(imageId)) && task.info.imageId === toValue(imageId)));
-  const notices = computed(() => plugins.notices.value.filter(notice => tasks.value.some(task =>
-    !task.builtin && (notice.taskId !== null
-      ? task.sourceId === notice.taskId
-      : notice.evidenceId !== null && task.evidenceId === notice.evidenceId))));
-  const activeCount = computed(() => tasks.value.filter(task => ['created', 'queued', 'running'].includes(task.status)).length);
-  async function refresh() { await Promise.all([plugins.refresh(), builtin.refresh()]); }
-  async function act(id: string, action: 'cancel' | 'pause' | 'start' | 'restart' | 'remove') {
-    const task = tasks.value.find(task => task.id === id);
-    if (!task) return;
-    if (!task.builtin) return plugins[action](task.sourceId as number);
+  const tasks = computed<TaskEntry[]>(() => {
+    const current = toValue(imageId);
+    return store.entries.value.filter(entry => entry.imageId === null || Boolean(current) && entry.imageId === current);
+  });
+  const notices = computed(() => store.notices.value.filter(notice => tasks.value.some(entry =>
+    entry.source === 'plugin' && (notice.taskId !== null
+      ? entry.job.id === notice.taskId
+      : notice.evidenceId !== null && entry.job.evidenceId === notice.evidenceId))));
+  const activeCount = computed(() => tasks.value.filter(entry => ['created', 'queued', 'running'].includes(entry.status)).length);
+
+  /** Acts on a task of the current evidence only: a tab switch may have
+   *  moved the list under a pending click. */
+  async function act(id: string, action: TaskAction): Promise<void> {
+    const entry = tasks.value.find(task => task.id === id);
+    if (!entry || !entry.actions.includes(action)) return;
+    if (entry.source === 'plugin') {
+      // The plugin facade reports its own failures.
+      switch (action) {
+        case 'cancel': await plugins.cancel(entry.job.id); break;
+        case 'start': await plugins.start(entry.job.id); break;
+        case 'restart': await plugins.restart(entry.job.id); break;
+        case 'remove': await plugins.remove(entry.job.id); break;
+        case 'pause':
+        case 'resume': break;
+      }
+      return;
+    }
     try {
-      if (action === 'cancel' && task.cancellable) await builtin.cancel(id);
-      else if ((action === 'pause' || action === 'start') && task.canPause) await builtin[action](id);
-    } catch (error) { notifyError({ cancel: tr("取消任务失败"), pause: tr("暂停任务失败"), start: tr("继续任务失败"), restart: tr("重启任务失败"), remove: tr("删除任务失败") }[action], String(error)); }
+      switch (action) {
+        case 'cancel': await cancelTaskEntry(entry.id); break;
+        case 'pause': if (entry.scanId) await carveScanPause({ scanId: entry.scanId }); break;
+        case 'resume': if (entry.scanId) await carveScanResume({ scanId: entry.scanId }); break;
+        case 'start':
+        case 'restart':
+        case 'remove': break;
+      }
+    } catch (error) {
+      notifyError(FAILURE[action], String(error));
+    }
   }
-  return { tasks, activeCount, refresh, notices, loading: plugins.loading, error: plugins.error,
-    cancel: (id: string) => act(id, 'cancel'), pause: (id: string) => act(id, 'pause'),
-    start: (id: string) => act(id, 'start'), restart: (id: string) => act(id, 'restart'), remove: (id: string) => act(id, 'remove') };
+
+  return {
+    tasks, activeCount, notices, refresh: plugins.refresh, loading: store.loading, error: store.error, now: store.now,
+    cancel: (id: string) => act(id, 'cancel'), pause: (id: string) => act(id, 'pause'), resume: (id: string) => act(id, 'resume'),
+    start: (id: string) => act(id, 'start'), restart: (id: string) => act(id, 'restart'), remove: (id: string) => act(id, 'remove'),
+  };
 }

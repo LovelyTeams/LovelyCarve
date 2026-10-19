@@ -556,11 +556,22 @@ files export hello.txt --destination "{exported}"
             {"id": "wait", "command": "tasks wait"},
             {"id": "status", "command": "carve scans get", "args": {"scanId": {"$ref": "scan#/scan_id"}}},
             {"id": "recover", "command": "carve scans export", "args": {"scanId": {"$ref": "scan#/scan_id"}, "options": {"destination": str(recovered), "task_id": "recover-1"}}},
+            {"id": "tasks", "command": "tasks list"},
         ])
         assert rows[3]["result"]["status"] == "completed", rows
         assert rows[3]["result"]["artifacts_found"] == 1, rows
         assert rows[4]["result"]["recovered"] == 1, rows
         assert next(recovered.glob("*.png")).read_bytes() == png
+        # The task center lists the scan by its session and the export by its task id.
+        entries = {entry.get("kind"): entry for entry in rows[5]["result"]}
+        scan_entry = entries["carveScan"]
+        assert scan_entry["source"] == "builtin" and scan_entry["status"] == "success", scan_entry
+        assert scan_entry["scanId"] == rows[1]["result"]["scan_id"], scan_entry
+        assert scan_entry["view"]["counts"]["found"] == 1, scan_entry
+        export_entry = entries["carveRecovery"]
+        assert export_entry["id"] == "recover-1" and export_entry["status"] == "success", export_entry
+        assert export_entry["view"]["subject"] == [str(recovered)], export_entry
+        assert export_entry["view"]["counts"]["files"] == 1, export_entry
 
         # Filesystem recovery shares the scan session: a deleted FAT12 entry is
         # listed by carve files list and exported by candidate ID.

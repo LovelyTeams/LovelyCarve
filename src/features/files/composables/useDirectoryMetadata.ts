@@ -1,6 +1,6 @@
 import { onScopeDispose, reactive } from 'vue';
 import { fsChildCounts, fsSubtreeEmptyDirs } from '../../../lib/ipc/fs/query';
-import { trackedFsChildrenPage as fsChildrenPage } from '../../tasks/api';
+import { containerFsChildrenPage as fsChildrenPage } from './containerReads';
 import { isHostDockerContainerRootId, type DiskFsNode as FsNode } from '../model/model';
 
 /** Snapshot-first counts and bounded live probes; synthetic Docker roots stay lazy. */

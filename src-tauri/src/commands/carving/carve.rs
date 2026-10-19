@@ -8,6 +8,7 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
 use crate::app::error::AppError;
+use crate::app::workflows::task_center;
 use crate::commands::carving::carve_filesystem::{run_filesystem_phase, sector_ranges};
 use crate::core::carving::carve_session::{
     wait_while_paused, CarveScanPhase, CarveScanSession, CarveScanSnapshot, CarveSessionStatus,
@@ -173,20 +174,20 @@ pub async fn carve_start(
         let resource_permit = match tasks.acquire_resources(&task).await {
             Ok(permit) => permit,
             Err(error) => {
-                let mut scan = session.write();
-                scan.status = if token.is_cancelled() {
-                    CarveSessionStatus::Cancelled
-                } else {
-                    CarveSessionStatus::Failed
-                };
-                scan.error = Some(error.message());
-                drop(scan);
-                emit_scan_snapshot(&app, &session);
+                session.write().finish(
+                    if token.is_cancelled() {
+                        CarveSessionStatus::Cancelled
+                    } else {
+                        CarveSessionStatus::Failed
+                    },
+                    Some(error.message()),
+                );
+                emit_scan_snapshot(&app, &tasks, &session);
                 return;
             }
         };
         session.write().status = CarveSessionStatus::Running;
-        emit_scan_snapshot(&app, &session);
+        emit_scan_snapshot(&app, &tasks, &session);
 
         let worker = ScanWorker {
             app: app.clone(),
@@ -204,29 +205,33 @@ pub async fn carve_start(
         let mut scan = session.write();
         match outcome {
             Ok(Ok(output)) => {
-                scan.status = CarveSessionStatus::Completed;
                 if let Some(output) = output {
                     scan.bytes_scanned = output.bytes_scanned;
                     scan.bytes_total = output.bytes_total;
                     scan.signatures_found = output.signatures_found;
                     scan.truncated = output.truncated;
                 }
+                let error = scan.error.take();
+                scan.finish(CarveSessionStatus::Completed, error);
             }
             Ok(Err(CarveScanError::Cancelled)) => {
-                scan.status = CarveSessionStatus::Cancelled;
-                scan.error = None;
+                scan.finish(CarveSessionStatus::Cancelled, None);
             }
             Ok(Err(CarveScanError::Failed(error))) => {
-                scan.status = CarveSessionStatus::Failed;
-                scan.error = Some(format!("{error:#}"));
+                scan.finish(CarveSessionStatus::Failed, Some(format!("{error:#}")));
             }
             Err(error) => {
-                scan.status = CarveSessionStatus::Failed;
-                scan.error = Some(format!("恢复扫描任务异常退出：{error}"));
+                scan.finish(
+                    CarveSessionStatus::Failed,
+                    Some(format!("恢复扫描任务异常退出：{error}")),
+                );
             }
         }
         drop(scan);
-        emit_scan_snapshot(&app, &session);
+        // The scan's task center entry is its session; let the registration
+        // go only after the session shows how it ended.
+        emit_scan_snapshot(&app, &tasks, &session);
+        drop(task);
     });
 
     Ok(CarveStartResult { scan_id, task_id })
@@ -275,7 +280,7 @@ impl ScanWorker {
                         total,
                         Some("扫描文件系统记录".to_string()),
                     );
-                    emit_scan_snapshot(&self.app, &self.session);
+                    emit_scan_snapshot(&self.app, &self.tasks, &self.session);
                     last_emit = Instant::now();
                 }
             },
@@ -287,7 +292,7 @@ impl ScanWorker {
             return Ok(None);
         };
         self.session.write().phase = CarveScanPhase::Signature;
-        emit_scan_snapshot(&self.app, &self.session);
+        emit_scan_snapshot(&self.app, &self.tasks, &self.session);
         let output = carver.scan_regions(image.disk_image(), regions, &self.token, |event| {
             wait_while_paused(&self.session, &self.token);
             match event {
@@ -309,7 +314,7 @@ impl ScanWorker {
                                 progress.signatures_found, progress.artifacts_found
                             )),
                         );
-                        emit_scan_snapshot(&self.app, &self.session);
+                        emit_scan_snapshot(&self.app, &self.tasks, &self.session);
                         last_emit = Instant::now();
                     }
                 }
@@ -355,7 +360,7 @@ pub async fn carve_scan_pause(
         }
         scan.snapshot()
     };
-    emit_scan_snapshot(&app, &session);
+    emit_scan_snapshot(&app, &state.tasks, &session);
     Ok(snapshot)
 }
 
@@ -382,7 +387,7 @@ pub async fn carve_scan_resume(
         }
         scan.snapshot()
     };
-    emit_scan_snapshot(&app, &session);
+    emit_scan_snapshot(&app, &state.tasks, &session);
     Ok(snapshot)
 }
 
@@ -547,8 +552,14 @@ fn prune_finished_scans(
     }
 }
 
-fn emit_scan_snapshot(app: &AppHandle, session: &Arc<RwLock<CarveScanSession>>) {
+/// Tells the carving page and the task center how a session stands.
+fn emit_scan_snapshot(
+    app: &AppHandle,
+    tasks: &TaskManager,
+    session: &Arc<RwLock<CarveScanSession>>,
+) {
     let snapshot = session.read().snapshot();
+    task_center::publish_carve(app, tasks, &snapshot);
     if let Err(error) = app.emit(CARVE_SCAN_PROGRESS_EVENT, snapshot) {
         tracing::debug!("emit carve scan progress failed: {error}");
     }

@@ -1,17 +1,19 @@
 // Builds the plugin workspace (plugins/Cargo.toml): the lc-plugin-host loader
 // and every plugin library. Each library is then copied next to its
-// plugin.toml under the platform file name the manifest's [library] path
-// resolves to (linuxinfo → linuxinfo.dll / liblinuxinfo.so /
-// liblinuxinfo.dylib), so development discovery of the repository plugins/
-// directory and the release bundle see the same layout.
+// plugin.toml under the platform file name the manifest's `library` resolves
+// to (linuxinfo → linuxinfo.dll / liblinuxinfo.so / liblinuxinfo.dylib), and
+// `lc-plugin-host --describe` writes the library's analyzers and record
+// schemas beside it as schema.json. Development discovery of the repository
+// plugins/ directory, the release bundle and .lcpkg packages see the same
+// package layout.
 //
 //   bun scripts/build-plugins.mjs            # debug build
 //   bun scripts/build-plugins.mjs --release  # release build (bundles, packs)
-//   bun scripts/build-plugins.mjs --plugin linuxinfo # one DLL, keep an active host running
+//   bun scripts/build-plugins.mjs --plugin linuxinfo # one library, keep an active host running
 //
 // Always build from the committed plugin lockfile.
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, readdirSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -44,6 +46,13 @@ if (build.status !== 0) process.exit(build.status ?? 1);
 const output = join(workspace, 'target', release ? 'release' : 'debug');
 const [prefix, suffix] =
   process.platform === 'win32' ? ['', '.dll'] : process.platform === 'darwin' ? ['lib', '.dylib'] : ['lib', '.so'];
+// A --plugin build leaves the loader alone (a running app may hold it open),
+// so describing uses the one the last full build produced.
+const loader = join(output, process.platform === 'win32' ? 'lc-plugin-host.exe' : 'lc-plugin-host');
+if (!existsSync(loader)) {
+  console.error(`[build-plugins] ${loader} is missing; build the whole workspace once without --plugin`);
+  process.exit(1);
+}
 
 let staged = 0;
 for (const entry of readdirSync(workspace, { withFileTypes: true })) {
@@ -51,9 +60,9 @@ for (const entry of readdirSync(workspace, { withFileTypes: true })) {
   const manifestPath = join(workspace, entry.name, 'plugin.toml');
   if (!entry.isDirectory() || !existsSync(manifestPath)) continue;
   const manifest = Bun.TOML.parse(readFileSync(manifestPath, 'utf8'));
-  const name = manifest.library?.path;
+  const name = manifest.library;
   if (typeof name !== 'string' || /[\\/]|\.(dll|so|dylib)$/i.test(name)) {
-    console.error(`[build-plugins] ${manifestPath}: [library] path must be the crate's library name`);
+    console.error(`[build-plugins] ${manifestPath}: library must be the crate's library name`);
     process.exit(1);
   }
   const fileName = `${prefix}${name}${suffix}`;
@@ -62,7 +71,22 @@ for (const entry of readdirSync(workspace, { withFileTypes: true })) {
     console.error(`[build-plugins] ${built} was not built; is ${entry.name} a workspace member with [lib] name = "${name}"?`);
     process.exit(1);
   }
-  copyFileSync(built, join(workspace, entry.name, fileName));
+  const library = join(workspace, entry.name, fileName);
+  copyFileSync(built, library);
+  const described = spawnSync(loader, ['--describe', '--library', library], {
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  if (described.status !== 0) {
+    console.error(`[build-plugins] describing ${library} failed:\n${described.stderr}`);
+    process.exit(1);
+  }
+  const schema = JSON.parse(described.stdout);
+  if (schema.plugin !== manifest.id) {
+    console.error(`[build-plugins] ${library} reports plugin ${schema.plugin}, the manifest says ${manifest.id}`);
+    process.exit(1);
+  }
+  writeFileSync(join(workspace, entry.name, 'schema.json'), described.stdout);
   staged += 1;
 }
-console.log(`[build-plugins] staged ${staged} plugin libraries from ${output}`);
+console.log(`[build-plugins] staged ${staged} plugin packages from ${output}`);

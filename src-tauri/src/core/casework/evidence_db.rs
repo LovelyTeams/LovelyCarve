@@ -1,5 +1,6 @@
-//! 检材目录下按写者划分的数据库(`facts.db` / `analysis.db` / `timeline.db` /
-//! `search.db`,见 [`crate::core::casework::case_paths::EvidenceDb`])的连接策略。
+//! 检材目录下按写者划分的数据库(`facts.db` / `records.db` / `analysis.db` /
+//! `timeline.db` / `search.db`,见 [`crate::core::casework::case_paths::EvidenceDb`])
+//! 的连接策略。
 //!
 //! - **写者** [`open_writer`]:必要时建检材目录与库文件,新库在一个
 //!   `BEGIN IMMEDIATE` 事务里一次建全结构并盖上 `application_id` /
@@ -24,7 +25,7 @@ use crate::core::casework::case_paths::{self, EvidenceDb};
 #[derive(Debug, Clone, Copy)]
 pub struct StoreSchema {
     pub db: EvidenceDb,
-    /// `PRAGMA application_id`,区分四种库文件。
+    /// `PRAGMA application_id`,区分各种库文件。
     pub application_id: i32,
     /// `PRAGMA user_version`。
     pub version: i32,

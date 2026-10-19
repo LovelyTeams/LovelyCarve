@@ -124,7 +124,8 @@ impl TaskKind {
 
     fn resource_profile(self) -> TaskResourceProfile {
         match self {
-            Self::AutoDetect => TaskResourceProfile::unbudgeted(),
+            // Browsing waits for a container's merged index.
+            Self::AutoDetect | Self::DockerPrepare => TaskResourceProfile::unbudgeted(),
             Self::BitlockerExport
             | Self::BitlockerUnlock
             | Self::EncryptedVolumeUnlock

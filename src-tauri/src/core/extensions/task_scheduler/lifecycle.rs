@@ -187,7 +187,7 @@ impl TaskScheduler {
         self.remove_running(task_id, seq);
     }
 
-    /// OnTaskFinish:PostActionWatcher 计数、依赖链建下一级任务。
+    /// OnTaskFinish:PostActionWatcher 计数、按发布的事实建后续任务。
     pub(super) fn after_finish(&self, bound: &BoundCase, finished: &SchedTaskRecord) {
         if finished.status.is_finished() {
             if let Err(error) = self
@@ -203,7 +203,7 @@ impl TaskScheduler {
         }
         let registry = self.registry();
         let outcomes = self.ordered(|| {
-            let outcomes = dependence::check_dependence(&bound.store, &registry, finished);
+            let outcomes = dependence::check_follow_ups(&bound.store, &registry, finished);
             for outcome in outcomes.iter().flatten() {
                 if let InsertOutcome::Created(next) = outcome {
                     self.emit_task(next);
@@ -219,10 +219,7 @@ impl TaskScheduler {
                     }
                 }
             }
-            Err(error) => tracing::warn!(
-                "CheckDependenceTask task {} error: {error:#}",
-                finished.name
-            ),
+            Err(error) => tracing::warn!("follow-up tasks of {} error: {error:#}", finished.name),
         }
     }
 

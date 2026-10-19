@@ -8,7 +8,7 @@ impl PluginClient {
     pub(in crate::core::extensions::plugin) async fn spawn(
         command: PluginCommand,
         services: HostRpcServices,
-        sinks: PluginSinks,
+        logs: Option<Arc<super::super::PluginLogStore>>,
     ) -> Result<Arc<Self>> {
         let mut process = Command::new(&command.program);
         process
@@ -21,12 +21,12 @@ impl PluginClient {
         // would open one for the console-subsystem loader.
         #[cfg(windows)]
         process.creation_flags(0x0800_0000);
-        apply_restricted_environment(&mut process, &services.permissions);
+        apply_restricted_environment(&mut process, &command.permissions);
         if let Some(working_directory) = &command.working_directory {
             process.current_dir(working_directory);
         }
         let mut child = process.spawn()?;
-        let process_guard = match ProcessGuard::attach(&child) {
+        let process_guard = match ProcessGuard::attach(&child, command.memory_limit) {
             Ok(guard) => guard,
             Err(error) => {
                 if let Err(kill_error) = child.kill().await {
@@ -46,7 +46,6 @@ impl PluginClient {
 
         let stderr_task = child.stderr.take().map(|stderr| {
             let plugin_id = command.plugin_id.clone();
-            let logs = sinks.logs.clone();
             tokio::spawn(async move {
                 read_stderr(stderr, &plugin_id, logs.as_deref()).await;
             })
@@ -57,7 +56,6 @@ impl PluginClient {
             Box::new(stdin),
             services,
             Some(child),
-            sinks.progress,
             Some(process_guard),
         )
         .await?;
@@ -115,7 +113,7 @@ async fn read_stderr(
 
 pub(super) fn apply_restricted_environment(
     command: &mut Command,
-    permissions: &HashSet<PluginPermission>,
+    permissions: &[PluginPermission],
 ) {
     const ALLOWED_ENVIRONMENT: &[&str] = &[
         "HOME",

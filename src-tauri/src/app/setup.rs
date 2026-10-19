@@ -2,13 +2,15 @@
 //! space, plugin discovery and runtime event bridges. The desktop `setup`
 //! hook adds its Tauri-only resources on top.
 use crate::app::workflows::scheduler::PluginTaskRunner;
+use crate::app::workflows::task_center::{self, TaskEntryEvent};
 use crate::{
     core::{
+        analysis::identify::systems::SystemCache,
         extensions::{
             plugin::PluginManager,
             task_scheduler::{
-                FunctionRegistry, RegistrySource, RunnerFactory, SchedulerConfig, TaskRunner,
-                TaskScheduler,
+                FunctionRegistry, RegistrySource, RunnerFactory, SchedEvent, SchedulerConfig,
+                SystemTarget, TaskRunner, TaskScheduler,
             },
         },
         filesystem::evidence_session::EvidenceSession,
@@ -16,6 +18,7 @@ use crate::{
     },
     host::AppHandle,
     state::AppState,
+    task_manager::TaskKind,
 };
 use std::{collections::HashMap, path::Path, sync::Arc};
 use tokio::sync::Mutex;
@@ -33,44 +36,79 @@ pub(crate) fn initialize(
     )?);
     *state.media_scratch.lock() = Some(Arc::clone(&scratch));
     discover_plugins(state, host);
+    route_task_events(state, host);
+    Ok(scratch)
+}
+
+/// Every task change reaches the task center as one `task-entry` event:
+/// plugin jobs from the scheduler, native tasks from the registry (whose
+/// lifecycle and progress events also keep going out for their pages).
+fn route_task_events(state: &AppState, host: &AppHandle) {
     let events = host.clone();
     state.scheduler.set_event_sink(move |event| {
-        if let Err(err) = events.emit(
-            crate::core::extensions::task_scheduler::SCHED_TASK_EVENT,
-            event,
-        ) {
-            tracing::debug!(
-                "emit {} failed: {err}",
-                crate::core::extensions::task_scheduler::SCHED_TASK_EVENT
-            );
-        }
+        let event = match event {
+            SchedEvent::TaskChanged { task } => {
+                TaskEntryEvent::changed(task_center::job_entry(*task))
+            }
+            SchedEvent::TaskRemoved { task_id, .. } => TaskEntryEvent::Removed {
+                id: task_center::plugin_entry_id(task_id),
+            },
+            SchedEvent::Notice { notice } => TaskEntryEvent::Notice { notice },
+        };
+        emit(&events, task_center::TASK_ENTRY_EVENT, &event);
     });
     let events = host.clone();
+    let tasks = state.tasks.clone();
+    let carve_scans = Arc::clone(&state.carve_scans);
     state.tasks.set_event_sink(move |event| {
-        if let Err(err) = events.emit(crate::task_manager::TASK_LIFECYCLE_EVENT, event) {
-            tracing::debug!(
-                "emit {} failed: {err}",
-                crate::task_manager::TASK_LIFECYCLE_EVENT
+        emit(&events, crate::task_manager::TASK_LIFECYCLE_EVENT, &event);
+        if event.task.kind == TaskKind::CarveScan {
+            // A scan's entry is its session: show it stopping.
+            let Ok(scans) = carve_scans.try_lock() else {
+                return;
+            };
+            let scan = scans
+                .values()
+                .map(|session| session.read().snapshot())
+                .find(|scan| scan.task_id == event.task.id);
+            drop(scans);
+            if let Some(scan) = scan {
+                task_center::publish_carve(&events, &tasks, &scan);
+            }
+        } else if let Some(entry) = task_center::native_entry(&event.task) {
+            emit(
+                &events,
+                task_center::TASK_ENTRY_EVENT,
+                &TaskEntryEvent::changed(entry),
             );
         }
     });
     let events = host.clone();
     state.tasks.set_progress_sink(move |event| {
-        if let Err(err) = events.emit(crate::task_manager::TASK_PROGRESS_EVENT, event) {
-            tracing::debug!(
-                "emit {} failed: {err}",
-                crate::task_manager::TASK_PROGRESS_EVENT
+        emit(&events, crate::task_manager::TASK_PROGRESS_EVENT, &event);
+        if let Some(entry) = task_center::native_entry(&event.task) {
+            emit(
+                &events,
+                task_center::TASK_ENTRY_EVENT,
+                &TaskEntryEvent::changed(entry),
             );
         }
     });
-    Ok(scratch)
+}
+
+fn emit(host: &AppHandle, event: &str, payload: &impl serde::Serialize) {
+    if let Err(err) = host.emit(event, payload) {
+        tracing::debug!("emit {event} failed: {err}");
+    }
 }
 
 fn discover_plugins(state: &AppState, host: &AppHandle) {
-    let mut plugin_roots = host
+    // Installed packages go to the per-user directory; bundled ones sit next
+    // to the executable.
+    let install_root = host
         .app_data_dir()
-        .map(|directory| vec![directory.join("plugins")])
-        .unwrap_or_default();
+        .map(|directory| directory.join("plugins"));
+    let mut plugin_roots = Vec::new();
     if let Ok(executable) = std::env::current_exe() {
         if let Some(directory) = executable.parent() {
             plugin_roots.push(directory.join("plugins"));
@@ -96,20 +134,13 @@ fn discover_plugins(state: &AppState, host: &AppHandle) {
             }
         }
     }
-    match PluginManager::discover(&plugin_roots) {
+    match PluginManager::discover(&plugin_roots, install_root) {
         Ok(manager) => {
             tracing::info!(
                 plugins = manager.definitions().len(),
-                "LPP plugin discovery complete"
+                rejected = manager.rejected().len(),
+                "plugin discovery complete"
             );
-            let events = host.clone();
-            // 共享实例(直接分析)的进度;调度任务的进度经各自的
-            // worker 回到所属任务,不走这里。
-            manager.set_progress_sink(move |event| {
-                if let Err(err) = events.emit("plugin-progress", event) {
-                    tracing::debug!("emit plugin-progress failed: {err}");
-                }
-            });
             match crate::core::extensions::plugin::PluginLogStore::beside_executable() {
                 Ok(store) => manager.set_log_store(store),
                 Err(err) => tracing::warn!("plugin log files are unavailable: {err}"),
@@ -133,30 +164,51 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
-/// 组装任务调度器:function 注册表来自已发现的插件清单(插件发现即信任,
-/// 全部可派发),执行器把任务交给 LPP 插件子进程。
+/// 组装任务调度器:function 注册表来自已发现的插件包(发现即信任,全部可
+/// 派发),执行器把任务交给 lc-plugin-host 插件进程;系统作用域的任务从
+/// 已识别的系统里选目标。
 pub(crate) fn build_task_scheduler(
     images: Arc<Mutex<HashMap<String, Arc<EvidenceSession>>>>,
     plugins: Arc<parking_lot::RwLock<Option<Arc<PluginManager>>>>,
+    systems: Arc<SystemCache>,
 ) -> TaskScheduler {
     let registry_plugins = Arc::clone(&plugins);
     let registry_source: RegistrySource = Arc::new(move || {
         let manager = registry_plugins.read().clone();
         match manager {
-            Some(manager) => FunctionRegistry::from_definitions(manager.definitions()),
+            Some(manager) => FunctionRegistry::from_definitions(&manager.definitions()),
             None => FunctionRegistry::default(),
         }
     });
+    let runner_images = Arc::clone(&images);
+    let runner_systems = Arc::clone(&systems);
     let runner_factory: RunnerFactory = Arc::new(move |case_dir| {
         Arc::new(PluginTaskRunner::new(
-            Arc::clone(&images),
+            Arc::clone(&runner_images),
             Arc::clone(&plugins),
+            Arc::clone(&runner_systems),
             case_dir.to_owned(),
         )) as Arc<dyn TaskRunner>
     });
-    TaskScheduler::new(
+    let scheduler = TaskScheduler::new(
         SchedulerConfig::from_env(|key| std::env::var(key).ok()),
         registry_source,
         runner_factory,
-    )
+    );
+    // Called on blocking workers (task creation, evidence online).
+    scheduler.set_systems_source(move |image_id| {
+        let Some(image) = images.blocking_lock().get(image_id).cloned() else {
+            return Vec::new();
+        };
+        systems
+            .get_or_discover(&image)
+            .iter()
+            .map(|system| SystemTarget {
+                id: system.id.clone(),
+                family: system.family.clone(),
+                label: system.label.clone(),
+            })
+            .collect()
+    });
+    scheduler
 }

@@ -61,8 +61,9 @@ dir = "案件目录"
 key = "SQLCipher 等加密数据库的密钥（JSON）"
 
 [groups]
-"analysis" = "插件分析结果：结果树、记录与详情"
+"analysis" = "插件分析结果：结果树、记录、详情与运行审计"
 "analysis records" = "分析记录"
+"analysis runs" = "分析运行"
 "analysis tree" = "分析结果树"
 "bcp" = "BCP 数据包"
 "bcp rows" = "BCP 数据表记录"
@@ -130,10 +131,10 @@ key = "SQLCipher 等加密数据库的密钥（JSON）"
 "ios-backups" = "iOS 本地备份"
 "mounts" = "只读挂载与 SMB 共享（Windows）"
 "mounts points" = "可用的挂载点"
-"plugins" = "插件、插件分析与插件任务"
-"plugins analyses" = "单文件插件分析"
-"plugins functions" = "插件提供的任务函数"
+"plugins" = "插件包、分析器与插件任务"
+"plugins functions" = "插件提供的分析器"
 "plugins post-actions" = "检材登记后的自动任务"
+"plugins systems" = "检材上识别出的操作系统"
 "plugins tasks" = "插件任务调度"
 "raid" = "RAID 组装"
 "searches" = "全局搜索：任务、命中与导出"
@@ -155,7 +156,7 @@ key = "SQLCipher 等加密数据库的密钥（JSON）"
 path = "analysis tree get"
 ipc = "analysis_result_tree"
 summary = "查看分析结果树"
-description = "分析结果树：检材 → 分类 → 功能 → 结果项。未打开案件时返回空树。"
+description = "分析结果树：检材 → 分类 → 分析器运行 → 记录类型。旧案件的插件结果以 legacy 节点只读列出。未打开案件时返回空树。"
 category = "read"
 concurrent = true
 
@@ -163,18 +164,46 @@ concurrent = true
 path = "analysis records list"
 ipc = "analysis_records_page"
 summary = "分页列出分析记录"
-description = "按结果项分页读取指定 runId 的记录；runId 来自分析结果树，分页期间固定运行身份。"
+description = "按记录类型分页读取指定 runId 的记录，可按关键词过滤、按列排序；runId 来自分析结果树，分页期间固定运行身份。"
 category = "read"
 concurrent = true
 defaults = { skip = 0, limit = 100 }
+examples = [
+    { command = "lovelycarve-cli analysis records list --run-id <runId> --record-type linux.user --sort uid", description = "按 UID 排序列出一次运行的用户记录" },
+]
+[command.params.runId]
+description = "分析运行 ID（分析结果树节点的 runId）"
+[command.params.recordType]
+description = "记录类型（分析结果树结果项的 artifactType，如 linux.user）"
+[command.params.legacy]
+description = "读取旧案件的插件结果（结果树节点 legacy 为 true 时）"
+[command.params.keyword]
+description = "关键词：匹配标题与文本类列（ASCII 不区分大小写）"
+[command.params.sort]
+description = "排序列：列 id 或 title；省略时按记录产生顺序"
+[command.params.descending]
+description = "降序排列"
 
 [[command]]
 path = "analysis records get"
 ipc = "analysis_record_detail"
 summary = "查看一条分析记录"
 category = "read"
-args = ["artifactId"]
+args = ["recordId"]
 concurrent = true
+[command.params.recordId]
+description = "记录 ID（analysis records list 返回的 recordId）"
+
+[[command]]
+path = "analysis runs get"
+ipc = "analysis_run_get"
+summary = "查看一次分析运行的审计信息"
+description = "运行的目标、输入文件、选项、画像事实、告警与读不出而以零填充的源字节。"
+category = "read"
+args = ["runId"]
+concurrent = true
+[command.params.runId]
+description = "分析运行 ID"
 
 # ── bcp ─────────────────────────────────────────────────────────────────────
 
@@ -1564,49 +1593,52 @@ description = "挂载点文件夹名称"
 [[command]]
 path = "plugins list"
 ipc = "plugin_list"
-summary = "列出插件"
+summary = "列出插件包"
+description = "已安装与内置的插件包：分析器、记录类型、语言包、库文件状态，以及加载失败的包。"
 category = "read"
 concurrent = true
 
 [[command]]
 path = "plugins restart"
 ipc = "plugin_restart"
-summary = "重启插件"
+summary = "重启插件的共享实例"
 category = "action"
 args = ["pluginId"]
 
 [[command]]
-path = "plugins analyses create"
-ipc = "plugin_analyze_file"
-summary = "用插件分析一个文件"
-description = "运行插件的文件分析器；有案件时结果保存进案件。"
+path = "plugins create"
+ipc = "plugin_install"
+summary = "安装插件包"
+description = "安装 .lcpkg 插件包；已安装的同 ID 插件被替换，内置插件不能替换。"
 category = "create"
-args = ["path"]
-target = "nodeId"
-[command.params.analyzer]
-description = "分析器名称（plugins list 的 capabilities）"
-[command.params.fileName]
-description = "文件名；省略时取 <path> 的最后一段"
+args = ["archive"]
+examples = [
+    { command = "lovelycarve-cli plugins create ./vehicle-0.2.0.lcpkg", description = "安装汽车取证插件包" },
+]
+[command.params.archive]
+description = "插件包文件（.lcpkg）的主机路径"
 
 [[command]]
-path = "plugins analyses list"
-ipc = "plugin_analysis_list"
-summary = "列出文件已保存的插件分析"
-category = "read"
-target = "nodeId"
-concurrent = true
+path = "plugins delete"
+ipc = "plugin_uninstall"
+summary = "卸载插件包"
+description = "卸载用户安装的插件包；内置插件不能卸载。已发布的分析结果保留在案件里。"
+category = "delete"
+args = ["pluginId"]
 
 [[command]]
 path = "plugins functions list"
 ipc = "sched_task_functions"
-summary = "列出插件提供的任务函数"
+summary = "列出插件提供的分析器"
+description = "每个分析器的作用域（system / evidence / files）、适用平台、选项与画像事实。"
 category = "read"
 concurrent = true
 
 [[command]]
-path = "plugins tasks list"
-ipc = "sched_task_list"
-summary = "列出插件任务"
+path = "plugins systems list"
+ipc = "sched_systems_list"
+summary = "列出检材上识别出的操作系统"
+description = "系统作用域分析的目标：每个系统的 id、产品名与它挂载的卷（fstab、盘符）。首次调用会读取检材识别系统。"
 category = "read"
 concurrent = true
 
@@ -1614,9 +1646,20 @@ concurrent = true
 path = "plugins tasks create"
 ipc = "sched_task_create"
 summary = "创建插件任务"
+description = "系统作用域的分析器给 --system-id，文件作用域的给 --node-id；--options 按分析器声明的选项 id 传 JSON 对象。"
 category = "create"
+examples = [
+    { command = "lovelycarve-cli plugins tasks create --function org.lovelycarve.linuxinfo/linuxbaseinfo --system-id linux@part:2", description = "对识别出的 Linux 系统运行基本信息分析" },
+    { command = "lovelycarve-cli plugins tasks create --function org.lovelycarve.linuxinfo/linuxbaseinfo --system-id linux@part:2 --options '{\"items\":[\"users\",\"logins\"]}'", description = "只分析用户与登录两个子项" },
+]
 [command.params.function]
-description = "任务函数（plugins functions list 返回）"
+description = "分析器（plugins functions list 返回的 function）"
+[command.params.systemId]
+description = "目标系统（plugins systems list 返回的 id）"
+[command.params.fileName]
+description = "文件名（文件作用域）"
+[command.params.options]
+description = "分析器选项，JSON 对象；省略的选项取默认值"
 
 [[command]]
 path = "plugins tasks cancel"
@@ -1625,16 +1668,7 @@ summary = "取消插件任务"
 category = "action"
 args = ["taskId"]
 [command.params.taskId]
-description = "插件任务 ID（plugins tasks list 返回）"
-
-[[command]]
-path = "plugins tasks pause"
-ipc = "sched_task_pause"
-summary = "暂停插件任务"
-category = "action"
-args = ["taskId"]
-[command.params.taskId]
-description = "插件任务 ID"
+description = "插件任务 ID（tasks list 中 plugin:<ID> 的数字）"
 
 [[command]]
 path = "plugins tasks start"
@@ -1813,25 +1847,33 @@ description = "在上级目录中选中该项"
 [[command]]
 path = "tasks list"
 ipc = "task_list"
-summary = "列出后台任务"
+summary = "列出任务中心的任务"
+description = "插件任务与内置任务（加载、哈希、导出、解锁、平台识别、快照与索引、全局搜索、时间线、文件恢复、Docker 合并）：运行中的、本次会话结束的，以及搜索历史、时间线状态与恢复扫描各自保留的。插件任务的 id 为 plugin:<ID>；不属于任何检材的任务（打开检材）总会列出。"
 category = "read"
 concurrent = true
+[command.params.imageId]
+description = "只列这个检材的任务；省略时列出全部检材"
 
 [[command]]
 path = "tasks get"
 ipc = "task_status"
-summary = "查看后台任务"
+summary = "查看任务"
 category = "read"
 args = ["taskId"]
 concurrent = true
+[command.params.taskId]
+description = "任务 ID（tasks list 返回的 id）"
 
 [[command]]
 path = "tasks cancel"
 ipc = "task_cancel"
-summary = "取消后台任务"
+summary = "取消任务"
+description = "内置任务给它的 id，插件任务给 plugin:<ID>。取消是协作式的：任务在下一个检查点停下。"
 category = "action"
 args = ["taskId"]
 concurrent = true
+[command.params.taskId]
+description = "任务 ID（tasks list 返回的 id）"
 
 [[command]]
 path = "tasks wait"

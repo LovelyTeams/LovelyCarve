@@ -1,3 +1,4 @@
+use crate::core::analysis::identify::systems::SystemCache;
 use crate::core::preview::media_cache::{MediaScratch, MediaTempCache};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Weak};
@@ -29,9 +30,12 @@ pub struct AppState {
     /// concurrent caller for the same evidence path serialises behind the
     /// first opener and then reuses the registered `EvidenceSession`.
     pub image_load_locks: Arc<Mutex<HashMap<String, Weak<Mutex<()>>>>>,
-    /// Discovered LPP subprocess plugins. The setup hook installs the manager
+    /// Discovered plugin packages. The setup hook installs the manager
     /// after Tauri resolves the per-user application-data directory.
     pub plugins: Arc<parking_lot::RwLock<Option<Arc<PluginManager>>>>,
+    /// Operating systems detected per loaded image (system-scope plugin
+    /// runs and the analysis dialog). Purged per image on unload.
+    pub systems: Arc<SystemCache>,
     /// Serialises lazy Unknown-partition probe/open so concurrent directory
     /// requests cannot create duplicate subprocess filesystem sessions.
     pub plugin_open_lock: Arc<Mutex<()>>,
@@ -120,13 +124,18 @@ impl AppState {
     pub fn new() -> Self {
         let images: Arc<Mutex<HashMap<String, Arc<EvidenceSession>>>> = Arc::default();
         let plugins: Arc<parking_lot::RwLock<Option<Arc<PluginManager>>>> = Arc::default();
-        let scheduler =
-            crate::app::setup::build_task_scheduler(Arc::clone(&images), Arc::clone(&plugins));
+        let systems: Arc<SystemCache> = Arc::default();
+        let scheduler = crate::app::setup::build_task_scheduler(
+            Arc::clone(&images),
+            Arc::clone(&plugins),
+            Arc::clone(&systems),
+        );
         Self {
             images,
             image_load_locks: Arc::default(),
             image_load_context: Mutex::new(0),
             plugins,
+            systems,
             plugin_open_lock: Arc::default(),
             tasks: TaskManager::default(),
             scheduler,

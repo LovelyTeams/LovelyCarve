@@ -1,10 +1,9 @@
-//! 调度器控制面:任务创建、取消、暂停、启动、重启、删除与证据上线/下线钩子。
+//! 调度器控制面:任务创建、取消、启动、重启、删除与证据上线/下线钩子。
 //!
 //! 每个操作先校验状态机(`model.rs` 的 `can_*`),再改写台账,最后广播;
-//! 对运行中的任务,取消/暂停会撤销执行 token 并终止该任务的插件 worker,
-//! 同一插件的其他任务
-//! 不受影响。状态改写只从读到的状态迁出:与同时到达的 commit 竞争时,
-//! 晚到的一方得到"状态已变"的错误,而不是覆盖对方。
+//! 对运行中的任务,取消会撤销执行 token 并终止该任务的插件 worker,同一
+//! 插件的其他任务不受影响。状态改写只从读到的状态迁出:与同时到达的
+//! commit 竞争时,晚到的一方得到"状态已变"的错误,而不是覆盖对方。
 //!
 //! 同步方法(查询、建任务、证据上线)直接读写台账,调用方应在阻塞线程上
 //! 调用;异步方法自行把台账步骤放到阻塞线程池。
@@ -18,7 +17,7 @@ use super::{
     scheduler::{BoundCase, TaskScheduler},
     store::{InsertOutcome, TaskFilter},
 };
-use crate::core::extensions::plugin::TaskTrigger;
+use crate::core::extensions::plugin::{AnalyzerScope, TaskTrigger};
 
 /// 检材移除前的任务收尾([`TaskScheduler::withdraw_evidence`] 的结果)。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -35,7 +34,6 @@ pub struct EvidenceWithdrawal {
 #[derive(Clone, Copy, Debug)]
 enum Control {
     Cancel,
-    Pause,
     Start,
 }
 
@@ -43,7 +41,6 @@ impl Control {
     fn action(self) -> &'static str {
         match self {
             Self::Cancel => "取消",
-            Self::Pause => "暂停",
             Self::Start => "启动",
         }
     }
@@ -51,7 +48,6 @@ impl Control {
     fn target(self) -> SchedTaskStatus {
         match self {
             Self::Cancel => SchedTaskStatus::Cancel,
-            Self::Pause => SchedTaskStatus::Pause,
             Self::Start => SchedTaskStatus::Created,
         }
     }
@@ -59,7 +55,6 @@ impl Control {
     fn allows(self, task: &SchedTaskRecord) -> bool {
         match self {
             Self::Cancel => task.status.can_cancel(),
-            Self::Pause => task.can_pause && task.status.can_pause(),
             Self::Start => task.status.can_start(),
         }
     }
@@ -107,18 +102,47 @@ impl TaskScheduler {
 
     // ----- create -------------------------------------------------------------
 
-    /// 手动建任务。单实例约束命中时返回已有任务。
+    /// 手动建任务。目标与选项按分析器的作用域和选项声明校验;系统作用域的
+    /// 系统必须是该检材识别出的、分析器适用的系统。单实例约束命中时返回
+    /// 已有任务。阻塞(可能识别检材上的系统),在阻塞线程上调用。
     pub fn create_task(
         &self,
         function: &str,
         image_id: &str,
-        params: TaskParams,
+        mut params: TaskParams,
     ) -> SchedResult<InsertOutcome> {
         let bound = self.require_bound()?;
         let registry = self.registry();
         let function = registry
             .get(function)
             .ok_or_else(|| SchedError::FunctionUnknown(function.to_owned()))?;
+        function
+            .check_params(&params)
+            .map_err(SchedError::InvalidParams)?;
+        if function.scope == AnalyzerScope::System {
+            let system_id = params.system_id.clone().unwrap_or_default();
+            let system = self
+                .systems_for(image_id)
+                .into_iter()
+                .find(|system| system.id == system_id)
+                .ok_or_else(|| {
+                    SchedError::InvalidParams(format!("检材上没有识别出系统 {system_id}"))
+                })?;
+            if !function.applies_to_family(&system.family) {
+                return Err(SchedError::InvalidParams(format!(
+                    "{} 不适用于 {}",
+                    function.display_name, system.label
+                )));
+            }
+            params.target_label = Some(system.label);
+        }
+        if function.scope != AnalyzerScope::System {
+            params.system_id = None;
+        }
+        if function.scope != AnalyzerScope::Files {
+            params.node_id = None;
+            params.file_name = None;
+        }
         let evidence_id = bound
             .store
             .evidence_id_for_image(image_id)?
@@ -141,7 +165,7 @@ impl TaskScheduler {
                 self.inner.post_actions.on_task_created(task.evidence_id);
             }
             InsertOutcome::Existing(task) => tracing::info!(
-                "user want create task {} for evidence {} but task exist! (tid {})",
+                "task {} for evidence {} already exists (tid {})",
                 task.name,
                 task.evidence_id,
                 task.id
@@ -152,8 +176,8 @@ impl TaskScheduler {
 
     // ----- evidence hooks -----------------------------------------------------
 
-    /// 证据上线:
-    /// 为 `trigger=auto` 的依赖链根 function 建首任务。
+    /// 证据上线:为自动触发、不等待事实的 function 建首任务(系统作用域按
+    /// 识别出的系统各一条)。阻塞,在阻塞线程上调用。
     pub fn on_evidence_online(&self, image_id: &str) -> SchedResult<Vec<InsertOutcome>> {
         let bound = self.require_bound()?;
         let evidence_id = bound
@@ -161,12 +185,18 @@ impl TaskScheduler {
             .evidence_id_for_image(image_id)?
             .ok_or_else(|| SchedError::EvidenceUnknown(image_id.to_owned()))?;
         let registry = self.registry();
-        let target = TaskTarget {
-            evidence_id,
-            params: TaskParams::default(),
+        // Identifying systems reads the evidence: only when an analyzer needs it.
+        let systems = if registry
+            .auto_roots()
+            .any(|function| function.scope == AnalyzerScope::System)
+        {
+            self.systems_for(image_id)
+        } else {
+            Vec::new()
         };
         let outcomes = self.ordered(|| {
-            let outcomes = dependence::create_first_tasks(&bound.store, &registry, &target);
+            let outcomes =
+                dependence::create_first_tasks(&bound.store, &registry, evidence_id, &systems);
             for outcome in outcomes.iter().flatten() {
                 if let InsertOutcome::Created(task) = outcome {
                     self.emit_task(task);
@@ -257,21 +287,7 @@ impl TaskScheduler {
         Ok(cancelled)
     }
 
-    /// 暂停任务:仅 `can_pause` 任务;运行中的执行被终止,恢复时从头重跑。
-    pub async fn pause(&self, task_id: i64) -> SchedResult<SchedTaskRecord> {
-        let bound = self.require_bound()?;
-        let _guard = self.inner.tick_lock.lock().await;
-        let (task, paused) = self
-            .on_blocking({
-                let bound = Arc::clone(&bound);
-                move |scheduler| scheduler.apply_control(&bound, task_id, Control::Pause)
-            })
-            .await??;
-        self.stop_execution(&bound, &task).await;
-        Ok(paused)
-    }
-
-    /// 启动任务:暂停/离线任务重新排队(`created`)。
+    /// 启动任务:离线任务(以及旧案件里暂停的任务)重新排队(`created`)。
     pub async fn start(&self, task_id: i64) -> SchedResult<SchedTaskRecord> {
         let bound = self.require_bound()?;
         let _guard = self.inner.tick_lock.lock().await;
@@ -279,8 +295,8 @@ impl TaskScheduler {
             .await?
     }
 
-    /// 重启任务:终态任务重建一条新任务(`parent_tid` 指向原任务,
-    /// 成功后照常触发 CheckDependenceTask);离线任务直接重排队。
+    /// 重启任务:终态任务重建一条新任务(`parent_tid` 指向原任务);离线
+    /// 任务直接重排队。
     pub async fn restart(&self, task_id: i64) -> SchedResult<SchedTaskRecord> {
         let bound = self.require_bound()?;
         let _guard = self.inner.tick_lock.lock().await;
@@ -377,20 +393,22 @@ impl TaskScheduler {
         if task.status == SchedTaskStatus::Offline {
             return self.start_task(bound, task_id);
         }
+        let registry = self.registry();
+        let function = registry
+            .get(&task.name)
+            .ok_or_else(|| SchedError::FunctionUnknown(task.name.clone()))?;
         let new_task = NewTask {
             name: task.name.clone(),
-            display_name: task.display_name.clone(),
-            type_name: task.type_name.clone(),
+            display_name: function.display_name.clone(),
+            type_name: function.type_name.clone(),
             evidence_id: task.evidence_id,
             plugin_id: task.info.plugin_id.clone(),
             analyzer: task.info.analyzer.clone(),
             trigger: task.info.trigger,
             parent_tid: Some(task.id),
             params: task.params.clone(),
-            dependence: task.dependence.clone(),
-            can_pause: task.can_pause,
-            single_instance: task.single_instance,
-            internal: task.internal,
+            single_instance: function.single_instance,
+            internal: function.internal,
         };
         tracing::info!("restarting task {} ({})", task.id, task.name);
         let outcome = self.ordered(|| {
@@ -424,8 +442,8 @@ impl TaskScheduler {
             .store
             .remove(task_id)?
             .ok_or(SchedError::TaskNotFound(task_id))?;
-        // 删除任务时同时清理已落库的分析结果与时间线投影。尽力而为:失败
-        // 只留下孤儿 run,不影响任务删除本身。
+        // 删除任务时同时清理已发布的结果与时间线投影。尽力而为:失败只
+        // 留下孤儿运行,不影响任务删除本身。
         if let Err(error) = bound.runner.remove_results(&removed) {
             tracing::warn!(
                 "remove analysis results for task {} ({}): {error:#}",
@@ -448,7 +466,7 @@ impl TaskScheduler {
     }
 
     /// 撤销执行:撤销 token、移除运行登记、终止该任务的插件实例。没有进程内
-    /// 执行(未派发、已暂停、已离线)时什么也不做。
+    /// 执行(未派发、已离线)时什么也不做。
     async fn stop_execution(&self, bound: &Arc<BoundCase>, task: &SchedTaskRecord) {
         let entry = self.inner.running.lock().remove(&task.id);
         let Some(entry) = entry else {

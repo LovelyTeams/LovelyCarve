@@ -4,7 +4,7 @@ import { effectScope, nextTick, ref, type EffectScope } from 'vue';
 import { useFileTree } from './useFileTree';
 import type { FsNode } from '../../../lib/ipc/fs/types';
 const calls = vi.hoisted(() => ({ children: vi.fn(), counts: vi.fn(), empty: vi.fn(), letters: vi.fn(), error: vi.fn() }));
-vi.mock('../../tasks/composables/useBuiltinTasks', () => ({ trackedFsChildren: calls.children }));
+vi.mock('./containerReads', () => ({ containerFsChildren: calls.children }));
 vi.mock('../../../lib/ipc/fs/query', () => ({ fsChildCounts: calls.counts, fsSubtreeEmptyDirs: calls.empty }));
 vi.mock('../../../lib/ipc/filesystemMetadata', () => ({ winDriveLetters: calls.letters }));
 vi.mock('../../../composables/useToast', () => ({ notifyError: calls.error }));

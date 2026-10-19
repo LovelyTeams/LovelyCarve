@@ -8,13 +8,6 @@ const ipc = vi.hoisted(() => ({ load: vi.fn(), cancel: vi.fn(), error: vi.fn() }
 vi.mock('../../lib/ipc/image', () => ({ imageLoad: ipc.load }));
 vi.mock('../../lib/ipc/taskRuntime', () => ({ taskCancel: ipc.cancel }));
 vi.mock('../../composables/useToast', () => ({ notifyError: ipc.error }));
-vi.mock('../../features/tasks/api', () => ({
-  trackedImageLoad: async (_id: string, _path: string, operation: () => Promise<unknown>, ready: () => Promise<void>) => {
-    const result = await operation();
-    await ready();
-    return result;
-  },
-}));
 let scope: ReturnType<typeof effectScope>;
 const directory = ref<string | null>('case-a');
 let complete: (value: { id: string }) => void;

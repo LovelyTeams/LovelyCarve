@@ -1,6 +1,6 @@
-//! Inspect a logical path through the same read-only API used by evidence plugins.
+//! Inspect a logical path through the same read-only view plugins use.
 use lovelycarve_lib::core::{
-    extensions::plugin::EvidenceRegistry, filesystem::evidence_session::EvidenceSession,
+    extensions::plugin::HostView, filesystem::evidence_session::EvidenceSession,
 };
 use std::sync::Arc;
 
@@ -11,8 +11,10 @@ fn main() -> anyhow::Result<()> {
         "usage: probe_evidence_path <image> <root-id> <path>..."
     );
     let image = Arc::new(EvidenceSession::open(&arguments[0])?);
-    let registry = EvidenceRegistry::default();
-    let handle = registry.register("probe", image.id.clone(), image);
+    // The evidence view: every volume under its volume key.
+    let view = HostView::evidence("probe".to_owned(), "probe".to_owned(), image);
+    let root = &arguments[1];
+    let in_root = |path: &str| format!("{root}/{}", path.trim_start_matches('/'));
     if arguments
         .get(2)
         .is_some_and(|argument| argument == "--export-batch")
@@ -30,8 +32,9 @@ fn main() -> anyhow::Result<()> {
         anyhow::ensure!(requests.len() <= 4096, "export batch exceeds 4096 sources");
         let mut total = 0u64;
         for [source, destination] in requests {
-            let node = registry
-                .stat("probe", &handle.evidence_id, &arguments[1], &source)?
+            let path = in_root(&source);
+            let node = view
+                .stat(&path)?
                 .ok_or_else(|| anyhow::anyhow!("export source not found: {source}"))?;
             anyhow::ensure!(
                 node.kind == "file" && !node.deleted && node.link_target.is_none(),
@@ -53,11 +56,8 @@ fn main() -> anyhow::Result<()> {
             let mut output = tempfile::NamedTempFile::new_in(parent)?;
             let mut offset = 0;
             while offset < node.size {
-                let bytes = registry.read(
-                    "probe",
-                    &handle.evidence_id,
-                    &arguments[1],
-                    &source,
+                let bytes = view.read(
+                    &path,
                     offset,
                     usize::try_from((node.size - offset).min(4 * 1024 * 1024))?,
                 )?;
@@ -81,8 +81,9 @@ fn main() -> anyhow::Result<()> {
         let ranged = arguments[2] == "--export-range";
         anyhow::ensure!(arguments.len() == if ranged { 7 } else { 5 },
             "--export <evidence-path> <output-path> or --export-range <evidence-path> <offset> <length> <output-path>");
-        let node = registry
-            .stat("probe", &handle.evidence_id, &arguments[1], &arguments[3])?
+        let path = in_root(&arguments[3]);
+        let node = view
+            .stat(&path)?
             .ok_or_else(|| anyhow::anyhow!("export source not found"))?;
         let (start, total, destination) = if ranged {
             let start = arguments[4].parse::<u64>()?;
@@ -105,11 +106,8 @@ fn main() -> anyhow::Result<()> {
         let mut output = tempfile::NamedTempFile::new_in(parent)?;
         let mut offset = 0;
         while offset < total {
-            let bytes = registry.read(
-                "probe",
-                &handle.evidence_id,
-                &arguments[1],
-                &arguments[3],
+            let bytes = view.read(
+                &path,
                 start + offset,
                 usize::try_from((total - offset).min(4 * 1024 * 1024))?,
             )?;
@@ -126,14 +124,7 @@ fn main() -> anyhow::Result<()> {
         // `read:<path>` dumps up to 4 MiB of file content for ground-truth
         // checks; plain paths keep the stat (+ listing) behavior.
         if let Some(file) = path.strip_prefix("read:") {
-            let bytes = registry.read(
-                "probe",
-                &handle.evidence_id,
-                &arguments[1],
-                file,
-                0,
-                4 * 1024 * 1024,
-            )?;
+            let bytes = view.read(&in_root(file), 0, 4 * 1024 * 1024)?;
             print!("{file}: ");
             match String::from_utf8(bytes) {
                 Ok(text) => println!("{text}"),
@@ -141,11 +132,11 @@ fn main() -> anyhow::Result<()> {
             }
             continue;
         }
-        let node = registry.stat("probe", &handle.evidence_id, &arguments[1], path)?;
+        let node = view.stat(&in_root(path))?;
         println!("{path}: {}", serde_json::to_string(&node)?);
         if node.is_some_and(|node| node.kind == "dir") {
-            let children = registry.list("probe", &handle.evidence_id, &arguments[1], path)?;
-            println!("{}", serde_json::to_string(&children)?);
+            let children = view.list(&in_root(path), 0, u64::MAX)?;
+            println!("{}", serde_json::to_string(&children.nodes)?);
         }
     }
     Ok(())

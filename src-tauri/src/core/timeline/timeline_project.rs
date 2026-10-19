@@ -3,27 +3,30 @@
 //! 两条投影路径:
 //!
 //! - **创建重建任务**(不是开关):遍历存量源数据(各卷已发布的文件系统索引 +
-//!   检材 `analysis.db` 的插件时间线事件)整体重投影——先清空旧投影再分批
-//!   插入,幂等([`run_rebuild`]);
-//! - **写路径自动投影**:插件任务收尾时按 tid(run_id)级联删 + 重投影该
-//!   run 的事件([`project_run`],executor 钩子调用)——插件作者零成本接入。
+//!   检材 `records.db` 里已发布运行的时间点 + 旧案件 `analysis.db` 的插件
+//!   时间线事件)整体重投影——先清空旧投影再分批插入,幂等([`run_rebuild`]);
+//! - **写路径自动投影**:插件运行发布时按 tid(run_id)删掉它与被它替换的
+//!   运行的投影,再投影它的时间点([`project_published_run`],调度器发布时
+//!   调用)——插件只需在 schema 里给时间戳字段标时间线角色。
 //!
 //! 状态机:`build_required`(未创建)/ `running`(正在跑)/ `stale`(有新数据
 //! 未处理)/ `ready`(就绪)。staleness 以源水位判定:文件源是检材已索引卷的
-//! 「卷键@来源快照时间」签名,事件源是插件 run 的 `max(completed_at)`。
-//! 水位在重建**开始前**取:重建期间新到的数据会让结果判为过期,而不是被
-//! 悄悄漏掉。
+//! 「卷键@来源快照时间」签名,事件源是插件运行发布时间(旧版运行为完成时间)
+//! 的最大值。水位在重建**开始前**取:重建期间新到的数据会让结果判为过期,
+//! 而不是被悄悄漏掉。
 //!
 //! 投影规则:
 //!
 //! | datatype | time 字段 | tl_flag | from_app | content |
 //! |---|---|---|---|---|
 //! | file | **Mtime**(Ctime/Atime 不进时间线) | 修改 | volume_key | full_path |
-//! | plugin_event | timestamp | event_type | plugin_id | description |
+//! | plugin_event | 带时间线角色的时间戳字段 | 角色(`login`…) | plugin_id | 记录标题 |
+//! | plugin_event(旧版) | timestamp | event_type | plugin_id | description |
 //! | ntfs_usn | journal FILETIME | reason flags | NTFS USN + volume | historical name / MFT references |
 //!
 //! 缺失/无法解析时间戳的源记录跳过(保持 `min/max(tl_time)` 与桶聚合不被
-//! 零值污染)。
+//! 零值污染);未带时区的本地时间不知道对应哪个 UTC 时刻,同样不进时间线,
+//! 只在记录表格里按墙上时间排序展示。
 
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use std::path::Path;
@@ -37,7 +40,13 @@ use crate::core::casework::case_ledger_volumes::{indexed_volumes, IndexedVolume}
 use crate::core::timeline::timeline_store::{
     self, TimelineInsertRow, TimelineMetaRow, DATA_TYPE_FILE, DATA_TYPE_PLUGIN_EVENT,
 };
-use crate::core::{analysis::results::plugin_result_store, catalog::filedb::filedb_file};
+use crate::core::{
+    analysis::results::{
+        legacy_store,
+        record_query::{self, TimePointSource},
+    },
+    catalog::filedb::filedb_file,
+};
 
 /// 重建批次大小:流式落库大检材,批间检查取消/回报进度。
 const INSERT_BATCH: usize = 2000;
@@ -154,9 +163,7 @@ fn visit_file_rows(
     Ok(false)
 }
 
-fn event_insert_row(
-    event: &plugin_result_store::StoredTimelineEventSource,
-) -> Option<TimelineInsertRow> {
+fn event_insert_row(event: &legacy_store::StoredTimelineEventSource) -> Option<TimelineInsertRow> {
     let tl_time = rfc3339_to_epoch(Some(event.timestamp.as_str()))?;
     Some(TimelineInsertRow {
         oid: event.event_id.clone(),
@@ -169,6 +176,34 @@ fn event_insert_row(
         content: event.description.clone(),
         extra: String::new(),
     })
+}
+
+/// One timeline point of a plugin record. `extra` names the record, so the
+/// timeline can open it.
+fn point_insert_row(point: &TimePointSource) -> TimelineInsertRow {
+    TimelineInsertRow {
+        oid: format!("{}:{}", point.record_id, point.field),
+        tid: point.run_id.clone(),
+        deleted: false,
+        tl_time: point.epoch_us.div_euclid(1_000_000),
+        from_app: point.plugin_id.clone(),
+        data_type: DATA_TYPE_PLUGIN_EVENT,
+        tl_flag: point.role.clone(),
+        content: point.title.clone(),
+        extra: serde_json::json!({
+            "recordId": point.record_id.to_string(),
+            "recordType": point.record_type,
+            "field": point.field,
+        })
+        .to_string(),
+    }
+}
+
+/// The plugin source watermark: the latest publication of either store.
+fn event_watermark(case_dir: &Path, image_id: &str) -> anyhow::Result<String> {
+    let records = record_query::max_published_at(case_dir, image_id)?;
+    let legacy = legacy_store::max_completed_at(case_dir, image_id)?;
+    Ok(records.max(legacy))
 }
 
 // ── 重建任务 ─────────────────────────────────────────
@@ -207,7 +242,7 @@ fn run_rebuild_sources(
     timeline_store::meta_begin(&conn, started_ms).context("timeline rebuild: begin meta")?;
     // 先取水位再读源:重建期间到达的新数据让结果判为过期。
     let sources = indexed_volumes(case_dir, image_id).and_then(|volumes| {
-        let event_watermark = plugin_result_store::max_completed_at(case_dir, image_id)?;
+        let event_watermark = event_watermark(case_dir, image_id)?;
         Ok((volumes, event_watermark))
     });
     let outcome = sources.and_then(|(volumes, event_watermark)| {
@@ -267,7 +302,8 @@ fn rebuild_inner(
     on_progress: ProgressSink<'_>,
 ) -> anyhow::Result<TimelineBuildSummary> {
     let files_total = file_rows_total(volumes)?;
-    let events_total = plugin_result_store::count_timeline_events(case_dir, image_id)?;
+    let events_total = record_query::count_time_points(case_dir, image_id)?
+        + legacy_store::count_timeline_events(case_dir, image_id)?;
 
     let mut summary = TimelineBuildSummary {
         status: "success".to_string(),
@@ -297,10 +333,20 @@ fn rebuild_inner(
         return Ok(summary);
     }
 
-    // 插件事件(量小,先投影)。
+    // 插件记录的时间点与旧版事件(量小,先投影)。
     {
         let mut batch: Vec<TimelineInsertRow> = Vec::with_capacity(INSERT_BATCH);
-        plugin_result_store::visit_timeline_events(case_dir, image_id, |event| {
+        record_query::visit_time_points(case_dir, image_id, |point| {
+            done += 1;
+            batch.push(point_insert_row(point));
+            summary.event_rows += 1;
+            if batch.len() >= INSERT_BATCH {
+                timeline_store::insert_rows(conn, &batch)?;
+                batch.clear();
+            }
+            Ok(())
+        })?;
+        legacy_store::visit_timeline_events(case_dir, image_id, |event| {
             done += 1;
             match event_insert_row(event) {
                 Some(row) => {
@@ -371,14 +417,20 @@ fn rebuild_inner(
     Ok(summary)
 }
 
-// ── 写路径增量投影(插件任务收尾钩子)──────────────────────────────────
+// ── 写路径增量投影(插件运行发布钩子)──────────────────────────────────
 
-/// 按 tid(run_id)级联删旧投影 + 重投影该 run 的事件。仅在检材时间线已
-/// 初始化且不在重建中时生效(否则交给全量重建覆盖)。检查与写入在同一事务
-/// 里([`timeline_store::project_run_rows`]),同一检材的多条插件任务同时收尾
-/// 时依次排队提交。返回新投影行数。
-pub fn project_run(case_dir: &Path, image_id: &str, run_id: &str) -> anyhow::Result<u64> {
-    let Some(run) = plugin_result_store::run_events(case_dir, image_id, run_id)? else {
+/// 删掉 `run_id` 与它替换的运行(`superseded`)的投影,再投影 `run_id` 的
+/// 时间点。仅在检材时间线已初始化且不在重建中时生效(否则交给全量重建
+/// 覆盖)。检查与写入在同一事务里([`timeline_store::project_run_rows`]),
+/// 同一检材的多条插件任务同时发布时依次排队提交。返回新投影行数。
+pub fn project_published_run(
+    case_dir: &Path,
+    image_id: &str,
+    run_id: &str,
+    superseded: &[String],
+) -> anyhow::Result<u64> {
+    let Some((published_at, points)) = record_query::run_time_points(case_dir, image_id, run_id)?
+    else {
         return Ok(0);
     };
     let Some(conn) =
@@ -387,8 +439,9 @@ pub fn project_run(case_dir: &Path, image_id: &str, run_id: &str) -> anyhow::Res
         // 时间线从未建过:不产生半初始化状态,交给全量重建。
         return Ok(0);
     };
-    let rows: Vec<TimelineInsertRow> = run.events.iter().filter_map(event_insert_row).collect();
-    let projected = timeline_store::project_run_rows(&conn, run_id, &rows, &run.completed_at)?;
+    let rows: Vec<TimelineInsertRow> = points.iter().map(point_insert_row).collect();
+    let projected =
+        timeline_store::project_run_rows(&conn, run_id, superseded, &rows, &published_at)?;
     Ok(projected.unwrap_or(0))
 }
 
@@ -446,8 +499,7 @@ pub fn compute_status(
             let file_current = indexed_volumes(case_dir, image_id)
                 .map(|volumes| file_watermark(&volumes))
                 .unwrap_or_default();
-            let event_current =
-                plugin_result_store::max_completed_at(case_dir, image_id).unwrap_or_default();
+            let event_current = event_watermark(case_dir, image_id).unwrap_or_default();
             if file_current == meta_row.source_file_watermark
                 && event_current == meta_row.source_event_watermark
             {
@@ -475,16 +527,17 @@ pub fn compute_status(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::analysis::results::models::{
-        PluginAnalysisFinding, PluginAnalysisResult, PluginAnalysisTimelineEvent,
+    use crate::core::analysis::results::legacy_store::test_support::{persist, LegacyRun};
+    use crate::core::analysis::results::record_store::{
+        self, NewRun, RecordWriter, RunCompletion, RunTarget,
     };
-    use crate::core::analysis::results::plugin_result_store::NewPluginAnalysis;
     use crate::core::casework::case::test_support::{case_with_evidence, publish_volume};
     use crate::core::casework::case::CaseState;
     use crate::core::catalog::filedb::filedb_store::test_support::entry;
+    use crate::core::evidence::image::ReadFaultReport;
     use crate::core::filesystem::tree::fs_tree::NodeKind;
     use crate::core::timeline::timeline_store::TimelineQuery;
-    use std::collections::HashMap;
+    use lovelycarve_plugin::{protocol::WireRecord, FieldKind, FieldSchema, RecordSchema, Value};
 
     const EID: &str = "img-1";
 
@@ -509,51 +562,91 @@ mod tests {
         publish_volume(case, EID, "part:0", built_at, &entries);
     }
 
+    /// A legacy run with one valid and one unparseable event.
     fn seed_plugin_events(case_dir: &Path) -> String {
-        let result = PluginAnalysisResult {
-            summary: Some("done".into()),
-            nodes: vec![],
-            artifacts: vec![],
-            timeline: vec![
-                PluginAnalysisTimelineEvent {
-                    timestamp: "2024-03-01T08:00:00Z".into(),
-                    event_type: "browser.visit".into(),
-                    description: "访问 https://example.test".into(),
-                    attributes: HashMap::new(),
-                },
-                PluginAnalysisTimelineEvent {
-                    timestamp: "无法解析的时间".into(),
-                    event_type: "bad.event".into(),
-                    description: "坏时间戳应被跳过".into(),
-                    attributes: HashMap::new(),
-                },
-            ],
-            findings: vec![PluginAnalysisFinding {
-                severity: crate::core::analysis::results::models::PluginFindingSeverity::Info,
-                title: String::new(),
-                description: String::new(),
-                attributes: HashMap::new(),
-            }],
-        };
-        plugin_result_store::persist(
+        persist(
             case_dir,
-            NewPluginAnalysis {
+            EID,
+            &LegacyRun {
                 plugin_id: "org.demo",
-                plugin_version: "1",
                 analyzer: "demo.analyzer",
                 display_name: "演示功能",
                 type_name: "baseinfo",
-                image_id: EID,
                 node_id: "n-1",
                 file_name: "a.txt",
-                started_at: "2026-01-02T00:00:00Z",
                 completed_at: "2026-01-02T00:00:01Z",
-                result: &result,
+                nodes: Vec::new(),
+                artifacts: Vec::new(),
+                events: vec![
+                    (
+                        "2024-03-01T08:00:00Z",
+                        "browser.visit",
+                        "访问 https://example.test",
+                    ),
+                    ("无法解析的时间", "bad.event", "坏时间戳应被跳过"),
+                ],
             },
         )
-        .expect("persist")
     }
 
+    /// Publishes a records.db run of the job `job` with two logins: one with
+    /// a time zone (projected) and one local time (not projected).
+    fn publish_record_run(case_dir: &Path, job: &str) -> (String, record_store::Published) {
+        let schema = RecordSchema::new("test.login", "登录")
+            .title("{user}")
+            .field(FieldSchema::new("user", "用户", FieldKind::Text).key())
+            .field(FieldSchema::new("time", "时间", FieldKind::Timestamp).timeline("login"));
+        let run_id = format!("run_{}", uuid::Uuid::new_v4().simple());
+        record_store::begin_run(
+            case_dir,
+            EID,
+            &NewRun {
+                run_id: &run_id,
+                job_key: job,
+                plugin_id: "org.demo",
+                plugin_version: "1",
+                analyzer: "logins",
+                analyzer_name: "登录",
+                category: "baseinfo",
+                target: &RunTarget::default(),
+                options: &serde_json::json!({}),
+                profile: &serde_json::json!({}),
+                inputs: &[],
+                schema_hash: "fnv1a64:0",
+                started_at: "2026-01-03T00:00:00Z",
+            },
+        )
+        .expect("begin run");
+        let mut writer = RecordWriter::open(case_dir, EID, &run_id, std::slice::from_ref(&schema))
+            .expect("writer");
+        let login = |user: &str, time: &str| WireRecord {
+            record_type: "test.login".to_owned(),
+            values: vec![Value::from(user), Value::from(time)],
+            title: None,
+            severity: None,
+            sources: Vec::new(),
+        };
+        writer
+            .insert_batch(&[
+                login("root", "2024-04-01T10:00:00+08:00"),
+                login("kali", "2024-04-02 09:00:00"),
+            ])
+            .expect("records");
+        drop(writer);
+        let published = record_store::publish(
+            case_dir,
+            EID,
+            &run_id,
+            &RunCompletion {
+                summary: None,
+                finished_at: "2026-01-03T00:00:01Z",
+                read_faults: &ReadFaultReport::default(),
+            },
+        )
+        .expect("publish")
+        .expect("published");
+        (run_id, published)
+    }
     fn rebuild(case_dir: &Path) -> TimelineBuildSummary {
         let cancel = CancellationToken::new();
         run_rebuild(case_dir, EID, &cancel, &|_, _, _| {}).expect("rebuild")
@@ -713,31 +806,75 @@ mod tests {
     }
 
     #[test]
-    fn project_run_hooks_incrementally_after_build() {
+    fn published_runs_project_incrementally_and_replace_their_predecessor() {
         let (dir, _case) = seeded_case();
         rebuild(dir.path());
         assert_eq!(count_all(dir.path()), 2);
 
-        // 插件任务收尾:写路径增量投影。
-        let run_id = seed_plugin_events(dir.path());
-        let inserted = project_run(dir.path(), EID, &run_id).expect("hook");
+        // 插件运行发布:写路径增量投影。只有带时区的时间进时间线。
+        let (first, published) = publish_record_run(dir.path(), "org.demo/logins#");
+        assert!(published.superseded.is_empty());
+        let inserted =
+            project_published_run(dir.path(), EID, &first, &published.superseded).expect("hook");
         assert_eq!(inserted, 1);
         assert_eq!(count_all(dir.path()), 3);
         // 水位随钩子前移 → 状态保持就绪。
         let status = compute_status(dir.path(), EID, false).expect("status");
         assert_eq!(status.status, TimelineStatus::Ready);
 
-        // 重投影同一 run:按 tid 级联删旧,行数不膨胀。
-        assert_eq!(project_run(dir.path(), EID, &run_id).expect("again"), 1);
+        let conn = timeline_store::open_reader(dir.path(), EID)
+            .expect("store")
+            .expect("built");
+        let page = timeline_store::page(
+            &conn,
+            EID,
+            &timeline_store::TimelinePageQuery {
+                query: TimelineQuery::default(),
+                skip: 0,
+                limit: 10,
+                ascending: true,
+            },
+        )
+        .expect("page");
+        let login = page
+            .items
+            .iter()
+            .find(|row| row.data_type == DATA_TYPE_PLUGIN_EVENT)
+            .expect("login point");
+        assert_eq!(
+            (
+                login.tl_flag.as_str(),
+                login.content.as_str(),
+                login.tid.as_str()
+            ),
+            ("login", "root", first.as_str())
+        );
+        assert_eq!(login.tl_time, 1_711_936_800, "2024-04-01T02:00:00Z");
+        assert!(login.extra.contains("\"recordType\":\"test.login\""));
+
+        // 同一作业再次发布:旧运行的投影被替换,行数不膨胀。
+        let (second, published) = publish_record_run(dir.path(), "org.demo/logins#");
+        assert_eq!(published.superseded, vec![first.clone()]);
+        assert_eq!(
+            project_published_run(dir.path(), EID, &second, &published.superseded).expect("again"),
+            1
+        );
+        assert_eq!(count_all(dir.path()), 3);
+
+        // 全量重建读到的是同样的投影。
+        rebuild(dir.path());
         assert_eq!(count_all(dir.path()), 3);
     }
 
     #[test]
-    fn project_run_skips_uninitialized_timeline() {
+    fn publication_skips_uninitialized_timeline() {
         let (dir, _case) = seeded_case();
-        let run_id = seed_plugin_events(dir.path());
+        let (run_id, published) = publish_record_run(dir.path(), "org.demo/logins#");
         // 时间线从未建过:钩子不产生半初始化状态,交给全量重建。
-        assert_eq!(project_run(dir.path(), EID, &run_id).expect("hook"), 0);
+        assert_eq!(
+            project_published_run(dir.path(), EID, &run_id, &published.superseded).expect("hook"),
+            0
+        );
         assert_eq!(count_rows(dir.path(), &TimelineQuery::default()), 0);
         assert!(timeline_store::open_reader(dir.path(), EID)
             .expect("reader")

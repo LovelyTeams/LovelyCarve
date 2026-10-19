@@ -131,7 +131,7 @@ CLI JSONL 调度位于 `cli/session.rs`。`session --jobs N` 使用有界输入�
 
 外部卷通过 `filesystem::external_volume::ExternalVolume` 提供只读 Volume 和关闭契约；插件 `RemoteVolume` 实现这个接口。未知分区的插件探测、源登记和卷安装由 `app/workflows/filesystem.rs` 编排。卸载先撤销 AppState 登记、取消任务和停止挂载，再 drain 外部卷并逐项关闭、移除源和其他缓存；持有调用句柄的线程释放前，provider backing 继续存活。字节读者本身不持有插件连接。
 
-`core/extensions/task_scheduler` 保留台账、状态机、派发、恢复、进度、看门狗和 post-action 契约。生产 `PluginTaskRunner` 位于 `app/workflows/scheduler.rs`，负责实例存活、执行、analysis.db 落库、时间线投影和结果清理；清理失败仍按原语义记录告警并完成任务删除。插件 SDK 保留 ABI/LPP 和 wire 结果，`core/analysis/results/models.rs` 保存经过宿主校验的 JSON/IPC 投影；插件解析器做转换和限额校验，存储不依赖插件宿主。
+`core/extensions/task_scheduler` 保留台账、状态机、派发、恢复、进度、看门狗和 post-action 契约。生产 `PluginTaskRunner` 位于 `app/workflows/scheduler.rs`，负责准备运行（`core/extensions/plugin/run_setup.rs`）、实例存活、执行、`records.db` 发布、时间线投影和结果清理；清理失败仍按原语义记录告警并完成任务删除。插件 SDK 保留 ABI、LPP 载荷与记录结构定义，`core/analysis/results/` 的 `record_store` / `record_query` 按结构保存与查询类型化记录，`models.rs` 是结果树、表格与详情的 IPC 投影；存储不依赖插件宿主，插件卸载后结果仍可读。
 
 LVM 标签/CRC/活动副本位于 `evidence/partitions/lvm2/header.rs`，有界文本 grammar 与 VG/PV/LV/segment/stripe 模型位于 `text.rs`，完整线性 LV 字节映射与 read/seek 位于 `layout.rs`；文件系统与 RAID 共用。活动 ring 回绕、远端备份和成员 UUID 按同一读取规则处理，不以历史文本扫描替代损坏的当前副本。原生 ext/XFS/Btrfs/NTFS 读者支持单 PV 碎片段，来源 runs 映射回原始镜像；多 PV 线性 LV 由 RAID 检测消费：作为 md 成员，或作为跨 PV 的合成检材，缺失成员不缩短为可读卷。文件系统层构造导航、原始 LV 文件与未使用 PE 投影，RAID 不反向调用导航实现。完整 libvslvm API 对照与限制见 [LVM2](formats/LVM.md)。
 
@@ -141,7 +141,7 @@ RAID 检测（`evidence/raid`）分六步：读取各检材的 LVM PV 并物化�
 
 读者入口保留公共模型、打开方式和源身份；具体实现按职责放在入口同名目录。Btrfs 分为 open/directory/data/tree/codec，NTFS 分为 backing/directory/deleted/scan/read/metadata 与 logical_stream/data_stream/wof/reparse/forensic_metadata/security/mft_metadata，ZFS 分为 directory/read；`fs_dispatch` 保留 Volume/FsAdapter 契约和原注册顺序，各特殊卷适配在 ntfs/ext4/btrfs/zfs 子模块。RAID 的 manual/detect/members/md_array/firmware/imsm/imsm_identity/imsm_array/ddf/ddf_geometry/ddf_array/lvm_stack/probe、读取器 source/（striped/mirror/raid10/linear/parity_layout/gf256/build）与 heuristic 的 samples/search/parity/validation/probe/output 分开，原探测优先级、搜索预算和取消检查不变。
 
-插件 client 保留请求句柄和实例存活状态，process/connection/router/host_requests 分别负责启动、握手、消息路由和反向 RPC。Dokan 入口保留挂载会话和引用计数，filesystem/callbacks/paths/read 负责上下文、只读回调、路径和读取缓存。ReFS 通过本地 `refs-reader` crate 解析只读卷，filesystem 的 refs/backing/walk 分别负责节点适配、证据范围读取和可取消遍历；目录缓存随卷释放。普通文件、ADS 与快照版本按同一 extent 映射随机读取；platform/ffi 的旧实现只在显式 `refs-dll-oracle` 验证功能下编译。XLSX 预览分为 workbook/format/style，案件状态将检材登记和卷发布分别放在 case/evidence.rs、case/volumes.rs。相关原有测试与实现同域。
+插件 client 保留请求句柄和实例存活状态，process/connection/router/host_requests 分别负责启动、握手、消息路由和反向 RPC；`run_context` 服务一次运行的 `run.*` / `file.*` / `view.*` 调用，`view` 实现系统视图与检材视图。Dokan 入口保留挂载会话和引用计数，filesystem/callbacks/paths/read 负责上下文、只读回调、路径和读取缓存。ReFS 通过本地 `refs-reader` crate 解析只读卷，filesystem 的 refs/backing/walk 分别负责节点适配、证据范围读取和可取消遍历；目录缓存随卷释放。普通文件、ADS 与快照版本按同一 extent 映射随机读取；platform/ffi 的旧实现只在显式 `refs-dll-oracle` 验证功能下编译。XLSX 预览分为 workbook/format/style，案件状态将检材登记和卷发布分别放在 case/evidence.rs、case/volumes.rs。相关原有测试与实现同域。
 
 `commands.rs` 同时存放各命令文件共享的辅助函数。后端 CSV 导出（时间线、全局搜索）的数据单元格都经
 `commands::quote_csv_field` 转义：以 `=`、`+`、`-`、`@`、制表符或回车开头的值前置 `'`（`-12`、`-3.5` 等纯负数除外），
@@ -164,10 +164,12 @@ RAID 检测（`evidence/raid`）分六步：读取各检材的 LVM PV 并物化�
 - 卷/挂载：`fs_mount_readonly`、`fs_unmount_readonly`、`fs_mounts`、挂载点建议和创建
 - BitLocker：状态、密码/恢复密钥/VMK 解锁、内存扫描、导出解密镜像
 - 案件和快照：案件创建/打开/关闭、证据列表/移除、卷快照构建/列表/删除
-- 插件与任务调度：`plugin_list`/`plugin_restart`/`plugin_analyze_file`/
-  `plugin_analysis_list`；`sched_task_functions`、`sched_task_list`、`sched_task_create`、
-  `sched_task_cancel`/`pause`/`start`/`restart`/`remove`、`sched_evidence_post_actions_set`
-- 系统辅助：主题、任务取消、模块摘要、路径显示、二维码、OCR、OS 检测、Windows 盘符识别
+- 插件与任务调度：`plugin_list`/`plugin_restart`/`plugin_install`/`plugin_uninstall`；
+  `sched_task_functions`、`sched_systems_list`、`sched_task_create`、
+  `sched_task_cancel`/`start`/`restart`/`remove`、`sched_evidence_post_actions_set`；
+  `analysis_result_tree`、`analysis_records_page`、`analysis_record_detail`、`analysis_run_get`
+- 任务中心：`task_list`、`task_status`、`task_cancel`
+- 系统辅助：主题、模块摘要、路径显示、二维码、OCR、OS 检测、Windows 盘符识别
 
 若前端调用未注册命令，必须按功能清单处理为恢复后端、隐藏入口，或显示明确不可用说明。
 
@@ -372,18 +374,30 @@ E01、VMDK、VHD/VHDX、PMFX 等容错后端遇到源读取错误时，先沿绝
 
 ## 任务与事件
 
-长任务应返回任务 id 或明确结果，进度通过事件发送，取消走 `task_cancel`；任务状态可通过
-`task_status(task_id)` 查询单个活动任务，或通过 `task_list()` 列出当前全部活动任务。
-所有接入 `TaskManager` 的后台任务还会发出统一 `task-lifecycle` 事件，payload 包含
-`phase`（`queued` / `running` / `cancellationRequested` / `finished`）和完整任务快照。
-其中有细粒度进度的任务还会额外发出统一 `task-progress` 事件，payload 包含同一份任务快照、
-`unit`（`bytes` / `entries` / `attempts`）、`done`、可选 `total` 和可选 `message`。旧的领域
-进度事件仍保留给现有 UI，`task-progress` 用于跨任务聚合展示、诊断和未来通用任务面板。
+长任务应返回任务 id 或明确结果，进度通过事件发送，取消走 `task_cancel`。后端长任务统一注册到
+`TaskManager`，注册守卫负责在成功、错误、取消和 worker panic 后自动清理。任务记录包含任务类型、可选的
+镜像归属、状态（`queued`、`running` 或 `cancellationRequested`）和已运行时间。`image_unload` 会先取消该镜像的
+全部关联任务，避免已捕获 `Arc<DiskImage>` 的后台工作在卸载后继续消耗 I/O。
 
-后端长任务统一注册到 `TaskManager`，注册守卫负责在成功、错误、取消和 worker panic 后
-自动清理。任务记录包含任务类型、可选的镜像归属、状态和已运行时间；状态为 `queued`、
-`running` 或 `cancellationRequested`。`image_unload` 会先取消该镜像的全部关联任务，避免已捕获
-`Arc<DiskImage>` 的后台工作在卸载后继续消耗 I/O。
+每个任务还带一份任务中心视图（`TaskView`：对象片段、阶段、进度、计数、标签与标志），由命令经自己的登记
+填写（`TaskRegistration::update`，或按 id 的 `TaskManager::update` / `emit_progress`），并在最后一个登记释放前
+报告结局（`finish` / `finish_with`：成功、失败附错误、取消）；没有报告结局就释放的任务按令牌状态记为取消或
+中断。取消的任务立即让出 id，在 worker 停下前仍列为「取消中」。任务种类决定列出方式（`TaskKind::listing`）：
+页面自己展示的短任务（预览物化、二维码、OCR、BitLocker 扫描与解锁等）不列出；加载、哈希、镜像与目录导出、
+加密卷解锁、平台识别、快照与索引、Docker 合并、恢复文件导出结束后留在本次会话的历史里（检材卸载时清除，
+不属于任何检材的打开检材任务在切换案件时清除）；全局搜索、时间线与文件恢复扫描结束后由各自的存储列出
+（搜索历史、时间线状态、内存中的扫描会话）。
+
+`TaskManager` 发出 `task-lifecycle`（`phase`：`queued` / `running` / `updated` / `cancellationRequested` /
+`finished`，`finished` 带最终快照与结局）和带进度的 `task-progress`（`unit`：`bytes` / `entries` / `attempts` /
+`percent`、`done`、可选 `total` 与 `message`）。旧的领域进度事件仍保留给各自页面。
+
+任务中心（`app/workflows/task_center.rs`）把插件任务与原生任务列为同一种条目 `TaskEntry`：id、检材、调度器的
+状态词、是否取消中、是否自动触发、创建 / 开始 / 结束时间、进度、错误与可用操作，再加来源——插件任务带完整
+任务行，原生任务带种类与视图，文件恢复扫描另带会话 id。`task_list(image_id?)` 列出运行中的、本次会话结束的、
+各存储保留的原生任务与全部插件任务（不属于任何检材的任务总会列出），`task_status` 按 id 查一条，`task_cancel`
+取消原生任务或 `plugin:<id>` 插件任务。启动时（`app/setup.rs`）把调度器事件、原生任务的生命周期与进度事件和
+文件恢复会话的变化统一转成 `task-entry` 事件：`changed` 带条目、`removed` 带 id、`notice` 带调度通知。
 
 `TaskManager` 还负责后台资源预算：哈希、镜像/目录导出、BitLocker、二维码、媒体物化和
 快照构建会先取得全局后台任务 permit；需要顺序读取镜像的任务还会取得按镜像的
@@ -397,7 +411,7 @@ GPU，否则归入随机 I/O + CPU。资源获取按全局、镜像 I/O、CPU/GP
 ## 插件任务调度
 
 `TaskManager` 管的是进程内的即时后台操作；插件分析任务另走一套持久化调度器
-`core/task_scheduler/`，以案件台账 `case.db` 的 `task` / `task_followup` 表为持久化来源
+`core/extensions/task_scheduler/`，以案件台账 `case.db` 的 `task` / `task_followup` 表为持久化来源
 （见「案件数据库」）。插件、分析器、触发方式、父任务与失败原因各是一列，只有 `params` /
 `result` 是 JSON；线上形态 `SchedTaskRecord` 仍把前几项收在 `info` 里。插件实例只在进程内
 登记，不落库。
@@ -405,52 +419,58 @@ GPU，否则归入随机 I/O + CPU。资源获取按全局、镜像 I/O、CPU/GP
 ```text
 core/extensions/task_scheduler.rs      模块入口
 ├── config.rs               SchedulerConfig（LOVELYCARVE_TASK_* 环境变量）与 SchedError
-├── model.rs                状态机 created/queued/running/success/failed/cancel/pause/offline、
-│                           任务行、EvidenceTaskStatus 即时统计、SchedEvent 广播
+├── model.rs                状态机 created/queued/running/success/failed/cancel/offline（旧案件另有 pause）、
+│                           任务行与参数（目标、选项）、EvidenceTaskStatus 即时统计、SchedEvent 广播
 ├── store.rs                台账 task 表（调度器自己的 WAL 连接）；store_evidence.rs 负责
 │                           检材主键映射、任务状态统计与 task_followup 收尾动作
-├── functions.rs            Function 注册表：每个 file_analyzer 能力 = 一个 function
-│                           `<plugin id>/<analyzer>`，任务元数据取自清单 [task] 段
-├── scheduler.rs            绑定/崩溃恢复、调度循环、created→queued 派发
-├── lifecycle.rs            queued→running→commit、OnTaskFinish、离线分流、进度回流
-├── control.rs              创建、取消、暂停、继续、重启、删除与证据上下线钩子
-├── executor.rs             TaskRunner trait + PluginTaskRunner（worker 角色：每次执行一个插件实例）
-├── dependence.rs           CheckDependenceTask / CreateNextTask / evidence firsttask
+├── functions.rs            Function 注册表：每个分析器 = 一个 function `<plugin id>/<analyzer>`，
+│                           作用域、平台、触发、选项与画像事实取自包清单
+├── scheduler.rs            绑定/崩溃恢复、调度循环、created→queued 派发、系统来源
+├── lifecycle.rs            queued→running→发布→commit、OnTaskFinish、离线分流、进度回流
+├── control.rs              创建（目标与选项校验）、取消、开始、重启、删除与证据上下线钩子
+├── executor.rs             TaskRunner trait（执行、发布、清理）
+├── dependence.rs           检材上线的首任务与按画像事实创建的后续任务
 ├── post_action.rs          PostActionWatcher：防抖、幂等、initFromDB 恢复
 └── watchdog.rs             离线 / 进度超时巡检与恢复分流
 ```
 
-生命周期：`sched_task_create`（或依赖链、证据首次上线）写入 `created` 行 → 派发循环每 500 ms
+**作业。** 一个作业是（function、检材、目标）：目标是识别出的系统 ID（系统级）、文件节点（文件级），
+或整个检材（检材级，空串）。同一作业同时最多一条未终结任务（`single_instance`，默认开），创建时在同一写事务里检查，
+命中时返回已有任务（`created: false`）；整个检材的作业另有台账的部分唯一索引 `task_single_active` 兜底。
+任务参数 `params` 记录目标（`nodeId` / `fileName`、`systemId` / `targetLabel`）与按清单校验过的选项；
+旧案件任务行里的平台、子项字段读取时忽略。
+
+**生命周期。** `sched_task_create`（或证据上线、画像事实发布）写入 `created` 行 → 派发循环每 500 ms
 按创建顺序派发 `created` 任务（`queued`），同时处于 queued/running 的任务不超过
 `LOVELYCARVE_TASK_MAX_RUNNING`（默认 4，最大 32，不区分插件）→ 执行前置 `running`、写开始时间
-→ `PluginManager::start_task_worker` 为这次执行单独起一个插件实例（独立进程插件是
-一个新的 lc-plugin-host 进程，各有 512 MiB 内存上限；进程内插件另建一个库实例），在其上执行
-`analyzer.analyze` / `analyze_evidence`，同一插件的多条任务因此并行 → 该实例的 `host.progress`
-只回流到这次执行：回报只更新内存登记并立即刷新看门狗
-计时，派发循环把最新百分比落库（百分比变化即写、否则 1 s 节流），插件线程从不等待台账 → 结果
-先持久化到检材的 `analysis.db` 再 commit `success`/`failed`（写结束时间，耗时由开始/结束时间结算），
-实例随后退出 → OnTaskFinish：PostActionWatcher 计数、成功时按
-`dependence == 本 function` 建下一级任务（同检材、继承目标文件参数、`parentTid` 链、
-`trigger = auto`），失败/取消阻塞后续。每次状态或进度变化都广播 `sched-task-event`。
-插件共享实例（文件系统浏览、`plugin_analyze_file` 直接分析）
-与任务实例互不影响。
+→ `PluginTaskRunner`（`app/workflows/scheduler.rs`）为这次执行单独起一个插件实例（新的
+`lc-plugin-host` 进程，内存上限取自清单），按 `run_setup.rs` 准备运行（打开系统视图或检材视图、
+解析声明的输入、补齐选项与画像事实、写暂存运行）后发送 `run.start`，同一插件的多条任务因此并行
+→ `run.progress` 只回流到这次执行：回报只更新内存登记并立即刷新看门狗计时，派发循环把最新百分比
+落库（百分比变化即写、否则 1 s 节流），插件线程从不等待台账 → 运行返回后先把暂存运行发布到检材的
+`records.db`（替换同一作业的上一次结果并投影时间线），再 commit `success`/`failed`，实例随后退出
+→ OnTaskFinish：PostActionWatcher 计数、成功时按画像事实创建后续任务（见下）。每次状态或进度变化都
+广播调度事件，任务中心把它转成 `task-entry`。文件系统插件的共享实例（Unknown 分区浏览）与任务实例互不影响。
+
+**自动任务。** 证据首次登记或重新上线时，系统来源（`state.systems`，按检材缓存的
+`identify::systems::discover` 结果）列出识别出的系统；每个自动触发、不等待事实（`requires` 为空）的
+分析器建首任务：检材级一条，系统级在每个适用平台的系统上各一条。任务成功后，等待它清单 `provides`
+中事实的自动分析器在同一系统（或整个检材）上建任务，所需事实都要有成功的发布者；同一作业已有任务时
+不再自动创建，自动链因此不会循环。失败或取消不建后续任务；文件级分析器只能手动。
 
 SQLite 写入：调度器对台账的读写全部在阻塞线程池上进行，台账忙时不占用异步运行时；状态迁移在一个
 `BEGIN IMMEDIATE` 事务里先校验当前状态再写（`TaskStore::transition` / `complete`），并行任务的提交、
 控制面与看门狗同时改写同一行时以先写者为准，迟到的一方不覆盖终态；进度只更新仍为 `running` 的行。
 检材的任务状态统计（PostActionWatcher 的「全部完成」判定）由任务行即时计算，不另存聚合。任务行的写入与其
-`sched-task-event` 广播在同一把顺序锁内完成，广播顺序等于写入顺序，前端不会在终态之后又收到旧的
-"运行中"进度。`analysis.db` 结果落库与删除、时间线增量投影（`project_run`：已建且不在重建中的检查、
-按 tid 替换、事件源水位推进）各是检材自己库上的一个 IMMEDIATE 事务：同一检材的任务同时收尾时在
-该库写锁上排队，不同检材互不等待；水位取已有值与本 run 完成时间的较大者，钩子乱序提交也只前进。
+调度事件广播在同一把顺序锁内完成，广播顺序等于写入顺序，前端不会在终态之后又收到旧的
+"运行中"进度。`records.db` 的发布与删除、时间线增量投影各是检材自己库上的一个 IMMEDIATE 事务：
+同一检材的任务同时收尾时在该库写锁上排队，不同检材互不等待；时间线水位取已有值与发布时间的较大者，
+钩子乱序提交也只前进。
 
-控制面：取消允许 `created/queued/running/pause/offline`，运行中的执行撤销 token 并终止这次执行的
-插件实例：独立进程插件结束其 lc-plugin-host 进程，进程内插件对
-运行中的调用发协作式取消，同一插件的其他任务不受影响；迟到的旧 commit 被丢弃；暂停只对清单 `can_pause = true` 的
-function 开放，LPP 尚无协作式暂停，因此暂停即终止执行，`start` 后从头重跑；重启终态任务会新建
-一条 `parentTid` 指向原任务的任务，重启离线任务直接重排队；删除只接受终态。单实例约束
-（`single_instance`，默认开）下同一 `(function, 检材)` 同时最多一条未终结任务，命中时返回已有
-任务（`created: false`）；台账的部分唯一索引 `task_single_active` 兜底。移除检材时先取消它的
+控制面：取消允许 `created/queued/running/pause/offline`，运行中的执行撤销 token 并结束这次执行的
+`lc-plugin-host` 进程，同一插件的其他任务不受影响；迟到的旧结果被丢弃，暂存运行随之删除。任务不能暂停；
+旧案件里处于 `pause` 的任务可以开始（从头重跑）或取消。重启终态任务会新建一条 `parentTid` 指向原任务的
+任务，重启离线任务直接重排队；删除只接受终态，并删除该任务发布的运行及其时间线投影。移除检材时先取消它的
 未终结任务（`withdraw_evidence`），删除检材行后任务随外键级联删除，调度器再逐条广播
 `taskRemoved`（`forget_evidence`）。
 
@@ -464,110 +484,80 @@ PostActionWatcher 按检材登记创建/完成计数（案件打开时从台账�
 5 s 防抖，到期仍全部完成则广播 `allTasksFinished`，并执行 `task_followup.actions` JSON 里的
 动作，全部成功后写 `done_at` 保证幂等；失败只记日志并广播 `postActionFailed`，下轮全部完成时重试。
 
-前端：`src/lib/ipc/tasks.ts` 包装 `sched_*` 命令与 `sched-task-event`；`useTaskCenter` 是模块级
-单例，按 id 合并事件、把通知转成 toast；右上角「任务中心」的任务页（`TaskCenterPanel.vue`）展示
-分段任务、进度/剩余时间、错误与结果摘要、取消/暂停/继续/重新分析/删除操作与最近通知；
-文件列表右键「插件分析任务…」（`PluginTaskDialog.vue`）按光标行文件选择 function 提交任务。
+前端：`src/lib/ipc/tasks.ts` 包装 `sched_*` 命令；任务行与通知来自任务中心（`useTaskEntries`，见「右上角任务中心
+面板」），`useTaskCenter` 取其中的插件任务，并提供分析器清单、建任务与插件任务控制；`usePluginCatalog` 缓存插件包目录与各包的语言包，供任务、
+快速分析、分析结果与设置页翻译插件声明的标签。右上角「任务中心」的任务页（`TaskCenterPanel.vue`）展示
+分段任务、进度/剩余时间、目标系统与选项、错误与结果计数、取消/开始/重新分析/删除操作与最近通知；
+文件列表右键「插件分析任务…」（`PluginTaskDialog.vue`）列出文件级分析器（扩展名匹配的在前），
+有选项时先用 `AnalyzerOptionsForm.vue` 填写再提交。
 
-**快速分析。** 右上角「任务中心」的「快速分析」页签承载
-`QuickAnalysisPanel.vue`，界面见上方「任务中心」章节。平台由 function 清单推导
-（清单 `platform` 缺省、为 `all` 或 `any` 的功能克隆到每个平台；预选检材自动识别平台，并按检材记忆上次选择），
-功能按插件归并，插件按收藏 / 各 Type 分组 / 耗时任务分类。确定时为所选插件的每个功能调用
-`sched_task_create`（`params.platform` 为所选平台；不传子项，`subItems` 为空即插件执行全部子项；
-逐个创建时不弹单条通知，结束后汇总一次）；勾选的插件已有结束的任务时先红字确认，
-再逐个 `sched_task_remove` 删旧重建；「重新分析全部任务」确认后对检材任务逐个 restart/start。
-组装逻辑（`preprocessFunctions`/`buildPlatforms`/`groupByPlugin`/`buildPluginGroups`）与勾选状态
-（`useQuickAnalysisSelection`，按插件 id）在 `useQuickAnalysis.ts`；收藏按插件 id 记（旧版按功能名记的条目仍算其插件），
-与平台记忆一起经 `usePersistedRef` 落 localStorage。
+**快速分析。** 「快速分析」页签（`QuickAnalysisPanel.vue`）先经 `sched_systems_list` 取检材上识别出的系统，
+按检材记忆上次选择；列出适用于所选系统的系统级功能与全部检材级功能，按插件归并，插件按收藏 / 分类 /
+耗时任务分组。确定时为所选插件的每个功能调用 `sched_task_create`（系统级带 `systemId`，选项取默认值；
+逐个创建时不弹单条通知，结束后汇总一次）；所选插件在该目标上已有成功结果时先确认替换。「重新分析全部任务」
+确认后对检材的终态任务逐个 restart、对离线或旧版暂停的任务 start。组装逻辑（`preprocessFunctions` /
+`groupByPlugin` / `buildPluginGroups`）与勾选状态（`useQuickAnalysisSelection`，按插件 id）在
+`useQuickAnalysis.ts`；收藏与系统记忆经 `usePersistedRef` 落 localStorage。
 
-**检材级 function（evidence_analyzer）。** LPP v1 的 `evidence_analyzer` 分析整个检材：
-任务不带目标文件 `nodeId`，执行器改走
-`PluginManager::analyze_evidence` → 插件的 `analyzer.analyze_evidence`（携带任务
-params JSON，30 分钟时限），期间插件经宿主 `evidence.roots/stat/list/read/readv`
-以 POSIX 路径只读访问该检材的全部可浏览卷（owner-scoped、单次读 4 MiB、符号链接
-跟随上限 16 跳；注册表在 `core/extensions/plugin/evidence_registry.rs`）。注册表为每个证据句柄维护
-有界目录 LRU（最多 4096 个目录、65536 个节点，过大目录不缓存），路径解析与目录枚举共用；
-证据移除、镜像卸载、插件退出时随句柄释放，不跨插件或证据共享。function 元数据
-（`platform`/`support`/`evidence_types`/检材级标记）经清单 `[task]` 段与能力声明进入
-`SchedFunction`，快速分析对话框据此渲染。`plugins/linuxinfo/`（Rust 动态库，随安装包分发）是首个此类插件：
-`linuxbaseinfo`（Linux 基本信息，type=baseinfo、platform=linux、15 个子项）定位
-全部 Linux 根卷（含容器合并卷）后解析 os-release/passwd/shadow/group/wtmp/btmp（utmp 384B 记录）、
-systemd/init.d 服务与启动项、dpkg status/rpm rpmdb.sqlite、crontab、NetworkManager/
-OpenWrt UCI/RedHat ifcfg 网络配置、var/log USB 行与逐条 Bash/Zsh 历史、时区、用户组及 Hosts 映射，产物与时间线落
-检材的 `analysis.db` 并自动投影时间线；普通解析错误按子项容错，短读、资源上限和取消使任务失败，
-不静默截断结果。无时区的 Syslog 时钟只保留本地时间，不猜测 UTC。
-仓库仅内置 `plugins/linuxinfo`；有界完整文件读取位于该插件的 `evidence.rs`，
-工件来源与验证方法见 [Linux 基本信息插件](LINUXINFO.md)。
+**分析结果页。** 侧边栏「分析结果」面板（`AnalysisResultsPanel.vue`）三段式呈现：
 
-**分析结果页。** 插件结果中的
-`nodes` 声明（`{type, name, columns}`）
-随 run 落 `plugin_result_nodes` 表；run 行带上 `display_name`/`type_name`（功能级
-标签）。侧边栏「分析结果」面板（`AnalysisResultsPanel.vue`）三段式呈现：
-
-- 左侧结果树（`analysis_result_tree` → `core/analysis_query`）：检材 → 分类
-  （Type）→ 功能（analyzer）→ 结果项（artifact_type），每个 (检材, 插件, 功能, 输入文件) 只展示
-  最新 run，数字徽标显示记录数；节点名/列定义全部来自插件提交，
-  前端零硬编码，有记录但未声明列的类型按类型名合成节点。
-- 中部记录表格（`analysis_records_page`）：按结果项服务端分页（每页 100），
-  分页固定结果树节点的 `runId`；关键词过滤命中内容/标题，导出 CSV 复用启动时的 run 与过滤条件，逐页读取全部记录，不截断到 10 万条。
-  常驻通知显示已读取数量与进度并提供取消，切页后仍可操作；结果数量或所属 run 变化、提前读到空页时停止并提示重试。
-- 右侧详情（`analysis_record_detail`，带记录所属检材的 `imageId`）：点行展示记录值与全部属性键值。
-- 任务完成只把树标脏（`useAnalysisResults` 监听 `useTaskCenter` 的新 runId），
-  面板激活（KeepAlive `onActivated`）时整树重拉。
-
-任务删除（`sched_task_remove`，快速分析去重流程依赖）现在级联删除该任务落库的
-run（仅匹配 `task.result.runId`，外键级联清产物/节点/事件/线索）并按 run_id 清时间线投影；移除检材时整个检材目录
-（含 `analysis.db`）随之删除。
-
-执行边界：worker 是插件实例（默认在 lc-plugin-host 子进程中，`in_process` 插件在主进程内）；可调度 function 有
-文件分析与检材级两类（文件系统能力仍走懒探测）；证据只在首次登记时触发自动首任务
-（分析结果已持久化，重新上线不重跑）；文件级 analyzer 的
-`trigger = "auto"` 根任务缺少目标文件会立即判失败，`auto` 应用于依赖链上的下游
-function（检材级 function 无此限制）；结果树一次整树返回（体量小），未按 pid 逐层
-懒加载；任务重启产生的旧 run 保留到任务删除为止（树按插件功能和输入文件分别显示最新 run）。
+- 左侧目录（`analysis_result_tree` → `core/analysis/results/analysis_query.rs`）：检材 → 分类 →
+  分析器运行（每个作业一份已发布运行，带目标与告警数）→ 记录类型，数字徽标显示记录数；节点名来自
+  插件声明，按插件语言包翻译。旧版本 `analysis.db` 的结果（`legacy_query.rs`）以「旧版」节点并列。
+- 中部记录表格（`analysis_records_page`）：按记录类型服务端分页（每页 100），列与字段类型来自记录结构，
+  点击列头按列排序（时间戳按换算后的时刻），关键词检索标题与文本类列；分页固定结果树节点的 `runId`。
+  导出 CSV 复用启动时的 run、排序与过滤条件，逐页读取全部记录并写原始值；结果数量或所属 run 变化、
+  提前读到空页时停止并提示重试。
+- 右侧详情（`analysis_record_detail`）：全部字段（含只在详情显示的字段）与来源，「定位源文件」按卷键与
+  卷内路径（或节点）定位；运行节点（`analysis_run_get`）显示输入、选项、画像事实、告警与读不出的源字节。
+- 任务完成只把树标脏（`useAnalysisResults` 监听 `useTaskCenter` 的新 runId），面板激活
+  （KeepAlive `onActivated`）时整树重拉。
 
 ## 插件运行时
 
-插件运行时位于 `core::extensions::plugin`。插件是导出 C ABI（`lovelycarve_plugin_v1`）的原生动态库，
-清单 `[library]` 指定库文件与隔离方式：默认 `process` 由随应用分发的 `lc-plugin-host` 子进程加载，
-宿主经 4 字节大端长度前缀的 MessagePack stdio 帧与之通信，独立 reader/writer loop 支持双向嵌套 RPC
-（`client.rs`）；`in_process` 由主进程直接加载（`in_process.rs`）。两种方式由 `PluginConnection`
-统一，承载相同的 LPP 方法与载荷。插件 SDK、C ABI 定义、线协议类型与 `lc-plugin-host` 在
-`plugins/` Rust 工作区（`plugins/sdk` 同时是宿主依赖）。插件只获得 `SourceRegistry` 中的只读
-逻辑源句柄，不能获得或直接打开证据路径。运行时提供握手、受限读取、分页、取消、进度与超时。
-Unknown 分区在首次展开时通过插件管理器执行 `fs.probe` / `fs.open`，命中后安装 `RemoteVolume`；
-其 children、stat、范围读取和流式读取继续复用原有 `Volume` / `FsSession` dispatch。
+插件运行时位于 `core::extensions::plugin`。插件包是 `plugin.toml`（`manifest.rs`）、导出 C ABI
+（`lovelycarve_plugin_v1`）的原生动态库、构建时导出的 `schema.json` 与 `locales/`（`package.rs`）；
+`manager.rs` 发现、登记与重新发现插件包，`package_install.rs` 安装与卸载 `.lcpkg`。每个插件实例由随应用分发的
+`lc-plugin-host` 子进程加载，宿主经 4 字节大端长度前缀的 MessagePack stdio 帧（LPP v2）与之通信，
+独立 reader/writer loop 支持双向嵌套 RPC（`client.rs`）。握手时核对库的 `plugin.hello` 与清单、
+`schema.json`。插件 SDK、C ABI 定义、协议载荷、记录结构与 `lc-plugin-host` 在 `plugins/` Rust 工作区
+（`plugins/sdk` 同时是宿主依赖；`sdk::bridge` 把入口函数接到 LPP 帧上，加载器与宿主测试的回环连接共用）。
 
-插件的日志（SDK 的 `Context::log`，`LogLevel` 级别）有两条入口：`in_process` 走 ABI 回调
-（`in_process.rs` 的 `host_log`），`process` 走 `lc-plugin-host` 写出的 stderr 行
-（`client/process.rs` 的 stderr 读取任务）。两条入口都保留原有 `tracing`（target `plugin`）输出，同时把
-该行交给 `log_file::PluginLogStore`：一个专用写线程按插件追加到
+分析运行（`run.rs`、`run_setup.rs`、`run_context.rs`）：每个任务一个专属实例；运行上下文持有这次运行的视图、
+文件句柄、查找游标与记录写入器，服务插件的 `run.*` / `file.*` / `view.*` 调用，并按运行收集读故障。
+`view.rs` 实现系统视图（系统卷在根部，fstab 与盘符挂载在挂载点）与检材视图（每个卷是以卷键命名的目录），
+符号链接按视图根解析；视图目录列表经有界缓存（`directory_cache.rs`，最多 4096 个目录、65536 个节点）。
+`identify::systems` 识别系统并组装挂载（`fstab.rs` 解析 fstab，`filesystem::volume_identity` 读取卷的
+UUID 与卷标，`win_drive_letters` 读取盘符），结果按检材缓存，卸载检材时清除。插件拿不到证据路径，
+只能经视图、文件句柄与 `SourceRegistry` 中的只读逻辑源读取。
+
+文件系统插件：Unknown 分区在首次展开时通过插件管理器的共享实例执行 `fs.probe` / `fs.open`，命中后安装
+`RemoteVolume`；其 children、stat、范围读取和流式读取继续复用原有 `Volume` / `FsSession` dispatch。
+
+插件的日志经 `lc-plugin-host` 写出的 stderr 行（`client/process.rs` 的 stderr 读取任务）进入原有 `tracing`
+（target `plugin`），同时交给 `log_file::PluginLogStore`：一个专用写线程按插件追加到
 `<exe 目录>/logs/plugins/<插件 id>.log`，单文件超过 8 MiB 时轮转为 `<插件 id>.log.1` 并保留一代。
-`record` 只把行放入有界队列（4096 行）后立即返回，磁盘变慢不会阻塞插件调用，队列满时丢弃的行数会在
+写入只把行放入有界队列（4096 行）后立即返回，磁盘变慢不会阻塞插件调用，队列满时丢弃的行数会在
 文件里补一条 `WARN`。日志目录由当前可执行文件路径确定，桌面和 CLI 使用相同规则，不随工作目录变化；目录不可写时明确告警，
 不回退到 AppData。文件不放进插件目录，避免改变插件目录的 SHA-256 指纹（`fingerprint.rs`）。
-退出时先关闭插件并收完 stderr，再在阻塞工作线程关闭日志队列、等待写线程排空；进程内 ABI 的泄漏回调上下文仅持有
-日志存储的弱引用。单条消息最多保留 64 KiB UTF-8 内容，超长部分带截断标记；特殊或超长插件 id 的文件名附加摘要以免冲突。`process` 模式下 loader 的 stderr 行带
-`ERROR` / `WARN` / `INFO` / `DEBUG` 前缀，落盘时据此还原级别，无前缀的 loader 诊断记为 `HOST`。
+退出时先关闭插件并收完 stderr，再在阻塞工作线程关闭日志队列、等待写线程排空。单条消息最多保留 64 KiB UTF-8 内容，
+超长部分带截断标记；特殊或超长插件 id 的文件名附加摘要以免冲突。加载器的 stderr 行带
+`ERROR` / `WARN` / `INFO` / `DEBUG` 前缀，落盘时据此还原级别，无前缀的加载器诊断记为 `HOST`。
 
-插件**发现即信任**：清单合法的插件初始即为可用（`Configured`），可直接探测、派发与分析；
-没有批准步骤与禁用开关，插件目录 SHA-256 指纹仅用于设置页展示与版本标识（已加载的库不会卸载，
-插件更新后重启应用即生效）。
-`file_analyzer` capability 通过
-owner-scoped `FileHandle` 对逻辑文件执行 `file.info` / `file.read` / `file.readv`，只在声明
-`file_materialize` 权限时创建 host-owned 临时租约。插件返回的 artifact、timeline、finding 会经过稳定
-LPP v1 DTO、大小/深度/类型校验和 `emit_artifacts` 权限检查；活动案件中由 `core::analysis::results::plugin_result_store`
-事务写入 SQLite。插件列表、重启、文件分析和历史查询通过 `commands::extensions::plugin` 与
-`src/lib/ipc/plugins.ts` 形成完整 IPC 链。协议、安全边界与限制见 `docs/PLUGIN_PROTOCOL.md`。
+插件**发现即信任**：清单合法的插件包初始即为可用（`Configured`），可直接探测、派发与分析；
+没有批准步骤与禁用开关，插件目录 SHA-256 指纹仅用于设置页展示与版本标识（已加载的库不会卸载）。
+加载失败的插件包连同原因列在 `plugin_list` 的 `rejected` 中。插件列表、重启、安装与卸载通过
+`commands::extensions::plugin` 与 `src/lib/ipc/plugins.ts` 形成完整 IPC 链。协议、安全边界与限制见
+[插件协议](PLUGIN_PROTOCOL.md)。
 
 ## 自动识别平台
 
 `core/autodetect/` 负责判定检材所属平台、证据类型与备份特征，再回写 evidence。
 证据首次上线时由宿主建立内部首任务，手动重新识别通过 `autodetect_evidence` 命令执行。两条路径都登记为
 `TaskManager` 的 `autoDetect` 任务（id `autodetect:<image id>`，同时进行的两次运行共用一份登记与取消令牌）：
-识别在分区、逻辑卷与归档目录之间检查取消，镜像卸载或 `task_cancel` 后不再回写；登记释放之前广播
-`autodetect-finished`（报告）或 `autodetect-failed`（`{image_id, error}`，`error` 与命令错误同形，取消为
-`cancelled` 码），任务中心据此判定终态。
+识别在分区、逻辑卷与归档目录之间检查取消，镜像卸载或 `task_cancel` 后不再回写；登记释放之前把结论（平台、
+厂商显示名、检材类型、是否备份）与结局报给登记，任务中心据此列出，同时广播 `autodetect-finished`（报告）或
+`autodetect-failed`（`{image_id, error}`，`error` 与命令错误同形，取消为 `cancelled` 码）供镜像信息页使用。
 
 ```text
 core/analysis/identify/autodetect.rs          数据模型（EvidencePlatform 词表 android/ios/windows/macos/linux/harmony/
@@ -626,7 +616,8 @@ iOS 整盘镜像没有独立判定路径。复核结论时查看案件回写的 
   staging/                   构建中的快照与索引；打开案件时清空
   evidence/<uid>/            一检材一目录，uid = 检材 image id；移除检材即删除该目录
     facts.db                 文件哈希与类型识别（core::casework::facts_store）
-    analysis.db              插件分析结果（core::analysis::results::plugin_result_store）
+    records.db               插件分析运行与类型化记录（core::analysis::results::record_store）
+    analysis.db              旧版本的插件结果，只读（core::analysis::results::legacy_store）
     timeline.db              时间线投影（core::timeline::timeline_store）
     search.db                全局搜索任务与命中（core::search::global_search_store）
     cache/                   可随时删除的缓存
@@ -644,8 +635,9 @@ iOS 整盘镜像没有独立判定路径。复核结论时查看案件回写的 
   状态、打标签）；读-改-写一律 `BEGIN IMMEDIATE` 开局取写锁，事务里不做文件 I/O。台账写者之间只有
   短暂排队，忙等上限 10 s 足够。
 - 与文件数量同阶的数据落在检材目录下，每个库只有一类写者：`facts.db` 由哈希/类型识别命令批量
-  upsert，`analysis.db` 由插件任务提交（每次运行一个 IMMEDIATE 事务），`timeline.db` 由重建任务与
-  插件收尾投影写，`search.db` 只由运行中的搜索写。不同检材的写入互不排队。
+  upsert，`records.db` 由插件运行写（暂存运行的记录按批写入，发布与替换各是一个 IMMEDIATE 事务；
+  记录按记录类型存在 `rec_<类型>` 类型化表中，结构随结果保存），`timeline.db` 由重建任务与插件发布投影写，
+  `search.db` 只由运行中的搜索写。不同检材的写入互不排队。旧版本写下的 `analysis.db` 只读，不迁移。
 - 最长的写入——把百万行快照导入文件系统索引——只写 `staging/` 里一个还没有人读的私有文件，写完
   整体发布，发布后只读（`immutable=1` 打开）。导入再久也不占任何共享库的写锁，导入期间浏览、搜索、
   时间线照常读旧索引。
@@ -732,12 +724,14 @@ Docker 容器文件在范围解析时一次性映射到底层卷上的文件节�
 `oid`/`tid`/`delete`/`tl_time`/`from_app`/`type`/`tl_flag`/`content`/`extra` 与按应用类型、删除标记、
 tid、时间的索引，外加构建元数据单行 `timeline_build`）。投影规则由代码显式定义：`file` datatype 投影
 各卷索引里的文件行（time 角色字段 = Mtime，Ctime/Atime 不进时间线，`tl_flag` = 修改，`from_app` =
-卷键），`plugin_event` 投影检材 `analysis.db` 的插件时间线事件（`tid` = run_id，`from_app` = 插件 id，
-`tl_flag` = event_type），`ntfs_usn` 投影 NTFS 变更日志；缺时间戳的源记录跳过。两条投影路径为：
-`timeline_start` 创建重建任务（`TaskKind::TimelineBuild`）全量重投影（先清空，幂等），插件任务收尾
-钩子（`task_scheduler::executor`）按 run_id 级联删 + 重投影该 run——写路径自动投影。`timeline_status`
+卷键），`plugin_event` 投影检材 `records.db` 中已发布运行的时间点（记录里带时区偏移、声明了时间线角色的
+时间戳字段；`tid` = run_id，`from_app` = 插件 id，`tl_flag` = 角色，`content` = 记录标题）以及旧案件
+`analysis.db` 的插件时间线事件（`tl_flag` = event_type），`ntfs_usn` 投影 NTFS 变更日志；缺时间戳或
+时区未知的本地时间跳过。两条投影路径为：`timeline_start` 创建重建任务（`TaskKind::TimelineBuild`）全量
+重投影（先清空，幂等），插件运行发布时（`project_published_run`）删掉该运行与被它替换的运行的投影再投影
+新时间点——写路径自动投影。`timeline_status`
 状态机 `buildRequired`/`running`/`stale`/`ready` 以源水位（投影规则版本 + 各已索引卷的「卷键@来源快照
-时间」、插件 run `max(completed_at)`）判定 staleness，水位在重建开始前取，重建期间新到的数据让结果判
+时间」、插件运行发布时间与旧版运行完成时间的最大值）判定 staleness，水位在重建开始前取，重建期间新到的数据让结果判
 为过期而不是被悄悄漏掉；查询面 `timeline_count`（strftime 动态时间桶 + 时区参数化 + 桶分页）/
 `timeline_datas`（`tl_time desc` 明细分页）/`timeline_types`（`group by from_app,type` 两级维度）/
 `timeline_range`/`timeline_export` 都带 `imageId`，共享参数族（start/end/time_zone/time_unit/
@@ -865,6 +859,7 @@ offset。当前普通目录已提供 `fs_children_page`，案件模式下会优�
 
 常见事件：
 
+- `task-entry`
 - `task-lifecycle`
 - `task-progress`
 - `image-load-progress`
@@ -1103,20 +1098,20 @@ RAID 成员、当前检材卷快照和案件详情默认折叠，切换与锁定
 `SidebarNav` 使用左侧大类栏与中间子类栏，选中大类由主壳的当前页面推导；镜像、工具、分析分别组织页面，BCP 按检材额外追加。
 主窗口没有全局底部状态栏；主题切换集中在设置中心的「界面」，当前会话日志在「日志」中搜索、筛选、复制和清空，软件版本与本地构建时间位于「关于」。通用版本读取和控制台捕获由 `src/composables/useAppVersion.ts` 与 `useConsoleCapture.ts` 提供；日志在启动时捕获，即使设置未打开也持续收集，最多保留 5,000 条。
 分析中间栏直接显示插件执行结果，不重复大类标题或「分析结果」菜单；目录保留自身搜索框，大类栏底部只有子类栏展开 / 收起，不提供过滤或添加检材入口。收起子类栏后点击分析大类或展开按钮即可重新展开。目录仅显示当前检材，省略重复的检材与分类层级，
-按分析功能分组直接列出结果项及记录数，并支持搜索结果项。
+按分析器运行分组直接列出记录类型及记录数：组标题带运行目标（系统或文件）与告警数，旁边的「运行信息」打开审计；只有告警的运行也列出。目录支持搜索记录类型、分析器与目标。
 悬停或聚焦大类会显示对应子类，展开时在原中间栏预览，收起时浮出；离开导航或按 Esc 恢复当前页面的大类，并关闭收起状态的浮层。
 悬停不切换当前页面，点击子页面后通过主壳导航并结束预览。
 结果目录独立初始化当前检材与结果树，因此从其他页面悬停分析大类也能查看插件结果，点击结果再激活分析页。
-`AnalysisResultsPanel.vue` 使用主工作区显示表格；默认选中当前检材首个有数据的结果项，搜索与 CSV 导出共用同一过滤条件。
-点击记录在当前窗口内打开右侧详情，保持窗口大小与位置；区域较窄时，详情浮在表格右侧；字段显示完整值，技术标识折叠。
+`AnalysisResultsPanel.vue` 使用主工作区显示表格；默认选中当前检材首个有数据的记录类型，搜索、排序与 CSV 导出共用同一条件。列按字段类型格式化（大小、时长、布尔、枚举名、列表），偏移、哈希、地址与时间用等宽字体，分析器给出的严重程度以徽标显示在名称前。
+点击记录在当前窗口内打开右侧详情，保持窗口大小与位置；区域较窄时，详情浮在表格右侧；字段显示完整值（含只在详情显示的字段），来源列出每个文件及其位置说明，技术标识折叠。选中运行时主区域显示运行审计（`AnalysisRunAuditView.vue`）。
 两者共享 `useAnalysisResults`，使用请求序号隔离快速切换产生的过期响应；案件切换清空旧状态，记录加载失败支持原地重试。
 后台完成订阅由独立 effect scope 持有，不依赖目录组件的挂载周期。
 
 ### 搜索与时间线回源定位
 
-结果查询同时返回宿主持久化的 `imageId` 与 `sourceNodeId`（文件级任务输入节点；检材级任务为空），插件未声明来源属性时仍可回到任务输入文件。分页与详情采用同一查询口径，检材归属以运行记录为准。
+记录带所属检材的 `imageId` 与来源列表（卷键 + 卷内路径、节点、可选字节范围与位置说明）；文件级运行的结果树节点另带输入文件节点 `sourceNodeId`。分页与详情采用同一查询口径，检材归属以运行记录为准。
 
-分析结果行内「定位源文件」与详情源文件列表同样通过 `useResultNavigation` 激活记录所属检材。`source.root` + `source.path`（多来源使用 `source.paths`）优先于 `source.node`，兼容旧 Linuxinfo 的 `linux.root` / 路径型 `linux.source`。`fs_source_locate` 在镜像目录中按组件解析并返回导航帧，无需 filedb；严格保留卷和名称大小写，支持分区、LVM 和 Docker 容器视图，跟随中间目录链接，保留末级链接作为定位目标。越过卷根、循环链接、缺失卷和文件明确报错；缺少来源地址的记录禁用入口。源文件定位不强制打开字节偏移，详情提供多个源文件的独立入口。
+分析结果行内「定位源文件」与详情源文件列表同样通过 `useResultNavigation` 激活记录所属检材。来源的卷键 + 卷内路径优先于节点；旧版结果读取 `source.root` + `source.path`（多来源使用 `source.paths`）与 `source.node` 属性，兼容旧 Linuxinfo 的 `linux.root` / 路径型 `linux.source`，缺少时回到运行的输入文件。`fs_source_locate` 在镜像目录中按组件解析并返回导航帧，无需 filedb；严格保留卷和名称大小写，支持分区、LVM 和 Docker 容器视图，跟随中间目录链接，保留末级链接作为定位目标。越过卷根、循环链接、缺失卷和文件明确报错；缺少来源地址的记录禁用入口。源文件定位不强制打开字节偏移，详情提供多个源文件的独立入口。
 
 全局搜索发出包含检材 ID、节点 ID、命中偏移和长度的 `FileLocationTarget`；时间线文件事件使用记录自身的 `eid` 和 `oid`，不强制打开偏移 0。`useResultNavigation` 先激活来源检材，再等待相同检材的文件列表挂载；案件、检材或页面改变后放弃在途跳转，避免定位到另一份检材。
 文件列表通过 `fs_node_locate` 解析祖先目录：普通节点从 `filedb` 读取父链和目标卷标识，分区/根节点不要求存在于 `filedb`，到达该边界后合成导航帧；目标行缺失时明确报错。随后退出全显并清除原筛选，等待目录装载完成后选中、滚动并打开目标。源文件缺失或索引过期时显示可操作的失败提示。插件时间线事件仍展开详情，不把插件事件 ID 当作文件节点 ID。
@@ -1131,21 +1126,21 @@ RAID 成员、当前检材卷快照和案件详情默认折叠，切换与锁定
 任务中心不占用侧边栏或主工作区，案件管理的检材行也不重复放置分析入口。
 面板收起时保留组件和选择状态，后台任务继续运行；切换案件时卸载面板并重置目标。
 
-任务页（`TaskCenterPanel.vue`）按状态分为「进行中」（运行、排队、待派发、暂停）、「需要处理」（失败、离线）和「已结束」（成功、取消）三张卡片，沿用镜像信息页的卡片样式：`ui-card` 标题行为主色图标、标题与 `ui-count` 计数，右侧按钮可折叠该段；卡片内每个任务一行，行间细分隔线，状态由所在分组与行内状态徽标表达。「已结束」超过 6 条时其余折叠为「显示其余 N 项」，搜索时显示全部匹配；调度器最近通知收在末尾一张默认折叠的卡片中。分组、排序与状态色（`TASK_STATUS_TONE`）在 `lib/taskCenterView.ts`。
+任务页（`TaskCenterPanel.vue`）按状态分为「进行中」（运行、排队、待派发、暂停）、「需要处理」（失败、离线）和「已结束」（成功、取消）三张卡片，沿用镜像信息页的卡片样式：`ui-card` 标题行为主色图标、标题与 `ui-count` 计数，右侧按钮可折叠该段；卡片内每个任务一行，行间细分隔线，状态由所在分组与行内状态徽标表达。「已结束」超过 6 条时其余折叠为「显示其余 N 项」，搜索时显示全部匹配；调度器最近通知收在末尾一张默认折叠的卡片中。分组、排序与状态色（`TASK_STATUS_TONE`）在 `features/tasks/model/taskCenterView.ts`，条目的标题、对象、状态说明、进度与结果页在 `model/taskEntryView.ts`。
 任务行第一行是名称和状态徽标（`ui-badge` 按状态色着色，运行中显示进度百分比，成功不显示徽标），第二行是摘要和已用时间（插件提供时加剩余时间）、创建时间或开始时间；只有运行和暂停显示进度条，不定进度显示「处理中」；失败任务的摘要显示错误。
-每行右侧只放一个带文字的直接操作（`ui-btn sm`）：运行中暂停、已暂停或离线继续、排队或运行中取消、失败或取消后重新分析；成功后改为结果跳转：插件任务在产生分析结果后「查看分析结果」（打开分析结果页并定位该功能的结果，见 `focusAnalysisResult`），全局搜索、时间线、文件恢复打开各自页面，Docker、文件系统加载与索引建立打开文件列表。内置任务在详情中始终提供前往所在页面的入口。
-点击任务行展开详情：完整错误（`ui-alert`）、对象或文件、开始（未开始则创建）时间、耗时、未完成时保留的进度、分析产物（字段行与采集记录同样式），以及靠右的取消、重新分析、前往结果和靠左的删除；技术标识再单独折叠。成功不显示进度，失败和取消保留最后进度，不伪装成已完成。重新分析和删除继续使用原确认流程。
-内部任务默认隐藏，有内部任务时工具栏显示「内部 N」开关；搜索匹配当前检材的任务名与文件名。
-调度器以 UTC 写入不带时区的 `YYYY-MM-DD HH:MM:SS`，内置任务使用 ISO 时间；`parseTaskTime` 统一按 UTC 解析，列表时间按本地时区显示（当天只显示时分），插件任务与内置任务按同一时钟排序。
-快速分析（`QuickAnalysisPanel.vue`）按插件勾选：同一插件的全部检材级功能合为一个格子，勾选即运行它们（不提供子项勾选）；文件级功能需要目标文件，只能从文件列表右键提交，这里不列出。工具栏放平台选择（单一平台时只读显示）与搜索（插件名、插件 id 或任一功能名），其下一行是覆盖全部列出插件（搜索时为匹配项）的三态「全选」框与「全部展开 / 收起」。插件按收藏、类型（基本信息、系统记录、浏览器、应用程序、日志、数据库、文件分析……）、耗时任务分类，分类标题行带自己的三态全选框、已选 / 总数并可折叠，滚动时停在顶部；插件以格子平铺，面板宽 440px 时每行两个，选中格子为浅底加主题色文字，收藏星标悬停时出现。格子右侧的图标是该插件在当前检材上最近任务的汇总状态（执行中、排队、暂停、离线、失败、取消、完成），悬停提示列出插件包含的功能和各自最近任务；任一功能的任务尚未结束时整块不能勾选，已勾选的插件因其他入口开始任务时自动取消勾选。底栏显示已选插件数和将清理旧结果后重新分析的插件数，「更多操作」中可重新分析全部任务；提交成功后自动切到任务页。
+每行右侧只放一个带文字的直接操作（`ui-btn sm`）：文件恢复扫描运行中暂停、已暂停继续；插件任务离线或旧版暂停时「开始」（从头重新分析）；排队或运行中取消；失败或取消后重新分析；成功后改为结果跳转：插件任务在产生分析结果后「查看分析结果」（打开分析结果页并定位该功能的结果，见 `focusAnalysisResult`），全局搜索、时间线、文件恢复（及其恢复文件导出）打开各自页面，Docker 与文件系统加载打开文件列表，平台识别、加密卷解锁与镜像哈希打开镜像信息页。内置任务在详情中始终提供前往所在页面的入口。可用的操作以条目的 `actions` 为准。
+点击任务行展开详情：完整错误（`ui-alert`）、对象、文件或系统、选项、开始（未开始则创建）时间、耗时、未完成时保留的进度、结果计数（记录、时间点、告警、读不出的源字节；字段行与采集记录同样式），以及靠右的取消、重新分析、前往结果和靠左的删除；技术标识（任务、检材、系统与运行 ID）再单独折叠。成功不显示进度，失败和取消保留最后进度，不伪装成已完成。重新分析和删除继续使用原确认流程。
+内部任务默认隐藏，有内部任务时工具栏显示「内部 N」开关；搜索匹配当前检材的任务名、文件名与系统名。插件任务名按插件语言包翻译。
+条目时间统一为 Unix 毫秒（插件任务行的 RFC 3339 时间由后端换算，旧任务行不带时区的 `YYYY-MM-DD HH:MM:SS` 按 UTC），列表时间按本地时区显示（当天只显示时分），插件任务与内置任务按同一时钟排序。
+快速分析（`QuickAnalysisPanel.vue`）按插件勾选：同一插件适用于所选系统的系统级功能与全部检材级功能合为一个格子，勾选即以默认选项运行它们；文件级功能需要目标文件，只能从文件列表右键提交，这里不列出。工具栏放系统选择（识别出多个系统时为下拉框，单一系统时只读显示，识别中、识别失败可重试、未识别出系统时分别提示）与搜索（插件名、插件 id 或任一功能名），其下一行是覆盖全部列出插件（搜索时为匹配项）的三态「全选」框与「全部展开 / 收起」。插件按收藏、分类（基本信息、系统记录、浏览器、应用程序、日志、数据库、文件分析……，插件自带的分类取其语言包中的名称）、耗时任务分组，分类标题行带自己的三态全选框、已选 / 总数并可折叠，滚动时停在顶部；插件以格子平铺，面板宽 440px 时每行两个，选中格子为浅底加主题色文字，收藏星标悬停时出现。格子右侧的图标是该插件在所选目标上最近任务的汇总状态（执行中、排队、暂停、离线、失败、取消、完成），悬停提示列出插件包含的功能和各自最近任务；任一功能的作业尚未结束时整块不能勾选，已勾选的插件因其他入口开始任务时自动取消勾选。底栏显示已选插件数和其中已有结果、成功后将被替换的插件数，「更多操作」中可重新分析全部任务；提交成功后自动切到任务页。
 提交捕获发起时的检材 ID，批量部分失败时保留未完整提交的插件；切换检材会卸载旧组件并停止继续发起批量操作，已经启动的任务仍在原检材下执行。
-插件状态与调度仍由 `useTaskCenter` 和现有 `sched_*` IPC / `sched-task-event` 驱动；`useUnifiedTaskCenter` 将插件与内置任务汇总给任务列表及标题栏计数，快速分析保持使用插件调度接口。
+任务列表来自后端的统一列表：`useTaskEntries` 是模块级单例，按 `task_list` 拉取全部任务、按 `task-entry` 事件增量合并（刷新期间到达的事件优先于较旧的列表）、把调度通知转成 toast，切换案件时清空并重拉；`useUnifiedTaskCenter` 按当前检材过滤（打开检材的任务不属于任何检材，总会显示）并给出标题栏计数，把操作分派给 `task_cancel`、文件恢复的 `carve_scan_pause` / `carve_scan_resume` 与插件任务命令；插件任务命令的回复按与后端相同的映射（`pluginTaskEntry`）先行合并，随后的事件再覆盖。快速分析保持使用插件调度接口。
 
-`useBuiltinTasks` 在全局搜索、时间线重建、文件恢复扫描和文件列表 Docker 容器合并的调用入口登记任务，通过原有搜索/时间线进度事件更新进度，以命令真实返回结果判定成功、取消或失败。跟踪独立于发起页面，关闭面板或切换页面不会丢失完成状态；切换案件清空会话状态并忽略旧案件异步结果。任务标识带来源前缀，避免与插件数字 ID 冲突。
+内置任务的状态全部来自后端登记：命令在登记上写入对象、阶段、计数与结局，前端只按种类格式化（`builtinMessage`），不从领域事件或命令返回值推断结局；关闭面板、切换页面不影响跟踪，执行记录按上述列出方式保留。取消请求先于任务登记发出时（例如检材刚开始加载），任务一出现就再取消一次。
 
 LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提交后立即关闭凭据弹窗。
-任务中心显示「加密卷解锁」、源分区、实际排队/运行状态与不定进度，使用原生任务 ID 取消，
-以解锁命令真实结果判定成功、取消或失败。桌面使用 `sourcePartition` 目标，`EvidenceSession`
+任务中心显示「加密卷解锁」、加密方案与源分区（后端写入的方案与卷键）、排队/运行状态与不定进度，按任务 ID 取消，
+结局与解锁所用的算法由解锁命令报告。桌面使用 `sourcePartition` 目标，`EvidenceSession`
 持有按原分区 ID 绑定的原生解密文件系统视图；源 `DiskImage` 的字节、几何、哈希与 RAW 导出不变。
 目录、文件、范围读取、挂载和快照按节点分区路由到解密视图，节点 ID 与索引仍归属原检材。
 成功后后台自动补建该分区的案件索引或无案件会话索引。主窗口仅更新原镜像元数据，
@@ -1153,12 +1148,12 @@ LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提�
 从分区行进入时不提供分区选择，凭据弹窗不显示说明文字。密码只传入 IPC，不进入任务记录。
 任务列表也接受当前已加载的会话镜像，未打开案件或镜像没有案件台账条目时仍可查看、取消后台任务；快速分析仍要求选择案件检材。
 
-雕刻扫描启动命令仅返回会话 ID，不能据此标记成功；通过 `carve-scan-progress` 与状态轮询同步排队、运行、暂停、成功、取消和失败，保存最后扫描进度与发现文件数。任务中心暂停/继续调用 `carve_scan_pause` / `carve_scan_resume`，取消使用快照中的真实 `task_id`。同一进程内通过 `carve_latest_scan` 恢复当前扫描，已知活动会话单独轮询；雕刻会话仅存于后端内存，不承诺重启后恢复，切换案件后忽略旧会话返回。
-搜索和时间线通过 `task_cancel` 取消，取消请求期间保留运行状态直到命令结束；不提供原生引擎尚不支持的暂停或重启按钮。Docker 按检材和容器去重，首次展开、进入容器或路径查询触发合并及索引落盘；目录树和列表并发读取等待同一次准备，进度未知时使用不定进度，完成后显示已保存的条目数，跨重启的缓存读取也不新增任务。
-文件系统目录快照通过 `snapshot-build-progress` 接入任务中心，按检材与卷拆成“文件系统加载”和“索引建立”两个展示阶段，共享实际后台任务的取消 ID。`task-lifecycle` 与 `task_list` 补齐排队、已有活动任务及异常退出；原生任务从注册表移除本身不能视为成功，必须收到领域完成事件。`started/walking` 表示读取目录，`indexing` 表示目录读取完成并开始索引，`done` 才表示索引安装成功；错误与取消不会被迟到的普通进度或完成事件覆盖，新的排队/启动才重置记录。任务中心收起或离开文件列表不影响跟踪，普通文件夹展开不单独制造任务。每个展示阶段使用不定进度与实际条目数，不估算未知总量；执行记录在当前案件会话内保留。
-索引安装收尾集中在 `app::workflows::snapshot::snapshot_install`：成功安装、索引错误和取消各自发出真实终态，目录快照内存回退不代表索引成功。案件自动构建、缓存索引复用/重建和无案件会话都发出明确的索引阶段；缓存复用说明会显示在结果摘要。
-自动识别平台以 `autoDetect` 后台任务接入（`lib/autodetectTasks.ts`），每份检材一条记录，保留最近一次识别：`task-lifecycle` 与 `task_list` 打开记录，`autodetect-finished` / `autodetect-failed` 才判定成功、失败或取消；登记释放而未收到结论时记为离线，迟到的结论仍可覆盖。新的排队登记总是一次新运行；与当前记录共用登记的第二次调用（首任务进行中又从镜像信息页发起识别）不会重开已结束的记录。检材加入案件时的首任务标为自动触发，镜像信息页的识别标为手动。成功摘要为平台与检材类型，结果入口打开镜像信息页；运行中可取消，取消不算失败。镜像信息页把进行中的识别视为识别中，不再重复发起。执行记录在当前案件会话内保留。
-重新打开案件时复用现有元数据恢复每份检材最近 100 次搜索和最近一次时间线构建；时间线重建更新该检材的同一任务记录，Docker 合并记录仅在当前案件会话内保留。搜索记录删除和重新执行仍从全局搜索页操作，时间线重新构建仍从时间线页操作。
+文件恢复扫描的条目就是它的会话：会话每次变化（发出 `carve-scan-progress` 时）同时发出 `task-entry`，条目 id 是会话的任务 id，另带会话 id 供暂停 / 继续（`carve_scan_pause` / `carve_scan_resume`）；会话保存阶段（文件系统记录 / 签名雕刻）、进度、发现文件数、结束时间与错误。雕刻会话仅存于后端内存（每份检材保留最近三个），不承诺重启后恢复。
+搜索和时间线通过 `task_cancel` 取消，取消请求期间列为「取消中」直到任务停下；不提供引擎尚不支持的暂停或重启按钮。Docker 按检材和容器去重，首次展开、进入容器或路径查询触发合并及索引落盘：`fs_docker_prepare` 的 build 模式登记为 `dockerPrepare` 任务，列出容器名、条目数与索引是否保存；目录树和列表的并发读取等待同一次准备（`files/composables/containerReads.ts`），合并不能取消，跨重启的缓存读取也不新增任务。
+文件系统目录快照每个卷一条「文件系统加载」条目：`snapshot-build-progress` 的各阶段同时写入登记——`started/walking` 为读取目录（阶段 `filesystem` 与已读条目数），`indexing` 为建立索引（阶段 `index`），`done` 才报告成功，`error` / `cancelled` 报告失败或取消；复用已发布的索引时标为复用。检材加入案件触发的构建标为自动，手动重建为手动。不估算未知总量，普通文件夹展开不单独制造任务。
+索引安装收尾集中在 `app::workflows::snapshot::snapshot_install`：成功安装、索引错误和取消各自发出真实终态，目录快照内存回退不代表索引成功。案件自动构建、缓存索引复用/重建和无案件会话都发出明确的索引阶段。
+自动识别平台以 `autoDetect` 任务列出（id `autodetect:<image id>`，每份检材一条，保留最近一次识别）：识别结束时把平台、厂商显示名、检材类型与是否备份写入登记并报告结局；检材加入案件时的首任务标为自动触发，镜像信息页的识别为手动，两者同时进行时共用一份登记。成功摘要为平台与检材类型，结果入口打开镜像信息页；运行中可取消，取消不算失败。镜像信息页把进行中的识别视为识别中，不再重复发起。
+重新打开案件时，每份检材最近 100 次搜索与最近一次时间线构建由 `task_list` 从搜索历史与时间线状态列出；时间线重建更新该检材的同一条目，哈希、导出、Docker 合并等记录只在本次会话保留。搜索记录删除和重新执行仍从全局搜索页操作，时间线重新构建仍从时间线页操作。
 
 ### 前端职责入口
 
@@ -1194,8 +1189,8 @@ LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提�
 | iOS 本地备份 | 镜像信息页的解锁与异常检查 | `ios_backup_unlock`、`ios_backup_audit`，操作与边界见 [iOS 备份](IOS_BACKUPS.md) |
 | 挂载 | 卷挂载与共享控件 | `fs_mount_*`、`fs_unmount_readonly`、`fs_share_mount`、挂载点命令 |
 | QR/OCR | 文件详情 | `qr_scan`、`ocr_scan`，可用性由构建特性决定 |
-| 插件与任务 | 设置、任务中心、结果面板 | `plugin_*`、`sched_*`、`analysis_*`、`sched-task-event` |
-| 后台任务 | 任务中心 | `task_list`、`task_status`、`task_cancel`、`task-lifecycle`、`task-progress` |
+| 插件与任务 | 设置、任务中心、结果面板 | `plugin_*`、`sched_*`、`analysis_*` |
+| 任务中心 | 任务中心、检材加载页、镜像信息页 | `task_list`、`task_status`、`task_cancel`、`task-entry`；`task-lifecycle`、`task-progress` |
 
 ## 扩展流程
 
@@ -1213,6 +1208,6 @@ LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提�
 
 ### 插件结果发布互斥
 
-插件执行器只在分析阶段准备结果；调度器提交前按 `(task_id, seq)` 校验执行归属，并获取每次执行独立的发布锁。结果落库、时间线投影与任务终态提交在锁内完成；取消、暂停、看门狗与案件解绑获取同一把锁后撤销执行。已撤销的迟到结果不能落库，已经开始发布的执行收尾后控制面重新判定状态。任务台账提交失败时按精确 run_id 清理已写的派生结果，不回删同功能的其他运行。不同检材的发布不使用全局锁。
+插件运行把记录写进暂存运行；调度器提交前按 `(task_id, seq)` 校验执行归属，并获取每次执行独立的发布锁。暂存运行的发布（替换同一作业的上一次结果）、时间线投影与任务终态提交在锁内完成；取消、看门狗与案件解绑获取同一把锁后撤销执行。已撤销的迟到结果不能发布，暂存运行随之删除；已经开始发布的执行收尾后控制面重新判定状态。任务台账提交失败时按精确 run_id 删除刚发布的运行，不回删同一作业的其他运行。不同检材的发布不使用全局锁。
 
 直接文件分析复用案件代际与检材移除的发布门；分析开始时捕获案件目录与代际，结束时重新验证并持锁写入，避免旧调用写入新案件。

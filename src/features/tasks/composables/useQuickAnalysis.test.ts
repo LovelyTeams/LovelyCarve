@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { SchedFunction } from '../../../lib/ipc/tasks';
 import {
-  buildPlatforms,
+  appliesToFamily,
   buildPluginGroups,
   favouriteNames,
   groupByPlugin,
@@ -21,67 +21,46 @@ function fn(overrides: Partial<SchedFunction> = {}): SchedFunction {
     analyzer: 'demo',
     displayName: '演示功能',
     typeName: 'baseinfo',
-    dependence: null,
+    scope: 'system',
+    platforms: ['linux'],
     trigger: 'manually',
     internal: false,
-    singleInstance: true,
-    canPause: false,
+    singleInstance: false,
+    provides: [],
+    requires: [],
     extensions: [],
     mimeTypes: [],
-    priority: 0,
-    platform: 'linux',
-    support: ['系统信息'],
-    evidenceTypes: [],
-    evidenceLevel: true,
+    inputs: [],
+    options: [],
     ...overrides,
   };
 }
 
-describe('buildPlatforms', () => {
-  it('derives ordered platform column and prefers the evidence platform', () => {
-    const functions = [
-      fn({ function: 'a/linux', platform: 'linux' }),
-      fn({ function: 'b/android', platform: 'android' }),
-      fn({ function: 'c/win', platform: 'windows' }),
-      fn({ function: 'd/all', platform: null }),
-    ];
-    const { platforms, defaultPlatform } = buildPlatforms(functions, 'windows');
-    // "all" 功能克隆到每个平台,因此平台列是全集;预选检材平台。
-    expect(platforms).toEqual(['android', 'harmony', 'ios', 'windows', 'macos', 'linux', 'iot']);
-    expect(defaultPlatform).toBe('windows');
-    expect(buildPlatforms(functions, null).defaultPlatform).toBe('android');
-    expect(buildPlatforms([], 'linux')).toEqual({ platforms: [], defaultPlatform: '' });
-  });
-});
-
 describe('preprocessFunctions', () => {
   const functions = [
-    fn({ function: 'internal/one', internal: true, platform: 'linux' }),
-    fn({ function: 'linux/only', platform: 'linux', evidenceTypes: ['disk'] }),
-    fn({ function: 'linux/file', platform: 'linux', evidenceLevel: false }),
-    fn({ function: 'all/clone', platform: null }),
-    fn({ function: 'win/only', platform: 'windows' }),
+    fn({ function: 'internal/one', internal: true }),
+    fn({ function: 'linux/only' }),
+    fn({ function: 'any/system', platforms: [] }),
+    fn({ function: 'linux/file', scope: 'files' }),
+    fn({ function: 'whole/evidence', scope: 'evidence', platforms: [] }),
+    fn({ function: 'win/only', platforms: ['Windows'] }),
   ];
 
-  it('drops internal and file-level functions and clones all-platform functions per platform', () => {
-    const linux = preprocessFunctions(functions, { platform: 'linux' });
-    expect(linux.map((item) => item.function)).toEqual(['linux/only', 'all/clone']);
-    const windows = preprocessFunctions(functions, { platform: 'windows' });
-    expect(windows.map((item) => item.function)).toEqual(['all/clone', 'win/only']);
+  it('lists the selected system’s analyzers and every evidence analyzer, never internal or file ones', () => {
+    expect(preprocessFunctions(functions, { family: 'linux' }).map((item) => item.function))
+      .toEqual(['linux/only', 'any/system', 'whole/evidence']);
+    expect(preprocessFunctions(functions, { family: 'windows' }).map((item) => item.function))
+      .toEqual(['any/system', 'whole/evidence', 'win/only']);
   });
 
-  it('treats a manifest platform of "any" as every platform', () => {
-    const anyPlatform = [fn({ function: 'git/repos', platform: 'any' }), fn({ function: 'win/only', platform: 'windows' })];
-    expect(buildPlatforms(anyPlatform, 'windows').platforms).not.toContain('any');
-    expect(preprocessFunctions(anyPlatform, { platform: 'windows' }).map((item) => item.function)).toEqual(['git/repos', 'win/only']);
-    expect(preprocessFunctions(anyPlatform, { platform: 'linux' }).map((item) => item.function)).toEqual(['git/repos']);
+  it('keeps only evidence analyzers when no system was detected', () => {
+    expect(preprocessFunctions(functions, null).map((item) => item.function)).toEqual(['whole/evidence']);
   });
 
-  it('filters by evidence type when the function declares one', () => {
-    const disk = preprocessFunctions(functions, { platform: 'linux', evidenceType: 'disk' });
-    expect(disk.map((item) => item.function)).toEqual(['linux/only', 'all/clone']);
-    const backup = preprocessFunctions(functions, { platform: 'linux', evidenceType: 'compressfile' });
-    expect(backup.map((item) => item.function)).toEqual(['all/clone']);
+  it('matches system families case-insensitively and treats no platforms as every family', () => {
+    expect(appliesToFamily(fn({ platforms: ['Linux'] }), 'linux')).toBe(true);
+    expect(appliesToFamily(fn({ platforms: [] }), 'macos')).toBe(true);
+    expect(appliesToFamily(fn({ platforms: ['windows'] }), 'linux')).toBe(false);
   });
 });
 
@@ -111,6 +90,16 @@ describe('plugin groups', () => {
     ]);
     expect(groups[0].plugins.map((item) => item.id)).toEqual(['org.todesk']);
     expect(groups[1].plugins.map((item) => item.id)).toEqual(['org.user', 'org.todesk']);
+  });
+
+  it('names plugins, analyzers and plugin-defined categories from the package translations', () => {
+    const text = (pluginId: string, key: string, fallback: string) =>
+      ({ 'org.mail:plugin.name': 'Mail', 'org.mail:analyzer.mail': 'Messages', 'org.car:category.vehicle': '汽车取证' })[`${pluginId}:${key}`] ?? fallback;
+    const plugins = groupByPlugin([...functions, fn({ function: 'org.car/can', pluginId: 'org.car', pluginName: 'Car', analyzer: 'can', typeName: 'vehicle' })], text);
+    expect(plugins.find((item) => item.id === 'org.mail')).toMatchObject({ name: 'Mail', functions: [{ displayName: 'Messages' }] });
+    const groups = buildPluginGroups(plugins, { favourites: [], search: 'messages', text });
+    expect(groups.map((group) => group.label)).toEqual(['文件分析']);
+    expect(buildPluginGroups(plugins, { favourites: [], search: 'car', text }).map((group) => group.label)).toEqual(['汽车取证']);
   });
 
   it('finds a plugin by its name, id or any of its functions', () => {

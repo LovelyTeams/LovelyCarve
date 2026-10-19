@@ -157,18 +157,18 @@ clippy:
 test *args:
     {{ cargo_env }}cargo test --no-default-features {{ args }}
 
-# Build linuxinfo and lc-plugin-host; pass --release for bundles.
+# Build lc-plugin-host and stage every plugin package (library and schema.json); pass --release for bundles.
 [group("plugins")]
 build-plugins *args:
     {{ cargo_env }}bun scripts/build-plugins.mjs {{ args }}
 
-# Package linuxinfo with its process-isolation host.
+# Package every workspace plugin as an installable .lcpkg.
 [group("plugins")]
 [windows]
 pack-plugins: (build-plugins "--release")
     pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\pack-plugins.ps1'
 
-# Test the SDK, lc-plugin-host and linuxinfo.
+# Test the SDK, lc-plugin-host and the plugins.
 [group("plugins")]
 test-plugins *args:
     cargo test --workspace --manifest-path plugins/Cargo.toml {{ args }}

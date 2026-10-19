@@ -1,35 +1,31 @@
-//! LPP connection initialization and hello negotiation.
+//! LPP connection setup: the `plugin.hello` handshake, then the reader and
+//! writer tasks.
+use lovelycarve_plugin::protocol::{self, HostHello};
+
 use super::*;
 
 impl PluginClient {
+    /// Completes the handshake on `reader` / `writer` and starts serving.
+    /// The plugin speaks first: an odd-id `plugin.hello` request whose
+    /// payload is its [`Hello`]; only protocol 2 is accepted.
     pub(in crate::core::extensions::plugin) async fn connect(
         mut reader: BoxReader,
         mut writer: BoxWriter,
         services: HostRpcServices,
         child: Option<Child>,
-        progress_sink: Option<PluginProgressSink>,
         process_guard: Option<ProcessGuard>,
     ) -> Result<Arc<Self>> {
         let first_message = timeout(HANDSHAKE_TIMEOUT, read_frame(&mut reader))
             .await
             .map_err(|_| PluginError::Timeout)??;
         let (request_id, hello) = parse_hello(first_message)?;
-        let response = HostHello {
+        let answer = protocol::to_value(&HostHello {
             protocol: PROTOCOL_VERSION,
-            host: HostIdentity {
-                name: "LovelyCarve",
-                version: env!("CARGO_PKG_VERSION"),
-            },
-            limits: HostLimits {
-                max_frame: MAX_FRAME_SIZE,
-                max_read: crate::core::extensions::plugin::source_registry::MAX_SOURCE_READ,
-                max_readv_ranges:
-                    crate::core::extensions::plugin::source_registry::MAX_SOURCE_READV_RANGES,
-            },
-        };
-        let response = rmpv::ext::to_value(response)
-            .map_err(|error| PluginError::Handshake(error.to_string()))?;
-        write_frame(&mut writer, &LppMessage::success(request_id, response)).await?;
+            host: "LovelyCarve".to_owned(),
+            version: env!("CARGO_PKG_VERSION").to_owned(),
+        })
+        .map_err(|error| PluginError::Handshake(error.to_string()))?;
+        write_frame(&mut writer, &LppMessage::success(request_id, answer)).await?;
 
         let alive = Arc::new(AtomicBool::new(true));
         let writer_alive = Arc::clone(&alive);
@@ -51,9 +47,7 @@ impl PluginClient {
         let router = RouterContext {
             pending: Arc::clone(&pending),
             outbound: outbound_tx.clone(),
-            services,
-            plugin_id: hello.plugin.id.clone(),
-            progress_sink,
+            services: services.clone(),
             inbound,
             inbound_slots,
         };
@@ -64,9 +58,10 @@ impl PluginClient {
                         route_message(message, &router).await;
                     }
                     Err(error) => {
-                        tracing::warn!("plugin reader stopped: {error}");
+                        tracing::debug!("plugin reader stopped: {error}");
                         fail_pending(&router.pending);
                         cancel_inbound(&router.inbound);
+                        router.services.cancel_runs();
                         break;
                     }
                 }
@@ -75,8 +70,8 @@ impl PluginClient {
         });
 
         Ok(Arc::new(Self {
-            identity: hello.plugin,
-            capabilities: hello.capabilities,
+            hello,
+            services,
             outbound: outbound_tx,
             pending,
             next_request_id: AtomicU64::new(2),
@@ -90,7 +85,7 @@ impl PluginClient {
     }
 }
 
-pub(super) fn parse_hello(message: LppMessage) -> Result<(u64, PluginHello)> {
+pub(super) fn parse_hello(message: LppMessage) -> Result<(u64, Hello)> {
     let LppMessage::Request {
         v,
         id,
@@ -102,10 +97,24 @@ pub(super) fn parse_hello(message: LppMessage) -> Result<(u64, PluginHello)> {
             "first message must be a plugin.hello request".to_owned(),
         ));
     };
-    if v != PROTOCOL_VERSION || id % 2 == 0 || method != "plugin.hello" {
+    if id % 2 == 0 || method != protocol::method::HELLO {
         return Err(PluginError::Handshake(
-            "first message must be an odd-id LPP v1 plugin.hello request".to_owned(),
+            "first message must be an odd-id plugin.hello request".to_owned(),
         ));
     }
-    Ok((id, PluginHello::from_params(params)?))
+    if v != PROTOCOL_VERSION {
+        return Err(PluginError::Handshake(format!(
+            "the plugin speaks LPP {v}; LovelyCarve speaks LPP {PROTOCOL_VERSION} \
+             (rebuild the plugin with SDK 0.2)"
+        )));
+    }
+    let hello: Hello = protocol::from_value(params)
+        .map_err(|error| PluginError::Handshake(format!("invalid plugin.hello: {error}")))?;
+    if hello.protocol != PROTOCOL_VERSION {
+        return Err(PluginError::Handshake(format!(
+            "the plugin declares LPP {}; LovelyCarve speaks LPP {PROTOCOL_VERSION}",
+            hello.protocol
+        )));
+    }
+    Ok((id, hello))
 }

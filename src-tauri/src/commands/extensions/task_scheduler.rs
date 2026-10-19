@@ -3,12 +3,13 @@
 //! | 命令 | 用途 |
 //! |---|---|
 //! | `sched_task_functions` | 列出可调度功能 |
-//! | `sched_task_list` | 查询全部任务或指定检材的任务 |
+//! | `sched_systems_list` | 检材上识别出的操作系统(系统作用域任务的目标) |
 //! | `sched_task_create` | 创建任务 |
-//! | `sched_task_cancel` / `pause` / `start` / `restart` / `remove` | 控制任务生命周期 |
+//! | `sched_task_cancel` / `start` / `restart` / `remove` | 控制任务生命周期 |
 //! | `sched_evidence_post_actions_set` | 检材收尾动作写入 |
 //!
-//! 事件:`sched-task-event`(载荷 [`SchedEvent`]:任务变更 / 删除 / 通知)。
+//! 插件任务与内置任务一起由任务中心列出(`task_list`,
+//! [`crate::app::workflows::task_center`]),变更走统一的 `task-entry` 事件。
 //!
 //! 读写台账的同步调度器方法都放到阻塞线程池执行([`on_blocking`]),
 //! 插件任务密集提交时不会占住异步运行时。
@@ -17,16 +18,16 @@ use crate::host::State;
 use serde::Serialize;
 
 use crate::{
+    app::access::loaded_image_app_error,
     commands::app_error::AppError,
-    core::extensions::task_scheduler::{
-        InsertOutcome, SchedError, SchedFunction, SchedResult, SchedTaskRecord, TaskParams,
-        TaskScheduler,
+    core::{
+        analysis::identify::systems::DetectedSystem,
+        extensions::task_scheduler::{
+            InsertOutcome, SchedFunction, SchedResult, SchedTaskRecord, TaskParams, TaskScheduler,
+        },
     },
     state::AppState,
 };
-
-/// `sched-task-event` 事件名。
-pub use crate::core::extensions::task_scheduler::SCHED_TASK_EVENT;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,33 +44,44 @@ pub async fn sched_task_functions(
     Ok(state.scheduler.registry().all().to_vec())
 }
 
+/// The operating systems detected on a loaded image, each with the volumes
+/// it mounts. Detection reads the evidence once per image.
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub async fn sched_task_list(
+pub async fn sched_systems_list(
     state: State<'_, AppState>,
-    image_id: Option<String>,
-    include_internal: Option<bool>,
-) -> Result<Vec<SchedTaskRecord>, AppError> {
-    on_blocking(&state, "sched_task_list", move |scheduler| {
-        scheduler.list_for_image(image_id.as_deref(), include_internal.unwrap_or(false))
-    })
-    .await
+    image_id: String,
+) -> Result<Vec<DetectedSystem>, AppError> {
+    let image = loaded_image_app_error(&state, &image_id).await?;
+    let systems = std::sync::Arc::clone(&state.systems);
+    tokio::task::spawn_blocking(move || systems.get_or_discover(&image).as_ref().clone())
+        .await
+        .map_err(|error| AppError::task_panicked("sched_systems_list", error))
 }
 
+/// Creates a task: `systemId` for a system-scope analyzer, `nodeId` (and
+/// `fileName`) for a file-scope one; `options` by the analyzer's option ids.
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[allow(clippy::too_many_arguments)] // Flat IPC fields also generate the CLI options.
 pub async fn sched_task_create(
     state: State<'_, AppState>,
     function: String,
     image_id: String,
     node_id: Option<String>,
     file_name: Option<String>,
-    platform: Option<String>,
-    sub_items: Option<Vec<String>>,
+    system_id: Option<String>,
+    options: Option<serde_json::Value>,
 ) -> Result<SchedTaskCreateResponse, AppError> {
+    let options = match options {
+        None | Some(serde_json::Value::Null) => serde_json::Map::new(),
+        Some(serde_json::Value::Object(options)) => options,
+        Some(_) => return Err(AppError::invalid_input("options 必须是对象")),
+    };
     let params = TaskParams {
         node_id,
         file_name,
-        platform,
-        sub_items: sub_items.unwrap_or_default(),
+        system_id,
+        target_label: None,
+        options,
     };
     let outcome = on_blocking(&state, "sched_task_create", move |scheduler| {
         scheduler.create_task(&function, &image_id, params)
@@ -87,23 +99,7 @@ pub async fn sched_task_cancel(
     state: State<'_, AppState>,
     task_id: i64,
 ) -> Result<SchedTaskRecord, AppError> {
-    state
-        .scheduler
-        .cancel(task_id)
-        .await
-        .map_err(sched_app_error)
-}
-
-#[cfg_attr(feature = "desktop", tauri::command)]
-pub async fn sched_task_pause(
-    state: State<'_, AppState>,
-    task_id: i64,
-) -> Result<SchedTaskRecord, AppError> {
-    state
-        .scheduler
-        .pause(task_id)
-        .await
-        .map_err(sched_app_error)
+    Ok(state.scheduler.cancel(task_id).await?)
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
@@ -111,11 +107,7 @@ pub async fn sched_task_start(
     state: State<'_, AppState>,
     task_id: i64,
 ) -> Result<SchedTaskRecord, AppError> {
-    state
-        .scheduler
-        .start(task_id)
-        .await
-        .map_err(sched_app_error)
+    Ok(state.scheduler.start(task_id).await?)
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
@@ -123,11 +115,7 @@ pub async fn sched_task_restart(
     state: State<'_, AppState>,
     task_id: i64,
 ) -> Result<SchedTaskRecord, AppError> {
-    state
-        .scheduler
-        .restart(task_id)
-        .await
-        .map_err(sched_app_error)
+    Ok(state.scheduler.restart(task_id).await?)
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
@@ -135,11 +123,7 @@ pub async fn sched_task_remove(
     state: State<'_, AppState>,
     task_id: i64,
 ) -> Result<SchedTaskRecord, AppError> {
-    state
-        .scheduler
-        .remove(task_id)
-        .await
-        .map_err(sched_app_error)
+    Ok(state.scheduler.remove(task_id).await?)
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
@@ -164,18 +148,7 @@ async fn on_blocking<T: Send + 'static>(
     call: impl FnOnce(&TaskScheduler) -> SchedResult<T> + Send + 'static,
 ) -> Result<T, AppError> {
     let scheduler = state.scheduler.clone();
-    tokio::task::spawn_blocking(move || call(&scheduler))
+    Ok(tokio::task::spawn_blocking(move || call(&scheduler))
         .await
-        .map_err(|error| AppError::task_panicked(command, error))?
-        .map_err(sched_app_error)
-}
-
-fn sched_app_error(error: SchedError) -> AppError {
-    match error {
-        SchedError::NoCase | SchedError::TaskNotFound(_) => AppError::not_found(error.to_string()),
-        SchedError::InvalidState { .. }
-        | SchedError::FunctionUnknown(_)
-        | SchedError::EvidenceUnknown(_) => AppError::invalid_input(error.to_string()),
-        SchedError::Store(inner) => AppError::from_anyhow(inner),
-    }
+        .map_err(|error| AppError::task_panicked(command, error))??)
 }

@@ -192,10 +192,169 @@ fn lifecycle_sink_observes_cancellation_requested() {
     let events = events
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    assert_eq!(events.len(), 2);
+    assert_eq!(events.len(), 3);
     assert_eq!(events[0].phase, TaskLifecyclePhase::Queued);
     assert_eq!(events[1].phase, TaskLifecyclePhase::CancellationRequested);
     assert_eq!(events[1].task.status, TaskStatus::CancellationRequested);
+    // A cancelled task still ends when its worker lets go.
+    assert_eq!(events[2].phase, TaskLifecyclePhase::Finished);
+    assert_eq!(events[2].task.outcome, Some(TaskOutcome::Cancelled));
+}
+
+/// A failure the way commands report one.
+struct Failure {
+    cancelled: bool,
+}
+
+impl TaskFailure for Failure {
+    fn is_cancellation(&self) -> bool {
+        self.cancelled
+    }
+
+    fn describe(&self) -> String {
+        "disk unreadable".to_owned()
+    }
+}
+
+#[test]
+fn ended_session_tasks_stay_listed_with_their_view_and_outcome() {
+    let manager = TaskManager::default();
+    let hash = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".to_string()));
+    hash.update(|view| {
+        view.subject = vec!["MD5".to_owned()];
+        view.counts.insert(TaskCount::SyntheticBytes, 512);
+    });
+    assert!(manager.emit_progress("hash-1", TaskProgressUnit::Bytes, 64, Some(64), None));
+    hash.finish_with(&Ok::<(), Failure>(()));
+    // The first report stands.
+    hash.finish(TaskOutcome::Interrupted);
+    drop(hash);
+
+    let finished = manager.finished();
+    assert_eq!(finished.len(), 1);
+    let task = &finished[0];
+    assert_eq!(task.outcome, Some(TaskOutcome::Succeeded));
+    assert!(task.finished_at_ms.is_some());
+    assert_eq!(
+        task.view,
+        TaskView {
+            subject: vec!["MD5".to_owned()],
+            progress: Some(TaskAmount {
+                unit: TaskProgressUnit::Bytes,
+                done: 64,
+                total: Some(64),
+            }),
+            counts: [(TaskCount::SyntheticBytes, 512)].into(),
+            ..TaskView::default()
+        }
+    );
+    assert!(manager.list().is_empty());
+}
+
+#[test]
+fn unreported_endings_read_as_cancelled_or_interrupted() {
+    let manager = TaskManager::default();
+    let failed = manager.register("export-1", TaskKind::ImageExport, Some("image".into()));
+    failed.finish_with(&Err::<(), _>(Failure { cancelled: false }));
+    drop(failed);
+    let cancelled = manager.register("export-2", TaskKind::ImageExport, Some("image".into()));
+    cancelled.finish_with(&Err::<(), _>(Failure { cancelled: true }));
+    drop(cancelled);
+    let stopped = manager.register("export-3", TaskKind::ImageExport, Some("image".into()));
+    manager.cancel("export-3");
+    drop(stopped);
+    let crashed = manager.register("export-4", TaskKind::ImageExport, Some("image".into()));
+    drop(crashed);
+
+    assert_eq!(
+        manager
+            .finished()
+            .into_iter()
+            .map(|task| (task.id, task.outcome))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                "export-1".to_owned(),
+                Some(TaskOutcome::Failed {
+                    error: "disk unreadable".to_owned()
+                })
+            ),
+            ("export-2".to_owned(), Some(TaskOutcome::Cancelled)),
+            ("export-3".to_owned(), Some(TaskOutcome::Cancelled)),
+            ("export-4".to_owned(), Some(TaskOutcome::Interrupted)),
+        ]
+    );
+}
+
+#[test]
+fn only_session_listed_kinds_are_kept_after_they_end() {
+    let manager = TaskManager::default();
+    drop(manager.register("flat", TaskKind::FlatList, Some("image".into())));
+    drop(manager.register("search", TaskKind::GlobalSearch, Some("image".into())));
+    drop(manager.register("load", TaskKind::ImageLoad, None));
+    assert_eq!(
+        manager
+            .finished()
+            .into_iter()
+            .map(|task| task.id)
+            .collect::<Vec<_>>(),
+        vec!["load".to_owned()]
+    );
+}
+
+#[test]
+fn ended_tasks_go_with_their_evidence_or_the_case() {
+    let manager = TaskManager::default();
+    drop(manager.register("hash-a", TaskKind::ImageHash, Some("a".into())));
+    drop(manager.register("hash-b", TaskKind::ImageHash, Some("b".into())));
+    drop(manager.register("load-1", TaskKind::ImageLoad, None));
+    let late_load = manager.register("load-2", TaskKind::ImageLoad, None);
+
+    manager.forget_image("a");
+    manager.forget_unowned();
+    // A load of the previous case that ends now is not kept.
+    drop(late_load);
+
+    assert_eq!(
+        manager
+            .finished()
+            .into_iter()
+            .map(|task| task.id)
+            .collect::<Vec<_>>(),
+        vec!["hash-b".to_owned()]
+    );
+}
+
+#[test]
+fn a_new_task_under_an_ended_id_replaces_it() {
+    let manager = TaskManager::default();
+    drop(manager.register("autodetect:a", TaskKind::AutoDetect, Some("a".into())));
+    assert_eq!(manager.finished().len(), 1);
+    let again = manager.register("autodetect:a", TaskKind::AutoDetect, Some("a".into()));
+    again.set_automatic();
+    assert!(manager.finished().is_empty());
+    assert!(manager.list()[0].automatic);
+}
+
+#[test]
+fn cancelled_tasks_stay_listed_until_they_stop() {
+    let manager = TaskManager::default();
+    let snapshot = manager.register("snapshot-1", TaskKind::VolumeSnapshot, Some("a".into()));
+    assert!(manager.cancel("snapshot-1"));
+    assert!(!manager.contains("snapshot-1"));
+    let live = manager.list();
+    assert_eq!(live.len(), 1);
+    assert_eq!(live[0].status, TaskStatus::CancellationRequested);
+    // The stopping task still takes reports by id.
+    assert!(manager.update("snapshot-1", |view| {
+        view.stage = Some(TaskStage::Index);
+    }));
+    drop(snapshot);
+    assert!(manager.list().is_empty());
+    let finished = manager.finished();
+    assert_eq!(finished[0].view.stage, Some(TaskStage::Index));
+    assert_eq!(finished[0].outcome, Some(TaskOutcome::Cancelled));
+    assert!(!manager.update("snapshot-1", |_| {}));
 }
 
 #[test]

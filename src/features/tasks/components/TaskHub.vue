@@ -14,7 +14,7 @@
           <TaskCenterPanel ref="taskCenter" :image-id="currentImageId" @quick-analysis="emit('update:tab', 'quick')" @open-result="(panel, analyzer) => emit('openPanel', panel, analyzer)" />
         </div>
         <div v-show="tab === 'quick'" id="quick-analysis-panel" v-content-motion.rise="tab" class="hub-body" role="tabpanel" aria-labelledby="quick-analysis-tab">
-          <QuickAnalysisPanel v-if="evidence" :key="evidence.image_id" :image-id="evidence.image_id" :evidence-platform="evidence.platform" :evidence-type="evidence.evidence_type" @submitted="onSubmitted" />
+          <QuickAnalysisPanel v-if="evidence" :key="evidence.image_id" :image-id="evidence.image_id" @submitted="onSubmitted" />
           <div v-else class="ui-empty hub-empty">
             <span class="ui-empty-icon accent"><HardDrive :size="24" /></span>
             <p class="ui-empty-title">{{ tr("选择案件检材，开始快速分析") }}</p>

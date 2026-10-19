@@ -14,7 +14,7 @@ vi.mock('../composables/useAutoDetect', async (importOriginal) => ({
   useAutoDetectPending: () => pending,
   useAutoDetectError: () => failure,
 }));
-vi.mock('../../tasks/composables/useBuiltinTasks', () => ({ useBuiltinTasks: () => ({ tasks: shallowRef([]) }) }));
+vi.mock('../../tasks/api', () => ({ useTaskEntries: () => ({ entries: shallowRef([]) }) }));
 import AutoDetectBadge from './AutoDetectBadge.vue';
 
 let app: App;

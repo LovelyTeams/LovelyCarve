@@ -6,7 +6,7 @@ import { useDirectoryQuery } from './useDirectoryQuery';
 import { useFlatFileQuery } from './useFlatFileQuery';
 
 const mocks = vi.hoisted(() => ({ children: vi.fn(), flat: vi.fn(), counts: vi.fn(), error: vi.fn() }));
-vi.mock('../../tasks/composables/useBuiltinTasks', () => ({ trackedFsChildrenPage: mocks.children, trackedFsFlatPage: mocks.flat }));
+vi.mock('./containerReads', () => ({ containerFsChildrenPage: mocks.children, containerFsFlatPage: mocks.flat }));
 vi.mock('../../../lib/ipc/fs/query', () => ({ fsFlatExtCounts: mocks.counts }));
 vi.mock('../../../composables/useToast', () => ({ notifyError: mocks.error }));
 

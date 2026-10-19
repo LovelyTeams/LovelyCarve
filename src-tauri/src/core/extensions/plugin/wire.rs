@@ -1,4 +1,5 @@
-//! Stable LPP v1 filesystem wire types.
+//! Frozen filesystem wire types of the `fs.*` methods (unchanged since the
+//! first LPP revision; LPP v2 carries them as they were).
 //!
 //! These DTOs deliberately do not reuse the host's evolving `FsNode` and
 //! `FsStat` structs. New host-only fields therefore cannot accidentally become

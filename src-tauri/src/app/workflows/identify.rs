@@ -7,9 +7,9 @@
 //!   拉起的后台首任务。
 //!
 //! 两条路径都登记为 `TaskManager` 的 `autoDetect` 任务(id 按检材固定,并发的
-//! 两次运行共用一份登记与取消令牌),发出统一的 `task-lifecycle` 事件;登记释放前
-//! 以 [`AUTODETECT_FINISHED_EVENT`] 广播报告,或以 [`AUTODETECT_FAILED_EVENT`]
-//! 广播失败与取消,任务中心只按这两个领域事件判定终态。有活动案件且检材已登记时
+//! 两次运行共用一份登记与取消令牌;首任务标为自动触发)。登记释放前把结论(平台、
+//! 检材类型)与结局报给登记,任务中心据此列出;同时以 [`AUTODETECT_FINISHED_EVENT`]
+//! 广播报告,或以 [`AUTODETECT_FAILED_EVENT`] 广播失败与取消,供镜像信息页使用。有活动案件且检材已登记时
 //! 把结论写回台账的检材行(平台、类型与完整报告 JSON);无案件时只返回报告。识别在
 //! `spawn_blocking` 上跑——分区根目录列举与归档条目走查都是同步 I/O。
 
@@ -25,7 +25,7 @@ use crate::core::analysis::identify::autodetect::{self, AutoDetectReport};
 use crate::core::casework::case::CaseState;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::state::AppState;
-use crate::task_manager::{TaskKind, TaskManager, TaskRegistration};
+use crate::task_manager::{TaskFlag, TaskKind, TaskLabel, TaskManager, TaskRegistration};
 
 /// 识别完成事件,载荷为 [`AutoDetectReport`]。
 pub const AUTODETECT_FINISHED_EVENT: &str = "autodetect-finished";
@@ -59,6 +59,7 @@ pub(crate) fn spawn_first_task(
     image: Arc<EvidenceSession>,
 ) {
     let task = register(&tasks, &image);
+    task.set_automatic();
     tokio::spawn(async move {
         let image_id = image.id.clone();
         if let Err(err) = run_autodetect(&app, &tasks, &active_case, image, task).await {
@@ -80,8 +81,8 @@ fn register(tasks: &TaskManager, image: &EvidenceSession) -> TaskRegistration {
     )
 }
 
-/// 识别并回写,再广播结论或失败;登记最后释放,领域事件总在
-/// `task-lifecycle` 的 finished 之前。
+/// 识别并回写,把结论与结局报给登记,再广播结论或失败;登记最后释放,
+/// 领域事件总在 `task-lifecycle` 的 finished 之前。
 async fn run_autodetect(
     app: &AppHandle,
     tasks: &TaskManager,
@@ -91,6 +92,26 @@ async fn run_autodetect(
 ) -> Result<AutoDetectReport, AppError> {
     let image_id = image.id.clone();
     let outcome = detect_and_persist(tasks, active_case, image, &task).await;
+    if let Ok(report) = &outcome {
+        task.update(|view| {
+            if let Some(platform) = report.platform {
+                view.labels
+                    .insert(TaskLabel::Platform, platform.as_str().to_owned());
+            }
+            if !report.display_platform_name.is_empty() {
+                view.labels.insert(
+                    TaskLabel::PlatformName,
+                    report.display_platform_name.clone(),
+                );
+            }
+            view.labels
+                .insert(TaskLabel::EvidenceType, report.evidence_type.clone());
+            if report.is_backup {
+                view.flags.insert(TaskFlag::Backup);
+            }
+        });
+    }
+    task.finish_with(&outcome);
     let emitted = match &outcome {
         Ok(report) => app.emit(AUTODETECT_FINISHED_EVENT, report),
         Err(error) => app.emit(

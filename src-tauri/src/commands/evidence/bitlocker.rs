@@ -458,12 +458,13 @@ pub async fn bitlocker_export_decrypted_image(
         TaskKind::BitlockerExport,
         Some(image_id.clone()),
     );
+    task.update(|view| view.subject = vec![destination.clone()]);
     let resource_permit = state.tasks.acquire_resources(&task).await?;
     let token = task.token();
     let task_id_for_worker = task_id.clone();
     let tasks_for_worker = state.tasks.clone();
 
-    let result = tokio::task::spawn_blocking(move || -> Result<u64, AppError> {
+    let exported = tokio::task::spawn_blocking(move || -> Result<u64, AppError> {
         let _resource_permit = resource_permit;
         image.validate_source_file_stable().map_err(|err| {
             AppError::source_changed(format!("BitLocker 镜像导出前校验失败：{err}"))
@@ -503,14 +504,16 @@ pub async fn bitlocker_export_decrypted_image(
         let mut buffer = vec![0u8; EXPORT_CHUNK_BYTES];
         let mut last_emit = Instant::now();
 
-        let _ = app.emit(
+        if let Err(error) = app.emit(
             "image-export-progress",
             ImageExportProgress {
                 task_id: task_id_for_worker.clone(),
                 bytes_done: 0,
                 bytes_total: total,
             },
-        );
+        ) {
+            tracing::debug!("emit image-export-progress failed: {error}");
+        }
         tasks_for_worker.emit_progress(
             &task_id_for_worker,
             TaskProgressUnit::Bytes,
@@ -558,14 +561,16 @@ pub async fn bitlocker_export_decrypted_image(
             offset += read_len as u64;
             let reached_end = read_len < want || offset >= total;
             if reached_end || last_emit.elapsed() >= EXPORT_PROGRESS_THROTTLE {
-                let _ = app.emit(
+                if let Err(error) = app.emit(
                     "image-export-progress",
                     ImageExportProgress {
                         task_id: task_id_for_worker.clone(),
                         bytes_done: offset,
                         bytes_total: total,
                     },
-                );
+                ) {
+                    tracing::debug!("emit image-export-progress failed: {error}");
+                }
                 tasks_for_worker.emit_progress(
                     &task_id_for_worker,
                     TaskProgressUnit::Bytes,
@@ -595,9 +600,10 @@ pub async fn bitlocker_export_decrypted_image(
         Ok(offset)
     })
     .await
-    .map_err(|err| AppError::task_panicked("bitlocker_export_decrypted_image", err))?;
-
-    result
+    .map_err(|err| AppError::task_panicked("bitlocker_export_decrypted_image", err))
+    .and_then(std::convert::identity);
+    task.finish_with(&exported);
+    exported
 }
 
 fn fill_unlocked_plaintext(

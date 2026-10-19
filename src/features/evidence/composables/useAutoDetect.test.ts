@@ -36,7 +36,7 @@ vi.mock('../../cases/composables/useCaseSession', async () => {
 import type { AutoDetectFailure, AutoDetectReport } from '../../../lib/ipc/autodetect';
 import { IpcCommandError } from '../../../lib/ipc/client';
 import * as caseSessionModule from '../../cases/composables/useCaseSession';
-import { registerAutoDetectReportPublished, applyAutoDetectReport, isAutoDetectRunPending, resetAutoDetectForTests, runAutoDetect, useAutoDetectError, useAutoDetectPending, useAutoDetectReport } from './useAutoDetect';
+import { registerAutoDetectReportPublished, applyAutoDetectReport, resetAutoDetectForTests, runAutoDetect, useAutoDetectError, useAutoDetectPending, useAutoDetectReport } from './useAutoDetect';
 import { evidenceTypeLabel, manufactorLabel, platformLabel, routeLabel } from '../model/autodetectLabels';
 
 const activeCaseRef = (caseSessionModule as unknown as {
@@ -178,11 +178,12 @@ describe('useAutoDetect state', () => {
   it('does not report a cancelled manual run as a failure', async () => {
     invokeMock.mockRejectedValue(new IpcCommandError({ code: 'cancelled', message: '自动识别已取消', context: null, retryable: false }));
 
+    const pending = useAutoDetectPending(() => 'img-5');
     const promise = runAutoDetect('img-5');
-    expect(isAutoDetectRunPending('img-5')).toBe(true);
+    expect(pending.value).toBe(true);
     expect(await promise).toBeNull();
 
-    expect(isAutoDetectRunPending('img-5')).toBe(false);
+    expect(pending.value).toBe(false);
     expect(useAutoDetectError(() => 'img-5').value).toBeUndefined();
     expect(toastMock.notifyError).not.toHaveBeenCalled();
   });

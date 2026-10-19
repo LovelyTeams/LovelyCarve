@@ -1,6 +1,6 @@
 //! 调度器全生命周期集成测试:用脚本化执行器(`ScriptedRunner`)替身插件
 //! 子进程,驱动 created → queued → running → success/failed 的完整链路,
-//! 覆盖取消/暂停/重启、依赖链、看门狗与崩溃恢复。
+//! 覆盖取消/重启、事实驱动的后续任务、系统目标、看门狗与崩溃恢复。
 
 use std::{
     collections::HashMap,
@@ -15,6 +15,7 @@ use parking_lot::{Mutex, RwLock};
 
 use super::{
     config::{SchedulerConfig, DEFAULT_MAX_RUNNING},
+    dependence::SystemTarget,
     executor::{BoxFuture, ExecutionOutcome, TaskExecution, TaskProgress, TaskRunner},
     functions::{
         tests::{chain_definitions, definition},
@@ -34,19 +35,32 @@ const LONG: Duration = Duration::from_secs(30);
 
 type DefinitionToml = &'static str;
 
-const PAUSABLE: DefinitionToml = r#"
-id = "org.test.pausable"
-name = "Pausable"
+/// A Linux system analyzer that starts on its own and publishes a fact.
+const SYSTEM_BASE: DefinitionToml = r#"
+id = "org.test.system"
+name = "System"
 version = "1"
-protocol_min = 1
-protocol_max = 1
-[library]
-path = "test"
-[task]
-can_pause = true
-[[capabilities]]
-type = "file_analyzer"
-analyzer = "slow.scan"
+protocol = 2
+library = "test"
+[[analyzer]]
+id = "base"
+name = "System base"
+scope = "system"
+platforms = ["linux"]
+trigger = "auto"
+provides = ["timezone"]
+[[analyzer]]
+id = "logs"
+name = "System logs"
+scope = "system"
+platforms = ["linux"]
+trigger = "auto"
+requires = ["timezone"]
+[[analyzer.option]]
+id = "items"
+type = "multi"
+label = "子项"
+choices = [{ id = "auth", label = "认证日志" }, { id = "dpkg", label = "dpkg" }]
 "#;
 
 #[derive(Clone)]
@@ -61,7 +75,7 @@ impl Script {
             delay: Duration::from_millis(10),
             outcome: ExecutionOutcome::Success(TaskResult {
                 summary: Some("done".to_owned()),
-                artifact_count: 1,
+                record_count: 1,
                 ..TaskResult::default()
             }),
         }
@@ -246,6 +260,27 @@ impl Harness {
         wait_for(|| self.status(task_id) == expected).await
     }
 
+    /// Waits for a task of `function`. Follow-ups are created right after
+    /// their parent's final status is committed, so a reader that saw the
+    /// parent finish may still be ahead of them.
+    async fn wait_task(&self, function: &str) -> Option<SchedTaskRecord> {
+        let mut found = None;
+        wait_for(|| {
+            found = self
+                .scheduler
+                .list(&TaskFilter {
+                    evidence_id: None,
+                    include_internal: true,
+                })
+                .expect("list")
+                .into_iter()
+                .find(|task| task.name == function);
+            found.is_some()
+        })
+        .await;
+        found
+    }
+
     /// Waits until the runner was handed every task in `task_ids` (a task is
     /// `running` in the database just before its execution starts).
     async fn wait_started(&self, task_ids: &[i64]) -> bool {
@@ -303,12 +338,20 @@ fn build_registry(extra: &[DefinitionToml]) -> FunctionRegistry {
     FunctionRegistry::from_definitions(&definitions)
 }
 
+/// A selected file (the manual analyzer is file-scoped).
 fn params() -> TaskParams {
     TaskParams {
         node_id: Some("node-1".to_owned()),
         file_name: Some("data.db".to_owned()),
-        platform: None,
-        sub_items: Vec::new(),
+        ..TaskParams::default()
+    }
+}
+
+fn linux_system() -> SystemTarget {
+    SystemTarget {
+        id: "linux@part:2".to_owned(),
+        family: "linux".to_owned(),
+        label: "Kali · part:2".to_owned(),
     }
 }
 
@@ -367,7 +410,7 @@ async fn manual_task_runs_to_success_and_broadcasts_each_transition() {
     let harness = harness().await;
     let outcome = harness
         .scheduler
-        .create_task("org.test.manual/manual.scan", "image-1", params())
+        .create_task("org.test.manual/manual_scan", "image-1", params())
         .expect("create");
     let InsertOutcome::Created(task) = outcome else {
         panic!("manual task must be created");
@@ -385,7 +428,7 @@ async fn manual_task_runs_to_success_and_broadcasts_each_transition() {
         finished.result,
         Some(TaskResult {
             summary: Some("done".to_owned()),
-            artifact_count: 1,
+            record_count: 1,
             ..TaskResult::default()
         })
     );
@@ -411,7 +454,7 @@ async fn manual_task_runs_to_success_and_broadcasts_each_transition() {
 }
 
 #[tokio::test]
-async fn success_triggers_dependence_chain_and_all_finished_notice() {
+async fn published_facts_trigger_follow_ups_and_all_finished_notice() {
     let harness = harness().await;
     let mut outcomes = harness
         .scheduler
@@ -419,7 +462,7 @@ async fn success_triggers_dependence_chain_and_all_finished_notice() {
         .expect("evidence online");
     assert_eq!(outcomes.len(), 1);
     let first = outcomes.remove(0).into_record();
-    assert_eq!(first.name, "org.test.first/stage.one");
+    assert_eq!(first.name, "org.test.first/stage_one");
     assert_eq!(first.info.trigger, TaskTrigger::Auto);
 
     harness.scheduler.dispatch_tick().await;
@@ -430,18 +473,12 @@ async fn success_triggers_dependence_chain_and_all_finished_notice() {
     );
 
     let second = harness
-        .scheduler
-        .list(&TaskFilter {
-            evidence_id: None,
-            include_internal: true,
-        })
-        .expect("list")
-        .into_iter()
-        .find(|task| task.name == "org.test.second/stage.two")
-        .expect("dependent task created by CheckDependenceTask");
+        .wait_task("org.test.second/stage_two")
+        .await
+        .expect("the task waiting for stage_one_done");
     assert_eq!(second.info.parent_tid, Some(first.id));
     assert_eq!(second.info.trigger, TaskTrigger::Auto);
-    assert_eq!(second.params, first.params);
+    assert_eq!(second.params, TaskParams::default());
 
     let finished = harness
         .pump_until(|h| h.status(second.id) == SchedTaskStatus::Success)
@@ -462,9 +499,9 @@ async fn tasks_of_one_plugin_run_side_by_side() {
     add_images(&harness, 2);
     harness
         .runner
-        .script("org.test.manual/manual.scan", Script::slow());
-    let first = harness.create("org.test.manual/manual.scan", "image-1");
-    let second = harness.create("org.test.manual/manual.scan", "image-2");
+        .script("org.test.manual/manual_scan", Script::slow());
+    let first = harness.create("org.test.manual/manual_scan", "image-1");
+    let second = harness.create("org.test.manual/manual_scan", "image-2");
 
     harness.scheduler.dispatch_tick().await;
     assert!(
@@ -483,9 +520,9 @@ async fn dispatch_keeps_running_tasks_within_the_limit() {
     add_images(&harness, 3);
     harness
         .runner
-        .script("org.test.manual/manual.scan", Script::slow());
+        .script("org.test.manual/manual_scan", Script::slow());
     let tasks = (1..=3)
-        .map(|index| harness.create("org.test.manual/manual.scan", &format!("image-{index}")))
+        .map(|index| harness.create("org.test.manual/manual_scan", &format!("image-{index}")))
         .collect::<Vec<_>>();
 
     harness.scheduler.dispatch_tick().await;
@@ -523,9 +560,9 @@ async fn cancelling_one_task_leaves_the_plugins_other_task_running() {
     add_images(&harness, 2);
     harness
         .runner
-        .script("org.test.manual/manual.scan", Script::slow());
-    let cancelled = harness.create("org.test.manual/manual.scan", "image-1");
-    let kept = harness.create("org.test.manual/manual.scan", "image-2");
+        .script("org.test.manual/manual_scan", Script::slow());
+    let cancelled = harness.create("org.test.manual/manual_scan", "image-1");
+    let kept = harness.create("org.test.manual/manual_scan", "image-2");
     harness.scheduler.dispatch_tick().await;
     assert!(harness.wait_started(&[cancelled.id, kept.id]).await);
 
@@ -546,8 +583,8 @@ async fn cancel_running_task_terminates_worker_and_stays_cancelled() {
     let harness = harness().await;
     harness
         .runner
-        .script("org.test.manual/manual.scan", Script::slow());
-    let task = harness.create("org.test.manual/manual.scan", "image-1");
+        .script("org.test.manual/manual_scan", Script::slow());
+    let task = harness.create("org.test.manual/manual_scan", "image-1");
     harness.scheduler.dispatch_tick().await;
     assert!(harness.wait_status(task.id, SchedTaskStatus::Running).await);
 
@@ -568,50 +605,108 @@ async fn cancel_running_task_terminates_worker_and_stays_cancelled() {
 }
 
 #[tokio::test]
-async fn pause_then_start_reruns_task_from_scratch() {
-    let harness = harness_with(paused_config(), vec![PAUSABLE]).await;
-    harness
-        .runner
-        .script("org.test.pausable/slow.scan", Script::slow());
-    let task = harness.create("org.test.pausable/slow.scan", "image-1");
-    harness.scheduler.dispatch_tick().await;
-    assert!(harness.wait_status(task.id, SchedTaskStatus::Running).await);
-
-    let paused = harness.scheduler.pause(task.id).await.expect("pause");
-    assert_eq!(paused.status, SchedTaskStatus::Pause);
-    assert_eq!(harness.runner.terminated.lock().as_slice(), &[task.id]);
-    assert!(harness.scheduler.pause(task.id).await.is_err());
-    tokio::time::sleep(Duration::from_millis(30)).await;
+async fn paused_tasks_of_old_cases_start_from_scratch() {
+    let harness = harness().await;
+    let task = harness.create("org.test.manual/manual_scan", "image-1");
+    // Only an older version paused tasks; its rows still load.
+    TaskStore::open(&harness.ledger_path)
+        .expect("store")
+        .update_status(task.id, SchedTaskStatus::Pause, None)
+        .expect("pause row");
     assert_eq!(harness.status(task.id), SchedTaskStatus::Pause);
 
     let restarted = harness.scheduler.start(task.id).await.expect("start");
     assert_eq!(restarted.status, SchedTaskStatus::Created);
-    harness
-        .runner
-        .script("org.test.pausable/slow.scan", Script::success());
     harness.scheduler.dispatch_tick().await;
     assert!(harness.wait_status(task.id, SchedTaskStatus::Success).await);
-    assert_eq!(
-        harness.runner.started.lock().as_slice(),
-        &[task.id, task.id]
+}
+
+#[tokio::test]
+async fn system_jobs_run_per_detected_system_and_chain_by_facts() {
+    let harness = harness_with(paused_config(), vec![SYSTEM_BASE]).await;
+    harness.scheduler.set_systems_source(|image_id| {
+        if image_id == "image-1" {
+            vec![
+                linux_system(),
+                SystemTarget {
+                    id: "windows@part:3".to_owned(),
+                    family: "windows".to_owned(),
+                    label: "Windows · part:3".to_owned(),
+                },
+            ]
+        } else {
+            Vec::new()
+        }
+    });
+    let created = harness
+        .scheduler
+        .on_evidence_online("image-1")
+        .expect("online")
+        .into_iter()
+        .map(InsertOutcome::into_record)
+        .collect::<Vec<_>>();
+    let base = created
+        .iter()
+        .find(|task| task.name == "org.test.system/base")
+        .expect("base task on the Linux system")
+        .clone();
+    assert_eq!(base.params.system_id.as_deref(), Some("linux@part:2"));
+    assert_eq!(base.params.target_label.as_deref(), Some("Kali · part:2"));
+    assert!(
+        created
+            .iter()
+            .all(|task| task.params.system_id.as_deref() != Some("windows@part:3")),
+        "a Linux analyzer never runs on the Windows system"
     );
-}
 
-#[tokio::test]
-async fn pause_rejects_functions_without_can_pause() {
-    let harness = harness().await;
-    harness
-        .runner
-        .script("org.test.manual/manual.scan", Script::slow());
-    let task = harness.create("org.test.manual/manual.scan", "image-1");
     harness.scheduler.dispatch_tick().await;
-    assert!(harness.wait_status(task.id, SchedTaskStatus::Running).await);
-    assert!(harness.scheduler.pause(task.id).await.is_err());
-    assert_eq!(harness.status(task.id), SchedTaskStatus::Running);
+    assert!(harness.wait_status(base.id, SchedTaskStatus::Success).await);
+    let logs = harness
+        .wait_task("org.test.system/logs")
+        .await
+        .expect("logs waits for timezone");
+    assert_eq!(logs.params.system_id.as_deref(), Some("linux@part:2"));
+    assert_eq!(logs.info.parent_tid, Some(base.id));
+
+    // A second manual run on the same system is the same job.
+    let manual = |system: &str, options: serde_json::Value| {
+        harness.scheduler.create_task(
+            "org.test.system/logs",
+            "image-1",
+            TaskParams {
+                system_id: Some(system.to_owned()),
+                options: options.as_object().cloned().unwrap_or_default(),
+                ..TaskParams::default()
+            },
+        )
+    };
+    let repeated =
+        manual("linux@part:2", serde_json::json!({ "items": ["auth"] })).expect("same job");
+    assert!(matches!(repeated, InsertOutcome::Existing(_)));
+    for (system, options) in [
+        ("windows@part:3", serde_json::json!({})),
+        ("linux@part:9", serde_json::json!({})),
+        ("linux@part:2", serde_json::json!({ "items": ["shadow"] })),
+        ("linux@part:2", serde_json::json!({ "level": 3 })),
+    ] {
+        assert!(
+            matches!(
+                manual(system, options.clone()),
+                Err(super::SchedError::InvalidParams(_))
+            ),
+            "{system} {options}"
+        );
+    }
+    assert!(matches!(
+        harness
+            .scheduler
+            .create_task("org.test.system/logs", "image-1", TaskParams::default()),
+        Err(super::SchedError::InvalidParams(_))
+    ));
 }
 
 #[tokio::test]
-async fn failure_blocks_dependence_chain() {
+async fn failure_creates_no_follow_ups() {
     let harness = harness().await;
     let first = harness
         .scheduler
@@ -621,7 +716,7 @@ async fn failure_blocks_dependence_chain() {
         .into_record();
     harness
         .runner
-        .script("org.test.first/stage.one", Script::failing("parse error"));
+        .script("org.test.first/stage_one", Script::failing("parse error"));
     harness.scheduler.dispatch_tick().await;
     assert!(harness.wait_status(first.id, SchedTaskStatus::Failed).await);
     let failed = harness.scheduler.get(first.id).expect("task");
@@ -645,14 +740,14 @@ async fn bind_case_recovers_offline_tasks_by_trigger() {
         .evidence_id_for_image("image-1")
         .expect("lookup")
         .expect("evidence");
-    let mut auto_task = super::store::tests::sample_task("org.test.first/stage.one", evidence_id);
+    let mut auto_task = super::store::tests::sample_task("org.test.first/stage_one", evidence_id);
     auto_task.trigger = TaskTrigger::Auto;
     let auto_task = seed.insert_task(&auto_task).expect("insert").into_record();
     seed.update_status(auto_task.id, SchedTaskStatus::Running, None)
         .expect("running");
     let manual_task = seed
         .insert_task(&super::store::tests::sample_task(
-            "org.test.manual/manual.scan",
+            "org.test.manual/manual_scan",
             evidence_id,
         ))
         .expect("insert")
@@ -684,8 +779,8 @@ async fn watchdog_fails_update_timeout_and_notifies() {
     let harness = harness_with(config, Vec::new()).await;
     harness
         .runner
-        .script("org.test.manual/manual.scan", Script::slow());
-    let task = harness.create("org.test.manual/manual.scan", "image-1");
+        .script("org.test.manual/manual_scan", Script::slow());
+    let task = harness.create("org.test.manual/manual_scan", "image-1");
     harness.scheduler.dispatch_tick().await;
     assert!(harness.wait_status(task.id, SchedTaskStatus::Running).await);
 
@@ -707,8 +802,8 @@ async fn progress_keeps_watchdog_update_timer_alive() {
     let harness = harness_with(config, Vec::new()).await;
     harness
         .runner
-        .script("org.test.manual/manual.scan", Script::slow());
-    let task = harness.create("org.test.manual/manual.scan", "image-1");
+        .script("org.test.manual/manual_scan", Script::slow());
+    let task = harness.create("org.test.manual/manual_scan", "image-1");
     harness.scheduler.dispatch_tick().await;
     assert!(harness.wait_started(&[task.id]).await);
 
@@ -726,17 +821,17 @@ async fn watchdog_marks_dead_worker_offline_and_splits_by_trigger() {
     let harness = harness_with(config, Vec::new()).await;
     harness
         .runner
-        .script("org.test.first/stage.one", Script::slow());
+        .script("org.test.first/stage_one", Script::slow());
     harness
         .runner
-        .script("org.test.manual/manual.scan", Script::slow());
+        .script("org.test.manual/manual_scan", Script::slow());
     let auto_task = harness
         .scheduler
         .on_evidence_online("image-1")
         .expect("online")
         .remove(0)
         .into_record();
-    let manual = harness.create("org.test.manual/manual.scan", "image-1");
+    let manual = harness.create("org.test.manual/manual_scan", "image-1");
     harness.scheduler.dispatch_tick().await;
     assert!(
         harness
@@ -770,9 +865,9 @@ async fn progress_reaches_only_its_own_task_and_is_persisted_by_dispatch() {
     add_images(&harness, 2);
     harness
         .runner
-        .script("org.test.manual/manual.scan", Script::slow());
-    let first = harness.create("org.test.manual/manual.scan", "image-1");
-    let second = harness.create("org.test.manual/manual.scan", "image-2");
+        .script("org.test.manual/manual_scan", Script::slow());
+    let first = harness.create("org.test.manual/manual_scan", "image-1");
+    let second = harness.create("org.test.manual/manual_scan", "image-2");
     harness.scheduler.dispatch_tick().await;
     assert!(harness.wait_started(&[first.id, second.id]).await);
 
@@ -810,8 +905,8 @@ async fn withdrawing_evidence_cancels_active_tasks_and_broadcasts_their_removal(
     let harness = harness().await;
     harness
         .runner
-        .script("org.test.manual/manual.scan", Script::slow());
-    let task = harness.create("org.test.manual/manual.scan", "image-1");
+        .script("org.test.manual/manual_scan", Script::slow());
+    let task = harness.create("org.test.manual/manual_scan", "image-1");
     harness.scheduler.dispatch_tick().await;
     assert!(harness.wait_status(task.id, SchedTaskStatus::Running).await);
     let withdrawal = harness
@@ -858,7 +953,7 @@ async fn withdrawing_evidence_cancels_active_tasks_and_broadcasts_their_removal(
 #[tokio::test]
 async fn remove_only_terminal_tasks_and_broadcasts() {
     let harness = harness().await;
-    let task = harness.create("org.test.manual/manual.scan", "image-1");
+    let task = harness.create("org.test.manual/manual_scan", "image-1");
     assert!(harness.scheduler.remove(task.id).await.is_err());
     harness.scheduler.dispatch_tick().await;
     assert!(harness.wait_status(task.id, SchedTaskStatus::Success).await);
@@ -875,8 +970,8 @@ async fn unbind_marks_running_tasks_offline_for_next_session() {
     let harness = harness().await;
     harness
         .runner
-        .script("org.test.manual/manual.scan", Script::slow());
-    let task = harness.create("org.test.manual/manual.scan", "image-1");
+        .script("org.test.manual/manual_scan", Script::slow());
+    let task = harness.create("org.test.manual/manual_scan", "image-1");
     harness.scheduler.dispatch_tick().await;
     assert!(harness.wait_status(task.id, SchedTaskStatus::Running).await);
 
@@ -900,12 +995,12 @@ async fn create_task_validates_function_and_evidence() {
         .is_err());
     assert!(harness
         .scheduler
-        .create_task("org.test.manual/manual.scan", "image-missing", params())
+        .create_task("org.test.manual/manual_scan", "image-missing", params())
         .is_err());
-    let first = harness.create("org.test.manual/manual.scan", "image-1");
+    let first = harness.create("org.test.manual/manual_scan", "image-1");
     let repeated = harness
         .scheduler
-        .create_task("org.test.manual/manual.scan", "image-1", params())
+        .create_task("org.test.manual/manual_scan", "image-1", params())
         .expect("create");
     assert_eq!(repeated, InsertOutcome::Existing(first));
 }
@@ -941,15 +1036,13 @@ fn config_reads_env_overrides() {
 async fn function_metadata_reaches_task_rows() {
     let harness = harness().await;
     let registry = harness.scheduler.registry();
-    let function = registry.get("org.test.second/stage.two").expect("function");
+    let function = registry.get("org.test.second/stage_two").expect("function");
     assert!(function.internal);
-    assert_eq!(
-        function.dependence.as_deref(),
-        Some("org.test.first/stage.one")
-    );
-    let task = harness.create("org.test.second/stage.two", "image-1");
+    assert_eq!(function.requires, vec!["stage_one_done".to_owned()]);
+    let task = harness.create("org.test.second/stage_two", "image-1");
     assert!(task.internal);
-    assert_eq!(task.dependence, "org.test.first/stage.one");
+    // An evidence-scope task keeps no file target.
+    assert_eq!(task.params, TaskParams::default());
     let visible = harness
         .scheduler
         .list(&TaskFilter {
@@ -963,7 +1056,7 @@ async fn function_metadata_reaches_task_rows() {
 #[tokio::test]
 async fn result_cleanup_failure_keeps_terminal_task_deletion_and_event() {
     let harness = harness().await;
-    let task = harness.create("org.test.manual/manual.scan", "image-1");
+    let task = harness.create("org.test.manual/manual_scan", "image-1");
     // A queued task cannot be removed and must not invoke result cleanup.
     assert!(harness.scheduler.remove(task.id).await.is_err());
     assert!(harness.runner.removed_results.lock().is_empty());
@@ -986,7 +1079,7 @@ async fn result_cleanup_failure_keeps_terminal_task_deletion_and_event() {
 #[tokio::test]
 async fn cancelled_execution_never_publishes_a_late_result() {
     let harness = harness().await;
-    let function = "org.test.manual/manual.scan";
+    let function = "org.test.manual/manual_scan";
     harness.runner.script(function, Script::slow());
     let task = harness.create(function, "image-1");
     harness.scheduler.dispatch_tick().await;
@@ -1018,7 +1111,7 @@ async fn publication_finishes_before_cancellation_or_case_close_can_return() {
         let harness = harness().await;
         let hold = Arc::new(PublicationHold::default());
         *harness.runner.publication_hold.lock() = Some(Arc::clone(&hold));
-        let task = harness.create("org.test.manual/manual.scan", "image-1");
+        let task = harness.create("org.test.manual/manual_scan", "image-1");
         harness.scheduler.dispatch_tick().await;
         tokio::time::timeout(Duration::from_secs(3), hold.entered.notified())
             .await

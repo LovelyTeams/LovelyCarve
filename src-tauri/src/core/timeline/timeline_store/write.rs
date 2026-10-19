@@ -52,8 +52,8 @@ pub(super) fn delete_run(conn: &Connection, tid: &str) -> anyhow::Result<u64> {
 }
 
 /// 插件收尾钩子的整体写入:一个 IMMEDIATE 事务内确认时间线已建且不在重建中
-/// → 按 tid 级联删旧投影 → 写入新投影 → 事件源水位推进到
-/// `max(现值, completed_at)`。
+/// → 按 tid 删掉本运行与被它替换的运行(`replaced`)的旧投影 → 写入新投影 →
+/// 事件源水位推进到 `max(现值, completed_at)`。
 ///
 /// 与重建的 `meta_begin` 由写锁排序:重建先开始则本钩子跳过,本钩子先提交
 /// 则重建删掉并重投影这些行,不会重复。多条任务的钩子乱序提交时水位只前进;
@@ -62,6 +62,7 @@ pub(super) fn delete_run(conn: &Connection, tid: &str) -> anyhow::Result<u64> {
 pub fn project_run_rows(
     conn: &Connection,
     tid: &str,
+    replaced: &[String],
     rows: &[TimelineInsertRow],
     completed_at: &str,
 ) -> anyhow::Result<Option<u64>> {
@@ -73,6 +74,9 @@ pub fn project_run_rows(
         return Ok(None);
     }
     delete_run(&tx, tid)?;
+    for old in replaced {
+        delete_run(&tx, old)?;
+    }
     write_rows(&tx, rows)?;
     tx.execute(
         "UPDATE timeline_build SET source_event_watermark = MAX(source_event_watermark, ?1)

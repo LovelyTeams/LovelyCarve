@@ -7,8 +7,10 @@
 //! 多条任务并行时,执行提交、控制面与看门狗会同时改写任务行:状态迁移
 //! ([`TaskStore::transition`] / [`TaskStore::complete`])在一个 `BEGIN IMMEDIATE`
 //! 事务里先校验当前状态再写,已离开预期状态的行不会被旧的一方覆盖。单实例
-//! function 由台账的部分唯一索引 `task_single_active` 兜底:同一检材同一
-//! function 最多一条未终结任务。
+//! function 每个作业(function, 检材, 目标)最多一条未终结任务:建任务时在
+//! 同一写事务里检查;整个检材的作业另由台账的部分唯一索引
+//! `task_single_active` 兜底。台账的 `can_pause` / `depends_on` 列只在旧案件
+//! 的任务行里有值。
 
 use std::{
     path::Path,
@@ -101,34 +103,46 @@ impl TaskStore {
 
     // ----- task -------------------------------------------------------------
 
+    /// Inserts a task, or returns the unfinished task of the same job
+    /// (function, evidence, target) when the function is single-instance.
+    /// The ledger's unique index backs this up for whole-evidence jobs;
+    /// jobs on a system or a file are checked here, inside the same write
+    /// transaction.
     pub fn insert_task(&self, new: &NewTask) -> anyhow::Result<InsertOutcome> {
         let conn = self.conn();
         let tx = case_ledger::write_transaction(&conn)?;
         if new.single_instance {
-            let existing = tx
-                .query_row(
-                    &format!(
-                        "SELECT {TASK_COLUMNS} FROM {TASK_SOURCE}
-                         WHERE t.function = ?1 AND t.evidence_id = ?2 AND t.single_instance = 1
-                           AND t.status IN ({UNFINISHED})
-                         ORDER BY t.id DESC LIMIT 1"
-                    ),
-                    params![new.name, new.evidence_id],
-                    task_from_row,
-                )
-                .optional()
-                .context("query single-instance task")?;
+            let existing = {
+                let mut statement = tx.prepare(&format!(
+                    "SELECT {TASK_COLUMNS} FROM {TASK_SOURCE}
+                     WHERE t.function = ?1 AND t.evidence_id = ?2
+                       AND t.status IN ({UNFINISHED})
+                     ORDER BY t.id DESC"
+                ))?;
+                let rows =
+                    statement.query_map(params![new.name, new.evidence_id], task_from_row)?;
+                let mut found = None;
+                for row in rows {
+                    let task = row.context("query single-instance task")?;
+                    if task.params.target_key() == new.params.target_key() {
+                        found = Some(task);
+                        break;
+                    }
+                }
+                found
+            };
             if let Some(existing) = existing {
                 tx.commit()?;
                 return Ok(InsertOutcome::Existing(existing));
             }
         }
+        let indexed_single_instance = new.single_instance && new.params.target_key().is_empty();
         let now = now();
         tx.execute(
             "INSERT INTO task (evidence_id, function, plugin_id, analyzer, display_name, kind,
                                depends_on, trigger, parent_id, params, status, progress,
                                can_pause, single_instance, internal, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, ?12, ?13, ?14, ?15, ?15)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, '', ?7, ?8, ?9, ?10, 0, 0, ?11, ?12, ?13, ?13)",
             params![
                 new.evidence_id,
                 new.name,
@@ -136,13 +150,11 @@ impl TaskStore {
                 new.analyzer,
                 new.display_name,
                 new.type_name,
-                new.dependence,
                 trigger_name(new.trigger),
                 new.parent_tid,
                 serde_json::to_string(&new.params)?,
                 SchedTaskStatus::Created.as_str(),
-                new.can_pause,
-                new.single_instance,
+                indexed_single_instance,
                 new.internal,
                 now,
             ],
@@ -190,6 +202,56 @@ impl TaskStore {
             evidence_id: Some(evidence_id),
             include_internal: true,
         })
+    }
+
+    /// `(status, target key)` of every task of `function` on the evidence.
+    fn job_states(
+        &self,
+        function: &str,
+        evidence_id: i64,
+    ) -> anyhow::Result<Vec<(SchedTaskStatus, String)>> {
+        let conn = self.conn();
+        let mut statement = conn
+            .prepare("SELECT status, params FROM task WHERE function = ?1 AND evidence_id = ?2")?;
+        let rows = statement.query_map(params![function, evidence_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut states = Vec::new();
+        for row in rows {
+            let (status, params) = row?;
+            let status = SchedTaskStatus::parse(&status)
+                .ok_or_else(|| anyhow::anyhow!("unknown task status {status:?}"))?;
+            let params: TaskParams = serde_json::from_str(&params).unwrap_or_default();
+            states.push((status, params.target_key().to_owned()));
+        }
+        Ok(states)
+    }
+
+    /// Whether the job (function, evidence, target) ever had a task.
+    pub fn has_task(
+        &self,
+        function: &str,
+        evidence_id: i64,
+        target_key: &str,
+    ) -> anyhow::Result<bool> {
+        Ok(self
+            .job_states(function, evidence_id)?
+            .iter()
+            .any(|(_, target)| target == target_key))
+    }
+
+    /// Targets on which `function` succeeded on the evidence.
+    pub fn succeeded_targets(
+        &self,
+        function: &str,
+        evidence_id: i64,
+    ) -> anyhow::Result<Vec<String>> {
+        Ok(self
+            .job_states(function, evidence_id)?
+            .into_iter()
+            .filter(|(status, _)| *status == SchedTaskStatus::Success)
+            .map(|(_, target)| target)
+            .collect())
     }
 
     /// 状态迁移:`running` 首次写开始时间;终态写结束时间(耗时由两者结算);
@@ -494,20 +556,13 @@ pub(super) mod tests {
         NewTask {
             name: name.to_owned(),
             display_name: format!("Display {name}"),
-            type_name: "fileAnalyzer".to_owned(),
+            type_name: "analysis".to_owned(),
             evidence_id,
             plugin_id: "org.test.plugin".to_owned(),
             analyzer: "demo".to_owned(),
             trigger: TaskTrigger::Manually,
             parent_tid: None,
-            params: TaskParams {
-                node_id: Some("node-1".to_owned()),
-                file_name: Some("file.bin".to_owned()),
-                platform: None,
-                sub_items: Vec::new(),
-            },
-            dependence: String::new(),
-            can_pause: false,
+            params: TaskParams::default(),
             single_instance: true,
             internal: false,
         }
@@ -535,7 +590,7 @@ pub(super) mod tests {
         assert_eq!(record.name, "org.test.plugin/demo");
         assert_eq!(record.evidence_id, evidence_id);
         assert_eq!(record.progress, 0);
-        assert_eq!(record.params.node_id.as_deref(), Some("node-1"));
+        assert_eq!(record.params, TaskParams::default());
         assert_eq!(
             record.info,
             TaskInfo {
@@ -596,6 +651,42 @@ pub(super) mod tests {
             .insert_task(&sample_task("org.test.plugin/demo", seven))
             .expect("insert");
         assert!(matches!(after_terminal, InsertOutcome::Created(_)));
+    }
+
+    #[test]
+    fn single_instance_counts_per_target() {
+        let (_dir, store) = temp_store();
+        let evidence_id = insert_evidence(&store, "image-1");
+        let on = |system: &str| {
+            let mut task = sample_task("org.test.plugin/system", evidence_id);
+            task.params = TaskParams {
+                system_id: Some(system.to_owned()),
+                ..TaskParams::default()
+            };
+            store.insert_task(&task).expect("insert")
+        };
+        let linux = on("linux@part:2");
+        assert!(matches!(linux, InsertOutcome::Created(_)));
+        assert!(matches!(on("linux@part:3"), InsertOutcome::Created(_)));
+        assert_eq!(
+            on("linux@part:2"),
+            InsertOutcome::Existing(linux.record().clone())
+        );
+        assert!(store
+            .has_task("org.test.plugin/system", evidence_id, "linux@part:3")
+            .expect("has task"));
+        assert!(!store
+            .has_task("org.test.plugin/system", evidence_id, "windows@part:1")
+            .expect("has task"));
+        store
+            .update_status(linux.record().id, SchedTaskStatus::Success, None)
+            .expect("success");
+        assert_eq!(
+            store
+                .succeeded_targets("org.test.plugin/system", evidence_id)
+                .expect("targets"),
+            vec!["linux@part:2".to_owned()]
+        );
     }
 
     #[test]
@@ -679,9 +770,10 @@ pub(super) mod tests {
             .expect("run");
         let result = TaskResult {
             summary: Some("ok".to_owned()),
-            artifact_count: 2,
+            record_count: 2,
             timeline_count: 1,
-            finding_count: 0,
+            warning_count: 0,
+            synthetic_bytes: 0,
             run_id: Some("run-1".to_owned()),
         };
         store.set_result(task.id, &result).expect("result");
@@ -706,7 +798,7 @@ pub(super) mod tests {
             .expect("run");
         let result = TaskResult {
             summary: Some("ok".to_owned()),
-            artifact_count: 3,
+            record_count: 3,
             ..TaskResult::default()
         };
         let done = store

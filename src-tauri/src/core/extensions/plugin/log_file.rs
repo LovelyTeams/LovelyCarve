@@ -1,11 +1,10 @@
 //! Plugin log files.
 //!
-//! A plugin's `Context::log` line reaches the host either as an ABI callback
-//! (`isolation = "in_process"`) or as a `LEVEL message` line on the loader's
-//! stderr (`isolation = "process"`). Both paths hand the line to a
-//! [`PluginLogStore`], which appends it to that plugin's own file under the
-//! executable directory, so plugin output outlives the session and no longer
-//! depends on the `warn` default of the tracing subscriber.
+//! A plugin's `Context::log` line reaches the host as a `LEVEL message` line
+//! on the loader's stderr. The host hands it to a [`PluginLogStore`], which
+//! appends it to that plugin's own file under the executable directory, so
+//! plugin output outlives the session and no longer depends on the `warn`
+//! default of the tracing subscriber.
 //!
 //! `record` never blocks its caller: it queues the line for a writer thread and
 //! returns, so a slow disk cannot stall a plugin call. The queue is bounded, and
@@ -24,7 +23,6 @@ use std::{
     time::SystemTime,
 };
 
-use lovelycarve_plugin::abi;
 use parking_lot::{Mutex, RwLock};
 use sha2::{Digest as _, Sha256};
 
@@ -52,16 +50,6 @@ pub enum PluginLogLevel {
 }
 
 impl PluginLogLevel {
-    /// The level of an `abi::LOG_*` callback argument.
-    pub(super) fn from_abi(level: u32) -> Self {
-        match level {
-            abi::LOG_ERROR => Self::Error,
-            abi::LOG_WARN => Self::Warn,
-            abi::LOG_INFO => Self::Info,
-            _ => Self::Debug,
-        }
-    }
-
     /// Splits the `LEVEL message` prefix `lc-plugin-host` writes on stderr.
     fn from_stderr_line(line: &str) -> (Self, &str) {
         for (prefix, level) in [
@@ -203,8 +191,9 @@ impl PluginLogStore {
         }
     }
 
-    /// Queues one `Context::log` line. Returns immediately, also when the writer
-    /// falls behind: a plugin is never blocked by its own log file.
+    /// Queues one log line at a known level. Returns immediately, also when
+    /// the writer falls behind: a plugin is never blocked by its own log file.
+    #[cfg(test)]
     pub(super) fn record(&self, plugin_id: &str, level: PluginLogLevel, message: &str) {
         for line in message.lines() {
             let line = line.trim_end();

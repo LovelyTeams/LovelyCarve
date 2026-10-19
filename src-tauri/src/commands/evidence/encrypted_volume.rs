@@ -6,10 +6,10 @@ use crate::host::{AppHandle, State};
 use std::sync::Arc;
 
 use crate::core::evidence::crypto::encrypted_image::{
-    self, UnlockOptions, UnlockResult, UnlockTarget,
+    self, EncryptionScheme, UnlockOptions, UnlockResult, UnlockTarget,
 };
 use crate::state::AppState;
-use crate::task_manager::TaskKind;
+use crate::task_manager::{TaskKind, TaskLabel};
 use {
     crate::app::access::loaded_image_app_error, crate::app::access::reject_if_folder,
     crate::app::error::AppError,
@@ -93,71 +93,104 @@ pub async fn encrypted_volume_unlock(
             Some(image_id.clone()),
         )
         .ok_or_else(|| AppError::invalid_input("task id is already in use"))?;
-    let permit = state.tasks.acquire_resources(&task).await?;
-    let token = task.token();
-    let source_for_unlock = Arc::clone(&source);
-    let token_for_unlock = token.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let _permit = permit;
-        encrypted_image::unlock(&source_for_unlock, options, token_for_unlock)
-    })
-    .await
-    .map_err(|error| AppError::task_panicked("encrypted volume unlock", error))?;
-    if token.is_cancelled() {
-        return Err(AppError::cancelled("encrypted volume unlock cancelled"));
-    }
-    let (image, mut result) = result.map_err(AppError::from_anyhow)?;
-    let mut images = state.images.lock().await;
-    if token.is_cancelled() {
-        return Err(AppError::cancelled("encrypted volume unlock cancelled"));
-    }
-    if !images
-        .get(&image_id)
-        .is_some_and(|current| Arc::ptr_eq(current, &source))
-    {
-        return Err(AppError::source_changed(
-            "encrypted evidence was unloaded during unlock",
-        ));
-    }
-    if target == UnlockTarget::SourcePartition {
-        let partition_id = partition_id
-            .or_else(|| {
-                source
-                    .partitions
-                    .iter()
-                    .find(|partition| {
-                        partition.start_lba * source.sector_size as u64 == result.source_offset
-                            && partition.length_lba * source.sector_size as u64
-                                == result.source_length
-                    })
-                    .map(|partition| partition.id)
-            })
-            .or_else(|| {
-                (source.partitions.is_empty()
-                    && result.source_offset == 0
-                    && result.source_length == source.len())
-                .then_some(0)
-            })
-            .ok_or_else(|| AppError::invalid_input("请选择源镜像中的完整加密分区"))?;
-        source
-            .attach_decrypted_partition(partition_id, image, result.read_cancellation.clone())
-            .map_err(AppError::from_anyhow)?;
-        result.image = source.info();
-        result.volume_key = Some(format!("part:{partition_id}"));
-        drop(images);
-        state.flat_walk_cache.lock().purge_image(&image_id);
-        crate::app::workflows::snapshot::case_snapshot::snapshot_unlocked_volume(
-            &app,
-            &state,
-            Arc::clone(&source),
-            format!("part:{partition_id}"),
-        )
-        .await;
-    } else {
-        images.insert(
-            image.id.clone(),
-            Arc::new(crate::core::filesystem::evidence_session::EvidenceSession::from(image)),
+    task.update(|view| {
+        view.labels.insert(
+            TaskLabel::Scheme,
+            match options.scheme {
+                EncryptionScheme::Luks => "luks",
+                EncryptionScheme::Veracrypt => "veracrypt",
+                EncryptionScheme::Filevault => "filevault",
+            }
+            .to_owned(),
         );
+        // The volume, then its label (none: the whole image or container).
+        if let Some(id) = partition_id {
+            view.subject.push(format!("part:{id}"));
+            let label = source
+                .partitions
+                .iter()
+                .find(|partition| partition.id == id)
+                .and_then(|partition| partition.label.clone())
+                .filter(|label| !label.is_empty());
+            view.subject.extend(label);
+        }
+    });
+    let unlocked = async {
+        let permit = state.tasks.acquire_resources(&task).await?;
+        let token = task.token();
+        let source_for_unlock = Arc::clone(&source);
+        let token_for_unlock = token.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            encrypted_image::unlock(&source_for_unlock, options, token_for_unlock)
+        })
+        .await
+        .map_err(|error| AppError::task_panicked("encrypted volume unlock", error))?;
+        if token.is_cancelled() {
+            return Err(AppError::cancelled("encrypted volume unlock cancelled"));
+        }
+        let (image, mut result) = result.map_err(AppError::from_anyhow)?;
+        let mut images = state.images.lock().await;
+        if token.is_cancelled() {
+            return Err(AppError::cancelled("encrypted volume unlock cancelled"));
+        }
+        if !images
+            .get(&image_id)
+            .is_some_and(|current| Arc::ptr_eq(current, &source))
+        {
+            return Err(AppError::source_changed(
+                "encrypted evidence was unloaded during unlock",
+            ));
+        }
+        if target == UnlockTarget::SourcePartition {
+            let partition_id = partition_id
+                .or_else(|| {
+                    source
+                        .partitions
+                        .iter()
+                        .find(|partition| {
+                            partition.start_lba * source.sector_size as u64 == result.source_offset
+                                && partition.length_lba * source.sector_size as u64
+                                    == result.source_length
+                        })
+                        .map(|partition| partition.id)
+                })
+                .or_else(|| {
+                    (source.partitions.is_empty()
+                        && result.source_offset == 0
+                        && result.source_length == source.len())
+                    .then_some(0)
+                })
+                .ok_or_else(|| AppError::invalid_input("请选择源镜像中的完整加密分区"))?;
+            source
+                .attach_decrypted_partition(partition_id, image, result.read_cancellation.clone())
+                .map_err(AppError::from_anyhow)?;
+            result.image = source.info();
+            result.volume_key = Some(format!("part:{partition_id}"));
+            drop(images);
+            state.flat_walk_cache.lock().purge_image(&image_id);
+            crate::app::workflows::snapshot::case_snapshot::snapshot_unlocked_volume(
+                &app,
+                &state,
+                Arc::clone(&source),
+                format!("part:{partition_id}"),
+            )
+            .await;
+        } else {
+            images.insert(
+                image.id.clone(),
+                Arc::new(crate::core::filesystem::evidence_session::EvidenceSession::from(image)),
+            );
+        }
+        Ok(result)
     }
-    Ok(result)
+    .await;
+    if let Ok(unlocked) = &unlocked {
+        task.update(|view| {
+            view.labels
+                .insert(TaskLabel::Cipher, unlocked.cipher.clone());
+        });
+    }
+    task.finish_with(&unlocked);
+    unlocked
 }

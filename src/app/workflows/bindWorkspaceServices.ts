@@ -10,8 +10,7 @@ import { registerRaidImageOpener, useRaidOverview, disposeRaidStack } from '../.
 import { flushFileTagWrites } from '../../features/files/api';
 import { flushFileDerivedWrites } from '../../features/files/api';
 import { useAutoMount } from '../../features/evidence/api';
-import { registerAutoDetectReportPublished, disposeAutoDetect, ensureAutoDetectListener, isAutoDetectRunPending } from '../../features/evidence/api';
-import { disposeBuiltinTasks } from '../../features/tasks/api';
+import { registerAutoDetectReportPublished, disposeAutoDetect, ensureAutoDetectListener } from '../../features/evidence/api';
 import { disposeTaskCenter, useTaskCenter } from '../../features/tasks/api';
 import { disposeAnalysisResults } from '../../features/analysis/api';
 
@@ -47,7 +46,6 @@ export function bindWorkspaceServices(options: {
   const stopTaskContext = registerTaskContext({
     activeCase: () => caseSession.activeCase.value,
     ensureDetection: ensureAutoDetectListener,
-    detectionPending: isAutoDetectRunPending,
   });
   const taskCenter = useTaskCenter();
   const stopAnalysisContext = registerAnalysisContext({
@@ -133,7 +131,7 @@ export function bindWorkspaceServices(options: {
   onScopeDispose(() => {
     stopEncryptedUnlock(); stopEncryptedOpener(); disposeEncryptedVolumeUnlockJobs();
     stopEvidenceContext(); stopSnapshot(); disposeBitlockerJobs(); disposeImageHashJobs(); disposeImageExportJobs(); stopTaskContext(); stopAnalysisContext(); stopCase(); stopOpened(); stopReport(); stopRaid(); stopUnlock(); stopTabs();
-    disposeAnalysisResults(); disposeBuiltinTasks(); disposeTaskCenter(); disposeAutoDetect(); disposeCaseSession();
+    disposeAnalysisResults(); disposeTaskCenter(); disposeAutoDetect(); disposeCaseSession();
     disposeRaidStack();
     void flushFileTagWrites();
   });

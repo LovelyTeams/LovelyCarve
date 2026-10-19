@@ -7,3 +7,4 @@ pub(crate) mod identify;
 pub(crate) mod mount;
 pub(crate) mod scheduler;
 pub(crate) mod snapshot;
+pub(crate) mod task_center;

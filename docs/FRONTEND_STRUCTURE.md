@@ -14,17 +14,18 @@
 
 ## 公开接口与允许依赖
 
-`cases/api.ts` 提供只读案件/快照查询及案件操作；`tasks/api.ts` 提供任务投影、操作和只读上下文注册；`evidence/api.ts` 提供证据会话、资源操作和回调注册；`preview/api.ts` 提供停靠/同步；`raid/api.ts` 提供只读检测概览和打开回调；`files/api.ts` 提供写入收尾及定位契约；`analysis/api.ts` 提供结果/焦点及上下文注册。其余功能没有跨域状态消费者，不为目录对称添加出口。功能内部不回引自身 API，公开 API 不导出重面板。
+`cases/api.ts` 提供只读案件/快照查询及案件操作；`tasks/api.ts` 提供任务中心条目（后端统一列表）、操作、插件包目录（含各包的语言包）和只读上下文注册；`evidence/api.ts` 提供证据会话、资源操作和回调注册；`preview/api.ts` 提供停靠/同步；`raid/api.ts` 提供只读检测概览和打开回调；`files/api.ts` 提供写入收尾及定位契约；`analysis/api.ts` 提供结果/焦点及上下文注册。其余功能没有跨域状态消费者，不为目录对称添加出口。功能内部不回引自身 API，公开 API 不导出重面板。
 
 | 边 | 用途 |
 | --- | --- |
-| files → preview/tasks/cases API | 预览、任务追踪、卷快照状态 |
-| search/timeline/carving/evidence → tasks API | 已有后台工作归统一任务视图 |
+| files → preview/cases API | 预览、卷快照状态与 Docker 合并的案件目录 |
+| evidence → tasks API | 镜像信息页读取平台识别任务的状态 |
 | evidence/settings → cases API | 挂载与案件上下文、设置显示 |
+| analysis/settings → tasks API | 插件包目录：结果标签按插件语言包翻译，插件包的安装、卸载与列表 |
 | cases → raid API | 只读 RAID 检测概览 |
 | raid → evidence API | RAW 导出操作 |
 | files → DiskFileDetail/FilePreviewDock/PluginTaskDialog；evidence → RaidStackPanel | 明确的按需组件入口，props/emits 协作 |
-| search → files/model/tags；tasks → evidence/model/autodetectLabels；evidence → tasks/model/autodetectTasks | 小型纯定义和投影；没有反向状态引用 |
+| search → files/model/tags；tasks → evidence/model/autodetectLabels | 小型纯定义；没有反向状态引用 |
 | 跨功能 type-only → model | 纯契约，不作为运行时 bundle 依赖 |
 
 应用装配向任务/分析提供可替换的只读案件和完成运行列表，向证据操作提供案件代际及解锁后快照回调。所有已声明边在 `scripts/lib/frontend-structure.mjs` 中检查；新增边需要说明实际消费者，不能扩大成任意内部引用。当前生产运行时图没有强连通依赖环。
@@ -34,7 +35,7 @@
 | 状态范围 | 典型内容 | 创建者与持有者 | 清理时机 |
 | --- | --- | --- | --- |
 | 每个 WebView 的共享界面状态 | toast、confirm、theme、motion、UI 偏好 | 现有共享 composable；主窗口和预览窗口各自初始化 | 对应 WebView 结束；持久化值保留 |
-| 主工作区状态 | 活动案件、标签、当前证据、任务投影、RAID 探测、分析结果状态 | 主壳唯一装配点；保留现有单例/工厂语义 | 案件切换/关闭、对应任务结束、主窗口结束 |
+| 主工作区状态 | 活动案件、标签、当前证据、任务中心条目、RAID 探测、分析结果状态 | 主壳唯一装配点；保留现有单例/工厂语义 | 案件切换/关闭、对应任务结束、主窗口结束 |
 | 检材/卷/任务的缓存与进行中状态 | 哈希、解锁、识别、导出、标签缓存、快照进度 | 所属功能；按当前契约使用 imageId、partitionId、taskId | 资源确实关闭或上下文失效；普通切页不清理进行中任务 |
 | 面板实例/单次读取状态 | 筛选、页码、选中、滚动、DOM 高亮、预览读取与租约 | 面板或其 composable | imageId 重置、请求替换、停用/销毁（按资源性质区分） |
 
@@ -48,7 +49,7 @@
 | --- | --- |
 | app/bootstrap | 挂载前应用主题/动效/日志；main 仍用两个动态根分派窗口 |
 | app/workspace/useTabManager | 主窗口标签、MRU 与五份 fileSession LRU；关闭/切案清空快照，不替代五类 KeepAlive 面板状态 |
-| bindWorkspaceServices | 持有案件/任务/分析/证据上下文和回调注册；scope 销毁解除注册并调用案件、识别、调度任务、内置任务、分析、BitLocker、镜像哈希/导出的生产 dispose |
+| bindWorkspaceServices | 持有案件/任务/分析/证据上下文和回调注册；scope 销毁解除注册并调用案件、识别、任务中心、分析、BitLocker、镜像哈希/导出的生产 dispose |
 | 案件切换 | busy 防止并发变更；关闭标签/视图 → flush 标签防抖和已发出的派生数据写入 → 后端 create/open/close/remove；旧 active/snapshot/list 查询不能覆盖新案件 |
 | 文件标签/派生缓存 | 保留 `lc.fileTags` 等持久化键及格式；hydration generation 阻止旧案件水合触发写入；flush 等待已发出写入，失败保留本地副本并反馈 |
 | fileSession 工厂 | 各实例拥有 load generation；reset/restore/dispose 失效在途读取；迟到 progress 订阅即时释放 |

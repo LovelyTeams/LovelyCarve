@@ -47,6 +47,7 @@ pub(crate) async fn remove_image_runtime(
     if cancelled_tasks > 0 {
         tracing::info!("image_unload cancelled {cancelled_tasks} task(s) for image={image_id}");
     }
+    state.tasks.forget_image(image_id);
     crate::app::workflows::evidence::purge_image_scans(state, image_id).await;
     #[cfg(target_os = "windows")]
     {
@@ -85,11 +86,8 @@ pub(crate) async fn remove_image_runtime(
                 manager.sources().remove(volume.source_id());
             }
         }
-        if let Some(manager) = &manager {
-            manager.files().cleanup_image(image_id);
-            manager.evidences().cleanup_image(image_id);
-        }
     }
+    state.systems.forget(image_id);
     let mut assembled = state.assembled_arrays.lock().await;
     assembled.retain(|_key, registered_id| registered_id != image_id);
     drop(assembled);

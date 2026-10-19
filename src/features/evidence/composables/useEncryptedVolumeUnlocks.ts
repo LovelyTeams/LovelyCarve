@@ -1,10 +1,9 @@
 
 import { tr } from '../../../composables/useLocale';
 import { notifyError, notifyInfo, notifySuccess } from '../../../composables/useToast';
-import type { EncryptedUnlockOptions } from '../../../lib/ipc/encrypted';
+import { encryptedVolumeUnlock, type EncryptedUnlockOptions } from '../../../lib/ipc/encrypted';
 import { imageUnload, type ImageInfo } from '../../../lib/ipc/image';
 import { IpcCommandError } from '../../../lib/ipc/client';
-import { trackedEncryptedVolumeUnlock } from '../../tasks/api';
 import { evidenceContext } from './evidenceContext';
 import { clearUnlockedImageInfo, rememberUnlockedImageInfo } from './unlockedImageInfo';
 
@@ -30,7 +29,8 @@ export function disposeEncryptedVolumeUnlockJobs() {
   clearUnlockedImageInfo();
 }
 
-/** Submit immediately; task tracking and metadata updates outlive the page. */
+/** Submit immediately; the task center lists the unlock under `taskId`, and
+ *  metadata updates outlive the page. */
 export function startEncryptedVolumeUnlock(info: ImageInfo, options: EncryptedUnlockOptions): boolean {
   const key = `${info.id}:${options.partitionId ?? 'whole'}${options.target === 'newImage' ? `:lv:${options.logicalVolumeIndex ?? 0}` : ''}`;
   if (jobs.has(key)) {
@@ -45,13 +45,15 @@ export function startEncryptedVolumeUnlock(info: ImageInfo, options: EncryptedUn
   const updater = updateImage;
   const opener = openDerivedImage;
   const current = () => epoch === generation && context === evidenceContext();
-  const partition = info.partitions.find(partition => partition.id === options.partitionId);
-  const subject = `${({ luks: 'LUKS', veracrypt: 'VeraCrypt', filevault: 'FileVault 2' }[options.scheme])} · ${partition ? tr("分区 {0}{1}", { 0: partition.id, 1: partition.label ? ` · ${partition.label}` : '' }) : tr("整个镜像 / 容器")}`;
   jobs.set(key, taskId);
   void (async () => {
     try {
       options.target ??= 'sourcePartition';
-      const result = await trackedEncryptedVolumeUnlock({ imageId: info.id, options, taskId }, subject);
+      // IPC may defer transport: the request carries its own copy of the
+      // credentials, so clearing the local ones cannot change its payload.
+      const request = encryptedVolumeUnlock({ imageId: info.id, options: { ...options }, taskId });
+      options.password = '';
+      const result = await request;
       if (!current()) {
         if (result.image.id !== info.id) await imageUnload({ imageId: result.image.id });
         return;

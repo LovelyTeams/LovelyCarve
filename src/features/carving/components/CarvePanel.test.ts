@@ -6,7 +6,6 @@ import type { RecoveryScan } from '../../../lib/ipc/carve';
 import type { FsNode } from '../../../lib/ipc/fs/types';
 import type { ImageInfo } from '../../../lib/ipc/image';
 const ipc = vi.hoisted(() => ({ list: vi.fn(), remove: vi.fn(), confirm: vi.fn(), progress: vi.fn(), start: vi.fn(), status: vi.fn(), page: vi.fn(), pause: vi.fn(), resume: vi.fn(), recover: vi.fn(), open: vi.fn(), filesystem: vi.fn() }));
-vi.mock('../../tasks/composables/useBuiltinTasks', () => ({ trackedCarveStart: ipc.start }));
 vi.mock('../../../composables/useConfirm', () => ({ confirm: ipc.confirm }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: ipc.open }));
 vi.mock('../../../composables/useToast', () => ({ notifyError: vi.fn(), notifyInfo: vi.fn(), notifySuccess: vi.fn() }));

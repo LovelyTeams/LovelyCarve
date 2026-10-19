@@ -4,18 +4,25 @@ const PRIORITY: Record<SchedTaskStatus, number> = {
   running: 0, failed: 1, offline: 1, pause: 2, queued: 3, created: 3, success: 4, cancel: 4,
 };
 
-/** The scheduler stores `YYYY-MM-DD HH:MM:SS` in UTC without a zone suffix
- *  (`core::carve::now_datetime`); built-in tasks carry ISO strings. */
-export function parseTaskTime(value: string | null | undefined): number {
+/** Unix milliseconds stay as they are; the scheduler's ledger text is RFC 3339
+ *  (older rows `YYYY-MM-DD HH:MM:SS` in UTC without a zone suffix). */
+export function parseTaskTime(value: string | number | null | undefined): number {
+  if (typeof value === 'number') return value;
   if (!value) return Number.NaN;
   const naiveUtc = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/.exec(value);
   return Date.parse(naiveUtc ? `${naiveUtc[1]}T${naiveUtc[2]}Z` : value);
 }
 
+interface Ordered {
+  id: string | number;
+  status: SchedTaskStatus;
+  createdAtMs?: number;
+}
+
 /** Active work and actionable failures precede completed history; newest first within a group. */
-export function compareTaskPriority(left: { id: string | number; status: SchedTaskStatus; createAt?: string }, right: { id: string | number; status: SchedTaskStatus; createAt?: string }): number {
+export function compareTaskPriority(left: Ordered, right: Ordered): number {
   return PRIORITY[left.status] - PRIORITY[right.status]
-    || (parseTaskTime(right.createAt) - parseTaskTime(left.createAt) || 0)
+    || ((right.createdAtMs ?? Number.NaN) - (left.createdAtMs ?? Number.NaN) || 0)
     || String(right.id).localeCompare(String(left.id), undefined, { numeric: true });
 }
 
@@ -35,9 +42,9 @@ export function formatTaskDuration(seconds: number | null): string {
 const pad = (value: number) => String(value).padStart(2, '0');
 
 /** List time: only the clock today, the date within this year, the full date otherwise. */
-export function formatTaskClock(value: string | null | undefined, now = new Date()): string {
+export function formatTaskClock(value: string | number | null | undefined, now = new Date()): string {
   const time = parseTaskTime(value);
-  if (!Number.isFinite(time)) return value || '—';
+  if (!Number.isFinite(time)) return typeof value === 'string' && value ? value : '—';
   const date = new Date(time);
   const clock = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
   if (date.toDateString() === now.toDateString()) return clock;
@@ -46,9 +53,9 @@ export function formatTaskClock(value: string | null | undefined, now = new Date
 }
 
 /** Detail time with seconds, in local time. */
-export function formatTaskDateTime(value: string | null | undefined): string {
+export function formatTaskDateTime(value: string | number | null | undefined): string {
   const time = parseTaskTime(value);
-  if (!Number.isFinite(time)) return value || '—';
+  if (!Number.isFinite(time)) return typeof value === 'string' && value ? value : '—';
   const date = new Date(time);
   return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
@@ -77,7 +84,7 @@ export function taskSectionOf(status: SchedTaskStatus): TaskSectionKey {
 }
 
 /** Non-empty sections in display order; each list keeps the priority order. */
-export function groupTaskSections<T extends { id: string | number; status: SchedTaskStatus; createAt?: string }>(tasks: readonly T[]): { key: TaskSectionKey; label: string; tasks: T[] }[] {
+export function groupTaskSections<T extends Ordered>(tasks: readonly T[]): { key: TaskSectionKey; label: string; tasks: T[] }[] {
   const sorted = [...tasks].sort(compareTaskPriority);
   return SECTION_ORDER
     .map(key => ({ key, label: TASK_SECTION_LABEL[key], tasks: sorted.filter(task => SECTION_OF[task.status] === key) }))
@@ -90,14 +97,3 @@ export type TaskResultPanel = 'analysis' | 'search-results' | 'timeline' | 'carv
 export const TASK_RESULT_LABEL: Record<TaskResultPanel, string> = {
   analysis: '查看分析结果', 'search-results': '打开全局搜索', timeline: '打开时间线', carve: '打开文件恢复', files: '打开文件列表', dashboard: '打开镜像信息',
 };
-
-const BUILTIN_PANEL: Record<string, TaskResultPanel> = {
-  search: 'search-results', timeline: 'timeline', carve: 'carve', docker: 'files', filesystem: 'files', index: 'files', autodetect: 'dashboard', encryptedUnlock: 'dashboard',
-};
-
-/** Built-in operations always lead back to their page; plugin tasks only once
- *  a successful run stored records in the analysis results. */
-export function taskResultPanel(task: { builtin: boolean; status: SchedTaskStatus; info: { analyzer: string }; result: { artifactCount: number } | null }): TaskResultPanel | null {
-  if (task.builtin) return BUILTIN_PANEL[task.info.analyzer] ?? null;
-  return task.status === 'success' && (task.result?.artifactCount ?? 0) > 0 ? 'analysis' : null;
-}

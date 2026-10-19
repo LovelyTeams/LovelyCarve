@@ -36,7 +36,7 @@ use crate::core::timeline::timeline_store::{
     self, TimelineBucket, TimelineDataPage, TimelineQuery, TimelineRow, TimelineTypeGroup,
 };
 use crate::state::{AppState, TimelineBuildRunState};
-use crate::task_manager::{TaskKind, TaskProgressUnit};
+use crate::task_manager::{TaskCount, TaskKind, TaskOutcome, TaskProgressUnit};
 
 /// 进度事件（前端按 `image_id` 过滤）。
 pub const TIMELINE_PROGRESS_EVENT: &str = "timeline-progress";
@@ -110,7 +110,7 @@ pub async fn timeline_start(
     let case_dir = active_case_dir(&state).await?;
     let image = crate::app::access::loaded_image_app_error(&state, &image_id).await?;
     // 同检材重建串行化：确定性任务 id + register_if_absent 拦截重复 start。
-    let task_id = format!("timeline-build-{image_id}");
+    let task_id = crate::app::workflows::task_center::timeline_task_id(&image_id);
     let Some(task) = state.tasks.register_if_absent(
         task_id.clone(),
         TaskKind::TimelineBuild,
@@ -152,6 +152,9 @@ pub async fn timeline_start(
             if let Err(err) = app_for_progress.emit(TIMELINE_PROGRESS_EVENT, &progress) {
                 tracing::warn!("emit {TIMELINE_PROGRESS_EVENT} failed: {err}");
             }
+            tasks.update(&scan_task_id, |view| {
+                view.counts.insert(TaskCount::Rows, rows);
+            });
             tasks.emit_progress(
                 &scan_task_id,
                 TaskProgressUnit::Entries,
@@ -172,9 +175,26 @@ pub async fn timeline_start(
     .await;
 
     state.timeline_builds.lock().await.remove(&image_id);
-    let summary = outcome
-        .map_err(|err| AppError::task_panicked("timeline_start", err))?
-        .map_err(|err| AppError::from_anyhow(err.context("时间线重建失败")))?;
+    let built = outcome
+        .map_err(|err| AppError::task_panicked("timeline_start", err))
+        .and_then(|built| {
+            built.map_err(|err| AppError::from_anyhow(err.context("时间线重建失败")))
+        });
+    match &built {
+        Ok(summary) => {
+            task.update(|view| {
+                view.counts.insert(TaskCount::FileRows, summary.file_rows);
+                view.counts.insert(TaskCount::EventRows, summary.event_rows);
+            });
+            task.finish(if summary.status == "cancelled" {
+                TaskOutcome::Cancelled
+            } else {
+                TaskOutcome::Succeeded
+            });
+        }
+        Err(_) => task.finish_with(&built),
+    }
+    let summary = built?;
     tracing::info!(
         "timeline_start done image={image_id} status={} elapsed={:.3?} files={}/{} events={}/{} skipped={}",
         summary.status,

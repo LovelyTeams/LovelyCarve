@@ -1,55 +1,55 @@
-//! Plugin runtime.
+//! Plugin runtime (LPP v2).
 //!
-//! A plugin is a native library next to its `plugin.toml` that exports the
-//! C ABI of `lovelycarve_plugin::abi`. With `isolation = "process"` (the
-//! default) it runs inside `lc-plugin-host`, which LovelyCarve drives with
-//! LPP v1 frames (length-prefixed MessagePack) over the child's stdin and
-//! stdout; plugin stdout is protocol-only and stderr carries diagnostics.
-//! With `isolation = "in_process"` LovelyCarve loads the library itself.
-//! Both modes carry the same LPP methods and payloads.
+//! A plugin is a package directory: `plugin.toml`, a native library that
+//! exports the C ABI of `lovelycarve_plugin::abi`, the `schema.json` its
+//! build exports and translations in `locales/`. The library runs inside
+//! `lc-plugin-host`, which LovelyCarve drives with LPP v2 frames
+//! (length-prefixed MessagePack) over the child's stdin and stdout; plugin
+//! stdout is protocol-only and stderr carries diagnostics.
 //!
-//! Each plugin has one shared instance for filesystem browsing and direct
-//! analysis; every scheduled task runs on an instance of its own
-//! ([`TaskWorker`]), so tasks of one plugin run side by side.
+//! Analyzers run on per-task workers ([`TaskWorker`]): the host opens the
+//! run's view (one detected system, or every volume of the evidence),
+//! resolves the analyzer's declared inputs, and streams the typed records
+//! the plugin emits into the evidence's `records.db`
+//! ([`crate::core::analysis::results::record_store`]). Packages with
+//! filesystem parsers keep one shared instance for browsing (the frozen
+//! `fs.*` / `source.*` methods).
 
-mod analysis;
-mod analysis_result;
 mod client;
 mod codec;
 mod connection;
+mod directory_cache;
 mod error;
-mod evidence_directory_cache;
-mod evidence_name_scan;
-mod evidence_registry;
-mod file_registry;
 mod fingerprint;
-mod in_process;
 mod log_file;
 mod manager;
 mod manifest;
+mod package;
+mod package_install;
 mod process_guard;
 mod remote_volume;
+mod run;
+mod run_context;
+mod run_setup;
 mod source_registry;
+mod view;
 mod wire;
 
-pub use analysis::{EvidenceAnalysisRequest, FileAnalysisRequest, TaskWorker};
-
-pub use client::{PluginClient, PluginCommand, PluginIdentity, PluginProgressEvent};
 pub use codec::MAX_FRAME_SIZE;
 pub use connection::PluginConnection;
 pub use error::{PluginError, Result};
-pub use evidence_registry::{
-    EvidenceHandle, EvidenceNode, EvidenceRegistry, EvidenceRoot, MAX_EVIDENCE_READ,
-    MAX_EVIDENCE_READV_RANGES,
-};
-pub use file_registry::{FileHandle, FileRegistry, MaterializedFileLease};
-pub use in_process::InProcessClient;
 pub use log_file::{PluginLogLevel, PluginLogStore};
 pub use lovelycarve_plugin::wire::{LppMessage, RpcError};
-pub use manager::{PluginDefinition, PluginManager, PluginState, ProbeMatch};
+pub use manager::{PluginManager, PluginState, ProbeMatch, RejectedPackage};
 pub use manifest::{
-    EvidenceAnalyzerCapability, FileAnalyzerCapability, FilesystemCapability, LibraryManifest,
-    PluginIsolation, PluginManifest, PluginPermission, TaskManifest, TaskTrigger,
+    AnalyzerManifest, AnalyzerScope, FilesystemManifest, OptionChoice, OptionKind, OptionManifest,
+    PluginManifest, PluginPermission, TaskTrigger, SYSTEM_FAMILIES,
 };
+pub use package::{Locales, PluginDefinition};
+pub use package_install::{InstalledPackage, PACKAGE_EXTENSION};
 pub(crate) use remote_volume::RemoteVolume;
+pub use run::TaskWorker;
+pub use run_context::{ProgressSink, RunContext};
+pub use run_setup::{prepare_run, PreparedRun, RunPlan, RunTargetSpec};
 pub use source_registry::{SourceHandle, SourceInfo, SourceRegistry};
+pub use view::{FindScan, HostView, Located, LocatedFile, Resolved};

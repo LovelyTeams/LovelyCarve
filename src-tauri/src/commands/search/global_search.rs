@@ -26,7 +26,7 @@ use crate::core::search::global_search_store::{
 };
 use crate::core::search::keyword::keyword_search::MatcherSet;
 use crate::state::{AppState, GlobalSearchRunState};
-use crate::task_manager::{TaskKind, TaskProgressUnit};
+use crate::task_manager::{TaskCount, TaskFlag, TaskKind, TaskOutcome, TaskProgressUnit};
 use {crate::app::access::loaded_image_app_error, crate::commands::quote_csv_field};
 
 /// 进度事件（前端按 `search_id`/`image_id` 过滤）。
@@ -106,6 +106,7 @@ pub async fn global_search_start(
         TaskKind::GlobalSearch,
         Some(image_id.clone()),
     );
+    task.update(|view| view.subject = patterns.clone());
     let resource_permit = state.tasks.acquire_resources(&task).await?;
     let token = task.token();
     let started = Instant::now();
@@ -210,6 +211,10 @@ pub async fn global_search_start(
             if let Err(err) = app_for_progress.emit(GLOBAL_SEARCH_PROGRESS_EVENT, &progress) {
                 tracing::warn!("emit {GLOBAL_SEARCH_PROGRESS_EVENT} failed: {err}");
             }
+            tasks.update(&progress.search_id, |view| {
+                view.counts.insert(TaskCount::Hits, hits);
+                view.counts.insert(TaskCount::MatchedFiles, matched_files);
+            });
             tasks.emit_progress(
                 &progress.search_id,
                 TaskProgressUnit::Entries,
@@ -288,6 +293,24 @@ pub async fn global_search_start(
         }
     }
     state.global_searches.lock().await.remove(&search_id);
+    match &scanned {
+        Ok(summary) => {
+            task.update(|view| {
+                view.counts.insert(TaskCount::Hits, summary.total_matches);
+                view.counts
+                    .insert(TaskCount::MatchedFiles, summary.matched_file_count);
+                if summary.truncated {
+                    view.flags.insert(TaskFlag::Truncated);
+                }
+            });
+            task.finish(if summary.status == "cancelled" {
+                TaskOutcome::Cancelled
+            } else {
+                TaskOutcome::Succeeded
+            });
+        }
+        Err(_) => task.finish_with(&scanned),
+    }
     let summary = scanned?;
 
     tracing::info!(

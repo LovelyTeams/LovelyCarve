@@ -1,5 +1,6 @@
-//! A live plugin instance in one of the two isolation modes. Both carry the
-//! same LPP methods and payloads, so callers never branch on the mode.
+//! A live plugin instance: an `lc-plugin-host` process speaking LPP v2 on
+//! its stdio, or (tests) a plugin entry point served by the SDK bridge over
+//! in-memory pipes. Both go through the same client and frames.
 
 use std::{
     env::consts::EXE_SUFFIX,
@@ -8,31 +9,29 @@ use std::{
     time::Duration,
 };
 
+use lovelycarve_plugin::protocol::Hello;
 use rmpv::Value;
 
 use super::{
-    client::{HostRpcServices, PluginSinks},
-    in_process::InProcessClient,
-    PluginClient, PluginCommand, PluginDefinition, PluginError, PluginIdentity, PluginIsolation,
-    Result,
+    client::{HostRpcServices, PluginClient, PluginCommand},
+    run_context::RunContext,
+    PluginDefinition, PluginError, PluginLogStore, Result, SourceRegistry,
 };
 
 const PLUGIN_HOST: &str = "lc-plugin-host";
 
 #[derive(Clone)]
-pub enum PluginConnection {
-    /// The library runs in `lc-plugin-host`, reached over LPP stdio frames.
-    Process(Arc<PluginClient>),
-    /// The library is loaded into LovelyCarve and called directly.
-    InProcess(Arc<InProcessClient>),
+pub struct PluginConnection {
+    client: Arc<PluginClient>,
 }
 
 impl PluginConnection {
-    /// Starts `definition`'s library in its declared isolation mode.
+    /// Starts `definition`'s library in its own `lc-plugin-host` process and
+    /// checks its `plugin.hello` against the package.
     pub(super) async fn open(
         definition: &PluginDefinition,
-        services: HostRpcServices,
-        sinks: PluginSinks,
+        sources: SourceRegistry,
+        logs: Option<Arc<PluginLogStore>>,
     ) -> Result<Self> {
         let library = definition.manifest.library_path(&definition.directory);
         if !library.is_file() {
@@ -41,58 +40,76 @@ impl PluginConnection {
                 library.display()
             )));
         }
-        match definition.manifest.library.isolation {
-            PluginIsolation::Process => {
-                let command = PluginCommand {
-                    plugin_id: definition.manifest.id.clone(),
-                    program: plugin_host_executable()?,
-                    args: vec!["--library".into(), library.into_os_string()],
-                    working_directory: Some(definition.directory.clone()),
-                };
-                Ok(Self::Process(
-                    PluginClient::spawn(command, services, sinks).await?,
-                ))
+        let command = PluginCommand {
+            plugin_id: definition.manifest.id.clone(),
+            program: plugin_host_executable()?,
+            args: vec!["--library".into(), library.into_os_string()],
+            working_directory: Some(definition.directory.clone()),
+            memory_limit: definition.manifest.memory_limit()?,
+            permissions: definition.manifest.permissions.clone(),
+        };
+        let client = PluginClient::spawn(command, HostRpcServices::new(sources), logs).await?;
+        let connection = Self { client };
+        connection.verify(definition).await?;
+        Ok(connection)
+    }
+
+    /// Serves `entry` through the SDK bridge over in-memory pipes: the same
+    /// frames and client as a plugin process, without one.
+    #[cfg(test)]
+    pub(super) async fn loopback(
+        entry: lovelycarve_plugin::abi::EntryFn,
+        definition: &PluginDefinition,
+        sources: SourceRegistry,
+    ) -> Result<Self> {
+        use tokio_util::io::SyncIoBridge;
+
+        let (host_side, plugin_side) = tokio::io::duplex(1 << 20);
+        let (plugin_reader, plugin_writer) = tokio::io::split(plugin_side);
+        let runtime = tokio::runtime::Handle::current();
+        std::thread::spawn(move || {
+            let input = SyncIoBridge::new_with_handle(plugin_reader, runtime.clone());
+            let output = SyncIoBridge::new_with_handle(plugin_writer, runtime);
+            if let Err(error) = lovelycarve_plugin::bridge::serve(entry, input, Box::new(output)) {
+                tracing::debug!("loopback plugin ended: {error}");
             }
-            PluginIsolation::InProcess => {
-                let plugin_id = definition.manifest.id.clone();
-                // Loading runs the library's initialisers; keep them off the
-                // async workers.
-                let client = tokio::task::spawn_blocking(move || {
-                    InProcessClient::load(&library, &plugin_id, services, sinks)
-                })
-                .await
-                .map_err(|error| PluginError::Unavailable(error.to_string()))??;
-                Ok(Self::InProcess(client))
+        });
+        let (host_reader, host_writer) = tokio::io::split(host_side);
+        let client = PluginClient::connect(
+            Box::new(host_reader),
+            Box::new(host_writer),
+            HostRpcServices::new(sources),
+            None,
+            None,
+        )
+        .await?;
+        let connection = Self { client };
+        connection.verify(definition).await?;
+        Ok(connection)
+    }
+
+    /// Wraps a connected client (tests of the frozen filesystem methods).
+    #[cfg(test)]
+    pub(super) fn from_client(client: Arc<PluginClient>) -> Self {
+        Self { client }
+    }
+
+    async fn verify(&self, definition: &PluginDefinition) -> Result<()> {
+        if let Err(error) = definition.verify_hello(self.client.hello()) {
+            if let Err(shutdown) = self.client.shutdown().await {
+                tracing::debug!(plugin_id = %definition.manifest.id, "rejected plugin shutdown failed: {shutdown}");
             }
+            return Err(error);
         }
+        Ok(())
     }
 
-    pub fn isolation(&self) -> PluginIsolation {
-        match self {
-            Self::Process(_) => PluginIsolation::Process,
-            Self::InProcess(_) => PluginIsolation::InProcess,
-        }
-    }
-
-    pub fn identity(&self) -> &PluginIdentity {
-        match self {
-            Self::Process(client) => client.identity(),
-            Self::InProcess(client) => client.identity(),
-        }
-    }
-
-    pub fn capabilities(&self) -> &[String] {
-        match self {
-            Self::Process(client) => client.capabilities(),
-            Self::InProcess(client) => client.capabilities(),
-        }
+    pub fn hello(&self) -> &Hello {
+        self.client.hello()
     }
 
     pub fn is_alive(&self) -> bool {
-        match self {
-            Self::Process(client) => client.is_alive(),
-            Self::InProcess(client) => client.is_alive(),
-        }
+        self.client.is_alive()
     }
 
     pub async fn call_with_timeout(
@@ -101,10 +118,9 @@ impl PluginConnection {
         params: Value,
         deadline: Duration,
     ) -> Result<Value> {
-        match self {
-            Self::Process(client) => client.call_with_timeout(method, params, deadline).await,
-            Self::InProcess(client) => client.call_with_timeout(method, params, deadline).await,
-        }
+        self.client
+            .call_with_timeout(method, params, deadline)
+            .await
     }
 
     /// Blocking call for the synchronous `Volume` bridge; never call it from
@@ -115,27 +131,27 @@ impl PluginConnection {
         params: Value,
         deadline: Duration,
     ) -> Result<Value> {
-        match self {
-            Self::Process(client) => client.call_blocking_with_timeout(method, params, deadline),
-            Self::InProcess(client) => client.call_blocking_with_timeout(method, params, deadline),
-        }
+        self.client
+            .call_blocking_with_timeout(method, params, deadline)
+    }
+
+    /// Makes a run's handles reachable from this plugin.
+    pub(super) fn attach(&self, run: Arc<RunContext>) {
+        self.client.services().attach(run);
+    }
+
+    pub(super) fn detach(&self, run_id: &str) -> Option<Arc<RunContext>> {
+        self.client.services().detach(run_id)
     }
 
     pub async fn shutdown(&self) -> Result<()> {
-        match self {
-            Self::Process(client) => client.shutdown().await,
-            Self::InProcess(client) => client.shutdown().await,
-        }
+        self.client.shutdown().await
     }
 
     /// Ends the instance without the `plugin.shutdown` call: kills the
-    /// `lc-plugin-host` process, or cancels the in-process calls and closes
-    /// the instance. Stops one task's worker.
+    /// `lc-plugin-host` process. Stops one task's worker.
     pub async fn terminate(&self) {
-        match self {
-            Self::Process(client) => client.kill().await,
-            Self::InProcess(client) => client.terminate(),
-        }
+        self.client.kill().await;
     }
 }
 

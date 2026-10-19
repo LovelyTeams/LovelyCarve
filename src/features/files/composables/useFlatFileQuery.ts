@@ -1,7 +1,7 @@
 
 import { tr } from '../../../composables/useLocale';
 import { onScopeDispose, ref, shallowRef, type Ref } from 'vue';
-import { trackedFsFlatPage as fsFlatPage } from '../../tasks/api';
+import { containerFsFlatPage as fsFlatPage } from './containerReads';
 import { fsFlatExtCounts } from '../../../lib/ipc/fs/query';
 import { notifyError } from '../../../composables/useToast';
 import type { FlatFileFilter, FlatSortColumn, FsWalkEntry } from '../../../lib/ipc/fs/types';

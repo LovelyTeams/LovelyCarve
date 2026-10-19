@@ -1,10 +1,14 @@
-//! Run a real evidence plugin read-only and save its structured result for inspection.
+//! Run one analyzer of a built plugin package on an image, through the same
+//! pipeline as a task (worker process, view, declared inputs, records.db),
+//! and save the published records and the run audit as JSON.
+//!
+//! usage: probe_plugin <image> <plugin-id> <analyzer> <output-json>
+//!        [--system <system id> | --file <root id> <path>]
 use anyhow::Context;
 use lovelycarve_lib::core::{
-    analysis::results::analysis_query::{self, AnalysisRecordsQuery},
-    analysis::results::plugin_result_store::{self, NewPluginAnalysis},
-    extensions::plugin::{EvidenceAnalysisRequest, FileAnalysisRequest, PluginManager},
-    extensions::task_scheduler::{function_name, FunctionRegistry},
+    analysis::identify::systems,
+    analysis::results::{record_query, record_store},
+    extensions::plugin::{prepare_run, AnalyzerScope, PluginManager, RunPlan, RunTargetSpec},
     filesystem::evidence_session::EvidenceSession,
     filesystem::fs_source_location::source_chain,
 };
@@ -17,114 +21,135 @@ async fn main() -> anyhow::Result<()> {
         .init();
     let arguments: Vec<_> = std::env::args().skip(1).collect();
     anyhow::ensure!(
-        arguments.len() == 4 || arguments.len() == 6,
-        "usage: probe_plugin <image> <plugin-id> <analyzer> <output-json> [<root-id> <file-path>]"
+        arguments.len() >= 4,
+        "usage: probe_plugin <image> <plugin-id> <analyzer> <output-json> \
+         [--system <system id> | --file <root id> <path>]"
     );
     let image = Arc::new(EvidenceSession::open(&arguments[0])?);
-    let image_id = image.id.clone();
     let plugins = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../plugins");
-    let manager = PluginManager::discover(&[plugins])?;
-    let functions = FunctionRegistry::from_definitions(manager.definitions());
-    let function = functions
-        .get(&function_name(&arguments[1], &arguments[2]))
-        .context("analyzer was not registered in the task center")?;
-    let input = if arguments.len() == 6 {
-        anyhow::ensure!(!function.evidence_level, "expected a file-level task");
-        let chain = source_chain(&image, &arguments[4], &arguments[5])?;
-        Some(chain.last().context("input file was not located")?.clone())
-    } else {
-        anyhow::ensure!(function.evidence_level, "expected an evidence-level task");
-        None
-    };
-    let result = if let Some(input) = &input {
-        manager
-            .analyze_file(FileAnalysisRequest {
-                plugin_id: arguments[1].clone(),
-                analyzer: arguments[2].clone(),
-                image_id: image.id.clone(),
-                image,
-                node_id: input.id.clone(),
-                name: input.name.clone(),
-            })
-            .await
-    } else {
-        manager
-            .analyze_evidence(EvidenceAnalysisRequest {
-                plugin_id: arguments[1].clone(),
-                analyzer: arguments[2].clone(),
-                image_id: image.id.clone(),
-                image,
-                params: serde_json::json!({"platform": function.platform}),
-            })
-            .await
-    };
-    manager.shutdown().await;
-    let result = result.context("plugin analysis failed")?;
-    std::fs::write(&arguments[3], serde_json::to_vec_pretty(&result)?)?;
-    let mut counts = BTreeMap::new();
-    for artifact in &result.artifacts {
-        *counts.entry(&artifact.artifact_type).or_insert(0) += 1;
+    let manager = PluginManager::discover(&[plugins], None)?;
+    let definition = manager.definition(&arguments[1])?;
+    let analyzer = definition
+        .manifest
+        .analyzer(&arguments[2])
+        .context("the package does not declare this analyzer")?
+        .clone();
+    let detected = systems::discover(&image);
+    for system in &detected {
+        println!("system {} ({})", system.id, system.label);
     }
-    // Exercise the same persistence and paged query used by the results UI,
-    // in a temporary case rather than changing the user's open case.
-    let case = tempfile::tempdir()?;
-    let completed_at = chrono::Utc::now().to_rfc3339();
-    let run_id = plugin_result_store::persist(
-        case.path(),
-        NewPluginAnalysis {
-            plugin_id: &arguments[1],
-            plugin_version: &function.plugin_version,
-            analyzer: &arguments[2],
-            display_name: &function.display_name,
-            type_name: &function.type_name,
-            image_id: &image_id,
-            node_id: input.as_ref().map_or("", |node| node.id.as_str()),
-            file_name: input.as_ref().map_or("", |node| node.name.as_str()),
-            started_at: &completed_at,
-            completed_at: &completed_at,
-            result: &result,
+    let target = match (analyzer.scope, arguments.get(4).map(String::as_str)) {
+        (AnalyzerScope::System, Some("--system")) => RunTargetSpec::System {
+            system_id: arguments.get(5).context("--system needs an id")?.clone(),
         },
-    )?;
-    for (artifact_type, count) in &counts {
-        let page = analysis_query::records_page(
-            case.path(),
-            &AnalysisRecordsQuery {
-                image_id: &image_id,
-                analyzer: &arguments[2],
-                run_id: &run_id,
-                artifact_type,
-                keyword: None,
-                skip: 0,
-                limit: 100,
-            },
-        )?;
-        anyhow::ensure!(
-            page.total == *count,
-            "stored record count mismatch for {artifact_type}"
-        );
-        anyhow::ensure!(
-            page.items.len() as u64 == (*count).min(100),
-            "stored page length mismatch for {artifact_type}"
-        );
-        for record in page.items {
-            anyhow::ensure!(
-                record.image_id == image_id
-                    && record.source_node_id.as_deref()
-                        == input.as_ref().map(|node| node.id.as_str()),
-                "stored provenance mismatch"
-            );
-            anyhow::ensure!(
-                result
-                    .artifacts
-                    .iter()
-                    .any(|artifact| artifact.artifact_type == record.artifact_type
-                        && artifact.title == record.title
-                        && artifact.attributes == record.attributes),
-                "stored record content mismatch"
-            );
+        (AnalyzerScope::System, _) => RunTargetSpec::System {
+            system_id: detected
+                .iter()
+                .find(|system| analyzer.applies_to_family(&system.family))
+                .context("no detected system fits the analyzer")?
+                .id
+                .clone(),
+        },
+        (AnalyzerScope::Evidence, _) => RunTargetSpec::Evidence,
+        (AnalyzerScope::Files, Some("--file")) => {
+            let root = arguments.get(5).context("--file needs a root id")?;
+            let path = arguments.get(6).context("--file needs a path")?;
+            let chain = source_chain(&image, root, path)?;
+            let node = chain.last().context("input file was not located")?;
+            RunTargetSpec::File {
+                node_id: node.id.clone(),
+                name: node.name.clone(),
+            }
         }
+        (AnalyzerScope::Files, _) => anyhow::bail!("a files analyzer needs --file <root> <path>"),
+    };
+
+    // A temporary case, so the user's open case is never touched.
+    let case = tempfile::tempdir()?;
+    let worker = manager.start_worker(&arguments[1]).await?;
+    let run_id = format!("run_{}", uuid::Uuid::new_v4().simple());
+    let label = image
+        .path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let prepared = prepare_run(
+        &RunPlan {
+            case_dir: case.path(),
+            image: &image,
+            definition: &definition,
+            analyzer: &analyzer,
+            target: &target,
+            options: &serde_json::Map::new(),
+            systems: &detected,
+            hello: worker.hello(),
+            evidence_label: &label,
+        },
+        &run_id,
+        Arc::new(|current, total| tracing::info!("progress {current}/{total:?}")),
+        &tokio_util::sync::CancellationToken::new(),
+    )?;
+    let started = std::time::Instant::now();
+    let finish = worker
+        .run(Arc::clone(&prepared.context), &prepared.start)
+        .await;
+    if let Err(error) = worker.shutdown().await {
+        tracing::debug!("worker shutdown: {error}");
     }
-    println!("{}", result.summary.as_deref().unwrap_or_default());
-    println!("counts={counts:?} timeline={}", result.timeline.len());
+    let finish = finish.context("the run failed")?;
+    let elapsed = started.elapsed();
+    record_store::publish(
+        case.path(),
+        &image.id,
+        &run_id,
+        &record_store::RunCompletion {
+            summary: finish.summary.as_deref(),
+            finished_at: &chrono::Utc::now().to_rfc3339(),
+            read_faults: &prepared.context.read_faults(),
+        },
+    )?
+    .context("the run was not published")?;
+    manager.shutdown().await;
+
+    let connection = record_query::open(case.path(), &image.id)?.context("records.db")?;
+    let mut records = BTreeMap::new();
+    let mut counts = BTreeMap::new();
+    for record_type in record_query::run_record_types(&connection, &run_id)? {
+        let mut items = Vec::new();
+        let mut skip = 0;
+        loop {
+            let page = record_query::records_page(
+                &connection,
+                &record_query::RecordsQuery {
+                    run_id: &run_id,
+                    record_type: &record_type.schema.record_type,
+                    keyword: None,
+                    sort: None,
+                    descending: false,
+                    skip,
+                    limit: record_query::MAX_PAGE_LIMIT,
+                },
+            )?;
+            let fetched = page.items.len() as i64;
+            items.extend(page.items);
+            skip += fetched;
+            if fetched == 0 || skip as u64 >= page.total {
+                break;
+            }
+        }
+        counts.insert(record_type.schema.record_type.clone(), items.len());
+        records.insert(record_type.schema.record_type.clone(), items);
+    }
+    let audit = record_query::run_audit(&connection, &run_id)?;
+    std::fs::write(
+        &arguments[3],
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "imageId": image.id,
+            "run": audit,
+            "records": records,
+        }))?,
+    )?;
+    println!("{}", finish.summary.as_deref().unwrap_or_default());
+    println!("counts={counts:?} elapsed={elapsed:?}");
     Ok(())
 }
