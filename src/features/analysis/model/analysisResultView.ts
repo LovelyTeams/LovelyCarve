@@ -15,6 +15,12 @@ export interface AnalysisResultGroup {
   results: AnalysisResultNode[];
 }
 
+/** The runs of one result category, as the directory heads them. */
+export interface AnalysisResultSection {
+  category: string;
+  groups: AnalysisResultGroup[];
+}
+
 /** Names of tree nodes in the interface language (plugin translations). */
 export interface AnalysisNodeLabels {
   node: (node: AnalysisResultNode) => string;
@@ -77,4 +83,21 @@ export function buildAnalysisGroups(
   }
   visit(tree);
   return [...groups.values()];
+}
+
+/** Head the runs by result category, in the order the categories first appear. */
+export function sectionAnalysisGroups(groups: AnalysisResultGroup[]): AnalysisResultSection[] {
+  const sections = new Map<string, AnalysisResultSection>();
+  for (const group of groups) {
+    const section = sections.get(group.category);
+    if (section) section.groups.push(group);
+    else sections.set(group.category, { category: group.category, groups: [group] });
+  }
+  return [...sections.values()];
+}
+
+/** The run group that holds `node`: the run itself or one of its record types. */
+export function groupOfNode(groups: AnalysisResultGroup[], node: AnalysisResultNode | null): AnalysisResultGroup | null {
+  if (!node) return null;
+  return groups.find(group => group.run?.nodeId === node.nodeId || group.results.some(result => result.nodeId === node.nodeId)) ?? null;
 }

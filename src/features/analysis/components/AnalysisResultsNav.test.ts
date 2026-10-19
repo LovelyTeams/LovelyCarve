@@ -48,18 +48,46 @@ describe('AnalysisResultsNav', () => {
   it('shows the current evidence plugin results directly and selects the clicked result', () => {
     const items = [...host.querySelectorAll<HTMLButtonElement>('.result-item')];
     expect(items.map(item => item.querySelector('span')?.textContent)).toEqual(['用户列表', '登录记录']);
+    expect(items.map(item => item.querySelector('.result-count')?.textContent)).toEqual(['3', '3']);
     expect(host.querySelector('header')).toBeNull();
     expect(items[0].getAttribute('aria-current')).toBe('true');
     items[1].click();
     expect(state.selectNode).toHaveBeenCalledWith(logins);
     expect(state.openPage).toHaveBeenCalledOnce();
   });
-  it('names the run target, counts its warnings and opens its audit', () => {
-    const heading = host.querySelector<HTMLElement>('.group-heading')!;
-    expect(heading.querySelector('small')?.textContent).toBe('Kali · part:2');
+  it('heads runs by category, names the run target, counts its warnings and opens its overview', () => {
+    expect([...host.querySelectorAll('.section-label')].map(label => label.textContent)).toEqual(['baseinfo']);
+    const heading = host.querySelector<HTMLButtonElement>('.run-open')!;
+    expect(heading.querySelector('.run-name')?.textContent).toBe('Linux 系统信息');
+    expect(heading.querySelector('.run-target')?.textContent).toBe('Kali · part:2');
     expect(heading.querySelector('.ui-badge.warn')?.textContent).toBe('2');
-    host.querySelector<HTMLButtonElement>('.run-info')!.click();
+    expect(heading.getAttribute('aria-current')).toBeNull();
+    heading.click();
     expect(state.selectNode).toHaveBeenCalledWith(run);
+    expect(state.openPage).toHaveBeenCalledOnce();
+  });
+  it('collapses a run from its chevron and reopens it when a selection lands inside', async () => {
+    const toggle = host.querySelector<HTMLButtonElement>('.run-toggle')!;
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    toggle.click();
+    await nextTick();
+    await nextTick();
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(host.querySelectorAll('.result-item')).toHaveLength(0);
+    expect(state.selectNode).not.toHaveBeenCalled();
+    selectedNode.value = logins;
+    await nextTick();
+    await nextTick();
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(host.querySelector('.result-item[aria-current="true"] .result-name')?.textContent).toBe('登录记录');
+  });
+  it('marks record types without records and the overview of the selected run', async () => {
+    tree.value = [{ ...run, children: [users, { ...logins, childCount: 0 }] }];
+    selectedNode.value = tree.value[0];
+    await nextTick();
+    expect([...host.querySelectorAll('.result-item')].map(item => item.classList.contains('empty'))).toEqual([false, true]);
+    expect(host.querySelector('.run-open')?.getAttribute('aria-current')).toBe('true');
+    expect(host.querySelector('.run-row')?.classList.contains('selected')).toBe(true);
   });
   it('loads results independently of the right panel and refreshes the context when evidence changes', async () => {
     expect(state.setImageId).toHaveBeenCalledWith('one');
@@ -69,7 +97,7 @@ describe('AnalysisResultsNav', () => {
     await nextTick();
     expect(state.setImageId).toHaveBeenLastCalledWith('two');
     expect(state.ensureFresh).toHaveBeenCalledTimes(2);
-    expect([...host.querySelectorAll('.result-item span')].map(item => item.textContent)).toEqual(['其他检材结果']);
+    expect([...host.querySelectorAll('.result-item .result-name')].map(item => item.textContent)).toEqual(['其他检材结果']);
   });
   it('narrows plugin result entries with its own search field', async () => {
     const input = host.querySelector<HTMLInputElement>('input')!;
@@ -78,7 +106,7 @@ describe('AnalysisResultsNav', () => {
     input.value = '登录';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     await nextTick();
-    expect([...host.querySelectorAll('.result-item span')].map(item => item.textContent)).toEqual(['登录记录']);
+    expect([...host.querySelectorAll('.result-item .result-name')].map(item => item.textContent)).toEqual(['登录记录']);
   });
   it('clears filtering with Escape and keeps keyboard focus in the directory', async () => {
     const input = host.querySelector<HTMLInputElement>('input')!;

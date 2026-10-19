@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RecordColumn } from '../../../lib/ipc/analysisResults';
-import { compatiblePropertyLayout, resolvePropertyLayout } from './analysisPresentation';
+import { columnWidth, compatiblePropertyLayout, resolvePropertyLayout } from './analysisPresentation';
 
 const field = (id: string, hidden = false): RecordColumn => ({ id, label: id, kind: 'text', hidden, key: false, timeline: null, choices: [] });
 const columns = [field('name'), field('key'), field('value'), field('extra', true)];
@@ -22,5 +22,10 @@ describe('analysis presentation roles', () => {
     expect(compatiblePropertyLayout(columns, columns.toReversed(), layout)).toEqual(layout);
     expect(compatiblePropertyLayout(columns, [...columns, field('new')], layout)).toBeNull();
     expect(compatiblePropertyLayout(columns, columns.map(column => column.id === 'value' ? { ...column, kind: 'int' } : column), layout)).toBeNull();
+  });
+
+  it('sizes table columns by what their kind holds and lets free text share the rest', () => {
+    expect((['bool', 'int', 'size', 'ip', 'timestamp', 'path', 'text', 'list', 'json'] as const).map(columnWidth))
+      .toEqual([88, 112, 120, 152, 240, 280, null, null, null]);
   });
 });

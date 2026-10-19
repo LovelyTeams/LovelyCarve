@@ -3,11 +3,30 @@ import type { RecordFieldKind, RecordSeverity } from '../../../lib/ipc/analysisR
 import { formatBytes } from '../../../utils/format';
 
 /** Seconds as `42 s` or `1:02:03`. */
-function durationText(seconds: number): string {
+export function durationText(seconds: number): string {
   if (seconds < 60) return `${Number(seconds.toFixed(3))} s`;
   const total = Math.floor(seconds);
   const parts = [Math.floor(total / 3600), Math.floor(total / 60) % 60, total % 60];
   return parts.map((part, index) => index === 0 ? String(part) : String(part).padStart(2, '0')).join(':');
+}
+
+const TIMESTAMP = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(Z|[+-]\d{2}:?\d{2})?$/i;
+
+/** An RFC 3339 time as `2024-01-02 03:04:05 UTC` or `… UTC+08:00`, keeping
+ *  its precision. A time recorded without a zone stays without one, so it
+ *  never reads as UTC; anything else is shown as stored. */
+export function timestampText(value: string): string {
+  const match = TIMESTAMP.exec(value.trim());
+  if (!match) return value;
+  const [, date, time, zone] = match;
+  if (!zone) return `${date} ${time}`;
+  if (zone.toUpperCase() === 'Z' || /^[+-]00:?00$/.test(zone)) return `${date} ${time} UTC`;
+  return `${date} ${time} UTC${zone.includes(':') ? zone : `${zone.slice(0, 3)}:${zone.slice(3)}`}`;
+}
+
+/** A value the record does not carry (shown as a dash). */
+export function isEmptyValue(value: unknown): boolean {
+  return value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0);
 }
 
 /** A record value as the table or detail shows it, by the field's kind.
@@ -18,7 +37,7 @@ export function recordValueText(
   options: { choice?: (id: string) => string; detailed?: boolean; tr?: Translator } = {},
 ): string {
   const tr = options.tr ?? sourceText;
-  if (value === null || value === undefined || value === '') return '—';
+  if (isEmptyValue(value)) return '—';
   switch (kind) {
     case 'bool':
       return value === true ? tr("是") : value === false ? tr("否") : String(value);
@@ -33,10 +52,12 @@ export function recordValueText(
       return Array.isArray(value) ? joinList(value.map(item => typeof item === 'string' ? item : JSON.stringify(item)), tr) : String(value);
     case 'json':
       return typeof value === 'string' ? value : JSON.stringify(value);
+    case 'timestamp':
+      if (typeof value === 'string') return timestampText(value);
+      return typeof value === 'number' ? String(value) : JSON.stringify(value);
     case 'text':
     case 'int':
     case 'float':
-    case 'timestamp':
     case 'path':
     case 'hash':
     case 'ip':

@@ -16,7 +16,7 @@ const state = vi.hoisted(() => ({
   dismissProgress: vi.fn(),
 }));
 vi.mock('../composables/useAnalysisResults', () => ({ ANALYSIS_PAGE_SIZE: 100, useAnalysisResults: () => state.results }));
-vi.mock('../../tasks/api', () => ({ usePluginCatalog: () => ({ packages: ref([]) }) }));
+vi.mock('../../tasks/api', () => ({ usePluginCatalog: () => ({ packages: ref([]), text: (_plugin: string, _key: string, fallback: string) => fallback }) }));
 vi.mock('../composables/useAnalysisLabels', () => ({
   useAnalysisLabels: () => ({
     nodeLabel: (node: { label: string }) => node.label,
@@ -102,7 +102,9 @@ describe('analysis UI feedback', () => {
     expect([...host.querySelectorAll('thead th')].map(header => header.textContent?.trim())).toEqual(['序号', '名称', '英文名称', '值', '源文件']);
     expect([...host.querySelectorAll('tbody td')].map(cell => cell.textContent?.trim())).toEqual(['1', '主机名', 'hostname', 'neko-virtual-machine', 'etc/passwd+1']);
     expect(host.querySelectorAll('col')).toHaveLength(5);
-    expect(host.querySelector<HTMLTableElement>('table')?.style.minWidth).toBe('844px');
+    // Row number 56 + source 220 + three free-text columns sharing the rest, 200 each at least.
+    expect(host.querySelector<HTMLTableElement>('table')?.style.minWidth).toBe('876px');
+    expect([...host.querySelectorAll<HTMLTableColElement>('col')].map(column => column.style.width)).toEqual(['56px', '', '', '', '220px']);
     host.querySelector<HTMLButtonElement>('thead .sort-header')!.click();
     expect(state.toggleSort).toHaveBeenCalledWith('name');
   });
@@ -114,6 +116,18 @@ describe('analysis UI feedback', () => {
     expect(host.querySelector('tbody td:nth-child(2)')?.textContent).toBe('用户 root');
     host.querySelector<HTMLButtonElement>('thead .sort-header')!.click();
     expect(state.toggleSort).toHaveBeenCalledWith('title');
+  });
+
+  it('sizes columns by field kind, shows times with their zone and quiets missing values', async () => {
+    (state.results.columns as ReturnType<typeof ref>).value = [column('user', '用户'), column('uid', 'UID', { kind: 'int' }), column('time', '时间', { kind: 'timestamp' })];
+    (state.results.records as ReturnType<typeof ref>).value = [
+      { ...record, values: { user: 'root', uid: 0, time: '2024-04-11T00:00:00+08:00' } },
+      { ...record, recordId: '2', values: { user: 'deploy', uid: 1000, time: null } },
+    ];
+    await nextTick();
+    expect([...host.querySelectorAll<HTMLTableColElement>('col')].map(column => column.style.width)).toEqual(['56px', '', '112px', '240px', '220px']);
+    expect([...host.querySelectorAll('tbody td:nth-child(4)')].map(cell => [cell.textContent, cell.classList.contains('empty')]))
+      .toEqual([['2024-04-11 00:00:00 UTC+08:00', false], ['—', true]]);
   });
 
   it('preserves severity beside the first field and in the title fallback', async () => {
@@ -240,5 +254,92 @@ describe('analysis source actions', () => {
     await nextTick();
     const labels = [...host.querySelectorAll('.detail-dock dt')].map(term => term.textContent);
     expect(labels).toEqual(expect.arrayContaining(['用户名', 'Shell', 'size']));
+    const sections = [...host.querySelectorAll('.detail-dock .file-detail-section')].map(section => section.getAttribute('aria-label'));
+    expect(sections).toEqual(['记录内容', '源文件', '技术信息']);
+  });
+  it('steps the dock through the records of the page', async () => {
+    await nextTick();
+    const previous = host.querySelector<HTMLButtonElement>('[aria-label="上一条记录"]')!;
+    const next = host.querySelector<HTMLButtonElement>('[aria-label="下一条记录"]')!;
+    expect([previous.disabled, next.disabled]).toEqual([true, false]);
+    next.click();
+    expect(openRecord).toHaveBeenCalledWith('no-source');
+    (state.results.selectedRecordId as ReturnType<typeof ref>).value = 'no-source';
+    await nextTick();
+    expect([previous.disabled, next.disabled]).toEqual([false, true]);
+  });
+  it('walks table rows with the arrow keys and lets an open record follow', async () => {
+    await nextTick();
+    const rows = host.querySelectorAll<HTMLTableRowElement>('tbody tr');
+    rows[0].focus();
+    rows[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(rows[1]);
+    expect(openRecord).toHaveBeenCalledWith('no-source');
+    rows[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(rows[1]);
+    expect(openRecord).toHaveBeenCalledOnce();
+  });
+});
+
+describe('analysis run overview', () => {
+  const resultNode = (nodeId: string, label: string, childCount: number) => ({
+    nodeId, kind: 'result', label, imageId: 'source-disk', typeName: 'baseinfo', pluginId: 'p', analyzer: 'linux', function: 'p/linux',
+    sourceNodeId: null, targetLabel: 'Ubuntu · part:2', artifactType: nodeId, runId: 'run-1', completedAt: '', childCount, warningCount: 0, legacy: false, children: [],
+  });
+  const users = resultNode('linux.user', '用户', 34);
+  const usb = resultNode('linux.usb', 'USB 记录', 0);
+  const run = { ...users, nodeId: 'run', kind: 'function', label: 'Linux 基本信息', artifactType: '', completedAt: '2026-10-19T13:30:32Z', childCount: 2, warningCount: 1, children: [users, usb] };
+  const audit = {
+    runId: 'run-1', state: 'published', pluginId: 'p', pluginVersion: '2.0.0', analyzer: 'linux', analyzerName: 'Linux 基本信息',
+    target: { kind: 'system', id: 'sys', label: 'Ubuntu · part:2' }, options: { items: [] }, profile: { os: 'linux' },
+    inputs: [{ path: '/etc/passwd', root: 'part:2', rootPath: 'etc/passwd', nodeId: null, size: 1873 }], inputCount: 1, schemaHash: 'hash', summary: '识别到 Ubuntu',
+    recordCount: 34, recordTypes: [], warningCount: 1, warnings: [{ code: 'parse.skipped', message: '跳过一条记录', path: '/var/log/wtmp', nodeId: 'ext4:12' }],
+    badRegions: [{ offset: 4096, len: 512 }], syntheticBytes: 512,
+    startedAt: '2026-10-19T13:30:21Z', finishedAt: '2026-10-19T13:30:32.5Z', publishedAt: '2026-10-19T13:30:32.5Z',
+  };
+  async function showRun(overrides: Record<string, unknown> = {}) {
+    Object.assign(state.results, { tree: ref([run]), selectedNode: ref(run), selectedRecordId: ref(null), audit: ref(audit), ...overrides });
+    app.unmount();
+    host.replaceChildren();
+    app = createApp(AnalysisResultsPanel, { imageId: 'active-disk', locating: false, onOpenFile: openFile });
+    app.mount(host);
+    await nextTick();
+  }
+
+  it('summarizes the run and opens a record type from its output', async () => {
+    await showRun();
+    expect(host.querySelector('.run-title h2')?.textContent).toBe('Linux 基本信息');
+    expect(host.querySelector('.run-target')?.textContent).toBe('Ubuntu · part:2');
+    expect([...host.querySelectorAll('.stat')].map(stat => [stat.querySelector('dt')?.textContent, stat.querySelector('dd')?.textContent]))
+      .toEqual([['记录数', '34'], ['记录类型', '2'], ['输入文件', '1'], ['告警', '1'], ['耗时', '11.5 s']]);
+    expect(host.querySelector('.ui-alert.danger')?.textContent).toContain('512');
+    const outputs = [...host.querySelectorAll<HTMLButtonElement>('.output-row')];
+    expect(outputs.map(row => [row.querySelector('.output-name')?.textContent, row.querySelector('.output-count')?.textContent, row.classList.contains('empty')]))
+      .toEqual([['用户', '34', false], ['USB 记录', '0', true]]);
+    outputs[1].click();
+    expect(state.results.selectNode).toHaveBeenCalledWith(usb);
+    host.querySelector<HTMLButtonElement>('.warning-row .location')!.click();
+    expect(openFile).toHaveBeenCalledWith({ imageId: 'source-disk', nodeId: 'ext4:12' });
+    host.querySelector<HTMLButtonElement>('.input-row .location')!.click();
+    expect(openFile).toHaveBeenLastCalledWith({ imageId: 'source-disk', rootId: 'part:2', path: 'etc/passwd' });
+  });
+
+  it('keeps the outputs of a result without an audit and reports a failed audit in place', async () => {
+    await showRun({ selectedNode: ref({ ...run, legacy: true }), audit: ref(null) });
+    expect(host.querySelector('.ui-alert.info')?.textContent).toContain('旧版本的分析结果没有运行信息');
+    expect(host.querySelectorAll('.output-row')).toHaveLength(2);
+    expect([...host.querySelectorAll('.stat dt')].map(term => term.textContent)).toEqual(['记录数', '记录类型']);
+    await showRun({ audit: ref(null), auditError: ref('读取失败') });
+    const alert = host.querySelector<HTMLElement>('[role="alert"]')!;
+    expect(alert.textContent).toContain('读取失败');
+    alert.querySelector<HTMLButtonElement>('button')!.click();
+    expect(state.results.retryAudit).toHaveBeenCalledOnce();
+  });
+
+  it('points an empty record type to the run that explains it', async () => {
+    await showRun({ selectedNode: ref(usb), records: ref([]), recordsTotal: ref(0) });
+    const action = [...host.querySelectorAll<HTMLButtonElement>('.table-scroll .ui-empty-actions button')].find(button => button.textContent?.includes('查看运行信息'))!;
+    action.click();
+    expect(state.results.selectNode).toHaveBeenCalledWith(run);
   });
 });

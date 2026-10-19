@@ -1,9 +1,9 @@
 <template>
-  <section class="analysis-results" :aria-label="tr('分析结果')">
+  <section ref="panel" class="analysis-results" :aria-label="tr('分析结果')">
     <p class="sr-only" role="status">{{ statusText }}</p>
     <!-- 搜索、阅读方式与导出共用一条工具栏，完整路径与完成时间留在页脚。 -->
-    <div v-if="selectedNode" class="ui-toolbar results-toolbar">
-      <span v-if="selectedNode.kind === 'result'" class="result-scope" :title="nodeLabel(selectedNode)"><span>{{ nodeLabel(selectedNode) }}</span><small class="ui-count">{{ recordsTotal.toLocaleString() }}</small></span>
+    <div v-if="selectedNode" class="ui-toolbar results-toolbar" :class="{ records: selectedNode.kind === 'result' }">
+      <span v-if="selectedNode.kind === 'result'" class="result-scope" :title="[nodeLabel(selectedNode), selectedNode.targetLabel].filter(Boolean).join(' · ')"><span>{{ nodeLabel(selectedNode) }}</span><small class="ui-count">{{ recordsTotal.toLocaleString() }}</small></span>
       <form v-if="selectedNode.kind === 'result'" class="ui-search record-search" :class="{ applied: keyword }" @submit.prevent="applyKeyword(keywordInput)">
         <Search :size="14" />
         <input v-model="keywordInput" :aria-label="tr('搜索当前结果')" :placeholder="tr('搜索当前结果，回车确认…')" />
@@ -16,7 +16,7 @@
       </div>
       <div class="ui-toolbar-actions">
         <template v-if="selectedNode.kind === 'result'">
-          <button v-if="runNode && !runNode.legacy" class="ui-btn ghost" @click="selectNode(runNode)"><ClipboardList :size="14" />{{ tr("运行信息") }}</button>
+          <button v-if="runNode" class="ui-btn ghost" @click="selectNode(runNode)"><ClipboardList :size="14" />{{ tr("运行信息") }}</button>
           <button v-if="exporting && exportCanCancel" class="ui-btn ghost" @click="cancelExport">{{ tr("取消导出") }}</button>
           <button class="ui-btn" :disabled="exporting || treeLoading || !!treeError || recordsLoading || recordsTotal === 0" @click="exportCsv"><Loader2 v-if="exporting" :size="14" class="spin" /><Download v-else :size="14" />{{ exporting ? tr("导出中…") : tr("导出 CSV") }}</button>
         </template>
@@ -31,24 +31,21 @@
       <template #toolbar><button class="ui-btn ghost" :disabled="treeLoading" @click="reload"><RefreshCw :size="14" />{{ tr("刷新") }}</button></template>
     </WorkspaceStartState>
     <div v-else-if="selectedNode.kind === 'function'" class="results-body">
-      <div v-if="auditLoading" class="ui-empty state-box" role="status"><span class="ui-empty-icon accent"><Loader2 :size="22" class="spin" /></span><p class="ui-empty-desc">{{ tr("正在读取运行信息…") }}</p></div>
-      <div v-else-if="auditError" class="ui-empty state-box error" role="alert"><span class="ui-empty-icon"><CircleAlert :size="22" /></span><p class="ui-empty-desc">{{ tr("运行信息读取失败：{0}", { 0: auditError }) }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="retryAudit">{{ tr("重试") }}</button></div></div>
-      <div v-else-if="!audit" class="ui-empty state-box" role="status"><span class="ui-empty-icon"><Inbox :size="24" /></span><p class="ui-empty-desc">{{ tr("旧版本的分析结果没有运行信息。") }}</p></div>
-      <AnalysisRunAuditView v-else :audit="audit" :node="selectedNode" :locating="locating" @open-file="target => emit('openFile', target)" />
+      <AnalysisRunOverview :node="selectedNode" :audit="audit" :loading="auditLoading" :error="auditError" :locating="locating" @open-file="target => emit('openFile', target)" @open-result="selectNode" @retry="retryAudit" />
     </div>
     <div v-else class="results-body">
       <div class="result-table">
-        <div class="table-scroll" :aria-busy="recordsLoading">
+        <div class="table-scroll" :class="{ sheet: presentation === 'properties' && records.length > 0 && !recordsLoading && !recordsError }" :aria-busy="recordsLoading">
           <div v-if="recordsLoading" class="ui-empty state-box" role="status"><span class="ui-empty-icon accent"><Loader2 :size="22" class="spin" /></span><p class="ui-empty-desc">{{ tr("正在读取记录…") }}</p></div>
           <div v-else-if="recordsError" class="ui-empty state-box error" role="alert"><span class="ui-empty-icon"><CircleAlert :size="22" /></span><p class="ui-empty-desc">{{ tr("记录读取失败：{0}", { 0: recordsError }) }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="retryRecords">{{ tr("重试") }}</button></div></div>
-          <div v-else-if="records.length === 0" class="ui-empty state-box" role="status"><span class="ui-empty-icon"><Inbox :size="24" /></span><p class="ui-empty-desc">{{ keyword ? tr("没有匹配的记录") : tr("此结果项暂无记录") }}</p><div v-if="keyword" class="ui-empty-actions"><button class="ui-btn" @click="keywordInput = ''; applyKeyword('')">{{ tr("清除搜索") }}</button></div></div>
+          <div v-else-if="records.length === 0" class="ui-empty state-box" role="status"><span class="ui-empty-icon"><Inbox :size="24" /></span><p class="ui-empty-title">{{ keyword ? tr("没有匹配的记录") : tr("此结果项暂无记录") }}</p><p v-if="!keyword && runNode" class="ui-empty-desc">{{ tr("运行信息里有这次运行的输入文件与告警。") }}</p><div class="ui-empty-actions"><button v-if="keyword" class="ui-btn" @click="keywordInput = ''; applyKeyword('')">{{ tr("清除搜索") }}</button><button v-else-if="runNode" class="ui-btn" @click="selectNode(runNode)"><ClipboardList :size="14" />{{ tr("查看运行信息") }}</button></div></div>
           <AnalysisPropertyList v-else-if="presentation === 'properties'" :node="selectedNode" :records="records" :columns="columns" :properties="propertyLayout" :selected-record-id="selectedRecordId" :locating="locating" @open-record="openRecord" @open-file="target => emit('openFile', target)" />
-          <table v-else class="data-table records-table" :style="{ minWidth: `${244 + (showTitleColumn ? 240 : 0) + tableColumns.length * 200}px` }" :aria-label="nodeLabel(selectedNode)">
+          <table v-else class="data-table records-table" :style="{ minWidth: `${tableWidth}px` }" :aria-label="nodeLabel(selectedNode)">
             <colgroup>
-              <col class="col-index" />
-              <col v-if="showTitleColumn" class="col-name" />
-              <col v-for="column in tableColumns" :key="column.id" class="col-field" />
-              <col class="col-locate" />
+              <col :style="{ width: `${INDEX_WIDTH}px` }" />
+              <col v-if="showTitleColumn" :style="{ width: `${TITLE_WIDTH}px` }" />
+              <col v-for="column in tableColumns" :key="column.id" :style="columnStyle(column)" />
+              <col :style="{ width: `${SOURCE_WIDTH}px` }" />
             </colgroup>
             <thead><tr>
               <th class="row-number">{{ tr("序号") }}</th>
@@ -56,10 +53,10 @@
               <th v-for="column in tableColumns" :key="column.id" :class="{ numeric: NUMERIC_KINDS.has(column.kind) }" :aria-sort="ariaSort(column.id)"><button class="sort-header" type="button" :title="`${columnLabel(selectedNode, column)} · ${column.id}`" @click="toggleSort(column.id)"><span>{{ columnLabel(selectedNode, column) }}</span><component :is="sortIcon(column.id)" :size="12" aria-hidden="true" /></button></th>
               <th>{{ tr("源文件") }}</th>
             </tr></thead>
-            <tbody><tr v-for="(record, index) in records" :key="record.recordId" :class="{ active: selectedRecordId === record.recordId }" :aria-selected="selectedRecordId === record.recordId" tabindex="0" @click="openRecord(record.recordId)" @keydown.enter.prevent="openRecord(record.recordId)">
+            <tbody><tr v-for="(record, index) in records" :key="record.recordId" :data-record-id="record.recordId" :class="{ active: selectedRecordId === record.recordId }" :aria-selected="selectedRecordId === record.recordId" tabindex="0" @click="openRecord(record.recordId)" @keydown.enter.prevent="openRecord(record.recordId)" @keydown.down.prevent="moveRow($event, index + 1)" @keydown.up.prevent="moveRow($event, index - 1)">
               <td class="row-number mono">{{ pageIndex * ANALYSIS_PAGE_SIZE + index + 1 }}</td>
               <td v-if="showTitleColumn" :title="record.title"><span class="title-cell"><span v-if="record.severity" class="ui-badge sm" :class="severityTone(record.severity)">{{ severityLabel(record.severity, tr) }}</span><span class="title-text">{{ record.title }}</span></span></td>
-              <td v-for="(column, columnIndex) in tableColumns" :key="column.id" :class="{ mono: MONO_KINDS.has(column.kind), numeric: NUMERIC_KINDS.has(column.kind) }" :title="cellText(record, column, Infinity)"><span v-if="columnIndex === 0 && record.severity" class="title-cell"><span class="ui-badge sm" :class="severityTone(record.severity)">{{ severityLabel(record.severity, tr) }}</span><span class="title-text">{{ cellText(record, column) }}</span></span><template v-else>{{ cellText(record, column) }}</template></td>
+              <td v-for="(column, columnIndex) in tableColumns" :key="column.id" :class="{ mono: MONO_KINDS.has(column.kind), numeric: NUMERIC_KINDS.has(column.kind), empty: isEmptyValue(record.values[column.id]) }" :title="cellText(record, column, Infinity)"><span v-if="columnIndex === 0 && record.severity" class="title-cell"><span class="ui-badge sm" :class="severityTone(record.severity)">{{ severityLabel(record.severity, tr) }}</span><span class="title-text">{{ cellText(record, column) }}</span></span><template v-else>{{ cellText(record, column) }}</template></td>
               <td><span class="table-sources"><button class="ui-btn link sm table-source" :aria-label="tr('定位源文件')" :disabled="locating || !sources(record).length" :title="sources(record)[0] ? `${tr('定位源文件')} · ${sources(record)[0]?.label}` : tr('此记录未提供源文件位置')" @click.stop="locateRecord(record)" @keydown.enter.stop><LocateFixed :size="13" aria-hidden="true" /><span class="mono">{{ sources(record)[0]?.label || tr('无来源') }}</span></button><button v-if="sources(record).length > 1" class="ui-btn ghost sm source-more mono" type="button" :title="tr('查看全部来源（{0}）', { 0: sources(record).length })" :aria-label="tr('查看全部来源（{0}）', { 0: sources(record).length })" @click.stop="openRecord(record.recordId)" @keydown.enter.stop>+{{ (sources(record).length - 1).toLocaleString() }}</button></span></td>
             </tr></tbody>
           </table>
@@ -69,16 +66,29 @@
           <span class="ui-footbar-stat"><strong :key="recordsTotal" class="ui-bump">{{ recordsTotal.toLocaleString() }}</strong> {{ keyword ? tr("条匹配记录") : tr("条记录") }}</span>
           <span v-if="completedLabel" class="ui-footbar-stat footer-completed">{{ tr("完成于（本地）") }} <strong>{{ completedLabel }}</strong></span>
           <span class="ui-footbar-spacer"></span>
-          <div class="pager"><button class="ui-icon-btn sm" :disabled="pageIndex === 0 || recordsLoading" :aria-label="tr('上一页')" :title="tr('上一页')" @click="goToPage(pageIndex - 1)"><ChevronLeft :size="16" /></button><span class="mono">{{ pageIndex + 1 }} / {{ pageCount }}</span><button class="ui-icon-btn sm" :disabled="pageIndex >= pageCount - 1 || recordsLoading" :aria-label="tr('下一页')" :title="tr('下一页')" @click="goToPage(pageIndex + 1)"><ChevronRight :size="16" /></button></div>
+          <div class="pager">
+            <button v-if="pageCount > 2" class="ui-icon-btn sm" :disabled="pageIndex === 0 || recordsLoading" :aria-label="tr('第一页')" :title="tr('第一页')" @click="goToPage(0)"><ChevronsLeft :size="16" /></button>
+            <button class="ui-icon-btn sm" :disabled="pageIndex === 0 || recordsLoading" :aria-label="tr('上一页')" :title="tr('上一页')" @click="goToPage(pageIndex - 1)"><ChevronLeft :size="16" /></button>
+            <span class="mono">{{ pageIndex + 1 }} / {{ pageCount }}</span>
+            <button class="ui-icon-btn sm" :disabled="pageIndex >= pageCount - 1 || recordsLoading" :aria-label="tr('下一页')" :title="tr('下一页')" @click="goToPage(pageIndex + 1)"><ChevronRight :size="16" /></button>
+            <button v-if="pageCount > 2" class="ui-icon-btn sm" :disabled="pageIndex >= pageCount - 1 || recordsLoading" :aria-label="tr('最后一页')" :title="tr('最后一页')" @click="goToPage(pageCount - 1)"><ChevronsRight :size="16" /></button>
+          </div>
         </footer>
       </div>
       <UiTransition kind="dock">
         <DetailDock v-if="selectedRecordId" :label="tr('记录详情')" :close-label="tr('关闭详情')" :title="detail?.title || tr('记录详情')" :content-key="selectedRecordId" @close="closeDetail">
+          <template #actions>
+            <button class="ui-icon-btn" type="button" :disabled="detailIndex <= 0" :title="tr('上一条记录')" :aria-label="tr('上一条记录')" @click="openSibling(-1)"><ChevronUp :size="16" /></button>
+            <button class="ui-icon-btn" type="button" :disabled="detailIndex < 0 || detailIndex >= records.length - 1" :title="tr('下一条记录')" :aria-label="tr('下一条记录')" @click="openSibling(1)"><ChevronDown :size="16" /></button>
+          </template>
           <div v-if="detailLoading" class="ui-empty state-box" role="status"><span class="ui-empty-icon accent"><Loader2 :size="20" class="spin" /></span><p class="ui-empty-desc">{{ tr("加载中…") }}</p></div>
           <div v-else-if="detailError" class="ui-empty state-box error" role="alert"><p class="ui-empty-desc">{{ tr("详情读取失败：{0}", { 0: detailError }) }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="openRecord(selectedRecordId)">{{ tr("重试") }}</button></div></div>
           <FileDetailLayout v-else-if="detail" :title="detail.title">
             <template #icon><Table2 :size="20" /></template>
             <template #badges><span class="ui-badge">{{ nodeLabel(selectedNode) }}</span><span v-if="detail.severity" class="ui-badge" :class="severityTone(detail.severity)">{{ severityLabel(detail.severity, tr) }}</span><span v-if="detail.legacy" class="ui-badge">{{ tr("旧版") }}</span></template>
+            <FileDetailSection :title="tr('记录内容')" wide>
+              <FileDetailFields :fields="detailFields" />
+            </FileDetailSection>
             <FileDetailSection :title="tr('源文件')" wide>
               <div v-if="sources(detail).length" class="source-files">
                 <div v-for="source in sources(detail)" :key="`${source.label}:${source.note}`" class="source-file">
@@ -87,9 +97,6 @@
                 </div>
               </div>
               <p v-else class="source-missing">{{ tr("此记录未提供源文件位置。") }}</p>
-            </FileDetailSection>
-            <FileDetailSection :title="tr('记录内容')" wide>
-              <FileDetailFields :fields="detailFields" />
             </FileDetailSection>
             <FileDetailSection :key="selectedRecordId" :title="tr('技术信息')" collapsible wide>
               <FileDetailFields :fields="[
@@ -114,10 +121,10 @@ import DetailDock from '../../../components/layout/DetailDock.vue';
 import FileDetailLayout from '../../../components/layout/FileDetailLayout.vue';
 import FileDetailSection from '../../../components/layout/FileDetailSection.vue';
 import FileDetailFields, { type FileDetailField } from '../../../components/layout/FileDetailFields.vue';
-import AnalysisRunAuditView from './AnalysisRunAuditView.vue';
+import AnalysisRunOverview from './AnalysisRunOverview.vue';
 import AnalysisPropertyList from './AnalysisPropertyList.vue';
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue';
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, CircleAlert, ClipboardList, DatabaseZap, Download, Inbox, List, Loader2, LocateFixed, RefreshCw, Search, Table2, X } from 'lucide-vue-next';
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, CircleAlert, ClipboardList, DatabaseZap, Download, Inbox, List, Loader2, LocateFixed, RefreshCw, Search, Table2, X } from 'lucide-vue-next';
 import { ANALYSIS_PAGE_SIZE, useAnalysisResults } from '../composables/useAnalysisResults';
 import { useAnalysisLabels } from '../composables/useAnalysisLabels';
 import { useAnalysisPresentation } from '../composables/useAnalysisPresentation';
@@ -125,8 +132,9 @@ import { saveTextWithDialog } from '../../../composables/export';
 import { notifyError, notifyInfo, pushPersistentToast } from '../../../composables/useToast';
 import { recordsToCsv, sanitizeExportFilename } from '../../../utils/exportFormat';
 import type { AnalysisRecord, AnalysisResultNode, RecordColumn, RecordFieldKind } from '../../../lib/ipc/analysisResults';
+import { columnWidth, FLEXIBLE_COLUMN_WIDTH } from '../model/analysisPresentation';
 import { analysisSources } from '../model/analysisSource';
-import { recordCsvValue, recordValueText, severityLabel, severityTone, truncateText } from '../model/analysisValue';
+import { isEmptyValue, recordCsvValue, recordValueText, severityLabel, severityTone, truncateText } from '../model/analysisValue';
 import type { FileLocationTarget } from '../../../lib/models/fileLocation';
 const props = defineProps<{ imageId: string; locating?: boolean }>();
 const emit = defineEmits<{ quickAnalysis: []; openFile: [target: FileLocationTarget] }>();
@@ -141,17 +149,41 @@ const { tree, treeLoading, treeError, dirty, selectedNode, records, columns, pro
   setImageId, ensureFresh, selectNode, goToPage, applyKeyword, toggleSort, openRecord: loadRecord, exportRecords, reload } = useAnalysisResults();
 const { nodeLabel, columnLabel, choiceLabel } = useAnalysisLabels();
 const { propertyLayout, presentation, setPresentation } = useAnalysisPresentation(selectedNode, columns, properties);
+const panel = ref<HTMLElement | null>(null);
 let detailReturnFocus: HTMLElement | null = null;
 function openRecord(recordId: string) {
   const focused = document.activeElement;
   if (focused instanceof HTMLElement && !focused.closest('.detail-dock')) detailReturnFocus = focused;
   return loadRecord(recordId);
 }
+/** Closing returns focus to the control the record was opened from, or to
+ *  the record shown last when the dock stepped to another one. */
 function closeDetail() {
-  const target = detailReturnFocus;
+  const recordId = selectedRecordId.value;
+  const origin = detailReturnFocus;
   detailReturnFocus = null;
   clearDetail();
-  void nextTick(() => { if (target?.isConnected) target.focus(); });
+  void nextTick(() => {
+    const holder = (element: Element | null | undefined) => element?.closest<HTMLElement>('[data-record-id]');
+    if (origin?.isConnected && holder(origin)?.dataset.recordId === recordId) { origin.focus(); return; }
+    const row = [...(panel.value?.querySelectorAll<HTMLElement>('[data-record-id]') ?? [])].find(element => element.dataset.recordId === recordId);
+    const target = row ? (row.tabIndex >= 0 ? row : row.querySelector<HTMLElement>('button')) : origin;
+    if (target?.isConnected) target.focus();
+  });
+}
+/** Position of the open record on this page (the dock steps through it). */
+const detailIndex = computed(() => records.value.findIndex(record => record.recordId === selectedRecordId.value));
+function openSibling(step: number) {
+  const record = records.value[detailIndex.value + step];
+  if (record) void loadRecord(record.recordId);
+}
+/** Arrow keys walk the table rows; with the dock open the record follows. */
+function moveRow(event: KeyboardEvent, index: number) {
+  const record = records.value[index];
+  const row = (event.currentTarget as HTMLElement).parentElement?.children[index];
+  if (!record || !(row instanceof HTMLElement)) return;
+  row.focus();
+  if (selectedRecordId.value) void openRecord(record.recordId);
 }
 const panelActive = ref(false);
 function activatePanel() { panelActive.value = true; setImageId(props.imageId); ensureFresh(); }
@@ -178,6 +210,18 @@ const NUMERIC_KINDS = new Set<RecordFieldKind>(['int', 'float', 'size', 'duratio
 const tableColumns = computed(() => columns.value.filter(column => !column.hidden));
 // Schema fields already describe the record; keep a title fallback for results without visible fields.
 const showTitleColumn = computed(() => tableColumns.value.length === 0);
+/** Fixed widths of the row number, the title fallback and the sticky source column. */
+const INDEX_WIDTH = 56;
+const TITLE_WIDTH = 240;
+const SOURCE_WIDTH = 220;
+/** Fixed columns keep their kind's width and free text shares the rest; below
+ *  this width the table scrolls sideways instead of squeezing a column. */
+const tableWidth = computed(() => INDEX_WIDTH + (showTitleColumn.value ? TITLE_WIDTH : 0) + SOURCE_WIDTH
+  + tableColumns.value.reduce((sum, column) => sum + (columnWidth(column.kind) ?? FLEXIBLE_COLUMN_WIDTH), 0));
+function columnStyle(column: RecordColumn) {
+  const width = columnWidth(column.kind);
+  return width === null ? undefined : { width: `${width}px` };
+}
 
 /** The run the selected record type belongs to (its audit). */
 const runNode = computed(() => {
@@ -352,11 +396,7 @@ async function exportCsv(): Promise<void> {
 .toolbar-title { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; font-weight: 500; }
 
 .records-table { table-layout: fixed; }
-.col-index { width: 64px; }
-.col-name { width: 240px; }
-.col-field { width: 200px; }
-.col-locate { width: 180px; }
-.records-table th:last-child, .records-table td:last-child { position: sticky; right: 0; background: var(--surface-secondary); }
+.records-table th:last-child, .records-table td:last-child { position: sticky; right: 0; background: var(--surface-secondary); box-shadow: inset 1px 0 0 color-mix(in srgb, var(--border-color) 70%, transparent); }
 .records-table th:last-child { z-index: 3; background: color-mix(in srgb, var(--surface-tertiary) 60%, var(--surface-secondary)); }
 .records-table .numeric { text-align: right; font-variant-numeric: tabular-nums; }
 .records-table .numeric .sort-header, .records-table .numeric .title-cell { justify-content: flex-end; }
@@ -365,8 +405,11 @@ async function exportCsv(): Promise<void> {
 .records-table tr.active td:last-child {
   border-bottom-color: var(--row-selected-ring);
   background: linear-gradient(var(--sidebar-active-bg), var(--sidebar-active-bg)), var(--surface-secondary);
-  box-shadow: inset 0 1px 0 var(--row-selected-ring), inset -1px 0 0 var(--row-selected-ring);
+  box-shadow: inset 0 1px 0 var(--row-selected-ring), inset -1px 0 0 var(--row-selected-ring), inset 1px 0 0 color-mix(in srgb, var(--border-color) 70%, transparent);
 }
+/* 悬停行的吸附列跟着换底，避免行中间出现一块白。 */
+.records-table tbody tr:hover:not(.active) td:last-child { background: linear-gradient(var(--surface-tertiary), var(--surface-tertiary)), var(--surface-secondary); }
+.records-table td.empty { color: var(--text-secondary); }
 .sort-header { display: flex; align-items: center; gap: 4px; width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .sort-header > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sort-header > svg { flex-shrink: 0; color: var(--text-secondary); opacity: 0.6; }
@@ -397,6 +440,7 @@ th[aria-sort='ascending'] .sort-header > svg, th[aria-sort='descending'] .sort-h
 .results-body { container: detail-host / inline-size; position: relative; display: flex; flex: 1; min-height: 0; }
 .result-table { flex: 1; min-width: 0; display: flex; flex-direction: column; container: analysis-records / inline-size; }
 .table-scroll { flex: 1; min-height: 0; overflow: auto; }
+.table-scroll.sheet { background: var(--surface-primary); }
 .state-box { flex: 1; min-height: 180px; overflow-wrap: anywhere; }
 .state-box.error { color: var(--sev-critical-fg); }
 .state-box.error .ui-empty-icon { background: var(--sev-critical-bg); color: var(--sev-critical-fg); }
@@ -405,13 +449,13 @@ th[aria-sort='ascending'] .sort-header > svg, th[aria-sort='descending'] .sort-h
 .footer-crumb { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 55%; overflow: hidden; color: var(--text-primary); font-weight: 500; white-space: nowrap; }
 .footer-crumb > svg { flex-shrink: 0; color: var(--primary-color); }
 .footer-crumb > span { overflow: hidden; text-overflow: ellipsis; }
-.pager { display: flex; align-items: center; gap: 6px; margin-left: auto; white-space: nowrap; }
-.pager .mono { min-width: 48px; color: var(--text-primary); text-align: center; }
+.pager { display: flex; align-items: center; gap: 2px; margin-left: auto; white-space: nowrap; }
+.pager .mono { min-width: 56px; padding: 0 4px; color: var(--text-primary); text-align: center; font-variant-numeric: tabular-nums; }
 
 @container analysis-results (max-width: 760px) {
   .footer-completed { display: none; }
   .result-scope { max-width: 140px; }
   .record-search { flex: 1; }
-  .results-toolbar .ui-toolbar-actions { width: 100%; }
+  .results-toolbar.records .ui-toolbar-actions { width: 100%; }
 }
 </style>

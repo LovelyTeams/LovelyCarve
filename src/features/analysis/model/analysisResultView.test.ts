@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AnalysisResultNode } from '../../../lib/ipc/analysisResults';
-import { buildAnalysisGroups } from './analysisResultView';
+import { buildAnalysisGroups, groupOfNode, sectionAnalysisGroups } from './analysisResultView';
 
 function node(nodeId: string, kind: AnalysisResultNode['kind'], label: string, children: AnalysisResultNode[] = [], extra: Partial<AnalysisResultNode> = {}): AnalysisResultNode {
   return {
@@ -31,6 +31,17 @@ describe('analysis result directory', () => {
     expect(buildAnalysisGroups(fixture, 'one', 'KALI')[0].results).toEqual([users, logins]);
     expect(buildAnalysisGroups(fixture, 'one', 'debian').map(group => group.id)).toEqual(['quiet']);
     expect(buildAnalysisGroups(fixture, 'one', '没有')).toEqual([]);
+  });
+  it('heads runs by category in first-seen order and finds the run holding a node', () => {
+    const browser = node('chrome', 'function', 'Chrome', [node('visits', 'result', '访问记录')], { typeName: 'browserinfo', runId: 'run-3' });
+    const groups = buildAnalysisGroups([node('disk', 'evidence', 'disk.vmdk', [
+      node('base', 'class', 'baseinfo', [kali]),
+      node('browser', 'class', 'browserinfo', [browser]),
+      node('base-late', 'class', 'baseinfo', [quiet]),
+    ])], 'one');
+    expect(sectionAnalysisGroups(groups).map(section => [section.category, section.groups.map(group => group.id)]))
+      .toEqual([['baseinfo', ['linux', 'quiet']], ['browserinfo', ['chrome']]]);
+    expect([kali, logins, browser.children[0], null].map(item => groupOfNode(groups, item)?.id ?? null)).toEqual(['linux', 'linux', 'chrome', null]);
   });
   it('names nodes and categories through the given labels', () => {
     const [group] = buildAnalysisGroups(fixture, 'one', 'Users', {
