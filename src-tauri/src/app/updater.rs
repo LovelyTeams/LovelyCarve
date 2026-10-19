@@ -3,7 +3,9 @@
 use std::path::Path;
 use std::time::Duration;
 
-use anyhow::{bail, ensure, Context};
+#[cfg(feature = "desktop")]
+use anyhow::bail;
+use anyhow::{ensure, Context};
 use reqwest::{redirect::Policy, Client};
 use semver::Version;
 use serde::{Deserialize, Serialize};
