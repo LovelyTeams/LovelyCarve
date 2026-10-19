@@ -40,6 +40,7 @@ fn application_builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state::AppState::new())
         .setup(crate::app::setup::setup)
         .invoke_handler(tauri::generate_handler![
@@ -180,6 +181,8 @@ fn application_builder() -> tauri::Builder<tauri::Wry> {
             commands::system::system::module_summary,
             commands::system::system::system_path_info,
             commands::system::system::reveal_path,
+            commands::system::updater::release_update_check,
+            commands::system::updater::release_update_install,
             commands::casework::case::case_create,
             commands::casework::case::case_open,
             commands::casework::case::case_close,

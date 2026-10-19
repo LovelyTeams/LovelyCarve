@@ -3,6 +3,18 @@
   "productName": "LovelyCarve",
   "version": "1.1.1",
   "identifier": "app.lovelycarve",
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/LovelyTeams/LovelyCarve/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI5OEVGNDA5NzNCRkI5NTEKUldSUnViOXpDZlNPS1k0MS9qdjU3aTRFbkZPNCtqOUE0ZVBxWlltaUxVUzJGeU9yZitlSk14TjIK",
+      "requireSignedVersion": true,
+      "windows": {
+        "installMode": "quiet"
+      }
+    }
+  },
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://127.0.0.1:14200",
@@ -37,6 +49,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/32x32.png",

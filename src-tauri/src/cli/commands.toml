@@ -31,6 +31,7 @@
 # their kebab-case form unless [options] renames them.
 
 [options]
+version = "release-version"
 # The evidence scope: an image ID or an evidence path.
 imageId = "image"
 
@@ -61,6 +62,7 @@ dir = "案件目录"
 key = "SQLCipher 等加密数据库的密钥（JSON）"
 
 [groups]
+"system updates" = "桌面更新版本检测与安装能力"
 "analysis" = "插件分析结果：结果树、记录与详情"
 "analysis records" = "分析记录"
 "analysis tree" = "分析结果树"
@@ -1774,6 +1776,23 @@ summary = "查看版本、构建功能与会话协议"
 category = "read"
 concurrent = true
 keywords = ["capabilities", "version", "features"]
+
+[[command]]
+path = "system updates get"
+ipc = "release_update_check"
+summary = "检查 GitHub 最新稳定版"
+description = "只检测版本；独立 CLI 不支持应用内安装。"
+category = "read"
+hide_command = true
+
+[[command]]
+path = "system updates update"
+ipc = "release_update_install"
+summary = "安装桌面程序更新"
+description = "仅桌面宿主可以调用；独立 CLI 会返回不支持安装。"
+category = "update"
+args = ["version"]
+hide_command = true
 
 [[command]]
 path = "system modules list"

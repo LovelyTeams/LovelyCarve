@@ -121,6 +121,8 @@ src-tauri/src/
 
 命令函数不直接依赖 Tauri：状态、应用句柄、二进制响应和媒体租约所有者分别使用 `host::State`、`host::AppHandle`、`host::Response` 和 `host::LeaseOwner`，函数以 `#[cfg_attr(feature = "desktop", tauri::command)]` 标注。`desktop` 特性（`tauri.conf.json` 的 `build.features` 为 `tauri dev/build` 开启）引入 tauri、对话框与文件插件和 tauri-build，并由 `host/tauri_adapter.rs` 为这些类型实现 `CommandArg` / `IpcResponse`：状态取自 Tauri 托管状态，`AppHandle` 把事件转给 Tauri `emit` 并提供应用数据目录，`LeaseOwner` 对应调用窗口（窗口关闭即租约结束），`Response` 以原始字节返回。CLI 构建不启用该特性，`AppHandle` 的事件写到 `session --events` 的标准错误或直接丢弃，`LeaseOwner` 归进程所有。两种构建使用同一个应用数据目录，目录名取自 `tauri.conf.json` 的 identifier（构建脚本导出为 `LOVELYCARVE_APP_IDENTIFIER`）。命令需要新的宿主能力时扩展 `host` 类型，不在命令中引用 Tauri 类型。
 
+桌面更新由 `app/updater.rs` 负责 GitHub 版本检查、校验下载与安装编排；签名更新器和正常退出通过 `host/tauri_adapter.rs` 提供的桌面能力接入。独立 CLI 不链接 Tauri updater，宿主未提供桌面能力时在联网下载前拒绝安装。两条更新命令仍在 `cli/commands.toml` 中保留隐藏映射。
+
 CLI JSONL 调度位于 `cli/session.rs`。`session --jobs N` 使用有界输入队列和查询工作线程，主协调器统一发布按请求 ID 关联的 JSON 响应；stdin 等待不会阻塞完成结果输出。并发查询复制派发时的会话上下文，案件／检材／目录切换及其他未标记并发的命令先等待已有查询完成。结构化 `$ref` 等待先前请求结果，EOF 收齐请求后再等待后台任务。新增命令默认是屏障；确认其生命周期与并发安全后，才在 `cli/commands.toml` 中标记 `concurrent = true`，并通过命令目录的 `concurrent` 字段公开。
 
 `src-tauri/examples/` 按用途分类，所有 example 目标在 Cargo 中显式声明，通过 `just run-example <名称>` 调用；`just check-examples` 检查这些目标，用法见 [后端探针](../src-tauri/examples/README.md)。新增模块使用 `<name>.rs` 加 `<name>/`，不新增 `mod.rs`。

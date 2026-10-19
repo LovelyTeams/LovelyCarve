@@ -45,4 +45,51 @@ CHANGELOG 只使用实际有内容的英文分类（`Added`、`Changed`、`Depre
 Get-FileHash -Algorithm SHA256 -LiteralPath 'dist-pack/LovelyCarve-v<版本号>-win-x64.7z'
 ```
 
+### 应用内更新
+
+桌面安装包启用了 Tauri updater。发布前需要把签名私钥放在本机环境中，私钥不要提交到仓库：
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY = 'C:\path\to\lovelycarve-updater.key'
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = '<private-key-password-if-used>'
+just build-release
+```
+
+首次启用 updater 时，维护者还需要生成并保管一对 minisign 密钥，把项目公钥写入
+`src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`，并把私钥交给发布环境；
+合并此功能前必须将当前分支的引导公钥替换为项目维护者公钥，匹配私钥只能通过受控渠道交接，不能提交到仓库。
+`requireSignedVersion` 保持开启，未配置有效项目公钥的构建不能发布可更新安装包。
+
+构建会在 `src-tauri/target/release/bundle/` 生成安装包及其 `.sig` 签名。
+Tauri CLI 不会自动生成 `latest.json`，发布者需要根据实际产物编写静态更新清单，例如：
+
+```powershell
+$releaseVersion = (Get-Content -Raw src-tauri/tauri.conf.json | ConvertFrom-Json).version
+$installerName = "LovelyCarve_${releaseVersion}_x64-setup.exe"
+$signature = (Get-Content -Raw "src-tauri/target/release/bundle/nsis/$installerName.sig").Trim()
+@{
+  version = $releaseVersion
+  platforms = @{
+    'windows-x86_64-nsis' = @{
+      signature = $signature
+      url = "https://github.com/LovelyTeams/LovelyCarve/releases/download/v$releaseVersion/$installerName"
+    }
+  }
+} | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 latest.json
+```
+
+将 `latest.json`、Windows x64 的 `*-setup.exe` 与对应 `.sig` 一起上传到同一个 GitHub Release；
+更新器按 `windows-x86_64-nsis` 目标选择安装包，校验签名后以静默模式安装并重启应用。
+Windows x64 的 NSIS 安装版和便携包统一下载此安装器，显式指定当前程序目录就地更新。
+便携目录会增加 NSIS 的卸载器及安装登记。MSI 安装版和其他平台只检测新版本并显示暂不支持应用内安装，
+避免用 NSIS 静默覆盖 MSI 管理的文件；后续可独立扩展原格式升级。
+丢失私钥后无法发布可被现有安装识别的签名更新。
+
+启动时先通过 GitHub Releases API 比较最新稳定版与当前版本，相同或更旧时直接显示已是最新版本。
+旧 Release 没有 `latest.json` 时，Windows x64 可使用同一 Release 的
+`LovelyCarve_<版本号>_x64-setup.exe`；下载后必须同时匹配 GitHub API 返回的文件大小与 `sha256:` digest，
+通过后以 NSIS 的 `/S /UPDATE /R /D=<当前程序目录>` 参数静默安装并重启。不弹出下载页；检查失败可以重试。
+这个兼容通道依赖 HTTPS 与 GitHub 提供的摘要，不等同于维护者私钥签名。发布 `latest.json` 后会使用签名通道，
+签名或元数据校验失败时不会回退执行未签名安装器。没有兼容安装器的新版会显示暂不支持应用内安装。
+
 源码标签、发行说明和产物应对应同一提交；说明签名状态、已验证的平台范围和外部驱动要求。

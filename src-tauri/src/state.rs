@@ -36,6 +36,8 @@ pub struct AppState {
     /// requests cannot create duplicate subprocess filesystem sessions.
     pub plugin_open_lock: Arc<Mutex<()>>,
     pub tasks: TaskManager,
+    /// Only one verified installer may be downloaded and launched at a time.
+    pub(crate) update_install: Mutex<()>,
     /// 插件任务调度器。案件打开时绑定台账 `case.db` 的任务表,关闭时解绑;
     /// 未绑定时所有控制面返回“无案件”。
     pub scheduler: TaskScheduler,
@@ -129,6 +131,7 @@ impl AppState {
             plugins,
             plugin_open_lock: Arc::default(),
             tasks: TaskManager::default(),
+            update_install: Mutex::new(()),
             scheduler,
             carve_scans: Arc::default(),
             assembled_arrays: Arc::default(),

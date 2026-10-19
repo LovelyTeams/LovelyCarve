@@ -49,6 +49,7 @@ desktop = [
     "dep:tauri",
     "dep:tauri-plugin-dialog",
     "dep:tauri-plugin-fs",
+    "dep:tauri-plugin-updater",
     "dep:tauri-build",
 ]
 # Legacy DLL probes only; production ReFS always uses the Rust reader.
@@ -174,13 +175,16 @@ refs-reader = { path = "vendor/refs-reader" }
 # 字面量，给解码文本通道做原始字节预筛。
 regex = "1.13.1"
 regex-syntax = "0.8.11"
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls-no-provider", "stream"] }
 rmp-serde = "1.3.1"
 rmpv = { version = "1.3.1", features = ["with-serde"] }
 rsqlite-vfs = { path = "vendor/rsqlite-vfs" }
 rufs = { path = "vendor/rufs" }
 
 rusqlite = { version = "0.40.2", features = ["bundled-sqlcipher-vendored-openssl", "collation", "hooks"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring"] }
 
+semver = "1.0.28"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 
@@ -196,6 +200,7 @@ tar = "0.4.46"
 tauri = { version = "2.12.3", features = ["protocol-asset"], optional = true }
 tauri-plugin-dialog = { version = "2.8.2", optional = true }
 tauri-plugin-fs = { version = "2.7.0", optional = true }
+tauri-plugin-updater = { version = "2.14.0", default-features = false, features = ["rustls-tls", "zip"], optional = true }
 tempfile = "3.27.0"
 
 thiserror = "2.0.21"

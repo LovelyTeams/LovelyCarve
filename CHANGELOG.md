@@ -9,6 +9,7 @@
 
 ### Added
 
+- 在关于页加入启动时 GitHub Releases 自动检查更新，支持签名更新包及旧版 Windows 安装包的校验下载、静默安装和重启。
 - `lovelycarve-cli docs search` 离线搜索随程序附带的使用指南、CLI 手册与格式专题，`docs get` / `docs list` 阅读与列出页面；隐藏命令 `tools` 把全部命令输出为 MCP 工具定义，便于 MCP 服务器包装命令行。
 - RAID 重组补齐 Linux md 的级别与元数据：识别 0.90 与 1.0（超级块在盘尾）、1.1、1.2 元数据，组装 linear、RAID1、RAID4、RAID6（全部 md 布局，最多缺两块盘时按 P / Q 校验重建）与 RAID10（near / far / offset），RAID5 增加首盘 / 末盘校验布局，RAID0 支持大小不同的成员盘。超级块的校验和与位置会被核对，按事件计数排除陈旧成员与仍在重建的成员，同一块盘重复加载只读一份。
 - 缺盘的 md 阵列可以降级重组：md 已把缺失成员记为故障时自动按校验或剩余镜像重组；元数据仍登记的缺盘在 RAID 卡片中点「降级重组」确认（CLI 为 `raid detect --degraded-sets`）。

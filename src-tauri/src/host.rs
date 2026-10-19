@@ -14,6 +14,8 @@ use serde::Serialize;
 mod tauri_adapter;
 #[cfg(feature = "desktop")]
 pub(crate) use tauri_adapter::desktop_handle;
+#[cfg(feature = "desktop")]
+pub(crate) use tauri_adapter::desktop_supports_update;
 
 /// Borrowed access to state owned by the host for the duration of one command.
 /// Mirrors `tauri::State`: it dereferences to `T` and is cheap to copy.
@@ -59,6 +61,8 @@ pub struct AppHandle {
 struct HostServices {
     app_data_dir: Option<PathBuf>,
     events: Box<EventSink>,
+    #[cfg(feature = "desktop")]
+    desktop: Option<tauri_adapter::DesktopServices>,
 }
 
 /// Why an event could not be delivered. Callers only log it: events report
@@ -89,6 +93,8 @@ impl AppHandle {
             inner: Arc::new(HostServices {
                 app_data_dir,
                 events: Box::new(events),
+                #[cfg(feature = "desktop")]
+                desktop: None,
             }),
         }
     }
@@ -103,6 +109,14 @@ impl AppHandle {
     /// `None` when the platform reports no data directory.
     pub fn app_data_dir(&self) -> Option<&Path> {
         self.inner.app_data_dir.as_deref()
+    }
+
+    /// Only a running desktop host can install and restart an app update.
+    pub fn is_desktop(&self) -> bool {
+        #[cfg(feature = "desktop")]
+        return self.inner.desktop.is_some();
+        #[cfg(not(feature = "desktop"))]
+        false
     }
 }
 

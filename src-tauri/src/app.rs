@@ -6,3 +6,4 @@ pub(crate) mod workflows;
 
 pub(crate) mod lifecycle;
 pub(crate) mod setup;
+pub(crate) mod updater;

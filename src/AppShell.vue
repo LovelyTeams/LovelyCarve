@@ -200,10 +200,12 @@ import { useBcpWorkspace } from './app/workspace/useBcpWorkspace';
 import { useWorkspaceTaskHub } from './app/workspace/useWorkspaceTaskHub';
 import { useTabManager } from './app/workspace/useTabManager';
 import { notifyError } from './composables/useToast';
+import { useAppUpdater } from './features/settings/api';
 import { bcpNavGroup } from './app/workspace/bcpNavigation';
 import type { SettingsSection } from './features/settings/model/types';
 
 const { recentCases, clearRecentCases } = useRecentCases();
+const { checkForUpdates } = useAppUpdater();
 const showToolSettings = ref(false);
 const settingsInitialSection = ref<SettingsSection>('appearance');
 
@@ -384,6 +386,7 @@ function suppressNativeContextMenu(event: MouseEvent) {
 
 onMounted(() => {
   void refreshActiveCase();
+  void checkForUpdates();
   document.addEventListener('contextmenu', suppressNativeContextMenu);
 });
 

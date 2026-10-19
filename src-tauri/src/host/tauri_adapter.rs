@@ -3,7 +3,35 @@
 use tauri::ipc::{CommandArg, CommandItem, InvokeError, InvokeResponseBody, IpcResponse};
 use tauri::{Emitter, Manager, Runtime};
 
-use super::{AppHandle, LeaseOwner, Response, State};
+use super::{AppHandle, HostServices, LeaseOwner, Response, State};
+
+pub(super) struct DesktopServices {
+    app: tauri::AppHandle,
+}
+
+pub(crate) fn desktop_supports_update() -> bool {
+    cfg!(all(target_os = "windows", target_arch = "x86_64"))
+        && !matches!(
+            tauri::utils::platform::bundle_type(),
+            Some(tauri::utils::config::BundleType::Msi)
+        )
+}
+
+impl AppHandle {
+    pub(crate) fn updater_builder(&self) -> anyhow::Result<tauri_plugin_updater::UpdaterBuilder> {
+        use tauri_plugin_updater::UpdaterExt;
+        let desktop = self.inner.desktop.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("in-app installation requires the desktop application")
+        })?;
+        Ok(desktop.app.updater_builder())
+    }
+
+    pub(crate) fn exit_after_update(&self) {
+        if let Some(desktop) = &self.inner.desktop {
+            desktop.app.exit(0);
+        }
+    }
+}
 
 impl<'r, 'de: 'r, T: Send + Sync + 'static, R: Runtime> CommandArg<'de, R> for State<'r, T> {
     fn from_command(command: CommandItem<'de, R>) -> Result<Self, InvokeError> {
@@ -40,7 +68,7 @@ impl IpcResponse for Response {
 
 /// Build the host handle for a running desktop app: events go to every
 /// webview and paths come from Tauri's resolver.
-pub(crate) fn desktop_handle<R: Runtime>(app: &tauri::AppHandle<R>) -> AppHandle {
+pub(crate) fn desktop_handle(app: &tauri::AppHandle) -> AppHandle {
     let app_data_dir = match app.path().app_data_dir() {
         Ok(directory) => Some(directory),
         Err(error) => {
@@ -49,9 +77,16 @@ pub(crate) fn desktop_handle<R: Runtime>(app: &tauri::AppHandle<R>) -> AppHandle
         }
     };
     let emitter = app.clone();
-    AppHandle::new(app_data_dir, move |event, payload| {
+    let events = move |event: &str, payload: String| {
         emitter
             .emit_str(event, payload)
             .map_err(|error| error.to_string())
-    })
+    };
+    AppHandle {
+        inner: std::sync::Arc::new(HostServices {
+            app_data_dir,
+            events: Box::new(events),
+            desktop: Some(DesktopServices { app: app.clone() }),
+        }),
+    }
 }

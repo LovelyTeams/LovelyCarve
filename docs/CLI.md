@@ -314,6 +314,9 @@ Ctrl+C / Ctrl+Break 取消任务、释放案件与挂载后以 130 退出；无�
 检材以只读方式打开。平台限制沿用后端（例如 Dokan/SMB 挂载仅 Windows）；
 `system paths reveal` 会打开系统文件管理器，不属于无界面分析流程。
 
+隐藏命令 `system updates get` 检查 GitHub 最新稳定版，独立 CLI 始终返回 `canInstall: false`。
+`system updates update <version>` 保留桌面 IPC 的命令映射，独立 CLI 会明确拒绝安装；应用内更新应在桌面「设置中心 → 关于」操作。
+
 `RUST_LOG=lovelycarve_lib=debug` 开启后端诊断，日志写标准错误。
 
 ## QCOW 镜像

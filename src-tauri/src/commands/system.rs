@@ -6,3 +6,4 @@ pub mod mount;
     reason = "Keep the existing CLI help group and command leaf name stable"
 )]
 pub mod system;
+pub mod updater;
