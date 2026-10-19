@@ -15,6 +15,7 @@ import {
   type AnalysisResultNode,
   type AnalysisRunAudit,
   type RecordColumn,
+  type RecordPropertyLayout,
 } from '../../../lib/ipc/analysisResults';
 import { buildAnalysisGroups } from '../model/analysisResultView';
 import { analysisCaseDirectory, analysisCompletedRuns } from './analysisContext';
@@ -45,6 +46,7 @@ const dirty = ref(true);
 const selectedNode = shallowRef<AnalysisResultNode | null>(null);
 const records = shallowRef<AnalysisRecord[]>([]);
 const columns = shallowRef<RecordColumn[]>([]);
+const properties = shallowRef<RecordPropertyLayout | null>(null);
 const recordsTotal = ref(0);
 const pageIndex = ref(0);
 const keyword = ref('');
@@ -95,6 +97,7 @@ function clearSelection(): void {
   selectedNode.value = null;
   records.value = [];
   columns.value = [];
+  properties.value = null;
   recordsTotal.value = 0;
   pageIndex.value = 0;
   keyword.value = '';
@@ -193,6 +196,7 @@ async function loadRecords(): Promise<void> {
     if (requestId !== recordsRequestId) return;
     records.value = page.items;
     columns.value = page.columns;
+    properties.value = page.properties ?? null;
     recordsTotal.value = page.total;
   } catch (error) {
     if (requestId !== recordsRequestId) return;
@@ -384,6 +388,7 @@ export function useAnalysisResults() {
     selectedNode,
     records,
     columns,
+    properties,
     recordsTotal,
     pageIndex,
     pageCount,

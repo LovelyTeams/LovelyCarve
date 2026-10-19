@@ -87,6 +87,49 @@ fn page<'a>(run_id: &'a str, sort: Option<&'a str>, keyword: Option<&'a str>) ->
 }
 
 #[test]
+fn property_layout_survives_stored_result_queries() {
+    let directory = tempfile::tempdir().expect("case");
+    begin(directory.path(), "properties", "org.test/properties");
+    let layout = lovelycarve_plugin::PropertyLayout::new("value").label("name");
+    let schema = RecordSchema::new("test.property", "属性")
+        .field(FieldSchema::new("name", "名称", FieldKind::Text).key())
+        .field(FieldSchema::new("value", "值", FieldKind::Text))
+        .properties(layout.clone());
+    let mut writer =
+        RecordWriter::open(directory.path(), "image", "properties", &[schema]).expect("writer");
+    writer
+        .insert_batch(&[WireRecord {
+            record_type: "test.property".to_owned(),
+            values: vec![Value::from("主机名"), Value::from("evidence-host")],
+            title: None,
+            severity: None,
+            sources: Vec::new(),
+        }])
+        .expect("insert");
+    drop(writer);
+    publish(
+        directory.path(),
+        "image",
+        "properties",
+        &completion(&ReadFaultReport::default()),
+    )
+    .expect("publish");
+    let connection = record_query::open(directory.path(), "image")
+        .expect("open")
+        .expect("database");
+    let result = record_query::records_page(
+        &connection,
+        &RecordsQuery {
+            record_type: "test.property",
+            ..page("properties", None, None)
+        },
+    )
+    .expect("page");
+    assert_eq!(result.properties, Some(layout));
+    assert_eq!(result.items[0].values["value"], "evidence-host");
+}
+
+#[test]
 fn staged_records_are_typed_validated_and_published_with_provenance() {
     let directory = tempfile::tempdir().expect("case");
     begin(directory.path(), "run_a", "org.test/users#linux@part:1");

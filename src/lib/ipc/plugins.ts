@@ -1,7 +1,7 @@
 // 插件包 IPC:列出、重启共享实例、安装(.lcpkg)与卸载。分析器不直接调用,
 // 一律经任务调度(`tasks.ts`)运行。
 import { invokeCmd } from './client';
-import type { RecordColumn } from './analysisResults';
+import type { RecordColumn, RecordPropertyLayout } from './analysisResults';
 
 export type PluginPermission = 'file_materialize' | 'network';
 /** 共享实例(文件系统浏览)的状态。 */
@@ -27,6 +27,7 @@ export interface PluginRecordTypeInfo {
   recordType: string;
   label: string;
   fields: RecordColumn[];
+  properties?: RecordPropertyLayout | null;
 }
 
 /** 语言包:语言 → 键 → 译文(键如 `analyzer.users.name`、`record.linux.user`)。 */

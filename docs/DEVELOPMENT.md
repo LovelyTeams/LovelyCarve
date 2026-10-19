@@ -98,7 +98,7 @@ just run-example probe_partitions '"D:\Evidence Files\disk.E01"'
 
 ## 插件与资源
 
-`plugins/` 是 [LovelyCarve-Plugins](https://github.com/LovelyTeams/LovelyCarve-Plugins) 的 Git 子模块，包含 `sdk`、`sdk-derive`、`host`、`linuxinfo` 与 `vehicle`。主仓库固定插件的提交；递归克隆或 `just bootstrap` 会初始化它，已有克隆可运行 `git submodule update --init --recursive`。GitHub 生成的源码压缩包不包含子模块，开发请使用 Git 克隆。
+`plugins/` 是 [LovelyCarve-Plugins](https://github.com/LovelyTeams/LovelyCarve-Plugins) 的 Git 子模块，包含 `sdk`、`sdk-derive`、`host` 与 `linuxinfo`。主仓库固定插件的提交；递归克隆或 `just bootstrap` 会初始化它，已有克隆可运行 `git submodule update --init --recursive`。GitHub 生成的源码压缩包不包含子模块，开发请使用 Git 克隆。
 
 `build-plugins` 按提交的锁文件构建宿主和各插件库，把动态库复制到 `plugin.toml` 旁，并用 `lc-plugin-host --describe` 写出 `schema.json`；`--plugin <目录>` 只构建一个插件库，沿用已构建的加载器。`dev` 使用开发版插件；`build-release` 与 CLI 打包先构建发布版插件。修改插件时先在插件仓库提交并推送，再在主仓库提交子模块指针，不要只提交指针而漏推插件提交。
 

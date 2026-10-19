@@ -77,6 +77,7 @@ pub struct RecordTypeInfo {
     record_type: String,
     label: String,
     fields: Vec<RecordColumn>,
+    properties: Option<crate::core::analysis::results::models::PropertyLayout>,
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
@@ -142,6 +143,7 @@ pub async fn plugin_list(state: State<'_, AppState>) -> Result<PluginListRespons
                             record_type: schema.record_type.clone(),
                             label: schema.label.clone(),
                             fields: record_query::columns(schema),
+                            properties: schema.properties.clone(),
                         })
                         .collect(),
                     locales: definition.locales.as_ref().clone(),

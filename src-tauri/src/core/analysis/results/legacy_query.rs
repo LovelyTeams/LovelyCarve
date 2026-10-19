@@ -177,6 +177,7 @@ pub fn records_page(
     let empty = AnalysisRecordsPage {
         total: 0,
         columns: Vec::new(),
+        properties: None,
         items: Vec::new(),
     };
     let Some(connection) = open(case_dir, query.image_id)? else {
@@ -237,6 +238,7 @@ pub fn records_page(
     Ok(AnalysisRecordsPage {
         total: u64::try_from(total).unwrap_or_default(),
         columns,
+        properties: None,
         items,
     })
 }

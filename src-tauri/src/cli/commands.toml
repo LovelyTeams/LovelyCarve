@@ -1613,7 +1613,7 @@ description = "安装 .lcpkg 插件包；已安装的同 ID 插件被替换，�
 category = "create"
 args = ["archive"]
 examples = [
-    { command = "lovelycarve-cli plugins create ./vehicle-0.2.0.lcpkg", description = "安装汽车取证插件包" },
+    { command = "lovelycarve-cli plugins create ./plugin-0.2.0.lcpkg", description = "安装插件包" },
 ]
 [command.params.archive]
 description = "插件包文件（.lcpkg）的主机路径"

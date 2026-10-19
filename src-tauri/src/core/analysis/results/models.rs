@@ -2,6 +2,7 @@
 //! record schemas stay in the plugin SDK; these models are what the result
 //! tree, the record table and the record detail show.
 
+pub use lovelycarve_plugin::schema::PropertyLayout;
 use serde::{Deserialize, Serialize};
 
 /// A node of the result tree: evidence → category → analyzer run → record
@@ -105,6 +106,7 @@ pub struct AnalysisRecord {
 pub struct AnalysisRecordsPage {
     pub total: u64,
     pub columns: Vec<RecordColumn>,
+    pub properties: Option<PropertyLayout>,
     pub items: Vec<AnalysisRecord>,
 }
 

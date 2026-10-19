@@ -65,7 +65,7 @@
             </div>
             <dl class="plugin-details">
               <dt>{{ tr("标识") }}</dt><dd>{{ item.id }}</dd>
-              <dt>{{ tr("记录类型") }}</dt><dd>{{ item.records.length ? joinList(item.records.map(record => catalog.text(item.id, pluginTextKey.record(record.recordType), record.label)), tr) : tr("暂无") }}</dd>
+              <dt>{{ tr("记录类型") }}</dt><dd>{{ recordTypeLabels(item) }}</dd>
               <dt>{{ tr("权限") }}</dt><dd>{{ item.permissions.length ? joinList(item.permissions.map(permissionLabel), tr) : tr("无需额外权限") }}</dd>
               <dt>{{ tr("内存上限") }}</dt><dd>{{ formatBytes(item.memoryLimit) }}</dd>
               <dt>{{ tr("语言包") }}</dt><dd>{{ Object.keys(item.locales).length ? Object.keys(item.locales).join(' ') : tr("暂无") }}</dd>
@@ -110,6 +110,12 @@ onBeforeUnmount(() => { disposed = true; });
 
 function packageName(item: PluginPackageInfo): string {
   return catalog.text(item.id, pluginTextKey.plugin(), item.name);
+}
+
+function recordTypeLabels(item: PluginPackageInfo): string {
+  return item.records.length
+    ? joinList(item.records.map(record => catalog.text(item.id, pluginTextKey.record(record.recordType), record.label)), tr)
+    : tr("暂无");
 }
 
 async function run(id: string, action: () => Promise<string | null>, failure: string) {

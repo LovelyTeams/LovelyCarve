@@ -16,6 +16,7 @@ const state = vi.hoisted(() => ({
   dismissProgress: vi.fn(),
 }));
 vi.mock('../composables/useAnalysisResults', () => ({ ANALYSIS_PAGE_SIZE: 100, useAnalysisResults: () => state.results }));
+vi.mock('../../tasks/api', () => ({ usePluginCatalog: () => ({ packages: ref([]) }) }));
 vi.mock('../composables/useAnalysisLabels', () => ({
   useAnalysisLabels: () => ({
     nodeLabel: (node: { label: string }) => node.label,
@@ -47,6 +48,7 @@ const record: AnalysisRecord = {
   imageId: 'source-disk', legacy: false,
 };
 beforeEach(() => {
+  localStorage.clear();
   vi.resetAllMocks(); locating.value = false;
   state.pushProgress.mockReturnValue({ update: state.updateProgress, dismiss: state.dismissProgress });
   state.results = {
@@ -54,6 +56,7 @@ beforeEach(() => {
     selectedNode: ref({ kind: 'result', label: '用户', imageId: 'source-disk', pluginId: 'p', artifactType: 'linux.user', legacy: false, children: [] }),
     records: ref([record, { ...record, recordId: 'no-source', sources: [] }]), recordsTotal: ref(2),
     columns: ref([column('username', '用户名'), column('size', '大小', { kind: 'size' }), column('shell', 'Shell', { hidden: true })]),
+    properties: ref(null),
     pageIndex: ref(0), pageCount: ref(1), keyword: ref(''), sort: ref(null), recordsLoading: ref(false), recordsError: ref(null),
     detail: ref(record), detailColumns: ref([column('username', '用户名'), column('shell', 'Shell', { hidden: true })]),
     detailLoading: ref(false), detailError: ref(null), selectedRecordId: ref('1'),
@@ -72,7 +75,7 @@ describe('analysis UI feedback', () => {
     (state.results.columns as ReturnType<typeof ref>).value = [column('long', '长字段')];
     (state.results.records as ReturnType<typeof ref>).value = [{ ...record, values: { long: value } }];
     await nextTick();
-    const cell = host.querySelector<HTMLTableCellElement>('tbody td:nth-child(3)')!;
+    const cell = host.querySelector<HTMLTableCellElement>('tbody td:nth-child(2)')!;
     expect(cell.title).toBe(value);
     expect(cell.textContent?.length).toBe(120);
     for (const button of host.querySelectorAll<HTMLButtonElement>('.pager button')) {
@@ -82,13 +85,67 @@ describe('analysis UI feedback', () => {
 
   it('shows the declared columns by kind and orders by a header', async () => {
     await nextTick();
-    expect([...host.querySelectorAll('thead th')].map(header => header.textContent?.trim())).toEqual(['序号', '名称', '用户名', '大小', '定位']);
-    expect([...host.querySelectorAll('tbody tr:first-child td')].slice(2, 4).map(cell => cell.textContent)).toEqual(['root', '2.0 KB']);
-    host.querySelectorAll<HTMLButtonElement>('thead .sort-header')[1].click();
+    expect([...host.querySelectorAll('thead th')].map(header => header.textContent?.trim())).toEqual(['序号', '用户名', '大小', '源文件']);
+    expect([...host.querySelectorAll('tbody tr:first-child td')].slice(1, 3).map(cell => cell.textContent)).toEqual(['root', '2.0 KB']);
+    host.querySelectorAll<HTMLButtonElement>('thead .sort-header')[0].click();
     expect(state.toggleSort).toHaveBeenCalledWith('username');
     (state.results.sort as ReturnType<typeof ref>).value = { column: 'username', descending: true };
     await nextTick();
-    expect(host.querySelectorAll('thead th')[2].getAttribute('aria-sort')).toBe('descending');
+    expect(host.querySelectorAll('thead th')[1].getAttribute('aria-sort')).toBe('descending');
+    expect(host.querySelector('tbody td:nth-child(3)')?.classList.contains('numeric')).toBe(true);
+  });
+
+  it('shows system information once using its declared fields', async () => {
+    (state.results.columns as ReturnType<typeof ref>).value = [column('name', '名称'), column('key', '英文名称'), column('value', '值')];
+    (state.results.records as ReturnType<typeof ref>).value = [{ ...record, title: '主机名', values: { name: '主机名', key: 'hostname', value: 'neko-virtual-machine' } }];
+    await nextTick();
+    expect([...host.querySelectorAll('thead th')].map(header => header.textContent?.trim())).toEqual(['序号', '名称', '英文名称', '值', '源文件']);
+    expect([...host.querySelectorAll('tbody td')].map(cell => cell.textContent?.trim())).toEqual(['1', '主机名', 'hostname', 'neko-virtual-machine', 'etc/passwd+1']);
+    expect(host.querySelectorAll('col')).toHaveLength(5);
+    expect(host.querySelector<HTMLTableElement>('table')?.style.minWidth).toBe('844px');
+    host.querySelector<HTMLButtonElement>('thead .sort-header')!.click();
+    expect(state.toggleSort).toHaveBeenCalledWith('name');
+  });
+
+  it.each([{ columns: [] }, { columns: [column('extra', '附加信息', { hidden: true })] }])('keeps a sortable title fallback when no fields are visible (%j)', async ({ columns }) => {
+    (state.results.columns as ReturnType<typeof ref>).value = columns;
+    await nextTick();
+    expect([...host.querySelectorAll('thead th')].map(header => header.textContent?.trim())).toEqual(['序号', '名称', '源文件']);
+    expect(host.querySelector('tbody td:nth-child(2)')?.textContent).toBe('用户 root');
+    host.querySelector<HTMLButtonElement>('thead .sort-header')!.click();
+    expect(state.toggleSort).toHaveBeenCalledWith('title');
+  });
+
+  it('preserves severity beside the first field and in the title fallback', async () => {
+    (state.results.records as ReturnType<typeof ref>).value = [{ ...record, severity: 'high' }];
+    await nextTick();
+    expect(host.querySelector('tbody td:nth-child(2) .ui-badge')).not.toBeNull();
+    expect(host.querySelector('tbody td:nth-child(2) .title-text')?.textContent).toBe('root');
+    (state.results.columns as ReturnType<typeof ref>).value = [];
+    await nextTick();
+    expect(host.querySelector('tbody td:nth-child(2) .ui-badge')).not.toBeNull();
+    expect(host.querySelector('tbody td:nth-child(2) .title-text')?.textContent).toBe('用户 root');
+  });
+
+  it('reads plugin properties vertically, keeps duplicate labels distinct, and can switch to a table', async () => {
+    (state.results.columns as ReturnType<typeof ref>).value = [column('name', '名称'), column('key', '英文名称'), column('value', '值')];
+    (state.results.properties as ReturnType<typeof ref>).value = { label: 'name', secondary: 'key', value: 'value' };
+    (state.results.records as ReturnType<typeof ref>).value = [
+      { ...record, title: '内核版本', values: { name: '内核版本', key: 'Kernel', value: '6.8.0-138-generic' } },
+      { ...record, recordId: '2', title: '内核版本', values: { name: '内核版本', key: 'Kernel', value: '6.8.0-40-generic' } },
+    ];
+    await nextTick();
+    expect(host.querySelector('table')).toBeNull();
+    expect(host.querySelectorAll('.property-row')).toHaveLength(2);
+    expect([...host.querySelectorAll('.property-value')].map(value => value.textContent)).toEqual(['6.8.0-138-generic', '6.8.0-40-generic']);
+    host.querySelector<HTMLButtonElement>('.property-label')!.click();
+    expect(openRecord).toHaveBeenCalledWith('1');
+    host.querySelector<HTMLButtonElement>('.property-row .source-link')!.click();
+    expect(openFile).toHaveBeenCalledWith({ imageId: 'source-disk', rootId: 'part:1', path: 'etc/passwd' });
+    host.querySelectorAll<HTMLButtonElement>('.reading-mode button')[1].click();
+    await nextTick();
+    expect(host.querySelector('table')).not.toBeNull();
+    expect(JSON.parse(localStorage.getItem('lovelycarve-analysis-presentation')!)).toEqual({ 'p::linux.user': 'table' });
   });
 
   it('announces record loading and errors in their original location', async () => {
@@ -154,7 +211,23 @@ describe('analysis source actions', () => {
     button.click();
     expect(openFile).toHaveBeenCalledWith({ imageId: 'source-disk', rootId: 'part:1', path: 'etc/passwd' });
     expect(openRecord).not.toHaveBeenCalled();
-    expect(host.querySelectorAll<HTMLButtonElement>('tbody .ui-btn')[1].disabled).toBe(true);
+    expect(host.querySelectorAll<HTMLButtonElement>('tbody .table-source')[1].disabled).toBe(true);
+  });
+  it('opens all provenance from the source count instead of locating only the first file', async () => {
+    await nextTick();
+    host.querySelector<HTMLButtonElement>('tbody .source-more')!.click();
+    expect(openRecord).toHaveBeenCalledWith('1');
+    expect(openFile).not.toHaveBeenCalled();
+  });
+  it('returns focus to the originating record control when details close', async () => {
+    host.querySelectorAll<HTMLButtonElement>('.reading-mode button')[0].click();
+    await nextTick();
+    const origin = host.querySelector<HTMLButtonElement>('.record-sheet .property-label')!;
+    origin.focus(); origin.click();
+    const close = host.querySelector<HTMLButtonElement>('[aria-label="关闭详情"]')!;
+    close.focus(); close.click();
+    await nextTick();
+    expect(document.activeElement).toBe(origin);
   });
   it('offers each source separately in details, with its note', async () => {
     await nextTick();

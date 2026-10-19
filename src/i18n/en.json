@@ -2257,5 +2257,16 @@
   "只列出整个检材的分析": "Only whole-evidence analyses are listed",
   "重新分析成功后，新结果会替换之前的结果，是否继续？": "When the new analysis succeeds, its results replace the earlier ones. Continue?",
   "重新识别系统": "Detect systems again",
-  "重置失败": "Reset failed"
+  "重置失败": "Reset failed",
+  "结果展示方式": "Result presentation",
+  "纵向阅读属性和值": "Read properties and values vertically",
+  "横向对比多条记录": "Compare records across columns",
+  "属性视图": "Properties",
+  "表格视图": "Table",
+  "查看记录详情": "View record details",
+  "无来源": "No source",
+  "完成于（本地）": "Completed (local)",
+  "查看全部来源（{0}）": "View all sources ({0})",
+  "条记录": "records",
+  "条匹配记录": "matching records"
 }

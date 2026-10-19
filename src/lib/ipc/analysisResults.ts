@@ -96,9 +96,17 @@ export interface AnalysisRecord {
   legacy: boolean;
 }
 
+/** Plugin-declared roles for one property per record; ids refer to visible columns. */
+export interface RecordPropertyLayout {
+  value: string;
+  label?: string | null;
+  secondary?: string | null;
+}
+
 export interface AnalysisRecordsPage {
   total: number;
   columns: RecordColumn[];
+  properties?: RecordPropertyLayout | null;
   items: AnalysisRecord[];
 }
 

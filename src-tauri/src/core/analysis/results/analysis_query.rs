@@ -208,6 +208,7 @@ pub fn records_page(
         return Ok(AnalysisRecordsPage {
             total: 0,
             columns: Vec::new(),
+            properties: None,
             items: Vec::new(),
         });
     };
@@ -226,6 +227,7 @@ pub fn records_page(
     Ok(AnalysisRecordsPage {
         total: page.total,
         columns: page.columns,
+        properties: page.properties,
         items: page
             .items
             .into_iter()

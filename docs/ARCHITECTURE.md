@@ -59,7 +59,7 @@ src/
 - 新增前后端交互时，同步更新 Rust command、`src-tauri/src/lib.rs` 注册、`src/lib/ipc/*` 类型封装和调用方。
 - UI 文案中文优先；样式使用 `src/styles/themes.css` 的 token。控件统一用 `src/styles/ui.css` 的 `ui-*` 基元（`ui-btn`、`ui-input`、`ui-badge`、`ui-modal-*` 等），组件 scoped 样式只写布局和组件特有的视觉；基元均为单类选择器、状态与修饰写在 `:where()` 中，scoped 规则可直接覆盖。结构化文件视图（PE / ELF / Mach-O / ar / GGUF）共用 `report-viewer.css`，SQLite / Realm 数据库视图共用 `db-browser.css`，均通过 `<style scoped src>` 引用。
 - 前端规范（设计原则、token 与对比度、字号与间距、基元目录、交互状态与反馈、表格、弹窗与层级、图标、动效、文案、可访问性与自查清单）见 [FRONTEND.md](FRONTEND.md)。
-- 原生数据表格统一添加 `data-table` 类，并通过 `<style scoped src="../../../styles/data-table.css">` 引用文件列表基准样式（路径按实际层级调整；12px 字号、36px 常规行、吸顶表头、统一悬停/选中态）。行内 `ui-btn link` 操作（定位、恢复、详情）平时为次要色，悬停、选中或聚焦该行时才显示主题色。列宽、排序和取证状态留在各组件；数据库字段类型和键值字节预览允许按内容增高。分析结果采用固定列布局（序号 64px、名称 240px、动态字段 200px），多字段时横向滚动，不随记录长度或详情开合挤压列宽。文件列表、搜索与时间线的虚拟列表行高需与公共样式同步，操作按钮限制在 24px，占位行不加边框和内边距。
+- 原生数据表格统一添加 `data-table` 类，并通过 `<style scoped src="../../../styles/data-table.css">` 引用文件列表基准样式（路径按实际层级调整；12px 字号、36px 常规行、吸顶表头、统一悬停/选中态）。行内 `ui-btn link` 操作（定位、恢复、详情）平时为次要色，悬停、选中或聚焦该行时才显示主题色。列宽、排序和取证状态留在各组件；数据库字段类型和键值字节预览允许按内容增高。分析结果的阅读布局由插件结构声明：`properties` 使用纵向属性列表，其余默认表格；用户可按记录类型切换并保存偏好。表格只显示插件可见字段，无字段时才补名称列；序号 64px、名称回退 240px、动态字段 200px、来源 180px，多字段时横向滚动，不随记录长度或详情开合挤压列宽。属性视图保留同名多条记录与完整值，详情始终包含全部字段与来源。文件列表、搜索与时间线的虚拟列表行高需与公共样式同步，操作按钮限制在 24px，占位行不加边框和内边距。
 - 文件列表面板的内部 id 是 `files`。
 - 「rich」原类型视图（`features/preview/components/RichPreviewViewer.vue`）用 `@file-viewer/vue3-full`（Flyfish File
   Viewer，当前 3.1.2），按 `name` prop 的扩展名懒加载渲染器；worker / WASM / 字体等重资产由

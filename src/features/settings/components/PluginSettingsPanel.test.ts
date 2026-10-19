@@ -64,7 +64,7 @@ describe('plugin package settings', () => {
     button('重置').click(); await settle();
     expect(button('安装插件包…').disabled).toBe(true);
     finish(); await settle();
-    expect(host.querySelector('[role="status"]')?.textContent).toContain('下次使用时启动');
+    await vi.waitFor(() => expect(host.querySelector('[role="status"]')?.textContent).toContain('下次使用时启动'));
     ipc.restart.mockRejectedValueOnce(new Error('插件仍在执行'));
     button('重置').click(); await settle();
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('插件仍在执行');

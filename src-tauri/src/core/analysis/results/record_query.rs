@@ -202,6 +202,7 @@ pub struct RecordsQuery<'a> {
 pub struct RecordsPage {
     pub total: u64,
     pub columns: Vec<RecordColumn>,
+    pub properties: Option<lovelycarve_plugin::schema::PropertyLayout>,
     pub items: Vec<StoredRecord>,
 }
 
@@ -222,6 +223,7 @@ pub fn records_page(
         return Ok(RecordsPage {
             total: 0,
             columns: Vec::new(),
+            properties: None,
             items: Vec::new(),
         });
     };
@@ -286,6 +288,7 @@ pub fn records_page(
     Ok(RecordsPage {
         total: count(total),
         columns: columns(&schema),
+        properties: schema.properties.clone(),
         items,
     })
 }

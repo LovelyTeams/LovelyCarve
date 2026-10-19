@@ -129,6 +129,15 @@ priority = 100
 
 ### schema.json 与结构哈希
 
+记录结构可选 `properties` 指定纵向属性展示：`value` 是主值字段 id，`label`（可选）是属性名字段 id，
+`secondary`（可选）是属性名下方的辅助字段 id；没有 `label` 时使用主值字段的标签。所有可见字段
+必须且只能分配一个角色，不能引用隐藏字段。省略 `properties` 时默认横向表格；旧结构的序列化与哈希不变。
+Rust SDK 使用 `schema.properties(PropertyLayout::new("value").label("name").secondary("key"))`；
+单字段时区可以写成 `schema.properties(PropertyLayout::new("timezone"))`。
+
+展示声明随结构保存到结果库，插件卸载后仍可用。已安装插件的新展示声明只在旧结果的可见字段 id 与类型
+完全兼容时用于阅读，不重写已有记录。用户可以切换阅读方式；切换不会改变排序、检索、分页或导出内容。
+
 库在 `plugin.hello` 中报告自己实现的分析器、文件系统和记录结构，以及结构哈希 `schema_hash`（`fnv1a64:` 前缀）。插件构建（`just build-plugins`）运行 `lc-plugin-host --describe --library <库>`，把这份信息写成包内的 `schema.json`：界面在首次运行前就能显示记录类型与列，每次握手也用它核对库——库的分析器与清单不符、结构与 `schema.json` 不一致或哈希不匹配时，启动失败并提示重新构建插件包。
 
 ## 语言包
@@ -352,7 +361,7 @@ export_plugin!(plugin);
 
 ## 工作区插件
 
-`plugins/` 是独立的 Cargo 工作区（Git 子模块）：`sdk`、`sdk-derive`、`host`（`lc-plugin-host`）、`linuxinfo`（随安装包附带的 Linux 系统分析，见 [LINUXINFO.md](LINUXINFO.md)）与 `vehicle`（汽车取证，以 `.lcpkg` 安装）。
+`plugins/` 是独立的 Cargo 工作区（Git 子模块）：`sdk`、`sdk-derive`、`host`（`lc-plugin-host`）与 `linuxinfo`（随安装包附带的 Linux 系统分析，见 [LINUXINFO.md](LINUXINFO.md)）。
 
 - `just build-plugins [--release]`：构建工作区，把各插件库复制到其 `plugin.toml` 旁，并写出 `schema.json`；`--plugin <目录>` 只构建一个插件库（沿用已构建的加载器）。
 - `just pack-plugins`：为每个工作区插件生成可安装的 `.lcpkg`（含说明、许可证、构建信息与 SHA-256 校验），输出到 `dist-pack/`。

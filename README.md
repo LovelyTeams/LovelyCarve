@@ -105,7 +105,7 @@ Get-Content .\workflow.jsonl | lovelycarve-cli session --events
 
 ## 插件
 
-插件是导出 `lovelycarve_plugin_v1` C ABI 的动态库，连同清单、记录结构与语言包打成插件包。插件通过 LPP v2（LovelyCarve Plugin Protocol）经只读视图访问检材，按声明的记录结构输出带类型的记录，由宿主保存、投影时间线并保留来源。SDK、隔离宿主 `lc-plugin-host`、内置的 `linuxinfo` 与汽车取证插件由子模块 [LovelyCarve-Plugins](https://github.com/LovelyTeams/LovelyCarve-Plugins) 维护。已发现的插件被视为可信代码，进程隔离用于故障隔离，不是权限沙箱。
+插件是导出 `lovelycarve_plugin_v1` C ABI 的动态库，连同清单、记录结构与语言包打成插件包。插件通过 LPP v2（LovelyCarve Plugin Protocol）经只读视图访问检材，按声明的记录结构输出带类型的记录，由宿主保存、投影时间线并保留来源。SDK、隔离宿主 `lc-plugin-host` 与内置的 `linuxinfo` 由子模块 [LovelyCarve-Plugins](https://github.com/LovelyTeams/LovelyCarve-Plugins) 维护。已发现的插件被视为可信代码，进程隔离用于故障隔离，不是权限沙箱。
 
 协议与开发说明见 [插件协议](docs/PLUGIN_PROTOCOL.md) 和 [Linux 基本信息插件](docs/LINUXINFO.md)。
 

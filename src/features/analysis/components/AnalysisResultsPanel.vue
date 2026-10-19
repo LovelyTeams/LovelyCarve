@@ -1,14 +1,19 @@
 <template>
   <section class="analysis-results" :aria-label="tr('分析结果')">
     <p class="sr-only" role="status">{{ statusText }}</p>
-    <!-- 页面不设标题栏：选中记录类型后顶部只有检索与导出，结果路径与计数放在底部状态栏。 -->
+    <!-- 搜索、阅读方式与导出共用一条工具栏，完整路径与完成时间留在页脚。 -->
     <div v-if="selectedNode" class="ui-toolbar results-toolbar">
+      <span v-if="selectedNode.kind === 'result'" class="result-scope" :title="nodeLabel(selectedNode)"><span>{{ nodeLabel(selectedNode) }}</span><small class="ui-count">{{ recordsTotal.toLocaleString() }}</small></span>
       <form v-if="selectedNode.kind === 'result'" class="ui-search record-search" :class="{ applied: keyword }" @submit.prevent="applyKeyword(keywordInput)">
         <Search :size="14" />
         <input v-model="keywordInput" :aria-label="tr('搜索当前结果')" :placeholder="tr('搜索当前结果，回车确认…')" />
         <button v-if="keywordInput || keyword" class="ui-icon-btn sm" type="button" :aria-label="tr('清除搜索')" :title="tr('清除搜索')" @click="keywordInput = ''; applyKeyword('')"><X :size="13" /></button>
       </form>
       <span v-else class="toolbar-title"><ClipboardList :size="14" />{{ tr("运行信息") }}</span>
+      <div v-if="selectedNode.kind === 'result'" class="ui-seg reading-mode" role="group" :aria-label="tr('结果展示方式')">
+        <button class="ui-seg-item" type="button" :aria-pressed="presentation === 'properties'" :title="tr('纵向阅读属性和值')" @click="setPresentation('properties')"><List :size="13" aria-hidden="true" />{{ tr("属性视图") }}</button>
+        <button class="ui-seg-item" type="button" :aria-pressed="presentation === 'table'" :title="tr('横向对比多条记录')" @click="setPresentation('table')"><Table2 :size="13" aria-hidden="true" />{{ tr("表格视图") }}</button>
+      </div>
       <div class="ui-toolbar-actions">
         <template v-if="selectedNode.kind === 'result'">
           <button v-if="runNode && !runNode.legacy" class="ui-btn ghost" @click="selectNode(runNode)"><ClipboardList :size="14" />{{ tr("运行信息") }}</button>
@@ -37,31 +42,32 @@
           <div v-if="recordsLoading" class="ui-empty state-box" role="status"><span class="ui-empty-icon accent"><Loader2 :size="22" class="spin" /></span><p class="ui-empty-desc">{{ tr("正在读取记录…") }}</p></div>
           <div v-else-if="recordsError" class="ui-empty state-box error" role="alert"><span class="ui-empty-icon"><CircleAlert :size="22" /></span><p class="ui-empty-desc">{{ tr("记录读取失败：{0}", { 0: recordsError }) }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="retryRecords">{{ tr("重试") }}</button></div></div>
           <div v-else-if="records.length === 0" class="ui-empty state-box" role="status"><span class="ui-empty-icon"><Inbox :size="24" /></span><p class="ui-empty-desc">{{ keyword ? tr("没有匹配的记录") : tr("此结果项暂无记录") }}</p><div v-if="keyword" class="ui-empty-actions"><button class="ui-btn" @click="keywordInput = ''; applyKeyword('')">{{ tr("清除搜索") }}</button></div></div>
-          <table v-else class="data-table records-table" :style="{ minWidth: `${424 + tableColumns.length * 200}px` }" :aria-label="nodeLabel(selectedNode)">
+          <AnalysisPropertyList v-else-if="presentation === 'properties'" :node="selectedNode" :records="records" :columns="columns" :properties="propertyLayout" :selected-record-id="selectedRecordId" :locating="locating" @open-record="openRecord" @open-file="target => emit('openFile', target)" />
+          <table v-else class="data-table records-table" :style="{ minWidth: `${244 + (showTitleColumn ? 240 : 0) + tableColumns.length * 200}px` }" :aria-label="nodeLabel(selectedNode)">
             <colgroup>
               <col class="col-index" />
-              <col class="col-name" />
+              <col v-if="showTitleColumn" class="col-name" />
               <col v-for="column in tableColumns" :key="column.id" class="col-field" />
               <col class="col-locate" />
             </colgroup>
             <thead><tr>
               <th class="row-number">{{ tr("序号") }}</th>
-              <th :aria-sort="ariaSort('title')"><button class="sort-header" type="button" :title="tr('按名称排序')" @click="toggleSort('title')"><span>{{ tr("名称") }}</span><component :is="sortIcon('title')" :size="12" aria-hidden="true" /></button></th>
-              <th v-for="column in tableColumns" :key="column.id" :aria-sort="ariaSort(column.id)"><button class="sort-header" type="button" :title="`${columnLabel(selectedNode, column)} · ${column.id}`" @click="toggleSort(column.id)"><span>{{ columnLabel(selectedNode, column) }}</span><component :is="sortIcon(column.id)" :size="12" aria-hidden="true" /></button></th>
-              <th>{{ tr("定位") }}</th>
+              <th v-if="showTitleColumn" :aria-sort="ariaSort('title')"><button class="sort-header" type="button" :title="tr('按名称排序')" @click="toggleSort('title')"><span>{{ tr("名称") }}</span><component :is="sortIcon('title')" :size="12" aria-hidden="true" /></button></th>
+              <th v-for="column in tableColumns" :key="column.id" :class="{ numeric: NUMERIC_KINDS.has(column.kind) }" :aria-sort="ariaSort(column.id)"><button class="sort-header" type="button" :title="`${columnLabel(selectedNode, column)} · ${column.id}`" @click="toggleSort(column.id)"><span>{{ columnLabel(selectedNode, column) }}</span><component :is="sortIcon(column.id)" :size="12" aria-hidden="true" /></button></th>
+              <th>{{ tr("源文件") }}</th>
             </tr></thead>
             <tbody><tr v-for="(record, index) in records" :key="record.recordId" :class="{ active: selectedRecordId === record.recordId }" :aria-selected="selectedRecordId === record.recordId" tabindex="0" @click="openRecord(record.recordId)" @keydown.enter.prevent="openRecord(record.recordId)">
               <td class="row-number mono">{{ pageIndex * ANALYSIS_PAGE_SIZE + index + 1 }}</td>
-              <td :title="record.title"><span class="title-cell"><span v-if="record.severity" class="ui-badge sm" :class="severityTone(record.severity)">{{ severityLabel(record.severity, tr) }}</span><span class="title-text">{{ record.title }}</span></span></td>
-              <td v-for="column in tableColumns" :key="column.id" :class="{ mono: MONO_KINDS.has(column.kind) }" :title="cellText(record, column, Infinity)">{{ cellText(record, column) }}</td>
-              <td><button class="ui-btn link sm" :disabled="locating || !sources(record).length" :title="sources(record)[0]?.label || tr('此记录未提供源文件位置')" @click.stop="locateRecord(record)" @keydown.enter.stop><LocateFixed :size="13" />{{ tr("定位源文件") }}</button></td>
+              <td v-if="showTitleColumn" :title="record.title"><span class="title-cell"><span v-if="record.severity" class="ui-badge sm" :class="severityTone(record.severity)">{{ severityLabel(record.severity, tr) }}</span><span class="title-text">{{ record.title }}</span></span></td>
+              <td v-for="(column, columnIndex) in tableColumns" :key="column.id" :class="{ mono: MONO_KINDS.has(column.kind), numeric: NUMERIC_KINDS.has(column.kind) }" :title="cellText(record, column, Infinity)"><span v-if="columnIndex === 0 && record.severity" class="title-cell"><span class="ui-badge sm" :class="severityTone(record.severity)">{{ severityLabel(record.severity, tr) }}</span><span class="title-text">{{ cellText(record, column) }}</span></span><template v-else>{{ cellText(record, column) }}</template></td>
+              <td><span class="table-sources"><button class="ui-btn link sm table-source" :aria-label="tr('定位源文件')" :disabled="locating || !sources(record).length" :title="sources(record)[0] ? `${tr('定位源文件')} · ${sources(record)[0]?.label}` : tr('此记录未提供源文件位置')" @click.stop="locateRecord(record)" @keydown.enter.stop><LocateFixed :size="13" aria-hidden="true" /><span class="mono">{{ sources(record)[0]?.label || tr('无来源') }}</span></button><button v-if="sources(record).length > 1" class="ui-btn ghost sm source-more mono" type="button" :title="tr('查看全部来源（{0}）', { 0: sources(record).length })" :aria-label="tr('查看全部来源（{0}）', { 0: sources(record).length })" @click.stop="openRecord(record.recordId)" @keydown.enter.stop>+{{ (sources(record).length - 1).toLocaleString() }}</button></span></td>
             </tr></tbody>
           </table>
         </div>
         <footer class="ui-footbar table-footer">
           <span class="footer-crumb" :title="crumbLabel"><Table2 :size="12" /><span>{{ crumbLabel }}</span></span>
-          <span class="ui-footbar-stat"><strong :key="recordsTotal" class="ui-bump">{{ recordsTotal.toLocaleString() }}</strong> {{ tr("条") }}{{ keyword ? tr("匹配记录") : tr("记录") }}</span>
-          <span v-if="completedLabel" class="ui-footbar-stat footer-completed">{{ tr("完成于") }} <strong>{{ completedLabel }}</strong></span>
+          <span class="ui-footbar-stat"><strong :key="recordsTotal" class="ui-bump">{{ recordsTotal.toLocaleString() }}</strong> {{ keyword ? tr("条匹配记录") : tr("条记录") }}</span>
+          <span v-if="completedLabel" class="ui-footbar-stat footer-completed">{{ tr("完成于（本地）") }} <strong>{{ completedLabel }}</strong></span>
           <span class="ui-footbar-spacer"></span>
           <div class="pager"><button class="ui-icon-btn sm" :disabled="pageIndex === 0 || recordsLoading" :aria-label="tr('上一页')" :title="tr('上一页')" @click="goToPage(pageIndex - 1)"><ChevronLeft :size="16" /></button><span class="mono">{{ pageIndex + 1 }} / {{ pageCount }}</span><button class="ui-icon-btn sm" :disabled="pageIndex >= pageCount - 1 || recordsLoading" :aria-label="tr('下一页')" :title="tr('下一页')" @click="goToPage(pageIndex + 1)"><ChevronRight :size="16" /></button></div>
         </footer>
@@ -109,10 +115,12 @@ import FileDetailLayout from '../../../components/layout/FileDetailLayout.vue';
 import FileDetailSection from '../../../components/layout/FileDetailSection.vue';
 import FileDetailFields, { type FileDetailField } from '../../../components/layout/FileDetailFields.vue';
 import AnalysisRunAuditView from './AnalysisRunAuditView.vue';
-import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue';
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, CircleAlert, ClipboardList, DatabaseZap, Download, Inbox, Loader2, LocateFixed, RefreshCw, Search, Table2, X } from 'lucide-vue-next';
+import AnalysisPropertyList from './AnalysisPropertyList.vue';
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue';
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, CircleAlert, ClipboardList, DatabaseZap, Download, Inbox, List, Loader2, LocateFixed, RefreshCw, Search, Table2, X } from 'lucide-vue-next';
 import { ANALYSIS_PAGE_SIZE, useAnalysisResults } from '../composables/useAnalysisResults';
 import { useAnalysisLabels } from '../composables/useAnalysisLabels';
+import { useAnalysisPresentation } from '../composables/useAnalysisPresentation';
 import { saveTextWithDialog } from '../../../composables/export';
 import { notifyError, notifyInfo, pushPersistentToast } from '../../../composables/useToast';
 import { recordsToCsv, sanitizeExportFilename } from '../../../utils/exportFormat';
@@ -127,16 +135,29 @@ function locateRecord(record: AnalysisRecord) {
   const source = sources(record)[0];
   if (source && !props.locating) emit('openFile', source.target);
 }
-const { tree, treeLoading, treeError, dirty, selectedNode, records, columns, recordsTotal,
+const { tree, treeLoading, treeError, dirty, selectedNode, records, columns, properties, recordsTotal,
   pageIndex, pageCount, keyword, sort, recordsLoading, recordsError, detail, detailColumns, detailLoading,
-  detailError, selectedRecordId, audit, auditLoading, auditError, closeDetail, retryRecords, retryAudit,
-  setImageId, ensureFresh, selectNode, goToPage, applyKeyword, toggleSort, openRecord, exportRecords, reload } = useAnalysisResults();
+  detailError, selectedRecordId, audit, auditLoading, auditError, closeDetail: clearDetail, retryRecords, retryAudit,
+  setImageId, ensureFresh, selectNode, goToPage, applyKeyword, toggleSort, openRecord: loadRecord, exportRecords, reload } = useAnalysisResults();
 const { nodeLabel, columnLabel, choiceLabel } = useAnalysisLabels();
+const { propertyLayout, presentation, setPresentation } = useAnalysisPresentation(selectedNode, columns, properties);
+let detailReturnFocus: HTMLElement | null = null;
+function openRecord(recordId: string) {
+  const focused = document.activeElement;
+  if (focused instanceof HTMLElement && !focused.closest('.detail-dock')) detailReturnFocus = focused;
+  return loadRecord(recordId);
+}
+function closeDetail() {
+  const target = detailReturnFocus;
+  detailReturnFocus = null;
+  clearDetail();
+  void nextTick(() => { if (target?.isConnected) target.focus(); });
+}
 const panelActive = ref(false);
 function activatePanel() { panelActive.value = true; setImageId(props.imageId); ensureFresh(); }
 onMounted(activatePanel);
 onActivated(activatePanel);
-onDeactivated(() => { panelActive.value = false; });
+onDeactivated(() => { panelActive.value = false; detailReturnFocus = null; });
 watch(() => props.imageId, () => { if (panelActive.value) activatePanel(); });
 watch(dirty, value => { if (value && panelActive.value && !treeLoading.value) reload(); });
 const keywordInput = ref(keyword.value);
@@ -152,8 +173,11 @@ onBeforeUnmount(() => exportController?.abort());
 watch(keyword, value => { keywordInput.value = value; });
 
 /** Values set in the monospace face: offsets, hashes, addresses, paths and counts. */
-const MONO_KINDS = new Set<RecordFieldKind>(['int', 'float', 'size', 'hash', 'ip', 'path', 'timestamp']);
+const MONO_KINDS = new Set<RecordFieldKind>(['int', 'float', 'size', 'duration', 'hash', 'ip', 'path', 'timestamp']);
+const NUMERIC_KINDS = new Set<RecordFieldKind>(['int', 'float', 'size', 'duration']);
 const tableColumns = computed(() => columns.value.filter(column => !column.hidden));
+// Schema fields already describe the record; keep a title fallback for results without visible fields.
+const showTitleColumn = computed(() => tableColumns.value.length === 0);
 
 /** The run the selected record type belongs to (its audit). */
 const runNode = computed(() => {
@@ -317,6 +341,11 @@ async function exportCsv(): Promise<void> {
 
 <style scoped>
 .analysis-results { height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--surface-secondary); color: var(--text-primary); container: analysis-results / inline-size; }
+.result-scope { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 200px; font-size: 13px; font-weight: 600; }
+.result-scope > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.result-scope > small { flex-shrink: 0; }
+.reading-mode { flex-shrink: 0; }
+.reading-mode button { gap: 6px; }
 .record-search { flex: 0 1 320px; min-width: 180px; padding-right: 4px; }
 .record-search.applied { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--border-color)); background: color-mix(in srgb, var(--primary-color) 5%, var(--surface-secondary)); }
 .record-search.applied > svg { color: var(--primary-color); opacity: 1; }
@@ -326,8 +355,11 @@ async function exportCsv(): Promise<void> {
 .col-index { width: 64px; }
 .col-name { width: 240px; }
 .col-field { width: 200px; }
-.col-locate { width: 120px; }
+.col-locate { width: 180px; }
 .records-table th:last-child, .records-table td:last-child { position: sticky; right: 0; background: var(--surface-secondary); }
+.records-table th:last-child { z-index: 3; background: color-mix(in srgb, var(--surface-tertiary) 60%, var(--surface-secondary)); }
+.records-table .numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.records-table .numeric .sort-header, .records-table .numeric .title-cell { justify-content: flex-end; }
 /* 吸附的末列画在行描边之上：选中行由它补齐上、右、下三段描边（下边借底边框，与行描边同一像素行），
    选中浅底下再垫一层不透明底色，横向滚动时下面的列不会透出来。 */
 .records-table tr.active td:last-child {
@@ -356,9 +388,14 @@ th[aria-sort='ascending'] .sort-header > svg, th[aria-sort='descending'] .sort-h
 .records-table .row-number { text-align: right; font-variant-numeric: tabular-nums; }
 .records-table td.row-number { color: var(--text-secondary); font-size: 12px; }
 .records-table .ui-btn.link { --ui-btn-h: 24px; padding: 0; }
+.table-source { max-width: 100%; min-width: 0; }
+.table-sources { display: flex; align-items: center; min-width: 0; }
+.table-source { flex-shrink: 1; }
+.table-source > span { overflow: hidden; text-overflow: ellipsis; }
+.source-more { --ui-btn-h: 24px; padding: 0 4px; font-size: 11px; }
 
 .results-body { container: detail-host / inline-size; position: relative; display: flex; flex: 1; min-height: 0; }
-.result-table { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.result-table { flex: 1; min-width: 0; display: flex; flex-direction: column; container: analysis-records / inline-size; }
 .table-scroll { flex: 1; min-height: 0; overflow: auto; }
 .state-box { flex: 1; min-height: 180px; overflow-wrap: anywhere; }
 .state-box.error { color: var(--sev-critical-fg); }
@@ -368,10 +405,13 @@ th[aria-sort='ascending'] .sort-header > svg, th[aria-sort='descending'] .sort-h
 .footer-crumb { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 55%; overflow: hidden; color: var(--text-primary); font-weight: 500; white-space: nowrap; }
 .footer-crumb > svg { flex-shrink: 0; color: var(--primary-color); }
 .footer-crumb > span { overflow: hidden; text-overflow: ellipsis; }
-.pager { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.pager { display: flex; align-items: center; gap: 6px; margin-left: auto; white-space: nowrap; }
 .pager .mono { min-width: 48px; color: var(--text-primary); text-align: center; }
 
 @container analysis-results (max-width: 760px) {
   .footer-completed { display: none; }
+  .result-scope { max-width: 140px; }
+  .record-search { flex: 1; }
+  .results-toolbar .ui-toolbar-actions { width: 100%; }
 }
 </style>

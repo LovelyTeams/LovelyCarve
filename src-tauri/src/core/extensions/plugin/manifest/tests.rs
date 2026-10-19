@@ -27,14 +27,6 @@ fn repository_packages_stay_valid() {
     assert_eq!(base.options[0].kind, OptionKind::Multi);
     assert_eq!(base.options[0].default_json(), serde_json::json!([]));
     assert_eq!(linuxinfo.memory_limit().expect("memory"), 1 << 30);
-
-    let vehicle = PluginManifest::load(&plugins.join("vehicle").join("plugin.toml"))
-        .expect("vehicle manifest");
-    assert_eq!(vehicle.analyzers.len(), 4);
-    assert!(vehicle
-        .analyzers
-        .iter()
-        .all(|analyzer| analyzer.scope == AnalyzerScope::Evidence && !analyzer.inputs.is_empty()));
 }
 
 #[test]
