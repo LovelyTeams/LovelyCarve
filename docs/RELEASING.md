@@ -37,7 +37,7 @@ CHANGELOG 只使用实际有内容的英文分类（`Added`、`Changed`、`Depre
 
 ## 标签与发行产物
 
-把 `v<版本号>` 标签推送到对应的源码提交后，`Windows release` 工作流会先运行与 PR 相同的前端、Rust/CLI 和插件检查，再执行 `just build-release --bundles msi`、`just pack-cli`、`just smoke-cli` 与 `just pack-plugins`，上传 Windows x64 MSI、CLI ZIP、插件 `.lcpkg` 和 `SHA256SUMS.txt`，自动创建 GitHub Release。例如，应用版本同步为 `1.2.1` 并提交后：
+把 `v<版本号>` 标签推送到对应的源码提交后，`Windows release` 工作流会先运行与 PR 相同的前端、Rust 和插件测试，再执行 `just build-release --bundles msi`、`just pack-cli`、`just smoke-cli` 与 `just pack-plugins`，上传 Windows x64 MSI、CLI ZIP、插件 `.lcpkg` 和 `SHA256SUMS.txt`，自动创建 GitHub Release。例如，应用版本同步为 `1.2.1` 并提交后：
 
 ```powershell
 git tag v1.2.1

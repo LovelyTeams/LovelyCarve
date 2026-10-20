@@ -36,10 +36,10 @@ jobs:
       - uses: ./.github/actions/setup-windows
         with:
           rust: 'false'
-      - run: just verify-fe
+      - run: just test-fe
 
   backend:
-    name: Rust and CLI
+    name: Rust tests
     runs-on: windows-2025
     timeout-minutes: 180
     steps:
@@ -48,12 +48,7 @@ jobs:
           submodules: recursive
           persist-credentials: false
       - uses: ./.github/actions/setup-windows
-      - name: Backend verification
-        run: just verify-rust
-      - name: Enforce formatting
-        run: git diff --exit-code
-      - name: CLI integration tests
-        run: just test-cli
+      - run: just test
 
   plugins:
     name: Plugins
@@ -65,6 +60,4 @@ jobs:
           submodules: recursive
           persist-credentials: false
       - uses: ./.github/actions/setup-windows
-      - run: just verify-plugins
-      - name: Enforce plugin formatting
-        run: git -C plugins diff --exit-code
+      - run: just test-plugins

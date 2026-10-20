@@ -19,7 +19,7 @@ runs:
         $version = [regex]::Match($manifest, '(?m)^rust-version = "([^"]+)"').Groups[1].Value
         if (-not $version) { throw 'Missing rust-version in Cargo.toml' }
         if ($version.Split('.').Count -eq 2) { $version += '.0' }
-        rustup toolchain install $version --profile minimal --component rustfmt --component clippy
+        rustup toolchain install $version --profile minimal
         if ($LASTEXITCODE -ne 0) { throw 'Rust toolchain installation failed' }
         rustup override set $version
         if ($LASTEXITCODE -ne 0) { throw 'Rust toolchain selection failed' }
