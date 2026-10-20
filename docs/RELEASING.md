@@ -37,9 +37,18 @@ CHANGELOG 只使用实际有内容的英文分类（`Added`、`Changed`、`Depre
 
 ## 标签与发行产物
 
-完成本地验证与打包后，把 `v<版本号>` 标签指向对应的源码提交。仓库没有 GitHub Actions，推送标签不会触发云端构建，发行产物来自上表的本地配方。
+把 `v<版本号>` 标签推送到对应的源码提交后，`Windows release` 工作流会先运行与 PR 相同的前端、Rust 和插件测试，再执行 `just build-release --bundles msi`、`just pack-cli`、`just smoke-cli` 与 `just pack-plugins`，上传 Windows x64 MSI、CLI ZIP、插件 `.lcpkg` 和 `SHA256SUMS.txt`，自动创建 GitHub Release。例如，应用版本同步为 `1.2.1` 并提交后：
 
-从该标签创建 GitHub Release，写明版本变化、功能组合、平台要求、已知限制，并上传实际构建的产物与 SHA-256：
+```powershell
+git tag v1.2.1
+git push origin v1.2.1
+```
+
+标签的基础版本必须与三个应用清单一致；`v1.2.1-rc.1` 这类带后缀的标签发布为预发行版，`v1.2.1` 发布为正式版。已有标签不会因添加工作流而重新触发，请勿移动已发布的标签。工作流使用仓库内置的 `GITHUB_TOKEN`，发布 job 具有 `contents: write` 权限，无需另设 PAT 或个人凭据。
+
+自动构建默认不含 QR/OCR，二进制未做代码签名；原生 GUI、安装及 Dokany 驱动仍需人工验证。完整功能构建和桌面便携包继续使用上表的本地配方。
+
+自动 Release 说明包含源码提交、构建范围和外部驱动要求；维护者应补充版本变化与已知限制。本地发行时，从该标签创建 GitHub Release，并上传实际构建的产物与 SHA-256：
 
 ```powershell
 Get-FileHash -Algorithm SHA256 -LiteralPath 'dist-pack/LovelyCarve-v<版本号>-win-x64.7z'
