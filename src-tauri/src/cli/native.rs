@@ -85,6 +85,9 @@ pub fn capabilities() -> Result<Value, CliError> {
         "version": catalog.version,
         "platform": std::env::consts::OS,
         "standalone": !cfg!(feature = "desktop"),
+        "timestampDisplay": {"option": "--timezone", "default": "auto", "commands": ["files list", "files get", "files tree list"],
+            "settings": "timezones set <zone> --scope session|case|image", "inspect": "timezones get",
+            "originalField": "timestampsOriginal", "provenanceField": "timestampDisplay", "naiveTimestamps": "unchanged"},
         "commands": catalog.commands.len(),
         "qrcode": cfg!(feature = "qrcode-wechat"),
         "ocr": cfg!(feature = "ocr"),
@@ -93,7 +96,7 @@ pub fn capabilities() -> Result<Value, CliError> {
         "observability": {"eventsOption": "--events", "eventsStream": "stderr-jsonl", "heartbeatSeconds": 5,
             "progressStream": "stderr", "progressWithRedirectedStdout": true, "residentBackendEvents": true},
         "residentSessions": {
-            "protocolVersion": 2,
+            "protocolVersion": 3,
             "open": "sessions open <name>", "attach": "sessions attach <name>",
             "close": "sessions close <name>", "option": "--session <name>",
             "environment": "LOVELYCARVE_SESSION", "execution": "serial",
@@ -101,7 +104,7 @@ pub fn capabilities() -> Result<Value, CliError> {
         },
         "session": {
             "protocol": "jsonl", "protocolVersion": 3,
-            "request": {"id": "string", "command": "<collection>… <verb>", "args": "object keyed by API parameter name", "output": "optional file path for raw content", "force": "boolean, confirms destructive commands", "dryRun": "boolean"},
+            "request": {"id": "string", "command": "<collection>… <verb>", "args": "object keyed by API parameter name", "timezone": "optional display timezone override", "output": "optional file path for raw content", "force": "boolean, confirms destructive commands", "dryRun": "boolean"},
             "defaultJobs": 1, "maxJobs": 64,
             "responseOrder": "completion", "correlationField": "id",
             "references": "prior-successful-result-json-pointer",

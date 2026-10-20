@@ -62,6 +62,7 @@ async fn line(exec: &Exec, context: &mut Context, words: Vec<String>) -> Result<
             exec.execute(
                 context,
                 Request {
+                    timezone: None,
                     command,
                     values,
                     ask: Vec::new(),
@@ -105,6 +106,7 @@ async fn line(exec: &Exec, context: &mut Context, words: Vec<String>) -> Result<
                 .execute(
                     context,
                     Request {
+                        timezone: globals.timezone,
                         command: invocation.command,
                         values,
                         ask: invocation.ask,

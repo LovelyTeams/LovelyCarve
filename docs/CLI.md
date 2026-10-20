@@ -37,6 +37,58 @@ Linux 上也不需要桌面库。Windows 构建在链接时嵌入 `asInvoker` �
 传绝对检材路径；直接运行 exe 时相对路径以当前工作目录为准。插件包从程序旁的 `plugins/` 与用户数据目录的
 `plugins/` 发现，每个插件实例都在程序旁的 `lc-plugin-host` 进程中运行；`plugins create <插件包.lcpkg>` 安装插件包。
 
+## 文件时间与时区
+
+`files list`、`files get`、`files tree list` 默认使用 `auto` 显示策略。
+显式 `--timezone` 覆盖会话默认；`auto` 依次选择检材显示设置、案件显示设置、检材内的系统时区，最后回退 UTC。
+不会采用运行 CLI 的计算机时区。`--timezone evidence` 强制使用检材配置，无法识别或存在歧义时返回错误；
+`--timezone case` 强制使用案件设置，未设置时返回错误。
+
+```powershell
+lovelycarve-cli --image "D:\evidence\nas.E01" timezones get
+lovelycarve-cli --image "D:\evidence\nas.E01" --timezone Asia/Shanghai files get "/<卷名称>/report.txt"
+lovelycarve-cli --image "D:\evidence\nas.E01" --timezone=-04:00 files list --path "/<卷名称>"
+lovelycarve-cli --case "D:\cases\nas" timezones set Asia/Shanghai --scope case
+lovelycarve-cli --case "D:\cases\nas" --image "D:\evidence\nas.E01" timezones set Asia/Taipei --scope image
+lovelycarve-cli --session nas timezones set evidence
+lovelycarve-cli --session nas --timezone UTC files get "/<卷名称>/report.txt"
+```
+
+`--scope session`（默认）只在当前 shell、JSONL 或常驻会话中保存；普通命令退出即失效。
+`--scope case` / `image` 写入当前案件，在下次进程打开同一案件后继续生效；检材设置按规范化源路径关联，
+不会因为临时运行时 UUID 变化失效。`timezones set auto --scope case|image` 清除对应层的覆盖。
+显式时区支持 IANA 名称（例如 `Asia/Shanghai`、`America/New_York`）、`UTC`、`+05:45`、`-04:00`。
+IANA 时区根据每个时间戳的日期应用历史偏移和夏令时；固定偏移始终保持给定值。
+
+自动识别只探测同一检材内的 Linux/NAS 文件系统根，以及 Btrfs 下一层的至多 32 个目录/子卷，
+不递归扫描用户数据。优先读取 `/etc/localtime`：链接中的 `zoneinfo/<IANA 名称>` 可直接识别，
+并优先使用检材 `/usr/share/zoneinfo/` 内的原始 TZif 规则；复制的 TZif 文件按内容解析，
+用 `TZif:sha256:…` 标识，无法仅凭内容断言其 IANA 名称。其次检查 `/etc/timezone`、
+`/etc/sysconfig/clock` 的 `ZONE`/`TIMEZONE`、`/etc/TZ`、OpenWrt `/etc/config/system` 的 `zonename`。
+文本配置上限 4 KiB、TZif 上限 1 MiB；只在检材内解析路径，不让主机系统跟随检材链接。
+没有原始 TZif 时，IANA 名称使用程序内置规则；无法识别的 POSIX/vendor 字符串会报告为未知，需手工指定。
+`localtime` 是有效配置时优先于其他文本配置；其他文本配置冲突或多个系统时区不一致时不随意选第一个。
+节点所在卷有唯一时区时使用该卷时区；否则只继承同一检材中唯一的系统时区。
+缺配置、冲突、读取失败或离线索引无法读源时，`auto` 输出 UTC 和原因；
+这表示显示回退，不表示检材系统原来使用 UTC。可用 `timezones get` 检查候选、配置路径、来源与告警。
+
+节点的 `timestamps` 是显示结果，`timestampsOriginal` 保留后端返回的原始字符串；
+`timestampDisplay.timeZone` 记录所选时区、来源、配置路径及告警。
+FAT/exFAT 等没有已知偏移的本地时间，以及 `-00:00`（偏移未知），保持原值并列入
+`timestampDisplay.unconvertedFields`，不会补成 UTC 或强行换算。角色（modified/accessed/created/mftChanged/birth）
+和小数位数保持不变。仅上述三个文件浏览命令转换时间，文件字节、哈希、案件索引、插件原始结果与时间线不变。
+
+shell 中可逐条写 `--timezone`，也可 `timezones set` 修改会话默认。
+JSONL 使用请求顶层的可选 `timezone`（不是 `args` 的成员），只覆盖当前请求，并行查询互不影响：
+
+```json
+{"id":"local","command":"files get","args":{"path":"/<卷名称>/report.txt"},"timezone":"Asia/Shanghai"}
+{"id":"utc","command":"files get","args":{"path":"/<卷名称>/report.txt"},"timezone":"UTC"}
+```
+
+`sessions open ... --timezone Asia/Shanghai` 设置后台会话默认；普通 `--session` 请求或
+`sessions attach ... --timezone UTC` 的覆盖只作用于该请求或连接，不改后台默认。
+
 ## 命令结构
 
 ```text
@@ -72,6 +124,7 @@ lovelycarve-cli --case "D:\cases\demo" cases get
 | `raid`、`disks` | RAID 组装与主机物理磁盘 |
 | `tasks` | 任务中心：插件任务与内置任务的列出、查看、取消，以及等待后台任务结束 |
 | `sessions` | 命名常驻会话：启动、连接、查看、列出与关闭，供多个普通 CLI 进程复用已打开的检材 |
+| `timezones` | 文件时间显示时区：检查来源、自动识别 Linux/NAS 配置与保存案件、检材或会话设置 |
 | `system`、`context`、`cli` | 本程序与主机、会话上下文、命令搜索 |
 | `schema`、`complete`、`session`、`shell` | 根命令：请求结构、shell 补全、JSONL 会话、交互 shell |
 

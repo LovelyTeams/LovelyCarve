@@ -19,6 +19,7 @@ import zlib
 
 from cli_resident_tests import test_resident_sessions
 from cli_observability_tests import test_observability
+from cli_timezone_tests import test_timezones
 
 
 def documents(text):
@@ -564,6 +565,7 @@ files export hello.txt --destination "{exported}"
         for page in (body_page, option_page, browsed["page"]):
             for item in page["items"]:
                 item["timestamps"].pop("accessed", None)
+                item["timestampsOriginal"].pop("accessed", None)
         assert body_page == option_page == browsed["page"], (body_page, option_page, browsed["page"])
         assert all("parentId" in item and "parent_id" not in item for item in browsed["all"]["items"])
         assert "hello.txt" in [item["node"]["name"] for item in browsed["tree"]["items"]]
@@ -957,6 +959,7 @@ context get
 
     test_resident_sessions(executable, environment)
     test_observability(executable, environment)
+    test_timezones(executable, environment)
     print("CLI smoke tests passed: discovery, dry run, JSONL, browsing, binary read, hash, preview cleanup, export, errors, carving, search, timeline, case lifecycle, windowless startup and interrupt")
 
 

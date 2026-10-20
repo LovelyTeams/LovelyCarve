@@ -81,6 +81,7 @@ key = "SQLCipher 等加密数据库的密钥（JSON）"
 "cases options" = "案件级设置"
 "cli" = "发现命令"
 "context" = "会话上下文：当前检材与镜像内目录"
+"timezones" = "文件时间显示：自动读取检材时区或保存案件、检材与会话设置"
 "sessions" = "命名常驻会话：复用已打开检材、组装卷和当前目录"
 "disks" = "主机物理磁盘"
 "docs" = "随程序附带的使用文档：搜索、列出与阅读"
@@ -743,6 +744,38 @@ type = "string"
 description = "镜像内工作目录，供后续相对路径使用"
 
 # ── disks ───────────────────────────────────────────────────────────────────
+
+[[command]]
+path = "timezones get"
+native = "timezones-get"
+summary = "查看有效显示时区、来源及自动识别结果"
+description = "auto 按命令、会话、检材设置、案件设置、检材配置、UTC 的顺序选择；多个系统的时区冲突时回退 UTC 并报告。不会使用本机时区。"
+category = "read"
+concurrent = true
+[command.params.imageId]
+type = "string"
+
+[[command]]
+path = "timezones set"
+native = "timezones-set"
+summary = "保存文件时间的显示时区"
+description = "scope=session 保存到当前会话；case/image 保存到当前案件，在重启后生效。auto 清除该层设置。只改变显示，保留原始时间戳。"
+category = "action"
+args = ["zone"]
+examples = [
+    {command = "lovelycarve-cli --case D:\\case timezones set Asia/Shanghai --scope case", description = "持久保存案件显示时区"},
+    {command = "lovelycarve-cli --session nas timezones set evidence", description = "会话按检材原始时区显示"},
+]
+[command.params.zone]
+type = "string"
+required = true
+description = "IANA 名称、UTC、±HH:MM 或 auto；session 另支持 evidence/case"
+[command.params.scope]
+type = "enum"
+values = ["session", "case", "image"]
+default = "session"
+[command.params.imageId]
+type = "string"
 
 [[command]]
 path = "disks list"

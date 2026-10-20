@@ -9,7 +9,7 @@ use crate::cli::{
     catalog, output, shell, CliError,
 };
 
-pub(super) fn run(name: &str) -> Result<i32, CliError> {
+pub(super) fn run(name: &str, timezone: Option<&str>) -> Result<i32, CliError> {
     client::info(name)?;
     let interactive = std::io::stdin().is_terminal();
     if interactive {
@@ -31,7 +31,7 @@ pub(super) fn run(name: &str) -> Result<i32, CliError> {
         if matches!(line, "exit" | "quit" | "detach") {
             break;
         }
-        if let Err(error) = execute_line(name, line) {
+        if let Err(error) = execute_line(name, line, timezone) {
             if !interactive {
                 return Err(error);
             }
@@ -41,7 +41,7 @@ pub(super) fn run(name: &str) -> Result<i32, CliError> {
     Ok(0)
 }
 
-fn execute_line(name: &str, line: &str) -> Result<(), CliError> {
+fn execute_line(name: &str, line: &str, timezone: Option<&str>) -> Result<(), CliError> {
     let mut words = shell::tokenize(line)?;
     match words.first().map(String::as_str) {
         Some("cd") if words.len() == 2 => {
@@ -65,7 +65,7 @@ fn execute_line(name: &str, line: &str) -> Result<(), CliError> {
     }
     match argv::parse(catalog::catalog()?, &words) {
         Parsed::Run {
-            globals,
+            mut globals,
             invocation,
         } => {
             if !std::io::stdin().is_terminal() && !invocation.ask.is_empty() {
@@ -81,6 +81,9 @@ fn execute_line(name: &str, line: &str) -> Result<(), CliError> {
                 return Err(CliError::invalid(
                     "attach 内不能切换命名会话；先 exit，再连接目标会话",
                 ));
+            }
+            if globals.timezone.is_none() {
+                globals.timezone = timezone.map(str::to_owned);
             }
             client::forward(name, &globals, invocation)?;
         }

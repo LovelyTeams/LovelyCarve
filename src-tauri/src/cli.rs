@@ -29,6 +29,7 @@ mod search;
 mod session;
 mod shell;
 mod strings;
+mod timezone;
 mod tools;
 mod wire;
 

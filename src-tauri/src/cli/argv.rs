@@ -20,6 +20,7 @@ pub const ASK: &str = "-";
 
 #[derive(Debug, Default, Clone)]
 pub struct Globals {
+    pub timezone: Option<String>,
     pub quiet: bool,
     pub events: bool,
     pub session: Option<String>,
@@ -65,6 +66,9 @@ fn global_args(command: clap::Command) -> clap::Command {
         .disable_help_subcommand(true);
     for (long, short, _, takes_value) in GLOBAL_OPTIONS {
         let mut arg = Arg::new(*long).long(*long).global(true);
+        if *long == "timezone" {
+            arg = arg.allow_hyphen_values(true);
+        }
         if let Some(short) = short {
             arg = arg.short(*short);
         }
@@ -83,6 +87,9 @@ fn param_arg(command: &Command, param: &Param) -> Option<Arg> {
         return None;
     }
     let mut arg = Arg::new(param.name.clone());
+    if command.native.as_deref() == Some("timezones-set") && param.name == "zone" {
+        arg = arg.allow_hyphen_values(true);
+    }
     if let Some(position) = param.position {
         arg = arg.index(position + 1).value_name(param.option.clone());
         // `--body` may supply a required subject instead; the command then
@@ -210,7 +217,10 @@ pub fn scan_path(catalog: &Catalog, args: &[String]) -> Vec<String> {
             break;
         }
         if arg.starts_with('-') {
-            skip = matches!(arg.as_str(), "--image" | "-i" | "--case" | "--session");
+            skip = matches!(
+                arg.as_str(),
+                "--image" | "-i" | "--case" | "--session" | "--timezone"
+            );
             continue;
         }
         let words: Vec<&str> = path.iter().map(String::as_str).collect();
@@ -466,6 +476,11 @@ fn invocation(command: &'static Command, matches: &ArgMatches) -> Result<Invocat
 
 fn globals(matches: &ArgMatches) -> Globals {
     Globals {
+        timezone: matches
+            .try_get_one::<String>("timezone")
+            .ok()
+            .flatten()
+            .cloned(),
         session: matches
             .try_get_one::<String>("session")
             .ok()

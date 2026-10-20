@@ -48,9 +48,9 @@ pub const BANNED_VERBS: &[(&str, &str)] = &[
 /// Options the CLI owns. A parameter may only take one of these names when it
 /// is bound to the matching global option (`imageId` → `--image`).
 pub const RESERVED_OPTIONS: &[&str] = &[
-    "image", "case", "session", "events", "quiet", "help", "version", "dry-run", "body", "force",
-    "text", "json", "ndjson", "pretty", "output", "remote", "cwd", "config", "yes", "local",
-    "file",
+    "image", "case", "session", "events", "timezone", "quiet", "help", "version", "dry-run",
+    "body", "force", "text", "json", "ndjson", "pretty", "output", "remote", "cwd", "config",
+    "yes", "local", "file",
 ];
 
 /// Global options that supply a parameter when a command does not.

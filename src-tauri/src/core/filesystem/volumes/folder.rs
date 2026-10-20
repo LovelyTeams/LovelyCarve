@@ -122,7 +122,7 @@ fn entry_to_node(entry: &FolderEntry) -> FsNode {
         deleted: false,
         inode: entry.inode,
         timestamps: timestamps_of(entry),
-        link_target: None,
+        link_target: entry.link_target.clone(),
         has_snapshot: false,
     }
 }

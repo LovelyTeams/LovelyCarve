@@ -8,12 +8,14 @@ use serde_json::{Map, Value};
 use crate::cli::{CliError, Json, Origin, Output};
 
 pub(super) const CHUNK: usize = 8 * 1024 * 1024;
-pub(super) const VERSION: u32 = 2;
+pub(super) const VERSION: u32 = 3;
 const MAX_REQUEST: u64 = 16 * 1024 * 1024;
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(super) struct Request {
+    #[serde(default)]
+    pub timezone: Option<String>,
     pub token: String,
     pub command: String,
     #[serde(default)]

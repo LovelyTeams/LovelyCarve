@@ -30,6 +30,14 @@ no libfsapfs C sources or binaries are incorporated. The new APFS fixtures
 are invented, reproducible project test structures (AGPL-3.0-only), documented
 in `src-tauri/vendor/apfs/tests/data/README.md`.
 
+## CLI timezone rules
+
+The CLI uses the unmodified `jiff` crate by Andrew Gallant (Unlicense OR MIT)
+and its bundled `jiff-tzdb` IANA time zone database. Versions are pinned in
+`src-tauri/Cargo.lock`; crate license texts remain in the distributed source
+packages. IANA time zone data is in the public domain. Evidence-provided TZif
+files are read from the user's evidence and are not incorporated or shipped.
+
 ## fast-md5
 
 MD5 hashing uses the unmodified crates.io package

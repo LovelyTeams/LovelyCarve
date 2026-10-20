@@ -110,7 +110,8 @@ pub(in crate::cli) async fn serve(
             return Ok(0);
         }
         let result = if request.command == "@info" {
-            let output = execute(exec, context, "context get", Map::new(), false, false).await;
+            let output =
+                execute(exec, context, "context get", Map::new(), false, false, None).await;
             match output {
                 Ok(Output::Json(context)) => Ok(Output::json(json!({
                     "name": descriptor.name, "pid": descriptor.pid, "startedAt": descriptor.started_at,
@@ -149,6 +150,7 @@ pub(in crate::cli) async fn serve(
                         request.args,
                         request.force,
                         request.dry_run,
+                        request.timezone,
                     )
                     .await
                 };
@@ -188,6 +190,7 @@ async fn execute(
     values: Map<String, Value>,
     force: bool,
     dry_run: bool,
+    timezone: Option<String>,
 ) -> Result<Output, CliError> {
     let command = catalog::catalog()?
         .find_path(path)
@@ -201,6 +204,7 @@ async fn execute(
     exec.execute(
         context,
         Request {
+            timezone,
             command,
             values,
             ask: vec![],
@@ -278,7 +282,7 @@ async fn stream_file(
                     .cloned()
                     .ok_or_else(|| crate::cli::internal_error("文件读取参数无效"))?;
             let Output::Bytes(bytes) =
-                execute(exec, context, "files read", values, false, false).await?
+                execute(exec, context, "files read", values, false, false, None).await?
             else {
                 return Err(crate::cli::internal_error("files read 返回非字节结果"));
             };

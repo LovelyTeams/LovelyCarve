@@ -54,7 +54,9 @@ pub(super) fn manage(globals: &Globals, invocation: &Invocation) -> Result<i32, 
             client::exchange(name, "@close", Default::default(), false, false, false)?;
             json!({"name": name, "closed": true})
         }
-        Some("sessions-attach") => return attach::run(name(invocation)?),
+        Some("sessions-attach") => {
+            return attach::run(name(invocation)?, globals.timezone.as_deref())
+        }
         _ => return Err(CliError::invalid("未知的会话管理命令")),
     };
     let (_, done) = invocation.command.category.labels();
@@ -66,7 +68,7 @@ fn open(name: &str, globals: &Globals) -> Result<Value, CliError> {
     match registry::lock(name) {
         Ok(lock) => drop(lock),
         Err(error) if error.code == "sessionAlreadyRunning" => {
-            if globals.image.is_some() || globals.case.is_some() {
+            if globals.image.is_some() || globals.case.is_some() || globals.timezone.is_some() {
                 return Err(CliError::invalid(
                     "会话已运行；用 context use / images open / cases open 修改已有上下文",
                 ));
@@ -79,6 +81,10 @@ fn open(name: &str, globals: &Globals) -> Result<Value, CliError> {
     let log = registry::private_options().open(&log_path)?;
     let mut command = Command::new(std::env::current_exe()?);
     command.arg("--quiet");
+    if let Some(timezone) = &globals.timezone {
+        super::timezone::validate(timezone)?;
+        command.args(["--timezone", timezone]);
+    }
     if let Some(image) = &globals.image {
         command.args(["--image", image]);
     }

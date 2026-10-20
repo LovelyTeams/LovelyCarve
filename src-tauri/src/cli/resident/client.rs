@@ -28,6 +28,7 @@ pub(super) fn exchange(
         command,
         args,
         Exchange {
+            timezone: None,
             force,
             dry_run,
             text,
@@ -38,6 +39,7 @@ pub(super) fn exchange(
 }
 
 struct Exchange {
+    timezone: Option<String>,
     force: bool,
     dry_run: bool,
     text: bool,
@@ -61,6 +63,7 @@ fn exchange_observed(
     serde_json::to_writer(
         &mut stream,
         &protocol::Request {
+            timezone: options.timezone,
             token: descriptor.token,
             command: command.into(),
             args,
@@ -93,6 +96,9 @@ pub(in crate::cli) fn forward(
     globals: &Globals,
     mut invocation: Invocation,
 ) -> Result<i32, CliError> {
+    if let Some(zone) = globals.timezone.as_deref() {
+        crate::cli::timezone::validate(zone)?;
+    }
     if globals.case.is_some() {
         return Err(CliError::invalid(
             "连接常驻会话时请用 cases open 切换案件；--case 仅用于 sessions open 的首次启动",
@@ -141,6 +147,7 @@ pub(in crate::cli) fn forward(
         &invocation.command.path(),
         invocation.values,
         Exchange {
+            timezone: globals.timezone.clone(),
             force: invocation.force,
             dry_run: invocation.dry_run,
             text: invocation.text,

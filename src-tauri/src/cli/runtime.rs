@@ -185,6 +185,9 @@ fn command(
     globals: Globals,
     invocation: Invocation,
 ) -> Result<i32, CliError> {
+    if let Some(zone) = globals.timezone.as_deref() {
+        super::timezone::validate(zone)?;
+    }
     let native = invocation.command.native.as_deref();
     // Completion output must stay parseable: no banner, no hint.
     if native == Some("complete") {
@@ -357,6 +360,7 @@ async fn serve(globals: Globals, work: Work) -> i32 {
         },
     };
     let mut context = Context {
+        timezone: globals.timezone.clone(),
         scope,
         scope_source,
         ..Context::default()
@@ -407,6 +411,7 @@ async fn perform(
                 .execute(
                     context,
                     Request {
+                        timezone: None,
                         command: invocation.command,
                         values: invocation.values.clone(),
                         ask: invocation.ask.clone(),

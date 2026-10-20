@@ -24,6 +24,8 @@ const MAX_REQUESTS: usize = 10_000;
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(super) struct Request {
+    #[serde(default)]
+    timezone: Option<String>,
     id: String,
     command: String,
     #[serde(default)]
@@ -342,6 +344,7 @@ pub(super) async fn json_lines(
         let output = runtime.block_on(exec.execute(
             context,
             Run {
+                timezone: request.timezone,
                 command,
                 values,
                 ask: Vec::new(),

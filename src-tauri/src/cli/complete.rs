@@ -7,6 +7,12 @@ use super::catalog::{Catalog, Kind};
 /// Global options valid on every command.
 pub const GLOBAL_OPTIONS: &[(&str, Option<char>, &str, bool)] = &[
     (
+        "timezone",
+        None,
+        "文件时间显示时区：auto、evidence、case、UTC、IANA 名称或 ±HH:MM",
+        true,
+    ),
+    (
         "events",
         None,
         "把命令生命周期与后端进度以 JSONL 写到标准错误",

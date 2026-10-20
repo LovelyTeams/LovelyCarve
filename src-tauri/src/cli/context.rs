@@ -27,6 +27,8 @@ pub enum Mode {
 /// What persists between commands in one process.
 #[derive(Clone, Default, Debug)]
 pub struct Context {
+    /// Display policy only; source timestamps and stored indexes stay unchanged.
+    pub timezone: Option<String>,
     /// The evidence scope as given (`--image`, `LOVELYCARVE_IMAGE`), opened on
     /// first use.
     pub scope: Option<String>,
@@ -54,6 +56,7 @@ impl Context {
 
 /// One command to run, with values keyed by API parameter name.
 pub struct Request<'a> {
+    pub timezone: Option<String>,
     pub command: &'a Command,
     pub values: Map<String, Value>,
     pub ask: Vec<String>,
@@ -293,6 +296,9 @@ impl Exec {
         request: Request<'_>,
     ) -> Result<Output, CliError> {
         let command = request.command;
+        if let Some(zone) = request.timezone.as_deref().or(context.timezone.as_deref()) {
+            super::timezone::validate(zone)?;
+        }
         let mut values = request.values;
         if request.dry_run {
             return Ok(Output::Json(preview(
@@ -395,7 +401,13 @@ impl Exec {
         let mut monitor =
             (self.mode != Mode::Session).then(|| self.reporter.start(&command.path()));
         let outcome = self
-            .execute_prepared(context, command, values, request.text)
+            .execute_prepared(
+                context,
+                command,
+                values,
+                request.text,
+                request.timezone.as_deref(),
+            )
             .await;
         if let Some(monitor) = &mut monitor {
             monitor.finish(&outcome);
@@ -409,6 +421,7 @@ impl Exec {
         command: &Command,
         mut values: Map<String, Value>,
         text: bool,
+        timezone: Option<&str>,
     ) -> Result<Output, CliError> {
         let mut target = None;
         // RAID operates on all loaded images and has no imageId parameter,
@@ -453,10 +466,17 @@ impl Exec {
         }
         let output = match command.ipc_command.as_deref() {
             Some(ipc) => generated::dispatch(&self.host, &self.state, ipc, values.clone()).await?,
+            None if matches!(
+                command.native.as_deref(),
+                Some("timezones-get" | "timezones-set")
+            ) =>
+            {
+                super::timezone::run(self, context, command, &values, timezone).await?
+            }
             None => native::run(self, context, command, values.clone(), target, text).await?,
         };
         self.after(context, command, &values, &output);
-        Ok(output)
+        super::timezone::render(self, context, command, &values, timezone, output).await
     }
 
     /// Resolve the command's node parameter from `path` when it was not given.
