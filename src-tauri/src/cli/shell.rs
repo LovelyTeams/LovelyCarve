@@ -54,11 +54,16 @@ async fn line(exec: &Exec, context: &mut Context, words: Vec<String>) -> Result<
             println!("{}", context.pwd());
             return Ok(());
         }
-        Some("cd") if words.len() == 2 => {
+        Some("cd") if words.len() == 2 || (words.len() == 3 && words[1] == "--node-id") => {
             let command = catalog
                 .find(&["context", "set"])
                 .ok_or_else(|| super::internal_error("缺少 context set 命令"))?;
-            let values = serde_json::Map::from_iter([("dir".to_owned(), words[1].clone().into())]);
+            let (name, value) = if words.len() == 3 {
+                ("nodeId", &words[2])
+            } else {
+                ("dir", &words[1])
+            };
+            let values = serde_json::Map::from_iter([(name.to_owned(), value.clone().into())]);
             exec.execute(
                 context,
                 Request {

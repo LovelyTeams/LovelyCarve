@@ -17,6 +17,7 @@ mod grep;
 mod help;
 mod interactive;
 mod native;
+mod navigation;
 #[cfg(test)]
 mod navigation_tests;
 mod output;

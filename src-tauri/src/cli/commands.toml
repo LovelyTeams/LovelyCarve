@@ -742,6 +742,9 @@ description = "切换到的已加载检材 ID 或检材路径"
 [command.params.dir]
 type = "string"
 description = "镜像内工作目录，供后续相对路径使用"
+[command.params.nodeId]
+type = "string"
+description = "工作目录的节点 ID（files list 的 items[].id），与 --dir 互斥；可进入同名分区"
 
 # ── disks ───────────────────────────────────────────────────────────────────
 
@@ -814,7 +817,7 @@ description = "检查选项 JSON，可为 {}"
 path = "files tree list"
 native = "files-tree-list"
 summary = "列出目录内容"
-description = "按路径列出目录，--depth 递归、--name 按名称过滤（忽略大小写包含匹配）；优先读取卷索引，离线检材可浏览已索引目录。"
+description = "按路径列出目录，结果 path 是含遍历根祖先的检材绝对路径；重名时用 node.id。--depth 递归、--name 按名称过滤（忽略大小写包含匹配）；优先读取卷索引，离线检材可浏览已索引目录。"
 category = "read"
 target = "nodeId"
 concurrent = true

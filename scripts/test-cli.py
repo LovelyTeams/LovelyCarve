@@ -21,6 +21,7 @@ from cli_resident_tests import test_resident_sessions
 from cli_observability_tests import test_observability
 from cli_timezone_tests import test_timezones
 from cli_integrity_tests import test_integrity
+from cli_navigation_tests import test_navigation
 
 
 def documents(text):
@@ -891,7 +892,7 @@ context get
             offline_rows = documents(run(["--case", str(case), "shell"], offline_script).stdout)
             assert offline_rows[0]["indexOnly"], offline_rows
             assert [item["name"] for item in offline_rows[1]["items"]] == ["report.txt"]
-            assert [item["path"] for item in offline_rows[2]["items"]] == ["/nested/report.txt"]
+            assert [item["path"] for item in offline_rows[2]["items"]] == [f"/{evidence.name}/nested/report.txt"]
             assert offline_rows[3]["dir"] == f"/{evidence.name}/nested"
             result, rows = session([
                 {"id": "open", "command": "images open", "args": {"path": str(evidence)}},
@@ -905,7 +906,7 @@ context get
             ], expected=1, arguments=["--case", str(case)])
             offline_results = {row["id"]: row for row in rows}
             assert offline_results["stat"]["result"]["indexOnly"] and offline_results["stat"]["result"]["name"] == "report.txt"
-            assert [item["path"] for item in offline_results["tree"]["result"]["items"]] == ["/report.txt"]
+            assert [item["path"] for item in offline_results["tree"]["result"]["items"]] == [f"/{evidence.name}/nested/report.txt"]
             assert all("error" in offline_results[command] for command in ("hex", "strings", "file"))
             assert offline_results["pwd"]["result"]["dir"] == "/" + evidence.name
             run(["--case", str(case), *image_path, "files", "search", "password"], expected=1)
@@ -959,6 +960,7 @@ context get
                 process.communicate(timeout=15)
 
     test_resident_sessions(executable, environment)
+    test_navigation(executable, environment)
     test_observability(executable, environment)
     test_timezones(executable, environment)
     test_integrity(executable, environment)

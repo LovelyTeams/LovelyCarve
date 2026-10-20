@@ -53,6 +53,9 @@ def test_resident_sessions(executable, base_environment):
             assert value("sessions", "get", "exam")["pid"] == pid
             roots = value("--session", "exam", "files", "list")
             assert roots["total"] >= 1, roots
+            root_id = roots["items"][0]["id"]
+            run("sessions", "attach", "exam", stdin=f"cd --node-id {root_id}\nfiles get sub\nexit\n")
+            assert value("--session", "exam", "context", "get")["nodeId"] == root_id
             run("--session", "exam", "context", "set", "--dir", f"/{evidence.name}/sub")
             assert run("--session", "exam", "files", "read", "report.bin", binary=True).stdout == content
             run("sessions", "attach", "exam", stdin="pwd\ncd ..\nfiles get large.txt\nexit\n")

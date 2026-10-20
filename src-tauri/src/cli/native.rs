@@ -177,6 +177,9 @@ pub async fn run(
         }
         Some("context-get") => context_get(exec, context).await,
         Some("context-set" | "context-use") => {
+            if values.contains_key("dir") && values.contains_key("nodeId") {
+                return Err(CliError::invalid("--dir 与 --node-id 不能同时使用"));
+            }
             if let Some(image) = text(&values, "imageId") {
                 let image_id = exec.resolve_image(context, &image).await?;
                 if context.image_id.as_deref() != Some(&image_id)
@@ -188,12 +191,22 @@ pub async fn run(
                 context.scope = None;
                 context.scope_source = None;
             }
-            if let Some(dir) = text(&values, "dir") {
+            if values.contains_key("dir") || values.contains_key("nodeId") {
                 let image_id = exec
                     .current_image(context)
                     .await?
                     .ok_or_else(|| CliError::new("noImage", "切换目录需要检材"))?;
-                let location = exec.locate(context, &image_id, &dir).await?;
+                let location = match text(&values, "nodeId") {
+                    Some(node_id) => locate_node(exec, &image_id, &node_id).await?,
+                    None => {
+                        exec.locate(
+                            context,
+                            &image_id,
+                            &text(&values, "dir").unwrap_or_default(),
+                        )
+                        .await?
+                    }
+                };
                 if let Some(node) = node(exec, &image_id, &location).await? {
                     if node.kind != crate::core::filesystem::tree::fs_tree::NodeKind::Dir {
                         return Err(CliError::invalid("目标必须是目录；不会跟随符号链接"));
@@ -249,6 +262,8 @@ struct ContextInfo {
     image: Value,
     scope: Option<String>,
     dir: String,
+    #[serde(rename = "nodeId")]
+    node_id: String,
 }
 
 async fn context_get(exec: &Exec, context: &Context) -> Result<Output, CliError> {
@@ -275,6 +290,11 @@ async fn context_get(exec: &Exec, context: &Context) -> Result<Output, CliError>
         image,
         scope: context.scope.clone(),
         dir: context.pwd(),
+        node_id: context
+            .location
+            .last()
+            .map(|(_, id)| id.clone())
+            .unwrap_or_default(),
     })
 }
 
@@ -288,39 +308,13 @@ async fn node(
     browsing::node(location, &mut page).await
 }
 
-/// A location for a bare node ID, from the case's ancestor chain.
+/// A location for a bare node ID, from current indexes or live pages.
 async fn locate_node(
     exec: &Exec,
     image_id: &str,
     node_id: &str,
 ) -> Result<Vec<(String, String)>, CliError> {
-    let args = Map::from_iter([
-        ("imageId".to_owned(), json!(image_id)),
-        ("nodeId".to_owned(), json!(node_id)),
-    ]);
-    let Output::Json(located) =
-        generated::dispatch(&exec.host, &exec.state, "fs_node_locate", args).await?
-    else {
-        return Err(super::internal_error(
-            "files ancestors list 返回了非 JSON 结果",
-        ));
-    };
-    let located = located.value();
-    let mut location: Vec<(String, String)> = located["frames"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|frame| {
-            (
-                frame["name"].as_str().unwrap_or_default().to_owned(),
-                frame["id"].as_str().unwrap_or_default().to_owned(),
-            )
-        })
-        .collect();
-    if let Some(file) = located["fileId"].as_str() {
-        location.push((String::new(), file.to_owned()));
-    }
-    Ok(location)
+    super::navigation::locate_node(exec, image_id, node_id).await
 }
 
 #[derive(Serialize)]
@@ -336,6 +330,10 @@ async fn files_tree_list(
 ) -> Result<Output, CliError> {
     let image_id = image_id(values)?;
     let target = target.ok_or_else(|| CliError::invalid("需要路径"))?;
+    let location = match target.location {
+        Some(location) => location,
+        None => locate_node(exec, &image_id, &target.node_id).await?,
+    };
     let state = &exec.state;
     let task = state.tasks.register(
         format!("cli-files-list-{}", uuid::Uuid::new_v4()),
@@ -355,7 +353,7 @@ async fn files_tree_list(
     let mut page =
         |parent_id, cursor, page_size| exec.page(&image_id, parent_id, cursor, page_size);
     let (items, truncated) = browsing::walk(
-        &target.node_id,
+        &location,
         depth,
         limit,
         filter.as_deref(),

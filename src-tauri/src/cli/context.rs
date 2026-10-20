@@ -287,7 +287,18 @@ impl Exec {
     ) -> Result<Vec<(String, String)>, CliError> {
         let mut page =
             |parent_id, cursor, page_size| self.page(image_id, parent_id, cursor, page_size);
-        browsing::resolve(&context.location, path, &mut page).await
+        let image = self
+            .state
+            .images
+            .lock()
+            .await
+            .get(image_id)
+            .cloned()
+            .ok_or_else(|| CliError::invalid("检材已关闭"))?;
+        browsing::resolve(&context.location, path, &mut page, |parent| {
+            super::navigation::case_insensitive(Arc::clone(&image), parent)
+        })
+        .await
     }
 
     pub async fn execute(

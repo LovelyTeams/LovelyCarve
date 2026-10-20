@@ -287,12 +287,20 @@ Markdown 原样写到标准输出，`--section <章节>` 只输出一个章节�
 不以 `/` 开头的路径相对会话当前目录，支持 `.` 和 `..`，不跟随符号链接。
 每个接受路径的命令也接受节点 ID（`--node-id`、`--parent-id` 或 `--root-id`，取 `files list`
 输出的 `items[].id`），用于同名节点、删除条目和特殊流。
+`files get --node-id` 与下述目录切换入口不要求打开案件。重名分区（例如两个 `Basic data partition`）可先运行
+`context set --node-id part:2`，再用 `files get Windows` 等相对路径；`--node-id` 与 `--dir` 互斥。
+上下文保存节点 ID，因此显示路径同名也不会切到另一卷。`context get` 的 `nodeId` 可确认当前目录身份。
+
+名称优先精确匹配；没有精确命中时，NTFS、FAT/exFAT、HFS+ 与设置为不区分大小写的 APFS 卷
+尝试唯一的忽略大小写匹配，多个候选仍报歧义。其他文件系统和合成根保持精确匹配；
+无法读取卷标志的离线 APFS 也保持精确匹配。合成节点名称使用中文，例如 `分区0`、`$未分配簇`、
+`未使用空间1`；实际名称以 `files list` 为准，节点 ID 不受显示名称影响。
 
 | 命令 | 作用 |
 | --- | --- |
 | `files list [--path 路径 \| --parent-id ID] [--cursor 游标] [--page-size N] [--query JSON]` | 统一调用 `fs_children_page`；默认列当前目录，返回 `{items:[节点], nextCursor, total?, truncated}`。`nextCursor` 非空时继续请求下一页；每页默认 500，范围 1–5000 |
 | `files tree list [--path 路径 \| --node-id ID] [--depth N] [--name 文本] [--limit N]` | 递归遍历目录；`--depth` 递归（上限 128），`--name` 忽略大小写包含匹配，最多检查 `--limit` 个节点（默认 10000，上限 100000）。返回 `{items:[{path,node}], truncated}` |
-| `files get <路径>` | 节点属性（名称、类型、大小、inode、时间戳、删除状态、链接目标），附 `nodeId`、`path`、`indexOnly` |
+| `files get [路径 \| --node-id ID]` | 节点属性（名称、类型、大小、inode、时间戳、删除状态、链接目标），附 `nodeId`、`path`、`indexOnly` |
 | `files read <路径> [--offset N] [--length N] [--text]` | 文件内容流式写到标准输出 |
 | `files hash <路径> [--algos …]` | MD5 / SHA-1 / SHA-256 / SM3 |
 | `files identify <路径>` | Magika 内容类型识别，不依赖扩展名 |
@@ -304,6 +312,10 @@ Markdown 原样写到标准输出，`--section <章节>` 只输出一个章节�
 未被索引覆盖的目录沿用后端的快照／实时回退。原检材缺失时（案件中的 `index_only` 检材）
 仍可浏览已索引目录，读取字节的命令明确报错。达到深度或数量上限时 `truncated` 为真，
 不能当作完整列表。
+`files tree list` 的 `items[].path` 是从检材合成根开始的绝对路径，包含遍历根的全部祖先，
+可传给 `files get`、`files read` 等命令。若任一级存在同名节点，路径仍有歧义，应使用该项的
+`node.id`。按 ID 定位优先读取案件或临时卷索引的父链；索引未就绪时分页查找目录，
+最多检查 1000000 个节点、128 层目录，达到上限会明确报错，可等待卷索引完成后重试。
 
 `files search` 复用全局搜索，默认搜索当前目录子树，路径指向文件时只搜该文件，`/` 搜索全部已索引卷；
 需要打开案件、卷索引已建立且原检材可读。默认区分大小写并包含已删除文件：`--ignore-case`、
@@ -390,6 +402,8 @@ lovelycarve:exam> exit
 
 `cd` / `pwd` 操作共享的检材目录，`help` 显示命令帮助；`exit`、`quit`、`detach` 和输入结束只断开连接，
 后台检材与组装状态继续保留。也可将普通命令脚本传给 `sessions attach exam`；脚本遇错即停止。
+重名卷可在连接中用 `cd --node-id part:2` 进入，或从其他终端运行
+`lovelycarve-cli --session exam context set --node-id part:2`；后续相对路径沿所选 ID 解析。
 退出连接后仍可从其他终端继续：
 
 ```powershell
@@ -434,6 +448,8 @@ lovelycarve:/<卷名称>/Users> exit
 
 `shell` 在一个进程中逐行执行命令，语法与命令行相同（省略程序名），案件与检材在命令之间保持打开。
 `cd <路径>` 切换镜像内目录（同 `context set --dir`），`pwd` 显示当前目录，`help` 显示帮助，`exit` 退出。
+`cd --node-id <ID>` 等同于 `context set --node-id <ID>`，可进入名称相同的分区或目录，
+无须打开案件；例如先 `files list` 查看 ID，再 `cd --node-id part:2`、`files get Windows`。
 引号只负责参数分组，Windows 反斜杠保持原样，不做变量展开或管道；单引号适合包住 JSON。
 `--case` 只能在启动时给出，会话中改用 `cases open`。
 

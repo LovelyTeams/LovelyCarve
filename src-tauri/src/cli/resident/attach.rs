@@ -44,11 +44,16 @@ pub(super) fn run(name: &str, timezone: Option<&str>) -> Result<i32, CliError> {
 fn execute_line(name: &str, line: &str, timezone: Option<&str>) -> Result<(), CliError> {
     let mut words = shell::tokenize(line)?;
     match words.first().map(String::as_str) {
-        Some("cd") if words.len() == 2 => {
+        Some("cd") if words.len() == 2 || (words.len() == 3 && words[1] == "--node-id") => {
+            let (parameter, value) = if words.len() == 3 {
+                ("nodeId", &words[2])
+            } else {
+                ("dir", &words[1])
+            };
             client::exchange(
                 name,
                 "context set",
-                Map::from_iter([("dir".into(), json!(words[1]))]),
+                Map::from_iter([(parameter.into(), json!(value))]),
                 false,
                 false,
                 false,

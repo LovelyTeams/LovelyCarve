@@ -174,6 +174,11 @@ impl ApfsVolume {
         self.children("")
     }
 
+    /// The selected volume's APFS_INCOMPAT_CASE_INSENSITIVE flag.
+    pub(crate) fn names_case_insensitive(&self) -> Result<bool> {
+        self.with_volume(|volume| Ok(volume.volume_info().incompatible_features & 1 != 0))
+    }
+
     /// One streaming pass over the volume's whole catalog B-tree (the OMAP is
     /// preloaded inside the vendored crate). The bulk primitive behind the
     /// snapshot fast path in [`crate::core::catalog::snapshot::volume_snapshot_apfs`] — callers

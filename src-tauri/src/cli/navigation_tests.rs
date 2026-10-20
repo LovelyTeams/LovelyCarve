@@ -163,6 +163,10 @@ async fn navigate_raid_lvm_btrfs(on_md: bool) {
     )
     .await;
     assert_eq!(bytes["data"], hex::encode(btrfs::CONTENT));
+    assert!(exec
+        .locate(&context, &logical_image, "HELLO.TXT")
+        .await
+        .is_err());
     let info = execute(&exec, &mut context, "images get", json!({})).await;
     for reference in [
         logical_image.clone(),
@@ -186,4 +190,213 @@ async fn navigate_raid_lvm_btrfs(on_md: bool) {
         "reopening must reuse the registered volume"
     );
     super::native::wait_idle(&state).await.unwrap();
+}
+
+#[test]
+fn caseless_ntfs_ids_case_matching_and_absolute_tree_paths() {
+    std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Runtime::new().unwrap().block_on(async {
+                for mode in [Mode::OneShot, Mode::Session] {
+                    let temporary = tempfile::tempdir().unwrap();
+                    let state = Arc::new(AppState::new());
+                    let exec = Exec {
+                        reporter: super::progress::Reporter::silent(),
+                        host: AppHandle::new(Some(temporary.path().to_owned()), |_, _| Ok(())),
+                        state: state.clone(),
+                        mode,
+                        quiet: true,
+                    };
+                    let mut context = Context::default();
+                    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("vendor/ewf/tests/data/ntfs_sample.E01");
+                    execute(&exec, &mut context, "images open", json!({"path": path})).await;
+                    let roots = execute(&exec, &mut context, "files list", json!({})).await;
+                    let volume = roots["items"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|node| node["id"] == "part:0")
+                        .unwrap();
+                    let volume_name = volume["name"].as_str().unwrap();
+                    execute(
+                        &exec,
+                        &mut context,
+                        "context set",
+                        json!({"nodeId": "part:0"}),
+                    )
+                    .await;
+                    let file = execute(
+                        &exec,
+                        &mut context,
+                        "files get",
+                        json!({"path": "FILE1.TXT"}),
+                    )
+                    .await;
+                    assert_eq!(file["name"], "file1.txt");
+                    assert_eq!(file["path"], format!("/{volume_name}/file1.txt"));
+                    for indexed in [false, true] {
+                        if indexed {
+                            super::native::wait_idle(&state).await.unwrap();
+                        }
+                        let by_id = execute(
+                            &exec,
+                            &mut context,
+                            "files get",
+                            json!({"nodeId": file["id"]}),
+                        )
+                        .await;
+                        assert_eq!(by_id["path"], file["path"]);
+                        assert_eq!(by_id["id"], file["id"]);
+                    }
+                    for args in [
+                        json!({"path": ".", "name": "file1"}),
+                        json!({"nodeId": "part:0", "name": "file1"}),
+                    ] {
+                        let tree = execute(&exec, &mut context, "files tree list", args).await;
+                        assert_eq!(tree["items"][0]["path"], file["path"]);
+                        let round_trip = execute(
+                            &exec,
+                            &mut context,
+                            "files get",
+                            json!({"path": tree["items"][0]["path"]}),
+                        )
+                        .await;
+                        assert_eq!(round_trip["id"], file["id"]);
+                    }
+                    assert!(state.active_case.lock().await.is_none());
+                    super::native::wait_idle(&state).await.unwrap();
+                }
+            });
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+fn duplicate_volume_names_can_be_entered_by_id_before_indexing() {
+    std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Runtime::new().unwrap().block_on(async {
+                use crate::core::{
+                    evidence::image::DiskImage, filesystem::evidence_session::EvidenceSession,
+                };
+                let temporary = tempfile::tempdir().unwrap();
+                let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("vendor/ewf/tests/data/ntfs_sample.E01");
+                let mut image = DiskImage::open_with_id("duplicate-volumes".into(), path).unwrap();
+                let mut first = image.partitions[0].clone();
+                first.label = Some("Basic data partition".into());
+                let mut second = first.clone();
+                second.id = 2;
+                image.partitions = vec![first, second];
+                let state = Arc::new(AppState::new());
+                state
+                    .images
+                    .lock()
+                    .await
+                    .insert(image.id.clone(), Arc::new(EvidenceSession::from(image)));
+                let exec = Exec {
+                    reporter: super::progress::Reporter::silent(),
+                    host: AppHandle::new(Some(temporary.path().to_owned()), |_, _| Ok(())),
+                    state,
+                    mode: Mode::Session,
+                    quiet: true,
+                };
+                let mut context = Context {
+                    image_id: Some("duplicate-volumes".into()),
+                    ..Context::default()
+                };
+                assert!(exec
+                    .locate(&context, "duplicate-volumes", "/Basic data partition")
+                    .await
+                    .unwrap_err()
+                    .message
+                    .contains("不唯一"));
+                let selected = execute(
+                    &exec,
+                    &mut context,
+                    "context set",
+                    json!({"nodeId": "part:2"}),
+                )
+                .await;
+                assert_eq!(selected["dir"], "/Basic data partition");
+                assert_eq!(context.location.last().unwrap().1, "part:2");
+                let file = execute(
+                    &exec,
+                    &mut context,
+                    "files get",
+                    json!({"path": "FILE1.TXT"}),
+                )
+                .await;
+                assert!(file["id"].as_str().unwrap().starts_with("ntfs:part:2:"));
+                let located = execute(
+                    &exec,
+                    &mut context,
+                    "files get",
+                    json!({"nodeId": file["id"]}),
+                )
+                .await;
+                assert_eq!(located["path"], "/Basic data partition/file1.txt");
+                execute(&exec, &mut context, "context set", json!({"dir": ".."})).await;
+                assert_eq!(context.pwd(), "/");
+                assert!(super::navigation::locate_node(
+                    &exec,
+                    "duplicate-volumes",
+                    "ntfs:part:2:999999"
+                )
+                .await
+                .is_err());
+            });
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[tokio::test]
+async fn path_case_fallback_obeys_selected_apple_volume_flags_and_filesystem_kind() {
+    use crate::core::{
+        evidence::image::{DiskImage, PartitionKind},
+        filesystem::evidence_session::EvidenceSession,
+    };
+    let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("vendor/apfs/tests/data");
+    for (file, insensitive) in [("basic.apfs", true), ("case-sensitive.apfs", false)] {
+        let image = Arc::new(EvidenceSession::from(
+            DiskImage::open_with_id("apple".into(), fixtures.join(file)).unwrap(),
+        ));
+        assert_eq!(
+            super::navigation::case_insensitive(image, "apfs:part:0:0:".into())
+                .await
+                .unwrap(),
+            insensitive
+        );
+    }
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("vendor/ewf/tests/data/ntfs_sample.E01");
+    for (kind, insensitive) in [
+        (PartitionKind::Fat12, true),
+        (PartitionKind::Fat16, true),
+        (PartitionKind::Fat32, true),
+        (PartitionKind::ExFat, true),
+        (PartitionKind::HfsPlus, true),
+        (PartitionKind::HfsX, false),
+        (PartitionKind::Ext4, false),
+    ] {
+        let mut image = DiskImage::open_with_id("policy".into(), source.clone()).unwrap();
+        image.partitions[0].kind = kind;
+        let image = Arc::new(EvidenceSession::from(image));
+        assert_eq!(
+            super::navigation::case_insensitive(image.clone(), "part:0".into())
+                .await
+                .unwrap(),
+            insensitive
+        );
+        assert!(!super::navigation::case_insensitive(image, String::new())
+            .await
+            .unwrap());
+    }
 }
