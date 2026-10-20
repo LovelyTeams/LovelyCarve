@@ -90,7 +90,10 @@ where
                 return Err(CliError::invalid("目录列表不完整，无法可靠解析路径"));
             }
             for node in result.items {
-                if node.name == component {
+                // Root IDs provide script-friendly volume paths without changing
+                // evidence names. Match both in one pass so a name/ID collision
+                // reports ambiguity instead of silently selecting another volume.
+                if node.name == component || (location.is_empty() && node.id == component) {
                     if child.is_some() {
                         return Err(CliError::invalid(
                             "同名节点不唯一，请改用节点 ID 指定（files list 输出的 items[].id）",

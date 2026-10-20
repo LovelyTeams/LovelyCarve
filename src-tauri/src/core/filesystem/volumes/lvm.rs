@@ -155,9 +155,8 @@ impl LvmVolume {
             .iter()
             .map(|lv| FsNode {
                 id: format!("lvm:{}:{}", self.partition_id, lv.index),
-                // 导航名就用 LV 名本身（VG 内唯一）："LV xxx · Ext4" 的前缀
-                // 和文件系统后缀只会让面包屑/全路径变长，类型看详情面板。
-                name: lv.name.clone(),
+                // Keep the LV label concise and usable as a path component.
+                name: crate::core::common::navigation_name::volume_name(&lv.name),
                 parent_id: Some(format!("part:{}", self.partition_id)),
                 kind: if is_navigable_lv_kind(lv.kind) {
                     NodeKind::Dir

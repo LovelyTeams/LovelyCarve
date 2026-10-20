@@ -276,7 +276,7 @@ fn caseless_ntfs_ids_case_matching_and_absolute_tree_paths() {
 }
 
 #[test]
-fn duplicate_volume_names_can_be_entered_by_id_before_indexing() {
+fn duplicate_complex_volume_names_can_be_entered_by_id_and_path_before_indexing() {
     std::thread::Builder::new()
         .stack_size(16 * 1024 * 1024)
         .spawn(|| {
@@ -289,7 +289,9 @@ fn duplicate_volume_names_can_be_entered_by_id_before_indexing() {
                     .join("vendor/ewf/tests/data/ntfs_sample.E01");
                 let mut image = DiskImage::open_with_id("duplicate-volumes".into(), path).unwrap();
                 let mut first = image.partitions[0].clone();
-                first.label = Some("Basic data partition".into());
+                let label = "数据卷 (Basic data partition) · 备份";
+                let navigation_name = "数据卷_Basic_data_partition_备份";
+                first.label = Some(label.into());
                 let mut second = first.clone();
                 second.id = 2;
                 image.partitions = vec![first, second];
@@ -310,20 +312,56 @@ fn duplicate_volume_names_can_be_entered_by_id_before_indexing() {
                     image_id: Some("duplicate-volumes".into()),
                     ..Context::default()
                 };
+                let info = execute(&exec, &mut context, "images get", json!({})).await;
+                assert_eq!(info["partitions"][0]["label"], label);
                 assert!(exec
-                    .locate(&context, "duplicate-volumes", "/Basic data partition")
+                    .locate(
+                        &context,
+                        "duplicate-volumes",
+                        &format!("/{navigation_name}")
+                    )
                     .await
                     .unwrap_err()
                     .message
                     .contains("不唯一"));
+                for partition in [0, 2] {
+                    let alias = format!("/part:{partition}");
+                    let named = execute(
+                        &exec,
+                        &mut context,
+                        "files get",
+                        json!({"path": format!("{alias}/FILE1.TXT")}),
+                    )
+                    .await;
+                    assert!(named["id"]
+                        .as_str()
+                        .unwrap()
+                        .starts_with(&format!("ntfs:part:{partition}:")));
+                    assert_eq!(named["path"], format!("/{navigation_name}/file1.txt"));
+                    let by_alias = execute(
+                        &exec,
+                        &mut context,
+                        "files read",
+                        json!({"path": format!("{alias}/file1.txt")}),
+                    )
+                    .await;
+                    let by_id = execute(
+                        &exec,
+                        &mut context,
+                        "files read",
+                        json!({"nodeId": named["id"]}),
+                    )
+                    .await;
+                    assert_eq!(by_alias, by_id);
+                }
                 let selected = execute(
                     &exec,
                     &mut context,
                     "context set",
-                    json!({"nodeId": "part:2"}),
+                    json!({"dir": "/part:2"}),
                 )
                 .await;
-                assert_eq!(selected["dir"], "/Basic data partition");
+                assert_eq!(selected["dir"], format!("/{navigation_name}"));
                 assert_eq!(context.location.last().unwrap().1, "part:2");
                 let file = execute(
                     &exec,
@@ -340,7 +378,7 @@ fn duplicate_volume_names_can_be_entered_by_id_before_indexing() {
                     json!({"nodeId": file["id"]}),
                 )
                 .await;
-                assert_eq!(located["path"], "/Basic data partition/file1.txt");
+                assert_eq!(located["path"], format!("/{navigation_name}/file1.txt"));
                 execute(&exec, &mut context, "context set", json!({"dir": ".."})).await;
                 assert_eq!(context.pwd(), "/");
                 assert!(super::navigation::locate_node(

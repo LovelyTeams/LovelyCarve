@@ -62,7 +62,13 @@ impl Deref for EvidenceSession {
 
 impl EvidenceSession {
     /// Directory entry points of the verified case indexes in an offline session.
-    pub fn from_indexed_image(image: DiskImage, roots: Vec<super::tree::fs_tree::FsNode>) -> Self {
+    pub fn from_indexed_image(
+        image: DiskImage,
+        mut roots: Vec<super::tree::fs_tree::FsNode>,
+    ) -> Self {
+        for root in &mut roots {
+            root.name = crate::core::common::navigation_name::volume_name(&root.name);
+        }
         let mut session = Self::from(image);
         session.indexed_roots = Some(roots);
         session

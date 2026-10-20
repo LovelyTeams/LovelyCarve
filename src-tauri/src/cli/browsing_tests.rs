@@ -11,6 +11,81 @@ use crate::{
 };
 
 #[tokio::test]
+async fn root_id_paths_preserve_names_check_all_pages_and_do_not_alias_nested_ids() {
+    use crate::core::catalog::filedb::filedb_store::test_support::node as test_node;
+    let label = "数据卷 (Archive) · 备份";
+    let mut page = |parent: String, cursor: Option<String>, _| {
+        let (items, next_cursor) = match (parent.as_str(), cursor.as_deref()) {
+            ("", None) => (
+                vec![test_node("part:0", label, NodeKind::Dir)],
+                Some("next".into()),
+            ),
+            ("", Some("next")) => (vec![test_node("part:2", label, NodeKind::Dir)], None),
+            ("part:2", None) => (
+                vec![test_node("file-id", "report.txt", NodeKind::File)],
+                None,
+            ),
+            _ => panic!("unexpected page: {parent} {cursor:?}"),
+        };
+        std::future::ready(Ok(FsNodePage {
+            items,
+            next_cursor,
+            total: None,
+            truncated: false,
+        }))
+    };
+    let volume = vec![(label.into(), "part:2".into())];
+    for path in ["/part:2", "part:2", "/part:0/../part:2"] {
+        assert_eq!(
+            resolve(&[], path, &mut page, insensitive).await.unwrap(),
+            volume
+        );
+    }
+    assert_eq!(
+        resolve(&volume, "/part:2/report.txt", &mut page, insensitive)
+            .await
+            .unwrap(),
+        vec![
+            (label.into(), "part:2".into()),
+            ("report.txt".into(), "file-id".into())
+        ]
+    );
+    for path in [format!("/{label}"), "/part:99".into(), "/PART:2".into()] {
+        assert!(
+            resolve(&[], &path, &mut page, |_| std::future::ready(Ok(false)))
+                .await
+                .is_err()
+        );
+    }
+    assert!(resolve(&volume, "file-id", &mut page, insensitive)
+        .await
+        .is_err());
+
+    // A later page may have a real name equal to an earlier node's ID.
+    // Neither interpretation may silently win, in either listing order.
+    for reverse in [false, true] {
+        let mut page = |_: String, cursor: Option<String>, _| {
+            let first = cursor.is_none();
+            std::future::ready(Ok(FsNodePage {
+                items: vec![if first != reverse {
+                    test_node("part:0", label, NodeKind::Dir)
+                } else {
+                    test_node("part:2", "part:0", NodeKind::Dir)
+                }],
+                next_cursor: first.then(|| "next".into()),
+                total: None,
+                truncated: false,
+            }))
+        };
+        assert!(resolve(&[], "/part:0", &mut page, insensitive)
+            .await
+            .unwrap_err()
+            .message
+            .contains("不唯一"));
+    }
+}
+
+#[tokio::test]
 async fn index_pages_cover_large_directories_and_preserve_walk_limits() {
     let directory = tempfile::tempdir().unwrap();
     let mut entries = (0..502)

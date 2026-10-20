@@ -85,7 +85,7 @@ pub(super) fn assemble_lvm_stack(
 }
 
 /// Name the single whole-device volume of an assembled device after where it
-/// came from, e.g. `ext4 (md · home)`.
+/// came from, e.g. `ext4_md_home`.
 pub(super) fn label_whole_volume(partitions: &mut [Partition], size_bytes: u64, origin: &str) {
     if let [partition] = partitions {
         if partition.start_lba == 0
@@ -94,8 +94,10 @@ pub(super) fn label_whole_volume(partitions: &mut [Partition], size_bytes: u64, 
         {
             // This label is also a navigation component, so origin separators
             // must not become directory separators in path-based clients.
-            let origin = origin.replace('/', " · ");
-            partition.label = Some(format!("{} ({origin})", kind_label(partition.kind)));
+            partition.label = Some(crate::core::common::navigation_name::volume_name(&format!(
+                "{}_{origin}",
+                kind_label(partition.kind)
+            )));
         }
     }
 }

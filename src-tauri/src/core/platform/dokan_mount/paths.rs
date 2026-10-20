@@ -178,7 +178,7 @@ pub(super) fn volume_name_for_mount(image: &Arc<EvidenceSession>, root_node_id: 
         if stem.is_empty() {
             suffix
         } else {
-            format!("{stem} · {suffix}")
+            format!("{stem}_{suffix}")
         }
     } else {
         stem.to_string()
@@ -201,25 +201,24 @@ pub(super) fn mount_suffix_for_root(
             .and_then(|docker| docker.repo_tags().first().cloned())
             .filter(|tag| !tag.trim().is_empty())
             .unwrap_or_else(|| "image".to_string());
-        return Some(format!("docker {tag}"));
+        return Some(format!("docker_{tag}"));
     }
     if let Some(id) = host_docker::parse_host_docker_id(trimmed) {
         return Some(match &id {
-            host_docker::HostDockerNodeId::Group => "docker containers".to_string(),
+            host_docker::HostDockerNodeId::Group => "docker_containers".to_string(),
             host_docker::HostDockerNodeId::Container { container_id, .. } => {
                 let label = host_docker::mount_root_node(image, &id)
                     .ok()
                     .flatten()
                     .map(|node| node.name)
                     .unwrap_or_else(|| container_id.chars().take(12).collect());
-                format!("docker {label}")
+                format!("docker_{label}")
             }
         });
     }
     if trimmed == "tar:" {
         // The image file stem already carries the archive name (the label is
-        // built as `{stem} · {suffix}`), so the suffix is just the type tag —
-        // otherwise a `检材1.tar` mount reads "检材1 · tar 检材1.tar".
+        // built as `{stem}_{suffix}`), so the suffix is just the type tag.
         return Some("tar".to_string());
     }
     if trimmed == "zip:" {
@@ -238,7 +237,7 @@ pub(super) fn mount_suffix_for_root(
             .find(|partition| partition.id == id)
             .and_then(|partition| partition.label.clone());
         return Some(match label {
-            Some(label) if !label.trim().is_empty() => format!("p{id} {label}"),
+            Some(label) if !label.trim().is_empty() => format!("p{id}_{label}"),
             _ => format!("p{id}"),
         });
     }
@@ -250,7 +249,7 @@ pub(super) fn mount_suffix_for_root(
             .find(|partition| partition.id == id)?;
         let volume = LvmVolume::open(image, partition).ok()?;
         let lv = volume.logical_volumes.get(lv_index)?;
-        return Some(format!("p{id} lv {}", lv.name));
+        return Some(format!("p{id}_lv_{}", lv.name));
     }
     Some(trimmed.to_string())
 }
@@ -344,26 +343,11 @@ pub(super) fn is_case_sensitive_fs(kind: PartitionKind) -> bool {
 }
 
 pub(super) fn sanitize_volume_label(label: &str) -> String {
-    let sanitized = label
-        .chars()
-        .map(|ch| {
-            if ch.is_control() || matches!(ch, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
-            {
-                '_'
-            } else {
-                ch
-            }
-        })
-        .collect::<String>()
-        .trim_matches([' ', '.'])
+    crate::core::common::navigation_name::volume_name(label)
+        .trim_matches('.')
         .chars()
         .take(MAX_VOLUME_LABEL_CHARS)
-        .collect::<String>();
-    if sanitized.is_empty() {
-        "lovelycarve".to_string()
-    } else {
-        sanitized
-    }
+        .collect()
 }
 
 /// Replace characters Win32 rejects (`\\ / : * ? " < > |` and ASCII control

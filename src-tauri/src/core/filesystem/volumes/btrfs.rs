@@ -288,8 +288,10 @@ fn should_list_subvol_at_partition_root(
 
 fn root_subvolume_name(subvol: u64, entry: &SubvolEntry) -> String {
     match entry.name.as_deref().filter(|name| !name.trim().is_empty()) {
-        Some(name) => format!("Subvol {subvol} · {name}"),
-        None => format!("Subvol {subvol}"),
+        Some(name) => {
+            crate::core::common::navigation_name::volume_name(&format!("Subvol_{subvol}_{name}"))
+        }
+        None => format!("Subvol_{subvol}"),
     }
 }
 

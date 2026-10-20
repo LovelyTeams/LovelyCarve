@@ -56,6 +56,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="lovelycarve-cli-test-") as directory:
         root = Path(directory)
         evidence = root / "evidence with spaces"
+        volume_name = "evidence_with_spaces"
         evidence.mkdir()
         content = b"hello forensic world\npassword test\n"
         (evidence / "hello.txt").write_bytes(content)
@@ -167,7 +168,7 @@ def main():
         second_evidence.mkdir()
         _, selections = session([
             {"id": "first", "command": "images open", "args": {"path": str(evidence)}},
-            {"id": "cd-first", "command": "context set", "args": {"dir": evidence.name}},
+            {"id": "cd-first", "command": "context set", "args": {"dir": volume_name}},
             {"id": "second", "command": "images open", "args": {"path": str(second_evidence)}},
             {"id": "set-first", "command": "context set", "args": {"imageId": {"$ref": "first#/id"}}},
             {"id": "use-second", "command": "context use", "args": {"imageId": {"$ref": "second#/id"}}},
@@ -188,7 +189,7 @@ def main():
 
         concurrent_requests = [
             {"id": "open", "command": "images open", "args": {"path": str(evidence)}},
-            {"id": "cd", "command": "context set", "args": {"dir": evidence.name}},
+            {"id": "cd", "command": "context set", "args": {"dir": volume_name}},
             {"id": "read", "command": "files read", "args": {"nodeId": node, "offset": 0, "length": 8}},
             {"id": "digest", "command": "files hash", "args": {"nodeId": node, "algos": ["sha256"]}},
             {"id": "stat", "command": "files get", "args": {"path": "hello.txt"}},
@@ -207,7 +208,7 @@ def main():
         assert concurrent_rows["read"]["result"] == {"encoding": "hex", "data": content[:8].hex()}
         assert concurrent_rows["dependent"]["result"] == concurrent_rows["read"]["result"]
         assert concurrent_rows["digest"]["result"]["sha256"] == hashlib.sha256(content).hexdigest()
-        assert concurrent_rows["cd"]["result"]["dir"] == "/" + evidence.name
+        assert concurrent_rows["cd"]["result"]["dir"] == "/" + volume_name
         assert concurrent_rows["remaining"]["result"] == []
         errors = {"bad", "invalid-args", "legacy"}
         assert all("result" in row for key, row in concurrent_rows.items() if key not in errors), concurrent_rows
@@ -511,7 +512,7 @@ def main():
         # A shell script runs one command per line and stops at the first failure.
         exported = root / "export.txt"
         script = f'''images open "{evidence}"
-cd "{evidence.name}"
+cd "{volume_name}"
 files list
 files read hello.txt --length 5
 files hash hello.txt
@@ -537,8 +538,9 @@ files export hello.txt --destination "{exported}"
         (evidence / "latin1.bin").write_bytes(b"caf\xe9")
         result, rows = session([
             {"id": "open", "command": "images open", "args": {"path": str(evidence)}},
+            {"id": "root", "command": "files list", "args": {"path": "/"}},
             {"id": "wait", "command": "tasks wait"},
-            {"id": "cd", "command": "context set", "args": {"dir": "/" + evidence.name}},
+            {"id": "cd", "command": "context set", "args": {"dir": "/" + volume_name}},
             {"id": "pwd", "command": "context get"},
             {"id": "page", "command": "files list", "args": {"path": ".", "pageSize": 2}},
             {"id": "page-by-id", "command": "files list", "args": {"parentId": "folder:", "pageSize": 2}},
@@ -554,12 +556,13 @@ files export hello.txt --destination "{exported}"
             {"id": "file", "command": "files identify", "args": {"path": "signature.bin"}},
         ])
         browsed = {row["id"]: row["result"] for row in rows}
-        assert browsed["cd"]["dir"] == browsed["pwd"]["dir"] == "/" + evidence.name, browsed["pwd"]
+        assert browsed["root"]["items"][0]["name"] == volume_name, browsed["root"]
+        assert browsed["cd"]["dir"] == browsed["pwd"]["dir"] == "/" + volume_name, browsed["pwd"]
         assert browsed["page"] == browsed["page-by-id"]
         assert browsed["page"]["nextCursor"] and browsed["next"]["nextCursor"] is None
         assert browsed["page"]["items"] + browsed["next"]["items"] == browsed["all"]["items"]
         path_args = ["--image", str(evidence), "files", "list"]
-        page_body = {"path": "/" + evidence.name, "pageSize": 2}
+        page_body = {"path": "/" + volume_name, "pageSize": 2}
         body_page = json.loads(run([*path_args, "--body", json.dumps(page_body)]).stdout)
         option_page = json.loads(run([*path_args, "--path", page_body["path"], "--page-size", "2"]).stdout)
         # Reading a live folder can update host access times after the session
@@ -572,7 +575,7 @@ files export hello.txt --destination "{exported}"
         assert all("parentId" in item and "parent_id" not in item for item in browsed["all"]["items"])
         assert "hello.txt" in [item["node"]["name"] for item in browsed["tree"]["items"]]
         assert browsed["stat"]["size"] == len(content) and browsed["stat"]["nodeId"] == node
-        assert browsed["stat"]["path"] == f"/{evidence.name}/hello.txt", browsed["stat"]
+        assert browsed["stat"]["path"] == f"/{volume_name}/hello.txt", browsed["stat"]
         assert "timestamps" in browsed["stat"] and not browsed["stat"]["indexOnly"]
         assert browsed["hex"] == {"encoding": "hex", "data": content[6:14].hex()}
         assert browsed["strings"]["strings"] == [
@@ -586,12 +589,12 @@ files export hello.txt --destination "{exported}"
         assert browsed["file"]["fileLen"] == len(python_content)
         # One-shot reads write the bytes themselves to stdout.
         image_path = ["--image", str(evidence)]
-        assert run_bytes([*image_path, "files", "read", f"/{evidence.name}/hello.txt", "--offset", "6", "--length", "8"]).stdout == b"forensic"
-        latin1 = f"/{evidence.name}/latin1.bin"
+        assert run_bytes([*image_path, "files", "read", f"/{volume_name}/hello.txt", "--offset", "6", "--length", "8"]).stdout == b"forensic"
+        latin1 = f"/{volume_name}/latin1.bin"
         assert run_bytes([*image_path, "files", "read", latin1]).stdout == b"caf\xe9"
         # --text decodes UTF-8 and replaces what is not.
         assert run_bytes([*image_path, "files", "read", latin1, "--text"]).stdout == "caf�".encode("utf-8")
-        identified = json.loads(run([*image_path, "files", "identify", f"/{evidence.name}/signature.bin"]).stdout)
+        identified = json.loads(run([*image_path, "files", "identify", f"/{volume_name}/signature.bin"]).stdout)
         assert identified["label"] == "python", identified
 
         result, rows = session([
@@ -860,7 +863,7 @@ files export hello.txt --destination "{exported}"
         # case handling, regex matching, and a display limit independent of storage.
         grep_script = f'''images open "{evidence}"
 tasks wait
-cd "{evidence.name}"
+cd "{volume_name}"
 files search Password hello.txt --codepage UTF-8 --search-id case-sensitive
 files search password nested --ignore-case --codepage UTF-8 --limit 1 --search-id scoped-grep
 files search "pass(word)?" hello.txt --regex --codepage UTF-8 --search-id regex-grep
@@ -882,7 +885,7 @@ searches hits list --search-id scoped-grep --limit 10
         moved_evidence = root / "temporarily absent evidence"
         evidence.rename(moved_evidence)
         offline_script = f'''images open "{evidence}"
-cd "{evidence.name}"
+cd "{volume_name}"
 files list --path nested
 files tree list --path . --depth 128 --name REPORT
 cd nested
@@ -892,11 +895,11 @@ context get
             offline_rows = documents(run(["--case", str(case), "shell"], offline_script).stdout)
             assert offline_rows[0]["indexOnly"], offline_rows
             assert [item["name"] for item in offline_rows[1]["items"]] == ["report.txt"]
-            assert [item["path"] for item in offline_rows[2]["items"]] == [f"/{evidence.name}/nested/report.txt"]
-            assert offline_rows[3]["dir"] == f"/{evidence.name}/nested"
+            assert [item["path"] for item in offline_rows[2]["items"]] == [f"/{volume_name}/nested/report.txt"]
+            assert offline_rows[3]["dir"] == f"/{volume_name}/nested"
             result, rows = session([
                 {"id": "open", "command": "images open", "args": {"path": str(evidence)}},
-                {"id": "cd", "command": "context set", "args": {"dir": "/" + evidence.name}},
+                {"id": "cd", "command": "context set", "args": {"dir": "/" + volume_name}},
                 {"id": "stat", "command": "files get", "args": {"path": "nested/report.txt"}},
                 {"id": "tree", "command": "files tree list", "args": {"path": "nested", "depth": 2}},
                 {"id": "hex", "command": "files read", "args": {"path": "hello.txt"}},
@@ -906,9 +909,9 @@ context get
             ], expected=1, arguments=["--case", str(case)])
             offline_results = {row["id"]: row for row in rows}
             assert offline_results["stat"]["result"]["indexOnly"] and offline_results["stat"]["result"]["name"] == "report.txt"
-            assert [item["path"] for item in offline_results["tree"]["result"]["items"]] == [f"/{evidence.name}/nested/report.txt"]
+            assert [item["path"] for item in offline_results["tree"]["result"]["items"]] == [f"/{volume_name}/nested/report.txt"]
             assert all("error" in offline_results[command] for command in ("hex", "strings", "file"))
-            assert offline_results["pwd"]["result"]["dir"] == "/" + evidence.name
+            assert offline_results["pwd"]["result"]["dir"] == "/" + volume_name
             run(["--case", str(case), *image_path, "files", "search", "password"], expected=1)
         finally:
             moved_evidence.rename(evidence)

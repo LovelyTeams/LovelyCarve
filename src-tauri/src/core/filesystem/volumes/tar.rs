@@ -102,7 +102,7 @@ fn root_node(image: &Arc<DiskImage>) -> FsNode {
         .unwrap_or_else(|| "tar evidence".to_string());
     FsNode {
         id: "tar:".to_string(),
-        name: label,
+        name: crate::core::common::navigation_name::volume_name(&label),
         parent_id: None,
         kind: NodeKind::Dir,
         size: 0,

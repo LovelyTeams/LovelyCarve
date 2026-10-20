@@ -149,7 +149,7 @@ fn partition_root_subvolume_filter_skips_default_and_default_refs() {
     ));
     assert_eq!(
         root_subvolume_name(301, &independent),
-        "Subvol 301 · snapshot"
+        "Subvol_301_snapshot"
     );
 }
 

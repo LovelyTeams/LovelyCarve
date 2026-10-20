@@ -101,7 +101,7 @@ fn root_node(image: &Arc<DiskImage>) -> FsNode {
         .unwrap_or_else(|| "AD1 evidence".to_string());
     FsNode {
         id: ROOT_ID.to_string(),
-        name: label,
+        name: crate::core::common::navigation_name::volume_name(&label),
         parent_id: None,
         kind: NodeKind::Dir,
         size: 0,

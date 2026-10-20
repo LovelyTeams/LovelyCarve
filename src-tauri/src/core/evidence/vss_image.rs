@@ -364,10 +364,10 @@ fn session_label(origin: &ShadowCopyOrigin) -> String {
     let created = origin
         .created_unix_ms
         .and_then(chrono::DateTime::from_timestamp_millis)
-        .map(|time| time.format(" · %Y-%m-%d %H:%M:%S UTC").to_string())
+        .map(|time| time.format("_%Y-%m-%d_%H-%M-%S_UTC").to_string())
         .unwrap_or_default();
     format!(
-        "分区 {} 卷影副本 {}{created}",
+        "分区{}_卷影副本{}{created}",
         origin.partition_id,
         origin.index + 1
     )

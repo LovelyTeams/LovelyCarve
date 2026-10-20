@@ -299,7 +299,7 @@ pub fn array_label(set_name: &str, set_uuid: &str) -> String {
 }
 
 /// Format the `Partition.label` shown on a synthetic assembled-image
-/// partition: `"<fs> (md · <set-name-or-uuid>)"`. Lives here so the
+/// partition: `"<fs>_md_<set-name-or-uuid>"`. Lives here so the
 /// `kind → string` map stays alongside `AssembledArray` rather than in
 /// the IPC layer.
 pub fn synthetic_partition_label(array: &AssembledArray) -> String {
@@ -308,8 +308,10 @@ pub fn synthetic_partition_label(array: &AssembledArray) -> String {
     } else {
         array.set_name.as_str()
     };
-    let identifier = identifier.replace('/', " · ");
-    format!("{} (md · {identifier})", kind_label(array.fs_kind))
+    crate::core::common::navigation_name::volume_name(&format!(
+        "{}_md_{identifier}",
+        kind_label(array.fs_kind)
+    ))
 }
 
 /// Lowercase label for a partition/filesystem kind, shared by the synthetic

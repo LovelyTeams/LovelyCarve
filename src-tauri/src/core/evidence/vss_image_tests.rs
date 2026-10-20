@@ -196,7 +196,7 @@ fn opens_a_shadow_copy_as_a_reconstructed_session_image() {
     let path = snapshot.path.to_string_lossy().into_owned();
     assert!(path.starts_with(&session_path_prefix(&image.id, 2, &origin.store_id)));
     assert!(path.starts_with(SESSION_PREFIX));
-    assert!(path.ends_with("分区 2 卷影副本 1 · 2021-05-01 17:40:03 UTC"));
+    assert!(path.ends_with("分区2_卷影副本1_2021-05-01_17-40-03_UTC"));
     match &snapshot.derived {
         Some(DerivedImage::ShadowCopy {
             parent,

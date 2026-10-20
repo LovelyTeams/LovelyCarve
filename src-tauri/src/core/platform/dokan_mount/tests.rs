@@ -8,6 +8,21 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 
 #[test]
+fn mount_volume_labels_remove_shell_separators_and_keep_the_length_limit() {
+    assert_eq!(
+        super::sanitize_volume_label("卷 (NTFS) · Backup"),
+        "卷_NTFS_Backup"
+    );
+    assert_eq!(super::sanitize_volume_label(" · () "), "volume");
+    assert_eq!(
+        super::sanitize_volume_label(&"卷".repeat(40))
+            .chars()
+            .count(),
+        32
+    );
+}
+
+#[test]
 fn recognizes_archive_and_host_docker_projections() {
     assert!(is_docker_mount_root("docker:"));
     assert!(is_docker_mount_root("docker:2f657463"));

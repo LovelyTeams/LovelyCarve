@@ -225,10 +225,11 @@ pub(crate) fn open_cancellable(
             let detected_label = part.label.take();
             part.id = take_id(&mut next_id)?;
             part.start_lba += base_lba;
-            part.label = Some(match detected_label {
-                Some(label) if !label.is_empty() => format!("{stem} · {label}"),
-                _ => format!("{stem} · p{}", slot + 1),
-            });
+            let label = match detected_label {
+                Some(label) if !label.is_empty() => format!("{stem}_{label}"),
+                _ => format!("{stem}_p{}", slot + 1),
+            };
+            part.label = Some(crate::core::common::navigation_name::volume_name(&label));
             partitions.push(part);
         }
     }

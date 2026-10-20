@@ -432,13 +432,13 @@ fn list_apfs_volumes(image: Arc<DiskImage>, partition: &Partition) -> Result<Vec
 
 fn apfs_volume_node(partition_id: u8, parent_id: &str, info: VolumeInfo) -> FsNode {
     let name = if info.name.trim().is_empty() {
-        format!("APFS {}", info.index)
+        format!("APFS_{}", info.index)
     } else {
-        format!("APFS {} · {}", info.index, info.name)
+        format!("APFS_{}_{}", info.index, info.name)
     };
     FsNode {
         id: format!("apfs:part:{partition_id}:{}:", info.index),
-        name,
+        name: crate::core::common::navigation_name::volume_name(&name),
         parent_id: Some(parent_id.to_string()),
         kind: NodeKind::Dir,
         size: 0,

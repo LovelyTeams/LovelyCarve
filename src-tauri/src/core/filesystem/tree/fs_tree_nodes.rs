@@ -253,10 +253,12 @@ pub(crate) fn partition_node(image: &Arc<EvidenceSession>, partition: &Partition
         } else {
             format!("unsupported:{}", partition.id)
         },
-        name: partition
-            .label
-            .clone()
-            .unwrap_or_else(|| partition_name(partition)),
+        name: crate::core::common::navigation_name::volume_name(
+            &partition
+                .label
+                .clone()
+                .unwrap_or_else(|| partition_name(partition)),
+        ),
         parent_id: None,
         kind: if supported {
             NodeKind::Dir

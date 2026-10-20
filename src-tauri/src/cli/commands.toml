@@ -741,7 +741,7 @@ type = "string"
 description = "切换到的已加载检材 ID 或检材路径"
 [command.params.dir]
 type = "string"
-description = "镜像内工作目录，供后续相对路径使用"
+description = "镜像内工作目录，供后续相对路径使用；首段可用根节点 ID，例如 /part:0"
 [command.params.nodeId]
 type = "string"
 description = "工作目录的节点 ID（files list 的 items[].id），与 --dir 互斥；可进入同名分区"
@@ -817,14 +817,14 @@ description = "检查选项 JSON，可为 {}"
 path = "files tree list"
 native = "files-tree-list"
 summary = "列出目录内容"
-description = "按路径列出目录，结果 path 是含遍历根祖先的检材绝对路径；重名时用 node.id。--depth 递归、--name 按名称过滤（忽略大小写包含匹配）；优先读取卷索引，离线检材可浏览已索引目录。"
+description = "按路径列出目录，首段可用根节点 ID（如 /part:0/Users）代替卷名；结果 path 保留实际名称，重名时用 node.id。--depth 递归、--name 按名称过滤（忽略大小写包含匹配）；优先读取卷索引，离线检材可浏览已索引目录。"
 category = "read"
 target = "nodeId"
 concurrent = true
 keywords = ["tree", "find file by name", "recursive"]
 examples = [
     { command = "lovelycarve-cli --image D:\\evidence\\disk.E01 files tree list --path /", description = "列出检材根下的分区与卷" },
-    { command = "lovelycarve-cli --image D:\\evidence\\disk.E01 files tree list --path /<卷名称>/Users --depth 8 --name report", description = "在子树中按名称查找" },
+    { command = "lovelycarve-cli --image D:\\evidence\\disk.E01 files tree list --path /part:0/Users --depth 8 --name report", description = "以根列表中的卷 ID 指定子树并按名称查找" },
 ]
 [command.params.path]
 type = "string"
@@ -866,8 +866,8 @@ raw_output = true
 concurrent = true
 keywords = ["read file content", "cat", "hex", "dump", "bytes"]
 examples = [
-    { command = "lovelycarve-cli --image D:\\evidence\\disk.E01 files read /<卷名称>/Windows/System32/config/SAM > SAM", description = "把文件原样保存到主机" },
-    { command = "lovelycarve-cli --image D:\\evidence\\disk.E01 files read /<卷名称>/notes.txt --length 4096 --text", description = "以 UTF-8 文本查看开头 4 KiB" },
+    { command = "lovelycarve-cli --image D:\\evidence\\disk.E01 files read /part:0/Windows/System32/config/SAM > SAM", description = "以根列表中的卷 ID 定位并保存原始文件" },
+    { command = "lovelycarve-cli --image D:\\evidence\\disk.E01 files read /part:0/notes.txt --length 4096 --text", description = "以 UTF-8 文本查看开头 4 KiB" },
 ]
 [command.params.path]
 type = "string"
@@ -957,7 +957,7 @@ description = "最多返回的字符串数（1–100000）"
 path = "files list"
 ipc = "fs_children_page"
 summary = "分页列出目录的子节点"
-description = "一页子节点；--query 可按扩展名、大小、时间等过滤并排序（JSON）。"
+description = "一页子节点；路径首段可用根节点 ID（如 /part:0）代替卷名。--query 可按扩展名、大小、时间等过滤并排序（JSON）。"
 category = "read"
 target = "parentId"
 concurrent = true

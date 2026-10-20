@@ -29,7 +29,7 @@ fn fixture() -> (tempfile::TempDir, Arc<EvidenceSession>) {
         kind: PartitionKind::Ext4,
         start_lba: 0,
         length_lba: 8,
-        label: Some("Linux".into()),
+        label: Some("Linux (系统) · 主卷".into()),
         unique_guid: None,
     }];
     (case, Arc::new(EvidenceSession::from(image)))
@@ -71,7 +71,7 @@ fn indexed_file_location_stops_at_unindexed_partition_or_root() {
         );
         let mut frames = vec![frame("root", "/")];
         if parent != "root" {
-            frames.push(frame("part:0", "Linux"));
+            frames.push(frame("part:0", "Linux_系统_主卷"));
         }
         frames.push(frame("ext4:part:0:12", "etc"));
         assert_eq!(
@@ -107,7 +107,7 @@ fn indexed_directory_location_retains_the_target_directory() {
             volume_key: "part:0".into(),
             frames: vec![
                 frame("root", "/"),
-                frame("part:0", "Linux"),
+                frame("part:0", "Linux_系统_主卷"),
                 frame("ext4:part:0:12", "etc")
             ],
             file_id: None,
@@ -144,7 +144,7 @@ fn virtual_nodes_do_not_require_an_index_record() {
             FsLocateResult {
                 node_id: node_id.into(),
                 volume_key: "part:0".into(),
-                frames: vec![frame("root", "/"), frame("part:0", "Linux")],
+                frames: vec![frame("root", "/"), frame("part:0", "Linux_系统_主卷")],
                 file_id: Some(node_id.into()),
             }
         );
@@ -176,7 +176,7 @@ fn real_vmdk_locates_reported_ext4_inode() {
         .iter()
         .find(|partition| partition.id == 0)
         .expect("partition 0");
-    let partition_name = partition.label.clone().unwrap_or_else(|| "分区0".into());
+    let partition_name = fs_tree::partition_node(&image, partition).name;
     let mut expected_frames = vec![frame("root", "/"), frame("part:0", &partition_name)];
     for name in parts {
         let node = fs_tree::children_for_image(&image, &parent)

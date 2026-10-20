@@ -507,10 +507,7 @@ fn locate_node(
             .find(|partition| partition.id == partition_id)?;
         Some(FsLocateNode {
             id: format!("part:{partition_id}"),
-            name: partition
-                .label
-                .clone()
-                .unwrap_or_else(|| format!("分区{partition_id}")),
+            name: fs_tree::partition_node(image, partition).name,
             kind: "dir".to_string(),
         })
     };

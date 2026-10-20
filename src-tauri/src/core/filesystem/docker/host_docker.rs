@@ -475,12 +475,12 @@ fn discover_container(
 
 fn container_root_node(container: &HostDockerContainer) -> FsNode {
     let name = match container.image_reference.as_deref() {
-        Some(image) => format!("{} · {image}", container.name),
+        Some(image) => format!("{}_{image}", container.name),
         None => container.name.clone(),
     };
     FsNode {
         id: container_node_id(&container.id, ""),
-        name,
+        name: crate::core::common::navigation_name::volume_name(&name),
         parent_id: Some(GROUP_ID.to_string()),
         kind: NodeKind::Dir,
         size: 0,

@@ -285,9 +285,27 @@ Markdown 原样写到标准输出，`--section <章节>` 只输出一个章节�
 
 镜像内路径用 `/` 分隔。`/` 是检材的合成根，列出分区和卷（目录检材、归档等同样先显示根名称）；
 不以 `/` 开头的路径相对会话当前目录，支持 `.` 和 `..`，不跟随符号链接。
+路径在合成根的首段也接受该层节点的 ID，例如 `/part:0/Windows/System32/config/SAM`，
+或先运行 `context set --dir /part:0`，再使用卷内相对路径。ID 取自根目录 `files list --path /`
+返回的 `items[].id`（`part:0` 仅为示例），精确匹配，不受卷名中的空格、括号、`·` 或重名影响；
+shell、JSONL 和常驻会话均支持，`cd /part:0` 同样可用。进入卷后的各级仍按实际文件名解析。
+如果一个根节点的名称恰好等于另一个根节点的 ID，会明确报歧义，改用 `--node-id` 等 ID 选项。
+卷入口名称统一使用字母、数字、中文、`.`、`-`、`_`；空格、括号、`·` 和其他标点分隔符
+合并为 `_`，例如 `ext4 (md · host:0)` → `ext4_md_host_0`、
+`APFS 0 · Macintosh HD` → `APFS_0_Macintosh_HD`。该规则也用于 LVM、Btrfs 子卷、Docker、
+卷影副本、挂载卷标和目录／归档的合成根；定位面包屑使用同一名称。
+卷内真实目录和文件名、原始卷标元数据与节点 ID 保持原样。
+转换后重名的卷仍需按 ID 区分。
+
+```powershell
+lovelycarve-cli --image "D:\evidence\disk.E01" files list --path /
+lovelycarve-cli --image "D:\evidence\disk.E01" files read /part:0/Windows/System32/config/SAM > SAM
+lovelycarve-cli --image "D:\evidence\disk.E01" files tree list --path /part:0/Users --depth 3
+```
+
 每个接受路径的命令也接受节点 ID（`--node-id`、`--parent-id` 或 `--root-id`，取 `files list`
 输出的 `items[].id`），用于同名节点、删除条目和特殊流。
-`files get --node-id` 与下述目录切换入口不要求打开案件。重名分区（例如两个 `Basic data partition`）可先运行
+`files get --node-id` 与下述目录切换入口不要求打开案件。重名分区（例如两个 `Basic_data_partition`）可先运行
 `context set --node-id part:2`，再用 `files get Windows` 等相对路径；`--node-id` 与 `--dir` 互斥。
 上下文保存节点 ID，因此显示路径同名也不会切到另一卷。`context get` 的 `nodeId` 可确认当前目录身份。
 
@@ -341,7 +359,7 @@ raid detect
 images list
 context use <逻辑卷的 assembledImageId>
 files list
-context set --dir "<上一步返回的卷名称>"
+context set --node-id <上一步返回的卷ID>
 files list
 files read hello.txt
 ```
@@ -352,13 +370,13 @@ files read hello.txt
 `assembled://` 是当前会话内的引用；程序退出或卷已关闭后，需重新加载成员盘并运行 `raid detect`，
 不能把它当作主机磁盘路径。找不到会话时会返回 `notFound` 和恢复步骤。
 
-JSONL 可直接引用检测结果及目录名称，避免抄写 ID：
+JSONL 可直接引用检测结果及卷 ID，避免抄写 ID 和转义卷名：
 
 ```jsonl
 {"id":"raid","command":"raid detect"}
 {"id":"use","command":"context use","args":{"imageId":{"$ref":"raid#/volumeGroups/0/logicalVolumes/0/assembledImageId"}}}
 {"id":"roots","command":"files list"}
-{"id":"cd","command":"context set","args":{"dir":{"$ref":"roots#/items/0/name"}}}
+{"id":"cd","command":"context set","args":{"nodeId":{"$ref":"roots#/items/0/id"}}}
 {"id":"files","command":"files list"}
 {"id":"read","command":"files read","args":{"path":"hello.txt","length":4096}}
 ```
