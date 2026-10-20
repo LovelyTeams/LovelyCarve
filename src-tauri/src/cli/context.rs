@@ -10,7 +10,7 @@ use super::{
     browsing,
     catalog::{Command, Kind},
     generated, native, output,
-    progress::{self, Progress},
+    progress::Reporter,
     prompt, CliError, Json, Output,
 };
 use crate::{commands::filesystem::filesystem_page::FsNodePage, host::AppHandle, state::AppState};
@@ -75,6 +75,7 @@ pub struct Exec {
     pub state: Arc<AppState>,
     pub mode: Mode,
     pub quiet: bool,
+    pub reporter: Reporter,
 }
 
 #[derive(Serialize)]
@@ -391,7 +392,30 @@ impl Exec {
             };
             values.insert(param.name.clone(), value);
         }
+        let mut monitor =
+            (self.mode != Mode::Session).then(|| self.reporter.start(&command.path()));
+        let outcome = self
+            .execute_prepared(context, command, values, request.text)
+            .await;
+        if let Some(monitor) = &mut monitor {
+            monitor.finish(&outcome);
+        }
+        outcome
+    }
+
+    async fn execute_prepared(
+        &self,
+        context: &mut Context,
+        command: &Command,
+        mut values: Map<String, Value>,
+        text: bool,
+    ) -> Result<Output, CliError> {
         let mut target = None;
+        // RAID operates on all loaded images and has no imageId parameter,
+        // but an explicitly configured initial evidence must still be opened.
+        if command.ipc_command.as_deref() == Some("raid_auto_detect") {
+            self.current_image(context).await?;
+        }
         let image = command.params.iter().find(|param| param.scope);
         if image.is_some() || command.target.is_some() {
             let given = image
@@ -427,22 +451,9 @@ impl Exec {
                 }
             }
         }
-        let (running, _) = command.category.labels();
-        let progress = Progress {
-            quiet: self.quiet || self.mode == Mode::Session,
-            spinner: self.mode != Mode::Session,
-        };
         let output = match command.ipc_command.as_deref() {
-            Some(ipc) => {
-                let values = values.clone();
-                progress::with_progress(running, progress, async {
-                    generated::dispatch(&self.host, &self.state, ipc, values).await
-                })
-                .await?
-            }
-            None => {
-                native::run(self, context, command, values.clone(), target, request.text).await?
-            }
+            Some(ipc) => generated::dispatch(&self.host, &self.state, ipc, values.clone()).await?,
+            None => native::run(self, context, command, values.clone(), target, text).await?,
         };
         self.after(context, command, &values, &output);
         Ok(output)

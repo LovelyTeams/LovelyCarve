@@ -565,9 +565,6 @@ type = "number"
 default = 1
 short = "j"
 description = "并发查询数（1–64）；修改上下文的命令按顺序执行"
-[command.params.events]
-type = "boolean"
-description = "把进度与生命周期事件以 JSONL 写到标准错误"
 
 [[command]]
 path = "shell"

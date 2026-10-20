@@ -21,6 +21,7 @@ pub const ASK: &str = "-";
 #[derive(Debug, Default, Clone)]
 pub struct Globals {
     pub quiet: bool,
+    pub events: bool,
     pub session: Option<String>,
     /// The evidence scope: an image ID or an evidence path.
     pub image: Option<String>,
@@ -471,6 +472,7 @@ fn globals(matches: &ArgMatches) -> Globals {
             .flatten()
             .cloned(),
         quiet: flag(matches, "quiet"),
+        events: flag(matches, "events"),
         image: matches
             .try_get_one::<String>("image")
             .ok()

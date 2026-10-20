@@ -29,7 +29,7 @@ pub(in crate::cli) fn prepare(name: &str) -> Result<Prepared, CliError> {
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
     listener.set_nonblocking(true)?;
     let descriptor = Descriptor {
-        protocol: 1,
+        protocol: protocol::VERSION,
         name: name.into(),
         port: listener.local_addr()?.port(),
         token: format!(
@@ -128,15 +128,50 @@ pub(in crate::cli) async fn serve(
                 Err(error) => Err(error),
             }
         } else {
-            execute(
-                exec,
-                context,
-                &request.command,
-                request.args,
-                request.force,
-                request.dry_run,
-            )
-            .await
+            let (sender, mut events) = tokio::sync::mpsc::unbounded_channel();
+            let subscription = request.progress.then(|| exec.reporter.subscribe(sender));
+            let result = {
+                let work = async {
+                    if let Some(reference) = &request.initial_image {
+                        if request.command != "raid detect" {
+                            return Err(CliError::invalid(
+                                "initialImage 仅用于 RAID 检测的初始检材",
+                            ));
+                        }
+                        if !request.dry_run {
+                            exec.resolve_image(context, reference).await?;
+                        }
+                    }
+                    execute(
+                        exec,
+                        context,
+                        &request.command,
+                        request.args,
+                        request.force,
+                        request.dry_run,
+                    )
+                    .await
+                };
+                tokio::pin!(work);
+                loop {
+                    tokio::select! {
+                        biased;
+                        event = events.recv(), if subscription.is_some() => {
+                            if let Some(event) = event {
+                                if let Err(error) = protocol::header(&mut stream, &Header::Event { event }) { tracing::debug!("resident progress delivery: {error}"); }
+                            }
+                        }
+                        result = &mut work => break result,
+                    }
+                }
+            };
+            drop(subscription);
+            while let Ok(event) = events.try_recv() {
+                if let Err(error) = protocol::header(&mut stream, &Header::Event { event }) {
+                    tracing::debug!("resident final progress delivery: {error}");
+                }
+            }
+            result
         };
         if let Err(error) = protocol::send(&mut stream, result) {
             // A disconnected client never tears down the shared evidence and

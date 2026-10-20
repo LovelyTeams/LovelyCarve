@@ -70,7 +70,7 @@ pub(super) fn read(name: &str) -> Result<Descriptor, CliError> {
     })?;
     let descriptor: Descriptor = serde_json::from_reader(std::io::Read::take(file, 64 * 1024))?;
     if descriptor.name != name
-        || descriptor.protocol != 1
+        || descriptor.protocol != super::protocol::VERSION
         || descriptor.port == 0
         || descriptor.token.len() < 32
     {

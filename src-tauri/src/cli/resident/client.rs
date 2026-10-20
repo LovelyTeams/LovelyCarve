@@ -10,7 +10,9 @@ use serde_json::{json, Map, Value};
 use super::{protocol, registry};
 use crate::cli::{
     argv::{Globals, Invocation},
-    output, prompt, CliError, Output,
+    output,
+    progress::{Options, Reporter},
+    prompt, CliError, Output,
 };
 
 pub(super) fn exchange(
@@ -20,6 +22,33 @@ pub(super) fn exchange(
     force: bool,
     dry_run: bool,
     text: bool,
+) -> Result<Output, CliError> {
+    exchange_observed(
+        name,
+        command,
+        args,
+        Exchange {
+            force,
+            dry_run,
+            text,
+            initial_image: None,
+        },
+        None,
+    )
+}
+
+struct Exchange {
+    force: bool,
+    dry_run: bool,
+    text: bool,
+    initial_image: Option<String>,
+}
+fn exchange_observed(
+    name: &str,
+    command: &str,
+    args: Map<String, Value>,
+    options: Exchange,
+    reporter: Option<&Reporter>,
 ) -> Result<Output, CliError> {
     let descriptor = registry::read(name)?;
     let address = SocketAddr::from((Ipv4Addr::LOCALHOST, descriptor.port));
@@ -35,13 +64,19 @@ pub(super) fn exchange(
             token: descriptor.token,
             command: command.into(),
             args,
-            force,
-            dry_run,
+            force: options.force,
+            dry_run: options.dry_run,
+            progress: reporter.is_some(),
+            initial_image: options.initial_image,
         },
     )?;
     stream.write_all(b"\n")?;
     stream.flush()?;
-    protocol::receive(&mut BufReader::new(stream), text)
+    if let Some(reporter) = reporter {
+        protocol::receive_observed(&mut BufReader::new(stream), options.text, Some(reporter))
+    } else {
+        protocol::receive(&mut BufReader::new(stream), options.text)
+    }
 }
 
 pub(super) fn info(name: &str) -> Result<Value, CliError> {
@@ -93,15 +128,34 @@ pub(in crate::cli) fn forward(
         let value = prompt::required_field(&parameter.option, &parameter.description, true)?;
         invocation.values.insert(field.clone(), json!(value));
     }
-    let result = exchange(
+    let reporter = Reporter::new(Options {
+        quiet: globals.quiet,
+        events: globals.events,
+    });
+    let mut monitor = reporter.start(&invocation.command.path());
+    let initial_image = (invocation.command.ipc_command.as_deref() == Some("raid_auto_detect"))
+        .then(|| globals.image.clone())
+        .flatten();
+    let result = exchange_observed(
         name,
         &invocation.command.path(),
         invocation.values,
-        invocation.force,
-        invocation.dry_run,
+        Exchange {
+            force: invocation.force,
+            dry_run: invocation.dry_run,
+            text: invocation.text,
+            initial_image,
+        },
+        Some(&reporter),
+    );
+    monitor.finish(&result);
+    let result = result?;
+    let (_, done) = invocation.command.category.labels();
+    output::print_output(
+        result,
+        done,
+        globals.quiet || globals.events,
         invocation.text,
     )?;
-    let (_, done) = invocation.command.category.labels();
-    output::print_output(result, done, globals.quiet, invocation.text)?;
     Ok(0)
 }

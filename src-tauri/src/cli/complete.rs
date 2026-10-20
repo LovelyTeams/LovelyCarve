@@ -7,6 +7,12 @@ use super::catalog::{Catalog, Kind};
 /// Global options valid on every command.
 pub const GLOBAL_OPTIONS: &[(&str, Option<char>, &str, bool)] = &[
     (
+        "events",
+        None,
+        "把命令生命周期与后端进度以 JSONL 写到标准错误",
+        false,
+    ),
+    (
         "session",
         None,
         "使用命名常驻会话（也可设置 LOVELYCARVE_SESSION）",

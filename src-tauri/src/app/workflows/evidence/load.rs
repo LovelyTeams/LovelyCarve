@@ -68,7 +68,11 @@ fn emit_load_progress(
     }
     tasks.emit_progress(
         task_id,
-        crate::task_manager::TaskProgressUnit::Bytes,
+        if is_bytes {
+            crate::task_manager::TaskProgressUnit::Bytes
+        } else {
+            crate::task_manager::TaskProgressUnit::Entries
+        },
         current,
         (total > 0).then_some(total),
         Some(stage.clone()),
@@ -96,8 +100,11 @@ pub async fn image_load(
     raw_read_mode: RawReadMode,
 ) -> Result<ImageInfo, AppError> {
     let reference_id = uuid::Uuid::parse_str(&path).ok().map(|id| id.to_string());
-    let session_hint = if path.starts_with("assembled://") {
-        Some("assembled session not found; load the member images and run RAID detection again")
+    let assembled_reference = path
+        .split_once(':')
+        .is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("assembled"));
+    let session_hint = if assembled_reference {
+        Some("组装卷引用未在当前会话加载或已失效。assembled:// 不是主机文件路径；请在组装所在会话中运行 images list 获取 image ID，再用 context use <imageId> 或 images open <imageId> 选择。若原进程已退出，请先 sessions open <名称>，在同一会话加载成员镜像并运行 raid detect，使用返回的 assembledImageId。")
     } else if reference_id.is_some() {
         Some("image ID not loaded; open its source or load the member images and run RAID detection again")
     } else if path.starts_with("decrypted://") {
@@ -123,7 +130,13 @@ pub async fn image_load(
                     || image_load_key(&image.path.to_string_lossy()) == image_load_key(&path)
             })
             .map(|image| image.info())
-            .ok_or_else(|| AppError::not_found(hint));
+            .ok_or_else(|| {
+                let error = AppError::not_found(hint);
+                if assembled_reference { error.with_context_value(serde_json::json!({
+                    "reference": path, "referenceType": "assembled", "requiresLiveSession": true,
+                    "recovery": ["sessions attach <name>", "images list", "context use <imageId>", "raid detect"]
+                })) } else { error }
+            });
     }
     let context = state.image_load_context.lock().await;
     if let Some(expected) = case_dir {

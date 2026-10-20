@@ -86,6 +86,7 @@ CLI 不会静默漏接功能。
 | `-i, --image <ID\|路径>` | 命令作用的检材：已加载检材的 ID，或检材路径（第一次用到时打开） |
 | `--case <目录>` | 运行前打开的案件 |
 | `--session <名称>` | 将普通命令交给已有的命名常驻会话；也可设置环境变量 `LOVELYCARVE_SESSION` |
+| `--events` | 普通命令、shell 与 JSONL 会话的生命周期及后端进度以 JSONL 写入 stderr |
 | `-q, --quiet` | 不输出横幅、进度等非必要信息 |
 | `-h, --help` / `-v, --version` | 帮助与版本 |
 
@@ -168,11 +169,26 @@ Markdown 原样写到标准输出，`--section <章节>` 只输出一个章节�
   `--text` 按 UTF-8 解码，无效字节替换为 U+FFFD。
 - 没有返回值的命令标准输出为空；在终端中标准错误显示一行 `✓ 完成` 之类的确认。
 - 横幅 `lovelycarve-cli · v<版本>`、进度、交互提问、提示和错误都写标准错误。横幅只在标准错误是终端时
-  出现，`--quiet` 关闭横幅与提示。标准输出和标准错误都是彩色终端时，运行中的命令先显示一条 `│`，
-  再显示 `⠋  读取中 [3s]` 式的旋转进度（标签只写动作，命令本身已说明对象），结束时变为
-  `◇  读取中 [3s]`，失败时为红色的 `▲`。`LOVELYCARVE_QUIET=1` 同时关闭横幅、旋转进度和终端进度；
+  出现；普通命令默认输出命令名、后端阶段、该阶段已完成/总量和耗时，stdout 重定向后仍然可见。
+  stderr 为彩色终端时原地刷新动画；管道和日志中输出普通文本，长命令每 5 秒报告一次仍在执行。
+  `--quiet` 或 `LOVELYCARVE_QUIET=1` 关闭这些提示；显式 `--events` 仍输出事件。
+  阶段来自真实后端观察，未知总量不显示百分比；心跳仅表示 CLI 仍在执行，不证明磁盘正在推进。
   终端进度指 Windows Terminal 等支持 OSC 9;4 的终端在标签页或任务栏显示的进度，`--quiet` 或
   `LOVELYCARVE_NO_OSC_PROGRESS=1` 关闭。
+- `--events` 是全局选项，不再限于 `session`。启用后关闭人类进度行，stderr 的事件形式为
+  `{"event":"…","payload":…}`；stdout 仍只有原来的 JSON 或原始字节，`--quiet --events` 可用于脚本。
+  普通命令额外报告 `cli-command`：`command`、唯一 `commandId`、`phase`（`started/running/completed/failed/cancelled`）、
+  `elapsedMs` 和最近的 `stage`。执行错误用 `cli-error` 保留错误代码、说明、后端命令名与详情；
+  底层诊断日志仍可能写入 stderr。JSONL 请求的成功/失败结果继续写在 stdout。
+  隐式通过 `--image` 打开的检材也有 `image-load-progress`；`raid-detect-progress` 的阶段依次覆盖 LVM 成员元数据、
+  md 元数据、md 组装、固件 RAID、LVM 逻辑卷、无元数据推定和组装卷注册，`current/total` 只属于当前阶段。
+  命令返回后仍有后台工作时，会继续显示 `tasks wait` 的进度与耗时。
+
+  ```powershell
+  lovelycarve-cli images open "D:\evidence\disk.E01" > image.json
+  lovelycarve-cli --quiet --events --image "D:\evidence\disk.E01" raid detect > raid.json 2> progress.jsonl
+  lovelycarve-cli --session exam --events raid detect > raid.json 2> progress.jsonl
+  ```
 - 错误显示为带边框的块：命令行、参数与本程序的错误为 `┌ 错误` 加说明；后端命令失败为 `┌ 后端错误`、
   `│ [错误代码] 说明`，以及一行 `IPC <后端命令>`。设置 `DEBUG=1` 时附带后端详情。
 - 退出码：`0` 成功；`1` 失败（命令行错误、后端错误、未确认的删除、会话中任一请求失败）；
@@ -385,7 +401,9 @@ Get-Content .\workflow.jsonl | lovelycarve-cli --case "D:\cases\demo" session --
 `dryRun`。接受路径的命令既可以传 `path`，也可以传节点 ID。
 
 - 每条响应是一行 `{"id":"…","result":…}` 或 `{"id":"…","error":{"code":"…","message":"…"}}`，
-  `details` 仅在后端提供详情时出现，写出后立即 flush。能解析出字符串 ID 的无效请求保留该 ID，
+  `details` 仅在后端提供详情时出现，写出后立即 flush。失效的 `assembled://` 引用返回 `notFound`，说明应在组装所在会话
+  通过 `images list` 获取 image ID、再 `context use <imageId>`，并给出会话已退出时重新加载成员盘与检测的恢复步骤。
+  它不是主机文件路径，不会再作为 Windows 文件名打开。能解析出字符串 ID 的无效请求保留该 ID，
   无法解析的行使用 `"id":null`。`result` 保留后端命令原始的 JSON 字段。
 - 原始字节返回 `{"encoding":"hex","data":"…"}`，`files read` 单次最多 16 MiB，可用 `offset`/`length`
   分段；带 `output` 时原始字节或 JSON 写入不存在的新文件，结果为 `{"output":"<路径>"}`。
@@ -400,7 +418,7 @@ Get-Content .\workflow.jsonl | lovelycarve-cli --case "D:\cases\demo" session --
 - 旧版命令名（如 `image_load`、`fs_read_range`、`ls`、`wait`）返回错误，并在消息中给出现在的命令。
 - 单行上限 16 MiB，单会话最多 10000 个请求。标准输入保持打开时也持续返回已完成的结果；
   EOF 后先等待所有已派发请求，再等待后台任务。单条失败不影响后续请求，但会话以 1 退出。
-- `--events` 把进度与生命周期事件以 `{"event":"…","payload":…}` 行写到标准错误；
+- 全局 `--events` 把进度与生命周期事件以 `{"event":"…","payload":…}` 行写到标准错误；
   标准输出只有响应，没有横幅、进度或提示。
 
 ### 代理调用

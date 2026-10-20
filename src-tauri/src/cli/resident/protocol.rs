@@ -8,6 +8,7 @@ use serde_json::{Map, Value};
 use crate::cli::{CliError, Json, Origin, Output};
 
 pub(super) const CHUNK: usize = 8 * 1024 * 1024;
+pub(super) const VERSION: u32 = 2;
 const MAX_REQUEST: u64 = 16 * 1024 * 1024;
 
 #[derive(Serialize, Deserialize)]
@@ -21,11 +22,16 @@ pub(super) struct Request {
     pub force: bool,
     #[serde(default)]
     pub dry_run: bool,
+    #[serde(default)]
+    pub progress: bool,
+    #[serde(default)]
+    pub initial_image: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub(super) enum Header {
+    Event { event: crate::cli::progress::Event },
     Json { bytes: u64 },
     Stream,
     Done,
@@ -165,28 +171,45 @@ fn read_header(reader: &mut impl BufRead) -> Result<Header, CliError> {
 }
 
 pub(super) fn receive(reader: &mut impl BufRead, text: bool) -> Result<Output, CliError> {
-    match read_header(reader)? {
-        Header::Json { bytes } => {
-            if bytes > 512 * 1024 * 1024 {
-                return Err(CliError::invalid("会话 JSON 结果超过 512 MiB，请分页读取"));
+    receive_observed(reader, text, None)
+}
+
+pub(super) fn receive_observed(
+    reader: &mut impl BufRead,
+    text: bool,
+    reporter: Option<&crate::cli::progress::Reporter>,
+) -> Result<Output, CliError> {
+    loop {
+        match read_header(reader)? {
+            Header::Event { event } => {
+                if let Some(reporter) = reporter {
+                    reporter
+                        .event(&event.event, event.payload)
+                        .map_err(crate::cli::internal_error)?;
+                }
             }
-            let mut data = String::new();
-            if reader.take(bytes).read_to_string(&mut data)? as u64 != bytes {
-                return Err(CliError::new(
-                    "sessionDisconnected",
-                    "会话 JSON 结果未完整传输",
-                ));
+            Header::Json { bytes } => {
+                if bytes > 512 * 1024 * 1024 {
+                    return Err(CliError::invalid("会话 JSON 结果超过 512 MiB，请分页读取"));
+                }
+                let mut data = String::new();
+                if reader.take(bytes).read_to_string(&mut data)? as u64 != bytes {
+                    return Err(CliError::new(
+                        "sessionDisconnected",
+                        "会话 JSON 结果未完整传输",
+                    ));
+                }
+                return Ok(Output::Json(Json {
+                    text: Some(data),
+                    value: std::sync::OnceLock::new(),
+                }));
             }
-            Ok(Output::Json(Json {
-                text: Some(data),
-                value: std::sync::OnceLock::new(),
-            }))
-        }
-        Header::Done => Ok(Output::Written),
-        Header::Error { error } => Err(error.into()),
-        Header::Stream => {
-            copy_stream(reader, &mut std::io::stdout().lock(), text)?;
-            Ok(Output::Written)
+            Header::Done => return Ok(Output::Written),
+            Header::Error { error } => return Err(error.into()),
+            Header::Stream => {
+                copy_stream(reader, &mut std::io::stdout().lock(), text)?;
+                return Ok(Output::Written);
+            }
         }
     }
 }
@@ -226,7 +249,9 @@ fn copy_stream(
             Ok(())
         }
         Header::Error { error } => Err(error.into()),
-        Header::Json { .. } | Header::Stream => Err(CliError::invalid("会话流结束标记无效")),
+        Header::Json { .. } | Header::Stream | Header::Event { .. } => {
+            Err(CliError::invalid("会话流结束标记无效"))
+        }
     }
 }
 

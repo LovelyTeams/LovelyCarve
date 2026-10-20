@@ -34,6 +34,39 @@ fn disk(bytes: Vec<u8>) -> Arc<DiskImage> {
 const CHUNK: usize = 4096;
 const DATA_OFFSET_SECTORS: u64 = 16;
 
+#[test]
+fn observing_detection_preserves_results_and_reports_stage_local_bounds() {
+    let geometry = geometry(1, 0, 2, 512);
+    let content = pattern(512 * 512, 7);
+    let images = (0..2)
+        .map(|slot| disk(v12_member(&device(&geometry, slot), &content)))
+        .collect::<Vec<_>>();
+    let options = DetectOptions::default();
+    let baseline = detect_with_options(&images, &options);
+    let progress = std::sync::Mutex::new(Vec::new());
+    let observed = detect_with_options_observed(&images, &options, &|event| {
+        progress.lock().unwrap().push(event);
+    });
+    assert_eq!(
+        serde_json::to_value(&baseline.0).unwrap(),
+        serde_json::to_value(&observed.0).unwrap()
+    );
+    assert_eq!(baseline.1.len(), observed.1.len());
+    let progress = progress.into_inner().unwrap();
+    assert_eq!(progress.first().unwrap().stage, DetectStage::LvmMetadata);
+    assert!(progress
+        .iter()
+        .any(|event| event.stage == DetectStage::MdArrays
+            && event.current == 1
+            && event.total == Some(1)));
+    assert!(progress
+        .iter()
+        .any(|event| event.stage == DetectStage::Heuristic && event.total.is_none()));
+    assert!(progress
+        .iter()
+        .all(|event| event.total.is_none_or(|total| event.current <= total)));
+}
+
 /// Array geometry shared by every member's superblock.
 fn geometry(level: i32, layout: u32, raid_disks: u32, size_sectors: u64) -> V1Fields {
     V1Fields {

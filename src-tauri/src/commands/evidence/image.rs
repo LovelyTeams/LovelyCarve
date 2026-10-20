@@ -104,12 +104,15 @@ pub async fn image_list(state: State<'_, AppState>) -> Result<Vec<ImageInfo>, Ap
 /// `degraded_sets` lists md set UUIDs the examiner chose to assemble without
 /// the members their metadata still expects. Idempotent: re-running on the
 /// same image set reuses the previously registered synthetic images.
+/// Emits `raid-detect-progress` with `stage`, `current` and nullable `total`;
+/// counts describe only that stage, never a percentage of the full scan.
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn raid_auto_detect(
+    app: AppHandle,
     state: State<'_, AppState>,
     degraded_sets: Option<Vec<String>>,
 ) -> Result<RaidStack, AppError> {
-    crate::app::workflows::evidence::raid_auto_detect(state, degraded_sets.unwrap_or_default())
+    crate::app::workflows::evidence::raid_auto_detect(app, state, degraded_sets.unwrap_or_default())
         .await
 }
 

@@ -79,6 +79,7 @@ async fn navigate_raid_lvm_btrfs(on_md: bool) {
     source.write_all(&bytes).unwrap();
     let state = Arc::new(AppState::new());
     let exec = Exec {
+        reporter: super::progress::Reporter::silent(),
         host: AppHandle::new(Some(temporary.path().to_owned()), |_, _| Ok(())),
         state: state.clone(),
         mode: Mode::Session,

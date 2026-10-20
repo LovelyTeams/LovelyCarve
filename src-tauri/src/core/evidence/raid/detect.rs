@@ -21,7 +21,22 @@ pub fn detect_with_options(
     images: &[Arc<DiskImage>],
     options: &DetectOptions,
 ) -> (RaidStack, Vec<AssembledArray>) {
+    detect_with_options_observed(images, options, &|_| {})
+}
+
+/// The same detection, reporting real stage boundaries and processed objects.
+/// The observer runs inline on the caller's blocking worker and must not block.
+pub fn detect_with_options_observed(
+    images: &[Arc<DiskImage>],
+    options: &DetectOptions,
+    observer: &dyn Fn(DetectProgress),
+) -> (RaidStack, Vec<AssembledArray>) {
     let mut diagnostics = Vec::new();
+    observer(DetectProgress::new(
+        DetectStage::LvmMetadata,
+        0,
+        Some(images.len()),
+    ));
 
     // Pass 1 — LVM PVs on the loaded images, joined into volume groups. Their
     // complete LVs may be md members. Grouping is redone in pass 4 once PVs on
@@ -52,13 +67,25 @@ pub fn detect_with_options(
             partition_count: image.partitions.len(),
             lvm_pv_count: pv_count,
         });
+        observer(DetectProgress::new(
+            DetectStage::LvmMetadata,
+            image_summaries.len(),
+            Some(images.len()),
+        ));
     }
     let image_vgs = group_pvs_into_vgs(&image_pvs, &mut Vec::new());
     let lv_devices = materialise_logical_volumes(&PvSources::from_images(images), &image_vgs);
 
     // Pass 2 — md superblocks on LVs, partitions and whole images.
     let mut found = Vec::new();
-    for candidate in enumerate_candidates(images, &lv_devices) {
+    let candidates = enumerate_candidates(images, &lv_devices);
+    let candidate_count = candidates.len();
+    observer(DetectProgress::new(
+        DetectStage::MdMetadata,
+        0,
+        Some(candidate_count),
+    ));
+    for (index, candidate) in candidates.into_iter().enumerate() {
         match mdadm_super::probe(candidate.reader.as_ref()) {
             Ok(Some(hit)) => found.push((hit, candidate)),
             Ok(None) => {}
@@ -67,6 +94,11 @@ pub fn detect_with_options(
                 describe_origin(&candidate.origin)
             )),
         }
+        observer(DetectProgress::new(
+            DetectStage::MdMetadata,
+            index + 1,
+            Some(candidate_count),
+        ));
     }
     let mut members_by_set: BTreeMap<String, Vec<AssembledMember>> = BTreeMap::new();
     for (hit, candidate) in innermost_superblocks(found) {
@@ -93,9 +125,20 @@ pub fn detect_with_options(
     let mut arrays = Vec::new();
     let mut filesystems = Vec::new();
     let mut assembled = Vec::new();
-    for (set_uuid, members) in members_by_set {
+    let set_count = members_by_set.len();
+    observer(DetectProgress::new(
+        DetectStage::MdArrays,
+        0,
+        Some(set_count),
+    ));
+    for (index, (set_uuid, members)) in members_by_set.into_iter().enumerate() {
         let allow_degraded = options.degraded_sets.contains(&set_uuid);
         let Some(outcome) = md_array::assemble_md_set(&set_uuid, members, allow_degraded) else {
+            observer(DetectProgress::new(
+                DetectStage::MdArrays,
+                index + 1,
+                Some(set_count),
+            ));
             continue;
         };
         diagnostics.extend(outcome.diagnostics);
@@ -121,6 +164,11 @@ pub fn detect_with_options(
             ));
         }
         arrays.push(array);
+        observer(DetectProgress::new(
+            DetectStage::MdArrays,
+            index + 1,
+            Some(set_count),
+        ));
     }
 
     // Pass 3b — firmware RAID (Intel IMSM, SNIA DDF) on whole images that are
@@ -142,6 +190,7 @@ pub fn detect_with_options(
             RaidMemberOrigin::Whole { .. } | RaidMemberOrigin::Lv { .. } => None,
         })
         .collect();
+    observer(DetectProgress::new(DetectStage::Firmware, 0, None));
     let firmware = assemble_firmware_sets(images, &md_whole_disks, options);
     diagnostics.extend(firmware.diagnostics);
     for outcome in firmware.volumes {
@@ -181,6 +230,7 @@ pub fn detect_with_options(
             RaidMemberOrigin::Whole { .. } => None,
         })
         .collect();
+    observer(DetectProgress::new(DetectStage::LvmVolumes, 0, None));
     let lvm = assemble_lvm_stack(
         &image_pvs,
         images,
@@ -207,6 +257,7 @@ pub fn detect_with_options(
             consumed.insert(member.image_id.clone());
         }
     }
+    observer(DetectProgress::new(DetectStage::Heuristic, 0, None));
     let heur = heuristic::detect(images, &consumed);
     arrays.extend(heur.arrays);
     filesystems.extend(heur.filesystems);

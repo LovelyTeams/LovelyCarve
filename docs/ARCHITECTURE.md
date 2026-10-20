@@ -865,6 +865,7 @@ offset。当前普通目录已提供 `fs_children_page`，案件模式下会优�
 - `task-lifecycle`
 - `task-progress`
 - `image-load-progress`
+- `raid-detect-progress`（阶段与当前阶段的对象计数，总量未知时为 null；不是全程百分比）
 - `image-hash-progress`
 - `image-export-progress`
 - `bitlocker-unlock-progress`
@@ -1023,6 +1024,10 @@ dry-run、删除确认、默认值与生成 ID、提问、`--image` 作用域与
 请求串行执行，任务在后台继续；原始字节按块传输，`files read` 固定本次请求的检材及节点后分段读取，
 短读或连接中断必须报错。`sessions attach` 使用普通命令语法，断开不关闭后台；`sessions close`
 完成共享关闭流程再退出。桌面状态不参与这条连接链路。
+全局 `--events` 在普通命令、shell 和 JSONL 中接收同一份后端事件。普通命令的 `Reporter` 将
+实际阶段/计数映射到 stderr 的进度行，重定向 stdout 不会关闭它；每 5 秒的心跳只声明进程仍在执行。
+`Monitor` 以 RAII 管理刷新线程及 OSC 状态，取消异步 future 时也会清理。命名会话在每次非字节流请求期间
+通过私有传输的事件帧转发后端进度，事件与最终结果使用同一连接并按帧分离；文件字节流由客户端持续显示命令耗时。
 `just test-cli` 以真实进程验证无窗口启动、会话协议、脚本与中断退出码，以及常驻会话跨进程状态、
 组装卷复用、大文件字节与文本传输、会话隔离、认证、案件释放和崩溃后的同名重启。
 

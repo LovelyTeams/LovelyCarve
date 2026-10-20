@@ -18,6 +18,7 @@ import threading
 import zlib
 
 from cli_resident_tests import test_resident_sessions
+from cli_observability_tests import test_observability
 
 
 def documents(text):
@@ -955,6 +956,7 @@ context get
                 process.communicate(timeout=15)
 
     test_resident_sessions(executable, environment)
+    test_observability(executable, environment)
     print("CLI smoke tests passed: discovery, dry run, JSONL, browsing, binary read, hash, preview cleanup, export, errors, carving, search, timeline, case lifecycle, windowless startup and interrupt")
 
 

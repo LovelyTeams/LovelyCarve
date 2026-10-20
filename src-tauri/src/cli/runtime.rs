@@ -16,6 +16,7 @@ use super::{
     context::{self, Context, Exec, Mode, Request},
     dotenv, generated, interactive, native,
     output::{self, Role},
+    progress::{Options, Reporter},
     resident, session, shell, CliError, Output,
 };
 use crate::{host::AppHandle, state::AppState, task_manager::TaskKind};
@@ -68,13 +69,35 @@ pub fn run() -> i32 {
         Parsed::Run {
             globals,
             invocation,
-        } => match command(catalog, globals, invocation) {
-            Ok(code) => code,
-            Err(error) => {
-                output::report_error(&error);
-                error.exit_code
+        } => {
+            let events = globals.events;
+            match command(catalog, globals, invocation) {
+                Ok(code) => code,
+                Err(error) => {
+                    report_error(&error, events);
+                    error.exit_code
+                }
             }
-        },
+        }
+    }
+}
+
+fn report_error(error: &CliError, events: bool) {
+    if !events {
+        output::report_error(error);
+        return;
+    }
+    if error.reported {
+        return;
+    }
+    let reporter = Reporter::new(Options {
+        quiet: true,
+        events: true,
+    });
+    let payload = json!({"code": error.code, "message": error.message, "details": error.details,
+        "ipcCommand": match &error.origin { super::Origin::Backend(operation) => operation.as_deref(), super::Origin::Cli => None }});
+    if let Err(error) = reporter.event("cli-error", payload) {
+        eprintln!("无法写出 CLI 错误事件：{error}");
     }
 }
 
@@ -185,8 +208,8 @@ fn command(
             }
         };
     }
-    output::open_session(globals.quiet);
-    completions_hint(globals.quiet);
+    output::open_session(globals.quiet || globals.events);
+    completions_hint(globals.quiet || globals.events);
     if invocation.dry_run {
         let scope = globals
             .image
@@ -218,12 +241,10 @@ fn command(
             if !(1..=64).contains(&jobs) {
                 return Err(CliError::new("usage", "--jobs 的范围是 1–64"));
             }
-            let events = invocation.values.get("events") == Some(&Value::Bool(true));
             Ok(backend(
                 globals,
                 Work::Session {
                     jobs: jobs as usize,
-                    events,
                 },
             ))
         }
@@ -234,12 +255,13 @@ fn command(
 
 enum Work {
     OneShot(Invocation),
-    Session { jobs: usize, events: bool },
+    Session { jobs: usize },
     Shell,
     Resident(resident::Prepared),
 }
 
 fn backend(globals: Globals, work: Work) -> i32 {
+    let events = globals.events;
     // Deep parser recursion needs more than the default main-thread stack.
     let thread = std::thread::Builder::new()
         .name("lovelycarve-cli".into())
@@ -252,7 +274,7 @@ fn backend(globals: Globals, work: Work) -> i32 {
             {
                 Ok(runtime) => runtime,
                 Err(error) => {
-                    output::report_error(&super::internal_error(error));
+                    report_error(&super::internal_error(error), events);
                     return 1;
                 }
             };
@@ -265,11 +287,11 @@ fn backend(globals: Globals, work: Work) -> i32 {
     match thread.map(std::thread::JoinHandle::join) {
         Ok(Ok(code)) => code,
         Ok(Err(_)) => {
-            output::report_error(&super::internal_error("CLI 工作线程异常退出"));
+            report_error(&super::internal_error("CLI 工作线程异常退出"), events);
             1
         }
         Err(error) => {
-            output::report_error(&super::internal_error(error));
+            report_error(&super::internal_error(error), events);
             1
         }
     }
@@ -289,31 +311,30 @@ fn init_tracing() {
     }
 }
 
-/// Events go to stderr as JSONL with `session --events`, and nowhere otherwise.
-fn host(events: bool) -> AppHandle {
+/// Backend events feed human progress or explicit JSONL diagnostics on stderr.
+fn host(reporter: Reporter) -> AppHandle {
     AppHandle::new(
         crate::host::default_app_data_dir(),
         move |event, payload| {
-            if !events {
-                return Ok(());
-            }
-            let line = format!(
-                "{{\"event\":{},\"payload\":{payload}}}",
-                serde_json::to_string(event).map_err(|error| error.to_string())?
-            );
-            let mut stderr = std::io::stderr().lock();
-            writeln!(stderr, "{line}").map_err(|error| error.to_string())
+            let payload = serde_json::from_str(&payload).map_err(|error| error.to_string())?;
+            reporter.event(event, payload)
         },
     )
 }
 
 async fn serve(globals: Globals, work: Work) -> i32 {
     init_tracing();
-    let events = matches!(work, Work::Session { events: true, .. });
-    let host = host(events);
+    let reporter = Reporter::new(Options {
+        quiet: globals.quiet || matches!(work, Work::Session { .. } | Work::Resident(_)),
+        events: globals.events,
+    });
+    let host = host(reporter.clone());
     let state = Arc::new(AppState::new());
     if let Err(error) = crate::app::setup::initialize(&state, &host) {
-        output::report_error(&super::internal_error(format!("初始化失败：{error}")));
+        report_error(
+            &super::internal_error(format!("初始化失败：{error}")),
+            globals.events,
+        );
         return 1;
     }
     let mode = match work {
@@ -326,6 +347,7 @@ async fn serve(globals: Globals, work: Work) -> i32 {
         state: Arc::clone(&state),
         mode,
         quiet: globals.quiet,
+        reporter,
     };
     let (scope, scope_source) = match globals.image.clone() {
         Some(image) => (Some(image), None),
@@ -356,7 +378,7 @@ async fn serve(globals: Globals, work: Work) -> i32 {
     let code = match outcome {
         Ok(code) => code,
         Err(error) => {
-            output::report_error(&error);
+            report_error(&error, globals.events);
             error.exit_code
         }
     };
@@ -403,7 +425,17 @@ async fn perform(
         Work::Shell => shell::run(exec, context).await?,
         Work::Resident(prepared) => return resident::serve(exec, context, prepared).await,
     };
-    finish(&exec.state).await?;
+    exec.state.tasks.cancel_kind(TaskKind::SessionSnapshot);
+    let mut monitor = if exec.mode != Mode::Session && !exec.state.tasks.list().is_empty() {
+        Some(exec.reporter.start("tasks wait（等待后台任务）"))
+    } else {
+        None
+    };
+    let result = finish(&exec.state).await;
+    if let Some(monitor) = &mut monitor {
+        monitor.finish(&result);
+    }
+    result?;
     Ok(code)
 }
 

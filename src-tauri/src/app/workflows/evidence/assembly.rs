@@ -12,6 +12,7 @@ use crate::core::filesystem::evidence_session::EvidenceSession;
 /// Idempotent: re-running on the same image set reuses the previously
 /// registered synthetic images instead of allocating duplicates.
 pub async fn raid_auto_detect(
+    app: AppHandle,
     state: State<'_, AppState>,
     degraded_sets: Vec<String>,
 ) -> Result<RaidStack, AppError> {
@@ -31,10 +32,16 @@ pub async fn raid_auto_detect(
             .collect()
     };
     let options = raid::DetectOptions { degraded_sets };
-    let (mut stack, assembled) =
-        tokio::task::spawn_blocking(move || raid::detect_with_options(&snapshot, &options))
-            .await
-            .map_err(|err| AppError::task_panicked("raid_auto_detect", err))?;
+    let progress_app = app.clone();
+    let (mut stack, assembled) = tokio::task::spawn_blocking(move || {
+        raid::detect_with_options_observed(&snapshot, &options, &|progress| {
+            if let Err(error) = progress_app.emit("raid-detect-progress", progress) {
+                tracing::warn!("RAID detection progress delivery failed: {error}");
+            }
+        })
+    })
+    .await
+    .map_err(|err| AppError::task_panicked("raid_auto_detect", err))?;
 
     // Phase 1: snapshot the idempotency cache and the set of live image ids
     // WITHOUT holding either lock across the CPU-bound DiskImage::from_assembled
@@ -84,6 +91,19 @@ pub async fn raid_auto_detect(
     // Ids already adopted by an earlier device in THIS loop — `live_image_ids`
     // is a pre-loop snapshot and can't see them.
     let mut adopted_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let report_registration = |current| {
+        if let Err(error) = app.emit(
+            "raid-detect-progress",
+            raid::DetectProgress::new(
+                raid::DetectStage::Registering,
+                current,
+                Some(assembled.len()),
+            ),
+        ) {
+            tracing::warn!("RAID registration progress delivery failed: {error}");
+        }
+    };
+    report_registration(0);
     for (assembled_index, materialised) in assembled.iter().enumerate() {
         // Keyed by label, not set UUID: a degraded and a complete assembly of
         // one set are different devices with different labels.
@@ -91,6 +111,7 @@ pub async fn raid_auto_detect(
         if let Some(existing) = cache_snapshot.get(&cache_key) {
             if live_image_ids.contains(existing) {
                 record_assembled_image(&mut stack, materialised, existing.clone());
+                report_registration(assembled_index + 1);
                 continue;
             }
         }
@@ -135,6 +156,7 @@ pub async fn raid_auto_detect(
             cache_key,
             image: synthetic,
         });
+        report_registration(assembled_index + 1);
     }
 
     // Phase 2: publish freshly built images. Lock images→assembled (the same
@@ -174,6 +196,16 @@ pub async fn raid_auto_detect(
 
     // PVs and LV segments on assembled arrays name the arrays' images.
     raid::resolve_array_sources(&mut stack);
+    if let Err(error) = app.emit(
+        "raid-detect-progress",
+        raid::DetectProgress::new(
+            raid::DetectStage::Complete,
+            assembled.len(),
+            Some(assembled.len()),
+        ),
+    ) {
+        tracing::warn!("RAID completion progress delivery failed: {error}");
+    }
     Ok(stack)
 }
 

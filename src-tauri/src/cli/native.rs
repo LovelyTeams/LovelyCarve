@@ -90,7 +90,10 @@ pub fn capabilities() -> Result<Value, CliError> {
         "ocr": cfg!(feature = "ocr"),
         "ocrCuda": cfg!(feature = "ocr-cuda"),
         "dokanMount": cfg!(target_os = "windows"),
+        "observability": {"eventsOption": "--events", "eventsStream": "stderr-jsonl", "heartbeatSeconds": 5,
+            "progressStream": "stderr", "progressWithRedirectedStdout": true, "residentBackendEvents": true},
         "residentSessions": {
+            "protocolVersion": 2,
             "open": "sessions open <name>", "attach": "sessions attach <name>",
             "close": "sessions close <name>", "option": "--session <name>",
             "environment": "LOVELYCARVE_SESSION", "execution": "serial",
