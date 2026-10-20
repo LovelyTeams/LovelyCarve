@@ -15,7 +15,7 @@ pub const VERBS: &[&str] = &[
     "get", "list", "create", "update", "edit", "delete", "count", "open", "close", "read",
     "export", "hash", "identify", "search", "scan", "detect", "lookup", "unlock", "lock",
     "assemble", "build", "audit", "start", "pause", "resume", "restart", "cancel", "wait",
-    "release", "share", "unshare", "reveal", "set",
+    "release", "share", "unshare", "reveal", "set", "use",
 ];
 
 /// Synonyms that commands must not use, with the verb that replaces each.

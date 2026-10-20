@@ -40,8 +40,8 @@ export interface RaidLogicalVolume {
   name: string;
   size_bytes: number;
   segments: RaidLvSegment[];
-  /** Synthetic image of an LV spanning several physical volumes, once
-   *  registered; single-PV LVs are browsed through their PV's partition. */
+  /** Synthetic image of any complete LV once registered, including single-PV
+   *  volumes. Unsupported/incomplete LVs and md members have no image. */
   assembled_image_id: string | null;
 }
 
@@ -126,7 +126,7 @@ export interface RaidFilesystem {
 }
 
 /** Run LVM → md → filesystem detection over every loaded image. Idempotent:
- *  assembled arrays and cross-PV logical volumes are registered as synthetic
+ *  assembled arrays and complete logical volumes are registered as synthetic
  *  images once and reused on re-runs. `degradedSets` names md sets to assemble
  *  without the members their metadata still expects. Heavy-ish (reads member
  *  superblocks) but bounded. */

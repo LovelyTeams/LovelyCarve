@@ -20,6 +20,8 @@ mod tree;
 use tree::*;
 mod codec;
 mod data;
+#[cfg(test)]
+pub(crate) mod test_support;
 use codec::*;
 
 use std::cmp::Ordering;

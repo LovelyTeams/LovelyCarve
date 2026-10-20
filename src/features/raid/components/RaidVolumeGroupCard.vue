@@ -6,13 +6,13 @@
       <span class="array-name" :title="vg.vg_uuid">{{ vg.vg_name }}</span>
       <span class="vg-meta mono">{{ vg.members.length }} PV · {{ vg.logical_volumes.length }} LV</span>
     </div>
-    <ul v-if="spanningVolumes.length" class="spanning-lvs">
-      <li v-for="lv in spanningVolumes" :key="lv.name" class="spanning-lv">
+    <ul v-if="assembledVolumes.length" class="spanning-lvs">
+      <li v-for="lv in assembledVolumes" :key="lv.name" class="spanning-lv">
         <span class="lv-name mono">{{ lv.name }}</span>
         <span class="lv-size mono">{{ formatBytes(lv.size_bytes) }}</span>
-        <span class="ui-badge sm outline">{{ tr("跨 {0} 个物理卷", { 0: physicalVolumeCount(lv) }) }}</span>
+        <span v-if="physicalVolumeCount(lv) > 1" class="ui-badge sm outline">{{ tr("跨 {0} 个物理卷", { 0: physicalVolumeCount(lv) }) }}</span>
         <button v-if="lv.assembled_image_id !== imageId" class="ui-btn sm" :disabled="openingId === lv.assembled_image_id"
-          :aria-busy="openingId === lv.assembled_image_id" :title="tr('打开跨物理卷组装的逻辑卷')" @click="emit('open', lv.assembled_image_id)">
+          :aria-busy="openingId === lv.assembled_image_id" :title="tr('打开逻辑卷')" @click="emit('open', lv.assembled_image_id)">
           <Loader2 v-if="openingId === lv.assembled_image_id" :size="13" class="spin" />
           <ExternalLink v-else :size="13" />{{ tr("打开逻辑卷") }}
         </button>
@@ -31,9 +31,8 @@ import type { RaidLogicalVolume, RaidVolumeGroup } from '../../../lib/ipc/raid';
 import { formatBytes, vgSummary } from '../model/stackView';
 const props = defineProps<{ vg: RaidVolumeGroup; imageId?: string; openingId?: string | null }>();
 const emit = defineEmits<{ open: [imageId: string | null] }>();
-/** LVs assembled across several physical volumes: they have no single
- *  partition to browse, so they open as images of their own. */
-const spanningVolumes = computed(() => props.vg.logical_volumes.filter(lv => lv.assembled_image_id));
+/** Complete logical volumes can be opened as images of their own. */
+const assembledVolumes = computed(() => props.vg.logical_volumes.filter(lv => lv.assembled_image_id));
 function physicalVolumeCount(lv: RaidLogicalVolume): number {
   return new Set(lv.segments.map(segment => `${segment.image_id}:${segment.partition_id}`)).size;
 }

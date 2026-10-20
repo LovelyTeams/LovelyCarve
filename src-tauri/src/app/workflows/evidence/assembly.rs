@@ -5,7 +5,7 @@ use crate::core::filesystem::evidence_session::EvidenceSession;
 
 /// Detect LVM / md stacks across every loaded image (see
 /// `raid::detect_with_options`) and register each assembled array — and each
-/// LV spanning several physical volumes — as a synthetic `DiskImage` in
+/// complete LV not consumed as an md member — as a synthetic `DiskImage` in
 /// `state.images`, so it shows up in the FS tree, hex view and image switcher
 /// just like a regular image. `degraded_sets` names md sets the examiner chose
 /// to assemble without members their metadata still expects.

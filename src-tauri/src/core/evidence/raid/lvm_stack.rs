@@ -3,9 +3,8 @@
 //! A PV can sit on an assembled md array (the usual NAS stack: md → LVM →
 //! ext4 / Btrfs), and an LV can span PVs on several arrays, images or
 //! partitions (Synology SHR combines md arrays of different member sizes
-//! this way). A single-PV LV is browsed through its PV's partition; an LV with
-//! segments on more than one PV has no single partition to browse, so it
-//! becomes an assembled device of its own.
+//! this way). Every complete LV not consumed as an md member becomes an
+//! assembled device of its own, including single-PV volumes.
 use std::collections::HashSet;
 
 use super::*;
@@ -16,7 +15,7 @@ pub(super) struct LvmStack {
 }
 
 /// Join the PVs on loaded images (`image_pvs`) with those on assembled arrays
-/// and materialise every complete LV that spans more than one PV. LVs already
+/// and materialise every complete LV. LVs already
 /// consumed as md members (`md_member_lvs`, as `(vg uuid, lv name)`) stay
 /// members.
 pub(super) fn assemble_lvm_stack(
@@ -53,25 +52,6 @@ pub(super) fn assemble_lvm_stack(
         if md_member_lvs.contains(&(lv.vg_uuid.clone(), lv.lv_name.clone())) {
             continue;
         }
-        let spans_several_pvs = volume_groups
-            .iter()
-            .find(|vg| vg.vg_uuid == lv.vg_uuid)
-            .and_then(|vg| {
-                vg.logical_volumes
-                    .iter()
-                    .find(|record| record.name == lv.lv_name)
-            })
-            .is_some_and(|record| {
-                let pvs: HashSet<(&str, u8)> = record
-                    .segments
-                    .iter()
-                    .map(|segment| (segment.image_id.as_str(), segment.partition_id))
-                    .collect();
-                pvs.len() > 1
-            });
-        if !spans_several_pvs {
-            continue;
-        }
         let name = format!("{}/{}", lv.vg_name, lv.lv_name);
         let size_bytes = lv.size_bytes;
         let source: Arc<dyn SectorSource + Send + Sync> = Arc::new(lv.clone());
@@ -81,9 +61,7 @@ pub(super) fn assemble_lvm_stack(
             size_bytes,
             &format!("lvm/{name}"),
         );
-        diagnostics.push(format!(
-            "LV {name} spans several physical volumes; assembled as its own device"
-        ));
+        diagnostics.push(format!("LV {name} assembled as its own device"));
         assembled.push(AssembledArray {
             set_uuid: format!("lv:{}:{}", lv.vg_uuid, lv.lv_name),
             set_name: name.clone(),
@@ -107,13 +85,16 @@ pub(super) fn assemble_lvm_stack(
 }
 
 /// Name the single whole-device volume of an assembled device after where it
-/// came from, e.g. `ext4 (md/home)`.
+/// came from, e.g. `ext4 (md · home)`.
 pub(super) fn label_whole_volume(partitions: &mut [Partition], size_bytes: u64, origin: &str) {
     if let [partition] = partitions {
         if partition.start_lba == 0
             && partition.length_lba == size_bytes / 512
             && partition.label.is_none()
         {
+            // This label is also a navigation component, so origin separators
+            // must not become directory separators in path-based clients.
+            let origin = origin.replace('/', " · ");
             partition.label = Some(format!("{} ({origin})", kind_label(partition.kind)));
         }
     }

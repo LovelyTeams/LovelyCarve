@@ -4,6 +4,34 @@ use crate::core::filesystem::{evidence_session::EvidenceSession, tree::fs_tree::
 use std::{io::Write, sync::Arc};
 
 #[test]
+fn lvm_btrfs_is_a_directory_and_reads_by_its_discovered_nodes() {
+    use crate::core::filesystem::{
+        tree::fs_tree::children_for_image, volumes::btrfs::test_support as btrfs,
+    };
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    file.write_all(&test_support::fragmented(&btrfs::image()))
+        .unwrap();
+    let image = Arc::new(EvidenceSession::open(file.path()).unwrap());
+    let nodes = children_for_image(&image, "part:0").unwrap();
+    let volume = nodes.iter().find(|node| node.name == "root").unwrap();
+    assert_eq!(volume.kind, NodeKind::Dir);
+    let children = children_for_image(&image, &volume.id).unwrap();
+    let entry = children
+        .iter()
+        .find(|node| node.name == "hello.txt")
+        .unwrap();
+    let mut session = FsSession::new(&image);
+    assert_eq!(
+        session.read_file_limited(&entry.id, usize::MAX).unwrap(),
+        btrfs::CONTENT
+    );
+    assert_eq!(
+        session.read_file_range(&entry.id, 6, 7).unwrap(),
+        &btrfs::CONTENT[6..13]
+    );
+}
+
+#[test]
 fn lvm_raw_nodes_share_read_stream_range_and_original_runs() {
     let mut file = tempfile::NamedTempFile::new().unwrap();
     file.write_all(&test_support::image(&test_support::text(), 1, false))

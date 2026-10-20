@@ -155,6 +155,31 @@ def main():
         missing_scope = run(["images", "get"], expected=1).stderr
         assert "未指定检材" in missing_scope and "LOVELYCARVE_IMAGE" in missing_scope, missing_scope
 
+        # Selecting an already loaded image must change the persistent context,
+        # while supplying imageId to an ordinary query must not change it.
+        second_evidence = root / "second evidence"
+        second_evidence.mkdir()
+        _, selections = session([
+            {"id": "first", "command": "images open", "args": {"path": str(evidence)}},
+            {"id": "cd-first", "command": "context set", "args": {"dir": evidence.name}},
+            {"id": "second", "command": "images open", "args": {"path": str(second_evidence)}},
+            {"id": "set-first", "command": "context set", "args": {"imageId": {"$ref": "first#/id"}}},
+            {"id": "use-second", "command": "context use", "args": {"imageId": {"$ref": "second#/id"}}},
+            {"id": "query-first", "command": "files list", "args": {"imageId": {"$ref": "first#/id"}}},
+            {"id": "current", "command": "context get"},
+            {"id": "open-id", "command": "images open", "args": {"path": {"$ref": "first#/id"}}},
+            {"id": "expired", "command": "images open", "args": {"path": "assembled://missing-array"}},
+            {"id": "unknown-id", "command": "images open", "args": {"path": "d462a771-85d2-410b-ad72-016b0ced24a1"}},
+        ], expected=1)
+        selected = {row["id"]: row for row in selections}
+        assert selected["set-first"]["result"]["image"]["id"] == selected["first"]["result"]["id"]
+        assert selected["use-second"]["result"]["image"]["id"] == selected["second"]["result"]["id"]
+        assert selected["current"]["result"]["image"]["id"] == selected["second"]["result"]["id"]
+        assert selected["use-second"]["result"]["dir"] == "/"
+        assert selected["open-id"]["result"]["id"] == selected["first"]["result"]["id"]
+        assert all(selected[key]["error"]["code"] == "notFound" for key in ("expired", "unknown-id"))
+        run(["context", "use", "d462a771-85d2-410b-ad72-016b0ced24a1", "--dry-run"])
+
         concurrent_requests = [
             {"id": "open", "command": "images open", "args": {"path": str(evidence)}},
             {"id": "cd", "command": "context set", "args": {"dir": evidence.name}},

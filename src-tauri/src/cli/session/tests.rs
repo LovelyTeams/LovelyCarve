@@ -46,6 +46,7 @@ fn mutations_and_unknown_commands_are_barriers() {
         "cases open",
         "cases close",
         "context set",
+        "context use",
         "tasks wait",
         "indexes delete",
         "searches delete",

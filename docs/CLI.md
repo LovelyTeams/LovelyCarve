@@ -54,7 +54,7 @@ lovelycarve-cli --case "D:\cases\demo" cases get
 集合是复数名词，最后一个词是动词。动词表固定：`get` 查看单个对象（不用 info/status/show），
 `list` 列出（不用 ls/page/query，且不带位置参数），`create`、`update`（整体替换）、`edit`（部分修改）、
 `delete`（不用 remove/drop），以及 `open`、`close`、`read`、`export`、`hash`、`identify`、`search`、
-`scan`、`detect`、`lookup`、`unlock`、`build`、`audit`、`cancel`、`wait` 等领域动作。
+`scan`、`detect`、`lookup`、`unlock`、`build`、`audit`、`cancel`、`wait`，以及选择检材的 `context use` 等领域动作。
 位置参数是动词作用的对象（检材路径、镜像内路径、分区序号、扫描 ID……），其余参数用 `--选项`。
 
 | 集合 | 内容 |
@@ -236,6 +236,49 @@ Markdown 原样写到标准输出，`--section <章节>` 只输出一个章节�
 字节层面的属性（MIME、熵、数据运行段）用 `files content get`，自动识别编码的文本用 `files text get`；
 SQLite、Realm、ZIP、CSV、可执行文件、GGUF、Vim 交换文件、NTFS 流与 USN 日志、ext4 日志分别在
 `files sqlite …`、`files realm …`、`files zip …` 等子集合中，`lovelycarve-cli files --help` 列出全部。
+
+### RAID → LVM → Btrfs 的导航
+
+在同一个 `shell` 或 JSONL `session` 中依次打开成员盘并运行 `raid detect`。
+所有完整、未用作 md 成员的线性逻辑卷（包含单 PV 卷）都会注册为独立检材；
+`volumeGroups[].logicalVolumes[].assembledImageId` 是可直接选择的检材 ID。
+不完整或不支持的卷不会伪造这个 ID，具体原因见检测结果的 `diagnostics`。
+
+```text
+images open "D:/evidence/member1.img"
+images open "D:/evidence/member2.img"
+raid detect
+images list
+context use <逻辑卷的 assembledImageId>
+files list
+context set --dir "<上一步返回的卷名称>"
+files list
+files read hello.txt
+```
+
+`context use <检材 ID>` 选择检材并回到 `/`；`context set --image <检材 ID>` 也能切换，
+切换到不同检材时清除旧目录。对已加载检材的普通查询中，`imageId`／`--image` 只限定该次查询。
+`images open <已加载检材 UUID>` 或 `images open "assembled://…"` 会复用已有检材并设为当前检材。
+`assembled://` 是当前会话内的引用；程序退出或卷已关闭后，需重新加载成员盘并运行 `raid detect`，
+不能把它当作主机磁盘路径。找不到会话时会返回 `notFound` 和恢复步骤。
+
+JSONL 可直接引用检测结果及目录名称，避免抄写 ID：
+
+```jsonl
+{"id":"raid","command":"raid detect"}
+{"id":"use","command":"context use","args":{"imageId":{"$ref":"raid#/volumeGroups/0/logicalVolumes/0/assembledImageId"}}}
+{"id":"roots","command":"files list"}
+{"id":"cd","command":"context set","args":{"dir":{"$ref":"roots#/items/0/name"}}}
+{"id":"files","command":"files list"}
+{"id":"read","command":"files read","args":{"path":"hello.txt","length":4096}}
+```
+
+仍可沿原始检材的 LVM 分区进入逻辑卷：识别到的 Btrfs／ext／XFS／NTFS 卷显示为 `kind: "dir"`。
+原始 LV 键为 `lvm:<分区ID>:<卷索引>`；Btrfs 文件节点为
+`btrfs:lvm:<分区ID>:<卷索引>:<子卷ID>:<inode>`。
+例如 `btrfs:lvm:0:1:5:256` 表示分区 0、卷索引 1、子卷 5 的 inode 256；
+这些值由目录枚举提供，不能从卷名猜测。默认 FS 树使用子卷 5，常见根 inode 为 256，
+但脚本应复制 `files list` 返回的 `items[].id`，或使用上面的普通路径导航。
 
 ## 交互 shell
 

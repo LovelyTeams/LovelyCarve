@@ -98,7 +98,7 @@ pub async fn image_list(state: State<'_, AppState>) -> Result<Vec<ImageInfo>, Ap
 /// Detect LVM volume groups and Linux md arrays (metadata 0.90 / 1.x, linear
 /// and RAID0/1/4/5/6/10) across every loaded image, plus metadata-less
 /// RAID0/5 member sets, and register each assembled array — and each LV that
-/// spans several physical volumes — as a synthetic `DiskImage` so it shows up
+/// is complete and not consumed as an md member — as a synthetic `DiskImage` so it shows up
 /// in the FS tree, hex view and image switcher like a regular image.
 ///
 /// `degraded_sets` lists md set UUIDs the examiner chose to assemble without

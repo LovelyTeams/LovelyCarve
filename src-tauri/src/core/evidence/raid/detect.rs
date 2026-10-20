@@ -170,7 +170,7 @@ pub fn detect_with_options(
         .filter(|pv| !firmware.claimed_images.contains(&pv.image_id))
         .collect();
 
-    // Pass 4 — PVs on assembled arrays and LVs spanning several PVs.
+    // Pass 4 — PVs on assembled arrays and all complete LVs.
     let md_member_lvs: HashSet<(String, String)> = arrays
         .iter()
         .flat_map(|array| &array.members)

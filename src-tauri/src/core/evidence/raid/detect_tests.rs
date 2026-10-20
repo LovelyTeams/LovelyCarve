@@ -153,7 +153,7 @@ fn v12_raid5_assembles_and_labels_its_volume() {
             kind: PartitionKind::Ext4,
             start_lba: 0,
             length_lba: 512,
-            label: Some("ext4 (md/host:0)".into()),
+            label: Some("ext4 (md · host:0)".into()),
             unique_guid: None,
         }])
     );

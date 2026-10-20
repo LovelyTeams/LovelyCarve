@@ -227,7 +227,7 @@ pub struct Catalog {
 const LEGACY_COMMANDS: &[(&str, &str)] = &[
     ("open", "images open"),
     ("info", "images get"),
-    ("use", "context set"),
+    ("use", "context use"),
     ("select-partition", "context set"),
     ("list-partitions", "images get"),
     ("list-devices", "disks list"),

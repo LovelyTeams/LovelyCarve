@@ -647,6 +647,21 @@ description = "章节标题（docs search 返回的 section）；省略时输出
 # ── context (hand-written) ──────────────────────────────────────────────────
 
 [[command]]
+path = "context use"
+native = "context-use"
+summary = "选择当前检材并回到检材根目录"
+description = "选择 images list 或 raid detect 返回的检材 ID，也接受当前会话的 assembled:// 路径或普通检材路径；后续 files list/read 等命令使用该检材。"
+category = "action"
+args = ["imageId"]
+examples = [
+    { command = "lovelycarve-cli context use 7f299489-e542-4c19-8abc-984ebed67f0f", description = "在 shell 或 JSONL 会话中切换到已加载检材并回到根目录" },
+]
+[command.params.imageId]
+type = "string"
+required = true
+description = "已加载检材 ID、会话内 assembled:// 路径或检材路径"
+
+[[command]]
 path = "context get"
 native = "context-get"
 summary = "查看会话上下文"
@@ -1267,7 +1282,7 @@ fixed = { mode = "build" }
 path = "images open"
 ipc = "image_load"
 summary = "打开检材"
-description = "打开磁盘镜像、目录、归档、iOS 备份、AD1 或物理盘并设为当前检材；有案件时登记为案件检材并在后台建立卷索引。"
+description = "打开磁盘镜像、目录、归档、iOS 备份、AD1 或物理盘并设为当前检材；也接受已加载检材的 UUID 和会话内 assembled:// 路径。有案件时登记普通源检材并在后台建立卷索引。"
 category = "action"
 args = ["path"]
 secret = ["qcowPassword", "qcowKeyHex"]
@@ -1279,7 +1294,7 @@ examples = [
     { command = "lovelycarve-cli images open D:\\evidence\\disk.001 --raw-read-mode force", description = "按连续分片前缀强行读取不完整 RAW 镜像" },
 ]
 [command.params.path]
-description = "检材路径"
+description = "检材路径、已加载检材 UUID 或当前会话的 assembled:// 路径"
 [command.params.qcowPassword]
 description = "QCOW legacy AES 密码"
 [command.params.qcowKeyHex]
@@ -1714,7 +1729,7 @@ description = "自动任务配置 JSON 字符串；省略时清除"
 path = "raid detect"
 ipc = "raid_auto_detect"
 summary = "自动识别并组装 RAID"
-description = "解析已加载检材中的 LVM 与 mdadm 元数据（0.90 / 1.x，linear、RAID0/1/4/5/6/10），组装成合成检材；跨多个物理卷的逻辑卷单独组装，无元数据的等大成员盘按 RAID0/5 推定。元数据仍登记、但未加载或已陈旧的成员会让阵列停在待确认状态，用 --degraded-sets 指定的阵列才降级组装。重复调用复用已组装的检材。"
+description = "解析已加载检材中的 LVM 与 mdadm 元数据（0.90 / 1.x，linear、RAID0/1/4/5/6/10），组装成合成检材；所有完整且未作为 md 成员的逻辑卷均注册为可选择的检材。用 context use <assembledImageId> 选择卷，再用 files list 和 context set --dir 浏览，无需构造内部节点 ID。无元数据的等大成员盘按 RAID0/5 推定。元数据仍登记、但未加载或已陈旧的成员会让阵列停在待确认状态，用 --degraded-sets 指定的阵列才降级组装。重复调用复用已组装的检材。"
 category = "action"
 keywords = ["mdadm", "lvm", "software raid", "raid1", "raid6", "raid10", "degraded", "nas"]
 examples = [
@@ -1722,7 +1737,7 @@ examples = [
     { command = "lovelycarve-cli raid detect --degraded-sets 880f205730e64da65bfdb06f700131bb", description = "缺一块盘时按校验降级组装指定阵列" },
 ]
 [command.params.degradedSets]
-description = "允许降级组装的 md 阵列 set UUID 列表（raid detect 输出的 arrays[].set_uuid）"
+description = "允许降级组装的 md 阵列 set UUID 列表（raid detect 输出的 arrays[].setUuid）"
 
 [[command]]
 path = "raid assemble"

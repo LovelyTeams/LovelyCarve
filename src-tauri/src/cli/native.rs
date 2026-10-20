@@ -164,9 +164,17 @@ pub async fn run(
             Ok(Output::json(Value::Null))
         }
         Some("context-get") => context_get(exec, context).await,
-        Some("context-set") => {
+        Some("context-set" | "context-use") => {
             if let Some(image) = text(&values, "imageId") {
-                exec.resolve_image(context, &image).await?;
+                let image_id = exec.resolve_image(context, &image).await?;
+                if context.image_id.as_deref() != Some(&image_id)
+                    || command.native.as_deref() == Some("context-use")
+                {
+                    context.location.clear();
+                }
+                context.image_id = Some(image_id);
+                context.scope = None;
+                context.scope_source = None;
             }
             if let Some(dir) = text(&values, "dir") {
                 let image_id = exec

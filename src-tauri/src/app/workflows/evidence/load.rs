@@ -95,7 +95,12 @@ pub async fn image_load(
     case_dir: Option<String>,
     raw_read_mode: RawReadMode,
 ) -> Result<ImageInfo, AppError> {
-    let session_hint = if path.starts_with("decrypted://") {
+    let reference_id = uuid::Uuid::parse_str(&path).ok().map(|id| id.to_string());
+    let session_hint = if path.starts_with("assembled://") {
+        Some("assembled session not found; load the member images and run RAID detection again")
+    } else if reference_id.is_some() {
+        Some("image ID not loaded; open its source or load the member images and run RAID detection again")
+    } else if path.starts_with("decrypted://") {
         Some("decrypted session expired; unlock the source again")
     } else if path.starts_with(crate::core::evidence::vss_image::SESSION_PREFIX) {
         Some("shadow copy session expired; open it again from the source image")
@@ -103,9 +108,9 @@ pub async fn image_load(
         None
     };
     if let Some(hint) = session_hint {
-        if raw_read_mode == RawReadMode::Force {
+        if raw_read_mode == RawReadMode::Force || qcow_key.is_some() {
             return Err(AppError::invalid_input(
-                "forced RAW mode requires a regular source file",
+                "RAW mode and QCOW credentials require a regular source path, not a session reference",
             ));
         }
         return state
@@ -113,7 +118,10 @@ pub async fn image_load(
             .lock()
             .await
             .values()
-            .find(|image| image.path.to_string_lossy() == path)
+            .find(|image| {
+                reference_id.as_deref() == Some(image.id.as_str())
+                    || image_load_key(&image.path.to_string_lossy()) == image_load_key(&path)
+            })
             .map(|image| image.info())
             .ok_or_else(|| AppError::not_found(hint));
     }

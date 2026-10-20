@@ -194,6 +194,10 @@ pub fn detect_filesystem_bytes(bytes: &[u8], fallback: PartitionKind) -> Partiti
     if let Some(kind) = detect_valid_fat_boot_sector(bytes, u64::MAX) {
         return kind;
     }
+    let magic_start = BTRFS_PRIMARY_SUPERBLOCK as usize + 0x40;
+    if bytes.get(magic_start..magic_start + BTRFS_MAGIC.len()) == Some(BTRFS_MAGIC.as_slice()) {
+        return PartitionKind::Btrfs;
+    }
     fallback_after_probe(fallback)
 }
 
@@ -759,5 +763,18 @@ mod tests {
             .expect("probe")
             .expect("btrfs hit");
         assert_eq!(hit.kind, PartitionKind::Btrfs);
+        assert_eq!(
+            detect_filesystem_bytes(&source.0, PartitionKind::Unknown),
+            hit.kind
+        );
+        let magic_end = BTRFS_PRIMARY_SUPERBLOCK as usize + 0x48;
+        assert_eq!(
+            detect_filesystem_bytes(&source.0[..magic_end - 1], PartitionKind::Unknown),
+            PartitionKind::Unknown
+        );
+        assert_eq!(
+            detect_filesystem_bytes(&source.0[..magic_end], PartitionKind::Unknown),
+            PartitionKind::Btrfs
+        );
     }
 }
