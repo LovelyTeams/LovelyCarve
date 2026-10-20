@@ -23,7 +23,7 @@
         <main class="ui-modal-body settings-content" v-content-motion.rise="activeSection">
           <PluginSettingsPanel v-if="activeSection === 'plugins'" />
           <AppLogPanel v-else-if="activeSection === 'logs'" />
-          <AppAboutPanel v-else-if="activeSection === 'about'" />
+          <AppAboutPanel v-else-if="activeSection === 'about'" :updates="updates" />
           <section v-else class="settings-panel" :aria-label="tr('界面设置')">
             <div class="setting-row">
               <h3 class="setting-label" :id="languageLabelId">{{ tr('语言') }}</h3>
@@ -122,6 +122,9 @@ import type { SettingsSection } from '../model/types';
 import PluginSettingsPanel from './PluginSettingsPanel.vue';
 import AppLogPanel from './AppLogPanel.vue';
 import AppAboutPanel from './AppAboutPanel.vue';
+import { useAppUpdateCheck } from '../composables/useAppUpdateCheck';
+
+const updates = useAppUpdateCheck();
 
 const props = withDefaults(defineProps<{
   visible?: boolean;
