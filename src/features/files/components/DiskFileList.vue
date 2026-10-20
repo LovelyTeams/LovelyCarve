@@ -1,16 +1,13 @@
 <template>
   <div class="disk-file-list">
     <FileListToolbar :stack="stack" :current-directory-path="currentDirectoryPath" :loading="loading"
-      :deepsearch="deepsearch" :selected-category-count="selectedCategories.size"
       :docked-preview-visible="dockedPreviewVisible" :preview-detached="previewDetached"
-      v-model:tree-visible="treeVisible" v-model:category-filter-open="categoryFilterOpen"
-      v-model:settings-collapsed="settingsCollapsed" v-model:search-keyword="searchKeyword"
+      v-model:tree-visible="treeVisible" v-model:search-keyword="searchKeyword"
       @go-up="goUp" @go-to="goTo" @copy-path="copyCurrentPath" @search-input="onSearchKeywordInput"
-      @clear-search="clearSearchKeyword" @toggle-deepsearch="toggleDeepsearch" @refresh="refresh" @toggle-preview="togglePreview"
+      @clear-search="clearSearchKeyword" @refresh="refresh" @toggle-preview="togglePreview"
     />
 
     <div v-if="indexOnly" class="ui-alert info offline-notice" role="status"><CircleAlert :size="16" /><span>{{ tr("离线索引 · 源镜像不可用，可浏览已索引目录、筛选文件和查看属性。正文预览、导出、哈希及分析需恢复源镜像。") }}</span></div>
-    <div v-if="error" class="error-banner" role="alert"><CircleAlert :size="14" /><span class="mono">{{ error }}</span></div>
 
     <div class="body">
       <UiTransition kind="horizontal"><DiskFileTree
@@ -22,21 +19,23 @@
         @open-file="onTreeOpenFile"
       /></UiTransition>
       <div class="right-area">
-        <UiTransition><FileCategoryBar
-          v-if="categoryFilterOpen"
-          :counts="displayedCategoryCounts.counts"
-          :counts-complete="deepsearch || directoryClientFilter"
-          :total="displayedCategoryCounts.total"
-          :selected="selectedCategories"
-          @toggle="toggleCategory"
-          @clear="clearCategories"
-        /></UiTransition>
+        <FileFilterBar
+          :deepsearch="deepsearch" :loading="loading" :index-only="indexOnly"
+          :category-counts="categoryMenu.counts" :counts-complete="categoryMenu.complete" :category-total="categoryMenu.total"
+          :selected-categories="selectedCategories" :chips="filterChips" :hide-empty-dirs="emptyDirsHidden"
+          :selection="exportSelection" v-model:columns-open="columnsOpen"
+          @scope="setScope" @toggle-category="toggleCategory" @clear-categories="clearCategories"
+          @edit-filter="editColumnFilter" @remove-filter="clearColumnFilter" @show-empty-dirs="hideEmptyDirs = false"
+          @clear-all="clearListConditions" @export-file="exportSelectedFile(activeRow, checkedFiles)"
+          @export-directory="exportSelectedDir(activeRow, checkedDirs)"
+        />
 
         <div class="content-row">
           <div class="left-col">
             <FileListTable
-              :visible-columns="visibleColumns" :visible-items="visibleItems" :row-count="filteredEntries.length" :loaded-count="entries.length"
-              :loading="loading" :deepsearch="deepsearch" :sort-busy-key="sortBusyKey" :sort-key="sortKey" :sort-dir="sortDir"
+              :visible-columns="visibleColumns" :visible-items="visibleItems" :row-count="filteredEntries.length"
+              :loading="loading" :filtered="listFiltered" :error="error" :deepsearch="deepsearch" :current-directory-path="currentDirectoryPath"
+              :sort-busy-key="sortBusyKey" :sort-key="sortKey" :sort-dir="sortDir"
               :header-checked="headerChecked" :header-indeterminate="headerIndeterminate"
               :padding-top="paddingTop" :padding-bottom="paddingBottom" :selected-key="selectedKey" :checked-ids="checkedIds"
               :dir-counts="dirCounts" :digest-cache="digestCache" :ftype-cache="ftypeCache" :marquee-rect="marqueeRect"
@@ -44,21 +43,18 @@
               @container-change="tableWrapRef = $event" @marquee-start="onMarqueeMouseDown" @keydown="onTableKeydown"
               @toggle-all="toggleAll" @sort="cycleSort" @filter="toggleFilterPopover" @row-click="onRowClick"
               @row-double-click="onRowDblClick" @row-mouse-down="onRowMouseDown" @context-menu="onRowContextMenu"
-              @name-click="onNameClick" @check-click="onCheckClick"
+              @name-click="onNameClick" @check-click="onCheckClick" @clear-filters="resetListView" @retry="refresh"
             />
           </div>
 
-          <FileColumnSettings :open="!settingsCollapsed" :columns="COLUMNS" :column-visible="columnVisible" @toggle="toggleColumn" />
+          <FileColumnSettings :open="columnsOpen" :columns="COLUMNS" :column-visible="columnVisible" @toggle="toggleColumn" />
         </div>
 
         <FileListFooter :deepsearch="deepsearch" :flat-total="flatTotal" :flat-truncated="flatTruncated"
-          :index-only="indexOnly"
+          :index-only="indexOnly" :matching="serverNarrowed"
           :directory-total="directoryTotal" :directory-cursor="directoryCursor" :loaded-count="entries.length"
-          :displayed-count="filteredEntries.length" :active-filter-count="activeFilterCount" :snapshot-status="snapshotStatus"
-          :checked-stats="checkedStats" :active-row="activeRow" :checked-files="checkedFiles" :checked-dirs="checkedDirs"
-          @clear-filters="clearAllFilters" @clear-checked="clearChecked"
-          @export-file="exportSelectedFile" @export-directory="exportSelectedDir"
-          @preview="detailNode = activeRow; previewVisible = true"
+          :displayed-count="filteredEntries.length" :snapshot-status="snapshotStatus"
+          :checked-stats="checkedStats" @clear-checked="clearChecked"
         />
 
       </div>
@@ -149,8 +145,8 @@ import FilePreviewDock from '../../preview/components/FilePreviewDock.vue';
 import { useFilePreviewBridge } from '../composables/useFilePreviewBridge';
 import type { FilePreviewReadingState } from '../../../lib/models/filePreviewReadingState';
 import { useFileRowMenu } from '../composables/useFileRowMenu';
-import FileCategoryBar from './FileCategoryBar.vue';
 import DiskFileTree from './DiskFileTree.vue';
+import FileFilterBar from './FileFilterBar.vue';
 import FileListTable from './FileListTable.vue';
 import FileListFooter from './FileListFooter.vue';
 import FileListToolbar from './FileListToolbar.vue';
@@ -160,6 +156,7 @@ import PluginTaskDialog from '../../tasks/components/PluginTaskDialog.vue';
 import ExportModePicker from './ExportModePicker.vue';
 import { useFileExports } from '../composables/useFileExports';
 import { projectFileRows } from '../model/clientRows';
+import { activeFilterChips } from '../model/filterChips';
 import { notifyError } from '../../../composables/useToast';
 import { type FileTag } from '../model/tags';
 import { useFileTags } from '../composables/useFileTags';
@@ -239,7 +236,7 @@ const previewReadingState = ref<FilePreviewReadingState>();
 const detailFocus = ref<{ nodeId: string; offset: number; length: number } | null>(null);
 const previewVisible = ref(false);
 const treeVisible = ref(true);
-const categoryFilterOpen = ref(false);
+const columnsOpen = ref(false);
 const activeRow = computed(() => {
   const list = filteredEntries.value;
   return list[selectedIndexIn(list)] ?? null;
@@ -330,7 +327,16 @@ const browseMode = useFileBrowseMode({
 const { deepsearch, searchKeyword, appliedKeyword, toggleDeepsearch, onSearchKeywordInput,
   clearSearchKeyword, closeDeepSearch } = browseMode;
 
-const settingsCollapsed = ref(true);
+/** 列表范围：当前目录（逐级浏览）或所有子目录（文件全显）。关键词搜索本身就在
+ *  所有子目录中查找，回到当前目录即清空关键词。 */
+function setScope(mode: 'directory' | 'recursive') {
+  if (mode === 'recursive') {
+    if (!deepsearch.value) toggleDeepsearch();
+    return;
+  }
+  if (searchKeyword.value || appliedKeyword.value) clearSearchKeyword();
+  if (deepsearch.value) toggleDeepsearch();
+}
 
 const { activeCase, snapshotStatus } = useVolumeSnapshotStatus({
   imageId: () => props.imageId,
@@ -383,9 +389,32 @@ const fileFilters = useFileFilters({
   container: () => tableWrapRef.value, fullPathOf, loadCurrent, closeRowMenu: hideRowMenu,
 });
 const { filters, effectiveFilters, sizeFilter, timeFilters, activeTimeFilterKeys, appliedSizePredicate, matchesTimeFilter,
-  resetSizeFilter, resetTimeFilter, activeFilterCount, isColumnFiltered, filterSummaryOf, clearAllFilters,
+  resetSizeFilter, resetTimeFilter, activeFilterCount, isColumnFiltered, filterSummaryOf, clearAllFilters, clearColumnFilter,
   filterPopover, toggleFilterPopover, hideFilterPopover,
   rebasePathFilterToStack, resolveAbsoluteDirStack, invalidatePathLevels, invalidatePathFollow } = fileFilters;
+
+// 筛选条：每个生效的列条件一枚标签；点开在标签下方编辑，与列头漏斗共用同一个气泡。
+const filterChips = computed(() => activeFilterChips({ isFiltered: isColumnFiltered, summaryOf: filterSummaryOf }, tr));
+function editColumnFilter(event: MouseEvent, key: string) {
+  const column = COLUMNS.find(c => c.key === key);
+  if (column) toggleFilterPopover(event, column);
+}
+/** 筛选条「清除全部」：列条件、文件类型，以及筛选条上显示出来的「隐藏空目录」
+ *  （它是记住的偏好，没作为条件显示时不动它）。 */
+function clearListConditions() {
+  if (emptyDirsHidden.value) hideEmptyDirs.value = false;
+  clearAllFilters();
+}
+/** 空结果里的「清除筛选」：连同关键词一起清掉，回到完整列表。 */
+function resetListView() {
+  clearListConditions();
+  if (searchKeyword.value || appliedKeyword.value) clearSearchKeyword();
+}
+// 「隐藏空目录」只作用于逐级浏览的非根目录（全显只列文件），此时才算一个条件。
+const emptyDirsHidden = computed(() => hideEmptyDirs.value && stack.value.length > 1 && !deepsearch.value);
+// 任何收窄列表的条件都让空结果显示为「被筛掉」而不是「空目录」：服务端按条件
+// 返回空页时已加载条目也是 0，不能只看已加载数。
+const listFiltered = computed(() => activeFilterCount.value > 0 || Boolean(appliedKeyword.value) || emptyDirsHidden.value);
 
 const sortKey = ref<string | null>(null);
 const sortDir = ref<'asc' | 'desc'>('asc');
@@ -442,6 +471,11 @@ const directoryClientFilter = computed(() => hideEmptyDirs.value
   || Boolean(effectiveFilters.path?.trim())
   || Object.entries(effectiveFilters).some(([key, value]) => value && !FLAT_SERVER_FILTER_COLUMNS.has(key))
   || Boolean(sortKey.value && !flatSortColumn(sortKey.value)));
+// 条件由后端执行时，返回的总数是符合条件的条目数（页脚改称「符合条件」）；
+// 客户端筛选拿到的是整个目录，页脚另报「显示」数。
+const serverNarrowed = computed(() => deepsearch.value
+  ? activeFilterCount.value > 0 || Boolean(appliedKeyword.value)
+  : !directoryClientFilter.value && activeFilterCount.value > 0);
 const directoryRequest = computed(() => directoryClientFilter.value ? {} : {
   filter: buildFlatRequest().filter,
   sort: flatSortColumn(sortKey.value), descending: sortDir.value === 'desc',
@@ -507,9 +541,39 @@ const flatQuery = useFlatFileQuery({
 });
 const { flatTotal, flatTruncated, flatCategoryCounts, loadFlatFirstPage } = flatQuery;
 
-const displayedCategoryCounts = computed(() =>
-  deepsearch.value ? flatCategoryCounts.value : categoryCounts.value,
-);
+// 文件类型菜单的计数。全显用服务端按整棵子树统计的扩展名直方图；客户端筛选时
+// 整个目录都已加载，按全部条目统计。服务端分页的目录只在加载完整、尚未按类型
+// 筛选时能数清；选中类型后服务端只返回该类型，菜单沿用选中前（其余条件相同）
+// 的统计，否则不显示数量，免得把「被筛掉」的类型数成 0。
+const categoryBaseSignature = computed(() => JSON.stringify({
+  image: props.imageId,
+  parent: stack.value.at(-1)?.id,
+  filter: buildFlatFilter({ keyword: '', columnFilters: effectiveFilters, sizeFilter, timeFilters, selectedCategories: new Set() }),
+}));
+const folderCategoryTally = shallowRef<{ signature: string; counts: Record<string, number>; total: number } | null>(null);
+watch([entries, loading], () => {
+  if (loading.value || deepsearch.value || directoryClientFilter.value || directoryCursor.value || selectedCategories.value.size > 0) return;
+  folderCategoryTally.value = { signature: categoryBaseSignature.value, ...categoryCounts.value };
+});
+const categoryMenu = computed(() => {
+  if (deepsearch.value) return { ...flatCategoryCounts.value, complete: true };
+  if (directoryClientFilter.value) return { ...categoryCounts.value, complete: true };
+  const tally = folderCategoryTally.value;
+  if (tally && tally.signature === categoryBaseSignature.value) return { counts: tally.counts, total: tally.total, complete: true };
+  if (!directoryCursor.value && selectedCategories.value.size === 0 && !loading.value) return { ...categoryCounts.value, complete: true };
+  return { counts: {}, total: 0, complete: false };
+});
+
+/** 导出目标：有勾选按勾选的文件与文件夹，否则按光标行。 */
+const exportSelection = computed(() => {
+  const kind = activeRow.value?.kind;
+  return {
+    files: checkedFiles.value.length,
+    dirs: checkedDirs.value.length,
+    cursorKind: kind === 'file' || kind === 'dir' ? kind : null,
+    cursorName: activeRow.value?.name ?? '',
+  };
+});
 
 // 列表已展示时打开「隐藏空目录」：为当前条目补一次子树判定，让过滤即时生效
 // （filteredEntries 读 hideEmptyDirs，开关一变即重算，这里补齐它依赖的数据）。
@@ -770,19 +834,6 @@ onUnmounted(() => {
   color: var(--text-primary);
   background: var(--surface-secondary);
 }
-
-.error-banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: var(--sev-critical-bg);
-  color: var(--sev-critical-fg);
-  font-size: 12px;
-  border-bottom: 1px solid var(--sev-critical-border);
-}
-
-.error-banner > svg { flex-shrink: 0; }
 
 .offline-notice { flex-shrink: 0; margin: 8px 12px 0; }
 .offline-notice > svg { flex-shrink: 0; }

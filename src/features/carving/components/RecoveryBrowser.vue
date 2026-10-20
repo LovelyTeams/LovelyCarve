@@ -5,8 +5,8 @@
     <div class="browser-main">
       <!-- 地址栏：与文件列表一致，目录树开关、返回上一级与面包屑。 -->
       <div class="path-bar">
-        <button class="ui-icon-btn" type="button" :class="{ active: treeVisible }" :aria-pressed="treeVisible" :aria-label="tr('切换目录树')" :title="tr('显示 / 隐藏目录树')" @click="treeVisible = !treeVisible"><FolderTree :size="15" /></button>
-        <button class="ui-icon-btn" type="button" :aria-label="tr('返回上一级')" :title="tr('返回上一级')" :disabled="!breadcrumbs.length" @click="emit('go-up')"><ArrowLeft :size="15" /></button>
+        <button class="ui-icon-btn" type="button" :aria-pressed="treeVisible" :aria-label="tr('切换目录树')" :title="tr('显示 / 隐藏目录树')" @click="treeVisible = !treeVisible"><PanelLeft :size="16" /></button>
+        <button class="ui-icon-btn" type="button" :aria-label="tr('返回上一级')" :title="tr('返回上一级')" :disabled="!breadcrumbs.length" @click="emit('go-up')"><ArrowUp :size="16" /></button>
         <nav class="breadcrumb mono" :aria-label="tr('当前恢复目录')">
           <button class="crumb root" type="button" :class="{ active: !breadcrumbs.length }" :title="tr('全部恢复结果')" @click="emit('navigate', RECOVERY_ROOT)"><HardDrive :size="13" class="crumb-root-icon" /><span>{{ tr("恢复结果") }}</span></button>
           <template v-for="(item, index) in breadcrumbs" :key="item.key">
@@ -26,7 +26,7 @@
 <script setup lang="ts">
 import { tr } from '../../../composables/useLocale';
 import { ref } from 'vue';
-import { ArrowLeft, ChevronRight, FolderTree, HardDrive, Layers3 } from 'lucide-vue-next';
+import { ArrowUp, ChevronRight, HardDrive, Layers3, PanelLeft } from 'lucide-vue-next';
 import UiTransition from '../../../components/ui/UiTransition.vue';
 import RecoveryTreeRail from './RecoveryTreeRail.vue';
 import RecoveryFileTable from './RecoveryFileTable.vue';
@@ -48,15 +48,15 @@ const treeVisible = ref(true);
 <style scoped>
 .recovery-browser { position: relative; display: flex; flex: 1; min-height: 0; overflow: hidden; }
 .browser-main { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
-.path-bar { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 12px; flex-shrink: 0; border-bottom: 1px solid var(--border-color); background: var(--surface-secondary); }
-.breadcrumb { flex: 1 1 180px; min-width: 0; height: 30px; display: flex; align-items: center; padding: 0 4px; overflow: hidden; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--surface-primary); color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
-.crumb { min-width: 28px; max-width: 200px; height: 24px; display: inline-flex; align-items: center; gap: 5px; flex-shrink: 1; padding: 0 6px; overflow: hidden; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font-family: var(--font-mono); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; transition: background var(--transition-fast), color var(--transition-fast); }
+.path-bar { display: flex; align-items: center; gap: 4px; min-height: 44px; padding: 6px 12px; flex-shrink: 0; border-bottom: 1px solid var(--border-color); background: var(--surface-secondary); }
+.breadcrumb { flex: 1 1 180px; min-width: 0; height: 30px; display: flex; align-items: center; gap: 2px; margin-left: 4px; overflow: hidden; color: var(--text-secondary); white-space: nowrap; }
+.crumb { min-width: 32px; max-width: 200px; height: 28px; display: inline-flex; align-items: center; gap: 6px; flex-shrink: 1; padding: 0 8px; overflow: hidden; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font-family: var(--font-ui); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; transition: background var(--transition-fast), color var(--transition-fast); }
 .crumb:hover { background: var(--hover-bg); color: var(--text-primary); }
-.crumb.root { flex-shrink: 0; font-family: var(--font-ui); }
-.crumb.active { color: var(--text-primary); font-weight: 600; }
+.crumb.root { flex-shrink: 0; }
+.crumb.active { flex-shrink: 0; max-width: 50%; color: var(--text-primary); font-weight: 600; }
 .crumb.deleted { color: var(--sev-critical-fg); text-decoration: line-through; }
 .crumb:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
 .crumb-root-icon { flex-shrink: 0; color: var(--primary-color); }
-.crumb-sep { flex-shrink: 0; color: var(--text-secondary); opacity: 0.55; }
+.crumb-sep { flex-shrink: 0; color: var(--text-secondary); opacity: 0.6; }
 .crumb-flat-icon { flex-shrink: 0; margin: 0 4px; color: var(--showall-accent); }
 </style>

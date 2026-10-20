@@ -176,6 +176,17 @@ export function useFileFilters(options: {
     clearCategories();
   }
 
+  /** 移除单列条件（筛选条上的条件标签）；与「清除全部」一样即时生效。 */
+  function clearColumnFilter(key: string) {
+    if (key === 'size') resetSizeFilter();
+    else if (isTimeColumn(key)) resetTimeFilter(key);
+    else if (key in filters) {
+      filters[key] = '';
+      effectiveFilters[key] = '';
+    }
+    if (filterPopover.visible && filterPopover.key === key) hideFilterPopover();
+  }
+
   // ── 列头漏斗过滤气泡 ──
   // 漏斗常驻列标题，点击在标题下方弹出输入框；输入即过滤，
   // Esc / Enter / 点击外部 / 滚动表格 时关闭。气泡 Teleport 到 body 以避免
@@ -234,9 +245,10 @@ export function useFileFilters(options: {
     if (filterPopoverEl.value?.contains(t)) return;
     // 单位下拉框（UiSelect）的列表 Teleport 在 body 下，同属气泡交互。
     if (t.closest('.ui-select-list')) return;
-    // 漏斗按钮自身的开/关/换列由 click 阶段的 toggleFilterPopover 决定；
-    // 非左键（右键/中键）不会产生 click，不能豁免，否则气泡留着不关。
-    if (e.button === 0 && t.closest('.head-funnel')) return;
+    // 漏斗按钮与筛选条上的条件标签自身的开/关/换列由 click 阶段的
+    // toggleFilterPopover 决定；非左键（右键/中键）不会产生 click，不能豁免，
+    // 否则气泡留着不关。
+    if (e.button === 0 && t.closest('.head-funnel, [data-filter-anchor]')) return;
     hideFilterPopover();
   }
 
@@ -312,7 +324,7 @@ export function useFileFilters(options: {
   });
   return {
     filters, effectiveFilters, sizeFilter, sizeFilterErrors, timeFilters, timeFilterErrors, activeTimeFilterKeys, appliedSizePredicate, matchesTimeFilter,
-    resetSizeFilter, resetTimeFilter, activeFilterCount, isColumnFiltered, filterSummaryOf, clearAllFilters,
+    resetSizeFilter, resetTimeFilter, activeFilterCount, isColumnFiltered, filterSummaryOf, clearAllFilters, clearColumnFilter,
     filterPopover, filterPopoverEl, filterPopoverColumn, toggleFilterPopover, hideFilterPopover,
     rebasePathFilterToStack, resolveAbsoluteDirStack, invalidatePathLevels, invalidatePathFollow,
     onSizeFormEnter, onFilterCloseKey, applySizeFilter, disableSizeFilter, SIZE_UNIT_OPTIONS,

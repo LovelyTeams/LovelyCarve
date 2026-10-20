@@ -1,16 +1,16 @@
 <template>
   <aside class="tree-rail">
     <div class="tree-header">
-      <FolderTree :size="14" class="tree-header-icon" />
+      <FolderTree :size="14" class="tree-header-icon" aria-hidden="true" />
       <span class="tree-header-label">{{ tr("目录树") }}</span>
       <button
-        class="ui-icon-btn sm tree-header-toggle"
-        :class="{ active: hideEmptyDirs }"
+        class="ui-icon-btn tree-header-toggle"
         :title="hideEmptyDirs ? tr('显示空目录') : tr('隐藏空目录（不含任何文件的目录，包括只含空子目录的目录）')"
+        :aria-label="tr('隐藏空目录')"
         :aria-pressed="hideEmptyDirs"
         @click="hideEmptyDirs = !hideEmptyDirs"
       >
-        <FolderX :size="14" />
+        <FolderX :size="16" />
       </button>
     </div>
     <div
@@ -57,7 +57,7 @@
             :title="tr('源系统盘符 {0}', { 0: row.node.driveLetter })"
           >{{ row.node.driveLetter }}</span>
           <span class="tree-name" :title="row.node.name">{{ row.node.name }}</span>
-          <span v-if="row.node.childCount != null && row.node.childCount > 0" class="tree-count mono">{{ row.node.childCount }}</span>
+          <span v-if="row.node.childCount != null && row.node.childCount > 0" class="tree-count">{{ row.node.childCount.toLocaleString() }}</span>
         </button>
         <div v-if="rootNodes.length === 0 && rootLoaded" class="tree-empty mono">
           {{ tr("没有可显示的目录") }}
@@ -96,16 +96,16 @@ const { activeId, selectedLeafId, visibleRows, rootNodes, rootLoaded, dockerFile
   background: var(--surface-secondary);
 }
 
-/* 与右侧表格表头同高同色（34px 浅色带），两条分隔线对齐成一线。 */
+/* 与中间的筛选条、右侧预览栏标题条同高（48px），三栏的分隔线连成一线。 */
 .tree-header {
   display: flex;
   align-items: center;
   gap: 8px;
   box-sizing: border-box;
-  height: 34px;
-  padding: 0 6px 0 12px;
+  height: 48px;
+  padding: 0 10px 0 14px;
   border-bottom: 1px solid var(--border-color);
-  background: color-mix(in srgb, var(--surface-tertiary) 60%, var(--surface-secondary));
+  background: var(--surface-primary);
   flex-shrink: 0;
 }
 
@@ -114,9 +114,9 @@ const { activeId, selectedLeafId, visibleRows, rootNodes, rootLoaded, dockerFile
 }
 
 .tree-header-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
   user-select: none;
 }
 
@@ -263,22 +263,18 @@ const { activeId, selectedLeafId, visibleRows, rootNodes, rootLoaded, dockerFile
   text-overflow: ellipsis;
 }
 
+/* 子项数：右对齐的等宽数字，不再画成徽章，长树里读起来更安静。 */
 .tree-count {
   flex-shrink: 0;
-  min-width: 20px;
-  height: 18px;
   margin-left: auto;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--chip-count-bg);
+  padding-left: 8px;
   color: var(--text-secondary);
+  font-family: var(--font-mono);
   font-size: 11px;
-  line-height: 18px;
-  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .tree-row.active .tree-count {
-  background: color-mix(in srgb, var(--primary-color) 16%, transparent);
   color: var(--primary-color);
 }
 

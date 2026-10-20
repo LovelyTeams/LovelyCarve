@@ -1,7 +1,11 @@
 <template>
   <Transition name="settings-slide">
-    <aside v-if="open" class="col-settings">
+    <aside v-if="open" class="col-settings" :aria-label="tr('显示列')">
       <div class="settings-panel">
+        <div class="settings-head">
+          <span class="settings-title">{{ tr("显示列") }}</span>
+          <span class="settings-count mono">{{ visibleCount }} / {{ columns.length }}</span>
+        </div>
         <div class="settings-search">
           <input v-model="filter" class="ui-input sm" type="text" :placeholder="tr('过滤列名…')" :aria-label="tr('过滤显示列')" />
         </div>
@@ -29,6 +33,7 @@ import type { ColumnDef } from '../model/model';
 const props = defineProps<{ open: boolean; columns: ColumnDef[]; columnVisible: Record<string, boolean> }>();
 const emit = defineEmits<{ toggle: [key: string] }>();
 const filter = ref('');
+const visibleCount = computed(() => props.columns.filter(column => props.columnVisible[column.key]).length);
 const visibleSettingsList = computed(() => {
   const keyword = filter.value.trim().toLowerCase();
   return keyword ? props.columns.filter(column => tr(column.label).toLowerCase().includes(keyword) || column.key.includes(keyword)) : props.columns;
@@ -73,8 +78,30 @@ const visibleSettingsList = computed(() => {
   min-width: 0;
 }
 
+.settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 34px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--surface-tertiary) 60%, var(--surface-secondary));
+}
+
+.settings-title {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settings-count {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
 .settings-search {
-  padding: 10px;
+  padding: 8px;
   border-bottom: 1px solid var(--border-color);
 }
 
