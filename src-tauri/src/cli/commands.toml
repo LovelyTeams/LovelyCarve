@@ -81,6 +81,7 @@ key = "SQLCipher 等加密数据库的密钥（JSON）"
 "cases options" = "案件级设置"
 "cli" = "发现命令"
 "context" = "会话上下文：当前检材与镜像内目录"
+"sessions" = "命名常驻会话：复用已打开检材、组装卷和当前目录"
 "disks" = "主机物理磁盘"
 "docs" = "随程序附带的使用文档：搜索、列出与阅读"
 "encrypted-volumes" = "LUKS、VeraCrypt 与 FileVault 加密容器"
@@ -645,6 +646,69 @@ type = "string"
 description = "章节标题（docs search 返回的 section）；省略时输出整页"
 
 # ── context (hand-written) ──────────────────────────────────────────────────
+
+[[command]]
+path = "sessions open"
+native = "sessions-open"
+summary = "启动命名常驻会话"
+keywords = ["连续取证", "persistent session", "reuse evidence", "attach"]
+description = "在后台保持案件、检材、组装卷和当前目录。后续命令用 --session <名称>，或设置 LOVELYCARVE_SESSION；无需手写 JSONL。用 sessions close 关闭。启动选项 --case/--image 只用于新会话。"
+category = "action"
+args = ["name"]
+examples = [{ command = "lovelycarve-cli --image D:\\evidence\\disk.E01 sessions open exam", description = "启动后用 --session exam 执行后续普通命令" }]
+[command.params.name]
+type = "string"
+required = true
+description = "会话名：1–64 个字母、数字、下划线或连字符"
+
+[[command]]
+path = "sessions attach"
+native = "sessions-attach"
+summary = "进入常驻会话的普通命令终端"
+description = "连接已运行的会话，直接输入 files list、raid detect 等普通命令；cd/pwd 导航，exit 仅断开终端，保留已打开检材。"
+category = "action"
+args = ["name"]
+[command.params.name]
+type = "string"
+required = true
+
+[[command]]
+path = "sessions get"
+native = "sessions-get"
+summary = "查看常驻会话及当前检材"
+category = "read"
+args = ["name"]
+[command.params.name]
+type = "string"
+required = true
+
+[[command]]
+path = "sessions list"
+native = "sessions-list"
+summary = "列出本机当前用户的常驻会话"
+category = "read"
+
+[[command]]
+path = "sessions close"
+native = "sessions-close"
+summary = "关闭常驻会话并释放检材"
+description = "取消后台工作，关闭案件、插件与检材，然后退出会话进程。"
+category = "action"
+args = ["name"]
+[command.params.name]
+type = "string"
+required = true
+
+[[command]]
+path = "sessions serve"
+native = "sessions-serve"
+summary = "运行常驻会话服务"
+category = "action"
+hide_command = true
+args = ["name"]
+[command.params.name]
+type = "string"
+required = true
 
 [[command]]
 path = "context use"

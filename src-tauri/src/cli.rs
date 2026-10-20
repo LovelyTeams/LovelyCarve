@@ -22,6 +22,7 @@ mod navigation_tests;
 mod output;
 mod progress;
 mod prompt;
+mod resident;
 mod runtime;
 mod schema;
 mod search;

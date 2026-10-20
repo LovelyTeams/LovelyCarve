@@ -16,7 +16,7 @@ use super::{
     context::{self, Context, Exec, Mode, Request},
     dotenv, generated, interactive, native,
     output::{self, Role},
-    session, shell, CliError, Output,
+    resident, session, shell, CliError, Output,
 };
 use crate::{host::AppHandle, state::AppState, task_manager::TaskKind};
 
@@ -96,6 +96,11 @@ fn splash(catalog: &Catalog) {
         String::new(),
         output::bold("开始使用："),
         line("images open <检材路径>", "打开检材"),
+        line(
+            "sessions open exam --image <检材路径>",
+            "保持检材打开，供连续命令复用",
+        ),
+        line("sessions attach exam", "连接会话，直接输入普通命令"),
         line("files list --path / --image <检材路径>", "浏览检材"),
         line("cli search \"<要完成的任务>\"", "按意图查找命令"),
         line("docs search \"<问题>\"", "搜索内置文档"),
@@ -193,6 +198,16 @@ fn command(
     if let Some(output) = native::offline(invocation.command, &invocation.values, Mode::OneShot) {
         return print(output?, &invocation, globals.quiet);
     }
+    if native == Some("sessions-serve") {
+        let prepared = resident::prepare(resident::name(&invocation)?)?;
+        return Ok(backend(globals, Work::Resident(prepared)));
+    }
+    if native.is_some_and(|native| native.starts_with("sessions-")) {
+        return resident::manage(&globals, &invocation);
+    }
+    if let Some(name) = resident::selected(&globals) {
+        return resident::forward(&name, &globals, invocation);
+    }
     match native {
         Some("session") => {
             let jobs = invocation
@@ -221,6 +236,7 @@ enum Work {
     OneShot(Invocation),
     Session { jobs: usize, events: bool },
     Shell,
+    Resident(resident::Prepared),
 }
 
 fn backend(globals: Globals, work: Work) -> i32 {
@@ -302,7 +318,7 @@ async fn serve(globals: Globals, work: Work) -> i32 {
     }
     let mode = match work {
         Work::OneShot(_) => Mode::OneShot,
-        Work::Session { .. } => Mode::Session,
+        Work::Session { .. } | Work::Resident(_) => Mode::Session,
         Work::Shell => Mode::Shell,
     };
     let exec = Exec {
@@ -385,6 +401,7 @@ async fn perform(
             i32::from(failed)
         }
         Work::Shell => shell::run(exec, context).await?,
+        Work::Resident(prepared) => return resident::serve(exec, context, prepared).await,
     };
     finish(&exec.state).await?;
     Ok(code)
@@ -435,7 +452,7 @@ async fn interrupted() {
     }
 }
 
-async fn shutdown(state: &AppState) {
+pub(super) async fn shutdown(state: &AppState) {
     for task in state.tasks.list() {
         state.tasks.cancel(&task.id);
     }

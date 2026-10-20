@@ -21,6 +21,7 @@ pub const ASK: &str = "-";
 #[derive(Debug, Default, Clone)]
 pub struct Globals {
     pub quiet: bool,
+    pub session: Option<String>,
     /// The evidence scope: an image ID or an evidence path.
     pub image: Option<String>,
     pub case: Option<String>,
@@ -208,7 +209,7 @@ pub fn scan_path(catalog: &Catalog, args: &[String]) -> Vec<String> {
             break;
         }
         if arg.starts_with('-') {
-            skip = matches!(arg.as_str(), "--image" | "-i" | "--case");
+            skip = matches!(arg.as_str(), "--image" | "-i" | "--case" | "--session");
             continue;
         }
         let words: Vec<&str> = path.iter().map(String::as_str).collect();
@@ -464,6 +465,11 @@ fn invocation(command: &'static Command, matches: &ArgMatches) -> Result<Invocat
 
 fn globals(matches: &ArgMatches) -> Globals {
     Globals {
+        session: matches
+            .try_get_one::<String>("session")
+            .ok()
+            .flatten()
+            .cloned(),
         quiet: flag(matches, "quiet"),
         image: matches
             .try_get_one::<String>("image")

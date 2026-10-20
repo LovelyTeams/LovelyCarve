@@ -15,7 +15,7 @@ pub const VERBS: &[&str] = &[
     "get", "list", "create", "update", "edit", "delete", "count", "open", "close", "read",
     "export", "hash", "identify", "search", "scan", "detect", "lookup", "unlock", "lock",
     "assemble", "build", "audit", "start", "pause", "resume", "restart", "cancel", "wait",
-    "release", "share", "unshare", "reveal", "set", "use",
+    "release", "share", "unshare", "reveal", "set", "use", "attach", "serve",
 ];
 
 /// Synonyms that commands must not use, with the verb that replaces each.
@@ -48,8 +48,8 @@ pub const BANNED_VERBS: &[(&str, &str)] = &[
 /// Options the CLI owns. A parameter may only take one of these names when it
 /// is bound to the matching global option (`imageId` → `--image`).
 pub const RESERVED_OPTIONS: &[&str] = &[
-    "image", "case", "quiet", "help", "version", "dry-run", "body", "force", "text", "json",
-    "ndjson", "pretty", "output", "remote", "cwd", "config", "yes", "local", "file",
+    "image", "case", "session", "quiet", "help", "version", "dry-run", "body", "force", "text",
+    "json", "ndjson", "pretty", "output", "remote", "cwd", "config", "yes", "local", "file",
 ];
 
 /// Global options that supply a parameter when a command does not.

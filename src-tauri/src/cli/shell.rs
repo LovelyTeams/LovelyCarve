@@ -85,10 +85,12 @@ async fn line(exec: &Exec, context: &mut Context, words: Vec<String>) -> Result<
                     "--case 只能在启动时使用；会话中请用 cases open",
                 ));
             }
-            if matches!(
-                invocation.command.native.as_deref(),
-                Some("session" | "shell" | "complete")
-            ) {
+            if globals.session.is_some()
+                || invocation.command.native.as_deref().is_some_and(|native| {
+                    matches!(native, "session" | "shell" | "complete")
+                        || native.starts_with("sessions-")
+                })
+            {
                 return Err(CliError::invalid("不能在 shell 中嵌套会话"));
             }
             let mut values = invocation.values;

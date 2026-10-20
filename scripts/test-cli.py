@@ -17,6 +17,8 @@ import tarfile
 import threading
 import zlib
 
+from cli_resident_tests import test_resident_sessions
+
 
 def documents(text):
     """The JSON documents a shell script printed, with raw output between them as stripped strings."""
@@ -46,7 +48,7 @@ def main():
     executable = Path(sys.argv[1]).resolve()
     # Scope variables of the caller's shell must not leak into the cases below.
     environment = {key: value for key, value in os.environ.items()
-                   if key not in {"LOVELYCARVE_IMAGE", "LOVELYCARVE_CASE"}}
+                   if key not in {"LOVELYCARVE_IMAGE", "LOVELYCARVE_CASE", "LOVELYCARVE_SESSION"}}
     with tempfile.TemporaryDirectory(prefix="lovelycarve-cli-test-") as directory:
         root = Path(directory)
         evidence = root / "evidence with spaces"
@@ -952,6 +954,7 @@ context get
                     process.kill()
                 process.communicate(timeout=15)
 
+    test_resident_sessions(executable, environment)
     print("CLI smoke tests passed: discovery, dry run, JSONL, browsing, binary read, hash, preview cleanup, export, errors, carving, search, timeline, case lifecycle, windowless startup and interrupt")
 
 

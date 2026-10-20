@@ -449,7 +449,7 @@ impl Exec {
     }
 
     /// Resolve the command's node parameter from `path` when it was not given.
-    async fn target(
+    pub(super) async fn target(
         &self,
         context: &mut Context,
         command: &Command,

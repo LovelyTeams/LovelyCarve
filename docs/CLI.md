@@ -7,7 +7,7 @@
 在所有命令上含义一致。
 
 常用章节：[构建与运行](#构建与运行)、[命令结构](#命令结构)、[发现命令](#发现命令)、
-[输出与退出码](#输出与退出码)、[参数](#参数)、[浏览检材](#浏览检材)、[交互 shell](#交互-shell)、
+[输出与退出码](#输出与退出码)、[参数](#参数)、[浏览检材](#浏览检材)、[常驻会话](#常驻会话)、[交互 shell](#交互-shell)、
 [JSONL 会话](#jsonl-会话)、[生命周期与边界](#生命周期与边界)。iOS 备份命令见 [iOS 备份](IOS_BACKUPS.md#cli)。
 
 ## 构建与运行
@@ -71,6 +71,7 @@ lovelycarve-cli --case "D:\cases\demo" cases get
 | `plugins`、`analysis`、`bcp` | 插件、插件任务、分析结果与 BCP 数据 |
 | `raid`、`disks` | RAID 组装与主机物理磁盘 |
 | `tasks` | 任务中心：插件任务与内置任务的列出、查看、取消，以及等待后台任务结束 |
+| `sessions` | 命名常驻会话：启动、连接、查看、列出与关闭，供多个普通 CLI 进程复用已打开的检材 |
 | `system`、`context`、`cli` | 本程序与主机、会话上下文、命令搜索 |
 | `schema`、`complete`、`session`、`shell` | 根命令：请求结构、shell 补全、JSONL 会话、交互 shell |
 
@@ -84,6 +85,7 @@ CLI 不会静默漏接功能。
 | --- | --- |
 | `-i, --image <ID\|路径>` | 命令作用的检材：已加载检材的 ID，或检材路径（第一次用到时打开） |
 | `--case <目录>` | 运行前打开的案件 |
+| `--session <名称>` | 将普通命令交给已有的命名常驻会话；也可设置环境变量 `LOVELYCARVE_SESSION` |
 | `-q, --quiet` | 不输出横幅、进度等非必要信息 |
 | `-h, --help` / `-v, --version` | 帮助与版本 |
 
@@ -280,6 +282,66 @@ JSONL 可直接引用检测结果及目录名称，避免抄写 ID：
 这些值由目录枚举提供，不能从卷名猜测。默认 FS 树使用子卷 5，常见根 inode 为 256，
 但脚本应复制 `files list` 返回的 `items[].id`，或使用上面的普通路径导航。
 
+## 常驻会话
+
+连续取证建议先启动命名会话。后台进程保持案件、E01 句柄、读取缓存、RAID/LVM 组装卷、
+当前检材和目录；后续普通命令连接同一进程，无需重新打开检材或手写 JSONL：
+
+```powershell
+lovelycarve-cli --image "D:\evidence\disk.E01" sessions open exam
+lovelycarve-cli --session exam raid detect
+lovelycarve-cli --session exam images list
+lovelycarve-cli --session exam context use <assembledImageId>
+lovelycarve-cli --session exam files list
+lovelycarve-cli --session exam files read "/<卷名称>/report.txt" --text
+```
+
+`raid detect` 只需执行一次；后续命令沿用已注册的组装卷及其 ID。未提供 `--image` 时，
+新会话也可以先启动，再用 `--session exam images open <路径>` 加载检材。
+`sessions open` 返回后台 PID、当前上下文和检材数量；对已运行的同名会话重复调用会返回其状态，
+同时传 `--image` 或 `--case` 会报错，避免误以为已切换上下文。切换检材用 `context use` / `images open`，
+切换案件用 `cases open`。启动时的环境变量与 `.env` 默认值只应用一次。
+
+也可以进入连接终端，逐行输入相同命令，省去每行的程序名与 `--session`：
+
+```text
+lovelycarve-cli sessions attach exam
+lovelycarve:exam> files list
+lovelycarve:exam> cd "<卷名称>/Users"
+lovelycarve:exam> files hash alice/report.txt
+lovelycarve:exam> exit
+```
+
+`cd` / `pwd` 操作共享的检材目录，`help` 显示命令帮助；`exit`、`quit`、`detach` 和输入结束只断开连接，
+后台检材与组装状态继续保留。也可将普通命令脚本传给 `sessions attach exam`；脚本遇错即停止。
+退出连接后仍可从其他终端继续：
+
+```powershell
+$env:LOVELYCARVE_SESSION = "exam"
+lovelycarve-cli files list
+lovelycarve-cli context get
+lovelycarve-cli sessions get exam
+lovelycarve-cli sessions list
+lovelycarve-cli sessions close exam
+Remove-Item Env:LOVELYCARVE_SESSION
+```
+
+显式 `--session` 优先于环境变量。发现命令（帮助、`schema`、`docs`、`cli search`、`system get`）仍在本地运行。
+会话管理命令在普通 CLI 中运行，不能嵌入 `shell`、JSONL 或另一个连接终端。
+同一会话的请求串行执行，后台任务继续运行；多个连接共享当前检材与目录，要隔离工作流时使用不同名称。
+删除类命令需要显式 `--force`；可省略值的密码选项由客户端询问，然后传给会话。
+原始字节保持原样输出，较大的 `files read` 按块传输，不受 JSONL 单次 16 MiB 的限制；途中读取或传输失败返回非零退出码。
+
+相对主机路径以 `sessions open` 时的工作目录为准，`sessions get` 的 `workingDirectory` 可查看；
+跨终端使用时，检材、案件与导出路径建议写绝对路径。CLI 的 `--body @文件` 由当前客户端读取。
+连接断开或后台进程崩溃时命令报错，不会自动重试或悄悄启动新的后端。崩溃后可用同名 `sessions open`
+重新启动，但内存中的卷 ID、目录、任务和解锁状态需要重建；本功能不连接桌面端进程。
+
+会话名为 1–64 个 ASCII 字母、数字、下划线或连字符。连接信息与日志位于用户数据目录的 `cli-sessions/`，
+使用文件锁防止同名进程冲突；服务仅监听本机回环地址，以私有随机凭据认证，状态输出不包含凭据。
+测试可用 `LOVELYCARVE_SESSION_DIR` 隔离目录。`sessions close` 取消后台任务、释放案件、检材和插件后退出，
+长期不用的会话应显式关闭。
+
 ## 交互 shell
 
 ```text
@@ -370,11 +432,11 @@ lovelycarve-cli --image "D:\evidence\disk.E01" session --jobs 4
 
 ## 生命周期与边界
 
-单条命令启动后端、执行命令、等待它启动的后台任务结束后退出；无案件检材的临时卷索引会被取消，
+未指定常驻会话时，单条命令启动后端、执行命令、等待它启动的后台任务结束后退出；无案件检材的临时卷索引会被取消，
 因为退出时本来就会丢弃。退出前取消剩余任务、关闭案件、停止插件并删除预览临时文件。
 Ctrl+C / Ctrl+Break 取消任务、释放案件与挂载后以 130 退出；无法取消的阻塞读取最多再等 10 秒。
 
-挂载、SMB 共享和媒体预览临时文件只在进程存活期间有效，应在 `shell` 或 `session` 中使用，
+挂载、SMB 共享和媒体预览临时文件只在进程存活期间有效，应在常驻会话、`shell` 或 `session` 中使用，
 需要长期保留的内容请导出。暂停的雕刻请先恢复或取消再等待；CLI 退出不保存内存中的雕刻记录，
 应在同一个会话中扫描、分页与恢复。
 

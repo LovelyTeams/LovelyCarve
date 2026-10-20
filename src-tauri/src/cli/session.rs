@@ -329,10 +329,9 @@ pub(super) async fn json_lines(
                 None => format!("未知命令：{}", request.command),
             })
         })?;
-        if matches!(
-            command.native.as_deref(),
-            Some("session" | "shell" | "complete")
-        ) {
+        if command.native.as_deref().is_some_and(|native| {
+            matches!(native, "session" | "shell" | "complete") || native.starts_with("sessions-")
+        }) {
             return Err(CliError::invalid(format!(
                 "{} 不能在会话中运行",
                 request.command

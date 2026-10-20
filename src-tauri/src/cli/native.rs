@@ -49,7 +49,7 @@ async fn loaded_image(state: &AppState, image_id: &str) -> Result<Arc<EvidenceSe
 
 /// Byte-level commands need the original evidence; index-only sessions can
 /// still browse.
-fn require_source(image: &EvidenceSession) -> Result<(), CliError> {
+pub(super) fn require_source(image: &EvidenceSession) -> Result<(), CliError> {
     if image.is_index_only() {
         image.require_source().map_err(super::internal_error)
     } else {
@@ -90,6 +90,12 @@ pub fn capabilities() -> Result<Value, CliError> {
         "ocr": cfg!(feature = "ocr"),
         "ocrCuda": cfg!(feature = "ocr-cuda"),
         "dokanMount": cfg!(target_os = "windows"),
+        "residentSessions": {
+            "open": "sessions open <name>", "attach": "sessions attach <name>",
+            "close": "sessions close <name>", "option": "--session <name>",
+            "environment": "LOVELYCARVE_SESSION", "execution": "serial",
+            "rawRead": "stream", "retains": ["case", "images", "assembledVolumes", "directory", "tasks"]
+        },
         "session": {
             "protocol": "jsonl", "protocolVersion": 3,
             "request": {"id": "string", "command": "<collection>… <verb>", "args": "object keyed by API parameter name", "output": "optional file path for raw content", "force": "boolean, confirms destructive commands", "dryRun": "boolean"},
@@ -424,12 +430,12 @@ async fn files_get(
 
 /// Decodes UTF-8 across chunk boundaries, replacing invalid sequences.
 #[derive(Default)]
-struct Utf8Stream {
+pub(super) struct Utf8Stream {
     pending: Vec<u8>,
 }
 
 impl Utf8Stream {
-    fn push(&mut self, chunk: &[u8], out: &mut String) {
+    pub(super) fn push(&mut self, chunk: &[u8], out: &mut String) {
         self.pending.extend_from_slice(chunk);
         let mut start = 0;
         loop {
@@ -458,7 +464,7 @@ impl Utf8Stream {
         self.pending.drain(..start);
     }
 
-    fn finish(&mut self, out: &mut String) {
+    pub(super) fn finish(&mut self, out: &mut String) {
         if !self.pending.is_empty() {
             out.push_str(&String::from_utf8_lossy(&self.pending));
             self.pending.clear();

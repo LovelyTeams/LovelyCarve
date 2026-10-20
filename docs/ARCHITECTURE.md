@@ -1014,10 +1014,17 @@ dry-run、删除确认、默认值与生成 ID、提问、`--image` 作用域与
 上下文更新）、`native` / `browsing` / `grep` / `strings`（手写命令；`native::offline` 处理无需后端的发现命令）、
 `output` / `prompt` / `progress` / `interactive`（标准输出与标准错误、clack 式提问与进度、终端与代理检测）、
 `search`（BM25+ 排序，命令搜索与文档搜索共用）、`docs`、`tools`、`schema`、`complete`、`dotenv`、`session`、
-`shell` 和 `runtime`（进程入口、后端启动与关闭、中断处理）。结构化结果以 `cli::Json` 保存后端序列化的 JSON
+`shell`、`resident`（命名常驻会话的启动、连接、私有传输及串行执行）和 `runtime`（进程入口、后端启动与关闭、中断处理）。结构化结果以 `cli::Json` 保存后端序列化的 JSON
 文本，打印和会话响应保留字段顺序，需要读取时才解析为值；后端命令的错误带上 IPC 名称，渲染为「后端错误」块。
 可执行文件旁的 `plugins/` 同样参与插件发现，`lc-plugin-host` 也从可执行文件旁查找。
-`just test-cli` 以真实进程验证无窗口启动、会话协议、脚本与中断退出码。
+`resident` 的后台进程持有一个 `AppState` 和可变 `Context`；普通命令通过 `--session` 或
+`LOVELYCARVE_SESSION` 连接，无需重新打开检材或组装卷。每个名称用用户数据目录中的文件锁保证单一拥有者，
+随机凭据只保存在私有连接记录中，服务只监听回环地址；客户端不凭 PID 识别进程、不自动重试请求。
+请求串行执行，任务在后台继续；原始字节按块传输，`files read` 固定本次请求的检材及节点后分段读取，
+短读或连接中断必须报错。`sessions attach` 使用普通命令语法，断开不关闭后台；`sessions close`
+完成共享关闭流程再退出。桌面状态不参与这条连接链路。
+`just test-cli` 以真实进程验证无窗口启动、会话协议、脚本与中断退出码，以及常驻会话跨进程状态、
+组装卷复用、大文件字节与文本传输、会话隔离、认证、案件释放和崩溃后的同名重启。
 
 桌面只读挂载由 `app/workflows/mount.rs` 编排，`commands/system/mount.rs` 提供命令，
 `core/platform/dokan_mount/` 负责 Windows Dokan 投影。挂载使用 evidence session，

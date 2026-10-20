@@ -7,6 +7,12 @@ use super::catalog::{Catalog, Kind};
 /// Global options valid on every command.
 pub const GLOBAL_OPTIONS: &[(&str, Option<char>, &str, bool)] = &[
     (
+        "session",
+        None,
+        "使用命名常驻会话（也可设置 LOVELYCARVE_SESSION）",
+        true,
+    ),
+    (
         "image",
         Some('i'),
         "检材 ID 或路径（覆盖 LOVELYCARVE_IMAGE）",
