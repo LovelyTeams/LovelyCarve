@@ -116,7 +116,7 @@ Unix 的 `build-cli-full` 启用 `qrcode-wechat ocr`（CPU OCR），需要自行
 
 `pack` / `pack-cli` 默认不带 QR/OCR 资源；完整包使用 `pack-full` / `pack-cli-full`，额外资源来自 `src-tauri/tauri.full.conf.json`。`repack` / `repack-full` 复用已有的桌面产物，必须与编译特性一致；`repack-cli` 按 CLI 的实际能力选择资源。便携包输出到 `dist-pack/`，安装包输出到 `src-tauri/target/release/bundle/`。
 
-仓库不提供 GitHub Actions 工作流，验证与打包都在本地完成，发布步骤见 [发布指南](RELEASING.md)。
+Windows GitHub Actions 使用 `windows-2025` 执行前端、Rust/CLI 与插件检查；`v*` 标签在验证成功后自动构建 MSI、CLI ZIP 与插件包并发布到 GitHub Release。云端默认不启用 QR/OCR，macOS/Linux、原生 GUI 与驱动功能仍需单独验证，发布步骤见 [发布指南](RELEASING.md)。
 
 ## 性能验证
 

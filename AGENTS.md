@@ -103,7 +103,7 @@ The shipping `release` profile is size-first (`opt-level = "s"`, fat LTO). Byte-
 
 Rust recipes can hold Cargo's global lock for a long time. Be patient with `just build`, `just check`, `just test`, and `just clippy`; do not kill them merely because they appear idle.
 
-Local `just` recipes are the verification source of truth. This repository has no GitHub Actions workflows; contributors and maintainers run checks and release builds locally.
+Local `just` recipes are the verification source of truth. Windows GitHub Actions call those same recipes for PR checks and tag-triggered releases; macOS/Linux and native GUI/driver behavior still require separate verification.
 
 ReFS uses the vendored pure Rust `refs-reader`; production builds do not load or ship `librefs-13.dll`. The explicit `refs-dll-oracle` feature and `just probe-refs` / `just test-refs-oracle` recipes retain the legacy DLL for comparison only. Compression does not require separate bzip2 or zlib runtime DLLs.
 
