@@ -36,16 +36,16 @@ imageId = "image"
 
 [descriptions]
 imageId = "检材 ID 或检材路径（路径会先打开）；默认取 --image、LOVELYCARVE_IMAGE 或会话当前检材"
-nodeId = "文件节点 ID（files list 输出的 node.id）；也可改用镜像内路径"
+nodeId = "文件节点 ID（files list 输出的 items[].id）；也可改用镜像内路径"
 parentId = "目录节点 ID；也可改用 --path 指定镜像内路径"
 rootId = "根目录节点 ID；也可改用 --path 指定镜像内路径"
 path = "镜像内路径：以 / 开头为绝对路径（/ 下是分区和卷），否则相对会话当前目录"
 taskId = "任务 ID，可交给 tasks cancel；省略时自动生成"
 destination = "主机上的输出路径"
 partitionId = "分区序号（images get 返回的 partitions[].id）"
-scanId = "恢复扫描 ID（carve scans create 返回的 scan_id）"
-searchId = "搜索 ID（searches create 返回的 search_id）"
-cursor = "上一页返回的 next_cursor"
+scanId = "恢复扫描 ID（carve scans create 返回的 scanId）"
+searchId = "搜索 ID（searches create 返回的 searchId）"
+cursor = "上一页返回的 nextCursor"
 pageSize = "每页条数"
 limit = "最多返回的条数"
 skip = "跳过的条数"
@@ -87,7 +87,8 @@ key = "SQLCipher 等加密数据库的密钥（JSON）"
 "files" = "检材内的文件：按路径或节点浏览、读取、解析与导出"
 "files ancestors" = "节点的祖先目录链"
 "files binary" = "可执行文件结构（PE、ELF、Mach-O、ar）"
-"files children" = "目录的子节点"
+"files children" = "目录子节点统计"
+"files tree" = "递归浏览目录树"
 "files content" = "文件内容属性（MIME、魔数、熵、数据运行段）"
 "files csv" = "CSV 与 TSV 表格"
 "files directories" = "目录导出"
@@ -701,18 +702,17 @@ description = "检查选项 JSON，可为 {}"
 # ── files (hand-written) ────────────────────────────────────────────────────
 
 [[command]]
-path = "files list"
-native = "files-list"
+path = "files tree list"
+native = "files-tree-list"
 summary = "列出目录内容"
 description = "按路径列出目录，--depth 递归、--name 按名称过滤（忽略大小写包含匹配）；优先读取卷索引，离线检材可浏览已索引目录。"
 category = "read"
-args = ["path"]
 target = "nodeId"
 concurrent = true
-keywords = ["ls", "dir", "directory", "folder", "list files", "browse", "tree", "find file by name"]
+keywords = ["tree", "find file by name", "recursive"]
 examples = [
-    { command = "lovelycarve-cli --image D:\\evidence\\disk.E01 files list /", description = "列出检材根下的分区与卷" },
-    { command = "lovelycarve-cli --image D:\\evidence\\disk.E01 files list /<卷名称>/Users --depth 8 --name report", description = "在子树中按名称查找" },
+    { command = "lovelycarve-cli --image D:\\evidence\\disk.E01 files tree list --path /", description = "列出检材根下的分区与卷" },
+    { command = "lovelycarve-cli --image D:\\evidence\\disk.E01 files tree list --path /<卷名称>/Users --depth 8 --name report", description = "在子树中按名称查找" },
 ]
 [command.params.path]
 type = "string"
@@ -842,13 +842,16 @@ description = "最多返回的字符串数（1–100000）"
 # ── files (generated) ───────────────────────────────────────────────────────
 
 [[command]]
-path = "files children list"
+path = "files list"
 ipc = "fs_children_page"
 summary = "分页列出目录的子节点"
 description = "一页子节点；--query 可按扩展名、大小、时间等过滤并排序（JSON）。"
 category = "read"
 target = "parentId"
 concurrent = true
+keywords = ["ls", "dir", "directory", "folder", "list files", "browse"]
+[command.params.path]
+default = "."
 [command.params.query]
 type = "json"
 description = "目录查询 JSON：{\"filter\":{…},\"sort\":\"name\",\"descending\":false}"
@@ -1951,7 +1954,7 @@ concurrent = true
 
 [[superseded]]
 ipc = "fs_children"
-by = "files children list"
+by = "files list"
 
 [[superseded]]
 ipc = "fs_read"

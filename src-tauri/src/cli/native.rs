@@ -88,17 +88,17 @@ pub fn capabilities() -> Result<Value, CliError> {
         "commands": catalog.commands.len(),
         "qrcode": cfg!(feature = "qrcode-wechat"),
         "ocr": cfg!(feature = "ocr"),
-        "ocr_cuda": cfg!(feature = "ocr-cuda"),
-        "dokan_mount": cfg!(target_os = "windows"),
+        "ocrCuda": cfg!(feature = "ocr-cuda"),
+        "dokanMount": cfg!(target_os = "windows"),
         "session": {
-            "protocol": "jsonl", "protocol_version": 2,
+            "protocol": "jsonl", "protocolVersion": 3,
             "request": {"id": "string", "command": "<collection>… <verb>", "args": "object keyed by API parameter name", "output": "optional file path for raw content", "force": "boolean, confirms destructive commands", "dryRun": "boolean"},
-            "default_jobs": 1, "max_jobs": 64,
-            "response_order": "completion", "correlation_field": "id",
+            "defaultJobs": 1, "maxJobs": 64,
+            "responseOrder": "completion", "correlationField": "id",
             "references": "prior-successful-result-json-pointer",
-            "non_parallel_commands": "barrier",
+            "nonParallelCommands": "barrier",
             "stdout": "responses", "events": "stderr",
-            "max_line_bytes": 16 * 1024 * 1024, "max_requests": 10000
+            "maxLineBytes": 16 * 1024 * 1024, "maxRequests": 10000
         }
     }))
 }
@@ -188,7 +188,7 @@ pub async fn run(
             }
             context_get(exec, context).await
         }
-        Some("files-list") => files_list(exec, &values, target).await,
+        Some("files-tree-list") => files_tree_list(exec, &values, target).await,
         Some("files-get") => files_get(exec, &values, target).await,
         Some("files-read") => files_read(exec, &values, target, text_output).await,
         Some("files-search") => {
@@ -243,7 +243,7 @@ async fn context_get(exec: &Exec, context: &Context) -> Result<Output, CliError>
             match generated::dispatch(&exec.host, &exec.state, "image_info", args).await {
                 Ok(Output::Json(info)) => {
                     let info = info.value();
-                    json!({"id": id, "path": info["path"], "source_format": info["source_format"]})
+                    json!({"id": id, "path": info["path"], "sourceFormat": info["sourceFormat"]})
                 }
                 Ok(_) | Err(_) => json!({"id": id}),
             }
@@ -297,7 +297,7 @@ async fn locate_node(
             )
         })
         .collect();
-    if let Some(file) = located["file_id"].as_str() {
+    if let Some(file) = located["fileId"].as_str() {
         location.push((String::new(), file.to_owned()));
     }
     Ok(location)
@@ -309,7 +309,7 @@ struct Listing {
     truncated: bool,
 }
 
-async fn files_list(
+async fn files_tree_list(
     exec: &Exec,
     values: &Map<String, Value>,
     target: Option<Target>,
@@ -357,6 +357,7 @@ struct Root {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct NodeInfo<N> {
     #[serde(flatten)]
     node: N,
@@ -393,7 +394,7 @@ async fn files_get(
     let index_only = image.is_index_only();
     match found {
         Some(node) => json_output(NodeInfo {
-            node,
+            node: serde_json::to_value(super::wire::Camel(node))?,
             node_id: target.node_id,
             path,
             index_only,

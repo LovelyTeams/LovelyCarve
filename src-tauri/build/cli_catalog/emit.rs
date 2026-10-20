@@ -56,6 +56,18 @@ pub fn dispatch(resolved: &[Resolved<'_>]) -> String {
             call = quote!(#call.map_err(|error| super::command_error(error).in_operation(#name))?);
         }
         let result = match operation.output {
+            Output::Json
+                if matches!(
+                    name.as_str(),
+                    "image_hash_compute"
+                        | "image_export_raw"
+                        | "fs_export"
+                        | "fs_export_dir"
+                        | "snapshot_list"
+                ) =>
+            {
+                quote!(super::wire::flattened_output(&#call))
+            }
             Output::Json => quote!(super::json_output(#call)),
             Output::Response => quote!(Ok(super::Output::Bytes(#call.into_bytes()))),
             Output::Bytes => quote!(Ok(super::Output::Bytes(#call))),
@@ -170,7 +182,7 @@ fn command_meta(command: &Resolved<'_>) -> Value {
         force["alias"] = json!("f");
         options.push(force);
     }
-    if command.operation.is_some() && command.params.iter().any(visible) {
+    if command.params.iter().any(visible) {
         options.push(json!({
             "name": "body",
             "type": "string",

@@ -27,6 +27,7 @@ mod session;
 mod shell;
 mod strings;
 mod tools;
+mod wire;
 
 use std::{borrow::Cow, sync::OnceLock};
 
@@ -166,7 +167,7 @@ pub(crate) struct Json {
 impl Json {
     pub fn serialize(data: &impl Serialize) -> Result<Self, CliError> {
         Ok(Self {
-            text: Some(serde_json::to_string(data)?),
+            text: Some(serde_json::to_string(&wire::Camel(data))?),
             value: OnceLock::new(),
         })
     }

@@ -89,7 +89,7 @@ LovelyCarve 面向电子数据取证、应急响应和 CTF 取证题：加载磁
 
 ```powershell
 lovelycarve-cli images open "D:\evidence\disk.E01"
-lovelycarve-cli --image "D:\evidence\disk.E01" files list / --depth 2
+lovelycarve-cli --image "D:\evidence\disk.E01" files tree list --path / --depth 2
 lovelycarve-cli --image "D:\evidence\disk.E01" files read "/<卷名称>/Users/alice/report.txt" > report.txt
 lovelycarve-cli cli search "recover deleted files"
 lovelycarve-cli docs search "BitLocker 恢复密码"

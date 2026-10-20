@@ -84,7 +84,7 @@ where
             {
                 if child.is_some() {
                     return Err(CliError::invalid(
-                        "同名节点不唯一，请改用节点 ID 指定（files list 输出的 node.id）",
+                        "同名节点不唯一，请改用节点 ID 指定（files list 输出的 items[].id）",
                     ));
                 }
                 child = Some(node);

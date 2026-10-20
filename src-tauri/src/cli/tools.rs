@@ -1,11 +1,11 @@
 //! `tools` (hidden): every command as a Model Context Protocol tool
 //! definition, so an MCP server can wrap this program. Arguments and options
-//! become the input schema's properties under their command-line names; the
+//! become the input schema's properties under their API names; the
 //! evidence scope comes from `LOVELYCARVE_IMAGE`, as in any script.
 use serde::{ser::SerializeMap, Serialize, Serializer};
 use serde_json::Value;
 
-use super::catalog::{Catalog, Command};
+use super::catalog::{Catalog, Command, Kind};
 
 #[derive(Serialize)]
 struct Tools<'a> {
@@ -22,22 +22,29 @@ struct Tool<'a> {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct InputSchema<'a> {
     #[serde(rename = "type")]
     kind: &'static str,
     properties: Properties<'a>,
     required: Vec<&'a str>,
+    additional_properties: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    one_of: Option<Value>,
 }
 
 #[derive(Serialize)]
 struct Property<'a> {
     #[serde(rename = "type")]
-    kind: &'a Value,
-    description: &'a Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kind: Option<&'static str>,
+    description: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     default: Option<&'a Value>,
     #[serde(rename = "enum", skip_serializing_if = "Option::is_none")]
-    values: Option<&'a Value>,
+    values: Option<&'a [String]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    items: Option<Value>,
 }
 
 /// Properties in declaration order: arguments, then options.
@@ -74,23 +81,30 @@ fn tool_name(command: &str) -> String {
 fn tool(command: &Command) -> Tool<'_> {
     let mut properties = Vec::new();
     let mut required = Vec::new();
-    for meta in command.arguments.iter().chain(&command.options) {
-        let Some(name) = meta["name"].as_str() else {
-            continue;
-        };
+    for param in command.params.iter().filter(|param| param.visible()) {
         properties.push((
-            name,
+            param.name.as_str(),
             Property {
-                kind: &meta["type"],
-                description: &meta["description"],
-                default: meta.get("default"),
-                values: meta
-                    .get("enum")
-                    .filter(|values| values.as_array().is_some_and(|values| !values.is_empty())),
+                kind: match param.kind {
+                    Kind::String | Kind::Enum => Some("string"),
+                    Kind::Number => Some("number"),
+                    Kind::Boolean => Some("boolean"),
+                    Kind::Array => Some("array"),
+                    Kind::Json => None,
+                },
+                description: &param.description,
+                default: param.default.as_ref(),
+                values: (param.kind != Kind::Array)
+                    .then_some(param.values.as_deref())
+                    .flatten(),
+                items: (param.kind == Kind::Array).then(|| match &param.values {
+                    Some(values) => serde_json::json!({"enum": values}),
+                    None => serde_json::json!({}),
+                }),
             },
         ));
-        if meta["required"] == true {
-            required.push(name);
+        if param.required && !param.synthetic {
+            required.push(param.name.as_str());
         }
     }
     Tool {
@@ -100,6 +114,12 @@ fn tool(command: &Command) -> Tool<'_> {
             kind: "object",
             properties: Properties(properties),
             required,
+            additional_properties: false,
+            one_of: command
+                .target
+                .as_deref()
+                .filter(|_| command.param("path").is_some_and(|param| param.required))
+                .map(|target| serde_json::json!([{"required": ["path"]}, {"required": [target]}])),
         },
     }
 }
@@ -107,7 +127,7 @@ fn tool(command: &Command) -> Tool<'_> {
 /// `{version, tools}` for every command in the catalogue.
 pub fn definitions(catalog: &Catalog) -> impl Serialize + '_ {
     Tools {
-        version: "1.0",
+        version: "2.0",
         tools: catalog.commands.iter().map(tool).collect(),
     }
 }
@@ -125,7 +145,7 @@ mod tests {
         );
         let catalog = catalog().unwrap();
         let tools = serde_json::to_value(definitions(catalog)).unwrap();
-        assert_eq!(tools["version"], "1.0");
+        assert_eq!(tools["version"], "2.0");
         assert_eq!(
             tools["tools"].as_array().unwrap().len(),
             catalog.commands.len()
@@ -138,12 +158,15 @@ mod tests {
             .unwrap();
         assert_eq!(open["inputSchema"]["type"], "object");
         assert_eq!(open["inputSchema"]["required"], serde_json::json!(["path"]));
-        assert_eq!(
-            open["inputSchema"]["properties"]["dry-run"]["default"],
-            false
-        );
+        assert!(open["inputSchema"]["properties"].get("imageId").is_none());
+        assert!(open["inputSchema"]["properties"]
+            .get("qcowPassword")
+            .is_some());
+        assert!(open["inputSchema"]["properties"]
+            .get("qcow-password")
+            .is_none());
         let text = serde_json::to_string(&definitions(catalog)).unwrap();
-        assert!(text.starts_with(r#"{"version":"1.0","tools":[{"name":"#));
+        assert!(text.starts_with(r#"{"version":"2.0","tools":[{"name":"#));
         let export = tools["tools"]
             .as_array()
             .unwrap()
@@ -154,5 +177,18 @@ mod tests {
             export["inputSchema"]["properties"]["mode"]["enum"],
             serde_json::json!(["source", "unlockedPartitions"])
         );
+        let read = tools["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "lovelycarve_cli_files_read")
+            .unwrap();
+        assert_eq!(
+            read["inputSchema"]["oneOf"],
+            serde_json::json!([
+                {"required": ["path"]}, {"required": ["nodeId"]}
+            ])
+        );
+        assert_eq!(read["inputSchema"]["additionalProperties"], false);
     }
 }

@@ -87,9 +87,12 @@ fn compose(catalog: &Catalog, path: &[String], width: usize, agentic: bool) -> S
                 .map(|example| Row::new(example.command.clone(), example.description.clone()))
                 .collect();
             blocks.push(table_section("示例", &examples, width));
-            if command.ipc_command.is_some() {
+            if !matches!(
+                command.native.as_deref(),
+                Some("complete" | "session" | "shell")
+            ) {
                 tail = Some(output::italic(&format!(
-                    "如需查看确切的后端请求，运行 {}",
+                    "如需查看请求参数结构，运行 {}",
                     output::paint(
                         Role::Code,
                         &format!("{} schema {}", catalog.binary, words.join(" "))
@@ -512,7 +515,7 @@ mod tests {
             "\n位置参数\n",
             "\n全局选项\n",
             "\n选项\n",
-            "如需查看确切的后端请求",
+            "如需查看请求参数结构",
         ]
         .iter()
         .map(|title| {

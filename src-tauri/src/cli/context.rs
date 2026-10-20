@@ -89,6 +89,7 @@ struct Preview<'a> {
 #[serde(rename_all = "camelCase")]
 struct ArgumentsOnly<'a> {
     command: &'a str,
+    body: Value,
     dry_run: bool,
     executed: bool,
     validated: &'static str,
@@ -101,14 +102,6 @@ pub fn preview(
     values: &Map<String, Value>,
     scope: Option<&str>,
 ) -> Result<Json, CliError> {
-    let Some(ipc_command) = command.ipc_command.as_deref() else {
-        return Json::serialize(&ArgumentsOnly {
-            command: &command.command,
-            dry_run: true,
-            executed: false,
-            validated: "arguments only",
-        });
-    };
     let mut body = values.clone();
     for param in &command.params {
         if let Some(fixed) = &param.fixed {
@@ -125,6 +118,15 @@ pub fn preview(
     for path in &command.sensitive_paths {
         redact(&mut body, path);
     }
+    let Some(ipc_command) = command.ipc_command.as_deref() else {
+        return Json::serialize(&ArgumentsOnly {
+            command: &command.command,
+            body,
+            dry_run: true,
+            executed: false,
+            validated: "arguments only",
+        });
+    };
     Json::serialize(&Preview {
         command: &command.command,
         ipc_command,
@@ -589,7 +591,7 @@ mod tests {
             preview(docker, &Map::new(), Some("x")).unwrap().value()["body"]["mode"],
             "status"
         );
-        let list = catalog.find(&["files", "list"]).unwrap();
+        let list = catalog.find(&["files", "tree", "list"]).unwrap();
         assert_eq!(
             preview(list, &Map::new(), None).unwrap().value()["executed"],
             false

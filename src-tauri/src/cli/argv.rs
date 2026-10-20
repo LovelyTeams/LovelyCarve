@@ -451,6 +451,7 @@ fn invocation(command: &'static Command, matches: &ArgMatches) -> Result<Invocat
             values.insert(param.name.clone(), value);
         }
     }
+    command.validate(&values)?;
     Ok(Invocation {
         command,
         values,

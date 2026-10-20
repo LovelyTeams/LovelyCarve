@@ -45,7 +45,7 @@ lovelycarve-cli [全局选项] <集合> [<子集合>…] <动词> [<主体>] [�
 
 ```powershell
 lovelycarve-cli images open "D:\evidence\disk.E01"
-lovelycarve-cli --image "D:\evidence\disk.E01" files list / --depth 2
+lovelycarve-cli --image "D:\evidence\disk.E01" files tree list --path / --depth 2
 lovelycarve-cli --image "D:\evidence\disk.E01" files read "/<卷名称>/Windows/System32/config/SAM" > SAM
 lovelycarve-cli --image "D:\evidence\disk.E01" files hash "/<卷名称>/Users/alice/report.docx"
 lovelycarve-cli --case "D:\cases\demo" cases get
@@ -105,7 +105,7 @@ lovelycarve-cli images open "D:\evidence\disk.001" --raw-read-mode force
 
 强行模式只拼接从所选文件开始的连续前缀，遇到缺片即停止；也支持 `disk.dd` 接
 `disk.001` 或 `disk.002`。跨容量读取截短，完全越界读取返回有坏区审计的零字节，
-运行中短读保留已读部分。`raw_read_mode` 返回 `force`；默认值为 `strict`。
+运行中短读保留已读部分。`rawReadMode` 返回 `force`；默认值为 `strict`。
 模式只在当前进程的已打开检材上生效；用 `shell` 或 JSONL `session` 继续浏览、哈希与导出，
 JSONL 参数为 `rawReadMode: "force"`。关闭后需再次指定，不能与 QCOW 凭据一起使用。
 已加载为另一模式时先 `images close` 再打开。源变化和最终短读仍会使哈希、导出失败；
@@ -127,7 +127,7 @@ lovelycarve-cli complete powershell >> $PROFILE
 帮助采用 yargs 的版式：先是用法行与说明，再依次是「命令」（集合帮助）或「位置参数」「全局选项」「选项」
 「示例」表格。说明按终端宽度换行，标准输出不是终端时按 80 列；每行右侧标注 `[字符串]`、`[必填]`、
 `[可选值: …]`、`[默认: …]` 等。集合帮助列出完整的命令行（如 `lovelycarve-cli images open <path>`），
-生成命令的帮助末尾提示对应的 `schema` 命令。只输入集合名（如 `lovelycarve-cli images`）时显示该集合的帮助。
+命令帮助末尾提示对应的 `schema` 命令。只输入集合名（如 `lovelycarve-cli images`）时显示该集合的帮助。
 
 `cli search "<任务>"` 在本地索引中查找命令，中英文均可（`"计算文件哈希"`、`"recover deleted files"`），
 返回最多 5 条 `{command, summary}` JSON，最佳匹配在前。
@@ -137,17 +137,19 @@ lovelycarve-cli complete powershell >> $PROFILE
 Markdown 原样写到标准输出，`--section <章节>` 只输出一个章节；`docs list` 列出全部页面。JSONL 会话中
 `docs get` 返回 `{page, title, section, markdown}`。文档随构建嵌入程序，与该版本的行为一致。
 
-`schema <命令…>` 输出该命令发送的后端请求：`operationId`、`ipcCommand`、`category`、
+`schema <命令…>` 输出该命令的请求参数结构：`operationId`、`ipcCommand`、`category`、
 `hasRequestBody`、`requestBodyFields`（每个参数的 API 名称、Rust 类型、是否必填、说明、
 对应的命令行写法，和可选的 `enum`、`default`、`generated`（省略时自动生成）、`sensitive`（会脱敏））
 与 `output`（`json` 或 `bytes`）。路径参数解析到的节点参数记在 `pathResolvesTo`，删除类命令带 `destructive`。
-`schema --list` 列出全部生成命令；手写命令（`files list` 等）没有后端请求结构，用 `--help` 查看。
+`schema --list` 列出全部命令。手写命令也有完整参数结构，`ipcCommand` 为 `null`；
+`path` 与节点 ID 的二选一关系见 `targetAlternatives`。`sessionOutput` 描述 JSONL 返回形式，
+原始字节在会话中统一返回 `{encoding:"hex", data:"…"}`，可用请求的 `output` 保存到主机文件。
 
 `complete <bash|zsh|fish|powershell>` 输出补全脚本；按 Tab 时 shell 以 `complete -- <单词…>`
 回调本程序取候选，候选来自同一份命令目录，包括 `-q`、`-f`、`-j` 等短选项和枚举值。
 
 隐藏命令 `tools` 把全部命令输出为 MCP 工具定义 `{version, tools: [{name, description, inputSchema}]}`，
-供 MCP 服务器包装本程序；属性名就是命令行的参数与选项名，检材照常取 `LOVELYCARVE_IMAGE`。
+供 MCP 服务器包装本程序；属性名与 `schema`、`--body`、JSONL 的 camelCase API 参数名一致，检材照常取 `LOVELYCARVE_IMAGE`。
 隐藏命令可以运行，也能被 `cli search` 找到，但不出现在帮助、补全和拼写建议中。
 
 由编码代理运行时（`CLAUDECODE=1`、`CODEX_THREAD_ID`、`GEMINI_CLI=1`、`CURSOR_AGENT=1` 等代理文档化的
@@ -156,7 +158,9 @@ Markdown 原样写到标准输出，`--section <章节>` 只输出一个章节�
 
 ## 输出与退出码
 
-- 结果写标准输出。结构化结果是缩进两格的 JSON，字段顺序与后端返回的一致；只有标准输出是终端且
+- 结果写标准输出。结构化结果是缩进两格的 JSON，后端结构字段统一使用 camelCase（如 `imageId`、`nextCursor`、`bytesHashed`）；
+  证据中的数据库列名、插件字段名和任意 JSON 对象键保留原样。此转换仅在 CLI 输出边界执行，
+  桌面 IPC 和案件存储格式不变；只有标准输出是终端且
   不在 CI 中时才着色（`NO_COLOR` 关闭、`FORCE_COLOR` 强制）。内容类命令（`files read`、
   `files zip members get`、`carve artifacts get`、`docs get` 等）输出原始字节，可直接重定向到文件；
   `--text` 按 UTF-8 解码，无效字节替换为 U+FFFD。
@@ -176,7 +180,7 @@ Markdown 原样写到标准输出，`--section <章节>` 只输出一个章节�
 ## 参数
 
 - 位置参数是命令的主体，选项用 kebab-case（`--read-fault-policy`）。API 名称是后端的 camelCase
-  参数名（`readFaultPolicy`），也是 `--body`、`schema` 和 JSONL 会话使用的键。
+  参数名（`readFaultPolicy`），也是 `--body`、`schema` 和 JSONL 会话使用的键；不接受 snake_case 或命令行选项名作为 JSON 键。
 - 数字直接写；布尔选项单写 `--descending` 为真，`--descending=false` 为假；数组可在一个选项后
   列出多个值（`--algos md5 sha256`）、重复选项（`--algos md5 --algos sha256`）或传一个 JSON 数组，
   列出多个值时把位置参数写在数组选项之前；枚举的可选值列在帮助中。
@@ -204,12 +208,13 @@ Markdown 原样写到标准输出，`--section <章节>` 只输出一个章节�
 镜像内路径用 `/` 分隔。`/` 是检材的合成根，列出分区和卷（目录检材、归档等同样先显示根名称）；
 不以 `/` 开头的路径相对会话当前目录，支持 `.` 和 `..`，不跟随符号链接。
 每个接受路径的命令也接受节点 ID（`--node-id`、`--parent-id` 或 `--root-id`，取 `files list`
-输出的 `node.id`），用于同名节点、删除条目和特殊流。
+输出的 `items[].id`），用于同名节点、删除条目和特殊流。
 
 | 命令 | 作用 |
 | --- | --- |
-| `files list [路径] [--depth N] [--name 文本] [--limit N]` | 列出目录；`--depth` 递归（上限 128），`--name` 忽略大小写包含匹配，最多检查 `--limit` 个节点（默认 10000，上限 100000）。返回 `{items:[{path,node}], truncated}` |
-| `files get <路径>` | 节点属性（名称、类型、大小、inode、时间戳、删除状态、链接目标），附 `node_id`、`path`、`index_only` |
+| `files list [--path 路径 \| --parent-id ID] [--cursor 游标] [--page-size N] [--query JSON]` | 统一调用 `fs_children_page`；默认列当前目录，返回 `{items:[节点], nextCursor, total?, truncated}`。`nextCursor` 非空时继续请求下一页；每页默认 500，范围 1–5000 |
+| `files tree list [--path 路径 \| --node-id ID] [--depth N] [--name 文本] [--limit N]` | 递归遍历目录；`--depth` 递归（上限 128），`--name` 忽略大小写包含匹配，最多检查 `--limit` 个节点（默认 10000，上限 100000）。返回 `{items:[{path,node}], truncated}` |
+| `files get <路径>` | 节点属性（名称、类型、大小、inode、时间戳、删除状态、链接目标），附 `nodeId`、`path`、`indexOnly` |
 | `files read <路径> [--offset N] [--length N] [--text]` | 文件内容流式写到标准输出 |
 | `files hash <路径> [--algos …]` | MD5 / SHA-1 / SHA-256 / SM3 |
 | `files identify <路径>` | Magika 内容类型识别，不依赖扩展名 |
@@ -217,7 +222,7 @@ Markdown 原样写到标准输出，`--section <章节>` 只输出一个章节�
 | `files search <模式> [路径]` | 在子树内容中搜索关键词或正则 |
 | `files export <路径> --destination <主机路径>` | 导出单个文件；目录用 `files directories export --mode tree\|zip` |
 
-`files list`、`files get` 与路径解析复用目录分页接口，优先查询案件卷索引或本进程的临时索引，
+`files list`、`files tree list`、`files get` 与路径解析复用目录分页接口，优先查询案件卷索引或本进程的临时索引，
 未被索引覆盖的目录沿用后端的快照／实时回退。原检材缺失时（案件中的 `index_only` 检材）
 仍可浏览已索引目录，读取字节的命令明确报错。达到深度或数量上限时 `truncated` 为真，
 不能当作完整列表。
@@ -239,7 +244,7 @@ lovelycarve-cli shell
 lovelycarve:/> images open "D:\evidence\disk.vmdk"
 lovelycarve:/> files list
 lovelycarve:/> cd "<卷名称>/Users"
-lovelycarve:/<卷名称>/Users> files list --depth 3 --name report
+lovelycarve:/<卷名称>/Users> files tree list --depth 3 --name report
 lovelycarve:/<卷名称>/Users> files get alice/report.txt
 lovelycarve:/<卷名称>/Users> files read alice/report.txt --length 4096 --text
 lovelycarve:/<卷名称>/Users> files export alice/report.txt --destination "D:\output\report.txt"
@@ -263,15 +268,15 @@ Get-Content .\workflow.jsonl | lovelycarve-cli --case "D:\cases\demo" session --
 
 ```jsonl
 {"id":"image","command":"images open","args":{"path":"D:/evidence/disk.img"}}
-{"id":"roots","command":"files children list","args":{"imageId":{"$ref":"image#/id"},"parentId":""}}
+{"id":"roots","command":"files list","args":{"imageId":{"$ref":"image#/id"},"parentId":""}}
 {"id":"scan","command":"carve scans create","args":{"options":{"format_ids":["png","pdf"],"scope":"whole"}}}
 {"id":"done","command":"tasks wait"}
-{"id":"status","command":"carve scans get","args":{"scanId":{"$ref":"scan#/scan_id"}}}
-{"id":"recover","command":"carve scans export","args":{"scanId":{"$ref":"scan#/scan_id"},"options":{"destination":"D:/output/carved","task_id":"recover-1"}}}
+{"id":"status","command":"carve scans get","args":{"scanId":{"$ref":"scan#/scanId"}}}
+{"id":"recover","command":"carve scans export","args":{"scanId":{"$ref":"scan#/scanId"},"options":{"destination":"D:/output/carved","task_id":"recover-1"}}}
 ```
 
-每行一个请求：`id`（非空且唯一）、`command`（命令路径，如 `"files read"`）、`args`（以 API 名称为键；
-也接受选项名和 snake_case），可选的 `output`（把结果写入新文件）、`force`（确认删除类命令）和
+每行一个请求：`id`（非空且唯一）、`command`（命令路径，如 `"files read"`）、`args`（只接受 `schema` 中的 camelCase API 参数名），
+可选的 `output`（把结果写入新文件）、`force`（确认删除类命令）和
 `dryRun`。接受路径的命令既可以传 `path`，也可以传节点 ID。
 
 - 每条响应是一行 `{"id":"…","result":…}` 或 `{"id":"…","error":{"code":"…","message":"…"}}`，
@@ -308,6 +313,10 @@ lovelycarve-cli --image "D:\evidence\disk.E01" session --jobs 4
 {"id":"tasks","command":"tasks list"}
 {"id":"barrier","command":"tasks wait"}
 ```
+
+协议版本为 3；旧的 `files children list` 已合并到 `files list`，原先递归浏览改为
+`files tree list`，`files list` 不再接受位置参数或 `depth/name/limit`。脚本需改用 camelCase 结果字段和 `$ref` 指针。
+`files hash` 直接调用 `fs_digest`，路径与节点 ID 共享同一参数及结果契约。
 
 `system get` 的 `session` 对象描述协议版本、请求字段、并发上限和行长度限制。
 标准错误只承载诊断与可选事件，代理应分别读取标准输出和标准错误。
@@ -466,7 +475,7 @@ just test-cli
 {"id":"source","command":"images open","args":{"path":"D:/evidence/container.hc"}}
 {"id":"unlock","command":"encrypted-volumes unlock","args":{"imageId":{"$ref":"source#/id"},"options":{"scheme":"veracrypt","password":"example-password","pim":0,"hidden":false},"taskId":"unlock-1"}}
 {"id":"plain","command":"images open","args":{"path":{"$ref":"unlock#/image/path"}}}
-{"id":"roots","command":"files children list","args":{"parentId":""}}
+{"id":"roots","command":"files list","args":{"parentId":""}}
 {"id":"export","command":"images export","args":{"destination":"D:/exports/plain.raw","taskId":"export-1","readFaultPolicy":"strict"}}
 ```
 
@@ -497,7 +506,7 @@ LUKS1 与 LUKS2（单个动态数据段，PBKDF2 / Argon2i / Argon2id，512 / 40
 {"id":"inventory","command":"filevault get","args":{"options":{},"taskId":"fv-inventory"}}
 {"id":"unlock","command":"encrypted-volumes unlock","args":{"options":{"scheme":"filevault","password":"example-password","logicalVolumeIndex":0,"target":"newImage"},"taskId":"fv-unlock"}}
 {"id":"plain","command":"images open","args":{"path":{"$ref":"unlock#/image/path"}}}
-{"id":"files","command":"files children list","args":{"parentId":"part:0"}}
+{"id":"files","command":"files list","args":{"parentId":"part:0"}}
 ```
 
 `password` 同时接受个人恢复密码；也可改用 `masterKeyHex`（16 字节 VMK 或 32 字节
@@ -513,12 +522,12 @@ XTS 密钥对）。可选 `encryptedRootPlistPath` 指向本地 XML / EncryptedR
 ```jsonl
 {"id":"scan","command":"carve scans create","args":{"options":{"scope":"whole","filesystems":{"fat":true,"ntfs":true,"exfat":true,"include_existing":false},"signatures":false}}}
 {"id":"done","command":"tasks wait"}
-{"id":"status","command":"carve scans get","args":{"scanId":{"$ref":"scan#/scan_id"}}}
-{"id":"files","command":"carve files list","args":{"scanId":{"$ref":"scan#/scan_id"}}}
-{"id":"export","command":"carve scans export","args":{"scanId":{"$ref":"scan#/scan_id"},"options":{"artifact_ids":[],"file_ids":["0"],"destination":"D:/output/recovery","task_id":"recover-files-1"}}}
+{"id":"status","command":"carve scans get","args":{"scanId":{"$ref":"scan#/scanId"}}}
+{"id":"files","command":"carve files list","args":{"scanId":{"$ref":"scan#/scanId"}}}
+{"id":"export","command":"carve scans export","args":{"scanId":{"$ref":"scan#/scanId"},"options":{"artifact_ids":[],"file_ids":["0"],"destination":"D:/output/recovery","task_id":"recover-files-1"}}}
 ```
 
-快照的 `phase` 表示正在运行的阶段，`filesystem` 摘要给出阶段进度、卷/目录/文件数、截断、读取故障与阶段错误。`carve files list` 在文件系统阶段结束前返回 `null`；NTFS 重建卷的 `reconstruction` 给出 MFT 位置和推导几何，目录在 `directories` 中，文件在 `candidates` 中，回收站还原项包含 `source_node/source_path`，其原始数据映射和身份不变。
+快照的 `phase` 表示正在运行的阶段，`filesystem` 摘要给出阶段进度、卷/目录/文件数、截断、读取故障与阶段错误。`carve files list` 在文件系统阶段结束前返回 `null`；NTFS 重建卷的 `reconstruction` 给出 MFT 位置和推导几何，目录在 `directories` 中，文件在 `candidates` 中，回收站还原项包含 `sourceNode/sourcePath`，其原始数据映射和身份不变。
 
 `carve scans export` 的 `file_ids` 只接受该会话文件系统结果中的候选编号，且候选必须 `readable`，不能传入任意原始数据映射；`artifact_ids` 为 `null`（缺省）时恢复全部雕刻结果，同时传 `file_ids` 时可用 `[]` 只恢复文件系统记录。顶层计数描述雕刻结果，`files` 描述文件系统记录：输出目录、成功/失败数、JSONL 报告路径与读取故障。文件系统记录在输出目录中按 `v<卷号>-<卷标>/原目录/文件名` 保持目录结构，具体文件状态、来源、`relative_output` 和 SHA-256 见 JSONL 报告。能力和限制见[文件恢复](USAGE.md#文件恢复)。
 

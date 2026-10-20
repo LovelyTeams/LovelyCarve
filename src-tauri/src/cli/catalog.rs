@@ -4,7 +4,7 @@
 use std::{collections::BTreeMap, sync::OnceLock};
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use super::CliError;
 
@@ -130,6 +130,58 @@ pub struct Example {
 }
 
 impl Command {
+    /// Validate JSON inputs against the same catalogue used for command-line
+    /// options, before dry-run, evidence loading or handwritten handlers.
+    pub fn validate(&self, values: &Map<String, Value>) -> Result<(), CliError> {
+        for (name, value) in values {
+            let param = self
+                .param(name)
+                .filter(|param| param.visible())
+                .ok_or_else(|| CliError::invalid(format!("未知参数：{name}")))?;
+            if value.is_null() && !param.api_required {
+                continue;
+            }
+            let valid = match param.kind {
+                Kind::String | Kind::Enum => value.is_string(),
+                Kind::Number if self.native.is_some() => value.as_u64().is_some(),
+                Kind::Number => value.is_number(),
+                Kind::Boolean => value.is_boolean(),
+                Kind::Array => value.is_array(),
+                Kind::Json => true,
+            };
+            if !valid {
+                return Err(CliError::invalid(format!(
+                    "参数 {name} 类型无效：需要 {:?}",
+                    param.kind
+                )));
+            }
+            if let Some(allowed) = &param.values {
+                let choices = value
+                    .as_array()
+                    .map(Vec::as_slice)
+                    .unwrap_or(std::slice::from_ref(value));
+                if choices.iter().any(|choice| {
+                    !choice
+                        .as_str()
+                        .is_some_and(|choice| allowed.iter().any(|allowed| allowed == choice))
+                }) {
+                    return Err(CliError::invalid(format!(
+                        "参数 {name} 的值无效（可选：{}）",
+                        allowed.join(", ")
+                    )));
+                }
+            }
+        }
+        if let Some(target) = &self.target {
+            if values.get("path").is_some_and(|value| !value.is_null())
+                && values.get(target).is_some_and(|value| !value.is_null())
+            {
+                return Err(CliError::invalid(format!("path 与 {target} 只能指定一个")));
+            }
+        }
+        Ok(())
+    }
+
     pub fn path(&self) -> String {
         self.full_path.join(" ")
     }
@@ -140,7 +192,7 @@ impl Command {
 
     /// Whether `--body` can supply this command's parameters.
     pub fn takes_body(&self) -> bool {
-        self.ipc_command.is_some() && self.params.iter().any(Param::visible)
+        self.params.iter().any(Param::visible)
     }
 
     pub fn positionals(&self) -> Vec<&Param> {
@@ -182,8 +234,8 @@ const LEGACY_COMMANDS: &[(&str, &str)] = &[
     ("cd", "context set"),
     ("pwd", "context get"),
     ("ls", "files list"),
-    ("tree", "files list"),
-    ("find", "files list"),
+    ("tree", "files tree list"),
+    ("find", "files tree list"),
     ("stat", "files get"),
     ("cat", "files read"),
     ("hex", "files read"),

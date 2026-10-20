@@ -66,21 +66,26 @@ fn mutations_and_unknown_commands_are_barriers() {
 }
 
 #[test]
-fn arguments_accept_api_option_and_snake_case_names() {
+fn arguments_use_the_same_api_names_and_validation_as_body() {
     let catalog = catalog::catalog().unwrap();
     let read = catalog.find_path("files read").unwrap();
-    let args = json!({"node_id": "n", "image": "i", "offset": 1, "length": 2});
+    let args = json!({"nodeId": "n", "imageId": "i", "offset": 1, "length": 2});
     let Value::Object(args) = args else {
         unreachable!()
     };
-    assert_eq!(
-        Value::Object(normalize(read, args).unwrap()),
-        json!({"nodeId": "n", "imageId": "i", "offset": 1, "length": 2})
-    );
+    read.validate(&args).unwrap();
     let Value::Object(typo) = json!({"typo": true}) else {
         unreachable!()
     };
-    assert!(normalize(read, typo).is_err());
+    assert!(read.validate(&typo).is_err());
+    for invalid in [
+        json!({"node_id": "n"}),
+        json!({"offset": "1"}),
+        json!({"offset": -1}),
+        json!({"path": "a", "nodeId": "n"}),
+    ] {
+        assert!(read.validate(invalid.as_object().unwrap()).is_err());
+    }
 }
 
 #[tokio::test]

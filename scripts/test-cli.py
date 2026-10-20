@@ -76,7 +76,7 @@ def main():
         # Discovery needs no evidence: system facts, request schemas, search and completion.
         system = json.loads(run(["system", "get"]).stdout)
         assert system["standalone"], "the CLI must be built without the desktop runtime"
-        assert system["session"]["max_jobs"] == 64 and system["session"]["protocol_version"] == 2
+        assert system["session"]["maxJobs"] == 64 and system["session"]["protocolVersion"] == 3
         schemas = json.loads(run(["schema", "--list"]).stdout)
         assert system["commands"] >= len(schemas) >= 140, (system["commands"], len(schemas))
         assert {"command": "lovelycarve-cli files media create", "ipcCommand": "fs_media_temp",
@@ -84,6 +84,14 @@ def main():
         schema = json.loads(run(["schema", "images", "open"]).stdout)
         assert schema["ipcCommand"] == "image_load" and schema["operationId"] == "images.open"
         assert next(field for field in schema["requestBodyFields"] if field["name"] == "qcowPassword")["sensitive"]
+        for command in (["files", "list"], ["files", "tree", "list"], ["files", "get"], ["files", "read"], ["files", "hash"]):
+            contract = json.loads(run(["schema", *command]).stdout)
+            fields = {field["name"] for field in contract["requestBodyFields"]}
+            assert "path" in fields and "imageId" in fields, contract
+            assert contract["targetAlternatives"] == ["path", "parentId" if command == ["files", "list"] else "nodeId"]
+        run(["files", "children", "list"], expected=1)
+        for body in ({"offset": "1"}, {"offset": -1}, {"typo": True}):
+            run(["files", "read", "--body", json.dumps({"path": "/x", **body}), "--dry-run"], expected=1)
         found = json.loads(run(["cli", "search", "export a file"]).stdout)
         assert found[0]["command"] == "lovelycarve-cli files export", found
         candidates = [line.split("\t")[0] for line in run(["complete", "--", "files", "s"]).stdout.splitlines()]
@@ -113,7 +121,7 @@ def main():
         assert json.loads(run(["complete", "bash", "--dry-run"]).stdout)["executed"] is False
         # Hidden MCP tool definitions: every command, none of them listed in help or completion.
         tools = json.loads(run(["tools"]).stdout)
-        assert tools["version"] == "1.0" and len(tools["tools"]) == system["commands"], len(tools["tools"])
+        assert tools["version"] == "2.0" and len(tools["tools"]) == system["commands"], len(tools["tools"])
         assert next(tool for tool in tools["tools"]
                     if tool["name"] == "lovelycarve_cli_images_open")["inputSchema"]["required"] == ["path"]
         assert "lovelycarve-cli tools" not in run(["--help"]).stdout
@@ -153,7 +161,7 @@ def main():
             {"id": "read", "command": "files read", "args": {"nodeId": node, "offset": 0, "length": 8}},
             {"id": "digest", "command": "files hash", "args": {"nodeId": node, "algos": ["sha256"]}},
             {"id": "stat", "command": "files get", "args": {"path": "hello.txt"}},
-            {"id": "dependent", "command": "files read", "args": {"nodeId": {"$ref": "stat#/node_id"}, "offset": 0, "length": 8}},
+            {"id": "dependent", "command": "files read", "args": {"nodeId": {"$ref": "stat#/nodeId"}, "offset": 0, "length": 8}},
             {"id": "bad", "command": "images list", "args": {"typo": True}},
             {"id": "invalid-args", "command": "images list", "args": []},
             {"id": "legacy", "command": "image_load", "args": {"path": str(evidence)}},
@@ -235,7 +243,7 @@ def main():
                             results[row["id"]] = row["result"]
                         return results
                     def children(parents, prefix):
-                        return batch([{"id": f"{prefix}-{index}", "command": "files children list", "args": {"parentId": parent}}
+                        return batch([{"id": f"{prefix}-{index}", "command": "files list", "args": {"parentId": parent}}
                                       for index, parent in enumerate(parents)])
                     try:
                         roots = children([""], "roots")["roots-0"]
@@ -305,7 +313,7 @@ def main():
                 {"id": "close", "command": "images close", "args": {"imageId": {"$ref": "open#/id"}}},
             ])
             assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["source_format"] == "phdi", rows
+            assert rows[0]["result"]["sourceFormat"] == "phdi", rows
             assert destination.read_bytes() == phdi_plain + bytes(phdi_sparse[512:]) + bytes(512)
             assert (phdi_bundle / "plain.hds").read_bytes() == phdi_plain
             assert (phdi_bundle / "sparse.hds").read_bytes() == phdi_sparse
@@ -334,7 +342,7 @@ def main():
                     {"id": "close", "command": "images close", "args": {"imageId": {"$ref": "open#/id"}}},
                 ])
                 assert all("result" in row for row in rows), rows
-                assert rows[0]["result"]["source_format"] == "qcow2", rows
+                assert rows[0]["result"]["sourceFormat"] == "qcow2", rows
                 expected = qcow_plain + bytes(4096) if encoding == "deflate" else bytes(4096) + qcow_plain
                 assert destination.read_bytes() == expected
                 assert source_path.read_bytes() == original
@@ -363,7 +371,7 @@ def main():
             output = root / ("gzip-read" + suffix + ".txt")
             result, rows = session([
                 {"id": "open", "command": "images open", "args": {"path": str(compressed_tar)}},
-                {"id": "children", "command": "files children list", "args": {"parentId": "tar:"}},
+                {"id": "children", "command": "files list", "args": {"parentId": "tar:"}},
                 {"id": "read", "command": "files read", "args": {"nodeId": "tar:" + b"second.txt".hex()}, "output": str(output)},
                 {"id": "digest", "command": "files hash", "args": {"nodeId": "tar:" + b"second.txt".hex(), "algos": ["sha256"]}},
                 {"id": "wait", "command": "tasks wait"},
@@ -371,7 +379,7 @@ def main():
             ])
             rows = {row["id"]: row for row in rows}
             assert all("result" in row for row in rows.values()), rows
-            assert rows["open"]["result"]["source_format"] == "tar", rows
+            assert rows["open"]["result"]["sourceFormat"] == "tar", rows
             assert {entry["name"] for entry in rows["children"]["result"]["items"]} == {"first.txt", "second.txt"}, rows
             assert output.read_bytes() == content
             assert rows["digest"]["result"]["sha256"] == hashlib.sha256(content).hexdigest()
@@ -388,7 +396,7 @@ def main():
             {"id": "close", "command": "images close", "args": {"imageId": {"$ref": "open#/id"}}},
         ])
         assert all("result" in row for row in rows), rows
-        assert rows[0]["result"]["source_format"] == "raw", rows
+        assert rows[0]["result"]["sourceFormat"] == "raw", rows
 
         encrypted_fixtures = Path(__file__).resolve().parents[1] / "src-tauri/tests/data/encrypted"
         plaintext = (encrypted_fixtures / "plain.img").read_bytes()
@@ -406,7 +414,7 @@ def main():
                 {"id": "source", "command": "images open", "args": {"path": str(encrypted_fixtures / filename)}},
                 {"id": "unlock", "command": "encrypted-volumes unlock", "args": {"options": options}},
                 {"id": "plain", "command": "images open", "args": {"path": {"$ref": "unlock#/image/path"}}},
-                {"id": "files", "command": "files children list", "args": {"parentId": "part:0"}},
+                {"id": "files", "command": "files list", "args": {"parentId": "part:0"}},
                 {"id": "read", "command": "files read", "args": {"nodeId": "fat:part:0:" + b"/HELLO.TXT".hex()}, "output": str(exported_file)},
                 {"id": "export", "command": "images export", "args": {"destination": str(exported_plain), "taskId": "encrypted-export", "readFaultPolicy": "strict"}},
                 {"id": "close", "command": "images close", "args": {"imageId": {"$ref": "source#/id"}}},
@@ -416,7 +424,7 @@ def main():
             assert "HELLO.TXT" in [item["name"] for item in encrypted_rows[3]["result"]["items"]], encrypted_rows[3]
             assert exported_plain.read_bytes() == plaintext, filename
             assert exported_file.read_bytes() == b"LovelyCarve encrypted evidence fixture.\n", filename
-            assert encrypted_rows[1]["result"]["image"]["source_format"] == "decrypted"
+            assert encrypted_rows[1]["result"]["image"]["sourceFormat"] == "decrypted"
             assert encrypted_rows[-1]["result"] == [], "decrypted child survived source unload"
             assert "lovelycarve-test" not in encrypted_result.stdout + encrypted_result.stderr
 
@@ -443,10 +451,10 @@ def main():
             assert all("result" in row for key, row in attached_rows.items() if key != "unconfirmed"), attached_rows
             source_id = attached_rows["source"]["result"]["id"]
             attached = attached_rows["unlock"]["result"]
-            assert attached["image"]["id"] == source_id and attached["volume_key"] == "part:0"
-            assert attached["image"]["unlocked_partitions"] == [0]
+            assert attached["image"]["id"] == source_id and attached["volumeKey"] == "part:0"
+            assert attached["image"]["unlockedPartitions"] == [0]
             assert len(attached_rows["images"]["result"]) == 1, "in-place unlock created another image"
-            assert any(index["image_id"] == source_id and index["volume_key"] == "part:0" and index["indexed"]
+            assert any(index["imageId"] == source_id and index["volumeKey"] == "part:0" and index["indexed"]
                        for index in attached_rows["indexes"]["result"]), (filename, attached_rows["indexes"], attached_result.stderr)
             assert attached_file.read_bytes() == b"LovelyCarve encrypted evidence fixture.\n"
             assert attached_raw.read_bytes() == (encrypted_fixtures / filename).read_bytes(), "source export changed after unlock"
@@ -457,7 +465,7 @@ def main():
 
         result, rows = session([
             {"id": "image", "command": "images open", "args": {"path": str(evidence)}},
-            {"id": "roots", "command": "files children list", "args": {"parentId": ""}},
+            {"id": "roots", "command": "files list", "args": {"parentId": ""}},
             {"id": "read", "command": "files read", "args": {"imageId": {"$ref": "image#/id"}, "nodeId": node}, "output": str(copied)},
             {"id": "digest", "command": "files hash", "args": {"nodeId": node, "algos": ["sha256"]}},
             {"id": "preview", "command": "files media create", "args": {"nodeId": node, "ext": "txt", "taskId": "preview-1"}},
@@ -481,7 +489,7 @@ files export hello.txt --destination "{exported}"
         outputs = documents(run(["shell"], script).stdout)
         assert exported.read_bytes() == content
         assert outputs[0]["id"] and outputs[0]["path"] == str(evidence), outputs
-        assert "hello.txt" in [item["node"]["name"] for item in outputs[1]["items"]], outputs
+        assert "hello.txt" in [item["name"] for item in outputs[1]["items"]], outputs
         assert outputs[2] == "hello", outputs
         assert outputs[3]["sha256"] == hashlib.sha256(content).hexdigest(), outputs
         refused = run(["shell"], script, expected=1)
@@ -501,7 +509,11 @@ files export hello.txt --destination "{exported}"
             {"id": "wait", "command": "tasks wait"},
             {"id": "cd", "command": "context set", "args": {"dir": "/" + evidence.name}},
             {"id": "pwd", "command": "context get"},
-            {"id": "tree", "command": "files list", "args": {"depth": 2}},
+            {"id": "page", "command": "files list", "args": {"path": ".", "pageSize": 2}},
+            {"id": "page-by-id", "command": "files list", "args": {"parentId": "folder:", "pageSize": 2}},
+            {"id": "next", "command": "files list", "args": {"cursor": {"$ref": "page#/nextCursor"}, "pageSize": 1000}},
+            {"id": "all", "command": "files list", "args": {"pageSize": 1000}},
+            {"id": "tree", "command": "files tree list", "args": {"depth": 2}},
             {"id": "stat", "command": "files get", "args": {"path": "hello.txt"}},
             {"id": "hex", "command": "files read", "args": {"path": "hello.txt", "offset": 6, "length": 8}},
             {"id": "strings", "command": "files strings list", "args": {"path": "hello.txt"}},
@@ -512,10 +524,24 @@ files export hello.txt --destination "{exported}"
         ])
         browsed = {row["id"]: row["result"] for row in rows}
         assert browsed["cd"]["dir"] == browsed["pwd"]["dir"] == "/" + evidence.name, browsed["pwd"]
+        assert browsed["page"] == browsed["page-by-id"]
+        assert browsed["page"]["nextCursor"] and browsed["next"]["nextCursor"] is None
+        assert browsed["page"]["items"] + browsed["next"]["items"] == browsed["all"]["items"]
+        path_args = ["--image", str(evidence), "files", "list"]
+        page_body = {"path": "/" + evidence.name, "pageSize": 2}
+        body_page = json.loads(run([*path_args, "--body", json.dumps(page_body)]).stdout)
+        option_page = json.loads(run([*path_args, "--path", page_body["path"], "--page-size", "2"]).stdout)
+        # Reading a live folder can update host access times after the session
+        # captured its index. Compare every other field across processes.
+        for page in (body_page, option_page, browsed["page"]):
+            for item in page["items"]:
+                item["timestamps"].pop("accessed", None)
+        assert body_page == option_page == browsed["page"], (body_page, option_page, browsed["page"])
+        assert all("parentId" in item and "parent_id" not in item for item in browsed["all"]["items"])
         assert "hello.txt" in [item["node"]["name"] for item in browsed["tree"]["items"]]
-        assert browsed["stat"]["size"] == len(content) and browsed["stat"]["node_id"] == node
+        assert browsed["stat"]["size"] == len(content) and browsed["stat"]["nodeId"] == node
         assert browsed["stat"]["path"] == f"/{evidence.name}/hello.txt", browsed["stat"]
-        assert "timestamps" in browsed["stat"] and not browsed["stat"]["index_only"]
+        assert "timestamps" in browsed["stat"] and not browsed["stat"]["indexOnly"]
         assert browsed["hex"] == {"encoding": "hex", "data": content[6:14].hex()}
         assert browsed["strings"]["strings"] == [
             {"offset": 0, "text": "hello forensic world", "truncated": False},
@@ -525,7 +551,7 @@ files export hello.txt --destination "{exported}"
         assert browsed["utf16"]["strings"] == [{"offset": 2, "text": unicode_text, "truncated": False}]
         assert len(browsed["limited"]["strings"]) == 1 and browsed["limited"]["truncated"]
         assert browsed["file"]["label"] == "python" and browsed["file"]["inferred"], browsed["file"]
-        assert browsed["file"]["file_len"] == len(python_content)
+        assert browsed["file"]["fileLen"] == len(python_content)
         # One-shot reads write the bytes themselves to stdout.
         image_path = ["--image", str(evidence)]
         assert run_bytes([*image_path, "files", "read", f"/{evidence.name}/hello.txt", "--offset", "6", "--length", "8"]).stdout == b"forensic"
@@ -554,19 +580,19 @@ files export hello.txt --destination "{exported}"
             {"id": "open", "command": "images open", "args": {"path": str(disk)}},
             {"id": "scan", "command": "carve scans create", "args": {"options": {"format_ids": ["png"]}}},
             {"id": "wait", "command": "tasks wait"},
-            {"id": "status", "command": "carve scans get", "args": {"scanId": {"$ref": "scan#/scan_id"}}},
-            {"id": "recover", "command": "carve scans export", "args": {"scanId": {"$ref": "scan#/scan_id"}, "options": {"destination": str(recovered), "task_id": "recover-1"}}},
+            {"id": "status", "command": "carve scans get", "args": {"scanId": {"$ref": "scan#/scanId"}}},
+            {"id": "recover", "command": "carve scans export", "args": {"scanId": {"$ref": "scan#/scanId"}, "options": {"destination": str(recovered), "task_id": "recover-1"}}},
             {"id": "tasks", "command": "tasks list"},
         ])
         assert rows[3]["result"]["status"] == "completed", rows
-        assert rows[3]["result"]["artifacts_found"] == 1, rows
+        assert rows[3]["result"]["artifactsFound"] == 1, rows
         assert rows[4]["result"]["recovered"] == 1, rows
         assert next(recovered.glob("*.png")).read_bytes() == png
         # The task center lists the scan by its session and the export by its task id.
         entries = {entry.get("kind"): entry for entry in rows[5]["result"]}
         scan_entry = entries["carveScan"]
         assert scan_entry["source"] == "builtin" and scan_entry["status"] == "success", scan_entry
-        assert scan_entry["scanId"] == rows[1]["result"]["scan_id"], scan_entry
+        assert scan_entry["scanId"] == rows[1]["result"]["scanId"], scan_entry
         assert scan_entry["view"]["counts"]["found"] == 1, scan_entry
         export_entry = entries["carveRecovery"]
         assert export_entry["id"] == "recover-1" and export_entry["status"] == "success", export_entry
@@ -595,9 +621,9 @@ files export hello.txt --destination "{exported}"
             {"id": "open", "command": "images open", "args": {"path": str(deleted_image)}},
             {"id": "scan", "command": "carve scans create", "args": {"options": {"signatures": False, "filesystems": {"fat": True}}}},
             {"id": "wait", "command": "tasks wait"},
-            {"id": "status", "command": "carve scans get", "args": {"scanId": {"$ref": "scan#/scan_id"}}},
-            {"id": "files", "command": "carve files list", "args": {"scanId": {"$ref": "scan#/scan_id"}}},
-            {"id": "recover", "command": "carve scans export", "args": {"scanId": {"$ref": "scan#/scan_id"}, "options": {"artifact_ids": [], "file_ids": ["0"], "destination": str(restored), "task_id": "recover-files-1"}}},
+            {"id": "status", "command": "carve scans get", "args": {"scanId": {"$ref": "scan#/scanId"}}},
+            {"id": "files", "command": "carve files list", "args": {"scanId": {"$ref": "scan#/scanId"}}},
+            {"id": "recover", "command": "carve scans export", "args": {"scanId": {"$ref": "scan#/scanId"}, "options": {"artifact_ids": [], "file_ids": ["0"], "destination": str(restored), "task_id": "recover-files-1"}}},
         ])
         assert rows[3]["result"]["status"] == "completed", rows
         assert rows[3]["result"]["filesystem"]["files"] == 1, rows
@@ -611,7 +637,7 @@ files export hello.txt --destination "{exported}"
         assert [path.read_bytes() for path in outputs] == [b"hello"], outputs
         relative = outputs[0].relative_to(export_root).parts
         assert len(relative) == 2 and relative[0].startswith("v0-"), relative
-        report = [json.loads(line) for line in Path(exported["report_path"]).read_text(encoding="utf-8").splitlines()]
+        report = [json.loads(line) for line in Path(exported["reportPath"]).read_text(encoding="utf-8").splitlines()]
         assert report[1]["relative_output"] == "/".join(relative), report
 
         # Split RAW exports must include every member, including unaligned cuts.
@@ -629,8 +655,8 @@ files export hello.txt --destination "{exported}"
             {"id": "close", "command": "images close", "args": {"imageId": {"$ref": "open#/id"}}},
         ])
         assert all("result" in row for row in rows), rows
-        assert rows[0]["result"]["source_format"] == "raw", rows
-        assert rows[0]["result"]["size_bytes"] == len(split_bytes), rows
+        assert rows[0]["result"]["sourceFormat"] == "raw", rows
+        assert rows[0]["result"]["sizeBytes"] == len(split_bytes), rows
         assert split_export.read_bytes() == split_bytes
         assert split_first.read_bytes() == split_bytes[:517]
         assert split_second.read_bytes() == split_bytes[517:65539]
@@ -647,8 +673,8 @@ files export hello.txt --destination "{exported}"
             {"id": "mode-conflict", "command": "images open", "args": {"path": str(split_first), "rawReadMode": "strict"}},
             {"id": "close", "command": "images close", "args": {"imageId": {"$ref": "open#/id"}}},
         ], expected=1)
-        assert rows[0]["result"]["raw_read_mode"] == "force", rows
-        assert rows[0]["result"]["size_bytes"] == 517, rows
+        assert rows[0]["result"]["rawReadMode"] == "force", rows
+        assert rows[0]["result"]["sizeBytes"] == 517, rows
         assert "result" in rows[1] and "error" in rows[2] and "result" in rows[3], rows
         assert forced_export.read_bytes() == split_bytes[:517]
 
@@ -670,7 +696,7 @@ files export hello.txt --destination "{exported}"
             hashes = rows[1]["result"]
             assert hashes["md5"] == expected_md5, hashes
             assert hashes["sha1"] == hashlib.sha1(raw_bytes).hexdigest(), hashes
-            assert not hashes["read_faults_detected"], hashes
+            assert not hashes["readFaultsDetected"], hashes
 
         # VMDK compressed and split extents must export the original virtual bytes.
         fixtures = Path(__file__).resolve().parents[1] / "src-tauri/vendor/vmdk/tests/data"
@@ -755,11 +781,11 @@ files export hello.txt --destination "{exported}"
             ])
             assert all("result" in row for row in rows), rows
             metadata = rows[1]["result"]
-            assert metadata["encryption_method"] == method and metadata["bytes_per_sector"] == sector_size
-            assert metadata["protector_types"] == [0, 0x0200]
+            assert metadata["encryptionMethod"] == method and metadata["bytesPerSector"] == sector_size
+            assert metadata["protectorTypes"] == [0, 0x0200]
             if "vmkHex" in credential:
                 assert rows[2]["result"]["status"]["locked"] is False
-                assert rows[2]["result"]["recovery_key"] == ""
+                assert rows[2]["result"]["recoveryKey"] == ""
             else:
                 assert rows[2]["result"]["locked"] is False
             plain = bytearray((index * 7 + 19) % 256 for index in range(sector_size))
@@ -797,7 +823,7 @@ files export hello.txt --destination "{exported}"
             {"id": "plugins", "command": "plugins list"},
         ], arguments=["--case", str(case)])
         assert all("result" in row for row in rows), rows
-        assert rows[2]["result"]["total_matches"] >= 1, rows
+        assert rows[2]["result"]["totalMatches"] >= 1, rows
         # files search uses the same persisted global-search results, with scopes,
         # case handling, regex matching, and a display limit independent of storage.
         grep_script = f'''images open "{evidence}"
@@ -812,10 +838,10 @@ searches hits list --search-id scoped-grep --limit 10
         assert len(grep_rows) == 5, grep_rows
         assert grep_rows[1]["total"] == 0, grep_rows
         scoped = grep_rows[2]
-        assert scoped["summary"]["status"] == "success" and scoped["summary"]["search_id"] == "scoped-grep"
+        assert scoped["summary"]["status"] == "success" and scoped["summary"]["searchId"] == "scoped-grep"
         assert scoped["total"] == 2 and len(scoped["hits"]) == 1 and scoped["truncated"], scoped
-        assert scoped["hits"][0]["node_id"] == "folder:" + b"nested/report.txt".hex(), scoped
-        assert grep_rows[3]["total"] >= 1 and all(hit["pattern_kind"] == "regex" for hit in grep_rows[3]["hits"])
+        assert scoped["hits"][0]["nodeId"] == "folder:" + b"nested/report.txt".hex(), scoped
+        assert grep_rows[3]["total"] >= 1 and all(hit["patternKind"] == "regex" for hit in grep_rows[3]["hits"])
         assert grep_rows[4]["total"] == 2 and len(grep_rows[4]["items"]) == 2, grep_rows
         run([*image_path, "files", "search", "password"], expected=1)
 
@@ -825,29 +851,29 @@ searches hits list --search-id scoped-grep --limit 10
         evidence.rename(moved_evidence)
         offline_script = f'''images open "{evidence}"
 cd "{evidence.name}"
-files list nested
-files list . --depth 128 --name REPORT
+files list --path nested
+files tree list --path . --depth 128 --name REPORT
 cd nested
 context get
 '''
         try:
             offline_rows = documents(run(["--case", str(case), "shell"], offline_script).stdout)
-            assert offline_rows[0]["index_only"], offline_rows
-            assert [item["node"]["name"] for item in offline_rows[1]["items"]] == ["report.txt"]
+            assert offline_rows[0]["indexOnly"], offline_rows
+            assert [item["name"] for item in offline_rows[1]["items"]] == ["report.txt"]
             assert [item["path"] for item in offline_rows[2]["items"]] == ["/nested/report.txt"]
             assert offline_rows[3]["dir"] == f"/{evidence.name}/nested"
             result, rows = session([
                 {"id": "open", "command": "images open", "args": {"path": str(evidence)}},
                 {"id": "cd", "command": "context set", "args": {"dir": "/" + evidence.name}},
                 {"id": "stat", "command": "files get", "args": {"path": "nested/report.txt"}},
-                {"id": "tree", "command": "files list", "args": {"path": "nested", "depth": 2}},
+                {"id": "tree", "command": "files tree list", "args": {"path": "nested", "depth": 2}},
                 {"id": "hex", "command": "files read", "args": {"path": "hello.txt"}},
                 {"id": "strings", "command": "files strings list", "args": {"path": "hello.txt"}},
                 {"id": "file", "command": "files identify", "args": {"path": "hello.txt"}},
                 {"id": "pwd", "command": "context get"},
             ], expected=1, arguments=["--case", str(case)])
             offline_results = {row["id"]: row for row in rows}
-            assert offline_results["stat"]["result"]["index_only"] and offline_results["stat"]["result"]["name"] == "report.txt"
+            assert offline_results["stat"]["result"]["indexOnly"] and offline_results["stat"]["result"]["name"] == "report.txt"
             assert [item["path"] for item in offline_results["tree"]["result"]["items"]] == ["/report.txt"]
             assert all("error" in offline_results[command] for command in ("hex", "strings", "file"))
             assert offline_results["pwd"]["result"]["dir"] == "/" + evidence.name

@@ -13,7 +13,7 @@ use serde_json::{json, Map, Value};
 use tokio::{sync::mpsc, task::JoinSet};
 
 use super::{
-    catalog::{self, Command},
+    catalog,
     context::{Context, Exec, Request as Run},
     output, CliError, Json, Output,
 };
@@ -44,46 +44,6 @@ pub(super) fn concurrent(command: &str) -> bool {
         .ok()
         .and_then(|catalog| catalog.find_path(command))
         .is_some_and(|command| command.concurrent)
-}
-
-fn camel(name: &str) -> String {
-    let mut output = String::new();
-    let mut upper = false;
-    for character in name.chars() {
-        if character == '-' || character == '_' {
-            upper = true;
-        } else if upper {
-            output.extend(character.to_uppercase());
-            upper = false;
-        } else {
-            output.push(character);
-        }
-    }
-    output
-}
-
-/// Accept API names, option names and snake_case alike.
-fn normalize(command: &Command, args: Map<String, Value>) -> Result<Map<String, Value>, CliError> {
-    let mut normalized = Map::new();
-    for (key, value) in args {
-        let name = command
-            .params
-            .iter()
-            .find(|param| param.name == key || param.option == key)
-            .map(|param| param.name.clone())
-            .unwrap_or_else(|| camel(&key));
-        if !command
-            .params
-            .iter()
-            .any(|param| param.name == name && param.visible())
-        {
-            return Err(CliError::invalid(format!("未知参数：{key}")));
-        }
-        if normalized.insert(name.clone(), value).is_some() {
-            return Err(CliError::invalid(format!("重复参数：{name}")));
-        }
-    }
-    Ok(normalized)
 }
 
 /// Only structural references are expanded; literal evidence text stays exact.
@@ -378,7 +338,8 @@ pub(super) async fn json_lines(
                 request.command
             )));
         }
-        let values = normalize(command, request.args)?;
+        command.validate(&request.args)?;
+        let values = request.args;
         let output = runtime.block_on(exec.execute(
             context,
             Run {

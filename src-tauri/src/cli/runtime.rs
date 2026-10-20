@@ -96,7 +96,7 @@ fn splash(catalog: &Catalog) {
         String::new(),
         output::bold("开始使用："),
         line("images open <检材路径>", "打开检材"),
-        line("files list / --image <检材路径>", "浏览检材"),
+        line("files list --path / --image <检材路径>", "浏览检材"),
         line("cli search \"<要完成的任务>\"", "按意图查找命令"),
         line("docs search \"<问题>\"", "搜索内置文档"),
         line("--help", "浏览全部命令"),
