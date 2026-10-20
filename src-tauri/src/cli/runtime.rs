@@ -222,7 +222,9 @@ fn command(
         return print(Output::Json(preview), &invocation, globals.quiet);
     }
     if let Some(output) = native::offline(invocation.command, &invocation.values, Mode::OneShot) {
-        return print(output?, &invocation, globals.quiet);
+        let fields = super::projection::parse(invocation.fields.as_deref())?;
+        let output = super::projection::apply(output?, &fields)?;
+        return print(output, &invocation, globals.quiet);
     }
     if native == Some("sessions-serve") {
         let prepared = resident::prepare(resident::name(&invocation)?)?;
@@ -302,7 +304,7 @@ fn backend(globals: Globals, work: Work) -> i32 {
 
 fn init_tracing() {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("error"));
     // A subscriber may already be installed, as in tests.
     if let Err(error) = tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
@@ -418,6 +420,7 @@ async fn perform(
                         force: invocation.force,
                         dry_run: false,
                         text: invocation.text,
+                        fields: invocation.fields.clone(),
                     },
                 )
                 .await?;
@@ -431,11 +434,14 @@ async fn perform(
         Work::Resident(prepared) => return resident::serve(exec, context, prepared).await,
     };
     exec.state.tasks.cancel_kind(TaskKind::SessionSnapshot);
-    let mut monitor = if exec.mode != Mode::Session && !exec.state.tasks.list().is_empty() {
-        Some(exec.reporter.start("tasks wait（等待后台任务）"))
-    } else {
-        None
-    };
+    let mut monitor = (exec.mode != Mode::Session
+        && exec
+            .state
+            .tasks
+            .list()
+            .iter()
+            .any(|task| task.kind != TaskKind::SessionSnapshot))
+    .then(|| exec.reporter.start("tasks wait（等待后台任务）"));
     let result = finish(&exec.state).await;
     if let Some(monitor) = &mut monitor {
         monitor.finish(&result);

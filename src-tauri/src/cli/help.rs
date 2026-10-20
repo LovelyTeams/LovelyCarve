@@ -16,9 +16,9 @@ use super::{
 
 const AGENT_DISCOVERY: &str = "=== STOP: AGENT COMMAND DISCOVERY ===
 AGENTS: Do not explore commands by chaining nested --help calls.
-Your first port of call and the best way to discover commands is:
 AGENTS: Keep cli search and docs search queries anonymous; describe the action and resource type only.
 Never include evidence paths, case names or numbers, file names, hashes, passwords or other identifying values.
+Discover commands with:
   lovelycarve-cli cli search \"<describe the task you want to accomplish>\"
 It returns five compact JSON matches with short descriptions. Pick the best match instead of repeating similar searches.
 Run `<discovered command> --help` for detailed command help.
@@ -128,7 +128,7 @@ fn compose(catalog: &Catalog, path: &[String], width: usize, agentic: bool) -> S
         help.push_str(&tail);
     }
     help.push('\n');
-    if agentic {
+    if agentic && catalog.find(&words).is_none() {
         help = format!("{AGENT_DISCOVERY}\n{help}");
     }
     help
@@ -450,6 +450,12 @@ fn option_rows(command: &Command) -> Vec<Row> {
     if command.takes_body() {
         rows.push(flag("body", None, BODY_HELP, "[JSON]"));
     }
+    rows.push(flag(
+        "fields",
+        None,
+        "仅返回列表条目的指定字段，逗号分隔；支持点路径",
+        "[字符串]",
+    ));
     rows.push(flag("dry-run", None, DRY_RUN_HELP, "[布尔] [默认: false]"));
     rows
 }
@@ -552,7 +558,8 @@ mod tests {
             "{wide}"
         );
         let agent = compose(catalog, &path(&["files", "list"]), 80, true);
-        assert!(agent.starts_with("=== STOP: AGENT COMMAND DISCOVERY ===\n"));
-        assert!(agent.contains("docs search"));
+        assert!(!agent.contains(AGENT_DISCOVERY));
+        assert!(compose(catalog, &[], 80, true).starts_with(AGENT_DISCOVERY));
+        assert!(compose(catalog, &path(&["files"]), 80, true).contains("docs search"));
     }
 }

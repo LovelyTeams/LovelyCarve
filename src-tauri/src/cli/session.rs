@@ -26,6 +26,8 @@ const MAX_REQUESTS: usize = 10_000;
 pub(super) struct Request {
     #[serde(default)]
     timezone: Option<String>,
+    #[serde(default)]
+    fields: Option<String>,
     id: String,
     command: String,
     #[serde(default)]
@@ -340,11 +342,13 @@ pub(super) async fn json_lines(
             )));
         }
         command.validate(&request.args)?;
-        let values = request.args;
+        let mut values = request.args;
+        super::projection::agent_page_size(command, &mut values, super::interactive::is_agentic());
         let output = runtime.block_on(exec.execute(
             context,
             Run {
                 timezone: request.timezone,
+                fields: request.fields,
                 command,
                 values,
                 ask: Vec::new(),

@@ -39,6 +39,7 @@ pub struct Invocation {
     pub dry_run: bool,
     pub force: bool,
     pub text: bool,
+    pub fields: Option<String>,
 }
 
 #[derive(Debug)]
@@ -161,7 +162,8 @@ fn leaf(name: &str, command: &Command) -> clap::Command {
     if command.takes_body() {
         leaf = leaf.arg(Arg::new("body").long("body"));
     }
-    leaf.arg(switch("dry-run"))
+    leaf.arg(Arg::new("fields").long("fields"))
+        .arg(switch("dry-run"))
 }
 
 #[derive(Default)]
@@ -261,6 +263,9 @@ fn suggested_commands(catalog: &Catalog, path: &[String], error: &clap::Error) -
         Some(ContextValue::Strings(names)) => names.clone(),
         _ => Vec::new(),
     };
+    let mut suggestions = suggestions;
+    // clap orders candidates from weakest to strongest.
+    suggestions.reverse();
     suggestions
         .into_iter()
         .filter(|name| {
@@ -328,8 +333,12 @@ fn usage_error(catalog: &'static Catalog, path: &[String], error: &clap::Error) 
             catalog.binary
         ));
     }
+    let agentic = super::interactive::is_agentic();
+    if agentic && error.kind() != ErrorKind::InvalidSubcommand {
+        message.push_str(&format!("\n用 {} {prefix}--help 查看用法", catalog.binary));
+    }
     Parsed::UsageError {
-        help: Some(help::render(catalog, path)),
+        help: (!agentic).then(|| help::render(catalog, path)),
         error: CliError::new("usage", message),
     }
 }
@@ -463,6 +472,9 @@ fn invocation(command: &'static Command, matches: &ArgMatches) -> Result<Invocat
             values.insert(param.name.clone(), value);
         }
     }
+    super::projection::agent_page_size(command, &mut values, super::interactive::is_agentic());
+    let fields = super::projection::parse(matches.get_one::<String>("fields").map(String::as_str))?;
+    super::projection::validate(command, &fields)?;
     command.validate(&values)?;
     Ok(Invocation {
         command,
@@ -471,6 +483,7 @@ fn invocation(command: &'static Command, matches: &ArgMatches) -> Result<Invocat
         dry_run: flag(matches, "dry-run"),
         force: flag(matches, "force"),
         text: flag(matches, "text"),
+        fields: matches.get_one::<String>("fields").cloned(),
     })
 }
 
@@ -545,13 +558,22 @@ pub fn parse(catalog: &'static Catalog, args: &[String]) -> Parsed {
             globals,
             invocation,
         },
-        Err(error) => Parsed::UsageError {
-            help: None,
-            error: CliError {
-                code: "usage".into(),
-                ..error
-            },
-        },
+        Err(mut error) => {
+            if super::interactive::is_agentic() {
+                error.message.push_str(&format!(
+                    "\n用 {} {} --help 查看用法",
+                    catalog.binary,
+                    words.join(" ")
+                ));
+            }
+            Parsed::UsageError {
+                help: None,
+                error: CliError {
+                    code: "usage".into(),
+                    ..error
+                },
+            }
+        }
     }
 }
 
@@ -728,5 +750,35 @@ mod tests {
             ),
             other => panic!("{other:?}"),
         }
+    }
+    #[test]
+    fn packaged_skill_examples_parse_against_the_catalogue() {
+        let skill = include_str!("../../../skills/lovelycarve-cli/SKILL.md");
+        let catalog = super::super::catalog::catalog().unwrap();
+        let mut examples = 0;
+        for line in skill
+            .lines()
+            .filter(|line| line.starts_with("lovelycarve-cli "))
+        {
+            let words = super::super::shell::tokenize(line).unwrap();
+            assert!(
+                matches!(parse(catalog, &words[1..]), Parsed::Run { .. }),
+                "{line}"
+            );
+            examples += 1;
+        }
+        for line in skill.lines().filter(|line| line.starts_with("{\"id\":")) {
+            let request: Value = serde_json::from_str(line).unwrap();
+            let command = catalog
+                .find_path(request["command"].as_str().unwrap())
+                .unwrap();
+            command
+                .validate(request["args"].as_object().unwrap())
+                .unwrap();
+        }
+        assert!(
+            examples > 0,
+            "skill must contain executable command examples"
+        );
     }
 }

@@ -111,7 +111,7 @@ fn takes_value(catalog: &Catalog, path: &[&str], option: &str) -> bool {
         command.params.iter().any(|param| {
             (param.option == name || param.short.is_some_and(|short| name == short.to_string()))
                 && param.kind != Kind::Boolean
-        }) || name == "body"
+        }) || matches!(name, "body" | "fields")
     })
 }
 

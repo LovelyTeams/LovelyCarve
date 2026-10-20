@@ -281,24 +281,72 @@ pub(super) async fn render(
     };
     let display = display(exec, context, image, override_zone).await?;
     let mut value = output.value().clone();
-    match command.path().as_str() {
-        "files get" => render_node(&mut value, &display)?,
-        "files list" | "files tree list" => {
-            if let Some(items) = value.get_mut("items").and_then(Value::as_array_mut) {
-                for item in items {
-                    if command.path() == "files tree list" {
-                        if let Some(node) = item.get_mut("node") {
-                            render_node(node, &display)?;
-                        }
+    render_response(&mut value, &display, command.path().as_str())?;
+    Ok(Output::json(value))
+}
+
+fn render_response(value: &mut Value, display: &Display, path: &str) -> Result<(), CliError> {
+    if path == "files get" {
+        return render_node(value, display);
+    }
+    let mut zones = Vec::new();
+    let mut indexes = Vec::new();
+    if let Some(items) = value.get_mut("items").and_then(Value::as_array_mut) {
+        for item in items.iter_mut() {
+            let node = if path == "files tree list" {
+                item.get_mut("node")
+            } else {
+                Some(item)
+            };
+            let Some(node) = node else {
+                indexes.push(None);
+                continue;
+            };
+            render_node(node, display)?;
+            let metadata = node
+                .as_object_mut()
+                .and_then(|node| node.remove("timestampDisplay"));
+            let Some(metadata) = metadata else {
+                indexes.push(None);
+                continue;
+            };
+            let zone = metadata["timeZone"].clone();
+            let index = match zones.iter().position(|existing| *existing == zone) {
+                Some(index) => index,
+                None => {
+                    zones.push(zone);
+                    zones.len() - 1
+                }
+            };
+            indexes.push(Some(index));
+            if metadata["unconvertedFields"]
+                .as_array()
+                .is_some_and(|fields| !fields.is_empty())
+            {
+                node["timestampUnconvertedFields"] = metadata["unconvertedFields"].clone();
+            }
+        }
+        if zones.len() > 1 {
+            for (item, index) in items.iter_mut().zip(indexes) {
+                if let Some(index) = index {
+                    let node = if path == "files tree list" {
+                        &mut item["node"]
                     } else {
-                        render_node(item, &display)?;
-                    }
+                        item
+                    };
+                    node["timestampTimeZone"] = json!(index);
                 }
             }
         }
-        _ => {}
     }
-    Ok(Output::json(value))
+    if zones.is_empty() {
+        zones.push(json!(display.select(None)?));
+    }
+    value["timestampDisplay"] = json!({
+        "timeZones": zones,
+        "unconvertedReason": "无已知 UTC 偏移、非法时间或无法无损转换；保留原值"
+    });
+    Ok(())
 }
 
 fn render_node(node: &mut Value, display: &Display) -> Result<(), CliError> {
@@ -323,8 +371,10 @@ fn render_node(node: &mut Value, display: &Display) -> Result<(), CliError> {
             }
         }
     }
+    if converted != original {
+        object.insert("timestampsOriginal".into(), original);
+    }
     object.insert("timestamps".into(), converted);
-    object.insert("timestampsOriginal".into(), original);
     object.insert("timestampDisplay".into(), json!({"timeZone": selection, "unconvertedFields": unchanged,
         "unconvertedReason": if unchanged.is_empty() { Value::Null } else { json!("无已知 UTC 偏移、非法时间或无法无损转换；保留原值") }}));
     Ok(())
@@ -424,5 +474,73 @@ mod tests {
         );
         assert!(node["timestamps"]["created"].is_null());
         assert_eq!(node["name"], "2024-01-01T00:00:00Z");
+    }
+    #[test]
+    fn list_provenance_is_shared_and_identical_originals_are_omitted() {
+        let display = Display {
+            configured: Some(Selection::configured("UTC", "test").unwrap()),
+            detected: evidence::Detection::default(),
+            strict_evidence: false,
+        };
+        let original =
+            json!({"modified":"2024-01-01T00:00:00+00:00", "created":"2024-01-01T01:00:00"});
+        let node = json!({"id":"test", "timestamps": original});
+        let mut response = json!({"items":[node.clone(), node], "nextCursor":null});
+        render_response(&mut response, &display, "files list").unwrap();
+        assert_eq!(
+            response["timestampDisplay"]["timeZones"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        for node in response["items"].as_array().unwrap() {
+            assert_eq!(node["timestamps"], original);
+            assert!(node.get("timestampsOriginal").is_none());
+            assert!(node.get("timestampDisplay").is_none());
+            assert!(node.get("timestampTimeZone").is_none());
+            assert_eq!(node["timestampUnconvertedFields"], json!(["created"]));
+        }
+        let mut empty = json!({"items":[]});
+        render_response(&mut empty, &display, "files list").unwrap();
+        assert_eq!(empty["timestampDisplay"]["timeZones"][0]["source"], "test");
+    }
+
+    #[test]
+    fn mixed_volumes_keep_per_node_timezone_indexes_in_tree_pages() {
+        let mut first = Selection::configured("+08:00", "test").unwrap();
+        first.volume_key = Some("part:0".into());
+        let mut second = Selection::configured("-04:00", "test").unwrap();
+        second.volume_key = Some("part:1".into());
+        let display = Display {
+            configured: None,
+            detected: evidence::Detection {
+                candidates: vec![first, second],
+                ..Default::default()
+            },
+            strict_evidence: true,
+        };
+        let mut response = json!({"items":[
+            {"node":{"id":"ntfs:part:0:5", "timestamps":{"modified":"2024-01-01T00:00:00Z"}}},
+            {"node":{"id":"ntfs:part:1:5", "timestamps":{"modified":"2024-01-01T00:00:00Z"}}}
+        ]});
+        render_response(&mut response, &display, "files tree list").unwrap();
+        assert_eq!(
+            response["timestampDisplay"]["timeZones"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(response["items"][0]["node"]["timestampTimeZone"], 0);
+        assert_eq!(response["items"][1]["node"]["timestampTimeZone"], 1);
+        assert_eq!(
+            response["items"][0]["node"]["timestamps"]["modified"],
+            "2024-01-01T08:00:00+08:00"
+        );
+        assert_eq!(
+            response["items"][1]["node"]["timestamps"]["modified"],
+            "2023-12-31T20:00:00-04:00"
+        );
     }
 }

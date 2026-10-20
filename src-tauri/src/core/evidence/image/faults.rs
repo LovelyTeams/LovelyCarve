@@ -178,6 +178,7 @@ where
     // rather than retrying the whole remaining suffix for every bad sector.
     let mut pending_ends = Vec::new();
     let mut faults: Vec<BadRegion> = Vec::new();
+    let mut first_error = None;
     while filled < buf.len() {
         let offset = start + filled as u64;
         match read_at(offset, &mut buf[filled..end]) {
@@ -192,9 +193,9 @@ where
                     continue;
                 }
                 let skip = end - filled;
-                tracing::warn!(
-                    "image read error at offset {offset} (+{skip} bytes): {err}; zero-filling gap",
-                );
+                if first_error.is_none() {
+                    first_error = Some(err.to_string());
+                }
                 // Coalesce a run of adjacent bad sectors into one span.
                 match faults.last_mut() {
                     Some(last) if last.offset + last.len == offset => last.len += skip as u64,
@@ -211,5 +212,70 @@ where
             end = pending_ends.pop().unwrap_or(buf.len());
         }
     }
+    if let Some(error) = first_error {
+        let synthetic_bytes: u64 = faults.iter().map(|region| region.len).sum();
+        tracing::warn!(
+            start,
+            requested_bytes = buf.len(),
+            synthetic_bytes,
+            regions = faults.len(),
+            "image read faults; zero-filled gaps (first error: {error})"
+        );
+    }
     (filled, faults)
+}
+
+#[cfg(test)]
+mod logging_tests {
+    use super::*;
+    use std::{
+        io::Write,
+        sync::{Arc, Mutex},
+    };
+
+    #[derive(Clone, Default)]
+    struct Capture(Arc<Mutex<Vec<u8>>>);
+    impl Write for Capture {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .map_err(|error| std::io::Error::other(error.to_string()))?
+                .extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn bad_sectors_emit_one_summary_without_losing_audit_spans() {
+        let capture = Capture::default();
+        let writer = capture.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_max_level(tracing::Level::WARN)
+            .with_writer(move || writer.clone())
+            .finish();
+        let mut bytes = [0xff; 512 * 385];
+        let (filled, faults) = tracing::subscriber::with_default(subscriber, || {
+            tolerant_fill(0, &mut bytes, |_, _| anyhow::bail!("truncated fixture"))
+        });
+        assert_eq!(filled, bytes.len());
+        assert_eq!(
+            faults,
+            vec![BadRegion {
+                offset: 0,
+                len: bytes.len() as u64
+            }]
+        );
+        assert!(bytes.iter().all(|byte| *byte == 0));
+        let output = String::from_utf8(capture.0.lock().unwrap().clone()).unwrap();
+        assert_eq!(output.lines().count(), 1);
+        assert!(
+            output.contains("truncated fixture") && output.contains("synthetic_bytes=197120"),
+            "{output}"
+        );
+    }
 }

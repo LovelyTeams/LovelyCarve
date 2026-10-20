@@ -191,6 +191,7 @@ fn command_meta(command: &Resolved<'_>) -> Value {
             "description": "原始 JSON 参数对象（键为 API 参数名，可写 @文件路径）",
         }));
     }
+    options.push(json!({"name":"fields", "type":"string", "required":false, "description":"列表字段投影，逗号分隔，支持点路径"}));
     options.push(flag("dry-run", "解析参数并显示将执行的请求，不实际执行"));
     let mut usage = vec![BINARY.to_owned(), spec.path.clone()];
     for param in &positional {

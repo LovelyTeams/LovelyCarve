@@ -327,13 +327,17 @@ fn pretty(text: &str, highlight: bool) -> String {
     out
 }
 
-/// Indented JSON in the order the command wrote it, highlighted only for a
-/// person at a colour terminal.
+/// Compact JSON for pipes and agents; indented, optionally highlighted JSON
+/// for people at a terminal.
 pub fn format_json(json: &Json) -> String {
     let text = json.text();
     let highlight =
         !interactive::is_non_interactive_or_ci() && styled() && text.len() <= MAX_HIGHLIGHTED_JSON;
-    pretty(&text, highlight)
+    if !std::io::stdout().is_terminal() || interactive::is_agentic() {
+        text.into_owned()
+    } else {
+        pretty(&text, highlight)
+    }
 }
 
 /// Indented JSON without colour, for files.

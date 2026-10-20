@@ -733,6 +733,7 @@ concurrent = true
 
 [[command]]
 path = "context set"
+keywords = ["change directory", "cd", "working directory"]
 native = "context-set"
 summary = "切换当前检材或镜像内目录"
 category = "action"
@@ -850,7 +851,7 @@ category = "read"
 args = ["path"]
 target = "nodeId"
 concurrent = true
-keywords = ["stat", "metadata", "timestamps"]
+keywords = ["stat", "metadata", "timestamps", "show file timestamps"]
 [command.params.path]
 type = "string"
 
@@ -1385,7 +1386,7 @@ category = "action"
 args = ["path"]
 secret = ["qcowPassword", "qcowKeyHex"]
 hidden = ["caseDir"]
-keywords = ["load", "evidence", "disk image", "e01", "vmdk", "raw", "dd", "add evidence"]
+keywords = ["open evidence", "open image", "load", "evidence", "disk image", "e01", "vmdk", "raw", "dd", "add evidence"]
 examples = [
     { command = "lovelycarve-cli images open D:\\evidence\\disk.E01", description = "打开检材并显示其信息" },
     { command = "lovelycarve-cli images open D:\\evidence\\disk.qcow2 --qcow-password", description = "在终端中隐藏输入 QCOW 密码" },
@@ -1409,7 +1410,7 @@ description = "格式、大小、分区与文件系统。"
 category = "read"
 args = ["imageId"]
 concurrent = true
-keywords = ["partitions", "info"]
+keywords = ["partitions", "info", "list partitions", "partition table"]
 
 [[command]]
 path = "images list"

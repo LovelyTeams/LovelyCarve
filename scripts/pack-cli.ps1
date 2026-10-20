@@ -37,6 +37,9 @@ foreach ($resource in $pluginBundle.bundle.resources.PSObject.Properties) {
     Copy-Item -LiteralPath (Join-Path (Join-Path $Root 'src-tauri') $resource.Name) -Destination $target
 }
 Copy-Item -LiteralPath (Join-Path $Root 'docs/CLI.md') -Destination (Join-Path $stage 'README.md')
+$skillsTarget = Join-Path $stage 'skills'
+New-Item -ItemType Directory -Path $skillsTarget | Out-Null
+Copy-Item -LiteralPath (Join-Path $Root 'skills/lovelycarve-cli') -Destination $skillsTarget -Recurse
 Copy-Item -LiteralPath (Join-Path $Root 'LICENSE') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $Root 'THIRD_PARTY_NOTICES.md') -Destination $stage
 $stagedCapabilities = & (Join-Path $stage 'lovelycarve-cli.exe') system get | ConvertFrom-Json

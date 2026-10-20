@@ -63,6 +63,7 @@ pub struct Request<'a> {
     pub force: bool,
     pub dry_run: bool,
     pub text: bool,
+    pub fields: Option<String>,
 }
 
 /// A path inside the image, resolved to its node.
@@ -307,6 +308,8 @@ impl Exec {
         request: Request<'_>,
     ) -> Result<Output, CliError> {
         let command = request.command;
+        let fields = super::projection::parse(request.fields.as_deref())?;
+        super::projection::validate(command, &fields)?;
         if let Some(zone) = request.timezone.as_deref().or(context.timezone.as_deref()) {
             super::timezone::validate(zone)?;
         }
@@ -420,6 +423,7 @@ impl Exec {
                 request.timezone.as_deref(),
             )
             .await;
+        let outcome = outcome.and_then(|output| super::projection::apply(output, &fields));
         if let Some(monitor) = &mut monitor {
             monitor.finish(&outcome);
         }

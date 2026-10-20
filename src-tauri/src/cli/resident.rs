@@ -60,7 +60,9 @@ pub(super) fn manage(globals: &Globals, invocation: &Invocation) -> Result<i32, 
         _ => return Err(CliError::invalid("未知的会话管理命令")),
     };
     let (_, done) = invocation.command.category.labels();
-    output::print_output(Output::json(result), done, globals.quiet, false)?;
+    let fields = super::projection::parse(invocation.fields.as_deref())?;
+    let output = super::projection::apply(Output::json(result), &fields)?;
+    output::print_output(output, done, globals.quiet, false)?;
     Ok(0)
 }
 

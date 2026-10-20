@@ -22,6 +22,7 @@ mod navigation;
 mod navigation_tests;
 mod output;
 mod progress;
+mod projection;
 mod prompt;
 mod resident;
 mod runtime;
@@ -189,6 +190,15 @@ impl Json {
 
     /// Compact JSON text.
     pub fn text(&self) -> Cow<'_, str> {
+        if let Some(text) = self
+            .text
+            .as_ref()
+            .is_none_or(|text| text.contains("\"items\":"))
+            .then(|| projection::page_text(self.value()))
+            .flatten()
+        {
+            return Cow::Owned(text);
+        }
         match &self.text {
             Some(text) => Cow::Borrowed(text),
             None => Cow::Owned(self.value().to_string()),

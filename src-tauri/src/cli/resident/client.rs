@@ -96,6 +96,7 @@ pub(in crate::cli) fn forward(
     globals: &Globals,
     mut invocation: Invocation,
 ) -> Result<i32, CliError> {
+    let fields = crate::cli::projection::parse(invocation.fields.as_deref())?;
     if let Some(zone) = globals.timezone.as_deref() {
         crate::cli::timezone::validate(zone)?;
     }
@@ -156,7 +157,7 @@ pub(in crate::cli) fn forward(
         Some(&reporter),
     );
     monitor.finish(&result);
-    let result = result?;
+    let result = crate::cli::projection::apply(result?, &fields)?;
     let (_, done) = invocation.command.category.labels();
     output::print_output(
         result,

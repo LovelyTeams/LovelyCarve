@@ -113,7 +113,11 @@ fn document(catalog: &Catalog, command: &Command) -> Document {
     description.extend(command.ipc_command.iter().cloned());
     [
         tokenize(&command.command),
-        tokenize(&command.summary),
+        tokenize(&format!(
+            "{} {}",
+            command.summary,
+            command.keywords.join(" ")
+        )),
         tokenize(&description.join(" ")),
         tokenize(&context.join(" ")),
     ]
@@ -244,6 +248,10 @@ mod tests {
     fn plain_language_finds_the_expected_command() {
         for (query, expected) in [
             ("open a disk image", "images open"),
+            ("open evidence", "images open"),
+            ("list partitions", "images get"),
+            ("change directory", "context set"),
+            ("show file timestamps", "files get"),
             ("打开检材", "images open"),
             (
                 "sqlite deleted records",

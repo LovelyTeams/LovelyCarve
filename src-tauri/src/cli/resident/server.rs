@@ -205,6 +205,7 @@ async fn execute(
         context,
         Request {
             timezone,
+            fields: None,
             command,
             values,
             ask: vec![],

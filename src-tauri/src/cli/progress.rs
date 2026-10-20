@@ -344,6 +344,10 @@ fn timer(elapsed: Duration) -> String {
 }
 fn stage(event: &Event) -> Option<String> {
     let payload = &event.payload;
+    // Speculative session indexes are cancelled during normal one-shot cleanup.
+    if payload.pointer("/task/kind").and_then(Value::as_str) == Some("sessionSnapshot") {
+        return None;
+    }
     let label = match event.event.as_str() {
         "image-load-progress" => payload.get("stage")?.as_str()?.to_owned(),
         "raid-detect-progress" => match payload.get("stage")?.as_str()? {
@@ -358,7 +362,12 @@ fn stage(event: &Event) -> Option<String> {
             _ => return None,
         }
         .into(),
-        "task-progress" => payload.get("message")?.as_str()?.to_owned(),
+        "task-progress" => payload
+            .get("message")
+            .and_then(Value::as_str)
+            .filter(|message| !message.is_empty())
+            .unwrap_or("处理中")
+            .to_owned(),
         _ => return None,
     };
     let current = payload
@@ -370,7 +379,18 @@ fn stage(event: &Event) -> Option<String> {
         .and_then(Value::as_u64)
         .filter(|total| *total > 0);
     Some(match (current, total) {
-        (Some(current), Some(total)) => format!("{label} ({current}/{total})"),
+        (Some(current), Some(total)) => {
+            let unit = if payload.get("unit").and_then(Value::as_str) == Some("bytes") {
+                " bytes"
+            } else {
+                ""
+            };
+            let percent = current as f64 / total as f64 * 100.0;
+            format!("{label} ({current}/{total}{unit}, {percent:.1}%)")
+        }
+        (Some(current), None) if payload.get("unit").and_then(Value::as_str) == Some("bytes") => {
+            format!("{label} ({current} bytes)")
+        }
         _ => label,
     })
 }
@@ -417,5 +437,28 @@ mod tests {
             .contains("总量未知"));
         assert!(reporter.0.active.lock().unwrap().upgrade().is_none());
         assert_eq!(timer(Duration::from_secs(65)), "[1m 5s]");
+    }
+    #[test]
+    fn null_message_progress_uses_real_bytes_and_unknown_totals_have_no_percent() {
+        assert_eq!(
+            stage(&Event {
+                event: "task-progress".into(),
+                payload: json!({"task":{"kind":"sessionSnapshot"}, "message":"snapshot build cancelled"})
+            }),
+            None
+        );
+
+        let event = |total| Event {
+            event: "task-progress".into(),
+            payload: json!({"message":null,"unit":"bytes","done":512,"total":total}),
+        };
+        assert_eq!(
+            stage(&event(json!(1024))),
+            Some("处理中 (512/1024 bytes, 50.0%)".into())
+        );
+        assert_eq!(
+            stage(&event(Value::Null)),
+            Some("处理中 (512 bytes)".into())
+        );
     }
 }

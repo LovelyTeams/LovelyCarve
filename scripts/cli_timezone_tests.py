@@ -40,7 +40,7 @@ def test_timezones(executable, base_environment):
         def check(node, offset, hour):
             timestamp = node["timestamps"]["modified"]
             assert timestamp.endswith(offset) and f"T{hour}:00:00" in timestamp, node
-            assert datetime.fromisoformat(timestamp) == datetime.fromisoformat(node["timestampsOriginal"]["modified"])
+            assert datetime.fromisoformat(timestamp) == datetime.fromisoformat(node.get("timestampsOriginal", node["timestamps"])["modified"])
             assert not node["timestampDisplay"]["unconvertedFields"], node
             return node
 
@@ -52,12 +52,14 @@ def test_timezones(executable, base_environment):
         assert "T05:45:00" in get("--timezone", "+05:45")["timestamps"]["modified"]
         for command, arguments in [("list", ["--path", "/nas"]), ("tree", ["list", "--path", "/nas"])]:
             listed = data("--image", evidence, "files", command, *arguments)
+            assert listed["timestampDisplay"]["timeZones"][0]["zone"] == "Asia/Shanghai", listed
             items = [item.get("node", item) for item in listed["items"]]
+            assert all("timestampDisplay" not in item for item in items), listed
             node = next(item for item in items if item["name"] == "report.txt")
             # Opening a live folder may update host access times between
             # processes; its fixed modified time must remain identical.
             assert node["timestamps"]["modified"] == auto["timestamps"]["modified"]
-            assert node["timestampsOriginal"]["modified"] == auto["timestampsOriginal"]["modified"]
+            assert node.get("timestampsOriginal", node["timestamps"])["modified"] == auto["timestampsOriginal"]["modified"]
         assert run("--timezone", "UTC", "--image", evidence, "files", "read", path).stdout == report.read_text()
         failure = run("--timezone", "Not/AZone", "--image", root / "missing.E01", "files", "get", path, expected=1)
         assert "无效时区" in failure.stderr and "image_load" not in failure.stderr

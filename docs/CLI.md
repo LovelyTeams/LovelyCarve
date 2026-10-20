@@ -72,10 +72,12 @@ IANA 时区根据每个时间戳的日期应用历史偏移和夏令时；固定
 缺配置、冲突、读取失败或离线索引无法读源时，`auto` 输出 UTC 和原因；
 这表示显示回退，不表示检材系统原来使用 UTC。可用 `timezones get` 检查候选、配置路径、来源与告警。
 
-节点的 `timestamps` 是显示结果，`timestampsOriginal` 保留后端返回的原始字符串；
-`timestampDisplay.timeZone` 记录所选时区、来源、配置路径及告警。
+节点的 `timestamps` 是显示结果；仅在转换后的对象与原始对象不同的情况下附带 `timestampsOriginal`，保留后端原始字符串。
+`files get` 的 `timestampDisplay.timeZone` 记录所选时区、来源、配置路径及告警。
+`files list` / `files tree list` 把相同的时区及来源合并到响应顶层 `timestampDisplay.timeZones` 数组；
+单一时区适用于全部条目，混合时区时节点的 `timestampTimeZone` 是该数组的零基索引。
 FAT/exFAT 等没有已知偏移的本地时间，以及 `-00:00`（偏移未知），保持原值并列入
-`timestampDisplay.unconvertedFields`，不会补成 UTC 或强行换算。角色（modified/accessed/created/mftChanged/birth）
+`files get` 的 `timestampDisplay.unconvertedFields`（列表节点为 `timestampUnconvertedFields`，空时省略），不会补成 UTC 或强行换算。角色（modified/accessed/created/mftChanged/birth）
 和小数位数保持不变。仅上述三个文件浏览命令转换时间，文件字节、哈希、案件索引、插件原始结果与时间线不变。
 
 shell 中可逐条写 `--timezone`，也可 `timezones set` 修改会话默认。
@@ -209,12 +211,36 @@ Markdown 原样写到标准输出，`--section <章节>` 只输出一个章节�
 隐藏命令可以运行，也能被 `cli search` 找到，但不出现在帮助、补全和拼写建议中。
 
 由编码代理运行时（`CLAUDECODE=1`、`CODEX_THREAD_ID`、`GEMINI_CLI=1`、`CURSOR_AGENT=1` 等代理文档化的
-环境变量），帮助开头附加一段英文说明：优先用 `cli search` 查找命令、用 `docs search` 查阅文档，
+环境变量），根和分组帮助开头附加一段英文说明（具体命令帮助不重复）：优先用 `cli search` 查找命令、用 `docs search` 查阅文档，
 搜索词不要包含检材路径、案件名、文件名、哈希或密码等识别信息，并用 `schema` 查看请求结构。
+
+## 编码代理与小输出
+
+CLI 安装包的 `skills/lovelycarve-cli/SKILL.md` 提供简短代理工作流，命令示例由测试对照命令目录解析。
+连续查询优先 `sessions open exam --image <检材路径>`，后续加 `--session exam -q`，结束后 `sessions close exam`。
+`cli search`、`schema <命令>` 和 `docs search` 用于按需发现，不必遍历帮助或复制全部目录。
+代理的用法错误只显示错误、建议命令和一行帮助提示；人类终端保留完整帮助。
+
+列表型 `list` / `search` 命令支持 `--fields name,id,kind,size,timestamps.modified`，仅投影条目字段；
+响应顶层元数据（包括分页和时区来源）保留。点路径保持嵌套对象，未知字段省略，缺失值为 null 时保留 null。
+裸数组逐条投影；对象优先投影 `items`，否则需要唯一的顶层数组（如 `sessions`、`rows`），其余元数据保留；无法判断或条目非对象时报错。
+树列表字段从条目开始，例如 `node.id,node.name,node.timestamps.modified`。
+时区索引与无法转换字段仍随节点保留；需要原始时间时显式选择 `timestampsOriginal`。
+分页字段 `nextCursor` / `total` / `truncated` 始终写在 `items` 前；输出被截断时仍须用游标继续读取，不能当作完整结果。
+
+```powershell
+lovelycarve-cli --session exam -q files list --path / --page-size 50 --fields name,id,kind,size,timestamps.modified
+```
+
+JSONL 将投影放在请求顶层的可选 `fields` 字符串中，而不是 `args`：
+
+```json
+{"id":"page","command":"files list","args":{"path":"/","pageSize":50},"fields":"name,id,kind,size,timestamps.modified"}
+```
 
 ## 输出与退出码
 
-- 结果写标准输出。结构化结果是缩进两格的 JSON，后端结构字段统一使用 camelCase（如 `imageId`、`nextCursor`、`bytesHashed`）；
+- 结果写标准输出。人类终端中的结构化结果是缩进两格的 JSON；stdout 重定向、管道或编码代理环境输出紧凑 JSON。后端结构字段统一使用 camelCase（如 `imageId`、`nextCursor`、`bytesHashed`）；
   证据中的数据库列名、插件字段名和任意 JSON 对象键保留原样。此转换仅在 CLI 输出边界执行，
   桌面 IPC 和案件存储格式不变；只有标准输出是终端且
   不在 CI 中时才着色（`NO_COLOR` 关闭、`FORCE_COLOR` 强制）。内容类命令（`files read`、
@@ -235,7 +261,8 @@ Markdown 原样写到标准输出，`--section <章节>` 只输出一个章节�
   底层诊断日志仍可能写入 stderr。JSONL 请求的成功/失败结果继续写在 stdout。
   隐式通过 `--image` 打开的检材也有 `image-load-progress`；`raid-detect-progress` 的阶段依次覆盖 LVM 成员元数据、
   md 元数据、md 组装、固件 RAID、LVM 逻辑卷、无元数据推定和组装卷注册，`current/total` 只属于当前阶段。
-  命令返回后仍有后台工作时，会继续显示 `tasks wait` 的进度与耗时。
+  退出时等待并清理后台任务，只有非自动快照任务继续显示 `tasks wait`；主动取消的会话快照不影响前台进度。CLI 诊断默认过滤到 `error`；
+  `RUST_LOG` 可覆盖（如 `RUST_LOG=warn`）。读故障按每次容错读取汇总，完整坏区仍保留在审计字段中。
 
   ```powershell
   lovelycarve-cli images open "D:\evidence\disk.E01" > image.json
@@ -316,7 +343,7 @@ lovelycarve-cli --image "D:\evidence\disk.E01" files tree list --path /part:0/Us
 
 | 命令 | 作用 |
 | --- | --- |
-| `files list [--path 路径 \| --parent-id ID] [--cursor 游标] [--page-size N] [--query JSON]` | 统一调用 `fs_children_page`；默认列当前目录，返回 `{items:[节点], nextCursor, total?, truncated}`。`nextCursor` 非空时继续请求下一页；每页默认 500，范围 1–5000 |
+| `files list [--path 路径 \| --parent-id ID] [--cursor 游标] [--page-size N] [--query JSON]` | 统一调用 `fs_children_page`；默认列当前目录，返回 `{nextCursor, total?, truncated, …, items:[节点]}`。`nextCursor` 非空时继续请求下一页；人类环境每页默认 500，编码代理环境默认 50，显式 `--page-size` 优先，范围 1–5000 |
 | `files tree list [--path 路径 \| --node-id ID] [--depth N] [--name 文本] [--limit N]` | 递归遍历目录；`--depth` 递归（上限 128），`--name` 忽略大小写包含匹配，最多检查 `--limit` 个节点（默认 10000，上限 100000）。返回 `{items:[{path,node}], truncated}` |
 | `files get [路径 \| --node-id ID]` | 节点属性（名称、类型、大小、inode、时间戳、删除状态、链接目标），附 `nodeId`、`path`、`indexOnly` |
 | `files read <路径> [--offset N] [--length N] [--text]` | 文件内容流式写到标准输出 |
