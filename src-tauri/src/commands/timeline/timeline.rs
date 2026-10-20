@@ -320,7 +320,7 @@ pub async fn timeline_export(
         let conn = timeline_store::open_reader(&case_dir, &image_id)
             .map_err(|err| AppError::from_anyhow(err.context("导出时间线失败")))?
             .ok_or_else(|| AppError::invalid_input("该检材还没有创建时间线"))?;
-        let file = std::fs::File::create(&destination)
+        let file = std::fs::File::create_new(&destination)
             .map_err(|err| AppError::from_io("导出时间线", err))?;
         let mut writer = std::io::BufWriter::new(file);
         writer

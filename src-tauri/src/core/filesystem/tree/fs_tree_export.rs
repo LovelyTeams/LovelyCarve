@@ -14,6 +14,7 @@ use std::{
 
 use tokio_util::sync::CancellationToken;
 
+use crate::core::common::export::write_new;
 use crate::core::evidence::image::ReadFaultReport;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree::{stream_file_chunks, FsSession, NodeKind};
@@ -48,10 +49,11 @@ pub fn export_file(
     destination: &Path,
 ) -> anyhow::Result<u64> {
     image.require_source()?;
-    let mut file = File::create(destination)?;
-    stream_file_chunks(image, node_id, 1024 * 1024, |chunk| {
-        file.write_all(chunk)?;
-        Ok(())
+    write_new(destination, |file| {
+        stream_file_chunks(image, node_id, 1024 * 1024, |chunk| {
+            file.write_all(chunk)?;
+            Ok(())
+        })
     })
 }
 
@@ -80,7 +82,13 @@ pub fn export_dir(
     if node_id.trim().is_empty() {
         anyhow::bail!("export_dir requires a directory node id");
     }
-    fs::create_dir_all(destination)?;
+    if let Some(parent) = destination
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)?;
+    }
+    fs::create_dir(destination)?;
     let mut summary = FsExportSummary::default();
     on_progress(&summary, None);
     let mut visited = HashSet::new();
@@ -180,7 +188,7 @@ fn export_dir_walk(
         on_progress(summary, Some(&child_rel));
         match child.kind {
             NodeKind::Dir => {
-                if let Err(err) = fs::create_dir_all(&child_path) {
+                if let Err(err) = fs::create_dir(&child_path) {
                     tracing::warn!("export_dir: mkdir {:?} failed: {err}", child_path);
                     summary.skipped_count += 1;
                     continue;
@@ -211,28 +219,16 @@ fn export_dir_walk(
                 }
             }
             NodeKind::File => {
-                // `create_new`: never truncate an existing host file, even if
-                // something appeared at this path after `unique_export_path`.
-                let mut file = match fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&child_path)
-                {
-                    Ok(file) => file,
-                    Err(err) => {
-                        tracing::warn!("export_dir: create {:?} failed: {err}", child_path);
-                        summary.skipped_count += 1;
-                        continue;
-                    }
-                };
                 let mut bytes_written = 0u64;
-                let res = session.stream_file(&child.id, 1024 * 1024, |chunk| {
-                    if cancel.is_cancelled() {
-                        anyhow::bail!("export cancelled");
-                    }
-                    file.write_all(chunk)?;
-                    bytes_written += chunk.len() as u64;
-                    Ok(())
+                let res = write_new(&child_path, |file| {
+                    session.stream_file(&child.id, 1024 * 1024, |chunk| {
+                        if cancel.is_cancelled() {
+                            anyhow::bail!("export cancelled");
+                        }
+                        file.write_all(chunk)?;
+                        bytes_written += chunk.len() as u64;
+                        Ok(())
+                    })
                 });
                 match res {
                     Ok(_) => {
@@ -252,7 +248,6 @@ fn export_dir_walk(
                                 child.id,
                                 child.name,
                             );
-                            summary.bytes_written += bytes_written;
                             summary.cancelled = true;
                             break;
                         }
@@ -298,40 +293,41 @@ pub fn export_dir_zip(
         }
     }
 
-    let file = File::create(archive_path)?;
-    let mut writer = zip::ZipWriter::new(file);
-    let file_opts: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated)
-        .unix_permissions(0o644);
-    let dir_opts: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored)
-        .unix_permissions(0o755);
+    write_new(archive_path, |file| {
+        let mut writer = zip::ZipWriter::new(file);
+        let file_opts: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .unix_permissions(0o644);
+        let dir_opts: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored)
+            .unix_permissions(0o755);
 
-    let mut summary = FsExportSummary::default();
-    let mut taken: HashSet<String> = HashSet::new();
-    let mut visited: HashSet<String> = HashSet::new();
-    let mut session = FsSession::new(image);
-    on_progress(&summary, None);
+        let mut summary = FsExportSummary::default();
+        let mut taken: HashSet<String> = HashSet::new();
+        let mut visited: HashSet<String> = HashSet::new();
+        let mut session = FsSession::new(image);
+        on_progress(&summary, None);
 
-    zip_walk(
-        &mut session,
-        node_id,
-        "",
-        &mut writer,
-        &file_opts,
-        &dir_opts,
-        &mut summary,
-        &mut taken,
-        0,
-        cancel,
-        on_progress,
-        &mut visited,
-    )?;
-    on_progress(&summary, None);
+        zip_walk(
+            &mut session,
+            node_id,
+            "",
+            &mut writer,
+            &file_opts,
+            &dir_opts,
+            &mut summary,
+            &mut taken,
+            0,
+            cancel,
+            on_progress,
+            &mut visited,
+        )?;
+        on_progress(&summary, None);
 
-    let mut inner = writer.finish()?;
-    inner.flush()?;
-    Ok(summary)
+        let inner = writer.finish()?;
+        inner.flush()?;
+        Ok(summary)
+    })
 }
 
 pub fn export_dir_zip_with_fault_report(
@@ -353,7 +349,7 @@ fn zip_walk(
     session: &mut FsSession<'_>,
     node_id: &str,
     rel_path: &str,
-    writer: &mut zip::ZipWriter<File>,
+    writer: &mut zip::ZipWriter<&mut File>,
     file_opts: &zip::write::SimpleFileOptions,
     dir_opts: &zip::write::SimpleFileOptions,
     summary: &mut FsExportSummary,
@@ -584,7 +580,41 @@ fn unique_export_path(target: &Path, name: &str) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_export_component;
+    use super::*;
+
+    #[test]
+    fn backend_exports_refuse_existing_destinations_without_cli_prechecks() {
+        let directory = tempfile::tempdir().unwrap();
+        let evidence = directory.path().join("evidence");
+        fs::create_dir(&evidence).unwrap();
+        fs::write(evidence.join("hello.txt"), b"authentic").unwrap();
+        let image = Arc::new(EvidenceSession::open(&evidence).unwrap());
+        let destination = directory.path().join("existing");
+        fs::write(&destination, b"preserve").unwrap();
+        let cancel = CancellationToken::new();
+        let root = "folder:";
+        assert!(export_dir_zip(&image, root, &destination, &cancel, &|_, _| {}).is_err());
+        assert!(export_file(&image, "folder:68656c6c6f2e747874", &destination).is_err());
+        assert_eq!(fs::read(&destination).unwrap(), b"preserve");
+        let tree = directory.path().join("tree");
+        fs::create_dir(&tree).unwrap();
+        assert!(export_dir(&image, root, &tree, &cancel, &|_, _| {}).is_err());
+        assert_eq!(fs::read_dir(tree).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn invalid_single_file_export_leaves_no_partial_and_allows_retry() {
+        let directory = tempfile::tempdir().unwrap();
+        let evidence = directory.path().join("evidence");
+        fs::create_dir(&evidence).unwrap();
+        fs::write(evidence.join("hello.txt"), b"authentic").unwrap();
+        let image = Arc::new(EvidenceSession::open(&evidence).unwrap());
+        let destination = directory.path().join("retry");
+        assert!(export_file(&image, "folder:", &destination).is_err());
+        assert!(!destination.exists());
+        export_file(&image, "folder:68656c6c6f2e747874", &destination).unwrap();
+        assert_eq!(fs::read(destination).unwrap(), b"authentic");
+    }
 
     #[test]
     fn preserves_leading_dot_for_hidden_files() {

@@ -450,7 +450,7 @@ pub async fn global_search_export(
         after_seq: None,
     };
     tokio::task::spawn_blocking(move || -> Result<GlobalSearchExportResult, AppError> {
-        let file = std::fs::File::create(&destination)
+        let file = std::fs::File::create_new(&destination)
             .map_err(|err| AppError::from_io("导出全局搜索结果", err))?;
         let mut writer = std::io::BufWriter::new(file);
         writer

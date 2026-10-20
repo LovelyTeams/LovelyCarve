@@ -257,7 +257,7 @@ pub async fn fs_timeline_export(
     );
     let result = tokio::task::spawn_blocking(
         move || -> Result<crate::core::timeline::mactime::MactimeSummary, AppError> {
-            let file = std::fs::File::create(&destination)
+            let file = std::fs::File::create_new(&destination)
                 .map_err(|err| AppError::from_io(format!("create body file {destination}"), err))?;
             let mut writer = std::io::BufWriter::new(file);
             // An unscoped (whole-image) export passes the empty start id through.

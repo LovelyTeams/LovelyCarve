@@ -1,4 +1,5 @@
 import { invokeCmd } from '../client';
+import type { ReadFaultReport } from './export';
 
 
 
@@ -6,7 +7,7 @@ import { invokeCmd } from '../client';
 export type HashAlgo = 'md5' | 'sha1' | 'sha256' | 'sm3';
 
 /** 单文件哈希结果：只有请求过的算法是非 null。 */
-export interface FsDigest {
+export interface FsDigest extends ReadFaultReport {
   md5: string | null;
   sha1: string | null;
   sha256: string | null;

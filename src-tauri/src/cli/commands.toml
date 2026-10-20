@@ -1099,6 +1099,7 @@ summary = "导出目录（目录树或 ZIP）"
 category = "action"
 args = ["path"]
 target = "nodeId"
+no_clobber = ["destination"]
 generated = ["taskId"]
 defaults = { mode = "tree" }
 [command.params.mode]

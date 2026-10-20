@@ -63,6 +63,7 @@ pub fn dispatch(resolved: &[Resolved<'_>]) -> String {
                         | "image_export_raw"
                         | "fs_export"
                         | "fs_export_dir"
+                        | "fs_digest"
                         | "snapshot_list"
                 ) =>
             {

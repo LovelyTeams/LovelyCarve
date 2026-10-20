@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::analysis::identify::magika_ident;
 use crate::core::common::hash::{HashAlgo, MultiHasher};
+use crate::core::evidence::image::ReadFaultReport;
 use crate::core::filesystem::tree::fs_tree;
 use crate::state::AppState;
 use {crate::app::access::loaded_image_app_error, crate::app::error::AppError};
@@ -24,6 +25,8 @@ pub struct FsDigest {
     pub sm3: Option<String>,
     pub bytes_hashed: u64,
     pub truncated: bool,
+    #[serde(flatten)]
+    pub read_faults: ReadFaultReport,
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
@@ -53,11 +56,15 @@ pub async fn fs_digest(
         };
         let mut hasher = MultiHasher::new(&algos);
         let mut session = fs_tree::FsSession::new(&image);
-        let bytes_hashed = session
-            .stream_file(&node_id, 1024 * 1024, |chunk| {
+        let (result, read_faults) = image.collect_read_faults(|| {
+            session.stream_file(&node_id, 1024 * 1024, |chunk| {
                 hasher.update(chunk);
                 Ok(())
             })
+        });
+        let bytes_hashed = result.map_err(AppError::from_anyhow)?;
+        image
+            .validate_source_file_stable()
             .map_err(AppError::from_anyhow)?;
 
         let out = hasher.finalize();
@@ -68,6 +75,7 @@ pub async fn fs_digest(
             sm3: out.sm3,
             bytes_hashed,
             truncated: false,
+            read_faults,
         })
     })
     .await

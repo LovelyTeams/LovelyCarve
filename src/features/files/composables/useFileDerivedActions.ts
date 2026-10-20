@@ -57,6 +57,11 @@ export function useFileDerivedActions(options: {
           cancelled = true;
           break;
         }
+        // The cache/persisted format stores bare digests, so publishing a
+        // synthetic-byte digest here would lose its forensic provenance.
+        if (d.read_faults_detected) {
+          throw new Error(tr("哈希包含 {0} 字节合成补零，未回填或保存结果", { 0: d.synthetic_bytes }));
+        }
         const merged: StoredDigest = { ...digestCache.get(f.id) };
         for (const a of missing) {
           if (d[a]) merged[a] = d[a];

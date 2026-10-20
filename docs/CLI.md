@@ -272,7 +272,14 @@ Markdown 原样写到标准输出，`--section <章节>` 只输出一个章节�
 - 删除类命令（`delete` 动词，以及 `images tags update`、`mounts delete` 等会丢弃数据的命令）
   在终端中先确认；没有人可以确认时必须加 `--force`（`-f`），否则显示问题和 `Aborted.` 并以 1 退出。
 - 写主机文件的命令（`--destination`）要求目标不存在，避免覆盖已有文件。
+  文件创建／发布时也检查重名，不依赖命令启动前的路径检查。单文件、命名数据流和 ZIP 导出先在目标目录暂存，写入失败时清理暂存文件，成功后才发布；失败的单文件导出可以直接重试。
+  `files directories export --mode tree` 要求目标目录不存在（已有空目录也拒绝），可自动创建父目录；不会合并到已有目录。取消或部分失败时保留已完成的文件，失败文件不保留半成品；重试请选择新的目标目录。
+  `--mode zip` 同样要求目标不存在；返回的 `skippedCount` / `truncated` 表示归档可能只含部分条目。
 - `taskId`、`searchId` 省略时自动生成；需要用 `tasks cancel <taskId>` 取消时可显式指定。
+
+`files hash` 采用容错并报告策略：摘要结果包含 `readFaultsDetected`、`syntheticBytes`、`badRegions`，字段名在桌面 IPC 中为 snake_case。检测到源坏区时仍返回摘要并以 0 退出；该摘要包含合成补零，不代表完整原文件，`truncated=false` 也不表示没有读故障。脚本应检查 `readFaultsDetected` 后再采信摘要。报告只覆盖本次操作命中的源盘绝对区间，不是文件逻辑偏移映射；格式定义的稀疏零区不算读故障。桌面会提示含补零的哈希，不将其回填或保存为普通摘要。
+
+`files read` 的字节流不能附带审计字段，因此发现读故障时返回 `readFaultsDetected` 错误并以 1 退出（包括 `--quiet` / `--text`）；stdout 可能已含部分或补零数据，必须丢弃。JSONL 返回 `error`，错误的 `details` 包含上述三个审计字段，不返回成功的字节结果；常驻会话在流的最终状态中返回同一错误，客户端以 1 退出。JSONL 的 `output` 不会为失败读取发布文件。需要保留容错数据及审计报告时使用 `files export`。
 
 ## 浏览检材
 

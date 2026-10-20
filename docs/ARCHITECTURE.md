@@ -355,10 +355,14 @@ E01、VMDK、VHD/VHDX、PMFX 等容错后端遇到源读取错误时，先沿绝
 失败调用已写入的字节不会直接采信，必须重读或明确补零。待重试范围按顺序处理，可读范围恢复整块读取，避免逐扇区
 重试整个剩余缓冲区造成二次方读取开销；压缩块无法解码时，该块内所有不可读扇区均会报告。补零的绝对源盘区间记录为
 `BadRegion`。`image_bad_regions` 返回当前镜像与活动案件中持久化的合并报告；源盘哈希、RAW 镜像导出、
-单文件导出、目录树导出和 ZIP 目录导出都会在成功结果中返回 `bad_regions`、`synthetic_bytes` 和
+单文件哈希、单文件导出、目录树导出和 ZIP 目录导出都会在成功结果中返回 `bad_regions`、`synthetic_bytes` 和
 `read_faults_detected`。文件/目录导出使用一次导出操作内的读故障收集作用域，报告的是该操作实际通过
 `DiskImage::read_range` 命中的源盘坏区；它用于审计导出结果是否包含合成零字节，不表示逐个输出文件的
 逻辑偏移到物理坏区映射。
+
+CLI `files read` 在单次、JSONL 与常驻会话中都拒绝把有读故障的字节流报告为成功：返回
+`readFaultsDetected` 错误，结构化错误的 details 保留本次操作的审计报告。单次 stdout 可能已经写出字节，
+消费者必须检查退出码并丢弃失败输出。文件摘要继续容错返回并附带同一报告；桌面不将含补零的摘要写入不带审计字段的缓存／存档。
 
 重组的 md 阵列与跨 PV 逻辑卷由组合读取器经 `from_assembled` 注册，成员的补零区间通过
 `SectorSource::read_traced` 逐层上传：`WholeDiskMember`、`LinearLvSource` 与各级别读取器

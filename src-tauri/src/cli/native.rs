@@ -511,10 +511,13 @@ async fn files_read(
             }
             let length = usize::try_from(length)
                 .map_err(|_| CliError::invalid("当前平台无法表示该读取长度"))?;
-            let bytes = crate::core::filesystem::tree::fs_tree::read_file_range(
-                &image, &node_id, offset, length,
-            )
-            .map_err(super::internal_error)?;
+            let (result, faults) = image.collect_read_faults(|| {
+                crate::core::filesystem::tree::fs_tree::read_file_range(
+                    &image, &node_id, offset, length,
+                )
+            });
+            let bytes = result.map_err(super::internal_error)?;
+            reject_read_faults(&faults)?;
             image
                 .validate_source_file_stable()
                 .map_err(super::internal_error)?;
@@ -547,12 +550,7 @@ async fn files_read(
                 format!("文件未完整读取：期望 {length} 字节，实际 {read} 字节"),
             ));
         }
-        if faults.read_faults_detected {
-            tracing::warn!(
-                "files read: {} synthetic bytes from bad regions",
-                faults.synthetic_bytes
-            );
-        }
+        reject_read_faults(&faults)?;
         image
             .validate_source_file_stable()
             .map_err(super::internal_error)?;
@@ -560,6 +558,25 @@ async fn files_read(
     })
     .await
     .map_err(super::internal_error)?
+}
+
+/// Raw byte outputs cannot carry provenance. JSONL and resident streams use
+/// the same error and attach the operation-scoped report as structured details.
+fn reject_read_faults(
+    faults: &crate::core::evidence::image::ReadFaultReport,
+) -> Result<(), CliError> {
+    if faults.read_faults_detected {
+        let mut error = CliError::new(
+            "readFaultsDetected",
+            format!(
+                "读取包含 {} 字节合成补零；输出不可作为完整源数据",
+                faults.synthetic_bytes
+            ),
+        );
+        error.details = Some(serde_json::to_value(super::wire::Camel(faults))?);
+        return Err(error);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

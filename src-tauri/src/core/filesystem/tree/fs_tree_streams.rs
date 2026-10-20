@@ -5,8 +5,9 @@
 //! out of the broad `fs_tree` dispatcher while preserving the public
 //! `fs_tree::...` re-export used by existing callers.
 
-use std::{fs::File, io::Write, path::Path, sync::Arc};
+use std::{io::Write, path::Path, sync::Arc};
 
+use crate::core::common::export::write_new;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree::open_ntfs_for_source;
 use crate::core::filesystem::volumes::ntfs::{parse_ntfs_id, NtfsDataStream};
@@ -67,28 +68,30 @@ pub fn export_named_stream(
         anyhow::bail!("named-stream API requires a non-empty stream name");
     }
     if let Some((source, path)) = parse_refs_id(node_id) {
-        let mut file = File::create(destination)?;
-        return open_refs_source(image, source)?.stream_named_stream(
-            &path,
+        return write_new(destination, |file| {
+            open_refs_source(image, source)?.stream_named_stream(
+                &path,
+                stream_name,
+                1024 * 1024,
+                |chunk| {
+                    file.write_all(chunk)?;
+                    Ok(())
+                },
+            )
+        });
+    }
+    let (source, record) = parse_ntfs_id(node_id).ok_or_else(|| {
+        anyhow::anyhow!("alternate data streams are only supported on NTFS and ReFS")
+    })?;
+    write_new(destination, |file| {
+        open_ntfs_for_source(image, source)?.stream_data_stream(
+            record,
             stream_name,
             1024 * 1024,
             |chunk| {
                 file.write_all(chunk)?;
                 Ok(())
             },
-        );
-    }
-    let (source, record) = parse_ntfs_id(node_id).ok_or_else(|| {
-        anyhow::anyhow!("alternate data streams are only supported on NTFS and ReFS")
-    })?;
-    let mut file = File::create(destination)?;
-    open_ntfs_for_source(image, source)?.stream_data_stream(
-        record,
-        stream_name,
-        1024 * 1024,
-        |chunk| {
-            file.write_all(chunk)?;
-            Ok(())
-        },
-    )
+        )
+    })
 }

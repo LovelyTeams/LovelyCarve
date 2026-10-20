@@ -955,6 +955,7 @@
   "哈希计算已取消": "Hash calculation cancelled",
   "哈希计算完成（部分失败）": "Hash calculation complete (some failed)",
   "哈希计算完成": "Hash calculation complete",
+  "哈希包含 {0} 字节合成补零，未回填或保存结果": "Hash contains {0} synthetic zero-filled bytes; results were not displayed or saved",
   "{0} · 结果已回填 {1} 列": "{0} · Results filled into the {1} column",
   "识别文件类型中…（{0} 个）": "Identifying file types… ({0} files)",
   "未识别 {0}": "{0} not identified",
