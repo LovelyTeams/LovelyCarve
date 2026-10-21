@@ -615,6 +615,15 @@ impl VolumeProbe for CdfsProbe {
     }
 
     fn probe(&self, ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeHit>> {
+        if crate::core::evidence::readers::optical_disc::Mode1Layout::probe(ctx.source)?.is_some() {
+            return Ok(Some(VolumeProbeHit::new(
+                self.name(),
+                PartitionKind::Cdfs,
+                100,
+                0,
+                "MODE1/2352 raw CD with validated ISO 9660 primary descriptor",
+            )));
+        }
         if ctx.size < CDFS_FIRST_VOLUME_DESCRIPTOR + 7 {
             return Ok(None);
         }

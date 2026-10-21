@@ -14,12 +14,14 @@
 use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, ensure, Context, Result};
 use cdfs::{DirectoryEntry, ExtraAttributes, ISO9660};
 use time::format_description::well_known::Rfc3339;
 
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{DiskImage, Partition};
+use crate::core::evidence::partitions::PartitionSlice;
+use crate::core::evidence::readers::optical_disc::Mode1Layout;
 use crate::core::filesystem::tree::fs_tree::{
     detect_mime_bytes, shannon_entropy, FsDataRun, FsNode, FsStat, Mactb, NodeKind,
 };
@@ -65,16 +67,37 @@ pub struct CdfsVolume {
     partition_id: u8,
     base_offset: u64,
     length_bytes: u64,
+    raw_layout: Option<Mode1Layout>,
 }
 
 impl CdfsVolume {
     pub fn open(image: Arc<DiskImage>, partition: &Partition) -> Result<Self> {
         let sector_size = image.sector_size as u64;
+        let base_offset = partition
+            .start_lba
+            .checked_mul(sector_size)
+            .context("CDFS base offset overflow")?;
+        let physical_length = partition
+            .length_lba
+            .checked_mul(sector_size)
+            .context("CDFS partition length overflow")?;
+        ensure!(
+            base_offset
+                .checked_add(physical_length)
+                .is_some_and(|end| end <= image.len()),
+            "CDFS partition exceeds source"
+        );
+        let raw_layout = Mode1Layout::probe(&PartitionSlice::new(
+            image.as_ref(),
+            base_offset,
+            physical_length,
+        ))?;
         let volume = Self {
             image,
             partition_id: partition.id,
-            base_offset: partition.start_lba * sector_size,
-            length_bytes: partition.length_lba * sector_size,
+            base_offset,
+            length_bytes: raw_layout.map_or(physical_length, Mode1Layout::logical_length),
+            raw_layout,
         };
         volume.with_iso(|_| Ok(()))?;
         Ok(volume)
@@ -190,6 +213,10 @@ impl CdfsVolume {
                         visitor(&buf[..read])?;
                         total += read as u64;
                     }
+                    ensure!(
+                        total == u64::from(file.size()),
+                        "CDFS stream {owned} ended before its logical length"
+                    );
                     Ok(total)
                 }
                 DirectoryEntry::Symlink(link) => {
@@ -270,6 +297,43 @@ impl CdfsVolume {
         })
     }
 
+    pub fn read_file_range(&self, path: &str, offset: u64, length: usize) -> Result<Vec<u8>> {
+        ensure!(!path.is_empty(), "cannot read CDFS volume root as a file");
+        self.with_iso(|iso| {
+            let entry = iso
+                .open(path)
+                .map_err(|error| anyhow!("CDFS open {path}: {error}"))?
+                .ok_or_else(|| anyhow!("CDFS entry not found: {path}"))?;
+            match entry {
+                DirectoryEntry::File(file) => {
+                    let count =
+                        (length as u64).min(u64::from(file.size()).saturating_sub(offset)) as usize;
+                    if count == 0 {
+                        return Ok(Vec::new());
+                    }
+                    let mut reader = file.read();
+                    reader.seek(SeekFrom::Start(offset))?;
+                    let mut bytes = Vec::with_capacity(count);
+                    read_into_vec(&mut reader, &mut bytes, count, path)?;
+                    Ok(bytes)
+                }
+                DirectoryEntry::Symlink(link) => {
+                    let bytes = link
+                        .target()
+                        .map(String::as_str)
+                        .unwrap_or_default()
+                        .as_bytes();
+                    let start = offset.min(bytes.len() as u64) as usize;
+                    let end = start.saturating_add(length).min(bytes.len());
+                    Ok(bytes[start..end].to_vec())
+                }
+                DirectoryEntry::Directory(_) => {
+                    anyhow::bail!("CDFS entry {path} is not a regular file")
+                }
+            }
+        })
+    }
+
     fn node_id(&self, path: &str) -> String {
         if path.is_empty() {
             format!("part:{}", self.partition_id)
@@ -288,6 +352,7 @@ impl CdfsVolume {
             base_offset: self.base_offset,
             length_bytes: self.length_bytes,
             position: 0,
+            raw_layout: self.raw_layout,
         };
         let iso = ISO9660::new(cursor)
             .map_err(|err| anyhow!("CDFS open partition {}: {err}", self.partition_id))?;
@@ -308,7 +373,7 @@ fn read_into_vec(
             .read(&mut buf[..want])
             .map_err(|err| anyhow!("CDFS read {path}: {err}"))?;
         if read == 0 {
-            break;
+            anyhow::bail!("CDFS read {path} ended before its logical length");
         }
         out.extend_from_slice(&buf[..read]);
     }
@@ -364,19 +429,46 @@ struct PartitionCursor {
     base_offset: u64,
     length_bytes: u64,
     position: u64,
+    raw_layout: Option<Mode1Layout>,
 }
 
 impl Read for PartitionCursor {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.position >= self.length_bytes || buf.is_empty() {
+        if buf.is_empty() {
             return Ok(0);
         }
-        let remaining = self.length_bytes - self.position;
-        let want = (buf.len() as u64).min(remaining) as usize;
-        let bytes = self
-            .image
-            .read_range(self.base_offset + self.position, want)
-            .map_err(|err| io::Error::other(err.to_string()))?;
+        // cdfs's block reader requires a complete logical block. Reject EOF
+        // here so it cannot reuse uninitialised/stale bytes after a short read.
+        if self
+            .position
+            .checked_add(buf.len() as u64)
+            .is_none_or(|end| end > self.length_bytes)
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "CDFS logical block exceeds volume",
+            ));
+        }
+        let bytes = if let Some(layout) = self.raw_layout {
+            let source = PartitionSlice::new(
+                self.image.as_ref(),
+                self.base_offset,
+                layout.physical_length(),
+            );
+            layout.read(&source, self.position, buf.len())
+        } else {
+            self.base_offset
+                .checked_add(self.position)
+                .context("CDFS read offset overflow")
+                .and_then(|offset| self.image.read_range(offset, buf.len()))
+        }
+        .map_err(|err| io::Error::other(err.to_string()))?;
+        if bytes.len() != buf.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "CDFS source short read",
+            ));
+        }
         let copied = bytes.len();
         buf[..copied].copy_from_slice(&bytes);
         self.position += copied as u64;
@@ -391,13 +483,12 @@ impl Seek for PartitionCursor {
             SeekFrom::Current(delta) => self.position as i128 + delta as i128,
             SeekFrom::End(delta) => self.length_bytes as i128 + delta as i128,
         };
-        if target < 0 {
-            return Err(io::Error::new(
+        self.position = u64::try_from(target).map_err(|_| {
+            io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "CDFS cursor seek before start",
-            ));
-        }
-        self.position = target as u64;
+                "CDFS seek outside address space",
+            )
+        })?;
         Ok(self.position)
     }
 }

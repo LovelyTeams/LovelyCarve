@@ -286,6 +286,15 @@ impl DiskImage {
                         | ImageSource::Assembled { .. }
                         | ImageSource::Ldplayer { .. }
                 );
+                if sector_size == 512
+                    && can_infer_geometry
+                    && crate::core::evidence::readers::optical_disc::Mode1Layout::probe(
+                        &probe_source,
+                    )?
+                    .is_some()
+                {
+                    sector_size = crate::core::evidence::readers::optical_disc::RAW_SECTOR_BYTES;
+                }
                 if sector_size == 512 && can_infer_geometry {
                     let inferred = partitions::gpt::infer_sector_size(&probe_source, sector_size)?;
                     if inferred != sector_size {

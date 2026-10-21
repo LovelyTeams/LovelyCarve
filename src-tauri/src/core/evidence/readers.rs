@@ -10,6 +10,7 @@ pub mod folder_image;
 pub mod ldplayer_image;
 pub(crate) mod load_reader;
 pub mod mi_bak;
+pub mod optical_disc;
 pub mod pmfx;
 pub mod sevenz_image;
 pub mod tar_image;

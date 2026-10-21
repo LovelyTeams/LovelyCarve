@@ -353,6 +353,10 @@ lovelycarve-cli --image "D:\evidence\disk.E01" files tree list --path /part:0/Us
 | `files search <模式> [路径]` | 在子树内容中搜索关键词或正则 |
 | `files export <路径> --destination <主机路径>` | 导出单个文件；目录用 `files directories export --mode tree\|zip` |
 
+原始光盘 `MODE1/2352` BIN 可直接用 `--image <镜像路径>` 或 `images open` 加载，
+无需转换为 ISO。文件树中的 CDFS 卷支持 Joliet 名称、范围读取、哈希及导出；
+镜像哈希和源导出仍使用包含扇区头与校验区的原始字节。参见 [光盘格式说明](formats/CDFS.md)。
+
 UBI 镜像及小米 HDR1 固件通过 `--image <镜像路径>` 或 `images open` 加载。
 用 `files list --parent-id part:0` 查看命名卷：`<卷名>.img` 提供原始逻辑字节，
 SquashFS 同名目录中的文件复用 `files read`、`files hash` 与 `files export`。

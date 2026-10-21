@@ -28,6 +28,7 @@ pub mod luks;
 pub mod lvm2;
 pub mod mbr;
 pub mod mdadm;
+pub mod optical_disc;
 pub mod squashfs;
 pub mod ufs;
 pub mod volume_probe;
@@ -48,6 +49,7 @@ use luks::LuksParser;
 use lvm2::Lvm2Parser;
 use mbr::MbrParser;
 use mdadm::MdadmParser;
+use optical_disc::OpticalDiscParser;
 use volume_probe::{detect_filesystem_bytes, probe_volume, WholeVolumeParser};
 use xiaomi_firmware::XiaomiFirmwareParser;
 
@@ -216,6 +218,7 @@ static PARSERS: &[&dyn PartParser] = &[
     &LuksParser,
     &MdadmParser,
     &XiaomiFirmwareParser,
+    &OpticalDiscParser,
     &GptParser,
     &ApmParser,
     &BsdParser,
@@ -543,6 +546,7 @@ mod tests {
                 "luks",
                 "mdadm",
                 "xiaomi_firmware",
+                "optical_disc",
                 "gpt",
                 "apm",
                 "bsd",

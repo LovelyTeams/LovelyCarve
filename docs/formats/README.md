@@ -8,6 +8,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 
 | 格式 | 文档 | 要点 |
 | --- | --- | --- |
+| ISO 9660 / 光盘 BIN | [CDFS.md](CDFS.md) | ISO / Joliet / Rock Ridge；MODE1/2352 原始扇区投影、源字节保留与跨扇区范围读取 |
 | UBI / HDR1 固件 | [UBI.md](UBI.md) | rust_ubidump 只读库；小米扩展分段表、UBI 逻辑块重组、原始卷读取与内嵌 SquashFS 浏览 |
 | NTFS | [NTFS.md](NTFS.md) | libfsntfs 对照；MFT 与属性链、LZNT1 / WOF 压缩、命名流、硬链接、重解析点、安全描述符、独立 `$MFT`、USN 日志 |
 | ext2/3/4 | [EXT.md](EXT.md) | libfsext 对照；内联数据、EA-inode、旧式目录、`meta_bg`、全部间接块层级、带符号与纳秒时间戳 |
@@ -33,7 +34,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | 小米备份 | [MIUI_BAK.md](MIUI_BAK.md) | ZIP / 目录内 `.bak` 自动展开；Android Backup 头、TAR 与压缩流 |
 | Android 备份 | [ANDROID_BACKUP.md](ANDROID_BACKUP.md) | `.ab` 1–5 与小米 `.bak` 独立打开；原始容器字节与逻辑文件树分离 |
 
-其余格式（Btrfs、ZFS、UFS、SquashFS、ISO 9660，以及 EWF、VMDK、VHD / VHDX、VDI、DMG、AD1 等镜像容器）的实现位置见 [架构说明的镜像与证据源](../ARCHITECTURE.md#镜像与证据源)，上游版本、本地补丁与测试样本记录在各 vendor 目录的 `LOVELYCARVE.md` / `ORIGIN.md` 中。命令行下的镜像打开、解锁和导出示例见 [CLI 手册](../CLI.md)。
+其余格式（Btrfs、ZFS、UFS、SquashFS，以及 EWF、VMDK、VHD / VHDX、VDI、DMG、AD1 等镜像容器）的实现位置见 [架构说明的镜像与证据源](../ARCHITECTURE.md#镜像与证据源)，上游版本、本地补丁与测试样本记录在各 vendor 目录的 `LOVELYCARVE.md` / `ORIGIN.md` 中。命令行下的镜像打开、解锁和导出示例见 [CLI 手册](../CLI.md)。
 
 ## 维护要求
 

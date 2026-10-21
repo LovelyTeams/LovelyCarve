@@ -338,7 +338,7 @@ path_volume!(
     parse_cdfs_id,
     open_cdfs_source
 );
-path_volume_impl!(CdfsVol, plain);
+path_volume_impl!(CdfsVol, plain_range);
 path_volume!(
     SquashfsAdapter,
     SquashfsVol,
