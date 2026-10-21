@@ -23,6 +23,7 @@ from cli_timezone_tests import test_timezones
 from cli_integrity_tests import test_integrity
 from cli_agent_tests import test_agent_output
 from cli_navigation_tests import test_navigation
+from cli_optical_tests import test_optical_discs
 
 
 def documents(text):
@@ -969,6 +970,7 @@ context get
     test_observability(executable, environment)
     test_timezones(executable, environment)
     test_integrity(executable, environment)
+    test_optical_discs(executable, environment)
     print("CLI smoke tests passed: discovery, dry run, JSONL, browsing, binary read, hash, preview cleanup, export, errors, carving, search, timeline, case lifecycle, windowless startup and interrupt")
 
 

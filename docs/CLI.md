@@ -353,9 +353,11 @@ lovelycarve-cli --image "D:\evidence\disk.E01" files tree list --path /part:0/Us
 | `files search <模式> [路径]` | 在子树内容中搜索关键词或正则 |
 | `files export <路径> --destination <主机路径>` | 导出单个文件；目录用 `files directories export --mode tree\|zip` |
 
-原始光盘 `MODE1/2352` BIN 可直接用 `--image <镜像路径>` 或 `images open` 加载，
-无需转换为 ISO。文件树中的 CDFS 卷支持 Joliet 名称、范围读取、哈希及导出；
-镜像哈希和源导出仍使用包含扇区头与校验区的原始字节。参见 [光盘格式说明](formats/CDFS.md)。
+光盘 ISO、Mode 1 / XA Form 1 的 2352 字节 BIN 和 CUE 可用 `--image <镜像路径>` 或
+`images open` 加载。多轨/多数据文件选择 `.cue`；`images get` 的 `opticalDisc` 返回
+轨道、会话、INDEX、物理宽度与来源范围。CDFS 文件支持 Joliet、范围读、哈希及导出。
+CUE 的镜像哈希/RAW 导出是 FILE 顺序的完整原始字节拼接，不含 CUE 文本、不合成未存储
+间隙；保存解释所需的 CUE 与文件边界。参见 [光盘格式说明](formats/CDFS.md)。
 
 UBI 镜像及小米 HDR1 固件通过 `--image <镜像路径>` 或 `images open` 加载。
 用 `files list --parent-id part:0` 查看命名卷：`<卷名>.img` 提供原始逻辑字节，

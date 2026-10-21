@@ -56,6 +56,7 @@ export const DISK_IMAGE_EXTENSIONS = [
   'bin',
   'ubi',
   'iso',
+  'cue',
   'e01',
   'ewf',
   'ad1',

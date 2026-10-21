@@ -37,6 +37,11 @@ impl ImageSource {
             });
         }
 
+        if lower_extension(path).as_deref() == Some("cue") {
+            let image = crate::core::evidence::readers::cue::CueImage::open(path, cancel)?;
+            return Ok(Self::Cue { image });
+        }
+
         // Raw block devices (Windows `\\.\PhysicalDriveN`, Linux `/dev/sdX`)
         // need positioned reads against an open handle — mmap doesn't work
         // on Windows physical drives and is unreliable on Linux block

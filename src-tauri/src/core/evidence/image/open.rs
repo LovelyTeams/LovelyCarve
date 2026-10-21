@@ -177,6 +177,16 @@ impl DiskImage {
         // detection and surface the appropriate merged-view through
         // `core::filesystem::tree::fs_tree` instead.
         let (partitions, docker, folder, tar, zip, sevenz, table_scheme, disk_id) = match &source {
+            ImageSource::Cue { image } => (
+                image.partitions(cancel)?,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
             ImageSource::Raw {
                 mmap,
                 format: ImageFormat::AndroidBackup,
@@ -280,6 +290,7 @@ impl DiskImage {
                 let can_infer_geometry = matches!(
                     &source,
                     ImageSource::Raw { .. }
+                        | ImageSource::SplitRaw { .. }
                         | ImageSource::Dmg { .. }
                         | ImageSource::Vmdk { .. }
                         | ImageSource::Qcow2 { .. }
@@ -288,7 +299,7 @@ impl DiskImage {
                 );
                 if sector_size == 512
                     && can_infer_geometry
-                    && crate::core::evidence::readers::optical_disc::Mode1Layout::probe(
+                    && crate::core::evidence::readers::optical_disc::DataTrackLayout::probe(
                         &probe_source,
                     )?
                     .is_some()

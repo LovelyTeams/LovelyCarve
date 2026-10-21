@@ -113,8 +113,13 @@ export function evidenceFacts(info: ImageInfo | null, tr: Translator = sourceTex
   if (!info) return [];
   const rows: InfoRow[] = [
     { label: tr("逻辑大小"), value: tr("{0} 字节", { 0: info.size_bytes.toLocaleString() }), mono: true },
-    { label: ['xiaomi_firmware', 'android_backup'].includes(info.source_format) ? tr("寻址单位") : tr("扇区大小"), value: `${info.sector_size} B`, mono: true },
+    { label: info.optical_disc || ['xiaomi_firmware', 'android_backup'].includes(info.source_format) ? tr("寻址单位") : tr("扇区大小"), value: `${info.sector_size} B`, mono: true },
   ];
+  if (info.optical_disc) {
+    rows.push({ label: tr("光盘会话数"), value: String(new Set(info.optical_disc.tracks.map(track => track.session)).size), mono: true });
+    rows.push({ label: tr("光盘轨道数"), value: String(info.optical_disc.tracks.length), mono: true });
+    rows.push({ label: tr("光盘数据文件数"), value: String(info.optical_disc.files.length), mono: true });
+  }
   if (info.source_format === 'assembled') rows.push({ label: tr("重组镜像标识"), value: info.path, mono: true, copyable: true });
   if (info.disk_id) rows.push({ label: tr("磁盘标识"), value: info.disk_id, mono: true, copyable: true });
   const shadow = info.shadow_copy;

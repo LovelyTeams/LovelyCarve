@@ -10,6 +10,19 @@ const info: ImageInfo = { id: 'a', path: 'a', source_format: 'raw', size_bytes: 
 ] };
 
 describe('evidence overview projections', () => {
+  it('shows CUE addressing and session counts without claiming one-byte physical sectors', () => {
+    const optical = { ...info, sector_size: 1, optical_disc: {
+      files: ['track.bin', 'data.iso'], lead_outs: [],
+      tracks: [1, 2, 2].map((session, number) => ({ number: number + 1, session, mode: 'AUDIO', file_index: 0, sector_bytes: 2352, indexes: [], pregap_sectors: 0, postgap_sectors: 0, run_out_sector: null, source_offset: 0, source_length: 2352 })),
+    } };
+    expect(evidenceFacts(optical)).toEqual([
+      { label: '逻辑大小', value: '1,000 字节', mono: true },
+      { label: '寻址单位', value: '1 B', mono: true },
+      { label: '光盘会话数', value: '2', mono: true },
+      { label: '光盘轨道数', value: '3', mono: true },
+      { label: '光盘数据文件数', value: '2', mono: true },
+    ]);
+  });
   it('shows local acquisition dates without shifting them and keeps raw dates in the disclosure', () => {
     const evidence = { ...info, ewf: {
       acquiry_date: '2026 9 21 9 13 5',

@@ -3,6 +3,7 @@
 #[cfg(test)]
 pub(in crate::core) mod ad1_evidence_tests;
 pub mod ad1_image;
+pub mod cue;
 pub mod docker_image;
 pub(in crate::core) mod docker_manifest;
 pub mod ewf_image;

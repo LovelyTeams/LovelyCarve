@@ -3,7 +3,7 @@
 use anyhow::Result;
 
 use super::{DetectCtx, PartParser, Partition, PartitionKind};
-use crate::core::evidence::readers::optical_disc::{Mode1Layout, RAW_SECTOR_BYTES};
+use crate::core::evidence::readers::optical_disc::{DataTrackLayout, RAW_SECTOR_BYTES};
 
 pub struct OpticalDiscParser;
 
@@ -16,7 +16,7 @@ impl PartParser for OpticalDiscParser {
         if ctx.sector_size != RAW_SECTOR_BYTES {
             return Ok(None);
         }
-        Ok(Mode1Layout::probe(ctx.source)?.map(|layout| {
+        Ok(DataTrackLayout::probe(ctx.source)?.map(|layout| {
             vec![Partition {
                 id: 0,
                 kind: PartitionKind::Cdfs,

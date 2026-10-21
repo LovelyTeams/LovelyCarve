@@ -38,6 +38,14 @@ beforeEach(() => {
 });
 
 describe('useFileSession disk image extension handling', () => {
+  it.each(['disc.cue', 'DISC.CUE'])('loads CUE %s through image_load', async fileName => {
+    listenMock.mockResolvedValue(vi.fn());
+    invokeMock.mockResolvedValue({ id: 'disc', source_format: 'raw', partitions: [], optical_disc: { files: [], tracks: [], lead_outs: [] } });
+    const session = useFileSession();
+    expect(await session.openByPath(fileName)).toMatchObject({ opened: true, mode: 'image', imageId: 'disc' });
+    expect(invokeMock).toHaveBeenCalledWith('image_load', expect.objectContaining({ path: fileName }));
+    expect(session.imageInfo.value?.optical_disc?.tracks).toEqual([]);
+  });
   it.each(['phone.ab', 'app.bak'])('loads Android backup %s through image_load', async fileName => {
     listenMock.mockResolvedValue(vi.fn());
     invokeMock.mockResolvedValue({ id: 'phone', source_format: 'android_backup', partitions: [] });

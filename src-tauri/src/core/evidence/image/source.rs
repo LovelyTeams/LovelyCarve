@@ -16,6 +16,9 @@ pub(super) enum ImageSource {
     SplitRaw {
         reader: smraw::RawImage,
     },
+    Cue {
+        image: crate::core::evidence::readers::cue::CueImage,
+    },
     Ewf {
         // parking_lot's eventual-fairness lock: under sustained contention
         // (e.g. a long fs_digest hashing loop racing fs_children), it
@@ -145,6 +148,7 @@ pub(super) enum ImageSource {
 impl std::fmt::Debug for ImageSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Cue { image } => f.debug_struct("Cue").field("info", &image.info).finish(),
             Self::Indexed { format, size_bytes } => f
                 .debug_struct("Indexed")
                 .field("format", format)
@@ -279,7 +283,7 @@ impl ImageSource {
         match self {
             Self::Indexed { format, .. } => *format,
             Self::Raw { format, .. } => *format,
-            Self::SplitRaw { .. } => ImageFormat::Raw,
+            Self::SplitRaw { .. } | Self::Cue { .. } => ImageFormat::Raw,
             Self::Ewf { .. } => ImageFormat::Ewf,
             Self::Vmdk { .. } => ImageFormat::Vmdk,
             Self::Qcow2 { .. } => ImageFormat::Qcow2,
@@ -305,6 +309,7 @@ impl ImageSource {
             Self::Indexed { size_bytes, .. } => *size_bytes,
             Self::Raw { size_bytes, .. } => *size_bytes,
             Self::SplitRaw { reader } => reader.media_size(),
+            Self::Cue { image } => image.reader.media_size(),
             Self::Ewf { size_bytes, .. } => *size_bytes,
             Self::Vmdk { size_bytes, .. } => *size_bytes,
             Self::Qcow2 { size_bytes, .. } => *size_bytes,
@@ -340,6 +345,7 @@ impl ImageSource {
             Self::Indexed { .. }
             | Self::Raw { .. }
             | Self::SplitRaw { .. }
+            | Self::Cue { .. }
 
             | Self::Dmg { .. }
             | Self::Assembled { .. }
@@ -363,6 +369,8 @@ impl ImageSource {
 
     pub(super) fn sector_size(&self) -> usize {
         match self {
+            // Mixed physical track widths use byte-addressed partition spans.
+            Self::Cue { .. } => 1,
             Self::Phdi { reader } => reader.sector_size() as usize,
             Self::VhdFamily { sector_size, .. }
             | Self::Pmfx { sector_size, .. }
@@ -414,6 +422,11 @@ impl ImageSource {
             }
             Self::SplitRaw { reader } => {
                 let filled = reader.read_at(start, dst)?;
+                Ok((filled, Vec::new()))
+            }
+            Self::Cue { image } => {
+                let filled = image.reader.read_at(start, dst)?;
+                anyhow::ensure!(filled == dst.len(), "CUE source short read");
                 Ok((filled, Vec::new()))
             }
             Self::Phdi { reader } => {
@@ -543,6 +556,7 @@ impl ImageSource {
                 buffer.truncate(filled);
                 Ok((buffer, Vec::new()))
             }
+            Self::Cue { image } => Ok((image.read(start, available)?, Vec::new())),
             Self::Dmg { mmap, .. } => {
                 let start = usize::try_from(start)
                     .context("image offset does not fit in memory address space")?;
@@ -722,6 +736,9 @@ pub(super) fn source_file_meta(
                 ImageSource::Vmdk { reader, .. } => reader.lock().files_on_disk_bytes(),
                 ImageSource::Ad1 { image } => Some(image.outer_len()),
                 ImageSource::SplitRaw { reader } => Some(reader.media_size()),
+                ImageSource::Cue { image } => {
+                    image.reader.media_size().checked_add(image.descriptor.len)
+                }
                 ImageSource::Folder { .. } => None,
                 _ => Some(meta.len()),
             };

@@ -29,7 +29,7 @@ fn record(name: &[u8], extent: u32, length: u32, directory: bool) -> Vec<u8> {
     bytes
 }
 
-fn fixture() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+pub(crate) fn fixture() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     let content: Vec<u8> = (0..7001)
         .map(|index| (index * 31 + index / 47) as u8)
         .collect();
@@ -96,7 +96,7 @@ fn fixture() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
 fn raw_cd_mode1_projects_only_data_and_retains_eof_semantics() {
     let (raw, iso, _) = fixture();
     let source = BufSource(raw);
-    let layout = Mode1Layout::probe(&source).unwrap().unwrap();
+    let layout = DataTrackLayout::probe(&source).unwrap().unwrap();
     assert_eq!(layout.logical_length(), iso.len() as u64);
     for (offset, count) in [
         (0, 0),
@@ -115,7 +115,7 @@ fn raw_cd_mode1_projects_only_data_and_retains_eof_semantics() {
         .read(&source, u64::MAX, usize::MAX)
         .unwrap()
         .is_empty());
-    assert!(Mode1Layout::probe(&BufSource(iso)).unwrap().is_none());
+    assert!(DataTrackLayout::probe(&BufSource(iso)).unwrap().is_none());
 }
 
 #[test]
@@ -176,13 +176,13 @@ fn raw_cd_mode1_reads_joliet_files_and_preserves_source_bytes() {
 fn raw_cd_mode1_rejects_truncated_geometry_and_corrupt_headers() {
     let (mut raw, _, _) = fixture();
     raw.pop();
-    assert!(Mode1Layout::probe(&BufSource(raw)).is_err());
+    assert!(DataTrackLayout::probe(&BufSource(raw)).is_err());
     let (mut raw, _, _) = fixture();
     raw[16 * RAW_SECTOR_BYTES + 16 + 84] ^= 1;
-    assert!(Mode1Layout::probe(&BufSource(raw)).is_err());
+    assert!(DataTrackLayout::probe(&BufSource(raw)).is_err());
     let (mut raw, _, _) = fixture();
     let source = BufSource(raw.clone());
-    let layout = Mode1Layout::probe(&source).unwrap().unwrap();
+    let layout = DataTrackLayout::probe(&source).unwrap().unwrap();
     raw[25 * RAW_SECTOR_BYTES] = 42;
     assert!(layout
         .read(&BufSource(raw), 25 * DATA_BYTES as u64, 10)
@@ -256,7 +256,7 @@ fn raw_cd_mode1_real_image_lists_and_reads_files() {
 fn raw_cd_mode1_rejects_declared_volume_overflow_and_source_short_reads() {
     let (mut raw, _, _) = fixture();
     both32(&mut raw, 16 * RAW_SECTOR_BYTES + 16 + 80, 41);
-    assert!(Mode1Layout::probe(&BufSource(raw)).is_err());
+    assert!(DataTrackLayout::probe(&BufSource(raw)).is_err());
     struct Short(BufSource);
     impl SectorSource for Short {
         fn size(&self) -> u64 {
@@ -269,7 +269,7 @@ fn raw_cd_mode1_rejects_declared_volume_overflow_and_source_short_reads() {
     let (mut raw, _, _) = fixture();
     raw.pop();
     let short = Short(BufSource(raw));
-    let layout = Mode1Layout::probe(&short).unwrap().unwrap();
+    let layout = DataTrackLayout::probe(&short).unwrap().unwrap();
     assert!(layout.read(&short, 39 * DATA_BYTES as u64, 1).is_err());
 }
 

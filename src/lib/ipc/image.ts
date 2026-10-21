@@ -77,6 +77,26 @@ export interface ImageInfo {
   /** 卷影副本会话镜像的来源；其他镜像为 null 或缺省。 */
   shadow_copy?: ShadowCopyOrigin | null;
   ios_backup?: IosBackupInfo | null;
+  optical_disc?: CueInfo | null;
+}
+
+/** CUE file positions are physical bytes; indexes are relative to each FILE. */
+export interface CueInfo {
+  files: string[];
+  tracks: {
+    number: number;
+    session: number;
+    mode: string;
+    file_index: number;
+    sector_bytes: number;
+    indexes: { number: number; file_sector: number }[];
+    pregap_sectors: number;
+    postgap_sectors: number;
+    run_out_sector: number | null;
+    source_offset: number;
+    source_length: number;
+  }[];
+  lead_outs: { session: number; file_index: number; file_sector: number }[];
 }
 
 export interface IosBackupInfo {

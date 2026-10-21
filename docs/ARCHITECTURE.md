@@ -190,7 +190,7 @@ RAID 检测（`evidence/raid`）分六步：读取各检材的 LVM PV 并物化�
 
 | 类型 | 后端路径 | 说明 |
 | --- | --- | --- |
-| RAW / DD / IMG / ISO | `core::evidence::image` + `vendor/smraw` | 单文件 mmap，分段 RAW 纯 Rust positioned I/O 与所有段稳定性检查；ISO 与 MODE1/2352 光盘 BIN 由 CDFS 探针识别，文件系统单独投影 2048 字节逻辑数据，原始字节保持不变；见 [SMRAW](formats/SMRAW.md) 与 [CDFS](formats/CDFS.md) |
+| RAW / DD / IMG / ISO / CUE | `core::evidence::image` + `vendor/smraw` + `readers::cue` | 单文件 mmap、分段 RAW positioned I/O；CUE 多文件/多轨保持原始字节，轨道用字节跨度寻址；Mode 1 / XA Form 1 单独投影 2048 字节文件系统数据；CUE 与所有成员进入稳定性及指纹，见 [SMRAW](formats/SMRAW.md) 与 [CDFS](formats/CDFS.md) |
 | E01 / Ex01 | `core::evidence::readers::ewf_image` → vendored `ewf` (SecurityRonin/ewf-forensic) | 纯 Rust、多分卷、随机读取、v1 延迟块索引；无需 libewf DLL |
 | VMDK | `core::evidence::readers::vmdk_image` + `vendor/vmdk` | vmdk-forensic 的纯 Rust flat / sparse / streamOptimized 读取；分卷与父盘源变化检测 |
 | QCOW / QCOW2 | vendored `qcow2` | v1/2/3 稀疏/DEFLATE 虚拟盘、RAW/QCOW backing chains；legacy AES 通过 image_load 可选凭据打开，能力与边界见 [QCOW](formats/QCOW.md) |

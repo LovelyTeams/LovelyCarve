@@ -173,7 +173,7 @@ const { mountTarget, mountFolderRoot } = useUiPreferences();
 
 const isFirmwareContainer = computed(() => props.info?.source_format === 'xiaomi_firmware');
 /** 分区起点的单位：固件段按字节寻址。 */
-const addressUnit = computed(() => (isFirmwareContainer.value ? tr("字节") : tr("扇区")));
+const addressUnit = computed(() => (isFirmwareContainer.value || props.info?.optical_disc ? tr("字节") : tr("扇区")));
 
 /** 逻辑证据没有块设备层，不会有加密容器或卷影副本。 */
 const canUnlockContainer = computed(() => props.canUnlockContainer);

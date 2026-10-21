@@ -2,6 +2,17 @@
 use super::*;
 
 impl DiskImage {
+    pub(crate) fn optical_track_sector_size(&self, partition_id: u8) -> Option<usize> {
+        match &self.source {
+            ImageSource::Cue { image } => image
+                .info
+                .tracks
+                .get(usize::from(partition_id))
+                .map(|track| track.sector_bytes),
+            _ => None,
+        }
+    }
+
     pub fn info(&self) -> ImageInfo {
         ImageInfo {
             raw_read_mode: self.raw_read_mode(),
@@ -30,6 +41,10 @@ impl DiskImage {
             modified_unix_ms: self.modified_unix_ms,
             created_unix_ms: self.created_unix_ms,
             ewf: self.ewf_acquiry.clone(),
+            optical_disc: match &self.source {
+                ImageSource::Cue { image } => Some(image.info.clone()),
+                _ => None,
+            },
             ios_backup: self
                 .folder
                 .as_ref()
@@ -148,6 +163,15 @@ impl DiskImage {
             ImageSource::SplitRaw { reader } => reader
                 .segments()
                 .iter()
+                .map(|segment| SourceFileSnapshot {
+                    path: segment.path.clone(),
+                    len: segment.len,
+                    modified_unix_ms: segment.modified.and_then(unix_ms),
+                    created_unix_ms: segment.created.and_then(unix_ms),
+                })
+                .collect(),
+            ImageSource::Cue { image } => std::iter::once(&image.descriptor)
+                .chain(image.reader.segments())
                 .map(|segment| SourceFileSnapshot {
                     path: segment.path.clone(),
                     len: segment.len,

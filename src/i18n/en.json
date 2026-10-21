@@ -1,4 +1,7 @@
 {
+  "光盘会话数": "Optical disc sessions",
+  "光盘轨道数": "Optical disc tracks",
+  "光盘数据文件数": "Optical disc data files",
   "自动检查更新": "Automatically check for updates",
   "默认关闭；开启后每次启动检查 GitHub tags。": "Off by default. When enabled, check GitHub tags on each startup.",
   "仅检查版本，不会自动下载或安装；正式版忽略预发布标签。": "Only checks versions; no automatic downloads or installation. Stable builds ignore prerelease tags.",

@@ -180,6 +180,9 @@ pub struct ImageInfo {
     /// EWF acquisition metadata; `None` for non-EWF sources.
     #[serde(default)]
     pub ewf: Option<EwfAcquiryInfo>,
+    /// CUE track provenance; byte reads retain the FILE members in source order.
+    #[serde(default)]
+    pub optical_disc: Option<crate::core::evidence::readers::cue::CueInfo>,
     /// Where a shadow-copy session image comes from; `None` otherwise.
     #[serde(default)]
     pub shadow_copy: Option<crate::core::evidence::vss_image::ShadowCopyOrigin>,

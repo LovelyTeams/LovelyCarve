@@ -21,7 +21,7 @@ use time::format_description::well_known::Rfc3339;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{DiskImage, Partition};
 use crate::core::evidence::partitions::PartitionSlice;
-use crate::core::evidence::readers::optical_disc::Mode1Layout;
+use crate::core::evidence::readers::optical_disc::DataTrackLayout;
 use crate::core::filesystem::tree::fs_tree::{
     detect_mime_bytes, shannon_entropy, FsDataRun, FsNode, FsStat, Mactb, NodeKind,
 };
@@ -67,7 +67,7 @@ pub struct CdfsVolume {
     partition_id: u8,
     base_offset: u64,
     length_bytes: u64,
-    raw_layout: Option<Mode1Layout>,
+    raw_layout: Option<DataTrackLayout>,
 }
 
 impl CdfsVolume {
@@ -87,16 +87,20 @@ impl CdfsVolume {
                 .is_some_and(|end| end <= image.len()),
             "CDFS partition exceeds source"
         );
-        let raw_layout = Mode1Layout::probe(&PartitionSlice::new(
-            image.as_ref(),
-            base_offset,
-            physical_length,
-        ))?;
+        let slice = PartitionSlice::new(image.as_ref(), base_offset, physical_length);
+        let raw_layout = if image.optical_track_sector_size(partition.id) == Some(2336) {
+            DataTrackLayout::probe_xa2336(&slice)?
+        } else {
+            match DataTrackLayout::probe(&slice)? {
+                Some(layout) => Some(layout),
+                None => DataTrackLayout::probe_cooked(&slice)?,
+            }
+        };
         let volume = Self {
             image,
             partition_id: partition.id,
             base_offset,
-            length_bytes: raw_layout.map_or(physical_length, Mode1Layout::logical_length),
+            length_bytes: raw_layout.map_or(physical_length, DataTrackLayout::logical_length),
             raw_layout,
         };
         volume.with_iso(|_| Ok(()))?;
@@ -429,7 +433,7 @@ struct PartitionCursor {
     base_offset: u64,
     length_bytes: u64,
     position: u64,
-    raw_layout: Option<Mode1Layout>,
+    raw_layout: Option<DataTrackLayout>,
 }
 
 impl Read for PartitionCursor {
