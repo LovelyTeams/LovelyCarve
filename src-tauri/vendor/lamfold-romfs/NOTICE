@@ -1,0 +1,22 @@
+lamfold-romfs — third-party attribution
+
+lamfold-romfs is original Lamco Development work (MIT OR Apache-2.0),
+clean-roomed from the public Linux romfs format:
+
+  romfs ("-rom1fs-") on-disk format — kernel Documentation/filesystems/romfs.rst
+  (big-endian; 16-byte-aligned file headers; next/info/size/checksum; the
+   directory next-chain with info = first child)
+
+The following implementations were explicitly FENCED OFF — not read, not
+transcribed:
+
+  Linux kernel fs/romfs   GPL-2.0
+  neotron-romfs           a DIFFERENT, incompatible "romfs" format AND a GPL-3
+                          sibling — a trap; deliberately not consulted
+
+There is no usable permissive romfs reader to reuse; this is from-scratch.
+
+Test fixtures are generated with genromfs (a tool, not a source); the on-disk
+bytes are data, not code.
+
+M0 license-gate audit: the project license audit

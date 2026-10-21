@@ -174,16 +174,22 @@ fn parse_trx(bytes: &[u8], base: u64, cancel: &CancellationToken) -> Result<Vec<
     for (index, &start) in offsets.iter().enumerate() {
         let end = offsets.get(index + 1).copied().unwrap_or(length);
         let payload = &bytes[start..end];
-        if !crate::core::evidence::partitions::squashfs::is_squashfs_magic(payload) {
+        let kind = if crate::core::evidence::partitions::squashfs::is_squashfs_magic(payload) {
+            PartitionKind::Squashfs
+        } else if let Some(kind) =
+            crate::core::evidence::partitions::rom_images::detect_kind(payload)
+        {
+            kind
+        } else {
             continue;
-        }
+        };
         let absolute = base
             .checked_add(prefix as u64)
             .and_then(|value| value.checked_add(start as u64))
             .context("TRX source offset overflow")?;
         partitions.push(Partition {
             id: u8::try_from(partitions.len()).context("too many firmware volumes")?,
-            kind: PartitionKind::Squashfs,
+            kind,
             start_lba: absolute,
             length_lba: (end - start) as u64,
             label: Some(format!("TRX rootfs (segment {index})")),

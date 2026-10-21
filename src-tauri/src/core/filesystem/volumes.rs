@@ -29,6 +29,7 @@ mod refs_backing;
 #[cfg(feature = "refs-dll-oracle")]
 pub mod refs_dll_oracle;
 mod refs_walk;
+pub mod rom_images;
 pub mod sevenz;
 pub mod squashfs;
 pub mod tar;

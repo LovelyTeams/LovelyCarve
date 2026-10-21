@@ -46,6 +46,9 @@ use crate::core::filesystem::volumes::hfsplus::{open_hfsplus_source, parse_hfspl
 use crate::core::filesystem::volumes::ntfs::NtfsSource;
 use crate::core::filesystem::volumes::ntfs::{parse_ntfs_id, NtfsVolume};
 use crate::core::filesystem::volumes::refs::{parse_refs_id, parse_refs_snap_id};
+use crate::core::filesystem::volumes::rom_images::{
+    open_cramfs_source, open_romfs_source, parse_cramfs_id, parse_romfs_id,
+};
 use crate::core::filesystem::volumes::squashfs::{open_squashfs_source, parse_squashfs_id};
 use crate::core::filesystem::volumes::ubi::{open_ubi_source, parse_ubi_id};
 use crate::core::filesystem::volumes::ufs::{open_ufs_source, parse_ufs_id};
@@ -138,6 +141,8 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &RefsAdapter,
     &CdfsAdapter,
     &SquashfsAdapter,
+    &CramfsAdapter,
+    &RomfsAdapter,
     &UbiAdapter,
     &ApfsAdapter,
     &HfsPlusAdapter,
@@ -178,6 +183,12 @@ pub(crate) fn dispatch<'a>(
 /// made the historical open-per-directory walk the dominant cost of any
 /// whole-volume enumeration, especially through E01/RAID-assembled backends.
 pub(crate) fn volume_root_key(id: &str) -> Option<String> {
+    if let Some((partition, _)) = parse_cramfs_id(id) {
+        return Some(format!("cramfs:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_romfs_id(id) {
+        return Some(format!("romfs:part:{partition}"));
+    }
     if let Ok((plugin_id, session_id, _)) =
         crate::core::filesystem::external_volume::decode_remote_node_id(id)
     {
@@ -348,6 +359,24 @@ path_volume!(
     open_squashfs_source
 );
 path_volume_impl!(SquashfsVol, plain_range);
+path_volume!(
+    CramfsAdapter,
+    CramfsVol,
+    "cramfs",
+    crate::core::filesystem::volumes::rom_images::CramfsVolume,
+    parse_cramfs_id,
+    open_cramfs_source
+);
+path_volume_impl!(CramfsVol, plain_range);
+path_volume!(
+    RomfsAdapter,
+    RomfsVol,
+    "romfs",
+    crate::core::filesystem::volumes::rom_images::RomfsVolume,
+    parse_romfs_id,
+    open_romfs_source
+);
+path_volume_impl!(RomfsVol, plain_range);
 path_volume!(
     UbiAdapter,
     UbiVol,

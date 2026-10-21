@@ -57,6 +57,8 @@ export const DISK_IMAGE_EXTENSIONS = [
   'enc',
   'trx',
   'squashfs',
+  'cramfs',
+  'romfs',
   'ubi',
   'iso',
   'cue',

@@ -346,6 +346,19 @@ impl DiskImage {
                 }
                 let mut detected =
                     partitions::detect_partitions_with_meta(&probe_source, sector_size)?;
+                // Packed ROM images carry byte lengths, including images shorter
+                // than a disk sector. Preserve the final partial sector.
+                if can_infer_geometry
+                    && detected.scheme == Some(TableScheme::Volume)
+                    && detected.partitions.first().is_some_and(|partition| {
+                        matches!(partition.kind, PartitionKind::Cramfs | PartitionKind::Romfs)
+                    })
+                {
+                    sector_size = 1;
+                    if let Some(partition) = detected.partitions.first_mut() {
+                        partition.length_lba = partitions::SectorSource::size(&probe_source);
+                    }
+                }
                 if sector_size == 512
                     && matches!(detected.scheme, Some(TableScheme::Mbr) | None)
                     && can_infer_geometry

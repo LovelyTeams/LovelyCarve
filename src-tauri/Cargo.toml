@@ -132,6 +132,9 @@ image = { version = "0.25.10", optional = true }
 ios-backup-core = { path = "vendor/ios-backup/core" }
 ios-backup-forensic = { path = "vendor/ios-backup/forensic" }
 jiff = { version = "0.2.38", default-features = false, features = ["std", "tzdb-bundle-always"] }
+lamfold = { path = "vendor/lamfold", default-features = false, features = ["std", "codec-deflate"] }
+lamfold-cramfs = { path = "vendor/lamfold-cramfs", default-features = false, features = ["std"] }
+lamfold-romfs = { path = "vendor/lamfold-romfs", default-features = false, features = ["std"] }
 libloading = "0.9.0"
 # DLL plugin C ABI, LPP wire types and the shared plugin-library loader
 # (plugins/sdk; the plugins and lc-plugin-host build in their own workspace).

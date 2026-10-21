@@ -100,6 +100,24 @@ def main():
             assert firmware_rows[2]["result"]["data"] == firmware_content[11:104].hex()
             assert firmware_rows[3]["result"]["sha256"] == hashlib.sha256(firmware_content).hexdigest()
 
+        # Native CramFS / ROMFS: library-backed tree, page-crossing reads and hash.
+        rom_fixtures = Path(__file__).resolve().parent.parent / "src-tauri/test_data/rom-images"
+        rom_content = (rom_fixtures / "payload.bin").read_bytes()
+        for rom_name, rom_kind in [("synthetic-le.cramfs", "cramfs"), ("synthetic-be.cramfs", "cramfs"), ("synthetic.romfs", "romfs")]:
+            rom_node = rom_kind + ":part:0:" + b"/payload.bin".hex()
+            _, rom_rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(rom_fixtures / rom_name)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": rom_node, "offset": 8180, "length": 100}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": rom_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rom_rows), rom_rows
+            assert rom_rows[0]["result"]["partitions"][0]["kind"] == rom_kind
+            assert rom_rows[0]["result"]["sectorSize"] == 1
+            assert any(item["name"] == "nested" and item["kind"] == "dir" for item in rom_rows[1]["result"]["items"])
+            assert rom_rows[2]["result"]["data"] == rom_content[8180:8280].hex()
+            assert rom_rows[3]["result"]["sha256"] == hashlib.sha256(rom_content).hexdigest()
+
         # Discovery needs no evidence: system facts, request schemas, search and completion.
         system = json.loads(run(["system", "get"]).stdout)
         assert system["standalone"], "the CLI must be built without the desktop runtime"

@@ -303,6 +303,8 @@ pub(super) fn fs_label_for_kind(kind: PartitionKind) -> &'static str {
         PartitionKind::ExFat => "EXFAT",
         PartitionKind::Cdfs => "CDFS",
         PartitionKind::Squashfs => "SQUASHFS",
+        PartitionKind::Cramfs => "CRAMFS",
+        PartitionKind::Romfs => "ROMFS",
         PartitionKind::Ubi => "UBI",
         PartitionKind::ApfsContainer => "APFS",
         PartitionKind::HfsPlus => "HFS+",
@@ -338,6 +340,8 @@ pub(super) fn is_case_sensitive_fs(kind: PartitionKind) -> bool {
             | PartitionKind::Zfs
             | PartitionKind::Ufs
             | PartitionKind::Squashfs
+            | PartitionKind::Cramfs
+            | PartitionKind::Romfs
             | PartitionKind::Ubi
             | PartitionKind::ApfsContainer
             | PartitionKind::HfsX

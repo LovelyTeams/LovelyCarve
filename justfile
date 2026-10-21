@@ -122,6 +122,9 @@ fmt:
     cd src-tauri/vendor/cmpfs && cargo fmt
     cd src-tauri/vendor/udif && cargo fmt
     cd src-tauri/vendor/ext4-view && cargo fmt
+    cd src-tauri/vendor/lamfold && cargo fmt
+    cd src-tauri/vendor/lamfold-cramfs && cargo fmt
+    cd src-tauri/vendor/lamfold-romfs && cargo fmt
     cd src-tauri/vendor/backhand && cargo fmt
     cd src-tauri/vendor/ubidump && cargo fmt
     cd src-tauri/vendor/rsqlite-vfs && cargo fmt

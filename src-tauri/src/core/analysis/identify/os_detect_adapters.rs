@@ -283,6 +283,8 @@ pub(crate) fn supports_os_detect(kind: PartitionKind) -> bool {
             | PartitionKind::ExFat
             | PartitionKind::Cdfs
             | PartitionKind::Squashfs
+            | PartitionKind::Cramfs
+            | PartitionKind::Romfs
             | PartitionKind::ApfsContainer
             | PartitionKind::HfsPlus
             | PartitionKind::HfsX
@@ -308,6 +310,8 @@ pub(crate) fn kind_str(kind: PartitionKind) -> &'static str {
         PartitionKind::ExFat => "exfat",
         PartitionKind::Cdfs => "cdfs",
         PartitionKind::Squashfs => "squashfs",
+        PartitionKind::Cramfs => "cramfs",
+        PartitionKind::Romfs => "romfs",
         PartitionKind::Ubi => "ubi",
         PartitionKind::Bitlocker => "bitlocker",
         PartitionKind::BiosBoot => "biosboot",

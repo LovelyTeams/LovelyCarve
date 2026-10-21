@@ -131,6 +131,8 @@ CLI JSONL 调度位于 `cli/session.rs`。`session --jobs N` 使用有界输入�
 
 Buffalo ENC / Broadcom TRX 固件由 `evidence/readers/firmware.rs` 在打开阶段校验并建立明文视图，原始字节读取与源哈希保留容器内容。固件段按字节寻址，SquashFS 适配器选择标准 v3/v4 或 DD-WRT `hsqt` 逐块参数 LZMA 读者；范围、流式与完整读取共用同一逻辑内容。范围与上游依据见 [固件](formats/FIRMWARE.md)。
 
+CramFS / Linux ROMFS 复用 vendor 的 lamfold Rust 读取器，适配器位于 `filesystem/volumes/rom_images.rs`。完整、流式与范围读取经同一文件内容路径，声明范围、CRC/校验和与循环目录明确校验；裸镜像用字节几何，真实分区保留原始 LBA，原容器字节不变。能力和限制见 [ROM_IMAGES](formats/ROM_IMAGES.md)。
+
 外部卷通过 `filesystem::external_volume::ExternalVolume` 提供只读 Volume 和关闭契约；插件 `RemoteVolume` 实现这个接口。未知分区的插件探测、源登记和卷安装由 `app/workflows/filesystem.rs` 编排。卸载先撤销 AppState 登记、取消任务和停止挂载，再 drain 外部卷并逐项关闭、移除源和其他缓存；持有调用句柄的线程释放前，provider backing 继续存活。字节读者本身不持有插件连接。
 
 `core/extensions/task_scheduler` 保留台账、状态机、派发、恢复、进度、看门狗和 post-action 契约。生产 `PluginTaskRunner` 位于 `app/workflows/scheduler.rs`，负责准备运行（`core/extensions/plugin/run_setup.rs`）、实例存活、执行、`records.db` 发布、时间线投影和结果清理；清理失败仍按原语义记录告警并完成任务删除。插件 SDK 保留 ABI、LPP 载荷与记录结构定义，`core/analysis/results/` 的 `record_store` / `record_query` 按结构保存与查询类型化记录，`models.rs` 是结果树、表格与详情的 IPC 投影；存储不依赖插件宿主，插件卸载后结果仍可读。

@@ -29,6 +29,7 @@ pub mod lvm2;
 pub mod mbr;
 pub mod mdadm;
 pub mod optical_disc;
+pub mod rom_images;
 pub mod squashfs;
 pub mod ufs;
 pub mod volume_probe;
@@ -105,6 +106,8 @@ pub enum PartitionKind {
     ExFat,
     Cdfs,
     Squashfs,
+    Cramfs,
+    Romfs,
     Lvm,
     Bitlocker,
     BiosBoot,
@@ -305,6 +308,8 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::ExFat
         | PartitionKind::Cdfs
         | PartitionKind::Squashfs
+        | PartitionKind::Cramfs
+        | PartitionKind::Romfs
         | PartitionKind::BiosBoot
         | PartitionKind::ApfsContainer
         | PartitionKind::HfsPlus

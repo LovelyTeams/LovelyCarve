@@ -9,7 +9,7 @@
   包括 `bgn` 外层、152 字节加密产品标签、对齐后的 ENC 主体，以及解密后的
   `buffalo.enc\nfilelen=…\n` 前缀。产品标签、载荷均验证 Buffalo 的有符号字节校验和。
 - Broadcom TRX v1：验证声明长度、CRC、三个分段槽的顺序与边界，展示其中的
-  SquashFS 段。内核、填充和其他段保留在原始源中，不伪装成文件系统。
+  SquashFS / CramFS / Linux ROMFS 段。内核、填充和其他段保留在原始源中，不伪装成文件系统。
 - 标准小端 / 大端 SquashFS 3.0、4.0，以及 DD-WRT 3.0 的 `hsqt` / `tqsh`
   变体；后者按每个块的 pb/lc/lp 参数解压 LZMA，复用文件树、预览、哈希、
   导出、流式与范围读取。
@@ -34,6 +34,9 @@
 Firmware Mod Kit 的 Linux shell、提取器或重打包工具。
 SquashFS 复用 `backhand`（MIT OR Apache-2.0），LZMA 使用 `lzma-rust2`；
 具体集成变更见 [backhand/LOVELYCARVE.md](../../src-tauri/vendor/backhand/LOVELYCARVE.md)。
+
+CramFS / Linux ROMFS 的 Rust 库选择、支持范围和校验要求见 [ROM_IMAGES](ROM_IMAGES.md)；
+其他公开固件仍不能展开的实测结果见 [兼容性调查](FIRMWARE_COMPATIBILITY.md)。
 
 ## 验证
 

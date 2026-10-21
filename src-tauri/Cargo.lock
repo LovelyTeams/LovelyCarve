@@ -3492,6 +3492,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "lamfold"
+version = "0.1.5"
+dependencies = [
+ "miniz_oxide 0.9.1",
+ "zerocopy",
+]
+
+[[package]]
+name = "lamfold-cramfs"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "lamfold",
+]
+
+[[package]]
+name = "lamfold-romfs"
+version = "0.1.1"
+dependencies = [
+ "lamfold",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3736,6 +3759,9 @@ dependencies = [
  "ios-backup-core",
  "ios-backup-forensic",
  "jiff",
+ "lamfold",
+ "lamfold-cramfs",
+ "lamfold-romfs",
  "libloading 0.9.0",
  "librefs",
  "lovelycarve-plugin",

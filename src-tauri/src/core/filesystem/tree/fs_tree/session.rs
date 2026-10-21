@@ -145,6 +145,18 @@ impl<'a> FsSession<'a> {
             let pid: Option<u8> = part_str.parse().ok();
             if let (Some(kind), Some(pid)) = (kind, pid) {
                 let root = match kind {
+                    PartitionKind::Cramfs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_cramfs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Romfs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_romfs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::Refs => Some(
                         open_refs_source(self.image, RefsSource::Partition(pid))?.root_children(),
                     ),

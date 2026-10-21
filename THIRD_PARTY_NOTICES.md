@@ -38,6 +38,15 @@ no libfsapfs C sources or binaries are incorporated. The new APFS fixtures
 are invented, reproducible project test structures (AGPL-3.0-only), documented
 in `src-tauri/vendor/apfs/tests/data/README.md`.
 
+## lamfold CramFS / Linux ROMFS
+
+The CramFS / Linux ROMFS readers use Lamco Development LLC's `lamfold 0.1.5`,
+`lamfold-cramfs 0.1.0` and `lamfold-romfs 0.1.1` (MIT OR Apache-2.0).
+The original LICENSE-MIT, LICENSE-APACHE and NOTICE files remain in each vendor
+directory; provenance and local integrity/range-read patches are recorded in
+each `LOVELYCARVE.md` and [ROM image support](docs/formats/ROM_IMAGES.md).
+The original synthetic ROM filesystem images and encoder are CC0-1.0.
+
 ## rust_ubidump
 
 The UBI volume reader adapts the UBI header decoders and CRC code from

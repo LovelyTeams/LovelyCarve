@@ -119,6 +119,8 @@ pub(crate) fn fs_unalloc_nodes(image: &Arc<EvidenceSession>, partition: &Partiti
         | PartitionKind::Bitlocker
         | PartitionKind::Cdfs
         | PartitionKind::Squashfs
+        | PartitionKind::Cramfs
+        | PartitionKind::Romfs
         | PartitionKind::Ubi
         | PartitionKind::Extended
         | PartitionKind::Apm
@@ -234,6 +236,8 @@ pub(crate) fn partition_node(image: &Arc<EvidenceSession>, partition: &Partition
             | PartitionKind::ExFat
             | PartitionKind::Cdfs
             | PartitionKind::Squashfs
+            | PartitionKind::Cramfs
+            | PartitionKind::Romfs
             | PartitionKind::Ubi
             | PartitionKind::ApfsContainer
             | PartitionKind::HfsPlus

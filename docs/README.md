@@ -19,6 +19,9 @@
 
 vendor [GZIP 读取器](formats/GZIP.md) 参照 libgzipf 实现多成员、元数据、校验和 seek，已接入 tar.gz / tgz、Docker / OCI 压缩层与小米备份。
 
+[CramFS / Linux ROMFS](formats/ROM_IMAGES.md) 复用 lamfold Rust 库，补齐校验、目录边界和范围读取；
+[固件兼容性调查](formats/FIRMWARE_COMPATIBILITY.md) 记录公开固件实测缺口与 Rust 库评估。
+
 [Android 备份](formats/ANDROID_BACKUP.md) 记录 `.ab` / 小米 `.bak` 的独立打开、
 原始字节保持及解密边界；[小米备份](formats/MIUI_BAK.md) 记录 ZIP / 目录内的自动展开。
 
