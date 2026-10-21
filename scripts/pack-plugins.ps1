@@ -10,7 +10,6 @@ $workspace = Join-Path $repositoryRoot 'plugins'
 # Package directory => the guide shipped as its README.md.
 $packages = [ordered]@{
     linuxinfo = Join-Path $repositoryRoot 'docs/LINUXINFO.md'
-    vehicle   = Join-Path $workspace 'VEHICLE_FORENSICS.md'
 }
 $commit = (& git -C $repositoryRoot rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve source commit.' }

@@ -1,0 +1,96 @@
+name: Windows release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    uses: ./.github/workflows/windows-tests.yml
+
+  release:
+    name: Build and publish Windows x64
+    needs: tests
+    runs-on: windows-2025
+    timeout-minutes: 240
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Check tag and manifest versions
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tauriVersion = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $rustVersion = [regex]::Match((Get-Content src-tauri/Cargo.toml -Raw), '(?m)^version = "([^"]+)"').Groups[1].Value
+          $tag = $env:GITHUB_REF_NAME
+          if ($tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$' -or $tag.Split('-')[0] -ne "v$version" -or $version -ne $tauriVersion -or $version -ne $rustVersion) {
+            throw "Tag $tag does not match application versions: $version / $tauriVersion / $rustVersion"
+          }
+      - uses: ./.github/actions/setup-windows
+      - name: Build desktop MSI
+        run: just build-release --bundles msi
+      - name: Build and package CLI
+        run: just pack-cli
+      - name: Smoke-test release CLI
+        run: just smoke-cli src-tauri/target/release/lovelycarve-cli.exe
+      - name: Package plugins
+        run: just pack-plugins
+      - name: Stage assets and SHA-256 checksums
+        run: |
+          $installers = @(Get-ChildItem src-tauri/target/release/bundle/msi/*.msi -File)
+          $cliPackages = @(Get-ChildItem dist-pack/lovelycarve-cli-*.zip -File)
+          $plugins = @(Get-ChildItem dist-pack/*.lcpkg -File)
+          if (-not $installers.Count -or -not $cliPackages.Count -or -not $plugins.Count) {
+            throw 'Expected MSI, CLI ZIP and plugin packages'
+          }
+          $assets = $installers + $cliPackages + $plugins
+          New-Item -ItemType Directory -Path release-assets | Out-Null
+          $assets | Copy-Item -Destination release-assets
+          Get-ChildItem release-assets -File | Sort-Object Name | ForEach-Object {
+            $hash = Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256
+            "$($hash.Hash.ToLowerInvariant())  $($_.Name)"
+          } | Set-Content release-assets/SHA256SUMS.txt -Encoding utf8NoBOM
+          @"
+          Windows x64 build of $env:GITHUB_SHA. QR/OCR is disabled. Binaries are unsigned.
+
+          Includes the desktop MSI, standalone CLI ZIP, plugin packages and SHA-256 checksums.
+          Dokany mounts require a separately installed driver. Native GUI and driver checks remain manual.
+
+          Source checkout (GitHub source archives do not include the pinned plugin submodule):
+          ``git clone --recurse-submodules https://github.com/$env:GITHUB_REPOSITORY.git``
+          ``git checkout $env:GITHUB_REF_NAME``
+          ``git submodule update --init --recursive``
+          "@ | Set-Content release-notes.md -Encoding utf8NoBOM
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: windows-x64-${{ github.ref_name }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $arguments = @('release', 'create', $env:GITHUB_REF_NAME, '--verify-tag', '--title', "LovelyCarve $env:GITHUB_REF_NAME (Windows x64)", '--notes-file', 'release-notes.md')
+          if ($env:GITHUB_REF_NAME.Contains('-')) { $arguments += '--prerelease' }
+          $arguments += @(Get-ChildItem release-assets -File | ForEach-Object FullName)
+          gh @arguments
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publication failed' }
