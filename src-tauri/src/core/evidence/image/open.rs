@@ -170,6 +170,17 @@ impl DiskImage {
         let bad_regions = Mutex::new(Vec::new());
 
         let mut sector_size = source.sector_size();
+        let firmware = match &source {
+            ImageSource::Raw {
+                mmap,
+                format: ImageFormat::Firmware,
+                ..
+            } => {
+                progress(OpenProgress::DetectingPartitions);
+                Some(crate::core::evidence::readers::firmware::FirmwareImage::open(mmap, cancel)?)
+            }
+            _ => None,
+        };
         // Docker / OCI archives have no partition table — the outer tar is
         // just a container of layer blobs. Plain tarballs, zip archives, and
         // folder sources are similarly partitionless (the archive / OS
@@ -177,6 +188,23 @@ impl DiskImage {
         // detection and surface the appropriate merged-view through
         // `core::filesystem::tree::fs_tree` instead.
         let (partitions, docker, folder, tar, zip, sevenz, table_scheme, disk_id) = match &source {
+            ImageSource::Raw {
+                format: ImageFormat::Firmware,
+                ..
+            } => (
+                firmware
+                    .as_ref()
+                    .context("missing firmware view")?
+                    .partitions
+                    .clone(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(partitions::TableScheme::Firmware),
+                None,
+            ),
             ImageSource::Cue { image } => (
                 image.partitions(cancel)?,
                 None,
@@ -392,6 +420,7 @@ impl DiskImage {
             source,
             sector_size,
             partitions,
+            firmware,
             docker,
             folder,
             tar,
@@ -443,6 +472,7 @@ impl DiskImage {
             source,
             sector_size,
             partitions,
+            firmware: None,
             docker: None,
             folder: None,
             tar: None,
@@ -491,6 +521,7 @@ impl DiskImage {
             },
             sector_size,
             partitions,
+            firmware: None,
             docker: None,
             folder: None,
             tar: None,

@@ -77,7 +77,7 @@ aes = "0.9.3"
 aho-corasick = "1.1.5"
 anyhow = "1.0.104"
 apfs = { path = "vendor/apfs" }
-backhand = { path = "vendor/backhand", default-features = false, features = ["xz", "gzip", "zstd", "parallel", "error-strings", "descriptive-errors"] }
+backhand = { path = "vendor/backhand", default-features = false, features = ["xz", "gzip", "zstd", "parallel", "error-strings", "descriptive-errors", "v3_ddwrt"] }
 base64 = "0.23.1"
 # 快照 `.dirz` 体的二进制编码（替代逐条 serde_json，省每条目分配 + 加速加载解析）。
 # 3.0.0 仅包含停维护公告和 compile_error，保留可用的 2.0.1 与既有快照格式。
@@ -100,6 +100,7 @@ chardetng = "1.0.0"
 chrono = { version = "0.4.45", features = ["serde"] }
 # lovelycarve-cli 的子命令与参数解析；帮助由 cli/help.rs 按命令目录渲染。
 clap = { version = "4.6.7", features = ["derive", "string", "env"] }
+crc32fast = "1.5.2"
 # lovelycarve-cli 的交互提问、遮盖输入与终端尺寸（notatin 已依赖同一版本）。
 crossterm = "0.29.0"
 # 与 Tauri 相同的每用户数据目录（案件登记簿、用户插件），独立 CLI 无需 Tauri 解析路径。

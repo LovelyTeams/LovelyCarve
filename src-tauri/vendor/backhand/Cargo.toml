@@ -72,6 +72,7 @@ lz4 = ["dep:lz4_flex"]
 lzo = ["dep:rust-lzo"]
 parallel = ["dep:rayon"]
 v3 = ["gzip"]
+v3_ddwrt = ["v3", "dep:lzma-rust2"]
 v3_lzma = [
     "v3",
     "dep:lzma-adaptive-sys",

@@ -199,7 +199,8 @@ pub fn detect_image(
         | ImageFormat::Folder
         | ImageFormat::Decrypted
         | ImageFormat::ShadowCopy
-        | ImageFormat::Assembled => DetectRoute::DiskImage,
+        | ImageFormat::Assembled
+        | ImageFormat::Firmware => DetectRoute::DiskImage,
     };
     let partitions = walk_partitions(image, cancel)?;
     if partitions.is_empty() {

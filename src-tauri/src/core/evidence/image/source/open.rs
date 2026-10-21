@@ -407,6 +407,13 @@ impl ImageSource {
                 format: ImageFormat::AndroidBackup,
             });
         }
+        if crate::core::evidence::readers::firmware::has_firmware_magic(&mmap) {
+            return Ok(Self::Raw {
+                size_bytes: mmap.len() as u64,
+                mmap,
+                format: ImageFormat::Firmware,
+            });
+        }
         if mmap.get(..4)
             == Some(crate::core::evidence::partitions::xiaomi_firmware::XIAOMI_FIRMWARE_MAGIC)
         {

@@ -6,6 +6,8 @@ use crate::v4::reader::BufReadSeek;
 
 pub mod compressor;
 pub mod data;
+#[cfg(feature = "v3_ddwrt")]
+pub(crate) mod ddwrt;
 pub mod dir;
 pub mod export;
 pub mod filesystem;

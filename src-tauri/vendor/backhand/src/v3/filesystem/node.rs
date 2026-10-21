@@ -35,6 +35,30 @@ impl NodeHeader {
 }
 
 impl NodeHeader {
+    /// Resolve v3's separate 32-bit UID/GID tables. GID 255 means the inode's UID.
+    pub(crate) fn from_v3_inode(
+        header: InodeHeader,
+        uids: &[u32],
+        gids: &[u32],
+    ) -> Result<Self, BackhandError> {
+        let uid = *uids
+            .get(header.uid as usize)
+            .ok_or(BackhandError::CorruptedOrInvalidSquashfs)?;
+        let gid = if header.gid == 255 {
+            uid
+        } else {
+            *gids
+                .get(header.gid as usize)
+                .ok_or(BackhandError::CorruptedOrInvalidSquashfs)?
+        };
+        Ok(Self {
+            permissions: header.permissions,
+            uid,
+            gid,
+            mtime: header.mtime,
+        })
+    }
+
     pub fn from_inode(inode_header: InodeHeader, id_table: &[Id]) -> Result<Self, BackhandError> {
         let uid = if (inode_header.uid as usize) < id_table.len() {
             id_table[inode_header.uid as usize].num

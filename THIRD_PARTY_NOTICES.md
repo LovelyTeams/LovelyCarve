@@ -20,6 +20,14 @@ integration notes remain in each crate directory. ext4-view 1.0.0 and backhand
 license. Original data sources and hashes for the ext4 unit-test fixtures are
 recorded in `src-tauri/vendor/ext4-view/test_data/README.md`.
 
+The Buffalo ENC / TRX and DD-WRT SquashFS compatibility work uses Firmware Mod
+Kit commit `c72f45d7a062156125ae00cb867d8a614b50b963` as a format reference
+(Gabor Juhos's GPL-2.0-only Buffalo tools and the bundled SquashFS/LZMA variant).
+No FMK C/C++ source, shell scripts or executables are incorporated. Original Rust
+readers use the existing backhand (MIT OR Apache-2.0) library and lzma-rust2
+(Apache-2.0). Original synthetic fixtures and their generators are CC0-1.0;
+see [firmware provenance and limits](docs/formats/FIRMWARE.md).
+
 The APFS name lookup uses the unmodified crates.io packages
 [`unicode-casefold` 0.2.0](https://crates.io/crates/unicode-casefold/0.2.0)
 by Chris Wong and [`unicode-normalization` 0.1.25](https://crates.io/crates/unicode-normalization/0.1.25)

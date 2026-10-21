@@ -71,6 +71,7 @@ const FORMAT_LABELS: Record<string, string> = {
   docker: 'Docker',
   get folder() { return tr("文件夹"); },
   get physical_disk() { return tr("物理磁盘"); },
+  get firmware() { return tr("固件镜像"); },
   get xiaomi_firmware() { return tr("小米固件"); },
   get android_backup() { return tr("Android 备份"); },
   get ldplayer() { return tr("雷电模拟器备份"); },

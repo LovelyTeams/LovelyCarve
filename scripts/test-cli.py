@@ -82,6 +82,24 @@ def main():
             result = run([*arguments, "session"], "\n".join(json.dumps(request) for request in requests), expected)
             return result, [json.loads(line) for line in result.stdout.splitlines()]
 
+        # Independent synthetic Buffalo ENC/bgn + TRX + DD-WRT SquashFS v3.
+        firmware_fixtures = Path(__file__).resolve().parent.parent / "src-tauri/test_data/firmware"
+        firmware_node = "squashfs:part:0:" + b"/hello".hex()
+        firmware_content = b"Independent DD-WRT fixture.\n" * 64
+        for fixture_name in ("synthetic.enc", "synthetic-bgn.enc"):
+            _, firmware_rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(firmware_fixtures / fixture_name)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": firmware_node, "offset": 11, "length": 93}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": firmware_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in firmware_rows), firmware_rows
+            assert firmware_rows[0]["result"]["sourceFormat"] == "firmware"
+            assert firmware_rows[0]["result"]["sectorSize"] == 1
+            assert firmware_rows[1]["result"]["items"][0]["name"] == "hello"
+            assert firmware_rows[2]["result"]["data"] == firmware_content[11:104].hex()
+            assert firmware_rows[3]["result"]["sha256"] == hashlib.sha256(firmware_content).hexdigest()
+
         # Discovery needs no evidence: system facts, request schemas, search and completion.
         system = json.loads(run(["system", "get"]).stdout)
         assert system["standalone"], "the CLI must be built without the desktop runtime"

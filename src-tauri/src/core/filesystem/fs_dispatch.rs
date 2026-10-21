@@ -347,7 +347,7 @@ path_volume!(
     parse_squashfs_id,
     open_squashfs_source
 );
-path_volume_impl!(SquashfsVol, plain);
+path_volume_impl!(SquashfsVol, plain_range);
 path_volume!(
     UbiAdapter,
     UbiVol,

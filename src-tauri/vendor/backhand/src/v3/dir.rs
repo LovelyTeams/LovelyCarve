@@ -114,6 +114,8 @@ impl DirEntry {
         if self.name == b"/" {
             return Ok(Path::new("/"));
         }
+        #[cfg(windows)]
+        std::str::from_utf8(&self.name).map_err(|_| BackhandError::InvalidFilePath)?;
         let path = Path::new(OsStr::from_bytes(&self.name));
         // if not a simple filename, return an error
         let filename = path.file_name().map(OsStrExt::as_bytes);
@@ -155,6 +157,6 @@ impl fmt::Debug for DirectoryIndex {
 
 impl DirectoryIndex {
     pub fn name(&self) -> String {
-        core::str::from_utf8(&self.name).unwrap().to_string()
+        String::from_utf8_lossy(&self.name).into_owned()
     }
 }

@@ -171,9 +171,9 @@ pub struct Squashfs<'b> {
     /// Id Lookup Table V4
     pub id: Option<Vec<Id>>,
     /// Uid Lookup Table V3
-    pub uid: Option<Vec<u16>>,
+    pub uid: Option<Vec<u32>>,
     /// Gid Lookup Table V3
-    pub guid: Option<Vec<u16>>,
+    pub guid: Option<Vec<u32>>,
     //file reader
     pub file: Box<dyn BufReadSeek + 'b>,
 }
@@ -282,6 +282,16 @@ impl<'b> Squashfs<'b> {
             return Err(BackhandError::CorruptedOrInvalidSquashfs);
         }
 
+        if superblock.bytes_used < SuperBlock::SIZE as u64
+            || superblock.inode_count == 0
+            || superblock.inode_count > 1_000_000
+            || superblock.inode_table_start < SuperBlock::SIZE as u64
+            || superblock.inode_table_start >= superblock.directory_table_start
+            || superblock.directory_table_start > superblock.fragment_table_start
+            || superblock.fragment_table_start > superblock.bytes_used
+        {
+            return Err(BackhandError::CorruptedOrInvalidSquashfs);
+        }
         // Read all fields from filesystem to make a Squashfs
         info!("Reading Inodes @ {:02x?}", superblock.inode_table_start);
         let inodes = reader.inodes(&superblock, &kind)?;
@@ -291,7 +301,10 @@ impl<'b> Squashfs<'b> {
 
         info!("Reading Fragments");
         let fragments = reader.fragments(&superblock, &kind)?;
-        let _fragment_ptr = fragments.as_ref().map(|frag| frag.0);
+        let fragment_ptr = fragments
+            .as_ref()
+            .map(|frag| frag.0)
+            .unwrap_or(superblock.fragment_table_start);
         let fragment_table = fragments.map(|a| a.1);
 
         info!("Reading Exports");
@@ -306,7 +319,7 @@ impl<'b> Squashfs<'b> {
         let guid_table = reader.guid(&superblock, &kind)?;
 
         info!("Reading Dirs");
-        let dir_blocks = reader.dir_blocks(&superblock, superblock.fragment_table_start, &kind)?;
+        let dir_blocks = reader.dir_blocks(&superblock, fragment_ptr, &kind)?;
 
         let squashfs = Squashfs {
             kind,
@@ -379,6 +392,12 @@ impl<'b> Squashfs<'b> {
             file_size - 3
         };
 
+        if start_pos
+            .checked_add(actual_dir_size as usize)
+            .is_none_or(|end| end > dir_data.len())
+        {
+            return Err(BackhandError::CorruptedOrInvalidSquashfs);
+        }
         let end_pos = if actual_dir_size > 65536 {
             trace!(
                 "ExtendedDirectory detected (actual_dir_size={}), reading multiple Dir blocks",
@@ -406,9 +425,7 @@ impl<'b> Squashfs<'b> {
                 Ok(dir) => {
                     dirs.push(dir);
                 }
-                Err(_e) => {
-                    break;
-                }
+                Err(error) => return Err(error.into()),
             }
         }
 
@@ -422,16 +439,16 @@ impl<'b> Squashfs<'b> {
         current_path: &mut PathBuf,
         root: &mut Nodes<SquashfsFileReader>,
         dir_inode: &Inode,
-        _uid_table: &[u16],
-        _guid_table: &[u16],
+        _uid_table: &[u32],
+        _guid_table: &[u32],
         visited_inodes: &mut std::collections::HashSet<u32>,
     ) -> Result<(), BackhandError> {
         let current_inode_num = dir_inode.header.inode_number;
 
         // Cycle detection: skip already-visited inodes to prevent infinite recursion
         // (don't error - squashfs may reuse directory structures)
-        if visited_inodes.contains(&current_inode_num) {
-            return Ok(());
+        if current_path.components().count() > 256 || visited_inodes.contains(&current_inode_num) {
+            return Err(BackhandError::CorruptedOrInvalidSquashfs);
         }
         visited_inodes.insert(current_inode_num);
 
@@ -546,7 +563,7 @@ impl<'b> Squashfs<'b> {
                         }
                     };
 
-                    let node_header = NodeHeader::from_inode(header, &[])?;
+                    let node_header = NodeHeader::from_v3_inode(header, _uid_table, _guid_table)?;
                     let node = Node {
                         header: node_header,
                         inner,
@@ -567,6 +584,9 @@ impl<'b> Squashfs<'b> {
     #[cfg_attr(feature = "error-strings", tracing::instrument(skip_all))]
     fn symlink(&self, inode: &Inode) -> Result<PathBuf, BackhandError> {
         if let InodeInner::BasicSymlink(basic_sym) = &inode.inner {
+            #[cfg(windows)]
+            std::str::from_utf8(&basic_sym.target_path)
+                .map_err(|_| BackhandError::InvalidFilePath)?;
             let path = OsString::from_vec(basic_sym.target_path.clone());
             return Ok(PathBuf::from(path));
         }
@@ -608,21 +628,26 @@ impl<'b> Squashfs<'b> {
     #[cfg_attr(feature = "error-strings", tracing::instrument(skip_all))]
     pub fn into_filesystem_reader(self) -> Result<FilesystemReader<'b>, BackhandError> {
         info!("creating fs tree");
-        let mut root = Nodes::new_root({
-            // Create temporary combined id table for v3 compatibility
-            let mut id_table = Vec::new();
-            for &uid in self.uid.as_ref().unwrap() {
-                id_table.push(Id::new(uid as u32));
-            }
-            NodeHeader::from_inode(self.root_inode.header, &id_table)?
-        });
+        let uids = self
+            .uid
+            .as_deref()
+            .ok_or(BackhandError::CorruptedOrInvalidSquashfs)?;
+        let gids = self
+            .guid
+            .as_deref()
+            .ok_or(BackhandError::CorruptedOrInvalidSquashfs)?;
+        let mut root = Nodes::new_root(NodeHeader::from_v3_inode(
+            self.root_inode.header,
+            uids,
+            gids,
+        )?);
         let mut visited_inodes = std::collections::HashSet::new();
         self.extract_dir(
             &mut PathBuf::from("/"),
             &mut root,
             &self.root_inode,
-            self.uid.as_ref().unwrap(),
-            self.guid.as_ref().unwrap(),
+            uids,
+            gids,
             &mut visited_inodes,
         )?;
         root.nodes.sort();
@@ -644,7 +669,7 @@ impl<'b> Squashfs<'b> {
                 let mut id_table = Vec::new();
                 if let Some(ref uid_table) = self.uid {
                     for &uid in uid_table {
-                        id_table.push(Id::new(uid as u32));
+                        id_table.push(Id::new(uid));
                     }
                 }
                 id_table

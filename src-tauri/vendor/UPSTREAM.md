@@ -13,7 +13,7 @@
 | `ubidump` | `0.1.0` | [19782c3eabc2](https://github.com/aspnmy/rust_ubidump/commit/19782c3eabc25a1baab7faefe12fe6f4bd362dac) | UBI 层改为有界只读库，修正 VTBL 长度与名称边界，重写逻辑块映射及校验；不引入 CLI / UBIFS / C LZO。见 LOVELYCARVE.md 与 [UBI](../../docs/formats/UBI.md)。 |
 | `ad1` | `0.1.2` | [afc3963659a1](https://github.com/SecurityRonin/ad1-forensic/commit/afc3963659a13acf10082e7d76194d3ab789583e) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
 | `apfs` | `0.4.1` | [3a73ee28fdab](https://github.com/Dil4rd/dpp/commit/3a73ee28fdab192fcdfbe8edcad7b520867f2417) | 保留多卷、MACB 和目录遍历；2026-10-13 对照 libfsapfs 补事务 OMAP、目录键、seek/range、inode/xattr/快照元数据及严格来源边界。完整范围与限制见 [APFS](../../docs/formats/APFS.md)。 |
-| `backhand` | `0.25.5` | [bf678c7f9237](https://github.com/wcampbell0x2a/backhand/commit/bf678c7f923799a57d972cf695daf69d8c6ddafb) | 升级 0.25.1 → 0.25.5；保留精简特性、std I/O 别名及可读错误信息，修复 Windows 根路径判断。 |
+| `backhand` | `0.25.5` | [bf678c7f9237](https://github.com/wcampbell0x2a/backhand/commit/bf678c7f923799a57d972cf695daf69d8c6ddafb) | 升级 0.25.1 → 0.25.5；保留精简特性、std I/O 别名及可读错误信息，修复 Windows 根路径判断；2026-10-21 对照 FMK c72f45d7a062 补 DD-WRT v3 hsqt/tqsh、逐块 LZMA 参数与 v3/v4 精确范围读取，见 backhand/LOVELYCARVE.md。 |
 | `bitlocker` | `0.3.5` | [e6674dcda241](https://github.com/SecurityRonin/bitlocker-forensic/commit/e6674dcda2413b1a02a915f2255af8fda787a154) | 2026-10-13 对照 libbde 补六种 AES、变长扇区、Vista/EOW、BEK/clear/VMK/FVEK 和 metadata 查询；验证边界见 [BITLOCKER](../../docs/formats/BITLOCKER.md)。 |
 | `btrfs-diskformat` | `0.5.1` | [bb84745422ed](https://github.com/GodTamIt/btrfs-diskformat/commit/bb84745422ed2c2aa99b3b151f6247a3b51638f4) | 已最新；保留 zerocopy Immutable 兼容补丁。 |
 | `cdfs` | `0.2.3` | [8cc434a31983](https://git.sr.ht/~az1/iso9660-rs/commit/8cc434a319832ae43d1c7685477809d75f313990) | 发布版本及核心解析器已最新；保留现有独立 crate 布局。 |

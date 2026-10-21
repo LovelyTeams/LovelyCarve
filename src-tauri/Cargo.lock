@@ -371,6 +371,7 @@ dependencies = [
  "flate2",
  "liblzma",
  "liblzma-sys",
+ "lzma-rust2 0.20.1",
  "no_std_io2",
  "rayon",
  "solana-nohash-hasher",
@@ -3711,6 +3712,7 @@ dependencies = [
  "chardetng",
  "chrono",
  "clap",
+ "crc32fast",
  "crossterm",
  "dirs",
  "dokan",
@@ -3880,6 +3882,15 @@ name = "lzma-rust2"
 version = "0.15.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e20f57f9918e5bd7bc58c22cdd70a6afc7375d4dd9683af5f2b34bd3d2bba619"
+
+[[package]]
+name = "lzma-rust2"
+version = "0.20.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e2a88783b84d2d67ef2791778a9e76bfb68b8017aaf6c9d7d5f2626a478b16c"
+dependencies = [
+ "sha2 0.11.0",
+]
 
 [[package]]
 name = "lzma-rust2"

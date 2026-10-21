@@ -80,7 +80,8 @@ pub struct Partition {
 pub enum TableScheme {
     Gpt,
     Mbr,
-    /// Xiaomi `HDR1` firmware container. Its filesystem-bearing segments are
+    /// Firmware container (including Xiaomi HDR1 and Buffalo/Broadcom TRX).
+    /// Its filesystem-bearing segments are
     /// byte-addressed payloads rather than sector-aligned disk partitions.
     Firmware,
     Apm,

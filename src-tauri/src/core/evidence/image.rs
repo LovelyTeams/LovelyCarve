@@ -74,6 +74,8 @@ pub struct DiskImage {
     source: ImageSource,
     pub sector_size: usize,
     pub partitions: Vec<Partition>,
+    /// Verified firmware plaintext, owned with the evidence byte source.
+    pub(crate) firmware: Option<crate::core::evidence::readers::firmware::FirmwareImage>,
     /// Set when the on-disk file is a Docker / OCI image archive
     /// (`docker save` tar or OCI layout tar). When present, partition
     /// detection is skipped and `core::filesystem::tree::fs_tree` routes navigation /
@@ -221,6 +223,8 @@ pub enum ImageFormat {
     /// exposed as byte-addressed volumes while raw reads retain the exact
     /// original container bytes.
     XiaomiFirmware,
+    /// Buffalo ENC / Broadcom TRX, with source bytes retained for hashing.
+    Firmware,
     /// LDPlayer (雷电模拟器) `.ldbk` emulator backup — a 7z (LZMA2) container of
     /// `*.vmdk` virtual disks. Each VMDK is de-sparsed through the native sparse reader and the
     /// disks are concatenated into one synthetic block stream; partitions are
