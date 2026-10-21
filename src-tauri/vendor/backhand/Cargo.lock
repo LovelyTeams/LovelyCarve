@@ -12,7 +12,6 @@ dependencies = [
  "liblzma",
  "liblzma-sys",
  "lz4_flex",
- "lzma-adaptive-sys",
  "lzma-rust2",
  "no_std_io2",
  "rayon",
@@ -328,15 +327,6 @@ name = "lz4_flex"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ecbdfe44b1bd960b68170b417450a628c43f7cf56bb3c5317e61cb230ee7f226"
-
-[[package]]
-name = "lzma-adaptive-sys"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69c1d005f103a1e3e2cda011c4a08a2c84e66364deccd246a76eeb1e1ddb4764"
-dependencies = [
- "cc",
-]
 
 [[package]]
 name = "lzma-rust2"

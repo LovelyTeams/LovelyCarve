@@ -132,6 +132,23 @@ def main():
             assert rows[2]["result"]["data"] == rom_content[8180:8280].hex()
             assert rows[3]["result"]["sha256"] == hashlib.sha256(rom_content).hexdigest()
 
+        # Independently encoded v3 gzip / raw LZMA / LZMA-alone / properties,
+        # in both byte orders and with range reads crossing compressed blocks.
+        squashfs_fixtures = firmware_fixtures.parent.parent / "vendor/backhand/test_data"
+        squashfs_content = b"Independent Rust LZMA fixture.\n" * 350
+        for mode in ("raw", "alone", "props", "gzip"):
+            for endian in ("le", "be"):
+                _, rows = session([
+                    {"id": "open", "command": "images open", "args": {"path": str(squashfs_fixtures / f"lzma-v3-{mode}-{endian}.squashfs")}},
+                    {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
+                    {"id": "read", "command": "files read", "args": {"nodeId": firmware_node, "offset": 4080, "length": 100}},
+                    {"id": "hash", "command": "files hash", "args": {"nodeId": firmware_node, "algos": ["sha256"]}},
+                ])
+                assert all("result" in row for row in rows), rows
+                assert rows[1]["result"]["items"][0]["name"] == "hello"
+                assert rows[2]["result"]["data"] == squashfs_content[4080:4180].hex()
+                assert rows[3]["result"]["sha256"] == hashlib.sha256(squashfs_content).hexdigest()
+
         # Discovery needs no evidence: system facts, request schemas, search and completion.
         system = json.loads(run(["system", "get"]).stdout)
         assert system["standalone"], "the CLI must be built without the desktop runtime"

@@ -30,6 +30,10 @@ mod reader;
 use chrono::{TimeZone, Utc};
 use reader::open_reader;
 
+#[cfg(test)]
+#[path = "squashfs_lzma_tests.rs"]
+mod lzma_tests;
+
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{DiskImage, Partition};
 use crate::core::filesystem::tree::fs_tree::{

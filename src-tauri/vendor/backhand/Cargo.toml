@@ -75,12 +75,9 @@ v3 = ["gzip"]
 v3_ddwrt = ["v3", "dep:lzma-rust2"]
 v3_lzma = [
     "v3",
-    "dep:lzma-adaptive-sys",
     "dep:lzma-rust2",
-    "dep:liblzma",
 ]
 v4_lzma = [
-    "dep:lzma-adaptive-sys",
     "dep:lzma-rust2",
 ]
 xz = [
@@ -143,12 +140,8 @@ features = ["alloc"]
 optional = true
 default-features = false
 
-[dependencies.lzma-adaptive-sys]
-version = "0.1.0"
-optional = true
-
 [dependencies.lzma-rust2]
-version = "0.20.0"
+version = "0.20.1"
 features = [
     "xz",
     "encoder",

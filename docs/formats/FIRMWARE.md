@@ -22,9 +22,17 @@
 - 标准小端 / 大端 SquashFS 3.0、4.0，以及 DD-WRT 3.0 的 `hsqt` / `tqsh`
   变体；后者按每个块的 pb/lc/lp 参数解压 LZMA，复用文件树、预览、哈希、
   导出、流式与范围读取。
+- `hsqs` / `sqsh` SquashFS 3.0 同时读取 gzip 和 LZMA 块：复用 backhand 的
+  adaptive 参数选择与镜像内缓存，解码改用纯 Rust `lzma-rust2`。支持 raw LZMA、
+  13 字节 LZMA-alone 和 5 字节属性前缀；gzip 优先，LZMA 块可改变参数。
+  参数选择限 `lc + lp ≤ 4`、`pb ≤ 4`、前缀 0–10 字节；标准属性头允许 `lc ≤ 8`、
+  `lp ≤ 4`，声明字典最多 8 MiB。解码需完整终止标记且消费整个块，声明正文长度必须匹配。
+  无终止标记的 legacy 流尚不支持。元数据输出限 8 KiB，文件数据限该卷块大小（最多 1 MiB），
+  失败不发布部分解压结果；同时检查 range coder 终态和源 EOF，避免把缺失尾字节补作零。
 
 源镜像大小、源哈希、十六进制视图和源 RAW 导出保留原始容器字节。
 固件按字节寻址；加密段的位置指向原始密文对应范围，文件浏览读取经过校验的明文。
+裸 SquashFS 也按字节保留完整长度，支持小于一个扇区或末尾不对齐的文件系统镜像。
 压缩文件不虚构物理 data runs。明文归属于镜像实例，卸载时释放，不写入案件源文件。
 打开时使用现有任务的取消令牌，逐块解密和校验；单个加密载荷限 512 MiB。
 嵌套封装最多 4 层、每个 SafeLoader / uImage 分段表最多 32 项，总文件系统数最多 256。
@@ -61,10 +69,13 @@ CramFS / Linux ROMFS 的 Rust 库选择、支持范围和校验要求见 [ROM_IM
 ```powershell
 just test firmware_
 just test-vendor backhand --features v3_ddwrt
+just test-vendor backhand --features v3_ddwrt,v3_lzma
 $env:LOVELYCARVE_FIRMWARE_IMAGE = 'C:/path/to/router.enc'
 just test firmware_external_image -- --ignored --nocapture
 $env:LOVELYCARVE_WRAPPED_FIRMWARE = '<SafeLoader路径>;<uImage路径>;<CHK路径>'
 just test firmware_wrappers_external_samples -- --ignored
+$env:LOVELYCARVE_SQUASHFS_LZMA = '<Unblob LE路径>;<Unblob BE路径>'
+just test squashfs_lzma_external -- --ignored
 just run-example probe_squashfs C:/path/to/router.enc
 ```
 

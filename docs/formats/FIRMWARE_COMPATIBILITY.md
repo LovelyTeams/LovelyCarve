@@ -16,14 +16,14 @@
 | Unblob JFFS2 新格式 LE/BE zlib（含 64 KiB padded 版本） | 无可浏览分区 | JFFS2 尚未接入；并非仅短镜像问题 |
 | Binwalk `yaffs2.bin` | 无可浏览分区 | YAFFS2 尚未接入，需 NAND page / spare 几何和版本重建 |
 | Unblob SquashFS v1 LE、Binwalk SquashFS v2 BE | 识别 SquashFS，展开时明确报不支持版本 | v1 / v2 尚未接入 |
-| Unblob SquashFS v3 adaptive LZMA | 识别 SquashFS，按标准 gzip 读时报解压错误 | adaptive LZMA 变体未接入；与已支持的 DD-WRT `hsqt` 变体不同 |
+| Unblob SquashFS v3 adaptive LZMA LE / BE | 直接浏览两份镜像并读取 `apple.txt` / `orange.txt` | backhand 参数选择配合纯 Rust 解码；独立输出的字节 / SHA256 对照，支持范围见 [FIRMWARE](FIRMWARE.md) |
 | Binwalk `cramfs.bin` / `romfs.bin` | 直接浏览、读取和哈希 | 支持边界见 [ROM_IMAGES](ROM_IMAGES.md) |
 
 阳性对照：Binwalk 标准 SquashFS、OpenWrt 19.07.10 ath25 裸 SquashFS，
 以及 OpenWrt 24.10.1 R6220 `rootfs.bin` 的 UBI → SquashFS 均能列出文件。
 因此不能把“旧 OpenWrt”或“所有 UBI 固件”概括为不支持。
 
-另外，当前 backhand 依赖未启用标准 LZ4 / LZO / adaptive LZMA 特性，属于
+另外，当前 backhand 依赖未启用标准 LZ4 / LZO 与 v4 adaptive LZMA 特性，属于
 源码确认的能力边界；公开清单未覆盖对应标准 v4 压缩样本，不计入上述实测结论。
 
 ## 先找 Rust 库，再改造
@@ -34,7 +34,7 @@
 | Linux ROMFS | [lamfold-romfs](https://github.com/lamco-admin/lamfold/tree/fabaad6af0c28b80535307b339b84110f3a3c12e/crates/lamfold-romfs) | 已独立验证并接入；补声明边界、头与超级块校验和、链循环和错误传播 |
 | JFFS2 | [jffs2-rs 0.2.1](https://github.com/xmoezzz/jffs2-rs/tree/52e1234ce66b0e099b35afabff3fc3e3078a2c0e) | 有可复用的结构基础，但 build.rs 编译 C Rubin/LZO；扫描器忽略 CRC，inode/dirent 固定 LE，文件长度按节点大小累加。需要审计与改造，不能直接宣称支持 |
 | UBIFS | [rust_ubidump](https://github.com/aspnmy/rust_ubidump/tree/19782c3eabc25a1baab7faefe12fe6f4bd362dac) | 已复用其 UBI 层；上游还有 UBIFS 源码。正文导出简单串接 data 节点，未按块号补空洞/裁 inode 长度，原始卷探测把节点类型读成偏移 14（正确为 20），主节点搜索固定步长；需修正几何并改造成有界库、审核解压与恢复语义 |
-| SquashFS | [backhand](https://github.com/wcampbell0x2a/backhand) | 优先扩展当前已 vendor 的库。已支持 v3/v4 标准及 DD-WRT v3；其他压缩/变体逐项测试后启用，避免替换整套读取器 |
+| SquashFS | [backhand](https://github.com/wcampbell0x2a/backhand) | 扩展当前已 vendor 的库。支持 v3/v4 标准、DD-WRT v3 与 v3 adaptive / 标准 LZMA；移除 adaptive C/C++ 依赖，用 lzma-rust2 进行有界解码并检查终止与 EOF。其他压缩/变体逐项测试后启用 |
 | YAFFS2 | crates.io 与公开 GitHub 检索 | 尚无选定的可直接复用 Rust 文件系统读取库；Binwalk 的 Rust 签名识别不是文件系统读取实现。保持明确未支持 |
 
 排除误匹配：`neotron-romfs` 是不同磁盘格式；`unearth` 的相关能力是识别，

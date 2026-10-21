@@ -2,7 +2,7 @@
   "date": "2026-10-21",
   "platform": "Windows standalone CLI",
   "baselineCommit": "1fe4fa425d0726e10b6ebc121468ad993521216a",
-  "stage": "native SafeLoader, legacy uImage, CHK, CramFS and Linux ROMFS readers",
+  "stage": "native SafeLoader, legacy uImage, CHK, CramFS, Linux ROMFS and v3 adaptive/standard LZMA readers",
   "criterion": "Native partition tree listing; RAW-open success alone is not counted. UBI nested SquashFS checked separately.",
   "samples": [
     {
@@ -191,7 +191,7 @@
         {
           "kind": "squashfs",
           "startByte": 0,
-          "lengthBytes": 2587648
+          "lengthBytes": 2587654
         }
       ],
       "error": {
@@ -310,7 +310,7 @@
       "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/squashfs/squashfs_v3_adaptive/__input__/squashfs_v3_le.lzma.bin",
       "size": 4096,
       "sha256": "2ac15e5c993f330854497b2fd032d2e87873a288fab6da2fe72106bb40b43124",
-      "browsable": false,
+      "browsable": true,
       "sourceFormat": "raw",
       "partitionKinds": [
         "squashfs"
@@ -322,9 +322,31 @@
           "lengthBytes": 4096
         }
       ],
-      "error": {
-        "code": "corruptData",
-        "message": "SquashFS open part:0: std io error: corrupt deflate stream"
+      "contentOracle": {
+        "apple.txt": "303980bcb9e9e6cdec515230791af8b0ab1aaa244b58a8d99152673aa22197d0",
+        "orange.txt": "be6fe11876282442bead98e8b24aca07f8972a763cd366c56b4b5f7bcdd23eac"
+      }
+    },
+    {
+      "name": "unblob-squashfs-v3-adaptive-be",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/squashfs/squashfs_v3_adaptive/__input__/squashfs_v3_be.lzma.bin",
+      "size": 4096,
+      "sha256": "71971c7a05d2d0b44bc976bc168f7b9134af8dc9fec83553889a9b5473469495",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "303980bcb9e9e6cdec515230791af8b0ab1aaa244b58a8d99152673aa22197d0",
+        "orange.txt": "be6fe11876282442bead98e8b24aca07f8972a763cd366c56b4b5f7bcdd23eac"
       }
     }
   ]

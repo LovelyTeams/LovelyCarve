@@ -178,13 +178,28 @@ impl Kind {
         match &self.inner.compressor {
             #[cfg(feature = "v3")]
             VersionedCompressor::V3(compressor) => {
-                compressor.decompress_bounded(bytes, out, max_out)
+                match compressor.decompress_bounded(bytes, out, max_out) {
+                    Ok(()) => Ok(()),
+                    Err(error) => {
+                        #[cfg(feature = "v3_lzma")]
+                        {
+                            trace!("v3 gzip failed ({error}); trying bounded Rust LZMA");
+                            crate::lzma::decompress_adaptive(bytes, out, &self.lzma_cache, max_out)
+                        }
+                        #[cfg(not(feature = "v3_lzma"))]
+                        Err(error)
+                    }
+                }
             }
             #[cfg(feature = "v3_ddwrt")]
             VersionedCompressor::V3Ddwrt => crate::v3::ddwrt::decompress(bytes, out, max_out),
             #[cfg(feature = "v3_lzma")]
             VersionedCompressor::V3Lzma(_) => {
                 crate::lzma::decompress_adaptive(bytes, out, &self.lzma_cache, max_out)
+            }
+            #[cfg(feature = "v3_lzma")]
+            VersionedCompressor::V3LzmaStandard(_) => {
+                crate::lzma::decompress_standard(bytes, out, max_out)
             }
             #[cfg(feature = "v4_lzma")]
             VersionedCompressor::V4Lzma(_) => {

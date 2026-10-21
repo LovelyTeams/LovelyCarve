@@ -77,7 +77,7 @@ aes = "0.9.3"
 aho-corasick = "1.1.5"
 anyhow = "1.0.104"
 apfs = { path = "vendor/apfs" }
-backhand = { path = "vendor/backhand", default-features = false, features = ["xz", "gzip", "zstd", "parallel", "error-strings", "descriptive-errors", "v3_ddwrt"] }
+backhand = { path = "vendor/backhand", default-features = false, features = ["xz", "gzip", "zstd", "parallel", "error-strings", "descriptive-errors", "v3_ddwrt", "v3_lzma"] }
 base64 = "0.23.1"
 # 快照 `.dirz` 体的二进制编码（替代逐条 serde_json，省每条目分配 + 加速加载解析）。
 # 3.0.0 仅包含停维护公告和 compile_error，保留可用的 2.0.1 与既有快照格式。
