@@ -118,6 +118,20 @@ def main():
             assert rom_rows[2]["result"]["data"] == rom_content[8180:8280].hex()
             assert rom_rows[3]["result"]["sha256"] == hashlib.sha256(rom_content).hexdigest()
 
+        # Native firmware envelopes retain the established CramFS content paths.
+        for wrapper in ("synthetic-uimage.bin", "synthetic-safeloader.bin", "synthetic.chk"):
+            wrapper_node = "cramfs:part:0:" + b"/payload.bin".hex()
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(firmware_fixtures / wrapper)}},
+                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": wrapper_node, "offset": 8180, "length": 100}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": wrapper_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["sourceFormat"] == "firmware"
+            assert rows[2]["result"]["data"] == rom_content[8180:8280].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(rom_content).hexdigest()
+
         # Discovery needs no evidence: system facts, request schemas, search and completion.
         system = json.loads(run(["system", "get"]).stdout)
         assert system["standalone"], "the CLI must be built without the desktop runtime"

@@ -41,6 +41,11 @@ CUE 中的音频轨保留原始范围。整镜像哈希和源导出使用完整�
 `<卷名>.img` 是重组后的原始逻辑卷，SquashFS 卷另有同名目录供浏览、预览和导出。
 原始固件字节保持不变；UBIFS 当前只提供原始逻辑卷，详见 [UBI 固件](formats/UBI.md)。
 
+Buffalo `.enc` / `.trx`、TP-Link SafeLoader `.bin`、U-Boot legacy uImage 组合镜像及
+Netgear `.chk` 也可直接添加。程序校验外层结构后，展示其中支持的文件系统；裸
+`.cramfs` / `.romfs` 无需预先解包。支持边界见[固件](formats/FIRMWARE.md)和
+[CramFS / Linux ROMFS](formats/ROM_IMAGES.md)。
+
 「添加检材」提供五种来源，也可以把文件直接拖进窗口：
 
 | 来源 | 说明 |

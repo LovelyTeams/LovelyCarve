@@ -2,7 +2,7 @@
   "date": "2026-10-21",
   "platform": "Windows standalone CLI",
   "baselineCommit": "1fe4fa425d0726e10b6ebc121468ad993521216a",
-  "stage": "after CramFS and Linux ROMFS integration",
+  "stage": "native SafeLoader, legacy uImage, CHK, CramFS and Linux ROMFS readers",
   "criterion": "Native partition tree listing; RAW-open success alone is not counted. UBI nested SquashFS checked separately.",
   "samples": [
     {
@@ -10,36 +10,54 @@
       "url": "https://downloads.openwrt.org/releases/24.10.1/targets/ath79/generic/openwrt-24.10.1-ath79-generic-tplink_archer-c7-v5-squashfs-factory.bin",
       "size": 6948335,
       "sha256": "d47d25fb7932f99dfbf11bfc69dce89798fb21f036721a91f9317a1f4c8176c4",
-      "browsable": false,
-      "partitionKinds": [],
-      "error": {
-        "code": "notFound",
-        "message": "partition not found: 0"
-      }
+      "browsable": true,
+      "sourceFormat": "firmware",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 2622944,
+          "lengthBytes": 4325380
+        }
+      ]
     },
     {
       "name": "tplink-c7-sysupgrade",
       "url": "https://downloads.openwrt.org/releases/24.10.1/targets/ath79/generic/openwrt-24.10.1-ath79-generic-tplink_archer-c7-v5-squashfs-sysupgrade.bin",
       "size": 6947144,
       "sha256": "402bea84dc8ff122c47f6d35936904ca07ce9cd500bdbb0524a980b0feb09e45",
-      "browsable": false,
-      "partitionKinds": [],
-      "error": {
-        "code": "notFound",
-        "message": "partition not found: 0"
-      }
+      "browsable": true,
+      "sourceFormat": "firmware",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 2614181,
+          "lengthBytes": 4332963
+        }
+      ]
     },
     {
       "name": "netgear-ex6150-chk",
       "url": "https://downloads.openwrt.org/releases/24.10.1/targets/ramips/mt7621/openwrt-24.10.1-ramips-mt7621-netgear_ex6150-squashfs-factory.chk",
       "size": 7143486,
       "sha256": "6aa94c0d48aadd883ea9fab12e85c2ee3057a87271020b992563e551bf00ab88",
-      "browsable": false,
-      "partitionKinds": [],
-      "error": {
-        "code": "notFound",
-        "message": "partition not found: 0"
-      }
+      "browsable": true,
+      "sourceFormat": "firmware",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 3183392,
+          "lengthBytes": 3960094
+        }
+      ]
     },
     {
       "name": "netgear-r6220-factory",
@@ -47,7 +65,9 @@
       "size": 7327051,
       "sha256": "4907101accddfd686d18b9193ca1abc0d0b8d382daae13a06bcb5a92476e1eb4",
       "browsable": false,
+      "sourceFormat": "raw",
       "partitionKinds": [],
+      "partitions": [],
       "error": {
         "code": "notFound",
         "message": "partition not found: 0"
@@ -59,8 +79,16 @@
       "size": 5242880,
       "sha256": "bd75236b240301644b526c6d52670e2722626822cbd7fb3905fa3e8a25f8be64",
       "browsable": true,
+      "sourceFormat": "raw",
       "partitionKinds": [
         "ubi"
+      ],
+      "partitions": [
+        {
+          "kind": "ubi",
+          "startByte": 0,
+          "lengthBytes": 5242880
+        }
       ]
     },
     {
@@ -69,8 +97,16 @@
       "size": 2752512,
       "sha256": "8966031dc8fa5fa437c549d0a0f239e9bcd72b1b057cd9340a5ae9209582a5dc",
       "browsable": true,
+      "sourceFormat": "raw",
       "partitionKinds": [
         "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 2752512
+        }
       ]
     },
     {
@@ -79,8 +115,16 @@
       "size": 4096,
       "sha256": "1e75d47c5c759bfb964011a4530ce353bcf7fe2377eb59b32b773445dbad4216",
       "browsable": true,
+      "sourceFormat": "raw",
       "partitionKinds": [
         "cramfs"
+      ],
+      "partitions": [
+        {
+          "kind": "cramfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
       ]
     },
     {
@@ -89,8 +133,16 @@
       "size": 1024,
       "sha256": "31259785aa0c9404e6ae496b27c37d0620e10f783b127848aa3d5cc2a25cb6d3",
       "browsable": true,
+      "sourceFormat": "raw",
       "partitionKinds": [
         "romfs"
+      ],
+      "partitions": [
+        {
+          "kind": "romfs",
+          "startByte": 0,
+          "lengthBytes": 1024
+        }
       ]
     },
     {
@@ -99,7 +151,9 @@
       "size": 135168,
       "sha256": "ee2427938f658febd6c9dad0e8e1a4a74c854cc1b4bdf5abf44817be80512789",
       "browsable": false,
+      "sourceFormat": "raw",
       "partitionKinds": [],
+      "partitions": [],
       "error": {
         "code": "notFound",
         "message": "partition not found: 0"
@@ -111,8 +165,16 @@
       "size": 4096,
       "sha256": "53e3ae5f8b1bd21ea4159b60e1052c572c2dd7cfbc173147f8a54fb0b8ad3c02",
       "browsable": true,
+      "sourceFormat": "raw",
       "partitionKinds": [
         "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
       ]
     },
     {
@@ -121,8 +183,16 @@
       "size": 2587654,
       "sha256": "df727ab58e70ffac1c98c0bfd2786e4c949e03431eb2043f270292f33fb30475",
       "browsable": false,
+      "sourceFormat": "raw",
       "partitionKinds": [
         "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 2587648
+        }
       ],
       "error": {
         "code": "unsupportedFormat",
@@ -135,7 +205,9 @@
       "size": 1777664,
       "sha256": "e883e7b2ccba4d17dc614dcf816521d3a6178e992965fd175d88a32ed5d54111",
       "browsable": false,
+      "sourceFormat": "raw",
       "partitionKinds": [],
+      "partitions": [],
       "error": {
         "code": "notFound",
         "message": "partition not found: 0"
@@ -147,7 +219,9 @@
       "size": 168960,
       "sha256": "87b05f653d717736b766a9cca10b75656cc14c1d9442c61fdc514cc275a8a634",
       "browsable": false,
+      "sourceFormat": "raw",
       "partitionKinds": [],
+      "partitions": [],
       "error": {
         "code": "notFound",
         "message": "partition not found: 0"
@@ -159,7 +233,9 @@
       "size": 484,
       "sha256": "2c1f77e27694761fa6e8e1264318792db43314f1af9d5e3f14f88e862eece44e",
       "browsable": false,
+      "sourceFormat": "raw",
       "partitionKinds": [],
+      "partitions": [],
       "error": {
         "code": "notFound",
         "message": "partition not found: 0"
@@ -171,7 +247,9 @@
       "size": 484,
       "sha256": "e6a4da9831a5ab98e03f81d829793e3119eb3a3ffb05227b4b98bc604cc7f3dc",
       "browsable": false,
+      "sourceFormat": "raw",
       "partitionKinds": [],
+      "partitions": [],
       "error": {
         "code": "notFound",
         "message": "partition not found: 0"
@@ -183,7 +261,9 @@
       "size": 65536,
       "sha256": "08cceee3614d27227e19ccfe1b7f0b6abf1731d87fd3dc5ce7e2c7051a9621c1",
       "browsable": false,
+      "sourceFormat": "raw",
       "partitionKinds": [],
+      "partitions": [],
       "error": {
         "code": "notFound",
         "message": "partition not found: 0"
@@ -195,7 +275,9 @@
       "size": 65536,
       "sha256": "0dfbb9d9f3cae2d3f81a7064a65b9f6d018963af0a46cf1aa2e84dd0c7aa2c7c",
       "browsable": false,
+      "sourceFormat": "raw",
       "partitionKinds": [],
+      "partitions": [],
       "error": {
         "code": "notFound",
         "message": "partition not found: 0"
@@ -207,8 +289,16 @@
       "size": 4096,
       "sha256": "b45925fa779eae0293635ce0e6dc8760308f25227dd88645d677ba3ffce23e71",
       "browsable": false,
+      "sourceFormat": "raw",
       "partitionKinds": [
         "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
       ],
       "error": {
         "code": "unsupportedFormat",
@@ -221,8 +311,16 @@
       "size": 4096,
       "sha256": "2ac15e5c993f330854497b2fd032d2e87873a288fab6da2fe72106bb40b43124",
       "browsable": false,
+      "sourceFormat": "raw",
       "partitionKinds": [
         "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
       ],
       "error": {
         "code": "corruptData",

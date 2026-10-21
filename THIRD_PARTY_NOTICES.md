@@ -28,6 +28,14 @@ readers use the existing backhand (MIT OR Apache-2.0) library and lzma-rust2
 (Apache-2.0). Original synthetic fixtures and their generators are CC0-1.0;
 see [firmware provenance and limits](docs/formats/FIRMWARE.md).
 
+SafeLoader, legacy uImage and Netgear CHK format behavior is checked against
+OpenWrt firmware-utils commit `b2a93c6f77bac3a6525e93b383c987b073b4633b`:
+Matthias Schiffer's `tplink-safeloader.c` (BSD-2-Clause), Dave C. Reeve's
+`mkchkimg.c` (GPL-2.0-or-later), and `uimage_padhdr.c` (GPL-2.0-only).
+These C sources and executables are not incorporated. The Rust envelope readers
+reuse the existing MD5/CRC implementations; independent synthetic encoders and
+fixtures are CC0-1.0. See the firmware format guide for exact compatibility limits.
+
 The APFS name lookup uses the unmodified crates.io packages
 [`unicode-casefold` 0.2.0](https://crates.io/crates/unicode-casefold/0.2.0)
 by Chris Wong and [`unicode-normalization` 0.1.25](https://crates.io/crates/unicode-normalization/0.1.25)

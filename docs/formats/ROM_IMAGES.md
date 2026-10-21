@@ -1,8 +1,8 @@
 # CramFS / Linux ROMFS
 
 使用 Rust 库 [lamfold](https://github.com/lamco-admin/lamfold) 的
-`lamfold-cramfs 0.1.0` 和 `lamfold-romfs 0.1.1`；先对公开样本独立验证，
-再将读取器 vendor 并补齐取证读取所需的校验、范围与遍历约束。
+`lamfold-cramfs 0.1.0` 和 `lamfold-romfs 0.1.1`，保留其读取契约并补齐
+取证读取所需的校验、范围与遍历约束。
 未使用宿主挂载、外部提取器或 C 解压库。
 
 ## 范围

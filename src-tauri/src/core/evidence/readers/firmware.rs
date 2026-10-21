@@ -1,4 +1,4 @@
-//! Read-only Buffalo ENC and Broadcom TRX firmware views. Source hashes and
+//! Read-only Buffalo, TRX, SafeLoader, legacy uImage and Netgear CHK views. Source hashes and
 //! hex reads retain the original container; only filesystem readers use the
 //! verified plaintext span. Format references and scope: docs/formats/FIRMWARE.md.
 
@@ -8,6 +8,15 @@ use anyhow::{ensure, Context, Result};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::evidence::partitions::{Partition, PartitionKind};
+
+#[path = "firmware_chk.rs"]
+mod chk;
+#[path = "firmware_safeloader.rs"]
+mod safeloader;
+#[path = "firmware_segments.rs"]
+mod segments;
+#[path = "firmware_uimage.rs"]
+mod uimage;
 
 const MAX_ENCRYPTED_BYTES: usize = 512 * 1024 * 1024;
 const TRX_HEADER: usize = 28;
@@ -39,6 +48,7 @@ pub fn has_firmware_magic(bytes: &[u8]) -> bool {
         || bytes.starts_with(b"asar1\0")
         || bytes.starts_with(b"HDR0")
         || bytes.starts_with(b"buffalo.enc\n")
+        || segments::has_wrapper_magic(bytes)
 }
 
 impl FirmwareImage {
@@ -73,13 +83,13 @@ impl FirmwareImage {
             )
         } else {
             // Unencrypted firmware is parsed in place; never duplicate a large source.
-            let partitions = parse_trx(bytes, 0, cancel)?;
+            let partitions = segments::parse_image(bytes, 0, cancel)?;
             return Ok(Self {
                 partitions,
                 plaintext: None,
             });
         };
-        let partitions = parse_trx(&payload, base, cancel)?;
+        let partitions = segments::parse_image(&payload, base, cancel)?;
         Ok(Self {
             partitions,
             plaintext,
@@ -196,10 +206,6 @@ fn parse_trx(bytes: &[u8], base: u64, cancel: &CancellationToken) -> Result<Vec<
             unique_guid: None,
         });
     }
-    ensure!(
-        !partitions.is_empty(),
-        "TRX contains no supported filesystem segments"
-    );
     Ok(partitions)
 }
 
@@ -336,3 +342,7 @@ fn be32(bytes: &[u8], offset: usize) -> Result<u32> {
 #[cfg(test)]
 #[path = "firmware_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "firmware_wrapper_tests.rs"]
+mod wrapper_tests;

@@ -129,7 +129,7 @@ CLI JSONL 调度位于 `cli/session.rs`。`session --jobs N` 使用有界输入�
 
 `EvidenceSession::raw_export_reader` 提供独立的 RAW 导出投影。`image_export_raw` 默认 `mode: source`，桌面镜像头部使用 `unlockedPartitions`，导出开始时固定已解锁的 LUKS / VeraCrypt / BitLocker 读者。明文放在原分区起始位置，容器开销对应的分区尾部补零；整盘大小、分区表、未解锁分区和分区间隙保留原字节。范围重叠、溢出、越界、明文过长及短读明确失败，关闭解密会话不回退到密文。该投影不影响普通读取、源哈希和证据身份；尾部补零是导出转换规则，源坏区仍沿用读故障审计。导出目标以 `create_new` 创建。
 
-Buffalo ENC / Broadcom TRX 固件由 `evidence/readers/firmware.rs` 在打开阶段校验并建立明文视图，原始字节读取与源哈希保留容器内容。固件段按字节寻址，SquashFS 适配器选择标准 v3/v4 或 DD-WRT `hsqt` 逐块参数 LZMA 读者；范围、流式与完整读取共用同一逻辑内容。范围与上游依据见 [固件](formats/FIRMWARE.md)。
+Buffalo ENC / Broadcom TRX、TP-Link SafeLoader、U-Boot legacy uImage 与 Netgear CHK 固件由 `evidence/readers/firmware.rs` 在打开阶段校验封装并定位分段，Buffalo ENC 另建立明文视图；原始字节读取与源哈希保留容器内容。固件段按字节寻址，SquashFS 适配器选择标准 v3/v4 或 DD-WRT `hsqt` 逐块参数 LZMA 读者；范围、流式与完整读取共用同一逻辑内容。范围与上游依据见 [固件](formats/FIRMWARE.md)。
 
 CramFS / Linux ROMFS 复用 vendor 的 lamfold Rust 读取器，适配器位于 `filesystem/volumes/rom_images.rs`。完整、流式与范围读取经同一文件内容路径，声明范围、CRC/校验和与循环目录明确校验；裸镜像用字节几何，真实分区保留原始 LBA，原容器字节不变。能力和限制见 [ROM_IMAGES](formats/ROM_IMAGES.md)。
 

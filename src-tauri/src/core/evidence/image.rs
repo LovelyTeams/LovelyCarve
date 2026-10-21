@@ -223,7 +223,7 @@ pub enum ImageFormat {
     /// exposed as byte-addressed volumes while raw reads retain the exact
     /// original container bytes.
     XiaomiFirmware,
-    /// Buffalo ENC / Broadcom TRX, with source bytes retained for hashing.
+    /// Buffalo ENC/TRX, SafeLoader, legacy uImage or Netgear CHK, retaining source bytes.
     Firmware,
     /// LDPlayer (雷电模拟器) `.ldbk` emulator backup — a 7z (LZMA2) container of
     /// `*.vmdk` virtual disks. Each VMDK is de-sparsed through the native sparse reader and the
