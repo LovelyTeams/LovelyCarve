@@ -1,6 +1,6 @@
 //! Xiaomi `HDR1` firmware-container recognition.
 //!
-//! The container header stores up to eight absolute segment-header offsets.
+//! The container header stores up to 32 absolute segment-header offsets.
 //! Each 48-byte segment header then names a byte payload and declares its
 //! length. Payloads are not required to start on a 512-byte boundary, so the
 //! enclosing [`DiskImage`](crate::core::evidence::image::DiskImage) uses one-byte
@@ -23,7 +23,8 @@ pub const XIAOMI_FIRMWARE_MAGIC: &[u8; 4] = b"HDR1";
 const CONTAINER_HEADER_LEN: usize = 48;
 const SIGNATURE_OFFSET_OFFSET: usize = 4;
 const SEGMENT_OFFSETS_OFFSET: usize = 16;
-const SEGMENT_OFFSET_COUNT: usize = 8;
+const LEGACY_SEGMENT_OFFSET_COUNT: usize = 8;
+const SEGMENT_OFFSET_COUNT: usize = 32;
 const SEGMENT_HEADER_LEN: usize = 48;
 const SEGMENT_MAGIC: [u8; 4] = [0xBE, 0xBA, 0x00, 0x00];
 const SEGMENT_LENGTH_OFFSET: usize = 8;
@@ -61,9 +62,23 @@ impl PartParser for XiaomiFirmwareParser {
             );
         }
 
+        // Older HDR1 headers have only eight slots; extended headers end at
+        // the first segment (usually 0x90). Never interpret payload as slots.
+        let mut table_end = SEGMENT_OFFSETS_OFFSET + SEGMENT_OFFSET_COUNT * 4;
+        for index in 0..LEGACY_SEGMENT_OFFSET_COUNT {
+            let offset = read_u32(ctx.head, SEGMENT_OFFSETS_OFFSET + index * 4)? as usize;
+            if offset != 0 {
+                table_end = table_end.min(offset);
+            }
+        }
+        if table_end < CONTAINER_HEADER_LEN || table_end > ctx.head.len() {
+            bail!("Xiaomi HDR1 segment table is truncated or overlaps its header");
+        }
+        let slot_count = (table_end - SEGMENT_OFFSETS_OFFSET) / 4;
         let mut seen_offsets = HashSet::new();
+        let mut segments = Vec::new();
         let mut partitions = Vec::new();
-        for index in 0..SEGMENT_OFFSET_COUNT {
+        for index in 0..slot_count {
             let field_offset = SEGMENT_OFFSETS_OFFSET + index * 4;
             let header_offset = u64::from(read_u32(ctx.head, field_offset)?);
             if header_offset == 0 {
@@ -75,7 +90,7 @@ impl PartParser for XiaomiFirmwareParser {
             let payload_offset = header_offset
                 .checked_add(SEGMENT_HEADER_LEN as u64)
                 .context("Xiaomi HDR1 segment payload offset overflow")?;
-            if header_offset < CONTAINER_HEADER_LEN as u64 || payload_offset > signature_offset {
+            if header_offset < table_end as u64 || payload_offset > signature_offset {
                 bail!(
                     "Xiaomi HDR1 segment {index} header at 0x{header_offset:x} is outside the payload area"
                 );
@@ -103,6 +118,13 @@ impl PartParser for XiaomiFirmwareParser {
                     "Xiaomi HDR1 segment {index} payload ends at 0x{payload_end:x}, beyond signature offset 0x{signature_offset:x}"
                 );
             }
+            if segments
+                .iter()
+                .any(|&(start, end)| header_offset < end && payload_end > start)
+            {
+                bail!("Xiaomi HDR1 segment {index} overlaps another segment");
+            }
+            segments.push((header_offset, payload_end));
             if payload_len == 0 {
                 continue;
             }
@@ -201,6 +223,44 @@ mod tests {
         let error = detect_partitions_with_meta(&source, 1).expect_err("invalid segment must fail");
 
         assert!(error.to_string().contains("beyond signature offset"));
+    }
+
+    #[test]
+    fn detects_ubi_after_the_first_eight_slots_and_in_the_last_slot() {
+        for slot in [8, 31] {
+            let mut payload = vec![0xff; 8192];
+            let ec = &mut payload[..64];
+            ec.fill(0);
+            ec[..4].copy_from_slice(b"UBI#");
+            ec[4] = 1;
+            ec[16..20].copy_from_slice(&2048u32.to_be_bytes());
+            ec[20..24].copy_from_slice(&4096u32.to_be_bytes());
+            let crc = ubidump::utils::crc::crc32_jamcrc(&ec[..60]);
+            ec[60..64].copy_from_slice(&crc.to_be_bytes());
+            let signature = 256 + 48 + payload.len();
+            let mut bytes = vec![0; signature + 32];
+            bytes[..4].copy_from_slice(XIAOMI_FIRMWARE_MAGIC);
+            bytes[4..8].copy_from_slice(&(signature as u32).to_le_bytes());
+            bytes[16..20].copy_from_slice(&144u32.to_le_bytes());
+            bytes[16 + slot * 4..20 + slot * 4].copy_from_slice(&256u32.to_le_bytes());
+            write_segment(&mut bytes, 144, "version", b"v1");
+            write_segment(&mut bytes, 256, "root.ubi", &payload);
+            let result = detect_partitions_with_meta(&BufSource(bytes), 1).unwrap();
+            assert_eq!(result.partitions.len(), 1);
+            assert_eq!(result.partitions[0].kind, PartitionKind::Ubi);
+            assert_eq!(result.partitions[0].start_lba, 304);
+            assert_eq!(result.partitions[0].label.as_deref(), Some("root.ubi"));
+        }
+    }
+
+    #[test]
+    fn rejects_overlapping_segments_even_when_one_is_opaque() {
+        let mut bytes = firmware_fixture();
+        // Extend the opaque version segment into the FAT segment header.
+        bytes[56 + SEGMENT_LENGTH_OFFSET..60 + SEGMENT_LENGTH_OFFSET]
+            .copy_from_slice(&100u32.to_le_bytes());
+        let error = detect_partitions_with_meta(&BufSource(bytes), 1).unwrap_err();
+        assert!(error.to_string().contains("overlaps"));
     }
 
     fn firmware_fixture() -> Vec<u8> {

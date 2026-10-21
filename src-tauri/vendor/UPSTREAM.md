@@ -10,6 +10,7 @@
 
 | 目录 | 当前版本 | 上游提交 / 来源 | 本次处理 |
 | --- | --- | --- | --- |
+| `ubidump` | `0.1.0` | [19782c3eabc2](https://github.com/aspnmy/rust_ubidump/commit/19782c3eabc25a1baab7faefe12fe6f4bd362dac) | UBI 层改为有界只读库，修正 VTBL 长度与名称边界，重写逻辑块映射及校验；不引入 CLI / UBIFS / C LZO。见 LOVELYCARVE.md 与 [UBI](../../docs/formats/UBI.md)。 |
 | `ad1` | `0.1.2` | [afc3963659a1](https://github.com/SecurityRonin/ad1-forensic/commit/afc3963659a13acf10082e7d76194d3ab789583e) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
 | `apfs` | `0.4.1` | [3a73ee28fdab](https://github.com/Dil4rd/dpp/commit/3a73ee28fdab192fcdfbe8edcad7b520867f2417) | 保留多卷、MACB 和目录遍历；2026-10-13 对照 libfsapfs 补事务 OMAP、目录键、seek/range、inode/xattr/快照元数据及严格来源边界。完整范围与限制见 [APFS](../../docs/formats/APFS.md)。 |
 | `backhand` | `0.25.5` | [bf678c7f9237](https://github.com/wcampbell0x2a/backhand/commit/bf678c7f923799a57d972cf695daf69d8c6ddafb) | 升级 0.25.1 → 0.25.5；保留精简特性、std I/O 别名及可读错误信息，修复 Windows 根路径判断。 |

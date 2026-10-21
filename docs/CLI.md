@@ -353,6 +353,11 @@ lovelycarve-cli --image "D:\evidence\disk.E01" files tree list --path /part:0/Us
 | `files search <模式> [路径]` | 在子树内容中搜索关键词或正则 |
 | `files export <路径> --destination <主机路径>` | 导出单个文件；目录用 `files directories export --mode tree\|zip` |
 
+UBI 镜像及小米 HDR1 固件通过 `--image <镜像路径>` 或 `images open` 加载。
+用 `files list --parent-id part:0` 查看命名卷：`<卷名>.img` 提供原始逻辑字节，
+SquashFS 同名目录中的文件复用 `files read`、`files hash` 与 `files export`。
+实际分区号、卷名和节点 ID 以列表为准；格式边界见 [UBI](formats/UBI.md)。
+
 `files list`、`files tree list`、`files get` 与路径解析复用目录分页接口，优先查询案件卷索引或本进程的临时索引，
 未被索引覆盖的目录沿用后端的快照／实时回退。原检材缺失时（案件中的 `index_only` 检材）
 仍可浏览已索引目录，读取字节的命令明确报错。达到深度或数量上限时 `truncated` 为真，

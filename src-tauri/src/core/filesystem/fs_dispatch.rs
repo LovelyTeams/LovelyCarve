@@ -47,6 +47,7 @@ use crate::core::filesystem::volumes::ntfs::NtfsSource;
 use crate::core::filesystem::volumes::ntfs::{parse_ntfs_id, NtfsVolume};
 use crate::core::filesystem::volumes::refs::{parse_refs_id, parse_refs_snap_id};
 use crate::core::filesystem::volumes::squashfs::{open_squashfs_source, parse_squashfs_id};
+use crate::core::filesystem::volumes::ubi::{open_ubi_source, parse_ubi_id};
 use crate::core::filesystem::volumes::ufs::{open_ufs_source, parse_ufs_id};
 use crate::core::filesystem::volumes::xfs::{open_xfs_source, parse_xfs_id};
 use crate::core::filesystem::volumes::zfs::{open_zfs_source, parse_zfs_id, ZfsPath};
@@ -137,6 +138,7 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &RefsAdapter,
     &CdfsAdapter,
     &SquashfsAdapter,
+    &UbiAdapter,
     &ApfsAdapter,
     &HfsPlusAdapter,
     &UfsAdapter,
@@ -206,7 +208,10 @@ pub(crate) fn volume_root_key(id: &str) -> Option<String> {
         return Some(format!("cdfs:part:{}", cdfs_part_id(&source)));
     }
     if let Some((source, _)) = parse_squashfs_id(id) {
-        return Some(format!("squashfs:part:{}", squashfs_part_id(&source)));
+        return Some(source.cache_key());
+    }
+    if let Some((partition_id, _)) = parse_ubi_id(id) {
+        return Some(format!("ubi:part:{partition_id}"));
     }
     if let Some((source, _)) = parse_exfat_id(id) {
         return Some(format!("exfat:part:{}", exfat_part_id(&source)));
@@ -344,6 +349,16 @@ path_volume!(
 );
 path_volume_impl!(SquashfsVol, plain);
 path_volume!(
+    UbiAdapter,
+    UbiVol,
+    "ubi",
+    crate::core::filesystem::volumes::ubi::UbiVolume,
+    parse_ubi_id,
+    open_ubi_source,
+    u32
+);
+path_volume_impl!(UbiVol, plain_range);
+path_volume!(
     ApfsAdapter,
     ApfsVol,
     "apfs",
@@ -454,11 +469,6 @@ fn ufs_part_id(source: &crate::core::filesystem::volumes::ufs::UfsSource) -> u8 
 fn cdfs_part_id(source: &crate::core::filesystem::volumes::cdfs::CdfsSource) -> u8 {
     match source {
         crate::core::filesystem::volumes::cdfs::CdfsSource::Partition(part_id) => *part_id,
-    }
-}
-fn squashfs_part_id(source: &crate::core::filesystem::volumes::squashfs::SquashfsSource) -> u8 {
-    match source {
-        crate::core::filesystem::volumes::squashfs::SquashfsSource::Partition(part_id) => *part_id,
     }
 }
 fn exfat_part_id(source: &crate::core::filesystem::volumes::exfat::ExfatSource) -> u8 {

@@ -184,6 +184,7 @@ pub fn fs_prefix_for_kind(kind: PartitionKind) -> &'static str {
         | PartitionKind::ExFat
         | PartitionKind::Cdfs
         | PartitionKind::Squashfs
+        | PartitionKind::Ubi
         | PartitionKind::Lvm
         | PartitionKind::BiosBoot
         | PartitionKind::ApfsContainer

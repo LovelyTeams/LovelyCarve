@@ -13,6 +13,8 @@
 //! `squashfs:part:{N}:{hex(/path/to/entry)}`. The empty-hex form denotes the
 //! volume root and is never emitted directly — the partition node itself
 //! stands in for the root.
+//! UBI-backed sources instead use `squashfs:ubi:part:{N}:{volume}:{hex(path)}`;
+//! their empty-path directory is a child of the containing UBI partition.
 
 use std::io::{self, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -38,11 +40,37 @@ const MAX_CHILDREN_PER_DIR: usize = 50_000;
 #[derive(Debug, Clone, Copy)]
 pub enum SquashfsSource {
     Partition(u8),
+    Ubi { part_id: u8, volume_id: u32 },
+}
+
+impl SquashfsSource {
+    pub fn cache_key(self) -> String {
+        match self {
+            Self::Partition(part_id) => format!("squashfs:part:{part_id}"),
+            Self::Ubi { part_id, volume_id } => format!("squashfs:ubi:part:{part_id}:{volume_id}"),
+        }
+    }
+
+    pub fn node_id(self, path: &str) -> String {
+        match self {
+            Self::Partition(part_id) if path.is_empty() => format!("part:{part_id}"),
+            Self::Partition(_) | Self::Ubi { .. } => {
+                format!("{}:{}", self.cache_key(), hex::encode(path.as_bytes()))
+            }
+        }
+    }
 }
 
 /// Parse a `squashfs:part:{N}:{hex(path)}` ID. Returns the source plus the
 /// decoded UTF-8 path (with a leading `/`, or empty for the volume root).
 pub fn parse_squashfs_id(id: &str) -> Option<(SquashfsSource, String)> {
+    if let Some(rest) = id.strip_prefix("squashfs:ubi:part:") {
+        let mut parts = rest.splitn(3, ':');
+        let part_id = parts.next()?.parse().ok()?;
+        let volume_id = parts.next()?.parse().ok()?;
+        let path = String::from_utf8(hex::decode(parts.next()?).ok()?).ok()?;
+        return Some((SquashfsSource::Ubi { part_id, volume_id }, path));
+    }
     let mut parts = id.splitn(4, ':');
     match (parts.next(), parts.next(), parts.next(), parts.next()) {
         (Some("squashfs"), Some("part"), Some(part_id), Some(hex_path)) => {
@@ -68,11 +96,19 @@ pub fn open_squashfs_source(
             let partition = find_partition(image, &part_id.to_string())?;
             SquashfsVolume::open(Arc::clone(image), partition)
         }
+        SquashfsSource::Ubi { part_id, volume_id } => {
+            let ubi = crate::core::filesystem::volumes::ubi::open_ubi_source(image, part_id)?;
+            let reader = BufReader::with_capacity(64 * 1024, ubi.reader(volume_id)?);
+            let fs = FilesystemReader::from_reader(reader).map_err(|error| {
+                anyhow!("SquashFS open UBI part:{part_id} volume:{volume_id}: {error}")
+            })?;
+            Ok(SquashfsVolume { source, fs })
+        }
     }
 }
 
 pub struct SquashfsVolume {
-    partition_id: u8,
+    source: SquashfsSource,
     /// Parsed filesystem (inode + dir tables decompressed), built once in
     /// [`SquashfsVolume::open`] and reused. backhand's reads take `&self`, so
     /// no lock is needed. See the module header.
@@ -94,7 +130,7 @@ impl SquashfsVolume {
         let fs = FilesystemReader::from_reader(reader)
             .map_err(|err| anyhow!("SquashFS open part:{}: {err}", partition.id))?;
         Ok(Self {
-            partition_id: partition.id,
+            source: SquashfsSource::Partition(partition.id),
             fs,
         })
     }
@@ -279,15 +315,7 @@ impl SquashfsVolume {
     }
 
     fn node_id(&self, path: &str) -> String {
-        if path.is_empty() {
-            format!("part:{}", self.partition_id)
-        } else {
-            format!(
-                "squashfs:part:{}:{}",
-                self.partition_id,
-                hex::encode(path.as_bytes())
-            )
-        }
+        self.source.node_id(path)
     }
 
     /// Constructs a fresh `backhand::FilesystemReader` over the partition

@@ -199,7 +199,7 @@ RAID 检测（`evidence/raid`）分六步：读取各检材的 LVM PV 并物化�
 | BitLocker | `core::evidence::crypto::bde_image` + `vendor/bitlocker` | 纯 Rust 密码/恢复密码/明文密钥/BEK/VMK/FVEK；六种 AES、Vista、EOW；直接读取分区，无 DLL 或临时整卷转储；验证边界见 [BITLOCKER](formats/BITLOCKER.md) |
 | VHD / VHDX | `core::evidence::readers::vhd_image` → `vendor/vhd` / `vendor/vhdx` | 纯 Rust 固定/动态盘随机读取；VHDX 日志仅在内存重放，差分盘无父盘参数时明确拒绝 |
 | DMG | vendored `udif` + `hfsplus` | UDIF 容器与 HFS+ |
-| Xiaomi HDR1 firmware | `core::evidence::partitions::xiaomi_firmware` | 按字节偏移解析固件段，将其中可识别的文件系统作为卷浏览；原始容器字节保持不变 |
+| Xiaomi HDR1 firmware / UBI | `core::evidence::partitions::xiaomi_firmware` + `filesystem::volumes::ubi` → `vendor/ubidump` | HDR1 旧版与扩展分段表按字节寻址；UBI 命名卷重组为可读文件，内嵌 SquashFS 通过有界 seek 读者浏览，原始容器字节保持不变；边界见 [UBI](formats/UBI.md) |
 | Android / MIUI backup | `core::evidence::readers::mi_bak` | `.ab` / `.bak` 解码为逻辑 TAR 树，原始字节源仍保留备份头和压缩数据；见 [Android 备份](formats/ANDROID_BACKUP.md) |
 | LDBK | `core::evidence::readers::ldplayer_image` | 解包后按多分区盘处理 |
 | TAR / TAR.GZ / ZIP / 7Z / folder | 逻辑证据源 | 无分区表，暴露为合成只读文件树 |

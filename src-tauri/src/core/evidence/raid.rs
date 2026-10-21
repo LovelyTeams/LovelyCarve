@@ -328,6 +328,7 @@ pub fn kind_label(kind: PartitionKind) -> &'static str {
         PartitionKind::ExFat => "exfat",
         PartitionKind::Cdfs => "cdfs",
         PartitionKind::Squashfs => "squashfs",
+        PartitionKind::Ubi => "ubi",
         PartitionKind::Lvm => "lvm",
         PartitionKind::Bitlocker => "bitlocker",
         PartitionKind::BiosBoot => "biosboot",

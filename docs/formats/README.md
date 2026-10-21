@@ -8,6 +8,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 
 | 格式 | 文档 | 要点 |
 | --- | --- | --- |
+| UBI / HDR1 固件 | [UBI.md](UBI.md) | rust_ubidump 只读库；小米扩展分段表、UBI 逻辑块重组、原始卷读取与内嵌 SquashFS 浏览 |
 | NTFS | [NTFS.md](NTFS.md) | libfsntfs 对照；MFT 与属性链、LZNT1 / WOF 压缩、命名流、硬链接、重解析点、安全描述符、独立 `$MFT`、USN 日志 |
 | ext2/3/4 | [EXT.md](EXT.md) | libfsext 对照；内联数据、EA-inode、旧式目录、`meta_bg`、全部间接块层级、带符号与纳秒时间戳 |
 | FAT / exFAT | [FAT.md](FAT.md) | libfsfat 对照；按簇数判定 FAT 类型、大逻辑扇区、范围读取、ValidDataLength、时区与删除项 |

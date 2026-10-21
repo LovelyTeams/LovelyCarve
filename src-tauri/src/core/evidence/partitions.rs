@@ -119,6 +119,7 @@ pub enum PartitionKind {
     Xfs,
     Zfs,
     Unknown,
+    Ubi,
 }
 
 /// Block-device abstraction. Uniform read interface so the dispatcher and
@@ -288,6 +289,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Mdadm
         | PartitionKind::Lvm
         | PartitionKind::Bitlocker
+        | PartitionKind::Ubi
         | PartitionKind::Extended => true,
         PartitionKind::Ntfs
         | PartitionKind::Refs

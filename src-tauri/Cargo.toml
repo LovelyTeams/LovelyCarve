@@ -206,6 +206,7 @@ tokio-util = { version = "0.7.20", features = ["rt"] }
 toml = "1.1.8"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+ubidump = { path = "vendor/ubidump" }
 udif = { path = "vendor/udif" }
 # Excel「原类型视图」富样式（仅 .xlsx/.xlsm）：字体/填充/边框/对齐/数字格式 +
 # 内置主题色(+tint)→RGB 解析。calamine 不暴露样式，二者优势互补。纯 Rust。

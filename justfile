@@ -123,6 +123,7 @@ fmt:
     cd src-tauri/vendor/udif && cargo fmt
     cd src-tauri/vendor/ext4-view && cargo fmt
     cd src-tauri/vendor/backhand && cargo fmt
+    cd src-tauri/vendor/ubidump && cargo fmt
     cd src-tauri/vendor/rsqlite-vfs && cargo fmt
     cd src-tauri/vendor/rufs && cargo fmt
     cd src-tauri/vendor/xfs-fuse && cargo fmt
@@ -349,6 +350,12 @@ clippy-refs:
 [group("readers")]
 test-vendor name *args:
     cargo test --manifest-path src-tauri/vendor/{{ name }}/Cargo.toml --lib {{ args }}
+
+# Lint the adapted read-only UBI library and its synthetic tests.
+[group("readers")]
+[working-directory("src-tauri/vendor/ubidump")]
+clippy-ubi:
+    cargo clippy --all-targets -- -D warnings
 
 # Test the standalone single/split RAW reader and new-output writer.
 [group("readers")]

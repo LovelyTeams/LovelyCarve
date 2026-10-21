@@ -308,6 +308,7 @@ pub(crate) fn kind_str(kind: PartitionKind) -> &'static str {
         PartitionKind::ExFat => "exfat",
         PartitionKind::Cdfs => "cdfs",
         PartitionKind::Squashfs => "squashfs",
+        PartitionKind::Ubi => "ubi",
         PartitionKind::Bitlocker => "bitlocker",
         PartitionKind::BiosBoot => "biosboot",
         PartitionKind::ApfsContainer => "apfscontainer",

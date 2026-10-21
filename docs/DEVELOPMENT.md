@@ -82,6 +82,9 @@ QCOW 使用 `just test-qcow2` / `just clippy-qcow2`；宿主回归用 `just test
 
 Parallels PHDI 使用 `just test-phdi` / `just clippy-phdi`；宿主回归用 `just test phdi --lib --jobs 1`，真实命令打开 / 导出用 `just test-cli`。可选外部 oracle、56 API 对照及验证边界见 [PHDI](formats/PHDI.md)。
 
+UBI 只读库使用 `just test-vendor ubidump` / `just clippy-ubi`，宿主回归使用
+`just test ubi --lib` 与 `just test xiaomi_firmware --lib`，支持范围见 [UBI 固件](formats/UBI.md)。
+
 `fmt` 覆盖主 crate、插件与维护中的读取器。独立 GZIP 库的验证入口为 `just test-gzipf` / `just clippy-gzipf`，也可使用 `just test-vendor gzipf`；宿主 GZIP 回归用 `just test gzip --lib`，CLI 接入用 `just test-cli`，格式范围见 [GZIP](formats/GZIP.md)。公共读取接口改动后运行 `check-examples`。参数含空格时，需要保留一层传给子 shell 的引号：
 
 ```powershell

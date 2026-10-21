@@ -21,7 +21,7 @@ import { notifyError, notifyInfo, notifySuccess } from '../../../composables/use
 // 可自动挂载的分区类型：自带文件系统、无需解锁。与 DiskImageInfo 的
 // MOUNTABLE_KINDS 保持一致，但去掉 bitlocker（需解锁，自动流程跳过）。
 const AUTO_MOUNTABLE_KINDS = new Set([
-  'ext4', 'btrfs', 'fat32', 'fat12', 'fat16', 'exfat', 'cdfs', 'squashfs',
+  'ext4', 'btrfs', 'fat32', 'fat12', 'fat16', 'exfat', 'cdfs', 'squashfs', 'ubi',
   'apfscontainer', 'hfsplus', 'hfsx', 'lvm', 'ntfs', 'refs',
   'ufs', 'xfs', 'zfs',
 ]);

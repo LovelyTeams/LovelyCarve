@@ -30,6 +30,17 @@ no libfsapfs C sources or binaries are incorporated. The new APFS fixtures
 are invented, reproducible project test structures (AGPL-3.0-only), documented
 in `src-tauri/vendor/apfs/tests/data/README.md`.
 
+## rust_ubidump
+
+The UBI volume reader adapts the UBI header decoders and CRC code from
+[aspnmy/rust_ubidump](https://github.com/aspnmy/rust_ubidump), revision
+`19782c3eabc25a1baab7faefe12fe6f4bd362dac`, under MIT. Its original license
+credits Copyright (c) 2017 Willem Hengeveld <itsme@xs4all.nl>.
+The complete license is retained in `src-tauri/vendor/ubidump/LICENSE`;
+library extraction, safety fixes and the rewritten bounded volume mapping are
+documented in `src-tauri/vendor/ubidump/LOVELYCARVE.md`. The upstream CLI,
+UBIFS filesystem parser and C LZO dependency are not incorporated.
+
 ## CLI timezone rules
 
 The CLI uses the unmodified `jiff` crate by Andrew Gallant (Unlicense OR MIT)

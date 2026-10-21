@@ -102,10 +102,43 @@ impl PartParser for WholeVolumeParser {
     }
 }
 
+struct UbiProbe;
+
+impl VolumeProbe for UbiProbe {
+    fn name(&self) -> &'static str {
+        "ubi"
+    }
+
+    fn probe(&self, ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeHit>> {
+        if ctx.head.get(..4) != Some(b"UBI#") {
+            return Ok(None);
+        }
+        let header = ubidump::ubifs::ec_header::UbiEcHeader::parse(ctx.head)?;
+        anyhow::ensure!(
+            header.version == 1
+                && header.vid_hdr_ofs >= 64
+                && header
+                    .vid_hdr_ofs
+                    .checked_add(64)
+                    .is_some_and(|end| end <= header.data_ofs)
+                && u64::from(header.data_ofs) < ctx.size,
+            "invalid UBI EC geometry"
+        );
+        Ok(Some(VolumeProbeHit::new(
+            "ubi",
+            PartitionKind::Ubi,
+            100,
+            0,
+            "UBI EC header with verified CRC",
+        )))
+    }
+}
+
 static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &FilevaultProbe,
     &BitlockerProbe,
     &SquashfsProbe,
+    &UbiProbe,
     &XfsProbe,
     &ExtProbe,
     &ApfsProbe,
@@ -213,6 +246,7 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::ExFat
         | PartitionKind::Cdfs
         | PartitionKind::Squashfs
+        | PartitionKind::Ubi
         | PartitionKind::Lvm
         | PartitionKind::Bitlocker
         | PartitionKind::Luks
