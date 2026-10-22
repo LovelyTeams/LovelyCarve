@@ -106,9 +106,11 @@ lovelycarve-cli --case "D:\cases\demo" cases get
 ```
 
 集合是复数名词，最后一个词是动词。动词表固定：`get` 查看单个对象（不用 info/status/show），
-`list` 列出（不用 ls/page/query，且不带位置参数），`create`、`update`（整体替换）、`edit`（部分修改）、
-`delete`（不用 remove/drop），以及 `open`、`close`、`read`、`export`、`hash`、`identify`、`search`、
-`scan`、`detect`、`lookup`、`unlock`、`build`、`audit`、`cancel`、`wait`，以及选择检材的 `context use` 等领域动作。
+`list` 列出（不用 ls/page/query）与 `count` 计数（两者都不带位置参数），`create`、`update`（整体替换）、
+`edit`（部分修改）、`delete`（不用 remove/drop），以及领域动作 `open`、`close`、`read`、`export`、`hash`、
+`identify`、`search`、`scan`、`detect`、`lookup`、`unlock`、`lock`、`assemble`、`build`、`audit`、`start`、
+`pause`、`resume`、`restart`、`cancel`、`wait`、`release`、`share`、`unshare`、`reveal`、`set`、`use`（如选择检材的
+`context use`）、`attach` 与 `serve`。动词表定义在 `src-tauri/build/cli_catalog/resolve.rs`。
 位置参数是动词作用的对象（检材路径、镜像内路径、分区序号、扫描 ID……），其余参数用 `--选项`。
 
 | 集合 | 内容 |
@@ -127,7 +129,7 @@ lovelycarve-cli --case "D:\cases\demo" cases get
 | `tasks` | 任务中心：插件任务与内置任务的列出、查看、取消，以及等待后台任务结束 |
 | `sessions` | 命名常驻会话：启动、连接、查看、列出与关闭，供多个普通 CLI 进程复用已打开的检材 |
 | `timezones` | 文件时间显示时区：检查来源、自动识别 Linux/NAS 配置与保存案件、检材或会话设置 |
-| `system`、`context`、`cli` | 本程序与主机、会话上下文、命令搜索 |
+| `system`、`context`、`cli`、`docs` | 本程序与主机、会话上下文、命令搜索、离线文档 |
 | `schema`、`complete`、`session`、`shell` | 根命令：请求结构、shell 补全、JSONL 会话、交互 shell |
 
 桌面端注册的每个后端命令都恰好对应一个 CLI 命令（或在 `src-tauri/src/cli/commands.toml`

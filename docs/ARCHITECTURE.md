@@ -24,7 +24,7 @@ LovelyCarve 是一个 Tauri v2 桌面取证工具，另有共用同一后端、�
 │                                                            │
 │  WebView2 / WKWebView / WebKitGTK                           │
 │                                                            │
-│ raw/dd/img/iso/e01/ad1/vmdk/qcow2/vdi/vhd/vhdx/dmg/ldbk/tar/tar.gz/zip/7z/folder │
+│  evidence: images, folders, archives, disks, RAID members   │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -61,7 +61,7 @@ src/
 - 前端规范（设计原则、token 与对比度、字号与间距、基元目录、交互状态与反馈、表格、弹窗与层级、图标、动效、文案、可访问性与自查清单）见 [FRONTEND.md](FRONTEND.md)。
 - 原生数据表格统一添加 `data-table` 类，并通过 `<style scoped src="../../../styles/data-table.css">` 引用文件列表基准样式（路径按实际层级调整；12px 字号、36px 常规行、吸顶表头、统一悬停/选中态）。行内 `ui-btn link` 操作（定位、恢复、详情）平时为次要色，悬停、选中或聚焦该行时才显示主题色。列宽、排序和取证状态留在各组件；数据库字段类型和键值字节预览允许按内容增高。分析结果的阅读布局由插件结构声明：`properties` 使用纵向属性列表，其余默认表格；用户可按记录类型切换并保存偏好。表格只显示插件可见字段，无字段时才补名称列；序号 56px、名称回退 240px、来源 220px，字段列宽只由字段类型决定（`columnWidth`：布尔 88px，整数、浮点与时长 112px，大小 120px，枚举 140px，IP 152px，时间戳与哈希 240px，路径 280px），文本、列表与 JSON 平分剩余宽度且每列不少于 200px；总宽超出时横向滚动，不随记录长度或详情开合挤压列宽。属性视图保留同名多条记录与完整值，详情始终包含全部字段与来源。文件列表、搜索与时间线的虚拟列表行高需与公共样式同步，操作按钮限制在 24px，占位行不加边框和内边距。
 - 文件列表面板的内部 id 是 `files`。
-- 「rich」原类型视图（`features/preview/components/RichPreviewViewer.vue`）用 `@file-viewer/vue3-full`（Flyfish File
+- 「rich」原类型视图（`features/preview/components/viewers/RichPreviewViewer.vue`）用 `@file-viewer/vue3-full`（Flyfish File
   Viewer，当前 3.1.2），按 `name` prop 的扩展名懒加载渲染器；worker / WASM / 字体等重资产由
   `@file-viewer/vite-plugin`（`vite.config.ts` 中 `copyAssets: { mode: 'build' }, inject: false`）
   复制到 `dist/file-viewer/`（随 frontendDist 进 Tauri 包）。开发环境通过
@@ -139,7 +139,7 @@ RAID 检测（`evidence/raid`）分六步：读取各检材的 LVM PV 并物化�
 
 无元数据 RAID 按等大小分组后，每块成员的奇偶采样行、占用采样和数据偏移探测每组只读取一次：各成员并行读取，同一成员按偏移升序读取以复用其 64 KiB 块缓存；子集排序、奇偶投票、陈旧成员判定和偏移推导都在内存中计算，不再为每项检查和每个候选子集重读、重解压成员。数据偏移探测保留小偏移候选，并以 512 KiB 步长扫描各成员前 256 MiB；只有命中 MBR、NTFS 或 ext4 签名的偏移才进入重组搜索，偏移候选总数最多 32 个，随后仍须通过文件系统结构和目录／MFT 验证。ext4 验证最多检查 256 个 inode 和 24 个目录，继续进入共享目录的子树并核对 `.`／`..`，不要求根下存在三个目录；备份超级块及已知文件格式的正文签名优先用于区分早期目录同样可读的布局，文件扩展名与签名不一致只是不贡献分数。此路径覆盖 mdadm 头被清空而数据区仍在大预留区之后的 NAS 检材。`just run-example probe_raid --member-signatures <image>...` 可只读检查成员头尾和该范围内的 ext4 签名；真实 NAS 回归可设置 `LOVELYCARVE_NAS_FIXTURE_DIR` 后运行 `just test real_nas_erased_mdadm -- --ignored`。
 
-读者入口保留公共模型、打开方式和源身份；具体实现按职责放在入口同名目录。Btrfs 分为 open/directory/data/tree/codec，NTFS 分为 backing/directory/deleted/scan/read/metadata 与 logical_stream/data_stream/wof/reparse/forensic_metadata/security/mft_metadata，ZFS 分为 directory/read；`fs_dispatch` 保留 Volume/FsAdapter 契约和原注册顺序，各特殊卷适配在 ntfs/ext4/btrfs/zfs 子模块。RAID 的 manual/detect/members/md_array/firmware/imsm/imsm_identity/imsm_array/ddf/ddf_geometry/ddf_array/lvm_stack/probe、读取器 source/（striped/mirror/raid10/linear/parity_layout/gf256/build）与 heuristic 的 samples/search/parity/validation/probe/output 分开，原探测优先级、搜索预算和取消检查不变。
+读者入口保留公共模型、打开方式和源身份；具体实现按职责放在入口同名目录。Btrfs 分为 open/directory/data/tree/codec，NTFS 分为 backing/directory/deleted/scan/read/metadata/models 与 logical_stream/data_stream/lznt1/wof/reparse/forensic_metadata/security/mft_metadata/recovery，ZFS 分为 directory/read；`fs_dispatch` 保留 Volume/FsAdapter 契约和原注册顺序，各特殊卷适配在 ntfs/ext4/btrfs/zfs 子模块。RAID 的 manual/detect/members/progress/mdadm_super/md_array/firmware/imsm/imsm_identity/imsm_array/ddf/ddf_geometry/ddf_array/lvm_meta/lvm_stack/probe/xfs_probe、读取器 source/（striped/mirror/raid10/linear/parity_layout/gf256/rebuild/traced/build）与 heuristic 的 samples/search/parity/validation/ext4_probe/ext4_anchor/ntfs_probe/output 分开，原探测优先级、搜索预算和取消检查不变。
 
 插件 client 保留请求句柄和实例存活状态，process/connection/router/host_requests 分别负责启动、握手、消息路由和反向 RPC；`run_context` 服务一次运行的 `run.*` / `file.*` / `view.*` 调用，`view` 实现系统视图与检材视图。Dokan 入口保留挂载会话和引用计数，filesystem/callbacks/paths/read 负责上下文、只读回调、路径和读取缓存。ReFS 通过本地 `refs-reader` crate 解析只读卷，filesystem 的 refs/backing/walk 分别负责节点适配、证据范围读取和可取消遍历；目录缓存随卷释放。普通文件、ADS 与快照版本按同一 extent 映射随机读取；platform/ffi 的旧实现只在显式 `refs-dll-oracle` 验证功能下编译。XLSX 预览分为 workbook/format/style，案件状态将检材登记和卷发布分别放在 case/evidence.rs、case/volumes.rs。相关原有测试与实现同域。
 
@@ -150,7 +150,7 @@ RAID 检测（`evidence/raid`）分六步：读取各检材的 LVM PV 并物化�
 
 `src-tauri/src/lib.rs` 是后端命令注册的唯一入口。当前已注册的主要命令域包括：
 
-- 镜像：`image_load`、`image_info`、`image_unload`、`image_list`、`image_export_raw`
+- 镜像：`image_load`、`image_info`、`image_bad_regions`、`image_unload`、`image_list`、`image_export_raw`、`image_hash_compute`
 - RAID/物理磁盘：`raid_auto_detect`、`raid_manual_assemble`、`physical_disks_list`
 - 文件恢复（文件系统记录与签名雕刻）：`carve_formats`、`carve_start`、`carve_scan_status`、`carve_scan_pause`、`carve_scan_resume`、`carve_scan_list`、`carve_scan_remove`、`carve_results_page`、`carve_filesystem_results`、`carve_preview`、`carve_recover`
 - 文件系统：`fs_children`、`fs_flat_page`、`fs_flat_ext_counts`、`fs_read`、`fs_read_large`、`fs_media_temp`、`fs_preview*`、`fs_export*`、`fs_digest`、`fs_identify_type`
@@ -161,7 +161,7 @@ RAID 检测（`evidence/raid`）分六步：读取各检材的 LVM PV 并物化�
   同一 `(image,node,ext)` 的物化互斥，完成前使用唯一临时文件，单写入通道约束瞬时磁盘占用。
   `MediaTempCache` 的 4 GiB / 6 文件预算只淘汰无人引用的最久未使用文件；独立窗口销毁由后端兜底释放引用。
   新缓存位于 `lovelycarve-preview-cache/<uuid>`，持有目录外的进程锁；启动只回收能取得锁的旧目录，退出清理当前目录。
-- 卷/挂载：`fs_mount_readonly`、`fs_unmount_readonly`、`fs_mounts`、挂载点建议和创建
+- 卷/挂载：`fs_mount_readonly`、`fs_unmount_readonly`、`fs_mounts`、`fs_share_mount` / `fs_unshare_mount`、挂载点建议和创建
 - BitLocker：状态、密码/恢复密钥/VMK 解锁、内存扫描、导出解密镜像
 - 案件和快照：案件创建/打开/关闭、证据列表/移除、卷快照构建/列表/删除
 - 插件与任务调度：`plugin_list`/`plugin_restart`/`plugin_install`/`plugin_uninstall`；
@@ -169,7 +169,8 @@ RAID 检测（`evidence/raid`）分六步：读取各检材的 LVM PV 并物化�
   `sched_task_cancel`/`start`/`restart`/`remove`、`sched_evidence_post_actions_set`；
   `analysis_result_tree`、`analysis_records_page`、`analysis_record_detail`、`analysis_run_get`
 - 任务中心：`task_list`、`task_status`、`task_cancel`
-- 系统辅助：主题、模块摘要、路径显示、二维码、OCR、OS 检测、Windows 盘符识别
+- 系统辅助：模块摘要、路径信息与在文件管理器中显示、二维码、OCR、OS 检测、Windows 盘符识别
+- 全局搜索、时间线、加密卷与 iOS 备份解锁、卷影副本、BCP、标签与派生数据等其余命令见[功能与 IPC 对照](#功能与-ipc-对照)
 
 若前端调用未注册命令，必须按功能清单处理为恢复后端、隐藏入口，或显示明确不可用说明。
 
@@ -558,7 +559,7 @@ UUID 与卷标，`win_drive_letters` 读取盘符），结果按检材缓存，�
 
 ## 自动识别平台
 
-`core/autodetect/` 负责判定检材所属平台、证据类型与备份特征，再回写 evidence。
+`core/analysis/identify/autodetect` 负责判定检材所属平台、证据类型与备份特征，再回写 evidence。
 证据首次上线时由宿主建立内部首任务，手动重新识别通过 `autodetect_evidence` 命令执行。两条路径都登记为
 `TaskManager` 的 `autoDetect` 任务（id `autodetect:<image id>`，同时进行的两次运行共用一份登记与取消令牌）：
 识别在分区、逻辑卷与归档目录之间检查取消，镜像卸载或 `task_cancel` 后不再回写；登记释放之前把结论（平台、
@@ -689,9 +690,9 @@ Windows 上仍被打开的文件删不掉时短暂重试，残留留给下次打
 失败时把快照体载入内存作为浏览回退。宿主 Docker 容器卷（`core::catalog::host_docker_index`）走同一条发布
 路径，来源映射缓存在检材的 `cache/docker/`。
 
-**检材库（`core::casework::evidence_db`）。** 四个检材库共用一套连接策略：写者（`open_writer`）必要时建检材
+**检材库（`core::casework::evidence_db`）。** 五个检材库共用一套连接策略：写者（`open_writer`）必要时建检材
 目录与库文件，新库在一个 `BEGIN IMMEDIATE` 事务里一次建全结构并盖上各自的 `application_id`
-（facts "LCFX"、analysis "LCAN"、timeline "LCTL"、search "LCSR"）与 `user_version`；读者
+（facts "LCFX"、records "LCRC"、timeline "LCTL"、search "LCSR"；旧版只读的 analysis 库为 "LCAN"）与 `user_version`；读者
 （`open_reader`）库不存在时返回 `None`，从不建库；只改已有数据的写者（删除、孤儿修复）用
 `open_existing`，忙等上限由调用方给出。版本不符的库拒绝打开，提示移除检材后重新加入以重建。
 哈希、类型识别与插件结果只为案件里的检材落库；未在案件中的镜像结果只留在会话里。
@@ -796,8 +797,9 @@ URI 打开（Windows 长路径前缀与 UNC 路径都转成合法 URI），不�
 （`>= prefix AND < prefix+U+10FFFF`，直接命中索引，`LIKE … ESCAPE` 会让 SQLite 放弃索引优化）、子串用
 `LIKE`、扩展名/种类 `IN`、大小区间、`is_delete`，`LIMIT ? OFFSET ?` 分页并按自然序排序；`child_counts`
 点查计数缓存并回传 `inexact` 标志；`category_summary` 按 `kind` 聚合。未覆盖目录返回 `None`，命令层回退
-live 遍历。前端通过 `src/lib/ipc/filedb.ts` 的 `filedbVolumes` / `filedbQueryFiles` /
-`filedbResolveMetaAddr` 调用。
+live 遍历。`filedb_volumes` / `filedb_query_files` / `filedb_resolve_meta_addr` 由 CLI 的 `indexes volumes list`、
+`indexes files list` 与 `indexes files lookup` 调用，`src/lib/ipc/filedb.ts` 保留对应的类型化封装；桌面文件列表经
+`fs_children_page` / `fs_flat_page` 读取同一份索引。
 
 浏览命令的数据源（`commands::filesystem::filesystem_snapshot_index`）：开着案件时是台账里该检材源卷大小与已加载
 镜像一致的卷索引，没有案件时是会话索引（无案件时快照导入进程临时目录里的同格式索引文件，随会话快照
@@ -863,7 +865,7 @@ offset。当前普通目录已提供 `fs_children_page`，案件模式下会优�
 摘要、类型识别或大型标签表；标签编辑应优先使用 `fs_tags_apply_changes` 增量写入，不应为了清除一个
 标签而提交不完整的整镜像标签 map。
 
-常见事件：
+后端事件：
 
 - `task-entry`
 - `task-lifecycle`
@@ -872,11 +874,15 @@ offset。当前普通目录已提供 `fs_children_page`，案件模式下会优�
 - `raid-detect-progress`（阶段与当前阶段的对象计数，总量未知时为 null；不是全程百分比）
 - `image-hash-progress`
 - `image-export-progress`
+- `fs-export-dir-progress`
 - `bitlocker-unlock-progress`
 - `bitlocker-scan-progress`
 - `snapshot-build-progress`
+- `autodetect-finished` / `autodetect-failed`
+- `global-search-progress`
+- `timeline-progress`
 - `carve-scan-progress`
-- `fs-flat-list-batch` / `fs-flat-list-progress`
+- `qr-scan-progress`
 
 事件订阅必须通过 `src/lib/ipc/events.ts` 或领域 wrapper。
 
@@ -1172,7 +1178,7 @@ LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提�
 文件系统目录快照每个卷一条「文件系统加载」条目：`snapshot-build-progress` 的各阶段同时写入登记——`started/walking` 为读取目录（阶段 `filesystem` 与已读条目数），`indexing` 为建立索引（阶段 `index`），`done` 才报告成功，`error` / `cancelled` 报告失败或取消；复用已发布的索引时标为复用。检材加入案件触发的构建标为自动，手动重建为手动。不估算未知总量，普通文件夹展开不单独制造任务。
 索引安装收尾集中在 `app::workflows::snapshot::snapshot_install`：成功安装、索引错误和取消各自发出真实终态，目录快照内存回退不代表索引成功。案件自动构建、缓存索引复用/重建和无案件会话都发出明确的索引阶段。
 自动识别平台以 `autoDetect` 任务列出（id `autodetect:<image id>`，每份检材一条，保留最近一次识别）：识别结束时把平台、厂商显示名、检材类型与是否备份写入登记并报告结局；检材加入案件时的首任务标为自动触发，镜像信息页的识别为手动，两者同时进行时共用一份登记。成功摘要为平台与检材类型，结果入口打开镜像信息页；运行中可取消，取消不算失败。镜像信息页把进行中的识别视为识别中，不再重复发起。
-重新打开案件时，每份检材最近 100 次搜索与最近一次时间线构建由 `task_list` 从搜索历史与时间线状态列出；时间线重建更新该检材的同一条目，哈希、导出、Docker 合并等记录只在本次会话保留。搜索记录删除和重新执行仍从全局搜索页操作，时间线重新构建仍从时间线页操作。
+重新打开案件时，每份检材保留的搜索（最多 20 次，见「全局搜索」）与最近一次时间线构建由 `task_list` 从搜索历史与时间线状态列出；时间线重建更新该检材的同一条目，哈希、导出、Docker 合并等记录只在本次会话保留。搜索记录删除和重新执行仍从全局搜索页操作，时间线重新构建仍从时间线页操作。
 
 ### 前端职责入口
 
@@ -1196,20 +1202,25 @@ LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提�
 | 功能 | 前端入口 | 主要命令 / 事件 |
 | --- | --- | --- |
 | 案件与证据 | 主壳、案件管理、文件会话 | `case_*`、`image_load`、`image_unload`、`physical_disks_list`、`image-load-progress` |
-| 镜像信息 | 分区、校验、识别与 RAID | `image_info`、`image_bad_regions`、`os_detect`、`autodetect_evidence`、`raid_*` |
-| 文件浏览与预览 | 文件列表、详情、独立预览窗 | `fs_children*`、`fs_flat_page`、`fs_read*`、`fs_preview*`、原类型预览命令 |
-| 索引与快照 | 卷快照、全显和文件查询 | `snapshot_*`、`filedb_*`、`fs_child_counts` |
-| 校验与导出 | 哈希、导出任务 | `image_hash_compute`、`image_export_raw`、`fs_digest`、`fs_export*` |
-| 数据浏览 | 数据库、日志、命名流和 BCP | `fs_sqlite*`、`fs_realm*`、`fs_*journal*`、`fs_stream*`、`bcp_*` |
-| 全局搜索 | `SearchResultsPanel.vue` | `global_search_*` |
-| 时间线 | `TimelinePanel.vue` | `timeline_*`、`fs_timeline_export` |
+| 镜像信息 | 分区、校验、识别与 RAID | `image_info`、`autodetect_evidence`、`raid_*`、`image_list`（手动重组选择成员）、`autodetect-finished` / `autodetect-failed`、`raid-detect-progress` |
+| 文件浏览与预览 | 文件列表、详情、独立预览窗 | `fs_children*`、`fs_flat_*`、`fs_subtree_empty_dirs`、`fs_docker_prepare`、`win_drive_letters`、`fs_read*`、`fs_media_*`、`fs_preview*`、原类型预览命令 |
+| 索引与快照 | 卷快照、全显和文件查询 | `snapshot_*`、`fs_child_counts`、`snapshot-build-progress`；目录与全显经 `fs_children_page` / `fs_flat_page` 读取卷索引 |
+| 标签与派生数据 | 文件列表的标签、哈希与类型列 | `fs_tags_*`、`fs_digest_load_nodes` / `fs_digest_persist`、`fs_identify_type`、`fs_ftype_load_nodes` / `fs_ftype_persist` |
+| 校验与导出 | 哈希、导出任务 | `image_hash_compute`、`image_export_raw`、`fs_digest`、`fs_export*`、`image-hash-progress`、`image-export-progress`、`fs-export-dir-progress` |
+| 数据浏览 | 数据库预览和 BCP | `fs_sqlite*`、`fs_realm*`、`bcp_*` |
+| 回源定位 | 搜索、时间线与分析结果的定位 | `fs_node_locate`、`fs_source_locate` |
+| 全局搜索 | `SearchResultsPanel.vue` | `global_search_*`、`global-search-progress` |
+| 时间线 | `TimelinePanel.vue` | `timeline_*`、`timeline-progress` |
 | 文件恢复 | `CarvePanel.vue` | `carve_*`（含 `carve_filesystem_results`）、`carve-scan-progress`、`task-progress` |
-| 加密与历史卷 | 解锁控件、卷影副本 | `bitlocker_*`、`encrypted_volume_unlock`、`shadow_copy_*` |
+| 加密与历史卷 | 解锁控件、卷影副本 | `bitlocker_*`、`encrypted_volume_unlock`、`filevault_inspect`、`shadow_copy_*`、`bitlocker-unlock-progress` / `bitlocker-scan-progress` |
 | iOS 本地备份 | 镜像信息页的解锁与异常检查 | `ios_backup_unlock`、`ios_backup_audit`，操作与边界见 [iOS 备份](IOS_BACKUPS.md) |
-| 挂载 | 卷挂载与共享控件 | `fs_mount_*`、`fs_unmount_readonly`、`fs_share_mount`、挂载点命令 |
-| QR/OCR | 文件详情 | `qr_scan`、`ocr_scan`，可用性由构建特性决定 |
+| 挂载 | 卷挂载与共享控件 | `fs_mount_readonly`、`fs_unmount_readonly`、`fs_mounts`、`fs_share_mount` / `fs_unshare_mount`、挂载点命令 |
+| QR/OCR | 文件详情 | `qr_scan`、`ocr_scan`、`qr-scan-progress`，可用性由构建特性决定 |
 | 插件与任务 | 设置、任务中心、结果面板 | `plugin_*`、`sched_*`、`analysis_*` |
 | 任务中心 | 任务中心、检材加载页、镜像信息页 | `task_list`、`task_status`、`task_cancel`、`task-entry`；`task-lifecycle`、`task-progress` |
+| 主机路径 | 拖放添加检材 | `system_path_info`（判断拖入的路径是否为目录） |
+
+下列命令目前没有桌面调用方（部分在 `src/lib/ipc/` 保留了类型化封装），上表的通配符不包括它们：`image_bad_regions`、`os_detect`、`case_option_query` / `case_option_save`、`filedb_*`、`fs_stat`、`fs_dir_stats`、`fs_digest_load` / `fs_ftype_load`（整镜像兼容入口）、`fs_streams` / `fs_stream_preview` / `fs_stream_export`、`fs_vim_swap_preview`、`fs_usn_journal*` / `fs_ext4_journal*`、`fs_timeline_export`、`timeline_range`、`carve_latest_scan`、`sched_evidence_post_actions_set`、`module_summary` 与 `reveal_path`。它们大多是 CLI 命令的后端（可用 `lovelycarve-cli cli search` 查找）；`fs_usn_journal` 与 `carve_latest_scan` 在 `commands.toml` 的 `[[superseded]]` 中指向替代命令。
 
 ## 扩展流程
 

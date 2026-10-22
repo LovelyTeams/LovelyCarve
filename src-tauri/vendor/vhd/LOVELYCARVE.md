@@ -5,7 +5,7 @@ commit `2835523fe39c16740133dc8d51932cad46bcc4b6`. Apache-2.0; see LICENSE.
 The reader and its tests/fixtures are vendored; no analyzer, CLI or hosted CI.
 Workspace manifest fields are expanded for standalone builds.
 
-The application uses `core/vhd_image.rs` for seek/read serialization and EOF
+The application uses `core/evidence/readers/vhd_image.rs` for seek/read serialization and EOF
 clamping. Its existing command surface has no parent binding, so differencing
 disks are rejected. No native DLL or whole-image temporary extraction is used.
 

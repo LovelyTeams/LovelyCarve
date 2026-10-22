@@ -145,7 +145,7 @@ GitHub 自动生成的源码压缩包不含插件子模块，请使用 `--recurs
 | 主题 | 文档 |
 | --- | --- |
 | 使用 | [使用指南](docs/USAGE.md)、[CLI 手册](docs/CLI.md)、[iOS 备份](docs/IOS_BACKUPS.md) |
-| 格式与读取器 | [格式总览与维护要求](docs/formats/README.md)，以及 NTFS、ext、FAT、XFS、ReFS、APFS、HFS+、GPT、MBR、LVM2、LUKS、BitLocker、FileVault 2、VSS 专题 |
+| 格式与读取器 | [格式总览与维护要求](docs/formats/README.md)，以及文件系统（NTFS、ext、FAT / exFAT、XFS、ReFS、APFS、HFS+、ISO 9660）、分区与阵列（GPT、MBR、LVM2、md RAID、固件 RAID）、加密与快照（LUKS、BitLocker、FileVault 2、VSS）、镜像容器（分段 RAW、QCOW、PHDI、光盘 BIN / CUE、UBI 固件）和压缩与备份（GZIP、Android / 小米备份）专题 |
 | 插件 | [LPP 协议与 SDK](docs/PLUGIN_PROTOCOL.md)、[Linux 基本信息插件](docs/LINUXINFO.md) |
 | 开发 | [开发指南](docs/DEVELOPMENT.md)、[架构说明](docs/ARCHITECTURE.md)、[前端规范](docs/FRONTEND.md)、[前端模块与生命周期](docs/FRONTEND_STRUCTURE.md)、[发布指南](docs/RELEASING.md) |
 
@@ -154,7 +154,7 @@ GitHub 自动生成的源码压缩包不含插件子模块，请使用 `--recurs
 ## 局限
 
 - 删除项和雕刻结果不保证内容完整：雕刻受块对齐、碎片化和格式覆盖范围限制，未命中不代表文件不存在。
-- 独立的孤儿文件扫描和丢失分区扫描尚未接入；文件时间线目前只投影修改时间。
+- 独立的孤儿文件扫描尚未接入；丢失分区只能在「文件恢复」中按 FAT、NTFS、exFAT 的引导扇区与残留 `$MFT` 查找。文件时间线目前只投影修改时间。
 - 桌面开发与发布只在 Windows 上验证；macOS 和 Linux 需要自行构建和验证。
 - 当前案件格式不兼容早期开发版的 `.carve` 案件。
 

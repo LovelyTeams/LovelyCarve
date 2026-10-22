@@ -13,20 +13,15 @@
 
 ## 格式与读取器
 
-[格式总览与维护要求](formats/README.md) 汇总读取器的通用约束，并链接各格式专题：
+[格式总览与维护要求](formats/README.md) 汇总读取器的通用约束，并按格式列出各专题的要点。专题按类别如下：
 
-[NTFS](formats/NTFS.md) · [ext2/3/4](formats/EXT.md) · [FAT / exFAT](formats/FAT.md) · [XFS](formats/XFS.md) · [ReFS](formats/REFS.md) · [APFS](formats/APFS.md) · [HFS+ / HFSX](formats/HFS.md) · [GPT](formats/GPT.md) · [MBR / EBR](formats/MBR.md) · [LVM2](formats/LVM.md) · [LUKS](formats/LUKS.md) · [BitLocker](formats/BITLOCKER.md) · [FileVault 2](formats/FILEVAULT.md) · [卷影副本](formats/VSS.md)
-
-vendor [GZIP 读取器](formats/GZIP.md) 参照 libgzipf 实现多成员、元数据、校验和 seek，已接入 tar.gz / tgz、Docker / OCI 压缩层与小米备份。
-
-[Android 备份](formats/ANDROID_BACKUP.md) 记录 `.ab` / 小米 `.bak` 的独立打开、
-原始字节保持及解密边界；[小米备份](formats/MIUI_BAK.md) 记录 ZIP / 目录内的自动展开。
-
-vendor [RAW / 分段 RAW](formats/SMRAW.md) 参照 libsmraw 实现分段读写与完整性检查，读取接入桌面和 CLI。
-
-vendor [QCOW / QCOW2](formats/QCOW.md) 对照 libqcow 全部 42 API，支持 v1/2/3、DEFLATE、差分父链和 legacy AES 凭据读取。
-
-vendor [Parallels PHDI](formats/PHDI.md) 对照 libphdi 56 API，读取 XML / .hdd bundle、v2 Plain / Sparse / Split 和差分父链；接入桌面与 CLI。
+| 类别 | 专题 |
+| --- | --- |
+| 文件系统 | [NTFS](formats/NTFS.md) · [ext2/3/4](formats/EXT.md) · [FAT / exFAT](formats/FAT.md) · [XFS](formats/XFS.md) · [ReFS](formats/REFS.md) · [APFS](formats/APFS.md) · [HFS+ / HFSX](formats/HFS.md) · [ISO 9660 与光盘 BIN / CUE](formats/CDFS.md) |
+| 分区、卷与阵列 | [GPT](formats/GPT.md) · [MBR / EBR](formats/MBR.md) · [LVM2](formats/LVM.md) · [Linux md RAID](formats/MDRAID.md) · [固件 RAID](formats/FIRMWARE_RAID.md) |
+| 加密与快照 | [LUKS](formats/LUKS.md) · [BitLocker](formats/BITLOCKER.md) · [FileVault 2](formats/FILEVAULT.md) · [卷影副本](formats/VSS.md) |
+| 镜像容器与固件 | [RAW / 分段 RAW](formats/SMRAW.md) · [QCOW / QCOW2](formats/QCOW.md) · [Parallels PHDI](formats/PHDI.md) · [UBI / 小米 HDR1 固件](formats/UBI.md) |
+| 压缩与备份 | [GZIP](formats/GZIP.md) · [Android 备份](formats/ANDROID_BACKUP.md) · [小米备份](formats/MIUI_BAK.md) · [iOS 备份](IOS_BACKUPS.md) |
 
 vendored 读取器的上游版本与本地补丁记录在 [vendor/UPSTREAM.md](../src-tauri/vendor/UPSTREAM.md)，后端探针程序见 [examples/README.md](../src-tauri/examples/README.md)。
 

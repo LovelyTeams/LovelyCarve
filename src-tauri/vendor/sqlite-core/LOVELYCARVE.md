@@ -7,7 +7,7 @@ Workspace manifest fields are expanded for a standalone crate. The workspace's
 `forensic` analyzer crate (reports, timelines, CLI), fuzz targets and hosted
 CI are not included.
 
-The application uses `core/sqlite_recovery.rs` for the SQLite browser's
+The application uses `core/preview/sqlite/sqlite_recovery.rs` for the SQLite browser's
 「已删除记录」 view. The crate parses the bytes itself, so freelist pages,
 in-page free space, freeblock remnants, overflow chains, uncheckpointed WAL
 frames and a rollback journal are visible to it; the browser's table view

@@ -38,7 +38,8 @@ just --list
 | Rust | `just fmt`、`just check`、`just clippy`、`just test`；模块迁移或公共读取接口改动另跑 `just check-examples` |
 | IPC | 前端与 Rust 检查，以及 `just ipc-check` |
 | 插件工作区 | `just fmt`、`just clippy-plugins`、`just test-plugins`；SDK 改动另跑 Rust 检查 |
-| Vendored 读取器 | `just fmt`、对应 `just test-*`；主机集成变化另跑 Rust 检查 |
+| Vendored 读取器 | `just fmt`、对应 `just test-*`（没有专用配方时用 `just test-vendor <目录>`）及可用的 `clippy-*`；主机集成变化另跑 Rust 检查 |
+| CLI 命令或流程 | 相关 Rust 检查与 `just test-cli`；验证已构建的程序用 `just smoke-cli <可执行文件>` |
 | 仅文档 | 检查相对链接、路径、命令名称和描述与当前实现一致 |
 
 针对解析器、寻址、取消和数据完整性提供有意义的回归样本。不要用进程环境变量作为测试间共享状态。无法完成某项验证时，在提交说明中写明原因。

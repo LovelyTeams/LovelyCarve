@@ -8,7 +8,8 @@ Workspace manifest fields are expanded for a standalone crate. The separate
 `forensic-vfs` adapter (`vfs` feature) are not included. `docs/format.md` and
 `docs/validation.md` are the upstream format notes.
 
-The application uses `core/ad1_image.rs` and `core/volumes/ad1.rs` to open an
+The application uses `core/evidence/readers/ad1_image.rs` and
+`core/filesystem/volumes/ad1.rs` to open an
 AD1 image as logical evidence: the item tree is browsed, read, searched,
 exported and mounted through the normal `fs_tree` paths.
 

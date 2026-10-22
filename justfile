@@ -335,6 +335,7 @@ repack-cli:
 test-refs *args:
     cargo test {{ args }}
 
+# Run the ReFS probe tests against the explicitly enabled legacy DLL oracle.
 [group("readers")]
 [working-directory("src-tauri")]
 test-refs-oracle *args:
@@ -363,6 +364,7 @@ clippy-ubi:
 test-smraw *args:
     cargo test {{ args }}
 
+# Lint the standalone single/split RAW reader and every test target.
 [group("readers")]
 [working-directory("src-tauri/vendor/smraw")]
 clippy-smraw *args:
@@ -386,11 +388,13 @@ clippy-gzipf *args:
 test-filevault *args:
     cargo test --workspace {{ args }}
 
+# Lint the FileVault core, forensic auditor and every test target.
 [group("readers")]
 [working-directory("src-tauri/vendor/filevault")]
 clippy-filevault:
     cargo clippy --workspace --all-targets
 
+# Lint the standalone HFS+ / HFSX reader and every test target.
 [group("readers")]
 [working-directory("src-tauri/vendor/hfsplus")]
 clippy-hfsplus:

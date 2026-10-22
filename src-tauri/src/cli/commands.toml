@@ -18,7 +18,6 @@
 #   the reserved CLI options (--image, --case, --quiet, --dry-run, --body,
 #   --force, --text, --json, --output, --experimental-*, …); a parameter's
 #   `short` alias may not be -i, -q, -h, -v, -f or -c;
-#   be -i, -q, -h, -v or -f;
 # - `delete` commands, and commands with `confirm`, ask before running and
 #   take --force; secrets are prompted without echo and redacted in --dry-run;
 # - every `examples` entry starts with `lovelycarve-cli `.

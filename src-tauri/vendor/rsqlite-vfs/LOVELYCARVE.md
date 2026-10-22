@@ -3,7 +3,7 @@
 `rsqlite-vfs` 0.2.0 from crates.io, source commit
 `3d8318430bacd7d6a1aafdf5b5e54fb0fee8d451`
 (https://github.com/Spxg/sqlite-wasm-rs, MIT), vendored for the SQLite preview's
-process-local in-memory VFS (`core/sqlite_vfs.rs`). Upstream targets
+process-local in-memory VFS (`core/preview/sqlite/sqlite_vfs.rs`). Upstream targets
 single-threaded WebAssembly and states that it is not thread-safe.
 
 Changes made in LovelyCarve after vendoring:

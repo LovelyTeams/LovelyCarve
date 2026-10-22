@@ -8,7 +8,7 @@ This file guides AI agents and contributors working in this repository. Follow t
 
 Core workflow: open or create a case, load evidence, detect partitions, browse filesystem data, preview native file types, hash / export / carve, build volume snapshots, run global search and timeline projections, and run LPP plugins. Read `docs/ARCHITECTURE.md` before adding backend modules. Read `docs/FRONTEND.md` (the frontend spec: principles, tokens and contrast, type scale, spacing, primitives, states and feedback, tables, dialogs and layering, motion, copy, accessibility, review checklist) before changing UI; the design system itself is the CSS tokens in `src/styles/themes.css` plus the shared `ui-*` primitives in `src/styles/ui.css` and the motion layer in `src/styles/motion.css` — read them too.
 
-Use `docs/README.md` for the documentation map and `CONTRIBUTING.md` / `docs/DEVELOPMENT.md` for setup and verification. Before changing readers, read `docs/formats/README.md` (shared reader rules and the format index) and the relevant capability/limitation guide in `docs/formats/` — `NTFS.md`, `EXT.md`, `FAT.md`, `XFS.md`, `REFS.md`, `APFS.md`, `HFS.md`, `GPT.md`, `MBR.md`, `LVM.md`, `LUKS.md`, `BITLOCKER.md`, `FILEVAULT.md`, `VSS.md` — or `docs/IOS_BACKUPS.md`. Vendored sources and local patches are recorded in `src-tauri/vendor/UPSTREAM.md`; third-party licenses and attribution belong in `THIRD_PARTY_NOTICES.md` and the corresponding vendor directory.
+Use `docs/README.md` for the documentation map and `CONTRIBUTING.md` / `docs/DEVELOPMENT.md` for setup and verification. Before changing readers, read `docs/formats/README.md` (shared reader rules and the format index) and the relevant capability/limitation guide in `docs/formats/` — file systems `NTFS.md`, `EXT.md`, `FAT.md`, `XFS.md`, `REFS.md`, `APFS.md`, `HFS.md`, `CDFS.md`; partitions and arrays `GPT.md`, `MBR.md`, `LVM.md`, `MDRAID.md`, `FIRMWARE_RAID.md`; encryption and snapshots `LUKS.md`, `BITLOCKER.md`, `FILEVAULT.md`, `VSS.md`; image containers `SMRAW.md`, `QCOW.md`, `PHDI.md`, `UBI.md`; compression and backups `GZIP.md`, `ANDROID_BACKUP.md`, `MIUI_BAK.md` — or `docs/IOS_BACKUPS.md`. Vendored sources and local patches are recorded in `src-tauri/vendor/UPSTREAM.md`; third-party licenses and attribution belong in `THIRD_PARTY_NOTICES.md` and the corresponding vendor directory.
 
 ## Project Structure
 
@@ -60,11 +60,13 @@ Use the repository-root `Justfile` as the task entry point. Do not replace an ex
 - `just test`: run the Rust backend tests without the optional OpenCV QR feature.
 - `just test <name>`: run a targeted Rust test by substring.
 - `just test-ewf`: test the vendored pure Rust EWF reader and sample corpus.
-- `just test-bitlocker`: test the vendored pure Rust BitLocker decryptor; set `BDE_ORACLE_IMAGE` to run the full external dfvfs oracle.
+- `just test-bitlocker` / `just clippy-bitlocker`: test / lint the vendored pure Rust BitLocker decryptor; set `BDE_ORACLE_IMAGE` to run the full external dfvfs oracle.
 - `just test-vhd` / `just test-vhdx`: test the vendored Rust VHD/VHDX readers and committed image fixtures.
 - `just test-vmdk`: test the vendored pure Rust VMDK reader and committed image fixtures.
-- `just test-qcow2` / `just test-vdi`: test the standalone vendored image readers.
-- `just test-vsc`: test the Volume Shadow Copy reader; set `VSC_ORACLE_IMAGE` for the external pyvshadow oracle.
+- `just test-qcow2` / `just clippy-qcow2` / `just test-vdi`: test / lint the standalone vendored QCOW and VDI readers; `just generate-qcow-fixtures` regenerates the invented QCOW fixtures (needs Python `cryptography`).
+- `just test-smraw` / `just clippy-smraw`, `just test-phdi` / `just clippy-phdi` and `just test-gzipf` / `just clippy-gzipf`: test / lint the standalone split RAW, Parallels PHDI and GZIP readers.
+- `just clippy-ubi`: lint the read-only UBI library; its tests run through `just test-vendor ubidump`.
+- `just test-vsc` / `just clippy-vsc`: test / lint the Volume Shadow Copy reader; set `VSC_ORACLE_IMAGE` for the external pyvshadow oracle. `just probe-vsc` inspects a raw NTFS volume's VSS metadata and `just compare-vsc <directory> <count>` compares pyvshadow dumps.
 - `just test-refs` / `just clippy-refs`: test / lint the standalone pure Rust ReFS reader.
 - `just test-ad1`: test the AD1 reader; set `AD1_USERBSS` for the real-image stored-hash oracle.
 - `just test-ios-backup`: test the iOS backup reader, auditor and independent encrypted fixtures.
@@ -92,6 +94,7 @@ Use the repository-root `Justfile` as the task entry point. Do not replace an ex
 - `just update-tauri`: update the frontend and backend Tauri package families together; their patch versions need not match.
 - `just update-file-viewer <version> [args]`: update both viewer packages to the same exact version and refresh offline assets.
 - `just icons`: regenerate platform icons and frontend brand variants from `src-tauri/icons/source*.png`.
+- `just qr-env` / `just build-opencv-contrib` / `just qr-test <image> [count]`: show the resolved Visual Studio and OpenCV paths, build contrib OpenCV with `wechat_qrcode` into `OPENCV_INSTALL`, and decode a QR image with the WeChat detector.
 
 Windows `*-full` builds enable `qrcode-wechat,ocr-cuda` (CUDA OCR with CPU fallback); Unix `build-cli-full` enables `qrcode-wechat,ocr`. Default builds need neither OpenCV nor CUDA. Windows recipes use the default MSVC linker and load `scripts/windows-env.ps1` in the same shell; LLVM/libclang is configured only for OpenCV builds. Override paths through the documented environment or just variables rather than hard-coding local paths into recipes.
 

@@ -6,10 +6,10 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 
 ## 专题
 
+表格按文件系统、分区与阵列、加密与快照、镜像容器、压缩与备份的顺序排列。
+
 | 格式 | 文档 | 要点 |
 | --- | --- | --- |
-| ISO 9660 / 光盘 BIN / CUE | [CDFS.md](CDFS.md) | libodraw 全 API 对照；多文件/多轨 CUE、Mode 1 / XA Form 1、来源字节保留与范围读取 |
-| UBI / HDR1 固件 | [UBI.md](UBI.md) | rust_ubidump 只读库；小米扩展分段表、UBI 逻辑块重组、原始卷读取与内嵌 SquashFS 浏览 |
 | NTFS | [NTFS.md](NTFS.md) | libfsntfs 对照；MFT 与属性链、LZNT1 / WOF 压缩、命名流、硬链接、重解析点、安全描述符、独立 `$MFT`、USN 日志 |
 | ext2/3/4 | [EXT.md](EXT.md) | libfsext 对照；内联数据、EA-inode、旧式目录、`meta_bg`、全部间接块层级、带符号与纳秒时间戳 |
 | FAT / exFAT | [FAT.md](FAT.md) | libfsfat 对照；按簇数判定 FAT 类型、大逻辑扇区、范围读取、ValidDataLength、时区与删除项 |
@@ -17,7 +17,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | ReFS | [REFS.md](REFS.md) | 纯 Rust `refs-reader`；文件流快照、CoW 共享块、公开镜像来源与独立解析器验证 |
 | APFS | [APFS.md](APFS.md) | libfsapfs 110 API 对照；事务 OMAP、多卷、两类目录键、克隆/空洞、范围读、xattr 与快照元数据；明确加密/历史浏览边界 |
 | HFS+ / HFSX | [HFS.md](HFS.md) | libfshfs 95 API；完整 fork / overflow、resource fork、attr continuation、Unicode 3.2、硬链接与逻辑范围读取 |
-| FileVault 2 | [FILEVAULT.md](FILEVAULT.md) | filevault-forensic 接入与 libfvde 88 API；多 LV、密码/恢复/VMK、主备元数据、segment map 与 HFS 明文视图 |
+| ISO 9660 / 光盘 BIN / CUE | [CDFS.md](CDFS.md) | libodraw 全 API 对照；多文件/多轨 CUE、Mode 1 / XA Form 1、来源字节保留与范围读取 |
 | GPT | [GPT.md](GPT.md) | libvsgpt 对照；主备头与数组 CRC、扇区大小推断、备份恢复、原始槽位与属性 |
 | MBR / EBR | [MBR.md](MBR.md) | libvsmbr 对照；原始槽位与 CHS、多扩展入口、循环与分叉检测、大扇区几何 |
 | LVM2 | [LVM.md](LVM.md) | libvslvm 对照；标签与元数据 CRC、活动副本、环形缓冲回绕、碎片线性卷映射 |
@@ -25,14 +25,16 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | 固件 RAID | [FIRMWARE_RAID.md](FIRMWARE_RAID.md) | Intel IMSM（RST / VROC）与 SNIA DDF（PERC、MegaRAID、Adaptec、mdadm ddf）；校验和与 CRC、主备副本、按序列号或引用号定位成员；RAID0/1/4/5/6/10、RAID1E 与串联；降级规则同 md |
 | LUKS | [LUKS.md](LUKS.md) | libluksde 对照；LUKS1/2、AES / Serpent / Blowfish / ARC4、IV 方案、主密钥解锁 |
 | BitLocker | [BITLOCKER.md](BITLOCKER.md) | libbde 对照；Vista、Windows 7+ 与 To Go 卷，六种加密方法、EOW 与各种解锁方式 |
+| FileVault 2 | [FILEVAULT.md](FILEVAULT.md) | filevault-forensic 接入与 libfvde 88 API；多 LV、密码/恢复/VMK、主备元数据、segment map 与 HFS 明文视图 |
 | 卷影副本 | [VSS.md](VSS.md) | libvshadow 对照；存储区链重建、原始块枚举、catalog 校验与尺寸恢复 |
-| GZIP | [GZIP.md](GZIP.md) | libgzipf 42 API 对照；纯 Rust 多成员、元数据、校验、流式/seek；接入 tar.gz / Docker 层 / 小米备份 |
 | RAW / 分段 RAW | [SMRAW.md](SMRAW.md) | libsmraw 72 API 对照；分段发现、随机读写、缺段/源变化检查；读取接入宿主 |
 | QCOW / QCOW2 | [QCOW.md](QCOW.md) | libqcow 全部 42 API；v1/2/3、DEFLATE、RAW/QCOW 父链、legacy AES 与完整性检查 |
 | Parallels PHDI | [PHDI.md](PHDI.md) | libphdi 56 API 对照；纯 Rust v2 Plain / Sparse / Split / 差分父链、XML 元数据及完整性检查 |
-| iOS 备份 | [IOS_BACKUPS.md](../IOS_BACKUPS.md) | 本地备份浏览、加密备份解锁与异常检查 |
-| 小米备份 | [MIUI_BAK.md](MIUI_BAK.md) | ZIP / 目录内 `.bak` 自动展开；Android Backup 头、TAR 与压缩流 |
+| UBI / HDR1 固件 | [UBI.md](UBI.md) | rust_ubidump 只读库；小米扩展分段表、UBI 逻辑块重组、原始卷读取与内嵌 SquashFS 浏览 |
+| GZIP | [GZIP.md](GZIP.md) | libgzipf 42 API 对照；纯 Rust 多成员、元数据、校验、流式/seek；接入 tar.gz / Docker 层 / 小米备份 |
 | Android 备份 | [ANDROID_BACKUP.md](ANDROID_BACKUP.md) | `.ab` 1–5 与小米 `.bak` 独立打开；原始容器字节与逻辑文件树分离 |
+| 小米备份 | [MIUI_BAK.md](MIUI_BAK.md) | ZIP / 目录内 `.bak` 自动展开；Android Backup 头、TAR 与压缩流 |
+| iOS 备份 | [IOS_BACKUPS.md](../IOS_BACKUPS.md) | 本地备份浏览、加密备份解锁与异常检查 |
 
 其余格式（Btrfs、ZFS、UFS、SquashFS，以及 EWF、VMDK、VHD / VHDX、VDI、DMG、AD1 等镜像容器）的实现位置见 [架构说明的镜像与证据源](../ARCHITECTURE.md#镜像与证据源)，上游版本、本地补丁与测试样本记录在各 vendor 目录的 `LOVELYCARVE.md` / `ORIGIN.md` 中。命令行下的镜像打开、解锁和导出示例见 [CLI 手册](../CLI.md)。
 

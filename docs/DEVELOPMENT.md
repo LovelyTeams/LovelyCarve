@@ -69,7 +69,7 @@ just --dry-run pack           # 展开依赖与命令，但不执行
 | Windows 桌面 | `dev`、`build`、`build-release`、`pack`、`repack`；含 QR/OCR 的版本使用对应的 `*-full` |
 | CLI | `run-cli`、`build-cli`、`build-cli-full`、`test-cli`、`smoke-cli <exe>`；Windows 另有 `pack-cli`、`pack-cli-full`、`repack-cli` |
 | 插件 | `build-plugins [--release]`、`test-plugins`、`clippy-plugins`；Windows 另有 `pack-plugins`（生成 `.lcpkg`） |
-| 读取器 | `test-vendor <目录>`、`test-ewf`、`test-vmdk`、`test-vhd`、`test-vhdx`、`test-qcow2`、`test-vdi`、`test-bitlocker` / `clippy-bitlocker`、`test-luks` / `clippy-luks`、`test-veracrypt`、`test-vsc` / `clippy-vsc`、`test-refs` / `clippy-refs`、`test-ad1`、`test-sqlite-core`、`test-ios-backup`、`test-apfs` / `clippy-apfs` |
+| 读取器 | `test-vendor <目录>`、`test-ewf`、`test-vmdk`、`test-vhd`、`test-vhdx`、`test-qcow2` / `clippy-qcow2`、`generate-qcow-fixtures`、`test-vdi`、`test-phdi` / `clippy-phdi`、`test-smraw` / `clippy-smraw`、`test-gzipf` / `clippy-gzipf`、`clippy-ubi`、`test-bitlocker` / `clippy-bitlocker`、`test-luks` / `clippy-luks`、`test-veracrypt`、`test-filevault` / `clippy-filevault`、`test-vsc` / `clippy-vsc`、`test-refs` / `clippy-refs` / `test-refs-oracle`、`test-ad1`、`test-sqlite-core`、`test-ios-backup`、`test-apfs` / `clippy-apfs`、`clippy-hfsplus` |
 | 探针与性能 | `run-example`、`run-example-fast`、`bench-filedb-store`、`probe-refs`、`probe-vsc`、`compare-vsc` |
 | 依赖更新 | `update-fe`、`update-rust`、`update-plugins`、`update-tauri`、`update-file-viewer <版本>` |
 | 资源维护 | `icons`、`qr-env`、`build-opencv-contrib`、`qr-test <图片>` |
@@ -78,14 +78,7 @@ just --dry-run pack           # 展开依赖与命令，但不执行
 
 Cargo 默认特性为空。`desktop` 特性引入 Tauri、对话框与文件插件和 tauri-build，桌面二进制 `LovelyCarve` 只在该特性下构建：`tauri dev` / `tauri build` 通过 `tauri.conf.json` 的 `build.features` 开启，`just build` / `build-full` 显式传入。`lovelycarve-cli` 不启用它，是不链接 Tauri、WebView 或 GTK 的独立程序。`just check` 和 `just clippy` 依次检查独立 CLI 与桌面两种配置；`just test` 在不含桌面运行时的配置下运行后端测试。新增后端命令还要在 `src-tauri/src/cli/commands.toml` 中映射为 CLI 命令，命名规则不满足时构建脚本报错，规则见[架构说明](ARCHITECTURE.md#命令行与桌面只读挂载)。
 
-QCOW 使用 `just test-qcow2` / `just clippy-qcow2`；宿主回归用 `just test qcow --lib --jobs 1`，CLI 用 `just test-cli`。`just generate-qcow-fixtures` 可重建独立 Python zlib/OpenSSL 样本（需 cryptography），能力与边界见 [QCOW](formats/QCOW.md)。
-
-Parallels PHDI 使用 `just test-phdi` / `just clippy-phdi`；宿主回归用 `just test phdi --lib --jobs 1`，真实命令打开 / 导出用 `just test-cli`。可选外部 oracle、56 API 对照及验证边界见 [PHDI](formats/PHDI.md)。
-
-UBI 只读库使用 `just test-vendor ubidump` / `just clippy-ubi`，宿主回归使用
-`just test ubi --lib` 与 `just test xiaomi_firmware --lib`，支持范围见 [UBI 固件](formats/UBI.md)。
-
-`fmt` 覆盖主 crate、插件与维护中的读取器。独立 GZIP 库的验证入口为 `just test-gzipf` / `just clippy-gzipf`，也可使用 `just test-vendor gzipf`；宿主 GZIP 回归用 `just test gzip --lib`，CLI 接入用 `just test-cli`，格式范围见 [GZIP](formats/GZIP.md)。公共读取接口改动后运行 `check-examples`。参数含空格时，需要保留一层传给子 shell 的引号：
+`fmt` 覆盖主 crate、插件与维护中的读取器。公共读取接口改动后运行 `check-examples`。参数含空格时，需要保留一层传给子 shell 的引号：
 
 ```powershell
 just run-example probe_partitions '"D:\Evidence Files\disk.E01"'
@@ -93,11 +86,18 @@ just run-example probe_partitions '"D:\Evidence Files\disk.E01"'
 
 后端探针的用途与参数见 [examples/README.md](../src-tauri/examples/README.md)，各读取器的专项测试、可选外部样本与环境变量见 [格式与读取器](formats/README.md)。
 
-分段 RAW 独立库使用 `just test-smraw` / `just clippy-smraw`，宿主回归使用
-`just test smraw --lib --jobs 1` 与 `just test-cli`。Windows rustc 在大型测试 crate
-发生增量编译崩溃时，可通过原配方传入
-`--config profile.test.package.lovelycarve.debug=0 --config profile.test.package.lovelycarve.incremental=false`，
-仅降低宿主测试包调试信息并禁用其增量缓存；不改变发布配置。范围见 [SMRAW](formats/SMRAW.md)。
+### 读取器验证
+
+独立读取库用各自的测试与 Clippy 配方验证；接入宿主的部分另用 `just test <过滤词> --lib` 运行宿主回归，命令行接入用 `just test-cli`。
+
+- QCOW：`just test-qcow2` / `just clippy-qcow2`，宿主回归用 `just test qcow --lib --jobs 1`。`just generate-qcow-fixtures` 可重建独立 Python zlib/OpenSSL 样本（需 cryptography），能力与边界见 [QCOW](formats/QCOW.md)。
+- Parallels PHDI：`just test-phdi` / `just clippy-phdi`，宿主回归用 `just test phdi --lib --jobs 1`，真实命令打开 / 导出用 `just test-cli`。可选外部 oracle、56 API 对照及验证边界见 [PHDI](formats/PHDI.md)。
+- 分段 RAW：`just test-smraw` / `just clippy-smraw`，宿主回归用 `just test smraw --lib --jobs 1` 与 `just test-cli`，范围见 [SMRAW](formats/SMRAW.md)。
+- GZIP：`just test-gzipf` / `just clippy-gzipf`（也可使用 `just test-vendor gzipf`），宿主回归用 `just test gzip --lib`，CLI 接入用 `just test-cli`，格式范围见 [GZIP](formats/GZIP.md)。
+- UBI：`just test-vendor ubidump` / `just clippy-ubi`，宿主回归用 `just test ubi --lib` 与 `just test xiaomi_firmware --lib`，支持范围见 [UBI 固件](formats/UBI.md)。
+- HFS+ 与 FileVault 2：`just test-vendor hfsplus` / `just clippy-hfsplus` 验证 HFS；`just test-filevault` / `just clippy-filevault` 验证 CoreStorage 核心和法证审计器。设置 `FVDE_ORACLE_IMAGE` 为公开测试样本的 raw CoreStorage 区域后运行 `just test-filevault`，执行真实扇区 SHA、HFS 读者与法证审计 oracle；提取范围与哈希见 [FileVault](formats/FILEVAULT.md)。未设置变量不等于通过真实样本验证。
+
+Windows rustc 在大型测试 crate 发生增量编译崩溃时，可通过原配方传入 `--config profile.test.package.lovelycarve.debug=0 --config profile.test.package.lovelycarve.incremental=false`，仅降低宿主测试包调试信息并禁用其增量缓存；不改变发布配置。
 
 ## 插件与资源
 
@@ -147,11 +147,7 @@ just run-example probe_carve <image-path>
 
 优化前后核对结果、长度和校验值：分页需要稳定顺序，并行扫描需要稳定合并，缓存需要有界容量和明确的清理点。增加并发时同时测量目录浏览等前台交互，不能只提高后台吞吐。失败、取消、短读和 SQLite 忙等待同样属于性能验证范围。
 
-源盘 MD5 的可选全量对比测试使用 `EWF_HASH_IMAGE=<镜像路径>` 和
-`just test image_hash_external_benchmark --lib --release -- --ignored --nocapture`。
-测试在相同读取器上交替运行当前 `fast-md5` 命令流水线与 RustCrypto 对照流水线，
-核对完整逻辑长度、证据稳定性、严格读取及内嵌采集 MD5；未提供样本时不会执行。
-它不清除系统文件缓存，应把缓存状态和构建 profile 一并记录。
+源盘 MD5 的可选全量对比测试使用 `EWF_HASH_IMAGE=<镜像路径>` 和 `just test image_hash_external_benchmark --lib --release -- --ignored --nocapture`。测试在相同读取器上交替运行当前 `fast-md5` 命令流水线与 RustCrypto 对照流水线，核对完整逻辑长度、证据稳定性、严格读取及内嵌采集 MD5；未提供样本时不会执行。它不清除系统文件缓存，应把缓存状态和构建 profile 一并记录。
 
 ## 更新依赖
 
@@ -162,7 +158,3 @@ Vue 类型检查通过 `typescript` 的 npm 别名接入 `typescript-native-brid
 前端生产构建使用 Vite 8 自带的 Oxc 压缩器，不需要额外安装 esbuild，也不要恢复 `build.minify: 'esbuild'`。非 Windows 平台保持 Safari 13 构建目标，但地图渲染器依赖 BigInt，map / shp 预览需要 Safari 14 或更新的 WebKit。
 
 升级后按改动范围执行前端、Rust、插件与读取器验证。不要把本机路径、依赖目录、案件、缓存、导出结果和签名凭据提交到仓库；`.gitignore` 为回归样本保留了例外。
-
-### HFS 与 FileVault 读者
-
-`just test-vendor hfsplus` / `just clippy-hfsplus` 验证 HFS；`just test-filevault` / `just clippy-filevault` 验证 CoreStorage 核心和法证审计器。设置 `FVDE_ORACLE_IMAGE` 为公开测试样本的 raw CoreStorage 区域后运行 `just test-filevault`，执行真实扇区 SHA、HFS 读者与法证审计 oracle；提取范围与哈希见 [FileVault](formats/FILEVAULT.md)。未设置变量不等于通过真实样本验证。
