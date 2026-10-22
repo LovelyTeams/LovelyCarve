@@ -15,6 +15,14 @@
 - 推送版本标签后自动构建并发布 Windows x64 安装包、独立 CLI 与插件包，附带 SHA-256 校验清单；PR 自动运行前端、Rust 和插件测试。
 - 「设置中心 → 关于」新增 GitHub tags 版本检查；自动检查默认关闭，可手动检查或开启每次启动检查，发现新版时提示并提供标签链接。
 
+### Changed
+
+- CLI 代理技能 `skills/lovelycarve-cli` 收录完整用法：`references/commands.md` 按集合列出全部命令的用法、选项与说明，由命令目录生成（`just update-cli-skill`），与命令不一致时测试失败；`references/workflows.md` 说明路径与节点 ID、时区、内容搜索、RAID/LVM、加密卷、文件恢复、插件、哈希与导出等多步任务。编码代理调用帮助时的说明改为指向该技能。
+
+### Removed
+
+- **破坏性变更**：移除 `lovelycarve-cli` 的 `cli search` 命令搜索、隐藏的 MCP 工具定义命令 `tools`，以及 `docs search` / `docs list` / `docs get` 和程序内嵌的文档；编码代理改用随包技能查找命令与用法，人工使用 `--help`、`schema` 与 [CLI 手册](docs/CLI.md)。
+
 ## [1.2.0] - 2026-10-20
 
 ### Added

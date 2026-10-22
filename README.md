@@ -91,11 +91,10 @@ LovelyCarve 面向电子数据取证、应急响应和 CTF 取证题：加载磁
 lovelycarve-cli images open "D:\evidence\disk.E01"
 lovelycarve-cli --image "D:\evidence\disk.E01" files tree list --path / --depth 2
 lovelycarve-cli --image "D:\evidence\disk.E01" files read "/<卷名称>/Users/alice/report.txt" > report.txt
-lovelycarve-cli cli search "recover deleted files"
-lovelycarve-cli docs search "BitLocker 恢复密码"
+lovelycarve-cli schema files read
 ```
 
-桌面端的每个后端命令都有对应的 CLI 命令；`cli search` 按意图查找命令，`docs search` 离线搜索随程序附带的使用文档与格式专题。`shell` 在一个进程中逐行执行命令，JSONL 会话适合脚本与代理编排一系列分析：
+桌面端的每个后端命令都有对应的 CLI 命令；`--help` 列出命令，`schema` 查看请求结构，安装包中的 `skills/lovelycarve-cli` 是供编码代理使用的技能，附带全部命令的参考与多步任务说明。`shell` 在一个进程中逐行执行命令，JSONL 会话适合脚本与代理编排一系列分析：
 
 ```powershell
 Get-Content .\workflow.jsonl | lovelycarve-cli session --events

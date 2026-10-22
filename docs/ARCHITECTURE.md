@@ -1013,18 +1013,20 @@ CLI 构建不启用 `desktop` 特性，不链接 Tauri、WebView 或 GUI 工具�
 `[[superseded]]` 中注明替代命令；动词在固定动词表内，不使用同义词（info/status→get、remove→delete、
 ls/query→list 等）；命令路径唯一且不是其他命令的前缀；`list`/`count` 不带位置参数；选项名与短选项
 不与 CLI 保留选项冲突；示例以程序名开头；命令签名中出现不支持的注入参数时构建失败。手写命令（`files list/get/read/search`、
-`files strings list`、`context`、`tasks wait`、`system get`、`cli search`、`docs`、`tools` 等）也在该文件中声明参数，
-命令搜索、`schema`、帮助、补全、MCP 工具定义和 JSONL 会话读取同一份目录。`hide_command = true` 的命令
-（如 `tools`）可以运行和搜索，但不进入帮助、补全和拼写建议。构建脚本还把 `docs/` 中的使用指南、CLI 手册、
-iOS 备份、Linux 基本信息插件和全部格式专题嵌入 `cli_docs.rs`，供离线的 `docs search/list/get` 使用；
-这些页面缺失时构建失败。
+`files strings list`、`context`、`tasks wait`、`system get`、`schema` 等）也在该文件中声明参数，
+`schema`、帮助、补全、JSONL 会话和代理技能的命令参考读取同一份目录。`hide_command = true` 的命令
+（如 `sessions serve`）可以运行，但不进入帮助、补全、拼写建议和命令参考。
+
+代理技能 `skills/lovelycarve-cli` 随 CLI 安装包发布：`SKILL.md` 与 `references/workflows.md` 手写，
+`cli/skill_tests.rs` 解析其中的命令行和 JSONL 请求；`references/commands.md` 由同一测试模块从命令目录渲染，
+`just update-cli-skill` 运行其中被忽略的写入测试重新生成，文件与目录不一致时测试失败。
 
 `cli/` 按职责分为：`argv`（由目录构建 clap 命令树并解析参数、命令行错误）、`help`（yargs 版式的帮助：
 用法、说明、命令／位置参数／全局选项／选项／示例表格与右对齐的类型标注）、`context`（一次执行的统一步骤：
 dry-run、删除确认、默认值与生成 ID、提问、`--image` 作用域与来源提示、镜像内路径解析、不覆盖检查、调用和
 上下文更新）、`native` / `browsing` / `grep` / `strings`（手写命令；`native::offline` 处理无需后端的发现命令）、
 `output` / `prompt` / `progress` / `interactive`（标准输出与标准错误、clack 式提问与进度、终端与代理检测）、
-`search`（BM25+ 排序，命令搜索与文档搜索共用）、`docs`、`tools`、`schema`、`complete`、`dotenv`、`session`、
+`schema`、`complete`、`dotenv`、`session`、
 `shell`、`resident`（命名常驻会话的启动、连接、私有传输及串行执行）和 `runtime`（进程入口、后端启动与关闭、中断处理）。结构化结果以 `cli::Json` 保存后端序列化的 JSON
 文本，打印和会话响应保留字段顺序，需要读取时才解析为值；后端命令的错误带上 IPC 名称，渲染为「后端错误」块。
 可执行文件旁的 `plugins/` 同样参与插件发现，`lc-plugin-host` 也从可执行文件旁查找。
@@ -1220,7 +1222,7 @@ LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提�
 | 任务中心 | 任务中心、检材加载页、镜像信息页 | `task_list`、`task_status`、`task_cancel`、`task-entry`；`task-lifecycle`、`task-progress` |
 | 主机路径 | 拖放添加检材 | `system_path_info`（判断拖入的路径是否为目录） |
 
-下列命令目前没有桌面调用方（部分在 `src/lib/ipc/` 保留了类型化封装），上表的通配符不包括它们：`image_bad_regions`、`os_detect`、`case_option_query` / `case_option_save`、`filedb_*`、`fs_stat`、`fs_dir_stats`、`fs_digest_load` / `fs_ftype_load`（整镜像兼容入口）、`fs_streams` / `fs_stream_preview` / `fs_stream_export`、`fs_vim_swap_preview`、`fs_usn_journal*` / `fs_ext4_journal*`、`fs_timeline_export`、`timeline_range`、`carve_latest_scan`、`sched_evidence_post_actions_set`、`module_summary` 与 `reveal_path`。它们大多是 CLI 命令的后端（可用 `lovelycarve-cli cli search` 查找）；`fs_usn_journal` 与 `carve_latest_scan` 在 `commands.toml` 的 `[[superseded]]` 中指向替代命令。
+下列命令目前没有桌面调用方（部分在 `src/lib/ipc/` 保留了类型化封装），上表的通配符不包括它们：`image_bad_regions`、`os_detect`、`case_option_query` / `case_option_save`、`filedb_*`、`fs_stat`、`fs_dir_stats`、`fs_digest_load` / `fs_ftype_load`（整镜像兼容入口）、`fs_streams` / `fs_stream_preview` / `fs_stream_export`、`fs_vim_swap_preview`、`fs_usn_journal*` / `fs_ext4_journal*`、`fs_timeline_export`、`timeline_range`、`carve_latest_scan`、`sched_evidence_post_actions_set`、`module_summary` 与 `reveal_path`。它们大多是 CLI 命令的后端（见 `lovelycarve-cli schema --list` 的 `ipcCommand`）；`fs_usn_journal` 与 `carve_latest_scan` 在 `commands.toml` 的 `[[superseded]]` 中指向替代命令。
 
 ## 扩展流程
 

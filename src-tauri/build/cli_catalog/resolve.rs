@@ -64,7 +64,7 @@ pub const RESERVED_PREFIXES: &[&str] = &["experimental-"];
 pub const RESERVED_SHORTS: &[char] = &['i', 'q', 'h', 'v', 'f', 'c'];
 
 /// Hand-written commands that stand alone at the root instead of under a collection.
-pub const ROOT_COMMANDS: &[&str] = &["schema", "complete", "session", "shell", "tools"];
+pub const ROOT_COMMANDS: &[&str] = &["schema", "complete", "session", "shell"];
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]

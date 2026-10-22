@@ -4,14 +4,15 @@
 //! schema in `cli/commands.toml` (see build/cli_catalog.rs).
 //!
 //! Commands are `<collection>… <verb>`, with JSON results on stdout, messages
-//! on stderr, `cli search`, `docs search` and `schema` for discovery, and
-//! `--dry-run`, `--body` and `--force` on every command.
+//! on stderr, help and `schema` for discovery, and `--dry-run`, `--body` and
+//! `--force` on every command. Coding agents learn the commands from the
+//! packaged skill, whose command reference is rendered from the same
+//! catalogue (`skill_tests`).
 mod argv;
 mod browsing;
 mod catalog;
 mod complete;
 mod context;
-mod docs;
 mod dotenv;
 mod grep;
 mod help;
@@ -27,12 +28,12 @@ mod prompt;
 mod resident;
 mod runtime;
 mod schema;
-mod search;
 mod session;
 mod shell;
+#[cfg(test)]
+mod skill_tests;
 mod strings;
 mod timezone;
-mod tools;
 mod wire;
 
 use std::{borrow::Cow, sync::OnceLock};

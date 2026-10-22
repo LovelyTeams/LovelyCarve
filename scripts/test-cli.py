@@ -82,7 +82,7 @@ def main():
             result = run([*arguments, "session"], "\n".join(json.dumps(request) for request in requests), expected)
             return result, [json.loads(line) for line in result.stdout.splitlines()]
 
-        # Discovery needs no evidence: system facts, request schemas, search and completion.
+        # Discovery needs no evidence: system facts, request schemas, help and completion.
         system = json.loads(run(["system", "get"]).stdout)
         assert system["standalone"], "the CLI must be built without the desktop runtime"
         assert system["session"]["maxJobs"] == 64 and system["session"]["protocolVersion"] == 3
@@ -101,8 +101,6 @@ def main():
         run(["files", "children", "list"], expected=1)
         for body in ({"offset": "1"}, {"offset": -1}, {"typo": True}):
             run(["files", "read", "--body", json.dumps({"path": "/x", **body}), "--dry-run"], expected=1)
-        found = json.loads(run(["cli", "search", "export a file"]).stdout)
-        assert found[0]["command"] == "lovelycarve-cli files export", found
         candidates = [line.split("\t")[0] for line in run(["complete", "--", "files", "s"]).stdout.splitlines()]
         assert {"search", "sqlite", "strings"} <= set(candidates), candidates
         run(["--help"])
@@ -128,28 +126,18 @@ def main():
         preview = json.loads(run(["files", "hash", "/x", "--algos", "md5", "sha256", "--dry-run"]).stdout)
         assert preview["body"]["algos"] == ["md5", "sha256"], preview
         assert json.loads(run(["complete", "bash", "--dry-run"]).stdout)["executed"] is False
-        # Hidden MCP tool definitions: every command, none of them listed in help or completion.
-        tools = json.loads(run(["tools"]).stdout)
-        assert tools["version"] == "2.0" and len(tools["tools"]) == system["commands"], len(tools["tools"])
-        assert next(tool for tool in tools["tools"]
-                    if tool["name"] == "lovelycarve_cli_images_open")["inputSchema"]["required"] == ["path"]
-        assert "lovelycarve-cli tools" not in run(["--help"]).stdout
-        assert "tools" not in run(["complete", "--", "t"]).stdout.split()
-        assert "tools" not in run(["toolz"], expected=1).stderr.split("未知命令：toolz")[1]
-        # The bundled documentation is searchable and readable offline.
-        hits = json.loads(run(["docs", "search", "JSONL 会话"]).stdout)
-        assert hits and {"title", "section", "description", "page"} == set(hits[0]), hits
-        assert {"page": "CLI.md", "title": "LovelyCarve CLI"} in json.loads(run(["docs", "list"]).stdout)
-        assert run(["docs", "get", "CLI.md", "--section", "JSONL 会话"]).stdout.startswith("## JSONL 会话")
-        run(["docs", "get", "missing.md"], expected=1)
+        # Hidden commands stay out of help, completion and suggestions; discovery
+        # and documentation commands are gone in favour of the agent skill.
+        assert "sessions serve" not in run(["sessions", "--help"]).stdout
+        assert "serve" not in run(["complete", "--", "sessions", "s"]).stdout.split()
+        for removed in (["cli", "search", "export a file"], ["tools"], ["docs", "list"]):
+            run(removed, expected=1)
         _, rows = session([
             {"id": "schema", "command": "schema", "args": {"command": ["files", "hash"]}},
-            {"id": "docs", "command": "docs get", "args": {"page": "CLI.md", "section": "JSONL 会话"}},
-            {"id": "tools", "command": "tools"},
-        ])
+            {"id": "docs", "command": "docs get", "args": {"page": "CLI.md"}},
+        ], expected=1)
         assert rows[0]["result"]["ipcCommand"] == "fs_digest", rows[0]
-        assert rows[1]["result"]["markdown"].startswith("## JSONL 会话"), rows[1]
-        assert len(rows[2]["result"]["tools"]) == system["commands"]
+        assert rows[1]["error"]["code"], rows[1]
         # .env.local overrides .env, and a scope taken from either is announced.
         (root / ".env").write_text(f"LOVELYCARVE_IMAGE={root / 'missing.E01'}\n", encoding="utf-8")
         (root / ".env.local").write_text(f"LOVELYCARVE_IMAGE={evidence}\n", encoding="utf-8")

@@ -327,14 +327,8 @@ fn usage_error(catalog: &'static Catalog, path: &[String], error: &clap::Error) 
             catalog.binary
         ));
     }
-    if error.kind() == ErrorKind::InvalidSubcommand {
-        message.push_str(&format!(
-            "\n用 {} cli search \"<要完成的任务>\" 查找命令",
-            catalog.binary
-        ));
-    }
     let agentic = super::interactive::is_agentic();
-    if agentic && error.kind() != ErrorKind::InvalidSubcommand {
+    if agentic {
         message.push_str(&format!("\n用 {} {prefix}--help 查看用法", catalog.binary));
     }
     Parsed::UsageError {
@@ -714,7 +708,7 @@ mod tests {
             vec!["imagez"],
             vec!["images", "open"],
             vec!["images", "export", "--mode", "everything"],
-            vec!["cli", "search", "open", "image"],
+            vec!["sessions", "open", "exam", "extra"],
         ] {
             let args: Vec<String> = args.into_iter().map(str::to_owned).collect();
             assert!(
@@ -731,14 +725,20 @@ mod tests {
     #[test]
     fn hidden_commands_run_but_are_never_suggested() {
         let catalog = catalog().unwrap();
-        assert_eq!(run(&["tools"]).1.command.path(), "tools");
+        assert_eq!(
+            run(&["sessions", "serve", "exam"]).1.command.path(),
+            "sessions serve"
+        );
         assert!(matches!(
-            parse(catalog, &["tools".into(), "--help".into()]),
+            parse(
+                catalog,
+                &["sessions".into(), "serve".into(), "--help".into()]
+            ),
             Parsed::Help(_)
         ));
-        match parse(catalog, &["toolz".into()]) {
+        match parse(catalog, &["sessions".into(), "serv".into()]) {
             Parsed::UsageError { error, .. } => {
-                assert!(!error.message.contains("tools"), "{}", error.message)
+                assert!(!error.message.contains("serve"), "{}", error.message)
             }
             other => panic!("{other:?}"),
         }
@@ -750,35 +750,5 @@ mod tests {
             ),
             other => panic!("{other:?}"),
         }
-    }
-    #[test]
-    fn packaged_skill_examples_parse_against_the_catalogue() {
-        let skill = include_str!("../../../skills/lovelycarve-cli/SKILL.md");
-        let catalog = super::super::catalog::catalog().unwrap();
-        let mut examples = 0;
-        for line in skill
-            .lines()
-            .filter(|line| line.starts_with("lovelycarve-cli "))
-        {
-            let words = super::super::shell::tokenize(line).unwrap();
-            assert!(
-                matches!(parse(catalog, &words[1..]), Parsed::Run { .. }),
-                "{line}"
-            );
-            examples += 1;
-        }
-        for line in skill.lines().filter(|line| line.starts_with("{\"id\":")) {
-            let request: Value = serde_json::from_str(line).unwrap();
-            let command = catalog
-                .find_path(request["command"].as_str().unwrap())
-                .unwrap();
-            command
-                .validate(request["args"].as_object().unwrap())
-                .unwrap();
-        }
-        assert!(
-            examples > 0,
-            "skill must contain executable command examples"
-        );
     }
 }

@@ -60,11 +60,9 @@ def test_agent_output(executable, base_environment):
         assert "files list" in failure.stderr
         if "files lookup" in failure.stderr:
             assert failure.stderr.index("files list") < failure.stderr.index("files lookup")
-        assert "AGENT COMMAND DISCOVERY" in run("files", "--help").stdout
+        group_help = run("files", "--help").stdout
+        assert "AGENT COMMAND DISCOVERY" in group_help and "references/commands.md" in group_help
         assert "AGENT COMMAND DISCOVERY" not in run("files", "list", "--help").stdout
-        for intent, expected in [("list partitions", "images get"), ("change directory", "context set"),
-                                 ("show file timestamps", "files get"), ("open evidence", "images open")]:
-            assert json.loads(run("cli", "search", intent).stdout)[0]["command"] == "lovelycarve-cli " + expected
 
         requests = [
             {"id": "open", "command": "images open", "args": {"path": str(evidence)}},

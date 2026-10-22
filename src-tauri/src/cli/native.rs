@@ -11,7 +11,7 @@ use super::{
     browsing::{self, Entry},
     catalog::{self, Command},
     context::{Context, Exec, Mode, Target},
-    docs, generated, json_output, schema, search, strings, tools, CliError, Output,
+    generated, json_output, schema, strings, CliError, Output,
 };
 use crate::{
     core::filesystem::{
@@ -129,22 +129,6 @@ pub fn offline(
     mode: Mode,
 ) -> Option<Result<Output, CliError>> {
     let result = match command.native.as_deref()? {
-        "cli-search" => catalog::catalog().and_then(|catalog| {
-            json_output(search::search(
-                catalog,
-                &text(values, "query").unwrap_or_default(),
-            ))
-        }),
-        "docs-search" => json_output(docs::search(&text(values, "query").unwrap_or_default())),
-        "docs-list" => json_output(docs::list()),
-        "docs-get" => text(values, "page")
-            .ok_or_else(|| CliError::invalid("缺少参数：page"))
-            .and_then(|page| docs::get(&page, text(values, "section").as_deref()))
-            .and_then(|reading| match mode {
-                Mode::Session => json_output(reading),
-                Mode::OneShot | Mode::Shell => Ok(Output::Bytes(reading.markdown.into_bytes())),
-            }),
-        "tools" => catalog::catalog().and_then(|catalog| json_output(tools::definitions(catalog))),
         "schema" => catalog::catalog().and_then(|catalog| {
             let words: Vec<String> = values
                 .get("command")
@@ -609,23 +593,13 @@ mod tests {
     #[test]
     fn discovery_commands_run_without_the_backend() {
         let catalog = catalog::catalog().unwrap();
-        let docs = catalog.find(&["docs", "get"]).unwrap();
-        let values = Map::from_iter([("page".to_owned(), json!("CLI.md"))]);
-        match offline(docs, &values, Mode::OneShot) {
-            Some(Ok(Output::Bytes(markdown))) => {
-                assert!(markdown.starts_with("# LovelyCarve CLI".as_bytes()))
+        let system = catalog.find(&["system", "get"]).unwrap();
+        match offline(system, &Map::new(), Mode::OneShot) {
+            Some(Ok(Output::Json(facts))) => {
+                assert_eq!(facts.value()["commands"], catalog.commands.len())
             }
             other => panic!("{other:?}"),
         }
-        match offline(docs, &values, Mode::Session) {
-            Some(Ok(Output::Json(reading))) => assert_eq!(reading.value()["page"], "CLI.md"),
-            other => panic!("{other:?}"),
-        }
-        let tools = catalog.find(&["tools"]).unwrap();
-        assert!(matches!(
-            offline(tools, &Map::new(), Mode::Session),
-            Some(Ok(Output::Json(_)))
-        ));
         let schema = catalog.find(&["schema"]).unwrap();
         let values = Map::from_iter([("command".to_owned(), json!(["images", "open"]))]);
         match offline(schema, &values, Mode::Session) {

@@ -4,8 +4,9 @@
 # (`generate_handler!` in src/lib.rs). Every registered operation is exposed
 # here as exactly one `<collection> [<collection>…] <verb>` command, or listed
 # under [[superseded]] with the command that replaces it. Hand-written commands
-# (`native`) declare their parameters here as well, so search, `schema`, help,
-# completion and the JSONL session all read one catalogue.
+# (`native`) declare their parameters here as well, so `schema`, help,
+# completion, the JSONL session and the agent skill's command reference
+# (skills/lovelycarve-cli/references/commands.md) all read one catalogue.
 #
 # build/cli_catalog.rs enforces the rules at build time:
 # - collections are plural kebab-case nouns and the last word is the verb;
@@ -22,8 +23,9 @@
 #   take --force; secrets are prompted without echo and redacted in --dry-run;
 # - every `examples` entry starts with `lovelycarve-cli `.
 #
-# `hide_command = true` keeps a command runnable and searchable but out of
-# help, completion and command suggestions; `examples` appear in its help.
+# `hide_command = true` keeps a command runnable but out of help, completion,
+# command suggestions and the skill's command reference; `examples` appear in
+# its help.
 #
 # Parameter names are the backend's camelCase argument names: they are the
 # keys of --body, of `schema` output and of JSONL session requests. Options are
@@ -78,12 +80,10 @@ key = "SQLCipher 等加密数据库的密钥（JSON）"
 "cases" = "案件：创建、打开、设置与检材"
 "cases evidence" = "案件中登记的检材"
 "cases options" = "案件级设置"
-"cli" = "发现命令"
-"context" = "会话上下文：当前检材与镜像内目录"
+"context" ="会话上下文：当前检材与镜像内目录"
 "timezones" = "文件时间显示：自动读取检材时区或保存案件、检材与会话设置"
 "sessions" = "命名常驻会话：复用已打开检材、组装卷和当前目录"
 "disks" = "主机物理磁盘"
-"docs" = "随程序附带的使用文档：搜索、列出与阅读"
 "encrypted-volumes" = "LUKS、VeraCrypt 与 FileVault 加密容器"
 "files" = "检材内的文件：按路径或节点浏览、读取、解析与导出"
 "files ancestors" = "节点的祖先目录链"
@@ -539,17 +539,6 @@ values = ["bash", "zsh", "fish", "powershell"]
 description = "要生成补全脚本的 shell"
 
 [[command]]
-path = "tools"
-native = "tools"
-summary = "输出 MCP 工具定义"
-description = "把全部命令转换成 MCP 工具定义（名称、说明与输入结构），供 MCP 服务器包装本程序。"
-category = "read"
-concurrent = true
-hide_command = true
-keywords = ["mcp", "model context protocol", "tool definitions"]
-examples = [{ command = "lovelycarve-cli tools > tools.json", description = "保存全部工具定义" }]
-
-[[command]]
 path = "session"
 native = "session"
 summary = "以 JSONL 在一个进程内连续执行命令"
@@ -574,73 +563,6 @@ description = "逐行执行命令，检材与案件在命令之间保持打开�
 category = "action"
 keywords = ["repl", "interactive"]
 examples = [{ command = "lovelycarve-cli --case D:\\cases\\demo shell", description = "打开案件后进入交互终端" }]
-
-# ── cli (hand-written) ──────────────────────────────────────────────────────
-
-[[command]]
-path = "cli search"
-native = "cli-search"
-summary = "按意图搜索全部命令"
-description = "用自然语言描述任务，在本地索引中查找命令；返回最多 5 条 JSON 结果，最佳匹配在前。"
-category = "read"
-args = ["query"]
-concurrent = true
-examples = [
-    { command = "lovelycarve-cli cli search \"export a file\"", description = "按任务查找命令" },
-    { command = "lovelycarve-cli cli search \"恢复删除的文件\"", description = "中文描述同样可以" },
-]
-[command.params.query]
-type = "string"
-required = true
-description = "要完成的任务或搜索词（整体加引号）"
-
-# ── docs (hand-written) ─────────────────────────────────────────────────────
-
-[[command]]
-path = "docs search"
-native = "docs-search"
-summary = "搜索随程序附带的使用文档"
-description = "在内置的使用指南、CLI 手册与格式专题中按问题搜索，返回最多 5 条 JSON 结果（标题、章节、说明与页面），无需联网；用 docs get 阅读结果页面。"
-category = "read"
-args = ["query"]
-concurrent = true
-keywords = ["documentation", "guide", "manual", "format support", "limitations", "how to"]
-examples = [
-    { command = "lovelycarve-cli docs search \"BitLocker 恢复密码\"", description = "查找 BitLocker 解锁的说明" },
-    { command = "lovelycarve-cli docs search \"which NTFS features are supported\"", description = "查找格式能力与限制" },
-]
-[command.params.query]
-type = "string"
-required = true
-description = "问题或搜索词（整体加引号）"
-
-[[command]]
-path = "docs list"
-native = "docs-list"
-summary = "列出内置文档页面"
-description = "每个页面的路径与标题；路径可交给 docs get。"
-category = "read"
-concurrent = true
-
-[[command]]
-path = "docs get"
-native = "docs-get"
-summary = "阅读一页内置文档"
-description = "把文档页面的 Markdown 原样写到标准输出；--section 只输出一个章节。JSONL 会话中返回 {page, title, markdown}。"
-category = "read"
-args = ["page"]
-concurrent = true
-examples = [
-    { command = "lovelycarve-cli docs get CLI.md", description = "阅读 CLI 手册" },
-    { command = "lovelycarve-cli docs get formats/NTFS.md --section 验证边界", description = "只看一个章节" },
-]
-[command.params.page]
-type = "string"
-required = true
-description = "页面路径（docs search 或 docs list 返回的 page，如 formats/NTFS.md）"
-[command.params.section]
-type = "string"
-description = "章节标题（docs search 返回的 section）；省略时输出整页"
 
 # ── context (hand-written) ──────────────────────────────────────────────────
 

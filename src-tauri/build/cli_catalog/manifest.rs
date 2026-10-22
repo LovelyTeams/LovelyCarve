@@ -92,8 +92,8 @@ pub struct CommandSpec {
     /// The command writes raw bytes to stdout (native commands only).
     #[serde(default)]
     pub raw_output: bool,
-    /// Runnable and searchable, but left out of help, completion and
-    /// command suggestions.
+    /// Runnable, but left out of help, completion, command suggestions and
+    /// the skill's command reference.
     #[serde(default)]
     pub hide_command: bool,
     /// Invocations shown under the help's examples.

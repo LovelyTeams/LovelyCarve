@@ -309,6 +309,12 @@ test-cli:
 smoke-cli executable:
     {{ python }} scripts/test-cli.py '{{ executable }}'
 
+# Regenerate the agent skill's command reference from the CLI command catalogue.
+[group("cli")]
+[working-directory("src-tauri")]
+update-cli-skill:
+    {{ cargo_env }}cargo test --no-default-features --lib cli::skill_tests::update_command_reference -- --ignored --exact
+
 # Build and package the Windows CLI without QR/OCR.
 [group("cli")]
 [windows]

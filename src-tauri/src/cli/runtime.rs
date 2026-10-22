@@ -125,8 +125,6 @@ fn splash(catalog: &Catalog) {
         ),
         line("sessions attach exam", "连接会话，直接输入普通命令"),
         line("files list --path / --image <检材路径>", "浏览检材"),
-        line("cli search \"<要完成的任务>\"", "按意图查找命令"),
-        line("docs search \"<问题>\"", "搜索内置文档"),
         line("--help", "浏览全部命令"),
         line("<命令> --help", "查看单个命令"),
         line("complete powershell", "安装 shell 补全"),

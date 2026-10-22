@@ -1,6 +1,6 @@
 //! The command catalogue generated at build time from `cli/commands.toml` and
-//! the backend signatures: the single source for parsing, help, search,
-//! `schema`, completion and the JSONL session.
+//! the backend signatures: the single source for parsing, help, `schema`,
+//! completion, the JSONL session and the agent skill's command reference.
 use std::{collections::BTreeMap, sync::OnceLock};
 
 use serde::{Deserialize, Serialize};
@@ -114,8 +114,8 @@ pub struct Command {
     pub no_clobber: Vec<String>,
     #[serde(default)]
     pub sensitive_paths: Vec<Vec<String>>,
-    /// Runnable and searchable, but not listed in help, completion or
-    /// command suggestions.
+    /// Runnable, but not listed in help, completion, command suggestions or
+    /// the skill's command reference.
     #[serde(default)]
     pub hide_command: bool,
     #[serde(default)]
@@ -249,7 +249,7 @@ const LEGACY_COMMANDS: &[(&str, &str)] = &[
     ("grep", "files search"),
     ("tasks", "tasks list"),
     ("wait", "tasks wait"),
-    ("commands", "cli search"),
+    ("commands", "schema"),
     ("capabilities", "system get"),
     ("call", "schema"),
     ("run", "shell"),

@@ -16,15 +16,12 @@ use super::{
 
 const AGENT_DISCOVERY: &str = "=== STOP: AGENT COMMAND DISCOVERY ===
 AGENTS: Do not explore commands by chaining nested --help calls.
-AGENTS: Keep cli search and docs search queries anonymous; describe the action and resource type only.
-Never include evidence paths, case names or numbers, file names, hashes, passwords or other identifying values.
-Discover commands with:
-  lovelycarve-cli cli search \"<describe the task you want to accomplish>\"
-It returns five compact JSON matches with short descriptions. Pick the best match instead of repeating similar searches.
-Run `<discovered command> --help` for detailed command help.
-For backend request details, replace the result's leading `lovelycarve-cli` with `lovelycarve-cli schema`.
-For LovelyCarve documentation, workflows and format limits, use lovelycarve-cli docs search \"<question>\".
-It returns ranked JSON results. Read a result's page with lovelycarve-cli docs get <page>.
+AGENTS: Use the lovelycarve-cli skill, which the CLI package ships in skills/lovelycarve-cli
+next to this program. Its SKILL.md describes the workflow, references/commands.md lists every
+command with its arguments, options and description, and references/workflows.md covers
+multi-step tasks. Search those files for an English keyword or a Chinese term.
+Run `<command> --help` for one command's option descriptions and defaults.
+For backend request details, replace the command's leading `lovelycarve-cli` with `lovelycarve-cli schema`.
 Run several commands against one opened image in a single `lovelycarve-cli session` (JSONL on stdin).
 === END AGENT COMMAND DISCOVERY ===";
 
@@ -36,6 +33,7 @@ pub const TEXT_HELP: &str = "按 UTF-8 解码原始字节后输出";
 pub const FORCE_HELP: &str = "跳过确认（用于脚本和 CI）";
 pub const BODY_HELP: &str = "原始 JSON 参数对象，键为 API 参数名（见 schema）；可写 @文件路径";
 pub const DRY_RUN_HELP: &str = "解析参数并显示将执行的请求，不实际执行";
+pub const FIELDS_HELP: &str = "仅返回列表条目的指定字段，逗号分隔；支持点路径";
 const SECRET_HELP: &str = "（敏感：不带值时在终端中隐藏输入，否则从标准输入读取；也可写 @文件）";
 const JSON_HELP: &str = "（JSON 文本或 @文件路径）";
 
@@ -450,12 +448,7 @@ fn option_rows(command: &Command) -> Vec<Row> {
     if command.takes_body() {
         rows.push(flag("body", None, BODY_HELP, "[JSON]"));
     }
-    rows.push(flag(
-        "fields",
-        None,
-        "仅返回列表条目的指定字段，逗号分隔；支持点路径",
-        "[字符串]",
-    ));
+    rows.push(flag("fields", None, FIELDS_HELP, "[字符串]"));
     rows.push(flag("dry-run", None, DRY_RUN_HELP, "[布尔] [默认: false]"));
     rows
 }
@@ -535,11 +528,13 @@ mod tests {
         assert!(help.lines().all(|line| display_width(line) <= 80), "{help}");
         let root = compose(catalog, &[], 80, false);
         assert!(root.contains("lovelycarve-cli images"));
+        assert!(root.trim_end().ends_with("README.md"));
+        let sessions = compose(catalog, &path(&["sessions"]), 80, false);
+        assert!(sessions.contains("lovelycarve-cli sessions open <name>"));
         assert!(
-            !root.contains("lovelycarve-cli tools"),
+            !sessions.contains("sessions serve"),
             "hidden commands stay out of help"
         );
-        assert!(root.trim_end().ends_with("README.md"));
         let group = compose(catalog, &path(&["images"]), 80, false);
         assert!(
             group.contains("lovelycarve-cli images open <path>"),
@@ -560,6 +555,6 @@ mod tests {
         let agent = compose(catalog, &path(&["files", "list"]), 80, true);
         assert!(!agent.contains(AGENT_DISCOVERY));
         assert!(compose(catalog, &[], 80, true).starts_with(AGENT_DISCOVERY));
-        assert!(compose(catalog, &path(&["files"]), 80, true).contains("docs search"));
+        assert!(compose(catalog, &path(&["files"]), 80, true).contains("references/commands.md"));
     }
 }

@@ -3,8 +3,8 @@
 `lovelycarve-cli` 是独立的取证命令行工具：不链接 Tauri、WebView 或任何桌面窗口运行时，
 自行初始化后端状态，直接调用与桌面端相同的解析器、案件库、插件和任务调度。
 命令统一为 `<集合>… <动词>` 形式，标准输出只放结果（JSON 或原始字节），提示与错误走标准错误，
-用 `cli search`、`docs search` 与 `schema` 发现命令和文档，`--dry-run`、`--body`、`--force`
-在所有命令上含义一致。
+用帮助与 `schema` 查看命令和请求结构，编码代理使用随包提供的[代理技能](#编码代理与小输出)，
+`--dry-run`、`--body`、`--force` 在所有命令上含义一致。
 
 常用章节：[构建与运行](#构建与运行)、[命令结构](#命令结构)、[发现命令](#发现命令)、
 [输出与退出码](#输出与退出码)、[参数](#参数)、[浏览检材](#浏览检材)、[常驻会话](#常驻会话)、[交互 shell](#交互-shell)、
@@ -31,7 +31,7 @@ Linux 上也不需要桌面库。Windows 构建在链接时嵌入 `asInvoker` �
 案件登记与偏好放在与桌面端相同的用户数据目录（由 `tauri.conf.json` 的 identifier 决定），
 两个程序看到同一份案件列表。
 
-`just pack-cli` 构建并打包轻量 Windows CLI，包含运行库、`lc-plugin-host`、插件及本手册；
+`just pack-cli` 构建并打包轻量 Windows CLI，包含运行库、`lc-plugin-host`、插件、本手册及代理技能；
 `just pack-cli-full` 另启用 QR/OCR 并携带 OpenCV 与模型。`just repack-cli` 按现有二进制
 `system get` 报告的实际功能打包。开发配方在 `src-tauri` 目录执行，建议向 `just run-cli`
 传绝对检材路径；直接运行 exe 时相对路径以当前工作目录为准。插件包从程序旁的 `plugins/` 与用户数据目录的
@@ -129,7 +129,7 @@ lovelycarve-cli --case "D:\cases\demo" cases get
 | `tasks` | 任务中心：插件任务与内置任务的列出、查看、取消，以及等待后台任务结束 |
 | `sessions` | 命名常驻会话：启动、连接、查看、列出与关闭，供多个普通 CLI 进程复用已打开的检材 |
 | `timezones` | 文件时间显示时区：检查来源、自动识别 Linux/NAS 配置与保存案件、检材或会话设置 |
-| `system`、`context`、`cli`、`docs` | 本程序与主机、会话上下文、命令搜索、离线文档 |
+| `system`、`context` | 本程序与主机、会话上下文 |
 | `schema`、`complete`、`session`、`shell` | 根命令：请求结构、shell 补全、JSONL 会话、交互 shell |
 
 桌面端注册的每个后端命令都恰好对应一个 CLI 命令（或在 `src-tauri/src/cli/commands.toml`
@@ -178,8 +178,6 @@ lovelycarve-cli                                  # 入门提示
 lovelycarve-cli --help                           # 全部集合
 lovelycarve-cli files --help                     # 一个集合的命令
 lovelycarve-cli files read --help                # 一条命令的参数、选项与示例
-lovelycarve-cli cli search "export a file"       # 按意图查找命令
-lovelycarve-cli docs search "BitLocker 恢复密码"  # 搜索内置文档
 lovelycarve-cli schema files hash                # 后端请求结构
 lovelycarve-cli complete powershell >> $PROFILE
 ```
@@ -188,14 +186,6 @@ lovelycarve-cli complete powershell >> $PROFILE
 「示例」表格。说明按终端宽度换行，标准输出不是终端时按 80 列；每行右侧标注 `[字符串]`、`[必填]`、
 `[可选值: …]`、`[默认: …]` 等。集合帮助列出完整的命令行（如 `lovelycarve-cli images open <path>`），
 命令帮助末尾提示对应的 `schema` 命令。只输入集合名（如 `lovelycarve-cli images`）时显示该集合的帮助。
-
-`cli search "<任务>"` 在本地索引中查找命令，中英文均可（`"计算文件哈希"`、`"recover deleted files"`），
-返回最多 5 条 `{command, summary}` JSON，最佳匹配在前。
-
-`docs search "<问题>"` 在随程序附带的文档中按章节搜索：使用指南、本手册、iOS 备份、Linux 基本信息插件
-和全部格式专题，返回最多 5 条 `{title, section, description, page}`，无需联网。`docs get <page>` 把页面的
-Markdown 原样写到标准输出，`--section <章节>` 只输出一个章节；`docs list` 列出全部页面。JSONL 会话中
-`docs get` 返回 `{page, title, section, markdown}`。文档随构建嵌入程序，与该版本的行为一致。
 
 `schema <命令…>` 输出该命令的请求参数结构：`operationId`、`ipcCommand`、`category`、
 `hasRequestBody`、`requestBodyFields`（每个参数的 API 名称、Rust 类型、是否必填、说明、
@@ -208,19 +198,23 @@ Markdown 原样写到标准输出，`--section <章节>` 只输出一个章节�
 `complete <bash|zsh|fish|powershell>` 输出补全脚本；按 Tab 时 shell 以 `complete -- <单词…>`
 回调本程序取候选，候选来自同一份命令目录，包括 `-q`、`-f`、`-j` 等短选项和枚举值。
 
-隐藏命令 `tools` 把全部命令输出为 MCP 工具定义 `{version, tools: [{name, description, inputSchema}]}`，
-供 MCP 服务器包装本程序；属性名与 `schema`、`--body`、JSONL 的 camelCase API 参数名一致，检材照常取 `LOVELYCARVE_IMAGE`。
-隐藏命令可以运行，也能被 `cli search` 找到，但不出现在帮助、补全和拼写建议中。
-
 由编码代理运行时（`CLAUDECODE=1`、`CODEX_THREAD_ID`、`GEMINI_CLI=1`、`CURSOR_AGENT=1` 等代理文档化的
-环境变量），根和分组帮助开头附加一段英文说明（具体命令帮助不重复）：优先用 `cli search` 查找命令、用 `docs search` 查阅文档，
-搜索词不要包含检材路径、案件名、文件名、哈希或密码等识别信息，并用 `schema` 查看请求结构。
+环境变量），根和分组帮助开头附加一段英文说明（具体命令帮助不重复）：不要逐层调用 `--help` 探索命令，
+改从代理技能的命令参考中查找，用 `<命令> --help` 查看单个命令、用 `schema` 查看请求结构。
 
 ## 编码代理与小输出
 
-CLI 安装包的 `skills/lovelycarve-cli/SKILL.md` 提供简短代理工作流，命令示例由测试对照命令目录解析。
+CLI 安装包的 `skills/lovelycarve-cli/` 是供编码代理使用的技能，复制到代理的技能目录即可使用：
+
+| 文件 | 内容 |
+| --- | --- |
+| `SKILL.md` | 工作流与约定：查找命令、常驻会话、分页与字段投影、节点 ID、JSONL 与读取完整性 |
+| `references/commands.md` | 全部命令按集合列出的用法（位置参数、选项、可选值）与说明，由命令目录生成 |
+| `references/workflows.md` | 多步任务：路径与节点 ID、时区、内容搜索、RAID/LVM、加密卷、文件恢复、插件、哈希与导出等 |
+
+`references/commands.md` 由 `just update-cli-skill` 从命令目录生成，与该版本的命令一致；命令、选项或说明变化后
+内容过期时后端测试失败。手写页面中的命令行与 JSONL 请求同样由测试对照命令目录解析。
 连续查询优先 `sessions open exam --image <检材路径>`，后续加 `--session exam -q`，结束后 `sessions close exam`。
-`cli search`、`schema <命令>` 和 `docs search` 用于按需发现，不必遍历帮助或复制全部目录。
 代理的用法错误只显示错误、建议命令和一行帮助提示；人类终端保留完整帮助。
 
 列表型 `list` / `search` 命令支持 `--fields name,id,kind,size,timestamps.modified`，仅投影条目字段；
@@ -246,7 +240,7 @@ JSONL 将投影放在请求顶层的可选 `fields` 字符串中，而不是 `ar
   证据中的数据库列名、插件字段名和任意 JSON 对象键保留原样。此转换仅在 CLI 输出边界执行，
   桌面 IPC 和案件存储格式不变；只有标准输出是终端且
   不在 CI 中时才着色（`NO_COLOR` 关闭、`FORCE_COLOR` 强制）。内容类命令（`files read`、
-  `files zip members get`、`carve artifacts get`、`docs get` 等）输出原始字节，可直接重定向到文件；
+  `files zip members get`、`carve artifacts get` 等）输出原始字节，可直接重定向到文件；
   `--text` 按 UTF-8 解码，无效字节替换为 U+FFFD。
 - 没有返回值的命令标准输出为空；在终端中标准错误显示一行 `✓ 完成` 之类的确认。
 - 横幅 `lovelycarve-cli · v<版本>`、进度、交互提问、提示和错误都写标准错误。横幅只在标准错误是终端时
@@ -474,7 +468,7 @@ lovelycarve-cli sessions close exam
 Remove-Item Env:LOVELYCARVE_SESSION
 ```
 
-显式 `--session` 优先于环境变量。发现命令（帮助、`schema`、`docs`、`cli search`、`system get`）仍在本地运行。
+显式 `--session` 优先于环境变量。帮助、`schema` 与 `system get` 仍在本地运行。
 会话管理命令在普通 CLI 中运行，不能嵌入 `shell`、JSONL 或另一个连接终端。
 同一会话的请求串行执行，后台任务继续运行；多个连接共享当前检材与目录，要隔离工作流时使用不同名称。
 删除类命令需要显式 `--force`；可省略值的密码选项由客户端询问，然后传给会话。
@@ -557,7 +551,7 @@ Get-Content .\workflow.jsonl | lovelycarve-cli --case "D:\cases\demo" session --
 
 ### 代理调用
 
-代理宜先用 `cli search` 找命令、用 `schema` 查看请求字段，再启动一个长期运行的会话进程，
+代理宜先在代理技能的命令参考中找命令、用 `schema` 查看请求字段，再启动一个长期运行的会话进程，
 在同一进程中对已打开的检材连续提交请求，无需解析终端表格或中文提示：
 
 ```text

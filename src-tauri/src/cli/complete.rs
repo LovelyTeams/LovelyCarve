@@ -228,11 +228,11 @@ mod tests {
         assert!(complete(&["session", "-"]).contains(&"-j".to_owned()));
         assert!(complete(&["cases", "delete", "x", "-"]).contains(&"-f".to_owned()));
         assert!(complete(&["files", "list", "-"]).contains(&"-q".to_owned()));
+        assert!(complete(&["sessions", ""]).contains(&"open".to_owned()));
         assert!(
-            !complete(&["t"]).contains(&"tools".to_owned()),
+            !complete(&["sessions", ""]).contains(&"serve".to_owned()),
             "hidden commands are not offered"
         );
-        assert!(complete(&["docs", ""]).contains(&"search".to_owned()));
         assert!(script("lovelycarve-cli", "bash")
             .unwrap()
             .contains("complete -o default -F _lovelycarve_cli lovelycarve-cli"));
