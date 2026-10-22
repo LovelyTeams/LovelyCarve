@@ -9,6 +9,8 @@
 
 ### Added
 
+- 支持裸 UBIFS v4/v5、固件中的 UBIFS 与 UBI 内嵌文件树，复用并加固 Rust 节点/索引读取器，校验已提交树与文件数据，支持空洞、硬链接、符号链接、时间戳及 stored/LZO/raw DEFLATE/Zstandard 的范围和流式读取。
+
 - 支持 Buffalo ENC / TRX、TP-Link SafeLoader、U-Boot legacy uImage 组合镜像和 Netgear CHK 固件，校验封装并直接浏览文件系统；源哈希和 RAW 导出保留原始容器字节。SquashFS 增加标准 v3、DD-WRT v3 与 adaptive / LZMA-alone 块的纯 Rust 解码，CramFS v2 和 Linux ROMFS 复用 Rust 库并支持完整、流式与范围读取。
 - 支持 BIN/CUE、ISO/CUE 多文件与混合音频/数据轨，保留轨道、会话、INDEX、间隙及结束标记来源；新增 MODE2/2352 与 CUE MODE2/2336 的 XA Form 1 文件读取，校验子头并拒绝 Form 2 冒充文件系统字节。CUE 源哈希与导出保持原始文件拼接语义，完整 libodraw 对照见光盘格式文档。
 - 支持直接打开 MODE1/2352 原始光盘 BIN，浏览其中的 ISO 9660 / Joliet 文件并预览、哈希和导出；原始镜像字节保持不变，CDFS 普通文件增加直接范围读取并拒绝截断内容。

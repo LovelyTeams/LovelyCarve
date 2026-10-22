@@ -1,8 +1,8 @@
 {
-  "date": "2026-10-21",
+  "date": "2026-10-22",
   "platform": "Windows standalone CLI",
   "baselineCommit": "1fe4fa425d0726e10b6ebc121468ad993521216a",
-  "stage": "native SafeLoader, legacy uImage, CHK, CramFS, Linux ROMFS and v3 adaptive/standard LZMA readers",
+  "stage": "native firmware envelopes, CramFS/ROMFS, v3 adaptive LZMA, and clean committed UBIFS v4/v5 readers",
   "criterion": "Native partition tree listing; RAW-open success alone is not counted. UBI nested SquashFS checked separately.",
   "samples": [
     {
@@ -204,13 +204,23 @@
       "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/ubi/ubifs/__input__/banana.zlib.ubifs",
       "size": 1777664,
       "sha256": "e883e7b2ccba4d17dc614dcf816521d3a6178e992965fd175d88a32ed5d54111",
-      "browsable": false,
+      "browsable": true,
       "sourceFormat": "raw",
-      "partitionKinds": [],
-      "partitions": [],
-      "error": {
-        "code": "notFound",
-        "message": "partition not found: 0"
+      "partitionKinds": [
+        "ubifs"
+      ],
+      "partitions": [
+        {
+          "kind": "ubifs",
+          "startByte": 0,
+          "lengthBytes": 1777664
+        }
+      ],
+      "contentOracle": {
+        "banana1.txt": "022d66975222661648a212f974a822fac4d349c0f7c13ef7e0ba3ac0e7d9f519",
+        "banana2.txt": "cec01facc588f339e757822825743d16fae68d80ddf9b5e9e08f2862644f7733",
+        "banana3.txt": "da312e2d0258a4055f9863f680f165b29b39f32ecd806c75c1e8f8a2a079d221",
+        "banana4.txt": "2a93968fdfdadcfaf2f7c16a766f546894367585c063964dca393a0e86a65625"
       }
     },
     {
@@ -218,13 +228,23 @@
       "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/ubi/ubifs/__input__/banana.lzo.ubifs",
       "size": 168960,
       "sha256": "87b05f653d717736b766a9cca10b75656cc14c1d9442c61fdc514cc275a8a634",
-      "browsable": false,
+      "browsable": true,
       "sourceFormat": "raw",
-      "partitionKinds": [],
-      "partitions": [],
-      "error": {
-        "code": "notFound",
-        "message": "partition not found: 0"
+      "partitionKinds": [
+        "ubifs"
+      ],
+      "partitions": [
+        {
+          "kind": "ubifs",
+          "startByte": 0,
+          "lengthBytes": 168960
+        }
+      ],
+      "contentOracle": {
+        "banana1.txt": "022d66975222661648a212f974a822fac4d349c0f7c13ef7e0ba3ac0e7d9f519",
+        "banana2.txt": "cec01facc588f339e757822825743d16fae68d80ddf9b5e9e08f2862644f7733",
+        "banana3.txt": "da312e2d0258a4055f9863f680f165b29b39f32ecd806c75c1e8f8a2a079d221",
+        "banana4.txt": "2a93968fdfdadcfaf2f7c16a766f546894367585c063964dca393a0e86a65625"
       }
     },
     {
@@ -347,6 +367,30 @@
       "contentOracle": {
         "apple.txt": "303980bcb9e9e6cdec515230791af8b0ab1aaa244b58a8d99152673aa22197d0",
         "orange.txt": "be6fe11876282442bead98e8b24aca07f8972a763cd366c56b4b5f7bcdd23eac"
+      }
+    },
+    {
+      "name": "unblob-ubifs-zstd",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/ubi/ubifs/__input__/banana.zstd.ubifs",
+      "size": 1777664,
+      "sha256": "4e3d4fe217be4e232a8a1c8dc134ef5d71da62da42ae43cf1f6f1014085ed8b3",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "ubifs"
+      ],
+      "partitions": [
+        {
+          "kind": "ubifs",
+          "startByte": 0,
+          "lengthBytes": 1777664
+        }
+      ],
+      "contentOracle": {
+        "banana1.txt": "022d66975222661648a212f974a822fac4d349c0f7c13ef7e0ba3ac0e7d9f519",
+        "banana2.txt": "cec01facc588f339e757822825743d16fae68d80ddf9b5e9e08f2862644f7733",
+        "banana3.txt": "da312e2d0258a4055f9863f680f165b29b39f32ecd806c75c1e8f8a2a079d221",
+        "banana4.txt": "2a93968fdfdadcfaf2f7c16a766f546894367585c063964dca393a0e86a65625"
       }
     }
   ]

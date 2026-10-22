@@ -375,6 +375,10 @@ opt-level = 3
 
 [profile.release.package.ms-compress]
 opt-level = 3
+[profile.release.package.ms-compress-ruzstd]
+opt-level = 3
+[profile.release.package.lzokay]
+opt-level = 3
 [profile.release.package.lz4_flex]
 opt-level = 3
 [profile.release.package.memchr]

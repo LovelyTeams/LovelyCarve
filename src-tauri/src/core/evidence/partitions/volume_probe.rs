@@ -140,6 +140,7 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &SquashfsProbe,
     &RomImagesProbe,
     &UbiProbe,
+    &super::ubifs::UbifsProbe,
     &XfsProbe,
     &ExtProbe,
     &ApfsProbe,
@@ -181,6 +182,9 @@ pub fn probe_volume_with_head(ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeH
 }
 
 pub fn detect_filesystem_bytes(bytes: &[u8], fallback: PartitionKind) -> PartitionKind {
+    if super::ubifs::is_ubifs_magic(bytes) {
+        return PartitionKind::Ubifs;
+    }
     if let Some(kind) = super::rom_images::detect_kind(bytes) {
         return kind;
     }
@@ -251,6 +255,7 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::Cdfs
         | PartitionKind::Squashfs
         | PartitionKind::Cramfs
+        | PartitionKind::Ubifs
         | PartitionKind::Romfs
         | PartitionKind::Ubi
         | PartitionKind::Lvm

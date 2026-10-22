@@ -40,15 +40,23 @@ def envelope(data):
     return result + bytes(-len(result) % 4)
 
 
-trx = bytearray(b"HDR0" + bytes(24))
-trx += filesystem.read_bytes()
-struct.pack_into("<I", trx, 4, len(trx))
-struct.pack_into("<I", trx, 12, 0x10000)
-struct.pack_into("<I", trx, 16, 28)
-struct.pack_into("<I", trx, 8, zlib.crc32(trx[12:]) ^ 0xffffffff)
-plaintext = b"buffalo.enc\nfilelen=" + str(len(trx)).encode() + b"\n" + trx
-enc = envelope(plaintext)
-(here / "synthetic.enc").write_bytes(enc)
-bgn = bytearray(b"bgn\0" + bytes(16)) + envelope(b"SyntheticRouter\0" + bytes(136)) + enc
-struct.pack_into(">I", bgn, 12, len(bgn))
-(here / "synthetic-bgn.enc").write_bytes(bgn)
+def firmware(payload):
+    trx = bytearray(b"HDR0" + bytes(24)) + payload
+    struct.pack_into("<I", trx, 4, len(trx))
+    struct.pack_into("<I", trx, 12, 0x10000)
+    struct.pack_into("<I", trx, 16, 28)
+    struct.pack_into("<I", trx, 8, zlib.crc32(trx[12:]) ^ 0xffffffff)
+    plaintext = b"buffalo.enc\nfilelen=" + str(len(trx)).encode() + b"\n" + trx
+    enc = envelope(plaintext)
+    bgn = bytearray(b"bgn\0" + bytes(16)) + envelope(b"SyntheticRouter\0" + bytes(136)) + enc
+    struct.pack_into(">I", bgn, 12, len(bgn))
+    return enc, bgn
+
+
+if __name__ == "__main__":
+    enc, bgn = firmware(filesystem.read_bytes())
+    (here / "synthetic.enc").write_bytes(enc)
+    (here / "synthetic-bgn.enc").write_bytes(bgn)
+    ubifs = here.parents[1] / "vendor/ubidump/test_data/synthetic-deflate.ubifs"
+    if ubifs.exists():
+        (here / "synthetic-ubifs.enc").write_bytes(firmware(ubifs.read_bytes())[0])

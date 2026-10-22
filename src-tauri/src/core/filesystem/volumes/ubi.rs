@@ -12,13 +12,36 @@ use crate::core::filesystem::volumes::squashfs::SquashfsSource;
 
 #[cfg(test)]
 #[path = "ubi_tests.rs"]
-mod tests;
+pub(super) mod tests;
 
 #[derive(Clone)]
 pub struct UbiSource {
     image: Arc<DiskImage>,
     base: u64,
     length: u64,
+}
+
+impl UbiSource {
+    pub(super) fn partition(image: Arc<DiskImage>, partition: &Partition) -> Result<Self> {
+        let base = partition
+            .start_lba
+            .checked_mul(image.sector_size as u64)
+            .context("UBI/UBIFS base overflow")?;
+        let length = partition
+            .length_lba
+            .checked_mul(image.sector_size as u64)
+            .context("UBI/UBIFS length overflow")?;
+        ensure!(
+            base.checked_add(length)
+                .is_some_and(|end| end <= image.len()),
+            "UBI/UBIFS partition exceeds source"
+        );
+        Ok(Self {
+            image,
+            base,
+            length,
+        })
+    }
 }
 
 impl ReadAt for UbiSource {
@@ -33,12 +56,21 @@ impl ReadAt for UbiSource {
                 .is_some_and(|end| end <= self.length),
             "UBI read outside partition"
         );
-        let bytes = self.image.read_range(
-            self.base
-                .checked_add(offset)
-                .context("UBI source offset overflow")?,
-            length,
-        )?;
+        let absolute = self
+            .base
+            .checked_add(offset)
+            .context("UBI source offset overflow")?;
+        let bytes = match self
+            .image
+            .firmware
+            .as_ref()
+            .map(|firmware| firmware.read_plaintext(absolute, length))
+            .transpose()?
+            .flatten()
+        {
+            Some(bytes) => bytes,
+            None => self.image.read_range(absolute, length)?,
+        };
         ensure!(bytes.len() == length, "UBI partition short read");
         Ok(bytes)
     }
@@ -70,24 +102,7 @@ pub fn open_ubi_source(image: &Arc<DiskImage>, partition_id: u8) -> Result<UbiVo
 impl UbiVolume {
     pub fn open(image: Arc<DiskImage>, partition: &Partition) -> Result<Self> {
         ensure!(partition.kind == PartitionKind::Ubi, "partition is not UBI");
-        let base = partition
-            .start_lba
-            .checked_mul(image.sector_size as u64)
-            .context("UBI base overflow")?;
-        let length = partition
-            .length_lba
-            .checked_mul(image.sector_size as u64)
-            .context("UBI length overflow")?;
-        ensure!(
-            base.checked_add(length)
-                .is_some_and(|end| end <= image.len()),
-            "UBI partition exceeds source"
-        );
-        let source = UbiSource {
-            image,
-            base,
-            length,
-        };
+        let source = UbiSource::partition(image, partition)?;
         let layout = UbiImage::open(&source)
             .with_context(|| format!("opening UBI part:{}", partition.id))?;
         Ok(Self {
@@ -111,6 +126,7 @@ impl UbiVolume {
         for volume in self.layout.volumes.values() {
             let prefix = volume.read_at(&self.source, 0, 4)?;
             let squashfs = crate::core::evidence::partitions::squashfs::is_squashfs_magic(&prefix);
+            let ubifs = prefix == ubidump::filesystem::UBIFS_MAGIC;
             nodes.push(FsNode {
                 id: format!("ubi:part:{}:{}", self.partition_id, volume.id),
                 name: format!("{}.img", volume.name),
@@ -125,6 +141,24 @@ impl UbiVolume {
             });
             if squashfs {
                 let source = SquashfsSource::Ubi {
+                    part_id: self.partition_id,
+                    volume_id: volume.id,
+                };
+                nodes.push(FsNode {
+                    id: source.node_id(""),
+                    name: volume.name.clone(),
+                    parent_id: Some(format!("part:{}", self.partition_id)),
+                    kind: NodeKind::Dir,
+                    size: 0,
+                    deleted: false,
+                    inode: None,
+                    timestamps: Mactb::default(),
+                    link_target: None,
+                    has_snapshot: false,
+                });
+            }
+            if ubifs {
+                let source = super::ubifs::UbifsSource::Ubi {
                     part_id: self.partition_id,
                     volume_id: volume.id,
                 };

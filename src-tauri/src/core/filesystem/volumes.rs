@@ -34,6 +34,7 @@ pub mod sevenz;
 pub mod squashfs;
 pub mod tar;
 pub mod ubi;
+pub mod ubifs;
 pub mod ufs;
 pub mod xfs;
 pub mod zfs;

@@ -12,7 +12,7 @@
 | 同设备 `sysupgrade.bin` | 校验 uImage 头与内核 CRC，直接浏览偏移 2,614,181 的 SquashFS | 支持紧接内核的数据；任意填充布局仍不支持 |
 | OpenWrt 24.10.1 Netgear EX6150 `factory.chk` | 校验 CHK 与内层 uImage 后直接浏览偏移 3,183,392 的 SquashFS | CHK 已接入；不等于所有 Netgear 固件均支持 |
 | OpenWrt 24.10.1 Netgear R6220 `factory.img` | `sErCoMm` 头，RAW 无可浏览分区 | 头部和字节和对应 Sercomm seal，偏移 512 为 ZIP；仍需解压后的证据视图 |
-| Unblob UBIFS `banana.zlib.ubifs` / `banana.lzo.ubifs` | 无可浏览分区 | UBIFS 文件系统尚未接入；已有 UBI 层不等于 UBIFS 读取器 |
+| Unblob UBIFS `banana.zlib.ubifs` / `banana.lzo.ubifs` / `banana.zstd.ubifs` | 读取已提交目录和四个文件，与独立输出核对内容 | 已接入裸卷与 UBI 内嵌卷；前两份输入的数据节点为 stored，压缩路径另有独立夹具，范围见 [UBIFS](UBIFS.md) |
 | Unblob JFFS2 新格式 LE/BE zlib（含 64 KiB padded 版本） | 无可浏览分区 | JFFS2 尚未接入；并非仅短镜像问题 |
 | Binwalk `yaffs2.bin` | 无可浏览分区 | YAFFS2 尚未接入，需 NAND page / spare 几何和版本重建 |
 | Unblob SquashFS v1 LE、Binwalk SquashFS v2 BE | 识别 SquashFS，展开时明确报不支持版本 | v1 / v2 尚未接入 |
@@ -33,7 +33,7 @@
 | CramFS | [lamfold-cramfs](https://github.com/lamco-admin/lamfold/tree/44f0343b2487f65cfb84508bff375fdda18c18a5/crates/lamfold-cramfs) | 已独立编译和读取公开样本；复用 BlockSource / FoldFrontend / zlib，引入本地 CRC、BE、页级范围与目录检查后接入 |
 | Linux ROMFS | [lamfold-romfs](https://github.com/lamco-admin/lamfold/tree/fabaad6af0c28b80535307b339b84110f3a3c12e/crates/lamfold-romfs) | 已独立验证并接入；补声明边界、头与超级块校验和、链循环和错误传播 |
 | JFFS2 | [jffs2-rs 0.2.1](https://github.com/xmoezzz/jffs2-rs/tree/52e1234ce66b0e099b35afabff3fc3e3078a2c0e) | 有可复用的结构基础，但 build.rs 编译 C Rubin/LZO；扫描器忽略 CRC，inode/dirent 固定 LE，文件长度按节点大小累加。需要审计与改造，不能直接宣称支持 |
-| UBIFS | [rust_ubidump](https://github.com/aspnmy/rust_ubidump/tree/19782c3eabc25a1baab7faefe12fe6f4bd362dac) | 已复用其 UBI 层；上游还有 UBIFS 源码。正文导出简单串接 data 节点，未按块号补空洞/裁 inode 长度，原始卷探测把节点类型读成偏移 14（正确为 20），主节点搜索固定步长；需修正几何并改造成有界库、审核解压与恢复语义 |
+| UBIFS | [rust_ubidump](https://github.com/aspnmy/rust_ubidump/tree/19782c3eabc25a1baab7faefe12fe6f4bd362dac) | 复用其 UBI 与 UBIFS 节点/键/inode/索引结构并改造为有界库；修正 node_type 偏移、min-I/O 主节点扫描、带符号 R5 名称哈希、文件空洞/裁剪及 raw DEFLATE 语义，使用 Rust 解码依赖。读取干净的已提交 v4/v5 树；日志重放、加密与恢复明确未支持 |
 | SquashFS | [backhand](https://github.com/wcampbell0x2a/backhand) | 扩展当前已 vendor 的库。支持 v3/v4 标准、DD-WRT v3 与 v3 adaptive / 标准 LZMA；移除 adaptive C/C++ 依赖，用 lzma-rust2 进行有界解码并检查终止与 EOF。其他压缩/变体逐项测试后启用 |
 | YAFFS2 | crates.io 与公开 GitHub 检索 | 尚无选定的可直接复用 Rust 文件系统读取库；Binwalk 的 Rust 签名识别不是文件系统读取实现。保持明确未支持 |
 

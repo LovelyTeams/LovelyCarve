@@ -149,6 +149,24 @@ def main():
                 assert rows[2]["result"]["data"] == squashfs_content[4080:4180].hex()
                 assert rows[3]["result"]["sha256"] == hashlib.sha256(squashfs_content).hexdigest()
 
+        # UBIFS: independent stored/LZO/DEFLATE/Zstd trees and encrypted firmware.
+        ubifs_fixtures = firmware_fixtures.parent.parent / "vendor/ubidump/test_data"
+        ubifs_content = (ubifs_fixtures / "payload.bin").read_bytes()
+        ubifs_node = "ubifs:part:0:" + b"/payload.bin".hex()
+        ubifs_paths = [ubifs_fixtures / f"synthetic-{codec}.ubifs" for codec in ("stored", "lzo", "deflate", "zstd", "zstd-compressed")]
+        ubifs_paths.append(firmware_fixtures / "synthetic-ubifs.enc")
+        for path in ubifs_paths:
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(path)}},
+                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": ubifs_node, "offset": 8180, "length": 100}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": ubifs_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "ubifs"
+            assert rows[2]["result"]["data"] == ubifs_content[8180:8280].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(ubifs_content).hexdigest()
+
         # Discovery needs no evidence: system facts, request schemas, search and completion.
         system = json.loads(run(["system", "get"]).stdout)
         assert system["standalone"], "the CLI must be built without the desktop runtime"

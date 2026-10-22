@@ -185,6 +185,7 @@ pub fn fs_prefix_for_kind(kind: PartitionKind) -> &'static str {
         | PartitionKind::Cdfs
         | PartitionKind::Squashfs
         | PartitionKind::Cramfs
+        | PartitionKind::Ubifs
         | PartitionKind::Romfs
         | PartitionKind::Ubi
         | PartitionKind::Lvm

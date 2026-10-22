@@ -191,6 +191,11 @@ pub(super) fn children_for_image_with_options(
                 )?
                 .root_children()
             }
+            PartitionKind::Ubifs => crate::core::filesystem::volumes::ubifs::open_ubifs_source(
+                image,
+                crate::core::filesystem::volumes::ubifs::UbifsSource::Partition(partition.id),
+            )?
+            .root_children(),
             PartitionKind::Ubi => crate::core::filesystem::volumes::ubi::UbiVolume::open(
                 Arc::clone(image),
                 partition,

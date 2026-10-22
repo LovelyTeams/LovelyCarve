@@ -39,7 +39,9 @@ CUE 中的音频轨保留原始范围。整镜像哈希和源导出使用完整�
 
 小米 `HDR1` `.bin` 固件和独立 UBI 镜像可作为镜像文件添加。展开 UBI 分区后，
 `<卷名>.img` 是重组后的原始逻辑卷，SquashFS 卷另有同名目录供浏览、预览和导出。
-原始固件字节保持不变；UBIFS 当前只提供原始逻辑卷，详见 [UBI 固件](formats/UBI.md)。
+原始固件字节保持不变，详见 [UBI 固件](formats/UBI.md)。
+
+UBIFS 可作为裸镜像或 UBI 命名卷浏览，也可位于受支持的固件分段中；原始字节视图和源哈希保持容器内容。当前支持干净的已提交树，遇到需日志重放、加密或认证的卷明确报错。范围与验证见 [UBIFS](formats/UBIFS.md)。
 
 Buffalo `.enc` / `.trx`、TP-Link SafeLoader `.bin`、U-Boot legacy uImage 组合镜像及
 Netgear `.chk` 也可直接添加。程序校验外层结构后，展示其中支持的文件系统；裸

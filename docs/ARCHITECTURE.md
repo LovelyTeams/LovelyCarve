@@ -131,6 +131,8 @@ CLI JSONL 调度位于 `cli/session.rs`。`session --jobs N` 使用有界输入�
 
 Buffalo ENC / Broadcom TRX、TP-Link SafeLoader、U-Boot legacy uImage 与 Netgear CHK 固件由 `evidence/readers/firmware.rs` 在打开阶段校验封装并定位分段，Buffalo ENC 另建立明文视图；原始字节读取与源哈希保留容器内容。固件段按字节寻址，SquashFS 适配器选择标准 v3/v4 或 DD-WRT `hsqt` 逐块参数 LZMA 读者，标准 v3 块优先 gzip、其次用纯 Rust adaptive / 标准 LZMA 解码并验证终止与源边界；范围、流式与完整读取共用同一逻辑内容。范围与上游依据见 [固件](formats/FIRMWARE.md)。
 
+UBIFS 适配器 `filesystem::volumes::ubifs` 将裸分区、固件明文和 UBI 逻辑卷接到 vendor `ubidump::UbifsImage` 的有界 `ReadAt`。按主节点选择已提交索引，缓存目录/inode 和数据键位置；数据 CRC 与解码延迟到实际范围读取。`ubifs:part:` 与 `ubifs:ubi:part:` 节点保留分区、卷与路径身份，硬链接不折叠成同一个目录节点；源读始终保留原始证据。支持边界见 [UBIFS](formats/UBIFS.md)。
+
 CramFS / Linux ROMFS 复用 vendor 的 lamfold Rust 读取器，适配器位于 `filesystem/volumes/rom_images.rs`。完整、流式与范围读取经同一文件内容路径，声明范围、CRC/校验和与循环目录明确校验；裸镜像用字节几何，真实分区保留原始 LBA，原容器字节不变。能力和限制见 [ROM_IMAGES](formats/ROM_IMAGES.md)。
 
 外部卷通过 `filesystem::external_volume::ExternalVolume` 提供只读 Volume 和关闭契约；插件 `RemoteVolume` 实现这个接口。未知分区的插件探测、源登记和卷安装由 `app/workflows/filesystem.rs` 编排。卸载先撤销 AppState 登记、取消任务和停止挂载，再 drain 外部卷并逐项关闭、移除源和其他缓存；持有调用句柄的线程释放前，provider backing 继续存活。字节读者本身不持有插件连接。

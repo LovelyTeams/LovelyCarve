@@ -31,6 +31,7 @@ pub mod mdadm;
 pub mod optical_disc;
 pub mod rom_images;
 pub mod squashfs;
+pub mod ubifs;
 pub mod ufs;
 pub mod volume_probe;
 pub mod xfs;
@@ -108,6 +109,7 @@ pub enum PartitionKind {
     Squashfs,
     Cramfs,
     Romfs,
+    Ubifs,
     Lvm,
     Bitlocker,
     BiosBoot,
@@ -309,6 +311,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Cdfs
         | PartitionKind::Squashfs
         | PartitionKind::Cramfs
+        | PartitionKind::Ubifs
         | PartitionKind::Romfs
         | PartitionKind::BiosBoot
         | PartitionKind::ApfsContainer

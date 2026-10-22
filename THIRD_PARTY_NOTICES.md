@@ -57,14 +57,72 @@ The original synthetic ROM filesystem images and encoder are CC0-1.0.
 
 ## rust_ubidump
 
-The UBI volume reader adapts the UBI header decoders and CRC code from
+The UBI/UBIFS readers adapt the UBI headers/CRC and UBIFS node, key, inode
+and index structures and field decoders from
 [aspnmy/rust_ubidump](https://github.com/aspnmy/rust_ubidump), revision
 `19782c3eabc25a1baab7faefe12fe6f4bd362dac`, under MIT. Its original license
 credits Copyright (c) 2017 Willem Hengeveld <itsme@xs4all.nl>.
 The complete license is retained in `src-tauri/vendor/ubidump/LICENSE`;
 library extraction, safety fixes and the rewritten bounded volume mapping are
-documented in `src-tauri/vendor/ubidump/LOVELYCARVE.md`. The upstream CLI,
-UBIFS filesystem parser and C LZO dependency are not incorporated.
+documented in `src-tauri/vendor/ubidump/LOVELYCARVE.md`. The upstream CLI and
+C LZO dependency are not incorporated. UBIFS uses the existing flate2/zlib-rs
+packages, lzokay 2.0.1 (MIT), and ms-compress-ruzstd 0.9.1 (MIT). Full codec
+notices are retained below and in the vendor directory. Synthetic fixtures and
+their independent generators are original CC0-1.0 data.
+
+### lzokay-2.0.1
+
+Source: https://github.com/encounter/lzokay-rs
+
+MIT License
+
+Copyright 2021 Luke Street.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+### ms-compress-ruzstd-0.9.1
+
+Source: https://github.com/CaddyGlow/zstd-rs
+
+MIT License
+
+Copyright (c) 2019 Moritz Borcherding
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 
 ## CLI timezone rules
 

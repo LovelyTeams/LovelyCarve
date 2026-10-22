@@ -51,6 +51,7 @@ use crate::core::filesystem::volumes::rom_images::{
 };
 use crate::core::filesystem::volumes::squashfs::{open_squashfs_source, parse_squashfs_id};
 use crate::core::filesystem::volumes::ubi::{open_ubi_source, parse_ubi_id};
+use crate::core::filesystem::volumes::ubifs::{open_ubifs_source, parse_ubifs_id};
 use crate::core::filesystem::volumes::ufs::{open_ufs_source, parse_ufs_id};
 use crate::core::filesystem::volumes::xfs::{open_xfs_source, parse_xfs_id};
 use crate::core::filesystem::volumes::zfs::{open_zfs_source, parse_zfs_id, ZfsPath};
@@ -143,6 +144,7 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &SquashfsAdapter,
     &CramfsAdapter,
     &RomfsAdapter,
+    &UbifsAdapter,
     &UbiAdapter,
     &ApfsAdapter,
     &HfsPlusAdapter,
@@ -219,6 +221,9 @@ pub(crate) fn volume_root_key(id: &str) -> Option<String> {
         return Some(format!("cdfs:part:{}", cdfs_part_id(&source)));
     }
     if let Some((source, _)) = parse_squashfs_id(id) {
+        return Some(source.cache_key());
+    }
+    if let Some((source, _)) = parse_ubifs_id(id) {
         return Some(source.cache_key());
     }
     if let Some((partition_id, _)) = parse_ubi_id(id) {
@@ -377,6 +382,15 @@ path_volume!(
     open_romfs_source
 );
 path_volume_impl!(RomfsVol, plain_range);
+path_volume!(
+    UbifsAdapter,
+    UbifsVol,
+    "ubifs",
+    crate::core::filesystem::volumes::ubifs::UbifsVolume,
+    parse_ubifs_id,
+    open_ubifs_source
+);
+path_volume_impl!(UbifsVol, plain_range);
 path_volume!(
     UbiAdapter,
     UbiVol,

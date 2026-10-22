@@ -92,6 +92,7 @@ pub(super) fn snapshot_supported_plain_partition(kind: PartitionKind) -> bool {
             | PartitionKind::Cdfs
             | PartitionKind::Squashfs
             | PartitionKind::Cramfs
+            | PartitionKind::Ubifs
             | PartitionKind::Romfs
             | PartitionKind::Ubi
             | PartitionKind::ApfsContainer

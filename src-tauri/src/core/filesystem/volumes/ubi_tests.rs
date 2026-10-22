@@ -11,7 +11,7 @@ fn seal(bytes: &mut [u8]) {
     bytes[end..].copy_from_slice(&crc.to_be_bytes());
 }
 
-fn ubi_fixture(payload: &[u8]) -> Vec<u8> {
+pub(crate) fn ubi_fixture(payload: &[u8]) -> Vec<u8> {
     const PEB: usize = 32768;
     const DATA: usize = 4096;
     const LEB: usize = PEB - DATA;

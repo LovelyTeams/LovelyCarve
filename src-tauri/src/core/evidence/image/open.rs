@@ -353,7 +353,10 @@ impl DiskImage {
                     && detected.partitions.first().is_some_and(|partition| {
                         matches!(
                             partition.kind,
-                            PartitionKind::Cramfs | PartitionKind::Romfs | PartitionKind::Squashfs
+                            PartitionKind::Cramfs
+                                | PartitionKind::Romfs
+                                | PartitionKind::Squashfs
+                                | PartitionKind::Ubifs
                         )
                     })
                 {

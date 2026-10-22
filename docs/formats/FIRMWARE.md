@@ -10,7 +10,7 @@
   包括 `bgn` 外层、152 字节加密产品标签、对齐后的 ENC 主体，以及解密后的
   `buffalo.enc\nfilelen=…\n` 前缀。产品标签、载荷均验证 Buffalo 的有符号字节校验和。
 - Broadcom TRX v1：验证声明长度、CRC、三个分段槽的顺序与边界，展示其中的
-  SquashFS / CramFS / Linux ROMFS 段。内核、填充和其他段保留在原始源中，不伪装成文件系统。
+  SquashFS / CramFS / Linux ROMFS / UBIFS 段。内核、填充和其他段保留在原始源中，不伪装成文件系统。
 - TP-Link SafeLoader 标准 0x1014 payload 布局：校验声明总长和公开盐化 MD5，
   严格解析 `fwup-ptn` 镜像分段表；验证分段范围、重复名称、重叠、终止符和必要元数据，
   按原始来源偏移展示所有可识别的文件系统段。Flash 分区表中的目标写入地址不冒充镜像位置。
@@ -32,7 +32,7 @@
 
 源镜像大小、源哈希、十六进制视图和源 RAW 导出保留原始容器字节。
 固件按字节寻址；加密段的位置指向原始密文对应范围，文件浏览读取经过校验的明文。
-裸 SquashFS 也按字节保留完整长度，支持小于一个扇区或末尾不对齐的文件系统镜像。
+裸 SquashFS / UBIFS 也按字节保留完整长度，支持小于一个扇区或末尾不对齐的文件系统镜像。
 压缩文件不虚构物理 data runs。明文归属于镜像实例，卸载时释放，不写入案件源文件。
 打开时使用现有任务的取消令牌，逐块解密和校验；单个加密载荷限 512 MiB。
 嵌套封装最多 4 层、每个 SafeLoader / uImage 分段表最多 32 项，总文件系统数最多 256。
@@ -62,7 +62,7 @@ SafeLoader 与 CHK 对照 [OpenWrt firmware-utils b2a93c6f77ba](https://github.c
 封装解析是独立 Rust 实现，没有引入这些 C 工具；MD5 和 CRC 复用项目已有 Rust 依赖。
 
 CramFS / Linux ROMFS 的 Rust 库选择、支持范围和校验要求见 [ROM_IMAGES](ROM_IMAGES.md)；
-其他公开固件仍不能展开的实测结果见 [兼容性调查](FIRMWARE_COMPATIBILITY.md)。
+UBIFS 的支持范围和限制见 [UBIFS](UBIFS.md)；其他公开固件仍不能展开的实测结果见 [兼容性调查](FIRMWARE_COMPATIBILITY.md)。
 
 ## 验证
 

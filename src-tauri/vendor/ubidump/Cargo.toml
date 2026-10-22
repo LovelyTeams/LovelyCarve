@@ -3,12 +3,15 @@ name = "ubidump"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-description = "Read-only UBI volume library adapted from aspnmy/rust_ubidump"
+description = "Bounded read-only UBI/UBIFS library adapted from aspnmy/rust_ubidump"
 
 [dependencies]
 anyhow = "1"
 byteorder = "1.5"
 crc = "3"
+flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
+lzokay = { version = "2.0.1", default-features = false, features = ["decompress", "std"] }
+ms-compress-ruzstd = "0.9.1"
 thiserror = "2"
 
 [workspace]
