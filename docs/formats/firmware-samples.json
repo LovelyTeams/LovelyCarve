@@ -2,7 +2,7 @@
   "date": "2026-10-23",
   "platform": "Windows standalone CLI",
   "baselineCommit": "1fe4fa425d0726e10b6ebc121468ad993521216a",
-  "stage": "native firmware envelopes, CramFS/ROMFS, v3 adaptive LZMA, clean committed UBIFS v4/v5, new-format JFFS2 LE/BE, SquashFS v1/v2 LE/BE readers, native Rust XZ/Zstandard codecs, Sercomm NAND ZIP logical views, and native YAFFS2 page/OOB reader",
+  "stage": "native firmware envelopes, CramFS/ROMFS, v3 adaptive LZMA, clean committed UBIFS v4/v5, new-format JFFS2 LE/BE, SquashFS v1/v2 LE/BE readers, native Rust XZ/Zstandard codecs, Sercomm NAND ZIP logical views, and native YAFFS2 page/OOB reader, native YAFFS1 dispersed tags and page ECC",
   "criterion": "Native partition tree listing; RAW-open success alone is not counted. UBI nested filesystem checked separately.",
   "samples": [
     {
@@ -831,14 +831,55 @@
       "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__input__/links.yaffs",
       "size": 4752,
       "sha256": "93e487e7ed1a160db8c599cc1fdca058baa6024dd27c329f1d55f823bee9215b",
-      "browsable": false,
+      "browsable": true,
       "sourceFormat": "raw",
-      "partitionKinds": [],
-      "partitions": [],
-      "limitation": "512-byte pages / 16-byte spare with legacy YAFFS tags; current native YAFFS2 packed-tags reader does not handle this layout",
-      "error": {
-        "code": "notFound",
-        "message": "partition not found: 0"
+      "partitionKinds": [
+        "yaffs1"
+      ],
+      "partitions": [
+        {
+          "kind": "yaffs1",
+          "startByte": 0,
+          "lengthBytes": 4752
+        }
+      ],
+      "contentOracle": {
+        "dir/hardlink": "434728a410a78f56fc1b5899c3593436e61ab0c731e9072d95e96db290205e53",
+        "file": "434728a410a78f56fc1b5899c3593436e61ab0c731e9072d95e96db290205e53",
+        "hardlink": "434728a410a78f56fc1b5899c3593436e61ab0c731e9072d95e96db290205e53"
+      },
+      "oracleSource": "https://github.com/onekey-sec/unblob/tree/main/tests/integration/filesystem/yaffs/__output__/links.yaffs_extract",
+      "oracleInputs": {
+        "dir/hardlink": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__output__/links.yaffs_extract/dir/hardlink",
+        "file": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__output__/links.yaffs_extract/file",
+        "hardlink": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__output__/links.yaffs_extract/hardlink"
+      },
+      "linkOracle": {
+        "symlink": "file",
+        "symlink2": "dir/hardlink",
+        "dir/symlink": "../file"
+      },
+      "linkGitBlobs": {
+        "symlink": {
+          "sha1": "1a010b1c0f081b2e8901d55307a15c29ff30af0e",
+          "url": "https://api.github.com/repos/onekey-sec/unblob/git/blobs/1a010b1c0f081b2e8901d55307a15c29ff30af0e"
+        },
+        "symlink2": {
+          "sha1": "fc45c5e51da66465869f353080b204553e18ff3b",
+          "url": "https://api.github.com/repos/onekey-sec/unblob/git/blobs/fc45c5e51da66465869f353080b204553e18ff3b"
+        },
+        "dir/symlink": {
+          "sha1": "74bb61d1b06b17257e6f0cd915085f2ca06dba61",
+          "url": "https://api.github.com/repos/onekey-sec/unblob/git/blobs/74bb61d1b06b17257e6f0cd915085f2ca06dba61"
+        }
+      },
+      "oracleGeometry": {
+        "format": "yaffs1-dispersed",
+        "pageSize": 512,
+        "spareSize": 16,
+        "endian": "little",
+        "pagesPerBlock": 32,
+        "fileSizeSource": "header"
       }
     },
     {
@@ -846,14 +887,38 @@
       "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__input__/fruits.dir.le.yffs",
       "size": 4224,
       "sha256": "30ac92e89b1bc5a9260ca69093093537574e14a4dcb87a79259538762b9f8060",
-      "browsable": false,
+      "browsable": true,
       "sourceFormat": "raw",
-      "partitionKinds": [],
-      "partitions": [],
-      "limitation": "512-byte pages / 16-byte spare with legacy YAFFS tags; current native YAFFS2 packed-tags reader does not handle this layout",
-      "error": {
-        "code": "notFound",
-        "message": "partition not found: 0"
+      "partitionKinds": [
+        "yaffs1"
+      ],
+      "partitions": [
+        {
+          "kind": "yaffs1",
+          "startByte": 0,
+          "lengthBytes": 4224
+        }
+      ],
+      "contentOracle": {
+        "dir/apple.txt": "303980bcb9e9e6cdec515230791af8b0ab1aaa244b58a8d99152673aa22197d0",
+        "dir/banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "dir/cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
+      },
+      "oracleSource": "https://github.com/onekey-sec/unblob/tree/main/tests/integration/filesystem/yaffs/__output__/fruits.dir.le.yffs_extract",
+      "oracleInputs": {
+        "dir/apple.txt": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__output__/fruits.dir.le.yffs_extract/dir/apple.txt",
+        "dir/banana.txt": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__output__/fruits.dir.le.yffs_extract/dir/banana.txt",
+        "dir/cherry.txt": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__output__/fruits.dir.le.yffs_extract/dir/cherry.txt"
+      },
+      "linkOracle": {},
+      "linkGitBlobs": {},
+      "oracleGeometry": {
+        "format": "yaffs1-dispersed",
+        "pageSize": 512,
+        "spareSize": 16,
+        "endian": "little",
+        "pagesPerBlock": 32,
+        "fileSizeSource": "header"
       }
     },
     {
@@ -861,14 +926,38 @@
       "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__input__/fruits.dir.be.yffs",
       "size": 4224,
       "sha256": "b07b888a645dd30b0891d1147505fb35a27f1df52b3710c40dc7d9ed418e60c9",
-      "browsable": false,
+      "browsable": true,
       "sourceFormat": "raw",
-      "partitionKinds": [],
-      "partitions": [],
-      "limitation": "512-byte pages / 16-byte spare with legacy YAFFS tags; current native YAFFS2 packed-tags reader does not handle this layout",
-      "error": {
-        "code": "notFound",
-        "message": "partition not found: 0"
+      "partitionKinds": [
+        "yaffs1"
+      ],
+      "partitions": [
+        {
+          "kind": "yaffs1",
+          "startByte": 0,
+          "lengthBytes": 4224
+        }
+      ],
+      "contentOracle": {
+        "dir/apple.txt": "303980bcb9e9e6cdec515230791af8b0ab1aaa244b58a8d99152673aa22197d0",
+        "dir/banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "dir/cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
+      },
+      "oracleSource": "https://github.com/onekey-sec/unblob/tree/main/tests/integration/filesystem/yaffs/__output__/fruits.dir.le.yffs_extract",
+      "oracleInputs": {
+        "dir/apple.txt": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__output__/fruits.dir.le.yffs_extract/dir/apple.txt",
+        "dir/banana.txt": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__output__/fruits.dir.le.yffs_extract/dir/banana.txt",
+        "dir/cherry.txt": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__output__/fruits.dir.le.yffs_extract/dir/cherry.txt"
+      },
+      "linkOracle": {},
+      "linkGitBlobs": {},
+      "oracleGeometry": {
+        "format": "yaffs1-dispersed",
+        "pageSize": 512,
+        "spareSize": 16,
+        "endian": "big",
+        "pagesPerBlock": 32,
+        "fileSizeSource": "header"
       }
     }
   ]
