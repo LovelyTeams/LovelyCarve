@@ -73,3 +73,11 @@
 LZMA 复用 Apache-2.0 的 `lzma-rust2`。没有复制无明确代码许可的 H4lo Python 提取器。
 库接口、限额、夹具许可与验证来源见 [minifs/README.md](minifs/README.md) 和
 [MINIFS](../../docs/formats/MINIFS.md)。
+
+## F2FS / EROFS
+
+- `f2fs-reader`：只读元数据解码改造自 `KarpelesLab/fstool` 0.5.0 / MIT，独立 inode / 目录 / 读路径
+  为本仓库 AGPL-3.0-only；固定来源见 [ORIGIN.md](f2fs-reader/ORIGIN.md)，未引入 writer。
+- `lamfold-erofs` 0.1.3，`fabaad6af0c28b80535307b339b84110f3a3c12e` / MIT OR Apache-2.0；
+  复用已 vendored 的 lamfold，校验和、卷边界、限额和时间补丁见 [LOVELYCARVE.md](lamfold-erofs/LOVELYCARVE.md)。
+- mkfs 工具生成的公开样本保留原许可证与哈希；F2FS 的 syzkaller 样本为 Apache-2.0。

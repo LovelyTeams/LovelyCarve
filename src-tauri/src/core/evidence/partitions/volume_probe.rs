@@ -135,6 +135,7 @@ impl VolumeProbe for UbiProbe {
 }
 
 static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
+    &super::flashfs::FlashFsProbe,
     &FilevaultProbe,
     &BitlockerProbe,
     &SquashfsProbe,
@@ -185,6 +186,9 @@ pub fn probe_volume_with_head(ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeH
 }
 
 pub fn detect_filesystem_bytes(bytes: &[u8], fallback: PartitionKind) -> PartitionKind {
+    if let Some(kind) = super::flashfs::detect(bytes) {
+        return kind;
+    }
     if ::minifs::has_magic(bytes) {
         return PartitionKind::Minifs;
     }
@@ -274,6 +278,8 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::Jffs2
         | PartitionKind::Yaffs2
         | PartitionKind::Yaffs1
+        | PartitionKind::Erofs
+        | PartitionKind::F2fs
         | PartitionKind::Minifs
         | PartitionKind::Romfs
         | PartitionKind::Ubi

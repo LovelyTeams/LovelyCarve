@@ -51,7 +51,8 @@ use crate::core::filesystem::volumes::ntfs::NtfsSource;
 use crate::core::filesystem::volumes::ntfs::{parse_ntfs_id, NtfsVolume};
 use crate::core::filesystem::volumes::refs::{parse_refs_id, parse_refs_snap_id};
 use crate::core::filesystem::volumes::rom_images::{
-    open_cramfs_source, open_romfs_source, parse_cramfs_id, parse_romfs_id,
+    open_cramfs_source, open_erofs_source, open_f2fs_source, open_romfs_source, parse_cramfs_id,
+    parse_erofs_id, parse_f2fs_id, parse_romfs_id,
 };
 use crate::core::filesystem::volumes::squashfs::{open_squashfs_source, parse_squashfs_id};
 use crate::core::filesystem::volumes::ubi::{open_ubi_source, parse_ubi_id};
@@ -150,6 +151,8 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &CramfsAdapter,
     &RomfsAdapter,
     &MinifsAdapter,
+    &ErofsAdapter,
+    &F2fsAdapter,
     &UbifsAdapter,
     &Jffs2Adapter,
     &Yaffs2Adapter,
@@ -193,6 +196,12 @@ pub(crate) fn dispatch<'a>(
 /// made the historical open-per-directory walk the dominant cost of any
 /// whole-volume enumeration, especially through E01/RAID-assembled backends.
 pub(crate) fn volume_root_key(id: &str) -> Option<String> {
+    if let Some((partition, _)) = parse_erofs_id(id) {
+        return Some(format!("erofs:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_f2fs_id(id) {
+        return Some(format!("f2fs:part:{partition}"));
+    }
     if let Some((partition, _)) = parse_minifs_id(id) {
         return Some(format!("minifs:part:{partition}"));
     }
@@ -403,6 +412,24 @@ path_volume!(
     open_romfs_source
 );
 path_volume_impl!(RomfsVol, plain_range);
+path_volume!(
+    ErofsAdapter,
+    ErofsVol,
+    "erofs",
+    crate::core::filesystem::volumes::rom_images::ErofsVolume,
+    parse_erofs_id,
+    open_erofs_source
+);
+path_volume_impl!(ErofsVol, plain_range);
+path_volume!(
+    F2fsAdapter,
+    F2fsVol,
+    "f2fs",
+    crate::core::filesystem::volumes::rom_images::F2fsVolume,
+    parse_f2fs_id,
+    open_f2fs_source
+);
+path_volume_impl!(F2fsVol, plain_range);
 path_volume!(
     MinifsAdapter,
     MinifsVol,

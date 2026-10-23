@@ -1274,3 +1274,12 @@ LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提�
 插件运行把记录写进暂存运行；调度器提交前按 `(task_id, seq)` 校验执行归属，并获取每次执行独立的发布锁。暂存运行的发布（替换同一作业的上一次结果）、时间线投影与任务终态提交在锁内完成；取消、看门狗与案件解绑获取同一把锁后撤销执行。已撤销的迟到结果不能发布，暂存运行随之删除；已经开始发布的执行收尾后控制面重新判定状态。任务台账提交失败时按精确 run_id 删除刚发布的运行，不回删同一作业的其他运行。不同检材的发布不使用全局锁。
 
 直接文件分析复用案件代际与检材移除的发布门；分析开始时捕获案件目录与代际，结束时重新验证并持锁写入，避免旧调用写入新案件。
+
+### F2FS / EROFS 只读卷
+
+固定超级块探测位于 `evidence::partitions::flashfs`，卷接入复用 `filesystem::volumes::rom_images` 的
+泛型路径适配器、分区边界源与缓存会话。独立 `f2fs-reader` 维护校验后的 checkpoint、NAT 和
+多级 node 寻址；`lamfold-erofs` 维护受限 inode / 解压缓存。`FoldFrontend::timestamps` 默认返回
+未知角色，F2FS / EROFS 提供其实际记录的 UTC 秒 / 纳秒，宿主转换展示文本。没有新增全局
+每检材缓存，所有读者随 FsSession / 证据引用释放。支持与验证见 [F2FS](formats/F2FS.md) /
+[EROFS](formats/EROFS.md)。

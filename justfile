@@ -125,6 +125,8 @@ fmt:
     cd src-tauri/vendor/lamfold && cargo fmt
     cd src-tauri/vendor/lamfold-cramfs && cargo fmt
     cd src-tauri/vendor/lamfold-romfs && cargo fmt
+    cd src-tauri/vendor/lamfold-erofs && cargo fmt
+    cd src-tauri/vendor/f2fs-reader && cargo fmt
     cd src-tauri/vendor/minifs && cargo fmt
     cd src-tauri/vendor/backhand && cargo fmt
     cd src-tauri/vendor/lzma-rs && cargo fmt
@@ -393,6 +395,23 @@ test-vendor name *args:
 [group("readers")]
 clippy-minifs:
     cargo clippy --manifest-path src-tauri/vendor/minifs/Cargo.toml --all-targets -- -D warnings
+
+# Validate the standalone flash filesystem readers.
+[group("readers")]
+test-erofs:
+    cargo test --manifest-path src-tauri/vendor/lamfold-erofs/Cargo.toml --lib --features deflate,zstd,lzma
+
+[group("readers")]
+clippy-erofs:
+    cargo clippy --manifest-path src-tauri/vendor/lamfold-erofs/Cargo.toml --all-targets --features deflate,zstd,lzma -- -D warnings
+
+[group("readers")]
+clippy-f2fs:
+    cargo clippy --manifest-path src-tauri/vendor/f2fs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-f2fs-fixtures:
+    {{ python }} scripts/f2fs-fixtures.py
 
 # Generate independent MINIFS fixtures, or a Python oracle for external firmware.
 [group("readers")]

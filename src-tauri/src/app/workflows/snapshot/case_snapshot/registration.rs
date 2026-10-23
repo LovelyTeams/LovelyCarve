@@ -96,6 +96,8 @@ pub(super) fn snapshot_supported_plain_partition(kind: PartitionKind) -> bool {
             | PartitionKind::Jffs2
             | PartitionKind::Yaffs2
             | PartitionKind::Yaffs1
+            | PartitionKind::Erofs
+            | PartitionKind::F2fs
             | PartitionKind::Minifs
             | PartitionKind::Romfs
             | PartitionKind::Ubi
