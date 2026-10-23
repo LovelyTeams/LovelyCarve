@@ -1,0 +1,28 @@
+{
+  "license": "CC0-1.0",
+  "generator": "Python stdlib independent YAFFS1 encoder",
+  "payloadSha256": "233e4c4782a99f99184f3c0b9f32ff60b00aaae1b70a242c63158dd37aa645eb",
+  "files": {
+    "legacy-le.yaffs": {
+      "size": 6864,
+      "sha256": "2f1b574a98937860b2c0f8f596d3eb5af2c0fd3336de12521b0e95addc9501a9",
+      "pageSize": 512,
+      "spareSize": 16,
+      "endian": "<"
+    },
+    "legacy-be.yaffs": {
+      "size": 6864,
+      "sha256": "0524d56e3f4a90467418019bdeab9056957d3fc29090f3dc539c5bda27487bb8",
+      "pageSize": 512,
+      "spareSize": 16,
+      "endian": ">"
+    },
+    "legacy-versions.yaffs": {
+      "size": 5808,
+      "sha256": "ed2aedeced2d3d9058cdc4837baa8e3196cf982358b86e3e510c523f1b2bd7e6",
+      "pageSize": 512,
+      "spareSize": 16,
+      "endian": "<"
+    }
+  }
+}

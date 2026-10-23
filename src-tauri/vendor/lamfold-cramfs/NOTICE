@@ -1,0 +1,25 @@
+lamfold-cramfs — third-party attribution
+
+lamfold-cramfs is original Lamco Development work (MIT OR Apache-2.0),
+clean-roomed from the public cramfs format:
+
+  cramfs (Compressed ROM filesystem) on-disk format
+      — kernel Documentation/filesystems/cramfs.rst + cramfs_fs.h
+      (superblock, 12-byte bitfield inode, directory records, the per-page
+       zlib block index)
+
+The following GPL implementation was explicitly FENCED OFF — not read, not
+transcribed:
+
+  Linux kernel fs/cramfs   GPL-2.0
+
+There was nothing permissive to reuse: the `cramfs` crate on crates.io is
+unbuildable upstream, so this is from-scratch. Compression is delegated to the
+lamfold substrate codec (`Codec::Zlib`, miniz_oxide — permissive); this crate
+contains no compression code.
+
+Test fixtures are generated with mkcramfs from cramfs-tools (a tool, not a
+source) and verified with cramfsck as an oracle; the on-disk bytes are data, not
+code.
+
+M0 license-gate audit: the project license audit

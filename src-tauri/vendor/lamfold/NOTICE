@@ -1,0 +1,21 @@
+lamfold — third-party attribution
+
+The lamfold substrate core is original Lamco Development work (MIT OR Apache-2.0).
+It does not vendor or fork any upstream source; it *reuses* the following
+permissive no_std crates as dependencies (each retains its own license):
+
+  miniz_oxide   MIT OR Zlib OR Apache-2.0   (deflate/zlib decode)
+  lz4_flex      MIT                         (lz4 block decode)
+  ruzstd        MIT                         (zstd decode)
+  lzma-rust2    Apache-2.0                  (xz/lzma decode)
+  lzokay        MIT                         (lzo decode)
+  zerocopy      BSD-2-Clause OR Apache-2.0 OR MIT   (zero-copy bounded parse)
+  heapless      MIT OR Apache-2.0           (fixed-capacity containers)
+
+No GPL/LGPL/AGPL/MPL/EUPL anywhere in the dependency tree (cargo-deny enforced).
+
+Format frontend crates (lamfold-iso, -udf, -squash, -erofs, …) are clean-roomed
+from public specifications and carry their own NOTICE recording the BSD/MIT
+references studied; they copy no GPL implementation code.
+
+M0 license-gate audit: the project license audit

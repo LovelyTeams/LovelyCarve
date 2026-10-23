@@ -177,6 +177,33 @@ pub(super) fn children_for_image_with_options(
             PartitionKind::Squashfs => {
                 SquashfsVolume::open(Arc::clone(image), partition)?.root_children()
             }
+            PartitionKind::Cramfs => {
+                crate::core::filesystem::volumes::rom_images::CramfsVolume::open(
+                    Arc::clone(image),
+                    partition,
+                )?
+                .root_children()
+            }
+            PartitionKind::Romfs => {
+                crate::core::filesystem::volumes::rom_images::RomfsVolume::open(
+                    Arc::clone(image),
+                    partition,
+                )?
+                .root_children()
+            }
+            PartitionKind::Yaffs1 | PartitionKind::Yaffs2 => {
+                crate::core::filesystem::volumes::yaffs2::open_yaffs2_source(image, partition.id)?
+                    .root_children()
+            }
+            PartitionKind::Jffs2 => {
+                crate::core::filesystem::volumes::jffs2::open_jffs2_source(image, partition.id)?
+                    .root_children()
+            }
+            PartitionKind::Ubifs => crate::core::filesystem::volumes::ubifs::open_ubifs_source(
+                image,
+                crate::core::filesystem::volumes::ubifs::UbifsSource::Partition(partition.id),
+            )?
+            .root_children(),
             PartitionKind::Ubi => crate::core::filesystem::volumes::ubi::UbiVolume::open(
                 Arc::clone(image),
                 partition,

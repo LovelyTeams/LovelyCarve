@@ -1,7 +1,7 @@
 # UBI 与小米 HDR1 固件
 
 LovelyCarve 通过本地改造的 [rust_ubidump](https://github.com/aspnmy/rust_ubidump)
-UBI 只读库解析 Flash 逻辑卷，通过现有 `backhand` 读取其中的 SquashFS。
+UBI 只读库解析 Flash 逻辑卷，通过 `backhand` 读取其中的 SquashFS，并通过同一 vendor 的 UBIFS 读取器浏览已提交目录。
 来源、许可证及补丁见 [vendor/ubidump/LOVELYCARVE.md](../../src-tauri/vendor/ubidump/LOVELYCARVE.md)。
 
 ## 打开与浏览
@@ -12,7 +12,7 @@ HDR1 支持旧版 8 槽和扩展到 32 槽的分段表，按最早的分段位�
 固件寻址单位为字节，不强制将载荷对齐到磁盘扇区。
 
 展开 UBI 分区时，每个命名卷均显示一个 `<卷名>.img` 文件，提供去除 UBI
-头部、按逻辑块重组的卷字节，可预览、哈希和导出。卷以 SquashFS 开头时，另有
+头部、按逻辑块重组的卷字节，可预览、哈希和导出。卷以 SquashFS 或 UBIFS 开头时，另有
 同名目录，可浏览其中的目录、普通文件和符号链接，复用现有预览与文件导出。
 卷号属于节点身份，不同分区、不同卷的读取缓存相互隔离。
 
@@ -29,9 +29,10 @@ HDR1 支持旧版 8 槽和扩展到 32 槽的分段表，按最早的分段位�
   擦除值 `0xff`。已映射块的来源短读、越界或损坏明确失败。
 - 两份有效卷表不同、更新未完成、混合镜像序列、不支持的内部卷（包括 fastmap）
   明确拒绝；不尝试猜测电源中断后的状态。一个卷表副本 CRC 失败时可使用另一个。
-- 当前自动展开对象是 UBI 中的 SquashFS；UBIFS、内核及其他载荷提供原始逻辑卷文件，
-  不提供 UBIFS 目录、日志重放、删除恢复或 NAND OOB / ECC 解码。
-- 压缩文件没有伪造的连续物理范围；SquashFS 范围读取复用流式回退，成本为 O(offset)。
+- 自动展开 UBI 中的 SquashFS 和受支持的 UBIFS；UBIFS 的版本、干净状态、CRC 与
+  日志/加密边界见 [UBIFS](UBIFS.md)。内核及其他载荷仍提供原始逻辑卷文件；
+  不提供 NAND OOB / ECC 解码。
+- 压缩文件没有伪造的连续物理范围；SquashFS / UBIFS 提供按逻辑文件块寻址的范围读取。
   UBI 原始逻辑卷提供直接范围读取。
 
 ## 验证

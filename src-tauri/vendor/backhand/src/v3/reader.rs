@@ -215,9 +215,14 @@ pub trait SquashFsReader: BufReadSeek {
         let mut block_map = IntMap::default();
         let mut dir_data = Vec::new();
 
-        while self.stream_position()? != end_ptr {
+        while self.stream_position()? < end_ptr {
             let metadata_start = self.stream_position()?;
             let bytes = metadata::read_block(self, superblock, kind)?;
+            if self.stream_position()? > end_ptr
+                || dir_data.len().saturating_add(bytes.len()) > 256 * 1024 * 1024
+            {
+                return Err(BackhandError::CorruptedOrInvalidSquashfs);
+            }
             let compressed_offset = metadata_start - seek;
             let decompressed_offset = dir_data.len() as u64;
             block_map.insert(compressed_offset, decompressed_offset);
@@ -253,20 +258,20 @@ pub trait SquashFsReader: BufReadSeek {
     }
 
     /// Parse UID Table
-    fn uid(&mut self, superblock: &SuperBlock, kind: &Kind) -> Result<Vec<u16>, BackhandError> {
+    fn uid(&mut self, superblock: &SuperBlock, kind: &Kind) -> Result<Vec<u32>, BackhandError> {
         let ptr = superblock.uid_start;
         let count = superblock.no_uids as u64;
         self.seek(SeekFrom::Start(ptr))?;
 
         // I wish self was Read here, but this works
-        let mut buf = vec![0u8; count as usize * core::mem::size_of::<u16>()];
+        let mut buf = vec![0u8; count as usize * core::mem::size_of::<u32>()];
         self.read_exact(&mut buf)?;
 
         let mut cursor = Cursor::new(buf);
         let mut deku_reader = Reader::new(&mut cursor);
         let mut table = Vec::with_capacity(count as usize);
         for _ in 0..count {
-            let v = u16::from_reader_with_ctx(
+            let v = u32::from_reader_with_ctx(
                 &mut deku_reader,
                 (kind.inner.type_endian, kind.inner.bit_order.unwrap()),
             )?;
@@ -277,20 +282,20 @@ pub trait SquashFsReader: BufReadSeek {
     }
 
     /// Parse GUID Table
-    fn guid(&mut self, superblock: &SuperBlock, kind: &Kind) -> Result<Vec<u16>, BackhandError> {
+    fn guid(&mut self, superblock: &SuperBlock, kind: &Kind) -> Result<Vec<u32>, BackhandError> {
         let ptr = superblock.guid_start;
         let count = superblock.no_guids as u64;
         self.seek(SeekFrom::Start(ptr))?;
 
         // I wish self was Read here, but this works
-        let mut buf = vec![0u8; count as usize * core::mem::size_of::<u16>()];
+        let mut buf = vec![0u8; count as usize * core::mem::size_of::<u32>()];
         self.read_exact(&mut buf)?;
 
         let mut cursor = Cursor::new(buf);
         let mut deku_reader = Reader::new(&mut cursor);
         let mut table = Vec::with_capacity(count as usize);
         for _ in 0..count {
-            let v = u16::from_reader_with_ctx(
+            let v = u32::from_reader_with_ctx(
                 &mut deku_reader,
                 (kind.inner.type_endian, kind.inner.bit_order.unwrap()),
             )?;
@@ -330,6 +335,12 @@ pub trait SquashFsReader: BufReadSeek {
         // Read the index table (pointers to metadata blocks)
         self.seek(SeekFrom::Start(seek))?;
         let index_size = metadata_block_count * core::mem::size_of::<u64>() as u64;
+        if seek
+            .checked_add(index_size)
+            .is_none_or(|end| end > superblock.bytes_used)
+        {
+            return Err(BackhandError::CorruptedOrInvalidSquashfs);
+        }
         let mut index_buf = vec![0u8; index_size as usize];
         self.read_exact(&mut index_buf)?;
 
@@ -344,6 +355,9 @@ pub trait SquashFsReader: BufReadSeek {
                 (kind.inner.type_endian, kind.inner.bit_order.unwrap()),
             )?;
             trace!("Fragment metadata block {}: pointer 0x{:x}", i, ptr);
+            if ptr < superblock.directory_table_start || ptr >= seek {
+                return Err(BackhandError::CorruptedOrInvalidSquashfs);
+            }
             index_ptrs.push(ptr);
         }
 
@@ -380,7 +394,10 @@ pub trait SquashFsReader: BufReadSeek {
             "fragment_lookup_table: successfully read {} fragments",
             ret_vec.len()
         );
-        Ok((seek, ret_vec))
+        if fragments_read != fragment_count {
+            return Err(BackhandError::CorruptedOrInvalidSquashfs);
+        }
+        Ok((index_ptrs.first().copied().unwrap_or(seek), ret_vec))
     }
 
     /// Parse count of Fragment `Metadata` blocks

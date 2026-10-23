@@ -113,7 +113,7 @@ export function evidenceFacts(info: ImageInfo | null, tr: Translator = sourceTex
   if (!info) return [];
   const rows: InfoRow[] = [
     { label: tr("逻辑大小"), value: tr("{0} 字节", { 0: info.size_bytes.toLocaleString() }), mono: true },
-    { label: info.optical_disc || ['xiaomi_firmware', 'android_backup'].includes(info.source_format) ? tr("寻址单位") : tr("扇区大小"), value: `${info.sector_size} B`, mono: true },
+    { label: info.optical_disc || ['xiaomi_firmware', 'firmware', 'android_backup'].includes(info.source_format) ? tr("寻址单位") : tr("扇区大小"), value: `${info.sector_size} B`, mono: true },
   ];
   if (info.optical_disc) {
     rows.push({ label: tr("光盘会话数"), value: String(new Set(info.optical_disc.tracks.map(track => track.session)).size), mono: true });

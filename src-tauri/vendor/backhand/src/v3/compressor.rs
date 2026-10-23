@@ -13,6 +13,24 @@ pub struct FilesystemCompressor;
 #[derive(Copy, Clone)]
 pub struct DefaultCompressor;
 
+impl DefaultCompressor {
+    pub(crate) fn decompress_bounded(
+        &self,
+        bytes: &[u8],
+        out: &mut Vec<u8>,
+        maximum: usize,
+    ) -> Result<(), crate::BackhandError> {
+        let decoder = ZlibDecoder::new(bytes);
+        let mut decoded = Vec::new();
+        decoder.take(maximum as u64 + 1).read_to_end(&mut decoded)?;
+        if decoded.len() > maximum {
+            return Err(crate::BackhandError::CorruptedOrInvalidSquashfs);
+        }
+        out.extend_from_slice(&decoded);
+        Ok(())
+    }
+}
+
 impl CompressionAction for DefaultCompressor {
     type Error = crate::error::BackhandError;
     type Compressor = Option<Compressor>;
@@ -27,9 +45,7 @@ impl CompressionAction for DefaultCompressor {
         _compressor: Self::Compressor,
     ) -> Result<(), Self::Error> {
         trace!("v3 decompress");
-        let mut decoder = ZlibDecoder::new(bytes);
-        decoder.read_to_end(out)?;
-        Ok(())
+        self.decompress_bounded(bytes, out, 1 << 20)
     }
 
     /// Using the current compressor from the superblock, compress bytes

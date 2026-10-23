@@ -49,6 +49,8 @@ pub enum Endian {
 /// Version-specific compressor types
 #[derive(Clone)]
 pub enum VersionedCompressor {
+    #[cfg(feature = "v3_ddwrt")]
+    V3Ddwrt,
     #[cfg(feature = "v3")]
     V3(&'static V3DefaultCompressor),
     #[cfg(feature = "v3_lzma")]
@@ -81,6 +83,8 @@ impl VersionedCompressor {
         compressor: Option<crate::traits::types::Compressor>,
     ) -> Result<(), crate::BackhandError> {
         match self {
+            #[cfg(feature = "v3_ddwrt")]
+            VersionedCompressor::V3Ddwrt => crate::v3::ddwrt::decompress(bytes, out, 1 << 20),
             #[cfg(feature = "v3")]
             VersionedCompressor::V3(comp) => comp.decompress(bytes, out, None),
             #[cfg(feature = "v3_lzma")]
@@ -172,9 +176,30 @@ impl Kind {
         #[allow(unused_variables)] max_out: usize,
     ) -> Result<(), crate::BackhandError> {
         match &self.inner.compressor {
+            #[cfg(feature = "v3")]
+            VersionedCompressor::V3(compressor) => {
+                match compressor.decompress_bounded(bytes, out, max_out) {
+                    Ok(()) => Ok(()),
+                    Err(error) => {
+                        #[cfg(feature = "v3_lzma")]
+                        {
+                            trace!("v3 gzip failed ({error}); trying bounded Rust LZMA");
+                            crate::lzma::decompress_adaptive(bytes, out, &self.lzma_cache, max_out)
+                        }
+                        #[cfg(not(feature = "v3_lzma"))]
+                        Err(error)
+                    }
+                }
+            }
+            #[cfg(feature = "v3_ddwrt")]
+            VersionedCompressor::V3Ddwrt => crate::v3::ddwrt::decompress(bytes, out, max_out),
             #[cfg(feature = "v3_lzma")]
             VersionedCompressor::V3Lzma(_) => {
                 crate::lzma::decompress_adaptive(bytes, out, &self.lzma_cache, max_out)
+            }
+            #[cfg(feature = "v3_lzma")]
+            VersionedCompressor::V3LzmaStandard(_) => {
+                crate::lzma::decompress_standard(bytes, out, max_out)
             }
             #[cfg(feature = "v4_lzma")]
             VersionedCompressor::V4Lzma(_) => {
@@ -489,6 +514,22 @@ pub const BE_V3_0: InnerKind = InnerKind {
     version_minor: 0,
     compressor: VersionedCompressor::V3(&V3DefaultCompressor),
     bit_order: Some(deku::ctx::Order::Msb0),
+};
+
+/// DD-WRT SquashFS v3 with explicit per-block LZMA parameters.
+#[cfg(feature = "v3_ddwrt")]
+pub const LE_V3_0_DDWRT: InnerKind = InnerKind {
+    magic: *b"hsqt",
+    compressor: VersionedCompressor::V3Ddwrt,
+    ..LE_V3_0
+};
+
+/// Big-endian counterpart of the DD-WRT v3 format.
+#[cfg(feature = "v3_ddwrt")]
+pub const BE_V3_0_DDWRT: InnerKind = InnerKind {
+    magic: *b"tqsh",
+    compressor: VersionedCompressor::V3Ddwrt,
+    ..BE_V3_0
 };
 
 /// Little-Endian SquashFS v3.0 with LZMA compression

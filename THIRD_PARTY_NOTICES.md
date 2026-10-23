@@ -20,26 +20,125 @@ integration notes remain in each crate directory. ext4-view 1.0.0 and backhand
 license. Original data sources and hashes for the ext4 unit-test fixtures are
 recorded in `src-tauri/vendor/ext4-view/test_data/README.md`.
 
+The Buffalo ENC / TRX and DD-WRT SquashFS compatibility work uses Firmware Mod
+Kit commit `c72f45d7a062156125ae00cb867d8a614b50b963` as a format reference
+(Gabor Juhos's GPL-2.0-only Buffalo tools and the bundled SquashFS/LZMA variant).
+No FMK C/C++ source, shell scripts or executables are incorporated. Original Rust
+readers use the existing backhand (MIT OR Apache-2.0) library and lzma-rust2
+(Apache-2.0). Original synthetic fixtures and their generators are CC0-1.0;
+see [firmware provenance and limits](docs/formats/FIRMWARE.md).
+
+SquashFS XZ and Zstandard decoding also reuse lzma-rust2 and the existing
+MIT-licensed ms-compress-ruzstd 0.9.1. The firmware read path does not call
+liblzma or libzstd; independent fixtures use Python encoders as test oracles.
+
+SafeLoader, legacy uImage and Netgear CHK format behavior is checked against
+OpenWrt firmware-utils commit `b2a93c6f77bac3a6525e93b383c987b073b4633b`:
+Matthias Schiffer's `tplink-safeloader.c` (BSD-2-Clause), Dave C. Reeve's
+`mkchkimg.c` (GPL-2.0-or-later), and `uimage_padhdr.c` (GPL-2.0-only).
+These C sources and executables are not incorporated. The Rust envelope readers
+reuse the existing MD5/CRC implementations; independent synthetic encoders and
+fixtures are CC0-1.0. See the firmware format guide for exact compatibility limits.
+
 The APFS name lookup uses the unmodified crates.io packages
 [`unicode-casefold` 0.2.0](https://crates.io/crates/unicode-casefold/0.2.0)
 by Chris Wong and [`unicode-normalization` 0.1.25](https://crates.io/crates/unicode-normalization/0.1.25)
 by the Rust Project Developers. Both declare MIT OR Apache-2.0;
 versions and dependency sources are pinned in the Rust lockfiles.
+
 The libfsapfs APFS comparison uses its documented structures and public API;
 no libfsapfs C sources or binaries are incorporated. The new APFS fixtures
 are invented, reproducible project test structures (AGPL-3.0-only), documented
 in `src-tauri/vendor/apfs/tests/data/README.md`.
 
+## Native YAFFS reader
+
+The original AGPL-3.0-only `yaffs2-reader` adapts object/file prefix structures
+and validation from binwalk-ng commit `845806c163747eb524d66b5fe3de2ed86ea3aaad`
+(MIT, Copyright 2024 devttys0 and 2026 binwalk-ng contributors). Its full notice
+is retained in [LICENSE-BINWALK-MIT](src-tauri/vendor/yaffs2-reader/LICENSE-BINWALK-MIT).
+Aleph One YAFFS format definitions are references; no C implementation or
+external extractor is incorporated. Independent synthetic fixtures are CC0-1.0.
+The original YAFFS1 dispersed-tags, serial scanning and page-ECC modules reuse
+the same Rust namespace interfaces; they add no C implementation or dependency.
+
+## lamfold CramFS / Linux ROMFS
+
+The CramFS / Linux ROMFS readers use Lamco Development LLC's `lamfold 0.1.5`,
+`lamfold-cramfs 0.1.0` and `lamfold-romfs 0.1.1` (MIT OR Apache-2.0).
+The original LICENSE-MIT, LICENSE-APACHE and NOTICE files remain in each vendor
+directory; provenance and local integrity/range-read patches are recorded in
+each `LOVELYCARVE.md` and [ROM image support](docs/formats/ROM_IMAGES.md).
+The original synthetic ROM filesystem images and encoder are CC0-1.0.
+
 ## rust_ubidump
 
-The UBI volume reader adapts the UBI header decoders and CRC code from
+The UBI/UBIFS readers adapt the UBI headers/CRC and UBIFS node, key, inode
+and index structures and field decoders from
 [aspnmy/rust_ubidump](https://github.com/aspnmy/rust_ubidump), revision
 `19782c3eabc25a1baab7faefe12fe6f4bd362dac`, under MIT. Its original license
 credits Copyright (c) 2017 Willem Hengeveld <itsme@xs4all.nl>.
 The complete license is retained in `src-tauri/vendor/ubidump/LICENSE`;
 library extraction, safety fixes and the rewritten bounded volume mapping are
-documented in `src-tauri/vendor/ubidump/LOVELYCARVE.md`. The upstream CLI,
-UBIFS filesystem parser and C LZO dependency are not incorporated.
+documented in `src-tauri/vendor/ubidump/LOVELYCARVE.md`. The upstream CLI and
+C LZO dependency are not incorporated. UBIFS uses the existing flate2/zlib-rs
+packages, lzokay 2.0.1 (MIT), and ms-compress-ruzstd 0.9.1 (MIT). Full codec
+notices are retained below and in the vendor directory. Synthetic fixtures and
+their independent generators are original CC0-1.0 data.
+
+### lzokay-2.0.1
+
+Source: https://github.com/encounter/lzokay-rs
+
+MIT License
+
+Copyright 2021 Luke Street.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+### ms-compress-ruzstd-0.9.1
+
+Source: https://github.com/CaddyGlow/zstd-rs
+
+MIT License
+
+Copyright (c) 2019 Moritz Borcherding
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 
 ## CLI timezone rules
 
@@ -1311,3 +1410,96 @@ with HFS exclusions and algorithmic Hangul handled separately. Unicode data
 license is retained as `src-tauri/vendor/hfsplus/UNICODE_LICENSE`. Source data
 version and regeneration steps are described in `hfsplus/LOVELYCARVE.md`.
 libfshfs was consulted, not copied or linked.
+
+## jffs2-rs
+
+The read-only JFFS2 reader adapts Rust node field layouts and RTIME decoding from
+[xmoezzz/jffs2-rs](https://github.com/xmoezzz/jffs2-rs), version 0.2.1, commit
+`52e1234ce66b0e099b35afabff3fc3e3078a2c0e`. It does not incorporate upstream
+C LZO / Rubin, FFI, build scripts or host extraction code. Local changes and
+limits are documented in `src-tauri/vendor/jffs2/LOVELYCARVE.md`.
+
+```text
+MIT License
+
+Copyright (c) 2023 xmoe
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## lzma-rs
+
+The legacy SquashFS reader uses the pure Rust `lzma-rs 0.3.0` decoder by
+Guillaume Endignoux, published source commit `da82bd1182993a07db035e285a8f8a87d32a30c2`.
+The local fork adds an explicit strict completion API to validate known-size
+markerless LZMA streams. Original APIs remain available; no C oracle dependency
+is included. See `src-tauri/vendor/lzma-rs/LOVELYCARVE.md`.
+
+```text
+MIT License
+
+Copyright (c) 2017 - 2018  Guillaume Endignoux
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## zip (ZIP container metadata)
+
+The Rust `zip` crate is used for ZIP evidence and Sercomm firmware metadata.
+Source: https://github.com/zip-rs/zip2 — version recorded in Cargo.lock.
+
+```text
+The MIT License (MIT)
+
+Copyright (c) 2014 Mathijs van de Nes
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

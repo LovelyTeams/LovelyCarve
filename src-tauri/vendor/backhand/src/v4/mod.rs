@@ -15,6 +15,12 @@ pub mod fragment;
 pub mod id;
 pub mod inode;
 pub mod metadata;
+#[cfg(any(feature = "xz", feature = "zstd"))]
+mod native_codecs;
+#[cfg(all(test, any(feature = "xz", feature = "zstd")))]
+mod native_codecs_tests;
+#[cfg(feature = "xz")]
+mod native_xz;
 pub mod reader;
 pub mod squashfs;
 pub mod unix_string;

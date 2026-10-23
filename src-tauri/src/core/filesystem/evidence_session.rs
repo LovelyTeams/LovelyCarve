@@ -17,6 +17,7 @@ use super::volumes::ntfs::{NtfsDeletedSnapshot, NtfsSource};
 use crate::core::evidence::image::{BadRegion, DiskImage};
 use crate::core::evidence::partitions::SectorSource;
 mod encrypted;
+mod native_views;
 use encrypted::AttachedEncryptedVolume;
 mod export;
 pub use export::{ImageExportMode, RawExportReader};
@@ -24,6 +25,7 @@ pub use export::{ImageExportMode, RawExportReader};
 #[derive(Debug)]
 pub struct EvidenceSession {
     decrypted_partitions: [OnceLock<AttachedEncryptedVolume>; 256],
+    firmware_views: HashMap<u8, Arc<EvidenceSession>>,
     indexed_roots: Option<Vec<super::tree::fs_tree::FsNode>>,
     image: Arc<DiskImage>,
     pub(crate) host_docker: OnceLock<Option<Arc<HostDocker>>>,
@@ -33,15 +35,38 @@ pub struct EvidenceSession {
 }
 
 impl From<DiskImage> for EvidenceSession {
+    #[inline(never)]
     fn from(image: DiskImage) -> Self {
         Self::from(Arc::new(image))
     }
 }
 
 impl From<Arc<DiskImage>> for EvidenceSession {
+    #[inline(never)]
     fn from(image: Arc<DiskImage>) -> Self {
+        let mut firmware_views = HashMap::new();
+        if let Some(firmware) = &image.firmware {
+            for view in firmware.native_views() {
+                let native = DiskImage::from_logical_source(
+                    image.id.clone(),
+                    view.label.clone(),
+                    Arc::clone(&view.source),
+                    vec![crate::core::evidence::partitions::Partition {
+                        id: view.partition_id,
+                        kind: view.kind,
+                        start_lba: 0,
+                        length_lba: view.source.size(),
+                        label: Some(view.label.clone()),
+                        unique_guid: None,
+                    }],
+                    1,
+                );
+                firmware_views.insert(view.partition_id, Arc::new(Self::from(native)));
+            }
+        }
         Self {
             decrypted_partitions: std::array::from_fn(|_| OnceLock::new()),
+            firmware_views,
             indexed_roots: None,
             image,
             host_docker: OnceLock::new(),

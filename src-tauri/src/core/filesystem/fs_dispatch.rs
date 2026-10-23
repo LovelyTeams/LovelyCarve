@@ -26,6 +26,8 @@ mod zfs;
 use zfs::*;
 mod refs;
 use refs::*;
+mod yaffs2;
+use yaffs2::Yaffs2Adapter;
 
 use std::sync::Arc;
 
@@ -43,13 +45,19 @@ use crate::core::filesystem::volumes::exfat::{open_exfat_source, parse_exfat_id}
 use crate::core::filesystem::volumes::ext4::{canonical_ext4_id, open_ext4_source, parse_ext4_id};
 use crate::core::filesystem::volumes::fat::{open_fat_source, parse_fat_id};
 use crate::core::filesystem::volumes::hfsplus::{open_hfsplus_source, parse_hfsplus_id};
+use crate::core::filesystem::volumes::jffs2::{open_jffs2_source, parse_jffs2_id};
 use crate::core::filesystem::volumes::ntfs::NtfsSource;
 use crate::core::filesystem::volumes::ntfs::{parse_ntfs_id, NtfsVolume};
 use crate::core::filesystem::volumes::refs::{parse_refs_id, parse_refs_snap_id};
+use crate::core::filesystem::volumes::rom_images::{
+    open_cramfs_source, open_romfs_source, parse_cramfs_id, parse_romfs_id,
+};
 use crate::core::filesystem::volumes::squashfs::{open_squashfs_source, parse_squashfs_id};
 use crate::core::filesystem::volumes::ubi::{open_ubi_source, parse_ubi_id};
+use crate::core::filesystem::volumes::ubifs::{open_ubifs_source, parse_ubifs_id};
 use crate::core::filesystem::volumes::ufs::{open_ufs_source, parse_ufs_id};
 use crate::core::filesystem::volumes::xfs::{open_xfs_source, parse_xfs_id};
+use crate::core::filesystem::volumes::yaffs2::parse_yaffs2_id;
 use crate::core::filesystem::volumes::zfs::{open_zfs_source, parse_zfs_id, ZfsPath};
 
 pub(crate) struct VolumeChildrenPage {
@@ -138,6 +146,11 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &RefsAdapter,
     &CdfsAdapter,
     &SquashfsAdapter,
+    &CramfsAdapter,
+    &RomfsAdapter,
+    &UbifsAdapter,
+    &Jffs2Adapter,
+    &Yaffs2Adapter,
     &UbiAdapter,
     &ApfsAdapter,
     &HfsPlusAdapter,
@@ -178,6 +191,12 @@ pub(crate) fn dispatch<'a>(
 /// made the historical open-per-directory walk the dominant cost of any
 /// whole-volume enumeration, especially through E01/RAID-assembled backends.
 pub(crate) fn volume_root_key(id: &str) -> Option<String> {
+    if let Some((partition, _)) = parse_cramfs_id(id) {
+        return Some(format!("cramfs:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_romfs_id(id) {
+        return Some(format!("romfs:part:{partition}"));
+    }
     if let Ok((plugin_id, session_id, _)) =
         crate::core::filesystem::external_volume::decode_remote_node_id(id)
     {
@@ -208,6 +227,19 @@ pub(crate) fn volume_root_key(id: &str) -> Option<String> {
         return Some(format!("cdfs:part:{}", cdfs_part_id(&source)));
     }
     if let Some((source, _)) = parse_squashfs_id(id) {
+        return Some(source.cache_key());
+    }
+    if let Some((format, partition, _)) = parse_yaffs2_id(id) {
+        let prefix = match format {
+            yaffs2_reader::Format::Yaffs1 => "yaffs1",
+            yaffs2_reader::Format::Yaffs2 => "yaffs2",
+        };
+        return Some(format!("{prefix}:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_jffs2_id(id) {
+        return Some(format!("jffs2:part:{partition}"));
+    }
+    if let Some((source, _)) = parse_ubifs_id(id) {
         return Some(source.cache_key());
     }
     if let Some((partition_id, _)) = parse_ubi_id(id) {
@@ -347,7 +379,43 @@ path_volume!(
     parse_squashfs_id,
     open_squashfs_source
 );
-path_volume_impl!(SquashfsVol, plain);
+path_volume_impl!(SquashfsVol, plain_range);
+path_volume!(
+    CramfsAdapter,
+    CramfsVol,
+    "cramfs",
+    crate::core::filesystem::volumes::rom_images::CramfsVolume,
+    parse_cramfs_id,
+    open_cramfs_source
+);
+path_volume_impl!(CramfsVol, plain_range);
+path_volume!(
+    RomfsAdapter,
+    RomfsVol,
+    "romfs",
+    crate::core::filesystem::volumes::rom_images::RomfsVolume,
+    parse_romfs_id,
+    open_romfs_source
+);
+path_volume_impl!(RomfsVol, plain_range);
+path_volume!(
+    UbifsAdapter,
+    UbifsVol,
+    "ubifs",
+    crate::core::filesystem::volumes::ubifs::UbifsVolume,
+    parse_ubifs_id,
+    open_ubifs_source
+);
+path_volume_impl!(UbifsVol, plain_range);
+path_volume!(
+    Jffs2Adapter,
+    Jffs2Vol,
+    "jffs2",
+    crate::core::filesystem::volumes::jffs2::Jffs2Volume,
+    parse_jffs2_id,
+    open_jffs2_source
+);
+path_volume_impl!(Jffs2Vol, plain_range);
 path_volume!(
     UbiAdapter,
     UbiVol,

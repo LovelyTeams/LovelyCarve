@@ -100,6 +100,12 @@ pub fn partition_ftype(kind: PartitionKind) -> Option<u64> {
         | PartitionKind::ExFat
         | PartitionKind::Cdfs
         | PartitionKind::Squashfs
+        | PartitionKind::Cramfs
+        | PartitionKind::Ubifs
+        | PartitionKind::Jffs2
+        | PartitionKind::Yaffs2
+        | PartitionKind::Yaffs1
+        | PartitionKind::Romfs
         | PartitionKind::Ubi
         | PartitionKind::Bitlocker
         | PartitionKind::BiosBoot
