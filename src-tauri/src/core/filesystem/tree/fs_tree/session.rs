@@ -224,6 +224,12 @@ impl<'a> FsSession<'a> {
                         )?
                         .root_children(),
                     ),
+                    PartitionKind::Nilfs2 => Some(
+                        crate::core::filesystem::volumes::rom_images::open_nilfs2_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::Amiga => Some(
                         crate::core::filesystem::volumes::rom_images::open_amiga_source(
                             self.image, pid,

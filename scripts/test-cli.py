@@ -149,6 +149,58 @@ def main():
             assert rows[2]["result"]["data"] == flash_body[flash_offset:flash_offset + 121].hex()
             assert rows[3]["result"]["sha256"] == hashlib.sha256(flash_body).hexdigest()
 
+        # NILFS2: current checkpoint, sparse/direct B-tree reads and absent native atime.
+        nilfs2_source = zlib.decompress((flash_vendor / "nilfs2-reader/tests/fixtures/invented-1024.zlib").read_bytes())
+        nilfs2_path = root / "invented.nilfs2"
+        nilfs2_path.write_bytes(nilfs2_source)
+        nilfs2_node = "nilfs2:part:0:" + b"/hello".hex()
+        _, rows = session([
+            {"id": "open", "command": "images open", "args": {"path": str(nilfs2_path)}},
+            {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+            {"id": "hash", "command": "files hash", "args": {"nodeId": nilfs2_node, "algos": ["sha256"]}},
+            {"id": "range", "command": "files read", "args": {"nodeId": "nilfs2:part:0:" + b"/sparse".hex(), "offset": 1019, "length": 97}},
+        ])
+        assert all("result" in row for row in rows), rows
+        assert rows[0]["result"]["partitions"][0]["kind"] == "nilfs2"
+        assert len(rows[1]["result"]["items"]) == 9
+        assert rows[2]["result"]["sha256"] == hashlib.sha256(b"hello NILFS2 evidence\n").hexdigest()
+        assert rows[3]["result"]["data"] == (bytes(5) + bytes((index * 23 + 7) & 255 for index in range(92))).hex()
+        assert nilfs2_path.read_bytes() == nilfs2_source
+        nilfs2_backup = bytearray(nilfs2_source)
+        nilfs2_backup[1024 + 16] ^= 1
+        nilfs2_backup_path = root / "backup-only.nilfs2"
+        nilfs2_backup_path.write_bytes(nilfs2_backup)
+        _, rows = session([
+            {"id": "open", "command": "images open", "args": {"path": str(nilfs2_backup_path)}},
+            {"id": "hash", "command": "files hash", "args": {"nodeId": nilfs2_node, "algos": ["sha256"]}},
+        ])
+        assert all("result" in row for row in rows), rows
+        assert rows[0]["result"]["partitions"][0]["kind"] == "nilfs2"
+        assert rows[1]["result"]["sha256"] == hashlib.sha256(b"hello NILFS2 evidence\n").hexdigest()
+        assert nilfs2_backup_path.read_bytes() == nilfs2_backup
+
+        if os.environ.get("NILFS2_ORACLE_DIR"):
+            native_root = Path(os.environ["NILFS2_ORACLE_DIR"])
+            for native_name in ["nilfs2-1024-2048-block_count", "nilfs2-2048-1024-block_count", "nilfs2-4096-512-block_count", "nilfs2-4096-2048-none", "nilfs2-4096-512-cleaned"]:
+                selected_root = Path(os.environ.get("NILFS2_GC_ORACLE_DIR", str(native_root))) if native_name.endswith("cleaned") else native_root
+                native_manifest = json.loads((selected_root / (native_name + ".json")).read_text(encoding="utf8"))
+                _, rows = session([
+                    {"id": "open", "command": "images open", "args": {"path": str(selected_root / (native_name + ".img"))}},
+                    {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                    {"id": "hash", "command": "files hash", "args": {"nodeId": "nilfs2:part:0:" + b"/large".hex(), "algos": ["sha256"]}},
+                ])
+                assert all("result" in row for row in rows), rows
+                assert rows[0]["result"]["partitions"][0]["kind"] == "nilfs2"
+                assert any(item["name"] == "中文\\evidence" for item in rows[1]["result"]["items"])
+                assert rows[2]["result"]["sha256"] == native_manifest["records"]["/large"]["sha256"]
+                for file_name in ["/sparse", "/fragmented", "/versioned"]:
+                    _, checked = session([
+                        {"id": "open", "command": "images open", "args": {"path": str(selected_root / (native_name + ".img"))}},
+                        {"id": "hash", "command": "files hash", "args": {"nodeId": "nilfs2:part:0:" + file_name.encode().hex(), "algos": ["sha256"]}},
+                    ])
+                    assert all("result" in row for row in checked), checked
+                    assert checked[1]["result"]["sha256"] == native_manifest["records"][file_name]["sha256"]
+
         # OCFS2: resource allocation, a native-sized clean journal, sparse ranges and EAs.
         ocfs2_source = zlib.decompress((flash_vendor / "ocfs2-reader/tests/fixtures/discontiguous-ecc.zlib").read_bytes())
         ocfs2_path = root / "invented.ocfs2"

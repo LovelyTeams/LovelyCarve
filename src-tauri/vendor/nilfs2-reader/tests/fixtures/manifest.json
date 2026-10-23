@@ -1,0 +1,47 @@
+{
+  "license": "CC0-1.0",
+  "generator": "scripts/nilfs2-fixtures.py",
+  "fixtures": [
+    {
+      "name": "invented-1024",
+      "decoded_bytes": 2101248,
+      "sha256": "0ec065d5876a09b6c5e8523d1316b6992ff740ec5a461775d90f2e3f6acbafc2",
+      "compressed_sha256": "e69da8c93153621222e52c3032bf8b9a510d320cbce14298654a2fce16d1fabd"
+    },
+    {
+      "name": "invented-4096",
+      "decoded_bytes": 8392704,
+      "sha256": "a599c7689b6b220ac03f4dc0f8a55ac5e6f0ef87cb4f78af6dde3ac59a6abb12",
+      "compressed_sha256": "03cddba4c5a93608c361feca54e4d7324f69b95d721a0be49f8798d75e7ceded"
+    },
+    {
+      "name": "invented-65536",
+      "decoded_bytes": 134221824,
+      "sha256": "5beacd39361a688e7ca1f2902666c2ee440d94303d52fbd82014290d65160d98",
+      "compressed_sha256": "49f29fb1598d832f761883bf201d297f5840f21e2681a5a56680dd421c7eef45"
+    }
+  ],
+  "virtual_source": {
+    "length": 8589938688,
+    "chunks": [
+      {
+        "name": "high-chunk-0.zlib",
+        "offset": 1024,
+        "decoded_bytes": 1024,
+        "sha256": "9f0876839664ad65be435c75c543a1fc4568a55db27c94b8a95d9d03b2374731"
+      },
+      {
+        "name": "high-chunk-1.zlib",
+        "offset": 8589934592,
+        "decoded_bytes": 1024,
+        "sha256": "9f0876839664ad65be435c75c543a1fc4568a55db27c94b8a95d9d03b2374731"
+      },
+      {
+        "name": "high-chunk-2.zlib",
+        "offset": 6442450944,
+        "decoded_bytes": 46080,
+        "sha256": "aa8e9eaa019f2f6cd199ea80f9678637583323e4254ff1533924e2b539653be1"
+      }
+    ]
+  }
+}

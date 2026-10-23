@@ -316,6 +316,7 @@ pub(super) fn fs_label_for_kind(kind: PartitionKind) -> &'static str {
         PartitionKind::Befs => "BeFS",
         PartitionKind::Gfs2 => "GFS2",
         PartitionKind::Ocfs2 => "OCFS2",
+        PartitionKind::Nilfs2 => "NILFS2",
         PartitionKind::Minix => "MINIX",
         PartitionKind::Minifs => "MINIFS",
         PartitionKind::Romfs => "ROMFS",
@@ -373,6 +374,7 @@ pub(super) fn is_case_sensitive_fs(kind: PartitionKind) -> bool {
             | PartitionKind::Befs
             | PartitionKind::Gfs2
             | PartitionKind::Ocfs2
+            | PartitionKind::Nilfs2
             | PartitionKind::Minix
             | PartitionKind::Minifs
             | PartitionKind::Romfs

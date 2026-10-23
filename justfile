@@ -73,8 +73,8 @@ fmt-python:
 
 # Lint the Python binding without changing the desktop build.
 [group("python")]
-clippy-python:
-    {{ python_cargo_env }}cargo clippy --manifest-path python/Cargo.toml -- -D warnings
+clippy-python *args:
+    {{ python_cargo_env }}cargo clippy --manifest-path python/Cargo.toml {{ args }} -- -D warnings
 
 # Start Vite after preparing offline viewer assets.
 [group("frontend")]
@@ -165,6 +165,7 @@ fmt:
     cd src-tauri/vendor/befs-reader && cargo fmt
     cd src-tauri/vendor/gfs2-reader && cargo fmt
     cd src-tauri/vendor/ocfs2-reader && cargo fmt
+    cd src-tauri/vendor/nilfs2-reader && cargo fmt
     cd src-tauri/vendor/amiga-ffs && cargo fmt
     cd src-tauri/vendor/amiga-rdb && cargo fmt
     cd src-tauri/vendor/lamfold-erofs && cargo fmt
@@ -501,6 +502,22 @@ generate-ocfs2-fixtures:
 [group("readers")]
 test-ocfs2-native:
     cargo test --manifest-path src-tauri/vendor/ocfs2-reader/Cargo.toml --lib native_linux -- --ignored --nocapture
+
+[group("readers")]
+test-nilfs2 *args:
+    cargo test --manifest-path src-tauri/vendor/nilfs2-reader/Cargo.toml --lib {{ args }}
+
+[group("readers")]
+clippy-nilfs2:
+    cargo clippy --manifest-path src-tauri/vendor/nilfs2-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+test-nilfs2-native:
+    cargo test --manifest-path src-tauri/vendor/nilfs2-reader/Cargo.toml --lib native_linux -- --ignored --nocapture
+
+[group("readers")]
+generate-nilfs2-fixtures:
+    {{ python }} scripts/nilfs2-fixtures.py
 
 [group("readers")]
 clippy-befs:

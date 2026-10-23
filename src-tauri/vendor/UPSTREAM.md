@@ -163,3 +163,12 @@ mkfs / Linux kernel / fsck 验证见 [ORIGIN.md](gfs2-reader/ORIGIN.md)。
 及全部 slot 干净状态检查。Linux 四种块大小的原生逐文件核对和来源哈希见
 [ORIGIN.md](ocfs2-reader/ORIGIN.md)；能力与限制见 [OCFS2](../../docs/formats/OCFS2.md)。
 原创 Rust 为 AGPL-3.0-only；没有引入 C / FUSE / 外部提取器。
+
+## NILFS2 (2026-10-24)
+
+`nilfs2-reader` 0.1.0：先检索现有 Rust 库，复用 unearth 的 MIT 超级块前缀位置
+[bc891261221f](https://github.com/MarcelRoozekrans/unearth/blob/bc891261221f5f5134269780d6c206725b21d52e/src/nilfs2.rs)，
+新增双副本 / 日志 CRC、DAT、分配位图、direct / B-tree、当前与历史检查点读取。
+原生 Linux 五组镜像包含实际 GC 搬移和两个保留 snapshot，完整来源、哈希及限制见
+[ORIGIN.md](nilfs2-reader/ORIGIN.md) 与 [NILFS2](../../docs/formats/NILFS2.md)。
+原创 Rust 为 AGPL-3.0-only；没有引入 C 文件系统库、挂载依赖或外部提取器。

@@ -19,8 +19,14 @@ mod amiga_tests;
 mod befs;
 #[path = "gfs2.rs"]
 mod gfs2;
+#[path = "nilfs2.rs"]
+mod nilfs2;
 #[path = "ocfs2.rs"]
 mod ocfs2;
+pub use nilfs2::{open_nilfs2_source, parse_nilfs2_id, Nilfs2Volume};
+#[cfg(test)]
+#[path = "nilfs2_tests.rs"]
+mod nilfs2_tests;
 pub use ocfs2::{open_ocfs2_source, parse_ocfs2_id, Ocfs2Volume};
 #[cfg(test)]
 #[path = "ocfs2_tests.rs"]

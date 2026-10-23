@@ -423,6 +423,14 @@ JSONL 可直接引用检测结果及卷 ID，避免抄写 ID 和转义卷名：
 但脚本应复制 `files list` 返回的 `items[].id`，或使用上面的普通路径导航。
 
 
+### NILFS2 当前检查点
+
+NILFS2 复用 `files list/read/hash/export` 等现有命令，显示最新提交的目录树。
+硬链接保持 inode 身份和不同路径；稀疏区读零，已分配数据缺失或日志 CRC 不匹配报错。
+它没有独立存储 atime，输出保留为空；dirty / recovery 卷明确拒绝。
+历史 snapshot 已由独立 Rust 读取器 API 支持，CLI 暂无原生历史视图的选择命令。
+范围、原生 GC 样本和验证边界见 [NILFS2](formats/NILFS2.md)。
+
 ### BeFS / GFS2 / OCFS2 扩展属性
 
 BeOS / Haiku BeFS、GFS2 与 OCFS2 文件通过现有 `files streams list`、`files streams get` 和

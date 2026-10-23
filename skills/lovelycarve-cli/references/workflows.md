@@ -198,3 +198,12 @@ lovelycarve-cli -q sessions open partial
 lovelycarve-cli -q --session partial images open "<first-segment-path>" --raw-read-mode force
 lovelycarve-cli -q --session partial images get
 ```
+
+### NILFS2
+
+NILFS2 uses the ordinary file commands against its latest committed tree.
+Read and hash preserve sparse holes and report missing allocated blocks or log
+CRC failures. Recorded modification/change times are retained; access and
+creation times remain absent. Dirty/recovery views fail explicitly. The CLI
+does not currently select native historical snapshots; the standalone Rust
+reader provides that API. See `docs/formats/NILFS2.md` for verified boundaries.

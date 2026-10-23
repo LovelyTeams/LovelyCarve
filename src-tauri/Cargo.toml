@@ -162,6 +162,7 @@ memmap2 = "0.9.11"
 minifs = { path = "vendor/minifs" }
 minix-reader = { path = "vendor/minix-reader" }
 ms-compress = { version = "=0.2.0", default-features = false, features = ["std", "xpress", "lzx"] }
+nilfs2-reader = { path = "vendor/nilfs2-reader" }
 notatin = { path = "vendor/notatin" }
 ntfs = { path = "vendor/ntfs" }
 ntfs-core = { version = "0.9.8", default-features = false }
