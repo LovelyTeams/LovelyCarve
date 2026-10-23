@@ -105,6 +105,7 @@ pub fn partition_ftype(kind: PartitionKind) -> Option<u64> {
         | PartitionKind::Jffs2
         | PartitionKind::Yaffs2
         | PartitionKind::Yaffs1
+        | PartitionKind::Minifs
         | PartitionKind::Romfs
         | PartitionKind::Ubi
         | PartitionKind::Bitlocker

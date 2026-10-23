@@ -11,6 +11,8 @@ use crate::core::evidence::partitions::{Partition, PartitionKind};
 
 #[path = "firmware_chk.rs"]
 mod chk;
+#[path = "firmware_minifs.rs"]
+mod minifs_envelope;
 #[path = "firmware_safeloader.rs"]
 mod safeloader;
 #[path = "firmware_segments.rs"]
@@ -62,12 +64,16 @@ pub fn has_firmware_magic(bytes: &[u8]) -> bool {
         || bytes.starts_with(b"HDR0")
         || bytes.starts_with(b"buffalo.enc\n")
         || bytes.starts_with(b"sErCoMm")
+        || minifs_envelope::has_magic(bytes)
         || segments::has_wrapper_magic(bytes)
 }
 
 impl FirmwareImage {
     pub fn open(bytes: &[u8], cancel: &CancellationToken) -> Result<Self> {
         ensure!(!cancel.is_cancelled(), "firmware open cancelled");
+        if minifs_envelope::has_magic(bytes) {
+            return minifs_envelope::open(bytes, cancel);
+        }
         if bytes.starts_with(b"sErCoMm") {
             return sercomm::open(bytes, cancel);
         }

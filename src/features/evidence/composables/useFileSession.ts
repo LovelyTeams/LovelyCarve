@@ -62,6 +62,7 @@ export const DISK_IMAGE_EXTENSIONS = [
   'squashfs',
   'cramfs',
   'romfs',
+  'minifs',
   'ubifs',
   'jffs2',
   'yaffs2',

@@ -125,6 +125,7 @@ fmt:
     cd src-tauri/vendor/lamfold && cargo fmt
     cd src-tauri/vendor/lamfold-cramfs && cargo fmt
     cd src-tauri/vendor/lamfold-romfs && cargo fmt
+    cd src-tauri/vendor/minifs && cargo fmt
     cd src-tauri/vendor/backhand && cargo fmt
     cd src-tauri/vendor/lzma-rs && cargo fmt
     cd src-tauri/vendor/sercomm-firmware && cargo fmt
@@ -387,6 +388,16 @@ clippy-yaffs2:
 [group("readers")]
 test-vendor name *args:
     cargo test --manifest-path src-tauri/vendor/{{ name }}/Cargo.toml --lib {{ args }}
+
+# Lint the standalone MINIFS reader, including regression tests.
+[group("readers")]
+clippy-minifs:
+    cargo clippy --manifest-path src-tauri/vendor/minifs/Cargo.toml --all-targets -- -D warnings
+
+# Generate independent MINIFS fixtures, or a Python oracle for external firmware.
+[group("readers")]
+generate-minifs-fixtures *args:
+    {{ python }} scripts/minifs-fixtures.py {{ args }}
 
 # Lint the adapted read-only UBI library and its synthetic tests.
 [group("readers")]

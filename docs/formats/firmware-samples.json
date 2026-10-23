@@ -959,6 +959,40 @@
         "pagesPerBlock": 32,
         "fileSizeSource": "header"
       }
+    },
+    {
+      "name": "tplink-archer-c6-eu-v4-minifs-v3",
+      "url": "https://static.tp-link.com/upload/firmware/2022/202207/20220713/Archer%20C6(EU)_V4.0_220425.zip",
+      "member": "c6v4-up-noboot_2022-04-25_17.23.00.bin",
+      "size": 2934140,
+      "sha256": "50ede51b484339ebefe1a7928f2fc760c8015ea4f9a1093b8b6a2f258cd8a262",
+      "license": "Vendor firmware; copyright TP-Link; external local testing only; not redistributed",
+      "browsable": true,
+      "sourceFormat": "firmware",
+      "partitionKinds": [
+        "minifs"
+      ],
+      "partitions": [
+        {
+          "kind": "minifs",
+          "startByte": 1404948,
+          "lengthBytes": 1525829,
+          "sha256": "717a6a9dc715186ec794e6c3229f1de0093f473b56580c949b67cc393ff2c996"
+        }
+      ],
+      "oracle": {
+        "implementation": "Independent Python struct + stdlib lzma/liblzma",
+        "files": 362,
+        "chunks": 44,
+        "checks": [
+          "all paths and sizes",
+          "all logical SHA-256",
+          "full/stream/range reads",
+          "all CLI tree exports",
+          "source RAW export identity"
+        ],
+        "reference": "MINIFS.md"
+      }
     }
   ]
 }

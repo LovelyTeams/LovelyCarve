@@ -288,6 +288,7 @@ pub(crate) fn supports_os_detect(kind: PartitionKind) -> bool {
             | PartitionKind::Jffs2
             | PartitionKind::Yaffs2
             | PartitionKind::Yaffs1
+            | PartitionKind::Minifs
             | PartitionKind::Romfs
             | PartitionKind::ApfsContainer
             | PartitionKind::HfsPlus
@@ -315,6 +316,7 @@ pub(crate) fn kind_str(kind: PartitionKind) -> &'static str {
         PartitionKind::Cdfs => "cdfs",
         PartitionKind::Squashfs => "squashfs",
         PartitionKind::Cramfs => "cramfs",
+        PartitionKind::Minifs => "minifs",
         PartitionKind::Romfs => "romfs",
         PartitionKind::Ubifs => "ubifs",
         PartitionKind::Jffs2 => "jffs2",

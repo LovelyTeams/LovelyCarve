@@ -184,6 +184,10 @@ pub(super) fn children_for_image_with_options(
                 )?
                 .root_children()
             }
+            PartitionKind::Minifs => {
+                crate::core::filesystem::volumes::minifs::open_minifs_source(image, partition.id)?
+                    .root_children()
+            }
             PartitionKind::Romfs => {
                 crate::core::filesystem::volumes::rom_images::RomfsVolume::open(
                     Arc::clone(image),
