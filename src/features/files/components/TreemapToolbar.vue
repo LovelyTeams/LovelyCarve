@@ -27,7 +27,7 @@
     <span class="ui-divider-v" aria-hidden="true"></span>
     <ul class="treemap-legend" :aria-label="tr('图例')">
       <li v-for="item in legend" :key="item.key" class="legend-item">
-        <span class="legend-swatch" :class="item.className" aria-hidden="true"></span>{{ item.label }}
+        <span class="legend-swatch" :style="{ background: item.swatch }" aria-hidden="true"></span>{{ item.label }}
       </li>
     </ul>
   </div>
@@ -46,6 +46,7 @@ import FileViewSwitch from './FileViewSwitch.vue';
 import type { TreemapMode } from '../composables/useSizeTree';
 import type { FileViewMode } from '../model/treemap';
 import { AGE_BUCKETS, TREEMAP_KINDS, ageBucketLabel, treemapKindLabel } from '../model/treemapKinds';
+import { ageSwatch, kindSwatch } from '../model/treemapPalette';
 
 const MIN_DEPTH = 1;
 const MAX_DEPTH = 6;
@@ -58,13 +59,12 @@ const view = defineModel<FileViewMode>('view', { required: true });
 /** 图例随度量切换：类别色相，或「时间」的由新到旧。 */
 const legend = computed(() => mode.value === 'age'
   ? [
-    ...AGE_BUCKETS.map((_limit, bucket) => ({ key: `age-${bucket}`, className: `age-${bucket}`, label: ageBucketLabel(bucket, tr) })),
-    { key: 'age-none', className: 'age-none', label: tr('时间未知') },
+    ...AGE_BUCKETS.map((_limit, bucket) => ({ key: `age-${bucket}`, swatch: ageSwatch(bucket), label: ageBucketLabel(bucket, tr) })),
+    { key: 'age-none', swatch: ageSwatch(null), label: tr('时间未知') },
   ]
-  : TREEMAP_KINDS.map(kind => ({ key: kind, className: `k-${kind}`, label: treemapKindLabel(kind, tr) })));
+  : TREEMAP_KINDS.map(kind => ({ key: kind, swatch: kindSwatch(kind), label: treemapKindLabel(kind, tr) })));
 </script>
 
-<style scoped src="../styles/treemap-kinds.css"></style>
 <style scoped>
 /* ── 树图工具条 ──
    与列表的筛选条同一位置、同高：左侧是度量、已删除、层数与图例，右侧是视图切换。
@@ -119,6 +119,14 @@ const legend = computed(() => mode.value === 'age'
   color: var(--text-secondary);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.legend-swatch {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 12%, transparent);
 }
 
 .treemap-bar .ui-toolbar-actions {
