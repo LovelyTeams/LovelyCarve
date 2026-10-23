@@ -12,9 +12,11 @@ use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree::open_ntfs_for_source;
 use crate::core::filesystem::volumes::ntfs::{parse_ntfs_id, NtfsDataStream};
 use crate::core::filesystem::volumes::refs::{open_refs_source, parse_refs_id};
-use crate::core::filesystem::volumes::rom_images::{open_hfs_source, parse_hfs_id};
+use crate::core::filesystem::volumes::rom_images::{
+    open_befs_source, open_hfs_source, parse_befs_id, parse_hfs_id,
+};
 
-/// Lists NTFS / ReFS data streams or classic HFS data/resource forks. Returns
+/// Lists NTFS / ReFS data streams or classic HFS data/resource forks or BeFS attributes. Returns
 /// an empty Vec for filesystems without a named-stream adapter so
 /// the IPC layer can call this unconditionally and let the frontend decide
 /// whether to render the streams section.
@@ -25,6 +27,9 @@ pub fn list_data_streams(
     let image = image.filesystem_session(node_id);
     if let Some((source, path)) = parse_hfs_id(node_id) {
         return open_hfs_source(image, source)?.list_streams(&path);
+    }
+    if let Some((source, path)) = parse_befs_id(node_id) {
+        return open_befs_source(image, source)?.list_streams(&path);
     }
     if let Some((source, path)) = parse_refs_id(node_id) {
         return open_refs_source(image, source)?.list_streams(&path);
@@ -52,11 +57,14 @@ pub fn read_named_stream(
     if let Some((source, path)) = parse_hfs_id(node_id) {
         return open_hfs_source(image, source)?.read_named_stream(&path, stream_name, max_bytes);
     }
+    if let Some((source, path)) = parse_befs_id(node_id) {
+        return open_befs_source(image, source)?.read_named_stream(&path, stream_name, max_bytes);
+    }
     if let Some((source, path)) = parse_refs_id(node_id) {
         return open_refs_source(image, source)?.read_named_stream(&path, stream_name, max_bytes);
     }
     let (source, record) = parse_ntfs_id(node_id).ok_or_else(|| {
-        anyhow::anyhow!("named streams are only supported on NTFS, ReFS and classic HFS")
+        anyhow::anyhow!("named streams are only supported on NTFS, ReFS, classic HFS and BeFS")
     })?;
     open_ntfs_for_source(image, source)?.read_data_stream(record, stream_name, max_bytes)
 }
@@ -85,6 +93,19 @@ pub fn export_named_stream(
             )
         });
     }
+    if let Some((source, path)) = parse_befs_id(node_id) {
+        return write_new(destination, |file| {
+            open_befs_source(image, source)?.stream_named_stream(
+                &path,
+                stream_name,
+                1024 * 1024,
+                |chunk| {
+                    file.write_all(chunk)?;
+                    Ok(())
+                },
+            )
+        });
+    }
     if let Some((source, path)) = parse_refs_id(node_id) {
         return write_new(destination, |file| {
             open_refs_source(image, source)?.stream_named_stream(
@@ -99,7 +120,7 @@ pub fn export_named_stream(
         });
     }
     let (source, record) = parse_ntfs_id(node_id).ok_or_else(|| {
-        anyhow::anyhow!("named streams are only supported on NTFS, ReFS and classic HFS")
+        anyhow::anyhow!("named streams are only supported on NTFS, ReFS, classic HFS and BeFS")
     })?;
     write_new(destination, |file| {
         open_ntfs_for_source(image, source)?.stream_data_stream(

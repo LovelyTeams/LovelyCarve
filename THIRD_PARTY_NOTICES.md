@@ -1616,3 +1616,19 @@ formatter/reader oracle, not copied into or linked by the product. The fixture
 manifest records decoded/compressed hashes; LNFS and link field-edit boundaries
 are documented in the adapter provenance. The LovelyCarve adapter is
 AGPL-3.0-only, consistent with this repository.
+
+## BeFS / BeOS BFS reader
+
+`befs-reader` adapts the read-side layouts and algorithms from Dani's
+[rusty-backup bfs.rs](https://github.com/danifunker/rusty-backup/blob/6e044a314f6523045999058f85a882c1eeb64b50/src/fs/bfs.rs)
+(AGPL-3.0, original license retained as `src-tauri/vendor/befs-reader/LICENSE`).
+Primary Haiku BFS definitions and timestamp semantics are MIT-licensed;
+Axel Dörfler's notice and the Marcus Overhagen attribution are retained in
+`LICENSE-HAIKU`. No C filesystem code is compiled or linked.
+
+The independent invented fixtures and their Python encoder are CC0-1.0.
+The opt-in native audit downloads official Haiku public artifacts and an
+independent publisher package; these external OS/package files retain their
+own licenses and are not distributed in this repository. Fixed sources,
+archive checksums, exact verification boundaries and maintained changes are
+recorded in [ORIGIN.md](src-tauri/vendor/befs-reader/ORIGIN.md).

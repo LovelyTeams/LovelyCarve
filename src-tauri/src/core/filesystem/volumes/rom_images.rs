@@ -15,8 +15,14 @@ use crate::core::filesystem::tree::fs_tree::{FsNode, FsStat, Mactb, NodeKind};
 #[cfg(test)]
 #[path = "amiga_tests.rs"]
 mod amiga_tests;
+#[path = "befs.rs"]
+mod befs;
 #[path = "classic_hfs_streams.rs"]
 mod classic_hfs_streams;
+pub use befs::{open_befs_source, parse_befs_id, BeFsVolume};
+#[cfg(test)]
+#[path = "befs_tests.rs"]
+mod befs_tests;
 #[cfg(test)]
 #[path = "classic_hfs_tests.rs"]
 mod classic_hfs_tests;

@@ -19,6 +19,7 @@
 
 pub mod amiga;
 pub mod apm;
+pub mod befs;
 pub mod bsd;
 pub mod btrfs;
 pub mod classic_hfs;
@@ -145,6 +146,7 @@ pub enum PartitionKind {
     Jfs,
     Reiserfs,
     Amiga,
+    Befs,
     Ubifs,
     Lvm,
     Bitlocker,
@@ -365,6 +367,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
         | PartitionKind::Amiga
+        | PartitionKind::Befs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

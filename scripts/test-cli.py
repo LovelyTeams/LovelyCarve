@@ -149,6 +149,53 @@ def main():
             assert rows[2]["result"]["data"] == flash_body[flash_offset:flash_offset + 121].hex()
             assert rows[3]["result"]["sha256"] == hashlib.sha256(flash_body).hexdigest()
 
+        # BeFS: both endian orders, indirect/double runs and typed attributes.
+        for befs_name, befs_block in [("le-1024-2560", 1024), ("be-4096-2560", 4096), ("le-1024-10000", 1024)]:
+            befs_path = root / (befs_name + ".befs")
+            befs_source = zlib.decompress((flash_vendor / ("befs-reader/tests/fixtures/" + befs_name + ".zlib")).read_bytes())
+            befs_path.write_bytes(befs_source)
+            befs_node = "befs:part:0:" + b"/big.bin".hex()
+            befs_body = bytes((index * 17 + 5) & 255 for index in range(26 * befs_block - 37))
+            befs_attribute = bytes((index * 23 + 7) & 255 for index in range(12003))
+            befs_export = root / (befs_name + "-export.bin")
+            befs_attr_export = root / (befs_name + "-attribute.bin")
+            befs_offset = 18 * befs_block - 11
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(befs_path)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": befs_node, "offset": befs_offset, "length": 73}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": befs_node, "algos": ["sha256"]}},
+                {"id": "export", "command": "files export", "args": {"nodeId": befs_node, "destination": str(befs_export)}},
+                {"id": "streams", "command": "files streams list", "args": {"nodeId": befs_node}},
+                {"id": "inline", "command": "files streams get", "args": {"nodeId": befs_node, "streamName": "custom", "maxBytes": 100}},
+                {"id": "attribute", "command": "files streams get", "args": {"nodeId": befs_node, "streamName": "big-attribute", "maxBytes": 97}},
+                {"id": "attribute-export", "command": "files streams export", "args": {"nodeId": befs_node, "streamName": "big-attribute", "destination": str(befs_attr_export)}},
+                {"id": "name", "command": "files read", "args": {"nodeId": "befs:part:0:" + "/中文\\evidence".encode().hex(), "offset": 0, "length": 100}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "befs"
+            assert any(item["name"] == "中文\\evidence" for item in rows[1]["result"]["items"])
+            assert rows[2]["result"]["data"] == befs_body[befs_offset:befs_offset + 73].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(befs_body).hexdigest()
+            assert befs_export.read_bytes() == befs_body
+            assert any(stream["name"] == "big-attribute" for stream in rows[5]["result"])
+            assert rows[6]["result"] == {"encoding": "hex", "data": b"\x00\xffinline\x80".hex()}
+            assert rows[7]["result"] == {"encoding": "hex", "data": befs_attribute[:97].hex()}
+            assert befs_attr_export.read_bytes() == befs_attribute
+            assert rows[9]["result"]["data"] == b"names".hex()
+            assert befs_path.read_bytes() == befs_source
+
+        # Opt-in publisher-verified hrev60295 native image from test-befs-native.
+        if os.environ.get("BEFS_ORACLE_IMAGE"):
+            native_node = "befs:part:0:" + b"/system/packages/haiku-r1~beta6_hrev60295-1-x86_64.hpkg".hex()
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": os.environ["BEFS_ORACLE_IMAGE"]}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": native_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "befs"
+            assert rows[1]["result"]["sha256"] == "f624ff224ac0cc68c22300e15babc3e058b09fc145f0af19f3257c0c5e9c85dc"
+
         # Amiga: independent OFS/FFS variants, native multi-block RDB and links.
         amiga_body = bytes((index * 17 + 5) & 255 for index in range(200013))
         for amiga_name, amiga_parts in [("dos0-512-1760", (0,)), ("links-dos3", (0,)), ("dos7-4096-1760", (0,)), ("rdb-multiblock", (0, 1, 3))]:

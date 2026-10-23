@@ -69,7 +69,7 @@ export const DISK_IMAGE_EXTENSIONS = [
   'qnx6',
   'udf',
   'minix',
-  'jfs', 'reiserfs', 'amiga',
+  'jfs', 'reiserfs', 'amiga', 'befs',
   'hfs',
   'ubifs',
   'jffs2',

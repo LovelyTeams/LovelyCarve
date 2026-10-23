@@ -135,3 +135,16 @@ Latin-1、无时区日期、精确范围读取与 FFS 连续块合并。lamfold 
 RDB 保留设备分区跨度和 DosEnvec 文件系统几何，限制链与读次数，拒绝 BADB 重映射。
 来源和独立 amitools 夹具边界见 [ORIGIN.md](amiga-reader/ORIGIN.md) 与
 [格式说明](../../docs/formats/AMIGA.md)。
+
+## BeFS（BeOS / Haiku BFS）
+
+`befs-reader` 0.1.0：读取布局 / 算法适配自 rusty-backup 0.1.0 的 `src/fs/bfs.rs`，
+固定提交 `6e044a314f6523045999058f85a882c1eeb64b50`（AGPL-3.0）。
+以 Haiku `660ea78079ca9ee36623a0562208476bce89b11e` 的原生定义核对几何、B+tree、
+run 范围、属性及时间语义；保留 MIT 参考代码许可。实现为只读 BlockSource 上的独立纯 Rust 库，
+加入位图 / 重叠校验、有限缓存、精确范围读取、明确 dirty 拒绝与无损 UTF-8。
+
+默认不把 BeOS 计数位解释为 Haiku 亚秒，也不将保留字虚构为 ctime；原始时间字和显式
+Haiku 编码解释在 Rust API 中提供。原生 Haiku 官方镜像及独立发布系统包通过完整校验和审计，
+不随仓库分发；自制夹具为 CC0-1.0。见 [ORIGIN.md](befs-reader/ORIGIN.md) 与
+[格式说明](../../docs/formats/BEFS.md)。

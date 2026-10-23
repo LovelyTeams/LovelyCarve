@@ -1,0 +1,16 @@
+[package]
+name = "befs-reader"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+authors = ["Dani <dani@funkervogt.com>", "LovelyCarve contributors"]
+description = "Bounded immutable BeOS and Haiku BFS filesystem reader"
+
+[dependencies]
+lamfold = { path = "../lamfold", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+flate2 = "1"
+sha2 = "0.10"
+
+[workspace]

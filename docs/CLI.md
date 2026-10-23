@@ -422,6 +422,15 @@ JSONL 可直接引用检测结果及卷 ID，避免抄写 ID 和转义卷名：
 这些值由目录枚举提供，不能从卷名猜测。默认 FS 树使用子卷 5，常见根 inode 为 256，
 但脚本应复制 `files list` 返回的 `items[].id`，或使用上面的普通路径导航。
 
+
+### BeFS 扩展属性
+
+BeOS / Haiku BeFS 文件通过现有 `files streams list`、`files streams get` 和
+`files streams export` 接口提供内联 / 外联扩展属性。复制列表返回的流名，不将流名
+解释为主机路径；导出目标必须为新文件。属性原始数据不做文本转换。
+读取范围、原生样本和时间编码边界见 [BeFS](formats/BEFS.md)。
+
+
 ## 常驻会话
 
 连续取证建议先启动命名会话。后台进程保持案件、E01 句柄、读取缓存、RAID/LVM 组装卷、

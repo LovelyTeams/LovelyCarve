@@ -162,6 +162,7 @@ fmt:
     cd src-tauri/vendor/jfs-reader && cargo fmt
     cd src-tauri/vendor/reiserfs-reader && cargo fmt
     cd src-tauri/vendor/amiga-reader && cargo fmt
+    cd src-tauri/vendor/befs-reader && cargo fmt
     cd src-tauri/vendor/amiga-ffs && cargo fmt
     cd src-tauri/vendor/amiga-rdb && cargo fmt
     cd src-tauri/vendor/lamfold-erofs && cargo fmt
@@ -461,6 +462,22 @@ test-reiserfs:
 [group("readers")]
 test-amiga:
     cargo test --manifest-path src-tauri/vendor/amiga-reader/Cargo.toml --lib
+
+[group("readers")]
+test-befs *args:
+    cargo test --manifest-path src-tauri/vendor/befs-reader/Cargo.toml --lib {{ args }}
+
+[group("readers")]
+clippy-befs:
+    cargo clippy --manifest-path src-tauri/vendor/befs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-befs-fixtures:
+    {{ python }} scripts/befs-fixtures.py
+
+[group("readers")]
+test-befs-native *args:
+    {{ python }} scripts/befs-native-oracle.py {{ args }}
 
 [group("readers")]
 test-amiga-ffs:

@@ -1,0 +1,82 @@
+[
+  {
+    "file": "le-1024-2560.zlib",
+    "bytes": 2621440,
+    "sha256": "086e46c784a7d5042661700884ac6af506b5af8c0bc0e76becc28f7f7c07200b",
+    "compressed_sha256": "9e17485f284f7cb88c4e725d6eed34d69687a3d720f6ca2dc40274f7be7a3163",
+    "license": "CC0-1.0",
+    "source": "scripts/befs-fixtures.py; independent encoding, not a native formatter oracle"
+  },
+  {
+    "file": "be-1024-2560.zlib",
+    "bytes": 2621440,
+    "sha256": "d716df786c253c5c0522c9ac7d5fa0ac18fc839facdac2970447079d44816f43",
+    "compressed_sha256": "3b6b4298322e53c1e0a75fde8dede5124664a8b19339ff1e0103ce90b14957e8",
+    "license": "CC0-1.0",
+    "source": "scripts/befs-fixtures.py; independent encoding, not a native formatter oracle"
+  },
+  {
+    "file": "le-2048-2560.zlib",
+    "bytes": 5242880,
+    "sha256": "f224ce84bfcec9b2ada6fdbedc78db04e3c4e15fc0e6baa719816c6544c9215e",
+    "compressed_sha256": "0a5a26f818c41e1eb1062e2f25f5d18db39a5b9f998bb929aa82d274775fb917",
+    "license": "CC0-1.0",
+    "source": "scripts/befs-fixtures.py; independent encoding, not a native formatter oracle"
+  },
+  {
+    "file": "be-2048-2560.zlib",
+    "bytes": 5242880,
+    "sha256": "ae8ac00835fb8e9d20451802268de54607f15a650ad2cca13a0484ea1fc078d9",
+    "compressed_sha256": "77243cd18e6ccf94a2158a1cb3ebc38247041a129751b68876e1e8ec8e930b04",
+    "license": "CC0-1.0",
+    "source": "scripts/befs-fixtures.py; independent encoding, not a native formatter oracle"
+  },
+  {
+    "file": "le-4096-2560.zlib",
+    "bytes": 10485760,
+    "sha256": "e57bb8d5a3e01ad9a52ee3dc467f16c37e8dc75f52b883051ae17e7215aafe59",
+    "compressed_sha256": "3abbb80336ebe3ba31210cc4a3703f29134a6fd6b2bbf51df45668f894e76d99",
+    "license": "CC0-1.0",
+    "source": "scripts/befs-fixtures.py; independent encoding, not a native formatter oracle"
+  },
+  {
+    "file": "be-4096-2560.zlib",
+    "bytes": 10485760,
+    "sha256": "795683f10615caa075793c23b850e7c721de73bba43d0f0f0d7efff8c5acc30f",
+    "compressed_sha256": "0b200a300071ce82b3c488bfc580abb11a54ce236ecaa8c3ea1eb2c103fe2ac0",
+    "license": "CC0-1.0",
+    "source": "scripts/befs-fixtures.py; independent encoding, not a native formatter oracle"
+  },
+  {
+    "file": "le-8192-2560.zlib",
+    "bytes": 20971520,
+    "sha256": "5216ff6e6b5b3b7c9fb57ef303237cb0e146410e9ca62e25c805aba7e8a7c846",
+    "compressed_sha256": "2331b1abfea59ff617889c7d59441bf4cfaa5e6f514a09055788d8416b0dbf39",
+    "license": "CC0-1.0",
+    "source": "scripts/befs-fixtures.py; independent encoding, not a native formatter oracle"
+  },
+  {
+    "file": "be-8192-2560.zlib",
+    "bytes": 20971520,
+    "sha256": "252bc1e6c7f55f861785eb22dc4f0b7dcdf32e6fe61d4f3f6657bfd434781a43",
+    "compressed_sha256": "21fdf2fa48eb4ee5afe465942e8c9dec6b2c2829d4ef2d37e5eeb92467caeae1",
+    "license": "CC0-1.0",
+    "source": "scripts/befs-fixtures.py; independent encoding, not a native formatter oracle"
+  },
+  {
+    "file": "le-1024-10000.zlib",
+    "bytes": 10240000,
+    "sha256": "8cc494ce8f01e041e4a2db0e5851ba24d230c61d94d025c9db6372193cefe084",
+    "compressed_sha256": "41c27c36b6a10d457a7474cf2d52e335e636f75b376efefab78dc63b177d5c25",
+    "license": "CC0-1.0",
+    "source": "scripts/befs-fixtures.py; independent encoding, not a native formatter oracle"
+  },
+  {
+    "file": "be-1024-100000.zlib",
+    "bytes": 102400000,
+    "sha256": "c06202e446ff647321adf2d929f266697961d1da84bfc4260603220f401d5883",
+    "compressed_sha256": "2dddcb363e4b73d95161fa82f03a78b99a12da4b3cc7d1ecfd1d913efc369cca",
+    "license": "CC0-1.0",
+    "source": "scripts/befs-fixtures.py; independent encoding, not a native formatter oracle"
+  }
+]

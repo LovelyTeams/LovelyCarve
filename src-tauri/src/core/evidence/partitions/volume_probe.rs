@@ -167,6 +167,7 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &super::jfs::JfsProbe,
     &super::reiserfs::ReiserFsProbe,
     &super::amiga::AmigaProbe,
+    &super::befs::BeFsProbe,
 ];
 
 pub fn probe_volume(
@@ -196,6 +197,9 @@ pub fn probe_volume_with_head(ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeH
 pub fn detect_filesystem_bytes(bytes: &[u8], fallback: PartitionKind) -> PartitionKind {
     if super::classic_hfs::detect(bytes) {
         return PartitionKind::Hfs;
+    }
+    if super::befs::detect(bytes) {
+        return PartitionKind::Befs;
     }
     if super::reiserfs::detect(bytes) {
         return PartitionKind::Reiserfs;
@@ -310,6 +314,7 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
         | PartitionKind::Amiga
+        | PartitionKind::Befs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

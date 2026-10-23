@@ -1075,11 +1075,11 @@ keywords = ["mactime", "bodyfile", "sleuthkit"]
 [[command]]
 path = "files streams list"
 ipc = "fs_streams"
-summary = "列出 NTFS / ReFS 数据流或 HFS 文件分叉"
+summary = "列出 NTFS / ReFS 数据流、HFS 文件分叉或 BeFS 属性"
 category = "read"
 target = "nodeId"
 concurrent = true
-keywords = ["ads", "alternate data stream", "resource fork", "hfs"]
+keywords = ["ads", "alternate data stream", "resource fork", "hfs", "befs", "attributes"]
 
 [[command]]
 path = "files streams get"

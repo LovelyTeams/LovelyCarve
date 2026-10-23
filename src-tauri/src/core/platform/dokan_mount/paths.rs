@@ -313,6 +313,7 @@ pub(super) fn fs_label_for_kind(kind: PartitionKind) -> &'static str {
         PartitionKind::Jfs => "JFS",
         PartitionKind::Reiserfs => "ReiserFS",
         PartitionKind::Amiga => "Amiga OFS/FFS",
+        PartitionKind::Befs => "BeFS",
         PartitionKind::Minix => "MINIX",
         PartitionKind::Minifs => "MINIFS",
         PartitionKind::Romfs => "ROMFS",
@@ -367,6 +368,7 @@ pub(super) fn is_case_sensitive_fs(kind: PartitionKind) -> bool {
             | PartitionKind::Udf
             | PartitionKind::Jfs
             | PartitionKind::Reiserfs
+            | PartitionKind::Befs
             | PartitionKind::Minix
             | PartitionKind::Minifs
             | PartitionKind::Romfs
