@@ -100,6 +100,78 @@ def main():
             assert firmware_rows[2]["result"]["data"] == firmware_content[11:104].hex()
             assert firmware_rows[3]["result"]["sha256"] == hashlib.sha256(firmware_content).hexdigest()
 
+        # Independent MINIFS v3 fixture: shared LZMA chunks and native commands.
+        minifs_fixture = Path(__file__).resolve().parent.parent / "src-tauri/vendor/minifs/tests/fixtures/synthetic.minifs"
+        minifs_content = bytes(range(256)) * 289 + b"MINIFS test\n"
+        minifs_source = minifs_fixture.read_bytes()
+        minifs_header = bytearray(148)
+        for offset, value in [(0x18, 128 + len(minifs_source)), (0x20, 1),
+                              (0x54, 128), (0x58, len(minifs_source))]:
+            struct.pack_into(">I", minifs_header, offset, value)
+        minifs_wrapped = root / "minifs-firmware.bin"
+        minifs_wrapped.write_bytes(minifs_header + minifs_source)
+        minifs_node = "minifs:part:0:" + b"/web/js/app.js".hex()
+        for minifs_path in (minifs_fixture, minifs_wrapped):
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(minifs_path)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": minifs_node, "offset": 65530, "length": 100}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": minifs_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "minifs"
+            assert rows[0]["result"]["sectorSize"] == 1
+            assert any(item["name"] == "web" and item["kind"] == "dir" for item in rows[1]["result"]["items"])
+            assert rows[2]["result"]["data"] == minifs_content[65530:65630].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(minifs_content).hexdigest()
+
+        # EROFS and F2FS: independent/reference fixtures through native commands.
+        flash_vendor = Path(__file__).resolve().parent.parent / "src-tauri/vendor"
+        f2fs_path = root / "synthetic.f2fs"
+        f2fs_path.write_bytes(zlib.decompress((flash_vendor / "f2fs-reader/tests/fixtures/synthetic.f2fs.zlib").read_bytes()))
+        f2fs_body = bytearray(bytes(range(256)) * (1000 * 16) + bytes(range(37)))
+        f2fs_body[3 * 4096:5 * 4096] = bytes(8192)
+        for flash_kind, flash_path, flash_file, flash_body, flash_offset in [
+            ("erofs", flash_vendor / "lamfold-erofs/tests/fixtures/erofs.img", "/big.dat", bytes(range(256)) * 1171 + bytes(range(224)), 4090),
+            ("f2fs", f2fs_path, "/big.bin", bytes(f2fs_body), 913 * 4096 - 9),
+        ]:
+            flash_node = flash_kind + ":part:0:" + flash_file.encode().hex()
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(flash_path)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": flash_node, "offset": flash_offset, "length": 121}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": flash_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == flash_kind
+            assert rows[0]["result"]["sectorSize"] == 1
+            assert rows[1]["result"]["items"]
+            assert rows[2]["result"]["data"] == flash_body[flash_offset:flash_offset + 121].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(flash_body).hexdigest()
+
+        # QNX4 extent-chain and independently QNX-created QNX6 reference image.
+        qnx_fixtures = flash_vendor / "qnx-reader/tests/fixtures"
+        with tarfile.open(qnx_fixtures / "nfi-qnx6.tar.gz", "r:gz") as archive:
+            qnx6_body = archive.extractfile("this_file_is_large").read()
+        for qnx_kind, qnx_fixture, qnx_file, qnx_expected in [
+            ("qnx4", "qnx4.zlib", "/big.bin", bytes((index * 13 + 7) % 256 for index in range(1300))),
+            ("qnx6", "nfi-qnx6.zlib", "/this_file_is_large", qnx6_body),
+        ]:
+            qnx_path = root / (qnx_kind + ".img")
+            qnx_path.write_bytes(zlib.decompress((qnx_fixtures / qnx_fixture).read_bytes()))
+            qnx_node = qnx_kind + ":part:0:" + qnx_file.encode().hex()
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(qnx_path)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": qnx_node, "offset": 500, "length": 121}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": qnx_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == qnx_kind
+            assert rows[1]["result"]["items"]
+            assert rows[2]["result"]["data"] == qnx_expected[500:621].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(qnx_expected).hexdigest()
+
         # Native CramFS / ROMFS: library-backed tree, page-crossing reads and hash.
         rom_fixtures = Path(__file__).resolve().parent.parent / "src-tauri/test_data/rom-images"
         rom_content = (rom_fixtures / "payload.bin").read_bytes()

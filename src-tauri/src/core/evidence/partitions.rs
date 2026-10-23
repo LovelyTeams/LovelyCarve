@@ -22,6 +22,7 @@ pub mod bsd;
 pub mod btrfs;
 pub mod ext4;
 pub mod fat;
+pub mod flashfs;
 pub mod gpt;
 pub mod hfsplus;
 pub mod jffs2;
@@ -29,7 +30,9 @@ pub mod luks;
 pub mod lvm2;
 pub mod mbr;
 pub mod mdadm;
+pub mod minifs;
 pub mod optical_disc;
+pub mod qnx;
 pub mod rom_images;
 pub mod squashfs;
 pub mod ubifs;
@@ -111,6 +114,11 @@ pub enum PartitionKind {
     Squashfs,
     Cramfs,
     Romfs,
+    Minifs,
+    Erofs,
+    F2fs,
+    Qnx4,
+    Qnx6,
     Ubifs,
     Lvm,
     Bitlocker,
@@ -320,6 +328,11 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Jffs2
         | PartitionKind::Yaffs2
         | PartitionKind::Yaffs1
+        | PartitionKind::Erofs
+        | PartitionKind::F2fs
+        | PartitionKind::Qnx4
+        | PartitionKind::Qnx6
+        | PartitionKind::Minifs
         | PartitionKind::Romfs
         | PartitionKind::BiosBoot
         | PartitionKind::ApfsContainer

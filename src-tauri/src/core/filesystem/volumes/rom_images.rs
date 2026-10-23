@@ -1,4 +1,4 @@
-//! CramFS / Linux ROMFS adapters over the vendored lamfold readers.
+//! CramFS / ROMFS / EROFS / F2FS / QNX adapters over the lamfold reader contract.
 //! Paths retain their volume identity; no host extraction or symlink following.
 
 use std::{cell::RefCell, collections::HashSet, sync::Arc};
@@ -13,11 +13,18 @@ use crate::core::filesystem::fs_dispatch::build_stat;
 use crate::core::filesystem::tree::fs_tree::{FsNode, FsStat, Mactb, NodeKind};
 
 #[cfg(test)]
+#[path = "flashfs_tests.rs"]
+mod flashfs_tests;
+#[cfg(test)]
 #[path = "rom_images_tests.rs"]
 mod tests;
 
 pub type CramfsVolume = RomVolume<lamfold_cramfs::Cramfs<RomImageSource>>;
 pub type RomfsVolume = RomVolume<lamfold_romfs::Romfs<RomImageSource>>;
+pub type ErofsVolume = RomVolume<lamfold_erofs::Erofs<RomImageSource>>;
+pub type F2fsVolume = RomVolume<f2fs_reader::F2fs<RomImageSource>>;
+pub type Qnx4Volume = RomVolume<qnx_reader::Qnx4<RomImageSource>>;
+pub type Qnx6Volume = RomVolume<qnx_reader::Qnx6<RomImageSource>>;
 
 pub struct RomImageSource {
     image: Arc<DiskImage>,
@@ -68,6 +75,42 @@ pub fn parse_cramfs_id(id: &str) -> Option<(u8, String)> {
 }
 pub fn parse_romfs_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "romfs")
+}
+pub fn parse_erofs_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "erofs")
+}
+pub fn parse_qnx4_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "qnx4")
+}
+pub fn open_qnx4_source(image: &Arc<DiskImage>, partition: u8) -> Result<Qnx4Volume> {
+    Qnx4Volume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn parse_qnx6_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "qnx6")
+}
+pub fn open_qnx6_source(image: &Arc<DiskImage>, partition: u8) -> Result<Qnx6Volume> {
+    Qnx6Volume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn parse_f2fs_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "f2fs")
+}
+pub fn open_erofs_source(image: &Arc<DiskImage>, partition: u8) -> Result<ErofsVolume> {
+    ErofsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn open_f2fs_source(image: &Arc<DiskImage>, partition: u8) -> Result<F2fsVolume> {
+    F2fsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
 }
 
 fn parse_id(id: &str, prefix: &str) -> Option<(u8, String)> {
@@ -202,7 +245,27 @@ impl<F: FoldFrontend<RomImageSource>> RomVolume<F> {
                 },
                 deleted: false,
                 inode: Some(entry.node),
-                timestamps: Mactb::default(),
+                timestamps: {
+                    let times = reader.timestamps(entry.node, &mut context)?;
+                    let format = |value: Option<(i64, u32)>| -> Result<Option<String>> {
+                        value
+                            .map(|(seconds, nanos)| {
+                                chrono::DateTime::from_timestamp(seconds, nanos)
+                                    .map(|time| {
+                                        time.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)
+                                    })
+                                    .context("filesystem timestamp out of range")
+                            })
+                            .transpose()
+                    };
+                    Mactb {
+                        modified: format(times.modified)?,
+                        accessed: format(times.accessed)?,
+                        created: format(times.created)?,
+                        mft_changed: format(times.changed)?,
+                        birth: None,
+                    }
+                },
                 link_target: reader
                     .read_link(entry.node, &mut context)?
                     .map(String::from_utf8)

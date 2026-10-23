@@ -170,6 +170,36 @@ impl<'a> FsSession<'a> {
                         )?
                         .root_children(),
                     ),
+                    PartitionKind::Minifs => Some(
+                        crate::core::filesystem::volumes::minifs::open_minifs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Erofs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_erofs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Qnx4 => Some(
+                        crate::core::filesystem::volumes::rom_images::open_qnx4_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Qnx6 => Some(
+                        crate::core::filesystem::volumes::rom_images::open_qnx6_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::F2fs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_f2fs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::Romfs => Some(
                         crate::core::filesystem::volumes::rom_images::open_romfs_source(
                             self.image, pid,

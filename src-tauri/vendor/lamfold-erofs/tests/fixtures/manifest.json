@@ -1,0 +1,116 @@
+{
+  "source_commit": "fabaad6af0c28b80535307b339b84110f3a3c12e",
+  "source": "https://github.com/lamco-admin/lamfold/tree/fabaad6af0c28b80535307b339b84110f3a3c12e/crates/lamfold-erofs/tests/fixtures",
+  "license": "MIT OR Apache-2.0",
+  "local_changes": "hole_full.erofs superblock CRC32C refreshed after the upstream intentional index mutation",
+  "files": {
+    "blk1024_zstd.erofs": {
+      "sha256": "50f7212cc06a30998033a1db15aa11217f8aa717408f9ccd6e024be2640b56eb",
+      "size": 8192
+    },
+    "blk2048_lz4hc.erofs": {
+      "sha256": "e71a4cf3ddf468a9ca133b8ba482bff40a244389e3393d2f4b1117b4d3ba8952",
+      "size": 20480
+    },
+    "chunks.erofs": {
+      "sha256": "540cfd9eb02ed58a9a7a7047dd4d2e8c307fbe03ed635b22d2480792aaa866f7",
+      "size": 57344
+    },
+    "comp.erofs": {
+      "sha256": "659204f3f882e66f2c19048227ef3fc7664cdfaa8d7ef8df07cd472429ffd35c",
+      "size": 110592
+    },
+    "comp.payload": {
+      "sha256": "c145075d4d40955c27b55f980a831db8d22d2b9dcb1ca03759293574ecbb0954",
+      "size": 131072
+    },
+    "comp_deflate.erofs": {
+      "sha256": "df21a0c51eb711dc1a74e678b424a0c6330780971b759e59588357a879ec67d5",
+      "size": 73728
+    },
+    "comp_lz4.erofs": {
+      "sha256": "9b50c5feca2b64af0f2117f3637b5b8b9d9404d13b667291e02fb4859761dd20",
+      "size": 65536
+    },
+    "comp_lzma.erofs": {
+      "sha256": "ba25c147436d569d19dfb16c753e8e8ace0e7e68875e5db20881567414e95d0d",
+      "size": 65536
+    },
+    "comp_multi.payload": {
+      "sha256": "9714534ae8d882e722b7d0c22cb432014bce6ef3c157af6301ee5694c754fcb5",
+      "size": 114688
+    },
+    "comp_ra_lz4.erofs": {
+      "sha256": "f903caa34c23adf662482331274ae31beddb6b0c38921096f783c8e011c47d6f",
+      "size": 12288
+    },
+    "comp_ra_lz4.payload": {
+      "sha256": "13454c12033ac40e2e424b543c75f17b0718da41eb5dd756dbab62a8d8145330",
+      "size": 12288
+    },
+    "comp_zerohead.erofs": {
+      "sha256": "56f73e6094047fbb88f7e88203bf15ebb339f9897a2bf8a322e46f39aa138290",
+      "size": 73728
+    },
+    "comp_zerohead.payload": {
+      "sha256": "7ee1b9475fc59edc079c25e38d460221e04017148b1528a57c17ef15801acab3",
+      "size": 102840
+    },
+    "comp_zstd.erofs": {
+      "sha256": "6b567af9f0a7bb93da9a2b98410882cf310e5b485472caeab9df995133d2399b",
+      "size": 65536
+    },
+    "comp_ztail.erofs": {
+      "sha256": "80cc4c4a1f6e224adbea3723bab581ef4925cd32503cb5de95a86d1bb53b48e9",
+      "size": 69632
+    },
+    "erofs.img": {
+      "sha256": "59bca0804e76c303ab98de454bf7c48d4637a7f04e733786bd0ef62a5e99872f",
+      "size": 303104
+    },
+    "extslot_lzma.erofs": {
+      "sha256": "13a2ae4a56f66a243d81b3a81fb63ef3bffa1c56bb44cf35e0d64ca52f2dba3c",
+      "size": 16384
+    },
+    "hole_full.erofs": {
+      "sha256": "1a44e5f393582e41922686ff43e7f40a5b641ca3aedba184d80589e0d338d648",
+      "size": 16384
+    },
+    "lz4_zeropad.erofs": {
+      "sha256": "284f6b458527de75620ac656110bca1d377dd87e5d0102d4449d7b1e17faaf64",
+      "size": 143360
+    },
+    "lz4_zeropad.sha256": {
+      "sha256": "9463d4a371b898826e6882b1af7c37f696b75a20bead865e8be95ec61e914a22",
+      "size": 65
+    },
+    "lzma_props.erofs": {
+      "sha256": "58c9c834ae42bffc026c4ab83fbfd370567fb3b9cf4bdc88ca7a4cb5de5e728e",
+      "size": 16384
+    },
+    "refuse_48bit.erofs": {
+      "sha256": "d7e9c39594b7ca843398e7d4a04ad1cd5de918b9fe607cb0ea90277cd2baa0a7",
+      "size": 98304
+    },
+    "refuse_dircompress.erofs": {
+      "sha256": "1ec78472f61a75ca089b355ede8f93943c5dca978d667a5ac3ef32ee21bb8c18",
+      "size": 28672
+    },
+    "refuse_fragments.erofs": {
+      "sha256": "e0669a4e856f88764e2596b3b2e053d77e8ff3a3fdc99d9a0b97b655bab0c70e",
+      "size": 20480
+    },
+    "refuse_metabox.erofs": {
+      "sha256": "6d0ec2d8e138823f493e7ac2bab9fcabae08d62a870282d7a8bcf38b5349dc89",
+      "size": 32768
+    },
+    "xattr_lzma.erofs": {
+      "sha256": "01155da581014dd1cd9faca65d63cf4c09d7833561dad430b348ea5cc7046662",
+      "size": 20480
+    },
+    "xattr_zstd.erofs": {
+      "sha256": "15e286654747988bc87c6212cc5c7ad14b99732c321bbbec17b1100ccfade566",
+      "size": 20480
+    }
+  }
+}

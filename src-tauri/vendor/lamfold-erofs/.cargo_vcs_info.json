@@ -1,0 +1,6 @@
+{
+  "git": {
+    "sha1": "fabaad6af0c28b80535307b339b84110f3a3c12e"
+  },
+  "path_in_vcs": "crates/lamfold-erofs"
+}

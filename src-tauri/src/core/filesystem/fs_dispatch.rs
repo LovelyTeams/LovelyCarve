@@ -46,11 +46,14 @@ use crate::core::filesystem::volumes::ext4::{canonical_ext4_id, open_ext4_source
 use crate::core::filesystem::volumes::fat::{open_fat_source, parse_fat_id};
 use crate::core::filesystem::volumes::hfsplus::{open_hfsplus_source, parse_hfsplus_id};
 use crate::core::filesystem::volumes::jffs2::{open_jffs2_source, parse_jffs2_id};
+use crate::core::filesystem::volumes::minifs::{open_minifs_source, parse_minifs_id};
 use crate::core::filesystem::volumes::ntfs::NtfsSource;
 use crate::core::filesystem::volumes::ntfs::{parse_ntfs_id, NtfsVolume};
 use crate::core::filesystem::volumes::refs::{parse_refs_id, parse_refs_snap_id};
 use crate::core::filesystem::volumes::rom_images::{
-    open_cramfs_source, open_romfs_source, parse_cramfs_id, parse_romfs_id,
+    open_cramfs_source, open_erofs_source, open_f2fs_source, open_qnx4_source, open_qnx6_source,
+    open_romfs_source, parse_cramfs_id, parse_erofs_id, parse_f2fs_id, parse_qnx4_id,
+    parse_qnx6_id, parse_romfs_id,
 };
 use crate::core::filesystem::volumes::squashfs::{open_squashfs_source, parse_squashfs_id};
 use crate::core::filesystem::volumes::ubi::{open_ubi_source, parse_ubi_id};
@@ -148,6 +151,11 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &SquashfsAdapter,
     &CramfsAdapter,
     &RomfsAdapter,
+    &MinifsAdapter,
+    &ErofsAdapter,
+    &F2fsAdapter,
+    &Qnx4Adapter,
+    &Qnx6Adapter,
     &UbifsAdapter,
     &Jffs2Adapter,
     &Yaffs2Adapter,
@@ -191,6 +199,21 @@ pub(crate) fn dispatch<'a>(
 /// made the historical open-per-directory walk the dominant cost of any
 /// whole-volume enumeration, especially through E01/RAID-assembled backends.
 pub(crate) fn volume_root_key(id: &str) -> Option<String> {
+    if let Some((partition, _)) = parse_erofs_id(id) {
+        return Some(format!("erofs:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_qnx4_id(id) {
+        return Some(format!("qnx4:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_qnx6_id(id) {
+        return Some(format!("qnx6:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_f2fs_id(id) {
+        return Some(format!("f2fs:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_minifs_id(id) {
+        return Some(format!("minifs:part:{partition}"));
+    }
     if let Some((partition, _)) = parse_cramfs_id(id) {
         return Some(format!("cramfs:part:{partition}"));
     }
@@ -398,6 +421,51 @@ path_volume!(
     open_romfs_source
 );
 path_volume_impl!(RomfsVol, plain_range);
+path_volume!(
+    ErofsAdapter,
+    ErofsVol,
+    "erofs",
+    crate::core::filesystem::volumes::rom_images::ErofsVolume,
+    parse_erofs_id,
+    open_erofs_source
+);
+path_volume_impl!(ErofsVol, plain_range);
+path_volume!(
+    Qnx4Adapter,
+    Qnx4Vol,
+    "qnx4",
+    crate::core::filesystem::volumes::rom_images::Qnx4Volume,
+    parse_qnx4_id,
+    open_qnx4_source
+);
+path_volume_impl!(Qnx4Vol, plain_range);
+path_volume!(
+    Qnx6Adapter,
+    Qnx6Vol,
+    "qnx6",
+    crate::core::filesystem::volumes::rom_images::Qnx6Volume,
+    parse_qnx6_id,
+    open_qnx6_source
+);
+path_volume_impl!(Qnx6Vol, plain_range);
+path_volume!(
+    F2fsAdapter,
+    F2fsVol,
+    "f2fs",
+    crate::core::filesystem::volumes::rom_images::F2fsVolume,
+    parse_f2fs_id,
+    open_f2fs_source
+);
+path_volume_impl!(F2fsVol, plain_range);
+path_volume!(
+    MinifsAdapter,
+    MinifsVol,
+    "minifs",
+    crate::core::filesystem::volumes::minifs::MinifsVolume,
+    parse_minifs_id,
+    open_minifs_source
+);
+path_volume_impl!(MinifsVol, plain_range);
 path_volume!(
     UbifsAdapter,
     UbifsVol,

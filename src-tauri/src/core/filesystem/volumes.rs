@@ -23,6 +23,7 @@ pub mod folder;
 pub mod hfsplus;
 pub mod jffs2;
 pub mod lvm;
+pub mod minifs;
 pub mod ntfs;
 pub mod ntfs_usn;
 pub mod refs;
