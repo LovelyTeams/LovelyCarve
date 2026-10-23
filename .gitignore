@@ -31,6 +31,9 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+/python/src/lovelycarve/*.pyd
+/python/src/lovelycarve/*.so
+/python/dist/
 
 # Local evidence and analysis output; regression corpora remain visible
 /fixtures/

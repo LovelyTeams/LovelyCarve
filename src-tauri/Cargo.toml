@@ -45,6 +45,9 @@ path = "src/bin/lovelycarve-cli.rs"
 # `--no-default-features` 保持 OpenCV-free（`qr_scan` 仍注册，但返回带启用指引的错误）。
 # 运行时优先用 WeChat CNN 检测器，失败回退标准 objdetect::QRCodeDetector（同一构建内即有，无需单独档）。
 default = []
+# Library-only projection used by the Python reader. Desktop and test builds
+# retain the complete application; default CLI/desktop configuration is unchanged.
+reader-library = []
 desktop = [
     "dep:tauri",
     "dep:tauri-plugin-dialog",

@@ -347,16 +347,7 @@ pub fn peek_case(dir: &Path) -> anyhow::Result<CaseProfile> {
 /// `D:\a.E01` 与 `d:/a.e01` 是同一份证据;所有路径身份判断(`image_load`
 /// 单飞锁、运行时 id 复用、案件检材查找、台账 `path_key`)都必须经过它,
 /// 否则并发加载会造出重复 id。
-pub fn evidence_path_key(path: &str) -> String {
-    #[cfg(target_os = "windows")]
-    {
-        path.replace('/', "\\").to_ascii_lowercase()
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        path.to_string()
-    }
-}
+pub use crate::core::common::evidence_path::evidence_path_key;
 
 /// 一份暂存快照对应的发布信息。卷目录里的文件名由
 /// [`CaseState::publish_snapshot`] 移入时填写。

@@ -7,6 +7,10 @@ fonts, models, libraries and test data retain their original notices.
 The application dependency versions are recorded in `bun.lock` and
 `src-tauri/Cargo.lock`; the separate plugin workspace has its own manifests
 and lockfile. Vendored components retain their license and provenance files.
+The read-only Python extension records its Rust dependencies in
+`python/Cargo.lock` and Python environment in `python/uv.lock`. It uses PyO3
+(MIT OR Apache-2.0) for bindings and maturin (MIT OR Apache-2.0) as its build
+backend; their original notices remain in the upstream package distributions.
 This document preserves notices for incorporated components and derived code;
 it is not an automatically generated inventory of all transitive packages.
 Release verification is documented in [docs/RELEASING.md](docs/RELEASING.md).
