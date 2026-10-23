@@ -160,6 +160,7 @@ fmt:
     cd src-tauri/vendor/minix-reader && cargo fmt
     cd src-tauri/vendor/classic-hfs && cargo fmt
     cd src-tauri/vendor/jfs-reader && cargo fmt
+    cd src-tauri/vendor/reiserfs-reader && cargo fmt
     cd src-tauri/vendor/lamfold-erofs && cargo fmt
     cd src-tauri/vendor/f2fs-reader && cargo fmt
     cd src-tauri/vendor/qnx-reader && cargo fmt
@@ -448,6 +449,19 @@ generate-hfs-fixtures:
 [group("readers")]
 test-jfs:
     cargo test --manifest-path src-tauri/vendor/jfs-reader/Cargo.toml --lib
+
+# Pure Rust ReiserFS 3.5/3.6 reader and independent fixtures.
+[group("readers")]
+test-reiserfs:
+    cargo test --manifest-path src-tauri/vendor/reiserfs-reader/Cargo.toml --lib
+
+[group("readers")]
+clippy-reiserfs:
+    cargo clippy --manifest-path src-tauri/vendor/reiserfs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-reiserfs-fixtures:
+    {{ python }} scripts/reiserfs-fixtures.py
 
 [group("readers")]
 clippy-jfs:

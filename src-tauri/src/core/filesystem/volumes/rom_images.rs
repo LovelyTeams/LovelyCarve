@@ -20,6 +20,9 @@ mod classic_hfs_tests;
 #[cfg(test)]
 #[path = "jfs_tests.rs"]
 mod jfs_tests;
+#[cfg(test)]
+#[path = "reiserfs_tests.rs"]
+mod reiserfs_tests;
 
 #[cfg(test)]
 #[path = "flashfs_tests.rs"]
@@ -44,6 +47,7 @@ pub type UdfVolume = RomVolume<lamfold_udf::Udf<RomImageSource>>;
 pub type MinixVolume = RomVolume<minix_reader::Minix<RomImageSource>>;
 pub type HfsVolume = RomVolume<classic_hfs::Hfs<RomImageSource>>;
 pub type JfsVolume = RomVolume<jfs_reader::Jfs<RomImageSource>>;
+pub type ReiserFsVolume = RomVolume<reiserfs_reader::ReiserFs<RomImageSource>>;
 
 pub struct RomImageSource {
     image: Arc<DiskImage>,
@@ -130,6 +134,18 @@ pub fn open_jfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<JfsVolum
         tracing::warn!(partition, "JFS primary superblock unavailable; using validated secondary superblock at byte 61440");
     }
     Ok(volume)
+}
+pub fn parse_reiserfs_id(id: &str) -> Option<(u8, String)> {
+    let rest = id.strip_prefix("reiserfs:part:")?;
+    let (partition, path) = rest.split_once(':')?;
+    let path = String::from_utf8(hex::decode(path).ok()?).ok()?;
+    valid_lookup_path(&path).then_some((partition.parse().ok()?, path))
+}
+pub fn open_reiserfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<ReiserFsVolume> {
+    ReiserFsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
 }
 pub fn open_hfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<HfsVolume> {
     HfsVolume::open(

@@ -149,6 +149,33 @@ def main():
             assert rows[2]["result"]["data"] == flash_body[flash_offset:flash_offset + 121].hex()
             assert rows[3]["result"]["sha256"] == hashlib.sha256(flash_body).hexdigest()
 
+        # ReiserFS v3: both key/bitmap layouts, sparse indirect and packed tails.
+        for reiser_name, reiser_block in [("v35-1024-old", 1024), ("v36-4096-relocated", 4096)]:
+            reiser_path = root / (reiser_name + ".reiserfs")
+            reiser_path.write_bytes(zlib.decompress((flash_vendor / ("reiserfs-reader/tests/fixtures/" + reiser_name + ".zlib")).read_bytes()))
+            reiser_body = bytes((index * 17 + 5) & 255 for index in range(reiser_block)) + bytes(reiser_block) + bytes((index * 23 + 7) & 255 for index in range(reiser_block)) + b"packed tail"
+            reiser_node = "reiserfs:part:0:" + b"/big.bin".hex()
+            reiser_export = root / (reiser_name + "-export.bin")
+            reiser_offset = reiser_block - 7
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(reiser_path)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "nested", "command": "files list", "args": {"parentId": "reiserfs:part:0:" + b"/sub".hex()}},
+                {"id": "read", "command": "files read", "args": {"nodeId": reiser_node, "offset": reiser_offset, "length": 71}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": reiser_node, "algos": ["sha256"]}},
+                {"id": "export", "command": "files export", "args": {"nodeId": reiser_node, "destination": str(reiser_export)}},
+                {"id": "unicode", "command": "files read", "args": {"nodeId": "reiserfs:part:0:" + "/中文\\evidence".encode().hex(), "offset": 0, "length": 100}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "reiserfs"
+            assert any(item["name"] == "中文\\evidence" for item in rows[1]["result"]["items"])
+            assert not any(item["name"] == "hidden" for item in rows[1]["result"]["items"])
+            assert rows[2]["result"]["items"][0]["name"] == "nested"
+            assert rows[3]["result"]["data"] == reiser_body[reiser_offset:reiser_offset + 71].hex()
+            assert rows[4]["result"]["sha256"] == hashlib.sha256(reiser_body).hexdigest()
+            assert reiser_export.read_bytes() == reiser_body
+            assert rows[6]["result"]["data"] == b"names".hex()
+
         # JFS: multiple IAGs, sparse/unwritten data, Unix names and hardlinks.
         for jfs_name, jfs_block in [("multi-iag-512-legacy", 512), ("multi-iag-4096-indexed", 4096)]:
             jfs_path = root / (jfs_name + ".jfs")

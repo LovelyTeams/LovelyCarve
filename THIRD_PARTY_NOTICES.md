@@ -1573,6 +1573,19 @@ rusty-backup revision; invented fixtures and `scripts/hfs-fixtures.py` are CC0-1
 See [ORIGIN.md](src-tauri/vendor/classic-hfs/ORIGIN.md) for precise source paths,
 licenses, changes and fixture hashes.
 
+## ReiserFS v3 reader and fixtures
+
+`reiserfs-reader` adapts layouts/read algorithms from Dani's
+[danifunker/rusty-backup](https://github.com/danifunker/rusty-backup/blob/6e044a314f6523045999058f85a882c1eeb64b50/src/fs/reiserfs.rs)
+0.1.0 at revision `6e044a314f6523045999058f85a882c1eeb64b50` (AGPL-3.0).
+The original license is retained in `src-tauri/vendor/reiserfs-reader/LICENSE`.
+The retained mkfs.reiserfs/guestfish image and generation script are from that
+same pinned source; invented fixtures and `scripts/reiserfs-fixtures.py` are
+CC0-1.0. See [ORIGIN.md](src-tauri/vendor/reiserfs-reader/ORIGIN.md) and the
+fixture [manifest](src-tauri/vendor/reiserfs-reader/tests/fixtures/manifest.json).
+No C filesystem implementation is linked. The MIT `unearth` detector was
+examined during research and is not copied or linked.
+
 ## Linux JFS reader and fixtures
 
 `jfs-reader` adapts JFS layouts/read algorithms from Dani's

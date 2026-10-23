@@ -191,6 +191,7 @@ refs-reader = { path = "vendor/refs-reader" }
 # 字面量，给解码文本通道做原始字节预筛。
 regex = "1.13.1"
 regex-syntax = "0.8.11"
+reiserfs-reader = { path = "vendor/reiserfs-reader" }
 rmp-serde = "1.3.1"
 rmpv = { version = "1.3.1", features = ["with-serde"] }
 rsqlite-vfs = { path = "vendor/rsqlite-vfs" }

@@ -200,6 +200,12 @@ impl<'a> FsSession<'a> {
                         )?
                         .root_children(),
                     ),
+                    PartitionKind::Reiserfs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_reiserfs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::Minix => Some(
                         crate::core::filesystem::volumes::rom_images::open_minix_source(
                             self.image, pid,

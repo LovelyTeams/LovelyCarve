@@ -104,6 +104,15 @@ LZMA 复用 Apache-2.0 的 `lzma-rust2`。没有复制无明确代码许可的 H
 和 [CLASSIC_HFS.md](../../docs/formats/CLASSIC_HFS.md)。`lamfold` 新增默认空值的 `LocalFileTimes`
 / `local_timestamps` 接口，避免把传统 HFS 无偏移本地时间标成 UTC；现有 UTC 接口不变。
 
+## ReiserFS v3 只读适配
+
+`reiserfs-reader` 0.1.0：格式布局与读取算法来自 rusty-backup 0.1.0 固定提交
+`6e044a314f6523045999058f85a882c1eeb64b50`（AGPL-3.0）；适配前也检查了 unearth 0.4.0，
+后者仅有识别器，未复制或链接。改为按键区间遍历，补足旧 / 新位图、混合键、目录可见位、
+对象身份、稀疏 / 尾部映射、分配与完整性校验；无 C / 驱动 / 写入 / 日志回放。
+外部样本和独立 Python 夹具保留许可与哈希，见 [ORIGIN.md](reiserfs-reader/ORIGIN.md)
+和 [REISERFS.md](../../docs/formats/REISERFS.md)。
+
 ## Linux JFS 只读适配
 
 `jfs-reader` 0.1.0：布局与读取算法来自 rusty-backup 0.1.0 固定提交

@@ -36,6 +36,7 @@ pub mod minifs;
 pub mod minix;
 pub mod optical_disc;
 pub mod qnx;
+pub mod reiserfs;
 pub mod rom_images;
 pub mod squashfs;
 pub mod ubifs;
@@ -126,6 +127,7 @@ pub enum PartitionKind {
     Udf,
     Minix,
     Jfs,
+    Reiserfs,
     Ubifs,
     Lvm,
     Bitlocker,
@@ -343,6 +345,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Udf
         | PartitionKind::Hfs
         | PartitionKind::Jfs
+        | PartitionKind::Reiserfs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

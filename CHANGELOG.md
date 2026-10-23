@@ -9,6 +9,8 @@
 
 ### Added
 
+- 新增纯 Rust ReiserFS 3.5 / 3.6 读取：复用并加固现有 Rust 代码，覆盖两种超级块 / 位图布局、混合键、多层树、硬链接、尾部打包与稀疏块；接入浏览、范围读、哈希、导出及自动目录索引，dirty 卷明确拒绝；Reiser4 仍为独立待支持格式。
+
 - 新增纯 Rust Linux JFS2 读取：复用并加固现有 Rust 代码，支持四种分配块大小、多 IAG、内联 / 外部目录和目录索引、硬链接、长符号链接、EA 分配、稀疏 / 未写入 extent 及纳秒时间；接入浏览、范围读、哈希、导出和自动目录索引，dirty 卷明确拒绝。
 
 - 新增纯 Rust 传统 HFS（Mac OS Standard）读取：复用并加固现有 Rust 解析器，覆盖碎片化 catalog / overflow extents、MacRoman 名称及 data / resource 双分叉；接入浏览、范围读、哈希、导出、自动目录索引和 CLI 命名流；本地日期保留无时区语义。
