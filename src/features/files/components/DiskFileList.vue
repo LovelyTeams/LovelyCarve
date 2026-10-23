@@ -3,7 +3,7 @@
     <FileListToolbar :stack="stack" :current-directory-path="currentDirectoryPath" :loading="loading"
       :docked-preview-visible="dockedPreviewVisible" :preview-detached="previewDetached"
       v-model:tree-visible="treeVisible" v-model:search-keyword="searchKeyword"
-      @go-up="goUp" @go-to="goTo" @copy-path="copyCurrentPath" @search-input="onSearchKeywordInput"
+      @go-up="goUp" @go-to="goTo" @copy-path="copyCurrentPath" @search-input="onSearchInput"
       @clear-search="clearSearchKeyword" @refresh="refresh" @toggle-preview="togglePreview"
     />
 
@@ -20,19 +20,36 @@
       /></UiTransition>
       <div class="right-area">
         <FileFilterBar
+          v-if="viewMode === 'list'"
           :deepsearch="deepsearch" :loading="loading" :index-only="indexOnly"
           :category-counts="categoryMenu.counts" :counts-complete="categoryMenu.complete" :category-total="categoryMenu.total"
           :selected-categories="selectedCategories" :chips="filterChips" :hide-empty-dirs="emptyDirsHidden"
-          :selection="exportSelection" v-model:columns-open="columnsOpen"
+          :selection="exportSelection" :treemap-available="treemapAvailable"
+          v-model:columns-open="columnsOpen" v-model:view="viewMode"
           @scope="setScope" @toggle-category="toggleCategory" @clear-categories="clearCategories"
           @edit-filter="editColumnFilter" @remove-filter="clearColumnFilter" @show-empty-dirs="hideEmptyDirs = false"
           @clear-all="clearListConditions" @export-file="exportSelectedFile(activeRow, checkedFiles)"
           @export-directory="exportSelectedDir(activeRow, checkedDirs)"
         />
+        <TreemapToolbar
+          v-else
+          v-model:mode="treemapMode" v-model:depth="treemapDepth" v-model:include-deleted="treemapDeleted" v-model:view="viewMode"
+        />
 
         <div class="content-row">
           <div class="left-col">
+            <FileTreemap
+              v-if="viewMode === 'treemap'"
+              :view="treemapView" :status="treemapStatus" :error="treemapError" :mode="treemapMode" :depth="treemapDepth"
+              :directory-name="currentDirectory?.name ?? '/'" :directory-path="currentDirectoryPath"
+              :volume-root="isVolumeRootId(currentDirectory?.id ?? '')" :system-area="inSystemArea(stack)"
+              :selected-id="treemapSelection" :snapshot-label="snapshotStatus?.state === 'building' ? snapshotStatus.label : null"
+              @select="onTreemapSelect" @open="onTreemapOpen" @enter="onTreemapEnter" @up="goUp"
+              @depth="treemapDepth = Math.min(6, Math.max(1, treemapDepth + $event))"
+              @contextmenu="onRowContextMenu" @show-list="viewMode = 'list'" @retry="retryTreemap"
+            />
             <FileListTable
+              v-show="viewMode === 'list'"
               :visible-columns="visibleColumns" :visible-items="visibleItems" :row-count="filteredEntries.length"
               :loading="loading" :filtered="listFiltered" :error="error" :deepsearch="deepsearch" :current-directory-path="currentDirectoryPath"
               :sort-busy-key="sortBusyKey" :sort-key="sortKey" :sort-dir="sortDir"
@@ -47,15 +64,16 @@
             />
           </div>
 
-          <FileColumnSettings :open="columnsOpen" :columns="COLUMNS" :column-visible="columnVisible" @toggle="toggleColumn" />
+          <FileColumnSettings :open="columnsOpen && viewMode === 'list'" :columns="COLUMNS" :column-visible="columnVisible" @toggle="toggleColumn" />
         </div>
 
-        <FileListFooter :deepsearch="deepsearch" :flat-total="flatTotal" :flat-truncated="flatTruncated"
+        <FileListFooter v-if="viewMode === 'list'" :deepsearch="deepsearch" :flat-total="flatTotal" :flat-truncated="flatTruncated"
           :index-only="indexOnly" :matching="serverNarrowed"
           :directory-total="directoryTotal" :directory-cursor="directoryCursor" :loaded-count="entries.length"
           :displayed-count="filteredEntries.length" :snapshot-status="snapshotStatus"
           :checked-stats="checkedStats" @clear-checked="clearChecked"
         />
+        <TreemapFooter v-else :view="treemapView" :include-deleted="treemapDeleted" :snapshot-status="snapshotStatus" />
 
       </div>
       <UiTransition kind="dock">
@@ -93,7 +111,7 @@
       :can-hash="!indexOnly && canHash"
       :can-identify="!indexOnly && canIdentify"
       :can-plugin-task="!indexOnly && canPluginTask"
-      :can-return-to-original-dir="activeFilterCount > 0 || deepsearch"
+      :can-return-to-original-dir="activeFilterCount > 0 || deepsearch || (viewMode === 'treemap' && !!rowMenu.node && rowMenu.node.parent_id !== currentDirectory?.id)"
       :can-mount="!indexOnly && rowCanMount"
       :mount-busy="mountBusy"
       :mounted="!!rowMountView"
@@ -194,6 +212,13 @@ import { useFileNavigation } from '../composables/useFileNavigation';
 import { useFileTableKeyboard } from '../composables/useFileTableKeyboard';
 import { useReadonlyMountActions } from '../composables/useReadonlyMountActions';
 import { HASH_MENU_OPTIONS } from '../model/derivedData';
+import FileTreemap from './FileTreemap.vue';
+import TreemapFooter from './TreemapFooter.vue';
+import TreemapToolbar from './TreemapToolbar.vue';
+import { useSizeTree, type TreemapMode } from '../composables/useSizeTree';
+import type { FileViewMode } from '../model/treemap';
+import type { FileNavigationFrame } from '../model/navigation';
+import { inSystemArea, isVolumeRootId, treemapAvailableAt } from '../model/treemapKinds';
 
 type FsNode = DiskFsNode;
 
@@ -342,6 +367,75 @@ const { activeCase, snapshotStatus } = useVolumeSnapshotStatus({
   imageId: () => props.imageId,
   stack,
 });
+
+// ── 树图视图 ──
+// 与列表共用导航栈：进入、返回、面包屑与目录树都改同一个栈，列表在后台保持同步，
+// 切回列表就是同一个目录。数据来自卷索引的空间占用汇总（目前仅 NTFS）。
+const viewMode = ref<FileViewMode>('list');
+const treemapMode = ref<TreemapMode>('bytes');
+const treemapDepth = ref(3);
+const treemapDeleted = ref(false);
+/** 树图里选中的节点：可以在当前目录之下任意深处，不一定是列表里的一行。 */
+const treemapSelection = ref<string | null>(null);
+const currentDirectory = computed(() => stack.value[stack.value.length - 1]);
+const treemapAvailable = computed(() => treemapAvailableAt(currentDirectory.value?.id ?? '', entries.value));
+const {
+  status: treemapStatus, view: treemapView, error: treemapError,
+  refresh: refreshTreemap, reset: resetTreemap, retry: retryTreemap,
+} = useSizeTree({
+  imageId: () => props.imageId,
+  nodeId: () => currentDirectory.value?.id ?? null,
+  enabled: () => viewMode.value === 'treemap',
+  mode: () => treemapMode.value,
+  depth: () => treemapDepth.value,
+  includeDeleted: () => treemapDeleted.value,
+  // 只看状态，不看条目数：构建进度每次跳动不必重问一次。
+  snapshotSignature: () => snapshotStatus.value?.state ?? 'none',
+});
+
+watch(viewMode, mode => {
+  treemapSelection.value = null;
+  if (mode !== 'treemap') return;
+  // 树图按目录结构看整棵子树：关键词与全显只属于列表，勾选也不跟到树图里，
+  // 否则右键菜单会作用在看不见的勾选行上。
+  hideFilterPopover();
+  hideRowMenu();
+  clearChecked();
+  if (deepsearch.value || searchKeyword.value || appliedKeyword.value) {
+    closeDeepSearch();
+    browseMode.consumeReload();
+    loadCurrent();
+  }
+});
+
+/** 在树图里搜索即回到列表：搜索结果是逐行列出的。 */
+function onSearchInput() {
+  if (viewMode.value === 'treemap') viewMode.value = 'list';
+  onSearchKeywordInput();
+}
+
+/** 单击瓦片：选中；当前目录的直接子项同时是列表光标。预览已打开时随选中更新。 */
+function onTreemapSelect(node: FsNode) {
+  treemapSelection.value = node.id;
+  if (node.parent_id === currentDirectory.value?.id) selectedKey.value = rowKeyOf(node);
+  if (previewVisible.value || previewDetached.value) {
+    detailNode.value = node;
+    previewVisible.value = true;
+  }
+}
+
+/** 双击文件瓦片：打开预览。 */
+function onTreemapOpen(node: FsNode) {
+  treemapSelection.value = node.id;
+  detailNode.value = node;
+  previewVisible.value = true;
+}
+
+/** 进入瓦片所在的目录：瓦片链上的每一层都推入面包屑。 */
+function onTreemapEnter(frames: FileNavigationFrame[]) {
+  treemapSelection.value = null;
+  onTreeNavigate([...stack.value, ...frames]);
+}
 
 // 案件在镜像装载之后才创建/打开时：先把会话里已算的哈希补存进案件目录
 // （此前 persist 因无案件被丢弃），再按当前列表节点水合存档里可能已有的
@@ -674,6 +768,7 @@ function refresh() {
   // 让后端丢掉该起点的实时遍历缓存重走。
   invalidatePathLevels();
   if (deepsearch.value) flatQuery.requestRefresh();
+  if (viewMode.value === 'treemap') refreshTreemap();
   loadCurrent();
 }
 watch(() => props.volumeRevision, () => refresh());
@@ -735,6 +830,9 @@ watch(
     // before viewport/count watchers can combine it with the new image ID.
     entries.value = [];
     stack.value = [{ id: 'root', name: '/' }];
+    // 树图视图与它缓存的汇总都属于上一块盘；新检材从列表开始。
+    resetTreemap();
+    viewMode.value = 'list';
     invalidatePathLevels();
     // 哈希/研判结果按节点 id 缓存，只在本镜像内有效。
     derivedData.reset();
@@ -793,7 +891,8 @@ async function onReturnToOriginalDir() {
     return;
   }
   clearAllFilters();
-  // 回到原始目录 = 退出全显、按逐级浏览定位到该文件所在层。
+  // 回到原始目录 = 退出全显与树图、按逐级浏览定位到该文件所在层。
+  viewMode.value = 'list';
   deepsearch.value = false;
   searchKeyword.value = '';
   appliedKeyword.value = '';

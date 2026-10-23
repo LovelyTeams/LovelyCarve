@@ -14,6 +14,7 @@ pub mod filesystem_export;
 pub mod filesystem_flat;
 pub mod filesystem_journal;
 pub mod filesystem_page;
+pub mod filesystem_size_tree;
 pub mod filesystem_snapshot_index;
 pub mod filesystem_source;
 pub mod filesystem_streams;

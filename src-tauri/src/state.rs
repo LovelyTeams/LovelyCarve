@@ -118,6 +118,9 @@ pub struct AppState {
     /// 文件全显(allowAllFiles)实时遍历结果的小缓存,见 [`FlatWalkCache`]。
     /// 同步锁:只在 `spawn_blocking` 线程里短暂持有。
     pub flat_walk_cache: Arc<parking_lot::Mutex<FlatWalkCache>>,
+    /// 树图视图由卷索引聚合出的空间占用树,见 [`SizeTreeCache`]。同步锁只在
+    /// 取槽位时短暂持有,构建在槽位自己的 `OnceCell` 里进行。
+    pub size_trees: Arc<parking_lot::Mutex<SizeTreeCache>>,
 }
 
 impl AppState {
@@ -157,6 +160,7 @@ impl AppState {
             global_searches: Arc::default(),
             timeline_builds: Arc::default(),
             flat_walk_cache: Arc::default(),
+            size_trees: Arc::default(),
         }
     }
 }
@@ -169,9 +173,11 @@ impl Default for AppState {
 
 mod preview;
 mod runs;
+mod size_tree;
 mod snapshot;
 mod walk;
 pub use preview::{RealmBytesCache, ZipBytesCache};
 pub use runs::{GlobalSearchRunState, TimelineBuildRunState};
+pub use size_tree::{SizeTreeCache, SizeTreeSlot};
 pub use snapshot::{SessionIndex, SessionSnapshot, SessionSnapshots};
 pub use walk::{FlatWalkCache, FlatWalkKind, FlatWalkRows};

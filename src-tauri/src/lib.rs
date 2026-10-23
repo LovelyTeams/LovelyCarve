@@ -75,6 +75,7 @@ fn application_builder() -> tauri::Builder<tauri::Wry> {
             commands::filesystem::filesystem::fs_subtree_empty_dirs,
             commands::filesystem::filesystem_flat::fs_flat_page,
             commands::filesystem::filesystem_flat::fs_flat_ext_counts,
+            commands::filesystem::filesystem_size_tree::fs_size_tree,
             commands::search::global_search::global_search_start,
             commands::search::global_search::global_search_hits_page,
             commands::search::global_search::global_search_history_list,

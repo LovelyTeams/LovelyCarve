@@ -1,0 +1,27 @@
+/* 树图配色：类别给出色相（--tile-hue），瓦片、图例色块与悬停卡片共用。
+   「时间」着色用主色，越久未写入颜色越淡；「其他」与未知时间不带颜色。 */
+.k-document { --tile-hue: var(--chart-1); }
+.k-image { --tile-hue: var(--chart-2); }
+.k-archive { --tile-hue: var(--chart-3); }
+.k-code { --tile-hue: var(--chart-4); }
+.k-executable { --tile-hue: var(--chart-5); }
+.k-media { --tile-hue: var(--chart-6); }
+.k-database { --tile-hue: var(--chart-7); }
+.k-system { --tile-hue: var(--chart-8); }
+.k-other { --tile-hue: var(--text-secondary); }
+
+.age-0 { --tile-hue: var(--primary-color); --age-mix: 58%; }
+.age-1 { --tile-hue: var(--primary-color); --age-mix: 44%; }
+.age-2 { --tile-hue: var(--primary-color); --age-mix: 31%; }
+.age-3 { --tile-hue: var(--primary-color); --age-mix: 19%; }
+.age-4 { --tile-hue: var(--primary-color); --age-mix: 9%; }
+.age-none { --tile-hue: var(--text-secondary); --age-mix: 10%; }
+
+.legend-swatch {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--tile-hue, var(--text-secondary)) var(--age-mix, 72%), var(--surface-secondary));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
