@@ -333,6 +333,7 @@ pub fn kind_label(kind: PartitionKind) -> &'static str {
         PartitionKind::F2fs => "f2fs",
         PartitionKind::Qnx4 => "qnx4",
         PartitionKind::Qnx6 => "qnx6",
+        PartitionKind::Udf => "udf",
         PartitionKind::Minifs => "minifs",
         PartitionKind::Romfs => "romfs",
         PartitionKind::Ubifs => "ubifs",

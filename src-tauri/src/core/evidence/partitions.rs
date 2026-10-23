@@ -36,6 +36,7 @@ pub mod qnx;
 pub mod rom_images;
 pub mod squashfs;
 pub mod ubifs;
+pub mod udf;
 pub mod ufs;
 pub mod volume_probe;
 pub mod xfs;
@@ -119,6 +120,7 @@ pub enum PartitionKind {
     F2fs,
     Qnx4,
     Qnx6,
+    Udf,
     Ubifs,
     Lvm,
     Bitlocker,
@@ -332,6 +334,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::F2fs
         | PartitionKind::Qnx4
         | PartitionKind::Qnx6
+        | PartitionKind::Udf
         | PartitionKind::Minifs
         | PartitionKind::Romfs
         | PartitionKind::BiosBoot

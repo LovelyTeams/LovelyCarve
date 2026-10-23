@@ -292,6 +292,7 @@ pub(crate) fn supports_os_detect(kind: PartitionKind) -> bool {
             | PartitionKind::F2fs
             | PartitionKind::Qnx4
             | PartitionKind::Qnx6
+            | PartitionKind::Udf
             | PartitionKind::Minifs
             | PartitionKind::Romfs
             | PartitionKind::ApfsContainer
@@ -324,6 +325,7 @@ pub(crate) fn kind_str(kind: PartitionKind) -> &'static str {
         PartitionKind::F2fs => "f2fs",
         PartitionKind::Qnx4 => "qnx4",
         PartitionKind::Qnx6 => "qnx6",
+        PartitionKind::Udf => "udf",
         PartitionKind::Minifs => "minifs",
         PartitionKind::Romfs => "romfs",
         PartitionKind::Ubifs => "ubifs",

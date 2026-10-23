@@ -153,6 +153,7 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &NtfsProbe,
     &RefsProbe,
     &ExfatProbe,
+    &super::udf::UdfProbe,
     &CdfsProbe,
     &FatProbe,
     &BtrfsProbe,
@@ -286,6 +287,7 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::F2fs
         | PartitionKind::Qnx4
         | PartitionKind::Qnx6
+        | PartitionKind::Udf
         | PartitionKind::Minifs
         | PartitionKind::Romfs
         | PartitionKind::Ubi

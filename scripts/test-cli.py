@@ -149,6 +149,32 @@ def main():
             assert rows[2]["result"]["data"] == flash_body[flash_offset:flash_offset + 121].hex()
             assert rows[3]["result"]["sha256"] == hashlib.sha256(flash_body).hexdigest()
 
+        # UDF reference images: FE/EFE, nested tree, range/hash/export through JSONL.
+        udf_fixtures = flash_vendor / "lamfold-udf/tests/fixtures"
+        for udf_name, udf_file, udf_expected in [
+            ("udf102", "/big.dat", bytes(index % 256 for index in range(5000))),
+            ("udf201", "/big.bin", bytes((index * 11 + index // 257) & 255 for index in range(70000))),
+        ]:
+            udf_path = root / (udf_name + ".iso")
+            udf_path.write_bytes(zlib.decompress((udf_fixtures / (udf_name + ".zlib")).read_bytes()))
+            udf_node = "udf:part:0:" + udf_file.encode().hex()
+            udf_export = root / (udf_name + "-export.bin")
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(udf_path)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "nested", "command": "files list", "args": {"parentId": "udf:part:0:" + b"/sub".hex()}},
+                {"id": "read", "command": "files read", "args": {"nodeId": udf_node, "offset": 2041, "length": 121}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": udf_node, "algos": ["sha256"]}},
+                {"id": "export", "command": "files export", "args": {"nodeId": udf_node, "destination": str(udf_export)}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "udf"
+            assert any(item["name"] == "sub" for item in rows[1]["result"]["items"])
+            assert any(item["name"] == "inner.txt" for item in rows[2]["result"]["items"])
+            assert rows[3]["result"]["data"] == udf_expected[2041:2162].hex()
+            assert rows[4]["result"]["sha256"] == hashlib.sha256(udf_expected).hexdigest()
+            assert udf_export.read_bytes() == udf_expected
+
         # QNX4 extent-chain and independently QNX-created QNX6 reference image.
         qnx_fixtures = flash_vendor / "qnx-reader/tests/fixtures"
         with tarfile.open(qnx_fixtures / "nfi-qnx6.tar.gz", "r:gz") as archive:

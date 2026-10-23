@@ -1,0 +1,20 @@
+[package]
+name = "lamfold-udf"
+version = "0.1.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["Greg Lamberson <greg@lamco.io>", "Lamco Development LLC <office@lamco.io>"]
+description = "Bounded read-only UDF physical-partition reader"
+repository = "https://github.com/lamco-admin/lamfold"
+
+[features]
+default = ["std"]
+std = ["lamfold/std"]
+
+[dependencies]
+lamfold = { path = "../lamfold", default-features = false }
+
+[dev-dependencies]
+flate2 = "1"
+
+[workspace]

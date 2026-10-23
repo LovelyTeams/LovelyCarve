@@ -1294,3 +1294,7 @@ LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提�
 ### QNX4 / QNX6 只读卷
 
 `evidence::partitions::qnx` 按根 inode / 超级块结构识别格式；`qnx-reader` 通过既有 `rom_images` 泛型适配器接入有界源、分区与路径身份。QNX4 缓存验证后的 extent 链并按逻辑末端二分定位，QNX6 选择 CRC 有效且几何一致的最新提交代际，共用有深度和容量上限的 inode / 长名 / 文件树读取。符号链接不在宿主跟随，原始证据字节不变；范围、流式、哈希和导出使用同一映射。支持范围见 [QNX](formats/QNX.md)。
+
+### UDF 只读卷
+
+`evidence::partitions::udf` 校验盘首 / 盘尾 anchor tag 与 CRC；`lamfold-udf` 复用 `rom_images` 有界源和路径适配器，校验同一 VDS 的单物理分区映射、FSD、FE / EFE 和 AED 续链。节点使用分区相对 ICB LBA，缓存清理不改变 inode / 硬链接身份；路径节点保留源分区 ID。范围、流式、哈希与导出共享映射，未知时区保持未知。每卷缓存随 FsSession 释放，没有新增全局缓存。支持范围见 [UDF](formats/UDF.md)。

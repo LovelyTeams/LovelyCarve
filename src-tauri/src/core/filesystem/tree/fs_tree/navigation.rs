@@ -199,6 +199,10 @@ pub(super) fn children_for_image_with_options(
                 crate::core::filesystem::volumes::rom_images::open_qnx4_source(image, partition.id)?
                     .root_children()
             }
+            PartitionKind::Udf => {
+                crate::core::filesystem::volumes::rom_images::open_udf_source(image, partition.id)?
+                    .root_children()
+            }
             PartitionKind::Qnx6 => {
                 crate::core::filesystem::volumes::rom_images::open_qnx6_source(image, partition.id)?
                     .root_children()

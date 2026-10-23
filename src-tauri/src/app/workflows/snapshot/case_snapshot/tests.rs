@@ -4,6 +4,43 @@ use crate::core::filesystem::tree::fs_tree::{self, NodeKind};
 use std::fs::File;
 use std::io::Write;
 
+#[test]
+fn udf_auto_snapshot_preserves_live_tree_and_persisted_node_identity() {
+    use std::io::Read;
+    let directory = tempfile::tempdir().unwrap();
+    let mut bytes = Vec::new();
+    flate2::read::ZlibDecoder::new(
+        include_bytes!("../../../../../vendor/lamfold-udf/tests/fixtures/udf102.zlib")
+            .as_slice(),
+    )
+    .read_to_end(&mut bytes)
+    .unwrap();
+    let source = directory.path().join("source.iso");
+    std::fs::write(&source, bytes).unwrap();
+    let image = Arc::new(EvidenceSession::from(DiskImage::open(&source).unwrap()));
+    assert_eq!(browsable_volume_keys(&image), vec!["part:0"]);
+    let output = directory.path().join("udf.dirz");
+    let built = volume_snapshot::build_volume_snapshot(
+        &image,
+        "part:0",
+        &output,
+        1000,
+        "2026-01-01T00:00:00Z".into(),
+        &CancellationToken::new(),
+        &mut |_| {},
+    )
+    .unwrap();
+    assert!(!built.truncated);
+    let snapshot = volume_snapshot::load_snapshot(&output).unwrap();
+    let live = fs_tree::children_for_image(&image, "part:0").unwrap();
+    assert_eq!(
+        serde_json::to_value(snapshot.children("part:0").unwrap()).unwrap(),
+        serde_json::to_value(&live).unwrap()
+    );
+    let sub = live.iter().find(|node| node.name == "sub").unwrap();
+    assert_eq!(snapshot.children(&sub.id).unwrap()[0].name, "inner.txt");
+}
+
 fn backup_view_fixture(format: ImageFormat) -> (tempfile::TempDir, DiskImage) {
     let directory = tempfile::tempdir().unwrap();
     let backup = std::fs::read(

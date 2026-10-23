@@ -156,6 +156,7 @@ fmt:
     cd src-tauri/vendor/lamfold && cargo fmt
     cd src-tauri/vendor/lamfold-cramfs && cargo fmt
     cd src-tauri/vendor/lamfold-romfs && cargo fmt
+    cd src-tauri/vendor/lamfold-udf && cargo fmt
     cd src-tauri/vendor/lamfold-erofs && cargo fmt
     cd src-tauri/vendor/f2fs-reader && cargo fmt
     cd src-tauri/vendor/qnx-reader && cargo fmt
@@ -422,6 +423,20 @@ clippy-yaffs2:
 [group("readers")]
 test-vendor name *args:
     cargo test --manifest-path src-tauri/vendor/{{ name }}/Cargo.toml --lib {{ args }}
+
+# Validate/lint the UDF physical-partition reader and its reference fixtures.
+[group("readers")]
+test-udf:
+    cargo test --manifest-path src-tauri/vendor/lamfold-udf/Cargo.toml --lib
+
+[group("readers")]
+clippy-udf:
+    cargo clippy --manifest-path src-tauri/vendor/lamfold-udf/Cargo.toml --all-targets -- -D warnings
+    cargo check --manifest-path src-tauri/vendor/lamfold-udf/Cargo.toml --no-default-features
+
+[group("readers")]
+generate-udf-fixtures:
+    {{ python }} scripts/udf-fixtures.py
 
 # Lint the standalone MINIFS reader, including regression tests.
 [group("readers")]

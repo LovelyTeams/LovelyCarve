@@ -85,3 +85,7 @@ LZMA 复用 Apache-2.0 的 `lzma-rust2`。没有复制无明确代码许可的 H
 ## qnx-reader（原创）
 
 纯 Rust QNX4 / QNX6 Power-Safe / MMI 只读库，AGPL-3.0-only；未移植内核 C 驱动。格式参考 Linux v6.12 公开布局及 NFI qnxmount 的 Apache-2.0 Kaitai 结构。真实 QNX6 工具生成夹具与 TAR 来自 NFI qnxmount `11c8a7f9ee9b945d584263743f6ea8524e8776d2`，其许可证和生成脚本保留在 `qnx-reader/tests/fixtures/`，来源与 SHA-256 见 manifest.json。合成数据及生成器为 CC0；能力、拒绝策略与验证边界见 [QNX](../../docs/formats/QNX.md)。
+
+## UDF
+
+`lamfold-udf` 0.1.1 来源于 [lamco-admin/lamfold fabaad6af0c28](https://github.com/lamco-admin/lamfold/tree/fabaad6af0c28b80535307b339b84110f3a3c12e/crates/lamfold-udf)，MIT OR Apache-2.0。复用既有 lamfold；补 descriptor tag / CRC、单物理分区映射与边界检查、512–4096 字节块、FE / EFE、AED 续链、稀疏区、符号链接、时间与资源限额；不含 C/DLL。固定来源、本地改造和上游 mkudffs / Linux 内核夹具见 [LOVELYCARVE.md](lamfold-udf/LOVELYCARVE.md) 与 [UDF](../../docs/formats/UDF.md)。

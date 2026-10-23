@@ -18,6 +18,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | APFS | [APFS.md](APFS.md) | libfsapfs 110 API 对照；事务 OMAP、多卷、两类目录键、克隆/空洞、范围读、xattr 与快照元数据；明确加密/历史浏览边界 |
 | HFS+ / HFSX | [HFS.md](HFS.md) | libfshfs 95 API；完整 fork / overflow、resource fork、attr continuation、Unicode 3.2、硬链接与逻辑范围读取 |
 | ISO 9660 / 光盘 BIN / CUE | [CDFS.md](CDFS.md) | libodraw 全 API 对照；多文件/多轨 CUE、Mode 1 / XA Form 1、来源字节保留与范围读取 |
+| UDF | [UDF.md](UDF.md) | lamfold-udf；1.02–2.01 单物理分区、FE / EFE、tag / CRC、续链、空洞和范围读取；高级 partition maps 明确拒绝 |
 | CramFS / Linux ROMFS | [ROM_IMAGES.md](ROM_IMAGES.md) | lamfold Rust 库；CramFS v2 大小端、CRC、按页范围读取；ROMFS 校验和、硬链接、目录链边界 |
 | MINIFS | [MINIFS.md](MINIFS.md) | 原创独立 Rust 库；VxWorks / TP-Link v3、共享 LZMA 块、有界范围读及官方固件逐文件 oracle |
 | F2FS | [F2FS.md](F2FS.md) | 纯 Rust checkpoint / NAT 读取、动态内联区域、完整间接寻址、inode CRC、硬链接及纳秒时间 |

@@ -1,4 +1,4 @@
-//! CramFS / ROMFS / EROFS / F2FS / QNX adapters over the lamfold reader contract.
+//! CramFS / ROMFS / EROFS / F2FS / QNX / UDF adapters over the lamfold reader contract.
 //! Paths retain their volume identity; no host extraction or symlink following.
 
 use std::{cell::RefCell, collections::HashSet, sync::Arc};
@@ -18,6 +18,9 @@ mod flashfs_tests;
 #[cfg(test)]
 #[path = "rom_images_tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "udf_tests.rs"]
+mod udf_tests;
 
 pub type CramfsVolume = RomVolume<lamfold_cramfs::Cramfs<RomImageSource>>;
 pub type RomfsVolume = RomVolume<lamfold_romfs::Romfs<RomImageSource>>;
@@ -25,6 +28,7 @@ pub type ErofsVolume = RomVolume<lamfold_erofs::Erofs<RomImageSource>>;
 pub type F2fsVolume = RomVolume<f2fs_reader::F2fs<RomImageSource>>;
 pub type Qnx4Volume = RomVolume<qnx_reader::Qnx4<RomImageSource>>;
 pub type Qnx6Volume = RomVolume<qnx_reader::Qnx6<RomImageSource>>;
+pub type UdfVolume = RomVolume<lamfold_udf::Udf<RomImageSource>>;
 
 pub struct RomImageSource {
     image: Arc<DiskImage>,
@@ -84,6 +88,15 @@ pub fn parse_qnx4_id(id: &str) -> Option<(u8, String)> {
 }
 pub fn open_qnx4_source(image: &Arc<DiskImage>, partition: u8) -> Result<Qnx4Volume> {
     Qnx4Volume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn parse_udf_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "udf")
+}
+pub fn open_udf_source(image: &Arc<DiskImage>, partition: u8) -> Result<UdfVolume> {
+    UdfVolume::open(
         Arc::clone(image),
         find_partition(image, &partition.to_string())?,
     )

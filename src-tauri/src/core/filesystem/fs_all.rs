@@ -189,6 +189,7 @@ pub fn fs_prefix_for_kind(kind: PartitionKind) -> &'static str {
         | PartitionKind::F2fs
         | PartitionKind::Qnx4
         | PartitionKind::Qnx6
+        | PartitionKind::Udf
         | PartitionKind::Minifs
         | PartitionKind::Romfs
         | PartitionKind::Ubi

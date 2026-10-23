@@ -1,0 +1,23 @@
+lamfold-udf — third-party attribution
+
+lamfold-udf is original Lamco Development work (MIT OR Apache-2.0), clean-roomed
+from the freely-available specifications:
+
+  ECMA-167 (Volume and File Structure for Write-Once and Rewritable Media)
+  OSTA Universal Disk Format (UDF) 1.02
+
+Permissive implementations consulted ONLY as architecture references and as test
+oracles (never copied):
+
+  hadris-udf    MIT   (no_std UDF 1.02 read shape)
+  oxideav-dvd   MIT   (clean-room UDF reference)
+
+The GPL implementations were FENCED OFF — not read, not transcribed:
+
+  Linux kernel fs/udf   GPL-2.0   (ecma_167.h / osta_udf.h struct headers)
+  udftools / mkudffs    GPL-2
+
+Test fixtures are generated with mkudffs (a tool, not a source); the on-disk
+bytes are data, not code.
+
+M0 license-gate audit: the project license audit

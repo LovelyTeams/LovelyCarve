@@ -1532,3 +1532,15 @@ by the evidence read path. Original F2FS synthetic data/generator is CC0-1.0.
 ## QNX6 reference fixtures (NetherlandsForensicInstitute/qnxmount)
 
 Apache-2.0, revision `11c8a7f9ee9b945d584263743f6ea8524e8776d2`. The QNX-produced test image, matching TAR and original generation script are retained under `src-tauri/vendor/qnx-reader/tests/fixtures/`; `LICENSE-qnxmount` preserves the license. The image is losslessly zlib-compressed and otherwise unchanged. Runtime QNX4 / QNX6 parsing is original LovelyCarve AGPL-3.0-only Rust code. Optional positive-fixture oracle uses the separately obtained MIT qnxprobe project; it is not a runtime dependency or bundled source.
+
+## UDF reader and reference fixtures
+
+`lamfold-udf` 0.1.1 is adapted from Lamco Development LLC / Greg Lamberson,
+[lamco-admin/lamfold](https://github.com/lamco-admin/lamfold/tree/fabaad6af0c28b80535307b339b84110f3a3c12e/crates/lamfold-udf),
+revision `fabaad6af0c28b80535307b339b84110f3a3c12e`, MIT OR Apache-2.0.
+Original LICENSE-MIT, LICENSE-APACHE and NOTICE are preserved in
+`src-tauri/vendor/lamfold-udf/`; local UDF reader changes use the same licenses.
+The mkudffs/Linux-generated UDF 1.02 and 2.01 data fixtures are retained as
+lossless zlib copies, with provenance and hashes in their manifest. Invented
+fixtures and `scripts/udf-fixtures.py` are CC0-1.0. No upstream C filesystem
+implementation, native library or writer is included in the runtime path.
