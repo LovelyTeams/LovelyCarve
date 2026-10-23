@@ -48,6 +48,36 @@ async function mount() {
 }
 
 describe('file list location integration', () => {
+  it('does not probe the previous evidence directories while loading another image', async () => {
+    const folder = { ...node, id: 'ext4:part:0:188', name: 'acct', kind: 'dir', parent_id: 'root' };
+    const original = ipc.invoke.getMockImplementation()!;
+    let finishLoad!: (page: unknown) => void;
+    ipc.invoke.mockImplementation(async (command, args) => {
+      if (command === 'fs_children_page' && args.parentId === 'root') {
+        if (args.imageId === 'disk-b') return new Promise(resolve => { finishLoad = resolve; });
+        return { items: Array.from({ length: 100 }, (_, index) => ({ ...folder, id: `ext4:part:0:${188 + index}`, name: `dir-${index}` })), nextCursor: null, total: 100 };
+      }
+      if (command === 'fs_children_page') return { items: [], nextCursor: null, total: 0 };
+      return original(command, args);
+    });
+    await mount();
+    imageId.value = 'disk-b';
+    await settle();
+    // A viewport/filter update can still observe the retained old page while
+    // the new evidence's first page is in flight.
+    const animation = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { callback(0); return 1; });
+    const table = host.querySelector<HTMLDivElement>('.table-wrap')!;
+    table.scrollTop = 1800;
+    table.dispatchEvent(new Event('scroll'));
+    await settle();
+    animation.mockRestore();
+    expect(ipc.invoke.mock.calls.filter(([command, args]) =>
+      ['fs_children_page', 'fs_child_counts', 'fs_subtree_empty_dirs'].includes(command)
+      && args.imageId === 'disk-b' && (args.parentId?.startsWith('ext4:') || args.parentIds?.some((id: string) => id.startsWith('ext4:'))),
+    )).toEqual([]);
+    finishLoad({ items: [], nextCursor: null, total: 0 });
+    await settle();
+  });
   it('opens the selected folder in preview and allows detaching without first selecting a file', async () => {
     const folder = { ...node, id: 'folder:646f6373', name: '文档', kind: 'dir', parent_id: 'folder:', size: 0 };
     const original = ipc.invoke.getMockImplementation()!;

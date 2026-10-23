@@ -731,6 +731,9 @@ const { mountBusy, rowCanMount, rowMountView, rowMountLabel, refreshReadonlyMoun
 watch(
   () => props.imageId,
   () => {
+    // Node IDs are local to one evidence. Drop the old page synchronously,
+    // before viewport/count watchers can combine it with the new image ID.
+    entries.value = [];
     stack.value = [{ id: 'root', name: '/' }];
     invalidatePathLevels();
     // 哈希/研判结果按节点 id 缓存，只在本镜像内有效。
@@ -753,7 +756,7 @@ watch(
     void refreshReadonlyMounts();
     loadCurrent();
   },
-  { immediate: true },
+  { immediate: true, flush: 'sync' },
 );
 
 const { copyCount, copyCurrentPath, onCopyNames, onCopyPaths, onCopyForensic,
