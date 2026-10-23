@@ -164,6 +164,7 @@ fmt:
     cd src-tauri/vendor/amiga-reader && cargo fmt
     cd src-tauri/vendor/befs-reader && cargo fmt
     cd src-tauri/vendor/gfs2-reader && cargo fmt
+    cd src-tauri/vendor/ocfs2-reader && cargo fmt
     cd src-tauri/vendor/amiga-ffs && cargo fmt
     cd src-tauri/vendor/amiga-rdb && cargo fmt
     cd src-tauri/vendor/lamfold-erofs && cargo fmt
@@ -483,6 +484,23 @@ generate-gfs2-fixtures:
 [group("readers")]
 test-gfs2-native:
     cargo test --manifest-path src-tauri/vendor/gfs2-reader/Cargo.toml --lib native_linux -- --ignored --nocapture
+
+[group("readers")]
+test-ocfs2 *args:
+    cargo test --manifest-path src-tauri/vendor/ocfs2-reader/Cargo.toml --lib {{ args }}
+
+[group("readers")]
+clippy-ocfs2:
+    cargo clippy --manifest-path src-tauri/vendor/ocfs2-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-ocfs2-fixtures:
+    {{ python }} scripts/ocfs2-fixtures.py
+
+# Audit external mkfs.ocfs2 / Linux / fsck inputs; requires OCFS2_ORACLE_DIR.
+[group("readers")]
+test-ocfs2-native:
+    cargo test --manifest-path src-tauri/vendor/ocfs2-reader/Cargo.toml --lib native_linux -- --ignored --nocapture
 
 [group("readers")]
 clippy-befs:

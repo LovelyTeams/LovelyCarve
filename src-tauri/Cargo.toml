@@ -173,6 +173,7 @@ oar-ocr = { version = "0.7.4", optional = true }
 # 与 oar-ocr 同版本，无冲突。
 # 0.10 要求 ort rc.13，与 vendored magika 的 rc.12 固定版本冲突；两者暂留 0.7。
 oar-ocr-core = { version = "0.7.4", optional = true }
+ocfs2-reader = { path = "vendor/ocfs2-reader" }
 # 原类型视图「二维码识别」引擎（仅 `qrcode-wechat` feature）：
 # objdetect::QRCodeDetector 检测/解码、imgcodecs::imdecode 从字节解图、imgproc/core 做
 # 灰度/对比度/亮度/模糊/缩放/反色/二值化的暴力变换；并启用 WeChat 检测器（wechat_qrcode）。

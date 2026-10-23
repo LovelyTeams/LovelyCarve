@@ -277,8 +277,8 @@ LUKS、VeraCrypt 与 FileVault 加密容器
 - `lovelycarve-cli files streams get <path> [--node-id <string>] --stream-name <string> [--max-bytes <number>] [--text]`
   读取命名数据流内容
 - `lovelycarve-cli files streams list [--node-id <string>] --path <string>`
-  列出 NTFS / ReFS 数据流、HFS 文件分叉或 BeFS / GFS2 属性
-  Keywords: ads, alternate data stream, resource fork, hfs, befs, gfs2, attributes.
+  列出 NTFS / ReFS 数据流、HFS 文件分叉或 BeFS / GFS2 / OCFS2 属性
+  Keywords: ads, alternate data stream, resource fork, hfs, befs, gfs2, ocfs2, attributes.
 - `lovelycarve-cli files strings list <path> [--encoding <ascii|utf-8|utf-16le|utf-16be>] [--length <number>] [--limit <number>] [--min-length <number>] [--offset <number>] [--node-id <string>]`
   提取文件中的可打印字符串
   Keywords: strings, printable text.

@@ -1643,3 +1643,15 @@ New Rust reading code is AGPL-3.0-only. Linux UAPI record definitions are used
 as format references; no kernel code or native filesystem library is linked.
 The optional native test uses separately installed Linux tooling and invented
 CC0 inputs. See [ORIGIN.md](src-tauri/vendor/gfs2-reader/ORIGIN.md).
+
+## OCFS2 reader
+
+`src-tauri/vendor/ocfs2-reader` contains an original AGPL-3.0-only immutable
+Rust reader. Superblock prefix positions/layout adapt Marcel Roozekrans's MIT
+`unearth` detector at `bc891261221f5f5134269780d6c206725b21d52e`; its notice is
+retained as `LICENSE-UNEARTH`. Linux OCFS2 definitions at
+`7a78f7ba9f24962c8033e0152bf34a7903ff61ba` serve as format references;
+no kernel C source is compiled, linked or shipped. Original invented fixtures
+and Python generators are CC0-1.0; native mkfs/kernel/fsck inputs remain in an
+external cache. Provenance, hashes and verification limits are recorded in
+[ORIGIN.md](src-tauri/vendor/ocfs2-reader/ORIGIN.md).

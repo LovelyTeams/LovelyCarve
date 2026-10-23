@@ -1,0 +1,24 @@
+{
+  "license": "CC0-1.0",
+  "generator": "scripts/ocfs2-fixtures.py",
+  "fixtures": [
+    {
+      "name": "plain",
+      "decoded_bytes": 16777216,
+      "sha256": "4a290267895db314399ba08d639d4c83ca0db4fd7a1363154937e850df410f8e",
+      "compressed_sha256": "0574503df54e83021c7bc1afb86282390421582de6b625b1ae0d83b60b07e3ad"
+    },
+    {
+      "name": "ecc",
+      "decoded_bytes": 16777216,
+      "sha256": "f8275509374b247ac2496383b2234dddf8aa8ce1d076c77b261fa662a0357889",
+      "compressed_sha256": "63946b33e3485570a13ab9cc3b2a350fff57e50d7b5a8d7befa34ae2d0848f1a"
+    },
+    {
+      "name": "discontiguous-ecc",
+      "decoded_bytes": 16777216,
+      "sha256": "6fe976db439bf3d6c46398a7915841aab06dbe979fef903e0c0c5d8c496749e1",
+      "compressed_sha256": "9f98b0be1f342577380d55077a8f24a07b029a34c8018fc7cdba5365fd657f37"
+    }
+  ]
+}

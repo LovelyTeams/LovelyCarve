@@ -3840,6 +3840,7 @@ dependencies = [
  "ntfs-core",
  "oar-ocr",
  "oar-ocr-core",
+ "ocfs2-reader",
  "opencv",
  "ort",
  "parking_lot",
@@ -4919,6 +4920,14 @@ dependencies = [
  "objc2-app-kit",
  "objc2-core-foundation",
  "objc2-foundation",
+]
+
+[[package]]
+name = "ocfs2-reader"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "lamfold",
 ]
 
 [[package]]

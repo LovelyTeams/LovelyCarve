@@ -154,3 +154,12 @@ Haiku 编码解释在 Rust API 中提供。原生 Haiku 官方镜像及独立发
 `gfs2-reader` 0.1.0：适配前检索现有 Rust 代码，复用 unearth 的 MIT 超级块识别布局，
 新增纯 Rust 的资源组、目录、文件、日志及 EA 读取；固定版本、许可和原生
 mkfs / Linux kernel / fsck 验证见 [ORIGIN.md](gfs2-reader/ORIGIN.md)。
+
+## OCFS2 (2026-10-24)
+
+`ocfs2-reader` 0.1.0：先检索现有 Rust 库，复用 unearth 的 MIT 超级块前缀布局
+[bc891261221f](https://github.com/MarcelRoozekrans/unearth/blob/bc891261221f5f5134269780d6c206725b21d52e/src/ocfs2.rs)，
+新增分配链 / 位图、内联和索引目录、extent / refcount、稀疏 / unwritten、扩展属性
+及全部 slot 干净状态检查。Linux 四种块大小的原生逐文件核对和来源哈希见
+[ORIGIN.md](ocfs2-reader/ORIGIN.md)；能力与限制见 [OCFS2](../../docs/formats/OCFS2.md)。
+原创 Rust 为 AGPL-3.0-only；没有引入 C / FUSE / 外部提取器。

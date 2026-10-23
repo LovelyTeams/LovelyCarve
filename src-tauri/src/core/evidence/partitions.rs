@@ -37,6 +37,7 @@ pub mod mbr;
 pub mod mdadm;
 pub mod minifs;
 pub mod minix;
+pub mod ocfs2;
 pub mod optical_disc;
 pub mod qnx;
 pub mod reiserfs;
@@ -149,6 +150,7 @@ pub enum PartitionKind {
     Amiga,
     Befs,
     Gfs2,
+    Ocfs2,
     Ubifs,
     Lvm,
     Bitlocker,
@@ -371,6 +373,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Amiga
         | PartitionKind::Befs
         | PartitionKind::Gfs2
+        | PartitionKind::Ocfs2
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

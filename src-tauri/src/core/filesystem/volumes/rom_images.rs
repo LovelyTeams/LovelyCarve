@@ -19,6 +19,12 @@ mod amiga_tests;
 mod befs;
 #[path = "gfs2.rs"]
 mod gfs2;
+#[path = "ocfs2.rs"]
+mod ocfs2;
+pub use ocfs2::{open_ocfs2_source, parse_ocfs2_id, Ocfs2Volume};
+#[cfg(test)]
+#[path = "ocfs2_tests.rs"]
+mod ocfs2_tests;
 pub use gfs2::{open_gfs2_source, parse_gfs2_id, Gfs2Volume};
 #[path = "classic_hfs_streams.rs"]
 mod classic_hfs_streams;

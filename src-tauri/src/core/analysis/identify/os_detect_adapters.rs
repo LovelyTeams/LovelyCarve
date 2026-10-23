@@ -299,6 +299,7 @@ pub(crate) fn supports_os_detect(kind: PartitionKind) -> bool {
             | PartitionKind::Amiga
             | PartitionKind::Befs
             | PartitionKind::Gfs2
+            | PartitionKind::Ocfs2
             | PartitionKind::Minix
             | PartitionKind::Minifs
             | PartitionKind::Romfs
@@ -339,6 +340,7 @@ pub(crate) fn kind_str(kind: PartitionKind) -> &'static str {
         PartitionKind::Amiga => "amiga",
         PartitionKind::Befs => "befs",
         PartitionKind::Gfs2 => "gfs2",
+        PartitionKind::Ocfs2 => "ocfs2",
         PartitionKind::Minix => "minix",
         PartitionKind::Minifs => "minifs",
         PartitionKind::Romfs => "romfs",

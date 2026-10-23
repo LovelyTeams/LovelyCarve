@@ -169,6 +169,7 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &super::amiga::AmigaProbe,
     &super::befs::BeFsProbe,
     &super::gfs2::Gfs2Probe,
+    &super::ocfs2::Ocfs2Probe,
 ];
 
 pub fn probe_volume(
@@ -201,6 +202,9 @@ pub fn detect_filesystem_bytes(bytes: &[u8], fallback: PartitionKind) -> Partiti
     }
     if super::gfs2::detect(bytes) {
         return PartitionKind::Gfs2;
+    }
+    if super::ocfs2::detect(bytes) {
+        return PartitionKind::Ocfs2;
     }
     if super::befs::detect(bytes) {
         return PartitionKind::Befs;
@@ -320,6 +324,7 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::Amiga
         | PartitionKind::Befs
         | PartitionKind::Gfs2
+        | PartitionKind::Ocfs2
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

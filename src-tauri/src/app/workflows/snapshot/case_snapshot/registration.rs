@@ -107,6 +107,7 @@ pub(super) fn snapshot_supported_plain_partition(kind: PartitionKind) -> bool {
             | PartitionKind::Amiga
             | PartitionKind::Befs
             | PartitionKind::Gfs2
+            | PartitionKind::Ocfs2
             | PartitionKind::Minix
             | PartitionKind::Minifs
             | PartitionKind::Romfs
