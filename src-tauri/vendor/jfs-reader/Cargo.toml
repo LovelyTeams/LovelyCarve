@@ -1,0 +1,16 @@
+[package]
+name = "jfs-reader"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+authors = ["Dani <dani@funkervogt.com>", "LovelyCarve contributors"]
+description = "Bounded pure Rust read-only Linux JFS filesystem reader"
+
+[dependencies]
+lamfold = { path = "../lamfold", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+flate2 = "1"
+zstd = "0.13"
+
+[workspace]

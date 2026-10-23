@@ -194,6 +194,12 @@ impl<'a> FsSession<'a> {
                         )?
                         .root_children(),
                     ),
+                    PartitionKind::Jfs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_jfs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::Minix => Some(
                         crate::core::filesystem::volumes::rom_images::open_minix_source(
                             self.image, pid,

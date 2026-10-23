@@ -103,3 +103,12 @@ LZMA 复用 Apache-2.0 的 `lzma-rust2`。没有复制无明确代码许可的 H
 外部 hfsutils 样本与原创 Python 样本均保留来源和哈希；详见 [ORIGIN.md](classic-hfs/ORIGIN.md)
 和 [CLASSIC_HFS.md](../../docs/formats/CLASSIC_HFS.md)。`lamfold` 新增默认空值的 `LocalFileTimes`
 / `local_timestamps` 接口，避免把传统 HFS 无偏移本地时间标成 UTC；现有 UTC 接口不变。
+
+## Linux JFS 只读适配
+
+`jfs-reader` 0.1.0：布局与读取算法来自 rusty-backup 0.1.0 固定提交
+`6e044a314f6523045999058f85a882c1eeb64b50`（AGPL-3.0），树校验参考 / 改造自
+partmgr 0.1.2 提交 `d074f660e81dfa6ade66cd07400b7421ad9eb9b9`（MIT）。
+修正位图字索引、内部 xtree 逻辑寻址与续槽语义，扩展多 IAG、块大小、目录索引、链接和 EA；
+不包含 C 文件系统代码、写入或日志回放。来源与许可见 [ORIGIN.md](jfs-reader/ORIGIN.md)，
+能力与限制见 [JFS.md](../../docs/formats/JFS.md)。

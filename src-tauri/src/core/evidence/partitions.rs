@@ -27,6 +27,7 @@ pub mod flashfs;
 pub mod gpt;
 pub mod hfsplus;
 pub mod jffs2;
+pub mod jfs;
 pub mod luks;
 pub mod lvm2;
 pub mod mbr;
@@ -124,6 +125,7 @@ pub enum PartitionKind {
     Qnx6,
     Udf,
     Minix,
+    Jfs,
     Ubifs,
     Lvm,
     Bitlocker,
@@ -340,6 +342,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Qnx6
         | PartitionKind::Udf
         | PartitionKind::Hfs
+        | PartitionKind::Jfs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

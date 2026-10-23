@@ -203,6 +203,10 @@ pub(super) fn children_for_image_with_options(
                 crate::core::filesystem::volumes::rom_images::open_hfs_source(image, partition.id)?
                     .root_children()
             }
+            PartitionKind::Jfs => {
+                crate::core::filesystem::volumes::rom_images::open_jfs_source(image, partition.id)?
+                    .root_children()
+            }
             PartitionKind::Minix => {
                 crate::core::filesystem::volumes::rom_images::open_minix_source(
                     image,

@@ -1572,3 +1572,16 @@ The retained hfsutils-generated image and generation script are from the same
 rusty-backup revision; invented fixtures and `scripts/hfs-fixtures.py` are CC0-1.0.
 See [ORIGIN.md](src-tauri/vendor/classic-hfs/ORIGIN.md) for precise source paths,
 licenses, changes and fixture hashes.
+
+## Linux JFS reader and fixtures
+
+`jfs-reader` adapts JFS layouts/read algorithms from Dani's
+[danifunker/rusty-backup](https://github.com/danifunker/rusty-backup/blob/6e044a314f6523045999058f85a882c1eeb64b50/src/fs/jfs.rs)
+0.1.0 (AGPL-3.0), with bounded tree validation adapted from
+[CaddyGlow/partmgr](https://github.com/CaddyGlow/partmgr/blob/d074f660e81dfa6ade66cd07400b7421ad9eb9b9/src/fs_jfs.rs)
+0.1.2 (MIT). Original license texts are retained in `src-tauri/vendor/jfs-reader/`.
+The combined adaptation is AGPL-3.0-only. No C filesystem implementation is linked.
+The retained mkfs.jfs/guestfish fixture and its generation script are from the
+same rusty-backup revision; invented fixtures and `scripts/jfs-fixtures.py` are
+CC0-1.0. See [ORIGIN.md](src-tauri/vendor/jfs-reader/ORIGIN.md) and the fixture
+manifest for precise revisions, changes, licenses and SHA-256 values.

@@ -17,6 +17,9 @@ mod classic_hfs_streams;
 #[cfg(test)]
 #[path = "classic_hfs_tests.rs"]
 mod classic_hfs_tests;
+#[cfg(test)]
+#[path = "jfs_tests.rs"]
+mod jfs_tests;
 
 #[cfg(test)]
 #[path = "flashfs_tests.rs"]
@@ -40,6 +43,7 @@ pub type Qnx6Volume = RomVolume<qnx_reader::Qnx6<RomImageSource>>;
 pub type UdfVolume = RomVolume<lamfold_udf::Udf<RomImageSource>>;
 pub type MinixVolume = RomVolume<minix_reader::Minix<RomImageSource>>;
 pub type HfsVolume = RomVolume<classic_hfs::Hfs<RomImageSource>>;
+pub type JfsVolume = RomVolume<jfs_reader::Jfs<RomImageSource>>;
 
 pub struct RomImageSource {
     image: Arc<DiskImage>,
@@ -109,6 +113,24 @@ pub fn parse_minix_id(id: &str) -> Option<(u8, String)> {
 pub fn parse_hfs_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "hfs")
 }
+pub fn parse_jfs_id(id: &str) -> Option<(u8, String)> {
+    // Linux JFS names may contain literal backslashes. These are evidence
+    // components, never host paths; only '/' separates filesystem components.
+    let rest = id.strip_prefix("jfs:part:")?;
+    let (partition, path) = rest.split_once(':')?;
+    let path = String::from_utf8(hex::decode(path).ok()?).ok()?;
+    valid_lookup_path(&path).then_some((partition.parse().ok()?, path))
+}
+pub fn open_jfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<JfsVolume> {
+    let volume = JfsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )?;
+    if volume.reader.borrow().header().selected_copy == jfs_reader::HeaderCopy::Secondary {
+        tracing::warn!(partition, "JFS primary superblock unavailable; using validated secondary superblock at byte 61440");
+    }
+    Ok(volume)
+}
 pub fn open_hfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<HfsVolume> {
     HfsVolume::open(
         Arc::clone(image),
@@ -163,9 +185,13 @@ fn parse_id(id: &str, prefix: &str) -> Option<(u8, String)> {
 }
 
 fn valid_path(path: &str) -> bool {
+    !path.contains('\\') && valid_lookup_path(path)
+}
+
+fn valid_lookup_path(path: &str) -> bool {
     path.is_empty()
         || (path.starts_with('/')
-            && !path.contains(['\\', '\0'])
+            && !path.contains('\0')
             && path
                 .split('/')
                 .skip(1)
@@ -235,7 +261,7 @@ impl<F: FoldFrontend<RomImageSource>> RomVolume<F> {
         path: &str,
         context: &mut SubstrateCtx<'_>,
     ) -> Result<(u64, HashSet<u64>)> {
-        ensure!(valid_path(path), "invalid ROM image path");
+        ensure!(valid_lookup_path(path), "invalid ROM image path");
         ensure!(path.split('/').count() <= 257, "ROM image path depth limit");
         let mut node = reader.root();
         let mut ancestors = HashSet::from([node]);

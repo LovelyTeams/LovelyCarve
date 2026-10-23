@@ -149,6 +149,35 @@ def main():
             assert rows[2]["result"]["data"] == flash_body[flash_offset:flash_offset + 121].hex()
             assert rows[3]["result"]["sha256"] == hashlib.sha256(flash_body).hexdigest()
 
+        # JFS: multiple IAGs, sparse/unwritten data, Unix names and hardlinks.
+        for jfs_name, jfs_block in [("multi-iag-512-legacy", 512), ("multi-iag-4096-indexed", 4096)]:
+            jfs_path = root / (jfs_name + ".jfs")
+            jfs_path.write_bytes(zlib.decompress((flash_vendor / ("jfs-reader/tests/fixtures/" + jfs_name + ".zlib")).read_bytes()))
+            jfs_expected = bytearray(12 * jfs_block + 37)
+            for logical, count, factor in [(0, 2 * jfs_block, 17), (10 * jfs_block, jfs_block, 23), (12 * jfs_block, 37, 29)]:
+                jfs_expected[logical:logical + count] = bytes((index * factor + 5) & 255 for index in range(count))
+            jfs_node = "jfs:part:0:" + b"/big.bin".hex()
+            jfs_long_name = "long_中文_" + "x" * 180 + "\\tail"
+            jfs_export = root / (jfs_name + "-export.bin")
+            jfs_offset = 6 * jfs_block - 7
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(jfs_path)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "nested", "command": "files list", "args": {"parentId": "jfs:part:0:" + b"/sub".hex()}},
+                {"id": "read", "command": "files read", "args": {"nodeId": jfs_node, "offset": jfs_offset, "length": 71}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": jfs_node, "algos": ["sha256"]}},
+                {"id": "export", "command": "files export", "args": {"nodeId": jfs_node, "destination": str(jfs_export)}},
+                {"id": "unicode", "command": "files read", "args": {"nodeId": "jfs:part:0:" + ("/" + jfs_long_name).encode().hex(), "offset": 0, "length": 100}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "jfs"
+            assert any(item["name"] == jfs_long_name for item in rows[1]["result"]["items"])
+            assert rows[2]["result"]["items"][0]["name"] == "nested.txt"
+            assert rows[3]["result"]["data"] == jfs_expected[jfs_offset:jfs_offset + 71].hex()
+            assert rows[4]["result"]["sha256"] == hashlib.sha256(jfs_expected).hexdigest()
+            assert jfs_export.read_bytes() == jfs_expected
+            assert rows[6]["result"]["data"] == b"unicode path".hex()
+
         # Classic HFS: retain local times and independently export both forks.
         hfs_path = root / "classic-hfs.img"
         hfs_path.write_bytes(zlib.decompress((flash_vendor / "classic-hfs/tests/fixtures/fragmented-1024.zlib").read_bytes()))

@@ -3357,6 +3357,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "jfs-reader"
+version = "0.1.0"
+dependencies = [
+ "lamfold",
+]
+
+[[package]]
 name = "jiff"
 version = "0.2.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3774,6 +3781,7 @@ dependencies = [
  "ios-backup-core",
  "ios-backup-forensic",
  "jffs2",
+ "jfs-reader",
  "jiff",
  "lamfold",
  "lamfold-cramfs",

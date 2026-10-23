@@ -1,0 +1,74 @@
+[
+  {
+    "file": "multi-iag-512-legacy.zlib",
+    "bytes": 1048576,
+    "sha256": "a146feaa213f376d889feead9efb91ed76dee65c829c500b57ae0edfa4d1813e",
+    "compressed_sha256": "7286142cee541c6b2921d36350ddc4801ff6f4e23f50b533eee902495acb1650",
+    "license": "CC0-1.0",
+    "source": "scripts/jfs-fixtures.py"
+  },
+  {
+    "file": "multi-iag-512-indexed.zlib",
+    "bytes": 1048576,
+    "sha256": "b516f8723402644fa8e4097d3b3380caf191f9c922d664b050b6e15e8bdb4568",
+    "compressed_sha256": "1d3a75e2f342fab14e87cdc87291217edff94403c1457e3916ba03f51a40b329",
+    "license": "CC0-1.0",
+    "source": "scripts/jfs-fixtures.py"
+  },
+  {
+    "file": "multi-iag-1024-legacy.zlib",
+    "bytes": 1048576,
+    "sha256": "62131c6cf231732f448b9f7a2b475f42a5046d05d5a3823a928783ecda75b212",
+    "compressed_sha256": "407620aa5b4e65006c6844e29aaf0d2f56683d03d53b38eb39723158611166bd",
+    "license": "CC0-1.0",
+    "source": "scripts/jfs-fixtures.py"
+  },
+  {
+    "file": "multi-iag-1024-indexed.zlib",
+    "bytes": 1048576,
+    "sha256": "e595866f338817e76cb6b878abb3822bbbcb0cdedf9aa9c6f39f6b4d4cc88284",
+    "compressed_sha256": "9325e9bcc9f651acdb2110d4c7c0f2ca8ba993ae6b2efe7b8c739276ddaa828a",
+    "license": "CC0-1.0",
+    "source": "scripts/jfs-fixtures.py"
+  },
+  {
+    "file": "multi-iag-2048-legacy.zlib",
+    "bytes": 1048576,
+    "sha256": "cab3d5b23639aa21bb432316eeff5bd897d76b5c38ee587cdba8de06b5ff8aea",
+    "compressed_sha256": "ea811422fd7e367cbf9272117f7a582eac37b73f8a16baba9b1e6fe3a9193d65",
+    "license": "CC0-1.0",
+    "source": "scripts/jfs-fixtures.py"
+  },
+  {
+    "file": "multi-iag-2048-indexed.zlib",
+    "bytes": 1048576,
+    "sha256": "2a0f1e89cce4f56d70d0bf76f5189ae3720a8a9ca1389b498f4d27e491d63606",
+    "compressed_sha256": "5922a11ed3a0d5ff770e6f76c927510bd638a188658a6e8845a7370bc7e94e5d",
+    "license": "CC0-1.0",
+    "source": "scripts/jfs-fixtures.py"
+  },
+  {
+    "file": "multi-iag-4096-legacy.zlib",
+    "bytes": 1048576,
+    "sha256": "37ee10f11a6205c3aeccae6c8b28128f5155533947e6a5624169b4e69dc099a0",
+    "compressed_sha256": "4ddabdd7c907d2dbcd9bffd33b35fff3065b8688a73b9cb08eae1930dbbff32c",
+    "license": "CC0-1.0",
+    "source": "scripts/jfs-fixtures.py"
+  },
+  {
+    "file": "multi-iag-4096-indexed.zlib",
+    "bytes": 1048576,
+    "sha256": "bd8954b382c107190c71f6ac1dc08db9c2fac880fdc4b3dc9f3fb00f0d0f6c6c",
+    "compressed_sha256": "1a6202cf3adbe88d5ea5385ac49d620851a3cf770ac588feef99b684f4e0b8e1",
+    "license": "CC0-1.0",
+    "source": "scripts/jfs-fixtures.py"
+  },
+  {
+    "file": "jfsutils.img.zst",
+    "bytes": 16777216,
+    "sha256": "22da608bc8e42989045d69c9bbe61f488a3add26ede6b1fd7f8c50b7a31ba2d5",
+    "compressed_sha256": "e89cafc004ece6676a854dcdfce594bc2f630825c6859d67c421774af38ba136",
+    "source": "https://github.com/danifunker/rusty-backup/blob/6e044a314f6523045999058f85a882c1eeb64b50/tests/fixtures/test_jfs.img.zst",
+    "license": "AGPL-3.0-only"
+  }
+]

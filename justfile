@@ -159,6 +159,7 @@ fmt:
     cd src-tauri/vendor/lamfold-udf && cargo fmt
     cd src-tauri/vendor/minix-reader && cargo fmt
     cd src-tauri/vendor/classic-hfs && cargo fmt
+    cd src-tauri/vendor/jfs-reader && cargo fmt
     cd src-tauri/vendor/lamfold-erofs && cargo fmt
     cd src-tauri/vendor/f2fs-reader && cargo fmt
     cd src-tauri/vendor/qnx-reader && cargo fmt
@@ -443,6 +444,18 @@ clippy-classic-hfs:
 [group("readers")]
 generate-hfs-fixtures:
     {{ python }} scripts/hfs-fixtures.py
+
+[group("readers")]
+test-jfs:
+    cargo test --manifest-path src-tauri/vendor/jfs-reader/Cargo.toml --lib
+
+[group("readers")]
+clippy-jfs:
+    cargo clippy --manifest-path src-tauri/vendor/jfs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-jfs-fixtures:
+    {{ python }} scripts/jfs-fixtures.py
 
 [group("readers")]
 clippy-minix:
