@@ -51,8 +51,9 @@ use crate::core::filesystem::volumes::ntfs::NtfsSource;
 use crate::core::filesystem::volumes::ntfs::{parse_ntfs_id, NtfsVolume};
 use crate::core::filesystem::volumes::refs::{parse_refs_id, parse_refs_snap_id};
 use crate::core::filesystem::volumes::rom_images::{
-    open_cramfs_source, open_erofs_source, open_f2fs_source, open_romfs_source, parse_cramfs_id,
-    parse_erofs_id, parse_f2fs_id, parse_romfs_id,
+    open_cramfs_source, open_erofs_source, open_f2fs_source, open_qnx4_source, open_qnx6_source,
+    open_romfs_source, parse_cramfs_id, parse_erofs_id, parse_f2fs_id, parse_qnx4_id,
+    parse_qnx6_id, parse_romfs_id,
 };
 use crate::core::filesystem::volumes::squashfs::{open_squashfs_source, parse_squashfs_id};
 use crate::core::filesystem::volumes::ubi::{open_ubi_source, parse_ubi_id};
@@ -153,6 +154,8 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &MinifsAdapter,
     &ErofsAdapter,
     &F2fsAdapter,
+    &Qnx4Adapter,
+    &Qnx6Adapter,
     &UbifsAdapter,
     &Jffs2Adapter,
     &Yaffs2Adapter,
@@ -198,6 +201,12 @@ pub(crate) fn dispatch<'a>(
 pub(crate) fn volume_root_key(id: &str) -> Option<String> {
     if let Some((partition, _)) = parse_erofs_id(id) {
         return Some(format!("erofs:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_qnx4_id(id) {
+        return Some(format!("qnx4:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_qnx6_id(id) {
+        return Some(format!("qnx6:part:{partition}"));
     }
     if let Some((partition, _)) = parse_f2fs_id(id) {
         return Some(format!("f2fs:part:{partition}"));
@@ -421,6 +430,24 @@ path_volume!(
     open_erofs_source
 );
 path_volume_impl!(ErofsVol, plain_range);
+path_volume!(
+    Qnx4Adapter,
+    Qnx4Vol,
+    "qnx4",
+    crate::core::filesystem::volumes::rom_images::Qnx4Volume,
+    parse_qnx4_id,
+    open_qnx4_source
+);
+path_volume_impl!(Qnx4Vol, plain_range);
+path_volume!(
+    Qnx6Adapter,
+    Qnx6Vol,
+    "qnx6",
+    crate::core::filesystem::volumes::rom_images::Qnx6Volume,
+    parse_qnx6_id,
+    open_qnx6_source
+);
+path_volume_impl!(Qnx6Vol, plain_range);
 path_volume!(
     F2fsAdapter,
     F2fsVol,

@@ -9,6 +9,8 @@
 
 ### Added
 
+- 新增原生只读 QNX4 / QNX6 Power-Safe Rust 读取库：extent 链、大小端、MMI、CRC 代际选择、全部间接层级、长名与范围读，接入浏览 / 哈希 / 导出 / 索引和 CLI，使用 QNX 原生生成镜像及 TAR 独立验证。
+
 - 新增 F2FS 与 EROFS 原生只读浏览、预览、哈希、导出和索引：F2FS 校验 checkpoint / NAT 与 inode 并读取内联 / 间接数据；EROFS 支持未压缩、LZ4、DEFLATE、Zstandard、MicroLZMA 和 chunk 文件，保留时间角色与源字节，未支持的加密 / 压缩或高级布局明确报错。
 
 - 新增独立纯 Rust MINIFS v3 读取库，支持直接浏览裸 MINIFS 与 TP-Link VxWorks 固件中的共享 LZMA 文件块，并复用预览、哈希、导出、范围读取与索引；官方 Archer C6 v4 固件提供逐文件独立校验，旧式 MINIFS 布局暂不支持。

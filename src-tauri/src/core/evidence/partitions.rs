@@ -32,6 +32,7 @@ pub mod mbr;
 pub mod mdadm;
 pub mod minifs;
 pub mod optical_disc;
+pub mod qnx;
 pub mod rom_images;
 pub mod squashfs;
 pub mod ubifs;
@@ -116,6 +117,8 @@ pub enum PartitionKind {
     Minifs,
     Erofs,
     F2fs,
+    Qnx4,
+    Qnx6,
     Ubifs,
     Lvm,
     Bitlocker,
@@ -327,6 +330,8 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Yaffs1
         | PartitionKind::Erofs
         | PartitionKind::F2fs
+        | PartitionKind::Qnx4
+        | PartitionKind::Qnx6
         | PartitionKind::Minifs
         | PartitionKind::Romfs
         | PartitionKind::BiosBoot

@@ -356,6 +356,8 @@ impl DiskImage {
                             PartitionKind::Cramfs
                                 | PartitionKind::Erofs
                                 | PartitionKind::F2fs
+                                | PartitionKind::Qnx4
+                                | PartitionKind::Qnx6
                                 | PartitionKind::Minifs
                                 | PartitionKind::Romfs
                                 | PartitionKind::Squashfs

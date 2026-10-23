@@ -70,6 +70,8 @@ Netgear `.chk` 也可直接添加。程序校验外层结构后，展示其中�
 尚不支持。EROFS 支持未压缩与四种压缩，fragments / ztailpacking 等布局明确报错。Android sparse
 包装需先展开。完整边界见 [F2FS](formats/F2FS.md) 和 [EROFS](formats/EROFS.md)。
 
+QNX4 / QNX6 Power-Safe 镜像和磁盘分区可直接浏览，QNX6 还支持已验证范围内的 MMI 布局；用法、版本与加密限制见 [QNX 文件系统](formats/QNX.md)。QNX IFS、ETFS 与 EFS 属于其他格式，本次接入不包含它们。
+
 ZIP 或文件夹检材中的小米 `.bak` 备份会自动显示为同名目录，展开后可浏览 `apps/<包名>/…` 下的数据库、偏好设置和其他应用文件，并使用现有预览与导出功能。程序只在临时目录物化备份的 TAR 内容，卸载检材后自动清理，不修改原始检材。
 
 案件中的 ZIP 首次加载时完整解码全部备份，展开清单保存在案件里；之后再打开案件会直接恢复备份目录，打开某个备份内的文件时才解码该备份，首次读取会稍有等待。普通 `.bak`、损坏或需要密码的备份保留为原始文件；详细边界见 [小米备份](formats/MIUI_BAK.md)。

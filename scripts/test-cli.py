@@ -149,6 +149,29 @@ def main():
             assert rows[2]["result"]["data"] == flash_body[flash_offset:flash_offset + 121].hex()
             assert rows[3]["result"]["sha256"] == hashlib.sha256(flash_body).hexdigest()
 
+        # QNX4 extent-chain and independently QNX-created QNX6 reference image.
+        qnx_fixtures = flash_vendor / "qnx-reader/tests/fixtures"
+        with tarfile.open(qnx_fixtures / "nfi-qnx6.tar.gz", "r:gz") as archive:
+            qnx6_body = archive.extractfile("this_file_is_large").read()
+        for qnx_kind, qnx_fixture, qnx_file, qnx_expected in [
+            ("qnx4", "qnx4.zlib", "/big.bin", bytes((index * 13 + 7) % 256 for index in range(1300))),
+            ("qnx6", "nfi-qnx6.zlib", "/this_file_is_large", qnx6_body),
+        ]:
+            qnx_path = root / (qnx_kind + ".img")
+            qnx_path.write_bytes(zlib.decompress((qnx_fixtures / qnx_fixture).read_bytes()))
+            qnx_node = qnx_kind + ":part:0:" + qnx_file.encode().hex()
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(qnx_path)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": qnx_node, "offset": 500, "length": 121}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": qnx_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == qnx_kind
+            assert rows[1]["result"]["items"]
+            assert rows[2]["result"]["data"] == qnx_expected[500:621].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(qnx_expected).hexdigest()
+
         # Native CramFS / ROMFS: library-backed tree, page-crossing reads and hash.
         rom_fixtures = Path(__file__).resolve().parent.parent / "src-tauri/test_data/rom-images"
         rom_content = (rom_fixtures / "payload.bin").read_bytes()
