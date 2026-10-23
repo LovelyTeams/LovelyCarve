@@ -127,6 +127,7 @@ fmt:
     cd src-tauri/vendor/lamfold-romfs && cargo fmt
     cd src-tauri/vendor/lamfold-erofs && cargo fmt
     cd src-tauri/vendor/f2fs-reader && cargo fmt
+    cd src-tauri/vendor/qnx-reader && cargo fmt
     cd src-tauri/vendor/minifs && cargo fmt
     cd src-tauri/vendor/backhand && cargo fmt
     cd src-tauri/vendor/lzma-rs && cargo fmt
@@ -397,6 +398,22 @@ clippy-minifs:
     cargo clippy --manifest-path src-tauri/vendor/minifs/Cargo.toml --all-targets -- -D warnings
 
 # Validate the standalone flash filesystem readers.
+[group("readers")]
+test-qnx:
+    cargo test --manifest-path src-tauri/vendor/qnx-reader/Cargo.toml --lib
+
+[group("readers")]
+clippy-qnx:
+    cargo clippy --manifest-path src-tauri/vendor/qnx-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-qnx-fixtures:
+    {{ python }} scripts/qnx-fixtures.py
+
+[group("readers")]
+test-qnx-reference oracle:
+    {{ python }} scripts/qnx-reference.py '{{ oracle }}'
+
 [group("readers")]
 test-erofs:
     cargo test --manifest-path src-tauri/vendor/lamfold-erofs/Cargo.toml --lib --features deflate,zstd,lzma

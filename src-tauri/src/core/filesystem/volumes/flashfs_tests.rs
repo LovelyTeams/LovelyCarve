@@ -129,3 +129,97 @@ fn flashfs_erofs_checksum_volume_bounds_and_invalid_geometry() {
         assert!(lamfold_erofs::Erofs::open(source, &mut cx).is_err());
     }
 }
+
+#[test]
+fn qnx_native_qnx4_qnx6_mmi_tree_range_stream_export() {
+    let mut qnx4 = Vec::new();
+    flate2::read::ZlibDecoder::new(
+        include_bytes!("../../../../vendor/qnx-reader/tests/fixtures/qnx4.zlib").as_slice(),
+    )
+    .read_to_end(&mut qnx4)
+    .unwrap();
+    let expected: Vec<_> = (0..1300)
+        .map(|index| ((index * 13 + 7) % 256) as u8)
+        .collect();
+    exercise(&qnx4, "qnx4", PartitionKind::Qnx4, "/big.bin", &expected);
+    for compressed in [
+        include_bytes!("../../../../vendor/qnx-reader/tests/fixtures/nfi-qnx6.zlib").as_slice(),
+        include_bytes!("../../../../vendor/qnx-reader/tests/fixtures/qnx6-mmi-le.zlib").as_slice(),
+        include_bytes!("../../../../vendor/qnx-reader/tests/fixtures/qnx6-4096-be.zlib").as_slice(),
+    ] {
+        let mut bytes = Vec::new();
+        flate2::read::ZlibDecoder::new(compressed)
+            .read_to_end(&mut bytes)
+            .unwrap();
+        let (path, expected): (&str, &[u8]) = if bytes.starts_with(&[0xeb, 0x10, 0x90, 0]) {
+            (
+                "/directory_1/directory_1_1/message.txt",
+                b"This is a test file system!\n",
+            )
+        } else {
+            ("/small.txt", b"hello QNX!\r\n")
+        };
+        exercise(&bytes, "qnx6", PartitionKind::Qnx6, path, expected);
+    }
+}
+
+#[test]
+fn qnx_partition_bytes_override_linux_mbr_type_and_keep_volume_identity() {
+    let mut qnx4 = Vec::new();
+    flate2::read::ZlibDecoder::new(
+        include_bytes!("../../../../vendor/qnx-reader/tests/fixtures/qnx4.zlib").as_slice(),
+    )
+    .read_to_end(&mut qnx4)
+    .unwrap();
+    let mut qnx6 = Vec::new();
+    flate2::read::ZlibDecoder::new(
+        include_bytes!("../../../../vendor/qnx-reader/tests/fixtures/nfi-qnx6.zlib").as_slice(),
+    )
+    .read_to_end(&mut qnx6)
+    .unwrap();
+    let mut bytes = vec![0; 2 * 1024 * 1024 + qnx6.len()];
+    bytes[510..512].copy_from_slice(&[0x55, 0xaa]);
+    for (slot, start, payload) in [(0, 2048u32, qnx4.as_slice()), (1, 4096u32, qnx6.as_slice())] {
+        let entry = 446 + slot * 16;
+        bytes[entry + 4] = 0x83;
+        bytes[entry + 8..entry + 12].copy_from_slice(&start.to_le_bytes());
+        bytes[entry + 12..entry + 16].copy_from_slice(&(payload.len() as u32 / 512).to_le_bytes());
+        bytes[start as usize * 512..start as usize * 512 + payload.len()].copy_from_slice(payload);
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("disk.img");
+    std::fs::write(&path, &bytes).unwrap();
+    let evidence = Arc::new(EvidenceSession::from(DiskImage::open(&path).unwrap()));
+    assert_eq!(evidence.sector_size, 512);
+    let mut session = FsSession::new(&evidence);
+    for (kind, prefix, path, expected) in [
+        (
+            PartitionKind::Qnx4,
+            "qnx4",
+            "/small.txt",
+            b"hello QNX!\r\n".as_slice(),
+        ),
+        (
+            PartitionKind::Qnx6,
+            "qnx6",
+            "/directory_1/directory_1_1/message.txt",
+            b"This is a test file system!\n".as_slice(),
+        ),
+    ] {
+        let partition = evidence
+            .partitions
+            .iter()
+            .find(|partition| partition.kind == kind)
+            .unwrap();
+        assert!(!session
+            .children(&format!("part:{}", partition.id))
+            .unwrap()
+            .is_empty());
+        let id = format!("{prefix}:part:{}:{}", partition.id, hex::encode(path));
+        assert_eq!(
+            session.read_file_limited(&id, usize::MAX).unwrap(),
+            expected
+        );
+    }
+    assert_eq!(evidence.read_range(0, bytes.len()).unwrap(), bytes);
+}

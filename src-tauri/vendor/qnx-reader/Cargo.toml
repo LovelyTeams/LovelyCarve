@@ -1,0 +1,15 @@
+[package]
+name = "qnx-reader"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "Bounded read-only QNX4 and QNX6 Power-Safe filesystem readers"
+
+[dependencies]
+lamfold = { path = "../lamfold", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+flate2 = "1"
+tar = "0.4"
+
+[workspace]

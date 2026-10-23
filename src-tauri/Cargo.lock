@@ -3787,6 +3787,7 @@ dependencies = [
  "phdi",
  "plist",
  "qcow2",
+ "qnx-reader",
  "quick-xml 0.42.0",
  "quote",
  "rayon",
@@ -5472,6 +5473,13 @@ dependencies = [
  "lru",
  "positioned-io",
  "zeroize",
+]
+
+[[package]]
+name = "qnx-reader"
+version = "0.1.0"
+dependencies = [
+ "lamfold",
 ]
 
 [[package]]

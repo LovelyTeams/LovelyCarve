@@ -1,0 +1,59 @@
+{
+  "nfi_source": "https://github.com/NetherlandsForensicInstitute/qnxmount/tree/11c8a7f9ee9b945d584263743f6ea8524e8776d2/tests/qnx6/test_data",
+  "nfi_license": "Apache-2.0",
+  "synthetic_license": "CC0-1.0",
+  "files": {
+    "nfi-qnx6.tar.gz": {
+      "sha256": "c0e9a2c9cc2eda05ff02589e75179ae590773da3b2477f67ee28cd7b1983b0a0",
+      "size": 17743
+    },
+    "nfi-qnx6.zlib": {
+      "sha256": "e51eb42a23397ce93b6518b34bf0578102677f717a2fb35a19dca8a7a26db4b1",
+      "size": 20715,
+      "raw_sha256": "7dc3b4f771d9c74af6df0643124c18450357cdb9b01c892d48613b11dc3a3554",
+      "raw_size": 409600
+    },
+    "qnx4.zlib": {
+      "sha256": "4d133994860314746ba4dbeb55e1dbe5607c6a2956e4367e4960a05936bae49c",
+      "size": 797,
+      "raw_sha256": "81b0f516b5911fd36f218e67c1b8c888266c0c0e934b7dd3da7f89d7bde56c7b",
+      "raw_size": 131072
+    },
+    "qnx6-1024-be.zlib": {
+      "sha256": "44954f5cf8b176599d1bc50cb1d844050fcc16a0ba7b31a170ed7e9794045b4f",
+      "size": 1186,
+      "raw_sha256": "d3f436ddfcc206c924db8d409bdef08baf2e3c053bd33d45e7a577170f2df5a8",
+      "raw_size": 278528
+    },
+    "qnx6-2048-le.zlib": {
+      "sha256": "c77201d4f0e80a8acc4342d766fefdfc5e299280041e4bcfb9bffea0d9db0715",
+      "size": 1531,
+      "raw_sha256": "3f26df8f6a931271330612b748d75349a0a8451f9bd5e36f05737605446fc607",
+      "raw_size": 540672
+    },
+    "qnx6-4096-be.zlib": {
+      "sha256": "318d992a33ac072d8a6fcbc1976d8a1341942aa79e356e6ec1a5a80660d19879",
+      "size": 2151,
+      "raw_sha256": "86cef0b4975878b1c04df0ff20ace2ddf4b296019f13fd670bed339e66eef99a",
+      "raw_size": 1064960
+    },
+    "qnx6-512-le.zlib": {
+      "sha256": "de1b7fe4537e1c0d535442d40213df890b1c38acaef677351818a4cd92faa13b",
+      "size": 1056,
+      "raw_sha256": "a9afa535334f8a084aff3935c2aa4bbd84c77b4a96c0cac8400ed9607210399d",
+      "raw_size": 147456
+    },
+    "qnx6-bootless-le.zlib": {
+      "sha256": "91778ddf7757c749eebff1ba745ed3161783bcb1e2409839956387f69be76c5b",
+      "size": 1196,
+      "raw_sha256": "800c7feebab0f0933dc3c53cea4ffe5ba3936cf7003234cc29642c8be35f1017",
+      "raw_size": 270336
+    },
+    "qnx6-mmi-le.zlib": {
+      "sha256": "fa639373e955099fc0855419b9e12c4c7118dc528934811300b90c8adf9f36c1",
+      "size": 1188,
+      "raw_sha256": "3f36286e068043df2fc461c8ea274e79577e657c317fc4b364e55d7e7f20e0a6",
+      "raw_size": 270336
+    }
+  }
+}

@@ -1283,3 +1283,7 @@ LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提�
 未知角色，F2FS / EROFS 提供其实际记录的 UTC 秒 / 纳秒，宿主转换展示文本。没有新增全局
 每检材缓存，所有读者随 FsSession / 证据引用释放。支持与验证见 [F2FS](formats/F2FS.md) /
 [EROFS](formats/EROFS.md)。
+
+### QNX4 / QNX6 只读卷
+
+`evidence::partitions::qnx` 按根 inode / 超级块结构识别格式；`qnx-reader` 通过既有 `rom_images` 泛型适配器接入有界源、分区与路径身份。QNX4 缓存验证后的 extent 链并按逻辑末端二分定位，QNX6 选择 CRC 有效且几何一致的最新提交代际，共用有深度和容量上限的 inode / 长名 / 文件树读取。符号链接不在宿主跟随，原始证据字节不变；范围、流式、哈希和导出使用同一映射。支持范围见 [QNX](formats/QNX.md)。
