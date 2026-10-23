@@ -211,6 +211,8 @@ fn parse_trx(bytes: &[u8], base: u64, cancel: &CancellationToken) -> Result<Vec<
             PartitionKind::Squashfs
         } else if crate::core::evidence::partitions::jffs2::is_jffs2_magic(payload) {
             PartitionKind::Jffs2
+        } else if yaffs2_reader::detect_bytes(payload).is_some() {
+            PartitionKind::Yaffs2
         } else if crate::core::evidence::partitions::ubifs::is_ubifs_magic(payload) {
             PartitionKind::Ubifs
         } else if let Some(kind) =

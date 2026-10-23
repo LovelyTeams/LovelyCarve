@@ -37,6 +37,7 @@ pub mod ufs;
 pub mod volume_probe;
 pub mod xfs;
 pub mod xiaomi_firmware;
+pub mod yaffs2;
 pub mod zfs;
 
 use anyhow::Context;
@@ -130,6 +131,7 @@ pub enum PartitionKind {
     Unknown,
     Ubi,
     Jffs2,
+    Yaffs2,
 }
 
 /// Block-device abstraction. Uniform read interface so the dispatcher and
@@ -315,6 +317,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Cramfs
         | PartitionKind::Ubifs
         | PartitionKind::Jffs2
+        | PartitionKind::Yaffs2
         | PartitionKind::Romfs
         | PartitionKind::BiosBoot
         | PartitionKind::ApfsContainer

@@ -130,6 +130,7 @@ fmt:
     cd src-tauri/vendor/sercomm-firmware && cargo fmt
     cd src-tauri/vendor/ubidump && cargo fmt
     cd src-tauri/vendor/jffs2 && cargo fmt
+    cd src-tauri/vendor/yaffs2-reader && cargo fmt
     cd src-tauri/vendor/rsqlite-vfs && cargo fmt
     cd src-tauri/vendor/rufs && cargo fmt
     cd src-tauri/vendor/xfs-fuse && cargo fmt
@@ -368,6 +369,11 @@ clippy-squashfs:
 [group("readers")]
 [working-directory("src-tauri/vendor/sercomm-firmware")]
 clippy-sercomm:
+    cargo clippy --all-targets -- -D warnings
+
+[group("readers")]
+[working-directory("src-tauri/vendor/yaffs2-reader")]
+clippy-yaffs2:
     cargo clippy --all-targets -- -D warnings
 
 # Run the library tests of a vendored crate without a dedicated reader recipe.

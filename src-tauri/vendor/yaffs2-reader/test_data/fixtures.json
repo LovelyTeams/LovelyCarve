@@ -1,0 +1,55 @@
+{
+  "license": "CC0-1.0",
+  "generator": "Python stdlib struct; no production reader or writer",
+  "payloadSha256": "bce64c42da7d9aa91552013f04202fa6a04f243f63ec699ac8873e3e76752e3f",
+  "files": {
+    "base-le.yaffs": {
+      "size": 25344,
+      "sha256": "4c6bfd922ec3f2108bdea3e3d283e046dd96ed35523b732f6ce7383f48794a4d",
+      "pageSize": 2048,
+      "spareSize": 64,
+      "tagsOffset": 0,
+      "endian": "<"
+    },
+    "base-be-ecc.yaffs": {
+      "size": 42240,
+      "sha256": "d2d79ccc351b6a0bbfc5ec2a501970f5e2552e3131a662891ded7205e7a9d015",
+      "pageSize": 4096,
+      "spareSize": 128,
+      "tagsOffset": 2,
+      "endian": ">"
+    },
+    "versions.yaffs": {
+      "size": 14784,
+      "sha256": "5633c85e064d015fbbdc981d98247aa90367f4525ff9015087134e3e8f74b80e",
+      "pageSize": 2048,
+      "spareSize": 64,
+      "tagsOffset": 0,
+      "endian": "<"
+    },
+    "shadow.yaffs": {
+      "size": 10560,
+      "sha256": "ca0f24fcbd54953f3d3d229f614bf080856320c2257a7b39793b1bd8beceb465",
+      "pageSize": 2048,
+      "spareSize": 64,
+      "tagsOffset": 0,
+      "endian": "<"
+    },
+    "sparse-64bit.yaffs": {
+      "size": 4224,
+      "sha256": "08920746f5d0f5ceba252e3431e63fa02684c734f59265609ebff9a1779877b5",
+      "pageSize": 2048,
+      "spareSize": 64,
+      "tagsOffset": 0,
+      "endian": "<"
+    },
+    "unlink-hardlink.yaffs": {
+      "size": 12672,
+      "sha256": "25a4861bcd9cad0667fbee0e48c118ca018976d805794bcde01ec1561189d7c3",
+      "pageSize": 2048,
+      "spareSize": 64,
+      "tagsOffset": 0,
+      "endian": "<"
+    }
+  }
+}

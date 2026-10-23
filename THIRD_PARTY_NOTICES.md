@@ -45,10 +45,20 @@ The APFS name lookup uses the unmodified crates.io packages
 by Chris Wong and [`unicode-normalization` 0.1.25](https://crates.io/crates/unicode-normalization/0.1.25)
 by the Rust Project Developers. Both declare MIT OR Apache-2.0;
 versions and dependency sources are pinned in the Rust lockfiles.
+
 The libfsapfs APFS comparison uses its documented structures and public API;
 no libfsapfs C sources or binaries are incorporated. The new APFS fixtures
 are invented, reproducible project test structures (AGPL-3.0-only), documented
 in `src-tauri/vendor/apfs/tests/data/README.md`.
+
+## Native YAFFS2 reader
+
+The original AGPL-3.0-only `yaffs2-reader` adapts object/file prefix structures
+and validation from binwalk-ng commit `845806c163747eb524d66b5fe3de2ed86ea3aaad`
+(MIT, Copyright 2024 devttys0 and 2026 binwalk-ng contributors). Its full notice
+is retained in [LICENSE-BINWALK-MIT](src-tauri/vendor/yaffs2-reader/LICENSE-BINWALK-MIT).
+Aleph One YAFFS format definitions are references; no C implementation or
+external extractor is incorporated. Independent synthetic fixtures are CC0-1.0.
 
 ## lamfold CramFS / Linux ROMFS
 

@@ -38,5 +38,6 @@ pub mod ubi;
 pub mod ubifs;
 pub mod ufs;
 pub mod xfs;
+pub mod yaffs2;
 pub mod zfs;
 pub mod zip;

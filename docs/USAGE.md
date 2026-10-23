@@ -47,6 +47,8 @@ Netgear Sercomm NAND `factory.img` 可直接打开，解压并校验后浏览 UB
 
 JFFS2 新格式镜像支持大小端、版本化目录 / 文件片段、硬链接与空洞，可直接打开或浏览固件分段中的文件；CRC 与不支持的编码明确报错，范围见 [JFFS2](formats/JFFS2.md)。
 
+YAFFS2 NAND 镜像可自动识别已支持的 page / spare 几何并浏览文件，支持硬链接、稀疏和范围读取。源哈希与 RAW 导出包含原始 OOB；特殊节点只显示元数据。几何、ECC 和版本重建限制见 [YAFFS2](formats/YAFFS2.md)。
+
 UBIFS 可作为裸镜像或 UBI 命名卷浏览，也可位于受支持的固件分段中；原始字节视图和源哈希保持容器内容。当前支持干净的已提交树，遇到需日志重放、加密或认证的卷明确报错。范围与验证见 [UBIFS](formats/UBIFS.md)。
 
 Buffalo `.enc` / `.trx`、TP-Link SafeLoader `.bin`、U-Boot legacy uImage 组合镜像及

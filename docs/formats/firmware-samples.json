@@ -2,7 +2,7 @@
   "date": "2026-10-23",
   "platform": "Windows standalone CLI",
   "baselineCommit": "1fe4fa425d0726e10b6ebc121468ad993521216a",
-  "stage": "native firmware envelopes, CramFS/ROMFS, v3 adaptive LZMA, clean committed UBIFS v4/v5, new-format JFFS2 LE/BE, SquashFS v1/v2 LE/BE readers, native Rust XZ/Zstandard codecs, and Sercomm NAND ZIP logical views",
+  "stage": "native firmware envelopes, CramFS/ROMFS, v3 adaptive LZMA, clean committed UBIFS v4/v5, new-format JFFS2 LE/BE, SquashFS v1/v2 LE/BE readers, native Rust XZ/Zstandard codecs, Sercomm NAND ZIP logical views, and native YAFFS2 page/OOB reader",
   "criterion": "Native partition tree listing; RAW-open success alone is not counted. UBI nested filesystem checked separately.",
   "samples": [
     {
@@ -160,13 +160,39 @@
       "url": "https://raw.githubusercontent.com/ReFirmLabs/binwalk/master/tests/inputs/yaffs2.bin",
       "size": 135168,
       "sha256": "ee2427938f658febd6c9dad0e8e1a4a74c854cc1b4bdf5abf44817be80512789",
-      "browsable": false,
+      "browsable": true,
       "sourceFormat": "raw",
-      "partitionKinds": [],
-      "partitions": [],
-      "error": {
-        "code": "notFound",
-        "message": "partition not found: 0"
+      "partitionKinds": [
+        "yaffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "yaffs2",
+          "startByte": 0,
+          "lengthBytes": 135168
+        }
+      ],
+      "contentOracle": {
+        "mkyaffs2image.c": "bbb126ff5a49762055a6310186c9c5dd22534198fbd8ed77f6d768983af491a3",
+        "mkyaffsimage.c": "458a399ed17e23c2d16364efe8184a05ba7a2cdb0132ffaccc106ccc889be53b",
+        "yaffs_ecc.c": "6ccece2209c40c37fa28059f028a6b281cea356ba469d0269f454514231b62a5",
+        "yaffs_ecc.h": "b9edc75b3458e8f66d99090c045bfe05ba6a0fe0ff3fb1c81c78e8d6b8aebb66",
+        "yaffs_guts.h": "4e2568ade2817ec84dfbfa6ff199093c5f72569d0cad8d66dedcdd59091d08d6",
+        "yaffs_hweight.c": "c3f4ad3231fee2c3068a637d570b3bd0047892abafa23e592e9858238e91106c",
+        "yaffs_hweight.h": "cfdb4a66b0eace2574beb10b45992863d6d85898237054abac3c3ecc8840d138",
+        "yaffs_list.h": "1361569577d3d861d032df44d50634041268bb5eb5832ddb8eb7b0f3a48031b0",
+        "yaffs_packedtags2.c": "5aa74e1a24241df858704c3baba1bb281f026d42fa64dbb79803071edb5786f6",
+        "yaffs_packedtags2.h": "0375517fd4e0eec0254322751138c13472226a5f5c93dfcada6da1bc26c63708",
+        "yaffs_trace.h": "6fcbe6ee192dc9516cc39f974af3f3c538dcb8833f87d946253fe72652328e2d",
+        "yportenv.h": "cf9b21c9374b765524ac9c3f84f7a29690676cccf4d2138c2bcce66135f6b084",
+        "yutilsenv.h": "d17b77b186792ba473247dce5f2de9916b70f79667a4b77ded186a4425296b52"
+      },
+      "oracleSource": "https://github.com/devttys0/yaffshiv/blob/f6f0ef77bf79ca46aaa77bc34eda06e7b55da8e8/src/yaffshiv",
+      "oracleGeometry": {
+        "pageSize": 2048,
+        "spareSize": 64,
+        "endian": "little",
+        "tagsOffset": 0
       }
     },
     {
@@ -688,6 +714,162 @@
           "lengthBytes": 5767168
         }
       ]
+    },
+    {
+      "name": "unblob-yaffs-sample.2048.64.ecc.le.yaffs2",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__input__/sample.2048.64.ecc.le.yaffs2",
+      "size": 40128,
+      "sha256": "209c573f89c2ac0be0355cd4d20ec29e1644a87ef2e0e6d432fabf681aab67be",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "yaffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "yaffs2",
+          "startByte": 0,
+          "lengthBytes": 40128
+        }
+      ],
+      "linkOracle": {
+        "vegetables/tomato.txt": "../fruits/tomato.txt",
+        "passwd": "/etc/passwd"
+      },
+      "contentOracle": {
+        "fruits/apple.txt": "303980bcb9e9e6cdec515230791af8b0ab1aaa244b58a8d99152673aa22197d0",
+        "fruits/banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "fruits/tomato.txt": "c4d414f214364807ba28e290410a6ad85e0b066adaf88f4396e937242de5033f",
+        "fruits/cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55",
+        "vegetables/potato.txt": "c7a37153dfd360070c9ce15a11376d6571e8f29777c8a84349dee7ca61b49882",
+        "vegetables/kale.txt": "9e74dec291f9d15f9e3d15e9c17ca53b01f4c9f2c831f789d4aa0994f93106a9"
+      },
+      "oracleSource": "https://github.com/devttys0/yaffshiv/blob/f6f0ef77bf79ca46aaa77bc34eda06e7b55da8e8/src/yaffshiv",
+      "oracleGeometry": {
+        "pageSize": 2048,
+        "spareSize": 64,
+        "endian": "little",
+        "tagsOffset": 0
+      }
+    },
+    {
+      "name": "unblob-yaffs-sample.4096.128.ecc.be.yaffs2",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__input__/sample.4096.128.ecc.be.yaffs2",
+      "size": 80256,
+      "sha256": "d3e93fb6741dee22915c97e1bb3a776957fc12c790faa4ecbbbccf09085cb084",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "yaffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "yaffs2",
+          "startByte": 0,
+          "lengthBytes": 80256
+        }
+      ],
+      "linkOracle": {
+        "vegetables/tomato.txt": "../fruits/tomato.txt",
+        "passwd": "/etc/passwd"
+      },
+      "contentOracle": {
+        "fruits/apple.txt": "303980bcb9e9e6cdec515230791af8b0ab1aaa244b58a8d99152673aa22197d0",
+        "fruits/banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "fruits/tomato.txt": "c4d414f214364807ba28e290410a6ad85e0b066adaf88f4396e937242de5033f",
+        "fruits/cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55",
+        "vegetables/potato.txt": "c7a37153dfd360070c9ce15a11376d6571e8f29777c8a84349dee7ca61b49882",
+        "vegetables/kale.txt": "9e74dec291f9d15f9e3d15e9c17ca53b01f4c9f2c831f789d4aa0994f93106a9"
+      },
+      "oracleSource": "https://github.com/devttys0/yaffshiv/blob/f6f0ef77bf79ca46aaa77bc34eda06e7b55da8e8/src/yaffshiv",
+      "oracleGeometry": {
+        "pageSize": 4096,
+        "spareSize": 128,
+        "endian": "big",
+        "tagsOffset": 0
+      }
+    },
+    {
+      "name": "unblob-yaffs-sample.16384.512.le.yaffs2",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__input__/sample.16384.512.le.yaffs2",
+      "size": 321024,
+      "sha256": "8b8968001388ac7e7fef241640b045a6576eabc804499c046c8313407752e5eb",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "yaffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "yaffs2",
+          "startByte": 0,
+          "lengthBytes": 321024
+        }
+      ],
+      "linkOracle": {
+        "vegetables/tomato.txt": "../fruits/tomato.txt",
+        "passwd": "/etc/passwd"
+      },
+      "contentOracle": {
+        "fruits/apple.txt": "303980bcb9e9e6cdec515230791af8b0ab1aaa244b58a8d99152673aa22197d0",
+        "fruits/banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "fruits/tomato.txt": "c4d414f214364807ba28e290410a6ad85e0b066adaf88f4396e937242de5033f",
+        "fruits/cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55",
+        "vegetables/potato.txt": "c7a37153dfd360070c9ce15a11376d6571e8f29777c8a84349dee7ca61b49882",
+        "vegetables/kale.txt": "9e74dec291f9d15f9e3d15e9c17ca53b01f4c9f2c831f789d4aa0994f93106a9"
+      },
+      "oracleSource": "https://github.com/devttys0/yaffshiv/blob/f6f0ef77bf79ca46aaa77bc34eda06e7b55da8e8/src/yaffshiv",
+      "oracleGeometry": {
+        "pageSize": 16384,
+        "spareSize": 512,
+        "endian": "little",
+        "tagsOffset": 2
+      }
+    },
+    {
+      "name": "unblob-yaffs-links.yaffs",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__input__/links.yaffs",
+      "size": 4752,
+      "sha256": "93e487e7ed1a160db8c599cc1fdca058baa6024dd27c329f1d55f823bee9215b",
+      "browsable": false,
+      "sourceFormat": "raw",
+      "partitionKinds": [],
+      "partitions": [],
+      "limitation": "512-byte pages / 16-byte spare with legacy YAFFS tags; current native YAFFS2 packed-tags reader does not handle this layout",
+      "error": {
+        "code": "notFound",
+        "message": "partition not found: 0"
+      }
+    },
+    {
+      "name": "unblob-yaffs-fruits.dir.le.yffs",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__input__/fruits.dir.le.yffs",
+      "size": 4224,
+      "sha256": "30ac92e89b1bc5a9260ca69093093537574e14a4dcb87a79259538762b9f8060",
+      "browsable": false,
+      "sourceFormat": "raw",
+      "partitionKinds": [],
+      "partitions": [],
+      "limitation": "512-byte pages / 16-byte spare with legacy YAFFS tags; current native YAFFS2 packed-tags reader does not handle this layout",
+      "error": {
+        "code": "notFound",
+        "message": "partition not found: 0"
+      }
+    },
+    {
+      "name": "unblob-yaffs-fruits.dir.be.yffs",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__input__/fruits.dir.be.yffs",
+      "size": 4224,
+      "sha256": "b07b888a645dd30b0891d1147505fb35a27f1df52b3710c40dc7d9ed418e60c9",
+      "browsable": false,
+      "sourceFormat": "raw",
+      "partitionKinds": [],
+      "partitions": [],
+      "limitation": "512-byte pages / 16-byte spare with legacy YAFFS tags; current native YAFFS2 packed-tags reader does not handle this layout",
+      "error": {
+        "code": "notFound",
+        "message": "partition not found: 0"
+      }
     }
   ]
 }

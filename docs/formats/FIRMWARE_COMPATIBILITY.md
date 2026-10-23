@@ -14,7 +14,9 @@
 | OpenWrt 24.10.1 Netgear R6220 / R6260 `factory.img` | 校验 Sercomm seal 与 ZIP 后浏览 UBI → SquashFS | 复用 Rust zip / flate2 / ubidump；解压 rootfs 与各自官方 `rootfs.bin` 对照，压缩来源范围与逻辑卷几何分别保留，见 [FIRMWARE](FIRMWARE.md) |
 | Unblob UBIFS `banana.zlib.ubifs` / `banana.lzo.ubifs` / `banana.zstd.ubifs` | 读取已提交目录和四个文件，与独立输出核对内容 | 已接入裸卷与 UBI 内嵌卷；前两份输入的数据节点为 stored，压缩路径另有独立夹具，范围见 [UBIFS](UBIFS.md) |
 | Unblob JFFS2 新格式 LE/BE zlib（含 64 KiB padded 版本）、RTIME / LZO | 浏览目录并与独立输出比较三个文件内容和哈希 | 已接入新格式大小端与版本片段重建；能力 / 限制见 [JFFS2](JFFS2.md) |
-| Binwalk `yaffs2.bin` | 无可浏览分区 | YAFFS2 尚未接入，需 NAND page / spare 几何和版本重建 |
+| Binwalk `yaffs2.bin` | 原生 YAFFS2 目录与 13 个普通文件 | 复用并扩展 Rust 头解析；与独立 yaffshiv 的显式几何输出逐字节 / 哈希对照，范围见 [YAFFS2](YAFFS2.md) |
+| Unblob YAFFS2 `sample.2048.64.ecc.le` / `sample.4096.128.ecc.be` / `sample.16384.512.le` | 原生浏览目录，读取六个普通文件并保留两条符号链接与特殊节点 | 与独立 yaffshiv 配置输出核对；覆盖标签 ECC、大小端和较大 NAND 页，见 [YAFFS2](YAFFS2.md) |
+| Unblob `links.yaffs`、`fruits.dir.le.yffs` / `fruits.dir.be.yffs` | 仍没有原生文件系统目录 | 512 / 16 旧式 YAFFS tags 未接入；不能把 YAFFS2 packed-tags 支持等同于全部 YAFFS 布局 |
 | Unblob SquashFS v1.0、v2.0/v2.1 大小端及 Binwalk v2 BE | 原生目录及文件读取 | 旧布局已接入；Binwalk v2 另覆盖属性头无 EOS LZMA，范围见 [SquashFS](SQUASHFS.md) |
 | Unblob SquashFS v3 adaptive LZMA LE / BE | 直接浏览两份镜像并读取 `apple.txt` / `orange.txt` | backhand 参数选择配合纯 Rust 解码；独立输出的字节 / SHA256 对照，支持范围见 [FIRMWARE](FIRMWARE.md) |
 | Binwalk `cramfs.bin` / `romfs.bin` | 直接浏览、读取和哈希 | 支持边界见 [ROM_IMAGES](ROM_IMAGES.md) |
@@ -35,7 +37,9 @@
 | JFFS2 | [jffs2-rs 0.2.1](https://github.com/xmoezzz/jffs2-rs/tree/52e1234ce66b0e099b35afabff3fc3e3078a2c0e) | 复用 Rust 字段和 RTIME 后接入有界只读库；修正固定 LE、CRC、目录硬链接、版本与片段长度，LZO 改用 lzokay；不引入 C Rubin/LZO，支持边界见 [JFFS2](JFFS2.md) |
 | UBIFS | [rust_ubidump](https://github.com/aspnmy/rust_ubidump/tree/19782c3eabc25a1baab7faefe12fe6f4bd362dac) | 复用其 UBI 与 UBIFS 节点/键/inode/索引结构并改造为有界库；修正 node_type 偏移、min-I/O 主节点扫描、带符号 R5 名称哈希、文件空洞/裁剪及 raw DEFLATE 语义，使用 Rust 解码依赖。读取干净的已提交 v4/v5 树；日志重放、加密与恢复明确未支持 |
 | SquashFS | [backhand](https://github.com/wcampbell0x2a/backhand) | 扩展当前已 vendor 的库。补 v1.0、v2.0/v2.1 大小端、尾片段与范围 / 流式读取，保留旧 inode 缺失时间；无 EOS LZMA 使用 lzma-rust2 配合加固的 lzma-rs 做最终状态核对。其他 Rust 候选 squashfs_reader / squashfs-async 仅支持 v4。支持 v3/v4 标准、DD-WRT v3 与 v3 adaptive / 标准 LZMA；移除 adaptive C/C++ 依赖，用 lzma-rust2 进行有界解码并检查终止与 EOF。XZ / Zstandard 也已切换为 Rust 解码，检查完整流、校验和及资源上限；其他压缩/变体逐项测试后启用 |
-| YAFFS2 | crates.io 与公开 GitHub 检索 | 尚无选定的可直接复用 Rust 文件系统读取库；Binwalk 及 [binwalk-ng](https://github.com/binwalk-ng/binwalk-ng/blob/845806c163747eb524d66b5fe3de2ed86ea3aaad/src/formats/yaffs.rs) 的签名 / 部分头解析不能替代读取器，后者的 `yaffs2_extractor` 仍调用外部 `unyaffs`。保持明确未支持 |
+| YAFFS2 | crates.io 与公开 GitHub 检索 | 尚无选定的可直接复用 Rust 文件系统读取库；Binwalk 及 [binwalk-ng](https://github.com/binwalk-ng/binwalk-ng/blob/845806c163747eb524d66b5fe3de2ed86ea3aaad/src/formats/yaffs.rs) 的签名 / 部分头解析不能替代读取器，后者的 `yaffs2_extractor` 仍调用外部 `unyaffs`。已基于其 MIT Rust 前缀扩展 `yaffs2-reader`，补几何 / 标签 ECC、版本、shrink / shadow、目录、硬链接、稀疏与范围读取；没有调用外部工具，限制见 [YAFFS2](YAFFS2.md) |
+
+其他候选：Disrobe 的 Rust 清单声明专有 Source-Available 许可，未选用且未引入其 YAFFS 实现；TicKV 是另一种存储格式。
 
 排除误匹配：`neotron-romfs` 是不同磁盘格式；`unearth` 的相关能力是识别，
 不能替代文件读取；另一候选 `avalon1610/cramfs` 的仓库清单使用私网 Git 依赖，

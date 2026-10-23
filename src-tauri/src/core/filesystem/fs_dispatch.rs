@@ -26,6 +26,8 @@ mod zfs;
 use zfs::*;
 mod refs;
 use refs::*;
+mod yaffs2;
+use yaffs2::Yaffs2Adapter;
 
 use std::sync::Arc;
 
@@ -55,6 +57,7 @@ use crate::core::filesystem::volumes::ubi::{open_ubi_source, parse_ubi_id};
 use crate::core::filesystem::volumes::ubifs::{open_ubifs_source, parse_ubifs_id};
 use crate::core::filesystem::volumes::ufs::{open_ufs_source, parse_ufs_id};
 use crate::core::filesystem::volumes::xfs::{open_xfs_source, parse_xfs_id};
+use crate::core::filesystem::volumes::yaffs2::parse_yaffs2_id;
 use crate::core::filesystem::volumes::zfs::{open_zfs_source, parse_zfs_id, ZfsPath};
 
 pub(crate) struct VolumeChildrenPage {
@@ -147,6 +150,7 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &RomfsAdapter,
     &UbifsAdapter,
     &Jffs2Adapter,
+    &Yaffs2Adapter,
     &UbiAdapter,
     &ApfsAdapter,
     &HfsPlusAdapter,
@@ -224,6 +228,9 @@ pub(crate) fn volume_root_key(id: &str) -> Option<String> {
     }
     if let Some((source, _)) = parse_squashfs_id(id) {
         return Some(source.cache_key());
+    }
+    if let Some((partition, _)) = parse_yaffs2_id(id) {
+        return Some(format!("yaffs2:part:{partition}"));
     }
     if let Some((partition, _)) = parse_jffs2_id(id) {
         return Some(format!("jffs2:part:{partition}"));

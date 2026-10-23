@@ -358,6 +358,7 @@ impl DiskImage {
                                 | PartitionKind::Squashfs
                                 | PartitionKind::Ubifs
                                 | PartitionKind::Jffs2
+                                | PartitionKind::Yaffs2
                         )
                     })
                 {

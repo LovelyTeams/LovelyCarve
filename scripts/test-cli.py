@@ -230,6 +230,23 @@ def main():
             assert rows[2]["result"]["data"] == jffs2_content[8180:8280].hex()
             assert rows[3]["result"]["sha256"] == hashlib.sha256(jffs2_content).hexdigest()
 
+        # YAFFS2: NAND geometry, hard links, UTF-8 names and page-crossing ranges.
+        yaffs2_fixtures = firmware_fixtures.parent.parent / "vendor/yaffs2-reader/test_data"
+        yaffs2_content = b"Native YAFFS2 fixture.\n" * 300
+        yaffs2_node = "yaffs2:part:0:" + "/目录/hello".encode().hex()
+        for yaffs2_path in [yaffs2_fixtures / "base-le.yaffs", yaffs2_fixtures / "base-be-ecc.yaffs", firmware_fixtures / "synthetic-yaffs2.enc"]:
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(yaffs2_path)}},
+                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": yaffs2_node, "offset": 2047, "length": 4097}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": yaffs2_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "yaffs2"
+            assert {entry["name"] for entry in rows[1]["result"]["items"]} == {"目录", "alias", "link", "console", "empty"}
+            assert rows[2]["result"]["data"] == yaffs2_content[2047:6144].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(yaffs2_content).hexdigest()
+
         # Discovery needs no evidence: system facts, request schemas, search and completion.
         system = json.loads(run(["system", "get"]).stdout)
         assert system["standalone"], "the CLI must be built without the desktop runtime"
