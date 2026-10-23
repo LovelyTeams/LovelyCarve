@@ -22,6 +22,24 @@
     overflow: hidden;
 }
 
+/* Keep the current page in the background while browsing another category.
+   The scrim follows the existing preview state, including the collapsed flyout. */
+.editor-area::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 80;
+    pointer-events: none;
+    background: var(--modal-backdrop);
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+}
+
+.sidebar-nav:has(.category-button.previewing:not(.active)) + .editor-area::after,
+.sidebar-nav.hover-preview + .editor-area::after {
+    opacity: 0.2;
+}
+
 /* ── Content area ── */
 .content-area {
     flex: 1;
