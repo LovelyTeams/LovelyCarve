@@ -127,6 +127,7 @@ fmt:
     cd src-tauri/vendor/lamfold-romfs && cargo fmt
     cd src-tauri/vendor/backhand && cargo fmt
     cd src-tauri/vendor/lzma-rs && cargo fmt
+    cd src-tauri/vendor/sercomm-firmware && cargo fmt
     cd src-tauri/vendor/ubidump && cargo fmt
     cd src-tauri/vendor/jffs2 && cargo fmt
     cd src-tauri/vendor/rsqlite-vfs && cargo fmt
@@ -362,6 +363,12 @@ clippy-jffs2:
 [working-directory("src-tauri/vendor/backhand")]
 clippy-squashfs:
     cargo clippy --all-targets --features v1_v2,v3_ddwrt,v3_lzma
+
+# Lint the bounded Sercomm ZIP/NAND reader.
+[group("readers")]
+[working-directory("src-tauri/vendor/sercomm-firmware")]
+clippy-sercomm:
+    cargo clippy --all-targets -- -D warnings
 
 # Run the library tests of a vendored crate without a dedicated reader recipe.
 [group("readers")]

@@ -1,5 +1,15 @@
 # Synthetic DD-WRT fixture
 
+## Native XZ / Zstandard codec fixtures
+
+`generate_native_codecs.py` generates `native-*.xz` with Python stdlib liblzma
+and `native-*.zst` with Python `zstandard` 0.25.0 as independent encoders.
+The known payload is bytes 0..255 repeated 64 times. Extra inputs exercise
+oversized dictionaries/windows/output and a CRC-valid false XZ index.
+These original synthetic fixtures and the generator are CC0-1.0; hashes are
+recorded in [native-codecs.json](native-codecs.json). Python and C codecs are
+only oracle/generation tools, never dependencies of the production reader.
+
 `ddwrt-v3.squashfs` is generated entirely by `generate_ddwrt.py`, using Python's
 standard `struct` and `lzma` modules. It contains one file `/hello` with the
 literal `Independent DD-WRT fixture.\n` repeated 64 times. Data, inode and directory

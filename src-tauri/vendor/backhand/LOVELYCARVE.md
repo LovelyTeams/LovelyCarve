@@ -6,6 +6,31 @@ The standalone manifest trims upstream benches, integration-test harnesses and d
 
 Upstream audit and verification commands: [../UPSTREAM.md](../UPSTREAM.md).
 
+## Native Rust XZ and Zstandard reading
+
+The host's `xz` feature now uses `lzma-rust2` 0.20.1, removing liblzma and
+liblzma-sys. The `xz-static` compatibility alias also selects that Rust codec.
+The `zstd` feature reads through `ms-compress-ruzstd` 0.9.1. Upstream's C-backed
+Zstandard writer is retained behind a separate `zstd-write` feature, disabled
+in the host. Other application features can still have native dependencies;
+this statement describes the firmware reader, not the entire application.
+
+XZ framing is independently checked against the XZ specification before
+constructing the Rust reader: header/index/footer CRCs, backward index size,
+block extents, LZMA2 chunk lengths and the declared dictionary must agree.
+The library then validates payload checksums and complete consumption. One
+stream and up to three BCJ/Delta prefilters are supported, including combined
+chains, with an 8 MiB dictionary and 4 MiB output bound. Zstandard requires one complete
+frame, validates a present checksum and limits its window to 8 MiB and output
+to 4 MiB. Failed decoding never appends partial bytes to caller output.
+XZ writing also uses Rust, trying the requested alternative BCJ filters
+independently instead of chaining unrelated architecture transforms.
+
+Independent Python/liblzma and Python zstandard fixtures cover all six
+SquashFS BCJ types, supported checks, every truncated length, trailing input,
+CRC-valid false index/footer sizes, combined prefilters, oversized history and output. See
+[codec fixture hashes](test_data/native-codecs.json).
+
 ## Firmware compatibility (2026-10-21)
 
 The host enables `v3_ddwrt` and `v3_lzma`, which also enable v3/gzip. The DD-WRT feature

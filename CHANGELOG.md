@@ -9,6 +9,8 @@
 
 ### Added
 
+- 固件 SquashFS 的 XZ / Zstandard 读取改用纯 Rust 解码器，检查完整流、校验和、索引与字典 / 输出上限；无需外部解包程序或 C 解压库。
+- 支持 Netgear Sercomm NAND ZIP 固件，复用 Rust ZIP / 解码库校验封装、CRC、内核与 UBI；以独立逻辑视图浏览解压文件系统，保留源检材身份、压缩来源范围、源哈希和 RAW 导出。
 - 支持 SquashFS 1.0 / 2.0 / 2.1 大小端、旧块表、共享尾片段、长目录、硬链接及精确范围 / 流式读取；旧 LZMA 无结束标记块使用纯 Rust 严格最终状态校验，未记录的特殊文件时间保持未知。
 - 支持裸镜像与固件中的新格式 JFFS2，复用并改造 Rust 库；校验大小端节点与数据 CRC，按版本重建目录和文件片段，支持硬链接、删除标记、空洞与 NONE/ZERO/RTIME/zlib/LZO 范围和流式读取。
 - 支持裸 UBIFS v4/v5、固件中的 UBIFS 与 UBI 内嵌文件树，复用并加固 Rust 节点/索引读取器，校验已提交树与文件数据，支持空洞、硬链接、符号链接、时间戳及 stored/LZO/raw DEFLATE/Zstandard 的范围和流式读取。

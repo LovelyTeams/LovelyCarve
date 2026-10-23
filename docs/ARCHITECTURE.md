@@ -131,6 +131,8 @@ CLI JSONL 调度位于 `cli/session.rs`。`session --jobs N` 使用有界输入�
 
 Buffalo ENC / Broadcom TRX、TP-Link SafeLoader、U-Boot legacy uImage 与 Netgear CHK 固件由 `evidence/readers/firmware.rs` 在打开阶段校验封装并定位分段，Buffalo ENC 另建立明文视图；原始字节读取与源哈希保留容器内容。固件段按字节寻址，SquashFS 适配器通过 backhand 的版本无关接口选择 v1/v2、标准 v3/v4 或 DD-WRT `hsqt` 逐块参数 LZMA 读者，标准 v3 块优先 gzip、其次用纯 Rust adaptive / 标准 LZMA 解码并验证终止与源边界；范围、流式与完整读取共用同一逻辑内容。v1/v2 在读取器 crate 内建立有界元数据与块计划，旧特殊文件时间不代入文件系统创建时间，无 EOS 的已知长度 LZMA 由独立 Rust 解码器验证最终 range code 和源 EOF。范围与上游依据见 [固件](formats/FIRMWARE.md) 和 [SquashFS](formats/SQUASHFS.md)。
 
+Sercomm NAND ZIP 固件由独立 Rust `sercomm-firmware` 库复用 ZIP / DEFLATE / UBI 读取能力，验证 seal、成员范围、CRC、尾部与 NAND 布局，宿主复用 uImage CRC 校验。`FirmwareImage` 只持有逻辑 `SectorSource` 与元数据，`DiskImage` 之间不相互持有；源 `DiskImage` 保留压缩字节与真实分段范围，由 `EvidenceSession` 构建并持有独立的 native firmware views；文件系统分派只对对应的分段 / UBI 节点解析逻辑字节，普通源读取及 RAW 导出不走该视图。视图沿用检材与分段 ID，快照取逻辑卷长，压缩数据不生成伪造物理 runs；不占用加密解锁槽，也不进入 `unlockedPartitions`。native view 与活动读取句柄由会话所有，释放后不保留额外全局缓存。
+
 JFFS2 适配器 `filesystem::volumes::jffs2` 通过有界 `ReadAt` 复用改造后的 vendor `jffs2::Jffs2Image`。扫描校验节点结构，建立最高版本目录 / inode 和非重叠片段索引；文件数据延迟校验与解码。`jffs2:part:` 节点按分区和路径区分硬链接身份，完整、流式与范围读取共用索引，源字节不变。支持边界见 [JFFS2](formats/JFFS2.md)。
 
 UBIFS 适配器 `filesystem::volumes::ubifs` 将裸分区、固件明文和 UBI 逻辑卷接到 vendor `ubidump::UbifsImage` 的有界 `ReadAt`。按主节点选择已提交索引，缓存目录/inode 和数据键位置；数据 CRC 与解码延迟到实际范围读取。`ubifs:part:` 与 `ubifs:ubi:part:` 节点保留分区、卷与路径身份，硬链接不折叠成同一个目录节点；源读始终保留原始证据。支持边界见 [UBIFS](formats/UBIFS.md)。

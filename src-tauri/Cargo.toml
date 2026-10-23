@@ -186,6 +186,7 @@ rsqlite-vfs = { path = "vendor/rsqlite-vfs" }
 rufs = { path = "vendor/rufs" }
 
 rusqlite = { version = "0.40.2", features = ["bundled-sqlcipher-vendored-openssl", "collation", "hooks"] }
+sercomm-firmware = { path = "vendor/sercomm-firmware" }
 
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
@@ -359,13 +360,13 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.libsqlite3-sys]
 opt-level = 3
-[profile.release.package.liblzma-sys]
-opt-level = 3
 [profile.release.package.libbz2-rs-sys]
 opt-level = 3
 [profile.release.package.lzma-rust2]
 opt-level = 3
 [profile.release.package.lzma-rs]
+opt-level = 3
+[profile.release.package.sercomm-firmware]
 opt-level = 3
 [profile.release.package.lzvn-core]
 opt-level = 3

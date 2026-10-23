@@ -82,15 +82,16 @@ v4_lzma = [
     "dep:lzma-rust2",
 ]
 xz = [
-    "dep:liblzma",
-    "dep:liblzma-sys",
+    "dep:lzma-rust2",
+    "dep:crc32fast",
 ]
-xz-static = [
-    "dep:liblzma",
-    "dep:liblzma-sys",
-    "liblzma?/static",
-]
+xz-static = ["xz"]
 zstd = [
+    "dep:ms-compress-ruzstd",
+]
+# Optional upstream writer; the LovelyCarve reader does not enable this feature.
+zstd-write = [
+    "zstd",
     "dep:zstd",
     "dep:zstd-safe",
 ]
@@ -110,6 +111,10 @@ features = [
 ]
 default-features = false
 
+[dependencies.crc32fast]
+version = "1.5"
+optional = true
+
 [dependencies.document-features]
 version = "0.2.10"
 optional = true
@@ -117,21 +122,6 @@ optional = true
 [dependencies.flate2]
 version = "1.1.0"
 features = ["zlib-rs"]
-optional = true
-default-features = false
-
-[dependencies.liblzma]
-version = "0.4.8"
-features = [
-    "static",
-    "parallel",
-]
-optional = true
-default-features = false
-
-[dependencies.liblzma-sys]
-version = "0.4.8"
-features = ["static"]
 optional = true
 default-features = false
 
@@ -158,6 +148,10 @@ optional = true
 [dependencies.no_std_io2]
 version = "0.9.4"
 features = ["std"]
+
+[dependencies.ms-compress-ruzstd]
+version = "0.9.1"
+optional = true
 
 [dependencies.rayon]
 version = "1.12.0"

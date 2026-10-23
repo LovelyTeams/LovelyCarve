@@ -2,7 +2,7 @@
   "date": "2026-10-23",
   "platform": "Windows standalone CLI",
   "baselineCommit": "1fe4fa425d0726e10b6ebc121468ad993521216a",
-  "stage": "native firmware envelopes, CramFS/ROMFS, v3 adaptive LZMA, clean committed UBIFS v4/v5, new-format JFFS2 LE/BE, and SquashFS v1/v2 LE/BE readers",
+  "stage": "native firmware envelopes, CramFS/ROMFS, v3 adaptive LZMA, clean committed UBIFS v4/v5, new-format JFFS2 LE/BE, SquashFS v1/v2 LE/BE readers, native Rust XZ/Zstandard codecs, and Sercomm NAND ZIP logical views",
   "criterion": "Native partition tree listing; RAW-open success alone is not counted. UBI nested filesystem checked separately.",
   "samples": [
     {
@@ -64,13 +64,23 @@
       "url": "https://downloads.openwrt.org/releases/24.10.1/targets/ramips/mt7621/openwrt-24.10.1-ramips-mt7621-netgear_r6220-squashfs-factory.img",
       "size": 7327051,
       "sha256": "4907101accddfd686d18b9193ca1abc0d0b8d382daae13a06bcb5a92476e1eb4",
-      "browsable": false,
-      "sourceFormat": "raw",
-      "partitionKinds": [],
-      "partitions": [],
-      "error": {
-        "code": "notFound",
-        "message": "partition not found: 0"
+      "browsable": true,
+      "sourceFormat": "firmware",
+      "partitionKinds": [
+        "ubi"
+      ],
+      "partitions": [
+        {
+          "kind": "ubi",
+          "startByte": 551,
+          "lengthBytes": 7326423
+        }
+      ],
+      "decodedUbiOracle": {
+        "controlSample": "netgear-r6220-rootfs-control",
+        "sizeBytes": 5242880,
+        "sha256": "bd75236b240301644b526c6d52670e2722626822cbd7fb3905fa3e8a25f8be64",
+        "verification": "Complete decoded UBI byte equality in Sercomm external library oracle"
       }
     },
     {
@@ -636,6 +646,48 @@
         "apple3.txt": "2d95014ed3f24e86ce5fc3a4529f057d7b2318d9b24b54f2e9476b154bd21ec6",
         "apple4.txt": "08d9b05b15b998f2dbc741399fef4350c7863cc85df2305d7da4e83e8c8a959d"
       }
+    },
+    {
+      "name": "netgear-r6260-factory",
+      "url": "https://downloads.openwrt.org/releases/24.10.1/targets/ramips/mt7621/openwrt-24.10.1-ramips-mt7621-netgear_r6260-squashfs-factory.img",
+      "size": 7855214,
+      "sha256": "a655f7eda69b22d52f3213b90e0bb9ea6ecccd0da3a046da0bc38e920a30db9f",
+      "browsable": true,
+      "sourceFormat": "firmware",
+      "partitionKinds": [
+        "ubi"
+      ],
+      "partitions": [
+        {
+          "kind": "ubi",
+          "startByte": 551,
+          "lengthBytes": 7854586
+        }
+      ],
+      "decodedUbiOracle": {
+        "controlSample": "netgear-r6260-rootfs-control",
+        "sizeBytes": 5767168,
+        "sha256": "ceba5de08655750d920c459015aaf8c10eb270264a9cc4ac142d4712e3979517",
+        "verification": "Complete decoded UBI byte equality in Sercomm external library oracle"
+      }
+    },
+    {
+      "name": "netgear-r6260-rootfs-control",
+      "url": "https://downloads.openwrt.org/releases/24.10.1/targets/ramips/mt7621/openwrt-24.10.1-ramips-mt7621-netgear_r6260-squashfs-rootfs.bin",
+      "size": 5767168,
+      "sha256": "ceba5de08655750d920c459015aaf8c10eb270264a9cc4ac142d4712e3979517",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "ubi"
+      ],
+      "partitions": [
+        {
+          "kind": "ubi",
+          "startByte": 0,
+          "lengthBytes": 5767168
+        }
+      ]
     }
   ]
 }

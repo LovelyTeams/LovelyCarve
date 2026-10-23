@@ -1,4 +1,4 @@
-//! Read-only Buffalo, TRX, SafeLoader, legacy uImage and Netgear CHK views. Source hashes and
+//! Read-only Buffalo, TRX, SafeLoader, legacy uImage, Netgear CHK and Sercomm views. Source hashes and
 //! hex reads retain the original container; only filesystem readers use the
 //! verified plaintext span. Format references and scope: docs/formats/FIRMWARE.md.
 
@@ -15,6 +15,8 @@ mod chk;
 mod safeloader;
 #[path = "firmware_segments.rs"]
 mod segments;
+#[path = "firmware_sercomm.rs"]
+mod sercomm;
 #[path = "firmware_uimage.rs"]
 mod uimage;
 
@@ -24,6 +26,16 @@ const TRX_HEADER: usize = 28;
 pub struct FirmwareImage {
     pub partitions: Vec<Partition>,
     plaintext: Option<(u64, Arc<[u8]>)>,
+    native_views: Vec<NativeFirmwareView>,
+}
+
+/// An immutable logical byte source, addressed by the source evidence's partition
+/// id. Sessions construct filesystem views; source extents continue to describe ZIP bytes.
+pub(crate) struct NativeFirmwareView {
+    pub partition_id: u8,
+    pub label: String,
+    pub kind: PartitionKind,
+    pub source: Arc<dyn crate::core::evidence::partitions::SectorSource + Send + Sync>,
 }
 
 impl std::fmt::Debug for FirmwareImage {
@@ -31,6 +43,7 @@ impl std::fmt::Debug for FirmwareImage {
         formatter
             .debug_struct("FirmwareImage")
             .field("partitions", &self.partitions)
+            .field("native_views", &self.native_views.len())
             .field(
                 "plaintext_span",
                 &self
@@ -48,12 +61,16 @@ pub fn has_firmware_magic(bytes: &[u8]) -> bool {
         || bytes.starts_with(b"asar1\0")
         || bytes.starts_with(b"HDR0")
         || bytes.starts_with(b"buffalo.enc\n")
+        || bytes.starts_with(b"sErCoMm")
         || segments::has_wrapper_magic(bytes)
 }
 
 impl FirmwareImage {
     pub fn open(bytes: &[u8], cancel: &CancellationToken) -> Result<Self> {
         ensure!(!cancel.is_cancelled(), "firmware open cancelled");
+        if bytes.starts_with(b"sErCoMm") {
+            return sercomm::open(bytes, cancel);
+        }
         let encrypted_offset = if bytes.starts_with(b"bgn\0") {
             ensure!(
                 be32(bytes, 12)? as usize == bytes.len(),
@@ -87,13 +104,19 @@ impl FirmwareImage {
             return Ok(Self {
                 partitions,
                 plaintext: None,
+                native_views: Vec::new(),
             });
         };
         let partitions = segments::parse_image(&payload, base, cancel)?;
         Ok(Self {
             partitions,
             plaintext,
+            native_views: Vec::new(),
         })
+    }
+
+    pub(crate) fn native_views(&self) -> &[NativeFirmwareView] {
+        &self.native_views
     }
 
     /// Read within the verified plaintext's original ciphertext span. This
@@ -350,3 +373,7 @@ mod tests;
 #[cfg(test)]
 #[path = "firmware_wrapper_tests.rs"]
 mod wrapper_tests;
+
+#[cfg(test)]
+#[path = "firmware_sercomm_tests.rs"]
+mod sercomm_tests;

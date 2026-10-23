@@ -35,7 +35,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | QCOW / QCOW2 | [QCOW.md](QCOW.md) | libqcow 全部 42 API；v1/2/3、DEFLATE、RAW/QCOW 父链、legacy AES 与完整性检查 |
 | Parallels PHDI | [PHDI.md](PHDI.md) | libphdi 56 API 对照；纯 Rust v2 Plain / Sparse / Split / 差分父链、XML 元数据及完整性检查 |
 | iOS 备份 | [IOS_BACKUPS.md](../IOS_BACKUPS.md) | 本地备份浏览、加密备份解锁与异常检查 |
-| 路由器固件 | [FIRMWARE.md](FIRMWARE.md) | Buffalo ENC、TRX、TP-Link SafeLoader、U-Boot uImage、Netgear CHK；校验分段与原生文件系统读取 |
+| 路由器固件 | [FIRMWARE.md](FIRMWARE.md) | Buffalo ENC、TRX、TP-Link SafeLoader、U-Boot uImage、Netgear CHK、Sercomm NAND ZIP；来源范围与解压逻辑视图分离 |
 | 小米备份 | [MIUI_BAK.md](MIUI_BAK.md) | ZIP / 目录内 `.bak` 自动展开；Android Backup 头、TAR 与压缩流 |
 | Android 备份 | [ANDROID_BACKUP.md](ANDROID_BACKUP.md) | `.ab` 1–5 与小米 `.bak` 独立打开；原始容器字节与逻辑文件树分离 |
 

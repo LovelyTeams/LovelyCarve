@@ -529,10 +529,29 @@ impl DiskImage {
         partitions: Vec<Partition>,
         sector_size: usize,
     ) -> anyhow::Result<Self> {
+        Ok(Self::from_logical_source(
+            uuid::Uuid::new_v4().to_string(),
+            label,
+            source,
+            partitions,
+            sector_size,
+        ))
+    }
+
+    /// Wrap an already constructed logical byte source. Callers supply verified
+    /// partition geometry and identity; this does not probe or read its bytes.
+    #[inline(never)]
+    pub(crate) fn from_logical_source(
+        id: String,
+        label: String,
+        source: Arc<dyn SectorSource + Send + Sync>,
+        partitions: Vec<Partition>,
+        sector_size: usize,
+    ) -> Self {
         let size_bytes = source.size();
         let path = PathBuf::from(format!("assembled://{label}"));
-        Ok(Self {
-            id: uuid::Uuid::new_v4().to_string(),
+        Self {
+            id,
             path,
             source: ImageSource::Assembled {
                 source,
@@ -559,6 +578,6 @@ impl DiskImage {
             ewf_acquiry: None,
             physical_drive_serial: None,
             derived: None,
-        })
+        }
     }
 }

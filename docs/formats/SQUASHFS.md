@@ -40,6 +40,19 @@ v1/v2 在同一个 backhand vendor 中新增有界读取路径，复用版本无
 - 裸卷、固件明文与 UBI 卷使用同一读取路径。卷读取器缓存已建立的元数据与文件块计划，
   范围读取只展开与请求相交的数据块；原始源读取及操作级坏区审计沿用证据层。
 
+## 原生 Rust 压缩读取
+
+宿主的 gzip / DEFLATE 使用 `flate2` 的 `zlib-rs` 后端，LZMA / XZ 使用
+`lzma-rust2`，Zstandard 使用 `ms-compress-ruzstd`。固件读取不调用 FMK、
+`unsquashfs`、liblzma 或 libzstd。backhand 的独立 `zstd-write` 特性只保留
+上游可选写入接口，宿主不启用它；应用其他功能的压缩依赖不属于这条读取路径。
+
+依照 [XZ 格式规范](https://tukaani.org/xz/xz-file-format.txt)，XZ 检查块校验、索引记录、流尾与完整输入，只接受单个流；支持 LZMA2 与
+最多三个 BCJ / Delta 预过滤器，包括 SquashFS 常用的 x86、PowerPC、IA64、
+ARM、ARM Thumb 与 SPARC，以及组合过滤器链。先检查索引、块 / LZMA2 chunk 长度和
+字典，再交给 Rust 库解压；字典上限 8 MiB，单块输出上限 4 MiB。Zstandard 检查完整单帧和可选内容校验和，窗口最多 8 MiB，
+输出最多 4 MiB。两条路径均先完成校验再发布输出，失败不留下部分解压内容。
+
 ## 限制
 
 - 不提供写入、历史 / 删除恢复、文件系统未分配空间或 NAND OOB / ECC 解码。
@@ -84,3 +97,8 @@ just test squashfs_legacy_host_external --lib -- --ignored
 [`db038ef265ed`](https://github.com/plougher/squashfs-tools/tree/db038ef265ed00bb17aaf695a72f9b0c3489eb20/squashfs-tools)
 中的 `squashfs_compat.h`、`unsquash-1.c` 和 `unsquash-2.c`；FMK 的旧 v2 LZMA
 工具用于核对属性头和已知输出长度。没有编译或复制其 C/C++ 解包实现。
+
+XZ 的各 BCJ / 校验模式以及 Zstandard 校验帧由 Python/liblzma、Python
+`zstandard` 独立生成；测试逐个截断长度，并覆盖尾随输入、伪造索引、坏校验、
+过大字典 / 窗口与超限输出。原始生成器、CC0 声明和 SHA-256 见
+[压缩夹具](../../src-tauri/vendor/backhand/test_data/native-codecs.json)。

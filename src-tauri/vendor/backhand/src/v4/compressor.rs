@@ -11,9 +11,7 @@ use flate2::{Compress, Compression};
 #[cfg(feature = "gzip")]
 use flate2::{Decompress, FlushDecompress, Status};
 #[cfg(feature = "xz")]
-use liblzma::read::XzEncoder;
-#[cfg(feature = "xz")]
-use liblzma::stream::{Check, Filters, LzmaOptions, MtStreamBuilder};
+use lzma_rust2::{CheckType, FilterType, XzOptions, XzWriter};
 
 use crate::error::BackhandError;
 use crate::traits::CompressionAction;
@@ -153,60 +151,8 @@ pub struct Zstd {
 pub struct DefaultCompressor;
 
 /// The maximum size of one decompressed block.
-#[cfg(any(feature = "xz", feature = "gzip"))]
+#[cfg(feature = "gzip")]
 const MAX_DECOMPRESSED_SIZE: usize = 4 * super::squashfs::MAX_BLOCK_SIZE as usize;
-
-/// Decompress a complete xz stream in one call. The data is added to `out`.
-#[cfg(feature = "xz")]
-fn xz_decode_buffer(bytes: &[u8], out: &mut Vec<u8>) -> Result<(), BackhandError> {
-    if out.capacity() == out.len() {
-        out.reserve(bytes.len().max(8 * 1024));
-    }
-
-    loop {
-        let start = out.len();
-        let spare = out.capacity() - start;
-        let mut memlimit = u64::MAX;
-        let mut in_pos = 0usize;
-        let mut out_pos = 0usize;
-
-        // SAFETY: `input`/`in_size` and `out`/`out_size` point to valid memory
-        // areas that do not overlap. liblzma writes a maximum of `out_size`
-        // bytes into the spare capacity after `start`. It gives the number of
-        // bytes in `out_pos`. The code increases the length only across the
-        // bytes that liblzma wrote.
-        let ret = unsafe {
-            liblzma_sys::lzma_stream_buffer_decode(
-                &mut memlimit,
-                0,
-                std::ptr::null(),
-                bytes.as_ptr(),
-                &mut in_pos,
-                bytes.len(),
-                out.as_mut_ptr().add(start),
-                &mut out_pos,
-                spare,
-            )
-        };
-
-        match ret {
-            liblzma_sys::LZMA_OK => {
-                // SAFETY: liblzma wrote `out_pos` bytes after `start`.
-                unsafe { out.set_len(start + out_pos) };
-                return Ok(());
-            }
-            // The output did not fit. Increase the buffer and decode again from
-            // the start.
-            liblzma_sys::LZMA_BUF_ERROR => {
-                if spare >= MAX_DECOMPRESSED_SIZE {
-                    return Err(BackhandError::CorruptedOrInvalidSquashfs);
-                }
-                out.reserve(spare.max(8 * 1024) * 2);
-            }
-            _ => return Err(BackhandError::CorruptedOrInvalidSquashfs),
-        }
-    }
-}
 
 /// Decompress a complete zlib stream in one call. The data is added to `out`.
 #[cfg(feature = "gzip")]
@@ -241,6 +187,7 @@ impl CompressionAction for DefaultCompressor {
     type SuperBlock = super::squashfs::SuperBlock;
     type Error = crate::BackhandError;
     /// Using the current compressor from the superblock, decompress bytes
+    #[inline(never)]
     fn decompress(
         &self,
         bytes: &[u8],
@@ -252,7 +199,7 @@ impl CompressionAction for DefaultCompressor {
             #[cfg(feature = "gzip")]
             Compressor::Gzip => gzip_decode_buffer(bytes, out)?,
             #[cfg(feature = "xz")]
-            Compressor::Xz => xz_decode_buffer(bytes, out)?,
+            Compressor::Xz => super::native_codecs::decode_xz(bytes, out)?,
             #[cfg(feature = "lzo")]
             Compressor::Lzo => {
                 out.resize(out.capacity(), 0);
@@ -264,12 +211,7 @@ impl CompressionAction for DefaultCompressor {
                 }
             }
             #[cfg(feature = "zstd")]
-            Compressor::Zstd => {
-                let mut decoder = zstd::bulk::Decompressor::new().map_err(|e| {
-                    BackhandError::CompressionInit(err_text!("zstd decompressor: {}", e))
-                })?;
-                decoder.decompress_to_buffer(bytes, out)?;
-            }
+            Compressor::Zstd => super::native_codecs::decode_zstd(bytes, out)?,
             #[cfg(feature = "lz4")]
             Compressor::Lz4 => {
                 out.resize(out.capacity(), 0u8);
@@ -315,45 +257,49 @@ impl CompressionAction for DefaultCompressor {
                         }
                     }
                 };
-                let check = Check::Crc32;
-                let mut opts = LzmaOptions::new_preset(level)
-                    .map_err(|e| BackhandError::CompressionInit(err_text!("xz options: {}", e)))?;
-                opts.dict_size(dict_size);
-
-                let mut filters = Filters::new();
-                if let Some(CompressionOptions::Xz(xz)) = option {
-                    if xz.filters.x86() {
-                        filters.x86();
+                if level > 9 || !(4096..=8 * 1024 * 1024).contains(&dict_size) {
+                    return Err(BackhandError::CorruptedOrInvalidSquashfs);
+                }
+                let mut options = XzOptions::with_preset(level);
+                options.set_check_sum_type(CheckType::Crc32);
+                options.lzma_options.dict_size = dict_size;
+                // SquashFS's bit mask names alternative BCJ encodings, not a
+                // chain of unrelated machine-code filters. Choose the shortest.
+                let filters = if let Some(CompressionOptions::Xz(xz)) = option {
+                    vec![
+                        (xz.filters.x86(), FilterType::BcjX86),
+                        (xz.filters.powerpc(), FilterType::BcjPpc),
+                        (xz.filters.ia64(), FilterType::BcjIa64),
+                        (xz.filters.arm(), FilterType::BcjArm),
+                        (xz.filters.armthumb(), FilterType::BcjArmThumb),
+                        (xz.filters.sparc(), FilterType::BcjSparc),
+                    ]
+                } else {
+                    Vec::new()
+                };
+                let mut candidates = vec![None];
+                candidates.extend(
+                    filters
+                        .into_iter()
+                        .filter_map(|(enabled, filter)| enabled.then_some(Some(filter))),
+                );
+                let mut best: Option<Vec<u8>> = None;
+                for filter in candidates {
+                    let mut options = options.clone();
+                    if let Some(filter) = filter {
+                        options.prepend_pre_filter(filter, 0);
                     }
-                    if xz.filters.powerpc() {
-                        filters.powerpc();
-                    }
-                    if xz.filters.ia64() {
-                        filters.ia64();
-                    }
-                    if xz.filters.arm() {
-                        filters.arm();
-                    }
-                    if xz.filters.armthumb() {
-                        filters.arm_thumb();
-                    }
-                    if xz.filters.sparc() {
-                        filters.sparc();
+                    let mut encoder = XzWriter::new(Vec::new(), options)?;
+                    encoder.write_all(bytes)?;
+                    let encoded = encoder.finish()?;
+                    if best
+                        .as_ref()
+                        .is_none_or(|previous| encoded.len() < previous.len())
+                    {
+                        best = Some(encoded);
                     }
                 }
-                filters.lzma2(&opts);
-
-                let stream = MtStreamBuilder::new()
-                    .threads(2)
-                    .filters(filters)
-                    .check(check)
-                    .encoder()
-                    .map_err(|e| BackhandError::CompressionInit(err_text!("xz encoder: {}", e)))?;
-
-                let mut encoder = XzEncoder::new_stream(Cursor::new(bytes), stream);
-                let mut buf = vec![];
-                encoder.read_to_end(&mut buf)?;
-                Ok(buf)
+                best.ok_or(BackhandError::CorruptedOrInvalidSquashfs)
             }
             #[cfg(feature = "gzip")]
             (Compressor::Gzip, option @ (Some(CompressionOptions::Gzip(_)) | None), _) => {
@@ -384,7 +330,7 @@ impl CompressionAction for DefaultCompressor {
                 }
                 Ok(buf)
             }
-            #[cfg(feature = "zstd")]
+            #[cfg(feature = "zstd-write")]
             (Compressor::Zstd, option @ (Some(CompressionOptions::Zstd(_)) | None), _) => {
                 let compression_level = match option {
                     None => 3,

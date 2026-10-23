@@ -1,0 +1,16 @@
+{
+  "rootfsSize": 393216,
+  "rootfsSha256": "bb17e5f5794ba5f276162ef137c989fb3682efd35a58ab009cf09b424b820266",
+  "storedSourceSize": 6685436,
+  "storedSourceSha256": "791da56c3e40779694c2e791756436216806217eb4d185fbca60d7d4285ec612",
+  "fixtures": {
+    "synthetic-sercomm-deflate.img": {
+      "size": 7980,
+      "sha256": "4d23ab17bc5d5d9040f4bf841a6533427046846c08d9f7949014d6104d930ef2"
+    },
+    "synthetic-sercomm-stored.img.zlib": {
+      "size": 7354,
+      "sha256": "c690a3815cad7237c0fab76b92e0958e7ba6ace7742cacd10cb73d81cfc3e560"
+    }
+  }
+}

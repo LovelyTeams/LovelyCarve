@@ -28,6 +28,10 @@ readers use the existing backhand (MIT OR Apache-2.0) library and lzma-rust2
 (Apache-2.0). Original synthetic fixtures and their generators are CC0-1.0;
 see [firmware provenance and limits](docs/formats/FIRMWARE.md).
 
+SquashFS XZ and Zstandard decoding also reuse lzma-rust2 and the existing
+MIT-licensed ms-compress-ruzstd 0.9.1. The firmware read path does not call
+liblzma or libzstd; independent fixtures use Python encoders as test oracles.
+
 SafeLoader, legacy uImage and Netgear CHK format behavior is checked against
 OpenWrt firmware-utils commit `b2a93c6f77bac3a6525e93b383c987b073b4633b`:
 Matthias Schiffer's `tplink-safeloader.c` (BSD-2-Clause), Dave C. Reeve's
@@ -1439,6 +1443,35 @@ is included. See `src-tauri/vendor/lzma-rs/LOVELYCARVE.md`.
 MIT License
 
 Copyright (c) 2017 - 2018  Guillaume Endignoux
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## zip (ZIP container metadata)
+
+The Rust `zip` crate is used for ZIP evidence and Sercomm firmware metadata.
+Source: https://github.com/zip-rs/zip2 — version recorded in Cargo.lock.
+
+```text
+The MIT License (MIT)
+
+Copyright (c) 2014 Mathijs van de Nes
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

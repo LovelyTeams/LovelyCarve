@@ -1,0 +1,16 @@
+[package]
+name = "sercomm-firmware"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+description = "LovelyCarve bounded Sercomm ZIP/NAND firmware decoder"
+
+[dependencies]
+anyhow = "1"
+crc32fast = "1"
+flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+ubidump = { path = "../ubidump" }
+zip = { version = "9.0.1", default-features = false, features = ["deflate"] }
+
+[workspace]

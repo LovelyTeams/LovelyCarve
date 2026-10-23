@@ -65,7 +65,7 @@ LovelyCarve 面向电子数据取证、应急响应和 CTF 取证题：加载磁
 
 | 类别 | 格式 |
 | --- | --- |
-| 镜像容器 | RAW / DD / IMG / ISO、E01 / Ex01、AD1、VMDK、VHD / VHDX、QCOW2、VDI、Parallels PHDI、DMG、DiskGenius PMFX、雷电模拟器 LDBK、光盘 BIN / CUE（多文件、多轨、Mode 1 / XA Form 1）、小米 HDR1、Buffalo ENC/TRX、TP-Link SafeLoader、U-Boot legacy uImage 与 Netgear CHK 固件、UBI（原始逻辑卷与内嵌 SquashFS / UBIFS） |
+| 镜像容器 | RAW / DD / IMG / ISO、E01 / Ex01、AD1、VMDK、VHD / VHDX、QCOW2、VDI、Parallels PHDI、DMG、DiskGenius PMFX、雷电模拟器 LDBK、光盘 BIN / CUE（多文件、多轨、Mode 1 / XA Form 1）、小米 HDR1、Buffalo ENC/TRX、TP-Link SafeLoader、U-Boot legacy uImage、Netgear CHK 与 Sercomm NAND ZIP 固件、UBI（原始逻辑卷与内嵌 SquashFS / UBIFS） |
 | 逻辑检材 | 文件夹（自动展开其中的小米 `.bak` 备份）、TAR / TAR.GZ、ZIP、7z、Docker / OCI 镜像归档、磁盘内的 Docker 容器、iOS 本地备份、BCP 交换数据 |
 | 分区与卷 | GPT、MBR / EBR、APM、BSD 标签、LVM2 线性卷（含跨 PV / 跨阵列）、mdadm RAID 成员（0.90 / 1.x）、Intel IMSM 与 SNIA DDF 固件 RAID、linear / RAID0 / 1 / 4 / 5 / 6 / 10 重组 |
 | 文件系统 | NTFS、ext2/3/4、FAT12/16/32、exFAT、APFS、HFS+ / HFSX、Btrfs、ZFS、XFS（v1–v5）、ReFS、UFS / UFS2、SquashFS v1/v2/v3/v4（含大小端旧布局、DD-WRT v3 与已验证的 LZMA 变体）、CramFS v2、Linux ROMFS、UBIFS v4/v5、JFFS2（新格式大小端）、ISO 9660 |

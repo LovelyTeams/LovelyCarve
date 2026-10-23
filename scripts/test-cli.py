@@ -172,6 +172,27 @@ def main():
             assert rows[2]["result"]["data"] == legacy_content[8180:8280].hex()
             assert rows[3]["result"]["sha256"] == hashlib.sha256(legacy_content).hexdigest()
 
+        # Sercomm source geometry stays compressed; UBI navigation uses decoded bytes.
+        sercomm_stored = root / "sercomm-stored.img"
+        sercomm_stored.write_bytes(zlib.decompress((firmware_fixtures / "synthetic-sercomm-stored.img.zlib").read_bytes()))
+        sercomm_node = "squashfs:ubi:part:0:2:" + b"/hello".hex()
+        for sercomm_path in [firmware_fixtures / "synthetic-sercomm-deflate.img", sercomm_stored]:
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(sercomm_path)}},
+                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "files", "command": "files list", "args": {"parentId": "squashfs:ubi:part:0:2:"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": sercomm_node, "offset": 11, "length": 93}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": sercomm_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["sourceFormat"] == "firmware"
+            assert rows[0]["result"]["sizeBytes"] == sercomm_path.stat().st_size
+            assert rows[0]["result"]["unlockedPartitions"] == []
+            assert {entry["name"] for entry in rows[1]["result"]["items"]} == {"root", "root.img"}
+            assert rows[2]["result"]["items"][0]["name"] == "hello"
+            assert rows[3]["result"]["data"] == firmware_content[11:104].hex()
+            assert rows[4]["result"]["sha256"] == hashlib.sha256(firmware_content).hexdigest()
+
         # UBIFS: independent stored/LZO/DEFLATE/Zstd trees and encrypted firmware.
         ubifs_fixtures = firmware_fixtures.parent.parent / "vendor/ubidump/test_data"
         ubifs_content = (ubifs_fixtures / "payload.bin").read_bytes()
