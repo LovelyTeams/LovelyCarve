@@ -135,6 +135,8 @@ Buffalo ENC / Broadcom TRX、TP-Link SafeLoader、U-Boot legacy uImage 与 Netge
 
 Sercomm NAND ZIP 固件由独立 Rust `sercomm-firmware` 库复用 ZIP / DEFLATE / UBI 读取能力，验证 seal、成员范围、CRC、尾部与 NAND 布局，宿主复用 uImage CRC 校验。`FirmwareImage` 只持有逻辑 `SectorSource` 与元数据，`DiskImage` 之间不相互持有；源 `DiskImage` 保留压缩字节与真实分段范围，由 `EvidenceSession` 构建并持有独立的 native firmware views；文件系统分派只对对应的分段 / UBI 节点解析逻辑字节，普通源读取及 RAW 导出不走该视图。视图沿用检材与分段 ID，快照取逻辑卷长，压缩数据不生成伪造物理 runs；不占用加密解锁槽，也不进入 `unlockedPartitions`。native view 与活动读取句柄由会话所有，释放后不保留额外全局缓存。
 
+MINIFS 适配器 `filesystem::volumes::minifs` 复用本仓库独立 Rust `minifs` 库，通过有界 `ReadAt` 读取 v3 名称、文件与共享 LZMA 块索引；目录由路径合成，完整、流式和范围读取共用一个可释放的解压块缓存。裸镜像和 TP-Link 显式分段保留字节几何、源身份和原始容器字节，不虚构时间戳或物理 runs。旧布局与外层完整性边界见 [MINIFS](formats/MINIFS.md)。
+
 JFFS2 适配器 `filesystem::volumes::jffs2` 通过有界 `ReadAt` 复用改造后的 vendor `jffs2::Jffs2Image`。扫描校验节点结构，建立最高版本目录 / inode 和非重叠片段索引；文件数据延迟校验与解码。`jffs2:part:` 节点按分区和路径区分硬链接身份，完整、流式与范围读取共用索引，源字节不变。支持边界见 [JFFS2](formats/JFFS2.md)。
 
 YAFFS2 适配器 `filesystem::volumes::yaffs2` 通过有界 `ReadAt` 和 `Box<dyn ReadOnlyFilesystem>` 复用 Rust `yaffs2-reader`，具体页索引及其所有权留在库内。根据 page / spare 标签探测几何，按 sequence 与物理页序重建当前名称、shrink / shadow 与数据页；`yaffs2:part:` 路径保留硬链接目录身份，内容 inode 沿用目标。完整、流式与范围读取共用逻辑页图；原始读取保留 OOB，不生成虚假的连续物理 runs。支持范围与 NAND ECC 限制见 [YAFFS2](formats/YAFFS2.md)。
@@ -1279,3 +1281,16 @@ LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提�
 插件运行把记录写进暂存运行；调度器提交前按 `(task_id, seq)` 校验执行归属，并获取每次执行独立的发布锁。暂存运行的发布（替换同一作业的上一次结果）、时间线投影与任务终态提交在锁内完成；取消、看门狗与案件解绑获取同一把锁后撤销执行。已撤销的迟到结果不能发布，暂存运行随之删除；已经开始发布的执行收尾后控制面重新判定状态。任务台账提交失败时按精确 run_id 删除刚发布的运行，不回删同一作业的其他运行。不同检材的发布不使用全局锁。
 
 直接文件分析复用案件代际与检材移除的发布门；分析开始时捕获案件目录与代际，结束时重新验证并持锁写入，避免旧调用写入新案件。
+
+### F2FS / EROFS 只读卷
+
+固定超级块探测位于 `evidence::partitions::flashfs`，卷接入复用 `filesystem::volumes::rom_images` 的
+泛型路径适配器、分区边界源与缓存会话。独立 `f2fs-reader` 维护校验后的 checkpoint、NAT 和
+多级 node 寻址；`lamfold-erofs` 维护受限 inode / 解压缓存。`FoldFrontend::timestamps` 默认返回
+未知角色，F2FS / EROFS 提供其实际记录的 UTC 秒 / 纳秒，宿主转换展示文本。没有新增全局
+每检材缓存，所有读者随 FsSession / 证据引用释放。支持与验证见 [F2FS](formats/F2FS.md) /
+[EROFS](formats/EROFS.md)。
+
+### QNX4 / QNX6 只读卷
+
+`evidence::partitions::qnx` 按根 inode / 超级块结构识别格式；`qnx-reader` 通过既有 `rom_images` 泛型适配器接入有界源、分区与路径身份。QNX4 缓存验证后的 extent 链并按逻辑末端二分定位，QNX6 选择 CRC 有效且几何一致的最新提交代际，共用有深度和容量上限的 inode / 长名 / 文件树读取。符号链接不在宿主跟随，原始证据字节不变；范围、流式、哈希和导出使用同一映射。支持范围见 [QNX](formats/QNX.md)。

@@ -20,6 +20,15 @@ use crate::verify::Verifier;
 /// erofs nid — whatever the frontend uses internally).
 pub type NodeId = u64;
 
+/// POSIX UTC seconds and nanoseconds retained independently of display format.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FileTimes {
+    pub modified: Option<(i64, u32)>,
+    pub accessed: Option<(i64, u32)>,
+    pub changed: Option<(i64, u32)>,
+    pub created: Option<(i64, u32)>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileKind {
     Regular,
@@ -83,6 +92,11 @@ pub trait FoldFrontend<S: BlockSource>: Sized {
 
     /// Metadata for a node.
     fn metadata(&mut self, node: NodeId, cx: &mut SubstrateCtx<'_>) -> Result<Metadata>;
+
+    /// Preserve only timestamp roles actually recorded by the format.
+    fn timestamps(&mut self, _node: NodeId, _cx: &mut SubstrateCtx<'_>) -> Result<FileTimes> {
+        Ok(FileTimes::default())
+    }
 
     /// Read up to `buf.len()` bytes of a regular file starting at `off`. Returns
     /// the number of bytes read (0 at EOF).

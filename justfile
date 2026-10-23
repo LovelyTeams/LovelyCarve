@@ -156,6 +156,10 @@ fmt:
     cd src-tauri/vendor/lamfold && cargo fmt
     cd src-tauri/vendor/lamfold-cramfs && cargo fmt
     cd src-tauri/vendor/lamfold-romfs && cargo fmt
+    cd src-tauri/vendor/lamfold-erofs && cargo fmt
+    cd src-tauri/vendor/f2fs-reader && cargo fmt
+    cd src-tauri/vendor/qnx-reader && cargo fmt
+    cd src-tauri/vendor/minifs && cargo fmt
     cd src-tauri/vendor/backhand && cargo fmt
     cd src-tauri/vendor/lzma-rs && cargo fmt
     cd src-tauri/vendor/sercomm-firmware && cargo fmt
@@ -418,6 +422,49 @@ clippy-yaffs2:
 [group("readers")]
 test-vendor name *args:
     cargo test --manifest-path src-tauri/vendor/{{ name }}/Cargo.toml --lib {{ args }}
+
+# Lint the standalone MINIFS reader, including regression tests.
+[group("readers")]
+clippy-minifs:
+    cargo clippy --manifest-path src-tauri/vendor/minifs/Cargo.toml --all-targets -- -D warnings
+
+# Validate the standalone flash filesystem readers.
+[group("readers")]
+test-qnx:
+    cargo test --manifest-path src-tauri/vendor/qnx-reader/Cargo.toml --lib
+
+[group("readers")]
+clippy-qnx:
+    cargo clippy --manifest-path src-tauri/vendor/qnx-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-qnx-fixtures:
+    {{ python }} scripts/qnx-fixtures.py
+
+[group("readers")]
+test-qnx-reference oracle:
+    {{ python }} scripts/qnx-reference.py '{{ oracle }}'
+
+[group("readers")]
+test-erofs:
+    cargo test --manifest-path src-tauri/vendor/lamfold-erofs/Cargo.toml --lib --features deflate,zstd,lzma
+
+[group("readers")]
+clippy-erofs:
+    cargo clippy --manifest-path src-tauri/vendor/lamfold-erofs/Cargo.toml --all-targets --features deflate,zstd,lzma -- -D warnings
+
+[group("readers")]
+clippy-f2fs:
+    cargo clippy --manifest-path src-tauri/vendor/f2fs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-f2fs-fixtures:
+    {{ python }} scripts/f2fs-fixtures.py
+
+# Generate independent MINIFS fixtures, or a Python oracle for external firmware.
+[group("readers")]
+generate-minifs-fixtures *args:
+    {{ python }} scripts/minifs-fixtures.py {{ args }}
 
 # Lint the adapted read-only UBI library and its synthetic tests.
 [group("readers")]

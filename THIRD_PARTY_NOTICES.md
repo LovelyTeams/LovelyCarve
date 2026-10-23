@@ -1507,3 +1507,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## MINIFS format references and test data
+
+The `minifs` reader is original Rust code under this repository's AGPL-3.0-only license.
+It uses the existing Apache-2.0 `lzma-rust2` dependency; no code from the unlicensed
+H4lo/MINIFS-Decompression repository or from the MINIFS paper is incorporated.
+Format references and provenance: [MINIFS](docs/formats/MINIFS.md).
+The original synthetic MINIFS fixture and its Python generator are CC0-1.0.
+Official TP-Link firmware retains its vendor copyright and is downloaded only
+for local optional tests; it is not included in this repository.
+
+## F2FS and EROFS readers and fixtures
+
+F2FS metadata modules are adapted from KarpelesLab/fstool 0.5.0 (MIT);
+see src-tauri/vendor/f2fs-reader/LICENSE-MIT and ORIGIN.md. New frontend code
+is AGPL-3.0-only. The syzkaller mkfs.f2fs fixture is Apache-2.0; its license,
+source and hashes are retained under that reader's tests/fixtures directory.
+EROFS uses lamfold-erofs 0.1.3 (MIT OR Apache-2.0), including its independently
+mkfs-generated test corpus, with original LICENSE-MIT, LICENSE-APACHE and NOTICE.
+No external formatter, extractor or kernel C implementation is shipped or run
+by the evidence read path. Original F2FS synthetic data/generator is CC0-1.0.
+
+## QNX6 reference fixtures (NetherlandsForensicInstitute/qnxmount)
+
+Apache-2.0, revision `11c8a7f9ee9b945d584263743f6ea8524e8776d2`. The QNX-produced test image, matching TAR and original generation script are retained under `src-tauri/vendor/qnx-reader/tests/fixtures/`; `LICENSE-qnxmount` preserves the license. The image is losslessly zlib-compressed and otherwise unchanged. Runtime QNX4 / QNX6 parsing is original LovelyCarve AGPL-3.0-only Rust code. Optional positive-fixture oracle uses the separately obtained MIT qnxprobe project; it is not a runtime dependency or bundled source.

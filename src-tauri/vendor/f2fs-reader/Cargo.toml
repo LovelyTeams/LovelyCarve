@@ -1,0 +1,14 @@
+[package]
+name = "f2fs-reader"
+version = "0.1.0"
+edition = "2021"
+license = "MIT AND AGPL-3.0-only"
+description = "Bounded read-only F2FS checkpoint reader for forensic evidence"
+
+[dependencies]
+lamfold = { path = "../lamfold", default-features = false, features = ["std"] }
+
+[workspace]
+
+[dev-dependencies]
+miniz_oxide = "0.9"

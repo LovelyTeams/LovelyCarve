@@ -1,0 +1,16 @@
+[package]
+name = "minifs"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+license = "AGPL-3.0-only"
+description = "Bounded read-only parser for TP-Link / VxWorks MINIFS v3 images"
+
+[dependencies]
+anyhow = "1"
+lzma-rust2 = { version = "=0.20.1", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+sha2 = "0.10"
+
+[workspace]
