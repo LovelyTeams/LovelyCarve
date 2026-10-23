@@ -364,10 +364,6 @@ impl PluginManifest {
     pub fn analyzer(&self, id: &str) -> Option<&AnalyzerManifest> {
         self.analyzers.iter().find(|analyzer| analyzer.id == id)
     }
-
-    pub fn has_permission(&self, permission: PluginPermission) -> bool {
-        self.permissions.contains(&permission)
-    }
 }
 
 impl AnalyzerManifest {

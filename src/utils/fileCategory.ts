@@ -60,17 +60,7 @@ export const EXECUTABLE_EXT = new Set([
 export const DOCUMENT_EXT = new Set([
   'doc', 'docx', 'odt', 'rtf', 'ppt', 'pptx', 'odp', 'pages', 'key', 'wps',
 ]);
-/** PowerPoint OOXML（.pptx，ZIP 容器）。预览路由已并入 RICH_EXT（Flyfish 渲染），
- *  此表仅供图标分类等消费方使用。DOCUMENT_EXT 的子集。 */
-export const PPTX_EXT = new Set(['pptx']);
-/** Word OOXML（.docx / .docm，ZIP 容器）。预览路由已并入 RICH_EXT（Flyfish 渲染），
- *  此表仅供图标分类等消费方使用。DOCUMENT_EXT 的子集。 */
-export const DOCX_EXT = new Set(['docx', 'docm']);
 export const SPREADSHEET_EXT = new Set(['xls', 'xlsx', 'xlsm', 'xlsb', 'ods', 'et']);
-/** 电子表格（.xlsx / .xlsm / .xls / .xlsb / .ods）。预览路由已并入 RICH_EXT
- *  （Flyfish 渲染），此表仅供图标分类等消费方使用。SPREADSHEET_EXT 的子集：
- *  .et（WPS 私有）不在此列。 */
-export const XLSX_EXT = new Set(['xlsx', 'xlsm', 'xls', 'xlsb', 'ods']);
 export const DATABASE_EXT = new Set([
   'db', 'db3', 'sqlite', 'sqlite3', 'mdb', 'accdb', 'edb', 'frm', 'ibd', 'realm',
 ]);

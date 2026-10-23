@@ -146,19 +146,6 @@ impl Mactb {
     pub fn birth_epoch(&self) -> Option<i64> {
         Self::epoch_of(&self.birth)
     }
-
-    /// Every set timestamp as a Unix epoch second, for min/max aggregation.
-    pub fn epochs(&self) -> impl Iterator<Item = i64> + '_ {
-        [
-            self.modified_epoch(),
-            self.accessed_epoch(),
-            self.created_epoch(),
-            self.mft_changed_epoch(),
-            self.birth_epoch(),
-        ]
-        .into_iter()
-        .flatten()
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
