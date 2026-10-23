@@ -188,6 +188,17 @@ pub(super) fn children_for_image_with_options(
                 crate::core::filesystem::volumes::minifs::open_minifs_source(image, partition.id)?
                     .root_children()
             }
+            PartitionKind::Erofs => {
+                crate::core::filesystem::volumes::rom_images::open_erofs_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
+            PartitionKind::F2fs => {
+                crate::core::filesystem::volumes::rom_images::open_f2fs_source(image, partition.id)?
+                    .root_children()
+            }
             PartitionKind::Romfs => {
                 crate::core::filesystem::volumes::rom_images::RomfsVolume::open(
                     Arc::clone(image),

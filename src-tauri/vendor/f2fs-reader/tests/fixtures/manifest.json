@@ -1,0 +1,10 @@
+{
+  "synthetic.f2fs.zlib": {
+    "sha256": "a634a05035119253acad60f1e49a8324666b5a328131699cbc592a13392a5dac",
+    "size": 47802
+  },
+  "syzkaller_0.f2fs.zlib": {
+    "sha256": "8bdd6b1c1a13a6cee2a7341638280948c76d324f641ba881a2d57c866e5de85f",
+    "size": 66900
+  }
+}

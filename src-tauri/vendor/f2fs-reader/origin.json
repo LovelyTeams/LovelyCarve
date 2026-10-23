@@ -1,0 +1,9 @@
+{
+  "package": "fstool",
+  "version": "0.5.0",
+  "license": "MIT",
+  "git": {
+    "sha1": "b30823f25b6eef5ea9b6de45876f31c2b8f2d70a"
+  },
+  "crate_sha256": "4255e60d46b22ead658a5649c298d926c33855b02ff541ff40c014515c7b59eb"
+}

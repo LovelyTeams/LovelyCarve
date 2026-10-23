@@ -9,6 +9,8 @@
 
 ### Added
 
+- 新增 F2FS 与 EROFS 原生只读浏览、预览、哈希、导出和索引：F2FS 校验 checkpoint / NAT 与 inode 并读取内联 / 间接数据；EROFS 支持未压缩、LZ4、DEFLATE、Zstandard、MicroLZMA 和 chunk 文件，保留时间角色与源字节，未支持的加密 / 压缩或高级布局明确报错。
+
 - 新增独立纯 Rust MINIFS v3 读取库，支持直接浏览裸 MINIFS 与 TP-Link VxWorks 固件中的共享 LZMA 文件块，并复用预览、哈希、导出、范围读取与索引；官方 Archer C6 v4 固件提供逐文件独立校验，旧式 MINIFS 布局暂不支持。
 
 - 文件列表新增 NTFS 树图视图：按空间占用把当前目录画成嵌套矩形，面积为逻辑大小或文件数，颜色为数据类别或距最新写入的时间，可计入已删除文件；双击或滚轮进出目录，与列表共用导航、预览和右键菜单。数据由卷索引汇总，硬链接只计一次；CLI 对应 `files size-tree get`。

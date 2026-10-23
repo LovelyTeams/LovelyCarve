@@ -1513,3 +1513,14 @@ Format references and provenance: [MINIFS](docs/formats/MINIFS.md).
 The original synthetic MINIFS fixture and its Python generator are CC0-1.0.
 Official TP-Link firmware retains its vendor copyright and is downloaded only
 for local optional tests; it is not included in this repository.
+
+## F2FS and EROFS readers and fixtures
+
+F2FS metadata modules are adapted from KarpelesLab/fstool 0.5.0 (MIT);
+see src-tauri/vendor/f2fs-reader/LICENSE-MIT and ORIGIN.md. New frontend code
+is AGPL-3.0-only. The syzkaller mkfs.f2fs fixture is Apache-2.0; its license,
+source and hashes are retained under that reader's tests/fixtures directory.
+EROFS uses lamfold-erofs 0.1.3 (MIT OR Apache-2.0), including its independently
+mkfs-generated test corpus, with original LICENSE-MIT, LICENSE-APACHE and NOTICE.
+No external formatter, extractor or kernel C implementation is shipped or run
+by the evidence read path. Original F2FS synthetic data/generator is CC0-1.0.

@@ -20,6 +20,8 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | ISO 9660 / 光盘 BIN / CUE | [CDFS.md](CDFS.md) | libodraw 全 API 对照；多文件/多轨 CUE、Mode 1 / XA Form 1、来源字节保留与范围读取 |
 | CramFS / Linux ROMFS | [ROM_IMAGES.md](ROM_IMAGES.md) | lamfold Rust 库；CramFS v2 大小端、CRC、按页范围读取；ROMFS 校验和、硬链接、目录链边界 |
 | MINIFS | [MINIFS.md](MINIFS.md) | 原创独立 Rust 库；VxWorks / TP-Link v3、共享 LZMA 块、有界范围读及官方固件逐文件 oracle |
+| F2FS | [F2FS.md](F2FS.md) | 纯 Rust checkpoint / NAT 读取、动态内联区域、完整间接寻址、inode CRC、硬链接及纳秒时间 |
+| EROFS | [EROFS.md](EROFS.md) | lamfold-erofs；紧凑 / 扩展 inode、四种压缩、chunk 空洞、有界范围读取与超级块 CRC32C |
 | SquashFS | [SQUASHFS.md](SQUASHFS.md) | backhand Rust 读取器；v1/v2 旧布局、v3/v4、大小端、尾片段和有界 LZMA / 范围读取 |
 | JFFS2 | [JFFS2.md](JFFS2.md) | jffs2-rs 结构 / RTIME 改造；新格式大小端、CRC、版本化目录与片段、空洞和范围读取 |
 | YAFFS1 | [YAFFS1.md](YAFFS1.md) | 原生 Rust 分散 tags、标签 / 页正文 ECC、两位序号、删除页、shadow、硬链接及独立文件长度策略 |

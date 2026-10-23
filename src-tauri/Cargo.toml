@@ -111,6 +111,7 @@ encoding_rs = "0.8.42"
 ewf = { path = "vendor/ewf", default-features = false }
 exfat = { path = "vendor/exfat", default-features = false, features = ["std"] }
 ext4-view = { path = "vendor/ext4-view", default-features = false, features = ["std"] }
+f2fs-reader = { path = "vendor/f2fs-reader" }
 fast-md5 = "=1.0.0"
 fatfs = { path = "vendor/fatfs", default-features = false, features = ["std", "alloc", "lfn", "unicode"] }
 filevault = { package = "filevault-core", path = "vendor/filevault/core" }
@@ -135,6 +136,7 @@ jffs2 = { path = "vendor/jffs2" }
 jiff = { version = "0.2.38", default-features = false, features = ["std", "tzdb-bundle-always"] }
 lamfold = { path = "vendor/lamfold", default-features = false, features = ["std", "codec-deflate"] }
 lamfold-cramfs = { path = "vendor/lamfold-cramfs", default-features = false, features = ["std"] }
+lamfold-erofs = { path = "vendor/lamfold-erofs", default-features = false, features = ["std", "lz4", "deflate", "zstd", "lzma"] }
 lamfold-romfs = { path = "vendor/lamfold-romfs", default-features = false, features = ["std"] }
 libloading = "0.9.0"
 # DLL plugin C ABI, LPP wire types and the shared plugin-library loader
@@ -398,6 +400,15 @@ opt-level = 3
 [profile.release.package.aho-corasick]
 opt-level = 3
 [profile.release.package.regex-automata]
+opt-level = 3
+
+[profile.release.package.ruzstd]
+opt-level = 3
+
+[profile.release.package.f2fs-reader]
+opt-level = 3
+
+[profile.release.package.lamfold-erofs]
 opt-level = 3
 
 # Performance-oriented comparison profile for parser, decompression, hash,

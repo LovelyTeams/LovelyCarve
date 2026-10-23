@@ -125,6 +125,30 @@ def main():
             assert rows[2]["result"]["data"] == minifs_content[65530:65630].hex()
             assert rows[3]["result"]["sha256"] == hashlib.sha256(minifs_content).hexdigest()
 
+        # EROFS and F2FS: independent/reference fixtures through native commands.
+        flash_vendor = Path(__file__).resolve().parent.parent / "src-tauri/vendor"
+        f2fs_path = root / "synthetic.f2fs"
+        f2fs_path.write_bytes(zlib.decompress((flash_vendor / "f2fs-reader/tests/fixtures/synthetic.f2fs.zlib").read_bytes()))
+        f2fs_body = bytearray(bytes(range(256)) * (1000 * 16) + bytes(range(37)))
+        f2fs_body[3 * 4096:5 * 4096] = bytes(8192)
+        for flash_kind, flash_path, flash_file, flash_body, flash_offset in [
+            ("erofs", flash_vendor / "lamfold-erofs/tests/fixtures/erofs.img", "/big.dat", bytes(range(256)) * 1171 + bytes(range(224)), 4090),
+            ("f2fs", f2fs_path, "/big.bin", bytes(f2fs_body), 913 * 4096 - 9),
+        ]:
+            flash_node = flash_kind + ":part:0:" + flash_file.encode().hex()
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(flash_path)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": flash_node, "offset": flash_offset, "length": 121}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": flash_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == flash_kind
+            assert rows[0]["result"]["sectorSize"] == 1
+            assert rows[1]["result"]["items"]
+            assert rows[2]["result"]["data"] == flash_body[flash_offset:flash_offset + 121].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(flash_body).hexdigest()
+
         # Native CramFS / ROMFS: library-backed tree, page-crossing reads and hash.
         rom_fixtures = Path(__file__).resolve().parent.parent / "src-tauri/test_data/rom-images"
         rom_content = (rom_fixtures / "payload.bin").read_bytes()

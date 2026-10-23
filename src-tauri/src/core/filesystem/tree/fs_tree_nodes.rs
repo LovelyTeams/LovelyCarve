@@ -124,6 +124,8 @@ pub(crate) fn fs_unalloc_nodes(image: &Arc<EvidenceSession>, partition: &Partiti
         | PartitionKind::Jffs2
         | PartitionKind::Yaffs2
         | PartitionKind::Yaffs1
+        | PartitionKind::Erofs
+        | PartitionKind::F2fs
         | PartitionKind::Minifs
         | PartitionKind::Romfs
         | PartitionKind::Ubi
@@ -246,6 +248,8 @@ pub(crate) fn partition_node(image: &Arc<EvidenceSession>, partition: &Partition
             | PartitionKind::Jffs2
             | PartitionKind::Yaffs2
             | PartitionKind::Yaffs1
+            | PartitionKind::Erofs
+            | PartitionKind::F2fs
             | PartitionKind::Minifs
             | PartitionKind::Romfs
             | PartitionKind::Ubi

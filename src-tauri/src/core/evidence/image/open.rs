@@ -354,6 +354,8 @@ impl DiskImage {
                         matches!(
                             partition.kind,
                             PartitionKind::Cramfs
+                                | PartitionKind::Erofs
+                                | PartitionKind::F2fs
                                 | PartitionKind::Minifs
                                 | PartitionKind::Romfs
                                 | PartitionKind::Squashfs

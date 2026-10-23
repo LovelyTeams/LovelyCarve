@@ -1,0 +1,28 @@
+lamfold-erofs — third-party attribution
+
+lamfold-erofs is original Lamco Development work (MIT OR Apache-2.0),
+clean-roomed from the public EROFS on-disk format:
+
+  EROFS on-disk format — kernel Documentation/filesystems/erofs.rst
+  erofs_fs.h  (the on-disk header itself, SPDX-License-Identifier: MIT)
+              — superblock, compact/extended inodes, FLAT_PLAIN / FLAT_INLINE
+                data layouts, erofs_dirent
+
+The on-disk header `fs/erofs/erofs_fs.h` is SPDX-licensed **MIT** in the kernel
+tree, so its structure layout is referenced directly. The EROFS *driver* code
+(`fs/erofs/*.c`) is GPL-2 and was explicitly FENCED OFF — not read, not
+transcribed.
+
+Permissive implementation consulted ONLY as an architecture reference and as a
+test oracle (never copied):
+
+  erofs-rs (Dreamacro)   MIT OR Apache-2.0   (no_std reader shape)
+
+The integrity story (the shepherd) uses the lamfold substrate's native
+fs-verity Merkle over RustCrypto `sha2` (Apache-2.0/MIT); the measurement is
+validated byte-for-byte against the `fsverity` userspace tool as an oracle.
+
+Test fixtures are generated with mkfs.erofs (a tool, not a source) and verified
+with dump.erofs / fsck.erofs as oracles; the on-disk bytes are data, not code.
+
+M0 license-gate audit: the project license audit

@@ -95,6 +95,7 @@ just run-example probe_partitions '"D:\Evidence Files\disk.E01"'
 - 分段 RAW：`just test-smraw` / `just clippy-smraw`，宿主回归用 `just test smraw --lib --jobs 1` 与 `just test-cli`，范围见 [SMRAW](formats/SMRAW.md)。
 - GZIP：`just test-gzipf` / `just clippy-gzipf`（也可使用 `just test-vendor gzipf`），宿主回归用 `just test gzip --lib`，CLI 接入用 `just test-cli`，格式范围见 [GZIP](formats/GZIP.md)。
 - UBI：`just test-vendor ubidump` / `just clippy-ubi`，宿主回归用 `just test ubi --lib` 与 `just test xiaomi_firmware --lib`，支持范围见 [UBI 固件](formats/UBI.md)。
+- F2FS / EROFS：`just test-vendor f2fs-reader` / `just clippy-f2fs`、`just test-erofs` / `just clippy-erofs`；宿主回归用 `just test flashfs_ --lib`，CLI 用 `just test-cli`。`just generate-f2fs-fixtures` 重建独立字段夹具；真实 mkfs 样本与限制见 [F2FS](formats/F2FS.md) 和 [EROFS](formats/EROFS.md)。
 - HFS+ 与 FileVault 2：`just test-vendor hfsplus` / `just clippy-hfsplus` 验证 HFS；`just test-filevault` / `just clippy-filevault` 验证 CoreStorage 核心和法证审计器。设置 `FVDE_ORACLE_IMAGE` 为公开测试样本的 raw CoreStorage 区域后运行 `just test-filevault`，执行真实扇区 SHA、HFS 读者与法证审计 oracle；提取范围与哈希见 [FileVault](formats/FILEVAULT.md)。未设置变量不等于通过真实样本验证。
 
 Windows rustc 在大型测试 crate 发生增量编译崩溃时，可通过原配方传入 `--config profile.test.package.lovelycarve.debug=0 --config profile.test.package.lovelycarve.incremental=false`，仅降低宿主测试包调试信息并禁用其增量缓存；不改变发布配置。
