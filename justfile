@@ -127,6 +127,7 @@ fmt:
     cd src-tauri/vendor/lamfold-romfs && cargo fmt
     cd src-tauri/vendor/backhand && cargo fmt
     cd src-tauri/vendor/ubidump && cargo fmt
+    cd src-tauri/vendor/jffs2 && cargo fmt
     cd src-tauri/vendor/rsqlite-vfs && cargo fmt
     cd src-tauri/vendor/rufs && cargo fmt
     cd src-tauri/vendor/xfs-fuse && cargo fmt
@@ -348,6 +349,12 @@ test-refs-oracle *args:
 [working-directory("src-tauri/vendor/refs-reader")]
 clippy-refs:
     cargo clippy --all-targets
+
+# Lint the standalone pure Rust JFFS2 reader.
+[group("readers")]
+[working-directory("src-tauri/vendor/jffs2")]
+clippy-jffs2:
+    cargo clippy --all-targets -- -D warnings
 
 # Run the library tests of a vendored crate without a dedicated reader recipe.
 [group("readers")]

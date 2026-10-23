@@ -24,6 +24,7 @@ pub mod ext4;
 pub mod fat;
 pub mod gpt;
 pub mod hfsplus;
+pub mod jffs2;
 pub mod luks;
 pub mod lvm2;
 pub mod mbr;
@@ -128,6 +129,7 @@ pub enum PartitionKind {
     Zfs,
     Unknown,
     Ubi,
+    Jffs2,
 }
 
 /// Block-device abstraction. Uniform read interface so the dispatcher and
@@ -312,6 +314,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Squashfs
         | PartitionKind::Cramfs
         | PartitionKind::Ubifs
+        | PartitionKind::Jffs2
         | PartitionKind::Romfs
         | PartitionKind::BiosBoot
         | PartitionKind::ApfsContainer

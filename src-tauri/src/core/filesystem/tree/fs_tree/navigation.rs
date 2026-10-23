@@ -191,6 +191,10 @@ pub(super) fn children_for_image_with_options(
                 )?
                 .root_children()
             }
+            PartitionKind::Jffs2 => {
+                crate::core::filesystem::volumes::jffs2::open_jffs2_source(image, partition.id)?
+                    .root_children()
+            }
             PartitionKind::Ubifs => crate::core::filesystem::volumes::ubifs::open_ubifs_source(
                 image,
                 crate::core::filesystem::volumes::ubifs::UbifsSource::Partition(partition.id),

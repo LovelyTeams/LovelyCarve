@@ -60,3 +60,6 @@ if __name__ == "__main__":
     ubifs = here.parents[1] / "vendor/ubidump/test_data/synthetic-deflate.ubifs"
     if ubifs.exists():
         (here / "synthetic-ubifs.enc").write_bytes(firmware(ubifs.read_bytes())[0])
+    jffs2 = here.parents[1] / "vendor/jffs2/test_data/synthetic-be-zlib.jffs2"
+    if jffs2.exists():
+        (here / "synthetic-jffs2.enc").write_bytes(firmware(jffs2.read_bytes())[0])

@@ -357,6 +357,7 @@ impl DiskImage {
                                 | PartitionKind::Romfs
                                 | PartitionKind::Squashfs
                                 | PartitionKind::Ubifs
+                                | PartitionKind::Jffs2
                         )
                     })
                 {

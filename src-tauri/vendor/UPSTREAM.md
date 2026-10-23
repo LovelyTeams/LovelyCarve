@@ -11,6 +11,7 @@
 | 目录 | 当前版本 | 上游提交 / 来源 | 本次处理 |
 | --- | --- | --- | --- |
 | `lamfold` / `lamfold-cramfs` / `lamfold-romfs` | `0.1.5` / `0.1.0` / `0.1.1` | crates.io 包；core/ROMFS [fabaad6af0c2](https://github.com/lamco-admin/lamfold/commit/fabaad6af0c28b80535307b339b84110f3a3c12e)，CramFS [44f0343b2487](https://github.com/lamco-admin/lamfold/commit/44f0343b2487f65cfb84508bff375fdda18c18a5) | 2026-10-21 先独立验证再复用；CramFS v2 大小端、CRC、按页范围读取；ROMFS 声明长度/校验和、链循环检查；本地补丁与限制见各 LOVELYCARVE.md 和 [ROM_IMAGES](../../docs/formats/ROM_IMAGES.md)。 |
+| `jffs2` | `0.2.1` | [52e1234ce66b](https://github.com/xmoezzz/jffs2-rs/commit/52e1234ce66b0e099b35afabff3fc3e3078a2c0e) | 复用 Rust 节点 / RTIME 并改为有界库；修正 CRC、大小端、硬链接与版本化片段，不引入 C LZO / Rubin；范围见 [JFFS2](../../docs/formats/JFFS2.md) 和 LOVELYCARVE.md。 |
 | `ubidump` | `0.1.0` | [19782c3eabc2](https://github.com/aspnmy/rust_ubidump/commit/19782c3eabc25a1baab7faefe12fe6f4bd362dac) | UBI 层改为有界只读库，修正 VTBL 长度与名称边界，重写逻辑块映射及校验；增补有界 UBIFS v4/v5 已提交索引、主节点副本和按块文件读取，复用 Rust 解码库，不引入 CLI / C LZO。见 LOVELYCARVE.md 与 [UBI](../../docs/formats/UBI.md) / [UBIFS](../../docs/formats/UBIFS.md)。 |
 | `ad1` | `0.1.2` | [afc3963659a1](https://github.com/SecurityRonin/ad1-forensic/commit/afc3963659a13acf10082e7d76194d3ab789583e) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
 | `apfs` | `0.4.1` | [3a73ee28fdab](https://github.com/Dil4rd/dpp/commit/3a73ee28fdab192fcdfbe8edcad7b520867f2417) | 保留多卷、MACB 和目录遍历；2026-10-13 对照 libfsapfs 补事务 OMAP、目录键、seek/range、inode/xattr/快照元数据及严格来源边界。完整范围与限制见 [APFS](../../docs/formats/APFS.md)。 |

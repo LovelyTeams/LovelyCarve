@@ -43,6 +43,7 @@ use crate::core::filesystem::volumes::exfat::{open_exfat_source, parse_exfat_id}
 use crate::core::filesystem::volumes::ext4::{canonical_ext4_id, open_ext4_source, parse_ext4_id};
 use crate::core::filesystem::volumes::fat::{open_fat_source, parse_fat_id};
 use crate::core::filesystem::volumes::hfsplus::{open_hfsplus_source, parse_hfsplus_id};
+use crate::core::filesystem::volumes::jffs2::{open_jffs2_source, parse_jffs2_id};
 use crate::core::filesystem::volumes::ntfs::NtfsSource;
 use crate::core::filesystem::volumes::ntfs::{parse_ntfs_id, NtfsVolume};
 use crate::core::filesystem::volumes::refs::{parse_refs_id, parse_refs_snap_id};
@@ -145,6 +146,7 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &CramfsAdapter,
     &RomfsAdapter,
     &UbifsAdapter,
+    &Jffs2Adapter,
     &UbiAdapter,
     &ApfsAdapter,
     &HfsPlusAdapter,
@@ -222,6 +224,9 @@ pub(crate) fn volume_root_key(id: &str) -> Option<String> {
     }
     if let Some((source, _)) = parse_squashfs_id(id) {
         return Some(source.cache_key());
+    }
+    if let Some((partition, _)) = parse_jffs2_id(id) {
+        return Some(format!("jffs2:part:{partition}"));
     }
     if let Some((source, _)) = parse_ubifs_id(id) {
         return Some(source.cache_key());
@@ -391,6 +396,15 @@ path_volume!(
     open_ubifs_source
 );
 path_volume_impl!(UbifsVol, plain_range);
+path_volume!(
+    Jffs2Adapter,
+    Jffs2Vol,
+    "jffs2",
+    crate::core::filesystem::volumes::jffs2::Jffs2Volume,
+    parse_jffs2_id,
+    open_jffs2_source
+);
+path_volume_impl!(Jffs2Vol, plain_range);
 path_volume!(
     UbiAdapter,
     UbiVol,

@@ -1394,3 +1394,35 @@ with HFS exclusions and algorithmic Hangul handled separately. Unicode data
 license is retained as `src-tauri/vendor/hfsplus/UNICODE_LICENSE`. Source data
 version and regeneration steps are described in `hfsplus/LOVELYCARVE.md`.
 libfshfs was consulted, not copied or linked.
+
+## jffs2-rs
+
+The read-only JFFS2 reader adapts Rust node field layouts and RTIME decoding from
+[xmoezzz/jffs2-rs](https://github.com/xmoezzz/jffs2-rs), version 0.2.1, commit
+`52e1234ce66b0e099b35afabff3fc3e3078a2c0e`. It does not incorporate upstream
+C LZO / Rubin, FFI, build scripts or host extraction code. Local changes and
+limits are documented in `src-tauri/vendor/jffs2/LOVELYCARVE.md`.
+
+```text
+MIT License
+
+Copyright (c) 2023 xmoe
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

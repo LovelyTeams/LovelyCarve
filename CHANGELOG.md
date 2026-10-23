@@ -9,6 +9,7 @@
 
 ### Added
 
+- 支持裸镜像与固件中的新格式 JFFS2，复用并改造 Rust 库；校验大小端节点与数据 CRC，按版本重建目录和文件片段，支持硬链接、删除标记、空洞与 NONE/ZERO/RTIME/zlib/LZO 范围和流式读取。
 - 支持裸 UBIFS v4/v5、固件中的 UBIFS 与 UBI 内嵌文件树，复用并加固 Rust 节点/索引读取器，校验已提交树与文件数据，支持空洞、硬链接、符号链接、时间戳及 stored/LZO/raw DEFLATE/Zstandard 的范围和流式读取。
 
 - 支持 Buffalo ENC / TRX、TP-Link SafeLoader、U-Boot legacy uImage 组合镜像和 Netgear CHK 固件，校验封装并直接浏览文件系统；源哈希和 RAW 导出保留原始容器字节。SquashFS 增加标准 v3、DD-WRT v3 与 adaptive / LZMA-alone 块的纯 Rust 解码，CramFS v2 和 Linux ROMFS 复用 Rust 库并支持完整、流式与范围读取。

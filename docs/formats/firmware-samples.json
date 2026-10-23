@@ -1,9 +1,9 @@
 {
-  "date": "2026-10-22",
+  "date": "2026-10-23",
   "platform": "Windows standalone CLI",
   "baselineCommit": "1fe4fa425d0726e10b6ebc121468ad993521216a",
-  "stage": "native firmware envelopes, CramFS/ROMFS, v3 adaptive LZMA, and clean committed UBIFS v4/v5 readers",
-  "criterion": "Native partition tree listing; RAW-open success alone is not counted. UBI nested SquashFS checked separately.",
+  "stage": "native firmware envelopes, CramFS/ROMFS, v3 adaptive LZMA, clean committed UBIFS v4/v5, and new-format JFFS2 LE/BE readers",
+  "criterion": "Native partition tree listing; RAW-open success alone is not counted. UBI nested filesystem checked separately.",
   "samples": [
     {
       "name": "tplink-c7-factory",
@@ -252,13 +252,22 @@
       "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/jffs2/jffs2_new/__input__/fruits.new.le.zlib.jffs2",
       "size": 484,
       "sha256": "2c1f77e27694761fa6e8e1264318792db43314f1af9d5e3f14f88e862eece44e",
-      "browsable": false,
+      "browsable": true,
       "sourceFormat": "raw",
-      "partitionKinds": [],
-      "partitions": [],
-      "error": {
-        "code": "notFound",
-        "message": "partition not found: 0"
+      "partitionKinds": [
+        "jffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "jffs2",
+          "startByte": 0,
+          "lengthBytes": 484
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "f1c520551a1a5890fab0d252f7535c498f8e91aeb22b5cf8ab0d34d25c086f31",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
       }
     },
     {
@@ -266,13 +275,22 @@
       "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/jffs2/jffs2_new/__input__/fruits.new.be.zlib.jffs2",
       "size": 484,
       "sha256": "e6a4da9831a5ab98e03f81d829793e3119eb3a3ffb05227b4b98bc604cc7f3dc",
-      "browsable": false,
+      "browsable": true,
       "sourceFormat": "raw",
-      "partitionKinds": [],
-      "partitions": [],
-      "error": {
-        "code": "notFound",
-        "message": "partition not found: 0"
+      "partitionKinds": [
+        "jffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "jffs2",
+          "startByte": 0,
+          "lengthBytes": 484
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "f1c520551a1a5890fab0d252f7535c498f8e91aeb22b5cf8ab0d34d25c086f31",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
       }
     },
     {
@@ -280,13 +298,22 @@
       "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/jffs2/jffs2_new/__input__/fruits.new.le.zlib.padded.jffs2",
       "size": 65536,
       "sha256": "08cceee3614d27227e19ccfe1b7f0b6abf1731d87fd3dc5ce7e2c7051a9621c1",
-      "browsable": false,
+      "browsable": true,
       "sourceFormat": "raw",
-      "partitionKinds": [],
-      "partitions": [],
-      "error": {
-        "code": "notFound",
-        "message": "partition not found: 0"
+      "partitionKinds": [
+        "jffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "jffs2",
+          "startByte": 0,
+          "lengthBytes": 65536
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "f1c520551a1a5890fab0d252f7535c498f8e91aeb22b5cf8ab0d34d25c086f31",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
       }
     },
     {
@@ -294,13 +321,22 @@
       "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/jffs2/jffs2_new/__input__/fruits.new.be.zlib.padded.jffs2",
       "size": 65536,
       "sha256": "0dfbb9d9f3cae2d3f81a7064a65b9f6d018963af0a46cf1aa2e84dd0c7aa2c7c",
-      "browsable": false,
+      "browsable": true,
       "sourceFormat": "raw",
-      "partitionKinds": [],
-      "partitions": [],
-      "error": {
-        "code": "notFound",
-        "message": "partition not found: 0"
+      "partitionKinds": [
+        "jffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "jffs2",
+          "startByte": 0,
+          "lengthBytes": 65536
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "f1c520551a1a5890fab0d252f7535c498f8e91aeb22b5cf8ab0d34d25c086f31",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
       }
     },
     {
@@ -391,6 +427,98 @@
         "banana2.txt": "cec01facc588f339e757822825743d16fae68d80ddf9b5e9e08f2862644f7733",
         "banana3.txt": "da312e2d0258a4055f9863f680f165b29b39f32ecd806c75c1e8f8a2a079d221",
         "banana4.txt": "2a93968fdfdadcfaf2f7c16a766f546894367585c063964dca393a0e86a65625"
+      }
+    },
+    {
+      "name": "unblob-jffs2-le-lzo",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/jffs2/jffs2_new/__input__/fruits.new.le.lzo.jffs2",
+      "size": 400,
+      "sha256": "0fbb0c52d2b6b37c491bdd9c708eb4872d5cc0568eeed91bfdf9b1491a486bdd",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "jffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "jffs2",
+          "startByte": 0,
+          "lengthBytes": 400
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "f1c520551a1a5890fab0d252f7535c498f8e91aeb22b5cf8ab0d34d25c086f31",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
+      }
+    },
+    {
+      "name": "unblob-jffs2-be-lzo",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/jffs2/jffs2_new/__input__/fruits.new.be.lzo.jffs2",
+      "size": 400,
+      "sha256": "0bcb08d0b067c9bd86b8e3836858af5e3ef7047b6b13420739b6e23a48150de2",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "jffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "jffs2",
+          "startByte": 0,
+          "lengthBytes": 400
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "f1c520551a1a5890fab0d252f7535c498f8e91aeb22b5cf8ab0d34d25c086f31",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
+      }
+    },
+    {
+      "name": "unblob-jffs2-le-rtime",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/jffs2/jffs2_new/__input__/fruits.new.le.rtime.jffs2",
+      "size": 392,
+      "sha256": "16ef9cb45826fe1c5a2fc13627c321b606342b94cce05a7a02fe5fd4ef175646",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "jffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "jffs2",
+          "startByte": 0,
+          "lengthBytes": 392
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "f1c520551a1a5890fab0d252f7535c498f8e91aeb22b5cf8ab0d34d25c086f31",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
+      }
+    },
+    {
+      "name": "unblob-jffs2-be-rtime",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/jffs2/jffs2_new/__input__/fruits.new.be.rtime.jffs2",
+      "size": 392,
+      "sha256": "6a7fc72cf2264c33fe5297d5d2d2246e346705e50b711ebf54a03b62a9e28e14",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "jffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "jffs2",
+          "startByte": 0,
+          "lengthBytes": 392
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "f1c520551a1a5890fab0d252f7535c498f8e91aeb22b5cf8ab0d34d25c086f31",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
       }
     }
   ]

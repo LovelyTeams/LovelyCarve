@@ -63,6 +63,7 @@ export const DISK_IMAGE_EXTENSIONS = [
   'cramfs',
   'romfs',
   'ubifs',
+  'jffs2',
   'ubi',
   'iso',
   'cue',

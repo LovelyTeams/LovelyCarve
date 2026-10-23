@@ -3340,6 +3340,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47f142fe24a9c9944451e8349de0a56af5f3e7226dc46f3ed4d4ecc0b85af75e"
 
 [[package]]
+name = "jffs2"
+version = "0.2.1"
+dependencies = [
+ "anyhow",
+ "crc 3.4.0",
+ "flate2",
+ "lzokay",
+]
+
+[[package]]
 name = "jiff"
 version = "0.2.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3758,6 +3768,7 @@ dependencies = [
  "image",
  "ios-backup-core",
  "ios-backup-forensic",
+ "jffs2",
  "jiff",
  "lamfold",
  "lamfold-cramfs",

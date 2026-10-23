@@ -331,6 +331,7 @@ pub fn kind_label(kind: PartitionKind) -> &'static str {
         PartitionKind::Cramfs => "cramfs",
         PartitionKind::Romfs => "romfs",
         PartitionKind::Ubifs => "ubifs",
+        PartitionKind::Jffs2 => "jffs2",
         PartitionKind::Ubi => "ubi",
         PartitionKind::Lvm => "lvm",
         PartitionKind::Bitlocker => "bitlocker",

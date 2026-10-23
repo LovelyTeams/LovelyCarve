@@ -145,6 +145,12 @@ impl<'a> FsSession<'a> {
             let pid: Option<u8> = part_str.parse().ok();
             if let (Some(kind), Some(pid)) = (kind, pid) {
                 let root = match kind {
+                    PartitionKind::Jffs2 => Some(
+                        crate::core::filesystem::volumes::jffs2::open_jffs2_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::Ubifs => Some(
                         crate::core::filesystem::volumes::ubifs::open_ubifs_source(
                             self.image,

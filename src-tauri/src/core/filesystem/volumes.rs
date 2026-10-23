@@ -21,6 +21,7 @@ pub mod fat;
 pub mod fat_deleted;
 pub mod folder;
 pub mod hfsplus;
+pub mod jffs2;
 pub mod lvm;
 pub mod ntfs;
 pub mod ntfs_usn;

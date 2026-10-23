@@ -102,6 +102,7 @@ pub fn partition_ftype(kind: PartitionKind) -> Option<u64> {
         | PartitionKind::Squashfs
         | PartitionKind::Cramfs
         | PartitionKind::Ubifs
+        | PartitionKind::Jffs2
         | PartitionKind::Romfs
         | PartitionKind::Ubi
         | PartitionKind::Bitlocker

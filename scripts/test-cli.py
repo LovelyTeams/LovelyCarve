@@ -167,6 +167,25 @@ def main():
             assert rows[2]["result"]["data"] == ubifs_content[8180:8280].hex()
             assert rows[3]["result"]["sha256"] == hashlib.sha256(ubifs_content).hexdigest()
 
+        # JFFS2: version replay, both byte orders, four codecs and firmware bytes.
+        jffs2_fixtures = firmware_fixtures.parent.parent / "vendor/jffs2/test_data"
+        jffs2_content = (jffs2_fixtures / "payload.bin").read_bytes()
+        jffs2_node = "jffs2:part:0:" + b"/payload.bin".hex()
+        jffs2_paths = [jffs2_fixtures / f"synthetic-{order}-{codec}.jffs2" for order in ("le", "be") for codec in ("stored", "rtime", "zlib", "lzo")]
+        jffs2_paths.append(firmware_fixtures / "synthetic-jffs2.enc")
+        for path in jffs2_paths:
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(path)}},
+                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": jffs2_node, "offset": 8180, "length": 100}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": jffs2_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "jffs2"
+            assert {entry["name"] for entry in rows[1]["result"]["items"]} == {"payload.bin", "alias.bin", "子目录", "link", "empty.txt", "cut.txt"}
+            assert rows[2]["result"]["data"] == jffs2_content[8180:8280].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(jffs2_content).hexdigest()
+
         # Discovery needs no evidence: system facts, request schemas, search and completion.
         system = json.loads(run(["system", "get"]).stdout)
         assert system["standalone"], "the CLI must be built without the desktop runtime"

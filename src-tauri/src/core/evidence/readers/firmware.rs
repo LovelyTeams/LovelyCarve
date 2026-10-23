@@ -186,6 +186,8 @@ fn parse_trx(bytes: &[u8], base: u64, cancel: &CancellationToken) -> Result<Vec<
         let payload = &bytes[start..end];
         let kind = if crate::core::evidence::partitions::squashfs::is_squashfs_magic(payload) {
             PartitionKind::Squashfs
+        } else if crate::core::evidence::partitions::jffs2::is_jffs2_magic(payload) {
+            PartitionKind::Jffs2
         } else if crate::core::evidence::partitions::ubifs::is_ubifs_magic(payload) {
             PartitionKind::Ubifs
         } else if let Some(kind) =
