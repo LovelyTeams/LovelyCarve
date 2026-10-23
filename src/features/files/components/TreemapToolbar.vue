@@ -2,10 +2,10 @@
 <div class="ui-toolbar treemap-bar">
   <div class="treemap-controls">
     <div class="ui-seg" role="group" :aria-label="tr('树图度量')">
-      <button class="ui-seg-item" type="button" :aria-pressed="mode === 'bytes'" :title="tr('面积按文件逻辑大小，颜色按数据类别')" @click="mode = 'bytes'">
+      <button class="ui-seg-item" type="button" :aria-pressed="mode === 'bytes'" :title="tr('面积按文件逻辑大小')" @click="mode = 'bytes'">
         <HardDrive :size="13" aria-hidden="true" />{{ tr("大小") }}
       </button>
-      <button class="ui-seg-item" type="button" :aria-pressed="mode === 'files'" :title="tr('面积按文件数，颜色按数据类别')" @click="mode = 'files'">
+      <button class="ui-seg-item" type="button" :aria-pressed="mode === 'files'" :title="tr('面积按文件数')" @click="mode = 'files'">
         <Files :size="13" aria-hidden="true" />{{ tr("文件数") }}
       </button>
       <button class="ui-seg-item" type="button" :aria-pressed="mode === 'age'" :title="tr('面积按大小，颜色按距卷内最新写入的时间')" @click="mode = 'age'">
@@ -24,12 +24,14 @@
         <Plus :size="13" />
       </button>
     </div>
-    <span class="ui-divider-v" aria-hidden="true"></span>
-    <ul class="treemap-legend" :aria-label="tr('图例')">
-      <li v-for="item in legend" :key="item.key" class="legend-item">
-        <span class="legend-swatch" :style="{ background: item.swatch }" aria-hidden="true"></span>{{ item.label }}
-      </li>
-    </ul>
+    <template v-if="mode === 'age'">
+      <span class="ui-divider-v" aria-hidden="true"></span>
+      <ul class="treemap-legend" :aria-label="tr('图例')">
+        <li v-for="item in legend" :key="item.key" class="legend-item">
+          <span class="legend-swatch" :style="{ background: item.swatch }" aria-hidden="true"></span>{{ item.label }}
+        </li>
+      </ul>
+    </template>
   </div>
   <div class="ui-toolbar-actions">
     <FileViewSwitch v-model="view" :treemap-available="true" />
@@ -45,8 +47,8 @@ import { Clock3, Files, HardDrive, Minus, Plus } from 'lucide-vue-next';
 import FileViewSwitch from './FileViewSwitch.vue';
 import type { TreemapMode } from '../composables/useSizeTree';
 import type { FileViewMode } from '../model/treemap';
-import { AGE_BUCKETS, TREEMAP_KINDS, ageBucketLabel, treemapKindLabel } from '../model/treemapKinds';
-import { ageSwatch, kindSwatch } from '../model/treemapPalette';
+import { AGE_BUCKETS, ageBucketLabel } from '../model/treemapAge';
+import { ageSwatch } from '../model/treemapPalette';
 
 const MIN_DEPTH = 1;
 const MAX_DEPTH = 6;
@@ -56,13 +58,11 @@ const depth = defineModel<number>('depth', { required: true });
 const includeDeleted = defineModel<boolean>('includeDeleted', { required: true });
 const view = defineModel<FileViewMode>('view', { required: true });
 
-/** 图例随度量切换：类别色相，或「时间」的由新到旧。 */
-const legend = computed(() => mode.value === 'age'
-  ? [
-    ...AGE_BUCKETS.map((_limit, bucket) => ({ key: `age-${bucket}`, swatch: ageSwatch(bucket), label: ageBucketLabel(bucket, tr) })),
-    { key: 'age-none', swatch: ageSwatch(null), label: tr('时间未知') },
-  ]
-  : TREEMAP_KINDS.map(kind => ({ key: kind, swatch: kindSwatch(kind), label: treemapKindLabel(kind, tr) })));
+/** 只有「时间」着色需要图例：由新到旧。 */
+const legend = computed(() => [
+  ...AGE_BUCKETS.map((_limit, bucket) => ({ key: `age-${bucket}`, swatch: ageSwatch(bucket), label: ageBucketLabel(bucket, tr) })),
+  { key: 'age-none', swatch: ageSwatch(null), label: tr('时间未知') },
+]);
 </script>
 
 <style scoped>

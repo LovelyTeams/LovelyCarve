@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ageSwatch, cssColor, kindSwatch, mixColor, parseColor } from './treemapPalette';
+import { ageSwatch, cssColor, mixColor, parseColor } from './treemapPalette';
 
 describe('treemap palette', () => {
   it('reads the color notations the theme tokens use', () => {
@@ -21,7 +21,6 @@ describe('treemap palette', () => {
   });
 
   it('gives legend swatches the same tokens the canvas paints with', () => {
-    expect(kindSwatch('database')).toBe('color-mix(in srgb, var(--chart-7) 72%, var(--surface-secondary))');
     expect(ageSwatch(0)).toBe('color-mix(in srgb, var(--primary-color) 58%, var(--surface-secondary))');
     expect(ageSwatch(null)).toBe('color-mix(in srgb, var(--text-secondary) 10%, var(--surface-secondary))');
   });

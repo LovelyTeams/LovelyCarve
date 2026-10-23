@@ -4,14 +4,14 @@
  *  选中框与悬停框在同一处、按同一顺序绘制。标签在屏幕坐标里挑选：放大腾出了地方，
  *  就多显示一些名字——这正是放大的意义。文字保持字号不变，只裁到它所属的区域里。 */
 import type { Rect } from '../model/treemap';
-import type { TreemapKind } from '../model/treemapKinds';
 import {
-  AGE_MIX, AGE_UNKNOWN_MIX, DEPTH_MIX, KIND_HUE_TOKENS, cssColor, mixColor, parseColor, withAlpha, type Rgba,
+  AGE_MIX, AGE_UNKNOWN_MIX, DEPTH_MIX, cssColor, mixColor, parseColor, withAlpha, type Rgba,
 } from '../model/treemapPalette';
 import { projectRect, sampleTransition, type LayoutTransition, type TreemapView } from '../model/treemapView';
 
 export interface TreemapPalette {
-  kindFills: Record<TreemapKind, string[]>;
+  /** 瓦片底色，按层级由浅到深。 */
+  depthFills: string[];
   ageFills: string[];
   ageUnknown: string;
   text: string;
@@ -82,13 +82,8 @@ export function resolvePalette(element: Element, probe: CanvasRenderingContext2D
   const textSecondary = read('--text-secondary', FALLBACK.neutral);
   const primary = read('--primary-color', FALLBACK.neutral);
   const critical = read('--sev-critical-fg', FALLBACK.neutral);
-  const kindFills = {} as Record<TreemapKind, string[]>;
-  for (const [kind, token] of Object.entries(KIND_HUE_TOKENS) as [TreemapKind, string][]) {
-    const hue = read(token, FALLBACK.neutral);
-    kindFills[kind] = DEPTH_MIX.map(mix => cssColor(mixColor(hue, surface, mix)));
-  }
   return {
-    kindFills,
+    depthFills: DEPTH_MIX.map(mix => cssColor(mixColor(textSecondary, surface, mix))),
     ageFills: AGE_MIX.map(mix => cssColor(mixColor(primary, surface, mix))),
     ageUnknown: cssColor(mixColor(textSecondary, surface, AGE_UNKNOWN_MIX)),
     text: cssColor(text),

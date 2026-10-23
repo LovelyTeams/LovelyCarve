@@ -24,7 +24,6 @@
         <div v-if="card.files !== null"><dt>{{ tr("文件") }}</dt><dd>{{ card.files }}</dd></div>
         <div v-if="card.dirs !== null"><dt>{{ tr("子目录") }}</dt><dd>{{ card.dirs }}</dd></div>
         <div v-if="card.newest"><dt>{{ tr("最新修改") }}</dt><dd class="mono">{{ card.newest }}</dd></div>
-        <div><dt>{{ tr("类别") }}</dt><dd><span class="card-swatch" :style="{ background: card.swatch }"></span>{{ card.kind }}</dd></div>
       </dl>
       <span v-if="card.deleted" class="ui-badge sm danger">{{ tr("已删除") }}</span>
     </div>
@@ -80,8 +79,7 @@ import {
   DEFAULT_TREEMAP_OPTIONS, hitTile, layoutTreemap, neighbourTile, tileBody, tileChain,
   type Rect, type TreemapDirection, type TreemapTile,
 } from '../model/treemap';
-import { ageBucketOf, formatUnixSeconds, treemapKindLabel, treemapKindOf, type TreemapKind } from '../model/treemapKinds';
-import { kindSwatch } from '../model/treemapPalette';
+import { ageBucketOf, formatUnixSeconds } from '../model/treemapAge';
 import {
   IDENTITY_VIEW, KEY_ZOOM_FACTOR, WHEEL_ZOOM_FACTOR, clampView, layoutTransition, panView, projectRect, unprojectPoint,
   visibleBase, wheelLines, zoomStep, type LayoutTransition, type TreemapView, type ZoomStep,
@@ -97,10 +95,8 @@ const props = defineProps<{
   directoryName: string;
   /** 当前目录的完整路径，拼出各瓦片的路径。 */
   directoryPath: string;
-  /** 当前目录是卷根：顶层的 NTFS 元文件按名字判为系统，也不再向上滚出卷。 */
+  /** 当前目录是卷根：往回滚不再向上滚出卷。 */
   volumeRoot: boolean;
-  /** 当前目录本身在系统区（如 `$Extend`）内。 */
-  systemArea: boolean;
   selectedId: string | null;
   snapshotLabel: string | null;
 }>();
@@ -114,6 +110,8 @@ const emit = defineEmits<{
   contextmenu: [event: MouseEvent, node: DiskFsNode];
   showList: [];
   retry: [];
+  /** 很可能马上要进入（或回到）的目录：先把它的数据取来。 */
+  prefetch: [nodeId: string];
 }>();
 
 type Tile = TreemapTile<FsSizeTreeEntry>;
@@ -148,18 +146,6 @@ const layout = computed<Tile[]>(() => {
   }, { ...DEFAULT_TREEMAP_OPTIONS, maxDepth: props.depth });
 });
 
-/** 每块瓦片的类别：系统区里的一切都是系统，其余各自判定。 */
-const kinds = computed<TreemapKind[]>(() => {
-  const result: TreemapKind[] = [];
-  for (const tile of layout.value) {
-    const inherited = tile.parent >= 0 && result[tile.parent] === 'system';
-    result.push(tile.entry
-      ? treemapKindOf(tile.entry, { system: props.systemArea || inherited, volumeRoot: props.volumeRoot, depth: tile.depth })
-      : inherited ? 'system' : 'other');
-  }
-  return result;
-});
-
 function valueText(bytes: number, files: number): string {
   return props.mode === 'files' ? tr('{0} 个文件', { 0: files.toLocaleString() }) : formatBytes(bytes);
 }
@@ -168,7 +154,7 @@ const paintTiles = computed<PaintTile[]>(() => {
   const colors = palette.value;
   if (!colors) return [];
   const reference = props.view?.newestWrite ?? null;
-  return layout.value.map((tile, index) => {
+  return layout.value.map(tile => {
     const entry = tile.entry;
     const others = entry ? null : tile.owner.others;
     let fill: string;
@@ -176,7 +162,7 @@ const paintTiles = computed<PaintTile[]>(() => {
       const bucket = ageBucketOf(entry?.newest ?? null, reference);
       fill = bucket === null ? colors.ageUnknown : colors.ageFills[bucket] ?? colors.ageUnknown;
     } else {
-      fill = colors.kindFills[kinds.value[index]][Math.min(tile.depth, 3)];
+      fill = colors.depthFills[Math.min(tile.depth, colors.depthFills.length - 1)];
     }
     return {
       rect: tile.rect,
@@ -341,7 +327,6 @@ const card = computed(() => {
   const bytes = entry?.bytes ?? others?.bytes ?? 0;
   const files = entry?.files ?? others?.files ?? 0;
   const directory = entry?.node?.kind === 'dir';
-  const kind = kinds.value[hovered.value] ?? 'other';
   const { width, height } = area.value;
   const { x, y } = pointer.value;
   const shiftX = x > width * 0.6 ? 'calc(-100% - 14px)' : '14px';
@@ -355,8 +340,6 @@ const card = computed(() => {
     files: directory || !entry ? files.toLocaleString() : null,
     dirs: directory ? (entry?.dirs ?? 0).toLocaleString() : null,
     newest: entry && entry.newest !== null ? formatUnixSeconds(entry.newest) : '',
-    kind: treemapKindLabel(kind, tr),
-    swatch: kindSwatch(kind),
     style: `left:${x}px;top:${y}px;transform:translate(${shiftX},${shiftY})`,
   };
 });
@@ -423,6 +406,15 @@ function descend() {
   if (largest >= 0 && layout.value[largest].entry?.node?.kind === 'dir') enter(largest);
 }
 
+/** 滚轮正朝它放大的目录：放大到头就会进入，趁放大的这几格把它的数据取来。 */
+let prefetched: string | null = null;
+function prefetchTile(index: number) {
+  const node = layout.value[index]?.entry?.node;
+  if (node?.kind !== 'dir' || node.id === prefetched) return;
+  prefetched = node.id;
+  emit('prefetch', node.id);
+}
+
 function applyZoom(step: ZoomStep) {
   switch (step.kind) {
     case 'view':
@@ -449,6 +441,7 @@ watch(() => props.view, (next, previous) => {
   if (!next || next === previous) return;
   const arrived = pending;
   pending = null;
+  prefetched = null;
   const { width, height } = area.value;
   const sameDirectory = arrived === null && shownPath === props.directoryPath;
   shownPath = props.directoryPath;
@@ -457,6 +450,9 @@ watch(() => props.view, (next, previous) => {
     requestPaint();
     return;
   }
+  // 原始大小时往回滚就回上一级：上一级多半已在缓存（从那里进来的），否则现在就取。
+  const parent = next.root.node?.parent_id;
+  if (parent) emit('prefetch', parent);
   hovered.value = -1;
   view = IDENTITY_VIEW;
   transition = null;
@@ -540,7 +536,9 @@ function onWheel(event: WheelEvent) {
   if (busy()) return;
   const { x, y } = localPoint(event);
   const factor = lines > 0 ? WHEEL_ZOOM_FACTOR : 1 / WHEEL_ZOOM_FACTOR;
-  applyZoom(zoomStep(layout.value, view, width, height, x, y, factor, true, hasContents));
+  const step = zoomStep(layout.value, view, width, height, x, y, factor, true, hasContents);
+  if (step.kind === 'view' && factor > 1 && step.target >= 0) prefetchTile(step.target);
+  applyZoom(step);
 }
 
 const DIRECTIONS: Record<string, TreemapDirection> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
@@ -707,14 +705,6 @@ function move(direction: TreemapDirection) {
 
 .card-share {
   color: var(--text-secondary);
-}
-
-.card-swatch {
-  flex-shrink: 0;
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 12%, transparent);
 }
 
 .mono {

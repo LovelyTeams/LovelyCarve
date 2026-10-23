@@ -1,35 +1,15 @@
-/** 树图配色：类别给出色相（主题令牌），层级越深混入越多；「时间」着色用主色，越久越淡。
- *  画布与图例共用这一份对照，画布把令牌解析成具体颜色后自行混合。 */
-import type { TreemapKind } from './treemapKinds';
+/** 树图配色：瓦片是同一种中性色，层级越深混入越多，嵌套不画边框也读得出；「时间」着色用主色，越久越淡。
+ *  画布与图例共用这一份比例，画布把令牌解析成具体颜色后自行混合。 */
 
-/** 每个类别的色相令牌。「其他」不带颜色。 */
-export const KIND_HUE_TOKENS: Record<TreemapKind, string> = {
-  document: '--chart-1',
-  image: '--chart-2',
-  archive: '--chart-3',
-  code: '--chart-4',
-  executable: '--chart-5',
-  media: '--chart-6',
-  database: '--chart-7',
-  system: '--chart-8',
-  other: '--text-secondary',
-};
-
-/** 各层瓦片混入色相的比例（第 0 层到第 3 层，更深按第 3 层）。 */
+/** 各层瓦片混入中性色（`--text-secondary`）的比例（第 0 层到第 3 层，更深按第 3 层）。 */
 export const DEPTH_MIX: readonly number[] = [0.2, 0.28, 0.36, 0.44];
 /** 「时间」各档混入主色的比例，由新到旧。 */
 export const AGE_MIX: readonly number[] = [0.58, 0.44, 0.31, 0.19, 0.09];
 /** 时间未知的瓦片。 */
 export const AGE_UNKNOWN_MIX = 0.1;
-/** 图例色块的饱和程度。 */
-export const LEGEND_MIX = 0.72;
 
-/** 图例与悬停卡片的色块：与画布同一套令牌，交给 CSS 混合。 */
+/** 图例色块：与画布同一套令牌，交给 CSS 混合。 */
 const percent = (share: number) => `${Math.round(share * 100)}%`;
-
-export function kindSwatch(kind: TreemapKind): string {
-  return `color-mix(in srgb, var(${KIND_HUE_TOKENS[kind]}) ${percent(LEGEND_MIX)}, var(--surface-secondary))`;
-}
 
 export function ageSwatch(bucket: number | null): string {
   if (bucket === null) return `color-mix(in srgb, var(--text-secondary) ${percent(AGE_UNKNOWN_MIX)}, var(--surface-secondary))`;

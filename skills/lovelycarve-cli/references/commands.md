@@ -259,7 +259,7 @@ LUKS、VeraCrypt 与 FileVault 加密容器
   Keywords: grep, keyword, regex, content search.
   - `lovelycarve-cli --case D:\cases\demo --image D:\evidence\disk.E01 files search password / --ignore-case`: 在全部已索引卷中搜索关键词
 - `lovelycarve-cli files size-tree get <path> [--node-id <string>] [--depth <number>] [--metric <bytes|files>] [--include-deleted] [--min-share <number>]`
-  汇总 NTFS 目录子树的空间占用。树图数据：目录及其下若干层的条目按大小（或文件数）从大到小排列，带子树合计、最新修改时间与主要扩展名，过小或过多的条目并入 others。来自卷索引，仅支持 NTFS；索引尚未覆盖时 status 为 unindexed，非 NTFS 目录为 unsupported。
+  汇总 NTFS 目录子树的空间占用。树图数据：目录及其下若干层的条目按大小（或文件数）从大到小排列，带子树合计与最新修改时间，过小或过多的条目并入 others。来自卷索引，仅支持 NTFS；索引尚未覆盖时 status 为 unindexed，非 NTFS 目录为 unsupported。
   Keywords: treemap, disk usage, du, largest folders, space.
   - `lovelycarve-cli --image D:\evidence\disk.E01 files size-tree get /part:0 --depth 2`: 查看 NTFS 卷根下两层的空间占用
 - `lovelycarve-cli files sqlite deleted-records list [--node-id <string>] [--parent-id <string>] [--key <json>] --path <string>`

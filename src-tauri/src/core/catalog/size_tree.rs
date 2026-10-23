@@ -44,8 +44,6 @@ const MAX_VIEW_CHILDREN: usize = 96;
 /// Entries one view returns at most. Levels fill largest first, and a
 /// directory whose children no longer fit stays closed.
 const MAX_VIEW_ENTRIES: usize = 6_000;
-/// Extensions a directory reports, by bytes beneath it.
-const TOP_EXTENSIONS: usize = 6;
 /// Rows read per `IN (…)` query.
 const NODE_READ_BATCH: usize = 500;
 /// `SizeNode::ordinal` of the volume root, which has no index row.
@@ -76,8 +74,6 @@ struct SizeNode {
     modified: i64,
     /// A directory's slot in [`SizeTree::tallies`], or [`NO_TALLY`].
     tally: u32,
-    /// Interned lowercase extension; `0` is none.
-    extension: u16,
     kind: EntryKind,
     deleted: bool,
 }
@@ -200,8 +196,6 @@ pub struct SizeTreeEntry {
     pub children: Option<Vec<SizeTreeEntry>>,
     /// The children too small or too many to show, merged.
     pub others: Option<SizeTreeOthers>,
-    /// For a directory, the extensions holding the most bytes beneath it.
-    pub extensions: Vec<SizeTreeExtension>,
 }
 
 /// Children merged into one tail.
@@ -213,15 +207,6 @@ pub struct SizeTreeOthers {
     pub files: u64,
 }
 
-/// Bytes beneath a directory under one extension (lowercase; empty for
-/// names without one).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SizeTreeExtension {
-    pub extension: String,
-    pub bytes: u64,
-}
-
 /// A volume index aggregated for treemap views. Built by [`build_size_tree`].
 pub struct SizeTree {
     nodes: Vec<SizeNode>,
@@ -231,8 +216,6 @@ pub struct SizeTree {
     tallies: Vec<DirectoryTally>,
     /// Directory node ids, and the volume key for the root, to their node.
     directories: HashMap<Box<str>, u32>,
-    /// Interned extensions; `0` is none.
-    extensions: Vec<Box<str>>,
     newest_write: i64,
     truncated: bool,
     built_at: String,
@@ -285,13 +268,21 @@ impl SizeTree {
                 }
             }
             // Largest first; ties in walk order, so a view is reproducible.
-            ranked.sort_unstable_by(|left, right| {
+            let order = |left: &(u32, u64), right: &(u32, u64)| {
                 right.1.cmp(&left.1).then_with(|| {
                     self.nodes[left.0 as usize]
                         .ordinal
                         .cmp(&self.nodes[right.0 as usize].ordinal)
                 })
-            });
+            };
+            // A directory can hold tens of thousands of children and at most
+            // `max_children` show: pick those, and sort only them.
+            if options.max_children > 0 && ranked.len() > options.max_children {
+                ranked.select_nth_unstable_by(options.max_children - 1, order);
+                ranked[..options.max_children].sort_unstable_by(order);
+            } else {
+                ranked.sort_unstable_by(order);
+            }
             let kept = ranked
                 .iter()
                 .take(options.max_children)
@@ -328,7 +319,6 @@ impl SizeTree {
 
         // Drafts are in breadth-first order, so every child comes after its
         // parent: assembling from the back finds each child already built.
-        let mut histogram = ExtensionHistogram::new(self.extensions.len());
         let mut built: Vec<Option<SizeTreeEntry>> = Vec::with_capacity(drafts.len());
         built.resize_with(drafts.len(), || None);
         for index in (0..drafts.len()).rev() {
@@ -339,12 +329,6 @@ impl SizeTree {
                     .filter_map(|&child| built[child].take())
                     .collect::<Vec<_>>()
             });
-            // The view's own directory is the canvas: it needs no colour.
-            let extensions = if index > 0 && self.is_directory(draft.node) {
-                self.top_extensions(draft.node, options.deleted, &mut histogram)
-            } else {
-                Vec::new()
-            };
             let totals = self.totals(draft.node, options.deleted);
             let ordinal = self.nodes[draft.node as usize].ordinal;
             built[index] = Some(SizeTreeEntry {
@@ -356,7 +340,6 @@ impl SizeTree {
                 newest: known_time(totals.newest),
                 children,
                 others: draft.others,
-                extensions,
             });
         }
         let root = built.first_mut()?.take()?;
@@ -370,10 +353,6 @@ impl SizeTree {
 
     fn children_of(&self, node: u32) -> &[u32] {
         child_slice(&self.child_start, &self.children, node)
-    }
-
-    fn is_directory(&self, node: u32) -> bool {
-        self.nodes[node as usize].kind == EntryKind::Directory
     }
 
     fn visible(&self, node: u32, deleted: DeletedEntries) -> bool {
@@ -410,82 +389,6 @@ impl SizeTree {
             SizeMetric::Bytes => totals.bytes,
             SizeMetric::Files => totals.files,
         }
-    }
-
-    /// The extensions holding the most bytes beneath directory `node`.
-    fn top_extensions(
-        &self,
-        node: u32,
-        deleted: DeletedEntries,
-        histogram: &mut ExtensionHistogram,
-    ) -> Vec<SizeTreeExtension> {
-        let mut stack = vec![node];
-        while let Some(directory) = stack.pop() {
-            for &child in self.children_of(directory) {
-                if !self.visible(child, deleted) {
-                    continue;
-                }
-                let entry = &self.nodes[child as usize];
-                match entry.kind {
-                    EntryKind::Directory => stack.push(child),
-                    EntryKind::File | EntryKind::Unallocated => {
-                        histogram.add(entry.extension, entry.size);
-                    }
-                    EntryKind::Symlink => {}
-                }
-            }
-        }
-        histogram.take_top(TOP_EXTENSIONS, &self.extensions)
-    }
-}
-
-/// Bytes per extension of one subtree, reset after each read.
-struct ExtensionHistogram {
-    bytes: Vec<u64>,
-    touched: Vec<u16>,
-}
-
-impl ExtensionHistogram {
-    fn new(extensions: usize) -> Self {
-        Self {
-            bytes: vec![0; extensions],
-            touched: Vec::new(),
-        }
-    }
-
-    fn add(&mut self, extension: u16, bytes: u64) {
-        if bytes == 0 {
-            return;
-        }
-        if let Some(slot) = self.bytes.get_mut(usize::from(extension)) {
-            if *slot == 0 {
-                self.touched.push(extension);
-            }
-            *slot = slot.saturating_add(bytes);
-        }
-    }
-
-    fn take_top(&mut self, count: usize, names: &[Box<str>]) -> Vec<SizeTreeExtension> {
-        let mut ranked: Vec<(u16, u64)> = self
-            .touched
-            .drain(..)
-            .map(|extension| {
-                let slot = self.bytes.get_mut(usize::from(extension));
-                (extension, slot.map_or(0, std::mem::take))
-            })
-            .collect();
-        ranked.sort_unstable_by(|left, right| right.1.cmp(&left.1).then(left.0.cmp(&right.0)));
-        ranked
-            .into_iter()
-            .take(count)
-            .map(|(extension, bytes)| SizeTreeExtension {
-                extension: names
-                    .get(usize::from(extension))
-                    .map(|name| name.to_string())
-                    .unwrap_or_default(),
-                bytes,
-            })
-            .collect()
     }
 }
 

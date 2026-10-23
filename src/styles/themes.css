@@ -162,10 +162,6 @@
     --chart-4: #8b5cf6;
     --chart-5: #ec4899;
     --chart-6: #06b6d4;
-    /* Seven and eight extend the set for the file list's treemap kinds
-       (databases; a muted earth tone for system areas). */
-    --chart-7: #65a30d;
-    --chart-8: #a0785a;
 }
 
 /* ── Dark ── */
@@ -299,8 +295,6 @@
     --chart-4: #a78bfa;
     --chart-5: #f472b6;
     --chart-6: #22d3ee;
-    --chart-7: #a3e635;
-    --chart-8: #c9a27e;
 }
 
 /* ── Pink ── */
@@ -436,6 +430,4 @@
     --chart-4: #db2777;
     --chart-5: #9d8df1;
     --chart-6: #5fb8a5;
-    --chart-7: #8fb35b;
-    --chart-8: #b58b74;
 }

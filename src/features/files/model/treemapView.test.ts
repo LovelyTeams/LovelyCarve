@@ -114,6 +114,8 @@ describe('zoom steps', () => {
         expect(step.from).toEqual(projectRect(view, tileBody(tiles[nested])));
         break;
       }
+      // Each magnifying notch names the directory it heads into, so its data can come early.
+      expect(step.target).toBe(nested);
       view = step.view;
       scales.push(view.scale);
     }

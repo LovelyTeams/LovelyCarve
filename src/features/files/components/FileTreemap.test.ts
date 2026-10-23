@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createApp, h, nextTick, type App } from 'vue';
+import { createApp, h, nextTick, ref, shallowRef, type App } from 'vue';
 import type { FsSizeTreeEntry, FsSizeTreeView } from '../../../lib/ipc/fs/sizeTree';
 import type { FsNode } from '../../../lib/ipc/fs/types';
 import { DEFAULT_TREEMAP_OPTIONS, layoutTreemap, type Rect } from '../model/treemap';
@@ -13,10 +13,10 @@ function node(id: string, name: string, kind: FsNode['kind'], parent: string, de
   };
 }
 
-function entry(value: FsNode, bytes: number, children: FsSizeTreeEntry[] | null = null, extensions: FsSizeTreeEntry['extensions'] = []): FsSizeTreeEntry {
+function entry(value: FsNode, bytes: number, children: FsSizeTreeEntry[] | null = null): FsSizeTreeEntry {
   return {
     node: value, bytes, files: children ? children.length : 1, dirs: 0, newest: 1_766_217_600,
-    children, others: null, extensions,
+    children, others: null,
   };
 }
 
@@ -27,9 +27,9 @@ const pagefile = node('ntfs:part:2:30', 'pagefile.sys', 'file', 'part:2');
 
 const view: FsSizeTreeView = {
   root: {
-    node: null, bytes: 1_000, files: 3, dirs: 1, newest: 1_766_217_600, others: null, extensions: [],
+    node: null, bytes: 1_000, files: 3, dirs: 1, newest: 1_766_217_600, others: null,
     children: [
-      entry(users, 700, [entry(photo, 500), entry(gone, 200)], [{ extension: 'jpg', bytes: 700 }]),
+      entry(users, 700, [entry(photo, 500), entry(gone, 200)]),
       entry(pagefile, 300),
     ],
   },
@@ -50,7 +50,7 @@ const centre = (rect: Rect) => ({ clientX: rect.x + rect.w / 2, clientY: rect.y 
 
 const handlers = {
   onSelect: vi.fn(), onOpen: vi.fn(), onEnter: vi.fn(), onUp: vi.fn(), onDepth: vi.fn(),
-  onContextmenu: vi.fn(), onShowList: vi.fn(), onRetry: vi.fn(),
+  onContextmenu: vi.fn(), onShowList: vi.fn(), onRetry: vi.fn(), onPrefetch: vi.fn(),
 };
 
 /** A 2D context that records what is painted. */
@@ -115,7 +115,7 @@ async function mount(props: Partial<Record<string, unknown>> = {}) {
   app = createApp({
     render: () => h(FileTreemap, {
       view, status: 'ready', error: null, mode: 'bytes', depth: 3,
-      directoryName: 'C', directoryPath: '/C', volumeRoot: true, systemArea: false,
+      directoryName: 'C', directoryPath: '/C', volumeRoot: true,
       selectedId: null, snapshotLabel: null, ...handlers, ...props,
     }),
   });
@@ -175,6 +175,31 @@ describe('FileTreemap', () => {
     }
     expect(notches).toBeGreaterThan(1);
     expect(handlers.onEnter).toHaveBeenCalledWith([{ id: users.id, name: 'Users' }]);
+  });
+
+  it('fetches ahead the directory the wheel heads into, and the level above once inside', async () => {
+    const shown = shallowRef(view);
+    const path = ref('/C');
+    app = createApp({
+      render: () => h(FileTreemap, {
+        view: shown.value, status: 'ready', error: null, mode: 'bytes', depth: 3,
+        directoryName: 'C', directoryPath: path.value, volumeRoot: path.value === '/C',
+        selectedId: null, snapshotLabel: null, ...handlers,
+      }),
+    });
+    app.mount(host);
+    for (let index = 0; index < 4; index++) await nextTick();
+    flushFrames();
+
+    const point = centre(tileOf('photo.jpg').rect);
+    wheel(point, -120);
+    wheel(point, -120);
+    expect(handlers.onPrefetch.mock.calls).toEqual([[users.id]]);
+
+    path.value = '/C/Users';
+    shown.value = { ...view, root: entry(users, 700, [entry(photo, 500), entry(gone, 200)]) };
+    for (let index = 0; index < 4; index++) await nextTick();
+    expect(handlers.onPrefetch).toHaveBeenLastCalledWith('part:2');
   });
 
   it('magnifies the canvas, so the same point hits what is now under it', async () => {

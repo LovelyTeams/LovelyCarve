@@ -231,45 +231,6 @@ fn a_view_starts_anywhere_and_stops_at_its_depth() {
 }
 
 #[test]
-fn directories_report_the_extensions_that_fill_them() {
-    let directory = tempfile::tempdir().expect("tempdir");
-    let (_index, tree) = build(directory.path(), &volume());
-    let view = tree
-        .view("part:0", &options(1, DeletedEntries::Include))
-        .expect("view");
-    let children = view.root.children.expect("children");
-    let windows = children
-        .iter()
-        .find(|child| child.bytes == 1_050)
-        .expect("Windows");
-    assert_eq!(
-        windows.extensions,
-        vec![
-            SizeTreeExtension {
-                extension: "dll".to_string(),
-                bytes: 1_000,
-            },
-            SizeTreeExtension {
-                extension: "exe".to_string(),
-                bytes: 50,
-            },
-        ]
-    );
-    let users = children
-        .iter()
-        .find(|child| child.bytes == 1_200)
-        .expect("Users");
-    assert_eq!(
-        users.extensions[0].extension, "docx",
-        "deleted bytes count when included"
-    );
-    assert!(
-        view.root.extensions.is_empty(),
-        "the canvas needs no colour"
-    );
-}
-
-#[test]
 fn a_hard_linked_file_is_charged_to_its_first_name_only() {
     let directory = tempfile::tempdir().expect("tempdir");
     let entries = vec![

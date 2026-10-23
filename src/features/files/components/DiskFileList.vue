@@ -42,9 +42,9 @@
               v-if="viewMode === 'treemap'"
               :view="treemapView" :status="treemapStatus" :error="treemapError" :mode="treemapMode" :depth="treemapDepth"
               :directory-name="currentDirectory?.name ?? '/'" :directory-path="currentDirectoryPath"
-              :volume-root="isVolumeRootId(currentDirectory?.id ?? '')" :system-area="inSystemArea(stack)"
+              :volume-root="isVolumeRootId(currentDirectory?.id ?? '')"
               :selected-id="treemapSelection" :snapshot-label="snapshotStatus?.state === 'building' ? snapshotStatus.label : null"
-              @select="onTreemapSelect" @open="onTreemapOpen" @enter="onTreemapEnter" @up="goUp"
+              @select="onTreemapSelect" @open="onTreemapOpen" @enter="onTreemapEnter" @up="onTreemapUp" @prefetch="prefetchTreemap"
               @depth="treemapDepth = Math.min(6, Math.max(1, treemapDepth + $event))"
               @contextmenu="onRowContextMenu" @show-list="viewMode = 'list'" @retry="retryTreemap"
             />
@@ -216,9 +216,8 @@ import FileTreemap from './FileTreemap.vue';
 import TreemapFooter from './TreemapFooter.vue';
 import TreemapToolbar from './TreemapToolbar.vue';
 import { useSizeTree, type TreemapMode } from '../composables/useSizeTree';
-import type { FileViewMode } from '../model/treemap';
+import { isVolumeRootId, treemapAvailableAt, type FileViewMode } from '../model/treemap';
 import type { FileNavigationFrame } from '../model/navigation';
-import { inSystemArea, isVolumeRootId, treemapAvailableAt } from '../model/treemapKinds';
 
 type FsNode = DiskFsNode;
 
@@ -291,7 +290,7 @@ const navigation = useFileNavigation({
   filteredRows: () => filteredEntries.value,
   container: () => tableWrapRef.value,
   scrollToRow: index => scrollRowIntoView(index),
-  rebasePath: () => rebasePathFilterToStack(), loadCurrent,
+  rebasePath: () => rebasePathFilterToStack(), loadCurrent: () => loadAfterNavigation(),
   prepareLocate: () => { closeDeepSearch(); browseMode.consumeReload(); clearAllFilters(); hideFilterPopover(); },
 });
 const { stack, currentDirectoryPath, pendingRestore, directoryTargetId, onTreeNavigate, onTreeOpenFile,
@@ -381,7 +380,7 @@ const currentDirectory = computed(() => stack.value[stack.value.length - 1]);
 const treemapAvailable = computed(() => treemapAvailableAt(currentDirectory.value?.id ?? '', entries.value));
 const {
   status: treemapStatus, view: treemapView, error: treemapError,
-  refresh: refreshTreemap, reset: resetTreemap, retry: retryTreemap,
+  refresh: refreshTreemap, reset: resetTreemap, retry: retryTreemap, prefetch: prefetchTreemap,
 } = useSizeTree({
   imageId: () => props.imageId,
   nodeId: () => currentDirectory.value?.id ?? null,
@@ -393,9 +392,46 @@ const {
   snapshotSignature: () => snapshotStatus.value?.state ?? 'none',
 });
 
+// 树图里进出目录时，列表在后台看不见：取数推迟到进出的动画放完，连着进出几层也只装最后一层。
+// 在途的旧装载、预览与菜单照常立即作废；切回列表时立刻补装。
+const TREEMAP_LIST_DELAY_MS = 400;
+let treemapNavigation = false;
+let deferredListLoad: ReturnType<typeof setTimeout> | null = null;
+function cancelDeferredListLoad() {
+  if (deferredListLoad === null) return false;
+  clearTimeout(deferredListLoad);
+  deferredListLoad = null;
+  return true;
+}
+onScopeDispose(cancelDeferredListLoad);
+function loadAfterNavigation(): Promise<void> {
+  if (!treemapNavigation) return loadCurrent();
+  loadGeneration += 1;
+  invalidatePathFollow();
+  detailNode.value = null;
+  hideRowMenu();
+  cancelDeferredListLoad();
+  deferredListLoad = setTimeout(() => {
+    deferredListLoad = null;
+    void loadCurrent({ keepPanels: true });
+  }, TREEMAP_LIST_DELAY_MS);
+  return Promise.resolve();
+}
+function navigateFromTreemap(navigate: () => void) {
+  treemapNavigation = true;
+  try {
+    navigate();
+  } finally {
+    treemapNavigation = false;
+  }
+}
+
 watch(viewMode, mode => {
   treemapSelection.value = null;
-  if (mode !== 'treemap') return;
+  if (mode !== 'treemap') {
+    if (cancelDeferredListLoad()) void loadCurrent({ keepPanels: true });
+    return;
+  }
   // 树图按目录结构看整棵子树：关键词与全显只属于列表，勾选也不跟到树图里，
   // 否则右键菜单会作用在看不见的勾选行上。
   hideFilterPopover();
@@ -434,7 +470,11 @@ function onTreemapOpen(node: FsNode) {
 /** 进入瓦片所在的目录：瓦片链上的每一层都推入面包屑。 */
 function onTreemapEnter(frames: FileNavigationFrame[]) {
   treemapSelection.value = null;
-  onTreeNavigate([...stack.value, ...frames]);
+  navigateFromTreemap(() => onTreeNavigate([...stack.value, ...frames]));
+}
+
+function onTreemapUp() {
+  navigateFromTreemap(goUp);
 }
 
 // 案件在镜像装载之后才创建/打开时：先把会话里已算的哈希补存进案件目录
@@ -515,7 +555,9 @@ const sortDir = ref<'asc' | 'desc'>('asc');
 
 const visibleColumns = computed(() => COLUMNS.filter(c => columnVisible[c.key]));
 
-async function loadCurrent() {
+/** `keepPanels`：推迟的装载，预览与菜单在导航时已复位，此后用户在树图里新开的不再收掉。 */
+async function loadCurrent(reload: { keepPanels?: boolean } = {}) {
+  cancelDeferredListLoad();
   if (!props.imageId) {
     entries.value = [];
     return;
@@ -533,9 +575,11 @@ async function loadCurrent() {
   // 进行中的框选一并中止：装载会清空勾选并换掉列表，留着框选的下一个
   // mousemove 会按旧锚点把新列表的行勾回来。
   cancelMarquee();
-  detailNode.value = null;
-  // 菜单挂着旧列表的节点，任何重载都得收掉，免得菜单动作落在过期目标上。
-  hideRowMenu();
+  if (!reload.keepPanels) {
+    detailNode.value = null;
+    // 菜单挂着旧列表的节点，任何重载都得收掉，免得菜单动作落在过期目标上。
+    hideRowMenu();
+  }
   directoryMetadata.clear();
   directoryCursor.value = null;
   try {

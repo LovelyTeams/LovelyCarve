@@ -11,12 +11,6 @@ export interface FsSizeTreeOthers {
   files: number;
 }
 
-/** 目录下某扩展名（小写；无扩展名为空串）累计的字节数。 */
-export interface FsSizeTreeExtension {
-  extension: string;
-  bytes: number;
-}
-
 /** 视图里的一个条目，带其下全部内容的合计。镜像 `core::catalog::size_tree::SizeTreeEntry`。 */
 export interface FsSizeTreeEntry {
   /** 条目自身的节点；卷根没有索引行，为 null。 */
@@ -30,8 +24,6 @@ export interface FsSizeTreeEntry {
   /** 显示的子项，从大到小；叶子与未展开的目录为 null。 */
   children: FsSizeTreeEntry[] | null;
   others: FsSizeTreeOthers | null;
-  /** 目录：其下字节最多的几个扩展名。 */
-  extensions: FsSizeTreeExtension[];
 }
 
 export interface FsSizeTreeView {

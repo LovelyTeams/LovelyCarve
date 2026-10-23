@@ -116,7 +116,7 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
 |  | `--accent-contrast` | 实心填充上的文字 |
 | 语义 | `--sev-{critical,warn,success,info}-{fg,bg,bg-hover,border,tag-fg,tag-bg}` | 提示条、徽章、状态行；另有 `--sev-critical-border-strong`、`--sev-info-selected-*` |
 |  | `--sev-snapshot-*` | ReFS 快照行与标签（琥珀色） |
-| 图表 | `--chart-1` … `--chart-8` | 分类色（磁盘布局、类别徽章、文件列表树图的数据类别），配合 `ui-badge tone` 与 `--badge-tone` |
+| 图表 | `--chart-1` … `--chart-6` | 分类色（磁盘布局、类别徽章），配合 `ui-badge tone` 与 `--badge-tone` |
 | 形状 | `--radius-sm` 4px / `--radius-md` 8px / `--radius-lg` 12px | 徽章与小图标按钮 / 控件、菜单、提示条 / 卡片、弹窗、通知 |
 | 阴影 | `--shadow-sm` / `--card-shadow` / `--card-shadow-hover` / `--modal-shadow`；`--modal-backdrop` | 分段选中项 / 卡片 / 悬停抬起与通知 / 弹窗、菜单与浮动面板；弹窗遮罩 |
 | 字体 | `--font-ui` / `--font-mono` / `--font-brand` | 见第 4 节 |

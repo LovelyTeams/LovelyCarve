@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_TREEMAP_OPTIONS, directionGap, directionOffset, hitTile, layoutTreemap, neighbourTile, rectContains,
-  squarify, tileBody, tileChain, type Rect, type TreemapSource,
+  DEFAULT_TREEMAP_OPTIONS, directionGap, directionOffset, hitTile, isVolumeRootId, layoutTreemap, neighbourTile, rectContains,
+  squarify, tileBody, tileChain, treemapAvailableAt, type Rect, type TreemapSource,
 } from './treemap';
 
 interface Node {
@@ -153,5 +153,17 @@ describe('hit testing and movement', () => {
       const next = neighbourTile(tiles, big, direction);
       if (next >= 0) expect(tiles[next].depth).toBe(0);
     }
+  });
+});
+
+describe('where the treemap is offered', () => {
+  it('serves NTFS directories and NTFS volume roots only', () => {
+    expect(isVolumeRootId('part:2')).toBe(true);
+    expect(isVolumeRootId('lvm:1:0')).toBe(true);
+    expect(isVolumeRootId('ntfs:part:2:5')).toBe(false);
+    expect(treemapAvailableAt('ntfs:part:2:5', [])).toBe(true);
+    expect(treemapAvailableAt('part:2', [{ id: 'ntfs:part:2:0' }])).toBe(true);
+    expect(treemapAvailableAt('part:1', [{ id: 'ext4:part:1:2' }])).toBe(false);
+    expect(treemapAvailableAt('root', [{ id: 'part:2' }])).toBe(false);
   });
 });

@@ -136,9 +136,10 @@ export function zoomTarget<T>(
   return -1;
 }
 
-/** 一格缩放的结果：换一个视图、进入某块目录（附上它此刻在屏幕上的内容区）、回到上一级，或什么都不做。 */
+/** 一格缩放的结果：换一个视图（附上滚轮正朝向的目录，没有时为 -1）、进入某块目录（附上它此刻在屏幕上的内容区）、
+ *  回到上一级，或什么都不做。 */
 export type ZoomStep =
-  | { kind: 'view'; view: TreemapView }
+  | { kind: 'view'; view: TreemapView; target: number }
   | { kind: 'enter'; target: number; from: Rect }
   | { kind: 'ascend' }
   | { kind: 'none' };
@@ -161,7 +162,7 @@ export function zoomStep<T>(
   const body = target >= 0 ? tileBody(tiles[target]) : null;
   const ceiling = Math.min(Math.max(body ? fitScale(body, width, height) : MAX_VIEW_SCALE, MIN_VIEW_SCALE), MAX_VIEW_SCALE);
   if (factor > 1 && body && view.scale >= ceiling - EPSILON) return { kind: 'enter', target, from: projectRect(view, body) };
-  return { kind: 'view', view: clampView(zoomViewAt(view, x, y, factor, ceiling), width, height) };
+  return { kind: 'view', view: clampView(zoomViewAt(view, x, y, factor, ceiling), width, height), target };
 }
 
 /** 滚轮事件折合成行（正为向上滚，即放大）。 */

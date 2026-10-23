@@ -27,9 +27,9 @@ const timestamps = { modified: null, accessed: null, created: null, mft_changed:
 const users = { id: 'ntfs:part:2:40', name: 'Users', kind: 'dir', parent_id: 'part:2', size: 0, deleted: false, inode: 40, timestamps };
 const mft = { id: 'ntfs:part:2:0', name: '$MFT', kind: 'file', parent_id: 'part:2', size: 300, deleted: false, inode: 0, timestamps };
 const photo = { id: 'ntfs:part:2:41', name: 'photo.jpg', kind: 'file', parent_id: users.id, size: 700, deleted: false, inode: 41, timestamps };
-const leaf = (node: typeof photo) => ({ node, bytes: node.size, files: 1, dirs: 0, newest: null, children: null, others: null, extensions: [] });
-const usersEntry = { node: users, bytes: 700, files: 1, dirs: 0, newest: null, others: null, extensions: [{ extension: 'jpg', bytes: 700 }], children: [leaf(photo)] };
-const usersRoot = { node: null, bytes: 1_000, files: 2, dirs: 1, newest: null, others: null, extensions: [], children: [usersEntry, leaf(mft)] } as unknown as FsSizeTreeEntry;
+const leaf = (node: typeof photo) => ({ node, bytes: node.size, files: 1, dirs: 0, newest: null, children: null, others: null });
+const usersEntry = { node: users, bytes: 700, files: 1, dirs: 0, newest: null, others: null, children: [leaf(photo)] };
+const usersRoot = { node: null, bytes: 1_000, files: 2, dirs: 1, newest: null, others: null, children: [usersEntry, leaf(mft)] } as unknown as FsSizeTreeEntry;
 const views: Record<string, unknown> = {
   'part:2': { root: usersRoot },
   [users.id]: { root: usersEntry },
@@ -88,36 +88,47 @@ async function mount() {
 
 const switchButton = (label: string) => [...host.querySelectorAll<HTMLButtonElement>('.view-switch button')].find(button => button.textContent?.includes(label))!;
 const sizeTreeRequests = () => ipc.invoke.mock.calls.filter(([command]) => command === 'fs_size_tree').map(([, args]) => args.nodeId);
+/** Pages of the listing itself; a row's child count asks for one entry. */
+const listLoads = (parentId: string) => ipc.invoke.mock.calls
+  .filter(([command, args]) => command === 'fs_children_page' && args.parentId === parentId && args.pageSize > 1).length;
+
+/** Opens the treemap at the volume root and double-clicks the Users tile. */
+async function enterUsers() {
+  await panel.value!.openFileByNodeId(mft.id);
+  await settle();
+  switchButton('树图').click();
+  await settle();
+  // The treemap is painted on a canvas: double-click where the Users tile is drawn.
+  const drawn = layoutTreemap(usersRoot, { x: 0, y: 0, w: 800, h: 500 }, {
+    value: item => item.bytes, children: item => item.children,
+    othersValue: () => 0, isDirectory: item => item.node?.kind === 'dir',
+  }, { ...DEFAULT_TREEMAP_OPTIONS, maxDepth: 3 });
+  const header = drawn.find(tile => tile.entry?.node?.id === users.id)!.header!;
+  host.querySelector('.treemap-surface')!.dispatchEvent(new MouseEvent('dblclick', {
+    bubbles: true, detail: 2, clientX: header.x + header.w / 2, clientY: header.y + header.h / 2,
+  }));
+  await settle();
+}
 
 describe('file list treemap view', () => {
   it('opens on NTFS directories and shares navigation with the list', async () => {
     await mount();
     expect(switchButton('树图').disabled).toBe(true);
-
     await panel.value!.openFileByNodeId(mft.id);
     await settle();
     expect(switchButton('树图').disabled).toBe(false);
-    switchButton('树图').click();
-    await settle();
-    expect(sizeTreeRequests()).toEqual(['part:2']);
-    expect(ipc.invoke).toHaveBeenCalledWith('fs_size_tree', expect.objectContaining({ imageId: 'disk-a', nodeId: 'part:2', depth: 3, metric: 'bytes', includeDeleted: false }));
 
-    // The treemap is painted on a canvas: double-click where the Users tile is drawn.
-    const drawn = layoutTreemap(usersRoot, { x: 0, y: 0, w: 800, h: 500 }, {
-      value: item => item.bytes, children: item => item.children,
-      othersValue: () => 0, isDirectory: item => item.node?.kind === 'dir',
-    }, { ...DEFAULT_TREEMAP_OPTIONS, maxDepth: 3 });
-    const header = drawn.find(tile => tile.entry?.node?.id === users.id)!.header!;
-    host.querySelector('.treemap-surface')!.dispatchEvent(new MouseEvent('dblclick', {
-      bubbles: true, detail: 2, clientX: header.x + header.w / 2, clientY: header.y + header.h / 2,
-    }));
-    await settle();
+    await enterUsers();
+    expect(ipc.invoke).toHaveBeenCalledWith('fs_size_tree', expect.objectContaining({ imageId: 'disk-a', nodeId: 'part:2', depth: 3, metric: 'bytes', includeDeleted: false }));
+    // The volume root needs no parent; Users' parent is the root, already at hand.
     expect(sizeTreeRequests()).toEqual(['part:2', users.id]);
     expect(host.querySelector('.crumb.current')?.textContent).toContain('Users');
-    expect(ipc.invoke).toHaveBeenCalledWith('fs_children_page', expect.objectContaining({ parentId: users.id }));
+    // The list is hidden: it waits for the zoom to play, but loads as soon as it is shown.
+    expect(listLoads(users.id)).toBe(0);
 
     switchButton('列表').click();
     await settle();
+    expect(listLoads(users.id)).toBe(1);
     expect(host.querySelector('.treemap-surface')).toBeNull();
     expect([...host.querySelectorAll('.disk-file-row')].map(row => row.textContent)).toEqual([expect.stringContaining('photo.jpg')]);
 
@@ -126,6 +137,20 @@ describe('file list treemap view', () => {
     await settle();
     expect(sizeTreeRequests()).toEqual(['part:2', users.id]);
     expect(host.querySelector('.treemap-surface')).not.toBeNull();
+  });
+
+  it('keeps the hidden list in step after the zoom has played', async () => {
+    await mount();
+    await enterUsers();
+    expect(listLoads(users.id)).toBe(0);
+    await new Promise(resolve => setTimeout(resolve, 450));
+    await settle();
+    expect(listLoads(users.id)).toBe(1);
+    // Showing the list later loads nothing more.
+    switchButton('列表').click();
+    await settle();
+    expect(listLoads(users.id)).toBe(1);
+    expect([...host.querySelectorAll('.disk-file-row')].map(row => row.textContent)).toEqual([expect.stringContaining('photo.jpg')]);
   });
 
   it('leaves the treemap for the list when a search starts', async () => {

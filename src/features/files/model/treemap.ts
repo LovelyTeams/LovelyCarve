@@ -11,6 +11,17 @@
 /** 文件列表的两种视图：逐行的列表，与按空间占用的树图（仅 NTFS）。 */
 export type FileViewMode = 'list' | 'treemap';
 
+/** 分区或逻辑卷的根节点（`part:N` / `lvm:N:M`）。 */
+export function isVolumeRootId(id: string): boolean {
+  return /^part:\d+$/.test(id) || /^lvm:\d+:\d+$/.test(id);
+}
+
+/** 树图目前只服务 NTFS：NTFS 目录，或列出了 NTFS 条目的卷根。卷根是否 NTFS 由后端最终判定。 */
+export function treemapAvailableAt(directoryId: string, entries: readonly { id: string }[]): boolean {
+  if (directoryId.startsWith('ntfs:')) return true;
+  return isVolumeRootId(directoryId) && entries.some(entry => entry.id.startsWith('ntfs:') || entry.id.startsWith('ntfs-ads:'));
+}
+
 export interface Rect {
   x: number;
   y: number;

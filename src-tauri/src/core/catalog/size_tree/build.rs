@@ -19,8 +19,6 @@ const BAD_CLUSTERS_RECORD: i64 = 8;
 /// anything later is a bad clock or a corrupt record, and is not the
 /// volume's newest write.
 const FUTURE_SLACK_SECONDS: i64 = 86_400;
-/// Longest extension interned. Longer "extensions" are parts of names.
-const MAX_EXTENSION_LEN: usize = 16;
 /// A node index meaning "none".
 const NO_NODE: u32 = u32::MAX;
 
@@ -37,7 +35,6 @@ pub fn build_size_tree(index: &Path, now: i64) -> anyhow::Result<SizeTree> {
         size: 0,
         modified: UNKNOWN_TIME,
         tally: NO_TALLY,
-        extension: 0,
         kind: EntryKind::Directory,
         deleted: false,
     }];
@@ -49,20 +46,30 @@ pub fn build_size_tree(index: &Path, now: i64) -> anyhow::Result<SizeTree> {
     if let Some(root) = directory_nodes.first_mut() {
         *root = 0;
     }
-    let mut extensions = ExtensionTable::new();
     let mut charged = ChargedFiles::default();
     let mut newest_write = UNKNOWN_TIME;
     let mut unattached = 0u64;
+    // Rows come in walk order with each directory's entries together, so a
+    // row mostly names the parent of the row before it.
+    let mut last_parent: Option<(String, Option<u32>)> = None;
 
     let mut statement = conn.prepare(
-        "SELECT ordinal, nid, pid, kind, size, mtime, is_delete, extension, meta_addr,
-                meta_addr_high
+        "SELECT ordinal, nid, pid, kind, size, mtime, is_delete, meta_addr, meta_addr_high
          FROM filedb
          ORDER BY ordinal",
     )?;
     let mut rows = statement.query([])?;
     while let Some(row) = rows.next()? {
-        let Some(&parent_number) = directory_numbers.get(row.get_ref(2)?.as_str()?) else {
+        let pid = row.get_ref(2)?.as_str()?;
+        let parent_number = match &last_parent {
+            Some((last, number)) if last == pid => *number,
+            _ => {
+                let number = directory_numbers.get(pid).copied();
+                last_parent = Some((pid.to_string(), number));
+                number
+            }
+        };
+        let Some(parent_number) = parent_number else {
             unattached += 1;
             continue;
         };
@@ -74,9 +81,8 @@ pub fn build_size_tree(index: &Path, now: i64) -> anyhow::Result<SizeTree> {
             "unallocated" => EntryKind::Unallocated,
             other => anyhow::bail!("unknown entry kind {other:?} in {}", index.display()),
         };
-        let stream = nid.starts_with(NTFS_STREAM_PREFIX);
-        let meta_addr: i64 = row.get(8)?;
-        if stream && meta_addr == BAD_CLUSTERS_RECORD {
+        let meta_addr: i64 = row.get(7)?;
+        if nid.starts_with(NTFS_STREAM_PREFIX) && meta_addr == BAD_CLUSTERS_RECORD {
             continue;
         }
         let deleted = row.get::<_, i64>(6)? == IS_DELETE_DELETED;
@@ -85,7 +91,7 @@ pub fn build_size_tree(index: &Path, now: i64) -> anyhow::Result<SizeTree> {
             EntryKind::File => {
                 // One file named in several directories is charged once.
                 let first_name = match ntfs_volume_of(nid) {
-                    Some(volume) => charged.first_name(volume, meta_addr, row.get(9)?),
+                    Some(volume) => charged.first_name(volume, meta_addr, row.get(8)?),
                     None => true,
                 };
                 if first_name {
@@ -105,11 +111,6 @@ pub fn build_size_tree(index: &Path, now: i64) -> anyhow::Result<SizeTree> {
         if kind == EntryKind::File && !deleted && modified <= plausible_until {
             newest_write = newest_write.max(modified);
         }
-        // A stream's "extension" is the tail of `name.ext:stream (数据流)`.
-        let extension = match row.get_ref(7)?.as_str_or_null()? {
-            Some(extension) if !stream => extensions.intern(extension),
-            _ => 0,
-        };
         let node_index = u32::try_from(nodes.len())
             .ok()
             .filter(|index| *index != NO_NODE)
@@ -129,7 +130,6 @@ pub fn build_size_tree(index: &Path, now: i64) -> anyhow::Result<SizeTree> {
             size,
             modified,
             tally: NO_TALLY,
-            extension,
             kind,
             deleted,
         });
@@ -206,7 +206,6 @@ pub fn build_size_tree(index: &Path, now: i64) -> anyhow::Result<SizeTree> {
         children,
         tallies,
         directories,
-        extensions: extensions.into_names(),
         newest_write,
         truncated: meta.truncated,
         built_at: meta.built_at,
@@ -312,47 +311,14 @@ fn unix_seconds(text: &str) -> Option<i64> {
         .map(|time| time.timestamp())
 }
 
-/// Lowercase extensions, each stored once.
-struct ExtensionTable {
-    ids: HashMap<Box<str>, u16>,
-    names: Vec<Box<str>>,
-}
-
-impl ExtensionTable {
-    fn new() -> Self {
-        Self {
-            ids: HashMap::new(),
-            names: vec!["".into()],
-        }
-    }
-
-    /// The id of `extension`; `0` (none) for noise and once the table is full.
-    fn intern(&mut self, extension: &str) -> u16 {
-        if extension.is_empty() || extension.len() > MAX_EXTENSION_LEN {
-            return 0;
-        }
-        if let Some(&id) = self.ids.get(extension) {
-            return id;
-        }
-        let Ok(id) = u16::try_from(self.names.len()) else {
-            return 0;
-        };
-        self.ids.insert(extension.into(), id);
-        self.names.push(extension.into());
-        id
-    }
-
-    fn into_names(self) -> Vec<Box<str>> {
-        self.names
-    }
-}
-
 /// Files already charged, by volume, MFT record and stream. Records are small
 /// numbers, so a main stream takes one bit; a named stream, or a record past
 /// the bitmap, goes into a set.
 #[derive(Default)]
 struct ChargedFiles {
     volumes: HashMap<Box<str>, usize>,
+    /// The volume looked up last: an index nearly always holds one.
+    last_volume: Option<(Box<str>, usize)>,
     bitmaps: Vec<Vec<u64>>,
     others: HashSet<(usize, i64, i64)>,
 }
@@ -363,13 +329,20 @@ impl ChargedFiles {
 
     /// Whether this is the first name met for the file.
     fn first_name(&mut self, volume: &str, record: i64, stream: i64) -> bool {
-        let volume = match self.volumes.get(volume) {
-            Some(&known) => known,
-            None => {
-                let next = self.bitmaps.len();
-                self.volumes.insert(volume.into(), next);
-                self.bitmaps.push(Vec::new());
-                next
+        let volume = match &self.last_volume {
+            Some((last, known)) if last.as_ref() == volume => *known,
+            _ => {
+                let known = match self.volumes.get(volume) {
+                    Some(&known) => known,
+                    None => {
+                        let next = self.bitmaps.len();
+                        self.volumes.insert(volume.into(), next);
+                        self.bitmaps.push(Vec::new());
+                        next
+                    }
+                };
+                self.last_volume = Some((volume.into(), known));
+                known
             }
         };
         if stream == 0 && (0..Self::BITMAP_RECORDS).contains(&record) {
