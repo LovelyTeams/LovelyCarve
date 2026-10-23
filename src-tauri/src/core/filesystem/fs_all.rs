@@ -193,6 +193,7 @@ pub fn fs_prefix_for_kind(kind: PartitionKind) -> &'static str {
         | PartitionKind::Hfs
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
+        | PartitionKind::Amiga
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

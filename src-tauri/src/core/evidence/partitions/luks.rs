@@ -33,6 +33,7 @@ impl PartParser for LuksParser {
             length_lba: ctx.size / 512,
             label: Some("LUKS container".into()),
             unique_guid: None,
+            amiga_geometry: None,
         }]))
     }
 }

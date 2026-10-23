@@ -98,6 +98,7 @@ impl PartParser for WholeVolumeParser {
             length_lba: ctx.size / ctx.sector_size as u64,
             label: None,
             unique_guid: None,
+            amiga_geometry: None,
         }]))
     }
 }
@@ -165,6 +166,7 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &super::yaffs2::Yaffs2Probe,
     &super::jfs::JfsProbe,
     &super::reiserfs::ReiserFsProbe,
+    &super::amiga::AmigaProbe,
 ];
 
 pub fn probe_volume(
@@ -307,6 +309,7 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::Hfs
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
+        | PartitionKind::Amiga
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

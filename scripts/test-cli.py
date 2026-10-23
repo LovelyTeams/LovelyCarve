@@ -149,6 +149,35 @@ def main():
             assert rows[2]["result"]["data"] == flash_body[flash_offset:flash_offset + 121].hex()
             assert rows[3]["result"]["sha256"] == hashlib.sha256(flash_body).hexdigest()
 
+        # Amiga: independent OFS/FFS variants, native multi-block RDB and links.
+        amiga_body = bytes((index * 17 + 5) & 255 for index in range(200013))
+        for amiga_name, amiga_parts in [("dos0-512-1760", (0,)), ("links-dos3", (0,)), ("dos7-4096-1760", (0,)), ("rdb-multiblock", (0, 1, 3))]:
+            amiga_path = root / (amiga_name + ".hdf")
+            amiga_source = zlib.decompress((flash_vendor / ("amiga-reader/tests/fixtures/" + amiga_name + ".zlib")).read_bytes())
+            amiga_path.write_bytes(amiga_source)
+            for amiga_part in amiga_parts:
+                amiga_prefix = "amiga:part:" + str(amiga_part) + ":"
+                amiga_node = amiga_prefix + "/Café.bin".encode().hex()
+                amiga_export = root / (amiga_name + str(amiga_part) + "-export.bin")
+                _, rows = session([
+                    {"id": "open", "command": "images open", "args": {"path": str(amiga_path)}},
+                    {"id": "list", "command": "files list", "args": {"parentId": "part:" + str(amiga_part)}},
+                    {"id": "nested", "command": "files list", "args": {"parentId": amiga_prefix + b"/sub".hex(), "pageSize": 200}},
+                    {"id": "read", "command": "files read", "args": {"nodeId": amiga_node, "offset": 73720, "length": 73}},
+                    {"id": "hash", "command": "files hash", "args": {"nodeId": amiga_node, "algos": ["sha256"]}},
+                    {"id": "export", "command": "files export", "args": {"nodeId": amiga_node, "destination": str(amiga_export)}},
+                    {"id": "name", "command": "files read", "args": {"nodeId": amiga_prefix + "/back\\slash".encode().hex(), "offset": 0, "length": 100}},
+                ])
+                assert all("result" in row for row in rows), rows
+                assert rows[0]["result"]["partitions"][amiga_part]["kind"] == "amiga"
+                assert any(item["name"] == "Café.bin" for item in rows[1]["result"]["items"])
+                assert len(rows[2]["result"]["items"]) == 101
+                assert rows[3]["result"]["data"] == amiga_body[73720:73793].hex()
+                assert rows[4]["result"]["sha256"] == hashlib.sha256(amiga_body).hexdigest()
+                assert amiga_export.read_bytes() == amiga_body
+                assert rows[6]["result"]["data"] == b"Unix-safe evidence name".hex()
+                assert amiga_path.read_bytes() == amiga_source
+
         # ReiserFS v3: both key/bitmap layouts, sparse indirect and packed tails.
         for reiser_name, reiser_block in [("v35-1024-old", 1024), ("v36-4096-relocated", 4096)]:
             reiser_path = root / (reiser_name + ".reiserfs")

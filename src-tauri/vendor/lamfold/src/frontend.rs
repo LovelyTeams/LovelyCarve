@@ -104,6 +104,13 @@ pub trait FoldFrontend<S: BlockSource>: Sized {
     /// Metadata for a node.
     fn metadata(&mut self, node: NodeId, cx: &mut SubstrateCtx<'_>) -> Result<Metadata>;
 
+    /// Canonical object identity, independent of a directory entry's header.
+    /// Formats whose hard links have their own headers override this; metadata
+    /// may still preserve the dates recorded on that particular name.
+    fn inode_identity(&mut self, node: NodeId, _cx: &mut SubstrateCtx<'_>) -> Result<NodeId> {
+        Ok(node)
+    }
+
     /// Preserve only timestamp roles actually recorded by the format.
     fn timestamps(&mut self, _node: NodeId, _cx: &mut SubstrateCtx<'_>) -> Result<FileTimes> {
         Ok(FileTimes::default())
@@ -135,5 +142,20 @@ pub trait FoldFrontend<S: BlockSource>: Sized {
     fn read_link(&mut self, node: NodeId, cx: &mut SubstrateCtx<'_>) -> Result<Option<Vec<u8>>> {
         let _ = (node, cx);
         Ok(None)
+    }
+
+    /// Display text decoded using the format's native character set. The raw
+    /// target remains available through `read_link`; decoding must be lossless.
+    fn read_link_text(
+        &mut self,
+        node: NodeId,
+        cx: &mut SubstrateCtx<'_>,
+    ) -> Result<Option<String>> {
+        self.read_link(node, cx)?
+            .map(|bytes| {
+                String::from_utf8(bytes)
+                    .map_err(|_| crate::FoldError::Unsupported("non-UTF-8 link target"))
+            })
+            .transpose()
     }
 }

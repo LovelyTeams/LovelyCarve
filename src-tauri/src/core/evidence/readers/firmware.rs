@@ -242,6 +242,7 @@ fn parse_trx(bytes: &[u8], base: u64, cancel: &CancellationToken) -> Result<Vec<
             length_lba: (end - start) as u64,
             label: Some(format!("TRX rootfs (segment {index})")),
             unique_guid: None,
+            amiga_geometry: None,
         });
     }
     Ok(partitions)

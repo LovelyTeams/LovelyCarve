@@ -1,0 +1,11 @@
+/target
+Cargo.lock
+
+# cargo-fuzz working state. The corpus and any crash artifacts are
+# machine-generated; the committed seeds under fuzz/seeds/ are the only
+# fuzz inputs that belong in history.
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
+/fuzz/coverage
+/fuzz/Cargo.lock

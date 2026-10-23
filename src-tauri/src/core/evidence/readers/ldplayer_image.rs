@@ -216,6 +216,7 @@ pub(crate) fn open_cancellable(
                 length_lba: seg_len / LD_SECTOR as u64,
                 label: Some(stem.to_string()),
                 unique_guid: None,
+                amiga_geometry: None,
             });
             continue;
         }

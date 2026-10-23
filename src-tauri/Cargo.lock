@@ -135,6 +135,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "amiga-ffs"
+version = "0.4.0"
+
+[[package]]
+name = "amiga-rdb"
+version = "0.4.1"
+
+[[package]]
+name = "amiga-reader"
+version = "0.1.0"
+dependencies = [
+ "amiga-ffs",
+ "lamfold",
+]
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3740,6 +3756,8 @@ dependencies = [
  "ad1-core",
  "aes 0.9.3",
  "aho-corasick",
+ "amiga-rdb",
+ "amiga-reader",
  "anyhow",
  "apfs",
  "backhand",

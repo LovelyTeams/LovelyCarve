@@ -5,6 +5,68 @@ use std::fs::File;
 use std::io::Write;
 
 #[test]
+fn amiga_auto_snapshot_preserves_alias_edges_and_local_dates() {
+    use std::io::Read;
+    for (fixture, keys) in [
+        (
+            include_bytes!("../../../../../vendor/amiga-reader/tests/fixtures/links-dos3.zlib")
+                .as_slice(),
+            vec!["part:0"],
+        ),
+        (
+            include_bytes!("../../../../../vendor/amiga-reader/tests/fixtures/rdb-multiblock.zlib")
+                .as_slice(),
+            vec!["part:0", "part:1", "part:3"],
+        ),
+    ] {
+        let directory = tempfile::tempdir().unwrap();
+        let mut bytes = Vec::new();
+        flate2::read::ZlibDecoder::new(fixture)
+            .read_to_end(&mut bytes)
+            .unwrap();
+        let source = directory.path().join("amiga.hdf");
+        std::fs::write(&source, bytes).unwrap();
+        let image = Arc::new(EvidenceSession::from(DiskImage::open(&source).unwrap()));
+        assert_eq!(browsable_volume_keys(&image), keys);
+        for key in keys {
+            let output = directory
+                .path()
+                .join(format!("{}.dirz", key.replace(':', "_")));
+            let built = volume_snapshot::build_volume_snapshot(
+                &image,
+                key,
+                &output,
+                1000,
+                "2026-01-01T00:00:00Z".into(),
+                &CancellationToken::new(),
+                &mut |_| {},
+            )
+            .unwrap();
+            assert!(!built.truncated);
+            let snapshot = volume_snapshot::load_snapshot(&output).unwrap();
+            let live = fs_tree::children_for_image(&image, key).unwrap();
+            assert_eq!(
+                serde_json::to_value(snapshot.children(key).unwrap()).unwrap(),
+                serde_json::to_value(&live).unwrap()
+            );
+            let sub = live.iter().find(|node| node.name == "sub").unwrap();
+            assert_eq!(snapshot.children(&sub.id).unwrap().len(), 101);
+            let big = live.iter().find(|node| node.name == "Café.bin").unwrap();
+            let modified = big.timestamps.modified.as_deref().unwrap();
+            assert!(chrono::DateTime::parse_from_rfc3339(modified).is_err());
+            assert!(modified.ends_with("59.980"));
+            if let Some(alias) = live.iter().find(|node| node.name == "alias.bin") {
+                assert_eq!(big.inode, alias.inode);
+                assert_ne!(big.id, alias.id);
+                assert_ne!(big.timestamps.modified, alias.timestamps.modified);
+                let linked = live.iter().find(|node| node.name == "dirlink").unwrap();
+                assert_eq!(snapshot.children(&linked.id).unwrap().len(), 101);
+            }
+        }
+    }
+}
+
+#[test]
 fn reiserfs_auto_snapshot_preserves_native_names_and_hardlink_edges() {
     use std::io::Read;
     let directory = tempfile::tempdir().unwrap();

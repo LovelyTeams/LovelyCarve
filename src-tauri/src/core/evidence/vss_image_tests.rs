@@ -120,6 +120,7 @@ fn disk_with_shadow_copy() -> Arc<DiskImage> {
             length_lba: 8,
             label: None,
             unique_guid: None,
+            amiga_geometry: None,
         },
         Partition {
             id: 2,
@@ -128,6 +129,7 @@ fn disk_with_shadow_copy() -> Arc<DiskImage> {
             length_lba: (VOLUME_BLOCKS * BLOCK / 512) as u64,
             label: None,
             unique_guid: None,
+            amiga_geometry: None,
         },
     ];
     let image = DiskImage::from_assembled(
@@ -232,6 +234,7 @@ fn image_from_volume(volume: Vec<u8>) -> Arc<DiskImage> {
                 length_lba: length / 512,
                 label: None,
                 unique_guid: None,
+                amiga_geometry: None,
             }],
             512,
         )
@@ -312,6 +315,7 @@ fn rejects_volumes_without_shadow_copies_and_bad_requests() {
                 length_lba: (VOLUME_BLOCKS * BLOCK / 512) as u64,
                 label: None,
                 unique_guid: None,
+                amiga_geometry: None,
             }],
             512,
         )

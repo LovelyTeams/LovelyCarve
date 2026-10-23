@@ -161,6 +161,9 @@ fmt:
     cd src-tauri/vendor/classic-hfs && cargo fmt
     cd src-tauri/vendor/jfs-reader && cargo fmt
     cd src-tauri/vendor/reiserfs-reader && cargo fmt
+    cd src-tauri/vendor/amiga-reader && cargo fmt
+    cd src-tauri/vendor/amiga-ffs && cargo fmt
+    cd src-tauri/vendor/amiga-rdb && cargo fmt
     cd src-tauri/vendor/lamfold-erofs && cargo fmt
     cd src-tauri/vendor/f2fs-reader && cargo fmt
     cd src-tauri/vendor/qnx-reader && cargo fmt
@@ -454,6 +457,26 @@ test-jfs:
 [group("readers")]
 test-reiserfs:
     cargo test --manifest-path src-tauri/vendor/reiserfs-reader/Cargo.toml --lib
+
+[group("readers")]
+test-amiga:
+    cargo test --manifest-path src-tauri/vendor/amiga-reader/Cargo.toml --lib
+
+[group("readers")]
+test-amiga-ffs:
+    cargo test --manifest-path src-tauri/vendor/amiga-ffs/Cargo.toml --lib
+
+[group("readers")]
+test-amiga-rdb:
+    cargo test --manifest-path src-tauri/vendor/amiga-rdb/Cargo.toml --lib
+
+[group("readers")]
+clippy-amiga:
+    cargo clippy --manifest-path src-tauri/vendor/amiga-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-amiga-fixtures:
+    {{ python }} scripts/amiga-fixtures.py
 
 [group("readers")]
 clippy-reiserfs:

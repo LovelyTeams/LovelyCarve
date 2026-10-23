@@ -58,6 +58,7 @@ impl PartParser for HfsPlusParser {
             length_lba,
             label: None,
             unique_guid: None,
+            amiga_geometry: None,
         }]))
     }
 }

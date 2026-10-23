@@ -24,6 +24,7 @@ impl PartParser for OpticalDiscParser {
                 length_lba: layout.physical_length() / RAW_SECTOR_BYTES as u64,
                 label: None,
                 unique_guid: None,
+                amiga_geometry: None,
             }]
         }))
     }

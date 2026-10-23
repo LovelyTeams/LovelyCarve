@@ -104,6 +104,7 @@ impl PartParser for ApmParser {
                     Some(format!("{name} ({type_name})"))
                 },
                 unique_guid: None,
+                amiga_geometry: None,
             });
         }
         Ok(Some(out))

@@ -49,6 +49,7 @@ impl PartParser for SquashfsParser {
             length_lba,
             label: None,
             unique_guid: None,
+            amiga_geometry: None,
         }]))
     }
 }

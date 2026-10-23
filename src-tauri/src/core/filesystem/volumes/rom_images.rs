@@ -12,6 +12,9 @@ use crate::core::evidence::image::{find_partition, DiskImage, Partition};
 use crate::core::filesystem::fs_dispatch::build_stat;
 use crate::core::filesystem::tree::fs_tree::{FsNode, FsStat, Mactb, NodeKind};
 
+#[cfg(test)]
+#[path = "amiga_tests.rs"]
+mod amiga_tests;
 #[path = "classic_hfs_streams.rs"]
 mod classic_hfs_streams;
 #[cfg(test)]
@@ -48,11 +51,35 @@ pub type MinixVolume = RomVolume<minix_reader::Minix<RomImageSource>>;
 pub type HfsVolume = RomVolume<classic_hfs::Hfs<RomImageSource>>;
 pub type JfsVolume = RomVolume<jfs_reader::Jfs<RomImageSource>>;
 pub type ReiserFsVolume = RomVolume<reiserfs_reader::ReiserFs<RomImageSource>>;
+pub type AmigaVolume = RomVolume<amiga_reader::Amiga<RomImageSource>>;
 
 pub struct RomImageSource {
     image: Arc<DiskImage>,
     base: u64,
     length: u64,
+}
+
+impl RomImageSource {
+    fn new(image: Arc<DiskImage>, partition: &Partition) -> Result<Self> {
+        let base = partition
+            .start_lba
+            .checked_mul(image.sector_size as u64)
+            .context("ROM image base overflow")?;
+        let length = partition
+            .length_lba
+            .checked_mul(image.sector_size as u64)
+            .context("ROM image length overflow")?;
+        ensure!(
+            base.checked_add(length)
+                .is_some_and(|end| end <= image.len()),
+            "ROM image partition exceeds source"
+        );
+        Ok(Self {
+            image,
+            base,
+            length,
+        })
+    }
 }
 
 impl BlockSource for RomImageSource {
@@ -147,6 +174,30 @@ pub fn open_reiserfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<Rei
         find_partition(image, &partition.to_string())?,
     )
 }
+pub fn parse_amiga_id(id: &str) -> Option<(u8, String)> {
+    let rest = id.strip_prefix("amiga:part:")?;
+    let (partition, path) = rest.split_once(':')?;
+    let path = String::from_utf8(hex::decode(path).ok()?).ok()?;
+    valid_lookup_path(&path).then_some((partition.parse().ok()?, path))
+}
+pub fn open_amiga_source(image: &Arc<DiskImage>, partition: u8) -> Result<AmigaVolume> {
+    let partition = find_partition(image, &partition.to_string())?;
+    let source = RomImageSource::new(Arc::clone(image), partition)?;
+    let hints = partition
+        .amiga_geometry
+        .map(|geometry| amiga_reader::Hints {
+            block_size: geometry.block_size,
+            blocks: geometry.blocks,
+            reserved: geometry.reserved,
+            dos_type: geometry.dos_type,
+        });
+    let reader =
+        amiga_reader::Amiga::open_with_hints(source, hints).context("Amiga OFS/FFS open")?;
+    Ok(RomVolume {
+        partition_id: partition.id,
+        reader: RefCell::new(reader),
+    })
+}
 pub fn open_hfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<HfsVolume> {
     HfsVolume::open(
         Arc::clone(image),
@@ -230,33 +281,14 @@ pub fn open_romfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<RomfsV
 
 impl<F: FoldFrontend<RomImageSource>> RomVolume<F> {
     pub fn open(image: Arc<DiskImage>, partition: &Partition) -> Result<Self> {
-        let base = partition
-            .start_lba
-            .checked_mul(image.sector_size as u64)
-            .context("ROM image base overflow")?;
-        let length = partition
-            .length_lba
-            .checked_mul(image.sector_size as u64)
-            .context("ROM image length overflow")?;
-        ensure!(
-            base.checked_add(length)
-                .is_some_and(|end| end <= image.len()),
-            "ROM image partition exceeds source"
-        );
+        let source = RomImageSource::new(image, partition)?;
         let mut cache = BlockCache::new(0);
         let mut context = SubstrateCtx {
             cache: &mut cache,
             verifier: &NoVerifier,
         };
-        let reader = F::open(
-            RomImageSource {
-                image,
-                base,
-                length,
-            },
-            &mut context,
-        )
-        .with_context(|| format!("{} open part:{}", F::TAG, partition.id))?;
+        let reader = F::open(source, &mut context)
+            .with_context(|| format!("{} open part:{}", F::TAG, partition.id))?;
         Ok(Self {
             partition_id: partition.id,
             reader: RefCell::new(reader),
@@ -280,14 +312,17 @@ impl<F: FoldFrontend<RomImageSource>> RomVolume<F> {
         ensure!(valid_lookup_path(path), "invalid ROM image path");
         ensure!(path.split('/').count() <= 257, "ROM image path depth limit");
         let mut node = reader.root();
-        let mut ancestors = HashSet::from([node]);
+        let mut ancestors = HashSet::from([reader.inode_identity(node, context)?]);
         for component in path.split('/').filter(|component| !component.is_empty()) {
             node = reader
                 .lookup(node, component, context)?
                 .context("ROM image entry not found")?;
             let metadata = reader.metadata(node, context)?;
             if metadata.kind == FileKind::Directory {
-                ensure!(ancestors.insert(node), "ROM image directory ancestry cycle");
+                ensure!(
+                    ancestors.insert(reader.inode_identity(node, context)?),
+                    "ROM image directory ancestry cycle"
+                );
             }
         }
         Ok((node, ancestors))
@@ -308,8 +343,9 @@ impl<F: FoldFrontend<RomImageSource>> RomVolume<F> {
         let mut nodes = Vec::new();
         for entry in reader.read_dir(directory, &mut context)? {
             let metadata = reader.metadata(entry.node, &mut context)?;
+            let inode = reader.inode_identity(entry.node, &mut context)?;
             ensure!(
-                metadata.kind != FileKind::Directory || !ancestors.contains(&entry.node),
+                metadata.kind != FileKind::Directory || !ancestors.contains(&inode),
                 "ROM image directory ancestry cycle"
             );
             let child_path = format!("{path}/{}", entry.name);
@@ -328,7 +364,7 @@ impl<F: FoldFrontend<RomImageSource>> RomVolume<F> {
                     0
                 },
                 deleted: false,
-                inode: Some(entry.node),
+                inode: Some(inode),
                 timestamps: {
                     let times = reader.timestamps(entry.node, &mut context)?;
                     let local = reader.local_timestamps(entry.node, &mut context)?;
@@ -367,10 +403,7 @@ impl<F: FoldFrontend<RomImageSource>> RomVolume<F> {
                         birth: None,
                     }
                 },
-                link_target: reader
-                    .read_link(entry.node, &mut context)?
-                    .map(String::from_utf8)
-                    .transpose()?,
+                link_target: reader.read_link_text(entry.node, &mut context)?,
                 has_snapshot: false,
             });
         }
@@ -435,14 +468,17 @@ impl<F: FoldFrontend<RomImageSource>> RomVolume<F> {
                 verifier: &NoVerifier,
             };
             let (node, _) = Self::resolve(&mut reader, path, &mut context)?;
-            (node, reader.metadata(node, &mut context)?)
+            (
+                reader.inode_identity(node, &mut context)?,
+                reader.metadata(node, &mut context)?,
+            )
         };
         let sample = self.read_file(path, 4096)?;
         Ok(build_stat(
             node_id,
             metadata.size,
             Some(node),
-            Some(metadata.mode as u16),
+            (metadata.mode != 0).then_some(metadata.mode as u16),
             &sample,
             Vec::new(),
         ))

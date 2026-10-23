@@ -312,6 +312,7 @@ pub(super) fn fs_label_for_kind(kind: PartitionKind) -> &'static str {
         PartitionKind::Hfs => "HFS",
         PartitionKind::Jfs => "JFS",
         PartitionKind::Reiserfs => "ReiserFS",
+        PartitionKind::Amiga => "Amiga OFS/FFS",
         PartitionKind::Minix => "MINIX",
         PartitionKind::Minifs => "MINIFS",
         PartitionKind::Romfs => "ROMFS",

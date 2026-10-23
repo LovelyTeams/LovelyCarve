@@ -108,6 +108,7 @@ impl GptEntry {
             length_lba,
             label,
             unique_guid: (!self.unique_guid.is_nil()).then(|| *self.unique_guid.as_bytes()),
+            amiga_geometry: None,
         })
     }
 }

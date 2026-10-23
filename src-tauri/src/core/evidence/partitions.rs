@@ -17,6 +17,7 @@
 //! sibling submodule; adding a new format means adding one trait impl and one
 //! entry to `PARSERS`.
 
+pub mod amiga;
 pub mod apm;
 pub mod bsd;
 pub mod btrfs;
@@ -54,6 +55,7 @@ use std::collections::HashSet;
 
 use crate::core::evidence::image::{rebase_bad_regions, BadRegion};
 
+use amiga::RdbParser;
 use apm::ApmParser;
 use bsd::BsdParser;
 use gpt::GptParser;
@@ -81,6 +83,19 @@ pub struct Partition {
     /// `ImageInfo` 线格式向后兼容。
     #[serde(default)]
     pub unique_guid: Option<[u8; 16]>,
+    /// Filesystem geometry from an Amiga RDB DosEnvec. Kept with the leaf
+    /// partition when nested tables are flattened; source offsets stay in the
+    /// image's sectors, while these counts are filesystem blocks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub amiga_geometry: Option<AmigaGeometry>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AmigaGeometry {
+    pub block_size: u32,
+    pub blocks: u64,
+    pub reserved: u32,
+    pub dos_type: u32,
 }
 
 /// Which partition-table layout claimed the device. `Volume` covers every
@@ -97,6 +112,7 @@ pub enum TableScheme {
     /// byte-addressed payloads rather than sector-aligned disk partitions.
     Firmware,
     Apm,
+    Rdb,
     Bsd,
     Luks,
     Mdadm,
@@ -128,6 +144,7 @@ pub enum PartitionKind {
     Minix,
     Jfs,
     Reiserfs,
+    Amiga,
     Ubifs,
     Lvm,
     Bitlocker,
@@ -250,6 +267,7 @@ static PARSERS: &[&dyn PartParser] = &[
     &OpticalDiscParser,
     &GptParser,
     &ApmParser,
+    &RdbParser,
     &BsdParser,
     &MbrParser,
     &Lvm2Parser,
@@ -346,6 +364,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Hfs
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
+        | PartitionKind::Amiga
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs
@@ -426,7 +445,9 @@ fn detect_recursive(
         let byte_len = partition.length_lba.saturating_mul(sector_size as u64);
         let abs_off = abs_base.saturating_add(byte_off);
         let abs_key = (abs_off, byte_len);
-        let children = if should_recurse(partition.kind, byte_off, byte_len, parent_size)
+        let children = if (partition.kind != PartitionKind::Amiga
+            || partition.amiga_geometry.is_none())
+            && should_recurse(partition.kind, byte_off, byte_len, parent_size)
             && visited.insert(abs_key)
         {
             let slice = PartitionSlice::new(source, byte_off, byte_len);
@@ -454,6 +475,20 @@ pub fn refine_partition_kinds(
         let offset = partition.start_lba * sector_size as u64;
         let byte_len = partition.length_lba.saturating_mul(sector_size as u64);
         let slice = PartitionSlice::new(source, offset, byte_len);
+        if let Some(geometry) = partition
+            .amiga_geometry
+            .filter(|geometry| amiga::is_ofs_ffs(geometry.dos_type))
+        {
+            // DosEnvec may exclude leftover sectors at the end of each track.
+            // Re-probing the physical span as a bare volume changes the root
+            // geometry and can even mislabel its boot bytes as BIOS code.
+            partition.kind = if amiga::inspect_rdb_volume(&slice, geometry)? {
+                PartitionKind::Amiga
+            } else {
+                PartitionKind::Unknown
+            };
+            continue;
+        }
         // Cache the 4 KiB boot region the first time we read it so the
         // filesystem-detection fallback and the BIOS-boot zero check below
         // share a single read instead of hitting the (often compressed
@@ -467,7 +502,10 @@ pub fn refine_partition_kinds(
             let bytes = header.insert(source.read(offset, 4096)?);
             detect_filesystem(bytes, partition.kind)
         };
-        if partition.kind == PartitionKind::Unknown && partition.length_lba <= 4096 {
+        if partition.kind == PartitionKind::Unknown
+            && partition.length_lba <= 4096
+            && partition.amiga_geometry.is_none()
+        {
             let bytes = match header {
                 Some(bytes) => bytes,
                 None => source.read(offset, 4096)?,
@@ -594,6 +632,7 @@ mod tests {
                 "optical_disc",
                 "gpt",
                 "apm",
+                "rdb",
                 "bsd",
                 "mbr",
                 "lvm2",
@@ -667,6 +706,7 @@ mod tests {
             length_lba: 1,
             label: None,
             unique_guid: None,
+            amiga_geometry: None,
         };
         let slice = PartitionSlice::for_partition(&src, &partition, 16);
         let bytes = slice.read(0, 16).expect("read");

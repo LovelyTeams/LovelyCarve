@@ -146,6 +146,7 @@ impl Fixture {
             length_lba: self.bytes.len() as u64 / image.sector_size as u64,
             label: None,
             unique_guid: None,
+            amiga_geometry: None,
         };
         let volume = FatVolume::open(image, &partition).unwrap();
         (temporary, volume)

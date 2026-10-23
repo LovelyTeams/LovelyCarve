@@ -321,6 +321,7 @@ fn append_partition(
             length_lba: u64::from(entry.length_lba),
             label: None,
             unique_guid: None,
+            amiga_geometry: None,
         },
         entry,
         record_lba,

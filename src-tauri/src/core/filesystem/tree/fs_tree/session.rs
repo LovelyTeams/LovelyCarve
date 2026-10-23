@@ -206,6 +206,12 @@ impl<'a> FsSession<'a> {
                         )?
                         .root_children(),
                     ),
+                    PartitionKind::Amiga => Some(
+                        crate::core::filesystem::volumes::rom_images::open_amiga_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::Minix => Some(
                         crate::core::filesystem::volumes::rom_images::open_minix_source(
                             self.image, pid,

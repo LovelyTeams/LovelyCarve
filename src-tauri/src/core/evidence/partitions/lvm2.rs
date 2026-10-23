@@ -48,6 +48,7 @@ impl PartParser for Lvm2Parser {
                 length_lba: ctx.size / ctx.sector_size as u64,
                 label: Some("LVM2 PV".into()),
                 unique_guid: None,
+                amiga_geometry: None,
             }]));
         }
         Ok(None)

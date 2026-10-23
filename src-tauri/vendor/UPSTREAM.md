@@ -121,3 +121,17 @@ partmgr 0.1.2 提交 `d074f660e81dfa6ade66cd07400b7421ad9eb9b9`（MIT）。
 修正位图字索引、内部 xtree 逻辑寻址与续槽语义，扩展多 IAG、块大小、目录索引、链接和 EA；
 不包含 C 文件系统代码、写入或日志回放。来源与许可见 [ORIGIN.md](jfs-reader/ORIGIN.md)，
 能力与限制见 [JFS.md](../../docs/formats/JFS.md)。
+
+## Amiga OFS / FFS 与 RDB
+
+`amiga-ffs` 0.4.0、`amiga-rdb` 0.4.1，Simon Dick，MIT OR Apache-2.0。
+保留发布包与原许可，固定提交 / crate 哈希见各目录的 ORIGIN.md。均添加独立 workspace；
+FFS 的唯一源码补丁在 `src/file.rs`：收集数据指针前按逻辑大小限制总数，避免畸形链扩大分配。
+RDB 的大型上游 lib.rs 保持原样。检材仅实现只读 BlockSource，不能调用写入 API。
+
+`amiga-reader` 为 AGPL-3.0-only 适配：分配位图、头 / 名称 / 目录哈希校验、硬链接身份、
+Latin-1、无时区日期、精确范围读取与 FFS 连续块合并。lamfold 增加默认
+`inode_identity` / `read_link_text`：名称头日期与共享对象身份分开，显示文本与链接原始字节分开。
+RDB 保留设备分区跨度和 DosEnvec 文件系统几何，限制链与读次数，拒绝 BADB 重映射。
+来源和独立 amitools 夹具边界见 [ORIGIN.md](amiga-reader/ORIGIN.md) 与
+[格式说明](../../docs/formats/AMIGA.md)。

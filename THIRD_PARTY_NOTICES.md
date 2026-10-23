@@ -1598,3 +1598,21 @@ The retained mkfs.jfs/guestfish fixture and its generation script are from the
 same rusty-backup revision; invented fixtures and `scripts/jfs-fixtures.py` are
 CC0-1.0. See [ORIGIN.md](src-tauri/vendor/jfs-reader/ORIGIN.md) and the fixture
 manifest for precise revisions, changes, licenses and SHA-256 values.
+
+## Amiga OFS / FFS and RDB readers
+
+`amiga-ffs` 0.4.0 and `amiga-rdb` 0.4.1 by Simon Dick, Copyright 2026,
+are pure Rust crates licensed MIT OR Apache-2.0. Original LICENSE-MIT and
+LICENSE-APACHE files are retained in each vendor directory. Sources:
+[amiga-ffs-rs](https://github.com/sidick/amiga-ffs-rs),
+[amiga-rdb-rs](https://github.com/sidick/amiga-rdb-rs).
+Pinned source hashes and maintained patches are recorded in the corresponding
+ORIGIN.md files and [adapter provenance](src-tauri/vendor/amiga-reader/ORIGIN.md).
+
+Invented fixture content and `scripts/amiga-fixtures.py` are CC0-1.0.
+[amitools](https://github.com/cnvogelg/amitools) 0.8.1 by Christian Vogelgsang
+and contributors (GPL-2.0-or-later) is used only as an external test
+formatter/reader oracle, not copied into or linked by the product. The fixture
+manifest records decoded/compressed hashes; LNFS and link field-edit boundaries
+are documented in the adapter provenance. The LovelyCarve adapter is
+AGPL-3.0-only, consistent with this repository.

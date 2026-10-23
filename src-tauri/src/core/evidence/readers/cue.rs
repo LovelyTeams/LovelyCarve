@@ -237,6 +237,7 @@ impl CueImage {
                         track.session, track.number, track.mode
                     )),
                     unique_guid: None,
+                    amiga_geometry: None,
                 })
             })
             .collect()
