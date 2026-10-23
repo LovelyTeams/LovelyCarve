@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp, defineComponent, h, nextTick, ref, type App } from 'vue';
+import type { FsSizeTreeEntry } from '../../../lib/ipc/fs/sizeTree';
 import type { FileListNavigator } from '../model/navigation';
+import { DEFAULT_TREEMAP_OPTIONS, layoutTreemap } from '../model/treemap';
 import DiskFileList from './DiskFileList.vue';
 
 const ipc = vi.hoisted(() => ({ invoke: vi.fn(), open: vi.fn(), focus: vi.fn(), emit: vi.fn() }));
@@ -27,8 +29,9 @@ const mft = { id: 'ntfs:part:2:0', name: '$MFT', kind: 'file', parent_id: 'part:
 const photo = { id: 'ntfs:part:2:41', name: 'photo.jpg', kind: 'file', parent_id: users.id, size: 700, deleted: false, inode: 41, timestamps };
 const leaf = (node: typeof photo) => ({ node, bytes: node.size, files: 1, dirs: 0, newest: null, children: null, others: null, extensions: [] });
 const usersEntry = { node: users, bytes: 700, files: 1, dirs: 0, newest: null, others: null, extensions: [{ extension: 'jpg', bytes: 700 }], children: [leaf(photo)] };
+const usersRoot = { node: null, bytes: 1_000, files: 2, dirs: 1, newest: null, others: null, extensions: [], children: [usersEntry, leaf(mft)] } as unknown as FsSizeTreeEntry;
 const views: Record<string, unknown> = {
-  'part:2': { root: { node: null, bytes: 1_000, files: 2, dirs: 1, newest: null, others: null, extensions: [], children: [usersEntry, leaf(mft)] } },
+  'part:2': { root: usersRoot },
   [users.id]: { root: usersEntry },
 };
 
@@ -98,10 +101,16 @@ describe('file list treemap view', () => {
     await settle();
     expect(sizeTreeRequests()).toEqual(['part:2']);
     expect(ipc.invoke).toHaveBeenCalledWith('fs_size_tree', expect.objectContaining({ imageId: 'disk-a', nodeId: 'part:2', depth: 3, metric: 'bytes', includeDeleted: false }));
-    expect([...host.querySelectorAll('.tile-name')].map(element => element.textContent)).toEqual(['Users', 'photo.jpg', '$MFT']);
 
-    const tile = [...host.querySelectorAll<HTMLElement>('.tile')].find(element => element.querySelector('.tile-name')?.textContent === 'Users')!;
-    tile.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    // The treemap is painted on a canvas: double-click where the Users tile is drawn.
+    const drawn = layoutTreemap(usersRoot, { x: 0, y: 0, w: 800, h: 500 }, {
+      value: item => item.bytes, children: item => item.children,
+      othersValue: () => 0, isDirectory: item => item.node?.kind === 'dir',
+    }, { ...DEFAULT_TREEMAP_OPTIONS, maxDepth: 3 });
+    const header = drawn.find(tile => tile.entry?.node?.id === users.id)!.header!;
+    host.querySelector('.treemap-surface')!.dispatchEvent(new MouseEvent('dblclick', {
+      bubbles: true, detail: 2, clientX: header.x + header.w / 2, clientY: header.y + header.h / 2,
+    }));
     await settle();
     expect(sizeTreeRequests()).toEqual(['part:2', users.id]);
     expect(host.querySelector('.crumb.current')?.textContent).toContain('Users');
@@ -116,7 +125,7 @@ describe('file list treemap view', () => {
     switchButton('树图').click();
     await settle();
     expect(sizeTreeRequests()).toEqual(['part:2', users.id]);
-    expect(host.querySelector('.tile-name')?.textContent).toBe('photo.jpg');
+    expect(host.querySelector('.treemap-surface')).not.toBeNull();
   });
 
   it('leaves the treemap for the list when a search starts', async () => {

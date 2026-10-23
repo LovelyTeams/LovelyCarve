@@ -7,23 +7,15 @@
   :aria-roledescription="tr('树图')"
   :aria-label="tr('空间树图：{0}', { 0: directoryName })"
   @pointermove="onPointerMove"
-  @pointerleave="hovered = -1"
+  @pointerleave="onPointerLeave"
   @click="onClick"
   @dblclick="onDoubleClick"
   @contextmenu="onContextMenu"
   @wheel="onWheel"
   @keydown="onKeydown"
 >
-  <template v-if="tiles.length">
-    <div ref="layer" class="tile-layer">
-      <div v-for="tile in tiles" :key="tile.key" class="tile" :class="tile.classes" :style="tile.style" :data-tile="tile.index">
-        <span v-if="tile.label" class="tile-label" :class="tile.labelClass" :style="tile.labelStyle">
-          <span class="tile-name">{{ tile.label }}</span>
-          <span v-if="tile.sizeText" class="tile-size">{{ tile.sizeText }}</span>
-        </span>
-      </div>
-    </div>
-    <div v-if="selectionStyle" class="tile-selection" :style="selectionStyle" aria-hidden="true"></div>
+  <canvas ref="canvas" class="treemap-canvas" aria-hidden="true"></canvas>
+  <template v-if="layout.length">
     <div v-if="card" class="tile-card" role="tooltip" :style="card.style">
       <p class="card-name" :class="{ deleted: card.deleted }">{{ card.name }}</p>
       <p v-if="card.path" class="card-path">{{ card.path }}</p>
@@ -32,7 +24,7 @@
         <div v-if="card.files !== null"><dt>{{ tr("文件") }}</dt><dd>{{ card.files }}</dd></div>
         <div v-if="card.dirs !== null"><dt>{{ tr("子目录") }}</dt><dd>{{ card.dirs }}</dd></div>
         <div v-if="card.newest"><dt>{{ tr("最新修改") }}</dt><dd class="mono">{{ card.newest }}</dd></div>
-        <div><dt>{{ tr("类别") }}</dt><dd class="card-kind"><span class="legend-swatch" :class="card.swatch"></span>{{ card.kind }}</dd></div>
+        <div><dt>{{ tr("类别") }}</dt><dd><span class="card-swatch" :style="{ background: card.swatch }"></span>{{ card.kind }}</dd></div>
       </dl>
       <span v-if="card.deleted" class="ui-badge sm danger">{{ tr("已删除") }}</span>
     </div>
@@ -76,18 +68,25 @@
 <script setup lang="ts">
 import { tr } from '../../../composables/useLocale';
 
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import { Camera, CircleAlert, LayoutGrid, List, Loader2, RefreshCw } from 'lucide-vue-next';
-import { animateUi, cancelUiAnimation } from '../../../composables/useUiMotion';
+import { useTheme } from '../../../composables/useTheme';
+import { useUiMotion } from '../../../composables/useUiMotion';
 import type { FsSizeTreeEntry, FsSizeTreeView } from '../../../lib/ipc/fs/sizeTree';
 import type { SizeTreeStatus, TreemapMode } from '../composables/useSizeTree';
 import { formatBytes, type DiskFsNode } from '../model/model';
 import type { FileNavigationFrame } from '../model/navigation';
 import {
-  DEFAULT_TREEMAP_OPTIONS, layoutTreemap, neighbourTile, tileBody, tileChain,
+  DEFAULT_TREEMAP_OPTIONS, hitTile, layoutTreemap, neighbourTile, tileBody, tileChain,
   type Rect, type TreemapDirection, type TreemapTile,
 } from '../model/treemap';
 import { ageBucketOf, formatUnixSeconds, treemapKindLabel, treemapKindOf, type TreemapKind } from '../model/treemapKinds';
+import { kindSwatch } from '../model/treemapPalette';
+import {
+  IDENTITY_VIEW, KEY_ZOOM_FACTOR, WHEEL_ZOOM_FACTOR, clampView, layoutTransition, panView, projectRect, unprojectPoint,
+  visibleBase, wheelLines, zoomStep, type LayoutTransition, type TreemapView, type ZoomStep,
+} from '../model/treemapView';
+import { paintTreemap, resolvePalette, type PaintTile, type TreemapPalette } from './treemapCanvas';
 
 const props = defineProps<{
   view: FsSizeTreeView | null;
@@ -98,7 +97,7 @@ const props = defineProps<{
   directoryName: string;
   /** 当前目录的完整路径，拼出各瓦片的路径。 */
   directoryPath: string;
-  /** 当前目录是卷根：顶层的 NTFS 元文件按名字判为系统。 */
+  /** 当前目录是卷根：顶层的 NTFS 元文件按名字判为系统，也不再向上滚出卷。 */
   volumeRoot: boolean;
   /** 当前目录本身在系统区（如 `$Extend`）内。 */
   systemArea: boolean;
@@ -119,50 +118,29 @@ const emit = defineEmits<{
 
 type Tile = TreemapTile<FsSizeTreeEntry>;
 
-/** 能放下名称的最小区域，以及名称下方再放一行大小的高度。 */
-const LABEL_MIN_WIDTH = 54;
-const LABEL_MIN_HEIGHT = 15;
-const STACK_MIN_HEIGHT = 36;
-/** 标签左右内边距与名称、大小之间的间隙。 */
-const LABEL_CHROME = 20;
-/** 滚轮累计到这么多像素才进入或退出一层，触控板的细碎滚动不会连跳几层。 */
-const WHEEL_STEP = 60;
+const { currentTheme } = useTheme();
+const { motionEnabled } = useUiMotion();
 
 const surface = ref<HTMLElement | null>(null);
-const layer = ref<HTMLElement | null>(null);
+const canvas = ref<HTMLCanvasElement | null>(null);
 const area = ref({ width: 0, height: 0 });
 const measured = computed(() => area.value.width >= 40 && area.value.height >= 40);
 const hovered = ref(-1);
-const pointer = ref({ x: 0, y: 0 });
+const pointer = ref({ x: 0, y: 0, inside: false });
 /** 键盘或单击选中的瓦片下标；布局变化后按选中节点重新找。 */
 const focused = ref(-1);
 const announcement = ref('');
-
-let observer: ResizeObserver | null = null;
-function measure() {
-  const element = surface.value;
-  if (!element) return;
-  const width = Math.floor(element.clientWidth);
-  const height = Math.floor(element.clientHeight);
-  if (width !== area.value.width || height !== area.value.height) area.value = { width, height };
-}
-onMounted(() => {
-  measure();
-  if (typeof ResizeObserver !== 'undefined' && surface.value) {
-    observer = new ResizeObserver(measure);
-    observer.observe(surface.value);
-  }
-});
-onBeforeUnmount(() => {
-  observer?.disconnect();
-  if (layer.value) cancelUiAnimation(layer.value);
-});
+const palette = shallowRef<TreemapPalette | null>(null);
+/** 视图变换与过渡逐帧变化，不进响应式：只触发重画。 */
+let view: TreemapView = IDENTITY_VIEW;
+let transition: LayoutTransition | null = null;
+let context: CanvasRenderingContext2D | null = null;
 
 const layout = computed<Tile[]>(() => {
-  const view = props.view;
-  if (!view || !measured.value) return [];
+  const data = props.view;
+  if (!data || !measured.value) return [];
   const byFiles = props.mode === 'files';
-  return layoutTreemap(view.root, { x: 0, y: 0, w: area.value.width, h: area.value.height }, {
+  return layoutTreemap(data.root, { x: 0, y: 0, w: area.value.width, h: area.value.height }, {
     value: entry => (byFiles ? entry.files : entry.bytes),
     children: entry => entry.children,
     othersValue: entry => (entry.others ? (byFiles ? entry.others.files : entry.others.bytes) : 0),
@@ -182,60 +160,36 @@ const kinds = computed<TreemapKind[]>(() => {
   return result;
 });
 
-function snapped(rect: Rect) {
-  const left = Math.round(rect.x);
-  const top = Math.round(rect.y);
-  return { left, top, width: Math.max(0, Math.round(rect.x + rect.w) - left), height: Math.max(0, Math.round(rect.y + rect.h) - top) };
-}
-
-function boxStyle(rect: Rect): string {
-  const box = snapped(rect);
-  return `left:${box.left}px;top:${box.top}px;width:${box.width}px;height:${box.height}px`;
-}
-
-/** 文字的大致宽度：中日韩字符一个字号宽，其余约六成。只用来决定放不放得下。 */
-function textWidth(text: string, fontSize: number): number {
-  let width = 0;
-  for (const character of text) width += (character.codePointAt(0) ?? 0) >= 0x2e80 ? fontSize : fontSize * 0.6;
-  return width;
-}
-
 function valueText(bytes: number, files: number): string {
   return props.mode === 'files' ? tr('{0} 个文件', { 0: files.toLocaleString() }) : formatBytes(bytes);
 }
 
-function colourClass(tile: Tile, index: number): string {
-  if (props.mode !== 'age') return `k-${kinds.value[index]}`;
-  const bucket = ageBucketOf(tile.entry?.newest ?? null, props.view?.newestWrite ?? null);
-  return bucket === null ? 'age-none' : `age-${bucket}`;
-}
-
-const tiles = computed(() => layout.value.map((tile, index) => {
-  const entry = tile.entry;
-  const owned = tile.header ?? tile.rect;
-  const labelled = owned.w >= LABEL_MIN_WIDTH && owned.h >= LABEL_MIN_HEIGHT;
-  const stacked = !tile.header && tile.rect.h >= STACK_MIN_HEIGHT;
-  const classes = [colourClass(tile, index), props.mode === 'age' ? 'aged' : `d${Math.min(tile.depth, 3)}`];
-  if (tile.header) classes.push('open');
-  if (!entry) classes.push('others');
-  if (entry?.node?.deleted) classes.push('deleted');
-  const others = entry ? null : tile.owner.others;
-  const label = !labelled ? null : entry ? entry.node?.name ?? props.directoryName : tr('其余 {0} 项', { 0: (others?.count ?? 0).toLocaleString() });
-  const value = !label ? null : entry ? valueText(entry.bytes, entry.files) : valueText(others?.bytes ?? 0, others?.files ?? 0);
-  // 名称优先：大小放在名称下方，或者与名称同一行且两者都放得下，否则不显示。
-  const sizeText = value !== null && label !== null
-    && (stacked || textWidth(label, 12) + textWidth(value, 11) + LABEL_CHROME <= owned.w) ? value : null;
-  return {
-    key: `${tile.parent}:${entry?.node?.id ?? 'others'}`,
-    index,
-    classes,
-    style: boxStyle(tile.rect),
-    label,
-    sizeText,
-    labelClass: tile.header ? (tile.depth === 0 ? 'band top' : 'band') : stacked ? 'stacked' : '',
-    labelStyle: tile.header ? `height:${Math.round(tile.header.h)}px` : undefined,
-  };
-}));
+const paintTiles = computed<PaintTile[]>(() => {
+  const colors = palette.value;
+  if (!colors) return [];
+  const reference = props.view?.newestWrite ?? null;
+  return layout.value.map((tile, index) => {
+    const entry = tile.entry;
+    const others = entry ? null : tile.owner.others;
+    let fill: string;
+    if (props.mode === 'age') {
+      const bucket = ageBucketOf(entry?.newest ?? null, reference);
+      fill = bucket === null ? colors.ageUnknown : colors.ageFills[bucket] ?? colors.ageUnknown;
+    } else {
+      fill = colors.kindFills[kinds.value[index]][Math.min(tile.depth, 3)];
+    }
+    return {
+      rect: tile.rect,
+      header: tile.header,
+      depth: tile.depth,
+      fill,
+      deleted: entry?.node?.deleted === true,
+      others: !entry,
+      label: entry ? entry.node?.name ?? props.directoryName : tr('其余 {0} 项', { 0: (others?.count ?? 0).toLocaleString() }),
+      size: entry ? valueText(entry.bytes, entry.files) : valueText(others?.bytes ?? 0, others?.files ?? 0),
+    };
+  });
+});
 
 /** 选中的瓦片：单击 / 方向键选中的那块，否则按选中节点找到的第一块。 */
 const selectedIndex = computed(() => {
@@ -244,10 +198,108 @@ const selectedIndex = computed(() => {
   if (layout.value[focused.value]?.entry?.node?.id === id) return focused.value;
   return layout.value.findIndex(tile => tile.entry?.node?.id === id);
 });
-const selectionStyle = computed(() => {
-  const tile = layout.value[selectedIndex.value];
-  return tile ? boxStyle(tile.rect) : null;
+
+// ── 绘制 ──
+
+let frame = 0;
+function requestPaint() {
+  if (frame || typeof requestAnimationFrame === 'undefined') return;
+  frame = requestAnimationFrame(paintNow);
+}
+
+function paintNow() {
+  frame = 0;
+  const element = canvas.value;
+  const colors = palette.value;
+  if (!element || !context || !colors) return;
+  const { width, height } = area.value;
+  const ratio = window.devicePixelRatio || 1;
+  const pixelWidth = Math.max(1, Math.round(width * ratio));
+  const pixelHeight = Math.max(1, Math.round(height * ratio));
+  if (element.width !== pixelWidth) element.width = pixelWidth;
+  if (element.height !== pixelHeight) element.height = pixelHeight;
+  const running = paintTreemap(context, {
+    tiles: paintTiles.value,
+    view,
+    transition,
+    now: performance.now(),
+    width,
+    height,
+    pixelRatio: ratio,
+    hovered: hovered.value,
+    selected: selectedIndex.value,
+    palette: colors,
+  });
+  if (running) requestPaint();
+  else transition = null;
+}
+
+function refreshPalette() {
+  if (!context || !surface.value) return;
+  palette.value = resolvePalette(surface.value, context);
+}
+
+let observer: ResizeObserver | null = null;
+function measure() {
+  const element = surface.value;
+  if (!element) return;
+  const width = Math.floor(element.clientWidth);
+  const height = Math.floor(element.clientHeight);
+  if (width !== area.value.width || height !== area.value.height) area.value = { width, height };
+}
+
+onMounted(() => {
+  measure();
+  if (typeof ResizeObserver !== 'undefined' && surface.value) {
+    observer = new ResizeObserver(measure);
+    observer.observe(surface.value);
+  }
+  try {
+    context = canvas.value?.getContext('2d') ?? null;
+  } catch {
+    context = null;
+  }
+  refreshPalette();
+  requestPaint();
 });
+
+onBeforeUnmount(() => {
+  observer?.disconnect();
+  if (frame && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(frame);
+  frame = 0;
+});
+
+watch(currentTheme, refreshPalette);
+watch(area, ({ width, height }) => {
+  view = clampView(view, width, height);
+});
+watch([paintTiles, hovered, selectedIndex, area], requestPaint);
+
+// ── 命中与选择 ──
+
+function localPoint(event: MouseEvent): { x: number; y: number } {
+  const bounds = surface.value?.getBoundingClientRect();
+  return { x: event.clientX - (bounds?.left ?? 0), y: event.clientY - (bounds?.top ?? 0) };
+}
+
+/** 视口点下最深的瓦片。 */
+function tileAt(x: number, y: number): number {
+  const point = unprojectPoint(view, x, y);
+  return hitTile(layout.value, point.x, point.y);
+}
+
+function hasContents(tile: Tile): boolean {
+  return tile.entry?.node?.kind === 'dir' && tile.entry.bytes + tile.entry.files > 0;
+}
+
+/** 瓦片的节点，带上它的完整路径：列表的路径、导出与复制都按这条路径。 */
+function nodeOf(index: number): DiskFsNode | null {
+  const node = layout.value[index]?.entry?.node;
+  if (!node) return null;
+  const names = tileChain(layout.value, index).map(position => layout.value[position].entry?.node?.name ?? '');
+  const base = props.directoryPath === '/' ? '' : props.directoryPath;
+  return { ...node, path: `${base}/${names.join('/')}` };
+}
 
 const rootValue = computed(() => {
   const root = props.view?.root;
@@ -259,6 +311,19 @@ function shareText(value: number): string {
   if (rootValue.value <= 0) return '';
   const percent = (value / rootValue.value) * 100;
   return `${percent >= 10 ? percent.toFixed(0) : percent.toFixed(1)}%`;
+}
+
+function select(index: number) {
+  const node = nodeOf(index);
+  if (!node) return;
+  focused.value = index;
+  emit('select', node);
+  const entry = layout.value[index].entry;
+  announcement.value = tr('{0}，{1}，占 {2}', {
+    0: node.name,
+    1: valueText(entry?.bytes ?? 0, entry?.files ?? 0),
+    2: shareText(props.mode === 'files' ? entry?.files ?? 0 : entry?.bytes ?? 0) || '—',
+  });
 }
 
 function relativePath(index: number): string {
@@ -291,40 +356,16 @@ const card = computed(() => {
     dirs: directory ? (entry?.dirs ?? 0).toLocaleString() : null,
     newest: entry && entry.newest !== null ? formatUnixSeconds(entry.newest) : '',
     kind: treemapKindLabel(kind, tr),
-    swatch: `k-${kind}`,
+    swatch: kindSwatch(kind),
     style: `left:${x}px;top:${y}px;transform:translate(${shiftX},${shiftY})`,
   };
 });
 
-function tileIndexOf(event: Event): number {
-  const element = (event.target as Element | null)?.closest?.('[data-tile]') as HTMLElement | null | undefined;
-  const index = Number(element?.dataset.tile ?? -1);
-  return Number.isInteger(index) && index < layout.value.length ? index : -1;
-}
+// ── 进出层级 ──
 
-/** 瓦片的节点，带上它的完整路径：列表的路径、导出与复制都按这条路径。 */
-function nodeOf(index: number): DiskFsNode | null {
-  const node = layout.value[index]?.entry?.node;
-  if (!node) return null;
-  const names = tileChain(layout.value, index).map(position => layout.value[position].entry?.node?.name ?? '');
-  const base = props.directoryPath === '/' ? '' : props.directoryPath;
-  return { ...node, path: `${base}/${names.join('/')}` };
-}
-
-function select(index: number) {
-  const node = nodeOf(index);
-  if (!node) return;
-  focused.value = index;
-  emit('select', node);
-  const tile = layout.value[index];
-  announcement.value = tr('{0}，{1}，占 {2}', {
-    0: node.name,
-    1: valueText(tile.entry?.bytes ?? 0, tile.entry?.files ?? 0),
-    2: shareText(props.mode === 'files' ? tile.entry?.files ?? 0 : tile.entry?.bytes ?? 0) || '—',
-  });
-}
-
-type PendingTransition = { kind: 'enter'; targetId: string; from: Rect } | { kind: 'up'; childId: string | null };
+type PendingTransition =
+  | { kind: 'enter'; targetId: string; from: Rect }
+  | { kind: 'up'; childId: string | null; src: Rect };
 let pending: PendingTransition | null = null;
 let pendingSince = 0;
 /** 一次进出层级在新视图到达前不接受下一次；迟迟不到的请求不会一直挡住手势。 */
@@ -334,8 +375,15 @@ function busy(): boolean {
   return pending !== null && performance.now() - pendingSince < PENDING_TIMEOUT_MS;
 }
 
-/** 进入一块目录瓦片：沿瓦片链把每一层目录都推入面包屑。 */
-function enter(index: number) {
+/** 换层级后指针下已是别的瓦片，直到指针再动之前不算悬停。 */
+function forgetHover() {
+  hovered.value = -1;
+  pointer.value = { ...pointer.value, inside: false };
+}
+
+/** 进入一块目录瓦片：沿瓦片链把每一层目录都推入面包屑。`from` 是它的内容区此刻在屏幕上的位置，
+ *  新的一层就从那里长到整个视口。 */
+function enter(index: number, from?: Rect) {
   const tile = layout.value[index];
   const node = tile?.entry?.node;
   if (!tile || node?.kind !== 'dir' || busy()) return;
@@ -343,43 +391,122 @@ function enter(index: number) {
     const entry = layout.value[position].entry?.node;
     return { id: entry?.id ?? '', name: entry?.name ?? '' };
   });
-  if (frames.some(frame => !frame.id)) return;
-  pending = { kind: 'enter', targetId: node.id, from: tileBody(tile) };
+  if (frames.some(item => !item.id)) return;
+  pending = { kind: 'enter', targetId: node.id, from: from ?? projectRect(view, tileBody(tile)) };
   pendingSince = performance.now();
+  forgetHover();
   emit('enter', frames);
 }
 
+/** 回到上一级：正在看的区域缩回它在上一级里的瓦片。 */
 function goUp() {
   if (busy()) return;
-  pending = { kind: 'up', childId: props.view?.root.node?.id ?? null };
+  pending = { kind: 'up', childId: props.view?.root.node?.id ?? null, src: visibleBase(view, area.value.width, area.value.height) };
   pendingSince = performance.now();
+  forgetHover();
   emit('up');
 }
 
-/** 滚轮放大的对象：指针下最深的、有内容的目录。 */
-function zoomTarget(index: number): number {
-  const chain = tileChain(layout.value, index);
-  for (let position = chain.length - 1; position >= 0; position -= 1) {
-    const entry = layout.value[chain[position]].entry;
-    if (entry?.node?.kind === 'dir' && entry.bytes + entry.files > 0) return chain[position];
+/** Enter：选中的目录就进入它，选中的文件打开预览；什么都没选时进入最大的子目录。 */
+function descend() {
+  const index = selectedIndex.value;
+  const node = nodeOf(index);
+  if (node?.kind === 'dir') {
+    enter(index);
+    return;
   }
-  return -1;
+  if (node) {
+    emit('open', node);
+    return;
+  }
+  const largest = layout.value.findIndex(tile => tile.depth === 0 && tile.entry?.node);
+  if (largest >= 0 && layout.value[largest].entry?.node?.kind === 'dir') enter(largest);
 }
 
+function applyZoom(step: ZoomStep) {
+  switch (step.kind) {
+    case 'view':
+      view = step.view;
+      if (pointer.value.inside) hovered.value = tileAt(pointer.value.x, pointer.value.y);
+      requestPaint();
+      return;
+    case 'enter':
+      enter(step.target, step.from);
+      return;
+    case 'ascend':
+      if (!props.volumeRoot) goUp();
+      return;
+    case 'none':
+      return;
+  }
+}
+
+/** 新视图到达：进入时新的一层从被放大的瓦片里长出来，返回时刚离开的目录缩回它的瓦片；
+ *  同一目录换了层数或度量时保持当前的放大；其余跳转直接显示。 */
+let shownPath: string | null = null;
+watch(() => props.view, (next, previous) => {
+  focused.value = -1;
+  if (!next || next === previous) return;
+  const arrived = pending;
+  pending = null;
+  const { width, height } = area.value;
+  const sameDirectory = arrived === null && shownPath === props.directoryPath;
+  shownPath = props.directoryPath;
+  if (sameDirectory) {
+    view = clampView(view, width, height);
+    requestPaint();
+    return;
+  }
+  hovered.value = -1;
+  view = IDENTITY_VIEW;
+  transition = null;
+  if (arrived && motionEnabled.value && width > 0 && height > 0) {
+    const now = performance.now();
+    if (arrived.kind === 'enter' && next.root.node?.id === arrived.targetId) {
+      transition = layoutTransition(arrived.from, { x: 0, y: 0, w: width, h: height }, now);
+    } else if (arrived.kind === 'up' && arrived.childId) {
+      const index = layout.value.findIndex(tile => tile.entry?.node?.id === arrived.childId);
+      const body = index >= 0 ? tileBody(layout.value[index]) : null;
+      if (body && body.w > 1 && body.h > 1) transition = layoutTransition(arrived.src, body, now);
+    }
+  }
+  requestPaint();
+});
+
+// 加载失败或换到无数据的状态时，未完成的进出作废，下一次手势照常响应。
+watch(() => props.status, status => {
+  if (status !== 'loading' && status !== 'ready') pending = null;
+});
+
+// ── 指针、滚轮与键盘 ──
+
 function onPointerMove(event: PointerEvent) {
-  const bounds = surface.value?.getBoundingClientRect();
-  if (bounds) pointer.value = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
-  const index = tileIndexOf(event);
+  const point = localPoint(event);
+  pointer.value = { ...point, inside: true };
+  const index = tileAt(point.x, point.y);
   if (index !== hovered.value) hovered.value = index;
 }
 
+function onPointerLeave() {
+  forgetHover();
+}
+
+/** 单击选中；再单击已选中的目录就进入它，像文件管理器一样。双击由 dblclick 处理。 */
 function onClick(event: MouseEvent) {
-  const index = tileIndexOf(event);
-  if (index >= 0) select(index);
+  if (event.detail > 1) return;
+  const { x, y } = localPoint(event);
+  const index = tileAt(x, y);
+  if (index < 0) return;
+  if (index === selectedIndex.value && layout.value[index].entry?.node?.kind === 'dir') {
+    enter(index);
+    return;
+  }
+  select(index);
 }
 
 function onDoubleClick(event: MouseEvent) {
-  const index = tileIndexOf(event);
+  const { x, y } = localPoint(event);
+  const index = tileAt(x, y);
   const node = nodeOf(index);
   if (!node) return;
   if (node.kind === 'dir') enter(index);
@@ -387,7 +514,8 @@ function onDoubleClick(event: MouseEvent) {
 }
 
 function onContextMenu(event: MouseEvent) {
-  const index = tileIndexOf(event);
+  const { x, y } = localPoint(event);
+  const index = tileAt(x, y);
   const node = nodeOf(index);
   if (!node) return;
   event.preventDefault();
@@ -395,27 +523,24 @@ function onContextMenu(event: MouseEvent) {
   emit('contextmenu', event, node);
 }
 
-let wheelTravel = 0;
-let wheelQuietUntil = 0;
+/** 滚轮：每次朝指针放大或缩小一档。放大停在指针下目录恰好填满视口的倍率，再滚就进入；
+ *  在原始大小往回滚就回到上一级。按住 Shift 滚动在放大的视图里上下平移。 */
 function onWheel(event: WheelEvent) {
   if (!layout.value.length) return;
+  const delta = event.shiftKey && event.deltaY === 0 ? event.deltaX : event.deltaY;
+  const lines = wheelLines(delta, event.deltaMode);
+  if (Math.abs(lines) < 1e-6) return;
   event.preventDefault();
-  if (busy() || performance.now() < wheelQuietUntil) {
-    wheelTravel = 0;
+  const { width, height } = area.value;
+  if (event.shiftKey) {
+    view = panView(view, lines, width, height);
+    requestPaint();
     return;
   }
-  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? area.value.height : 1;
-  wheelTravel += event.deltaY * unit;
-  if (Math.abs(wheelTravel) < WHEEL_STEP) return;
-  const inward = wheelTravel < 0;
-  wheelTravel = 0;
-  wheelQuietUntil = performance.now() + 350;
-  if (inward) {
-    const target = zoomTarget(tileIndexOf(event));
-    if (target >= 0) enter(target);
-  } else if (!props.volumeRoot) {
-    goUp();
-  }
+  if (busy()) return;
+  const { x, y } = localPoint(event);
+  const factor = lines > 0 ? WHEEL_ZOOM_FACTOR : 1 / WHEEL_ZOOM_FACTOR;
+  applyZoom(zoomStep(layout.value, view, width, height, x, y, factor, true, hasContents));
 }
 
 const DIRECTIONS: Record<string, TreemapDirection> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
@@ -435,15 +560,12 @@ function onKeydown(event: KeyboardEvent) {
     move(direction);
     return;
   }
+  const { width, height } = area.value;
   switch (event.key) {
-    case 'Enter': {
+    case 'Enter':
       event.preventDefault();
-      const index = selectedIndex.value;
-      const node = nodeOf(index);
-      if (node?.kind === 'dir') enter(index);
-      else if (node) emit('open', node);
+      descend();
       return;
-    }
     case 'Backspace':
       event.preventDefault();
       goUp();
@@ -455,6 +577,20 @@ function onKeydown(event: KeyboardEvent) {
     case ']':
       event.preventDefault();
       emit('depth', 1);
+      return;
+    case '+':
+    case '=':
+      event.preventDefault();
+      applyZoom(zoomStep(layout.value, view, width, height, width / 2, height / 2, KEY_ZOOM_FACTOR, false, hasContents));
+      return;
+    case '-':
+      event.preventDefault();
+      applyZoom(zoomStep(layout.value, view, width, height, width / 2, height / 2, 1 / KEY_ZOOM_FACTOR, false, hasContents));
+      return;
+    case '0':
+      event.preventDefault();
+      view = IDENTITY_VIEW;
+      requestPaint();
       return;
   }
 }
@@ -475,46 +611,8 @@ function move(direction: TreemapDirection) {
   const parent = layout.value[from].parent;
   if ((direction === 'left' || direction === 'up') && parent >= 0) select(parent);
 }
-
-/** 新视图到达：进入时新的一层从被点的瓦片里长出来，返回时刚离开的目录缩回它的瓦片，
- *  其余情况淡入。这让「放大」和「进入」读起来是同一个动作。 */
-watch(() => props.view, async (view, previous) => {
-  hovered.value = -1;
-  focused.value = -1;
-  if (!view || view === previous) return;
-  const transition = pending;
-  pending = null;
-  await nextTick();
-  const element = layer.value;
-  if (!element) return;
-  const { width, height } = area.value;
-  let from: string | null = null;
-  if (transition?.kind === 'enter' && view.root.node?.id === transition.targetId) {
-    const rect = transition.from;
-    const scale = Math.min(rect.w / width, rect.h / height);
-    from = `translate(${rect.x + (rect.w - width * scale) / 2}px, ${rect.y + (rect.h - height * scale) / 2}px) scale(${scale})`;
-  } else if (transition?.kind === 'up' && transition.childId) {
-    const index = layout.value.findIndex(tile => tile.entry?.node?.id === transition.childId);
-    const rect = index >= 0 ? tileBody(layout.value[index]) : null;
-    if (rect && rect.w > 1 && rect.h > 1) {
-      const scale = Math.min(width / rect.w, height / rect.h);
-      from = `translate(${(width - rect.w * scale) / 2 - rect.x * scale}px, ${(height - rect.h * scale) / 2 - rect.y * scale}px) scale(${scale})`;
-    }
-  }
-  if (from && Number.isFinite(width) && width > 0) {
-    animateUi(element, [{ transform: from, opacity: 0.35 }, { transform: 'none', opacity: 1 }], undefined, { speed: 'normal', easing: 'out' });
-  } else {
-    animateUi(element, [{ opacity: 0.4 }, { opacity: 1 }]);
-  }
-});
-
-// 加载失败或换到无数据的状态时，未完成的过渡作废，下一次手势照常响应。
-watch(() => props.status, status => {
-  if (status !== 'loading' && status !== 'ready') pending = null;
-});
 </script>
 
-<style scoped src="../styles/treemap-kinds.css"></style>
 <style scoped>
 /* ── 树图画布 ──
    瓦片之间的缝隙露出画布底色，顶层目录之间的缝更宽：不画边框也能读出结构。 */
@@ -527,106 +625,18 @@ watch(() => props.status, status => {
   background: var(--surface-tertiary);
   outline: none;
   user-select: none;
+  touch-action: none;
 }
 
 .treemap-surface:focus-visible {
   box-shadow: inset 0 0 0 2px var(--primary-color);
 }
 
-.tile-layer {
+.treemap-canvas {
   position: absolute;
   inset: 0;
-  transform-origin: 0 0;
-}
-
-/* 类别给出色相，层级越深混入越多，嵌套不靠边框也能读出。 */
-.tile {
-  --tile-mix: 20%;
-  position: absolute;
-  box-sizing: border-box;
-  overflow: hidden;
-  background-color: color-mix(in srgb, var(--tile-hue) var(--tile-mix), var(--surface-secondary));
-}
-
-.tile.d1 { --tile-mix: 28%; }
-.tile.d2 { --tile-mix: 36%; }
-.tile.d3 { --tile-mix: 44%; }
-.tile.aged { --tile-mix: var(--age-mix); }
-
-.tile:hover {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 50%, transparent);
-}
-
-/* 已删除：斜线阴影与红色划线名称，与列表的已删除行同一套提示。 */
-.tile.deleted {
-  background-image: repeating-linear-gradient(135deg, color-mix(in srgb, var(--sev-critical-fg) 40%, transparent) 0 1px, transparent 1px 6px);
-}
-
-.tile.deleted .tile-name {
-  color: var(--sev-critical-fg);
-  text-decoration: line-through;
-}
-
-.tile.others .tile-name {
-  color: var(--text-secondary);
-  font-style: italic;
-}
-
-.tile-label {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 1px 6px;
-  color: var(--text-primary);
-  font-size: 12px;
-  line-height: 16px;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-.tile-label.band {
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
-/* 顶层目录的名称带：名称加粗，大小靠右排成一列。 */
-.tile-label.top {
-  justify-content: space-between;
-  font-weight: 600;
-}
-
-.tile-label.stacked {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
-  padding-top: 2px;
-}
-
-.tile-name {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tile-size {
-  flex-shrink: 0;
-  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
-  font-size: 11px;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-
-.tile-selection {
-  position: absolute;
-  box-sizing: border-box;
-  border: 2px solid var(--primary-color);
-  box-shadow: 0 0 0 1px var(--surface-secondary);
-  pointer-events: none;
+  width: 100%;
+  height: 100%;
 }
 
 .tile-card {
@@ -699,6 +709,14 @@ watch(() => props.status, status => {
   color: var(--text-secondary);
 }
 
+.card-swatch {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
+
 .mono {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -721,5 +739,6 @@ watch(() => props.status, status => {
 .treemap-state {
   position: absolute;
   inset: 0;
+  background: var(--surface-tertiary);
 }
 </style>
