@@ -117,6 +117,7 @@ pub(crate) async fn remove_image_runtime(
     }
     drop(sqlite_session);
     state.flat_walk_cache.lock().purge_image(image_id);
+    state.size_trees.lock().purge_image(image_id);
     // Drop (and delete) any media temp files materialised for this image's
     // video / audio previews — their node ids will never be looked up again.
     let mut media_temp = state.media_temp.lock().await;

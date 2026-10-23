@@ -56,6 +56,8 @@
     <button class="ui-icon-btn" type="button" :aria-expanded="columnsOpen" :title="tr('显示列')" :aria-label="tr('显示列')" @click="columnsOpen = !columnsOpen">
       <Columns3 :size="16" />
     </button>
+    <span class="ui-divider-v" aria-hidden="true"></span>
+    <FileViewSwitch v-model="view" :treemap-available="treemapAvailable" />
   </div>
 </div>
 </template>
@@ -66,7 +68,9 @@ import { tr } from '../../../composables/useLocale';
 import { computed } from 'vue';
 import { Columns3, Download, FileDown, Folder, FolderDown, FolderTree, X } from 'lucide-vue-next';
 import FileCategoryMenu from './FileCategoryMenu.vue';
+import FileViewSwitch from './FileViewSwitch.vue';
 import type { FilterChip } from '../model/filterChips';
+import type { FileViewMode } from '../model/treemap';
 import type { IconCategory } from '../../../utils/fileCategory';
 
 const props = defineProps<{
@@ -81,8 +85,11 @@ const props = defineProps<{
   hideEmptyDirs: boolean;
   /** Export targets: checked files and folders, or the cursor row when nothing is checked. */
   selection: { files: number; dirs: number; cursorKind: 'file' | 'dir' | null; cursorName: string };
+  /** The current directory is on an NTFS volume, which the treemap view serves. */
+  treemapAvailable: boolean;
 }>();
 const columnsOpen = defineModel<boolean>('columnsOpen', { required: true });
+const view = defineModel<FileViewMode>('view', { required: true });
 const emit = defineEmits<{
   scope: [mode: 'directory' | 'recursive'];
   toggleCategory: [key: IconCategory];

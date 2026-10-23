@@ -167,7 +167,7 @@ RAID 检测（`evidence/raid`）分六步：读取各检材的 LVM PV 并物化�
 - 镜像：`image_load`、`image_info`、`image_bad_regions`、`image_unload`、`image_list`、`image_export_raw`、`image_hash_compute`
 - RAID/物理磁盘：`raid_auto_detect`、`raid_manual_assemble`、`physical_disks_list`
 - 文件恢复（文件系统记录与签名雕刻）：`carve_formats`、`carve_start`、`carve_scan_status`、`carve_scan_pause`、`carve_scan_resume`、`carve_scan_list`、`carve_scan_remove`、`carve_results_page`、`carve_filesystem_results`、`carve_preview`、`carve_recover`
-- 文件系统：`fs_children`、`fs_flat_page`、`fs_flat_ext_counts`、`fs_read`、`fs_read_large`、`fs_media_temp`、`fs_preview*`、`fs_export*`、`fs_digest`、`fs_identify_type`
+- 文件系统：`fs_children`、`fs_flat_page`、`fs_flat_ext_counts`、`fs_size_tree`、`fs_read`、`fs_read_large`、`fs_media_temp`、`fs_preview*`、`fs_export*`、`fs_digest`、`fs_identify_type`
 - 原类型预览：SQLite、Realm、二进制、GGUF、ZIP、CSV、Vim swap 等（后端解析）；文档/办公/邮件/压缩包/CAD/3D/图表等
   「rich」类别由前端 Flyfish File Viewer 渲染，字节经 `fs_read_large`（≤16 MiB，可取消且受任务并发限制的 ArrayBuffer）或
   `fs_media_temp` + asset 协议供给。PDF 支持 Range，单文件≤4 GiB；非流式富预览≤64 MiB，超限提示导出。
@@ -850,6 +850,21 @@ live listing。`fs_flat_page` 只使用非截断快照的索引，仍会对索�
 按服务端总数撑开滚动条，可视区间越过已加载末尾即按 `skip = 已加载行数` 补页；关键词 / 漏斗 / 排序变化
 按请求签名去抖后从第一页重载；搜索框输入即自动进入全显、清空即退出，切走面板或切换镜像自动复位。
 
+**空间占用树（树图，`fs_size_tree`）。** 树图要的是每个目录其下的合计，目录浏览只知道直接子项，所以由
+`core::catalog::size_tree` 把一个卷索引整表读一遍（不读 `node_json`），建成只存数字的紧凑树：每行一个
+32 字节节点（`ordinal`、计费大小、修改时间、扩展名编号、类型与删除标记），子项为压缩邻接表，每个目录一份
+「仅存活 / 含已删除」两套合计（字节、文件数、目录数、最新修改时间），百万行约 50 MB。目录行先编号再按
+`pid` 挂接，不依赖行序；从卷根后序汇总，挂不上卷根的行不计入并记 warn。大小是逻辑大小，与列表一致：
+同一 MFT 记录（含命名流的流名哈希）在多个目录出现时只计首个名称；稀疏且等于卷长的 `$BadClus:$Bad`
+（记录 8 的命名流）不计入。命令先在案件或会话的索引目标里找出已遍历该目录的那一个，按 `ntfs:` 节点或
+卷根下有 NTFS 子项判定是否 NTFS（其它返回 `unsupported`，索引未覆盖返回 `unindexed`），再从
+`AppState::size_trees` 取树：按 `(检材, 索引文件)` 键、最近使用的 2 棵、`OnceCell` 单次构建，重建快照发布
+新索引文件即换键，卸载检材时清除。一次视图从目录出发按层广度优先展开 `depth` 层：子项按度量排序，每个目录
+至多 96 个，小于目录合计 `minShare` 的条目与超出部分并入 `others`；下层目录只有全部子项放得下（总数
+6000）才展开。每个目录附其下字节最多的扩展名供前端着色，最后按 `ordinal` 批量回表读取要显示的节点。
+前端 `model/treemap.ts` 用 squarified 算法排布（打开的目录顶部留名称带，过小瓦片不画），`FileTreemap.vue`
+以 DOM 瓦片绘制，进出层级时整层从被点的瓦片放大或缩回；`useSizeTree` 按请求缓存最近 16 个视图。
+
 ## 文件系统会话复用
 
 递归、批量或同一 command 内包含多次文件系统操作的路径应优先使用 `core::filesystem::tree::fs_tree::FsSession`，而不是在
@@ -1069,7 +1084,7 @@ CLI 的 `mounts create/list/delete/share/unshare` 调用同一组命令，进程
 ### 文件列表与可拆分预览
 
 - 文件列表默认展示名称、类型、大小、修改时间；删除状态、标签（标签列隐藏时）和递归列出时的所在子目录直接标记在名称旁。完整路径、哈希及其他取证字段通过「显示列」开启，已有列偏好保留。
-- 顶部地址栏（`FileListToolbar.vue`）放目录树开关、上一级、面包屑、刷新、搜索与预览开关。表格上方的筛选条（`FileFilterBar.vue`）左侧是列表范围（当前目录 / 所有子目录，即逐级浏览与文件全显）、文件类型菜单（`FileCategoryMenu.vue`）与生效条件标签（`model/filterChips.ts`），右侧是导出与显示列；目录树标题条、筛选条与预览标题条同高。表头漏斗平时隐藏，指针进入表头时显示，有条件的列常亮。页脚只放条目数、勾选统计、结果完整性与卷快照状态。
+- 顶部地址栏（`FileListToolbar.vue`）放目录树开关、上一级、面包屑、刷新、搜索与预览开关。表格上方的筛选条（`FileFilterBar.vue`）左侧是列表范围（当前目录 / 所有子目录，即逐级浏览与文件全显）、文件类型菜单（`FileCategoryMenu.vue`）与生效条件标签（`model/filterChips.ts`），右侧是导出、显示列与「列表 / 树图」视图切换；目录树标题条、筛选条与预览标题条同高。表头漏斗平时隐藏，指针进入表头时显示，有条件的列常亮。页脚只放条目数、勾选统计、结果完整性与卷快照状态。树图视图（仅 NTFS）把筛选条换成 `TreemapToolbar.vue`（度量、含已删除、层数与图例），表格换成 `FileTreemap.vue`，页脚换成 `TreemapFooter.vue`；它与列表共用导航栈，列表在后台保持同步，进入树图时退出全显、清除勾选，搜索时回到列表。
 - 每个收窄列表的条件（列条件、文件类型、关键词、隐藏空目录）都让空结果显示为「没有符合条件的条目」：服务端按条件返回空页时已加载条目也是 0，不能只看已加载数。条件由后端执行时页脚总数标为「符合条件」；目录读取失败在表格区域显示原因与重试。
 - 右侧预览默认关闭，单击文件或点击「右侧预览」按钮时打开；目录树可收起并保留展开状态。搜索范围为当前目录及子目录，导出作用于勾选的文件或目录，未勾选时作用于光标行；其他取证操作保留在右键菜单。
 - 选中目录后主动打开「右侧预览」会显示该目录并允许拆分；预览已经打开或拆分时，点击目录行同步目录属性。预览关闭时，单击目录仍只选中，不自动展开预览。
@@ -1220,7 +1235,7 @@ LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提�
 | 案件与证据 | 主壳、案件管理、文件会话 | `case_*`、`image_load`、`image_unload`、`physical_disks_list`、`image-load-progress` |
 | 镜像信息 | 分区、校验、识别与 RAID | `image_info`、`autodetect_evidence`、`raid_*`、`image_list`（手动重组选择成员）、`autodetect-finished` / `autodetect-failed`、`raid-detect-progress` |
 | 文件浏览与预览 | 文件列表、详情、独立预览窗 | `fs_children*`、`fs_flat_*`、`fs_subtree_empty_dirs`、`fs_docker_prepare`、`win_drive_letters`、`fs_read*`、`fs_media_*`、`fs_preview*`、原类型预览命令 |
-| 索引与快照 | 卷快照、全显和文件查询 | `snapshot_*`、`fs_child_counts`、`snapshot-build-progress`；目录与全显经 `fs_children_page` / `fs_flat_page` 读取卷索引 |
+| 索引与快照 | 卷快照、全显、树图和文件查询 | `snapshot_*`、`fs_child_counts`、`snapshot-build-progress`；目录与全显经 `fs_children_page` / `fs_flat_page` 读取卷索引，树图经 `fs_size_tree` 读取卷索引汇总的空间占用树 |
 | 标签与派生数据 | 文件列表的标签、哈希与类型列 | `fs_tags_*`、`fs_digest_load_nodes` / `fs_digest_persist`、`fs_identify_type`、`fs_ftype_load_nodes` / `fs_ftype_persist` |
 | 校验与导出 | 哈希、导出任务 | `image_hash_compute`、`image_export_raw`、`fs_digest`、`fs_export*`、`image-hash-progress`、`image-export-progress`、`fs-export-dir-progress` |
 | 数据浏览 | 数据库预览和 BCP | `fs_sqlite*`、`fs_realm*`、`bcp_*` |
