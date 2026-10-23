@@ -6,7 +6,9 @@ pub struct BackhandNodeHeader {
     pub permissions: u16,
     pub uid: u32,
     pub gid: u32,
-    pub mtime: u32,
+    pub mtime: i64,
+    /// False when the on-disk inode has no modification timestamp (v1/v2 special files).
+    pub mtime_known: bool,
 }
 
 impl From<crate::v4::filesystem::node::NodeHeader> for BackhandNodeHeader {
@@ -15,7 +17,8 @@ impl From<crate::v4::filesystem::node::NodeHeader> for BackhandNodeHeader {
             permissions: header.permissions,
             uid: header.uid,
             gid: header.gid,
-            mtime: header.mtime,
+            mtime: i64::from(header.mtime),
+            mtime_known: true,
         }
     }
 }
@@ -27,7 +30,8 @@ impl From<crate::v3::filesystem::node::NodeHeader> for BackhandNodeHeader {
             permissions: header.permissions,
             uid: header.uid,
             gid: header.gid,
-            mtime: header.mtime,
+            mtime: i64::from(header.mtime),
+            mtime_known: true,
         }
     }
 }

@@ -129,7 +129,7 @@ CLI JSONL 调度位于 `cli/session.rs`。`session --jobs N` 使用有界输入�
 
 `EvidenceSession::raw_export_reader` 提供独立的 RAW 导出投影。`image_export_raw` 默认 `mode: source`，桌面镜像头部使用 `unlockedPartitions`，导出开始时固定已解锁的 LUKS / VeraCrypt / BitLocker 读者。明文放在原分区起始位置，容器开销对应的分区尾部补零；整盘大小、分区表、未解锁分区和分区间隙保留原字节。范围重叠、溢出、越界、明文过长及短读明确失败，关闭解密会话不回退到密文。该投影不影响普通读取、源哈希和证据身份；尾部补零是导出转换规则，源坏区仍沿用读故障审计。导出目标以 `create_new` 创建。
 
-Buffalo ENC / Broadcom TRX、TP-Link SafeLoader、U-Boot legacy uImage 与 Netgear CHK 固件由 `evidence/readers/firmware.rs` 在打开阶段校验封装并定位分段，Buffalo ENC 另建立明文视图；原始字节读取与源哈希保留容器内容。固件段按字节寻址，SquashFS 适配器选择标准 v3/v4 或 DD-WRT `hsqt` 逐块参数 LZMA 读者，标准 v3 块优先 gzip、其次用纯 Rust adaptive / 标准 LZMA 解码并验证终止与源边界；范围、流式与完整读取共用同一逻辑内容。范围与上游依据见 [固件](formats/FIRMWARE.md)。
+Buffalo ENC / Broadcom TRX、TP-Link SafeLoader、U-Boot legacy uImage 与 Netgear CHK 固件由 `evidence/readers/firmware.rs` 在打开阶段校验封装并定位分段，Buffalo ENC 另建立明文视图；原始字节读取与源哈希保留容器内容。固件段按字节寻址，SquashFS 适配器通过 backhand 的版本无关接口选择 v1/v2、标准 v3/v4 或 DD-WRT `hsqt` 逐块参数 LZMA 读者，标准 v3 块优先 gzip、其次用纯 Rust adaptive / 标准 LZMA 解码并验证终止与源边界；范围、流式与完整读取共用同一逻辑内容。v1/v2 在读取器 crate 内建立有界元数据与块计划，旧特殊文件时间不代入文件系统创建时间，无 EOS 的已知长度 LZMA 由独立 Rust 解码器验证最终 range code 和源 EOF。范围与上游依据见 [固件](formats/FIRMWARE.md) 和 [SquashFS](formats/SQUASHFS.md)。
 
 JFFS2 适配器 `filesystem::volumes::jffs2` 通过有界 `ReadAt` 复用改造后的 vendor `jffs2::Jffs2Image`。扫描校验节点结构，建立最高版本目录 / inode 和非重叠片段索引；文件数据延迟校验与解码。`jffs2:part:` 节点按分区和路径区分硬链接身份，完整、流式与范围读取共用索引，源字节不变。支持边界见 [JFFS2](formats/JFFS2.md)。
 

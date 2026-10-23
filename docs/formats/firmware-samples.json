@@ -2,7 +2,7 @@
   "date": "2026-10-23",
   "platform": "Windows standalone CLI",
   "baselineCommit": "1fe4fa425d0726e10b6ebc121468ad993521216a",
-  "stage": "native firmware envelopes, CramFS/ROMFS, v3 adaptive LZMA, clean committed UBIFS v4/v5, and new-format JFFS2 LE/BE readers",
+  "stage": "native firmware envelopes, CramFS/ROMFS, v3 adaptive LZMA, clean committed UBIFS v4/v5, new-format JFFS2 LE/BE, and SquashFS v1/v2 LE/BE readers",
   "criterion": "Native partition tree listing; RAW-open success alone is not counted. UBI nested filesystem checked separately.",
   "samples": [
     {
@@ -182,7 +182,7 @@
       "url": "https://raw.githubusercontent.com/ReFirmLabs/binwalk/master/tests/inputs/squashfs_v2.bin",
       "size": 2587654,
       "sha256": "df727ab58e70ffac1c98c0bfd2786e4c949e03431eb2043f270292f33fb30475",
-      "browsable": false,
+      "browsable": true,
       "sourceFormat": "raw",
       "partitionKinds": [
         "squashfs"
@@ -193,11 +193,7 @@
           "startByte": 0,
           "lengthBytes": 2587654
         }
-      ],
-      "error": {
-        "code": "unsupportedFormat",
-        "message": "SquashFS open part:0: unsupported SquashFS magic/version: [115, 113, 115, 104] v2"
-      }
+      ]
     },
     {
       "name": "unblob-ubifs-zlib",
@@ -344,7 +340,7 @@
       "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/squashfs/squashfs_v1/little_endian/__input__/squashfs_v1.0_le.bin",
       "size": 4096,
       "sha256": "b45925fa779eae0293635ce0e6dc8760308f25227dd88645d677ba3ffce23e71",
-      "browsable": false,
+      "browsable": true,
       "sourceFormat": "raw",
       "partitionKinds": [
         "squashfs"
@@ -356,9 +352,10 @@
           "lengthBytes": 4096
         }
       ],
-      "error": {
-        "code": "unsupportedFormat",
-        "message": "SquashFS open part:0: unsupported SquashFS magic/version: [104, 115, 113, 115] v1"
+      "contentOracle": {
+        "apple.txt": "303980bcb9e9e6cdec515230791af8b0ab1aaa244b58a8d99152673aa22197d0",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
       }
     },
     {
@@ -519,6 +516,125 @@
         "apple.txt": "f1c520551a1a5890fab0d252f7535c498f8e91aeb22b5cf8ab0d34d25c086f31",
         "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
         "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
+      }
+    },
+    {
+      "name": "unblob-squashfs-v1-0-be",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/squashfs/squashfs_v1/big_endian/__input__/squashfs_v1.0_be.bin",
+      "size": 4096,
+      "sha256": "529e10775cc152e6c5df0c6c63316811004cc73ce99f03989c86ffd396d631e6",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "303980bcb9e9e6cdec515230791af8b0ab1aaa244b58a8d99152673aa22197d0",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
+      }
+    },
+    {
+      "name": "unblob-squashfs-v2-0-le",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/squashfs/squashfs_v2/little_endian/__input__/squashfs_v2.0_le.bin",
+      "size": 4096,
+      "sha256": "7c62dbe388b972119f5d17a12836a016737d58276184f4caa2a90dafd924f124",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
+      ],
+      "contentOracle": {
+        "apple1.txt": "6181259c6b2ca629a56920b422e9a8f212a4d0bcead923df92dbd66fbb7e1c30",
+        "apple2.txt": "919fc82d6f1031d305dbce2fc5a74a6df5ddf2da472ee4d137c681cef28d4aff",
+        "apple3.txt": "2d95014ed3f24e86ce5fc3a4529f057d7b2318d9b24b54f2e9476b154bd21ec6",
+        "apple4.txt": "08d9b05b15b998f2dbc741399fef4350c7863cc85df2305d7da4e83e8c8a959d"
+      }
+    },
+    {
+      "name": "unblob-squashfs-v2-0-be",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/squashfs/squashfs_v2/big_endian/__input__/squashfs_v2.0_be.bin",
+      "size": 4096,
+      "sha256": "79c0f3886291f4abcc656acd49932446cf16afaa67e6ffb0c5258e3c2e2dfcc0",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
+      ],
+      "contentOracle": {
+        "apple1.txt": "6181259c6b2ca629a56920b422e9a8f212a4d0bcead923df92dbd66fbb7e1c30",
+        "apple2.txt": "919fc82d6f1031d305dbce2fc5a74a6df5ddf2da472ee4d137c681cef28d4aff",
+        "apple3.txt": "2d95014ed3f24e86ce5fc3a4529f057d7b2318d9b24b54f2e9476b154bd21ec6",
+        "apple4.txt": "08d9b05b15b998f2dbc741399fef4350c7863cc85df2305d7da4e83e8c8a959d"
+      }
+    },
+    {
+      "name": "unblob-squashfs-v2-1-le",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/squashfs/squashfs_v2/little_endian/__input__/squashfs_v2.1_le.bin",
+      "size": 4096,
+      "sha256": "6b6cd2fd63e17a499861d2d89d617bd836b169601e46cb2f5a5c66bea8ef253a",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
+      ],
+      "contentOracle": {
+        "apple1.txt": "6181259c6b2ca629a56920b422e9a8f212a4d0bcead923df92dbd66fbb7e1c30",
+        "apple2.txt": "919fc82d6f1031d305dbce2fc5a74a6df5ddf2da472ee4d137c681cef28d4aff",
+        "apple3.txt": "2d95014ed3f24e86ce5fc3a4529f057d7b2318d9b24b54f2e9476b154bd21ec6",
+        "apple4.txt": "08d9b05b15b998f2dbc741399fef4350c7863cc85df2305d7da4e83e8c8a959d"
+      }
+    },
+    {
+      "name": "unblob-squashfs-v2-1-be",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/squashfs/squashfs_v2/big_endian/__input__/squashfs_v2.1_be.bin",
+      "size": 4096,
+      "sha256": "c0140bac22d92df7d6c63fdf6de2d3e75a8fad6b30e6f9eeeb9ef533134f35db",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
+      ],
+      "contentOracle": {
+        "apple1.txt": "6181259c6b2ca629a56920b422e9a8f212a4d0bcead923df92dbd66fbb7e1c30",
+        "apple2.txt": "919fc82d6f1031d305dbce2fc5a74a6df5ddf2da472ee4d137c681cef28d4aff",
+        "apple3.txt": "2d95014ed3f24e86ce5fc3a4529f057d7b2318d9b24b54f2e9476b154bd21ec6",
+        "apple4.txt": "08d9b05b15b998f2dbc741399fef4350c7863cc85df2305d7da4e83e8c8a959d"
       }
     }
   ]

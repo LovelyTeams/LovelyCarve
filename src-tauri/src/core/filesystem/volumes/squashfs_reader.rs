@@ -5,8 +5,9 @@ use std::io::SeekFrom;
 use anyhow::{bail, Result};
 use backhand::{kind, BufReadSeek, FilesystemReaderTrait};
 
+#[inline(never)]
 pub(super) fn open_reader(
-    mut reader: impl BufReadSeek + 'static,
+    mut reader: Box<dyn BufReadSeek>,
 ) -> Result<Box<dyn FilesystemReaderTrait>> {
     let mut header = [0; 32];
     reader.read_exact(&mut header)?;
@@ -22,6 +23,9 @@ pub(super) fn open_reader(
     } else {
         u16::from_le_bytes([header[30], header[31]])
     };
+    if matches!((&header[..4], version), (b"hsqs" | b"sqsh", 1 | 2)) {
+        return Ok(backhand::legacy::open(reader)?);
+    }
     anyhow::ensure!(minor == 0, "unsupported SquashFS version {version}.{minor}");
     let selected = match (&header[..4], version) {
         (b"hsqs", 4) => kind::LE_V4_0,

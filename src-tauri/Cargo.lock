@@ -371,6 +371,7 @@ dependencies = [
  "flate2",
  "liblzma",
  "liblzma-sys",
+ "lzma-rs",
  "lzma-rust2 0.20.1",
  "no_std_io2",
  "rayon",
@@ -3913,6 +3914,14 @@ name = "lzfse_rust"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5edeac3ec657925dececc672bdd58fa2212291886ddcb3e08aa46924c78340c6"
+
+[[package]]
+name = "lzma-rs"
+version = "0.3.0"
+dependencies = [
+ "byteorder",
+ "crc 3.4.0",
+]
 
 [[package]]
 name = "lzma-rust2"

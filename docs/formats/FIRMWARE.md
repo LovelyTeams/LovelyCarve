@@ -19,7 +19,7 @@
   不执行内核，也不把解压出的内核内容误作文件系统。尾部 rootfs 由原生文件系统读取器校验。
 - Netgear CHK：校验可变头长、board ID、内核 / rootfs 声明长度、头 / 分段 / 全载荷的
   32 位回绕双累加校验和；支持内核字段包含 uImage + rootfs，或独立 rootfs 字段。
-- 标准小端 / 大端 SquashFS 3.0、4.0，以及 DD-WRT 3.0 的 `hsqt` / `tqsh`
+- 标准小端 / 大端 SquashFS 1.0、2.0/2.1、3.0、4.0，以及 DD-WRT 3.0 的 `hsqt` / `tqsh`
   变体；后者按每个块的 pb/lc/lp 参数解压 LZMA，复用文件树、预览、哈希、
   导出、流式与范围读取。
 - `hsqs` / `sqsh` SquashFS 3.0 同时读取 gzip 和 LZMA 块：复用 backhand 的
@@ -53,6 +53,7 @@ filesystem 和内核 / rootfs 之间的任意填充布局尚未接入。Sercomm 
 本地实现为 Rust 格式读取代码，没有复制或构建这些 C/C++ 源文件，也不调用
 Firmware Mod Kit 的 Linux shell、提取器或重打包工具。
 SquashFS 复用 `backhand`（MIT OR Apache-2.0），LZMA 使用 `lzma-rust2`；
+旧 v1/v2 及无 EOS LZMA 的严格校验与限制见 [SquashFS](SQUASHFS.md)。
 具体集成变更见 [backhand/LOVELYCARVE.md](../../src-tauri/vendor/backhand/LOVELYCARVE.md)。
 
 SafeLoader 与 CHK 对照 [OpenWrt firmware-utils b2a93c6f77ba](https://github.com/openwrt/firmware-utils/tree/b2a93c6f77bac3a6525e93b383c987b073b4633b)：

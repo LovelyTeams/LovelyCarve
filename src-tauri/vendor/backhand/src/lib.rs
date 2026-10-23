@@ -60,6 +60,8 @@ type _ReadmeTest = ();
 mod log;
 pub mod error;
 mod kinds;
+#[cfg(feature = "v1_v2")]
+pub mod legacy;
 #[cfg(any(feature = "v3_lzma", feature = "v4_lzma"))]
 mod lzma;
 pub mod traits;

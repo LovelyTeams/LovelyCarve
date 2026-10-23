@@ -126,6 +126,7 @@ fmt:
     cd src-tauri/vendor/lamfold-cramfs && cargo fmt
     cd src-tauri/vendor/lamfold-romfs && cargo fmt
     cd src-tauri/vendor/backhand && cargo fmt
+    cd src-tauri/vendor/lzma-rs && cargo fmt
     cd src-tauri/vendor/ubidump && cargo fmt
     cd src-tauri/vendor/jffs2 && cargo fmt
     cd src-tauri/vendor/rsqlite-vfs && cargo fmt
@@ -355,6 +356,12 @@ clippy-refs:
 [working-directory("src-tauri/vendor/jffs2")]
 clippy-jffs2:
     cargo clippy --all-targets -- -D warnings
+
+# Lint the maintained SquashFS reader and enabled legacy variants.
+[group("readers")]
+[working-directory("src-tauri/vendor/backhand")]
+clippy-squashfs:
+    cargo clippy --all-targets --features v1_v2,v3_ddwrt,v3_lzma
 
 # Run the library tests of a vendored crate without a dedicated reader recipe.
 [group("readers")]

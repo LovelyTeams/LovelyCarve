@@ -10,6 +10,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | --- | --- | --- |
 | CramFS / Linux ROMFS | [ROM_IMAGES.md](ROM_IMAGES.md) | lamfold Rust 库；CramFS v2 大小端、CRC、按页范围读取；ROMFS 校验和、硬链接、目录链边界 |
 | ISO 9660 / 光盘 BIN / CUE | [CDFS.md](CDFS.md) | libodraw 全 API 对照；多文件/多轨 CUE、Mode 1 / XA Form 1、来源字节保留与范围读取 |
+| SquashFS | [SQUASHFS.md](SQUASHFS.md) | backhand Rust 读取器；v1/v2 旧布局、v3/v4、大小端、尾片段和有界 LZMA / 范围读取 |
 | JFFS2 | [JFFS2.md](JFFS2.md) | jffs2-rs 结构 / RTIME 改造；新格式大小端、CRC、版本化目录与片段、空洞和范围读取 |
 | UBIFS | [UBIFS.md](UBIFS.md) | rust_ubidump 节点/索引适配；干净的已提交 v4/v5 树、CRC、硬链接/空洞与范围读；明确日志、加密和恢复限制 |
 | UBI / HDR1 固件 | [UBI.md](UBI.md) | rust_ubidump 只读库；小米扩展分段表、UBI 逻辑块重组、原始卷读取与内嵌 SquashFS / UBIFS 浏览 |
@@ -38,7 +39,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | 小米备份 | [MIUI_BAK.md](MIUI_BAK.md) | ZIP / 目录内 `.bak` 自动展开；Android Backup 头、TAR 与压缩流 |
 | Android 备份 | [ANDROID_BACKUP.md](ANDROID_BACKUP.md) | `.ab` 1–5 与小米 `.bak` 独立打开；原始容器字节与逻辑文件树分离 |
 
-其余格式（Btrfs、ZFS、UFS、SquashFS，以及 EWF、VMDK、VHD / VHDX、VDI、DMG、AD1 等镜像容器）的实现位置见 [架构说明的镜像与证据源](../ARCHITECTURE.md#镜像与证据源)，上游版本、本地补丁与测试样本记录在各 vendor 目录的 `LOVELYCARVE.md` / `ORIGIN.md` 中。命令行下的镜像打开、解锁和导出示例见 [CLI 手册](../CLI.md)。
+其余格式（Btrfs、ZFS、UFS，以及 EWF、VMDK、VHD / VHDX、VDI、DMG、AD1 等镜像容器）的实现位置见 [架构说明的镜像与证据源](../ARCHITECTURE.md#镜像与证据源)，上游版本、本地补丁与测试样本记录在各 vendor 目录的 `LOVELYCARVE.md` / `ORIGIN.md` 中。命令行下的镜像打开、解锁和导出示例见 [CLI 手册](../CLI.md)。
 
 ## 维护要求
 

@@ -149,6 +149,29 @@ def main():
                 assert rows[2]["result"]["data"] == squashfs_content[4080:4180].hex()
                 assert rows[3]["result"]["sha256"] == hashlib.sha256(squashfs_content).hexdigest()
 
+        # Legacy SquashFS: independent v1/v2 bitfields, fragments, both byte
+        # orders, bounded markerless LZMA and the encrypted firmware path.
+        legacy_fixtures = squashfs_fixtures / "legacy"
+        legacy_paths = sorted(legacy_fixtures.glob("*.squashfs"))
+        legacy_paths.append(firmware_fixtures / "synthetic-legacy-squashfs.enc")
+        legacy_node = "squashfs:part:0:" + b"/payload.bin".hex()
+        for path in legacy_paths:
+            payload_name = ("payload-32k.bin" if "32k" in path.name else
+                            "payload-64k.bin" if "64k" in path.name else "payload.bin")
+            legacy_content = (legacy_fixtures / payload_name).read_bytes()
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(path)}},
+                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": legacy_node, "offset": 8180, "length": 100}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": legacy_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "squashfs"
+            entries = {entry["name"]: entry for entry in rows[1]["result"]["items"]}
+            assert set(entries) == {"payload.bin", "alias.bin", "子目录", "link", "huge-link", "empty.txt", "block", "char", "fifo", "socket"}
+            assert rows[2]["result"]["data"] == legacy_content[8180:8280].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(legacy_content).hexdigest()
+
         # UBIFS: independent stored/LZO/DEFLATE/Zstd trees and encrypted firmware.
         ubifs_fixtures = firmware_fixtures.parent.parent / "vendor/ubidump/test_data"
         ubifs_content = (ubifs_fixtures / "payload.bin").read_bytes()

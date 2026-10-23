@@ -31,6 +31,9 @@ use chrono::{TimeZone, Utc};
 use reader::open_reader;
 
 #[cfg(test)]
+#[path = "squashfs_legacy_tests.rs"]
+mod legacy_tests;
+#[cfg(test)]
 #[path = "squashfs_lzma_tests.rs"]
 mod lzma_tests;
 
@@ -109,7 +112,7 @@ pub fn open_squashfs_source(
         SquashfsSource::Ubi { part_id, volume_id } => {
             let ubi = crate::core::filesystem::volumes::ubi::open_ubi_source(image, part_id)?;
             let reader = BufReader::with_capacity(64 * 1024, ubi.reader(volume_id)?);
-            let fs = open_reader(reader).map_err(|error| {
+            let fs = open_reader(Box::new(reader)).map_err(|error| {
                 anyhow!("SquashFS open UBI part:{part_id} volume:{volume_id}: {error}")
             })?;
             Ok(SquashfsVolume { source, fs })
@@ -149,7 +152,7 @@ impl SquashfsVolume {
             position: 0,
         };
         let reader = BufReader::with_capacity(64 * 1024, cursor);
-        let fs = open_reader(reader)
+        let fs = open_reader(Box::new(reader))
             .map_err(|err| anyhow!("SquashFS open part:{}: {err}", partition.id))?;
         Ok(Self {
             source: SquashfsSource::Partition(partition.id),
@@ -387,10 +390,13 @@ fn node_size(node: &Node) -> u64 {
 }
 
 fn header_timestamps(header: &NodeHeader) -> Mactb {
-    let modified = Utc
-        .timestamp_opt(header.mtime as i64, 0)
-        .single()
-        .map(|dt| dt.to_rfc3339());
+    let modified = if header.mtime_known {
+        Utc.timestamp_opt(header.mtime, 0)
+            .single()
+            .map(|dt| dt.to_rfc3339())
+    } else {
+        None
+    };
     Mactb {
         modified: modified.clone(),
         accessed: None,

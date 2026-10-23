@@ -51,3 +51,29 @@ changing block parameters, cross-block ranges, truncation, trailing bytes,
 length mismatch and oversized output. See [fixture provenance](test_data/README.md).
 Unblob's external LE/BE fixtures are compared with separately recorded output
 bytes through `LOVELYCARVE_SQUASHFS_LZMA`; see the firmware guide for invocation.
+
+## SquashFS v1/v2
+
+The `v1_v2` feature exposes a bounded legacy reader through the same
+`FilesystemReaderTrait`. It reads 1.0 and 2.0/2.1 in both byte orders, old packed
+UID/GID and inode fields, 16-/32-bit block lists, 32 KiB zero-length block
+encoding, cross-metadata records, shared fragments and long directories.
+The parser and vtable stay inside this crate behind an erased byte source.
+
+The wire layout is independently implemented using format facts from
+squashfs-tools `db038ef265ed00bb17aaf695a72f9b0c3489eb20`:
+`squashfs_compat.h`, `unsquash-1.c` and `unsquash-2.c`. No C implementation is
+copied or built. Other surveyed Rust readers (`squashfs_reader`,
+`squashfs-async`) restrict their superblocks to v4.
+
+Stored/zlib blocks are bounded and validated. Property-header LZMA with EOS
+reuses the existing Rust decoder. For v2 streams without EOS, known-length
+push/pull decoding must agree, and the separate vendored `lzma-rs` strict API
+requires final range code zero plus genuine EOF. A truncated EOS stream must
+not be accepted as a markerless stream; independent fixtures cover that case.
+
+The neutral node header carries signed seconds plus explicit mtime presence:
+old special inode types have no mtime, and mkfs time is not substituted.
+Existing v3/v4 headers retain their unsigned on-disk timestamp values.
+Capabilities, limits and public fixture verification are described in
+[SquashFS](../../../docs/formats/SQUASHFS.md).

@@ -53,6 +53,7 @@ rustdoc-args = [
 ]
 
 [features]
+v1_v2 = ["gzip", "v3_lzma", "dep:lzma-rs"]
 any-gzip = []
 default = [
     "xz",
@@ -147,6 +148,11 @@ features = [
     "encoder",
     "optimization",
 ]
+optional = true
+
+[dependencies.lzma-rs]
+path = "../lzma-rs"
+features = ["raw_decoder"]
 optional = true
 
 [dependencies.no_std_io2]
