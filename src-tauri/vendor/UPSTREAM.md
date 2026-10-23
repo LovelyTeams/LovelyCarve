@@ -89,3 +89,7 @@ LZMA 复用 Apache-2.0 的 `lzma-rust2`。没有复制无明确代码许可的 H
 ## UDF
 
 `lamfold-udf` 0.1.1 来源于 [lamco-admin/lamfold fabaad6af0c28](https://github.com/lamco-admin/lamfold/tree/fabaad6af0c28b80535307b339b84110f3a3c12e/crates/lamfold-udf)，MIT OR Apache-2.0。复用既有 lamfold；补 descriptor tag / CRC、单物理分区映射与边界检查、512–4096 字节块、FE / EFE、AED 续链、稀疏区、符号链接、时间与资源限额；不含 C/DLL。固定来源、本地改造和上游 mkudffs / Linux 内核夹具见 [LOVELYCARVE.md](lamfold-udf/LOVELYCARVE.md) 与 [UDF](../../docs/formats/UDF.md)。
+
+## Minix FS
+
+`minix-reader` 0.1.0 元数据解析改造自 [danifunker/rusty-backup 6e044a314f65](https://github.com/danifunker/rusty-backup/blob/6e044a314f6523045999058f85a882c1eeb64b50/src/fs/minix.rs)，保留 Dani 作者署名和 AGPL v3，独立库按 AGPL-3.0-only 分发。补大小端、位图 / 数据边界、V3 派生 first zone、完整间接寻址、多 block zone、精确范围读、缓存限额和时间角色；没有复制写入 / 修复或内核 C 实现。util-linux 官方 mkfs / fsck 转储提供独立布局样本，来源 / 许可 / 哈希见 [ORIGIN.md](minix-reader/ORIGIN.md)；功能与方言边界见 [Minix FS](../../docs/formats/MINIX.md)。

@@ -51,9 +51,9 @@ use crate::core::filesystem::volumes::ntfs::NtfsSource;
 use crate::core::filesystem::volumes::ntfs::{parse_ntfs_id, NtfsVolume};
 use crate::core::filesystem::volumes::refs::{parse_refs_id, parse_refs_snap_id};
 use crate::core::filesystem::volumes::rom_images::{
-    open_cramfs_source, open_erofs_source, open_f2fs_source, open_qnx4_source, open_qnx6_source,
-    open_romfs_source, open_udf_source, parse_cramfs_id, parse_erofs_id, parse_f2fs_id,
-    parse_qnx4_id, parse_qnx6_id, parse_romfs_id, parse_udf_id,
+    open_cramfs_source, open_erofs_source, open_f2fs_source, open_minix_source, open_qnx4_source,
+    open_qnx6_source, open_romfs_source, open_udf_source, parse_cramfs_id, parse_erofs_id,
+    parse_f2fs_id, parse_minix_id, parse_qnx4_id, parse_qnx6_id, parse_romfs_id, parse_udf_id,
 };
 use crate::core::filesystem::volumes::squashfs::{open_squashfs_source, parse_squashfs_id};
 use crate::core::filesystem::volumes::ubi::{open_ubi_source, parse_ubi_id};
@@ -157,6 +157,7 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &Qnx4Adapter,
     &Qnx6Adapter,
     &UdfAdapter,
+    &MinixAdapter,
     &UbifsAdapter,
     &Jffs2Adapter,
     &Yaffs2Adapter,
@@ -205,6 +206,9 @@ pub(crate) fn volume_root_key(id: &str) -> Option<String> {
     }
     if let Some((partition, _)) = parse_qnx4_id(id) {
         return Some(format!("qnx4:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_minix_id(id) {
+        return Some(format!("minix:part:{partition}"));
     }
     if let Some((partition, _)) = parse_udf_id(id) {
         return Some(format!("udf:part:{partition}"));
@@ -461,6 +465,15 @@ path_volume!(
     open_udf_source
 );
 path_volume_impl!(UdfVol, plain_range);
+path_volume!(
+    MinixAdapter,
+    MinixVol,
+    "minix",
+    crate::core::filesystem::volumes::rom_images::MinixVolume,
+    parse_minix_id,
+    open_minix_source
+);
+path_volume_impl!(MinixVol, plain_range);
 path_volume!(
     F2fsAdapter,
     F2fsVol,

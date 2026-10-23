@@ -5,13 +5,53 @@ use std::fs::File;
 use std::io::Write;
 
 #[test]
+fn minix_auto_snapshot_preserves_native_paths_and_hardlink_identity() {
+    use std::io::Read;
+    let directory = tempfile::tempdir().unwrap();
+    let mut bytes = Vec::new();
+    flate2::read::ZlibDecoder::new(
+        include_bytes!("../../../../../vendor/minix-reader/tests/fixtures/v3-60-1024-0-le.zlib")
+            .as_slice(),
+    )
+    .read_to_end(&mut bytes)
+    .unwrap();
+    let source = directory.path().join("minix.img");
+    std::fs::write(&source, bytes).unwrap();
+    let image = Arc::new(EvidenceSession::from(DiskImage::open(&source).unwrap()));
+    assert_eq!(browsable_volume_keys(&image), vec!["part:0"]);
+    let output = directory.path().join("minix.dirz");
+    let built = volume_snapshot::build_volume_snapshot(
+        &image,
+        "part:0",
+        &output,
+        1000,
+        "2026-01-01T00:00:00Z".into(),
+        &CancellationToken::new(),
+        &mut |_| {},
+    )
+    .unwrap();
+    assert!(!built.truncated);
+    let snapshot = volume_snapshot::load_snapshot(&output).unwrap();
+    let live = fs_tree::children_for_image(&image, "part:0").unwrap();
+    assert_eq!(
+        serde_json::to_value(snapshot.children("part:0").unwrap()).unwrap(),
+        serde_json::to_value(&live).unwrap()
+    );
+    let sub = live.iter().find(|node| node.name == "sub").unwrap();
+    assert_eq!(snapshot.children(&sub.id).unwrap()[0].name, "nested.txt");
+    let big = live.iter().find(|node| node.name == "big.bin").unwrap();
+    let alias = live.iter().find(|node| node.name == "alias.bin").unwrap();
+    assert_eq!(big.inode, alias.inode);
+    assert_ne!(big.id, alias.id);
+}
+
+#[test]
 fn udf_auto_snapshot_preserves_live_tree_and_persisted_node_identity() {
     use std::io::Read;
     let directory = tempfile::tempdir().unwrap();
     let mut bytes = Vec::new();
     flate2::read::ZlibDecoder::new(
-        include_bytes!("../../../../../vendor/lamfold-udf/tests/fixtures/udf102.zlib")
-            .as_slice(),
+        include_bytes!("../../../../../vendor/lamfold-udf/tests/fixtures/udf102.zlib").as_slice(),
     )
     .read_to_end(&mut bytes)
     .unwrap();

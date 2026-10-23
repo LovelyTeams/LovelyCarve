@@ -110,6 +110,7 @@ pub fn partition_ftype(kind: PartitionKind) -> Option<u64> {
         | PartitionKind::Qnx4
         | PartitionKind::Qnx6
         | PartitionKind::Udf
+        | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs
         | PartitionKind::Ubi

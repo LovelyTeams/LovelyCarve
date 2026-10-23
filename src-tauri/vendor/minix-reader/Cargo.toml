@@ -1,0 +1,15 @@
+[package]
+name = "minix-reader"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+authors = ["Dani <dani@funkervogt.com>", "LovelyCarve contributors"]
+description = "Bounded read-only Minix V1/V2/V3 filesystem reader"
+
+[dependencies]
+lamfold = { path = "../lamfold", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+flate2 = "1"
+
+[workspace]

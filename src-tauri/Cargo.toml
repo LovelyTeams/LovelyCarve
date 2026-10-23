@@ -154,6 +154,7 @@ magika = { path = "vendor/magika" }
 memchr = "2.8.3"
 memmap2 = "0.9.11"
 minifs = { path = "vendor/minifs" }
+minix-reader = { path = "vendor/minix-reader" }
 ms-compress = { version = "=0.2.0", default-features = false, features = ["std", "xpress", "lzx"] }
 notatin = { path = "vendor/notatin" }
 ntfs = { path = "vendor/ntfs" }
@@ -408,6 +409,9 @@ opt-level = 3
 opt-level = 3
 
 [profile.release.package.ruzstd]
+opt-level = 3
+
+[profile.release.package.minix-reader]
 opt-level = 3
 
 [profile.release.package.qnx-reader]

@@ -188,6 +188,12 @@ impl<'a> FsSession<'a> {
                         )?
                         .root_children(),
                     ),
+                    PartitionKind::Minix => Some(
+                        crate::core::filesystem::volumes::rom_images::open_minix_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::Udf => Some(
                         crate::core::filesystem::volumes::rom_images::open_udf_source(
                             self.image, pid,

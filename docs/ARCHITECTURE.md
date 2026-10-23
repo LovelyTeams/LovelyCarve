@@ -1298,3 +1298,7 @@ LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提�
 ### UDF 只读卷
 
 `evidence::partitions::udf` 校验盘首 / 盘尾 anchor tag 与 CRC；`lamfold-udf` 复用 `rom_images` 有界源和路径适配器，校验同一 VDS 的单物理分区映射、FSD、FE / EFE 和 AED 续链。节点使用分区相对 ICB LBA，缓存清理不改变 inode / 硬链接身份；路径节点保留源分区 ID。范围、流式、哈希与导出共享映射，未知时区保持未知。每卷缓存随 FsSession 释放，没有新增全局缓存。支持范围见 [UDF](formats/UDF.md)。
+
+### Minix 只读卷
+
+`evidence::partitions::minix` 校验固定超级块与位图容量，`minix-reader` 复用 `rom_images` 有界源 / 路径适配器。每卷持有有上限的 inode 和 metadata block 缓存；范围读按目标 zone 遍历最多三级间接块，zone 大于 block 时只取第一个 block 的指针。inode / zone 分配位与物理范围一起校验，稀疏指针才返回零。V1 不虚构访问 / 变更时间；路径、硬链接和快照保留源分区与 inode 身份，缓存随 FsSession 释放。支持范围见 [Minix FS](formats/MINIX.md)。

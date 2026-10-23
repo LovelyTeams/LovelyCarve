@@ -1,4 +1,4 @@
-//! CramFS / ROMFS / EROFS / F2FS / QNX / UDF adapters over the lamfold reader contract.
+//! CramFS / ROMFS / EROFS / F2FS / QNX / UDF / Minix adapters over the lamfold reader contract.
 //! Paths retain their volume identity; no host extraction or symlink following.
 
 use std::{cell::RefCell, collections::HashSet, sync::Arc};
@@ -16,6 +16,9 @@ use crate::core::filesystem::tree::fs_tree::{FsNode, FsStat, Mactb, NodeKind};
 #[path = "flashfs_tests.rs"]
 mod flashfs_tests;
 #[cfg(test)]
+#[path = "minix_tests.rs"]
+mod minix_tests;
+#[cfg(test)]
 #[path = "rom_images_tests.rs"]
 mod tests;
 #[cfg(test)]
@@ -29,6 +32,7 @@ pub type F2fsVolume = RomVolume<f2fs_reader::F2fs<RomImageSource>>;
 pub type Qnx4Volume = RomVolume<qnx_reader::Qnx4<RomImageSource>>;
 pub type Qnx6Volume = RomVolume<qnx_reader::Qnx6<RomImageSource>>;
 pub type UdfVolume = RomVolume<lamfold_udf::Udf<RomImageSource>>;
+pub type MinixVolume = RomVolume<minix_reader::Minix<RomImageSource>>;
 
 pub struct RomImageSource {
     image: Arc<DiskImage>,
@@ -88,6 +92,15 @@ pub fn parse_qnx4_id(id: &str) -> Option<(u8, String)> {
 }
 pub fn open_qnx4_source(image: &Arc<DiskImage>, partition: u8) -> Result<Qnx4Volume> {
     Qnx4Volume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn parse_minix_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "minix")
+}
+pub fn open_minix_source(image: &Arc<DiskImage>, partition: u8) -> Result<MinixVolume> {
+    MinixVolume::open(
         Arc::clone(image),
         find_partition(image, &partition.to_string())?,
     )

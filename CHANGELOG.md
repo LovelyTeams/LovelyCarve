@@ -9,6 +9,8 @@
 
 ### Added
 
+- 新增纯 Rust Minix V1 / V2 / V3 文件系统读取：覆盖五种目录布局、大小端元数据、位图校验、全部间接层级与多 block zone，接入浏览、范围读、哈希、导出和自动目录索引；与固件 MINIFS 独立显示。
+
 - 新增纯 Rust UDF 1.02–2.01 单物理分区只读浏览、范围读、哈希、导出和索引：复用并加固 lamfold-udf，校验描述符 CRC / 分区引用 / 数据边界，支持 FE / EFE、稀疏区与续链；VAT、sparable 和 Blu-ray metadata partition 等高级布局明确报错。
 
 - 新增 PyO3 Python 读取库 `lovelycarve`，支持只读打开镜像与归档、浏览分区和文件系统、查询文件属性及按范围或文件对象读取字节；不提供案件、分析、搜索、雕刻或文件内容解析接口。

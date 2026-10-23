@@ -1544,3 +1544,17 @@ The mkudffs/Linux-generated UDF 1.02 and 2.01 data fixtures are retained as
 lossless zlib copies, with provenance and hashes in their manifest. Invented
 fixtures and `scripts/udf-fixtures.py` are CC0-1.0. No upstream C filesystem
 implementation, native library or writer is included in the runtime path.
+
+## Minix filesystem reader and fixtures
+
+`minix-reader` metadata layouts are adapted from Dani's
+[danifunker/rusty-backup](https://github.com/danifunker/rusty-backup/blob/6e044a314f6523045999058f85a882c1eeb64b50/src/fs/minix.rs),
+revision `6e044a314f6523045999058f85a882c1eeb64b50`, manifest license AGPL-3.0.
+The original AGPL v3 text and author attribution are retained; this read-only
+adaptation is distributed as AGPL-3.0-only. No writer/repair implementation is
+included. Official util-linux mkfs.minix/fsck.minix test data and the original
+generation script come from `fbfd2ef405d048e8fc01b309b051d2b403b09853`,
+GPL-2.0-or-later, with license and original hexdumps preserved in
+`src-tauri/vendor/minix-reader/tests/fixtures/util-linux/`.
+Invented populated fixtures and `scripts/minix-fixtures.py` are CC0-1.0.
+No C filesystem implementation or native runtime dependency is added.

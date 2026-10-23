@@ -149,6 +149,46 @@ def main():
             assert rows[2]["result"]["data"] == flash_body[flash_offset:flash_offset + 121].hex()
             assert rows[3]["result"]["sha256"] == hashlib.sha256(flash_body).hexdigest()
 
+        # Minix V1/V2/V3: all read paths share sparse and indirect mappings.
+        minix_fixtures = flash_vendor / "minix-reader/tests/fixtures"
+        for minix_name, zone_size, pointers in [
+            ("v1-30-1024-1-be", 2048, 512),
+            ("v2-30-1024-2-le", 4096, 256),
+            ("v3-60-1024-0-le", 1024, 256),
+        ]:
+            minix_path = root / (minix_name + ".img")
+            minix_path.write_bytes(zlib.decompress((minix_fixtures / (minix_name + ".zlib")).read_bytes()))
+            minix_expected = bytearray((7 + pointers + 2) * zone_size + 37)
+            for logical_zone, factor in [(0, 13), (2, 17), (7, 17), (7 + pointers + 2, 19)]:
+                start = logical_zone * zone_size
+                count = min(zone_size, len(minix_expected) - start)
+                minix_expected[start:start + count] = bytes((index * factor + 7) & 255 for index in range(count))
+            minix_node = "minix:part:0:" + b"/big.bin".hex()
+            minix_export = root / (minix_name + "-export.bin")
+            minix_offset = 7 * zone_size - 7
+            requests = [
+                {"id": "open", "command": "images open", "args": {"path": str(minix_path)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "nested", "command": "files list", "args": {"parentId": "minix:part:0:" + b"/sub".hex()}},
+                {"id": "read", "command": "files read", "args": {"nodeId": minix_node, "offset": minix_offset, "length": 121}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": minix_node, "algos": ["sha256"]}},
+                {"id": "export", "command": "files export", "args": {"nodeId": minix_node, "destination": str(minix_export)}},
+            ]
+            if not minix_name.startswith("v1"):
+                requests.append({"id": "triple", "command": "files read", "args": {
+                    "nodeId": "minix:part:0:" + b"/triple.bin".hex(),
+                    "offset": (7 + pointers + pointers * pointers) * zone_size, "length": 37}})
+            _, rows = session(requests)
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "minix"
+            assert any(item["name"] == "text.txt" for item in rows[1]["result"]["items"])
+            assert any(item["name"] == "nested.txt" for item in rows[2]["result"]["items"])
+            assert rows[3]["result"]["data"] == minix_expected[minix_offset:minix_offset + 121].hex()
+            assert rows[4]["result"]["sha256"] == hashlib.sha256(minix_expected).hexdigest()
+            assert minix_export.read_bytes() == minix_expected
+            if len(rows) == 7:
+                assert rows[6]["result"]["data"] == bytes((index * 19 + 7) & 255 for index in range(37)).hex()
+
         # UDF reference images: FE/EFE, nested tree, range/hash/export through JSONL.
         udf_fixtures = flash_vendor / "lamfold-udf/tests/fixtures"
         for udf_name, udf_file, udf_expected in [

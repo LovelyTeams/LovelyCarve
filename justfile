@@ -157,6 +157,7 @@ fmt:
     cd src-tauri/vendor/lamfold-cramfs && cargo fmt
     cd src-tauri/vendor/lamfold-romfs && cargo fmt
     cd src-tauri/vendor/lamfold-udf && cargo fmt
+    cd src-tauri/vendor/minix-reader && cargo fmt
     cd src-tauri/vendor/lamfold-erofs && cargo fmt
     cd src-tauri/vendor/f2fs-reader && cargo fmt
     cd src-tauri/vendor/qnx-reader && cargo fmt
@@ -423,6 +424,19 @@ clippy-yaffs2:
 [group("readers")]
 test-vendor name *args:
     cargo test --manifest-path src-tauri/vendor/{{ name }}/Cargo.toml --lib {{ args }}
+
+# Validate the Minix V1/V2/V3 reader, including util-linux reference images.
+[group("readers")]
+test-minix:
+    cargo test --manifest-path src-tauri/vendor/minix-reader/Cargo.toml --lib
+
+[group("readers")]
+clippy-minix:
+    cargo clippy --manifest-path src-tauri/vendor/minix-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-minix-fixtures:
+    {{ python }} scripts/minix-fixtures.py
 
 # Validate/lint the UDF physical-partition reader and its reference fixtures.
 [group("readers")]
