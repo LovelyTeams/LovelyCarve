@@ -223,7 +223,7 @@ impl fmt::Debug for BasicSymlink {
 }
 impl BasicSymlink {
     pub fn target(&self) -> String {
-        core::str::from_utf8(&self.target_path).unwrap().to_string()
+        String::from_utf8_lossy(&self.target_path).into_owned()
     }
 }
 

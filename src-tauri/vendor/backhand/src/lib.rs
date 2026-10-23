@@ -60,6 +60,8 @@ type _ReadmeTest = ();
 mod log;
 pub mod error;
 mod kinds;
+#[cfg(feature = "v1_v2")]
+pub mod legacy;
 #[cfg(any(feature = "v3_lzma", feature = "v4_lzma"))]
 mod lzma;
 pub mod traits;
@@ -103,6 +105,8 @@ pub mod kind {
     pub use crate::kinds::{AVM_BE_V4_0, BE_V4_0, Endian, Kind, LE_V4_0, Magic};
     #[cfg(feature = "v3")]
     pub use crate::kinds::{BE_V3_0, LE_V3_0};
+    #[cfg(feature = "v3_ddwrt")]
+    pub use crate::kinds::{BE_V3_0_DDWRT, LE_V3_0_DDWRT};
     #[cfg(feature = "v3_lzma")]
     pub use crate::kinds::{
         BE_V3_0_LZMA, BE_V3_0_LZMA_SWAP_STANDARD, BE_V3_1_LZMA_SWAP, LE_V3_0_LZMA,

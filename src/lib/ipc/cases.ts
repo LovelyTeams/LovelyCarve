@@ -23,6 +23,7 @@ export type ImageFormat =
   | 'dmg'
   | 'pmfx'
   | 'xiaomi_firmware'
+  | 'firmware'
   | 'ldplayer'
   | 'docker'
   | 'tar'

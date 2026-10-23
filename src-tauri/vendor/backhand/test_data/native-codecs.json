@@ -1,0 +1,29 @@
+{
+  "generator": "Python stdlib lzma and zstandard 0.25.0",
+  "license": "CC0-1.0",
+  "payloadSha256": "a1f259d4365ed4320c377ce26f5c8c56dcdc9a89e7b641bfd8eabfbbeac86654",
+  "files": {
+    "native-plain.xz": "e9afda921e3bedd9bc43799fe4a2771a0de97e7157f7c1291736d30e87467f1e",
+    "native-x86.xz": "746d7d9aec23430fc37f79399917e1ab808be944f157155d04d5ab132ad332f1",
+    "native-powerpc.xz": "8020ef3a706c89a122816b845e178ce670e36974e5164bb23abaaa7dc18bd1a6",
+    "native-ia64.xz": "2e9c8f7c31f2398ff1b41584d8b4d376c88b977410557aee4c54f8b9590b31ad",
+    "native-arm.xz": "bbeb0b6f12b7022f94ce573e2657f6f70680bf1ed699bba02a41da6c4f01e7c7",
+    "native-armthumb.xz": "ee6ed1017819fb3a2cbe3e42ae5b2587eebac4f1dcea516bd22baeabaf296a59",
+    "native-sparc.xz": "75705daae49172137bb19f414a63ffadc4136a3ebb2f547f96fdef375c8f0ec3",
+    "native-crc64.xz": "316f75b4f4128576dc4f66c45e93cf6ddbf3acc6a80b47b4a7f88285602bd79c",
+    "native-sha256.xz": "6eced8dadfd535bb4c0ab5b2c40f7d00d4cf0c6660986d833febc406a6ac5001",
+    "native-no-check.xz": "5a1630e31168fe029c935c5e3ddf4aa346e7019e9d061e5758239e99f8c48981",
+    "native-large-output.xz": "570534ea334715dc37343b93b2fe5faa81289ef3f696db50045607ad863dcbe3",
+    "native-large-dictionary.xz": "88c7d141ac00c21b8f2e16c25df7d400526d896ed7da0fb3fda5ee525bde4344",
+    "native-delta-x86.xz": "13db6ec56e3f41c7cabaf01bc4f53a8b99b909c0a8dcd730cce79976575463dd",
+    "native-empty.xz": "0040f94d11d0039505328a90b2ff48968db873e9e7967307631bf40ef5679275",
+    "native-bad-footer.xz": "33a29ad237c4f333cbe6196b73592d639ddd72214720d3d7cc4a68b7138c570f",
+    "native-bad-index.xz": "7fa49c4315c1cefdc8a1bea9c0f06cdf0da448771d4536e4b8823cbe766e183a",
+    "native-multi-block.xz": "1a3c87fb368803f9309e20580c3ca768edea87caf903407fdfe30cd206a2e531",
+    "native-with-sizes.xz": "6d19fa1632159544f76088bacd0c1a7527ccf8dafa27a441c95a176018d3663c",
+    "native-bad-block-size.xz": "5a645620e3a43e6905b7d7d9d30950778a4912d72f9f2e7bc4bf394324348b7c",
+    "native-checksum.zst": "7548588cc90ed4f185732d06e336d19c4f4fce0485bc04ce7550b57383b035d9",
+    "native-large-output.zst": "6b7732d53219ecf153b4ed5a19d9cc94cd2b5710c5b14f6381b2b0730a2ab419",
+    "native-large-window.zst": "88825abeb2fc52ed0a28ceb90038cc803b0366dd6824b843c50304d682e64502"
+  }
+}

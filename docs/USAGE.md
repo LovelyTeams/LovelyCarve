@@ -46,7 +46,24 @@
 
 光盘 `.iso`、Mode 1 / XA Form 1 的 2352 字节 `.bin` 和 `.cue` 可作为镜像文件添加。多轨或多个数据文件应选择 `.cue`，按轨道浏览其中的 ISO 9660 / Joliet 文件；CUE 中的音频轨保留原始范围。整镜像哈希和源导出使用完整数据文件按 FILE 顺序拼接的原始字节，不含 CUE 文本，也不补入未存储的间隙。支持边界见 [光盘镜像](formats/CDFS.md)。
 
-小米 `HDR1` `.bin` 固件和独立 UBI 镜像可作为镜像文件添加。展开 UBI 分区后，`<卷名>.img` 是重组后的原始逻辑卷，SquashFS 卷另有同名目录供浏览、预览和导出。原始固件字节保持不变；UBIFS 当前只提供原始逻辑卷，详见 [UBI 固件](formats/UBI.md)。
+小米 `HDR1` `.bin` 固件和独立 UBI 镜像可作为镜像文件添加。展开 UBI 分区后，`<卷名>.img` 是重组后的原始逻辑卷，SquashFS / UBIFS 卷另有同名目录供浏览、预览和导出。原始固件字节保持不变，详见 [UBI 固件](formats/UBI.md)。
+
+SquashFS 支持 1.0、2.0/2.1、3.0 和 4.0，包括裸镜像、固件与 UBI 卷中的文件树；旧版本的未记录时间保持未知。版本、编码及限制见 [SquashFS](formats/SQUASHFS.md)。
+
+Netgear Sercomm NAND `factory.img` 可直接打开，解压并校验后浏览 UBI 内的原生文件系统；源哈希、十六进制视图和 RAW 导出仍保留原始压缩封装。布局与限制见 [固件](formats/FIRMWARE.md)。
+
+JFFS2 新格式镜像支持大小端、版本化目录 / 文件片段、硬链接与空洞，可直接打开或浏览固件分段中的文件；CRC 与不支持的编码明确报错，范围见 [JFFS2](formats/JFFS2.md)。
+
+YAFFS2 NAND 镜像可自动识别已支持的 page / spare 几何并浏览文件，支持硬链接、稀疏和范围读取。源哈希与 RAW 导出包含原始 OOB；特殊节点只显示元数据。几何、ECC 和版本重建限制见 [YAFFS2](formats/YAFFS2.md)。
+
+YAFFS1 的 512 / 16 旧式分散 tags 镜像使用独立类型识别，支持大小端、页正文 ECC、文件与链接读取。文件长度默认遵从对象头，配置差异与限制见 [YAFFS1](formats/YAFFS1.md)。
+
+UBIFS 可作为裸镜像或 UBI 命名卷浏览，也可位于受支持的固件分段中；原始字节视图和源哈希保持容器内容。当前支持干净的已提交树，遇到需日志重放、加密或认证的卷明确报错。范围与验证见 [UBIFS](formats/UBIFS.md)。
+
+Buffalo `.enc` / `.trx`、TP-Link SafeLoader `.bin`、U-Boot legacy uImage 组合镜像及
+Netgear `.chk` 也可直接添加。程序校验外层结构后，展示其中支持的文件系统；裸
+`.cramfs` / `.romfs` 无需预先解包。支持边界见[固件](formats/FIRMWARE.md)和
+[CramFS / Linux ROMFS](formats/ROM_IMAGES.md)。
 
 ZIP 或文件夹检材中的小米 `.bak` 备份会自动显示为同名目录，展开后可浏览 `apps/<包名>/…` 下的数据库、偏好设置和其他应用文件，并使用现有预览与导出功能。程序只在临时目录物化备份的 TAR 内容，卸载检材后自动清理，不修改原始检材。
 

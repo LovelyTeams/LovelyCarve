@@ -110,6 +110,15 @@ impl<R: ReadAt> Read for UbiReader<R> {
     }
 }
 
+impl<R: ReadAt> ReadAt for UbiReader<R> {
+    fn size(&self) -> u64 {
+        self.volume.length
+    }
+    fn read_at(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        self.volume.read_at(&self.source, offset, length)
+    }
+}
+
 impl<R> Seek for UbiReader<R> {
     fn seek(&mut self, from: SeekFrom) -> io::Result<u64> {
         let target = match from {

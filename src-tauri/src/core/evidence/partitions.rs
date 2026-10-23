@@ -24,16 +24,20 @@ pub mod ext4;
 pub mod fat;
 pub mod gpt;
 pub mod hfsplus;
+pub mod jffs2;
 pub mod luks;
 pub mod lvm2;
 pub mod mbr;
 pub mod mdadm;
 pub mod optical_disc;
+pub mod rom_images;
 pub mod squashfs;
+pub mod ubifs;
 pub mod ufs;
 pub mod volume_probe;
 pub mod xfs;
 pub mod xiaomi_firmware;
+pub mod yaffs2;
 pub mod zfs;
 
 use anyhow::Context;
@@ -80,7 +84,8 @@ pub struct Partition {
 pub enum TableScheme {
     Gpt,
     Mbr,
-    /// Xiaomi `HDR1` firmware container. Its filesystem-bearing segments are
+    /// Firmware container (including Xiaomi HDR1 and Buffalo/Broadcom TRX).
+    /// Its filesystem-bearing segments are
     /// byte-addressed payloads rather than sector-aligned disk partitions.
     Firmware,
     Apm,
@@ -104,6 +109,9 @@ pub enum PartitionKind {
     ExFat,
     Cdfs,
     Squashfs,
+    Cramfs,
+    Romfs,
+    Ubifs,
     Lvm,
     Bitlocker,
     BiosBoot,
@@ -122,6 +130,9 @@ pub enum PartitionKind {
     Zfs,
     Unknown,
     Ubi,
+    Jffs2,
+    Yaffs2,
+    Yaffs1,
 }
 
 /// Block-device abstraction. Uniform read interface so the dispatcher and
@@ -304,6 +315,12 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::ExFat
         | PartitionKind::Cdfs
         | PartitionKind::Squashfs
+        | PartitionKind::Cramfs
+        | PartitionKind::Ubifs
+        | PartitionKind::Jffs2
+        | PartitionKind::Yaffs2
+        | PartitionKind::Yaffs1
+        | PartitionKind::Romfs
         | PartitionKind::BiosBoot
         | PartitionKind::ApfsContainer
         | PartitionKind::HfsPlus

@@ -82,6 +82,187 @@ def main():
             result = run([*arguments, "session"], "\n".join(json.dumps(request) for request in requests), expected)
             return result, [json.loads(line) for line in result.stdout.splitlines()]
 
+        # Independent synthetic Buffalo ENC/bgn + TRX + DD-WRT SquashFS v3.
+        firmware_fixtures = Path(__file__).resolve().parent.parent / "src-tauri/test_data/firmware"
+        firmware_node = "squashfs:part:0:" + b"/hello".hex()
+        firmware_content = b"Independent DD-WRT fixture.\n" * 64
+        for fixture_name in ("synthetic.enc", "synthetic-bgn.enc"):
+            _, firmware_rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(firmware_fixtures / fixture_name)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": firmware_node, "offset": 11, "length": 93}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": firmware_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in firmware_rows), firmware_rows
+            assert firmware_rows[0]["result"]["sourceFormat"] == "firmware"
+            assert firmware_rows[0]["result"]["sectorSize"] == 1
+            assert firmware_rows[1]["result"]["items"][0]["name"] == "hello"
+            assert firmware_rows[2]["result"]["data"] == firmware_content[11:104].hex()
+            assert firmware_rows[3]["result"]["sha256"] == hashlib.sha256(firmware_content).hexdigest()
+
+        # Native CramFS / ROMFS: library-backed tree, page-crossing reads and hash.
+        rom_fixtures = Path(__file__).resolve().parent.parent / "src-tauri/test_data/rom-images"
+        rom_content = (rom_fixtures / "payload.bin").read_bytes()
+        for rom_name, rom_kind in [("synthetic-le.cramfs", "cramfs"), ("synthetic-be.cramfs", "cramfs"), ("synthetic.romfs", "romfs")]:
+            rom_node = rom_kind + ":part:0:" + b"/payload.bin".hex()
+            _, rom_rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(rom_fixtures / rom_name)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": rom_node, "offset": 8180, "length": 100}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": rom_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rom_rows), rom_rows
+            assert rom_rows[0]["result"]["partitions"][0]["kind"] == rom_kind
+            assert rom_rows[0]["result"]["sectorSize"] == 1
+            assert any(item["name"] == "nested" and item["kind"] == "dir" for item in rom_rows[1]["result"]["items"])
+            assert rom_rows[2]["result"]["data"] == rom_content[8180:8280].hex()
+            assert rom_rows[3]["result"]["sha256"] == hashlib.sha256(rom_content).hexdigest()
+
+        # Native firmware envelopes retain the established CramFS content paths.
+        for wrapper in ("synthetic-uimage.bin", "synthetic-safeloader.bin", "synthetic.chk"):
+            wrapper_node = "cramfs:part:0:" + b"/payload.bin".hex()
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(firmware_fixtures / wrapper)}},
+                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": wrapper_node, "offset": 8180, "length": 100}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": wrapper_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["sourceFormat"] == "firmware"
+            assert rows[2]["result"]["data"] == rom_content[8180:8280].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(rom_content).hexdigest()
+
+        # Independently encoded v3 gzip / raw LZMA / LZMA-alone / properties,
+        # in both byte orders and with range reads crossing compressed blocks.
+        squashfs_fixtures = firmware_fixtures.parent.parent / "vendor/backhand/test_data"
+        squashfs_content = b"Independent Rust LZMA fixture.\n" * 350
+        for mode in ("raw", "alone", "props", "gzip"):
+            for endian in ("le", "be"):
+                _, rows = session([
+                    {"id": "open", "command": "images open", "args": {"path": str(squashfs_fixtures / f"lzma-v3-{mode}-{endian}.squashfs")}},
+                    {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
+                    {"id": "read", "command": "files read", "args": {"nodeId": firmware_node, "offset": 4080, "length": 100}},
+                    {"id": "hash", "command": "files hash", "args": {"nodeId": firmware_node, "algos": ["sha256"]}},
+                ])
+                assert all("result" in row for row in rows), rows
+                assert rows[1]["result"]["items"][0]["name"] == "hello"
+                assert rows[2]["result"]["data"] == squashfs_content[4080:4180].hex()
+                assert rows[3]["result"]["sha256"] == hashlib.sha256(squashfs_content).hexdigest()
+
+        # Legacy SquashFS: independent v1/v2 bitfields, fragments, both byte
+        # orders, bounded markerless LZMA and the encrypted firmware path.
+        legacy_fixtures = squashfs_fixtures / "legacy"
+        legacy_paths = sorted(legacy_fixtures.glob("*.squashfs"))
+        legacy_paths.append(firmware_fixtures / "synthetic-legacy-squashfs.enc")
+        legacy_node = "squashfs:part:0:" + b"/payload.bin".hex()
+        for path in legacy_paths:
+            payload_name = ("payload-32k.bin" if "32k" in path.name else
+                            "payload-64k.bin" if "64k" in path.name else "payload.bin")
+            legacy_content = (legacy_fixtures / payload_name).read_bytes()
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(path)}},
+                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": legacy_node, "offset": 8180, "length": 100}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": legacy_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "squashfs"
+            entries = {entry["name"]: entry for entry in rows[1]["result"]["items"]}
+            assert set(entries) == {"payload.bin", "alias.bin", "子目录", "link", "huge-link", "empty.txt", "block", "char", "fifo", "socket"}
+            assert rows[2]["result"]["data"] == legacy_content[8180:8280].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(legacy_content).hexdigest()
+
+        # Sercomm source geometry stays compressed; UBI navigation uses decoded bytes.
+        sercomm_stored = root / "sercomm-stored.img"
+        sercomm_stored.write_bytes(zlib.decompress((firmware_fixtures / "synthetic-sercomm-stored.img.zlib").read_bytes()))
+        sercomm_node = "squashfs:ubi:part:0:2:" + b"/hello".hex()
+        for sercomm_path in [firmware_fixtures / "synthetic-sercomm-deflate.img", sercomm_stored]:
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(sercomm_path)}},
+                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "files", "command": "files list", "args": {"parentId": "squashfs:ubi:part:0:2:"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": sercomm_node, "offset": 11, "length": 93}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": sercomm_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["sourceFormat"] == "firmware"
+            assert rows[0]["result"]["sizeBytes"] == sercomm_path.stat().st_size
+            assert rows[0]["result"]["unlockedPartitions"] == []
+            assert {entry["name"] for entry in rows[1]["result"]["items"]} == {"root", "root.img"}
+            assert rows[2]["result"]["items"][0]["name"] == "hello"
+            assert rows[3]["result"]["data"] == firmware_content[11:104].hex()
+            assert rows[4]["result"]["sha256"] == hashlib.sha256(firmware_content).hexdigest()
+
+        # UBIFS: independent stored/LZO/DEFLATE/Zstd trees and encrypted firmware.
+        ubifs_fixtures = firmware_fixtures.parent.parent / "vendor/ubidump/test_data"
+        ubifs_content = (ubifs_fixtures / "payload.bin").read_bytes()
+        ubifs_node = "ubifs:part:0:" + b"/payload.bin".hex()
+        ubifs_paths = [ubifs_fixtures / f"synthetic-{codec}.ubifs" for codec in ("stored", "lzo", "deflate", "zstd", "zstd-compressed")]
+        ubifs_paths.append(firmware_fixtures / "synthetic-ubifs.enc")
+        for path in ubifs_paths:
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(path)}},
+                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": ubifs_node, "offset": 8180, "length": 100}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": ubifs_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "ubifs"
+            assert rows[2]["result"]["data"] == ubifs_content[8180:8280].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(ubifs_content).hexdigest()
+
+        # JFFS2: version replay, both byte orders, four codecs and firmware bytes.
+        jffs2_fixtures = firmware_fixtures.parent.parent / "vendor/jffs2/test_data"
+        jffs2_content = (jffs2_fixtures / "payload.bin").read_bytes()
+        jffs2_node = "jffs2:part:0:" + b"/payload.bin".hex()
+        jffs2_paths = [jffs2_fixtures / f"synthetic-{order}-{codec}.jffs2" for order in ("le", "be") for codec in ("stored", "rtime", "zlib", "lzo")]
+        jffs2_paths.append(firmware_fixtures / "synthetic-jffs2.enc")
+        for path in jffs2_paths:
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(path)}},
+                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": jffs2_node, "offset": 8180, "length": 100}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": jffs2_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "jffs2"
+            assert {entry["name"] for entry in rows[1]["result"]["items"]} == {"payload.bin", "alias.bin", "子目录", "link", "empty.txt", "cut.txt"}
+            assert rows[2]["result"]["data"] == jffs2_content[8180:8280].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(jffs2_content).hexdigest()
+
+        # YAFFS2: NAND geometry, hard links, UTF-8 names and page-crossing ranges.
+        yaffs2_fixtures = firmware_fixtures.parent.parent / "vendor/yaffs2-reader/test_data"
+        yaffs2_content = b"Native YAFFS2 fixture.\n" * 300
+        yaffs2_node = "yaffs2:part:0:" + "/目录/hello".encode().hex()
+        for yaffs2_path in [yaffs2_fixtures / "base-le.yaffs", yaffs2_fixtures / "base-be-ecc.yaffs", firmware_fixtures / "synthetic-yaffs2.enc"]:
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(yaffs2_path)}},
+                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": yaffs2_node, "offset": 2047, "length": 4097}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": yaffs2_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "yaffs2"
+            assert {entry["name"] for entry in rows[1]["result"]["items"]} == {"目录", "alias", "link", "console", "empty"}
+            assert rows[2]["result"]["data"] == yaffs2_content[2047:6144].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(yaffs2_content).hexdigest()
+
+        # YAFFS1 has dispersed tags, two-bit serials and a distinct partition kind.
+        yaffs1_content = b"Native YAFFS1 data.\n" * 61
+        yaffs1_node = "yaffs1:part:0:" + "/目录/message".encode().hex()
+        for yaffs1_path in [yaffs2_fixtures / "legacy-le.yaffs", yaffs2_fixtures / "legacy-be.yaffs", firmware_fixtures / "synthetic-yaffs1.enc"]:
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(yaffs1_path)}},
+                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": yaffs1_node, "offset": 511, "length": 517}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": yaffs1_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "yaffs1"
+            assert {entry["name"] for entry in rows[1]["result"]["items"]} == {"目录", "alias", "sym", "console", "empty"}
+            assert rows[2]["result"]["data"] == yaffs1_content[511:1028].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(yaffs1_content).hexdigest()
+
         # Discovery needs no evidence: system facts, request schemas, help and completion.
         system = json.loads(run(["system", "get"]).stdout)
         assert system["standalone"], "the CLI must be built without the desktop runtime"

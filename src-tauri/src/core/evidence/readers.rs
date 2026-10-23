@@ -7,6 +7,7 @@ pub mod cue;
 pub mod docker_image;
 pub(in crate::core) mod docker_manifest;
 pub mod ewf_image;
+pub mod firmware;
 pub mod folder_image;
 pub mod ldplayer_image;
 pub(crate) mod load_reader;

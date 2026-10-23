@@ -170,6 +170,17 @@ impl DiskImage {
         let bad_regions = Mutex::new(Vec::new());
 
         let mut sector_size = source.sector_size();
+        let firmware = match &source {
+            ImageSource::Raw {
+                mmap,
+                format: ImageFormat::Firmware,
+                ..
+            } => {
+                progress(OpenProgress::DetectingPartitions);
+                Some(crate::core::evidence::readers::firmware::FirmwareImage::open(mmap, cancel)?)
+            }
+            _ => None,
+        };
         // Docker / OCI archives have no partition table — the outer tar is
         // just a container of layer blobs. Plain tarballs, zip archives, and
         // folder sources are similarly partitionless (the archive / OS
@@ -177,6 +188,23 @@ impl DiskImage {
         // detection and surface the appropriate merged-view through
         // `core::filesystem::tree::fs_tree` instead.
         let (partitions, docker, folder, tar, zip, sevenz, table_scheme, disk_id) = match &source {
+            ImageSource::Raw {
+                format: ImageFormat::Firmware,
+                ..
+            } => (
+                firmware
+                    .as_ref()
+                    .context("missing firmware view")?
+                    .partitions
+                    .clone(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(partitions::TableScheme::Firmware),
+                None,
+            ),
             ImageSource::Cue { image } => (
                 image.partitions(cancel)?,
                 None,
@@ -318,6 +346,28 @@ impl DiskImage {
                 }
                 let mut detected =
                     partitions::detect_partitions_with_meta(&probe_source, sector_size)?;
+                // Packed filesystem images carry byte lengths, including images shorter
+                // than a disk sector. Preserve the final partial sector.
+                if can_infer_geometry
+                    && detected.scheme == Some(TableScheme::Volume)
+                    && detected.partitions.first().is_some_and(|partition| {
+                        matches!(
+                            partition.kind,
+                            PartitionKind::Cramfs
+                                | PartitionKind::Romfs
+                                | PartitionKind::Squashfs
+                                | PartitionKind::Ubifs
+                                | PartitionKind::Jffs2
+                                | PartitionKind::Yaffs2
+                                | PartitionKind::Yaffs1
+                        )
+                    })
+                {
+                    sector_size = 1;
+                    if let Some(partition) = detected.partitions.first_mut() {
+                        partition.length_lba = partitions::SectorSource::size(&probe_source);
+                    }
+                }
                 if sector_size == 512
                     && matches!(detected.scheme, Some(TableScheme::Mbr) | None)
                     && can_infer_geometry
@@ -392,6 +442,7 @@ impl DiskImage {
             source,
             sector_size,
             partitions,
+            firmware,
             docker,
             folder,
             tar,
@@ -443,6 +494,7 @@ impl DiskImage {
             source,
             sector_size,
             partitions,
+            firmware: None,
             docker: None,
             folder: None,
             tar: None,
@@ -479,10 +531,29 @@ impl DiskImage {
         partitions: Vec<Partition>,
         sector_size: usize,
     ) -> anyhow::Result<Self> {
+        Ok(Self::from_logical_source(
+            uuid::Uuid::new_v4().to_string(),
+            label,
+            source,
+            partitions,
+            sector_size,
+        ))
+    }
+
+    /// Wrap an already constructed logical byte source. Callers supply verified
+    /// partition geometry and identity; this does not probe or read its bytes.
+    #[inline(never)]
+    pub(crate) fn from_logical_source(
+        id: String,
+        label: String,
+        source: Arc<dyn SectorSource + Send + Sync>,
+        partitions: Vec<Partition>,
+        sector_size: usize,
+    ) -> Self {
         let size_bytes = source.size();
         let path = PathBuf::from(format!("assembled://{label}"));
-        Ok(Self {
-            id: uuid::Uuid::new_v4().to_string(),
+        Self {
+            id,
             path,
             source: ImageSource::Assembled {
                 source,
@@ -491,6 +562,7 @@ impl DiskImage {
             },
             sector_size,
             partitions,
+            firmware: None,
             docker: None,
             folder: None,
             tar: None,
@@ -508,6 +580,6 @@ impl DiskImage {
             ewf_acquiry: None,
             physical_drive_serial: None,
             derived: None,
-        })
+        }
     }
 }

@@ -145,6 +145,37 @@ impl<'a> FsSession<'a> {
             let pid: Option<u8> = part_str.parse().ok();
             if let (Some(kind), Some(pid)) = (kind, pid) {
                 let root = match kind {
+                    PartitionKind::Yaffs1 | PartitionKind::Yaffs2 => Some(
+                        crate::core::filesystem::volumes::yaffs2::open_yaffs2_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Jffs2 => Some(
+                        crate::core::filesystem::volumes::jffs2::open_jffs2_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Ubifs => Some(
+                        crate::core::filesystem::volumes::ubifs::open_ubifs_source(
+                            self.image,
+                            crate::core::filesystem::volumes::ubifs::UbifsSource::Partition(pid),
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Cramfs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_cramfs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Romfs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_romfs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::Refs => Some(
                         open_refs_source(self.image, RefsSource::Partition(pid))?.root_children(),
                     ),

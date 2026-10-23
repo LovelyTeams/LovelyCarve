@@ -375,7 +375,7 @@ pub fn snapshot_file_name(image_id: &str, volume_key: &str) -> String {
 /// partition byte length; everything else (docker / folder `"root"`) falls
 /// back to the whole-image length.
 pub fn volume_size_for_key(image: &EvidenceSession, volume_key: &str) -> u64 {
-    if let Some(size) = image.decrypted_volume_size(volume_key) {
+    if let Some(size) = image.native_volume_size(volume_key) {
         return size;
     }
     if let Some(part_id) = volume_key.strip_prefix("part:") {

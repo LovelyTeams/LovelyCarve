@@ -129,6 +129,20 @@ CLI JSONL 调度位于 `cli/session.rs`。`session --jobs N` 使用有界输入�
 
 `EvidenceSession::raw_export_reader` 提供独立的 RAW 导出投影。`image_export_raw` 默认 `mode: source`，桌面镜像头部使用 `unlockedPartitions`，导出开始时固定已解锁的 LUKS / VeraCrypt / BitLocker 读者。明文放在原分区起始位置，容器开销对应的分区尾部补零；整盘大小、分区表、未解锁分区和分区间隙保留原字节。范围重叠、溢出、越界、明文过长及短读明确失败，关闭解密会话不回退到密文。该投影不影响普通读取、源哈希和证据身份；尾部补零是导出转换规则，源坏区仍沿用读故障审计。导出目标以 `create_new` 创建。
 
+Buffalo ENC / Broadcom TRX、TP-Link SafeLoader、U-Boot legacy uImage 与 Netgear CHK 固件由 `evidence/readers/firmware.rs` 在打开阶段校验封装并定位分段，Buffalo ENC 另建立明文视图；原始字节读取与源哈希保留容器内容。固件段按字节寻址，SquashFS 适配器通过 backhand 的版本无关接口选择 v1/v2、标准 v3/v4 或 DD-WRT `hsqt` 逐块参数 LZMA 读者，标准 v3 块优先 gzip、其次用纯 Rust adaptive / 标准 LZMA 解码并验证终止与源边界；范围、流式与完整读取共用同一逻辑内容。v1/v2 在读取器 crate 内建立有界元数据与块计划，旧特殊文件时间不代入文件系统创建时间，无 EOS 的已知长度 LZMA 由独立 Rust 解码器验证最终 range code 和源 EOF。范围与上游依据见 [固件](formats/FIRMWARE.md) 和 [SquashFS](formats/SQUASHFS.md)。
+
+Sercomm NAND ZIP 固件由独立 Rust `sercomm-firmware` 库复用 ZIP / DEFLATE / UBI 读取能力，验证 seal、成员范围、CRC、尾部与 NAND 布局，宿主复用 uImage CRC 校验。`FirmwareImage` 只持有逻辑 `SectorSource` 与元数据，`DiskImage` 之间不相互持有；源 `DiskImage` 保留压缩字节与真实分段范围，由 `EvidenceSession` 构建并持有独立的 native firmware views；文件系统分派只对对应的分段 / UBI 节点解析逻辑字节，普通源读取及 RAW 导出不走该视图。视图沿用检材与分段 ID，快照取逻辑卷长，压缩数据不生成伪造物理 runs；不占用加密解锁槽，也不进入 `unlockedPartitions`。native view 与活动读取句柄由会话所有，释放后不保留额外全局缓存。
+
+JFFS2 适配器 `filesystem::volumes::jffs2` 通过有界 `ReadAt` 复用改造后的 vendor `jffs2::Jffs2Image`。扫描校验节点结构，建立最高版本目录 / inode 和非重叠片段索引；文件数据延迟校验与解码。`jffs2:part:` 节点按分区和路径区分硬链接身份，完整、流式与范围读取共用索引，源字节不变。支持边界见 [JFFS2](formats/JFFS2.md)。
+
+YAFFS2 适配器 `filesystem::volumes::yaffs2` 通过有界 `ReadAt` 和 `Box<dyn ReadOnlyFilesystem>` 复用 Rust `yaffs2-reader`，具体页索引及其所有权留在库内。根据 page / spare 标签探测几何，按 sequence 与物理页序重建当前名称、shrink / shadow 与数据页；`yaffs2:part:` 路径保留硬链接目录身份，内容 inode 沿用目标。完整、流式与范围读取共用逻辑页图；原始读取保留 OOB，不生成虚假的连续物理 runs。支持范围与 NAND ECC 限制见 [YAFFS2](formats/YAFFS2.md)。
+
+同一 Rust 库的 YAFFS1 扩展使用独立分散 tags / ECC 与前向 serial 扫描，复用只读接口和目录索引。分区类型与节点前缀为 `yaffs1`，适配器检查前缀与实际布局一致，不能通过另一版本前缀访问或混用缓存。已分配数据读取验证完整 512 字节页的已提供 ECC；宿主采用头声明长度，库可按已知源配置选择数据页长度策略。范围见 [YAFFS1](formats/YAFFS1.md)。
+
+UBIFS 适配器 `filesystem::volumes::ubifs` 将裸分区、固件明文和 UBI 逻辑卷接到 vendor `ubidump::UbifsImage` 的有界 `ReadAt`。按主节点选择已提交索引，缓存目录/inode 和数据键位置；数据 CRC 与解码延迟到实际范围读取。`ubifs:part:` 与 `ubifs:ubi:part:` 节点保留分区、卷与路径身份，硬链接不折叠成同一个目录节点；源读始终保留原始证据。支持边界见 [UBIFS](formats/UBIFS.md)。
+
+CramFS / Linux ROMFS 复用 vendor 的 lamfold Rust 读取器，适配器位于 `filesystem/volumes/rom_images.rs`。完整、流式与范围读取经同一文件内容路径，声明范围、CRC/校验和与循环目录明确校验；裸镜像用字节几何，真实分区保留原始 LBA，原容器字节不变。能力和限制见 [ROM_IMAGES](formats/ROM_IMAGES.md)。
+
 外部卷通过 `filesystem::external_volume::ExternalVolume` 提供只读 Volume 和关闭契约；插件 `RemoteVolume` 实现这个接口。未知分区的插件探测、源登记和卷安装由 `app/workflows/filesystem.rs` 编排。卸载先撤销 AppState 登记、取消任务和停止挂载，再 drain 外部卷并逐项关闭、移除源和其他缓存；持有调用句柄的线程释放前，provider backing 继续存活。字节读者本身不持有插件连接。
 
 `core/extensions/task_scheduler` 保留台账、状态机、派发、恢复、进度、看门狗和 post-action 契约。生产 `PluginTaskRunner` 位于 `app/workflows/scheduler.rs`，负责准备运行（`core/extensions/plugin/run_setup.rs`）、实例存活、执行、`records.db` 发布、时间线投影和结果清理；清理失败仍按原语义记录告警并完成任务删除。插件 SDK 保留 ABI、LPP 载荷与记录结构定义，`core/analysis/results/` 的 `record_store` / `record_query` 按结构保存与查询类型化记录，`models.rs` 是结果树、表格与详情的 IPC 投影；存储不依赖插件宿主，插件卸载后结果仍可读。

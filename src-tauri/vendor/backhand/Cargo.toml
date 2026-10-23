@@ -53,6 +53,7 @@ rustdoc-args = [
 ]
 
 [features]
+v1_v2 = ["gzip", "v3_lzma", "dep:lzma-rs"]
 any-gzip = []
 default = [
     "xz",
@@ -72,26 +73,25 @@ lz4 = ["dep:lz4_flex"]
 lzo = ["dep:rust-lzo"]
 parallel = ["dep:rayon"]
 v3 = ["gzip"]
+v3_ddwrt = ["v3", "dep:lzma-rust2"]
 v3_lzma = [
     "v3",
-    "dep:lzma-adaptive-sys",
     "dep:lzma-rust2",
-    "dep:liblzma",
 ]
 v4_lzma = [
-    "dep:lzma-adaptive-sys",
     "dep:lzma-rust2",
 ]
 xz = [
-    "dep:liblzma",
-    "dep:liblzma-sys",
+    "dep:lzma-rust2",
+    "dep:crc32fast",
 ]
-xz-static = [
-    "dep:liblzma",
-    "dep:liblzma-sys",
-    "liblzma?/static",
-]
+xz-static = ["xz"]
 zstd = [
+    "dep:ms-compress-ruzstd",
+]
+# Optional upstream writer; the LovelyCarve reader does not enable this feature.
+zstd-write = [
+    "zstd",
     "dep:zstd",
     "dep:zstd-safe",
 ]
@@ -111,6 +111,10 @@ features = [
 ]
 default-features = false
 
+[dependencies.crc32fast]
+version = "1.5"
+optional = true
+
 [dependencies.document-features]
 version = "0.2.10"
 optional = true
@@ -121,33 +125,14 @@ features = ["zlib-rs"]
 optional = true
 default-features = false
 
-[dependencies.liblzma]
-version = "0.4.8"
-features = [
-    "static",
-    "parallel",
-]
-optional = true
-default-features = false
-
-[dependencies.liblzma-sys]
-version = "0.4.8"
-features = ["static"]
-optional = true
-default-features = false
-
 [dependencies.lz4_flex]
 version = "0.14.0"
 features = ["alloc"]
 optional = true
 default-features = false
 
-[dependencies.lzma-adaptive-sys]
-version = "0.1.0"
-optional = true
-
 [dependencies.lzma-rust2]
-version = "0.20.0"
+version = "0.20.1"
 features = [
     "xz",
     "encoder",
@@ -155,9 +140,18 @@ features = [
 ]
 optional = true
 
+[dependencies.lzma-rs]
+path = "../lzma-rs"
+features = ["raw_decoder"]
+optional = true
+
 [dependencies.no_std_io2]
 version = "0.9.4"
 features = ["std"]
+
+[dependencies.ms-compress-ruzstd]
+version = "0.9.1"
+optional = true
 
 [dependencies.rayon]
 version = "1.12.0"

@@ -138,7 +138,10 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &FilevaultProbe,
     &BitlockerProbe,
     &SquashfsProbe,
+    &RomImagesProbe,
     &UbiProbe,
+    &super::ubifs::UbifsProbe,
+    &super::jffs2::Jffs2Probe,
     &XfsProbe,
     &ExtProbe,
     &ApfsProbe,
@@ -153,6 +156,7 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &BtrfsProbe,
     &UfsProbe,
     &ZfsProbe,
+    &super::yaffs2::Yaffs2Probe,
 ];
 
 pub fn probe_volume(
@@ -180,6 +184,21 @@ pub fn probe_volume_with_head(ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeH
 }
 
 pub fn detect_filesystem_bytes(bytes: &[u8], fallback: PartitionKind) -> PartitionKind {
+    if super::jffs2::is_jffs2_magic(bytes) {
+        return PartitionKind::Jffs2;
+    }
+    if let Some(geometry) = yaffs2_reader::detect_bytes(bytes) {
+        return match geometry.format {
+            yaffs2_reader::Format::Yaffs1 => PartitionKind::Yaffs1,
+            yaffs2_reader::Format::Yaffs2 => PartitionKind::Yaffs2,
+        };
+    }
+    if super::ubifs::is_ubifs_magic(bytes) {
+        return PartitionKind::Ubifs;
+    }
+    if let Some(kind) = super::rom_images::detect_kind(bytes) {
+        return kind;
+    }
     if bitlocker::is_bitlocker_boot_sector_bytes(bytes) {
         return PartitionKind::Bitlocker;
     }
@@ -246,6 +265,12 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::ExFat
         | PartitionKind::Cdfs
         | PartitionKind::Squashfs
+        | PartitionKind::Cramfs
+        | PartitionKind::Ubifs
+        | PartitionKind::Jffs2
+        | PartitionKind::Yaffs2
+        | PartitionKind::Yaffs1
+        | PartitionKind::Romfs
         | PartitionKind::Ubi
         | PartitionKind::Lvm
         | PartitionKind::Bitlocker
@@ -268,6 +293,26 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
 }
 
 struct FilevaultProbe;
+
+struct RomImagesProbe;
+
+impl VolumeProbe for RomImagesProbe {
+    fn name(&self) -> &'static str {
+        "rom_images"
+    }
+
+    fn probe(&self, ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeHit>> {
+        Ok(super::rom_images::detect_kind(ctx.head).map(|kind| {
+            VolumeProbeHit::new(
+                "rom_images",
+                kind,
+                100,
+                0,
+                "CramFS or Linux ROMFS signature at volume offset 0",
+            )
+        }))
+    }
+}
 impl VolumeProbe for FilevaultProbe {
     fn name(&self) -> &'static str {
         "filevault"

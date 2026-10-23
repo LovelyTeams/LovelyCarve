@@ -1,0 +1,875 @@
+{
+  "date": "2026-10-23",
+  "platform": "Windows standalone CLI",
+  "baselineCommit": "1fe4fa425d0726e10b6ebc121468ad993521216a",
+  "stage": "native firmware envelopes, CramFS/ROMFS, v3 adaptive LZMA, clean committed UBIFS v4/v5, new-format JFFS2 LE/BE, SquashFS v1/v2 LE/BE readers, native Rust XZ/Zstandard codecs, Sercomm NAND ZIP logical views, and native YAFFS2 page/OOB reader",
+  "criterion": "Native partition tree listing; RAW-open success alone is not counted. UBI nested filesystem checked separately.",
+  "samples": [
+    {
+      "name": "tplink-c7-factory",
+      "url": "https://downloads.openwrt.org/releases/24.10.1/targets/ath79/generic/openwrt-24.10.1-ath79-generic-tplink_archer-c7-v5-squashfs-factory.bin",
+      "size": 6948335,
+      "sha256": "d47d25fb7932f99dfbf11bfc69dce89798fb21f036721a91f9317a1f4c8176c4",
+      "browsable": true,
+      "sourceFormat": "firmware",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 2622944,
+          "lengthBytes": 4325380
+        }
+      ]
+    },
+    {
+      "name": "tplink-c7-sysupgrade",
+      "url": "https://downloads.openwrt.org/releases/24.10.1/targets/ath79/generic/openwrt-24.10.1-ath79-generic-tplink_archer-c7-v5-squashfs-sysupgrade.bin",
+      "size": 6947144,
+      "sha256": "402bea84dc8ff122c47f6d35936904ca07ce9cd500bdbb0524a980b0feb09e45",
+      "browsable": true,
+      "sourceFormat": "firmware",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 2614181,
+          "lengthBytes": 4332963
+        }
+      ]
+    },
+    {
+      "name": "netgear-ex6150-chk",
+      "url": "https://downloads.openwrt.org/releases/24.10.1/targets/ramips/mt7621/openwrt-24.10.1-ramips-mt7621-netgear_ex6150-squashfs-factory.chk",
+      "size": 7143486,
+      "sha256": "6aa94c0d48aadd883ea9fab12e85c2ee3057a87271020b992563e551bf00ab88",
+      "browsable": true,
+      "sourceFormat": "firmware",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 3183392,
+          "lengthBytes": 3960094
+        }
+      ]
+    },
+    {
+      "name": "netgear-r6220-factory",
+      "url": "https://downloads.openwrt.org/releases/24.10.1/targets/ramips/mt7621/openwrt-24.10.1-ramips-mt7621-netgear_r6220-squashfs-factory.img",
+      "size": 7327051,
+      "sha256": "4907101accddfd686d18b9193ca1abc0d0b8d382daae13a06bcb5a92476e1eb4",
+      "browsable": true,
+      "sourceFormat": "firmware",
+      "partitionKinds": [
+        "ubi"
+      ],
+      "partitions": [
+        {
+          "kind": "ubi",
+          "startByte": 551,
+          "lengthBytes": 7326423
+        }
+      ],
+      "decodedUbiOracle": {
+        "controlSample": "netgear-r6220-rootfs-control",
+        "sizeBytes": 5242880,
+        "sha256": "bd75236b240301644b526c6d52670e2722626822cbd7fb3905fa3e8a25f8be64",
+        "verification": "Complete decoded UBI byte equality in Sercomm external library oracle"
+      }
+    },
+    {
+      "name": "netgear-r6220-rootfs-control",
+      "url": "https://downloads.openwrt.org/releases/24.10.1/targets/ramips/mt7621/openwrt-24.10.1-ramips-mt7621-netgear_r6220-squashfs-rootfs.bin",
+      "size": 5242880,
+      "sha256": "bd75236b240301644b526c6d52670e2722626822cbd7fb3905fa3e8a25f8be64",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "ubi"
+      ],
+      "partitions": [
+        {
+          "kind": "ubi",
+          "startByte": 0,
+          "lengthBytes": 5242880
+        }
+      ]
+    },
+    {
+      "name": "ath25-legacy-squashfs",
+      "url": "https://downloads.openwrt.org/releases/19.07.10/targets/ath25/generic/openwrt-19.07.10-ath25-generic-squashfs-rootfs.bin",
+      "size": 2752512,
+      "sha256": "8966031dc8fa5fa437c549d0a0f239e9bcd72b1b057cd9340a5ae9209582a5dc",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 2752512
+        }
+      ]
+    },
+    {
+      "name": "binwalk-cramfs",
+      "url": "https://raw.githubusercontent.com/ReFirmLabs/binwalk/master/tests/inputs/cramfs.bin",
+      "size": 4096,
+      "sha256": "1e75d47c5c759bfb964011a4530ce353bcf7fe2377eb59b32b773445dbad4216",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "cramfs"
+      ],
+      "partitions": [
+        {
+          "kind": "cramfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
+      ]
+    },
+    {
+      "name": "binwalk-romfs",
+      "url": "https://raw.githubusercontent.com/ReFirmLabs/binwalk/master/tests/inputs/romfs.bin",
+      "size": 1024,
+      "sha256": "31259785aa0c9404e6ae496b27c37d0620e10f783b127848aa3d5cc2a25cb6d3",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "romfs"
+      ],
+      "partitions": [
+        {
+          "kind": "romfs",
+          "startByte": 0,
+          "lengthBytes": 1024
+        }
+      ]
+    },
+    {
+      "name": "binwalk-yaffs2",
+      "url": "https://raw.githubusercontent.com/ReFirmLabs/binwalk/master/tests/inputs/yaffs2.bin",
+      "size": 135168,
+      "sha256": "ee2427938f658febd6c9dad0e8e1a4a74c854cc1b4bdf5abf44817be80512789",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "yaffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "yaffs2",
+          "startByte": 0,
+          "lengthBytes": 135168
+        }
+      ],
+      "contentOracle": {
+        "mkyaffs2image.c": "bbb126ff5a49762055a6310186c9c5dd22534198fbd8ed77f6d768983af491a3",
+        "mkyaffsimage.c": "458a399ed17e23c2d16364efe8184a05ba7a2cdb0132ffaccc106ccc889be53b",
+        "yaffs_ecc.c": "6ccece2209c40c37fa28059f028a6b281cea356ba469d0269f454514231b62a5",
+        "yaffs_ecc.h": "b9edc75b3458e8f66d99090c045bfe05ba6a0fe0ff3fb1c81c78e8d6b8aebb66",
+        "yaffs_guts.h": "4e2568ade2817ec84dfbfa6ff199093c5f72569d0cad8d66dedcdd59091d08d6",
+        "yaffs_hweight.c": "c3f4ad3231fee2c3068a637d570b3bd0047892abafa23e592e9858238e91106c",
+        "yaffs_hweight.h": "cfdb4a66b0eace2574beb10b45992863d6d85898237054abac3c3ecc8840d138",
+        "yaffs_list.h": "1361569577d3d861d032df44d50634041268bb5eb5832ddb8eb7b0f3a48031b0",
+        "yaffs_packedtags2.c": "5aa74e1a24241df858704c3baba1bb281f026d42fa64dbb79803071edb5786f6",
+        "yaffs_packedtags2.h": "0375517fd4e0eec0254322751138c13472226a5f5c93dfcada6da1bc26c63708",
+        "yaffs_trace.h": "6fcbe6ee192dc9516cc39f974af3f3c538dcb8833f87d946253fe72652328e2d",
+        "yportenv.h": "cf9b21c9374b765524ac9c3f84f7a29690676cccf4d2138c2bcce66135f6b084",
+        "yutilsenv.h": "d17b77b186792ba473247dce5f2de9916b70f79667a4b77ded186a4425296b52"
+      },
+      "oracleSource": "https://github.com/devttys0/yaffshiv/blob/f6f0ef77bf79ca46aaa77bc34eda06e7b55da8e8/src/yaffshiv",
+      "oracleGeometry": {
+        "pageSize": 2048,
+        "spareSize": 64,
+        "endian": "little",
+        "tagsOffset": 0
+      }
+    },
+    {
+      "name": "binwalk-squashfs",
+      "url": "https://raw.githubusercontent.com/ReFirmLabs/binwalk/master/tests/inputs/squashfs.bin",
+      "size": 4096,
+      "sha256": "53e3ae5f8b1bd21ea4159b60e1052c572c2dd7cfbc173147f8a54fb0b8ad3c02",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
+      ]
+    },
+    {
+      "name": "binwalk-squashfs_v2",
+      "url": "https://raw.githubusercontent.com/ReFirmLabs/binwalk/master/tests/inputs/squashfs_v2.bin",
+      "size": 2587654,
+      "sha256": "df727ab58e70ffac1c98c0bfd2786e4c949e03431eb2043f270292f33fb30475",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 2587654
+        }
+      ]
+    },
+    {
+      "name": "unblob-ubifs-zlib",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/ubi/ubifs/__input__/banana.zlib.ubifs",
+      "size": 1777664,
+      "sha256": "e883e7b2ccba4d17dc614dcf816521d3a6178e992965fd175d88a32ed5d54111",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "ubifs"
+      ],
+      "partitions": [
+        {
+          "kind": "ubifs",
+          "startByte": 0,
+          "lengthBytes": 1777664
+        }
+      ],
+      "contentOracle": {
+        "banana1.txt": "022d66975222661648a212f974a822fac4d349c0f7c13ef7e0ba3ac0e7d9f519",
+        "banana2.txt": "cec01facc588f339e757822825743d16fae68d80ddf9b5e9e08f2862644f7733",
+        "banana3.txt": "da312e2d0258a4055f9863f680f165b29b39f32ecd806c75c1e8f8a2a079d221",
+        "banana4.txt": "2a93968fdfdadcfaf2f7c16a766f546894367585c063964dca393a0e86a65625"
+      }
+    },
+    {
+      "name": "unblob-ubifs-lzo",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/ubi/ubifs/__input__/banana.lzo.ubifs",
+      "size": 168960,
+      "sha256": "87b05f653d717736b766a9cca10b75656cc14c1d9442c61fdc514cc275a8a634",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "ubifs"
+      ],
+      "partitions": [
+        {
+          "kind": "ubifs",
+          "startByte": 0,
+          "lengthBytes": 168960
+        }
+      ],
+      "contentOracle": {
+        "banana1.txt": "022d66975222661648a212f974a822fac4d349c0f7c13ef7e0ba3ac0e7d9f519",
+        "banana2.txt": "cec01facc588f339e757822825743d16fae68d80ddf9b5e9e08f2862644f7733",
+        "banana3.txt": "da312e2d0258a4055f9863f680f165b29b39f32ecd806c75c1e8f8a2a079d221",
+        "banana4.txt": "2a93968fdfdadcfaf2f7c16a766f546894367585c063964dca393a0e86a65625"
+      }
+    },
+    {
+      "name": "unblob-jffs2-le-zlib",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/jffs2/jffs2_new/__input__/fruits.new.le.zlib.jffs2",
+      "size": 484,
+      "sha256": "2c1f77e27694761fa6e8e1264318792db43314f1af9d5e3f14f88e862eece44e",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "jffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "jffs2",
+          "startByte": 0,
+          "lengthBytes": 484
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "f1c520551a1a5890fab0d252f7535c498f8e91aeb22b5cf8ab0d34d25c086f31",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
+      }
+    },
+    {
+      "name": "unblob-jffs2-be-zlib",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/jffs2/jffs2_new/__input__/fruits.new.be.zlib.jffs2",
+      "size": 484,
+      "sha256": "e6a4da9831a5ab98e03f81d829793e3119eb3a3ffb05227b4b98bc604cc7f3dc",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "jffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "jffs2",
+          "startByte": 0,
+          "lengthBytes": 484
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "f1c520551a1a5890fab0d252f7535c498f8e91aeb22b5cf8ab0d34d25c086f31",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
+      }
+    },
+    {
+      "name": "unblob-jffs2-le-zlib-padded",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/jffs2/jffs2_new/__input__/fruits.new.le.zlib.padded.jffs2",
+      "size": 65536,
+      "sha256": "08cceee3614d27227e19ccfe1b7f0b6abf1731d87fd3dc5ce7e2c7051a9621c1",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "jffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "jffs2",
+          "startByte": 0,
+          "lengthBytes": 65536
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "f1c520551a1a5890fab0d252f7535c498f8e91aeb22b5cf8ab0d34d25c086f31",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
+      }
+    },
+    {
+      "name": "unblob-jffs2-be-zlib-padded",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/jffs2/jffs2_new/__input__/fruits.new.be.zlib.padded.jffs2",
+      "size": 65536,
+      "sha256": "0dfbb9d9f3cae2d3f81a7064a65b9f6d018963af0a46cf1aa2e84dd0c7aa2c7c",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "jffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "jffs2",
+          "startByte": 0,
+          "lengthBytes": 65536
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "f1c520551a1a5890fab0d252f7535c498f8e91aeb22b5cf8ab0d34d25c086f31",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
+      }
+    },
+    {
+      "name": "unblob-squashfs-v1",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/squashfs/squashfs_v1/little_endian/__input__/squashfs_v1.0_le.bin",
+      "size": 4096,
+      "sha256": "b45925fa779eae0293635ce0e6dc8760308f25227dd88645d677ba3ffce23e71",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "303980bcb9e9e6cdec515230791af8b0ab1aaa244b58a8d99152673aa22197d0",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
+      }
+    },
+    {
+      "name": "unblob-squashfs-v3-adaptive",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/squashfs/squashfs_v3_adaptive/__input__/squashfs_v3_le.lzma.bin",
+      "size": 4096,
+      "sha256": "2ac15e5c993f330854497b2fd032d2e87873a288fab6da2fe72106bb40b43124",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "303980bcb9e9e6cdec515230791af8b0ab1aaa244b58a8d99152673aa22197d0",
+        "orange.txt": "be6fe11876282442bead98e8b24aca07f8972a763cd366c56b4b5f7bcdd23eac"
+      }
+    },
+    {
+      "name": "unblob-squashfs-v3-adaptive-be",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/squashfs/squashfs_v3_adaptive/__input__/squashfs_v3_be.lzma.bin",
+      "size": 4096,
+      "sha256": "71971c7a05d2d0b44bc976bc168f7b9134af8dc9fec83553889a9b5473469495",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "303980bcb9e9e6cdec515230791af8b0ab1aaa244b58a8d99152673aa22197d0",
+        "orange.txt": "be6fe11876282442bead98e8b24aca07f8972a763cd366c56b4b5f7bcdd23eac"
+      }
+    },
+    {
+      "name": "unblob-ubifs-zstd",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/ubi/ubifs/__input__/banana.zstd.ubifs",
+      "size": 1777664,
+      "sha256": "4e3d4fe217be4e232a8a1c8dc134ef5d71da62da42ae43cf1f6f1014085ed8b3",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "ubifs"
+      ],
+      "partitions": [
+        {
+          "kind": "ubifs",
+          "startByte": 0,
+          "lengthBytes": 1777664
+        }
+      ],
+      "contentOracle": {
+        "banana1.txt": "022d66975222661648a212f974a822fac4d349c0f7c13ef7e0ba3ac0e7d9f519",
+        "banana2.txt": "cec01facc588f339e757822825743d16fae68d80ddf9b5e9e08f2862644f7733",
+        "banana3.txt": "da312e2d0258a4055f9863f680f165b29b39f32ecd806c75c1e8f8a2a079d221",
+        "banana4.txt": "2a93968fdfdadcfaf2f7c16a766f546894367585c063964dca393a0e86a65625"
+      }
+    },
+    {
+      "name": "unblob-jffs2-le-lzo",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/jffs2/jffs2_new/__input__/fruits.new.le.lzo.jffs2",
+      "size": 400,
+      "sha256": "0fbb0c52d2b6b37c491bdd9c708eb4872d5cc0568eeed91bfdf9b1491a486bdd",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "jffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "jffs2",
+          "startByte": 0,
+          "lengthBytes": 400
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "f1c520551a1a5890fab0d252f7535c498f8e91aeb22b5cf8ab0d34d25c086f31",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
+      }
+    },
+    {
+      "name": "unblob-jffs2-be-lzo",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/jffs2/jffs2_new/__input__/fruits.new.be.lzo.jffs2",
+      "size": 400,
+      "sha256": "0bcb08d0b067c9bd86b8e3836858af5e3ef7047b6b13420739b6e23a48150de2",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "jffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "jffs2",
+          "startByte": 0,
+          "lengthBytes": 400
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "f1c520551a1a5890fab0d252f7535c498f8e91aeb22b5cf8ab0d34d25c086f31",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
+      }
+    },
+    {
+      "name": "unblob-jffs2-le-rtime",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/jffs2/jffs2_new/__input__/fruits.new.le.rtime.jffs2",
+      "size": 392,
+      "sha256": "16ef9cb45826fe1c5a2fc13627c321b606342b94cce05a7a02fe5fd4ef175646",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "jffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "jffs2",
+          "startByte": 0,
+          "lengthBytes": 392
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "f1c520551a1a5890fab0d252f7535c498f8e91aeb22b5cf8ab0d34d25c086f31",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
+      }
+    },
+    {
+      "name": "unblob-jffs2-be-rtime",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/jffs2/jffs2_new/__input__/fruits.new.be.rtime.jffs2",
+      "size": 392,
+      "sha256": "6a7fc72cf2264c33fe5297d5d2d2246e346705e50b711ebf54a03b62a9e28e14",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "jffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "jffs2",
+          "startByte": 0,
+          "lengthBytes": 392
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "f1c520551a1a5890fab0d252f7535c498f8e91aeb22b5cf8ab0d34d25c086f31",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
+      }
+    },
+    {
+      "name": "unblob-squashfs-v1-0-be",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/squashfs/squashfs_v1/big_endian/__input__/squashfs_v1.0_be.bin",
+      "size": 4096,
+      "sha256": "529e10775cc152e6c5df0c6c63316811004cc73ce99f03989c86ffd396d631e6",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
+      ],
+      "contentOracle": {
+        "apple.txt": "303980bcb9e9e6cdec515230791af8b0ab1aaa244b58a8d99152673aa22197d0",
+        "banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55"
+      }
+    },
+    {
+      "name": "unblob-squashfs-v2-0-le",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/squashfs/squashfs_v2/little_endian/__input__/squashfs_v2.0_le.bin",
+      "size": 4096,
+      "sha256": "7c62dbe388b972119f5d17a12836a016737d58276184f4caa2a90dafd924f124",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
+      ],
+      "contentOracle": {
+        "apple1.txt": "6181259c6b2ca629a56920b422e9a8f212a4d0bcead923df92dbd66fbb7e1c30",
+        "apple2.txt": "919fc82d6f1031d305dbce2fc5a74a6df5ddf2da472ee4d137c681cef28d4aff",
+        "apple3.txt": "2d95014ed3f24e86ce5fc3a4529f057d7b2318d9b24b54f2e9476b154bd21ec6",
+        "apple4.txt": "08d9b05b15b998f2dbc741399fef4350c7863cc85df2305d7da4e83e8c8a959d"
+      }
+    },
+    {
+      "name": "unblob-squashfs-v2-0-be",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/squashfs/squashfs_v2/big_endian/__input__/squashfs_v2.0_be.bin",
+      "size": 4096,
+      "sha256": "79c0f3886291f4abcc656acd49932446cf16afaa67e6ffb0c5258e3c2e2dfcc0",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
+      ],
+      "contentOracle": {
+        "apple1.txt": "6181259c6b2ca629a56920b422e9a8f212a4d0bcead923df92dbd66fbb7e1c30",
+        "apple2.txt": "919fc82d6f1031d305dbce2fc5a74a6df5ddf2da472ee4d137c681cef28d4aff",
+        "apple3.txt": "2d95014ed3f24e86ce5fc3a4529f057d7b2318d9b24b54f2e9476b154bd21ec6",
+        "apple4.txt": "08d9b05b15b998f2dbc741399fef4350c7863cc85df2305d7da4e83e8c8a959d"
+      }
+    },
+    {
+      "name": "unblob-squashfs-v2-1-le",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/squashfs/squashfs_v2/little_endian/__input__/squashfs_v2.1_le.bin",
+      "size": 4096,
+      "sha256": "6b6cd2fd63e17a499861d2d89d617bd836b169601e46cb2f5a5c66bea8ef253a",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
+      ],
+      "contentOracle": {
+        "apple1.txt": "6181259c6b2ca629a56920b422e9a8f212a4d0bcead923df92dbd66fbb7e1c30",
+        "apple2.txt": "919fc82d6f1031d305dbce2fc5a74a6df5ddf2da472ee4d137c681cef28d4aff",
+        "apple3.txt": "2d95014ed3f24e86ce5fc3a4529f057d7b2318d9b24b54f2e9476b154bd21ec6",
+        "apple4.txt": "08d9b05b15b998f2dbc741399fef4350c7863cc85df2305d7da4e83e8c8a959d"
+      }
+    },
+    {
+      "name": "unblob-squashfs-v2-1-be",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/squashfs/squashfs_v2/big_endian/__input__/squashfs_v2.1_be.bin",
+      "size": 4096,
+      "sha256": "c0140bac22d92df7d6c63fdf6de2d3e75a8fad6b30e6f9eeeb9ef533134f35db",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "squashfs"
+      ],
+      "partitions": [
+        {
+          "kind": "squashfs",
+          "startByte": 0,
+          "lengthBytes": 4096
+        }
+      ],
+      "contentOracle": {
+        "apple1.txt": "6181259c6b2ca629a56920b422e9a8f212a4d0bcead923df92dbd66fbb7e1c30",
+        "apple2.txt": "919fc82d6f1031d305dbce2fc5a74a6df5ddf2da472ee4d137c681cef28d4aff",
+        "apple3.txt": "2d95014ed3f24e86ce5fc3a4529f057d7b2318d9b24b54f2e9476b154bd21ec6",
+        "apple4.txt": "08d9b05b15b998f2dbc741399fef4350c7863cc85df2305d7da4e83e8c8a959d"
+      }
+    },
+    {
+      "name": "netgear-r6260-factory",
+      "url": "https://downloads.openwrt.org/releases/24.10.1/targets/ramips/mt7621/openwrt-24.10.1-ramips-mt7621-netgear_r6260-squashfs-factory.img",
+      "size": 7855214,
+      "sha256": "a655f7eda69b22d52f3213b90e0bb9ea6ecccd0da3a046da0bc38e920a30db9f",
+      "browsable": true,
+      "sourceFormat": "firmware",
+      "partitionKinds": [
+        "ubi"
+      ],
+      "partitions": [
+        {
+          "kind": "ubi",
+          "startByte": 551,
+          "lengthBytes": 7854586
+        }
+      ],
+      "decodedUbiOracle": {
+        "controlSample": "netgear-r6260-rootfs-control",
+        "sizeBytes": 5767168,
+        "sha256": "ceba5de08655750d920c459015aaf8c10eb270264a9cc4ac142d4712e3979517",
+        "verification": "Complete decoded UBI byte equality in Sercomm external library oracle"
+      }
+    },
+    {
+      "name": "netgear-r6260-rootfs-control",
+      "url": "https://downloads.openwrt.org/releases/24.10.1/targets/ramips/mt7621/openwrt-24.10.1-ramips-mt7621-netgear_r6260-squashfs-rootfs.bin",
+      "size": 5767168,
+      "sha256": "ceba5de08655750d920c459015aaf8c10eb270264a9cc4ac142d4712e3979517",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "ubi"
+      ],
+      "partitions": [
+        {
+          "kind": "ubi",
+          "startByte": 0,
+          "lengthBytes": 5767168
+        }
+      ]
+    },
+    {
+      "name": "unblob-yaffs-sample.2048.64.ecc.le.yaffs2",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__input__/sample.2048.64.ecc.le.yaffs2",
+      "size": 40128,
+      "sha256": "209c573f89c2ac0be0355cd4d20ec29e1644a87ef2e0e6d432fabf681aab67be",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "yaffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "yaffs2",
+          "startByte": 0,
+          "lengthBytes": 40128
+        }
+      ],
+      "linkOracle": {
+        "vegetables/tomato.txt": "../fruits/tomato.txt",
+        "passwd": "/etc/passwd"
+      },
+      "contentOracle": {
+        "fruits/apple.txt": "303980bcb9e9e6cdec515230791af8b0ab1aaa244b58a8d99152673aa22197d0",
+        "fruits/banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "fruits/tomato.txt": "c4d414f214364807ba28e290410a6ad85e0b066adaf88f4396e937242de5033f",
+        "fruits/cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55",
+        "vegetables/potato.txt": "c7a37153dfd360070c9ce15a11376d6571e8f29777c8a84349dee7ca61b49882",
+        "vegetables/kale.txt": "9e74dec291f9d15f9e3d15e9c17ca53b01f4c9f2c831f789d4aa0994f93106a9"
+      },
+      "oracleSource": "https://github.com/devttys0/yaffshiv/blob/f6f0ef77bf79ca46aaa77bc34eda06e7b55da8e8/src/yaffshiv",
+      "oracleGeometry": {
+        "pageSize": 2048,
+        "spareSize": 64,
+        "endian": "little",
+        "tagsOffset": 0
+      }
+    },
+    {
+      "name": "unblob-yaffs-sample.4096.128.ecc.be.yaffs2",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__input__/sample.4096.128.ecc.be.yaffs2",
+      "size": 80256,
+      "sha256": "d3e93fb6741dee22915c97e1bb3a776957fc12c790faa4ecbbbccf09085cb084",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "yaffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "yaffs2",
+          "startByte": 0,
+          "lengthBytes": 80256
+        }
+      ],
+      "linkOracle": {
+        "vegetables/tomato.txt": "../fruits/tomato.txt",
+        "passwd": "/etc/passwd"
+      },
+      "contentOracle": {
+        "fruits/apple.txt": "303980bcb9e9e6cdec515230791af8b0ab1aaa244b58a8d99152673aa22197d0",
+        "fruits/banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "fruits/tomato.txt": "c4d414f214364807ba28e290410a6ad85e0b066adaf88f4396e937242de5033f",
+        "fruits/cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55",
+        "vegetables/potato.txt": "c7a37153dfd360070c9ce15a11376d6571e8f29777c8a84349dee7ca61b49882",
+        "vegetables/kale.txt": "9e74dec291f9d15f9e3d15e9c17ca53b01f4c9f2c831f789d4aa0994f93106a9"
+      },
+      "oracleSource": "https://github.com/devttys0/yaffshiv/blob/f6f0ef77bf79ca46aaa77bc34eda06e7b55da8e8/src/yaffshiv",
+      "oracleGeometry": {
+        "pageSize": 4096,
+        "spareSize": 128,
+        "endian": "big",
+        "tagsOffset": 0
+      }
+    },
+    {
+      "name": "unblob-yaffs-sample.16384.512.le.yaffs2",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__input__/sample.16384.512.le.yaffs2",
+      "size": 321024,
+      "sha256": "8b8968001388ac7e7fef241640b045a6576eabc804499c046c8313407752e5eb",
+      "browsable": true,
+      "sourceFormat": "raw",
+      "partitionKinds": [
+        "yaffs2"
+      ],
+      "partitions": [
+        {
+          "kind": "yaffs2",
+          "startByte": 0,
+          "lengthBytes": 321024
+        }
+      ],
+      "linkOracle": {
+        "vegetables/tomato.txt": "../fruits/tomato.txt",
+        "passwd": "/etc/passwd"
+      },
+      "contentOracle": {
+        "fruits/apple.txt": "303980bcb9e9e6cdec515230791af8b0ab1aaa244b58a8d99152673aa22197d0",
+        "fruits/banana.txt": "5a81483d96b0bc15ad19af7f5a662e14b275729fbc05579b18513e7f550016b1",
+        "fruits/tomato.txt": "c4d414f214364807ba28e290410a6ad85e0b066adaf88f4396e937242de5033f",
+        "fruits/cherry.txt": "86baf3529da550a44b0681ffa031b6b676e620e9e06dc5ac1119d0cd21cbcf55",
+        "vegetables/potato.txt": "c7a37153dfd360070c9ce15a11376d6571e8f29777c8a84349dee7ca61b49882",
+        "vegetables/kale.txt": "9e74dec291f9d15f9e3d15e9c17ca53b01f4c9f2c831f789d4aa0994f93106a9"
+      },
+      "oracleSource": "https://github.com/devttys0/yaffshiv/blob/f6f0ef77bf79ca46aaa77bc34eda06e7b55da8e8/src/yaffshiv",
+      "oracleGeometry": {
+        "pageSize": 16384,
+        "spareSize": 512,
+        "endian": "little",
+        "tagsOffset": 2
+      }
+    },
+    {
+      "name": "unblob-yaffs-links.yaffs",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__input__/links.yaffs",
+      "size": 4752,
+      "sha256": "93e487e7ed1a160db8c599cc1fdca058baa6024dd27c329f1d55f823bee9215b",
+      "browsable": false,
+      "sourceFormat": "raw",
+      "partitionKinds": [],
+      "partitions": [],
+      "limitation": "512-byte pages / 16-byte spare with legacy YAFFS tags; current native YAFFS2 packed-tags reader does not handle this layout",
+      "error": {
+        "code": "notFound",
+        "message": "partition not found: 0"
+      }
+    },
+    {
+      "name": "unblob-yaffs-fruits.dir.le.yffs",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__input__/fruits.dir.le.yffs",
+      "size": 4224,
+      "sha256": "30ac92e89b1bc5a9260ca69093093537574e14a4dcb87a79259538762b9f8060",
+      "browsable": false,
+      "sourceFormat": "raw",
+      "partitionKinds": [],
+      "partitions": [],
+      "limitation": "512-byte pages / 16-byte spare with legacy YAFFS tags; current native YAFFS2 packed-tags reader does not handle this layout",
+      "error": {
+        "code": "notFound",
+        "message": "partition not found: 0"
+      }
+    },
+    {
+      "name": "unblob-yaffs-fruits.dir.be.yffs",
+      "url": "https://media.githubusercontent.com/media/onekey-sec/unblob/main/tests/integration/filesystem/yaffs/__input__/fruits.dir.be.yffs",
+      "size": 4224,
+      "sha256": "b07b888a645dd30b0891d1147505fb35a27f1df52b3710c40dc7d9ed418e60c9",
+      "browsable": false,
+      "sourceFormat": "raw",
+      "partitionKinds": [],
+      "partitions": [],
+      "limitation": "512-byte pages / 16-byte spare with legacy YAFFS tags; current native YAFFS2 packed-tags reader does not handle this layout",
+      "error": {
+        "code": "notFound",
+        "message": "partition not found: 0"
+      }
+    }
+  ]
+}

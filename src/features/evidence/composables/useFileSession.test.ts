@@ -53,6 +53,13 @@ describe('useFileSession disk image extension handling', () => {
     expect(await session.openByPath(fileName)).toMatchObject({ opened: true, mode: 'image', imageId: 'phone' });
     expect(invokeMock).toHaveBeenCalledWith('image_load', expect.objectContaining({ path: fileName }));
   });
+  it.each(['router.enc', 'router.trx', 'rootfs.squashfs'])('opens firmware %s through image_load', async fileName => {
+    listenMock.mockResolvedValue(vi.fn());
+    invokeMock.mockResolvedValue({ id: 'firmware', source_format: 'firmware', partitions: [] });
+    const session = useFileSession();
+    expect(await session.openByPath(fileName)).toMatchObject({ opened: true, mode: 'image', imageId: 'firmware' });
+    expect(invokeMock).toHaveBeenCalledWith('image_load', expect.objectContaining({ path: fileName }));
+  });
   it('routes ISO images through the disk-image loader', () => {
     expect(DISK_IMAGE_EXTENSIONS).toContain('iso');
     expect(isDiskImageExtension('iso')).toBe(true);

@@ -1,0 +1,13 @@
+[package]
+name = "yaffs2-reader"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+description = "Bounded native Rust YAFFS2 namespace and ranged content reader"
+
+[dependencies]
+anyhow = "1"
+tokio-util = { version = "0.7", features = ["rt"] }
+zerocopy = { version = "0.8", features = ["derive"] }
+
+[workspace]

@@ -21,7 +21,10 @@ pub(crate) const SQUASHFS_MAGIC_LE: &[u8; 4] = b"hsqs";
 pub(crate) const SQUASHFS_MAGIC_BE: &[u8; 4] = b"sqsh";
 
 pub fn is_squashfs_magic(bytes: &[u8]) -> bool {
-    bytes.len() >= 4 && (&bytes[..4] == SQUASHFS_MAGIC_LE || &bytes[..4] == SQUASHFS_MAGIC_BE)
+    bytes.starts_with(SQUASHFS_MAGIC_LE)
+        || bytes.starts_with(SQUASHFS_MAGIC_BE)
+        || bytes.starts_with(b"hsqt")
+        || bytes.starts_with(b"tqsh")
 }
 
 pub struct SquashfsParser;

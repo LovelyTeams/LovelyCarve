@@ -9,6 +9,15 @@
 
 ### Added
 
+- 支持纯 Rust YAFFS1 512 / 16 NAND 读取，校验分散 tags 与已提供的页正文 ECC，处理两位 serial、删除页、shadow 和硬链接；提供完整、流式和范围读取，独立显示 YAFFS1 类型并保留原始页 / OOB。
+- 支持原生 Rust YAFFS2 NAND 读取，复用并扩展 Rust 头解析；识别大小端 page / spare 和标签，校验已存在的标签 ECC，重建版本、删除、shrink / shadow、硬链接与稀疏文件，支持完整、流式和范围读取，源哈希 / RAW 导出保留 OOB 原字节。
+- 固件 SquashFS 的 XZ / Zstandard 读取改用纯 Rust 解码器，检查完整流、校验和、索引与字典 / 输出上限；无需外部解包程序或 C 解压库。
+- 支持 Netgear Sercomm NAND ZIP 固件，复用 Rust ZIP / 解码库校验封装、CRC、内核与 UBI；以独立逻辑视图浏览解压文件系统，保留源检材身份、压缩来源范围、源哈希和 RAW 导出。
+- 支持 SquashFS 1.0 / 2.0 / 2.1 大小端、旧块表、共享尾片段、长目录、硬链接及精确范围 / 流式读取；旧 LZMA 无结束标记块使用纯 Rust 严格最终状态校验，未记录的特殊文件时间保持未知。
+- 支持裸镜像与固件中的新格式 JFFS2，复用并改造 Rust 库；校验大小端节点与数据 CRC，按版本重建目录和文件片段，支持硬链接、删除标记、空洞与 NONE/ZERO/RTIME/zlib/LZO 范围和流式读取。
+- 支持裸 UBIFS v4/v5、固件中的 UBIFS 与 UBI 内嵌文件树，复用并加固 Rust 节点/索引读取器，校验已提交树与文件数据，支持空洞、硬链接、符号链接、时间戳及 stored/LZO/raw DEFLATE/Zstandard 的范围和流式读取。
+
+- 支持 Buffalo ENC / TRX、TP-Link SafeLoader、U-Boot legacy uImage 组合镜像和 Netgear CHK 固件，校验封装并直接浏览文件系统；源哈希和 RAW 导出保留原始容器字节。SquashFS 增加标准 v3、DD-WRT v3 与 adaptive / LZMA-alone 块的纯 Rust 解码，CramFS v2 和 Linux ROMFS 复用 Rust 库并支持完整、流式与范围读取。
 - 支持 BIN/CUE、ISO/CUE 多文件与混合音频/数据轨，保留轨道、会话、INDEX、间隙及结束标记来源；新增 MODE2/2352 与 CUE MODE2/2336 的 XA Form 1 文件读取，校验子头并拒绝 Form 2 冒充文件系统字节。CUE 源哈希与导出保持原始文件拼接语义，完整 libodraw 对照见光盘格式文档。
 - 支持直接打开 MODE1/2352 原始光盘 BIN，浏览其中的 ISO 9660 / Joliet 文件并预览、哈希和导出；原始镜像字节保持不变，CDFS 普通文件增加直接范围读取并拒绝截断内容。
 - 支持直接读取 UBI 镜像及小米 HDR1 固件中的 UBI 分段，按逻辑块重组命名卷并浏览其中的 SquashFS 文件；修正扩展分段表中第 9 段及后续载荷漏识别的问题。

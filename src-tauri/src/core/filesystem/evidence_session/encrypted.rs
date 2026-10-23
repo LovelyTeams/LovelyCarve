@@ -50,10 +50,6 @@ impl EvidenceSession {
         None
     }
 
-    pub(crate) fn filesystem_session<'a>(self: &'a Arc<Self>, node_id: &str) -> &'a Arc<Self> {
-        self.decrypted_session_for_node(node_id).unwrap_or(self)
-    }
-
     /// Metadata describes unlocked filesystems while retaining source geometry and identity.
     pub fn info(&self) -> ImageInfo {
         let mut info = self.image.info();
@@ -92,11 +88,5 @@ impl EvidenceSession {
         {
             attached.cancellation.cancel();
         }
-    }
-
-    pub(crate) fn decrypted_volume_size(&self, volume_key: &str) -> Option<u64> {
-        let session = self.decrypted_session_for_node(volume_key)?;
-        let partition = session.partitions.first()?;
-        partition.length_lba.checked_mul(session.sector_size as u64)
     }
 }

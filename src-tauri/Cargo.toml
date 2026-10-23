@@ -77,7 +77,7 @@ aes = "0.9.3"
 aho-corasick = "1.1.5"
 anyhow = "1.0.104"
 apfs = { path = "vendor/apfs" }
-backhand = { path = "vendor/backhand", default-features = false, features = ["xz", "gzip", "zstd", "parallel", "error-strings", "descriptive-errors"] }
+backhand = { path = "vendor/backhand", default-features = false, features = ["xz", "gzip", "zstd", "parallel", "error-strings", "descriptive-errors", "v1_v2", "v3_ddwrt", "v3_lzma"] }
 base64 = "0.23.1"
 # 快照 `.dirz` 体的二进制编码（替代逐条 serde_json，省每条目分配 + 加速加载解析）。
 # 3.0.0 仅包含停维护公告和 compile_error，保留可用的 2.0.1 与既有快照格式。
@@ -100,6 +100,7 @@ chardetng = "1.0.0"
 chrono = { version = "0.4.45", features = ["serde"] }
 # lovelycarve-cli 的子命令与参数解析；帮助由 cli/help.rs 按命令目录渲染。
 clap = { version = "4.6.7", features = ["derive", "string", "env"] }
+crc32fast = "1.5.2"
 # lovelycarve-cli 的交互提问、遮盖输入与终端尺寸（notatin 已依赖同一版本）。
 crossterm = "0.29.0"
 # 与 Tauri 相同的每用户数据目录（案件登记簿、用户插件），独立 CLI 无需 Tauri 解析路径。
@@ -130,7 +131,11 @@ hfsplus = { path = "vendor/hfsplus" }
 image = { version = "0.25.10", optional = true }
 ios-backup-core = { path = "vendor/ios-backup/core" }
 ios-backup-forensic = { path = "vendor/ios-backup/forensic" }
+jffs2 = { path = "vendor/jffs2" }
 jiff = { version = "0.2.38", default-features = false, features = ["std", "tzdb-bundle-always"] }
+lamfold = { path = "vendor/lamfold", default-features = false, features = ["std", "codec-deflate"] }
+lamfold-cramfs = { path = "vendor/lamfold-cramfs", default-features = false, features = ["std"] }
+lamfold-romfs = { path = "vendor/lamfold-romfs", default-features = false, features = ["std"] }
 libloading = "0.9.0"
 # DLL plugin C ABI, LPP wire types and the shared plugin-library loader
 # (plugins/sdk; the plugins and lc-plugin-host build in their own workspace).
@@ -181,6 +186,7 @@ rsqlite-vfs = { path = "vendor/rsqlite-vfs" }
 rufs = { path = "vendor/rufs" }
 
 rusqlite = { version = "0.40.2", features = ["bundled-sqlcipher-vendored-openssl", "collation", "hooks"] }
+sercomm-firmware = { path = "vendor/sercomm-firmware" }
 
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
@@ -222,6 +228,7 @@ vhdx = { package = "vhdx-core", path = "vendor/vhdx" }
 vmdk = { package = "vmdk-core", path = "vendor/vmdk", features = ["full-encoding", "trace"] }
 vsc = { package = "vsc-core", path = "vendor/vsc" }
 xfs-fuse = { path = "vendor/xfs-fuse" }
+yaffs2-reader = { path = "vendor/yaffs2-reader" }
 zerocopy = "0.8.62"
 zeroize = "1"
 zfs-rs = { path = "vendor/zfs" }
@@ -354,11 +361,13 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.libsqlite3-sys]
 opt-level = 3
-[profile.release.package.liblzma-sys]
-opt-level = 3
 [profile.release.package.libbz2-rs-sys]
 opt-level = 3
 [profile.release.package.lzma-rust2]
+opt-level = 3
+[profile.release.package.lzma-rs]
+opt-level = 3
+[profile.release.package.sercomm-firmware]
 opt-level = 3
 [profile.release.package.lzvn-core]
 opt-level = 3
@@ -370,6 +379,16 @@ opt-level = 3
 opt-level = 3
 
 [profile.release.package.ms-compress]
+opt-level = 3
+[profile.release.package.ms-compress-ruzstd]
+opt-level = 3
+[profile.release.package.lzokay]
+opt-level = 3
+[profile.release.package.jffs2]
+opt-level = 3
+
+# YAFFS1 validates every allocated NAND page's tag/body parity in Rust.
+[profile.release.package.yaffs2-reader]
 opt-level = 3
 [profile.release.package.lz4_flex]
 opt-level = 3

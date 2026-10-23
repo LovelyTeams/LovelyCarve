@@ -6,7 +6,9 @@ pub struct BackhandNodeHeader {
     pub permissions: u16,
     pub uid: u32,
     pub gid: u32,
-    pub mtime: u32,
+    pub mtime: i64,
+    /// False when the on-disk inode has no modification timestamp (v1/v2 special files).
+    pub mtime_known: bool,
 }
 
 impl From<crate::v4::filesystem::node::NodeHeader> for BackhandNodeHeader {
@@ -15,7 +17,8 @@ impl From<crate::v4::filesystem::node::NodeHeader> for BackhandNodeHeader {
             permissions: header.permissions,
             uid: header.uid,
             gid: header.gid,
-            mtime: header.mtime,
+            mtime: i64::from(header.mtime),
+            mtime_known: true,
         }
     }
 }
@@ -27,7 +30,8 @@ impl From<crate::v3::filesystem::node::NodeHeader> for BackhandNodeHeader {
             permissions: header.permissions,
             uid: header.uid,
             gid: header.gid,
-            mtime: header.mtime,
+            mtime: i64::from(header.mtime),
+            mtime_known: true,
         }
     }
 }
@@ -272,12 +276,22 @@ pub enum BackhandInnerNode {
     Socket,
 }
 
+/// Version-neutral read-only filesystem access. Implementations validate file
+/// fragments and return exact logical bytes, including when reading a range.
 pub trait FilesystemReaderTrait: Send + Sync {
     /// Get an iterator over all files
     fn files(&self) -> Box<dyn Iterator<Item = BackhandNode> + '_>;
 
     /// Read a file's full contents
     fn file_data(&self, file: &BackhandSquashfsFileReader) -> Result<Vec<u8>, BackhandError>;
+
+    /// Read a bounded logical range without allocating the entire file.
+    fn file_data_range(
+        &self,
+        file: &BackhandSquashfsFileReader,
+        offset: u64,
+        length: usize,
+    ) -> Result<Vec<u8>, BackhandError>;
 
     /// Stream a file's contents into `writer`, without holding it all in memory
     fn file_data_to_writer(
@@ -334,6 +348,16 @@ impl BackhandSquashfsFileReader {
 }
 
 impl<'b> FilesystemReaderTrait for crate::v4::filesystem::reader::FilesystemReader<'b> {
+    fn file_data_range(
+        &self,
+        file: &BackhandSquashfsFileReader,
+        offset: u64,
+        length: usize,
+    ) -> Result<Vec<u8>, BackhandError> {
+        let native = file.to_v4_file()?;
+        let mut reader = self.file(&native).reader_checked()?;
+        read_range(&mut reader, file.file_len() as u64, offset, length)
+    }
     fn files(&self) -> Box<dyn Iterator<Item = BackhandNode> + '_> {
         Box::new(self.files().map(|node| node.into()))
     }
@@ -403,6 +427,16 @@ impl BackhandSquashfsFileReader {
 
 #[cfg(feature = "v3")]
 impl<'b> FilesystemReaderTrait for crate::v3::filesystem::reader::FilesystemReader<'b> {
+    fn file_data_range(
+        &self,
+        file: &BackhandSquashfsFileReader,
+        offset: u64,
+        length: usize,
+    ) -> Result<Vec<u8>, BackhandError> {
+        let native = file.to_v3_file();
+        let mut reader = self.file(&native).reader_checked()?;
+        read_range(&mut reader, file.file_len() as u64, offset, length)
+    }
     fn files(&self) -> Box<dyn Iterator<Item = BackhandNode> + '_> {
         Box::new(self.files().map(|node| node.into()))
     }
@@ -424,4 +458,20 @@ impl<'b> FilesystemReaderTrait for crate::v3::filesystem::reader::FilesystemRead
         let mut reader = self.file(&v3_file).reader_checked()?;
         Ok(std::io::copy(&mut reader, writer)?)
     }
+}
+
+fn read_range(
+    reader: &mut (impl std::io::Read + std::io::Seek),
+    file_len: u64,
+    offset: u64,
+    length: usize,
+) -> Result<Vec<u8>, BackhandError> {
+    let length = (length as u64).min(file_len.saturating_sub(offset)) as usize;
+    if length == 0 {
+        return Ok(Vec::new());
+    }
+    reader.seek(std::io::SeekFrom::Start(offset))?;
+    let mut bytes = vec![0; length];
+    reader.read_exact(&mut bytes)?;
+    Ok(bytes)
 }
