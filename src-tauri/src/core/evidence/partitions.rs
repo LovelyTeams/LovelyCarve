@@ -20,6 +20,7 @@
 pub mod apm;
 pub mod bsd;
 pub mod btrfs;
+pub mod classic_hfs;
 pub mod ext4;
 pub mod fat;
 pub mod flashfs;
@@ -128,6 +129,7 @@ pub enum PartitionKind {
     Bitlocker,
     BiosBoot,
     ApfsContainer,
+    Hfs,
     HfsPlus,
     HfsX,
     Luks,
@@ -337,6 +339,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Qnx4
         | PartitionKind::Qnx6
         | PartitionKind::Udf
+        | PartitionKind::Hfs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

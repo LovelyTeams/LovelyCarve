@@ -1,4 +1,4 @@
-//! CramFS / ROMFS / EROFS / F2FS / QNX / UDF / Minix adapters over the lamfold reader contract.
+//! ROM / flash / optical / Minix / classic HFS adapters over the lamfold contract.
 //! Paths retain their volume identity; no host extraction or symlink following.
 
 use std::{cell::RefCell, collections::HashSet, sync::Arc};
@@ -11,6 +11,12 @@ use lamfold::{
 use crate::core::evidence::image::{find_partition, DiskImage, Partition};
 use crate::core::filesystem::fs_dispatch::build_stat;
 use crate::core::filesystem::tree::fs_tree::{FsNode, FsStat, Mactb, NodeKind};
+
+#[path = "classic_hfs_streams.rs"]
+mod classic_hfs_streams;
+#[cfg(test)]
+#[path = "classic_hfs_tests.rs"]
+mod classic_hfs_tests;
 
 #[cfg(test)]
 #[path = "flashfs_tests.rs"]
@@ -33,6 +39,7 @@ pub type Qnx4Volume = RomVolume<qnx_reader::Qnx4<RomImageSource>>;
 pub type Qnx6Volume = RomVolume<qnx_reader::Qnx6<RomImageSource>>;
 pub type UdfVolume = RomVolume<lamfold_udf::Udf<RomImageSource>>;
 pub type MinixVolume = RomVolume<minix_reader::Minix<RomImageSource>>;
+pub type HfsVolume = RomVolume<classic_hfs::Hfs<RomImageSource>>;
 
 pub struct RomImageSource {
     image: Arc<DiskImage>,
@@ -98,6 +105,15 @@ pub fn open_qnx4_source(image: &Arc<DiskImage>, partition: u8) -> Result<Qnx4Vol
 }
 pub fn parse_minix_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "minix")
+}
+pub fn parse_hfs_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "hfs")
+}
+pub fn open_hfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<HfsVolume> {
+    HfsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
 }
 pub fn open_minix_source(image: &Arc<DiskImage>, partition: u8) -> Result<MinixVolume> {
     MinixVolume::open(
@@ -273,22 +289,39 @@ impl<F: FoldFrontend<RomImageSource>> RomVolume<F> {
                 inode: Some(entry.node),
                 timestamps: {
                     let times = reader.timestamps(entry.node, &mut context)?;
-                    let format = |value: Option<(i64, u32)>| -> Result<Option<String>> {
+                    let local = reader.local_timestamps(entry.node, &mut context)?;
+                    let format = |value: Option<(i64, u32)>,
+                                  local: Option<(i64, u32)>|
+                     -> Result<Option<String>> {
+                        ensure!(
+                            value.is_none() || local.is_none(),
+                            "conflicting UTC/local filesystem timestamps"
+                        );
                         value
+                            .or(local)
                             .map(|(seconds, nanos)| {
                                 chrono::DateTime::from_timestamp(seconds, nanos)
                                     .map(|time| {
-                                        time.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)
+                                        if local.is_some() {
+                                            time.naive_utc()
+                                                .format("%Y-%m-%dT%H:%M:%S%.f")
+                                                .to_string()
+                                        } else {
+                                            time.to_rfc3339_opts(
+                                                chrono::SecondsFormat::AutoSi,
+                                                true,
+                                            )
+                                        }
                                     })
                                     .context("filesystem timestamp out of range")
                             })
                             .transpose()
                     };
                     Mactb {
-                        modified: format(times.modified)?,
-                        accessed: format(times.accessed)?,
-                        created: format(times.created)?,
-                        mft_changed: format(times.changed)?,
+                        modified: format(times.modified, local.modified)?,
+                        accessed: format(times.accessed, local.accessed)?,
+                        created: format(times.created, local.created)?,
+                        mft_changed: format(times.changed, local.changed)?,
                         birth: None,
                     }
                 },

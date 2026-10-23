@@ -103,6 +103,7 @@ chardetng = "1.0.0"
 chrono = { version = "0.4.45", features = ["serde"] }
 # lovelycarve-cli 的子命令与参数解析；帮助由 cli/help.rs 按命令目录渲染。
 clap = { version = "4.6.7", features = ["derive", "string", "env"] }
+classic-hfs = { path = "vendor/classic-hfs" }
 crc32fast = "1.5.2"
 # lovelycarve-cli 的交互提问、遮盖输入与终端尺寸（notatin 已依赖同一版本）。
 crossterm = "0.29.0"

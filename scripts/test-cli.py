@@ -149,6 +149,34 @@ def main():
             assert rows[2]["result"]["data"] == flash_body[flash_offset:flash_offset + 121].hex()
             assert rows[3]["result"]["sha256"] == hashlib.sha256(flash_body).hexdigest()
 
+        # Classic HFS: retain local times and independently export both forks.
+        hfs_path = root / "classic-hfs.img"
+        hfs_path.write_bytes(zlib.decompress((flash_vendor / "classic-hfs/tests/fixtures/fragmented-1024.zlib").read_bytes()))
+        hfs_node = "hfs:part:0:" + "/Café.bin".encode().hex()
+        hfs_body = bytes((index * 17 + 3) & 255 for index in range(3 * 1024 + 37))
+        hfs_resource = bytes((index * 23 + 5) & 255 for index in range(3 * 1024 + 19))
+        hfs_data_export = root / "hfs-data.bin"
+        hfs_resource_export = root / "hfs-resource.bin"
+        _, rows = session([
+            {"id": "open", "command": "images open", "args": {"path": str(hfs_path)}},
+            {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+            {"id": "read", "command": "files read", "args": {"nodeId": hfs_node, "offset": 3065, "length": 121}},
+            {"id": "hash", "command": "files hash", "args": {"nodeId": hfs_node, "algos": ["sha256"]}},
+            {"id": "export", "command": "files export", "args": {"nodeId": hfs_node, "destination": str(hfs_data_export)}},
+            {"id": "streams", "command": "files streams list", "args": {"nodeId": hfs_node}},
+            {"id": "resource", "command": "files streams get", "args": {"nodeId": hfs_node, "streamName": "com.apple.ResourceFork", "maxBytes": 100}},
+            {"id": "resource-export", "command": "files streams export", "args": {"nodeId": hfs_node, "streamName": "com.apple.ResourceFork", "destination": str(hfs_resource_export)}},
+        ])
+        assert all("result" in row for row in rows), rows
+        assert rows[0]["result"]["partitions"][0]["kind"] == "hfs"
+        assert any(item["name"] == "Café.bin" for item in rows[1]["result"]["items"])
+        assert rows[2]["result"]["data"] == hfs_body[3065:3065 + 121].hex()
+        assert rows[3]["result"]["sha256"] == hashlib.sha256(hfs_body).hexdigest()
+        assert hfs_data_export.read_bytes() == hfs_body
+        assert any(stream["name"] == "com.apple.ResourceFork" for stream in rows[5]["result"])
+        assert rows[6]["result"] == {"encoding": "hex", "data": hfs_resource[:100].hex()}
+        assert hfs_resource_export.read_bytes() == hfs_resource
+
         # Minix V1/V2/V3: all read paths share sparse and indirect mappings.
         minix_fixtures = flash_vendor / "minix-reader/tests/fixtures"
         for minix_name, zone_size, pointers in [

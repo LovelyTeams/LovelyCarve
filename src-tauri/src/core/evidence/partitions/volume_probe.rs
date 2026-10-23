@@ -148,6 +148,7 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &XfsProbe,
     &ExtProbe,
     &ApfsProbe,
+    &super::classic_hfs::ClassicHfsProbe,
     &HfsProbe,
     &LvmProbe,
     &LuksProbe,
@@ -189,6 +190,9 @@ pub fn probe_volume_with_head(ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeH
 }
 
 pub fn detect_filesystem_bytes(bytes: &[u8], fallback: PartitionKind) -> PartitionKind {
+    if super::classic_hfs::detect(bytes) {
+        return PartitionKind::Hfs;
+    }
     if super::minix::detect(bytes) {
         return PartitionKind::Minix;
     }
@@ -292,6 +296,7 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::Qnx4
         | PartitionKind::Qnx6
         | PartitionKind::Udf
+        | PartitionKind::Hfs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

@@ -29,6 +29,17 @@ pub struct FileTimes {
     pub created: Option<(i64, u32)>,
 }
 
+/// Local wall-clock timestamps with no recorded UTC offset. The seconds encode
+/// a civil date relative to 1970 solely for formatting; they are not instants
+/// and must never be projected into a UTC timeline without external evidence.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LocalFileTimes {
+    pub modified: Option<(i64, u32)>,
+    pub accessed: Option<(i64, u32)>,
+    pub changed: Option<(i64, u32)>,
+    pub created: Option<(i64, u32)>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileKind {
     Regular,
@@ -96,6 +107,15 @@ pub trait FoldFrontend<S: BlockSource>: Sized {
     /// Preserve only timestamp roles actually recorded by the format.
     fn timestamps(&mut self, _node: NodeId, _cx: &mut SubstrateCtx<'_>) -> Result<FileTimes> {
         Ok(FileTimes::default())
+    }
+
+    /// Preserve offset-less civil times separately from UTC timestamps.
+    fn local_timestamps(
+        &mut self,
+        _node: NodeId,
+        _cx: &mut SubstrateCtx<'_>,
+    ) -> Result<LocalFileTimes> {
+        Ok(LocalFileTimes::default())
     }
 
     /// Read up to `buf.len()` bytes of a regular file starting at `off`. Returns

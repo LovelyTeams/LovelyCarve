@@ -9,6 +9,8 @@
 
 ### Added
 
+- 新增纯 Rust 传统 HFS（Mac OS Standard）读取：复用并加固现有 Rust 解析器，覆盖碎片化 catalog / overflow extents、MacRoman 名称及 data / resource 双分叉；接入浏览、范围读、哈希、导出、自动目录索引和 CLI 命名流；本地日期保留无时区语义。
+
 - 新增纯 Rust Minix V1 / V2 / V3 文件系统读取：覆盖五种目录布局、大小端元数据、位图校验、全部间接层级与多 block zone，接入浏览、范围读、哈希、导出和自动目录索引；与固件 MINIFS 独立显示。
 
 - 新增纯 Rust UDF 1.02–2.01 单物理分区只读浏览、范围读、哈希、导出和索引：复用并加固 lamfold-udf，校验描述符 CRC / 分区引用 / 数据边界，支持 FE / EFE、稀疏区与续链；VAT、sparable 和 Blu-ray metadata partition 等高级布局明确报错。

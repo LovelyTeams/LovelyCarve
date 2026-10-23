@@ -101,6 +101,7 @@ pub(super) fn snapshot_supported_plain_partition(kind: PartitionKind) -> bool {
             | PartitionKind::Qnx4
             | PartitionKind::Qnx6
             | PartitionKind::Udf
+            | PartitionKind::Hfs
             | PartitionKind::Minix
             | PartitionKind::Minifs
             | PartitionKind::Romfs

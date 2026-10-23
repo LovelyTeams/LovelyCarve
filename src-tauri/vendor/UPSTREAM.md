@@ -93,3 +93,13 @@ LZMA 复用 Apache-2.0 的 `lzma-rust2`。没有复制无明确代码许可的 H
 ## Minix FS
 
 `minix-reader` 0.1.0 元数据解析改造自 [danifunker/rusty-backup 6e044a314f65](https://github.com/danifunker/rusty-backup/blob/6e044a314f6523045999058f85a882c1eeb64b50/src/fs/minix.rs)，保留 Dani 作者署名和 AGPL v3，独立库按 AGPL-3.0-only 分发。补大小端、位图 / 数据边界、V3 派生 first zone、完整间接寻址、多 block zone、精确范围读、缓存限额和时间角色；没有复制写入 / 修复或内核 C 实现。util-linux 官方 mkfs / fsck 转储提供独立布局样本，来源 / 许可 / 哈希见 [ORIGIN.md](minix-reader/ORIGIN.md)；功能与方言边界见 [Minix FS](../../docs/formats/MINIX.md)。
+
+## 传统 HFS 只读适配
+
+`classic-hfs` 0.1.0：元数据 / MacRoman 来自 fstool 0.5.0 固定提交
+`b30823f25b6eef5ea9b6de45876f31c2b8f2d70a`（MIT）；HFS collation 来自 rusty-backup
+`6e044a314f6523045999058f85a882c1eeb64b50`（AGPL-3.0，继承 hfsutils GPL-2.0-or-later 表）。
+改造为严格 B-tree / 位图 / extent 校验、双 fork 范围读取及独立本地时间；不含 C 或写入代码。
+外部 hfsutils 样本与原创 Python 样本均保留来源和哈希；详见 [ORIGIN.md](classic-hfs/ORIGIN.md)
+和 [CLASSIC_HFS.md](../../docs/formats/CLASSIC_HFS.md)。`lamfold` 新增默认空值的 `LocalFileTimes`
+/ `local_timestamps` 接口，避免把传统 HFS 无偏移本地时间标成 UTC；现有 UTC 接口不变。

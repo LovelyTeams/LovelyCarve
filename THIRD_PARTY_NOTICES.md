@@ -1558,3 +1558,17 @@ GPL-2.0-or-later, with license and original hexdumps preserved in
 `src-tauri/vendor/minix-reader/tests/fixtures/util-linux/`.
 Invented populated fixtures and `scripts/minix-fixtures.py` are CC0-1.0.
 No C filesystem implementation or native runtime dependency is added.
+
+## Classic HFS reader and fixtures
+
+`classic-hfs` adapts HFS layouts and MacRoman decoding from KarpelesLab/fstool
+0.5.0, revision `b30823f25b6eef5ea9b6de45876f31c2b8f2d70a` (MIT), and the
+MacRoman collation table from Dani's danifunker/rusty-backup 0.1.0, revision
+`6e044a314f6523045999058f85a882c1eeb64b50` (AGPL-3.0). The latter attributes
+the table to hfsutils, Copyright (C) 1996–1998 Robert Leslie (GPL-2.0-or-later).
+Original license texts are retained under `src-tauri/vendor/classic-hfs/`.
+The combined adaptation is AGPL-3.0-only. No C filesystem code is compiled.
+The retained hfsutils-generated image and generation script are from the same
+rusty-backup revision; invented fixtures and `scripts/hfs-fixtures.py` are CC0-1.0.
+See [ORIGIN.md](src-tauri/vendor/classic-hfs/ORIGIN.md) for precise source paths,
+licenses, changes and fixture hashes.

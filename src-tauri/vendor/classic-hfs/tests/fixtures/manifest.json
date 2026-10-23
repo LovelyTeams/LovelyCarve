@@ -1,0 +1,34 @@
+[
+  {
+    "file": "fragmented-512.zlib",
+    "bytes": 134144,
+    "sha256": "fadd2812f52c741adce92d60c40f77b6a8b68252f1c42ad1d1a0eae7f5042115",
+    "compressed_sha256": "e9a06b4b8fbb702e1a1fb511d67240e252d9ae2f4baf378b904df0fa985a468d",
+    "source": "scripts/hfs-fixtures.py",
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "fragmented-1024.zlib",
+    "bytes": 265216,
+    "sha256": "df5a93800b9e562c7a7400ca66b5ee2501c7a0fb1ee9c730e4725d0bff001e0a",
+    "compressed_sha256": "8715adb1ec05a4e6b8907d3b4b7a5f8c4feb8bd499627141d12de3399ae20567",
+    "source": "scripts/hfs-fixtures.py",
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "fragmented-4096.zlib",
+    "bytes": 1051648,
+    "sha256": "4b3624f5e48e6968e10ce477ba0c03a7a19e4dd8df0c75d727313c6eb7734cfc",
+    "compressed_sha256": "96f25e37a0d73e527f67594032427d35afc518b7e6ac17708a347a5cb10fadd8",
+    "source": "scripts/hfs-fixtures.py",
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "hfsutils.img.zst",
+    "bytes": 819200,
+    "sha256": "ceb7029adeb408de1c8dc4da0f887e825a0bbc7f139b017bbf277d0f0b1f8e07",
+    "compressed_sha256": "6a64376f8727c5a1eaf7a613464323d847df3aaabbe7201f708656791a1e5aed",
+    "source": "https://github.com/danifunker/rusty-backup/blob/6e044a314f6523045999058f85a882c1eeb64b50/tests/fixtures/test_hfs.img.zst",
+    "license": "AGPL-3.0-only"
+  }
+]

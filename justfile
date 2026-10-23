@@ -158,6 +158,7 @@ fmt:
     cd src-tauri/vendor/lamfold-romfs && cargo fmt
     cd src-tauri/vendor/lamfold-udf && cargo fmt
     cd src-tauri/vendor/minix-reader && cargo fmt
+    cd src-tauri/vendor/classic-hfs && cargo fmt
     cd src-tauri/vendor/lamfold-erofs && cargo fmt
     cd src-tauri/vendor/f2fs-reader && cargo fmt
     cd src-tauri/vendor/qnx-reader && cargo fmt
@@ -429,6 +430,19 @@ test-vendor name *args:
 [group("readers")]
 test-minix:
     cargo test --manifest-path src-tauri/vendor/minix-reader/Cargo.toml --lib
+
+# Validate the classic HFS reader (data/resource forks and B-tree corruption).
+[group("readers")]
+test-classic-hfs:
+    cargo test --manifest-path src-tauri/vendor/classic-hfs/Cargo.toml --lib
+
+[group("readers")]
+clippy-classic-hfs:
+    cargo clippy --manifest-path src-tauri/vendor/classic-hfs/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-hfs-fixtures:
+    {{ python }} scripts/hfs-fixtures.py
 
 [group("readers")]
 clippy-minix:
