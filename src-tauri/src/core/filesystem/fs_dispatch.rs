@@ -46,6 +46,7 @@ use crate::core::filesystem::volumes::ext4::{canonical_ext4_id, open_ext4_source
 use crate::core::filesystem::volumes::fat::{open_fat_source, parse_fat_id};
 use crate::core::filesystem::volumes::hfsplus::{open_hfsplus_source, parse_hfsplus_id};
 use crate::core::filesystem::volumes::jffs2::{open_jffs2_source, parse_jffs2_id};
+use crate::core::filesystem::volumes::minifs::{open_minifs_source, parse_minifs_id};
 use crate::core::filesystem::volumes::ntfs::NtfsSource;
 use crate::core::filesystem::volumes::ntfs::{parse_ntfs_id, NtfsVolume};
 use crate::core::filesystem::volumes::refs::{parse_refs_id, parse_refs_snap_id};
@@ -148,6 +149,7 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &SquashfsAdapter,
     &CramfsAdapter,
     &RomfsAdapter,
+    &MinifsAdapter,
     &UbifsAdapter,
     &Jffs2Adapter,
     &Yaffs2Adapter,
@@ -191,6 +193,9 @@ pub(crate) fn dispatch<'a>(
 /// made the historical open-per-directory walk the dominant cost of any
 /// whole-volume enumeration, especially through E01/RAID-assembled backends.
 pub(crate) fn volume_root_key(id: &str) -> Option<String> {
+    if let Some((partition, _)) = parse_minifs_id(id) {
+        return Some(format!("minifs:part:{partition}"));
+    }
     if let Some((partition, _)) = parse_cramfs_id(id) {
         return Some(format!("cramfs:part:{partition}"));
     }
@@ -398,6 +403,15 @@ path_volume!(
     open_romfs_source
 );
 path_volume_impl!(RomfsVol, plain_range);
+path_volume!(
+    MinifsAdapter,
+    MinifsVol,
+    "minifs",
+    crate::core::filesystem::volumes::minifs::MinifsVolume,
+    parse_minifs_id,
+    open_minifs_source
+);
+path_volume_impl!(MinifsVol, plain_range);
 path_volume!(
     UbifsAdapter,
     UbifsVol,

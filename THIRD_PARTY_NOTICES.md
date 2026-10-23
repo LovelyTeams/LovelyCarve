@@ -1503,3 +1503,13 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## MINIFS format references and test data
+
+The `minifs` reader is original Rust code under this repository's AGPL-3.0-only license.
+It uses the existing Apache-2.0 `lzma-rust2` dependency; no code from the unlicensed
+H4lo/MINIFS-Decompression repository or from the MINIFS paper is incorporated.
+Format references and provenance: [MINIFS](docs/formats/MINIFS.md).
+The original synthetic MINIFS fixture and its Python generator are CC0-1.0.
+Official TP-Link firmware retains its vendor copyright and is downloaded only
+for local optional tests; it is not included in this repository.

@@ -3755,6 +3755,7 @@ dependencies = [
  "md-5 0.11.0",
  "memchr",
  "memmap2",
+ "minifs",
  "ms-compress",
  "notatin",
  "ntfs",
@@ -4071,6 +4072,14 @@ name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
+
+[[package]]
+name = "minifs"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "lzma-rust2 0.20.1",
+]
 
 [[package]]
 name = "minimal-lexical"

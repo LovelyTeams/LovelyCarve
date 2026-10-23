@@ -100,6 +100,31 @@ def main():
             assert firmware_rows[2]["result"]["data"] == firmware_content[11:104].hex()
             assert firmware_rows[3]["result"]["sha256"] == hashlib.sha256(firmware_content).hexdigest()
 
+        # Independent MINIFS v3 fixture: shared LZMA chunks and native commands.
+        minifs_fixture = Path(__file__).resolve().parent.parent / "src-tauri/vendor/minifs/tests/fixtures/synthetic.minifs"
+        minifs_content = bytes(range(256)) * 289 + b"MINIFS test\n"
+        minifs_source = minifs_fixture.read_bytes()
+        minifs_header = bytearray(148)
+        for offset, value in [(0x18, 128 + len(minifs_source)), (0x20, 1),
+                              (0x54, 128), (0x58, len(minifs_source))]:
+            struct.pack_into(">I", minifs_header, offset, value)
+        minifs_wrapped = root / "minifs-firmware.bin"
+        minifs_wrapped.write_bytes(minifs_header + minifs_source)
+        minifs_node = "minifs:part:0:" + b"/web/js/app.js".hex()
+        for minifs_path in (minifs_fixture, minifs_wrapped):
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(minifs_path)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": minifs_node, "offset": 65530, "length": 100}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": minifs_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "minifs"
+            assert rows[0]["result"]["sectorSize"] == 1
+            assert any(item["name"] == "web" and item["kind"] == "dir" for item in rows[1]["result"]["items"])
+            assert rows[2]["result"]["data"] == minifs_content[65530:65630].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(minifs_content).hexdigest()
+
         # Native CramFS / ROMFS: library-backed tree, page-crossing reads and hash.
         rom_fixtures = Path(__file__).resolve().parent.parent / "src-tauri/test_data/rom-images"
         rom_content = (rom_fixtures / "payload.bin").read_bytes()

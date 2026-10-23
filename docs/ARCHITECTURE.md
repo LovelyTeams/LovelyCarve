@@ -133,6 +133,8 @@ Buffalo ENC / Broadcom TRX、TP-Link SafeLoader、U-Boot legacy uImage 与 Netge
 
 Sercomm NAND ZIP 固件由独立 Rust `sercomm-firmware` 库复用 ZIP / DEFLATE / UBI 读取能力，验证 seal、成员范围、CRC、尾部与 NAND 布局，宿主复用 uImage CRC 校验。`FirmwareImage` 只持有逻辑 `SectorSource` 与元数据，`DiskImage` 之间不相互持有；源 `DiskImage` 保留压缩字节与真实分段范围，由 `EvidenceSession` 构建并持有独立的 native firmware views；文件系统分派只对对应的分段 / UBI 节点解析逻辑字节，普通源读取及 RAW 导出不走该视图。视图沿用检材与分段 ID，快照取逻辑卷长，压缩数据不生成伪造物理 runs；不占用加密解锁槽，也不进入 `unlockedPartitions`。native view 与活动读取句柄由会话所有，释放后不保留额外全局缓存。
 
+MINIFS 适配器 `filesystem::volumes::minifs` 复用本仓库独立 Rust `minifs` 库，通过有界 `ReadAt` 读取 v3 名称、文件与共享 LZMA 块索引；目录由路径合成，完整、流式和范围读取共用一个可释放的解压块缓存。裸镜像和 TP-Link 显式分段保留字节几何、源身份和原始容器字节，不虚构时间戳或物理 runs。旧布局与外层完整性边界见 [MINIFS](formats/MINIFS.md)。
+
 JFFS2 适配器 `filesystem::volumes::jffs2` 通过有界 `ReadAt` 复用改造后的 vendor `jffs2::Jffs2Image`。扫描校验节点结构，建立最高版本目录 / inode 和非重叠片段索引；文件数据延迟校验与解码。`jffs2:part:` 节点按分区和路径区分硬链接身份，完整、流式与范围读取共用索引，源字节不变。支持边界见 [JFFS2](formats/JFFS2.md)。
 
 YAFFS2 适配器 `filesystem::volumes::yaffs2` 通过有界 `ReadAt` 和 `Box<dyn ReadOnlyFilesystem>` 复用 Rust `yaffs2-reader`，具体页索引及其所有权留在库内。根据 page / spare 标签探测几何，按 sequence 与物理页序重建当前名称、shrink / shadow 与数据页；`yaffs2:part:` 路径保留硬链接目录身份，内容 inode 沿用目标。完整、流式与范围读取共用逻辑页图；原始读取保留 OOB，不生成虚假的连续物理 runs。支持范围与 NAND ECC 限制见 [YAFFS2](formats/YAFFS2.md)。

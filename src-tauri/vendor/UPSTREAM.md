@@ -65,3 +65,11 @@
 | `smraw` | [libyal/libsmraw adfa6b8bc861](https://github.com/libyal/libsmraw/commit/adfa6b8bc8617226805926180244c774366aad30)，公开能力参照；原创 Rust 0.1.0 / AGPL-3.0-only | 单文件/分段 RAW I/O、数字/字母发现、缺段与稳定性检查、取消、句柄上限、新输出写入和调用者元数据；显式强行模式提供连续前缀、短读诊断、越界清零与 Windows 单次临时重试，宿主审计补零。无 C/DLL，不解析 .info。读取接入宿主；72 API 对照见 [SMRAW](../../docs/formats/SMRAW.md) 与目录内 ORIGIN.md。 |
 | `gzipf` | [libyal/libgzipf d1b4e6ba5911](https://github.com/libyal/libgzipf/commit/d1b4e6ba5911e1b86a3f9d4ca3fd31f1d69a6b68)，公开能力参照；原创 Rust 0.1.0 / AGPL-3.0-only | GZIP 流与多成员元数据读取、CRC/长度校验、seek、限额和取消；不含上游 C 源码或 DLL，接入 tar.gz / tgz、Docker / OCI GZIP 层与小米备份。42 API 对照与验证边界见 [GZIP](../../docs/formats/GZIP.md)、目录内 ORIGIN.md。 |
 | `filevault` (`core` / `forensic`) | [857e04033e09](https://github.com/SecurityRonin/filevault-forensic/commit/857e04033e09c84324948b2cbfdd9e043b24d62b)，0.1.5 / Apache-2.0 | libfvde 对照补受检 metadata copies、多 LV、碎片映射、CF plist、恢复 key、取消与读完整性；实际调用 audit_info。见 [FILEVAULT](../../docs/formats/FILEVAULT.md) 和目录内 LOVELYCARVE.md。 |
+
+## MINIFS 原创读取库
+
+`minifs` 0.1.0 是本仓库原创、AGPL-3.0-only 的独立 Rust 库，没有外部解析器源码上游。
+格式参照 [MiniFS 2024 论文](https://arxiv.org/html/2407.05064v1) 并核对官方 Archer C6 v4 固件；
+LZMA 复用 Apache-2.0 的 `lzma-rust2`。没有复制无明确代码许可的 H4lo Python 提取器。
+库接口、限额、夹具许可与验证来源见 [minifs/README.md](minifs/README.md) 和
+[MINIFS](../../docs/formats/MINIFS.md)。

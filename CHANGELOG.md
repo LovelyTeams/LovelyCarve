@@ -9,6 +9,8 @@
 
 ### Added
 
+- 新增独立纯 Rust MINIFS v3 读取库，支持直接浏览裸 MINIFS 与 TP-Link VxWorks 固件中的共享 LZMA 文件块，并复用预览、哈希、导出、范围读取与索引；官方 Archer C6 v4 固件提供逐文件独立校验，旧式 MINIFS 布局暂不支持。
+
 - 文件列表新增 NTFS 树图视图：按空间占用把当前目录画成嵌套矩形，面积为逻辑大小或文件数，颜色为数据类别或距最新写入的时间，可计入已删除文件；双击或滚轮进出目录，与列表共用导航、预览和右键菜单。数据由卷索引汇总，硬链接只计一次；CLI 对应 `files size-tree get`。
 - 支持纯 Rust YAFFS1 512 / 16 NAND 读取，校验分散 tags 与已提供的页正文 ECC，处理两位 serial、删除页、shadow 和硬链接；提供完整、流式和范围读取，独立显示 YAFFS1 类型并保留原始页 / OOB。
 - 支持原生 Rust YAFFS2 NAND 读取，复用并扩展 Rust 头解析；识别大小端 page / spare 和标签，校验已存在的标签 ECC，重建版本、删除、shrink / shadow、硬链接与稀疏文件，支持完整、流式和范围读取，源哈希 / RAW 导出保留 OOB 原字节。

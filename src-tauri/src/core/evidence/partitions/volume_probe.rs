@@ -139,6 +139,7 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &BitlockerProbe,
     &SquashfsProbe,
     &RomImagesProbe,
+    &super::minifs::MinifsProbe,
     &UbiProbe,
     &super::ubifs::UbifsProbe,
     &super::jffs2::Jffs2Probe,
@@ -184,6 +185,9 @@ pub fn probe_volume_with_head(ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeH
 }
 
 pub fn detect_filesystem_bytes(bytes: &[u8], fallback: PartitionKind) -> PartitionKind {
+    if ::minifs::has_magic(bytes) {
+        return PartitionKind::Minifs;
+    }
     if super::jffs2::is_jffs2_magic(bytes) {
         return PartitionKind::Jffs2;
     }
@@ -270,6 +274,7 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::Jffs2
         | PartitionKind::Yaffs2
         | PartitionKind::Yaffs1
+        | PartitionKind::Minifs
         | PartitionKind::Romfs
         | PartitionKind::Ubi
         | PartitionKind::Lvm
