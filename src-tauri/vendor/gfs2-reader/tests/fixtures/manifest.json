@@ -1,0 +1,7 @@
+{
+  "license": "CC0-1.0",
+  "generator": "scripts/gfs2-fixtures.py",
+  "decoded_bytes": 16777216,
+  "decoded_sha256": "7559060d93df7bd600a695bc99926ae7bdba101eb89d98310319267756c1fd9f",
+  "compressed_sha256": "cb9b6f9d49c6acb6b4bbb972fc4c1eab50d159d96399fe7ee4843723ae393b2a"
+}

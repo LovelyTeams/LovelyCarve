@@ -115,6 +115,7 @@ pub fn partition_ftype(kind: PartitionKind) -> Option<u64> {
         | PartitionKind::Reiserfs
         | PartitionKind::Amiga
         | PartitionKind::Befs
+        | PartitionKind::Gfs2
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

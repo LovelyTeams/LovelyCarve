@@ -2560,6 +2560,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gfs2-reader"
+version = "0.1.0"
+dependencies = [
+ "lamfold",
+]
+
+[[package]]
 name = "gif"
 version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3798,6 +3805,7 @@ dependencies = [
  "filevault-forensic",
  "flate2",
  "fs2",
+ "gfs2-reader",
  "goblin",
  "gpt",
  "gzipf",

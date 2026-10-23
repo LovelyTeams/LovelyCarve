@@ -1632,3 +1632,14 @@ independent publisher package; these external OS/package files retain their
 own licenses and are not distributed in this repository. Fixed sources,
 archive checksums, exact verification boundaries and maintained changes are
 recorded in [ORIGIN.md](src-tauri/vendor/befs-reader/ORIGIN.md).
+
+## GFS2 detector and original Rust reader
+
+`gfs2-reader` adapts the MIT superblock prefix interpretation from
+Marcel Roozekrans’s `unearth` revision `bc891261221f5f5134269780d6c206725b21d52e`,
+`src/gfs2.rs`. Its full notice is retained in
+[src-tauri/vendor/gfs2-reader/LICENSE-UNEARTH](src-tauri/vendor/gfs2-reader/LICENSE-UNEARTH).
+New Rust reading code is AGPL-3.0-only. Linux UAPI record definitions are used
+as format references; no kernel code or native filesystem library is linked.
+The optional native test uses separately installed Linux tooling and invented
+CC0 inputs. See [ORIGIN.md](src-tauri/vendor/gfs2-reader/ORIGIN.md).

@@ -163,6 +163,7 @@ fmt:
     cd src-tauri/vendor/reiserfs-reader && cargo fmt
     cd src-tauri/vendor/amiga-reader && cargo fmt
     cd src-tauri/vendor/befs-reader && cargo fmt
+    cd src-tauri/vendor/gfs2-reader && cargo fmt
     cd src-tauri/vendor/amiga-ffs && cargo fmt
     cd src-tauri/vendor/amiga-rdb && cargo fmt
     cd src-tauri/vendor/lamfold-erofs && cargo fmt
@@ -466,6 +467,22 @@ test-amiga:
 [group("readers")]
 test-befs *args:
     cargo test --manifest-path src-tauri/vendor/befs-reader/Cargo.toml --lib {{ args }}
+
+[group("readers")]
+test-gfs2 *args:
+    cargo test --manifest-path src-tauri/vendor/gfs2-reader/Cargo.toml --lib {{ args }}
+
+[group("readers")]
+clippy-gfs2:
+    cargo clippy --manifest-path src-tauri/vendor/gfs2-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-gfs2-fixtures:
+    {{ python }} scripts/gfs2-fixtures.py
+
+[group("readers")]
+test-gfs2-native:
+    cargo test --manifest-path src-tauri/vendor/gfs2-reader/Cargo.toml --lib native_linux -- --ignored --nocapture
 
 [group("readers")]
 clippy-befs:

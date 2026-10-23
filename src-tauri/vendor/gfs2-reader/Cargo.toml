@@ -1,0 +1,17 @@
+[package]
+name = "gfs2-reader"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+authors = ["LovelyCarve contributors"]
+description = "Immutable GFS2 volume reader over positioned byte sources"
+
+[dependencies]
+lamfold = { path = "../lamfold", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+flate2 = "1"
+serde_json = "1"
+sha2 = "0.10"
+
+[workspace]

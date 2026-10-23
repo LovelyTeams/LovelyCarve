@@ -148,3 +148,9 @@ run 范围、属性及时间语义；保留 MIT 参考代码许可。实现为�
 Haiku 编码解释在 Rust API 中提供。原生 Haiku 官方镜像及独立发布系统包通过完整校验和审计，
 不随仓库分发；自制夹具为 CC0-1.0。见 [ORIGIN.md](befs-reader/ORIGIN.md) 与
 [格式说明](../../docs/formats/BEFS.md)。
+
+## GFS2
+
+`gfs2-reader` 0.1.0：适配前检索现有 Rust 代码，复用 unearth 的 MIT 超级块识别布局，
+新增纯 Rust 的资源组、目录、文件、日志及 EA 读取；固定版本、许可和原生
+mkfs / Linux kernel / fsck 验证见 [ORIGIN.md](gfs2-reader/ORIGIN.md)。
