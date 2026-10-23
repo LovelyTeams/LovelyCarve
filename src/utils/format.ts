@@ -103,12 +103,3 @@ function formatDateParts(
   const millis = utc ? date.getUTCMilliseconds() : date.getMilliseconds();
   return `${base}.${pad(millis, 3)}`;
 }
-
-export function httpStatusClass(status: number | undefined): string {
-  if (!status) return '';
-  if (status >= 200 && status < 300) return 'status-2xx';
-  if (status >= 300 && status < 400) return 'status-3xx';
-  if (status >= 400 && status < 500) return 'status-4xx';
-  if (status >= 500) return 'status-5xx';
-  return '';
-}

@@ -79,10 +79,6 @@ const SECTION_OF: Record<SchedTaskStatus, TaskSectionKey> = {
 export const TASK_SECTION_LABEL: Record<TaskSectionKey, string> = { active: '进行中', attention: '需要处理', finished: '已结束' };
 const SECTION_ORDER: TaskSectionKey[] = ['active', 'attention', 'finished'];
 
-export function taskSectionOf(status: SchedTaskStatus): TaskSectionKey {
-  return SECTION_OF[status];
-}
-
 /** Non-empty sections in display order; each list keeps the priority order. */
 export function groupTaskSections<T extends Ordered>(tasks: readonly T[]): { key: TaskSectionKey; label: string; tasks: T[] }[] {
   const sorted = [...tasks].sort(compareTaskPriority);

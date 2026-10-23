@@ -31,15 +31,6 @@ pub fn md5_hex(bytes: &[u8]) -> String {
     hex::encode(h.finalize())
 }
 
-/// Short "abbreviated" hash used in UI:  `9f2a…c4e1`
-pub fn abbreviate(hex_str: &str) -> String {
-    if hex_str.len() < 10 {
-        hex_str.to_string()
-    } else {
-        format!("{}…{}", &hex_str[..4], &hex_str[hex_str.len() - 4..])
-    }
-}
-
 /// Algorithms exposed by the source-image hash command. Kept in lockstep
 /// with the frontend `HashAlgo` literal union so a typo in either side
 /// fails to deserialize at the Tauri boundary.

@@ -43,17 +43,6 @@ export function methodLabel(task: CarveScanSnapshot, tr: Translator = sourceText
 export function formatScanTime(task: CarveScanSnapshot, locale: Locale = 'zh-CN') {
   return new Date(task.created_unix_ms).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
-export function categoryTone(category: CarveCategory): string {
-  return {
-    image: 'var(--chart-5)',
-    document: 'var(--chart-1)',
-    archive: 'var(--chart-3)',
-    database: 'var(--chart-2)',
-    audio: 'var(--chart-6)',
-    video: 'var(--chart-4)',
-  }[category];
-}
-
 export function confidenceTone(confidence: number): 'high' | 'mid' | 'low' {
   if (confidence >= 85) return 'high';
   if (confidence >= 60) return 'mid';

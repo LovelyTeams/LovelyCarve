@@ -92,14 +92,6 @@ export function arrayStatus(arr: RaidArray, tr: Translator = sourceText): { labe
   return { label: tr("未能重组，见诊断"), sev: 'warn' };
 }
 
-/** Relative capacity of a member vs. the largest column (0..100), for the thin
- *  micro-gauge under each disk chip. Pure presentation — surfaces relative
- *  member sizes from data already on screen; never affects layout/logic. */
-export function gaugePct(arr: RaidArray, m: RaidArrayMember): number {
-  const max = Math.max(...arr.members.map(mm => mm.data_size_sectors), 1);
-  return Math.max(4, Math.round((m.data_size_sectors / max) * 100));
-}
-
 /** Members that hold a column, in slot order (col0 → colN). Spares, faulty,
  *  journal and duplicate entries are dropped — the chain shows the layout. */
 export function orderedMembers(arr: RaidArray): RaidArrayMember[] {
@@ -241,10 +233,6 @@ export function missingSlotsFor(arr: RaidArray): number[] {
     for (let slot = 0; slot < arr.raid_disks; slot++) if (!read.has(slot)) slots.add(slot);
   }
   return [...slots].sort((a, b) => a - b);
-}
-
-export function chunkLabelFor(arr: RaidArray): string {
-  return `${arr.chunksize_sectors / 2}K`;
 }
 
 export function vgSummary(vg: RaidVolumeGroup, tr: Translator = sourceText): string {

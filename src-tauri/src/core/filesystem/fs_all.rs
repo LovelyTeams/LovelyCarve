@@ -136,10 +136,6 @@ impl FsAll {
             .find(|entry| entry.volume_key == key)
             .map(|entry| entry.vol_id)
     }
-
-    pub fn volume_key_of(&self, vol_id: i64) -> Option<&str> {
-        self.entry(vol_id).map(|entry| entry.volume_key.as_str())
-    }
 }
 
 /// The node whose children are the top-level entries of a volume. Partition,

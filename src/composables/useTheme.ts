@@ -4,12 +4,6 @@ import { motionTiming, useUiMotion } from './useUiMotion';
 export const themes = ['light', 'dark', 'pink'] as const;
 export type ThemeName = typeof themes[number];
 
-export const themeLabels: Record<ThemeName, string> = {
-  light: 'Light',
-  dark: 'Dark',
-  pink: 'Pink',
-};
-
 const THEME_KEY = 'lovelycarve-theme';
 const currentTheme = ref<ThemeName>('light');
 let initialized = false;
@@ -79,7 +73,6 @@ export function useTheme() {
     currentTheme,
     initTheme,
     setTheme,
-    themeLabels,
     themes,
   };
 }
