@@ -65,6 +65,7 @@ export const DISK_IMAGE_EXTENSIONS = [
   'ubifs',
   'jffs2',
   'yaffs2',
+  'yaffs1',
   'yaffs',
   'yffs',
   'ubi',

@@ -386,6 +386,10 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.jffs2]
 opt-level = 3
+
+# YAFFS1 validates every allocated NAND page's tag/body parity in Rust.
+[profile.release.package.yaffs2-reader]
+opt-level = 3
 [profile.release.package.lz4_flex]
 opt-level = 3
 [profile.release.package.memchr]

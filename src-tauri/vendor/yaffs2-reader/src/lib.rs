@@ -1,13 +1,16 @@
 //! Native YAFFS2 NAND page/OOB reading. Source bytes remain immutable.
 mod detect;
 mod index;
+mod legacy_scan;
+mod legacy_tags;
 mod read;
 mod scan;
 mod tags;
 mod wire;
 
 use anyhow::{Context, Result, ensure};
-pub use detect::{Geometry, detect, detect_bytes};
+pub use detect::{Format, Geometry, detect, detect_bytes};
+pub use legacy_scan::FileSizeSource;
 use std::collections::BTreeMap;
 use tokio_util::sync::CancellationToken;
 pub use wire::{ByteOrder, FileType, Node};
@@ -67,6 +70,7 @@ pub struct YaffsImage {
 /// propagate source faults; they must not perform host writes or follow links.
 /// The concrete index and its drop implementation stay inside this crate.
 pub trait ReadOnlyFilesystem: Send + Sync {
+    fn format(&self) -> Format;
     fn children(&self, number: u32) -> Result<&[DirectoryEntry]>;
     fn resolve(&self, path: &str) -> Result<u32>;
     fn content_node(&self, number: u32) -> Result<&Node>;
@@ -83,6 +87,9 @@ pub fn open_filesystem(source: &dyn ReadAt) -> Result<Box<dyn ReadOnlyFilesystem
     Ok(Box::new(YaffsImage::open(source)?))
 }
 impl ReadOnlyFilesystem for YaffsImage {
+    fn format(&self) -> Format {
+        self.geometry.format
+    }
     fn children(&self, number: u32) -> Result<&[DirectoryEntry]> {
         YaffsImage::children(self, number)
     }
@@ -116,9 +123,40 @@ impl YaffsImage {
         geometry: Geometry,
         token: &CancellationToken,
     ) -> Result<Self> {
+        Self::open_configured(source, geometry, FileSizeSource::Header, token)
+    }
+    /// Read a known YAFFS1 512/16 layout using its independently known size policy.
+    pub fn open_yaffs1(
+        source: &dyn ReadAt,
+        order: ByteOrder,
+        policy: FileSizeSource,
+        token: &CancellationToken,
+    ) -> Result<Self> {
+        Self::open_configured(
+            source,
+            Geometry {
+                format: Format::Yaffs1,
+                page_size: 512,
+                spare_size: 16,
+                tags_offset: 0,
+                order,
+            },
+            policy,
+            token,
+        )
+    }
+    fn open_configured(
+        source: &dyn ReadAt,
+        geometry: Geometry,
+        policy: FileSizeSource,
+        token: &CancellationToken,
+    ) -> Result<Self> {
         geometry.validate()?;
         let length = source.size();
-        let (objects, orphan_data_objects) = scan::scan(source, geometry, token)?;
+        let (objects, orphan_data_objects) = match geometry.format {
+            Format::Yaffs2 => scan::scan(source, geometry, token)?,
+            Format::Yaffs1 => legacy_scan::scan(source, geometry, policy, token)?,
+        };
         let directories = index::build(&objects, token)?;
         cancelled(token)?;
         ensure!(
@@ -190,5 +228,7 @@ impl YaffsImage {
     }
 }
 
+#[cfg(test)]
+mod legacy_tests;
 #[cfg(test)]
 mod tests;

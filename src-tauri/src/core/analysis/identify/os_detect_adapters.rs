@@ -287,6 +287,7 @@ pub(crate) fn supports_os_detect(kind: PartitionKind) -> bool {
             | PartitionKind::Ubifs
             | PartitionKind::Jffs2
             | PartitionKind::Yaffs2
+            | PartitionKind::Yaffs1
             | PartitionKind::Romfs
             | PartitionKind::ApfsContainer
             | PartitionKind::HfsPlus
@@ -318,6 +319,7 @@ pub(crate) fn kind_str(kind: PartitionKind) -> &'static str {
         PartitionKind::Ubifs => "ubifs",
         PartitionKind::Jffs2 => "jffs2",
         PartitionKind::Yaffs2 => "yaffs2",
+        PartitionKind::Yaffs1 => "yaffs1",
         PartitionKind::Ubi => "ubi",
         PartitionKind::Bitlocker => "bitlocker",
         PartitionKind::BiosBoot => "biosboot",

@@ -187,8 +187,11 @@ pub fn detect_filesystem_bytes(bytes: &[u8], fallback: PartitionKind) -> Partiti
     if super::jffs2::is_jffs2_magic(bytes) {
         return PartitionKind::Jffs2;
     }
-    if yaffs2_reader::detect_bytes(bytes).is_some() {
-        return PartitionKind::Yaffs2;
+    if let Some(geometry) = yaffs2_reader::detect_bytes(bytes) {
+        return match geometry.format {
+            yaffs2_reader::Format::Yaffs1 => PartitionKind::Yaffs1,
+            yaffs2_reader::Format::Yaffs2 => PartitionKind::Yaffs2,
+        };
     }
     if super::ubifs::is_ubifs_magic(bytes) {
         return PartitionKind::Ubifs;
@@ -266,6 +269,7 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::Ubifs
         | PartitionKind::Jffs2
         | PartitionKind::Yaffs2
+        | PartitionKind::Yaffs1
         | PartitionKind::Romfs
         | PartitionKind::Ubi
         | PartitionKind::Lvm

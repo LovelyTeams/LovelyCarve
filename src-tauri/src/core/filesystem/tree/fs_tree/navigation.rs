@@ -191,7 +191,7 @@ pub(super) fn children_for_image_with_options(
                 )?
                 .root_children()
             }
-            PartitionKind::Yaffs2 => {
+            PartitionKind::Yaffs1 | PartitionKind::Yaffs2 => {
                 crate::core::filesystem::volumes::yaffs2::open_yaffs2_source(image, partition.id)?
                     .root_children()
             }

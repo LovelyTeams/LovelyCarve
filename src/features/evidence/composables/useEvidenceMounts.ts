@@ -26,7 +26,7 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
   // Mirror the supported partition set in fs_tree.rs::partition_node; only
   // these surface a `part:{id}` directory node that dokan_mount can project.
   const MOUNTABLE_KINDS = new Set([
-    'ext4', 'btrfs', 'fat32', 'fat12', 'fat16', 'exfat', 'cdfs', 'squashfs', 'cramfs', 'romfs', 'ubifs', 'jffs2', 'yaffs2', 'ubi',
+    'ext4', 'btrfs', 'fat32', 'fat12', 'fat16', 'exfat', 'cdfs', 'squashfs', 'cramfs', 'romfs', 'ubifs', 'jffs2', 'yaffs1', 'yaffs2', 'ubi',
     'apfscontainer', 'hfsplus', 'hfsx', 'lvm', 'ntfs', 'refs',
     'ufs', 'xfs', 'zfs', 'bitlocker',
   ]);

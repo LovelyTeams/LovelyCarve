@@ -17,3 +17,8 @@ to the original object, delete that link object, and preserve another link's byt
 These synthetic images are not real NAND dumps and do not provide hardware
 body-ECC validation. Public-image checks use the optional independent yaffshiv
 oracle described in the format guide, without redistributing those input bytes.
+
+`generate_legacy.py` independently encodes YAFFS1 LE/BE dispersed tags, tag ECC,
+page-body ECC and 512/16 pages. `legacy-versions.yaffs` includes serial 3→0,
+deleted old pages, same-serial copies, shadow and different header/data-derived
+lengths. All bytes are original CC0-1.0; hashes are in `legacy-fixtures.json`.

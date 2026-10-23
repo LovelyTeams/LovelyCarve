@@ -132,6 +132,7 @@ pub enum PartitionKind {
     Ubi,
     Jffs2,
     Yaffs2,
+    Yaffs1,
 }
 
 /// Block-device abstraction. Uniform read interface so the dispatcher and
@@ -318,6 +319,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Ubifs
         | PartitionKind::Jffs2
         | PartitionKind::Yaffs2
+        | PartitionKind::Yaffs1
         | PartitionKind::Romfs
         | PartitionKind::BiosBoot
         | PartitionKind::ApfsContainer

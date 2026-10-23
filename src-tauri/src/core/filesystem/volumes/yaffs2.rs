@@ -1,6 +1,6 @@
 //! Native YAFFS2 NAND page/OOB view; original evidence bytes stay unchanged.
 use super::ubi::UbiSource;
-use crate::core::evidence::image::{find_partition, DiskImage};
+use crate::core::evidence::image::{find_partition, DiskImage, PartitionKind};
 use crate::core::filesystem::{
     fs_dispatch::build_stat,
     tree::fs_tree::{FsNode, FsStat, Mactb, NodeKind},
@@ -8,7 +8,7 @@ use crate::core::filesystem::{
 use anyhow::{ensure, Context, Result};
 use chrono::{DateTime, SecondsFormat, Utc};
 use std::sync::Arc;
-use yaffs2_reader::{FileType, Node, ReadAt, ReadOnlyFilesystem};
+use yaffs2_reader::{FileType, Format, Node, ReadAt, ReadOnlyFilesystem};
 
 #[cfg(test)]
 #[path = "yaffs2_tests.rs"]
@@ -24,14 +24,26 @@ impl ReadAt for Bytes {
     }
 }
 pub fn node_id(partition: u8, path: &str) -> String {
+    node_id_for_format(Format::Yaffs2, partition, path)
+}
+pub fn node_id_for_format(format: Format, partition: u8, path: &str) -> String {
     if path.is_empty() {
         format!("part:{partition}")
     } else {
-        format!("yaffs2:part:{partition}:{}", hex::encode(path))
+        let prefix = match format {
+            Format::Yaffs1 => "yaffs1",
+            Format::Yaffs2 => "yaffs2",
+        };
+        format!("{prefix}:part:{partition}:{}", hex::encode(path))
     }
 }
-pub fn parse_yaffs2_id(id: &str) -> Option<(u8, String)> {
-    let (partition, path) = id.strip_prefix("yaffs2:part:")?.split_once(':')?;
+pub fn parse_yaffs2_id(id: &str) -> Option<(Format, u8, String)> {
+    let (format, rest) = if let Some(rest) = id.strip_prefix("yaffs1:part:") {
+        (Format::Yaffs1, rest)
+    } else {
+        (Format::Yaffs2, id.strip_prefix("yaffs2:part:")?)
+    };
+    let (partition, path) = rest.split_once(':')?;
     let path = String::from_utf8(hex::decode(path).ok()?).ok()?;
     if !path.is_empty()
         && (!path.starts_with('/')
@@ -43,7 +55,7 @@ pub fn parse_yaffs2_id(id: &str) -> Option<(u8, String)> {
     {
         return None;
     }
-    Some((partition.parse().ok()?, path))
+    Some((format, partition.parse().ok()?, path))
 }
 pub struct Yaffs2Volume {
     partition: u8,
@@ -58,6 +70,16 @@ pub fn open_yaffs2_source(image: &Arc<DiskImage>, partition: u8) -> Result<Yaffs
     )?);
     let reader = yaffs2_reader::open_filesystem(&bytes)
         .with_context(|| format!("YAFFS2 open partition {partition}"))?;
+    let expected = match find_partition(image, &partition.to_string())?.kind {
+        PartitionKind::Yaffs1 => Format::Yaffs1,
+        PartitionKind::Yaffs2 => Format::Yaffs2,
+        kind => anyhow::bail!("YAFFS partition has incompatible kind {kind:?}"),
+    };
+    let format = reader.format();
+    ensure!(
+        format == expected,
+        "YAFFS partition kind disagrees with source layout"
+    );
     Ok(Yaffs2Volume {
         partition,
         bytes,
@@ -65,6 +87,10 @@ pub fn open_yaffs2_source(image: &Arc<DiskImage>, partition: u8) -> Result<Yaffs
     })
 }
 impl Yaffs2Volume {
+    #[inline(never)]
+    pub(crate) fn format(&self) -> Format {
+        self.reader.format()
+    }
     #[inline(never)]
     pub fn root_children(&self) -> Result<Vec<FsNode>> {
         self.children("")
@@ -95,8 +121,12 @@ impl Yaffs2Volume {
                 FileType::File | FileType::Special | FileType::HardLink => NodeKind::File,
             };
             children.push(FsNode {
-                id: node_id(self.partition, &format!("{path}/{}", entry.name)),
-                parent_id: Some(node_id(self.partition, path)),
+                id: node_id_for_format(
+                    self.format(),
+                    self.partition,
+                    &format!("{path}/{}", entry.name),
+                ),
+                parent_id: Some(node_id_for_format(self.format(), self.partition, path)),
                 name: entry.name.clone(),
                 kind,
                 size: node.size,

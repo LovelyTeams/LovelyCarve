@@ -46,11 +46,17 @@ impl YaffsImage {
             if overlap_end <= overlap_start {
                 continue;
             }
-            let bytes = exact(
-                source,
-                chunk.offset + (overlap_start - start),
-                (overlap_end - overlap_start) as usize,
-            )?;
+            let bytes = if self.geometry.format == crate::Format::Yaffs1 {
+                let page = exact(source, chunk.offset, 528)?;
+                crate::legacy_tags::verify_page(&page)?;
+                page[(overlap_start - start) as usize..(overlap_end - start) as usize].to_vec()
+            } else {
+                exact(
+                    source,
+                    chunk.offset + (overlap_start - start),
+                    (overlap_end - overlap_start) as usize,
+                )?
+            };
             let position = (overlap_start - offset) as usize;
             output[position..position + bytes.len()].copy_from_slice(&bytes);
         }

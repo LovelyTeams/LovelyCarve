@@ -308,6 +308,7 @@ pub(super) fn fs_label_for_kind(kind: PartitionKind) -> &'static str {
         PartitionKind::Ubifs => "UBIFS",
         PartitionKind::Jffs2 => "JFFS2",
         PartitionKind::Yaffs2 => "YAFFS2",
+        PartitionKind::Yaffs1 => "YAFFS1",
         PartitionKind::Ubi => "UBI",
         PartitionKind::ApfsContainer => "APFS",
         PartitionKind::HfsPlus => "HFS+",
@@ -347,6 +348,7 @@ pub(super) fn is_case_sensitive_fs(kind: PartitionKind) -> bool {
             | PartitionKind::Ubifs
             | PartitionKind::Jffs2
             | PartitionKind::Yaffs2
+            | PartitionKind::Yaffs1
             | PartitionKind::Romfs
             | PartitionKind::Ubi
             | PartitionKind::ApfsContainer

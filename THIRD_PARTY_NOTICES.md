@@ -51,7 +51,7 @@ no libfsapfs C sources or binaries are incorporated. The new APFS fixtures
 are invented, reproducible project test structures (AGPL-3.0-only), documented
 in `src-tauri/vendor/apfs/tests/data/README.md`.
 
-## Native YAFFS2 reader
+## Native YAFFS reader
 
 The original AGPL-3.0-only `yaffs2-reader` adapts object/file prefix structures
 and validation from binwalk-ng commit `845806c163747eb524d66b5fe3de2ed86ea3aaad`
@@ -59,6 +59,8 @@ and validation from binwalk-ng commit `845806c163747eb524d66b5fe3de2ed86ea3aaad`
 is retained in [LICENSE-BINWALK-MIT](src-tauri/vendor/yaffs2-reader/LICENSE-BINWALK-MIT).
 Aleph One YAFFS format definitions are references; no C implementation or
 external extractor is incorporated. Independent synthetic fixtures are CC0-1.0.
+The original YAFFS1 dispersed-tags, serial scanning and page-ECC modules reuse
+the same Rust namespace interfaces; they add no C implementation or dependency.
 
 ## lamfold CramFS / Linux ROMFS
 

@@ -159,6 +159,10 @@ pub(crate) fn scan(
             orphans += 1;
         }
     }
+    complete(&mut objects)?;
+    Ok((objects, orphans))
+}
+pub(crate) fn complete(objects: &mut BTreeMap<u32, Object>) -> Result<()> {
     objects.entry(1).or_insert_with(|| Object {
         node: Node::pseudo(1, ""),
         chunks: BTreeMap::new(),
@@ -173,5 +177,5 @@ pub(crate) fn scan(
             chunks: BTreeMap::new(),
         });
     }
-    Ok((objects, orphans))
+    Ok(())
 }

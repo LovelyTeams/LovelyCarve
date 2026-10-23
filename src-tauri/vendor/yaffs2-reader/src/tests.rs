@@ -16,6 +16,7 @@ impl ReadAt for Bytes {
 }
 fn little() -> Geometry {
     Geometry {
+        format: Format::Yaffs2,
         page_size: 2048,
         spare_size: 64,
         tags_offset: 0,
@@ -159,6 +160,7 @@ fn malformed_tags_ecc_headers_cycles_and_source_short_reads_fail() {
     let mut bytes = BE.to_vec();
     bytes[4096 + 2 + 16] ^= 1;
     let geometry = Geometry {
+        format: Format::Yaffs2,
         page_size: 4096,
         spare_size: 128,
         tags_offset: 2,
@@ -359,9 +361,9 @@ fn external_unblob_geometry_matrix_files_links_and_special_nodes() {
     }
     for name in ["links.yaffs", "fruits.dir.le.yffs", "fruits.dir.be.yffs"] {
         let source = Bytes(std::fs::read(std::path::Path::new(&directory).join(name)).unwrap());
-        assert!(
-            YaffsImage::open(&source).is_err(),
-            "legacy tags must not be mistaken for YAFFS2: {name}"
+        assert_eq!(
+            YaffsImage::open(&source).unwrap().geometry.format,
+            Format::Yaffs1
         );
     }
 }

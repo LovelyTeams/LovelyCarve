@@ -9,6 +9,7 @@
 
 ### Added
 
+- 支持纯 Rust YAFFS1 512 / 16 NAND 读取，校验分散 tags 与已提供的页正文 ECC，处理两位 serial、删除页、shadow 和硬链接；提供完整、流式和范围读取，独立显示 YAFFS1 类型并保留原始页 / OOB。
 - 支持原生 Rust YAFFS2 NAND 读取，复用并扩展 Rust 头解析；识别大小端 page / spare 和标签，校验已存在的标签 ECC，重建版本、删除、shrink / shadow、硬链接与稀疏文件，支持完整、流式和范围读取，源哈希 / RAW 导出保留 OOB 原字节。
 - 固件 SquashFS 的 XZ / Zstandard 读取改用纯 Rust 解码器，检查完整流、校验和、索引与字典 / 输出上限；无需外部解包程序或 C 解压库。
 - 支持 Netgear Sercomm NAND ZIP 固件，复用 Rust ZIP / 解码库校验封装、CRC、内核与 UBI；以独立逻辑视图浏览解压文件系统，保留源检材身份、压缩来源范围、源哈希和 RAW 导出。

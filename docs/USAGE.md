@@ -49,6 +49,8 @@ JFFS2 新格式镜像支持大小端、版本化目录 / 文件片段、硬链�
 
 YAFFS2 NAND 镜像可自动识别已支持的 page / spare 几何并浏览文件，支持硬链接、稀疏和范围读取。源哈希与 RAW 导出包含原始 OOB；特殊节点只显示元数据。几何、ECC 和版本重建限制见 [YAFFS2](formats/YAFFS2.md)。
 
+YAFFS1 的 512 / 16 旧式分散 tags 镜像使用独立类型识别，支持大小端、页正文 ECC、文件与链接读取。文件长度默认遵从对象头，配置差异与限制见 [YAFFS1](formats/YAFFS1.md)。
+
 UBIFS 可作为裸镜像或 UBI 命名卷浏览，也可位于受支持的固件分段中；原始字节视图和源哈希保持容器内容。当前支持干净的已提交树，遇到需日志重放、加密或认证的卷明确报错。范围与验证见 [UBIFS](formats/UBIFS.md)。
 
 Buffalo `.enc` / `.trx`、TP-Link SafeLoader `.bin`、U-Boot legacy uImage 组合镜像及

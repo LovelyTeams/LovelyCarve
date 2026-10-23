@@ -13,6 +13,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | SquashFS | [SQUASHFS.md](SQUASHFS.md) | backhand Rust 读取器；v1/v2 旧布局、v3/v4、大小端、尾片段和有界 LZMA / 范围读取 |
 | JFFS2 | [JFFS2.md](JFFS2.md) | jffs2-rs 结构 / RTIME 改造；新格式大小端、CRC、版本化目录与片段、空洞和范围读取 |
 | YAFFS2 | [YAFFS2.md](YAFFS2.md) | Binwalk Rust 前缀改造；page / spare、packed tags / ECC、版本与 shrink / shadow、硬链接、稀疏和范围读取 |
+| YAFFS1 | [YAFFS1.md](YAFFS1.md) | 原生 Rust 分散 tags、标签 / 页正文 ECC、两位序号、删除页、shadow、硬链接及独立文件长度策略 |
 | UBIFS | [UBIFS.md](UBIFS.md) | rust_ubidump 节点/索引适配；干净的已提交 v4/v5 树、CRC、硬链接/空洞与范围读；明确日志、加密和恢复限制 |
 | UBI / HDR1 固件 | [UBI.md](UBI.md) | rust_ubidump 只读库；小米扩展分段表、UBI 逻辑块重组、原始卷读取与内嵌 SquashFS / UBIFS 浏览 |
 | NTFS | [NTFS.md](NTFS.md) | libfsntfs 对照；MFT 与属性链、LZNT1 / WOF 压缩、命名流、硬链接、重解析点、安全描述符、独立 `$MFT`、USN 日志 |

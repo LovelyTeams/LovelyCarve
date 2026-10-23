@@ -188,6 +188,7 @@ pub fn fs_prefix_for_kind(kind: PartitionKind) -> &'static str {
         | PartitionKind::Ubifs
         | PartitionKind::Jffs2
         | PartitionKind::Yaffs2
+        | PartitionKind::Yaffs1
         | PartitionKind::Romfs
         | PartitionKind::Ubi
         | PartitionKind::Lvm

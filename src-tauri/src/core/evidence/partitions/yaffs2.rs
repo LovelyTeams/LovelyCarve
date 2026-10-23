@@ -22,11 +22,18 @@ impl VolumeProbe for Yaffs2Probe {
         };
         Ok(Some(VolumeProbeHit {
             probe: "yaffs2".into(),
-            kind: PartitionKind::Yaffs2,
+            kind: match geometry.format {
+                yaffs2_reader::Format::Yaffs1 => PartitionKind::Yaffs1,
+                yaffs2_reader::Format::Yaffs2 => PartitionKind::Yaffs2,
+            },
             confidence: 99,
             evidence: vec![format!(
-                "YAFFS2 page {}, spare {}, tags offset {}, {:?}",
-                geometry.page_size, geometry.spare_size, geometry.tags_offset, geometry.order
+                "{:?} page {}, spare {}, tags offset {}, {:?}",
+                geometry.format,
+                geometry.page_size,
+                geometry.spare_size,
+                geometry.tags_offset,
+                geometry.order
             )],
             relative_offset: 0,
         }))

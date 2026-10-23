@@ -229,8 +229,12 @@ pub(crate) fn volume_root_key(id: &str) -> Option<String> {
     if let Some((source, _)) = parse_squashfs_id(id) {
         return Some(source.cache_key());
     }
-    if let Some((partition, _)) = parse_yaffs2_id(id) {
-        return Some(format!("yaffs2:part:{partition}"));
+    if let Some((format, partition, _)) = parse_yaffs2_id(id) {
+        let prefix = match format {
+            yaffs2_reader::Format::Yaffs1 => "yaffs1",
+            yaffs2_reader::Format::Yaffs2 => "yaffs2",
+        };
+        return Some(format!("{prefix}:part:{partition}"));
     }
     if let Some((partition, _)) = parse_jffs2_id(id) {
         return Some(format!("jffs2:part:{partition}"));

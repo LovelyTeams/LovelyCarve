@@ -43,7 +43,8 @@ LovelyCarve 使用原生 Rust `yaffs2-reader` 读取带 page / spare 的 YAFFS2 
 
 ## 限制与完整性
 
-- YAFFS1、in-band tags、UTF-16 / 非 UTF-8 名称、WinCE 时间、非 POSIX mode、
+- YAFFS1 的旧式 tags 使用独立扫描器，见 [YAFFS1](YAFFS1.md)。本路径的 in-band tags、
+  UTF-16 / 非 UTF-8 名称、WinCE 时间、非 POSIX mode、
   标记坏块及其他硬件 OOB/ECC 布局尚未接入。现有标签 ECC 不做自动纠错，错误明确报告；
   NAND 正文硬件 ECC 不校正。库保留扩展时间原始字段。
 - 普通数据页没有通用内容 CRC；标签 ECC 不是文件正文认证，也不是整镜像签名。
@@ -72,7 +73,7 @@ Unblob 的三份 `sample.*.yaffs2` 另覆盖 2048 / 64 LE（有标签 ECC）、
 4096 / 128 BE（有标签 ECC）与 16384 / 512 LE（标签偏移 2）。
 使用独立 oracle 核对六个普通文件、两条符号链接、目录与特殊节点；读取器拒绝特殊节点正文，
 链接仅保留目标字符串。`fruits.dir.*.yffs` 和 `links.yaffs` 的 512 / 16 旧式 tags
-布局不属于已接入的 packed-tags 路径。
+由 [YAFFS1](YAFFS1.md) 路径读取，保持独立类型与节点身份。
 
 ```powershell
 just test-vendor yaffs2-reader

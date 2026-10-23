@@ -137,6 +137,8 @@ JFFS2 适配器 `filesystem::volumes::jffs2` 通过有界 `ReadAt` 复用改造�
 
 YAFFS2 适配器 `filesystem::volumes::yaffs2` 通过有界 `ReadAt` 和 `Box<dyn ReadOnlyFilesystem>` 复用 Rust `yaffs2-reader`，具体页索引及其所有权留在库内。根据 page / spare 标签探测几何，按 sequence 与物理页序重建当前名称、shrink / shadow 与数据页；`yaffs2:part:` 路径保留硬链接目录身份，内容 inode 沿用目标。完整、流式与范围读取共用逻辑页图；原始读取保留 OOB，不生成虚假的连续物理 runs。支持范围与 NAND ECC 限制见 [YAFFS2](formats/YAFFS2.md)。
 
+同一 Rust 库的 YAFFS1 扩展使用独立分散 tags / ECC 与前向 serial 扫描，复用只读接口和目录索引。分区类型与节点前缀为 `yaffs1`，适配器检查前缀与实际布局一致，不能通过另一版本前缀访问或混用缓存。已分配数据读取验证完整 512 字节页的已提供 ECC；宿主采用头声明长度，库可按已知源配置选择数据页长度策略。范围见 [YAFFS1](formats/YAFFS1.md)。
+
 UBIFS 适配器 `filesystem::volumes::ubifs` 将裸分区、固件明文和 UBI 逻辑卷接到 vendor `ubidump::UbifsImage` 的有界 `ReadAt`。按主节点选择已提交索引，缓存目录/inode 和数据键位置；数据 CRC 与解码延迟到实际范围读取。`ubifs:part:` 与 `ubifs:ubi:part:` 节点保留分区、卷与路径身份，硬链接不折叠成同一个目录节点；源读始终保留原始证据。支持边界见 [UBIFS](formats/UBIFS.md)。
 
 CramFS / Linux ROMFS 复用 vendor 的 lamfold Rust 读取器，适配器位于 `filesystem/volumes/rom_images.rs`。完整、流式与范围读取经同一文件内容路径，声明范围、CRC/校验和与循环目录明确校验；裸镜像用字节几何，真实分区保留原始 LBA，原容器字节不变。能力和限制见 [ROM_IMAGES](formats/ROM_IMAGES.md)。

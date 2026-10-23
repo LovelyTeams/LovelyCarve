@@ -145,7 +145,7 @@ impl<'a> FsSession<'a> {
             let pid: Option<u8> = part_str.parse().ok();
             if let (Some(kind), Some(pid)) = (kind, pid) {
                 let root = match kind {
-                    PartitionKind::Yaffs2 => Some(
+                    PartitionKind::Yaffs1 | PartitionKind::Yaffs2 => Some(
                         crate::core::filesystem::volumes::yaffs2::open_yaffs2_source(
                             self.image, pid,
                         )?
