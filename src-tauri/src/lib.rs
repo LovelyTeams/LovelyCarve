@@ -1,11 +1,17 @@
 #![cfg_attr(not(test), warn(clippy::unwrap_used, clippy::expect_used))]
 
+#[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]
 pub(crate) mod app;
+#[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]
 pub mod cli;
+#[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]
 pub mod commands;
 pub mod core;
+#[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]
 pub mod host;
+#[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]
 pub mod state;
+#[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]
 pub mod task_manager;
 
 /// Desktop entry point. The standalone CLI (`cli::run`) shares the command

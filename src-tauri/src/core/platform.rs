@@ -1,6 +1,9 @@
 //! platform domain modules.
 
-#[cfg(target_os = "windows")]
+#[cfg(all(
+    target_os = "windows",
+    any(not(feature = "reader-library"), feature = "desktop", test)
+))]
 pub mod dokan_mount;
 pub mod ffi;
 pub mod resources;

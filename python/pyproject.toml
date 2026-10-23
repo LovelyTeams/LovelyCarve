@@ -1,0 +1,38 @@
+[build-system]
+requires = ["maturin>=1.15,<2"]
+build-backend = "maturin"
+
+[project]
+name = "lovelycarve"
+version = "1.2.0"
+description = "Read-only disk image, filesystem and archive access powered by Rust"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "AGPL-3.0-only"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.15",
+    "Programming Language :: Rust",
+    "Typing :: Typed",
+]
+
+[tool.maturin]
+module-name = "lovelycarve._native"
+python-source = "src"
+bindings = "pyo3"
+editable-profile = "dev"
+
+[tool.uv]
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
+    { file = "src/**/*.rs" },
+    { file = "../src-tauri/src/**/*.rs" },
+    { file = "../src-tauri/Cargo.toml" },
+    { file = "../src-tauri/vendor/**/*.rs" },
+    { file = "../src-tauri/vendor/**/Cargo.toml" },
+    { env = "OPENSSL_LIBS" },
+    { env = "OPENSSL_DIR" },
+    { env = "OPENSSL_LIB_DIR" },
+]

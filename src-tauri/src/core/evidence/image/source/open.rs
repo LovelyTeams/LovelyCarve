@@ -268,9 +268,9 @@ impl ImageSource {
                 .paths
                 .first()
                 .context("RAW segment list is empty")?;
-            if crate::core::casework::case::evidence_path_key(
+            if crate::core::common::evidence_path::evidence_path_key(
                 &std::fs::canonicalize(first)?.to_string_lossy(),
-            ) != crate::core::casework::case::evidence_path_key(
+            ) != crate::core::common::evidence_path::evidence_path_key(
                 &std::fs::canonicalize(path)?.to_string_lossy(),
             ) {
                 anyhow::bail!(

@@ -21,6 +21,12 @@ windowsenv := opensslenv + " -VisualStudio -VsPath '" + vs_path + "'"
 vsenv := windowsenv + " -OpenCV -OpenCVDir '" + opencv_dir + "' -OpenCVLib '" + opencv_lib + "' -OpenCVMsvc '" + opencv_msvc + "'"
 cargo_env := if os() == "windows" { opensslenv + "; " } else { "" }
 python := if os() == "windows" { "python" } else { "python3" }
+python_version := env_var_or_default("LOVELYCARVE_PYTHON", "3.15")
+# OpenSSL's Windows libcrypto.lib is an import library even inside MT; Python
+# wheels use the static library names so consumers need no OpenSSL DLL on PATH.
+python_openssl_libs := env_var_or_default("OPENSSL_LIBS", "libssl_static:libcrypto_static")
+python_openssl_lib := env_var_or_default("OPENSSL_LIB", openssl_dir + "\\lib\\VC\\x64\\MD")
+python_cargo_env := if os() == "windows" { cargo_env + "$env:OPENSSL_LIB_DIR='" + python_openssl_lib + "'; $env:OPENSSL_LIBS='" + python_openssl_libs + "'; " } else { "" }
 cli_executable := if os() == "windows" { "src-tauri/target/debug/lovelycarve-cli.exe" } else { "src-tauri/target/debug/lovelycarve-cli" }
 
 [private]
@@ -44,6 +50,31 @@ verify-rust: fmt check clippy test
 # Run the SDK, process host and linuxinfo checks.
 [group("verify")]
 verify-plugins: fmt clippy-plugins test-plugins
+
+# Install the read-only Python package into python/.venv using uv's interpreter.
+[group("python")]
+develop-python:
+    {{ python_cargo_env }}uv sync --project python --python {{ python_version }}
+
+# Build an installable Python wheel (no desktop or QR/OCR features).
+[group("python")]
+build-python:
+    {{ python_cargo_env }}uv build --project python --python {{ python_version }} --wheel --out-dir dist-pack/python
+
+# Verify the installed Python package against synthetic disk and archive fixtures.
+[group("python")]
+test-python: develop-python
+    uv run --project python --no-sync python -m unittest discover -s python/tests -v
+
+# Format only the Python binding's Rust crate.
+[group("python")]
+fmt-python:
+    cargo fmt --manifest-path python/Cargo.toml
+
+# Lint the Python binding without changing the desktop build.
+[group("python")]
+clippy-python:
+    {{ python_cargo_env }}cargo clippy --manifest-path python/Cargo.toml -- -D warnings
 
 # Start Vite after preparing offline viewer assets.
 [group("frontend")]

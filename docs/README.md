@@ -8,6 +8,7 @@
 | --- | --- |
 | [使用指南](USAGE.md) | 案件与检材、镜像信息、文件浏览与预览、校验与导出、全局搜索、时间线、文件恢复、插件分析、BCP 数据与只读挂载 |
 | [CLI 手册](CLI.md) | 独立的 `lovelycarve-cli`：命令结构、发现命令、编码代理技能、输出与参数约定、浏览检材、交互 shell、JSONL 会话，以及镜像与加密卷的命令行用法 |
+| [Python 读取库](../python/README.md) | PyO3 `lovelycarve`：只读打开镜像、分区与目录浏览、文件属性、范围读取和 seekable 文件对象 |
 | [iOS 备份](IOS_BACKUPS.md) | iTunes / Finder 本地备份的浏览、加密备份解锁与异常检查 |
 | [Linux 基本信息插件](LINUXINFO.md) | 内置 `linuxinfo` 插件的分析范围、构建部署与验证 |
 
