@@ -1,12 +1,11 @@
 
 import { tr } from '../../../composables/useLocale';
-import { onScopeDispose, ref, shallowRef, type Ref } from 'vue';
+import { onScopeDispose, ref, type Ref } from 'vue';
 import { containerFsFlatPage as fsFlatPage } from './containerReads';
-import { fsFlatExtCounts } from '../../../lib/ipc/fs/query';
 import { notifyError } from '../../../composables/useToast';
 import type { FlatFileFilter, FlatSortColumn, FsWalkEntry } from '../../../lib/ipc/fs/types';
 import type { DiskFsNode as FsNode } from '../model/model';
-import { FLAT_PAGE_SIZE, FLAT_CATCHUP_PAGE_SIZE, categoryCountsFromExtensions, flatRowKey } from '../model/flatQuery';
+import { FLAT_PAGE_SIZE, FLAT_CATCHUP_PAGE_SIZE, flatRowKey } from '../model/flatQuery';
 
 export interface FlatQueryRequest {
   keyword: string | null;
@@ -15,7 +14,7 @@ export interface FlatQueryRequest {
   sortdesc: boolean;
 }
 
-/** Recursive server-filtered pagination, including scroll catch-up and category counts. */
+/** Recursive server-filtered pagination, including scroll catch-up. */
 export function useFlatFileQuery(options: {
   imageId: () => string;
   parentId: () => string;
@@ -32,12 +31,10 @@ export function useFlatFileQuery(options: {
   const { entries, loading } = options;
   const flatTotal = ref(0);
   const flatTruncated = ref(false);
-  const flatCategoryCounts = shallowRef<{ counts: Record<string, number>; total: number }>({ counts: {}, total: 0 });
   let flatFetching = false;
   let flatWantedThrough = -1;
   let flatRefreshRequested = false;
   let lastLoadedFlatSignature: string | null = null;
-  let flatCategoryCountsParent: string | null = null;
   let disposed = false;
   onScopeDispose(() => { disposed = true; });
   const current = (generation: number) => !disposed && generation === options.generation();
@@ -77,7 +74,6 @@ export function useFlatFileQuery(options: {
     const rows = flatRowsFromPage(page.items, 0);
     entries.value = rows;
     options.hydrated(rows, gen);
-    void loadFlatCategoryCounts(parentId, gen, refresh);
   }
 
   /** 按需补页到全局行号 `through`（含）：可视区间接近已加载末尾、拖滚动条或
@@ -139,23 +135,5 @@ export function useFlatFileQuery(options: {
     }
   }
 
-  // 类别条计数：按起点缓存，同一起点上只换过滤/排序时不重取。
-
-  async function loadFlatCategoryCounts(parentId: string, gen: number, refresh: boolean) {
-    if (!refresh && flatCategoryCountsParent === parentId) return;
-    try {
-      const summary = await fsFlatExtCounts({ imageId: options.imageId(), parentId });
-      if (!current(gen) || !options.enabled()) return;
-      flatCategoryCountsParent = parentId;
-      flatCategoryCounts.value = {
-        counts: categoryCountsFromExtensions(summary.counts),
-        total: summary.total,
-      };
-    } catch (err) {
-      // 计数取不到不影响列表；类别条只是少了徽标数字。
-      console.warn('flat category counts failed', err);
-    }
-  }
-
-  return { flatTotal, flatTruncated, flatCategoryCounts, loadFlatFirstPage, ensureFlatLoadedThrough, loadedSignature: () => lastLoadedFlatSignature, requestRefresh: () => { flatRefreshRequested = true; }, resetCategoryCounts: () => { flatCategoryCountsParent = null; } };
+  return { flatTotal, flatTruncated, loadFlatFirstPage, ensureFlatLoadedThrough, loadedSignature: () => lastLoadedFlatSignature, requestRefresh: () => { flatRefreshRequested = true; } };
 }

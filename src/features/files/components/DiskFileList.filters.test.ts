@@ -30,10 +30,9 @@ let app: App;
 let host: HTMLDivElement;
 const panel = ref<FileListNavigator | null>(null);
 async function settle() { for (let index = 0; index < 12; index++) await nextTick(); }
-function listing(args: { query?: { filter?: { nameQuery?: string; extensions?: string[] } } }) {
+function listing(args: { query?: { filter?: { nameQuery?: string } } }) {
   const filter = args.query?.filter;
-  return [photo, report].filter(item => (!filter?.nameQuery || item.name.includes(filter.nameQuery))
-    && (!filter?.extensions?.length || filter.extensions.some(extension => item.name.endsWith(`.${extension}`))));
+  return [photo, report].filter(item => !filter?.nameQuery || item.name.includes(filter.nameQuery));
 }
 beforeEach(() => {
   vi.resetAllMocks();
@@ -43,7 +42,6 @@ beforeEach(() => {
       return { items, nextCursor: null, total: items.length };
     }
     if (command === 'fs_flat_page') return { items: [{ node: photo, path: '/sub/photo.jpg' }], total: 1, truncated: false };
-    if (command === 'fs_flat_ext_counts') return { counts: { jpg: 1 }, total: 1 };
     if (command === 'fs_mounts') return [];
     return {};
   });
@@ -126,19 +124,9 @@ describe('file list filter bar', () => {
     expect(ipc.save).toHaveBeenCalledWith(expect.objectContaining({ defaultPath: 'report.pdf' }));
   });
 
-  it('keeps the folder type tally after the backend filters by a type', async () => {
+  it('offers no file-type menu', async () => {
     await mount();
-    host.querySelector<HTMLButtonElement>('.category-trigger')!.click();
-    await settle();
-    const items = () => [...document.querySelectorAll<HTMLElement>('.category-menu .category-item')]
-      .map(item => `${item.querySelector('.item-label')?.textContent} ${item.querySelector('.item-count')?.textContent}`);
-    expect(items()).toEqual(['全部类型 2', '图片 1', 'PDF 1']);
-    [...document.querySelectorAll<HTMLButtonElement>('.category-menu .category-item')].find(item => item.textContent?.includes('图片'))!.click();
-    await new Promise(resolve => setTimeout(resolve, 250));
-    await settle();
-    expect(requests('fs_children_page').at(-1)).toMatchObject({ query: { filter: { extensions: expect.arrayContaining(['jpg']) } } });
-    expect(host.querySelectorAll('.disk-file-row')).toHaveLength(1);
-    expect(items()).toEqual(['全部类型 2', '图片 1', 'PDF 1']);
-    expect(host.querySelector('.category-trigger')?.textContent).toContain('图片');
+    expect(host.querySelector('.category-trigger')).toBeNull();
+    expect(host.querySelector('.filter-bar')?.textContent).not.toContain('文件类型');
   });
 });

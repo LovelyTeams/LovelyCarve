@@ -21,12 +21,11 @@
       <div class="right-area">
         <FileFilterBar
           v-if="viewMode === 'list'"
-          :deepsearch="deepsearch" :loading="loading" :index-only="indexOnly"
-          :category-counts="categoryMenu.counts" :counts-complete="categoryMenu.complete" :category-total="categoryMenu.total"
-          :selected-categories="selectedCategories" :chips="filterChips" :hide-empty-dirs="emptyDirsHidden"
+          :deepsearch="deepsearch" :index-only="indexOnly"
+          :chips="filterChips" :hide-empty-dirs="emptyDirsHidden"
           :selection="exportSelection" :treemap-available="treemapAvailable"
           v-model:columns-open="columnsOpen" v-model:view="viewMode"
-          @scope="setScope" @toggle-category="toggleCategory" @clear-categories="clearCategories"
+          @scope="setScope"
           @edit-filter="editColumnFilter" @remove-filter="clearColumnFilter" @show-empty-dirs="hideEmptyDirs = false"
           @clear-all="clearListConditions" @export-file="exportSelectedFile(activeRow, checkedFiles)"
           @export-directory="exportSelectedDir(activeRow, checkedDirs)"
@@ -187,7 +186,6 @@ import {
   rowKeyOf,
   type DiskFsNode,
 } from '../model/model';
-import { useFileCategoryFilter } from '../composables/useFileCategoryFilter';
 import {
   FLAT_PREFETCH_ROWS,
   FLAT_SERVER_FILTER_COLUMNS,
@@ -295,15 +293,6 @@ const navigation = useFileNavigation({
 });
 const { stack, currentDirectoryPath, pendingRestore, directoryTargetId, onTreeNavigate, onTreeOpenFile,
   openFileByNodeId, openFileBySource, onActivate, withinActivateCooldown, goUp, goTo } = navigation;
-
-const {
-  selectedCategories,
-  categoryOfNode,
-  toggleCategory,
-  clearCategories,
-  resetCategoryCache,
-  categoryCounts,
-} = useFileCategoryFilter(entries);
 
 const derivedData = useFileDerivedData({
   imageId: () => props.imageId,
@@ -519,7 +508,7 @@ const columnVisible = reactive<Record<string, boolean>>(
 );
 
 const fileFilters = useFileFilters({
-  imageId: () => props.imageId, entries, stack, flatMode: deepsearch, selectedCategories, loading, clearCategories,
+  imageId: () => props.imageId, entries, stack, flatMode: deepsearch, loading,
   container: () => tableWrapRef.value, fullPathOf, loadCurrent, closeRowMenu: hideRowMenu,
 });
 const { filters, effectiveFilters, sizeFilter, timeFilters, activeTimeFilterKeys, appliedSizePredicate, matchesTimeFilter,
@@ -533,7 +522,7 @@ function editColumnFilter(event: MouseEvent, key: string) {
   const column = COLUMNS.find(c => c.key === key);
   if (column) toggleFilterPopover(event, column);
 }
-/** 筛选条「清除全部」：列条件、文件类型，以及筛选条上显示出来的「隐藏空目录」
+/** 筛选条「清除全部」：列条件，以及筛选条上显示出来的「隐藏空目录」
  *  （它是记住的偏好，没作为条件显示时不动它）。 */
 function clearListConditions() {
   if (emptyDirsHidden.value) hideEmptyDirs.value = false;
@@ -635,7 +624,6 @@ function buildFlatRequest() {
       columnFilters: effectiveFilters,
       sizeFilter,
       timeFilters,
-      selectedCategories: selectedCategories.value,
     }),
     sort: flatSortColumn(sortKey.value),
     sortdesc: sortDir.value === 'desc',
@@ -677,30 +665,7 @@ const flatQuery = useFlatFileQuery({
   hydrated: hydrateDerivedForNodes,
   beforeAppend: () => viewport.beforeAppend(),
 });
-const { flatTotal, flatTruncated, flatCategoryCounts, loadFlatFirstPage } = flatQuery;
-
-// 文件类型菜单的计数。全显用服务端按整棵子树统计的扩展名直方图；客户端筛选时
-// 整个目录都已加载，按全部条目统计。服务端分页的目录只在加载完整、尚未按类型
-// 筛选时能数清；选中类型后服务端只返回该类型，菜单沿用选中前（其余条件相同）
-// 的统计，否则不显示数量，免得把「被筛掉」的类型数成 0。
-const categoryBaseSignature = computed(() => JSON.stringify({
-  image: props.imageId,
-  parent: stack.value.at(-1)?.id,
-  filter: buildFlatFilter({ keyword: '', columnFilters: effectiveFilters, sizeFilter, timeFilters, selectedCategories: new Set() }),
-}));
-const folderCategoryTally = shallowRef<{ signature: string; counts: Record<string, number>; total: number } | null>(null);
-watch([entries, loading], () => {
-  if (loading.value || deepsearch.value || directoryClientFilter.value || directoryCursor.value || selectedCategories.value.size > 0) return;
-  folderCategoryTally.value = { signature: categoryBaseSignature.value, ...categoryCounts.value };
-});
-const categoryMenu = computed(() => {
-  if (deepsearch.value) return { ...flatCategoryCounts.value, complete: true };
-  if (directoryClientFilter.value) return { ...categoryCounts.value, complete: true };
-  const tally = folderCategoryTally.value;
-  if (tally && tally.signature === categoryBaseSignature.value) return { counts: tally.counts, total: tally.total, complete: true };
-  if (!directoryCursor.value && selectedCategories.value.size === 0 && !loading.value) return { ...categoryCounts.value, complete: true };
-  return { counts: {}, total: 0, complete: false };
-});
+const { flatTotal, flatTruncated, loadFlatFirstPage } = flatQuery;
 
 /** 导出目标：有勾选按勾选的文件与文件夹，否则按光标行。 */
 const exportSelection = computed(() => {
@@ -728,8 +693,7 @@ const sortContext = {
 
 const filteredEntries = computed(() => projectFileRows({
   entries: entries.value, deepsearch: deepsearch.value, directoryClientFilter: directoryClientFilter.value,
-  effectiveFilters, digestCache, ftypeCache, tagOfNode, fullPathOf,
-  selectedCategories: selectedCategories.value, categoryOfNode, sizeFilter, appliedSizePredicate,
+  effectiveFilters, digestCache, ftypeCache, tagOfNode, fullPathOf, sizeFilter, appliedSizePredicate,
   activeTimeFilterKeys: activeTimeFilterKeys.value, matchesTimeFilter,
   hideEmptyDirs: hideEmptyDirs.value, stackDepth: stack.value.length, emptySubtree, dirCounts,
   sortKey: sortKey.value, sortDir: sortDir.value, sortContext,
@@ -887,14 +851,8 @@ watch(
     // 路径筛选是上一块盘的地址，对新镜像毫无意义，留着会把新镜像的根
     // 过滤成空表；热切标签页时组件不重建，必须显式清。
     if ((filters.path ?? '').trim().startsWith('/')) filters.path = '';
-    // 分类选择与名称→类别缓存都是上一块盘的，切镜像清掉（缓存按名缓存、跨镜像
-    // 同名同类别本可复用，但顺手清掉也能给长会话的缓存设个上界）。
-    selectedCategories.value = new Set();
-    resetCategoryCache();
-    // 全显状态是上一块盘的视图状态，
-    // 切镜像回到逐级浏览；关键词与类别计数缓存一并清掉。
+    // 全显状态是上一块盘的视图状态，切镜像回到逐级浏览，关键词一并清掉。
     browseMode.reset();
-    flatQuery.resetCategoryCounts();
     void refreshReadonlyMounts();
     loadCurrent();
   },

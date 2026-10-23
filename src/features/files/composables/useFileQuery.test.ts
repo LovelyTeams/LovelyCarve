@@ -5,9 +5,8 @@ import type { Page, FsFlatPage } from '../../../lib/ipc/fs/types';
 import { useDirectoryQuery } from './useDirectoryQuery';
 import { useFlatFileQuery } from './useFlatFileQuery';
 
-const mocks = vi.hoisted(() => ({ children: vi.fn(), flat: vi.fn(), counts: vi.fn(), error: vi.fn() }));
+const mocks = vi.hoisted(() => ({ children: vi.fn(), flat: vi.fn(), error: vi.fn() }));
 vi.mock('./containerReads', () => ({ containerFsChildrenPage: mocks.children, containerFsFlatPage: mocks.flat }));
-vi.mock('../../../lib/ipc/fs/query', () => ({ fsFlatExtCounts: mocks.counts }));
 vi.mock('../../../composables/useToast', () => ({ notifyError: mocks.error }));
 
 const scopes: ReturnType<typeof effectScope>[] = [];
@@ -52,7 +51,6 @@ function setup() {
 }
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.counts.mockResolvedValue({ counts: { txt: 3 }, total: 3 });
 });
 afterEach(() => { for (const scope of scopes.splice(0)) scope.stop(); });
 
@@ -171,16 +169,14 @@ describe('recursive server queries', () => {
     expect(state.hydrated).not.toHaveBeenCalled();
   });
 
-  it('consumes refresh once and refreshes cached category counts with it', async () => {
+  it('consumes refresh once', async () => {
     const state = setup(); state.flatMode.value = true;
     mocks.flat.mockResolvedValue(flatPage(['first']));
     await state.flat.loadFlatFirstPage('parent', 1);
     await state.flat.loadFlatFirstPage('parent', 1);
-    expect(mocks.counts).toHaveBeenCalledOnce();
     state.flat.requestRefresh();
     await state.flat.loadFlatFirstPage('parent', 1);
     await state.flat.loadFlatFirstPage('parent', 1);
     expect(mocks.flat.mock.calls.map(([request]) => request.refresh)).toEqual([false, false, true, false]);
-    expect(mocks.counts).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,5 +1,4 @@
 import { computed, nextTick, onScopeDispose, reactive, ref, watch, type Ref } from 'vue';
-import type { IconCategory } from '../../../utils/fileCategory';
 import { COLUMNS, type ColumnDef, type DiskFsNode } from '../model/model';
 import type { FileNavigationFrame } from '../model/navigation';
 import { SIZE_UNITS, LARGE_FILE_LIST } from '../model/filters';
@@ -13,15 +12,13 @@ export function useFileFilters(options: {
   entries: Ref<DiskFsNode[]>;
   stack: Ref<FileNavigationFrame[]>;
   flatMode: Ref<boolean>;
-  selectedCategories: Ref<Set<IconCategory>>;
   loading: Ref<boolean>;
-  clearCategories: () => void;
   container: () => HTMLElement | null;
   fullPathOf: (node: DiskFsNode) => string;
   loadCurrent: () => Promise<void>;
   closeRowMenu: () => void;
 }) {
-  const { entries, stack, flatMode: deepsearch, selectedCategories, loading, clearCategories, fullPathOf, loadCurrent } = options;
+  const { entries, stack, flatMode: deepsearch, loading, fullPathOf, loadCurrent } = options;
   const pathSuggestEl = ref<HTMLElement | null>(null);
   let disposed = false;
   let popoverGeneration = 0;
@@ -146,8 +143,7 @@ export function useFileFilters(options: {
     () =>
       Object.values(filters).filter(v => v.trim() !== '').length +
       (sizeFilterEffective.value ? 1 : 0) +
-      activeTimeFilterKeys.value.length +
-      (selectedCategories.value.size > 0 ? 1 : 0),
+      activeTimeFilterKeys.value.length,
   );
 
   function isColumnFiltered(key: string): boolean {
@@ -173,7 +169,6 @@ export function useFileFilters(options: {
     for (const k of Object.keys(effectiveFilters)) effectiveFilters[k] = '';
     resetSizeFilter();
     resetAllTimeFilters();
-    clearCategories();
   }
 
   /** 移除单列条件（筛选条上的条件标签）；与「清除全部」一样即时生效。 */

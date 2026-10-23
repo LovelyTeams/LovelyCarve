@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildFlatFilter,
-  categoryCountsFromExtensions,
-  extensionsForCategories,
   flatRowKey,
   flatSortColumn,
   parseDeletedFilter,
@@ -16,7 +14,6 @@ function sources(overrides: Partial<FlatFilterSources> = {}): FlatFilterSources 
     columnFilters: {},
     sizeFilter: { active: false, appliedLe: null, appliedGe: null, appliedMod: null },
     timeFilters: { created: inactiveTime, accessed: inactiveTime, modified: inactiveTime },
-    selectedCategories: new Set(),
     ...overrides,
   };
 }
@@ -78,35 +75,6 @@ describe('buildFlatFilter', () => {
       timeModified: { from: null, to: '2026-03-02 23:59:59' },
     });
   });
-
-  it('translates selected categories into extension sets', () => {
-    const filter = buildFlatFilter(sources({ selectedCategories: new Set(['image', 'pdf']) }));
-    expect(filter.extensions).toEqual(expect.arrayContaining(['png', 'jpg', 'pdf']));
-    expect(filter.extensions).not.toContain('mp4');
-    expect(filter.otherCategoryExts).toBeUndefined();
-  });
-});
-
-describe('extensionsForCategories', () => {
-  it('follows iconCategoryOf precedence and encodes the other bucket as a complement', () => {
-    const spreadsheet = extensionsForCategories(new Set(['spreadsheet']));
-    // csv 同时在 CODE_EXT 与 CSV_EXT,归属以 iconCategoryOf 的首个命中(表格)为准。
-    expect(spreadsheet.extensions).toContain('csv');
-    const code = extensionsForCategories(new Set(['code']));
-    expect(code.extensions).not.toContain('csv');
-    expect(code.extensions).toContain('py');
-
-    const other = extensionsForCategories(new Set(['other']));
-    expect(other.extensions).toEqual([]);
-    expect(other.otherCategoryExts.length).toBeGreaterThan(50);
-    expect(other.otherCategoryExts).toContain('png');
-
-    const mixed = extensionsForCategories(new Set(['other', 'audio']));
-    expect(mixed.extensions).toEqual(expect.arrayContaining(['mp3', 'flac']));
-    expect(mixed.otherCategoryExts).toEqual(other.otherCategoryExts);
-
-    expect(extensionsForCategories(new Set())).toEqual({ extensions: [], otherCategoryExts: [] });
-  });
 });
 
 describe('helpers', () => {
@@ -126,11 +94,5 @@ describe('helpers', () => {
     expect(flatSortColumn('index')).toBeNull();
     expect(flatSortColumn(null)).toBeNull();
     expect(flatRowKey(7, 'ntfs:0:42')).toBe('flat:7:ntfs:0:42');
-  });
-
-  it('folds an extension histogram into category counts', () => {
-    expect(
-      categoryCountsFromExtensions({ png: 2, JPG: 1, pdf: 1, '': 3, zzz: 1, csv: 1 }),
-    ).toEqual({ image: 3, pdf: 1, other: 4, spreadsheet: 1 });
   });
 });

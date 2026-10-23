@@ -1,6 +1,5 @@
 import { sourceText, translate, type Translator } from '../../../i18n/translate';
 import type { FsTypeIdent, StoredDigest } from '../../../lib/ipc/fs/derived';
-import type { IconCategory } from '../../../utils/fileCategory';
 import { shouldShowDirectoryWithEmptyFilter } from './emptyDirectoryFilter';
 import { extOf, kindLabel, nameQueryMatcher, isHostDockerContainerRootId, sortValueOf, type DiskFsNode as FsNode, type DiskFileSortContext } from './model';
 import type { TimeColumnKey } from './filters';
@@ -14,8 +13,6 @@ export interface ClientFileRows {
   ftypeCache: ReadonlyMap<string, FsTypeIdent>;
   tagOfNode: (node: FsNode) => string | undefined;
   fullPathOf: (node: FsNode) => string;
-  selectedCategories: ReadonlySet<IconCategory>;
-  categoryOfNode: (node: FsNode) => IconCategory;
   sizeFilter: { active: boolean };
   appliedSizePredicate: () => ((bytes: number) => boolean) | null;
   activeTimeFilterKeys: readonly TimeColumnKey[];
@@ -32,7 +29,7 @@ export interface ClientFileRows {
 /** Full-directory projection only; server-paged queries retain their authoritative order. */
 export function projectFileRows(input: ClientFileRows, tr: Translator = sourceText): FsNode[] {
   const { entries, deepsearch, directoryClientFilter, effectiveFilters, digestCache, ftypeCache,
-    tagOfNode, fullPathOf, selectedCategories, categoryOfNode, sizeFilter, appliedSizePredicate,
+    tagOfNode, fullPathOf, sizeFilter, appliedSizePredicate,
     activeTimeFilterKeys, matchesTimeFilter, hideEmptyDirs, stackDepth, emptySubtree, dirCounts,
     sortKey, sortDir, sortContext } = input;
   // 全显：过滤与排序都已在服务端完成（同一查询决定行序与总数），已加载页
@@ -97,12 +94,6 @@ export function projectFileRows(input: ClientFileRows, tr: Translator = sourceTe
   if (deletedQ) {
     const want = deletedQ === '是' || deletedQ.toLowerCase() === 'true' || deletedQ === '1';
     out = out.filter(n => n.deleted === want);
-  }
-  // 文件分类（多选取并集）：只对文件生效，目录/符号链接始终保留，便于在筛出
-  // 某类文件后仍能逐级进出目录。空集不过滤。
-  if (selectedCategories.size > 0) {
-    const sel = selectedCategories;
-    out = out.filter(n => n.kind !== 'file' || sel.has(categoryOfNode(n)));
   }
   if (sizeFilter.active) {
     const pred = appliedSizePredicate();

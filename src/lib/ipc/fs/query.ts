@@ -1,5 +1,5 @@
 import { invokeCmd } from '../client';
-import { type DockerIndexStatus, type FsNode, type FlatFileFilter, type FlatSortColumn, type Page, type FsLocateResult, type FsFlatPage, type FsFlatExtCounts } from './types';
+import { type DockerIndexStatus, type FsNode, type FlatFileFilter, type FlatSortColumn, type Page, type FsLocateResult, type FsFlatPage } from './types';
 
 
 /** Prepare only this container; success includes its persisted directory index. */
@@ -59,10 +59,6 @@ export function fsFlatPage(args: {
 }): Promise<FsFlatPage> {
   const { deepsearch, ...rest } = args;
   return invokeCmd<FsFlatPage>('fs_flat_page', { ...rest, allowAllFiles: deepsearch });
-}
-
-export function fsFlatExtCounts(args: { imageId: string; parentId: string }): Promise<FsFlatExtCounts> {
-  return invokeCmd<FsFlatExtCounts>('fs_flat_ext_counts', args);
 }
 
 /** Batch directory child-counts served from the active case's volume snapshot.

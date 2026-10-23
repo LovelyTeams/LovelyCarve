@@ -9,15 +9,6 @@
         <FolderTree :size="13" aria-hidden="true" /><span class="compact-text">{{ tr("所有子目录") }}</span>
       </button>
     </div>
-    <FileCategoryMenu
-      :counts="categoryCounts"
-      :counts-complete="countsComplete"
-      :total="categoryTotal"
-      :selected="selectedCategories"
-      :disabled="loading && selectedCategories.size === 0"
-      @toggle="emit('toggleCategory', $event)"
-      @clear="emit('clearCategories')"
-    />
     <template v-if="chips.length || hideEmptyDirs">
       <span class="ui-divider-v" aria-hidden="true"></span>
       <ul class="filter-chips" :aria-label="tr('生效的筛选条件')">
@@ -67,20 +58,13 @@ import { tr } from '../../../composables/useLocale';
 
 import { computed } from 'vue';
 import { Columns3, Download, FileDown, Folder, FolderDown, FolderTree, X } from 'lucide-vue-next';
-import FileCategoryMenu from './FileCategoryMenu.vue';
 import FileViewSwitch from './FileViewSwitch.vue';
 import type { FilterChip } from '../model/filterChips';
 import type { FileViewMode } from '../model/treemap';
-import type { IconCategory } from '../../../utils/fileCategory';
 
 const props = defineProps<{
   deepsearch: boolean;
-  loading: boolean;
   indexOnly?: boolean;
-  categoryCounts: Record<string, number>;
-  countsComplete: boolean;
-  categoryTotal: number;
-  selectedCategories: Set<IconCategory>;
   chips: FilterChip[];
   hideEmptyDirs: boolean;
   /** Export targets: checked files and folders, or the cursor row when nothing is checked. */
@@ -92,8 +76,6 @@ const columnsOpen = defineModel<boolean>('columnsOpen', { required: true });
 const view = defineModel<FileViewMode>('view', { required: true });
 const emit = defineEmits<{
   scope: [mode: 'directory' | 'recursive'];
-  toggleCategory: [key: IconCategory];
-  clearCategories: [];
   editFilter: [event: MouseEvent, key: string];
   removeFilter: [key: string];
   showEmptyDirs: [];
@@ -102,12 +84,12 @@ const emit = defineEmits<{
   exportDirectory: [];
 }>();
 
-const conditionCount = computed(() => props.chips.length + (props.hideEmptyDirs ? 1 : 0) + (props.selectedCategories.size ? 1 : 0));
+const conditionCount = computed(() => props.chips.length + (props.hideEmptyDirs ? 1 : 0));
 </script>
 
 <style scoped>
 /* ── 筛选条 ──
-   表格上方的第二条工具栏：左侧是列表范围、文件类型与生效的列条件（每个条件一枚
+   表格上方的第二条工具栏：左侧是列表范围与生效的列条件（每个条件一枚
    标签，点开修改、× 移除），右侧是导出与显示列。与目录树、预览栏的标题条同高，
    三栏的分隔线连成一线；条件多时左侧换行，整条随之增高。 */
 .filter-bar {

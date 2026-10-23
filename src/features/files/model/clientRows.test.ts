@@ -15,7 +15,7 @@ function rows(kindQuery: string, tagQuery = ''): ClientFileRows {
     entries: [node('file', 'file'), node('folder', 'dir'), node('link', 'symlink'), node('unalloc:1', 'file')],
     deepsearch: false, directoryClientFilter: true, effectiveFilters: { kind: kindQuery, tag: tagQuery },
     digestCache: new Map(), ftypeCache: new Map(), tagOfNode: item => item.id === 'file' ? '重点' : undefined,
-    fullPathOf: item => '/' + item.name, selectedCategories: new Set(), categoryOfNode: () => 'other',
+    fullPathOf: item => '/' + item.name,
     sizeFilter: { active: false }, appliedSizePredicate: () => null, activeTimeFilterKeys: [], matchesTimeFilter: () => true,
     hideEmptyDirs: false, stackDepth: 0, emptySubtree: {}, dirCounts: {}, sortKey: null, sortDir: 'asc',
     sortContext: { fullPathOf: item => '/' + item.name, tagOf: () => undefined, ftypeLabelOf: () => '', digestOf: () => undefined },

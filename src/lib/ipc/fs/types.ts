@@ -75,8 +75,9 @@ export interface FlatSizeMod {
 
 /** 全显的服务端表达式过滤——各列漏斗的结构化状态,由后端在索引 / 快照 /
  *  实时遍历三条数据源上以同一语义应用。名称支持 `*` `?` 通配;路径以 `/`
- *  开头为「相对当前目录」的锚定前缀,否则子串。`extensions` 是所选类别的
- *  扩展名并集,`otherCategoryExts` 在选中「其他」时给出全部已映射扩展名。 */
+ *  开头为「相对当前目录」的锚定前缀,否则子串。`extensions` 只保留所列扩展名,
+ *  `otherCategoryExts` 另外保留无扩展名与不在其中的扩展名(两者取并集);文件列表
+ *  不再发送这两项,CLI 的 `--filter` 仍可使用。 */
 export interface FlatFileFilter {
   keyword?: string | null;
   nameQuery?: string | null;
@@ -116,11 +117,4 @@ export interface FsFlatPage {
   items: FsWalkEntry[];
   total: number;
   truncated: boolean;
-}
-
-/** 起点子树内按扩展名聚合的文件数(小写扩展名 → 数量;无扩展名的键为空串),
- *  供文件类别条在全显下按整棵子树计数;不受列表过滤影响。 */
-export interface FsFlatExtCounts {
-  counts: Record<string, number>;
-  total: number;
 }

@@ -1,26 +1,8 @@
-// 文件全显(deepsearch)请求的纯函数部分:把列漏斗 / 大小 / 时间 / 类别的
+// 文件全显(deepsearch)请求的纯函数部分:把列漏斗 / 大小 / 时间的
 // 结构化状态映射成后端 `FlatFileFilter`,以及分页常量与可服务端排序/过滤的
 // 列集合。不碰响应式状态,便于
 // 单测;DiskFileList 只负责把它拼进 `fsFlatPage` 的参数。
 import type { FlatFileFilter, FlatSortColumn } from '../../../lib/ipc/fs/types';
-import {
-  ARCHIVE_EXT,
-  AR_EXT,
-  AUDIO_EXT,
-  CODE_EXT,
-  CSV_EXT,
-  DATABASE_EXT,
-  DOCUMENT_EXT,
-  EMAIL_EXT,
-  EXECUTABLE_EXT,
-  IMAGE_EXT,
-  MD_EXT,
-  PDF_EXT,
-  SPREADSHEET_EXT,
-  VIDEO_EXT,
-  iconCategoryOf,
-  type IconCategory,
-} from '../../../utils/fileCategory';
 import type { SizeFilterState, TimeColumnKey, TimeFilterState } from './filters';
 
 /** 滚动分页的页大小。 */
@@ -72,38 +54,6 @@ export function flatSortColumn(key: string | null): FlatSortColumn | null {
   return null;
 }
 
-/** 全部会被归到非「其他」类别的扩展名——`iconCategoryOf` 判定表用到的每张
- *  集合的并集。选中「其他」时发给后端做补集;每个扩展名的归属仍由
- *  `iconCategoryOf` 决定(首个命中优先,如 csv 归表格而非代码)。 */
-const ALL_MAPPED_EXTENSIONS: readonly string[] = Array.from(
-  new Set<string>([
-    ...IMAGE_EXT,
-    ...VIDEO_EXT,
-    ...AUDIO_EXT,
-    ...PDF_EXT,
-    ...MD_EXT,
-    ...DOCUMENT_EXT,
-    ...SPREADSHEET_EXT,
-    ...CSV_EXT,
-    ...ARCHIVE_EXT,
-    ...AR_EXT,
-    ...EXECUTABLE_EXT,
-    ...DATABASE_EXT,
-    ...EMAIL_EXT,
-    ...CODE_EXT,
-  ]),
-).sort();
-
-/** 所选类别 → 服务端扩展名过滤。空选择 = 不按类别过滤。 */
-export function extensionsForCategories(
-  selected: ReadonlySet<IconCategory>,
-): { extensions: string[]; otherCategoryExts: string[] } {
-  if (selected.size === 0) return { extensions: [], otherCategoryExts: [] };
-  const extensions = ALL_MAPPED_EXTENSIONS.filter(ext => selected.has(iconCategoryOf(ext)));
-  const otherCategoryExts = selected.has('other') ? [...ALL_MAPPED_EXTENSIONS] : [];
-  return { extensions, otherCategoryExts };
-}
-
 /** 「已删除」布尔漏斗的取值解析,与逐级浏览的客户端过滤同口径:空 = 不过滤;
  *  `是` / `true` / `1` = 只看已删除;其它非空值 = 只看未删除。 */
 export function parseDeletedFilter(raw: string): boolean | null {
@@ -121,7 +71,6 @@ export interface FlatFilterSources {
   timeFilters: Readonly<
     Record<TimeColumnKey, Pick<TimeFilterState, 'active' | 'appliedFrom' | 'appliedTo'>>
   >;
-  selectedCategories: ReadonlySet<IconCategory>;
 }
 
 function textQuery(filters: Readonly<Record<string, string>>, key: string): string | null {
@@ -176,22 +125,7 @@ export function buildFlatFilter(sources: FlatFilterSources): FlatFileFilter {
   if (accessed) filter.timeAccessed = accessed;
   const modified = timeRange(sources.timeFilters.modified);
   if (modified) filter.timeModified = modified;
-  const { extensions, otherCategoryExts } = extensionsForCategories(sources.selectedCategories);
-  if (extensions.length > 0) filter.extensions = extensions;
-  if (otherCategoryExts.length > 0) filter.otherCategoryExts = otherCategoryExts;
   return filter;
-}
-
-/** 扩展名直方图 → 类别计数(类别条口径:仅文件,`''` = 无扩展名归「其他」)。 */
-export function categoryCountsFromExtensions(
-  counts: Readonly<Record<string, number>>,
-): Record<string, number> {
-  const byCategory: Record<string, number> = {};
-  for (const [ext, count] of Object.entries(counts)) {
-    const category = iconCategoryOf(ext.toLowerCase());
-    byCategory[category] = (byCategory[category] ?? 0) + count;
-  }
-  return byCategory;
 }
 
 /** 全显行的稳定行键:同一节点 id(硬链接)可出现多行,用全局行号区分。 */
