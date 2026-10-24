@@ -18,7 +18,11 @@
  * Spacing: even values on a 4px rhythm (4 / 8 / 12 / 16 / 20…), with 2px
  * half-steps where a control needs them; no odd values except 1px optical
  * nudges.
- * Radii: controls --radius-md, badges --radius-sm, surfaces --radius-lg.
+ * Radii: controls --radius-md, badges --radius-sm, surfaces --radius-lg,
+ * dialogs --radius-xl; segmented tracks, switches and counters are pills.
+ * One outline per surface: the default button is a soft neutral fill, not an
+ * outlined box, so a toolbar, card or dialog keeps a single closed border
+ * (its own). Fields and cards keep their hairline border.
  *
  * Workspace pages share one anatomy and no title bar: a ui-toolbar (filters
  * left, actions right), the work surface, and a ui-footbar that carries the
@@ -35,9 +39,9 @@
     flex-shrink: 0;
     height: var(--ui-btn-h);
     padding: 0 12px;
-    border: 1px solid var(--border-color);
+    border: 1px solid transparent;
     border-radius: var(--radius-md);
-    background: var(--surface-secondary);
+    background: color-mix(in srgb, var(--text-primary) 6%, transparent);
     color: var(--text-primary);
     font-family: var(--font-ui);
     font-size: 12px;
@@ -47,24 +51,24 @@
     text-decoration: none;
     cursor: pointer;
     user-select: none;
-    transition: background-color var(--transition-fast), border-color var(--transition-fast),
-        color var(--transition-fast), box-shadow var(--transition-fast),
-        scale var(--motion-fast) var(--ease-out);
+    /* Longhands so motion.css can retime only `scale` while pressed: the
+       press settles fast and the release springs back on --ease-squish. */
+    transition-property: background-color, border-color, color, box-shadow, scale;
+    transition-duration: var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-slow);
+    transition-timing-function: ease, ease, ease, ease, var(--ease-squish);
 }
 
 .ui-btn:where(:hover:not(:disabled)) {
-    border-color: color-mix(in srgb, var(--primary-color) 45%, var(--border-color));
-    background: color-mix(in srgb, var(--primary-color) 5%, var(--surface-secondary));
+    background: color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
 
 .ui-btn:where(:active:not(:disabled)) {
-    background: color-mix(in srgb, var(--primary-color) 10%, var(--surface-secondary));
+    background: color-mix(in srgb, var(--text-primary) 14%, transparent);
 }
 
 /* Toggle buttons (filters, view switches) report their state through
    `.active` or aria-pressed. */
 .ui-btn:where(.active, [aria-pressed='true']) {
-    border-color: color-mix(in srgb, var(--primary-color) 55%, var(--border-color));
     background: var(--sidebar-active-bg);
     color: var(--primary-color);
 }
@@ -80,7 +84,6 @@
 .ui-btn:where(.primary:hover:not(:disabled)) {
     border-color: var(--primary-solid-hover);
     background: var(--primary-solid-hover);
-    box-shadow: 0 3px 10px var(--primary-glow);
 }
 
 .ui-btn:where(.danger) {
@@ -135,12 +138,7 @@
 }
 
 .ui-btn:where(.danger-soft:hover:not(:disabled)) {
-    border-color: var(--sev-critical-border);
     background: var(--sev-critical-bg);
-}
-
-.ui-btn:where(.ghost.danger-soft:hover:not(:disabled), .link.danger-soft:hover:not(:disabled)) {
-    border-color: transparent;
 }
 
 .ui-btn:where(.sm) {
@@ -195,8 +193,9 @@
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
-    transition: background-color var(--transition-fast), color var(--transition-fast),
-        border-color var(--transition-fast), scale var(--motion-fast) var(--ease-out);
+    transition-property: background-color, color, border-color, scale;
+    transition-duration: var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-slow);
+    transition-timing-function: ease, ease, ease, var(--ease-squish);
 }
 
 .ui-icon-btn:where(:hover:not(:disabled)) {
@@ -219,8 +218,9 @@
 }
 
 .ui-icon-btn:where(.bordered:hover:not(:disabled)) {
-    border-color: color-mix(in srgb, var(--primary-color) 45%, var(--border-color));
-    background: color-mix(in srgb, var(--primary-color) 5%, var(--surface-secondary));
+    border-color: color-mix(in srgb, var(--text-secondary) 45%, var(--border-color));
+    background: var(--surface-secondary);
+    color: var(--text-primary);
 }
 
 .ui-icon-btn:where(.danger:hover:not(:disabled)) {
@@ -509,16 +509,18 @@
     margin-top: 2px;
 }
 
-/* ── Segmented control ────────────────────────────────────── */
+/* ── Segmented control ──────────────────────────────────────
+ * A recessed pill track; the current item is a raised thumb with neutral
+ * text, so the thumb itself carries the selection. */
 .ui-seg {
     display: inline-flex;
     align-items: center;
     gap: 2px;
     flex-shrink: 0;
     padding: 2px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    background: var(--surface-tertiary);
+    border: 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
 .ui-seg-item {
@@ -527,9 +529,9 @@
     justify-content: center;
     gap: 6px;
     height: 24px;
-    padding: 0 10px;
+    padding: 0 12px;
     border: 0;
-    border-radius: calc(var(--radius-md) - 2px);
+    border-radius: 999px;
     background: transparent;
     color: var(--text-secondary);
     font-family: var(--font-ui);
@@ -537,8 +539,9 @@
     font-weight: 500;
     white-space: nowrap;
     cursor: pointer;
-    transition: background-color var(--transition-fast), color var(--transition-fast),
-        box-shadow var(--transition-fast), scale var(--motion-fast) var(--ease-out);
+    transition-property: background-color, color, box-shadow, scale;
+    transition-duration: var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-slow);
+    transition-timing-function: ease, ease, ease, var(--ease-squish);
 }
 
 .ui-seg-item:where(:hover:not(:disabled)) {
@@ -546,9 +549,9 @@
 }
 
 .ui-seg-item:where(.active, [aria-pressed='true'], [aria-selected='true'], [aria-checked='true']) {
-    background: var(--surface-secondary);
-    color: var(--primary-color);
-    box-shadow: var(--shadow-sm), 0 0 0 1px var(--border-color);
+    background: var(--surface-raised);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-sm), 0 0 0 1px color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 .ui-seg-item:where(:disabled) {
@@ -607,7 +610,7 @@
 }
 
 .ui-tab:where(.active, [aria-selected='true']) {
-    color: var(--primary-color);
+    color: var(--text-primary);
     font-weight: 600;
 }
 
@@ -707,9 +710,29 @@
 }
 
 .ui-count:where(.accent) {
-    background: var(--sev-info-bg);
-    color: var(--sev-info-fg);
+    background: var(--primary-soft);
+    color: var(--primary-color);
 }
+
+/* ── Status dot ───────────────────────────────────────────────
+ * A 6px state light beside a label (task rows, live counters):
+ * `running` (accent, blinks while motion is on), `success`, `warn`,
+ * `danger`, `info`; the default is the neutral idle state. Always pair it
+ * with text, never colour alone. */
+.ui-dot {
+    display: inline-block;
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--text-secondary) 70%, transparent);
+}
+
+.ui-dot:where(.running) { background: var(--primary-color); }
+.ui-dot:where(.success) { background: var(--sev-success-fg); }
+.ui-dot:where(.warn) { background: var(--sev-warn-fg); }
+.ui-dot:where(.danger) { background: var(--sev-critical-fg); }
+.ui-dot:where(.info) { background: var(--sev-info-fg); }
 
 /* ── Keyboard key ─────────────────────────────────────────── */
 .ui-kbd {
@@ -905,7 +928,7 @@
 }
 
 .ui-empty-icon:where(.accent) {
-    background: var(--sev-info-bg);
+    background: var(--primary-soft);
     color: var(--primary-color);
 }
 
@@ -1016,6 +1039,9 @@
     -webkit-backdrop-filter: blur(3px);
 }
 
+/* The dialog is one closed surface: header, body and footer are separated by
+   spacing, not rules, and a scrolling body fades at its edges instead
+   (ui-scroll-fade below). */
 .ui-modal {
     display: flex;
     flex-direction: column;
@@ -1023,7 +1049,7 @@
     max-height: min(86vh, 880px);
     overflow: hidden;
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-xl);
     background: var(--surface-secondary);
     color: var(--text-primary);
     box-shadow: var(--modal-shadow);
@@ -1035,8 +1061,7 @@
     align-items: center;
     gap: 12px;
     flex-shrink: 0;
-    padding: 16px 16px 16px 20px;
-    border-bottom: 1px solid var(--border-color);
+    padding: 18px 16px 8px 24px;
 }
 
 .ui-modal-icon {
@@ -1045,8 +1070,8 @@
     flex-shrink: 0;
     width: 36px;
     height: 36px;
-    border-radius: var(--radius-md);
-    background: var(--sev-info-bg);
+    border-radius: 50%;
+    background: var(--primary-soft);
     color: var(--primary-color);
 }
 
@@ -1087,7 +1112,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 18px 20px;
+    padding: 16px 24px;
 }
 
 .ui-modal-footer {
@@ -1096,9 +1121,7 @@
     justify-content: flex-end;
     gap: 8px;
     flex-shrink: 0;
-    padding: 12px 20px;
-    border-top: 1px solid var(--border-color);
-    background: color-mix(in srgb, var(--surface-tertiary) 55%, var(--surface-secondary));
+    padding: 8px 24px 20px;
 }
 
 /* Put secondary footer content (hints, destructive links) on the left. */
@@ -1112,9 +1135,10 @@
     min-width: calc(var(--ui-btn-h) * 2);
 }
 
-/* <Transition name="ui-modal">: the backdrop fades while the dialog springs
-   up from slightly below; closing is quicker and falls away. Vue times the
-   transition on the overlay, so the dialog must never outlast it. */
+/* <Transition name="ui-modal">: the backdrop fades while the dialog settles
+   up from slightly below, without overshoot; closing is quicker and falls
+   away. Vue times the transition on the overlay, so the dialog must never
+   outlast it. */
 .ui-modal-enter-active {
     transition: opacity var(--motion-normal) var(--ease-out);
 }
@@ -1124,7 +1148,7 @@
 }
 
 .ui-modal-enter-active .ui-modal {
-    transition: transform var(--motion-normal) var(--ease-spring);
+    transition: transform var(--motion-normal) var(--ease-out);
 }
 
 .ui-modal-leave-active .ui-modal {
@@ -1137,11 +1161,11 @@
 }
 
 .ui-modal-enter-from .ui-modal {
-    transform: translateY(16px) scale(0.95);
+    transform: translateY(8px) scale(0.97);
 }
 
 .ui-modal-leave-to .ui-modal {
-    transform: translateY(8px) scale(0.98);
+    transform: translateY(4px) scale(0.98);
 }
 
 /* ── Choice card ──────────────────────────────────────────────
@@ -1156,7 +1180,7 @@
     min-width: 0;
     padding: 14px 16px;
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background: var(--surface-secondary);
     color: var(--text-primary);
     font-family: var(--font-ui);
@@ -1200,7 +1224,7 @@
     width: 40px;
     height: 40px;
     border-radius: var(--radius-md);
-    background: var(--sev-info-bg);
+    background: var(--primary-soft);
     color: var(--primary-color);
 }
 
@@ -1238,11 +1262,12 @@
 }
 
 /* ── Menu / popover ───────────────────────────────────────── */
+/* Rows sit 4px inside a 12px frame, so their 8px corners stay concentric. */
 .ui-menu {
     min-width: 180px;
     padding: 4px;
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background: var(--surface-secondary);
     color: var(--text-primary);
     box-shadow: var(--modal-shadow);
@@ -1256,7 +1281,7 @@
     min-height: 30px;
     padding: 0 10px;
     border: 0;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     background: transparent;
     color: var(--text-primary);
     font-family: var(--font-ui);
@@ -1364,6 +1389,49 @@
 /* Monospace text: offsets, hashes, sectors, ids. */
 .mono {
     font-family: var(--font-mono);
+}
+
+/* Scroll edge fade: a scroll container softens an edge only while more
+ * content lies beyond it, and shows a hard edge at either end of its range
+ * or when nothing overflows. Driven by the container's own scroll
+ * timeline, so it follows wheel, keyboard and programmatic scrolling with
+ * no script; engines without scroll timelines keep plain edges.
+ * `ui-scroll-fade` is vertical (dialog bodies get it by default),
+ * `ui-scroll-fade-x` horizontal; tune with --ui-fade-size. The mask only
+ * reads alpha, so the ink colour is any opaque token. */
+@property --ui-fade-start { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --ui-fade-end { syntax: '<length>'; inherits: false; initial-value: 0px; }
+
+@keyframes ui-fade-start { to { --ui-fade-start: var(--ui-fade-size, 24px); } }
+@keyframes ui-fade-end { from { --ui-fade-end: var(--ui-fade-size, 24px); } }
+
+@supports (animation-timeline: scroll()) {
+    .ui-scroll-fade,
+    .ui-modal-body,
+    .ui-scroll-fade-x {
+        --ui-fade-ink: var(--text-primary);
+        --ui-fade-mask: transparent,
+            color-mix(in srgb, var(--ui-fade-ink) 30%, transparent) calc(var(--ui-fade-start) * 0.45),
+            color-mix(in srgb, var(--ui-fade-ink) 70%, transparent) calc(var(--ui-fade-start) * 0.75),
+            var(--ui-fade-ink) var(--ui-fade-start),
+            var(--ui-fade-ink) calc(100% - var(--ui-fade-end)),
+            color-mix(in srgb, var(--ui-fade-ink) 70%, transparent) calc(100% - var(--ui-fade-end) * 0.75),
+            color-mix(in srgb, var(--ui-fade-ink) 30%, transparent) calc(100% - var(--ui-fade-end) * 0.45),
+            transparent;
+        animation: ui-fade-start linear both, ui-fade-end linear both;
+        animation-timeline: scroll(self), scroll(self);
+        animation-range: 0 var(--ui-fade-size, 24px), calc(100% - var(--ui-fade-size, 24px)) 100%;
+    }
+
+    .ui-scroll-fade,
+    .ui-modal-body {
+        mask-image: linear-gradient(to bottom, var(--ui-fade-mask));
+    }
+
+    .ui-scroll-fade-x {
+        mask-image: linear-gradient(to right, var(--ui-fade-mask));
+        animation-timeline: scroll(self inline), scroll(self inline);
+    }
 }
 
 .sr-only {

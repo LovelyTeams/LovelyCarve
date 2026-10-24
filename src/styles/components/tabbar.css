@@ -21,6 +21,9 @@
 
 .tabbar-scroll::-webkit-scrollbar { display: none; }
 
+/* Tabs are pills on the frame: the current one is raised onto the surface
+   colour with a hairline ring, the others show a neutral fill on hover. The
+   evidence kind stays on the tab icon's colour. */
 .tabbar .tab {
     position: relative;
     display: inline-flex;
@@ -30,7 +33,7 @@
     max-width: 200px;
     padding-right: 4px;
     flex-shrink: 0;
-    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    border-radius: var(--radius-md);
     background: transparent;
     color: var(--text-secondary);
     transition: color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-normal);
@@ -47,22 +50,10 @@
 
 .tabbar .tab.active {
     color: var(--text-primary);
-    background: var(--bg-primary);
-    box-shadow: inset 1px 0 0 var(--border-color), inset -1px 0 0 var(--border-color), inset 0 1px 0 var(--border-color);
+    background: var(--surface-secondary);
+    box-shadow: var(--shadow-sm), 0 0 0 1px var(--border-color);
 }
 
-.tabbar .tab.active::before {
-    content: '';
-    position: absolute;
-    inset: 0 0 auto;
-    height: 2px;
-    background: var(--tab-accent, var(--primary-color));
-    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-    pointer-events: none;
-}
-
-.tabbar .tab.active.mode-image { --tab-accent: var(--sev-info-selected-border); }
-.tabbar .tab.active.mode-evidence { --tab-accent: var(--sev-warn-fg); }
 .tabbar .tab.disabled { opacity: 0.5; }
 
 .tabbar .tab-activate {
@@ -74,7 +65,7 @@
     flex: 1;
     padding: 0 8px;
     border: 0;
-    border-radius: var(--radius-md) 0 0 0;
+    border-radius: var(--radius-md) 0 0 var(--radius-md);
     background: transparent;
     color: inherit;
     font: inherit;

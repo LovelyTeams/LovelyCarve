@@ -455,7 +455,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
   height: 34px;
   border-style: dashed;
   border-color: color-mix(in srgb, var(--primary-color) 55%, var(--border-color));
-  background: var(--sev-info-bg);
+  background: var(--primary-soft);
   color: var(--primary-color);
 }
 

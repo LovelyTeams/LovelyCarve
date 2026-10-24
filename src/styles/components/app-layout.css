@@ -2,12 +2,15 @@
  * app-layout.css — Main layout, content area, drag & drop overlay
  * ============================================================ */
 
+/* The window frame (titlebar and navigation colour) holds the workspace as
+   an inset sheet: a rounded surface with a hairline edge, so the chrome
+   recedes and the current page reads as one object. */
 .main-layout {
     display: flex;
     flex: 1;
     min-height: 0;
     overflow: hidden;
-    background: var(--bg-primary);
+    background: var(--sidebar-bg);
     position: relative;
 }
 
@@ -17,9 +20,18 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
+    margin: 0 8px 8px 0;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
     background: var(--bg-primary);
+    box-shadow: var(--card-shadow);
     position: relative;
     overflow: hidden;
+}
+
+/* Without navigation (start page) the sheet keeps the same gutter on the left. */
+.main-layout > .editor-area:first-child {
+    margin-left: 8px;
 }
 
 /* Keep the current page in the background while browsing another category.
@@ -71,7 +83,7 @@
     padding: 40px 56px;
     max-width: calc(100% - 48px);
     border: 2px dashed var(--primary-color);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-xl);
     background: var(--surface-secondary);
     color: var(--text-primary);
     box-shadow: var(--modal-shadow);

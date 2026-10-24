@@ -25,10 +25,11 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
 | 视觉层级 | 越重要越大、越醒目。同一区域至多一个实心主按钮；强调色只给当前项、主操作和链接；整列重复的行内操作平时用次要色。 |
 | 网格与间距 | 间距走 4px 节奏；组内紧、组间松，用留白而不是线条分组。 |
 | 字体与字号 | 只用界面字体与等宽字体（品牌字只用于 Logo）；工作区字号集中在 11–13px，全部为整数像素。 |
-| 色彩 | 品牌色调亮做浅底、调暗做文字；语义色含义固定（蓝/主题色＝信息与链接，绿＝成功，琥珀＝警告，红＝错误与危险）。颜色要有目的，不做纯装饰。 |
+| 色彩 | 品牌色调亮做浅底、调暗做文字；语义色含义固定（主题色＝强调与链接，蓝＝信息，绿＝成功，琥珀＝警告，红＝错误与危险）。颜色要有目的，不做纯装饰。 |
+| 一个表面一道边 | 从画布往里看，一条视线上至多穿过一道闭合边框：卡片、输入框、弹窗、菜单有细边，里面的次要按钮、标签和工具条不再套框，用浅填充、留白或单向分隔线区分。默认按钮因此是中性浅填充而不是描边框。 |
 | 不用左缘色条 | 卡片、列表行、表格行、通知和面板的左缘不画彩色竖条（`border-left`、`::before` 竖条、`inset Npx 0 0` 阴影都算）：状态用徽章、图标或状态横幅，分类用图例色块，选中用底色加主题色文字，表格选中行用细描边。中性的 1px 分隔线、树形缩进线和 Markdown 引用块的竖线不在此列。 |
-| 深色模式 | 靠表面明度而不是阴影分层：卡片比画布亮；边框低对比；标签降低饱和度，把对比放在文字上。 |
-| 阴影 | 卡片最弱、浮层更强、弹窗最强；阴影不应是第一眼看到的东西。 |
+| 深色模式 | 靠表面明度而不是阴影分层：窗口框架最暗，工作区面板、卡片逐级变亮；边框低对比；标签降低饱和度，把对比放在文字上。 |
+| 阴影 | 卡片最弱、浮层更强、弹窗最强；阴影不应是第一眼看到的东西，也不做彩色光晕。 |
 | 图标与按钮 | 图标高度约等于相邻文字的行高；幽灵按钮悬停才显示底色；弹窗按钮宽度不小于高度的两倍。 |
 | 反馈与状态 | 每次操作都有回应：悬停、按下、聚焦、禁用、加载、成功、失败；输入框有聚焦态和错误态。 |
 | 微交互 | 复制后图标变为对勾、计数变化时跳动、通知从右侧滑入；所有动效可一键关闭。 |
@@ -101,15 +102,17 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
 
 | 类别 | token | 用途 |
 | --- | --- | --- |
-| 画布与表面 | `--bg-primary` | 应用画布 |
+| 画布与表面 | `--bg-primary` | 工作区面板的画布 |
 |  | `--surface-primary` | 次级条带：页面页脚（`ui-footbar`）、详情栏标题条、记录侧栏 |
-|  | `--surface-secondary` | 卡片、表格、输入框、弹窗、菜单 |
-|  | `--surface-tertiary` | 凹陷区：分段控件底、空态图标底、表格行悬停 |
-|  | `--sidebar-bg` / `--titlebar-bg` | 侧栏、标题栏 |
+|  | `--surface-secondary` | 卡片、表格、输入框、弹窗、菜单、当前标签页 |
+|  | `--surface-tertiary` | 凹陷区：空态图标底、表格行悬停 |
+|  | `--surface-raised` | 凹槽上抬起的填充（分段控件的选中滑块） |
+|  | `--sidebar-bg` / `--titlebar-bg` / `--bg-activity-bar` | 窗口框架：标题栏与左侧导航共用的底色 |
 | 文字 | `--text-primary` / `--text-secondary` | 正文 / 次要文字与说明 |
 | 线条 | `--border-color` | 边框与分隔线 |
 | 强调色 | `--primary-color` | 文字、图标、边框、焦点环、进度条等强调元素 |
-|  | `--primary-glow` | 输入框聚焦光圈、主按钮悬停投影 |
+|  | `--primary-glow` | 输入框聚焦光圈、分隔条悬停 |
+|  | `--primary-soft` | 强调色图标块、强调计数、命中高亮的浅底 |
 |  | `--sidebar-active-bg` | 选中项浅底（侧栏、表格选中行、开关按钮） |
 |  | `--hover-bg` / `--active-bg` / `--sidebar-hover-bg` | 中性悬停与按下底色 |
 | 实心填充 | `--primary-solid(-hover)` / `--danger-solid(-hover)` | 主按钮、危险按钮、开关的填充色 |
@@ -117,10 +120,10 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
 | 语义 | `--sev-{critical,warn,success,info}-{fg,bg,bg-hover,border,tag-fg,tag-bg}` | 提示条、徽章、状态行；另有 `--sev-critical-border-strong`、`--sev-info-selected-*` |
 |  | `--sev-snapshot-*` | ReFS 快照行与标签（琥珀色） |
 | 图表 | `--chart-1` … `--chart-6` | 分类色（磁盘布局、类别徽章），配合 `ui-badge tone` 与 `--badge-tone` |
-| 形状 | `--radius-sm` 4px / `--radius-md` 8px / `--radius-lg` 12px | 徽章与小图标按钮 / 控件、菜单、提示条 / 卡片、弹窗、通知 |
-| 阴影 | `--shadow-sm` / `--card-shadow` / `--card-shadow-hover` / `--modal-shadow`；`--modal-backdrop` | 分段选中项 / 卡片 / 悬停抬起与通知 / 弹窗、菜单与浮动面板；弹窗遮罩 |
+| 形状 | `--radius-sm` 4px / `--radius-md` 8px / `--radius-lg` 12px / `--radius-xl` 16px | 徽章与小图标按钮 / 控件、菜单项、提示条 / 卡片、菜单、工作区面板、通知 / 弹窗 |
+| 阴影 | `--shadow-sm` / `--card-shadow` / `--card-shadow-hover` / `--modal-shadow`；`--modal-backdrop` | 分段选中项与当前标签页 / 卡片与工作区面板 / 悬停抬起与通知 / 弹窗、菜单与浮动面板；弹窗遮罩 |
 | 字体 | `--font-ui` / `--font-mono` / `--font-brand` | 见第 4 节 |
-| 动效 | `--transition-fast` / `--transition-normal`；`--motion-fast` / `-normal` / `-slow`；`--ease-out` / `-in` / `-spring` | 见第 11 节 |
+| 动效 | `--transition-fast` / `--transition-normal`；`--motion-press` / `-fast` / `-normal` / `-slow`；`--ease-out` / `-in` / `-spring` / `-squish` | 见第 11 节 |
 | 品牌 | `--gradient-accent`、`--brand-*` | 品牌渐变（不定进度条）与欢迎页插画，不用于工作区控件 |
 
 ### 对比度要求
@@ -132,24 +135,27 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
 | 输入框占位符 | 3:1 | 输入框底色 |
 | 图标、焦点环、进度条、表格选中描边等非文字元素 | 3:1 | 相邻颜色 |
 
-品牌浅色（light 的 `#3b82f6`、pink 的 `#e8849f`）只出现在渐变、光晕、浅底与图表里，不能用作文字。
-三套主题当前实测值（WCAG 2.x 相对亮度）：
+品牌浅色（light / dark 的陶土色 `#d97757`、pink 的 `#e8849f`）只出现在渐变、光晕、浅底与图表里，不能用作文字。
+三套主题当前实测值（WCAG 2.x 相对亮度；选中浅底取侧栏与卡片上较低的一个）：
 
 | 组合 | light | dark | pink |
 | --- | --- | --- | --- |
-| 正文 / 卡片 | 17.9 | 15.1 | 13.5 |
-| 次要文字 / 卡片、侧栏 | 5.2、4.7 | 6.2、7.0 | 5.4、4.9 |
-| 强调色文字 / 卡片、选中浅底 | 5.5、4.6 | 7.2、7.1 | 5.7、4.7 |
-| 实心按钮文字 | 5.2 | 4.6 | 4.6 |
+| 正文 / 卡片 | 16.7 | 14.5 | 13.5 |
+| 次要文字 / 卡片、侧栏 | 6.0、5.4 | 6.7、7.8 | 5.4、4.9 |
+| 强调色文字 / 卡片、选中浅底 | 5.9、4.8 | 6.4、5.3 | 5.7、4.7 |
+| 实心按钮文字 | 4.9 | 4.9 | 4.6 |
 
 调整任何文字类 token 后，按上表重新核对三套主题，不达标不合入。
 
 ### 三套主题
 
-- **light**：石板白画布，蓝色强调。
-- **dark**：深夜蓝画布，浅天蓝强调；卡片比画布亮来分层，边框低对比。
+- **light**：带暖调的中性白，陶土色强调。窗口框架（标题栏与导航）比工作区面板低一级，卡片与输入框为纯白。
+- **dark**：近黑的中性灰，浅陶土色强调；窗口框架最暗，工作区面板与卡片逐级变亮来分层，边框低对比。
   语义色前景使用浅色系（如 `#fca5a5`），背景透明度更低。
 - **pink**：樱粉画布，深玫红强调、墨紫正文；柔和的樱粉留给渐变、浅底与图表。
+
+信息类语义色（`--sev-info-*`）在 light 与 dark 中保持蓝紫色，与陶土色强调和琥珀色警告分开；
+需要强调色浅底的图标块、计数与高亮用 `--primary-soft`，不要拿 `--sev-info-bg` 代替。
 
 ## 4. 字体与字号
 
@@ -201,15 +207,19 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
 | `ui-menu-item` | 不低于 30px |
 | `ui-toolbar` / `ui-footbar` / 卡片标题行 / 详情栏标题条 | 不低于 48px / 32px / 48px / 48px |
 | 表头 / 表格行 | 34px / 36px |
-| 标题栏 | 38px |
+| 标题栏 / 标签页 | 38px / 28px |
+| 导航子页面行 | 32px |
 | 导航宽度 | 总宽 288px（大类栏 64px）；窗口不超过 1000px 时总宽 252px，收起后仅保留大类栏 |
 
 ### 外壳与页面结构
 
 - 外壳由标题栏（标签页、「任务中心」、案件、设置入口）、左侧导航和内容区组成；页面自己的 `ui-footbar` 保留上下文与统计。
-- 标题栏检材标签页使用独立的激活与关闭按钮，当前标签页标记 `aria-current="page"`，关闭按钮至少 24px 且在键盘聚焦时可见；待加载状态用时钟图标与提示表达，不降低可用标签页文字的对比度。标签页区独立横向滚动，激活的标签页在切换和缩窄窗口后保持可见，「新标签页」按钮位于滚动区外。案件入口固定写「案件管理」，当前案件名放在提示中；任务计数复用 `ui-count`。
+- 标题栏与左侧导航共用窗口框架底色（`--titlebar-bg` / `--sidebar-bg` / `--bg-activity-bar`），之间不画分隔线；
+  内容区是嵌在框架里的工作区面板：`--bg-primary` 底、1px `--border-color`、`--radius-lg` 圆角、`--card-shadow`，
+  右侧与底部留出 8px 框架，没有导航时左侧同样留 8px。框架因此退到背景，当前页面读作一个整体。
+- 标题栏检材标签页使用独立的激活与关闭按钮，当前标签页标记 `aria-current="page"`，关闭按钮至少 24px 且在键盘聚焦时可见；待加载状态用时钟图标与提示表达，不降低可用标签页文字的对比度。标签页是框架上的胶囊：当前标签页抬到 `--surface-secondary`（细描边加 `--shadow-sm`），其余悬停时显示中性底色；检材类型由标签图标的颜色区分，不画彩色条。标签页区独立横向滚动并在被截断的一侧淡出（`ui-scroll-fade-x`），激活的标签页在切换和缩窄窗口后保持可见，「新标签页」按钮位于滚动区外。案件入口固定写「案件管理」，当前案件名放在提示中；任务计数复用 `ui-count`。
 - 「任务中心」「案件管理」「设置中心」共用 `ui-btn sm titlebar-chip`，正常宽度均显示图标与文字，窗口宽度不超过 760px 时同时只显示图标；始终保留无障碍名称和悬停提示。
-  三个入口的文字和图标统一使用 `--text-primary`，悬停与打开状态通过背景和边框表达。
+  三个入口不带边框，文字和图标统一使用 `--text-primary`，悬停显示 `--hover-bg`，面板打开时为 `--active-bg`。
   不在 `AppShell.vue` 之外新增顶层界面元素。
 - 标签页行下方采用三栏：左侧紧凑大类栏、中间当前大类的子页面、右侧工作区。镜像包含镜像信息与文件列表；
   工具包含全局搜索、时间线与文件恢复（文件夹或离线索引隐藏文件恢复）；分析直接列出插件执行结果，点击结果在右侧查看记录。
@@ -247,16 +257,17 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
 
 | 基元 | 用途与要点 |
 | --- | --- |
-| `ui-btn` | 文字按钮。变体：默认、`primary`（区域主操作，至多一个）、`danger`（确认框内的破坏性操作）、`ghost`（次要操作，悬停才显底色）、`link`（表格行内与文字型操作）、`danger-soft`（不需要醒目的移除、清空，可与 `ghost` / `link` 组合）。尺寸 `sm` / `lg`，`icon` 为方形图标版，`block` 占满宽度。开关型按钮用 `.active` 或 `aria-pressed`。 |
+| `ui-btn` | 文字按钮。变体：默认（中性浅填充、无描边，悬停与按下时填充加深）、`primary`（区域主操作，至多一个）、`danger`（确认框内的破坏性操作）、`ghost`（次要操作，悬停才显底色）、`link`（表格行内与文字型操作）、`danger-soft`（不需要醒目的移除、清空，可与 `ghost` / `link` 组合）。尺寸 `sm` / `lg`，`icon` 为方形图标版，`block` 占满宽度。开关型按钮用 `.active` 或 `aria-pressed`。 |
 | `ui-icon-btn` | 无边框方形图标按钮，`sm` / `lg` / `bordered` / `danger`；`.active`、`aria-pressed`、`aria-expanded` 显示激活态。必须有 `title` 与 `aria-label`。 |
 | `ui-input` / `ui-select` / `ui-textarea` | 文本框、下拉框、多行文本，`sm` 为紧凑尺寸。占位符写示例或格式，不代替标签。`ui-select` 是 `UiSelect` 触发按钮的外观，不直接用在原生 `<select>` 上。 |
 | `ui-search` | 搜索框：前置图标 + 无边框输入框 + 可选的清除按钮。 |
 | `ui-field` / `ui-field-label` / `ui-field-hint` / `ui-field-error` | 表单字段：标签、控件、提示；校验失败时用 `ui-field-error` 替换提示（见第 7 节）。 |
 | `ui-check` / `ui-switch` | 带标签的复选框 / 单选框；`role="switch"` 的复选框画成开关。立即生效的设置用开关，需要提交的选项用复选框。 |
-| `ui-seg` + `ui-seg-item` | 2–4 个互斥的视图或模式。 |
-| `ui-tabs` + `ui-tab` | 页内分区导航（下划线页签）。 |
+| `ui-seg` + `ui-seg-item` | 2–4 个互斥的视图或模式。胶囊形凹槽，当前项是抬起的 `--surface-raised` 滑块，文字保持中性色。 |
+| `ui-tabs` + `ui-tab` | 页内分区导航（下划线页签）；当前页签用主题色下划线，文字保持中性色并加粗。 |
 | `ui-badge` | 状态徽章：`info` / `success` / `warn` / `danger` / `outline`；分类色用 `tone` 加 `--badge-tone`；`sm`、`pill`。 |
-| `ui-count` / `ui-kbd` | 标题或页签旁的数字计数（`accent` 为强调）/ 键盘按键。 |
+| `ui-count` / `ui-kbd` | 标题或页签旁的数字计数（`accent` 为强调色浅底）/ 键盘按键。 |
+| `ui-dot` | 6px 状态点：`running`（强调色，动效开启时闪烁）/ `success` / `warn` / `danger` / `info`，默认为空闲灰；始终配文字。 |
 | `ui-card`（`-header` / `-title`）、`ui-section-title`、`ui-heading` | 卡片、面板内小节标题、页面级标题与说明。卡片＝`--surface-secondary` + 1px `--border-color` + `--radius-lg` + `--card-shadow`。 |
 | `ui-alert` | 页内提示条：`info` / `success` / `warn` / `danger`。 |
 | `ui-progress` | 进度条：`success` / `danger` / `warn` / `indeterminate`。 |
@@ -264,8 +275,9 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
 | `ui-toolbar` / `ui-toolbar-actions` / `ui-footbar` / `ui-footbar-stat` / `ui-footbar-spacer` / `ui-divider-v` | 工作区页面结构与工具条分隔线。 |
 | `ui-modal-overlay` / `ui-modal`（`-header` / `-icon` / `-heading` / `-title` / `-subtitle` / `-body` / `-footer`） | 弹窗（见第 9 节）。 |
 | `ui-choice`（`-icon` / `-text` / `-title` / `-desc` / `-arrow`） | 整行选项卡片：作为按钮选择来源，或包住单选 / 复选框选择设置。 |
-| `ui-menu`（`-item` / `-label` / `-sep`） | 菜单与气泡；`ui-menu-item danger` 为危险项，`aria-selected="true"` 为列表的当前值，`data-highlighted` 为焦点留在触发器上时的键盘高亮。 |
+| `ui-menu`（`-item` / `-label` / `-sep`） | 菜单与气泡（`--radius-lg`，行圆角 `--radius-md` 与外框同心）；`ui-menu-item danger` 为危险项，`aria-selected="true"` 为列表的当前值，`data-highlighted` 为焦点留在触发器上时的键盘高亮。 |
 | `ui-disclosure` + `ui-chevron` | 原生 `details` 折叠区，配合 `v-disclosure-motion`。 |
+| `ui-scroll-fade` / `ui-scroll-fade-x` | 滚动容器在仍有内容的一侧淡出 24px（`--ui-fade-size` 可调），滚到头或没有溢出时边缘清晰；由容器自身的滚动时间线驱动，不需要脚本。用于导航列表、标签页区，`ui-modal-body` 默认带有；不要用在虚拟列表和数据表格上。 |
 | `spin` / `mono` / `sr-only` | 加载旋转、等宽文字、仅供读屏的文字。 |
 
 共享样式表：`data-table.css`（表格）、`report-viewer.css`（PE / ELF / Mach-O / ar / GGUF 结构视图）、
@@ -285,12 +297,12 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 
 | 状态 | 表现 | 实现 |
 | --- | --- | --- |
-| 默认 | 清楚显示可点（边框、文字色或图标） | 基元默认样式 |
-| 悬停 | 边框或底色略向主题色靠拢；幽灵按钮出现底色 | 基元内置 |
-| 按下 | 底色加深，动效开启时轻缩 | 基元内置，`motion.css` |
+| 默认 | 清楚显示可点（浅填充、边框、文字色或图标） | 基元默认样式 |
+| 悬停 | 中性填充加深，输入框边框加深；幽灵按钮出现底色 | 基元内置 |
+| 按下 | 底色再加深；动效开启时轻缩，松手后带轻微回弹复位 | 基元内置，`motion.css` |
 | 键盘聚焦 | 2px `--primary-color` 焦点环 | `:focus-visible`，不要移除 |
 | 禁用 | 透明度 0.45–0.55，`cursor: not-allowed` | `disabled` 属性 |
-| 选中 | `--sidebar-active-bg` 浅底 + 主题色文字；侧栏另有圆点，表格选中行另加 1px 主题色描边 | `.active` / `aria-pressed` / `aria-selected` |
+| 选中 | 列表类（侧栏、菜单、表格、开关按钮）：`--sidebar-active-bg` 浅底 + 主题色文字，表格选中行另加 1px 主题色描边；分段控件与下划线页签由滑块或下划线表示，文字保持中性色 | `.active` / `aria-pressed` / `aria-selected` |
 | 加载 | 按钮前置图标换成 `<Loader2 class="spin" />` 并禁用；面板用 `AsyncPanelLoading` | 见下文 |
 | 错误 | 红色边框与焦点环 + 原因说明 | `aria-invalid` + `ui-field-error` |
 
@@ -406,10 +418,13 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 </Transition>
 ```
 
+- 弹窗是一个闭合表面：`--radius-xl` 圆角、1px 边框与 `--modal-shadow`；标题区、正文与页脚之间靠留白分开，
+  不画分隔线，页脚没有底色。标题图标为圆形强调色浅底（`ui-modal-icon`，`danger` / `warn` 换成语义色）。
+  正文溢出时上下边缘自动淡出（`ui-modal-body` 自带 `ui-scroll-fade` 的效果），提示还有内容可滚动。
 - 用 `useDialogFocus(() => visible, dialogEl)` 在打开时把焦点移入弹窗，关闭后还给打开它的元素；
   Esc 绑在弹窗容器上并 `.stop`，使叠在上层的弹窗只关闭自己。处理中（提交、启动任务）时禁用关闭。
   可能同时存在多个实例的组件用 `useId()` 生成标题 id。
-- 页脚：次要内容（提示、危险链接）放左侧并加 `.start`，右侧依次为「取消」与主操作；
+- 页脚：次要内容（提示、危险链接）放左侧并加 `.start`，右侧依次为「取消」（默认按钮）与主操作；
   页脚按钮最小宽度为高度的两倍。
 - 位于可滚动容器内的弹窗用 `<Teleport to="body">`，避免被裁切。
 
@@ -463,6 +478,11 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 - 时长与曲线取 token：普通状态变化用 `--transition-fast`（0.15s）/ `--transition-normal`（0.25s）；
   动效用 `--motion-fast|normal|slow`（150 / 250 / 400ms）配 `--ease-out`（入场）、`--ease-in`（退场）、
   `--ease-spring`（小幅弹出）。入场用较长时长，退场用较短时长。
+- 按压反馈：`ui-btn`、`ui-icon-btn`、`ui-seg-item` 按下时在 `--motion-press`（70ms）内轻缩，松手后在
+  `--motion-slow` 内沿 `--ease-squish` 复位。`--ease-squish` 是采样成 `linear()` 的阻尼弹簧，回弹幅度肉眼几乎
+  不可见；不支持 `linear()` 的引擎回退到 `--ease-out`。这些基元的 `transition` 写成长属性
+  （`transition-property` / `-duration` / `-timing-function`），`motion.css` 在按下时只改 `scale` 那一项。
+- 弹窗入场从略低处淡入并落定，不做回弹；菜单从触发处轻微弹出。
 - 复用 `motion.css` 的关键帧：`ui-rise-in`、`ui-pop-in`、`ui-zoom-in`、`ui-bounce-in`、`ui-grow-x|y`、`ui-bump`，
   以及仅用于插画与拖放目标的循环动画 `ui-float` / `ui-twinkle` / `ui-breathe`。关键帧只声明起始状态，
   使用独立的 `translate` / `scale` / `rotate` 属性并以 `backwards` 填充，可与组件自身的 `transform` 叠加。
@@ -477,7 +497,8 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 每个界面都要在 light、dark、pink 三套主题下检查：
 
 - 文字与图标达到第 3 节的对比度；实心按钮文字清晰；焦点环可见。
-- 深色主题下卡片与画布有明度差，边框不刺眼，徽章与提示条不发亮。
+- 深色主题下框架、工作区面板与卡片逐级有明度差，边框不刺眼，徽章与提示条不发亮。
+- 浅色与深色主题下强调文字使用 `--primary-color`（深陶土 / 浅陶土），不出现品牌陶土色 `#d97757` 的文字。
 - 樱花色主题下强调文字使用深玫红（`--primary-color`），不出现浅粉色文字。
 - 图表与磁盘布局使用 `--chart-*`，相邻色块可区分。
 
@@ -546,6 +567,7 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 
 - [ ] 只用已有 token 与 `ui-*` 基元，没有硬编码颜色、字号或重复的控件样式。
 - [ ] 没有左缘彩色竖条：状态、分类与选中用徽章、图标、图例色块、底色或描边表达（见第 1 节）。
+- [ ] 一个表面一道边：带边框的卡片、弹窗、工具条里不再给次要按钮和标签套框（见第 1 节）。
 - [ ] light / dark / pink 下文字与图标达到对比度要求，焦点环可见。
 - [ ] 字号为整数像素且在字号表内；间距为偶数并符合 4px 节奏。
 - [ ] 每个可交互元素都有悬停、按下、键盘聚焦与禁用态；纯图标按钮有 `title` 与 `aria-label`。

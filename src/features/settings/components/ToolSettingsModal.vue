@@ -229,7 +229,7 @@ function resetCurrentSection() {
 
 <style scoped>
 .tool-settings-modal { width: min(760px, 100%); container: settings / inline-size; }
-.settings-nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 20px; border-bottom: 1px solid var(--border-color); background: var(--surface-primary); }
+.settings-nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 20px 8px; border-bottom: 1px solid var(--border-color); }
 .settings-nav-item strong { font-weight: 500; }
 .settings-content { padding: 20px; }
 .settings-panel { display: flex; flex-direction: column; gap: 24px; }

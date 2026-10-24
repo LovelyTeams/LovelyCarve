@@ -1,15 +1,11 @@
 /* ============================================================
  * titlebar.css — Top horizontal title bar (38 px tall).
  *
- * Hosts: brand mark + wordmark, optional re-analyze action,
- * the embedded `Tabbar` (multi-evidence chips), and the platform
- * window controls.
+ * Hosts: brand mark + wordmark, the embedded `Tabbar` (evidence
+ * tabs), the workspace entries and the platform window controls.
  *
- * The vertical sidebar that previously lived as `.activity-bar`
- * inside this component has moved out into its own dedicated
- * `SidebarNav.vue` (styles in `sidebar-nav.css`). The `.titlebar-
- * filename` chip was retired when Tabbar landed — the active
- * tab itself is now the filename indicator.
+ * The bar shares the frame colour with the navigation and has no
+ * bottom rule: the workspace sheet below draws the edge.
  * ============================================================ */
 
 .titlebar {
@@ -22,7 +18,6 @@
     justify-content: space-between;
     align-items: center;
     user-select: none;
-    border-bottom: 1px solid var(--border-color);
     position: relative;
 }
 
@@ -51,12 +46,14 @@
     -webkit-text-fill-color: var(--brand-dot-color);
 }
 
-/* Titlebar chips — the task hub trigger and the case opener share one look:
-   an outlined 26 px pill that tints with the accent on hover / when active. */
+/* Titlebar chips — the task hub trigger, the case opener and the settings
+   entry share one look: a borderless 26 px button that shows a neutral fill
+   on hover and a firmer one while its panel is open. */
 .titlebar-chip {
     flex-shrink: 0;
     max-width: 240px;
     margin-left: 4px;
+    background: transparent;
     color: var(--text-primary);
 }
 
@@ -64,10 +61,12 @@
     flex-shrink: 0;
 }
 
-.titlebar-chip:hover,
+.titlebar-chip:hover {
+    background: var(--hover-bg);
+}
+
 .titlebar-chip.active {
-    border-color: color-mix(in srgb, var(--primary-color) 55%, var(--border-color));
-    background: var(--sidebar-active-bg);
+    background: var(--active-bg);
 }
 
 .titlebar-chip-label {

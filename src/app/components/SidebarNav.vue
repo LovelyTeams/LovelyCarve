@@ -34,7 +34,7 @@
     </div>
 
     <section v-show="!collapsed || hoverPreview" :id="pagesId" class="page-sidebar" :aria-label="displayedGroup?.groupLabel">
-      <nav v-if="!showContext" class="page-list" :aria-label="tr('{0}子页面', { 0: displayedGroup?.groupLabel ?? '' })">
+      <nav v-if="!showContext" class="page-list ui-scroll-fade" :aria-label="tr('{0}子页面', { 0: displayedGroup?.groupLabel ?? '' })">
         <button
           v-for="item in displayedGroup?.items ?? []"
           :key="item.id"

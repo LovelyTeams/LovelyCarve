@@ -98,5 +98,5 @@ onBeforeUnmount(() => { generation++; });
 .heading, .offset { color: var(--text-secondary); }
 .heading { position: sticky; top: 0; background: var(--surface-secondary); }
 .byte-cells { display: grid; grid-template-columns: repeat(16, 2ch); gap: 1ch; }
-.hit { color: var(--primary-color); background: var(--sev-info-bg); outline: 1px solid var(--primary-color); border-radius: var(--radius-sm); }
+.hit { color: var(--primary-color); background: var(--primary-soft); outline: 1px solid var(--primary-color); border-radius: var(--radius-sm); }
 </style>

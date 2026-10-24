@@ -164,7 +164,7 @@
 }
 
 .task-list li.active .task-count {
-  background: var(--sev-info-bg);
+  background: var(--primary-soft);
   color: var(--primary-color);
 }
 

@@ -130,7 +130,7 @@ const onDiskSummary = computed(() => {
   gap: 8px 14px;
   padding: 4px 4px 0;
 }
-.evidence-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-md); background: var(--sev-info-bg); color: var(--primary-color); }
+.evidence-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-md); background: var(--primary-soft); color: var(--primary-color); }
 .evidence-text { min-width: 0; }
 .evidence-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .evidence-name { min-width: 0; margin: 0; overflow: hidden; font-size: 16px; font-weight: 600; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }

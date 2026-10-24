@@ -60,9 +60,9 @@ const addedAt = computed(() => {
 <style scoped>
 .evidence-row { border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--surface-secondary); overflow: hidden; transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
 .evidence-row:hover { border-color: color-mix(in srgb, var(--primary-color) 35%, var(--border-color)); }
-.evidence-row.current { border-color: var(--sev-info-border); box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 20%, transparent); }
+.evidence-row.current { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--border-color)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 20%, transparent); }
 .evidence-main { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 14px; }
-.evidence-icon { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border-radius: var(--radius-md); background: var(--sev-info-bg); color: var(--primary-color); }
+.evidence-icon { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border-radius: var(--radius-md); background: var(--primary-soft); color: var(--primary-color); }
 .evidence-name { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--text-primary); text-align: left; cursor: pointer; }
 .evidence-name:disabled { cursor: not-allowed; opacity: 0.5; }
 .evidence-name:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }

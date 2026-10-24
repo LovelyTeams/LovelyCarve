@@ -6,7 +6,10 @@
  *   document.documentElement.setAttribute('data-theme', 'dark')
  * ============================================================ */
 
-/* ── Light (default) ── */
+/* ── Light (default) ──
+   Warm neutral greys with a clay accent. The window frame (titlebar,
+   navigation) sits one step below the workspace sheet; cards and fields are
+   white. Lines and fills stay low-contrast so the content carries the page. */
 :root {
     /* Native form controls (checkboxes, radios, date/time pickers, selects)
        follow the active theme — the dark theme renders them dark instead of
@@ -20,90 +23,97 @@
         'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --font-brand: 'Quicksand';
     --font-mono: 'Cascadia Mono', 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
-    --bg-primary: #f8fafc;
+    --bg-primary: #fcfcfb;
     --bg-secondary: #ffffff;
-    --bg-activity-bar: #f1f5f9;
-    --text-primary: #0f172a;
-    /* One step deeper than slate-500 so secondary text keeps 4.5:1 on the
-       sidebar / tertiary surfaces (#f1f5f9), not only on white. */
-    --text-secondary: #5f6e86;
-    --accent-color: #2160e0;
+    --bg-activity-bar: #f5f4f0;
+    --text-primary: #1f1e1c;
+    /* Keeps 4.5:1 on the frame (#f5f4f0) and the recessed surface, not only
+       on white. */
+    --text-secondary: #65635e;
+    --accent-color: #a6482a;
     /* 文件全显(deepsearch)激活态:面包屑标记与两态按钮的高亮色。 */
     --showall-accent: #6a52f6;
-    --border-color: #e2e8f0;
-    --titlebar-bg: #f8fafc;
-    --titlebar-text: #0f172a;
-    --hover-bg: rgba(15, 23, 42, 0.04);
-    --active-bg: rgba(15, 23, 42, 0.08);
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --border-color: #e6e5df;
+    --titlebar-bg: #f5f4f0;
+    --titlebar-text: #1f1e1c;
+    --hover-bg: rgba(31, 30, 28, 0.05);
+    --active-bg: rgba(31, 30, 28, 0.09);
+    --shadow-sm: 0 1px 2px rgba(31, 30, 28, 0.06), 0 2px 6px -1px rgba(31, 30, 28, 0.05);
 
     /* Extended design tokens */
-    --surface-primary: #f8fafc;
+    --surface-primary: #f9f9f7;
     --surface-secondary: #ffffff;
-    --surface-tertiary: #f1f5f9;
-    /* Accent for text, icons, borders and focus rings: the brand blue
-       (#3b82f6, kept in the gradient, glows and tints) darkened until links
-       and active labels clear 4.5:1 on white, the sidebar and the 8% active
+    --surface-tertiary: #f3f3f0;
+    /* Raised fill that must read above a recessed track (segmented thumb). */
+    --surface-raised: #ffffff;
+    /* Accent for text, icons, borders and focus rings: the brand clay
+       (#d97757, kept in the gradient, glows and tints) deepened until links
+       and active labels clear 4.5:1 on white, the frame and the selection
        tint. */
-    --primary-color: #2160e0;
-    --primary-glow: rgba(59, 130, 246, 0.25);
+    --primary-color: #a6482a;
+    --primary-glow: rgba(217, 119, 87, 0.22);
+    /* Accent tile and counter background (icon tiles, accent counts, hits). */
+    --primary-soft: rgba(201, 100, 66, 0.1);
     --accent-contrast: #ffffff;
     /* Filled primary / destructive controls, deep enough that
        --accent-contrast text on them stays above 4.5:1 in every theme. */
-    --primary-solid: #2563eb;
-    --primary-solid-hover: #1d4ed8;
+    --primary-solid: #b5532f;
+    --primary-solid-hover: #a0472a;
     --danger-solid: #dc2626;
     --danger-solid-hover: #b91c1c;
-    --gradient-accent: linear-gradient(135deg, #3b82f6, #818cf8);
-    /* Statusbar tokens — the bar stays a brand gradient, but deep enough
-       that its --statusbar-fg labels keep 4.5:1 along the whole strip (the
-       plain brand gradient left white text at 3:1 on the indigo end). Pink
-       keeps its pastel gradient and switches the labels to plum instead; the
-       dark theme uses a low-saturation bar because a bright gradient on the
-       near-black canvas reads as a glow strip, not a status bar. */
-    --statusbar-bg: linear-gradient(135deg, #2563eb, #4f46e5);
+    --gradient-accent: linear-gradient(135deg, #d97757, #c6613f);
+    /* Statusbar tokens: a clay strip deep enough that its --statusbar-fg
+       labels keep 4.5:1 along the whole bar. Pink keeps its pastel gradient
+       with plum labels; the dark theme uses a neutral bar because a bright
+       strip on the near-black canvas reads as a glow, not a status bar. */
+    --statusbar-bg: linear-gradient(135deg, #b5532f, #a0472a);
     --statusbar-fg: #ffffff;
     --statusbar-border-top: transparent;
-    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-    --card-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
-    --modal-backdrop: rgba(15, 23, 42, 0.45);
-    --modal-shadow: 0 20px 60px rgba(15, 23, 42, 0.18);
+    --card-shadow: 0 1px 2px rgba(31, 30, 28, 0.04), 0 1px 4px rgba(31, 30, 28, 0.03);
+    --card-shadow-hover: 0 2px 4px rgba(31, 30, 28, 0.05), 0 8px 20px -2px rgba(31, 30, 28, 0.08);
+    --modal-backdrop: rgba(31, 30, 28, 0.32);
+    --modal-shadow: 0 2px 6px rgba(31, 30, 28, 0.06), 0 12px 32px -4px rgba(31, 30, 28, 0.16);
     --iframe-bg: #ffffff;
     --tab-scroll-mask: linear-gradient(to right, transparent 0, black 18px, black calc(100% - 18px), transparent 100%);
-    --glass-bg: rgba(255, 255, 255, 0.82);
+    --glass-bg: rgba(252, 252, 251, 0.85);
     --glass-border: rgba(255, 255, 255, 0.5);
     --glass-blur: 16px;
     --radius-sm: 4px;
     --radius-md: 8px;
     --radius-lg: 12px;
+    --radius-xl: 16px;
     --transition-fast: 0.15s ease;
     --transition-normal: 0.25s ease;
     /* Motion: durations and curves for transitions, keyframes and the WAAPI
        helpers in useUiMotion.ts. Entrances ease out (spring for small pops),
-       exits ease in and run on the shorter duration. */
+       exits ease in and run on the shorter duration. A press settles in
+       --motion-press and springs back on --ease-squish (a damped spring where
+       the engine supports linear(); see the @supports block below). */
+    --motion-press: 70ms;
     --motion-fast: 150ms;
     --motion-normal: 250ms;
     --motion-slow: 400ms;
     --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
     --ease-in: cubic-bezier(0.4, 0, 1, 1);
     --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-squish: cubic-bezier(0.22, 1, 0.36, 1);
     --brand-glow-amber: #fef0cf;
-    --brand-moon-fill: #f1f5f9;
+    --brand-moon-fill: #f3f3f0;
     --brand-moon-shadow: rgba(244, 214, 167, 0.32);
-    --brand-moon-stroke: #cbd5e1;
+    --brand-moon-stroke: #d2d1c7;
     --brand-moon-blush: rgba(255, 255, 255, 0.7);
     --brand-spark-soft: #fde68a;
     --brand-spark-soft-inner: #fef3c7;
     --brand-spark-core: #f59e0b;
     --brand-spark-accent: #fb7185;
-    --brand-spark-neutral: #94a3b8;
-    --brand-wordmark-gradient: linear-gradient(135deg, #0f172a 0%, #f59e0b 58%, #fb7185 100%);
+    --brand-spark-neutral: #a5a49a;
+    --brand-wordmark-gradient: linear-gradient(135deg, #1f1e1c 0%, #f59e0b 58%, #fb7185 100%);
     --brand-dot-color: #f59e0b;
 
-    /* Sidebar tokens */
-    --sidebar-bg: #f1f5f9;
-    --sidebar-hover-bg: rgba(15, 23, 42, 0.06);
-    --sidebar-active-bg: rgba(59, 130, 246, 0.08);
+    /* Sidebar tokens: the frame colour, neutral hover, clay selection tint. */
+    --sidebar-bg: #f5f4f0;
+    --sidebar-hover-bg: rgba(31, 30, 28, 0.05);
+    --sidebar-active-bg: rgba(201, 100, 66, 0.09);
 
     /* ── Severity tokens (theme-aware) ──
        Per-severity foreground / background / border triplet, used by
@@ -152,10 +162,10 @@
     --sev-snapshot-tag-bg: rgba(245, 158, 11, 0.22);
 
     /* Subtle on-surface tints so chip count badges still read on white */
-    --chip-count-bg: rgba(15, 23, 42, 0.08);
+    --chip-count-bg: rgba(31, 30, 28, 0.07);
 
     /* ── Chart / disk-layout categorical palette (cycled by index) ──
-       Saturated mid-tones for white surfaces, anchored on the blue accent. */
+       Saturated mid-tones for white surfaces. */
     --chart-1: #3b82f6;
     --chart-2: #10b981;
     --chart-3: #f59e0b;
@@ -164,85 +174,91 @@
     --chart-6: #06b6d4;
 }
 
-/* ── Dark ── */
+/* ── Dark ──
+   Near-black neutrals: the frame is the darkest step, the workspace sheet
+   one step lighter and cards lighter again, so layers separate by lightness
+   rather than by shadow. The clay accent lightens for text on dark. */
 :root[data-theme='dark'] {
     color-scheme: dark;
     --font-ui: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
         'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --font-brand: 'Quicksand';
     --font-mono: 'Cascadia Mono', 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
-    --bg-primary: #0c1222;
-    --bg-secondary: #1a2332;
-    --bg-activity-bar: #080d19;
-    --text-primary: #f8fafc;
-    --text-secondary: #94a3b8;
-    --accent-color: #6db3ff;
+    --bg-primary: #171716;
+    --bg-secondary: #1f1f1e;
+    --bg-activity-bar: #0f0f0f;
+    --text-primary: #f1f0ec;
+    --text-secondary: #a7a59f;
+    --accent-color: #e28c6c;
     --showall-accent: #a78bfa;
-    --border-color: #283548;
-    --titlebar-bg: #0c1222;
-    --titlebar-text: #f8fafc;
-    --hover-bg: rgba(255, 255, 255, 0.06);
-    --active-bg: rgba(255, 255, 255, 0.10);
-    --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.25);
+    --border-color: #2d2d2b;
+    --titlebar-bg: #0f0f0f;
+    --titlebar-text: #f1f0ec;
+    --hover-bg: rgba(255, 255, 255, 0.05);
+    --active-bg: rgba(255, 255, 255, 0.09);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 6px -1px rgba(0, 0, 0, 0.3);
 
     /* Extended design tokens */
-    --surface-primary: #0c1222;
-    --surface-secondary: #1a2332;
-    --surface-tertiary: #141c2b;
-    --primary-color: #6db3ff;
-    --primary-glow: rgba(109, 179, 255, 0.18);
+    --surface-primary: #171716;
+    --surface-secondary: #1f1f1e;
+    --surface-tertiary: #1b1b1a;
+    --surface-raised: #393936;
+    --primary-color: #e28c6c;
+    --primary-glow: rgba(217, 119, 87, 0.22);
+    --primary-soft: rgba(217, 119, 87, 0.14);
     --accent-contrast: #ffffff;
-    /* The pastel --primary-color is for text and icons on the navy canvas;
+    /* The light --primary-color is for text and icons on the dark canvas;
        white labels need the deeper fill. Hover deepens too: a brighter fill
        would drop the white label below 4.5:1. */
-    --primary-solid: #2d6fe6;
-    --primary-solid-hover: #245bd1;
+    --primary-solid: #b5532f;
+    --primary-solid-hover: #a0472a;
     --danger-solid: #dc2626;
     --danger-solid-hover: #b91c1c;
-    --gradient-accent: linear-gradient(135deg, #4a9eff, #818cf8);
-    /* Dark-theme statusbar: low-saturation deep blue→indigo gradient
-       that sits just above bg-primary (#0c1222) without becoming a
-       glowing strip. The hairline top border defines it against the
-       workspace content above. */
-    --statusbar-bg: linear-gradient(135deg, #1c2742, #28284e);
+    --gradient-accent: linear-gradient(135deg, #d97757, #c6613f);
+    /* Dark-theme statusbar: a neutral strip just above the canvas, defined
+       by its hairline top border rather than by colour. */
+    --statusbar-bg: linear-gradient(135deg, #232322, #2a2a28);
     --statusbar-fg: #ffffff;
     --statusbar-border-top: rgba(255, 255, 255, 0.06);
-    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
-    --card-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.25);
-    --modal-backdrop: rgba(0, 0, 0, 0.65);
-    --modal-shadow: 0 20px 60px rgba(0, 0, 0, 0.50);
+    --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.25);
+    --card-shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.4), 0 8px 24px -2px rgba(0, 0, 0, 0.45);
+    --modal-backdrop: rgba(0, 0, 0, 0.6);
+    --modal-shadow: 0 2px 8px rgba(0, 0, 0, 0.45), 0 12px 36px -4px rgba(0, 0, 0, 0.6);
     --iframe-bg: #ffffff;
-    --glass-bg: rgba(12, 18, 34, 0.8);
+    --glass-bg: rgba(23, 23, 22, 0.82);
     --glass-border: rgba(255, 255, 255, 0.07);
     --glass-blur: 16px;
     --radius-sm: 4px;
     --radius-md: 8px;
     --radius-lg: 12px;
+    --radius-xl: 16px;
     --transition-fast: 0.15s ease;
     --transition-normal: 0.25s ease;
+    --motion-press: 70ms;
     --motion-fast: 150ms;
     --motion-normal: 250ms;
     --motion-slow: 400ms;
     --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
     --ease-in: cubic-bezier(0.4, 0, 1, 1);
     --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-squish: cubic-bezier(0.22, 1, 0.36, 1);
     --brand-glow-amber: rgba(251, 191, 36, 0.28);
-    --brand-moon-fill: #1e293b;
+    --brand-moon-fill: #2c2c2a;
     --brand-moon-shadow: rgba(251, 191, 36, 0.18);
-    --brand-moon-stroke: #475569;
+    --brand-moon-stroke: #545350;
     --brand-moon-blush: rgba(255, 255, 255, 0.08);
     --brand-spark-soft: #fbbf24;
     --brand-spark-soft-inner: #fde68a;
     --brand-spark-core: #f59e0b;
     --brand-spark-accent: #fb7185;
-    --brand-spark-neutral: #94a3b8;
-    --brand-wordmark-gradient: linear-gradient(135deg, #f8fafc 0%, #fbbf24 54%, #fb7185 100%);
+    --brand-spark-neutral: #a5a49a;
+    --brand-wordmark-gradient: linear-gradient(135deg, #f1f0ec 0%, #fbbf24 54%, #fb7185 100%);
     --brand-dot-color: #fbbf24;
 
     /* Sidebar tokens */
-    --sidebar-bg: #0f1729;
+    --sidebar-bg: #0f0f0f;
     --sidebar-hover-bg: rgba(255, 255, 255, 0.06);
-    --sidebar-active-bg: rgba(109, 179, 255, 0.1);
+    --sidebar-active-bg: rgba(217, 119, 87, 0.14);
 
     /* ── Severity tokens (dark theme — pastel foregrounds for contrast on dark surfaces) ── */
     --sev-critical-fg: #fca5a5;
@@ -284,11 +300,11 @@
     --sev-snapshot-tag-fg: #fcd34d;
     --sev-snapshot-tag-bg: rgba(245, 158, 11, 0.26);
 
-    --chip-count-bg: rgba(255, 255, 255, 0.10);
+    --chip-count-bg: rgba(255, 255, 255, 0.09);
 
     /* ── Chart / disk-layout categorical palette (cycled by index) ──
        One step brighter (Tailwind 400-ish) so fills stay vivid on the
-       near-black navy canvas without glowing. */
+       near-black canvas without glowing. */
     --chart-1: #4a9eff;
     --chart-2: #34d399;
     --chart-3: #fbbf24;
@@ -314,7 +330,7 @@
     --accent-color: #ad3f65;
     --showall-accent: #7545bd;
     --border-color: #f3dce6;
-    --titlebar-bg: #fef7fb;
+    --titlebar-bg: #fdf0f5;
     --titlebar-text: #4a2039;
     --hover-bg: rgba(232, 132, 159, 0.10);
     --active-bg: rgba(232, 132, 159, 0.16);
@@ -324,11 +340,13 @@
     --surface-primary: #fef7fb;
     --surface-secondary: #ffffff;
     --surface-tertiary: #fdf0f5;
+    --surface-raised: #ffffff;
     /* Text / icon / border accent: the soft rose (#e8849f, still the
        gradient, glow, tint and chart colour) read at 2.5:1 as text, so the
        accent darkens to a raspberry that holds 4.5:1 on every pink surface. */
     --primary-color: #ad3f65;
     --primary-glow: rgba(232, 132, 159, 0.18);
+    --primary-soft: rgba(232, 132, 159, 0.12);
     --accent-contrast: #ffffff;
     /* Deep rose keeps white labels readable; the soft #e8849f stays the brand
        tone of gradients, glows and tints. */
@@ -352,14 +370,17 @@
     --radius-sm: 4px;
     --radius-md: 8px;
     --radius-lg: 12px;
+    --radius-xl: 16px;
     --transition-fast: 0.15s ease;
     --transition-normal: 0.25s ease;
+    --motion-press: 70ms;
     --motion-fast: 150ms;
     --motion-normal: 250ms;
     --motion-slow: 400ms;
     --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
     --ease-in: cubic-bezier(0.4, 0, 1, 1);
     --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-squish: cubic-bezier(0.22, 1, 0.36, 1);
     --brand-glow-amber: #fff1d6;
     --brand-moon-fill: #fff1f5;
     --brand-moon-shadow: rgba(232, 132, 159, 0.24);
@@ -430,4 +451,17 @@
     --chart-4: #db2777;
     --chart-5: #9d8df1;
     --chart-6: #5fb8a5;
+}
+
+/* ── Press release spring ──
+   A lightly damped spring sampled into linear(): a pressed control springs
+   back with a barely visible overshoot. Engines without linear() keep the
+   ease-out fallback declared in each theme above (an unsupported easing
+   would otherwise void the whole transition list that uses it). */
+@supports (transition-timing-function: linear(0, 1)) {
+    :root,
+    :root[data-theme='dark'],
+    :root[data-theme='pink'] {
+        --ease-squish: linear(0, 0.2459, 0.6526, 0.9468, 1.0764, 1.0915, 1.0585, 1.0219, 0.9993, 0.9914, 0.9921, 0.9957, 0.9988, 1.0004, 1);
+    }
 }

@@ -214,7 +214,7 @@ function stateClass(item: PluginPackageInfo) {
 .plugin-list { display: grid; gap: 12px; }
 .plugin-card { padding: 12px 16px; }
 .plugin-card-heading { display: flex; align-items: center; gap: 8px; }
-.plugin-icon { display: grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; margin-right: 4px; border-radius: var(--radius-md); background: var(--sev-info-bg); color: var(--primary-color); }
+.plugin-icon { display: grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; margin-right: 4px; border-radius: var(--radius-md); background: var(--primary-soft); color: var(--primary-color); }
 .plugin-title { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; }
 .plugin-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
 .plugin-title span { color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px; }

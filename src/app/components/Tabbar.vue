@@ -1,6 +1,6 @@
 <template>
   <nav class="tabbar" :aria-label="tr('检材标签页')" data-tauri-drag-region>
-    <div ref="scrollRegion" class="tabbar-scroll">
+    <div ref="scrollRegion" class="tabbar-scroll ui-scroll-fade-x">
       <div
         v-for="tab in tabs"
         :key="tab.id"

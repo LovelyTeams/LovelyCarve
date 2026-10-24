@@ -92,18 +92,36 @@
 .ui-empty > :where(:nth-child(3)) { animation-delay: 110ms; }
 .ui-empty > :where(:nth-child(n + 4)) { animation-delay: 160ms; }
 
-/* Press feedback and hover lift. The primitives in ui.css list `scale` /
-   `translate` in their transitions, so these ease in and out. */
+/* Press feedback and hover lift. The primitives in ui.css transition `scale`
+   on --motion-slow / --ease-squish, so a released control springs back;
+   while pressed, `scale` alone is retimed to settle in --motion-press. The
+   duration and timing lists follow each primitive's transition-property
+   order. */
 :where(:root[data-motion='full']) .ui-btn:where(:active:not(:disabled)) {
     scale: 0.97;
+    transition-duration: var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-press);
+    transition-timing-function: ease, ease, ease, ease, var(--ease-out);
 }
 
 :where(:root[data-motion='full']) .ui-icon-btn:where(:active:not(:disabled)) {
-    scale: 0.9;
+    scale: 0.92;
+    transition-duration: var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-press);
+    transition-timing-function: ease, ease, ease, var(--ease-out);
 }
 
 :where(:root[data-motion='full']) .ui-seg-item:where(:active:not(:disabled)) {
     scale: 0.95;
+    transition-duration: var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-press);
+    transition-timing-function: ease, ease, ease, var(--ease-out);
+}
+
+/* A running status dot blinks; with motion off it stays lit. */
+@keyframes ui-blink {
+    50% { opacity: 0.3; }
+}
+
+:where(:root[data-motion='full']) .ui-dot:where(.running) {
+    animation: ui-blink 1.2s ease-in-out infinite;
 }
 
 :where(:root[data-motion='full']) .ui-choice:where(:hover:not(:disabled)) {

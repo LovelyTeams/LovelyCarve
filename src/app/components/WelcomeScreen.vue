@@ -129,7 +129,7 @@ async function handleClearRecent() {
   display: flex;
   container: start-page / inline-size;
   padding: 48px 48px 56px;
-  background: radial-gradient(ellipse at 88% 2%, color-mix(in srgb, var(--brand-glow-amber) 28%, transparent), transparent 42%), var(--bg-primary);
+  background: var(--bg-primary);
 }
 .start-content { width: min(1120px, 100%); margin: auto; }
 .start-brand { display: flex; align-items: center; gap: 20px; margin-bottom: 32px; }
@@ -137,9 +137,9 @@ async function handleClearRecent() {
 .start-brand h1 span { color: var(--brand-dot-color); }
 .start-brand p { margin: 12px 0 0; color: var(--text-secondary); font-size: 13px; letter-spacing: 0.06em; }
 .start-cards { display: grid; grid-template-columns: 1.12fr 1fr; gap: 24px; }
-.import-card { display: flex; flex-direction: column; align-items: center; min-height: 444px; padding: 24px; border-color: color-mix(in srgb, var(--primary-color) 25%, var(--border-color)); background: radial-gradient(ellipse at 50% 18%, var(--surface-secondary), color-mix(in srgb, var(--primary-color) 5%, var(--surface-secondary))); transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
+.import-card { display: flex; flex-direction: column; align-items: center; min-height: 444px; padding: 24px; border-radius: var(--radius-xl); transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast); }
 .import-card > * { flex-shrink: 0; }
-.import-card.is-dragging { border-color: var(--primary-color); box-shadow: var(--card-shadow-hover); }
+.import-card.is-dragging { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 4%, var(--surface-secondary)); box-shadow: var(--card-shadow-hover); }
 .import-art { position: relative; flex-shrink: 0; width: 240px; height: 128px; color: var(--primary-color); }
 .art-disk { display: block; width: 100%; height: 100%; }
 .art-shadow { fill: color-mix(in srgb, var(--primary-color) 8%, transparent); }
@@ -164,7 +164,7 @@ h2 { font-family: var(--font-ui), sans-serif; color: var(--text-primary); }
 .import-actions .ui-btn:not(.primary):hover:not(:disabled) { color: var(--text-primary); }
 .shortcut { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px; color: var(--text-secondary); font-size: 11px; margin: 16px 0 0; }
 .shortcut span { margin-left: 6px; }
-.recent-card { height: 444px; padding: 24px; display: flex; flex-direction: column; }
+.recent-card { height: 444px; padding: 24px; display: flex; flex-direction: column; border-radius: var(--radius-xl); }
 .recent-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 16px; }
 .recent-header h2 { font-size: 16px; font-weight: 600; margin: 0; }
 .recent-list { overflow-y: auto; min-height: 0; flex: 1; padding-right: 4px; }
@@ -174,7 +174,7 @@ h2 { font-family: var(--font-ui), sans-serif; color: var(--text-primary); }
 .recent-entry:hover:not(:disabled), .recent-entry:hover + .recent-entry { border-top-color: transparent; }
 .recent-entry:disabled { opacity: 0.5; cursor: default; }
 .recent-entry:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
-.entry-icon { width: 40px; height: 40px; border-radius: var(--radius-lg); background: var(--sev-info-bg); color: var(--primary-color); display: grid; place-items: center; flex-shrink: 0; }
+.entry-icon { width: 40px; height: 40px; border-radius: var(--radius-lg); background: var(--primary-soft); color: var(--primary-color); display: grid; place-items: center; flex-shrink: 0; }
 .entry-text { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; }
 .entry-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: 13px; font-weight: 500; }
 .entry-text time { color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }

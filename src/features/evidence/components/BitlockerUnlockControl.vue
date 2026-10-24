@@ -411,7 +411,7 @@ watch(
 }
 
 .bde-chip:hover {
-  background: var(--sev-info-bg-hover);
+  background: color-mix(in srgb, var(--primary-color) 16%, transparent);
 }
 
 .bde-chip-dot {
@@ -465,7 +465,7 @@ watch(
   width: 26px;
   height: 26px;
   border-radius: var(--radius-md);
-  background: var(--sev-info-bg);
+  background: var(--primary-soft);
   color: var(--primary-color);
 }
 

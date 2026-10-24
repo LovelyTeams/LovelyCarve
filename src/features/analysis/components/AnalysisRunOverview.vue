@@ -219,7 +219,7 @@ function warningTarget(warning: AnalysisRunWarning): FileLocationTarget | null {
 .overview { display: flex; flex-direction: column; gap: 16px; max-width: 1200px; margin-inline: auto; --ui-stagger-step: 50ms; }
 
 .run-head { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 14px; padding: 4px 4px 0; }
-.run-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-md); background: var(--sev-info-bg); color: var(--primary-color); }
+.run-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-md); background: var(--primary-soft); color: var(--primary-color); }
 .run-heading { min-width: 0; }
 .run-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .run-title h2 { min-width: 0; margin: 0; overflow: hidden; font-size: 16px; font-weight: 600; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }

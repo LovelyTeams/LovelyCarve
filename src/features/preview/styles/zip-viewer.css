@@ -41,7 +41,7 @@
   height: 40px;
   flex: none;
   border-radius: var(--radius-md);
-  background: var(--sev-info-bg);
+  background: var(--primary-soft);
   color: var(--primary-color);
   display: flex;
   align-items: center;
