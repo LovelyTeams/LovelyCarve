@@ -11,7 +11,7 @@
     overflow: hidden;
     background: var(--sidebar-bg);
     user-select: none;
-    transition: width var(--motion-normal) var(--ease-out);
+    transition: width var(--motion-normal) var(--ease-expand);
 }
 
 .sidebar-nav.collapsed { width: 64px; }

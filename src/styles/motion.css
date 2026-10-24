@@ -30,7 +30,7 @@
 /* Menus and popovers. --ui-pop-offset is negative for menus that drop down
    and positive for menus that open upward. */
 @keyframes ui-pop-in {
-    from { opacity: 0; scale: 0.96; translate: 0 var(--ui-pop-offset, -4px); }
+    from { opacity: 0; scale: 0.95; translate: 0 var(--ui-pop-offset, -4px); }
 }
 
 /* Large surfaces: overlays, hero art. */
@@ -53,7 +53,20 @@
 
 /* One-shot nudge when a counter changes (re-key the element to replay). */
 @keyframes ui-bump {
-    40% { scale: 1.25; }
+    35% { scale: 1.12; }
+}
+
+/* A check mark draws itself in from the left, the way a pen would. */
+@keyframes ui-check-draw {
+    from { clip-path: inset(0 100% 0 0); }
+}
+
+/* A confirmation that holds, then fades and shrinks away before the icon
+   swaps back. Unlike the entrances it declares its end state and runs with
+   `forwards` fill: the faded icon is removed right after. */
+@keyframes ui-check-decay {
+    0%, 75% { opacity: 1; scale: 1; }
+    100% { opacity: 0; scale: 0.92; }
 }
 
 /* Idle loops: illustrations and drop targets only, never working surfaces. */
@@ -71,7 +84,7 @@
 
 /* ── Primitives ───────────────────────────────────────────── */
 :where(:root[data-motion='full']) .ui-menu {
-    animation: ui-pop-in var(--motion-fast) var(--ease-out) backwards;
+    animation: ui-pop-in var(--motion-slow) var(--ease-settle) backwards;
 }
 
 :where(:root[data-motion='full']) .ui-alert {
@@ -100,19 +113,13 @@
 :where(:root[data-motion='full']) .ui-btn:where(:active:not(:disabled)) {
     scale: 0.97;
     transition-duration: var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-press);
-    transition-timing-function: ease, ease, ease, ease, var(--ease-out);
+    transition-timing-function: var(--ease-swift), var(--ease-swift), var(--ease-swift), var(--ease-swift), var(--ease-out);
 }
 
 :where(:root[data-motion='full']) .ui-icon-btn:where(:active:not(:disabled)) {
     scale: 0.92;
     transition-duration: var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-press);
-    transition-timing-function: ease, ease, ease, var(--ease-out);
-}
-
-:where(:root[data-motion='full']) .ui-seg-item:where(:active:not(:disabled)) {
-    scale: 0.95;
-    transition-duration: var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-press);
-    transition-timing-function: ease, ease, ease, var(--ease-out);
+    transition-timing-function: var(--ease-swift), var(--ease-swift), var(--ease-swift), var(--ease-out);
 }
 
 /* A running status dot blinks; with motion off it stays lit. */
@@ -121,7 +128,19 @@
 }
 
 :where(:root[data-motion='full']) .ui-dot:where(.running) {
-    animation: ui-blink 1.2s ease-in-out infinite;
+    animation: ui-blink 1.2s var(--ease-in-out) infinite;
+}
+
+/* Copy confirmation: put `ui-copied` on the check icon that replaces the copy
+   icon for 1.5s; it draws in, holds, then fades before the swap back. A check
+   that stays (the label also says 已复制) takes `ui-check-in` and only draws
+   in. With motion off the check simply appears and disappears. */
+:where(:root[data-motion='full']) .ui-check-in {
+    animation: ui-check-draw 180ms var(--ease-out) backwards;
+}
+
+:where(:root[data-motion='full']) .ui-copied {
+    animation: ui-check-draw 180ms var(--ease-out) backwards, ui-check-decay 1.5s linear forwards;
 }
 
 :where(:root[data-motion='full']) .ui-choice:where(:hover:not(:disabled)) {

@@ -87,8 +87,12 @@
     /* Motion: durations and curves for transitions, keyframes and the WAAPI
        helpers in useUiMotion.ts. Entrances ease out (spring for small pops),
        exits ease in and run on the shorter duration. A press settles in
-       --motion-press and springs back on --ease-squish (a damped spring where
-       the engine supports linear(); see the @supports block below). */
+       --motion-press and springs back on --ease-squish; dialogs and menus land
+       on --ease-settle over --motion-slow. Both are damped springs where the
+       engine supports linear() (see the @supports block below) and plain
+       ease-outs elsewhere. Fills and colours change on --ease-swift, sliding
+       selection indicators on --ease-snap, size reveals on --ease-expand, and
+       repeating loops on the symmetric --ease-in-out. */
     --motion-press: 70ms;
     --motion-fast: 150ms;
     --motion-normal: 250ms;
@@ -97,6 +101,11 @@
     --ease-in: cubic-bezier(0.4, 0, 1, 1);
     --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
     --ease-squish: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-swift: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-snap: cubic-bezier(0.32, 0.72, 0, 1);
+    --ease-expand: cubic-bezier(0.19, 1, 0.22, 1);
+    --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
     --brand-glow-amber: #fef0cf;
     --brand-moon-fill: #f3f3f0;
     --brand-moon-shadow: rgba(244, 214, 167, 0.32);
@@ -242,6 +251,11 @@
     --ease-in: cubic-bezier(0.4, 0, 1, 1);
     --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
     --ease-squish: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-swift: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-snap: cubic-bezier(0.32, 0.72, 0, 1);
+    --ease-expand: cubic-bezier(0.19, 1, 0.22, 1);
+    --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
     --brand-glow-amber: rgba(251, 191, 36, 0.28);
     --brand-moon-fill: #2c2c2a;
     --brand-moon-shadow: rgba(251, 191, 36, 0.18);
@@ -381,6 +395,11 @@
     --ease-in: cubic-bezier(0.4, 0, 1, 1);
     --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
     --ease-squish: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-swift: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-snap: cubic-bezier(0.32, 0.72, 0, 1);
+    --ease-expand: cubic-bezier(0.19, 1, 0.22, 1);
+    --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
     --brand-glow-amber: #fff1d6;
     --brand-moon-fill: #fff1f5;
     --brand-moon-shadow: rgba(232, 132, 159, 0.24);
@@ -453,15 +472,20 @@
     --chart-6: #5fb8a5;
 }
 
-/* ── Press release spring ──
-   A lightly damped spring sampled into linear(): a pressed control springs
-   back with a barely visible overshoot. Engines without linear() keep the
-   ease-out fallback declared in each theme above (an unsupported easing
-   would otherwise void the whole transition list that uses it). */
+/* ── Springs ──
+   Damped springs sampled into linear(). --ease-squish: a pressed control
+   springs back with a barely visible overshoot. --ease-settle: stiffness 400,
+   damping 32 (damping ratio 0.8) sampled over --motion-slow, so a dialog or
+   menu lands with a 1.5% overshoot and has visually settled by ~250ms.
+   Engines without linear() keep the ease-out fallbacks declared in each theme
+   above (an unsupported easing would otherwise void the whole transition list
+   that uses it). */
 @supports (transition-timing-function: linear(0, 1)) {
     :root,
     :root[data-theme='dark'],
     :root[data-theme='pink'] {
         --ease-squish: linear(0, 0.2459, 0.6526, 0.9468, 1.0764, 1.0915, 1.0585, 1.0219, 0.9993, 0.9914, 0.9921, 0.9957, 0.9988, 1.0004, 1);
+        --ease-settle: linear(0, 0.0465, 0.1551, 0.2909, 0.4311, 0.5618, 0.6759, 0.7705, 0.8456, 0.9028, 0.9447, 0.9739, 0.9933,
+            1.0053, 1.0119, 1.0147, 1.0151, 1.014, 1.0122, 1.0101, 1.008, 1.0061, 1.0045, 1.0031, 1);
     }
 }

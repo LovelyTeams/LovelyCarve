@@ -91,6 +91,10 @@ describe('detail docks keep native window bounds', () => {
     divider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
     await settle();
     expect(Number(divider.getAttribute('aria-valuenow'))).toBe(initialWidth + 24);
+    // Double-clicking the divider restores the default width.
+    divider.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    await settle();
+    expect(Number(divider.getAttribute('aria-valuenow'))).toBe(380);
 
     (host.querySelector('[aria-label="关闭文件详情"]') as HTMLButtonElement).click();
     await settle();
@@ -102,6 +106,12 @@ describe('detail docks keep native window bounds', () => {
 
     page.value = 'files';
     await settle();
+    const previewDivider = host.querySelector('.preview-dock [role="separator"]') as HTMLElement;
+    previewDivider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await settle();
+    previewDivider.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    await settle();
+    expect(Number(previewDivider.getAttribute('aria-valuenow'))).toBe(460);
     (host.querySelector('[aria-label="关闭预览"]') as HTMLButtonElement).click();
     await settle();
     expect(host.querySelector('.preview-dock')).toBeNull();

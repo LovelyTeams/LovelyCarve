@@ -58,7 +58,7 @@ export const vDisclosureMotion: ObjectDirective<HTMLDetailsElement> = {
         element.style.overflow = overflow;
         element.open = expanded;
         state.target = undefined;
-      }, { speed: 'normal' });
+      }, { speed: 'normal', easing: 'expand' });
     };
     disclosures.set(element, state);
     element.addEventListener('click', state.click);

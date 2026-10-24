@@ -123,7 +123,7 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
 | 形状 | `--radius-sm` 4px / `--radius-md` 8px / `--radius-lg` 12px / `--radius-xl` 16px | 徽章与小图标按钮 / 控件、菜单项、提示条 / 卡片、菜单、工作区面板、通知 / 弹窗 |
 | 阴影 | `--shadow-sm` / `--card-shadow` / `--card-shadow-hover` / `--modal-shadow`；`--modal-backdrop` | 分段选中项与当前标签页 / 卡片与工作区面板 / 悬停抬起与通知 / 弹窗、菜单与浮动面板；弹窗遮罩 |
 | 字体 | `--font-ui` / `--font-mono` / `--font-brand` | 见第 4 节 |
-| 动效 | `--transition-fast` / `--transition-normal`；`--motion-press` / `-fast` / `-normal` / `-slow`；`--ease-out` / `-in` / `-spring` / `-squish` | 见第 11 节 |
+| 动效 | `--transition-fast` / `--transition-normal`；`--motion-press` / `-fast` / `-normal` / `-slow`；`--ease-out` / `-in` / `-spring` / `-squish` / `-settle` / `-swift` / `-snap` / `-expand` / `-in-out` | 见第 11 节 |
 | 品牌 | `--gradient-accent`、`--brand-*` | 品牌渐变（不定进度条）与欢迎页插画，不用于工作区控件 |
 
 ### 对比度要求
@@ -239,8 +239,8 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
   - 用 `<UiTransition kind="dock">` 包裹 `DetailDock`，内容用 `FileDetailLayout`、`FileDetailSection`、
     `FileDetailFields` 组织。
   - 承载详情栏的行设 `position: relative; container: detail-host / inline-size`。
-  - 宽度 300–720px（默认 380px），所有详情栏共用 `lovelycarve-detail-width`，分隔条支持键盘左右键调整；
-    容器窄于 800px 时浮在表格上方。
+  - 宽度 300–720px（默认 380px），所有详情栏共用 `lovelycarve-detail-width`，分隔条支持键盘左右键调整，
+    双击分隔条以动画恢复默认宽度（文件预览栏同理，默认 460px）；容器窄于 800px 时浮在表格上方。
 - 面板内的响应式用容器查询（`@container`），只有整窗口级变化才用媒体查询；页面在约 760px 宽的窗口中仍要可用。
 - 文件预览的页签与窗口动作放在首行，编码、字符集和搜索放在下一行工具栏左侧，识别操作靠右；窄面板中工具组可换行，保持左侧起点一致。
 - 文件列表预览拆分成功后由独立窗口接管，主窗口不再展开内嵌预览；后续打开的文件同步到同一窗口。停靠时恢复当前文件，直接关闭独立窗口后下一次打开文件恢复内嵌预览。
@@ -263,8 +263,8 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
 | `ui-search` | 搜索框：前置图标 + 无边框输入框 + 可选的清除按钮。 |
 | `ui-field` / `ui-field-label` / `ui-field-hint` / `ui-field-error` | 表单字段：标签、控件、提示；校验失败时用 `ui-field-error` 替换提示（见第 7 节）。 |
 | `ui-check` / `ui-switch` | 带标签的复选框 / 单选框；`role="switch"` 的复选框画成开关。立即生效的设置用开关，需要提交的选项用复选框。 |
-| `ui-seg` + `ui-seg-item` | 2–4 个互斥的视图或模式。胶囊形凹槽，当前项是抬起的 `--surface-raised` 滑块，文字保持中性色。 |
-| `ui-tabs` + `ui-tab` | 页内分区导航（下划线页签）；当前页签用主题色下划线，文字保持中性色并加粗。 |
+| `ui-seg` + `ui-seg-item` | 2–4 个互斥的视图或模式。胶囊形凹槽，当前项是抬起的 `--surface-raised` 滑块，文字保持中性色；切换时滑块从上一项滑过来（第 11 节）。 |
+| `ui-tabs` + `ui-tab` | 页内分区导航（下划线页签）；当前页签用主题色下划线，文字保持中性色并加粗；切换时下划线滑到新页签。 |
 | `ui-badge` | 状态徽章：`info` / `success` / `warn` / `danger` / `outline`；分类色用 `tone` 加 `--badge-tone`；`sm`、`pill`。 |
 | `ui-count` / `ui-kbd` | 标题或页签旁的数字计数（`accent` 为强调色浅底）/ 键盘按键。 |
 | `ui-dot` | 6px 状态点：`running`（强调色，动效开启时闪烁）/ `success` / `warn` / `danger` / `info`，默认为空闲灰；始终配文字。 |
@@ -334,6 +334,8 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 
 复制按钮成功后把图标换成 `Check` 约 1.5 秒，并用 `sr-only` 的 `role="status"` 播报「已复制」
 （实现示例见 `FileDetailFields.vue`）；也可以弹出成功通知。失败时 `notifyError('复制失败', 原因)`，不能显示为已复制。
+这枚 `Check` 加 `ui-copied`：对勾从左向右画出，停留后在换回复制图标前淡出；对勾常驻（文案同时写「已复制」）时只加
+`ui-check-in`，只做画出。
 
 ### 确认破坏性操作
 
@@ -477,16 +479,32 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
   `:root[data-motion='full']` 下（全局样式表中用 `:where(:root[data-motion='full'])` 保持单类优先级）。
 - 时长与曲线取 token：普通状态变化用 `--transition-fast`（0.15s）/ `--transition-normal`（0.25s）；
   动效用 `--motion-fast|normal|slow`（150 / 250 / 400ms）配 `--ease-out`（入场）、`--ease-in`（退场）、
-  `--ease-spring`（小幅弹出）。入场用较长时长，退场用较短时长。
-- 按压反馈：`ui-btn`、`ui-icon-btn`、`ui-seg-item` 按下时在 `--motion-press`（70ms）内轻缩，松手后在
-  `--motion-slow` 内沿 `--ease-squish` 复位。`--ease-squish` 是采样成 `linear()` 的阻尼弹簧，回弹幅度肉眼几乎
-  不可见；不支持 `linear()` 的引擎回退到 `--ease-out`。这些基元的 `transition` 写成长属性
-  （`transition-property` / `-duration` / `-timing-function`），`motion.css` 在按下时只改 `scale` 那一项。
-- 弹窗入场从略低处淡入并落定，不做回弹；菜单从触发处轻微弹出。
+  `--ease-spring`（小幅弹出）。入场用较长时长，退场用较短时长。其余曲线按用途取：
+
+  | 曲线 | 用途 |
+  | --- | --- |
+  | `--ease-swift` | 底色、边框、文字色等填充变化（按钮、选项卡片的悬停与按下） |
+  | `--ease-snap` | 在兄弟项之间滑动的选中指示（分段控件滑块、页签下划线） |
+  | `--ease-expand` | 尺寸展开（折叠区、`UiTransition` 的 collapse / horizontal / dock 入场、导航收起、详情栏恢复宽度） |
+  | `--ease-settle` | 弹窗、菜单、`UiTransition kind="pop"` 与通知的入场：阻尼比 0.8 的弹簧，配 `--motion-slow`，约 250ms 内落定、过冲 1.5% |
+  | `--ease-squish` | 按下后的回弹复位 |
+  | `--ease-in-out` | 往复与扫过的循环（不定进度条、运行中状态点） |
+
+  `--ease-settle` 与 `--ease-squish` 是采样成 `linear()` 的阻尼弹簧，不支持 `linear()` 的引擎回退到 `--ease-out`。
+- 按压反馈：`ui-btn`、`ui-icon-btn` 按下时在 `--motion-press`（70ms）内轻缩，松手后在 `--motion-slow` 内沿
+  `--ease-squish` 复位，回弹幅度肉眼几乎不可见。这些基元的 `transition` 写成长属性（`transition-property` /
+  `-duration` / `-timing-function`），`motion.css` 在按下时只改 `scale` 那一项。
+- 选中指示滑动：分段控件的滑块（`ui-seg-item::before`）与页签下划线（`ui-tab::after`）在当前项变化时从上一项滑过来，
+  由 `src/composables/indicatorMotion.ts` 的一个文档级观察器统一处理（`bootstrapWindow` 安装），组件只写普通的
+  `ui-seg` / `ui-tabs` 标记。只有「一项失去、一项获得」时滑动；多选、换行或动效关闭时直接切换。分段控件的轨道是
+  层叠上下文，分段项本身不能再产生层叠上下文（不加 transform、opacity 或 isolation），否则滑过的滑块会盖住相邻项的文字，
+  所以分段项没有按压缩放。
+- 弹窗入场从略低处升起并在 `--ease-settle` 上落定，遮罩同步淡入；退场更快地下落淡出。菜单从触发处以同一弹簧弹出。
 - 复用 `motion.css` 的关键帧：`ui-rise-in`、`ui-pop-in`、`ui-zoom-in`、`ui-bounce-in`、`ui-grow-x|y`、`ui-bump`，
   以及仅用于插画与拖放目标的循环动画 `ui-float` / `ui-twinkle` / `ui-breathe`。关键帧只声明起始状态，
-  使用独立的 `translate` / `scale` / `rotate` 属性并以 `backwards` 填充，可与组件自身的 `transform` 叠加。
-- 短小、非虚拟化的列表与卡片网格加 `ui-stagger` 依次入场；计数变化加 `ui-bump` 并以数值作 `:key`。
+  使用独立的 `translate` / `scale` / `rotate` 属性并以 `backwards` 填充，可与组件自身的 `transform` 叠加；
+  复制对勾的 `ui-check-decay` 是例外，声明结束状态并以 `forwards` 填充，淡出后图标随即被替换。
+- 短小、非虚拟化的列表与卡片网格加 `ui-stagger` 依次入场；计数变化加 `ui-bump` 并以数值作 `:key`（轻放大到 1.12 倍）。
 - 由脚本驱动的动效统一走 `animateUi` / `motionTiming`、`UiTransition`（`collapse` / `horizontal` / `fade` /
   `pop` / `dock`）、`v-content-motion`（轻量淡入，`.rise` 用于页面与页签切换）和 `v-disclosure-motion`；
   动效关闭时它们立即落到最终状态。

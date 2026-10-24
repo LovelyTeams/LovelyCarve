@@ -13,7 +13,7 @@
   >
     <template #workspace-actions>
       <button ref="taskHubTrigger" type="button" class="ui-btn sm titlebar-chip task-hub-trigger" :class="{ active: taskHubOpen }" :aria-expanded="taskHubOpen" aria-controls="task-hub" :aria-label="tr('任务中心')" :title="tr('任务列表与快速分析')" @click="toggleTaskHub">
-        <ListTodo :size="14" /><span class="titlebar-chip-label">{{ tr("任务中心") }}</span><span v-if="taskActiveCount" :key="taskActiveCount" class="ui-count accent ui-bump">{{ taskActiveCount.toLocaleString() }}</span>
+        <ListTodo :size="14" /><span class="titlebar-chip-label">{{ tr("任务中心") }}</span><span v-if="taskActiveCount" class="ui-dot running" aria-hidden="true"></span><span v-if="taskActiveCount" :key="taskActiveCount" class="ui-count accent ui-bump">{{ taskActiveCount.toLocaleString() }}</span>
       </button>
     </template>
   </Titlebar>

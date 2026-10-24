@@ -3,8 +3,10 @@ import { parseMotionPreference, UI_ANIMATIONS_KEY, useUiPreferences } from './us
 
 /** Duration token: `--motion-fast` / `--motion-normal` / `--motion-slow`. */
 export type MotionSpeed = 'fast' | 'normal' | 'slow';
-/** Easing token: `--ease-out` (entrances), `--ease-in` (exits), `--ease-spring` (small pops). */
-export type MotionEasing = 'out' | 'in' | 'spring';
+/** Easing token: `--ease-out` (entrances), `--ease-in` (exits), `--ease-spring` (small pops),
+ *  `--ease-settle` (dialogs and popovers landing), `--ease-snap` (sliding selection
+ *  indicators) and `--ease-expand` (size reveals). */
+export type MotionEasing = 'out' | 'in' | 'spring' | 'settle' | 'snap' | 'expand';
 
 export interface UiAnimationOptions {
   speed?: MotionSpeed;

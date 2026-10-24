@@ -1,8 +1,8 @@
 <template>
   <aside ref="panel" class="detail-dock" :style="{ width: `${width}px` }" :aria-label="label" @keydown.esc.stop="$emit('close')">
-    <div class="dock-resize" role="separator" :aria-label="tr('调整详情宽度')" aria-orientation="vertical"
+    <div class="dock-resize" role="separator" :aria-label="tr('调整详情宽度')" :title="tr('拖动调整宽度，双击恢复默认宽度')" aria-orientation="vertical"
       tabindex="0" :aria-valuenow="width" :aria-valuemin="MIN_WIDTH" :aria-valuemax="MAX_WIDTH"
-      @pointerdown="startResize" @keydown.left.prevent="resizeBy(24)" @keydown.right.prevent="resizeBy(-24)" />
+      @pointerdown="startResize" @dblclick="resetWidth" @keydown.left.prevent="resizeBy(24)" @keydown.right.prevent="resizeBy(-24)" />
     <header class="dock-header">
       <slot name="leading" />
       <div class="dock-title">
@@ -49,9 +49,10 @@ function saveWidth() {
 <script setup lang="ts">
 import { tr } from '../../composables/useLocale';
 
-import { onBeforeUnmount, watch } from 'vue';
+import { nextTick, onBeforeUnmount, watch } from 'vue';
 import { X } from 'lucide-vue-next';
 import { vContentMotion } from '../../composables/uiMotionDirectives';
+import { animateUi } from '../../composables/useUiMotion';
 
 const props = defineProps<{
   label: string;
@@ -74,6 +75,19 @@ watch(() => props.contentKey, () => {
 function resizeBy(delta: number) {
   width.value = clampWidth(width.value + delta);
   saveWidth();
+}
+
+/** Double-clicking the divider eases the dock back to the default width. */
+async function resetWidth() {
+  const element = panel.value;
+  const from = element?.getBoundingClientRect().width ?? 0;
+  width.value = DEFAULT_WIDTH;
+  saveWidth();
+  await nextTick();
+  const to = element?.getBoundingClientRect().width ?? 0;
+  if (element && from && Math.abs(to - from) >= 1) {
+    animateUi(element, [{ width: `${from}px` }, { width: `${to}px` }], undefined, { speed: 'normal', easing: 'expand' });
+  }
 }
 
 let stopResize: (() => void) | undefined;

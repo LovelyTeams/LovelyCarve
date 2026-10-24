@@ -115,6 +115,7 @@
   "正在加载面板…": "Loading panel…",
   "关闭通知": "Dismiss notification",
   "调整详情宽度": "Resize details panel",
+  "拖动调整宽度，双击恢复默认宽度": "Drag to resize; double-click to restore the default width",
   "复制失败": "Failed to copy",
   "已复制": "Copied",
   "复制{0}": "Copy {0}",

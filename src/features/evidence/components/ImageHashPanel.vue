@@ -58,7 +58,7 @@
             :aria-label="tr('复制 {0}', { 0: algo.toUpperCase() })"
             @click="copy(algo)"
           >
-            <Check v-if="copiedAlgo === algo" :size="12" />
+            <Check v-if="copiedAlgo === algo" :size="12" class="ui-copied" />
             <Copy v-else :size="12" />
           </button>
         </dd>

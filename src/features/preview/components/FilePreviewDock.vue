@@ -1,8 +1,8 @@
 <template>
   <aside ref="panel" class="preview-dock" :style="{ width: `${width}px` }" :aria-label="tr('文件预览')" @keydown.esc.stop="$emit('close')">
-    <div class="dock-resize" role="separator" :aria-label="tr('调整预览宽度')" aria-orientation="vertical"
+    <div class="dock-resize" role="separator" :aria-label="tr('调整预览宽度')" :title="tr('拖动调整宽度，双击恢复默认宽度')" aria-orientation="vertical"
       tabindex="0" :aria-valuenow="width" :aria-valuemin="320" :aria-valuemax="800"
-      @pointerdown="startResize" @keydown.left.prevent="setWidth(width + 24)"
+      @pointerdown="startResize" @dblclick="resetWidth" @keydown.left.prevent="setWidth(width + 24)"
       @keydown.right.prevent="setWidth(width - 24)" />
     <header class="dock-header" :class="{ dragging }" :title="tr('拖动标题栏可拆分为独立窗口')" @pointerdown="startDrag">
       <GripVertical :size="16" class="grip" />
@@ -22,16 +22,18 @@
 <script setup lang="ts">
 import { tr } from '../../../composables/useLocale';
 
-import { onBeforeUnmount, ref } from 'vue';
+import { nextTick, onBeforeUnmount, ref } from 'vue';
 import { ExternalLink, GripVertical, Loader2, X } from 'lucide-vue-next';
+import { animateUi } from '../../../composables/useUiMotion';
 
 const props = defineProps<{ name: string; opening: boolean; canDetach: boolean }>();
 const emit = defineEmits<{
   detach: [position?: { x: number; y: number }];
   close: [];
 }>();
+const DEFAULT_WIDTH = 460;
 const panel = ref<HTMLElement | null>(null);
-const width = ref(460);
+const width = ref(DEFAULT_WIDTH);
 const dragging = ref(false);
 try {
   const saved = Number(localStorage.getItem('lovelycarve-preview-width'));
@@ -42,6 +44,18 @@ function setWidth(value: number) {
   width.value = Math.max(320, Math.min(800, value));
   try { localStorage.setItem('lovelycarve-preview-width', String(width.value)); }
   catch { /* Keep the current session's width. */ }
+}
+
+/** Double-clicking the divider eases the preview back to the default width. */
+async function resetWidth() {
+  const element = panel.value;
+  const from = element?.getBoundingClientRect().width ?? 0;
+  setWidth(DEFAULT_WIDTH);
+  await nextTick();
+  const to = element?.getBoundingClientRect().width ?? 0;
+  if (element && from && Math.abs(to - from) >= 1) {
+    animateUi(element, [{ width: `${from}px` }, { width: `${to}px` }], undefined, { speed: 'normal', easing: 'expand' });
+  }
 }
 
 let cleanupGesture: (() => void) | undefined;

@@ -7,7 +7,7 @@
         <button v-if="field.copyable && hasValue(field.value)" class="ui-icon-btn sm" type="button"
           :title="copiedIndex === index ? tr('已复制') : tr('复制{0}', { 0: field.label })" :aria-label="tr('复制{0}', { 0: field.label })"
           @click="copyValue(field, index)">
-          <Check v-if="copiedIndex === index" :size="13" /><Copy v-else :size="13" />
+          <Check v-if="copiedIndex === index" :size="13" class="ui-copied" /><Copy v-else :size="13" />
         </button>
       </dd>
     </div>

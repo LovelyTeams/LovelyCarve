@@ -55,7 +55,7 @@
        press settles fast and the release springs back on --ease-squish. */
     transition-property: background-color, border-color, color, box-shadow, scale;
     transition-duration: var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-slow);
-    transition-timing-function: ease, ease, ease, ease, var(--ease-squish);
+    transition-timing-function: var(--ease-swift), var(--ease-swift), var(--ease-swift), var(--ease-swift), var(--ease-squish);
 }
 
 .ui-btn:where(:hover:not(:disabled)) {
@@ -195,7 +195,7 @@
     cursor: pointer;
     transition-property: background-color, color, border-color, scale;
     transition-duration: var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-slow);
-    transition-timing-function: ease, ease, ease, var(--ease-squish);
+    transition-timing-function: var(--ease-swift), var(--ease-swift), var(--ease-swift), var(--ease-squish);
 }
 
 .ui-icon-btn:where(:hover:not(:disabled)) {
@@ -511,12 +511,17 @@
 
 /* ── Segmented control ──────────────────────────────────────
  * A recessed pill track; the current item is a raised thumb with neutral
- * text, so the thumb itself carries the selection. */
+ * text, so the thumb itself carries the selection. The thumb is the item's
+ * ::before, so indicatorMotion.ts can slide it from the previous item. The
+ * track is the stacking context and the items must not become one (no
+ * transform, opacity or isolation while current): every thumb then paints
+ * beneath every label, also while one slides across a neighbour. */
 .ui-seg {
     display: inline-flex;
     align-items: center;
     gap: 2px;
     flex-shrink: 0;
+    isolation: isolate;
     padding: 2px;
     border: 0;
     border-radius: 999px;
@@ -524,6 +529,7 @@
 }
 
 .ui-seg-item {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -539,9 +545,16 @@
     font-weight: 500;
     white-space: nowrap;
     cursor: pointer;
-    transition-property: background-color, color, box-shadow, scale;
-    transition-duration: var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-slow);
-    transition-timing-function: ease, ease, ease, var(--ease-squish);
+    transition: color var(--motion-fast) var(--ease-swift);
+}
+
+.ui-seg-item::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
 }
 
 .ui-seg-item:where(:hover:not(:disabled)) {
@@ -549,8 +562,11 @@
 }
 
 .ui-seg-item:where(.active, [aria-pressed='true'], [aria-selected='true'], [aria-checked='true']) {
-    background: var(--surface-raised);
     color: var(--text-primary);
+}
+
+.ui-seg-item:where(.active, [aria-pressed='true'], [aria-selected='true'], [aria-checked='true'])::before {
+    background: var(--surface-raised);
     box-shadow: var(--shadow-sm), 0 0 0 1px color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
@@ -591,6 +607,8 @@
     transition: color var(--transition-fast);
 }
 
+/* The underline switches instantly: when the current tab changes,
+   indicatorMotion.ts slides the new underline over from the previous tab. */
 .ui-tab::after {
     content: '';
     position: absolute;
@@ -601,8 +619,7 @@
     border-radius: 2px 2px 0 0;
     background: var(--primary-color);
     opacity: 0;
-    transform: scaleX(0.4);
-    transition: opacity var(--motion-fast) var(--ease-out), transform var(--motion-normal) var(--ease-out);
+    pointer-events: none;
 }
 
 .ui-tab:where(:hover) {
@@ -616,7 +633,6 @@
 
 .ui-tab:where(.active, [aria-selected='true'])::after {
     opacity: 1;
-    transform: none;
 }
 
 .ui-tab:where(:focus-visible) {
@@ -885,14 +901,16 @@
 .ui-progress:where(.danger) > span { background: var(--sev-critical-fg); }
 .ui-progress:where(.warn) > span { background: var(--sev-warn-fg); }
 
+/* A short sweep that enters and leaves the track completely on a symmetric
+   curve, so each pass reads as one even stroke. */
 .ui-progress:where(.indeterminate) > span {
-    width: 40%;
-    animation: ui-indeterminate 1.2s ease-in-out infinite;
+    width: 30%;
+    animation: ui-indeterminate 1.1s var(--ease-in-out) infinite;
 }
 
 @keyframes ui-indeterminate {
     0% { transform: translateX(-100%); }
-    100% { transform: translateX(260%); }
+    100% { transform: translateX(350%); }
 }
 
 /* Motion off: a static, dimmed full bar still reads as "working". */
@@ -1135,12 +1153,12 @@
     min-width: calc(var(--ui-btn-h) * 2);
 }
 
-/* <Transition name="ui-modal">: the backdrop fades while the dialog settles
-   up from slightly below, without overshoot; closing is quicker and falls
-   away. Vue times the transition on the overlay, so the dialog must never
-   outlast it. */
+/* <Transition name="ui-modal">: the backdrop fades while the dialog rises
+   from slightly below and lands on the --ease-settle spring; closing is
+   quicker and falls away. Vue times the transition on the overlay, so the
+   dialog must never outlast it: both entrance legs run for --motion-slow. */
 .ui-modal-enter-active {
-    transition: opacity var(--motion-normal) var(--ease-out);
+    transition: opacity var(--motion-slow) var(--ease-out);
 }
 
 .ui-modal-leave-active {
@@ -1148,11 +1166,11 @@
 }
 
 .ui-modal-enter-active .ui-modal {
-    transition: transform var(--motion-normal) var(--ease-out);
+    transition: transform var(--motion-slow) var(--ease-settle);
 }
 
 .ui-modal-leave-active .ui-modal {
-    transition: transform var(--motion-fast) var(--ease-in);
+    transition: transform var(--motion-fast) var(--ease-in-out);
 }
 
 .ui-modal-enter-from,
@@ -1161,11 +1179,11 @@
 }
 
 .ui-modal-enter-from .ui-modal {
-    transform: translateY(8px) scale(0.97);
+    transform: translateY(10px) scale(0.96);
 }
 
 .ui-modal-leave-to .ui-modal {
-    transform: translateY(4px) scale(0.98);
+    transform: translateY(6px) scale(0.96);
 }
 
 /* ── Choice card ──────────────────────────────────────────────
@@ -1187,8 +1205,8 @@
     text-align: left;
     cursor: pointer;
     user-select: none;
-    transition: border-color var(--transition-fast), background-color var(--transition-fast),
-        box-shadow var(--transition-fast), translate var(--motion-fast) var(--ease-out);
+    transition: border-color var(--motion-fast) var(--ease-swift), background-color var(--motion-fast) var(--ease-swift),
+        box-shadow var(--motion-normal) var(--ease-swift), translate var(--motion-normal) var(--ease-swift);
 }
 
 .ui-choice:where(:hover:not(:disabled)) {

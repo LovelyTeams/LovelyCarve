@@ -209,8 +209,10 @@ describe('conditional panel motion', () => {
     app.mount(host);
     visible.value = true;
     await nextTick();
-    const frames = vi.mocked(HTMLElement.prototype.animate).mock.calls[0][0] as Keyframe[];
-    expect(frames[0]).toMatchObject({ opacity: 0, scale: '0.96' });
+    const [frames, timing] = vi.mocked(HTMLElement.prototype.animate).mock.calls[0] as [Keyframe[], KeyframeAnimationOptions];
+    expect(frames[0]).toMatchObject({ opacity: 0, scale: '0.95' });
+    // The entrance lands on the settle spring over the slow duration (defaults without theme tokens).
+    expect(timing).toEqual({ duration: 400, easing: 'ease-out' });
     animations[0].onfinish?.();
     visible.value = false;
     await nextTick();

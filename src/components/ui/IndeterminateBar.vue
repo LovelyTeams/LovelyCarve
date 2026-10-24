@@ -39,17 +39,19 @@ defineProps<{ label?: string }>();
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 40%;
+  left: 0;
+  width: 30%;
   border-radius: 999px;
   background: var(--gradient-accent);
-  animation: ind-slide 1.15s ease-in-out infinite;
+  animation: ind-slide 1.1s var(--ease-in-out) infinite;
 }
+/* 与 ui-progress 的不定进度同一节奏：整条从左外侧扫到右外侧。 */
 @keyframes ind-slide {
   0% {
-    left: -42%;
+    transform: translateX(-100%);
   }
   100% {
-    left: 100%;
+    transform: translateX(350%);
   }
 }
 /* 动画关闭（data-motion=reduced，含跟随系统「减少动态效果」）：base.css 会把非 .spin

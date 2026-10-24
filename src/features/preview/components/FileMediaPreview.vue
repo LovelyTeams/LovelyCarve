@@ -136,7 +136,7 @@
               <div class="qr-item-meta">
                 <span class="qr-transform mono">{{ c.transform }}</span>
                 <button class="ui-icon-btn sm bordered" :title="tr('复制内容')" :aria-label="tr('复制内容')" @click="emit('copyQr', c.text, i)">
-                  <Check v-if="recognition.qrCopiedIndex === i" :size="12" />
+                  <Check v-if="recognition.qrCopiedIndex === i" :size="12" class="ui-copied" />
                   <Copy v-else :size="12" />
                 </button>
               </div>
@@ -155,7 +155,7 @@
               :title="recognition.ocrCopiedAll ? tr('已复制') : tr('复制文本')"
               @click="emit('copyOcr')"
             >
-              <Check v-if="recognition.ocrCopiedAll" :size="12" />
+              <Check v-if="recognition.ocrCopiedAll" :size="12" class="ui-copied" />
               <Copy v-else :size="12" />
               {{ tr("复制") }}
             </button>

@@ -17,7 +17,7 @@
           <RefreshCw v-else :size="14" aria-hidden="true" />
           {{ status === 'checking' ? tr('正在检查更新…') : tr('检查更新') }}
         </button>
-        <button class="ui-btn ghost" type="button" :title="tagUrl" @click="copyTagUrl"><Check v-if="copied" :size="14" aria-hidden="true" /><Copy v-else :size="14" aria-hidden="true" />{{ copied ? tr('已复制') : tr('复制 GitHub 标签链接') }}</button>
+        <button class="ui-btn ghost" type="button" :title="tagUrl" @click="copyTagUrl"><Check v-if="copied" :size="14" class="ui-check-in" aria-hidden="true" /><Copy v-else :size="14" aria-hidden="true" />{{ copied ? tr('已复制') : tr('复制 GitHub 标签链接') }}</button>
       </div>
       <div aria-live="polite" role="status">
         <p v-if="status === 'available'" class="ui-alert info">{{ tr('发现新版本 {0}', { 0: latestTag ?? '' }) }}</p>

@@ -12,8 +12,10 @@ import { animateUi, cancelUiAnimation, type UiAnimationOptions } from '../../com
  *  Page switches and detail visibility never change native window bounds. */
 const props = withDefaults(defineProps<{ kind?: 'collapse' | 'horizontal' | 'fade' | 'pop' | 'dock' }>(), { kind: 'collapse' });
 // Entrances take the longer, decelerating curve; exits get out of the way quickly.
+// Popovers land on the settle spring; size reveals open on the expand curve.
 const enterTiming: UiAnimationOptions = { speed: 'normal', easing: 'out' };
 const leaveTiming: UiAnimationOptions = { speed: 'fast', easing: 'in' };
+const popEnterTiming: UiAnimationOptions = { speed: 'slow', easing: 'settle' };
 const activeElements = new Set<HTMLElement>();
 onBeforeUnmount(() => {
   for (const element of activeElements) {
@@ -39,9 +41,9 @@ function transition(element: Element, done: () => void, entering: boolean) {
     return;
   }
   if (props.kind === 'pop') {
-    const hidden: Keyframe = { opacity: 0, scale: '0.96', translate: '0 -4px' };
+    const hidden: Keyframe = { opacity: 0, scale: '0.95', translate: '0 -4px' };
     const shown: Keyframe = { opacity: 1, scale: '1', translate: '0 0' };
-    animateUi(target, entering ? [hidden, shown] : [shown, hidden], finish, timing);
+    animateUi(target, entering ? [hidden, shown] : [shown, hidden], finish, entering ? popEnterTiming : timing);
     return;
   }
   resize(target, finish, entering, props.kind === 'horizontal' || props.kind === 'dock' ? 'width' : 'height');
@@ -72,7 +74,7 @@ function resize(target: HTMLElement, finish: () => void, entering: boolean, dime
     target.style.overflow = overflow;
     target.style[minimum] = previousMinimum;
     finish();
-  }, { speed: (entering ? enterTiming : leaveTiming).speed, easing: 'out' });
+  }, { speed: (entering ? enterTiming : leaveTiming).speed, easing: entering ? 'expand' : 'out' });
 }
 function enter(element: Element, done: () => void) { transition(element, done, true); }
 function leave(element: Element, done: () => void) { transition(element, done, false); }

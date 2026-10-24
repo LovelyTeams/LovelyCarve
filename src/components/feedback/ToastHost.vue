@@ -186,13 +186,14 @@ body:has(.ui-modal-overlay, .ui-menu) .toast-item.persistent {
   flex-shrink: 0;
 }
 
-/* Slides in from the screen edge with a spring, leaves the same way. */
+/* Slides in from the screen edge and lands on the settle spring, leaves the
+   same way; the rest of the stack glides into place. */
 .toast-enter-active {
-  transition: opacity var(--motion-fast) var(--ease-out), transform var(--motion-normal) var(--ease-spring);
+  transition: opacity var(--motion-fast) var(--ease-out), transform var(--motion-slow) var(--ease-settle);
 }
 
 .toast-move {
-  transition: transform var(--motion-normal) var(--ease-out);
+  transition: transform var(--motion-normal) var(--ease-expand);
 }
 
 /* After .toast-move: a pinned leaving toast can be tagged as moved too (its
