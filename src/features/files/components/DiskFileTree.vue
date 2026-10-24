@@ -26,9 +26,10 @@
       <div class="tree-docker-loading-track" aria-hidden="true"><span></span></div>
     </div>
     <div class="tree-panel">
-      <div class="tree-list">
+      <div ref="treeScrollEl" class="tree-list">
+        <div v-if="paddingTop > 0" :style="{ height: `${paddingTop}px` }" aria-hidden="true"></div>
         <button
-          v-for="row in visibleRows"
+          v-for="{ item: row } in renderedRows"
           :key="row.key"
           class="tree-row"
           :class="{ active: row.node.id === activeId || row.node.id === selectedLeafId, loading: row.node.loading }"
@@ -59,6 +60,7 @@
           <span class="tree-name" :title="row.node.name">{{ row.node.name }}</span>
           <span v-if="row.node.childCount != null && row.node.childCount > 0" class="tree-count">{{ row.node.childCount.toLocaleString() }}</span>
         </button>
+        <div v-if="paddingBottom > 0" :style="{ height: `${paddingBottom}px` }" aria-hidden="true"></div>
         <div v-if="rootNodes.length === 0 && rootLoaded" class="tree-empty mono">
           {{ tr("没有可显示的目录") }}
         </div>
@@ -71,6 +73,8 @@
 import { tr } from '../../../composables/useLocale';
 
 import { ChevronRight, FolderTree, FolderX, Loader2 } from 'lucide-vue-next';
+import { ref, watch } from 'vue';
+import { useVirtualList } from '../../../composables/useVirtualList';
 import FileNodeIcon from '../../../components/display/FileNodeIcon.vue';
 import { useCaseContext } from '../../cases/api';
 import { useEmptyDirFilter } from '../composables/useEmptyDirFilter';
@@ -80,10 +84,25 @@ const props = defineProps<{ imageId: string; pathStack: TreeStackFrame[] }>();
 const emit = defineEmits<{ navigate: [stack: TreeStackFrame[]]; 'open-file': [stack: TreeStackFrame[], fileId: string] }>();
 const { activeCase } = useCaseContext();
 const { hideEmptyDirs } = useEmptyDirFilter();
-const { activeId, selectedLeafId, visibleRows, rootNodes, rootLoaded, dockerFilesystemLoading, onRowClick, toggleExpand } = useFileTree({
+const { activeId, selectedLeafId, visibleRows, rootNodes, rootLoaded, dockerFilesystemLoading, onRowClick, toggleExpand, hydrateRows } = useFileTree({
   imageId: () => props.imageId, pathStack: () => props.pathStack, caseId: () => activeCase.value?.id ?? null, hideEmptyDirs,
   navigate: stack => emit('navigate', stack), openFile: (stack, fileId) => emit('open-file', stack, fileId),
 });
+const treeScrollEl = ref<HTMLElement | null>(null);
+const { visibleItems: renderedRows, paddingTop, paddingBottom, scrollToIndex, scrollToTop } = useVirtualList({
+  items: visibleRows, itemHeight: 26, containerRef: treeScrollEl, overscan: 8,
+});
+watch(renderedRows, rows => hydrateRows(rows.map(row => row.item)), { immediate: true });
+// Path synchronization loads ancestors asynchronously. Reveal the active row
+// once it enters the flattened tree, including navigation from the file list.
+let revealedId: string | null = null;
+watch(() => props.imageId, () => { revealedId = null; scrollToTop(); });
+watch([activeId, visibleRows], ([id, rows]) => {
+  if (id === revealedId) return;
+  if (!id) { revealedId = null; return; }
+  const index = rows.findIndex(row => row.node.id === id);
+  if (index >= 0) { scrollToIndex(index); revealedId = id; }
+}, { flush: 'post' });
 </script>
 
 <style scoped>
@@ -185,6 +204,7 @@ const { activeId, selectedLeafId, visibleRows, rootNodes, rootLoaded, dockerFile
 .tree-list {
   flex: 1;
   overflow-y: auto;
+  overflow-anchor: none;
   padding: 4px;
 }
 
@@ -193,7 +213,8 @@ const { activeId, selectedLeafId, visibleRows, rootNodes, rootLoaded, dockerFile
   align-items: center;
   gap: 4px;
   width: 100%;
-  min-height: 26px;
+  box-sizing: border-box;
+  height: 26px;
   padding: 2px 8px 2px 0;
   background: transparent;
   border: none;

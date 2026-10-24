@@ -1,4 +1,4 @@
-import { containerFsChildren as fsChildren } from './containerReads';
+import { containerFsChildrenPage as fsChildrenPage } from './containerReads';
 import { fsChildCounts, fsSubtreeEmptyDirs } from '../../../lib/ipc/fs/query';
 import { winDriveLetters } from '../../../lib/ipc/filesystemMetadata';
 import { isHostDockerContainerRootId } from '../model/model';
@@ -48,12 +48,13 @@ export function useFileTreeMetadata(options: FileTreeMetadataOptions) {
       await Promise.allSettled(
         batch.map(async id => {
           try {
-            const kids = await fsChildren({
+            const page = await fsChildrenPage({
               imageId: options.imageId(),
               parentId: id,
+              pageSize: 1,
             });
             if (!options.current(gen)) return;
-            options.publishCounts({ [id]: kids.length });
+            if (page.total != null) options.publishCounts({ [id]: page.total });
           } catch {
             // Best-effort; leave the badge blank if the partition is
             // locked or the FS is unsupported.

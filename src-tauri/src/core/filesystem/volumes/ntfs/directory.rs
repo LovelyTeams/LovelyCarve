@@ -44,7 +44,10 @@ impl<'a> NtfsVolume<'a> {
             .ntfs
             .file(&mut fs, record_number)
             .map_err(|err| anyhow!("NTFS file record {record_number}: {err}"))?;
-        if !file.is_directory() {
+        // Deleted directories can retain the directory flag after $INDEX_ROOT
+        // is removed. Their remaining index blocks may already be reused, so
+        // only the deleted-record snapshot supplies children for these records.
+        if !file.is_directory() || !file.flags().contains(NtfsFileFlags::IN_USE) {
             return Ok(Vec::new());
         }
         let index = file
@@ -139,31 +142,15 @@ impl<'a> NtfsVolume<'a> {
 
     /// Directory listing that also attaches every cached deleted MFT record
     /// whose `$FILE_NAME` parent reference matches `record_number`. The
-    /// active listing is tolerant of read errors when `record_number` itself
-    /// is a deleted directory: in that case we still surface the deleted
-    /// children we have, even if the on-disk index is unreachable.
+    /// active listing skips indexes belonging to deleted directories. A
+    /// snapshot's child references do not prove that the parent is deleted;
+    /// unreadable records and damaged live directory indexes remain errors.
     pub fn children_with_deleted(
         &self,
         record_number: u64,
         snapshot: Option<&NtfsDeletedSnapshot>,
     ) -> Result<Vec<FsNode>> {
-        let snapshot_has_record = snapshot
-            .map(|snap| snap.by_parent.contains_key(&record_number))
-            .unwrap_or(false);
-        let mut out = match self.children(record_number) {
-            Ok(out) => out,
-            Err(err) => {
-                if snapshot_has_record {
-                    tracing::debug!(
-                        "NTFS active listing failed for record {record_number} \
-                         (likely a deleted directory): {err}"
-                    );
-                    Vec::new()
-                } else {
-                    return Err(err);
-                }
-            }
-        };
+        let mut out = self.children(record_number)?;
 
         if let Some(snap) = snapshot {
             let already: HashSet<u64> = out.iter().filter_map(|node| node.inode).collect();

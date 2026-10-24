@@ -4,7 +4,7 @@ import { computed, onScopeDispose, reactive, ref, watch } from 'vue';
 import { containerFsChildren as fsChildren } from './containerReads';
 import { notifyError } from '../../../composables/useToast';
 import { isHostDockerContainerRootId } from '../model/model';
-import { fileTreePathFor, visibleFileTreeRows, type TreeNodeData, type TreeStackFrame } from '../model/fileTree';
+import { fileTreePathFor, visibleFileTreeRows, type TreeNodeData, type TreeRow, type TreeStackFrame } from '../model/fileTree';
 import { useFileTreeMetadata } from './useFileTreeMetadata';
 import type { Ref } from 'vue';
 interface FileTreeOptions {
@@ -28,6 +28,9 @@ export function useFileTree(options: FileTreeOptions) {
   // Bumped whenever the image swaps so in-flight count probes know to drop
   // their results instead of writing into the new image's tree state.
   let loadGeneration = 0;
+  let visibleCountIds: string[] = [];
+  let countProbeGeneration: number | null = null;
+  const attemptedCounts = new Set<string>();
 
   const activeId = computed(() => {
     const last = options.pathStack()[options.pathStack().length - 1];
@@ -50,6 +53,27 @@ export function useFileTree(options: FileTreeOptions) {
   const visibleRows = computed(() => visibleFileTreeRows(nodes, childrenOf, emptySubtreeOf, rootIds.value, hideEmptyDirs.value));
   const pathFor = (id: string) => fileTreePathFor(nodes, id);
   const rootNodes = computed(() => rootIds.value);
+  // Only one viewport probe runs at a time. Scrolling replaces the queued
+  // targets, so offscreen directories do not accumulate background reads.
+  function hydrateRows(rows: TreeRow[]) {
+    visibleCountIds = rows.filter(row => row.node.kind === 'dir').map(row => row.node.id);
+    void probeVisibleCounts();
+  }
+  async function probeVisibleCounts() {
+    const generation = loadGeneration;
+    if (countProbeGeneration === generation || disposed) return;
+    countProbeGeneration = generation;
+    try {
+      while (current(generation)) {
+        const ids = visibleCountIds.filter(id => nodes.get(id)?.childCount == null && !attemptedCounts.has(id));
+        if (ids.length === 0) break;
+        for (const id of ids) attemptedCounts.add(id);
+        await fetchChildCounts(ids, generation);
+      }
+    } finally {
+      if (countProbeGeneration === generation) countProbeGeneration = null;
+    }
+  }
   const dockerFilesystemLoading = computed(() =>
     Array.from(nodes.values()).some(
       node => node.loading && isHostDockerContainerRootId(node.id),
@@ -64,6 +88,8 @@ export function useFileTree(options: FileTreeOptions) {
     childrenOf.clear();
     emptySubtreeOf.clear();
     rootIds.value = [];
+    visibleCountIds = [];
+    attemptedCounts.clear();
     if (!options.imageId()) return;
     try {
       const fetched = await fsChildren({
@@ -72,11 +98,9 @@ export function useFileTree(options: FileTreeOptions) {
       });
       if (!current(gen)) return;
       const ids: string[] = [];
-      const dirIds: string[] = [];
       for (const n of fetched) {
         if (n.deleted) continue;
         ids.push(n.id);
-        if (n.kind === 'dir') dirIds.push(n.id);
         nodes.set(n.id, {
           id: n.id,
           name: n.name,
@@ -90,9 +114,6 @@ export function useFileTree(options: FileTreeOptions) {
         });
       }
       rootIds.value = ids;
-      // Eagerly count children of every root-level partition so the user
-      // sees "(N)" next to each before they ever expand.
-      void fetchChildCounts(dirIds, gen);
       // Windows 镜像：异步还原各卷原始盘符并叠加到分区根节点。放在根列表提交
       // 之后——SYSTEM 配置单元可达数十 MiB，绝不能阻塞首屏。
       void fetchDriveLetters(gen);
@@ -167,13 +188,16 @@ export function useFileTree(options: FileTreeOptions) {
           driveLetter: null,
         });
       }
-      // Fire-and-forget background fetch of grandchild counts for each
-      // newly-visible subdir, so the next level's "(N)" badges show up
-      // without the user having to expand each one.
-      void fetchChildCounts(dirIds, gen);
+      parent.childCount = fetched.length;
       // 「隐藏空目录」开着时，先判定这批子目录再公布 childrenOf。这样展开节点
       // 时只出现最终结果，不会先闪过随后被过滤掉的空目录。
-      if (hideEmptyDirs.value) await fetchEmptySubtrees(dirIds, gen);
+      if (hideEmptyDirs.value) {
+        await fetchEmptySubtrees(dirIds, gen);
+        if (!current(gen)) return;
+        // Snapshot subtree results already decide visibility. Only unresolved
+        // directories need live counts to support the empty-directory filter.
+        void fetchChildCounts(dirIds.filter(id => !emptySubtreeOf.has(id)), gen);
+      }
       if (!current(gen)) return;
       childrenOf.set(parentId, ids);
       parent.loaded = true;
@@ -321,7 +345,7 @@ export function useFileTree(options: FileTreeOptions) {
   // 要等用户逐个展开时的后台查询才会把空目录隐去。子树判定（emptySubtreeOf）覆盖
   // 「里面全是空目录」的递归情形；childCount 作直接为空的兜底。回填后 `visibleRows`
   // 自动重算。已判定的目录不会触发任何额外 IPC。
-  watch(hideEmptyDirs, on => {
+  watch(hideEmptyDirs, async on => {
     if (!on) return;
     const gen = loadGeneration;
     // 不能从 visibleRows 取目标：开关刚打开时，未知目录已按过滤规则暂时隐藏，
@@ -329,14 +353,15 @@ export function useFileTree(options: FileTreeOptions) {
     const dirs = Array.from(nodes.values()).filter(
       node => node.parentId !== null && node.kind === 'dir',
     );
-    const needCount = dirs.filter(node => node.childCount == null).map(node => node.id);
     const needEmpty = dirs
       .filter(node => !isHostDockerContainerRootId(node.id) && !emptySubtreeOf.has(node.id))
       .map(node => node.id);
+    if (needEmpty.length > 0) await fetchEmptySubtrees(needEmpty, gen);
+    if (!current(gen) || !hideEmptyDirs.value) return;
+    const needCount = dirs.filter(node => node.childCount == null && !emptySubtreeOf.has(node.id)).map(node => node.id);
     if (needCount.length > 0) void fetchChildCounts(needCount, gen);
-    if (needEmpty.length > 0) void fetchEmptySubtrees(needEmpty, gen);
   });
 
   onScopeDispose(() => { disposed = true; loadGeneration++; navigationGeneration++; });
-  return { activeId, selectedLeafId, visibleRows, rootNodes, rootLoaded, dockerFilesystemLoading, onRowClick, toggleExpand };
+  return { activeId, selectedLeafId, visibleRows, rootNodes, rootLoaded, dockerFilesystemLoading, onRowClick, toggleExpand, hydrateRows };
 }
