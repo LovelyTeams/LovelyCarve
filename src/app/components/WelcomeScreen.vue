@@ -11,22 +11,32 @@
       <div class="start-cards">
         <section class="ui-card import-card" :class="{ 'is-dragging': dragging }" aria-labelledby="import-title" :aria-busy="busy">
           <div class="import-art" aria-hidden="true">
-            <svg class="art-disk" viewBox="0 0 240 128" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
-              <ellipse class="art-shadow" cx="120" cy="118" rx="76" ry="6" stroke="none" />
-              <path class="art-guides" d="M36 48V36h12M192 92v12h-12" />
-              <g transform="rotate(-8 110 66)">
-                <rect class="art-housing" x="56" y="18" width="108" height="96" rx="12" />
-                <circle class="art-platter" cx="102" cy="58" r="28" />
-                <circle class="art-track" cx="102" cy="58" r="20" />
-                <path d="M82 58a20 20 0 0 1 20-20" />
-                <circle class="art-hub" cx="102" cy="58" r="6" />
-                <path class="art-arm" d="m142 84-18-36-6 6 18 32" />
-                <circle class="art-hub" cx="140" cy="86" r="6" />
-                <path class="art-detail" d="M70 98h32m8 0h12M68 30h2m80 72h2" />
+            <svg class="art" viewBox="0 0 240 128" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+              <ellipse class="art-shadow" cx="120" cy="119" rx="86" ry="4" />
+              <rect class="art-tray-back" x="40" y="74" width="160" height="40" rx="10" />
+              <rect class="art-body" x="58" y="18" width="88" height="80" rx="10" />
+              <circle class="art-screw" cx="67" cy="27" r="1.5" />
+              <circle class="art-screw" cx="137" cy="27" r="1.5" />
+              <circle class="art-platter" cx="94" cy="54" r="24" />
+              <circle class="art-track" cx="94" cy="54" r="15" />
+              <path class="art-sector" d="M77.5 44.5A19 19 0 0 1 89 35.7" />
+              <circle class="art-screw" cx="94" cy="54" r="4" />
+              <path class="art-arm" d="M132 84 109 62" />
+              <circle class="art-pivot" cx="132" cy="84" r="5" />
+              <circle class="art-head" cx="108" cy="61" r="2.5" />
+              <path class="art-tray-front" d="M40 90H200V104A10 10 0 0 1 190 114H50A10 10 0 0 1 40 104Z" />
+              <rect class="art-tray-label" x="104" y="98" width="32" height="8" rx="4" />
+              <g class="art-file">
+                <path class="art-sheet" d="M158 14A6 6 0 0 1 164 8H180L192 20V52A6 6 0 0 1 186 58H164A6 6 0 0 1 158 52Z" />
+                <path class="art-fold" d="M180 8V16A4 4 0 0 0 184 20H192" />
+                <path class="art-tag" d="M165 21H172" />
+                <path class="art-lines" d="M165 32H185M165 39H185M165 46H177" />
               </g>
-              <path class="art-transfer" d="M184 82v8a10 10 0 0 1-10 10h-8" />
+              <g class="art-drop">
+                <path class="art-drop-trail" d="M175 66V79" />
+                <path d="M170 76 175 81 180 76" />
+              </g>
             </svg>
-            <FileDown :size="64" :stroke-width="0.75" class="art-image" />
           </div>
           <h2 id="import-title">{{ dragging ? tr("松开以添加检材") : tr("拖入文件") }}</h2>
           <p class="format-label">{{ tr("支持镜像与归档格式") }}</p>
@@ -81,7 +91,7 @@
 import { tr } from '../../composables/useLocale';
 
 import { nextTick, ref } from 'vue';
-import { ArrowRight, BriefcaseBusiness, ChevronRight, FileDown, FolderOpen, History, Loader2 } from 'lucide-vue-next';
+import { ArrowRight, BriefcaseBusiness, ChevronRight, FolderOpen, History, Loader2 } from 'lucide-vue-next';
 import BrandMark from '../../components/display/BrandMark.vue';
 import { confirm } from '../../composables/useConfirm';
 import type { RecentCase } from '../../features/cases/api';
@@ -140,19 +150,36 @@ async function handleClearRecent() {
 .import-card { display: flex; flex-direction: column; align-items: center; min-height: 444px; padding: 24px; border-radius: var(--radius-xl); transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast); }
 .import-card > * { flex-shrink: 0; }
 .import-card.is-dragging { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 4%, var(--surface-secondary)); box-shadow: var(--card-shadow-hover); }
-.import-art { position: relative; flex-shrink: 0; width: 240px; height: 128px; color: var(--primary-color); }
-.art-disk { display: block; width: 100%; height: 100%; }
-.art-shadow { fill: color-mix(in srgb, var(--primary-color) 8%, transparent); }
-.art-guides { stroke: color-mix(in srgb, var(--primary-color) 30%, var(--surface-secondary)); }
-.art-housing { fill: color-mix(in srgb, var(--primary-color) 8%, var(--surface-secondary)); }
-.art-platter { fill: var(--surface-secondary); }
-.art-track { stroke: color-mix(in srgb, var(--primary-color) 25%, var(--surface-secondary)); }
-.art-hub { fill: color-mix(in srgb, var(--primary-color) 16%, var(--surface-secondary)); }
-.art-arm { fill: var(--surface-secondary); }
-.art-detail { stroke: var(--text-secondary); }
-.art-transfer { stroke-dasharray: 3 5; }
-.art-image { position: absolute; left: 144px; top: 8px; fill: var(--surface-secondary); transition: translate var(--motion-normal) var(--ease-out); }
-.import-card.is-dragging .art-image { translate: 0 4px; }
+/* Line art: a drive resting in an evidence tray, with a file floating over the
+   tray's open side. Ink lines and plain surfaces; clay only marks what moves
+   (the read sector, the head, the file's tag and the drop arrow). While files
+   are dragged over the card, the file settles into the tray. */
+.import-art {
+  --art-ink: color-mix(in srgb, var(--text-primary) 70%, transparent);
+  --art-line: color-mix(in srgb, var(--text-secondary) 45%, transparent);
+  flex-shrink: 0;
+  width: 240px;
+  height: 128px;
+}
+.art { display: block; width: 100%; height: 100%; overflow: visible; }
+.art-shadow { fill: color-mix(in srgb, var(--text-primary) 6%, transparent); }
+.art-tray-back { fill: var(--surface-tertiary); stroke: var(--art-line); transition: fill var(--motion-fast) var(--ease-swift), stroke var(--motion-fast) var(--ease-swift); }
+.art-body, .art-sheet, .art-pivot, .art-tray-front { fill: var(--surface-secondary); stroke: var(--art-ink); }
+.art-platter { fill: var(--surface-tertiary); stroke: var(--art-ink); }
+.art-track, .art-lines { stroke: var(--art-line); }
+.art-tray-label { fill: var(--surface-tertiary); stroke: var(--art-line); }
+.art-screw { fill: var(--art-ink); }
+.art-arm { stroke: var(--art-ink); stroke-width: 3; }
+.art-fold { stroke: var(--art-ink); }
+.art-sector, .art-tag { stroke: var(--primary-color); stroke-width: 2.5; }
+.art-head { fill: var(--primary-color); }
+.art-drop { stroke: var(--primary-color); transition: opacity var(--motion-fast) var(--ease-swift); }
+.art-drop-trail { stroke-dasharray: 2 4; }
+.art-file { transition: translate var(--motion-normal) var(--ease-settle); }
+.import-card.is-dragging .art-file { translate: 0 16px; }
+.import-card.is-dragging .art-drop { opacity: 0; }
+.import-card.is-dragging .art-tray-back { fill: var(--primary-soft); stroke: var(--primary-color); }
+@keyframes art-spin { to { rotate: 360deg; } }
 h2 { font-family: var(--font-ui), sans-serif; color: var(--text-primary); }
 .import-card h2 { margin: 12px 0; font-size: 16px; font-weight: 600; }
 .format-label { color: var(--text-secondary); font-size: 12px; margin: 0 0 8px; }
@@ -189,8 +216,9 @@ h2 { font-family: var(--font-ui), sans-serif; color: var(--text-primary); }
 :root[data-motion='full'] .recent-card { --ui-rise-distance: 16px; animation: ui-rise-in var(--motion-slow) var(--ease-out) 140ms backwards; }
 :root[data-motion='full'] .recent-card { animation-delay: 220ms; }
 :root[data-motion='full'] .recent-list { --ui-stagger-base: 320ms; --ui-rise-distance: 8px; }
-:root[data-motion='full'] .art-image { animation: ui-float 2.6s ease-in-out 600ms infinite; }
-:root[data-motion='full'] .import-card.is-dragging .art-image { animation: none; }
+:root[data-motion='full'] .art-file { animation: ui-float 2.6s var(--ease-in-out) 600ms infinite; }
+:root[data-motion='full'] .art-sector { transform-box: view-box; transform-origin: 94px 54px; animation: art-spin 8s linear infinite; }
+:root[data-motion='full'] .import-card.is-dragging .art-file { animation: none; }
 @media (max-width: 800px) {
   .start-page { padding: 24px 20px; }
 }

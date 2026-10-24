@@ -57,14 +57,22 @@ describe('theme switch', () => {
   it('applies at once with motion off, without a control, or for the current theme', async () => {
     localStorage.setItem('lovelycarve-ui-animations', '"off"');
     const theme = await loadTheme();
-    theme.setTheme('pink', controlAt(10, 10));
-    expect(document.documentElement.dataset.theme).toBe('pink');
+    theme.setTheme('dark', controlAt(10, 10));
+    expect(document.documentElement.dataset.theme).toBe('dark');
     const { motionPreference } = (await import('./useUiPreferences')).useUiPreferences();
     motionPreference.value = 'system';
-    theme.setTheme('dark');
-    expect(document.documentElement.dataset.theme).toBe('dark');
-    theme.setTheme('dark', controlAt(10, 10));
+    theme.setTheme('light');
+    expect(document.documentElement.dataset.theme).toBe('light');
+    theme.setTheme('light', controlAt(10, 10));
     expect(startViewTransition).not.toHaveBeenCalled();
-    expect(localStorage.getItem('lovelycarve-theme')).toBe('dark');
+    expect(localStorage.getItem('lovelycarve-theme')).toBe('light');
+  });
+
+  it('follows the system appearance when the stored theme is not one this build ships', async () => {
+    localStorage.setItem('lovelycarve-theme', 'pink');
+    vi.stubGlobal('matchMedia', vi.fn((query: string) => Object.assign(new EventTarget(), { matches: query === '(prefers-color-scheme: dark)' })));
+    const theme = await loadTheme();
+    expect(theme.currentTheme.value).toBe('dark');
+    expect(document.documentElement.dataset.theme).toBe('dark');
   });
 });

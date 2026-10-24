@@ -165,7 +165,7 @@ onPreviewBroadcast((msg) => {
 function onStorage(e: StorageEvent) {
   if (e.key !== 'lovelycarve-theme') return;
   const next = e.newValue;
-  if (next === 'light' || next === 'dark' || next === 'pink') {
+  if (next === 'light' || next === 'dark') {
     setTheme(next as ThemeName);
   }
 }

@@ -110,7 +110,7 @@ import { useLocale, DEFAULT_LOCALE, type Locale } from '../../../composables/use
 import { vContentMotion } from '../../../composables/uiMotionDirectives';
 import { computed, markRaw, ref, useId, watch, type Component } from 'vue';
 import {
-  Flower2, FolderOpen, HardDrive, Info, Loader2, Moon, Palette, Puzzle, Settings, Sun, Terminal, X,
+  FolderOpen, HardDrive, Info, Loader2, Moon, Palette, Puzzle, Settings, Sun, Terminal, X,
 } from 'lucide-vue-next';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useUiPreferences, type MotionPreference } from '../../../composables/useUiPreferences';
@@ -175,8 +175,8 @@ const directoryError = ref('');
 const { motionPreference, mountTarget, mountFolderRoot, autoMountCaseEvidence } = useUiPreferences();
 const { systemReducedMotion } = useUiMotion();
 const { currentTheme, setTheme, themes } = useTheme();
-const themeIcons: Record<ThemeName, Component> = { light: Sun, dark: Moon, pink: Flower2 };
-const themeNames: Record<ThemeName, string> = { get light() { return tr("浅色"); }, get dark() { return tr("深色"); }, get pink() { return tr("樱花"); } };
+const themeIcons: Record<ThemeName, Component> = { light: Sun, dark: Moon };
+const themeNames: Record<ThemeName, string> = { get light() { return tr("浅色"); }, get dark() { return tr("深色"); } };
 
 const motionOptions: { value: MotionPreference; label: string }[] = [
   { value: 'system', get label() { return tr("跟随系统"); } },

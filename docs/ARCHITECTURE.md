@@ -47,7 +47,7 @@ src/
 ├── lib/models/             文件定位等跨功能纯契约
 ├── utils/                  格式化、安全 HTML、CSV 等共享纯函数
 ├── i18n/                   中英文词典与纯翻译函数；语言偏好由 composables/useLocale.ts 持有
-├── styles/themes.css       light/dark/pink 三套主题 token
+├── styles/themes.css       light/dark 两套主题 token
 ├── styles/ui.css           全局共享 UI 基元：按钮、输入框、分段/标签切换、徽章、卡片、弹窗壳、菜单、空态、面板标题
 └── styles/motion.css       动效层：共享关键帧、基元入场、ui-stagger 依次入场、主题圆形展开
 ```
@@ -1116,7 +1116,7 @@ CLI 的 `mounts create/list/delete/share/unshare` 调用同一组命令，进程
 
 ### 界面动画
 
-标题栏的「设置中心」默认进入「界面」页，另有「插件」「日志」「关于」；界面页集中提供浅色／深色／樱花主题、动画与挂载偏好。
+标题栏的「设置中心」默认进入「界面」页，另有「插件」「日志」「关于」；界面页集中提供浅色／深色主题、动画与挂载偏好。
 「设置 → 界面 → 界面动画」提供跟随系统（默认）／开启／关闭三档，
 均通过 `useUiPreferences` 的 `motionPreference` 持久化（沿用 `lovelycarve-ui-animations` 键，旧版布尔值
 `false` 读作关闭、`true` 读作跟随系统）。快捷开关按最少强制原则切换：打开时只有在系统要求减少动态效果时才写入「开启」。

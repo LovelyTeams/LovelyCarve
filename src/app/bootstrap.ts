@@ -6,8 +6,8 @@ import { initLocale } from '../composables/useLocale';
 
 /** Apply window preferences before either root mounts. */
 export function bootstrapWindow() {
-  // Apply the persisted (or system) theme before anything renders, so dark and
-  // pink users do not see the light defaults fade in on every launch.
+  // Apply the persisted (or system) theme before anything renders, so dark-theme
+  // users do not see the light defaults fade in on every launch.
   useTheme().initTheme();
 
   initUiMotion();

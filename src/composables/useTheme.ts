@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import { motionTiming, useUiMotion } from './useUiMotion';
 
-export const themes = ['light', 'dark', 'pink'] as const;
+export const themes = ['light', 'dark'] as const;
 export type ThemeName = typeof themes[number];
 
 const THEME_KEY = 'lovelycarve-theme';

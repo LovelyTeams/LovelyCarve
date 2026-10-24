@@ -32,7 +32,7 @@
     --text-secondary: #65635e;
     --accent-color: #a6482a;
     /* 文件全显(deepsearch)激活态:面包屑标记与两态按钮的高亮色。 */
-    --showall-accent: #6a52f6;
+    --showall-accent: #6a4fc0;
     --border-color: #e6e5df;
     --titlebar-bg: #f5f4f0;
     --titlebar-text: #1f1e1c;
@@ -63,9 +63,9 @@
     --danger-solid-hover: #b91c1c;
     --gradient-accent: linear-gradient(135deg, #d97757, #c6613f);
     /* Statusbar tokens: a clay strip deep enough that its --statusbar-fg
-       labels keep 4.5:1 along the whole bar. Pink keeps its pastel gradient
-       with plum labels; the dark theme uses a neutral bar because a bright
-       strip on the near-black canvas reads as a glow, not a status bar. */
+       labels keep 4.5:1 along the whole bar; the dark theme uses a neutral
+       bar because a bright strip on the near-black canvas reads as a glow,
+       not a status bar. */
     --statusbar-bg: linear-gradient(135deg, #b5532f, #a0472a);
     --statusbar-fg: #ffffff;
     --statusbar-border-top: transparent;
@@ -116,8 +116,9 @@
     --brand-spark-core: #f59e0b;
     --brand-spark-accent: #fb7185;
     --brand-spark-neutral: #a5a49a;
-    --brand-wordmark-gradient: linear-gradient(135deg, #1f1e1c 0%, #f59e0b 58%, #fb7185 100%);
-    --brand-dot-color: #f59e0b;
+    /* The wordmark runs from ink into clay and ends on the brand dot. */
+    --brand-wordmark-gradient: linear-gradient(135deg, #1f1e1c 0%, #a6482a 62%, #d97757 100%);
+    --brand-dot-color: #d97757;
 
     /* Sidebar tokens: the frame colour, neutral hover, clay selection tint. */
     --sidebar-bg: #f5f4f0;
@@ -125,12 +126,12 @@
     --sidebar-active-bg: rgba(201, 100, 66, 0.09);
 
     /* ── Severity tokens (theme-aware) ──
-       Per-severity foreground / background / border triplet, used by
-       phishing-anomaly chips, calendar-hijack badges, etc. The light
-       theme uses *darker, more saturated* foregrounds because the
-       surface is near-white — pastel reds (#fca5a5) that look great
-       on dark backgrounds wash out to invisible on white. The dark
-       theme keeps the pastel set unchanged below. */
+       Per-severity foreground / background / border set for badges,
+       alerts and status rows. The hues keep clear of the clay accent: warn
+       is an ochre gold (hue ~40°, the accent sits at ~15°), info a calm
+       blue, success a natural green, critical a plain red. The light theme
+       uses darker foregrounds that hold 4.5:1 on white, the frame and their
+       own tints; the dark theme uses the pastel set below. */
     --sev-critical-fg: #b91c1c;
     --sev-critical-bg: rgba(239, 68, 68, 0.10);
     --sev-critical-bg-hover: rgba(239, 68, 68, 0.18);
@@ -139,48 +140,50 @@
     --sev-critical-tag-fg: #991b1b;
     --sev-critical-tag-bg: rgba(239, 68, 68, 0.18);
 
-    --sev-warn-fg: #b45309;
-    --sev-warn-bg: rgba(245, 158, 11, 0.10);
-    --sev-warn-bg-hover: rgba(245, 158, 11, 0.18);
-    --sev-warn-border: rgba(245, 158, 11, 0.45);
-    --sev-warn-tag-fg: #92400e;
-    --sev-warn-tag-bg: rgba(245, 158, 11, 0.18);
+    --sev-warn-fg: #835800;
+    --sev-warn-bg: rgba(212, 167, 44, 0.12);
+    --sev-warn-bg-hover: rgba(212, 167, 44, 0.20);
+    --sev-warn-border: rgba(191, 135, 0, 0.45);
+    --sev-warn-tag-fg: #6f4b00;
+    --sev-warn-tag-bg: rgba(212, 167, 44, 0.22);
 
-    --sev-success-fg: #15803d;
-    --sev-success-bg: rgba(34, 197, 94, 0.10);
-    --sev-success-bg-hover: rgba(34, 197, 94, 0.18);
-    --sev-success-border: rgba(34, 197, 94, 0.45);
-    --sev-success-tag-fg: #14532d;
-    --sev-success-tag-bg: rgba(34, 197, 94, 0.18);
+    --sev-success-fg: #16722f;
+    --sev-success-bg: rgba(31, 136, 61, 0.10);
+    --sev-success-bg-hover: rgba(31, 136, 61, 0.17);
+    --sev-success-border: rgba(31, 136, 61, 0.40);
+    --sev-success-tag-fg: #116329;
+    --sev-success-tag-bg: rgba(31, 136, 61, 0.16);
 
-    --sev-info-fg: #4338ca;
-    --sev-info-bg: rgba(99, 102, 241, 0.08);
-    --sev-info-bg-hover: rgba(99, 102, 241, 0.16);
-    --sev-info-border: rgba(99, 102, 241, 0.45);
-    --sev-info-selected-bg: rgba(99, 102, 241, 0.20);
-    --sev-info-selected-fg: #312e81;
-    --sev-info-selected-border: #4f46e5;
-    --sev-info-tag-fg: #3730a3;
-    --sev-info-tag-bg: rgba(99, 102, 241, 0.18);
+    --sev-info-fg: #1f5faa;
+    --sev-info-bg: rgba(42, 120, 214, 0.08);
+    --sev-info-bg-hover: rgba(42, 120, 214, 0.15);
+    --sev-info-border: rgba(42, 120, 214, 0.40);
+    --sev-info-selected-bg: rgba(42, 120, 214, 0.16);
+    --sev-info-selected-fg: #174a8c;
+    --sev-info-selected-border: #2a78d6;
+    --sev-info-tag-fg: #1a4f91;
+    --sev-info-tag-bg: rgba(42, 120, 214, 0.14);
 
-    /* ReFS 文件快照行染色（琥珀/金系） */
-    --sev-snapshot-bg: rgba(245, 158, 11, 0.12);
-    --sev-snapshot-bg-hover: rgba(245, 158, 11, 0.22);
-    --sev-snapshot-border: rgba(217, 119, 6, 0.65);
-    --sev-snapshot-tag-fg: #b45309;
-    --sev-snapshot-tag-bg: rgba(245, 158, 11, 0.22);
+    /* ReFS 文件快照行染色（与警告同一赭金色系） */
+    --sev-snapshot-bg: rgba(212, 167, 44, 0.14);
+    --sev-snapshot-bg-hover: rgba(212, 167, 44, 0.24);
+    --sev-snapshot-border: rgba(191, 135, 0, 0.65);
+    --sev-snapshot-tag-fg: #704c00;
+    --sev-snapshot-tag-bg: rgba(212, 167, 44, 0.24);
 
     /* Subtle on-surface tints so chip count badges still read on white */
     --chip-count-bg: rgba(31, 30, 28, 0.07);
 
     /* ── Chart / disk-layout categorical palette (cycled by index) ──
-       Saturated mid-tones for white surfaces. */
-    --chart-1: #3b82f6;
-    --chart-2: #10b981;
-    --chart-3: #f59e0b;
-    --chart-4: #8b5cf6;
-    --chart-5: #ec4899;
-    --chart-6: #06b6d4;
+       Muted, slightly earthy mid-tones that sit with the warm neutrals:
+       blue, sage, ochre, violet, clay and teal, ordered so neighbours in a
+       partition bar always differ in hue. */
+    --chart-1: #3f7fd0;
+    --chart-2: #4f9a6a;
+    --chart-3: #d4a032;
+    --chart-4: #8a6bc8;
+    --chart-5: #d97757;
+    --chart-6: #3a9c9a;
 }
 
 /* ── Dark ──
@@ -199,7 +202,7 @@
     --text-primary: #f1f0ec;
     --text-secondary: #a7a59f;
     --accent-color: #e28c6c;
-    --showall-accent: #a78bfa;
+    --showall-accent: #b6a2f0;
     --border-color: #2d2d2b;
     --titlebar-bg: #0f0f0f;
     --titlebar-text: #f1f0ec;
@@ -266,8 +269,8 @@
     --brand-spark-core: #f59e0b;
     --brand-spark-accent: #fb7185;
     --brand-spark-neutral: #a5a49a;
-    --brand-wordmark-gradient: linear-gradient(135deg, #f1f0ec 0%, #fbbf24 54%, #fb7185 100%);
-    --brand-dot-color: #fbbf24;
+    --brand-wordmark-gradient: linear-gradient(135deg, #f1f0ec 0%, #e28c6c 60%, #d97757 100%);
+    --brand-dot-color: #e28c6c;
 
     /* Sidebar tokens */
     --sidebar-bg: #0f0f0f;
@@ -283,193 +286,48 @@
     --sev-critical-tag-fg: #fee2e2;
     --sev-critical-tag-bg: rgba(239, 68, 68, 0.30);
 
-    --sev-warn-fg: #fcd34d;
-    --sev-warn-bg: rgba(245, 158, 11, 0.08);
-    --sev-warn-bg-hover: rgba(245, 158, 11, 0.18);
-    --sev-warn-border: rgba(245, 158, 11, 0.45);
-    --sev-warn-tag-fg: #fef3c7;
-    --sev-warn-tag-bg: rgba(245, 158, 11, 0.30);
+    --sev-warn-fg: #f0c25a;
+    --sev-warn-bg: rgba(212, 167, 44, 0.10);
+    --sev-warn-bg-hover: rgba(212, 167, 44, 0.18);
+    --sev-warn-border: rgba(212, 167, 44, 0.45);
+    --sev-warn-tag-fg: #fbe8b5;
+    --sev-warn-tag-bg: rgba(212, 167, 44, 0.26);
 
-    --sev-success-fg: #86efac;
-    --sev-success-bg: rgba(34, 197, 94, 0.08);
-    --sev-success-bg-hover: rgba(34, 197, 94, 0.18);
-    --sev-success-border: rgba(34, 197, 94, 0.45);
-    --sev-success-tag-fg: #dcfce7;
-    --sev-success-tag-bg: rgba(34, 197, 94, 0.30);
+    --sev-success-fg: #8bd6a0;
+    --sev-success-bg: rgba(52, 168, 83, 0.10);
+    --sev-success-bg-hover: rgba(52, 168, 83, 0.18);
+    --sev-success-border: rgba(52, 168, 83, 0.45);
+    --sev-success-tag-fg: #d6f5df;
+    --sev-success-tag-bg: rgba(52, 168, 83, 0.26);
 
-    --sev-info-fg: #c7d2fe;
-    --sev-info-bg: rgba(99, 102, 241, 0.06);
-    --sev-info-bg-hover: rgba(99, 102, 241, 0.18);
-    --sev-info-border: rgba(99, 102, 241, 0.45);
-    --sev-info-selected-bg: rgba(99, 102, 241, 0.30);
-    --sev-info-selected-fg: #e0e7ff;
-    --sev-info-selected-border: #818cf8;
-    --sev-info-tag-fg: #e0e7ff;
-    --sev-info-tag-bg: rgba(99, 102, 241, 0.30);
+    --sev-info-fg: #93c1f5;
+    --sev-info-bg: rgba(66, 140, 230, 0.10);
+    --sev-info-bg-hover: rgba(66, 140, 230, 0.18);
+    --sev-info-border: rgba(66, 140, 230, 0.45);
+    --sev-info-selected-bg: rgba(66, 140, 230, 0.24);
+    --sev-info-selected-fg: #dbeafe;
+    --sev-info-selected-border: #6aa6ef;
+    --sev-info-tag-fg: #dbeafe;
+    --sev-info-tag-bg: rgba(66, 140, 230, 0.26);
 
-    /* ReFS 文件快照行染色（琥珀/金系） */
-    --sev-snapshot-bg: rgba(245, 158, 11, 0.12);
-    --sev-snapshot-bg-hover: rgba(245, 158, 11, 0.22);
-    --sev-snapshot-border: rgba(251, 191, 36, 0.60);
-    --sev-snapshot-tag-fg: #fcd34d;
-    --sev-snapshot-tag-bg: rgba(245, 158, 11, 0.26);
+    /* ReFS 文件快照行染色（与警告同一赭金色系） */
+    --sev-snapshot-bg: rgba(212, 167, 44, 0.12);
+    --sev-snapshot-bg-hover: rgba(212, 167, 44, 0.22);
+    --sev-snapshot-border: rgba(226, 184, 72, 0.60);
+    --sev-snapshot-tag-fg: #f0c25a;
+    --sev-snapshot-tag-bg: rgba(212, 167, 44, 0.26);
 
     --chip-count-bg: rgba(255, 255, 255, 0.09);
 
     /* ── Chart / disk-layout categorical palette (cycled by index) ──
-       One step brighter (Tailwind 400-ish) so fills stay vivid on the
+       The same six hues one step lighter, so fills stay clear on the
        near-black canvas without glowing. */
-    --chart-1: #4a9eff;
-    --chart-2: #34d399;
-    --chart-3: #fbbf24;
-    --chart-4: #a78bfa;
-    --chart-5: #f472b6;
-    --chart-6: #22d3ee;
-}
-
-/* ── Pink ── */
-:root[data-theme='pink'] {
-    color-scheme: light;
-    --font-ui: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
-        'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    --font-brand: 'Quicksand';
-    --font-mono: 'Cascadia Mono', 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
-    --bg-primary: #fef7fb;
-    --bg-secondary: #ffffff;
-    --bg-activity-bar: #fdf0f5;
-    --text-primary: #4a2039;
-    /* Deep enough for 4.5:1 on the blush sidebar (#fdf0f5); the old #9d7088
-       stopped at 3.7:1 there. */
-    --text-secondary: #8a5c76;
-    --accent-color: #ad3f65;
-    --showall-accent: #7545bd;
-    --border-color: #f3dce6;
-    --titlebar-bg: #fdf0f5;
-    --titlebar-text: #4a2039;
-    --hover-bg: rgba(232, 132, 159, 0.10);
-    --active-bg: rgba(232, 132, 159, 0.16);
-    --shadow-sm: 0 1px 3px rgba(210, 140, 165, 0.12);
-
-    /* Extended design tokens */
-    --surface-primary: #fef7fb;
-    --surface-secondary: #ffffff;
-    --surface-tertiary: #fdf0f5;
-    --surface-raised: #ffffff;
-    /* Text / icon / border accent: the soft rose (#e8849f, still the
-       gradient, glow, tint and chart colour) read at 2.5:1 as text, so the
-       accent darkens to a raspberry that holds 4.5:1 on every pink surface. */
-    --primary-color: #ad3f65;
-    --primary-glow: rgba(232, 132, 159, 0.18);
-    --primary-soft: rgba(232, 132, 159, 0.12);
-    --accent-contrast: #ffffff;
-    /* Deep rose keeps white labels readable; the soft #e8849f stays the brand
-       tone of gradients, glows and tints. */
-    --primary-solid: #c24d74;
-    --primary-solid-hover: #ad3f65;
-    --danger-solid: #dc2626;
-    --danger-solid-hover: #b91c1c;
-    --gradient-accent: linear-gradient(135deg, #e8849f, #dba0b4);
-    /* Pastel bar with plum labels (5.3:1+) — white on it was 2.2:1. */
-    --statusbar-bg: var(--gradient-accent);
-    --statusbar-fg: #4a2039;
-    --statusbar-border-top: transparent;
-    --card-shadow: 0 1px 3px rgba(210, 140, 165, 0.08), 0 1px 2px rgba(210, 140, 165, 0.05);
-    --card-shadow-hover: 0 8px 24px rgba(210, 140, 165, 0.14), 0 2px 8px rgba(210, 140, 165, 0.07);
-    --modal-backdrop: rgba(74, 32, 57, 0.38);
-    --modal-shadow: 0 20px 60px rgba(210, 140, 165, 0.24);
-    --iframe-bg: #ffffff;
-    --glass-bg: rgba(254, 247, 251, 0.85);
-    --glass-border: rgba(243, 220, 230, 0.5);
-    --glass-blur: 16px;
-    --radius-sm: 4px;
-    --radius-md: 8px;
-    --radius-lg: 12px;
-    --radius-xl: 16px;
-    --transition-fast: 0.15s ease;
-    --transition-normal: 0.25s ease;
-    --motion-press: 70ms;
-    --motion-fast: 150ms;
-    --motion-normal: 250ms;
-    --motion-slow: 400ms;
-    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-    --ease-in: cubic-bezier(0.4, 0, 1, 1);
-    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-    --ease-squish: cubic-bezier(0.22, 1, 0.36, 1);
-    --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
-    --ease-swift: cubic-bezier(0.16, 1, 0.3, 1);
-    --ease-snap: cubic-bezier(0.32, 0.72, 0, 1);
-    --ease-expand: cubic-bezier(0.19, 1, 0.22, 1);
-    --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
-    --brand-glow-amber: #fff1d6;
-    --brand-moon-fill: #fff1f5;
-    --brand-moon-shadow: rgba(232, 132, 159, 0.24);
-    --brand-moon-stroke: #efc9d8;
-    --brand-moon-blush: rgba(255, 255, 255, 0.72);
-    --brand-spark-soft: #fde68a;
-    --brand-spark-soft-inner: #fff2bf;
-    --brand-spark-core: #f59e0b;
-    --brand-spark-accent: #e8849f;
-    --brand-spark-neutral: #b08998;
-    --brand-wordmark-gradient: linear-gradient(135deg, #4a2039 0%, #f59e0b 48%, #e8849f 100%);
-    --brand-dot-color: #e8849f;
-
-    /* Sidebar tokens */
-    --sidebar-bg: #fdf0f5;
-    --sidebar-hover-bg: rgba(232, 132, 159, 0.08);
-    --sidebar-active-bg: rgba(232, 132, 159, 0.12);
-
-    /* ── Severity tokens (pink theme — light surface, darker fg) ── */
-    --sev-critical-fg: #b91c1c;
-    --sev-critical-bg: rgba(239, 68, 68, 0.10);
-    --sev-critical-bg-hover: rgba(239, 68, 68, 0.18);
-    --sev-critical-border: rgba(239, 68, 68, 0.45);
-    --sev-critical-border-strong: #dc2626;
-    --sev-critical-tag-fg: #991b1b;
-    --sev-critical-tag-bg: rgba(239, 68, 68, 0.18);
-
-    --sev-warn-fg: #b45309;
-    --sev-warn-bg: rgba(245, 158, 11, 0.10);
-    --sev-warn-bg-hover: rgba(245, 158, 11, 0.18);
-    --sev-warn-border: rgba(245, 158, 11, 0.45);
-    --sev-warn-tag-fg: #92400e;
-    --sev-warn-tag-bg: rgba(245, 158, 11, 0.18);
-
-    --sev-success-fg: #15803d;
-    --sev-success-bg: rgba(34, 197, 94, 0.10);
-    --sev-success-bg-hover: rgba(34, 197, 94, 0.18);
-    --sev-success-border: rgba(34, 197, 94, 0.45);
-    --sev-success-tag-fg: #14532d;
-    --sev-success-tag-bg: rgba(34, 197, 94, 0.18);
-
-    --sev-info-fg: #be185d;            /* keep info in the pink family */
-    --sev-info-bg: rgba(232, 132, 159, 0.10);
-    --sev-info-bg-hover: rgba(232, 132, 159, 0.20);
-    --sev-info-border: rgba(232, 132, 159, 0.50);
-    --sev-info-selected-bg: rgba(232, 132, 159, 0.25);
-    --sev-info-selected-fg: #831843;
-    --sev-info-selected-border: #db2777;
-    --sev-info-tag-fg: #9d174d;
-    --sev-info-tag-bg: rgba(232, 132, 159, 0.18);
-
-    /* ReFS 文件快照行染色（琥珀/金系，与粉底反差醒目） */
-    --sev-snapshot-bg: rgba(245, 158, 11, 0.14);
-    --sev-snapshot-bg-hover: rgba(245, 158, 11, 0.24);
-    --sev-snapshot-border: rgba(217, 119, 6, 0.70);
-    --sev-snapshot-tag-fg: #b45309;
-    --sev-snapshot-tag-bg: rgba(245, 158, 11, 0.24);
-
-    --chip-count-bg: rgba(74, 32, 57, 0.10);
-
-    /* ── Chart / disk-layout categorical palette (cycled by index) ──
-       Warm rose-family hues (rose / orchid / apricot / deep pink /
-       periwinkle) with one dusty teal as counterpoint, so adjacent
-       partitions stay distinguishable while the bar reads pink-first. */
-    --chart-1: #e8849f;
-    --chart-2: #c084fc;
-    --chart-3: #f2a35c;
-    --chart-4: #db2777;
-    --chart-5: #9d8df1;
-    --chart-6: #5fb8a5;
+    --chart-1: #6ea6ea;
+    --chart-2: #74bf8c;
+    --chart-3: #e3b65a;
+    --chart-4: #a990e0;
+    --chart-5: #e8906d;
+    --chart-6: #4fc0bc;
 }
 
 /* ── Springs ──
@@ -482,8 +340,7 @@
    that uses it). */
 @supports (transition-timing-function: linear(0, 1)) {
     :root,
-    :root[data-theme='dark'],
-    :root[data-theme='pink'] {
+    :root[data-theme='dark'] {
         --ease-squish: linear(0, 0.2459, 0.6526, 0.9468, 1.0764, 1.0915, 1.0585, 1.0219, 0.9993, 0.9914, 0.9921, 0.9957, 0.9988, 1.0004, 1);
         --ease-settle: linear(0, 0.0465, 0.1551, 0.2909, 0.4311, 0.5618, 0.6759, 0.7705, 0.8456, 0.9028, 0.9447, 0.9739, 0.9933,
             1.0053, 1.0119, 1.0147, 1.0151, 1.014, 1.0122, 1.0101, 1.008, 1.0061, 1.0045, 1.0031, 1);

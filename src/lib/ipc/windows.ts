@@ -41,10 +41,10 @@ function sanitizeLabel(raw: string): string {
 }
 
 // Native background painted before the pop-out's first frame. Match the
-// active theme's page background so dark / pink users don't get a light flash.
+// active theme's page background so dark-theme users don't get a light flash.
 function themedWindowBackground(): string {
   const color = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim();
-  return /^#[0-9a-f]{6}$/i.test(color) ? color : '#f8fafc';
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : '#fcfcfb';
 }
 
 /**

@@ -49,7 +49,7 @@
 }
 
 /* 描边画在行内侧（offset -1px），在三套主题下对画布都不低于 3:1；只靠浅底时，
-   选中行与悬停行在 light / pink 下几乎分不开。快照等取证状态行选中时
+   选中行与悬停行在浅色主题下几乎分不开。快照等取证状态行选中时
    可保留自己的行底，只靠描边表示选中。键盘聚焦（下一条规则）换成实线主题色。 */
 .data-table tbody tr:is(.selected, .active, [data-selected], [aria-selected='true']) {
   background: var(--sidebar-active-bg);

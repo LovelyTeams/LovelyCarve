@@ -134,8 +134,7 @@ onBeforeUnmount(() => {
 
 const viewerOptions = computed<FileViewerOptions>(() => ({
   i18n: { locale: locale.value === 'en' ? 'en-US' : 'zh-CN' },
-  // pink 是浅底主题（themes.css），库内按 light 渲染；dark 才走库的深色。
-  theme: currentTheme.value === 'dark' ? 'dark' : 'light',
+  theme: currentTheme.value,
   locale: locale.value === 'en' ? 'en-US' : 'zh-CN',
   // 默认（auto）即 Shadow DOM：库的样式不渗入 app，app 的 reset 也伤不到库内 UI。
   styleIsolation: 'auto',
