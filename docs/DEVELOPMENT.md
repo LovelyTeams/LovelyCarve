@@ -15,7 +15,7 @@ just dev
 | --- | --- |
 | Rust | stable，最低版本以 `src-tauri/Cargo.toml` 的 `rust-version` 为准，当前为 1.99 |
 | Bun | 版本以 `package.json` 的 `packageManager` 为准 |
-| Windows 桌面 | PowerShell 7、Visual Studio C++ x64 工具、Windows SDK、OpenSSL 开发文件、WebView2 |
+| Windows 桌面 | PowerShell 7、Visual Studio C++ x64 工具与「适用于 Windows 的 C++ Clang 工具」（含 `lld-link`）、Windows SDK、OpenSSL 开发文件、WebView2 |
 | macOS | Xcode Command Line Tools；桌面检查另需相应的 Tauri 系统依赖 |
 | Linux | 编译工具链、WebKitGTK、OpenSSL 等 Tauri 系统依赖 |
 | CLI smoke 测试 | Python 3 |
@@ -49,7 +49,18 @@ just dev
 | `opencv_contrib` | `OPENCV_CONTRIB` | 仓库下的 `opencv_contrib-4.x\opencv_contrib-4.x\modules` |
 | `opencv_install` | `OPENCV_INSTALL` | 与 `opencv_dir` 相同 |
 
-轻量的 Rust 检查只配置 OpenSSL；桌面与发布 CLI 构建会初始化 VS x64 环境并使用 MSVC 默认链接器。只有 `*-full` 入口配置 OpenCV 与 libclang，需要另装 Visual Studio 的 LLVM 工具组件。Cargo 并发由工具链默认值决定，内存不足时可通过 `CARGO_BUILD_JOBS=1` 或 `2` 限制。
+宿主 Rust 检查、桌面、CLI 与插件配方会初始化 VS x64 环境，默认使用所选 Visual Studio 中的 `lld-link.exe`，Cargo 同时编译 1 个任务，链接器使用 1 个线程，release 使用 Thin LTO。只有 `*-full` 入口额外配置 OpenCV 与 libclang。独立 vendored 读取器的配方沿用 Cargo 自身配置。
+
+以下 Cargo 环境变量可覆盖默认值；脚本不会覆盖调用者已设置的值，也不会向非 LLD 链接器添加 `/threads:1`：
+
+| 环境变量 | Windows 配方默认值 |
+| --- | --- |
+| `CARGO_BUILD_JOBS` | `1` |
+| `CARGO_PROFILE_RELEASE_LTO` | `thin` |
+| `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER` | 所选 VS 的 `VC/Tools/Llvm/x64/bin/lld-link.exe`，自动解析完整路径 |
+| `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS` | 使用 LLD 时为 `-C link-arg=/threads:1` |
+
+例如可设置 `CARGO_BUILD_JOBS=2` 调整编译并发，或设置 `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=link.exe` 切回 MSVC 链接器。`RUSTFLAGS` / `CARGO_ENCODED_RUSTFLAGS` 的优先级沿用 Cargo 规则，设置它们时需自行包含需要保留的链接线程参数。非 Windows 配方不加载该脚本。
 
 SQLCipher 配方设置 `OPENSSL_NO_VENDOR=1` 和 `OPENSSL_STATIC=1`，使用本机安装的 OpenSSL 开发文件；如改为从源码编译 OpenSSL，需要准备 Windows Perl 与 NASM。静态链接标记不保证没有 DLL 依赖，调整 `OPENSSL_LIBS` 或分发 DLL 前请检查二进制的实际依赖。
 
@@ -126,7 +137,7 @@ Windows GitHub Actions 使用 `windows-2025` 执行 `just test-fe`、`just test`
 
 ## 性能验证
 
-桌面 `release` profile 以体积优先（`opt-level = "s"`、fat LTO），哈希、压缩、SQLCipher 与正则等热点依赖在 `src-tauri/Cargo.toml` 中单独设为 `opt-level = 3`；性能比较使用 `release-fast` profile（`just run-example-fast <名称>`）。开发版的 Argon2 / BLAKE2 同样启用优化，以满足高内存 LUKS2 的密钥派生预算；flate2 / miniz_oxide / zlib-rs / simd-adler32 / crc32fast 也启用优化，减少大备份 ZIP 在恢复案件时的 debug 解压开销。完整 QR/OCR 构建与轻量构建的耗时不能混作同一基线。
+桌面 `release` profile 以体积优先（`opt-level = "s"`），Windows 配方默认通过环境变量将宿主与插件的 release 链接优化设为 Thin LTO；Cargo 清单保留其他平台的 fat LTO 默认值。哈希、压缩、SQLCipher 与正则等热点依赖在 `src-tauri/Cargo.toml` 中单独设为 `opt-level = 3`；性能比较使用 `release-fast` profile（`just run-example-fast <名称>`）。开发版的 Argon2 / BLAKE2 同样启用优化，以满足高内存 LUKS2 的密钥派生预算；flate2 / miniz_oxide / zlib-rs / simd-adler32 / crc32fast 也启用优化，减少大备份 ZIP 在恢复案件时的 debug 解压开销。完整 QR/OCR 构建与轻量构建的耗时不能混作同一基线。
 
 性能结论应基于当前提交的可复现场景。记录提交号、操作系统、CPU / 内存、存储介质、构建 profile、特性组合、镜像格式与逻辑大小；文件系统操作另记录目录项规模、文件大小分布和卷类型，私有检材只记录可公开的规模描述。分别测量冷启动与缓存命中，报告重复次数与耗时分布，并观察吞吐、峰值内存、临时磁盘占用、读取次数、取消延迟和交互延迟。
 

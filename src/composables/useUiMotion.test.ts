@@ -132,6 +132,28 @@ describe('UI motion preferences', () => {
 });
 
 describe('motion tokens', () => {
+  it.each([
+    ['250ms', 250],
+    ['.25s', 250],
+    ['.15s', 150],
+    ['.4s', 400],
+    ['0s', 0],
+    ['2.5e-1s', 250],
+    ['invalid', 250],
+    ['-1ms', 250],
+  ])('converts the CSS duration %s to %s milliseconds for native animations', async (token, duration) => {
+    const { animateUi } = await import('./useUiMotion');
+    const element = document.createElement('div');
+    document.body.append(element);
+    element.style.setProperty('--motion-normal', token);
+    const animate = vi.spyOn(element, 'animate');
+
+    animateUi(element, [{ opacity: 0 }, { opacity: 1 }], undefined, { speed: 'normal' });
+
+    expect(animate).toHaveBeenCalledWith([{ opacity: 0 }, { opacity: 1 }], { duration, easing: 'ease-out' });
+    element.remove();
+  });
+
   it('completes a canceled native animation once without an unhandled rejection', async () => {
     const { animateUi, cancelUiAnimation } = await import('./useUiMotion');
     const element = document.createElement('div');

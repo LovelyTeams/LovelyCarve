@@ -26,12 +26,27 @@ if ($VisualStudio) {
     }
     Import-Module (Join-Path $VsPath 'Common7/Tools/Microsoft.VisualStudio.DevShell.dll')
     Enter-VsDevShell -VsInstallPath $VsPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
+    if (-not $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER) {
+        $lldLinker = Join-Path $VsPath 'VC/Tools/Llvm/x64/bin/lld-link.exe'
+        if (-not (Test-Path -LiteralPath $lldLinker -PathType Leaf)) {
+            throw 'Cannot find lld-link.exe. Install the Visual Studio C++ Clang tools for Windows, or set CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER.'
+        }
+        $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER = (Get-Item -LiteralPath $lldLinker).FullName
+    }
+    # Keep caller-supplied flags intact, and never pass LLD options to another linker.
+    $linkerName = Split-Path $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER -Leaf
+    if ($linkerName -in @('lld-link', 'lld-link.exe') -and -not $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS) {
+        $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS = '-C link-arg=/threads:1'
+    }
     if ($OpenCV) {
         $llvmBin = Join-Path $VsPath 'VC/Tools/Llvm/x64/bin'
         $env:PATH = $llvmBin + ';' + $env:PATH
         $env:LIBCLANG_PATH = $llvmBin
     }
 }
+
+if (-not $env:CARGO_BUILD_JOBS) { $env:CARGO_BUILD_JOBS = '1' }
+if (-not $env:CARGO_PROFILE_RELEASE_LTO) { $env:CARGO_PROFILE_RELEASE_LTO = 'thin' }
 
 if (-not $OpenSSLLib) { $OpenSSLLib = Join-Path $OpenSSLDir 'lib/VC/x64/MT' }
 $env:OPENSSL_NO_VENDOR = '1'

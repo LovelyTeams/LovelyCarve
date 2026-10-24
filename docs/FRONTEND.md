@@ -491,6 +491,7 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
   | `--ease-in-out` | 往复与扫过的循环（不定进度条、运行中状态点） |
 
   `--ease-settle` 与 `--ease-squish` 是采样成 `linear()` 的阻尼弹簧，不支持 `linear()` 的引擎回退到 `--ease-out`。
+  脚本读取 CSS 时长时同时接受 `ms` 和 `s`，统一换算成 Web Animations API 使用的毫秒；生产压缩会把 `250ms` 改写成 `.25s`，不能只用 `parseFloat()` 读取。
 - 按压反馈：`ui-btn`、`ui-icon-btn` 按下时在 `--motion-press`（70ms）内轻缩，松手后在 `--motion-slow` 内沿
   `--ease-squish` 复位，回弹幅度肉眼几乎不可见。这些基元的 `transition` 写成长属性（`transition-property` /
   `-duration` / `-timing-function`），`motion.css` 在按下时只改 `scale` 那一项。

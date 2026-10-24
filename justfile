@@ -19,7 +19,7 @@ opencv_install := env_var_or_default("OPENCV_INSTALL", opencv_dir)
 opensslenv := ". '" + justfile_directory() + "\\scripts\\windows-env.ps1' -OpenSSLDir '" + openssl_dir + "' -OpenSSLLib '" + openssl_lib + "' -PerlBin '" + perl_bin + "'"
 windowsenv := opensslenv + " -VisualStudio -VsPath '" + vs_path + "'"
 vsenv := windowsenv + " -OpenCV -OpenCVDir '" + opencv_dir + "' -OpenCVLib '" + opencv_lib + "' -OpenCVMsvc '" + opencv_msvc + "'"
-cargo_env := if os() == "windows" { opensslenv + "; " } else { "" }
+cargo_env := if os() == "windows" { windowsenv + "; " } else { "" }
 python := if os() == "windows" { "python" } else { "python3" }
 python_version := env_var_or_default("LOVELYCARVE_PYTHON", "3.15")
 # OpenSSL's Windows libcrypto.lib is an import library even inside MT; Python
@@ -214,12 +214,12 @@ pack-plugins: (build-plugins "--release")
 # Test the SDK, lc-plugin-host and the plugins.
 [group("plugins")]
 test-plugins *args:
-    cargo test --workspace --manifest-path plugins/Cargo.toml {{ args }}
+    {{ cargo_env }}cargo test --workspace --manifest-path plugins/Cargo.toml {{ args }}
 
 # Lint the plugin workspace.
 [group("plugins")]
 clippy-plugins:
-    cargo clippy --workspace --manifest-path plugins/Cargo.toml --all-targets
+    {{ cargo_env }}cargo clippy --workspace --manifest-path plugins/Cargo.toml --all-targets
 
 # Refresh the reviewed plugin workspace dependency lockfile.
 [group("plugins")]
@@ -317,7 +317,7 @@ run-cli *args:
 [windows]
 [working-directory("src-tauri")]
 build-cli:
-    {{ windowsenv }}; cargo build --jobs 1 --no-default-features --release --bin lovelycarve-cli
+    {{ windowsenv }}; cargo build --no-default-features --release --bin lovelycarve-cli
 
 # Build the standalone release CLI (no Tauri) without QR/OCR.
 [group("cli")]
@@ -331,7 +331,7 @@ build-cli:
 [windows]
 [working-directory("src-tauri")]
 build-cli-full:
-    {{ vsenv }}; cargo build --jobs 1 --no-default-features --features 'qrcode-wechat ocr-cuda' --release --bin lovelycarve-cli
+    {{ vsenv }}; cargo build --no-default-features --features 'qrcode-wechat ocr-cuda' --release --bin lovelycarve-cli
 
 # Build the standalone release CLI with WeChat QR and CPU OCR.
 [group("cli")]

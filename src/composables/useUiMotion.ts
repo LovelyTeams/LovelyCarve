@@ -21,10 +21,12 @@ let cleanup: (() => void) | null = null;
 const activeAnimations = new Map<HTMLElement, () => void>();
 const fallbackDurations: Record<MotionSpeed, number> = { fast: 150, normal: 250, slow: 400 };
 
-/** Resolves the motion tokens (declared in milliseconds) for a WAAPI call on `element`. */
+/** Resolve CSS time tokens to the milliseconds WAAPI expects, including minified seconds. */
 export function motionTiming(element: Element, speed: MotionSpeed = 'fast', easing: MotionEasing = 'out'): { duration: number; easing: string } {
   const styles = getComputedStyle(element);
-  const duration = parseFloat(styles.getPropertyValue(`--motion-${speed}`));
+  // Production CSS may shorten 250ms to .25s; parseFloat alone loses the unit.
+  const time = styles.getPropertyValue(`--motion-${speed}`).trim().match(/^([+]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(ms|s)$/i);
+  const duration = time ? Number(time[1]) * (time[2]?.toLowerCase() === 's' ? 1000 : 1) : NaN;
   return {
     duration: Number.isFinite(duration) ? duration : fallbackDurations[speed],
     easing: styles.getPropertyValue(`--ease-${easing}`).trim() || 'ease-out',
