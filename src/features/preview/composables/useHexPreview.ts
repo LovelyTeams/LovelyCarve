@@ -2,7 +2,7 @@
 import { tr } from '../../../composables/useLocale';
 import { CHARSETS, type CharsetOption } from '../model/charsets';
 import { computed, onScopeDispose, ref, watch, type Ref } from 'vue';
-import { notifyError, notifyInfo, notifySuccess } from '../../../composables/useToast';
+import { notifyError, notifySuccess } from '../../../composables/useToast';
 
 interface UseHexPreviewOptions {
   bytes: Ref<Uint8Array>;
@@ -222,12 +222,13 @@ export function useHexPreview(options: UseHexPreviewOptions) {
     return selMin.value >= 0 && off >= selMin.value && off <= selMax.value;
   }
 
+  /** Left press starts a selection; with Shift it extends the current one to the pressed byte. */
   function onHexMouseDown(event: MouseEvent) {
     if (event.button !== 0) return;
     const offset = offFromEvent(event);
     if (offset === null) return;
     event.preventDefault();
-    selAnchor.value = offset;
+    if (!event.shiftKey || selAnchor.value < 0) selAnchor.value = offset;
     selFocus.value = offset;
     selecting.value = true;
     window.addEventListener('mousemove', onHexDragMove);
@@ -289,23 +290,24 @@ export function useHexPreview(options: UseHexPreviewOptions) {
     void writeClipboard(text, tr("已复制文本（{0}）· {1} 字", { 0: charset.label, 1: text.length }));
   }
 
-  function onHexContextMenu(event: MouseEvent) {
-    event.preventDefault();
-    if (!hasSelection.value) {
-      notifyInfo(tr("请先拖选要复制的字节"));
-      return;
+  function copySelectionOffset() {
+    void writeClipboard(`0x${selMin.value.toString(16).toUpperCase()}`, tr("已复制起始偏移"));
+  }
+
+  /** Right press: a byte outside the selection becomes the selection, as a
+   *  file manager selects the item it opens a menu on. Returns where the menu
+   *  was opened (the text column's charset, if any), or null when no byte is
+   *  selected and the menu has nothing to act on. */
+  function prepareHexContextMenu(event: MouseEvent): { charset: CharsetOption | null } | null {
+    const offset = offFromEvent(event);
+    if (offset !== null && !inSel(offset)) {
+      onHexDragEnd();
+      selAnchor.value = offset;
+      selFocus.value = offset;
     }
-    const target = event.target as HTMLElement | null;
-    if (target?.closest('.hex-bytes')) {
-      copySelectionHex();
-      return;
-    }
-    const colElement = target?.closest<HTMLElement>('.hex-text-col[data-cs]');
-    const id = colElement?.dataset.cs;
-    if (id) {
-      const charset = CHARSETS.find(candidate => candidate.id === id);
-      if (charset) copySelectionText(charset);
-    }
+    if (!hasSelection.value) return null;
+    const id = (event.target as HTMLElement | null)?.closest<HTMLElement>('.hex-text-col[data-cs]')?.dataset.cs;
+    return { charset: CHARSETS.find(candidate => candidate.id === id) ?? null };
   }
 
   return {
@@ -326,6 +328,9 @@ export function useHexPreview(options: UseHexPreviewOptions) {
     onHexMouseDown,
     onHexDragEnd,
     clearHexSelection,
-    onHexContextMenu,
+    prepareHexContextMenu,
+    copySelectionHex,
+    copySelectionText,
+    copySelectionOffset,
   };
 }

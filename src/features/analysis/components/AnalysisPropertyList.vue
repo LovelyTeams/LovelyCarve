@@ -2,12 +2,12 @@
   <div class="property-list" :aria-label="nodeLabel(node)">
     <!-- 插件声明了属性角色：一张属性表，左列名称（下方是英文键名），右列值与来源。 -->
     <dl v-if="layout" class="property-sheet">
-      <div v-for="record in records" :key="record.recordId" class="property-row" :data-record-id="record.recordId" :class="{ active: selectedRecordId === record.recordId }">
-        <dt>
+      <div v-for="record in records" :key="record.recordId" class="property-row" :data-record-id="record.recordId" :class="{ active: selectedRecordId === record.recordId }" @contextmenu="onContextMenu($event, record.recordId)">
+        <dt :data-column="layout.label?.id">
           <button class="property-label" type="button" :title="tr('查看记录详情')" @click="emit('openRecord', record.recordId)">{{ layout.label ? text(record, layout.label) : columnLabel(node, layout.value) }}</button>
-          <small v-if="layout.secondary" class="property-key mono" :title="columnLabel(node, layout.secondary)">{{ text(record, layout.secondary) }}</small>
+          <small v-if="layout.secondary" class="property-key mono" :data-column="layout.secondary.id" :title="columnLabel(node, layout.secondary)">{{ text(record, layout.secondary) }}</small>
         </dt>
-        <dd>
+        <dd :data-column="layout.value.id">
           <button class="property-value" :class="{ mono: monoKinds.has(layout.value.kind), empty: isEmptyValue(record.values[layout.value.id]) }" type="button" :title="tr('查看记录详情')" @click="emit('openRecord', record.recordId)"><span v-if="record.severity" class="ui-badge sm" :class="severityTone(record.severity)">{{ severityLabel(record.severity, tr) }}</span><span>{{ text(record, layout.value) }}</span></button>
           <span class="property-source"><button class="ui-btn link sm source-link" :disabled="locating || !sources(record).length" :title="sourceTitle(record)" @click="locate(record)"><LocateFixed :size="13" aria-hidden="true" /><span class="mono">{{ sources(record)[0]?.label || tr('无来源') }}</span></button><button v-if="sources(record).length > 1" class="ui-btn ghost sm source-more mono" type="button" :title="tr('查看全部来源（{0}）', { 0: sources(record).length })" :aria-label="tr('查看全部来源（{0}）', { 0: sources(record).length })" @click="emit('openRecord', record.recordId)">+{{ (sources(record).length - 1).toLocaleString() }}</button></span>
         </dd>
@@ -15,13 +15,13 @@
     </dl>
     <!-- 没有属性角色：每条记录一张卡片，字段按可用宽度排成多列。 -->
     <div v-else class="record-sheets">
-      <article v-for="record in records" :key="record.recordId" class="record-sheet" :data-record-id="record.recordId" :class="{ active: selectedRecordId === record.recordId }">
+      <article v-for="record in records" :key="record.recordId" class="record-sheet" :data-record-id="record.recordId" :class="{ active: selectedRecordId === record.recordId }" @contextmenu="onContextMenu($event, record.recordId)">
         <header class="record-sheet-head">
           <button class="property-label" type="button" :title="tr('查看记录详情')" @click="emit('openRecord', record.recordId)">{{ record.title }}</button>
           <span v-if="record.severity" class="ui-badge sm" :class="severityTone(record.severity)">{{ severityLabel(record.severity, tr) }}</span>
           <span class="property-source"><button class="ui-btn link sm source-link" :disabled="locating || !sources(record).length" :title="sourceTitle(record)" @click="locate(record)"><LocateFixed :size="13" aria-hidden="true" /><span class="mono">{{ sources(record)[0]?.label || tr('无来源') }}</span></button><button v-if="sources(record).length > 1" class="ui-btn ghost sm source-more mono" type="button" :title="tr('查看全部来源（{0}）', { 0: sources(record).length })" :aria-label="tr('查看全部来源（{0}）', { 0: sources(record).length })" @click="emit('openRecord', record.recordId)">+{{ (sources(record).length - 1).toLocaleString() }}</button></span>
         </header>
-        <dl class="record-fields"><div v-for="column in visibleColumns" :key="column.id"><dt :title="columnLabel(node, column)">{{ columnLabel(node, column) }}</dt><dd :class="{ mono: monoKinds.has(column.kind), empty: isEmptyValue(record.values[column.id]) }">{{ text(record, column) }}</dd></div></dl>
+        <dl class="record-fields"><div v-for="column in visibleColumns" :key="column.id" :data-column="column.id"><dt :title="columnLabel(node, column)">{{ columnLabel(node, column) }}</dt><dd :class="{ mono: monoKinds.has(column.kind), empty: isEmptyValue(record.values[column.id]) }">{{ text(record, column) }}</dd></div></dl>
       </article>
     </div>
   </div>
@@ -39,7 +39,12 @@ import { analysisSources } from '../model/analysisSource';
 import { isEmptyValue, recordValueText, severityLabel, severityTone } from '../model/analysisValue';
 
 const props = defineProps<{ node: AnalysisResultNode; records: AnalysisRecord[]; columns: RecordColumn[]; properties: RecordPropertyLayout | null; selectedRecordId: string | null; locating?: boolean }>();
-const emit = defineEmits<{ openRecord: [id: string]; openFile: [target: FileLocationTarget] }>();
+const emit = defineEmits<{
+  openRecord: [id: string];
+  openFile: [target: FileLocationTarget];
+  /** A right click on a record; `columnId` is the field under the pointer. */
+  recordMenu: [event: MouseEvent, recordId: string, columnId: string | null];
+}>();
 const { nodeLabel, columnLabel, choiceLabel } = useAnalysisLabels();
 const layout = computed(() => resolvePropertyLayout(props.properties, props.columns));
 const visibleColumns = computed(() => props.columns.filter(column => !column.hidden));
@@ -53,6 +58,10 @@ const text = (record: AnalysisRecord, column: RecordColumn) => recordValueText(r
 function locate(record: AnalysisRecord) {
   const source = sources(record)[0];
   if (!props.locating && source) emit('openFile', source.target);
+}
+function onContextMenu(event: MouseEvent, recordId: string) {
+  const columnId = (event.target as Element | null)?.closest<HTMLElement>('[data-column]')?.dataset.column ?? null;
+  emit('recordMenu', event, recordId, columnId);
 }
 </script>
 

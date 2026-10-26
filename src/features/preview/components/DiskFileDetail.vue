@@ -182,6 +182,16 @@
           v-model:page="page" v-model:page-size="pageSize" :total-pages="totalPages" :has-selection="hasSelection"
           :sel-count="selCount" :sel-min="selMin" :sel-max="selMax" />
       </div>
+      <UiContextMenu
+        v-model:open="hexMenu.open"
+        :x="hexMenu.x"
+        :y="hexMenu.y"
+        :entries="hexMenuEntries"
+        :label="tr('十六进制选区操作')"
+        :heading="hexMenuHeading"
+        :subheading="hexMenuSubheading"
+        :heading-icon="Binary"
+      />
   </section>
 </template>
 
@@ -208,7 +218,11 @@ import { usePreviewCategory } from '../composables/usePreviewCategory';
 import { useResizablePanel } from '../composables/useResizablePanel';
 import { useTextPreview } from '../composables/useTextPreview';
 import { useHexPreview } from '../composables/useHexPreview';
-import { CHARSETS } from '../model/charsets';
+import { CHARSETS, type CharsetOption } from '../model/charsets';
+import { Binary, Hash, Languages, Type, X } from 'lucide-vue-next';
+import UiContextMenu, { type UiContextMenuEntry } from '../../../components/ui/UiContextMenu.vue';
+import { useContextMenu } from '../../../composables/useContextMenu';
+import { compactMenuEntries } from '../../../utils/menuPlacement';
 import FilePreviewToolbar from './FilePreviewToolbar.vue';
 import FileMediaPreview from './FileMediaPreview.vue';
 import FileRangePreview from './viewers/FileRangePreview.vue';
@@ -374,12 +388,41 @@ const {
   inSel,
   onHexMouseDown,
   clearHexSelection,
-  onHexContextMenu,
+  prepareHexContextMenu,
+  copySelectionHex,
+  copySelectionText,
+  copySelectionOffset,
 } = useHexPreview({
   bytes,
   page,
   pageSize,
   searchQuery,
+});
+
+// 十六进制视图的右键菜单：右键处的字节不在选区内时先选中它，菜单作用于选区。
+const { menu: hexMenu, openFromEvent: openHexMenu } = useContextMenu<{ charset: CharsetOption | null }>();
+function onHexContextMenu(event: MouseEvent) {
+  event.preventDefault();
+  const target = prepareHexContextMenu(event);
+  if (target) openHexMenu(event, target);
+}
+const hexOffset = (offset: number) => `0x${offset.toString(16).toUpperCase()}`;
+const hexMenuHeading = computed(() => tr('已选 {0} 字节', { 0: selCount.value.toLocaleString() }));
+const hexMenuSubheading = computed(() => (selCount.value > 1 ? `${hexOffset(selMin.value)} – ${hexOffset(selMax.value)}` : hexOffset(selMin.value)));
+const hexMenuEntries = computed<UiContextMenuEntry[]>(() => {
+  const here = hexMenu.target?.charset ?? null;
+  const charsets = selectedCharsetList.value;
+  return compactMenuEntries<UiContextMenuEntry>([
+    { id: 'copy-hex', label: tr('复制十六进制'), icon: Binary, action: copySelectionHex },
+    ...(here ? [{ id: 'copy-here', label: tr('复制文本（{0}）', { 0: here.label }), icon: Type, action: () => copySelectionText(here) }] : []),
+    ...(charsets.length ? [{
+      kind: 'submenu' as const, id: 'copy-text', label: tr('按编码复制文本'), icon: Languages,
+      items: charsets.map(charset => ({ id: `copy-text:${charset.id}`, label: charset.label, action: () => copySelectionText(charset) })),
+    }] : []),
+    { id: 'copy-offset', label: tr('复制起始偏移'), icon: Hash, action: copySelectionOffset },
+    { kind: 'separator' },
+    { id: 'clear', label: tr('取消选择'), icon: X, action: clearHexSelection },
+  ]);
 });
 
 const previewSearch = usePreviewSearch({

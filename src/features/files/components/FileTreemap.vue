@@ -11,6 +11,7 @@
   @click="onClick"
   @dblclick="onDoubleClick"
   @contextmenu="onContextMenu"
+  @mouseup="onMouseUp"
   @wheel="onWheel"
   @keydown="onKeydown"
 >
@@ -61,6 +62,16 @@
     <p class="ui-empty-desc">{{ tr("正在汇总空间占用…") }}</p>
   </div>
   <p class="sr-only" aria-live="polite">{{ announcement }}</p>
+  <UiContextMenu
+    v-model:open="backgroundMenu.open"
+    :x="backgroundMenu.x"
+    :y="backgroundMenu.y"
+    :entries="backgroundEntries"
+    :label="tr('树图操作')"
+    :heading="directoryName"
+    :subheading="rootSizeText"
+    :heading-icon="Folder"
+  />
 </div>
 </template>
 
@@ -68,7 +79,9 @@
 import { tr } from '../../../composables/useLocale';
 
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import { Camera, CircleAlert, LayoutGrid, List, Loader2, RefreshCw } from 'lucide-vue-next';
+import { Camera, CircleAlert, ClipboardCopy, CornerLeftUp, Folder, LayoutGrid, List, ListMinus, ListPlus, Loader2, RefreshCw, ZoomOut } from 'lucide-vue-next';
+import UiContextMenu, { type UiContextMenuEntry } from '../../../components/ui/UiContextMenu.vue';
+import { isContextMenuKey, useContextMenu } from '../../../composables/useContextMenu';
 import { useTheme } from '../../../composables/useTheme';
 import { useUiMotion } from '../../../composables/useUiMotion';
 import type { FsSizeTreeEntry, FsSizeTreeView } from '../../../lib/ipc/fs/sizeTree';
@@ -76,7 +89,7 @@ import type { SizeTreeStatus, TreemapMode } from '../composables/useSizeTree';
 import { formatBytes, type DiskFsNode } from '../model/model';
 import type { FileNavigationFrame } from '../model/navigation';
 import {
-  DEFAULT_TREEMAP_OPTIONS, hitTile, layoutTreemap, neighbourTile, tileBody, tileChain,
+  DEFAULT_TREEMAP_OPTIONS, TREEMAP_MAX_DEPTH, TREEMAP_MIN_DEPTH, hitTile, layoutTreemap, neighbourTile, tileBody, tileChain,
   type Rect, type TreemapDirection, type TreemapTile,
 } from '../model/treemap';
 import { ageBucketOf, formatUnixSeconds } from '../model/treemapAge';
@@ -107,7 +120,9 @@ const emit = defineEmits<{
   enter: [frames: FileNavigationFrame[]];
   up: [];
   depth: [delta: number];
-  contextmenu: [event: MouseEvent, node: DiskFsNode];
+  /** A tile's menu, at a viewport point. */
+  contextmenu: [point: { x: number; y: number }, node: DiskFsNode];
+  copyPath: [];
   showList: [];
   retry: [];
   /** 很可能马上要进入（或回到）的目录：先把它的数据取来。 */
@@ -487,17 +502,12 @@ function onPointerLeave() {
   forgetHover();
 }
 
-/** 单击选中；再单击已选中的目录就进入它，像文件管理器一样。双击由 dblclick 处理。 */
+/** 单击只选中，与列表一致；双击、Enter 或滚轮才进入目录。 */
 function onClick(event: MouseEvent) {
   if (event.detail > 1) return;
   const { x, y } = localPoint(event);
   const index = tileAt(x, y);
-  if (index < 0) return;
-  if (index === selectedIndex.value && layout.value[index].entry?.node?.kind === 'dir') {
-    enter(index);
-    return;
-  }
-  select(index);
+  if (index >= 0) select(index);
 }
 
 function onDoubleClick(event: MouseEvent) {
@@ -509,15 +519,87 @@ function onDoubleClick(event: MouseEvent) {
   else emit('open', node);
 }
 
+// ── 右键菜单 ──
+// 瓦片：选中它并打开与列表相同的行菜单；瓦片间的缝隙与合并的尾部：当前目录与视图的菜单。
+
+const { menu: backgroundMenu, openAt: openBackgroundMenu } = useContextMenu<null>();
+/** 打开背景菜单那一刻是否放大着：视图变换不进响应式。 */
+const zoomedAtMenu = ref(false);
+
+const rootSizeText = computed(() => {
+  const root = props.view?.root;
+  return root ? valueText(root.bytes, root.files) : undefined;
+});
+
+const backgroundEntries = computed<UiContextMenuEntry[]>(() => [
+  { id: 'up', label: tr('返回上级'), icon: CornerLeftUp, hint: 'Backspace', action: goUp },
+  { id: 'reset-zoom', label: tr('复原缩放'), icon: ZoomOut, hint: '0', disabled: !zoomedAtMenu.value, action: resetZoom },
+  { kind: 'separator' },
+  { id: 'deeper', label: tr('多显示一层'), icon: ListPlus, hint: ']', disabled: props.depth >= TREEMAP_MAX_DEPTH, action: () => emit('depth', 1) },
+  { id: 'shallower', label: tr('少显示一层'), icon: ListMinus, hint: '[', disabled: props.depth <= TREEMAP_MIN_DEPTH, action: () => emit('depth', -1) },
+  { kind: 'separator' },
+  { id: 'copy-path', label: tr('复制当前目录路径'), icon: ClipboardCopy, action: () => emit('copyPath') },
+  { id: 'list', label: tr('切换到列表'), icon: List, action: () => emit('showList') },
+]);
+
+function showBackgroundMenu(x: number, y: number) {
+  zoomedAtMenu.value = view !== IDENTITY_VIEW;
+  openBackgroundMenu(x, y, null);
+}
+
 function onContextMenu(event: MouseEvent) {
+  event.preventDefault();
+  if (!layout.value.length) return;
   const { x, y } = localPoint(event);
   const index = tileAt(x, y);
   const node = nodeOf(index);
-  if (!node) return;
-  event.preventDefault();
+  if (!node) {
+    showBackgroundMenu(event.clientX, event.clientY);
+    return;
+  }
   select(index);
-  emit('contextmenu', event, node);
+  emit('contextmenu', { x: event.clientX, y: event.clientY }, node);
 }
+
+/** ContextMenu 键 / Shift+F10：选中瓦片的菜单开在它的名称处，没有选中时开背景菜单。 */
+function openMenuFromKeyboard() {
+  const bounds = surface.value?.getBoundingClientRect();
+  if (!bounds || !layout.value.length) return;
+  const index = selectedIndex.value;
+  const node = nodeOf(index);
+  if (!node) {
+    showBackgroundMenu(bounds.left + 24, bounds.top + 24);
+    return;
+  }
+  const rect = projectRect(view, layout.value[index].rect);
+  const { width, height } = area.value;
+  const left = Math.min(Math.max(rect.x, 0), width);
+  const top = Math.min(Math.max(rect.y + Math.min(rect.h, 24), 0), height);
+  emit('contextmenu', { x: bounds.left + left + Math.min(rect.w / 2, 24), y: bounds.top + top }, node);
+}
+
+/** 鼠标侧键「后退」与 Backspace 一样返回上级（带缩回动画）。 */
+function onMouseUp(event: MouseEvent) {
+  if (event.button !== 3) return;
+  event.preventDefault();
+  event.stopPropagation();
+  goUp();
+}
+
+function resetZoom() {
+  view = IDENTITY_VIEW;
+  requestPaint();
+}
+
+/** 菜单里的「打开」：按节点找到瓦片，像双击一样进入。 */
+function enterNode(nodeId: string): boolean {
+  const index = layout.value.findIndex(tile => tile.entry?.node?.id === nodeId);
+  if (index < 0 || layout.value[index].entry?.node?.kind !== 'dir') return false;
+  enter(index);
+  return true;
+}
+
+defineExpose({ enterNode });
 
 /** 滚轮：每次朝指针放大或缩小一档。放大停在指针下目录恰好填满视口的倍率，再滚就进入；
  *  在原始大小往回滚就回到上一级。按住 Shift 滚动在放大的视图里上下平移。 */
@@ -544,6 +626,11 @@ function onWheel(event: WheelEvent) {
 const DIRECTIONS: Record<string, TreemapDirection> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
 
 function onKeydown(event: KeyboardEvent) {
+  if (isContextMenuKey(event)) {
+    event.preventDefault();
+    openMenuFromKeyboard();
+    return;
+  }
   if (event.ctrlKey || event.metaKey) return;
   if (event.altKey) {
     if (event.key === 'ArrowLeft') {
@@ -587,8 +674,7 @@ function onKeydown(event: KeyboardEvent) {
       return;
     case '0':
       event.preventDefault();
-      view = IDENTITY_VIEW;
-      requestPaint();
+      resetZoom();
       return;
   }
 }

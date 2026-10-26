@@ -29,7 +29,7 @@ it('renders a bounded window of a 23,536-directory tree and reveals a navigated 
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frame = callback; return 1; });
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
   host = document.createElement('div'); document.body.append(host);
-  app = createApp({ render: () => h(DiskFileTree, { imageId: 'image', pathStack: [] }) });
+  app = createApp({ render: () => h(DiskFileTree, { imageId: 'image', pathStack: [], exportable: true }) });
   app.mount(host); await nextTick(); await nextTick();
   expect(host.querySelectorAll('.tree-row').length).toBeLessThanOrEqual(26);
   const scroll = host.querySelector<HTMLElement>('.tree-list')!;

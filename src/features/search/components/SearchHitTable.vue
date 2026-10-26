@@ -19,6 +19,7 @@
                     @click="emit('select', virtualItem.item.hit_seq)"
                     @dblclick="emit('open', virtualItem.item)"
                     @keydown.enter="emit('open', virtualItem.item)"
+                    @contextmenu="onHitContextMenu($event, virtualItem.item)"
                   >
                     <td class="file-name-cell">
                       <span class="file-name-content" :title="virtualItem.item.file_name">
@@ -55,6 +56,15 @@
                   </tr>
                 </tbody>
               </table>
+              <UiContextMenu
+                v-model:open="hitMenu.open"
+                :x="hitMenu.x"
+                :y="hitMenu.y"
+                :entries="hitMenuEntries"
+                :label="tr('命中操作')"
+                :heading="hitMenu.target?.file_name"
+                :subheading="hitMenu.target ? `${hexOffset(hitMenu.target.file_offset)} · ${hitMenu.target.encoding}` : undefined"
+              />
             </div>
 
 </template>
@@ -62,8 +72,11 @@
 import { tr } from '../../../composables/useLocale';
 
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue';
-import { ArrowUpRight, Loader2, SearchX } from 'lucide-vue-next';
+import { ArrowUpRight, ClipboardCopy, Copy, Hash, Loader2, SearchX, TextQuote } from 'lucide-vue-next';
 import FileNodeIcon from '../../../components/display/FileNodeIcon.vue';
+import UiContextMenu, { type UiContextMenuEntry } from '../../../components/ui/UiContextMenu.vue';
+import { copyText } from '../../../composables/clipboard';
+import { useContextMenu } from '../../../composables/useContextMenu';
 import { useVirtualList } from '../../../composables/useVirtualList';
 import type { GlobalSearchHit } from '../../../lib/ipc/search';
 import { buildSearchContextPreview, highlightSearchPattern, sourceKindLabel } from '../model/searchResults';
@@ -86,6 +99,26 @@ watch(() => props.contextKey, () => {
   void nextTick(() => { if (captured === generation) tableWrapRef.value?.scrollTo({ top: 0 }); });
 });
 onScopeDispose(() => { generation++; });
+
+// 右键：选中该命中（右侧显示上下文），菜单作用于它。
+const { menu: hitMenu, openFromEvent } = useContextMenu<GlobalSearchHit>();
+function onHitContextMenu(event: MouseEvent, hit: GlobalSearchHit) {
+  emit('select', hit.hit_seq);
+  openFromEvent(event, hit);
+}
+const hexOffset = (offset: number) => `0x${offset.toString(16).toUpperCase()}`;
+const hitMenuEntries = computed<UiContextMenuEntry[]>(() => {
+  const hit = hitMenu.target;
+  if (!hit) return [];
+  return [
+    { id: 'open', label: tr('定位到文件'), icon: ArrowUpRight, hint: 'Enter', disabled: props.locating, title: tr('定位文件并查看命中字节'), action: () => emit('open', hit) },
+    { kind: 'separator' },
+    { id: 'copy-name', label: tr('复制名称'), icon: Copy, action: () => void copyText(hit.file_name, tr('{0} 个名称', { 0: 1 })) },
+    { id: 'copy-path', label: tr('复制完整路径'), icon: ClipboardCopy, disabled: !hit.file_path, action: () => void copyText(hit.file_path, tr('{0} 条完整路径', { 0: 1 })) },
+    { id: 'copy-context', label: tr('复制命中内容'), icon: TextQuote, action: () => void copyText(hit.context_full, tr('命中内容')) },
+    { id: 'copy-offset', label: tr('复制偏移'), icon: Hash, action: () => void copyText(hexOffset(hit.file_offset), tr('命中偏移')) },
+  ];
+});
 </script>
 <style scoped src="../../../styles/data-table.css"></style>
 <style scoped src="../../../styles/analysis-workspace.css"></style>

@@ -77,6 +77,38 @@ export function useFileSelection(options: {
     checkedIds.value = next;
     lastCheckAnchorId = id;
   }
+  /** Ctrl+click on a row: flips its check and makes it the range anchor. */
+  function toggleChecked(id: string) {
+    const next = new Set(checkedIds.value);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    checkedIds.value = next;
+    lastCheckAnchorId = id;
+  }
+
+  /** Shift+click on a row: checks every visible row from the anchor (the row
+   *  last checked by hand, else `fallbackAnchorId`) through `id`, keeping the
+   *  other checks. Without an anchor in the list only `id` is checked. */
+  function checkRange(id: string, fallbackAnchorId: string | null) {
+    const anchorId = lastCheckAnchorId ?? fallbackAnchorId;
+    const list = options.rows();
+    let anchorIndex = -1;
+    let targetIndex = -1;
+    for (let i = 0; i < list.length && (anchorIndex < 0 || targetIndex < 0); i++) {
+      if (anchorIndex < 0 && list[i].id === anchorId) anchorIndex = i;
+      if (targetIndex < 0 && list[i].id === id) targetIndex = i;
+    }
+    const next = new Set(checkedIds.value);
+    if (anchorIndex < 0 || targetIndex < 0) {
+      next.add(id);
+    } else {
+      const [from, to] = anchorIndex <= targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex];
+      for (let i = from; i <= to; i++) next.add(list[i].id);
+    }
+    checkedIds.value = next;
+    lastCheckAnchorId = id;
+  }
+
   function checkedOfKind(kind: 'file' | 'dir'): FsNode[] {
     const out: FsNode[] = [];
     const seen = new Set<string>();
@@ -121,6 +153,6 @@ export function useFileSelection(options: {
     selectedKey.value = null;
     clearChecked();
   }
-  return { selectedKey, checkedIds, headerChecked, headerIndeterminate, toggleAll, onCheckClick,
+  return { selectedKey, checkedIds, headerChecked, headerIndeterminate, toggleAll, onCheckClick, toggleChecked, checkRange,
     checkedFiles, checkedDirs, checkedStats, clearChecked, reset, setAnchor: (id: string) => { lastCheckAnchorId = id; } };
 }

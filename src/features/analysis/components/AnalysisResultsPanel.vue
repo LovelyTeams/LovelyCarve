@@ -39,7 +39,7 @@
           <div v-if="recordsLoading" class="ui-empty state-box" role="status"><span class="ui-empty-icon accent"><Loader2 :size="22" class="spin" /></span><p class="ui-empty-desc">{{ tr("正在读取记录…") }}</p></div>
           <div v-else-if="recordsError" class="ui-empty state-box error" role="alert"><span class="ui-empty-icon"><CircleAlert :size="22" /></span><p class="ui-empty-desc">{{ tr("记录读取失败：{0}", { 0: recordsError }) }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="retryRecords">{{ tr("重试") }}</button></div></div>
           <div v-else-if="records.length === 0" class="ui-empty state-box" role="status"><span class="ui-empty-icon"><Inbox :size="24" /></span><p class="ui-empty-title">{{ keyword ? tr("没有匹配的记录") : tr("此结果项暂无记录") }}</p><p v-if="!keyword && runNode" class="ui-empty-desc">{{ tr("运行信息里有这次运行的输入文件与告警。") }}</p><div class="ui-empty-actions"><button v-if="keyword" class="ui-btn" @click="keywordInput = ''; applyKeyword('')">{{ tr("清除搜索") }}</button><button v-else-if="runNode" class="ui-btn" @click="selectNode(runNode)"><ClipboardList :size="14" />{{ tr("查看运行信息") }}</button></div></div>
-          <AnalysisPropertyList v-else-if="presentation === 'properties'" :node="selectedNode" :records="records" :columns="columns" :properties="propertyLayout" :selected-record-id="selectedRecordId" :locating="locating" @open-record="openRecord" @open-file="target => emit('openFile', target)" />
+          <AnalysisPropertyList v-else-if="presentation === 'properties'" :node="selectedNode" :records="records" :columns="columns" :properties="propertyLayout" :selected-record-id="selectedRecordId" :locating="locating" @open-record="openRecord" @open-file="target => emit('openFile', target)" @record-menu="onPropertyContextMenu" />
           <table v-else class="data-table records-table" :style="{ minWidth: `${tableWidth}px` }" :aria-label="nodeLabel(selectedNode)">
             <colgroup>
               <col :style="{ width: `${INDEX_WIDTH}px` }" />
@@ -53,10 +53,10 @@
               <th v-for="column in tableColumns" :key="column.id" :class="{ numeric: NUMERIC_KINDS.has(column.kind) }" :aria-sort="ariaSort(column.id)"><button class="sort-header" type="button" :title="`${columnLabel(selectedNode, column)} · ${column.id}`" @click="toggleSort(column.id)"><span>{{ columnLabel(selectedNode, column) }}</span><component :is="sortIcon(column.id)" :size="12" aria-hidden="true" /></button></th>
               <th>{{ tr("源文件") }}</th>
             </tr></thead>
-            <tbody><tr v-for="(record, index) in records" :key="record.recordId" :data-record-id="record.recordId" :class="{ active: selectedRecordId === record.recordId }" :aria-selected="selectedRecordId === record.recordId" tabindex="0" @click="openRecord(record.recordId)" @keydown.enter.prevent="openRecord(record.recordId)" @keydown.down.prevent="moveRow($event, index + 1)" @keydown.up.prevent="moveRow($event, index - 1)">
+            <tbody><tr v-for="(record, index) in records" :key="record.recordId" :data-record-id="record.recordId" :class="{ active: selectedRecordId === record.recordId }" :aria-selected="selectedRecordId === record.recordId" tabindex="0" @click="openRecord(record.recordId)" @keydown.enter.prevent="openRecord(record.recordId)" @keydown.down.prevent="moveRow($event, index + 1)" @keydown.up.prevent="moveRow($event, index - 1)" @contextmenu="onRecordContextMenu($event, record)">
               <td class="row-number mono">{{ pageIndex * ANALYSIS_PAGE_SIZE + index + 1 }}</td>
               <td v-if="showTitleColumn" :title="record.title"><span class="title-cell"><span v-if="record.severity" class="ui-badge sm" :class="severityTone(record.severity)">{{ severityLabel(record.severity, tr) }}</span><span class="title-text">{{ record.title }}</span></span></td>
-              <td v-for="(column, columnIndex) in tableColumns" :key="column.id" :class="{ mono: MONO_KINDS.has(column.kind), numeric: NUMERIC_KINDS.has(column.kind), empty: isEmptyValue(record.values[column.id]) }" :title="cellText(record, column, Infinity)"><span v-if="columnIndex === 0 && record.severity" class="title-cell"><span class="ui-badge sm" :class="severityTone(record.severity)">{{ severityLabel(record.severity, tr) }}</span><span class="title-text">{{ cellText(record, column) }}</span></span><template v-else>{{ cellText(record, column) }}</template></td>
+              <td v-for="(column, columnIndex) in tableColumns" :key="column.id" :data-column="column.id" :class="{ mono: MONO_KINDS.has(column.kind), numeric: NUMERIC_KINDS.has(column.kind), empty: isEmptyValue(record.values[column.id]) }" :title="cellText(record, column, Infinity)"><span v-if="columnIndex === 0 && record.severity" class="title-cell"><span class="ui-badge sm" :class="severityTone(record.severity)">{{ severityLabel(record.severity, tr) }}</span><span class="title-text">{{ cellText(record, column) }}</span></span><template v-else>{{ cellText(record, column) }}</template></td>
               <td><span class="table-sources"><button class="ui-btn link sm table-source" :aria-label="tr('定位源文件')" :disabled="locating || !sources(record).length" :title="sources(record)[0] ? `${tr('定位源文件')} · ${sources(record)[0]?.label}` : tr('此记录未提供源文件位置')" @click.stop="locateRecord(record)" @keydown.enter.stop><LocateFixed :size="13" aria-hidden="true" /><span class="mono">{{ sources(record)[0]?.label || tr('无来源') }}</span></button><button v-if="sources(record).length > 1" class="ui-btn ghost sm source-more mono" type="button" :title="tr('查看全部来源（{0}）', { 0: sources(record).length })" :aria-label="tr('查看全部来源（{0}）', { 0: sources(record).length })" @click.stop="openRecord(record.recordId)" @keydown.enter.stop>+{{ (sources(record).length - 1).toLocaleString() }}</button></span></td>
             </tr></tbody>
           </table>
@@ -109,6 +109,15 @@
         </DetailDock>
       </UiTransition>
     </div>
+    <UiContextMenu
+      v-model:open="recordMenu.open"
+      :x="recordMenu.x"
+      :y="recordMenu.y"
+      :entries="recordMenuEntries"
+      :label="tr('记录操作')"
+      :heading="recordMenu.target?.record.title"
+      :subheading="selectedNode ? nodeLabel(selectedNode) : undefined"
+    />
   </section>
 </template>
 
@@ -124,7 +133,11 @@ import FileDetailFields, { type FileDetailField } from '../../../components/layo
 import AnalysisRunOverview from './AnalysisRunOverview.vue';
 import AnalysisPropertyList from './AnalysisPropertyList.vue';
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue';
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, CircleAlert, ClipboardList, DatabaseZap, Download, Inbox, List, Loader2, LocateFixed, RefreshCw, Search, Table2, X } from 'lucide-vue-next';
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, CircleAlert, ClipboardList, Copy, DatabaseZap, Download, Inbox, List, Loader2, LocateFixed, PanelRightOpen, RefreshCw, Search, Table2, X } from 'lucide-vue-next';
+import UiContextMenu, { type UiContextMenuEntry } from '../../../components/ui/UiContextMenu.vue';
+import { copyText } from '../../../composables/clipboard';
+import { useContextMenu } from '../../../composables/useContextMenu';
+import { tsvEscape } from '../../../utils/exportFormat';
 import { ANALYSIS_PAGE_SIZE, useAnalysisResults } from '../composables/useAnalysisResults';
 import { useAnalysisLabels } from '../composables/useAnalysisLabels';
 import { useAnalysisPresentation } from '../composables/useAnalysisPresentation';
@@ -263,6 +276,47 @@ function valueText(value: unknown, column: RecordColumn, detailed = false): stri
 function cellText(record: AnalysisRecord, column: RecordColumn, maxLength = 120): string {
   return truncateText(valueText(record.values[column.id], column), maxLength);
 }
+
+// ── 记录右键菜单 ── 表格与属性视图共用：查看、定位，复制右键处的值或整条记录。
+const { menu: recordMenu, openFromEvent: openRecordMenu } = useContextMenu<{ record: AnalysisRecord; columnId: string | null }>();
+function onRecordContextMenu(event: MouseEvent, record: AnalysisRecord) {
+  const columnId = (event.target as Element | null)?.closest<HTMLElement>('[data-column]')?.dataset.column ?? null;
+  openRecordMenu(event, { record, columnId });
+}
+function onPropertyContextMenu(event: MouseEvent, recordId: string, columnId: string | null) {
+  const record = records.value.find(candidate => candidate.recordId === recordId);
+  if (record) openRecordMenu(event, { record, columnId });
+}
+/** 可见列的表头与值，制表符分隔，可直接粘进表格；值经 tsvEscape 中和公式与控制字符。 */
+function recordTsv(record: AnalysisRecord): string {
+  const node = selectedNode.value;
+  const visible = tableColumns.value;
+  const header = visible.length ? visible.map(column => columnLabel(node, column)) : [tr("名称")];
+  const values = visible.length ? visible.map(column => valueText(record.values[column.id], column, true)) : [record.title];
+  return [header, values].map(cells => cells.map(tsvEscape).join('\t')).join('\n');
+}
+const recordMenuEntries = computed<UiContextMenuEntry[]>(() => {
+  const target = recordMenu.target;
+  const node = selectedNode.value;
+  if (!target || !node) return [];
+  const { record } = target;
+  const column = columns.value.find(candidate => candidate.id === target.columnId) ?? null;
+  const recordSources = sources(record);
+  const entries: UiContextMenuEntry[] = [
+    { id: 'detail', label: tr("查看详情"), icon: PanelRightOpen, hint: 'Enter', action: () => void openRecord(record.recordId) },
+    {
+      id: 'locate', label: tr("定位源文件"), icon: LocateFixed, disabled: props.locating || !recordSources.length,
+      title: recordSources[0]?.label ?? tr("此记录未提供源文件位置"), action: () => locateRecord(record),
+    },
+    { kind: 'separator' },
+  ];
+  if (column) {
+    const label = columnLabel(node, column);
+    entries.push({ id: 'copy-value', label: tr("复制「{0}」", { 0: label }), icon: Copy, action: () => void copyText(valueText(record.values[column.id], column, true), label) });
+  }
+  entries.push({ id: 'copy-record', label: tr("复制整条记录"), icon: ClipboardList, action: () => void copyText(recordTsv(record), tr("{0} 条记录", { 0: 1 })) });
+  return entries;
+});
 
 const selectedCrumb = computed<string[]>(() => {
   const crumb: string[] = [];

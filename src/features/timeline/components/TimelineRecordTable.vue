@@ -9,7 +9,7 @@
                 </tr></thead>
                 <tbody>
                   <tr v-if="paddingTop > 0" class="virtual-spacer" aria-hidden="true"><td colspan="5" :style="{ height: `${paddingTop}px` }"></td></tr>
-                  <tr v-for="{ item } in visibleItems" :key="item.id" :class="{ selected: selectedRowId === item.id, deleted: item.deleted }" :aria-selected="selectedRowId === item.id" tabindex="0" @click="emit('select', item.id)" @dblclick="emit('open', item)" @keydown.enter="emit('select', item.id)">
+                  <tr v-for="{ item } in visibleItems" :key="item.id" :class="{ selected: selectedRowId === item.id, deleted: item.deleted }" :aria-selected="selectedRowId === item.id" tabindex="0" @click="emit('select', item.id)" @dblclick="emit('open', item)" @keydown.enter="emit('open', item)" @contextmenu="onRowContextMenu($event, item)">
                     <td class="mono tl-time"><span class="tl-date">{{ formatEpoch(item.tl_time, tzHours).slice(0, 10) }}</span> {{ formatEpoch(item.tl_time, tzHours).slice(11) }}</td>
                     <td :title="`${dataTypeLabel(item.data_type, tr)} · ${item.tl_flag || dataTypeLabel(item.data_type, tr)}`"><span class="ui-badge tone tl-flag" :style="{ '--badge-tone': flagTone(item.tl_flag) }"><component :is="dataTypeIcon(item.data_type)" :size="12" />{{ item.tl_flag || dataTypeLabel(item.data_type, tr) }}</span><span v-if="item.deleted" class="ui-badge sm danger deleted-label">{{ tr("已删除") }}</span></td>
                     <td class="tl-content" :title="item.content"><span>{{ item.content || tr("（无摘要）") }}</span></td>
@@ -29,14 +29,27 @@
                 </div>
               </div>
             </div>
+            <UiContextMenu
+              v-model:open="rowMenu.open"
+              :x="rowMenu.x"
+              :y="rowMenu.y"
+              :entries="rowMenuEntries"
+              :label="tr('事件操作')"
+              :heading="rowMenu.target ? rowMenu.target.tl_flag || dataTypeLabel(rowMenu.target.data_type, tr) : undefined"
+              :subheading="rowMenu.target ? formatEpoch(rowMenu.target.tl_time, tzHours) : undefined"
+            />
           </section>
 </template>
 <script setup lang="ts">
 import { tr } from '../../../composables/useLocale';
 
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue';
-import { ArrowDown, ArrowUp, ArrowUpRight, PanelRightOpen, Loader2, CalendarDays } from 'lucide-vue-next';
+import { ArrowDown, ArrowUp, ArrowUpRight, PanelRightOpen, Loader2, CalendarDays, Clock3, ClipboardList, TextQuote } from 'lucide-vue-next';
+import UiContextMenu, { type UiContextMenuEntry } from '../../../components/ui/UiContextMenu.vue';
+import { copyText } from '../../../composables/clipboard';
+import { useContextMenu } from '../../../composables/useContextMenu';
 import { useVirtualList } from '../../../composables/useVirtualList';
+import { tsvEscape } from '../../../utils/exportFormat';
 import type { TimelineRow } from '../../../lib/ipc/timeline';
 import { formatEpoch, flagTone, dataTypeLabel } from '../model/timelineView';
 import { dataTypeIcon } from './timelineIcons';
@@ -55,6 +68,35 @@ watch(() => props.revision, () => {
   void nextTick(() => { if (captured === generation) tableWrapRef.value?.scrollTo({ top: 0 }); });
 });
 onScopeDispose(() => { generation++; });
+
+// 右键：选中该事件（右侧显示详情），菜单作用于它。
+const { menu: rowMenu, openFromEvent } = useContextMenu<TimelineRow>();
+function onRowContextMenu(event: MouseEvent, row: TimelineRow) {
+  emit('select', row.id);
+  openFromEvent(event, row);
+}
+const rowMenuEntries = computed<UiContextMenuEntry[]>(() => {
+  const row = rowMenu.target;
+  if (!row) return [];
+  const time = formatEpoch(row.tl_time, props.tzHours);
+  const type = row.tl_flag || dataTypeLabel(row.data_type, tr);
+  const source = row.from_app || tr('文件系统');
+  const entries: UiContextMenuEntry[] = [{ id: 'detail', label: tr('查看详情'), icon: PanelRightOpen, action: () => emit('select', row.id) }];
+  if (row.data_type === 1) {
+    entries.push({ id: 'open', label: tr('定位源文件'), icon: ArrowUpRight, hint: 'Enter', disabled: props.locating, title: tr('在来源检材的文件列表中定位'), action: () => emit('open', row) });
+  }
+  entries.push(
+    { kind: 'separator' },
+    { id: 'copy-time', label: tr('复制时间'), icon: Clock3, action: () => void copyText(time, tr('事件时间')) },
+    { id: 'copy-content', label: tr('复制内容'), icon: TextQuote, disabled: !row.content, action: () => void copyText(row.content, tr('事件内容')) },
+    {
+      id: 'copy-row', label: tr('复制整行'), icon: ClipboardList,
+      action: () => void copyText([[tr('时间'), tr('事件类型'), tr('内容'), tr('来源')], [time, type, row.content, source]]
+        .map(cells => cells.map(tsvEscape).join('\t')).join('\n'), tr('{0} 行事件', { 0: 1 })),
+    },
+  );
+  return entries;
+});
 </script>
 <style scoped src="../../../styles/data-table.css"></style>
 

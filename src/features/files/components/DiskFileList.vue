@@ -9,14 +9,16 @@
 
     <div v-if="indexOnly" class="ui-alert info offline-notice" role="status"><CircleAlert :size="16" /><span>{{ tr("离线索引 · 源镜像不可用，可浏览已索引目录、筛选文件和查看属性。正文预览、导出、哈希及分析需恢复源镜像。") }}</span></div>
 
-    <div class="body">
+    <div class="body" @mouseup="onBodyMouseUp">
       <UiTransition kind="horizontal"><DiskFileTree
         :key="imageId + ':' + (volumeRevision ?? '')"
         v-show="treeVisible"
         :image-id="imageId"
         :path-stack="stack"
+        :exportable="!indexOnly"
         @navigate="onTreeNavigate"
         @open-file="onTreeOpenFile"
+        @export="onTreeExport"
       /></UiTransition>
       <div class="right-area">
         <FileFilterBar
@@ -39,13 +41,14 @@
           <div class="left-col">
             <FileTreemap
               v-if="viewMode === 'treemap'"
+              ref="treemap"
               :view="treemapView" :status="treemapStatus" :error="treemapError" :mode="treemapMode" :depth="treemapDepth"
               :directory-name="currentDirectory?.name ?? '/'" :directory-path="currentDirectoryPath"
               :volume-root="isVolumeRootId(currentDirectory?.id ?? '')"
               :selected-id="treemapSelection" :snapshot-label="snapshotStatus?.state === 'building' ? snapshotStatus.label : null"
               @select="onTreemapSelect" @open="onTreemapOpen" @enter="onTreemapEnter" @up="onTreemapUp" @prefetch="prefetchTreemap"
-              @depth="treemapDepth = Math.min(6, Math.max(1, treemapDepth + $event))"
-              @contextmenu="onRowContextMenu" @show-list="viewMode = 'list'" @retry="retryTreemap"
+              @depth="treemapDepth = Math.min(TREEMAP_MAX_DEPTH, Math.max(TREEMAP_MIN_DEPTH, treemapDepth + $event))"
+              @contextmenu="showRowMenu" @copy-path="copyCurrentPath" @show-list="viewMode = 'list'" @retry="retryTreemap"
             />
             <FileListTable
               v-show="viewMode === 'list'"
@@ -59,7 +62,8 @@
               @container-change="tableWrapRef = $event" @marquee-start="onMarqueeMouseDown" @keydown="onTableKeydown"
               @toggle-all="toggleAll" @sort="cycleSort" @filter="toggleFilterPopover" @row-click="onRowClick"
               @row-double-click="onRowDblClick" @row-mouse-down="onRowMouseDown" @context-menu="onRowContextMenu"
-              @name-click="onNameClick" @check-click="onCheckClick" @clear-filters="resetListView" @retry="refresh"
+              @background-menu="onListBackgroundMenu" @header-menu="onHeaderContextMenu"
+              @check-click="onCheckClick" @clear-filters="resetListView" @retry="refresh"
             />
           </div>
 
@@ -98,27 +102,19 @@
     </div>
 
     <DiskRowContextMenu
-      :visible="rowMenu.visible"
+      v-model:open="rowMenu.open"
       :x="rowMenu.x"
       :y="rowMenu.y"
-      :has-node="!!rowMenu.node"
-      :copy-count="copyCount"
-      :checked-file-count="checkedFiles.length"
-      :checked-dir-count="checkedDirs.length"
-      :can-export-file="!indexOnly && canExportFile"
-      :can-export-dir="!indexOnly && canExportDir"
-      :can-hash="!indexOnly && canHash"
-      :can-identify="!indexOnly && canIdentify"
-      :can-plugin-task="!indexOnly && canPluginTask"
-      :can-return-to-original-dir="activeFilterCount > 0 || deepsearch || (viewMode === 'treemap' && !!rowMenu.node && rowMenu.node.parent_id !== currentDirectory?.id)"
-      :can-mount="!indexOnly && rowCanMount"
-      :mount-busy="mountBusy"
-      :mounted="!!rowMountView"
-      :mount-label="rowMountLabel"
-      v-model:hash-menu-open="hashMenuOpen"
-      :hash-menu-flip="hashMenuFlip"
+      :node="rowMenu.target?.node ?? null"
+      :scope="rowMenu.target?.scope ?? 'row'"
+      :summary="targetSummary"
+      :index-only="!!indexOnly"
+      :can-return-to-original-dir="canReturnToOriginalDir"
+      :can-plugin-task="canPluginTask"
+      :mount="rowMount"
       :hash-options="HASH_MENU_OPTIONS"
       @tag-pick="onTagPick"
+      @open-node="onMenuOpenNode"
       @show-detail="onShowDetail"
       @return-to-original-dir="onReturnToOriginalDir"
       @toggle-mount="onToggleRowMount"
@@ -130,6 +126,50 @@
       @copy-names="onCopyNames"
       @copy-paths="onCopyPaths"
       @copy-forensic="onCopyForensic"
+    />
+
+    <FileListBackgroundMenu
+      v-model:open="listMenu.open"
+      :x="listMenu.x"
+      :y="listMenu.y"
+      :directory-name="currentDirectory?.name ?? '/'"
+      :row-count="filteredEntries.length"
+      :at-root="stack.length <= 1"
+      :loading="loading"
+      :all-checked="headerChecked"
+      :checked-count="checkedStats.count"
+      :recursive="deepsearch"
+      :hide-empty-dirs="hideEmptyDirs"
+      :treemap-available="treemapAvailable"
+      :index-only="!!indexOnly"
+      @go-up="goUp"
+      @refresh="refresh"
+      @toggle-all="toggleAll"
+      @clear-checked="clearChecked"
+      @set-recursive="setScope($event ? 'recursive' : 'directory')"
+      @set-hide-empty="hideEmptyDirs = $event"
+      @show-treemap="viewMode = 'treemap'"
+      @show-columns="columnsOpen = true"
+      @copy-path="copyCurrentPath"
+      @export-directory="exportCurrentDirectory"
+    />
+
+    <FileColumnMenu
+      v-model:open="headerMenu.open"
+      :x="headerMenu.x"
+      :y="headerMenu.y"
+      :column="headerMenuColumn"
+      :sort-key="sortKey"
+      :sort-dir="sortDir"
+      :sortable="headerMenuSortable"
+      :filterable="headerMenuFilterable"
+      :filtered="!!headerMenuColumn && isColumnFiltered(headerMenuColumn.key)"
+      :visible-count="visibleColumns.length"
+      @sort="sortHeaderMenuColumn"
+      @filter="filterHeaderMenuColumn"
+      @hide="headerMenuColumn && toggleColumn(headerMenuColumn.key)"
+      @show-columns="columnsOpen = true"
+      @reset-columns="resetColumns"
     />
 
     <PluginTaskDialog
@@ -151,7 +191,8 @@
 import { tr } from '../../../composables/useLocale';
 
 import UiTransition from '../../../components/ui/UiTransition.vue';
-import { ref, computed, watch, reactive, shallowRef, onActivated, onDeactivated, onUnmounted, onScopeDispose } from 'vue';
+import { ref, computed, watch, reactive, shallowRef, nextTick, useTemplateRef, onActivated, onDeactivated, onUnmounted, onScopeDispose } from 'vue';
+import { menuPointBelow } from '../../../composables/useContextMenu';
 import { type FsTypeIdent, type StoredDigest } from '../../../lib/ipc/fs/derived';
 import {
   PanelRightOpen,
@@ -169,6 +210,8 @@ import FileListFooter from './FileListFooter.vue';
 import FileListToolbar from './FileListToolbar.vue';
 import FileColumnSettings from './FileColumnSettings.vue';
 import DiskRowContextMenu from './DiskRowContextMenu.vue';
+import FileListBackgroundMenu from './FileListBackgroundMenu.vue';
+import FileColumnMenu from './FileColumnMenu.vue';
 import PluginTaskDialog from '../../tasks/components/PluginTaskDialog.vue';
 import ExportModePicker from './ExportModePicker.vue';
 import { useFileExports } from '../composables/useFileExports';
@@ -214,7 +257,7 @@ import FileTreemap from './FileTreemap.vue';
 import TreemapFooter from './TreemapFooter.vue';
 import TreemapToolbar from './TreemapToolbar.vue';
 import { useSizeTree, type TreemapMode } from '../composables/useSizeTree';
-import { isVolumeRootId, treemapAvailableAt, type FileViewMode } from '../model/treemap';
+import { TREEMAP_MAX_DEPTH, TREEMAP_MIN_DEPTH, isVolumeRootId, treemapAvailableAt, type FileViewMode } from '../model/treemap';
 import type { FileNavigationFrame } from '../model/navigation';
 
 type FsNode = DiskFsNode;
@@ -306,8 +349,8 @@ const { digestCheckedFiles, identifyCheckedFiles } = useFileDerivedActions({
   revealColumns: keys => { for (const key of keys) columnVisible[key] = true; },
 });
 const { tagOf, setTag, hydrateTagsForNodes, resetHydration } = useFileTags();
-const { rowMenu, hashMenuOpen, hashMenuFlip, hideRowMenu, onRowContextMenu } = useFileRowMenu({
-  selectedKey, previewVisible,
+const { rowMenu, listMenu, headerMenu, anyMenuOpen, hideMenus, showRowMenu, onRowContextMenu, showListMenu, showHeaderMenu } = useFileRowMenu({
+  selectedKey, previewVisible, isChecked: id => checkedIds.value.has(id),
   filterVisible: () => filterPopover.visible, closeFilter: () => hideFilterPopover(),
   exportModeOpen: () => modePickerOpen.value, cancelExportMode: () => chooseExportMode(null),
   hasChecked: () => checkedIds.value.size > 0, clearChecked,
@@ -398,7 +441,7 @@ function loadAfterNavigation(): Promise<void> {
   loadGeneration += 1;
   invalidatePathFollow();
   detailNode.value = null;
-  hideRowMenu();
+  hideMenus();
   cancelDeferredListLoad();
   deferredListLoad = setTimeout(() => {
     deferredListLoad = null;
@@ -424,7 +467,7 @@ watch(viewMode, mode => {
   // 树图按目录结构看整棵子树：关键词与全显只属于列表，勾选也不跟到树图里，
   // 否则右键菜单会作用在看不见的勾选行上。
   hideFilterPopover();
-  hideRowMenu();
+  hideMenus();
   clearChecked();
   if (deepsearch.value || searchKeyword.value || appliedKeyword.value) {
     closeDeepSearch();
@@ -464,6 +507,16 @@ function onTreemapEnter(frames: FileNavigationFrame[]) {
 
 function onTreemapUp() {
   navigateFromTreemap(goUp);
+}
+
+const treemap = useTemplateRef<InstanceType<typeof FileTreemap>>('treemap');
+
+/** 菜单里的「打开」目录：列表里进入它，树图里像双击一样从瓦片展开进入。 */
+function onMenuOpenNode() {
+  const node = rowMenu.target?.node;
+  if (node?.kind !== 'dir') return;
+  if (viewMode.value === 'treemap') treemap.value?.enterNode(node.id);
+  else onActivate(node);
 }
 
 // 案件在镜像装载之后才创建/打开时：先把会话里已算的哈希补存进案件目录
@@ -509,7 +562,7 @@ const columnVisible = reactive<Record<string, boolean>>(
 
 const fileFilters = useFileFilters({
   imageId: () => props.imageId, entries, stack, flatMode: deepsearch, loading,
-  container: () => tableWrapRef.value, fullPathOf, loadCurrent, closeRowMenu: hideRowMenu,
+  container: () => tableWrapRef.value, fullPathOf, loadCurrent, closeRowMenu: hideMenus,
 });
 const { filters, effectiveFilters, sizeFilter, timeFilters, activeTimeFilterKeys, appliedSizePredicate, matchesTimeFilter,
   resetSizeFilter, resetTimeFilter, activeFilterCount, isColumnFiltered, filterSummaryOf, clearAllFilters, clearColumnFilter,
@@ -567,7 +620,7 @@ async function loadCurrent(reload: { keepPanels?: boolean } = {}) {
   if (!reload.keepPanels) {
     detailNode.value = null;
     // 菜单挂着旧列表的节点，任何重载都得收掉，免得菜单动作落在过期目标上。
-    hideRowMenu();
+    hideMenus();
   }
   directoryMetadata.clear();
   directoryCursor.value = null;
@@ -715,19 +768,30 @@ const viewport = useFileTableViewport({
   generation: () => loadGeneration, loadCurrent, hydrateVisible: directoryMetadata.hydrateVisible,
   scrollToRow: index => scrollRowIntoView(index),
 });
-const { visibleItems, paddingTop, paddingBottom, range, sortBusyKey, cycleSort } = viewport;
+const { visibleItems, paddingTop, paddingBottom, range, sortBusyKey, cycleSort, setSort } = viewport;
 
-// 单击文件行立即打开详情；目录行在预览已打开或拆分时同步目录属性，
-// 预览关闭时只选中，仍可从预览按钮或右键「查看详情」主动打开。
-// 激活导航后 300ms 内三个入口都忽略事件：导航后列表瞬间重载（快照级响应在
+// 左键：单击整行（含名称）只选中——文件立即打开详情，目录行在预览已打开或
+// 拆分时同步目录属性；Ctrl+单击勾选或取消该行，Shift+单击勾选从锚点到该行的
+// 一段，二者都不弹出预览；双击或 Enter 打开：目录进入，文件打开预览。
+// 激活导航后 300ms 内这些入口都忽略事件：导航后列表瞬间重载（快照级响应在
 // 双击间隙内就渲染完），双击的第二击/dblclick 会落在新行上——轻则误开详情，
 // 重则误入第二层目录。窗口不做一次性消费：一次双击会同时产生杂散 click 与
 // dblclick 两个事件，消费一次就放过后者。
-function onRowClick(node: FsNode) {
+function onRowClick(event: MouseEvent, node: FsNode) {
   // 框选结束的 mouseup 若与按下落在同一行，会派生一次杂散 click——
   // 不能让它把刚框好的勾选覆盖成单行详情选中。
   if (marqueeJustEnded()) return;
   if (withinActivateCooldown()) return;
+  if (event.shiftKey || event.ctrlKey || event.metaKey) {
+    if (event.shiftKey) selection.checkRange(node.id, activeRow.value?.id ?? null);
+    else selection.toggleChecked(node.id);
+    selectedKey.value = rowKeyOf(node);
+    if (previewVisible.value || previewDetached.value) {
+      detailNode.value = node;
+      previewVisible.value = true;
+    }
+    return;
+  }
   selectedKey.value = rowKeyOf(node);
   if (node.kind !== 'dir' || previewVisible.value || previewDetached.value) {
     detailNode.value = node;
@@ -739,17 +803,93 @@ function onRowDblClick(node: FsNode) {
   // 同一行内两次快速框选会被浏览器凑成 dblclick——不当导航
   if (marqueeJustEnded()) return;
   if (withinActivateCooldown()) return;
-  if (node.kind !== 'dir') return;
-  onActivate(node);
+  if (node.kind === 'dir') {
+    onActivate(node);
+    return;
+  }
+  detailNode.value = node;
+  previewVisible.value = true;
 }
 
-function onNameClick(e: MouseEvent, node: FsNode) {
-  // 文件名不拦截，冒泡给行点击开详情；目录名是「进入」链接。
-  if (node.kind !== 'dir') return;
-  e.stopPropagation();
-  if (withinActivateCooldown()) return;
-  selectedKey.value = rowKeyOf(node);
-  onActivate(node);
+/** 鼠标侧键「后退」返回上级；树图自己处理（带缩回动画），预览里不响应。 */
+function onBodyMouseUp(event: MouseEvent) {
+  if (event.button !== 3) return;
+  event.preventDefault();
+  if (viewMode.value !== 'list' || loading.value || (event.target as Element | null)?.closest('.preview-dock')) return;
+  goUp();
+}
+
+// ── 右键菜单 ──
+// 行：作用于右键的那一行；右键的是勾选行时，批量操作作用于全部勾选行（见 useFileRowMenu）。
+// 表格空白处：当前目录与视图；表头：该列的排序、过滤与列设置。
+
+function onListBackgroundMenu(event: MouseEvent) {
+  event.preventDefault();
+  showListMenu({ x: event.clientX, y: event.clientY });
+}
+
+function onHeaderContextMenu(event: MouseEvent) {
+  const cell = (event.target as Element | null)?.closest<HTMLElement>('th[data-column]');
+  showHeaderMenu({ x: event.clientX, y: event.clientY }, cell?.dataset.column ?? null);
+}
+
+/** ContextMenu 键 / Shift+F10：光标行的菜单开在该行下方，没有光标行时开当前目录的菜单。 */
+function openMenuFromKeyboard(node: FsNode | null) {
+  // 光标行刚被滚进视口：等虚拟列表把它渲染出来再定位。
+  void nextTick(() => {
+    const wrap = tableWrapRef.value;
+    if (!wrap) return;
+    const row = node ? wrap.querySelector('tr[data-selected]') : null;
+    if (node) showRowMenu(menuPointBelow((row ?? wrap).getBoundingClientRect()), node);
+    else {
+      const rect = wrap.getBoundingClientRect();
+      showListMenu({ x: rect.left + 24, y: rect.top + 40 });
+    }
+  });
+}
+
+const headerMenuColumn = computed(() => COLUMNS.find(column => column.key === headerMenu.target) ?? null);
+const headerMenuSortable = computed(() => !!headerMenuColumn.value && (!deepsearch.value || flatSortColumn(headerMenuColumn.value.key) !== null));
+const headerMenuFilterable = computed(() => !!headerMenuColumn.value
+  && headerMenuColumn.value.filterMode !== 'none'
+  && !(deepsearch.value && !FLAT_SERVER_FILTER_COLUMNS.has(headerMenuColumn.value.key)));
+
+function sortHeaderMenuColumn(direction: 'asc' | 'desc' | null) {
+  const column = headerMenuColumn.value;
+  if (column) setSort(column.key, direction);
+}
+
+/** 过滤气泡锚在列头的漏斗上：替用户点一下它。 */
+function filterHeaderMenuColumn() {
+  const key = headerMenuColumn.value?.key;
+  if (!key) return;
+  tableWrapRef.value?.querySelector<HTMLButtonElement>(`th[data-column="${key}"] .head-funnel`)?.click();
+}
+
+function resetColumns() {
+  for (const column of COLUMNS) {
+    if (columnVisible[column.key] !== DEFAULT_VISIBLE.has(column.key)) toggleColumn(column.key);
+  }
+}
+
+const canReturnToOriginalDir = computed(() => {
+  const node = rowMenu.target?.node;
+  return activeFilterCount.value > 0 || deepsearch.value
+    || (viewMode.value === 'treemap' && !!node && node.parent_id !== currentDirectory.value?.id);
+});
+
+/** 空白处菜单「导出此文件夹」：当前目录本身。 */
+function exportCurrentDirectory() {
+  const frame = currentDirectory.value;
+  if (!frame || stack.value.length <= 1 || props.indexOnly) return;
+  void exportSelectedDir({ id: frame.id, name: frame.name, kind: 'dir', size: 0 }, []);
+}
+
+function onTreeExport(node: { id: string; name: string; kind: string }) {
+  if (props.indexOnly) return;
+  const target = { ...node, size: 0 };
+  if (node.kind === 'dir') void exportSelectedDir(target, []);
+  else void exportSelectedFile(target, []);
 }
 
 function onRowMouseDown(e: MouseEvent) {
@@ -790,11 +930,12 @@ watch(() => props.volumeRevision, () => refresh());
 const { selectedIndexIn, scrollRowIntoView, onTableKeydown } = useFileTableKeyboard({
   rows: () => filteredEntries.value,
   selectedKey, checkedIds, container: tableWrapRef, rowHeight: ROW_HEIGHT,
-  menuOpen: () => rowMenu.visible,
+  menuOpen: anyMenuOpen,
   loading: () => loading.value,
   toggleAll, goUp, activate: onActivate,
   preview: node => { detailNode.value = node; previewVisible.value = true; },
   setAnchor: selection.setAnchor,
+  openMenu: openMenuFromKeyboard,
 });
 
 function toggleColumn(key: string) {
@@ -824,11 +965,11 @@ function parentDirectoryPathOf(node: FsNode): string {
 
 const { mountBusy, rowCanMount, rowMountView, rowMountLabel, refreshReadonlyMounts, onToggleRowMount } = useReadonlyMountActions({
   imageId: () => props.imageId,
-  node: () => rowMenu.node,
+  node: () => rowMenu.target?.node ?? null,
   target: () => mountTarget.value,
   folderRoot: () => mountFolderRoot.value,
   caseDirectory: () => activeCase.value?.dir ?? null,
-  closeMenu: hideRowMenu,
+  closeMenu: hideMenus,
 });
 
 watch(
@@ -859,18 +1000,26 @@ watch(
   { immediate: true, flush: 'sync' },
 );
 
-const { copyCount, copyCurrentPath, onCopyNames, onCopyPaths, onCopyForensic,
-  canExportFile, canExportDir, canHash, canIdentify, canPluginTask, pluginTaskDialog, onPluginTask,
+const { targetSummary, copyCurrentPath, onCopyNames, onCopyPaths, onCopyForensic,
+  canPluginTask, pluginTaskDialog, onPluginTask,
   onExportFile, onExportDir, onComputeHash, onIdentifyType, onTagPick } = useFileActions({
-  imageId: () => props.imageId, rows: () => filteredEntries.value, node: () => rowMenu.node,
-  currentPath: () => currentDirectoryPath.value, fullPathOf, selection, closeMenu: hideRowMenu,
+  imageId: () => props.imageId, rows: () => filteredEntries.value,
+  node: () => rowMenu.target?.node ?? null, scope: () => rowMenu.target?.scope ?? 'row',
+  currentPath: () => currentDirectoryPath.value, fullPathOf, selection, closeMenu: hideMenus,
   exportFile: exportSelectedFile, exportDirectory: exportSelectedDir, digest: digestCheckedFiles, identify: identifyCheckedFiles,
   setTag, revealTagColumn: () => { columnVisible.tag = true; },
 });
 
+const rowMount = computed(() => ({
+  available: !props.indexOnly && rowCanMount.value,
+  busy: mountBusy.value,
+  mounted: !!rowMountView.value,
+  label: rowMountLabel.value,
+}));
+
 function onShowDetail() {
-  const node = rowMenu.node;
-  hideRowMenu();
+  const node = rowMenu.target?.node;
+  hideMenus();
   if (!node) return;
   selectedKey.value = rowKeyOf(node);
   detailNode.value = node;
@@ -882,8 +1031,8 @@ watch(() => props.imageId, () => { originalDirectoryRequest++; }, { flush: 'sync
 onScopeDispose(() => { originalDirectoryRequest++; });
 async function onReturnToOriginalDir() {
   const request = ++originalDirectoryRequest;
-  const node = rowMenu.node;
-  hideRowMenu();
+  const node = rowMenu.target?.node;
+  hideMenus();
   if (!node) return;
   const parentPath = parentDirectoryPathOf(node);
   const targetStack = await resolveAbsoluteDirStack(parentPath);
@@ -903,7 +1052,6 @@ async function onReturnToOriginalDir() {
   loadCurrent();
 }
 
-// 打标：有勾选按勾选集（与复制/导出口径一致），没有按光标行。
 // 本面板被 <KeepAlive> 缓存，切走不销毁。文档级键盘监听只在面板可见（激活）时
 // 挂载——否则在「镜像信息」等其他面板按 Esc 会误消费到这里（关详情 / 清勾选）。
 onActivated(() => {
@@ -916,7 +1064,7 @@ onDeactivated(() => {
   originalDirectoryRequest++;
   navigation.invalidateLocate();
   // 离开面板时收起可能还开着的右键菜单 / 过滤气泡，免得它们悬在别的面板上。
-  hideRowMenu();
+  hideMenus();
   hideFilterPopover();
   // 跳转离开即复位全显状态；重载留到下次激活。
   closeDeepSearch();

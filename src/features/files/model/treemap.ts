@@ -11,6 +11,10 @@
 /** 文件列表的两种视图：逐行的列表，与按空间占用的树图（仅 NTFS）。 */
 export type FileViewMode = 'list' | 'treemap';
 
+/** 树图一次画出的层数范围。 */
+export const TREEMAP_MIN_DEPTH = 1;
+export const TREEMAP_MAX_DEPTH = 6;
+
 /** 分区或逻辑卷的根节点（`part:N` / `lvm:N:M`）。 */
 export function isVolumeRootId(id: string): boolean {
   return /^part:\d+$/.test(id) || /^lvm:\d+:\d+$/.test(id);

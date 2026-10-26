@@ -363,5 +363,7 @@ export function useFileTree(options: FileTreeOptions) {
   });
 
   onScopeDispose(() => { disposed = true; loadGeneration++; navigationGeneration++; });
-  return { activeId, selectedLeafId, visibleRows, rootNodes, rootLoaded, dockerFilesystemLoading, onRowClick, toggleExpand, hydrateRows };
+  /** The synthetic「…其余 N 项」row that stands for the files the tree leaves out. */
+  const isOverflowRow = (id: string) => id.startsWith(MORE_PREFIX);
+  return { activeId, selectedLeafId, visibleRows, rootNodes, rootLoaded, dockerFilesystemLoading, onRowClick, toggleExpand, hydrateRows, pathFor, isOverflowRow };
 }

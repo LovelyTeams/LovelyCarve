@@ -46,12 +46,9 @@ import { computed } from 'vue';
 import { Clock3, Files, HardDrive, Minus, Plus } from 'lucide-vue-next';
 import FileViewSwitch from './FileViewSwitch.vue';
 import type { TreemapMode } from '../composables/useSizeTree';
-import type { FileViewMode } from '../model/treemap';
+import { TREEMAP_MAX_DEPTH as MAX_DEPTH, TREEMAP_MIN_DEPTH as MIN_DEPTH, type FileViewMode } from '../model/treemap';
 import { AGE_BUCKETS, ageBucketLabel } from '../model/treemapAge';
 import { ageSwatch } from '../model/treemapPalette';
-
-const MIN_DEPTH = 1;
-const MAX_DEPTH = 6;
 
 const mode = defineModel<TreemapMode>('mode', { required: true });
 const depth = defineModel<number>('depth', { required: true });

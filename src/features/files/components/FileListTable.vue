@@ -8,13 +8,14 @@
       :aria-busy="loading"
       @mousedown="emit('marqueeStart', $event)"
       @keydown="emit('keydown', $event)"
+      @contextmenu="emit('backgroundMenu', $event)"
     >
   <table class="data-table grid">
   <colgroup>
     <col class="col-check" />
     <col v-for="c in visibleColumns" :key="c.key" :class="`col-${c.key}`" />
   </colgroup>
-  <thead>
+  <thead @contextmenu.prevent.stop="emit('headerMenu', $event)">
     <tr class="head-row">
       <th class="cell-check">
         <input
@@ -29,6 +30,7 @@
         v-for="c in visibleColumns"
         :key="c.key"
         class="head-cell"
+        :data-column="c.key"
         :class="[`head-${c.key}`, { numeric: NUMERIC_COLUMNS.has(c.key), sorted: sortKey === c.key }]"
         :aria-sort="sortKey === c.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'"
       >
@@ -69,7 +71,7 @@
           'has-snapshot': vi.item.has_snapshot && vi.item.id.startsWith('refs:'),
           'snapshot-row': vi.item.id.startsWith('refs-snap:'),
         }"
-        @click="emit('rowClick', vi.item)"
+        @click="emit('rowClick', $event, vi.item)"
         @dblclick="emit('rowDoubleClick', vi.item)"
         @mousedown="emit('rowMouseDown', $event)"
         @contextmenu.prevent.stop="emit('contextMenu', $event, vi.item)"
@@ -97,10 +99,9 @@
               class="kind-icon"
             />
             <span
-              class="name-link"
+              class="name-text"
               :title="fullPathOf(vi.item)"
               :class="{ 'is-dir': vi.item.kind === 'dir' }"
-              @click="emit('nameClick', $event, vi.item)"
             >{{ vi.item.name }}</span>
             <span v-if="deepsearch && !pathColumnVisible && parentPathOf(vi.item)" class="name-parent" :title="fullPathOf(vi.item)">{{ parentPathOf(vi.item) }}</span>
             <span
@@ -285,11 +286,13 @@ const emit = defineEmits<{
   toggleAll: [];
   sort: [key: string];
   filter: [event: MouseEvent, column: ColumnDef];
-  rowClick: [node: DiskFsNode];
+  rowClick: [event: MouseEvent, node: DiskFsNode];
   rowDoubleClick: [node: DiskFsNode];
   rowMouseDown: [event: MouseEvent];
   contextMenu: [event: MouseEvent, node: DiskFsNode];
-  nameClick: [event: MouseEvent, node: DiskFsNode];
+  /** A right click on the table outside the rows and the header. */
+  backgroundMenu: [event: MouseEvent];
+  headerMenu: [event: MouseEvent];
   checkClick: [event: MouseEvent, id: string];
   clearFilters: [];
   retry: [];
@@ -645,7 +648,7 @@ thead:hover .head-funnel.active {
   color: var(--sev-critical-fg);
 }
 
-.body-row.deleted .name-link {
+.body-row.deleted .name-text {
   color: inherit;
   text-decoration: line-through;
   text-decoration-color: color-mix(in srgb, var(--sev-critical-fg) 70%, transparent);
@@ -677,30 +680,16 @@ thead:hover .head-funnel.active {
   flex-shrink: 0;
 }
 
-/* 目录名可点击进入：常态只加字重，悬停才出现下划线提示。 */
-.name-link {
+/* 名称与整行一样单击选中、双击打开；目录名加字重，便于在文件中扫出目录。 */
+.name-text {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-primary);
+}
+
+.name-text.is-dir {
   font-weight: 500;
-  cursor: pointer;
-  text-decoration: underline;
-  text-decoration-color: transparent;
-  text-underline-offset: 3px;
-  transition: color var(--transition-fast), text-decoration-color var(--transition-fast);
-}
-
-.name-link:hover {
-  color: var(--primary-color);
-  text-decoration-color: color-mix(in srgb, var(--primary-color) 55%, transparent);
-}
-
-.name-link:not(.is-dir) {
-  cursor: default;
-  font-weight: 400;
-  text-decoration: none;
-  color: var(--text-primary);
 }
 
 /* 递归列出时，名称后淡显它相对当前目录所在的子目录。 */

@@ -60,6 +60,25 @@ describe('file selection identities and operation scope', () => {
     click(selection, 'c', true, true);
     expect(selection.checkedIds.value).toEqual(new Set(['a', 'c']));
   });
+  it('flips one row with Ctrl+click and checks a range from that anchor with Shift+click', () => {
+    const rows = ['a', 'b', 'c', 'd'].map(id => node(id));
+    const selection = useFileSelection({ rows: () => rows, marqueeJustEnded: () => false });
+    selection.toggleChecked('b');
+    selection.checkRange('d', 'a');
+    expect(selection.checkedIds.value).toEqual(new Set(['b', 'c', 'd']));
+    selection.toggleChecked('c');
+    expect(selection.checkedIds.value).toEqual(new Set(['b', 'd']));
+  });
+  it('starts a Shift range at the cursor row when nothing was checked by hand, keeping other checks', () => {
+    const rows = ['a', 'b', 'c', 'd'].map(id => node(id));
+    const selection = useFileSelection({ rows: () => rows, marqueeJustEnded: () => false });
+    selection.checkedIds.value = new Set(['d']);
+    selection.checkRange('c', 'a');
+    expect(selection.checkedIds.value).toEqual(new Set(['a', 'b', 'c', 'd']));
+    selection.clearChecked();
+    selection.checkRange('b', 'missing');
+    expect(selection.checkedIds.value).toEqual(new Set(['b']));
+  });
   it('restores a native checkbox after a marquee ghost click without altering selection', () => {
     const selection = useFileSelection({ rows: () => [node('a')], marqueeJustEnded: () => true });
     selection.checkedIds.value = new Set(['a']);

@@ -1,10 +1,24 @@
-import { computed, nextTick, onActivated, onDeactivated, onMounted, onScopeDispose, reactive, ref, type Ref } from 'vue';
+import { onActivated, onDeactivated, onMounted, onScopeDispose, type Ref } from 'vue';
+import { useContextMenu } from '../../../composables/useContextMenu';
 import { isHostDockerMountRoot, rowKeyOf, type DiskFsNode } from '../model/model';
+import type { FileMenuScope } from './useFileActions';
 
-/** Owns the floating row menu and visible-panel Escape precedence. */
+export interface FileRowMenuTarget {
+  node: DiskFsNode;
+  scope: FileMenuScope;
+}
+
+interface MenuPoint {
+  x: number;
+  y: number;
+}
+
+/** Owns the file list's context menus (row, blank area, column header) and the
+ *  visible panel's Escape precedence. */
 export function useFileRowMenu(options: {
   selectedKey: Ref<string | null>;
   previewVisible: Ref<boolean>;
+  isChecked: (id: string) => boolean;
   filterVisible: () => boolean;
   closeFilter: () => void;
   exportModeOpen: () => boolean;
@@ -13,61 +27,63 @@ export function useFileRowMenu(options: {
   clearChecked: () => void;
   refreshMounts: () => Promise<void>;
 }) {
-  const rowMenu = reactive({ visible: false, x: 0, y: 0, node: null as DiskFsNode | null });
-  const hashMenuOpen = ref(false);
-  const hashMenuFlip = computed(() => rowMenu.x + 200 + 120 > window.innerWidth);
-  let listenerGeneration = 0;
+  const row = useContextMenu<FileRowMenuTarget>();
+  const list = useContextMenu<null>();
+  /** The column key of the header cell the menu opened on (null: the check column). */
+  const header = useContextMenu<string | null>();
   let active = true;
   let disposed = false;
 
-  function hideRowMenu() {
-    listenerGeneration++;
-    rowMenu.visible = false;
-    hashMenuOpen.value = false;
-    document.removeEventListener('click', hideRowMenu);
-    document.removeEventListener('contextmenu', hideRowMenu);
+  function hideMenus() {
+    row.close();
+    list.close();
+    header.close();
   }
 
-  function onRowContextMenu(event: MouseEvent, node: DiskFsNode) {
+  const anyMenuOpen = () => row.menu.open || list.menu.open || header.menu.open;
+
+  /** Opens the row menu at a viewport point and moves the cursor to the row.
+   *  Opened on a checked row, its batch actions act on every checked row;
+   *  on any other row, on that row alone. */
+  function showRowMenu(point: MenuPoint, node: DiskFsNode) {
     if (!active || disposed) return;
-    hideRowMenu();
     options.closeFilter();
-    rowMenu.node = node;
-    rowMenu.x = Math.min(event.clientX, window.innerWidth - 200 - 8);
-    rowMenu.y = Math.min(event.clientY, window.innerHeight - (isHostDockerMountRoot(node) ? 436 : 402) - 8);
-    rowMenu.visible = true;
+    row.openAt(point.x, point.y, { node, scope: options.isChecked(node.id) ? 'checked' : 'row' });
     options.selectedKey.value = rowKeyOf(node);
-    const generation = listenerGeneration;
-    void nextTick(() => {
-      if (disposed || !active || !rowMenu.visible || generation !== listenerGeneration) return;
-      document.addEventListener('click', hideRowMenu, { once: true });
-      document.addEventListener('contextmenu', hideRowMenu, { once: true });
-    });
     if (isHostDockerMountRoot(node)) void options.refreshMounts();
   }
 
-  function onKeydown(event: KeyboardEvent) {
-    if (event.isComposing || event.keyCode === 229) return;
-    if (event.key === 'Escape') {
-      if (rowMenu.visible) hideRowMenu();
-      else if (options.filterVisible()) options.closeFilter();
-      else if (options.exportModeOpen()) options.cancelExportMode();
-      else {
-        const target = event.target as HTMLElement | null;
-        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-        if (options.previewVisible.value) options.previewVisible.value = false;
-        else if (options.hasChecked()) options.clearChecked();
-      }
-      return;
-    }
-    if (!rowMenu.visible || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) return;
+  function onRowContextMenu(event: MouseEvent, node: DiskFsNode) {
     event.preventDefault();
-    const items = Array.from(document.querySelectorAll<HTMLButtonElement>('.disk-row-menu .disk-row-menu-item:not(:disabled)'));
-    if (!items.length) return;
-    const current = items.indexOf(document.activeElement as HTMLButtonElement);
-    const step = event.key === 'ArrowDown' ? 1 : -1;
-    const next = current < 0 ? (step === 1 ? 0 : items.length - 1) : (current + step + items.length) % items.length;
-    items[next].focus();
+    showRowMenu({ x: event.clientX, y: event.clientY }, node);
+  }
+
+  /** The menu for the current directory, opened on the list's blank area. */
+  function showListMenu(point: MenuPoint) {
+    if (!active || disposed) return;
+    options.closeFilter();
+    list.openAt(point.x, point.y, null);
+  }
+
+  function showHeaderMenu(point: MenuPoint, columnKey: string | null) {
+    if (!active || disposed) return;
+    options.closeFilter();
+    header.openAt(point.x, point.y, columnKey);
+  }
+
+  // An open menu holds the focus and handles its own keys; this covers the
+  // layers below it.
+  function onKeydown(event: KeyboardEvent) {
+    if (event.isComposing || event.keyCode === 229 || event.key !== 'Escape') return;
+    if (anyMenuOpen()) hideMenus();
+    else if (options.filterVisible()) options.closeFilter();
+    else if (options.exportModeOpen()) options.cancelExportMode();
+    else {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      if (options.previewVisible.value) options.previewVisible.value = false;
+      else if (options.hasChecked()) options.clearChecked();
+    }
   }
 
   function activate() {
@@ -77,11 +93,14 @@ export function useFileRowMenu(options: {
   function deactivate() {
     active = false;
     document.removeEventListener('keydown', onKeydown);
-    hideRowMenu();
+    hideMenus();
   }
   onMounted(activate);
   onActivated(activate);
   onDeactivated(deactivate);
   onScopeDispose(() => { disposed = true; deactivate(); });
-  return { rowMenu, hashMenuOpen, hashMenuFlip, hideRowMenu, onRowContextMenu };
+  return {
+    rowMenu: row.menu, listMenu: list.menu, headerMenu: header.menu,
+    anyMenuOpen, hideMenus, showRowMenu, onRowContextMenu, showListMenu, showHeaderMenu,
+  };
 }

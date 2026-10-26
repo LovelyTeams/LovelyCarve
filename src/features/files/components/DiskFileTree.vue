@@ -35,6 +35,7 @@
           :class="{ active: row.node.id === activeId || row.node.id === selectedLeafId, loading: row.node.loading }"
           :style="{ paddingLeft: 8 + row.depth * 14 + 'px' }"
           @click="onRowClick(row.node)"
+          @contextmenu="onRowContextMenu($event, row.node)"
         >
           <span class="tree-chevron-wrap" @click.stop="toggleExpand(row.node)">
             <ChevronRight
@@ -66,25 +67,45 @@
         </div>
       </div>
     </div>
+    <UiContextMenu
+      v-model:open="rowMenu.open"
+      :x="rowMenu.x"
+      :y="rowMenu.y"
+      :entries="menuEntries"
+      :label="tr('目录树操作')"
+      :heading="rowMenu.target?.name"
+    >
+      <template #heading-icon>
+        <FileNodeIcon v-if="rowMenu.target" :id="rowMenu.target.id" :kind="rowMenu.target.kind" :name="rowMenu.target.name" :size="15" />
+      </template>
+    </UiContextMenu>
   </aside>
 </template>
 
 <script setup lang="ts">
 import { tr } from '../../../composables/useLocale';
 
-import { ChevronRight, FolderTree, FolderX, Loader2 } from 'lucide-vue-next';
-import { ref, watch } from 'vue';
+import { ChevronDown, ChevronRight, ClipboardCopy, Copy, Eye, FileDown, FolderDown, FolderOpen, FolderTree, FolderX, List, Loader2 } from 'lucide-vue-next';
+import { computed, ref, watch } from 'vue';
 import { useVirtualList } from '../../../composables/useVirtualList';
+import { useContextMenu } from '../../../composables/useContextMenu';
+import { copyText } from '../../../composables/clipboard';
 import FileNodeIcon from '../../../components/display/FileNodeIcon.vue';
+import UiContextMenu, { type UiContextMenuEntry } from '../../../components/ui/UiContextMenu.vue';
+import { compactMenuEntries } from '../../../utils/menuPlacement';
 import { useCaseContext } from '../../cases/api';
 import { useEmptyDirFilter } from '../composables/useEmptyDirFilter';
 import { useFileTree } from '../composables/useFileTree';
-import type { TreeStackFrame } from '../model/fileTree';
-const props = defineProps<{ imageId: string; pathStack: TreeStackFrame[] }>();
-const emit = defineEmits<{ navigate: [stack: TreeStackFrame[]]; 'open-file': [stack: TreeStackFrame[], fileId: string] }>();
+import type { TreeNodeData, TreeStackFrame } from '../model/fileTree';
+const props = defineProps<{ imageId: string; pathStack: TreeStackFrame[]; exportable: boolean }>();
+const emit = defineEmits<{
+  navigate: [stack: TreeStackFrame[]];
+  'open-file': [stack: TreeStackFrame[], fileId: string];
+  export: [node: { id: string; name: string; kind: string }];
+}>();
 const { activeCase } = useCaseContext();
 const { hideEmptyDirs } = useEmptyDirFilter();
-const { activeId, selectedLeafId, visibleRows, rootNodes, rootLoaded, dockerFilesystemLoading, onRowClick, toggleExpand, hydrateRows } = useFileTree({
+const { activeId, selectedLeafId, visibleRows, rootNodes, rootLoaded, dockerFilesystemLoading, onRowClick, toggleExpand, hydrateRows, pathFor, isOverflowRow } = useFileTree({
   imageId: () => props.imageId, pathStack: () => props.pathStack, caseId: () => activeCase.value?.id ?? null, hideEmptyDirs,
   navigate: stack => emit('navigate', stack), openFile: (stack, fileId) => emit('open-file', stack, fileId),
 });
@@ -103,6 +124,43 @@ watch([activeId, visibleRows], ([id, rows]) => {
   const index = rows.findIndex(row => row.node.id === id);
   if (index >= 0) { scrollToIndex(index); revealedId = id; }
 }, { flush: 'post' });
+
+// ── 右键菜单 ── 左键单击照旧（目录进入、文件打开预览），右键针对该行。
+const { menu: rowMenu, openFromEvent } = useContextMenu<TreeNodeData>();
+function onRowContextMenu(event: MouseEvent, node: TreeNodeData) {
+  openFromEvent(event, node);
+}
+
+function fullPathOf(node: TreeNodeData): string {
+  return `/${pathFor(node.id).slice(1).map(frame => frame.name).join('/')}`;
+}
+
+const menuEntries = computed<UiContextMenuEntry[]>(() => {
+  const node = rowMenu.target;
+  if (!node) return [];
+  if (isOverflowRow(node.id)) return [{ id: 'open', label: tr('在列表中查看'), icon: List, action: () => onRowClick(node) }];
+  const directory = node.kind === 'dir';
+  const exportTitle = props.exportable ? undefined : tr('离线索引 · 需恢复源镜像');
+  const list: UiContextMenuEntry[] = directory
+    ? [
+        { id: 'open', label: tr('打开'), icon: FolderOpen, hint: 'Enter', action: () => onRowClick(node) },
+        { id: 'expand', label: node.expanded ? tr('折叠') : tr('展开'), icon: node.expanded ? ChevronDown : ChevronRight, action: () => void toggleExpand(node) },
+      ]
+    : [{ id: 'open', label: tr('预览'), icon: Eye, hint: 'Enter', action: () => onRowClick(node) }];
+  list.push({ kind: 'separator' });
+  if (directory || node.kind === 'file') {
+    list.push({
+      id: 'export', label: directory ? tr('导出文件夹') : tr('导出文件'), icon: directory ? FolderDown : FileDown,
+      disabled: !props.exportable, title: exportTitle, action: () => emit('export', { id: node.id, name: node.name, kind: node.kind }),
+    });
+  }
+  list.push(
+    { kind: 'separator' },
+    { id: 'copy-name', label: tr('复制名称'), icon: Copy, action: () => void copyText(node.name, tr('{0} 个名称', { 0: 1 })) },
+    { id: 'copy-path', label: tr('复制完整路径'), icon: ClipboardCopy, action: () => void copyText(fullPathOf(node), tr('{0} 条完整路径', { 0: 1 })) },
+  );
+  return compactMenuEntries(list);
+});
 </script>
 
 <style scoped>

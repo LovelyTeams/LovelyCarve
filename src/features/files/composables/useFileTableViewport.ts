@@ -121,21 +121,26 @@ export function useFileTableViewport(options: {
   onDeactivated(cancelPendingSort);
   onScopeDispose(() => { disposed = true; cancelPendingSort(); });
 
+  /** 列头点击依次切换：升序 → 降序 → 恢复原始顺序。 */
   function cycleSort(key: string) {
+    if (sortKey.value !== key) setSort(key, 'asc');
+    else setSort(key, sortDir.value === 'asc' ? 'desc' : null);
+  }
+
+  /** 按 `key` 列以 `direction` 排序；`direction` 为 null 时撤销该列的排序。 */
+  function setSort(key: string, direction: 'asc' | 'desc' | null) {
     // 上一次大列表排序还在两帧窗口里：忽略追加点击，免得两次全量排序背靠背
     // 跑、第二次还没有任何忙碌指示。
     if (disposed || sortBusyKey.value !== null) return;
+    // 不改变排序的请求不触发重载，全显下的列头 spinner 也就无人收尾。
+    if (direction === null ? sortKey.value !== key : sortKey.value === key && sortDir.value === direction) return;
     const apply = () => {
-      if (sortKey.value !== key) {
-        sortKey.value = key;
-        sortDir.value = 'asc';
+      if (direction === null) {
+        sortKey.value = null;
         return;
       }
-      if (sortDir.value === 'asc') {
-        sortDir.value = 'desc';
-      } else {
-        sortKey.value = null;
-      }
+      sortKey.value = key;
+      sortDir.value = direction;
     };
     if (deepsearch.value) {
       // 全显的排序在服务端：派生列（哈希/标签等）排不了，点了不动；其余列
@@ -168,6 +173,6 @@ export function useFileTableViewport(options: {
     });
   }
 
-  return { visibleItems, paddingTop, paddingBottom, range, sortBusyKey, cycleSort,
+  return { visibleItems, paddingTop, paddingBottom, range, sortBusyKey, cycleSort, setSort,
     beforeAppend: () => { suppressScrollReset = true; } };
 }

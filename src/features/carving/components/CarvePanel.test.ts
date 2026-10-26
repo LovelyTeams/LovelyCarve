@@ -42,13 +42,12 @@ const imageId = ref('disk-a');
 async function settle() { for (let i = 0; i < 15; i++) await nextTick(); }
 async function mount(imageInfo: ImageInfo | null = null) { const host = document.createElement('div'); document.body.append(host); app = createApp({ render: () => h(CarvePanel, { imageId: imageId.value, imageInfo }) }); app.mount(host); await settle(); }
 function button(text: string) { const element = [...document.querySelectorAll('button')].find(item => item.textContent?.trim() === text); if (!element) throw new Error(`Missing ${text}`); return element; }
-function rowNames() { return [...document.querySelectorAll('tbody tr .name-content')].map(cell => cell.querySelector('.name-text, .name-link')?.textContent?.trim()); }
-function row(name: string) { const found = [...document.querySelectorAll<HTMLElement>('tbody tr')].find(item => item.querySelector('.name-text, .name-link')?.textContent?.trim() === name); if (!found) throw new Error(`Missing row ${name}`); return found; }
+function rowNames() { return [...document.querySelectorAll('tbody tr .name-content')].map(cell => cell.querySelector('.name-text')?.textContent?.trim()); }
+function row(name: string) { const found = [...document.querySelectorAll<HTMLElement>('tbody tr')].find(item => item.querySelector('.name-text')?.textContent?.trim() === name); if (!found) throw new Error(`Missing row ${name}`); return found; }
 async function openFolder(...names: string[]) {
   for (const name of names) {
-    const link = [...document.querySelectorAll<HTMLButtonElement>('.name-link')].find(item => item.textContent?.trim() === name);
-    if (!link) throw new Error(`Missing folder ${name}`);
-    link.click(); await settle();
+    row(name).dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    await settle();
   }
 }
 async function filter(text: string) {

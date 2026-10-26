@@ -156,11 +156,33 @@ describe('FileTreemap', () => {
     expect(handlers.onEnter).toHaveBeenCalledWith([{ id: users.id, name: 'Users' }]);
   });
 
-  it('goes into a selected directory on a second click', async () => {
+  it('only selects on a second click of a selected directory', async () => {
     await mount({ selectedId: users.id });
     mouse('click', centre(tileOf('Users').header!));
-    expect(handlers.onEnter).toHaveBeenCalledWith([{ id: users.id, name: 'Users' }]);
-    expect(handlers.onSelect).not.toHaveBeenCalled();
+    expect(handlers.onEnter).not.toHaveBeenCalled();
+    expect(handlers.onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: users.id }));
+  });
+
+  it('opens the row menu on a tile and the view menu between tiles', async () => {
+    await mount();
+    const point = centre(tileOf('photo.jpg').rect);
+    mouse('contextmenu', point);
+    expect(handlers.onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ id: photo.id }));
+    expect(handlers.onContextmenu).toHaveBeenCalledWith({ x: point.clientX, y: point.clientY }, expect.objectContaining({ id: photo.id }));
+    // The gap between Users and pagefile.sys.
+    mouse('contextmenu', { clientX: 560, clientY: 300 });
+    await nextTick(); await nextTick();
+    const labels = [...document.querySelectorAll('[role=menu] .ui-context-menu-text')].map(item => item.textContent);
+    expect(labels).toEqual(['返回上级', '复原缩放', '多显示一层', '少显示一层', '复制当前目录路径', '切换到列表']);
+    expect(handlers.onContextmenu).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the selected tile menu from the keyboard and goes up with the mouse back button', async () => {
+    await mount({ volumeRoot: false, selectedId: users.id });
+    key('ContextMenu');
+    expect(handlers.onContextmenu).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({ id: users.id }));
+    surface().dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 3 }));
+    expect(handlers.onUp).toHaveBeenCalledTimes(1);
   });
 
   it('magnifies with the wheel until the directory fills the view, and goes in on the next notch', async () => {

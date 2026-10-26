@@ -16,16 +16,16 @@ function setup(rows = [node('a'), node('b')]) {
   const checkedIds = ref(new Set<string>());
   const menu = ref(false);
   const loading = ref(false);
-  const activate = vi.fn(), preview = vi.fn(), goUp = vi.fn(), toggleAll = vi.fn(), setAnchor = vi.fn();
+  const activate = vi.fn(), preview = vi.fn(), goUp = vi.fn(), toggleAll = vi.fn(), setAnchor = vi.fn(), openMenu = vi.fn();
   const keyboard = scope.run(() => useFileTableKeyboard({ rows: () => rows, selectedKey, checkedIds, container,
-    rowHeight: 36, menuOpen: () => menu.value, loading: () => loading.value, activate, preview, goUp, toggleAll, setAnchor }))!;
+    rowHeight: 36, menuOpen: () => menu.value, loading: () => loading.value, activate, preview, goUp, toggleAll, setAnchor, openMenu }))!;
   function key(key: string, init: KeyboardEventInit = {}, target: HTMLElement = container.value) {
     const event = new KeyboardEvent('keydown', { key, cancelable: true, ...init });
     Object.defineProperty(event, 'target', { value: target });
     keyboard.onTableKeydown(event);
     return event;
   }
-  return { keyboard, key, selectedKey, checkedIds, menu, loading, activate, preview, goUp, toggleAll, setAnchor, scope };
+  return { keyboard, key, selectedKey, checkedIds, menu, loading, activate, preview, goUp, toggleAll, setAnchor, openMenu, scope };
 }
 
 describe('file table keyboard ownership', () => {
@@ -63,6 +63,16 @@ describe('file table keyboard ownership', () => {
     expect(state.goUp).not.toHaveBeenCalled();
     state.loading.value = false; state.key('ArrowLeft', { altKey: true });
     expect(state.goUp).toHaveBeenCalledOnce();
+  });
+  it('opens the cursor row menu from the keyboard, or the list menu without a cursor', () => {
+    const file = node('a');
+    const state = setup([file, node('b')]);
+    expect(state.key('ContextMenu').defaultPrevented).toBe(true);
+    expect(state.openMenu).toHaveBeenLastCalledWith(null);
+    state.key('Home');
+    state.key('F10', { shiftKey: true });
+    expect(state.openMenu).toHaveBeenLastCalledWith(file);
+    expect(state.preview).not.toHaveBeenCalled();
   });
   it('keeps spaces inside typeahead names and clears its timer on disposal', () => {
     vi.useFakeTimers();

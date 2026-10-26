@@ -15,15 +15,14 @@
       <tbody>
         <tr v-if="paddingTop > 0" class="virtual-spacer" aria-hidden="true"><td :colspan="6" :style="{ height: `${paddingTop}px` }"></td></tr>
         <tr v-for="{ item } in visibleItems" :key="item.key" class="body-row" :class="{ deleted: item.node?.deleted }" tabindex="0"
-          :aria-selected="item.key === selectedKey" @click="emit('select', item)" @dblclick="item.kind !== 'file' && emit('open', item)"
-          @keydown.enter="item.kind === 'file' ? emit('select', item) : emit('open', item)">
+          :aria-selected="item.key === selectedKey" @click="onRowClick($event, item)" @dblclick="item.kind !== 'file' && emit('open', item)"
+          @keydown.enter="item.kind === 'file' ? emit('select', item) : emit('open', item)" @contextmenu="onRowContextMenu($event, item)">
           <td class="cell-check" @click.stop @dblclick.stop><input type="checkbox" :checked="isChecked(item)" :indeterminate="isPartial(item)" :disabled="busy || !recoverable(item)" :aria-label="tr('选择 {0}', { 0: item.name })" @change="emit('toggle', item)" /></td>
           <td class="cell-name">
             <span class="name-content" :title="item.path">
               <ScanSearch v-if="item.kind === 'signatures'" :size="14" class="kind-icon signature-icon" />
               <FileNodeIcon v-else :id="item.kind === 'volume' ? 'part:0' : item.key" :kind="item.kind === 'file' ? 'file' : 'dir'" :name="item.name" :size="14" class="kind-icon" />
-              <span v-if="item.kind === 'file'" class="name-text">{{ item.name }}</span>
-              <button v-else type="button" class="name-link" @click.stop="emit('open', item)">{{ item.name }}</button>
+              <span class="name-text" :class="{ 'is-dir': item.kind !== 'file' }">{{ item.name }}</span>
               <span v-if="item.kind !== 'file' && item.fileCount" class="dir-count mono">{{ item.fileCount.toLocaleString() }}</span>
               <AlertTriangle v-if="item.artifact?.read_fault" :size="13" class="read-warning" :aria-label="tr('包含补零数据')" />
             </span>
@@ -45,14 +44,27 @@
         <tr v-if="!rows.length" class="empty-row"><td colspan="6"><Loader2 v-if="loading" :size="17" class="spin" /><SearchX v-else :size="18" /><span>{{ emptyText }}</span><button v-if="filtered && !loading" class="ui-btn sm" type="button" @click="emit('clear-filters')">{{ tr("清除筛选") }}</button></td></tr>
       </tbody>
     </table>
+    <UiContextMenu
+      v-model:open="rowMenu.open"
+      :x="rowMenu.x"
+      :y="rowMenu.y"
+      :entries="rowMenuEntries"
+      :label="tr('恢复条目操作')"
+      :heading="rowMenu.target?.name"
+      :subheading="rowMenu.target ? typeLabel(rowMenu.target) : undefined"
+    />
   </div>
 </template>
 <script setup lang="ts">
 import { tr } from '../../../composables/useLocale';
 import { computed, ref, watch } from 'vue';
-import { AlertTriangle, Loader2, ScanSearch, SearchX } from 'lucide-vue-next';
+import { AlertTriangle, ClipboardCopy, Copy, FolderOpen, Hash, Loader2, PanelRightOpen, ScanSearch, SearchX, Square, SquareCheck } from 'lucide-vue-next';
 import FileNodeIcon from '../../../components/display/FileNodeIcon.vue';
+import UiContextMenu, { type UiContextMenuEntry } from '../../../components/ui/UiContextMenu.vue';
+import { copyText } from '../../../composables/clipboard';
+import { useContextMenu } from '../../../composables/useContextMenu';
 import { useVirtualList } from '../../../composables/useVirtualList';
+import { compactMenuEntries } from '../../../utils/menuPlacement';
 import { formatBytes } from '../../../utils/format';
 import { formatTimestamp } from '../../../utils/time';
 import { confidenceTone, formatOffset } from '../model/carveView';
@@ -73,6 +85,37 @@ watch(() => props.contextKey, scrollToTop);
 function recoverable(item: RecoveryEntry) {
   return item.kind === 'file' ? isRecoverable(item) : item.fileCount > 0;
 }
+
+/** 单击选中；Ctrl+单击勾选或取消，与文件列表一致；双击或 Enter 打开文件夹。 */
+function onRowClick(event: MouseEvent, item: RecoveryEntry) {
+  if ((event.ctrlKey || event.metaKey) && !props.busy && recoverable(item)) emit('toggle', item);
+  else emit('select', item);
+}
+
+const { menu: rowMenu, openFromEvent } = useContextMenu<RecoveryEntry>();
+function onRowContextMenu(event: MouseEvent, item: RecoveryEntry) {
+  emit('select', item);
+  openFromEvent(event, item);
+}
+const rowMenuEntries = computed<UiContextMenuEntry[]>(() => {
+  const item = rowMenu.target;
+  if (!item) return [];
+  const checked = props.isChecked(item);
+  const artifact = item.artifact;
+  return compactMenuEntries<UiContextMenuEntry>([
+    item.kind === 'file'
+      ? { id: 'detail', label: tr('查看详情'), icon: PanelRightOpen, action: () => emit('select', item) }
+      : { id: 'open', label: tr('打开'), icon: FolderOpen, hint: 'Enter', action: () => emit('open', item) },
+    {
+      id: 'check', label: checked ? tr('取消勾选此项') : tr('勾选此项'), icon: checked ? Square : SquareCheck, hint: tr('Ctrl+单击'),
+      disabled: props.busy || !recoverable(item), action: () => emit('toggle', item),
+    },
+    { kind: 'separator' },
+    { id: 'copy-name', label: tr('复制名称'), icon: Copy, action: () => void copyText(item.name, tr('{0} 个名称', { 0: 1 })) },
+    ...(item.path && item.path !== '/' ? [{ id: 'copy-path', label: tr('复制原路径'), icon: ClipboardCopy, action: () => void copyText(item.path, tr('原路径')) }] : []),
+    ...(artifact ? [{ id: 'copy-offset', label: tr('复制起始偏移'), icon: Hash, action: () => void copyText(formatOffset(artifact.offset), tr('起始偏移')) }] : []),
+  ]);
+});
 function volumeBytes(item: RecoveryEntry) {
   return (item.volume?.partition.length_lba ?? 0) * props.sectorSize;
 }
@@ -121,14 +164,12 @@ function statusBadges(item: RecoveryEntry): { label: string; tone: string }[] {
 .name-content { display: flex; align-items: center; min-width: 0; }
 .kind-icon { flex-shrink: 0; margin-right: 8px; }
 .signature-icon { color: var(--primary-color); }
-.name-text, .name-link { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 目录名可点击进入：常态只加字重，悬停才出现下划线提示（与文件列表一致）。 */
-.name-link { min-width: 0; padding: 0; border: 0; background: transparent; color: var(--text-primary); font: inherit; font-weight: 500; text-align: left; cursor: pointer; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; transition: color var(--transition-fast), text-decoration-color var(--transition-fast); }
-.name-link:hover { color: var(--primary-color); text-decoration-color: color-mix(in srgb, var(--primary-color) 55%, transparent); }
-.name-link:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; border-radius: var(--radius-sm); }
+.name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 名称与整行一样单击选中、双击打开（与文件列表一致）；文件夹名加字重。 */
+.name-text.is-dir { font-weight: 500; }
 /* 已删除条目：红字、划线名称与「已删除」标签；行底与选中反馈沿用普通表格规则。 */
 .body-row.deleted td { color: var(--sev-critical-fg); }
-.body-row.deleted :is(.name-text, .name-link) { color: var(--sev-critical-fg); text-decoration: line-through; opacity: 0.75; }
+.body-row.deleted .name-text { color: var(--sev-critical-fg); text-decoration: line-through; opacity: 0.75; }
 .dir-count { flex-shrink: 0; min-width: 20px; height: 18px; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--chip-count-bg); color: var(--text-secondary); font-size: 11px; line-height: 18px; text-align: center; }
 .read-warning { flex-shrink: 0; margin-left: 6px; color: var(--sev-warn-fg); }
 .cell-status .ui-badge + .ui-badge { margin-left: 4px; }

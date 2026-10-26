@@ -286,12 +286,21 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
 `db-browser.css`（SQLite / Realm）、`analysis-workspace.css`（搜索与雕刻工作区）、`analysis-detail.css`（记录详情块）。
 
 共享组件：`DetailDock`、`FileDetailLayout`、`FileDetailSection`、`FileDetailFields`、
-`WorkspaceStartState`、`AsyncPanelLoading`、`UiTransition`、`UiSelect`、`FileNodeIcon`、`BrandMark`。
+`WorkspaceStartState`、`AsyncPanelLoading`、`UiTransition`、`UiSelect`、`UiContextMenu`、`FileNodeIcon`、`BrandMark`。
 
 下拉框一律用 `UiSelect`（`v-model` + `options: { value, label, disabled? }[]`，`@change` 在值更新后触发），
 不用原生 `<select>`：系统弹出的列表不跟随主题。触发按钮沿用 `ui-select` 外观并按最宽选项定宽，切换选项时
 布局不跳动；列表是 `ui-menu`，通过 Popover API 放在顶层，弹窗里也不会被遮挡或裁切。键盘遵循 select-only
 combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转，Enter / 空格选中，Esc 只关闭列表。
+
+右键菜单一律用 `UiContextMenu`（`v-model:open`、视口坐标 `x` / `y`、`entries`），状态取自
+`useContextMenu()`（`openFromEvent` / `openAt` / `openBelow`，`target` 记下菜单作用的对象）。菜单项是数据：
+`{ id, label, icon?, hint?, title?, disabled?, danger?, busy?, checked?, action? }`，另有 `separator`、
+`label` 与一级 `submenu`；条件性的项过滤后用 `compactMenuEntries` 去掉多余的分隔线。`heading` /
+`subheading` 写明作用对象，`#heading-icon` 与 `#before`（如标签行）插槽放自定义内容。菜单放在顶层、
+焦点移入菜单：方向键与 Home / End 移动，→ / ← 进出子菜单，Enter / 空格执行，Esc 与 Tab 关闭；
+按在菜单外、滚动、改变窗口大小、窗口失焦或另一个菜单打开时关闭。关闭时先把焦点还给打开前的位置，
+再执行所选的 `action`，所以操作打开的弹窗能拿到焦点。左右键的约定见第 7 节。
 
 ## 7. 交互状态与反馈
 
@@ -307,6 +316,21 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 | 选中 | 列表类（侧栏、菜单、表格、开关按钮）：`--sidebar-active-bg` 浅底 + 主题色文字，表格选中行另加 1px 主题色描边；分段控件与下划线页签由滑块或下划线表示，文字保持中性色 | `.active` / `aria-pressed` / `aria-selected` |
 | 加载 | 按钮前置图标换成 `<Loader2 class="spin" />` 并禁用；面板用 `AsyncPanelLoading` | 见下文 |
 | 错误 | 红色边框与焦点环 + 原因说明 | `aria-invalid` + `ui-field-error` |
+
+### 左键与右键
+
+文件列表、树图、目录树和各结果表格遵循同一套指针约定：
+
+- 单击选中（文件列表里的文件同时显示在预览中，结果表格在详情栏显示该条），双击或 Enter 打开：目录进入，
+  文件打开预览，结果条目定位到源文件。整行都是同一个单击目标，名称不做成单击即跳转的链接。
+- 带勾选的列表：Ctrl+单击勾选或取消一行，Shift+单击勾选从锚点（上次勾选的行，否则光标行）到该行的一段，
+  拖动框选；这些手势不弹出预览，单击别的行也不清掉勾选。
+- 右键先针对指针下的对象：右键未勾选的行只作用于这一行，右键已勾选的行时批量操作作用于全部勾选项；
+  菜单顶部写明对象（名称，或「已勾选 N 项」）。表格空白处、表头和树图瓦片之间的空隙另有菜单（当前目录与视图、
+  该列的排序过滤与列设置）。右键选区外的十六进制字节先选中它。
+- 不适用于该对象的操作不放进菜单；适用但暂时不可用的（如离线索引需要源镜像）禁用并在提示中说明原因。
+- ContextMenu 键与 Shift+F10 在键盘光标处打开同一个菜单；鼠标侧键「后退」等同返回上级。
+- 原生右键菜单默认屏蔽，只有输入框保留系统的复制粘贴菜单（`AppShell.vue`）。
 
 ### 加载与长任务
 
@@ -435,7 +459,8 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 
 ### 菜单与气泡
 
-- 使用 `ui-menu`，从触发元素处弹出：向下弹出时 `--ui-pop-offset` 为负，向上弹出时为正。
+- 使用 `ui-menu`，从触发元素处弹出：向下弹出时 `--ui-pop-offset` 为负，向上弹出时为正。右键菜单用
+  `UiContextMenu`，从指针所在的角弹出，不再单独实现定位与键盘。
 - 点击外部或按 Esc 关闭；用 `position: fixed` 定位时把边缘限制在视口内，空间不足时翻转方向。
 - 靠近窗口右下角的浮层（通知所在区域）应使用 `ui-menu`，常驻通知才会自动让开。
 - `UiSelect` 的列表 Teleport 在 body 下；内含下拉框、按外点或滚动关闭的浮层要放过 `.ui-select-list`
@@ -567,7 +592,8 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 ## 14. 可访问性
 
 - 所有操作都能用键盘完成；不移除 `:focus-visible` 焦点环。快捷键写进按钮 `title`（「关闭 (Ctrl+W)」），
-  界面中用 `ui-kbd` 展示。现有快捷键：Esc 清空或关闭、Ctrl+O 添加检材、Ctrl+T 新标签页。
+  界面中用 `ui-kbd` 展示。现有快捷键：Esc 清空或关闭、Ctrl+O 添加检材、Ctrl+T 新标签页；ContextMenu 键
+  或 Shift+F10 打开光标处的右键菜单。
 - 纯图标按钮有 `title` 与 `aria-label`；弹窗有 `role="dialog"`、`aria-modal` 与 `aria-labelledby`；
   开关用 `role="switch"`；分隔条用 `role="separator"` 并支持键盘调整。
 - 动态结果用通知或 `sr-only` 的 `role="status"` 播报，错误用 `role="alert"`；表单错误通过 `aria-describedby` 关联。
@@ -595,6 +621,8 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 - [ ] 每个可交互元素都有悬停、按下、键盘聚焦与禁用态；纯图标按钮有 `title` 与 `aria-label`。
 - [ ] 加载、空状态、错误状态都有设计；长任务可取消并显示进度。
 - [ ] 操作结果有反馈（通知、图标变化或界面更新）；破坏性操作有确认。
+- [ ] 单击选中、双击或 Enter 打开；右键菜单用 `UiContextMenu`，作用于指针下的对象（勾选行上为全部勾选项），
+  顶部写明对象，键盘可打开（见第 7 节）。
 - [ ] 表单错误用 `aria-invalid` + `ui-field-error` 指出具体问题。
 - [ ] 动效开启与关闭两种状态下都正确；虚拟列表没有入场动画。
 - [ ] 窄窗口（约 760px）与右侧详情展开时布局仍可用，原生窗口尺寸不变。

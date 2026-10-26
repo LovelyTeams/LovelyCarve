@@ -1,4 +1,5 @@
 import { onScopeDispose, type Ref } from 'vue';
+import { isContextMenuKey } from '../../../composables/useContextMenu';
 import { rowKeyOf, type DiskFsNode as FsNode } from '../model/model';
 
 /** Table-local keyboard and scroll interaction; never installs document listeners. */
@@ -15,6 +16,8 @@ export function useFileTableKeyboard(options: {
   activate: (node: FsNode) => void;
   preview: (node: FsNode) => void;
   setAnchor: (id: string) => void;
+  /** The ContextMenu key or Shift+F10: the cursor row's menu, or the list's when there is none. */
+  openMenu: (node: FsNode | null) => void;
 }) {
   const { selectedKey, checkedIds, container: tableWrapRef, rowHeight: ROW_HEIGHT, toggleAll } = options;
   let typeaheadBuf = '';
@@ -87,6 +90,14 @@ export function useFileTableKeyboard(options: {
     if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
       e.preventDefault();
       toggleAll();
+      return;
+    }
+    if (isContextMenuKey(e)) {
+      e.preventDefault();
+      const list = options.rows();
+      const cur = selectedIndexIn(list);
+      if (cur >= 0) scrollRowIntoView(cur);
+      options.openMenu(cur >= 0 ? list[cur] : null);
       return;
     }
     if (e.key === 'Backspace' || (e.altKey && e.key === 'ArrowLeft')) {

@@ -54,7 +54,7 @@ export function useMarqueeSelection(options: {
     if (!wrap) return;
     // thead 覆盖全选复选框、漏斗与排序；行复选框（input）不排除，从它上面
     // 拖动也能起框，原地单击的勾选语义由阈值保证。
-    if ((e.target as HTMLElement).closest('button, a, .name-link, thead')) return;
+    if ((e.target as HTMLElement).closest('button, a, thead')) return;
     const rect = wrap.getBoundingClientRect();
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
