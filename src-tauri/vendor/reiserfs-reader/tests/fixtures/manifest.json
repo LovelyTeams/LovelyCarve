@@ -1,0 +1,50 @@
+[
+  {
+    "file": "v35-1024-old.zlib",
+    "bytes": 9216000,
+    "sha256": "b53895f6061d53256f50750761c13500ba0f0ec1df4c6c51939f0b95b4f1256c",
+    "compressed_sha256": "2f5cf1c74fb95da4b5c6f8b8c8fc3cdf04fcb179ddd7d461d75aab40f5347e3d",
+    "license": "CC0-1.0",
+    "source": "scripts/reiserfs-fixtures.py"
+  },
+  {
+    "file": "v36-1024.zlib",
+    "bytes": 9216000,
+    "sha256": "cb3ea7358ab8e2d8be11e673c3db77c079f69c8a5601de001e526164739ee6a5",
+    "compressed_sha256": "d4e46b924fdbba499bf81313a5a53f2dfb9114b9ed5085d29047fcbd54c701b0",
+    "license": "CC0-1.0",
+    "source": "scripts/reiserfs-fixtures.py"
+  },
+  {
+    "file": "v35-2048.zlib",
+    "bytes": 2097152,
+    "sha256": "1158e08112092971dcb1e8f77678ef15b0be93cfd1e436974bf6ad12947a2a60",
+    "compressed_sha256": "0706c84926ce2381618c234e31b324b5b790a3f4a23e45a40b71083e29f2f1c9",
+    "license": "CC0-1.0",
+    "source": "scripts/reiserfs-fixtures.py"
+  },
+  {
+    "file": "v36-4096-relocated.zlib",
+    "bytes": 4194304,
+    "sha256": "fe2659279c15db92da39a89f441f39df4dac7edb114c7d025e8cb6fc8cf36413",
+    "compressed_sha256": "93c2f8a6c4b8606b1a57c50c4ae594a866fe56c908cb8f4dcfac4b526d72a3d5",
+    "license": "CC0-1.0",
+    "source": "scripts/reiserfs-fixtures.py"
+  },
+  {
+    "file": "v36-8192.zlib",
+    "bytes": 8388608,
+    "sha256": "af2a6d523ed9129c4d9a1ca9588ba942fc73cdbf92f996ae5a613ba064c9245a",
+    "compressed_sha256": "413be743f3467662cd46eb762e2a3502276525cd3dd54c39479111204288eee8",
+    "license": "CC0-1.0",
+    "source": "scripts/reiserfs-fixtures.py"
+  },
+  {
+    "file": "reiserfsprogs.img.zst",
+    "bytes": 67108864,
+    "sha256": "03bd2e4d226f7912eb52564e30eacdda657045aab4b942ea6a9f9876b146e6b7",
+    "compressed_sha256": "fe8b6337cd48f7b0f24ef840c357e9b33422100db925acee53fcb17bd324178f",
+    "license": "AGPL-3.0-only",
+    "source": "https://github.com/danifunker/rusty-backup/blob/6e044a314f6523045999058f85a882c1eeb64b50/tests/fixtures/test_reiserfs_v3_6.img.zst"
+  }
+]

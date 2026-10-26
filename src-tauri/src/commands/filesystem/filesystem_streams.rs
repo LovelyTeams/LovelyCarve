@@ -1,7 +1,7 @@
 //! Filesystem named-stream and directory-stat IPC commands.
 //!
 //! These commands stay separate from the broad filesystem tree command module
-//! because they share a small, self-contained backend surface: NTFS ADS
+//! because they share a small backend surface: NTFS / ReFS streams and HFS forks
 //! listing/read/export and recursive directory statistics.
 
 use std::path::PathBuf;

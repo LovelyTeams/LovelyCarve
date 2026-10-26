@@ -1,0 +1,43 @@
+Black-box observation, 2026-10-17, issue #261.
+Reference build marker: /srv/ref-trixie/.ref-version = 1.39.7 fuse.
+No reference source was read.
+Input: run 38741040375, fixtures artifact 11977252185.
+Artifact sha256:9f112ded30a1894c5d83948fb2c525ff075afaff74acc3e82b63deb98493007e
+fixtures.tar.gz sha256:27b15c9dffa3240b2ec3f3f3a84221c255c210b157f5888d2285f4e358025869
+aged-unclean.img sha256:4dfa272fc2b4ac35033a3b372afe4629ae2bb2262cda7c03544e4e0c0d348322
+
+Invocation inside the harness guest:
+timeout --kill-after=5 60 chroot /srv/ref-trixie /usr/local/sbin/bcachefs fsck -n /tmp/issue261/CASE.img
+The wrapper's shared mount was unresponsive, so the same installed binary
+ran directly in its chroot over images copied to the guest's own disk.
+
+Mutation: optional field type 16, at superblock byte 7288, changes its
+little-endian word count from 3 to 0; recompute CRC32C unless stated.
+The layout names three copies; last wins an equal-sequence tie.
+
+CASE                 STATUS  IMAGE SHA256
+control              0       4dfa272fc2b4ac35033a3b372afe4629ae2bb2262cda7c03544e4e0c0d348322
+zero-field           0       6eed9a9b732a50faae825e32b5de6197b4c1f7af2c0c51c1609d6e618c619f75
+middle-field         0       3bb7115f8fd6ee140643387b467f72a50d1eab6526a3f2458bb7e6ae165b0c84
+last-field           1       142e909b9f58650db90d6a6610c6a53afe2ac8ce230818f3007d8e0ad9ea427a
+newer-primary-field  1       9bc79ecca5c33716950e54f988cc6290206cff95d5f082d33b5e8706362a8716
+all-field            1       c18b47d7f652650f4e7ee0899ed36c55fcc2c65aa3e2cb30605859004989e60e
+
+zero-field changes only the primary, middle-field only the second copy,
+last-field only the last, newer-primary-field also increments primary seq,
+and all-field changes all three at their original sequence.
+The three accepted cases print no superblock error and finish with:
+clean shutdown complete, journal seq 4404
+
+Each rejected case prints (CASE substituted for its image filename):
+Running userspace offline fsck
+bcachefs (/tmp/issue261/CASE.img): error reading superblock: invalid_sb_field_size
+Invalid superblock: optional field with size 0 (type 16)
+error starting filesystem: invalid_sb_field_size
+Error: invalid_sb_field_size
+
+Physical-damage controls, both status 0 but with explicit diagnostics:
+bad-checksum (primary label byte XOR 255, no restamp):
+bcachefs (/tmp/issue261/bad-checksum.img): primary superblock unreadable: checksum error, type crc32c_nonzero: got b55c82c4 should be d01f2f29
+zero-primary (8248 zero bytes at primary):
+bcachefs (/tmp/issue261/zero-primary.img): primary superblock unreadable: Not a bcachefs superblock (got magic 00000000-0000-0000-0000-000000000000)

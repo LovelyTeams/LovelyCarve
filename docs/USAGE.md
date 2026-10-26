@@ -44,7 +44,7 @@
 
 检材加入案件后，后台会自动识别平台与检材类型，并为每个可浏览的卷建立快照和文件索引。进度、结论与失败原因在右上角「任务中心」查看；卸载检材会取消它尚未完成的任务。
 
-光盘 `.iso`、Mode 1 / XA Form 1 的 2352 字节 `.bin` 和 `.cue` 可作为镜像文件添加。多轨或多个数据文件应选择 `.cue`，按轨道浏览其中的 ISO 9660 / Joliet 文件；CUE 中的音频轨保留原始范围。整镜像哈希和源导出使用完整数据文件按 FILE 顺序拼接的原始字节，不含 CUE 文本，也不补入未存储的间隙。支持边界见 [光盘镜像](formats/CDFS.md)。
+光盘 `.iso`、Mode 1 / XA Form 1 的 2352 字节 `.bin` 和 `.cue` 可作为镜像文件添加。多轨或多个数据文件应选择 `.cue`，按轨道浏览其中的 ISO 9660 / Joliet 文件；CUE 中的音频轨保留原始范围。整镜像哈希和源导出使用完整数据文件按 FILE 顺序拼接的原始字节，不含 CUE 文本，也不补入未存储的间隙。支持边界见 [光盘镜像](formats/CDFS.md)。cooked UDF 镜像或磁盘分区可直接添加，支持 1.02–2.01 的单物理分区布局；ISO/UDF bridge 优先浏览 UDF 树，范围和高级布局限制见 [UDF](formats/UDF.md)。
 
 小米 `HDR1` `.bin` 固件和独立 UBI 镜像可作为镜像文件添加。展开 UBI 分区后，`<卷名>.img` 是重组后的原始逻辑卷，SquashFS / UBIFS 卷另有同名目录供浏览、预览和导出。原始固件字节保持不变，详见 [UBI 固件](formats/UBI.md)。
 
@@ -69,6 +69,8 @@ Netgear `.chk` 也可直接添加。程序校验外层结构后，展示其中�
 沿用文件树、预览、哈希、导出和索引操作。F2FS 使用最后有效 checkpoint；加密 / 压缩文件的内容
 尚不支持。EROFS 支持未压缩与四种压缩，fragments / ztailpacking 等布局明确报错。Android sparse
 包装需先展开。完整边界见 [F2FS](formats/F2FS.md) 和 [EROFS](formats/EROFS.md)。
+
+Minix V1 / V2 / V3 镜像与磁盘分区可直接添加，沿用浏览、预览、哈希、导出和目录索引；它与固件 MINIFS 是不同格式，支持方言和验证边界见 [Minix FS](formats/MINIX.md)。
 
 QNX4 / QNX6 Power-Safe 镜像和磁盘分区可直接浏览，QNX6 还支持已验证范围内的 MMI 布局；用法、版本与加密限制见 [QNX 文件系统](formats/QNX.md)。QNX IFS、ETFS 与 EFS 属于其他格式，本次接入不包含它们。
 

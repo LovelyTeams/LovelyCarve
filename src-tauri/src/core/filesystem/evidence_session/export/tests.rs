@@ -34,6 +34,7 @@ fn raw_export_projects_multiple_unlocked_partitions_and_preserves_disk_layout() 
             length_lba: length as u64 / 512,
             label: None,
             unique_guid: None,
+            amiga_geometry: None,
         })
         .collect();
     let source = Arc::new(EvidenceSession::from(disk));

@@ -31,6 +31,7 @@ fn fixture() -> (tempfile::TempDir, Arc<EvidenceSession>) {
         length_lba: 8,
         label: Some("Linux (系统) · 主卷".into()),
         unique_guid: None,
+        amiga_geometry: None,
     }];
     (case, Arc::new(EvidenceSession::from(image)))
 }

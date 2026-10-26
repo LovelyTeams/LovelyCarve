@@ -1,5 +1,7 @@
 # HFS+ / HFSX：libfshfs 完整对照
 
+传统 HFS（Mac OS Standard）现由独立纯 Rust 读取器支持，范围及限制见 [CLASSIC_HFS.md](CLASSIC_HFS.md)。本文只描述 HFS+ / HFSX。
+
 本次对照日期为 2026-10-13，固定 [libfshfs 78321de1eda54b30261adf59b938781128591b2e](https://github.com/libyal/libfshfs/tree/78321de1eda54b30261adf59b938781128591b2e)。逐项检查 README、`include/libfshfs.h.in`、catalog/B-tree、name、file entry、data stream、extended attribute 实现，公开头文件中的 **95 个不同函数全部列于下表**。对照不是引入 C 库：运行时继续使用 MIT 的 `hfsplus` 与共享 `cmpfs`；Apple 固定折叠表单独按 APSL-2.0 标记。
 
 ## 实际能力与本次修复
@@ -127,7 +129,7 @@
 
 ## 限制与验证
 
-- 传统 HFS、HFS-wrapper 的 embedded HFS+、Unicode 2.1 旧卷、journal replay / deleted record recovery 尚未实现；这些也不能从 libfshfs 的 README 名称“支持 HFS”推断为支持。
+- 传统 HFS 由[独立读取器](CLASSIC_HFS.md)支持。HFS-wrapper 的 embedded HFS+、Unicode 2.1 旧卷、journal replay / deleted record recovery 尚未实现；这些也不能从 libfshfs 的 README 名称“支持 HFS”推断为支持。
 - LZBitmap 13/14 与 dataless 内容明确报错。压缩文件暂时整文件解码后 seek：解码输出及压缩 resource fork各限制 512 MiB，fork xattr 值限制 16 MiB；超过预算明确失败。zlib / LZFSE 解码输出按期望长度加一限界，不让畸形流无限膨胀。
 - metadata forks 通过 overflow tree 重建；如果 Extents B-tree 自己的下一条记录位于尚未可访问的 fragment，明确失败，没有猜测或全盘扫描 bootstrap。
 - FileVault 派生视图的 FsStat 不发布伪装成原盘密文地址的 HFS data runs；普通未加密 HFS 卷可以返回真实图像地址。FileVault 的逻辑卷 segment 映射另由 CoreStorage 读者保留。

@@ -1,0 +1,15 @@
+[package]
+name = "amiga-reader"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "Bounded immutable Amiga OFS/FFS adapter over amiga-ffs"
+
+[dependencies]
+amiga-ffs = { path = "../amiga-ffs" }
+lamfold = { path = "../lamfold", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+flate2 = "1"
+
+[workspace]

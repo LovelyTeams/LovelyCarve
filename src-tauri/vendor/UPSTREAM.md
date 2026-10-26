@@ -85,3 +85,102 @@ LZMA 复用 Apache-2.0 的 `lzma-rust2`。没有复制无明确代码许可的 H
 ## qnx-reader（原创）
 
 纯 Rust QNX4 / QNX6 Power-Safe / MMI 只读库，AGPL-3.0-only；未移植内核 C 驱动。格式参考 Linux v6.12 公开布局及 NFI qnxmount 的 Apache-2.0 Kaitai 结构。真实 QNX6 工具生成夹具与 TAR 来自 NFI qnxmount `11c8a7f9ee9b945d584263743f6ea8524e8776d2`，其许可证和生成脚本保留在 `qnx-reader/tests/fixtures/`，来源与 SHA-256 见 manifest.json。合成数据及生成器为 CC0；能力、拒绝策略与验证边界见 [QNX](../../docs/formats/QNX.md)。
+
+## UDF
+
+`lamfold-udf` 0.1.1 来源于 [lamco-admin/lamfold fabaad6af0c28](https://github.com/lamco-admin/lamfold/tree/fabaad6af0c28b80535307b339b84110f3a3c12e/crates/lamfold-udf)，MIT OR Apache-2.0。复用既有 lamfold；补 descriptor tag / CRC、单物理分区映射与边界检查、512–4096 字节块、FE / EFE、AED 续链、稀疏区、符号链接、时间与资源限额；不含 C/DLL。固定来源、本地改造和上游 mkudffs / Linux 内核夹具见 [LOVELYCARVE.md](lamfold-udf/LOVELYCARVE.md) 与 [UDF](../../docs/formats/UDF.md)。
+
+## Minix FS
+
+`minix-reader` 0.1.0 元数据解析改造自 [danifunker/rusty-backup 6e044a314f65](https://github.com/danifunker/rusty-backup/blob/6e044a314f6523045999058f85a882c1eeb64b50/src/fs/minix.rs)，保留 Dani 作者署名和 AGPL v3，独立库按 AGPL-3.0-only 分发。补大小端、位图 / 数据边界、V3 派生 first zone、完整间接寻址、多 block zone、精确范围读、缓存限额和时间角色；没有复制写入 / 修复或内核 C 实现。util-linux 官方 mkfs / fsck 转储提供独立布局样本，来源 / 许可 / 哈希见 [ORIGIN.md](minix-reader/ORIGIN.md)；功能与方言边界见 [Minix FS](../../docs/formats/MINIX.md)。
+
+## 传统 HFS 只读适配
+
+`classic-hfs` 0.1.0：元数据 / MacRoman 来自 fstool 0.5.0 固定提交
+`b30823f25b6eef5ea9b6de45876f31c2b8f2d70a`（MIT）；HFS collation 来自 rusty-backup
+`6e044a314f6523045999058f85a882c1eeb64b50`（AGPL-3.0，继承 hfsutils GPL-2.0-or-later 表）。
+改造为严格 B-tree / 位图 / extent 校验、双 fork 范围读取及独立本地时间；不含 C 或写入代码。
+外部 hfsutils 样本与原创 Python 样本均保留来源和哈希；详见 [ORIGIN.md](classic-hfs/ORIGIN.md)
+和 [CLASSIC_HFS.md](../../docs/formats/CLASSIC_HFS.md)。`lamfold` 新增默认空值的 `LocalFileTimes`
+/ `local_timestamps` 接口，避免把传统 HFS 无偏移本地时间标成 UTC；现有 UTC 接口不变。
+
+## ReiserFS v3 只读适配
+
+`reiserfs-reader` 0.1.0：格式布局与读取算法来自 rusty-backup 0.1.0 固定提交
+`6e044a314f6523045999058f85a882c1eeb64b50`（AGPL-3.0）；适配前也检查了 unearth 0.4.0，
+后者仅有识别器，未复制或链接。改为按键区间遍历，补足旧 / 新位图、混合键、目录可见位、
+对象身份、稀疏 / 尾部映射、分配与完整性校验；无 C / 驱动 / 写入 / 日志回放。
+外部样本和独立 Python 夹具保留许可与哈希，见 [ORIGIN.md](reiserfs-reader/ORIGIN.md)
+和 [REISERFS.md](../../docs/formats/REISERFS.md)。
+
+## Linux JFS 只读适配
+
+`jfs-reader` 0.1.0：布局与读取算法来自 rusty-backup 0.1.0 固定提交
+`6e044a314f6523045999058f85a882c1eeb64b50`（AGPL-3.0），树校验参考 / 改造自
+partmgr 0.1.2 提交 `d074f660e81dfa6ade66cd07400b7421ad9eb9b9`（MIT）。
+修正位图字索引、内部 xtree 逻辑寻址与续槽语义，扩展多 IAG、块大小、目录索引、链接和 EA；
+不包含 C 文件系统代码、写入或日志回放。来源与许可见 [ORIGIN.md](jfs-reader/ORIGIN.md)，
+能力与限制见 [JFS.md](../../docs/formats/JFS.md)。
+
+## Amiga OFS / FFS 与 RDB
+
+`amiga-ffs` 0.4.0、`amiga-rdb` 0.4.1，Simon Dick，MIT OR Apache-2.0。
+保留发布包与原许可，固定提交 / crate 哈希见各目录的 ORIGIN.md。均添加独立 workspace；
+FFS 的唯一源码补丁在 `src/file.rs`：收集数据指针前按逻辑大小限制总数，避免畸形链扩大分配。
+RDB 的大型上游 lib.rs 保持原样。检材仅实现只读 BlockSource，不能调用写入 API。
+
+`amiga-reader` 为 AGPL-3.0-only 适配：分配位图、头 / 名称 / 目录哈希校验、硬链接身份、
+Latin-1、无时区日期、精确范围读取与 FFS 连续块合并。lamfold 增加默认
+`inode_identity` / `read_link_text`：名称头日期与共享对象身份分开，显示文本与链接原始字节分开。
+RDB 保留设备分区跨度和 DosEnvec 文件系统几何，限制链与读次数，拒绝 BADB 重映射。
+来源和独立 amitools 夹具边界见 [ORIGIN.md](amiga-reader/ORIGIN.md) 与
+[格式说明](../../docs/formats/AMIGA.md)。
+
+## BeFS（BeOS / Haiku BFS）
+
+`befs-reader` 0.1.0：读取布局 / 算法适配自 rusty-backup 0.1.0 的 `src/fs/bfs.rs`，
+固定提交 `6e044a314f6523045999058f85a882c1eeb64b50`（AGPL-3.0）。
+以 Haiku `660ea78079ca9ee36623a0562208476bce89b11e` 的原生定义核对几何、B+tree、
+run 范围、属性及时间语义；保留 MIT 参考代码许可。实现为只读 BlockSource 上的独立纯 Rust 库，
+加入位图 / 重叠校验、有限缓存、精确范围读取、明确 dirty 拒绝与无损 UTF-8。
+
+默认不把 BeOS 计数位解释为 Haiku 亚秒，也不将保留字虚构为 ctime；原始时间字和显式
+Haiku 编码解释在 Rust API 中提供。原生 Haiku 官方镜像及独立发布系统包通过完整校验和审计，
+不随仓库分发；自制夹具为 CC0-1.0。见 [ORIGIN.md](befs-reader/ORIGIN.md) 与
+[格式说明](../../docs/formats/BEFS.md)。
+
+## GFS2
+
+`gfs2-reader` 0.1.0：适配前检索现有 Rust 代码，复用 unearth 的 MIT 超级块识别布局，
+新增纯 Rust 的资源组、目录、文件、日志及 EA 读取；固定版本、许可和原生
+mkfs / Linux kernel / fsck 验证见 [ORIGIN.md](gfs2-reader/ORIGIN.md)。
+
+## OCFS2 (2026-10-24)
+
+`ocfs2-reader` 0.1.0：先检索现有 Rust 库，复用 unearth 的 MIT 超级块前缀布局
+[bc891261221f](https://github.com/MarcelRoozekrans/unearth/blob/bc891261221f5f5134269780d6c206725b21d52e/src/ocfs2.rs)，
+新增分配链 / 位图、内联和索引目录、extent / refcount、稀疏 / unwritten、扩展属性
+及全部 slot 干净状态检查。Linux 四种块大小的原生逐文件核对和来源哈希见
+[ORIGIN.md](ocfs2-reader/ORIGIN.md)；能力与限制见 [OCFS2](../../docs/formats/OCFS2.md)。
+原创 Rust 为 AGPL-3.0-only；没有引入 C / FUSE / 外部提取器。
+
+## NILFS2 (2026-10-24)
+
+`nilfs2-reader` 0.1.0：先检索现有 Rust 库，复用 unearth 的 MIT 超级块前缀位置
+[bc891261221f](https://github.com/MarcelRoozekrans/unearth/blob/bc891261221f5f5134269780d6c206725b21d52e/src/nilfs2.rs)，
+新增双副本 / 日志 CRC、DAT、分配位图、direct / B-tree、当前与历史检查点读取。
+原生 Linux 五组镜像包含实际 GC 搬移和两个保留 snapshot，完整来源、哈希及限制见
+[ORIGIN.md](nilfs2-reader/ORIGIN.md) 与 [NILFS2](../../docs/formats/NILFS2.md)。
+原创 Rust 为 AGPL-3.0-only；没有引入 C 文件系统库、挂载依赖或外部提取器。
+
+## bcachefs
+
+先检索现有 Rust 库，选择 MIT `rust-fs-bcachefs` 0.4.2，固定提交
+`53eb12044f3f6dab498c11c2044748f4591cb4e5`，以及其固定的 MIT
+`rust-fs-core` 0.3.14 / `19449ad4926d09447d19440c6312ba544b50bf4b`。
+生产只启用 Rust 只读接口，证据不实现写接口；原生工具只用于外部测试。
+本地补丁保留子卷 / snapshot 身份，限制范围读取的分配和缓存，验证桶边界和父链；
+独立适配器保留原生 inode、时间角色和源读取错误。来源和全部补丁见
+[读取器](rust-fs-bcachefs/ORIGIN.md)、[框架](rust-fs-core/ORIGIN.md) 与
+[适配器 / 验证](bcachefs-reader/ORIGIN.md)；能力边界见
+[BCACHEFS](../../docs/formats/BCACHEFS.md)。

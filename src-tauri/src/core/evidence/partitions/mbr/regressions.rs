@@ -84,7 +84,8 @@ fn decodes_raw_flags_chs_and_entry_origin() {
                 start_lba: 2,
                 length_lba: 4,
                 label: None,
-                unique_guid: None
+                unique_guid: None,
+                amiga_geometry: None,
             },
             entry: expected,
             record_lba: 0,

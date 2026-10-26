@@ -166,6 +166,7 @@ lovelycarve-cli --session exam analysis records list --run-id "<run-id>" --recor
 - `files hash` tolerates source read faults: it still returns digests and exits 0, with `readFaultsDetected`, `syntheticBytes` and `badRegions` describing the zero-filled source ranges. Check `readFaultsDetected` before relying on a digest; `truncated: false` does not mean there were no faults.
 - `files read` writes raw bytes and fails with exit status 1 on a read fault, after possibly writing partial output: discard it. Use `files export` to keep tolerant data together with its audit.
 - `images hash` and `images export` read the whole evidence; `--read-fault-policy strict` fails at the first bad sector instead of zero-filling and reporting. `images export --mode unlockedPartitions` writes unlocked partitions as plaintext in place. `images bad-regions list` lists the synthesized source ranges.
+- `files streams list/get/export` also exposes BeFS, GFS2 and OCFS2 inline and external attributes. GFS2 / OCFS2 names retain native namespace prefixes such as `user.`. Copy returned stream names exactly; attribute type codes remain available in the Rust reader, and a stream name is not a host path.
 - Exports never overwrite: `files export` and `files streams export` need a new file, `files directories export --mode tree` a new directory and `--mode zip` a new file (`skippedCount` or `truncated` mean the archive is partial). A failed single-file export leaves nothing behind and can be retried.
 
 ```text
@@ -197,3 +198,20 @@ lovelycarve-cli -q sessions open partial
 lovelycarve-cli -q --session partial images open "<first-segment-path>" --raw-read-mode force
 lovelycarve-cli -q --session partial images get
 ```
+
+### bcachefs
+
+Use ordinary file commands and enter native subvolume/snapshot directory
+entries by their returned node IDs. Equal native inode numbers in different
+snapshots retain separate bytes; do not turn those numbers into file IDs or
+deduplicate the views. Only single-device volumes are supported. Bounds,
+codecs and native-oracle coverage are documented in `docs/formats/BCACHEFS.md`.
+
+### NILFS2
+
+NILFS2 uses the ordinary file commands against its latest committed tree.
+Read and hash preserve sparse holes and report missing allocated blocks or log
+CRC failures. Recorded modification/change times are retained; access and
+creation times remain absent. Dirty/recovery views fail explicitly. The CLI
+does not currently select native historical snapshots; the standalone Rust
+reader provides that API. See `docs/formats/NILFS2.md` for verified boundaries.

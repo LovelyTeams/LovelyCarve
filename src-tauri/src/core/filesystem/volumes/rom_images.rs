@@ -1,4 +1,4 @@
-//! CramFS / ROMFS / EROFS / F2FS / QNX adapters over the lamfold reader contract.
+//! ROM / flash / optical / Minix / classic HFS adapters over the lamfold contract.
 //! Paths retain their volume identity; no host extraction or symlink following.
 
 use std::{cell::RefCell, collections::HashSet, sync::Arc};
@@ -12,12 +12,64 @@ use crate::core::evidence::image::{find_partition, DiskImage, Partition};
 use crate::core::filesystem::fs_dispatch::build_stat;
 use crate::core::filesystem::tree::fs_tree::{FsNode, FsStat, Mactb, NodeKind};
 
+#[path = "bcachefs.rs"]
+mod bcachefs;
+pub use bcachefs::{open_bcachefs_source, parse_bcachefs_id, BcachefsVolume};
+#[cfg(test)]
+#[path = "bcachefs_tests.rs"]
+mod bcachefs_tests;
+
+#[cfg(test)]
+#[path = "amiga_tests.rs"]
+mod amiga_tests;
+#[path = "befs.rs"]
+mod befs;
+#[path = "gfs2.rs"]
+mod gfs2;
+#[path = "nilfs2.rs"]
+mod nilfs2;
+#[path = "ocfs2.rs"]
+mod ocfs2;
+pub use nilfs2::{open_nilfs2_source, parse_nilfs2_id, Nilfs2Volume};
+#[cfg(test)]
+#[path = "nilfs2_tests.rs"]
+mod nilfs2_tests;
+pub use ocfs2::{open_ocfs2_source, parse_ocfs2_id, Ocfs2Volume};
+#[cfg(test)]
+#[path = "ocfs2_tests.rs"]
+mod ocfs2_tests;
+pub use gfs2::{open_gfs2_source, parse_gfs2_id, Gfs2Volume};
+#[path = "classic_hfs_streams.rs"]
+mod classic_hfs_streams;
+#[cfg(test)]
+#[path = "gfs2_tests.rs"]
+mod gfs2_tests;
+pub use befs::{open_befs_source, parse_befs_id, BeFsVolume};
+#[cfg(test)]
+#[path = "befs_tests.rs"]
+mod befs_tests;
+#[cfg(test)]
+#[path = "classic_hfs_tests.rs"]
+mod classic_hfs_tests;
+#[cfg(test)]
+#[path = "jfs_tests.rs"]
+mod jfs_tests;
+#[cfg(test)]
+#[path = "reiserfs_tests.rs"]
+mod reiserfs_tests;
+
 #[cfg(test)]
 #[path = "flashfs_tests.rs"]
 mod flashfs_tests;
 #[cfg(test)]
+#[path = "minix_tests.rs"]
+mod minix_tests;
+#[cfg(test)]
 #[path = "rom_images_tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "udf_tests.rs"]
+mod udf_tests;
 
 pub type CramfsVolume = RomVolume<lamfold_cramfs::Cramfs<RomImageSource>>;
 pub type RomfsVolume = RomVolume<lamfold_romfs::Romfs<RomImageSource>>;
@@ -25,11 +77,40 @@ pub type ErofsVolume = RomVolume<lamfold_erofs::Erofs<RomImageSource>>;
 pub type F2fsVolume = RomVolume<f2fs_reader::F2fs<RomImageSource>>;
 pub type Qnx4Volume = RomVolume<qnx_reader::Qnx4<RomImageSource>>;
 pub type Qnx6Volume = RomVolume<qnx_reader::Qnx6<RomImageSource>>;
+pub type UdfVolume = RomVolume<lamfold_udf::Udf<RomImageSource>>;
+pub type MinixVolume = RomVolume<minix_reader::Minix<RomImageSource>>;
+pub type HfsVolume = RomVolume<classic_hfs::Hfs<RomImageSource>>;
+pub type JfsVolume = RomVolume<jfs_reader::Jfs<RomImageSource>>;
+pub type ReiserFsVolume = RomVolume<reiserfs_reader::ReiserFs<RomImageSource>>;
+pub type AmigaVolume = RomVolume<amiga_reader::Amiga<RomImageSource>>;
 
 pub struct RomImageSource {
     image: Arc<DiskImage>,
     base: u64,
     length: u64,
+}
+
+impl RomImageSource {
+    fn new(image: Arc<DiskImage>, partition: &Partition) -> Result<Self> {
+        let base = partition
+            .start_lba
+            .checked_mul(image.sector_size as u64)
+            .context("ROM image base overflow")?;
+        let length = partition
+            .length_lba
+            .checked_mul(image.sector_size as u64)
+            .context("ROM image length overflow")?;
+        ensure!(
+            base.checked_add(length)
+                .is_some_and(|end| end <= image.len()),
+            "ROM image partition exceeds source"
+        );
+        Ok(Self {
+            image,
+            base,
+            length,
+        })
+    }
 }
 
 impl BlockSource for RomImageSource {
@@ -88,6 +169,87 @@ pub fn open_qnx4_source(image: &Arc<DiskImage>, partition: u8) -> Result<Qnx4Vol
         find_partition(image, &partition.to_string())?,
     )
 }
+pub fn parse_minix_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "minix")
+}
+pub fn parse_hfs_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "hfs")
+}
+pub fn parse_jfs_id(id: &str) -> Option<(u8, String)> {
+    // Linux JFS names may contain literal backslashes. These are evidence
+    // components, never host paths; only '/' separates filesystem components.
+    let rest = id.strip_prefix("jfs:part:")?;
+    let (partition, path) = rest.split_once(':')?;
+    let path = String::from_utf8(hex::decode(path).ok()?).ok()?;
+    valid_lookup_path(&path).then_some((partition.parse().ok()?, path))
+}
+pub fn open_jfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<JfsVolume> {
+    let volume = JfsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )?;
+    if volume.reader.borrow().header().selected_copy == jfs_reader::HeaderCopy::Secondary {
+        tracing::warn!(partition, "JFS primary superblock unavailable; using validated secondary superblock at byte 61440");
+    }
+    Ok(volume)
+}
+pub fn parse_reiserfs_id(id: &str) -> Option<(u8, String)> {
+    let rest = id.strip_prefix("reiserfs:part:")?;
+    let (partition, path) = rest.split_once(':')?;
+    let path = String::from_utf8(hex::decode(path).ok()?).ok()?;
+    valid_lookup_path(&path).then_some((partition.parse().ok()?, path))
+}
+pub fn open_reiserfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<ReiserFsVolume> {
+    ReiserFsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn parse_amiga_id(id: &str) -> Option<(u8, String)> {
+    let rest = id.strip_prefix("amiga:part:")?;
+    let (partition, path) = rest.split_once(':')?;
+    let path = String::from_utf8(hex::decode(path).ok()?).ok()?;
+    valid_lookup_path(&path).then_some((partition.parse().ok()?, path))
+}
+pub fn open_amiga_source(image: &Arc<DiskImage>, partition: u8) -> Result<AmigaVolume> {
+    let partition = find_partition(image, &partition.to_string())?;
+    let source = RomImageSource::new(Arc::clone(image), partition)?;
+    let hints = partition
+        .amiga_geometry
+        .map(|geometry| amiga_reader::Hints {
+            block_size: geometry.block_size,
+            blocks: geometry.blocks,
+            reserved: geometry.reserved,
+            dos_type: geometry.dos_type,
+        });
+    let reader =
+        amiga_reader::Amiga::open_with_hints(source, hints).context("Amiga OFS/FFS open")?;
+    Ok(RomVolume {
+        partition_id: partition.id,
+        reader: RefCell::new(reader),
+    })
+}
+pub fn open_hfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<HfsVolume> {
+    HfsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn open_minix_source(image: &Arc<DiskImage>, partition: u8) -> Result<MinixVolume> {
+    MinixVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn parse_udf_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "udf")
+}
+pub fn open_udf_source(image: &Arc<DiskImage>, partition: u8) -> Result<UdfVolume> {
+    UdfVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
 pub fn parse_qnx6_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "qnx6")
 }
@@ -121,9 +283,13 @@ fn parse_id(id: &str, prefix: &str) -> Option<(u8, String)> {
 }
 
 fn valid_path(path: &str) -> bool {
+    !path.contains('\\') && valid_lookup_path(path)
+}
+
+fn valid_lookup_path(path: &str) -> bool {
     path.is_empty()
         || (path.starts_with('/')
-            && !path.contains(['\\', '\0'])
+            && !path.contains('\0')
             && path
                 .split('/')
                 .skip(1)
@@ -146,33 +312,14 @@ pub fn open_romfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<RomfsV
 
 impl<F: FoldFrontend<RomImageSource>> RomVolume<F> {
     pub fn open(image: Arc<DiskImage>, partition: &Partition) -> Result<Self> {
-        let base = partition
-            .start_lba
-            .checked_mul(image.sector_size as u64)
-            .context("ROM image base overflow")?;
-        let length = partition
-            .length_lba
-            .checked_mul(image.sector_size as u64)
-            .context("ROM image length overflow")?;
-        ensure!(
-            base.checked_add(length)
-                .is_some_and(|end| end <= image.len()),
-            "ROM image partition exceeds source"
-        );
+        let source = RomImageSource::new(image, partition)?;
         let mut cache = BlockCache::new(0);
         let mut context = SubstrateCtx {
             cache: &mut cache,
             verifier: &NoVerifier,
         };
-        let reader = F::open(
-            RomImageSource {
-                image,
-                base,
-                length,
-            },
-            &mut context,
-        )
-        .with_context(|| format!("{} open part:{}", F::TAG, partition.id))?;
+        let reader = F::open(source, &mut context)
+            .with_context(|| format!("{} open part:{}", F::TAG, partition.id))?;
         Ok(Self {
             partition_id: partition.id,
             reader: RefCell::new(reader),
@@ -193,17 +340,20 @@ impl<F: FoldFrontend<RomImageSource>> RomVolume<F> {
         path: &str,
         context: &mut SubstrateCtx<'_>,
     ) -> Result<(u64, HashSet<u64>)> {
-        ensure!(valid_path(path), "invalid ROM image path");
+        ensure!(valid_lookup_path(path), "invalid ROM image path");
         ensure!(path.split('/').count() <= 257, "ROM image path depth limit");
         let mut node = reader.root();
-        let mut ancestors = HashSet::from([node]);
+        let mut ancestors = HashSet::from([reader.inode_identity(node, context)?]);
         for component in path.split('/').filter(|component| !component.is_empty()) {
             node = reader
                 .lookup(node, component, context)?
                 .context("ROM image entry not found")?;
             let metadata = reader.metadata(node, context)?;
             if metadata.kind == FileKind::Directory {
-                ensure!(ancestors.insert(node), "ROM image directory ancestry cycle");
+                ensure!(
+                    ancestors.insert(reader.inode_identity(node, context)?),
+                    "ROM image directory ancestry cycle"
+                );
             }
         }
         Ok((node, ancestors))
@@ -224,8 +374,9 @@ impl<F: FoldFrontend<RomImageSource>> RomVolume<F> {
         let mut nodes = Vec::new();
         for entry in reader.read_dir(directory, &mut context)? {
             let metadata = reader.metadata(entry.node, &mut context)?;
+            let inode = reader.inode_identity(entry.node, &mut context)?;
             ensure!(
-                metadata.kind != FileKind::Directory || !ancestors.contains(&entry.node),
+                metadata.kind != FileKind::Directory || !ancestors.contains(&inode),
                 "ROM image directory ancestry cycle"
             );
             let child_path = format!("{path}/{}", entry.name);
@@ -244,32 +395,46 @@ impl<F: FoldFrontend<RomImageSource>> RomVolume<F> {
                     0
                 },
                 deleted: false,
-                inode: Some(entry.node),
+                inode: Some(reader.inode_number(entry.node, &mut context)?),
                 timestamps: {
                     let times = reader.timestamps(entry.node, &mut context)?;
-                    let format = |value: Option<(i64, u32)>| -> Result<Option<String>> {
+                    let local = reader.local_timestamps(entry.node, &mut context)?;
+                    let format = |value: Option<(i64, u32)>,
+                                  local: Option<(i64, u32)>|
+                     -> Result<Option<String>> {
+                        ensure!(
+                            value.is_none() || local.is_none(),
+                            "conflicting UTC/local filesystem timestamps"
+                        );
                         value
+                            .or(local)
                             .map(|(seconds, nanos)| {
                                 chrono::DateTime::from_timestamp(seconds, nanos)
                                     .map(|time| {
-                                        time.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)
+                                        if local.is_some() {
+                                            time.naive_utc()
+                                                .format("%Y-%m-%dT%H:%M:%S%.f")
+                                                .to_string()
+                                        } else {
+                                            time.to_rfc3339_opts(
+                                                chrono::SecondsFormat::AutoSi,
+                                                true,
+                                            )
+                                        }
                                     })
                                     .context("filesystem timestamp out of range")
                             })
                             .transpose()
                     };
                     Mactb {
-                        modified: format(times.modified)?,
-                        accessed: format(times.accessed)?,
-                        created: format(times.created)?,
-                        mft_changed: format(times.changed)?,
+                        modified: format(times.modified, local.modified)?,
+                        accessed: format(times.accessed, local.accessed)?,
+                        created: format(times.created, local.created)?,
+                        mft_changed: format(times.changed, local.changed)?,
                         birth: None,
                     }
                 },
-                link_target: reader
-                    .read_link(entry.node, &mut context)?
-                    .map(String::from_utf8)
-                    .transpose()?,
+                link_target: reader.read_link_text(entry.node, &mut context)?,
                 has_snapshot: false,
             });
         }
@@ -334,14 +499,17 @@ impl<F: FoldFrontend<RomImageSource>> RomVolume<F> {
                 verifier: &NoVerifier,
             };
             let (node, _) = Self::resolve(&mut reader, path, &mut context)?;
-            (node, reader.metadata(node, &mut context)?)
+            (
+                reader.inode_number(node, &mut context)?,
+                reader.metadata(node, &mut context)?,
+            )
         };
         let sample = self.read_file(path, 4096)?;
         Ok(build_stat(
             node_id,
             metadata.size,
             Some(node),
-            Some(metadata.mode as u16),
+            (metadata.mode != 0).then_some(metadata.mode as u16),
             &sample,
             Vec::new(),
         ))

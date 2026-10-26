@@ -308,6 +308,17 @@ pub(super) fn fs_label_for_kind(kind: PartitionKind) -> &'static str {
         PartitionKind::F2fs => "F2FS",
         PartitionKind::Qnx4 => "QNX4",
         PartitionKind::Qnx6 => "QNX6",
+        PartitionKind::Udf => "UDF",
+        PartitionKind::Hfs => "HFS",
+        PartitionKind::Jfs => "JFS",
+        PartitionKind::Reiserfs => "ReiserFS",
+        PartitionKind::Amiga => "Amiga OFS/FFS",
+        PartitionKind::Befs => "BeFS",
+        PartitionKind::Gfs2 => "GFS2",
+        PartitionKind::Ocfs2 => "OCFS2",
+        PartitionKind::Nilfs2 => "NILFS2",
+        PartitionKind::Bcachefs => "bcachefs",
+        PartitionKind::Minix => "MINIX",
         PartitionKind::Minifs => "MINIFS",
         PartitionKind::Romfs => "ROMFS",
         PartitionKind::Ubifs => "UBIFS",
@@ -338,7 +349,7 @@ pub(super) fn fs_label_for_kind(kind: PartitionKind) -> &'static str {
 /// Filesystems that distinguish `Foo` from `foo` at rest. Returning `true`
 /// switches Dokan into case-sensitive lookup so the original forensic path
 /// is preserved when, e.g., ext4 has both `README` and `readme` in the same
-/// directory. NTFS / FAT / exFAT / HFS+ stay case-insensitive (their
+/// directory. NTFS / FAT / exFAT / classic HFS / HFS+ stay case-insensitive (their
 /// canonical lookup is too).
 pub(super) fn is_case_sensitive_fs(kind: PartitionKind) -> bool {
     matches!(
@@ -358,6 +369,15 @@ pub(super) fn is_case_sensitive_fs(kind: PartitionKind) -> bool {
             | PartitionKind::F2fs
             | PartitionKind::Qnx4
             | PartitionKind::Qnx6
+            | PartitionKind::Udf
+            | PartitionKind::Jfs
+            | PartitionKind::Reiserfs
+            | PartitionKind::Befs
+            | PartitionKind::Gfs2
+            | PartitionKind::Ocfs2
+            | PartitionKind::Nilfs2
+            | PartitionKind::Bcachefs
+            | PartitionKind::Minix
             | PartitionKind::Minifs
             | PartitionKind::Romfs
             | PartitionKind::Ubi

@@ -188,6 +188,72 @@ impl<'a> FsSession<'a> {
                         )?
                         .root_children(),
                     ),
+                    PartitionKind::Hfs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_hfs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Jfs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_jfs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Reiserfs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_reiserfs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Befs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_befs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Gfs2 => Some(
+                        crate::core::filesystem::volumes::rom_images::open_gfs2_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Ocfs2 => Some(
+                        crate::core::filesystem::volumes::rom_images::open_ocfs2_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Nilfs2 => Some(
+                        crate::core::filesystem::volumes::rom_images::open_nilfs2_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Bcachefs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_bcachefs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Amiga => Some(
+                        crate::core::filesystem::volumes::rom_images::open_amiga_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Minix => Some(
+                        crate::core::filesystem::volumes::rom_images::open_minix_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
+                    PartitionKind::Udf => Some(
+                        crate::core::filesystem::volumes::rom_images::open_udf_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::Qnx6 => Some(
                         crate::core::filesystem::volumes::rom_images::open_qnx6_source(
                             self.image, pid,

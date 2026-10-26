@@ -1,0 +1,24 @@
+[package]
+name = "amiga-ffs"
+version = "0.4.0"
+edition = "2021"
+# Matches amiga-rdb's floor; raising it is a semver-visible decision.
+rust-version = "1.63"
+license = "MIT OR Apache-2.0"
+description = "Amiga Fast File System (OFS/FFS, all DOS\\0-DOS\\7 variants including long filenames): read, validate, repair, format, populate, mutate, resize, and defragment volumes"
+repository = "https://github.com/sidick/amiga-ffs-rs"
+keywords = ["amiga", "ffs", "ofs", "filesystem", "retrocomputing"]
+categories = ["filesystem", "no-std", "parser-implementations"]
+
+[package.metadata.docs.rs]
+all-features = true
+
+[dependencies]
+# Deliberately none. Pure format logic over the `BlockSource` trait;
+# consumers bring their own I/O.
+
+[features]
+default = ["std"]
+# `std` adds conveniences only (std::error::Error impls); the core
+# crate is no_std + alloc throughout.
+std = []

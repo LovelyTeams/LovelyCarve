@@ -98,6 +98,7 @@ impl PartParser for WholeVolumeParser {
             length_lba: ctx.size / ctx.sector_size as u64,
             label: None,
             unique_guid: None,
+            amiga_geometry: None,
         }]))
     }
 }
@@ -141,18 +142,21 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &SquashfsProbe,
     &RomImagesProbe,
     &super::minifs::MinifsProbe,
+    &super::minix::MinixProbe,
     &UbiProbe,
     &super::ubifs::UbifsProbe,
     &super::jffs2::Jffs2Probe,
     &XfsProbe,
     &ExtProbe,
     &ApfsProbe,
+    &super::classic_hfs::ClassicHfsProbe,
     &HfsProbe,
     &LvmProbe,
     &LuksProbe,
     &NtfsProbe,
     &RefsProbe,
     &ExfatProbe,
+    &super::udf::UdfProbe,
     &CdfsProbe,
     &FatProbe,
     &BtrfsProbe,
@@ -160,6 +164,14 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &ZfsProbe,
     &super::qnx::QnxProbe,
     &super::yaffs2::Yaffs2Probe,
+    &super::jfs::JfsProbe,
+    &super::reiserfs::ReiserFsProbe,
+    &super::amiga::AmigaProbe,
+    &super::befs::BeFsProbe,
+    &super::gfs2::Gfs2Probe,
+    &super::ocfs2::Ocfs2Probe,
+    &super::nilfs2::Nilfs2Probe,
+    &super::bcachefs::BcachefsProbe,
 ];
 
 pub fn probe_volume(
@@ -187,6 +199,33 @@ pub fn probe_volume_with_head(ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeH
 }
 
 pub fn detect_filesystem_bytes(bytes: &[u8], fallback: PartitionKind) -> PartitionKind {
+    if super::classic_hfs::detect(bytes) {
+        return PartitionKind::Hfs;
+    }
+    if super::gfs2::detect(bytes) {
+        return PartitionKind::Gfs2;
+    }
+    if super::ocfs2::detect(bytes) {
+        return PartitionKind::Ocfs2;
+    }
+    if super::nilfs2::detect(bytes) {
+        return PartitionKind::Nilfs2;
+    }
+    if super::bcachefs::detect(bytes) {
+        return PartitionKind::Bcachefs;
+    }
+    if super::befs::detect(bytes) {
+        return PartitionKind::Befs;
+    }
+    if super::reiserfs::detect(bytes) {
+        return PartitionKind::Reiserfs;
+    }
+    if super::jfs::detect(bytes) {
+        return PartitionKind::Jfs;
+    }
+    if super::minix::detect(bytes) {
+        return PartitionKind::Minix;
+    }
     if let Some(kind) = super::qnx::detect(bytes) {
         return kind;
     }
@@ -286,6 +325,17 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::F2fs
         | PartitionKind::Qnx4
         | PartitionKind::Qnx6
+        | PartitionKind::Udf
+        | PartitionKind::Hfs
+        | PartitionKind::Jfs
+        | PartitionKind::Reiserfs
+        | PartitionKind::Amiga
+        | PartitionKind::Befs
+        | PartitionKind::Gfs2
+        | PartitionKind::Ocfs2
+        | PartitionKind::Nilfs2
+        | PartitionKind::Bcachefs
+        | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs
         | PartitionKind::Ubi

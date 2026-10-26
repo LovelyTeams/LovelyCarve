@@ -149,6 +149,428 @@ def main():
             assert rows[2]["result"]["data"] == flash_body[flash_offset:flash_offset + 121].hex()
             assert rows[3]["result"]["sha256"] == hashlib.sha256(flash_body).hexdigest()
 
+        # bcachefs: native snapshot namespace, checksummed reflinks and >5 GiB holes.
+        bcachefs_source = zlib.decompress((flash_vendor / "bcachefs-reader/tests/fixtures/invented.zlib").read_bytes())
+        bcachefs_path = root / "invented.bcachefs"
+        bcachefs_path.write_bytes(bcachefs_source)
+        bcachefs_export = root / "bcachefs-export.bin"
+        bcachefs_node = "bcachefs:part:0:" + b"/checksum.bin".hex()
+        _, rows = session([
+            {"id": "open", "command": "images open", "args": {"path": str(bcachefs_path)}},
+            {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+            {"id": "live", "command": "files read", "args": {"nodeId": "bcachefs:part:0:" + b"/sv/version.txt".hex(), "length": 4}},
+            {"id": "past", "command": "files read", "args": {"nodeId": "bcachefs:part:0:" + b"/snap/version.txt".hex(), "length": 4}},
+            {"id": "sparse", "command": "files read", "args": {"nodeId": "bcachefs:part:0:" + b"/sparse.bin".hex(), "offset": 5 * 1024**3, "length": 5}},
+            {"id": "hash", "command": "files hash", "args": {"nodeId": bcachefs_node, "algos": ["sha256"]}},
+            {"id": "export", "command": "files export", "args": {"nodeId": bcachefs_node, "destination": str(bcachefs_export)}},
+        ])
+        assert all("result" in row for row in rows), rows
+        assert rows[0]["result"]["partitions"][0]["kind"] == "bcachefs"
+        assert len(rows[1]["result"]["items"]) == 10
+        assert rows[2]["result"]["data"] == b"LIVE".hex()
+        assert rows[3]["result"]["data"] == b"PAST".hex()
+        assert rows[4]["result"]["data"] == b"TAIL!".hex()
+        bcachefs_body = bytes((index * 17 + 3) % 256 for index in range(513))
+        assert rows[5]["result"]["sha256"] == hashlib.sha256(bcachefs_body).hexdigest()
+        assert bcachefs_export.read_bytes() == bcachefs_body
+        assert bcachefs_path.read_bytes() == bcachefs_source
+        bcachefs_backup = bytearray(bcachefs_source)
+        bcachefs_backup[4096] ^= 1
+        bcachefs_backup_path = root / "backup-only.bcachefs"
+        bcachefs_backup_path.write_bytes(bcachefs_backup)
+        _, rows = session([
+            {"id": "open", "command": "images open", "args": {"path": str(bcachefs_backup_path)}},
+            {"id": "hash", "command": "files hash", "args": {"nodeId": bcachefs_node, "algos": ["sha256"]}},
+        ])
+        assert all("result" in row for row in rows), rows
+        assert rows[0]["result"]["partitions"][0]["kind"] == "bcachefs"
+        assert rows[1]["result"]["sha256"] == hashlib.sha256(bcachefs_body).hexdigest()
+        if os.environ.get("BCACHEFS_ORACLE_DIR"):
+            native_root = Path(os.environ["BCACHEFS_ORACLE_DIR"])
+            for native_name in ["512-none", "4096-lz4", "4096-zstd", "4096-gzip"]:
+                native_manifest = json.loads((native_root / (native_name + ".json")).read_text(encoding="utf8"))
+                expected = {entry["path"]: entry for entry in native_manifest["entries"]}
+                _, rows = session([
+                    {"id": "open", "command": "images open", "args": {"path": str(native_root / (native_name + ".img"))}},
+                    {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                    {"id": "hash", "command": "files hash", "args": {"nodeId": "bcachefs:part:0:" + b"/compressible.bin".hex(), "algos": ["sha256"]}},
+                ])
+                assert all("result" in row for row in rows), rows
+                assert rows[0]["result"]["partitions"][0]["kind"] == "bcachefs"
+                assert any(item["name"] == "中文\\证据.txt" for item in rows[1]["result"]["items"])
+                assert rows[2]["result"]["sha256"] == expected["compressible.bin"]["sha256"]
+
+        # NILFS2: current checkpoint, sparse/direct B-tree reads and absent native atime.
+        nilfs2_source = zlib.decompress((flash_vendor / "nilfs2-reader/tests/fixtures/invented-1024.zlib").read_bytes())
+        nilfs2_path = root / "invented.nilfs2"
+        nilfs2_path.write_bytes(nilfs2_source)
+        nilfs2_node = "nilfs2:part:0:" + b"/hello".hex()
+        _, rows = session([
+            {"id": "open", "command": "images open", "args": {"path": str(nilfs2_path)}},
+            {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+            {"id": "hash", "command": "files hash", "args": {"nodeId": nilfs2_node, "algos": ["sha256"]}},
+            {"id": "range", "command": "files read", "args": {"nodeId": "nilfs2:part:0:" + b"/sparse".hex(), "offset": 1019, "length": 97}},
+        ])
+        assert all("result" in row for row in rows), rows
+        assert rows[0]["result"]["partitions"][0]["kind"] == "nilfs2"
+        assert len(rows[1]["result"]["items"]) == 9
+        assert rows[2]["result"]["sha256"] == hashlib.sha256(b"hello NILFS2 evidence\n").hexdigest()
+        assert rows[3]["result"]["data"] == (bytes(5) + bytes((index * 23 + 7) & 255 for index in range(92))).hex()
+        assert nilfs2_path.read_bytes() == nilfs2_source
+        nilfs2_backup = bytearray(nilfs2_source)
+        nilfs2_backup[1024 + 16] ^= 1
+        nilfs2_backup_path = root / "backup-only.nilfs2"
+        nilfs2_backup_path.write_bytes(nilfs2_backup)
+        _, rows = session([
+            {"id": "open", "command": "images open", "args": {"path": str(nilfs2_backup_path)}},
+            {"id": "hash", "command": "files hash", "args": {"nodeId": nilfs2_node, "algos": ["sha256"]}},
+        ])
+        assert all("result" in row for row in rows), rows
+        assert rows[0]["result"]["partitions"][0]["kind"] == "nilfs2"
+        assert rows[1]["result"]["sha256"] == hashlib.sha256(b"hello NILFS2 evidence\n").hexdigest()
+        assert nilfs2_backup_path.read_bytes() == nilfs2_backup
+
+        if os.environ.get("NILFS2_ORACLE_DIR"):
+            native_root = Path(os.environ["NILFS2_ORACLE_DIR"])
+            for native_name in ["nilfs2-1024-2048-block_count", "nilfs2-2048-1024-block_count", "nilfs2-4096-512-block_count", "nilfs2-4096-2048-none", "nilfs2-4096-512-cleaned"]:
+                selected_root = Path(os.environ.get("NILFS2_GC_ORACLE_DIR", str(native_root))) if native_name.endswith("cleaned") else native_root
+                native_manifest = json.loads((selected_root / (native_name + ".json")).read_text(encoding="utf8"))
+                _, rows = session([
+                    {"id": "open", "command": "images open", "args": {"path": str(selected_root / (native_name + ".img"))}},
+                    {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                    {"id": "hash", "command": "files hash", "args": {"nodeId": "nilfs2:part:0:" + b"/large".hex(), "algos": ["sha256"]}},
+                ])
+                assert all("result" in row for row in rows), rows
+                assert rows[0]["result"]["partitions"][0]["kind"] == "nilfs2"
+                assert any(item["name"] == "中文\\evidence" for item in rows[1]["result"]["items"])
+                assert rows[2]["result"]["sha256"] == native_manifest["records"]["/large"]["sha256"]
+                for file_name in ["/sparse", "/fragmented", "/versioned"]:
+                    _, checked = session([
+                        {"id": "open", "command": "images open", "args": {"path": str(selected_root / (native_name + ".img"))}},
+                        {"id": "hash", "command": "files hash", "args": {"nodeId": "nilfs2:part:0:" + file_name.encode().hex(), "algos": ["sha256"]}},
+                    ])
+                    assert all("result" in row for row in checked), checked
+                    assert checked[1]["result"]["sha256"] == native_manifest["records"][file_name]["sha256"]
+
+        # OCFS2: resource allocation, a native-sized clean journal, sparse ranges and EAs.
+        ocfs2_source = zlib.decompress((flash_vendor / "ocfs2-reader/tests/fixtures/discontiguous-ecc.zlib").read_bytes())
+        ocfs2_path = root / "invented.ocfs2"
+        ocfs2_path.write_bytes(ocfs2_source)
+        ocfs2_node = "ocfs2:part:0:" + b"/hello".hex()
+        ocfs2_export = root / "ocfs2-attribute.bin"
+        _, rows = session([
+            {"id": "open", "command": "images open", "args": {"path": str(ocfs2_path)}},
+            {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+            {"id": "hash", "command": "files hash", "args": {"nodeId": ocfs2_node, "algos": ["sha256"]}},
+            {"id": "range", "command": "files read", "args": {"nodeId": "ocfs2:part:0:" + b"/sparse".hex(), "offset": 4091, "length": 97}},
+            {"id": "streams", "command": "files streams list", "args": {"nodeId": ocfs2_node}},
+            {"id": "inline", "command": "files streams get", "args": {"nodeId": ocfs2_node, "streamName": "user.inline", "maxBytes": 100}},
+            {"id": "export", "command": "files streams export", "args": {"nodeId": ocfs2_node, "streamName": "user.external", "destination": str(ocfs2_export)}},
+        ])
+        assert all("result" in row for row in rows), rows
+        assert rows[0]["result"]["partitions"][0]["kind"] == "ocfs2"
+        assert len(rows[1]["result"]["items"]) == 8
+        assert rows[2]["result"]["sha256"] == hashlib.sha256(b"hello OCFS2 evidence\n").hexdigest()
+        assert rows[3]["result"]["data"] == (bytes(5) + bytes((index * 17 + 5) & 255 for index in range(92))).hex()
+        assert any(item["name"] == "user.external" for item in rows[4]["result"])
+        assert rows[5]["result"] == {"encoding": "hex", "data": b"\0\xfffixture".hex()}
+        assert ocfs2_export.read_bytes() == bytes(range(100))
+        assert ocfs2_path.read_bytes() == ocfs2_source
+
+        # GFS2: resource allocation, a native-sized clean journal, sparse ranges and EAs.
+        gfs2_source = zlib.decompress((flash_vendor / "gfs2-reader/tests/fixtures/invented-4096.zlib").read_bytes())
+        gfs2_path = root / "invented.gfs2"
+        gfs2_path.write_bytes(gfs2_source)
+        gfs2_node = "gfs2:part:0:" + b"/hello".hex()
+        gfs2_export = root / "gfs2-attribute.bin"
+        _, rows = session([
+            {"id": "open", "command": "images open", "args": {"path": str(gfs2_path)}},
+            {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+            {"id": "hash", "command": "files hash", "args": {"nodeId": gfs2_node, "algos": ["sha256"]}},
+            {"id": "range", "command": "files read", "args": {"nodeId": "gfs2:part:0:" + b"/sparse".hex(), "offset": 4091, "length": 97}},
+            {"id": "streams", "command": "files streams list", "args": {"nodeId": gfs2_node}},
+            {"id": "inline", "command": "files streams get", "args": {"nodeId": gfs2_node, "streamName": "user.inline", "maxBytes": 100}},
+            {"id": "export", "command": "files streams export", "args": {"nodeId": gfs2_node, "streamName": "user.external", "destination": str(gfs2_export)}},
+        ])
+        assert all("result" in row for row in rows), rows
+        assert rows[0]["result"]["partitions"][0]["kind"] == "gfs2"
+        assert len(rows[1]["result"]["items"]) == 6
+        assert rows[2]["result"]["sha256"] == hashlib.sha256(b"hello native-style GFS2\n").hexdigest()
+        assert rows[3]["result"]["data"] == (bytes(5) + bytes((index * 17 + 5) & 255 for index in range(92))).hex()
+        assert any(item["name"] == "user.external" for item in rows[4]["result"])
+        assert rows[5]["result"] == {"encoding": "hex", "data": b"\0\xfffixture".hex()}
+        assert gfs2_export.read_bytes() == bytes(range(100))
+        assert gfs2_path.read_bytes() == gfs2_source
+
+        # Opt-in native GFS2 inputs generated by mkfs/Linux/fsck, verified by the reader audit.
+        if os.environ.get("GFS2_ORACLE_DIR"):
+            native_root = Path(os.environ["GFS2_ORACLE_DIR"])
+            for native_name in ["gfs2-512-1801", "gfs2-1024-1802", "gfs2-2048-1801", "gfs2-4096-1802"]:
+                native_manifest = json.loads((native_root / (native_name + ".json")).read_text(encoding="utf8"))
+                _, rows = session([
+                    {"id": "open", "command": "images open", "args": {"path": str(native_root / (native_name + ".img"))}},
+                    {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                    {"id": "hash", "command": "files hash", "args": {"nodeId": "gfs2:part:0:" + b"/large".hex(), "algos": ["sha256"]}},
+                    {"id": "attribute", "command": "files streams get", "args": {"nodeId": "gfs2:part:0:" + b"/hello".hex(), "streamName": "user.large", "maxBytes": 97}},
+                ])
+                assert all("result" in row for row in rows), rows
+                assert rows[0]["result"]["partitions"][0]["kind"] == "gfs2"
+                assert any(item["name"] == "中文\\evidence" for item in rows[1]["result"]["items"])
+                assert rows[2]["result"]["sha256"] == native_manifest["records"]["/large"]["sha256"]
+                assert rows[3]["result"] == {"encoding": "hex", "data": bytes((index * 23 + 7) & 255 for index in range(97)).hex()}
+
+        # Opt-in native OCFS2 inputs generated by mkfs/Linux/fsck, verified by the reader audit.
+        if os.environ.get("OCFS2_ORACLE_DIR"):
+            native_root = Path(os.environ["OCFS2_ORACLE_DIR"])
+            for native_name in ["ocfs2-512-4096", "ocfs2-1024-4096", "ocfs2-2048-16384", "ocfs2-4096-65536"]:
+                native_manifest = json.loads((native_root / (native_name + ".json")).read_text(encoding="utf8"))
+                _, rows = session([
+                    {"id": "open", "command": "images open", "args": {"path": str(native_root / (native_name + ".img"))}},
+                    {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                    {"id": "hash", "command": "files hash", "args": {"nodeId": "ocfs2:part:0:" + b"/large".hex(), "algos": ["sha256"]}},
+                    {"id": "attribute", "command": "files streams get", "args": {"nodeId": "ocfs2:part:0:" + b"/hello".hex(), "streamName": "user.large", "maxBytes": 97}},
+                ])
+                assert all("result" in row for row in rows), rows
+                assert rows[0]["result"]["partitions"][0]["kind"] == "ocfs2"
+                assert any(item["name"] == "中文\\evidence" for item in rows[1]["result"]["items"])
+                assert rows[2]["result"]["sha256"] == native_manifest["records"]["/large"]["sha256"]
+                assert rows[3]["result"] == {"encoding": "hex", "data": bytes((index * 23 + 7) & 255 for index in range(97)).hex()}
+                for file_name in ["/fragmented", "/clone-fragmented", "/unwritten", "/preallocated-empty"]:
+                    if file_name not in native_manifest["records"]:
+                        continue
+                    _, checked = session([
+                        {"id": "open", "command": "images open", "args": {"path": str(native_root / (native_name + ".img"))}},
+                        {"id": "hash", "command": "files hash", "args": {"nodeId": "ocfs2:part:0:" + file_name.encode().hex(), "algos": ["sha256"]}},
+                    ])
+                    assert all("result" in row for row in checked), checked
+                    assert checked[1]["result"]["sha256"] == native_manifest["records"][file_name]["sha256"]
+
+        # BeFS: both endian orders, indirect/double runs and typed attributes.
+        for befs_name, befs_block in [("le-1024-2560", 1024), ("be-4096-2560", 4096), ("le-1024-10000", 1024)]:
+            befs_path = root / (befs_name + ".befs")
+            befs_source = zlib.decompress((flash_vendor / ("befs-reader/tests/fixtures/" + befs_name + ".zlib")).read_bytes())
+            befs_path.write_bytes(befs_source)
+            befs_node = "befs:part:0:" + b"/big.bin".hex()
+            befs_body = bytes((index * 17 + 5) & 255 for index in range(26 * befs_block - 37))
+            befs_attribute = bytes((index * 23 + 7) & 255 for index in range(12003))
+            befs_export = root / (befs_name + "-export.bin")
+            befs_attr_export = root / (befs_name + "-attribute.bin")
+            befs_offset = 18 * befs_block - 11
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(befs_path)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "read", "command": "files read", "args": {"nodeId": befs_node, "offset": befs_offset, "length": 73}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": befs_node, "algos": ["sha256"]}},
+                {"id": "export", "command": "files export", "args": {"nodeId": befs_node, "destination": str(befs_export)}},
+                {"id": "streams", "command": "files streams list", "args": {"nodeId": befs_node}},
+                {"id": "inline", "command": "files streams get", "args": {"nodeId": befs_node, "streamName": "custom", "maxBytes": 100}},
+                {"id": "attribute", "command": "files streams get", "args": {"nodeId": befs_node, "streamName": "big-attribute", "maxBytes": 97}},
+                {"id": "attribute-export", "command": "files streams export", "args": {"nodeId": befs_node, "streamName": "big-attribute", "destination": str(befs_attr_export)}},
+                {"id": "name", "command": "files read", "args": {"nodeId": "befs:part:0:" + "/中文\\evidence".encode().hex(), "offset": 0, "length": 100}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "befs"
+            assert any(item["name"] == "中文\\evidence" for item in rows[1]["result"]["items"])
+            assert rows[2]["result"]["data"] == befs_body[befs_offset:befs_offset + 73].hex()
+            assert rows[3]["result"]["sha256"] == hashlib.sha256(befs_body).hexdigest()
+            assert befs_export.read_bytes() == befs_body
+            assert any(stream["name"] == "big-attribute" for stream in rows[5]["result"])
+            assert rows[6]["result"] == {"encoding": "hex", "data": b"\x00\xffinline\x80".hex()}
+            assert rows[7]["result"] == {"encoding": "hex", "data": befs_attribute[:97].hex()}
+            assert befs_attr_export.read_bytes() == befs_attribute
+            assert rows[9]["result"]["data"] == b"names".hex()
+            assert befs_path.read_bytes() == befs_source
+
+        # Opt-in publisher-verified hrev60295 native image from test-befs-native.
+        if os.environ.get("BEFS_ORACLE_IMAGE"):
+            native_node = "befs:part:0:" + b"/system/packages/haiku-r1~beta6_hrev60295-1-x86_64.hpkg".hex()
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": os.environ["BEFS_ORACLE_IMAGE"]}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": native_node, "algos": ["sha256"]}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "befs"
+            assert rows[1]["result"]["sha256"] == "f624ff224ac0cc68c22300e15babc3e058b09fc145f0af19f3257c0c5e9c85dc"
+
+        # Amiga: independent OFS/FFS variants, native multi-block RDB and links.
+        amiga_body = bytes((index * 17 + 5) & 255 for index in range(200013))
+        for amiga_name, amiga_parts in [("dos0-512-1760", (0,)), ("links-dos3", (0,)), ("dos7-4096-1760", (0,)), ("rdb-multiblock", (0, 1, 3))]:
+            amiga_path = root / (amiga_name + ".hdf")
+            amiga_source = zlib.decompress((flash_vendor / ("amiga-reader/tests/fixtures/" + amiga_name + ".zlib")).read_bytes())
+            amiga_path.write_bytes(amiga_source)
+            for amiga_part in amiga_parts:
+                amiga_prefix = "amiga:part:" + str(amiga_part) + ":"
+                amiga_node = amiga_prefix + "/Café.bin".encode().hex()
+                amiga_export = root / (amiga_name + str(amiga_part) + "-export.bin")
+                _, rows = session([
+                    {"id": "open", "command": "images open", "args": {"path": str(amiga_path)}},
+                    {"id": "list", "command": "files list", "args": {"parentId": "part:" + str(amiga_part)}},
+                    {"id": "nested", "command": "files list", "args": {"parentId": amiga_prefix + b"/sub".hex(), "pageSize": 200}},
+                    {"id": "read", "command": "files read", "args": {"nodeId": amiga_node, "offset": 73720, "length": 73}},
+                    {"id": "hash", "command": "files hash", "args": {"nodeId": amiga_node, "algos": ["sha256"]}},
+                    {"id": "export", "command": "files export", "args": {"nodeId": amiga_node, "destination": str(amiga_export)}},
+                    {"id": "name", "command": "files read", "args": {"nodeId": amiga_prefix + "/back\\slash".encode().hex(), "offset": 0, "length": 100}},
+                ])
+                assert all("result" in row for row in rows), rows
+                assert rows[0]["result"]["partitions"][amiga_part]["kind"] == "amiga"
+                assert any(item["name"] == "Café.bin" for item in rows[1]["result"]["items"])
+                assert len(rows[2]["result"]["items"]) == 101
+                assert rows[3]["result"]["data"] == amiga_body[73720:73793].hex()
+                assert rows[4]["result"]["sha256"] == hashlib.sha256(amiga_body).hexdigest()
+                assert amiga_export.read_bytes() == amiga_body
+                assert rows[6]["result"]["data"] == b"Unix-safe evidence name".hex()
+                assert amiga_path.read_bytes() == amiga_source
+
+        # ReiserFS v3: both key/bitmap layouts, sparse indirect and packed tails.
+        for reiser_name, reiser_block in [("v35-1024-old", 1024), ("v36-4096-relocated", 4096)]:
+            reiser_path = root / (reiser_name + ".reiserfs")
+            reiser_path.write_bytes(zlib.decompress((flash_vendor / ("reiserfs-reader/tests/fixtures/" + reiser_name + ".zlib")).read_bytes()))
+            reiser_body = bytes((index * 17 + 5) & 255 for index in range(reiser_block)) + bytes(reiser_block) + bytes((index * 23 + 7) & 255 for index in range(reiser_block)) + b"packed tail"
+            reiser_node = "reiserfs:part:0:" + b"/big.bin".hex()
+            reiser_export = root / (reiser_name + "-export.bin")
+            reiser_offset = reiser_block - 7
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(reiser_path)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "nested", "command": "files list", "args": {"parentId": "reiserfs:part:0:" + b"/sub".hex()}},
+                {"id": "read", "command": "files read", "args": {"nodeId": reiser_node, "offset": reiser_offset, "length": 71}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": reiser_node, "algos": ["sha256"]}},
+                {"id": "export", "command": "files export", "args": {"nodeId": reiser_node, "destination": str(reiser_export)}},
+                {"id": "unicode", "command": "files read", "args": {"nodeId": "reiserfs:part:0:" + "/中文\\evidence".encode().hex(), "offset": 0, "length": 100}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "reiserfs"
+            assert any(item["name"] == "中文\\evidence" for item in rows[1]["result"]["items"])
+            assert not any(item["name"] == "hidden" for item in rows[1]["result"]["items"])
+            assert rows[2]["result"]["items"][0]["name"] == "nested"
+            assert rows[3]["result"]["data"] == reiser_body[reiser_offset:reiser_offset + 71].hex()
+            assert rows[4]["result"]["sha256"] == hashlib.sha256(reiser_body).hexdigest()
+            assert reiser_export.read_bytes() == reiser_body
+            assert rows[6]["result"]["data"] == b"names".hex()
+
+        # JFS: multiple IAGs, sparse/unwritten data, Unix names and hardlinks.
+        for jfs_name, jfs_block in [("multi-iag-512-legacy", 512), ("multi-iag-4096-indexed", 4096)]:
+            jfs_path = root / (jfs_name + ".jfs")
+            jfs_path.write_bytes(zlib.decompress((flash_vendor / ("jfs-reader/tests/fixtures/" + jfs_name + ".zlib")).read_bytes()))
+            jfs_expected = bytearray(12 * jfs_block + 37)
+            for logical, count, factor in [(0, 2 * jfs_block, 17), (10 * jfs_block, jfs_block, 23), (12 * jfs_block, 37, 29)]:
+                jfs_expected[logical:logical + count] = bytes((index * factor + 5) & 255 for index in range(count))
+            jfs_node = "jfs:part:0:" + b"/big.bin".hex()
+            jfs_long_name = "long_中文_" + "x" * 180 + "\\tail"
+            jfs_export = root / (jfs_name + "-export.bin")
+            jfs_offset = 6 * jfs_block - 7
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(jfs_path)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "nested", "command": "files list", "args": {"parentId": "jfs:part:0:" + b"/sub".hex()}},
+                {"id": "read", "command": "files read", "args": {"nodeId": jfs_node, "offset": jfs_offset, "length": 71}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": jfs_node, "algos": ["sha256"]}},
+                {"id": "export", "command": "files export", "args": {"nodeId": jfs_node, "destination": str(jfs_export)}},
+                {"id": "unicode", "command": "files read", "args": {"nodeId": "jfs:part:0:" + ("/" + jfs_long_name).encode().hex(), "offset": 0, "length": 100}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "jfs"
+            assert any(item["name"] == jfs_long_name for item in rows[1]["result"]["items"])
+            assert rows[2]["result"]["items"][0]["name"] == "nested.txt"
+            assert rows[3]["result"]["data"] == jfs_expected[jfs_offset:jfs_offset + 71].hex()
+            assert rows[4]["result"]["sha256"] == hashlib.sha256(jfs_expected).hexdigest()
+            assert jfs_export.read_bytes() == jfs_expected
+            assert rows[6]["result"]["data"] == b"unicode path".hex()
+
+        # Classic HFS: retain local times and independently export both forks.
+        hfs_path = root / "classic-hfs.img"
+        hfs_path.write_bytes(zlib.decompress((flash_vendor / "classic-hfs/tests/fixtures/fragmented-1024.zlib").read_bytes()))
+        hfs_node = "hfs:part:0:" + "/Café.bin".encode().hex()
+        hfs_body = bytes((index * 17 + 3) & 255 for index in range(3 * 1024 + 37))
+        hfs_resource = bytes((index * 23 + 5) & 255 for index in range(3 * 1024 + 19))
+        hfs_data_export = root / "hfs-data.bin"
+        hfs_resource_export = root / "hfs-resource.bin"
+        _, rows = session([
+            {"id": "open", "command": "images open", "args": {"path": str(hfs_path)}},
+            {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+            {"id": "read", "command": "files read", "args": {"nodeId": hfs_node, "offset": 3065, "length": 121}},
+            {"id": "hash", "command": "files hash", "args": {"nodeId": hfs_node, "algos": ["sha256"]}},
+            {"id": "export", "command": "files export", "args": {"nodeId": hfs_node, "destination": str(hfs_data_export)}},
+            {"id": "streams", "command": "files streams list", "args": {"nodeId": hfs_node}},
+            {"id": "resource", "command": "files streams get", "args": {"nodeId": hfs_node, "streamName": "com.apple.ResourceFork", "maxBytes": 100}},
+            {"id": "resource-export", "command": "files streams export", "args": {"nodeId": hfs_node, "streamName": "com.apple.ResourceFork", "destination": str(hfs_resource_export)}},
+        ])
+        assert all("result" in row for row in rows), rows
+        assert rows[0]["result"]["partitions"][0]["kind"] == "hfs"
+        assert any(item["name"] == "Café.bin" for item in rows[1]["result"]["items"])
+        assert rows[2]["result"]["data"] == hfs_body[3065:3065 + 121].hex()
+        assert rows[3]["result"]["sha256"] == hashlib.sha256(hfs_body).hexdigest()
+        assert hfs_data_export.read_bytes() == hfs_body
+        assert any(stream["name"] == "com.apple.ResourceFork" for stream in rows[5]["result"])
+        assert rows[6]["result"] == {"encoding": "hex", "data": hfs_resource[:100].hex()}
+        assert hfs_resource_export.read_bytes() == hfs_resource
+
+        # Minix V1/V2/V3: all read paths share sparse and indirect mappings.
+        minix_fixtures = flash_vendor / "minix-reader/tests/fixtures"
+        for minix_name, zone_size, pointers in [
+            ("v1-30-1024-1-be", 2048, 512),
+            ("v2-30-1024-2-le", 4096, 256),
+            ("v3-60-1024-0-le", 1024, 256),
+        ]:
+            minix_path = root / (minix_name + ".img")
+            minix_path.write_bytes(zlib.decompress((minix_fixtures / (minix_name + ".zlib")).read_bytes()))
+            minix_expected = bytearray((7 + pointers + 2) * zone_size + 37)
+            for logical_zone, factor in [(0, 13), (2, 17), (7, 17), (7 + pointers + 2, 19)]:
+                start = logical_zone * zone_size
+                count = min(zone_size, len(minix_expected) - start)
+                minix_expected[start:start + count] = bytes((index * factor + 7) & 255 for index in range(count))
+            minix_node = "minix:part:0:" + b"/big.bin".hex()
+            minix_export = root / (minix_name + "-export.bin")
+            minix_offset = 7 * zone_size - 7
+            requests = [
+                {"id": "open", "command": "images open", "args": {"path": str(minix_path)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "nested", "command": "files list", "args": {"parentId": "minix:part:0:" + b"/sub".hex()}},
+                {"id": "read", "command": "files read", "args": {"nodeId": minix_node, "offset": minix_offset, "length": 121}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": minix_node, "algos": ["sha256"]}},
+                {"id": "export", "command": "files export", "args": {"nodeId": minix_node, "destination": str(minix_export)}},
+            ]
+            if not minix_name.startswith("v1"):
+                requests.append({"id": "triple", "command": "files read", "args": {
+                    "nodeId": "minix:part:0:" + b"/triple.bin".hex(),
+                    "offset": (7 + pointers + pointers * pointers) * zone_size, "length": 37}})
+            _, rows = session(requests)
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "minix"
+            assert any(item["name"] == "text.txt" for item in rows[1]["result"]["items"])
+            assert any(item["name"] == "nested.txt" for item in rows[2]["result"]["items"])
+            assert rows[3]["result"]["data"] == minix_expected[minix_offset:minix_offset + 121].hex()
+            assert rows[4]["result"]["sha256"] == hashlib.sha256(minix_expected).hexdigest()
+            assert minix_export.read_bytes() == minix_expected
+            if len(rows) == 7:
+                assert rows[6]["result"]["data"] == bytes((index * 19 + 7) & 255 for index in range(37)).hex()
+
+        # UDF reference images: FE/EFE, nested tree, range/hash/export through JSONL.
+        udf_fixtures = flash_vendor / "lamfold-udf/tests/fixtures"
+        for udf_name, udf_file, udf_expected in [
+            ("udf102", "/big.dat", bytes(index % 256 for index in range(5000))),
+            ("udf201", "/big.bin", bytes((index * 11 + index // 257) & 255 for index in range(70000))),
+        ]:
+            udf_path = root / (udf_name + ".iso")
+            udf_path.write_bytes(zlib.decompress((udf_fixtures / (udf_name + ".zlib")).read_bytes()))
+            udf_node = "udf:part:0:" + udf_file.encode().hex()
+            udf_export = root / (udf_name + "-export.bin")
+            _, rows = session([
+                {"id": "open", "command": "images open", "args": {"path": str(udf_path)}},
+                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                {"id": "nested", "command": "files list", "args": {"parentId": "udf:part:0:" + b"/sub".hex()}},
+                {"id": "read", "command": "files read", "args": {"nodeId": udf_node, "offset": 2041, "length": 121}},
+                {"id": "hash", "command": "files hash", "args": {"nodeId": udf_node, "algos": ["sha256"]}},
+                {"id": "export", "command": "files export", "args": {"nodeId": udf_node, "destination": str(udf_export)}},
+            ])
+            assert all("result" in row for row in rows), rows
+            assert rows[0]["result"]["partitions"][0]["kind"] == "udf"
+            assert any(item["name"] == "sub" for item in rows[1]["result"]["items"])
+            assert any(item["name"] == "inner.txt" for item in rows[2]["result"]["items"])
+            assert rows[3]["result"]["data"] == udf_expected[2041:2162].hex()
+            assert rows[4]["result"]["sha256"] == hashlib.sha256(udf_expected).hexdigest()
+            assert udf_export.read_bytes() == udf_expected
+
         # QNX4 extent-chain and independently QNX-created QNX6 reference image.
         qnx_fixtures = flash_vendor / "qnx-reader/tests/fixtures"
         with tarfile.open(qnx_fixtures / "nfi-qnx6.tar.gz", "r:gz") as archive:

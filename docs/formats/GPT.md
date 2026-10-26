@@ -126,11 +126,12 @@ GPT 由独立的纯 Rust 实现读取，不引入 libvsgpt 源码、DLL、Python
 [格式文档](https://github.com/libyal/libvsgpt/blob/e4e439f93c3a0b776590dbf80f102f3b58032ca3/documentation/GUID%20Partition%20Table%20%28GPT%29%20format.asciidoc)
 列出的 EFI、Windows、Linux、BSD、Apple、Solaris、Ceph、VMware 等 GUID 是类型登记，
 不意味着上游读取其中的文件系统或加密容器。宿主原始 GUID 读取涵盖所有 128 位取值；
-不支持 GPFS、QNX、VMFS、Apple CoreStorage、Storage Spaces 等文件系统或卷管理器。
+文件系统 / 容器能力由各自读者决定：QNX4 / QNX6 与 CoreStorage / FileVault 2 已有独立读者，
+GPFS、VMFS 和 Storage Spaces 仍未接入；GUID 类型识别本身不代表内容支持。
 条目扩展区域仅参与 CRC，不解释厂商字段；混合 MBR 通过已有 MBR API 分析，不自动合并卷。
 
 pyvsgpt 是同一 C 库的 Python 路径/文件对象/游标包装，没有额外格式解析能力；宿主以 Rust API、
-统一镜像源和应用 CLI 替代，未提供 Python 绑定或 C ABI 兼容层。
+统一镜像源和应用 CLI 替代，不提供 pyvsgpt 或 C ABI 兼容层。
 vsgptinfo 的版本/帮助/verbose/镜像偏移和分区信息由应用版本、tracing、PartitionSlice 与 `--gpt` 探针对应；
 不要求照搬它的输出排版或单独日志句柄。所有恢复和读取均不向检材写入。
 

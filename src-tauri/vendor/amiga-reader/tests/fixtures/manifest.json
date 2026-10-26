@@ -1,0 +1,106 @@
+[
+  {
+    "file": "dos0-512-1760.zlib",
+    "bytes": 901120,
+    "sha256": "5bd091b3bfe8a349ea43fffc9696c644c856c43df59e1ecd295aed312302a667",
+    "compressed_sha256": "543c6ba098e49b18bdbc0a62e7c3147149614ccbda96758f5b910a4044d9fca4",
+    "license": "CC0-1.0",
+    "source": "scripts/amiga-fixtures.py using amitools 0.8.1 (GPL-2.0-or-later oracle, not a runtime dependency)"
+  },
+  {
+    "file": "dos1-512-1760.zlib",
+    "bytes": 901120,
+    "sha256": "1c14be78269947cc4e50dec1e1245a78bf2d1eee4b543970f42847224c146894",
+    "compressed_sha256": "741dccb645c5bccbeb4f6dad8ea56188696548de7536e42499c094c39a67b969",
+    "license": "CC0-1.0",
+    "source": "scripts/amiga-fixtures.py using amitools 0.8.1 (GPL-2.0-or-later oracle, not a runtime dependency)"
+  },
+  {
+    "file": "dos2-512-1760.zlib",
+    "bytes": 901120,
+    "sha256": "1dd1409ddde5b497010c53c65b4058f21d6e1040d7d246a93dce574ed3ad79b7",
+    "compressed_sha256": "7c0ecf169159fc3ea108cfef6bdc65b2215d15bdd8283fabec1918f9b3f99a6d",
+    "license": "CC0-1.0",
+    "source": "scripts/amiga-fixtures.py using amitools 0.8.1 (GPL-2.0-or-later oracle, not a runtime dependency)"
+  },
+  {
+    "file": "dos3-512-1760.zlib",
+    "bytes": 901120,
+    "sha256": "47ade710effa880dc983689d45d9853f0a12c0599efeee353153f39f815b5b60",
+    "compressed_sha256": "30180a9821d7f7ba39635c3e8ffb284ae7da499c26515184b4db4b07dd06a173",
+    "license": "CC0-1.0",
+    "source": "scripts/amiga-fixtures.py using amitools 0.8.1 (GPL-2.0-or-later oracle, not a runtime dependency)"
+  },
+  {
+    "file": "dos4-512-1760.zlib",
+    "bytes": 901120,
+    "sha256": "e3ce6f294bc98f7ba31dd2e4a7b053d91a4792b86e81661a45040c9dc85a249f",
+    "compressed_sha256": "ed252ea1252597e11d38875bc708d4518fc8203e0f8987ae767e55c79d5c48f8",
+    "license": "CC0-1.0",
+    "source": "scripts/amiga-fixtures.py using amitools 0.8.1 (GPL-2.0-or-later oracle, not a runtime dependency)"
+  },
+  {
+    "file": "dos5-512-1760.zlib",
+    "bytes": 901120,
+    "sha256": "1a21bb60bb4a93973195d15f242c1717d68a502ba66daf4acaba6b4ca3e7b3c7",
+    "compressed_sha256": "4fedc5fdcb770799e4881b844ea74d66960add71f4e351569b790e8b145f84d4",
+    "license": "CC0-1.0",
+    "source": "scripts/amiga-fixtures.py using amitools 0.8.1 (GPL-2.0-or-later oracle, not a runtime dependency)"
+  },
+  {
+    "file": "dos6-512-1760.zlib",
+    "bytes": 901120,
+    "sha256": "d1eda3752fade2dfcc529dac1348abeff10d81dd9e5a09ea5623f58621df1c33",
+    "compressed_sha256": "e124d0199c5460b71bb7b0d3b7824bfaadcba39d9dfebf5bd08b6090beb6faba",
+    "license": "CC0-1.0",
+    "source": "scripts/amiga-fixtures.py using amitools 0.8.1 (GPL-2.0-or-later oracle, not a runtime dependency)"
+  },
+  {
+    "file": "dos7-512-1760.zlib",
+    "bytes": 901120,
+    "sha256": "24e91586bb6e1b9be52d429621648c8ee71a09468b52895e709a80c553355ff5",
+    "compressed_sha256": "575f8a8d4e80d36961f655420a77b828a6ecaac86be57abd7d8e4c8e0a20189a",
+    "license": "CC0-1.0",
+    "source": "scripts/amiga-fixtures.py using amitools 0.8.1 (GPL-2.0-or-later oracle, not a runtime dependency)"
+  },
+  {
+    "file": "dos3-1024-4096.zlib",
+    "bytes": 4194304,
+    "sha256": "24c4ca87acdb16d5351d467f0efe57439dd16fd0ecb8c711dac4a45a523b3a04",
+    "compressed_sha256": "f827862159df9a8b4db658922ddad015a67e2e79e11968a0e691f1837f2bfa8b",
+    "license": "CC0-1.0",
+    "source": "scripts/amiga-fixtures.py using amitools 0.8.1 (GPL-2.0-or-later oracle, not a runtime dependency)"
+  },
+  {
+    "file": "dos7-4096-1760.zlib",
+    "bytes": 7208960,
+    "sha256": "4a872ef208317cdf003b589318922de0f4e2264d26783f9e7f9deb6cd0b675b4",
+    "compressed_sha256": "2951c4a3a33b90cd6544a5c56c6f7081c4d6b55b69fa9180fe634b61ed1b3dbb",
+    "license": "CC0-1.0",
+    "source": "scripts/amiga-fixtures.py using amitools 0.8.1 (GPL-2.0-or-later oracle, not a runtime dependency)"
+  },
+  {
+    "file": "dos1-512-110000.zlib",
+    "bytes": 56320000,
+    "sha256": "c1e3bdf545926019e0496a5a6736c6693c6a744a730107745fd9c6dad3427327",
+    "compressed_sha256": "30f50f8b6ef3f161632d68ceddb658c6f910617f40f7ecd54bd463473900b1bd",
+    "license": "CC0-1.0",
+    "source": "scripts/amiga-fixtures.py using amitools 0.8.1 (GPL-2.0-or-later oracle, not a runtime dependency)"
+  },
+  {
+    "file": "rdb-multiblock.zlib",
+    "bytes": 6451200,
+    "sha256": "2f962d513dc2220c678b2916772cfca026fe20768a6242259d2cd56e3f8db9e3",
+    "compressed_sha256": "221a6e0e5b2114339db9fabd5d697c67abad97038f40714db012c3cfdbd852fd",
+    "license": "CC0-1.0",
+    "source": "scripts/amiga-fixtures.py using amitools 0.8.1, four RDB partitions, mixed block sizes and unused track-sector tails"
+  },
+  {
+    "file": "links-dos3.zlib",
+    "bytes": 901120,
+    "sha256": "9a1274f356b0d6eae6e94f4aa47d237a9566b8ef7bab3faea11e9ebd255bf6cf",
+    "compressed_sha256": "329fb13813a455ccb996f189c236447685ad68a6803027a6088b326841e06515",
+    "license": "CC0-1.0",
+    "source": "scripts/amiga-fixtures.py, independent hard/softlink field edits over an amitools-created base"
+  }
+]

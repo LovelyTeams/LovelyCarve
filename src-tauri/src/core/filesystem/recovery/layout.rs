@@ -293,6 +293,7 @@ mod tests {
                 length_lba: 1024,
                 label: label.map(str::to_string),
                 unique_guid: None,
+                amiga_geometry: None,
             },
             lost: true,
             reconstruction: None,

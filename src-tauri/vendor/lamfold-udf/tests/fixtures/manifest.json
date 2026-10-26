@@ -1,0 +1,56 @@
+[
+  {
+    "file": "synthetic-1024.zlib",
+    "sha256": "6c8aa09149c0d6611176efe1b05dc9ab62c40558b43d89bd5bea95cd3e08e6dd",
+    "logical_bytes": 655360,
+    "logical_sha256": "63aae6f289c7208a069a117a3637807d529b1328cbc68c498bb0fb0e9fe2dfd1",
+    "source": "scripts/udf-fixtures.py, invented ECMA-167 fields",
+    "license": "CC0-1.0",
+    "generation": "Python standard library, no filesystem reader"
+  },
+  {
+    "file": "synthetic-2048.zlib",
+    "sha256": "b8cbac6812c3539365452b64a7072c26948a8280396b564b5b3ad89bdaa4bed2",
+    "logical_bytes": 1310720,
+    "logical_sha256": "0270637fe5018f7b38145428dda1cb2c55dec6aeccb776d737dd899d24d83f65",
+    "source": "scripts/udf-fixtures.py, invented ECMA-167 fields",
+    "license": "CC0-1.0",
+    "generation": "Python standard library, no filesystem reader"
+  },
+  {
+    "file": "synthetic-4096.zlib",
+    "sha256": "c3885cac35fe36612c78ad2d2c14f5e611352166f5b08f2f40566905a8ff2bb9",
+    "logical_bytes": 2621440,
+    "logical_sha256": "4b61466341165393febdc4092b005cbccb79b80362c24fdb3b74328e11891649",
+    "source": "scripts/udf-fixtures.py, invented ECMA-167 fields",
+    "license": "CC0-1.0",
+    "generation": "Python standard library, no filesystem reader"
+  },
+  {
+    "file": "synthetic-512.zlib",
+    "sha256": "6a894cef964a37e7c6c35a81a7e3928725c9ba63e515f676794123a163ecc75c",
+    "logical_bytes": 327680,
+    "logical_sha256": "ad2a1958f2f403f57dc0df4ab990e50e15bc7ac3abfaaa58d2fe4183645bfc5b",
+    "source": "scripts/udf-fixtures.py, invented ECMA-167 fields",
+    "license": "CC0-1.0",
+    "generation": "Python standard library, no filesystem reader"
+  },
+  {
+    "file": "udf102.zlib",
+    "sha256": "2e49117aa5affbeec1ed22e4b67bd074af34a7b6741b904afa43054849522063",
+    "logical_bytes": 4194304,
+    "logical_sha256": "20bbc0d350b975c0eceea84f0cfbd796a6d9eb9adfe4843ae37ae5a089c0c699",
+    "source": "https://github.com/lamco-admin/lamfold/blob/fabaad6af0c28b80535307b339b84110f3a3c12e/crates/lamfold-udf/tests/fixtures/udf102.img",
+    "license": "MIT OR Apache-2.0",
+    "generation": "mkudffs and Linux UDF kernel; lossless zlib copy"
+  },
+  {
+    "file": "udf201.zlib",
+    "sha256": "1c69bc7384b2dd4799f53dabbafe242f91be91d467b3e483c2d21d127c2a49fd",
+    "logical_bytes": 4194304,
+    "logical_sha256": "5261d78da6bf818789ba30a47792c0b439a23919b5cd7844f34635f2076c1874",
+    "source": "https://github.com/lamco-admin/lamfold/blob/fabaad6af0c28b80535307b339b84110f3a3c12e/crates/lamfold-udf/tests/fixtures/udf201.img",
+    "license": "MIT OR Apache-2.0",
+    "generation": "mkudffs and Linux UDF kernel; lossless zlib copy"
+  }
+]

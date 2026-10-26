@@ -53,6 +53,7 @@ impl PartParser for BsdParser {
             length_lba: ctx.size / sector_size as u64,
             label: Some("BSD disklabel".into()),
             unique_guid: None,
+            amiga_geometry: None,
         }]))
     }
 }

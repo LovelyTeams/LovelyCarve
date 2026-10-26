@@ -39,6 +39,9 @@ fn embed_cli_manifest() {
         std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR").expect("manifest dir"))
             .join("cli.manifest");
     println!("cargo:rustc-link-arg-bin=lovelycarve-cli=/MANIFEST:EMBED");
+    // cli.manifest already supplies asInvoker. LLD 20 can namespace the level
+    // attribute incorrectly when merging it with its generated UAC fragment.
+    println!("cargo:rustc-link-arg-bin=lovelycarve-cli=/MANIFESTUAC:NO");
     println!(
         "cargo:rustc-link-arg-bin=lovelycarve-cli=/MANIFESTINPUT:{}",
         manifest.display()

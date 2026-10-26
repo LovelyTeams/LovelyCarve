@@ -93,6 +93,7 @@ fn main() -> anyhow::Result<()> {
                 length_lba: a.size_bytes / 512,
                 label: Some(synthetic_partition_label(a)),
                 unique_guid: None,
+                amiga_geometry: None,
             }]
         });
         let img = Arc::new(DiskImage::from_assembled(

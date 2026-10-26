@@ -29,6 +29,7 @@ pub(super) fn open(bytes: &[u8], cancel: &CancellationToken) -> Result<FirmwareI
             length_lba: extent.end - extent.start,
             label: Some(label.clone()),
             unique_guid: None,
+            amiga_geometry: None,
         }],
         plaintext: None,
         native_views: vec![NativeFirmwareView {

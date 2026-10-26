@@ -10,6 +10,12 @@ export interface DiskPartition {
   start_lba: number;
   length_lba: number;
   label: string | null;
+  amiga_geometry?: {
+    block_size: number;
+    blocks: number;
+    reserved: number;
+    dos_type: number;
+  };
 }
 
 /** Optional display interpretation; raw acquisition fields remain unchanged. */

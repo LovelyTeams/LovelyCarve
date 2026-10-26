@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # Zero dependencies, so there is nothing to vendor and nothing to break.
+  CARGO_NET_RETRY: 10
+
+jobs:
+  test:
+    name: test (stable)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --all-targets
+      # --all-targets skips doctests; run them too, they are part of the docs.
+      - run: cargo test --doc
+
+  no-std:
+    name: build --no-default-features
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # The crate is no_std + alloc without the `std` feature; this job is the
+      # only thing standing between that claim and it quietly becoming false.
+      - run: cargo build --no-default-features
+      # And the tests, over every target: the `std`-only items are
+      # `#[cfg]`-ed out of the suite, and the one example declares
+      # `required-features = ["std"]` so it is skipped rather than built
+      # against a crate that has no `SeekBlockSource`.
+      - run: cargo test --no-default-features --all-targets
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-targets -- -D warnings
+
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --check
+
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc --no-deps --all-features
+
+  msrv:
+    # Keep in step with `rust-version` in Cargo.toml; the two are one decision.
+    name: msrv (1.63)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.63
+      - uses: Swatinem/rust-cache@v2
+      # Test + build only. clippy and rustfmt drift lint-for-lint between
+      # releases, so pinning their opinions to an old toolchain buys nothing;
+      # they run on stable above.
+      - run: cargo test
+      - run: cargo build --no-default-features
+
+  fuzz:
+    # A smoke run, not a campaign: 60 seconds over the committed corpus
+    # is enough to catch a panic a change just introduced on a shape the
+    # corpus already reaches, and cheap enough to run on every push. It
+    # is a normal, blocking job — a panic in the parser or the editor is
+    # a bug whether the fuzzer or a user found it. Deeper runs happen
+    # out of band; this is the regression net.
+    name: fuzz (smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # cargo-fuzz needs nightly: the sanitizer flags and the
+      # libfuzzer-sys glue are nightly-only.
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      # `-runs` is not capped, so `-max_total_time` is the whole budget;
+      # `-max_len` keeps the inputs disk-image-shaped rather than
+      # multi-megabyte.
+      # Run from the repo root: cargo-fuzz finds `fuzz/` from here, and
+      # the fuzz crate is its own workspace so nothing else is built.
+      # `fuzz/seeds` is given explicitly because the corpus is not
+      # committed — a valid `RDSK` is gated on a checksum coverage
+      # feedback cannot guess its way to, so a run from nothing would
+      # spend its whole budget outside the parser.
+      # The corpus directory has to exist before it can be named; new
+      # inputs accumulate in it for the length of the job and are then
+      # thrown away with the runner.
+      # `--target x86_64-unknown-linux-gnu`: cargo-fuzz's own default on
+      # Linux is the musl triple (a statically-linked libc), and ASan
+      # refuses to link against one at all ("sanitizer is incompatible
+      # with statically linked libc"). glibc is what the runner already
+      # has, so this is the target that actually builds.
+      - run: |
+          mkdir -p fuzz/corpus/parse
+          cargo fuzz run --target x86_64-unknown-linux-gnu parse \
+            fuzz/corpus/parse fuzz/seeds \
+            -- -max_total_time=60 -max_len=65536
+
+  differential:
+    # The oracle suite: build images here, let amitools' `rdbtool` read them,
+    # and parse images `rdbtool` wrote. Pinned to 0.8.1 because every default
+    # this crate writes — the envec, the RDSK fields, the FSHD patch flags,
+    # the LSEG SummedLongs rule — was observed against that exact version, and
+    # a differential against a moving oracle tests nothing. amitools is GPL:
+    # it is run here, never copied.
+    name: differential (amitools 0.8.1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # python3 and pip are preinstalled on the runners; --user keeps it out
+      # of the system site-packages and needs no virtualenv dance.
+      - run: pip install --user amitools==0.8.1
+      - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: rdbtool --help > /dev/null
+      # The differential tests are `#[test]`s gated on this variable: without
+      # it they return immediately, which is why the rest of CI needs no
+      # amitools. `rdbtool` filters to just them.
+      - run: cargo test rdbtool
+        env:
+          AMIGA_RDB_DIFFERENTIAL: "1"
+
+  # The remaining differential is the boot-level one — an AROS `DOS\7`
+  # fixture with its filesystem in the RDB, mounted by a 3.1-era ROM, once
+  # amibake's `aros68k` recipe can build a redistributable image here. The
+  # block-level oracle above covers RDSK/PART/FSHD/LSEG in both directions;
+  # what it cannot say is whether a real ROM boots the result. Tracked as
+  # https://github.com/sidick/amiga-rdb-rs/issues/7, not a bare TODO.
+  # AmiPart (MIT) already runs locally as a second oracle for the
+  # mutation path (see PLAN.md); it is not in CI, having no package to
+  # install the way amitools does.

@@ -1532,3 +1532,153 @@ by the evidence read path. Original F2FS synthetic data/generator is CC0-1.0.
 ## QNX6 reference fixtures (NetherlandsForensicInstitute/qnxmount)
 
 Apache-2.0, revision `11c8a7f9ee9b945d584263743f6ea8524e8776d2`. The QNX-produced test image, matching TAR and original generation script are retained under `src-tauri/vendor/qnx-reader/tests/fixtures/`; `LICENSE-qnxmount` preserves the license. The image is losslessly zlib-compressed and otherwise unchanged. Runtime QNX4 / QNX6 parsing is original LovelyCarve AGPL-3.0-only Rust code. Optional positive-fixture oracle uses the separately obtained MIT qnxprobe project; it is not a runtime dependency or bundled source.
+
+## UDF reader and reference fixtures
+
+`lamfold-udf` 0.1.1 is adapted from Lamco Development LLC / Greg Lamberson,
+[lamco-admin/lamfold](https://github.com/lamco-admin/lamfold/tree/fabaad6af0c28b80535307b339b84110f3a3c12e/crates/lamfold-udf),
+revision `fabaad6af0c28b80535307b339b84110f3a3c12e`, MIT OR Apache-2.0.
+Original LICENSE-MIT, LICENSE-APACHE and NOTICE are preserved in
+`src-tauri/vendor/lamfold-udf/`; local UDF reader changes use the same licenses.
+The mkudffs/Linux-generated UDF 1.02 and 2.01 data fixtures are retained as
+lossless zlib copies, with provenance and hashes in their manifest. Invented
+fixtures and `scripts/udf-fixtures.py` are CC0-1.0. No upstream C filesystem
+implementation, native library or writer is included in the runtime path.
+
+## Minix filesystem reader and fixtures
+
+`minix-reader` metadata layouts are adapted from Dani's
+[danifunker/rusty-backup](https://github.com/danifunker/rusty-backup/blob/6e044a314f6523045999058f85a882c1eeb64b50/src/fs/minix.rs),
+revision `6e044a314f6523045999058f85a882c1eeb64b50`, manifest license AGPL-3.0.
+The original AGPL v3 text and author attribution are retained; this read-only
+adaptation is distributed as AGPL-3.0-only. No writer/repair implementation is
+included. Official util-linux mkfs.minix/fsck.minix test data and the original
+generation script come from `fbfd2ef405d048e8fc01b309b051d2b403b09853`,
+GPL-2.0-or-later, with license and original hexdumps preserved in
+`src-tauri/vendor/minix-reader/tests/fixtures/util-linux/`.
+Invented populated fixtures and `scripts/minix-fixtures.py` are CC0-1.0.
+No C filesystem implementation or native runtime dependency is added.
+
+## Classic HFS reader and fixtures
+
+`classic-hfs` adapts HFS layouts and MacRoman decoding from KarpelesLab/fstool
+0.5.0, revision `b30823f25b6eef5ea9b6de45876f31c2b8f2d70a` (MIT), and the
+MacRoman collation table from Dani's danifunker/rusty-backup 0.1.0, revision
+`6e044a314f6523045999058f85a882c1eeb64b50` (AGPL-3.0). The latter attributes
+the table to hfsutils, Copyright (C) 1996–1998 Robert Leslie (GPL-2.0-or-later).
+Original license texts are retained under `src-tauri/vendor/classic-hfs/`.
+The combined adaptation is AGPL-3.0-only. No C filesystem code is compiled.
+The retained hfsutils-generated image and generation script are from the same
+rusty-backup revision; invented fixtures and `scripts/hfs-fixtures.py` are CC0-1.0.
+See [ORIGIN.md](src-tauri/vendor/classic-hfs/ORIGIN.md) for precise source paths,
+licenses, changes and fixture hashes.
+
+## ReiserFS v3 reader and fixtures
+
+`reiserfs-reader` adapts layouts/read algorithms from Dani's
+[danifunker/rusty-backup](https://github.com/danifunker/rusty-backup/blob/6e044a314f6523045999058f85a882c1eeb64b50/src/fs/reiserfs.rs)
+0.1.0 at revision `6e044a314f6523045999058f85a882c1eeb64b50` (AGPL-3.0).
+The original license is retained in `src-tauri/vendor/reiserfs-reader/LICENSE`.
+The retained mkfs.reiserfs/guestfish image and generation script are from that
+same pinned source; invented fixtures and `scripts/reiserfs-fixtures.py` are
+CC0-1.0. See [ORIGIN.md](src-tauri/vendor/reiserfs-reader/ORIGIN.md) and the
+fixture [manifest](src-tauri/vendor/reiserfs-reader/tests/fixtures/manifest.json).
+No C filesystem implementation is linked. The MIT `unearth` detector was
+examined during research and is not copied or linked.
+
+## Linux JFS reader and fixtures
+
+`jfs-reader` adapts JFS layouts/read algorithms from Dani's
+[danifunker/rusty-backup](https://github.com/danifunker/rusty-backup/blob/6e044a314f6523045999058f85a882c1eeb64b50/src/fs/jfs.rs)
+0.1.0 (AGPL-3.0), with bounded tree validation adapted from
+[CaddyGlow/partmgr](https://github.com/CaddyGlow/partmgr/blob/d074f660e81dfa6ade66cd07400b7421ad9eb9b9/src/fs_jfs.rs)
+0.1.2 (MIT). Original license texts are retained in `src-tauri/vendor/jfs-reader/`.
+The combined adaptation is AGPL-3.0-only. No C filesystem implementation is linked.
+The retained mkfs.jfs/guestfish fixture and its generation script are from the
+same rusty-backup revision; invented fixtures and `scripts/jfs-fixtures.py` are
+CC0-1.0. See [ORIGIN.md](src-tauri/vendor/jfs-reader/ORIGIN.md) and the fixture
+manifest for precise revisions, changes, licenses and SHA-256 values.
+
+## Amiga OFS / FFS and RDB readers
+
+`amiga-ffs` 0.4.0 and `amiga-rdb` 0.4.1 by Simon Dick, Copyright 2026,
+are pure Rust crates licensed MIT OR Apache-2.0. Original LICENSE-MIT and
+LICENSE-APACHE files are retained in each vendor directory. Sources:
+[amiga-ffs-rs](https://github.com/sidick/amiga-ffs-rs),
+[amiga-rdb-rs](https://github.com/sidick/amiga-rdb-rs).
+Pinned source hashes and maintained patches are recorded in the corresponding
+ORIGIN.md files and [adapter provenance](src-tauri/vendor/amiga-reader/ORIGIN.md).
+
+Invented fixture content and `scripts/amiga-fixtures.py` are CC0-1.0.
+[amitools](https://github.com/cnvogelg/amitools) 0.8.1 by Christian Vogelgsang
+and contributors (GPL-2.0-or-later) is used only as an external test
+formatter/reader oracle, not copied into or linked by the product. The fixture
+manifest records decoded/compressed hashes; LNFS and link field-edit boundaries
+are documented in the adapter provenance. The LovelyCarve adapter is
+AGPL-3.0-only, consistent with this repository.
+
+## BeFS / BeOS BFS reader
+
+`befs-reader` adapts the read-side layouts and algorithms from Dani's
+[rusty-backup bfs.rs](https://github.com/danifunker/rusty-backup/blob/6e044a314f6523045999058f85a882c1eeb64b50/src/fs/bfs.rs)
+(AGPL-3.0, original license retained as `src-tauri/vendor/befs-reader/LICENSE`).
+Primary Haiku BFS definitions and timestamp semantics are MIT-licensed;
+Axel Dörfler's notice and the Marcus Overhagen attribution are retained in
+`LICENSE-HAIKU`. No C filesystem code is compiled or linked.
+
+The independent invented fixtures and their Python encoder are CC0-1.0.
+The opt-in native audit downloads official Haiku public artifacts and an
+independent publisher package; these external OS/package files retain their
+own licenses and are not distributed in this repository. Fixed sources,
+archive checksums, exact verification boundaries and maintained changes are
+recorded in [ORIGIN.md](src-tauri/vendor/befs-reader/ORIGIN.md).
+
+## GFS2 detector and original Rust reader
+
+`gfs2-reader` adapts the MIT superblock prefix interpretation from
+Marcel Roozekrans’s `unearth` revision `bc891261221f5f5134269780d6c206725b21d52e`,
+`src/gfs2.rs`. Its full notice is retained in
+[src-tauri/vendor/gfs2-reader/LICENSE-UNEARTH](src-tauri/vendor/gfs2-reader/LICENSE-UNEARTH).
+New Rust reading code is AGPL-3.0-only. Linux UAPI record definitions are used
+as format references; no kernel code or native filesystem library is linked.
+The optional native test uses separately installed Linux tooling and invented
+CC0 inputs. See [ORIGIN.md](src-tauri/vendor/gfs2-reader/ORIGIN.md).
+
+## OCFS2 reader
+
+`src-tauri/vendor/ocfs2-reader` contains an original AGPL-3.0-only immutable
+Rust reader. Superblock prefix positions/layout adapt Marcel Roozekrans's MIT
+`unearth` detector at `bc891261221f5f5134269780d6c206725b21d52e`; its notice is
+retained as `LICENSE-UNEARTH`. Linux OCFS2 definitions at
+`7a78f7ba9f24962c8033e0152bf34a7903ff61ba` serve as format references;
+no kernel C source is compiled, linked or shipped. Original invented fixtures
+and Python generators are CC0-1.0; native mkfs/kernel/fsck inputs remain in an
+external cache. Provenance, hashes and verification limits are recorded in
+[ORIGIN.md](src-tauri/vendor/ocfs2-reader/ORIGIN.md).
+
+## NILFS2 reader
+
+`src-tauri/vendor/nilfs2-reader` contains an original immutable AGPL-3.0-only
+Rust reader. Superblock prefix positions adapt Marcel Roozekrans's MIT
+`unearth` detector at `bc891261221f5f5134269780d6c206725b21d52e`; its notice
+remains in `LICENSE-UNEARTH`. Linux definitions and interpretation at
+`7a78f7ba9f24962c8033e0152bf34a7903ff61ba` serve as format references; no
+kernel C source or C filesystem library is compiled or linked for this reader.
+Independent invented fixtures and generators are CC0-1.0; native mkfs/kernel/GC
+inputs stay in an external cache. Sources, hashes and verification limits are
+recorded in [ORIGIN.md](src-tauri/vendor/nilfs2-reader/ORIGIN.md).
+
+## bcachefs reader and block framework
+
+`src-tauri/vendor/rust-fs-bcachefs` is the MIT-licensed 0.4.2 reader from
+antimatter-studios at `53eb12044f3f6dab498c11c2044748f4591cb4e5`.
+Its pinned MIT `rust-fs-core` 0.3.14 sibling is retained at
+`19449ad4926d09447d19440c6312ba544b50bf4b`. Original licenses, codec attribution
+and the reader's clean-room provenance are retained in their vendor folders.
+`bcachefs-reader` is an original AGPL-3.0-only evidence adapter; invented
+fixtures/generators are CC0-1.0. Production reads link no native filesystem
+library and enable neither the upstream C ABI nor writing. Native oracle
+images and native tools are not redistributed. Local changes and evidence:
+[reader origin](src-tauri/vendor/rust-fs-bcachefs/ORIGIN.md),
+[framework origin](src-tauri/vendor/rust-fs-core/ORIGIN.md),
+[adapter and fixtures](src-tauri/vendor/bcachefs-reader/ORIGIN.md).

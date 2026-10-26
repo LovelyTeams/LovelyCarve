@@ -1,0 +1,35 @@
+[package]
+name = "amiga-rdb"
+version = "0.4.1"
+edition = "2021"
+# Conservative floor: nothing here needs anything newer, and old toolchains
+# are common in retrocomputing/distro packaging. Tested in CI on this exact
+# toolchain; raising it is a semver-visible decision, not an accident.
+rust-version = "1.63"
+license = "MIT OR Apache-2.0"
+description = "Amiga Rigid Disk Block (RDB) partition tables: read, create and edit in place — RDSK, PART, FSHD, LSEG and BADB blocks"
+repository = "https://github.com/sidick/amiga-rdb-rs"
+keywords = ["amiga", "rdb", "partition", "retrocomputing"]
+categories = ["filesystem", "no-std", "parser-implementations"]
+
+[package.metadata.docs.rs]
+# Build docs with every feature on, so the std-only items
+# (std::error::Error impls, SeekBlockSource) are documented too.
+all-features = true
+
+[dependencies]
+# Deliberately none. This crate is pure format logic over the
+# `BlockSource` trait; consumers bring their own I/O.
+
+[[example]]
+name = "rdbinfo"
+# It opens a file through `SeekBlockSource`, which is a `std`-feature
+# item — without this, `cargo test --no-default-features --all-targets`
+# tries to build it anyway and fails.
+required-features = ["std"]
+
+[features]
+default = ["std"]
+# `std` only adds conveniences (std::error::Error impls, a BlockSource
+# over std::io types). The core crate is no_std + alloc throughout.
+std = []

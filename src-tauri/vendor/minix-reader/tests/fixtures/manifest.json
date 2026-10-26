@@ -1,0 +1,148 @@
+[
+  {
+    "file": "fsck-images-v1c14.BE.zlib",
+    "sha256": "d7732305b068686ba4082d3f6c8b684b1b07b09ecf0f86a75efb23eee8b91dd5",
+    "logical_bytes": 16384,
+    "logical_sha256": "c505f45e740d5a075b45894bf07300b85ac0e9e7be8cb8cb9460d19328c404b1",
+    "source": "https://github.com/util-linux/util-linux/blob/fbfd2ef405d048e8fc01b309b051d2b403b09853/tests/expected/minix/fsck-images-v1c14.BE",
+    "license": "GPL-2.0-or-later (upstream test data)",
+    "source_utf8_lf_sha256": "499bc0f416e7ebc36b13d5daf6332e4b4820304d8693a9040aa160c167d4e319"
+  },
+  {
+    "file": "fsck-images-v1c14.zlib",
+    "sha256": "12b6de93a0ef2222e43743e368ee413ca1cbf702b190d38ad42692db31ad80ad",
+    "logical_bytes": 16384,
+    "logical_sha256": "27eb2ff3d9e3a960b076cf17cfbdb0ac6aab69055514c55bf72c8f3515ceaac7",
+    "source": "https://github.com/util-linux/util-linux/blob/fbfd2ef405d048e8fc01b309b051d2b403b09853/tests/expected/minix/fsck-images-v1c14",
+    "license": "GPL-2.0-or-later (upstream test data)",
+    "source_utf8_lf_sha256": "518fbf465a45f23b348053888ff0412e027b55981ae3ba192135490fd9761979"
+  },
+  {
+    "file": "fsck-images-v1c30.BE.zlib",
+    "sha256": "a093c8afe22856152a5ef028c00638611523c19158aa8007cfadd0d365d88cc7",
+    "logical_bytes": 16384,
+    "logical_sha256": "15d917aa1439b9bd53e2fd29afac63438ca92004e59e9a3000533188f87b9655",
+    "source": "https://github.com/util-linux/util-linux/blob/fbfd2ef405d048e8fc01b309b051d2b403b09853/tests/expected/minix/fsck-images-v1c30.BE",
+    "license": "GPL-2.0-or-later (upstream test data)",
+    "source_utf8_lf_sha256": "27f96f1b46f8f5531284d2f303a331e61489408eb7153aac6efd30552c888f01"
+  },
+  {
+    "file": "fsck-images-v1c30.zlib",
+    "sha256": "2e6c321e971f422116652570206a6da0040ff8e3512a397c2327f113eaf19f51",
+    "logical_bytes": 16384,
+    "logical_sha256": "60695fb36427e4b414b3a84c105b56037f0e862998a6bb93ed36f26675c8e2db",
+    "source": "https://github.com/util-linux/util-linux/blob/fbfd2ef405d048e8fc01b309b051d2b403b09853/tests/expected/minix/fsck-images-v1c30",
+    "license": "GPL-2.0-or-later (upstream test data)",
+    "source_utf8_lf_sha256": "0cbc16f36cccfc290860016f69690dd10b2632e98ddae2bfb54bb7ea4e26abbf"
+  },
+  {
+    "file": "fsck-images-v2c14.BE.zlib",
+    "sha256": "77e3f748e55fb12ae254a97d7882149513c813f5c164548fb3aa86578756803c",
+    "logical_bytes": 16384,
+    "logical_sha256": "3b23abd4b3d345850f4dc6b99d7f23a318298be63175d4b7b6eb4c2dcc2ba1ae",
+    "source": "https://github.com/util-linux/util-linux/blob/fbfd2ef405d048e8fc01b309b051d2b403b09853/tests/expected/minix/fsck-images-v2c14.BE",
+    "license": "GPL-2.0-or-later (upstream test data)",
+    "source_utf8_lf_sha256": "0f9b463363b07a249492b0480cf310528cfad7bff905d90ae7c7037dd80cbcfc"
+  },
+  {
+    "file": "fsck-images-v2c14.zlib",
+    "sha256": "888bfb9eb4a56a8fa5bcc823147d0bfb23e5dbbf97a374ac9b295df093137b1d",
+    "logical_bytes": 16384,
+    "logical_sha256": "31088f940534db984ce420cf648e401571de269296d251875ac05f727f5941ee",
+    "source": "https://github.com/util-linux/util-linux/blob/fbfd2ef405d048e8fc01b309b051d2b403b09853/tests/expected/minix/fsck-images-v2c14",
+    "license": "GPL-2.0-or-later (upstream test data)",
+    "source_utf8_lf_sha256": "5a45aee7726735ca9ed6571da152ddfdd1b764994161ac86ab79a6e83e9c973d"
+  },
+  {
+    "file": "fsck-images-v2c30.BE.zlib",
+    "sha256": "ffed8502fe5517f712ab69a60d06a8831fda5bc740cb5528216e3621ed79882b",
+    "logical_bytes": 16384,
+    "logical_sha256": "298ac25789802eb2f73b5b4e0f75675be9ece7da3836956d8749bdefde6b1e77",
+    "source": "https://github.com/util-linux/util-linux/blob/fbfd2ef405d048e8fc01b309b051d2b403b09853/tests/expected/minix/fsck-images-v2c30.BE",
+    "license": "GPL-2.0-or-later (upstream test data)",
+    "source_utf8_lf_sha256": "ad1186e824016224a5162745aa98d46ffa69f8d53a18438c3ec7f04dfb4992ef"
+  },
+  {
+    "file": "fsck-images-v2c30.zlib",
+    "sha256": "17b938581f1245278a2741950ea83153ff1a4d42aae9c835689a4772bee643ad",
+    "logical_bytes": 16384,
+    "logical_sha256": "c7c90d20b11306244ce66434d12f86361f6e8da7582e1e2613537c7e9b5846e8",
+    "source": "https://github.com/util-linux/util-linux/blob/fbfd2ef405d048e8fc01b309b051d2b403b09853/tests/expected/minix/fsck-images-v2c30",
+    "license": "GPL-2.0-or-later (upstream test data)",
+    "source_utf8_lf_sha256": "0f049f5647d97e60c7348b87309b44dd6482ecf309636ae286274f612f1084b6"
+  },
+  {
+    "file": "fsck-images-v3c60.BE.zlib",
+    "sha256": "4eb3dd6a3676febaea2a17d879a618a4b54fd0402526c9fb2dee87b29e5c85a8",
+    "logical_bytes": 16384,
+    "logical_sha256": "beece3766cc168897d49f14ec6572a5045ef2b94a8d3e8ee4554bd5bd5c27204",
+    "source": "https://github.com/util-linux/util-linux/blob/fbfd2ef405d048e8fc01b309b051d2b403b09853/tests/expected/minix/fsck-images-v3c60.BE",
+    "license": "GPL-2.0-or-later (upstream test data)",
+    "source_utf8_lf_sha256": "113ff9c5ad082300815b909c0a093a4072a9f69f045aa33b66912137080ab11f"
+  },
+  {
+    "file": "fsck-images-v3c60.zlib",
+    "sha256": "b41a61e1c0aa4be4e26cb3020de61464975e4f24976b57efc5007ba6d55b024c",
+    "logical_bytes": 16384,
+    "logical_sha256": "87a1056c3c843aaf1cd236674df63a54326eaf3e93c89893fe8533de862325dd",
+    "source": "https://github.com/util-linux/util-linux/blob/fbfd2ef405d048e8fc01b309b051d2b403b09853/tests/expected/minix/fsck-images-v3c60",
+    "license": "GPL-2.0-or-later (upstream test data)",
+    "source_utf8_lf_sha256": "7e208c67c659f49b66347ba1544a90382fbb6c4e2dfa4e49cc98641d5dbdd176"
+  },
+  {
+    "file": "v1-14-1024-0-le.zlib",
+    "sha256": "48be6a9603b36be5fd3db895aa11dc5399e7875d5afbdcfb8264145102d29f91",
+    "logical_bytes": 262144,
+    "logical_sha256": "d02fbb57c99d344423af1570c4a6f828c39df11a5466c27ca40ad6b475f46253",
+    "source": "scripts/minix-fixtures.py",
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "v1-30-1024-1-be.zlib",
+    "sha256": "d4cbf6a273840a401c9747c081411d7f1f4b53c7a44f0c1833543780db6c5663",
+    "logical_bytes": 524288,
+    "logical_sha256": "9a15680e5a3b5a1d71b1f8d734b61f238ddbdf00c092719b4ed138bb7c9c81a7",
+    "source": "scripts/minix-fixtures.py",
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "v2-14-1024-0-be.zlib",
+    "sha256": "b095e7050579ce0d2ff426a1ddd7711a87bc414089ddd077f8520c984038221d",
+    "logical_bytes": 262144,
+    "logical_sha256": "9e8b7a492b44311bb8b7379bf52770a45059a800c0937c78ef7f2126e9eadd09",
+    "source": "scripts/minix-fixtures.py",
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "v2-30-1024-2-le.zlib",
+    "sha256": "3eaa9872543f80741001f304b32eae481e5d2e315109499c7149d7d48f3ac6f0",
+    "logical_bytes": 1048576,
+    "logical_sha256": "479adb861a2962525a22785c97ba97359849727a6adeaef8656c7846ebad0fcc",
+    "source": "scripts/minix-fixtures.py",
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "v3-60-1024-0-le.zlib",
+    "sha256": "107d2de940a5fed898d61afe89bd0660b841502434a71aa6d32ea8a859daf252",
+    "logical_bytes": 262144,
+    "logical_sha256": "fa9652f1fed3f77fb8e1c73756a6ca58b3d4cd8f9ca399db002c81d08c9de32d",
+    "source": "scripts/minix-fixtures.py",
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "v3-60-2048-0-be.zlib",
+    "sha256": "daee0a3e0fcf31802e8a893c15fa21a1b839b103454acd2fa7849b45fe8b1236",
+    "logical_bytes": 524288,
+    "logical_sha256": "149ec8fb75f31ad0f2011b37d175d597a3067d48603147137b43e9744575d0e7",
+    "source": "scripts/minix-fixtures.py",
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "v3-60-4096-0-le.zlib",
+    "sha256": "bc9ad74b80357eb8073fdd112544e85a8329ed33ffdf2ff6d7cdbd2acfb36eac",
+    "logical_bytes": 1048576,
+    "logical_sha256": "db15be14935b0c172d3e68e9b0fa1987ad77ed7c2ae2c867c7a9ed4ecaa4735d",
+    "source": "scripts/minix-fixtures.py",
+    "license": "CC0-1.0"
+  }
+]

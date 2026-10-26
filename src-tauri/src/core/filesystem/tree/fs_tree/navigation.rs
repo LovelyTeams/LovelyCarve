@@ -199,6 +199,68 @@ pub(super) fn children_for_image_with_options(
                 crate::core::filesystem::volumes::rom_images::open_qnx4_source(image, partition.id)?
                     .root_children()
             }
+            PartitionKind::Hfs => {
+                crate::core::filesystem::volumes::rom_images::open_hfs_source(image, partition.id)?
+                    .root_children()
+            }
+            PartitionKind::Jfs => {
+                crate::core::filesystem::volumes::rom_images::open_jfs_source(image, partition.id)?
+                    .root_children()
+            }
+            PartitionKind::Reiserfs => {
+                crate::core::filesystem::volumes::rom_images::open_reiserfs_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
+            PartitionKind::Befs => {
+                crate::core::filesystem::volumes::rom_images::open_befs_source(image, partition.id)?
+                    .root_children()
+            }
+            PartitionKind::Gfs2 => {
+                crate::core::filesystem::volumes::rom_images::open_gfs2_source(image, partition.id)?
+                    .root_children()
+            }
+            PartitionKind::Ocfs2 => {
+                crate::core::filesystem::volumes::rom_images::open_ocfs2_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
+            PartitionKind::Nilfs2 => {
+                crate::core::filesystem::volumes::rom_images::open_nilfs2_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
+            PartitionKind::Bcachefs => {
+                crate::core::filesystem::volumes::rom_images::open_bcachefs_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
+            PartitionKind::Amiga => {
+                crate::core::filesystem::volumes::rom_images::open_amiga_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
+            PartitionKind::Minix => {
+                crate::core::filesystem::volumes::rom_images::open_minix_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
+            PartitionKind::Udf => {
+                crate::core::filesystem::volumes::rom_images::open_udf_source(image, partition.id)?
+                    .root_children()
+            }
             PartitionKind::Qnx6 => {
                 crate::core::filesystem::volumes::rom_images::open_qnx6_source(image, partition.id)?
                     .root_children()

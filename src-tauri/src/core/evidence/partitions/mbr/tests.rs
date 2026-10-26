@@ -44,6 +44,7 @@ fn detects_large_ntfs_volume_with_boot_messages_as_volume() {
                 length_lba: 3_907_024_065,
                 label: None,
                 unique_guid: None,
+                amiga_geometry: None,
             }],
         )
     );

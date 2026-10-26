@@ -1,0 +1,134 @@
+# The write side is where an untested configuration stops misreading
+# images and starts corrupting them, which is why CI arrives with
+# milestone 2 rather than after it. Every command here is one that is
+# also run locally before a commit; nothing in this file is a check the
+# repository does not already have to pass.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Both feature sets, on both ends of the supported range. `no_std` is
+  # not a configuration that can be tested by inspection: `--no-default-
+  # features` is the build that catches an `std::` that crept in.
+  test:
+    name: test (${{ matrix.rust }}, ${{ matrix.features }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 1.63 is the floor amiga-rdb sets; raising it is a
+        # semver-visible decision, so it is tested, not assumed.
+        rust: [stable, "1.63"]
+        features: ["", "--no-default-features"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.rust }}-${{ matrix.features }}
+      - run: cargo test ${{ matrix.features }}
+
+  clippy:
+    name: clippy (${{ matrix.features }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        features: ["", "--no-default-features"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: clippy-${{ matrix.features }}
+      # --all-targets: the test suites are where a lint most often has
+      # something to say, and they are code this crate ships behaviour in.
+      - run: cargo clippy --all-targets ${{ matrix.features }} -- -D warnings
+
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --check
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: docs
+      # A broken intra-doc link in a crate whose documentation is half
+      # the deliverable is a broken deliverable.
+      - run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  # Build the fuzz targets, do not run them. A CI job is the wrong place
+  # to *find* a fuzz bug -- sixty seconds of libFuzzer proves nothing and
+  # sixty minutes on every push is somebody else's electricity -- but it
+  # is exactly the right place to catch the targets rotting, which is what
+  # happens to fuzz harnesses that live outside the workspace and are
+  # therefore never compiled by `cargo test`. Nightly is confined to this
+  # job; `fuzz/` has its own `[workspace]`, so nothing here touches the
+  # MSRV or `--no-default-features` builds above.
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: fuzz
+          workspaces: ". -> target\nfuzz -> target"
+      - run: cargo install cargo-fuzz --locked
+      - run: cargo fuzz build
+      # The seed corpus is generated, never committed -- a checked-in disk
+      # image is a blob nobody can review -- so this also proves the
+      # generator still runs.
+      - run: cargo run --example seed-corpus -- fuzz/corpus/fuzz_read
+
+  # The differential suite skips itself when an oracle is absent, so this
+  # job exists to make sure neither is absent somewhere. These are the
+  # only legs that can catch a mistake this crate and its own test
+  # builder would make together.
+  differential:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+      - run: pip install amitools
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: differential
+      # The second oracle. `--locked` so it builds against its own
+      # lockfile and a red build here is this crate's fault rather than
+      # one of fstool's dependencies'. Deliberately *not* version-pinned:
+      # the tests that record its limits (no DOS\6/DOS\7, no dircache
+      # writing) are written to fail loudly if a release grows the
+      # support, with a panic message saying which constant to update.
+      # Finding that out is the point of tracking a live oracle.
+      - run: cargo install fstool --locked
+      # Fail rather than skip: on this job an oracle being missing is
+      # itself the bug.
+      - run: xdftool --help > /dev/null
+      - run: fstool --version > /dev/null
+      - run: cargo test --test differential

@@ -193,6 +193,7 @@ pub(crate) fn discover_mft(
         length_lba: (image.len() - base) / image.sector_size as u64,
         label,
         unique_guid: None,
+        amiga_geometry: None,
     };
     Ok((
         partition,

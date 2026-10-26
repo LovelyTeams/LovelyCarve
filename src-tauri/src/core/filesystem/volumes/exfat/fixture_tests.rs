@@ -91,6 +91,7 @@ fn open(bytes: &[u8]) -> (tempfile::NamedTempFile, Result<ExfatVolume>) {
         length_lba: bytes.len() as u64 / image.sector_size as u64,
         label: None,
         unique_guid: None,
+        amiga_geometry: None,
     };
     (temporary, ExfatVolume::open(image, &partition))
 }

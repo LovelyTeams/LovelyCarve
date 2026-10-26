@@ -4,6 +4,505 @@ use crate::core::filesystem::tree::fs_tree::{self, NodeKind};
 use std::fs::File;
 use std::io::Write;
 
+#[test]
+fn bcachefs_snapshot_keeps_same_inode_numbers_in_separate_native_views() {
+    use std::io::Read;
+    let directory = tempfile::tempdir().unwrap();
+    let mut bytes = Vec::new();
+    flate2::read::ZlibDecoder::new(
+        include_bytes!("../../../../../vendor/bcachefs-reader/tests/fixtures/invented.zlib")
+            .as_slice(),
+    )
+    .read_to_end(&mut bytes)
+    .unwrap();
+    let source = directory.path().join("bcachefs.img");
+    std::fs::write(&source, bytes).unwrap();
+    let image = Arc::new(EvidenceSession::from(DiskImage::open(&source).unwrap()));
+    assert_eq!(browsable_volume_keys(&image), vec!["part:0"]);
+    let output = directory.path().join("bcachefs.dirz");
+    let built = volume_snapshot::build_volume_snapshot(
+        &image,
+        "part:0",
+        &output,
+        1000,
+        "2026-01-01T00:00:00Z".into(),
+        &CancellationToken::new(),
+        &mut |_| {},
+    )
+    .unwrap();
+    assert!(!built.truncated);
+    let snapshot = volume_snapshot::load_snapshot(&output).unwrap();
+    let live = fs_tree::children_for_image(&image, "part:0").unwrap();
+    assert_eq!(
+        serde_json::to_value(snapshot.children("part:0").unwrap()).unwrap(),
+        serde_json::to_value(&live).unwrap()
+    );
+    for name in ["sv", "snap"] {
+        let directory = live.iter().find(|node| node.name == name).unwrap();
+        assert_eq!(directory.inode, Some(6000));
+        let current = fs_tree::children_for_image(&image, &directory.id).unwrap();
+        assert_eq!(
+            serde_json::to_value(snapshot.children(&directory.id).unwrap()).unwrap(),
+            serde_json::to_value(current).unwrap()
+        );
+    }
+}
+
+#[test]
+fn nilfs2_auto_snapshot_preserves_aliases_and_posix_time_roles() {
+    use std::io::Read;
+    let directory = tempfile::tempdir().unwrap();
+    let mut bytes = Vec::new();
+    flate2::read::ZlibDecoder::new(
+        include_bytes!("../../../../../vendor/nilfs2-reader/tests/fixtures/invented-1024.zlib")
+            .as_slice(),
+    )
+    .read_to_end(&mut bytes)
+    .unwrap();
+    let source = directory.path().join("nilfs2.img");
+    std::fs::write(&source, bytes).unwrap();
+    let image = Arc::new(EvidenceSession::from(DiskImage::open(&source).unwrap()));
+    assert_eq!(browsable_volume_keys(&image), vec!["part:0"]);
+    let output = directory.path().join("nilfs2.dirz");
+    let built = volume_snapshot::build_volume_snapshot(
+        &image,
+        "part:0",
+        &output,
+        1000,
+        "2026-01-01T00:00:00Z".into(),
+        &CancellationToken::new(),
+        &mut |_| {},
+    )
+    .unwrap();
+    assert!(!built.truncated);
+    let snapshot = volume_snapshot::load_snapshot(&output).unwrap();
+    let live = fs_tree::children_for_image(&image, "part:0").unwrap();
+    assert_eq!(
+        serde_json::to_value(snapshot.children("part:0").unwrap()).unwrap(),
+        serde_json::to_value(&live).unwrap()
+    );
+    let big = live.iter().find(|node| node.name == "hello").unwrap();
+    let alias = live.iter().find(|node| node.name == "alias").unwrap();
+    assert_eq!(big.inode, alias.inode);
+    assert_ne!(big.id, alias.id);
+    assert!(big.timestamps.created.is_none());
+    assert!(big.timestamps.accessed.is_none());
+    assert!(big.timestamps.mft_changed.is_some());
+    assert_eq!(
+        big.timestamps.modified.as_deref(),
+        Some("1960-01-01T00:00:00.000000456Z")
+    );
+    let sub = live.iter().find(|node| node.name == "sub").unwrap();
+    assert_eq!(snapshot.children(&sub.id).unwrap()[0].name, "nested");
+}
+
+#[test]
+fn ocfs2_auto_snapshot_preserves_aliases_and_posix_time_roles() {
+    use std::io::Read;
+    let directory = tempfile::tempdir().unwrap();
+    let mut bytes = Vec::new();
+    flate2::read::ZlibDecoder::new(
+        include_bytes!("../../../../../vendor/ocfs2-reader/tests/fixtures/plain.zlib").as_slice(),
+    )
+    .read_to_end(&mut bytes)
+    .unwrap();
+    let source = directory.path().join("ocfs2.img");
+    std::fs::write(&source, bytes).unwrap();
+    let image = Arc::new(EvidenceSession::from(DiskImage::open(&source).unwrap()));
+    assert_eq!(browsable_volume_keys(&image), vec!["part:0"]);
+    let output = directory.path().join("ocfs2.dirz");
+    let built = volume_snapshot::build_volume_snapshot(
+        &image,
+        "part:0",
+        &output,
+        1000,
+        "2026-01-01T00:00:00Z".into(),
+        &CancellationToken::new(),
+        &mut |_| {},
+    )
+    .unwrap();
+    assert!(!built.truncated);
+    let snapshot = volume_snapshot::load_snapshot(&output).unwrap();
+    let live = fs_tree::children_for_image(&image, "part:0").unwrap();
+    assert_eq!(
+        serde_json::to_value(snapshot.children("part:0").unwrap()).unwrap(),
+        serde_json::to_value(&live).unwrap()
+    );
+    let big = live.iter().find(|node| node.name == "hello").unwrap();
+    let alias = live.iter().find(|node| node.name == "alias").unwrap();
+    assert_eq!(big.inode, alias.inode);
+    assert_ne!(big.id, alias.id);
+    assert!(big.timestamps.created.is_none());
+    assert!(big.timestamps.mft_changed.is_some());
+    assert_eq!(
+        big.timestamps.accessed.as_deref(),
+        Some("1960-01-01T00:00:00.000000123Z")
+    );
+    let sub = live.iter().find(|node| node.name == "sub").unwrap();
+    assert_eq!(snapshot.children(&sub.id).unwrap()[0].name, "nested");
+}
+
+#[test]
+fn gfs2_auto_snapshot_preserves_aliases_and_posix_time_roles() {
+    use std::io::Read;
+    let directory = tempfile::tempdir().unwrap();
+    let mut bytes = Vec::new();
+    flate2::read::ZlibDecoder::new(
+        include_bytes!("../../../../../vendor/gfs2-reader/tests/fixtures/invented-4096.zlib")
+            .as_slice(),
+    )
+    .read_to_end(&mut bytes)
+    .unwrap();
+    let source = directory.path().join("gfs2.img");
+    std::fs::write(&source, bytes).unwrap();
+    let image = Arc::new(EvidenceSession::from(DiskImage::open(&source).unwrap()));
+    assert_eq!(browsable_volume_keys(&image), vec!["part:0"]);
+    let output = directory.path().join("gfs2.dirz");
+    let built = volume_snapshot::build_volume_snapshot(
+        &image,
+        "part:0",
+        &output,
+        1000,
+        "2026-01-01T00:00:00Z".into(),
+        &CancellationToken::new(),
+        &mut |_| {},
+    )
+    .unwrap();
+    assert!(!built.truncated);
+    let snapshot = volume_snapshot::load_snapshot(&output).unwrap();
+    let live = fs_tree::children_for_image(&image, "part:0").unwrap();
+    assert_eq!(
+        serde_json::to_value(snapshot.children("part:0").unwrap()).unwrap(),
+        serde_json::to_value(&live).unwrap()
+    );
+    let big = live.iter().find(|node| node.name == "hello").unwrap();
+    let alias = live.iter().find(|node| node.name == "hardlink").unwrap();
+    assert_eq!(big.inode, alias.inode);
+    assert_ne!(big.id, alias.id);
+    assert!(big.timestamps.created.is_none());
+    assert!(big.timestamps.mft_changed.is_some());
+    assert_eq!(
+        big.timestamps.accessed.as_deref(),
+        Some("1960-01-01T00:00:00.000000123Z")
+    );
+    let sub = live.iter().find(|node| node.name == "sub").unwrap();
+    assert_eq!(snapshot.children(&sub.id).unwrap()[0].name, "nested");
+}
+
+#[test]
+fn befs_auto_snapshot_preserves_native_paths_aliases_and_recorded_time_roles() {
+    use std::io::Read;
+    let directory = tempfile::tempdir().unwrap();
+    let mut bytes = Vec::new();
+    flate2::read::ZlibDecoder::new(
+        include_bytes!("../../../../../vendor/befs-reader/tests/fixtures/be-4096-2560.zlib")
+            .as_slice(),
+    )
+    .read_to_end(&mut bytes)
+    .unwrap();
+    let source = directory.path().join("befs.img");
+    std::fs::write(&source, bytes).unwrap();
+    let image = Arc::new(EvidenceSession::from(DiskImage::open(&source).unwrap()));
+    assert_eq!(browsable_volume_keys(&image), vec!["part:0"]);
+    let output = directory.path().join("befs.dirz");
+    let built = volume_snapshot::build_volume_snapshot(
+        &image,
+        "part:0",
+        &output,
+        1000,
+        "2026-01-01T00:00:00Z".into(),
+        &CancellationToken::new(),
+        &mut |_| {},
+    )
+    .unwrap();
+    assert!(!built.truncated);
+    let snapshot = volume_snapshot::load_snapshot(&output).unwrap();
+    let live = fs_tree::children_for_image(&image, "part:0").unwrap();
+    assert_eq!(
+        serde_json::to_value(snapshot.children("part:0").unwrap()).unwrap(),
+        serde_json::to_value(&live).unwrap()
+    );
+    let big = live.iter().find(|node| node.name == "big.bin").unwrap();
+    let alias = live.iter().find(|node| node.name == "alias.bin").unwrap();
+    assert_eq!(big.inode, alias.inode);
+    assert_ne!(big.id, alias.id);
+    assert_eq!(
+        big.timestamps.created.as_deref(),
+        Some("1960-01-01T00:00:00Z")
+    );
+    assert!(big.timestamps.mft_changed.is_none());
+    let sub = live.iter().find(|node| node.name == "sub").unwrap();
+    assert_eq!(snapshot.children(&sub.id).unwrap()[0].name, "nested.txt");
+    assert!(live.iter().any(|node| node.name == "中文\\evidence"));
+}
+
+#[test]
+fn amiga_auto_snapshot_preserves_alias_edges_and_local_dates() {
+    use std::io::Read;
+    for (fixture, keys) in [
+        (
+            include_bytes!("../../../../../vendor/amiga-reader/tests/fixtures/links-dos3.zlib")
+                .as_slice(),
+            vec!["part:0"],
+        ),
+        (
+            include_bytes!("../../../../../vendor/amiga-reader/tests/fixtures/rdb-multiblock.zlib")
+                .as_slice(),
+            vec!["part:0", "part:1", "part:3"],
+        ),
+    ] {
+        let directory = tempfile::tempdir().unwrap();
+        let mut bytes = Vec::new();
+        flate2::read::ZlibDecoder::new(fixture)
+            .read_to_end(&mut bytes)
+            .unwrap();
+        let source = directory.path().join("amiga.hdf");
+        std::fs::write(&source, bytes).unwrap();
+        let image = Arc::new(EvidenceSession::from(DiskImage::open(&source).unwrap()));
+        assert_eq!(browsable_volume_keys(&image), keys);
+        for key in keys {
+            let output = directory
+                .path()
+                .join(format!("{}.dirz", key.replace(':', "_")));
+            let built = volume_snapshot::build_volume_snapshot(
+                &image,
+                key,
+                &output,
+                1000,
+                "2026-01-01T00:00:00Z".into(),
+                &CancellationToken::new(),
+                &mut |_| {},
+            )
+            .unwrap();
+            assert!(!built.truncated);
+            let snapshot = volume_snapshot::load_snapshot(&output).unwrap();
+            let live = fs_tree::children_for_image(&image, key).unwrap();
+            assert_eq!(
+                serde_json::to_value(snapshot.children(key).unwrap()).unwrap(),
+                serde_json::to_value(&live).unwrap()
+            );
+            let sub = live.iter().find(|node| node.name == "sub").unwrap();
+            assert_eq!(snapshot.children(&sub.id).unwrap().len(), 101);
+            let big = live.iter().find(|node| node.name == "Café.bin").unwrap();
+            let modified = big.timestamps.modified.as_deref().unwrap();
+            assert!(chrono::DateTime::parse_from_rfc3339(modified).is_err());
+            assert!(modified.ends_with("59.980"));
+            if let Some(alias) = live.iter().find(|node| node.name == "alias.bin") {
+                assert_eq!(big.inode, alias.inode);
+                assert_ne!(big.id, alias.id);
+                assert_ne!(big.timestamps.modified, alias.timestamps.modified);
+                let linked = live.iter().find(|node| node.name == "dirlink").unwrap();
+                assert_eq!(snapshot.children(&linked.id).unwrap().len(), 101);
+            }
+        }
+    }
+}
+
+#[test]
+fn reiserfs_auto_snapshot_preserves_native_names_and_hardlink_edges() {
+    use std::io::Read;
+    let directory = tempfile::tempdir().unwrap();
+    let mut bytes = Vec::new();
+    flate2::read::ZlibDecoder::new(
+        include_bytes!(
+            "../../../../../vendor/reiserfs-reader/tests/fixtures/v36-4096-relocated.zlib"
+        )
+        .as_slice(),
+    )
+    .read_to_end(&mut bytes)
+    .unwrap();
+    let source = directory.path().join("reiserfs.img");
+    std::fs::write(&source, bytes).unwrap();
+    let image = Arc::new(EvidenceSession::from(DiskImage::open(&source).unwrap()));
+    assert_eq!(browsable_volume_keys(&image), vec!["part:0"]);
+    let output = directory.path().join("reiserfs.dirz");
+    let built = volume_snapshot::build_volume_snapshot(
+        &image,
+        "part:0",
+        &output,
+        1000,
+        "2026-01-01T00:00:00Z".into(),
+        &CancellationToken::new(),
+        &mut |_| {},
+    )
+    .unwrap();
+    assert!(!built.truncated);
+    let snapshot = volume_snapshot::load_snapshot(&output).unwrap();
+    let live = fs_tree::children_for_image(&image, "part:0").unwrap();
+    assert_eq!(
+        serde_json::to_value(snapshot.children("part:0").unwrap()).unwrap(),
+        serde_json::to_value(&live).unwrap()
+    );
+    let sub = live.iter().find(|node| node.name == "sub").unwrap();
+    assert_eq!(snapshot.children(&sub.id).unwrap()[0].name, "nested");
+    let big = live.iter().find(|node| node.name == "big.bin").unwrap();
+    let alias = live.iter().find(|node| node.name == "alias.bin").unwrap();
+    assert_eq!(big.inode, alias.inode);
+    assert_ne!(big.id, alias.id);
+    assert!(live.iter().any(|node| node.name == "中文\\evidence"));
+}
+
+#[test]
+fn classic_hfs_auto_snapshot_preserves_native_paths_and_local_timestamps() {
+    use std::io::Read;
+    let directory = tempfile::tempdir().unwrap();
+    let mut bytes = Vec::new();
+    flate2::read::ZlibDecoder::new(
+        include_bytes!("../../../../../vendor/classic-hfs/tests/fixtures/fragmented-1024.zlib")
+            .as_slice(),
+    )
+    .read_to_end(&mut bytes)
+    .unwrap();
+    let source = directory.path().join("hfs.img");
+    std::fs::write(&source, bytes).unwrap();
+    let image = Arc::new(EvidenceSession::from(DiskImage::open(&source).unwrap()));
+    assert_eq!(browsable_volume_keys(&image), vec!["part:0"]);
+    let output = directory.path().join("hfs.dirz");
+    let built = volume_snapshot::build_volume_snapshot(
+        &image,
+        "part:0",
+        &output,
+        1000,
+        "2026-01-01T00:00:00Z".into(),
+        &CancellationToken::new(),
+        &mut |_| {},
+    )
+    .unwrap();
+    assert!(!built.truncated);
+    let snapshot = volume_snapshot::load_snapshot(&output).unwrap();
+    let live = fs_tree::children_for_image(&image, "part:0").unwrap();
+    assert_eq!(
+        serde_json::to_value(snapshot.children("part:0").unwrap()).unwrap(),
+        serde_json::to_value(&live).unwrap()
+    );
+    let sub = live.iter().find(|node| node.name == "sub").unwrap();
+    assert_eq!(snapshot.children(&sub.id).unwrap()[0].name, "nested.txt");
+    let big = live.iter().find(|node| node.name == "Café.bin").unwrap();
+    let modified = big.timestamps.modified.as_deref().unwrap();
+    assert!(chrono::DateTime::parse_from_rfc3339(modified).is_err());
+    assert!(chrono::NaiveDateTime::parse_from_str(modified, "%Y-%m-%dT%H:%M:%S").is_ok());
+}
+
+#[test]
+fn jfs_auto_snapshot_preserves_native_names_multiple_iags_and_hardlink_edges() {
+    use std::io::Read;
+    let directory = tempfile::tempdir().unwrap();
+    let mut bytes = Vec::new();
+    flate2::read::ZlibDecoder::new(
+        include_bytes!(
+            "../../../../../vendor/jfs-reader/tests/fixtures/multi-iag-4096-indexed.zlib"
+        )
+        .as_slice(),
+    )
+    .read_to_end(&mut bytes)
+    .unwrap();
+    let source = directory.path().join("jfs.img");
+    std::fs::write(&source, bytes).unwrap();
+    let image = Arc::new(EvidenceSession::from(DiskImage::open(&source).unwrap()));
+    assert_eq!(browsable_volume_keys(&image), vec!["part:0"]);
+    let output = directory.path().join("jfs.dirz");
+    let built = volume_snapshot::build_volume_snapshot(
+        &image,
+        "part:0",
+        &output,
+        1000,
+        "2026-01-01T00:00:00Z".into(),
+        &CancellationToken::new(),
+        &mut |_| {},
+    )
+    .unwrap();
+    assert!(!built.truncated);
+    let snapshot = volume_snapshot::load_snapshot(&output).unwrap();
+    let live = fs_tree::children_for_image(&image, "part:0").unwrap();
+    assert_eq!(
+        serde_json::to_value(snapshot.children("part:0").unwrap()).unwrap(),
+        serde_json::to_value(&live).unwrap()
+    );
+    let sub = live.iter().find(|node| node.name == "sub").unwrap();
+    assert_eq!(snapshot.children(&sub.id).unwrap()[0].name, "nested.txt");
+    let big = live.iter().find(|node| node.name == "big.bin").unwrap();
+    let alias = live.iter().find(|node| node.name == "alias.bin").unwrap();
+    assert_eq!(big.inode, alias.inode);
+    assert_ne!(big.id, alias.id);
+}
+
+#[test]
+fn minix_auto_snapshot_preserves_native_paths_and_hardlink_identity() {
+    use std::io::Read;
+    let directory = tempfile::tempdir().unwrap();
+    let mut bytes = Vec::new();
+    flate2::read::ZlibDecoder::new(
+        include_bytes!("../../../../../vendor/minix-reader/tests/fixtures/v3-60-1024-0-le.zlib")
+            .as_slice(),
+    )
+    .read_to_end(&mut bytes)
+    .unwrap();
+    let source = directory.path().join("minix.img");
+    std::fs::write(&source, bytes).unwrap();
+    let image = Arc::new(EvidenceSession::from(DiskImage::open(&source).unwrap()));
+    assert_eq!(browsable_volume_keys(&image), vec!["part:0"]);
+    let output = directory.path().join("minix.dirz");
+    let built = volume_snapshot::build_volume_snapshot(
+        &image,
+        "part:0",
+        &output,
+        1000,
+        "2026-01-01T00:00:00Z".into(),
+        &CancellationToken::new(),
+        &mut |_| {},
+    )
+    .unwrap();
+    assert!(!built.truncated);
+    let snapshot = volume_snapshot::load_snapshot(&output).unwrap();
+    let live = fs_tree::children_for_image(&image, "part:0").unwrap();
+    assert_eq!(
+        serde_json::to_value(snapshot.children("part:0").unwrap()).unwrap(),
+        serde_json::to_value(&live).unwrap()
+    );
+    let sub = live.iter().find(|node| node.name == "sub").unwrap();
+    assert_eq!(snapshot.children(&sub.id).unwrap()[0].name, "nested.txt");
+    let big = live.iter().find(|node| node.name == "big.bin").unwrap();
+    let alias = live.iter().find(|node| node.name == "alias.bin").unwrap();
+    assert_eq!(big.inode, alias.inode);
+    assert_ne!(big.id, alias.id);
+}
+
+#[test]
+fn udf_auto_snapshot_preserves_live_tree_and_persisted_node_identity() {
+    use std::io::Read;
+    let directory = tempfile::tempdir().unwrap();
+    let mut bytes = Vec::new();
+    flate2::read::ZlibDecoder::new(
+        include_bytes!("../../../../../vendor/lamfold-udf/tests/fixtures/udf102.zlib").as_slice(),
+    )
+    .read_to_end(&mut bytes)
+    .unwrap();
+    let source = directory.path().join("source.iso");
+    std::fs::write(&source, bytes).unwrap();
+    let image = Arc::new(EvidenceSession::from(DiskImage::open(&source).unwrap()));
+    assert_eq!(browsable_volume_keys(&image), vec!["part:0"]);
+    let output = directory.path().join("udf.dirz");
+    let built = volume_snapshot::build_volume_snapshot(
+        &image,
+        "part:0",
+        &output,
+        1000,
+        "2026-01-01T00:00:00Z".into(),
+        &CancellationToken::new(),
+        &mut |_| {},
+    )
+    .unwrap();
+    assert!(!built.truncated);
+    let snapshot = volume_snapshot::load_snapshot(&output).unwrap();
+    let live = fs_tree::children_for_image(&image, "part:0").unwrap();
+    assert_eq!(
+        serde_json::to_value(snapshot.children("part:0").unwrap()).unwrap(),
+        serde_json::to_value(&live).unwrap()
+    );
+    let sub = live.iter().find(|node| node.name == "sub").unwrap();
+    assert_eq!(snapshot.children(&sub.id).unwrap()[0].name, "inner.txt");
+}
+
 fn backup_view_fixture(format: ImageFormat) -> (tempfile::TempDir, DiskImage) {
     let directory = tempfile::tempdir().unwrap();
     let backup = std::fs::read(

@@ -78,10 +78,14 @@ aes = "0.9.3"
 # 逻辑搜索（文件方式）关键词匹配：多模式 Aho-Corasick，Standard 模式报告全部
 # 命中（含重叠），逐编码（ASCII/UTF-8/UTF-16LE/UTF-16BE/GBK）各建一台自动机。
 aho-corasick = "1.1.5"
+amiga-rdb = { path = "vendor/amiga-rdb" }
+amiga-reader = { path = "vendor/amiga-reader" }
 anyhow = "1.0.104"
 apfs = { path = "vendor/apfs" }
 backhand = { path = "vendor/backhand", default-features = false, features = ["xz", "gzip", "zstd", "parallel", "error-strings", "descriptive-errors", "v1_v2", "v3_ddwrt", "v3_lzma"] }
 base64 = "0.23.1"
+bcachefs-reader = { path = "vendor/bcachefs-reader" }
+befs-reader = { path = "vendor/befs-reader" }
 # 快照 `.dirz` 体的二进制编码（替代逐条 serde_json，省每条目分配 + 加速加载解析）。
 # 3.0.0 仅包含停维护公告和 compile_error，保留可用的 2.0.1 与既有快照格式。
 bincode = { version = "2.0.1", features = ["serde"] }
@@ -103,6 +107,7 @@ chardetng = "1.0.0"
 chrono = { version = "0.4.45", features = ["serde"] }
 # lovelycarve-cli 的子命令与参数解析；帮助由 cli/help.rs 按命令目录渲染。
 clap = { version = "4.6.7", features = ["derive", "string", "env"] }
+classic-hfs = { path = "vendor/classic-hfs" }
 crc32fast = "1.5.2"
 # lovelycarve-cli 的交互提问、遮盖输入与终端尺寸（notatin 已依赖同一版本）。
 crossterm = "0.29.0"
@@ -122,6 +127,7 @@ filevault-forensic = { path = "vendor/filevault/forensic" }
 flate2 = "1.1.10"
 
 fs2 = "0.4.3"
+gfs2-reader = { path = "vendor/gfs2-reader" }
 # 二进制「原类型视图」结构化解析：ELF / Mach-O / PE / Unix ar 统一走 goblin 的
 # Object::parse（纯 Rust，无 FFI）。默认 features 已含 elf32/64、mach32/64、pe32/64、
 # te、archive、endian_fd，满足 Object::parse。
@@ -136,11 +142,13 @@ image = { version = "0.25.10", optional = true }
 ios-backup-core = { path = "vendor/ios-backup/core" }
 ios-backup-forensic = { path = "vendor/ios-backup/forensic" }
 jffs2 = { path = "vendor/jffs2" }
+jfs-reader = { path = "vendor/jfs-reader" }
 jiff = { version = "0.2.38", default-features = false, features = ["std", "tzdb-bundle-always"] }
 lamfold = { path = "vendor/lamfold", default-features = false, features = ["std", "codec-deflate"] }
 lamfold-cramfs = { path = "vendor/lamfold-cramfs", default-features = false, features = ["std"] }
 lamfold-erofs = { path = "vendor/lamfold-erofs", default-features = false, features = ["std", "lz4", "deflate", "zstd", "lzma"] }
 lamfold-romfs = { path = "vendor/lamfold-romfs", default-features = false, features = ["std"] }
+lamfold-udf = { path = "vendor/lamfold-udf", default-features = false, features = ["std"] }
 libloading = "0.9.0"
 # DLL plugin C ABI, LPP wire types and the shared plugin-library loader
 # (plugins/sdk; the plugins and lc-plugin-host build in their own workspace).
@@ -153,7 +161,9 @@ magika = { path = "vendor/magika" }
 memchr = "2.8.3"
 memmap2 = "0.9.11"
 minifs = { path = "vendor/minifs" }
+minix-reader = { path = "vendor/minix-reader" }
 ms-compress = { version = "=0.2.0", default-features = false, features = ["std", "xpress", "lzx"] }
+nilfs2-reader = { path = "vendor/nilfs2-reader" }
 notatin = { path = "vendor/notatin" }
 ntfs = { path = "vendor/ntfs" }
 ntfs-core = { version = "0.9.8", default-features = false }
@@ -165,6 +175,7 @@ oar-ocr = { version = "0.7.4", optional = true }
 # 与 oar-ocr 同版本，无冲突。
 # 0.10 要求 ort rc.13，与 vendored magika 的 rc.12 固定版本冲突；两者暂留 0.7。
 oar-ocr-core = { version = "0.7.4", optional = true }
+ocfs2-reader = { path = "vendor/ocfs2-reader" }
 # 原类型视图「二维码识别」引擎（仅 `qrcode-wechat` feature）：
 # objdetect::QRCodeDetector 检测/解码、imgcodecs::imdecode 从字节解图、imgproc/core 做
 # 灰度/对比度/亮度/模糊/缩放/反色/二值化的暴力变换；并启用 WeChat 检测器（wechat_qrcode）。
@@ -187,6 +198,7 @@ refs-reader = { path = "vendor/refs-reader" }
 # 字面量，给解码文本通道做原始字节预筛。
 regex = "1.13.1"
 regex-syntax = "0.8.11"
+reiserfs-reader = { path = "vendor/reiserfs-reader" }
 rmp-serde = "1.3.1"
 rmpv = { version = "1.3.1", features = ["with-serde"] }
 rsqlite-vfs = { path = "vendor/rsqlite-vfs" }
@@ -409,6 +421,19 @@ opt-level = 3
 [profile.release.package.ruzstd]
 opt-level = 3
 
+# bcachefs checks metadata/data and authenticates unsealed encrypted extents.
+[profile.release.package.crc32c]
+opt-level = 3
+[profile.release.package.twox-hash]
+opt-level = 3
+[profile.release.package.chacha20]
+opt-level = 3
+[profile.release.package.poly1305]
+opt-level = 3
+
+[profile.release.package.minix-reader]
+opt-level = 3
+
 [profile.release.package.qnx-reader]
 opt-level = 3
 
@@ -416,6 +441,10 @@ opt-level = 3
 opt-level = 3
 
 [profile.release.package.lamfold-erofs]
+opt-level = 3
+
+# UDF validates descriptor and directory CRCs while traversing metadata.
+[profile.release.package.lamfold-udf]
 opt-level = 3
 
 # Performance-oriented comparison profile for parser, decompression, hash,

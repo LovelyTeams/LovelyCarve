@@ -91,6 +91,7 @@ fn whole_device_partition(kind: PartitionKind, size_bytes: u64, sector_size: usi
         length_lba: size_bytes / sector_size as u64,
         label: None,
         unique_guid: None,
+        amiga_geometry: None,
     }
 }
 

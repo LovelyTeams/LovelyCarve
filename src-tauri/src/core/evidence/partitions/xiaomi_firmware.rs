@@ -146,6 +146,7 @@ impl PartParser for XiaomiFirmwareParser {
                     name
                 }),
                 unique_guid: None,
+                amiga_geometry: None,
             });
         }
 
@@ -198,6 +199,7 @@ mod tests {
                 length_lba: 8192,
                 label: Some("kernel.img".into()),
                 unique_guid: None,
+                amiga_geometry: None,
             }
         );
         assert_eq!(
@@ -209,6 +211,7 @@ mod tests {
                 length_lba: 4096,
                 label: Some("rootfs.img".into()),
                 unique_guid: None,
+                amiga_geometry: None,
             }
         );
     }

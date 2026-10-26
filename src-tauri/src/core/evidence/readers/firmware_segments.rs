@@ -87,6 +87,7 @@ pub(super) fn parse_payload(
         length_lba: bytes.len() as u64,
         label: Some("Firmware filesystem".into()),
         unique_guid: None,
+        amiga_geometry: None,
     }])
 }
 

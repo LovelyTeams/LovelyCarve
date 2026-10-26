@@ -151,6 +151,7 @@ fn scan_boot_sectors(
                     length_lba: length_bytes / sector,
                     label: None,
                     unique_guid: None,
+                    amiga_geometry: None,
                 },
                 // A boot inside an existing partition can still be an old filesystem.
                 lost: true,

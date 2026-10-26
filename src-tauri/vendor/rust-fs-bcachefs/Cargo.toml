@@ -1,0 +1,83 @@
+[package]
+name = "rust-fs-bcachefs"
+version = "0.4.2"
+edition = "2021"
+autobins = false
+autoexamples = false
+license = "MIT"
+description = "Pure-Rust bcachefs reader, written clean-room from documentation and black-box observation; read-only by default, with an optional write feature. Exposes a C ABI (fs_bcachefs_*)."
+repository = "https://github.com/antimatter-studios/rust-fs-bcachefs"
+# The fuzz crate is its own package on its own (nightly) toolchain.
+exclude = ["fuzz"]
+
+# What the release tarball ships, read by rust-fs-core's
+# scripts/package-cli.sh (run in place as ../rust-fs-core/scripts/package-cli.sh).
+[package.metadata.package-cli]
+names = { "fs.bcachefs" = 1, "fsck.bcachefs" = 8 }
+licenses = ["LICENSE", "THIRD-PARTY-LICENSES.md"]
+
+[lib]
+name = "fs_bcachefs"
+crate-type = ["rlib"]
+
+# The command-line tools: one multi-call binary, named for the repository,
+# answering to each dotted name it is linked as (`fs.bcachefs`). Behind the
+# `cli` feature so the static library gains no dependency.
+[features]
+capi = []
+# Writing (src/write.rs): off by default, and nothing in the default build
+# can write to a device.
+write = []
+# The tools carry the write verbs, marked experimental in their help.
+cli = ["dep:clap", "rust-fs-core/cli", "write", "capi"]
+# Tests whose expected bytes belong to one exact fixtures artifact. Only the
+# differential workflow's pinned job enables it, after checking the artifact's
+# digest; the ordinary tiers build fresh fixtures and never compile them.
+pinned-fixtures = ["write"]
+
+[dependencies]
+# Block-device trait surface shared with the sister fs-* drivers.
+rust-fs-core = { path = "../rust-fs-core", version = "0.3.14" }
+# CRC32C (Castagnoli), the default metadata and data checksum. MIT OR Apache-2.0.
+crc32c = "0.6"
+# XXH64 (seed 0), checksum type 7. MIT.
+twox-hash = { version = "2", default-features = false, features = ["xxhash64"] }
+# zstd-compressed extents: a pure-Rust decoder. MIT.
+ruzstd = "0.9.0"
+# gzip-compressed extents (raw deflate). MIT OR Zlib OR Apache-2.0.
+miniz_oxide = "0.9.1"
+# Names in casefolded directories (#111): Unicode full case folding, and
+# canonical decomposition (NFD), from the Unicode Character Database's
+# tables. MIT (caseless), MIT OR Apache-2.0 (unicode-normalization).
+caseless = "0.2"
+unicode-normalization = "0.1"
+# Writing lz4-compressed extents (#105): an LZ4 block encoder. MIT.
+lz4_flex = { version = "0.11", default-features = false, features = ["std", "safe-encode"] }
+# Encrypted filesystems (#159): ChaCha20 and Poly1305 (S1 9.1.4, RFC 8439),
+# from RustCrypto. MIT OR Apache-2.0.
+chacha20 = "0.9"
+poly1305 = "0.8"
+# The platform's errno numbers, which the C ABI reports failures with: a C
+# caller compares them with its own constants, and Linux's and macOS's
+# differ (ENOTEMPTY is 39 on one, 66 on the other). MIT OR Apache-2.0.
+libc = "0.2"
+# The command-line tools' argument parser, behind `cli`. MIT OR Apache-2.0.
+clap = { version = "4.5", optional = true, default-features = false, features = ["std", "help", "usage", "error-context", "suggestions"] }
+
+[dev-dependencies]
+# Test-only: file contents are compared with the SHA-256 the reference
+# tools' guest computed. MIT OR Apache-2.0.
+sha2 = "0.10"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+panic = "unwind"  # required for catch_unwind at the FFI boundary
+
+[profile.dev]
+opt-level = 1
+panic = "unwind"
+
+
+[workspace]

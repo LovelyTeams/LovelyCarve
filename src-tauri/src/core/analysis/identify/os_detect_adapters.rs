@@ -292,6 +292,17 @@ pub(crate) fn supports_os_detect(kind: PartitionKind) -> bool {
             | PartitionKind::F2fs
             | PartitionKind::Qnx4
             | PartitionKind::Qnx6
+            | PartitionKind::Udf
+            | PartitionKind::Hfs
+            | PartitionKind::Jfs
+            | PartitionKind::Reiserfs
+            | PartitionKind::Amiga
+            | PartitionKind::Befs
+            | PartitionKind::Gfs2
+            | PartitionKind::Ocfs2
+            | PartitionKind::Nilfs2
+            | PartitionKind::Bcachefs
+            | PartitionKind::Minix
             | PartitionKind::Minifs
             | PartitionKind::Romfs
             | PartitionKind::ApfsContainer
@@ -324,6 +335,17 @@ pub(crate) fn kind_str(kind: PartitionKind) -> &'static str {
         PartitionKind::F2fs => "f2fs",
         PartitionKind::Qnx4 => "qnx4",
         PartitionKind::Qnx6 => "qnx6",
+        PartitionKind::Udf => "udf",
+        PartitionKind::Hfs => "hfs",
+        PartitionKind::Jfs => "jfs",
+        PartitionKind::Reiserfs => "reiserfs",
+        PartitionKind::Amiga => "amiga",
+        PartitionKind::Befs => "befs",
+        PartitionKind::Gfs2 => "gfs2",
+        PartitionKind::Ocfs2 => "ocfs2",
+        PartitionKind::Nilfs2 => "nilfs2",
+        PartitionKind::Bcachefs => "bcachefs",
+        PartitionKind::Minix => "minix",
         PartitionKind::Minifs => "minifs",
         PartitionKind::Romfs => "romfs",
         PartitionKind::Ubifs => "ubifs",

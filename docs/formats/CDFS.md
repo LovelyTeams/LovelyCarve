@@ -92,7 +92,7 @@ ISO 大小端几何、2048 逻辑块大小和根目录范围必须有效。文�
 - 不支持非 UTF-8 codepage 参数、MOTOROLA/WAVE/AIFF/MP3、CCD/TOC/MDS、CD-TEXT、
   子通道/音频解码、刻录及 EDC/ECC 纠错。TITLE/PERFORMER/FLAGS 等接受但不展示；
   CDTEXTFILE 不自动打开。普通未知 REM 忽略，SESSION/LEAD-OUT/RUN-OUT 严格校验。
-- 裸 UDF 不作为 ISO 打开；CD-I 枚举不代表 CD-I 文件系统。ISO 多 extent、交错文件等
+- cooked UDF 由独立的 [UDF 读取器](UDF.md) 处理，不作为 ISO 打开；CD-I 枚举不代表 CD-I 文件系统。ISO 多 extent、交错文件等
   仍受 `cdfs` 既有能力限制。
 - C ABI 的缓冲区分配、错误打印、FILE pool 和可写元数据构造器用 Rust 生命周期、
   anyhow、tracing、smraw 和不可变来源替代。没有全局光盘缓存，卸载随源释放。

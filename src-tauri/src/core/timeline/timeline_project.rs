@@ -527,6 +527,11 @@ pub fn compute_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn classic_hfs_local_wall_time_is_not_a_timeline_instant() {
+        assert_eq!(rfc3339_to_epoch(Some("2024-05-31T11:07:28")), None);
+        assert!(rfc3339_to_epoch(Some("2024-05-31T11:07:28+08:00")).is_some());
+    }
     use crate::core::analysis::results::legacy_store::test_support::{persist, LegacyRun};
     use crate::core::analysis::results::record_store::{
         self, NewRun, RecordWriter, RunCompletion, RunTarget,

@@ -73,8 +73,8 @@ fmt-python:
 
 # Lint the Python binding without changing the desktop build.
 [group("python")]
-clippy-python:
-    {{ python_cargo_env }}cargo clippy --manifest-path python/Cargo.toml -- -D warnings
+clippy-python *args:
+    {{ python_cargo_env }}cargo clippy --manifest-path python/Cargo.toml {{ args }} -- -D warnings
 
 # Start Vite after preparing offline viewer assets.
 [group("frontend")]
@@ -156,6 +156,21 @@ fmt:
     cd src-tauri/vendor/lamfold && cargo fmt
     cd src-tauri/vendor/lamfold-cramfs && cargo fmt
     cd src-tauri/vendor/lamfold-romfs && cargo fmt
+    cd src-tauri/vendor/lamfold-udf && cargo fmt
+    cd src-tauri/vendor/minix-reader && cargo fmt
+    cd src-tauri/vendor/classic-hfs && cargo fmt
+    cd src-tauri/vendor/jfs-reader && cargo fmt
+    cd src-tauri/vendor/reiserfs-reader && cargo fmt
+    cd src-tauri/vendor/amiga-reader && cargo fmt
+    cd src-tauri/vendor/befs-reader && cargo fmt
+    cd src-tauri/vendor/gfs2-reader && cargo fmt
+    cd src-tauri/vendor/ocfs2-reader && cargo fmt
+    cd src-tauri/vendor/nilfs2-reader && cargo fmt
+    cd src-tauri/vendor/bcachefs-reader && cargo fmt
+    cd src-tauri/vendor/rust-fs-bcachefs && cargo fmt
+    cd src-tauri/vendor/rust-fs-core && cargo fmt
+    cd src-tauri/vendor/amiga-ffs && cargo fmt
+    cd src-tauri/vendor/amiga-rdb && cargo fmt
     cd src-tauri/vendor/lamfold-erofs && cargo fmt
     cd src-tauri/vendor/f2fs-reader && cargo fmt
     cd src-tauri/vendor/qnx-reader && cargo fmt
@@ -183,9 +198,9 @@ update-rust:
 # Compile-check the standalone CLI backend and the desktop build, without QR/OCR.
 [group("backend")]
 [working-directory("src-tauri")]
-check:
-    {{ cargo_env }}cargo check --no-default-features
-    {{ cargo_env }}cargo check --no-default-features --features desktop
+check *args:
+    {{ cargo_env }}cargo check --no-default-features {{ args }}
+    {{ cargo_env }}cargo check --no-default-features --features desktop {{ args }}
 
 # Lint the standalone CLI backend and the desktop build, without QR/OCR.
 [group("backend")]
@@ -422,6 +437,180 @@ clippy-yaffs2:
 [group("readers")]
 test-vendor name *args:
     cargo test --manifest-path src-tauri/vendor/{{ name }}/Cargo.toml --lib {{ args }}
+
+# Validate the Minix V1/V2/V3 reader, including util-linux reference images.
+[group("readers")]
+test-minix:
+    cargo test --manifest-path src-tauri/vendor/minix-reader/Cargo.toml --lib
+
+# Validate the classic HFS reader (data/resource forks and B-tree corruption).
+[group("readers")]
+test-classic-hfs:
+    cargo test --manifest-path src-tauri/vendor/classic-hfs/Cargo.toml --lib
+
+[group("readers")]
+clippy-classic-hfs:
+    cargo clippy --manifest-path src-tauri/vendor/classic-hfs/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-hfs-fixtures:
+    {{ python }} scripts/hfs-fixtures.py
+
+[group("readers")]
+test-jfs:
+    cargo test --manifest-path src-tauri/vendor/jfs-reader/Cargo.toml --lib
+
+# Pure Rust ReiserFS 3.5/3.6 reader and independent fixtures.
+[group("readers")]
+test-reiserfs:
+    cargo test --manifest-path src-tauri/vendor/reiserfs-reader/Cargo.toml --lib
+
+[group("readers")]
+test-amiga:
+    cargo test --manifest-path src-tauri/vendor/amiga-reader/Cargo.toml --lib
+
+[group("readers")]
+test-befs *args:
+    cargo test --manifest-path src-tauri/vendor/befs-reader/Cargo.toml --lib {{ args }}
+
+[group("readers")]
+test-gfs2 *args:
+    cargo test --manifest-path src-tauri/vendor/gfs2-reader/Cargo.toml --lib {{ args }}
+
+[group("readers")]
+clippy-gfs2:
+    cargo clippy --manifest-path src-tauri/vendor/gfs2-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-gfs2-fixtures:
+    {{ python }} scripts/gfs2-fixtures.py
+
+[group("readers")]
+test-gfs2-native:
+    cargo test --manifest-path src-tauri/vendor/gfs2-reader/Cargo.toml --lib native_linux -- --ignored --nocapture
+
+[group("readers")]
+test-ocfs2 *args:
+    cargo test --manifest-path src-tauri/vendor/ocfs2-reader/Cargo.toml --lib {{ args }}
+
+[group("readers")]
+clippy-ocfs2:
+    cargo clippy --manifest-path src-tauri/vendor/ocfs2-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-ocfs2-fixtures:
+    {{ python }} scripts/ocfs2-fixtures.py
+
+# Audit external mkfs.ocfs2 / Linux / fsck inputs; requires OCFS2_ORACLE_DIR.
+[group("readers")]
+test-ocfs2-native:
+    cargo test --manifest-path src-tauri/vendor/ocfs2-reader/Cargo.toml --lib native_linux -- --ignored --nocapture
+
+[group("readers")]
+test-nilfs2 *args:
+    cargo test --manifest-path src-tauri/vendor/nilfs2-reader/Cargo.toml --lib {{ args }}
+
+[group("readers")]
+test-bcachefs *args:
+    cargo test --manifest-path src-tauri/vendor/rust-fs-bcachefs/Cargo.toml --lib {{ args }}
+
+[group("readers")]
+clippy-bcachefs:
+    cargo clippy --manifest-path src-tauri/vendor/rust-fs-bcachefs/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+test-bcachefs-reader *args:
+    cargo test --manifest-path src-tauri/vendor/bcachefs-reader/Cargo.toml --lib {{ args }}
+
+[group("readers")]
+generate-bcachefs-fixtures:
+    {{ python }} scripts/bcachefs-fixtures.py
+
+[group("readers")]
+clippy-bcachefs-reader:
+    cargo clippy --manifest-path src-tauri/vendor/bcachefs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+test-bcachefs-native:
+    cargo test --manifest-path src-tauri/vendor/bcachefs-reader/Cargo.toml --lib native_linux -- --ignored --nocapture
+
+[group("readers")]
+clippy-nilfs2:
+    cargo clippy --manifest-path src-tauri/vendor/nilfs2-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+test-nilfs2-native:
+    cargo test --manifest-path src-tauri/vendor/nilfs2-reader/Cargo.toml --lib native_linux -- --ignored --nocapture
+
+[group("readers")]
+generate-nilfs2-fixtures:
+    {{ python }} scripts/nilfs2-fixtures.py
+
+[group("readers")]
+clippy-befs:
+    cargo clippy --manifest-path src-tauri/vendor/befs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-befs-fixtures:
+    {{ python }} scripts/befs-fixtures.py
+
+[group("readers")]
+test-befs-native *args:
+    {{ python }} scripts/befs-native-oracle.py {{ args }}
+
+[group("readers")]
+test-amiga-ffs:
+    cargo test --manifest-path src-tauri/vendor/amiga-ffs/Cargo.toml --lib
+
+[group("readers")]
+test-amiga-rdb:
+    cargo test --manifest-path src-tauri/vendor/amiga-rdb/Cargo.toml --lib
+
+[group("readers")]
+clippy-amiga:
+    cargo clippy --manifest-path src-tauri/vendor/amiga-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-amiga-fixtures:
+    {{ python }} scripts/amiga-fixtures.py
+
+[group("readers")]
+clippy-reiserfs:
+    cargo clippy --manifest-path src-tauri/vendor/reiserfs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-reiserfs-fixtures:
+    {{ python }} scripts/reiserfs-fixtures.py
+
+[group("readers")]
+clippy-jfs:
+    cargo clippy --manifest-path src-tauri/vendor/jfs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-jfs-fixtures:
+    {{ python }} scripts/jfs-fixtures.py
+
+[group("readers")]
+clippy-minix:
+    cargo clippy --manifest-path src-tauri/vendor/minix-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+generate-minix-fixtures:
+    {{ python }} scripts/minix-fixtures.py
+
+# Validate/lint the UDF physical-partition reader and its reference fixtures.
+[group("readers")]
+test-udf:
+    cargo test --manifest-path src-tauri/vendor/lamfold-udf/Cargo.toml --lib
+
+[group("readers")]
+clippy-udf:
+    cargo clippy --manifest-path src-tauri/vendor/lamfold-udf/Cargo.toml --all-targets -- -D warnings
+    cargo check --manifest-path src-tauri/vendor/lamfold-udf/Cargo.toml --no-default-features
+
+[group("readers")]
+generate-udf-fixtures:
+    {{ python }} scripts/udf-fixtures.py
 
 # Lint the standalone MINIFS reader, including regression tests.
 [group("readers")]

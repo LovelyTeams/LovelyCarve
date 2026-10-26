@@ -422,6 +422,31 @@ JSONL 可直接引用检测结果及卷 ID，避免抄写 ID 和转义卷名：
 这些值由目录枚举提供，不能从卷名猜测。默认 FS 树使用子卷 5，常见根 inode 为 256，
 但脚本应复制 `files list` 返回的 `items[].id`，或使用上面的普通路径导航。
 
+
+### bcachefs 子卷与 snapshot
+
+bcachefs 复用现有 `files list/read/hash/export` 等命令。按列出的目录项进入
+原生子卷和 snapshot，不需要构造 inode ID；相同 inode 编号在不同视图中
+仍指向各自的内容。保留返回的节点 ID，路径会同时保持来源分区和视图入口。
+单设备、压缩、日志重放与验证边界见 [bcachefs](formats/BCACHEFS.md)。
+
+### NILFS2 当前检查点
+
+NILFS2 复用 `files list/read/hash/export` 等现有命令，显示最新提交的目录树。
+硬链接保持 inode 身份和不同路径；稀疏区读零，已分配数据缺失或日志 CRC 不匹配报错。
+它没有独立存储 atime，输出保留为空；dirty / recovery 卷明确拒绝。
+历史 snapshot 已由独立 Rust 读取器 API 支持，CLI 暂无原生历史视图的选择命令。
+范围、原生 GC 样本和验证边界见 [NILFS2](formats/NILFS2.md)。
+
+### BeFS / GFS2 / OCFS2 扩展属性
+
+BeOS / Haiku BeFS、GFS2 与 OCFS2 文件通过现有 `files streams list`、`files streams get` 和
+`files streams export` 接口提供内联 / 外联扩展属性。复制列表返回的流名，不将流名
+解释为主机路径；导出目标必须为新文件。属性原始数据不做文本转换。
+读取范围、原生样本和时间编码边界见 [BeFS](formats/BEFS.md) / [GFS2](formats/GFS2.md) / [OCFS2](formats/OCFS2.md)。
+GFS2 / OCFS2 返回 `user.` 等原生命名空间前缀；需要日志重放的卷会明确拒绝。
+
+
 ## 常驻会话
 
 连续取证建议先启动命名会话。后台进程保持案件、E01 句柄、读取缓存、RAID/LVM 组装卷、

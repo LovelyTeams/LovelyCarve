@@ -112,6 +112,7 @@ fn main() -> anyhow::Result<()> {
                 length_lba: array.size_bytes / sector_size as u64,
                 label: Some(raid::synthetic_partition_label(array)),
                 unique_guid: None,
+                amiga_geometry: None,
             }];
             Arc::new(DiskImage::from_assembled(
                 format!("md:{}", array.set_uuid),

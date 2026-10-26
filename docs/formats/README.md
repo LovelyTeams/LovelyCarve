@@ -16,9 +16,20 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | XFS | [XFS.md](XFS.md) | libfsxfs 对照；格式 1–5、目录与属性全部布局、BIGTIME、metadata UUID、范围读取与来源映射 |
 | ReFS | [REFS.md](REFS.md) | 纯 Rust `refs-reader`；文件流快照、CoW 共享块、公开镜像来源与独立解析器验证 |
 | APFS | [APFS.md](APFS.md) | libfsapfs 110 API 对照；事务 OMAP、多卷、两类目录键、克隆/空洞、范围读、xattr 与快照元数据；明确加密/历史浏览边界 |
+| 传统 HFS | [CLASSIC_HFS.md](CLASSIC_HFS.md) | fstool / rusty-backup 改造；catalog / overflow、MacRoman、data / resource fork、本地时间和范围读 |
 | HFS+ / HFSX | [HFS.md](HFS.md) | libfshfs 95 API；完整 fork / overflow、resource fork、attr continuation、Unicode 3.2、硬链接与逻辑范围读取 |
 | ISO 9660 / 光盘 BIN / CUE | [CDFS.md](CDFS.md) | libodraw 全 API 对照；多文件/多轨 CUE、Mode 1 / XA Form 1、来源字节保留与范围读取 |
+| UDF | [UDF.md](UDF.md) | lamfold-udf；1.02–2.01 单物理分区、FE / EFE、tag / CRC、续链、空洞和范围读取；高级 partition maps 明确拒绝 |
 | CramFS / Linux ROMFS | [ROM_IMAGES.md](ROM_IMAGES.md) | lamfold Rust 库；CramFS v2 大小端、CRC、按页范围读取；ROMFS 校验和、硬链接、目录链边界 |
+| JFS（Linux JFS2） | [JFS.md](JFS.md) | rusty-backup / partmgr 改造；多 IAG、dtree / xtree、分配位图、目录索引、EA / 符号链接与纳秒范围读 |
+| ReiserFS v3 | [REISERFS.md](REISERFS.md) | 3.5 / 3.6、混合键、多层树、尾部打包、稀疏块、硬链接与范围读；dirty 拒绝，Reiser4 独立未支持 |
+| Amiga OFS / FFS | [AMIGA.md](AMIGA.md) | DOS0–7、Latin-1 / LNFS、硬链接、原生 RDB 与多块几何；dirty / BADB 明确拒绝 |
+| BeFS | [BEFS.md](BEFS.md) | BeOS / Haiku、大小端、四种块大小、B+tree、全部 run 层级及扩展属性；原生官方镜像 / 系统包验证 |
+| GFS2 | [GFS2.md](GFS2.md) | 1801 / 1802、大端、rindex / 分配位图、exhash、定高文件树、稀疏与 EA；检查全部日志并明确拒绝重放 |
+| OCFS2 | [OCFS2.md](OCFS2.md) | 分配链 / 位图、extent / refcount、内联及索引目录、稀疏 / unwritten 与属性；全部 slot 必须离线干净 |
+| NILFS2 | [NILFS2.md](NILFS2.md) | 双超级块 / 日志 CRC、DAT / 分配位图、direct / B-tree、检查点与 GC 搬移；应用读取当前视图，独立库可读历史 snapshot |
+| bcachefs | [BCACHEFS.md](BCACHEFS.md) | MIT Rust 库；单设备、子卷 / snapshot、reflink、压缩 / 校验、稀疏 / unwritten、内存日志及范围读 |
+| Minix FS V1 / V2 / V3 | [MINIX.md](MINIX.md) | rusty-backup 元数据改造；五种布局、大小端、位图 / zone 边界、全部间接层级与有界范围读；独立于 MINIFS |
 | MINIFS | [MINIFS.md](MINIFS.md) | 原创独立 Rust 库；VxWorks / TP-Link v3、共享 LZMA 块、有界范围读及官方固件逐文件 oracle |
 | F2FS | [F2FS.md](F2FS.md) | 纯 Rust checkpoint / NAT 读取、动态内联区域、完整间接寻址、inode CRC、硬链接及纳秒时间 |
 | EROFS | [EROFS.md](EROFS.md) | lamfold-erofs；紧凑 / 扩展 inode、四种压缩、chunk 空洞、有界范围读取与超级块 CRC32C |

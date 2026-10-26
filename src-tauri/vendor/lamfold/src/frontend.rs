@@ -29,6 +29,17 @@ pub struct FileTimes {
     pub created: Option<(i64, u32)>,
 }
 
+/// Local wall-clock timestamps with no recorded UTC offset. The seconds encode
+/// a civil date relative to 1970 solely for formatting; they are not instants
+/// and must never be projected into a UTC timeline without external evidence.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LocalFileTimes {
+    pub modified: Option<(i64, u32)>,
+    pub accessed: Option<(i64, u32)>,
+    pub changed: Option<(i64, u32)>,
+    pub created: Option<(i64, u32)>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileKind {
     Regular,
@@ -93,9 +104,31 @@ pub trait FoldFrontend<S: BlockSource>: Sized {
     /// Metadata for a node.
     fn metadata(&mut self, node: NodeId, cx: &mut SubstrateCtx<'_>) -> Result<Metadata>;
 
+    /// Canonical object identity, independent of a directory entry's header.
+    /// Formats whose hard links have their own headers override this; metadata
+    /// may still preserve the dates recorded on that particular name.
+    fn inode_identity(&mut self, node: NodeId, _cx: &mut SubstrateCtx<'_>) -> Result<NodeId> {
+        Ok(node)
+    }
+
+    /// Native inode number for display. Snapshot-aware frontends may use a
+    /// different opaque identity for cycle detection and cache separation.
+    fn inode_number(&mut self, node: NodeId, cx: &mut SubstrateCtx<'_>) -> Result<u64> {
+        self.inode_identity(node, cx)
+    }
+
     /// Preserve only timestamp roles actually recorded by the format.
     fn timestamps(&mut self, _node: NodeId, _cx: &mut SubstrateCtx<'_>) -> Result<FileTimes> {
         Ok(FileTimes::default())
+    }
+
+    /// Preserve offset-less civil times separately from UTC timestamps.
+    fn local_timestamps(
+        &mut self,
+        _node: NodeId,
+        _cx: &mut SubstrateCtx<'_>,
+    ) -> Result<LocalFileTimes> {
+        Ok(LocalFileTimes::default())
     }
 
     /// Read up to `buf.len()` bytes of a regular file starting at `off`. Returns
@@ -115,5 +148,20 @@ pub trait FoldFrontend<S: BlockSource>: Sized {
     fn read_link(&mut self, node: NodeId, cx: &mut SubstrateCtx<'_>) -> Result<Option<Vec<u8>>> {
         let _ = (node, cx);
         Ok(None)
+    }
+
+    /// Display text decoded using the format's native character set. The raw
+    /// target remains available through `read_link`; decoding must be lossless.
+    fn read_link_text(
+        &mut self,
+        node: NodeId,
+        cx: &mut SubstrateCtx<'_>,
+    ) -> Result<Option<String>> {
+        self.read_link(node, cx)?
+            .map(|bytes| {
+                String::from_utf8(bytes)
+                    .map_err(|_| crate::FoldError::Unsupported("non-UTF-8 link target"))
+            })
+            .transpose()
     }
 }

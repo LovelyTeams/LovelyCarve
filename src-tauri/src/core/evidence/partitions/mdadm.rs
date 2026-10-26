@@ -66,6 +66,7 @@ impl PartParser for MdadmParser {
                     length_lba: ctx.size / ctx.sector_size as u64,
                     label: Some("MDADM RAID member".into()),
                     unique_guid: None,
+                    amiga_geometry: None,
                 }]));
             }
         }
