@@ -208,13 +208,15 @@ CLI 安装包的 `skills/lovelycarve-cli/` 是供编码代理使用的技能，�
 
 | 文件 | 内容 |
 | --- | --- |
-| `SKILL.md` | 工作流与约定：查找命令、常驻会话、分页与字段投影、节点 ID、JSONL 与读取完整性 |
+| `SKILL.md` | 任务入口：按目标跳转流程、启动会话、限制输出与检查完整性 |
 | `references/commands.md` | 全部命令按集合列出的用法（位置参数、选项、可选值）与说明，由命令目录生成 |
-| `references/workflows.md` | 多步任务：路径与节点 ID、时区、内容搜索、RAID/LVM、加密卷、文件恢复、插件、哈希与导出等 |
+| `references/workflows.md` | 按需读取的操作流程：案件与会话、分页与 JSONL、文件定位与解析、内容搜索、RAID/LVM、解锁、恢复、插件、时间线及哈希导出 |
 
 `references/commands.md` 由 `just update-cli-skill` 从命令目录生成，与该版本的命令一致；命令、选项或说明变化后
 内容过期时后端测试失败。手写页面中的命令行与 JSONL 请求同样由测试对照命令目录解析。
 连续查询优先 `sessions open exam --image <检材路径>`，后续加 `--session exam -q`，结束后 `sessions close exam`。
+`schema` 描述顶层请求字段，不展开嵌套 JSON 类型；恢复选项、时间线查询等内部字段仍按各自契约命名，不能统一改成 camelCase。
+JSONL 中单条请求失败不会阻止后续请求；分阶段检查准备和扫描结果，再提交依赖它们的分析或导出请求。
 代理的用法错误只显示错误、建议命令和一行帮助提示；人类终端保留完整帮助。
 
 列表型 `list` / `search` 命令支持 `--fields name,id,kind,size,timestamps.modified`，仅投影条目字段；

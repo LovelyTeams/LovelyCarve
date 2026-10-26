@@ -1,69 +1,58 @@
 ---
 name: lovelycarve-cli
-description: Analyze forensic evidence with lovelycarve-cli (disk images such as E01, VMDK, VHD/VHDX, QCOW and raw, folders, archives, AD1, iOS backups, optical discs, physical disks and RAID members) by browsing and reading files, hashing, searching contents, recovering deleted files, unlocking BitLocker, LUKS, VeraCrypt and FileVault volumes, building timelines, running plugins and exporting, with small structured results and persistent sessions. Use whenever a task involves lovelycarve-cli or command-line LovelyCarve analysis.
+description: Use lovelycarve-cli for forensic analysis of disk images, folders, archives, backups, physical disks and RAID members. Browse, search, recover, unlock, hash and export evidence through persistent sessions and structured results. Applies to CLI analysis, not LovelyCarve source development or desktop UI operation.
 ---
 
 # lovelycarve-cli
 
-`lovelycarve-cli [global options] <collection>… <verb> [subject] [options]` runs one command. Results go to stdout as JSON, compact when run by an agent or redirected, or as raw bytes for content commands; progress, prompts and errors go to stderr. The exit status is 0 on success, 1 on failure (a lookup that found nothing and a failed background task included), 2 when a command finished with an incomplete result and 130 when interrupted. If `lovelycarve-cli` is not on `PATH`, use the executable at the root of the CLI package, which ships this skill in `skills/lovelycarve-cli`.
+Analyze evidence read-only with `lovelycarve-cli [global options] <collection>… <verb> [subject] [options]`. Results go to stdout as JSON (compact for agents), or raw bytes for content commands; progress and errors go to stderr. If the executable is not on `PATH`, look at the CLI package root alongside `skills/lovelycarve-cli`. In a source checkout, use `just run-cli` rather than assuming a packaged binary is installed.
 
-## Find the command
+## Choose the workflow
 
-[references/commands.md](references/commands.md) lists every command by collection with its arguments, options and description. Search it for an English keyword (`hash`, `unlock`, `carve`) or a Chinese term from the descriptions (`哈希`, `解锁`, `导出`), or read one collection's section, instead of exploring with chained `--help` calls.
+Read only the relevant sections of [workflows.md](references/workflows.md). Search [commands.md](references/commands.md) by collection or keyword (`hash` / `哈希`, `unlock` / `解锁`, `export` / `导出`) for exact commands and options; do not load the whole catalogue by default.
 
-- `lovelycarve-cli <command> --help` shows one command's option descriptions and defaults.
-- `lovelycarve-cli schema <command>` shows its JSON request: the camelCase parameter names that `--body` and JSONL use.
-- JSON-valued options (`--options`, `--query`, `--body`) take inline JSON or `@<file>`. From PowerShell, prefer a file, because PowerShell can alter quotes in arguments to native programs.
-- [references/workflows.md](references/workflows.md) covers multi-step tasks: paths and node IDs, time zones, content search, RAID and LVM, encrypted volumes, file recovery, plugins, hashes and exports, background tasks and special evidence.
+| Task | Start here |
+| --- | --- |
+| Open evidence, select a case, reuse a process | [Sessions and cases](references/workflows.md#sessions-and-cases) |
+| Find a file, read text or inspect a native format | [Find and inspect files](references/workflows.md#find-and-inspect-files), [paths and node IDs](references/workflows.md#paths-and-node-ids) |
+| Search file contents across a subtree or evidence | [Content search](references/workflows.md#content-search-and-global-search) |
+| Assemble disks or unlock a volume | [RAID and LVM](references/workflows.md#raid-lvm-and-assembled-volumes), [BitLocker](references/workflows.md#bitlocker), [other encrypted volumes](references/workflows.md#luks-veracrypt-and-filevault) |
+| Recover deleted records or carve signatures | [File recovery](references/workflows.md#file-recovery) |
+| Run analyzers or query events | [Plugin analysis](references/workflows.md#plugin-analysis), [timelines](references/workflows.md#timelines) |
+| Hash or save evidence bytes | [Hashes and exports](references/workflows.md#hashes-exports-and-read-faults) |
+| Batch requests, handle large results or wait for work | [JSONL](references/workflows.md#batch-with-jsonl), [pagination](references/workflows.md#pagination-and-projection), [background tasks](references/workflows.md#background-tasks) |
 
-## Choose evidence and case
+Use `<command> --help` for option defaults and `schema <command>` for top-level camelCase request keys. Nested JSON objects keep their own contract: recovery options and timeline queries include snake_case keys. `schema` names those types but does not expand their fields; use the workflow examples or the matching source type rather than guessing. In PowerShell, pass JSON options with `@<absolute-file-path>` to preserve quotes.
 
-`--image` (`-i`) takes a loaded image ID or an evidence path, opened on first use. Without it the CLI uses `LOVELYCARVE_IMAGE` (also read from `.env.local` or `.env` in the working directory) or the session's current image; `--case <dir>` (or `LOVELYCARVE_CASE`) opens a case first. With a case, `images open` registers the evidence and builds volume indexes in the background; without one, the indexes last only as long as the process. Content search, global search, timelines and plugin results need an open case. Do not open the same case in the desktop app and the CLI at the same time.
+## Start once, inspect, then act
 
-## Work in a session
-
-Open the evidence once and reuse it across calls:
+Use a unique session name for related calls. Replace the example paths and IDs with values from the actual evidence:
 
 ```text
-lovelycarve-cli -q sessions open exam --image "<evidence-path>"
+lovelycarve-cli -q sessions open exam --image "<absolute-evidence-path>"
 lovelycarve-cli -q --session exam images get
-lovelycarve-cli -q --session exam files list --path / --page-size 50 --fields name,id,kind,size,timestamps.modified
-lovelycarve-cli -q --session exam context set --node-id "<directory-node-id>"
-lovelycarve-cli -q sessions close exam
+lovelycarve-cli -q --session exam files list --path / --page-size 50 --fields name,id,kind,size
 ```
 
-Use a unique session name and close it when finished. A session keeps the case, the images, unlocked and assembled volumes, the current directory and background tasks; a one-shot command loses all of them when it exits. Relative host paths resolve against the directory where the session started, so pass absolute paths. `-q` suppresses progress; failures still exit nonzero.
+For an existing case, add `--case "<absolute-case-dir>"` when opening the session. Content search, global search, timelines and plugin results need a case. Evidence registration starts background indexes; wait for the required indexes before searching. Keep unlocked volumes, assembled arrays and recovery scans in the same session. Close a session you created with `sessions close exam` after its required work finishes; closing cancels remaining work. Reusing a user's session does not imply permission to close it.
 
-## Keep results small
+Paths inside evidence use `/`; `/` lists volumes. Copy returned node IDs for duplicate names, deleted entries and special streams; do not construct IDs. Relative host paths resolve against the session's starting directory, so use absolute host paths. Verify the selected image before acting: defaults may come from `LOVELYCARVE_IMAGE`, `LOVELYCARVE_CASE`, `LOVELYCARVE_SESSION` or local dotenv files.
 
-Request small pages and only the fields you need: `--fields` takes comma-separated entry paths, and dot paths keep nesting. Follow `nextCursor` with `--cursor` until it is null; never treat a truncated tool result or `truncated: true` as complete. Include `timestampsOriginal` in `--fields` to see the original times; it is absent when they are identical. Time zone provenance is reported once per response (`timestampDisplay`), and times with an unknown offset stay unconverted.
+## Bound output without losing evidence
 
-Filter a projected page with `jq` before it reaches your context. Pipe a `files list` response to:
+Start with small pages and `--fields` containing identity plus the needed fields. For directory pages, follow `nextCursor` with `--cursor` until null; other collections use `skip`/`limit` or `offset`. A page, a bounded tree walk or a tool-truncated response cannot establish that no other matches exist. Prefer native filtering and decoded `files text get` or a format-specific parser over dumping raw bytes.
 
-```sh
-jq -c '.items |= map(select(.kind == "file" and .size > 1048576))'
-```
+## Check the outcome
 
-This keeps the pagination and time zone metadata and selects files larger than 1 MiB. Filtering applies only to the current page: keep following `nextCursor` even when a filtered page is empty. Prefer native filters such as `files list --query` to reduce backend output too. For JSONL, select the intended response's `.result` first.
+| Exit | Meaning |
+| --- | --- |
+| `0` | Command succeeded; inspect task outcomes and result coverage too |
+| `1` | Failure, including not found or a failed background task |
+| `2` | Incomplete result; inspect the reported fields and warnings |
+| `130` | Interrupted |
 
-## Paths and node IDs
-
-Paths inside the evidence use `/`. `/` lists the partitions and volumes, and a path without a leading `/` is relative to the current directory. Use the node IDs that commands return (`--node-id`, `--parent-id`, `--root-id`) for duplicate names, including duplicate volume names, deleted entries and special streams; a path's first segment may also be a root node ID, as in `/part:0/Windows`. IDs belong to the opened evidence and session: do not construct them. `context set --node-id` changes the working directory unambiguously. See [references/workflows.md](references/workflows.md#paths-and-node-ids) for name rules.
-
-## Batch with JSONL
-
-`lovelycarve-cli -q session` reads one request per line on stdin and writes one response per line, `{"id":…,"result":…}` or `{"id":…,"error":…}`, in completion order; match them by `id`. `args` uses the camelCase names from `schema`. Optional top-level keys sit beside `args`: `fields` (a comma-separated string), `timezone`, `output` (writes a large result to a new host file), `force` and `dryRun`. `{"$ref":"<id>#/<JSON pointer>"}` reuses a value from an earlier successful response. `--jobs N` lets queries overlap; commands that change state still run in order. Use `files text get` for decoded text in JSONL; `files read` returns hex there.
-
-```json
-{"id":"text","command":"files text get","args":{"path":"<image-path>"}}
-```
-
-## Integrity and safety
-
-- Evidence is opened read-only. Commands that write host files (`--destination`, JSONL `output`) refuse existing paths: choose a new path.
-- Destructive commands need `--force` (JSONL `"force": true`) when nobody can confirm; check them with `--dry-run` first. Without a terminal, a missing required value fails instead of prompting.
-- Keep secrets off the command line: pass `--password @<file>` or give the option without a value and pipe the secret on stdin. `--dry-run` redacts secrets.
-- When `readFaultsDetected` is true, `badRegions` is nonempty or `syntheticBytes` is nonzero, a hash or export includes synthesized zeroes: do not claim those bytes or digests authenticate the source.
-- Exit status 2 means the result on stdout is incomplete: zero-filled source bytes, files a search could not read or a result cap it hit, an export that stopped early or lost files. stderr names the fields, and a JSONL response carries the same `warning` beside `result`. Report it as incomplete, never as a full result.
-- A failed raw read may already have written partial stdout: discard it. Check full logical lengths, byte counts and the exit status before using any output.
-- Unsupported or incomplete evidence is not empty evidence: report the error instead of concluding nothing is there. Format capabilities and limits are documented per format under `docs/formats/` in the LovelyCarve repository (https://github.com/LovelyTeams/LovelyCarve).
+- JSONL reports each request through `result`, `error` and optional `warning`; a failed request does not stop subsequent lines. Inspect the relevant responses before submitting dependent work.
+- `readFaultsDetected`, nonempty `badRegions` or nonzero `syntheticBytes` mean synthesized zeroes contributed to a hash or export. Report the audit; those digests do not authenticate the missing source bytes. Check logical lengths and byte counts. A failed raw read may already have emitted partial stdout: discard it.
+- Preserve timestamp role and provenance. Display conversion does not establish an evidence time zone; unknown-offset times stay unconverted. See [time zones](references/workflows.md#file-times-and-time-zones).
+- Host exports refuse existing paths; choose a new destination. For an authorized destructive command, inspect `--dry-run` before using `--force` (JSONL `"force": true`). Keep secrets out of arguments with `--password @<file>` or stdin; do not echo credential files or JSONL requests containing secrets.
+- Report the evidence and file/volume identity, examined scope, findings, relevant times, output paths and any incomplete or unsupported coverage. Missing source bytes, failed indexes and unsupported formats cannot establish absence of evidence. Format limits live under `docs/formats/` in the [LovelyCarve repository](https://github.com/LovelyTeams/LovelyCarve).
