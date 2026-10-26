@@ -236,6 +236,13 @@ pub(super) fn children_for_image_with_options(
                 )?
                 .root_children()
             }
+            PartitionKind::Bcachefs => {
+                crate::core::filesystem::volumes::rom_images::open_bcachefs_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
             PartitionKind::Amiga => {
                 crate::core::filesystem::volumes::rom_images::open_amiga_source(
                     image,

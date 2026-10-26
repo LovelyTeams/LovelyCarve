@@ -1,0 +1,82 @@
+[package]
+name = "rust-fs-core"
+version = "0.3.14"
+edition = "2021"
+autobins = false
+autoexamples = false
+license = "MIT"
+description = "Pure-Rust block-device framework — BlockRead/BlockDevice traits + FileDevice + CallbackDevice + LRU cache. Foundation crate for the rust-fs-* drivers and rust-img-* containers."
+repository = "https://github.com/antimatter-studios/rust-fs-core"
+
+# The fuzz crate is its own package, on its own toolchain, and is not
+# part of this one. Without this, `cargo package` and `cargo publish`
+# try to include it and fail on the nightly-only dependency.
+exclude = ["fuzz"]
+
+# docs.rs documents the `cli` module too; it is public API behind a feature.
+# The name this crate had on crates.io up to 0.2.24: the semver check's
+# baseline until a release exists under the new one (scripts/semver-check.sh).
+[package.metadata.semver]
+former-name = "am-fs-core"
+
+[package.metadata.docs.rs]
+features = ["cli"]
+
+[lib]
+# Published as `rust-fs-core` (the repository's name; `am-fs-core` up to
+# 0.2.24); consumers `use fs_core::...`.
+name = "fs_core"
+crate-type = ["rlib"]
+
+[features]
+# The command-line plumbing the family's tools share (`fs_core::cli`):
+# dispatch on argv[0], `--version`, `doctor`, the JSON output and the
+# structured error, and the man pages and shell completions packaging needs.
+# A crate turns it on only under its own `cli` feature, next to the
+# `required-features` on its binary, so its static library -- and this
+# one's -- gains nothing from it. clap, clap_complete and clap_mangen are
+# MIT/Apache-2.0. It also carries the transfer the tools' `export` shares
+# (`fs_core::cli::transfer`), whose SHA-256 is sha2's (MIT/Apache-2.0).
+cli = ["dep:clap", "dep:clap_complete", "dep:clap_mangen", "dep:sha2"]
+
+[dependencies]
+# All of them only under `cli`. For clap's three, no derive: the builder
+# API keeps each tool's command a function the man pages and completions
+# can be made from, and the feature set is the one every tool in the family
+# was already built with, so moving the plumbing here changes no tool's
+# --help.
+clap = { version = "4.5", optional = true, default-features = false, features = ["std", "help", "usage", "error-context", "suggestions"] }
+clap_complete = { version = "4.5", optional = true }
+clap_mangen = { version = "0.2", optional = true }
+# The digest every transfer reports. The same release line the drivers
+# already use, so a tool linking both builds it once.
+sha2 = { version = "0.10", optional = true }
+
+[dev-dependencies]
+# YAML parser for tests/ci_acknowledges_the_privilege_gap.rs, which reads
+# .github/workflows/ci.yml and refuses if a job runs the test suite
+# without acknowledging that tests/device_node_size.rs cannot build a
+# loop device unprivileged. The first version of that guard scanned the
+# file's lines; a quoted key, a flow mapping and a `run: |` block whose
+# CONTENTS look like a job key are all ordinary YAML that a line scan
+# reads wrongly, and a guard that misreads its input is a guard that
+# reports protection it is not providing. Pure Rust, YAML 1.2 (so
+# GitHub's `on:` key stays the string `on` rather than folding into a
+# boolean), MIT/Apache-2.0, and no C to transpile -- unlike serde_yaml,
+# which is deprecated and wraps unsafe-libyaml. Dev-only: it never
+# reaches a consumer of this crate. Same version as the siblings, so the
+# four copies of this guard family stay one answer rather than two.
+saphyr = "0.0.12"
+toml = "1.1.5"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+panic = "unwind"
+
+[profile.dev]
+opt-level = 1
+panic = "unwind"
+
+[workspace]

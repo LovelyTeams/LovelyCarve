@@ -111,6 +111,12 @@ pub trait FoldFrontend<S: BlockSource>: Sized {
         Ok(node)
     }
 
+    /// Native inode number for display. Snapshot-aware frontends may use a
+    /// different opaque identity for cycle detection and cache separation.
+    fn inode_number(&mut self, node: NodeId, cx: &mut SubstrateCtx<'_>) -> Result<u64> {
+        self.inode_identity(node, cx)
+    }
+
     /// Preserve only timestamp roles actually recorded by the format.
     fn timestamps(&mut self, _node: NodeId, _cx: &mut SubstrateCtx<'_>) -> Result<FileTimes> {
         Ok(FileTimes::default())

@@ -172,3 +172,15 @@ mkfs / Linux kernel / fsck 验证见 [ORIGIN.md](gfs2-reader/ORIGIN.md)。
 原生 Linux 五组镜像包含实际 GC 搬移和两个保留 snapshot，完整来源、哈希及限制见
 [ORIGIN.md](nilfs2-reader/ORIGIN.md) 与 [NILFS2](../../docs/formats/NILFS2.md)。
 原创 Rust 为 AGPL-3.0-only；没有引入 C 文件系统库、挂载依赖或外部提取器。
+
+## bcachefs
+
+先检索现有 Rust 库，选择 MIT `rust-fs-bcachefs` 0.4.2，固定提交
+`53eb12044f3f6dab498c11c2044748f4591cb4e5`，以及其固定的 MIT
+`rust-fs-core` 0.3.14 / `19449ad4926d09447d19440c6312ba544b50bf4b`。
+生产只启用 Rust 只读接口，证据不实现写接口；原生工具只用于外部测试。
+本地补丁保留子卷 / snapshot 身份，限制范围读取的分配和缓存，验证桶边界和父链；
+独立适配器保留原生 inode、时间角色和源读取错误。来源和全部补丁见
+[读取器](rust-fs-bcachefs/ORIGIN.md)、[框架](rust-fs-core/ORIGIN.md) 与
+[适配器 / 验证](bcachefs-reader/ORIGIN.md)；能力边界见
+[BCACHEFS](../../docs/formats/BCACHEFS.md)。

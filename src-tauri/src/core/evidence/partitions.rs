@@ -19,6 +19,7 @@
 
 pub mod amiga;
 pub mod apm;
+pub mod bcachefs;
 pub mod befs;
 pub mod bsd;
 pub mod btrfs;
@@ -153,6 +154,7 @@ pub enum PartitionKind {
     Gfs2,
     Ocfs2,
     Nilfs2,
+    Bcachefs,
     Ubifs,
     Lvm,
     Bitlocker,
@@ -377,6 +379,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Gfs2
         | PartitionKind::Ocfs2
         | PartitionKind::Nilfs2
+        | PartitionKind::Bcachefs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

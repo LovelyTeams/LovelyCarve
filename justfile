@@ -166,6 +166,9 @@ fmt:
     cd src-tauri/vendor/gfs2-reader && cargo fmt
     cd src-tauri/vendor/ocfs2-reader && cargo fmt
     cd src-tauri/vendor/nilfs2-reader && cargo fmt
+    cd src-tauri/vendor/bcachefs-reader && cargo fmt
+    cd src-tauri/vendor/rust-fs-bcachefs && cargo fmt
+    cd src-tauri/vendor/rust-fs-core && cargo fmt
     cd src-tauri/vendor/amiga-ffs && cargo fmt
     cd src-tauri/vendor/amiga-rdb && cargo fmt
     cd src-tauri/vendor/lamfold-erofs && cargo fmt
@@ -195,9 +198,9 @@ update-rust:
 # Compile-check the standalone CLI backend and the desktop build, without QR/OCR.
 [group("backend")]
 [working-directory("src-tauri")]
-check:
-    {{ cargo_env }}cargo check --no-default-features
-    {{ cargo_env }}cargo check --no-default-features --features desktop
+check *args:
+    {{ cargo_env }}cargo check --no-default-features {{ args }}
+    {{ cargo_env }}cargo check --no-default-features --features desktop {{ args }}
 
 # Lint the standalone CLI backend and the desktop build, without QR/OCR.
 [group("backend")]
@@ -506,6 +509,30 @@ test-ocfs2-native:
 [group("readers")]
 test-nilfs2 *args:
     cargo test --manifest-path src-tauri/vendor/nilfs2-reader/Cargo.toml --lib {{ args }}
+
+[group("readers")]
+test-bcachefs *args:
+    cargo test --manifest-path src-tauri/vendor/rust-fs-bcachefs/Cargo.toml --lib {{ args }}
+
+[group("readers")]
+clippy-bcachefs:
+    cargo clippy --manifest-path src-tauri/vendor/rust-fs-bcachefs/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+test-bcachefs-reader *args:
+    cargo test --manifest-path src-tauri/vendor/bcachefs-reader/Cargo.toml --lib {{ args }}
+
+[group("readers")]
+generate-bcachefs-fixtures:
+    {{ python }} scripts/bcachefs-fixtures.py
+
+[group("readers")]
+clippy-bcachefs-reader:
+    cargo clippy --manifest-path src-tauri/vendor/bcachefs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+test-bcachefs-native:
+    cargo test --manifest-path src-tauri/vendor/bcachefs-reader/Cargo.toml --lib native_linux -- --ignored --nocapture
 
 [group("readers")]
 clippy-nilfs2:

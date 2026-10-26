@@ -423,6 +423,13 @@ JSONL 可直接引用检测结果及卷 ID，避免抄写 ID 和转义卷名：
 但脚本应复制 `files list` 返回的 `items[].id`，或使用上面的普通路径导航。
 
 
+### bcachefs 子卷与 snapshot
+
+bcachefs 复用现有 `files list/read/hash/export` 等命令。按列出的目录项进入
+原生子卷和 snapshot，不需要构造 inode ID；相同 inode 编号在不同视图中
+仍指向各自的内容。保留返回的节点 ID，路径会同时保持来源分区和视图入口。
+单设备、压缩、日志重放与验证边界见 [bcachefs](formats/BCACHEFS.md)。
+
 ### NILFS2 当前检查点
 
 NILFS2 复用 `files list/read/hash/export` 等现有命令，显示最新提交的目录树。

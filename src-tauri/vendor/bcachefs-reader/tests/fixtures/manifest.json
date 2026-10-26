@@ -1,0 +1,6 @@
+{
+  "license": "CC0-1.0",
+  "size": 8388608,
+  "sha256": "1ea522ba5ea7c6474e3521324392a621f254e015cc5dc4271b16ee092e8334d5",
+  "generation": "scripts/bcachefs-fixtures.py"
+}

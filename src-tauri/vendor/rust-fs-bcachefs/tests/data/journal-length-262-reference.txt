@@ -1,0 +1,59 @@
+Black-box observations, 2026-10-17, issue #262.
+Reference /srv/ref-trixie/.ref-version: 1.39.7 fuse.
+No reference source was read.
+Input: CI run 38741040375, fixtures artifact 11977252185.
+Artifact sha256:9f112ded30a1894c5d83948fb2c525ff075afaff74acc3e82b63deb98493007e
+fixtures.tar.gz sha256:27b15c9dffa3240b2ec3f3f3a84221c255c210b157f5888d2285f4e358025869
+aged-unclean.img sha256:4dfa272fc2b4ac35033a3b372afe4629ae2bb2262cda7c03544e4e0c0d348322
+seed.img sha256:92c17cd8e104d0e1d30dcd5c64864da6a078c9de62f0511781edc038d4d75769
+Both hashes matched the copies on the guest's disk before shutdown.
+
+Invocation in the harness guest:
+timeout --kill-after=5 60 chroot /srv/ref-trixie /usr/local/sbin/bcachefs fsck -n /tmp/issue262/CASE.img
+The shared mount hung; the same installed reference executable ran over
+an identical image transferred by scp to the guest's disk instead.
+
+Changes to the jset at byte 2490368, sequence 206, sector 4864:
+control: unchanged.
+seed: exact whole-image seed 1659479, bytes [34,48) become ff.
+version: only bytes [34,36) become ff; recompute CRC32C over [16,3136).
+size: only bytes [40,44) become ff; original checksum retained.
+seed-valid-size: only bytes [34,40) become ff; original checksum retained.
+magic: bytes [16,24) become zero and [40,44) become ff.
+All offsets above are relative to the jset.
+Our original differential emitter labels seed re-stamped, but its restamper
+returns without changing the checksum when the length exceeds its buffer.
+The baseline emitter reports seed clean, while the reference reports exit 9.
+After the fix the same emitter reports:
+found check:journal corrupt: jset_past_bucket_end: journal entry seq 206 too big (34359738416 bytes, 131072 available)
+All eight unchanged fixture controls remain clean in both emitter runs.
+
+Exact verdict lines follow; ordinary progress lines are omitted.
+CASE control STATUS 0
+journal read done, replaying entries 304-306
+clean shutdown complete, journal seq 4404
+CASE seed STATUS 9
+invalid journal entry, version=(unknown version) (65473.39) seq=206: seed.img sector 4864 seq 206: journal entry too big (34359738416 bytes), fixing
+journal read done, replaying entries 304-306
+errors this recovery:
+  jset_past_bucket_end  1
+clean shutdown complete, journal seq 4405
+seed.img: errors fixed
+error shutting down filesystem: shutdown_with_errors_fixed
+CASE version STATUS 0
+journal read done, replaying entries 304-306
+clean shutdown complete, journal seq 4404
+CASE size STATUS 9
+invalid journal entry, version=per_dev_fragmentation_lru (1.39) seq=206: size.img sector 4864 seq 206: journal entry too big (34359738416 bytes), fixing
+journal read done, replaying entries 304-306
+errors this recovery:
+  jset_past_bucket_end  1
+clean shutdown complete, journal seq 4405
+size.img: errors fixed
+error shutting down filesystem: shutdown_with_errors_fixed
+CASE seed-valid-size STATUS 0
+journal read done, replaying entries 304-306
+clean shutdown complete, journal seq 4404
+CASE magic STATUS 0
+journal read done, replaying entries 304-306
+clean shutdown complete, journal seq 4404

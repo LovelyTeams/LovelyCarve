@@ -1667,3 +1667,18 @@ kernel C source or C filesystem library is compiled or linked for this reader.
 Independent invented fixtures and generators are CC0-1.0; native mkfs/kernel/GC
 inputs stay in an external cache. Sources, hashes and verification limits are
 recorded in [ORIGIN.md](src-tauri/vendor/nilfs2-reader/ORIGIN.md).
+
+## bcachefs reader and block framework
+
+`src-tauri/vendor/rust-fs-bcachefs` is the MIT-licensed 0.4.2 reader from
+antimatter-studios at `53eb12044f3f6dab498c11c2044748f4591cb4e5`.
+Its pinned MIT `rust-fs-core` 0.3.14 sibling is retained at
+`19449ad4926d09447d19440c6312ba544b50bf4b`. Original licenses, codec attribution
+and the reader's clean-room provenance are retained in their vendor folders.
+`bcachefs-reader` is an original AGPL-3.0-only evidence adapter; invented
+fixtures/generators are CC0-1.0. Production reads link no native filesystem
+library and enable neither the upstream C ABI nor writing. Native oracle
+images and native tools are not redistributed. Local changes and evidence:
+[reader origin](src-tauri/vendor/rust-fs-bcachefs/ORIGIN.md),
+[framework origin](src-tauri/vendor/rust-fs-core/ORIGIN.md),
+[adapter and fixtures](src-tauri/vendor/bcachefs-reader/ORIGIN.md).

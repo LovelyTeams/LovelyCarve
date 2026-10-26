@@ -199,6 +199,14 @@ lovelycarve-cli -q --session partial images open "<first-segment-path>" --raw-re
 lovelycarve-cli -q --session partial images get
 ```
 
+### bcachefs
+
+Use ordinary file commands and enter native subvolume/snapshot directory
+entries by their returned node IDs. Equal native inode numbers in different
+snapshots retain separate bytes; do not turn those numbers into file IDs or
+deduplicate the views. Only single-device volumes are supported. Bounds,
+codecs and native-oracle coverage are documented in `docs/formats/BCACHEFS.md`.
+
 ### NILFS2
 
 NILFS2 uses the ordinary file commands against its latest committed tree.

@@ -12,6 +12,13 @@ use crate::core::evidence::image::{find_partition, DiskImage, Partition};
 use crate::core::filesystem::fs_dispatch::build_stat;
 use crate::core::filesystem::tree::fs_tree::{FsNode, FsStat, Mactb, NodeKind};
 
+#[path = "bcachefs.rs"]
+mod bcachefs;
+pub use bcachefs::{open_bcachefs_source, parse_bcachefs_id, BcachefsVolume};
+#[cfg(test)]
+#[path = "bcachefs_tests.rs"]
+mod bcachefs_tests;
+
 #[cfg(test)]
 #[path = "amiga_tests.rs"]
 mod amiga_tests;
@@ -388,7 +395,7 @@ impl<F: FoldFrontend<RomImageSource>> RomVolume<F> {
                     0
                 },
                 deleted: false,
-                inode: Some(inode),
+                inode: Some(reader.inode_number(entry.node, &mut context)?),
                 timestamps: {
                     let times = reader.timestamps(entry.node, &mut context)?;
                     let local = reader.local_timestamps(entry.node, &mut context)?;
@@ -493,7 +500,7 @@ impl<F: FoldFrontend<RomImageSource>> RomVolume<F> {
             };
             let (node, _) = Self::resolve(&mut reader, path, &mut context)?;
             (
-                reader.inode_identity(node, &mut context)?,
+                reader.inode_number(node, &mut context)?,
                 reader.metadata(node, &mut context)?,
             )
         };

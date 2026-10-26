@@ -149,6 +149,57 @@ def main():
             assert rows[2]["result"]["data"] == flash_body[flash_offset:flash_offset + 121].hex()
             assert rows[3]["result"]["sha256"] == hashlib.sha256(flash_body).hexdigest()
 
+        # bcachefs: native snapshot namespace, checksummed reflinks and >5 GiB holes.
+        bcachefs_source = zlib.decompress((flash_vendor / "bcachefs-reader/tests/fixtures/invented.zlib").read_bytes())
+        bcachefs_path = root / "invented.bcachefs"
+        bcachefs_path.write_bytes(bcachefs_source)
+        bcachefs_export = root / "bcachefs-export.bin"
+        bcachefs_node = "bcachefs:part:0:" + b"/checksum.bin".hex()
+        _, rows = session([
+            {"id": "open", "command": "images open", "args": {"path": str(bcachefs_path)}},
+            {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+            {"id": "live", "command": "files read", "args": {"nodeId": "bcachefs:part:0:" + b"/sv/version.txt".hex(), "length": 4}},
+            {"id": "past", "command": "files read", "args": {"nodeId": "bcachefs:part:0:" + b"/snap/version.txt".hex(), "length": 4}},
+            {"id": "sparse", "command": "files read", "args": {"nodeId": "bcachefs:part:0:" + b"/sparse.bin".hex(), "offset": 5 * 1024**3, "length": 5}},
+            {"id": "hash", "command": "files hash", "args": {"nodeId": bcachefs_node, "algos": ["sha256"]}},
+            {"id": "export", "command": "files export", "args": {"nodeId": bcachefs_node, "destination": str(bcachefs_export)}},
+        ])
+        assert all("result" in row for row in rows), rows
+        assert rows[0]["result"]["partitions"][0]["kind"] == "bcachefs"
+        assert len(rows[1]["result"]["items"]) == 10
+        assert rows[2]["result"]["data"] == b"LIVE".hex()
+        assert rows[3]["result"]["data"] == b"PAST".hex()
+        assert rows[4]["result"]["data"] == b"TAIL!".hex()
+        bcachefs_body = bytes((index * 17 + 3) % 256 for index in range(513))
+        assert rows[5]["result"]["sha256"] == hashlib.sha256(bcachefs_body).hexdigest()
+        assert bcachefs_export.read_bytes() == bcachefs_body
+        assert bcachefs_path.read_bytes() == bcachefs_source
+        bcachefs_backup = bytearray(bcachefs_source)
+        bcachefs_backup[4096] ^= 1
+        bcachefs_backup_path = root / "backup-only.bcachefs"
+        bcachefs_backup_path.write_bytes(bcachefs_backup)
+        _, rows = session([
+            {"id": "open", "command": "images open", "args": {"path": str(bcachefs_backup_path)}},
+            {"id": "hash", "command": "files hash", "args": {"nodeId": bcachefs_node, "algos": ["sha256"]}},
+        ])
+        assert all("result" in row for row in rows), rows
+        assert rows[0]["result"]["partitions"][0]["kind"] == "bcachefs"
+        assert rows[1]["result"]["sha256"] == hashlib.sha256(bcachefs_body).hexdigest()
+        if os.environ.get("BCACHEFS_ORACLE_DIR"):
+            native_root = Path(os.environ["BCACHEFS_ORACLE_DIR"])
+            for native_name in ["512-none", "4096-lz4", "4096-zstd", "4096-gzip"]:
+                native_manifest = json.loads((native_root / (native_name + ".json")).read_text(encoding="utf8"))
+                expected = {entry["path"]: entry for entry in native_manifest["entries"]}
+                _, rows = session([
+                    {"id": "open", "command": "images open", "args": {"path": str(native_root / (native_name + ".img"))}},
+                    {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
+                    {"id": "hash", "command": "files hash", "args": {"nodeId": "bcachefs:part:0:" + b"/compressible.bin".hex(), "algos": ["sha256"]}},
+                ])
+                assert all("result" in row for row in rows), rows
+                assert rows[0]["result"]["partitions"][0]["kind"] == "bcachefs"
+                assert any(item["name"] == "中文\\证据.txt" for item in rows[1]["result"]["items"])
+                assert rows[2]["result"]["sha256"] == expected["compressible.bin"]["sha256"]
+
         # NILFS2: current checkpoint, sparse/direct B-tree reads and absent native atime.
         nilfs2_source = zlib.decompress((flash_vendor / "nilfs2-reader/tests/fixtures/invented-1024.zlib").read_bytes())
         nilfs2_path = root / "invented.nilfs2"

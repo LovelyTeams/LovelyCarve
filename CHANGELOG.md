@@ -9,6 +9,8 @@
 
 ### Added
 
+- 新增纯 Rust bcachefs 单设备只读读取：复用 MIT 读取器，支持子卷 / snapshot、硬链接、reflink、压缩、校验、稀疏 / unwritten 和纳秒时间；接入浏览、范围读、哈希、导出、目录快照及 CLI，保持不同历史视图中的同号 inode 内容独立。
+
 - 新增纯 Rust NILFS2 2.0 只读读取：支持双超级块、日志 CRC、DAT / 分配位图、direct / B-tree、硬链接、稀疏文件及纳秒时间；接入当前提交视图的浏览、范围读、哈希、导出、快照和 CLI，独立读取器另支持保留的历史检查点；dirty / recovery 状态明确拒绝。
 
 - 新增纯 Rust OCFS2 0.90 只读读取：支持分配链与位图、内联 / 索引目录、extent 和多叶 refcount、稀疏 / unwritten、reflink 与扩展属性；接入浏览、范围读、哈希、导出、快照及 CLI；活动 slot 和需要日志恢复的卷明确拒绝。
