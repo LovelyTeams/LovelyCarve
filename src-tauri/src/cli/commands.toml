@@ -27,6 +27,14 @@
 # command suggestions and the skill's command reference; `examples` appear in
 # its help.
 #
+# A result never passes for more than it is. `missing` turns a backend `None`
+# into a `notFound` error for lookups whose subject must exist (the build
+# requires an operation returning `Option`). `incomplete` names the result
+# fields (dot paths) that, when `true`, nonzero or nonempty, mean the command
+# finished with an incomplete result: zero-filled source bytes, unreadable
+# files, an export or search that stopped early. The CLI keeps the result,
+# says which fields are set and exits with status 2.
+#
 # Parameter names are the backend's camelCase argument names: they are the
 # keys of --body, of `schema` output and of JSONL session requests. Options are
 # their kebab-case form unless [options] renames them.
@@ -194,6 +202,7 @@ summary = "查看一条分析记录"
 category = "read"
 args = ["recordId"]
 concurrent = true
+missing = "找不到分析记录"
 [command.params.recordId]
 description = "记录 ID（analysis records list 返回的 recordId）"
 
@@ -205,6 +214,7 @@ description = "运行的目标、输入文件、选项、画像事实、告警�
 category = "read"
 args = ["runId"]
 concurrent = true
+missing = "找不到分析运行"
 [command.params.runId]
 description = "分析运行 ID"
 
@@ -363,6 +373,7 @@ summary = "导出恢复出的文件"
 description = "把雕刻结果和文件系统记录写到 options.destination，并生成 JSONL 恢复报告。"
 category = "action"
 args = ["scanId"]
+incomplete = ["failed", "syntheticArtifacts", "reportError", "files.failed", "files.readFaults.readFaultsDetected"]
 keywords = ["recover", "save recovered files"]
 [command.params.options]
 description = "导出选项 JSON，例如 {\"destination\":\"D:/out\",\"artifact_ids\":null,\"file_ids\":[\"0\"]}"
@@ -811,6 +822,7 @@ category = "action"
 args = ["pattern", "path"]
 target = "nodeId"
 concurrent = true
+incomplete = ["summary.readErrors", "summary.truncated"]
 keywords = ["grep", "keyword", "regex", "content search"]
 examples = [
     { command = "lovelycarve-cli --case D:\\cases\\demo --image D:\\evidence\\disk.E01 files search password / --ignore-case", description = "在全部已索引卷中搜索关键词" },
@@ -1003,6 +1015,7 @@ category = "read"
 args = ["path"]
 target = "nodeId"
 concurrent = true
+incomplete = ["readFaultsDetected", "syntheticBytes", "truncated"]
 defaults = { algos = ["md5", "sha1", "sha256", "sm3"] }
 keywords = ["md5", "sha1", "sha256", "sm3", "checksum", "digest"]
 examples = [
@@ -1044,6 +1057,7 @@ category = "action"
 args = ["path"]
 target = "nodeId"
 no_clobber = ["destination"]
+incomplete = ["readFaultsDetected", "syntheticBytes"]
 keywords = ["export file", "copy out", "save file", "extract"]
 
 [[command]]
@@ -1055,6 +1069,7 @@ args = ["path"]
 target = "nodeId"
 no_clobber = ["destination"]
 generated = ["taskId"]
+incomplete = ["readFaultsDetected", "syntheticBytes", "truncated", "cancelled"]
 defaults = { mode = "tree" }
 [command.params.mode]
 type = "enum"
@@ -1386,6 +1401,7 @@ category = "action"
 args = ["imageId"]
 generated = ["taskId"]
 no_clobber = ["destination"]
+incomplete = ["readFaultsDetected", "syntheticBytes"]
 keywords = ["dd", "convert", "raw image"]
 [command.params.mode]
 type = "enum"
@@ -1402,6 +1418,7 @@ summary = "计算检材哈希"
 category = "action"
 args = ["imageId"]
 generated = ["taskId"]
+incomplete = ["readFaultsDetected", "syntheticBytes"]
 defaults = { algorithms = ["md5", "sha1", "sha256", "sm3"] }
 keywords = ["md5", "sha1", "sha256", "sm3", "verify", "checksum"]
 [command.params.algorithms]
@@ -1565,6 +1582,7 @@ ipc = "filedb_resolve_meta_addr"
 summary = "按元数据地址查找文件节点"
 category = "read"
 concurrent = true
+missing = "卷索引中没有该元数据地址的文件"
 [command.params.query]
 type = "json"
 description = "查询 JSON（MetaAddr 四元组，路径寻址时含 full_path）"
@@ -1809,6 +1827,7 @@ summary = "运行全局搜索"
 description = "在检材全部已索引卷中搜索关键词或正则，完成后返回摘要；命中保存在案件中。需要打开案件。"
 category = "create"
 generated = ["searchId"]
+incomplete = ["readErrors", "truncated"]
 keywords = ["keyword search", "regex", "grep", "find text"]
 [command.params.options]
 description = "搜索选项 JSON，例如 {\"keys\":[\"password\"],\"codepages\":[\"UTF-8\"]}"
@@ -1928,25 +1947,28 @@ summary = "查看任务"
 category = "read"
 args = ["taskId"]
 concurrent = true
+missing = "找不到任务"
 [command.params.taskId]
 description = "任务 ID（tasks list 返回的 id）"
 
 [[command]]
 path = "tasks cancel"
-ipc = "task_cancel"
+native = "tasks-cancel"
 summary = "取消任务"
-description = "内置任务给它的 id，插件任务给 plugin:<ID>。取消是协作式的：任务在下一个检查点停下。"
+description = "内置任务给它的 id，插件任务给 plugin:<ID>。取消是协作式的：内置任务在下一个检查点停下（status 为 cancelling），插件任务立即停止（cancelled）。找不到或已经结束的任务报错。"
 category = "action"
 args = ["taskId"]
 concurrent = true
 [command.params.taskId]
+type = "string"
+required = true
 description = "任务 ID（tasks list 返回的 id）"
 
 [[command]]
 path = "tasks wait"
 native = "tasks-wait"
 summary = "等待后台任务与插件任务结束"
-description = "只表示任务不再活动；结果请读取对应的状态或结果命令。"
+description = "等到没有活动任务，返回期间结束的后台任务及其结局；任一后台任务失败或结束时没有报告结果时以 tasksFailed 失败。后台任务指命令返回后仍在运行的任务，以及检材登记后自动开始的索引与插件任务。"
 category = "action"
 
 # ── timeline ────────────────────────────────────────────────────────────────
@@ -2043,3 +2065,7 @@ by = "files usn-journal records list"
 [[superseded]]
 ipc = "carve_latest_scan"
 by = "carve scans list"
+
+[[superseded]]
+ipc = "task_cancel"
+by = "tasks cancel"

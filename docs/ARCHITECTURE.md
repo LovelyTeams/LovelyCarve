@@ -381,7 +381,8 @@ E01、VMDK、VHD/VHDX、PMFX 等容错后端遇到源读取错误时，先沿绝
 
 CLI `files read` 在单次、JSONL 与常驻会话中都拒绝把有读故障的字节流报告为成功：返回
 `readFaultsDetected` 错误，结构化错误的 details 保留本次操作的审计报告。单次 stdout 可能已经写出字节，
-消费者必须检查退出码并丢弃失败输出。文件摘要继续容错返回并附带同一报告；桌面不将含补零的摘要写入不带审计字段的缓存／存档。
+消费者必须检查退出码并丢弃失败输出。文件摘要继续容错返回并附带同一报告，CLI 把含补零的摘要和导出判为不完整结果
+（照常输出，标准错误警告并以 2 退出）；桌面不将含补零的摘要写入不带审计字段的缓存／存档。
 
 重组的 md 阵列与跨 PV 逻辑卷由组合读取器经 `from_assembled` 注册，成员的补零区间通过
 `SectorSource::read_traced` 逐层上传：`WholeDiskMember`、`LinearLvSource` 与各级别读取器
@@ -1049,10 +1050,13 @@ CLI 构建不启用 `desktop` 特性，不链接 Tauri、WebView 或 GUI 工具�
 
 命令目录由构建脚本生成：`build/cli_catalog.rs` 读取 `lib.rs` 的 `generate_handler!` 注册表和各命令的
 真实函数签名，与 `src/cli/commands.toml` 中逐条审阅的命令定义合并，生成按 API 参数名调用命令函数的
-`cli_dispatch.rs` 和命令目录 `cli_catalog.json`（命令、参数、用法、类别、并发、敏感字段、隐藏标记与示例）。构建时检查：每个注册命令映射到恰好一个 `<集合>… <动词>` 命令，或在
+`cli_dispatch.rs` 和命令目录 `cli_catalog.json`（命令、参数、用法、类别、并发、敏感字段、隐藏标记与示例，以及结果契约：
+后端返回 `()` 的命令记为 `unitResult`，只有它们以 `✓` 代替输出；`missing` 把返回 `Option` 的查找的 `None` 变成
+`notFound`；`incomplete` 列出结果不完整的字段）。构建时检查：每个注册命令映射到恰好一个 `<集合>… <动词>` 命令，或在
 `[[superseded]]` 中注明替代命令；动词在固定动词表内，不使用同义词（info/status→get、remove→delete、
 ls/query→list 等）；命令路径唯一且不是其他命令的前缀；`list`/`count` 不带位置参数；选项名与短选项
-不与 CLI 保留选项冲突；示例以程序名开头；命令签名中出现不支持的注入参数时构建失败。手写命令（`files list/get/read/search`、
+不与 CLI 保留选项冲突；示例以程序名开头；`missing` 只用于返回 `Option` 的后端命令，原始字节输出不带 `incomplete`；
+命令签名中出现不支持的注入参数时构建失败。手写命令（`files list/get/read/search`、
 `files strings list`、`context`、`tasks wait`、`system get`、`schema` 等）也在该文件中声明参数，
 `schema`、帮助、补全、JSONL 会话和代理技能的命令参考读取同一份目录。`hide_command = true` 的命令
 （如 `sessions serve`）可以运行，但不进入帮助、补全、拼写建议和命令参考。
@@ -1067,7 +1071,11 @@ dry-run、删除确认、默认值与生成 ID、提问、`--image` 作用域与
 上下文更新）、`native` / `browsing` / `grep` / `strings`（手写命令；`native::offline` 处理无需后端的发现命令）、
 `output` / `prompt` / `progress` / `interactive`（标准输出与标准错误、clack 式提问与进度、终端与代理检测）、
 `schema`、`complete`、`dotenv`、`session`、
-`shell`、`resident`（命名常驻会话的启动、连接、私有传输及串行执行）和 `runtime`（进程入口、后端启动与关闭、中断处理）。结构化结果以 `cli::Json` 保存后端序列化的 JSON
+`shell`、`resident`（命名常驻会话的启动、连接、私有传输及串行执行）、`background`（后台任务的结局）、
+`incomplete`（按目录判断结果是否完整）和 `runtime`（进程入口、后端启动与关闭、中断处理）。
+`background` 跟随任务中心的 `task-entry` 事件：命令返回后仍在运行的任务、命令成功而它启动的任务却失败，以及
+`automatic` 任务算作后台工作；`tasks wait`、一次性命令和 shell／JSONL 退出前的等待、`sessions close` 报告它们的结局，
+失败或没有报告结果即以 `tasksFailed` 失败。只跟随在本进程中见到运行的任务，插件任务的 `offline` 是过渡状态。结构化结果以 `cli::Json` 保存后端序列化的 JSON
 文本，打印和会话响应保留字段顺序，需要读取时才解析为值；后端命令的错误带上 IPC 名称，渲染为「后端错误」块。
 可执行文件旁的 `plugins/` 同样参与插件发现，`lc-plugin-host` 也从可执行文件旁查找。
 `resident` 的后台进程持有一个 `AppState` 和可变 `Context`；普通命令通过 `--session` 或

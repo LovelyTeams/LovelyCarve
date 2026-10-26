@@ -163,7 +163,7 @@ lovelycarve-cli --session exam analysis records list --run-id "<run-id>" --recor
 
 ## Hashes, exports and read faults
 
-- `files hash` tolerates source read faults: it still returns digests and exits 0, with `readFaultsDetected`, `syntheticBytes` and `badRegions` describing the zero-filled source ranges. Check `readFaultsDetected` before relying on a digest; `truncated: false` does not mean there were no faults.
+- `files hash` tolerates source read faults: it still returns digests, with `readFaultsDetected`, `syntheticBytes` and `badRegions` describing the zero-filled source ranges, but exits 2 and warns on stderr (a JSONL response adds `warning`). `images hash`, `images export`, `files export` and `files directories export` do the same. Check the exit status or `readFaultsDetected` before relying on a digest; `truncated: false` does not mean there were no faults.
 - `files read` writes raw bytes and fails with exit status 1 on a read fault, after possibly writing partial output: discard it. Use `files export` to keep tolerant data together with its audit.
 - `images hash` and `images export` read the whole evidence; `--read-fault-policy strict` fails at the first bad sector instead of zero-filling and reporting. `images export --mode unlockedPartitions` writes unlocked partitions as plaintext in place. `images bad-regions list` lists the synthesized source ranges.
 - `files streams list/get/export` also exposes BeFS, GFS2 and OCFS2 inline and external attributes. GFS2 / OCFS2 names retain native namespace prefixes such as `user.`. Copy returned stream names exactly; attribute type codes remain available in the Rust reader, and a stream name is not a host path.
@@ -179,9 +179,9 @@ lovelycarve-cli --session exam images bad-regions list
 
 ## Background tasks
 
-- A one-shot command waits for the background tasks it started before exiting; in a session or JSONL process they keep running.
-- `tasks list` shows built-in tasks and plugin tasks (IDs `plugin:<id>`), `tasks get <id>` one task and `tasks cancel <id>` cancels it at its next checkpoint.
-- `tasks wait` returns when no task is active. It does not report success: read the matching status or result command afterwards.
+- Background tasks are the ones still running when their command returns (`carve scans create`, `indexes create`, plugin tasks) and the ones a case starts when evidence joins it (volume indexes, platform detection, plugin tasks). A one-shot command waits for them before exiting and exits 1 after its output when one of them failed; in a session or JSONL process they keep running.
+- `tasks list` shows built-in tasks and plugin tasks (IDs `plugin:<id>`), `tasks get <id>` one task and `tasks cancel <id>` cancels a running task at its next checkpoint. An unknown ID fails with `notFound`, and cancelling an ended task fails too. A one-shot process sees only its own built-in tasks: inspect and cancel background tasks in a session.
+- `tasks wait` returns when no task is active, with `{"tasks":[…]}`: the background tasks that ended since the last report, each with its `status`. It fails with `tasksFailed` when one of them failed or ended without reporting how; cancelled tasks are listed but do not fail it. Read scan status, search hits or analysis records with their own commands.
 - Task and search IDs (`--task-id`, `--search-id`) are generated when omitted; pass your own to cancel a task by name.
 
 ## Special evidence and mounts

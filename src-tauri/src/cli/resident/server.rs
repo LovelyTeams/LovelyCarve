@@ -104,9 +104,12 @@ pub(in crate::cli) async fn serve(
             }
         };
         if request.command == "@close" {
+            // Closing cancels what still runs; a failure nobody waited for
+            // is still reported, after the session is gone.
+            let report = exec.background.take().verdict(Some("会话已关闭"));
             crate::cli::runtime::shutdown(&exec.state).await;
             drop(registration);
-            protocol::send(&mut stream, Ok(Output::Written))?;
+            protocol::send(&mut stream, report.map(|_| Output::Written))?;
             return Ok(0);
         }
         let result = if request.command == "@info" {
@@ -201,6 +204,7 @@ async fn execute(
         return Err(CliError::invalid("不能在常驻会话内嵌套会话管理命令"));
     }
     command.validate(&values)?;
+    // The client judges completeness from the same catalogue.
     exec.execute(
         context,
         Request {
@@ -215,6 +219,7 @@ async fn execute(
         },
     )
     .await
+    .map(|executed| executed.output)
 }
 
 async fn stream_file(

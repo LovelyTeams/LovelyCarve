@@ -15,6 +15,7 @@ use tokio::{sync::mpsc, task::JoinSet};
 use super::{
     catalog,
     context::{Context, Exec, Request as Run},
+    incomplete::{Incomplete, EXIT_INCOMPLETE},
     output, CliError, Json, Output,
 };
 
@@ -92,12 +93,45 @@ fn pending_ref(value: &Value, pending: &HashSet<String>) -> bool {
     }
 }
 
+/// A successful response: the result, and why it is incomplete when it is.
+pub(super) struct Answer {
+    json: Json,
+    incomplete: Option<Incomplete>,
+}
+
+impl From<Json> for Answer {
+    fn from(json: Json) -> Self {
+        Self {
+            json,
+            incomplete: None,
+        }
+    }
+}
+
+impl From<Value> for Answer {
+    fn from(value: Value) -> Self {
+        Json::from(value).into()
+    }
+}
+
 /// One response line: `{"id":…,"result":…}` with the result's JSON text as
-/// the command wrote it, or `{"id":…,"error":…}`.
-fn response(id: Option<&str>, result: &Result<Json, CliError>) -> Result<String, CliError> {
+/// the command wrote it, followed by `"warning":…` when the result is
+/// incomplete, or `{"id":…,"error":…}`.
+fn response(id: Option<&str>, result: &Result<Answer, CliError>) -> Result<String, CliError> {
     let id = serde_json::to_string(&id)?;
     Ok(match result {
-        Ok(json) => format!("{{\"id\":{id},\"result\":{}}}", json.text()),
+        Ok(Answer {
+            json,
+            incomplete: None,
+        }) => format!("{{\"id\":{id},\"result\":{}}}", json.text()),
+        Ok(Answer {
+            json,
+            incomplete: Some(incomplete),
+        }) => format!(
+            "{{\"id\":{id},\"result\":{},\"warning\":{}}}",
+            json.text(),
+            serde_json::to_string(incomplete)?
+        ),
         Err(error) => format!(
             "{{\"id\":{id},\"error\":{}}}",
             serde_json::to_string(error)?
@@ -115,7 +149,7 @@ fn print(line: &str) -> Result<(), CliError> {
 struct Completion {
     id: String,
     context: Context,
-    result: Result<Json, CliError>,
+    result: Result<Answer, CliError>,
 }
 
 #[derive(Default)]
@@ -123,24 +157,37 @@ struct Responses {
     results: HashMap<String, Json>,
     pending: HashSet<String>,
     failed: bool,
+    incomplete: bool,
 }
 
 impl Responses {
     fn publish(
         &mut self,
         id: Option<String>,
-        result: Result<Json, CliError>,
+        result: Result<Answer, CliError>,
     ) -> Result<(), CliError> {
         print(&response(id.as_deref(), &result)?)?;
         match result {
-            Ok(json) => {
+            Ok(answer) => {
+                self.incomplete |= answer.incomplete.is_some();
                 if let Some(id) = id {
-                    self.results.insert(id, json);
+                    self.results.insert(id, answer.json);
                 }
             }
             Err(_) => self.failed = true,
         }
         Ok(())
+    }
+
+    /// 1 when a request failed, else 2 when a result was incomplete.
+    fn status(&self) -> i32 {
+        if self.failed {
+            1
+        } else if self.incomplete {
+            EXIT_INCOMPLETE
+        } else {
+            0
+        }
     }
 
     async fn finish_one(&mut self, tasks: &mut JoinSet<Completion>) -> Result<(), CliError> {
@@ -155,7 +202,7 @@ impl Responses {
 
 fn launch<F>(tasks: &mut JoinSet<Completion>, context: Context, request: Request, execute: F)
 where
-    F: Fn(&mut Context, Request) -> Result<Json, CliError> + Send + 'static,
+    F: Fn(&mut Context, Request) -> Result<Answer, CliError> + Send + 'static,
 {
     tasks.spawn_blocking(move || {
         let mut context = context;
@@ -173,14 +220,16 @@ where
     });
 }
 
+/// Runs every request and returns the session's status (see
+/// [`Responses::status`]).
 async fn run_lines<F>(
     context: &mut Context,
     mut lines: mpsc::Receiver<Result<String, CliError>>,
     jobs: usize,
     execute: F,
-) -> Result<bool, CliError>
+) -> Result<i32, CliError>
 where
-    F: Fn(&mut Context, Request) -> Result<Json, CliError> + Clone + Send + 'static,
+    F: Fn(&mut Context, Request) -> Result<Answer, CliError> + Clone + Send + 'static,
 {
     let mut responses = Responses::default();
     let mut request_ids = HashSet::new();
@@ -266,7 +315,7 @@ where
     while !tasks.is_empty() {
         responses.finish_one(&mut tasks).await?;
     }
-    Ok(responses.failed)
+    Ok(responses.status())
 }
 
 fn save(path: &Path, output: Output) -> Result<(), CliError> {
@@ -299,7 +348,7 @@ pub(super) async fn json_lines(
     exec: Exec,
     context: &mut Context,
     jobs: usize,
-) -> Result<bool, CliError> {
+) -> Result<i32, CliError> {
     // Blocking stdin runs outside the coordinator: results flush even while the
     // client keeps its pipe open and waits before submitting another request.
     let (sender, receiver) = mpsc::channel(jobs);
@@ -344,7 +393,7 @@ pub(super) async fn json_lines(
         command.validate(&request.args)?;
         let mut values = request.args;
         super::projection::agent_page_size(command, &mut values, super::interactive::is_agentic());
-        let output = runtime.block_on(exec.execute(
+        let executed = runtime.block_on(exec.execute(
             context,
             Run {
                 timezone: request.timezone,
@@ -357,13 +406,17 @@ pub(super) async fn json_lines(
                 text: false,
             },
         ))?;
-        match request.output {
+        let json = match request.output {
             Some(path) => {
-                save(Path::new(&path), output)?;
-                Ok(json!({"output": path}).into())
+                save(Path::new(&path), executed.output)?;
+                json!({"output": path}).into()
             }
-            None => Ok(output.into_json()),
-        }
+            None => executed.output.into_json(),
+        };
+        Ok(Answer {
+            json,
+            incomplete: executed.incomplete,
+        })
     })
     .await
 }

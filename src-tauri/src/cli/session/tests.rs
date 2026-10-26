@@ -27,7 +27,7 @@ fn responses_carry_results_in_the_order_the_command_wrote_them() {
         id: &'static str,
         bytes: u64,
     }
-    let result = Json::serialize(&Image { id: "x", bytes: 3 });
+    let result = Json::serialize(&Image { id: "x", bytes: 3 }).map(Answer::from);
     assert_eq!(
         response(Some("open"), &result).unwrap(),
         r#"{"id":"open","result":{"id":"x","bytes":3}}"#
@@ -36,6 +36,51 @@ fn responses_carry_results_in_the_order_the_command_wrote_them() {
         response(None, &Err(CliError::invalid("bad"))).unwrap(),
         r#"{"id":null,"error":{"code":"invalidInput","message":"bad"}}"#
     );
+    // An incomplete result keeps its data and says why it is incomplete.
+    let hash = catalog::catalog().unwrap().find_path("files hash").unwrap();
+    let output = Output::json(json!({"sha256": "x", "readFaultsDetected": true}));
+    let answer = Answer {
+        incomplete: crate::cli::incomplete::check(hash, &output),
+        json: output.into_json(),
+    };
+    assert_eq!(
+        response(Some("digest"), &Ok(answer)).unwrap(),
+        r#"{"id":"digest","result":{"readFaultsDetected":true,"sha256":"x"},"warning":{"code":"incompleteResult","message":"结果不完整：readFaultsDetected = true。结果仍会返回，但不能当作完整结果使用。","details":{"fields":{"readFaultsDetected":true}}}}"#
+    );
+}
+
+#[tokio::test]
+async fn the_status_reports_failures_before_incomplete_results() {
+    let hash = catalog::catalog().unwrap().find_path("files hash").unwrap();
+    for (requests, expected) in [
+        (vec!["clean"], 0),
+        (vec!["clean", "partial"], EXIT_INCOMPLETE),
+        (vec!["partial", "bad"], 1),
+    ] {
+        let (sender, receiver) = mpsc::channel(4);
+        for id in &requests {
+            sender
+                .send(Ok(json!({"id": id, "command": "files hash"}).to_string()))
+                .await
+                .unwrap();
+        }
+        drop(sender);
+        let status = run_lines(&mut Context::default(), receiver, 1, move |_, request| {
+            let faults = match request.id.as_str() {
+                "clean" => false,
+                "partial" => true,
+                _ => return Err(CliError::invalid("failed")),
+            };
+            let output = Output::json(json!({"readFaultsDetected": faults}));
+            Ok(Answer {
+                incomplete: crate::cli::incomplete::check(hash, &output),
+                json: output.into_json(),
+            })
+        })
+        .await
+        .unwrap();
+        assert_eq!(status, expected, "{requests:?}");
+    }
 }
 
 #[test]
@@ -137,10 +182,10 @@ async fn queries_overlap_flush_with_open_input_and_barriers_preserve_context() {
             image_id: Some("initial".into()),
             ..Context::default()
         };
-        let failed = run_lines(&mut context, receiver, 2, executor)
+        let status = run_lines(&mut context, receiver, 2, executor)
             .await
             .unwrap();
-        assert!(!failed);
+        assert_eq!(status, 0);
         assert_eq!(context.image_id.as_deref(), Some("next"));
     });
     sender
@@ -190,7 +235,7 @@ async fn failed_dependencies_duplicates_and_panics_do_not_stop_other_queries() {
     drop(sender);
     let executed = Arc::new(Mutex::new(Vec::new()));
     let observed = executed.clone();
-    assert!(
+    assert_eq!(
         run_lines(&mut Context::default(), receiver, 2, move |_, request| {
             observed.lock().unwrap().push(request.id.clone());
             match request.id.as_str() {
@@ -201,7 +246,8 @@ async fn failed_dependencies_duplicates_and_panics_do_not_stop_other_queries() {
             }
         })
         .await
-        .unwrap()
+        .unwrap(),
+        1
     );
     let mut executed = executed.lock().unwrap().clone();
     executed.sort();
@@ -224,8 +270,8 @@ async fn sequential_default_and_parallel_limit_bound_active_queries() {
         let active = Arc::new(AtomicUsize::new(0));
         let maximum = Arc::new(AtomicUsize::new(0));
         let observed = maximum.clone();
-        assert!(
-            !run_lines(&mut Context::default(), receiver, jobs, move |_, _| {
+        assert_eq!(
+            run_lines(&mut Context::default(), receiver, jobs, move |_, _| {
                 let count = active.fetch_add(1, Ordering::SeqCst) + 1;
                 observed.fetch_max(count, Ordering::SeqCst);
                 std::thread::sleep(Duration::from_millis(20));
@@ -233,7 +279,8 @@ async fn sequential_default_and_parallel_limit_bound_active_queries() {
                 Ok(Value::Null.into())
             })
             .await
-            .unwrap()
+            .unwrap(),
+            0
         );
         assert!(maximum.load(Ordering::SeqCst) <= jobs);
     }

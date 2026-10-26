@@ -242,7 +242,9 @@ JSONL 将投影放在请求顶层的可选 `fields` 字符串中，而不是 `ar
   不在 CI 中时才着色（`NO_COLOR` 关闭、`FORCE_COLOR` 强制）。内容类命令（`files read`、
   `files zip members get`、`carve artifacts get` 等）输出原始字节，可直接重定向到文件；
   `--text` 按 UTF-8 解码，无效字节替换为 U+FFFD。
-- 没有返回值的命令标准输出为空；在终端中标准错误显示一行 `✓ 完成` 之类的确认。
+- 没有返回值的命令（后端只报告成功）标准输出为空；在终端中标准错误显示一行 `✓ 完成` 之类的确认。
+  查询结果为空时标准输出写 `null`，不显示 `✓`；按 ID 查找且对象必须存在的命令（`tasks get`、
+  `analysis records get`、`analysis runs get`、`indexes files lookup`）找不到时以 `notFound` 失败。
 - 横幅 `lovelycarve-cli · v<版本>`、进度、交互提问、提示和错误都写标准错误。横幅只在标准错误是终端时
   出现；普通命令默认输出命令名、后端阶段、该阶段已完成/总量和耗时，stdout 重定向后仍然可见。
   stderr 为彩色终端时原地刷新动画；管道和日志中输出普通文本，长命令每 5 秒报告一次仍在执行。
@@ -267,9 +269,20 @@ JSONL 将投影放在请求顶层的可选 `fields` 字符串中，而不是 `ar
   ```
 - 错误显示为带边框的块：命令行、参数与本程序的错误为 `┌ 错误` 加说明；后端命令失败为 `┌ 后端错误`、
   `│ [错误代码] 说明`，以及一行 `IPC <后端命令>`。设置 `DEBUG=1` 时附带后端详情。
-- 退出码：`0` 成功；`1` 失败（命令行错误、后端错误、未确认的删除、会话中任一请求失败）；
-  `130` 被 Ctrl+C / Ctrl+Break / SIGINT / SIGTERM 中断，或在提问时按 Esc / Ctrl+C 取消
-  （提问处显示 `■`，不再另外显示错误块）。
+- 后台任务指命令返回后仍在运行的任务（`carve scans create`、`indexes create`、插件任务等），以及检材登记到案件后
+  自动开始的卷索引、平台识别与插件任务；命令自己等待完成的任务由命令结果报告。一次性命令输出结果后等待后台任务，
+  任一失败或结束时没有报告结果时显示 `tasksFailed` 错误块，列出每个失败的任务，并以 1 退出；取消不算失败。
+  无案件检材的临时会话索引只是缓存，不参与判断。
+- 结果不完整时以 `2` 退出：结果照常写到标准输出，标准错误随后显示 `┌ 警告` 块，列出说明不完整的字段
+  （`--events` 时改为 `cli-warning` 事件，`--quiet` 不关闭）。包括读取时以零填充坏扇区的哈希与导出
+  （`readFaultsDetected`、`syntheticBytes`：`images hash`、`images export`、`files hash`、`files export`、
+  `files directories export`）、提前停止的目录导出（`truncated`、`cancelled`）、有文件读不出或命中达到上限的搜索
+  （`searches create` 的 `readErrors`、`truncated`，`files search` 的 `summary.readErrors`、`summary.truncated`），
+  以及有失败文件、合成字节或报告写入失败的恢复导出（`carve scans export`）。`--limit` 等调用方给出的上限不算不完整。
+  每个命令算数的字段由命令目录 `src-tauri/src/cli/commands.toml` 的 `incomplete` 声明。
+- 退出码：`0` 成功且结果完整；`1` 失败（命令行错误、后端错误、找不到对象、未确认或拒绝的删除、后台任务失败、
+  会话中任一请求失败）；`2` 命令完成但结果不完整；`130` 被 Ctrl+C / Ctrl+Break / SIGINT / SIGTERM 中断，
+  或在提问时按 Esc / Ctrl+C 取消（提问处显示 `■`，不再另外显示错误块）。
 
 ## 参数
 
@@ -294,13 +307,14 @@ JSONL 将投影放在请求顶层的可选 `fields` 字符串中，而不是 `ar
   密码等敏感字段显示为 `<redacted>`。
 - 删除类命令（`delete` 动词，以及 `images tags update`、`mounts delete` 等会丢弃数据的命令）
   在终端中先确认；没有人可以确认时必须加 `--force`（`-f`），否则显示问题和 `Aborted.` 并以 1 退出。
+  在终端中回答「否」同样显示 `Aborted.` 并以 1 退出：命令没有执行。
 - 写主机文件的命令（`--destination`）要求目标不存在，避免覆盖已有文件。
   文件创建／发布时也检查重名，不依赖命令启动前的路径检查。单文件、命名数据流和 ZIP 导出先在目标目录暂存，写入失败时清理暂存文件，成功后才发布；失败的单文件导出可以直接重试。
   `files directories export --mode tree` 要求目标目录不存在（已有空目录也拒绝），可自动创建父目录；不会合并到已有目录。取消或部分失败时保留已完成的文件，失败文件不保留半成品；重试请选择新的目标目录。
   `--mode zip` 同样要求目标不存在；返回的 `skippedCount` / `truncated` 表示归档可能只含部分条目。
 - `taskId`、`searchId` 省略时自动生成；需要用 `tasks cancel <taskId>` 取消时可显式指定。
 
-`files hash` 采用容错并报告策略：摘要结果包含 `readFaultsDetected`、`syntheticBytes`、`badRegions`，字段名在桌面 IPC 中为 snake_case。检测到源坏区时仍返回摘要并以 0 退出；该摘要包含合成补零，不代表完整原文件，`truncated=false` 也不表示没有读故障。脚本应检查 `readFaultsDetected` 后再采信摘要。报告只覆盖本次操作命中的源盘绝对区间，不是文件逻辑偏移映射；格式定义的稀疏零区不算读故障。桌面会提示含补零的哈希，不将其回填或保存为普通摘要。
+`files hash` 采用容错并报告策略：摘要结果包含 `readFaultsDetected`、`syntheticBytes`、`badRegions`，字段名在桌面 IPC 中为 snake_case。检测到源坏区时仍返回摘要，但以 2 退出并在标准错误显示警告；该摘要包含合成补零，不代表完整原文件，`truncated=false` 也不表示没有读故障。脚本应检查退出码或 `readFaultsDetected` 后再采信摘要。报告只覆盖本次操作命中的源盘绝对区间，不是文件逻辑偏移映射；格式定义的稀疏零区不算读故障。桌面会提示含补零的哈希，不将其回填或保存为普通摘要。
 
 `files read` 的字节流不能附带审计字段，因此发现读故障时返回 `readFaultsDetected` 错误并以 1 退出（包括 `--quiet` / `--text`）；stdout 可能已含部分或补零数据，必须丢弃。JSONL 返回 `error`，错误的 `details` 包含上述三个审计字段，不返回成功的字节结果；常驻会话在流的最终状态中返回同一错误，客户端以 1 退出。JSONL 的 `output` 不会为失败读取发布文件。需要保留容错数据及审计报告时使用 `files export`。
 
@@ -507,7 +521,8 @@ Remove-Item Env:LOVELYCARVE_SESSION
 会话名为 1–64 个 ASCII 字母、数字、下划线或连字符。连接信息与日志位于用户数据目录的 `cli-sessions/`，
 使用文件锁防止同名进程冲突；服务仅监听本机回环地址，以私有随机凭据认证，状态输出不包含凭据。
 测试可用 `LOVELYCARVE_SESSION_DIR` 隔离目录。`sessions close` 取消后台任务、释放案件、检材和插件后退出，
-长期不用的会话应显式关闭。
+长期不用的会话应显式关闭。关闭前已经失败、但还没有被 `tasks wait` 报告的后台任务在关闭后以 `tasksFailed` 报告，
+命令以 1 退出。
 
 ## 交互 shell
 
@@ -554,7 +569,8 @@ Get-Content .\workflow.jsonl | lovelycarve-cli --case "D:\cases\demo" session --
 `dryRun`。接受路径的命令既可以传 `path`，也可以传节点 ID。
 
 - 每条响应是一行 `{"id":"…","result":…}` 或 `{"id":"…","error":{"code":"…","message":"…"}}`，
-  `details` 仅在后端提供详情时出现，写出后立即 flush。失效的 `assembled://` 引用返回 `notFound`，说明应在组装所在会话
+  `details` 仅在后端提供详情时出现，写出后立即 flush。结果不完整（见[输出与退出码](#输出与退出码)）时成功响应在
+  `result` 后附带 `"warning":{"code":"incompleteResult","message":"…","details":{"fields":{…}}}`。失效的 `assembled://` 引用返回 `notFound`，说明应在组装所在会话
   通过 `images list` 获取 image ID、再 `context use <imageId>`，并给出会话已退出时重新加载成员盘与检测的恢复步骤。
   它不是主机文件路径，不会再作为 Windows 文件名打开。能解析出字符串 ID 的无效请求保留该 ID，
   无法解析的行使用 `"id":null`。`result` 保留后端命令原始的 JSON 字段。
@@ -567,10 +583,13 @@ Get-Content .\workflow.jsonl | lovelycarve-cli --case "D:\cases\demo" session --
   切换案件、`context set` 和 `tasks wait` 因此保持顺序；并发查询使用派发时的当前检材和目录。
   并发响应按完成顺序输出，客户端必须按 `id` 关联。
 - 删除类命令需要在请求中加 `"force": true`，否则返回 `aborted` 错误。
-- `tasks wait` 等待进程内任务与插件任务结束，只表示任务不再活动；结果应读取对应的状态或结果命令。
+- `tasks wait` 等待进程内任务与插件任务结束，返回 `{"tasks":[…]}`：上次报告以来结束的后台任务及其
+  `id`、`kind`（插件任务为 `plugin`）、`subject`、`status` 与 `error`。任一后台任务失败或结束时没有报告结果时
+  返回 `tasksFailed` 错误，`details` 为同一报告；只在请求自己的结果中报告的任务不会重复出现。
 - 旧版命令名（如 `image_load`、`fs_read_range`、`ls`、`wait`）返回错误，并在消息中给出现在的命令。
 - 单行上限 16 MiB，单会话最多 10000 个请求。标准输入保持打开时也持续返回已完成的结果；
-  EOF 后先等待所有已派发请求，再等待后台任务。单条失败不影响后续请求，但会话以 1 退出。
+  EOF 后先等待所有已派发请求，再等待后台任务，后台任务失败时在标准错误报告 `tasksFailed`。
+  单条失败不影响后续请求，但会话以 1 退出；没有失败而有不完整结果时以 2 退出。
 - 全局 `--events` 把进度与生命周期事件以 `{"event":"…","payload":…}` 行写到标准错误；
   标准输出只有响应，没有横幅、进度或提示。
 
@@ -603,8 +622,8 @@ lovelycarve-cli --image "D:\evidence\disk.E01" session --jobs 4
 
 ## 生命周期与边界
 
-未指定常驻会话时，单条命令启动后端、执行命令、等待它启动的后台任务结束后退出；无案件检材的临时卷索引会被取消，
-因为退出时本来就会丢弃。退出前取消剩余任务、关闭案件、停止插件并删除预览临时文件。
+未指定常驻会话时，单条命令启动后端、执行命令、等待它启动的后台任务结束后退出，后台任务失败时以 1 退出；
+无案件检材的临时卷索引会被取消，因为退出时本来就会丢弃。退出前取消剩余任务、关闭案件、停止插件并删除预览临时文件。
 Ctrl+C / Ctrl+Break 取消任务、释放案件与挂载后以 130 退出；无法取消的阻塞读取最多再等 10 秒。
 
 挂载、SMB 共享和媒体预览临时文件只在进程存活期间有效，应在常驻会话、`shell` 或 `session` 中使用，
@@ -821,6 +840,6 @@ lovelycarve-cli analysis runs get <runId>
 
 检材级分析器不需要 `--system-id`，文件级分析器给 `--node-id` 与 `--file-name`；省略的选项取默认值。同一（分析器、检材、目标）最多一个未结束的任务，重复创建返回已有任务。插件任务不能暂停：`plugins tasks cancel` 结束执行，`plugins tasks restart` 从头再跑，成功后新结果替换旧结果。
 
-`tasks list` 与桌面任务中心列出同一份任务：插件任务（id 为 `plugin:<任务 id>`，带完整任务行）与内置任务（带种类、对象、阶段、进度、计数与结局），`--image-id` 只列一份检材的任务。`tasks get <id>` 查看一条，`tasks cancel <id>` 取消内置任务或插件任务。全局搜索与时间线构建的记录来自案件，其余内置任务只列出本进程运行过的。
+`tasks list` 与桌面任务中心列出同一份任务：插件任务（id 为 `plugin:<任务 id>`，带完整任务行）与内置任务（带种类、对象、阶段、进度、计数与结局），`--image-id` 只列一份检材的任务。`tasks get <id>` 查看一条，找不到时以 `notFound` 失败。`tasks cancel <id>` 取消运行中的内置任务或插件任务，返回 `{"id","status"}`：`cancelling` 表示内置任务在下一个检查点停下，`cancelled` 表示插件任务已停止；找不到或已经结束的任务报错。全局搜索与时间线构建的记录来自案件，其余内置任务只列出本进程运行过的，因此一次性命令看不到其他进程的内置任务，查看或取消后台任务应在常驻会话中进行。
 
 `analysis tree get` 按检材 → 分类 → 分析器运行 → 记录类型返回已发布的结果及其 `runId`。`analysis records list` 必须传 `--run-id` 与 `--record-type`，可用 `--keyword` 检索标题与文本类列、`--sort <列 id 或 title>` 与 `--descending` 排序；同一次分页或导出固定 runId，新任务完成时不会切换。`analysis runs get` 给出运行的输入文件、选项、画像事实、告警与读不出而以零填充的源字节。旧版本插件写下的结果在树中带 `legacy: true`，读取时加 `--legacy`。删除插件任务只删除该任务发布的运行结果。

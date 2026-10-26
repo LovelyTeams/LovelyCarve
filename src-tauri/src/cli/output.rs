@@ -6,7 +6,9 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use super::{help, interactive, CliError, Json, Origin, Output};
+use super::{
+    catalog::Command, help, incomplete::Incomplete, interactive, CliError, Json, Origin, Output,
+};
 
 /// Larger JSON is printed without highlighting.
 const MAX_HIGHLIGHTED_JSON: usize = 50_000;
@@ -345,19 +347,21 @@ pub fn plain_json(json: &Json) -> String {
     pretty(&json.text(), false)
 }
 
-/// Print a result. Structured data is JSON; a command that returned nothing
-/// leaves stdout empty and, at a terminal, confirms on stderr; raw content
-/// goes to stdout unchanged (or decoded as UTF-8 with `--text`).
+/// Print a result. Structured data is JSON, `null` included: a lookup that
+/// found nothing says so on stdout. Only a command that has no result leaves
+/// stdout empty and, at a terminal, confirms on stderr; raw content goes to
+/// stdout unchanged (or decoded as UTF-8 with `--text`).
 pub fn print_output(
     output: Output,
-    success_label: &str,
+    command: &Command,
     quiet: bool,
     text: bool,
 ) -> Result<(), CliError> {
     match output {
-        Output::Json(json) if json.is_null() => {
+        Output::Json(json) if json.is_null() && command.unit_result => {
             if !quiet && std::io::stderr().is_terminal() {
-                eprintln!("{} {success_label}", paint(Role::Success, "✓"));
+                let (_, done) = command.category.labels();
+                eprintln!("{} {done}", paint(Role::Success, "✓"));
             }
         }
         Output::Json(json) => {
@@ -389,19 +393,19 @@ pub enum Content<'a> {
 /// The framed error block: a blank line, `┌ Title`, the message, optional
 /// muted details after a blank gutter line, `└`.
 pub fn error_block(title: &str, content: Content<'_>, details: Option<&str>) -> String {
+    framed(Role::Error, title, content, details)
+}
+
+fn framed(role: Role, title: &str, content: Content<'_>, details: Option<&str>) -> String {
     let width = crossterm::terminal::size()
         .map(|(columns, _)| usize::from(columns))
         .unwrap_or(80)
         .saturating_sub(2)
         .max(20);
-    let bar = paint(Role::Error, "│");
+    let bar = paint(role, "│");
     let mut lines = vec![
         String::new(),
-        format!(
-            "{} {}",
-            paint(Role::Error, "┌"),
-            paint(Role::Error, &bold(title))
-        ),
+        format!("{} {}", paint(role, "┌"), paint(role, &bold(title))),
     ];
     let body = match content {
         Content::Plain(message) => help::wrap(message, width)
@@ -410,7 +414,7 @@ pub fn error_block(title: &str, content: Content<'_>, details: Option<&str>) -> 
                 if line.is_empty() {
                     line
                 } else {
-                    paint(Role::Error, &bold(&line))
+                    paint(role, &bold(&line))
                 }
             })
             .collect(),
@@ -433,7 +437,7 @@ pub fn error_block(title: &str, content: Content<'_>, details: Option<&str>) -> 
             });
         }
     }
-    lines.push(paint(Role::Error, "└"));
+    lines.push(paint(role, "└"));
     lines.join("\n")
 }
 
@@ -488,6 +492,28 @@ pub fn report_error(error: &CliError) {
     }
     open_session(false);
     eprintln!("{}", render_error(error, interactive::debug()));
+}
+
+/// The block that follows an incomplete result, in the warning colour.
+pub fn render_incomplete(incomplete: &Incomplete, debug: bool) -> String {
+    let details = if debug {
+        serde_json::to_string_pretty(&incomplete.details).ok()
+    } else {
+        None
+    };
+    framed(
+        Role::Warning,
+        "警告",
+        Content::Plain(&sanitize_lines(&incomplete.message)),
+        details.as_deref(),
+    )
+}
+
+/// Say on stderr that the result just printed is incomplete, even when
+/// quiet: like an error, it changes what the output means.
+pub fn report_incomplete(incomplete: &Incomplete) {
+    open_session(false);
+    eprintln!("{}", render_incomplete(incomplete, interactive::debug()));
 }
 
 #[cfg(test)]

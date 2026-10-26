@@ -66,10 +66,20 @@ def test_integrity(executable, base_environment):
         assert intact["md5"] == "39cb097008d17660abd0539891a672af"
         assert intact["readFaultsDetected"] is False and intact["syntheticBytes"] == 0
         assert intact["badRegions"] == []
-        digest = json.loads(run("--image", damaged, "files", "hash", path, "--algos", "md5").stdout)
+        # A digest over zero-filled bytes is still returned, but exits 2 with a
+        # warning on stderr (even with --quiet), never as a plain success.
+        partial = run("--image", damaged, "files", "hash", path, "--algos", "md5", expected=2)
+        digest = json.loads(partial.stdout)
         assert digest["md5"] == hashlib.md5(bytes(116)).hexdigest(), digest
         assert digest["readFaultsDetected"] and digest["syntheticBytes"] == 116, digest
         assert sum(region["len"] for region in digest["badRegions"]) == 116
+        warning = partial.stderr.decode("utf-8")
+        assert "readFaultsDetected = true" in warning and "syntheticBytes = 116" in warning, warning
+        observed = run("--events", "--image", damaged, "files", "hash", path, "--algos", "md5", expected=2)
+        events = [json.loads(line) for line in observed.stderr.decode("utf-8").splitlines() if line.startswith("{")]
+        warning = next(event["payload"] for event in events if event["event"] == "cli-warning")
+        assert warning["code"] == "incompleteResult", warning
+        assert warning["details"]["fields"] == {"readFaultsDetected": True, "syntheticBytes": 116}, warning
         # stdout remains raw in one-shot mode; its exit status is authoritative,
         # even with --quiet or --text. Healthy reads still succeed.
         assert len(run("--image", fixture, "files", "read", path).stdout) == 116
@@ -89,6 +99,10 @@ def test_integrity(executable, base_environment):
                        stdin="\n".join(map(json.dumps, requests)).encode())
         rows = {row["id"]: row for row in map(json.loads, response.stdout.splitlines())}
         assert rows["hash"]["result"] == rows["again"]["result"] == digest
+        for request_id in ("hash", "again"):
+            warning = rows[request_id]["warning"]
+            assert warning["code"] == "incompleteResult", rows[request_id]
+            assert warning["details"]["fields"] == {"readFaultsDetected": True, "syntheticBytes": 116}, warning
         assert not saved.exists()
         for request_id, length in (("read", 116), ("range", 8)):
             row = rows[request_id]
@@ -101,6 +115,9 @@ def test_integrity(executable, base_environment):
         # Resident byte streams route faults through the final error frame.
         run("--image", damaged, "sessions", "open", "damaged")
         try:
+            # The client judges a resident result the same way.
+            resident = run("--session", "damaged", "files", "hash", path, "--algos", "md5", expected=2)
+            assert json.loads(resident.stdout) == digest
             for options in ((), ("--offset", "4", "--length", "8")):
                 result = run("--session", "damaged", "files", "read", path, *options, expected=1)
                 assert result.stdout == b"", result.stdout

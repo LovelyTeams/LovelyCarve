@@ -2,7 +2,7 @@
 //! directory pages, content search, context and task control, and the
 //! discovery commands that need no evidence. Each one is declared in
 //! `cli/commands.toml` alongside the generated commands.
-use std::{io::Write, sync::Arc, time::Duration};
+use std::{io::Write, sync::Arc};
 
 use serde::Serialize;
 use serde_json::{json, Map, Value};
@@ -14,6 +14,7 @@ use super::{
     generated, json_output, schema, strings, CliError, Output,
 };
 use crate::{
+    app::workflows::task_center,
     core::filesystem::{
         evidence_session::EvidenceSession,
         tree::fs_tree::{FsNode, FsSession},
@@ -59,24 +60,20 @@ pub(super) fn require_source(image: &EvidenceSession) -> Result<(), CliError> {
     }
 }
 
-/// Wait until no process task and no plugin task is active.
-pub async fn wait_idle(state: &AppState) -> Result<(), CliError> {
-    loop {
-        let scheduler_busy = if state.active_case.lock().await.is_some() {
-            state
-                .scheduler
-                .list_for_image(None, true)
-                .map_err(super::internal_error)?
-                .iter()
-                .any(|task| task.status.is_active())
-        } else {
-            false
-        };
-        if state.tasks.list().is_empty() && !scheduler_busy {
-            return Ok(());
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
+/// Whether a process task or a plugin task is still active.
+pub async fn busy(state: &AppState) -> Result<bool, CliError> {
+    if !state.tasks.list().is_empty() {
+        return Ok(true);
     }
+    if state.active_case.lock().await.is_none() {
+        return Ok(false);
+    }
+    Ok(state
+        .scheduler
+        .list_for_image(None, true)
+        .map_err(super::internal_error)?
+        .iter()
+        .any(|task| task.status.is_active()))
 }
 
 pub fn capabilities() -> Result<Value, CliError> {
@@ -94,6 +91,7 @@ pub fn capabilities() -> Result<Value, CliError> {
             "fieldsOption": "--fields", "fields": "comma-separated entry paths; dot paths preserve nesting",
             "paginationFirst": true, "filesListDefaultPageSize": 500, "agentFilesListDefaultPageSize": 50},
         "commands": catalog.commands.len(),
+        "exitCodes": {"success": 0, "failure": 1, "incompleteResult": super::incomplete::EXIT_INCOMPLETE, "interrupted": 130},
         "qrcode": cfg!(feature = "qrcode-wechat"),
         "ocr": cfg!(feature = "ocr"),
         "ocrCuda": cfg!(feature = "ocr-cuda"),
@@ -161,10 +159,8 @@ pub async fn run(
         return result;
     }
     match command.native.as_deref() {
-        Some("tasks-wait") => {
-            wait_idle(&exec.state).await?;
-            Ok(Output::json(Value::Null))
-        }
+        Some("tasks-wait") => json_output(exec.background.wait(&exec.state).await?.verdict(None)?),
+        Some("tasks-cancel") => cancel_task(exec, &values).await,
         Some("context-get") => context_get(exec, context).await,
         Some("context-set" | "context-use") => {
             if values.contains_key("dir") && values.contains_key("nodeId") {
@@ -270,7 +266,11 @@ async fn context_get(exec: &Exec, context: &Context) -> Result<Output, CliError>
                     let info = info.value();
                     json!({"id": id, "path": info["path"], "sourceFormat": info["sourceFormat"]})
                 }
-                Ok(_) | Err(_) => json!({"id": id}),
+                Ok(Output::Bytes(_) | Output::Written) => json!({"id": id}),
+                // The context stays readable, but says why the image is not.
+                Err(error) => {
+                    json!({"id": id, "error": {"code": error.code, "message": error.message}})
+                }
             }
         }
         None => Value::Null,
@@ -285,6 +285,59 @@ async fn context_get(exec: &Exec, context: &Context) -> Result<Output, CliError>
             .last()
             .map(|(_, id)| id.clone())
             .unwrap_or_default(),
+    })
+}
+
+#[derive(Serialize)]
+struct CancelRequested {
+    id: String,
+    /// `cancelled` when the task stopped at once (plugin tasks), else
+    /// `cancelling`: it stops at its next checkpoint.
+    status: &'static str,
+}
+
+/// `tasks cancel`: only a running task can be cancelled. Cancelling an
+/// unknown or ended task fails instead of passing for a cancellation.
+async fn cancel_task(exec: &Exec, values: &Map<String, Value>) -> Result<Output, CliError> {
+    let id = text(values, "taskId").ok_or_else(|| CliError::invalid("缺少参数：taskId"))?;
+    if id.starts_with("plugin:") {
+        // The scheduler rejects unknown and ended plugin tasks itself.
+        task_center::cancel(&exec.state, &id)
+            .await
+            .map_err(|error| super::command_error(error).in_operation("task_cancel"))?;
+        return json_output(CancelRequested {
+            id,
+            status: "cancelled",
+        });
+    }
+    if exec.state.tasks.cancel(&id) || exec.state.tasks.live(&id).is_some() {
+        return json_output(CancelRequested {
+            id,
+            status: "cancelling",
+        });
+    }
+    let ended = task_center::list(&exec.state, None)
+        .await
+        .map_err(|error| super::command_error(error).in_operation("task_list"))?
+        .into_iter()
+        .find(|entry| entry.id == id);
+    Err(match ended {
+        Some(entry) => CliError::new(
+            "taskFinished",
+            format!(
+                "任务已经结束（{}），无法取消：{id}",
+                entry.status.as_str()
+            ),
+        ),
+        None => CliError::new(
+            "notFound",
+            match exec.mode {
+                Mode::OneShot => format!(
+                    "找不到运行中的任务：{id}（一次性命令只看得到本进程的任务；后台任务请在常驻会话中取消）"
+                ),
+                Mode::Session | Mode::Shell => format!("找不到运行中的任务：{id}"),
+            },
+        ),
     })
 }
 

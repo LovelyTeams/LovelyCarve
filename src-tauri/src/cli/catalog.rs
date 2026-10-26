@@ -106,6 +106,15 @@ pub struct Command {
     #[serde(default)]
     pub confirm: Option<String>,
     pub raw_output: bool,
+    /// The backend returns `()`: there is no result, only success.
+    #[serde(default)]
+    pub unit_result: bool,
+    /// The `notFound` message for a lookup that returns nothing.
+    #[serde(default)]
+    pub missing: Option<String>,
+    /// Result fields that mark a finished result as incomplete.
+    #[serde(default)]
+    pub incomplete: Vec<String>,
     #[serde(default)]
     pub target: Option<String>,
     #[serde(default)]

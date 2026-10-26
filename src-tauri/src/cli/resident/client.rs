@@ -10,9 +10,10 @@ use serde_json::{json, Map, Value};
 use super::{protocol, registry};
 use crate::cli::{
     argv::{Globals, Invocation},
+    incomplete::{self, EXIT_INCOMPLETE},
     output,
     progress::{Options, Reporter},
-    prompt, CliError, Output,
+    prompt, runtime, CliError, Output,
 };
 
 pub(super) fn exchange(
@@ -157,13 +158,20 @@ pub(in crate::cli) fn forward(
         Some(&reporter),
     );
     monitor.finish(&result);
-    let result = crate::cli::projection::apply(result?, &fields)?;
-    let (_, done) = invocation.command.category.labels();
+    let result = result?;
+    let incomplete = incomplete::check(invocation.command, &result);
+    let result = crate::cli::projection::apply(result, &fields)?;
     output::print_output(
         result,
-        done,
+        invocation.command,
         globals.quiet || globals.events,
         invocation.text,
     )?;
-    Ok(0)
+    Ok(match incomplete {
+        Some(incomplete) => {
+            runtime::report_incomplete(&incomplete, globals.events);
+            EXIT_INCOMPLETE
+        }
+        None => 0,
+    })
 }

@@ -241,6 +241,18 @@ fn command_meta(command: &Resolved<'_>) -> Value {
         meta.insert("confirm".into(), json!(confirm));
     }
     meta.insert("rawOutput".into(), json!(raw_output));
+    meta.insert(
+        "unitResult".into(),
+        json!(command
+            .operation
+            .is_some_and(|operation| operation.returns_unit)),
+    );
+    if let Some(missing) = &spec.missing {
+        meta.insert("missing".into(), json!(missing));
+    }
+    if !spec.incomplete.is_empty() {
+        meta.insert("incomplete".into(), json!(spec.incomplete));
+    }
     if let Some(target) = &spec.target {
         meta.insert("target".into(), json!(target));
     }

@@ -9,6 +9,7 @@
 //! packaged skill, whose command reference is rendered from the same
 //! catalogue (`skill_tests`).
 mod argv;
+mod background;
 mod browsing;
 mod catalog;
 mod complete;
@@ -16,6 +17,7 @@ mod context;
 mod dotenv;
 mod grep;
 mod help;
+mod incomplete;
 mod interactive;
 mod native;
 mod navigation;
@@ -104,6 +106,15 @@ impl CliError {
             exit_code: 130,
             reported: true,
             ..Self::new("cancelled", "已取消")
+        }
+    }
+
+    /// A destructive command that was not confirmed; `Aborted.` is already
+    /// on stderr. Nothing ran, so this is never a success.
+    pub fn aborted() -> Self {
+        Self {
+            reported: true,
+            ..Self::new("aborted", "Aborted.")
         }
     }
 

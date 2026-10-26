@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use super::emit::BINARY;
 use super::manifest::{Category, CommandSpec, Kind, Manifest};
-use super::operation::Operation;
+use super::operation::{Operation, Output};
 
 /// The verbs a command may end with. CRUD verbs first, then the domain
 /// actions; adding one is a design decision, not a convenience.
@@ -214,6 +214,23 @@ fn command<'a>(
         errors.push(format!(
             "{at}: `raw_output` is derived from the operation's return type"
         ));
+    }
+    if spec.missing.is_some() && !operation.is_some_and(|operation| operation.returns_option) {
+        errors.push(format!(
+            "{at}: `missing` needs a backend operation that returns an Option"
+        ));
+    }
+    let raw =
+        spec.raw_output || operation.is_some_and(|operation| operation.output != Output::Json);
+    if raw && !spec.incomplete.is_empty() {
+        errors.push(format!("{at}: raw output has no `incomplete` fields"));
+    }
+    for path in &spec.incomplete {
+        if path.split('.').any(str::is_empty) {
+            errors.push(format!(
+                "{at}: `incomplete` field `{path}` is not a dot path"
+            ));
+        }
     }
     if spec.ipc.is_some() && matches!(verb, "list" | "count") && !spec.args.is_empty() {
         errors.push(format!(

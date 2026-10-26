@@ -5,7 +5,7 @@ description: Analyze forensic evidence with lovelycarve-cli (disk images such as
 
 # lovelycarve-cli
 
-`lovelycarve-cli [global options] <collection>… <verb> [subject] [options]` runs one command. Results go to stdout as JSON, compact when run by an agent or redirected, or as raw bytes for content commands; progress, prompts and errors go to stderr. The exit status is 0 on success, 1 on failure and 130 when interrupted. If `lovelycarve-cli` is not on `PATH`, use the executable at the root of the CLI package, which ships this skill in `skills/lovelycarve-cli`.
+`lovelycarve-cli [global options] <collection>… <verb> [subject] [options]` runs one command. Results go to stdout as JSON, compact when run by an agent or redirected, or as raw bytes for content commands; progress, prompts and errors go to stderr. The exit status is 0 on success, 1 on failure (a lookup that found nothing and a failed background task included), 2 when a command finished with an incomplete result and 130 when interrupted. If `lovelycarve-cli` is not on `PATH`, use the executable at the root of the CLI package, which ships this skill in `skills/lovelycarve-cli`.
 
 ## Find the command
 
@@ -64,5 +64,6 @@ Paths inside the evidence use `/`. `/` lists the partitions and volumes, and a p
 - Destructive commands need `--force` (JSONL `"force": true`) when nobody can confirm; check them with `--dry-run` first. Without a terminal, a missing required value fails instead of prompting.
 - Keep secrets off the command line: pass `--password @<file>` or give the option without a value and pipe the secret on stdin. `--dry-run` redacts secrets.
 - When `readFaultsDetected` is true, `badRegions` is nonempty or `syntheticBytes` is nonzero, a hash or export includes synthesized zeroes: do not claim those bytes or digests authenticate the source.
+- Exit status 2 means the result on stdout is incomplete: zero-filled source bytes, files a search could not read or a result cap it hit, an export that stopped early or lost files. stderr names the fields, and a JSONL response carries the same `warning` beside `result`. Report it as incomplete, never as a full result.
 - A failed raw read may already have written partial stdout: discard it. Check full logical lengths, byte counts and the exit status before using any output.
 - Unsupported or incomplete evidence is not empty evidence: report the error instead of concluding nothing is there. Format capabilities and limits are documented per format under `docs/formats/` in the LovelyCarve repository (https://github.com/LovelyTeams/LovelyCarve).

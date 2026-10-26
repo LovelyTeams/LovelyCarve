@@ -11,10 +11,13 @@ use serde_json::{json, Map, Value};
 
 use super::{
     argv::{self, Globals, Invocation, Parsed},
+    background::Background,
     catalog::{self, Catalog},
     complete,
-    context::{self, Context, Exec, Mode, Request},
-    dotenv, generated, interactive, native,
+    context::{self, Context, Exec, Executed, Mode, Request},
+    dotenv, generated,
+    incomplete::{Incomplete, EXIT_INCOMPLETE},
+    interactive, native,
     output::{self, Role},
     progress::{Options, Reporter},
     resident, session, shell, CliError, Output,
@@ -101,6 +104,27 @@ fn report_error(error: &CliError, events: bool) {
     }
 }
 
+/// Say that the result just printed is incomplete: a framed warning, or a
+/// `cli-warning` event under `--events`.
+pub(super) fn report_incomplete(incomplete: &Incomplete, events: bool) {
+    if !events {
+        output::report_incomplete(incomplete);
+        return;
+    }
+    let reporter = Reporter::new(Options {
+        quiet: true,
+        events: true,
+    });
+    match serde_json::to_value(incomplete) {
+        Ok(payload) => {
+            if let Err(error) = reporter.event("cli-warning", payload) {
+                eprintln!("无法写出 CLI 警告事件：{error}");
+            }
+        }
+        Err(error) => eprintln!("无法写出 CLI 警告事件：{error}"),
+    }
+}
+
 fn splash(catalog: &Catalog) {
     let binary = &catalog.binary;
     let line = |command: &str, description: &str| {
@@ -172,10 +196,21 @@ fn completions_hint(quiet: bool) {
     }
 }
 
-fn print(output: Output, invocation: &Invocation, quiet: bool) -> Result<i32, CliError> {
-    let (_, done) = invocation.command.category.labels();
-    output::print_output(output, done, quiet, invocation.text)?;
-    Ok(0)
+/// Prints a result; an incomplete one is reported and ends with status 2.
+fn print(
+    executed: Executed,
+    invocation: &Invocation,
+    quiet: bool,
+    events: bool,
+) -> Result<i32, CliError> {
+    output::print_output(executed.output, invocation.command, quiet, invocation.text)?;
+    Ok(match executed.incomplete {
+        Some(incomplete) => {
+            report_incomplete(&incomplete, events);
+            EXIT_INCOMPLETE
+        }
+        None => 0,
+    })
 }
 
 fn command(
@@ -191,7 +226,7 @@ fn command(
     if native == Some("complete") {
         if invocation.dry_run {
             let preview = context::preview(invocation.command, &invocation.values, None)?;
-            return print(Output::Json(preview), &invocation, true);
+            return print(Output::Json(preview).into(), &invocation, true, false);
         }
         return match invocation.values.get("shell").and_then(Value::as_str) {
             Some(shell) => {
@@ -217,12 +252,17 @@ fn command(
             .clone()
             .or_else(|| dotenv::variable("LOVELYCARVE_IMAGE"));
         let preview = context::preview(invocation.command, &invocation.values, scope.as_deref())?;
-        return print(Output::Json(preview), &invocation, globals.quiet);
+        return print(
+            Output::Json(preview).into(),
+            &invocation,
+            globals.quiet,
+            globals.events,
+        );
     }
     if let Some(output) = native::offline(invocation.command, &invocation.values, Mode::OneShot) {
         let fields = super::projection::parse(invocation.fields.as_deref())?;
         let output = super::projection::apply(output?, &fields)?;
-        return print(output, &invocation, globals.quiet);
+        return print(output.into(), &invocation, globals.quiet, globals.events);
     }
     if native == Some("sessions-serve") {
         let prepared = resident::prepare(resident::name(&invocation)?)?;
@@ -314,12 +354,14 @@ fn init_tracing() {
     }
 }
 
-/// Backend events feed human progress or explicit JSONL diagnostics on stderr.
-fn host(reporter: Reporter) -> AppHandle {
+/// Backend events feed human progress or explicit JSONL diagnostics on
+/// stderr, and tell the background work how its tasks end.
+fn host(reporter: Reporter, background: Background) -> AppHandle {
     AppHandle::new(
         crate::host::default_app_data_dir(),
         move |event, payload| {
             let payload = serde_json::from_str(&payload).map_err(|error| error.to_string())?;
+            background.observe(event, &payload);
             reporter.event(event, payload)
         },
     )
@@ -331,7 +373,8 @@ async fn serve(globals: Globals, work: Work) -> i32 {
         quiet: globals.quiet || matches!(work, Work::Session { .. } | Work::Resident(_)),
         events: globals.events,
     });
-    let host = host(reporter.clone());
+    let background = Background::default();
+    let host = host(reporter.clone(), background.clone());
     let state = Arc::new(AppState::new());
     if let Err(error) = crate::app::setup::initialize(&state, &host) {
         report_error(
@@ -351,6 +394,7 @@ async fn serve(globals: Globals, work: Work) -> i32 {
         mode,
         quiet: globals.quiet,
         reporter,
+        background,
     };
     let (scope, scope_source) = match globals.image.clone() {
         Some(image) => (Some(image), None),
@@ -371,7 +415,7 @@ async fn serve(globals: Globals, work: Work) -> i32 {
             .map(|(dir, source)| (dir, source.describe("LOVELYCARVE_CASE"))),
     };
     let outcome = tokio::select! {
-        outcome = perform(&exec, &mut context, case, work) => outcome,
+        outcome = perform(&exec, &mut context, case, work, globals.events) => outcome,
         () = interrupted() => {
             for task in state.tasks.list() {
                 state.tasks.cancel(&task.id);
@@ -397,17 +441,21 @@ async fn perform(
     context: &mut Context,
     case: Option<(String, String)>,
     work: Work,
+    events: bool,
 ) -> Result<i32, CliError> {
     if let Some((dir, source)) = case {
         if interactive::debug() {
             eprintln!("使用案件：{}（来自 {source}）", output::sanitize(&dir));
         }
         let args = Map::from_iter([("dir".to_owned(), json!(dir))]);
-        generated::dispatch(&exec.host, &exec.state, "case_open", args).await?;
+        let foreground = exec.background.foreground();
+        let opened = generated::dispatch(&exec.host, &exec.state, "case_open", args).await;
+        foreground.finish(&opened);
+        opened?;
     }
     let code = match work {
         Work::OneShot(invocation) => {
-            let output = exec
+            let executed = exec
                 .execute(
                     context,
                     Request {
@@ -422,12 +470,9 @@ async fn perform(
                     },
                 )
                 .await?;
-            print(output, &invocation, exec.quiet)?
+            print(executed, &invocation, exec.quiet, events)?
         }
-        Work::Session { jobs, .. } => {
-            let failed = session::json_lines(exec.clone(), context, jobs).await?;
-            i32::from(failed)
-        }
+        Work::Session { jobs, .. } => session::json_lines(exec.clone(), context, jobs).await?,
         Work::Shell => shell::run(exec, context).await?,
         Work::Resident(prepared) => return resident::serve(exec, context, prepared).await,
     };
@@ -440,7 +485,7 @@ async fn perform(
             .iter()
             .any(|task| task.kind != TaskKind::SessionSnapshot))
     .then(|| exec.reporter.start("tasks wait（等待后台任务）"));
-    let result = finish(&exec.state).await;
+    let result = finish(exec).await;
     if let Some(monitor) = &mut monitor {
         monitor.finish(&result);
     }
@@ -449,10 +494,12 @@ async fn perform(
 }
 
 /// Before exit: indexes of caseless images are process-local and discarded
-/// anyway, so stop building them; then wait for every other task.
-async fn finish(state: &AppState) -> Result<(), CliError> {
-    state.tasks.cancel_kind(TaskKind::SessionSnapshot);
-    native::wait_idle(state).await
+/// anyway, so stop building them; then wait for every other task. A failed
+/// background task fails the process, after the command's own output.
+async fn finish(exec: &Exec) -> Result<(), CliError> {
+    exec.state.tasks.cancel_kind(TaskKind::SessionSnapshot);
+    exec.background.wait(&exec.state).await?.verdict(None)?;
+    Ok(())
 }
 
 async fn interrupted() {

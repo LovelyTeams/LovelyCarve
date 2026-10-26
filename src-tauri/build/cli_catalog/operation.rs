@@ -44,6 +44,10 @@ pub struct Operation {
     pub is_async: bool,
     pub returns_result: bool,
     pub output: Output,
+    /// Success is `()`: the command has nothing to return.
+    pub returns_unit: bool,
+    /// Success is an `Option`, whose `None` the caller sees as `null`.
+    pub returns_option: bool,
     pub inputs: Vec<Input>,
 }
 
@@ -117,11 +121,13 @@ pub fn from_fn(path: syn::Path, function: &ItemFn) -> Result<Operation, String> 
             required: !optional,
         }));
     }
-    let (returns_result, output) = match &function.sig.output {
-        ReturnType::Default => (false, Output::Json),
+    let (returns_result, output, returns_unit, returns_option) = match &function.sig.output {
+        ReturnType::Default => (false, Output::Json, true, false),
         ReturnType::Type(_, kind) => {
             let (success, is_result) = unwrap_result(kind);
-            (is_result, output_of(success))
+            let unit = matches!(success, Type::Tuple(tuple) if tuple.elems.is_empty());
+            let optional = unwrap_option(success).1;
+            (is_result, output_of(success), unit, optional)
         }
     };
     Ok(Operation {
@@ -131,6 +137,8 @@ pub fn from_fn(path: syn::Path, function: &ItemFn) -> Result<Operation, String> 
         is_async: function.sig.asyncness.is_some(),
         returns_result,
         output,
+        returns_unit,
+        returns_option,
         inputs,
     })
 }

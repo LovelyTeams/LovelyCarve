@@ -6,12 +6,17 @@ use serde_json::{json, Map};
 use super::client;
 use crate::cli::{
     argv::{self, Parsed},
-    catalog, output, shell, CliError,
+    catalog,
+    incomplete::EXIT_INCOMPLETE,
+    output, shell, CliError,
 };
 
+/// Like the shell: a script stops at the first failure and ends with
+/// status 2 when a result was incomplete.
 pub(super) fn run(name: &str, timezone: Option<&str>) -> Result<i32, CliError> {
     client::info(name)?;
     let interactive = std::io::stdin().is_terminal();
+    let mut incomplete = false;
     if interactive {
         eprintln!("{}", output::hint("已连接常驻会话；输入普通命令、cd、pwd，exit 断开连接，sessions close 可关闭后台会话"));
     }
@@ -31,17 +36,21 @@ pub(super) fn run(name: &str, timezone: Option<&str>) -> Result<i32, CliError> {
         if matches!(line, "exit" | "quit" | "detach") {
             break;
         }
-        if let Err(error) = execute_line(name, line, timezone) {
-            if !interactive {
-                return Err(error);
-            }
-            output::report_error(&error);
+        match execute_line(name, line, timezone) {
+            Ok(partial) => incomplete |= partial,
+            Err(error) if !interactive => return Err(error),
+            Err(error) => output::report_error(&error),
         }
     }
-    Ok(0)
+    Ok(if incomplete && !interactive {
+        EXIT_INCOMPLETE
+    } else {
+        0
+    })
 }
 
-fn execute_line(name: &str, line: &str, timezone: Option<&str>) -> Result<(), CliError> {
+/// Runs one line; `true` when its result was incomplete (already reported).
+fn execute_line(name: &str, line: &str, timezone: Option<&str>) -> Result<bool, CliError> {
     let mut words = shell::tokenize(line)?;
     match words.first().map(String::as_str) {
         Some("cd") if words.len() == 2 || (words.len() == 3 && words[1] == "--node-id") => {
@@ -58,12 +67,12 @@ fn execute_line(name: &str, line: &str, timezone: Option<&str>) -> Result<(), Cl
                 false,
                 false,
             )?;
-            return Ok(());
+            return Ok(false);
         }
         Some("pwd") if words.len() == 1 => {
             let info = client::info(name)?;
             println!("{}", info["context"]["dir"].as_str().unwrap_or("/"));
-            return Ok(());
+            return Ok(false);
         }
         Some("help") if words.len() == 1 => words = vec!["--help".into()],
         _ => {}
@@ -90,7 +99,7 @@ fn execute_line(name: &str, line: &str, timezone: Option<&str>) -> Result<(), Cl
             if globals.timezone.is_none() {
                 globals.timezone = timezone.map(str::to_owned);
             }
-            client::forward(name, &globals, invocation)?;
+            return Ok(client::forward(name, &globals, invocation)? == EXIT_INCOMPLETE);
         }
         Parsed::Help(help) => print!("{help}"),
         Parsed::UsageError { error, .. } => return Err(error),
@@ -98,5 +107,5 @@ fn execute_line(name: &str, line: &str, timezone: Option<&str>) -> Result<(), Cl
             println!("{}", env!("CARGO_PKG_VERSION"))
         }
     }
-    Ok(())
+    Ok(false)
 }

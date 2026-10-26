@@ -793,6 +793,11 @@ def main():
         # Destructive commands need --force where nobody can be asked.
         refused = run(["cases", "delete", str(root / "no such case")], expected=1)
         assert "Aborted." in refused.stderr, refused.stderr
+        # Looking up or cancelling a task that does not exist fails instead of passing for a success.
+        missing_task = run(["tasks", "get", "no-such-task"], expected=1)
+        assert missing_task.stdout == "" and "找不到任务" in missing_task.stderr, missing_task
+        missing_cancel = run(["tasks", "cancel", "no-such-task"], expected=1)
+        assert missing_cancel.stdout == "" and "找不到运行中的任务" in missing_cancel.stderr, missing_cancel
         # Results keep the order the backend wrote their fields in.
         assert run(["schema", "images", "open"]).stdout.startswith('{"operationId":"images.open",')
         # A required subject may come from --body; arrays take several values after one option.
@@ -862,6 +867,7 @@ def main():
             {"id": "bad", "command": "images list", "args": {"typo": True}},
             {"id": "invalid-args", "command": "images list", "args": []},
             {"id": "legacy", "command": "image_load", "args": {"path": str(evidence)}},
+            {"id": "missing-task", "command": "tasks get", "args": {"taskId": "no-such-task"}},
             {"id": "wait", "command": "tasks wait"},
             {"id": "close", "command": "images close", "args": {"imageId": {"$ref": "open#/id"}}},
             {"id": "remaining", "command": "images list"},
@@ -875,10 +881,13 @@ def main():
         assert concurrent_rows["digest"]["result"]["sha256"] == hashlib.sha256(content).hexdigest()
         assert concurrent_rows["cd"]["result"]["dir"] == "/" + volume_name
         assert concurrent_rows["remaining"]["result"] == []
-        errors = {"bad", "invalid-args", "legacy"}
+        errors = {"bad", "invalid-args", "legacy", "missing-task"}
         assert all("result" in row for key, row in concurrent_rows.items() if key not in errors), concurrent_rows
         assert all("code" in concurrent_rows[key]["error"] and "message" in concurrent_rows[key]["error"] for key in errors)
         assert "images open" in concurrent_rows["legacy"]["error"]["message"]
+        # A lookup that finds nothing is an error, not an empty success.
+        assert concurrent_rows["missing-task"]["error"]["code"] == "notFound", concurrent_rows
+        assert isinstance(concurrent_rows["wait"]["result"]["tasks"], list), concurrent_rows
         # The serial run of the same requests returns the same results, in request order.
         assert [row["id"] for row in serial] == [request["id"] for request in concurrent_requests]
         serial_rows = {row["id"]: row for row in serial}
@@ -1286,6 +1295,9 @@ files export hello.txt --destination "{exported}"
         ])
         assert rows[3]["result"]["status"] == "completed", rows
         assert rows[3]["result"]["artifactsFound"] == 1, rows
+        # tasks wait reports the scan that kept running after its command returned.
+        waited = {task["id"]: task for task in rows[2]["result"]["tasks"]}
+        assert waited[rows[1]["result"]["taskId"]]["status"] == "success", rows
         assert rows[4]["result"]["recovered"] == 1, rows
         assert next(recovered.glob("*.png")).read_bytes() == png
         # The task center lists the scan by its session and the export by its task id.
@@ -1535,14 +1547,16 @@ files search "pass(word)?" hello.txt --regex --codepage UTF-8 --search-id regex-
 searches hits list --search-id scoped-grep --limit 10
 '''
         grep_rows = documents(run(["--case", str(case), "shell"], grep_script).stdout)
-        assert len(grep_rows) == 5, grep_rows
-        assert grep_rows[1]["total"] == 0, grep_rows
-        scoped = grep_rows[2]
+        assert len(grep_rows) == 6, grep_rows
+        # tasks wait reports the background work (indexes of the case's evidence) it waited for.
+        assert all(task["status"] == "success" for task in grep_rows[1]["tasks"]), grep_rows
+        assert grep_rows[2]["total"] == 0, grep_rows
+        scoped = grep_rows[3]
         assert scoped["summary"]["status"] == "success" and scoped["summary"]["searchId"] == "scoped-grep"
         assert scoped["total"] == 2 and len(scoped["hits"]) == 1 and scoped["truncated"], scoped
         assert scoped["hits"][0]["nodeId"] == "folder:" + b"nested/report.txt".hex(), scoped
-        assert grep_rows[3]["total"] >= 1 and all(hit["patternKind"] == "regex" for hit in grep_rows[3]["hits"])
-        assert grep_rows[4]["total"] == 2 and len(grep_rows[4]["items"]) == 2, grep_rows
+        assert grep_rows[4]["total"] >= 1 and all(hit["patternKind"] == "regex" for hit in grep_rows[4]["hits"])
+        assert grep_rows[5]["total"] == 2 and len(grep_rows[5]["items"]) == 2, grep_rows
         run([*image_path, "files", "search", "password"], expected=1)
 
         # Missing source bytes force offline sessions; path resolution and the

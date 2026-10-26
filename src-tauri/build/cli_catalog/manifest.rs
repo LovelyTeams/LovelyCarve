@@ -92,6 +92,13 @@ pub struct CommandSpec {
     /// The command writes raw bytes to stdout (native commands only).
     #[serde(default)]
     pub raw_output: bool,
+    /// The `notFound` message when an operation returning `Option` finds
+    /// nothing for the subject it was given.
+    pub missing: Option<String>,
+    /// Result fields (dot paths) that mark a finished result as incomplete
+    /// when set: `true`, a nonzero number or a nonempty string or array.
+    #[serde(default)]
+    pub incomplete: Vec<String>,
     /// Runnable, but left out of help, completion, command suggestions and
     /// the skill's command reference.
     #[serde(default)]

@@ -37,6 +37,7 @@ async fn execute(exec: &Exec, context: &mut Context, path: &str, args: Value) ->
         )
         .await
         .unwrap()
+        .output
     {
         Output::Json(result) => result.value().clone(),
         Output::Bytes(bytes) => json!({"data": hex::encode(bytes)}),
@@ -86,6 +87,7 @@ async fn navigate_raid_lvm_btrfs(on_md: bool) {
         state: state.clone(),
         mode: Mode::Session,
         quiet: true,
+        background: Default::default(),
     };
     let mut context = Context::default();
     let source_info = execute(
@@ -190,7 +192,7 @@ async fn navigate_raid_lvm_btrfs(on_md: bool) {
         if on_md { 4 } else { 3 },
         "reopening must reuse the registered volume"
     );
-    super::native::wait_idle(&state).await.unwrap();
+    exec.background.wait(&state).await.unwrap();
 }
 
 #[test]
@@ -208,6 +210,7 @@ fn caseless_ntfs_ids_case_matching_and_absolute_tree_paths() {
                         state: state.clone(),
                         mode,
                         quiet: true,
+                        background: Default::default(),
                     };
                     let mut context = Context::default();
                     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -239,7 +242,7 @@ fn caseless_ntfs_ids_case_matching_and_absolute_tree_paths() {
                     assert_eq!(file["path"], format!("/{volume_name}/file1.txt"));
                     for indexed in [false, true] {
                         if indexed {
-                            super::native::wait_idle(&state).await.unwrap();
+                            exec.background.wait(&state).await.unwrap();
                         }
                         let by_id = execute(
                             &exec,
@@ -267,7 +270,7 @@ fn caseless_ntfs_ids_case_matching_and_absolute_tree_paths() {
                         assert_eq!(round_trip["id"], file["id"]);
                     }
                     assert!(state.active_case.lock().await.is_none());
-                    super::native::wait_idle(&state).await.unwrap();
+                    exec.background.wait(&state).await.unwrap();
                 }
             });
         })
@@ -308,6 +311,7 @@ fn duplicate_complex_volume_names_can_be_entered_by_id_and_path_before_indexing(
                     state,
                     mode: Mode::Session,
                     quiet: true,
+                    background: Default::default(),
                 };
                 let mut context = Context {
                     image_id: Some("duplicate-volumes".into()),

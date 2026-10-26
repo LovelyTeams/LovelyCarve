@@ -421,7 +421,7 @@ pub fn required_choice(
 
 /// Ask before a destructive command. `--force` is the only way past this in
 /// scripts: without a person to ask, it prints the question and `Aborted.`
-/// and fails. An interactive decline returns `false`.
+/// and fails. An interactive decline returns `false`; the caller aborts.
 pub fn confirm_delete(force: bool, message: Option<&str>) -> Result<bool, CliError> {
     if force {
         return Ok(true);
@@ -436,7 +436,7 @@ pub fn confirm_delete(force: bool, message: Option<&str>) -> Result<bool, CliErr
             paint(Role::Warning, "?"),
             paint(Role::Muted, "（非交互环境：传入 --force 以确认）")
         );
-        return Err(CliError::exit(1));
+        return Err(CliError::aborted());
     }
     output::open_session(false);
     confirm(&question, false)

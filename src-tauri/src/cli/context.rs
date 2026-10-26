@@ -7,9 +7,12 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use super::{
+    background::Background,
     browsing,
     catalog::{Command, Kind},
-    generated, native, output,
+    generated,
+    incomplete::{self, Incomplete},
+    native, output,
     progress::Reporter,
     prompt, CliError, Json, Output,
 };
@@ -80,6 +83,23 @@ pub struct Exec {
     pub mode: Mode,
     pub quiet: bool,
     pub reporter: Reporter,
+    pub background: Background,
+}
+
+/// A command's result, with the catalogue's verdict on its completeness.
+#[derive(Debug)]
+pub struct Executed {
+    pub output: Output,
+    pub incomplete: Option<Incomplete>,
+}
+
+impl From<Output> for Executed {
+    fn from(output: Output) -> Self {
+        Self {
+            output,
+            incomplete: None,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -174,6 +194,34 @@ fn missing(value: Option<&Value>) -> bool {
     value.is_none_or(Value::is_null)
 }
 
+/// The positional arguments a lookup names, for its `notFound` message.
+fn subject(command: &Command, values: &Map<String, Value>) -> Vec<String> {
+    command
+        .positionals()
+        .into_iter()
+        .filter_map(|param| values.get(&param.name))
+        .map(|value| match value {
+            Value::String(text) => text.clone(),
+            other => other.to_string(),
+        })
+        .collect()
+}
+
+/// A lookup whose subject must exist fails instead of returning `null`.
+fn found(command: &Command, subject: &[String], output: Output) -> Result<Output, CliError> {
+    match (&command.missing, &output) {
+        (Some(message), Output::Json(json)) if json.is_null() => Err(CliError::new(
+            "notFound",
+            if subject.is_empty() {
+                message.clone()
+            } else {
+                format!("{message}：{}", subject.join(" "))
+            },
+        )),
+        _ => Ok(output),
+    }
+}
+
 /// Every way to give a command its evidence, as cf lists the ways to give a
 /// zone.
 fn no_image(command: &Command, mode: Mode) -> CliError {
@@ -226,8 +274,10 @@ impl Exec {
             return Ok(reference.to_owned());
         }
         let args = Map::from_iter([("path".to_owned(), json!(reference))]);
-        let output = generated::dispatch(&self.host, &self.state, "image_load", args).await?;
-        let Output::Json(info) = output else {
+        let foreground = self.background.foreground();
+        let output = generated::dispatch(&self.host, &self.state, "image_load", args).await;
+        foreground.finish(&output);
+        let Output::Json(info) = output? else {
             return Err(super::internal_error("images open 返回了非 JSON 结果"));
         };
         let id = info.value()["id"]
@@ -302,11 +352,27 @@ impl Exec {
         .await
     }
 
+    /// Runs one command through every step. A result the catalogue judges
+    /// incomplete comes back with `incomplete` set; a lookup that finds
+    /// nothing fails with `notFound`.
     pub async fn execute(
         &self,
         context: &mut Context,
         request: Request<'_>,
-    ) -> Result<Output, CliError> {
+    ) -> Result<Executed, CliError> {
+        let foreground = self.background.foreground();
+        // On the heap: JSONL requests run on blocking threads with the default
+        // stack, and the generated dispatch makes this future large.
+        let executed = Box::pin(self.execute_steps(context, request)).await;
+        foreground.finish(&executed);
+        executed
+    }
+
+    async fn execute_steps(
+        &self,
+        context: &mut Context,
+        request: Request<'_>,
+    ) -> Result<Executed, CliError> {
         let command = request.command;
         let fields = super::projection::parse(request.fields.as_deref())?;
         super::projection::validate(command, &fields)?;
@@ -319,7 +385,8 @@ impl Exec {
                 command,
                 &values,
                 context.image_id.as_deref().or(context.scope.as_deref()),
-            )?));
+            )?)
+            .into());
         }
         if command.destructive {
             if self.mode == Mode::Session {
@@ -334,7 +401,7 @@ impl Exec {
                 }
             } else if !prompt::confirm_delete(request.force, command.confirm.as_deref())? {
                 eprintln!("Aborted.");
-                return Ok(Output::Written);
+                return Err(CliError::aborted());
             }
         }
         for param in &command.params {
@@ -412,6 +479,7 @@ impl Exec {
             };
             values.insert(param.name.clone(), value);
         }
+        let subject = subject(command, &values);
         let mut monitor =
             (self.mode != Mode::Session).then(|| self.reporter.start(&command.path()));
         let outcome = self
@@ -422,8 +490,16 @@ impl Exec {
                 request.text,
                 request.timezone.as_deref(),
             )
-            .await;
-        let outcome = outcome.and_then(|output| super::projection::apply(output, &fields));
+            .await
+            .and_then(|output| found(command, &subject, output))
+            .and_then(|output| {
+                // Judge the whole result: a projection may leave out the fields.
+                let incomplete = incomplete::check(command, &output);
+                Ok(Executed {
+                    output: super::projection::apply(output, &fields)?,
+                    incomplete,
+                })
+            });
         if let Some(monitor) = &mut monitor {
             monitor.finish(&outcome);
         }

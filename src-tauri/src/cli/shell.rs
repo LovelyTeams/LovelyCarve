@@ -8,6 +8,7 @@ use super::{
     argv::{self, Parsed},
     catalog,
     context::{Context, Exec, Request},
+    incomplete::EXIT_INCOMPLETE,
     output, CliError,
 };
 
@@ -47,12 +48,13 @@ pub fn tokenize(line: &str) -> Result<Vec<String>, CliError> {
     Ok(result)
 }
 
-async fn line(exec: &Exec, context: &mut Context, words: Vec<String>) -> Result<(), CliError> {
+/// Runs one line; `true` when its result was incomplete (already reported).
+async fn line(exec: &Exec, context: &mut Context, words: Vec<String>) -> Result<bool, CliError> {
     let catalog = catalog::catalog()?;
     match words.first().map(String::as_str) {
         Some("pwd") if words.len() == 1 => {
             println!("{}", context.pwd());
-            return Ok(());
+            return Ok(false);
         }
         Some("cd") if words.len() == 2 || (words.len() == 3 && words[1] == "--node-id") => {
             let command = catalog
@@ -78,7 +80,7 @@ async fn line(exec: &Exec, context: &mut Context, words: Vec<String>) -> Result<
                 },
             )
             .await?;
-            return Ok(());
+            return Ok(false);
         }
         _ => {}
     }
@@ -107,8 +109,7 @@ async fn line(exec: &Exec, context: &mut Context, words: Vec<String>) -> Result<
             ) {
                 values.entry(param.name.clone()).or_insert(image.into());
             }
-            let (_, done) = invocation.command.category.labels();
-            let output = exec
+            let executed = exec
                 .execute(
                     context,
                     Request {
@@ -123,16 +124,25 @@ async fn line(exec: &Exec, context: &mut Context, words: Vec<String>) -> Result<
                     },
                 )
                 .await?;
-            output::print_output(output, done, globals.quiet, invocation.text)
+            output::print_output(
+                executed.output,
+                invocation.command,
+                globals.quiet,
+                invocation.text,
+            )?;
+            if let Some(incomplete) = &executed.incomplete {
+                output::report_incomplete(incomplete);
+            }
+            Ok(executed.incomplete.is_some())
         }
         Parsed::Help(help) => {
             print!("{help}");
-            Ok(())
+            Ok(false)
         }
         Parsed::UsageError { error, .. } => Err(error),
         Parsed::Splash | Parsed::Version { .. } | Parsed::Complete(_) => {
             println!("{}", env!("CARGO_PKG_VERSION"));
-            Ok(())
+            Ok(false)
         }
     }
 }
@@ -177,8 +187,12 @@ impl LineReader {
     }
 }
 
+/// The shell's status: a script stops at the first failure, and one that
+/// produced an incomplete result ends with status 2; a person at a terminal
+/// sees every report and ends with 0.
 pub async fn run(exec: &Exec, context: &mut Context) -> Result<i32, CliError> {
     let interactive = std::io::stdin().is_terminal();
+    let mut incomplete = false;
     if interactive {
         eprintln!(
             "{}",
@@ -217,14 +231,17 @@ pub async fn run(exec: &Exec, context: &mut Context) -> Result<i32, CliError> {
                 continue;
             }
         };
-        if let Err(error) = line(exec, context, words).await {
-            if !interactive {
-                return Err(error);
-            }
-            output::report_error(&error);
+        match line(exec, context, words).await {
+            Ok(partial) => incomplete |= partial,
+            Err(error) if !interactive => return Err(error),
+            Err(error) => output::report_error(&error),
         }
     }
-    Ok(0)
+    Ok(if incomplete && !interactive {
+        EXIT_INCOMPLETE
+    } else {
+        0
+    })
 }
 
 #[cfg(test)]
