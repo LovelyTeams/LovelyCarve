@@ -23,6 +23,8 @@ just dev
 
 默认构建关闭二维码识别与 OCR，不需要 OpenCV 或 CUDA。桌面开发和打包配方只支持 Windows；Rust 检查、前端任务、插件构建和 CLI 构建可以在其他平台运行，但 macOS / Linux 产物需要单独验证。
 
+Windows 桌面程序在开发版和发布版中均嵌入 `asInvoker` 权限声明，启动时不自动请求管理员权限。读取物理磁盘或采集实时内存时，需要用户手动以管理员身份启动程序。
+
 前端的离线预览资源由准备脚本从依赖复制到 `public/file-viewer/`，不提交到 Git；`just dev-fe` 与 `just dev` 会先准备这些资源。只运行前端无法读取证据。Vite 固定监听 `http://127.0.0.1:14200`，更换端口时同时修改 `vite.config.ts` 与 `src-tauri/tauri.conf.json`，并保留 `strictPort`。
 
 ## Windows 配置
