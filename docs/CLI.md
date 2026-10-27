@@ -209,14 +209,19 @@ CLI 安装包的 `skills/lovelycarve-cli/` 是供编码代理使用的技能，�
 | 文件 | 内容 |
 | --- | --- |
 | `SKILL.md` | 任务入口：按目标跳转流程、启动会话、限制输出与检查完整性 |
+| `bin/` | 独立安装 skill 时随附的 CLI、运行库、插件加载器与插件，由 `just stage-cli-skill` 生成，不提交二进制到 Git |
 | `references/commands.md` | 全部命令按集合列出的用法（位置参数、选项、可选值）与说明，由命令目录生成 |
 | `references/workflows.md` | 按需读取的操作流程：案件与会话、分页与 JSONL、文件定位与解析、内容搜索、RAID/LVM、解锁、恢复、插件、时间线及哈希导出 |
+
+Windows 独立安装 skill 时，先用 `just build-cli` 与 `just build-plugins --release` 构建所需程序，再运行 `just stage-cli-skill`，把现有 release 的 CLI、DLL、插件及许可证放进 `skills/lovelycarve-cli/bin/`。刷新前的 `bin/` 保留在该次 `dist-pack/` 暂存目录中。复制整个 `skills/lovelycarve-cli/` 即可安装；Pi 的全局目录为 `~/.pi/agent/skills/lovelycarve-cli/`，运行中的 Pi 用 `/reload` 重新发现。
+skill 优先按自身位置解析 `bin/lovelycarve-cli.exe`，不依赖固定主机路径或修改 `PATH`，也不要求切换工作目录。普通 CLI 压缩包仍将运行文件放在包根目录，不重复包含本机 skill 的 `bin/`；需要独立的完整 skill 时使用上述暂存流程。
 
 `references/commands.md` 由 `just update-cli-skill` 从命令目录生成，与该版本的命令一致；命令、选项或说明变化后
 内容过期时后端测试失败。手写页面中的命令行与 JSONL 请求同样由测试对照命令目录解析。
 连续查询优先 `sessions open exam --image <检材路径>`，后续加 `--session exam -q`，结束后 `sessions close exam`。
 `schema` 描述顶层请求字段，不展开嵌套 JSON 类型；恢复选项、时间线查询等内部字段仍按各自契约命名，不能统一改成 camelCase。
 JSONL 中单条请求失败不会阻止后续请求；分阶段检查准备和扫描结果，再提交依赖它们的分析或导出请求。
+操作流程还说明 Git Bash / MSYS2 调用 Windows 程序时的路径转换、参数文件与会话主机路径的解析区别、符号链接目标和文本编码误判的处理；LUKS 有独立的解锁、明文检材选择与导出示例。
 代理的用法错误只显示错误、建议命令和一行帮助提示；人类终端保留完整帮助。
 
 列表型 `list` / `search` 命令支持 `--fields name,id,kind,size,timestamps.modified`，仅投影条目字段；

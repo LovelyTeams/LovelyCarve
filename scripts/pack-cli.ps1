@@ -2,7 +2,8 @@
 [CmdletBinding()]
 param(
     [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path,
-    [switch]$RequireQrOcr
+    [switch]$RequireQrOcr,
+    [switch]$StageSkill
 )
 $ErrorActionPreference = 'Stop'
 $executable = Join-Path $Root 'src-tauri/target/release/lovelycarve-cli.exe'
@@ -39,12 +40,56 @@ foreach ($resource in $pluginBundle.bundle.resources.PSObject.Properties) {
 Copy-Item -LiteralPath (Join-Path $Root 'docs/CLI.md') -Destination (Join-Path $stage 'README.md')
 $skillsTarget = Join-Path $stage 'skills'
 New-Item -ItemType Directory -Path $skillsTarget | Out-Null
-Copy-Item -LiteralPath (Join-Path $Root 'skills/lovelycarve-cli') -Destination $skillsTarget -Recurse
+$skillSource = Join-Path $Root 'skills/lovelycarve-cli'
+$stagedSkill = Join-Path $skillsTarget 'lovelycarve-cli'
+New-Item -ItemType Directory -Path $stagedSkill | Out-Null
+# The ordinary CLI package already carries the runtime at its root. Do not
+# duplicate a locally staged skill bin/ (or its previous runtime) inside it.
+Get-ChildItem -LiteralPath $skillSource -Force | Where-Object Name -ne 'bin' |
+    Copy-Item -Destination $stagedSkill -Recurse
 Copy-Item -LiteralPath (Join-Path $Root 'LICENSE') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $Root 'THIRD_PARTY_NOTICES.md') -Destination $stage
 $stagedCapabilities = & (Join-Path $stage 'lovelycarve-cli.exe') system get | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0 -or $stagedCapabilities.qrcode -ne $capabilities.qrcode -or $stagedCapabilities.ocr -ne $capabilities.ocr) {
     throw 'The staged CLI cannot report matching capabilities; check its runtime dependencies.'
+}
+if ($StageSkill) {
+    $runtimeStage = Join-Path $stage 'skill-bin'
+    New-Item -ItemType Directory -Path $runtimeStage | Out-Null
+    Get-ChildItem -LiteralPath $stage -Force | Where-Object Name -notin @('skills', 'skill-bin') |
+        Copy-Item -Destination $runtimeStage -Recurse
+    $skillBin = [IO.Path]::GetFullPath((Join-Path $skillSource 'bin'))
+    $ignoreFile = Join-Path $skillBin '.gitignore'
+    if (Test-Path -LiteralPath $ignoreFile) {
+        Copy-Item -LiteralPath $ignoreFile -Destination $runtimeStage
+    }
+    $runtimeCapabilities = & (Join-Path $runtimeStage 'lovelycarve-cli.exe') system get | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or $runtimeCapabilities.qrcode -ne $capabilities.qrcode -or $runtimeCapabilities.ocr -ne $capabilities.ocr) {
+        throw 'The skill runtime cannot report matching capabilities.'
+    }
+    # Validate every directory move against the requested repository root.
+    # Keep the previous bin intact in dist-pack so refreshes are recoverable.
+    $rootPrefix = [IO.Path]::GetFullPath($Root).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    $previousBin = [IO.Path]::GetFullPath((Join-Path $stage 'previous-skill-bin'))
+    foreach ($movePath in @($skillBin, $runtimeStage, $previousBin)) {
+        if (-not ([IO.Path]::GetFullPath($movePath)).StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Skill staging path is outside the repository: $movePath"
+        }
+    }
+    $hadPreviousBin = Test-Path -LiteralPath $skillBin
+    if ($hadPreviousBin) {
+        Move-Item -LiteralPath $skillBin -Destination $previousBin
+    }
+    try {
+        Move-Item -LiteralPath $runtimeStage -Destination $skillBin
+    } catch {
+        if ($hadPreviousBin) {
+            Move-Item -LiteralPath $previousBin -Destination $skillBin
+        }
+        throw
+    }
+    Write-Output $skillBin
+    return
 }
 $archive = Join-Path $distRoot "$packageName.zip"
 Compress-Archive -LiteralPath $stage -DestinationPath $archive -CompressionLevel Optimal

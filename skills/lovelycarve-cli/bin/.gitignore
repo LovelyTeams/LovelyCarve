@@ -1,0 +1,3 @@
+# Runtime files are staged by just stage-cli-skill, not committed.
+*
+!.gitignore

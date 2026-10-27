@@ -5,7 +5,11 @@ description: Use lovelycarve-cli for forensic analysis of disk images, folders, 
 
 # lovelycarve-cli
 
-Analyze evidence read-only with `lovelycarve-cli [global options] <collection>… <verb> [subject] [options]`. Results go to stdout as JSON (compact for agents), or raw bytes for content commands; progress and errors go to stderr. If the executable is not on `PATH`, look at the CLI package root alongside `skills/lovelycarve-cli`. In a source checkout, use `just run-cli` rather than assuming a packaged binary is installed.
+Analyze evidence read-only with `lovelycarve-cli [global options] <collection>… <verb> [subject] [options]`. Results go to stdout as JSON (compact for agents), or raw bytes for content commands; progress and errors go to stderr.
+
+Resolve the skill root from this `SKILL.md`'s absolute location. Prefer its `bin/lovelycarve-cli.exe` on Windows (`bin/lovelycarve-cli` on Unix, when supplied); every bare `lovelycarve-cli` example below means that resolved executable, not a requirement to add it to `PATH`. Keep the adjacent DLLs, plugin loader, `plugins/` and any `resources/` together. Do not change the working directory to `bin` just to run it. If no bundled executable exists, use the standalone CLI package root or `PATH`; in a source checkout, `just stage-cli-skill` stages an existing release and `just run-cli` runs a development build. The staged Windows x64 runtime is platform-specific; `system get` reports its version and optional features.
+
+Quote executable paths; PowerShell needs the call operator `&`. When a Git Bash / MSYS2 tool launches the Windows executable, quoting alone does not protect evidence `/paths` from argument conversion; use `MSYS2_ARG_CONV_EXCL='*'` for the CLI call. See [shell invocation](references/workflows.md#shell-invocation-and-argument-files) for JSON files and shell-specific examples.
 
 ## Choose the workflow
 
@@ -16,13 +20,13 @@ Read only the relevant sections of [workflows.md](references/workflows.md). Sear
 | Open evidence, select a case, reuse a process | [Sessions and cases](references/workflows.md#sessions-and-cases) |
 | Find a file, read text or inspect a native format | [Find and inspect files](references/workflows.md#find-and-inspect-files), [paths and node IDs](references/workflows.md#paths-and-node-ids) |
 | Search file contents across a subtree or evidence | [Content search](references/workflows.md#content-search-and-global-search) |
-| Assemble disks or unlock a volume | [RAID and LVM](references/workflows.md#raid-lvm-and-assembled-volumes), [BitLocker](references/workflows.md#bitlocker), [other encrypted volumes](references/workflows.md#luks-veracrypt-and-filevault) |
+| Assemble disks or unlock a volume | [RAID and LVM](references/workflows.md#raid-lvm-and-assembled-volumes), [BitLocker](references/workflows.md#bitlocker), [LUKS](references/workflows.md#luks), [VeraCrypt and FileVault](references/workflows.md#luks-veracrypt-and-filevault) |
 | Recover deleted records or carve signatures | [File recovery](references/workflows.md#file-recovery) |
 | Run analyzers or query events | [Plugin analysis](references/workflows.md#plugin-analysis), [timelines](references/workflows.md#timelines) |
 | Hash or save evidence bytes | [Hashes and exports](references/workflows.md#hashes-exports-and-read-faults) |
 | Batch requests, handle large results or wait for work | [JSONL](references/workflows.md#batch-with-jsonl), [pagination](references/workflows.md#pagination-and-projection), [background tasks](references/workflows.md#background-tasks) |
 
-Use `<command> --help` for option defaults and `schema <command>` for top-level camelCase request keys. Nested JSON objects keep their own contract: recovery options and timeline queries include snake_case keys. `schema` names those types but does not expand their fields; use the workflow examples or the matching source type rather than guessing. In PowerShell, pass JSON options with `@<absolute-file-path>` to preserve quotes.
+Use the exact synopsis in the command reference: `files get`, `files text get` and `files read` take a positional path, while `files list` and `files tree list` use `--path`; returned node IDs are alternatives. Use `<command> --help` for option defaults and `schema <command>` for top-level camelCase request keys. Nested JSON objects keep their own contract: recovery options and timeline queries include snake_case keys. `schema` names those types but does not expand their fields; use the workflow examples or the matching source type rather than guessing.
 
 ## Start once, inspect, then act
 

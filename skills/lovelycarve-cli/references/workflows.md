@@ -1,10 +1,11 @@
 # lovelycarve-cli workflows
 
-Read the sections needed for the task. Examples use `exam` as a session name and placeholders for host paths and returned IDs; substitute actual values. Inline JSON command examples use POSIX shell quoting; in PowerShell, save the JSON as a UTF-8 file and pass `@<absolute-file-path>` instead. JSONL blocks within a workflow are stages in one process; different workflows are independent examples. Every `lovelycarve-cli` line and JSONL request below is checked against the command catalogue; exact options are in [commands.md](commands.md).
+Read the sections needed for the task. Resolve `lovelycarve-cli` to the executable in this skill's `bin/` as described in [SKILL.md](../SKILL.md). Examples use `exam` as a session name and placeholders for host paths and returned IDs; substitute actual values. Inline JSON command examples use POSIX shell quoting; in PowerShell, save the JSON as a UTF-8 file and pass `@<absolute-file-path>` instead. JSONL blocks within a workflow are stages in one process; different workflows are independent examples. Every `lovelycarve-cli` line and JSONL request below is checked against the command catalogue; exact options are in [commands.md](commands.md).
 
 ## Contents
 
 - [Sessions and cases](#sessions-and-cases)
+- [Shell invocation and argument files](#shell-invocation-and-argument-files)
 - [Pagination and projection](#pagination-and-projection)
 - [Batch with JSONL](#batch-with-jsonl)
 - [Find and inspect files](#find-and-inspect-files)
@@ -14,6 +15,7 @@ Read the sections needed for the task. Examples use `exam` as a session name and
 - [RAID, LVM and assembled volumes](#raid-lvm-and-assembled-volumes)
 - [BitLocker](#bitlocker)
 - [LUKS, VeraCrypt and FileVault](#luks-veracrypt-and-filevault)
+  - [LUKS](#luks)
 - [File recovery](#file-recovery)
 - [Plugin analysis](#plugin-analysis)
 - [Timelines](#timelines)
@@ -49,6 +51,30 @@ lovelycarve-cli -q --session exam tasks wait
 
 Inspect each result before continuing. `tasks wait` can report cancelled tasks without failing; verify the required index or analysis actually completed. After finishing the work, close a session you created with `sessions close exam`; that cancels remaining tasks and releases its evidence. Leave a reused user session open unless asked to close it.
 
+## Shell invocation and argument files
+
+In PowerShell, invoke a quoted executable with `&`. JSON options (`--options`, `--body`, `--query`, `--filter`) accept inline JSON or `@file`; a UTF-8 JSON file avoids native-argument quote loss. Quote the whole `@file` argument when its host path contains spaces:
+
+```powershell
+& 'D:/<skill-root>/bin/lovelycarve-cli.exe' --session exam encrypted-volumes unlock --options '@D:/<host-dir>/unlock.json'
+```
+
+In Git Bash / MSYS2, a Windows executable may receive evidence `/paths` rewritten as host paths even when quoted. Scope the conversion override to the CLI call; it need not change the rest of the shell session:
+
+```sh
+MSYS2_ARG_CONV_EXCL='*' 'D:/<skill-root>/bin/lovelycarve-cli.exe' --session exam files list --path '/<volume>'
+```
+
+Use forward-slash absolute Windows paths such as `D:/…` for host files passed to the native executable. Node IDs avoid name ambiguity, but disabling conversion remains useful whenever argument values contain `/`. JSONL request bodies arrive on stdin and are not shell arguments. For a suspected shell problem, inspect the parsed request with `--dry-run` before retrying an expensive operation:
+
+```text
+lovelycarve-cli -q files list --path /example-volume --dry-run
+```
+
+`--dry-run` is a command option: place it after the command, as above. Keep the positional/option distinction in [commands.md](commands.md); do not add `--path` to a positional command. `files search <pattern> [path]` takes the pattern before its optional path.
+
+Argument files are expanded by the calling CLI before a resident-session request is sent. Thus a relative `@file` is relative to the calling shell, while host paths inside the JSON are resolved by the backend/session. Use absolute paths for both. File expansion is not recursive: `"password":"@secret.txt"` inside JSON is a literal password, not a credential-file reference. Put the actual credential in the private options file and never print it into diagnostics.
+
 ## Pagination and projection
 
 - `--fields name,id,kind,size,timestamps.modified` projects list entries, preserving response metadata. Dot paths keep nesting. Include identity and fields needed to assess the result; include `timestampsOriginal` when comparing converted and source times (absent when identical).
@@ -82,8 +108,8 @@ This preserves pagination and time zone metadata. It filters only that page: fol
 Choose a metadata search for names, paths, extensions or sizes; use content search for bytes or text. Start within a known subtree rather than recursively dumping every file.
 
 - `files tree list --name` is a bounded name search without a case requirement. For indexed evidence, `indexes files list --filter` searches metadata. Select a volume key from `indexes volumes list` to bound the query; returned `nid` values are node IDs for subsequent file commands.
-- `files get` reads metadata; `files content get` reads MIME, magic, entropy and data runs; `files identify` detects the content type. These answer different questions.
-- `files text get --max-bytes` decodes detected encodings to UTF-8, up to 2 MiB. A capped read is a preview. For exact bytes use `files read --offset --length`; choose a format-specific parser (`files binary get`, `files sqlite …`, `files zip …`) when structure matters. QR/OCR requires a full build; `system get` reports build capabilities.
+- `files get <path>` reads metadata; `files content get` reads MIME, magic, entropy and data runs; `files identify` detects the content type. These answer different questions. For links, inspect `files get`'s `node.linkTarget` when available: evidence navigation does not follow symlinks. Resolve a relative target against the link's parent directory inside its evidence volume; an absolute target starts at that volume's root, not the CLI's synthetic `/`. Locate the target and read its returned node ID. Do not substitute a same-named host file or assume a conventional target such as `/usr/lib/os-release` exists. If the adapter supplies no link target, report that limitation rather than guessing.
+- `files text get <path> --max-bytes <n>` detects an encoding and returns decoded text, capped at 2 MiB of source bytes. A capped read is a preview. Use [text decoding](#text-decoding) if it looks wrong. For exact bytes use `files read --offset --length`; choose a format-specific parser (`files binary get`, `files sqlite …`, `files zip …`) when structure matters. QR/OCR requires a full build; `system get` reports build capabilities.
 
 ```text
 lovelycarve-cli --session exam files tree list --path "/<volume>/Users" --depth 4 --name report --limit 200
@@ -94,6 +120,12 @@ lovelycarve-cli --session exam files text get --node-id "<returned-file-node-id>
 ```
 
 The metadata filter matches names and extensions, not document contents. Its `offset` / `limit` belong inside the JSON object.
+
+### Text decoding
+
+`files text get` returns `text`, `encoding`, `fromBom` and `hadErrors`. A BOM supplies an encoding declaration; otherwise the detector guesses from the sampled bytes. `hadErrors: false` means decoding needed no replacement characters, not that the guessed encoding is correct. Short legacy-encoded text, including GBK/GB18030, may decode cleanly under the wrong encoding.
+
+If the text is garbled, inspect original bytes and file context before choosing a codec; mojibake alone does not identify GB18030. Use a bounded `files read` (JSONL returns hex) or save bytes with JSONL `output` / `files export` to a new host path. Check errors, read-fault warnings and the sampled length before decoding with a supported external codec. Keep the original bytes, record the selected encoding and distinguish a preview from full-file decoding. `files read --text` decodes as UTF-8, so it does not fix an incorrect legacy-encoding guess; avoid routing raw bytes through text-processing shell pipelines.
 
 ## Paths and node IDs
 
@@ -196,6 +228,42 @@ Partition ID `0` is illustrative: select the actual partition from `images get` 
 - Put the options in a file and pass `--options @unlock.json` so the password stays out of the command line; `--dry-run` redacts `password` and `masterKeyHex`. `.hc`, `.tc` and `.luks` files open directly as evidence.
 - Unlocked images are not saved in the case; unlock again in a new process. `tasks cancel <taskId>` stops an unlock, and closing the source image closes its decrypted images.
 - FileVault: run `filevault get --options <json>` with the same region selection to list the logical volumes, then pass the chosen `index` as `logicalVolumeIndex`. `password` also accepts the personal recovery key. Unlock each of several logical volumes as its own `newImage`. APFS native encryption is not supported.
+
+### LUKS
+
+Use `scheme: "luks"` for both LUKS1 and LUKS2. Choose either a password or a recovered **volume master key** (`masterKeyHex`), never both. The latter is not a password-slot/KDF key; the reader verifies it against the LUKS header digest. Do not supply VeraCrypt's `pim` or `hidden` options.
+
+First inspect `images get` and select the encrypted region: `partitionId` is the numeric partition ID, not a node ID or the partition's row number. Alternatively give `offset` and optional `length` in **bytes relative to the source image**; do not combine them with `partitionId`. A standalone LUKS container normally uses the whole image, omitting all three region fields. Opening the source alone does not unlock it.
+
+For named sessions, put an options object such as `{"scheme":"luks","partitionId":0,"password":"<passphrase>","target":"newImage"}` in a private UTF-8 file and pass it to `encrypted-volumes unlock` with `--options @<absolute-json-path>`. Replace `0` with the actual partition ID, or omit it for a standalone container. The credential is literal inside that JSON; `"password":"@file"` would not read another file.
+
+The following JSONL example uses a whole-container source. Supply credentials without echoing them to logs or reports:
+
+```json
+{"id":"luksSource","command":"images open","args":{"path":"<absolute-luks-container-path>"}}
+{"id":"luksUnlock","command":"encrypted-volumes unlock","args":{"imageId":{"$ref":"luksSource#/id"},"options":{"scheme":"luks","password":"<passphrase>","target":"newImage"}}}
+```
+
+Check unlock success, then explicitly select the returned plaintext image. This avoids accidentally hashing or exporting the source ciphertext:
+
+```json
+{"id":"luksUse","command":"context use","args":{"imageId":{"$ref":"luksUnlock#/image/id"}}}
+{"id":"luksRoots","command":"files list","args":{"path":"/","pageSize":50},"fields":"name,id,kind,size"}
+```
+
+Inspect the roots and readable files before exporting. If a full plaintext volume was requested, export that image explicitly, with a new host destination:
+
+```json
+{"id":"luksExport","command":"images export","args":{"imageId":{"$ref":"luksUnlock#/image/id"},"destination":"<new-absolute-plaintext-raw-path>","readFaultPolicy":"strict"}}
+```
+
+With `target: "sourcePartition"`, the image ID instead stays the source's: browse the returned `volumeKey`. `images hash` and default `images export` still read source ciphertext; only `images export --mode unlockedPartitions` projects attached plaintext into the disk layout, preserving the partition table, other regions and total disk length. It is distinct from exporting a separate plaintext volume.
+
+Unsupported layouts (including detached headers, LUKS2 integrity/reencryption or multiple data segments) and KDF resource limits fail explicitly. Report the reason rather than repeatedly trying a different scheme or concluding the password is wrong. Cancellation can wait for the current KDF. Keep work in the same session; close the derived image to release it or close the source to release all its derived views. See `docs/formats/LUKS.md` in the repository for the supported algorithms and limits.
+
+### VeraCrypt and FileVault examples
+
+These are alternative workflows; do not concatenate their JSONL requests into the same run or reuse the `unlock` request ID within one process.
 
 ```json
 {"id":"source","command":"images open","args":{"path":"<container-path>"}}

@@ -392,6 +392,12 @@ pack-cli-full: build-cli-full
 repack-cli:
     pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\pack-cli.ps1'
 
+# Stage the existing Windows CLI release and runtime beside the agent skill.
+[group("cli")]
+[windows]
+stage-cli-skill:
+    pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\pack-cli.ps1' -StageSkill
+
 # Test the read-only Rust ReFS port independently of the desktop host.
 [group("readers")]
 [working-directory("src-tauri/vendor/refs-reader")]

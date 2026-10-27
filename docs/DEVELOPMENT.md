@@ -80,7 +80,7 @@ just --dry-run pack           # 展开依赖与命令，但不执行
 | 前端 | `dev-fe`、`typecheck`、`test-fe`、`build-fe`、`ipc-check`、`frontend-structure-check`、`i18n-check` |
 | 后端 | `fmt`、`check`、`clippy`、`test [名称及 Cargo 参数]`、`check-examples` |
 | Windows 桌面 | `dev`、`build`、`build-release`、`pack`、`repack`；含 QR/OCR 的版本使用对应的 `*-full` |
-| CLI | `run-cli`、`build-cli`、`build-cli-full`、`test-cli`、`smoke-cli <exe>`、`update-cli-skill`（重新生成代理技能的命令参考）；Windows 另有 `pack-cli`、`pack-cli-full`、`repack-cli` |
+| CLI | `run-cli`、`build-cli`、`build-cli-full`、`test-cli`、`smoke-cli <exe>`、`update-cli-skill`（重新生成代理技能的命令参考）；Windows 另有 `pack-cli`、`pack-cli-full`、`repack-cli`、`stage-cli-skill` |
 | Python 读取库 | `develop-python`、`build-python`、`test-python`、`fmt-python`、`clippy-python`；使用 uv 管理解释器，默认 Python 3.15，详见 [Python 文档](../python/README.md) |
 | 插件 | `build-plugins [--release]`、`test-plugins`、`clippy-plugins`；Windows 另有 `pack-plugins`（生成 `.lcpkg`） |
 | 读取器 | `test-vendor <目录>`、`test-ewf`、`test-vmdk`、`test-vhd`、`test-vhdx`、`test-minix` / `clippy-minix`、`generate-minix-fixtures`、`test-udf` / `clippy-udf`、`generate-udf-fixtures`、`test-qcow2` / `clippy-qcow2`、`generate-qcow-fixtures`、`test-vdi`、`test-phdi` / `clippy-phdi`、`test-smraw` / `clippy-smraw`、`test-gzipf` / `clippy-gzipf`、`clippy-ubi`、`test-bitlocker` / `clippy-bitlocker`、`test-luks` / `clippy-luks`、`test-veracrypt`、`test-filevault` / `clippy-filevault`、`test-vsc` / `clippy-vsc`、`test-refs` / `clippy-refs` / `test-refs-oracle`、`test-ad1`、`test-sqlite-core`、`test-ios-backup`、`test-apfs` / `clippy-apfs`、`clippy-hfsplus` |
@@ -134,6 +134,8 @@ Windows 的 `dev-full`、`build-full`、`build-release-full` 和 `build-cli-full
 Unix 的 `build-cli-full` 启用 `qrcode-wechat ocr`（CPU OCR），需要自行配置系统依赖。CLI 的 `asInvoker` 清单（`src-tauri/cli.manifest`）由构建脚本在 MSVC 链接时嵌入，开发版与发布版相同。
 
 `pack` / `pack-cli` 默认不带 QR/OCR 资源；完整包使用 `pack-full` / `pack-cli-full`，额外资源来自 `src-tauri/tauri.full.conf.json`。`repack` / `repack-full` 复用已有的桌面产物，必须与编译特性一致；`repack-cli` 按 CLI 的实际能力选择资源。便携包输出到 `dist-pack/`，安装包输出到 `src-tauri/target/release/bundle/`。
+
+`stage-cli-skill` 复用现有 Windows release CLI 与插件，按同一打包清单生成 `skills/lovelycarve-cli/bin/`；它不执行编译。运行文件与 DLL 保持相邻，插件与可选模型沿用包内路径，许可证随运行文件复制。该目录的生成文件由其 `.gitignore` 排除，独立安装时需复制完整 skill 目录；具体使用见 [CLI 代理技能](CLI.md#编码代理与小输出)。
 
 Windows GitHub Actions 使用 `windows-2025` 执行 `just test-fe`、`just test` 与 `just test-plugins`；PR 只运行测试，不执行发行构建或上传构建产物。Rust 测试仍需编译测试程序。`v*` 标签在测试成功后自动构建 MSI、CLI ZIP 与插件包并发布到 GitHub Release。云端默认不启用 QR/OCR，macOS/Linux、原生 GUI 与驱动功能仍需单独验证，发布步骤见 [发布指南](RELEASING.md)。
 
