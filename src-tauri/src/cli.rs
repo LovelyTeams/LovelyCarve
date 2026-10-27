@@ -19,6 +19,7 @@ mod grep;
 mod help;
 mod incomplete;
 mod interactive;
+mod msys;
 mod native;
 mod navigation;
 #[cfg(test)]

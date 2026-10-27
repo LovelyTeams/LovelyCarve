@@ -4,7 +4,7 @@
 //! * `filedb_volumes` — the image's filesystem array (`fs_all`): the mapping
 //!   between `vol_id` (array position) and the walker's volume keys.
 //! * `filedb_query_files` — the generic filter path over the lowercase copy
-//!   columns (name / path prefix or substring, extension, size range, kind,
+//!   columns (name glob / name or path prefix or substring, extension, size range, kind,
 //!   delete state), naturally ordered and `LIMIT/OFFSET` paged.
 //! * `filedb_resolve_meta_addr` — the `QueryFileSt` channel: resolve
 //!   `(image, volId, metaAddr, metaAddrHigh)` back to the node id the read

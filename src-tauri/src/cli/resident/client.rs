@@ -53,10 +53,31 @@ fn exchange_observed(
     options: Exchange,
     reporter: Option<&Reporter>,
 ) -> Result<Output, CliError> {
-    let descriptor = registry::read(name)?;
+    let descriptor = match registry::read(name) {
+        Ok(descriptor) => descriptor,
+        Err(error) if error.code == "sessionNotFound" => return Err(error),
+        // An unreadable or incompatible record a dead server left behind.
+        Err(error) if registry::clear_stale(name)? => {
+            tracing::debug!("stale resident session record {name}: {}", error.message);
+            return Err(registry::exited(name));
+        }
+        Err(error) => return Err(error),
+    };
     let address = SocketAddr::from((Ipv4Addr::LOCALHOST, descriptor.port));
-    let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(2))
-        .map_err(|error| CliError::new("sessionUnavailable", format!("无法连接会话 {name}：{error}；用 sessions get {name} 检查，或 sessions open {name} 重新启动")))?;
+    let mut stream = match TcpStream::connect_timeout(&address, Duration::from_secs(2)) {
+        Ok(stream) => stream,
+        Err(_) if registry::clear_stale(name)? => return Err(registry::exited(name)),
+        Err(error) => {
+            return Err(CliError::new(
+                "sessionUnavailable",
+                format!(
+                    "会话 {name} 仍在运行但没有应答（{error}）：可能还在打开检材，或已无响应；\
+                     稍后运行 sessions get {name}，日志见 {}",
+                    registry::log_path(name)?.display()
+                ),
+            ))
+        }
+    };
     stream.set_write_timeout(Some(Duration::from_secs(10)))?;
     if command == "@info" {
         stream.set_read_timeout(Some(Duration::from_secs(5)))?;

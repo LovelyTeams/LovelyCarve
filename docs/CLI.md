@@ -221,7 +221,7 @@ skill 优先按自身位置解析 `bin/lovelycarve-cli.exe`，不依赖固定主
 连续查询优先 `sessions open exam --image <检材路径>`，后续加 `--session exam -q`，结束后 `sessions close exam`。
 `schema` 描述顶层请求字段，不展开嵌套 JSON 类型；恢复选项、时间线查询等内部字段仍按各自契约命名，不能统一改成 camelCase。
 JSONL 中单条请求失败不会阻止后续请求；分阶段检查准备和扫描结果，再提交依赖它们的分析或导出请求。
-操作流程还说明 Git Bash / MSYS2 调用 Windows 程序时的路径转换、参数文件与会话主机路径的解析区别、符号链接目标和文本编码误判的处理；LUKS 有独立的解锁、明文检材选择与导出示例。
+操作流程还说明 Git Bash / MSYS2 调用 Windows 程序时的路径转换、参数文件与会话主机路径的解析区别、符号链接的跟随规则、大文本分段与编码误判的处理及批量导出；LUKS 有独立的解锁、明文检材选择与导出示例。
 代理的用法错误只显示错误、建议命令和一行帮助提示；人类终端保留完整帮助。
 
 列表型 `list` / `search` 命令支持 `--fields name,id,kind,size,timestamps.modified`，仅投影条目字段；
@@ -276,6 +276,9 @@ JSONL 将投影放在请求顶层的可选 `fields` 字符串中，而不是 `ar
   ```
 - 错误显示为带边框的块：命令行、参数与本程序的错误为 `┌ 错误` 加说明；后端命令失败为 `┌ 后端错误`、
   `│ [错误代码] 说明`，以及一行 `IPC <后端命令>`。设置 `DEBUG=1` 时附带后端详情。
+  由编码代理运行时（识别方式见[发现命令](#发现命令)）改为标准错误上的一行 JSON，与 JSONL 会话的字段相同：
+  `{"error":{"code":"…","message":"…"}}`，后端提供时附 `details`，后端命令失败时附 `ipcCommand`；
+  结果不完整的警告同样为一行 `{"warning":{"code":"incompleteResult",…}}`。`--events` 仍优先输出事件。
 - 后台任务指命令返回后仍在运行的任务（`carve scans create`、`indexes create`、插件任务等），以及检材登记到案件后
   自动开始的卷索引、平台识别与插件任务；命令自己等待完成的任务由命令结果报告。一次性命令输出结果后等待后台任务，
   任一失败或结束时没有报告结果时显示 `tasksFailed` 错误块，列出每个失败的任务，并以 1 退出；取消不算失败。
@@ -295,6 +298,9 @@ JSONL 将投影放在请求顶层的可选 `fields` 字符串中，而不是 `ar
 
 - 位置参数是命令的主体，选项用 kebab-case（`--read-fault-policy`）。API 名称是后端的 camelCase
   参数名（`readFaultPolicy`），也是 `--body`、`schema` 和 JSONL 会话使用的键；不接受 snake_case 或命令行选项名作为 JSON 键。
+  位置参数也可以写成同名选项（`files get --path <路径>`、`images open --path <检材路径>`），两种写法不能同时使用；
+  位置参数按顺序对应，如 `files search <模式> [路径]` 的路径可写成 `--path`。帮助只列出位置写法。
+  `list` 与 `count` 命令不接受位置参数，收到时提示改写成 `--path`。
 - 数字直接写；布尔选项单写 `--descending` 为真，`--descending=false` 为假；数组可在一个选项后
   列出多个值（`--algos md5 sha256`）、重复选项（`--algos md5 --algos sha256`）或传一个 JSON 数组，
   列出多个值时把位置参数写在数组选项之前；枚举的可选值列在帮助中。
@@ -315,7 +321,10 @@ JSONL 将投影放在请求顶层的可选 `fields` 字符串中，而不是 `ar
 - 删除类命令（`delete` 动词，以及 `images tags update`、`mounts delete` 等会丢弃数据的命令）
   在终端中先确认；没有人可以确认时必须加 `--force`（`-f`），否则显示问题和 `Aborted.` 并以 1 退出。
   在终端中回答「否」同样显示 `Aborted.` 并以 1 退出：命令没有执行。
-- 写主机文件的命令（`--destination`）要求目标不存在，避免覆盖已有文件。
+- 写主机文件的命令（`--destination`）要求目标不存在，避免覆盖已有文件；目标已存在时以 `alreadyExists`
+  失败且不写入任何内容，重跑批量导出时请使用新的目标目录。`files export` 只导出单个文件，用于目录时以
+  `isDirectory` 失败并给出 `files directories export` 的写法；导出若干选定文件可在 JSONL 会话中逐个提交
+  `files export` 请求，单条失败不影响其余请求。
   文件创建／发布时也检查重名，不依赖命令启动前的路径检查。单文件、命名数据流和 ZIP 导出先在目标目录暂存，写入失败时清理暂存文件，成功后才发布；失败的单文件导出可以直接重试。
   `files directories export --mode tree` 要求目标目录不存在（已有空目录也拒绝），可自动创建父目录；不会合并到已有目录。取消或部分失败时保留已完成的文件，失败文件不保留半成品；重试请选择新的目标目录。
   `--mode zip` 同样要求目标不存在；返回的 `skippedCount` / `truncated` 表示归档可能只含部分条目。
@@ -327,8 +336,34 @@ JSONL 将投影放在请求顶层的可选 `fields` 字符串中，而不是 `ar
 
 ## 浏览检材
 
+### 先建案、建索引，再按文件名查找
+
+新调查先创建案件，再加载检材，让后台构建的卷索引保存在案件中；用户已指定案件时复用该案件。`tasks wait` 后检查 `indexes list`，按 `imageId` / `volumeKey` 确认所需卷为 `indexed: true`、`stale: false`、`truncated: false`。`indexes volumes list` 只提供卷与键的映射，不能证明索引已完成；缺失或过期的卷用 `indexes create --volume-key <卷键>` 构建，再等待并检查。
+
+```text
+lovelycarve-cli -q sessions open exam
+lovelycarve-cli -q --session exam cases create "<新案件绝对路径>" --name "<案件名称>"
+lovelycarve-cli -q --session exam images open "<检材绝对路径>"
+lovelycarve-cli -q --session exam tasks wait
+lovelycarve-cli -q --session exam indexes list
+```
+
+`indexes files list --filter` 的 `nameGlob` 按完整文件名进行忽略大小写的匹配，支持 `*`、`?`、`[abc]`、`[a-z]` 和 `[^abc]`；`%`、`_` 是普通字符，`[[]` 可匹配字面 `[`。使用 SQLite GLOB 语义，不展开花括号，`**` 不表示递归目录。目录范围单独用 `pathPrefix`，其拼写取自查询返回的 `fullPath`：索引路径可能带检材或卷根名，例如 `/evidence/var/log/auth.log.1`，不能固定假设为 `/var/log/`。可先仅按文件名查询，再按实际父路径缩小范围。过滤在分页前执行，不需要逐页枚举目录后再用 jq 筛选。
+
+例如把下面对象保存为 UTF-8 的 `find.json`，按返回的索引路径前缀查找轮转日志；`<索引根>` 需替换为实际值：
+
+```json
+{"nameGlob":"auth*.log.*","pathPrefix":"/<索引根>/var/log/","kinds":["file"],"limit":100,"offset":0}
+```
+
+```text
+lovelycarve-cli --session exam indexes files list --volume-key "<卷键>" --filter @find.json
+```
+
+去掉 `pathPrefix` 查整个卷，省略 `--volume-key` 查当前检材所有已有索引的卷，各卷分别应用 `limit` / `offset`；需完整结果时按卷分页，保持过滤条件不变。该命令搜索文件名元数据，不读取文件内容；`files search` 搜索内容。索引构建失败或截断时不能把没有匹配解释为检材没有该文件。
+
 镜像内路径用 `/` 分隔。`/` 是检材的合成根，列出分区和卷（目录检材、归档等同样先显示根名称）；
-不以 `/` 开头的路径相对会话当前目录，支持 `.` 和 `..`，不跟随符号链接。
+不以 `/` 开头的路径相对会话当前目录，支持 `.` 和 `..`，并按[符号链接](#符号链接)的规则跟随链接。
 路径在合成根的首段也接受该层节点的 ID，例如 `/part:0/Windows/System32/config/SAM`，
 或先运行 `context set --dir /part:0`，再使用卷内相对路径。ID 取自根目录 `files list --path /`
 返回的 `items[].id`（`part:0` 仅为示例），精确匹配，不受卷名中的空格、括号、`·` 或重名影响；
@@ -347,8 +382,11 @@ lovelycarve-cli --image "D:\evidence\disk.E01" files read /part:0/Windows/System
 lovelycarve-cli --image "D:\evidence\disk.E01" files tree list --path /part:0/Users --depth 3
 ```
 
-每个接受路径的命令也接受节点 ID（`--node-id`、`--parent-id` 或 `--root-id`，取 `files list`
-输出的 `items[].id`），用于同名节点、删除条目和特殊流。
+每个解析镜像内路径的命令都接受 `--path <路径>`，也都接受节点 ID `--node-id <ID>`（取 `files list`
+输出的 `items[].id`），用于同名节点、删除条目和特殊流；`files list`、`files flat list`、
+`files extensions count` 原有的 `--parent-id` 与 Docker 命令的 `--root-id` 仍可使用。
+`files lookup` 例外：它的 `--path` 是相对 `--root-id` 的来源路径。
+节点 ID 精确指向该节点，不跟随符号链接。路径解析不到时以 `notFound` 失败，并写明所在目录和找不到的名称。
 `files get --node-id` 与下述目录切换入口不要求打开案件。重名分区（例如两个 `Basic_data_partition`）可先运行
 `context set --node-id part:2`，再用 `files get Windows` 等相对路径；`--node-id` 与 `--dir` 互斥。
 上下文保存节点 ID，因此显示路径同名也不会切到另一卷。`context get` 的 `nodeId` 可确认当前目录身份。
@@ -358,12 +396,36 @@ lovelycarve-cli --image "D:\evidence\disk.E01" files tree list --path /part:0/Us
 无法读取卷标志的离线 APFS 也保持精确匹配。合成节点名称使用中文，例如 `分区0`、`$未分配簇`、
 `未使用空间1`；实际名称以 `files list` 为准，节点 ID 不受显示名称影响。
 
+### 符号链接
+
+路径像 shell 一样跟随符号链接。路径中间的链接总是跟随；末尾的链接由读取、哈希、导出、文本、
+列目录等需要内容的命令及 `context set` 跟随，`files get` 与 `files ancestors list` 则描述链接本身，
+`files get` 返回其 `linkTarget`。经过链接的路径在 `files get` 结果的 `path` 中显示实际到达的位置。
+
+相对目标从链接所在目录解析；绝对目标从链接所在卷的根解析（分区、逻辑卷、APFS 卷、btrfs 子卷、
+容器或目录／归档检材的根），不从合成根 `/` 开始，目标中的 `..` 也不越过该根。一条路径最多跟随
+40 个链接。目标位于另一个卷（单独挂载的 `/usr`、`/var`，或根文件系统挂载自另一个 btrfs 子卷）、
+指向 Windows 盘符（`C:\…`）或卷适配器没有提供目标时明确失败，不会猜测，也不会读取主机上的同名文件；
+此时按错误中给出的链接目标到对应的卷中定位。`files directories export` 跳过目录树内的链接，不跟随。
+
+### Git Bash / MSYS2
+
+Git Bash 和 MSYS2 启动 Windows 程序时，会把以 `/` 开头的参数改写成主机路径，加引号也一样：
+`/分区1/etc` 变成 `C:/Program Files/Git/分区1/etc`。CLI 识别出改写到 MSYS 安装目录下的镜像内路径
+（该目录含 `usr/bin/msys-2.0.dll`）时还原为原来的路径；无法还原的（例如改写到 `/tmp` 等挂载目录）
+在错误中说明原因。搜索模式等其他以 `/` 开头的参数不会还原，需在这次调用前加 `MSYS2_ARG_CONV_EXCL='*'`：
+
+```sh
+MSYS2_ARG_CONV_EXCL='*' lovelycarve-cli --session exam files search /etc/passwd --path '/<卷名称>'
+```
+
 | 命令 | 作用 |
 | --- | --- |
 | `files list [--path 路径 \| --parent-id ID] [--cursor 游标] [--page-size N] [--query JSON]` | 统一调用 `fs_children_page`；默认列当前目录，返回 `{nextCursor, total?, truncated, …, items:[节点]}`。`nextCursor` 非空时继续请求下一页；人类环境每页默认 500，编码代理环境默认 50，显式 `--page-size` 优先，范围 1–5000 |
 | `files tree list [--path 路径 \| --node-id ID] [--depth N] [--name 文本] [--limit N]` | 递归遍历目录；`--depth` 递归（上限 128），`--name` 忽略大小写包含匹配，最多检查 `--limit` 个节点（默认 10000，上限 100000）。返回 `{items:[{path,node}], truncated}` |
 | `files get [路径 \| --node-id ID]` | 节点属性（名称、类型、大小、inode、时间戳、删除状态、链接目标），附 `nodeId`、`path`、`indexOnly` |
 | `files read <路径> [--offset N] [--length N] [--text]` | 文件内容流式写到标准输出 |
+| `files text get <路径> [--max-bytes N] [--offset N] [--encoding 标签]` | 识别编码并解码为 UTF-8，每段最多 2 MiB；`nextOffset` 非空时用 `--offset` 继续读下一段（段末被截断的字符留给下一段），后续段默认沿用文件开头识别出的编码；`--encoding gbk` 等 WHATWG 标签跳过识别 |
 | `files hash <路径> [--algos …]` | MD5 / SHA-1 / SHA-256 / SM3 |
 | `files identify <路径>` | Magika 内容类型识别，不依赖扩展名 |
 | `files strings list <路径> [--encoding …] [--min-length N]` | 可打印字符串及文件内偏移，支持 ASCII、UTF-8、UTF-16LE/BE |
@@ -524,6 +586,9 @@ Remove-Item Env:LOVELYCARVE_SESSION
 跨终端使用时，检材、案件与导出路径建议写绝对路径。CLI 的 `--body @文件` 由当前客户端读取。
 连接断开或后台进程崩溃时命令报错，不会自动重试或悄悄启动新的后端。崩溃后可用同名 `sessions open`
 重新启动，但内存中的卷 ID、目录、任务和解锁状态需要重建；本功能不连接桌面端进程。
+后台进程运行期间一直持有会话名的文件锁：命令连不上会话且能取得该锁时，说明进程已退出（崩溃、被结束或主机重启），
+于是在锁内删除残留记录并以 `sessionExited` 失败；之后 `sessions list` 不再列出它，`sessions close` 对这样的会话
+直接成功并返回 `"exited": true`。仍持有锁却没有应答（例如还在打开检材）时报 `sessionUnavailable`。
 
 会话名为 1–64 个 ASCII 字母、数字、下划线或连字符。连接信息与日志位于用户数据目录的 `cli-sessions/`，
 使用文件锁防止同名进程冲突；服务仅监听本机回环地址，以私有随机凭据认证，状态输出不包含凭据。

@@ -51,8 +51,14 @@ pub(super) fn manage(globals: &Globals, invocation: &Invocation) -> Result<i32, 
         Some("sessions-list") => list()?,
         Some("sessions-close") => {
             let name = name(invocation)?;
-            client::exchange(name, "@close", Default::default(), false, false, false)?;
-            json!({"name": name, "closed": true})
+            match client::exchange(name, "@close", Default::default(), false, false, false) {
+                Ok(_) => json!({"name": name, "closed": true}),
+                // Its server had already exited: removing the record closed it.
+                Err(error) if error.code == "sessionExited" => {
+                    json!({"name": name, "closed": true, "exited": true})
+                }
+                Err(error) => return Err(error),
+            }
         }
         Some("sessions-attach") => {
             return attach::run(name(invocation)?, globals.timezone.as_deref())
@@ -67,7 +73,12 @@ pub(super) fn manage(globals: &Globals, invocation: &Invocation) -> Result<i32, 
 
 fn open(name: &str, globals: &Globals) -> Result<Value, CliError> {
     match registry::lock(name) {
-        Ok(lock) => drop(lock),
+        Ok(lock) => {
+            // A record left by a server that exited would only be found,
+            // tried and cleared again while the new server starts.
+            registry::remove_record(&lock, name)?;
+            drop(lock);
+        }
         Err(error) if error.code == "sessionAlreadyRunning" => {
             if globals.image.is_some() || globals.case.is_some() || globals.timezone.is_some() {
                 return Err(CliError::invalid(
@@ -78,7 +89,7 @@ fn open(name: &str, globals: &Globals) -> Result<Value, CliError> {
         }
         Err(error) => return Err(error),
     }
-    let log_path = registry::directory()?.join(format!("session-{name}.log"));
+    let log_path = registry::log_path(name)?;
     let log = registry::private_options().open(&log_path)?;
     let mut command = Command::new(std::env::current_exe()?);
     command.arg("--quiet");

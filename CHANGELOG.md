@@ -9,6 +9,7 @@
 
 ### Added
 
+- 文件名索引查询新增 `filter.nameGlob`，支持忽略大小写的 `*`、`?`、字符组与范围通配，在匹配结果上分页；可与目录前缀、扩展名和类型条件组合。CLI skill 默认先新建案件、加载检材并检查索引就绪，再按文件名查找线索。
 - 新增纯 Rust bcachefs 单设备只读读取：复用 MIT 读取器，支持子卷 / snapshot、硬链接、reflink、压缩、校验、稀疏 / unwritten 和纳秒时间；接入浏览、范围读、哈希、导出、目录快照及 CLI，保持不同历史视图中的同号 inode 内容独立。
 
 - 新增纯 Rust NILFS2 2.0 只读读取：支持双超级块、日志 CRC、DAT / 分配位图、direct / B-tree、硬链接、稀疏文件及纳秒时间；接入当前提交视图的浏览、范围读、哈希、导出、快照和 CLI，独立读取器另支持保留的历史检查点；dirty / recovery 状态明确拒绝。
@@ -55,8 +56,14 @@
 - 「设置中心 → 关于」新增 GitHub tags 版本检查；自动检查默认关闭，可手动检查或开启每次启动检查，发现新版时提示并提供标签链接。
 - 新增右键菜单：文件列表的表格空白处（返回上级、刷新、全选、列表范围、隐藏空目录、切换树图、显示列、复制路径、导出此文件夹）与表头（按该列排序、过滤、隐藏该列、恢复默认列），树图瓦片之间的空隙，目录树，以及全局搜索命中、时间线事件、文件恢复条目与分析记录（定位、查看详情，复制名称、路径、偏移、字段值或整行）。菜单可用 ContextMenu 键或 Shift+F10 打开，并支持方向键、子菜单与 Esc。
 - 文件列表支持 Ctrl+单击勾选或取消一行、Shift+单击勾选一段，不弹出预览；鼠标侧键「后退」返回上级。十六进制视图支持 Shift+单击扩展选区。
+- CLI `files text get` 支持分段读取大文本与指定编码：结果附带 `offset` 与 `nextOffset`，用 `--offset <nextOffset>` 读下一段，段末被截断的字符留给下一段；`--encoding gbk` 等 WHATWG 标签跳过自动识别，未指定时后续段沿用文件开头识别出的编码。
 
 ### Changed
+
+- CLI 镜像内路径像 shell 一样跟随符号链接：中间的链接总是跟随，读取、哈希、导出、文本、列目录和 `context set` 也跟随末尾的链接，`files get` 仍显示链接本身及 `linkTarget`。绝对目标从链接所在卷（分区、逻辑卷、APFS 卷、btrfs 子卷或容器）的根解析，目标中的 `..` 不越过该卷，最多跟随 40 层；Windows 盘符目标不跟随并说明原因。
+- CLI 参数写法统一：接受位置参数的命令也接受同名选项（如 `files get --path <路径>`），以节点为目标的命令都接受 `--node-id`（`files list` 等原有的 `--parent-id` 仍可用）；列表命令收到位置参数时给出改写成 `--path` 的完整提示。
+- 编码代理调用 CLI 时，错误与结果不完整警告改为标准错误上的一行 JSON（`{"error":…}` / `{"warning":…}`，与 JSONL 会话的字段相同），不再输出带边框的块。
+- CLI 导出目标已存在时说明导出从不覆盖、未写入任何内容；`files export` 用于目录时以 `isDirectory` 失败并给出 `files directories export` 的写法。
 
 - CLI 代理技能支持自带 `bin/` 运行目录，按 skill 自身位置调用程序；新增 `just stage-cli-skill`，将现有 Windows release CLI、运行库与插件整理为可整体复制安装的 skill，刷新时保留旧运行文件。
 - Windows 桌面发布版改为以普通用户权限启动，不再强制弹出管理员授权；读取物理磁盘或采集实时内存时仍需手动以管理员身份运行。
@@ -73,6 +80,9 @@
 
 ### Fixed
 
+- 修复文本预览与 CLI `files text get` 把 GBK 等多字节编码误判为 windows-1252：只读取了文件开头一段时，段末被截断的字符不再被当作编码错误，文本末尾也不再出现替换字符。
+- 修复 Git Bash / MSYS2 把以 `/` 开头的镜像内路径改写成主机路径（如 `C:/Program Files/Git/分区1/…`）后 CLI 找不到路径：自动还原为原本输入的路径，无法还原时说明原因及 `MSYS2_ARG_CONV_EXCL` 设置；找不到路径时写明所在目录与缺少的名称。
+- 修复常驻会话后台进程意外退出后残留的记录让后续命令反复报 `sessionUnavailable`：发现进程已退出的命令清理记录并以 `sessionExited` 说明如何重新启动，`sessions close` 对这类会话直接成功，`sessions list` 不再反复列出。
 - 修复 Windows LLD 链接时重复合并 UAC 片段导致 CLI 无法启动的问题；继续由显式清单声明 `asInvoker`。
 - 修复 CLI 的几处静默失败：在终端拒绝删除确认时以 0 退出，现以 1 退出；`tasks get`、`analysis records get`、`analysis runs get` 与 `indexes files lookup` 找不到对象时显示 `✓ 已读取` 而没有输出，现以 `notFound` 失败，其他查询为空时输出 `null`；`tasks cancel` 对不存在或已结束的任务也报告成功，现报错并在成功时返回 `cancelling` / `cancelled`；`context get` 读取当前检材信息失败时不再省略原因。
 - 修复大目录下左侧目录树展开和滚动卡顿：按可见范围渲染和补齐子项计数，避免逐个预读所有子目录。

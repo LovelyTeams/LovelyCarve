@@ -45,11 +45,22 @@ export interface DecodedText {
   from_bom: boolean;
   /** 解码时出现过该编码无法映射的字节（已用 U+FFFD 替换）——检测可能误判 / 本是二进制的信号。 */
   had_errors: boolean;
+  /** 本段在文件中的起始字节偏移。 */
+  offset?: number;
+  /** 下一段的起始偏移（落在字符边界上，末尾被截断的字符留给下一段）；已读到文件末尾时为 null。 */
+  next_offset?: number | null;
 }
 
 /** 读取并按自动检测的编码解码文件文本（后端 chardetng + encoding_rs，读取上限由 maxBytes
  *  传入、后端再以 2 MiB 封顶）。十六进制视图仍用 `fsPreview` 的原始字节；文本类视图用本结果
- *  （二者传同一个 PREVIEW_CAP，覆盖同一段前缀）。 */
-export function fsPreviewText(args: { imageId: string; nodeId: string; maxBytes: number }): Promise<DecodedText> {
+ *  （二者传同一个 PREVIEW_CAP，覆盖同一段前缀）。`encoding`（WHATWG 标签）跳过检测；
+ *  `offset` 从文件中间读一段，未指定编码时按文件开头检测。 */
+export function fsPreviewText(args: {
+  imageId: string;
+  nodeId: string;
+  maxBytes: number;
+  offset?: number;
+  encoding?: string;
+}): Promise<DecodedText> {
   return invokeCmd<DecodedText>('fs_preview_text', args);
 }

@@ -1,4 +1,5 @@
-//! Shell navigation and bounded walks over the shared index-first directory pages.
+//! Shell navigation, path resolution and bounded walks over the shared
+//! index-first directory pages.
 use std::{
     collections::{HashSet, VecDeque},
     future::Future,
@@ -15,11 +16,80 @@ use crate::{
 
 const PAGE_SIZE: usize = 500;
 
+/// Symbolic links one path may follow, as Linux bounds them (ELOOP).
+const MAX_LINKS: usize = 40;
+
+/// Whether the last component of a path, when it is a symbolic link, names
+/// the link or what it points to. Links before the last component are always
+/// followed: such a path has no other reading.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LastLink {
+    /// The link itself, as `files get` reports it with its `linkTarget`.
+    Keep,
+    /// What the link points to, as reading, hashing, exporting or listing needs.
+    Follow,
+}
+
 /// A node a walk found, with its absolute image path.
 #[derive(Debug, Serialize)]
 pub struct Entry {
     pub path: String,
     pub node: FsNode,
+}
+
+/// `/` followed by the names of `location`.
+pub(super) fn display_path(location: &[(String, String)]) -> String {
+    format!(
+        "/{}",
+        location
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect::<Vec<_>>()
+            .join("/")
+    )
+}
+
+fn child_path(location: &[(String, String)], name: &str) -> String {
+    match display_path(location).as_str() {
+        "/" => format!("/{name}"),
+        parent => format!("{parent}/{name}"),
+    }
+}
+
+/// The root directory of a volume: a partition, a logical volume, an APFS
+/// volume, a btrfs subvolume or a container's file system.
+fn volume_root(id: &str) -> bool {
+    let number = |text: &str| !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit());
+    match id.split(':').collect::<Vec<_>>().as_slice() {
+        ["part", partition] => number(partition),
+        ["lvm", partition, volume] => number(partition) && number(volume),
+        ["apfs", "part", partition, volume, ""] => number(partition) && number(volume),
+        // The root directory of every btrfs subvolume is inode 256.
+        ["btrfs", "part", _, _, "256"] | ["btrfs", "lvm", _, _, _, "256"] => true,
+        ["host-docker", container, ""] => !container.is_empty(),
+        ["docker", ""] => true,
+        _ => false,
+    }
+}
+
+/// How many leading entries of `location` an absolute link target keeps: the
+/// way down to the volume that holds the link, or for folder and archive
+/// evidence to the source's own root. `..` in a target stops there too.
+fn volume_depth(location: &[(String, String)]) -> usize {
+    location
+        .iter()
+        .rposition(|(_, id)| volume_root(id))
+        .map_or(location.len().min(1), |index| index + 1)
+}
+
+/// NTFS and ReFS links may name a drive (`C:\…`), a device (`\??\…`) or a
+/// share (`\\server\…`); which volume a drive letter meant is not known here.
+fn windows_absolute(target: &str) -> bool {
+    match target.as_bytes() {
+        [b'\\', ..] => true,
+        [drive, b':'] | [drive, b':', b'\\' | b'/', ..] => drive.is_ascii_alphabetic(),
+        _ => false,
+    }
 }
 
 pub(super) async fn node<F, Fut>(
@@ -52,9 +122,14 @@ where
     }
 }
 
+/// Resolve `path` from `current` to the names and IDs leading to its node.
+/// Symbolic links are followed as Linux follows them, within the volume that
+/// holds each link: an absolute target starts at that volume's root, and
+/// `..` in a target never climbs above it.
 pub(super) async fn resolve<F, Fut, C, CFut>(
     current: &[(String, String)],
     path: &str,
+    last_link: LastLink,
     page: &mut F,
     mut case_insensitive: C,
 ) -> Result<Vec<(String, String)>, CliError>
@@ -69,63 +144,144 @@ where
     } else {
         current.to_vec()
     };
-    for component in path.split('/') {
-        match component {
+    // Each component still to resolve, with the depth its `..` stops at: none
+    // for the path as given, the holding volume's root for a link's target.
+    let mut pending: VecDeque<(String, Option<usize>)> = path
+        .split('/')
+        .map(|component| (component.to_owned(), None))
+        .collect();
+    // The link last followed, named when its target cannot be resolved.
+    let mut following = None;
+    let mut links = 0;
+    while let Some((component, floor)) = pending.pop_front() {
+        match component.as_str() {
             "" | "." => continue,
             ".." => {
-                location.pop();
+                if floor.is_none_or(|floor| location.len() > floor) {
+                    location.pop();
+                }
                 continue;
             }
             _ => {}
         }
-        let parent = location.last().map(|(_, id)| id.as_str()).unwrap_or("");
-        let mut cursor = None;
-        let mut child: Option<FsNode> = None;
-        let mut folded_child = None;
-        let mut folded_ambiguous = false;
-        let folded_component = component.to_lowercase();
-        loop {
-            let result = page(parent.to_owned(), cursor, PAGE_SIZE).await?;
-            if result.truncated {
-                return Err(CliError::invalid("目录列表不完整，无法可靠解析路径"));
-            }
-            for node in result.items {
-                // Root IDs provide script-friendly volume paths without changing
-                // evidence names. Match both in one pass so a name/ID collision
-                // reports ambiguity instead of silently selecting another volume.
-                if node.name == component || (location.is_empty() && node.id == component) {
-                    if child.is_some() {
-                        return Err(CliError::invalid(
-                            "同名节点不唯一，请改用节点 ID 指定（files list 输出的 items[].id）",
-                        ));
-                    }
-                    child = Some(node);
-                } else if node.name.to_lowercase() == folded_component {
-                    folded_ambiguous |= folded_child.is_some();
-                    folded_child = Some(node);
+        let child = match child(&location, &component, page, &mut case_insensitive).await {
+            Ok(child) => child,
+            Err(mut error) => {
+                if let Some(link) = &following {
+                    error
+                        .message
+                        .push_str(&format!("（跟随符号链接 {link} 时）"));
                 }
+                return Err(error);
             }
-            cursor = result.next_cursor;
-            if cursor.is_none() {
-                break;
-            }
+        };
+        let last = pending
+            .iter()
+            .all(|(component, _)| matches!(component.as_str(), "" | "."));
+        if child.kind != NodeKind::Symlink || (last && last_link == LastLink::Keep) {
+            location.push((child.name, child.id));
+            continue;
         }
-        if child.is_none() && folded_child.is_some() && case_insensitive(parent.to_owned()).await? {
-            if folded_ambiguous {
-                return Err(CliError::invalid(
-                    "忽略大小写后节点不唯一，请改用节点 ID 指定（files list 输出的 items[].id）",
-                ));
-            }
-            child = folded_child;
+        let link = child_path(&location, &child.name);
+        links += 1;
+        if links > MAX_LINKS {
+            return Err(CliError::invalid(format!(
+                "解析 {path} 时跟随了超过 {MAX_LINKS} 个符号链接，链接可能成环"
+            )));
         }
-        let child = child.ok_or_else(|| {
-            CliError::invalid(format!(
-                "找不到路径分量：{component}；使用 files list 查看名称"
-            ))
-        })?;
-        location.push((child.name, child.id));
+        let target = child
+            .link_target
+            .as_deref()
+            .filter(|target| !target.is_empty())
+            .ok_or_else(|| {
+                CliError::invalid(format!(
+                    "无法跟随符号链接 {link}：卷中没有读到链接目标；用 files get 查看该节点"
+                ))
+            })?;
+        if windows_absolute(target) {
+            return Err(CliError::invalid(format!(
+                "不跟随指向 Windows 路径的符号链接 {link} → {target}；请在盘符对应的卷中定位目标"
+            )));
+        }
+        let target = if child.id.starts_with("ntfs:") || child.id.starts_with("refs:") {
+            target.replace('\\', "/")
+        } else {
+            target.to_owned()
+        };
+        let depth = volume_depth(&location);
+        if target.starts_with('/') {
+            location.truncate(depth);
+        }
+        for component in target.split('/').rev() {
+            pending.push_front((component.to_owned(), Some(depth)));
+        }
+        following = Some(format!("{link} → {target}"));
     }
     Ok(location)
+}
+
+/// The entry named `component` in the directory `location` leads to: an
+/// exact name (at the synthetic root also a root ID), else a unique
+/// case-insensitive match on a volume that folds case.
+async fn child<F, Fut, C, CFut>(
+    location: &[(String, String)],
+    component: &str,
+    page: &mut F,
+    case_insensitive: &mut C,
+) -> Result<FsNode, CliError>
+where
+    F: FnMut(String, Option<String>, usize) -> Fut,
+    Fut: Future<Output = Result<FsNodePage, CliError>>,
+    C: FnMut(String) -> CFut,
+    CFut: Future<Output = Result<bool, CliError>>,
+{
+    let parent = location.last().map(|(_, id)| id.as_str()).unwrap_or("");
+    let mut cursor = None;
+    let mut child: Option<FsNode> = None;
+    let mut folded_child = None;
+    let mut folded_ambiguous = false;
+    let folded_component = component.to_lowercase();
+    loop {
+        let result = page(parent.to_owned(), cursor, PAGE_SIZE).await?;
+        if result.truncated {
+            return Err(CliError::invalid("目录列表不完整，无法可靠解析路径"));
+        }
+        for node in result.items {
+            // Root IDs provide script-friendly volume paths without changing
+            // evidence names. Match both in one pass so a name/ID collision
+            // reports ambiguity instead of silently selecting another volume.
+            if node.name == component || (location.is_empty() && node.id == component) {
+                if child.is_some() {
+                    return Err(CliError::invalid(
+                        "同名节点不唯一，请改用节点 ID 指定（files list 输出的 items[].id）",
+                    ));
+                }
+                child = Some(node);
+            } else if node.name.to_lowercase() == folded_component {
+                folded_ambiguous |= folded_child.is_some();
+                folded_child = Some(node);
+            }
+        }
+        cursor = result.next_cursor;
+        if cursor.is_none() {
+            break;
+        }
+    }
+    if child.is_none() && folded_child.is_some() && case_insensitive(parent.to_owned()).await? {
+        if folded_ambiguous {
+            return Err(CliError::invalid(
+                "忽略大小写后节点不唯一，请改用节点 ID 指定（files list 输出的 items[].id）",
+            ));
+        }
+        child = folded_child;
+    }
+    child.ok_or_else(|| {
+        let parent = display_path(location);
+        CliError::new(
+            "notFound",
+            format!("{parent} 下找不到「{component}」；用 files list --path \"{parent}\" 查看名称"),
+        )
+    })
 }
 
 /// Locate an unindexed ID through directory pages, preserving duplicate names.

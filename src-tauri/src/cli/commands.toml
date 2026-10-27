@@ -1041,13 +1041,23 @@ keywords = ["file type", "magika", "detect format"]
 path = "files text get"
 ipc = "fs_preview_text"
 summary = "读取文件文本（自动识别编码）"
-description = "检测 GBK、Big5、Shift-JIS 等编码并解码为 UTF-8，最多 2 MiB。"
+description = "检测 GBK、Big5、Shift-JIS 等编码并解码为 UTF-8，每段最多 2 MiB。nextOffset 非空时文件还有后续：用 --offset 继续读下一段（末尾被截断的字符留给下一段）；识别错误时用 --encoding 指定编码。"
 category = "read"
 args = ["path"]
 target = "nodeId"
 concurrent = true
 defaults = { maxBytes = 2097152 }
-keywords = ["gbk", "encoding", "decode text"]
+keywords = ["gbk", "encoding", "decode text", "charset", "large log", "page text"]
+examples = [
+    { command = "lovelycarve-cli files text get /<卷名称>/var/log/app.log --max-bytes 65536", description = "读取开头 64 KiB 并自动识别编码" },
+    { command = "lovelycarve-cli files text get /<卷名称>/var/log/app.log --offset 65530 --encoding gbk", description = "按 GBK 从上一段的 nextOffset 继续" },
+]
+[command.params.maxBytes]
+description = "本段最多读取的字节数（4–2097152）"
+[command.params.offset]
+description = "起始字节偏移；继续读下一段时传上一段的 nextOffset"
+[command.params.encoding]
+description = "按此编码解码，不再自动识别（WHATWG 标签，如 utf-8、gbk、gb18030、big5、shift_jis、utf-16le）"
 
 [[command]]
 path = "files export"
@@ -1560,7 +1570,8 @@ category = "delete"
 [[command]]
 path = "indexes volumes list"
 ipc = "filedb_volumes"
-summary = "列出已建索引的卷"
+summary = "列出检材中的卷与索引键"
+description = "返回卷与 volumeKey 的映射；不代表索引已就绪，完成状态用 indexes list 查看。"
 category = "read"
 concurrent = true
 
@@ -1568,10 +1579,10 @@ concurrent = true
 path = "indexes files list"
 ipc = "filedb_query_files"
 summary = "按条件查询索引中的文件"
-description = "用结构化过滤条件查询文件元数据索引；省略 --volume-key 时依次查询全部已索引卷。"
+description = "用结构化过滤条件查询文件元数据索引；filter.nameGlob 按完整文件名匹配通配符（忽略大小写，支持 *、?、[abc]、[^abc]），在匹配结果上分页；用 pathPrefix 限定目录。省略 --volume-key 时依次查询全部已索引卷，各卷分别应用 limit/offset。"
 category = "read"
 concurrent = true
-keywords = ["find files", "query metadata"]
+keywords = ["find files", "query metadata", "filename glob", "wildcard"]
 [command.params.filter]
 type = "json"
 description = "过滤条件 JSON"

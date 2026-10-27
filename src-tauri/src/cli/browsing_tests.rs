@@ -37,29 +37,39 @@ async fn root_id_paths_preserve_names_check_all_pages_and_do_not_alias_nested_id
     let volume = vec![(label.into(), "part:2".into())];
     for path in ["/part:2", "part:2", "/part:0/../part:2"] {
         assert_eq!(
-            resolve(&[], path, &mut page, insensitive).await.unwrap(),
+            resolve(&[], path, LastLink::Follow, &mut page, insensitive)
+                .await
+                .unwrap(),
             volume
         );
     }
     assert_eq!(
-        resolve(&volume, "/part:2/report.txt", &mut page, insensitive)
-            .await
-            .unwrap(),
+        resolve(
+            &volume,
+            "/part:2/report.txt",
+            LastLink::Follow,
+            &mut page,
+            insensitive
+        )
+        .await
+        .unwrap(),
         vec![
             (label.into(), "part:2".into()),
             ("report.txt".into(), "file-id".into())
         ]
     );
     for path in [format!("/{label}"), "/part:99".into(), "/PART:2".into()] {
-        assert!(
-            resolve(&[], &path, &mut page, |_| std::future::ready(Ok(false)))
-                .await
-                .is_err()
-        );
-    }
-    assert!(resolve(&volume, "file-id", &mut page, insensitive)
+        assert!(resolve(&[], &path, LastLink::Follow, &mut page, |_| {
+            std::future::ready(Ok(false))
+        })
         .await
         .is_err());
+    }
+    assert!(
+        resolve(&volume, "file-id", LastLink::Follow, &mut page, insensitive)
+            .await
+            .is_err()
+    );
 
     // A later page may have a real name equal to an earlier node's ID.
     // Neither interpretation may silently win, in either listing order.
@@ -77,12 +87,145 @@ async fn root_id_paths_preserve_names_check_all_pages_and_do_not_alias_nested_id
                 truncated: false,
             }))
         };
-        assert!(resolve(&[], "/part:0", &mut page, insensitive)
-            .await
-            .unwrap_err()
-            .message
-            .contains("不唯一"));
+        assert!(
+            resolve(&[], "/part:0", LastLink::Follow, &mut page, insensitive)
+                .await
+                .unwrap_err()
+                .message
+                .contains("不唯一")
+        );
     }
+}
+
+#[tokio::test]
+async fn links_resolve_within_their_volume_and_the_last_one_only_when_asked() {
+    use crate::core::catalog::filedb::filedb_store::test_support::node as test_node;
+    let link = |id: &str, name: &str, target: Option<&str>| FsNode {
+        link_target: target.map(str::to_owned),
+        ..test_node(id, name, NodeKind::Symlink)
+    };
+    let tree = move |parent: &str| match parent {
+        "" => vec![test_node("part:0", "分区1", NodeKind::Dir)],
+        "part:0" => vec![
+            test_node("etc", "etc", NodeKind::Dir),
+            test_node("usr", "usr", NodeKind::Dir),
+            link("bin-link", "bin", Some("usr/bin")),
+            link("lib-link", "lib", Some("/usr/lib")),
+            link("escape", "escape", Some("../../../../etc")),
+            link("loop-a", "loop-a", Some("loop-b")),
+            link("loop-b", "loop-b", Some("loop-a")),
+            link("dangling", "dangling", None),
+            link("drive", "drive", Some(r"C:\Users")),
+        ],
+        "etc" => vec![
+            link(
+                "os-release-link",
+                "os-release",
+                Some("../usr/lib/os-release"),
+            ),
+            link("localtime", "localtime", Some("/usr/share/zoneinfo/UTC")),
+        ],
+        "usr" => vec![
+            test_node("usr-lib", "lib", NodeKind::Dir),
+            test_node("usr-bin", "bin", NodeKind::Dir),
+        ],
+        "usr-lib" => vec![test_node("os-release", "os-release", NodeKind::File)],
+        "usr-bin" => vec![test_node("bash", "bash", NodeKind::File)],
+        _ => Vec::new(),
+    };
+    let mut page = |parent: String, _: Option<String>, _| {
+        std::future::ready(Ok(FsNodePage {
+            items: tree(&parent),
+            next_cursor: None,
+            total: None,
+            truncated: false,
+        }))
+    };
+    let entries = |ids: &[(&str, &str)]| -> Vec<(String, String)> {
+        ids.iter()
+            .map(|(name, id)| ((*name).to_owned(), (*id).to_owned()))
+            .collect()
+    };
+    let volume = ("分区1", "part:0");
+    let release = entries(&[
+        volume,
+        ("usr", "usr"),
+        ("lib", "usr-lib"),
+        ("os-release", "os-release"),
+    ]);
+    for path in [
+        "/分区1/etc/os-release",
+        "/分区1/lib/os-release",
+        "/分区1/escape/os-release",
+    ] {
+        assert_eq!(
+            resolve(&[], path, LastLink::Follow, &mut page, insensitive)
+                .await
+                .unwrap(),
+            release,
+            "{path}"
+        );
+    }
+    // The last link stays itself when asked; earlier ones are always followed.
+    assert_eq!(
+        resolve(
+            &[],
+            "/分区1/etc/os-release",
+            LastLink::Keep,
+            &mut page,
+            insensitive
+        )
+        .await
+        .unwrap(),
+        entries(&[volume, ("etc", "etc"), ("os-release", "os-release-link")])
+    );
+    assert_eq!(
+        resolve(
+            &[],
+            "/分区1/bin/bash",
+            LastLink::Keep,
+            &mut page,
+            insensitive
+        )
+        .await
+        .unwrap(),
+        entries(&[volume, ("usr", "usr"), ("bin", "usr-bin"), ("bash", "bash")])
+    );
+    // `..` after a link applies to its target, as the kernel resolves it.
+    assert_eq!(
+        resolve(&[], "/分区1/bin/..", LastLink::Keep, &mut page, insensitive)
+            .await
+            .unwrap(),
+        entries(&[volume, ("usr", "usr")])
+    );
+    for (path, reason) in [
+        ("/分区1/loop-a", "成环"),
+        ("/分区1/dangling", "链接目标"),
+        ("/分区1/drive/x", "Windows"),
+    ] {
+        let error = resolve(&[], path, LastLink::Follow, &mut page, insensitive)
+            .await
+            .unwrap_err();
+        assert!(error.message.contains(reason), "{path}: {}", error.message);
+    }
+    let missing = resolve(
+        &[],
+        "/分区1/etc/localtime",
+        LastLink::Follow,
+        &mut page,
+        insensitive,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(missing.code, "notFound");
+    assert!(
+        missing.message.contains("「share」")
+            && missing
+                .message
+                .contains("/分区1/etc/localtime → /usr/share/zoneinfo/UTC"),
+        "{}",
+        missing.message
+    );
 }
 
 #[tokio::test]
@@ -123,9 +266,15 @@ async fn index_pages_cover_large_directories_and_preserve_walk_limits() {
     let current = vec![("volume".into(), "part:0".into())];
     assert_eq!(
         node(
-            &resolve(&current, "file501.txt", &mut page, insensitive)
-                .await
-                .unwrap(),
+            &resolve(
+                &current,
+                "file501.txt",
+                LastLink::Follow,
+                &mut page,
+                insensitive
+            )
+            .await
+            .unwrap(),
             &mut page
         )
         .await
@@ -136,9 +285,15 @@ async fn index_pages_cover_large_directories_and_preserve_walk_limits() {
     );
     let cancellation = CancellationToken::new();
     assert_eq!(
-        resolve(&current, "nested/../file501.txt", &mut page, insensitive)
-            .await
-            .unwrap(),
+        resolve(
+            &current,
+            "nested/../file501.txt",
+            LastLink::Follow,
+            &mut page,
+            insensitive
+        )
+        .await
+        .unwrap(),
         vec![
             ("volume".into(), "part:0".into()),
             ("file501.txt".into(), "file-501".into())
@@ -166,9 +321,15 @@ async fn index_pages_cover_large_directories_and_preserve_walk_limits() {
         .await
         .unwrap();
     assert_eq!((items.len(), truncated), (501, true));
-    assert!(resolve(&current, "missing", &mut page, insensitive)
-        .await
-        .is_err());
+    assert!(resolve(
+        &current,
+        "missing",
+        LastLink::Follow,
+        &mut page,
+        insensitive
+    )
+    .await
+    .is_err());
     cancellation.cancel();
     assert!(walk(&current, 32, 10000, None, &cancellation, &mut page)
         .await
@@ -214,6 +375,7 @@ async fn duplicate_names_on_separate_index_pages_remain_ambiguous() {
     let error = resolve(
         &[("volume".into(), "part:0".into())],
         "z-duplicate",
+        LastLink::Follow,
         &mut page,
         insensitive,
     )
@@ -223,6 +385,7 @@ async fn duplicate_names_on_separate_index_pages_remain_ambiguous() {
     let error = resolve(
         &[("volume".into(), "part:0".into())],
         "Z-DUPLICATE",
+        LastLink::Follow,
         &mut page,
         insensitive,
     )
@@ -264,18 +427,24 @@ async fn exact_names_win_over_folded_matches_across_pages() {
     };
     let current = vec![("volume".into(), "part:0".into())];
     for name in ["FILE.txt", "file.txt"] {
-        let result = resolve(&current, name, &mut page, insensitive)
+        let result = resolve(&current, name, LastLink::Follow, &mut page, insensitive)
             .await
             .unwrap();
         assert_eq!(result.last().unwrap().0, name);
     }
-    assert!(resolve(&current, "File.txt", &mut page, insensitive)
-        .await
-        .unwrap_err()
-        .message
-        .contains("不唯一"));
+    assert!(resolve(
+        &current,
+        "File.txt",
+        LastLink::Follow,
+        &mut page,
+        insensitive
+    )
+    .await
+    .unwrap_err()
+    .message
+    .contains("不唯一"));
     assert_eq!(
-        resolve(&current, "m499", &mut page, insensitive)
+        resolve(&current, "m499", LastLink::Follow, &mut page, insensitive)
             .await
             .unwrap()
             .last()
@@ -283,13 +452,11 @@ async fn exact_names_win_over_folded_matches_across_pages() {
             .0,
         "M499"
     );
-    assert!(
-        resolve(&current, "m499", &mut page, |_| std::future::ready(Ok(
-            false
-        )))
-        .await
-        .is_err()
-    );
+    assert!(resolve(&current, "m499", LastLink::Follow, &mut page, |_| {
+        std::future::ready(Ok(false))
+    })
+    .await
+    .is_err());
 }
 
 #[tokio::test]

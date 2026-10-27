@@ -130,7 +130,10 @@ fn render(catalog: &Catalog) -> String {
          Each entry is a command's synopsis and its description. Positional arguments come first, \
          then options; `<…>` is required, `[…]` optional, `a|b` lists the accepted values and \
          `…` marks a repeatable value. A command whose synopsis has both a path and a node ID \
-         option (`--node-id`, `--parent-id`, `--root-id`) takes one of them. Run \
+         option (`--node-id`, `--parent-id`, `--root-id`) takes one of them, except `files \
+         lookup`, whose path is relative to its root ID. Where that option is `--parent-id` \
+         or `--root-id`, `--node-id` works too, and a positional argument may also be \
+         written as its option, such as `--path <path>`. Run \
          `lovelycarve-cli <command> --help` for option descriptions and defaults, and \
          `lovelycarve-cli schema <command>` for the JSON request.\n\n\
          ## Options on every command\n\n\

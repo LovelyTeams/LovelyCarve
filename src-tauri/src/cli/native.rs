@@ -8,7 +8,7 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use super::{
-    browsing::{self, Entry},
+    browsing::{self, Entry, LastLink},
     catalog::{self, Command},
     context::{Context, Exec, Mode, Target},
     generated, json_output, schema, strings, CliError, Output,
@@ -189,13 +189,25 @@ pub async fn run(
                             context,
                             &image_id,
                             &text(&values, "dir").unwrap_or_default(),
+                            LastLink::Follow,
                         )
                         .await?
                     }
                 };
                 if let Some(node) = node(exec, &image_id, &location).await? {
                     if node.kind != crate::core::filesystem::tree::fs_tree::NodeKind::Dir {
-                        return Err(CliError::invalid("目标必须是目录；不会跟随符号链接"));
+                        return Err(CliError::invalid(format!(
+                            "目标必须是目录：{} 是{}",
+                            super::browsing::display_path(&location),
+                            match node.kind {
+                                crate::core::filesystem::tree::fs_tree::NodeKind::File => "文件",
+                                crate::core::filesystem::tree::fs_tree::NodeKind::Symlink =>
+                                    "符号链接（按节点 ID 进入时不跟随）",
+                                crate::core::filesystem::tree::fs_tree::NodeKind::Unallocated
+                                | crate::core::filesystem::tree::fs_tree::NodeKind::Dir =>
+                                    "非目录节点",
+                            }
+                        )));
                     }
                 }
                 let parent = location

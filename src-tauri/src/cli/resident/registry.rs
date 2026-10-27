@@ -56,6 +56,45 @@ pub(super) fn path(name: &str) -> Result<PathBuf, CliError> {
     Ok(directory()?.join(format!("session-{name}.json")))
 }
 
+pub(super) fn log_path(name: &str) -> Result<PathBuf, CliError> {
+    validate_name(name)?;
+    Ok(directory()?.join(format!("session-{name}.log")))
+}
+
+/// Remove the record a session left behind when its server exited without
+/// closing (a crash, a killed process, a restarted machine). The server holds
+/// the name's lock for as long as it runs, so taking the lock here proves it
+/// is gone; the record is removed under the lock, before a new server can
+/// publish its own. Returns whether a record was removed.
+pub(super) fn clear_stale(name: &str) -> Result<bool, CliError> {
+    match lock(name) {
+        Ok(lock) => remove_record(&lock, name),
+        Err(error) if error.code == "sessionAlreadyRunning" => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
+/// Remove the record of `name`, whose lock the caller holds: no server owns
+/// the name, so a record is stale.
+pub(super) fn remove_record(_lock: &File, name: &str) -> Result<bool, CliError> {
+    match std::fs::remove_file(path(name)?) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error.into()),
+    }
+}
+
+/// The failure for a session whose server exited and whose record was removed.
+pub(super) fn exited(name: &str) -> CliError {
+    CliError::new(
+        "sessionExited",
+        format!(
+            "会话 {name} 的后台进程已退出，残留记录已清理；运行 sessions open {name} 重新启动\
+             （已打开的检材、解锁、组装卷与当前目录需要重新建立）"
+        ),
+    )
+}
+
 pub(super) fn read(name: &str) -> Result<Descriptor, CliError> {
     let path = path(name)?;
     let file = File::open(&path).map_err(|error| {

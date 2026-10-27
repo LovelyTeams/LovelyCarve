@@ -18,6 +18,9 @@ export interface FiledbVolume {
 export interface FiledbFileFilter {
   namePrefix?: string | null;
   nameContains?: string | null;
+  /** Case-insensitive whole-name glob: *, ?, [abc], [a-z], [^abc].
+   *  Use pathPrefix separately for directory scope; % and _ are literal. */
+  nameGlob?: string | null;
   pathPrefix?: string | null;
   pathContains?: string | null;
   /** Extensions without the leading dot; matched case-insensitively. */

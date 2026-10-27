@@ -108,6 +108,28 @@ def test_resident_sessions(executable, base_environment):
             assert descriptor["token"] not in public
             assert value("sessions", "get", "exam")["pid"] == pid
 
+            # A record whose server is gone (its lock is free) is removed by the
+            # first client that finds it, which says so; closing one succeeds.
+            def stale(name):
+                with socket.socket() as probe:
+                    probe.bind(("127.0.0.1", 0))
+                    port = probe.getsockname()[1]
+                record = {"protocol": 3, "name": name, "port": port, "token": "0" * 64, "pid": 4,
+                          "startedAt": 0, "workingDirectory": str(root)}
+                (root / "sessions" / f"session-{name}.json").write_text(json.dumps(record))
+
+            stale("ghost")
+            failure = run("--session", "ghost", "context", "get", expected=1)
+            assert "后台进程已退出" in failure.stderr and "sessions open ghost" in failure.stderr, failure.stderr
+            assert not (root / "sessions/session-ghost.json").exists()
+            assert "未启动" in run("--session", "ghost", "context", "get", expected=1).stderr
+            stale("ghost")
+            assert value("sessions", "close", "ghost") == {"name": "ghost", "closed": True, "exited": True}
+            stale("ghost")
+            listed = value("sessions", "list")["sessions"]
+            assert [entry["error"]["code"] for entry in listed if entry["name"] == "ghost"] == ["sessionExited"], listed
+            assert "ghost" not in [entry["name"] for entry in value("sessions", "list")["sessions"]]
+
             # Closing releases the case lock so an ordinary fresh process can
             # open it, and leaves the other resident session available.
             case = root / "case"
@@ -131,6 +153,12 @@ def test_resident_sessions(executable, base_environment):
             else:
                 raise AssertionError("resident process did not stop")
             run("--session", "exam", "files", "list", expected=1)
+            # Once the dead server's lock is released, a client clears its record.
+            deadline = time.monotonic() + 10
+            while (root / "sessions/session-exam.json").exists() and time.monotonic() < deadline:
+                run("--session", "exam", "context", "get", expected=1)
+                time.sleep(0.05)
+            assert not (root / "sessions/session-exam.json").exists()
             recovered = value("sessions", "open", "exam")
             assert recovered["pid"] != pid and recovered["context"]["image"] is None, recovered
         finally:

@@ -769,6 +769,8 @@ from_apps/data_types/pairs/text/show_delete），两级勾选走 `(from_app, typ
 
 ## 元数据索引层（filedb）
 
+`filedb_query_files` 的结构化条件包含 `nameGlob`：在预存的 `name_low` 上使用绑定参数的 SQLite `GLOB`，模式与现有名称条件一样先转小写，按完整文件名匹配 `*`、`?` 和字符组。它与路径、扩展名、类型等条件一起放在 SQL `WHERE` 中，再排序及 `LIMIT/OFFSET`，不会取页后才丢弃不匹配项。每个卷分别分页，目录范围仍由 `pathPrefix` 表示，不把文件名模式解释为路径 glob。
+
 统一文件目录分为索引文件格式 `core::catalog::filedb::filedb_file`、构建引擎 `core::catalog::filedb::filedb_store`、查询路径
 `core::catalog::filedb::filedb_query` / `core::catalog::filedb::filedb_flat`、寻址模型 `core::filesystem::meta_addr` 与文件系统数组 `core::filesystem::fs_all`。
 每个卷一个索引文件（`application_id = 0x4C434958`，"LCIX"），由快照一次建成后发布，之后只读；

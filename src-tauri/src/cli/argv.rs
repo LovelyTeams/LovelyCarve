@@ -83,14 +83,27 @@ fn global_args(command: clap::Command) -> clap::Command {
     command
 }
 
+/// Whether a positional argument may also be written as its option, so that
+/// `files get --path /x` works as `files get /x` does. The image scope has
+/// the global `--image`, and a list of values stays positional.
+fn also_option(param: &Param) -> bool {
+    param.position.is_some() && param.visible() && !param.scope && param.kind != Kind::Array
+}
+
+/// The clap ID of a positional argument written as an option.
+fn option_id(param: &Param) -> String {
+    format!("{}#option", param.name)
+}
+
+/// The option every command that targets a node accepts for its ID, whatever
+/// the parameter is called (`--parent-id` for `files list`).
+const NODE_ID_OPTION: &str = "node-id";
+
 fn param_arg(command: &Command, param: &Param) -> Option<Arg> {
     if !param.visible() || (param.scope && param.position.is_none()) {
         return None;
     }
     let mut arg = Arg::new(param.name.clone());
-    if command.native.as_deref() == Some("timezones-set") && param.name == "zone" {
-        arg = arg.allow_hyphen_values(true);
-    }
     if let Some(position) = param.position {
         arg = arg.index(position + 1).value_name(param.option.clone());
         // `--body` may supply a required subject instead; the command then
@@ -101,6 +114,9 @@ fn param_arg(command: &Command, param: &Param) -> Option<Arg> {
         }
         if command.takes_body() {
             alternatives.push("body".to_owned());
+        }
+        if also_option(param) {
+            alternatives.push(option_id(param));
         }
         if param.required {
             arg = if alternatives.is_empty() {
@@ -114,8 +130,39 @@ fn param_arg(command: &Command, param: &Param) -> Option<Arg> {
         if let Some(short) = param.short {
             arg = arg.short(short);
         }
+        if command.target.as_deref() == Some(param.name.as_str())
+            && !command
+                .params
+                .iter()
+                .any(|other| other.option == NODE_ID_OPTION)
+        {
+            arg = arg.alias(NODE_ID_OPTION);
+        }
     }
-    arg = match param.kind {
+    Some(typed(command, param, arg, param.position.is_some()))
+}
+
+/// The positional argument `param`, accepted as `--<option>` too.
+fn option_arg(command: &Command, param: &Param) -> Option<Arg> {
+    if !also_option(param) {
+        return None;
+    }
+    let arg = Arg::new(option_id(param))
+        .long(param.option.clone())
+        .hide(true)
+        .conflicts_with(param.name.clone());
+    Some(typed(command, param, arg, false))
+}
+
+/// How `arg` takes the value of `param`, written as a positional argument or
+/// as an option.
+fn typed(command: &Command, param: &Param, arg: Arg, positional: bool) -> Arg {
+    let arg = if command.native.as_deref() == Some("timezones-set") && param.name == "zone" {
+        arg.allow_hyphen_values(true)
+    } else {
+        arg
+    };
+    match param.kind {
         // `--flag` alone means true; `--flag=false` turns an API default off.
         Kind::Boolean => arg
             .num_args(0..=1)
@@ -125,17 +172,14 @@ fn param_arg(command: &Command, param: &Param) -> Option<Arg> {
         Kind::Enum => arg.value_parser(PossibleValuesParser::new(
             param.values.clone().unwrap_or_default(),
         )),
-        Kind::Array if param.position.is_some() => {
-            arg.num_args(if param.required { 1.. } else { 0.. })
-        }
+        Kind::Array if positional => arg.num_args(if param.required { 1.. } else { 0.. }),
         // `--algos md5 sha256`, `--algos md5 --algos sha256` or a JSON array.
         Kind::Array => arg.num_args(1..).action(ArgAction::Append),
-        Kind::String if param.secret && param.position.is_none() => {
+        Kind::String if param.secret && !positional => {
             arg.num_args(0..=1).default_missing_value(ASK)
         }
         Kind::String | Kind::Number | Kind::Json => arg,
-    };
-    Some(arg)
+    }
 }
 
 fn switch(id: &str) -> Arg {
@@ -150,6 +194,9 @@ fn leaf(name: &str, command: &Command) -> clap::Command {
         .disable_help_flag(true);
     for param in &command.params {
         if let Some(arg) = param_arg(command, param) {
+            leaf = leaf.arg(arg);
+        }
+        if let Some(arg) = option_arg(command, param) {
             leaf = leaf.arg(arg);
         }
     }
@@ -288,7 +335,34 @@ fn usage_error(catalog: &'static Catalog, path: &[String], error: &clap::Error) 
             }
         }
         ErrorKind::UnknownArgument => {
-            format!("未知选项或多余参数：{}", invalid.unwrap_or_default())
+            let invalid = invalid.unwrap_or_default();
+            let words: Vec<&str> = path.iter().map(String::as_str).collect();
+            // `list` commands take their directory as an option, never as a
+            // positional argument: say how to write it.
+            match catalog.find(&words).filter(|command| {
+                !invalid.starts_with('-')
+                    && command
+                        .param("path")
+                        .is_some_and(|param| param.position.is_none())
+            }) {
+                Some(command) => {
+                    let shown = if invalid.contains(char::is_whitespace) {
+                        format!("\"{invalid}\"")
+                    } else {
+                        invalid.clone()
+                    };
+                    let by_id = if command.target.is_some() {
+                        "；节点 ID 写成 --node-id <ID>"
+                    } else {
+                        ""
+                    };
+                    format!(
+                        "{} 不接受位置参数 {shown}：镜像内路径写成 --path {shown}{by_id}",
+                        command.command
+                    )
+                }
+                None => format!("未知选项或多余参数：{invalid}"),
+            }
         }
         ErrorKind::InvalidValue | ErrorKind::ValueValidation => format!(
             "{} 的值无效：{}",
@@ -442,28 +516,33 @@ fn invocation(command: &'static Command, matches: &ArgMatches) -> Result<Invocat
         if param_arg(command, param).is_none() {
             continue;
         }
-        let id = param.name.as_str();
-        let value = match param.kind {
-            Kind::Boolean => matches
-                .try_get_one::<bool>(id)
-                .ok()
-                .flatten()
-                .map(|value| Value::Bool(*value)),
-            Kind::Array => match matches.try_get_many::<String>(id).ok().flatten() {
-                Some(items) => Some(array(param, items.cloned().collect())?),
-                None => None,
-            },
-            _ => match matches.try_get_one::<String>(id).ok().flatten() {
-                Some(raw) if param.secret && raw == ASK => {
-                    ask.push(param.name.clone());
-                    None
-                }
-                Some(raw) => Some(scalar(param, raw)?),
-                None => None,
-            },
-        };
-        if let Some(value) = value {
-            values.insert(param.name.clone(), value);
+        let spellings = [
+            Some(param.name.clone()),
+            also_option(param).then(|| option_id(param)),
+        ];
+        for id in spellings.iter().flatten() {
+            let value = match param.kind {
+                Kind::Boolean => matches
+                    .try_get_one::<bool>(id)
+                    .ok()
+                    .flatten()
+                    .map(|value| Value::Bool(*value)),
+                Kind::Array => match matches.try_get_many::<String>(id).ok().flatten() {
+                    Some(items) => Some(array(param, items.cloned().collect())?),
+                    None => None,
+                },
+                _ => match matches.try_get_one::<String>(id).ok().flatten() {
+                    Some(raw) if param.secret && raw == ASK => {
+                        ask.push(param.name.clone());
+                        None
+                    }
+                    Some(raw) => Some(scalar(param, raw)?),
+                    None => None,
+                },
+            };
+            if let Some(value) = value {
+                values.insert(param.name.clone(), value);
+            }
         }
     }
     super::projection::agent_page_size(command, &mut values, super::interactive::is_agentic());
@@ -652,6 +731,59 @@ mod tests {
 
         let (_, invocation) = run(&["cases", "delete", r"D:\cases\a", "-f", "--dry-run"]);
         assert!(invocation.force && invocation.dry_run);
+    }
+
+    #[test]
+    fn subjects_and_node_ids_have_one_spelling_on_every_command() {
+        for (args, expected) in [
+            (
+                vec!["files", "get", "--path", "/分区1/etc"],
+                serde_json::json!({"path": "/分区1/etc"}),
+            ),
+            (
+                vec!["files", "text", "get", "--path=/a b", "--max-bytes", "4096"],
+                serde_json::json!({"path": "/a b", "maxBytes": 4096}),
+            ),
+            (
+                vec!["images", "open", "--path", r"D:\disk.E01"],
+                serde_json::json!({"path": r"D:\disk.E01"}),
+            ),
+            (
+                vec!["files", "search", "pw", "--path", "/"],
+                serde_json::json!({"pattern": "pw", "path": "/"}),
+            ),
+            // An explicit page size: agents otherwise get a default one.
+            (
+                vec!["files", "list", "--node-id", "part:0", "--page-size", "7"],
+                serde_json::json!({"parentId": "part:0", "pageSize": 7}),
+            ),
+            (
+                vec!["files", "list", "--parent-id", "part:0", "--page-size", "7"],
+                serde_json::json!({"parentId": "part:0", "pageSize": 7}),
+            ),
+        ] {
+            let (_, invocation) = run(&args);
+            assert_eq!(Value::Object(invocation.values), expected, "{args:?}");
+        }
+        let catalog = catalog().unwrap();
+        let parsed = |args: &[&str]| {
+            let args: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
+            parse(catalog, &args)
+        };
+        assert!(matches!(
+            parsed(&["files", "get", "/a", "--path", "/b"]),
+            Parsed::UsageError { .. }
+        ));
+        match parsed(&["files", "list", "/分区1/a b"]) {
+            Parsed::UsageError { error, .. } => assert!(
+                error
+                    .message
+                    .contains("不接受位置参数 \"/分区1/a b\"：镜像内路径写成 --path \"/分区1/a b\"；节点 ID 写成 --node-id <ID>"),
+                "{}",
+                error.message
+            ),
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]

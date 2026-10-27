@@ -8,7 +8,7 @@ use serde_json::{json, Map, Value};
 
 use super::{
     background::Background,
-    browsing,
+    browsing::{self, LastLink},
     catalog::{Command, Kind},
     generated,
     incomplete::{self, Incomplete},
@@ -16,7 +16,10 @@ use super::{
     progress::Reporter,
     prompt, CliError, Json, Output,
 };
-use crate::{commands::filesystem::filesystem_page::FsNodePage, host::AppHandle, state::AppState};
+use crate::{
+    commands::filesystem::filesystem_page::FsNodePage, core::filesystem::tree::fs_tree::NodeKind,
+    host::AppHandle, state::AppState,
+};
 
 /// How a command reaches the user: a single invocation, the JSONL session,
 /// or the interactive shell.
@@ -46,14 +49,7 @@ pub struct Context {
 
 impl Context {
     pub fn pwd(&self) -> String {
-        format!(
-            "/{}",
-            self.location
-                .iter()
-                .map(|(name, _)| name.as_str())
-                .collect::<Vec<_>>()
-                .join("/")
-        )
+        browsing::display_path(&self.location)
     }
 }
 
@@ -222,6 +218,15 @@ fn found(command: &Command, subject: &[String], output: Output) -> Result<Output
     }
 }
 
+/// `files get` and `files ancestors list` describe the node a path names, a
+/// symbolic link included; every other command needs what a link points to.
+fn last_link(command: &Command) -> LastLink {
+    match (command.native.as_deref(), command.ipc_command.as_deref()) {
+        (Some("files-get"), _) | (_, Some("fs_node_locate")) => LastLink::Keep,
+        _ => LastLink::Follow,
+    }
+}
+
 /// Every way to give a command its evidence, as cf lists the ways to give a
 /// zone.
 fn no_image(command: &Command, mode: Mode) -> CliError {
@@ -329,13 +334,16 @@ impl Exec {
         .map_err(|error| super::command_error(error).in_operation("fs_children_page"))
     }
 
-    /// Resolve `path` against the working directory.
+    /// Resolve `path` against the working directory, undoing the rewriting
+    /// Git Bash / MSYS2 applies to arguments that start with `/`.
     pub async fn locate(
         &self,
         context: &Context,
         image_id: &str,
         path: &str,
+        last_link: LastLink,
     ) -> Result<Vec<(String, String)>, CliError> {
+        let path = super::msys::evidence_path(path);
         let mut page =
             |parent_id, cursor, page_size| self.page(image_id, parent_id, cursor, page_size);
         let image = self
@@ -346,10 +354,11 @@ impl Exec {
             .get(image_id)
             .cloned()
             .ok_or_else(|| CliError::invalid("检材已关闭"))?;
-        browsing::resolve(&context.location, path, &mut page, |parent| {
+        browsing::resolve(&context.location, &path, last_link, &mut page, |parent| {
             super::navigation::case_insensitive(Arc::clone(&image), parent)
         })
         .await
+        .map_err(|error| super::msys::explain(error, &path))
     }
 
     /// Runs one command through every step. A result the catalogue judges
@@ -550,13 +559,28 @@ impl Exec {
                 if Path::new(path).exists() {
                     return Err(CliError::new(
                         "alreadyExists",
-                        format!("{path} 已存在；为避免覆盖，请换一个输出路径"),
+                        format!(
+                            "{path} 已存在：导出从不覆盖已有文件，什么也没有写入。\
+                             请换一个新的输出路径；重跑批量导出时使用新的目标目录"
+                        ),
                     ));
                 }
             }
         }
         let output = match command.ipc_command.as_deref() {
-            Some(ipc) => generated::dispatch(&self.host, &self.state, ipc, values.clone()).await?,
+            Some(ipc) => {
+                match generated::dispatch(&self.host, &self.state, ipc, values.clone()).await {
+                    Ok(output) => output,
+                    Err(error) => {
+                        return Err(match (ipc, &target, values.get("imageId")) {
+                            ("fs_export", Some(target), Some(Value::String(image_id))) => {
+                                self.directory_export(image_id, target, error).await
+                            }
+                            _ => error,
+                        })
+                    }
+                }
+            }
             None if matches!(
                 command.native.as_deref(),
                 Some("timezones-get" | "timezones-set")
@@ -618,7 +642,9 @@ impl Exec {
             .and_then(Value::as_str)
             .map(str::to_owned)
             .ok_or_else(|| CliError::new("noImage", "解析镜像内路径需要检材"))?;
-        let location = self.locate(context, &image_id, &path).await?;
+        let location = self
+            .locate(context, &image_id, &path, last_link(command))
+            .await?;
         let node_id = location
             .last()
             .map(|(_, id)| id.clone())
@@ -640,6 +666,37 @@ impl Exec {
             node_id,
             location: Some(location),
         })
+    }
+
+    /// `files export` writes one file. When it fails on a directory, say which
+    /// command exports a directory instead of reporting an unreadable file.
+    async fn directory_export(&self, image_id: &str, target: &Target, error: CliError) -> CliError {
+        let location = match &target.location {
+            Some(location) => location.clone(),
+            None => match super::navigation::locate_node(self, image_id, &target.node_id).await {
+                Ok(location) => location,
+                Err(_) => return error,
+            },
+        };
+        let mut page =
+            |parent_id, cursor, page_size| self.page(image_id, parent_id, cursor, page_size);
+        match browsing::node(&location, &mut page).await {
+            Ok(Some(node)) if node.kind == NodeKind::Dir => {
+                let path = browsing::display_path(&location);
+                CliError {
+                    details: Some(json!({"code": error.code, "message": error.message})),
+                    ..CliError::new(
+                        "isDirectory",
+                        format!(
+                            "{path} 是目录，files export 只导出单个文件。导出整个目录：\
+                             files directories export \"{path}\" --mode tree --destination <新目录>\
+                             （或 --mode zip --destination <新文件.zip>）"
+                        ),
+                    )
+                }
+            }
+            _ => error,
+        }
     }
 
     /// Keep the context in step with the image and case the command changed.

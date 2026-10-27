@@ -4,6 +4,7 @@ use std::{io::Write, sync::Arc};
 use serde_json::{json, Value};
 
 use super::{
+    browsing::LastLink,
     catalog,
     context::{Context, Exec, Mode, Request},
     Output,
@@ -167,7 +168,7 @@ async fn navigate_raid_lvm_btrfs(on_md: bool) {
     .await;
     assert_eq!(bytes["data"], hex::encode(btrfs::CONTENT));
     assert!(exec
-        .locate(&context, &logical_image, "HELLO.TXT")
+        .locate(&context, &logical_image, "HELLO.TXT", LastLink::Follow)
         .await
         .is_err());
     let info = execute(&exec, &mut context, "images get", json!({})).await;
@@ -323,7 +324,8 @@ fn duplicate_complex_volume_names_can_be_entered_by_id_and_path_before_indexing(
                     .locate(
                         &context,
                         "duplicate-volumes",
-                        &format!("/{navigation_name}")
+                        &format!("/{navigation_name}"),
+                        LastLink::Follow
                     )
                     .await
                     .unwrap_err()

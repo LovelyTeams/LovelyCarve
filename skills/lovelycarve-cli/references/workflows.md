@@ -9,6 +9,7 @@ Read the sections needed for the task. Resolve `lovelycarve-cli` to the executab
 - [Pagination and projection](#pagination-and-projection)
 - [Batch with JSONL](#batch-with-jsonl)
 - [Find and inspect files](#find-and-inspect-files)
+- [Filename glob search](#filename-glob-search)
 - [Paths and node IDs](#paths-and-node-ids)
 - [File times and time zones](#file-times-and-time-zones)
 - [Content search and global search](#content-search-and-global-search)
@@ -31,25 +32,40 @@ Read the sections needed for the task. Resolve `lovelycarve-cli` to the executab
 - Use absolute host paths. Relative host paths resolve against `sessions get`'s `workingDirectory`, not the connecting command's directory. Evidence paths remain separate and use `/`.
 - Cases persist indexes, searches, timelines and analysis results. Without one, browsing and byte operations work, but indexes last only for the process. Do not open the same case in the desktop app and CLI simultaneously.
 
-For an existing case:
-
-```text
-lovelycarve-cli -q --case "<absolute-case-dir>" --image "<absolute-evidence-path>" sessions open exam
-lovelycarve-cli -q --session exam images get
-lovelycarve-cli -q --session exam tasks wait
-lovelycarve-cli -q --session exam indexes volumes list
-```
-
-To create a case for the requested analysis, start a new session, create the case, then open the evidence. Already loaded evidence is also registered when creating a case:
+For a new investigation, create the case first, then load the evidence so automatic indexing is persisted in that case:
 
 ```text
 lovelycarve-cli -q sessions open exam
 lovelycarve-cli -q --session exam cases create "<new-absolute-case-dir>" --name "<case-name>"
 lovelycarve-cli -q --session exam images open "<absolute-evidence-path>"
 lovelycarve-cli -q --session exam tasks wait
+lovelycarve-cli -q --session exam indexes list
+```
+
+Match the index entry to the selected `imageId` and `volumeKey`. Ready, complete coverage requires `indexed: true`, `stale: false`, `truncated: false`. `tasks wait` alone is insufficient because cancelled tasks need not make it fail. `indexes volumes list` supplies volume keys, not proof that a usable index exists. If a required index is missing or stale, build that volume explicitly, then wait and inspect publication again:
+
+```text
+lovelycarve-cli -q --session exam indexes volumes list
+lovelycarve-cli -q --session exam indexes create --volume-key "<returned-volume-key>"
+lovelycarve-cli -q --session exam tasks wait
+lovelycarve-cli -q --session exam indexes list
+```
+
+Do not search an incomplete index and interpret no matches as absence. Report failed or truncated builds and their coverage; avoid repeatedly rebuilding a volume that fails for the same unsupported layout. Unlock encrypted evidence or assemble arrays before building indexes for the newly available volumes.
+
+When the user selects an existing case, reopen it instead of creating a replacement:
+
+```text
+lovelycarve-cli -q --case "<absolute-case-dir>" --image "<absolute-evidence-path>" sessions open exam
+lovelycarve-cli -q --session exam images get
+lovelycarve-cli -q --session exam tasks wait
+lovelycarve-cli -q --session exam indexes list
+lovelycarve-cli -q --session exam indexes volumes list
 ```
 
 Inspect each result before continuing. `tasks wait` can report cancelled tasks without failing; verify the required index or analysis actually completed. After finishing the work, close a session you created with `sessions close exam`; that cancels remaining tasks and releases its evidence. Leave a reused user session open unless asked to close it.
+
+A session whose background process exited (a crash, a killed process, a restarted machine) fails with `sessionExited`: the command that found it has already removed its record, `sessions list` stops listing it and `sessions close` on it succeeds with `"exited": true`. Start it again with `sessions open exam`; unlocked volumes, assembled arrays, recovery scans and the current directory lived in the old process and must be rebuilt. `sessionUnavailable` instead means the process still owns the name but did not answer, for example while it is still opening evidence: check again with `sessions get exam`.
 
 ## Shell invocation and argument files
 
@@ -59,26 +75,26 @@ In PowerShell, invoke a quoted executable with `&`. JSON options (`--options`, `
 & 'D:/<skill-root>/bin/lovelycarve-cli.exe' --session exam encrypted-volumes unlock --options '@D:/<host-dir>/unlock.json'
 ```
 
-In Git Bash / MSYS2, a Windows executable may receive evidence `/paths` rewritten as host paths even when quoted. Scope the conversion override to the CLI call; it need not change the rest of the shell session:
+In Git Bash / MSYS2, a Windows executable receives arguments that start with `/` rewritten as host paths, even when quoted: `/分区1/etc` arrives as `C:/Program Files/Git/分区1/etc`. The CLI recognizes an evidence path rewritten below the MSYS installation and turns it back; one it cannot recognize (below a mounted directory such as `/tmp` or `/c`) fails with an explanation. Other arguments are not turned back, so a search pattern or option value that starts with `/` needs the conversion disabled. Scope the override to the CLI call:
 
 ```sh
-MSYS2_ARG_CONV_EXCL='*' 'D:/<skill-root>/bin/lovelycarve-cli.exe' --session exam files list --path '/<volume>'
+MSYS2_ARG_CONV_EXCL='*' 'D:/<skill-root>/bin/lovelycarve-cli.exe' --session exam files search /etc/passwd --path '/<volume>'
 ```
 
-Use forward-slash absolute Windows paths such as `D:/…` for host files passed to the native executable. Node IDs avoid name ambiguity, but disabling conversion remains useful whenever argument values contain `/`. JSONL request bodies arrive on stdin and are not shell arguments. For a suspected shell problem, inspect the parsed request with `--dry-run` before retrying an expensive operation:
+Use forward-slash absolute Windows paths such as `D:/…` for host files passed to the native executable. JSONL request bodies arrive on stdin and are not shell arguments. For a suspected shell problem, inspect the parsed request with `--dry-run` before retrying an expensive operation:
 
 ```text
 lovelycarve-cli -q files list --path /example-volume --dry-run
 ```
 
-`--dry-run` is a command option: place it after the command, as above. Keep the positional/option distinction in [commands.md](commands.md); do not add `--path` to a positional command. `files search <pattern> [path]` takes the pattern before its optional path.
+`--dry-run` is a command option: place it after the command, as above. A positional subject may also be written as its option (`files get --path <path>`), not both. Positional arguments keep their order: `files search <pattern> [path]` takes the pattern first, so name the directory with `--path` when the pattern is given as an option.
 
 Argument files are expanded by the calling CLI before a resident-session request is sent. Thus a relative `@file` is relative to the calling shell, while host paths inside the JSON are resolved by the backend/session. Use absolute paths for both. File expansion is not recursive: `"password":"@secret.txt"` inside JSON is a literal password, not a credential-file reference. Put the actual credential in the private options file and never print it into diagnostics.
 
 ## Pagination and projection
 
 - `--fields name,id,kind,size,timestamps.modified` projects list entries, preserving response metadata. Dot paths keep nesting. Include identity and fields needed to assess the result; include `timestampsOriginal` when comparing converted and source times (absent when identical).
-- Directory and journal pages use `nextCursor` / `--cursor`. Search hits and analysis records use `--skip` / `--limit`; indexed-file filters carry `offset` / `limit` inside the filter JSON. For indexed files, choose `--volume-key` to page one volume: without it the filter's limit and offset apply independently to every indexed volume, and the results are concatenated. Keep scope, filtering and sorting stable.
+- Directory and journal pages use `nextCursor` / `--cursor`; decoded text uses `nextOffset` / `--offset`. Search hits and analysis records use `--skip` / `--limit`; indexed-file filters carry `offset` / `limit` inside the filter JSON. For indexed files, choose `--volume-key` to page one volume: without it the filter's limit and offset apply independently to every indexed volume, and the results are concatenated. Keep scope, filtering and sorting stable.
 - A tree walk's `truncated: true` means its depth/inspection budget needs review; it is not a cursor page. Narrow the subtree or continue in its child directories. If a tool truncates stdout, rerun with smaller pages or save the result to a new host file instead of trying to parse the clipped JSON.
 - Prefer native filters (`files list --query`, `indexes files list --filter`) to reduce backend work and output. If `jq` is available, filter a projected page before it reaches context:
 
@@ -108,8 +124,8 @@ This preserves pagination and time zone metadata. It filters only that page: fol
 Choose a metadata search for names, paths, extensions or sizes; use content search for bytes or text. Start within a known subtree rather than recursively dumping every file.
 
 - `files tree list --name` is a bounded name search without a case requirement. For indexed evidence, `indexes files list --filter` searches metadata. Select a volume key from `indexes volumes list` to bound the query; returned `nid` values are node IDs for subsequent file commands.
-- `files get <path>` reads metadata; `files content get` reads MIME, magic, entropy and data runs; `files identify` detects the content type. These answer different questions. For links, inspect `files get`'s `node.linkTarget` when available: evidence navigation does not follow symlinks. Resolve a relative target against the link's parent directory inside its evidence volume; an absolute target starts at that volume's root, not the CLI's synthetic `/`. Locate the target and read its returned node ID. Do not substitute a same-named host file or assume a conventional target such as `/usr/lib/os-release` exists. If the adapter supplies no link target, report that limitation rather than guessing.
-- `files text get <path> --max-bytes <n>` detects an encoding and returns decoded text, capped at 2 MiB of source bytes. A capped read is a preview. Use [text decoding](#text-decoding) if it looks wrong. For exact bytes use `files read --offset --length`; choose a format-specific parser (`files binary get`, `files sqlite …`, `files zip …`) when structure matters. QR/OCR requires a full build; `system get` reports build capabilities.
+- `files get <path>` reads metadata; `files content get` reads MIME, magic, entropy and data runs; `files identify` detects the content type. These answer different questions.
+- `files text get <path> --max-bytes <n>` detects the encoding and returns decoded text from at most 2 MiB of source bytes per call. While `nextOffset` is not null more of the file follows: continue with `--offset <nextOffset>` until it is null. A character cut at the end of a page is left for the next one, and later pages decode with the encoding detected at the start of the file. Use [text decoding](#text-decoding) if it looks wrong. For exact bytes use `files read --offset --length`; choose a format-specific parser (`files binary get`, `files sqlite …`, `files zip …`) when structure matters. QR/OCR requires a full build; `system get` reports build capabilities.
 
 ```text
 lovelycarve-cli --session exam files tree list --path "/<volume>/Users" --depth 4 --name report --limit 200
@@ -117,22 +133,56 @@ lovelycarve-cli --session exam indexes volumes list
 lovelycarve-cli --session exam indexes files list --volume-key "<returned-volume-key>" --filter '{"nameContains":"report","extensions":["pdf","docx"],"limit":50,"offset":0}'
 lovelycarve-cli --session exam files get --node-id "<returned-file-node-id>"
 lovelycarve-cli --session exam files text get --node-id "<returned-file-node-id>" --max-bytes 16384
+lovelycarve-cli --session exam files text get --node-id "<returned-file-node-id>" --max-bytes 16384 --offset 16383
 ```
 
-The metadata filter matches names and extensions, not document contents. Its `offset` / `limit` belong inside the JSON object.
+The metadata filter matches names and extensions, not document contents. Its `offset` / `limit` belong inside the JSON object. In the last line, replace `16383` with the `nextOffset` the previous page returned.
+
+### Filename glob search
+
+After [case and index preparation](#sessions-and-cases), query metadata directly instead of paging every directory and filtering with `jq`. `indexes files list` accepts `filter.nameGlob`, a case-insensitive pattern over the **whole filename**. It supports `*` (zero or more characters), `?` (one character), `[abc]`, `[a-z]` and `[^abc]` (negated class). `%` and `_` are literal, not SQL wildcards; `[[]` matches a literal `[`. This is SQLite GLOB syntax, not regex or shell expansion: braces and `**` have no special directory meaning. Use `pathPrefix` separately for a directory scope, taking its spelling from returned `fullPath` values. Indexed paths may include an evidence/volume root name (for example `/evidence/var/log/auth.log.1`), so do not assume `/var/log/` or construct a prefix from the volume key.
+
+Start with a filename query to see matching paths, then narrow the directory if needed:
+
+```text
+lovelycarve-cli --session exam indexes files list --volume-key "<returned-volume-key>" --filter '{"nameGlob":"auth*.log.*","kinds":["file"],"limit":50,"offset":0}'
+```
+
+```text
+lovelycarve-cli --session exam indexes files list --volume-key "<returned-volume-key>" --filter '{"nameGlob":"auth*.log.*","pathPrefix":"/<returned-index-root>/var/log/","kinds":["file"],"limit":100,"offset":0}'
+```
+
+Replace the sample `pathPrefix` with the actual parent prefix from the returned paths, ending in `/`. This finds rotated names such as `auth.log.1` and `AUTH.log.2` under that directory without reading file contents. Omit `pathPrefix` to search the whole volume. Omit `--volume-key` to query every indexed volume of the current evidence; it does not search other evidence images. Each volume applies its own limit/offset, so select and page volumes individually for predictable coverage.
+
+Glob matching and other conditions are combined **before** `limit` / `offset`. Use `limit` within 1–5000, advance `offset` by the number of matching entries actually returned, and continue until an empty page, keeping scope and filters unchanged. A leading literal prefix can narrow the indexed lookup; a leading `*` can still scan metadata. Do not assume a glob makes every search constant-time. `files tree list --name` remains a bounded substring-walk fallback; `files search` is content search. Use `jq` only to format or further refine already selected results.
+
+### Symbolic links
+
+For filename-only matching, use [filename glob search](#filename-glob-search); it matches indexed names without following links or reading their contents.
+
+Paths follow symbolic links as a shell does. A link in the middle of a path is always followed. A link at the end is followed by the commands that read, hash, export, decode or list, and by `context set`; `files get` and `files ancestors list` report the link itself, with its `linkTarget`. A node ID names exactly that node and never follows a link.
+
+A relative target resolves against the link's directory. An absolute target resolves from the root of the volume that holds the link (its partition, logical volume, APFS volume, btrfs subvolume, container or archive root), never from the CLI's synthetic `/`, and `..` in a target stops at that root. `files get` on a path through links returns the physical `path` it reached. Resolution fails with the reason rather than guessing when a target lies in another volume (a separate `/usr` or `/var`, a btrfs root mounted from another subvolume), names a Windows drive (`C:\…`), is not recorded by the volume adapter, or when more than 40 links are followed: locate such a target in its own volume, and do not substitute a same-named host file or a conventional target.
 
 ### Text decoding
 
-`files text get` returns `text`, `encoding`, `fromBom` and `hadErrors`. A BOM supplies an encoding declaration; otherwise the detector guesses from the sampled bytes. `hadErrors: false` means decoding needed no replacement characters, not that the guessed encoding is correct. Short legacy-encoded text, including GBK/GB18030, may decode cleanly under the wrong encoding.
+`files text get` returns `text`, `encoding`, `fromBom`, `hadErrors`, `offset` and `nextOffset`. A BOM declares an encoding; otherwise the detector guesses from the bytes read, from the start of the file for later pages. `hadErrors: false` means decoding needed no replacement characters, not that the guessed encoding is correct: short legacy-encoded text, including GBK/GB18030, may decode cleanly under the wrong encoding.
 
-If the text is garbled, inspect original bytes and file context before choosing a codec; mojibake alone does not identify GB18030. Use a bounded `files read` (JSONL returns hex) or save bytes with JSONL `output` / `files export` to a new host path. Check errors, read-fault warnings and the sampled length before decoding with a supported external codec. Keep the original bytes, record the selected encoding and distinguish a preview from full-file decoding. `files read --text` decodes as UTF-8, so it does not fix an incorrect legacy-encoding guess; avoid routing raw bytes through text-processing shell pipelines.
+If the text is garbled, inspect the original bytes (a bounded `files read`; JSONL returns hex) and the file's context before choosing an encoding; mojibake alone does not identify GB18030. Then decode again with `--encoding <label>`, a WHATWG label such as `gbk`, `gb18030`, `big5`, `shift_jis`, `euc-kr` or `utf-16le`, and pass the same label for every page:
+
+```text
+lovelycarve-cli --session exam files text get --node-id "<returned-file-node-id>" --encoding gbk
+```
+
+Record the encoding used and whether the whole file or only some pages were decoded. `files read --text` decodes as UTF-8 only; avoid routing raw bytes through text-processing shell pipelines.
 
 ## Paths and node IDs
 
-- `/` is the evidence's synthetic root: it lists partitions and volumes (folder and archive evidence show their root name first). Other paths are relative to the current directory, accept `.` and `..`, and do not follow symbolic links.
+- `/` is the evidence's synthetic root: it lists partitions and volumes (folder and archive evidence show their root name first). Other paths are relative to the current directory, accept `.` and `..`, and follow [symbolic links](#symbolic-links).
 - Volume entry names keep letters, digits, CJK characters, `.`, `-` and `_`; spaces, parentheses, `·` and other separators become `_`, so `ext4 (md · host:0)` is `ext4_md_host_0` and `APFS 0 · Macintosh HD` is `APFS_0_Macintosh_HD`. Real file and directory names inside a volume, raw volume labels and node IDs are unchanged. Names that collide after this conversion need IDs.
 - The first segment of an absolute path may be a root node ID from `files list --path /` (`items[].id`, for example `/part:0/Windows/System32/config/SAM`). If a root node's name equals another root node's ID, the path is ambiguous and fails: use an ID option instead.
-- Every command that takes a path also takes a node ID (`--node-id`, `--parent-id` or `--root-id`), which also reaches deleted entries and special streams. Copy IDs from results; never build them from names.
+- Every command that resolves an evidence path takes it as `--path` (positionally too where the synopsis shows `<path>`) and a node ID as `--node-id`, which also reaches deleted entries and special streams. `files list`, `files flat list` and `files extensions count` keep their `--parent-id` as well, the Docker commands `--root-id`. `files lookup` differs: its `--path` is relative to `--root-id`. Copy IDs from results; never build them from names.
+- A path that does not resolve fails with `notFound`, naming the directory and the missing name; list that directory with `files list --path` to see the real names.
 - Names match exactly first. NTFS, FAT/exFAT, HFS+ and case-insensitive APFS volumes then accept a unique case-insensitive match; other file systems and the synthetic root match exactly. Synthetic nodes have Chinese names (`分区0`, `$未分配簇`, `未使用空间1`): take them from `files list`.
 - `context set --node-id <id>` enters a directory by ID (exclusive with `--dir`), and `context get` shows the current `nodeId`. In `shell` and `sessions attach`, `cd --node-id <id>` does the same.
 - `files list` pages hold 50 entries for agents and 500 for people unless `--page-size` (1–5000) says otherwise. `files tree list` walks a subtree: `--depth` (at most 128), `--name` (case-insensitive substring) and `--limit` (default 10000, at most 100000) nodes inspected; its `items[].path` values are absolute, and `truncated: true` means the walk stopped early.
@@ -162,7 +212,7 @@ lovelycarve-cli --session exam timezones set evidence
 
 ## Content search and global search
 
-- `files search <pattern> [path]` searches file contents below the current directory, one file when the path is a file, or every indexed volume for `/`. It needs an open case, a built volume index and readable source evidence. After opening evidence in a case, use `tasks wait` and `indexes volumes list` to verify index availability; an absent or failed index does not establish that there are no matches.
+- `files search <pattern> [path]` searches file contents below the current directory, one file when the path is a file, or every indexed volume for `/`. It needs an open case, a built volume index and readable source evidence. After opening evidence in a case, use `tasks wait` and `indexes list` to verify index readiness; `indexes volumes list` supplies the volume mapping. An absent or failed index does not establish that there are no matches.
 - Matching is case-sensitive and includes deleted files unless `--ignore-case` or `--exclude-deleted` is given; `--regex` treats the pattern as a regular expression; `--codepage UTF-8` (repeatable) limits the encodings, which are otherwise all supported encodings.
 - The result is `{summary, hits, total, truncated}`; `--limit` (default 10000) caps the returned hits. Persisted hits stay in the case: page them with `searches hits list --search-id <id> --skip <n> --limit <n>`. Inspect `summary` for incomplete scanning too: paging stored hits does not repair unreadable files or a search engine cap.
 - `searches create --options <json>` runs a global search over every indexed volume of the evidence and waits for its summary. `schema searches create` describes the request's `options` parameter, not its nested fields; for a simple keyword or regex use `files search` instead of inventing an options object.
@@ -359,7 +409,8 @@ lovelycarve-cli --session exam timeline events list --query '{"time_zone_hours":
 - `files read` writes raw bytes and fails with exit status 1 on a read fault, after possibly writing partial output: discard it. Use `files export` to keep tolerant data together with its audit.
 - `images hash` and `images export` read the whole evidence; `--read-fault-policy strict` fails at the first bad sector instead of zero-filling and reporting. `images export --mode unlockedPartitions` writes unlocked partitions as plaintext in place. `images bad-regions list` lists the synthesized source ranges.
 - `files streams list/get/export` also exposes BeFS, GFS2 and OCFS2 inline and external attributes. GFS2 / OCFS2 names retain native namespace prefixes such as `user.`. Copy returned stream names exactly; attribute type codes remain available in the Rust reader, and a stream name is not a host path.
-- Exports never overwrite: `files export` and `files streams export` need a new file, `files directories export --mode tree` a new directory and `--mode zip` a new file (`skippedCount` or `truncated` mean the archive is partial). A failed single-file export leaves nothing behind and can be retried.
+- Exports never overwrite: `files export` and `files streams export` need a new file in an existing directory, `files directories export --mode tree` a new directory and `--mode zip` a new file (`skippedCount` or `truncated` mean the archive is partial). An existing destination fails with `alreadyExists` before anything is written, which is not a failed export of the evidence: rerun into new destinations, a fresh directory per batch run. A failed single-file export leaves nothing behind and can be retried.
+- `files export` writes one file; on a directory it fails with `isDirectory`. Export a whole subtree with `files directories export`, which keeps its structure and skips the symbolic links inside it rather than following them.
 
 ```text
 lovelycarve-cli --session exam files hash "/<volume>/Users/alice/report.docx" --algos sha256
@@ -367,6 +418,13 @@ lovelycarve-cli --session exam files export "/<volume>/Users/alice/report.docx" 
 lovelycarve-cli --session exam files directories export "/<volume>/Users/alice" --mode zip --destination "<new-host-path>.zip"
 lovelycarve-cli --session exam images hash --algorithms sha256
 lovelycarve-cli --session exam images bad-regions list
+```
+
+To export several chosen files, create a new empty host directory and send one `files export` request per file to a JSONL session; give each a destination name that stays unique when files share a name. Each response reports its own result, `warning` or error (`alreadyExists`, `notFound`, `isDirectory`), and a failure does not stop the others:
+
+```json
+{"id":"export-1","command":"files export","args":{"nodeId":"<returned-file-node-id-1>","destination":"<new-absolute-host-dir>/1-report.docx"}}
+{"id":"export-2","command":"files export","args":{"nodeId":"<returned-file-node-id-2>","destination":"<new-absolute-host-dir>/2-report.docx"}}
 ```
 
 ## Background tasks

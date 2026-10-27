@@ -1,7 +1,10 @@
 """Caseless node IDs and image paths through the actual CLI transports."""
+import io
 import json
+import os
 from pathlib import Path
 import subprocess
+import tarfile
 import tempfile
 
 
@@ -65,4 +68,114 @@ def test_navigation(executable, environment):
         assert node["name"] == filename and node["path"] == path, node
         assert run(*folder_scope, "files", "read", path) == "original evidence bytes"
         assert (source / filename).is_file()
+        test_links_spellings_and_text_pages(executable, environment, Path(directory))
     print("CLI navigation tests passed: caseless IDs, volume ID paths, shell/JSONL directory IDs, NTFS case fallback and absolute tree paths")
+
+
+def test_links_spellings_and_text_pages(executable, environment, root):
+    """Symbolic links, one spelling for paths and node IDs, text pages, export hints and MSYS paths."""
+    def process(*arguments, expected=0):
+        result = subprocess.run([str(executable), "--quiet", *map(str, arguments)],
+                                text=True, encoding="utf-8", capture_output=True,
+                                cwd=root, env=environment, timeout=120)
+        assert result.returncode == expected, (arguments, result.returncode, result.stdout, result.stderr)
+        return result
+
+    def data(*arguments):
+        return json.loads(process(*arguments).stdout)
+
+    def says(stderr, text):
+        """Whether stderr says `text`: in an agent's JSON error line, or however a
+        framed error block wrapped it."""
+        def message(line):
+            try:
+                record = json.loads(line)
+            except ValueError:
+                return line
+            body = (record.get("error") or record.get("warning")) if isinstance(record, dict) else None
+            return body["message"] if isinstance(body, dict) else line
+        flat = "".join(map(message, stderr.splitlines()))
+        flat = "".join(flat.replace("│", "").replace("┌", "").replace("└", "").split())
+        return "".join(text.split()) in flat
+
+    release = b"ID=fixture\n"
+    tool = b"#!/bin/sh\necho tool\n"
+    line = "2024-06-01 12:00:00 用户登录成功，来源地址 10.0.0.8，账号：测试\n"
+    log = line * 200
+    encoded = log.encode("gbk")
+    archive = root / "links.tar"
+    with tarfile.open(archive, "w") as output:
+        for name in ["etc", "usr", "usr/lib", "usr/bin", "var", "var/log"]:
+            entry = tarfile.TarInfo(name)
+            entry.type = tarfile.DIRTYPE
+            output.addfile(entry)
+        for name, content in [("usr/lib/os-release", release), ("usr/bin/tool", tool), ("var/log/app.log", encoded)]:
+            entry = tarfile.TarInfo(name)
+            entry.size = len(content)
+            output.addfile(entry, io.BytesIO(content))
+        for name, target in [("etc/os-release", "../usr/lib/os-release"), ("bin", "usr/bin"),
+                             ("etc/absolute", "/usr/lib/os-release"), ("etc/loop", "loop"),
+                             ("etc/escape", "../../../../usr/lib/os-release")]:
+            entry = tarfile.TarInfo(name)
+            entry.type = tarfile.SYMTYPE
+            entry.linkname = target
+            output.addfile(entry)
+    scope = ("--image", archive)
+    top = data(*scope, "files", "list")["items"][0]
+    prefix = "/" + top["name"]
+    for path in ["/etc/os-release", "/etc/absolute", "/etc/escape", "/usr/lib/os-release"]:
+        assert process(*scope, "files", "read", prefix + path).stdout == release.decode(), path
+    assert process(*scope, "files", "read", prefix + "/bin/tool").stdout == tool.decode()
+    link = data(*scope, "files", "get", "--path", prefix + "/etc/os-release")
+    assert link["kind"] == "symlink" and link["linkTarget"] == "../usr/lib/os-release", link
+    through = data(*scope, "files", "get", prefix + "/bin/tool")
+    assert through["path"] == prefix + "/usr/bin/tool", through
+    digest = data(*scope, "files", "hash", "--path", prefix + "/etc/os-release", "--algos", "sha256")
+    assert digest["bytesHashed"] == len(release), digest
+    listed = data(*scope, "files", "list", "--path", prefix + "/bin")
+    assert [item["name"] for item in listed["items"]] == ["tool"], listed
+    usr = next(item for item in data(*scope, "files", "list", "--path", prefix)["items"] if item["name"] == "usr")
+    assert {item["name"] for item in data(*scope, "files", "list", "--node-id", usr["id"])["items"]} == {"lib", "bin"}
+    assert says(process(*scope, "files", "read", prefix + "/etc/loop", expected=1).stderr, "成环")
+    missing = process(*scope, "files", "get", prefix + "/etc/missing", expected=1).stderr
+    assert says(missing, "「missing」") and says(missing, prefix + "/etc"), missing
+    hint = process(*scope, "files", "list", prefix, expected=1).stderr
+    assert says(hint, f"不接受位置参数 {prefix}：镜像内路径写成 --path {prefix}"), hint
+
+    # Pages of decoded text join to the whole file at character boundaries.
+    cut = next(offset for offset in range(4000, len(encoded)) if encoded[offset] >= 0x81
+               and len(encoded[:offset].decode("gbk", "ignore").encode("gbk")) == offset)
+    first = data(*scope, "files", "text", "get", prefix + "/var/log/app.log", "--max-bytes", cut + 1)
+    assert first["encoding"] == "GBK" and not first["hadErrors"], {key: first[key] for key in first if key != "text"}
+    assert first["offset"] == 0 and first["nextOffset"] == cut and first["text"] == encoded[:cut].decode("gbk")
+    pages, offset = [], 0
+    while offset is not None:
+        page = data(*scope, "files", "text", "get", prefix + "/var/log/app.log", "--max-bytes", 997,
+                    "--offset", offset, "--encoding", "gbk")
+        assert page["offset"] == offset and not page["hadErrors"], page["offset"]
+        pages.append(page["text"])
+        offset = page["nextOffset"]
+    assert "".join(pages) == log
+    detected = data(*scope, "files", "text", "get", prefix + "/var/log/app.log", "--max-bytes", 997, "--offset", 997)
+    assert detected["encoding"] == "GBK", detected["encoding"]
+    process(*scope, "files", "text", "get", prefix + "/var/log/app.log", "--encoding", "no-such", expected=1)
+
+    # Exports never overwrite and point a directory to the directory export.
+    destination = root / "exported-release"
+    process(*scope, "files", "export", prefix + "/etc/os-release", "--destination", destination)
+    assert destination.read_bytes() == release
+    again = process(*scope, "files", "export", prefix + "/etc/os-release", "--destination", destination, expected=1)
+    assert says(again.stderr, "导出从不覆盖已有文件") and destination.read_bytes() == release, again.stderr
+    directory = process(*scope, "files", "export", prefix + "/usr", "--destination", root / "usr-export", expected=1)
+    assert says(directory.stderr, f'files directories export "{prefix}/usr" --mode tree'), directory.stderr
+    assert not (root / "usr-export").exists()
+
+    # A path Git Bash rewrote below an MSYS installation is turned back.
+    if os.name == "nt":
+        msys = root / "FakeGit"
+        (msys / "usr" / "bin").mkdir(parents=True)
+        (msys / "usr" / "bin" / "msys-2.0.dll").write_bytes(b"")
+        rewritten = str(msys).replace("\\", "/") + prefix + "/etc/os-release"
+        assert process(*scope, "files", "read", rewritten).stdout == release.decode()
+        elsewhere = str(root).replace("\\", "/") + prefix + "/etc/os-release"
+        assert says(process(*scope, "files", "read", elsewhere, expected=1).stderr, "MSYS2_ARG_CONV_EXCL")

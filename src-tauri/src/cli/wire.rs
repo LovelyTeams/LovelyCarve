@@ -310,6 +310,16 @@ mod tests {
     }
 
     #[test]
+    fn decoded_text_pages_are_camel_case() {
+        use crate::core::common::text_decode::{decode, TextPage};
+        assert_eq!(
+            serde_json::to_value(Camel(TextPage::new(decode(b"ab"), 7, Some(9)))).unwrap(),
+            json!({"text": "ab", "encoding": "UTF-8", "fromBom": false, "hadErrors": false,
+                "offset": 7, "nextOffset": 9})
+        );
+    }
+
+    #[test]
     fn struct_fields_are_camel_case_but_evidence_maps_and_enum_values_are_exact() {
         #[derive(Serialize)]
         struct Node {

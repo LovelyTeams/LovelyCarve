@@ -3,6 +3,7 @@
 
 use crate::host::{LeaseOwner, State};
 
+use crate::core::common::text_decode::{self, Guess, Span};
 use crate::core::filesystem::tree::fs_tree::{self, FsStat};
 use crate::state::AppState;
 use crate::task_manager::{TaskKind, TaskProgressUnit};
@@ -294,23 +295,70 @@ pub async fn fs_preview(
 /// `fs_preview` 一致（由调用方 `max_bytes` 传入、后端再以 2 MiB 封顶；前端两者都传同一个
 /// PREVIEW_CAP），故与十六进制视图所用的原始字节是同一段前缀，二者一致。十六进制视图仍用
 /// `fs_preview` 的原始字节；文本类视图用本命令的解码结果。
+///
+/// `encoding`（WHATWG 标签）跳过检测；`offset` 从文件中间读一段，未指定编码时按文件开头
+/// 检测，与第一段一致。没读到文件末尾时，末尾被截断的字符留给下一段，`next_offset`
+/// 落在字符边界上。
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_preview_text(
     state: State<'_, AppState>,
     image_id: String,
     node_id: String,
     max_bytes: usize,
-) -> Result<crate::core::common::text_decode::DecodedText, AppError> {
+    offset: Option<u64>,
+    encoding: Option<String>,
+) -> Result<text_decode::TextPage, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
-    tokio::task::spawn_blocking(
-        move || -> Result<crate::core::common::text_decode::DecodedText, AppError> {
-            let mut session = fs_tree::FsSession::new(&image);
-            let data = session
-                .read_file_limited(&node_id, max_bytes.min(2 * 1024 * 1024))
-                .map_err(AppError::from_anyhow)?;
-            Ok(crate::core::common::text_decode::decode(&data))
-        },
-    )
+    let forced = match encoding {
+        Some(label) => Some(text_decode::encoding_for_label(&label).ok_or_else(|| {
+            AppError::invalid_input(format!(
+                "未知编码：{label}（使用 WHATWG 标签，如 utf-8、gbk、gb18030、big5、shift_jis、utf-16le）"
+            ))
+        })?),
+        None => None,
+    };
+    tokio::task::spawn_blocking(move || -> Result<text_decode::TextPage, AppError> {
+        let limit = max_bytes.clamp(text_decode::MIN_SPAN_BYTES, 2 * 1024 * 1024);
+        let offset = offset.unwrap_or(0);
+        let mut session = fs_tree::FsSession::new(&image);
+        // One byte past the limit says whether more of the file follows.
+        let mut read = |from: u64| -> Result<(Vec<u8>, bool), AppError> {
+            let mut bytes = (if from == 0 {
+                session.read_file_limited(&node_id, limit + 1)
+            } else {
+                session.read_file_range(&node_id, from, limit + 1)
+            })
+            .map_err(AppError::from_anyhow)?;
+            let continues = bytes.len() > limit;
+            bytes.truncate(limit);
+            Ok((bytes, continues))
+        };
+        let (bytes, continues) = read(offset)?;
+        let span = match (offset == 0, continues) {
+            (true, false) => Span::Whole,
+            (true, true) => Span::Head,
+            (false, true) => Span::Middle,
+            (false, false) => Span::Tail,
+        };
+        let guess = match forced {
+            Some(encoding) => Guess {
+                encoding,
+                from_bom: false,
+            },
+            None if offset == 0 => text_decode::detect(&bytes, span),
+            None => {
+                let (head, continues) = read(0)?;
+                let span = if continues { Span::Head } else { Span::Whole };
+                text_decode::detect(&head, span)
+            }
+        };
+        let (decoded, covered) = text_decode::decode_span(&bytes, span, guess);
+        Ok(text_decode::TextPage::new(
+            decoded,
+            offset,
+            continues.then(|| offset + covered as u64),
+        ))
+    })
     .await
     .map_err(|err| AppError::task_panicked("fs_preview_text", err))?
 }

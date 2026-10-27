@@ -53,6 +53,8 @@ pub struct ChildCounts {
 pub struct FileFilter {
     pub name_prefix: Option<String>,
     pub name_contains: Option<String>,
+    /// Case-insensitive whole-name SQLite GLOB: `*`, `?`, `[abc]`, `[^abc]`.
+    pub name_glob: Option<String>,
     pub path_prefix: Option<String>,
     pub path_contains: Option<String>,
     pub extensions: Vec<String>,
@@ -68,6 +70,7 @@ impl FileFilter {
     pub fn normalized(mut self) -> Self {
         self.name_prefix = self.name_prefix.take().map(|v| v.to_lowercase());
         self.name_contains = self.name_contains.take().map(|v| v.to_lowercase());
+        self.name_glob = self.name_glob.take().map(|v| v.to_lowercase());
         self.path_prefix = self.path_prefix.take().map(|v| v.to_lowercase());
         self.path_contains = self.path_contains.take().map(|v| v.to_lowercase());
         self.extensions = self
@@ -276,6 +279,10 @@ pub fn query_files(index: &Path, filter: &FileFilter) -> anyhow::Result<Vec<File
     if let Some(needle) = &filter.name_contains {
         sql.push_str(" AND name_low LIKE ? ESCAPE '\\'");
         bind.push(like_contains_escaped(needle));
+    }
+    if let Some(pattern) = &filter.name_glob {
+        sql.push_str(" AND name_low GLOB ?");
+        bind.push(pattern.clone());
     }
     if let Some((lower, upper)) = filter.path_prefix.as_deref().and_then(prefix_bounds) {
         sql.push_str(" AND full_path_low >= ? AND full_path_low < ?");
@@ -543,6 +550,10 @@ pub(crate) fn escape_like(needle: &str) -> String {
     }
     escaped
 }
+
+#[cfg(test)]
+#[path = "filedb_query/glob_tests.rs"]
+mod glob_tests;
 
 #[cfg(test)]
 mod tests {

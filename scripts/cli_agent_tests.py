@@ -60,6 +60,12 @@ def test_agent_output(executable, base_environment):
         assert "files list" in failure.stderr
         if "files lookup" in failure.stderr:
             assert failure.stderr.index("files list") < failure.stderr.index("files lookup")
+        # Agents read a failure as one JSON line, the JSONL session's error shape;
+        # people get the framed block.
+        assert json.loads(failure.stderr)["error"]["code"] == "usage", failure.stderr
+        missing = json.loads(run(*args[:4], "files", "get", "/System32/missing", expected=1).stderr)
+        assert missing["error"]["code"] == "notFound" and "「missing」" in missing["error"]["message"], missing
+        assert "┌" in run("files", "lsit", expected=1, env=human_environment).stderr
         group_help = run("files", "--help").stdout
         assert "AGENT COMMAND DISCOVERY" in group_help and "references/commands.md" in group_help
         assert "AGENT COMMAND DISCOVERY" not in run("files", "list", "--help").stdout
@@ -84,6 +90,37 @@ def test_agent_output(executable, base_environment):
             assert len(remote["items"]) == 50 and set(remote["items"][0]) == set(small["items"][0])
             human_remote = json.loads(run("--session", "agent", "files", "list", "--path", "/System32", env=human_environment).stdout)
             assert len(human_remote["items"]) == 500, "the caller determines defaults, not the resident server's environment"
+            # A new investigation creates a case before querying metadata.
+            # Glob filtering happens in the index before paging, so matches
+            # beyond the first unfiltered directory page are still returned.
+            metadata_case = root / "metadata-case"
+            run("--session", "agent", "cases", "create", metadata_case, "--name", "Filename glob")
+            run("--session", "agent", "tasks", "wait")
+            indexes = json.loads(run("--session", "agent", "indexes", "list").stdout)
+            ready_indexes = [item for item in indexes if item["indexed"] and not item["stale"] and not item["truncated"]]
+            assert len(ready_indexes) == 1, indexes
+            volume_key = ready_indexes[0]["volumeKey"]
+            run("--session", "agent", "context", "use", ready_indexes[0]["imageId"])
+            indexed_sample = json.loads(run("--session", "agent", "indexes", "files", "list", "--volume-key", volume_key,
+                                            "--filter", json.dumps({"kinds": ["file"], "limit": 1})).stdout)
+            indexed_directory = indexed_sample[0]["fullPath"].rsplit("/", 1)[0] + "/"
+            glob_filter = {"nameGlob": "SYSTEM-LIBRARY-00[12]?.DLL", "pathPrefix": indexed_directory,
+                           "kinds": ["file"], "limit": 3, "offset": 2}
+            matched = json.loads(run("--session", "agent", "indexes", "files", "list", "--volume-key", volume_key,
+                                     "--filter", json.dumps(glob_filter)).stdout)
+            assert [item["name"] for item in matched] == [f"system-library-{index:04}.dll" for index in range(12, 15)], matched
+            glob_filter["offset"] = 5
+            following_matches = json.loads(run("--session", "agent", "indexes", "files", "list",
+                                               "--filter", json.dumps(glob_filter)).stdout)
+            assert [item["name"] for item in following_matches] == [f"system-library-{index:04}.dll" for index in range(15, 18)]
         finally:
             run("sessions", "close", "agent")
-    print("CLI agent tests passed: bounded projection, cursors, discovery and all transports")
+        glob_requests = [
+            {"id": "wait", "command": "tasks wait"},
+            {"id": "glob", "command": "indexes files list", "args": {"volumeKey": volume_key, "filter": glob_filter}},
+        ]
+        glob_rows = [json.loads(line) for line in run("--case", metadata_case, "--image", evidence, "session",
+                                                     stdin="\n".join(map(json.dumps, glob_requests))).stdout.splitlines()]
+        assert all("result" in row for row in glob_rows), glob_rows
+        assert glob_rows[1]["result"] == following_matches
+    print("CLI agent tests passed: bounded projection, cursors, indexed filename glob, discovery and all transports")

@@ -2,7 +2,7 @@
 
 Generated from the CLI command catalogue by `just update-cli-skill`; do not edit by hand.
 
-Each entry is a command's synopsis and its description. Positional arguments come first, then options; `<…>` is required, `[…]` optional, `a|b` lists the accepted values and `…` marks a repeatable value. A command whose synopsis has both a path and a node ID option (`--node-id`, `--parent-id`, `--root-id`) takes one of them. Run `lovelycarve-cli <command> --help` for option descriptions and defaults, and `lovelycarve-cli schema <command>` for the JSON request.
+Each entry is a command's synopsis and its description. Positional arguments come first, then options; `<…>` is required, `[…]` optional, `a|b` lists the accepted values and `…` marks a repeatable value. A command whose synopsis has both a path and a node ID option (`--node-id`, `--parent-id`, `--root-id`) takes one of them, except `files lookup`, whose path is relative to its root ID. Where that option is `--parent-id` or `--root-id`, `--node-id` works too, and a positional argument may also be written as its option, such as `--path <path>`. Run `lovelycarve-cli <command> --help` for option descriptions and defaults, and `lovelycarve-cli schema <command>` for the JSON request.
 
 ## Options on every command
 
@@ -282,9 +282,11 @@ LUKS、VeraCrypt 与 FileVault 加密容器
 - `lovelycarve-cli files strings list <path> [--encoding <ascii|utf-8|utf-16le|utf-16be>] [--length <number>] [--limit <number>] [--min-length <number>] [--offset <number>] [--node-id <string>]`
   提取文件中的可打印字符串
   Keywords: strings, printable text.
-- `lovelycarve-cli files text get <path> [--node-id <string>] [--max-bytes <number>]`
-  读取文件文本（自动识别编码）。检测 GBK、Big5、Shift-JIS 等编码并解码为 UTF-8，最多 2 MiB。
-  Keywords: gbk, encoding, decode text.
+- `lovelycarve-cli files text get <path> [--node-id <string>] [--max-bytes <number>] [--offset <number>] [--encoding <string>]`
+  读取文件文本（自动识别编码）。检测 GBK、Big5、Shift-JIS 等编码并解码为 UTF-8，每段最多 2 MiB。nextOffset 非空时文件还有后续：用 --offset 继续读下一段（末尾被截断的字符留给下一段）；识别错误时用 --encoding 指定编码。
+  Keywords: gbk, encoding, decode text, charset, large log, page text.
+  - `lovelycarve-cli files text get /<卷名称>/var/log/app.log --max-bytes 65536`: 读取开头 64 KiB 并自动识别编码
+  - `lovelycarve-cli files text get /<卷名称>/var/log/app.log --offset 65530 --encoding gbk`: 按 GBK 从上一段的 nextOffset 继续
 - `lovelycarve-cli files timeline export <path> [--node-id <string>] --destination <string>`
   导出文件系统时间线（mactime 格式）。把整个检材或一个子树导出为 TSK mactime body file，逐行流式写入。
   Keywords: mactime, bodyfile, sleuthkit.
@@ -372,14 +374,14 @@ FileVault 2（CoreStorage）
 - `lovelycarve-cli indexes delete --volume-key <string> [--force]`
   删除卷索引
 - `lovelycarve-cli indexes files list [--volume-key <string>] --filter <json>`
-  按条件查询索引中的文件。用结构化过滤条件查询文件元数据索引；省略 --volume-key 时依次查询全部已索引卷。
-  Keywords: find files, query metadata.
+  按条件查询索引中的文件。用结构化过滤条件查询文件元数据索引；filter.nameGlob 按完整文件名匹配通配符（忽略大小写，支持 *、?、[abc]、[^abc]），在匹配结果上分页；用 pathPrefix 限定目录。省略 --volume-key 时依次查询全部已索引卷，各卷分别应用 limit/offset。
+  Keywords: find files, query metadata, filename glob, wildcard.
 - `lovelycarve-cli indexes files lookup --query <json>`
   按元数据地址查找文件节点
 - `lovelycarve-cli indexes list`
   列出案件中的卷索引
 - `lovelycarve-cli indexes volumes list`
-  列出已建索引的卷
+  列出检材中的卷与索引键。返回卷与 volumeKey 的映射；不代表索引已就绪，完成状态用 indexes list 查看。
 
 ## ios-backups
 

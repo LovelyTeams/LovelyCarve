@@ -485,9 +485,27 @@ pub fn render_error(error: &CliError, debug: bool) -> String {
     }
 }
 
-/// Render an error once, on stderr.
+/// An error as one JSON line, in the JSONL session's `error` shape, with the
+/// backend command that failed and any details.
+fn error_line(error: &CliError) -> String {
+    let mut body = serde_json::json!({"code": error.code, "message": error.message});
+    if let Some(details) = &error.details {
+        body["details"] = details.clone();
+    }
+    if let Origin::Backend(Some(operation)) = &error.origin {
+        body["ipcCommand"] = serde_json::json!(operation);
+    }
+    serde_json::json!({ "error": body }).to_string()
+}
+
+/// Render an error once, on stderr: a framed block for people, one JSON line
+/// for coding agents, which parse it like the JSON on stdout.
 pub fn report_error(error: &CliError) {
     if error.reported {
+        return;
+    }
+    if interactive::is_agentic() {
+        eprintln!("{}", error_line(error));
         return;
     }
     open_session(false);
@@ -510,8 +528,13 @@ pub fn render_incomplete(incomplete: &Incomplete, debug: bool) -> String {
 }
 
 /// Say on stderr that the result just printed is incomplete, even when
-/// quiet: like an error, it changes what the output means.
+/// quiet: like an error, it changes what the output means. Coding agents get
+/// one JSON line, the JSONL session's `warning`.
 pub fn report_incomplete(incomplete: &Incomplete) {
+    if interactive::is_agentic() {
+        eprintln!("{}", serde_json::json!({ "warning": incomplete }));
+        return;
+    }
     open_session(false);
     eprintln!("{}", render_incomplete(incomplete, interactive::debug()));
 }
@@ -565,6 +588,17 @@ mod tests {
         );
         let debug = render_error(&backend, true);
         assert!(debug.contains("│ ") && debug.contains("\"path\": \"D:/x\""));
+        // Agents read the same failure as one JSON line, details included.
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&error_line(&backend)).unwrap(),
+            serde_json::json!({"error": {"code": "notFound", "message": "找不到检材",
+                "details": {"code": "notFound", "message": "找不到检材", "path": "D:/x"},
+                "ipcCommand": "image_info"}})
+        );
+        assert_eq!(
+            error_line(&CliError::invalid("缺少 --path")),
+            r#"{"error":{"code":"invalidInput","message":"缺少 --path"}}"#
+        );
     }
 
     #[test]
