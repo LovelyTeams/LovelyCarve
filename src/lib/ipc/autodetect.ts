@@ -17,7 +17,8 @@ export type EvidencePlatform =
   | 'linux'
   | 'harmony'
   | 'huaweihmos'
-  | 'othermobile';
+  | 'othermobile'
+  | 'drone';
 
 /** 检材走的识别路(§3.0 三路)。 */
 export type DetectRoute = 'disk_image' | 'archive' | 'phone_image';

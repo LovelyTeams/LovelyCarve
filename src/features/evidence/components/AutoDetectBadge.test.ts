@@ -36,6 +36,16 @@ beforeEach(() => {
 afterEach(() => { app.unmount(); host.remove(); });
 
 describe('platform badge', () => {
+  it('shows the drone platform with the DJI manufacturer', () => {
+    report.value = { platform: 'drone', platforms: ['drone'], display_platform_name: '无人机 · DJI',
+      evidence_type: 'disk', is_backup: false, manufactor: 'dji' } as AutoDetectReport;
+    mount();
+    expect(host.querySelector('.platform-name')?.textContent).toBe('无人机');
+    expect(host.querySelector('.platform-type')?.textContent).toBe('· DJI · 磁盘镜像');
+    expect(host.querySelector('svg.lucide-drone')).not.toBeNull();
+    expect(detect.run).not.toHaveBeenCalled();
+  });
+
   it.each(['backup', 'XiaomiBackup'])('shows one backup conclusion for %s without repeating the manufacturer or matching rule', evidenceType => {
     const description = 'Android · Xiaomi · 关键词匹配备份';
     report.value = { platform: 'android', platforms: ['android'], display_platform_name: description,

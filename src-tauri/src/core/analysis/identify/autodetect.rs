@@ -46,6 +46,7 @@ pub enum EvidencePlatform {
     Harmony,
     HuaweiHmos,
     OtherMobile,
+    Drone,
 }
 
 impl EvidencePlatform {
@@ -59,6 +60,7 @@ impl EvidencePlatform {
             Self::Harmony => "harmony",
             Self::HuaweiHmos => "huaweihmos",
             Self::OtherMobile => "othermobile",
+            Self::Drone => "drone",
         }
     }
 }
@@ -358,6 +360,33 @@ fn probe_root(
     }
     tracing::debug!("autodetect: {root_id} fstype: {ftype:#x?}");
     let fingerprint = Fingerprint::new(Arc::clone(image), root_id);
+    match super::dji::detect(&fingerprint) {
+        Ok(Some(hit)) => {
+            let markers: Vec<MarkerCheck> = hit
+                .markers
+                .into_iter()
+                .map(|path| MarkerCheck {
+                    path: path.to_owned(),
+                    present: true,
+                })
+                .collect();
+            return PartitionPlatform {
+                partition_id,
+                label,
+                kind,
+                ftype,
+                native_platform: Some(EvidencePlatform::Drone),
+                native_markers: markers.clone(),
+                platform: Some(EvidencePlatform::Drone),
+                go_markers: markers,
+                filesystem_opened: true,
+                bitlocker_locked: false,
+                error: None,
+            };
+        }
+        Ok(None) => {}
+        Err(error) => tracing::debug!("autodetect: DJI fingerprint: {error}"),
+    }
     let (native_platform, native_markers) = match ftype {
         Some(code) => fstype::native_detect(code, &fingerprint),
         None => (None, Vec::new()),
@@ -566,6 +595,10 @@ fn finish(
 ) -> AutoDetectReport {
     let (mut platform, mut platforms) = aggregate_platforms(&partitions);
     let mut manufactor = route_manufactor;
+    // The drone platform currently requires the DJI aircraft fingerprint.
+    if platform == Some(EvidencePlatform::Drone) {
+        manufactor = Some("dji".to_owned());
+    }
     let evidence_type = match (&backup, route) {
         (Some(backup), _) => {
             platform = Some(backup.platform);
@@ -727,6 +760,7 @@ mod tests {
             (EvidencePlatform::Harmony, "harmony"),
             (EvidencePlatform::HuaweiHmos, "huaweihmos"),
             (EvidencePlatform::OtherMobile, "othermobile"),
+            (EvidencePlatform::Drone, "drone"),
         ] {
             assert_eq!(platform.as_str(), word);
             assert_eq!(

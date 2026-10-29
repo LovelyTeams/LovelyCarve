@@ -482,6 +482,7 @@ pub fn gen_friend_platform_name(platform: Option<EvidencePlatform>) -> String {
         Some(EvidencePlatform::Harmony) => "HarmonyOS",
         Some(EvidencePlatform::HuaweiHmos) => "HarmonyOS (HMOS)",
         Some(EvidencePlatform::OtherMobile) => "其他移动设备",
+        Some(EvidencePlatform::Drone) => "无人机",
         None => "未识别",
     }
     .to_owned()
@@ -504,6 +505,9 @@ pub fn gen_display_platform_name(
 }
 
 fn capitalize(word: &str) -> String {
+    if word.eq_ignore_ascii_case("dji") {
+        return "DJI".to_owned();
+    }
     let mut chars = word.chars();
     match chars.next() {
         Some(first) => first.to_uppercase().chain(chars).collect(),

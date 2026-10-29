@@ -1,6 +1,7 @@
 //! analysis / identify domain modules.
 
 pub mod autodetect;
+mod dji;
 pub mod fstab;
 pub mod magika_ident;
 pub mod os_detect;

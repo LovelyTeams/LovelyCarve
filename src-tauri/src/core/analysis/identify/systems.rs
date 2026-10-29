@@ -47,7 +47,7 @@ const NESTED_PROBES: usize = 32;
 pub struct DetectedSystem {
     /// Stable within the evidence: `linux@part:2`, `linux@part:3/@`.
     pub id: String,
-    /// `linux`, `windows`, `macos`, `esxi`, `mikrotik`, `openwrt`, `dingtalk`.
+    /// `linux`, `windows`, `macos`, `esxi`, `mikrotik`, `openwrt`, `dingtalk`, `dji`.
     pub family: String,
     pub product: String,
     pub version: Option<String>,
@@ -139,7 +139,8 @@ pub fn discover(image: &Arc<EvidenceSession>) -> Vec<DetectedSystem> {
                 | OsFamily::Esxi
                 | OsFamily::MikroTik
                 | OsFamily::OpenWrt
-                | OsFamily::DingTalk => {}
+                | OsFamily::DingTalk
+                | OsFamily::Dji => {}
             }
             let place = if node_path.is_empty() {
                 entry.volume_key.clone()
@@ -175,6 +176,7 @@ fn family_name(family: OsFamily) -> &'static str {
         OsFamily::MikroTik => "mikrotik",
         OsFamily::OpenWrt => "openwrt",
         OsFamily::DingTalk => "dingtalk",
+        OsFamily::Dji => "dji",
     }
 }
 

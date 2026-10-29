@@ -91,7 +91,7 @@ priority = 100
 | `memory` | `64MiB`–`64GiB`，缺省 `2GiB`，Windows 以 Job Object 强制 |
 | `permissions` | `file_materialize`：允许 `file.materialize`；`network`：向加载器声明联网意图（`LOVELYCARVE_NETWORK_PERMISSION`），不是操作系统防火墙 |
 | `analyzer.scope` | `system`：一个识别出的系统；`evidence`：检材的全部卷；`files`：用户选中的文件 |
-| `analyzer.platforms` | 仅 system 作用域，取值 `linux`、`windows`、`macos`、`esxi`、`mikrotik`、`openwrt`、`dingtalk` |
+| `analyzer.platforms` | 仅 system 作用域，取值 `linux`、`windows`、`macos`、`esxi`、`mikrotik`、`openwrt`、`dingtalk`、`dji`（DJI 无人机系统） |
 | `analyzer.trigger` | `auto` 的分析器在检材上线或所需事实发布时自动建任务；files 作用域只能手动 |
 | `analyzer.inputs` | system / evidence 作用域的输入路径模式（最多 64 个），宿主在运行前解析成输入文件；evidence 作用域的模式在每个卷下匹配 |
 | `analyzer.extensions` / `mime_types` | 仅 files 作用域：接受的扩展名（小写、无点）与 MIME |

@@ -587,7 +587,7 @@ UUID 与卷标，`win_drive_letters` 读取盘符），结果按检材缓存，�
 
 ```text
 core/analysis/identify/autodetect.rs          数据模型（EvidencePlatform 词表 android/ios/windows/macos/linux/harmony/
-│                           huaweihmos/othermobile、DetectRoute、PartitionPlatform、AutoDetectReport）、
+│                           huaweihmos/othermobile/drone、DetectRoute、PartitionPlatform、AutoDetectReport）、
 │                           三路分发器、分区/LVM 逻辑卷遍历、归档条目走查、聚合
 ├── fstype.rs               磁盘镜像路：文件系统类型门限、标志文件组全匹配与
 │                           四平台复核（macOS→Windows→Linux→Android 短路）
@@ -612,6 +612,8 @@ Windows 对 ReFS 直接命中、NTFS 看 `Windows/WINDOWS/Program Files/Program 
 `SmartSwitchBackupInf.bk`、`com.tencent.mm.*`、`weixin_resource.zip`、`com.tencent.mobileqq.*`、`info.xml`、
 iTunes 清单）与关键词匹配；`.ab`/小米 `.bak` 由保留的原始文件头魔数直接判备份，
 独立打开时先建立逻辑文件树，加密备份明确拒绝。手机镜像路（小米固件容器、雷电备份）分区扫描后兜底 Android。
+
+DJI 无人机由共享的 `identify/dji.rs` 在通用 Linux / Android 标志检查前识别；`os_detect` 与自动识别使用同一规则。每个可读根只检查 `/build.prop` 或 `/system/build.prop`（完整文件至多 64 KiB），要求 `ro.product.manufacturer=DJI`、非空 `dji.build.version`，并且同一根的 `bin/dji_flight` 与 `bin/dji_navigation` 都是文件；冲突属性、目录冒充服务或不完整特征不命中。结论为 `evidence.platform=drone`、厂商 `dji`，OS / 系统发现的 family 为 `dji`；固件版本、设备代号、原始 model、ABI 与 Android 基础版本按属性原值返回，不映射猜测商品型号。私有检材仅通过 `DJI_ORACLE_IMAGE` 和 `just test dji_external_image_detection --lib -- --ignored` 验证，不加入仓库。
 
 回写：有活动案件且检材已登记时，`evidence.platform` ← 平台词、`evidence.type` ← `disk` /
 `compressfile` / 备份枚举词、`evidence.extra_info` ← 厂商 / 显示名 / 备份特征 / 告警 JSON、

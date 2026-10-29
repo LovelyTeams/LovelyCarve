@@ -28,7 +28,7 @@
 import { tr } from '../../../composables/useLocale';
 
 import { computed, watch } from 'vue';
-import { Archive, Loader2, Monitor, RefreshCw, Smartphone, TriangleAlert } from 'lucide-vue-next';
+import { Archive, Drone, Loader2, Monitor, RefreshCw, Smartphone, TriangleAlert } from 'lucide-vue-next';
 import { evidenceTypeLabel, manufactorLabel, platformLabel } from '../model/autodetectLabels';
 import { runAutoDetect, useAutoDetectError, useAutoDetectPending, useAutoDetectReport } from '../composables/useAutoDetect';
 import { useTaskEntries } from '../../tasks/api';
@@ -62,6 +62,8 @@ const extraPlatforms = computed(() =>
 const conclusionIcon = computed(() => {
   if (report.value?.is_backup) return Archive;
   switch (report.value?.platform) {
+    case 'drone':
+      return Drone;
     case 'android':
     case 'ios':
     case 'harmony':

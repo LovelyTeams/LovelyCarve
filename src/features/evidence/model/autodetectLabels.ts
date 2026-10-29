@@ -13,6 +13,7 @@ export const PLATFORM_LABELS: Record<EvidencePlatform, string> = {
   harmony: '鸿蒙 HarmonyOS',
   huaweihmos: '鸿蒙 HMOS',
   othermobile: '其他移动设备',
+  drone: '无人机',
 };
 
 export function platformLabel(platform: EvidencePlatform | null | undefined, tr: Translator = sourceText): string {
@@ -47,5 +48,6 @@ export function evidenceTypeLabel(evidenceType: string, tr: Translator = sourceT
 /** 厂商关键词首字母大写。 */
 export function manufactorLabel(manufactor: string | null | undefined): string | null {
   if (!manufactor) return null;
+  if (manufactor.toLowerCase() === 'dji') return 'DJI';
   return manufactor.charAt(0).toUpperCase() + manufactor.slice(1);
 }

@@ -21,8 +21,8 @@ use serde::{Deserialize, Serialize};
 use super::{PluginError, Result};
 
 /// OS families a system-scope analyzer may name (`SystemInfo::family`).
-pub const SYSTEM_FAMILIES: [&str; 7] = [
-    "linux", "windows", "macos", "esxi", "mikrotik", "openwrt", "dingtalk",
+pub const SYSTEM_FAMILIES: [&str; 8] = [
+    "linux", "windows", "macos", "esxi", "mikrotik", "openwrt", "dingtalk", "dji",
 ];
 
 /// Smallest and largest memory limit a package may declare.

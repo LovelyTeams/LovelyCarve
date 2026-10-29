@@ -106,6 +106,15 @@ impl Fingerprint {
 }
 
 impl OsFingerprint for Fingerprint {
+    fn read_small(&self, path: &str, cap: usize) -> anyhow::Result<Option<Vec<u8>>> {
+        let content = self.read_limited(path, cap.saturating_add(1))?;
+        anyhow::ensure!(
+            content.as_ref().is_none_or(|bytes| bytes.len() <= cap),
+            "fingerprint file exceeds {cap} bytes: {path}"
+        );
+        Ok(content)
+    }
+
     fn read(&self, path: &str) -> anyhow::Result<Option<Vec<u8>>> {
         self.read_limited(path, READ_CAP_BYTES)
     }

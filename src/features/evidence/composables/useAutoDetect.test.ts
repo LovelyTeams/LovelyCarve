@@ -81,6 +81,7 @@ describe('useAutoDetect labels', () => {
     expect(platformLabel('harmony')).toBe('鸿蒙 HarmonyOS');
     expect(platformLabel('huaweihmos')).toBe('鸿蒙 HMOS');
     expect(platformLabel('othermobile')).toBe('其他移动设备');
+    expect(platformLabel('drone')).toBe('无人机');
     expect(platformLabel(null)).toBe('未识别');
     expect(platformLabel(undefined)).toBe('未识别');
   });
@@ -94,6 +95,7 @@ describe('useAutoDetect labels', () => {
     expect(evidenceTypeLabel('backup')).toBe('备份文件');
     expect(evidenceTypeLabel('huaweiotgbackuptotar')).toBe('huaweiotgbackuptotar');
     expect(manufactorLabel('huawei')).toBe('Huawei');
+    expect(manufactorLabel('dji')).toBe('DJI');
     expect(manufactorLabel(null)).toBeNull();
     expect(manufactorLabel('')).toBeNull();
   });

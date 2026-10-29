@@ -92,6 +92,14 @@ fn analyzer_fields_must_fit_their_scope() {
 }
 
 #[test]
+fn dji_system_analyzers_can_target_aircraft() {
+    let plugin = manifest("[[analyzer]]\nid = \"flight\"\nname = \"Flight\"\nscope = \"system\"\nplatforms = [\"dji\"]").expect("DJI system analyzer");
+    let analyzer = plugin.analyzer("flight").expect("flight analyzer");
+    assert!(analyzer.applies_to_family("dji"));
+    assert!(!analyzer.applies_to_family("linux"));
+}
+
+#[test]
 fn files_analyzers_match_by_extension_or_mime() {
     let manifest = manifest(
         "[[analyzer]]\nid = \"sqlite\"\nname = \"SQLite\"\nscope = \"files\"\nextensions = [\"db\", \"sqlite\"]\nmime_types = [\"application/vnd.sqlite3\"]",

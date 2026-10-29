@@ -1,14 +1,14 @@
 //! Operating-system identification over a read-only filesystem view.
 //!
-//! Provides seven detectors: Windows, Linux, macOS, VMware ESXi, MikroTik
-//! RouterOS, OpenWrt, and DingTalk smart device. Each detector probes a
+//! Provides detectors for Windows, Linux, macOS, VMware ESXi, MikroTik
+//! RouterOS, OpenWrt, DingTalk smart devices and DJI aircraft. Each probes a
 //! filesystem through a thin [`OsFingerprint`] adapter that exposes
 //! `read` / `exists` / `is_dir` over a path. The volume layer in
 //! `core::analysis::identify::os_detect_adapters` wraps every supported filesystem (NTFS,
 //! Ext4, FAT, exFAT, HFS+, APFS, XFS, Btrfs, UFS, SquashFS) into one of
 //! these adapters.
 //!
-//! The dispatcher [`detect`] runs the seven detectors as a short-circuit
+//! The dispatcher [`detect`] runs the detectors as a short-circuit
 //! chain: as soon as one matches it returns. Callers that want every
 //! match (because a single partition can host multiple stacked indicators
 //! — e.g. a Linux rootfs that also has an OpenWrt EFI marker) can use
@@ -34,6 +34,7 @@ pub enum OsFamily {
     MikroTik,
     OpenWrt,
     DingTalk,
+    Dji,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -84,6 +85,18 @@ pub trait OsFingerprint {
     fn read(&self, path: &str) -> anyhow::Result<Option<Vec<u8>>>;
     fn exists(&self, path: &str) -> anyhow::Result<bool>;
     fn is_dir(&self, path: &str) -> anyhow::Result<bool>;
+
+    /// Read a complete small fingerprint file, rejecting oversized content.
+    /// I/O adapters should override this to enforce the cap before allocating
+    /// or reading the entire file; the default supports in-memory adapters.
+    fn read_small(&self, path: &str, cap: usize) -> anyhow::Result<Option<Vec<u8>>> {
+        let content = self.read(path)?;
+        anyhow::ensure!(
+            content.as_ref().is_none_or(|bytes| bytes.len() <= cap),
+            "fingerprint file exceeds {cap} bytes: {path}"
+        );
+        Ok(content)
+    }
 }
 
 /// Short-circuit dispatcher. Returns at most one detection — the first
@@ -107,8 +120,9 @@ type Detector = (
 );
 
 fn run_chain(fs: &dyn OsFingerprint, short_circuit: bool) -> Vec<DetectedOs> {
-    let detectors: [Detector; 7] = [
+    let detectors: [Detector; 8] = [
         ("windows", detect_windows),
+        ("dji", |fs| Ok(super::dji::detect(fs)?.map(|hit| hit.os))),
         ("linux", detect_linux),
         ("esxi", detect_esxi),
         ("mikrotik", detect_mikrotik),
