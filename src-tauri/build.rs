@@ -54,7 +54,10 @@ mod desktop {
         // Every profile runs with the caller's privileges. Users can explicitly
         // run as administrator when accessing physical disks or live memory.
         // app_manifest replaces the default XML, so preserve Common-Controls.
-        let attributes = tauri_build::Attributes::new();
+        let attributes = tauri_build::Attributes::new().plugin(
+            "preview-window",
+            tauri_build::InlinedPlugin::new().commands(&["open"]),
+        );
         #[cfg(target_os = "windows")]
         let attributes = {
             let windows = tauri_build::WindowsAttributes::new().app_manifest(

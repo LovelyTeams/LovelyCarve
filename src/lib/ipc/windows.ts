@@ -6,6 +6,8 @@
 // (and therefore the same loaded image / AppState), so the standalone window
 // fetches bytes through the normal fs commands.
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { invokeCmd } from './client';
+import { onWindowDestroyed } from './events';
 import type { FilePreviewReadingState } from '../models/filePreviewReadingState';
 
 export interface FilePreviewWindowArgs {
@@ -52,12 +54,27 @@ function themedWindowBackground(): string {
  * preview. Owned previews use a stable previewId; other callers use (image, node).
  * Re-invoking with the same identity focuses the existing window.
  */
+const pendingPreviews = new Map<string, Promise<void>>();
+
 export async function openFilePreviewWindow(args: FilePreviewWindowArgs, onClosed?: () => void): Promise<void> {
   const label = sanitizeLabel(args.previewId
     ? `file-preview-${args.previewId}`
     : `file-preview-${args.imageId}-${args.nodeId}`);
+  const pending = pendingPreviews.get(label);
+  if (pending) return pending;
+  const opening = createFilePreviewWindow(label, args, onClosed);
+  pendingPreviews.set(label, opening);
+  try {
+    await opening;
+  } finally {
+    pendingPreviews.delete(label);
+  }
+}
+
+async function createFilePreviewWindow(label: string, args: FilePreviewWindowArgs, onClosed?: () => void): Promise<void> {
   const existing = await WebviewWindow.getByLabel(label);
   if (existing) {
+    await existing.unminimize();
     await existing.setFocus();
     return;
   }
@@ -77,24 +94,21 @@ export async function openFilePreviewWindow(args: FilePreviewWindowArgs, onClose
   if (args.ownerId) params.set('ownerId', args.ownerId);
   if (args.previewId) params.set('previewId', args.previewId);
 
-  const win = new WebviewWindow(label, {
-    url: `index.html?${params.toString()}`,
-    title: args.title || '文件预览',
-    width: 960,
-    height: 680,
-    minWidth: 520,
-    minHeight: 360,
-    ...(args.position ? { x: args.position.x, y: args.position.y } : {}),
-    resizable: true,
-    decorations: false,
-    backgroundColor: themedWindowBackground(),
-  });
-
-  await new Promise<void>((resolve, reject) => {
-    void win.once('tauri://created', () => resolve());
-    void win.once('tauri://error', (e) => reject(new Error(String(e.payload))));
-  });
-  if (onClosed) await win.once('tauri://destroyed', onClosed);
+  const unlisten = onClosed ? await onWindowDestroyed(label, onClosed) : undefined;
+  try {
+    await invokeCmd<void>('plugin:preview-window|open', {
+      options: {
+        label,
+        url: `index.html?${params.toString()}`,
+        title: args.title || '文件预览',
+        position: args.position,
+        backgroundColor: themedWindowBackground(),
+      },
+    });
+  } catch (error) {
+    unlisten?.();
+    throw error;
+  }
 }
 
 export async function focusMainWindow(): Promise<void> {

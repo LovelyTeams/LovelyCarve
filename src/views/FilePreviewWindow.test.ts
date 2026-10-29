@@ -7,9 +7,11 @@ import type { FilePreviewWindowArgs } from '../lib/ipc/windows';
 const mocks = vi.hoisted(() => ({
   selection: undefined as ((selection: PreviewSelection) => void) | undefined,
   cleanup: vi.fn(), request: vi.fn(), dock: vi.fn(), close: vi.fn(), title: vi.fn(), focus: vi.fn(), notify: vi.fn(),
+  isAlwaysOnTop: vi.fn(), setAlwaysOnTop: vi.fn(),
 }));
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({
   setTitle: mocks.title, close: mocks.close, isMaximized: async () => false, onResized: async () => () => {},
+  isAlwaysOnTop: mocks.isAlwaysOnTop, setAlwaysOnTop: mocks.setAlwaysOnTop,
 }) }));
 vi.mock('../lib/ipc/previewDock', () => ({
   onPreviewSelection: vi.fn(async (_owner: string, _preview: string, handler: (selection: PreviewSelection) => void) => {
@@ -50,6 +52,8 @@ beforeEach(() => {
   mocks.focus.mockResolvedValue(undefined);
   mocks.close.mockResolvedValue(undefined);
   mocks.request.mockResolvedValue(undefined);
+  mocks.isAlwaysOnTop.mockResolvedValue(false);
+  mocks.setAlwaysOnTop.mockResolvedValue(undefined);
   const params = new URLSearchParams({ ownerId: 'owner', previewId: 'preview', imageId: original.imageId, node: JSON.stringify(original.node), fullPath: original.fullPath });
   window.history.replaceState({}, '', `/?${params}`);
   host = document.createElement('div'); document.body.append(host);
@@ -62,6 +66,49 @@ async function mount() {
 }
 
 describe('detached preview selection', () => {
+  it('toggles the native always-on-top state and exposes the pressed state', async () => {
+    await mount();
+    const button = host.querySelector<HTMLButtonElement>('.pin-btn')!;
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    button.click();
+    await settle();
+    expect(mocks.setAlwaysOnTop).toHaveBeenLastCalledWith(true);
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(button.title).toBe('取消置顶');
+    button.click();
+    await settle();
+    expect(mocks.setAlwaysOnTop).toHaveBeenLastCalledWith(false);
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('reads the native pin state and retains it when an update fails', async () => {
+    mocks.isAlwaysOnTop.mockResolvedValueOnce(true);
+    await mount();
+    const button = host.querySelector<HTMLButtonElement>('.pin-btn')!;
+    mocks.setAlwaysOnTop.mockRejectedValueOnce(new Error('native failure'));
+    button.click();
+    await settle();
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(button.disabled).toBe(false);
+    expect(mocks.notify).toHaveBeenCalledWith('窗口操作失败', 'Error: native failure');
+  });
+
+  it('disables pinning while a native operation is pending', async () => {
+    await mount();
+    let complete!: () => void;
+    mocks.setAlwaysOnTop.mockImplementationOnce(() => new Promise<void>(resolve => { complete = resolve; }));
+    const button = host.querySelector<HTMLButtonElement>('.pin-btn')!;
+    button.click();
+    await settle();
+    expect(button.disabled).toBe(true);
+    button.click();
+    expect(mocks.setAlwaysOnTop).toHaveBeenCalledOnce();
+    complete();
+    await settle();
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('requests the latest file after subscribing and replaces all file data atomically', async () => {
     const latest = { ...original, imageId: 'image-b', nodeId: 'second', node: { id: 'second', name: 'second.txt' }, fullPath: '/other/second.txt', title: 'second.txt', focusTarget: { offset: 512, length: 8 }, ident: { label: 'Text' }, digest: { md5: 'digest' } };
     mocks.request.mockImplementationOnce(async () => mocks.selection?.(selection(3, latest)));

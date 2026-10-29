@@ -46,6 +46,7 @@ fn application_builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(crate::host::preview_window::init())
         .manage(state::AppState::new())
         .setup(crate::app::setup::setup)
         .invoke_handler(tauri::generate_handler![

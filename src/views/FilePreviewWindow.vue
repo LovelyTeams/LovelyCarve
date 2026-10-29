@@ -12,6 +12,12 @@
           :title="tr('收回原文件列表的右侧预览栏')" @click="dockWindow">
           <PanelRightClose :size="14" /><span>{{ docking ? tr("正在停靠…") : tr("停靠到右侧") }}</span>
         </button>
+        <button class="pw-btn pin-btn" :class="{ active: isAlwaysOnTop }" :disabled="pinning"
+          :title="isAlwaysOnTop ? tr('取消置顶') : tr('置顶')"
+          :aria-label="isAlwaysOnTop ? tr('取消置顶') : tr('置顶')" :aria-pressed="isAlwaysOnTop"
+          @click="toggleAlwaysOnTop">
+          <component :is="isAlwaysOnTop ? PinOff : Pin" :size="14" />
+        </button>
         <button class="pw-btn" :title="tr('最小化')" @click="minimizeWindow">
           <Minus :size="14" />
         </button>
@@ -52,7 +58,7 @@
 import { tr } from '../composables/useLocale';
 
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { FileText, Maximize2, Minus, PanelRightClose, Square, X } from 'lucide-vue-next';
+import { FileText, Maximize2, Minus, PanelRightClose, Pin, PinOff, Square, X } from 'lucide-vue-next';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import DiskFileDetail from '../features/preview/components/DiskFileDetail.vue';
 import ToastHost from '../components/feedback/ToastHost.vue';
@@ -173,6 +179,8 @@ function onStorage(e: StorageEvent) {
 // ── Window controls ────────────────────────────────────────────────
 const appWindow = getCurrentWindow();
 const isMaximized = ref(false);
+const isAlwaysOnTop = ref(false);
+const pinning = ref(true);
 let unlistenSelection: UnlistenFn | undefined;
 let disposed = false;
 let selectionRevision = -1;
@@ -218,6 +226,30 @@ async function minimizeWindow() {
   try { await appWindow.minimize(); } catch (e) { notifyError(tr("最小化失败"), String(e)); }
 }
 
+async function refreshAlwaysOnTop() {
+  try {
+    isAlwaysOnTop.value = await appWindow.isAlwaysOnTop();
+  } catch (error) {
+    notifyError(tr("窗口操作失败"), String(error));
+  } finally {
+    pinning.value = false;
+  }
+}
+
+async function toggleAlwaysOnTop() {
+  if (pinning.value) return;
+  pinning.value = true;
+  const next = !isAlwaysOnTop.value;
+  try {
+    await appWindow.setAlwaysOnTop(next);
+    isAlwaysOnTop.value = next;
+  } catch (error) {
+    notifyError(tr("窗口操作失败"), String(error));
+  } finally {
+    pinning.value = false;
+  }
+}
+
 async function toggleMaximizeWindow() {
   try {
     await appWindow.toggleMaximize();
@@ -250,6 +282,7 @@ onMounted(() => {
   void bindSelection();
   void bindResizeListener();
   void refreshMaximized();
+  void refreshAlwaysOnTop();
   window.addEventListener('storage', onStorage);
   window.addEventListener('keydown', onKeydown);
 });
@@ -332,6 +365,8 @@ onBeforeUnmount(() => {
   background: var(--danger-solid);
   color: var(--accent-contrast);
 }
+.pw-btn.pin-btn.active { background: var(--sidebar-active-bg); color: var(--primary-color); }
+.pw-btn:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
 /* Dock action reads like the main window's titlebar chips. */
 .pw-btn.dock-btn {
   width: auto;

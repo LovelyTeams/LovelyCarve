@@ -11,6 +11,8 @@ use std::{
 use serde::Serialize;
 
 #[cfg(feature = "desktop")]
+pub(crate) mod preview_window;
+#[cfg(feature = "desktop")]
 mod tauri_adapter;
 #[cfg(feature = "desktop")]
 pub(crate) use tauri_adapter::desktop_handle;
