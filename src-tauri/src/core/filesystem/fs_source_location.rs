@@ -6,7 +6,7 @@ use rusqlite::OptionalExtension;
 use {
     crate::core::catalog::filedb::{filedb_file, filedb_query},
     crate::core::filesystem::evidence_session::EvidenceSession,
-    crate::core::filesystem::fs_all::FsAll,
+    crate::core::filesystem::fs_all::{self, FsAll},
     crate::core::filesystem::tree::fs_tree::{FsNode, FsSession, NodeKind},
 };
 
@@ -66,7 +66,20 @@ pub fn source_chain(
             ancestors.push(node);
         }
     }
-    resolve_source_path(root, path, ancestors, |parent| session.children(parent))
+    // Plugin paths start inside the logical source; its display entry still
+    // belongs in the navigation chain, outside the path's traversal boundary.
+    let directory_root = fs_all::directory_root(image, root)?;
+    if directory_root != root {
+        let node = session
+            .children(root)?
+            .into_iter()
+            .find(|node| node.id == directory_root && !node.deleted)
+            .ok_or_else(|| anyhow::anyhow!("来源卷入口不可用：{directory_root}"))?;
+        ancestors.push(node);
+    }
+    resolve_source_path(&directory_root, path, ancestors, |parent| {
+        session.children(parent)
+    })
 }
 
 /// Resolve against verified, published offline indexes. A logical volume may
@@ -120,11 +133,39 @@ pub fn indexed_source_chain(
             ancestors.push(boundary.clone());
         }
         ancestors.reverse();
-        return resolve_source_path(root, path, ancestors, |parent| {
+        let mut children = |parent: &str| {
             filedb_query::children(index, parent)?.ok_or_else(|| {
                 anyhow::anyhow!("此目录未收录在已有索引中，请恢复源镜像后重试：{parent}")
             })
-        });
+        };
+        // Offline sessions have no live reader handles. Recover the same
+        // logical-source entry from the verified index, without reading bytes.
+        use crate::core::evidence::image::ImageFormat;
+        let directory_root = if root == "root"
+            && matches!(
+                image.info().source_format,
+                ImageFormat::Folder
+                    | ImageFormat::Docker
+                    | ImageFormat::Tar
+                    | ImageFormat::AndroidBackup
+                    | ImageFormat::Zip
+                    | ImageFormat::Sevenz
+                    | ImageFormat::Ad1
+            ) {
+            let nodes = children(root)?;
+            let [source] = nodes.as_slice() else {
+                anyhow::bail!("来源卷入口不可用：{root}");
+            };
+            anyhow::ensure!(
+                source.kind == NodeKind::Dir && !source.deleted,
+                "来源卷入口不可用：{root}"
+            );
+            ancestors.push(source.clone());
+            source.id.clone()
+        } else {
+            root.to_owned()
+        };
+        return resolve_source_path(&directory_root, path, ancestors, &mut children);
     }
     anyhow::bail!("来源卷未收录在已有索引中，请恢复源镜像后重试：{root}")
 }
@@ -198,6 +239,83 @@ mod tests {
     use super::*;
     use crate::core::catalog::filedb::filedb_store;
     use crate::core::evidence::image::{DiskImage, ImageFormat};
+
+    #[test]
+    fn offline_logical_sources_resolve_inside_the_source_entry() -> anyhow::Result<()> {
+        use filedb_store::test_support::{entry, node, source};
+        let directory = tempfile::tempdir()?;
+        for (number, (format, root_id)) in [
+            (ImageFormat::Folder, "folder:"),
+            (ImageFormat::Tar, "tar:"),
+            (ImageFormat::AndroidBackup, "tar:"),
+            (ImageFormat::Zip, "zip:"),
+            (ImageFormat::Sevenz, "sevenz:"),
+            (ImageFormat::Docker, "docker:"),
+            (ImageFormat::Ad1, "ad1:"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let index = directory.path().join(format!("{number}.db"));
+            // The display entry can share a name with a real child directory.
+            let entries = vec![
+                entry("root", root_id, "data", NodeKind::Dir, "/data"),
+                entry(root_id, "data-dir", "data", NodeKind::Dir, "/data/data"),
+                entry(
+                    "data-dir",
+                    "system-dir",
+                    "system",
+                    NodeKind::Dir,
+                    "/data/data/system",
+                ),
+                entry(
+                    "system-dir",
+                    "packages",
+                    "packages.xml",
+                    NodeKind::File,
+                    "/data/data/system/packages.xml",
+                ),
+            ];
+            filedb_store::build_index_from_entries(&entries, &index, &source("root"))?;
+            let image = EvidenceSession::from_indexed_image(
+                DiskImage::from_index_metadata(
+                    "img".into(),
+                    directory.path().join("missing"),
+                    format,
+                    4096,
+                )?,
+                vec![node("root", "/", NodeKind::Dir)],
+            );
+            let indexes = vec![index];
+            for path in [
+                "data/system/packages.xml",
+                "/data/system/packages.xml",
+                "data/../data/system/packages.xml",
+            ] {
+                let chain = indexed_source_chain(&image, &indexes, "root", path)?;
+                assert_eq!(
+                    chain
+                        .iter()
+                        .map(|node| node.id.as_str())
+                        .collect::<Vec<_>>(),
+                    [root_id, "data-dir", "system-dir", "packages"]
+                );
+            }
+            for path in ["", "/", "."] {
+                let chain = indexed_source_chain(&image, &indexes, "root", path)?;
+                assert_eq!(chain.len(), 1);
+                assert_eq!(chain[0].id, root_id);
+            }
+            for path in [
+                "../data/system/packages.xml",
+                "data/System/packages.xml",
+                "missing",
+            ] {
+                assert!(indexed_source_chain(&image, &indexes, "root", path).is_err());
+            }
+        }
+        Ok(())
+    }
 
     #[test]
     fn offline_lvm_sources_use_partition_index_and_keep_volume_boundaries() -> anyhow::Result<()> {
@@ -419,6 +537,7 @@ mod tests {
         for (name, target, contents) in [
             ("etc/passwd", None, b"root".as_slice()),
             ("alias", Some("etc"), b"".as_slice()),
+            ("absolute", Some("/etc"), b"".as_slice()),
             ("final", Some("etc/passwd"), b"".as_slice()),
             ("cycle-a", Some("cycle-b"), b"".as_slice()),
             ("cycle-b", Some("cycle-a"), b"".as_slice()),
@@ -443,20 +562,27 @@ mod tests {
             .children("root")
             .expect("root")
             .remove(0);
-        let prefix = root.name;
-        let nodes = source_chain(&image, "root", &format!("{prefix}/alias/passwd"))
-            .expect("directory link");
+        let nodes = source_chain(&image, "root", "alias/passwd").expect("directory link");
+        assert_eq!(nodes.first().expect("archive root").id, root.id);
         assert_eq!(nodes.last().expect("target").name, "passwd");
         assert_eq!(
-            source_chain(&image, "root", &format!("{prefix}/final"))
+            source_chain(&image, "root", "absolute/passwd")
+                .expect("absolute directory link")
+                .last()
+                .expect("target")
+                .id,
+            nodes.last().expect("relative target").id
+        );
+        assert_eq!(
+            source_chain(&image, "root", "final")
                 .expect("final link")
                 .last()
                 .expect("link")
                 .kind,
             NodeKind::Symlink
         );
-        assert!(source_chain(&image, "root", &format!("{prefix}/cycle-a/passwd")).is_err());
-        assert!(source_chain(&image, "root", &format!("{prefix}/escape/passwd")).is_err());
+        assert!(source_chain(&image, "root", "cycle-a/passwd").is_err());
+        assert!(source_chain(&image, "root", "escape/passwd").is_err());
     }
 
     #[test]
@@ -472,7 +598,7 @@ mod tests {
             .next()
             .expect("folder root");
         let prefix = &root.name;
-        let nodes = source_chain(&image, "root", &format!("/{prefix}/etc/passwd")).expect("source");
+        let nodes = source_chain(&image, "root", "/etc/passwd").expect("source");
         assert_eq!(
             nodes
                 .iter()
@@ -481,8 +607,8 @@ mod tests {
             [prefix.as_str(), "etc", "passwd"]
         );
         assert!(source_chain(&image, "root", "../etc/passwd").is_err());
-        assert!(source_chain(&image, "root", &format!("{prefix}/etc/Passwd")).is_err());
-        assert!(source_chain(&image, "root", &format!("{prefix}/etc/missing")).is_err());
+        assert!(source_chain(&image, "root", "etc/Passwd").is_err());
+        assert!(source_chain(&image, "root", "etc/missing").is_err());
         assert!(source_chain(&image, "part:99", "etc/passwd").is_err());
     }
 

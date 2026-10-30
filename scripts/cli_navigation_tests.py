@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import tarfile
 import tempfile
+import zipfile
 
 
 def test_navigation(executable, environment):
@@ -68,8 +69,64 @@ def test_navigation(executable, environment):
         assert node["name"] == filename and node["path"] == path, node
         assert run(*folder_scope, "files", "read", path) == "original evidence bytes"
         assert (source / filename).is_file()
+        test_logical_source_lookup(executable, environment, Path(directory))
         test_links_spellings_and_text_pages(executable, environment, Path(directory))
     print("CLI navigation tests passed: caseless IDs, volume ID paths, shell/JSONL directory IDs, NTFS case fallback and absolute tree paths")
+
+
+def test_logical_source_lookup(executable, environment, root):
+    """Plugin paths start inside the logical source, preserving its navigation frame."""
+    source = root / "logical evidence"
+    (source / "data/system").mkdir(parents=True)
+    content = b"<packages/>"
+    (source / "data/system/packages.xml").write_bytes(content)
+    archive = root / "logical.tar"
+    with tarfile.open(archive, "w") as output:
+        output.add(source / "data", arcname="data")
+    zipped = root / "logical.zip"
+    with zipfile.ZipFile(zipped, "w", zipfile.ZIP_DEFLATED) as output:
+        output.write(source / "data/system/packages.xml", "data/system/packages.xml")
+
+    for evidence in [source, archive, zipped]:
+        case = root / (evidence.name + "-case")
+
+        def session(requests):
+            result = subprocess.run([str(executable), "--quiet", "--case", str(case), "session"],
+                                    input="\n".join(map(json.dumps, requests)), text=True,
+                                    encoding="utf-8", capture_output=True, cwd=root,
+                                    env=environment, timeout=120)
+            assert result.returncode == 0, (result.stdout, result.stderr)
+            rows = {row["id"]: row for row in map(json.loads, result.stdout.splitlines())}
+            assert all("result" in row for row in rows.values()), rows
+            return {key: row["result"] for key, row in rows.items()}
+
+        created = subprocess.run([str(executable), "--quiet", "cases", "create", str(case), "--name", "Lookup"],
+                                 text=True, encoding="utf-8", capture_output=True,
+                                 cwd=root, env=environment, timeout=120)
+        assert created.returncode == 0, (created.stdout, created.stderr)
+        requests = [
+            {"id": "open", "command": "images open", "args": {"path": str(evidence)}},
+            {"id": "file", "command": "files lookup", "args": {"rootId": "root", "path": "data/system/packages.xml"}},
+            {"id": "directory", "command": "files lookup", "args": {"rootId": "root", "path": "/data/system"}},
+            {"id": "root", "command": "files lookup", "args": {"rootId": "root", "path": "/"}},
+            {"id": "wait", "command": "tasks wait"},
+        ]
+        live = session(requests)
+        assert [frame["name"] for frame in live["file"]["frames"]][1:] == ["data", "system"], live
+        assert live["file"]["fileId"] == live["file"]["nodeId"]
+        assert live["directory"]["frames"] == live["file"]["frames"]
+        assert live["directory"]["fileId"] is None
+        assert live["root"]["frames"] == live["file"]["frames"][:1]
+        assert live["root"]["nodeId"] == live["file"]["frames"][0]["id"]
+        missing = root / (evidence.name + "-absent")
+        evidence.rename(missing)
+        try:
+            offline = session(requests)
+            assert offline["open"]["indexOnly"], offline
+            for key in ["file", "directory", "root"]:
+                assert offline[key] == live[key], (key, offline[key], live[key])
+        finally:
+            missing.rename(evidence)
 
 
 def test_links_spellings_and_text_pages(executable, environment, root):
