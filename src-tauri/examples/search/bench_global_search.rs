@@ -163,6 +163,7 @@ fn open_bench_case(case_dir: &Path, image: &EvidenceSession) -> anyhow::Result<C
         size_bytes: info.size_bytes,
         added_at: case_ledger::now(),
         platform: None,
+        manual_platform: None,
         evidence_type: None,
     })?;
     Ok(case)

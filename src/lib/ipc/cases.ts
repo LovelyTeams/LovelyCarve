@@ -7,6 +7,7 @@
 // `case_create` 建目录与台账,`case_open` 加进程锁并自愈,`case_close` 记审计
 // 后释放,`case_lock`/`case_unlock` 翻转逻辑锁,`case_remove` 只删除案件自己
 // 的文件,`case_list` 读本地登记簿。
+import type { EvidencePlatform } from './autodetect';
 import { invokeCmd } from './client';
 import { onEvent } from './events';
 
@@ -40,8 +41,10 @@ export interface EvidenceRef {
   source_format: ImageFormat;
   size_bytes: number;
   added_at: string;
-  /** 自动识别回写的平台(未识别为 null)。 */
+  /** 生效的平台:手动指定的平台,没有时取自动识别结论(都没有为 null)。 */
   platform?: string | null;
+  /** 检验人手动指定的平台;为 null 时 `platform` 来自自动识别。 */
+  manual_platform?: EvidencePlatform | null;
   /** 自动识别回写的检材类型(`disk` / `compressfile` / 备份枚举词)。 */
   evidence_type?: string | null;
 }
@@ -184,6 +187,16 @@ export function caseEvidenceList(): Promise<EvidenceRef[]> {
  *  tags, tasks and analysis data). Returns the refreshed case info. */
 export function caseEvidenceRemove(args: { imageId: string }): Promise<CaseInfo> {
   return invokeCmd<CaseInfo>('case_evidence_remove', args);
+}
+
+/** Set the examiner's platform for an evidence of the active case. It outranks
+ *  automatic detection and survives re-detection; `auto` clears it. Locked
+ *  cases refuse. Returns the updated evidence. */
+export function caseEvidencePlatformSet(args: {
+  imageId: string;
+  platform: EvidencePlatform | 'auto';
+}): Promise<EvidenceRef> {
+  return invokeCmd<EvidenceRef>('case_evidence_platform_set', args);
 }
 
 /** Start (or force-rebuild) a volume snapshot. `taskId` doubles as the

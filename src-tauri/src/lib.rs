@@ -201,6 +201,7 @@ fn application_builder() -> tauri::Builder<tauri::Wry> {
             commands::casework::case::case_option_save,
             commands::casework::case::case_evidence_list,
             commands::casework::case::case_evidence_remove,
+            commands::casework::case::case_evidence_platform_set,
             commands::casework::case_snapshot::snapshot_build,
             commands::casework::case_snapshot::snapshot_list,
             commands::casework::case_snapshot::snapshot_drop,

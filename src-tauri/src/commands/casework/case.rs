@@ -10,6 +10,7 @@
 //! | `case_list` | 本地登记簿 + 台账档案摘要 |
 //! | `case_rename` | 改名并同步登记簿 |
 //! | `case_option_query` / `case_option_save` | 台账 `setting` 表的案件级 KV |
+//! | `case_evidence_platform_set` | 手动指定检材平台,优先于自动识别;`auto` 恢复自动结论 |
 //!
 //! Snapshot orchestration and the `snapshot_*` commands live in
 //! `commands::casework::case_snapshot`.
@@ -137,6 +138,16 @@ pub async fn case_evidence_remove(
     image_id: String,
 ) -> Result<CaseInfo, AppError> {
     crate::app::workflows::casework::case_evidence_remove(state, image_id).await
+}
+
+/// Set the examiner's platform for case evidence; `auto` restores detection.
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn case_evidence_platform_set(
+    state: State<'_, AppState>,
+    image_id: String,
+    platform: String,
+) -> Result<EvidenceRef, AppError> {
+    crate::app::workflows::casework::case_evidence_platform_set(state, image_id, platform).await
 }
 
 pub use crate::app::workflows::casework::{CaseListItem, CaseOption};

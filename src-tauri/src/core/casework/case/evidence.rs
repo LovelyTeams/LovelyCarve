@@ -178,4 +178,38 @@ impl CaseState {
             None => Ok(false),
         }
     }
+
+    /// 检验人手动指定检材平台(`None` 清除手动选择,恢复自动识别结论),与审计
+    /// 记录同一事务提交。检材不在案件中时返回 `Ok(None)`。
+    pub fn set_evidence_platform(
+        &mut self,
+        image_id: &str,
+        platform: Option<&str>,
+    ) -> anyhow::Result<Option<EvidenceRef>> {
+        let Some(current) = self.evidence.iter().find(|record| record.uid == image_id) else {
+            return Ok(None);
+        };
+        let detail = serde_json::json!({
+            "platform": platform,
+            "previous": current.manual_platform,
+            "detected": current.platform,
+        })
+        .to_string();
+        let record = self.journaled(
+            Event {
+                action: "evidence.platform",
+                evidence: Some(image_id),
+                detail: &detail,
+            },
+            |tx| {
+                let record = ledger_evidence::set_manual_platform(tx, image_id, platform)?
+                    .context("evidence row vanished")?;
+                case_ledger::touch(tx)?;
+                Ok(record)
+            },
+        )?;
+        let evidence = evidence_ref_from_record(&record);
+        self.cache_evidence(record);
+        Ok(evidence)
+    }
 }

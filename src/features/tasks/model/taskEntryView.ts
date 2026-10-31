@@ -68,13 +68,14 @@ export function builtinSubject(entry: BuiltinTaskEntry, tr: Translator = sourceT
   }
 }
 
-/** 平台(含厂商与备份工具) · 检材类型。 */
+/** 平台(含厂商与备份工具)与检材类型。备份的平台显示名已写明备份工具,不再重复“备份”。 */
 function detectionConclusion(view: TaskView, tr: Translator): string {
-  const platform = view.labels.platform
-    ? view.labels.platformName || platformLabel(view.labels.platform as EvidencePlatform, tr)
-    : tr("未识别到平台");
-  const evidenceType = view.flags.includes('backup') ? tr("备份") : evidenceTypeLabel(view.labels.evidenceType ?? '', tr);
-  return `${platform} · ${evidenceType}`;
+  const backup = view.flags.includes('backup');
+  const evidenceType = backup ? tr("备份") : evidenceTypeLabel(view.labels.evidenceType ?? '', tr);
+  if (!view.labels.platform) return tr("未识别到平台的{0}", { 0: evidenceType });
+  if (backup && view.labels.platformName) return view.labels.platformName;
+  const platform = view.labels.platformName || platformLabel(view.labels.platform as EvidencePlatform, tr);
+  return `${platform} ${evidenceType}`;
 }
 
 function openingStage(view: TaskView, tr: Translator): string {

@@ -598,7 +598,8 @@ app/workflows/identify.rs      `autodetect_evidence` 命令 + 证据首次上线
                             `autodetect-failed`
 ```
 
-三路分发：磁盘镜像路逐分区（LVM 展开到逻辑卷，锁定的 BitLocker 单列）先按文件系统类型
+三路分发：磁盘镜像路按会话的分区视图逐分区（已解锁的 LUKS、FileVault 与 VeraCrypt 分区与文件树一样取明文文件系统的
+类型，其中的 LVM 经明文视图展开到逻辑卷；锁定的 BitLocker 单列，解锁后按 NTFS 判定）先按文件系统类型
 选择标志文件组：NTFS → `/$MFT`、`/Windows/System32`、`/Users`、
 `/Program Files`；HFS/APFS → `/bin /sbin /etc /var /usr /Applications
 /System/Library/CoreServices/SystemVersion.plist /private/var/db/dslocal/nodes/Default/users`；
@@ -610,26 +611,33 @@ Windows 对 ReFS 直接命中、NTFS 看 `Windows/WINDOWS/Program Files/Program 
 命中。归档/备份路（tar/zip/7z/AD1/docker/目录检材）对合成根做无类型门限的平台检查，并按包内条目做特征文件
 （`huaweicheck.json`、`thunderforensic.json`、`kunlunmobile.json`、`backupinfo.ini`、`backupHistoryInfo.xml`、
 `SmartSwitchBackupInf.bk`、`com.tencent.mm.*`、`weixin_resource.zip`、`com.tencent.mobileqq.*`、`info.xml`、
-iTunes 清单）与关键词匹配；`.ab`/小米 `.bak` 由保留的原始文件头魔数直接判备份，
+iTunes 清单）与关键词匹配；合成根已判出非手机平台（Linux、DJI 无人机等）时检材就是该系统，`var/backups`、
+AOSP 的 `SharedStorageBackup` 这类备份线索不再改判，只记入告警；`.ab`/小米 `.bak` 由保留的原始文件头魔数直接判备份，
 独立打开时先建立逻辑文件树，加密备份明确拒绝。手机镜像路（小米固件容器、雷电备份）分区扫描后兜底 Android。
 
 DJI 无人机由共享的 `identify/dji.rs` 在通用 Linux / Android 标志检查前识别；`os_detect` 与自动识别使用同一规则。每个可读根只检查 `/build.prop` 或 `/system/build.prop`（完整文件至多 64 KiB），要求 `ro.product.manufacturer=DJI`、非空 `dji.build.version`，并且同一根的 `bin/dji_flight` 与 `bin/dji_navigation` 都是文件；冲突属性、目录冒充服务或不完整特征不命中。结论为 `evidence.platform=drone`、厂商 `dji`，OS / 系统发现的 family 为 `dji`；固件版本、设备代号、原始 model、ABI 与 Android 基础版本按属性原值返回，不映射猜测商品型号。私有检材仅通过 `DJI_ORACLE_IMAGE` 和 `just test dji_external_image_detection --lib -- --ignored` 验证，不加入仓库。
 
-回写：有活动案件且检材已登记时，`evidence.platform` ← 平台词、`evidence.type` ← `disk` /
-`compressfile` / 备份枚举词、`evidence.extra_info` ← 厂商 / 显示名 / 备份特征 / 告警 JSON、
-`evidence.partitions` ← 逐分区判定 JSON，
-并写 `evidence/autodetect` 审计日志；平台未命中时 `platform` 保持原值，
-任务照常结束。`EvidenceRef` DTO 带出 `platform` / `evidence_type` 供案件管理器展示。
+回写：有活动案件且检材已登记时，`evidence.platform` ← 平台词（未命中时保持原值）、`evidence.kind` ← `disk` /
+`compressfile` / 备份枚举词、`evidence.detection` ← 完整报告 JSON（厂商、显示名、备份特征、告警与逐分区判定），
+任务照常结束。
+
+手动指定：`case_evidence_platform_set`（CLI `images platform set <平台|auto>`）把检验人选择的平台写入台账
+`setting` 表的 `evidence.platform.<uid>` 键，与审计动作 `evidence.platform` 同一事务提交；`auto` 删除该键，恢复
+自动结论。自动识别只写 `evidence.platform` 列，重新识别不覆盖手动选择。读检材时两者一并带出：`EvidenceRef.platform`
+是生效的平台（手动优先，其次自动识别），`manual_platform` 是手动选择，案件管理器与镜像信息页据此展示。要求检材已
+登记在活动案件中，案件锁定时拒绝；移除检材时一并删除该键。
 
 前端：`src/lib/ipc/autodetect.ts` 包装命令与事件；`useAutoDetect` 模块级缓存按镜像 id 存报告、接完成
 事件并刷新活动案件 DTO，失败事件记为该检材的识别错误（取消不算失败）；镜像信息页头部的
-`AutoDetectBadge.vue` 只显示结论（平台 / 类型 / 厂商 / 备份）并支持手动重新识别，逐分区判定、
-标志文件明细、备份特征与告警不在界面展开。
+`AutoDetectBadge.vue` 只显示结论（平台 / 类型 / 厂商 / 备份）并支持手动重新识别；检材在活动案件中时另有平台选择
+（`UiSelect`，`caseEvidencePlatformSet` 写入后刷新活动案件），手动指定时标签显示手动平台，悬停提示保留自动结论。
+逐分区判定、标志文件明细、备份特征与告警不在界面展开。
 每次识别在右上角「任务中心」的任务页显示为「自动识别平台」（见「右上角任务中心面板」）。
 
-识别限制：macOS 两标志均缺失时不按卷名猜测；部分厂商备份归入 `backup` 大类，
-iOS 整盘镜像没有独立判定路径。复核结论时查看案件回写的 `evidence.partitions`（逐分区判定与标志文件）
-与 `evidence.extra_info`（备份特征与告警）。
+识别限制：macOS 两标志均缺失时不按卷名猜测；部分厂商备份归入 `backup` 大类；
+iOS 整盘镜像没有独立判定路径；归档与目录检材的合成根没有文件系统类型，不做 Windows 与 macOS 检查；Btrfs 子卷
+（如 `@`）和逻辑检材子目录里的系统不向下探测。这些情况可手动指定平台。复核结论时查看案件回写的
+`evidence.detection`（逐分区判定、标志文件、备份特征与告警）。
 
 ## 案件数据库
 
@@ -674,7 +682,8 @@ iOS 整盘镜像没有独立判定路径。复核结论时查看案件回写的 
 
 **台账（`core::casework::case_ledger`）。** `application_id = 0x4C434344`（"LCCD"）标识这是 LovelyCarve 台账，
 `user_version` 是结构版本，不是当前版本的台账拒绝打开。表：`case_profile`（唯一一行：案件 uid、编号、
-名称、检验人、描述、逻辑锁、创建/更新时间）、`setting`（案件级 KV）、`evidence`（`uid` 唯一、
+名称、检验人、描述、逻辑锁、创建/更新时间）、`setting`（案件级 KV；检验人手动指定的检材平台也存在这里，
+键为 `evidence.platform.<uid>`，结构版本因此不变）、`evidence`（`uid` 唯一、
 `path_key` 唯一——同一来源在案件里只有一条记录；自动识别的平台、类型与完整报告 JSON）、`volume`
 （每个 `(检材, 卷)` 当前生效的快照与索引文件名、来源快照时间、源卷大小、证据指纹、条目数、截断）、
 `tag`、`drive_letter`、`read_fault`、`task` / `task_followup`（见「插件任务调度」）与 `journal`。
@@ -690,7 +699,7 @@ iOS 整盘镜像没有独立判定路径。复核结论时查看案件回写的 
 校验台账、载入检材与卷记录并自愈（`case_heal.rs`：清空 `staging/`、删除不属于任何检材的检材目录、
 快照文件缺失的卷记录删除、索引文件缺失的卷下线索引、回收卷目录里记录之外的旧代文件与没有记录的卷
 目录），再记 `case.open`。`case_close` 记审计、checkpoint 台账 WAL、释放连接与锁，再卸载运行态镜像。
-`case_lock`/`case_unlock` 翻转逻辑锁（锁定后拒绝改名、移除检材与重建快照）；`case_remove` 只删除案件自己的文件
+`case_lock`/`case_unlock` 翻转逻辑锁（锁定后拒绝改名、移除检材、手动指定平台与重建快照）；`case_remove` 只删除案件自己的文件
 （台账、锁、`evidence/`、`staging/`），目录里的其它内容原样保留，目录空了才删除目录本身；
 `case_list` 读应用数据目录下的本地登记簿（`core::casework::case_registry`）并附台账档案；
 `case_option_query`/`case_option_save` 读写 `setting` 表。`CaseState` 是台账的读缓存（检材与卷记录）
@@ -698,7 +707,7 @@ iOS 整盘镜像没有独立判定路径。复核结论时查看案件回写的 
 
 **检材。** `image_load` 与案件打开时把已加载镜像登记为检材（以 image id 幂等；来源已是另一个检材时
 拒绝加载）。首次登记触发自动识别首任务与 `trigger = auto` 的依赖链根任务。移除检材先取消它的全部
-未终结任务，再在一个事务里删除检材行（级联）并记 `evidence.remove`，最后在锁外删除整个检材目录；
+未终结任务，再在一个事务里删除检材行（级联）与它的手动平台设置并记 `evidence.remove`，最后在锁外删除整个检材目录；
 Windows 上仍被打开的文件删不掉时短暂重试，残留留给下次打开时的自愈。
 
 **卷发布（`core::casework::case_ledger_volumes`，两段）。** 每个卷的走树在 `staging/` 写出 `.dirz`，发布时移入卷
@@ -1258,7 +1267,7 @@ LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提�
 | 功能 | 前端入口 | 主要命令 / 事件 |
 | --- | --- | --- |
 | 案件与证据 | 主壳、案件管理、文件会话 | `case_*`、`image_load`、`image_unload`、`physical_disks_list`、`image-load-progress` |
-| 镜像信息 | 分区、校验、识别与 RAID | `image_info`、`autodetect_evidence`、`raid_*`、`image_list`（手动重组选择成员）、`autodetect-finished` / `autodetect-failed`、`raid-detect-progress` |
+| 镜像信息 | 分区、校验、识别与 RAID | `image_info`、`autodetect_evidence`、`case_evidence_platform_set`（手动指定平台）、`raid_*`、`image_list`（手动重组选择成员）、`autodetect-finished` / `autodetect-failed`、`raid-detect-progress` |
 | 文件浏览与预览 | 文件列表、详情、独立预览窗 | `fs_children*`、`fs_flat_*`、`fs_subtree_empty_dirs`、`fs_docker_prepare`、`win_drive_letters`、`fs_read*`、`fs_media_*`、`fs_preview*`、原类型预览命令 |
 | 索引与快照 | 卷快照、全显、树图和文件查询 | `snapshot_*`、`fs_child_counts`、`snapshot-build-progress`；目录与全显经 `fs_children_page` / `fs_flat_page` 读取卷索引，树图经 `fs_size_tree` 读取卷索引汇总的空间占用树 |
 | 标签与派生数据 | 文件列表的标签、哈希与类型列 | `fs_tags_*`、`fs_digest_load_nodes` / `fs_digest_persist`、`fs_identify_type`、`fs_ftype_load_nodes` / `fs_ftype_persist` |

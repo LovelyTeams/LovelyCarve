@@ -405,6 +405,7 @@ pub(crate) mod test_support {
             size_bytes: 1,
             added_at: "2026-01-01T00:00:00.000Z".to_string(),
             platform: None,
+            manual_platform: None,
             evidence_type: None,
         })
         .expect("register evidence");

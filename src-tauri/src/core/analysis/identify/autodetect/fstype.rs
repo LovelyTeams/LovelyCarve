@@ -9,8 +9,9 @@
 //!   标志路径,判定多为"任一存在"(OR),Android 例外(见 [`go_detect`])。
 //!
 //! [`PartitionKind`] 通过 [`partition_ftype`] 折算成平台识别使用的 ftype 码。
-//! 未出现在任何门限表中的文件系统(FAT、exFAT、ISO、SquashFS、LUKS…)
-//! 返回 `None`,只走无门限的 Linux/Android 检查。
+//! 未出现在任何门限表中的文件系统(FAT、exFAT、ISO、SquashFS…)
+//! 返回 `None`,只走无门限的 Linux/Android 检查。BitLocker 解锁后按 NTFS
+//! 浏览,取 NTFS 的码;LUKS / FileVault 解锁后由会话的分区视图给出明文类型。
 
 use serde::{Deserialize, Serialize};
 
@@ -86,7 +87,8 @@ pub struct MarkerCheck {
 /// 任何门限表中。
 pub fn partition_ftype(kind: PartitionKind) -> Option<u64> {
     match kind {
-        PartitionKind::Ntfs => Some(FTYPE_NTFS),
+        // 锁定的 BitLocker 不做探测;解锁后的卷按 NTFS 浏览。
+        PartitionKind::Ntfs | PartitionKind::Bitlocker => Some(FTYPE_NTFS),
         PartitionKind::Refs => Some(FTYPE_WINDOWS_DIRECT),
         PartitionKind::HfsPlus | PartitionKind::HfsX => Some(FTYPE_HFS),
         PartitionKind::ApfsContainer => Some(FTYPE_APFS),
@@ -123,7 +125,6 @@ pub fn partition_ftype(kind: PartitionKind) -> Option<u64> {
         | PartitionKind::Minifs
         | PartitionKind::Romfs
         | PartitionKind::Ubi
-        | PartitionKind::Bitlocker
         | PartitionKind::BiosBoot
         | PartitionKind::Filevault
         | PartitionKind::Luks
@@ -283,6 +284,8 @@ mod tests {
     #[test]
     fn partition_ftype_maps_every_gated_kind() {
         assert_eq!(partition_ftype(PartitionKind::Ntfs), Some(FTYPE_NTFS));
+        // 解锁后的 BitLocker 卷是 NTFS,严格匹配与平台复核都按 Windows 规则走。
+        assert_eq!(partition_ftype(PartitionKind::Bitlocker), Some(FTYPE_NTFS));
         assert_eq!(
             partition_ftype(PartitionKind::Refs),
             Some(FTYPE_WINDOWS_DIRECT)

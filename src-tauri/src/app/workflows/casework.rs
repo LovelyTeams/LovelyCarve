@@ -10,6 +10,7 @@
 //! | `case_list` | 本地登记簿 + 台账档案摘要 |
 //! | `case_rename` | 改名并同步登记簿 |
 //! | `case_option_query` / `case_option_save` | 台账 `setting` 表的案件级 KV |
+//! | `case_evidence_platform_set` | 手动指定检材平台,优先于自动识别;`auto` 恢复自动结论 |
 //!
 //! Snapshot orchestration and the `snapshot_*` commands live in
 //! `app::workflows::snapshot::case_snapshot`.
@@ -21,6 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::error::{AppError, ErrorCode};
 use crate::app::workflows::snapshot::case_snapshot::snapshot_already_loaded_images;
+use crate::core::analysis::identify::autodetect::EvidencePlatform;
 use crate::core::casework::case::{self, CaseInfo, CaseState, CreateCaseOptions, EvidenceRef};
 use crate::core::{casework::case_ledger, casework::case_paths, casework::case_registry};
 use crate::state::AppState;
@@ -399,6 +401,43 @@ pub async fn case_option_save(
     .await
     .map_err(|err| AppError::task_panicked("case_option_save", err))?
     .map_err(AppError::from)
+}
+
+/// The examiner's platform for case evidence. It outranks automatic
+/// detection and survives re-detection; `auto` clears it and restores the
+/// detected platform. Locked cases refuse edits.
+pub async fn case_evidence_platform_set(
+    state: State<'_, AppState>,
+    image_id: String,
+    platform: String,
+) -> Result<EvidenceRef, AppError> {
+    let manual = match platform.as_str() {
+        "auto" => None,
+        word => Some(EvidencePlatform::from_word(word).ok_or_else(|| {
+            let words: Vec<&str> = EvidencePlatform::ALL
+                .into_iter()
+                .map(EvidencePlatform::as_str)
+                .collect();
+            AppError::invalid_input(format!(
+                "unknown platform {word:?}; expected auto or one of {}",
+                words.join(", ")
+            ))
+        })?),
+    };
+    let mut guard = state.active_case.lock().await;
+    let Some(case) = guard.as_mut() else {
+        return Err(AppError::invalid_input("no active case"));
+    };
+    if case.is_locked() {
+        return Err(AppError::invalid_input(
+            "case is locked; unlock it before editing",
+        ));
+    }
+    case.set_evidence_platform(&image_id, manual.map(EvidencePlatform::as_str))
+        .map_err(AppError::from)?
+        .ok_or_else(|| {
+            AppError::not_found(format!("evidence {image_id} is not in the active case"))
+        })
 }
 
 pub async fn case_evidence_list(state: State<'_, AppState>) -> Result<Vec<EvidenceRef>, AppError> {

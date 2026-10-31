@@ -146,6 +146,7 @@ fn fixture(directory: &std::path::Path) -> anyhow::Result<(EvidenceRef, VolumeRe
         size_bytes: 4096,
         added_at: record.built_at.clone(),
         platform: None,
+        manual_platform: None,
         evidence_type: None,
     };
     Ok((evidence, record, path))

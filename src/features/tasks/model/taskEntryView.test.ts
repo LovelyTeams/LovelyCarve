@@ -68,10 +68,15 @@ describe('native task status lines', () => {
   });
   it('states detection conclusions, search hits, carving and container merges', () => {
     const detected = builtin('autoDetect', { status: 'success', view: view({ labels: { platform: 'windows', evidenceType: 'disk' } }) });
-    expect(builtinMessage(detected)).toBe('Windows · 磁盘镜像');
-    expect(builtinMessage({ ...detected, view: view({ labels: { platform: 'android', platformName: 'Huawei Android', evidenceType: 'disk' }, flags: ['backup'] }) }))
-      .toBe('Huawei Android · 备份');
-    expect(builtinMessage({ ...detected, view: view({ labels: { evidenceType: 'disk' } }) })).toBe('未识别到平台 · 磁盘镜像');
+    expect(builtinMessage(detected)).toBe('Windows 磁盘镜像');
+    expect(builtinMessage({ ...detected, view: view({ labels: { platform: 'drone', platformName: '无人机 DJI', evidenceType: 'disk' } }) }))
+      .toBe('无人机 DJI 磁盘镜像');
+    // 备份的显示名已写明备份工具，不再重复“备份”。
+    expect(builtinMessage({ ...detected, view: view({ labels: { platform: 'android', platformName: 'Android Huawei 华为 OTG 备份', evidenceType: 'huaweiotgbackuptotar' }, flags: ['backup'] }) }))
+      .toBe('Android Huawei 华为 OTG 备份');
+    expect(builtinMessage({ ...detected, view: view({ labels: { platform: 'android', evidenceType: 'backup' }, flags: ['backup'] }) }))
+      .toBe('Android 备份');
+    expect(builtinMessage({ ...detected, view: view({ labels: { evidenceType: 'disk' } }) })).toBe('未识别到平台的磁盘镜像');
     const search = builtin('globalSearch', { progress: { unit: 'entries', done: 2, total: 10 }, view: view({ counts: { hits: 5, matchedFiles: 1 } }) });
     expect(builtinMessage(search)).toBe('已扫描 2 / 10 个文件 · 5 处命中');
     expect(builtinMessage({ ...search, status: 'success' })).toBe('1 个命中文件 · 5 处命中');

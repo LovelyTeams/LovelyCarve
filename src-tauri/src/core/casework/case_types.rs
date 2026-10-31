@@ -8,8 +8,9 @@ use crate::core::casework::case_ledger_evidence::EvidenceRecord;
 use crate::core::casework::case_ledger_volumes::VolumeRecord;
 use crate::core::casework::case_paths;
 use crate::core::evidence::image::ImageFormat;
-/// 案件里的一个检材(前端线上形态)。`platform` / `evidence_type` 是自动识别
-/// 回写的结论,加载器只读。
+/// 案件里的一个检材(前端线上形态)。`evidence_type` 是自动识别回写的结论;
+/// `platform` 是生效的平台:检验人手动指定的平台,没有时取自动识别结论。
+/// 加载器只读这三项。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvidenceRef {
     pub image_id: String,
@@ -19,6 +20,9 @@ pub struct EvidenceRef {
     pub added_at: String,
     #[serde(default)]
     pub platform: Option<String>,
+    /// 检验人手动指定的平台;`None` 时 `platform` 来自自动识别。
+    #[serde(default)]
+    pub manual_platform: Option<String>,
     #[serde(default)]
     pub evidence_type: Option<String>,
 }
@@ -138,7 +142,11 @@ pub(super) fn evidence_ref_from_record(record: &EvidenceRecord) -> Option<Eviden
         source_format: parse_source_format(&record.format)?,
         size_bytes: record.size_bytes,
         added_at: record.added_at.clone(),
-        platform: record.platform.clone(),
+        platform: record
+            .manual_platform
+            .clone()
+            .or_else(|| record.platform.clone()),
+        manual_platform: record.manual_platform.clone(),
         evidence_type: record.kind.clone(),
     })
 }

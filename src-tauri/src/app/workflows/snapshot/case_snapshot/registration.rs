@@ -285,6 +285,7 @@ pub(super) fn admit(case: &mut CaseState, image: &EvidenceSession) -> Admission 
         size_bytes: info.size_bytes,
         added_at,
         platform: None,
+        manual_platform: None,
         evidence_type: None,
     }) {
         Ok(EvidenceRegistration::Added) => Admission::Admitted { first_online: true },

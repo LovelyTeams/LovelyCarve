@@ -1462,6 +1462,22 @@ summary = "识别检材平台与类型"
 category = "action"
 
 [[command]]
+path = "images platform set"
+ipc = "case_evidence_platform_set"
+summary = "手动指定检材平台"
+description = "把平台写入当前案件，优先于自动识别，重新识别不会覆盖；auto 清除手动选择，恢复自动识别结论。检材须已登记在当前案件中，案件锁定时拒绝修改。"
+category = "update"
+args = ["platform"]
+examples = [
+    { command = "lovelycarve-cli --case D:\\case -i D:\\evidence\\rootfs.tar images platform set linux", description = "自动识别有误时手动指定为 Linux" },
+    { command = "lovelycarve-cli --case D:\\case -i D:\\evidence\\rootfs.tar images platform set auto", description = "清除手动选择，恢复自动识别结论" },
+]
+[command.params.platform]
+type = "enum"
+values = ["auto", "android", "ios", "windows", "macos", "linux", "harmony", "huaweihmos", "othermobile", "drone"]
+description = "平台词；auto 恢复自动识别"
+
+[[command]]
 path = "images drive-letters list"
 ipc = "win_drive_letters"
 summary = "列出 Windows 原盘符映射"

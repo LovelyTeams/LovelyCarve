@@ -7,6 +7,7 @@
 //!    ([`fstype`]);
 //! 2. **归档/备份文件路**:扫描条目名与特征文件,识别各
 //!    厂商手机备份与取证工具导出包,外加 adb/小米备份魔数([`backup`]);
+//!    合成根已判出电脑、服务器或无人机系统时,备份线索不再改判;
 //! 3. **手机镜像路**:小米固件容器、雷电模拟器备份这类"镜像本身就是手机"的
 //!    形态,分区扫描之后兜底为 Android。
 //!
@@ -50,6 +51,36 @@ pub enum EvidencePlatform {
 }
 
 impl EvidencePlatform {
+    /// 全部平台词,按展示顺序。
+    pub const ALL: [Self; 9] = [
+        Self::Android,
+        Self::Ios,
+        Self::Windows,
+        Self::MacOs,
+        Self::Linux,
+        Self::Harmony,
+        Self::HuaweiHmos,
+        Self::OtherMobile,
+        Self::Drone,
+    ];
+
+    /// 平台词 → 平台;未知词为 `None`。
+    pub fn from_word(word: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|platform| platform.as_str() == word)
+    }
+
+    /// 手机平台:备份识别只在这些平台之间细化结论。
+    pub fn is_phone(self) -> bool {
+        match self {
+            Self::Android | Self::Ios | Self::Harmony | Self::HuaweiHmos | Self::OtherMobile => {
+                true
+            }
+            Self::Windows | Self::MacOs | Self::Linux | Self::Drone => false,
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Android => "android",
@@ -257,26 +288,38 @@ fn walk_partitions(
     cancel: &CancellationToken,
 ) -> Result<Vec<PartitionPlatform>, DetectCancelled> {
     let mut out = Vec::new();
-    for partition in &image.partitions {
+    // 会话的分区视图:已解锁的 LUKS / FileVault / VeraCrypt 分区与文件树一样
+    // 呈现明文文件系统的类型。
+    let partitions = image.info().partitions;
+    for partition in &partitions {
         ensure_active(cancel)?;
         match partition.kind {
-            PartitionKind::Lvm => match LvmVolume::open(image, partition) {
-                Ok(lvm) if lvm.logical_volumes.is_empty() => {
-                    out.push(unsupported_partition(partition));
-                }
-                Ok(lvm) => {
-                    for logical_volume in &lvm.logical_volumes {
-                        ensure_active(cancel)?;
-                        out.push(probe_logical_volume(image, partition, logical_volume));
+            PartitionKind::Lvm => {
+                // 已解锁分区里的 LVM 从该分区的明文视图读取。
+                let reader = image.filesystem_session(&format!("part:{}", partition.id));
+                let container = reader
+                    .partitions
+                    .iter()
+                    .find(|candidate| candidate.id == partition.id)
+                    .unwrap_or(partition);
+                match LvmVolume::open(reader, container) {
+                    Ok(lvm) if lvm.logical_volumes.is_empty() => {
+                        out.push(unsupported_partition(partition));
+                    }
+                    Ok(lvm) => {
+                        for logical_volume in &lvm.logical_volumes {
+                            ensure_active(cancel)?;
+                            out.push(probe_logical_volume(image, partition, logical_volume));
+                        }
+                    }
+                    Err(err) => {
+                        // LVM 卷组读取失败时保留分区和错误信息。
+                        let mut entry = unsupported_partition(partition);
+                        entry.error = Some(format!("get LVM VG failed: {err}"));
+                        out.push(entry);
                     }
                 }
-                Err(err) => {
-                    // LVM 卷组读取失败时保留分区和错误信息。
-                    let mut entry = unsupported_partition(partition);
-                    entry.error = Some(format!("get LVM VG failed: {err}"));
-                    out.push(entry);
-                }
-            },
+            }
             PartitionKind::Bitlocker if image.bitlocker_unlocked(partition.id).is_none() => {
                 let mut entry = unsupported_partition(partition);
                 entry.bitlocker_locked = true;
@@ -594,6 +637,21 @@ fn finish(
     mut warnings: Vec<String>,
 ) -> AutoDetectReport {
     let (mut platform, mut platforms) = aggregate_platforms(&partitions);
+    // 根目录本身已判出电脑、服务器或无人机系统时,检材就是该系统:Linux 根文件
+    // 系统的 `var/backups`、DJI 系统树里 AOSP 的 `SharedStorageBackup`、系统树中
+    // 零散的 `info.xml` 都不是手机备份。手机平台仍由备份结论细化。
+    let backup = match (backup, platform) {
+        (Some(clues), Some(system)) if !system.is_phone() => {
+            warnings.push(format!(
+                "{} root: ignored backup clues of {}: {}",
+                system.as_str(),
+                clues.tool,
+                clues.features.join("; ")
+            ));
+            None
+        }
+        (backup, _) => backup,
+    };
     let mut manufactor = route_manufactor;
     // The drone platform currently requires the DJI aircraft fingerprint.
     if platform == Some(EvidencePlatform::Drone) {
@@ -805,6 +863,127 @@ mod tests {
         let cancel = CancellationToken::new();
         cancel.cancel();
         assert_eq!(detect_image(&image, &cancel), Err(DetectCancelled));
+    }
+
+    fn folder_report(files: &[&str], directories: &[&str]) -> AutoDetectReport {
+        let temp = tempfile::tempdir().expect("tempdir");
+        for directory in directories {
+            std::fs::create_dir_all(temp.path().join(directory)).expect("fixture directory");
+        }
+        for file in files {
+            let path = temp.path().join(file);
+            std::fs::create_dir_all(path.parent().expect("parent")).expect("fixture parent");
+            std::fs::write(path, b"fixture").expect("fixture file");
+        }
+        let image = Arc::new(EvidenceSession::open(temp.path()).expect("open folder evidence"));
+        detect_image(&image, &CancellationToken::new()).expect("detect folder")
+    }
+
+    #[test]
+    fn archive_root_system_outranks_backup_clues() {
+        // Debian 根文件系统自带 `var/backups`:检材是 Linux,不是 Android 备份。
+        let report = folder_report(
+            &["etc/issue", "boot/vmlinuz"],
+            &["bin", "home", "usr/bin", "var/backups"],
+        );
+        assert_eq!(
+            (
+                report.platform,
+                report.platforms.clone(),
+                report.evidence_type.as_str(),
+                report.is_backup,
+                report.backup.is_none(),
+            ),
+            (
+                Some(EvidencePlatform::Linux),
+                vec![EvidencePlatform::Linux],
+                EVIDENCE_TYPE_ARCHIVE,
+                false,
+                true,
+            )
+        );
+        assert!(
+            report.warnings.iter().any(|warning| warning
+                .starts_with("linux root: ignored backup clues")
+                && warning.contains("var/backups")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn backup_clues_still_decide_archives_without_a_system() {
+        let report = folder_report(&["MIUI/backup/AllBackup/contacts.bak"], &[]);
+        assert_eq!(
+            (
+                report.platform,
+                report.is_backup,
+                report.manufactor.as_deref(),
+                report.evidence_type.as_str(),
+            ),
+            (
+                Some(EvidencePlatform::Android),
+                true,
+                Some("xiaomi"),
+                backup::BACKUP_TYPE_GENERIC,
+            )
+        );
+    }
+
+    #[test]
+    fn unlocked_container_is_probed_through_its_plaintext_view() {
+        use crate::core::evidence::image::DiskImage;
+
+        let fixture = |name: &str| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/data/encrypted")
+                .join(name)
+        };
+        let image = Arc::new(EvidenceSession::from(
+            DiskImage::open(fixture("luks1.img")).expect("open LUKS container"),
+        ));
+        let probed = |image: &Arc<EvidenceSession>| {
+            detect_image(image, &CancellationToken::new())
+                .expect("detect")
+                .partitions
+                .into_iter()
+                .map(|partition| (partition.kind, partition.filesystem_opened))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(probed(&image), vec![("luks".to_owned(), false)]);
+        image
+            .attach_decrypted_partition(
+                0,
+                DiskImage::open(fixture("plain.img")).expect("open plaintext"),
+                CancellationToken::new(),
+            )
+            .expect("attach plaintext view");
+        assert_eq!(probed(&image), vec![("fat12".to_owned(), true)]);
+    }
+
+    #[test]
+    fn platform_words_round_trip_and_phone_platforms_are_marked() {
+        for platform in EvidencePlatform::ALL {
+            assert_eq!(
+                EvidencePlatform::from_word(platform.as_str()),
+                Some(platform)
+            );
+        }
+        assert_eq!(EvidencePlatform::from_word("auto"), None);
+        let phones: Vec<EvidencePlatform> = EvidencePlatform::ALL
+            .into_iter()
+            .filter(|platform| platform.is_phone())
+            .collect();
+        assert_eq!(
+            phones,
+            vec![
+                EvidencePlatform::Android,
+                EvidencePlatform::Ios,
+                EvidencePlatform::Harmony,
+                EvidencePlatform::HuaweiHmos,
+                EvidencePlatform::OtherMobile,
+            ]
+        );
     }
 
     #[test]

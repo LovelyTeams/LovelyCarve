@@ -9,6 +9,7 @@
           <span v-if="raidLevel !== undefined">RAID {{ raidLevel }}</span>
           <span>{{ evidence.source_format.toUpperCase() }}</span>
           <span v-if="evidence.platform">{{ evidence.platform.toUpperCase() }}</span>
+          <span v-if="evidence.manual_platform" class="ui-badge sm">{{ tr("手动指定") }}</span>
           <span>{{ formatBytes(evidence.size_bytes) }}</span>
         </span>
       </button>

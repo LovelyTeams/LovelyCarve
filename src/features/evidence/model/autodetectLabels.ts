@@ -16,6 +16,9 @@ export const PLATFORM_LABELS: Record<EvidencePlatform, string> = {
   drone: '无人机',
 };
 
+/** 平台词,按展示顺序(与后端 `EvidencePlatform::ALL` 一致)。 */
+export const EVIDENCE_PLATFORMS = Object.keys(PLATFORM_LABELS) as EvidencePlatform[];
+
 export function platformLabel(platform: EvidencePlatform | null | undefined, tr: Translator = sourceText): string {
   if (!platform) return tr("未识别");
   return tr(PLATFORM_LABELS[platform] ?? platform);

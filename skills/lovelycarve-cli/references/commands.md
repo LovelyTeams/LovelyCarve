@@ -356,6 +356,10 @@ FileVault 2（CoreStorage）
   识别检材中的操作系统
 - `lovelycarve-cli images platform detect`
   识别检材平台与类型
+- `lovelycarve-cli images platform set <auto|android|ios|windows|macos|linux|harmony|huaweihmos|othermobile|drone>`
+  手动指定检材平台。把平台写入当前案件，优先于自动识别，重新识别不会覆盖；auto 清除手动选择，恢复自动识别结论。检材须已登记在当前案件中，案件锁定时拒绝修改。
+  - `lovelycarve-cli --case D:\case -i D:\evidence\rootfs.tar images platform set linux`: 自动识别有误时手动指定为 Linux
+  - `lovelycarve-cli --case D:\case -i D:\evidence\rootfs.tar images platform set auto`: 清除手动选择，恢复自动识别结论
 - `lovelycarve-cli images tags edit --upserts <json> --delete-node-ids <string>…`
   增改或删除部分文件标签
 - `lovelycarve-cli images tags get --node-ids <string>…`

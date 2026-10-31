@@ -133,28 +133,39 @@ impl OsFingerprint for Fingerprint {
 
 pub fn detect_image(image: &Arc<EvidenceSession>) -> anyhow::Result<Vec<OsDetectionPartition>> {
     let mut out = Vec::new();
-    for partition in &image.partitions {
+    // Unlocked LUKS / FileVault / VeraCrypt partitions show their plaintext
+    // filesystem in the session's partition view, as in the file tree.
+    let partitions = image.info().partitions;
+    for partition in &partitions {
         match partition.kind {
-            PartitionKind::Lvm => match LvmVolume::open(image, partition) {
-                Ok(lvm) => {
-                    if lvm.logical_volumes.is_empty() {
-                        out.push(unsupported_partition_entry(partition));
-                    } else {
-                        for lv in &lvm.logical_volumes {
-                            out.push(detect_logical_volume(image, partition, lv));
+            PartitionKind::Lvm => {
+                let reader = image.filesystem_session(&format!("part:{}", partition.id));
+                let container = reader
+                    .partitions
+                    .iter()
+                    .find(|candidate| candidate.id == partition.id)
+                    .unwrap_or(partition);
+                match LvmVolume::open(reader, container) {
+                    Ok(lvm) => {
+                        if lvm.logical_volumes.is_empty() {
+                            out.push(unsupported_partition_entry(partition));
+                        } else {
+                            for lv in &lvm.logical_volumes {
+                                out.push(detect_logical_volume(image, partition, lv));
+                            }
                         }
                     }
+                    Err(err) => out.push(OsDetectionPartition {
+                        partition_id: partition.id,
+                        partition_label: partition_label(partition),
+                        partition_kind: "lvm".to_string(),
+                        filesystem_opened: false,
+                        error: Some(err.to_string()),
+                        detections: Vec::new(),
+                        bitlocker_locked: false,
+                    }),
                 }
-                Err(err) => out.push(OsDetectionPartition {
-                    partition_id: partition.id,
-                    partition_label: partition_label(partition),
-                    partition_kind: "lvm".to_string(),
-                    filesystem_opened: false,
-                    error: Some(err.to_string()),
-                    detections: Vec::new(),
-                    bitlocker_locked: false,
-                }),
-            },
+            }
             PartitionKind::Bitlocker if image.bitlocker_unlocked(partition.id).is_none() => {
                 out.push(OsDetectionPartition {
                     partition_id: partition.id,
@@ -412,6 +423,34 @@ mod tests {
             assert!(supports_os_detect(kind), "{kind:?} should be supported");
             assert_ne!(kind_str(kind), "unknown", "{kind:?} should have a label");
         }
+    }
+
+    #[test]
+    fn unlocked_container_is_probed_through_its_plaintext_view() {
+        use crate::core::evidence::image::DiskImage;
+        use tokio_util::sync::CancellationToken;
+
+        let fixture = |name: &str| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/data/encrypted")
+                .join(name)
+        };
+        let image = Arc::new(EvidenceSession::from(
+            DiskImage::open(fixture("luks1.img")).expect("open LUKS container"),
+        ));
+        image
+            .attach_decrypted_partition(
+                0,
+                DiskImage::open(fixture("plain.img")).expect("open plaintext"),
+                CancellationToken::new(),
+            )
+            .expect("attach plaintext view");
+        let probed: Vec<(String, bool)> = detect_image(&image)
+            .expect("detect")
+            .into_iter()
+            .map(|partition| (partition.partition_kind, partition.filesystem_opened))
+            .collect();
+        assert_eq!(probed, vec![("fat12".to_owned(), true)]);
     }
 
     /// Env-gated regression guard for the SOFTWARE-hive-truncation bug:

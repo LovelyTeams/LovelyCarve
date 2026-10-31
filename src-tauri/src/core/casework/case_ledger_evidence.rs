@@ -3,6 +3,9 @@
 //! 检材以 `uid`(LovelyCarve image id)为外部身份,整数 `id` 只在台账内做外键;
 //! `path_key`(`core::casework::case::evidence_path_key`)唯一,同一来源在案件里只有一条
 //! 记录。删除检材行由外键级联带走它的卷发布、标签、盘符、读故障与任务。
+//!
+//! 检验人手动指定的平台存在 `setting` 表的 `evidence.platform.<uid>` 键下(台账结构
+//! 不变),读检材时一并带出,删除检材时一并删除;`evidence.platform` 列只放自动识别结论。
 
 use anyhow::Context;
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
@@ -27,6 +30,15 @@ pub struct EvidenceRecord {
     pub kind: Option<String>,
     pub added_at: String,
     pub updated_at: String,
+    /// 检验人手动指定的平台,优先于自动识别,重新识别不覆盖。
+    pub manual_platform: Option<String>,
+}
+
+/// 手动平台在 `setting` 表中的键前缀,后接检材 uid。
+pub const MANUAL_PLATFORM_KEY_PREFIX: &str = "evidence.platform.";
+
+fn manual_platform_key(uid: &str) -> String {
+    format!("{MANUAL_PLATFORM_KEY_PREFIX}{uid}")
 }
 
 /// 登记输入。
@@ -53,7 +65,9 @@ pub enum Registration {
     SourceTaken { existing_uid: String },
 }
 
-const COLUMNS: &str = "id, uid, path, format, size_bytes, platform, kind, added_at, updated_at";
+/// 检材列与它的手动平台;`manual` 是按 `?1 || uid` 连接的 `setting` 行。
+const COLUMNS: &str = "e.id, e.uid, e.path, e.format, e.size_bytes, e.platform, e.kind, \
+                       e.added_at, e.updated_at, manual.value";
 
 fn record_from_row(row: &Row<'_>) -> rusqlite::Result<EvidenceRecord> {
     let size: i64 = row.get(4)?;
@@ -67,20 +81,29 @@ fn record_from_row(row: &Row<'_>) -> rusqlite::Result<EvidenceRecord> {
         kind: row.get(6)?,
         added_at: row.get(7)?,
         updated_at: row.get(8)?,
+        manual_platform: row.get(9)?,
     })
 }
 
 /// 全部检材,按登记顺序。
 pub fn list(conn: &Connection) -> anyhow::Result<Vec<EvidenceRecord>> {
-    let mut statement = conn.prepare(&format!("SELECT {COLUMNS} FROM evidence ORDER BY id"))?;
-    let rows = statement.query_map([], record_from_row)?;
+    let mut statement = conn.prepare(&format!(
+        "SELECT {COLUMNS} FROM evidence e
+         LEFT JOIN setting manual ON manual.key = ?1 || e.uid
+         ORDER BY e.id"
+    ))?;
+    let rows = statement.query_map(params![MANUAL_PLATFORM_KEY_PREFIX], record_from_row)?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
 pub fn get(conn: &Connection, uid: &str) -> anyhow::Result<Option<EvidenceRecord>> {
     conn.query_row(
-        &format!("SELECT {COLUMNS} FROM evidence WHERE uid = ?1"),
-        params![uid],
+        &format!(
+            "SELECT {COLUMNS} FROM evidence e
+             LEFT JOIN setting manual ON manual.key = ?1 || e.uid
+             WHERE e.uid = ?2"
+        ),
+        params![MANUAL_PLATFORM_KEY_PREFIX, uid],
         record_from_row,
     )
     .optional()
@@ -145,11 +168,16 @@ pub fn register(tx: &Transaction<'_>, evidence: NewEvidence<'_>) -> anyhow::Resu
     }
 }
 
-/// 删除检材行(级联带走卷发布、标签、盘符、读故障与任务)。返回被删的行。
+/// 删除检材行(级联带走卷发布、标签、盘符、读故障与任务)与它的手动平台。
+/// 返回被删的行。
 pub fn delete(tx: &Transaction<'_>, uid: &str) -> anyhow::Result<Option<EvidenceRecord>> {
     let Some(existing) = get(tx, uid)? else {
         return Ok(None);
     };
+    tx.execute(
+        "DELETE FROM setting WHERE key = ?1",
+        params![manual_platform_key(uid)],
+    )?;
     tx.execute("DELETE FROM evidence WHERE id = ?1", params![existing.id])?;
     Ok(Some(existing))
 }
@@ -172,6 +200,32 @@ pub fn record_detection(
     if changed == 0 {
         return Ok(None);
     }
+    get(tx, uid)
+}
+
+/// 写入检验人手动指定的平台;`None` 清除手动选择,恢复自动识别结论。检材不在
+/// 案件中时返回 `None`。
+pub fn set_manual_platform(
+    tx: &Transaction<'_>,
+    uid: &str,
+    platform: Option<&str>,
+) -> anyhow::Result<Option<EvidenceRecord>> {
+    if evidence_id(tx, uid)?.is_none() {
+        return Ok(None);
+    }
+    let key = manual_platform_key(uid);
+    match platform {
+        Some(platform) => tx.execute(
+            "INSERT INTO setting (key, value) VALUES (?1, ?2)
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            params![key, platform],
+        )?,
+        None => tx.execute("DELETE FROM setting WHERE key = ?1", params![key])?,
+    };
+    tx.execute(
+        "UPDATE evidence SET updated_at = ?2 WHERE uid = ?1",
+        params![uid, now()],
+    )?;
     get(tx, uid)
 }
 
@@ -400,6 +454,60 @@ mod tests {
         assert_eq!(
             detection(&conn, "img").expect("json").as_deref(),
             Some("{}")
+        );
+    }
+
+    #[test]
+    fn manual_platform_survives_detection_and_leaves_with_the_evidence() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let conn = test_support::ledger(directory.path());
+        add(&conn, "img");
+        let tx = write_transaction(&conn).expect("tx");
+        record_detection(&tx, "img", Some("linux"), "compressfile", "{}").expect("detect");
+        let manual = set_manual_platform(&tx, "img", Some("windows"))
+            .expect("set")
+            .expect("row");
+        assert_eq!(
+            (
+                manual.platform.as_deref(),
+                manual.manual_platform.as_deref()
+            ),
+            (Some("linux"), Some("windows"))
+        );
+        // 重新识别只更新自动结论。
+        let redetected = record_detection(&tx, "img", Some("android"), "backup", "{}")
+            .expect("detect")
+            .expect("row");
+        assert_eq!(
+            (
+                redetected.platform.as_deref(),
+                redetected.manual_platform.as_deref()
+            ),
+            (Some("android"), Some("windows"))
+        );
+        let cleared = set_manual_platform(&tx, "img", None)
+            .expect("clear")
+            .expect("row");
+        assert_eq!(
+            (cleared.platform.as_deref(), cleared.manual_platform),
+            (Some("android"), None)
+        );
+        assert!(set_manual_platform(&tx, "missing", Some("ios"))
+            .expect("unknown evidence")
+            .is_none());
+        set_manual_platform(&tx, "img", Some("drone")).expect("set again");
+        let listed: Vec<Option<String>> = list(&tx)
+            .expect("list")
+            .into_iter()
+            .map(|record| record.manual_platform)
+            .collect();
+        assert_eq!(listed, vec![Some("drone".to_owned())]);
+        assert!(delete(&tx, "img").expect("delete").is_some());
+        tx.commit().expect("commit");
+        assert_eq!(
+            crate::core::casework::case_ledger::settings_query(&conn, MANUAL_PLATFORM_KEY_PREFIX)
+                .expect("settings"),
+            Vec::new()
         );
     }
 

@@ -187,7 +187,7 @@ describe('task list sections', () => {
     entries.value = [builtin('autoDetect', { id: 'autodetect:disk-a', automatic: true, status: 'success', actions: [], finishedAtMs: Date.now(),
       view: view({ labels: { platform: 'windows', evidenceType: 'disk' } }) })];
     await mount();
-    expect(row('自动识别平台').querySelector('.task-summary')?.textContent).toBe('Windows · 磁盘镜像');
+    expect(row('自动识别平台').querySelector('.task-summary')?.textContent).toBe('Windows 磁盘镜像');
     await click('打开镜像信息 自动识别平台');
     expect(actions.openResult).toHaveBeenCalledWith('dashboard', null);
     await click('展开 自动识别平台 详情');

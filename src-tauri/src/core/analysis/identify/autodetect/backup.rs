@@ -488,7 +488,7 @@ pub fn gen_friend_platform_name(platform: Option<EvidencePlatform>) -> String {
     .to_owned()
 }
 
-/// 平台显示名:短名 + 厂商 + 备份工具,以 `·` 连接。
+/// 平台显示名:短名、厂商与备份工具,以空格连接。
 pub fn gen_display_platform_name(
     platform: Option<EvidencePlatform>,
     manufactor: Option<&str>,
@@ -501,7 +501,7 @@ pub fn gen_display_platform_name(
     if let Some(backup) = backup {
         parts.push(backup.tool.clone());
     }
-    parts.join(" · ")
+    parts.join(" ")
 }
 
 fn capitalize(word: &str) -> String {
@@ -782,7 +782,7 @@ mod tests {
                 Some("huawei"),
                 Some(&backup)
             ),
-            "Android · Huawei · 华为 OTG 备份"
+            "Android Huawei 华为 OTG 备份"
         );
         assert_eq!(
             gen_display_platform_name(Some(EvidencePlatform::Windows), None, None),

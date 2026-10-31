@@ -262,6 +262,9 @@ mod tests {
     fn dji_folder_flows_through_platform_report_and_system_discovery() {
         let directory = tempfile::tempdir().expect("fixture directory");
         std::fs::create_dir_all(directory.path().join("system/bin")).expect("system directory");
+        // AOSP 自带的应用名含 backup,不能把飞行器系统树改判成手机备份。
+        std::fs::create_dir_all(directory.path().join("system/priv-app/SharedStorageBackup"))
+            .expect("AOSP application directory");
         std::fs::write(directory.path().join("system/build.prop"), PROPERTIES).expect("properties");
         for service in ["dji_flight", "dji_navigation"] {
             std::fs::write(
@@ -275,8 +278,9 @@ mod tests {
             autodetect::detect_image(&image, &CancellationToken::new()).expect("platform report");
         assert_eq!(report.platform, Some(EvidencePlatform::Drone));
         assert_eq!(report.manufactor.as_deref(), Some("dji"));
-        assert_eq!(report.display_platform_name, "无人机 · DJI");
+        assert_eq!(report.display_platform_name, "无人机 DJI");
         assert!(!report.is_backup);
+        assert_eq!(report.evidence_type, autodetect::EVIDENCE_TYPE_ARCHIVE);
         let detected = systems::discover(&image);
         assert_eq!(detected.len(), 1);
         assert_eq!(detected[0].family, "dji");

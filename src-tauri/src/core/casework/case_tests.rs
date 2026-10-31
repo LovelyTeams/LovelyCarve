@@ -20,6 +20,7 @@ fn evidence(image_id: &str, path: &str) -> EvidenceRef {
         size_bytes: 1,
         added_at: "2026-10-09T00:00:00.000Z".to_string(),
         platform: None,
+        manual_platform: None,
         evidence_type: None,
     }
 }
