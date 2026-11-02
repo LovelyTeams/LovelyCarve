@@ -88,6 +88,7 @@ pub fn capabilities() -> Result<Value, CliError> {
             "listTimeZones": "timestampDisplay.timeZones; timestampTimeZone indexes mixed-zone entries",
             "unconvertedFields": "timestampUnconvertedFields on list entries", "naiveTimestamps": "unchanged"},
         "output": {"json": "compact for redirected stdout or coding agents; pretty at human terminals",
+            "agentModeEnvironment": "LOVELYCARVE_AGENT=1", "agentMode": super::interactive::is_agentic(),
             "fieldsOption": "--fields", "fields": "comma-separated entry paths; dot paths preserve nesting",
             "paginationFirst": true, "filesListDefaultPageSize": 500, "agentFilesListDefaultPageSize": 50},
         "commands": catalog.commands.len(),

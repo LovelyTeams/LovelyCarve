@@ -46,7 +46,7 @@ def test_agent_output(executable, base_environment):
         assert len(following["items"]) == 50
         assert not ({item["id"] for item in small["items"]} & {item["id"] for item in following["items"]})
         assert len(json.loads(run(*args, "--page-size", "500", "--fields", fields).stdout)["items"]) == 500
-        agent_variables = {"OPENCODE", "QWEN_CODE_SESSION_ID", "PI_CODING_AGENT", "AI_AGENT", "CURSOR_AGENT", "CLAUDECODE",
+        agent_variables = {"LOVELYCARVE_AGENT", "OPENCODE", "QWEN_CODE_SESSION_ID", "PI_CODING_AGENT", "AI_AGENT", "CURSOR_AGENT", "CLAUDECODE",
                            "CODEX_THREAD_ID", "AMP_CURRENT_THREAD_ID", "GEMINI_CLI", "AUGMENT_AGENT", "CRUSH", "COPILOT_AGENT", "OZ_RUN_ID"}
         human_environment = {key:value for key,value in environment.items() if key not in agent_variables}
         assert len(json.loads(run(*args, env=human_environment).stdout)["items"]) == 500
@@ -66,6 +66,17 @@ def test_agent_output(executable, base_environment):
         missing = json.loads(run(*args[:4], "files", "get", "/System32/missing", expected=1).stderr)
         assert missing["error"]["code"] == "notFound" and "「missing」" in missing["error"]["message"], missing
         assert "┌" in run("files", "lsit", expected=1, env=human_environment).stderr
+        # DSH and other callers can select machine output without impersonating
+        # another harness. The explicit setting also overrides inherited markers.
+        explicit_environment = dict(human_environment, LOVELYCARVE_AGENT="1", FORCE_COLOR="1")
+        explicit_failure = run("images", "list", "--page-size", "30", expected=1, env=explicit_environment)
+        assert json.loads(explicit_failure.stderr)["error"]["code"] == "usage"
+        assert not explicit_failure.stdout and "\x1b" not in explicit_failure.stderr
+        assert len(json.loads(run(*args, env=explicit_environment).stdout)["items"]) == 50
+        assert json.loads(run("system", "get", env=explicit_environment).stdout)["output"]["agentMode"] is True
+        disabled_environment = dict(environment, LOVELYCARVE_AGENT="0")
+        assert "┌" in run("files", "lsit", expected=1, env=disabled_environment).stderr
+        assert len(json.loads(run(*args, env=disabled_environment).stdout)["items"]) == 500
         group_help = run("files", "--help").stdout
         assert "AGENT COMMAND DISCOVERY" in group_help and "references/commands.md" in group_help
         assert "AGENT COMMAND DISCOVERY" not in run("files", "list", "--help").stdout

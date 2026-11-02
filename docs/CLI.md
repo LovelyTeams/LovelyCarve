@@ -224,6 +224,11 @@ JSONL 中单条请求失败不会阻止后续请求；分阶段检查准备和�
 操作流程还说明 Git Bash / MSYS2 调用 Windows 程序时的路径转换、参数文件与会话主机路径的解析区别、符号链接的跟随规则、大文本分段与编码误判的处理及批量导出；LUKS 有独立的解锁、明文检材选择与导出示例。
 代理的用法错误只显示错误、建议命令和一行帮助提示；人类终端保留完整帮助。
 
+DSH 或其他未自动识别的调用方可设置 `LOVELYCARVE_AGENT=1` 显式启用代理模式：
+JSON 结果紧凑输出，错误和不完整结果警告为单行 JSON，目录默认每页 50 条，关闭终端颜色和交互提示。
+设置为 `0`、`false`、`no`、`off` 或空值则关闭代理识别，优先于继承的代理环境变量。
+`system get` 的 `output.agentMode` 报告当前进程的实际模式；`-q` 另行关闭进度等非必要输出。
+
 DSH 的 LovelyCarve 模式由 `just stage-dsh` 生成，先以最小检材范围回答问题；已有哈希可记录，无校验需求时不自动计算整盘哈希。已知路径的浏览和读取不依赖完整目录索引，索引查找仍须检查目标卷的发布状态。Linux/PVE 版本流程区分 `pve-manager`、`proxmox-ve`、基础系统与已安装内核；唯一内核文件或默认引导项不能证明采集时实际运行的内核。PowerShell 调用应立即检查 `$LASTEXITCODE`，再解析 JSON 或执行依赖步骤。
 
 列表型 `list` / `search` 命令支持 `--fields name,id,kind,size,timestamps.modified`，仅投影条目字段；
