@@ -229,7 +229,9 @@ JSON 结果紧凑输出，错误和不完整结果警告为单行 JSON，目录�
 设置为 `0`、`false`、`no`、`off` 或空值则关闭代理识别，优先于继承的代理环境变量。
 `system get` 的 `output.agentMode` 报告当前进程的实际模式；`-q` 另行关闭进度等非必要输出。
 
-DSH 的 LovelyCarve 模式由 `just stage-dsh` 生成，先以最小检材范围回答问题；已有哈希可记录，无校验需求时不自动计算整盘哈希。已知路径的浏览和读取不依赖完整目录索引，索引查找仍须检查目标卷的发布状态。Linux/PVE 版本流程区分 `pve-manager`、`proxmox-ve`、基础系统与已安装内核；唯一内核文件或默认引导项不能证明采集时实际运行的内核。PowerShell 调用应立即检查 `$LASTEXITCODE`，再解析 JSON 或执行依赖步骤。
+DSH 的 LovelyCarve 模式由 `just stage-dsh` 生成，每次调查先创建或打开对应案件，加载检材后等待任务并核验所需卷索引，再开始浏览、读取或分析；已知路径也遵循此流程，不支持索引的卷明确记录限制。以最小检材范围回答问题；已有哈希可记录，无校验需求时不自动计算整盘哈希。Linux/PVE 版本流程区分 `pve-manager`、`proxmox-ve`、基础系统与已安装内核；唯一内核文件或默认引导项不能证明采集时实际运行的内核。
+
+模式优先使用 `lovelycarve` 结构化工具：`command` 为完整命令路径，`args` 为 API 参数对象，`session` 为命名会话；生命周期命令用 `args.name` 并省略 `session`。工具通过 DSH 执行器运行 CLI，设置代理模式，返回请求 ID、退出码、结果、错误、警告及输出截断状态，保留分页和时区来源。超过 48 KiB 的结果明确报错，不返回裁剪后的 JSON；缩小页大小、选择 `fields` 或分段读取后重试。原始字节使用文件导出命令。shell 调用仍应立即检查 `$LASTEXITCODE`，再解析 JSON 或执行依赖步骤。
 
 列表型 `list` / `search` 命令支持 `--fields name,id,kind,size,timestamps.modified`，仅投影条目字段；
 响应顶层元数据（包括分页和时区来源）保留。点路径保持嵌套对象，未知字段省略，缺失值为 null 时保留 null。

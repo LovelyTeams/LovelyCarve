@@ -33,7 +33,7 @@ Read the sections needed for the task. Resolve `lovelycarve-cli` to the executab
 - Use absolute host paths. Relative host paths resolve against `sessions get`'s `workingDirectory`, not the connecting command's directory. Evidence paths remain separate and use `/`.
 - Cases persist indexes, searches, timelines and analysis results. Without one, browsing and byte operations work, but indexes last only for the process. Do not open the same case in the desktop app and CLI simultaneously.
 
-Known-path browsing and reads work without a full index. Create a case when persistence or indexed analysis is needed, before loading evidence so automatic indexing is persisted in that case:
+Begin every investigation by creating a case or opening the user-selected existing case before loading evidence, so automatic indexing is persisted. Wait for tasks and verify the required volume indexes before browsing, reading or analysis; knowing the target path does not skip this investigation workflow. Record unsupported, encrypted or unindexable volumes separately as coverage limitations:
 
 ```text
 lovelycarve-cli -q sessions open exam
@@ -124,7 +124,7 @@ This preserves pagination and time zone metadata. It filters only that page: fol
 
 Choose a metadata search for names, paths, extensions or sizes; use content search for bytes or text. Start within a known subtree rather than recursively dumping every file.
 
-- `files tree list --name` is a bounded name search without a case requirement. For indexed evidence, `indexes files list --filter` searches metadata. Select a volume key from `indexes volumes list` to bound the query; returned `nid` values are node IDs for subsequent file commands.
+- After case and index preparation, use `files tree list --name` for a bounded name search or `indexes files list --filter` for indexed metadata. Select a volume key from `indexes volumes list` to bound the query; returned `nid` values are node IDs for subsequent file commands.
 - `files get <path>` reads metadata; `files content get` reads MIME, magic, entropy and data runs; `files identify` detects the content type. These answer different questions.
 - `files text get <path> --max-bytes <n>` detects the encoding and returns decoded text from at most 2 MiB of source bytes per call. While `nextOffset` is not null more of the file follows: continue with `--offset <nextOffset>` until it is null. A character cut at the end of a page is left for the next one, and later pages decode with the encoding detected at the start of the file. Use [text decoding](#text-decoding) if it looks wrong. For exact bytes use `files read --offset --length`; choose a format-specific parser (`files binary get`, `files sqlite …`, `files zip …`) when structure matters. QR/OCR requires a full build; `system get` reports build capabilities.
 
@@ -235,10 +235,13 @@ lovelycarve-cli --session exam searches hits list --search-id "<unique-search-id
 
 ```text
 lovelycarve-cli -q sessions open array
+lovelycarve-cli -q --session array cases create "<new-absolute-case-dir>" --name "<case-name>"
 lovelycarve-cli -q --session array images open "<member-1-path>"
 lovelycarve-cli -q --session array images open "<member-2-path>"
 lovelycarve-cli -q --session array raid detect
 lovelycarve-cli -q --session array context use "<assembled-image-id>"
+lovelycarve-cli -q --session array tasks wait
+lovelycarve-cli -q --session array indexes list
 lovelycarve-cli -q --session array files list
 ```
 

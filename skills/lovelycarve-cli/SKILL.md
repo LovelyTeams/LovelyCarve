@@ -9,6 +9,8 @@ Analyze evidence read-only with `lovelycarve-cli [global options] <collection>â€
 
 Set `LOVELYCARVE_AGENT=1` in the CLI child process environment for explicit machine output, including under DSH: compact JSON, JSON errors/warnings, bounded default directory pages and no interactive prompts or terminal colors. `system get` reports `output.agentMode`. Use `-q` to suppress progress. False-like values (`0`, `false`, `no`, `off`, empty) disable agent detection even when a harness marker is inherited.
 
+When DSH supplies the `lovelycarve` tool, prefer it for structured CLI calls. Give the full command in `command`, API parameter names in the `args` object, and the resident name in `session`. For lifecycle commands such as `sessions open`, omit `session` and pass `args.name`. Inspect `exitCode`, `error`, `warning` and `outputTruncated` before dependent requests; tool truncation is not a usable partial result. The tool preserves pagination/provenance, enables agent mode and reuses the DSH executor's policy and cancellation. Use `files text get` for text and `files export` for exact bytes.
+
 Resolve the skill root from this `SKILL.md`'s absolute location. Prefer its `bin/lovelycarve-cli.exe` on Windows (`bin/lovelycarve-cli` on Unix, when supplied); every bare `lovelycarve-cli` example below means that resolved executable, not a requirement to add it to `PATH`. Keep the adjacent DLLs, plugin loader, `plugins/` and any `resources/` together. Do not change the working directory to `bin` just to run it. If no bundled executable exists, use the standalone CLI package root or `PATH`; in a source checkout, `just stage-cli-skill` stages an existing release and `just run-cli` runs a development build. The staged Windows x64 runtime is platform-specific; `system get` reports its version and optional features.
 
 Quote executable paths; PowerShell needs the call operator `&`. Git Bash / MSYS2 rewrites arguments that start with `/` into host paths even when quoted: the CLI turns rewritten evidence paths back, but any other such argument (a search pattern like `/etc/passwd`) needs `MSYS2_ARG_CONV_EXCL='*'` on the call. See [shell invocation](references/workflows.md#shell-invocation-and-argument-files) for JSON files and shell-specific examples.
@@ -33,7 +35,7 @@ Every command that resolves an evidence path takes it as `--path <path>` and a r
 
 ## Start once, inspect, then act
 
-Start with the smallest evidence set that can answer the question. Record supplied identity metadata; compute hashes only when requested or needed for verification, and honor an explicit request to skip them. Known-path browsing and reads do not require a complete metadata index. For a new investigation that needs persistent indexes or analysis, create a case before loading evidence; verify the relevant volume indexes before relying on indexed searches. Use a unique session name; replace paths and IDs with actual values:
+Start with the smallest evidence set that can answer the question. Record supplied identity metadata; compute hashes only when requested or needed for verification, and honor an explicit request to skip them. Every investigation starts by creating a case or opening the user-selected existing case before loading evidence. Wait for its tasks and verify the relevant volume indexes before browsing, reading or analysis, including known-path reads. Record unsupported, encrypted or unindexable volumes as coverage limitations. Use a unique session name; replace paths and IDs with actual values:
 
 ```text
 lovelycarve-cli -q sessions open exam

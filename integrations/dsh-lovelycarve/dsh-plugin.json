@@ -6,7 +6,9 @@
   "requires": {
     "contracts": [
       "agentPresets.register",
-      "dsh.bundle.patch"
+      "dsh.bundle.patch",
+      "tools.register",
+      "shell.execute"
     ],
     "packages": {},
     "packagesNote": "No external plugin package is required. The LovelyCarve CLI, runtime DLLs and skill ship inside this bundle."
@@ -17,7 +19,8 @@
       "lovelycarve"
     ],
     "tools": [
-      "lovelycarve-cli"
+      "lovelycarve-cli",
+      "lovelycarve"
     ]
   },
   "facets": {

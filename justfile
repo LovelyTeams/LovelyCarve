@@ -366,6 +366,11 @@ test-cli:
 smoke-cli executable:
     {{ python }} scripts/test-cli.py '{{ executable }}'
 
+# Test the structured DSH tool and its CLI transport using synthetic evidence.
+[group("cli")]
+test-dsh:
+    node --test integrations/dsh-lovelycarve/test/*.test.js
+
 # Regenerate the agent skill's command reference from the CLI command catalogue.
 [group("cli")]
 [working-directory("src-tauri")]
