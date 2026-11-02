@@ -3,7 +3,7 @@ from datetime import datetime
 import io
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import struct
 import subprocess
 import tarfile
@@ -166,6 +166,64 @@ def test_timezones(executable, base_environment):
         roots = data("--image", archive, "files", "list")["items"]
         node = data("--image", archive, "files", "get", f'/{roots[0]["name"]}/report.txt')
         check(node, "+09:00", "09")
+
+        # Android-style /etc and relocated /usr are interpreted in the evidence
+        # namespace, with bounded relative/absolute/chained directory links.
+        def config_archive(name, links, files):
+            target = root / name
+            with tarfile.open(target, "w") as output:
+                directories = set()
+                for name in files:
+                    directories.update(str(parent) for parent in PurePosixPath(name).parents if str(parent) != ".")
+                for name in sorted(directories):
+                    entry = tarfile.TarInfo(name)
+                    entry.type = tarfile.DIRTYPE
+                    output.addfile(entry)
+                for name, body in files.items():
+                    entry = tarfile.TarInfo(name)
+                    entry.size = len(body)
+                    entry.mtime = 1719792000
+                    output.addfile(entry, io.BytesIO(body))
+                for name, destination in links.items():
+                    entry = tarfile.TarInfo(name)
+                    entry.type = tarfile.SYMTYPE
+                    entry.linkname = destination
+                    output.addfile(entry)
+            return target
+
+        for name, links, files, source in [
+            ("relative-config.tar", {"etc": "system/etc"}, {"system/etc/timezone": b"Asia/Tokyo\n"}, "evidenceConfiguration"),
+            ("chained-config.tar", {"etc": "/alias", "alias": "system/config/../etc"},
+             {"system/config/keep": b"", "system/etc/timezone": b"Asia/Tokyo\n"}, "evidenceConfiguration"),
+            ("relocated-tzif.tar", {"etc": "/system/etc", "usr": "system/usr", "system/etc/localtime": "../../usr/share/zoneinfo/Asia/Taipei"},
+             {"system/etc/keep": b"", "system/usr/share/zoneinfo/Asia/Taipei": tzif}, "evidenceTzif"),
+        ]:
+            linked = config_archive(name, links, files)
+            detected = data("--image", linked, "timezones", "get")
+            assert detected["effective"]["source"] == source, detected
+            assert not detected["effective"]["warnings"], detected
+            assert detected["effective"]["zone"] == ("Asia/Taipei" if source == "evidenceTzif" else "Asia/Tokyo"), detected
+            zone_root = data("--image", linked, "files", "list")["items"][0]["name"]
+            timezone_file = "etc/localtime" if source == "evidenceTzif" else "etc/timezone"
+            # Reading follows the same evidence directory alias used by detection.
+            if source != "evidenceTzif":
+                assert data("--image", linked, "files", "text", "get", f"/{zone_root}/{timezone_file}")["text"] == "Asia/Tokyo\n"
+
+        long_chain = {"etc": "link0", **{f"link{index}": f"link{index + 1}" for index in range(41)}}
+        long_chain["link41"] = "system/etc"
+        for name, links, expected_warning in [
+            ("cycle-config.tar", {"etc": "alias", "alias": "etc"}, "跳转"),
+            ("deep-config.tar", long_chain, "跳转"),
+            ("dangling-config.tar", {"etc": "missing"}, "目标不存在"),
+            ("escape-relative-config.tar", {"etc": "../host-config"}, "越过"),
+            ("escape-absolute-config.tar", {"etc": "/../host-config"}, "越过"),
+            ("unc-config.tar", {"etc": "\\\\server\\share\\etc"}, "不是受支持"),
+        ]:
+            linked = config_archive(name, links, {"system/etc/timezone": b"Asia/Tokyo\n"})
+            detected = data("--image", linked, "timezones", "get")
+            assert detected["effective"]["source"] == "fallback", detected
+            assert any(expected_warning in warning for warning in detected["effective"]["warnings"]), detected
+            run("--image", linked, "--timezone", "evidence", "files", "list", expected=1)
 
         # A configuration directory link must not read examiner host files.
         outside = root / "host-config"

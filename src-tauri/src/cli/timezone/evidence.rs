@@ -1,6 +1,9 @@
 //! Bounded, read-only Linux timezone discovery through evidence filesystem APIs.
 //! Symlink targets are interpreted within the evidence, never by the host OS.
-use std::{collections::BTreeSet, sync::Arc};
+use std::{
+    collections::{BTreeSet, VecDeque},
+    sync::Arc,
+};
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -18,6 +21,8 @@ use crate::core::{
 
 const MAX_TZIF: usize = 1024 * 1024;
 const MAX_TEXT: usize = 4096;
+const MAX_LINKS: usize = 40;
+const MAX_PATH_COMPONENTS: usize = 256;
 
 #[derive(Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -173,32 +178,79 @@ pub(super) fn detect(image: Option<&Arc<EvidenceSession>>) -> Detection {
 }
 
 fn lookup(session: &mut FsSession<'_>, root: &str, path: &str) -> anyhow::Result<Option<FsNode>> {
-    let components: Vec<_> = path
+    let mut pending: VecDeque<_> = path
         .split('/')
-        .filter(|component| !component.is_empty() && *component != ".")
+        .filter(|component| !component.is_empty())
+        .map(|component| (component.to_owned(), false))
         .collect();
-    if components.contains(&"..") {
-        anyhow::bail!("配置路径不能越过检材根目录");
-    }
-    let mut parent = root.to_owned();
-    for (index, component) in components.iter().enumerate() {
+    let mut parents = vec![root.to_owned()];
+    let mut links = 0;
+    let mut inspected = 0;
+    while let Some((component, from_link)) = pending.pop_front() {
+        inspected += 1;
+        if inspected > MAX_PATH_COMPONENTS || pending.len() > MAX_PATH_COMPONENTS {
+            anyhow::bail!("时区配置路径超过 {MAX_PATH_COMPONENTS} 个分量的解析上限");
+        }
+        if component == "." {
+            continue;
+        }
+        if component == ".." {
+            if parents.len() == 1 {
+                anyhow::bail!("配置路径不能越过检材根目录");
+            }
+            parents.pop();
+            continue;
+        }
+        let parent = parents
+            .last()
+            .ok_or_else(|| anyhow::anyhow!("时区配置解析缺少检材根目录"))?;
         let node = session
-            .children(&parent)?
+            .children(parent)?
             .into_iter()
-            .find(|node| node.name == *component && !node.deleted);
+            .find(|node| node.name == component && !node.deleted);
         let Some(node) = node else {
+            if from_link {
+                anyhow::bail!("配置目录链接的目标不存在：{component}");
+            }
             return Ok(None);
         };
-        if index + 1 == components.len() {
+        // Keep a terminal link intact: /etc/localtime's zoneinfo target is
+        // itself provenance, even when the target TZif is unavailable.
+        if pending.is_empty() {
             return Ok(Some(node));
         }
-        if node.link_target.is_some() {
-            anyhow::bail!("配置目录 {component} 是链接；请明确指定时区");
+        if node.kind == NodeKind::Symlink || node.link_target.is_some() {
+            links += 1;
+            if links > MAX_LINKS {
+                anyhow::bail!("配置目录链接超过 {MAX_LINKS} 次跳转，可能成环");
+            }
+            let target = node
+                .link_target
+                .as_deref()
+                .filter(|target| !target.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("配置目录链接 {component} 缺少目标"))?;
+            if target.len() > MAX_TEXT
+                || target.contains(['\\', '\0'])
+                || target.as_bytes().get(1) == Some(&b':')
+                || target.starts_with("//")
+            {
+                anyhow::bail!("配置目录链接 {component} 的目标不是受支持的检材内路径");
+            }
+            if target.starts_with('/') {
+                parents.truncate(1);
+            }
+            for component in target.split('/').filter(|part| !part.is_empty()).rev() {
+                pending.push_front((component.to_owned(), true));
+            }
+            continue;
         }
         if node.kind != NodeKind::Dir {
+            if from_link {
+                anyhow::bail!("配置目录链接目标 {component} 不是目录");
+            }
             return Ok(None);
         }
-        parent = node.id;
+        parents.push(node.id);
     }
     Ok(None)
 }
