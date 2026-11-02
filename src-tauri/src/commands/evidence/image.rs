@@ -104,6 +104,8 @@ pub async fn image_list(state: State<'_, AppState>) -> Result<Vec<ImageInfo>, Ap
 /// `degraded_sets` lists md set UUIDs the examiner chose to assemble without
 /// the members their metadata still expects. Idempotent: re-running on the
 /// same image set reuses the previously registered synthetic images.
+/// `image_ids` restricts detection to loaded source images, isolating cloned
+/// hosts with identical on-disk UUIDs; an empty selection is invalid.
 /// Emits `raid-detect-progress` with `stage`, `current` and nullable `total`;
 /// counts describe only that stage, never a percentage of the full scan.
 #[cfg_attr(feature = "desktop", tauri::command)]
@@ -111,9 +113,15 @@ pub async fn raid_auto_detect(
     app: AppHandle,
     state: State<'_, AppState>,
     degraded_sets: Option<Vec<String>>,
+    image_ids: Option<Vec<String>>,
 ) -> Result<RaidStack, AppError> {
-    crate::app::workflows::evidence::raid_auto_detect(app, state, degraded_sets.unwrap_or_default())
-        .await
+    crate::app::workflows::evidence::raid_auto_detect(
+        app,
+        state,
+        degraded_sets.unwrap_or_default(),
+        image_ids,
+    )
+    .await
 }
 
 /// Assemble a RAID device from an explicit, user-supplied geometry (the manual

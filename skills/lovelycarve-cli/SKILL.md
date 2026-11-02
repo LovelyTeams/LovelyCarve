@@ -20,6 +20,7 @@ Read only the relevant sections of [workflows.md](references/workflows.md). Sear
 | Open evidence, select a case, reuse a process | [Sessions and cases](references/workflows.md#sessions-and-cases) |
 | Find a file, read text or inspect a native format | [Find and inspect files](references/workflows.md#find-and-inspect-files), [paths and node IDs](references/workflows.md#paths-and-node-ids) |
 | Search file contents across a subtree or evidence | [Content search](references/workflows.md#content-search-and-global-search) |
+| Identify Linux/PVE software or kernel versions | [Linux and PVE versions](references/workflows.md#linux-and-pve-versions) |
 | Assemble disks or unlock a volume | [RAID and LVM](references/workflows.md#raid-lvm-and-assembled-volumes), [BitLocker](references/workflows.md#bitlocker), [LUKS](references/workflows.md#luks), [VeraCrypt and FileVault](references/workflows.md#luks-veracrypt-and-filevault) |
 | Recover deleted records or carve signatures | [File recovery](references/workflows.md#file-recovery) |
 | Run analyzers or query events | [Plugin analysis](references/workflows.md#plugin-analysis), [timelines](references/workflows.md#timelines) |
@@ -30,7 +31,7 @@ Every command that resolves an evidence path takes it as `--path <path>` and a r
 
 ## Start once, inspect, then act
 
-For a new investigation, create a case before loading evidence, then build and verify its volume indexes before filename or content searches. Use a unique session name; replace paths and IDs with actual values:
+Start with the smallest evidence set that can answer the question. Record supplied identity metadata; compute hashes only when requested or needed for verification, and honor an explicit request to skip them. Known-path browsing and reads do not require a complete metadata index. For a new investigation that needs persistent indexes or analysis, create a case before loading evidence; verify the relevant volume indexes before relying on indexed searches. Use a unique session name; replace paths and IDs with actual values:
 
 ```text
 lovelycarve-cli -q sessions open exam
@@ -42,13 +43,13 @@ lovelycarve-cli -q --session exam images get
 lovelycarve-cli -q --session exam files list --path / --page-size 50 --fields name,id,kind,size
 ```
 
-Reuse a user-selected existing case with `--case "<absolute-case-dir>"` when opening the session. Evidence registration builds indexes automatically; inspect `indexes list` for the selected image/volume (`indexed: true`, `stale: false`, `truncated: false`). If a required index is missing, get its volume key from `indexes volumes list`, run `indexes create --volume-key <key>`, wait, and check again. A listed volume alone does not prove its index is ready. Keep unlocked volumes, assembled arrays and recovery scans in the same session. Close a session you created only after required work finishes; leave a user's reused session open unless asked to close it. If the process exited, `sessionExited` clears its record: reopen the session and rebuild in-memory state.
+Reuse a user-selected existing case with `--case "<absolute-case-dir>"` when opening a new session. With an already running `--session`, switch explicitly using `cases open`; a global `--case` is rejected. Never open one case concurrently in multiple sessions or the desktop app. Evidence registration builds indexes automatically; inspect `indexes list` for the selected image/volume (`indexed: true`, `stale: false`, `truncated: false`). If a required index is missing, get its volume key from `indexes volumes list`, run `indexes create --volume-key <key>`, wait, and check again. A listed volume alone does not prove its index is ready. Keep unlocked volumes, assembled arrays and recovery scans in the same session. Close a session you created only after required work finishes; leave a user's reused session open unless asked to close it. If the process exited, `sessionExited` clears its record: reopen the session and rebuild in-memory state.
 
 Paths inside evidence use `/`; `/` lists volumes. Symbolic links are followed as a shell follows them: always in the middle of a path, and at its end when reading, hashing, exporting, decoding or listing; `files get` reports the link itself with `linkTarget`. Copy returned node IDs for duplicate names, deleted entries and special streams; do not construct IDs. Relative host paths resolve against the session's starting directory, so use absolute host paths. Verify the selected image before acting: defaults may come from `LOVELYCARVE_IMAGE`, `LOVELYCARVE_CASE`, `LOVELYCARVE_SESSION` or local dotenv files.
 
 ## Bound output without losing evidence
 
-Start with small pages and `--fields` containing identity plus the needed fields. For directory pages, follow `nextCursor` with `--cursor` until null; decoded text follows `nextOffset` with `--offset`; other collections use `skip`/`limit` or `offset`. A page, a bounded tree walk or a tool-truncated response cannot establish that no other matches exist. Prefer native filtering and decoded `files text get` or a format-specific parser over dumping raw bytes.
+Start with small pages and `--fields` containing identity plus the needed fields. `--fields` applies only to `list` / `search`, not `get`, text reads or mutations. For directory pages, follow `nextCursor` with `--cursor` until null; decoded text follows `nextOffset` with `--offset`; other collections use `skip`/`limit` or `offset`. A page, a bounded tree walk or a tool-truncated response cannot establish that no other matches exist. Prefer native filtering and decoded `files text get` or a format-specific parser over dumping raw bytes.
 
 For filename patterns use `indexes files list --filter` with `nameGlob`, scoped by `pathPrefix` if needed; it filters before paging. See [filename glob search](references/workflows.md#filename-glob-search). `files search` searches contents, and `jq` only filters results already returned.
 
@@ -62,6 +63,7 @@ For filename patterns use `indexes files list --filter` with `nameGlob`, scoped 
 | `130` | Interrupted |
 
 - Under a coding agent, a failure is one JSON line on stderr, `{"error":{"code":…,"message":…}}` (with `details` and `ipcCommand` when known), and an incomplete result adds `{"warning":{…}}` after the stdout result. Branch on `code`: `notFound`, `alreadyExists`, `isDirectory`, `usage`, `sessionExited`, `readFaultsDetected`, ….
+- In PowerShell, capture native stdout, inspect `$LASTEXITCODE` immediately, then decode JSON or run dependent commands. Exit 1/130 stops the dependent chain; exit 2 requires inspecting the incomplete result. Do not let `Out-Null`, a pipeline or a later successful command hide an earlier error.
 - JSONL reports each request through `result`, `error` and optional `warning`; a failed request does not stop subsequent lines. Inspect the relevant responses before submitting dependent work.
 - `readFaultsDetected`, nonempty `badRegions` or nonzero `syntheticBytes` mean synthesized zeroes contributed to a hash or export. Report the audit; those digests do not authenticate the missing source bytes. Check logical lengths and byte counts. A failed raw read may already have emitted partial stdout: discard it.
 - Preserve timestamp role and provenance. Display conversion does not establish an evidence time zone; unknown-offset times stay unconverted. See [time zones](references/workflows.md#file-times-and-time-zones).

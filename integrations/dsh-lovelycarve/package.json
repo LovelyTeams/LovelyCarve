@@ -1,0 +1,31 @@
+{
+  "name": "dsh-lovelycarve",
+  "version": "1.3.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "LovelyCarve forensic analysis mode for DeepSeek Harness with bundled CLI and skill.",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./preset": "./lib/preset-entry.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "skills",
+    "bin",
+    "cordis.patch.yml",
+    "dsh-plugin.json",
+    "README.md",
+    "INSTALL.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

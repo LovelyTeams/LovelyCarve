@@ -1828,10 +1828,13 @@ category = "action"
 keywords = ["mdadm", "lvm", "software raid", "raid1", "raid6", "raid10", "degraded", "nas"]
 examples = [
     { command = "lovelycarve-cli raid detect", description = "识别并组装所有已加载成员盘" },
+    { command = "lovelycarve-cli raid detect --image-ids <主机系统盘ID> <主机数据盘ID>", description = "只检测同一主机的成员，隔离克隆 UUID" },
     { command = "lovelycarve-cli raid detect --degraded-sets 880f205730e64da65bfdb06f700131bb", description = "缺一块盘时按校验降级组装指定阵列" },
 ]
 [command.params.degradedSets]
 description = "允许降级组装的 md 阵列 set UUID 列表（raid detect 输出的 arrays[].setUuid）"
+[command.params.imageIds]
+description = "仅检测指定的已加载源检材 ID；克隆主机 UUID 相同时按主机指定成员盘，省略则检测全部"
 
 [[command]]
 path = "raid assemble"

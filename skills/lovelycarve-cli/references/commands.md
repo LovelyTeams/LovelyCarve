@@ -12,7 +12,7 @@ Each entry is a command's synopsis and its description. Positional arguments com
 | `--events` | 把命令生命周期与后端进度以 JSONL 写到标准错误 |
 | `--session <value>` | 使用命名常驻会话（也可设置 LOVELYCARVE_SESSION） |
 | `-i, --image <value>` | 检材 ID 或路径（覆盖 LOVELYCARVE_IMAGE） |
-| `--case <value>` | 先打开的案件目录（覆盖 LOVELYCARVE_CASE） |
+| `--case <value>` | 启动时打开的案件目录；已有 --session 用 cases open（覆盖 LOVELYCARVE_CASE） |
 | `-q, --quiet` | 不输出非必要信息 |
 | `-h, --help` | 显示帮助 |
 | `-v, --version` | 显示版本 |
@@ -456,10 +456,11 @@ RAID 组装
 - `lovelycarve-cli raid assemble --params <json>`
   按指定几何手动组装 RAID
   - `lovelycarve-cli raid assemble --params '{"member_image_ids":["<ID1>","<ID2>",""],"level":5,"layout":2,"chunk_sectors":128,"data_offset_sectors":2048}'`: 三盘 RAID5 左同步、64 KiB 块，第三块盘缺失（空字符串）按校验重建
-- `lovelycarve-cli raid detect [--degraded-sets <string>…]`
+- `lovelycarve-cli raid detect [--degraded-sets <string>…] [--image-ids <string>…]`
   自动识别并组装 RAID。解析已加载检材中的 LVM 与 mdadm 元数据（0.90 / 1.x，linear、RAID0/1/4/5/6/10），组装成合成检材；所有完整且未作为 md 成员的逻辑卷均注册为可选择的检材。用 context use <assembledImageId> 选择卷，再用 files list 和 context set --dir 浏览，无需构造内部节点 ID。无元数据的等大成员盘按 RAID0/5 推定。元数据仍登记、但未加载或已陈旧的成员会让阵列停在待确认状态，用 --degraded-sets 指定的阵列才降级组装。重复调用复用已组装的检材。
   Keywords: mdadm, lvm, software raid, raid1, raid6, raid10, degraded, nas.
   - `lovelycarve-cli raid detect`: 识别并组装所有已加载成员盘
+  - `lovelycarve-cli raid detect --image-ids <主机系统盘ID> <主机数据盘ID>`: 只检测同一主机的成员，隔离克隆 UUID
   - `lovelycarve-cli raid detect --degraded-sets 880f205730e64da65bfdb06f700131bb`: 缺一块盘时按校验降级组装指定阵列
 
 ## searches

@@ -2,6 +2,7 @@
 use super::*;
 use crate::core::evidence::image::DiskImage;
 use crate::core::filesystem::evidence_session::EvidenceSession;
+use sha2::{Digest, Sha256};
 
 /// Detect LVM / md stacks across every loaded image (see
 /// `raid::detect_with_options`) and register each assembled array — and each
@@ -11,10 +12,13 @@ use crate::core::filesystem::evidence_session::EvidenceSession;
 /// to assemble without members their metadata still expects.
 /// Idempotent: re-running on the same image set reuses the previously
 /// registered synthetic images instead of allocating duplicates.
+/// `image_ids` restricts source membership and namespaces synthetic identities
+/// by the selected evidence paths so cloned hosts cannot share cached bytes.
 pub async fn raid_auto_detect(
     app: AppHandle,
     state: State<'_, AppState>,
     degraded_sets: Vec<String>,
+    image_ids: Option<Vec<String>>,
 ) -> Result<RaidStack, AppError> {
     // Snapshot only "real" loaded images — feeding a previously assembled
     // synthetic image back into detection would be double-counting and
@@ -22,18 +26,59 @@ pub async fn raid_auto_detect(
     // copy repeats its parent volume, so it would pose as a mirror member.
     let snapshot: Vec<_> = {
         let images = state.images.lock().await;
+        if let Some(ids) = &image_ids {
+            if ids.is_empty() {
+                return Err(AppError::invalid_input(
+                    "imageIds 不能为空；省略时检测全部源检材",
+                ));
+            }
+            for id in ids {
+                let image = images
+                    .get(id)
+                    .ok_or_else(|| AppError::not_found(format!("未加载的 RAID 成员检材：{id}")))?;
+                if image.path.to_string_lossy().starts_with("assembled://")
+                    || matches!(image.derived, Some(DerivedImage::ShadowCopy { .. }))
+                    || image.is_index_only()
+                {
+                    return Err(AppError::invalid_input(format!(
+                        "RAID 成员必须是可读取的源检材：{id}"
+                    )));
+                }
+            }
+        }
         images
             .values()
             .filter(|img| {
                 !img.path.to_string_lossy().starts_with("assembled://")
                     && !matches!(img.derived, Some(DerivedImage::ShadowCopy { .. }))
+                    && image_ids.as_ref().is_none_or(|ids| ids.contains(&img.id))
             })
             .map(|image| Arc::clone(image.disk_image()))
             .collect()
     };
+    // Clone images can share every on-disk UUID. A scoped assembly must not
+    // reuse another host's cache entry or persisted evidence identity. Paths
+    // are stable across session restarts, unlike runtime image ids; sorted,
+    // length-prefixed keys make ordering and duplicate selections irrelevant.
+    let scope = image_ids.as_ref().map(|_| {
+        let mut paths: Vec<_> = snapshot
+            .iter()
+            .map(|image| {
+                crate::core::casework::case::evidence_path_key(&image.path.to_string_lossy())
+            })
+            .collect();
+        paths.sort();
+        paths.dedup();
+        let mut digest = Sha256::new();
+        for path in paths {
+            digest.update((path.len() as u64).to_le_bytes());
+            digest.update(path.as_bytes());
+        }
+        hex::encode(digest.finalize())
+    });
     let options = raid::DetectOptions { degraded_sets };
     let progress_app = app.clone();
-    let (mut stack, assembled) = tokio::task::spawn_blocking(move || {
+    let (mut stack, mut assembled) = tokio::task::spawn_blocking(move || {
         raid::detect_with_options_observed(&snapshot, &options, &|progress| {
             if let Err(error) = progress_app.emit("raid-detect-progress", progress) {
                 tracing::warn!("RAID detection progress delivery failed: {error}");
@@ -42,6 +87,11 @@ pub async fn raid_auto_detect(
     })
     .await
     .map_err(|err| AppError::task_panicked("raid_auto_detect", err))?;
+    if let Some(scope) = scope {
+        for materialised in &mut assembled {
+            materialised.label = format!("scope:{scope}:{}", materialised.label);
+        }
+    }
 
     // Phase 1: snapshot the idempotency cache and the set of live image ids
     // WITHOUT holding either lock across the CPU-bound DiskImage::from_assembled

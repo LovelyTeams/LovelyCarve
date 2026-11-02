@@ -97,6 +97,17 @@ def test_resident_sessions(executable, base_environment):
             assert value("--session", "other", "files", "list")["total"] >= 1
             assert value("--session", "other", "images", "open", assembled_image["path"])["id"] == assembled_id
 
+            # Scoped detection crosses the real argv/resident transport and
+            # excludes both unrelated sources and previously assembled images.
+            value("--session", "other", "images", "open", evidence)
+            scoped = value("--session", "other", "raid", "detect", "--image-ids", member["id"], member["id"])
+            assert [image["imageId"] for image in scoped["images"]] == [member["id"]], scoped
+            image_count = value("sessions", "get", "other")["imageCount"]
+            run("--session", "other", "raid", "detect", "--image-ids", "not-loaded", expected=1)
+            run("--session", "other", "raid", "detect", "--image-ids", assembled_id, expected=1)
+            run("--session", "other", "raid", "detect", "--body", '{"imageIds":[]}', expected=1)
+            assert value("sessions", "get", "other")["imageCount"] == image_count
+
             # Public status must not reveal the private transport credential.
             public = run("sessions", "list").stdout
             assert '"token"' not in public and len(json.loads(public)["sessions"]) == 2, public

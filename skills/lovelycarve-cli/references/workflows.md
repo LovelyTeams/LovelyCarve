@@ -14,6 +14,7 @@ Read the sections needed for the task. Resolve `lovelycarve-cli` to the executab
 - [File times and time zones](#file-times-and-time-zones)
 - [Content search and global search](#content-search-and-global-search)
 - [RAID, LVM and assembled volumes](#raid-lvm-and-assembled-volumes)
+- [Linux and PVE versions](#linux-and-pve-versions)
 - [BitLocker](#bitlocker)
 - [LUKS, VeraCrypt and FileVault](#luks-veracrypt-and-filevault)
   - [LUKS](#luks)
@@ -32,7 +33,7 @@ Read the sections needed for the task. Resolve `lovelycarve-cli` to the executab
 - Use absolute host paths. Relative host paths resolve against `sessions get`'s `workingDirectory`, not the connecting command's directory. Evidence paths remain separate and use `/`.
 - Cases persist indexes, searches, timelines and analysis results. Without one, browsing and byte operations work, but indexes last only for the process. Do not open the same case in the desktop app and CLI simultaneously.
 
-For a new investigation, create the case first, then load the evidence so automatic indexing is persisted in that case:
+Known-path browsing and reads work without a full index. Create a case when persistence or indexed analysis is needed, before loading evidence so automatic indexing is persisted in that case:
 
 ```text
 lovelycarve-cli -q sessions open exam
@@ -63,7 +64,7 @@ lovelycarve-cli -q --session exam indexes list
 lovelycarve-cli -q --session exam indexes volumes list
 ```
 
-Inspect each result before continuing. `tasks wait` can report cancelled tasks without failing; verify the required index or analysis actually completed. After finishing the work, close a session you created with `sessions close exam`; that cancels remaining tasks and releases its evidence. Leave a reused user session open unless asked to close it.
+Inspect each result before continuing. `tasks wait` can report cancelled tasks without failing; verify the required index or analysis actually completed. Reuse evidence already collected when it answers a follow-up; rebuild volatile state only for new reads. After finishing the work, close a session you created with `sessions close exam`; that cancels remaining tasks and releases its evidence. Leave a reused user session open unless asked to close it.
 
 A session whose background process exited (a crash, a killed process, a restarted machine) fails with `sessionExited`: the command that found it has already removed its record, `sessions list` stops listing it and `sessions close` on it succeeds with `"exited": true`. Start it again with `sessions open exam`; unlocked volumes, assembled arrays, recovery scans and the current directory lived in the old process and must be rebuilt. `sessionUnavailable` instead means the process still owns the name but did not answer, for example while it is still opening evidence: check again with `sessions get exam`.
 
@@ -93,7 +94,7 @@ Argument files are expanded by the calling CLI before a resident-session request
 
 ## Pagination and projection
 
-- `--fields name,id,kind,size,timestamps.modified` projects list entries, preserving response metadata. Dot paths keep nesting. Include identity and fields needed to assess the result; include `timestampsOriginal` when comparing converted and source times (absent when identical).
+- `--fields` is accepted for `list` / `search` output only; `files get`, `files text get` and mutations cannot use it. `--fields name,id,kind,size,timestamps.modified` projects list entries, preserving response metadata. Dot paths keep nesting. Include identity and fields needed to assess the result; include `timestampsOriginal` when comparing converted and source times (absent when identical).
 - Directory and journal pages use `nextCursor` / `--cursor`; decoded text uses `nextOffset` / `--offset`. Search hits and analysis records use `--skip` / `--limit`; indexed-file filters carry `offset` / `limit` inside the filter JSON. For indexed files, choose `--volume-key` to page one volume: without it the filter's limit and offset apply independently to every indexed volume, and the results are concatenated. Keep scope, filtering and sorting stable.
 - A tree walk's `truncated: true` means its depth/inspection budget needs review; it is not a cursor page. Narrow the subtree or continue in its child directories. If a tool truncates stdout, rerun with smaller pages or save the result to a new host file instead of trying to parse the clipped JSON.
 - Prefer native filters (`files list --query`, `indexes files list --filter`) to reduce backend work and output. If `jq` is available, filter a projected page before it reaches context:
@@ -226,7 +227,8 @@ lovelycarve-cli --session exam searches hits list --search-id "<unique-search-id
 
 ## RAID, LVM and assembled volumes
 
-- Open every member disk in one session, then run `raid detect`. It reads LVM and md metadata (and firmware RAID), assembles the arrays and registers every complete linear logical volume that is not an md member as its own image. Run it once per session; later calls reuse the assembled images.
+- First try ordinary navigation in the source image: a complete single-PV LVM volume can be browsed directly under its partition, without a separate assembly. For a multi-disk assembly, open its member disks in one session, then run top-level `raid detect`. It reads LVM and md metadata (and firmware RAID), assembles the arrays and registers every complete linear logical volume that is not an md member as its own image. Run it once per session; later calls reuse the assembled images.
+- For cloned hosts with identical VG/PV UUIDs, use `raid detect --image-ids <loaded-member-id>…` to scope detection to one host. Only loaded source IDs are accepted; an empty selection fails. Scoped synthetic paths are distinct for different source path sets and stable across restarts. Without this option, detection still uses all loaded sources; `--image` alone does not restrict membership.
 - Select a volume with `context use <assembledImageId>` (from `volumeGroups[].logicalVolumes[].assembledImageId`); it returns to `/`. Volumes that are incomplete or unsupported get no ID, and `diagnostics` explains why.
 - Arrays whose recorded members are missing or stale wait for confirmation: `raid detect --degraded-sets <set-id>` assembles the named sets degraded. `raid assemble --params <json>` assembles a given geometry by hand.
 - `assembled://` references and assembled image IDs exist only in the session that created them; after it ends, open the members and detect again.
@@ -252,6 +254,55 @@ After checking the selected volume and its diagnostics:
 {"id":"use","command":"context use","args":{"imageId":{"$ref":"raid#/volumeGroups/0/logicalVolumes/0/assembledImageId"}}}
 {"id":"roots","command":"files list"}
 ```
+
+## Linux and PVE versions
+
+Use the system/root volume first; add data disks only if the root volume needs them. Discover the volume name with `files list --path /`, navigate any LVM partition, and copy returned paths or node IDs. After assembly, confirm the selected image and root entry again. A cloned PV UUID is not proof that two host images contain identical files. Verify each requested host separately.
+
+- **PVE application version:** `/var/lib/dpkg/status`, with `Package: pve-manager`, `Status: install ok installed`, and its exact `Version`. `proxmox-ve` is a separate metapackage; neither Debian's `/etc/os-release` nor a kernel filename establishes the pve-manager version.
+- **Installed kernel release:** list `/boot` for `vmlinuz-*` and `/lib/modules` (or its resolved `/usr/lib/modules` target); correlate exact release strings with installed `proxmox-kernel-*` / older `pve-kernel-*` packages. Distinguish the kernel release from the package's `Version` and helper/metapackage versions.
+- **Boot selection:** inspect `/boot/grub/grub.cfg` and, when needed, saved boot state or EFI entries. A default entry, a symlink or a single installed kernel supports an installed/configured conclusion; it does not prove the kernel running at acquisition. Runtime claims need a timestamped boot record, memory or live collection from the evidence host, not the analyst's `uname`.
+- Read only enough to answer the question and resolve conflicts. Follow `nextCursor` before calling a directory listing complete. An empty index list means no published index, not a complete index. Known-path file reads can still succeed; check/build a specific volume index only for operations that require it.
+- `/etc/pve` is a runtime pmxcfs mount and can be empty offline; cluster configuration may be in `/var/lib/pve-cluster/config.db` and `/etc/corosync/corosync.conf`. An empty mountpoint is not proof that the cluster had no configuration.
+- Binary journal files, compressed logs and kernel images require appropriate parsers. `files text get` finding no string does not establish absence, compression type or lack of support for that format. Do not decode megabytes of binary data to answer an installed-version question.
+
+For example, substitute the discovered volume root:
+
+```text
+lovelycarve-cli --session exam files text get --path "/<volume>/var/lib/dpkg/status" --max-bytes 1048576
+lovelycarve-cli --session exam files list --path "/<volume>/boot" --page-size 50 --fields name,id,kind,size
+lovelycarve-cli --session exam files list --path "/<volume>/lib/modules" --page-size 50 --fields name,id,kind
+```
+
+Parse dpkg records by blank-line stanzas, not a fixed number of lines after `Package`; `Version` can occur later and records can cross text pages. Capture and check the exit code of each native invocation before decoding. In PowerShell, after resolving `$cli`, `$session` and `$statusPath`:
+
+```powershell
+$chunks = [System.Collections.Generic.List[string]]::new()
+$offset = 0
+while ($true) {
+    $raw = & $cli -q --session $session files text get --path $statusPath --max-bytes 1048576 --offset $offset
+    $code = $LASTEXITCODE
+    if ($code -ne 0) { throw "dpkg read failed or incomplete (exit $code); inspect stderr" }
+    $page = $raw | ConvertFrom-Json
+    if ($page.hadErrors) { throw 'dpkg text decoding has errors; inspect encoding' }
+    $chunks.Add($page.text)
+    if ($null -eq $page.nextOffset) { break }
+    if ($page.nextOffset -le $offset) { throw 'Text cursor did not advance' }
+    $offset = $page.nextOffset
+}
+foreach ($stanza in [regex]::Split(($chunks -join '').Replace("`r`n", "`n"), "`n`n+")) {
+    $fields = @{}
+    foreach ($line in ($stanza -split "`n")) {
+        if ($line -match '^([A-Za-z0-9-]+):[ \t]*(.*)$') { $fields[$matches[1]] = $matches[2] }
+    }
+    if ($fields.Status -eq 'install ok installed' -and
+        $fields.Package -match '^(pve-manager|proxmox-ve|(?:proxmox|pve)-kernel-.+)$') {
+        [pscustomobject]@{ Package = $fields.Package; Version = $fields.Version; Status = $fields.Status }
+    }
+}
+```
+
+Print only matching records plus the source identity and coverage status. Report installed PVE version, installed kernel release and confirmed boot-time kernel as separate facts; correlated package/module/boot artifacts are not independent runtime observations. If earlier verified evidence already answers a follow-up, cite it and read only the missing evidence.
 
 ## BitLocker
 

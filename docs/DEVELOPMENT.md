@@ -137,6 +137,8 @@ Unix 的 `build-cli-full` 启用 `qrcode-wechat ocr`（CPU OCR），需要自行
 
 `stage-cli-skill` 复用现有 Windows release CLI 与插件，按同一打包清单生成 `skills/lovelycarve-cli/bin/`；它不执行编译。运行文件与 DLL 保持相邻，插件与可选模型沿用包内路径，许可证随运行文件复制。该目录的生成文件由其 `.gitignore` 排除，独立安装时需复制完整 skill 目录；具体使用见 [CLI 代理技能](CLI.md#编码代理与小输出)。
 
+DSH 模式源码位于 `integrations/dsh-lovelycarve/`，与主仓库的 `skills/lovelycarve-cli/` 共用技能。`just stage-dsh` 先暂存现有 release 运行库，再生成 `dist-pack/dsh-lovelycarve/`，旧包保留在 `dist-pack/dsh-previous-*/`。它不执行编译；CLI 修改后先运行 `just build-cli`，插件运行库需已由 `just build-plugins --release` 生成。安装见包内 `INSTALL.md`；使用本地链接的 DSH 在重启并创建新对话后加载更新的模式与技能。
+
 Windows GitHub Actions 使用 `windows-2025` 执行 `just test-fe`、`just test` 与 `just test-plugins`；PR 只运行测试，不执行发行构建或上传构建产物。Rust 测试仍需编译测试程序。`v*` 标签在测试成功后自动构建 MSI、CLI ZIP 与插件包并发布到 GitHub Release。云端默认不启用 QR/OCR，macOS/Linux、原生 GUI 与驱动功能仍需单独验证，发布步骤见 [发布指南](RELEASING.md)。
 
 ## 性能验证

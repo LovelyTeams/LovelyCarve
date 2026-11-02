@@ -128,10 +128,12 @@ export interface RaidFilesystem {
 /** Run LVM → md → filesystem detection over every loaded image. Idempotent:
  *  assembled arrays and complete logical volumes are registered as synthetic
  *  images once and reused on re-runs. `degradedSets` names md sets to assemble
- *  without the members their metadata still expects. Heavy-ish (reads member
+ *  without the members their metadata still expects. `imageIds` restricts
+ *  detection to loaded source images and isolates cloned on-disk identities;
+ *  omit it for all sources, rather than passing an empty array. Heavy-ish (reads member
  *  superblocks) but bounded. */
-export function raidAutoDetect(degradedSets: string[] = []): Promise<RaidStack> {
-  return invokeCmd<RaidStack>('raid_auto_detect', { degradedSets });
+export function raidAutoDetect(degradedSets: string[] = [], imageIds?: string[]): Promise<RaidStack> {
+  return invokeCmd<RaidStack>('raid_auto_detect', { degradedSets, imageIds });
 }
 
 /** Explicit geometry for a manual RAID reconstruction (the builder fallback).

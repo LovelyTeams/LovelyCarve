@@ -448,7 +448,12 @@ fn option_rows(command: &Command) -> Vec<Row> {
     if command.takes_body() {
         rows.push(flag("body", None, BODY_HELP, "[JSON]"));
     }
-    rows.push(flag("fields", None, FIELDS_HELP, "[字符串]"));
+    if matches!(
+        command.full_path.last().map(String::as_str),
+        Some("list" | "search")
+    ) {
+        rows.push(flag("fields", None, FIELDS_HELP, "[字符串]"));
+    }
     rows.push(flag("dry-run", None, DRY_RUN_HELP, "[布尔] [默认: false]"));
     rows
 }
@@ -457,6 +462,39 @@ fn option_rows(command: &Command) -> Vec<Row> {
 mod tests {
     use super::*;
     use crate::cli::catalog::catalog;
+
+    #[test]
+    fn field_projection_help_and_catalogue_match_supported_commands() {
+        let catalog = catalog().unwrap();
+        for path in [
+            "files list",
+            "files search",
+            "files get",
+            "files text get",
+            "images open",
+        ] {
+            let command = catalog.find_path(path).unwrap();
+            let supported = matches!(
+                command.full_path.last().map(String::as_str),
+                Some("list" | "search")
+            );
+            assert_eq!(
+                option_rows(command)
+                    .iter()
+                    .any(|row| row.label == "--fields"),
+                supported,
+                "{path} help"
+            );
+            assert_eq!(
+                command
+                    .options
+                    .iter()
+                    .any(|option| option["name"] == "fields"),
+                supported,
+                "{path} catalogue/completion"
+            );
+        }
+    }
 
     #[test]
     fn wrapping_breaks_at_spaces_and_between_wide_characters() {

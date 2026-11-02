@@ -113,6 +113,8 @@ LVM2 元数据与线性逻辑卷由纯 Rust 代码解析，文件系统读取与
 
 ## 实现入口与验证
 
+CLI 的 `raid detect --image-ids <源检材ID>…` 可限定参与组装的源检材；克隆主机使用相同 VG/PV UUID 时应分别指定成员，不能混作一个 VG。限定范围的合成检材身份包含源路径集合，避免复用其他克隆主机的缓存；不指定范围时保留全部源检材检测与重复 PV 歧义诊断。单 PV 中可完整寻址的逻辑卷也可直接通过源检材浏览。
+
 - `core/evidence/partitions/lvm2/header.rs`：二进制标签、弱 CRC、完整 MDA、活动文本和来源范围。`text.rs`：共享 grammar 与全部元数据模型。`layout.rs`：完整线性 byte map、范围拆分、独立 read/seek cursor。
 - `core/filesystem/volumes/lvm.rs`：导航、原始 LV 字节、读取错误和空闲 PE 投影。ext/XFS/Btrfs/NTFS 原生读者复用这个 map；不会替换证据 ID、分区 ID 或原始分区几何。
 - `core/evidence/raid/lvm_meta.rs`、`members.rs` 和 `lvm_stack.rs`：跨镜像与 md 阵列读取相同模型，选择最新定义、验证成员完整性，跨 PV 的 LV 组装为合成检材；`LinearLvSource` 不返回静默截断。

@@ -1,0 +1,27 @@
+{
+  "apiVersion": "dsh-std/draft",
+  "kind": "bundle.preset",
+  "id": "local/dsh-lovelycarve",
+  "name": "LovelyCarve 取证模式",
+  "requires": {
+    "contracts": [
+      "agentPresets.register",
+      "dsh.bundle.patch"
+    ],
+    "packages": {},
+    "packagesNote": "No external plugin package is required. The LovelyCarve CLI, runtime DLLs and skill ship inside this bundle."
+  },
+  "supports": {
+    "dsh": ">=0.2.1-rc.1",
+    "presets": [
+      "lovelycarve"
+    ],
+    "tools": [
+      "lovelycarve-cli"
+    ]
+  },
+  "facets": {
+    "host": "./cordis.patch.yml"
+  },
+  "note": "The live bundle contract is package.json -> dsh.bundle.patch. This manifest is informational compatibility metadata."
+}

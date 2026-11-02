@@ -86,6 +86,10 @@ Desktop.ini
 /design-reference.*
 /lovelycarve-src/
 /old-src/
+/asar_extract/
+/dsh_base_extract/
+/dsh_extract/
+/ref_dsh/
 
 # Locally built optional OpenCV sources and installations
 /opencv/

@@ -33,7 +33,7 @@ pub const GLOBAL_OPTIONS: &[(&str, Option<char>, &str, bool)] = &[
     (
         "case",
         None,
-        "先打开的案件目录（覆盖 LOVELYCARVE_CASE）",
+        "启动时打开的案件目录；已有 --session 用 cases open（覆盖 LOVELYCARVE_CASE）",
         true,
     ),
     ("quiet", Some('q'), "不输出非必要信息", false),

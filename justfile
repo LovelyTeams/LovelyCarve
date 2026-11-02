@@ -398,6 +398,12 @@ repack-cli:
 stage-cli-skill:
     pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\pack-cli.ps1' -StageSkill
 
+# Refresh the DSH forensic preset, skill and existing Windows release runtime.
+[group("cli")]
+[windows]
+stage-dsh: stage-cli-skill
+    pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\stage-dsh.ps1'
+
 # Test the read-only Rust ReFS port independently of the desktop host.
 [group("readers")]
 [working-directory("src-tauri/vendor/refs-reader")]

@@ -197,6 +197,164 @@ async fn navigate_raid_lvm_btrfs(on_md: bool) {
 }
 
 #[test]
+fn scoped_raid_detection_isolates_cloned_volume_bytes_and_cache_identity() {
+    std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Runtime::new().unwrap().block_on(async {
+                let temporary = tempfile::tempdir().unwrap();
+                let state = Arc::new(AppState::new());
+                let exec = Exec {
+                    reporter: super::progress::Reporter::silent(),
+                    host: AppHandle::new(Some(temporary.path().to_owned()), |_, _| Ok(())),
+                    state: state.clone(),
+                    mode: Mode::Session,
+                    quiet: true,
+                    background: Default::default(),
+                };
+                let mut context = Context::default();
+                let mut sources = Vec::new();
+                let mut expected = Vec::new();
+                for name in ["first", "second"] {
+                    let mut filesystem = btrfs::image();
+                    let offset = filesystem
+                        .windows(btrfs::CONTENT.len())
+                        .position(|bytes| bytes == btrfs::CONTENT)
+                        .unwrap();
+                    let mut content = btrfs::CONTENT.to_vec();
+                    content[0] = if name == "first" { b'A' } else { b'B' };
+                    filesystem[offset..offset + content.len()].copy_from_slice(&content);
+                    let path = temporary.path().join(format!("{name}.raw"));
+                    std::fs::write(&path, lvm::fragmented(&filesystem)).unwrap();
+                    let image =
+                        execute(&exec, &mut context, "images open", json!({"path": path})).await;
+                    sources.push(image["id"].as_str().unwrap().to_owned());
+                    expected.push(content);
+                }
+                let ambiguous = execute(&exec, &mut context, "raid detect", json!({})).await;
+                assert!(
+                    ambiguous["volumeGroups"][0]["logicalVolumes"][0]["assembledImageId"].is_null()
+                );
+                let mut assembled_ids = Vec::new();
+                let mut assembled_paths = Vec::new();
+                for (source, content) in sources.iter().zip(&expected) {
+                    let stack = execute(
+                        &exec,
+                        &mut context,
+                        "raid detect",
+                        json!({"imageIds": [source]}),
+                    )
+                    .await;
+                    assert_eq!(stack["images"].as_array().unwrap().len(), 1);
+                    let image_id = stack["volumeGroups"][0]["logicalVolumes"][0]
+                        ["assembledImageId"]
+                        .as_str()
+                        .unwrap()
+                        .to_owned();
+                    let again = execute(
+                        &exec,
+                        &mut context,
+                        "raid detect",
+                        json!({"imageIds": [source, source]}),
+                    )
+                    .await;
+                    assert_eq!(
+                        again["volumeGroups"][0]["logicalVolumes"][0]["assembledImageId"],
+                        image_id
+                    );
+                    execute(
+                        &exec,
+                        &mut context,
+                        "context use",
+                        json!({"imageId": image_id}),
+                    )
+                    .await;
+                    let roots = execute(&exec, &mut context, "files list", json!({})).await;
+                    let volume = roots["items"][0]["name"].as_str().unwrap();
+                    let bytes = execute(
+                        &exec,
+                        &mut context,
+                        "files read",
+                        json!({"path": format!("/{volume}/hello.txt")}),
+                    )
+                    .await;
+                    assert_eq!(bytes, json!({"data": hex::encode(content)}));
+                    let info = execute(&exec, &mut context, "images get", json!({})).await;
+                    assembled_paths.push(info["path"].as_str().unwrap().to_owned());
+                    assembled_ids.push(image_id);
+                }
+                assert_ne!(assembled_ids[0], assembled_ids[1]);
+                assert_ne!(assembled_paths[0], assembled_paths[1]);
+                let image_count = state.images.lock().await.len();
+                for (ids, code) in [
+                    (vec![], crate::app::error::ErrorCode::InvalidInput),
+                    (
+                        vec!["missing".into()],
+                        crate::app::error::ErrorCode::NotFound,
+                    ),
+                    (
+                        vec![sources[0].clone(), "missing".into()],
+                        crate::app::error::ErrorCode::NotFound,
+                    ),
+                    (
+                        vec![assembled_ids[0].clone()],
+                        crate::app::error::ErrorCode::InvalidInput,
+                    ),
+                ] {
+                    let error = crate::app::workflows::evidence::raid_auto_detect(
+                        exec.host.clone(),
+                        crate::host::State::new(&state),
+                        vec![],
+                        Some(ids),
+                    )
+                    .await
+                    .err()
+                    .unwrap();
+                    assert_eq!(error.code, code);
+                    assert_eq!(state.images.lock().await.len(), image_count);
+                }
+                // New runtime IDs for the same source paths keep the same
+                // synthetic paths; no live image IDs enter the scope digest.
+                let restarted = AppState::new();
+                for (index, source) in sources.iter().enumerate() {
+                    let image = state.images.lock().await.get(source).unwrap().clone();
+                    let disk = crate::core::evidence::image::DiskImage::open_with_id(
+                        format!("reopened-{index}"),
+                        image.path.clone(),
+                    )
+                    .unwrap();
+                    restarted.images.lock().await.insert(
+                        disk.id.clone(),
+                        Arc::new(
+                            crate::core::filesystem::evidence_session::EvidenceSession::from(disk),
+                        ),
+                    );
+                    let stack = crate::app::workflows::evidence::raid_auto_detect(
+                        exec.host.clone(),
+                        crate::host::State::new(&restarted),
+                        vec![],
+                        Some(vec![format!("reopened-{index}")]),
+                    )
+                    .await
+                    .unwrap();
+                    let id = stack.volume_groups[0].logical_volumes[0]
+                        .assembled_image_id
+                        .as_ref()
+                        .unwrap();
+                    assert_eq!(
+                        restarted.images.lock().await[id].path.to_string_lossy(),
+                        assembled_paths[index]
+                    );
+                }
+                exec.background.wait(&state).await.unwrap();
+            });
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
 fn caseless_ntfs_ids_case_matching_and_absolute_tree_paths() {
     std::thread::Builder::new()
         .stack_size(16 * 1024 * 1024)
