@@ -215,6 +215,7 @@ CLI 安装包的 `skills/lovelycarve-cli/` 是供编码代理使用的技能，�
 | `bin/` | 独立安装 skill 时随附的 CLI、运行库、插件加载器与插件，由 `just stage-cli-skill` 生成，不提交二进制到 Git |
 | `references/commands.md` | 全部命令按集合列出的用法（位置参数、选项、可选值）与说明，由命令目录生成 |
 | `references/workflows.md` | 按需读取的操作流程：案件与会话、分页与 JSONL、文件定位与解析、内容搜索、RAID/LVM、解锁、恢复、插件、时间线及哈希导出 |
+| `references/forensic-board.md` | forensic-board MCP 解题协作：题单导入、逐题提交与回读、跨题线索、检材归属及中断恢复 |
 
 Windows 独立安装 skill 时，先用 `just build-cli` 与 `just build-plugins --release` 构建所需程序，再运行 `just stage-cli-skill`，把现有 release 的 CLI、DLL、插件及许可证放进 `skills/lovelycarve-cli/bin/`。刷新前的 `bin/` 保留在该次 `dist-pack/` 暂存目录中。复制整个 `skills/lovelycarve-cli/` 即可安装；Pi 的全局目录为 `~/.pi/agent/skills/lovelycarve-cli/`，运行中的 Pi 用 `/reload` 重新发现。
 skill 优先按自身位置解析 `bin/lovelycarve-cli.exe`，不依赖固定主机路径或修改 `PATH`，也不要求切换工作目录。普通 CLI 压缩包仍将运行文件放在包根目录，不重复包含本机 skill 的 `bin/`；需要独立的完整 skill 时使用上述暂存流程。
@@ -233,6 +234,8 @@ JSON 结果紧凑输出，错误和不完整结果警告为单行 JSON，目录�
 `system get` 的 `output.agentMode` 报告当前进程的实际模式；`-q` 另行关闭进度等非必要输出。
 
 DSH 的 LovelyCarve 模式由 `just stage-dsh` 生成，每次调查先创建或打开对应案件，加载检材后等待任务并核验所需卷索引，再开始浏览、读取或分析；已知路径也遵循此流程，不支持索引的卷明确记录限制。以最小检材范围回答问题；已有哈希可记录，无校验需求时不自动计算整盘哈希。Linux/PVE 版本流程区分 `pve-manager`、`proxmox-ve`、基础系统与已安装内核；唯一内核文件或默认引导项不能证明采集时实际运行的内核。
+
+通过 forensic-board MCP 做题时，复用宿主已配置的连接，看板保存题目、候选答案与跨题线索，CLI 提供只读证据访问。每题先刷新原题和相关线索；任何题得到有依据的答案即逐题提交并回读，顺带发现的其他题答案也及时保存。检材归属、账号密码、人物关系及连接信息保留原始值、适用范围与可复核来源；看板数字题目 ID 与 CLI 运行时 ID 分开。写入超时先回读，仅补缺失内容；不另建本地白板。模式提供提示词与技能规则，复用已有 MCP 工具，不附带 MCP 连接、计时器或自动回读钩子。普通 CLI 查询无需看板，看板候选也不等于比赛平台提交。
 
 模式优先使用 `lovelycarve` 结构化工具：`command` 为完整命令路径，`args` 为 API 参数对象，`session` 为命名会话；生命周期命令用 `args.name` 并省略 `session`。工具通过 DSH 执行器运行 CLI，设置代理模式，返回请求 ID、退出码、结果、错误、警告及输出截断状态，保留分页和时区来源。超过 48 KiB 的结果明确报错，不返回裁剪后的 JSON；缩小页大小、选择 `fields` 或分段读取后重试。原始字节使用文件导出命令。shell 调用仍应立即检查 `$LASTEXITCODE`，再解析 JSON 或执行依赖步骤。
 

@@ -21,6 +21,7 @@ Read only the relevant sections of [workflows.md](references/workflows.md). Sear
 
 | Task | Start here |
 | --- | --- |
+| Solve forensic questions with forensic-board MCP, save answers and reuse clues | [Questions, answers and clues](references/forensic-board.md) |
 | Open evidence, select a case, reuse a process | [Sessions and cases](references/workflows.md#sessions-and-cases) |
 | Find a file, read text or inspect a native format | [Find and inspect files](references/workflows.md#find-and-inspect-files), [paths and node IDs](references/workflows.md#paths-and-node-ids) |
 | Search file contents across a subtree or evidence | [Content search](references/workflows.md#content-search-and-global-search) |
@@ -32,6 +33,12 @@ Read only the relevant sections of [workflows.md](references/workflows.md). Sear
 | Batch requests, handle large results or wait for work | [JSONL](references/workflows.md#batch-with-jsonl), [pagination](references/workflows.md#pagination-and-projection), [background tasks](references/workflows.md#background-tasks) |
 
 Every command that resolves an evidence path takes it as `--path <path>` and a returned node ID as `--node-id <id>`; where the synopsis shows a positional `<path>` it may be written positionally instead, but `list` commands take no positional arguments. Use `<command> --help` for option defaults and `schema <command>` for top-level camelCase request keys. Nested JSON objects keep their own contract: recovery options and timeline queries include snake_case keys. `schema` names those types but does not expand their fields; use the workflow examples or the matching source type rather than guessing.
+
+## Questions and shared clues
+
+When solving questions with forensic-board MCP, read [forensic-board.md](references/forensic-board.md) first. Use the host's existing connection: the board owns questions, candidate answers and shared clues; the CLI owns evidence access and analysis. Start or resume from the board's current question and clues, then verify the CLI session, evidence and index state. Keep board question IDs separate from CLI image, volume and node IDs.
+
+After each evidence result, check whether it answers any authorized question. Submit each supported answer immediately, including answers found for other questions: refresh that question, deduplicate, submit or update, then read back the answer ID, value, reasoning and evidence before continuing analysis. Save useful clues with their original value and reproducible source as they are found. A submission timeout requires reading back before retrying; a candidate stored on the board is distinct from a confirmed correct answer or a submission to a competition platform. Apply this workflow when the board is part of the task; ordinary CLI analysis does not require it.
 
 ## Start once, inspect, then act
 
