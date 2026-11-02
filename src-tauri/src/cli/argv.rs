@@ -40,6 +40,7 @@ pub struct Invocation {
     pub force: bool,
     pub text: bool,
     pub fields: Option<String>,
+    pub with_source: bool,
 }
 
 #[derive(Debug)]
@@ -209,7 +210,8 @@ fn leaf(name: &str, command: &Command) -> clap::Command {
     if command.takes_body() {
         leaf = leaf.arg(Arg::new("body").long("body"));
     }
-    leaf.arg(Arg::new("fields").long("fields"))
+    leaf.arg(switch("with-source"))
+        .arg(Arg::new("fields").long("fields"))
         .arg(switch("dry-run"))
 }
 
@@ -549,6 +551,11 @@ fn invocation(command: &'static Command, matches: &ArgMatches) -> Result<Invocat
     let fields = super::projection::parse(matches.get_one::<String>("fields").map(String::as_str))?;
     super::projection::validate(command, &fields)?;
     command.validate(&values)?;
+    if flag(matches, "with-source") && command.raw_output {
+        return Err(CliError::invalid(
+            "--with-source 仅封装 JSON；原始字节用 files export，文本用 files text get",
+        ));
+    }
     Ok(Invocation {
         command,
         values,
@@ -557,6 +564,7 @@ fn invocation(command: &'static Command, matches: &ArgMatches) -> Result<Invocat
         force: flag(matches, "force"),
         text: flag(matches, "text"),
         fields: matches.get_one::<String>("fields").cloned(),
+        with_source: flag(matches, "with-source"),
     })
 }
 

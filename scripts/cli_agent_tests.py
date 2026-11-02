@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sqlite3
 import tempfile
 
 
@@ -15,6 +16,10 @@ def test_agent_output(executable, base_environment):
             path = evidence / f"system-library-{index:04}.dll"
             path.write_bytes(b"fixture\n")
             os.utime(path, (1719792000, 1719792000))
+        with sqlite3.connect(evidence / "zz-config.db") as database:
+            database.execute("CREATE TABLE tree (inode INTEGER PRIMARY KEY, name TEXT, data BLOB)")
+            database.execute("INSERT INTO tree VALUES (?, ?, ?)", (1423, "pve-ssl.pem", b"synthetic record"))
+        database.close()
         environment = dict(base_environment, CLAUDECODE="1", LOVELYCARVE_SESSION_DIR=str(root / "sessions"))
         environment.pop("RUST_LOG", None)
 
@@ -28,6 +33,8 @@ def test_agent_output(executable, base_environment):
         capabilities = json.loads(run("system", "get").stdout)
         assert capabilities["output"]["agentFilesListDefaultPageSize"] == 50
         assert "fields" in capabilities["session"]["request"]
+        assert "withSource" in capabilities["session"]["request"]
+        assert capabilities["residentSessions"]["protocolVersion"] == 4
         fields = "name,id,kind,size,timestamps.modified"
         args = ["--image", evidence, "--timezone", "UTC", "files", "list", "--path", "/System32"]
         page = run(*args)
@@ -42,6 +49,19 @@ def test_agent_output(executable, base_environment):
         assert set(small["items"][0]["timestamps"]) == {"modified"}
         assert small["timestampDisplay"] == data["timestampDisplay"]
         assert len(projected.stdout) < 12_000, len(projected.stdout)
+        sourced = json.loads(run(*args, "--fields", fields, "--with-source").stdout)
+        assert sourced["result"] == small, sourced
+        assert sourced["source"]["evidencePath"] == str(evidence)
+        assert sourced["source"]["path"] == "/System32"
+        database_source = json.loads(run("--image", evidence, "files", "sqlite", "rows", "list", "--path", "/System32/zz-config.db", "--table", "tree", "--with-source").stdout)
+        assert database_source["source"]["table"] == "tree"
+        assert database_source["source"]["path"] == "/System32/zz-config.db"
+        assert database_source["source"]["recordKeys"] == [{"addressSpace":"sqlite", "primaryKey":{"inode":1423}}], database_source
+        assert database_source["source"]["nodeId"] != "1423"
+        offline = json.loads(run("schema", "files", "list", "--with-source").stdout)
+        assert offline["result"]["ipcCommand"] == "fs_children_page" and offline["source"]["operationId"] == "schema"
+        raw_source = run("--image", evidence, "files", "read", "/System32/system-library-0000.dll", "--with-source", expected=1)
+        assert not raw_source.stdout, raw_source
         following = json.loads(run(*args, "--fields", fields, "--cursor", small["nextCursor"]).stdout)
         assert len(following["items"]) == 50
         assert not ({item["id"] for item in small["items"]} & {item["id"] for item in following["items"]})
@@ -92,6 +112,14 @@ def test_agent_output(executable, base_environment):
         assert set(results[1]["result"]["items"][0]) == set(small["items"][0])
         assert len(results[2]["result"]["items"]) == 50
         assert "fixture" in json.dumps(results[3]["result"])
+        source_requests = [
+            {"id":"open", "command":"images open", "args":{"path":str(evidence)}},
+            {"id":"text", "command":"files text get", "args":{"path":"/System32/system-library-0000.dll","maxBytes":32}, "withSource":True},
+        ]
+        source_rows = [json.loads(line) for line in run("session", stdin="\n".join(map(json.dumps, source_requests))).stdout.splitlines()]
+        assert source_rows[1]["result"]["result"]["text"] == "fixture\n", source_rows
+        assert source_rows[1]["result"]["source"]["imageId"] == source_rows[0]["result"]["id"]
+        assert source_rows[1]["result"]["source"]["path"] == "/System32/system-library-0000.dll"
         run("sessions", "open", "agent", "--image", evidence)
         try:
             listed = json.loads(run("sessions", "list", "--fields", "name").stdout)
@@ -99,6 +127,8 @@ def test_agent_output(executable, base_environment):
             remote = json.loads(run("--session", "agent", "--timezone", "UTC", "files", "list",
                                     "--path", "/System32", "--fields", fields).stdout)
             assert len(remote["items"]) == 50 and set(remote["items"][0]) == set(small["items"][0])
+            remote_source = json.loads(run("--session", "agent", "--timezone", "UTC", "files", "list", "--path", "/System32", "--fields", fields, "--with-source").stdout)
+            assert remote_source["result"] == remote and remote_source["source"]["evidencePath"] == str(evidence)
             human_remote = json.loads(run("--session", "agent", "files", "list", "--path", "/System32", env=human_environment).stdout)
             assert len(human_remote["items"]) == 500, "the caller determines defaults, not the resident server's environment"
             # A new investigation creates a case before querying metadata.

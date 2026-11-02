@@ -8,7 +8,7 @@ use serde_json::{Map, Value};
 use crate::cli::{CliError, Json, Origin, Output};
 
 pub(super) const CHUNK: usize = 8 * 1024 * 1024;
-pub(super) const VERSION: u32 = 3;
+pub(super) const VERSION: u32 = 4;
 const MAX_REQUEST: u64 = 16 * 1024 * 1024;
 
 #[derive(Serialize, Deserialize)]
@@ -26,6 +26,8 @@ pub(super) struct Request {
     pub dry_run: bool,
     #[serde(default)]
     pub progress: bool,
+    #[serde(default)]
+    pub with_source: bool,
     #[serde(default)]
     pub initial_image: Option<String>,
 }

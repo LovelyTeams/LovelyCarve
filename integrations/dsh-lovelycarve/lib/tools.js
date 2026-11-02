@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import { EXAMPLES, helpRequest, REQUEST_FIELDS, retrySmaller, usageDetails } from './requests.js';
 
 const MAX_OUTPUT_BYTES = 48 * 1024;
 const MAX_DIAGNOSTICS = 2048;
 const OPTIONAL_STRINGS = ['id', 'session', 'fields', 'timezone'];
-const REQUEST_KEYS = new Set(['command', 'args', 'force', 'dryRun', 'timeoutMs', ...OPTIONAL_STRINGS]);
+const REQUEST_KEYS = new Set(REQUEST_FIELDS);
 
 function validate(request) {
   if (!request || typeof request !== 'object' || Array.isArray(request)) return '请求必须是对象';
@@ -16,7 +17,7 @@ function validate(request) {
   }
   if ((request.id?.length ?? 0) > 128 || (request.session?.length ?? 0) > 64 || request.command.length > 256 || (request.fields?.length ?? 0) > 4096) return '请求标识或字段选择过长';
   if (request.args !== undefined && (!request.args || typeof request.args !== 'object' || Array.isArray(request.args))) return 'args 必须是 API 参数对象';
-  for (const key of ['force', 'dryRun']) {
+  for (const key of ['force', 'dryRun', 'help']) {
     if (request[key] !== undefined && typeof request[key] !== 'boolean') return `${key} 必须是布尔值`;
   }
   if (request.timeoutMs !== undefined && (!Number.isInteger(request.timeoutMs) || request.timeoutMs < 1 || request.timeoutMs > 600000)) {
@@ -41,6 +42,7 @@ export function shellCommand(executable, request, platform = process.platform) {
   if (request.session) arguments_.push('--session', request.session);
   if (request.timezone) arguments_.push('--timezone', request.timezone);
   arguments_.push(...request.command.split(' '));
+  if (!request.command.startsWith('sessions ') && !request.command.startsWith('schema') && request.command !== 'system get' && !request.dryRun) arguments_.push('--with-source');
   if (request.args && Object.keys(request.args).length) arguments_.push('--body', JSON.stringify(request.args));
   if (request.fields) arguments_.push('--fields', request.fields);
   if (request.force) arguments_.push('--force');
@@ -86,13 +88,17 @@ function decodeResult(result, identity) {
     }
   }
   if (error || (result.exitCode !== 0 && result.exitCode !== 2)) {
-    return { ...envelope, error: error ?? { code: 'cliFailed', message: stderr.slice(0, MAX_DIAGNOSTICS) || `CLI 退出码 ${result.exitCode}` } };
+    return { ...envelope, ...(error?.details?.source ? { source: error.details.source } : {}), error: error ?? { code: 'cliFailed', message: stderr.slice(0, MAX_DIAGNOSTICS) || `CLI 退出码 ${result.exitCode}` } };
   }
   let value;
   try {
     value = stdout.trim() ? JSON.parse(stdout) : null;
   } catch {
     return fail('invalidOutput', 'CLI 未返回完整 JSON；结果不可用，请检查命令和运行库版本');
+  }
+  if (value?.source?.operationId && Object.hasOwn(value, 'result')) {
+    envelope.source = value.source;
+    value = value.result;
   }
   if (warning || result.exitCode === 2) envelope.warning = warning ?? { code: 'incompleteResult', message: 'CLI 返回不完整结果' };
   if (diagnostics.length) {
@@ -115,8 +121,16 @@ function decodeResult(result, identity) {
   };
 }
 
-export function decode(result, identity) {
+export function decode(result, identity, request) {
   const answer = decodeResult(result, identity);
+  if (answer.outputTruncated && ['outputTooLarge', 'outputTruncated'].includes(answer.error?.code)) {
+    const retryRequest = retrySmaller(request);
+    answer.recovery = { restartCurrentPage: true, message: '当前页未交付；保留原 cursor/offset 缩小范围重读，不要沿丢弃页面的 nextCursor 跳页', ...(retryRequest ? { retryRequest } : {}) };
+  }
+  return bounded(answer, identity);
+}
+
+function bounded(answer, identity) {
   if (Buffer.byteLength(JSON.stringify(answer), 'utf8') <= MAX_OUTPUT_BYTES) return answer;
   // Backend error/warning details can be large too. Preserve their identity,
   // explicitly report omitted detail and never leak an unbounded tool result.
@@ -129,6 +143,8 @@ export function decode(result, identity) {
     };
   }
   if (!compact.error) compact.error = { code: 'outputTooLarge', message: '工具响应超过输出上限；请缩小查询范围' };
+  if (answer.source) compact.sourceOmitted = true;
+  if (answer.recovery) compact.recoveryOmitted = true;
   return compact;
 }
 
@@ -136,13 +152,14 @@ export function decode(result, identity) {
 export function createTool(ctx, executable) {
   return {
     name: 'lovelycarve',
-    description: '以结构化请求调用 LovelyCarve CLI，复用命名会话，返回 ID、退出码、JSON 结果、错误和不完整警告。先加载 lovelycarve-cli skill；调查先建案、等待索引并核验。command 是完整命令路径，args 用 schema 中的 API 参数名。错误后检查结果再提交依赖请求；大结果用小页和 fields。',
+    description: `以结构化请求调用 LovelyCarve CLI，返回实际检材 source、result、退出码及完整性警告。先加载 lovelycarve-cli skill，建案并核验索引。command 不含参数或 --help；用 {"command":"schema files list"} 或 {"command":"files list","help":true} 发现用法，无需 session。fields 放在请求顶层，args 使用 API camelCase 参数名。indexes list 是案件级，不接收 imageId；sessions close 用 args.name，不传 session。usage 返回合法字段及修正建议，修正请求需显式重试。完整示例：${JSON.stringify(EXAMPLES)}`,
     timeoutMs: 660000,
     parameters: {
       type: 'object', additionalProperties: false, required: ['command'],
       properties: {
         id: { type: 'string', description: '可选请求 ID；省略时生成唯一 ID' },
         command: { type: 'string', description: '例如 sessions open、cases create、files list、files text get' },
+        help: { type: 'boolean', description: '仅返回该 command 的结构化帮助与参数，不执行调查命令，无需 session' },
         args: { type: 'object', additionalProperties: true, description: 'API 参数对象，例如 {"path":"/<卷>/etc/os-release","maxBytes":4096}；不使用 shell 选项名' },
         session: { type: 'string', description: '已有命名会话；sessions 生命周期命令省略此字段，用 args.name 指定名称' },
         fields: { type: 'string', description: 'list/search 的条目字段投影，例如 name,id,kind,size；保留分页与覆盖信息' },
@@ -157,23 +174,36 @@ export function createTool(ctx, executable) {
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
     },
     async execute(request, exec) {
-      const identity = { id: typeof request?.id === 'string' ? request.id : randomUUID(), command: request?.command ?? null, session: request?.session ?? null };
+      if (request?.help === true && Object.keys(request).every(key => REQUEST_KEYS.has(key))) request = helpRequest(request) ?? request;
+      const identity = { id: typeof request?.id === 'string' ? request.id.slice(0, 128) : randomUUID(), command: typeof request?.command === 'string' ? request.command.slice(0, 256) : null, session: typeof request?.session === 'string' ? request.session.slice(0, 64) : null };
       const problem = validate(request);
-      if (problem) return { ...identity, exitCode: null, outputTruncated: false, error: { code: 'usage', message: problem } };
+      if (problem) {
+        const lifecycle = /^sessions (?:open|get|close)$/.test(request?.command ?? '');
+        return bounded({ ...identity, exitCode: null, outputTruncated: false, error: { code: 'usage', message: problem,
+          details: usageDetails(request, lifecycle ? { requestBodyFields: [{ name: 'name', required: true }] } : undefined) } }, identity);
+      }
       const workingDirectory = ctx.get('workingDirectory');
       const workdir = exec.agent ? await workingDirectory?.ensure(exec.agent, exec.signal) : exec.workingDirectory;
       if (!workdir) throw new Error('当前会话没有工作区，请先在 DSH 选择工作区');
       const sandboxPolicy = ctx.get('sandboxPolicy');
       if (ctx.shell.sandboxMode !== undefined && !sandboxPolicy) throw new Error('DSH 沙箱策略服务不可用，未执行命令');
       const policy = sandboxPolicy?.resolve(exec.agent ? { session: exec.agent.session } : {});
-      const spec = ctx.shell.resolve({
-        command: shellCommand(executable, request), workdir, timeoutMs: request.timeoutMs ?? 120000,
-        signal: exec.signal,
-        ...(policy ? { sandboxPolicy: policy } : {}),
-        ...(ctx.get('shellEnv') ? { dshEnv: ctx.get('shellEnv').collect(exec) } : {}),
-      });
-      const process = await ctx.shell.execute(spec);
-      return decode(await process.result(), identity);
+      const run = async input => {
+        const spec = ctx.shell.resolve({
+          command: shellCommand(executable, input), workdir, timeoutMs: input.timeoutMs ?? 120000,
+          signal: exec.signal,
+          ...(policy ? { sandboxPolicy: policy } : {}),
+          ...(ctx.get('shellEnv') ? { dshEnv: ctx.get('shellEnv').collect(exec) } : {}),
+        });
+        const process = await ctx.shell.execute(spec);
+        return decode(await process.result(), identity, input);
+      };
+      const answer = await run(request);
+      if (answer.error && ['usage', 'invalidInput'].includes(answer.error.code)) {
+        const discovery = await run({ command: `schema ${request.command}`, timeoutMs: Math.min(request.timeoutMs ?? 120000, 10000) });
+        answer.error.details = { ...answer.error.details, ...usageDetails(request, discovery.error ? undefined : discovery.result) };
+      }
+      return bounded(answer, identity);
     },
   };
 }

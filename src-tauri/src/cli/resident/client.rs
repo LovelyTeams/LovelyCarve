@@ -34,6 +34,7 @@ pub(super) fn exchange(
             dry_run,
             text,
             initial_image: None,
+            with_source: false,
         },
         None,
     )
@@ -45,6 +46,7 @@ struct Exchange {
     dry_run: bool,
     text: bool,
     initial_image: Option<String>,
+    with_source: bool,
 }
 fn exchange_observed(
     name: &str,
@@ -93,6 +95,7 @@ fn exchange_observed(
             dry_run: options.dry_run,
             progress: reporter.is_some(),
             initial_image: options.initial_image,
+            with_source: options.with_source,
         },
     )?;
     stream.write_all(b"\n")?;
@@ -175,15 +178,17 @@ pub(in crate::cli) fn forward(
             dry_run: invocation.dry_run,
             text: invocation.text,
             initial_image,
+            with_source: invocation.with_source,
         },
         Some(&reporter),
     );
     monitor.finish(&result);
-    let result = result?;
+    let (result, source) =
+        crate::cli::source::split(result?, invocation.with_source && !invocation.dry_run)?;
     let incomplete = incomplete::check(invocation.command, &result);
     let result = crate::cli::projection::apply(result, &fields)?;
     output::print_output(
-        result,
+        crate::cli::source::wrap(result, source),
         invocation.command,
         globals.quiet || globals.events,
         invocation.text,

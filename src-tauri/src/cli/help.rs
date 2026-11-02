@@ -454,6 +454,12 @@ fn option_rows(command: &Command) -> Vec<Row> {
     ) {
         rows.push(flag("fields", None, FIELDS_HELP, "[字符串]"));
     }
+    rows.push(flag(
+        "with-source",
+        None,
+        "用 source/result 封装 JSON，保留实际检材与文件来源",
+        "[布尔] [默认: false]",
+    ));
     rows.push(flag("dry-run", None, DRY_RUN_HELP, "[布尔] [默认: false]"));
     rows
 }

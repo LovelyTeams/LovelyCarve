@@ -31,10 +31,12 @@ mod prompt;
 mod resident;
 mod runtime;
 mod schema;
+mod schema_types;
 mod session;
 mod shell;
 #[cfg(test)]
 mod skill_tests;
+mod source;
 mod strings;
 mod timezone;
 mod wire;

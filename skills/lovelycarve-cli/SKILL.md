@@ -15,6 +15,10 @@ Resolve the skill root from this `SKILL.md`'s absolute location. Prefer its `bin
 
 Quote executable paths; PowerShell needs the call operator `&`. Git Bash / MSYS2 rewrites arguments that start with `/` into host paths even when quoted: the CLI turns rewritten evidence paths back, but any other such argument (a search pattern like `/etc/passwd`) needs `MSYS2_ARG_CONV_EXCL='*'` on the call. See [shell invocation](references/workflows.md#shell-invocation-and-argument-files) for JSON files and shell-specific examples.
 
+Discover DSH requests without a session using `{"command":"schema files list"}` or `{"command":"files list","help":true}`. Keep `command` free of `--help` and positional values. A complete listing request is `{"command":"files list","session":"exam","args":{"path":"/","pageSize":20},"fields":"id,name,kind,size"}`. `fields` belongs at the top level. `indexes list` is case-wide and takes no `imageId`; inspect its returned rows to select an image. Close with `{"command":"sessions close","args":{"name":"exam"}}`, without `session`. On `usage`, inspect `error.details.allowedFields`, `schemaRequest` and any `retryRequest`; review and explicitly retry the correction. The tool never executes a correction automatically.
+
+DSH returns the CLI's resolved `source` with evidence path, image ID, node ID and available volume/path identity. Cite that source rather than the session's later selection. SQLite `recordKeys` identify database records within the source table, not filesystem nodes; never construct a file node ID from a database primary key. For ordinary CLI JSON commands, add `--with-source` to opt into `{"source":…, "result":…}`; JSONL uses top-level `"withSource":true`. Raw byte commands do not support this envelope.
+
 ## Choose the workflow
 
 Read only the relevant sections of [workflows.md](references/workflows.md). Search [commands.md](references/commands.md) by collection or keyword (`hash` / `哈希`, `unlock` / `解锁`, `export` / `导出`) for exact commands and options; do not load the whole catalogue by default.
@@ -32,7 +36,7 @@ Read only the relevant sections of [workflows.md](references/workflows.md). Sear
 | Hash or save evidence bytes | [Hashes and exports](references/workflows.md#hashes-exports-and-read-faults) |
 | Batch requests, handle large results or wait for work | [JSONL](references/workflows.md#batch-with-jsonl), [pagination](references/workflows.md#pagination-and-projection), [background tasks](references/workflows.md#background-tasks) |
 
-Every command that resolves an evidence path takes it as `--path <path>` and a returned node ID as `--node-id <id>`; where the synopsis shows a positional `<path>` it may be written positionally instead, but `list` commands take no positional arguments. Use `<command> --help` for option defaults and `schema <command>` for top-level camelCase request keys. Nested JSON objects keep their own contract: recovery options and timeline queries include snake_case keys. `schema` names those types but does not expand their fields; use the workflow examples or the matching source type rather than guessing.
+Every command that resolves an evidence path takes it as `--path <path>` and a returned node ID as `--node-id <id>`; where the synopsis shows a positional `<path>` it may be written positionally instead, but `list` commands take no positional arguments. Use `<command> --help` for option defaults and `schema <command>` for top-level camelCase request keys. Nested JSON objects keep their own contract: recovery options and timeline queries include snake_case keys. `schema` expands common file filters and directory queries. For other nested types, use the workflow examples or matching source type rather than guessing.
 
 ## Questions and shared clues
 
@@ -60,7 +64,7 @@ Paths inside evidence use `/`; `/` lists volumes. Symbolic links are followed as
 
 ## Bound output without losing evidence
 
-Start with small pages and `--fields` containing identity plus the needed fields. `--fields` applies only to `list` / `search`, not `get`, text reads or mutations. For directory pages, follow `nextCursor` with `--cursor` until null; decoded text follows `nextOffset` with `--offset`; other collections use `skip`/`limit` or `offset`. A page, a bounded tree walk or a tool-truncated response cannot establish that no other matches exist. Prefer native filtering and decoded `files text get` or a format-specific parser over dumping raw bytes.
+Start with small pages and `--fields` containing identity plus the needed fields. `--fields` applies only to `list` / `search`, not `get`, text reads or mutations. For directory pages, follow `nextCursor` with `--cursor` until null; decoded text follows `nextOffset` with `--offset`; other collections use `skip`/`limit` or `offset`. A page, a bounded tree walk or a tool-truncated response cannot establish that no other matches exist. After tool output overflow, use `recovery.retryRequest` to reread the current page with its original cursor/offset; the discarded page’s next cursor must not skip those entries. Prefer native filtering and decoded `files text get` or a format-specific parser over dumping raw bytes.
 
 For filename patterns use `indexes files list --filter` with `nameGlob`, scoped by `pathPrefix` if needed; it filters before paging. See [filename glob search](references/workflows.md#filename-glob-search). `files search` searches contents, and `jq` only filters results already returned.
 

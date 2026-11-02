@@ -1,6 +1,6 @@
 //! Request contracts shared by one-shot commands, --body and JSONL sessions.
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{json, Map, Value};
 
 use super::{
     catalog::{Catalog, Category, Command, Kind},
@@ -25,6 +25,8 @@ struct Field<'a> {
     generated: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     sensitive: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    schema: Option<Value>,
 }
 
 #[derive(Serialize)]
@@ -32,6 +34,16 @@ struct Field<'a> {
 struct Schema<'a> {
     operation_id: &'a str,
     ipc_command: Option<&'a str>,
+    command: String,
+    summary: &'a str,
+    description: &'a str,
+    usage: &'a str,
+    examples: &'a [super::catalog::Example],
+    request_fields: Vec<&'static str>,
+    request_example: Value,
+    tool_request_fields: Vec<&'static str>,
+    tool_request_example: Value,
+    response_envelope: Value,
     category: Category,
     has_request_body: bool,
     request_body_fields: Vec<Field<'a>>,
@@ -80,9 +92,49 @@ fn schema(command: &Command) -> Schema<'_> {
             default: param.default.as_ref(),
             generated: param.generated,
             sensitive: param.secret,
+            schema: super::schema_types::for_type(param.rust_type.as_deref()),
         })
         .collect();
     Schema {
+        command: command.path(),
+        summary: &command.summary,
+        description: &command.description,
+        usage: &command.usage,
+        examples: &command.examples,
+        request_fields: vec![
+            "id",
+            "command",
+            "args",
+            "fields",
+            "timezone",
+            "force",
+            "dryRun",
+            "withSource",
+            "output",
+        ],
+        request_example: {
+            let mut request = example(command);
+            if let Some(request) = request.as_object_mut() {
+                request.remove("session");
+            }
+            request["id"] = json!("<请求ID>");
+            request
+        },
+        tool_request_fields: vec![
+            "id",
+            "command",
+            "args",
+            "session",
+            "fields",
+            "timezone",
+            "force",
+            "dryRun",
+            "timeoutMs",
+            "help",
+        ],
+        tool_request_example: example(command),
+        response_envelope: json!({"withSource": {"source":"实际解析的检材、卷与节点来源", "result":"原命令结果"},
+            "fields":"顶层字段，仅对 list/search 条目投影；不属于 args", "session":"DSH 工具的顶层会话字段；sessions 生命周期使用 args.name"}),
         operation_id: &command.operation_id,
         ipc_command: command.ipc_command.as_deref(),
         category: command.category,
@@ -102,6 +154,60 @@ fn schema(command: &Command) -> Schema<'_> {
         path_resolves_to: command.target.as_deref(),
         destructive: command.destructive,
     }
+}
+
+fn example(command: &Command) -> Value {
+    let mut args = Map::new();
+    for param in command.params.iter().filter(|param| {
+        param.visible() && param.required && !param.scope && !param.synthetic && !param.generated
+    }) {
+        let value = match param.kind {
+            Kind::String | Kind::Enum => json!(param
+                .values
+                .as_ref()
+                .and_then(|values| values.first())
+                .cloned()
+                .unwrap_or_else(|| format!("<{}>", param.name))),
+            Kind::Number => json!(1),
+            Kind::Boolean => json!(false),
+            Kind::Array => json!([]),
+            Kind::Json => json!({}),
+        };
+        args.insert(param.name.clone(), value);
+    }
+    if command.target.is_some() {
+        args.insert("path".into(), json!("/"));
+    }
+    if command.path() == "files list" {
+        args.insert("pageSize".into(), json!(20));
+    }
+    if command.path() == "indexes files list" {
+        args.insert(
+            "filter".into(),
+            json!({"nameGlob":"*.conf", "limit":20, "offset":0}),
+        );
+    }
+    let mut request = json!({"command":command.path(), "args":args});
+    if !command.path().starts_with("sessions ")
+        && command.native.as_deref() != Some("schema")
+        && command.path() != "system get"
+    {
+        request["session"] = json!("<会话名>");
+    }
+    if command.path() == "files list" {
+        request["fields"] = json!("id,name,kind,size");
+    }
+    request
+}
+
+pub(super) fn usage(command: &Command, mut error: CliError) -> CliError {
+    error.details = Some(json!({
+        "allowedFields": {"args":command.params.iter().filter(|param| param.visible()).map(|param| &param.name).collect::<Vec<_>>(),
+            "request":["id","command","args","fields","timezone","force","dryRun","withSource","output"]},
+        "schemaRequest":{"command":format!("schema {}", command.path())},
+        "exampleRequest":example(command),
+    }));
+    error
 }
 
 /// A failure that one-shot and shell users read as cf's plain stderr lines,
@@ -194,10 +300,12 @@ mod tests {
         .unwrap() else {
             panic!("schema is JSON");
         };
-        assert!(info
-            .text()
-            .starts_with(r#"{"operationId":"images.open","ipcCommand":"image_load""#));
         let info = info.value();
+        assert_eq!(info["command"], "images open");
+        assert!(info["requestFields"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("withSource")));
         assert_eq!(info["ipcCommand"], "image_load");
         assert_eq!(info["operationId"], "images.open");
         let fields = info["requestBodyFields"].as_array().unwrap();

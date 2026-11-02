@@ -262,6 +262,12 @@ fn command(
     if let Some(output) = native::offline(invocation.command, &invocation.values, Mode::OneShot) {
         let fields = super::projection::parse(invocation.fields.as_deref())?;
         let output = super::projection::apply(output?, &fields)?;
+        let output = super::source::wrap(
+            output,
+            invocation
+                .with_source
+                .then(|| json!({"operationId":invocation.command.operation_id})),
+        );
         return print(output.into(), &invocation, globals.quiet, globals.events);
     }
     if native == Some("sessions-serve") {
@@ -467,6 +473,7 @@ async fn perform(
                         dry_run: false,
                         text: invocation.text,
                         fields: invocation.fields.clone(),
+                        with_source: invocation.with_source,
                     },
                 )
                 .await?;

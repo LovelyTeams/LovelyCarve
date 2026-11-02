@@ -194,6 +194,10 @@ fn command_meta(command: &Resolved<'_>) -> Value {
     if matches!(words.last().copied(), Some("list" | "search")) {
         options.push(json!({"name":"fields", "type":"string", "required":false, "description":"列表字段投影，逗号分隔，支持点路径"}));
     }
+    options.push(flag(
+        "with-source",
+        "用 source/result 封装 JSON，保留实际检材与文件来源",
+    ));
     options.push(flag("dry-run", "解析参数并显示将执行的请求，不实际执行"));
     let mut usage = vec![BINARY.to_owned(), spec.path.clone()];
     for param in &positional {

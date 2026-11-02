@@ -223,7 +223,7 @@ skill 优先按自身位置解析 `bin/lovelycarve-cli.exe`，不依赖固定主
 `references/commands.md` 由 `just update-cli-skill` 从命令目录生成，与该版本的命令一致；命令、选项或说明变化后
 内容过期时后端测试失败。手写页面中的命令行与 JSONL 请求同样由测试对照命令目录解析。
 连续查询优先 `sessions open exam --image <检材路径>`，后续加 `--session exam -q`，结束后 `sessions close exam`。
-`schema` 描述顶层请求字段，不展开嵌套 JSON 类型；恢复选项、时间线查询等内部字段仍按各自契约命名，不能统一改成 camelCase。
+`schema` 描述顶层请求字段，并展开常用文件过滤器和目录查询结构；其余嵌套类型参考对应工作流。恢复选项、时间线查询等内部字段仍按各自契约命名，不能统一改成 camelCase。
 JSONL 中单条请求失败不会阻止后续请求；分阶段检查准备和扫描结果，再提交依赖它们的分析或导出请求。
 操作流程还说明 Git Bash / MSYS2 调用 Windows 程序时的路径转换、参数文件与会话主机路径的解析区别、符号链接的跟随规则、大文本分段与编码误判的处理及批量导出；LUKS 有独立的解锁、明文检材选择与导出示例。
 代理的用法错误只显示错误、建议命令和一行帮助提示；人类终端保留完整帮助。
@@ -255,6 +255,26 @@ JSONL 将投影放在请求顶层的可选 `fields` 字符串中，而不是 `ar
 ```json
 {"id":"page","command":"files list","args":{"path":"/","pageSize":50},"fields":"name,id,kind,size,timestamps.modified"}
 ```
+
+### 结构化帮助、来源与错误恢复
+
+DSH 可在没有会话时调用 `{"command":"schema files list"}`，或 `{"command":"files list","help":true}`。`schema` 返回命令说明、CLI 用法、嵌套文件过滤器和目录查询结构、JSONL 的 `requestExample` 及 DSH 的 `toolRequestExample`；参数所属的请求顶层与 `args` 分开列出。`command` 不包含 `--help`、选项或位置参数。
+
+```json
+{"command":"files list","session":"exam","args":{"path":"/","pageSize":20},"fields":"id,name,kind,size"}
+{"command":"indexes list","session":"exam"}
+{"command":"sessions close","args":{"name":"exam"}}
+```
+
+`fields` 在顶层；案件级 `indexes list` 不接收 `imageId`；生命周期用 `args.name`，不传 `session`。DSH 的 `usage` 错误列出 `error.details.allowedFields`、`schemaRequest` 和可以确定的 `retryRequest`；需要重新输入凭据的情况只给隐藏秘密的示例。修正必须由调用方显式重试，工具不自动执行。
+
+普通 JSON 命令可加 `--with-source`，将输出封装为 `{"source":{…},"result":…}`；JSONL 使用顶层 `"withSource":true`。DSH 调查命令自动启用并将 `source` 与原始 `result` 分开返回。来源在同次命令解析后、实际执行前捕获，包含案件 ID、实际检材 ID、源检材路径、节点 ID、可解析的卷/证据内路径和读取范围；新打开的检材补充实际登记身份。来源不受 `fields` 投影影响；命名会话切换检材或克隆主机共享节点 ID 时仍可区分。无法解析路径时 `path` 为 null 并记录 `pathResolutionError`，不伪造来源。字节流命令不使用该封装，文本用 `files text get`，原始文件用 `files export`。
+
+SQLite 表记录的来源还包含 `table` 和与返回行逐一对应的 `recordKeys`，其 `addressSpace` 为 `sqlite`，`primaryKey` 为实际主键列及其值；没有可用主键时为 null。主键名即使叫 `inode` 也不属于文件系统节点空间，引用时保留数据库节点、表名和主键，不拼接为 ext4 节点 ID。
+
+DSH 超限响应不交付当前页，`recovery.restartCurrentPage` 为 true。安全的读取会提供缩小范围后的 `recovery.retryRequest`，保留原请求的 cursor/offset；不能直接沿被丢弃页面的 `pagination.nextCursor` 跳页。导出、变更和任务命令不提供重放建议。
+
+DSH 宿主提供 `tools/execute` 时，看板流程跟踪真实题目、线索刷新和写入回读：未核对写入前暂停后续调查，写入超时先读服务端实际内容，只修复已确认缺失的原题或原竞赛写入。读回核对答案 ID、值及提交的理由和证据。该跟踪不创建 MCP 连接、不自动提交、不判断答案是否正确，也不提供计时器；插件重新加载或新聊天仍从看板恢复。
 
 ## 输出与退出码
 
@@ -353,7 +373,7 @@ JSONL 将投影放在请求顶层的可选 `fields` 字符串中，而不是 `ar
 
 ### 先建案、建索引，再按文件名查找
 
-新调查先创建案件，再加载检材，让后台构建的卷索引保存在案件中；用户已指定案件时复用该案件。`tasks wait` 后检查 `indexes list`，按 `imageId` / `volumeKey` 确认所需卷为 `indexed: true`、`stale: false`、`truncated: false`。`indexes volumes list` 只提供卷与键的映射，不能证明索引已完成；缺失或过期的卷用 `indexes create --volume-key <卷键>` 构建，再等待并检查。
+新调查先创建案件，再加载检材，让后台构建的卷索引保存在案件中；用户已指定案件时复用该案件。`tasks wait` 后检查 `indexes list`，按 `imageId` / `volumeKey` 确认所需卷为 `indexed: true`、`stale: false`、`truncated: false`。`indexes volumes list` 同时返回 `indexes`：当前可查询的索引键、覆盖子树 `pathPrefix` 和 `truncated`。LVM 子卷可能由父分区索引覆盖，查询时使用该映射而非直接把节点前缀当索引键。空 `indexes` 表示没有当前已发布覆盖；缺失或过期的卷用 `indexes create --volume-key <卷键>` 构建，再等待并检查。
 
 ```text
 lovelycarve-cli -q sessions open exam
@@ -375,7 +395,7 @@ lovelycarve-cli -q --session exam indexes list
 lovelycarve-cli --session exam indexes files list --volume-key "<卷键>" --filter @find.json
 ```
 
-去掉 `pathPrefix` 查整个卷，省略 `--volume-key` 查当前检材所有已有索引的卷，各卷分别应用 `limit` / `offset`；需完整结果时按卷分页，保持过滤条件不变。该命令搜索文件名元数据，不读取文件内容；`files search` 搜索内容。索引构建失败或截断时不能把没有匹配解释为检材没有该文件。
+去掉 `pathPrefix` 查整个卷，省略 `--volume-key` 查当前检材所有已有索引的卷，各卷分别应用 `limit` / `offset`；需完整结果时按卷分页，保持过滤条件不变。该命令搜索文件名元数据，不读取文件内容；`files search` 搜索内容。没有匹配的当前索引或索引被截断时，此查询明确失败；成功查询返回的空数组才表示已查询范围内无命中。
 
 镜像内路径用 `/` 分隔。`/` 是检材的合成根，列出分区和卷（目录检材、归档等同样先显示根名称）；
 不以 `/` 开头的路径相对会话当前目录，支持 `.` 和 `..`，并按[符号链接](#符号链接)的规则跟随链接。
@@ -548,6 +568,8 @@ GFS2 / OCFS2 返回 `user.` 等原生命名空间前缀；需要日志重放的�
 
 
 ## 常驻会话
+
+升级包含来源封装的 CLI 后，使用原版本结束旧常驻会话，再用新版本创建会话；常驻传输协议已更新，JSONL 默认响应形状保持不变，来源封装按请求启用。
 
 连续取证建议先启动命名会话。后台进程保持案件、E01 句柄、读取缓存、RAID/LVM 组装卷、
 当前检材和目录；后续普通命令连接同一进程，无需重新打开检材或手写 JSONL：

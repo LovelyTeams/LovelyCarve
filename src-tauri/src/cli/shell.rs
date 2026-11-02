@@ -77,6 +77,7 @@ async fn line(exec: &Exec, context: &mut Context, words: Vec<String>) -> Result<
                     dry_run: false,
                     text: false,
                     fields: None,
+                    with_source: false,
                 },
             )
             .await?;
@@ -121,6 +122,7 @@ async fn line(exec: &Exec, context: &mut Context, words: Vec<String>) -> Result<
                         dry_run: invocation.dry_run,
                         text: invocation.text,
                         fields: invocation.fields.clone(),
+                        with_source: invocation.with_source,
                     },
                 )
                 .await?;

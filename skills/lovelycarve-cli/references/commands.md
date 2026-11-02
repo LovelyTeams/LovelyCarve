@@ -378,14 +378,14 @@ FileVault 2（CoreStorage）
 - `lovelycarve-cli indexes delete --volume-key <string> [--force]`
   删除卷索引
 - `lovelycarve-cli indexes files list [--volume-key <string>] --filter <json>`
-  按条件查询索引中的文件。用结构化过滤条件查询文件元数据索引；filter.nameGlob 按完整文件名匹配通配符（忽略大小写，支持 *、?、[abc]、[^abc]），在匹配结果上分页；用 pathPrefix 限定目录。省略 --volume-key 时依次查询全部已索引卷，各卷分别应用 limit/offset。
+  按条件查询索引中的文件。用结构化过滤条件查询完整的当前文件元数据索引；filter.nameGlob 按完整文件名匹配通配符（忽略大小写，支持 *、?、[abc]、[^abc]），在匹配结果上分页；用 pathPrefix 限定目录。实际索引键和覆盖子树见 indexes volumes list 的 indexes。缺失或截断索引明确失败，不返回空数组表示无命中。省略 --volume-key 时依次查询全部已索引卷，各卷分别应用 limit/offset。
   Keywords: find files, query metadata, filename glob, wildcard.
 - `lovelycarve-cli indexes files lookup --query <json>`
   按元数据地址查找文件节点
 - `lovelycarve-cli indexes list`
   列出案件中的卷索引
 - `lovelycarve-cli indexes volumes list`
-  列出检材中的卷与索引键。返回卷与 volumeKey 的映射；不代表索引已就绪，完成状态用 indexes list 查看。
+  列出检材中的卷与索引键。返回卷与 volumeKey 的映射，indexes 列出当前可用的索引键、子树 pathPrefix 和 truncated；LVM 子卷可能被父分区索引覆盖。空 indexes 表示没有当前索引，案件完整状态用 indexes list 查看。
 
 ## ios-backups
 
@@ -573,7 +573,7 @@ NTFS 卷影副本
   - `lovelycarve-cli complete zsh >> ~/.zshrc`: 安装 zsh 补全（重开终端后生效）
   - `lovelycarve-cli complete fish > ~/.config/fish/completions/lovelycarve-cli.fish`: 安装 fish 补全
 - `lovelycarve-cli schema [command…] [--list]`
-  查看命令的后端请求结构。输出生成命令发送的后端请求：operationId、IPC 命令名与参数（API 名称、类型、是否必填、说明）。--list 列出全部。
+  查看命令的后端请求结构。输出命令说明、完整结构化请求示例、operationId、IPC 参数和支持的嵌套查询结构；区分顶层字段与 args。--list 列出全部。
   - `lovelycarve-cli schema images open`: 查看 images open 发送的后端请求
   - `lovelycarve-cli schema --list`: 列出全部生成命令的请求结构
 - `lovelycarve-cli session [--jobs <number>]`

@@ -142,6 +142,11 @@ impl Command {
     /// Validate JSON inputs against the same catalogue used for command-line
     /// options, before dry-run, evidence loading or handwritten handlers.
     pub fn validate(&self, values: &Map<String, Value>) -> Result<(), CliError> {
+        self.validate_values(values)
+            .map_err(|error| super::schema::usage(self, error))
+    }
+
+    fn validate_values(&self, values: &Map<String, Value>) -> Result<(), CliError> {
         for (name, value) in values {
             let param = self
                 .param(name)

@@ -63,6 +63,7 @@ pub struct Request<'a> {
     pub dry_run: bool,
     pub text: bool,
     pub fields: Option<String>,
+    pub with_source: bool,
 }
 
 /// A path inside the image, resolved to its node.
@@ -383,6 +384,11 @@ impl Exec {
         request: Request<'_>,
     ) -> Result<Executed, CliError> {
         let command = request.command;
+        if request.with_source && command.raw_output {
+            return Err(CliError::invalid(
+                "--with-source 仅封装 JSON；原始字节用 files export，文本用 files text get",
+            ));
+        }
         let fields = super::projection::parse(request.fields.as_deref())?;
         super::projection::validate(command, &fields)?;
         if let Some(zone) = request.timezone.as_deref().or(context.timezone.as_deref()) {
@@ -498,14 +504,17 @@ impl Exec {
                 values,
                 request.text,
                 request.timezone.as_deref(),
+                request.with_source,
             )
             .await
-            .and_then(|output| found(command, &subject, output))
-            .and_then(|output| {
+            .and_then(|(output, source)| {
+                found(command, &subject, output).map(|output| (output, source))
+            })
+            .and_then(|(output, source)| {
                 // Judge the whole result: a projection may leave out the fields.
                 let incomplete = incomplete::check(command, &output);
                 Ok(Executed {
-                    output: super::projection::apply(output, &fields)?,
+                    output: super::source::wrap(super::projection::apply(output, &fields)?, source),
                     incomplete,
                 })
             });
@@ -522,7 +531,8 @@ impl Exec {
         mut values: Map<String, Value>,
         text: bool,
         timezone: Option<&str>,
-    ) -> Result<Output, CliError> {
+        with_source: bool,
+    ) -> Result<(Output, Option<Value>), CliError> {
         let mut target = None;
         // RAID operates on all loaded images and has no imageId parameter,
         // but an explicitly configured initial evidence must still be opened.
@@ -567,17 +577,29 @@ impl Exec {
                 }
             }
         }
+        let mut source = if with_source {
+            Some(super::source::capture(self, command, &values, target.as_ref()).await?)
+        } else {
+            None
+        };
         let output = match command.ipc_command.as_deref() {
             Some(ipc) => {
                 match generated::dispatch(&self.host, &self.state, ipc, values.clone()).await {
                     Ok(output) => output,
                     Err(error) => {
-                        return Err(match (ipc, &target, values.get("imageId")) {
+                        let mut error = match (ipc, &target, values.get("imageId")) {
                             ("fs_export", Some(target), Some(Value::String(image_id))) => {
                                 self.directory_export(image_id, target, error).await
                             }
                             _ => error,
-                        })
+                        };
+                        if let Some(source) = &source {
+                            let details = error.details.get_or_insert_with(|| json!({}));
+                            if let Some(details) = details.as_object_mut() {
+                                details.insert("source".into(), source.clone());
+                            }
+                        }
+                        return Err(error);
                     }
                 }
             }
@@ -591,7 +613,10 @@ impl Exec {
             None => native::run(self, context, command, values.clone(), target, text).await?,
         };
         self.after(context, command, &values, &output);
-        super::timezone::render(self, context, command, &values, timezone, output).await
+        super::source::completed(&mut source, command, &output);
+        let output =
+            super::timezone::render(self, context, command, &values, timezone, output).await?;
+        Ok((output, source))
     }
 
     /// Resolve the command's node parameter from `path` when it was not given.

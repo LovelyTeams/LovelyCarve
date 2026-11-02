@@ -29,6 +29,8 @@ pub(super) struct Request {
     timezone: Option<String>,
     #[serde(default)]
     fields: Option<String>,
+    #[serde(default)]
+    with_source: bool,
     id: String,
     command: String,
     #[serde(default)]
@@ -398,6 +400,7 @@ pub(super) async fn json_lines(
             Run {
                 timezone: request.timezone,
                 fields: request.fields,
+                with_source: request.with_source,
                 command,
                 values,
                 ask: Vec::new(),

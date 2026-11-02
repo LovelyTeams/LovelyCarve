@@ -258,6 +258,8 @@ After checking the selected volume and its diagnostics:
 {"id":"roots","command":"files list"}
 ```
 
+For metadata queries, inspect `indexes volumes list`'s `indexes` array for the actual published index key and its `pathPrefix`. A logical volume such as `lvm:2:1` can be covered by `part:2` with `/root/` as the subtree. Copy the returned mapping; the filesystem volume key and index key need not be equal. Empty `indexes` means no current published coverage. `indexes files list` fails explicitly for missing or truncated indexes; only a successful complete query can return an empty list of matches.
+
 ## Linux and PVE versions
 
 Use the system/root volume first; add data disks only if the root volume needs them. Discover the volume name with `files list --path /`, navigate any LVM partition, and copy returned paths or node IDs. After assembly, confirm the selected image and root entry again. A cloned PV UUID is not proof that two host images contain identical files. Verify each requested host separately.
@@ -265,7 +267,7 @@ Use the system/root volume first; add data disks only if the root volume needs t
 - **PVE application version:** `/var/lib/dpkg/status`, with `Package: pve-manager`, `Status: install ok installed`, and its exact `Version`. `proxmox-ve` is a separate metapackage; neither Debian's `/etc/os-release` nor a kernel filename establishes the pve-manager version.
 - **Installed kernel release:** list `/boot` for `vmlinuz-*` and `/lib/modules` (or its resolved `/usr/lib/modules` target); correlate exact release strings with installed `proxmox-kernel-*` / older `pve-kernel-*` packages. Distinguish the kernel release from the package's `Version` and helper/metapackage versions.
 - **Boot selection:** inspect `/boot/grub/grub.cfg` and, when needed, saved boot state or EFI entries. A default entry, a symlink or a single installed kernel supports an installed/configured conclusion; it does not prove the kernel running at acquisition. Runtime claims need a timestamped boot record, memory or live collection from the evidence host, not the analyst's `uname`.
-- Read only enough to answer the question and resolve conflicts. Follow `nextCursor` before calling a directory listing complete. An empty index list means no published index, not a complete index. Known-path file reads can still succeed; check/build a specific volume index only for operations that require it.
+- Read only enough to answer the question and resolve conflicts. Follow `nextCursor` before calling a directory listing complete. An empty index list means no published index, not a complete index. The reader can read known paths without an index, but this investigation workflow still verifies required indexes before reading; report unsupported volumes separately.
 - `/etc/pve` is a runtime pmxcfs mount and can be empty offline; cluster configuration may be in `/var/lib/pve-cluster/config.db` and `/etc/corosync/corosync.conf`. An empty mountpoint is not proof that the cluster had no configuration.
 - Binary journal files, compressed logs and kernel images require appropriate parsers. `files text get` finding no string does not establish absence, compression type or lack of support for that format. Do not decode megabytes of binary data to answer an installed-version question.
 

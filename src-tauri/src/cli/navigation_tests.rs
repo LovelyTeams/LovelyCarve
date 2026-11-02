@@ -34,6 +34,7 @@ async fn execute(exec: &Exec, context: &mut Context, path: &str, args: Value) ->
                 dry_run: false,
                 text: false,
                 fields: None,
+                with_source: false,
             },
         )
         .await

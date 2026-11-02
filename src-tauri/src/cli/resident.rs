@@ -21,6 +21,7 @@ use super::{
 
 pub(super) use client::forward;
 pub(super) use server::{prepare, serve, Prepared};
+pub(super) const PROTOCOL_VERSION: u32 = protocol::VERSION;
 
 pub(super) fn selected(globals: &Globals) -> Option<String> {
     globals
@@ -67,6 +68,12 @@ pub(super) fn manage(globals: &Globals, invocation: &Invocation) -> Result<i32, 
     };
     let fields = super::projection::parse(invocation.fields.as_deref())?;
     let output = super::projection::apply(Output::json(result), &fields)?;
+    let output = super::source::wrap(
+        output,
+        invocation
+            .with_source
+            .then(|| json!({"operationId":invocation.command.operation_id})),
+    );
     output::print_output(output, invocation.command, globals.quiet, false)?;
     Ok(0)
 }

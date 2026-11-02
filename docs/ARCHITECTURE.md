@@ -123,6 +123,10 @@ src-tauri/src/
 
 命令函数不直接依赖 Tauri：状态、应用句柄、二进制响应和媒体租约所有者分别使用 `host::State`、`host::AppHandle`、`host::Response` 和 `host::LeaseOwner`，函数以 `#[cfg_attr(feature = "desktop", tauri::command)]` 标注。`desktop` 特性（`tauri.conf.json` 的 `build.features` 为 `tauri dev/build` 开启）引入 tauri、对话框与文件插件和 tauri-build，并由 `host/tauri_adapter.rs` 为这些类型实现 `CommandArg` / `IpcResponse`：状态取自 Tauri 托管状态，`AppHandle` 把事件转给 Tauri `emit` 并提供应用数据目录，`LeaseOwner` 对应调用窗口（窗口关闭即租约结束），`Response` 以原始字节返回。CLI 构建不启用该特性，`AppHandle` 的事件写到 `session --events` 的标准错误或直接丢弃，`LeaseOwner` 归进程所有。两种构建使用同一个应用数据目录，目录名取自 `tauri.conf.json` 的 identifier（构建脚本导出为 `LOVELYCARVE_APP_IDENTIFIER`）。命令需要新的宿主能力时扩展 `host` 类型，不在命令中引用 Tauri 类型。
 
+CLI 的可选 `--with-source` / JSONL `withSource` 在解析检材与路径后、命令执行前捕获来源，随后独立于条目投影封装 `source/result`；常驻会话传递同一请求标记，客户端先拆开原结果检查完整性、投影，再封装来源。来源不通过命令完成后的上下文查询猜测。SQLite 主键另标记 `sqlite` 地址空间，保留数据库节点和表名。DSH 默认启用来源封装，并在输出超限时保留原页位置生成只读重试建议。
+
+`filedb_volumes` 的 `indexes` 列出当前已发布索引对各文件系统的覆盖：直接卷索引的 `pathPrefix` 为 null，父分区内逻辑卷的覆盖由索引中的实际节点路径定位。`filedb_query_files` 区分缺失索引与零命中，并在查询前验证索引身份和完整性；截断索引不能产生完整的否定结论。
+
 CLI JSONL 调度位于 `cli/session.rs`。`session --jobs N` 使用有界输入队列和查询工作线程，主协调器统一发布按请求 ID 关联的 JSON 响应；stdin 等待不会阻塞完成结果输出。并发查询复制派发时的会话上下文，案件／检材／目录切换及其他未标记并发的命令先等待已有查询完成。结构化 `$ref` 等待先前请求结果，EOF 收齐请求后再等待后台任务。新增命令默认是屏障；确认其生命周期与并发安全后，才在 `cli/commands.toml` 中标记 `concurrent = true`，并通过命令目录的 `concurrent` 字段公开。
 
 `src-tauri/examples/` 按用途分类，所有 example 目标在 Cargo 中显式声明，通过 `just run-example <名称>` 调用；`just check-examples` 检查这些目标，用法见 [后端探针](../src-tauri/examples/README.md)。新增模块使用 `<name>.rs` 加 `<name>/`，不新增 `mod.rs`。

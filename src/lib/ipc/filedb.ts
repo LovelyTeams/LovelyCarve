@@ -11,6 +11,8 @@ export interface FiledbVolume {
   fsPrefix: string;
   kind: string;
   size: number;
+  /** Current published indexes that cover this filesystem; empty means unindexed. */
+  indexes: { volumeKey: string; pathPrefix: string | null; truncated: boolean }[];
 }
 
 /** Filter for `filedbQueryFiles`. Text needles are matched case-insensitively

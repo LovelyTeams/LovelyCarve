@@ -49,7 +49,7 @@ pub struct ChildCounts {
 /// [`FileFilter::normalized`] so the generated SQL compares directly against
 /// the `_low` columns.
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct FileFilter {
     pub name_prefix: Option<String>,
     pub name_contains: Option<String>,

@@ -90,6 +90,7 @@ pub fn capabilities() -> Result<Value, CliError> {
         "output": {"json": "compact for redirected stdout or coding agents; pretty at human terminals",
             "agentModeEnvironment": "LOVELYCARVE_AGENT=1", "agentMode": super::interactive::is_agentic(),
             "fieldsOption": "--fields", "fields": "comma-separated entry paths; dot paths preserve nesting",
+            "sourceOption": "--with-source", "sourceEnvelope": "{source,result}; source is captured from the resolved request",
             "paginationFirst": true, "filesListDefaultPageSize": 500, "agentFilesListDefaultPageSize": 50},
         "commands": catalog.commands.len(),
         "exitCodes": {"success": 0, "failure": 1, "incompleteResult": super::incomplete::EXIT_INCOMPLETE, "interrupted": 130},
@@ -100,7 +101,7 @@ pub fn capabilities() -> Result<Value, CliError> {
         "observability": {"eventsOption": "--events", "eventsStream": "stderr-jsonl", "heartbeatSeconds": 5,
             "progressStream": "stderr", "progressWithRedirectedStdout": true, "residentBackendEvents": true},
         "residentSessions": {
-            "protocolVersion": 3,
+            "protocolVersion": super::resident::PROTOCOL_VERSION,
             "open": "sessions open <name>", "attach": "sessions attach <name>",
             "close": "sessions close <name>", "option": "--session <name>",
             "environment": "LOVELYCARVE_SESSION", "execution": "serial",
@@ -109,7 +110,7 @@ pub fn capabilities() -> Result<Value, CliError> {
         "session": {
             "protocol": "jsonl", "protocolVersion": 3,
             "request": {"id": "string", "command": "<collection>… <verb>", "args": "object keyed by API parameter name", "timezone": "optional display timezone override",
-                "fields": "optional comma-separated list entry field paths", "output": "optional file path for raw content", "force": "boolean, confirms destructive commands", "dryRun": "boolean"},
+                "fields": "optional comma-separated list entry field paths", "withSource":"optional boolean, wraps result with source identity", "output": "optional file path for raw content", "force": "boolean, confirms destructive commands", "dryRun": "boolean"},
             "defaultJobs": 1, "maxJobs": 64,
             "responseOrder": "completion", "correlationField": "id",
             "references": "prior-successful-result-json-pointer",

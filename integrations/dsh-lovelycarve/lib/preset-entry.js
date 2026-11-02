@@ -1,9 +1,14 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createTool } from './tools.js';
+import { installBoardWorkflow } from './board.js';
 
 const PROTOCOL = `
 以当前问题决定分析深度。先加载 lovelycarve-cli skill，再优先通过 lovelycarve 工具调用 CLI；command 用完整命令路径，args 用 schema 的 API 参数名。工具自动设置 LOVELYCARVE_AGENT=1，返回请求 ID、退出码、result、error、warning 和 outputTruncated。一次只提交可独立执行的请求，检查返回结果后再执行依赖步骤。仅在工具不能覆盖的调用中使用 shell，Windows 用 PowerShell 的 & 调用并引用完整路径，保持运行库和资源相邻。
+
+发现用法直接调用 {"command":"schema files list"} 或 {"command":"files list","help":true}，无需会话；command 不写 --help 或位置参数。完整列表请求为 {"command":"files list","session":"exam","args":{"path":"/","pageSize":20},"fields":"id,name,kind,size"}。fields 是顶层字段，indexes list 是案件级且不收 imageId，关闭用 {"command":"sessions close","args":{"name":"exam"}}。usage 错误先查看 allowedFields、schemaRequest 与 retryRequest，再显式重试修正。
+
+使用每次结果的 source 引用实际源检材、卷、文件节点和路径，不用会话后来选择的主机代替；SQLite recordKeys 的主键属于 sqlite 地址空间，不能拼成文件系统节点。超限时当前页未交付，按 recovery.retryRequest 保留原 cursor/offset 缩小范围重读，不沿丢弃页面的 nextCursor 跳页。
 
 用户使用 forensic-board MCP 解题时，先读 skill 的 references/forensic-board.md，复用宿主实际连接的 MCP 工具；看板管理题目、候选与共享线索，CLI 负责读证分析。开始或恢复先精确核对竞赛，读题单和相关线索，每题 get_question/list_clues 刷新后选证。只导入题目时，导入并回读后结束。看板数字 question_id 与 CLI 案件、imageId、volumeKey、节点 ID 分开；不依赖 LovelySkills 专用 dfir_* 工具或自动回读钩子，不声称本模式提供这些能力。
 
@@ -35,6 +40,7 @@ export function apply(ctx, config = {}) {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const executable = resolve(root, config.cliRelativePath ?? `skills/lovelycarve-cli/bin/lovelycarve-cli${process.platform === 'win32' ? '.exe' : ''}`);
   ctx.tools.register(createTool(ctx, executable));
+  installBoardWorkflow(ctx, config.boardTools);
   ctx.systemPrompt.section({
     name: 'lovelycarve:protocol',
     order: 55,
