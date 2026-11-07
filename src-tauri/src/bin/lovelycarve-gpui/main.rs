@@ -5,8 +5,7 @@
 //! directly (see `backend.rs`); backend events reach the UI thread through
 //! the event hub. Cases, evidence tabs, the task center and the pages
 //! (image information, files, search, timeline, recovery and analysis
-//! results) mirror the Tauri frontend; the native-type preview is not part
-//! of this app.
+//! results) mirror the Tauri frontend.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod analysis;
@@ -44,6 +43,19 @@ fn init_tracing() {
 }
 
 fn main() {
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    if let Some(result) = files::native::run_child_if_requested() {
+        if let Err(error) = result {
+            println!("{error}");
+            std::process::exit(1);
+        }
+        return;
+    }
+    // GPUI's DirectComposition target paints above HWND children. Use its
+    // HWND swap chain so the embedded Outside In control can be visible.
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    std::env::set_var("GPUI_DISABLE_DIRECT_COMPOSITION", "1");
+
     init_tracing();
     let (backend, events) = match backend::Backend::start() {
         Ok(started) => started,
@@ -68,6 +80,8 @@ fn main() {
                 tracing::warn!("brand font unavailable: {error}");
             }
             cx.set_global(prefs::Preferences::load());
+            #[cfg(all(windows, target_arch = "x86_64"))]
+            cx.set_global(files::native::ViewerLayer::default());
             cx.set_global(app_backend);
             events::EventHub::install(events, cx);
             tasks::TaskStore::install(cx);

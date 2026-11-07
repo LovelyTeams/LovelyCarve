@@ -93,7 +93,11 @@ just --dry-run pack           # 展开依赖与命令，但不执行
 
 Cargo 默认特性为空。`desktop` 特性引入 Tauri、对话框与文件插件和 tauri-build，桌面二进制 `LovelyCarve` 只在该特性下构建：`tauri dev` / `tauri build` 通过 `tauri.conf.json` 的 `build.features` 开启，`just build` / `build-full` 显式传入。`lovelycarve-cli` 不启用它，是不链接 Tauri、WebView 或 GTK 的独立程序。`just check` 和 `just clippy` 依次检查独立 CLI 与桌面两种配置；`just test` 在不含桌面运行时的配置下运行后端测试。新增后端命令还要在 `src-tauri/src/cli/commands.toml` 中映射为 CLI 命令，命名规则不满足时构建脚本报错，规则见[架构说明](ARCHITECTURE.md#命令行与桌面只读挂载)。
 
-`gpui` 特性构建实验性的原生界面 `lovelycarve-gpui`（`src-tauri/src/bin/lovelycarve-gpui/`）。它使用 GPUI Kit 组件，在进程内直接调用 `commands/` 中的命令，不启用 `desktop`，也不依赖 Tauri、WebView 或前端构建；`*-gpui` 配方传入 `--no-default-features --features gpui`。Windows 下构建脚本把 `src-tauri/binaries` 中的 Dokan、OpenSSL 与 VC++ 运行库复制到可执行文件旁。程序参数写在 `--` 之后，例如 `just dev-gpui -- --case <案件目录> <检材路径>`：`--case` 打开该目录的案件，目录中还没有案件时以目录名新建；其余参数作为检材路径加载。界面暂不提供原类型视图和文件夹大小树图；时间线的事件类型筛选与热力图、插件任务的暂停与重新分析、应用日志页和案件管理中的卷索引重建仍只在 Tauri 版中提供。程序以调用者权限运行（与 Tauri 版相同），读取物理磁盘时需以管理员身份启动。GPUI 依赖为 `serde_json` 开启 `preserve_order` 与 `raw_value`，这一构建中后端动态生成的 JSON 对象按插入顺序输出键。
+`gpui` 特性构建实验性的原生界面 `lovelycarve-gpui`（`src-tauri/src/bin/lovelycarve-gpui/`）。它使用 GPUI Kit 组件，在进程内直接调用 `commands/` 中的命令，不启用 `desktop`，也不依赖 Tauri、WebView 或前端构建；`*-gpui` 配方传入 `--no-default-features --features gpui`。Windows 下构建脚本把 `src-tauri/binaries` 中的 Dokan、OpenSSL 与 VC++ 运行库复制到可执行文件旁。程序参数写在 `--` 之后，例如 `just dev-gpui -- --case <案件目录> <检材路径>`：`--case` 打开该目录的案件，目录中还没有案件时以目录名新建；其余参数作为检材路径加载。界面暂不提供文件夹大小树图；时间线的事件类型筛选与热力图、插件任务的暂停与重新分析、应用日志页和案件管理中的卷索引重建仍只在 Tauri 版中提供。程序以调用者权限运行（与 Tauri 版相同），读取物理磁盘时需以管理员身份启动。GPUI 依赖为 `serde_json` 开启 `preserve_order` 与 `raw_value`，这一构建中后端动态生成的 JSON 对象按插入顺序输出键。
+
+GPUI 的「原类型视图」在详情栏中显示源码。源码按文件名或扩展名识别，通过 GPUI Kit 只读编辑器显示行号、缩进线、查找和 Tree-sitter 语法高亮。无对应语法时显示纯文本，单次预览读取文件开头最多 1 MiB，并提示截断及解码错误。
+
+Windows x64 的其他文件类型由外部安装的 Oracle Outside In Viewer 8.5.7 预览。缺少运行库时，通过「选择 Viewer 目录」保存包含 `sccvw.dll`、`oswin64.dll` 及其余运行库和资源的完整目录。未保存目录时，依次查找 `LOVELYCARVE_OUTSIDE_IN_DIR` 和可执行文件旁的 `viewer` 目录。Viewer 由独立进程承载，通过 Win32 子窗口嵌入 GPUI，读取后端准备的检材临时副本，运行库由使用者提供。
 
 `fmt` 覆盖主 crate、插件与维护中的读取器。公共读取接口改动后运行 `check-examples`。参数含空格时，需要保留一层传给子 shell 的引号：
 

@@ -40,6 +40,8 @@ pub struct Preferences {
     pub font_size: f32,
     pub sidebar_collapsed: bool,
     pub welcome_motion: bool,
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    pub outside_in_directory: Option<PathBuf>,
 }
 
 impl Default for Preferences {
@@ -49,6 +51,8 @@ impl Default for Preferences {
             font_size: 14.0,
             sidebar_collapsed: false,
             welcome_motion: true,
+            #[cfg(all(windows, target_arch = "x86_64"))]
+            outside_in_directory: None,
         }
     }
 }

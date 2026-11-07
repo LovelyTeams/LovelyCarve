@@ -512,11 +512,13 @@ impl TableDelegate for FileTable {
         row_ix: usize,
         menu: PopupMenu,
         _: &mut Window,
-        _: &mut Context<TableState<Self>>,
+        _cx: &mut Context<TableState<Self>>,
     ) -> PopupMenu {
         let Some(node) = self.rows.get(row_ix).cloned() else {
             return menu;
         };
+        #[cfg(all(windows, target_arch = "x86_64"))]
+        super::native::ViewerLayer::track_file_menu(&menu, _cx);
         let browser = self.browser.clone();
         let targets = self.targets_for(&node);
         let open_node = node.clone();

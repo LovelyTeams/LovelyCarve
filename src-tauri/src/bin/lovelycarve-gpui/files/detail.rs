@@ -1,5 +1,9 @@
 //! The detail pane of the file list: metadata, decoded text and hex bytes of
 //! the selected node.
+#[cfg(all(windows, target_arch = "x86_64"))]
+mod native;
+mod source;
+
 use gpui_kit::{
     component::{
         button::{Button, ButtonVariants as _},
@@ -22,7 +26,10 @@ use lovelycarve_lib::{
         app_error::AppError, filesystem::digests as digest_commands,
         preview::filesystem_preview as preview_commands,
     },
-    core::filesystem::tree::fs_tree::{FsNode, FsStat, NodeKind},
+    core::{
+        catalog::flat_query::flat_ext_of,
+        filesystem::tree::fs_tree::{FsNode, FsStat, NodeKind},
+    },
     host::State,
 };
 use serde_json::Value;
@@ -30,6 +37,7 @@ use serde_json::Value;
 use super::{
     hex::{HexView, WINDOW_BYTES},
     icons::node_icon,
+    source::{source_language, SourceLanguage},
     table::{created_time, kind_label, tag_chip, FILE_TAGS},
     FileBrowser,
 };
@@ -47,6 +55,7 @@ enum DetailTab {
     Info,
     Text,
     Hex,
+    Native,
 }
 
 enum TextState {
@@ -71,6 +80,10 @@ pub struct FileDetail {
     text: TextState,
     text_scroll: UniformListScrollHandle,
     hex: Entity<HexView>,
+    source_language: Option<SourceLanguage>,
+    source: source::SourcePreview,
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    native: native::NativePreview,
     offset_input: Entity<InputState>,
     /// The node's digests kept with the case (`StoredDigest` JSON).
     digest: Option<Value>,
@@ -109,6 +122,10 @@ impl FileDetail {
             text: TextState::Idle,
             text_scroll: UniformListScrollHandle::new(),
             hex,
+            source_language: None,
+            source: source::SourcePreview::Idle,
+            #[cfg(all(windows, target_arch = "x86_64"))]
+            native: native::NativePreview::Idle,
             offset_input,
             digest: None,
             generation: 0,
@@ -166,6 +183,17 @@ impl FileDetail {
         self.path = path;
         self.stat = None;
         self.text = TextState::Idle;
+        self.source = source::SourcePreview::Idle;
+        self.source_language = self
+            .node
+            .as_ref()
+            .filter(|node| node.kind == NodeKind::File)
+            .and_then(|node| source_language(&node.name, &flat_ext_of(node)));
+        if self.tab == DetailTab::Native && !self.has_native_tab() {
+            self.tab = DetailTab::Info;
+        }
+        #[cfg(all(windows, target_arch = "x86_64"))]
+        self.close_native(cx);
         self.digest = None;
         let (node_id, size) = match &self.node {
             Some(node) if node.kind != NodeKind::Dir => (Some(node.id.clone()), node.size),
@@ -181,6 +209,10 @@ impl FileDetail {
     }
 
     fn select_tab(&mut self, tab: DetailTab, cx: &mut Context<Self>) {
+        #[cfg(all(windows, target_arch = "x86_64"))]
+        if tab != DetailTab::Native {
+            self.close_native(cx);
+        }
         self.tab = tab;
         if tab == DetailTab::Text && matches!(self.text, TextState::Idle) {
             self.load_text(None, cx);
@@ -190,6 +222,10 @@ impl FileDetail {
 
     fn readable(&self) -> Option<&FsNode> {
         self.node.as_ref().filter(|node| node.kind != NodeKind::Dir)
+    }
+
+    fn has_native_tab(&self) -> bool {
+        cfg!(all(windows, target_arch = "x86_64")) || self.source_language.is_some()
     }
 
     fn load_stat(&mut self, cx: &mut Context<Self>) {
@@ -615,7 +651,7 @@ impl FileDetail {
 }
 
 impl Render for FileDetail {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let close_browser = self.browser.clone();
         let close = Button::new("close-file-preview")
             .ghost()
@@ -650,7 +686,29 @@ impl Render for FileDetail {
                 .into_any_element(),
             DetailTab::Text => self.render_text(cx).into_any_element(),
             DetailTab::Hex => self.render_hex(cx).into_any_element(),
+            DetailTab::Native => match self.source_language {
+                Some(language) => self.render_source(language, window, cx),
+                None => {
+                    #[cfg(all(windows, target_arch = "x86_64"))]
+                    {
+                        self.render_native(window, cx)
+                    }
+                    #[cfg(not(all(windows, target_arch = "x86_64")))]
+                    {
+                        ui::error_text("此文件没有可用的原类型预览", cx).into_any_element()
+                    }
+                }
+            },
         };
+        let tabs = TabBar::new("detail-tabs")
+            .px_2()
+            .underline()
+            .child(Tab::new().label("详细信息"))
+            .child(Tab::new().label("文本").disabled(!readable))
+            .child(Tab::new().label("十六进制").disabled(!readable))
+            .when(self.has_native_tab(), |tabs| {
+                tabs.child(Tab::new().label("原类型视图").disabled(!readable))
+            });
         v_flex()
             .size_full()
             .child(
@@ -688,25 +746,21 @@ impl Render for FileDetail {
                     .child(close),
             )
             .child(
-                TabBar::new("detail-tabs")
-                    .px_2()
-                    .underline()
-                    .child(Tab::new().label("详细信息"))
-                    .child(Tab::new().label("文本").disabled(!readable))
-                    .child(Tab::new().label("十六进制").disabled(!readable))
-                    .selected_index(match tab {
-                        DetailTab::Info => 0,
-                        DetailTab::Text => 1,
-                        DetailTab::Hex => 2,
-                    })
-                    .on_click(cx.listener(|this, index: &usize, _, cx| {
-                        let tab = match index {
-                            1 => DetailTab::Text,
-                            2 => DetailTab::Hex,
-                            _ => DetailTab::Info,
-                        };
-                        this.select_tab(tab, cx);
-                    })),
+                tabs.selected_index(match tab {
+                    DetailTab::Info => 0,
+                    DetailTab::Text => 1,
+                    DetailTab::Hex => 2,
+                    DetailTab::Native => 3,
+                })
+                .on_click(cx.listener(|this, index: &usize, _, cx| {
+                    let tab = match index {
+                        1 => DetailTab::Text,
+                        2 => DetailTab::Hex,
+                        3 => DetailTab::Native,
+                        _ => DetailTab::Info,
+                    };
+                    this.select_tab(tab, cx);
+                })),
             )
             .child(div().flex_1().min_h_0().child(body))
             .into_any_element()

@@ -1,11 +1,13 @@
 //! 文件列表: the directory tree, the paged listing of the current directory
-//! and the detail pane of the selected node. The native-type preview is not
-//! part of this app; text and hex views cover file contents.
+//! and the detail pane of the selected node.
 mod detail;
 mod export;
 mod filter_bar;
 mod hex;
 mod icons;
+#[cfg(all(windows, target_arch = "x86_64"))]
+pub(crate) mod native;
+mod source;
 mod table;
 mod tree;
 
@@ -268,6 +270,8 @@ impl FileBrowser {
 
     fn close_preview(&mut self, cx: &mut Context<Self>) {
         self.show_detail = false;
+        #[cfg(all(windows, target_arch = "x86_64"))]
+        self.detail.update(cx, |detail, cx| detail.close_native(cx));
         cx.notify();
     }
 
@@ -590,8 +594,12 @@ impl FileBrowser {
                         "显示详情"
                     })
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.show_detail = !this.show_detail;
-                        cx.notify();
+                        if this.show_detail {
+                            this.close_preview(cx);
+                        } else {
+                            this.show_detail = true;
+                            cx.notify();
+                        }
                     })),
             )
     }

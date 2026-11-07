@@ -564,7 +564,7 @@ impl Render for Workspace {
                     .child(hub.clone()),
             )
         });
-        v_flex()
+        let workspace = v_flex()
             .id("workspace")
             .key_context(CONTEXT)
             .track_focus(&self.focus)
@@ -594,6 +594,10 @@ impl Render for Workspace {
             .text_color(cx.theme().foreground)
             .child(self.render_title_bar(cx))
             .child(v_flex().flex_1().min_h_0().w_full().child(content))
-            .children(task_hub)
+            .children(task_hub);
+        #[cfg(all(windows, target_arch = "x86_64"))]
+        let workspace =
+            workspace.child(crate::files::native::finish_frame(self.task_hub.is_some()));
+        workspace
     }
 }

@@ -148,7 +148,9 @@ impl FileBrowser {
                     .ghost()
                     .icon(Icon::new(gpui_kit::assets::IconName::Columns3))
                     .label("列设置")
-                    .dropdown_menu(move |menu, _, _| {
+                    .dropdown_menu(move |menu, _, _cx| {
+                        #[cfg(all(windows, target_arch = "x86_64"))]
+                        super::native::ViewerLayer::track_file_menu(&menu, _cx);
                         options.iter().fold(menu, |menu, &(key, label, visible)| {
                             let table = table.clone();
                             menu.item(PopupMenuItem::new(label).checked(visible).on_click(

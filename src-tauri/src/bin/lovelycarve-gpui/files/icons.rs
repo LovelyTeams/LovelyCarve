@@ -9,6 +9,8 @@ use lovelycarve_lib::core::{
     filesystem::tree::fs_tree::{FsNode, NodeKind},
 };
 
+use super::source::source_language;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FileIcon {
     Folder,
@@ -68,23 +70,6 @@ impl FileIcon {
     }
 
     fn for_filename(name: &str, suffix: &str) -> Self {
-        // Conventional names take priority, following Zed's stem-before-suffix
-        // convention. Type hints stay name-only, with no evidence byte reads.
-        let stem = name.trim_start_matches('.');
-        if [
-            "Makefile",
-            "Dockerfile",
-            "Containerfile",
-            "gitignore",
-            "gitattributes",
-            "editorconfig",
-            "env",
-        ]
-        .iter()
-        .any(|alias| stem.eq_ignore_ascii_case(alias))
-        {
-            return Self::Code;
-        }
         if ["README", "LICENSE", "CHANGELOG"]
             .iter()
             .any(|alias| name.eq_ignore_ascii_case(alias))
@@ -110,17 +95,8 @@ impl FileIcon {
             "db" | "db3" | "sqlite" | "sqlite3" | "mdb" | "accdb" | "edb" | "frm" | "ibd"
             | "realm" | "bcp" => Self::Database,
             "eml" | "msg" | "pst" | "ost" | "mbox" => Self::Mail,
-            "txt" | "text" | "log" | "conf" | "cfg" | "ini" | "env" | "properties" | "json"
-            | "json5" | "jsonc" | "xml" | "yaml" | "yml" | "toml" | "plist" | "js" | "mjs"
-            | "cjs" | "jsx" | "ts" | "mts" | "cts" | "tsx" | "vue" | "svelte" | "py" | "pyi"
-            | "rb" | "php" | "pl" | "lua" | "r" | "rs" | "go" | "c" | "h" | "cc" | "cpp"
-            | "cxx" | "hpp" | "hxx" | "cs" | "java" | "kt" | "kts" | "swift" | "m" | "mm"
-            | "scala" | "clj" | "ex" | "exs" | "erl" | "hs" | "dart" | "sh" | "bash" | "zsh"
-            | "fish" | "ps1" | "psm1" | "bat" | "cmd" | "sql" | "graphql" | "gql" | "proto"
-            | "html" | "htm" | "css" | "scss" | "sass" | "less" | "styl" | "dockerfile"
-            | "makefile" | "cmake" | "gradle" | "gitignore" | "gitattributes" | "editorconfig" => {
-                Self::Code
-            }
+            "txt" | "text" | "log" => Self::Code,
+            _ if source_language(name, suffix).is_some() => Self::Code,
             _ => Self::File,
         }
     }
