@@ -14,7 +14,7 @@
 
 ## 版本与构建
 
-1. 同步 `package.json`、`src-tauri/Cargo.toml` 与 `src-tauri/tauri.conf.json` 中的应用版本，依赖锁文件一并提交；插件版本按其独立的兼容要求维护。
+1. 同步 `package.json`、`src-tauri/Cargo.toml` 与 `src-tauri/tauri.conf.json` 中的应用版本，以及 `python/pyproject.toml`、`python/Cargo.toml` 和 Python 包的 `__version__`。依赖锁文件一并提交，插件版本按其独立的兼容要求维护。
 2. 按 [Keep a Changelog 0.3.0](https://keepachangelog.com/zh-CN/0.3.0/) 把 CHANGELOG 中实际纳入本次发布的 `[Unreleased]` 条目整理为 `## [版本号] - YYYY-MM-DD`，并记录格式或案件兼容性变化；未发布的内容保留在 `[Unreleased]`，没有剩余条目时保留空的 `[Unreleased]` 标题。
 3. 根据功能组合选择本地构建与打包入口：
 
@@ -23,6 +23,7 @@
 | Windows 桌面安装包 | `just build-release` | `just build-release-full` |
 | Windows 桌面便携包 | `just pack` | `just pack-full` |
 | Windows CLI 包 | `just pack-cli` | `just pack-cli-full` |
+| Windows Python wheel | `just build-python` | — |
 | 插件独立包 | `just pack-plugins` | — |
 
 `repack` / `repack-full` 复用已有的桌面产物，必须与编译特性一致；`repack-cli` 按 CLI 的实际能力选择资源。运行库、模型与插件清单由打包配置决定，不要按文件后缀猜测所需资源。
@@ -37,14 +38,14 @@ CHANGELOG 只使用实际有内容的英文分类（`Added`、`Changed`、`Depre
 
 ## 标签与发行产物
 
-把 `v<版本号>` 标签推送到对应的源码提交后，`Windows release` 工作流会先运行与 PR 相同的前端、Rust 和插件测试，再执行 `just build-release --bundles msi`、`just pack-cli`、`just smoke-cli` 与 `just pack-plugins`，上传 Windows x64 MSI、CLI ZIP、插件 `.lcpkg` 和 `SHA256SUMS.txt`，自动创建 GitHub Release。例如，应用版本同步为 `1.2.1` 并提交后：
+把 `v<版本号>` 标签推送到对应的源码提交后，`Windows release` 工作流执行 `just build-release --bundles msi`、`just pack-cli` 和 `just build-python`，把 Windows x64 MSI、CLI ZIP、Python wheel 与 `SHA256SUMS.txt` 发布到 GitHub Release。PR 测试由独立的 `Windows tests` 工作流运行。例如，版本同步为 `1.3.0` 并提交后：
 
 ```powershell
-git tag v1.2.1
-git push origin v1.2.1
+git tag v1.3.0
+git push origin v1.3.0
 ```
 
-标签的基础版本必须与三个应用清单一致；`v1.2.1-rc.1` 这类带后缀的标签发布为预发行版，`v1.2.1` 发布为正式版。已有标签不会因添加工作流而重新触发，请勿移动已发布的标签。工作流使用仓库内置的 `GITHUB_TOKEN`，发布 job 具有 `contents: write` 权限，无需另设 PAT 或个人凭据。
+标签的基础版本必须与应用和 Python 包清单一致。`v1.3.0-rc.1` 这类带后缀的标签发布为预发行版，`v1.3.0` 发布为正式版。已有标签不会因添加工作流而重新触发，请勿移动已发布的标签。发布任务通过仓库内置的 `GITHUB_TOKEN` 和 `contents: write` 权限上传 GitHub Release 产物。
 
 自动构建默认不含 QR/OCR，二进制未做代码签名；原生 GUI、安装及 Dokany 驱动仍需人工验证。完整功能构建和桌面便携包继续使用上表的本地配方。
 

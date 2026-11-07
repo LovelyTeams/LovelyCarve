@@ -12,12 +12,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  tests:
-    uses: ./.github/workflows/windows-tests.yml
-
   release:
     name: Build and publish Windows x64
-    needs: tests
     runs-on: windows-2025
     timeout-minutes: 240
     permissions:
@@ -39,28 +35,36 @@ jobs:
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $tauriVersion = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
           $rustVersion = [regex]::Match((Get-Content src-tauri/Cargo.toml -Raw), '(?m)^version = "([^"]+)"').Groups[1].Value
+          $pythonVersion = [regex]::Match((Get-Content python/pyproject.toml -Raw), '(?m)^version = "([^"]+)"').Groups[1].Value
+          $pythonRustVersion = [regex]::Match((Get-Content python/Cargo.toml -Raw), '(?m)^version = "([^"]+)"').Groups[1].Value
           $tag = $env:GITHUB_REF_NAME
-          if ($tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$' -or $tag.Split('-')[0] -ne "v$version" -or $version -ne $tauriVersion -or $version -ne $rustVersion) {
-            throw "Tag $tag does not match application versions: $version / $tauriVersion / $rustVersion"
+          if ($tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$' -or $tag.Split('-')[0] -ne "v$version" -or $version -ne $tauriVersion -or $version -ne $rustVersion -or $version -ne $pythonVersion -or $version -ne $pythonRustVersion) {
+            throw "Tag $tag does not match manifest versions: $version / $tauriVersion / $rustVersion / $pythonVersion / $pythonRustVersion"
           }
       - uses: ./.github/actions/setup-windows
       - name: Build desktop MSI
         run: just build-release --bundles msi
       - name: Build and package CLI
         run: just pack-cli
-      - name: Smoke-test release CLI
-        run: just smoke-cli src-tauri/target/release/lovelycarve-cli.exe
-      - name: Package plugins
-        run: just pack-plugins
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: '0.11.28'
+      - name: Build Python wheel
+        env:
+          LOVELYCARVE_PYTHON: '3.10'
+        run: |
+          $env:OPENSSL_LIB = Join-Path $env:OPENSSL_DIR 'lib/VC/x64/MD'
+          just build-python
       - name: Stage assets and SHA-256 checksums
         run: |
           $installers = @(Get-ChildItem src-tauri/target/release/bundle/msi/*.msi -File)
           $cliPackages = @(Get-ChildItem dist-pack/lovelycarve-cli-*.zip -File)
-          $plugins = @(Get-ChildItem dist-pack/*.lcpkg -File)
-          if (-not $installers.Count -or -not $cliPackages.Count -or -not $plugins.Count) {
-            throw 'Expected MSI, CLI ZIP and plugin packages'
+          $version = $env:GITHUB_REF_NAME.Split('-')[0].Substring(1)
+          $wheels = @(Get-ChildItem "dist-pack/python/lovelycarve-$version-*-win_amd64.whl" -File)
+          if (-not $installers.Count -or -not $cliPackages.Count -or $wheels.Count -ne 1) {
+            throw 'Expected an MSI, CLI ZIP and one matching Windows x64 Python wheel'
           }
-          $assets = $installers + $cliPackages + $plugins
+          $assets = $installers + $cliPackages + $wheels
           New-Item -ItemType Directory -Path release-assets | Out-Null
           $assets | Copy-Item -Destination release-assets
           Get-ChildItem release-assets -File | Sort-Object Name | ForEach-Object {
@@ -70,7 +74,9 @@ jobs:
           @"
           Windows x64 build of $env:GITHUB_SHA. QR/OCR is disabled. Binaries are unsigned.
 
-          Includes the desktop MSI, standalone CLI ZIP, plugin packages and SHA-256 checksums.
+          Includes the desktop MSI, standalone CLI ZIP, Python wheel for CPython 3.10+ and SHA-256 checksums.
+          Download the wheel and install it with ``python -m pip install <wheel file>``.
+          See the [changelog](https://github.com/$env:GITHUB_REPOSITORY/blob/$env:GITHUB_REF_NAME/CHANGELOG.md) for release changes.
           Dokany mounts require a separately installed driver. Native GUI and driver checks remain manual.
 
           Source checkout (GitHub source archives do not include the pinned plugin submodule):

@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-07
+
 ### Added
 
 - CLI 与 DSH 新增结构化帮助、合法参数和显式修正请求；来源封装绑定实际检材及 SQLite 主键，超限读取保留原页重试位置；DSH 看板流程跟踪真实提交和回读。
@@ -311,7 +313,8 @@
 - 可选二维码识别与 OCR 构建；默认轻量构建关闭这些功能，完整构建通过 `*-full` 配方启用。
 - 源码构建、Windows 安装包与便携包、CLI 和插件的本地打包配方，以及使用、开发、接口和第三方来源说明。
 
-[Unreleased]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.0.0...v1.1.0

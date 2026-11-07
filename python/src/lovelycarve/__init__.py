@@ -15,7 +15,7 @@ from typing import Any
 
 from . import _native
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 __all__ = [
     "Image", "ImageFile", "ImageInfo", "Partition", "Node", "Timestamps",
     "FileStat", "DataRun", "__version__",

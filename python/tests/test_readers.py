@@ -54,7 +54,7 @@ class ReaderTests(unittest.TestCase):
         return next(node for node in image.children(root) if node.name.lower() == "hello.txt")
 
     def test_public_scope(self):
-        self.assertEqual(lovelycarve.__version__, "1.2.0")
+        self.assertEqual(lovelycarve.__version__, "1.3.0")
         for name in ("carve", "search", "Case", "Task", "export", "parse", "Plugin"):
             self.assertFalse(hasattr(lovelycarve, name))
 

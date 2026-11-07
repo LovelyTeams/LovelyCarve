@@ -4,6 +4,8 @@
 
 ## 安装与验证
 
+从 [GitHub Releases](https://github.com/LovelyTeams/LovelyCarve/releases) 下载 Windows x64 的 wheel 后，可在 CPython 3.10 及以上版本用 `python -m pip install <wheel路径>` 安装。
+
 在仓库根目录操作，需要 Rust、uv 及后端原有的编译依赖；Windows 的 OpenSSL 配置沿用 [开发指南](../docs/DEVELOPMENT.md)。默认使用 uv 管理的 Python 3.15，可用 `LOVELYCARVE_PYTHON` 或 just 同名变量 `python_version` 指定其他解释器。
 
 ```powershell
