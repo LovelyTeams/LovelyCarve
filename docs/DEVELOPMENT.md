@@ -81,6 +81,7 @@ just --dry-run pack           # 展开依赖与命令，但不执行
 | 后端 | `fmt`、`check`、`clippy`、`test [名称及 Cargo 参数]`、`check-examples` |
 | Windows 桌面 | `dev`、`build`、`build-release`、`pack`、`repack`；含 QR/OCR 的版本使用对应的 `*-full` |
 | CLI | `run-cli`、`build-cli`、`build-cli-full`、`test-cli`、`smoke-cli <exe>`、`update-cli-skill`（重新生成代理技能的命令参考）；Windows 另有 `pack-cli`、`pack-cli-full`、`repack-cli`、`stage-cli-skill` |
+| GPUI 原生界面（实验性） | `dev-gpui`、`build-gpui`、`check-gpui`、`clippy-gpui`、`test-gpui` |
 | Python 读取库 | `develop-python`、`build-python`、`test-python`、`fmt-python`、`clippy-python`；使用 uv 管理解释器，默认 Python 3.15，详见 [Python 文档](../python/README.md) |
 | 插件 | `build-plugins [--release]`、`test-plugins`、`clippy-plugins`；Windows 另有 `pack-plugins`（生成 `.lcpkg`） |
 | 读取器 | `test-vendor <目录>`、`test-ewf`、`test-vmdk`、`test-vhd`、`test-vhdx`、`test-minix` / `clippy-minix`、`generate-minix-fixtures`、`test-udf` / `clippy-udf`、`generate-udf-fixtures`、`test-qcow2` / `clippy-qcow2`、`generate-qcow-fixtures`、`test-vdi`、`test-phdi` / `clippy-phdi`、`test-smraw` / `clippy-smraw`、`test-gzipf` / `clippy-gzipf`、`clippy-ubi`、`test-bitlocker` / `clippy-bitlocker`、`test-luks` / `clippy-luks`、`test-veracrypt`、`test-filevault` / `clippy-filevault`、`test-vsc` / `clippy-vsc`、`test-refs` / `clippy-refs` / `test-refs-oracle`、`test-ad1`、`test-sqlite-core`、`test-ios-backup`、`test-apfs` / `clippy-apfs`、`clippy-hfsplus` |
@@ -91,6 +92,8 @@ just --dry-run pack           # 展开依赖与命令，但不执行
 `verify-fe` 汇总 IPC、结构、中英文词条、类型检查、前端测试和生产构建；`verify-rust` 汇总格式化、编译、Clippy 和后端测试；`verify-plugins` 汇总格式化、插件 Clippy 和插件测试。按 [贡献指南](../CONTRIBUTING.md#验证) 选择验证范围。
 
 Cargo 默认特性为空。`desktop` 特性引入 Tauri、对话框与文件插件和 tauri-build，桌面二进制 `LovelyCarve` 只在该特性下构建：`tauri dev` / `tauri build` 通过 `tauri.conf.json` 的 `build.features` 开启，`just build` / `build-full` 显式传入。`lovelycarve-cli` 不启用它，是不链接 Tauri、WebView 或 GTK 的独立程序。`just check` 和 `just clippy` 依次检查独立 CLI 与桌面两种配置；`just test` 在不含桌面运行时的配置下运行后端测试。新增后端命令还要在 `src-tauri/src/cli/commands.toml` 中映射为 CLI 命令，命名规则不满足时构建脚本报错，规则见[架构说明](ARCHITECTURE.md#命令行与桌面只读挂载)。
+
+`gpui` 特性构建实验性的原生界面 `lovelycarve-gpui`（`src-tauri/src/bin/lovelycarve-gpui/`）。它使用 GPUI Kit 组件，在进程内直接调用 `commands/` 中的命令，不启用 `desktop`，也不依赖 Tauri、WebView 或前端构建；`*-gpui` 配方传入 `--no-default-features --features gpui`。Windows 下构建脚本把 `src-tauri/binaries` 中的 Dokan、OpenSSL 与 VC++ 运行库复制到可执行文件旁。程序参数写在 `--` 之后，例如 `just dev-gpui -- --case <案件目录> <检材路径>`：`--case` 打开该目录的案件，目录中还没有案件时以目录名新建；其余参数作为检材路径加载。界面暂不提供原类型视图和文件夹大小树图；时间线的事件类型筛选与热力图、插件任务的暂停与重新分析、应用日志页和案件管理中的卷索引重建仍只在 Tauri 版中提供。程序以调用者权限运行（与 Tauri 版相同），读取物理磁盘时需以管理员身份启动。GPUI 依赖为 `serde_json` 开启 `preserve_order` 与 `raw_value`，这一构建中后端动态生成的 JSON 对象按插入顺序输出键。
 
 `fmt` 覆盖主 crate、插件与维护中的读取器。公共读取接口改动后运行 `check-examples`。参数含空格时，需要保留一层传给子 shell 的引号：
 

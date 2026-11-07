@@ -10,6 +10,59 @@ fn main() {
     desktop::build();
     #[cfg(not(feature = "desktop"))]
     embed_cli_manifest();
+    stage_gpui_runtime();
+}
+
+/// The GPUI desktop app has no bundler to place its load-time libraries
+/// (Dokan, OpenSSL and the VC++ runtime from `binaries/`, which Tauri copies
+/// as bundle resources) beside the executable. Copy them into the profile
+/// directory, so `cargo run`, `just dev-gpui` and a double-clicked build all
+/// start instead of failing with "DLL not found".
+fn stage_gpui_runtime() {
+    const LIBRARIES: [&str; 6] = [
+        "dokan2.dll",
+        "libcrypto-4-x64.dll",
+        "msvcp140.dll",
+        "msvcp140_1.dll",
+        "vcruntime140.dll",
+        "vcruntime140_1.dll",
+    ];
+    if std::env::var_os("CARGO_FEATURE_GPUI").is_none()
+        || std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows")
+    {
+        return;
+    }
+    let (Some(manifest_dir), Some(out_dir)) = (
+        std::env::var_os("CARGO_MANIFEST_DIR"),
+        std::env::var_os("OUT_DIR"),
+    ) else {
+        return;
+    };
+    // OUT_DIR is <target>/<profile>/build/<package>-<hash>/out.
+    let Some(profile_dir) = std::path::Path::new(&out_dir).ancestors().nth(3) else {
+        return;
+    };
+    let source_dir = std::path::Path::new(&manifest_dir).join("binaries");
+    for name in LIBRARIES {
+        let source = source_dir.join(name);
+        println!("cargo:rerun-if-changed={}", source.display());
+        let target = profile_dir.join(name);
+        let up_to_date = match (std::fs::metadata(&source), std::fs::metadata(&target)) {
+            (Ok(source), Ok(target)) => {
+                source.len() == target.len() && source.modified().ok() <= target.modified().ok()
+            }
+            _ => false,
+        };
+        if up_to_date {
+            continue;
+        }
+        if let Err(error) = std::fs::copy(&source, &target) {
+            println!(
+                "cargo:warning=could not stage {} beside the GPUI app: {error}",
+                source.display()
+            );
+        }
+    }
 }
 
 /// The CLI resolves the same per-user data directory as the desktop app,

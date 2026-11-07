@@ -321,6 +321,36 @@ repack:
 repack-full:
     pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\pack.ps1' -QrOcr
 
+# Run the GPUI Kit desktop app (development build without QR/OCR).
+[group("gpui")]
+[working-directory("src-tauri")]
+dev-gpui *args:
+    {{ cargo_env }}cargo run --no-default-features --features gpui --bin lovelycarve-gpui {{ args }}
+
+# Compile-check the GPUI Kit desktop app.
+[group("gpui")]
+[working-directory("src-tauri")]
+check-gpui *args:
+    {{ cargo_env }}cargo check --no-default-features --features gpui --bin lovelycarve-gpui {{ args }}
+
+# Lint the GPUI Kit desktop app.
+[group("gpui")]
+[working-directory("src-tauri")]
+clippy-gpui:
+    {{ cargo_env }}cargo clippy --no-default-features --features gpui --bin lovelycarve-gpui
+
+# Build the GPUI Kit desktop app; pass --release for an optimised build.
+[group("gpui")]
+[working-directory("src-tauri")]
+build-gpui *args:
+    {{ cargo_env }}cargo build --no-default-features --features gpui --bin lovelycarve-gpui {{ args }}
+
+# Run the GPUI Kit desktop app's unit tests.
+[group("gpui")]
+[working-directory("src-tauri")]
+test-gpui *args:
+    {{ cargo_env }}cargo test --no-default-features --features gpui --bin lovelycarve-gpui {{ args }}
+
 # Run the CLI without QR/OCR.
 [group("cli")]
 [working-directory("src-tauri")]

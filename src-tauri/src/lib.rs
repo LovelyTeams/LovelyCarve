@@ -3,10 +3,16 @@
 #[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]
 pub(crate) mod app;
 #[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]
+// GPUI enables serde_json's `preserve_order`; the IndexMap-backed `Value` in
+// `CliError::details` then crosses clippy's error-size threshold. The
+// standalone and desktop builds keep the lint.
+#[cfg_attr(feature = "gpui", allow(clippy::result_large_err))]
 pub mod cli;
 #[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]
 pub mod commands;
 pub mod core;
+#[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]
+pub mod embed;
 #[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]
 pub mod host;
 #[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]

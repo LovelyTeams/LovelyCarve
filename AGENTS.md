@@ -29,6 +29,7 @@ Use `docs/README.md` for the documentation map and `CONTRIBUTING.md` / `docs/DEV
 - `src-tauri/src/commands/`: per-domain `#[tauri::command]` handlers.
 - `src-tauri/src/app/`: startup, shutdown, shared application access/error types, and cross-domain workflows.
 - `src-tauri/src/bin/` and `src-tauri/src/cli/`: the standalone CLI — entry, the `commands.toml` command schema, argument parsing, the shared execution steps, output, prompts, search, the JSONL session and the shell; dispatch and the command catalogue are generated from the command registry and `commands.toml`.
+- `src-tauri/src/bin/lovelycarve-gpui/`: the experimental GPUI Kit native desktop app (`gpui` feature, no Tauri or WebView). It prepares and stops the backend through `src-tauri/src/embed.rs`, calls command functions in process and has no 原类型视图 yet.
 - `src-tauri/src/host.rs` and `src-tauri/src/host/`: the Tauri-free host interface commands receive (`State`, `AppHandle`, `LeaseOwner`, `Response`) and its `desktop`-only Tauri adapter.
 - `src-tauri/src/core/`: forensic engines, parsers, indexing, filesystems, search, timeline, carving, and plugin runtime.
 - `src-tauri/src/state.rs`: shared application state.
@@ -80,6 +81,7 @@ Use the repository-root `Justfile` as the task entry point. Do not replace an ex
 - `just run-example probe_partitions <image-path> --mbr`: inspect raw MBR/EBR slots, provenance and recovery warnings.
 - `just run-example-fast <name> [args]`: run a probe with `release-fast` and one Cargo build job.
 - `just run-cli [args]`: run the standalone `lovelycarve-cli` (development build without QR/OCR). See `docs/CLI.md`.
+- `just dev-gpui [args]` / `just build-gpui [args]` / `just check-gpui [args]` / `just clippy-gpui` / `just test-gpui [args]`: run, build, check, lint and test the experimental GPUI Kit desktop app (`--no-default-features --features gpui`); on Windows the build script stages the Dokan, OpenSSL and VC++ runtime DLLs beside it. Program arguments follow `--` (`just dev-gpui -- --case <directory> <evidence>`): `--case` opens (or creates) a case and other arguments load evidence. GPUI turns on serde_json's `preserve_order` for that build.
 - `just build-cli`: build the QR/OCR-free standalone release CLI; `just build-cli-full` enables QR/OCR. Neither enables `desktop`; the build script embeds the `asInvoker` Windows manifest. `just pack-cli` / `just pack-cli-full` package the matching Windows CLI.
 - `just test-cli`: build and smoke-test CLI navigation, JSONL sessions, encrypted-volume unlock/export, carving and clean shutdown.
 - `just smoke-cli <executable>`: smoke-test an existing CLI binary; `just repack-cli` packages an existing Windows release according to its actual capabilities.

@@ -34,6 +34,13 @@ required-features = ["desktop"]
 name = "lovelycarve-cli"
 path = "src/bin/lovelycarve-cli.rs"
 
+# Native desktop app built with GPUI Kit. It links the Tauri-free backend like
+# the CLI and calls the command functions in-process; `gpui` adds the toolkit.
+[[bin]]
+name = "lovelycarve-gpui"
+path = "src/bin/lovelycarve-gpui/main.rs"
+required-features = ["gpui"]
+
 [features]
 # 默认只构建无界面的后端与独立 CLI；桌面程序由 `desktop` 打开 Tauri 运行时
 # （tauri.conf.json 的 build.features 让 `tauri dev/build` 自动启用）。
@@ -54,6 +61,8 @@ desktop = [
     "dep:tauri-plugin-fs",
     "dep:tauri-build",
 ]
+# The GPUI Kit desktop app (`lovelycarve-gpui`); independent of `desktop`.
+gpui = ["dep:gpui-kit", "dep:futures"]
 # Legacy DLL probes only; production ReFS always uses the Rust reader.
 refs-dll-oracle = []
 qrcode-wechat = [
@@ -127,12 +136,18 @@ filevault-forensic = { path = "vendor/filevault/forensic" }
 flate2 = "1.1.10"
 
 fs2 = "0.4.3"
+# Backend events reach the GPUI app's foreground executor over an unbounded
+# channel (only with `gpui`).
+futures = { version = "0.3.31", optional = true }
 gfs2-reader = { path = "vendor/gfs2-reader" }
 # 二进制「原类型视图」结构化解析：ELF / Mach-O / PE / Unix ar 统一走 goblin 的
 # Object::parse（纯 Rust，无 FFI）。默认 features 已含 elf32/64、mach32/64、pe32/64、
 # te、archive、endian_fd，满足 Object::parse。
 goblin = "0.10.7"
 gpt = { path = "vendor/gpt" }
+# GPUI, GPUI Base, GPUI Component and the default icon assets for the native
+# desktop app (only with `gpui`).
+gpui-kit = { version = "0.9.0", optional = true }
 gzipf = { path = "vendor/gzipf" }
 hex = "0.4.3"
 hfsplus = { path = "vendor/hfsplus" }

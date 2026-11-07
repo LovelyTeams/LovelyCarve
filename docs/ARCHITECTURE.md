@@ -92,7 +92,8 @@ just ipc-check
 src-tauri/src/
 ├── lib.rs                  唯一的命令注册表（invoke_handler!）；desktop 特性下的 Tauri builder
 ├── main.rs                 桌面入口（desktop 特性）
-├── bin/                    lovelycarve-cli 入口
+├── bin/                    lovelycarve-cli 入口；lovelycarve-gpui/ 为实验性 GPUI 原生界面（gpui 特性）
+├── embed.rs                进程内前端的初始化、关闭与导出名清理入口
 ├── host.rs + host/         与 Tauri 无关的宿主接口（State、AppHandle、LeaseOwner、Response）及 desktop 适配
 ├── cli/                    独立 CLI：commands.toml、参数解析、执行、输出、会话、shell 与生成的分发
 ├── app.rs + app/           setup、lifecycle、access、error、module_catalog
@@ -117,11 +118,11 @@ src-tauri/src/
 
 `commands` 的十个域是 `evidence`、`casework`、`filesystem`、`preview`、`analysis`、`carving`、`search`、`timeline`、`extensions`、`system`。跨域流程在 `app/workflows` 中复用；应用层不调用命令层，`core` 不依赖 app、commands、state、cli 或 Tauri。应用错误定义在 `app/error.rs`，`commands/app_error.rs` 保留传输层导出。
 
-`lib.rs` 保留唯一的命令注册表，以及 `desktop` 特性下的 Tauri builder。`app/setup.rs` 的 `initialize`（插件发现、任务调度、媒体缓存）由桌面 `setup` 和 CLI 共用，桌面退出和 CLI 共用 `app/lifecycle.rs` 的媒体、插件清理步骤。CLI 生成器沿模块声明解析嵌套命令路径和真实函数签名，与 `cli/commands.toml` 的命令定义一起生成分发代码与命令目录（见[命令行与桌面只读挂载](#命令行与桌面只读挂载)）。
+`lib.rs` 保留唯一的命令注册表，以及 `desktop` 特性下的 Tauri builder。`app/setup.rs` 的 `initialize`（插件发现、任务调度、媒体缓存）由桌面 `setup`、CLI 和 GPUI 界面共用，桌面退出共用 `app/lifecycle.rs` 的媒体、插件清理步骤；CLI 与 GPUI 界面退出时调用其中的 `shutdown`，依次取消任务、关闭案件、停止插件并释放媒体缓存。CLI 生成器沿模块声明解析嵌套命令路径和真实函数签名，与 `cli/commands.toml` 的命令定义一起生成分发代码与命令目录（见[命令行与桌面只读挂载](#命令行与桌面只读挂载)）。
 
 `python/` 是 PyO3 / maturin 的只读 `lovelycarve` 包，直接使用 `DiskImage`、`EvidenceSession` 与文件系统读取接口，不经过命令、`AppState` 或应用初始化。它启用后端 `reader-library` 库配置，排除应用、案件、catalog、分析、预览、搜索、插件和挂载模块；默认 CLI、`desktop` 及后端单元测试仍编译完整模块。Cargo 依赖图暂与后端共用，扩展只链接读取实现。证据路径规范化实现在 `common::evidence_path`，原有 `casework::case::evidence_path_key` 保留同一函数的重导出，使读取器不必依赖案件模块。Python API、构建与限制见 [Python 读取库](../python/README.md)。
 
-命令函数不直接依赖 Tauri：状态、应用句柄、二进制响应和媒体租约所有者分别使用 `host::State`、`host::AppHandle`、`host::Response` 和 `host::LeaseOwner`，函数以 `#[cfg_attr(feature = "desktop", tauri::command)]` 标注。`desktop` 特性（`tauri.conf.json` 的 `build.features` 为 `tauri dev/build` 开启）引入 tauri、对话框与文件插件和 tauri-build，并由 `host/tauri_adapter.rs` 为这些类型实现 `CommandArg` / `IpcResponse`：状态取自 Tauri 托管状态，`AppHandle` 把事件转给 Tauri `emit` 并提供应用数据目录，`LeaseOwner` 对应调用窗口（窗口关闭即租约结束），`Response` 以原始字节返回。CLI 构建不启用该特性，`AppHandle` 的事件写到 `session --events` 的标准错误或直接丢弃，`LeaseOwner` 归进程所有。两种构建使用同一个应用数据目录，目录名取自 `tauri.conf.json` 的 identifier（构建脚本导出为 `LOVELYCARVE_APP_IDENTIFIER`）。命令需要新的宿主能力时扩展 `host` 类型，不在命令中引用 Tauri 类型。
+命令函数不直接依赖 Tauri：状态、应用句柄、二进制响应和媒体租约所有者分别使用 `host::State`、`host::AppHandle`、`host::Response` 和 `host::LeaseOwner`，函数以 `#[cfg_attr(feature = "desktop", tauri::command)]` 标注。`desktop` 特性（`tauri.conf.json` 的 `build.features` 为 `tauri dev/build` 开启）引入 tauri、对话框与文件插件和 tauri-build，并由 `host/tauri_adapter.rs` 为这些类型实现 `CommandArg` / `IpcResponse`：状态取自 Tauri 托管状态，`AppHandle` 把事件转给 Tauri `emit` 并提供应用数据目录，`LeaseOwner` 对应调用窗口（窗口关闭即租约结束），`Response` 以原始字节返回。CLI 构建不启用该特性，`AppHandle` 的事件写到 `session --events` 的标准错误或直接丢弃，`LeaseOwner` 归进程所有。GPUI 界面（`gpui` 特性，同样不启用 `desktop`）经 `embed` 准备与关闭后端，在专用 tokio 运行时上直接调用命令函数，`AppHandle` 的事件经通道交给界面线程，再分发给订阅的页面。三种构建使用同一个应用数据目录，目录名取自 `tauri.conf.json` 的 identifier（构建脚本导出为 `LOVELYCARVE_APP_IDENTIFIER`）。命令需要新的宿主能力时扩展 `host` 类型，不在命令中引用 Tauri 类型。
 
 CLI 的可选 `--with-source` / JSONL `withSource` 在解析检材与路径后、命令执行前捕获来源，随后独立于条目投影封装 `source/result`；常驻会话传递同一请求标记，客户端先拆开原结果检查完整性、投影，再封装来源。来源不通过命令完成后的上下文查询猜测。SQLite 主键另标记 `sqlite` 地址空间，保留数据库节点和表名。DSH 默认启用来源封装，并在输出超限时保留原页位置生成只读重试建议。
 

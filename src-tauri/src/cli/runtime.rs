@@ -548,14 +548,5 @@ async fn interrupted() {
 }
 
 pub(super) async fn shutdown(state: &AppState) {
-    for task in state.tasks.list() {
-        state.tasks.cancel(&task.id);
-    }
-    if let Err(error) =
-        crate::app::workflows::casework::case_close(crate::host::State::new(state)).await
-    {
-        tracing::error!("CLI case close: {}", error.message);
-    }
-    crate::app::lifecycle::shutdown_plugins(state).await;
-    crate::app::lifecycle::release_media(state).await;
+    crate::app::lifecycle::shutdown(state).await;
 }
