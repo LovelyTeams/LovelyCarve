@@ -8,7 +8,7 @@ use gpui_kit::{
         scroll::ScrollableElement as _,
         spinner::Spinner,
         tag::Tag,
-        v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _,
+        v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, WindowExt as _,
     },
     div,
     prelude::FluentBuilder as _,
@@ -34,6 +34,7 @@ pub struct CaseManager {
     /// The evidence of the open tab, highlighted in the list.
     current_image: Option<String>,
     error: Option<SharedString>,
+    details_open: bool,
     _store: Subscription,
 }
 
@@ -51,6 +52,7 @@ impl CaseManager {
             store,
             current_image,
             error: None,
+            details_open: false,
             _store: subscription,
         }
     }
@@ -412,30 +414,97 @@ impl CaseManager {
                             })),
                     )
             }))
-            .child(ui::section_title("案件详情", cx))
             .child(
-                DescriptionList::horizontal()
-                    .columns(1)
-                    .label_width(gpui_kit::px(96.))
-                    .item("案件编号", case.case_number.clone(), 1)
-                    .item(
-                        "检验人",
-                        if case.examiner.is_empty() {
-                            "—".to_owned()
-                        } else {
-                            case.examiner.clone()
-                        },
-                        1,
+                ui::card(cx)
+                    .child(
+                        Button::new("case-details")
+                            .ghost()
+                            .icon(Icon::new(ExtraIcon::Briefcase))
+                            .label("案件详情")
+                            .child(div().flex_1())
+                            .child(
+                                Icon::new(if self.details_open {
+                                    IconName::ChevronDown
+                                } else {
+                                    IconName::ChevronRight
+                                })
+                                .small(),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.details_open = !this.details_open;
+                                cx.notify();
+                            })),
                     )
-                    .item("存储位置", case.dir.clone(), 1)
-                    .item("最近更新", format::timestamp(Some(&case.updated_at)), 1)
-                    .item("卷快照", format!("{} 份", case.snapshots.len()), 1),
+                    .when(self.details_open, |card| {
+                        card.child(
+                            v_flex()
+                                .p_3()
+                                .gap_3()
+                                .child(
+                                    DescriptionList::horizontal()
+                                        .columns(1)
+                                        .label_width(gpui_kit::px(96.))
+                                        .item("案件编号", case.case_number.clone(), 1)
+                                        .item(
+                                            "检验人",
+                                            if case.examiner.is_empty() {
+                                                "—".to_owned()
+                                            } else {
+                                                case.examiner.clone()
+                                            },
+                                            1,
+                                        )
+                                        .item("存储位置", case.dir.clone(), 1)
+                                        .item(
+                                            "最近更新",
+                                            format::timestamp(Some(&case.updated_at)),
+                                            1,
+                                        )
+                                        .item("案件快照", format!("{} 份", case.snapshots.len()), 1)
+                                        .item("库版本", format!("v{}", case.schema_version), 1),
+                                )
+                                .child(
+                                    h_flex().child(
+                                        Button::new("close-case")
+                                            .small()
+                                            .icon(IconName::Close)
+                                            .label("关闭案件")
+                                            .disabled(busy)
+                                            .on_click(
+                                                cx.listener(|this, _, _, cx| this.close_case(cx)),
+                                            ),
+                                    ),
+                                ),
+                        )
+                    }),
             )
-            .child(
-                h_flex()
-                    .gap_2()
+            .into_any_element()
+    }
+
+    fn footer(&self, busy: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        let active = self.store.read(cx).active().map(|case| case.locked);
+        h_flex()
+            .gap_2()
+            .pt_3()
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .when_some(active, |footer, locked| {
+                footer
+                    .child(
+                        Button::new("switch-case")
+                            .ghost()
+                            .small()
+                            .icon(IconName::FolderOpen)
+                            .label("切换案件")
+                            .disabled(busy)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_case_directory(window, cx)
+                            })),
+                    )
+                    .child(div().flex_1())
                     .child(
                         Button::new("toggle-lock")
+                            .ghost()
                             .small()
                             .icon(Icon::new(if locked {
                                 ExtraIcon::LockOpen
@@ -452,26 +521,14 @@ impl CaseManager {
                                 cx.listener(move |this, _, _, cx| this.toggle_lock(locked, cx)),
                             ),
                     )
-                    .child(
-                        Button::new("switch-case")
-                            .small()
-                            .icon(IconName::FolderOpen)
-                            .label("切换案件…")
-                            .disabled(busy)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_case_directory(window, cx)
-                            })),
-                    )
-                    .child(
-                        Button::new("close-case")
-                            .small()
-                            .icon(IconName::Close)
-                            .label("关闭案件")
-                            .disabled(busy)
-                            .on_click(cx.listener(|this, _, _, cx| this.close_case(cx))),
-                    ),
+            })
+            .when(active.is_none(), |footer| footer.child(div().flex_1()))
+            .child(
+                Button::new("finish-case-manager")
+                    .label("完成")
+                    .disabled(busy)
+                    .on_click(|_, window, cx| window.close_dialog(cx)),
             )
-            .into_any_element()
     }
 }
 
@@ -508,5 +565,6 @@ impl Render for CaseManager {
                         .child("正在处理案件…"),
                 )
             })
+            .child(self.footer(busy, cx))
     }
 }

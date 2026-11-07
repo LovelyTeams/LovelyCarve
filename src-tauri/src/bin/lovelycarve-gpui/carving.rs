@@ -10,13 +10,12 @@ use gpui_kit::{
     component::{
         alert::Alert,
         button::{Button, ButtonVariants as _},
-        h_flex, h_resizable,
+        h_flex,
         input::{Input, InputEvent, InputState},
         progress::Progress,
-        resizable_panel,
         scroll::ScrollableElement as _,
         tab::{Tab, TabBar},
-        table::{DataTable, TableEvent, TableState},
+        table::{TableEvent, TableState},
         tag::Tag,
         v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, WindowExt as _,
     },
@@ -81,6 +80,9 @@ fn status_tag(snapshot: &CarveScanSnapshot) -> Tag {
 pub struct CarvePanel {
     info: Rc<ImageInfo>,
     scans: Vec<CarveScanSnapshot>,
+    history_visible: bool,
+    loading_history: bool,
+    history_error: Option<SharedString>,
     selected: Option<String>,
     view: ResultView,
     table: Entity<TableState<ResultTable>>,
@@ -144,6 +146,9 @@ impl CarvePanel {
         let mut panel = Self {
             info,
             scans: Vec::new(),
+            history_visible: false,
+            loading_history: true,
+            history_error: None,
             selected: None,
             view: ResultView::Signatures,
             table,
@@ -214,21 +219,24 @@ impl CarvePanel {
         cx.spawn(async move |this, cx| {
             let listed = listed.await;
             this.update(cx, |this, cx| {
+                this.loading_history = false;
                 match listed {
                     Ok(mut scans) => {
                         scans.sort_by(|left, right| {
                             right.created_unix_ms.cmp(&left.created_unix_ms)
                         });
                         this.scans = scans;
+                        this.history_error = None;
                         if select_first && this.selected.is_none() {
                             if let Some(first) = this.scans.first().map(|scan| scan.scan_id.clone())
                             {
                                 this.select(first, cx);
+                                this.history_visible = true;
                             }
                         }
                         this.ensure_filesystem(cx);
                     }
-                    Err(error) => tracing::warn!("carve_scan_list: {error}"),
+                    Err(error) => this.history_error = Some(error.message),
                 }
                 cx.notify();
             })
@@ -280,15 +288,24 @@ impl CarvePanel {
 
     fn show_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let info = Rc::clone(&self.info);
-        let form = cx.new(|_| ScanForm::new(&info, carve_commands::carve_formats()));
+        let form = cx.new(|cx| ScanForm::new(&info, carve_commands::carve_formats(), window, cx));
         let subscription =
             cx.subscribe_in(&form, window, |this, _, StartScan(options), window, cx| {
                 window.close_dialog(cx);
                 this.start_scan(options.clone(), window, cx);
             });
         self._subscriptions.push(subscription);
-        window.open_dialog(cx, move |dialog, _, _| {
-            dialog.title("新建恢复扫描").w(px(620.)).child(form.clone())
+        window.open_dialog(cx, move |dialog, _, cx| {
+            dialog
+                .centered()
+                .title(ui::dialog_heading(
+                    ExtraIcon::ScanSearch,
+                    "新建扫描",
+                    "从目录记录和文件签名中查找可恢复的文件",
+                    cx,
+                ))
+                .w(px(620.))
+                .child(form.clone())
         });
     }
 
@@ -313,6 +330,7 @@ impl CarvePanel {
             let started = started.await;
             this.update_in(cx, |this, window, cx| match started {
                 Ok(started) => {
+                    this.history_visible = true;
                     this.select(started.scan_id, cx);
                     this.load_scans(false, cx);
                 }
@@ -459,12 +477,18 @@ impl CarvePanel {
         v_flex()
             .size_full()
             .child(
-                h_flex()
-                    .px_3()
-                    .py_2()
-                    .gap_2()
-                    .child(div().flex_1().text_sm().font_weight(gpui_kit::FontWeight::SEMIBOLD).child("恢复记录"))
-                    .child(Tag::secondary().small().child(self.scans.len().to_string())),
+                ui::history_header(
+                    "扫描记录",
+                    self.scans.len(),
+                    Button::new("close-carve-history")
+                        .ghost().small().icon(IconName::PanelLeftClose)
+                        .accessibility_label("收起扫描记录").tooltip("收起扫描记录")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.history_visible = false;
+                            cx.notify();
+                        })),
+                    cx,
+                ),
             )
             .child(
                 v_flex()
@@ -809,7 +833,60 @@ impl CarvePanel {
 }
 
 impl Render for CarvePanel {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let history = self
+            .history_visible
+            .then(|| self.render_scans(cx).into_any_element());
+        let history_toggle = ui::history_toggle(
+            "carve-history-toggle",
+            "扫描记录",
+            self.history_visible,
+            self.selected.is_none(),
+        )
+        .on_click(cx.listener(|this, _, _, cx| {
+            this.history_visible = !this.history_visible;
+            cx.notify();
+        }));
+        let new_scan = Button::new("new-scan")
+            .primary()
+            .small()
+            .h(px(30.))
+            .icon(IconName::Plus)
+            .label("新建扫描")
+            .on_click(cx.listener(|this, _, window, cx| this.show_form(window, cx)));
+        if self.selected.is_none() {
+            let state = if let Some(error) = &self.history_error {
+                ui::empty_state(
+                    IconName::TriangleAlert,
+                    "读取扫描记录失败",
+                    Some(error.clone()),
+                )
+                .child(
+                    Button::new("retry-carve-history")
+                        .primary()
+                        .icon(IconName::RefreshCw)
+                        .label("重试")
+                        .on_click(cx.listener(|this, _, _, cx| this.load_scans(true, cx))),
+                )
+            } else {
+                ui::empty_state(
+                    ExtraIcon::ScanSearch,
+                    if self.loading_history {
+                        "正在读取扫描记录…"
+                    } else {
+                        "还没有恢复扫描"
+                    },
+                    Some("读取已删除记录、重建丢失分区，并按文件签名查找残留文件".into()),
+                )
+                .child(new_scan.disabled(self.loading_history))
+            };
+            return ui::result_workspace(
+                history,
+                ui::workspace_start(history_toggle, state, cx),
+                window,
+                cx,
+            );
+        }
         let table = self.table.read(cx).delegate();
         let artifacts = table.total();
         let files = self.files.read(cx).delegate();
@@ -867,10 +944,41 @@ impl Render for CarvePanel {
             .as_ref()
             .is_some_and(|scan| scan.status == CarveSessionStatus::Paused);
         let recover_all_files = readable.clone();
-        v_flex()
+        let detail_title = match view {
+            ResultView::Signatures => self.artifact.as_ref().map(|file| file.name.clone()),
+            ResultView::Filesystem => self.file.as_ref().map(|file| file.node.name.clone()),
+        };
+        let detail = detail_title.map(|title| {
+            v_flex()
+                .size_full()
+                .child(ui::detail_header(
+                    title,
+                    Button::new("close-recovery-detail")
+                        .ghost()
+                        .small()
+                        .icon(IconName::Close)
+                        .accessibility_label("关闭恢复详情")
+                        .tooltip("关闭恢复详情")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.artifact = None;
+                            this.file = None;
+                            this.table.update(cx, |table, cx| table.clear_selection(cx));
+                            this.files.update(cx, |table, cx| table.clear_selection(cx));
+                            cx.notify();
+                        })),
+                    cx,
+                ))
+                .child(div().flex_1().min_h_0().child(match view {
+                    ResultView::Signatures => self.render_detail(cx).into_any_element(),
+                    ResultView::Filesystem => self.render_file_detail(cx).into_any_element(),
+                }))
+                .into_any_element()
+        });
+        let main = v_flex()
             .size_full()
             .child(
                 ui::page_toolbar(cx)
+                    .child(history_toggle)
                     .when(both, |this| {
                         this.child(
                             TabBar::new("carve-result-view")
@@ -894,7 +1002,7 @@ impl Render for CarvePanel {
                     })
                     .when(view == ResultView::Filesystem, |this| {
                         this.child(
-                            div().w(px(280.)).child(
+                            div().flex_1().min_w(px(112.)).max_w(px(360.)).child(
                                 Input::new(&self.filter)
                                     .small()
                                     .cleanable(true)
@@ -933,16 +1041,7 @@ impl Render for CarvePanel {
                                 this.recover(artifact_ids, recover_all_files.clone(), window, cx)
                             })),
                     )
-                    .child(
-                        Button::new("new-scan")
-                            .small()
-                            .primary()
-                            .icon(IconName::Plus)
-                            .label("新建扫描")
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.show_form(window, cx)),
-                            ),
-                    ),
+                    .child(new_scan),
             )
             .when_some(
                 scan.as_ref().and_then(|scan| scan.error.clone()),
@@ -962,66 +1061,30 @@ impl Render for CarvePanel {
             .when(view == ResultView::Filesystem, |this| {
                 this.children(self.render_filesystem_summary(cx))
             })
-            .child(
-                div().flex_1().min_h_0().child(
-                    h_resizable("carve-panels")
-                        .child(
-                            resizable_panel()
-                                .size(px(260.))
-                                .size_range(px(180.)..px(480.))
-                                .child(
-                                    div()
-                                        .size_full()
-                                        .border_r_1()
-                                        .border_color(cx.theme().border)
-                                        .child(self.render_scans(cx)),
-                                ),
-                        )
-                        .child(
-                            resizable_panel().child(match view {
-                                ResultView::Signatures => DataTable::new(&self.table)
-                                    .bordered(false)
-                                    .small()
-                                    .into_any_element(),
-                                ResultView::Filesystem if filesystem_pending => v_flex()
-                                    .size_full()
-                                    .child(ui::empty_state(
-                                        Icon::new(ExtraIcon::FolderSearch),
-                                        "正在扫描文件系统记录",
-                                        Some("文件系统阶段完成后列出恢复到的文件。".into()),
-                                    ))
-                                    .into_any_element(),
-                                ResultView::Filesystem => DataTable::new(&self.files)
-                                    .bordered(false)
-                                    .small()
-                                    .into_any_element(),
-                            }),
-                        )
-                        .child(
-                            resizable_panel()
-                                .size(px(360.))
-                                .size_range(px(260.)..px(720.))
-                                .child(
-                                    div()
-                                        .size_full()
-                                        .border_l_1()
-                                        .border_color(cx.theme().border)
-                                        .child(match view {
-                                            ResultView::Signatures => {
-                                                self.render_detail(cx).into_any_element()
-                                            }
-                                            ResultView::Filesystem => {
-                                                self.render_file_detail(cx).into_any_element()
-                                            }
-                                        }),
-                                ),
-                        ),
-                ),
-            )
+            .child(ui::detail_frame(
+                "carve-details",
+                match view {
+                    ResultView::Signatures => ui::data_table(&self.table).into_any_element(),
+                    ResultView::Filesystem if filesystem_pending => v_flex()
+                        .size_full()
+                        .child(ui::empty_state(
+                            ExtraIcon::FolderSearch,
+                            "正在扫描文件系统记录",
+                            Some("文件系统阶段完成后列出恢复到的文件。".into()),
+                        ))
+                        .into_any_element(),
+                    ResultView::Filesystem => ui::data_table(&self.files).into_any_element(),
+                },
+                detail,
+                window.viewport_size().width < px(if self.history_visible { 1352. } else { 1096. }),
+                px(380.),
+                cx,
+            ))
             .child(ui::page_footer(
                 div().truncate().child(footer_left),
                 footer_right,
                 cx,
-            ))
+            ));
+        ui::result_workspace(history, main, window, cx)
     }
 }

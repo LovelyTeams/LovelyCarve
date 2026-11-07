@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="128" viewBox="0 0 240 128"
+     fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M158 14A6 6 0 0 1 164 8H180L192 20V52A6 6 0 0 1 186 58H164A6 6 0 0 1 158 52Z" fill="SURFACE" stroke="INK" stroke-opacity=".7"/>
+  <path d="M180 8V16A4 4 0 0 0 184 20H192" stroke="INK" stroke-opacity=".7"/>
+  <path d="M165 21H172" stroke="ACCENT" stroke-width="2.5"/>
+  <path d="M165 32H185M165 39H185M165 46H177" stroke="LINE" stroke-opacity=".45"/>
+</svg>

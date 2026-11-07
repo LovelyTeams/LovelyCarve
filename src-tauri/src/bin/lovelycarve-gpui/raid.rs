@@ -530,9 +530,15 @@ impl RaidPanel {
             .unwrap_or_default();
         let tab = self.tab.clone();
         let builder = cx.new(|cx| ManualBuilder::new(images, tab, window, cx));
-        window.open_dialog(cx, move |shell, _, _| {
+        window.open_dialog(cx, move |shell, _, cx| {
             shell
-                .title("手动重组 RAID")
+                .centered()
+                .title(ui::dialog_heading(
+                    IconName::HardDrive,
+                    "手动重组 RAID",
+                    "选择成员盘并设置阵列参数",
+                    cx,
+                ))
                 .w(px(640.))
                 .child(builder.clone())
         });

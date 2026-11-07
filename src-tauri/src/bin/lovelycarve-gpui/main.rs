@@ -24,6 +24,7 @@ mod raid;
 mod search;
 mod settings;
 mod tasks;
+mod theme;
 mod timeline;
 mod ui;
 mod workspace;
@@ -32,6 +33,7 @@ use gpui_kit::{
     component::TitleBar, px, size, AppContext as _, Bounds, Focusable as _, WindowBounds,
     WindowOptions,
 };
+use std::borrow::Cow;
 
 fn init_tracing() {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
@@ -57,8 +59,15 @@ fn main() {
         .run(move |cx| {
             gpui_kit::init(cx);
             gpui_kit::component::set_locale("zh-CN");
+            if let Err(error) = cx
+                .text_system()
+                .add_fonts(vec![Cow::Borrowed(include_bytes!(
+                    "../../../../src/assets/fonts/Quicksand-700.ttf"
+                ))])
+            {
+                tracing::warn!("brand font unavailable: {error}");
+            }
             cx.set_global(prefs::Preferences::load());
-            prefs::apply_theme(None, cx);
             cx.set_global(app_backend);
             events::EventHub::install(events, cx);
             tasks::TaskStore::install(cx);
@@ -75,6 +84,14 @@ fn main() {
             };
             let opened = gpui_kit::open_window(options, cx, |window, cx| {
                 window.set_window_title("LovelyCarve");
+                prefs::apply_theme(window, cx);
+                window
+                    .observe_window_appearance(|window, cx| {
+                        if prefs::Preferences::global(cx).theme == prefs::ThemeChoice::System {
+                            prefs::apply_theme(window, cx);
+                        }
+                    })
+                    .detach();
                 let workspace = cx.new(|cx| workspace::Workspace::new(window, cx));
                 workspace.focus_handle(cx).focus(window, cx);
                 workspace.update(cx, |workspace, cx| workspace.launch(launch, window, cx));

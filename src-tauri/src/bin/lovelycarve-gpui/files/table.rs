@@ -1,6 +1,8 @@
-//! The directory listing: one page of `fs_children_page` at a time, loaded
-//! as the table scrolls, sorted and filtered by the backend. Rows can be
+//! Directory and recursive listings page as the table scrolls, sorted and
+//! filtered by the backend. Rows can be
 //! checked for batch work and carry the examiner's tags.
+mod listing;
+
 use std::collections::{BTreeSet, HashMap};
 
 use gpui_kit::{
@@ -16,25 +18,21 @@ use gpui_kit::{
     prelude::FluentBuilder as _,
     App, Context, IntoElement, ParentElement as _, SharedString, Styled as _, WeakEntity, Window,
 };
-use lovelycarve_lib::{
-    commands::filesystem::filesystem as fs_commands,
-    core::{
-        catalog::{
-            directory_query::DirectoryQuery,
-            flat_query::{FlatFileFilter, FlatSortKey},
-        },
-        filesystem::tree::fs_tree::{FsNode, NodeKind},
+use lovelycarve_lib::core::{
+    catalog::{
+        directory_query::DirectoryQuery,
+        flat_query::{FlatFileFilter, FlatSortKey},
     },
-    host::State,
+    filesystem::tree::fs_tree::{FsNode, NodeKind},
 };
 
-use super::FileBrowser;
-use crate::{backend::Backend, format, ui};
+use super::{icons::node_icon, FileBrowser};
+use crate::{format, ui};
+
+pub(super) use listing::ListingScope;
+use listing::PageCursor;
 
 type ExtraIcon = gpui_kit::assets::IconName;
-
-/// Rows per backend page.
-const PAGE_SIZE: usize = 500;
 
 #[derive(Clone, Copy)]
 struct ColumnSpec {
@@ -98,16 +96,6 @@ pub fn tag_chip(tag: &str) -> Tag {
     .child(tag.to_owned())
 }
 
-/// The icon of a file-system node.
-pub fn node_icon(node: &FsNode) -> Icon {
-    match node.kind {
-        NodeKind::Dir => Icon::new(IconName::Folder),
-        NodeKind::Symlink => Icon::new(ExtraIcon::Link),
-        NodeKind::Unallocated => Icon::new(ExtraIcon::CircleDashed),
-        NodeKind::File => Icon::new(IconName::File),
-    }
-}
-
 pub fn kind_label(node: &FsNode) -> &'static str {
     match node.kind {
         NodeKind::Dir => "目录",
@@ -130,8 +118,10 @@ pub struct FileTable {
     image_id: String,
     parent_id: String,
     query: DirectoryQuery,
+    scope: ListingScope,
     rows: Vec<FsNode>,
-    next_cursor: Option<String>,
+    paths: HashMap<String, String>,
+    next_cursor: Option<PageCursor>,
     total: Option<usize>,
     truncated: bool,
     loading: bool,
@@ -147,8 +137,29 @@ pub struct FileTable {
 
 impl FileTable {
     pub fn new(browser: WeakEntity<FileBrowser>, image_id: String) -> Self {
+        Self {
+            browser,
+            image_id,
+            parent_id: "root".to_owned(),
+            query: DirectoryQuery::default(),
+            scope: ListingScope::Directory,
+            rows: Vec::new(),
+            paths: HashMap::new(),
+            next_cursor: None,
+            total: None,
+            truncated: false,
+            loading: false,
+            error: None,
+            generation: 0,
+            columns: Self::build_columns(|_| true),
+            checked: BTreeSet::new(),
+            tags: HashMap::new(),
+        }
+    }
+
+    fn build_columns(visible: impl Fn(&str) -> bool) -> Vec<Column> {
         let mut columns = vec![Column::new("check", "").width(36.).resizable(false)];
-        columns.extend(COLUMNS.iter().map(|spec| {
+        columns.extend(COLUMNS.iter().filter(|spec| visible(spec.key)).map(|spec| {
             let column = Column::new(spec.key, spec.name)
                 .width(spec.width)
                 .sortable();
@@ -158,22 +169,32 @@ impl FileTable {
                 column
             }
         }));
-        Self {
-            browser,
-            image_id,
-            parent_id: "root".to_owned(),
-            query: DirectoryQuery::default(),
-            rows: Vec::new(),
-            next_cursor: None,
-            total: None,
-            truncated: false,
-            loading: false,
-            error: None,
-            generation: 0,
-            columns,
-            checked: BTreeSet::new(),
-            tags: HashMap::new(),
-        }
+        columns
+    }
+
+    pub fn column_options(&self) -> Vec<(&'static str, &'static str, bool)> {
+        COLUMNS
+            .iter()
+            .skip(1)
+            .map(|spec| {
+                (
+                    spec.key,
+                    spec.name,
+                    self.columns
+                        .iter()
+                        .any(|column| column.key.as_ref() == spec.key),
+                )
+            })
+            .collect()
+    }
+
+    pub fn toggle_column(&mut self, key: &str) {
+        self.columns = Self::build_columns(|candidate| {
+            self.columns
+                .iter()
+                .any(|column| column.key.as_ref() == candidate)
+                != (candidate == key)
+        });
     }
 
     /// Checked rows of the loaded listing, in listing order.
@@ -233,6 +254,19 @@ impl FileTable {
         &self.rows
     }
 
+    pub fn scope(&self) -> ListingScope {
+        self.scope
+    }
+
+    pub fn set_scope(&mut self, scope: ListingScope, cx: &mut Context<TableState<Self>>) {
+        self.scope = scope;
+        self.reload(cx);
+    }
+
+    pub fn relative_path(&self, node_id: &str) -> Option<&str> {
+        self.paths.get(node_id).map(String::as_str)
+    }
+
     pub fn row(&self, index: usize) -> Option<&FsNode> {
         self.rows.get(index)
     }
@@ -260,6 +294,8 @@ impl FileTable {
     /// List `parent_id` from the start.
     pub fn open(&mut self, parent_id: String, cx: &mut Context<TableState<Self>>) {
         self.parent_id = parent_id;
+        self.scope = ListingScope::Directory;
+        self.query.filter.name_query = None;
         self.reload(cx);
     }
 
@@ -280,59 +316,12 @@ impl FileTable {
         self.generation = self.generation.wrapping_add(1);
         self.checked.clear();
         self.rows.clear();
+        self.paths.clear();
         self.next_cursor = None;
         self.total = None;
         self.truncated = false;
         self.error = None;
         self.fetch(None, cx);
-    }
-
-    fn fetch(&mut self, cursor: Option<String>, cx: &mut Context<TableState<Self>>) {
-        self.loading = true;
-        let generation = self.generation;
-        let image_id = self.image_id.clone();
-        let parent_id = self.parent_id.clone();
-        let query = self.query.clone();
-        let filtered =
-            query.sort.is_some() || query.descending || query.filter != FlatFileFilter::default();
-        let page = Backend::global(cx).run(move |_, state| async move {
-            fs_commands::fs_children_page(
-                State::new(&state),
-                image_id,
-                parent_id,
-                cursor,
-                Some(PAGE_SIZE),
-                filtered.then_some(query),
-            )
-            .await
-        });
-        cx.spawn(async move |table, cx| {
-            let page = page.await;
-            table
-                .update(cx, |table, cx| {
-                    let delegate = table.delegate_mut();
-                    if delegate.generation != generation {
-                        return;
-                    }
-                    delegate.loading = false;
-                    match page {
-                        Ok(page) => {
-                            delegate.rows.extend(page.items);
-                            delegate.next_cursor = page.next_cursor;
-                            delegate.total = page.total;
-                            delegate.truncated = page.truncated;
-                        }
-                        Err(error) => delegate.error = Some(error.message),
-                    }
-                    let browser = delegate.browser.clone();
-                    table.refresh(cx);
-                    cx.notify();
-                    browser.update(cx, |_, cx| cx.notify()).ok();
-                })
-                .ok();
-        })
-        .detach();
-        cx.notify();
     }
 
     fn sort_key(&self, col_ix: usize) -> Option<FlatSortKey> {
@@ -415,11 +404,7 @@ impl TableDelegate for FileTable {
             "name" => h_flex()
                 .gap_2()
                 .min_w_0()
-                .child(node_icon(node).text_color(if node.kind == NodeKind::Dir {
-                    cx.theme().primary
-                } else {
-                    muted
-                }))
+                .child(div().flex_shrink_0().child(node_icon(node, cx)))
                 .child(
                     div()
                         .truncate()
@@ -429,6 +414,20 @@ impl TableDelegate for FileTable {
                 )
                 .when_some(self.tags.get(&node.id), |this, tag| {
                     this.child(tag_chip(tag))
+                })
+                .when_some(self.relative_path(&node.id), |this, path| {
+                    this.child(
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(
+                                path.rsplit_once('/')
+                                    .map_or("根", |(parent, _)| parent)
+                                    .to_owned(),
+                            ),
+                    )
                 })
                 .into_any_element(),
             "kind" => div()
@@ -631,7 +630,7 @@ impl TableDelegate for FileTable {
                 .icon(IconName::Copy)
                 .on_click(move |_, _, cx| {
                     let path = path_browser
-                        .read_with(cx, |browser, _| browser.path_of(&path_node))
+                        .read_with(cx, |browser, cx| browser.path_of(&path_node, cx))
                         .unwrap_or_default();
                     cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(path))
                 }),
@@ -663,7 +662,7 @@ impl TableDelegate for FileTable {
     }
 
     fn has_more(&self, _: &App) -> bool {
-        self.next_cursor.is_some() && !self.loading
+        self.next_cursor.is_some() && !self.loading && self.error.is_none()
     }
 
     fn load_more_threshold(&self) -> usize {

@@ -29,7 +29,8 @@ use serde_json::Value;
 
 use super::{
     hex::{HexView, WINDOW_BYTES},
-    table::{created_time, kind_label, node_icon, tag_chip, FILE_TAGS},
+    icons::node_icon,
+    table::{created_time, kind_label, tag_chip, FILE_TAGS},
     FileBrowser,
 };
 use crate::{backend::Backend, format, ui};
@@ -615,13 +616,23 @@ impl FileDetail {
 
 impl Render for FileDetail {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let close_browser = self.browser.clone();
+        let close = Button::new("close-file-preview")
+            .ghost()
+            .small()
+            .icon(IconName::Close)
+            .tooltip("关闭预览")
+            .on_click(move |_, _, cx| {
+                close_browser.update(cx, FileBrowser::close_preview).ok();
+            });
         let Some(node) = self.node.clone() else {
             return v_flex()
                 .size_full()
+                .child(ui::detail_header("文件预览", close, cx))
                 .child(ui::empty_state(
-                    Icon::new(IconName::Info),
-                    "未选择文件",
-                    Some("在文件列表中选择一项查看详情。".into()),
+                    Icon::new(IconName::PanelRightOpen),
+                    "选择文件，即刻预览",
+                    Some("单击文件查看内容，双击目录进入。".into()),
                 ))
                 .into_any_element();
         };
@@ -643,12 +654,8 @@ impl Render for FileDetail {
         v_flex()
             .size_full()
             .child(
-                h_flex()
-                    .gap_2()
-                    .px_4()
-                    .pt_3()
-                    .pb_2()
-                    .child(node_icon(&node).text_color(cx.theme().primary))
+                ui::pane_header(cx)
+                    .child(div().flex_shrink_0().child(node_icon(&node, cx)))
                     .child(
                         div()
                             .flex_1()
@@ -677,7 +684,8 @@ impl Render for FileDetail {
                                     })
                                     .ok();
                             }),
-                    ),
+                    )
+                    .child(close),
             )
             .child(
                 TabBar::new("detail-tabs")

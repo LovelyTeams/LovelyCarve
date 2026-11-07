@@ -3,6 +3,7 @@
 //! their state while the tab lives.
 mod dashboard;
 mod ios;
+mod navigation;
 mod platform;
 mod unlock;
 mod volumes;
@@ -14,10 +15,6 @@ use gpui_kit::{
         button::{Button, ButtonVariants as _},
         h_flex,
         progress::Progress,
-        sidebar::{
-            Sidebar, SidebarFooter, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuItem,
-            SidebarToggleButton,
-        },
         spinner::Spinner,
         v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _,
     },
@@ -37,9 +34,16 @@ use lovelycarve_lib::{
 };
 
 use crate::{
-    analysis::AnalysisPanel, backend::Backend, bcp::BcpPanel, carving::CarvePanel,
-    files::FileBrowser, format, prefs::Preferences, search::SearchPanel, tasks::TaskStore,
-    timeline::TimelinePanel, ui,
+    analysis::{AnalysisDirectory, AnalysisPanel},
+    backend::Backend,
+    bcp::BcpPanel,
+    carving::CarvePanel,
+    files::FileBrowser,
+    format,
+    search::SearchPanel,
+    tasks::TaskStore,
+    timeline::TimelinePanel,
+    ui,
 };
 pub use dashboard::filesystem_label;
 use dashboard::Dashboard;
@@ -93,9 +97,6 @@ enum LoadState {
     Failed(SharedString),
 }
 
-/// A sidebar group: its title and its pages, each with the count it shows.
-type SidebarGroupPages = (&'static str, Vec<(Page, Option<u64>)>);
-
 /// What an evidence tab tells the workspace.
 #[derive(Clone, Debug)]
 pub enum EvidenceTabEvent {
@@ -105,6 +106,8 @@ pub enum EvidenceTabEvent {
     /// Open a derived image (a shadow copy, a plaintext volume or an
     /// assembled array) in its own tab.
     OpenImage(String),
+    /// Show the quick analysis tab of the workspace task hub.
+    QuickAnalysis,
 }
 
 #[derive(Default)]
@@ -115,6 +118,7 @@ struct Pages {
     timeline: Option<Entity<TimelinePanel>>,
     carve: Option<Entity<CarvePanel>>,
     analysis: Option<Entity<AnalysisPanel>>,
+    analysis_directory: Option<Entity<AnalysisDirectory>>,
     bcp: Option<Entity<BcpPanel>>,
 }
 
@@ -124,9 +128,11 @@ pub struct EvidenceTab {
     case_dir: Option<String>,
     state: LoadState,
     page: Page,
+    last_pages: [Option<Page>; navigation::Group::COUNT],
     pages: Pages,
     /// The BCP index of folder evidence that holds a BCP export.
     bcp: Option<Rc<BcpCatalog>>,
+    open_bcp_on_load: bool,
     tasks: Entity<TaskStore>,
     _tasks: Subscription,
     _load: Option<Task<()>>,
@@ -153,8 +159,10 @@ impl EvidenceTab {
             case_dir,
             state: LoadState::Failed(SharedString::default()),
             page: Page::Dashboard,
+            last_pages: Default::default(),
             pages: Pages::default(),
             bcp: None,
+            open_bcp_on_load: false,
             tasks,
             _tasks: subscription,
             _load: None,
@@ -216,7 +224,7 @@ impl EvidenceTab {
                         this.state = LoadState::Ready(Rc::new(info));
                         this.ensure_page(window, cx);
                         if folder {
-                            this.load_bcp(cx);
+                            this.load_bcp(window, cx);
                         }
                         cx.emit(EvidenceTabEvent::Loaded);
                     }
@@ -241,22 +249,43 @@ impl EvidenceTab {
 
     /// Read the BCP index of folder evidence; folders without one offer no
     /// BCP pages.
-    fn load_bcp(&mut self, cx: &mut Context<Self>) {
+    pub fn open_bcp(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.bcp.is_some() {
+            self.show_page(Page::Bcp(None), window, cx);
+        } else {
+            self.open_bcp_on_load = true;
+            if self.image_id().is_some() {
+                self.load_bcp(window, cx);
+            }
+        }
+    }
+
+    fn load_bcp(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(image_id) = self.image_id().map(str::to_owned) else {
             return;
         };
         let reading = Backend::global(cx).run(move |_, state| async move {
             bcp_commands::bcp_catalog(State::new(&state), image_id).await
         });
-        cx.spawn(async move |this, cx| match reading.await {
-            Ok(catalog) => {
-                this.update(cx, |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
+            let result = reading.await;
+            this.update_in(cx, |this, window, cx| match result {
+                Ok(catalog) => {
                     this.bcp = Some(Rc::new(catalog));
+                    if std::mem::take(&mut this.open_bcp_on_load) {
+                        this.show_page(Page::Bcp(None), window, cx);
+                    }
                     cx.notify();
-                })
-                .ok();
-            }
-            Err(error) => tracing::debug!("bcp_catalog: {error}"),
+                }
+                Err(error) => {
+                    if std::mem::take(&mut this.open_bcp_on_load) {
+                        ui::notify_error(window, cx, "读取 BCP 索引失败", error.message);
+                    } else {
+                        tracing::debug!("bcp_catalog: {error}");
+                    }
+                }
+            })
+            .ok();
         })
         .detach();
     }
@@ -270,6 +299,7 @@ impl EvidenceTab {
 
     pub fn show_page(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
         self.page = page;
+        self.last_pages[page.group() as usize] = Some(page);
         self.ensure_page(window, cx);
         cx.notify();
     }
@@ -298,7 +328,10 @@ impl EvidenceTab {
                 self.pages.carve = Some(cx.new(|cx| CarvePanel::new(info, window, cx)));
             }
             Page::Analysis if self.pages.analysis.is_none() => {
-                self.pages.analysis = Some(cx.new(|cx| AnalysisPanel::new(info, tab, window, cx)));
+                let panel = cx.new(|cx| AnalysisPanel::new(info, tab, window, cx));
+                self.pages.analysis_directory =
+                    Some(cx.new(|cx| AnalysisDirectory::new(panel.clone(), cx)));
+                self.pages.analysis = Some(panel);
             }
             Page::Bcp(category) => match (&self.pages.bcp, &self.bcp) {
                 (Some(panel), _) => {
@@ -401,101 +434,6 @@ impl EvidenceTab {
         .detach();
     }
 
-    /// The sidebar groups: each page with the count it shows, if any.
-    fn pages_for(info: &ImageInfo, bcp: Option<&BcpCatalog>) -> Vec<SidebarGroupPages> {
-        let raw = !info.index_only && wire_name(&info.source_format) != "folder";
-        let mut tools = vec![(Page::Search, None), (Page::Timeline, None)];
-        if raw {
-            tools.push((Page::Carve, None));
-        }
-        let mut groups = vec![
-            ("镜像", vec![(Page::Dashboard, None), (Page::Files, None)]),
-            ("工具", tools),
-            ("分析", vec![(Page::Analysis, None)]),
-        ];
-        if let Some(catalog) = bcp {
-            let categories = crate::bcp::categories_with_rows(catalog)
-                .into_iter()
-                .map(|(category, rows)| (Page::Bcp(Some(category)), Some(rows)));
-            groups.push((
-                "BCP 数据",
-                std::iter::once((Page::Bcp(None), None))
-                    .chain(categories)
-                    .collect(),
-            ));
-        }
-        groups
-    }
-
-    fn render_sidebar(&self, info: &ImageInfo, cx: &mut Context<Self>) -> impl IntoElement {
-        let collapsed = Preferences::global(cx).sidebar_collapsed;
-        let active = self.page;
-        Sidebar::new("evidence-nav")
-            .w(gpui_kit::px(196.))
-            .collapsed(collapsed)
-            .header(
-                SidebarHeader::new().child(
-                    h_flex()
-                        .gap_2()
-                        .min_w_0()
-                        .child(
-                            Icon::new(IconName::HardDrive).text_color(cx.theme().sidebar_primary),
-                        )
-                        .when(!collapsed, |this| {
-                            this.child(
-                                v_flex()
-                                    .min_w_0()
-                                    .child(div().text_sm().truncate().child(self.name.clone()))
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(cx.theme().muted_foreground)
-                                            .child(format::binary_bytes(info.size_bytes)),
-                                    ),
-                            )
-                        }),
-                ),
-            )
-            .children(Self::pages_for(info, self.bcp.as_deref()).into_iter().map(
-                |(group, pages)| {
-                    SidebarGroup::new(group).child(SidebarMenu::new().children(
-                        pages.into_iter().map(|(page, count)| {
-                            SidebarMenuItem::new(page.label())
-                                .icon(page.icon())
-                                .active(page == active)
-                                .when_some(count, |item, count| {
-                                    item.suffix(move |_, cx| {
-                                        div()
-                                            .text_xs()
-                                            .text_color(cx.theme().muted_foreground)
-                                            .child(format::count(count))
-                                    })
-                                })
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.show_page(page, window, cx)
-                                }))
-                        }),
-                    ))
-                },
-            ))
-            .footer(
-                SidebarFooter::new().child(
-                    SidebarToggleButton::new()
-                        .collapsed(collapsed)
-                        .accessibility_label(if collapsed {
-                            "展开侧栏"
-                        } else {
-                            "收起侧栏"
-                        })
-                        .on_click(|_, _, cx| {
-                            Preferences::update(cx, |preferences| {
-                                preferences.sidebar_collapsed = !preferences.sidebar_collapsed
-                            })
-                        }),
-                ),
-            )
-    }
-
     fn render_page(&self) -> AnyElement {
         let page = match self.page {
             Page::Dashboard => self
@@ -575,49 +513,52 @@ impl EvidenceTab {
     }
 
     fn render_failed(&self, message: &SharedString, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .gap_3()
-            .p_8()
-            .child(ui::empty_state(
-                Icon::new(IconName::TriangleAlert),
-                format!("无法打开 {}", self.name),
-                Some(message.clone()),
-            ))
-            .child(
-                Button::new("retry-load")
-                    .primary()
-                    .label("重试")
-                    .on_click(cx.listener(|this, _, window, cx| this.load(window, cx))),
-            )
+        ui::empty_state(
+            Icon::new(IconName::TriangleAlert),
+            format!("无法打开 {}", self.name),
+            Some(message.clone()),
+        )
+        .size_full()
+        .child(
+            Button::new("retry-load")
+                .primary()
+                .label("重试")
+                .on_click(cx.listener(|this, _, window, cx| this.load(window, cx))),
+        )
     }
 }
 
 impl Render for EvidenceTab {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         match &self.state {
             LoadState::Loading { task_id } => {
                 let task_id = task_id.clone();
-                self.render_loading(&task_id, cx).into_any_element()
+                v_flex()
+                    .size_full()
+                    .px_2()
+                    .pb_2()
+                    .child(ui::workspace_sheet(cx).child(self.render_loading(&task_id, cx)))
+                    .into_any_element()
             }
             LoadState::Failed(message) => {
                 let message = message.clone();
-                self.render_failed(&message, cx).into_any_element()
+                v_flex()
+                    .size_full()
+                    .px_2()
+                    .pb_2()
+                    .child(ui::workspace_sheet(cx).child(self.render_failed(&message, cx)))
+                    .into_any_element()
             }
             LoadState::Ready(info) => {
                 let info = Rc::clone(info);
                 h_flex()
                     .size_full()
                     .items_stretch()
-                    .child(self.render_sidebar(&info, cx))
+                    .child(self.render_navigation(&info, window, cx))
                     .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .h_full()
-                            .bg(cx.theme().background)
+                        ui::workspace_sheet(cx)
+                            .mr_2()
+                            .mb_2()
                             .child(self.render_page()),
                     )
                     .into_any_element()

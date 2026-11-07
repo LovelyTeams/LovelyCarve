@@ -6,9 +6,9 @@ use std::{collections::HashSet, path::PathBuf};
 use gpui_kit::{
     component::{
         button::{Button, ButtonVariants as _},
-        h_flex, v_flex, ActiveTheme as _, WindowExt as _,
+        h_flex, v_flex, WindowExt as _,
     },
-    div, App, ParentElement as _, Styled as _, Window,
+    App, ParentElement as _, Styled as _, Window,
 };
 use lovelycarve_lib::{
     commands::filesystem::filesystem_export::{self as export_commands, ExportDirMode},
@@ -223,16 +223,17 @@ fn choose_directory_mode(image_id: String, node: FsNode, window: &mut Window, cx
         let tree_node = node.clone();
         let zip_image = image_id.clone();
         let zip_node = node.clone();
-        dialog.title("导出目录").w(gpui_kit::px(440.)).child(
-            v_flex()
-                .gap_4()
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(description.clone()),
-                )
-                .child(
+        dialog
+            .centered()
+            .title(ui::dialog_heading(
+                gpui_kit::assets::IconName::Download,
+                "导出目录",
+                description.clone(),
+                cx,
+            ))
+            .w(gpui_kit::px(440.))
+            .child(
+                v_flex().gap_4().child(
                     h_flex()
                         .gap_2()
                         .justify_end()
@@ -270,7 +271,7 @@ fn choose_directory_mode(image_id: String, node: FsNode, window: &mut Window, cx
                                 }),
                         ),
                 ),
-        )
+            )
     });
 }
 

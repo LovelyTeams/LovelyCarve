@@ -4,6 +4,7 @@
 //! switching a case replaces the tabs with that case's evidence.
 mod sources;
 mod welcome;
+mod welcome_motion;
 
 use std::path::PathBuf;
 
@@ -15,20 +16,25 @@ use gpui_kit::{
         h_flex,
         spinner::Spinner,
         tab::{Tab, TabBar},
-        v_flex, ActiveTheme as _, Icon, IconName, Sizable as _, TitleBar, WindowExt as _,
+        v_flex, ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, TitleBar,
+        WindowExt as _,
     },
-    div,
+    div, img,
     prelude::FluentBuilder as _,
-    App, AppContext as _, Context, Entity, ExternalPaths, FocusHandle, Focusable,
-    InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Render, SharedString,
-    Styled as _, Subscription, Window,
+    px, App, AppContext as _, Context, Entity, ExternalPaths, FocusHandle, Focusable,
+    InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Render, Styled as _,
+    Subscription, Window,
 };
 
 use crate::{
     cases::{CaseEvent, CaseManager, CaseManagerEvent, CaseStore},
     evidence::{EvidenceTab, EvidenceTabEvent},
     settings,
-    tasks::{self, TaskNotice, TaskStore},
+    tasks::{
+        self,
+        center::{HubEvent, TaskCenter},
+        TaskNotice, TaskStore,
+    },
     ui,
 };
 use welcome::Welcome;
@@ -50,6 +56,7 @@ actions!(
 const CONTEXT: &str = "Workspace";
 
 pub fn init(cx: &mut App) {
+    tasks::center::init(cx);
     cx.bind_keys([
         KeyBinding::new("ctrl-o", AddEvidence, Some(CONTEXT)),
         KeyBinding::new("ctrl-t", AddEvidence, Some(CONTEXT)),
@@ -65,6 +72,7 @@ pub struct Workspace {
     welcome: Entity<Welcome>,
     cases: Entity<CaseStore>,
     tasks: Entity<TaskStore>,
+    task_hub: Option<(Entity<TaskCenter>, Subscription)>,
     focus: FocusHandle,
     /// Evidence asked for before a case was active (dropped files, the
     /// command line); opened once a case is.
@@ -100,7 +108,7 @@ impl Workspace {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let cases = CaseStore::global(cx);
         let tasks = TaskStore::global(cx);
-        let welcome = cx.new(Welcome::new);
+        let welcome = cx.new(|cx| Welcome::new(window, cx));
         let subscriptions = vec![
             cx.observe(&cases, |_, _, cx| cx.notify()),
             cx.observe(&tasks, |_, _, cx| cx.notify()),
@@ -129,6 +137,7 @@ impl Workspace {
             welcome,
             cases,
             tasks,
+            task_hub: None,
             focus: cx.focus_handle(),
             pending_paths: Vec::new(),
             _subscriptions: subscriptions,
@@ -200,6 +209,7 @@ impl Workspace {
         // in the backend; its tabs and RAID findings go with it.
         self.tabs.clear();
         self.active = None;
+        self.task_hub = None;
         crate::raid::RaidStore::global(cx).update(cx, |store, cx| store.reset(cx));
         crate::evidence::PlatformStore::global(cx).update(cx, |store, cx| store.reset(cx));
         if let CaseEvent::Opened(case) = event {
@@ -219,7 +229,13 @@ impl Workspace {
 
     /// Open `path` as evidence of the active case, or focus its tab.
     pub fn open_tab(&mut self, path: String, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(index) = self.tabs.iter().position(|tab| tab.read(cx).path() == path) {
+        use lovelycarve_lib::core::casework::case::evidence_path_key;
+        let path_key = evidence_path_key(&path);
+        if let Some(index) = self
+            .tabs
+            .iter()
+            .position(|tab| evidence_path_key(tab.read(cx).path()) == path_key)
+        {
             self.active = Some(index);
             cx.notify();
             return;
@@ -234,11 +250,13 @@ impl Workspace {
                     EvidenceTabEvent::Loaded => {
                         // The backend registered the evidence with the case.
                         this.cases.update(cx, |cases, cx| cases.refresh_active(cx));
+                        cx.notify();
                     }
                     EvidenceTabEvent::Failed(message) => {
                         ui::notify_error(window, cx, "打开检材失败", message.clone());
                     }
                     EvidenceTabEvent::OpenImage(path) => this.open_tab(path.clone(), window, cx),
+                    EvidenceTabEvent::QuickAnalysis => this.show_task_hub(true, window, cx),
                 }
             },
         );
@@ -246,6 +264,13 @@ impl Workspace {
         self.tabs.push(tab);
         self.active = Some(self.tabs.len() - 1);
         cx.notify();
+    }
+
+    fn open_bcp_tab(&mut self, folder: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_tab(folder, window, cx);
+        if let Some(tab) = self.active.and_then(|index| self.tabs.get(index)) {
+            tab.update(cx, |tab, cx| tab.open_bcp(window, cx));
+        }
     }
 
     fn activate(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -277,6 +302,39 @@ impl Workspace {
         let current = self.active.unwrap_or(0) as isize;
         let next = (current + step).rem_euclid(count as isize) as usize;
         self.activate(next, cx);
+    }
+
+    fn show_task_hub(&mut self, quick: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some((hub, _)) = &self.task_hub {
+            if quick {
+                hub.update(cx, TaskCenter::show_quick);
+                hub.focus_handle(cx).focus(window, cx);
+            } else {
+                self.task_hub = None;
+                self.focus.focus(window, cx);
+            }
+            cx.notify();
+            return;
+        }
+        let hub = cx.new(|cx| TaskCenter::new(quick, window, cx));
+        let subscription =
+            cx.subscribe_in(&hub, window, |this, _, event: &HubEvent, window, cx| {
+                this.task_hub = None;
+                this.focus.focus(window, cx);
+                match event {
+                    HubEvent::Close => {}
+                    HubEvent::OpenCases => this.show_case_manager(window, cx),
+                    HubEvent::OpenPage(page) => {
+                        if let Some(tab) = this.active.and_then(|index| this.tabs.get(index)) {
+                            tab.update(cx, |tab, cx| tab.show_page(*page, window, cx));
+                        }
+                    }
+                }
+                cx.notify();
+            });
+        hub.focus_handle(cx).focus(window, cx);
+        self.task_hub = Some((hub, subscription));
+        cx.notify();
     }
 
     /// Ask for the evidence source; evidence needs an active, unlocked case.
@@ -322,13 +380,18 @@ impl Workspace {
         self._subscriptions.push(subscription);
         let cases = self.cases.clone();
         window.open_dialog(cx, move |dialog, _, cx| {
-            let title = cases
-                .read(cx)
-                .active()
-                .map(|case| SharedString::from(case.name.clone()))
-                .unwrap_or_else(|| "案件管理".into());
+            let (title, subtitle) = cases.read(cx).active().map_or_else(
+                || ("案件管理".to_owned(), "新建案件，或继续已有工作".to_owned()),
+                |case| (case.name.clone(), format!("案件 · {}", case.case_number)),
+            );
             dialog
-                .title(title)
+                .centered()
+                .title(ui::dialog_heading(
+                    ExtraIcon::Briefcase,
+                    title,
+                    subtitle,
+                    cx,
+                ))
                 .w(gpui_kit::px(760.))
                 .child(manager.clone())
         });
@@ -358,6 +421,8 @@ impl Workspace {
                 )
         });
         TitleBar::new()
+            .h(px(38.))
+            .bg(cx.theme().title_bar)
             .child(
                 // The tabs take what the actions leave and scroll beyond it,
                 // so the case, settings and window buttons stay visible.
@@ -368,38 +433,52 @@ impl Workspace {
                     .overflow_hidden()
                     .gap_2()
                     .child(
-                        div()
+                        h_flex()
                             .flex_shrink_0()
-                            .text_sm()
-                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                            .child("LovelyCarve"),
+                            .gap_2()
+                            .pr_2()
+                            .child(img(crate::assets::BRAND_MARK).size(px(20.)))
+                            .child(ui::wordmark(13., cx)),
                     )
-                    .child(
-                        TabBar::new("evidence-tabs")
-                            .flex_1()
-                            .min_w_0()
-                            .h_full()
-                            .max_width(gpui_kit::px(200.))
-                            .children(tabs)
-                            .when_some(self.active, |bar, active| bar.selected_index(active))
-                            .on_click(
-                                cx.listener(|this, index: &usize, _, cx| this.activate(*index, cx)),
-                            )
-                            .suffix(
-                                Button::new("add-evidence")
-                                    .ghost()
-                                    .xsmall()
-                                    .icon(IconName::Plus)
-                                    .accessibility_label("添加检材")
-                                    .tooltip("添加检材 (Ctrl+O)")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.add_evidence(window, cx)
+                    .when(!self.tabs.is_empty(), |this| {
+                        this.child(
+                            // Keep the native drag hitbox behind the interactive tabs.
+                            div().occlude().min_w_0().child(
+                                TabBar::new("evidence-tabs")
+                                    .segmented()
+                                    .small()
+                                    .bg(cx.theme().transparent)
+                                    .min_w_0()
+                                    .max_width(px(200.))
+                                    .children(tabs)
+                                    .when_some(self.active, |bar, active| {
+                                        bar.selected_index(active)
+                                    })
+                                    .on_click(cx.listener(|this, index: &usize, _, cx| {
+                                        this.activate(*index, cx)
                                     })),
                             ),
+                        )
+                    })
+                    .child(
+                        div().occlude().flex_shrink_0().child(
+                            Button::new("add-evidence")
+                                .ghost()
+                                .small()
+                                .icon(IconName::Plus)
+                                .accessibility_label("添加检材")
+                                .tooltip("添加检材 (Ctrl+O)")
+                                .on_click(
+                                    cx.listener(|this, _, window, cx| {
+                                        this.add_evidence(window, cx)
+                                    }),
+                                ),
+                        ),
                     ),
             )
             .child(
                 h_flex()
+                    .occlude()
                     .flex_shrink_0()
                     .gap_1()
                     .pr_2()
@@ -408,19 +487,22 @@ impl Workspace {
                             Button::new("task-center")
                                 .ghost()
                                 .small()
+                                .h(px(26.))
+                                .selected(self.task_hub.is_some())
                                 .icon(Icon::new(ExtraIcon::ListTodo))
                                 .label("任务中心")
-                                .on_click(
-                                    cx.listener(|_, _, window, cx| tasks::center::open(window, cx)),
-                                ),
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.show_task_hub(false, window, cx)
+                                })),
                         ),
                     )
                     .child(
                         Button::new("case-manager")
                             .ghost()
                             .small()
+                            .h(px(26.))
                             .icon(Icon::new(ExtraIcon::Briefcase))
-                            .label(case_name.clone().unwrap_or_else(|| "案件管理".to_owned()))
+                            .label("案件管理")
                             .tooltip(match &case_name {
                                 Some(name) => format!("案件管理 · {name}"),
                                 None => "案件管理（当前无案件）".to_owned(),
@@ -433,8 +515,9 @@ impl Workspace {
                         Button::new("settings")
                             .ghost()
                             .small()
+                            .h(px(26.))
                             .icon(IconName::Settings)
-                            .label("设置")
+                            .label("设置中心")
                             .on_click(cx.listener(|_, _, window, cx| settings::open(window, cx))),
                     ),
             )
@@ -448,11 +531,39 @@ impl Focusable for Workspace {
 }
 
 impl Render for Workspace {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let content = match self.active.and_then(|index| self.tabs.get(index)) {
             Some(tab) => tab.clone().into_any_element(),
-            None => self.welcome.clone().into_any_element(),
+            None => ui::workspace_sheet(cx)
+                .mx(px(8.))
+                .mb(px(8.))
+                .child(self.welcome.clone())
+                .into_any_element(),
         };
+        let task_hub = self.task_hub.as_ref().map(|(hub, _)| {
+            let evidence = self
+                .active
+                .and_then(|index| self.tabs.get(index))
+                .and_then(|tab| {
+                    let tab = tab.read(cx);
+                    Some((tab.image_id()?.to_owned(), tab.name()))
+                });
+            let has_case = self.cases.read(cx).active().is_some();
+            hub.update(cx, |hub, cx| hub.set_context(evidence, has_case, cx));
+            let height = (window.viewport_size().height - px(84.)).min(px(680.));
+            gpui_kit::deferred(
+                ui::card(cx)
+                    .absolute()
+                    .top(px(44.))
+                    .right(px(12.))
+                    .w(px(440.))
+                    .h(height)
+                    .shadow_lg()
+                    .occlude()
+                    .overflow_hidden()
+                    .child(hub.clone()),
+            )
+        });
         v_flex()
             .id("workspace")
             .key_context(CONTEXT)
@@ -470,17 +581,19 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &ShowCaseManager, window, cx| {
                 this.show_case_manager(window, cx)
             }))
-            .on_action(
-                cx.listener(|_, _: &ShowTaskCenter, window, cx| tasks::center::open(window, cx)),
-            )
+            .on_action(cx.listener(|this, _: &ShowTaskCenter, window, cx| {
+                this.show_task_hub(false, window, cx)
+            }))
             .on_drop(cx.listener(|this, paths: &ExternalPaths, window, cx| {
                 this.on_drop(paths, window, cx)
             }))
             .drag_over::<ExternalPaths>(|style, _, _, cx| style.bg(cx.theme().drop_target))
             .size_full()
-            .bg(cx.theme().background)
+            .relative()
+            .bg(cx.theme().sidebar)
             .text_color(cx.theme().foreground)
             .child(self.render_title_bar(cx))
-            .child(div().flex_1().min_h_0().w_full().child(content))
+            .child(v_flex().flex_1().min_h_0().w_full().child(content))
+            .children(task_hub)
     }
 }

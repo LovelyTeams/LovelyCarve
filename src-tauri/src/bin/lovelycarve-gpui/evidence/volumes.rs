@@ -8,7 +8,6 @@ use std::{
 use gpui_kit::{
     component::{
         button::{Button, ButtonVariants as _},
-        group_box::{GroupBox, GroupBoxVariants as _},
         h_flex,
         tag::Tag,
         v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, WindowExt as _,
@@ -386,10 +385,16 @@ impl VolumesCard {
         };
         self.showing = Some(partition_id);
         let card = cx.entity().downgrade();
-        window.open_dialog(cx, move |shell, _, _| {
+        window.open_dialog(cx, move |shell, _, cx| {
             let card = card.clone();
             shell
-                .title(format!("解锁 BitLocker 分区 {partition_id}"))
+                .centered()
+                .title(ui::dialog_heading(
+                    ExtraIcon::Lock,
+                    format!("解锁 BitLocker 分区 {partition_id}"),
+                    "选择解锁方式后可浏览分区内容",
+                    cx,
+                ))
                 .w(px(580.))
                 .child(dialog.clone())
                 .on_close(move |_, _, cx| {
@@ -425,8 +430,17 @@ impl VolumesCard {
             Some(partition) => format!("解锁分区 {partition}"),
             None => "解锁加密容器".to_owned(),
         };
-        window.open_dialog(cx, move |shell, _, _| {
-            shell.title(title.clone()).w(px(560.)).child(dialog.clone())
+        window.open_dialog(cx, move |shell, _, cx| {
+            shell
+                .centered()
+                .title(ui::dialog_heading(
+                    ExtraIcon::Lock,
+                    title.clone(),
+                    "选择加密容器并提供解锁凭据",
+                    cx,
+                ))
+                .w(px(560.))
+                .child(dialog.clone())
         });
     }
 
@@ -597,26 +611,29 @@ impl VolumesCard {
             let muted = cx.theme().muted_foreground;
             let folder_card = card.clone();
             let (folder_node, folder_title) = (node_id.clone(), title.clone());
-            shell.title(format!("挂载 {title}")).w(px(460.)).child(
-                v_flex()
-                    .gap_3()
-                    .child(div().text_sm().text_color(muted).child(
-                        "以只读方式挂载为 Windows 盘符，或挂载到一个位于 NTFS 卷上的空文件夹。",
-                    ))
-                    .child(ui::section_title("盘符", cx))
-                    .when(drives.is_empty(), |this| {
-                        this.child(
-                            div()
-                                .text_sm()
-                                .text_color(muted)
-                                .child("没有可用盘符（H–Y 全部占用）"),
-                        )
-                    })
-                    .child(
-                        h_flex()
-                            .flex_wrap()
-                            .gap_2()
-                            .children(drives.iter().enumerate().map(|(index, drive)| {
+            shell
+                .centered()
+                .title(ui::dialog_heading(
+                    IconName::HardDrive,
+                    format!("挂载 {title}"),
+                    "以只读方式挂载为盘符，或挂载到 NTFS 卷上的空文件夹。",
+                    cx,
+                ))
+                .w(px(460.))
+                .child(
+                    v_flex()
+                        .gap_3()
+                        .child(ui::section_title("盘符", cx))
+                        .when(drives.is_empty(), |this| {
+                            this.child(
+                                div()
+                                    .text_sm()
+                                    .text_color(muted)
+                                    .child("没有可用盘符（H–Y 全部占用）"),
+                            )
+                        })
+                        .child(h_flex().flex_wrap().gap_2().children(
+                            drives.iter().enumerate().map(|(index, drive)| {
                                 let (card, node_id, title, drive) =
                                     (card.clone(), node_id.clone(), title.clone(), drive.clone());
                                 Button::new(("mount-drive", index))
@@ -635,25 +652,26 @@ impl VolumesCard {
                                         })
                                         .ok();
                                     })
-                            })),
-                    )
-                    .child(ui::section_title("文件夹", cx))
-                    .child(
-                        Button::new("mount-folder")
-                            .small()
-                            .icon(IconName::FolderOpen)
-                            .label("选择空文件夹…")
-                            .on_click(move |_, window, cx| {
-                                window.close_dialog(cx);
-                                let (node_id, title) = (folder_node.clone(), folder_title.clone());
-                                folder_card
-                                    .update(cx, |card, cx| {
-                                        card.mount_to_folder(node_id, title, window, cx)
-                                    })
-                                    .ok();
                             }),
-                    ),
-            )
+                        ))
+                        .child(ui::section_title("文件夹", cx))
+                        .child(
+                            Button::new("mount-folder")
+                                .small()
+                                .icon(IconName::FolderOpen)
+                                .label("选择空文件夹…")
+                                .on_click(move |_, window, cx| {
+                                    window.close_dialog(cx);
+                                    let (node_id, title) =
+                                        (folder_node.clone(), folder_title.clone());
+                                    folder_card
+                                        .update(cx, |card, cx| {
+                                            card.mount_to_folder(node_id, title, window, cx)
+                                        })
+                                        .ok();
+                                }),
+                        ),
+                )
         });
     }
 
@@ -1119,8 +1137,11 @@ fn partition_title(partition: &Partition) -> String {
 }
 
 impl Render for VolumesCard {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let info = Rc::clone(&self.info);
+        let narrow = window.viewport_size().width < px(1120.);
+        let filesystem_width = px(if narrow { 92. } else { 132. });
+        let actions_width = px(if narrow { 140. } else { 244. });
         let sector = info.sector_size.max(1) as u64;
         let total_sectors = (info.size_bytes / sector).max(1);
         let palette: [Hsla; 5] = [
@@ -1136,11 +1157,8 @@ impl Render for VolumesCard {
             .map(|scheme| wire_name(&scheme).to_uppercase());
         let block = supports_block_operations(&info);
         let title =
-            h_flex()
+            ui::card_heading(Icon::new(ExtraIcon::Layers), "卷与分区", cx)
                 .w_full()
-                .gap_2()
-                .child(Icon::new(ExtraIcon::Layers))
-                .child("卷与分区")
                 .when_some(scheme, |this, scheme| {
                     this.child(Tag::secondary().small().child(scheme))
                 })
@@ -1169,13 +1187,14 @@ impl Render for VolumesCard {
             .py_1()
             .text_xs()
             .text_color(muted)
+            .bg(cx.theme().table_head)
             .border_b_1()
             .border_color(cx.theme().border)
             .child(div().flex_1().min_w_0().child("名称"))
-            .child(div().w(px(150.)).child("文件系统"))
+            .child(div().w(filesystem_width).child("文件系统"))
             .child(div().w(px(110.)).text_right().child("起始扇区"))
             .child(div().w(px(96.)).text_right().child("大小"))
-            .child(div().w(px(300.)).text_right().child("操作"));
+            .child(div().w(actions_width).text_right().child("操作"));
         let rows: Vec<_> = info
             .partitions
             .iter()
@@ -1213,7 +1232,8 @@ impl Render for VolumesCard {
                             )
                             .child(
                                 h_flex()
-                                    .w(px(150.))
+                                    .w(filesystem_width)
+                                    .flex_wrap()
                                     .gap_1()
                                     .child(
                                         Tag::secondary()
@@ -1239,7 +1259,11 @@ impl Render for VolumesCard {
                                 .w(px(96.))
                                 .text_right(),
                             )
-                            .child(div().w(px(300.)).child(self.render_actions(partition, cx))),
+                            .child(
+                                div()
+                                    .w(actions_width)
+                                    .child(self.render_actions(partition, cx)),
+                            ),
                     )
                     .children(self.render_shadow_list(partition.id, cx))
             })
@@ -1249,10 +1273,10 @@ impl Render for VolumesCard {
         } else {
             None
         };
-        GroupBox::new()
-            .id("volumes")
-            .outline()
-            .title(title)
+        ui::card(cx)
+            .p_4()
+            .gap_3()
+            .child(title)
             .when(info.partitions.is_empty(), |this| {
                 this.child(match synthetic {
                     Some((node_id, label)) => h_flex()
@@ -1291,7 +1315,30 @@ impl Render for VolumesCard {
                         .bg(cx.theme().muted)
                         .children(info.partitions.iter().enumerate().map(|(index, partition)| {
                             let fraction = (partition.length_lba as f64 / total_sectors as f64).clamp(0.004, 1.0);
-                            div().h_full().w(relative(fraction as f32)).bg(palette[index % palette.len()])
+                            h_flex()
+                                .h_full()
+                                .w(relative(fraction as f32))
+                                .overflow_hidden()
+                                .bg(palette[index % palette.len()])
+                                .when(fraction >= 0.18, |segment| {
+                                    segment.child(
+                                        ui::mono(
+                                            format!(
+                                                "分区 {} · {}",
+                                                partition.id,
+                                                format::binary_bytes(partition.length_lba.saturating_mul(sector)),
+                                            ),
+                                            cx,
+                                        )
+                                        .mx_2()
+                                        .px_1()
+                                        .rounded(px(4.))
+                                        .truncate()
+                                        .bg(cx.theme().popover)
+                                        .text_color(cx.theme().foreground)
+                                        .text_size(px(11.)),
+                                    )
+                                })
                         })),
                 )
                 .child(v_flex().w_full().child(header_row).children(rows))

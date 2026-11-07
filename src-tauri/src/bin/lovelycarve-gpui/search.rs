@@ -9,11 +9,11 @@ use std::{rc::Rc, time::Duration};
 use gpui_kit::{
     component::{
         button::{Button, ButtonVariants as _},
-        h_flex, h_resizable,
+        h_flex,
         input::{Input, InputEvent, InputState},
-        resizable_panel,
+        menu::{DropdownMenu as _, PopupMenuItem},
         scroll::ScrollableElement as _,
-        table::{DataTable, TableEvent, TableState},
+        table::{TableEvent, TableState},
         tag::Tag,
         v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, WindowExt as _,
     },
@@ -55,6 +55,8 @@ pub struct SearchPanel {
     info: Rc<ImageInfo>,
     tab: WeakEntity<EvidenceTab>,
     history: Vec<GlobalSearchMeta>,
+    history_visible: bool,
+    loading_history: bool,
     history_error: Option<SharedString>,
     selected: Option<String>,
     table: Entity<TableState<HitTable>>,
@@ -106,6 +108,8 @@ impl SearchPanel {
             info,
             tab,
             history: Vec::new(),
+            history_visible: false,
+            loading_history: true,
             history_error: None,
             selected: None,
             table,
@@ -133,6 +137,7 @@ impl SearchPanel {
         cx.spawn(async move |this, cx| {
             let listed = listed.await;
             this.update(cx, |this, cx| {
+                this.loading_history = false;
                 match listed {
                     Ok(history) => {
                         this.history = history;
@@ -142,6 +147,7 @@ impl SearchPanel {
                                 this.history.first().map(|meta| meta.search_id.clone())
                             {
                                 this.select(first, cx);
+                                this.history_visible = true;
                             }
                         }
                     }
@@ -206,6 +212,7 @@ impl SearchPanel {
         let search_id = format!("search-{}", uuid::Uuid::new_v4());
         let image_id = self.info.id.clone();
         let started = search_id.clone();
+        self.history_visible = true;
         self.select(search_id.clone(), cx);
         let search = Backend::global(cx).run(move |host, state| async move {
             search_commands::global_search_start(
@@ -263,7 +270,7 @@ impl SearchPanel {
     }
 
     fn show_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let form = cx.new(|cx| SearchForm::new(window, cx));
+        let form = cx.new(|cx| SearchForm::new(&self.info, window, cx));
         let subscription = cx.subscribe_in(
             &form,
             window,
@@ -273,8 +280,17 @@ impl SearchPanel {
             },
         );
         self._subscriptions.push(subscription);
-        window.open_dialog(cx, move |dialog, _, _| {
-            dialog.title("新建全局搜索").w(px(560.)).child(form.clone())
+        window.open_dialog(cx, move |dialog, _, cx| {
+            dialog
+                .centered()
+                .title(ui::dialog_heading(
+                    IconName::Search,
+                    "新建搜索",
+                    "在检材的文件内容中查找关键词或正则表达式",
+                    cx,
+                ))
+                .w(px(560.))
+                .child(form.clone())
         });
     }
 
@@ -372,24 +388,21 @@ impl SearchPanel {
         let selected = self.selected.clone();
         v_flex()
             .size_full()
-            .child(
-                h_flex()
-                    .px_3()
-                    .py_2()
-                    .gap_2()
-                    .child(
-                        div()
-                            .flex_1()
-                            .text_sm()
-                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                            .child("搜索记录"),
-                    )
-                    .child(
-                        Tag::secondary()
-                            .small()
-                            .child(self.history.len().to_string()),
-                    ),
-            )
+            .child(ui::history_header(
+                "搜索记录",
+                self.history.len(),
+                Button::new("close-search-history")
+                    .ghost()
+                    .small()
+                    .icon(IconName::PanelLeftClose)
+                    .tooltip("收起搜索记录")
+                    .accessibility_label("收起搜索记录")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.history_visible = false;
+                        cx.notify();
+                    })),
+                cx,
+            ))
             .when_some(self.history_error.clone(), |this, error| {
                 this.child(div().px_3().child(ui::error_text(error, cx)))
             })
@@ -471,17 +484,7 @@ impl SearchPanel {
             )
     }
 
-    fn render_detail(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let Some(hit) = self.hit.clone() else {
-            return v_flex()
-                .size_full()
-                .child(ui::empty_state(
-                    Icon::new(IconName::Info),
-                    "未选择命中",
-                    Some("在命中列表中选择一项查看上下文。".into()),
-                ))
-                .into_any_element();
-        };
+    fn render_detail(&self, hit: &GlobalSearchHit, cx: &mut Context<Self>) -> impl IntoElement {
         let locatable = hit.source_kind == "file";
         let tab = self.tab.clone();
         let node_id = hit.node_id.clone();
@@ -496,19 +499,6 @@ impl SearchPanel {
             .px_4()
             .py_3()
             .gap_1()
-            .child(
-                h_flex()
-                    .gap_2()
-                    .child(Icon::new(IconName::File).text_color(cx.theme().primary))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                            .child(hit.file_name.clone()),
-                    ),
-            )
             .child(
                 h_flex()
                     .gap_2()
@@ -599,13 +589,70 @@ impl SearchPanel {
                     .child(ui::mono(hit.context_full.clone(), cx).text_xs()),
             )
             .overflow_y_scrollbar()
-            .into_any_element()
     }
 }
 
 impl Render for SearchPanel {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let history = self
+            .history_visible
+            .then(|| self.render_history(cx).into_any_element());
+        let history_toggle = ui::history_toggle(
+            "search-history-toggle",
+            "搜索记录",
+            self.history_visible,
+            self.selected.is_none(),
+        )
+        .on_click(cx.listener(|this, _, _, cx| {
+            this.history_visible = !this.history_visible;
+            cx.notify();
+        }));
+        let new_search = Button::new("new-search")
+            .primary()
+            .small()
+            .h(px(30.))
+            .icon(IconName::Plus)
+            .label("新建搜索")
+            .on_click(cx.listener(|this, _, window, cx| this.show_form(window, cx)));
+        if self.selected.is_none() {
+            let state = if let Some(error) = &self.history_error {
+                ui::empty_state(
+                    IconName::TriangleAlert,
+                    "读取搜索记录失败",
+                    Some(error.clone()),
+                )
+                .child(
+                    Button::new("retry-search-history")
+                        .primary()
+                        .icon(IconName::RefreshCw)
+                        .label("重试")
+                        .on_click(cx.listener(|this, _, _, cx| this.load_history(true, cx))),
+                )
+            } else {
+                ui::empty_state(
+                    IconName::Search,
+                    if self.loading_history {
+                        "正在读取搜索记录…"
+                    } else {
+                        "还没有搜索记录"
+                    },
+                    Some("输入关键词或正则，查找检材中的文件内容".into()),
+                )
+                .child(new_search.disabled(self.loading_history))
+            };
+            return ui::result_workspace(
+                history,
+                ui::workspace_start(history_toggle, state, cx),
+                window,
+                cx,
+            );
+        }
         let distinct = self.distinct;
+        let current_distinct = DISTINCT
+            .iter()
+            .find(|(key, _)| *key == distinct)
+            .map_or(DISTINCT[0].1, |(_, label)| *label);
+        let view = cx.entity().downgrade();
         let table = self.table.read(cx).delegate();
         let footer_left = match self.selected_meta() {
             Some(meta) => {
@@ -630,92 +677,94 @@ impl Render for SearchPanel {
             format::count(table.loaded() as u64),
             format::count(table.total())
         );
-        let has_selection = self.selected.is_some();
-        v_flex()
+        let detail = self.hit.clone().map(|hit| {
+            v_flex()
+                .size_full()
+                .child(ui::detail_header(
+                    hit.file_name.clone(),
+                    Button::new("close-search-hit")
+                        .ghost()
+                        .small()
+                        .icon(IconName::Close)
+                        .accessibility_label("关闭命中详情")
+                        .tooltip("关闭命中详情")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.hit = None;
+                            this.table.update(cx, |table, cx| table.clear_selection(cx));
+                            cx.notify();
+                        })),
+                    cx,
+                ))
+                .child(div().flex_1().min_h_0().child(self.render_detail(&hit, cx)))
+                .into_any_element()
+        });
+        let main = v_flex()
             .size_full()
             .child(
                 ui::page_toolbar(cx)
+                    .child(history_toggle)
                     .child(
-                        div().w(px(420.)).child(
+                        div().flex_1().min_w(px(120.)).child(
                             Input::new(&self.filter)
                                 .small()
                                 .cleanable(true)
                                 .prefix(Icon::new(ExtraIcon::Funnel).small()),
                         ),
                     )
-                    .children(DISTINCT.iter().map(|(key, label)| {
-                        let key = *key;
-                        Button::new(SharedString::from(format!("distinct-{key}")))
+                    .child(
+                        Button::new("search-distinct")
                             .small()
-                            .label(*label)
-                            .when(distinct == key, |button| button.primary())
-                            .when(distinct != key, |button| button.ghost())
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.distinct = key;
-                                let keyword = this.filter.read(cx).value().to_string();
-                                this.table.update(cx, |table, cx| {
-                                    table.delegate_mut().set_filter(Some(keyword), key, cx)
-                                });
-                                cx.notify();
-                            }))
-                    }))
-                    .child(div().flex_1())
+                            .h(px(30.))
+                            .label(current_distinct)
+                            .dropdown_caret(true)
+                            .dropdown_menu(move |menu, _, _| {
+                                DISTINCT.into_iter().fold(menu, |menu, (key, label)| {
+                                    let view = view.clone();
+                                    menu.item(
+                                        PopupMenuItem::new(label)
+                                            .checked(distinct == key)
+                                            .on_click(move |_, _, cx| {
+                                                view.update(cx, |this, cx| {
+                                                    this.distinct = key;
+                                                    let keyword =
+                                                        this.filter.read(cx).value().to_string();
+                                                    this.table.update(cx, |table, cx| {
+                                                        table.delegate_mut().set_filter(
+                                                            Some(keyword),
+                                                            key,
+                                                            cx,
+                                                        )
+                                                    });
+                                                    cx.notify();
+                                                })
+                                                .ok();
+                                            }),
+                                    )
+                                })
+                            }),
+                    )
                     .child(
                         Button::new("export-hits")
                             .small()
                             .icon(Icon::new(ExtraIcon::Download))
                             .label("导出 CSV")
-                            .disabled(!has_selection)
                             .on_click(cx.listener(|this, _, window, cx| this.export(window, cx))),
                     )
-                    .child(
-                        Button::new("new-search")
-                            .small()
-                            .primary()
-                            .icon(IconName::Plus)
-                            .label("新建搜索")
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.show_form(window, cx)),
-                            ),
-                    ),
+                    .child(new_search),
             )
-            .child(
-                div().flex_1().min_h_0().child(
-                    h_resizable("search-panels")
-                        .child(
-                            resizable_panel()
-                                .size(px(260.))
-                                .size_range(px(180.)..px(480.))
-                                .child(
-                                    div()
-                                        .size_full()
-                                        .border_r_1()
-                                        .border_color(cx.theme().border)
-                                        .child(self.render_history(cx)),
-                                ),
-                        )
-                        .child(
-                            resizable_panel()
-                                .child(DataTable::new(&self.table).bordered(false).small()),
-                        )
-                        .child(
-                            resizable_panel()
-                                .size(px(340.))
-                                .size_range(px(280.)..px(800.))
-                                .child(
-                                    div()
-                                        .size_full()
-                                        .border_l_1()
-                                        .border_color(cx.theme().border)
-                                        .child(self.render_detail(cx)),
-                                ),
-                        ),
-                ),
-            )
+            .child(ui::detail_frame(
+                "search-details",
+                ui::data_table(&self.table),
+                detail,
+                window.viewport_size().width < px(if self.history_visible { 1352. } else { 1096. }),
+                px(380.),
+                cx,
+            ))
             .child(ui::page_footer(
                 div().truncate().child(footer_left),
                 footer_right,
                 cx,
-            ))
+            ));
+        ui::result_workspace(history, main, window, cx)
     }
 }

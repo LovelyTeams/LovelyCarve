@@ -42,6 +42,8 @@ pub struct TaskView {
 #[serde(rename_all = "camelCase")]
 pub struct TaskRow {
     pub id: String,
+    #[serde(default)]
+    pub image_id: Option<String>,
     pub status: String,
     #[serde(default)]
     pub cancelling: bool,

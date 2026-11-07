@@ -9,8 +9,9 @@ use gpui_kit::{
         tree::{tree, TreeEvent, TreeItem, TreeState},
         ActiveTheme as _, Icon, IconName, Sizable as _,
     },
-    div, px, AppContext as _, Context, Entity, EventEmitter, IntoElement, ParentElement as _,
-    Render, SharedString, Styled as _, Subscription, Window,
+    div, px, AppContext as _, Context, Entity, EventEmitter, InteractiveElement as _, IntoElement,
+    KeyDownEvent, ParentElement as _, Render, ScrollStrategy, SharedString, Styled as _,
+    Subscription, Window,
 };
 use lovelycarve_lib::{
     commands::filesystem::filesystem as fs_commands,
@@ -21,7 +22,7 @@ use lovelycarve_lib::{
     host::State,
 };
 
-use super::Crumb;
+use super::{icons::directory_icon, Crumb};
 use crate::backend::Backend;
 
 /// Directories listed per expansion; deeper listings stay in the table.
@@ -31,7 +32,14 @@ const LOADING_SUFFIX: &str = "\u{0}loading";
 struct NodeInfo {
     name: String,
     parent: Option<String>,
-    loaded: bool,
+    children: Children,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Children {
+    Unloaded,
+    Loading,
+    Loaded,
 }
 
 /// The tree asks the browser to show a directory.
@@ -44,6 +52,8 @@ pub struct DirTree {
     roots: Vec<TreeItem>,
     nodes: HashMap<String, NodeInfo>,
     selected: Option<String>,
+    pending_reveal: Vec<SharedString>,
+    roots_ready: bool,
     error: Option<SharedString>,
     _tree: Subscription,
 }
@@ -72,6 +82,8 @@ impl DirTree {
             roots: Vec::new(),
             nodes: HashMap::new(),
             selected: None,
+            pending_reveal: Vec::new(),
+            roots_ready: false,
             error: None,
             _tree: subscription,
         };
@@ -104,22 +116,79 @@ impl DirTree {
         Some(frames)
     }
 
-    /// Highlight the directory the list shows, when the tree has it.
-    pub fn select(&mut self, id: &str, cx: &mut Context<Self>) {
-        self.selected = Some(id.to_owned());
-        let id = SharedString::from(id.to_owned());
+    fn open_directory(&mut self, id: &str, cx: &mut Context<Self>) {
+        if let Some(path) = self.path_to(id) {
+            self.selected = Some(id.to_owned());
+            cx.emit(OpenDirectory(path));
+        }
+    }
+
+    /// Reveal the directory the list shows, loading only its missing ancestors.
+    pub fn select(&mut self, stack: &[Crumb], cx: &mut Context<Self>) {
+        self.pending_reveal = stack
+            .iter()
+            .skip(1)
+            .map(|crumb| crumb.id.clone().into())
+            .collect();
+        self.selected = self.pending_reveal.last().map(ToString::to_string);
+        if self.selected.is_none() {
+            self.state
+                .update(cx, |state, cx| state.set_selected_index(None, cx));
+            return;
+        }
+        self.reveal_selection(cx);
+    }
+
+    fn reveal_selection(&mut self, cx: &mut Context<Self>) {
+        let Some(target) = self.pending_reveal.last().cloned() else {
+            return;
+        };
+        if !self.roots_ready {
+            return;
+        }
+        let missing = self
+            .pending_reveal
+            .iter()
+            .position(|id| !self.nodes.contains_key(id.as_str()));
+        if let Some(index) = missing {
+            // A lazy row already contains a placeholder. Revealing that row
+            // opens its parent and uses the normal expansion event to load it.
+            if let Some(parent) = index
+                .checked_sub(1)
+                .and_then(|index| self.pending_reveal.get(index))
+            {
+                if self
+                    .nodes
+                    .get(parent.as_str())
+                    .is_some_and(|node| node.children != Children::Loaded)
+                {
+                    let placeholder = SharedString::from(format!("{parent}{LOADING_SUFFIX}"));
+                    self.state.update(cx, |state, cx| {
+                        state.reveal_item(&placeholder, ScrollStrategy::Center, cx)
+                    });
+                    return;
+                }
+            }
+        }
+        self.pending_reveal.clear();
         self.state.update(cx, |state, cx| {
-            if let Some(index) = state.index_of(&id) {
-                state.set_selected_index(Some(index), cx);
-                state.scroll_to_item(index, gpui_kit::ScrollStrategy::Center);
-            } else {
-                state.set_selected_index(None, cx);
+            if state.index_of(&target).is_none() && missing.is_none() {
+                state.reveal_item(&target, ScrollStrategy::Center, cx);
+            }
+            state.set_selected_index(state.index_of(&target), cx);
+            if let Some(index) = state.selected_index() {
+                state.scroll_to_item(index, ScrollStrategy::Center);
             }
         });
     }
 
     fn expand(&mut self, id: String, cx: &mut Context<Self>) {
-        if self.nodes.get(&id).is_some_and(|info| !info.loaded) {
+        if let Some(info) = self
+            .nodes
+            .get_mut(&id)
+            .filter(|info| info.children == Children::Unloaded)
+        {
+            info.children = Children::Loading;
             self.load_children(Some(id), cx);
         }
     }
@@ -162,6 +231,8 @@ impl DirTree {
                         tracing::warn!("directory tree: {error}");
                         if parent.is_none() {
                             this.error = Some(error.message);
+                            this.roots_ready = true;
+                            this.pending_reveal.clear();
                         } else if let Some(parent) = parent {
                             this.attach(Some(parent), Vec::new(), cx);
                         }
@@ -182,16 +253,19 @@ impl DirTree {
                 NodeInfo {
                     name: node.name.clone(),
                     parent: parent.clone(),
-                    loaded: false,
+                    children: Children::Unloaded,
                 },
             );
         }
         let children: Vec<TreeItem> = directories.iter().map(directory_item).collect();
         match &parent {
-            None => self.roots = children,
+            None => {
+                self.roots = children;
+                self.roots_ready = true;
+            }
             Some(parent) => {
                 if let Some(info) = self.nodes.get_mut(parent) {
-                    info.loaded = true;
+                    info.children = Children::Loaded;
                 }
                 let parent: SharedString = parent.clone().into();
                 replace_children(&mut self.roots, &parent, children);
@@ -205,6 +279,7 @@ impl DirTree {
                 state.set_selected_index(Some(index), cx);
             }
         });
+        self.reveal_selection(cx);
     }
 }
 
@@ -233,22 +308,17 @@ impl Render for DirTree {
                 .into_any_element();
         }
         let view = cx.entity().downgrade();
-        tree(&self.state, move |index, entry, selected, _, cx| {
+        let rows = tree(&self.state, move |index, entry, selected, _, cx| {
             let item = entry.item();
             let id = item.id.clone();
             let loading = id.ends_with(LOADING_SUFFIX);
+            let theme = cx.theme();
             let icon = if loading {
                 Icon::new(IconName::Loader)
-            } else if entry.is_expanded() {
-                Icon::new(IconName::FolderOpen)
+                    .size(px(16.))
+                    .text_color(theme.muted_foreground)
             } else {
-                Icon::new(IconName::Folder)
-            };
-            let theme = cx.theme();
-            let icon_color = if loading {
-                theme.muted_foreground
-            } else {
-                theme.primary
+                directory_icon(&id, entry.is_expanded(), cx)
             };
             let chevron = entry.is_folder().then(|| {
                 Icon::new(if entry.is_expanded() {
@@ -262,30 +332,56 @@ impl Render for DirTree {
             let view = view.clone();
             ListItem::new(index)
                 .selected(selected)
-                .pl(px(6.) + px(14.) * entry.depth() as f32)
+                .pl(px(6.))
+                .pr(px(6.))
+                .h(px(28.))
                 .child(
                     h_flex()
-                        .gap_1()
                         .min_w_0()
+                        .h_full()
+                        .children((0..entry.depth().min(6)).map(|_| {
+                            div()
+                                .w(px(16.))
+                                .h_full()
+                                .flex_shrink_0()
+                                .pl(px(7.))
+                                .child(div().w(px(1.)).h_full().bg(theme.border))
+                        }))
                         .child(div().w(px(16.)).flex_shrink_0().children(chevron))
-                        .child(icon.text_color(icon_color))
-                        .child(div().pl_1().truncate().child(item.label.clone())),
+                        .child(div().ml_1().flex_shrink_0().child(icon))
+                        .child(div().ml_2().min_w_0().truncate().child(item.label.clone())),
                 )
-                .on_click(move |_, _, cx| {
+                .on_click(move |_, window, cx| {
                     if loading {
                         return;
                     }
-                    let id = id.to_string();
                     view.update(cx, |this, cx| {
-                        this.selected = Some(id.clone());
-                        if let Some(path) = this.path_to(&id) {
-                            cx.emit(OpenDirectory(path));
-                        }
+                        this.state.update(cx, |state, cx| state.focus(window, cx));
+                        this.open_directory(&id, cx);
                     })
                     .ok();
                 })
-        })
-        .size_full()
-        .into_any_element()
+        });
+        div()
+            .size_full()
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                if event.is_held
+                    || event.keystroke.key != "space"
+                    || event.keystroke.modifiers.modified()
+                {
+                    return;
+                }
+                let id = this
+                    .state
+                    .read(cx)
+                    .selected_item()
+                    .map(|item| item.id.clone());
+                if let Some(id) = id {
+                    cx.stop_propagation();
+                    this.open_directory(&id, cx);
+                }
+            }))
+            .child(rows.size_full())
+            .into_any_element()
     }
 }

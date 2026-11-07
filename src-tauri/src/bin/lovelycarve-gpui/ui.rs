@@ -1,13 +1,124 @@
 //! Small presentation pieces the pages share: page toolbars and footers,
 //! empty states and label/value rows. They compose GPUI Kit components and
 //! read every color from the active theme.
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     component::{
-        empty::{Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle},
-        h_flex, ActiveTheme as _, Icon,
+        button::{Button, ButtonVariants as _},
+        empty::{Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyMediaVariant, EmptyTitle},
+        h_flex, h_resizable, resizable_panel,
+        table::{DataTable, TableDelegate, TableState},
+        tag::Tag,
+        v_flex, ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, Size,
     },
-    div, App, IntoElement, ParentElement, SharedString, Styled,
+    div, px, AnyElement, App, Div, ElementId, Entity, FontWeight, InteractiveElement as _,
+    IntoElement, ParentElement, Pixels, SharedString, Styled, Window,
 };
+
+pub const TOOLBAR_HEIGHT: f32 = 48.;
+pub const TABLE_HEADER_HEIGHT: f32 = 34.;
+pub const TABLE_ROW_HEIGHT: f32 = 36.;
+
+pub fn data_table<T: TableDelegate + 'static>(table: &Entity<TableState<T>>) -> DataTable<T> {
+    DataTable::new(table)
+        .bordered(false)
+        .header_row_height(px(TABLE_HEADER_HEIGHT))
+        .with_size(Size::Size(px(TABLE_ROW_HEIGHT)))
+}
+
+pub fn wordmark(size: f32, cx: &App) -> Div {
+    h_flex()
+        .flex_shrink_0()
+        .font_family("Quicksand")
+        .font_weight(FontWeight::BOLD)
+        .text_size(px(size))
+        .child("LovelyCarve")
+        .child(div().text_color(cx.theme().primary).child("."))
+}
+
+pub fn workspace_sheet(cx: &App) -> Div {
+    div()
+        .flex_1()
+        .min_w_0()
+        .min_h_0()
+        .overflow_hidden()
+        .rounded(px(crate::theme::PANEL_RADIUS))
+        .border_1()
+        .border_color(cx.theme().border)
+        .bg(cx.theme().background)
+}
+
+pub fn card(cx: &App) -> Div {
+    v_flex()
+        .min_w_0()
+        .rounded(px(crate::theme::PANEL_RADIUS))
+        .border_1()
+        .border_color(cx.theme().border)
+        .bg(cx.theme().popover)
+}
+
+pub fn card_heading(icon: Icon, label: &'static str, cx: &App) -> Div {
+    h_flex()
+        .gap_2()
+        .text_size(px(13.))
+        .font_weight(FontWeight::SEMIBOLD)
+        .child(icon.small().text_color(cx.theme().accent_foreground))
+        .child(label)
+}
+
+pub fn dialog_heading(
+    icon: impl Into<Icon>,
+    title: impl Into<SharedString>,
+    subtitle: impl Into<SharedString>,
+    cx: &App,
+) -> Div {
+    h_flex()
+        .min_w_0()
+        .gap_3()
+        .child(
+            h_flex()
+                .size(px(36.))
+                .flex_shrink_0()
+                .justify_center()
+                .rounded_full()
+                .bg(cx.theme().accent)
+                .child(
+                    icon.into()
+                        .size(px(18.))
+                        .text_color(cx.theme().accent_foreground),
+                ),
+        )
+        .child(
+            v_flex()
+                .min_w_0()
+                .gap_1()
+                .child(
+                    div()
+                        .text_size(px(15.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .truncate()
+                        .child(title.into()),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(cx.theme().muted_foreground)
+                        .child(subtitle.into()),
+                ),
+        )
+}
+
+pub fn pane_header(cx: &App) -> Div {
+    h_flex()
+        .h(px(TABLE_HEADER_HEIGHT))
+        .flex_shrink_0()
+        .gap_2()
+        .px_3()
+        .border_b_1()
+        .border_color(cx.theme().border)
+        .bg(cx.theme().table_head)
+        .text_size(px(12.))
+}
 
 /// The bar a workspace page opens on: filters on the left, actions on the
 /// right.
@@ -15,12 +126,175 @@ pub fn page_toolbar(cx: &App) -> gpui_kit::Div {
     h_flex()
         .flex_shrink_0()
         .w_full()
+        .min_h(px(TOOLBAR_HEIGHT))
+        .flex_wrap()
         .gap_2()
         .px_3()
         .py_2()
         .border_b_1()
         .border_color(cx.theme().border)
-        .bg(cx.theme().background)
+        .bg(cx.theme().popover)
+}
+
+/// Results pages share a full-height history rail and a separate working pane.
+pub fn result_workspace(
+    history: Option<AnyElement>,
+    content: impl IntoElement,
+    window: &Window,
+    cx: &App,
+) -> Div {
+    h_flex()
+        .size_full()
+        .items_stretch()
+        .bg(cx.theme().popover)
+        .when_some(history, |layout, history| {
+            layout.child(
+                div()
+                    .w(px(if window.viewport_size().width < px(1120.) {
+                        210.
+                    } else {
+                        256.
+                    }))
+                    .flex_shrink_0()
+                    .h_full()
+                    .border_r_1()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().table_foot)
+                    .child(history),
+            )
+        })
+        .child(v_flex().flex_1().min_w_0().min_h_0().child(content))
+}
+
+pub fn history_header(label: &'static str, count: usize, close: Button, cx: &App) -> Div {
+    pane_header(cx)
+        .h(px(TOOLBAR_HEIGHT))
+        .bg(cx.theme().table_foot)
+        .child(div().font_weight(FontWeight::SEMIBOLD).child(label))
+        .child(
+            Tag::secondary()
+                .small()
+                .child(crate::format::count(count as u64)),
+        )
+        .child(div().flex_1())
+        .child(close)
+}
+
+pub fn history_toggle(
+    id: &'static str,
+    label: &'static str,
+    visible: bool,
+    show_label: bool,
+) -> Button {
+    Button::new(id)
+        .ghost()
+        .small()
+        .h(px(30.))
+        .selected(visible)
+        .icon(IconName::PanelLeft)
+        .tooltip(label)
+        .accessibility_label(label)
+        .when(show_label, |button| button.label(label))
+}
+
+/// Keep an open inspector above the table when it would crowd a narrow pane.
+pub fn detail_frame(
+    id: impl Into<ElementId>,
+    content: impl IntoElement,
+    detail: Option<AnyElement>,
+    overlay: bool,
+    width: Pixels,
+    cx: &App,
+) -> Div {
+    let frame = div().flex_1().min_h_0().min_w_0().relative();
+    let Some(detail) = detail else {
+        return frame.child(content);
+    };
+    let dock = v_flex()
+        .size_full()
+        .border_l_1()
+        .border_color(cx.theme().border)
+        .bg(cx.theme().popover)
+        .child(detail);
+    if overlay {
+        frame.child(content).child(gpui_kit::deferred(
+            div()
+                .absolute()
+                .right_0()
+                .top_0()
+                .h_full()
+                .w(width)
+                .max_w_full()
+                .occlude()
+                .shadow_lg()
+                .child(dock),
+        ))
+    } else {
+        frame.child(
+            h_resizable(id)
+                .child(resizable_panel().child(content))
+                .child(
+                    resizable_panel()
+                        .size(width)
+                        .size_range(px(300.)..px(720.))
+                        .child(dock),
+                ),
+        )
+    }
+}
+
+pub fn detail_header(title: impl Into<SharedString>, close: Button, cx: &App) -> Div {
+    pane_header(cx)
+        .h(px(TOOLBAR_HEIGHT))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(title.into()),
+        )
+        .child(close)
+}
+
+pub fn disclosure_button(
+    id: &'static str,
+    title: &'static str,
+    summary: impl Into<SharedString>,
+    open: bool,
+    cx: &App,
+) -> Button {
+    Button::new(id)
+        .ghost()
+        .w_full()
+        .child(div().font_weight(FontWeight::SEMIBOLD).child(title))
+        .child(div().flex_1())
+        .child(
+            div()
+                .min_w_0()
+                .truncate()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(summary.into()),
+        )
+        .child(
+            Icon::new(if open {
+                IconName::ChevronDown
+            } else {
+                IconName::ChevronRight
+            })
+            .small(),
+        )
+}
+
+pub fn workspace_start(toolbar: impl IntoElement, state: Empty, cx: &App) -> Div {
+    v_flex()
+        .size_full()
+        .min_w_0()
+        .min_h_0()
+        .bg(cx.theme().popover)
+        .child(h_flex().px_3().pt_3().min_h(px(42.)).child(toolbar))
+        .child(state.pb(px(78.)))
 }
 
 /// The bar a workspace page ends on: context on the left, counts on the
@@ -37,7 +311,7 @@ pub fn page_footer(left: impl IntoElement, right: impl IntoElement, cx: &App) ->
         .text_color(cx.theme().muted_foreground)
         .border_t_1()
         .border_color(cx.theme().border)
-        .bg(cx.theme().background)
+        .bg(cx.theme().table_foot)
         .child(h_flex().min_w_0().gap_2().child(left))
         .child(h_flex().flex_shrink_0().gap_2().child(right))
 }
@@ -49,10 +323,25 @@ pub fn empty_state(
     description: Option<SharedString>,
 ) -> Empty {
     let mut header = EmptyHeader::new()
-        .media(EmptyMedia::new().child(icon.into()))
-        .title(EmptyTitle::new().child(title.into()));
+        .media(
+            EmptyMedia::new()
+                .with_variant(EmptyMediaVariant::Icon)
+                .size(px(48.))
+                .rounded(px(crate::theme::PANEL_RADIUS))
+                .child(icon.into().size(px(22.))),
+        )
+        .title(
+            EmptyTitle::new()
+                .text_size(px(13.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(title.into()),
+        );
     if let Some(description) = description {
-        header = header.description(EmptyDescription::new().child(description));
+        header = header.description(
+            EmptyDescription::new()
+                .text_size(px(12.))
+                .child(description),
+        );
     }
     Empty::new().border_0().header(header)
 }
@@ -180,6 +469,7 @@ pub fn confirm(
     window.open_alert_dialog(cx, move |alert, _, _| {
         let on_confirm = on_confirm.clone();
         alert
+            .centered()
             .ok_variant(ButtonVariant::Danger)
             .title(title.clone())
             .description(description.clone())

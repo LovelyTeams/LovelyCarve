@@ -39,6 +39,7 @@ pub struct Preferences {
     /// The rem base: every text, spacing and control size follows it.
     pub font_size: f32,
     pub sidebar_collapsed: bool,
+    pub welcome_motion: bool,
 }
 
 impl Default for Preferences {
@@ -47,6 +48,7 @@ impl Default for Preferences {
             theme: ThemeChoice::System,
             font_size: 14.0,
             sidebar_collapsed: false,
+            welcome_motion: true,
         }
     }
 }
@@ -97,26 +99,51 @@ impl Preferences {
     }
 
     /// Change the preferences, persist them and apply the theme.
-    pub fn update(cx: &mut App, edit: impl FnOnce(&mut Self)) {
-        let mut preferences = cx.global::<Self>().clone();
+    pub fn update(window: &Window, cx: &mut App, edit: impl FnOnce(&mut Self)) {
+        let previous = Self::global(cx);
+        let mut preferences = previous.clone();
         edit(&mut preferences);
+        let appearance_changed =
+            preferences.theme != previous.theme || preferences.font_size != previous.font_size;
         preferences.save();
         cx.set_global(preferences);
-        apply_theme(None, cx);
+        if appearance_changed {
+            apply_theme(window, cx);
+        } else {
+            cx.refresh_windows();
+        }
     }
 }
 
 /// Apply the preferred appearance and base font size to the global theme.
-pub fn apply_theme(window: Option<&mut Window>, cx: &mut App) {
+pub fn apply_theme(window: &Window, cx: &mut App) {
     let preferences = cx.global::<Preferences>().clone();
     let mode = match preferences.theme {
         ThemeChoice::Light => ThemeMode::Light,
         ThemeChoice::Dark => ThemeMode::Dark,
-        ThemeChoice::System => match window {
-            Some(window) => window.appearance().into(),
-            None => cx.window_appearance().into(),
-        },
+        ThemeChoice::System => window.appearance().into(),
     };
     Theme::change(mode, None, cx);
-    Theme::update(cx, |theme| theme.font_size = px(preferences.font_size));
+    Theme::update(cx, |theme| {
+        crate::theme::apply(theme);
+        theme.font_size = px(preferences.font_size);
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Preferences, ThemeChoice};
+
+    #[test]
+    fn older_preferences_enable_welcome_motion_by_default() {
+        let mut preferences: Preferences =
+            serde_json::from_str(r#"{"theme":"dark","fontSize":15}"#).unwrap();
+        assert_eq!(preferences.theme, ThemeChoice::Dark);
+        assert!(preferences.welcome_motion);
+
+        preferences.welcome_motion = false;
+        let saved = serde_json::to_string(&preferences).unwrap();
+        let reloaded: Preferences = serde_json::from_str(&saved).unwrap();
+        assert!(!reloaded.welcome_motion);
+    }
 }

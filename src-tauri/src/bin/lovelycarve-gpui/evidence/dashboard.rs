@@ -8,7 +8,6 @@ use gpui_kit::{
         checkbox::Checkbox,
         clipboard::Clipboard,
         description_list::DescriptionList,
-        group_box::{GroupBox, GroupBoxVariants as _},
         h_flex,
         progress::Progress,
         scroll::ScrollableElement as _,
@@ -17,7 +16,7 @@ use gpui_kit::{
     },
     div,
     prelude::FluentBuilder as _,
-    AppContext as _, ClipboardItem, Context, Entity, IntoElement, ParentElement as _, Render,
+    px, relative, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
     SharedString, Styled as _, Subscription, WeakEntity, Window,
 };
 use lovelycarve_lib::{
@@ -306,15 +305,15 @@ impl Dashboard {
             .filter(|bytes| *bytes > 0 && *bytes != info.size_bytes);
         h_flex()
             .w_full()
-            .gap_4()
+            .gap_3()
             .items_start()
             .child(
                 div()
                     .flex_shrink_0()
-                    .p_3()
-                    .rounded(cx.theme().radius_lg)
+                    .p_2()
+                    .rounded(cx.theme().radius)
                     .bg(cx.theme().accent)
-                    .child(icon.large().text_color(cx.theme().primary)),
+                    .child(icon.size(px(24.)).text_color(cx.theme().accent_foreground)),
             )
             .child(
                 v_flex()
@@ -326,7 +325,7 @@ impl Dashboard {
                             .gap_2()
                             .child(
                                 div()
-                                    .text_xl()
+                                    .text_size(px(16.))
                                     .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                                     .truncate()
                                     .child(format::file_name(&info.path).to_owned()),
@@ -373,8 +372,9 @@ impl Dashboard {
             )
             .child(
                 div()
-                    .flex_shrink_0()
-                    .max_w(gpui_kit::px(520.))
+                    .w(relative(0.48))
+                    .max_w(px(520.))
+                    .min_w_0()
                     .child(self.actions.clone()),
             )
     }
@@ -390,10 +390,8 @@ impl Dashboard {
             _ => None,
         };
         let stored = stored_hashes(&self.info, computed);
-        let title = h_flex()
-            .gap_2()
-            .child(Icon::new(ExtraIcon::FingerprintPattern))
-            .child("完整性校验")
+        let title = ui::card_heading(Icon::new(ExtraIcon::FingerprintPattern), "完整性校验", cx)
+            .flex_wrap()
             .map(|this| match overall_verdict(&stored) {
                 Some(Verdict::Match) => this.child(
                     Tag::success().small().child(
@@ -413,23 +411,23 @@ impl Dashboard {
                 ),
                 Some(Verdict::Pending) | None => this,
             });
-        let selection =
-            h_flex()
-                .gap_3()
-                .children(ALGORITHMS.iter().enumerate().map(|(index, (_, label))| {
-                    Checkbox::new(("hash-algorithm", index))
-                        .label(*label)
-                        .checked(self.algorithms.contains(&index))
-                        .disabled(running || unavailable)
-                        .on_click(cx.listener(move |this, checked: &bool, _, cx| {
-                            if *checked {
-                                this.algorithms.insert(index);
-                            } else {
-                                this.algorithms.remove(&index);
-                            }
-                            cx.notify();
-                        }))
-                }));
+        let selection = h_flex()
+            .gap_2()
+            .flex_wrap()
+            .children(ALGORITHMS.iter().enumerate().map(|(index, (_, label))| {
+                Checkbox::new(("hash-algorithm", index))
+                    .label(*label)
+                    .checked(self.algorithms.contains(&index))
+                    .disabled(running || unavailable)
+                    .on_click(cx.listener(move |this, checked: &bool, _, cx| {
+                        if *checked {
+                            this.algorithms.insert(index);
+                        } else {
+                            this.algorithms.remove(&index);
+                        }
+                        cx.notify();
+                    }))
+            }));
         let actions = if running {
             Button::new("cancel-hash")
                 .small()
@@ -538,15 +536,16 @@ impl Dashboard {
                     )
                 }))
         });
-        GroupBox::new()
-            .id("integrity")
-            .outline()
-            .title(title)
+        ui::card(cx)
+            .p_4()
+            .gap_3()
+            .child(title)
             .child(
                 h_flex()
                     .w_full()
                     .justify_between()
                     .gap_2()
+                    .flex_wrap()
                     .child(selection)
                     .child(actions),
             )
@@ -554,7 +553,7 @@ impl Dashboard {
             .children(recorded)
     }
 
-    fn render_details(&self) -> impl IntoElement {
+    fn render_details(&self, cx: &Context<Self>) -> impl IntoElement {
         let info = &self.info;
         let mut list = DescriptionList::horizontal()
             .columns(1)
@@ -602,56 +601,46 @@ impl Dashboard {
                 list = list.item("分段数", segments.to_string(), 1);
             }
         }
-        GroupBox::new()
-            .id("details")
-            .outline()
-            .title(
-                h_flex()
-                    .gap_2()
-                    .child(Icon::new(IconName::Info))
-                    .child("详细信息"),
-            )
+        ui::card(cx)
+            .p_4()
+            .gap_3()
+            .child(ui::card_heading(Icon::new(IconName::Info), "详细信息", cx))
             .child(list)
     }
 }
 
 impl Render for Dashboard {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let path = self.info.path.clone();
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let wide = window.viewport_size().width >= px(1120.);
         v_flex()
             .size_full()
+            .p_6()
+            .gap_4()
+            .child(self.render_header(cx))
+            .children(self.ios.clone())
+            .child(self.volumes.clone())
+            .children(self.raid.clone())
             .child(
-                ui::page_toolbar(cx).child(div().flex_1()).child(
-                    Button::new("copy-evidence-path")
-                        .small()
-                        .ghost()
-                        .icon(IconName::Copy)
-                        .label("复制路径")
-                        .on_click(move |_, _, cx| {
-                            cx.write_to_clipboard(ClipboardItem::new_string(path.clone()))
-                        }),
-                ),
-            )
-            .child(
-                v_flex()
-                    .flex_1()
-                    .min_h_0()
-                    .p_6()
-                    .gap_5()
-                    .child(self.render_header(cx))
-                    .children(self.ios.clone())
-                    .child(self.volumes.clone())
-                    .children(self.raid.clone())
+                div()
+                    .flex()
+                    .w_full()
+                    .gap_4()
+                    .when(!wide, |this| this.flex_col())
+                    .when(wide, |this| this.items_start())
                     .child(
-                        h_flex()
-                            .w_full()
-                            .items_start()
-                            .gap_5()
-                            .child(div().flex_1().min_w_0().child(self.render_hash(cx)))
-                            .child(div().flex_1().min_w_0().child(self.render_details())),
+                        div()
+                            .min_w_0()
+                            .when(wide, |this| this.flex_1())
+                            .child(self.render_hash(cx)),
                     )
-                    .overflow_y_scrollbar(),
+                    .child(
+                        div()
+                            .min_w_0()
+                            .when(wide, |this| this.flex_1())
+                            .child(self.render_details(cx)),
+                    ),
             )
+            .overflow_y_scrollbar()
     }
 }
 

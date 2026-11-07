@@ -9,15 +9,14 @@ use std::{collections::HashMap, rc::Rc, time::Duration};
 use gpui_kit::{
     component::{
         button::{Button, ButtonVariants as _},
-        h_flex, h_resizable,
+        h_flex,
         input::{Input, InputEvent, InputState},
         list::ListItem,
-        resizable_panel,
         scroll::ScrollableElement as _,
-        table::{DataTable, TableEvent, TableState},
+        table::{TableEvent, TableState},
         tag::Tag,
         tree::{tree, TreeItem, TreeState},
-        v_flex, ActiveTheme as _, Icon, IconName, Sizable as _, WindowExt as _,
+        v_flex, ActiveTheme as _, Icon, IconName, Sizable as _,
     },
     div,
     prelude::FluentBuilder as _,
@@ -40,20 +39,33 @@ use crate::{
     format, ui,
 };
 use records::{severity_tag, value_text, RecordSet, RecordTable};
-use run::{AnalysisStarted, QuickAnalysis};
+pub use run::{AnalysisStarted, QuickAnalysis};
 
 type ExtraIcon = gpui_kit::assets::IconName;
 
-fn tree_item(node: &AnalysisTreeNode) -> TreeItem {
+fn filtered_tree_item(node: &AnalysisTreeNode, keyword: &str) -> Option<TreeItem> {
+    let matches = keyword.is_empty()
+        || node.label.to_lowercase().contains(keyword)
+        || node.target_label.to_lowercase().contains(keyword);
+    let children: Vec<_> = node
+        .children
+        .iter()
+        .filter_map(|child| filtered_tree_item(child, if matches { "" } else { keyword }))
+        .collect();
+    if !matches && children.is_empty() {
+        return None;
+    }
     let label = match node.kind {
         "result" if node.child_count > 0 => {
             format!("{} · {}", node.label, format::count(node.child_count))
         }
         _ => node.label.clone(),
     };
-    TreeItem::new(node.node_id.clone(), label)
-        .expanded(node.kind != "function")
-        .children(node.children.iter().map(tree_item))
+    Some(
+        TreeItem::new(node.node_id.clone(), label)
+            .expanded(!keyword.is_empty() || node.kind != "function")
+            .children(children),
+    )
 }
 
 fn index_nodes(nodes: &[AnalysisTreeNode], index: &mut HashMap<String, AnalysisTreeNode>) {
@@ -70,7 +82,9 @@ pub struct AnalysisPanel {
     tab: WeakEntity<EvidenceTab>,
     tree: Entity<TreeState>,
     nodes: HashMap<String, AnalysisTreeNode>,
-    roots: usize,
+    roots: Vec<AnalysisTreeNode>,
+    directory_filter: Entity<InputState>,
+    tree_loading: bool,
     tree_error: Option<SharedString>,
     selected_node: Option<String>,
     table: Entity<TableState<RecordTable>>,
@@ -90,6 +104,7 @@ impl AnalysisPanel {
         let tree = cx.new(|cx| TreeState::new(cx));
         let table = cx.new(|cx| TableState::new(RecordTable::new(), window, cx).col_movable(false));
         let filter = cx.new(|cx| InputState::new(window, cx).placeholder("搜索当前结果，回车确认"));
+        let directory_filter = cx.new(|cx| InputState::new(window, cx).placeholder("搜索结果项…"));
         let hub = EventHub::global(cx);
         let subscriptions = vec![
             cx.subscribe_in(&table, window, |this, table, event: &TableEvent, _, cx| {
@@ -99,6 +114,16 @@ impl AnalysisPanel {
                 }
             }),
             cx.observe(&table, |_, _, cx| cx.notify()),
+            cx.subscribe_in(
+                &directory_filter,
+                window,
+                |this, _, event: &InputEvent, _, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        this.update_directory(cx);
+                        cx.notify();
+                    }
+                },
+            ),
             cx.subscribe_in(&filter, window, |this, input, event: &InputEvent, _, cx| {
                 if let InputEvent::PressEnter { .. } = event {
                     let keyword = input.read(cx).value().to_string();
@@ -130,7 +155,9 @@ impl AnalysisPanel {
             tab,
             tree,
             nodes: HashMap::new(),
-            roots: 0,
+            roots: Vec::new(),
+            directory_filter,
+            tree_loading: true,
             tree_error: None,
             selected_node: None,
             table,
@@ -151,6 +178,7 @@ impl AnalysisPanel {
         cx.spawn(async move |this, cx| {
             let loaded = loaded.await;
             this.update(cx, |this, cx| {
+                this.tree_loading = false;
                 match loaded {
                     Ok(evidence) => {
                         // The tree covers the whole case; this page shows its own evidence.
@@ -162,17 +190,9 @@ impl AnalysisPanel {
                         let mut nodes = HashMap::new();
                         index_nodes(&roots, &mut nodes);
                         this.nodes = nodes;
-                        this.roots = roots.len();
+                        this.roots = roots;
                         this.tree_error = None;
-                        let items: Vec<TreeItem> = roots.iter().map(tree_item).collect();
-                        let selected = this.selected_node.clone();
-                        this.tree.update(cx, |state, cx| {
-                            state.set_items(items, cx);
-                            if let Some(index) = selected.and_then(|id| state.index_of(&id.into()))
-                            {
-                                state.set_selected_index(Some(index), cx);
-                            }
-                        });
+                        this.update_directory(cx);
                     }
                     Err(error) => this.tree_error = Some(error.message),
                 }
@@ -181,6 +201,20 @@ impl AnalysisPanel {
             .ok();
         })
         .detach();
+    }
+
+    fn update_directory(&self, cx: &mut Context<Self>) {
+        let keyword = self.directory_filter.read(cx).value().trim().to_lowercase();
+        let items: Vec<_> = self
+            .roots
+            .iter()
+            .filter_map(|node| filtered_tree_item(node, &keyword))
+            .collect();
+        let selected = self.selected_node.clone();
+        self.tree.update(cx, |state, cx| {
+            state.set_items(items, cx);
+            state.set_selected_index(selected.and_then(|id| state.index_of(&id.into())), cx);
+        });
     }
 
     fn schedule_reload(&mut self, cx: &mut Context<Self>) {
@@ -221,31 +255,6 @@ impl AnalysisPanel {
         cx.notify();
     }
 
-    fn show_quick_analysis(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let image_id = self.info.id.clone();
-        let dialog = cx.new(|cx| QuickAnalysis::new(image_id, cx));
-        let subscription = cx.subscribe_in(
-            &dialog,
-            window,
-            |_, _, AnalysisStarted(count), window, cx| {
-                window.close_dialog(cx);
-                ui::notify_success(
-                    window,
-                    cx,
-                    "已提交分析",
-                    format!("{count} 个分析任务已排队，进度见任务中心。"),
-                );
-            },
-        );
-        self._subscriptions.push(subscription);
-        window.open_dialog(cx, move |dialog_shell, _, _| {
-            dialog_shell
-                .title("快速分析")
-                .w(px(560.))
-                .child(dialog.clone())
-        });
-    }
-
     fn render_tree(&self, cx: &mut Context<Self>) -> impl IntoElement {
         if let Some(error) = &self.tree_error {
             return div()
@@ -253,16 +262,18 @@ impl AnalysisPanel {
                 .child(ui::error_text(error.clone(), cx))
                 .into_any_element();
         }
-        if self.roots == 0 {
-            return v_flex()
-                .size_full()
+        if self.tree.read(cx).entry(0).is_none() {
+            return div()
                 .p_3()
-                .gap_3()
-                .child(ui::empty_state(
-                    Icon::new(ExtraIcon::ScanSearch),
-                    "暂无分析结果",
-                    Some("用「快速分析」运行插件分析器，结果会按分类显示在这里。".into()),
-                ))
+                .text_size(px(12.))
+                .text_color(cx.theme().muted_foreground)
+                .child(if self.tree_loading {
+                    "正在读取分析结果…"
+                } else if self.directory_filter.read(cx).value().trim().is_empty() {
+                    "暂无分析结果"
+                } else {
+                    "未找到结果项"
+                })
                 .into_any_element();
         }
         let view = cx.entity().downgrade();
@@ -424,8 +435,95 @@ impl AnalysisPanel {
     }
 }
 
-impl Render for AnalysisPanel {
+/// The result tree lives in the workspace navigation while its table stays in
+/// the evidence page. Both use the same analysis entity and selection.
+pub struct AnalysisDirectory {
+    panel: Entity<AnalysisPanel>,
+    _panel: Subscription,
+}
+
+impl AnalysisDirectory {
+    pub fn new(panel: Entity<AnalysisPanel>, cx: &mut Context<Self>) -> Self {
+        let subscription = cx.observe(&panel, |_, _, cx| cx.notify());
+        Self {
+            panel,
+            _panel: subscription,
+        }
+    }
+}
+
+impl Render for AnalysisDirectory {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.panel.update(cx, |panel, cx| {
+            v_flex()
+                .size_full()
+                .pt_3()
+                .px_2()
+                .gap_1()
+                .child(
+                    Input::new(&panel.directory_filter)
+                        .small()
+                        .cleanable(true)
+                        .prefix(Icon::new(IconName::Search).small()),
+                )
+                .child(div().flex_1().min_h_0().child(panel.render_tree(cx)))
+        })
+    }
+}
+
+impl Render for AnalysisPanel {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let quick = Button::new("quick-analysis")
+            .primary()
+            .small()
+            .h(px(30.))
+            .icon(Icon::new(ExtraIcon::Play))
+            .label("快速分析")
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.tab
+                    .update(cx, |_, cx| {
+                        cx.emit(crate::evidence::EvidenceTabEvent::QuickAnalysis)
+                    })
+                    .ok();
+            }));
+        if self.selected_node.is_none() {
+            let state = if let Some(error) = &self.tree_error {
+                ui::empty_state(
+                    IconName::TriangleAlert,
+                    "分析结果读取失败",
+                    Some(error.clone()),
+                )
+                .child(
+                    Button::new("retry-analysis-directory")
+                        .primary()
+                        .label("重试")
+                        .on_click(cx.listener(|this, _, _, cx| this.load_tree(cx))),
+                )
+            } else {
+                ui::empty_state(
+                    ExtraIcon::ScanSearch,
+                    if self.tree_loading {
+                        "正在读取分析结果…"
+                    } else if self.roots.is_empty() {
+                        "当前检材还没有分析结果"
+                    } else {
+                        "选择一个结果项"
+                    },
+                    Some(
+                        if self.roots.is_empty() {
+                            "选择分析功能，完成后结果会显示在这里。"
+                        } else {
+                            "在左侧结果目录中选择结果项，查看解析出的记录。"
+                        }
+                        .into(),
+                    ),
+                )
+                .when(!self.tree_loading && self.roots.is_empty(), |state| {
+                    state.child(quick)
+                })
+            };
+            return ui::workspace_start(div(), state, cx);
+        }
         let table = self.table.read(cx).delegate();
         let footer_right = format!(
             "已加载 {} / {} 条记录",
@@ -445,12 +543,33 @@ impl Render for AnalysisPanel {
                 format!("{}{target}", node.label)
             })
             .unwrap_or_else(|| "未选择结果".to_owned());
+        let detail = self.record.as_ref().map(|record| {
+            v_flex()
+                .size_full()
+                .child(ui::detail_header(
+                    record.title.clone(),
+                    Button::new("close-analysis-record")
+                        .ghost()
+                        .small()
+                        .icon(IconName::Close)
+                        .accessibility_label("关闭记录详情")
+                        .tooltip("关闭记录详情")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.record = None;
+                            this.table.update(cx, |table, cx| table.clear_selection(cx));
+                            cx.notify();
+                        })),
+                    cx,
+                ))
+                .child(div().flex_1().min_h_0().child(self.render_detail(cx)))
+                .into_any_element()
+        });
         v_flex()
             .size_full()
             .child(
                 ui::page_toolbar(cx)
                     .child(
-                        div().w(px(360.)).child(
+                        div().flex_1().min_w(px(140.)).max_w(px(360.)).child(
                             Input::new(&self.filter)
                                 .small()
                                 .cleanable(true)
@@ -467,61 +586,16 @@ impl Render for AnalysisPanel {
                             .accessibility_label("刷新结果")
                             .on_click(cx.listener(|this, _, _, cx| this.load_tree(cx))),
                     )
-                    .child(
-                        Button::new("quick-analysis")
-                            .small()
-                            .primary()
-                            .icon(Icon::new(ExtraIcon::Play))
-                            .label("快速分析")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.show_quick_analysis(window, cx)
-                            })),
-                    ),
+                    .child(quick),
             )
-            .child(
-                div().flex_1().min_h_0().child(
-                    h_resizable("analysis-panels")
-                        .child(
-                            resizable_panel()
-                                .size(px(280.))
-                                .size_range(px(200.)..px(520.))
-                                .child(
-                                    div()
-                                        .size_full()
-                                        .border_r_1()
-                                        .border_color(cx.theme().border)
-                                        .child(self.render_tree(cx)),
-                                ),
-                        )
-                        .child(resizable_panel().child(if self.selected_node.is_some() {
-                            DataTable::new(&self.table)
-                                .bordered(false)
-                                .small()
-                                .into_any_element()
-                        } else {
-                            v_flex()
-                                .size_full()
-                                .child(ui::empty_state(
-                                    Icon::new(IconName::Inbox),
-                                    "选择一类结果",
-                                    Some("在左侧结果树中选择记录类型查看明细。".into()),
-                                ))
-                                .into_any_element()
-                        }))
-                        .child(
-                            resizable_panel()
-                                .size(px(380.))
-                                .size_range(px(260.)..px(760.))
-                                .child(
-                                    div()
-                                        .size_full()
-                                        .border_l_1()
-                                        .border_color(cx.theme().border)
-                                        .child(self.render_detail(cx)),
-                                ),
-                        ),
-                ),
-            )
+            .child(ui::detail_frame(
+                "analysis-details",
+                ui::data_table(&self.table),
+                detail,
+                window.viewport_size().width < px(1096.),
+                px(380.),
+                cx,
+            ))
             .child(ui::page_footer(
                 div().truncate().child(footer_left),
                 footer_right,

@@ -3,7 +3,9 @@
 //! part of this app; text and hex views cover file contents.
 mod detail;
 mod export;
+mod filter_bar;
 mod hex;
+mod icons;
 mod table;
 mod tree;
 
@@ -17,13 +19,13 @@ use gpui_kit::{
         input::{Input, InputEvent, InputState},
         resizable_panel,
         spinner::Spinner,
-        table::{DataTable, TableEvent, TableState},
-        v_flex, ActiveTheme as _, Disableable as _, IconName, Sizable as _,
+        table::{TableEvent, TableState},
+        v_flex, ActiveTheme as _, Disableable as _, IconName, Selectable as _, Sizable as _,
     },
     div,
     prelude::FluentBuilder as _,
-    px, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
-    Subscription, Task, WeakEntity, Window,
+    px, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement, KeyDownEvent,
+    ParentElement as _, Render, Styled as _, Subscription, Task, WeakEntity, Window,
 };
 use lovelycarve_lib::{
     commands::{
@@ -45,7 +47,8 @@ use serde_json::{json, Value};
 
 use crate::{backend::Backend, evidence::EvidenceTab, format, ui};
 use detail::FileDetail;
-use table::{FileTable, FILE_TAGS};
+pub(crate) use table::FILE_TAGS;
+use table::{FileTable, ListingScope};
 use tree::{DirTree, OpenDirectory};
 
 /// One level of the current directory path.
@@ -140,7 +143,7 @@ impl FileBrowser {
             filter,
             stack: vec![Crumb::root()],
             show_tree: true,
-            show_detail: true,
+            show_detail: false,
             pending_select: None,
             locating: false,
             _filter_debounce: None,
@@ -185,14 +188,19 @@ impl FileBrowser {
     }
 
     /// The node's path from the evidence root, as the breadcrumb names it.
-    pub fn path_of(&self, node: &FsNode) -> String {
+    pub fn path_of(&self, node: &FsNode, cx: &gpui_kit::App) -> String {
         let mut parts: Vec<&str> = self
             .stack
             .iter()
             .skip(1)
             .map(|crumb| crumb.name.as_str())
             .collect();
-        parts.push(node.name.as_str());
+        let relative = self.table.read(cx).delegate().relative_path(&node.id);
+        parts.push(
+            relative
+                .map(|path| path.trim_start_matches('/'))
+                .unwrap_or(&node.name),
+        );
         format!("/{}", parts.join("/"))
     }
 
@@ -207,16 +215,13 @@ impl FileBrowser {
             return;
         }
         self.stack = stack;
+        self._filter_debounce = None;
         self.filter
             .update(cx, |input, cx| input.set_value("", window, cx));
-        self.table.update(cx, |table, cx| {
-            table.clear_selection(cx);
-            let delegate = table.delegate_mut();
-            delegate.set_name_filter(String::new(), cx);
-        });
+        self.table.update(cx, |table, cx| table.clear_selection(cx));
         self.reload_listing(cx);
-        let current = self.current_id();
-        self.tree.update(cx, |tree, cx| tree.select(&current, cx));
+        self.tree
+            .update(cx, |tree, cx| tree.select(&self.stack, cx));
         self.detail
             .update(cx, |detail, cx| detail.show(None, String::new(), cx));
         cx.notify();
@@ -231,9 +236,12 @@ impl FileBrowser {
     }
 
     fn select(&mut self, node: Option<FsNode>, cx: &mut Context<Self>) {
+        if node.as_ref().is_some_and(|node| node.kind != NodeKind::Dir) {
+            self.show_detail = true;
+        }
         let path = node
             .as_ref()
-            .map(|node| self.path_of(node))
+            .map(|node| self.path_of(node, cx))
             .unwrap_or_default();
         self.detail
             .update(cx, |detail, cx| detail.show(node, path, cx));
@@ -243,6 +251,10 @@ impl FileBrowser {
     /// Enter a directory, or show a file's details.
     pub fn open_node(&mut self, node: FsNode, window: &mut Window, cx: &mut Context<Self>) {
         if node.kind == NodeKind::Dir {
+            if self.table.read(cx).delegate().scope() == ListingScope::Descendants {
+                self.locate(node.id, window, cx);
+                return;
+            }
             let mut stack = self.stack.clone();
             stack.push(Crumb {
                 id: node.id.clone(),
@@ -250,9 +262,22 @@ impl FileBrowser {
             });
             self.navigate(stack, window, cx);
         } else {
-            self.show_detail = true;
             self.select(Some(node), cx);
         }
+    }
+
+    fn close_preview(&mut self, cx: &mut Context<Self>) {
+        self.show_detail = false;
+        cx.notify();
+    }
+
+    fn set_scope(&mut self, scope: ListingScope, cx: &mut Context<Self>) {
+        self.pending_select = None;
+        self.table.update(cx, |table, cx| {
+            table.clear_selection(cx);
+            table.delegate_mut().set_scope(scope, cx);
+        });
+        self.select(None, cx);
     }
 
     pub fn export_node(&mut self, node: FsNode, window: &mut Window, cx: &mut Context<Self>) {
@@ -480,90 +505,7 @@ impl FileBrowser {
         .detach();
     }
 
-    /// Batch actions on the checked rows.
-    fn render_checked_actions(&self, checked: usize, cx: &mut Context<Self>) -> impl IntoElement {
-        let checked_ids = |this: &Self, cx: &gpui_kit::App| -> Vec<String> {
-            this.table
-                .read(cx)
-                .delegate()
-                .checked_rows()
-                .into_iter()
-                .map(|node| node.id)
-                .collect()
-        };
-        h_flex()
-            .gap_1()
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(format!("已勾选 {checked} 项")),
-            )
-            .child(
-                Button::new("export-checked")
-                    .small()
-                    .ghost()
-                    .icon(gpui_kit::component::Icon::new(
-                        gpui_kit::assets::IconName::Download,
-                    ))
-                    .label("导出")
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        let nodes = this.table.read(cx).delegate().checked_rows();
-                        this.export_nodes(nodes, window, cx);
-                    })),
-            )
-            .child(
-                Button::new("hash-checked")
-                    .small()
-                    .ghost()
-                    .icon(gpui_kit::component::Icon::new(
-                        gpui_kit::assets::IconName::FingerprintPattern,
-                    ))
-                    .label("哈希")
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        let nodes = this.table.read(cx).delegate().checked_rows();
-                        this.hash_nodes(nodes, window, cx);
-                    })),
-            )
-            .children(FILE_TAGS.iter().enumerate().map(|(index, tag)| {
-                Button::new(("tag-checked", index))
-                    .xsmall()
-                    .ghost()
-                    .label(*tag)
-                    .tooltip(format!("标记为「{tag}」"))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        let ids = checked_ids(this, cx);
-                        this.apply_tag(ids, Some(tag), window, cx);
-                    }))
-            }))
-            .child(
-                Button::new("untag-checked")
-                    .xsmall()
-                    .ghost()
-                    .label("清除标签")
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        let ids = checked_ids(this, cx);
-                        this.apply_tag(ids, None, window, cx);
-                    })),
-            )
-            .child(
-                Button::new("uncheck-all")
-                    .xsmall()
-                    .ghost()
-                    .icon(IconName::Close)
-                    .tooltip("取消勾选")
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.table.update(cx, |table, cx| {
-                            table.delegate_mut().clear_checked();
-                            cx.notify();
-                        });
-                        cx.notify();
-                    })),
-            )
-    }
-
-    fn render_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let checked = self.table.read(cx).delegate().checked_count();
+    fn render_toolbar(&self, narrow: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let crumbs = self.stack.clone();
         let breadcrumb =
             Breadcrumb::new().children(crumbs.iter().enumerate().map(|(index, crumb)| {
@@ -584,6 +526,7 @@ impl FileBrowser {
                 Button::new("toggle-tree")
                     .ghost()
                     .small()
+                    .selected(self.show_tree)
                     .icon(IconName::PanelLeft)
                     .tooltip(if self.show_tree {
                         "隐藏目录树"
@@ -604,13 +547,20 @@ impl FileBrowser {
                     .disabled(self.stack.len() <= 1)
                     .on_click(cx.listener(|this, _, window, cx| this.go_up(window, cx))),
             )
-            .child(div().flex_1().min_w_0().overflow_hidden().child(breadcrumb))
-            .when(self.locating, |this| this.child(Spinner::new().small()))
-            .when(checked > 0, |this| {
-                this.child(self.render_checked_actions(checked, cx))
-            })
             .child(
-                div().w(px(260.)).child(
+                h_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .h(px(26.))
+                    .px_2()
+                    .rounded(cx.theme().radius)
+                    .bg(cx.theme().muted)
+                    .overflow_hidden()
+                    .child(breadcrumb),
+            )
+            .when(self.locating, |this| this.child(Spinner::new().small()))
+            .child(
+                div().w(px(if narrow { 176. } else { 248. })).child(
                     Input::new(&self.filter)
                         .small()
                         .cleanable(true)
@@ -632,6 +582,7 @@ impl FileBrowser {
                 Button::new("toggle-detail")
                     .ghost()
                     .small()
+                    .selected(self.show_detail)
                     .icon(IconName::PanelRight)
                     .tooltip(if self.show_detail {
                         "隐藏详情"
@@ -676,10 +627,12 @@ impl FileBrowser {
 }
 
 impl Render for FileBrowser {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let narrow = window.viewport_size().width < px(1200.);
         let error = self.table.read(cx).delegate().error().cloned();
         let listing = v_flex()
             .size_full()
+            .child(self.render_filters(cx))
             .when_some(
                 error.filter(|_| !self.table.read(cx).delegate().rows().is_empty()),
                 |this, error| this.child(div().px_3().py_1().child(ui::error_text(error, cx))),
@@ -688,43 +641,73 @@ impl Render for FileBrowser {
                 div()
                     .flex_1()
                     .min_h_0()
-                    .child(DataTable::new(&self.table).bordered(false).small()),
-            );
+                    .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                        if event.is_held
+                            || event.keystroke.key != "enter"
+                            || event.keystroke.modifiers.modified()
+                        {
+                            return;
+                        }
+                        let table = this.table.read(cx);
+                        if let Some(node) = table
+                            .selected_row()
+                            .and_then(|index| table.delegate().row(index))
+                            .cloned()
+                        {
+                            cx.stop_propagation();
+                            this.open_node(node, window, cx);
+                        }
+                    }))
+                    .child(ui::data_table(&self.table)),
+            )
+            .child(self.render_footer(cx));
+        let navigation_width = if crate::prefs::Preferences::global(cx).sidebar_collapsed {
+            64.
+        } else if window.viewport_size().width <= px(1000.) {
+            252.
+        } else {
+            288.
+        };
         v_flex()
             .size_full()
-            .child(self.render_toolbar(cx))
-            .child(
-                div().flex_1().min_h_0().child(
-                    h_resizable("file-browser")
-                        .child(
-                            resizable_panel()
-                                .visible(self.show_tree)
-                                .size(px(260.))
-                                .size_range(px(160.)..px(520.))
-                                .child(
-                                    div()
-                                        .size_full()
-                                        .border_r_1()
-                                        .border_color(cx.theme().border)
-                                        .child(self.tree.clone()),
-                                ),
-                        )
-                        .child(resizable_panel().child(listing))
-                        .child(
-                            resizable_panel()
-                                .visible(self.show_detail)
-                                .size(px(420.))
-                                .size_range(px(280.)..px(900.))
-                                .child(
-                                    div()
-                                        .size_full()
-                                        .border_l_1()
-                                        .border_color(cx.theme().border)
-                                        .child(self.detail.clone()),
-                                ),
-                        ),
-                ),
-            )
-            .child(self.render_footer(cx))
+            .child(self.render_toolbar(narrow, cx))
+            .child(ui::detail_frame(
+                "file-preview",
+                h_resizable("file-browser")
+                    .child(
+                        resizable_panel()
+                            .visible(self.show_tree)
+                            .size(px(if narrow { 152. } else { 232. }))
+                            .size_range(px(144.)..px(520.))
+                            .child(
+                                v_flex()
+                                    .size_full()
+                                    .border_r_1()
+                                    .border_color(cx.theme().border)
+                                    .child(
+                                        ui::pane_header(cx)
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child(
+                                                gpui_kit::component::Icon::new(
+                                                    gpui_kit::assets::IconName::FolderTree,
+                                                )
+                                                .small(),
+                                            )
+                                            .child("目录树"),
+                                    )
+                                    .child(div().flex_1().min_h_0().child(self.tree.clone())),
+                            ),
+                    )
+                    .child(
+                        resizable_panel()
+                            .size_range(px(284.)..gpui_kit::Pixels::MAX)
+                            .child(listing),
+                    ),
+                self.show_detail
+                    .then(|| self.detail.clone().into_any_element()),
+                window.viewport_size().width < px(1200. + navigation_width),
+                px(460.),
+                cx,
+            ))
     }
 }

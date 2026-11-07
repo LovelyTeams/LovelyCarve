@@ -13,7 +13,8 @@ use gpui_kit::{
         h_flex,
         input::{Input, InputEvent, InputState},
         progress::Progress,
-        table::{DataTable, TableEvent, TableState},
+        scroll::ScrollableElement as _,
+        table::{TableEvent, TableState},
         tag::Tag,
         v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _,
     },
@@ -287,31 +288,36 @@ impl TimelinePanel {
                 Some("汇总文件时间与分析事件，查看事件发生顺序。".into()),
             ),
         };
-        v_flex()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .gap_4()
-            .child(ui::empty_state(
-                Icon::new(ExtraIcon::ChartColumn),
-                title,
-                description,
-            ))
+        let failed = self.status.as_ref().is_some_and(Result::is_err);
+        let state = ui::empty_state(Icon::new(ExtraIcon::ChartColumn), title, description)
             .when(self.status.is_some(), |this| {
                 this.child(
                     Button::new("create-timeline")
                         .primary()
-                        .icon(IconName::Plus)
+                        .icon(if failed {
+                            IconName::RefreshCw
+                        } else {
+                            IconName::Plus
+                        })
                         .label(if self.building {
                             "正在创建…"
+                        } else if failed {
+                            "重试"
                         } else {
                             "创建时间线"
                         })
                         .disabled(self.building)
-                        .on_click(cx.listener(|this, _, window, cx| this.build(window, cx))),
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            if failed {
+                                this.refresh_status(true, cx);
+                            } else {
+                                this.build(window, cx);
+                            }
+                        })),
                 )
             })
-            .when(self.building, |this| this.child(self.render_progress(cx)))
+            .when(self.building, |this| this.child(self.render_progress(cx)));
+        ui::workspace_start(div(), state, cx)
     }
 
     fn render_progress(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -398,79 +404,77 @@ impl TimelinePanel {
         let tab = self.tab.clone();
         let node_id = row.oid.clone();
         v_flex()
-            .w(px(380.))
-            .h_full()
-            .flex_shrink_0()
-            .border_l_1()
-            .border_color(cx.theme().border)
-            .px_4()
-            .py_3()
-            .gap_1()
-            .child(
-                h_flex()
-                    .gap_2()
-                    .child(
-                        div()
-                            .flex_1()
-                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                            .child("事件详情"),
-                    )
-                    .child(
-                        Button::new("close-event")
-                            .ghost()
-                            .xsmall()
-                            .icon(IconName::Close)
-                            .accessibility_label("关闭详情")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.selected = None;
-                                cx.notify();
-                            })),
-                    ),
-            )
-            .child(ui::field_row(
-                "时间",
-                ui::mono(local_time(row.tl_time), cx),
+            .size_full()
+            .child(ui::detail_header(
+                "事件详情",
+                Button::new("close-event")
+                    .ghost()
+                    .small()
+                    .icon(IconName::Close)
+                    .accessibility_label("关闭事件详情")
+                    .tooltip("关闭事件详情")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.selected = None;
+                        this.table.update(cx, |table, cx| table.clear_selection(cx));
+                        cx.notify();
+                    })),
                 cx,
             ))
-            .child(ui::field_row("事件类型", row.tl_flag.clone(), cx))
-            .child(ui::field_row("来源", row.from_app.clone(), cx))
-            .when(row.deleted, |this| {
-                this.child(ui::field_row(
-                    "状态",
-                    Tag::danger().xsmall().child("源记录已删除"),
-                    cx,
-                ))
-            })
-            .child(ui::section_title("内容", cx))
-            .child(div().text_sm().child(row.content.clone()))
-            .when(!row.extra.is_empty(), |this| {
-                this.child(ui::section_title("附加信息", cx))
-                    .child(ui::mono(row.extra.clone(), cx).text_xs())
-            })
             .child(
-                div().pt_3().child(
-                    Button::new("locate-event")
-                        .small()
-                        .icon(Icon::new(ExtraIcon::Locate))
-                        .label("定位文件")
-                        .disabled(!locatable)
-                        .tooltip(if locatable {
-                            "在文件列表中显示"
-                        } else {
-                            "分析事件没有文件位置"
-                        })
-                        .on_click(move |_, window, cx| {
-                            tab.update(cx, |tab, cx| tab.locate_node(node_id.clone(), window, cx))
-                                .ok();
-                        }),
-                ),
+                v_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .px_4()
+                    .py_3()
+                    .gap_1()
+                    .child(ui::field_row(
+                        "时间",
+                        ui::mono(local_time(row.tl_time), cx),
+                        cx,
+                    ))
+                    .child(ui::field_row("事件类型", row.tl_flag.clone(), cx))
+                    .child(ui::field_row("来源", row.from_app.clone(), cx))
+                    .when(row.deleted, |this| {
+                        this.child(ui::field_row(
+                            "状态",
+                            Tag::danger().xsmall().child("源记录已删除"),
+                            cx,
+                        ))
+                    })
+                    .child(ui::section_title("内容", cx))
+                    .child(div().text_sm().child(row.content.clone()))
+                    .when(!row.extra.is_empty(), |this| {
+                        this.child(ui::section_title("附加信息", cx))
+                            .child(ui::mono(row.extra.clone(), cx).text_xs())
+                    })
+                    .child(
+                        div().pt_3().child(
+                            Button::new("locate-event")
+                                .small()
+                                .icon(Icon::new(ExtraIcon::Locate))
+                                .label("定位文件")
+                                .disabled(!locatable)
+                                .tooltip(if locatable {
+                                    "在文件列表中显示"
+                                } else {
+                                    "分析事件没有文件位置"
+                                })
+                                .on_click(move |_, window, cx| {
+                                    tab.update(cx, |tab, cx| {
+                                        tab.locate_node(node_id.clone(), window, cx)
+                                    })
+                                    .ok();
+                                }),
+                        ),
+                    )
+                    .overflow_y_scrollbar(),
             )
             .into_any_element()
     }
 }
 
 impl Render for TimelinePanel {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.ready() {
             return self.render_start(cx).into_any_element();
         }
@@ -505,7 +509,7 @@ impl Render for TimelinePanel {
             .child(
                 ui::page_toolbar(cx)
                     .child(
-                        div().w(px(360.)).child(
+                        div().flex_1().min_w(px(136.)).max_w(px(360.)).child(
                             Input::new(&self.filter)
                                 .small()
                                 .cleanable(true)
@@ -560,26 +564,19 @@ impl Render for TimelinePanel {
                     )
                 },
             )
-            .child(
-                h_flex()
-                    .flex_1()
-                    .min_h_0()
-                    .items_stretch()
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .child(self.render_chart(cx))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_h_0()
-                                    .pt_2()
-                                    .child(DataTable::new(&self.table).bordered(false).small()),
-                            ),
-                    )
-                    .child(self.render_detail(cx)),
-            )
+            .child(ui::detail_frame(
+                "timeline-details",
+                v_flex()
+                    .size_full()
+                    .child(self.render_chart(cx))
+                    .child(div().flex_1().min_h_0().child(ui::data_table(&self.table))),
+                self.selected
+                    .as_ref()
+                    .map(|_| self.render_detail(cx).into_any_element()),
+                window.viewport_size().width < px(1096.),
+                px(380.),
+                cx,
+            ))
             .child(ui::page_footer(
                 h_flex()
                     .gap_3()

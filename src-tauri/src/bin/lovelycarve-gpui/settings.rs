@@ -4,16 +4,17 @@ use gpui_kit::{
     component::{
         button::{Button, ButtonVariants as _},
         h_flex,
-        radio::RadioGroup,
         scroll::ScrollableElement as _,
         spinner::Spinner,
+        switch::Switch,
         tab::{Tab, TabBar},
         tag::Tag,
-        v_flex, ActiveTheme as _, Disableable as _, Sizable as _, WindowExt as _,
+        v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, Selectable as _, Sizable as _,
+        WindowExt as _,
     },
     div,
     prelude::FluentBuilder as _,
-    App, AppContext as _, Context, IntoElement, ParentElement as _, PathPromptOptions, Render,
+    px, App, AppContext as _, Context, IntoElement, ParentElement as _, PathPromptOptions, Render,
     SharedString, Styled as _, Window,
 };
 use lovelycarve_lib::{commands::extensions::plugin as plugin_commands, host::State};
@@ -57,10 +58,16 @@ pub fn open(window: &mut Window, cx: &mut App) {
         view.load_plugins(cx);
         view
     });
-    window.open_dialog(cx, move |dialog, _, _| {
+    window.open_dialog(cx, move |dialog, _, cx| {
         dialog
-            .title("设置")
-            .w(gpui_kit::px(640.))
+            .centered()
+            .title(ui::dialog_heading(
+                IconName::Settings,
+                "设置中心",
+                "更改自动保存",
+                cx,
+            ))
+            .w(px(760.))
             .child(view.clone())
     });
 }
@@ -167,36 +174,60 @@ impl SettingsView {
             .iter()
             .position(|size| (*size - preferences.font_size).abs() < 0.1);
         v_flex()
-            .gap_3()
-            .child(ui::section_title("主题", cx))
-            .child(
-                RadioGroup::horizontal("theme-choice")
-                    .children(ThemeChoice::ALL.iter().map(|choice| choice.label()))
-                    .selected_index(theme_index)
-                    .on_change(|index: &usize, window, cx| {
+            .gap_5()
+            .child(ui::field_row(
+                "主题",
+                TabBar::new("theme-choice")
+                    .segmented()
+                    .small()
+                    .children(ThemeChoice::ALL.into_iter().map(|choice| {
+                        let icon = match choice {
+                            ThemeChoice::System => Icon::new(gpui_kit::assets::IconName::Monitor),
+                            ThemeChoice::Light => Icon::new(IconName::Sun),
+                            ThemeChoice::Dark => Icon::new(IconName::Moon),
+                        };
+                        Tab::new()
+                            .label(choice.label())
+                            .prefix(div().pl_2().child(icon.small()))
+                    }))
+                    .when_some(theme_index, |bar, index| bar.selected_index(index))
+                    .on_click(|index: &usize, window, cx| {
                         if let Some(choice) = ThemeChoice::ALL.get(*index).copied() {
-                            Preferences::update(cx, |preferences| preferences.theme = choice);
-                            crate::prefs::apply_theme(Some(window), cx);
+                            Preferences::update(window, cx, |preferences| {
+                                preferences.theme = choice
+                            });
                         }
                     }),
-            )
-            .child(ui::section_title("界面大小", cx))
-            .child(
-                RadioGroup::horizontal("font-size")
-                    .children(["紧凑", "标准", "宽松", "较大"])
-                    .selected_index(size_index)
-                    .on_change(|index: &usize, _, cx| {
+                cx,
+            ))
+            .child(ui::field_row(
+                "界面大小",
+                TabBar::new("font-size")
+                    .segmented()
+                    .small()
+                    .children(["紧凑", "标准", "宽松", "较大"].map(|label| Tab::new().label(label)))
+                    .when_some(size_index, |bar, index| bar.selected_index(index))
+                    .on_click(|index: &usize, window, cx| {
                         if let Some(size) = FONT_SIZES.get(*index).copied() {
-                            Preferences::update(cx, |preferences| preferences.font_size = size);
+                            Preferences::update(window, cx, |preferences| {
+                                preferences.font_size = size
+                            });
                         }
                     }),
-            )
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("界面大小同时缩放文字、间距与控件；设置保存在本机用户数据目录。"),
-            )
+                cx,
+            ))
+            .child(ui::field_row(
+                "首页动画",
+                Switch::new("welcome-motion")
+                    .label("播放欢迎页动画")
+                    .checked(preferences.welcome_motion)
+                    .on_click(|enabled, window, cx| {
+                        Preferences::update(window, cx, |preferences| {
+                            preferences.welcome_motion = *enabled;
+                        });
+                    }),
+                cx,
+            ))
     }
 
     fn render_plugins(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -367,30 +398,74 @@ impl Render for SettingsView {
             .w_full()
             .gap_4()
             .child(
-                TabBar::new("settings-sections")
-                    .underline()
-                    .child(Tab::new().label("外观"))
-                    .child(Tab::new().label("插件"))
-                    .child(Tab::new().label("关于"))
-                    .selected_index(match section {
-                        Section::Appearance => 0,
-                        Section::Plugins => 1,
-                        Section::About => 2,
-                    })
-                    .on_click(cx.listener(|this, index: &usize, _, cx| {
-                        this.section = match index {
-                            1 => Section::Plugins,
-                            2 => Section::About,
-                            _ => Section::Appearance,
-                        };
-                        cx.notify();
-                    })),
+                h_flex()
+                    .gap_2()
+                    .pb_2()
+                    .border_b_1()
+                    .border_color(cx.theme().border)
+                    .children(
+                        [
+                            (
+                                "appearance",
+                                "界面",
+                                gpui_kit::assets::IconName::Palette,
+                                Section::Appearance,
+                            ),
+                            (
+                                "plugins",
+                                "插件",
+                                gpui_kit::assets::IconName::Puzzle,
+                                Section::Plugins,
+                            ),
+                            (
+                                "about",
+                                "关于",
+                                gpui_kit::assets::IconName::Info,
+                                Section::About,
+                            ),
+                        ]
+                        .map(|(id, label, icon, target)| {
+                            Button::new(id)
+                                .ghost()
+                                .small()
+                                .selected(section == target)
+                                .icon(Icon::new(icon))
+                                .label(label)
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.section = target;
+                                    cx.notify();
+                                }))
+                        }),
+                    ),
             )
+            .child(div().max_h(px(440.)).child(body).overflow_y_scrollbar())
             .child(
-                div()
-                    .max_h(gpui_kit::px(440.))
-                    .child(body)
-                    .overflow_y_scrollbar(),
+                h_flex()
+                    .pt_3()
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .when(section == Section::Appearance, |footer| {
+                        footer.child(
+                            Button::new("reset-appearance")
+                                .ghost()
+                                .label("恢复本页默认设置")
+                                .on_click(|_, window, cx| {
+                                    let defaults = Preferences::default();
+                                    Preferences::update(window, cx, |preferences| {
+                                        preferences.theme = defaults.theme;
+                                        preferences.font_size = defaults.font_size;
+                                        preferences.welcome_motion = defaults.welcome_motion;
+                                    });
+                                }),
+                        )
+                    })
+                    .child(div().flex_1())
+                    .child(
+                        Button::new("finish-settings")
+                            .primary()
+                            .label("完成")
+                            .on_click(|_, window, cx| window.close_dialog(cx)),
+                    ),
             )
     }
 }

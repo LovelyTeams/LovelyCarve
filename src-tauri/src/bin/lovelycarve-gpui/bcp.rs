@@ -12,7 +12,7 @@ use gpui_kit::{
         h_flex,
         input::{Input, InputEvent, InputState},
         scroll::ScrollableElement as _,
-        table::{DataTable, TableEvent, TableState},
+        table::{TableEvent, TableState},
         tag::Tag,
         v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _,
     },
@@ -561,35 +561,22 @@ impl BcpPanel {
             cx,
         );
         v_flex()
-            .w(px(380.))
-            .h_full()
-            .flex_shrink_0()
-            .border_l_1()
-            .border_color(cx.theme().border)
-            .child(
-                h_flex()
-                    .gap_2()
-                    .px_4()
-                    .pt_3()
-                    .child(
-                        div()
-                            .flex_1()
-                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                            .child(format!("记录 #{}", format::count(record.number))),
-                    )
-                    .child(
-                        Button::new("close-bcp-record")
-                            .ghost()
-                            .xsmall()
-                            .icon(IconName::Close)
-                            .accessibility_label("关闭详情")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.record = None;
-                                this.table.update(cx, |table, cx| table.clear_selection(cx));
-                                cx.notify();
-                            })),
-                    ),
-            )
+            .size_full()
+            .child(ui::detail_header(
+                format!("记录 #{}", format::count(record.number)),
+                Button::new("close-bcp-record")
+                    .ghost()
+                    .small()
+                    .icon(IconName::Close)
+                    .accessibility_label("关闭详情")
+                    .tooltip("关闭详情")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.record = None;
+                        this.table.update(cx, |table, cx| table.clear_selection(cx));
+                        cx.notify();
+                    })),
+                cx,
+            ))
             .child(
                 h_flex()
                     .gap_1()
@@ -616,7 +603,7 @@ impl BcpPanel {
 }
 
 impl Render for BcpPanel {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let category_rows: u64 = self.datasets().iter().map(|dataset| dataset.rows).sum();
         let table = self.table.read(cx).delegate();
         let page_summary =
@@ -636,12 +623,7 @@ impl Render for BcpPanel {
                 .min_w_0()
                 .h_full()
                 .child(self.render_dataset_head(dataset, cx))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_h_0()
-                        .child(DataTable::new(&self.table).bordered(false).small()),
-                )
+                .child(div().flex_1().min_h_0().child(ui::data_table(&self.table)))
                 .into_any_element(),
             None => div()
                 .flex_1()
@@ -653,6 +635,13 @@ impl Render for BcpPanel {
                     None,
                 ))
                 .into_any_element(),
+        };
+        let detail = if self.record.is_some() {
+            dataset
+                .as_ref()
+                .map(|dataset| self.render_record(dataset, cx).into_any_element())
+        } else {
+            None
         };
         v_flex()
             .size_full()
@@ -682,10 +671,14 @@ impl Render for BcpPanel {
                     .min_h_0()
                     .items_stretch()
                     .child(self.render_datasets(cx))
-                    .child(main)
-                    .when_some(dataset.as_ref(), |this, dataset| {
-                        this.child(self.render_record(dataset, cx))
-                    }),
+                    .child(ui::detail_frame(
+                        "bcp-details",
+                        main,
+                        detail,
+                        window.viewport_size().width < px(1352.),
+                        px(380.),
+                        cx,
+                    )),
             )
             .child(ui::page_footer(
                 ui::mono(self.catalog.path.clone(), cx).truncate(),
