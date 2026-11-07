@@ -121,7 +121,7 @@
           <div v-else-if="rowsLoading && !rows.length" class="state-row mono"><Loader2 :size="14" class="spin" /> {{ tr("加载中…") }}</div>
           <div v-else-if="rowsError" class="state-row mono error">{{ rowsError }}</div>
           <template v-else>
-            <div class="grid-scroll">
+            <div ref="gridEl" class="grid-scroll">
               <table class="data-table db-table">
                 <thead>
                   <tr>
@@ -150,7 +150,10 @@
                 <tbody>
                   <tr v-for="(row, ri) in rows" :key="ri">
                     <td class="rownum mono">{{ offset + ri + 1 }}</td>
-                    <td v-for="(cell, ci) in row" :key="ci" class="mono" :class="sqliteCellClass(cell)">{{ sqliteCellText(cell) }}</td>
+                    <td v-for="(cell, ci) in row" :key="ci" class="mono" :class="sqliteCellClass(cell)">
+                      <span v-if="highlightedRows" v-html="highlightedRows.cells[ri][ci]"></span>
+                      <template v-else>{{ sqliteCellText(cell) }}</template>
+                    </td>
                   </tr>
                   <tr v-if="!rows.length">
                     <td class="mono dim empty-cell" :colspan="columns.length + 1">{{ tr("（无数据）") }}</td>
@@ -195,6 +198,7 @@ import {
   Eye, History, KeyRound, Loader2, Lock, LockOpen, Table2,
 } from 'lucide-vue-next';
 import { fsSqlitePreview, fsSqliteTableRows, SQLITE_LOCKED, type SqliteCell, type SqliteColumn, type SqliteDigest, type SqliteKey } from '../../../../lib/ipc/sqlite';
+import { highlightHtml } from '../../../../utils/highlight';
 import { sqliteCellClass, sqliteCellText } from '../../model/sqliteCell';
 import SqliteDeletedRecords from './SqliteDeletedRecords.vue';
 import UiSelect, { type UiSelectOption } from '../../../../components/ui/UiSelect.vue';
@@ -204,7 +208,9 @@ const props = defineProps<{
   nodeId: string;
   /** 库所在目录的节点，用来查找同目录的 -wal / -journal。 */
   parentId?: string | null;
+  query: string;
 }>();
+const emit = defineEmits<{ resetMatch: [] }>();
 
 const PAGE_SIZE = 100;
 
@@ -240,6 +246,7 @@ const total = ref(0);
 const offset = ref(0);
 const orderBy = ref<string | null>(null);
 const descending = ref(false);
+const gridEl = ref<HTMLDivElement | null>(null);
 // 单调请求序号：快速切表/翻页时丢弃过期响应，避免乱序覆盖。
 let reqSeq = 0;
 
@@ -247,6 +254,32 @@ let reqSeq = 0;
 const showDeleted = ref(false);
 const deletedOpened = ref(false);
 const deletedCount = ref<number | null>(null);
+
+// 查找范围为当前页的单元格预览值。按表格渲染顺序编号，翻页后重新计数。
+const highlightedRows = computed(() => {
+  const query = props.query;
+  if (!query || showDeleted.value) return null;
+  let count = 0;
+  const cells = rows.value.map(row => row.map(cell => {
+    const highlighted = highlightHtml(sqliteCellText(cell), query);
+    count += highlighted.count;
+    return highlighted.html;
+  }));
+  return { cells, count };
+});
+const matchCount = computed(() => gridEl.value ? highlightedRows.value?.count ?? 0 : null);
+
+function focusMatch(index: number) {
+  const grid = gridEl.value;
+  grid?.querySelector('mark.current')?.classList.remove('current');
+  if (index < 0 || !grid) return;
+  const target = grid.querySelectorAll('mark')[index];
+  target?.classList.add('current');
+  target?.scrollIntoView({ block: 'center', inline: 'nearest' });
+}
+
+watch([rows, showDeleted], () => emit('resetMatch'));
+defineExpose({ matchCount, focusMatch });
 
 const activeMeta = computed(() => digest.value?.tables.find((t) => t.name === activeName.value) ?? null);
 const pageIndex = computed(() => Math.floor(offset.value / PAGE_SIZE));
@@ -295,6 +328,7 @@ function selectTable(name: string) {
   activeName.value = name;
   orderBy.value = null;
   descending.value = false;
+  rows.value = [];
   loadRows(0);
 }
 
@@ -318,9 +352,11 @@ function nextPage() {
 async function loadRows(nextOffset: number) {
   const name = activeName.value;
   if (!name) return;
+  const my = ++reqSeq;
   const meta = activeMeta.value;
   // digest 已标记该表解析失败（坏页/虚表）——直接展示错误，不再取数。
   if (meta?.error) {
+    rowsLoading.value = false;
     rowsError.value = meta.error;
     columns.value = meta.columns;
     rows.value = [];
@@ -328,7 +364,6 @@ async function loadRows(nextOffset: number) {
     offset.value = 0;
     return;
   }
-  const my = ++reqSeq;
   rowsLoading.value = true;
   rowsError.value = null;
   try {
@@ -357,6 +392,8 @@ async function loadRows(nextOffset: number) {
 }
 
 async function loadDigest(key?: SqliteKey) {
+  reqSeq++;
+  rowsLoading.value = false;
   loading.value = true;
   error.value = null;
   locked.value = false;
@@ -425,6 +462,7 @@ watch(
 <style scoped>
 .db-table { width: max-content; min-width: 100%; }
 .db-table td { max-width: 360px; }
+.db-table td:has(mark.current) { white-space: normal; overflow-wrap: anywhere; }
 
 .sqlite-viewer {
   display: flex;

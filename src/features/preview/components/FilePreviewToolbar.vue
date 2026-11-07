@@ -62,20 +62,20 @@
       </div>
       <!-- 关键字搜索：文本/十六进制及可搜索的原类型子视图才有意义；
            图片/视频/音频等媒体原类型视图无可搜索内容，隐藏搜索框。 -->
-      <div v-if="activeTab !== 'detail' && !(activeTab === 'hex' && focusTarget) && !(activeTab === 'raw' && isMediaCategory)" class="search-wrap">
+      <div v-if="showSearch" class="search-wrap">
         <div class="ui-search search-field">
           <Search :size="13" aria-hidden="true" />
           <input
             class="mono search-input"
             type="text"
-            :placeholder="tr('请输入关键词')"
-            :aria-label="tr('搜索预览内容')"
+            :placeholder="searchesSqlitePage ? tr('搜索当前页') : tr('请输入关键词')"
+            :aria-label="searchesSqlitePage ? tr('搜索当前页') : tr('搜索预览内容')"
             v-model="searchQuery"
             @keydown="emit('searchKeydown', $event)"
           />
         </div>
-        <span v-if="searchQuery" class="match-count mono">
-          {{ matchCount ? `${currentMatch >= 0 ? currentMatch + 1 : 0}/${matchCount}` : tr("无匹配") }}
+        <span v-if="searchQuery" class="match-count mono" role="status">
+          {{ matchCount ? `${currentMatch >= 0 ? currentMatch + 1 : 0}/${matchCount}` : searchesSqlitePage ? tr("本页无匹配") : tr("无匹配") }}
         </span>
         <button class="ui-icon-btn sm bordered" :title="tr('上一个 (Shift+Enter)')" :aria-label="tr('上一个匹配')" :disabled="matchCount === 0" @click="emit('gotoMatch', -1)">
           <ChevronUp :size="14" />
@@ -136,6 +136,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { tr } from '../../../composables/useLocale';
 
 import { X, Search, ExternalLink, ChevronUp, ChevronDown, ScanSearch, AlertTriangle, Loader2, Languages, QrCode, ScanText } from 'lucide-vue-next';
@@ -144,16 +145,22 @@ import type { FsTypeIdent } from '../../../lib/ipc/fs/derived';
 import { PREVIEW_TABS as tabs, type DetailTab, type PreviewCategory } from '../model/preview';
 import { CHARSETS } from '../model/charsets';
 
-defineProps<{
+const props = defineProps<{
   indexOnly?: boolean;
   standalone?: boolean; nodeKind: string; focusTarget: boolean; needsDecodedText: boolean;
   selectedCharsets: string[]; selectedCharsetCount: number;
   encodingTitle: string; encodingWarn: boolean; encodingOptions: UiSelectOption<string>[];
   matchCount: number; currentMatch: number; isMediaCategory: boolean; category: PreviewCategory;
+  sqliteSearchAvailable: boolean;
   extMismatch: boolean; identifying: boolean; identBtnTitle: string; effectiveIdent: FsTypeIdent | null;
   qrScanning: boolean; ocrScanning: boolean;
 }>();
 const activeTab = defineModel<DetailTab>('activeTab', { required: true });
+const searchesSqlitePage = computed(() => activeTab.value === 'raw' && props.category === 'sqlite');
+const showSearch = computed(() => activeTab.value !== 'detail'
+  && !(activeTab.value === 'hex' && props.focusTarget)
+  && !(activeTab.value === 'raw' && props.isMediaCategory)
+  && (!searchesSqlitePage.value || props.sqliteSearchAvailable));
 const searchQuery = defineModel<string>('searchQuery', { required: true });
 const encodingOverride = defineModel<string>('encodingOverride', { required: true });
 const charsetMenuOpen = defineModel<boolean>('charsetMenuOpen', { required: true });

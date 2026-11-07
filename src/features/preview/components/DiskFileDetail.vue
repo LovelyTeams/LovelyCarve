@@ -16,6 +16,7 @@
         v-model:charset-menu-open="charsetMenuOpen" :selected-charsets="selectedCharsets" :selected-charset-count="selectedCharsetList.length"
         :needs-decoded-text="needsDecodedText" :encoding-title="encodingTitle" :encoding-warn="encodingWarn" :encoding-options="encodingOptions"
         :match-count="matchCount" :current-match="currentMatch" :is-media-category="isMediaCategory" :category="category"
+        :sqlite-search-available="sqliteViewerRef?.matchCount != null"
         :ext-mismatch="extMismatch" :identifying="identifying" :ident-btn-title="identBtnTitle" :effective-ident="effectiveIdent"
         :qr-scanning="qrScanning" :ocr-scanning="ocrScanning" @close="emit('close')" @external="openExternal"
         @toggle-charset="toggleCharset" @search-keydown="onSearchKeydown" @goto-match="gotoMatch" @identify="identifyType"
@@ -86,10 +87,13 @@
             <SqliteViewer
               v-else-if="category === 'sqlite'"
               :key="node.id"
+              :ref="previewSearch.sqliteViewerRef"
               class="sqlite-view"
               :image-id="imageId"
               :node-id="node.id"
               :parent-id="node.parent_id"
+              :query="searchQuery"
+              @reset-match="resetMatchNav"
             />
 
             <RealmViewer
@@ -428,7 +432,7 @@ const hexMenuEntries = computed<UiContextMenuEntry[]>(() => {
 const previewSearch = usePreviewSearch({
   searchQuery, activeTab, category, decodedText, renderedMarkdown, page, pageSize, currentHexStart, hexMatch,
 });
-const { currentMatch, matchCount, csvMatchCount, gotoMatch, onSearchKeydown, resetMatchNav } = previewSearch;
+const { currentMatch, matchCount, csvMatchCount, sqliteViewerRef, gotoMatch, onSearchKeydown, resetMatchNav } = previewSearch;
 
 const { mediaUrl, mediaLoading, mediaError, streamUrl, streamLoading, streamError,
   loadMedia, loadStreamMedia, resetMedia, onMediaError } = useMediaPreview({

@@ -1,9 +1,4 @@
 // Keyword-highlight helpers shared by text-style previews.
-//
-// The same recipe FollowStream.vue uses: HTML-escape the text first, then
-// wrap case-insensitive matches of the (also escaped) query in <mark>. By
-// escaping before we ever touch the string we never feed raw bytes into the
-// DOM — the only markup we introduce is the literal <mark> tags.
 import { escapeHtml } from './safeHtml';
 
 /** Escape the regex metacharacters in `s` so a user keyword is matched
@@ -21,19 +16,26 @@ export interface HighlightResult {
 
 /**
  * HTML-escape `text` and wrap every case-insensitive occurrence of `query`
- * in `<mark>`. Empty / unparseable queries return the escaped text untouched.
+ * in `<mark>`. Empty or unparseable queries return the escaped text untouched.
  */
 export function highlightHtml(text: string, query: string): HighlightResult {
-  const escaped = escapeHtml(text);
-  if (!query) return { html: escaped, count: 0 };
-  // Match against the escaped text, so escape the query the same way first.
-  const needle = escapeRegExp(escapeHtml(query));
+  if (!query || query.length > text.length) return { html: escapeHtml(text), count: 0 };
+  // Match the original text so HTML entity names cannot produce false hits.
   try {
-    const re = new RegExp(`(${needle})`, 'gi');
-    const count = (escaped.match(re) || []).length;
-    return { html: escaped.replace(re, '<mark>$1</mark>'), count };
+    const pattern = new RegExp(escapeRegExp(query), 'gi');
+    let html = '';
+    let count = 0;
+    let end = 0;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(text))) {
+      html += escapeHtml(text.slice(end, match.index));
+      html += `<mark>${escapeHtml(match[0])}</mark>`;
+      end = match.index + match[0].length;
+      count++;
+    }
+    return { html: html + escapeHtml(text.slice(end)), count };
   } catch {
-    return { html: escaped, count: 0 };
+    return { html: escapeHtml(text), count: 0 };
   }
 }
 

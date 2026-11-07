@@ -59,7 +59,7 @@ describe('sanitizeHtml', () => {
 });
 
 describe('highlightHtml', () => {
-  it('escapes the text before wrapping matches', () => {
+  it('escapes the text around highlighted matches', () => {
     expect(highlightHtml('<b>x</b> and X', 'x')).toEqual({
       html: '&lt;b&gt;<mark>x</mark>&lt;/b&gt; and <mark>X</mark>',
       count: 2,
@@ -70,6 +70,13 @@ describe('highlightHtml', () => {
     expect(highlightHtml('a<b a.b a<b', 'a<b')).toEqual({
       html: '<mark>a&lt;b</mark> a.b <mark>a&lt;b</mark>',
       count: 2,
+    });
+  });
+
+  it('only finds text present before HTML escaping', () => {
+    expect(highlightHtml('& amp <', 'amp')).toEqual({
+      html: '&amp; <mark>amp</mark> &lt;',
+      count: 1,
     });
   });
 });

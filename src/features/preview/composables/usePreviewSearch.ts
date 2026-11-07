@@ -28,6 +28,7 @@ export function usePreviewSearch(options: {
   const hexEl = ref<HTMLDivElement | null>(null);
   const codeViewerRef = ref<MatchNavigator | null>(null);
   const csvViewerRef = ref<MatchNavigator | null>(null);
+  const sqliteViewerRef = ref<(MatchNavigator & { matchCount: number | null }) | null>(null);
 
   // Match count shown next to the search box, computed against the active view.
   const matchCount = computed(() => {
@@ -36,6 +37,7 @@ export function usePreviewSearch(options: {
     if (activeTab.value === 'raw') {
       if (category.value === 'markdown') return mdMatchCount.value;
       if (category.value === 'csv') return csvMatchCount.value;
+      if (category.value === 'sqlite') return sqliteViewerRef.value?.matchCount ?? 0;
       if (category.value === 'code' || category.value === 'structured') return countMatches(decodedText.value, searchQuery.value);
       return 0; // media / unsupported — nothing textual to navigate
     }
@@ -153,6 +155,7 @@ export function usePreviewSearch(options: {
       if (category.value === 'markdown') focusDomMatch(mdEl.value, i);
       else if (category.value === 'code') codeViewerRef.value?.focusMatch(i);
       else if (category.value === 'csv') csvViewerRef.value?.focusMatch(i);
+      else if (category.value === 'sqlite') sqliteViewerRef.value?.focusMatch(i);
     }
   }
 
@@ -197,12 +200,13 @@ export function usePreviewSearch(options: {
     currentHexStart.value = -1;
     clearDomCurrent(textEl.value);
     clearDomCurrent(mdEl.value);
-    // CSV 视图的 <mark> 在子组件里，靠 focusMatch(-1) 清当前态。
+    // 表格的 <mark> 在子组件里，靠 focusMatch(-1) 清当前态。
     csvViewerRef.value?.focusMatch(-1);
+    sqliteViewerRef.value?.focusMatch(-1);
   }
   watch(searchQuery, resetMatchNav);
   watch(activeTab, resetMatchNav);
 
-  return { currentMatch, matchCount, mdMatchCount, csvMatchCount, textEl, mdEl, hexEl, codeViewerRef, csvViewerRef,
+  return { currentMatch, matchCount, mdMatchCount, csvMatchCount, textEl, mdEl, hexEl, codeViewerRef, csvViewerRef, sqliteViewerRef,
     gotoMatch, restoreMatch, onSearchKeydown, resetMatchNav };
 }

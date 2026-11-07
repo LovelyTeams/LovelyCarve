@@ -97,6 +97,8 @@
 
 ### Fixed
 
+- 修复 SQLite 原类型视图的搜索误报无匹配。搜索栏会统计和高亮当前页的单元格匹配，并支持逐项定位。
+
 - CLI 时区探测支持检材内 `/etc`、`/usr` 等目录的相对、绝对与链式符号链接，保持原始 TZif 优先和时区来源；越界、断链及循环链接明确报告，绝不读取主机同名配置。
 - 修复检材平台误判：目录、压缩包、Docker 等逻辑检材的根目录已识别出 Linux 或 DJI 无人机系统时，不再因 `var/backups`、AOSP 自带的 `SharedStorageBackup` 等含 backup 的条目名被改判为 Android 备份；解锁后的 BitLocker 卷按 NTFS 规则识别 Windows，解锁后的 LUKS、FileVault 与 VeraCrypt 分区按其中的明文文件系统识别，此前解锁后重新识别仍看不到其中的系统。
 

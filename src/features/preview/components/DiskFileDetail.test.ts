@@ -92,6 +92,53 @@ describe('preview content composition', () => {
     expect(marks[0].classList.contains('current')).toBe(true);
     expect(host.querySelector('.match-count')?.textContent).toContain('1/2'); expect(host.querySelector('.md-body img')).toBeNull();
   });
+
+  it('finds and navigates SQLite cell text and resets the selected hit on page changes', async () => {
+    const columns = [{ name: 'body', type_name: 'TEXT', notnull: false, default_value: null, pk: 0 }];
+    const original = ipc.invoke.getMockImplementation()!;
+    ipc.invoke.mockImplementation(async (command, args) => {
+      if (command === 'fs_sqlite_preview') return {
+        tables: [{ name: 'messages', kind: 'table', columns, row_count: 101 }], sidecars: [],
+      };
+      if (command === 'fs_sqlite_table_rows') return {
+        columns, total: 101, offset: args.offset,
+        rows: [[{ kind: 'text', value: args.offset ? '每天、每天' : '每天看 <img src=x>，每天写' }]],
+      };
+      return original(command, args);
+    });
+    node.value = { ...node.value, id: 'database', name: 'messages.db' };
+    await mount();
+    tab('原类型');
+    await vi.dynamicImportSettled();
+    await settle();
+
+    const input = host.querySelector<HTMLInputElement>('[aria-label="搜索当前页"]')!;
+    input.value = '每天';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await settle();
+    const marks = [...host.querySelectorAll<HTMLElement>('.db-table mark')];
+    expect(marks.map(mark => mark.textContent)).toEqual(['每天', '每天']);
+    expect(host.querySelector('.db-table img')).toBeNull();
+    marks.forEach(mark => { mark.scrollIntoView = vi.fn(); });
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }));
+    await settle();
+    expect(host.querySelector('mark.current')).toBe(marks[1]);
+    expect(marks[1].scrollIntoView).toHaveBeenCalledOnce();
+    expect(host.querySelector('.match-count')?.textContent).toContain('2/2');
+
+    host.querySelector<HTMLButtonElement>('[aria-label="下一页"]')!.click();
+    await settle();
+    expect(input.value).toBe('每天');
+    expect(host.querySelector('.match-count')?.textContent).toContain('0/2');
+    expect(host.querySelector('mark.current')).toBeNull();
+    expect(host.querySelector('.db-table tbody td')?.textContent).toBe('101');
+
+    input.value = 'missing';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await settle();
+    expect(host.querySelector('.match-count')?.textContent).toContain('本页无匹配');
+    expect(host.querySelector<HTMLButtonElement>('[aria-label="下一个匹配"]')?.disabled).toBe(true);
+  });
   it('renders metadata with available hashes while keeping window actions hidden in standalone mode', async () => {
     await mount(); tab('详细信息'); await settle();
     expect(host.textContent).toContain('/notes.md'); expect(host.textContent).toContain('known-md5');
