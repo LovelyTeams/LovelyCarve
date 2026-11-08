@@ -12,25 +12,15 @@
       <IosBackupCard v-if="info.ios_backup" :key="info.id" :info="info" @open-image="emit('open-image', $event)" />
 
       <EvidenceVolumes v-if="!info.index_only && !info.ios_backup" :key="info.id" :info="info" :can-unlock-container="supportsBlockOperations" :case-directory="activeCase?.dir"
-        @unlock="openUnlock" @open-image="emit('open-image', $event)" @copy="copyText" />
+        @open-image="emit('open-image', $event)" @copy="copyText" />
 
       <!-- RAID 检测（与该镜像无关时自隐） -->
       <RaidStackPanel v-if="supportsBlockOperations" :info="info" @open-image="emit('open-image', $event)" />
 
       <div v-if="!info.index_only" class="overview-grid">
         <EvidenceIntegrityCard :info="info" @copy="copyText" />
-
         <EvidenceAcquisitionCard :info="info" @copy="copyText" />
       </div>
-
-      <EncryptedVolumeUnlockDialog
-        v-if="supportsBlockOperations"
-        :key="info.id"
-        :open="unlockOpen"
-        :info="info"
-        :partition-id="unlockPartitionId"
-        @close="unlockOpen = false"
-      />
     </div>
   </div>
 </template>
@@ -38,12 +28,11 @@
 <script setup lang="ts">
 import { tr } from '../../../composables/useLocale';
 
-import { computed, ref, watch } from 'vue';
+import { computed } from 'vue';
 import { HardDrive } from 'lucide-vue-next';
 import type { ImageInfo } from '../../../lib/ipc/image';
 import { notifySuccess, notifyError } from '../../../composables/useToast';
 import { useCaseContext } from '../../cases/api';
-import EncryptedVolumeUnlockDialog from './EncryptedVolumeUnlockDialog.vue';
 import RaidStackPanel from '../../raid/components/RaidStackPanel.vue';
 import EvidenceHeader from './EvidenceHeader.vue';
 import IosBackupCard from './IosBackupCard.vue';
@@ -58,15 +47,6 @@ const { activeCase } = useCaseContext();
 const LOGICAL_FORMATS = new Set(['folder', 'tar', 'zip', 'sevenz', 'ad1', 'docker', 'android_backup']);
 const supportsBlockOperations = computed(() => !!props.info && !props.info.index_only && !props.info.ios_backup && !LOGICAL_FORMATS.has(props.info.source_format));
 
-// ── LUKS / VeraCrypt：卷卡标题或 LUKS 分区行打开解锁弹窗 ──────────────────────
-const unlockOpen = ref(false);
-const unlockPartitionId = ref<number | null>(null);
-
-function openUnlock(partitionId: number | null) {
-  unlockPartitionId.value = partitionId;
-  unlockOpen.value = true;
-}
-
 async function copyText(label: string, value: string) {
   try {
     await navigator.clipboard.writeText(value);
@@ -75,14 +55,6 @@ async function copyText(label: string, value: string) {
     notifyError(tr("复制失败"), String(e));
   }
 }
-
-watch(
-  () => props.info?.id,
-  () => {
-    unlockOpen.value = false;
-  },
-  { immediate: true },
-);
 
 </script>
 

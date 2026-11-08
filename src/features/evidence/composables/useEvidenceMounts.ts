@@ -2,7 +2,6 @@
 import { tr } from '../../../composables/useLocale';
 import { computed, onActivated, onDeactivated, onMounted, onScopeDispose, ref, watch } from 'vue';
 import { open } from '@tauri-apps/plugin-dialog';
-import { bitlockerStatus } from '../../../lib/ipc/bitlocker';
 import { fsAvailableMountPoints, fsCreateMountDir, fsMountReadonly, fsMounts, fsShareMount, fsUnmountReadonly, fsUnshareMount, type DokanMountView } from '../../../lib/ipc/mount';
 import type { ImageInfo, DiskPartition } from '../../../lib/ipc/image';
 import type { MountTarget } from '../../../composables/useUiPreferences';
@@ -75,31 +74,6 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
   function canShowMount(p: DiskPartition): boolean {
     if (p.kind !== 'bitlocker') return true;
     return bitlockerUnlocked.value.has(p.id);
-  }
-
-  async function refreshBitlockerUnlockedSet() {
-    const info = options.info();
-    const captured = generation;
-    if (!info) {
-      bitlockerUnlocked.value = new Set();
-      return;
-    }
-    const next = new Set<number>();
-    const probes = info.partitions
-      .filter(p => p.kind === 'bitlocker')
-      .map(async p => {
-        try {
-          const status = await bitlockerStatus({
-            imageId: info.id,
-            partitionId: p.id,
-          });
-          if (!status.locked) next.add(p.id);
-        } catch {
-          // Non-fatal — locked state defaults to "still locked"
-        }
-      });
-    await Promise.all(probes);
-    if (current(captured)) bitlockerUnlocked.value = next;
   }
 
   function onBitlockerUnlocked(partitionId: number) {
@@ -305,7 +279,6 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
     availableDrives.value = [];
     pickerOpenFor.value = null;
     void refreshMounts();
-    void refreshBitlockerUnlockedSet();
   }, { immediate: true, flush: 'sync' });
 
   function onGlobalClick() { pickerOpenFor.value = null; }

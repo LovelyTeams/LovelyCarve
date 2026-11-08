@@ -133,8 +133,7 @@ export function registerBitlockerUnlockNavigator(navigate: () => void) {
 // The open 「检测到 BitLocker」 reminder of each image, keyed like the claim set.
 const bitlockerReminders = new Map<string, PersistentToastHandle>();
 
-/** The user has started unlocking this image's BitLocker volume: the reminder
- *  has done its job, and left open it would sit over the unlock popover. */
+/** Dismiss the reminder when this image's BitLocker unlock panel opens. */
 export function dismissBitlockerReminder(imageId: string) {
   bitlockerReminders.get(imageId)?.dismiss();
   bitlockerReminders.delete(imageId);

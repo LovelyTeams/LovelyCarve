@@ -1232,7 +1232,7 @@ RAID 成员、当前检材卷快照和案件详情默认折叠，切换与锁定
 
 内置任务的状态全部来自后端登记：命令在登记上写入对象、阶段、计数与结局，前端只按种类格式化（`builtinMessage`），不从领域事件或命令返回值推断结局；关闭面板、切换页面不影响跟踪，执行记录按上述列出方式保留。取消请求先于任务登记发出时（例如检材刚开始加载），任务一出现就再取消一次。
 
-LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提交后立即关闭凭据弹窗。
+镜像信息页的卷卡入口和分区行打开同一个 `EncryptedVolumeUnlockDialog`。BitLocker 在弹窗内显示扫描与解锁进度，扫描结果按分区保留在卷卡会话中。LUKS / VeraCrypt / FileVault 2 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提交后立即关闭凭据弹窗。
 任务中心显示「加密卷解锁」、加密方案与源分区（后端写入的方案与卷键）、排队/运行状态与不定进度，按任务 ID 取消，
 结局与解锁所用的算法由解锁命令报告。桌面使用 `sourcePartition` 目标，`EvidenceSession`
 持有按原分区 ID 绑定的原生解密文件系统视图；源 `DiskImage` 的字节、几何、哈希与 RAW 导出不变。

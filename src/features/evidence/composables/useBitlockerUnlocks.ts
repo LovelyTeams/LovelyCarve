@@ -7,7 +7,7 @@ import { taskCancel } from '../../../lib/ipc/taskRuntime';
 import { onEvent, type UnlistenFn } from '../../../lib/ipc/events';
 
 // Module-scoped registries of in-flight BitLocker operations. Living outside
-// any component lets the dump/scan survive popover close / view changes —
+// any component lets the dump/scan survive dialog close / view changes —
 // the backend tokio task continues regardless; this just keeps the UI's
 // observable progress alive so any component can pick it back up.
 
@@ -217,7 +217,7 @@ export async function cancelBitlockerUnlock(imageId: string, partitionId: number
 
 /** Scan a memory dump for BitLocker VMK candidates against a partition. The
  *  scan job is registered in `scanJobs` for the duration of the call so the
- *  popover can render a progress bar. Returns the parsed candidate list (or
+ *  dialog can render a progress bar. Returns the parsed candidate list (or
  *  `null` on error / cancellation). */
 export async function startBitlockerMemoryScan(
   imageId: string,

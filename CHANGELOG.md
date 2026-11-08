@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 桌面端在「卷与分区」的同一弹窗中解锁 BitLocker、LUKS、VeraCrypt 和 FileVault 2，分区行可直接预选对应卷。
+
 ## [1.3.0] - 2026-11-07
 
 ### Added

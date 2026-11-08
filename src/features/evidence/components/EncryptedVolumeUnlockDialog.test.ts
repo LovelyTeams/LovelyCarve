@@ -4,13 +4,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import EncryptedVolumeUnlockDialog from './EncryptedVolumeUnlockDialog.vue';
 import type { ImageInfo } from '../../../lib/ipc/image';
 
-const rpc = vi.hoisted(() => ({ start: vi.fn() }));
+const rpc = vi.hoisted(() => ({ start: vi.fn(), bitlockerPassword: vi.fn() }));
 vi.mock('../composables/useEncryptedVolumeUnlocks', () => ({ startEncryptedVolumeUnlock: rpc.start }));
+vi.mock('../composables/useBitlockerUnlocks', async importOriginal => ({
+  ...await importOriginal<typeof import('../composables/useBitlockerUnlocks')>(),
+  startBitlockerPasswordUnlock: rpc.bitlockerPassword,
+}));
+vi.mock('../../../lib/ipc/bitlocker', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../lib/ipc/bitlocker')>(),
+  bitlockerMetadata: vi.fn(async () => null),
+}));
 const info = {
   id: 'source',
   partitions: [{ id: 1, kind: 'ntfs', label: 'System' }, { id: 2, kind: 'luks', label: 'Linux' }],
 } as ImageInfo;
 let app: App;
+const source = ref(info);
 const open = ref(true);
 const partitionId = ref<number | null>(null);
 const closed = vi.fn(() => { open.value = false; });
@@ -46,11 +55,13 @@ async function submit() {
 beforeEach(async () => {
   vi.clearAllMocks();
   rpc.start.mockReturnValue(true);
+  rpc.bitlockerPassword.mockResolvedValue(true);
+  source.value = info;
   open.value = true;
   partitionId.value = null;
   app = createApp({
     render: () => h(EncryptedVolumeUnlockDialog, {
-      open: open.value, info, partitionId: partitionId.value, onClose: closed,
+      open: open.value, info: source.value, partitionId: partitionId.value, isBitlockerUnlocked: () => false, onClose: closed,
     }),
   });
   app.mount(document.createElement('div'));
@@ -65,6 +76,7 @@ afterEach(() => {
 
 describe('encrypted volume unlock dialog', () => {
   it('normalizes a LUKS master key, submits only that credential, and clears it on close', async () => {
+    await choose(1, '整个镜像 / 容器');
     dialog()!.querySelector<HTMLButtonElement>('button.ui-seg-item:last-child')!.click();
     await nextTick();
     await value('input[type=password]', '00 11 aa FF');
@@ -146,9 +158,41 @@ describe('encrypted volume unlock dialog', () => {
   });
 
   it('submits LUKS for the whole image and leaves cancellation to the task center', async () => {
+    expect(selected(1)).toBe('分区 2 · Linux');
+    await choose(1, '整个镜像 / 容器');
     await value('input[type=password]', 'secret');
     await submit();
     expect(rpc.start).toHaveBeenCalledWith(info, { scheme: 'luks', password: 'secret' });
+    expect(closed).toHaveBeenCalledOnce();
+  });
+
+  it('opens BitLocker in the common dialog and routes credentials to the selected BitLocker partition', async () => {
+    open.value = false;
+    source.value = { ...info, partitions: [info.partitions[0],
+      { id: 3, kind: 'bitlocker', label: 'Data', start_lba: 0, length_lba: 10 },
+      { id: 4, kind: 'bitlocker', label: 'Backup', start_lba: 10, length_lba: 10 },
+      info.partitions[1],
+    ] };
+    await settle();
+    open.value = true;
+    await settle();
+
+    expect(selected(0)).toBe('BitLocker');
+    expect(selected(1)).toBe('分区 3 · Data');
+    await choose(0, 'VeraCrypt');
+    expect(selected(1)).toBe('整个镜像 / 容器');
+    await choose(0, 'BitLocker');
+    await choose(1, '分区 4 · Backup');
+
+    dialog()!.querySelector<HTMLButtonElement>('.bitlocker-panel .ui-seg-item')!.click();
+    await settle();
+    await value('input[type=password]', 'secret');
+    dialog()!.querySelector('input[type=password]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, isComposing: true }));
+    expect(closed).not.toHaveBeenCalled();
+    dialog()!.querySelector('input[type=password]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await settle();
+    expect(rpc.bitlockerPassword).toHaveBeenCalledWith('source', 4, 'secret');
+    expect(rpc.start).not.toHaveBeenCalled();
     expect(closed).toHaveBeenCalledOnce();
   });
 });

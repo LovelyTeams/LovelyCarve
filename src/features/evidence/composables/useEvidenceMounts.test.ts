@@ -5,9 +5,8 @@ import type { ImageInfo } from '../../../lib/ipc/image';
 import type { DokanMountView } from '../../../lib/ipc/mount';
 import { useEvidenceMounts } from './useEvidenceMounts';
 
-const ipc = vi.hoisted(() => ({ mounts: vi.fn(), drives: vi.fn(), create: vi.fn(), mount: vi.fn(), unmount: vi.fn(), share: vi.fn(), unshare: vi.fn(), status: vi.fn(), open: vi.fn() }));
+const ipc = vi.hoisted(() => ({ mounts: vi.fn(), drives: vi.fn(), create: vi.fn(), mount: vi.fn(), unmount: vi.fn(), share: vi.fn(), unshare: vi.fn(), open: vi.fn() }));
 vi.mock('../../../lib/ipc/mount', () => ({ fsMounts: ipc.mounts, fsAvailableMountPoints: ipc.drives, fsCreateMountDir: ipc.create, fsMountReadonly: ipc.mount, fsUnmountReadonly: ipc.unmount, fsShareMount: ipc.share, fsUnshareMount: ipc.unshare }));
-vi.mock('../../../lib/ipc/bitlocker', () => ({ bitlockerStatus: ipc.status }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: ipc.open }));
 vi.mock('../../../composables/useToast', () => ({ notifySuccess: vi.fn(), notifyError: vi.fn() }));
 
@@ -23,7 +22,7 @@ async function setup(target: 'drive' | 'folder' = 'folder') {
   app = createApp(defineComponent({ setup() { controller = useEvidenceMounts({ info: () => info.value, mountTarget: () => target, mountFolderRoot: () => folder.value, caseDirectory: () => caseDirectory.value, onUnlocked: vi.fn() }); return () => h('div'); } }));
   app.mount(host); await settle(); return { controller, info, caseDirectory, folder };
 }
-beforeEach(() => { vi.resetAllMocks(); ipc.mounts.mockResolvedValue([]); ipc.status.mockResolvedValue({ locked: true }); });
+beforeEach(() => { vi.resetAllMocks(); ipc.mounts.mockResolvedValue([]); });
 afterEach(() => { app?.unmount(); host?.remove(); });
 
 describe('evidence mount context ownership', () => {
@@ -50,12 +49,6 @@ describe('evidence mount context ownership', () => {
     expect(controller.busyPartitions.value.has(1)).toBe(true);
     expect(ipc.mount.mock.calls.map(([args]) => args.imageId)).toEqual(['a', 'b']);
     second.resolve(view('b')); await pendingB; expect(controller.busyPartitions.value.size).toBe(0);
-  });
-  it('ignores an A→B→A BitLocker status response from the first generation', async () => {
-    const old = deferred<{ locked: boolean }>(); ipc.status.mockReturnValueOnce(old.promise);
-    const { controller, info } = await setup(); info.value = image('b'); info.value = image('a'); await settle();
-    old.resolve({ locked: false }); await settle();
-    expect(controller.canShowMount(info.value.partitions[0]!)).toBe(false);
   });
   it('does not publish a late drive picker after disposal', async () => {
     const drives = deferred<string[]>(); ipc.drives.mockReturnValue(drives.promise);

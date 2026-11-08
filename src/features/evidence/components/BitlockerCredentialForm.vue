@@ -8,9 +8,9 @@
       type="password"
       autocomplete="off"
       spellcheck="false"
+      :aria-label="tr('BitLocker 用户密码')"
       :placeholder="tr('BitLocker 用户密码')"
       @keydown.enter.prevent="emit('password')"
-      @keydown.esc.prevent="emit('close')"
     />
     <div class="bde-actions">
       <button class="ui-btn sm" @click="emit('close')">{{ tr("取消") }}</button>
@@ -32,11 +32,11 @@
       autocomplete="off"
       spellcheck="false"
       placeholder="xxxxxx-xxxxxx-xxxxxx-xxxxxx-xxxxxx-xxxxxx-xxxxxx-xxxxxx"
+      :aria-label="tr('恢复密钥')"
       :aria-invalid="recoveryError ? 'true' : undefined"
       :aria-describedby="recoveryNoteId"
       @blur="emit('blur')"
       @keydown.enter.prevent="emit('recovery')"
-      @keydown.esc.prevent="emit('close')"
     />
     <p v-if="recoveryError" :id="recoveryNoteId" class="ui-field-error bde-field-note" role="alert">
       <AlertCircle :size="12" /><span>{{ recoveryError }}</span>

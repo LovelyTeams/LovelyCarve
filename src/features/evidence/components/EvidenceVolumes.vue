@@ -4,7 +4,7 @@
     <h3 id="volumes-title" class="ui-card-title"><Layers :size="15" />{{ isFirmwareContainer ? tr("固件段布局") : tr("卷与分区") }}</h3>
     <span v-if="schemeLabel" class="ui-badge sm mono">{{ schemeLabel }}</span>
     <span v-if="info.partitions.length > 0" class="ui-count">{{ info.partitions.length }}</span>
-    <button v-if="canUnlockContainer" class="ui-btn sm head-action" type="button" @click="emit('unlock', null)">
+    <button v-if="canUnlockContainer" class="ui-btn sm head-action" type="button" aria-haspopup="dialog" @click="openUnlock(null)">
       <LockKeyhole :size="13" />{{ tr("解锁加密容器") }}
     </button>
   </header>
@@ -98,52 +98,62 @@
                 <ChevronDown :size="13" class="shadow-chevron" />
               </button>
 
-</template>
-                  <BitlockerUnlockControl
-                    v-if="row.partition.kind === 'bitlocker'"
-                    :image-id="info.id"
-                    :partition="row.partition"
-                    @unlocked="onBitlockerUnlocked"
-                  />
-                  <button
-                    v-if="['luks', 'filevault'].includes(row.partition.kind) && canUnlockContainer"
-                    class="ui-btn sm"
-                    type="button"
-                    :title="tr('解锁该加密分区并以只读方式浏览文件')"
-                    @click="emit('unlock', row.partition.id)"
-                  >
-                    <KeyRound :size="13" />{{ tr("解锁") }}
-                  </button>
-                  <EvidenceMountControl v-if="isMountable(row.partition) && canShowMount(row.partition)" :view="mountFor(row.partition)"
-                    :busy="busyPartitions.has(row.partition.id)" :share-busy="!!mountFor(row.partition) && busyShares.has(mountFor(row.partition)!.id)"
-                    :mount-target="mountTarget" :picker-loading="pickerLoading" :picker-open="pickerOpenFor === row.partition.id" :available-drives="availableDrives"
-                    @toggle="toggleMount(row.partition)" @share="toggleShare(mountFor(row.partition)!, partitionTitle(row.partition, tr))"
-                    @mount="drive => mountAt(row.partition, drive)" @copy="value => emit('copy', tr('共享名'), value)" />
-                </div>
-              </div>
-              <div
-                v-if="row.shadow && expandedShadows.has(row.partition.id)"
-                :id="`shadow-list-${row.partition.id}`"
-                class="shadow-row"
-                role="row"
-              >
-                <div class="cell" role="cell" aria-colspan="5">
-                  <ShadowCopyList
-                    :volume="row.shadow"
-                    :opening="shadowOpening"
-                    :error="shadowOpenError?.partitionId === row.partition.id ? shadowOpenError.message : null"
-                    @open="copy => openShadowCopy(row.shadow!, copy)"
-                  />
-                </div>
-              </div>
             </template>
+            <BitlockerVolumeActions
+              v-if="row.partition.kind === 'bitlocker' && canUnlockContainer"
+              :image-id="info.id"
+              :partition-id="row.partition.id"
+              @open="openUnlock(row.partition.id)"
+              @unlocked="onBitlockerUnlocked"
+            />
+            <button
+              v-else-if="['luks', 'filevault'].includes(row.partition.kind) && canUnlockContainer"
+              class="ui-btn sm"
+              type="button"
+              aria-haspopup="dialog"
+              :title="tr('解锁该加密分区并以只读方式浏览文件')"
+              @click="openUnlock(row.partition.id)"
+            >
+              <KeyRound :size="13" />{{ tr("解锁") }}
+            </button>
+            <EvidenceMountControl v-if="isMountable(row.partition) && canShowMount(row.partition)" :view="mountFor(row.partition)"
+              :busy="busyPartitions.has(row.partition.id)" :share-busy="!!mountFor(row.partition) && busyShares.has(mountFor(row.partition)!.id)"
+              :mount-target="mountTarget" :picker-loading="pickerLoading" :picker-open="pickerOpenFor === row.partition.id" :available-drives="availableDrives"
+              @toggle="toggleMount(row.partition)" @share="toggleShare(mountFor(row.partition)!, partitionTitle(row.partition, tr))"
+              @mount="drive => mountAt(row.partition, drive)" @copy="value => emit('copy', tr('共享名'), value)" />
           </div>
         </div>
-        <p v-if="shadowLoadError" class="ui-alert danger shadow-alert" role="alert">
-          <span>{{ tr("读取卷影副本失败：{0}", { 0: shadowLoadError }) }}</span>
-          <button class="ui-btn sm" type="button" @click="loadShadowCopies()">{{ tr("重试") }}</button>
-        </p>
-      </section>
+        <div
+          v-if="row.shadow && expandedShadows.has(row.partition.id)"
+          :id="`shadow-list-${row.partition.id}`"
+          class="shadow-row"
+          role="row"
+        >
+          <div class="cell" role="cell" aria-colspan="5">
+            <ShadowCopyList
+              :volume="row.shadow"
+              :opening="shadowOpening"
+              :error="shadowOpenError?.partitionId === row.partition.id ? shadowOpenError.message : null"
+              @open="copy => openShadowCopy(row.shadow!, copy)"
+            />
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+  <p v-if="shadowLoadError" class="ui-alert danger shadow-alert" role="alert">
+    <span>{{ tr("读取卷影副本失败：{0}", { 0: shadowLoadError }) }}</span>
+    <button class="ui-btn sm" type="button" @click="loadShadowCopies()">{{ tr("重试") }}</button>
+  </p>
+  <EncryptedVolumeUnlockDialog
+    v-if="canUnlockContainer"
+    :open="unlockOpen"
+    :info="info"
+    :partition-id="unlockPartitionId"
+    :is-bitlocker-unlocked="canShowMount"
+    @close="unlockOpen = false"
+  />
+</section>
 </template>
 <script setup lang="ts">
 import { tr } from '../../../composables/useLocale';
@@ -157,10 +167,11 @@ import { useEvidenceMounts } from '../composables/useEvidenceMounts';
 import { useShadowCopies } from '../composables/useShadowCopies';
 import { KIND_LABELS, QUIET_KINDS, SCHEME_LABELS, evidenceLayout, formatBytes, partColor, partitionGeometry, partitionTitle } from '../model/evidenceOverview';
 import EvidenceMountControl from './EvidenceMountControl.vue';
-import BitlockerUnlockControl from './BitlockerUnlockControl.vue';
+import BitlockerVolumeActions from './BitlockerVolumeActions.vue';
+import EncryptedVolumeUnlockDialog from './EncryptedVolumeUnlockDialog.vue';
 import ShadowCopyList from './ShadowCopyList.vue';
 const props = defineProps<{ info: ImageInfo; canUnlockContainer: boolean; caseDirectory?: string | null }>();
-const emit = defineEmits<{ unlock: [partitionId: number | null]; 'open-image': [path: string]; copy: [label: string, value: string] }>();
+const emit = defineEmits<{ 'open-image': [path: string]; copy: [label: string, value: string] }>();
 const sectionEl = ref<HTMLElement | null>(null);
 let disposed = false;
 onScopeDispose(() => { disposed = true; });
@@ -177,6 +188,13 @@ const addressUnit = computed(() => (isFirmwareContainer.value || props.info?.opt
 
 /** 逻辑证据没有块设备层，不会有加密容器或卷影副本。 */
 const canUnlockContainer = computed(() => props.canUnlockContainer);
+const unlockOpen = ref(false);
+const unlockPartitionId = ref<number | null>(null);
+
+function openUnlock(partitionId: number | null) {
+  unlockPartitionId.value = partitionId;
+  unlockOpen.value = true;
+}
 
 // ── 卷与分区 ─────────────────────────────────────────────────────────────
 const schemeLabel = computed(() => {
