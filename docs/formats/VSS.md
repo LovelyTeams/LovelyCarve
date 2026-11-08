@@ -146,7 +146,7 @@ SHA-256 `e633f0be5fb9ee9a07d44ba5223b786012ce89e9f0024f93d743568e6d052f16`）。
 
 原始块记录数来自 Rust 枚举，没有用 libvshadow 做 getter 级差分。主工程测试还检查重建后的 NTFS
 根目录标记与文件浏览；合成回归覆盖 API、损坏、尺寸回退、游标 / EOF 和长链。随机多 store 差分语料的
-生成方法与历史结果见 [oracle 说明](../../src-tauri/vendor/vsc/tests/oracle/README.md)。
+生成方法与历史结果见 [oracle 说明](../../vendor/vsc/tests/oracle/README.md)。
 通过 CLI 的 JSONL 会话打开第一个副本并用 `image_hash_compute` 计算，得到与上表相同的 SHA-256，
 且 `bad_regions=[]`、`synthetic_bytes=0`、`read_faults_detected=false`。
 

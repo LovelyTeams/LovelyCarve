@@ -14,7 +14,7 @@ from Crypto.Cipher import AES, ARC4, Blowfish
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from pyserpent import Serpent
 
-DEST = Path(__file__).resolve().parents[1] / 'src-tauri/vendor/luks/tests/data/compatibility.json'
+DEST = Path(__file__).resolve().parents[1] / 'vendor/luks/tests/data/compatibility.json'
 PASSWORD = b'LovelyCarve-\xe5\xaf\x86\xe7\xa0\x81'
 SALT = bytes(range(32))
 UUID = 'f4e55035-9816-4c35-a82d-e4c6cf214a55'

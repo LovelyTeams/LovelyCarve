@@ -5,7 +5,7 @@ LovelyCarve 使用纯 Rust `lamfold-udf` 读取 UDF。库改造自
 MIT OR Apache-2.0；没有链接 C 库、调用系统挂载或外部提取器。布局依据
 [ECMA-167](https://ecma-international.org/publications-and-standards/standards/ecma-167/)
 和 OSTA UDF。上游归属和本地改造见
-[LOVELYCARVE.md](../../src-tauri/vendor/lamfold-udf/LOVELYCARVE.md)。
+[LOVELYCARVE.md](../../vendor/lamfold-udf/LOVELYCARVE.md)。
 
 ## 支持范围
 
@@ -55,7 +55,7 @@ ISO/UDF bridge 的 cooked 镜像优先显示 UDF 树；ISO-only 的镜像继续�
 short / long AD、续链、两类空洞、Unicode、硬链接、符号链接和已知 / 未知时区。
 负例重算 tag / CRC 后再修改语义字段，验证错误分区引用、越界 extent、短逻辑映射、
 续链循环、CRC 损坏、截断和不支持的 partition maps。来源、许可及 SHA-256 位于
-[夹具 manifest](../../src-tauri/vendor/lamfold-udf/tests/fixtures/manifest.json)。
+[夹具 manifest](../../vendor/lamfold-udf/tests/fixtures/manifest.json)。
 
 宿主测试覆盖裸镜像、MBR 双分区身份隔离、ISO bridge 路由及完整 / 范围 / 流式 / 导出一致性；
 CLI smoke 使用两个上游镜像核对浏览、跨块范围读、SHA-256 和导出字节。

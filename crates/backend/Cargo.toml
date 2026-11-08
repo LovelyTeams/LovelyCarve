@@ -1,0 +1,57 @@
+[package]
+name = "lovelycarve-backend"
+description = "LovelyCarve's in-process backend: application state, tasks, workflows and the command functions the CLI and the desktop app call."
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+default = []
+qrcode-wechat = ["lovelycarve-core/qrcode-wechat"]
+ocr = ["lovelycarve-core/ocr"]
+ocr-cuda = ["ocr", "lovelycarve-core/ocr-cuda"]
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+dirs.workspace = true
+hex.workspace = true
+ios-backup-core.workspace = true
+lovelycarve-core.workspace = true
+parking_lot.workspace = true
+qcow2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+sm3.workspace = true
+tempfile.workspace = true
+time.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+winapi.workspace = true
+
+[dev-dependencies]
+# Snapshot tests inflate the vendored readers' compressed fixtures.
+flate2.workspace = true
+# Case, index and search fixtures from the engines' `test_support` modules.
+lovelycarve-core = { workspace = true, features = ["test-support"] }
+# Scheduler tests serve plugin entry points through the SDK.
+lovelycarve-plugin.workspace = true
+# Independent MD5 oracle for the image hash tests.
+md-5.workspace = true
+# Index tests inspect the published SQLite files directly.
+rusqlite.workspace = true
+zip.workspace = true
+zstd.workspace = true
+
+[lints]
+workspace = true

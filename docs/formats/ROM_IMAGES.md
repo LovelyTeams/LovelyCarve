@@ -53,7 +53,7 @@ $env:LOVELYCARVE_ROM_IMAGES = 'C:/samples/cramfs.bin;C:/samples/romfs.bin'
 just test rom_images_external_samples -- --ignored
 ```
 
-合成镜像由 `src-tauri/test_data/rom-images/generate.py` 独立编码，覆盖大小端、
+合成镜像由 `crates/core/test_data/rom-images/generate.py` 独立编码，覆盖大小端、
 压缩页与空洞、跨页范围、空文件、硬链接、符号链接、特殊文件、CRC / 长度 /
 解压损坏、目录循环，以及裸镜像、MBR、TRX 的正式 dispatch。
 

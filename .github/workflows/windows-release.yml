@@ -34,33 +34,33 @@ jobs:
         with:
           submodules: recursive
           persist-credentials: false
-      - name: Check tag and manifest versions
+      - name: Check tag and workspace version
         run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $tauriVersion = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
-          $rustVersion = [regex]::Match((Get-Content src-tauri/Cargo.toml -Raw), '(?m)^version = "([^"]+)"').Groups[1].Value
+          $manifest = Get-Content Cargo.toml -Raw
+          $package = [regex]::Match($manifest, '(?ms)^\[workspace\.package\]\s*$(.*?)(?=^\[|\z)').Groups[1].Value
+          $version = [regex]::Match($package, '(?m)^version = "([^"]+)"').Groups[1].Value
           $tag = $env:GITHUB_REF_NAME
-          if ($tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$' -or $tag.Split('-')[0] -ne "v$version" -or $version -ne $tauriVersion -or $version -ne $rustVersion) {
-            throw "Tag $tag does not match application versions: $version / $tauriVersion / $rustVersion"
+          if (-not $version -or $tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$' -or $tag.Split('-')[0] -ne "v$version") {
+            throw "Tag $tag does not match the workspace version $version"
           }
       - uses: ./.github/actions/setup-windows
-      - name: Build desktop MSI
-        run: just build-release --bundles msi
+      - name: Build and package the portable desktop app
+        run: just pack -NoUpx
       - name: Build and package CLI
         run: just pack-cli
       - name: Smoke-test release CLI
-        run: just smoke-cli src-tauri/target/release/lovelycarve-cli.exe
+        run: just smoke-cli target/release/lovelycarve-cli.exe
       - name: Package plugins
         run: just pack-plugins
       - name: Stage assets and SHA-256 checksums
         run: |
-          $installers = @(Get-ChildItem src-tauri/target/release/bundle/msi/*.msi -File)
+          $desktop = @(Get-ChildItem dist-pack/LovelyCarve-v*-win-x64.7z -File)
           $cliPackages = @(Get-ChildItem dist-pack/lovelycarve-cli-*.zip -File)
           $plugins = @(Get-ChildItem dist-pack/*.lcpkg -File)
-          if (-not $installers.Count -or -not $cliPackages.Count -or -not $plugins.Count) {
-            throw 'Expected MSI, CLI ZIP and plugin packages'
+          if (-not $desktop.Count -or -not $cliPackages.Count -or -not $plugins.Count) {
+            throw 'Expected the desktop archive, CLI ZIP and plugin packages'
           }
-          $assets = $installers + $cliPackages + $plugins
+          $assets = $desktop + $cliPackages + $plugins
           New-Item -ItemType Directory -Path release-assets | Out-Null
           $assets | Copy-Item -Destination release-assets
           Get-ChildItem release-assets -File | Sort-Object Name | ForEach-Object {
@@ -70,7 +70,7 @@ jobs:
           @"
           Windows x64 build of $env:GITHUB_SHA. QR/OCR is disabled. Binaries are unsigned.
 
-          Includes the desktop MSI, standalone CLI ZIP, plugin packages and SHA-256 checksums.
+          Includes the portable desktop app (7z), standalone CLI ZIP, plugin packages and SHA-256 checksums.
           Dokany mounts require a separately installed driver. Native GUI and driver checks remain manual.
 
           Source checkout (GitHub source archives do not include the pinned plugin submodule):

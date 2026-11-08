@@ -1,6 +1,6 @@
 # Parallels Hard Disk Image（PHDI）
 
-`src-tauri/vendor/phdi` 是原创只读 Rust crate；以
+`vendor/phdi` 是原创只读 Rust crate；以
 [libphdi 固定提交 fb132dceb2a1](https://github.com/libyal/libphdi/commit/fb132dceb2a1a43c2597b10bbf9e65757d08cf7c)
 的格式与全部 56 个公开 API 为参照。它不提供 C ABI，不加载 C/DLL。
 来源和许可证见 vendor 的 ORIGIN.md / LICENSE 及 THIRD_PARTY_NOTICES.md。
@@ -52,9 +52,6 @@ just clippy-phdi
 just test phdi --lib --jobs 1
 just check
 just clippy
-just ipc-check
-just typecheck
-just test-fe
 just test-cli
 ```
 

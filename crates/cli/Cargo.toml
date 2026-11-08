@@ -1,0 +1,61 @@
+[package]
+name = "lovelycarve-cli"
+description = "LovelyCarve's standalone, window-free forensic shell and automation interface."
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "lovelycarve-cli"
+path = "src/main.rs"
+
+[features]
+default = []
+qrcode-wechat = ["lovelycarve-backend/qrcode-wechat"]
+ocr = ["lovelycarve-backend/ocr"]
+ocr-cuda = ["ocr", "lovelycarve-backend/ocr-cuda"]
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+clap.workspace = true
+# 交互提问、遮盖输入与终端尺寸（notatin 已依赖同一版本）。
+crossterm = "0.29.0"
+fs2.workspace = true
+hex.workspace = true
+jiff = { version = "0.2.38", default-features = false, features = ["std", "tzdb-bundle-always"] }
+lovelycarve-backend.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+time.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+# 帮助与提示的列宽：中日韩全角字符占两列（已在依赖树中）。
+unicode-width = "0.2.2"
+uuid.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+winapi.workspace = true
+
+[build-dependencies]
+quote = "1.0.47"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+syn = { version = "3.0.8", features = ["full", "visit"] }
+toml = "1.1.8"
+
+[dev-dependencies]
+# Index, LVM, Btrfs and RAID fixtures from the engines' `test_support` modules.
+lovelycarve-core = { workspace = true, features = ["test-support"] }
+# The module-resolution test compiles the build script's source resolver.
+syn = { version = "3.0.8", features = ["full"] }
+
+[lints]
+workspace = true

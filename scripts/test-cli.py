@@ -83,7 +83,7 @@ def main():
             return result, [json.loads(line) for line in result.stdout.splitlines()]
 
         # Independent synthetic Buffalo ENC/bgn + TRX + DD-WRT SquashFS v3.
-        firmware_fixtures = Path(__file__).resolve().parent.parent / "src-tauri/test_data/firmware"
+        firmware_fixtures = Path(__file__).resolve().parent.parent / "crates/core/test_data/firmware"
         firmware_node = "squashfs:part:0:" + b"/hello".hex()
         firmware_content = b"Independent DD-WRT fixture.\n" * 64
         for fixture_name in ("synthetic.enc", "synthetic-bgn.enc"):
@@ -101,7 +101,7 @@ def main():
             assert firmware_rows[3]["result"]["sha256"] == hashlib.sha256(firmware_content).hexdigest()
 
         # Independent MINIFS v3 fixture: shared LZMA chunks and native commands.
-        minifs_fixture = Path(__file__).resolve().parent.parent / "src-tauri/vendor/minifs/tests/fixtures/synthetic.minifs"
+        minifs_fixture = Path(__file__).resolve().parent.parent / "vendor/minifs/tests/fixtures/synthetic.minifs"
         minifs_content = bytes(range(256)) * 289 + b"MINIFS test\n"
         minifs_source = minifs_fixture.read_bytes()
         minifs_header = bytearray(148)
@@ -126,7 +126,7 @@ def main():
             assert rows[3]["result"]["sha256"] == hashlib.sha256(minifs_content).hexdigest()
 
         # EROFS and F2FS: independent/reference fixtures through native commands.
-        flash_vendor = Path(__file__).resolve().parent.parent / "src-tauri/vendor"
+        flash_vendor = Path(__file__).resolve().parent.parent / "vendor"
         f2fs_path = root / "synthetic.f2fs"
         f2fs_path.write_bytes(zlib.decompress((flash_vendor / "f2fs-reader/tests/fixtures/synthetic.f2fs.zlib").read_bytes()))
         f2fs_body = bytearray(bytes(range(256)) * (1000 * 16) + bytes(range(37)))
@@ -595,7 +595,7 @@ def main():
             assert rows[3]["result"]["sha256"] == hashlib.sha256(qnx_expected).hexdigest()
 
         # Native CramFS / ROMFS: library-backed tree, page-crossing reads and hash.
-        rom_fixtures = Path(__file__).resolve().parent.parent / "src-tauri/test_data/rom-images"
+        rom_fixtures = Path(__file__).resolve().parent.parent / "crates/core/test_data/rom-images"
         rom_content = (rom_fixtures / "payload.bin").read_bytes()
         for rom_name, rom_kind in [("synthetic-le.cramfs", "cramfs"), ("synthetic-be.cramfs", "cramfs"), ("synthetic.romfs", "romfs")]:
             rom_node = rom_kind + ":part:0:" + b"/payload.bin".hex()
@@ -628,7 +628,7 @@ def main():
 
         # Independently encoded v3 gzip / raw LZMA / LZMA-alone / properties,
         # in both byte orders and with range reads crossing compressed blocks.
-        squashfs_fixtures = firmware_fixtures.parent.parent / "vendor/backhand/test_data"
+        squashfs_fixtures = Path(__file__).resolve().parents[1] / "vendor/backhand/test_data"
         squashfs_content = b"Independent Rust LZMA fixture.\n" * 350
         for mode in ("raw", "alone", "props", "gzip"):
             for endian in ("le", "be"):
@@ -688,7 +688,7 @@ def main():
             assert rows[4]["result"]["sha256"] == hashlib.sha256(firmware_content).hexdigest()
 
         # UBIFS: independent stored/LZO/DEFLATE/Zstd trees and encrypted firmware.
-        ubifs_fixtures = firmware_fixtures.parent.parent / "vendor/ubidump/test_data"
+        ubifs_fixtures = Path(__file__).resolve().parents[1] / "vendor/ubidump/test_data"
         ubifs_content = (ubifs_fixtures / "payload.bin").read_bytes()
         ubifs_node = "ubifs:part:0:" + b"/payload.bin".hex()
         ubifs_paths = [ubifs_fixtures / f"synthetic-{codec}.ubifs" for codec in ("stored", "lzo", "deflate", "zstd", "zstd-compressed")]
@@ -706,7 +706,7 @@ def main():
             assert rows[3]["result"]["sha256"] == hashlib.sha256(ubifs_content).hexdigest()
 
         # JFFS2: version replay, both byte orders, four codecs and firmware bytes.
-        jffs2_fixtures = firmware_fixtures.parent.parent / "vendor/jffs2/test_data"
+        jffs2_fixtures = Path(__file__).resolve().parents[1] / "vendor/jffs2/test_data"
         jffs2_content = (jffs2_fixtures / "payload.bin").read_bytes()
         jffs2_node = "jffs2:part:0:" + b"/payload.bin".hex()
         jffs2_paths = [jffs2_fixtures / f"synthetic-{order}-{codec}.jffs2" for order in ("le", "be") for codec in ("stored", "rtime", "zlib", "lzo")]
@@ -725,7 +725,7 @@ def main():
             assert rows[3]["result"]["sha256"] == hashlib.sha256(jffs2_content).hexdigest()
 
         # YAFFS2: NAND geometry, hard links, UTF-8 names and page-crossing ranges.
-        yaffs2_fixtures = firmware_fixtures.parent.parent / "vendor/yaffs2-reader/test_data"
+        yaffs2_fixtures = Path(__file__).resolve().parents[1] / "vendor/yaffs2-reader/test_data"
         yaffs2_content = b"Native YAFFS2 fixture.\n" * 300
         yaffs2_node = "yaffs2:part:0:" + "/目录/hello".encode().hex()
         for yaffs2_path in [yaffs2_fixtures / "base-le.yaffs", yaffs2_fixtures / "base-be-ecc.yaffs", firmware_fixtures / "synthetic-yaffs2.enc"]:
@@ -1032,7 +1032,7 @@ def main():
 
         # The generated images open dispatch must accept transient QCOW
         # credentials, export logical bytes, and preserve the source image.
-        qcow_fixtures = Path(__file__).resolve().parents[1] / "src-tauri/vendor/qcow2/tests/data"
+        qcow_fixtures = Path(__file__).resolve().parents[1] / "vendor/qcow2/tests/data"
         qcow_plain = (qcow_fixtures / "plain.bin").read_bytes()
         qcow_key_hex = (b"qcow-test" + bytes(7)).hex()
         for version in (1, 2, 3):
@@ -1104,7 +1104,7 @@ def main():
         assert all("result" in row for row in rows), rows
         assert rows[0]["result"]["sourceFormat"] == "raw", rows
 
-        encrypted_fixtures = Path(__file__).resolve().parents[1] / "src-tauri/tests/data/encrypted"
+        encrypted_fixtures = Path(__file__).resolve().parents[1] / "crates/core/tests/data/encrypted"
         plaintext = (encrypted_fixtures / "plain.img").read_bytes()
         for filename, scheme, hidden in [
             ("luks1.img", "luks", False), ("luks2.img", "luks", False),
@@ -1391,7 +1391,7 @@ files export hello.txt --destination "{exported}"
         assert forced_export.read_bytes() == split_bytes[:517]
 
         # Hash and export actual EWF evidence through the public headless commands.
-        fixtures = Path(__file__).resolve().parents[1] / "src-tauri/vendor/ewf/tests/data"
+        fixtures = Path(__file__).resolve().parents[1] / "vendor/ewf/tests/data"
         for name, expected_md5 in [
             ("ntfs_sample.E01", "e4e9578a9c8bf6c6b375a80c630196a4"),
             ("zeros_128s_compressed.Ex01", hashlib.md5(bytes(65536)).hexdigest()),
@@ -1411,7 +1411,7 @@ files export hello.txt --destination "{exported}"
             assert not hashes["readFaultsDetected"], hashes
 
         # VMDK compressed and split extents must export the original virtual bytes.
-        fixtures = Path(__file__).resolve().parents[1] / "src-tauri/vendor/vmdk/tests/data"
+        fixtures = Path(__file__).resolve().parents[1] / "vendor/vmdk/tests/data"
         for name, expected in [
             ("compressed_stream_opt.vmdk", bytes(range(64)) * 1024),
             ("tw_sparse_data.vmdk", bytes(range(256)) * 16384),
@@ -1428,7 +1428,7 @@ files export hello.txt --destination "{exported}"
         # Full logical streams must match hashes captured with the previous
         # independent libvhdi reader. The CLI itself does not load that DLL.
         for kind in ("vhd", "vhdx"):
-            fixtures = Path(__file__).resolve().parents[1] / "src-tauri/vendor" / kind / "tests/data"
+            fixtures = Path(__file__).resolve().parents[1] / "vendor" / kind / "tests/data"
             oracle = json.loads((fixtures / "LOVELYCARVE_ORACLE.json").read_text(encoding="utf-8"))
             for sample in oracle["images"]:
                 raw_export = root / (sample["name"] + ".raw")
@@ -1442,7 +1442,7 @@ files export hello.txt --destination "{exported}"
 
         # Unlock and export through the public commands, checking only retained
         # oracle sectors of the minimized dfvfs projection (not the omitted data).
-        fixture = Path(__file__).resolve().parents[1] / "src-tauri/vendor/bitlocker/tests/data/bdetogo-projection.bin.gz"
+        fixture = Path(__file__).resolve().parents[1] / "vendor/bitlocker/tests/data/bdetogo-projection.bin.gz"
         encrypted = root / "bitlocker.bin"
         encrypted.write_bytes(gzip.decompress(fixture.read_bytes()))
         decrypted = root / "bitlocker-decrypted.bin"

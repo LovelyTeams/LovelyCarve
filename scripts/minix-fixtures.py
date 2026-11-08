@@ -12,7 +12,7 @@ import re
 import struct
 import zlib
 
-OUTPUT = Path(__file__).resolve().parent.parent / 'src-tauri/vendor/minix-reader/tests/fixtures'
+OUTPUT = Path(__file__).resolve().parent.parent / 'vendor/minix-reader/tests/fixtures'
 
 
 def unpack_dump(text):

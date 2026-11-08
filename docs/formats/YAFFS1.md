@@ -56,7 +56,7 @@ YAFFS1 的文件长度策略是挂载配置，镜像没有标志可可靠推断�
 
 独立 Python stdlib 编码器生成 CC0 夹具，覆盖大小端、分散 tags、标签 / 正文 ECC、
 UTF-8、跨页、两位 serial 回绕、已删除页、shadow、两种长度策略、空洞及源完整性。
-夹具清单见 [legacy-fixtures.json](../../src-tauri/vendor/yaffs2-reader/test_data/legacy-fixtures.json)。
+夹具清单见 [legacy-fixtures.json](../../vendor/yaffs2-reader/test_data/legacy-fixtures.json)。
 固件夹具另覆盖大端 YAFFS1 经 Buffalo ENC / TRX 后仍保持源身份与 RAW 字节。
 
 Unblob 的 `fruits.dir.le.yffs` / `fruits.dir.be.yffs` 与 `links.yaffs` 用作公开输入。

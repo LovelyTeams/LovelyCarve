@@ -179,7 +179,7 @@ just check-examples
 
 本次已运行：`fmt`、`check`、宿主及 APFS `clippy`、`check-examples`；APFS 37 通过 / 1 ignored，cmpfs 27 通过，HFS+ 29 通过，后端全量库测试 1023 通过 / 12 ignored。默认并行的宿主测试编译曾出现 rustc `STATUS_ACCESS_VIOLATION`；通过设置 `CARGO_BUILD_JOBS=1` 并运行 `just test --lib` 成功完成。没有运行桌面/CLI 二进制 smoke 或真实挂载。
 
-固定合成结构在 [vendor/apfs/tests/data](../../src-tauri/vendor/apfs/tests/data/README.md)，由独立 Python 字段构造器生成，包含两个目录键布局、非连续卷槽、加密卷标志、多版本 OMAP、克隆、空洞、压缩、symlink、embedded/data-stream xattr 与快照元数据。它们没有完整 allocator/extent-reference 树，不是可由 macOS 挂载的完整磁盘，因此只能证明所覆盖结构和读取路径。
+固定合成结构在 [vendor/apfs/tests/data](../../vendor/apfs/tests/data/README.md)，由独立 Python 字段构造器生成，包含两个目录键布局、非连续卷槽、加密卷标志、多版本 OMAP、克隆、空洞、压缩、symlink、embedded/data-stream xattr 与快照元数据。它们没有完整 allocator/extent-reference 树，不是可由 macOS 挂载的完整磁盘，因此只能证明所覆盖结构和读取路径。
 
 库回归核对完整/流式/范围读、past-EOF 和大偏移、事务/删除与 cache 一致、8 KiB superblock、跨来源边界、损坏表/extent/xfield。宿主回归核对 MBR 分区的 APFS 类型 refinement、原检材 runs、dispatcher range、live / `.dirz` 压缩/symlink 元数据一致及取消清理。共享 `cmpfs` 的编码测试独立执行。
 

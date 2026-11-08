@@ -3,7 +3,7 @@
 `reiserfs-reader` 是纯 Rust 只读库。适配前先检查了 rusty-backup 的 v3 读取器及
 unearth 0.4.0；后者只有签名 / 超级块识别，没有目录和内容读取。因此基于前者的格式定义
 改造读取路径，并对照 Linux v6.12 的磁盘结构语义加固。固定提交与许可见
-[ORIGIN.md](../../src-tauri/vendor/reiserfs-reader/ORIGIN.md)。不链接 C 文件系统代码、
+[ORIGIN.md](../../vendor/reiserfs-reader/ORIGIN.md)。不链接 C 文件系统代码、
 内核驱动或主机文件系统挂载接口。
 
 ## 能力

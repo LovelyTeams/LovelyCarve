@@ -167,7 +167,7 @@ def build(mode):
 
 
 if __name__ == "__main__":
-    target = pathlib.Path(__file__).resolve().parents[1] / "src-tauri/vendor/ocfs2-reader/tests/fixtures"
+    target = pathlib.Path(__file__).resolve().parents[1] / "vendor/ocfs2-reader/tests/fixtures"
     target.mkdir(exist_ok=True, parents=True)
     manifest = {"license": "CC0-1.0", "generator": "scripts/ocfs2-fixtures.py", "fixtures": []}
     for mode in ["plain", "ecc", "discontiguous-ecc"]:

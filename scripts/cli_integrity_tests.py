@@ -11,7 +11,7 @@ import zipfile
 
 
 def test_integrity(executable, base_environment):
-    fixture = Path(__file__).resolve().parents[1] / "src-tauri/vendor/vmdk/tests/data/dfvfs_ext2.vmdk"
+    fixture = Path(__file__).resolve().parents[1] / "vendor/vmdk/tests/data/dfvfs_ext2.vmdk"
     with tempfile.TemporaryDirectory(prefix="lovelycarve-integrity-") as directory:
         root = Path(directory)
         environment = dict(base_environment, LOVELYCARVE_SESSION_DIR=str(root / "sessions"))

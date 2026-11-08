@@ -63,8 +63,8 @@ LovelyCarve 通过独立纯 Rust `minix-reader` 浏览 Minix 文件系统。它�
 CLI smoke 用 V1 / V2 / V3 核对浏览、跨直接 / 间接边界读取、三级范围读、SHA-256 与导出。
 尚未完成 Windows GUI / Dokan 实际挂载和 macOS / Linux 桌面运行验证。
 
-来源、SHA-256 与许可见 [ORIGIN.md](../../src-tauri/vendor/minix-reader/ORIGIN.md) 和
-[夹具 manifest](../../src-tauri/vendor/minix-reader/tests/fixtures/manifest.json)。
+来源、SHA-256 与许可见 [ORIGIN.md](../../vendor/minix-reader/ORIGIN.md) 和
+[夹具 manifest](../../vendor/minix-reader/tests/fixtures/manifest.json)。
 
 ```text
 just test-minix

@@ -1,6 +1,6 @@
 # 单文件与分段 RAW
 
-`src-tauri/vendor/smraw` 是参照 libyal/libsmraw 重写的独立纯 Rust crate，无第三方运行依赖。
+`vendor/smraw` 是参照 libyal/libsmraw 重写的独立纯 Rust crate，无第三方运行依赖。
 宿主将分段 RAW 接入 `ImageSource::SplitRaw`，格式身份沿用 `raw`；单文件 RAW 保留 mmap。
 分区检测、文件系统、雕刻、哈希和 RAW 导出共用完整逻辑字节流，无新增 IPC。
 

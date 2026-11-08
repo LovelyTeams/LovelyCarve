@@ -2,7 +2,7 @@
 
 LovelyCarve 通过本地改造的 [rust_ubidump](https://github.com/aspnmy/rust_ubidump)
 UBI 只读库解析 Flash 逻辑卷，通过 `backhand` 读取其中的 SquashFS，并通过同一 vendor 的 UBIFS 读取器浏览已提交目录。
-来源、许可证及补丁见 [vendor/ubidump/LOVELYCARVE.md](../../src-tauri/vendor/ubidump/LOVELYCARVE.md)。
+来源、许可证及补丁见 [vendor/ubidump/LOVELYCARVE.md](../../vendor/ubidump/LOVELYCARVE.md)。
 
 ## 打开与浏览
 

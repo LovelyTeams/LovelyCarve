@@ -1,136 +1,104 @@
 # LovelyCarve 架构说明
 
-LovelyCarve 是一个 Tauri v2 桌面取证工具，另有共用同一后端、不链接 Tauri 的独立 CLI。前端使用 Vue 3、TypeScript、Vite 和 Composition API；后端使用 Rust、异步任务和纯 Rust 的镜像、文件系统与加密容器读取器，命令函数在 `desktop` 特性下注册为 Tauri command。
+LovelyCarve 是一个 Rust Cargo 工作区：GPUI Kit 原生桌面应用与独立 CLI 两个前端在进程内嵌入同一个后端，直接调用其命令函数，不经过 WebView 或 IPC 桥。后端使用异步任务和纯 Rust 的镜像、文件系统与加密容器读取器。
 
 主流程是：创建或打开案件，添加镜像文件、文件夹证据、物理磁盘或 RAID 成员盘，检测分区和文件系统，浏览文件列表与原类型预览，执行哈希、导出、解锁、卷快照与索引，再运行全局搜索、时间线、文件恢复和插件分析。
 
-原镜像缺失时，`image_load` 可恢复当前案件已发布的文件系统索引：校验索引格式、检材与卷身份、构建时间和指纹后，沿用案件检材 ID 建立 `index_only` 会话。目录分页、过滤与元数据查询仍由只读 filedb 提供；原镜像的分区几何未知，且所有字节读取都明确失败，不触发自动快照、哈希或平台识别。文件预览默认显示索引属性，独立窗口同步这一状态。恢复原路径的镜像后重新打开检材，会替换离线会话并恢复正常读取；没有有效当前索引时仍报告打开失败。
+原镜像缺失时，`image_load` 可恢复当前案件已发布的文件系统索引：校验索引格式、检材与卷身份、构建时间和指纹后，沿用案件检材 ID 建立 `index_only` 会话。目录分页、过滤与元数据查询仍由只读 filedb 提供；原镜像的分区几何未知，且所有字节读取都明确失败，不触发自动快照、哈希或平台识别。文件详情默认显示索引属性。恢复原路径的镜像后重新打开检材，会替换离线会话并恢复正常读取；没有有效当前索引时仍报告打开失败。
 
 离线会话的分析来源定位通过已验证的当前卷索引解析卷入口、祖先链与卷内路径；LVM 逻辑卷可位于分区索引的子树中，无需原盘分区几何。解析保留符号链接跳转限制与删除项唯一性要求，目录未被索引时提示恢复原镜像，定位成功后仍只提供索引属性。
 
-使用与构建入口见 [文档导航](README.md) 和 [开发指南](DEVELOPMENT.md)。本文先按代码结构、证据读取、任务与插件、案件存储与索引、分析功能组织后端实现，再记录主窗口的界面与交互约定；各格式的实现范围与读取器维护要求见 [格式与读取器](formats/README.md)。
+使用与构建入口见 [文档导航](README.md) 和 [开发指南](DEVELOPMENT.md)。本文先说明工作区与 crate 边界，再按证据读取、任务与插件、案件存储与索引、分析功能组织后端实现，最后记录桌面应用的结构与交互约定；各格式的实现范围与读取器维护要求见 [格式与读取器](formats/README.md)。
 
-主要章节：[前端结构](#前端结构)、[后端结构](#后端结构)、[镜像与证据源](#镜像与证据源)、[任务与事件](#任务与事件)、[插件任务调度](#插件任务调度)、[插件运行时](#插件运行时)、[案件数据库](#案件数据库)、[元数据索引](#元数据索引层filedb)、[时间线](#时间线)、[文件恢复与雕刻](#文件恢复与雕刻)、[界面与交互](#界面与交互)、[功能与 IPC 对照](#功能与-ipc-对照)、[扩展流程](#扩展流程)。
-
-```text
-┌────────────────────────────────────────────────────────────┐
-│                    Tauri v2 Desktop App                     │
-│                                                            │
-│  Vue 3 + TypeScript + Vite        Rust backend              │
-│  src/App.vue                      src-tauri/src/lib.rs      │
-│  src/AppShell.vue          IPC    commands::*               │
-│  components/composables ────────► core::*                   │
-│  src/lib/ipc/*             events state / tasks / cases     │
-│                                                            │
-│  WebView2 / WKWebView / WebKitGTK                           │
-│                                                            │
-│  evidence: images, folders, archives, disks, RAID members   │
-└────────────────────────────────────────────────────────────┘
-```
-
-## 前端结构
-
-前端采用应用装配、按功能归属的业务模块、共享 UI/能力和类型化 IPC。当前公开接口与资源生命周期见 [前端模块与生命周期](FRONTEND_STRUCTURE.md)。
+主要章节：[工作区结构](#工作区结构)、[后端结构](#后端结构)、[镜像与证据源](#镜像与证据源)、[任务与事件](#任务与事件)、[插件任务调度](#插件任务调度)、[插件运行时](#插件运行时)、[案件数据库](#案件数据库)、[元数据索引](#元数据索引层filedb)、[时间线](#时间线)、[文件恢复与雕刻](#文件恢复与雕刻)、[桌面应用](#桌面应用)、[功能与命令对照](#功能与命令对照)、[扩展流程](#扩展流程)。
 
 ```text
-src/
-├── main.ts                 Vue 入口
-├── App.vue                 主窗口根组件：主壳 + Toast/确认框宿主
-├── AppShell.vue            唯一主壳装配点：标题栏、侧栏、标签页及面板连接
-├── app/                    bootstrap、主壳组件、workspace 与跨功能 workflows
-├── features/               cases/evidence/files/preview/search/carving/timeline/analysis/bcp/tasks/raid/settings
-│   └── <功能>/             components、composables、model 与就近测试；按需提供 api.ts
-├── components/             ui/feedback/layout/display 共享组件
-├── composables/            通用通知、确认、主题、动效与持久化；不引用业务状态
-├── views/                  独立 WebView 窗口（文件预览弹窗）
-├── lib/ipc/                唯一 Tauri IPC 边界
-├── lib/models/             文件定位等跨功能纯契约
-├── utils/                  格式化、安全 HTML、CSV 等共享纯函数
-├── i18n/                   中英文词典与纯翻译函数；语言偏好由 composables/useLocale.ts 持有
-├── styles/themes.css       light/dark 两套主题 token
-├── styles/ui.css           全局共享 UI 基元：按钮、输入框、分段/标签切换、徽章、卡片、弹窗壳、菜单、空态、面板标题
-└── styles/motion.css       动效层：共享关键帧、基元入场、ui-stagger 依次入场、主题圆形展开
+┌──────────────────────────────┐   ┌──────────────────────────────┐
+│ lovelycarve-desktop          │   │ lovelycarve-cli              │
+│ LovelyCarve.exe (GPUI Kit)   │   │ lovelycarve-cli (no window)  │
+│ views → Backend::run         │   │ generated dispatch           │
+│ EventHub ← event channel     │   │ JSONL / shell / resident     │
+└──────────────┬───────────────┘   └──────────────┬───────────────┘
+               │ in-process calls                 │
+               ▼                                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ lovelycarve-backend                                             │
+│ embed · command_registry! · commands::* · app::workflows        │
+│ state::AppState · task_manager · host (State/AppHandle/…)       │
+└──────────────────────────────┬──────────────────────────────────┘
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ lovelycarve-core: evidence · filesystem · catalog · casework ·  │
+│ analysis · carving · search · timeline · preview · extensions · │
+│ platform · common          (vendor/ readers, plugins/ SDK)      │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-重要约定：
+## 工作区结构
 
-- 组件和 composable 不直接 import `@tauri-apps/api/core` 或 `@tauri-apps/api/event`。
-- 命令调用走 `src/lib/ipc/client.ts` 的 `invokeCmd`，事件走 `src/lib/ipc/events.ts` 的 `onEvent` / `emitEvent`。
-- 新增前后端交互时，同步更新 Rust command、`src-tauri/src/lib.rs` 注册、`src/lib/ipc/*` 类型封装和调用方。
-- UI 文案中文优先；样式使用 `src/styles/themes.css` 的 token。控件统一用 `src/styles/ui.css` 的 `ui-*` 基元（`ui-btn`、`ui-input`、`ui-badge`、`ui-modal-*` 等），组件 scoped 样式只写布局和组件特有的视觉；基元均为单类选择器、状态与修饰写在 `:where()` 中，scoped 规则可直接覆盖。结构化文件视图（PE / ELF / Mach-O / ar / GGUF）共用 `report-viewer.css`，SQLite / Realm 数据库视图共用 `db-browser.css`，均通过 `<style scoped src>` 引用。
-- 前端规范（设计原则、token 与对比度、字号与间距、基元目录、交互状态与反馈、表格、弹窗与层级、图标、动效、文案、可访问性与自查清单）见 [FRONTEND.md](FRONTEND.md)。
-- 原生数据表格统一添加 `data-table` 类，并通过 `<style scoped src="../../../styles/data-table.css">` 引用文件列表基准样式（路径按实际层级调整；12px 字号、36px 常规行、吸顶表头、统一悬停/选中态）。行内 `ui-btn link` 操作（定位、恢复、详情）平时为次要色，悬停、选中或聚焦该行时才显示主题色。列宽、排序和取证状态留在各组件；数据库字段类型和键值字节预览允许按内容增高。分析结果的阅读布局由插件结构声明：`properties` 使用纵向属性列表，其余默认表格；用户可按记录类型切换并保存偏好。表格只显示插件可见字段，无字段时才补名称列；序号 56px、名称回退 240px、来源 220px，字段列宽只由字段类型决定（`columnWidth`：布尔 88px，整数、浮点与时长 112px，大小 120px，枚举 140px，IP 152px，时间戳与哈希 240px，路径 280px），文本、列表与 JSON 平分剩余宽度且每列不少于 200px；总宽超出时横向滚动，不随记录长度或详情开合挤压列宽。属性视图保留同名多条记录与完整值，详情始终包含全部字段与来源。文件列表、搜索与时间线的虚拟列表行高需与公共样式同步，操作按钮限制在 24px，占位行不加边框和内边距。
-- 文件列表面板的内部 id 是 `files`。
-- 「rich」原类型视图（`features/preview/components/viewers/RichPreviewViewer.vue`）用 `@file-viewer/vue3-full`（Flyfish File
-  Viewer，当前 3.1.2），按 `name` prop 的扩展名懒加载渲染器；worker / WASM / 字体等重资产由
-  `@file-viewer/vite-plugin`（`vite.config.ts` 中 `copyAssets: { mode: 'build' }, inject: false`）
-  复制到 `dist/file-viewer/`（随 frontendDist 进 Tauri 包）。开发环境通过
-  `scripts/copy-file-viewer-assets.mjs` 按包版本同步到 `public/file-viewer/`，运行时相对
-  `{base}/file-viewer/` 取用，不依赖外网。升级使用 `just update-file-viewer <version>`，
-  同步固定 Vue 组件和 Vite 插件版本、更新锁文件并刷新开发资源；升级后运行
-  `just typecheck`、`just test-fe` 和 `just build-fe`。
-
-IPC 边界由脚本检查：
-
-```bash
-just ipc-check
+```text
+Cargo.toml          工作区：成员、共享依赖版本、lint、构建 profile 与 notatin 补丁
+crates/
+├── core/           lovelycarve-core：十二个取证引擎域；examples/ 探针与基准，tests/、test_data/ 测试样本
+├── backend/        lovelycarve-backend：AppState、任务登记、宿主类型、应用工作流、命令函数与命令注册表
+├── cli/            lovelycarve-cli：独立 CLI；构建脚本由命令注册表和 commands.toml 生成分发与命令目录
+└── desktop/        lovelycarve-desktop：GPUI Kit 桌面应用，可执行文件 LovelyCarve
+vendor/             vendored 读取器 crate（各自独立的清单与锁文件）
+plugins/            插件子模块（独立 Cargo 工作区：SDK、lc-plugin-host 与随附插件）
+python/             基于 lovelycarve-core 的只读 Python 读取库
+binaries/           随可执行文件发布的运行时 DLL
+resources/          QR/OCR 构建运行时加载的模型
 ```
 
-等价要求：`rg "@tauri-apps/api/core|@tauri-apps/api/event" src --glob "!src/lib/ipc/**"` 必须为空。
+依赖只沿一个方向：`lovelycarve-core` 不依赖其他工作区 crate；`lovelycarve-backend` 依赖 core，并以 `pub use lovelycarve_core as core` 重导出，后端模块统一写作 `crate::core::…`；CLI 与桌面应用只依赖后端，在 crate 根部为所用的后端模块起同名别名。其他 crate 需要的条目才声明为 `pub`，其余保持 `pub(crate)` 或更窄。多个 crate 的测试共用的样本构造器放在 core 的 `test_support` 模块，以 `any(test, feature = "test-support")` 编译，`test-support` 特性只由开发依赖开启。
 
-应用层 `bindWorkspaceServices.ts` 持有案件、任务、分析、证据的注册回调和生产 disposer。任务/分析通过可替换的只读上下文订阅当前案件，避免直接引用案件单例造成循环。案件切换先关闭标签和视图，再等待标签防抖及已发出的派生数据写入，然后调用后端；请求代际防止旧读取、水合、选择器或订阅回填。迟到句柄即时释放，dispose 幂等；切页保留后台任务，不等于取消或卸载证据。
+GPUI 会为 serde_json 打开 `preserve_order`。若与 CLI 在同一次 Cargo 调用中编译，CLI 动态 JSON 输出的键顺序会随之改变；因此工作区 `default-members` 不含桌面应用，`just` 配方也总是单独编译它。检查 CLI 输出时不要把 `-p lovelycarve-desktop` 与 CLI 放在同一次构建中。
 
-功能内部就近引用实现；功能之间只使用声明的 `api.ts`、组件入口或纯契约。共享层不引用业务，纯模型无响应式/宿主 I/O。`just frontend-structure-check` 使用 TS AST 和 Vue SFC 解析器检查两类 script、静态/动态/type-only import、别名、失效 import/style 路径、允许的跨功能边及运行时依赖环。允许边与所有权表见 [前端模块与生命周期](FRONTEND_STRUCTURE.md)，具体规则在 `scripts/lib/frontend-structure.mjs`。
-
-主窗口与独立预览保持两个动态根；`app/workspace/panels.ts` 的七个面板仍懒加载，加载提示延迟 120ms。五类 KeepAlive 面板保持原 id 和证据复用规则；标签的五份 fileSession LRU 不是全部面板的状态快照。重格式 viewer 继续在详情内懒加载，公开状态 API 不导出 viewer。
-
+后端构建脚本把 `binaries/` 下的 Dokan、OpenSSL 与 VC++ 运行时复制到当前 profile 目录，CLI、桌面应用及其测试直接运行即可找到；发行包由 `scripts/pack.ps1` / `scripts/pack-cli.ps1` 放到可执行文件旁。
 ## 后端结构
 
-`src-tauri/` 保留单个应用 Cargo crate，按入口、应用工作流、命令、共享状态与核心域组织。基础证据读者不引用文件系统或插件实现，文件系统不引用 catalog 或插件宿主，持久化调度器不直接读写分析结果和时间线。案件发布、索引和路径模型仍按业务协作；十二个域不要求形成完全独立的 crate 或 DAG。
+后端分为两个 crate：`lovelycarve-core` 是不带应用状态的取证引擎，`lovelycarve-backend` 在其上提供共享状态、任务、工作流和命令函数。基础证据读者不引用文件系统或插件实现，文件系统不引用 catalog 或插件宿主，持久化调度器不直接读写分析结果和时间线。案件发布、索引和路径模型仍按业务协作；十二个域不要求形成完全独立的 crate 或 DAG。
 
 ```text
-src-tauri/src/
-├── lib.rs                  唯一的命令注册表（invoke_handler!）；desktop 特性下的 Tauri builder
-├── main.rs                 桌面入口（desktop 特性）
-├── bin/                    lovelycarve-cli 入口；lovelycarve-gpui/ 为实验性 GPUI 原生界面（gpui 特性）
-├── embed.rs                进程内前端的初始化、关闭与导出名清理入口
-├── host.rs + host/         与 Tauri 无关的宿主接口（State、AppHandle、LeaseOwner、Response）及 desktop 适配
-├── cli/                    独立 CLI：commands.toml、参数解析、执行、输出、会话、shell 与生成的分发
+crates/backend/src/
+├── lib.rs                  唯一的命令注册表 command_registry![…]；重导出 core
+├── embed.rs                前端的初始化、关闭与导出名清理入口
+├── host.rs                 宿主接口：State、AppHandle、LeaseOwner、Response
 ├── app.rs + app/           setup、lifecycle、access、error、module_catalog
 │   └── workflows/          证据加载/卸载、案件、快照、识别、Docker、挂载、外部卷和插件任务编排
 ├── state.rs + state/       AppState；预览、快照、遍历与运行状态辅助类型
 ├── task_manager.rs + task_manager/  即时任务登记、取消、资源、模型和测试
-├── commands.rs + commands/ 命令层，按十个业务域组织；desktop 特性下注册为 Tauri command
-└── core/mod.rs             只声明十二个职责域
-    ├── evidence.rs + evidence/     镜像、读者、加密、分区、RAID、物理盘
-    ├── filesystem.rs + filesystem/ 卷适配、文件树、读写投影、Docker
-    ├── catalog.rs + catalog/       filedb、目录查询、快照和容器索引
-    ├── casework.rs + casework/     案件台账、审计、锁和检材存储
-    ├── analysis.rs + analysis/     识别、结果查询和 BCP
-    ├── carving.rs + carving/       雕刻引擎、扫描、格式和会话
-    ├── search.rs + search/         全局搜索、关键词/正则和搜索存储
-    ├── timeline.rs + timeline/     时间线投影、存储、USN 和 mactime
-    ├── preview.rs + preview/       二进制、SQLite、表格和其他原类型预览
-    ├── extensions.rs + extensions/ 插件宿主和持久化任务调度
-    ├── platform.rs + platform/     FFI、Dokan、Windows 共享和资源
-    └── common.rs + common/         哈希、自然排序和文本解码
+└── commands.rs + commands/ 命令函数，按十个业务域组织
+crates/core/src/
+├── lib.rs                  只声明十二个职责域
+├── evidence.rs + evidence/     镜像、读者、加密、分区、RAID、物理盘
+├── filesystem.rs + filesystem/ 卷适配、文件树、读写投影、Docker
+├── catalog.rs + catalog/       filedb、目录查询、快照和容器索引
+├── casework.rs + casework/     案件台账、审计、锁和检材存储
+├── analysis.rs + analysis/     识别、结果查询和 BCP
+├── carving.rs + carving/       雕刻引擎、扫描、格式和会话
+├── search.rs + search/         全局搜索、关键词/正则和搜索存储
+├── timeline.rs + timeline/     时间线投影、存储、USN 和 mactime
+├── preview.rs + preview/       二进制、SQLite、表格和其他原类型预览
+├── extensions.rs + extensions/ 插件宿主和持久化任务调度
+├── platform.rs + platform/     FFI、Dokan、Windows 共享和资源
+└── common.rs + common/         哈希、自然排序和文本解码
 ```
 
-`commands` 的十个域是 `evidence`、`casework`、`filesystem`、`preview`、`analysis`、`carving`、`search`、`timeline`、`extensions`、`system`。跨域流程在 `app/workflows` 中复用；应用层不调用命令层，`core` 不依赖 app、commands、state、cli 或 Tauri。应用错误定义在 `app/error.rs`，`commands/app_error.rs` 保留传输层导出。
+`commands` 的十个域是 `evidence`、`casework`、`filesystem`、`preview`、`analysis`、`carving`、`search`、`timeline`、`extensions`、`system`。跨域流程在 `app/workflows` 中复用；应用层不调用命令层，core 不依赖后端、前端或 GUI 工具包。应用错误定义在 `app/error.rs`，`commands/app_error.rs` 保留传输层导出。
 
-`lib.rs` 保留唯一的命令注册表，以及 `desktop` 特性下的 Tauri builder。`app/setup.rs` 的 `initialize`（插件发现、任务调度、媒体缓存）由桌面 `setup`、CLI 和 GPUI 界面共用，桌面退出共用 `app/lifecycle.rs` 的媒体、插件清理步骤；CLI 与 GPUI 界面退出时调用其中的 `shutdown`，依次取消任务、关闭案件、停止插件并释放媒体缓存。CLI 生成器沿模块声明解析嵌套命令路径和真实函数签名，与 `cli/commands.toml` 的命令定义一起生成分发代码与命令目录（见[命令行与桌面只读挂载](#命令行与桌面只读挂载)）。
+命令是 `commands/` 下普通的 `pub`（多为 `async`）函数，宿主注入的参数使用 `host::State`（借用共享状态）、`host::AppHandle`（事件与每用户数据目录）和 `host::LeaseOwner`（物化媒体的租约所有者），其余参数可由 JSON 反序列化，返回 `Result<T, AppError>`，原始字节用 `host::Response`。`lib.rs` 的 `command_registry![…]` 是唯一注册表：展开时逐个引用这些函数，改名或删除的命令直接编译失败；CLI 构建脚本读取同一份列表，沿模块声明解析嵌套命令路径和真实函数签名，与 `crates/cli/src/commands.toml` 的命令定义一起生成分发代码与命令目录（见[命令行与桌面只读挂载](#命令行与桌面只读挂载)）。命令需要新的宿主能力时扩展 `host`，不把前端类型传入命令。
 
-`python/` 是 PyO3 / maturin 的只读 `lovelycarve` 包，直接使用 `DiskImage`、`EvidenceSession` 与文件系统读取接口，不经过命令、`AppState` 或应用初始化。它启用后端 `reader-library` 库配置，排除应用、案件、catalog、分析、预览、搜索、插件和挂载模块；默认 CLI、`desktop` 及后端单元测试仍编译完整模块。Cargo 依赖图暂与后端共用，扩展只链接读取实现。证据路径规范化实现在 `common::evidence_path`，原有 `casework::case::evidence_path_key` 保留同一函数的重导出，使读取器不必依赖案件模块。Python API、构建与限制见 [Python 读取库](../python/README.md)。
+两个前端都经 `embed` 准备与关闭后端：`embed::initialize` 调用 `app/setup.rs` 的 `initialize`（预览临时目录、插件发现，以及任务、调度器与插件事件到宿主的路由），`embed::shutdown` 调用 `app/lifecycle.rs` 的 `shutdown`，依次取消任务、关闭案件、停止插件并释放媒体缓存。CLI 的 `AppHandle` 把事件写到 `--events` 的标准错误或直接丢弃，`LeaseOwner` 归进程所有；桌面应用在专用 tokio 运行时上调用命令函数，`AppHandle` 的事件经通道交给界面线程，再分发给订阅的页面。两者使用同一个每用户数据目录，名称为 `host::APP_IDENTIFIER`（`app.lovelycarve`）。
 
-命令函数不直接依赖 Tauri：状态、应用句柄、二进制响应和媒体租约所有者分别使用 `host::State`、`host::AppHandle`、`host::Response` 和 `host::LeaseOwner`，函数以 `#[cfg_attr(feature = "desktop", tauri::command)]` 标注。`desktop` 特性（`tauri.conf.json` 的 `build.features` 为 `tauri dev/build` 开启）引入 tauri、对话框与文件插件和 tauri-build，并由 `host/tauri_adapter.rs` 为这些类型实现 `CommandArg` / `IpcResponse`：状态取自 Tauri 托管状态，`AppHandle` 把事件转给 Tauri `emit` 并提供应用数据目录，`LeaseOwner` 对应调用窗口（窗口关闭即租约结束），`Response` 以原始字节返回。CLI 构建不启用该特性，`AppHandle` 的事件写到 `session --events` 的标准错误或直接丢弃，`LeaseOwner` 归进程所有。GPUI 界面（`gpui` 特性，同样不启用 `desktop`）经 `embed` 准备与关闭后端，在专用 tokio 运行时上直接调用命令函数，`AppHandle` 的事件经通道交给界面线程，再分发给订阅的页面。三种构建使用同一个应用数据目录，目录名取自 `tauri.conf.json` 的 identifier（构建脚本导出为 `LOVELYCARVE_APP_IDENTIFIER`）。命令需要新的宿主能力时扩展 `host` 类型，不在命令中引用 Tauri 类型。
-
+`python/` 是 PyO3 / maturin 的只读 `lovelycarve` 包，直接使用 `DiskImage`、`EvidenceSession` 与文件系统读取接口，不经过命令、`AppState` 或应用初始化。它依赖 `lovelycarve-core` 并开启 `reader-library` 特性，只编译 evidence、filesystem、platform 与 common，排除案件、catalog、分析、预览、搜索、插件和挂载模块；其他构建与 core 的单元测试仍编译完整模块。Cargo 依赖声明仍与 core 共用，扩展只链接读取实现。证据路径规范化实现在 `common::evidence_path`，原有 `casework::case::evidence_path_key` 保留同一函数的重导出，使读取器不必依赖案件模块。Python API、构建与限制见 [Python 读取库](../python/README.md)。
 CLI 的可选 `--with-source` / JSONL `withSource` 在解析检材与路径后、命令执行前捕获来源，随后独立于条目投影封装 `source/result`；常驻会话传递同一请求标记，客户端先拆开原结果检查完整性、投影，再封装来源。来源不通过命令完成后的上下文查询猜测。SQLite 主键另标记 `sqlite` 地址空间，保留数据库节点和表名。DSH 默认启用来源封装，并在输出超限时保留原页位置生成只读重试建议。
 
 `filedb_volumes` 的 `indexes` 列出当前已发布索引对各文件系统的覆盖：直接卷索引的 `pathPrefix` 为 null，父分区内逻辑卷的覆盖由索引中的实际节点路径定位。`filedb_query_files` 区分缺失索引与零命中，并在查询前验证索引身份和完整性；截断索引不能产生完整的否定结论。
 
 CLI JSONL 调度位于 `cli/session.rs`。`session --jobs N` 使用有界输入队列和查询工作线程，主协调器统一发布按请求 ID 关联的 JSON 响应；stdin 等待不会阻塞完成结果输出。并发查询复制派发时的会话上下文，案件／检材／目录切换及其他未标记并发的命令先等待已有查询完成。结构化 `$ref` 等待先前请求结果，EOF 收齐请求后再等待后台任务。新增命令默认是屏障；确认其生命周期与并发安全后，才在 `cli/commands.toml` 中标记 `concurrent = true`，并通过命令目录的 `concurrent` 字段公开。
 
-`src-tauri/examples/` 按用途分类，所有 example 目标在 Cargo 中显式声明，通过 `just run-example <名称>` 调用；`just check-examples` 检查这些目标，用法见 [后端探针](../src-tauri/examples/README.md)。新增模块使用 `<name>.rs` 加 `<name>/`，不新增 `mod.rs`。
+`crates/core/examples/` 按用途分类，所有 example 目标在 Cargo 中显式声明，通过 `just run-example <名称>` 调用；`just check-examples` 检查这些目标，用法见 [后端探针](../crates/core/examples/README.md)。新增模块使用 `<name>.rs` 加 `<name>/`，不新增 `mod.rs`。
 
 `core::evidence::image::DiskImage` 负责镜像源、分区布局、字节读取、解密和定位缓存。`AppState.images` 登记的对象是 `Arc<core::filesystem::evidence_session::EvidenceSession>`：它持有同一个字节读者，并拥有宿主 Docker、NTFS 删除记录投影及外部卷注册表。字节扫描、RAID、哈希和源字节导出借用 `disk_image()`；文件树、预览和插件证据浏览借用 session。原证据 ID、路径、序列化字段和分区寻址保持不变。
 
@@ -166,24 +134,21 @@ RAID 检测（`evidence/raid`）分六步：读取各检材的 LVM PV 并物化�
 
 插件 client 保留请求句柄和实例存活状态，process/connection/router/host_requests 分别负责启动、握手、消息路由和反向 RPC；`run_context` 服务一次运行的 `run.*` / `file.*` / `view.*` 调用，`view` 实现系统视图与检材视图。Dokan 入口保留挂载会话和引用计数，filesystem/callbacks/paths/read 负责上下文、只读回调、路径和读取缓存。ReFS 通过本地 `refs-reader` crate 解析只读卷，filesystem 的 refs/backing/walk 分别负责节点适配、证据范围读取和可取消遍历；目录缓存随卷释放。普通文件、ADS 与快照版本按同一 extent 映射随机读取；platform/ffi 的旧实现只在显式 `refs-dll-oracle` 验证功能下编译。XLSX 预览分为 workbook/format/style，案件状态将检材登记和卷发布分别放在 case/evidence.rs、case/volumes.rs。相关原有测试与实现同域。
 
-`commands.rs` 同时存放各命令文件共享的辅助函数。后端 CSV 导出（时间线、全局搜索）的数据单元格都经
+`commands.rs` 同时存放各命令文件共享的辅助函数。CSV 导出（时间线、全局搜索）的数据单元格都经
 `commands::quote_csv_field` 转义：以 `=`、`+`、`-`、`@`、制表符或回车开头的值前置 `'`（`-12`、`-3.5` 等纯负数除外），
-防止检材取值在电子表格中作为公式执行；前端分析结果导出的 `utils/exportFormat.ts` `csvEscape` 使用同一规则。
-新增 CSV 导出须复用二者之一。
+防止检材取值在电子表格中作为公式执行。桌面应用的 CSV 导出同样调用这些后端命令；新增 CSV 导出须复用该函数。
 
-`src-tauri/src/lib.rs` 是后端命令注册的唯一入口。当前已注册的主要命令域包括：
+`crates/backend/src/lib.rs` 的 `command_registry![…]` 是后端命令注册的唯一入口。当前已注册的主要命令域包括：
 
 - 镜像：`image_load`、`image_info`、`image_bad_regions`、`image_unload`、`image_list`、`image_export_raw`、`image_hash_compute`
 - RAID/物理磁盘：`raid_auto_detect`、`raid_manual_assemble`、`physical_disks_list`
 - 文件恢复（文件系统记录与签名雕刻）：`carve_formats`、`carve_start`、`carve_scan_status`、`carve_scan_pause`、`carve_scan_resume`、`carve_scan_list`、`carve_scan_remove`、`carve_results_page`、`carve_filesystem_results`、`carve_preview`、`carve_recover`
 - 文件系统：`fs_children`、`fs_flat_page`、`fs_flat_ext_counts`、`fs_size_tree`、`fs_read`、`fs_read_large`、`fs_media_temp`、`fs_preview*`、`fs_export*`、`fs_digest`、`fs_identify_type`
-- 原类型预览：SQLite、Realm、二进制、GGUF、ZIP、CSV、Vim swap 等（后端解析）；文档/办公/邮件/压缩包/CAD/3D/图表等
-  「rich」类别由前端 Flyfish File Viewer 渲染，字节经 `fs_read_large`（≤16 MiB，可取消且受任务并发限制的 ArrayBuffer）或
-  `fs_media_temp` + asset 协议供给。PDF 支持 Range，单文件≤4 GiB；非流式富预览≤64 MiB，超限提示导出。
-  `previewRequest` 为每个查看器分配 UUID，切换/卸载时取消读取并调用 `fs_media_release` 释放缓存引用，迟到响应同样释放。
-  同一 `(image,node,ext)` 的物化互斥，完成前使用唯一临时文件，单写入通道约束瞬时磁盘占用。
-  `MediaTempCache` 的 4 GiB / 6 文件预算只淘汰无人引用的最久未使用文件；独立窗口销毁由后端兜底释放引用。
-  新缓存位于 `lovelycarve-preview-cache/<uuid>`，持有目录外的进程锁；启动只回收能取得锁的旧目录，退出清理当前目录。
+- 原类型预览：SQLite、Realm、二进制、GGUF、ZIP、CSV、Vim swap 等由后端解析。需要完整文件的查看器经 `fs_media_temp`
+  物化到临时文件，以 `LeaseOwner` 持有租约，结束时调用 `fs_media_release`；同一 `(image,node,ext)` 的物化互斥，
+  完成前使用唯一临时文件，单写入通道约束瞬时磁盘占用。`MediaTempCache` 的 4 GiB / 6 文件预算只淘汰无人引用的
+  最久未使用文件；租约所有者报告关闭后由后端兜底释放引用。新缓存位于 `lovelycarve-preview-cache/<uuid>`，
+  持有目录外的进程锁；启动只回收能取得锁的旧目录，退出清理当前目录。
 - 卷/挂载：`fs_mount_readonly`、`fs_unmount_readonly`、`fs_mounts`、`fs_share_mount` / `fs_unshare_mount`、挂载点建议和创建
 - BitLocker：状态、密码/恢复密钥/VMK 解锁、内存扫描、导出解密镜像
 - 案件和快照：案件创建/打开/关闭、证据列表/移除、卷快照构建/列表/删除
@@ -193,21 +158,16 @@ RAID 检测（`evidence/raid`）分六步：读取各检材的 LVM PV 并物化�
   `analysis_result_tree`、`analysis_records_page`、`analysis_record_detail`、`analysis_run_get`
 - 任务中心：`task_list`、`task_status`、`task_cancel`
 - 系统辅助：模块摘要、路径信息与在文件管理器中显示、二维码、OCR、OS 检测、Windows 盘符识别
-- 全局搜索、时间线、加密卷与 iOS 备份解锁、卷影副本、BCP、标签与派生数据等其余命令见[功能与 IPC 对照](#功能与-ipc-对照)
-
-若前端调用未注册命令，必须按功能清单处理为恢复后端、隐藏入口，或显示明确不可用说明。
+- 全局搜索、时间线、加密卷与 iOS 备份解锁、卷影副本、BCP、标签与派生数据等其余命令见[功能与命令对照](#功能与命令对照)
 
 ## 核心数据流
 
-1. `AppShell.vue` 通过案件管理器确保当前有活动案件。
+1. 桌面应用的工作区（`workspace.rs`）确保当前有活动案件，检材标签页总是属于活动案件。
 2. 用户选择镜像文件、文件夹证据、物理磁盘或 RAID 成员。
-3. 前端调用 `image_load`，后端把证据注册到内存状态和活动案件。
-
-4. 侧栏显示镜像信息与文件列表，文件树按需调用 `fs_children` 或快照索引。
-5. 文件详情通过 `fs_preview`、`fs_preview_text`、原类型预览命令读取内容；「rich」类别由前端
-   `RichPreviewViewer`（Flyfish File Viewer）自取字节（`fs_read_large` / `fs_media_temp`）渲染。
-6. 长任务通过 Tauri event 推送进度，例如镜像加载、哈希、导出、BitLocker、快照构建。
-
+3. 界面经 `Backend::run` 调用 `image_load`，后端把证据注册到内存状态和活动案件。
+4. 检材的导航栏显示镜像信息与文件列表，目录树按需调用 `fs_children_page` 或读取快照索引。
+5. 文件详情通过 `fs_preview`、`fs_preview_text` 与原类型预览命令读取内容；原类型视图把文件物化后交给独立进程中的查看器。
+6. 长任务通过后端事件推送进度，例如镜像加载、哈希、导出、BitLocker、快照构建；任务中心经 `task-entry` 跟随所有任务。
 ## 镜像与证据源
 
 支持的主要源类型：
@@ -280,8 +240,8 @@ Ext4 逻辑卷是否存在 `/var/lib/docker`，把发现的容器作为磁盘根
 Dokan 挂载层直接解析
 `host-docker:` 合成根和 `host-docker:<container-id>:` 容器根，避免为定位挂载节点先遍历物理分区；
 两种视图均标记为大小写敏感的只读 `DOCKER` 文件系统，可由文件列表右键挂载为盘符或 NTFS 文件夹。
-前端只在用户首次进入或展开 `host-docker:<container-id>:` 时触发合层，并在目录树显示不伪造完成比例的
-紧凑加载条；子项计数的后台预取会跳过尚未合层的容器根。容器根属于导航与挂载入口，不参与“隐藏
+调用方只在首次进入或展开 `host-docker:<container-id>:` 时经 `fs_docker_prepare` 触发合层，并显示不伪造完成比例的
+加载状态；子项计数的后台预取会跳过尚未合层的容器根。容器根属于导航与挂载入口，不参与“隐藏
 空目录”判定；进入容器后，普通目录仍沿用已有空目录过滤规则。
 
 ### EWF 读取器
@@ -290,7 +250,7 @@ Dokan 挂载层直接解析
 `ImageSource::Ewf`，不加载 libewf。`EwfAcquiryInfo` 提供采集元数据，分卷路径、大小及
 时间戳用于长任务的证据稳定性检查。v1 使用延迟块表和有界缓存，v2 使用
 上游的完整块表。缺失分卷在打开时拒绝，解码 / 校验故障交由 tolerant read
-层报告。上游版本及本地补丁见 `src-tauri/vendor/ewf/LOVELYCARVE.md`。
+层报告。上游版本及本地补丁见 `vendor/ewf/LOVELYCARVE.md`。
 
 至少 1 MiB 的 EWF 读取绕过解码块 LRU，按最多四个较大的任务并行解码，直接填入
 调用方缓冲区的互不重叠区间；小范围读取继续复用缓存。源盘哈希仍按逻辑偏移顺序
@@ -325,7 +285,7 @@ LUKS 扇区密码套件由 vendored `sector_cipher` 统一分派，密码槽与�
 
 ### 卷影副本（VSS）的会话视图
 
-`core/evidence/vss_image.rs` 接入 vendored `vsc-core`（`src-tauri/vendor/vsc`，来自 SecurityRonin/vsc-forensic）。
+`core/evidence/vss_image.rs` 接入 vendored `vsc-core`（`vendor/vsc`，来自 SecurityRonin/vsc-forensic）。
 `list` 逐个检查 NTFS 分区及已解锁的 BitLocker 卷，读取卷内 0x1E00 处的 VSS 头与 catalog，
 按创建时间（最早在前）列出卷影副本的存储区 ID、卷影副本 ID、创建时间、属性和计算机名；
 有 VSS 头而无副本的卷也会列出（未创建或已被删除）。`open` 为所选副本构建该存储区及所有更新
@@ -340,8 +300,7 @@ LUKS 扇区密码套件由 vendored `sector_cipher` 统一分派，密码槽与�
 `shadow_copy_list` 与 `shadow_copy_open`；后者登记 `shadowCopyOpen` 任务、采用随机 I/O
 资源调度，注册前确认父镜像仍在会话中，同一副本已打开时复用原会话。`image_load` 对 `vss://`
 路径只查找已注册会话，不写入案件检材清单；RAID 检测不把卷影副本当作候选成员。
-前端由 `useShadowCopies` 读取列表，镜像信息页在对应分区行显示副本数（有 VSS 区而无副本时显示「无卷影副本」），
-展开后由 `ShadowCopyList.vue` 列出副本，打开后在新标签页浏览；解锁 BitLocker 后重新读取列表。
+桌面应用的「卷与分区」页（`evidence/volumes.rs`）按分区列出副本，所选副本重建为只读镜像并在新标签页打开。
 CLI 的 `shadow-copies list` / `shadow-copies open` 在同一会话中保留父镜像与副本。
 读取器公开 `store_blocks` / `store_ranges` 原始枚举和 `Snapshot: Read + Seek`；完整 API 对照与
 验证边界见 [VSS](formats/VSS.md)。catalog 损坏或循环时报错而不是返回部分列表，存储头整块读取并校验。
@@ -349,7 +308,7 @@ CLI 的 `shadow-copies list` / `shadow-copies open` 在同一会话中保留父�
 
 ### AD1 逻辑镜像
 
-`core/evidence/readers/ad1_image.rs` 接入 vendored `ad1-core`（`src-tauri/vendor/ad1`，来自 SecurityRonin/ad1-forensic）。
+`core/evidence/readers/ad1_image.rs` 接入 vendored `ad1-core`（`vendor/ad1`，来自 SecurityRonin/ad1-forensic）。
 AD1 是 FTK Imager 的逻辑镜像（「Custom Content Image」），不是扇区镜像：一棵项目树、每项的元数据
 （时间戳、MD5/SHA1）和按块 zlib 压缩的文件数据，可分成 `.ad1`、`.ad2`… 多个分段。打开 `.ad1` 时解析
 整棵项目树，并要求头部声明的分段都在；直接打开后续分段会提示改选第一段，加密的 ADCRYPT 镜像明确拒绝，
@@ -491,7 +450,7 @@ SQLite 写入：调度器对台账的读写全部在阻塞线程池上进行，�
 `BEGIN IMMEDIATE` 事务里先校验当前状态再写（`TaskStore::transition` / `complete`），并行任务的提交、
 控制面与看门狗同时改写同一行时以先写者为准，迟到的一方不覆盖终态；进度只更新仍为 `running` 的行。
 检材的任务状态统计（PostActionWatcher 的「全部完成」判定）由任务行即时计算，不另存聚合。任务行的写入与其
-调度事件广播在同一把顺序锁内完成，广播顺序等于写入顺序，前端不会在终态之后又收到旧的
+调度事件广播在同一把顺序锁内完成，广播顺序等于写入顺序，订阅方不会在终态之后又收到旧的
 "运行中"进度。`records.db` 的发布与删除、时间线增量投影各是检材自己库上的一个 IMMEDIATE 事务：
 同一检材的任务同时收尾时在该库写锁上排队，不同检材互不等待；时间线水位取已有值与发布时间的较大者，
 钩子乱序提交也只前进。
@@ -513,36 +472,17 @@ PostActionWatcher 按检材登记创建/完成计数（案件打开时从台账�
 5 s 防抖，到期仍全部完成则广播 `allTasksFinished`，并执行 `task_followup.actions` JSON 里的
 动作，全部成功后写 `done_at` 保证幂等；失败只记日志并广播 `postActionFailed`，下轮全部完成时重试。
 
-前端：`src/lib/ipc/tasks.ts` 包装 `sched_*` 命令；任务行与通知来自任务中心（`useTaskEntries`，见「右上角任务中心
-面板」），`useTaskCenter` 取其中的插件任务，并提供分析器清单、建任务与插件任务控制；`usePluginCatalog` 缓存插件包目录与各包的语言包，供任务、
-快速分析、分析结果与设置页翻译插件声明的标签。右上角「任务中心」的任务页（`TaskCenterPanel.vue`）展示
-分段任务、进度/剩余时间、目标系统与选项、错误与结果计数、取消/开始/重新分析/删除操作与最近通知；
-文件列表右键「插件分析任务…」（`PluginTaskDialog.vue`）列出文件级分析器（扩展名匹配的在前），
-有选项时先用 `AnalyzerOptionsForm.vue` 填写再提交。
+桌面应用的任务中心（`tasks/center.rs`）从 `TaskStore` 读取插件任务，显示状态、进度、目标、错误与结果计数，并可取消运行中的任务；插件任务的开始、重新分析与删除（`sched_task_start` / `restart` / `remove`）目前由 CLI 提供。
 
-**快速分析。** 「快速分析」页签（`QuickAnalysisPanel.vue`）先经 `sched_systems_list` 取检材上识别出的系统，
-按检材记忆上次选择；列出适用于所选系统的系统级功能与全部检材级功能，按插件归并，插件按收藏 / 分类 /
-耗时任务分组。确定时为所选插件的每个功能调用 `sched_task_create`（系统级带 `systemId`，选项取默认值；
-逐个创建时不弹单条通知，结束后汇总一次）；所选插件在该目标上已有成功结果时先确认替换。「重新分析全部任务」
-确认后对检材的终态任务逐个 restart、对离线或旧版暂停的任务 start。组装逻辑（`preprocessFunctions` /
-`groupByPlugin` / `buildPluginGroups`）与勾选状态（`useQuickAnalysisSelection`，按插件 id）在
-`useQuickAnalysis.ts`；收藏与系统记忆经 `usePersistedRef` 落 localStorage。
+**快速分析。** 任务面板中的快速分析（`analysis/run.rs`）先经 `sched_systems_list` 取检材上识别出的系统，再为所选分析器调用 `sched_task_create`（系统级带 `systemId`，选项取默认值）；作业由插件调度器执行，任务中心跟随其状态。
 
-**分析结果页。** 侧边栏「分析结果」面板（`AnalysisResultsPanel.vue`）三段式呈现：
+**分析结果页。** 分析结果页（`analysis.rs`、`analysis/records.rs`）按以下结构呈现：
 
-- 左侧目录（`analysis_result_tree` → `core/analysis/results/analysis_query.rs`）：检材 → 分类 →
-  分析器运行（每个作业一份已发布运行，带目标与告警数）→ 记录类型，数字徽标显示记录数；节点名来自
-  插件声明，按插件语言包翻译。旧版本 `analysis.db` 的结果（`legacy_query.rs`）以「旧版」节点并列。
-- 中部记录表格（`analysis_records_page`）：按记录类型服务端分页（每页 100），列与字段类型来自记录结构，
-  点击列头按列排序（时间戳按换算后的时刻），关键词检索标题与文本类列；分页固定结果树节点的 `runId`。
-  导出 CSV 复用启动时的 run、排序与过滤条件，逐页读取全部记录并写原始值；结果数量或所属 run 变化、
-  提前读到空页时停止并提示重试。
-- 右侧详情（`analysis_record_detail`）：全部字段（含只在详情显示的字段）与来源，「定位源文件」按卷键与
-  卷内路径（或节点）定位。
-- 运行概览（`analysis_run_get`）：选中运行时主区域显示关键数字、各记录类型的产出（来自结果树节点，旧版结果
-  没有审计也能显示）、告警、输入文件、选项、画像事实、读不出的源字节与技术标识。
-- 任务完成只把树标脏（`useAnalysisResults` 监听 `useTaskCenter` 的新 runId），面板激活
-  （KeepAlive `onActivated`）时整树重拉。
+- 目录（`analysis_result_tree` → `core/analysis/results/analysis_query.rs`）：检材 → 分类 → 分析器运行（每个作业一份已发布运行，带目标与告警数）→ 记录类型，并显示记录数；节点名来自插件声明。旧版本 `analysis.db` 的结果（`legacy_query.rs`）以「旧版」节点并列。
+- 记录表格（`analysis_records_page`）：按记录类型服务端分页，列与字段类型来自插件的记录结构；分页固定结果树节点的 `runId`。
+- 记录详情：所选记录的全部字段与来源。
+
+单条详情 `analysis_record_detail` 与运行概览 `analysis_run_get`（关键数字、各记录类型产出、告警、输入文件、选项、画像事实、读不出的源字节与技术标识）目前由 CLI 使用。
 
 ## 插件运行时
 
@@ -577,8 +517,8 @@ UUID 与卷标，`win_drive_letters` 读取盘符），结果按检材缓存，�
 
 插件**发现即信任**：清单合法的插件包初始即为可用（`Configured`），可直接探测、派发与分析；
 没有批准步骤与禁用开关，插件目录 SHA-256 指纹仅用于设置页展示与版本标识（已加载的库不会卸载）。
-加载失败的插件包连同原因列在 `plugin_list` 的 `rejected` 中。插件列表、重启、安装与卸载通过
-`commands::extensions::plugin` 与 `src/lib/ipc/plugins.ts` 形成完整 IPC 链。协议、安全边界与限制见
+加载失败的插件包连同原因列在 `plugin_list` 的 `rejected` 中。插件列表、重启、安装与卸载由
+`commands::extensions::plugin` 提供，桌面设置页与 CLI 的插件命令调用它们。协议、安全边界与限制见
 [插件协议](PLUGIN_PROTOCOL.md)。
 
 ## 自动识别平台
@@ -632,12 +572,7 @@ DJI 无人机由共享的 `identify/dji.rs` 在通用 Linux / Android 标志检�
 是生效的平台（手动优先，其次自动识别），`manual_platform` 是手动选择，案件管理器与镜像信息页据此展示。要求检材已
 登记在活动案件中，案件锁定时拒绝；移除检材时一并删除该键。
 
-前端：`src/lib/ipc/autodetect.ts` 包装命令与事件；`useAutoDetect` 模块级缓存按镜像 id 存报告、接完成
-事件并刷新活动案件 DTO，失败事件记为该检材的识别错误（取消不算失败）；镜像信息页头部的
-`AutoDetectBadge.vue` 只显示结论（平台 / 类型 / 厂商 / 备份）并支持手动重新识别；检材在活动案件中时另有平台选择
-（`UiSelect`，`caseEvidencePlatformSet` 写入后刷新活动案件），手动指定时标签显示手动平台，悬停提示保留自动结论。
-逐分区判定、标志文件明细、备份特征与告警不在界面展开。
-每次识别在右上角「任务中心」的任务页显示为「自动识别平台」（见「右上角任务中心面板」）。
+桌面应用的 `PlatformStore`（`evidence/platform.rs`）接收 `autodetect-finished` / `autodetect-failed` 事件，按镜像 id 保存本会话的识别报告；检材头部显示结论（平台、厂商与检材类型），支持重新识别，检材在活动案件中时可经 `case_evidence_platform_set` 手动指定平台。逐分区判定、标志文件明细、备份特征与告警不在界面展开。每次识别在任务中心列为一条任务。
 
 识别限制：macOS 两标志均缺失时不按卷名猜测；部分厂商备份归入 `backup` 大类；
 iOS 整盘镜像没有独立判定路径；归档与目录检材的合成根没有文件系统类型，不做 Windows 与 macOS 检查；Btrfs 子卷
@@ -777,10 +712,7 @@ tid、时间的索引，外加构建元数据单行 `timeline_build`）。投影
 为过期而不是被悄悄漏掉；查询面 `timeline_count`（strftime 动态时间桶 + 时区参数化 + 桶分页）/
 `timeline_datas`（`tl_time desc` 明细分页）/`timeline_types`（`group by from_app,type` 两级维度）/
 `timeline_range`/`timeline_export` 都带 `imageId`，共享参数族（start/end/time_zone/time_unit/
-from_apps/data_types/pairs/text/show_delete），两级勾选走 `(from_app, type)` 行值 IN 精确过滤。前端
-`TimelinePanel.vue`：状态机确认创建/更新、手绘柱状图点击钻取（范围收窄 + 粒度降档，压栈撤销）、虚拟
-明细表（序号/时间/类型/内容/时间类型）、双击文件行经 `fs_node_locate` 跳回文件列表、配置弹窗（当前
-检材的应用树两级勾选）与 CSV 导出。mactime body-file 导出模块为 `core::timeline::mactime`（命令
+from_apps/data_types/pairs/text/show_delete），两级勾选走 `(from_app, type)` 行值 IN 精确过滤。`timeline_types` 与 `timeline_range` 目前只由 CLI 使用。mactime body-file 导出模块为 `core::timeline::mactime`（命令
 `fs_timeline_export`）。
 
 ## 元数据索引层（filedb）
@@ -835,7 +767,7 @@ URI 打开（Windows 长路径前缀与 UNC 路径都转成合法 URI），不�
 `LIKE`、扩展名/种类 `IN`、大小区间、`is_delete`，`LIMIT ? OFFSET ?` 分页并按自然序排序；`child_counts`
 点查计数缓存并回传 `inexact` 标志；`category_summary` 按 `kind` 聚合。未覆盖目录返回 `None`，命令层回退
 live 遍历。`filedb_volumes` / `filedb_query_files` / `filedb_resolve_meta_addr` 由 CLI 的 `indexes volumes list`、
-`indexes files list` 与 `indexes files lookup` 调用，`src/lib/ipc/filedb.ts` 保留对应的类型化封装；桌面文件列表经
+`indexes files list` 与 `indexes files lookup` 调用；桌面文件列表经
 `fs_children_page` / `fs_flat_page` 读取同一份索引。
 
 浏览命令的数据源（`commands::filesystem::filesystem_snapshot_index`）：开着案件时是台账里该检材源卷大小与已加载
@@ -845,8 +777,8 @@ live 遍历。`filedb_volumes` / `filedb_query_files` / `filedb_resolve_meta_add
 live listing。`fs_flat_page` 只使用非截断快照的索引，仍会对索引 / 快照未下探的 deleted 目录拼接 live
 恢复遍历。删除单卷快照（`snapshot_drop`）删除卷记录与整个卷目录。
 
-**文件全显（deepsearch / allowAllFiles）。** 列表请求与逐级浏览同构，只多
-一个布尔——前端叫 `deepsearch`，后端叫 `allowAllFiles`；置位后起点 `parentId` 从「列一层」变成「以该
+**文件全显（allowAllFiles）。** 列表请求与逐级浏览同构，只多
+一个布尔 `allowAllFiles`；置位后起点 `parentId` 从「列一层」变成「以该
 节点为根递归平铺全部文件（含符号链接，`datatype=file` 口径，不含目录）」。命令 `fs_flat_page`
 （`commands/filesystem/filesystem_flat.rs`）接受 `keyword`（命中 `name_low` 或 `full_path_low`）、`sort` / `sortdesc`、
 `skip` / `limit`（默认 100，上限 5000）与表达式过滤 `filter`（`core::catalog::flat_query::FlatFileFilter`：
@@ -867,13 +799,11 @@ live listing。`fs_flat_page` 只使用非截断快照的索引，仍会对索�
 三条数据源（卷索引 → 内存卷快照 → 实时遍历）共用 `flat_query` 的谓词与比较器，SQL WHERE / ORDER
 表达式是它们的逐条镜像并由测试对拍；多卷起点（镜像根）与已删除目录的实时拼接行按「每个来源取前
 `skip + limit` 行」的窗口经 `FlatPageAssembler` 合并切页。实时遍历与拼接结果按 `(image, parent)` 缓存
-在 `AppState::flat_walk_cache`（FIFO 2 条），前端「刷新」传 `refresh` 作废。`fs_flat_ext_counts` 给出
+在 `AppState::flat_walk_cache`（FIFO 2 条），调用方的「刷新」传 `refresh` 作废。`fs_flat_ext_counts` 给出
 起点子树的扩展名直方图，只供 CLI 使用。全显请求不进入后台任务队列（SQL 路径以整卷为起点时在百万行卷上
-为亚秒级，以目录为起点时随子树规模增长；实时遍历只在无索引无快照时发生并被缓存）。前端 `DiskFileList` 以 infinite 模型消费：`useVirtualList` 的 `virtualCount`
-按服务端总数撑开滚动条，可视区间越过已加载末尾即按 `skip = 已加载行数` 补页；关键词 / 漏斗 / 排序变化
-按请求签名去抖后从第一页重载；搜索框输入即自动进入全显、清空即退出，切走面板或切换镜像自动复位。
+为亚秒级，以目录为起点时随子树规模增长；实时遍历只在无索引无快照时发生并被缓存）。桌面文件列表（`files/table.rs`）随滚动分页读取，排序与筛选由后端执行。
 
-**空间占用树（树图，`fs_size_tree`）。** 树图要的是每个目录其下的合计，目录浏览只知道直接子项，所以由
+**空间占用树（`fs_size_tree`）。** 空间占用树要的是每个目录其下的合计，目录浏览只知道直接子项，所以由
 `core::catalog::size_tree` 把一个卷索引整表读一遍（不读 `node_json`），建成只存数字的紧凑树：每行一个
 32 字节节点（`ordinal`、计费大小、修改时间、类型与删除标记），子项为压缩邻接表，每个目录一份
 「仅存活 / 含已删除」两套合计（字节、文件数、目录数、最新修改时间），百万行约 50 MB。目录行先编号再按
@@ -885,15 +815,7 @@ live listing。`fs_flat_page` 只使用非截断快照的索引，仍会对索�
 新索引文件即换键，卸载检材时清除。一次视图从目录出发按层广度优先展开 `depth` 层：每个目录只挑出度量最大的
 至多 96 个子项排序，小于目录合计 `minShare` 的条目与超出部分并入 `others`；下层目录只有全部子项放得下（总数
 6000）才展开。最后按 `ordinal` 批量回表读取要显示的节点。
-前端 `model/treemap.ts` 用 squarified 算法排布（打开的目录顶部留名称带，过小瓦片不画）。`FileTreemap.vue`
-把瓦片画在一块画布上（`components/treemapCanvas.ts`；瓦片不按文件类型区分，`model/treemapPalette.ts` 把
-中性色按层级由浅到深混入，「时间」着色用主色），
-视图变换在 `model/treemapView.ts`：滚轮每格朝指针放大 1.15 倍，上限是指针下最深的有内容目录恰好填满视口
-的倍率（至多 5 倍），到上限再滚一格就进入它；在 1 倍往回滚回到上一级，`+` / `-` 以视口中心缩放但不进出。
-进出层级不移动镜头，而是每块瓦片从它在旧布局里的位置过渡到新位置（130–310 ms，三次缓出），放大与进入
-因此连成一个动作。标签在屏幕坐标里按面积挑选（每帧至多 150 个），字号固定，裁到所属区域。`useSizeTree`
-按请求缓存最近 16 个视图，同一请求的加载与预取共用一次往返：滚轮朝某个目录放大时预取它（一次只取一个），
-放大到头进入时直接从缓存显示；新的一层到达后预取上一级。
+该命令目前只由 CLI 调用，桌面应用没有树图视图。
 
 ## 文件系统会话复用
 
@@ -908,7 +830,7 @@ live listing。`fs_flat_page` 只使用非截断快照的索引，仍会对索�
 这个机制误认为只服务快照构建。交互式 `fs_children` 仍保持按请求打开，后续若需要跨请求热卷缓存，应先
 增加明确的内存与生命周期预算。
 
-## 分页 IPC
+## 分页命令
 
 大规模目录、Journal 和案件派生数据不应新增全量返回接口。新增分页接口统一使用
 `Page<T>` 形态：`items`、`nextCursor`、可选 `total` 和 `truncated`。游标应基于稳定排序键，而不是裸
@@ -943,30 +865,26 @@ offset。当前普通目录已提供 `fs_children_page`，案件模式下会优�
 - `carve-scan-progress`
 - `qr-scan-progress`
 
-事件订阅必须通过 `src/lib/ipc/events.ts` 或领域 wrapper。
+桌面应用经 `events::EventHub` 按事件名订阅；CLI 的 `--events` 输出同一份事件。
 
 ## 时间线
 
-- 重建同时投影 filedb 文件修改时间、插件事件，以及已加载镜像各 NTFS 卷的 `$Extend\$UsnJrnl:$J`；USN 以独立类型 `3`（NTFS 变更日志）参与筛选、热力图、分页与导出。日志读取不依赖文件目录索引，因此目录索引未完成也可生成日志时间线。旧源水位升级为 `usn-v1:` 前缀，已有成功结果会提示重建一次。
-- `volumes/ntfs_journal.rs` 复用现有 VMDK/NTFS 只读数据源，按数据运行列表跳过稀疏前缀；连接属性走原 NTFS 流式读取路径。固定大小缓冲区处理分块和页间零填充，时间线不再受日志面板的 64 MiB 上限限制。取消在每个数据块检查，已投影批次保留并标为取消；读取失败向任务中心传播。
+- 重建同时投影 filedb 文件修改时间、插件事件，以及已加载镜像各 NTFS 卷的 `$Extend\$UsnJrnl:$J`；USN 以独立类型 `3`（NTFS 变更日志）参与筛选、计数、分页与导出。日志读取不依赖文件目录索引，因此目录索引未完成也可生成日志时间线。旧源水位升级为 `usn-v1:` 前缀，已有成功结果会提示重建一次。
+- `volumes/ntfs_journal.rs` 复用现有 VMDK/NTFS 只读数据源，按数据运行列表跳过稀疏前缀；连接属性走原 NTFS 流式读取路径。固定大小缓冲区处理分块和页间零填充，时间线不受日志分页读取的 64 MiB 上限限制。取消在每个数据块检查，已投影批次保留并标为取消；读取失败向任务中心传播。
 - `ntfs-core`（Apache-2.0）负责 V2/V3 二进制记录解析，本地适配层验证记录边界、保留 FILETIME 原始精度并拒绝缺失时间。V4 仅含区间信息、没有时间戳，不伪造时间线事件。原始解析结果保存在时间线 `extra` JSON 中，行时间仍为 Unix 秒。
 - USN 行使用卷键与 USN 唯一标识历史事件，保留事件文件名、MFT 与父目录编号；不把可能复用的 MFT 编号直接跳转为现存文件，不声称重建了完整历史路径。删除日志是有效事件，默认“排除已删除文件”筛选不会隐藏该事件；该筛选继续作用于 filedb 删除文件行。
 
-- 默认显示当前检材的事件，顶部保留内容搜索、检材/类型筛选、已删除开关与重置；未创建时提供创建入口，新数据通过内联提示更新。
-- 年度热力图使用 `timelineCount` 按显示时区、所选年份的完整起止区间聚合（最多 366 个日桶），与明细分页无关；缺失日期补零，强度相对该年单日峰值分为四档。默认年份取当前检材最新事件年份，支持切换年份。
-- 热力图遵循检材、类型、内容和删除状态筛选，保留全年背景；点击一天替换当前时间选择，明细及导出限定到当天。图表年份切换仅改变概览，明细的有效时间范围始终显示在列表上方。
-- 趋势视图保留年到秒的粒度与逐层返回，钻取区间与已有选择相交，避免切换到粗粒度后意外放大范围；可收起概览以增加列表空间。
-- 事件列表以单行显示完整时间、事件类型、内容、来源与定位入口；单击在右侧详情栏展开完整摘要和来源标识，双击文件或点击定位回到文件列表。所有导出沿用已应用的查询条件。
+- 桌面时间线页（`timeline.rs`）显示当前检材的事件：按年、月、日的事件计数图（`timeline_count`）与分页事件列表（`timeline_datas`），未创建时提供创建入口；CSV 导出（`timeline_export`）沿用已应用的查询条件。
 
 ## 文件恢复与雕刻
 
-全局搜索、时间线、文件恢复和分析结果的初始页共用 `WorkspaceStartState.vue`：居中显示图标、标题、简短说明与主按钮，历史记录或刷新放在左上角插槽。加载期间禁用主按钮；时间线创建前隐藏筛选、空表格和计数，读取失败可在初始页重试，开始构建后进入工作区。
+全局搜索、时间线、文件恢复和分析结果的初始页共用 `ui::workspace_start`：工具栏下方居中显示图标、标题、简短说明与主按钮。有记录的页面由 `ui::result_workspace` 组织记录侧栏与工作区，选中项的详情在右侧展开（`ui::detail_frame`），区域较窄时浮在表格上方。
 
-全局搜索和文件恢复通过 `analysis-workspace.css` 共用记录侧栏、工具栏、筛选条、状态条与新建弹窗样式；选中记录的详情由 `DetailDock` 从右侧展开（正文使用共享 `FileDetailLayout` 模板，与时间线事件详情共用）。初次读取已有记录或出现新记录时自动展开侧栏，普通进度刷新保留用户手动收起状态。恢复页通过 `carve_scan_list` 列出当前检材在本进程中保留的会话（沿用最近三个会话的回收策略，活动扫描不会回收），切换记录时隔离迟到的结果请求；`carve_scan_remove` 仅删除当前检材已结束扫描的内存记录，不删除已恢复文件，也不清除任务中心的执行历史。重启应用后不会保留这些内存记录。
+恢复页（`crates/desktop/src/carving.rs`）通过 `carve_scan_list` 列出当前检材在本进程中保留的会话（沿用最近三个会话的回收策略，活动扫描不会回收），切换记录时隔离迟到的结果请求；`carve_scan_remove` 仅删除当前检材已结束扫描的内存记录，不删除已恢复文件，也不清除任务中心的执行历史。重启应用后不会保留这些内存记录。
 
 一次扫描是一个 `CarveScanSession`，按 `phase` 依次运行两个可选阶段：`filesystems` 选中任一文件系统族时先做文件系统恢复（见下文），`signatures` 为真时再做签名雕刻。两个阶段共用任务 ID、取消令牌、资源许可与暂停状态（`carve_session::wait_while_paused`）；快照的 `filesystem` 摘要报告阶段进度、卷/目录/文件数、截断与读取故障，阶段失败时记录错误，后面仍有雕刻阶段则继续，否则整个会话失败。扫描范围由 `carve_start` 的 `scope` 解析为字节区域（整盘、分区、分区间隙或 `range` 指定的扇区段），文件系统阶段使用其中的整扇区（`carve_filesystem::sector_ranges`）。
 
-“新建扫描”弹窗先选择恢复方式（文件系统恢复与签名雕刻两张选择卡，文件系统族与“现存文件”开关跟在其后），签名雕刻再选择按类别分组的文件类型，扫描范围与高级上限默认折叠；Esc / 取消保留原有结果。运行时显示阶段进度、暂停/继续和取消。结果区按文件列表组织：`RecoveryTreeRail` 目录树、`RecoveryBrowser` 地址栏与 `RecoveryFileTable` 虚拟表格（沿用 `data-table.css`、`FileNodeIcon` 与已删除行样式）。纯模型 `recoveryTree` 把文件系统结果按卷和记录 ID 建树，签名结果按格式分组为“签名恢复”下的文件夹，行对象按需生成；`useRecoveryBrowser` 持有当前目录、筛选、勾选与目录树展开状态，筛选作用于当前目录的全部后代文件。雕刻结果由 `useCarveResults` 按 `sequence` 游标连续读完，文件系统结果在阶段结束后经 `carve_filesystem_results` 一次读取。勾选键带来源前缀（`f:` 文件系统候选、`a:` 雕刻结果），未勾选时“恢复全部”作用于整个会话。
+新建扫描表单（`carving/create.rs`）选择文件系统记录恢复与签名雕刻：雕刻的文件类型按类别分组，并可限定扫描范围。运行时显示阶段进度、暂停/继续和取消。签名雕刻结果按 `sequence` 游标经 `carve_results_page` 分页读取（`carving/results.rs`），文件系统记录结果在阶段结束后经 `carve_filesystem_results` 读取，按记录保存的路径列出（`carving/filesystem.rs`）；可将全部或所选结果恢复到主机目录。
 
 `core::carving::carver` 以 4 MiB 为读取窗口、以 512 字节为扫描块，仅在块首检查注册格式的
 签名。签名命中后由 `carver_format_*` 模块中的对应结构解析器计算文件长度；解析失败的候选只增加签名
@@ -1005,7 +923,7 @@ WAV、SQLite 等）即使有误，也最多让扫描漏看当前窗口剩余部�
 - 任何格式报告的长度都不超过区域末尾与单文件上限。
 
 扫描运行在统一后台任务和顺序 I/O 资源通道中。`CarveScanSession` 保存签名数、有效结果、稳定序号与
-暂停状态；前端通过 `carve-scan-progress` 增量同步，以 `sequence` 游标分页。恢复按
+暂停状态；桌面恢复页通过 `carve-scan-progress` 增量同步，以 `sequence` 游标分页。恢复按
 `f{绝对块号}.{扩展名}` 命名，流式计算 SHA-256 并输出 DFXML。代码版权与许可证见
 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。
 
@@ -1037,12 +955,12 @@ SQLite 原类型预览的 schema/sample 与分页请求均通过 `core::preview:
 打开，wal-index 放在堆内存（VFS 的锁是空操作，预览连接之间不会互相阻塞），并关闭「关闭时检查点」。
 同目录的 `-wal` 一并导入，由 SQLite 自己校验并回放已提交的帧，加密库的 WAL 同样适用；表头为 WAL
 模式而没有 `-wal` 的库也能打开。`-shm` 用不到；`-journal` 不导入，因为热日志会让只读打开失败，
-删除记录视图会单独读取它。sidecar 在前端传入的父目录节点下查找，所以 `ntfs:`、`ext4:`、
+删除记录视图会单独读取它。sidecar 在调用方传入的父目录节点下查找，所以 `ntfs:`、`ext4:`、
 `folder:` 这类不含路径的节点 ID 也能找到。
 
 
 
-`core/preview/sqlite/sqlite_recovery.rs` 接入 vendored `sqlite-core`（`src-tauri/vendor/sqlite-core`，来自
+`core/preview/sqlite/sqlite_recovery.rs` 接入 vendored `sqlite-core`（`vendor/sqlite-core`，来自
 SecurityRonin/sqlite-forensic），为 SQLite 浏览器的「已删除记录」提供 `fs_sqlite_deleted_records`。
 与表格预览不同，它不经过 SQLite，而是直接解析库文件的字节：
 
@@ -1056,18 +974,17 @@ SecurityRonin/sqlite-forensic），为 SQLite 浏览器的「已删除记录」�
 在结果里。加密库用浏览器解锁时的同一密钥按页重新解密（自动识别 SQLCipher 1–4 的默认参数，也可
 使用表单里的兼容参数），因为逻辑导出会丢掉存放证据的空闲页；加密库的 `-wal` / `-journal` 暂不
 参与，结果里附说明。库超过 512 MiB 时不扫描；结果最多返回 20,000 条，其余计入 `omitted`。
-前端 `SqliteDeletedRecords.vue` 按表和来源筛选并本地分页，选中现存表时按其列名显示；回滚日志中
-修改前的版本会标出与当前值不同的单元格。
+SQLite 预览与删除记录目前经 CLI 的对应命令读取；桌面应用没有结构化 SQLite 视图，原类型视图改用 Outside In 查看器。
 
 ## 命令行与桌面只读挂载
 
-独立命令行入口为 `src-tauri/src/bin/lovelycarve-cli.rs`，用法见 [`CLI.md`](CLI.md)。
-CLI 构建不启用 `desktop` 特性，不链接 Tauri、WebView 或 GUI 工具包；进程在 16 MiB 栈的专用线程上
-运行 tokio 多线程运行时，自行创建 `AppState` 并调用 `app::setup::initialize`，退出时取消任务、
+独立命令行入口为 `crates/cli/src/main.rs`，用法见 [`CLI.md`](CLI.md)。
+CLI 不链接任何窗口或 GUI 工具包；进程在 16 MiB 栈的专用线程上运行 tokio 多线程运行时，
+自行创建 `AppState` 并调用 `embed::initialize`，退出时经 `embed::shutdown` 取消任务、
 关闭案件、停止插件并释放媒体缓存。Windows 的 `asInvoker` 清单由构建脚本在链接时嵌入。
 
-命令目录由构建脚本生成：`build/cli_catalog.rs` 读取 `lib.rs` 的 `generate_handler!` 注册表和各命令的
-真实函数签名，与 `src/cli/commands.toml` 中逐条审阅的命令定义合并，生成按 API 参数名调用命令函数的
+命令目录由构建脚本生成：`crates/cli/build/cli_catalog.rs` 读取 `crates/backend/src/lib.rs` 的 `command_registry!` 注册表和各命令的
+真实函数签名，与 `crates/cli/src/commands.toml` 中逐条审阅的命令定义合并，生成按 API 参数名调用命令函数的
 `cli_dispatch.rs` 和命令目录 `cli_catalog.json`（命令、参数、用法、类别、并发、敏感字段、隐藏标记与示例，以及结果契约：
 后端返回 `()` 的命令记为 `unitResult`，只有它们以 `✓` 代替输出；`missing` 把返回 `Option` 的查找的 `None` 变成
 `notFound`；`incomplete` 列出结果不完整的字段）。构建时检查：每个注册命令映射到恰好一个 `<集合>… <动词>` 命令，或在
@@ -1080,10 +997,10 @@ ls/query→list 等）；命令路径唯一且不是其他命令的前缀；`lis
 （如 `sessions serve`）可以运行，但不进入帮助、补全、拼写建议和命令参考。
 
 代理技能 `skills/lovelycarve-cli` 随 CLI 安装包发布：`SKILL.md` 与 `references/workflows.md` 手写，
-`cli/skill_tests.rs` 解析其中的命令行和 JSONL 请求；`references/commands.md` 由同一测试模块从命令目录渲染，
+`crates/cli/src/skill_tests.rs` 解析其中的命令行和 JSONL 请求；`references/commands.md` 由同一测试模块从命令目录渲染，
 `just update-cli-skill` 运行其中被忽略的写入测试重新生成，文件与目录不一致时测试失败。
 
-`cli/` 按职责分为：`argv`（由目录构建 clap 命令树并解析参数、命令行错误）、`help`（yargs 版式的帮助：
+`crates/cli/src/` 按职责分为：`argv`（由目录构建 clap 命令树并解析参数、命令行错误）、`help`（yargs 版式的帮助：
 用法、说明、命令／位置参数／全局选项／选项／示例表格与右对齐的类型标注）、`context`（一次执行的统一步骤：
 dry-run、删除确认、默认值与生成 ID、提问、`--image` 作用域与来源提示、镜像内路径解析、不覆盖检查、调用和
 上下文更新）、`native` / `browsing` / `grep` / `strings`（手写命令；`native::offline` 处理无需后端的发现命令）、
@@ -1093,7 +1010,7 @@ dry-run、删除确认、默认值与生成 ID、提问、`--image` 作用域与
 `incomplete`（按目录判断结果是否完整）和 `runtime`（进程入口、后端启动与关闭、中断处理）。
 `background` 跟随任务中心的 `task-entry` 事件：命令返回后仍在运行的任务、命令成功而它启动的任务却失败，以及
 `automatic` 任务算作后台工作；`tasks wait`、一次性命令和 shell／JSONL 退出前的等待、`sessions close` 报告它们的结局，
-失败或没有报告结果即以 `tasksFailed` 失败。只跟随在本进程中见到运行的任务，插件任务的 `offline` 是过渡状态。结构化结果以 `cli::Json` 保存后端序列化的 JSON
+失败或没有报告结果即以 `tasksFailed` 失败。只跟随在本进程中见到运行的任务，插件任务的 `offline` 是过渡状态。结构化结果以 `Json` 类型保存后端序列化的 JSON
 文本，打印和会话响应保留字段顺序，需要读取时才解析为值；后端命令的错误带上 IPC 名称，渲染为「后端错误」块。
 可执行文件旁的 `plugins/` 同样参与插件发现，`lc-plugin-host` 也从可执行文件旁查找。
 `resident` 的后台进程持有一个 `AppState` 和可变 `Context`；普通命令通过 `--session` 或
@@ -1114,198 +1031,83 @@ dry-run、删除确认、默认值与生成 ID、提问、`--image` 作用域与
 范围读取复用文件系统适配器；共享、句柄和挂载点在卸载证据及关闭应用时清理。
 CLI 的 `mounts create/list/delete/share/unshare` 调用同一组命令，进程退出时释放挂载与共享。
 
-## 界面与交互
+## 桌面应用
 
-本章记录主窗口各页面的交互约定与组件归属；视觉与交互规范见 [前端规范](FRONTEND.md)，状态归属与资源收尾见 [前端模块与生命周期](FRONTEND_STRUCTURE.md)。
+桌面应用 `lovelycarve-desktop`（可执行文件 `LovelyCarve`）用 GPUI Kit（GPUI、GPUI Component 及其图标资源）构建，页面是 GPUI 实体，控件优先取自 `gpui_kit::component`。
 
-### 文件列表与可拆分预览
+```text
+crates/desktop/src/
+├── main.rs                 入口：原类型查看器子进程分派、后端启动、GPUI 应用与主窗口
+├── backend.rs              进程内后端：AppState、宿主句柄、tokio 运行时与事件通道；Backend::run
+├── events.rs               EventHub：在界面线程重新发出后端事件
+├── workspace.rs + workspace/  主窗口：标题栏、检材标签页、欢迎页与添加检材
+├── cases.rs + cases/       活动案件与本地案件登记簿；案件管理对话框
+├── tasks.rs + tasks/       任务中心数据（task_list + task-entry）；标题栏任务面板与快速分析
+├── evidence.rs + evidence/ 一个检材标签页：加载、导航栏、镜像信息、卷与分区、解锁、平台识别、iOS 备份
+├── files.rs + files/       文件列表：目录树、分页列表、筛选条、详情（元数据、文本、十六进制、源码、原类型视图）与导出
+├── search.rs + search/     全局搜索
+├── timeline.rs + timeline/ 时间线
+├── carving.rs + carving/   文件恢复
+├── analysis.rs + analysis/ 分析结果与快速分析
+├── bcp.rs + bcp/           BCP 数据
+├── raid.rs + raid/         RAID 检测与手动重组
+├── settings.rs + prefs.rs  设置页（外观、插件、版本）与界面偏好
+├── theme.rs                浅色 / 深色主题 token
+├── ui.rs                   共享展示组件：工具栏、页脚、空态、详情框、字段行
+├── assets.rs + ../assets/  图标目录与品牌图片、Quicksand 字体、图标源图
+└── format.rs               展示格式化
+```
 
-- 文件列表默认展示名称、类型、大小、修改时间；删除状态、标签（标签列隐藏时）和递归列出时的所在子目录直接标记在名称旁。完整路径、哈希及其他取证字段通过「显示列」开启，已有列偏好保留。
-- 顶部地址栏（`FileListToolbar.vue`）放目录树开关、上一级、面包屑、刷新、搜索与预览开关。表格上方的筛选条（`FileFilterBar.vue`）左侧是列表范围（当前目录 / 所有子目录，即逐级浏览与文件全显）与生效条件标签（`model/filterChips.ts`），右侧是导出、显示列与「列表 / 树图」视图切换；目录树标题条、筛选条与预览标题条同高。表头漏斗平时隐藏，指针进入表头时显示，有条件的列常亮。页脚只放条目数、勾选统计、结果完整性与卷快照状态。树图视图（仅 NTFS）把筛选条换成 `TreemapToolbar.vue`（度量、含已删除、层数与图例），表格换成 `FileTreemap.vue`，页脚换成 `TreemapFooter.vue`；它与列表共用导航栈，列表在后台跟着同步（在树图里进出目录时，装载推迟到进出的动画放完，连续进出只装最后一层；切回列表立即装载），进入树图时退出全显、清除勾选，搜索时回到列表。
-- 每个收窄列表的条件（列条件、关键词、隐藏空目录）都让空结果显示为「没有符合条件的条目」：服务端按条件返回空页时已加载条目也是 0，不能只看已加载数。条件由后端执行时页脚总数标为「符合条件」；目录读取失败在表格区域显示原因与重试。
-- 右侧预览默认关闭，单击文件或点击「右侧预览」按钮时打开；目录树可收起并保留展开状态。搜索范围为当前目录及子目录，筛选条的导出作用于勾选的文件或目录，未勾选时作用于光标行；其他取证操作在右键菜单。
-- 左键单击整行（含名称）只移动光标，双击或 Enter 打开；Ctrl+单击 / Shift+单击经 `useFileSelection` 的 `toggleChecked` / `checkRange` 勾选，不弹出预览；鼠标侧键「后退」返回上级。右键菜单都建在共享的 `UiContextMenu` 上：行（`DiskRowContextMenu`，树图瓦片共用）、表格空白处（`FileListBackgroundMenu`）、表头（`FileColumnMenu`），树图背景与目录树各有自己的菜单。行菜单的作用对象由 `useFileRowMenu` 在打开时定下（`scope`）：右键的是勾选行时为全部可见勾选行，否则只有这一行，`useFileActions` 的复制、导出、哈希、识别与打标都按它取目标。
-- 选中目录后主动打开「右侧预览」会显示该目录并允许拆分；预览已经打开或拆分时，点击目录行同步目录属性。预览关闭时，单击目录仍只选中，不自动展开预览。
-- 打开右侧预览时主窗口保持当前大小，预览在窗口内分配宽度（见「右侧详情栏与固定窗口大小」）。预览左边缘可拖动调整宽度（支持方向键）并记住宽度，拖动只在窗口内与列表分配宽度。窄窗口以右侧浮层展示，关闭即可继续浏览。
-- 拖动预览标题栏超过 48px 后松开，或点击拆分按钮，打开独立 Tauri 窗口；只有创建成功才收起停靠栏。独立窗口接管该列表的预览，随后点击文件、从目录树打开文件或从搜索结果定位时都在同一窗口切换，主界面不再展开停靠栏；切换检材后明确打开的新文件也会同步。工具栏按钮在拆分后用于聚焦独立窗口。
-- `lib/ipc/previewDock.ts` 的选择事件携带 owner / preview 标识、递增 revision，以及文件节点、检材、完整路径、识别结果、哈希和字节定位目标。窗口先订阅再请求最新选择，避免开窗期间的切换丢失；接收端忽略迟到的旧 revision。不同 owner / preview 的窗口互不跟随。
-- 独立窗口「停靠到右侧」通过 `lib/ipc/previewDock.ts` 请求原列表，携带 owner / preview / request 标识。原列表保存最新同步的节点与完整路径，确认当前检材仍匹配后恢复预览并切回文件面板；窗口收到确认后才关闭。原列表关闭、切换检材但尚未选择新文件或通信超时时保留独立窗口并提示原因。直接关闭独立窗口会结束拆分模式，主预览保持关闭，下一次打开文件恢复内嵌预览。
-- `usePreviewDock` 管理窗口归属、拆分状态和订阅生命周期；识别类型、哈希与主题继续使用原有跨窗口同步。拆分与收回会重新挂载内容，视图标签、滚动位置和搜索条件不随窗口迁移。
+后端以 GPUI global `Backend` 保存。`Backend::run(|host, state| …)` 把命令函数放到后端的 tokio 运行时上执行，返回任意执行器都能等待的 future；页面在 `cx.spawn` 中等待结果，从不阻塞界面线程，命令错误转为带取消标记的 `CommandError`。`AppHandle` 的事件进入无界通道，由 `EventHub` 实体在界面线程重新发出，模型按事件名订阅自己的事件。跨页面的状态由 GPUI global 与实体持有：`CaseStore`（活动案件与登记簿）、`TaskStore`（任务中心）、`RaidStore`（会话级 RAID 检测，成员跨检材）、`PlatformStore`（各检材的平台识别报告）和 `Preferences`。GPUI 应用退出后，`Backend::shutdown` 以 15 秒为限执行 `embed::shutdown`。
 
-### 右侧详情栏与固定窗口大小
+启动参数：`LovelyCarve [--case <案件目录>] [检材路径…]`。`--case` 打开（不存在时创建）案件，其余参数作为检材加入。开发时用 `just dev -- --case <目录> <检材>`。
 
-文件列表预览、全局搜索命中、时间线事件、文件恢复结果与分析结果记录的详情都在右侧展开，由 `<UiTransition kind="dock">` 包裹。搜索、时间线、雕刻、分析与 BCP 记录共用 `DetailDock.vue`（标题栏、可拖动宽度，共用 `lovelycarve-detail-width`）。文件列表的详细信息页（含独立窗口）及上述五类详情统一使用 `FileDetailLayout.vue`（完整名称、状态、操作区）、`FileDetailSection.vue`（分组与可选折叠）和 `FileDetailFields.vue`（标签/值、长内容换行、复制反馈）。常用信息默认展开，技术标识默认折叠；可用正文宽度达到 640px 时分组可并列，哈希、上下文等宽分组仍占整行。`analysis-detail.css` 仅承载上下文与复核提示样式。
+主窗口由标题栏和下方的当前检材标签页（或欢迎页）组成。标题栏放检材标签页，以及案件、任务中心和设置入口；检材始终属于活动案件，打开或切换案件会用该案件的检材替换标签页。检材标签页由导航栏和页面组成，页面在首次显示时创建，并在标签页存续期间保留状态。工作页依次是工具栏（左侧搜索与筛选，右侧页面操作）、工作区和页脚（页面上下文与计数），共用 `ui.rs` 的组件；配色全部取自 `theme.rs` 的当前主题，界面必须在浅色和深色下可用。图标是 GPUI Kit 附带的 Lucide 图标，用到的每个图标都要登记在 `assets.rs` 的 `icon_assets!` 中，否则编译通过但显示为空白。界面偏好保存在 `<应用数据>/gpui-preferences.json`，读不到或损坏时回退为默认值。
 
-- 主窗口大小和位置由用户控制。切换页面（含 KeepAlive 激活/停用）、打开/关闭详情、卸载详情组件都不调用原生窗口缩放或移动接口。
-- 详情在当前窗口内以横向过渡展开/收起；足够宽时与表格并列，窄区域以右侧浮层展示。拖动详情分隔条只调整面板宽度并记住选择。
-- 首次挂载或切回缓存页面时保留详情的选中记录与面板宽度。各页面详情开合状态不同，也不改变主窗口尺寸；动画关闭时立即完成布局切换。
-- `lib/ipc/windows.ts` 只负责独立预览窗口的创建与主窗口聚焦；详情生命周期不管理主窗口几何尺寸。
-- 独立预览经桌面专用的内联 Tauri 插件 `preview-window` 创建，适配器位于 `host/preview_window.rs`，在 `lib.rs` 注册并由 capability 授权；只接受预览标签与本地预览页面，不进入取证命令注册表或 CLI。Windows 在 UI 线程复用主窗口的 WebView2 environment，保持原有同源存储与跨窗口同步，原生创建请求按应用串行执行。前端合并同一标签的在途请求，创建前订阅销毁事件，失败时释放订阅。预览窗口可通过标题栏图钉切换原生置顶状态，不持久化到其他窗口。
+任务中心（`tasks/center.rs`）位于标题栏，跟随当前检材：`TaskStore` 先由 `task_list` 取得全部任务，再按 `task-entry` 事件增量合并，并把调度器通知转成界面通知；不从领域事件或命令返回值推断内置任务的结局。快速分析在同一面板中，对当前检材或其识别出的系统运行插件分析器，作业交给插件调度器执行。
 
-### 界面动画
+文件列表的目录树以分区为根，目录首次展开时列出子目录；列表按当前目录或全部子目录分页读取，排序与筛选由后端执行，行可勾选做批量操作并显示检验人员的标签。详情面板显示所选节点的元数据、解码文本、十六进制（每行 16 字节，按 64 KiB 分块随滚动读取）与源码预览（GPUI Kit 编辑器）。导出把文件写到所选路径，目录可导出为文件夹树或一个 ZIP，进度显示在任务中心，来自检材的名称都经 `embed::sanitize_export_name` 清理。
 
-标题栏的「设置中心」默认进入「界面」页，另有「插件」「日志」「关于」；界面页集中提供浅色／深色主题、动画与挂载偏好。
-「设置 → 界面 → 界面动画」提供跟随系统（默认）／开启／关闭三档，
-均通过 `useUiPreferences` 的 `motionPreference` 持久化（沿用 `lovelycarve-ui-animations` 键，旧版布尔值
-`false` 读作关闭、`true` 读作跟随系统）。快捷开关按最少强制原则切换：打开时只有在系统要求减少动态效果时才写入「开启」。
-`main.ts` 在所有窗口挂载前初始化 `useUiMotion`，把偏好与系统 `prefers-reduced-motion` 合并为根元素
-`data-motion="full" | "reduced"`，并监听系统变化和同源窗口的 storage 事件。`data-motion` 是唯一开关：
-CSS 不再直接查询 `prefers-reduced-motion`，因此「开启」可以覆盖系统设置。
+Windows x64 的原类型视图嵌入 Oracle Outside In Viewer 8.5.7 控件。查看器运行在独立进程中：应用以子进程方式重新启动自身，后端经 `fs_media_temp` 物化文件并持有预览租约，直到该进程退出（包括取消与出错）才经 `fs_media_release` 释放。启动时选择 GPUI 的 HWND 交换链（`GPUI_DISABLE_DIRECT_COMPOSITION`），使嵌入的控件可见。
 
-- 关闭（`reduced`）：立即结束正在执行的交互动画并恢复最终布局，`base.css` 把其余过渡和动画统一缩短为瞬时；
-  `.spin` 加载反馈继续以半速旋转，不定进度条改为静态满条。
-- 开启（`full`）：`motion.css` 中的装饰性动效全部挂在 `:root[data-motion='full']` 下，关闭时根本不运行。
-  关键帧只声明起始状态、使用独立的 `translate` / `scale` / `rotate` 属性和 `backwards` 填充，
-  与组件自身的 `transform` 叠加且结束后不残留。时长与曲线来自 `--motion-fast|normal|slow` 与
-  `--ease-out|in|spring` token（入场用较长时长和减速曲线，退场用较短时长和加速曲线）。
+全局搜索在后端运行，关闭页面后继续；选中运行中的搜索时页面跟随 `global-search-progress`。时间线把文件时间与分析事件合成一条事件流，提供按年、月、日的事件计数图和分页事件列表。分析结果按类别、分析器运行与记录类型组织，记录布局取自插件的记录结构。RAID 检测是会话级的，每个检材页显示其参与的阵列；无法由元数据或启发式恢复的阵列可手动指定几何重组。设置页提供外观（主题与界面尺寸）、已安装插件包与版本信息。
 
-动效分布：弹窗背景淡入、对话框自下方弹性放大，关闭更快；`ui-menu` 菜单与气泡由锚点弹出；
-通知从右侧弹入，关闭时固定原位淡出滑走，其余通知平滑归位；工作区与任务面板标签切换对已有容器做上浮淡入，
-不重新创建 KeepAlive 面板，文件预览随选中项切换只做轻微透明度过渡；按钮按下轻缩，选项卡片悬停上浮；
-空态图标弹出、提示条下滑；欢迎页依次入场并保留插图的轻微循环动画；镜像信息卡片依次入场、磁盘布局逐段生长；
-时间线柱状图从左到右生长；子类栏展开与收起使用横向宽度过渡，标签页入场、任务数变化时跳动。
-`ui-stagger` 只用于短小、非虚拟化的列表与卡片网格，不逐行动画文件列表、搜索结果等虚拟列表。
-切换主题时，`setTheme(theme, from)` 在 view transition 中把新主题从所点控件处圆形展开（不支持时直接切换）。
+## 功能与命令对照
 
-`UiTransition` 负责条件面板的纵向展开、横向展开、淡入淡出与气泡弹出（`pop`），覆盖搜索筛选、目录栏、结果详情和时间线图表等区域。
-`v-disclosure-motion` 统一处理原生 details 的展开/收起，保留 summary 键盘操作与嵌套折叠；`v-content-motion` 默认做轻量淡入，
-`.rise` 修饰符用于页面与标签切换，均保留已挂载组件状态。
-两者使用 `animateUi` 管理 Web Animations，按 token 取时长与曲线，连续切换、组件卸载或禁用动画时清理临时尺寸和溢出样式。
-绝对定位的 details 菜单使用淡入而不裁切其内容。
+下表按工作流列出桌面入口（`crates/desktop/src/` 下的模块）与后端命令域；完整注册表以 `crates/backend/src/lib.rs` 为准。
 
-### 全局搜索界面
-
-- 搜索记录默认收起，点击工具栏「搜索记录」展开；列表保留运行状态、命中数量和时间，窄窗口以侧面浮层显示。无记录时从空状态直接新建搜索。
-- 新建搜索默认只展开关键词输入；范围（分区、标签、目录）与高级选项（正则、编码、删除文件、未分配空间、哈希、大小写及命中上限）通过折叠区配置，收起时仍显示当前范围和关键选项摘要。
-- 结果表采用文件、路径/来源、命中内容和定位四列，移除每行重复的关键词、编码与普通文件来源标签；未分配空间等特殊来源仍就地标注。单击查看底部完整上下文、模式、来源、偏移、编码、大小与可用哈希，双击或点击「定位」进入文件列表。
-- 内容筛选与去重设置默认收起，点击「筛选」展开；已应用条件在收起后仍显示摘要。应用按钮与 Enter 使用相同的服务端筛选逻辑，清除按钮恢复未过滤结果（保留去重方式）。导出继续沿用已应用的筛选与去重条件；运行状态下仍显示进度、取消入口和不完整/读取失败提示。
-
-### 案件管理窗口
-
-`CaseManagerModal.vue` 使用紧凑单列布局，顶部显示案件名称和编号，中间优先展示检材；
-`CaseEvidenceRow.vue` 统一普通镜像和 RAID 检材行，直接提供打开操作，路径、添加时间和移除操作按需展开。
-RAID 成员、当前检材卷快照和案件详情默认折叠，切换与锁定案件固定在底部。
-添加检材复用主壳已有的添加流程，分析统一从右上角「任务中心」面板进入；案件锁定时禁用添加、移除和快照构建，保留只读打开。
-
-### 分析结果目录与记录表
-
-`AppShell.vue` 将 `AnalysisResultsNav.vue` 放入 `SidebarNav` 的中间栏插槽；显示分析大类时替代静态子页面菜单，包括收起状态下的悬停预览。
-`SidebarNav` 使用左侧大类栏与中间子类栏，选中大类由主壳的当前页面推导；镜像、工具、分析分别组织页面，BCP 按检材额外追加。
-主窗口没有全局底部状态栏；主题切换集中在设置中心的「界面」，当前会话日志在「日志」中搜索、筛选、复制和清空，软件版本与本地构建时间位于「关于」。通用版本读取和控制台捕获由 `src/composables/useAppVersion.ts` 与 `useConsoleCapture.ts` 提供；日志在启动时捕获，即使设置未打开也持续收集，最多保留 5,000 条。
-分析中间栏直接显示插件执行结果，不重复大类标题或「分析结果」菜单；目录保留自身搜索框，大类栏底部只有子类栏展开 / 收起，不提供过滤或添加检材入口。收起子类栏后点击分析大类或展开按钮即可重新展开。目录仅显示当前检材，省略重复的检材层级，
-以结果分类为小节标题（`sectionAnalysisGroups`），按分析器运行分组列出记录类型及记录数：运行标题两行显示分析器与运行目标（系统或文件）并带告警数，点击打开运行概览，左侧按钮单独折叠；记录类型挂在中性树形缩进线上，记录数是右对齐的等宽数字，没有记录的类型退为次要色；只有告警的运行也列出。概览、任务中心等处改变选中项时，目录展开所在运行并只滚动目录自身。目录支持搜索记录类型、分析器与目标。
-悬停或聚焦大类会显示对应子类，展开时在原中间栏预览，收起时浮出；离开导航或按 Esc 恢复当前页面的大类，并关闭收起状态的浮层。
-悬停不切换当前页面，点击子页面后通过主壳导航并结束预览。
-结果目录独立初始化当前检材与结果树，因此从其他页面悬停分析大类也能查看插件结果，点击结果再激活分析页。
-`AnalysisResultsPanel.vue` 使用主工作区显示表格；默认选中当前检材首个有数据的记录类型，搜索、排序与 CSV 导出共用同一条件。列按字段类型格式化（大小、时长、布尔、枚举名、列表），偏移、哈希、地址与时间用等宽字体，分析器给出的严重程度以徽标显示在名称前。时间戳按 RFC 3339 显示日期、时间、原始精度与时区（`Z` 与零偏移写 UTC，其余写 `UTC+08:00` 这样的偏移，未记录时区的不补），缺失值退为次要色；CSV 仍导出原始值。
-点击记录在当前窗口内打开右侧详情，保持窗口大小与位置；区域较窄时，详情浮在表格右侧；先列字段的完整值（含只在详情显示的字段），再列每个来源文件及其位置说明，技术标识折叠。详情标题栏可切换本页的上一条 / 下一条记录，表格行可用上下方向键移动，详情打开时随之切换；关闭详情时焦点回到打开它的控件，切换过记录时回到最后查看的记录。选中运行时主区域显示运行概览（`AnalysisRunOverview.vue`）。
-两者共享 `useAnalysisResults`，使用请求序号隔离快速切换产生的过期响应；案件切换清空旧状态，记录加载失败支持原地重试。
-后台完成订阅由独立 effect scope 持有，不依赖目录组件的挂载周期。
-
-### 搜索与时间线回源定位
-
-记录带所属检材的 `imageId` 与来源列表（卷键 + 卷内路径、节点、可选字节范围与位置说明）；文件级运行的结果树节点另带输入文件节点 `sourceNodeId`。分页与详情采用同一查询口径，检材归属以运行记录为准。
-
-分析结果行内「定位源文件」与详情源文件列表同样通过 `useResultNavigation` 激活记录所属检材。来源的卷键 + 卷内路径优先于节点；旧版结果读取 `source.root` + `source.path`（多来源使用 `source.paths`）与 `source.node` 属性，兼容旧 Linuxinfo 的 `linux.root` / 路径型 `linux.source`，缺少时回到运行的输入文件。`fs_source_locate` 在镜像目录中按组件解析并返回导航帧，无需 filedb；严格保留卷和名称大小写，支持分区、LVM 和 Docker 容器视图，跟随中间目录链接，保留末级链接作为定位目标。越过卷根、循环链接、缺失卷和文件明确报错；缺少来源地址的记录禁用入口。源文件定位不强制打开字节偏移，详情提供多个源文件的独立入口。
-
-全局搜索发出包含检材 ID、节点 ID、命中偏移和长度的 `FileLocationTarget`；时间线文件事件使用记录自身的 `eid` 和 `oid`，不强制打开偏移 0。`useResultNavigation` 先激活来源检材，再等待相同检材的文件列表挂载；案件、检材或页面改变后放弃在途跳转，避免定位到另一份检材。
-文件列表通过 `fs_node_locate` 解析祖先目录：普通节点从 `filedb` 读取父链和目标卷标识，分区/根节点不要求存在于 `filedb`，到达该边界后合成导航帧；目标行缺失时明确报错。随后退出全显并清除原筛选，等待目录装载完成后选中、滚动并打开目标。源文件缺失或索引过期时显示可操作的失败提示。插件时间线事件仍展开详情，不把插件事件 ID 当作文件节点 ID。
-搜索定位使用 `FileRangePreview`，通过现有 `fs_read_range` 每次读取至多 4 KiB，显示绝对偏移并高亮命中字节；可前后分段浏览并回到命中位置，不受普通预览的 1 MiB 上限限制。独立预览及停靠返回保留原命中位置。越界、短读和过期响应不会被显示为定位成功。
-
-### 右上角任务中心面板
-
-主窗口 `AppShell.vue` 通过 `Titlebar` 的插槽提供「任务中心」入口，活动任务数持续显示在入口上；面板本身是 `TaskHub.vue`。
-面板固定在右上角，「任务」与「快速分析」以页签切换（左右方向键可切换），始终跟随顶部当前检材标签，检材名称以只读标签显示在页签行右侧。
-页内不提供检材选择器或“全部检材”选项；没有当前检材时显示打开提示，不自动回退到案件第一份检材。
-切换顶部标签时任务列表、通知、活动数量和快速分析目标一起更新，其他检材已启动的后台任务继续运行。
-任务中心不占用侧边栏或主工作区，案件管理的检材行也不重复放置分析入口。
-面板收起时保留组件和选择状态，后台任务继续运行；切换案件时卸载面板并重置目标。
-
-任务页（`TaskCenterPanel.vue`）按状态分为「进行中」（运行、排队、待派发、暂停）、「需要处理」（失败、离线）和「已结束」（成功、取消）三张卡片，沿用镜像信息页的卡片样式：`ui-card` 标题行为主色图标、标题与 `ui-count` 计数，右侧按钮可折叠该段；卡片内每个任务一行，行间细分隔线，状态由所在分组与行内状态徽标表达。「已结束」超过 6 条时其余折叠为「显示其余 N 项」，搜索时显示全部匹配；调度器最近通知收在末尾一张默认折叠的卡片中。分组、排序与状态色（`TASK_STATUS_TONE`）在 `features/tasks/model/taskCenterView.ts`，条目的标题、对象、状态说明、进度与结果页在 `model/taskEntryView.ts`。
-任务行第一行是名称和状态徽标（`ui-badge` 按状态色着色，运行中显示进度百分比，成功不显示徽标），第二行是摘要和已用时间（插件提供时加剩余时间）、创建时间或开始时间；只有运行和暂停显示进度条，不定进度显示「处理中」；失败任务的摘要显示错误。
-每行右侧只放一个带文字的直接操作（`ui-btn sm`）：文件恢复扫描运行中暂停、已暂停继续；插件任务离线或旧版暂停时「开始」（从头重新分析）；排队或运行中取消；失败或取消后重新分析；成功后改为结果跳转：插件任务在产生分析结果后「查看分析结果」（打开分析结果页并定位该功能的结果，见 `focusAnalysisResult`），全局搜索、时间线、文件恢复（及其恢复文件导出）打开各自页面，Docker 与文件系统加载打开文件列表，平台识别、加密卷解锁与镜像哈希打开镜像信息页。内置任务在详情中始终提供前往所在页面的入口。可用的操作以条目的 `actions` 为准。
-点击任务行展开详情：完整错误（`ui-alert`）、对象、文件或系统、选项、开始（未开始则创建）时间、耗时、未完成时保留的进度、结果计数（记录、时间点、告警、读不出的源字节；字段行与采集记录同样式），以及靠右的取消、重新分析、前往结果和靠左的删除；技术标识（任务、检材、系统与运行 ID）再单独折叠。成功不显示进度，失败和取消保留最后进度，不伪装成已完成。重新分析和删除继续使用原确认流程。
-内部任务默认隐藏，有内部任务时工具栏显示「内部 N」开关；搜索匹配当前检材的任务名、文件名与系统名。插件任务名按插件语言包翻译。
-条目时间统一为 Unix 毫秒（插件任务行的 RFC 3339 时间由后端换算，旧任务行不带时区的 `YYYY-MM-DD HH:MM:SS` 按 UTC），列表时间按本地时区显示（当天只显示时分），插件任务与内置任务按同一时钟排序。
-快速分析（`QuickAnalysisPanel.vue`）按插件勾选：同一插件适用于所选系统的系统级功能与全部检材级功能合为一个格子，勾选即以默认选项运行它们；文件级功能需要目标文件，只能从文件列表右键提交，这里不列出。工具栏放系统选择（识别出多个系统时为下拉框，单一系统时只读显示，识别中、识别失败可重试、未识别出系统时分别提示）与搜索（插件名、插件 id 或任一功能名），其下一行是覆盖全部列出插件（搜索时为匹配项）的三态「全选」框与「全部展开 / 收起」。插件按收藏、分类（基本信息、系统记录、浏览器、应用程序、日志、数据库、文件分析……，插件自带的分类取其语言包中的名称）、耗时任务分组，分类标题行带自己的三态全选框、已选 / 总数并可折叠，滚动时停在顶部；插件以格子平铺，面板宽 440px 时每行两个，选中格子为浅底加主题色文字，收藏星标悬停时出现。格子右侧的图标是该插件在所选目标上最近任务的汇总状态（执行中、排队、暂停、离线、失败、取消、完成），悬停提示列出插件包含的功能和各自最近任务；任一功能的作业尚未结束时整块不能勾选，已勾选的插件因其他入口开始任务时自动取消勾选。底栏显示已选插件数和其中已有结果、成功后将被替换的插件数，「更多操作」中可重新分析全部任务；提交成功后自动切到任务页。
-提交捕获发起时的检材 ID，批量部分失败时保留未完整提交的插件；切换检材会卸载旧组件并停止继续发起批量操作，已经启动的任务仍在原检材下执行。
-任务列表来自后端的统一列表：`useTaskEntries` 是模块级单例，按 `task_list` 拉取全部任务、按 `task-entry` 事件增量合并（刷新期间到达的事件优先于较旧的列表）、把调度通知转成 toast，切换案件时清空并重拉；`useUnifiedTaskCenter` 按当前检材过滤（打开检材的任务不属于任何检材，总会显示）并给出标题栏计数，把操作分派给 `task_cancel`、文件恢复的 `carve_scan_pause` / `carve_scan_resume` 与插件任务命令；插件任务命令的回复按与后端相同的映射（`pluginTaskEntry`）先行合并，随后的事件再覆盖。快速分析保持使用插件调度接口。
-
-内置任务的状态全部来自后端登记：命令在登记上写入对象、阶段、计数与结局，前端只按种类格式化（`builtinMessage`），不从领域事件或命令返回值推断结局；关闭面板、切换页面不影响跟踪，执行记录按上述列出方式保留。取消请求先于任务登记发出时（例如检材刚开始加载），任务一出现就再取消一次。
-
-LUKS / VeraCrypt 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提交后立即关闭凭据弹窗。
-任务中心显示「加密卷解锁」、加密方案与源分区（后端写入的方案与卷键）、排队/运行状态与不定进度，按任务 ID 取消，
-结局与解锁所用的算法由解锁命令报告。桌面使用 `sourcePartition` 目标，`EvidenceSession`
-持有按原分区 ID 绑定的原生解密文件系统视图；源 `DiskImage` 的字节、几何、哈希与 RAW 导出不变。
-目录、文件、范围读取、挂载和快照按节点分区路由到解密视图，节点 ID 与索引仍归属原检材。
-成功后后台自动补建该分区的案件索引或无案件会话索引。主窗口仅更新原镜像元数据，
-不打开新标签；停用的标签恢复时使用最新元数据。卸载原镜像撤销解密读取；切案后忽略迟到的 UI 结果。
-从分区行进入时不提供分区选择，凭据弹窗不显示说明文字。密码只传入 IPC，不进入任务记录。
-任务列表也接受当前已加载的会话镜像，未打开案件或镜像没有案件台账条目时仍可查看、取消后台任务；快速分析仍要求选择案件检材。
-
-文件恢复扫描的条目就是它的会话：会话每次变化（发出 `carve-scan-progress` 时）同时发出 `task-entry`，条目 id 是会话的任务 id，另带会话 id 供暂停 / 继续（`carve_scan_pause` / `carve_scan_resume`）；会话保存阶段（文件系统记录 / 签名雕刻）、进度、发现文件数、结束时间与错误。雕刻会话仅存于后端内存（每份检材保留最近三个），不承诺重启后恢复。
-搜索和时间线通过 `task_cancel` 取消，取消请求期间列为「取消中」直到任务停下；不提供引擎尚不支持的暂停或重启按钮。Docker 按检材和容器去重，首次展开、进入容器或路径查询触发合并及索引落盘：`fs_docker_prepare` 的 build 模式登记为 `dockerPrepare` 任务，列出容器名、条目数与索引是否保存；目录树和列表的并发读取等待同一次准备（`files/composables/containerReads.ts`），合并不能取消，跨重启的缓存读取也不新增任务。
-文件系统目录快照每个卷一条「文件系统加载」条目：`snapshot-build-progress` 的各阶段同时写入登记——`started/walking` 为读取目录（阶段 `filesystem` 与已读条目数），`indexing` 为建立索引（阶段 `index`），`done` 才报告成功，`error` / `cancelled` 报告失败或取消；复用已发布的索引时标为复用。检材加入案件触发的构建标为自动，手动重建为手动。不估算未知总量，普通文件夹展开不单独制造任务。
-索引安装收尾集中在 `app::workflows::snapshot::snapshot_install`：成功安装、索引错误和取消各自发出真实终态，目录快照内存回退不代表索引成功。案件自动构建、缓存索引复用/重建和无案件会话都发出明确的索引阶段。
-自动识别平台以 `autoDetect` 任务列出（id `autodetect:<image id>`，每份检材一条，保留最近一次识别）：识别结束时把平台、厂商显示名、检材类型与是否备份写入登记并报告结局；检材加入案件时的首任务标为自动触发，镜像信息页的识别为手动，两者同时进行时共用一份登记。成功摘要为平台与检材类型，结果入口打开镜像信息页；运行中可取消，取消不算失败。镜像信息页把进行中的识别视为识别中，不再重复发起。
-重新打开案件时，每份检材保留的搜索（最多 20 次，见「全局搜索」）与最近一次时间线构建由 `task_list` 从搜索历史与时间线状态列出；时间线重建更新该检材的同一条目，哈希、导出、Docker 合并等记录只在本次会话保留。搜索记录删除和重新执行仍从全局搜索页操作，时间线重新构建仍从时间线页操作。
-
-### 前端职责入口
-
-业务面板按生命周期、查询、操作和显示拆分，后续新增代码优先进入已有职责 owner：
-
-| 文件 | 建议方向 |
-| --- | --- |
-| `src/features/files/components/DiskFileList.vue` | 列表装配与公开定位契约；查询、筛选、选择、键盘、菜单、预览、导出、派生写入分属 composable，工具栏/表格/底栏/浮层独立 |
-| `src/features/preview/components/DiskFileDetail.vue` | 预览装配与按需 viewer；前缀/解码/识别、媒体租约、搜索、hex、拖拽各自持有资源 |
-| `src/features/search/components/SearchResultsPanel.vue` | 配置、历史/进度、分页、执行和导出分离，36px 结果表由子组件拥有 |
-| `src/features/timeline/components/TimelinePanel.vue` | 构建、聚合、筛选、记录分页和导出分离 |
-| `src/features/carving/components/CarvePanel.vue` | 配置、历史/任务、雕刻结果游标、文件系统结果、浏览树、预览与恢复分离 |
-| `src/features/files/components/DiskFileTree.vue` / `src/features/preview/components/viewers/ZipViewer.vue` | 树加载/元数据/纯投影、归档/成员读取/虚拟树各自拥有实例生命周期 |
-
-拆分时保持现有行为和 IPC 契约不变，先加边界和测试，再移动逻辑。
-
-## 功能与 IPC 对照
-
-下表按工作流列出前端入口与后端命令域；完整注册表以 `src-tauri/src/lib.rs` 为准，组件只调用 `src/lib/ipc/` 的类型封装。
-
-| 功能 | 前端入口 | 主要命令 / 事件 |
+| 功能 | 桌面入口 | 主要命令 / 事件 |
 | --- | --- | --- |
-| 案件与证据 | 主壳、案件管理、文件会话 | `case_*`、`image_load`、`image_unload`、`physical_disks_list`、`image-load-progress` |
-| 镜像信息 | 分区、校验、识别与 RAID | `image_info`、`autodetect_evidence`、`case_evidence_platform_set`（手动指定平台）、`raid_*`、`image_list`（手动重组选择成员）、`autodetect-finished` / `autodetect-failed`、`raid-detect-progress` |
-| 文件浏览与预览 | 文件列表、详情、独立预览窗 | `fs_children*`、`fs_flat_*`、`fs_subtree_empty_dirs`、`fs_docker_prepare`、`win_drive_letters`、`fs_read*`、`fs_media_*`、`fs_preview*`、原类型预览命令 |
-| 索引与快照 | 卷快照、全显、树图和文件查询 | `snapshot_*`、`fs_child_counts`、`snapshot-build-progress`；目录与全显经 `fs_children_page` / `fs_flat_page` 读取卷索引，树图经 `fs_size_tree` 读取卷索引汇总的空间占用树 |
-| 标签与派生数据 | 文件列表的标签、哈希与类型列 | `fs_tags_*`、`fs_digest_load_nodes` / `fs_digest_persist`、`fs_identify_type`、`fs_ftype_load_nodes` / `fs_ftype_persist` |
-| 校验与导出 | 哈希、导出任务 | `image_hash_compute`、`image_export_raw`、`fs_digest`、`fs_export*`、`image-hash-progress`、`image-export-progress`、`fs-export-dir-progress` |
-| 数据浏览 | 数据库预览和 BCP | `fs_sqlite*`、`fs_realm*`、`bcp_*` |
-| 回源定位 | 搜索、时间线与分析结果的定位 | `fs_node_locate`、`fs_source_locate` |
-| 全局搜索 | `SearchResultsPanel.vue` | `global_search_*`、`global-search-progress` |
-| 时间线 | `TimelinePanel.vue` | `timeline_*`、`timeline-progress` |
-| 文件恢复 | `CarvePanel.vue` | `carve_*`（含 `carve_filesystem_results`）、`carve-scan-progress`、`task-progress` |
-| 加密与历史卷 | 解锁控件、卷影副本 | `bitlocker_*`、`encrypted_volume_unlock`、`filevault_inspect`、`shadow_copy_*`、`bitlocker-unlock-progress` / `bitlocker-scan-progress` |
-| iOS 本地备份 | 镜像信息页的解锁与异常检查 | `ios_backup_unlock`、`ios_backup_audit`，操作与边界见 [iOS 备份](IOS_BACKUPS.md) |
-| 挂载 | 卷挂载与共享控件 | `fs_mount_readonly`、`fs_unmount_readonly`、`fs_mounts`、`fs_share_mount` / `fs_unshare_mount`、挂载点命令 |
-| QR/OCR | 文件详情 | `qr_scan`、`ocr_scan`、`qr-scan-progress`，可用性由构建特性决定 |
-| 插件与任务 | 设置、任务中心、结果面板 | `plugin_*`、`sched_*`、`analysis_*` |
-| 任务中心 | 任务中心、检材加载页、镜像信息页 | `task_list`、`task_status`、`task_cancel`、`task-entry`；`task-lifecycle`、`task-progress` |
-| 主机路径 | 拖放添加检材 | `system_path_info`（判断拖入的路径是否为目录） |
+| 案件与证据 | `workspace.rs`、`workspace/sources.rs`、`cases/` | `case_*`、`image_load`、`image_unload`、`physical_disks_list`、`image-load-progress` |
+| 镜像信息 | `evidence/dashboard.rs`、`evidence/platform.rs`、`evidence/volumes.rs` | `image_info`、`autodetect_evidence`、`case_evidence_platform_set`（手动指定平台）、`image_export_raw`、`image_hash_compute`、`autodetect-finished` / `autodetect-failed` |
+| RAID | `raid.rs`、`raid/builder.rs` | `raid_auto_detect`、`raid_manual_assemble`、`raid-detect-progress` |
+| 文件浏览与预览 | `files/` | `fs_children_page`、`fs_flat_page`、`fs_read_range`、`fs_preview_text`、`fs_stat`、`fs_media_temp` / `fs_media_release`、`fs_node_locate` |
+| 标签与派生数据 | 文件列表的标签与哈希 | `fs_tags_load`、`fs_tags_apply_changes`、`fs_digest`、`fs_digest_load_nodes` / `fs_digest_persist` |
+| 导出 | `files/export.rs` | `fs_export`、`fs_export_dir`、`fs-export-dir-progress` |
+| 全局搜索 | `search.rs`、`search/` | `global_search_*`、`global-search-progress` |
+| 时间线 | `timeline.rs`、`timeline/table.rs` | `timeline_status`、`timeline_start`、`timeline_count`、`timeline_datas`、`timeline_export`、`timeline-progress` |
+| 文件恢复 | `carving.rs`、`carving/` | `carve_*`（含 `carve_filesystem_results`）、`carve-scan-progress` |
+| 加密与历史卷 | `evidence/unlock.rs`、`evidence/volumes.rs` | `bitlocker_*`、`encrypted_volume_unlock`、`filevault_inspect`、`shadow_copy_*`、`bitlocker-unlock-progress` / `bitlocker-scan-progress` |
+| iOS 本地备份 | `evidence/ios.rs` | `ios_backup_unlock`、`ios_backup_audit`，操作与边界见 [iOS 备份](IOS_BACKUPS.md) |
+| 挂载 | `evidence/volumes.rs` | `fs_mount_readonly`、`fs_unmount_readonly`、`fs_mounts`、`fs_share_mount` / `fs_unshare_mount`、`fs_available_mount_points` |
+| BCP 数据 | `bcp.rs`、`bcp/table.rs` | `bcp_catalog`、`bcp_rows` |
+| 插件与分析 | `settings.rs`、`analysis.rs`、`analysis/` | `plugin_list`、`plugin_install`、`plugin_uninstall`、`sched_task_functions`、`sched_systems_list`、`sched_task_create`、`analysis_result_tree`、`analysis_records_page` |
+| 任务中心 | `tasks.rs`、`tasks/center.rs` | `task_list`、`task_cancel`、`task-entry` |
 
-下列命令目前没有桌面调用方（部分在 `src/lib/ipc/` 保留了类型化封装），上表的通配符不包括它们：`image_bad_regions`、`os_detect`、`case_option_query` / `case_option_save`、`filedb_*`、`fs_stat`、`fs_dir_stats`、`fs_digest_load` / `fs_ftype_load`（整镜像兼容入口）、`fs_streams` / `fs_stream_preview` / `fs_stream_export`、`fs_vim_swap_preview`、`fs_usn_journal*` / `fs_ext4_journal*`、`fs_timeline_export`、`timeline_range`、`carve_latest_scan`、`sched_evidence_post_actions_set`、`module_summary` 与 `reveal_path`。它们大多是 CLI 命令的后端（见 `lovelycarve-cli schema --list` 的 `ipcCommand`）；`fs_usn_journal` 与 `carve_latest_scan` 在 `commands.toml` 的 `[[superseded]]` 中指向替代命令。
+下列命令没有桌面调用方，主要作为 CLI 命令的后端（见 `lovelycarve-cli schema --list` 的 `ipcCommand`）：结构化原类型预览（`fs_sqlite*`、`fs_realm*`、`fs_binary_preview`、`fs_gguf_preview`、`fs_zip_*`、`fs_csv_preview`、`fs_vim_swap_preview`）、卷快照管理（`snapshot_build` / `snapshot_list` / `snapshot_drop`）、空间占用树 `fs_size_tree`、日志（`fs_usn_journal*` / `fs_ext4_journal*`）、数据流（`fs_streams` / `fs_stream_preview` / `fs_stream_export`）、`filedb_*`、`fs_source_locate`、`fs_docker_prepare`、`fs_identify_type` 与 `fs_ftype_*`、`qr_scan` / `ocr_scan`、`os_detect`、`win_drive_letters`、插件任务的 `sched_task_cancel` / `start` / `restart` / `remove`、`analysis_record_detail` / `analysis_run_get`，以及 `image_bad_regions`、`image_list`、`fs_children`、`fs_child_counts`、`fs_read`、`fs_read_large`、`fs_preview`、`carve_scan_status`、`carve_latest_scan`、`carve_preview`、`timeline_types`、`timeline_range`、`fs_timeline_export`、`fs_dir_stats`、`fs_subtree_empty_dirs`、`fs_flat_ext_counts`、`fs_digest_load`、`fs_tags_load_nodes`、`fs_tags_save`、挂载点建议与创建、`case_rename`、`case_option_*`、`case_evidence_list`、`plugin_restart`、`task_status`、`module_summary`、`system_path_info`、`reveal_path` 与 `sched_evidence_post_actions_set`。`fs_usn_journal` 与 `carve_latest_scan` 在 `commands.toml` 的 `[[superseded]]` 中指向替代命令。
 
 ## 扩展流程
 
-新增跨 IPC 功能通常需要同一改动完成：
+新增跨前后端的功能通常需要同一改动完成：
 
-1. `src-tauri/src/core/` 增加核心逻辑。
-2. `src-tauri/src/commands/` 增加命令 wrapper（`#[cfg_attr(feature = "desktop", tauri::command)]`，宿主参数使用 `crate::host` 类型）。
-3. `src-tauri/src/lib.rs` 注册到 `tauri::generate_handler!`。
-4. `src-tauri/src/cli/commands.toml` 把它映射为一条 CLI 命令（集合、动词、位置参数、敏感与生成字段），否则构建失败。
-5. `src/lib/ipc/<domain>.ts` 增加类型化封装。
-6. 组件或 composable 调用封装。
-7. 运行 `just ipc-check`、`just typecheck`、`just test-fe`、`just build-fe` 和相关 Rust 检查，完整矩阵见 [贡献指南](../CONTRIBUTING.md)。
+1. `crates/core/src/` 增加核心逻辑。
+2. `crates/backend/src/commands/` 增加命令函数（宿主参数使用 `crate::host` 类型）。
+3. 在 `crates/backend/src/lib.rs` 的 `command_registry!` 中注册。
+4. `crates/cli/src/commands.toml` 把它映射为一条 CLI 命令（集合、动词、位置参数、敏感与生成字段），否则构建失败。
+5. 功能有桌面界面时，在对应页面经 `Backend::run` 调用它，需要的事件经 `EventHub` 订阅。
+6. 运行 `just check`、`just test`、`just test-cli`，桌面应用有改动时再运行 `just test-desktop`；完整矩阵见 [贡献指南](../CONTRIBUTING.md)。
 
-事件需要明确的 payload、归属、清理和错误处理；插件能力与 QR/OCR 等可选能力要显示准确的可用状态。新增入口必须有已注册的后端命令，不保留“暂未接入”的空壳菜单。修改后检查切换镜像、面板卸载与迟到响应，避免旧任务的结果写入新的上下文。
-
+事件需要明确的 payload、归属、清理和错误处理；插件能力与 QR/OCR 等可选能力要显示准确的可用状态。新增入口必须有已注册的后端命令，不保留“暂未接入”的空壳菜单。修改后检查切换检材、页面关闭与迟到响应，避免旧任务的结果写入新的上下文。
 ### 插件结果发布互斥
 
 插件运行把记录写进暂存运行；调度器提交前按 `(task_id, seq)` 校验执行归属，并获取每次执行独立的发布锁。暂存运行的发布（替换同一作业的上一次结果）、时间线投影与任务终态提交在锁内完成；取消、看门狗与案件解绑获取同一把锁后撤销执行。已撤销的迟到结果不能发布，暂存运行随之删除；已经开始发布的执行收尾后控制面重新判定状态。任务台账提交失败时按精确 run_id 删除刚发布的运行，不回删同一作业的其他运行。不同检材的发布不使用全局锁。

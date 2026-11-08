@@ -61,7 +61,7 @@ LovelyCarve 使用原生 Rust `yaffs2-reader` 读取带 page / spare 的 YAFFS2 
 独立 Python stdlib 夹具覆盖大小端、标签偏移、存在 / 不存在的标签 ECC、UTF-8 名称、
 硬链接、符号链接、设备、删除、重命名、shrink 后扩展、shadow、64 位大小 / 时间、
 稀疏大范围读取、取消、资源上限、源短读和错误。
-生成器与 CC0 哈希见 [夹具清单](../../src-tauri/vendor/yaffs2-reader/test_data/fixtures.json)。
+生成器与 CC0 哈希见 [夹具清单](../../vendor/yaffs2-reader/test_data/fixtures.json)。
 
 公开 Binwalk `yaffs2.bin` 与独立 Python
 [yaffshiv f6f0ef77bf79](https://github.com/devttys0/yaffshiv/blob/f6f0ef77bf79ca46aaa77bc34eda06e7b55da8e8/src/yaffshiv)

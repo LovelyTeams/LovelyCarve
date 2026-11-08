@@ -2,7 +2,7 @@
 
 通过「添加检材 → 镜像文件」或 CLI `images open` 打开裸 MINIFS v3、以及带显式
 MINIFS 分段描述的 TP-Link legacy v1 更新固件，浏览、预览、哈希、导出和建立索引。
-使用独立 Rust 库 [`minifs`](../../src-tauri/vendor/minifs/README.md)，不执行固件或外部提取器。
+使用独立 Rust 库 [`minifs`](../../vendor/minifs/README.md)，不执行固件或外部提取器。
 
 ## 实现与限制
 

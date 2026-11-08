@@ -12,7 +12,7 @@ import json
 import struct
 import zlib
 
-OUTPUT = Path(__file__).resolve().parent.parent / 'src-tauri/vendor/classic-hfs/tests/fixtures'
+OUTPUT = Path(__file__).resolve().parent.parent / 'vendor/classic-hfs/tests/fixtures'
 
 
 def put16(data, offset, value):

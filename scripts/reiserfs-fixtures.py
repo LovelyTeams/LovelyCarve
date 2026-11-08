@@ -12,7 +12,7 @@ import json
 import struct
 import zlib
 
-OUTPUT = Path(__file__).resolve().parent.parent / 'src-tauri/vendor/reiserfs-reader/tests/fixtures'
+OUTPUT = Path(__file__).resolve().parent.parent / 'vendor/reiserfs-reader/tests/fixtures'
 
 
 def key(pair, offset, kind, version):

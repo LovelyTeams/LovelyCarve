@@ -1,0 +1,242 @@
+# LovelyCarve workspace: the forensic engines (`lovelycarve-core`), the
+# in-process backend both frontends embed (`lovelycarve-backend`), the
+# standalone CLI (`lovelycarve-cli`) and the native GPUI desktop app
+# (`lovelycarve-desktop`). The vendored reader crates, the plugin submodule
+# and the Python binding keep their own manifests and lockfiles.
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/backend", "crates/cli", "crates/desktop"]
+# A bare `cargo build` / `cargo test` leaves the desktop app out. GPUI turns
+# on serde_json's `preserve_order`; built in the same invocation, the CLI
+# would inherit it and change the key order of its dynamic JSON output.
+default-members = ["crates/core", "crates/backend", "crates/cli"]
+exclude = ["vendor", "plugins", "python"]
+
+[workspace.package]
+version = "1.2.0"
+authors = ["LovelyCarve contributors"]
+edition = "2021"
+license = "AGPL-3.0-only"
+# WOF's pure Rust XPRESS/LZX decoder (ms-compress) requires 1.99.
+# The installed toolchain is newer; keep the manifest truthful.
+rust-version = "1.99"
+publish = false
+
+# Dependencies shared by several workspace crates. Crate-specific ones stay in
+# the member manifests next to the code that needs them.
+[workspace.dependencies]
+lovelycarve-backend = { path = "crates/backend" }
+lovelycarve-core = { path = "crates/core" }
+# DLL plugin C ABI, LPP wire types and the shared plugin-library loader
+# (plugins/sdk; the plugins and lc-plugin-host build in their own workspace).
+lovelycarve-plugin = { path = "plugins/sdk", features = ["loader"] }
+ios-backup-core = { path = "vendor/ios-backup/core" }
+qcow2 = { path = "vendor/qcow2" }
+
+anyhow = "1.0.104"
+chrono = { version = "0.4.45", features = ["serde"] }
+# lovelycarve-cli 的子命令与参数解析；帮助由 cli/help.rs 按命令目录渲染。
+clap = { version = "4.6.7", features = ["derive", "string", "env"] }
+# The per-user data directory (case registry, user plugins) the desktop app
+# and the CLI share.
+dirs = "7.0.0"
+flate2 = "1.1.10"
+fs2 = "0.4.3"
+hex = "0.4.3"
+# Independent MD5 oracle for tests and filesystem probes.
+md-5 = "0.11.0"
+parking_lot = "0.12.5"
+rusqlite = { version = "0.40.2", features = ["bundled-sqlcipher-vendored-openssl", "collation", "hooks"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha1 = "0.11.0"
+sha2 = "0.11.0"
+sm3 = "0.5.0"
+tempfile = "3.27.0"
+time = { version = "0.3.55", features = ["formatting"] }
+tokio = { version = "1.53.2", features = ["sync", "rt-multi-thread", "macros", "fs", "io-util", "process", "time", "signal"] }
+tokio-util = { version = "0.7.20", features = ["rt"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+uuid = { version = "1.28.0", features = ["v4", "serde"] }
+winapi = { version = "0.3.9", features = ["fileapi", "handleapi", "ioapiset", "jobapi2", "minwinbase", "ntdef", "ntstatus", "winioctl", "winnt"] }
+zeroize = "1"
+zip = { version = "9.0.1", default-features = false, features = ["deflate"] }
+zstd = { version = "0.14.2", default-features = false }
+
+# Mechanically enforced subset of the AGENTS.md Rust conventions. Existing
+# violations are warnings (not errors); `cargo clippy --fix --allow-dirty`
+# rewrites the format-args ones.
+[workspace.lints.clippy]
+uninlined_format_args = "warn"
+
+# Real LUKS2 keyslots can request 1 GiB of Argon2 memory for several passes.
+# Keep their KDF optimised in development too, so debug overhead does not
+# trigger the reader's wall-clock derivation budget for valid evidence.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+
+# Reopening logical phone evidence can inflate tens of GiB before showing the
+# file tree. Keep the DEFLATE/CRC hot paths optimised in development as well.
+[profile.dev.package.flate2]
+opt-level = 3
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+[profile.dev.package.zlib-rs]
+opt-level = 3
+[profile.dev.package.simd-adler32]
+opt-level = 3
+[profile.dev.package.crc32fast]
+opt-level = 3
+
+[profile.release]
+# unwind（非 abort）：让 core::xlsx_table 的 catch_unwind 在发行版也能兜住
+# umya-spreadsheet 解析恶意/畸形 .xlsx 时的 panic —— 取证工具处理敌对镜像，
+# 单个坏文件不能 abort 整个 app（降级为「仅值、无样式」）。
+panic = "unwind"
+codegen-units = 1
+lto = true
+incremental = false
+opt-level = "s"
+strip = true
+
+# Size-first overall, but the byte-crunching hot paths (image hashing, zstd
+# snapshot bodies, deflate/xz/bzip2 containers, SQLCipher, keyword/regex
+# scans) get full optimisation. The `-sys` crates are C code compiled by `cc`
+# outside rustc's LTO, so their opt-level applies directly; compare against
+# `--profile release-fast` when tuning.
+[profile.release.package.filevault-core]
+opt-level = 3
+
+[profile.release.package.xts-mode]
+opt-level = 3
+
+[profile.release.package.aes-kw]
+opt-level = 3
+
+[profile.release.package.crc]
+opt-level = 3
+
+[profile.release.package.sha1]
+opt-level = 3
+[profile.release.package.sha2]
+opt-level = 3
+
+[profile.release.package.aes]
+opt-level = 3
+
+[profile.release.package.blowfish]
+opt-level = 3
+[profile.release.package.cbc]
+opt-level = 3
+[profile.release.package.rc4]
+opt-level = 3
+[profile.release.package.serpent]
+opt-level = 3
+
+[profile.release.package.pbkdf2]
+opt-level = 3
+
+[profile.release.package.hmac]
+opt-level = 3
+[profile.release.package.argon2]
+opt-level = 3
+[profile.release.package.blake2]
+opt-level = 3
+[profile.release.package.md-5]
+opt-level = 3
+[profile.release.package.fast-md5]
+opt-level = 3
+[profile.release.package.sm3]
+opt-level = 3
+[profile.release.package.crc32fast]
+opt-level = 3
+[profile.release.package.gzipf]
+opt-level = 3
+[profile.release.package.zstd-sys]
+opt-level = 3
+[profile.release.package.libsqlite3-sys]
+opt-level = 3
+[profile.release.package.libbz2-rs-sys]
+opt-level = 3
+[profile.release.package.lzma-rust2]
+opt-level = 3
+[profile.release.package.lzma-rs]
+opt-level = 3
+[profile.release.package.sercomm-firmware]
+opt-level = 3
+[profile.release.package.lzvn-core]
+opt-level = 3
+[profile.release.package.cmpfs]
+opt-level = 3
+[profile.release.package.zlib-rs]
+opt-level = 3
+[profile.release.package.miniz_oxide]
+opt-level = 3
+
+[profile.release.package.ms-compress]
+opt-level = 3
+[profile.release.package.ms-compress-ruzstd]
+opt-level = 3
+[profile.release.package.lzokay]
+opt-level = 3
+[profile.release.package.jffs2]
+opt-level = 3
+
+# YAFFS1 validates every allocated NAND page's tag/body parity in Rust.
+[profile.release.package.yaffs2-reader]
+opt-level = 3
+[profile.release.package.lz4_flex]
+opt-level = 3
+[profile.release.package.memchr]
+opt-level = 3
+[profile.release.package.aho-corasick]
+opt-level = 3
+[profile.release.package.regex-automata]
+opt-level = 3
+
+[profile.release.package.ruzstd]
+opt-level = 3
+
+# bcachefs checks metadata/data and authenticates unsealed encrypted extents.
+[profile.release.package.crc32c]
+opt-level = 3
+[profile.release.package.twox-hash]
+opt-level = 3
+[profile.release.package.chacha20]
+opt-level = 3
+[profile.release.package.poly1305]
+opt-level = 3
+
+[profile.release.package.minix-reader]
+opt-level = 3
+
+[profile.release.package.qnx-reader]
+opt-level = 3
+
+[profile.release.package.f2fs-reader]
+opt-level = 3
+
+[profile.release.package.lamfold-erofs]
+opt-level = 3
+
+# UDF validates descriptor and directory CRCs while traversing metadata.
+[profile.release.package.lamfold-udf]
+opt-level = 3
+
+# Performance-oriented comparison profile for parser, decompression, hash,
+# and snapshot benchmarks. The shipping `release` profile remains size-first
+# until representative evidence workloads justify changing that default.
+[profile.release-fast]
+inherits = "release"
+opt-level = 3
+
+# notatin 1.0.1 (last released 2023-08) declares `nom = ">= 6"` with no upper
+# bound. Cargo resolves that to nom 8.x, whose Parser combinator API broke the
+# call-syntax notatin relies on. Upstream is unmaintained; we vendor a copy
+# under vendor/notatin and use the path patch so Cargo picks the vendored
+# tree (which compiles cleanly against nom 7.x).
+[patch.crates-io]
+notatin = { path = "vendor/notatin" }

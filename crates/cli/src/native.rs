@@ -1,0 +1,679 @@
+//! Hand-written commands: path-based browsing and reading over the index-first
+//! directory pages, content search, context and task control, and the
+//! discovery commands that need no evidence. Each one is declared in
+//! `cli/commands.toml` alongside the generated commands.
+use std::{io::Write, sync::Arc};
+
+use serde::Serialize;
+use serde_json::{json, Map, Value};
+
+use super::{
+    browsing::{self, Entry, LastLink},
+    catalog::{self, Command},
+    context::{Context, Exec, Mode, Target},
+    generated, json_output, schema, strings, CliError, Output,
+};
+use crate::{
+    app::workflows::task_center,
+    core::filesystem::{
+        evidence_session::EvidenceSession,
+        tree::fs_tree::{FsNode, FsSession},
+    },
+    state::AppState,
+    task_manager::TaskKind,
+};
+
+/// Largest raw read returned inside a JSONL session response.
+const MAX_SESSION_READ: u64 = 16 * 1024 * 1024;
+
+fn number(values: &Map<String, Value>, name: &str) -> Option<u64> {
+    values.get(name).and_then(Value::as_u64)
+}
+
+fn text(values: &Map<String, Value>, name: &str) -> Option<String> {
+    values.get(name).and_then(Value::as_str).map(str::to_owned)
+}
+
+fn image_id(values: &Map<String, Value>) -> Result<String, CliError> {
+    text(values, "imageId").ok_or_else(|| CliError::new("noImage", "需要检材"))
+}
+
+async fn loaded_image(state: &AppState, image_id: &str) -> Result<Arc<EvidenceSession>, CliError> {
+    state
+        .images
+        .lock()
+        .await
+        .get(image_id)
+        .cloned()
+        .ok_or_else(|| CliError::invalid("检材已关闭；请重新运行 images open"))
+}
+
+/// Byte-level commands need the original evidence; index-only sessions can
+/// still browse.
+pub(super) fn require_source(image: &EvidenceSession) -> Result<(), CliError> {
+    if image.is_index_only() {
+        image.require_source().map_err(super::internal_error)
+    } else {
+        image
+            .validate_source_file_stable()
+            .map_err(super::internal_error)
+    }
+}
+
+/// Whether a process task or a plugin task is still active.
+pub async fn busy(state: &AppState) -> Result<bool, CliError> {
+    if !state.tasks.list().is_empty() {
+        return Ok(true);
+    }
+    if state.active_case.lock().await.is_none() {
+        return Ok(false);
+    }
+    Ok(state
+        .scheduler
+        .list_for_image(None, true)
+        .map_err(super::internal_error)?
+        .iter()
+        .any(|task| task.status.is_active()))
+}
+
+pub fn capabilities() -> Result<Value, CliError> {
+    let catalog = catalog::catalog()?;
+    Ok(json!({
+        "version": catalog.version,
+        "platform": std::env::consts::OS,
+        "standalone": true,
+        "timestampDisplay": {"option": "--timezone", "default": "auto", "commands": ["files list", "files get", "files tree list"],
+            "settings": "timezones set <zone> --scope session|case|image", "inspect": "timezones get",
+            "originalField": "timestampsOriginal", "originalsOnlyWhenDifferent": true, "provenanceField": "timestampDisplay", "provenanceScope": "response",
+            "listTimeZones": "timestampDisplay.timeZones; timestampTimeZone indexes mixed-zone entries",
+            "unconvertedFields": "timestampUnconvertedFields on list entries", "naiveTimestamps": "unchanged"},
+        "output": {"json": "compact for redirected stdout or coding agents; pretty at human terminals",
+            "agentModeEnvironment": "LOVELYCARVE_AGENT=1", "agentMode": super::interactive::is_agentic(),
+            "fieldsOption": "--fields", "fields": "comma-separated entry paths; dot paths preserve nesting",
+            "sourceOption": "--with-source", "sourceEnvelope": "{source,result}; source is captured from the resolved request",
+            "paginationFirst": true, "filesListDefaultPageSize": 500, "agentFilesListDefaultPageSize": 50},
+        "commands": catalog.commands.len(),
+        "exitCodes": {"success": 0, "failure": 1, "incompleteResult": super::incomplete::EXIT_INCOMPLETE, "interrupted": 130},
+        "qrcode": cfg!(feature = "qrcode-wechat"),
+        "ocr": cfg!(feature = "ocr"),
+        "ocrCuda": cfg!(feature = "ocr-cuda"),
+        "dokanMount": cfg!(target_os = "windows"),
+        "observability": {"eventsOption": "--events", "eventsStream": "stderr-jsonl", "heartbeatSeconds": 5,
+            "progressStream": "stderr", "progressWithRedirectedStdout": true, "residentBackendEvents": true},
+        "residentSessions": {
+            "protocolVersion": super::resident::PROTOCOL_VERSION,
+            "open": "sessions open <name>", "attach": "sessions attach <name>",
+            "close": "sessions close <name>", "option": "--session <name>",
+            "environment": "LOVELYCARVE_SESSION", "execution": "serial",
+            "rawRead": "stream", "retains": ["case", "images", "assembledVolumes", "directory", "tasks"]
+        },
+        "session": {
+            "protocol": "jsonl", "protocolVersion": 3,
+            "request": {"id": "string", "command": "<collection>… <verb>", "args": "object keyed by API parameter name", "timezone": "optional display timezone override",
+                "fields": "optional comma-separated list entry field paths", "withSource":"optional boolean, wraps result with source identity", "output": "optional file path for raw content", "force": "boolean, confirms destructive commands", "dryRun": "boolean"},
+            "defaultJobs": 1, "maxJobs": 64,
+            "responseOrder": "completion", "correlationField": "id",
+            "references": "prior-successful-result-json-pointer",
+            "nonParallelCommands": "barrier",
+            "stdout": "responses", "events": "stderr",
+            "maxLineBytes": 16 * 1024 * 1024, "maxRequests": 10000
+        }
+    }))
+}
+
+/// Hand-written commands that need neither the backend nor evidence, run
+/// before anything starts; `None` for every other command.
+pub fn offline(
+    command: &Command,
+    values: &Map<String, Value>,
+    mode: Mode,
+) -> Option<Result<Output, CliError>> {
+    let result = match command.native.as_deref()? {
+        "schema" => catalog::catalog().and_then(|catalog| {
+            let words: Vec<String> = values
+                .get("command")
+                .and_then(Value::as_array)
+                .map(|words| {
+                    words
+                        .iter()
+                        .filter_map(|word| word.as_str().map(str::to_owned))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let list = values.get("list") == Some(&Value::Bool(true));
+            schema::run(catalog, &words, list, mode)
+        }),
+        "system-get" => capabilities().map(Output::json),
+        _ => return None,
+    };
+    Some(result)
+}
+
+pub async fn run(
+    exec: &Exec,
+    context: &mut Context,
+    command: &Command,
+    values: Map<String, Value>,
+    target: Option<Target>,
+    text_output: bool,
+) -> Result<Output, CliError> {
+    if let Some(result) = offline(command, &values, exec.mode) {
+        return result;
+    }
+    match command.native.as_deref() {
+        Some("tasks-wait") => json_output(exec.background.wait(&exec.state).await?.verdict(None)?),
+        Some("tasks-cancel") => cancel_task(exec, &values).await,
+        Some("context-get") => context_get(exec, context).await,
+        Some("context-set" | "context-use") => {
+            if values.contains_key("dir") && values.contains_key("nodeId") {
+                return Err(CliError::invalid("--dir 与 --node-id 不能同时使用"));
+            }
+            if let Some(image) = text(&values, "imageId") {
+                let image_id = exec.resolve_image(context, &image).await?;
+                if context.image_id.as_deref() != Some(&image_id)
+                    || command.native.as_deref() == Some("context-use")
+                {
+                    context.location.clear();
+                }
+                context.image_id = Some(image_id);
+                context.scope = None;
+                context.scope_source = None;
+            }
+            if values.contains_key("dir") || values.contains_key("nodeId") {
+                let image_id = exec
+                    .current_image(context)
+                    .await?
+                    .ok_or_else(|| CliError::new("noImage", "切换目录需要检材"))?;
+                let location = match text(&values, "nodeId") {
+                    Some(node_id) => locate_node(exec, &image_id, &node_id).await?,
+                    None => {
+                        exec.locate(
+                            context,
+                            &image_id,
+                            &text(&values, "dir").unwrap_or_default(),
+                            LastLink::Follow,
+                        )
+                        .await?
+                    }
+                };
+                if let Some(node) = node(exec, &image_id, &location).await? {
+                    if node.kind != crate::core::filesystem::tree::fs_tree::NodeKind::Dir {
+                        return Err(CliError::invalid(format!(
+                            "目标必须是目录：{} 是{}",
+                            super::browsing::display_path(&location),
+                            match node.kind {
+                                crate::core::filesystem::tree::fs_tree::NodeKind::File => "文件",
+                                crate::core::filesystem::tree::fs_tree::NodeKind::Symlink =>
+                                    "符号链接（按节点 ID 进入时不跟随）",
+                                crate::core::filesystem::tree::fs_tree::NodeKind::Unallocated
+                                | crate::core::filesystem::tree::fs_tree::NodeKind::Dir =>
+                                    "非目录节点",
+                            }
+                        )));
+                    }
+                }
+                let parent = location
+                    .last()
+                    .map(|(_, id)| id.clone())
+                    .unwrap_or_default();
+                exec.page(&image_id, parent, None, 1).await?;
+                context.location = location;
+            }
+            context_get(exec, context).await
+        }
+        Some("files-tree-list") => files_tree_list(exec, &values, target).await,
+        Some("files-get") => files_get(exec, &values, target).await,
+        Some("files-read") => files_read(exec, &values, target, text_output).await,
+        Some("files-search") => {
+            // Without the source bytes every file would fail to read and the
+            // search would still "succeed" with no hits.
+            let image_id = image_id(&values)?;
+            let image = loaded_image(&exec.state, &image_id).await?;
+            require_source(&image)?;
+            let target = target.ok_or_else(|| CliError::invalid("需要路径"))?;
+            super::grep::run(exec, &image_id, &target.node_id, &values).await
+        }
+        Some("files-strings") => {
+            let image_id = image_id(&values)?;
+            let image = loaded_image(&exec.state, &image_id).await?;
+            require_source(&image)?;
+            let target = target.ok_or_else(|| CliError::invalid("需要路径"))?;
+            strings::read(&exec.state, image, target.node_id, &values).await
+        }
+        Some(other) => Err(CliError::invalid(format!(
+            "{} 不能在 {} 中运行",
+            command.command,
+            match exec.mode {
+                Mode::Session => "session",
+                Mode::Shell => "shell",
+                Mode::OneShot => other,
+            }
+        ))),
+        None => Err(CliError::invalid(format!(
+            "{} 不是手写命令",
+            command.command
+        ))),
+    }
+}
+
+#[derive(Serialize)]
+struct ContextInfo {
+    case: Value,
+    image: Value,
+    scope: Option<String>,
+    dir: String,
+    #[serde(rename = "nodeId")]
+    node_id: String,
+}
+
+async fn context_get(exec: &Exec, context: &Context) -> Result<Output, CliError> {
+    let case = match generated::dispatch(&exec.host, &exec.state, "case_active", Map::new()).await?
+    {
+        Output::Json(case) => case.value().clone(),
+        Output::Bytes(_) | Output::Written => Value::Null,
+    };
+    let image = match &context.image_id {
+        Some(id) => {
+            let args = Map::from_iter([("imageId".to_owned(), json!(id))]);
+            match generated::dispatch(&exec.host, &exec.state, "image_info", args).await {
+                Ok(Output::Json(info)) => {
+                    let info = info.value();
+                    json!({"id": id, "path": info["path"], "sourceFormat": info["sourceFormat"]})
+                }
+                Ok(Output::Bytes(_) | Output::Written) => json!({"id": id}),
+                // The context stays readable, but says why the image is not.
+                Err(error) => {
+                    json!({"id": id, "error": {"code": error.code, "message": error.message}})
+                }
+            }
+        }
+        None => Value::Null,
+    };
+    json_output(ContextInfo {
+        case,
+        image,
+        scope: context.scope.clone(),
+        dir: context.pwd(),
+        node_id: context
+            .location
+            .last()
+            .map(|(_, id)| id.clone())
+            .unwrap_or_default(),
+    })
+}
+
+#[derive(Serialize)]
+struct CancelRequested {
+    id: String,
+    /// `cancelled` when the task stopped at once (plugin tasks), else
+    /// `cancelling`: it stops at its next checkpoint.
+    status: &'static str,
+}
+
+/// `tasks cancel`: only a running task can be cancelled. Cancelling an
+/// unknown or ended task fails instead of passing for a cancellation.
+async fn cancel_task(exec: &Exec, values: &Map<String, Value>) -> Result<Output, CliError> {
+    let id = text(values, "taskId").ok_or_else(|| CliError::invalid("缺少参数：taskId"))?;
+    if id.starts_with("plugin:") {
+        // The scheduler rejects unknown and ended plugin tasks itself.
+        task_center::cancel(&exec.state, &id)
+            .await
+            .map_err(|error| super::command_error(error).in_operation("task_cancel"))?;
+        return json_output(CancelRequested {
+            id,
+            status: "cancelled",
+        });
+    }
+    if exec.state.tasks.cancel(&id) || exec.state.tasks.live(&id).is_some() {
+        return json_output(CancelRequested {
+            id,
+            status: "cancelling",
+        });
+    }
+    let ended = task_center::list(&exec.state, None)
+        .await
+        .map_err(|error| super::command_error(error).in_operation("task_list"))?
+        .into_iter()
+        .find(|entry| entry.id == id);
+    Err(match ended {
+        Some(entry) => CliError::new(
+            "taskFinished",
+            format!(
+                "任务已经结束（{}），无法取消：{id}",
+                entry.status.as_str()
+            ),
+        ),
+        None => CliError::new(
+            "notFound",
+            match exec.mode {
+                Mode::OneShot => format!(
+                    "找不到运行中的任务：{id}（一次性命令只看得到本进程的任务；后台任务请在常驻会话中取消）"
+                ),
+                Mode::Session | Mode::Shell => format!("找不到运行中的任务：{id}"),
+            },
+        ),
+    })
+}
+
+/// The directory entry for the last node of `location`; `None` at `/`.
+async fn node(
+    exec: &Exec,
+    image_id: &str,
+    location: &[(String, String)],
+) -> Result<Option<FsNode>, CliError> {
+    let mut page = |parent_id, cursor, page_size| exec.page(image_id, parent_id, cursor, page_size);
+    browsing::node(location, &mut page).await
+}
+
+/// A location for a bare node ID, from current indexes or live pages.
+async fn locate_node(
+    exec: &Exec,
+    image_id: &str,
+    node_id: &str,
+) -> Result<Vec<(String, String)>, CliError> {
+    super::navigation::locate_node(exec, image_id, node_id).await
+}
+
+#[derive(Serialize)]
+struct Listing {
+    items: Vec<Entry>,
+    truncated: bool,
+}
+
+async fn files_tree_list(
+    exec: &Exec,
+    values: &Map<String, Value>,
+    target: Option<Target>,
+) -> Result<Output, CliError> {
+    let image_id = image_id(values)?;
+    let target = target.ok_or_else(|| CliError::invalid("需要路径"))?;
+    let location = match target.location {
+        Some(location) => location,
+        None => locate_node(exec, &image_id, &target.node_id).await?,
+    };
+    let state = &exec.state;
+    let task = state.tasks.register(
+        format!("cli-files-list-{}", uuid::Uuid::new_v4()),
+        TaskKind::FlatList,
+        Some(image_id.clone()),
+    );
+    let _permit = state
+        .tasks
+        .acquire_resources(&task)
+        .await
+        .map_err(crate::app::error::AppError::from)
+        .map_err(super::command_error)?;
+    let cancellation = task.token();
+    let depth = number(values, "depth").unwrap_or(1).clamp(1, 128) as u32;
+    let limit = number(values, "limit").unwrap_or(10_000).clamp(1, 100_000) as usize;
+    let filter = text(values, "name").map(|name| name.to_lowercase());
+    let mut page =
+        |parent_id, cursor, page_size| exec.page(&image_id, parent_id, cursor, page_size);
+    let (items, truncated) = browsing::walk(
+        &location,
+        depth,
+        limit,
+        filter.as_deref(),
+        &cancellation,
+        &mut page,
+    )
+    .await?;
+    json_output(Listing { items, truncated })
+}
+
+/// The synthetic root of an image.
+#[derive(Serialize)]
+struct Root {
+    id: &'static str,
+    name: &'static str,
+    kind: &'static str,
+    size: u64,
+    deleted: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NodeInfo<N> {
+    #[serde(flatten)]
+    node: N,
+    node_id: String,
+    path: String,
+    index_only: bool,
+}
+
+async fn files_get(
+    exec: &Exec,
+    values: &Map<String, Value>,
+    target: Option<Target>,
+) -> Result<Output, CliError> {
+    let image_id = image_id(values)?;
+    let image = loaded_image(&exec.state, &image_id).await?;
+    let target = target.ok_or_else(|| CliError::invalid("需要路径"))?;
+    let location = match target.location {
+        Some(location) => location,
+        None => locate_node(exec, &image_id, &target.node_id).await?,
+    };
+    let found = node(exec, &image_id, &location).await?;
+    let own_name = found.as_ref().map_or("/", |node| node.name.as_str());
+    let names: Vec<&str> = location
+        .iter()
+        .map(|(name, id)| {
+            if name.is_empty() && id == &target.node_id {
+                own_name
+            } else {
+                name.as_str()
+            }
+        })
+        .collect();
+    let path = format!("/{}", names.join("/"));
+    let index_only = image.is_index_only();
+    match found {
+        Some(node) => json_output(NodeInfo {
+            node: serde_json::to_value(super::wire::Camel(node))?,
+            node_id: target.node_id,
+            path,
+            index_only,
+        }),
+        None => json_output(NodeInfo {
+            node: Root {
+                id: "",
+                name: "/",
+                kind: "dir",
+                size: image.len(),
+                deleted: false,
+            },
+            node_id: target.node_id,
+            path,
+            index_only,
+        }),
+    }
+}
+
+/// Decodes UTF-8 across chunk boundaries, replacing invalid sequences.
+#[derive(Default)]
+pub(super) struct Utf8Stream {
+    pending: Vec<u8>,
+}
+
+impl Utf8Stream {
+    pub(super) fn push(&mut self, chunk: &[u8], out: &mut String) {
+        self.pending.extend_from_slice(chunk);
+        let mut start = 0;
+        loop {
+            match std::str::from_utf8(&self.pending[start..]) {
+                Ok(text) => {
+                    out.push_str(text);
+                    start = self.pending.len();
+                    break;
+                }
+                Err(error) => {
+                    let valid = start + error.valid_up_to();
+                    out.push_str(&String::from_utf8_lossy(&self.pending[start..valid]));
+                    match error.error_len() {
+                        Some(length) => {
+                            out.push('\u{FFFD}');
+                            start = valid + length;
+                        }
+                        None => {
+                            start = valid;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        self.pending.drain(..start);
+    }
+
+    pub(super) fn finish(&mut self, out: &mut String) {
+        if !self.pending.is_empty() {
+            out.push_str(&String::from_utf8_lossy(&self.pending));
+            self.pending.clear();
+        }
+    }
+}
+
+async fn files_read(
+    exec: &Exec,
+    values: &Map<String, Value>,
+    target: Option<Target>,
+    text_output: bool,
+) -> Result<Output, CliError> {
+    let image_id = image_id(values)?;
+    let image = loaded_image(&exec.state, &image_id).await?;
+    require_source(&image)?;
+    let node_id = target.ok_or_else(|| CliError::invalid("需要路径"))?.node_id;
+    let offset = number(values, "offset").unwrap_or(0);
+    let requested = number(values, "length");
+    let to_stdout = exec.mode != Mode::Session;
+    tokio::task::spawn_blocking(move || -> Result<Output, CliError> {
+        let mut session = FsSession::new(&image);
+        let size = session
+            .file_stat(&node_id)
+            .map_err(super::internal_error)?
+            .size;
+        if offset > size {
+            return Err(CliError::invalid(format!(
+                "偏移 {offset} 超过文件大小 {size}"
+            )));
+        }
+        let length = requested.unwrap_or(size - offset).min(size - offset);
+        if !to_stdout {
+            if length > MAX_SESSION_READ {
+                return Err(CliError::invalid(
+                    "会话中单次最多读取 16 MiB；用 offset/length 分段读取，或使用 files export",
+                ));
+            }
+            let length = usize::try_from(length)
+                .map_err(|_| CliError::invalid("当前平台无法表示该读取长度"))?;
+            let (result, faults) = image.collect_read_faults(|| {
+                crate::core::filesystem::tree::fs_tree::read_file_range(
+                    &image, &node_id, offset, length,
+                )
+            });
+            let bytes = result.map_err(super::internal_error)?;
+            reject_read_faults(&faults)?;
+            image
+                .validate_source_file_stable()
+                .map_err(super::internal_error)?;
+            return Ok(Output::Bytes(bytes));
+        }
+        let mut stdout = std::io::stdout().lock();
+        let mut decoder = Utf8Stream::default();
+        let (result, faults) = image.collect_read_faults(|| {
+            session.stream_file_range(&node_id, offset, length, 1024 * 1024, |chunk| {
+                if text_output {
+                    let mut decoded = String::new();
+                    decoder.push(chunk, &mut decoded);
+                    stdout.write_all(decoded.as_bytes())?;
+                } else {
+                    stdout.write_all(chunk)?;
+                }
+                Ok(())
+            })
+        });
+        let read = result.map_err(super::internal_error)?;
+        if text_output {
+            let mut decoded = String::new();
+            decoder.finish(&mut decoded);
+            stdout.write_all(decoded.as_bytes())?;
+        }
+        stdout.flush()?;
+        if read != length {
+            return Err(CliError::new(
+                "sourceChanged",
+                format!("文件未完整读取：期望 {length} 字节，实际 {read} 字节"),
+            ));
+        }
+        reject_read_faults(&faults)?;
+        image
+            .validate_source_file_stable()
+            .map_err(super::internal_error)?;
+        Ok(Output::Written)
+    })
+    .await
+    .map_err(super::internal_error)?
+}
+
+/// Raw byte outputs cannot carry provenance. JSONL and resident streams use
+/// the same error and attach the operation-scoped report as structured details.
+fn reject_read_faults(
+    faults: &crate::core::evidence::image::ReadFaultReport,
+) -> Result<(), CliError> {
+    if faults.read_faults_detected {
+        let mut error = CliError::new(
+            "readFaultsDetected",
+            format!(
+                "读取包含 {} 字节合成补零；输出不可作为完整源数据",
+                faults.synthetic_bytes
+            ),
+        );
+        error.details = Some(serde_json::to_value(super::wire::Camel(faults))?);
+        return Err(error);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn utf8_stream_survives_split_sequences() {
+        let text = "取证 evidence ✓";
+        let bytes = text.as_bytes();
+        for split in 1..bytes.len() {
+            let mut decoder = Utf8Stream::default();
+            let mut out = String::new();
+            decoder.push(&bytes[..split], &mut out);
+            decoder.push(&bytes[split..], &mut out);
+            decoder.finish(&mut out);
+            assert_eq!(out, text, "split at {split}");
+        }
+        let mut decoder = Utf8Stream::default();
+        let mut out = String::new();
+        decoder.push(b"a\xffb\xe4", &mut out);
+        decoder.finish(&mut out);
+        assert_eq!(out, "a\u{FFFD}b\u{FFFD}");
+    }
+
+    #[test]
+    fn discovery_commands_run_without_the_backend() {
+        let catalog = catalog::catalog().unwrap();
+        let system = catalog.find(&["system", "get"]).unwrap();
+        match offline(system, &Map::new(), Mode::OneShot) {
+            Some(Ok(Output::Json(facts))) => {
+                assert_eq!(facts.value()["commands"], catalog.commands.len())
+            }
+            other => panic!("{other:?}"),
+        }
+        let schema = catalog.find(&["schema"]).unwrap();
+        let values = Map::from_iter([("command".to_owned(), json!(["images", "open"]))]);
+        match offline(schema, &values, Mode::Session) {
+            Some(Ok(Output::Json(info))) => assert_eq!(info.value()["ipcCommand"], "image_load"),
+            other => panic!("{other:?}"),
+        }
+        let wait = catalog.find(&["tasks", "wait"]).unwrap();
+        assert!(offline(wait, &Map::new(), Mode::OneShot).is_none());
+    }
+}

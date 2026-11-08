@@ -4,8 +4,8 @@
 
 LovelyCarve's own code is licensed under AGPL-3.0-only; third-party code,
 fonts, models, libraries and test data retain their original notices.
-The application dependency versions are recorded in `bun.lock` and
-`src-tauri/Cargo.lock`; the separate plugin workspace has its own manifests
+The application dependency versions are recorded in the workspace
+`Cargo.lock`; the separate plugin workspace has its own manifests
 and lockfile. Vendored components retain their license and provenance files.
 The read-only Python extension records its Rust dependencies in
 `python/Cargo.lock` and Python environment in `python/uv.lock`. It uses PyO3
@@ -16,13 +16,13 @@ it is not an automatically generated inventory of all transitive packages.
 Release verification is documented in [docs/RELEASING.md](docs/RELEASING.md).
 
 The 2026-10-12 vendored-source audit, selected upstream revisions and retained
-local patches are recorded in [src-tauri/vendor/UPSTREAM.md](src-tauri/vendor/UPSTREAM.md).
+local patches are recorded in [vendor/UPSTREAM.md](vendor/UPSTREAM.md).
 The updated Apple readers use APFS 0.4.1, HFS+ 0.4.0, UDIF 0.4.2 and the new
 shared `cmpfs` 0.1.0 decoder from Dil4rd/dpp (MIT). Their license texts and
 integration notes remain in each crate directory. ext4-view 1.0.0 and backhand
 0.25.5 retain their MIT / Apache-2.0 texts; rsqlite-vfs 0.2.0 retains its MIT
 license. Original data sources and hashes for the ext4 unit-test fixtures are
-recorded in `src-tauri/vendor/ext4-view/test_data/README.md`.
+recorded in `vendor/ext4-view/test_data/README.md`.
 
 The Buffalo ENC / TRX and DD-WRT SquashFS compatibility work uses Firmware Mod
 Kit commit `c72f45d7a062156125ae00cb867d8a614b50b963` as a format reference
@@ -53,14 +53,14 @@ versions and dependency sources are pinned in the Rust lockfiles.
 The libfsapfs APFS comparison uses its documented structures and public API;
 no libfsapfs C sources or binaries are incorporated. The new APFS fixtures
 are invented, reproducible project test structures (AGPL-3.0-only), documented
-in `src-tauri/vendor/apfs/tests/data/README.md`.
+in `vendor/apfs/tests/data/README.md`.
 
 ## Native YAFFS reader
 
 The original AGPL-3.0-only `yaffs2-reader` adapts object/file prefix structures
 and validation from binwalk-ng commit `845806c163747eb524d66b5fe3de2ed86ea3aaad`
 (MIT, Copyright 2024 devttys0 and 2026 binwalk-ng contributors). Its full notice
-is retained in [LICENSE-BINWALK-MIT](src-tauri/vendor/yaffs2-reader/LICENSE-BINWALK-MIT).
+is retained in [LICENSE-BINWALK-MIT](vendor/yaffs2-reader/LICENSE-BINWALK-MIT).
 Aleph One YAFFS format definitions are references; no C implementation or
 external extractor is incorporated. Independent synthetic fixtures are CC0-1.0.
 The original YAFFS1 dispersed-tags, serial scanning and page-ECC modules reuse
@@ -82,9 +82,9 @@ and index structures and field decoders from
 [aspnmy/rust_ubidump](https://github.com/aspnmy/rust_ubidump), revision
 `19782c3eabc25a1baab7faefe12fe6f4bd362dac`, under MIT. Its original license
 credits Copyright (c) 2017 Willem Hengeveld <itsme@xs4all.nl>.
-The complete license is retained in `src-tauri/vendor/ubidump/LICENSE`;
+The complete license is retained in `vendor/ubidump/LICENSE`;
 library extraction, safety fixes and the rewritten bounded volume mapping are
-documented in `src-tauri/vendor/ubidump/LOVELYCARVE.md`. The upstream CLI and
+documented in `vendor/ubidump/LOVELYCARVE.md`. The upstream CLI and
 C LZO dependency are not incorporated. UBIFS uses the existing flate2/zlib-rs
 packages, lzokay 2.0.1 (MIT), and ms-compress-ruzstd 0.9.1 (MIT). Full codec
 notices are retained below and in the vendor directory. Synthetic fixtures and
@@ -148,7 +148,7 @@ SOFTWARE.
 
 The CLI uses the unmodified `jiff` crate by Andrew Gallant (Unlicense OR MIT)
 and its bundled `jiff-tzdb` IANA time zone database. Versions are pinned in
-`src-tauri/Cargo.lock`; crate license texts remain in the distributed source
+`Cargo.lock`; crate license texts remain in the distributed source
 packages. IANA time zone data is in the public domain. Evidence-provided TZif
 files are read from the user's evidence and are not incorporated or shipped.
 
@@ -159,7 +159,7 @@ MD5 hashing uses the unmodified crates.io package
 Its x86_64 / aarch64 assembly derives from
 [`animetosho/md5-optimisation`](https://github.com/animetosho/md5-optimisation),
 released into the public domain by its author. The Rust glue and tests retain
-the following notice; the exact package is pinned in `src-tauri/Cargo.lock`.
+the following notice; the exact package is pinned in `Cargo.lock`.
 
 ```text
 BSD 2-Clause License
@@ -190,7 +190,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Parallels image capability reference
 
-`src-tauri/vendor/phdi` is original LovelyCarve Rust code (AGPL-3.0-only),
+`vendor/phdi` is original LovelyCarve Rust code (AGPL-3.0-only),
 referencing the public format and API of Joachim Metz and contributors'
 [libyal/libphdi fb132dceb2a1](https://github.com/libyal/libphdi/commit/fb132dceb2a1a43c2597b10bbf9e65757d08cf7c).
 The upstream library is LGPL-3.0-or-later, its tools GPL-3.0-or-later,
@@ -205,7 +205,7 @@ redistributed. Provenance and all 56 API comparisons are recorded in
 
 ## RAW image capability reference
 
-`src-tauri/vendor/smraw` is original LovelyCarve Rust code (AGPL-3.0-only),
+`vendor/smraw` is original LovelyCarve Rust code (AGPL-3.0-only),
 referencing the public RAW I/O and naming capabilities of Joachim Metz and
 contributors' [libyal/libsmraw](https://github.com/libyal/libsmraw/commit/adfa6b8bc8617226805926180244c774366aad30).
 The upstream library is LGPL-3.0-or-later and its tools are GPL-3.0-or-later.
@@ -217,12 +217,12 @@ The project-generated synthetic tests contain no real evidence.
 
 ## QCOW reader capability reference
 
-`src-tauri/vendor/qcow2` retains Dave Vasilevsky's MIT-licensed qcow2-rs
+`vendor/qcow2` retains Dave Vasilevsky's MIT-licensed qcow2-rs
 feature-name parsing and utility/error infrastructure. Original LovelyCarve
 QCOW1/2/3 header/read/chain/crypto implementations and invented new test fixtures
 are AGPL-3.0-only; both LICENSE-MIT and LICENSE-AGPL are retained in the crate.
 Its manifest records `MIT AND AGPL-3.0-only`. Exact origin and change boundaries
-are recorded in [LOVELYCARVE.md](src-tauri/vendor/qcow2/LOVELYCARVE.md).
+are recorded in [LOVELYCARVE.md](vendor/qcow2/LOVELYCARVE.md).
 
 Joachim Metz and contributors' [libyal/libqcow](https://github.com/libyal/libqcow/commit/3e390fbb465f37f3da92c1362c5df3da04ff9efe)
 is a public capability/format reference, not incorporated code. It is
@@ -237,7 +237,7 @@ in the test directory; those packages are not runtime dependencies.
 
 ## GZIP reader capability reference
 
-`src-tauri/vendor/gzipf` is original LovelyCarve Rust code (AGPL-3.0-only),
+`vendor/gzipf` is original LovelyCarve Rust code (AGPL-3.0-only),
 using RFC 1952 and the public capabilities of Joachim Metz's
 [libyal/libgzipf](https://github.com/libyal/libgzipf/commit/d1b4e6ba5911e1b86a3f9d4ca3fd31f1d69a6b68)
 as references. The upstream implementation is LGPL-3.0-or-later and its
@@ -254,28 +254,66 @@ Docker/OCI GZIP layers and Xiaomi GZIP backups use this reader. The independent
 test corpus is invented project data encoded by
 Python's C zlib, licensed AGPL-3.0-only, with a reproducible generator and hashes.
 
-## Flyfish File Viewer
+## GPUI Kit and Lucide icons
 
-The Vue preview component `@file-viewer/vue3-full` and the asset-copy plugin
-`@file-viewer/vite-plugin`, version 3.1.2, are published by Yu Wang / Flyfish:
-<https://github.com/flyfish-dev/file-viewer>.
-Both installed packages declare Apache-2.0 and include a `LICENSE` file;
-the complete Apache-2.0 terms are reproduced in the EWF section below.
-The deployment copies the viewer's worker, WASM and renderer assets from the
-same-version npm packages. These assets may incorporate additional components;
-retain their bundled notices and review their licenses when changing packages
-or publishing a distribution.
+The desktop app is built with GPUI Kit 0.9.0 (`gpui-kit`, `gpui-base`,
+`gpui-component` and `gpui-kit-assets`, Apache-2.0,
+<https://github.com/longbridge/gpui-kit>) and `gpui-pre` 0.3.11, a snapshot of
+Zed's GPUI framework (Apache-2.0, <https://github.com/zed-industries/zed>). The
+complete Apache-2.0 terms are reproduced in the EWF section below.
+
+The executable embeds icons from `gpui-kit-assets`, which bundles the Lucide
+icon set. Its license, as retained in that crate's `LICENSE-LUCIDE` (which also
+lists the icons derived from Feather):
+
+ISC License
+
+Copyright (c) 2026 Lucide Icons and Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+The MIT License (MIT) (for the icons derived from Feather)
+
+Copyright (c) 2013-present Cole Bemis
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ## Models and runtime resources
 
 WeChat QRCode model notices and license terms are retained in
-[`src-tauri/resources/qrcode/MODEL_LICENSE`](src-tauri/resources/qrcode/MODEL_LICENSE).
-Runtime libraries under `src-tauri/binaries` and OCR models under
-`src-tauri/resources/ocr` must be checked against their actual upstream
+[`resources/qrcode/MODEL_LICENSE`](resources/qrcode/MODEL_LICENSE).
+Runtime libraries under `binaries` and OCR models under
+`resources/ocr` must be checked against their actual upstream
 distribution before release.
 
 `vcruntime140.dll`, `vcruntime140_1.dll`, `msvcp140.dll` and
-`msvcp140_1.dll` under `src-tauri/binaries` are the unmodified,
+`msvcp140_1.dll` under `binaries` are the unmodified,
 Microsoft-signed Visual C++ runtime from the Visual Studio redistributable
 folder (`VC\Redist\MSVC\14.50.35710\x64\Microsoft.VC145.CRT`, file version
 14.50.35719.0). They are deployed next to the executables because the desktop
@@ -285,7 +323,7 @@ app and the CLI link the C++ standard library dynamically, and
 redistributed as Distributable Code under the Microsoft Visual Studio license
 terms (<https://aka.ms/vs/18/redistribution>); the Universal CRT they use ships
 with Windows 10 and later. The resources shipped depend on the build
-features; a package's Rust or JavaScript license does not by itself document
+features; a package's Rust license does not by itself document
 the provenance of every separately bundled DLL or model.
 
 The Quicksand font notice and OFL 1.1 terms are reproduced at the end of this
@@ -293,7 +331,7 @@ file, so portable packages that include this document retain the font license.
 
 ## ReFS Rust reader and comparison tools
 
-The production Rust reader at `src-tauri/vendor/refs-reader` ports parsing
+The production Rust reader at `vendor/refs-reader` ports parsing
 algorithms from Erik Larsson's refsprogs, with b3nguang's stream additions,
 revision `391c1bd56986142fc359288b7d2cb41cb3eb3680` (GPL-2.0-or-later).
 The upstream GPL text is retained in that crate's `LICENSE`; its `ORIGIN.md`
@@ -305,25 +343,25 @@ crate; the legacy DLL is retained only for explicit comparison builds.
 `librefs` 0.1.0 (MIT, Copyright (c) 2026 eWloYW8). The MIT terms reproduced
 in the Digler section below also apply to `librefs`; the Apache-2.0 terms
 are reproduced in the EWF section. Exact package checksums are recorded in
-`src-tauri/Cargo.lock`. These candidates are not used by the desktop/CLI
+`Cargo.lock`. These candidates are not used by the desktop/CLI
 ReFS adapter. Public disk images remain untracked under `fixtures/`; their
 sources and hashes are recorded in `docs/formats/REFS.md`.
 
 ## ios-backup-core / ios-backup-forensic (SecurityRonin)
 
-The vendored iOS backup reader and anomaly auditor in `src-tauri/vendor/ios-backup`
+The vendored iOS backup reader and anomaly auditor in `vendor/ios-backup`
 are derived from https://github.com/SecurityRonin/ios-backup-forensic, commit
 `8d8cef447ae212e7dd22dc0425156bf4ddfcfa05`. Copyright Albert Hui and contributors.
 Licensed under Apache-2.0 (full terms are reproduced in the EWF section below
-and retained in `src-tauri/vendor/ios-backup/LICENSE`). Local changes are listed
-in `src-tauri/vendor/ios-backup/UPSTREAM.md`; synthetic encrypted fixtures retain
+and retained in `vendor/ios-backup/LICENSE`). Local changes are listed
+in `vendor/ios-backup/UPSTREAM.md`; synthetic encrypted fixtures retain
 their upstream provenance.
 
 ## Digler
 
 The raw file-carving scan loop and format-specific carving logic in
-`src-tauri/src/core/carving/carver*.rs` and
-`src-tauri/src/core/carving/formats/` are Rust ports derived from Digler:
+`crates/core/src/carving/carver*.rs` and
+`crates/core/src/carving/formats/` are Rust ports derived from Digler:
 <https://github.com/ostafen/digler>.
 
 Copyright (c) 2025 Stefano Scafiti
@@ -378,11 +416,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## ewf (SecurityRonin/ewf-forensic)
 
-The vendored pure Rust EWF reader in `src-tauri/vendor/ewf` is derived from
+The vendored pure Rust EWF reader in `vendor/ewf` is derived from
 https://github.com/SecurityRonin/ewf-forensic, core crate 0.4.10, commit
 `c456f993f68385f3438b3ff16ba5ab6fd0850fb4`. Copyright Albert Hui and contributors.
 Licensed under Apache-2.0; the complete license follows. Local modifications are
-documented in `src-tauri/vendor/ewf/LOVELYCARVE.md`.
+documented in `vendor/ewf/LOVELYCARVE.md`.
 
 
                                  Apache License
@@ -589,21 +627,21 @@ documented in `src-tauri/vendor/ewf/LOVELYCARVE.md`.
 
 ## vmdk-core (vmdk-forensic)
 
-The read-only VMDK reader in `src-tauri/vendor/vmdk` is derived from
+The read-only VMDK reader in `vendor/vmdk` is derived from
 [SecurityRonin/vmdk-forensic](https://github.com/SecurityRonin/vmdk-forensic),
 version 0.8.4, commit `8a9831125c6db5cff9a24414481037487a92d410`, by Albert Hui.
 Licensed under Apache License 2.0 (full text reproduced in the EWF notice above
-and in `src-tauri/vendor/vmdk/LICENSE`). Local changes are documented in
-`src-tauri/vendor/vmdk/LOVELYCARVE.md`. Test-fixture origins, including
+and in `vendor/vmdk/LICENSE`). Local changes are documented in
+`vendor/vmdk/LOVELYCARVE.md`. Test-fixture origins, including
 log2timeline/dfvfs and log2timeline/plaso, are retained in `tests/data/README.md`.
 
 ## bitlocker-core (bitlocker-forensic)
 
-The BitLocker reader in `src-tauri/vendor/bitlocker` is derived from
+The BitLocker reader in `vendor/bitlocker` is derived from
 [SecurityRonin/bitlocker-forensic](https://github.com/SecurityRonin/bitlocker-forensic),
 version 0.3.5, commit `e6674dcda2413b1a02a915f2255af8fda787a154`, by Albert Hui.
 Licensed under Apache License 2.0 (full text reproduced in the EWF notice above
-and in `src-tauri/vendor/bitlocker/LICENSE`). Local changes and test-fixture
+and in `vendor/bitlocker/LICENSE`). Local changes and test-fixture
 provenance are documented alongside the crate. The minimized `bdetogo.raw`
 projection is derived from the Apache-2.0 dfVFS test corpus by Joachim Metz
 and the dfVFS project: <https://github.com/log2timeline/dfvfs>.
@@ -616,10 +654,10 @@ Apache-2.0 contributions; generation and digests accompany the fixtures.
 
 ## VHD / VHDX readers
 
-`src-tauri/vendor/vhd` contains `vhd-core` 0.1.4 from
+`vendor/vhd` contains `vhd-core` 0.1.4 from
 <https://github.com/SecurityRonin/vhd-forensic>, commit
 `2835523fe39c16740133dc8d51932cad46bcc4b6`.
-`src-tauri/vendor/vhdx` contains `vhdx-core` 0.4.1 from
+`vendor/vhdx` contains `vhdx-core` 0.4.1 from
 <https://github.com/SecurityRonin/vhdx-forensic>, commit
 `b03f1f5c1be960d79af73f895017169171c00996`.
 Both are by Albert Hui / Security Ronin, licensed under Apache-2.0 (full license
@@ -639,14 +677,14 @@ commit `e3883a5b347f50b51de70ca08655b2fd4b0885b2`, and `luks-core` 0.1.8 from
 <https://github.com/SecurityRonin/luks-forensic>, commit
 `284f06487d7a66f13ed27c61be5e26f0863c0e4f`, are by Albert Hui / Security Ronin.
 Both are Apache-2.0; licenses and integration notes are retained in
-`src-tauri/vendor/veracrypt` and `src-tauri/vendor/luks`. Only the core readers
+`vendor/veracrypt` and `vendor/luks`. Only the core readers
 are integrated, not the separate forensic analyzers. The committed encrypted
 integration fixtures are generated independently using Python cryptography;
 their generator and public test credentials are included.
 
 ## Volume Shadow Copy reader
 
-`src-tauri/vendor/vsc` contains `vsc-core` 0.2.2 from
+`vendor/vsc` contains `vsc-core` 0.2.2 from
 <https://github.com/SecurityRonin/vsc-forensic>, commit
 `0af70bed6910fef542224ecd94928b4bc0ae920b`, by Albert Hui / Security Ronin,
 licensed under Apache-2.0 (full license in the vendor directory). Only the core
@@ -660,7 +698,7 @@ oracle test is not committed.
 
 ## AD1 logical-image reader
 
-`src-tauri/vendor/ad1` contains `ad1-core` 0.1.2 from
+`vendor/ad1` contains `ad1-core` 0.1.2 from
 <https://github.com/SecurityRonin/ad1-forensic>, commit
 `afc3963659a13acf10082e7d76194d3ab789583e`, by Albert Hui / Security Ronin,
 licensed under Apache-2.0 (full license in the vendor directory). Only the core
@@ -671,7 +709,7 @@ tests build their AD1 fixtures in memory; no AD1 image is committed.
 
 ## SQLite record carver
 
-`src-tauri/vendor/sqlite-core` contains `sqlite-core` 0.12.0 from
+`vendor/sqlite-core` contains `sqlite-core` 0.12.0 from
 <https://github.com/SecurityRonin/sqlite-forensic>, commit
 `df511309e086825fb194ea8a721e94bbd0033fe0`, by Security Ronin, licensed under
 Apache-2.0 (full license in the vendor directory). Its `src/recovery.rs` is
@@ -697,15 +735,15 @@ real evidence and independent reference scripts are not distributed.
 
 ## Quicksand fonts
 
-`src/assets/fonts/Quicksand-500.ttf` and `Quicksand-700.ttf` contain
-the following copyright notice in their font metadata:
+`crates/desktop/assets/fonts/Quicksand-700.ttf`, embedded in the desktop app, contains
+the following copyright notice in its font metadata:
 
 Copyright 2019 The Quicksand Project Authors (https://github.com/andrew-paglinawan/QuicksandFamily.git), with Reserved Font Name "Quicksand"
 
 The font family is licensed under SIL Open Font License 1.1.
 The [upstream license](https://github.com/andrew-paglinawan/QuicksandFamily/blob/master/OFL.txt)
-is retained below and in `src/assets/fonts/OFL.txt`, together
-with the copyright notice from the bundled files. Font binaries are unchanged.
+is retained below and in `crates/desktop/assets/fonts/OFL.txt`, together
+with the copyright notice from the bundled file. The font binary is unchanged.
 
 Copyright 2011 The Quicksand Project Authors (https://github.com/andrew-paglinawan/QuicksandFamily), with Reserved Font Name “Quicksand”.
 
@@ -804,12 +842,12 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 ## NTFS WOF codecs (ms-compress 0.2.0)
 
 Source: https://github.com/CaddyGlow/ms-compress. Registry checksum is pinned in
-`src-tauri/Cargo.lock`. Only std/xpress/lzx are enabled. The package declares
+`Cargo.lock`. Only std/xpress/lzx are enabled. The package declares
 LGPL-2.1-only AND LGPL-2.1-or-later AND Zlib AND Apache-2.0 AND MIT;
 selected LZX/XPRESS sources derive from wimlib, and LZX includes CAB/Delta helpers.
 The unmodified source and dependency manifests form part of the corresponding
 source available for rebuilding LovelyCarve. Generated fixture provenance is
-in `src-tauri/src/core/filesystem/volumes/ntfs/testdata/README.md`.
+in `crates/core/src/filesystem/volumes/ntfs/testdata/README.md`.
 
 
 ### ms-compress NOTICE.md
@@ -1385,33 +1423,33 @@ That's all there is to it!
 The XFS capability audit references libyal/libfsxfs commit
 `cf474697de8a32f7eba4122e469b2ecd818054c6` (LGPL-3.0-or-later), without copying,
 linking or distributing its C implementation or test corpus. The production reader
-remains the BSD-2-Clause xfuse fork under `src-tauri/vendor/xfs-fuse`.
+remains the BSD-2-Clause xfuse fork under `vendor/xfs-fuse`.
 The new Rust format code and the synthetic `minimal-v4.bin` fixture are local
 project work. Fixture generator, source statement and hash are recorded in
-`src-tauri/vendor/xfs-fuse/test_data/README.md`; full comparison is in `docs/formats/XFS.md`.
+`vendor/xfs-fuse/test_data/README.md`; full comparison is in `docs/formats/XFS.md`.
 
 
 ## FileVault reader and auditor
 
-`src-tauri/vendor/filevault` contains filevault-core and filevault-forensic 0.1.5,
+`vendor/filevault` contains filevault-core and filevault-forensic 0.1.5,
 by Albert Hui / SecurityRonin, pinned at 857e04033e09c84324948b2cbfdd9e043b24d62b.
 Source: https://github.com/SecurityRonin/filevault-forensic . License: Apache-2.0,
-retained in `src-tauri/vendor/filevault/LICENSE`. Local patches are described in
-`src-tauri/vendor/filevault/LOVELYCARVE.md`. libfvde was consulted, not copied or linked.
+retained in `vendor/filevault/LICENSE`. Local patches are described in
+`vendor/filevault/LOVELYCARVE.md`. libfvde was consulted, not copied or linked.
 
 ## HFS Unicode data
 
-`src-tauri/vendor/hfsplus/src/unicode/folding.rs` transforms the fixed case tables
+`vendor/hfsplus/src/unicode/folding.rs` transforms the fixed case tables
 from Apple `hfs/core/UCStringCompareData.h`, commit
 d1bac2f062e6e9c0dfcce302d9aacb10173d0eea. Copyright (c) 2000-2002, 2005 Apple Inc.
 All rights reserved. This file is covered by APSL-2.0, retained as
-`src-tauri/vendor/hfsplus/APPLE_LICENSE`; its original copyright/license header
+`vendor/hfsplus/APPLE_LICENSE`; its original copyright/license header
 is retained and LovelyCarve's Rust transformation is marked. The remainder of
 hfsplus retains its MIT license.
 
 `unicode/decomposition.rs` is generated from Python's Unicode 3.2 database,
 with HFS exclusions and algorithmic Hangul handled separately. Unicode data
-license is retained as `src-tauri/vendor/hfsplus/UNICODE_LICENSE`. Source data
+license is retained as `vendor/hfsplus/UNICODE_LICENSE`. Source data
 version and regeneration steps are described in `hfsplus/LOVELYCARVE.md`.
 libfshfs was consulted, not copied or linked.
 
@@ -1421,7 +1459,7 @@ The read-only JFFS2 reader adapts Rust node field layouts and RTIME decoding fro
 [xmoezzz/jffs2-rs](https://github.com/xmoezzz/jffs2-rs), version 0.2.1, commit
 `52e1234ce66b0e099b35afabff3fc3e3078a2c0e`. It does not incorporate upstream
 C LZO / Rubin, FFI, build scripts or host extraction code. Local changes and
-limits are documented in `src-tauri/vendor/jffs2/LOVELYCARVE.md`.
+limits are documented in `vendor/jffs2/LOVELYCARVE.md`.
 
 ```text
 MIT License
@@ -1453,7 +1491,7 @@ The legacy SquashFS reader uses the pure Rust `lzma-rs 0.3.0` decoder by
 Guillaume Endignoux, published source commit `da82bd1182993a07db035e285a8f8a87d32a30c2`.
 The local fork adds an explicit strict completion API to validate known-size
 markerless LZMA streams. Original APIs remain available; no C oracle dependency
-is included. See `src-tauri/vendor/lzma-rs/LOVELYCARVE.md`.
+is included. See `vendor/lzma-rs/LOVELYCARVE.md`.
 
 ```text
 MIT License
@@ -1521,7 +1559,7 @@ for local optional tests; it is not included in this repository.
 ## F2FS and EROFS readers and fixtures
 
 F2FS metadata modules are adapted from KarpelesLab/fstool 0.5.0 (MIT);
-see src-tauri/vendor/f2fs-reader/LICENSE-MIT and ORIGIN.md. New frontend code
+see vendor/f2fs-reader/LICENSE-MIT and ORIGIN.md. New frontend code
 is AGPL-3.0-only. The syzkaller mkfs.f2fs fixture is Apache-2.0; its license,
 source and hashes are retained under that reader's tests/fixtures directory.
 EROFS uses lamfold-erofs 0.1.3 (MIT OR Apache-2.0), including its independently
@@ -1531,7 +1569,7 @@ by the evidence read path. Original F2FS synthetic data/generator is CC0-1.0.
 
 ## QNX6 reference fixtures (NetherlandsForensicInstitute/qnxmount)
 
-Apache-2.0, revision `11c8a7f9ee9b945d584263743f6ea8524e8776d2`. The QNX-produced test image, matching TAR and original generation script are retained under `src-tauri/vendor/qnx-reader/tests/fixtures/`; `LICENSE-qnxmount` preserves the license. The image is losslessly zlib-compressed and otherwise unchanged. Runtime QNX4 / QNX6 parsing is original LovelyCarve AGPL-3.0-only Rust code. Optional positive-fixture oracle uses the separately obtained MIT qnxprobe project; it is not a runtime dependency or bundled source.
+Apache-2.0, revision `11c8a7f9ee9b945d584263743f6ea8524e8776d2`. The QNX-produced test image, matching TAR and original generation script are retained under `vendor/qnx-reader/tests/fixtures/`; `LICENSE-qnxmount` preserves the license. The image is losslessly zlib-compressed and otherwise unchanged. Runtime QNX4 / QNX6 parsing is original LovelyCarve AGPL-3.0-only Rust code. Optional positive-fixture oracle uses the separately obtained MIT qnxprobe project; it is not a runtime dependency or bundled source.
 
 ## UDF reader and reference fixtures
 
@@ -1539,7 +1577,7 @@ Apache-2.0, revision `11c8a7f9ee9b945d584263743f6ea8524e8776d2`. The QNX-produce
 [lamco-admin/lamfold](https://github.com/lamco-admin/lamfold/tree/fabaad6af0c28b80535307b339b84110f3a3c12e/crates/lamfold-udf),
 revision `fabaad6af0c28b80535307b339b84110f3a3c12e`, MIT OR Apache-2.0.
 Original LICENSE-MIT, LICENSE-APACHE and NOTICE are preserved in
-`src-tauri/vendor/lamfold-udf/`; local UDF reader changes use the same licenses.
+`vendor/lamfold-udf/`; local UDF reader changes use the same licenses.
 The mkudffs/Linux-generated UDF 1.02 and 2.01 data fixtures are retained as
 lossless zlib copies, with provenance and hashes in their manifest. Invented
 fixtures and `scripts/udf-fixtures.py` are CC0-1.0. No upstream C filesystem
@@ -1555,7 +1593,7 @@ adaptation is distributed as AGPL-3.0-only. No writer/repair implementation is
 included. Official util-linux mkfs.minix/fsck.minix test data and the original
 generation script come from `fbfd2ef405d048e8fc01b309b051d2b403b09853`,
 GPL-2.0-or-later, with license and original hexdumps preserved in
-`src-tauri/vendor/minix-reader/tests/fixtures/util-linux/`.
+`vendor/minix-reader/tests/fixtures/util-linux/`.
 Invented populated fixtures and `scripts/minix-fixtures.py` are CC0-1.0.
 No C filesystem implementation or native runtime dependency is added.
 
@@ -1566,11 +1604,11 @@ No C filesystem implementation or native runtime dependency is added.
 MacRoman collation table from Dani's danifunker/rusty-backup 0.1.0, revision
 `6e044a314f6523045999058f85a882c1eeb64b50` (AGPL-3.0). The latter attributes
 the table to hfsutils, Copyright (C) 1996–1998 Robert Leslie (GPL-2.0-or-later).
-Original license texts are retained under `src-tauri/vendor/classic-hfs/`.
+Original license texts are retained under `vendor/classic-hfs/`.
 The combined adaptation is AGPL-3.0-only. No C filesystem code is compiled.
 The retained hfsutils-generated image and generation script are from the same
 rusty-backup revision; invented fixtures and `scripts/hfs-fixtures.py` are CC0-1.0.
-See [ORIGIN.md](src-tauri/vendor/classic-hfs/ORIGIN.md) for precise source paths,
+See [ORIGIN.md](vendor/classic-hfs/ORIGIN.md) for precise source paths,
 licenses, changes and fixture hashes.
 
 ## ReiserFS v3 reader and fixtures
@@ -1578,11 +1616,11 @@ licenses, changes and fixture hashes.
 `reiserfs-reader` adapts layouts/read algorithms from Dani's
 [danifunker/rusty-backup](https://github.com/danifunker/rusty-backup/blob/6e044a314f6523045999058f85a882c1eeb64b50/src/fs/reiserfs.rs)
 0.1.0 at revision `6e044a314f6523045999058f85a882c1eeb64b50` (AGPL-3.0).
-The original license is retained in `src-tauri/vendor/reiserfs-reader/LICENSE`.
+The original license is retained in `vendor/reiserfs-reader/LICENSE`.
 The retained mkfs.reiserfs/guestfish image and generation script are from that
 same pinned source; invented fixtures and `scripts/reiserfs-fixtures.py` are
-CC0-1.0. See [ORIGIN.md](src-tauri/vendor/reiserfs-reader/ORIGIN.md) and the
-fixture [manifest](src-tauri/vendor/reiserfs-reader/tests/fixtures/manifest.json).
+CC0-1.0. See [ORIGIN.md](vendor/reiserfs-reader/ORIGIN.md) and the
+fixture [manifest](vendor/reiserfs-reader/tests/fixtures/manifest.json).
 No C filesystem implementation is linked. The MIT `unearth` detector was
 examined during research and is not copied or linked.
 
@@ -1592,11 +1630,11 @@ examined during research and is not copied or linked.
 [danifunker/rusty-backup](https://github.com/danifunker/rusty-backup/blob/6e044a314f6523045999058f85a882c1eeb64b50/src/fs/jfs.rs)
 0.1.0 (AGPL-3.0), with bounded tree validation adapted from
 [CaddyGlow/partmgr](https://github.com/CaddyGlow/partmgr/blob/d074f660e81dfa6ade66cd07400b7421ad9eb9b9/src/fs_jfs.rs)
-0.1.2 (MIT). Original license texts are retained in `src-tauri/vendor/jfs-reader/`.
+0.1.2 (MIT). Original license texts are retained in `vendor/jfs-reader/`.
 The combined adaptation is AGPL-3.0-only. No C filesystem implementation is linked.
 The retained mkfs.jfs/guestfish fixture and its generation script are from the
 same rusty-backup revision; invented fixtures and `scripts/jfs-fixtures.py` are
-CC0-1.0. See [ORIGIN.md](src-tauri/vendor/jfs-reader/ORIGIN.md) and the fixture
+CC0-1.0. See [ORIGIN.md](vendor/jfs-reader/ORIGIN.md) and the fixture
 manifest for precise revisions, changes, licenses and SHA-256 values.
 
 ## Amiga OFS / FFS and RDB readers
@@ -1607,7 +1645,7 @@ LICENSE-APACHE files are retained in each vendor directory. Sources:
 [amiga-ffs-rs](https://github.com/sidick/amiga-ffs-rs),
 [amiga-rdb-rs](https://github.com/sidick/amiga-rdb-rs).
 Pinned source hashes and maintained patches are recorded in the corresponding
-ORIGIN.md files and [adapter provenance](src-tauri/vendor/amiga-reader/ORIGIN.md).
+ORIGIN.md files and [adapter provenance](vendor/amiga-reader/ORIGIN.md).
 
 Invented fixture content and `scripts/amiga-fixtures.py` are CC0-1.0.
 [amitools](https://github.com/cnvogelg/amitools) 0.8.1 by Christian Vogelgsang
@@ -1621,7 +1659,7 @@ AGPL-3.0-only, consistent with this repository.
 
 `befs-reader` adapts the read-side layouts and algorithms from Dani's
 [rusty-backup bfs.rs](https://github.com/danifunker/rusty-backup/blob/6e044a314f6523045999058f85a882c1eeb64b50/src/fs/bfs.rs)
-(AGPL-3.0, original license retained as `src-tauri/vendor/befs-reader/LICENSE`).
+(AGPL-3.0, original license retained as `vendor/befs-reader/LICENSE`).
 Primary Haiku BFS definitions and timestamp semantics are MIT-licensed;
 Axel Dörfler's notice and the Marcus Overhagen attribution are retained in
 `LICENSE-HAIKU`. No C filesystem code is compiled or linked.
@@ -1631,22 +1669,22 @@ The opt-in native audit downloads official Haiku public artifacts and an
 independent publisher package; these external OS/package files retain their
 own licenses and are not distributed in this repository. Fixed sources,
 archive checksums, exact verification boundaries and maintained changes are
-recorded in [ORIGIN.md](src-tauri/vendor/befs-reader/ORIGIN.md).
+recorded in [ORIGIN.md](vendor/befs-reader/ORIGIN.md).
 
 ## GFS2 detector and original Rust reader
 
 `gfs2-reader` adapts the MIT superblock prefix interpretation from
 Marcel Roozekrans’s `unearth` revision `bc891261221f5f5134269780d6c206725b21d52e`,
 `src/gfs2.rs`. Its full notice is retained in
-[src-tauri/vendor/gfs2-reader/LICENSE-UNEARTH](src-tauri/vendor/gfs2-reader/LICENSE-UNEARTH).
+[vendor/gfs2-reader/LICENSE-UNEARTH](vendor/gfs2-reader/LICENSE-UNEARTH).
 New Rust reading code is AGPL-3.0-only. Linux UAPI record definitions are used
 as format references; no kernel code or native filesystem library is linked.
 The optional native test uses separately installed Linux tooling and invented
-CC0 inputs. See [ORIGIN.md](src-tauri/vendor/gfs2-reader/ORIGIN.md).
+CC0 inputs. See [ORIGIN.md](vendor/gfs2-reader/ORIGIN.md).
 
 ## OCFS2 reader
 
-`src-tauri/vendor/ocfs2-reader` contains an original AGPL-3.0-only immutable
+`vendor/ocfs2-reader` contains an original AGPL-3.0-only immutable
 Rust reader. Superblock prefix positions/layout adapt Marcel Roozekrans's MIT
 `unearth` detector at `bc891261221f5f5134269780d6c206725b21d52e`; its notice is
 retained as `LICENSE-UNEARTH`. Linux OCFS2 definitions at
@@ -1654,11 +1692,11 @@ retained as `LICENSE-UNEARTH`. Linux OCFS2 definitions at
 no kernel C source is compiled, linked or shipped. Original invented fixtures
 and Python generators are CC0-1.0; native mkfs/kernel/fsck inputs remain in an
 external cache. Provenance, hashes and verification limits are recorded in
-[ORIGIN.md](src-tauri/vendor/ocfs2-reader/ORIGIN.md).
+[ORIGIN.md](vendor/ocfs2-reader/ORIGIN.md).
 
 ## NILFS2 reader
 
-`src-tauri/vendor/nilfs2-reader` contains an original immutable AGPL-3.0-only
+`vendor/nilfs2-reader` contains an original immutable AGPL-3.0-only
 Rust reader. Superblock prefix positions adapt Marcel Roozekrans's MIT
 `unearth` detector at `bc891261221f5f5134269780d6c206725b21d52e`; its notice
 remains in `LICENSE-UNEARTH`. Linux definitions and interpretation at
@@ -1666,11 +1704,11 @@ remains in `LICENSE-UNEARTH`. Linux definitions and interpretation at
 kernel C source or C filesystem library is compiled or linked for this reader.
 Independent invented fixtures and generators are CC0-1.0; native mkfs/kernel/GC
 inputs stay in an external cache. Sources, hashes and verification limits are
-recorded in [ORIGIN.md](src-tauri/vendor/nilfs2-reader/ORIGIN.md).
+recorded in [ORIGIN.md](vendor/nilfs2-reader/ORIGIN.md).
 
 ## bcachefs reader and block framework
 
-`src-tauri/vendor/rust-fs-bcachefs` is the MIT-licensed 0.4.2 reader from
+`vendor/rust-fs-bcachefs` is the MIT-licensed 0.4.2 reader from
 antimatter-studios at `53eb12044f3f6dab498c11c2044748f4591cb4e5`.
 Its pinned MIT `rust-fs-core` 0.3.14 sibling is retained at
 `19449ad4926d09447d19440c6312ba544b50bf4b`. Original licenses, codec attribution
@@ -1679,6 +1717,6 @@ and the reader's clean-room provenance are retained in their vendor folders.
 fixtures/generators are CC0-1.0. Production reads link no native filesystem
 library and enable neither the upstream C ABI nor writing. Native oracle
 images and native tools are not redistributed. Local changes and evidence:
-[reader origin](src-tauri/vendor/rust-fs-bcachefs/ORIGIN.md),
-[framework origin](src-tauri/vendor/rust-fs-core/ORIGIN.md),
-[adapter and fixtures](src-tauri/vendor/bcachefs-reader/ORIGIN.md).
+[reader origin](vendor/rust-fs-bcachefs/ORIGIN.md),
+[framework origin](vendor/rust-fs-core/ORIGIN.md),
+[adapter and fixtures](vendor/bcachefs-reader/ORIGIN.md).

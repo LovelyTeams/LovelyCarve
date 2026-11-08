@@ -5,7 +5,7 @@ rusty-backup 的 JFS 读取范围较广；partmgr 0.1.2 的校验较严格，但
 限制为 4 KiB 分配块、单 IAG、低层级分配图以及没有 EA / ACL 等的文件。
 本实现复用它们的字段布局与树校验算法，修正 inode 位图索引、内部 xtree 寻址和名称续槽语义，
 并扩展分配块大小、多 IAG、目录索引、符号链接和 EA / ACL 分配检查。
-固定版本、许可和样本来源见 [ORIGIN.md](../../src-tauri/vendor/jfs-reader/ORIGIN.md)。
+固定版本、许可和样本来源见 [ORIGIN.md](../../vendor/jfs-reader/ORIGIN.md)。
 运行时只依赖 Rust `lamfold` 字节源，不调用系统挂载、C 文件系统库或修复工具。
 
 ## 支持范围

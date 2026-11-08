@@ -80,7 +80,7 @@ just test-cli
 check marker、跨元数据块 inode、片段表、长目录、UID/GID、硬链接和各特殊类型。
 NanaZip / 7-Zip 另生成无 EOS 的 LZMA 块，Python/liblzma 独立核对其字节；
 截断测试逐个检查每个压缩长度，包含截短 EOS 的专门反例。来源与哈希见
-[夹具说明](../../src-tauri/vendor/backhand/test_data/legacy/README.md)。
+[夹具说明](../../vendor/backhand/test_data/legacy/README.md)。
 
 Unblob 的标准 v1/v2 大小端样本与其独立记录的文本输出核对；Binwalk 的 v2 BE
 样本另覆盖无 EOS LZMA、嵌套树与全文件 / 流式 / 范围一致性。公开输入的来源、
@@ -101,4 +101,4 @@ just test squashfs_legacy_host_external --lib -- --ignored
 XZ 的各 BCJ / 校验模式以及 Zstandard 校验帧由 Python/liblzma、Python
 `zstandard` 独立生成；测试逐个截断长度，并覆盖尾随输入、伪造索引、坏校验、
 过大字典 / 窗口与超限输出。原始生成器、CC0 声明和 SHA-256 见
-[压缩夹具](../../src-tauri/vendor/backhand/test_data/native-codecs.json)。
+[压缩夹具](../../vendor/backhand/test_data/native-codecs.json)。

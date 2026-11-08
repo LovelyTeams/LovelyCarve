@@ -254,7 +254,7 @@ FileInfo   = { file_id, name, size, mime?, view_path?, root?, root_path?, node_i
 
 ## 任务调度
 
-调度器（`src-tauri/src/core/extensions/task_scheduler/`）把任务保存在案件台账 `case.db` 的 `task` 表中：
+调度器（`crates/core/src/extensions/task_scheduler/`）把任务保存在案件台账 `case.db` 的 `task` 表中：
 
 - **状态**：`created → queued → running → success | failed | cancel`，`offline` 为可恢复的中间态。任务不能暂停：取消即结束执行，重新分析从头开始。旧案件里处于 `pause` 的任务行可以开始（从头再跑）或取消。
 - **作业唯一**：同一作业最多一个未结束的任务；`sched_task_create` 命中时返回已有任务（`created: false`）。整个检材的作业另有台账的部分唯一索引兜底。
@@ -274,7 +274,7 @@ FileInfo   = { file_id, name, size, mime?, view_path?, root?, root_path?, node_i
 - `fs.open`：创建会话并返回不透明根节点；`fs.children`、`fs.children_page`（每页 1000 项，单目录上限 1,000,000 项）、`fs.stat`、`fs.read_range`（大范围按 4 MiB 分块）、`fs.close`。
 - 插件 → 宿主：`source.info`、`source.read`（单次 4 MiB）、`source.readv`（最多 128 段、合计 8 MiB 减 4 KiB）。
 
-元数据调用 15 秒超时，目录调用 60 秒，打开与读取 120 秒；超时的请求被取消。插件节点 ID 在到达前端前包上插件与会话身份，宿主不让插件解释宿主的路由 ID。共享实例按需启动；崩溃时状态记为 `crashed`，下次使用时重新启动。
+元数据调用 15 秒超时，目录调用 60 秒，打开与读取 120 秒；超时的请求被取消。插件节点 ID 在到达调用方前包上插件与会话身份，宿主不让插件解释宿主的路由 ID。共享实例按需启动；崩溃时状态记为 `crashed`，下次使用时重新启动。
 
 ## 进程边界与资源限制
 
@@ -351,7 +351,7 @@ export_plugin!(plugin);
 | `task_list` / `task_status` / `task_cancel` | `tasks list` / `get` / `cancel` | 任务中心：插件任务与内置任务的统一列表 |
 | `analysis_result_tree`、`analysis_records_page`、`analysis_record_detail`、`analysis_run_get` | `analysis tree get`、`analysis records list` / `get`、`analysis runs get` | 结果树、按列排序与检索的分页记录、记录详情、运行审计 |
 
-前端经 `src/lib/ipc/plugins.ts`、`tasks.ts`、`taskRuntime.ts`、`analysisResults.ts` 调用。界面：「设置 → 插件」安装、卸载并查看插件包；任务中心的「快速分析」按所选系统列出系统级与检材级分析器；文件列表右键「插件分析任务…」运行文件级分析器（有选项时先填写）；「分析结果」按分析器运行列出记录类型，表格列与排序来自记录结构，运行信息显示审计。
+桌面应用直接调用这些命令函数（`crates/desktop/src/settings.rs`、`tasks/center.rs`、`analysis/`）：「设置中心 → 插件」安装、卸载并查看插件包；任务中心的「快速分析」按所选系统列出系统级与检材级分析器；「分析结果」按分析器运行列出记录类型，表格列来自记录结构。文件级分析器、插件任务的重新分析与删除以及运行审计目前通过 CLI 使用。
 
 ## 旧版本数据
 

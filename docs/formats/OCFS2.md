@@ -4,7 +4,7 @@
 crates.io / GitHub：`unearth` 提供超级块识别，`reflicate` 使用已挂载卷的
 reflink ioctl，未找到可直接接入的完整 Rust 镜像读取器。本实现复用
 `unearth` 的 MIT 前缀布局，按原生格式定义新增读取和校验。
-固定来源及许可见 [ORIGIN.md](../../src-tauri/vendor/ocfs2-reader/ORIGIN.md)。
+固定来源及许可见 [ORIGIN.md](../../vendor/ocfs2-reader/ORIGIN.md)。
 产品不链接 C 文件系统库，不调用内核挂载或外部提取程序。
 
 ## 能力

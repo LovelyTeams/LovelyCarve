@@ -32,7 +32,7 @@ NAT、checkpoint、superblock 和常量解码改造自
 未引入其 writer、格式化器、容器和 CLI。inode / 寻址 / 目录与宿主接入为本仓库代码，
 对照 [Linux F2FS 布局](https://github.com/torvalds/linux/blob/v6.12/include/linux/f2fs_fs.h)
 与 [内核文档](https://docs.kernel.org/filesystems/f2fs.html)。具体差异和许可见
-[读取库来源](../../src-tauri/vendor/f2fs-reader/ORIGIN.md)。
+[读取库来源](../../vendor/f2fs-reader/ORIGIN.md)。
 
 独立 Python 夹具覆盖扩展属性改变地址起点及内联容量、跨 direct-node 边界、硬链接、
 普通 / 内联目录、空洞与时间戳；另构造所有间接层级、NAT 位图 / 日志选择、损坏 checkpoint

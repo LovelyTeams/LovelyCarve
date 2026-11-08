@@ -14,7 +14,7 @@ import zlib
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 
-DEST = Path(__file__).resolve().parents[1] / 'src-tauri/tests/data/encrypted'
+DEST = Path(__file__).resolve().parents[1] / 'crates/core/tests/data/encrypted'
 PASSWORD = b'lovelycarve-test'
 MASTER = bytes(range(64))
 SALT = bytes(range(32))

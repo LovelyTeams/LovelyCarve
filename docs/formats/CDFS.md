@@ -135,7 +135,6 @@ just test raw_cd --lib
 just test cue --lib
 just verify-rust
 just check-examples
-just verify-fe
 just test-cli
 ```
 

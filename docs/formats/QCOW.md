@@ -4,8 +4,8 @@
 逐项覆盖 `include/libqcow.h.in` 的全部 **42** 个公开函数（包括条件编译的 wide/BFIO 入口）。
 同时核对上游 README、file/header/cluster/encryption 实现，以及
 [QEMU QCOW2 格式规范](https://www.qemu.org/docs/master/interop/qcow2.html)。
-Rust 实现位于 `src-tauri/vendor/qcow2`；宿主仍保留 `ImageFormat::Qcow2` 这一既有分类，包含 QCOW v1。
-来源与许可证见 [LOVELYCARVE.md](../../src-tauri/vendor/qcow2/LOVELYCARVE.md)。
+Rust 实现位于 `vendor/qcow2`；宿主仍保留 `ImageFormat::Qcow2` 这一既有分类，包含 QCOW v1。
+来源与许可证见 [LOVELYCARVE.md](../../vendor/qcow2/LOVELYCARVE.md)。
 
 ## 格式能力
 
@@ -112,18 +112,18 @@ keyHex 必须恰好 16 字节（32 个十六进制字符）。原无参数调用
 
 凭据只进入本次调用和内存读取器，不进入案件清单、task 描述或日志；程序重启后需重新提供。
 自动父链用同一 key 打开所有加密成员；不同成员密码可在独立 Rust API 中逐层打开、set_backing。
-桌面 `useFileSession.loadFile` 的 options 与类型化 IPC 已能传递凭据；普通文件选择器尚无
+`image_load` 的选项与 CLI 已能传递凭据；桌面应用尚无
 QCOW 专用密码输入弹窗。现有分区解锁弹窗也不用于整个 QCOW 容器。
 
 ## 验证
 
 `just test-qcow2` / `just clippy-qcow2` 验证独立库；
 `just test qcow --lib --jobs 1` 验证宿主 signature / 压缩 / 差分 / AES。
-IPC 改动使用 `just verify-fe`、`just check`、`just clippy` 和 `just check-examples`。
-CLI 的 `images open` 由命令注册表与 `cli/commands.toml` 生成：命令行用 `--qcow-password` / `--qcow-key-hex`，JSONL 会话用 `qcowPassword` / `qcowKeyHex`。
+命令改动使用 `just check`、`just clippy`、`just test-cli` 和 `just check-examples`。
+CLI 的 `images open` 由命令注册表与 `crates/cli/src/commands.toml` 生成：命令行用 `--qcow-password` / `--qcow-key-hex`，JSONL 会话用 `qcowPassword` / `qcowKeyHex`。
 
 生成样本来自独立 Python zlib / cryptography-OpenSSL，实现及 SHA-256 见
-[测试夹具记录](../../src-tauri/vendor/qcow2/tests/data/README.md)，覆盖各版本、扇区跨界、
+[测试夹具记录](../../vendor/qcow2/tests/data/README.md)，覆盖各版本、扇区跨界、
 随机/顺序/逆序/并发读取、压缩坏尾、reserved bits、扩展溢出、parent 缺失/循环/深度、zero 与取消。
 没有真实检材或编译 libqcow 的逐字节 oracle，因此不宣称已经通过这两类验证。
 

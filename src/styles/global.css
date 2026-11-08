@@ -1,5 +1,0 @@
-/* Theme tokens, base resets and shared UI primitives for every window (main + detached previews). */
-@import './themes.css';
-@import './base.css';
-@import './ui.css';
-@import './motion.css';

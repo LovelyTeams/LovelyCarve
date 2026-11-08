@@ -2,7 +2,7 @@
 
 适配前先检索 Rust 库，选择 MIT 许可的 `rust-fs-bcachefs` 0.4.2，而不是包装原生
 C 工具。固定提交、修改点、许可和镜像哈希见
-[ORIGIN.md](../../src-tauri/vendor/bcachefs-reader/ORIGIN.md)。
+[ORIGIN.md](../../vendor/bcachefs-reader/ORIGIN.md)。
 生产读取不调用挂载、FUSE、外部提取器或 C 文件系统库；证据字节接口没有写入能力。
 
 ## 能力

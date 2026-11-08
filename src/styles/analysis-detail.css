@@ -1,6 +1,0 @@
-/* Context blocks inside the shared FileDetailLayout / Section / Fields template. */
-.detail-block { margin: 0; padding: 10px 12px; border-radius: var(--radius-md); background: var(--surface-primary); color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.8 var(--font-mono); user-select: text; }
-.detail-block.prose { font: 12px/1.8 var(--font-ui); }
-.detail-block mark { padding: 0 2px; border-radius: var(--radius-sm); background: var(--sev-warn-tag-bg); color: var(--sev-warn-tag-fg); font-weight: 600; }
-.detail-note { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.8; }
-.detail-alert { margin: 10px 0 0; }

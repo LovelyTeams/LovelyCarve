@@ -52,12 +52,11 @@ CBC 范围读取借用前一个密文块恢复 IV，SQLite 等分页预览不必
 ## 来源与验证
 
 读取器与审计器来自 [SecurityRonin/ios-backup-forensic](https://github.com/SecurityRonin/ios-backup-forensic)，
-固定到 `8d8cef447ae212e7dd22dc0425156bf4ddfcfa05`，保存在 `src-tauri/vendor/ios-backup`，
+固定到 `8d8cef447ae212e7dd22dc0425156bf4ddfcfa05`，保存在 `vendor/ios-backup`，
 遵循 Apache-2.0。与现有 `sqlite-core` 共用依赖。局部修改及样本来源见该目录的 `UPSTREAM.md`。
 
 `just test-ios-backup` 覆盖上游解析、密码、独立加密样本、加密声明矛盾、路径安全、
-未知长度及流/范围读取；`just test` 覆盖 LovelyCarve 的文件树、会话、短读和异常映射；
-`just test-fe` 覆盖密码清理、取消和切换证据时的迟到结果回收。
+未知长度及流/范围读取；`just test` 覆盖 LovelyCarve 的文件树、会话、短读和异常映射。
 当前验证包含人工合成并由独立 Python 加密实现生成的样本，尚不能代替真实设备备份与已知密码的
 逐字节验证。当前范围是带 `Manifest.db` 的现代本地备份，不包括旧 `Manifest.mbdb`、
 iCloud 下载、备份创建、密码破解或短信/联系人等业务数据库的专门报告解析。

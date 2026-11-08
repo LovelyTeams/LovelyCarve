@@ -3,7 +3,7 @@
 使用 Simon Dick 的纯 Rust `amiga-ffs` 0.4.0 和 `amiga-rdb` 0.4.1，
 由只读 `amiga-reader` 适配。适配前也检查了 `affs-read` 0.5.1 与 fstool 0.5.0；
 前者接口 / 格式范围较窄，后者仅覆盖经典 DOS0–5。来源、固定版本及补丁见
-[ORIGIN.md](../../src-tauri/vendor/amiga-reader/ORIGIN.md)。运行时不链接 C 文件系统库，
+[ORIGIN.md](../../vendor/amiga-reader/ORIGIN.md)。运行时不链接 C 文件系统库，
 不调用挂载 / 解包程序；检材适配仅实现 `BlockSource`，不实现写入所需的 `BlockSink`。
 
 ## 能力
@@ -53,7 +53,7 @@ name/comment 编码问题；生成脚本明确记录独立 NaC 字段编辑，�
 读取器回读长名称和内容。硬 / 软链接样本是基于 oracle 分配布局的独立字段编辑，
 不能称为 oracle 原生创建并验证的链接样本。
 样本内容为自制数据（CC0-1.0），哈希见
-[manifest.json](../../src-tauri/vendor/amiga-reader/tests/fixtures/manifest.json)。
+[manifest.json](../../vendor/amiga-reader/tests/fixtures/manifest.json)。
 尚无真实 Amiga 硬件镜像、非 512 字节 RDB 设备扇区、2 / 8 / 16 / 32 KiB 卷及
 大型真实硬盘的独立逐文件对照，合成样本不能代替这些验证。
 

@@ -3,7 +3,7 @@
 LovelyCarve 可直接浏览裸 `.jffs2` 与受支持固件分段中的新格式 JFFS2。
 读取器先评估并复用 [jffs2-rs 0.2.1](https://github.com/xmoezzz/jffs2-rs/tree/52e1234ce66b0e099b35afabff3fc3e3078a2c0e)
 的 Rust 节点字段与 RTIME 算法，再改为有界只读库；不包含上游 C LZO / Rubin、
-宿主目录解包代码或 FFI。来源见 [vendor 说明](../../src-tauri/vendor/jffs2/LOVELYCARVE.md)。
+宿主目录解包代码或 FFI。来源见 [vendor 说明](../../vendor/jffs2/LOVELYCARVE.md)。
 
 ## 支持范围
 

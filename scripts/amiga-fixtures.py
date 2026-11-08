@@ -19,7 +19,7 @@ from amitools.fs.TimeStamp import TimeStamp
 from amitools.fs.blkdev.BlockDevice import BlockDevice
 from amitools.fs.rdb.RDisk import RDisk
 
-OUTPUT = Path(__file__).resolve().parent.parent / 'src-tauri/vendor/amiga-reader/tests/fixtures'
+OUTPUT = Path(__file__).resolve().parent.parent / 'vendor/amiga-reader/tests/fixtures'
 STAMP = TimeStamp(12345, 678, 2999)
 
 

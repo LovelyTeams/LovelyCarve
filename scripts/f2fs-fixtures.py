@@ -134,7 +134,7 @@ inner = inode(8, 0o100600, 13, flags=0x22)
 inner[388:401] = b'hello F2FS!\r\n'
 save_inode(8, inner)
 block(2560, nat)
-output = Path('src-tauri/vendor/f2fs-reader/tests/fixtures')
+output = Path('vendor/f2fs-reader/tests/fixtures')
 output.mkdir(parents=True, exist_ok=True)
 (output / 'synthetic.f2fs.zlib').write_bytes(zlib.compress(image, 9))
 print('F2FS fixture generated:', len(image), 'bytes')

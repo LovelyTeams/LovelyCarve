@@ -3,7 +3,7 @@
 `classic-hfs` 为独立纯 Rust 只读库，复用并加固现有 Rust 实现：fstool 0.5.0
 的 HFS 字段布局 / MacRoman 解码器，以及 rusty-backup 的 HFS 名称比较表。
 选型前也检查了 `hfs-reader` 0.1.1，其整镜像借用 / 整 fork 缓冲接口不适合检材范围读取。
-固定提交、原始许可、样本来源见 [ORIGIN.md](../../src-tauri/vendor/classic-hfs/ORIGIN.md)。
+固定提交、原始许可、样本来源见 [ORIGIN.md](../../vendor/classic-hfs/ORIGIN.md)。
 不依赖 C 文件系统库、系统挂载、修复工具或写入实现。
 
 ## 支持范围

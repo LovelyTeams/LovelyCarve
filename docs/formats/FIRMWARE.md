@@ -70,7 +70,7 @@ filesystem 和内核 / rootfs 之间的任意填充布局尚未接入。Sercomm 
 Firmware Mod Kit 的 Linux shell、提取器或重打包工具。
 SquashFS 复用 `backhand`（MIT OR Apache-2.0），LZMA 使用 `lzma-rust2`；
 旧 v1/v2 及无 EOS LZMA 的严格校验与限制见 [SquashFS](SQUASHFS.md)。
-具体集成变更见 [backhand/LOVELYCARVE.md](../../src-tauri/vendor/backhand/LOVELYCARVE.md)。
+具体集成变更见 [backhand/LOVELYCARVE.md](../../vendor/backhand/LOVELYCARVE.md)。
 
 SafeLoader 与 CHK 对照 [OpenWrt firmware-utils b2a93c6f77ba](https://github.com/openwrt/firmware-utils/tree/b2a93c6f77bac3a6525e93b383c987b073b4633b)：
 `src/tplink-safeloader.c`（Matthias Schiffer，BSD-2-Clause）、`src/mkchkimg.c`

@@ -1,6 +1,6 @@
 # GZIP 读取器
 
-`src-tauri/vendor/gzipf` 是参照 libyal/libgzipf 重写的独立 Rust crate。
+`vendor/gzipf` 是参照 libyal/libgzipf 重写的独立 Rust crate。
 它提供只读 GZIP 流、成员元数据与解压数据 seek，已作为宿主 path 依赖
 接入 `.tar.gz` / `.tgz`、Docker / OCI 的 GZIP 层，以及小米 `.bak` 中的
 GZIP Android Backup payload。非 GZIP 的 zlib/DEFLATE 仍由原有读取器处理。
@@ -72,7 +72,7 @@ trailer、成员结束和逻辑数据区间；extra 子字段不解释为宿主�
 测试覆盖每个最小样本截断点、可选头截断、CRC/ISIZE/DEFLATE 损坏、
 Latin-1、空字段、精确源区间、碎片 I/O、边界/反向/跨成员 seek、EOF、
 资源上限、取消与错误后的读取。生成器、许可证和 SHA256SUMS 位于
-`src-tauri/vendor/gzipf/tests/data/`。
+`vendor/gzipf/tests/data/`。
 
 本次没有运行 libgzipf C 库的逐字节 oracle，也没有验证真实检材或 >4 GiB
 单成员；64 位长度与 ISIZE 回绕按格式实现，不能视为大样本已实测。

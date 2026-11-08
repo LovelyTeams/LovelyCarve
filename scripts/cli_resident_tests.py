@@ -84,7 +84,7 @@ def test_resident_sessions(executable, base_environment):
 
             # Real assembled evidence survives multiple clients, including use by
             # UUID and assembled:// reference, without another assembly command.
-            fixture = Path(__file__).resolve().parents[1] / "src-tauri/tests/data/encrypted/plain.img"
+            fixture = Path(__file__).resolve().parents[1] / "crates/core/tests/data/encrypted/plain.img"
             member = value("--session", "other", "images", "open", fixture)
             params = {"member_image_ids": [member["id"]], "level": 1, "layout": 0,
                       "chunk_sectors": 128, "data_offset_sectors": 0}

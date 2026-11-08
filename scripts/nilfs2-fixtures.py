@@ -237,7 +237,7 @@ def build(block, high=False):
 
 
 if __name__ == "__main__":
-    output = pathlib.Path(__file__).resolve().parents[1] / "src-tauri/vendor/nilfs2-reader/tests/fixtures"
+    output = pathlib.Path(__file__).resolve().parents[1] / "vendor/nilfs2-reader/tests/fixtures"
     output.mkdir(exist_ok=True, parents=True)
     manifest = {"license": "CC0-1.0", "generator": "scripts/nilfs2-fixtures.py", "fixtures": []}
     for block in [1024, 4096, 65536]:

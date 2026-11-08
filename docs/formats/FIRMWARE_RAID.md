@@ -59,7 +59,7 @@ IMSM 不在盘上记录"自己是哪一块盘"，磁盘表只保存每块成员�
 - `core/evidence/raid/imsm_identity.rs`：按序列号与磁盘大小把检材对应到磁盘记录，识别重复加载与冲突。
 - `core/evidence/physical_disk.rs` 与 `physical_disk/descriptor.rs`：Windows 设备描述符查询、返回长度与字符串边界检查，以及设备序列号和 ATA 字节顺序解释；`DiskImage.physical_drive_serial` 保留设备报告值，E01 采集信息单独保留。
 - `core/evidence/raid/imsm_array.rs`、`ddf_array.rs`：权威副本、槽位与成员状态；`ddf_geometry.rs`：DDF 级别到 md 级别与布局的映射、子卷记录一致性；`firmware.rs`：整盘探测、与 md 一致的降级规则、读取器构建与按元数据卷大小截取。
-- 前端 `src/features/raid/model/stackView.ts` 为「未匹配」成员与「成员顺序未知」状态提供显示文字。
+- 桌面应用的 RAID 卡片（`crates/desktop/src/raid.rs`）为「未匹配」成员与「成员顺序未知」状态提供显示文字。
 
 物理磁盘身份测试使用合成 Windows 设备描述符，覆盖缺失 / 越界的序列号偏移、截短与未终止字符串、填充空白、无效字节和 ATA 字节交换。固件 RAID 回归覆盖按设备序列号把乱序加载的同容量 RAID5 成员放回槽位、逐字节核对卷内容，以及两种字节顺序匹配不同记录时拒绝组装；不依赖真实物理磁盘。
 

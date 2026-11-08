@@ -34,7 +34,7 @@ def main():
     oracle = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = oracle
     spec.loader.exec_module(oracle)
-    root = Path(__file__).resolve().parent.parent / 'src-tauri/vendor/qnx-reader/tests/fixtures'
+    root = Path(__file__).resolve().parent.parent / 'vendor/qnx-reader/tests/fixtures'
     image = zlib.decompress((root / 'qnx4.zlib').read_bytes())
     files = walk(oracle.Qnx4Walker(io.BytesIO(image), 0))
     expected = {

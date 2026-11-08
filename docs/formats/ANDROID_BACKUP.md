@@ -42,6 +42,6 @@ just test folder_image --lib
 
 合成样本覆盖全部五个版本、未压缩 / zlib、MIUI 前缀和改名文件、原始字节保持、
 文件范围读取、物理偏移隔离、损坏压缩流、无效头及加密备份拒绝。
-`src-tauri/tests/fixtures/android-backup/` 包含由 ABE 实际 `pack` / `pack-kk`
+`crates/core/tests/fixtures/android-backup/` 包含由 ABE 实际 `pack` / `pack-kk`
 生成的版本 1 / 2 独立夹具，始终参与测试；来源、工具哈希和重建方法见该目录 README。
 仅包含虚构路径与 `payload` 文本，不提交真实检材或下载的 ABE 程序。

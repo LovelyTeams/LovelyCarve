@@ -122,7 +122,7 @@ just test xfs --lib
 目录 inline / leaf / node / data / block、属性 shortform / leaf / node / bmap / remote、哈希碰撞与 namespace、
 extent 空洞 / unwritten / 跨叶 / EOF、CRC / owner / address / 范围错误、源短读与原镜像 / LVM payload 来源；
 应用层 XFS 回归另覆盖直接与会话范围读取以及跨 segment 的来源映射。
-固定应用夹具的来源、SHA-256 和重建脚本见 [test_data](../../src-tauri/vendor/xfs-fuse/test_data/README.md)。
+固定应用夹具的来源、SHA-256 和重建脚本见 [test_data](../../vendor/xfs-fuse/test_data/README.md)。
 
 `LOVELYCARVE_XFS_TEST` / `LOVELYCARVE_XFS_LVM_TEST` 是可选的外部检材回归，未设置时测试提前返回，不代表检材读取已验证。
 尚未与 libfsxfs 二进制在真实镜像上比对目录、属性与正文哈希，也没有在 Windows 上做 Dokan 实际挂载验收；

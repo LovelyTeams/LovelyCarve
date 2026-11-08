@@ -11,7 +11,7 @@ import json
 import struct
 import zlib
 
-OUTPUT = Path(__file__).resolve().parent.parent / 'src-tauri/vendor/befs-reader/tests/fixtures'
+OUTPUT = Path(__file__).resolve().parent.parent / 'vendor/befs-reader/tests/fixtures'
 
 
 def build(block_size=1024, big=False, blocks=2560, group_shift=None):

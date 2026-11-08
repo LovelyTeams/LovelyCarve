@@ -4,7 +4,7 @@ from pathlib import Path
 import struct
 import zlib
 
-OUTPUT = Path('src-tauri/vendor/qnx-reader/tests/fixtures')
+OUTPUT = Path('vendor/qnx-reader/tests/fixtures')
 OUTPUT.mkdir(parents=True, exist_ok=True)
 
 

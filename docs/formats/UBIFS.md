@@ -4,7 +4,7 @@ LovelyCarve 可直接打开裸 `.ubifs`，也可浏览 UBI 命名逻辑卷、受
 UBIFS。读取器沿用 [rust_ubidump](https://github.com/aspnmy/rust_ubidump) 的 Rust
 节点、键、inode 与索引结构，在同一 vendor 中改为有界只读接口；压缩数据使用
 现有 Rust 生态的 `flate2/zlib-rs`、`lzokay` 与 `ms-compress-ruzstd`。
-来源和本地修改见 [vendor 说明](../../src-tauri/vendor/ubidump/LOVELYCARVE.md)。
+来源和本地修改见 [vendor 说明](../../vendor/ubidump/LOVELYCARVE.md)。
 
 ## 能力与完整性
 

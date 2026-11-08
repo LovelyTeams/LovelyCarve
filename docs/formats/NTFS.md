@@ -81,7 +81,7 @@ just run-example probe_ntfs_stream '<镜像路径>' <分区ID> <MFT记录号> '<
 - 严格 reader 对损坏属性/USA/BAAD 返回具体错误；未提供 libfsntfs 损坏条目的部分恢复对象。
 
 - 固定二进制只含合成字节，来源、输入生成规则与 SHA-256 见
-  [NTFS fixtures](../../src-tauri/src/core/filesystem/volumes/ntfs/testdata/README.md)。
+  [NTFS fixtures](../../crates/core/src/filesystem/volumes/ntfs/testdata/README.md)。
 - WOF 回归在合成 NTFS 卷中使用独立原生 codec 输出；尚未完成大批真实 Compact/WOF
   文件的全量 libfsntfs 差分，不声称在所有 Windows 版本及损坏检材上完全一致。
 - WIMBoot provider 1 需要外部 WIM 资源，当前明确报错；未知 provider/算法、缺 ADS
@@ -103,7 +103,7 @@ just test ntfs
 just test-vendor ntfs
 ```
 
-vendor 测试不会随主工程的 `just test` 执行，修改 `src-tauri/vendor/ntfs` 时需要单独运行。
+vendor 测试不会随主工程的 `just test` 执行，修改 `vendor/ntfs` 时需要单独运行。
 公共读取接口改动另跑 `just check-examples`。
 
 可选真实镜像回归：设置 `NTFS_REPARSE_IMAGE` 为本地 AF_UNIX / 已删除目录旧属性链

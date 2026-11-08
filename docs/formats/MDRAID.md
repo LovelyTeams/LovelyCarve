@@ -49,6 +49,5 @@ Linux 软件 RAID（md / mdadm）由纯 Rust 代码识别与重组，结果注�
 - `core/evidence/raid/mdadm_super.rs`：四种超级块的解码、校验和与位置核对。
 - `core/evidence/raid/md_array.rs`：当前成员、槽位、降级与诊断规则；`detect.rs`：候选设备枚举、最内层超级块归属和整体流程；`lvm_stack.rs`：md 上的 PV 与跨 PV 逻辑卷。
 - `core/evidence/raid/source/`：各级别读取器（`striped`、`mirror`、`raid10`、`linear`）、校验布局（`parity_layout`）、GF(2^8) 运算（`gf256`）、把缺失与补零的列一起计入的校验重建（`rebuild`）、成员补零区间的传递与按副本修补（`traced`）与按级别构建读取器（`build`）。
-- 前端条带示意 `src/features/raid/model/stripeLayout.ts` 与后端使用同一套布局规则，两侧测试核对相同的布局表。
 
 测试全部使用代码生成的合成成员：各 RAID5/6 布局的位置与 md 布局表逐行比对，GF(2^8) 运算核对已知幂值与逆元；读取器测试覆盖全部布局在每一种单列、双列缺失组合下逐字节还原、截断成员与越界读取报错；读故障测试让成员按偏移补零（含截断的 VMDK 成员），逐字节对照期望——某列在该位置缺失或补零、且缺失与补零的列数超过冗余时才上报——覆盖全部条带布局的完整与降级阵列、RAID1、RAID10、linear 与跨 PV 逻辑卷，并经 `DiskImage` 核对哈希与导出读取到的坏区报告；端到端测试覆盖 1.2 RAID5、1.0 RAID6 降级、0.90 RAID1、RAID10、linear、陈旧与重建中成员、损坏的超级块、分区与整盘共享末尾超级块，以及两组 md 上跨 PV 的逻辑卷。仓库内没有真实 md 检材，也没有与 Linux 内核逐字节对照的外部样本测试；变更后运行 `just test raid`。

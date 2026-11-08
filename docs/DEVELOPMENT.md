@@ -1,6 +1,6 @@
 # 开发指南
 
-所有任务都在仓库根目录通过 [just](https://github.com/casey/just) 执行（建议 1.53 或更新版本）。首次克隆后运行 `just bootstrap`，它会初始化插件子模块并执行 `bun install --frozen-lockfile`；之后用 `just --list` 查看全部入口。
+所有任务都在仓库根目录通过 [just](https://github.com/casey/just) 执行（建议 1.53 或更新版本）。首次克隆后运行 `just bootstrap` 初始化插件子模块；之后用 `just --list` 查看全部入口。
 
 ```powershell
 git clone --recurse-submodules https://github.com/LovelyTeams/LovelyCarve.git
@@ -13,19 +13,26 @@ just dev
 
 | 组件 | 要求 |
 | --- | --- |
-| Rust | stable，最低版本以 `src-tauri/Cargo.toml` 的 `rust-version` 为准，当前为 1.99 |
-| Bun | 版本以 `package.json` 的 `packageManager` 为准 |
-| Windows 桌面 | PowerShell 7、Visual Studio C++ x64 工具与「适用于 Windows 的 C++ Clang 工具」（含 `lld-link`）、Windows SDK、OpenSSL 开发文件、WebView2 |
-| macOS | Xcode Command Line Tools；桌面检查另需相应的 Tauri 系统依赖 |
-| Linux | 编译工具链、WebKitGTK、OpenSSL 等 Tauri 系统依赖 |
+| Rust | stable，最低版本以根目录 `Cargo.toml` 的 `rust-version` 为准，当前为 1.99 |
+| Bun | 运行 `scripts/build-plugins.mjs`（`just build-plugins`、`dev`、`build-release` 与 CLI 打包），CI 固定 1.4.2 |
+| Windows | PowerShell 7、Visual Studio C++ x64 工具与「适用于 Windows 的 C++ Clang 工具」（含 `lld-link`）、Windows SDK、OpenSSL 开发文件 |
+| macOS | Xcode Command Line Tools；桌面应用另需 GPUI 在该平台的系统依赖 |
+| Linux | 编译工具链与 OpenSSL 开发文件；桌面应用另需 GPUI 在该平台的系统依赖 |
 | CLI smoke 测试 | Python 3 |
-| Windows 便携打包 | PATH 中的 `upx` 与 `7z` |
+| DSH 集成测试 | Node.js |
+| Windows 便携打包 | PATH 中的 `7z`；默认还需要 `upx`（`just pack -NoUpx` 可跳过） |
 
-默认构建关闭二维码识别与 OCR，不需要 OpenCV 或 CUDA。桌面开发和打包配方只支持 Windows；Rust 检查、前端任务、插件构建和 CLI 构建可以在其他平台运行，但 macOS / Linux 产物需要单独验证。
+默认构建关闭二维码识别与 OCR，不需要 OpenCV 或 CUDA。桌面开发和打包配方只支持 Windows；Rust 检查、插件构建和 CLI 构建可以在其他平台运行，但 macOS / Linux 产物需要单独验证。
 
-Windows 桌面程序在开发版和发布版中均嵌入 `asInvoker` 权限声明，启动时不自动请求管理员权限。读取物理磁盘或采集实时内存时，需要用户手动以管理员身份启动程序。
+桌面程序与 CLI 都以调用者权限运行（`asInvoker`），启动时不自动请求管理员权限：CLI 的清单由构建脚本嵌入，桌面程序沿用 GPUI 自带的清单。读取物理磁盘或采集实时内存时，需要用户手动以管理员身份启动程序。
 
-前端的离线预览资源由准备脚本从依赖复制到 `public/file-viewer/`，不提交到 Git；`just dev-fe` 与 `just dev` 会先准备这些资源。只运行前端无法读取证据。Vite 固定监听 `http://127.0.0.1:14200`，更换端口时同时修改 `vite.config.ts` 与 `src-tauri/tauri.conf.json`，并保留 `strictPort`。
+## 工作区
+
+根目录的 `Cargo.toml` 是 Cargo 工作区，成员为 `crates/core`（取证引擎）、`crates/backend`（进程内后端）、`crates/cli`（独立 CLI）和 `crates/desktop`（GPUI Kit 桌面应用，可执行文件 `LovelyCarve`）。共享依赖版本、Clippy lint、构建 profile 与 `notatin` 补丁都在根清单中；`vendor/`、`plugins/` 与 `python/` 不属于工作区，保留各自的清单和锁文件。构建输出位于根目录的 `target/`。
+
+GPUI 会为 serde_json 开启 `preserve_order`，与 CLI 在同一次 Cargo 调用中编译时会改变 CLI 动态 JSON 输出的键顺序。因此 `default-members` 不含桌面应用，`cargo build` / `cargo test` 不带 `-p` 时只构建引擎、后端与 CLI；`just check`、`just clippy` 分两次调用分别检查这两组，桌面测试使用单独的 `just test-desktop`。
+
+后端构建脚本在 Windows 上把 `binaries/` 中的 Dokan、OpenSSL 与 VC++ 运行库复制到当前 profile 目录（如 `target/debug/`），因此 `just dev`、`just run-cli`、测试与直接双击开发版都能找到这些 DLL。
 
 ## Windows 配置
 
@@ -51,7 +58,7 @@ just dev
 | `opencv_contrib` | `OPENCV_CONTRIB` | 仓库下的 `opencv_contrib-4.x\opencv_contrib-4.x\modules` |
 | `opencv_install` | `OPENCV_INSTALL` | 与 `opencv_dir` 相同 |
 
-宿主 Rust 检查、桌面、CLI 与插件配方会初始化 VS x64 环境，默认使用所选 Visual Studio 中的 `lld-link.exe`，Cargo 同时编译 1 个任务，链接器使用 1 个线程，release 使用 Thin LTO。只有 `*-full` 入口额外配置 OpenCV 与 libclang。独立 vendored 读取器的配方沿用 Cargo 自身配置。
+工作区 Rust 检查、桌面、CLI 与插件配方会初始化 VS x64 环境，默认使用所选 Visual Studio 中的 `lld-link.exe`，Cargo 同时编译 1 个任务，链接器使用 1 个线程，release 使用 Thin LTO。只有 `*-full` 入口额外配置 OpenCV 与 libclang。独立 vendored 读取器的配方沿用 Cargo 自身配置。
 
 以下 Cargo 环境变量可覆盖默认值；脚本不会覆盖调用者已设置的值，也不会向非 LLD 链接器添加 `/threads:1`：
 
@@ -70,42 +77,40 @@ SQLCipher 配方设置 `OPENSSL_NO_VENDOR=1` 和 `OPENSSL_STATIC=1`，使用本�
 
 ```text
 just                          # 按工作流顺序显示任务
-just --list --group frontend  # 查看一个分组
+just --list --group desktop   # 查看一个分组
 just --show build-cli         # 查看本平台的配方内容
 just --dry-run pack           # 展开依赖与命令，但不执行
 ```
 
 | 工作 | 入口 |
 | --- | --- |
-| 前端 | `dev-fe`、`typecheck`、`test-fe`、`build-fe`、`ipc-check`、`frontend-structure-check`、`i18n-check` |
-| 后端 | `fmt`、`check`、`clippy`、`test [名称及 Cargo 参数]`、`check-examples` |
-| Windows 桌面 | `dev`、`build`、`build-release`、`pack`、`repack`；含 QR/OCR 的版本使用对应的 `*-full` |
+| 工作区 | `fmt`、`check`、`clippy`、`test [名称及 Cargo 参数]`、`check-examples` |
+| 桌面应用 | `dev`、`build [--release]`、`check-desktop`、`test-desktop`；Windows 另有 `build-release`、`pack`、`repack` |
 | CLI | `run-cli`、`build-cli`、`build-cli-full`、`test-cli`、`smoke-cli <exe>`、`update-cli-skill`（重新生成代理技能的命令参考）；Windows 另有 `pack-cli`、`pack-cli-full`、`repack-cli`、`stage-cli-skill` |
-| GPUI 原生界面（实验性） | `dev-gpui`、`build-gpui`、`check-gpui`、`clippy-gpui`、`test-gpui` |
 | Python 读取库 | `develop-python`、`build-python`、`test-python`、`fmt-python`、`clippy-python`；使用 uv 管理解释器，默认 Python 3.15，详见 [Python 文档](../python/README.md) |
 | 插件 | `build-plugins [--release]`、`test-plugins`、`clippy-plugins`；Windows 另有 `pack-plugins`（生成 `.lcpkg`） |
 | 读取器 | `test-vendor <目录>`、`test-ewf`、`test-vmdk`、`test-vhd`、`test-vhdx`、`test-minix` / `clippy-minix`、`generate-minix-fixtures`、`test-udf` / `clippy-udf`、`generate-udf-fixtures`、`test-qcow2` / `clippy-qcow2`、`generate-qcow-fixtures`、`test-vdi`、`test-phdi` / `clippy-phdi`、`test-smraw` / `clippy-smraw`、`test-gzipf` / `clippy-gzipf`、`clippy-ubi`、`test-bitlocker` / `clippy-bitlocker`、`test-luks` / `clippy-luks`、`test-veracrypt`、`test-filevault` / `clippy-filevault`、`test-vsc` / `clippy-vsc`、`test-refs` / `clippy-refs` / `test-refs-oracle`、`test-ad1`、`test-sqlite-core`、`test-ios-backup`、`test-apfs` / `clippy-apfs`、`clippy-hfsplus` |
 | 探针与性能 | `run-example`、`run-example-fast`、`bench-filedb-store`、`probe-refs`、`probe-vsc`、`compare-vsc` |
-| 依赖更新 | `update-fe`、`update-rust`、`update-plugins`、`update-tauri`、`update-file-viewer <版本>` |
-| 资源维护 | `icons`、`qr-env`、`build-opencv-contrib`、`qr-test <图片>` |
+| 依赖更新 | `update-rust`、`update-plugins` |
+| QR/OCR 资源 | `qr-env`、`build-opencv-contrib`、`qr-test <图片>` |
 
-`verify-fe` 汇总 IPC、结构、中英文词条、类型检查、前端测试和生产构建；`verify-rust` 汇总格式化、编译、Clippy 和后端测试；`verify-plugins` 汇总格式化、插件 Clippy 和插件测试。按 [贡献指南](../CONTRIBUTING.md#验证) 选择验证范围。
+`verify-rust` 汇总格式化、编译、Clippy、引擎 / 后端 / CLI 测试与桌面测试；`verify-plugins` 汇总格式化、插件 Clippy 和插件测试。按 [贡献指南](../CONTRIBUTING.md#验证) 选择验证范围。
 
-Cargo 默认特性为空。`desktop` 特性引入 Tauri、对话框与文件插件和 tauri-build，桌面二进制 `LovelyCarve` 只在该特性下构建：`tauri dev` / `tauri build` 通过 `tauri.conf.json` 的 `build.features` 开启，`just build` / `build-full` 显式传入。`lovelycarve-cli` 不启用它，是不链接 Tauri、WebView 或 GTK 的独立程序。`just check` 和 `just clippy` 依次检查独立 CLI 与桌面两种配置；`just test` 在不含桌面运行时的配置下运行后端测试。新增后端命令还要在 `src-tauri/src/cli/commands.toml` 中映射为 CLI 命令，命名规则不满足时构建脚本报错，规则见[架构说明](ARCHITECTURE.md#命令行与桌面只读挂载)。
+各 crate 的默认特性为空。新增后端命令要在 `crates/backend/src/lib.rs` 的 `command_registry!` 中注册，并在 `crates/cli/src/commands.toml` 中映射为 CLI 命令，命名规则不满足时构建脚本报错，规则见[架构说明](ARCHITECTURE.md#命令行与桌面只读挂载)。
 
-`gpui` 特性构建实验性的原生界面 `lovelycarve-gpui`（`src-tauri/src/bin/lovelycarve-gpui/`）。它使用 GPUI Kit 组件，在进程内直接调用 `commands/` 中的命令，不启用 `desktop`，也不依赖 Tauri、WebView 或前端构建；`*-gpui` 配方传入 `--no-default-features --features gpui`。Windows 下构建脚本把 `src-tauri/binaries` 中的 Dokan、OpenSSL 与 VC++ 运行库复制到可执行文件旁。程序参数写在 `--` 之后，例如 `just dev-gpui -- --case <案件目录> <检材路径>`：`--case` 打开该目录的案件，目录中还没有案件时以目录名新建；其余参数作为检材路径加载。界面暂不提供文件夹大小树图；时间线的事件类型筛选与热力图、插件任务的暂停与重新分析、应用日志页和案件管理中的卷索引重建仍只在 Tauri 版中提供。程序以调用者权限运行（与 Tauri 版相同），读取物理磁盘时需以管理员身份启动。GPUI 依赖为 `serde_json` 开启 `preserve_order` 与 `raw_value`，这一构建中后端动态生成的 JSON 对象按插入顺序输出键。
+桌面应用的程序参数写在 `--` 之后，例如 `just dev -- --case <案件目录> <检材路径>`：`--case` 打开该目录的案件，目录中还没有案件时以目录名新建；其余参数作为检材路径加载。`just dev` 先构建开发版插件，使应用能发现仓库中的插件包。桌面应用目前不提供文件夹大小树图、时间线的事件类型筛选与热力图、插件任务的暂停与重新分析、应用日志页、案件管理中的卷索引重建，以及 SQLite、Realm、ZIP、CSV 等结构化原类型视图和二维码 / OCR；这些后端能力可通过 CLI 使用。
 
-GPUI 的「原类型视图」在详情栏中显示源码。源码按文件名或扩展名识别，通过 GPUI Kit 只读编辑器显示行号、缩进线、查找和 Tree-sitter 语法高亮。无对应语法时显示纯文本，单次预览读取文件开头最多 1 MiB，并提示截断及解码错误。
+桌面应用的源码预览按文件名或扩展名识别，通过 GPUI Kit 只读编辑器显示行号、缩进线、查找和 Tree-sitter 语法高亮。无对应语法时显示纯文本，单次预览读取文件开头最多 1 MiB，并提示截断及解码错误。
 
 Windows x64 的其他文件类型由外部安装的 Oracle Outside In Viewer 8.5.7 预览。缺少运行库时，通过「选择 Viewer 目录」保存包含 `sccvw.dll`、`oswin64.dll` 及其余运行库和资源的完整目录。未保存目录时，依次查找 `LOVELYCARVE_OUTSIDE_IN_DIR` 和可执行文件旁的 `viewer` 目录。Viewer 由独立进程承载，通过 Win32 子窗口嵌入 GPUI，读取后端准备的检材临时副本，运行库由使用者提供。
 
-`fmt` 覆盖主 crate、插件与维护中的读取器。公共读取接口改动后运行 `check-examples`。参数含空格时，需要保留一层传给子 shell 的引号：
+`fmt` 覆盖工作区 crate、插件与维护中的读取器。公共读取接口改动后运行 `check-examples`。参数含空格时，需要保留一层传给子 shell 的引号：
 
 ```powershell
 just run-example probe_partitions '"D:\Evidence Files\disk.E01"'
 ```
 
-后端探针的用途与参数见 [examples/README.md](../src-tauri/examples/README.md)，各读取器的专项测试、可选外部样本与环境变量见 [格式与读取器](formats/README.md)。
+后端探针的用途与参数见 [examples/README.md](../crates/core/examples/README.md)，各读取器的专项测试、可选外部样本与环境变量见 [格式与读取器](formats/README.md)。
 
 ### 读取器验证
 
@@ -120,7 +125,7 @@ just run-example probe_partitions '"D:\Evidence Files\disk.E01"'
 - F2FS / EROFS：`just test-vendor f2fs-reader` / `just clippy-f2fs`、`just test-erofs` / `just clippy-erofs`；宿主回归用 `just test flashfs_ --lib`，CLI 用 `just test-cli`。`just generate-f2fs-fixtures` 重建独立字段夹具；真实 mkfs 样本与限制见 [F2FS](formats/F2FS.md) 和 [EROFS](formats/EROFS.md)。
 - HFS+ 与 FileVault 2：`just test-vendor hfsplus` / `just clippy-hfsplus` 验证 HFS；`just test-filevault` / `just clippy-filevault` 验证 CoreStorage 核心和法证审计器。设置 `FVDE_ORACLE_IMAGE` 为公开测试样本的 raw CoreStorage 区域后运行 `just test-filevault`，执行真实扇区 SHA、HFS 读者与法证审计 oracle；提取范围与哈希见 [FileVault](formats/FILEVAULT.md)。未设置变量不等于通过真实样本验证。
 
-Windows rustc 在大型测试 crate 发生增量编译崩溃时，可通过原配方传入 `--config profile.test.package.lovelycarve.debug=0 --config profile.test.package.lovelycarve.incremental=false`，仅降低宿主测试包调试信息并禁用其增量缓存；不改变发布配置。
+Windows rustc 在大型测试 crate 发生增量编译崩溃时，可通过原配方传入 `--config profile.test.package.lovelycarve-core.debug=0 --config profile.test.package.lovelycarve-core.incremental=false`，仅降低引擎测试包调试信息并禁用其增量缓存；不改变发布配置。
 
 ## 插件与资源
 
@@ -128,31 +133,31 @@ Windows rustc 在大型测试 crate 发生增量编译崩溃时，可通过原�
 
 `build-plugins` 按提交的锁文件构建宿主和各插件库，把动态库复制到 `plugin.toml` 旁，并用 `lc-plugin-host --describe` 写出 `schema.json`；`--plugin <目录>` 只构建一个插件库，沿用已构建的加载器。`dev` 使用开发版插件；`build-release` 与 CLI 打包先构建发布版插件。修改插件时先在插件仓库提交并推送，再在主仓库提交子模块指针，不要只提交指针而漏推插件提交。
 
-安装包和便携包共用 `src-tauri/tauri.plugins.conf.json`：主程序旁放置 `lc-plugin-host.exe`，`plugins/linuxinfo/` 包含 `plugin.toml`、DLL、`schema.json` 与 `locales/`，插件不嵌入主程序。`just pack-plugins` 为每个工作区插件生成可在「设置 → 插件」或 `plugins create` 安装的 `.lcpkg`。接口与工件来源见 [插件协议](PLUGIN_PROTOCOL.md) 和 [Linux 基本信息插件](LINUXINFO.md)。
+桌面便携包与 CLI 包由 `scripts/lib/release-bundle.ps1` 放置同一套插件运行文件：主程序旁放 `lc-plugin-host.exe`，每个插件包目录 `plugins/<名称>/` 包含 `plugin.toml`、动态库、`schema.json` 与 `locales/`，插件不嵌入主程序。`just pack-plugins` 为每个工作区插件生成可在「设置 → 插件」或 `plugins create` 安装的 `.lcpkg`。接口与工件来源见 [插件协议](PLUGIN_PROTOCOL.md) 和 [Linux 基本信息插件](LINUXINFO.md)。
 
-ReFS 使用纯 Rust 读取器；旧的 `librefs-13.dll` 只在显式的 `refs-dll-oracle` 特性下用于对照，不随正式包分发。Dokan、OpenSSL 与可选的 OpenCV DLL，以及模型和许可证属于构建 / 运行资源，按打包配置分发。`src-tauri/binaries` 中的 `vcruntime140.dll`、`vcruntime140_1.dll`、`msvcp140.dll` 和 `msvcp140_1.dll` 是 Visual Studio 可再发行目录中的 VC++ 运行库，随主程序放在同一目录：主程序和 CLI 静态链接 `vcruntime`，但动态依赖 C++ 标准库 `msvcp140`（它又依赖 `vcruntime140` / `vcruntime140_1`），`lc-plugin-host`、`linuxinfo` 和 OpenSSL 的 `libcrypto` 动态依赖 `vcruntime140`；便携包打包时不对这些 DLL 做 UPX 压缩。Tauri 的 MSI 打包会收入 `src-tauri/target/release` 根目录下的所有 DLL，`build-release` 因此先删除其中未在打包配置里声明的 DLL（例如完整构建留下的 OpenCV 和 ONNX Runtime 执行提供者）。发布前用 `dumpbin /dependents` 核对主程序、CLI、插件宿主、插件和随附 DLL 的依赖，除 Windows 自带组件外都应能在包内找到。测试夹具及其来源说明保存在 vendor 与 tests 目录中，不要用真实检材替换。
+ReFS 使用纯 Rust 读取器；旧的 `librefs-13.dll` 只在 `lovelycarve-core` 显式的 `refs-dll-oracle` 特性下用于对照，不随正式包分发。Dokan、OpenSSL 与可选的 OpenCV DLL，以及模型和许可证属于构建 / 运行资源，由打包脚本放到可执行文件旁。`binaries/` 中的 `vcruntime140.dll`、`vcruntime140_1.dll`、`msvcp140.dll` 和 `msvcp140_1.dll` 是 Visual Studio 可再发行目录中的 VC++ 运行库，随主程序放在同一目录：主程序和 CLI 静态链接 `vcruntime`，但动态依赖 C++ 标准库 `msvcp140`（它又依赖 `vcruntime140` / `vcruntime140_1`），`lc-plugin-host`、`linuxinfo` 和 OpenSSL 的 `libcrypto` 动态依赖 `vcruntime140`；便携包打包时不对这些 DLL 做 UPX 压缩。发布前用 `dumpbin /dependents` 核对主程序、CLI、插件宿主、插件和随附 DLL 的依赖，除 Windows 自带组件外都应能在包内找到。测试夹具及其来源说明保存在 vendor 与 tests 目录中，不要用真实检材替换。
 
-图标保留透明和带背景两张原图，位于 `src-tauri/icons/source*.png`；修改后执行 `just icons` 同步各平台图标和前端 512px 资源。
+品牌资源位于 `crates/desktop/assets/`：桌面应用内嵌的 `app-icon.png` / `app-icon-background.png` 与 Quicksand 字体，以及 `icons/` 中透明和带背景的原图与 Windows 图标 `icon.ico`。修改原图后需要同步导出 512px 的两张品牌 PNG；可执行文件目前没有嵌入 `icon.ico`。
 
 ## 可选 QR/OCR 与发布构建
 
-Windows 的 `dev-full`、`build-full`、`build-release-full` 和 `build-cli-full` 启用 WeChat 二维码识别和带 CPU 回退的 CUDA OCR。需要准备版本匹配的 OpenCV 及 contrib 源码，用 `just build-opencv-contrib` 构建含 `wechat_qrcode` 的 OpenCV；核对安装目录中的 `vc*` 与 world 库名称后设置对应变量。官方的核心 OpenCV 发行包不包含所需模块。
+Windows 的 `build-cli-full` 启用 WeChat 二维码识别和带 CPU 回退的 CUDA OCR。需要准备版本匹配的 OpenCV 及 contrib 源码，用 `just build-opencv-contrib` 构建含 `wechat_qrcode` 的 OpenCV；核对安装目录中的 `vc*` 与 world 库名称后设置对应变量。官方的核心 OpenCV 发行包不包含所需模块。桌面应用没有 QR/OCR 界面，始终不启用这两个特性。
 
-Unix 的 `build-cli-full` 启用 `qrcode-wechat ocr`（CPU OCR），需要自行配置系统依赖。CLI 的 `asInvoker` 清单（`src-tauri/cli.manifest`）由构建脚本在 MSVC 链接时嵌入，开发版与发布版相同。
+Unix 的 `build-cli-full` 启用 `qrcode-wechat ocr`（CPU OCR），需要自行配置系统依赖。CLI 的 `asInvoker` 清单（`crates/cli/cli.manifest`）由构建脚本在 MSVC 链接时嵌入，开发版与发布版相同。
 
-`pack` / `pack-cli` 默认不带 QR/OCR 资源；完整包使用 `pack-full` / `pack-cli-full`，额外资源来自 `src-tauri/tauri.full.conf.json`。`repack` / `repack-full` 复用已有的桌面产物，必须与编译特性一致；`repack-cli` 按 CLI 的实际能力选择资源。便携包输出到 `dist-pack/`，安装包输出到 `src-tauri/target/release/bundle/`。
+`pack` 生成便携桌面包 `dist-pack/LovelyCarve-v<版本>-win-x64.7z`；`repack` 复用已有的桌面产物。`pack-cli` 默认不带 QR/OCR 资源，完整包使用 `pack-cli-full`；`repack-cli` 按 CLI 的实际能力选择资源。
 
 `stage-cli-skill` 复用现有 Windows release CLI 与插件，按同一打包清单生成 `skills/lovelycarve-cli/bin/`；它不执行编译。运行文件与 DLL 保持相邻，插件与可选模型沿用包内路径，许可证随运行文件复制。该目录的生成文件由其 `.gitignore` 排除，独立安装时需复制完整 skill 目录；具体使用见 [CLI 代理技能](CLI.md#编码代理与小输出)。
 
 DSH 模式源码位于 `integrations/dsh-lovelycarve/`，与主仓库的 `skills/lovelycarve-cli/` 共用技能。`just stage-dsh` 先暂存现有 release 运行库，再生成 `dist-pack/dsh-lovelycarve/`，旧包保留在 `dist-pack/dsh-previous-*/`。它不执行编译；CLI 修改后先运行 `just build-cli`，插件运行库需已由 `just build-plugins --release` 生成。安装见包内 `INSTALL.md`；使用本地链接的 DSH 在重启并创建新对话后加载更新的模式与技能。
 
-`just test-dsh` 验证结构化工具的退出码、错误 / 警告、输出上限、取消与沙箱策略传递，并用合成检材覆盖命名会话、建案、索引、分页、特殊字符路径和导出不覆盖。集成测试默认使用已构建的 debug CLI；可设置 `LOVELYCARVE_TEST_CLI` 指向其他二进制。此配方使用 Node.js 内置测试运行器，不需要安装 DSH 或额外包。
+`just test-dsh` 验证结构化工具的退出码、错误 / 警告、输出上限、取消与沙箱策略传递，并用合成检材覆盖命名会话、建案、索引、分页、特殊字符路径和导出不覆盖。集成测试默认使用已构建的 debug CLI（`target/debug/lovelycarve-cli`）；可设置 `LOVELYCARVE_TEST_CLI` 指向其他二进制。此配方使用 Node.js 内置测试运行器，不需要安装 DSH 或额外包。
 
-Windows GitHub Actions 使用 `windows-2025` 执行 `just test-fe`、`just test` 与 `just test-plugins`；PR 只运行测试，不执行发行构建或上传构建产物。Rust 测试仍需编译测试程序。`v*` 标签在测试成功后自动构建 MSI、CLI ZIP 与插件包并发布到 GitHub Release。云端默认不启用 QR/OCR，macOS/Linux、原生 GUI 与驱动功能仍需单独验证，发布步骤见 [发布指南](RELEASING.md)。
+Windows GitHub Actions 使用 `windows-2025` 执行 `just test`、`just test-desktop` 与 `just test-plugins`；PR 只运行测试，不执行发行构建或上传构建产物。Rust 测试仍需编译测试程序。`v*` 标签在测试成功后自动构建便携桌面包（不做 UPX 压缩）、CLI ZIP 与插件包并发布到 GitHub Release。云端默认不启用 QR/OCR，macOS/Linux、原生 GUI 与驱动功能仍需单独验证，发布步骤见 [发布指南](RELEASING.md)。
 
 ## 性能验证
 
-桌面 `release` profile 以体积优先（`opt-level = "s"`），Windows 配方默认通过环境变量将宿主与插件的 release 链接优化设为 Thin LTO；Cargo 清单保留其他平台的 fat LTO 默认值。哈希、压缩、SQLCipher 与正则等热点依赖在 `src-tauri/Cargo.toml` 中单独设为 `opt-level = 3`；性能比较使用 `release-fast` profile（`just run-example-fast <名称>`）。开发版的 Argon2 / BLAKE2 同样启用优化，以满足高内存 LUKS2 的密钥派生预算；flate2 / miniz_oxide / zlib-rs / simd-adler32 / crc32fast 也启用优化，减少大备份 ZIP 在恢复案件时的 debug 解压开销。完整 QR/OCR 构建与轻量构建的耗时不能混作同一基线。
+`release` profile 以体积优先（`opt-level = "s"`），Windows 配方默认通过环境变量将宿主与插件的 release 链接优化设为 Thin LTO；Cargo 清单保留其他平台的 fat LTO 默认值。哈希、压缩、SQLCipher 与正则等热点依赖在根目录 `Cargo.toml` 中单独设为 `opt-level = 3`；性能比较使用 `release-fast` profile（`just run-example-fast <名称>`）。开发版的 Argon2 / BLAKE2 同样启用优化，以满足高内存 LUKS2 的密钥派生预算；flate2 / miniz_oxide / zlib-rs / simd-adler32 / crc32fast 也启用优化，减少大备份 ZIP 在恢复案件时的 debug 解压开销。完整 QR/OCR 构建与轻量构建的耗时不能混作同一基线。
 
 性能结论应基于当前提交的可复现场景。记录提交号、操作系统、CPU / 内存、存储介质、构建 profile、特性组合、镜像格式与逻辑大小；文件系统操作另记录目录项规模、文件大小分布和卷类型，私有检材只记录可公开的规模描述。分别测量冷启动与缓存命中，报告重复次数与耗时分布，并观察吞吐、峰值内存、临时磁盘占用、读取次数、取消延迟和交互延迟。
 
@@ -180,10 +185,6 @@ just run-example probe_carve <image-path>
 
 ## 更新依赖
 
-先审查清单约束，再用 `update-fe`、`update-rust` 或 `update-plugins` 更新对应的锁文件。`update-tauri` 同步前后端的 Tauri 包族，各包独立发布，补丁版本号不必一致。vendor 的来源与补丁见 [UPSTREAM.md](../src-tauri/vendor/UPSTREAM.md)，更新后用对应读取器的配方验证。
+先审查清单约束，再用 `update-rust` 或 `update-plugins` 更新对应的锁文件。工作区 crate 共用的依赖版本写在根目录 `Cargo.toml` 的 `[workspace.dependencies]` 中，各 crate 专用的依赖留在其自身清单里。vendor 的来源与补丁见 [UPSTREAM.md](../vendor/UPSTREAM.md)，更新后用对应读取器的配方验证。GPUI Kit 的升级需要同时运行 `just test-desktop` 并在 `just dev` 中实际检查界面。
 
-Vue 类型检查通过 `typescript` 的 npm 别名接入 `typescript-native-bridge@6.0.3-bridge.18.tsgo.7.0.2`，以兼容 `vue-tsc` 需要的经典编译器 API；别名与 override 固定为同一完整版本，不要直接替换为 `typescript@7`。`just typecheck` 会显示 `TNB ACTIVE`。普通组件测试默认关闭动效，动效专用测试单独验证开关与收尾。
-
-前端生产构建使用 Vite 8 自带的 Oxc 压缩器，不需要额外安装 esbuild，也不要恢复 `build.minify: 'esbuild'`。非 Windows 平台保持 Safari 13 构建目标，但地图渲染器依赖 BigInt，map / shp 预览需要 Safari 14 或更新的 WebKit。
-
-升级后按改动范围执行前端、Rust、插件与读取器验证。不要把本机路径、依赖目录、案件、缓存、导出结果和签名凭据提交到仓库；`.gitignore` 为回归样本保留了例外。
+升级后按改动范围执行 Rust、插件与读取器验证。不要把本机路径、依赖目录、案件、缓存、导出结果和签名凭据提交到仓库；`.gitignore` 为回归样本保留了例外。

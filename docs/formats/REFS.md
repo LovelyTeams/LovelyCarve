@@ -84,7 +84,7 @@ checkpoint 位置：4 KiB 镜像为物理块 123892 / sequence 617，64 KiB 为 
 
 ## 复现
 
-`probe-refs` 配方在 `src-tauri` 目录下运行，镜像与输出路径请使用绝对路径；`--output` 以 `create_new` 创建文件，重复运行需换新的报告名。
+`probe-refs` 配方在仓库根目录运行（`lovelycarve-core` 的 example），镜像与输出路径请使用绝对路径；`--output` 以 `create_new` 创建文件，重复运行需换新的报告名。
 `--backend all|dll|refs-core|librefs|ported` 默认为 `all`，候选失败时保留原始错误并返回非零；`ported` 的完整读取会核对读出长度与声明大小。
 
 ```powershell

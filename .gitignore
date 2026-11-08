@@ -1,13 +1,16 @@
-# Dependencies and generated web assets
+# Dependencies and packaging output
 node_modules/
-/dist/
 /dist-pack/
-/public/file-viewer/
 
 # Cargo output, including nested vendor workspaces and local checks
 target/
-/src-tauri/target-*/
-/src-tauri/gen/schemas/
+/target-*/
+
+# Local outputs of the removed Tauri desktop shell and web frontend; existing
+# checkouts still hold them and they are safe to delete.
+/src-tauri/
+/dist/
+/public/
 
 # Libraries staged by just build-plugins
 /plugins/*/*.dll
@@ -25,7 +28,6 @@ target/
 *.swp
 *.swo
 coverage/
-.vitest/
 __pycache__/
 *.py[cod]
 .pytest_cache/

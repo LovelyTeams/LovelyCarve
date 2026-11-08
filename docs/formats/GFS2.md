@@ -3,7 +3,7 @@
 `gfs2-reader` 是纯 Rust、只读的 GFS2 1801 / 1802 卷读取器。适配前检索了
 crates.io / GitHub，现有 Rust `unearth` 仅识别超级块；本实现复用其 MIT
 前缀布局，并按原生格式定义新增目录、文件、分配和日志校验。
-固定来源及许可见 [ORIGIN.md](../../src-tauri/vendor/gfs2-reader/ORIGIN.md)。
+固定来源及许可见 [ORIGIN.md](../../vendor/gfs2-reader/ORIGIN.md)。
 产品不链接 C 文件系统库，不调用内核挂载或外部解包程序。
 
 ## 能力

@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use lovelycarve_lib::core::{
+use lovelycarve_core::{
     evidence::image::DiskImage,
     filesystem::{
         evidence_session::EvidenceSession,

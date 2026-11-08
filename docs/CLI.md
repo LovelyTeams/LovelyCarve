@@ -1,6 +1,6 @@
 # LovelyCarve CLI
 
-`lovelycarve-cli` 是独立的取证命令行工具：不链接 Tauri、WebView 或任何桌面窗口运行时，
+`lovelycarve-cli` 是独立的取证命令行工具：不链接任何窗口或 GUI 工具包，
 自行初始化后端状态，直接调用与桌面端相同的解析器、案件库、插件和任务调度。
 命令统一为 `<集合>… <动词>` 形式，标准输出只放结果（JSON 或原始字节），提示与错误走标准错误，
 用帮助与 `schema` 查看命令和请求结构，编码代理使用随包提供的[代理技能](#编码代理与小输出)，
@@ -18,22 +18,22 @@ just run-cli images open "D:\evidence\disk.E01"
 just build-cli
 ```
 
-`just build-cli` 构建 `src-tauri/target/release/lovelycarve-cli.exe`，默认关闭二维码和 OCR，
+`just build-cli` 构建 `target/release/lovelycarve-cli.exe`，默认关闭二维码和 OCR，
 无需 OpenCV 或 CUDA。需要 QR/OCR 时使用 `just build-cli-full`：Windows 配置 Visual Studio/OpenCV/OpenSSL，
 启用带 CPU 回退的 CUDA OCR；Unix 完整配方使用 CPU OCR。轻量构建中相关命令仍然列出，
 但返回后端的功能未启用错误；文件系统、搜索、案件和插件不受影响。
 `lovelycarve-cli system get` 输出版本、平台、`standalone`（未链接桌面运行时）、命令数、
 QR/OCR/挂载功能开关和会话协议。
 
-CLI 构建不启用 Cargo 的 `desktop` 特性，所以不包含 Tauri、WebView2 或 GTK 依赖，
-Linux 上也不需要桌面库。Windows 构建在链接时嵌入 `asInvoker` 清单（`src-tauri/cli.manifest`），
+CLI 只依赖 `lovelycarve-backend`，不包含 GPUI 或其他桌面依赖，
+Linux 上也不需要桌面库。Windows 构建在链接时嵌入 `asInvoker` 清单（`crates/cli/cli.manifest`），
 普通镜像分析不会弹出 UAC，管道可直接使用；读取物理盘、Dokan 挂载或扫描内存时，从管理员终端运行。
-案件登记与偏好放在与桌面端相同的用户数据目录（由 `tauri.conf.json` 的 identifier 决定），
+案件登记与偏好放在与桌面应用相同的用户数据目录（应用标识 `app.lovelycarve`），
 两个程序看到同一份案件列表。
 
 `just pack-cli` 构建并打包轻量 Windows CLI，包含运行库、`lc-plugin-host`、插件、本手册及代理技能；
 `just pack-cli-full` 另启用 QR/OCR 并携带 OpenCV 与模型。`just repack-cli` 按现有二进制
-`system get` 报告的实际功能打包。开发配方在 `src-tauri` 目录执行，建议向 `just run-cli`
+`system get` 报告的实际功能打包。开发配方在仓库根目录执行，建议向 `just run-cli`
 传绝对检材路径；直接运行 exe 时相对路径以当前工作目录为准。插件包从程序旁的 `plugins/` 与用户数据目录的
 `plugins/` 发现，每个插件实例都在程序旁的 `lc-plugin-host` 进程中运行；`plugins create <插件包.lcpkg>` 安装插件包。
 
@@ -113,7 +113,7 @@ lovelycarve-cli --case "D:\cases\demo" cases get
 `edit`（部分修改）、`delete`（不用 remove/drop），以及领域动作 `open`、`close`、`read`、`export`、`hash`、
 `identify`、`search`、`scan`、`detect`、`lookup`、`unlock`、`lock`、`assemble`、`build`、`audit`、`start`、
 `pause`、`resume`、`restart`、`cancel`、`wait`、`release`、`share`、`unshare`、`reveal`、`set`、`use`（如选择检材的
-`context use`）、`attach` 与 `serve`。动词表定义在 `src-tauri/build/cli_catalog/resolve.rs`。
+`context use`）、`attach` 与 `serve`。动词表定义在 `crates/cli/build/cli_catalog/resolve.rs`。
 位置参数是动词作用的对象（检材路径、镜像内路径、分区序号、扫描 ID……），其余参数用 `--选项`。
 
 | 集合 | 内容 |
@@ -135,7 +135,7 @@ lovelycarve-cli --case "D:\cases\demo" cases get
 | `system`、`context` | 本程序与主机、会话上下文 |
 | `schema`、`complete`、`session`、`shell` | 根命令：请求结构、shell 补全、JSONL 会话、交互 shell |
 
-桌面端注册的每个后端命令都恰好对应一个 CLI 命令（或在 `src-tauri/src/cli/commands.toml`
+桌面端注册的每个后端命令都恰好对应一个 CLI 命令（或在 `crates/cli/src/commands.toml`
 中注明被哪条命令覆盖）。新增后端命令未写入该文件、动词不在动词表里或参数名冲突时构建失败，
 CLI 不会静默漏接功能。
 
@@ -280,7 +280,7 @@ DSH 宿主提供 `tools/execute` 时，看板流程跟踪真实题目、线索�
 
 - 结果写标准输出。人类终端中的结构化结果是缩进两格的 JSON；stdout 重定向、管道或编码代理环境输出紧凑 JSON。后端结构字段统一使用 camelCase（如 `imageId`、`nextCursor`、`bytesHashed`）；
   证据中的数据库列名、插件字段名和任意 JSON 对象键保留原样。此转换仅在 CLI 输出边界执行，
-  桌面 IPC 和案件存储格式不变；只有标准输出是终端且
+  后端命令参数和案件存储格式不变；只有标准输出是终端且
   不在 CI 中时才着色（`NO_COLOR` 关闭、`FORCE_COLOR` 强制）。内容类命令（`files read`、
   `files zip members get`、`carve artifacts get` 等）输出原始字节，可直接重定向到文件；
   `--text` 按 UTF-8 解码，无效字节替换为 U+FFFD。
@@ -324,7 +324,7 @@ DSH 宿主提供 `tools/execute` 时，看板流程跟踪真实题目、线索�
   `files directories export`）、提前停止的目录导出（`truncated`、`cancelled`）、有文件读不出或命中达到上限的搜索
   （`searches create` 的 `readErrors`、`truncated`，`files search` 的 `summary.readErrors`、`summary.truncated`），
   以及有失败文件、合成字节或报告写入失败的恢复导出（`carve scans export`）。`--limit` 等调用方给出的上限不算不完整。
-  每个命令算数的字段由命令目录 `src-tauri/src/cli/commands.toml` 的 `incomplete` 声明。
+  每个命令算数的字段由命令目录 `crates/cli/src/commands.toml` 的 `incomplete` 声明。
 - 退出码：`0` 成功且结果完整；`1` 失败（命令行错误、后端错误、找不到对象、未确认或拒绝的删除、后台任务失败、
   会话中任一请求失败）；`2` 命令完成但结果不完整；`130` 被 Ctrl+C / Ctrl+Break / SIGINT / SIGTERM 中断，
   或在提问时按 Esc / Ctrl+C 取消（提问处显示 `■`，不再另外显示错误块）。
@@ -365,7 +365,7 @@ DSH 宿主提供 `tools/execute` 时，看板流程跟踪真实题目、线索�
   `--mode zip` 同样要求目标不存在；返回的 `skippedCount` / `truncated` 表示归档可能只含部分条目。
 - `taskId`、`searchId` 省略时自动生成；需要用 `tasks cancel <taskId>` 取消时可显式指定。
 
-`files hash` 采用容错并报告策略：摘要结果包含 `readFaultsDetected`、`syntheticBytes`、`badRegions`，字段名在桌面 IPC 中为 snake_case。检测到源坏区时仍返回摘要，但以 2 退出并在标准错误显示警告；该摘要包含合成补零，不代表完整原文件，`truncated=false` 也不表示没有读故障。脚本应检查退出码或 `readFaultsDetected` 后再采信摘要。报告只覆盖本次操作命中的源盘绝对区间，不是文件逻辑偏移映射；格式定义的稀疏零区不算读故障。桌面会提示含补零的哈希，不将其回填或保存为普通摘要。
+`files hash` 采用容错并报告策略：摘要结果包含 `readFaultsDetected`、`syntheticBytes`、`badRegions`，字段名在后端命令结果中为 snake_case。检测到源坏区时仍返回摘要，但以 2 退出并在标准错误显示警告；该摘要包含合成补零，不代表完整原文件，`truncated=false` 也不表示没有读故障。脚本应检查退出码或 `readFaultsDetected` 后再采信摘要。报告只覆盖本次操作命中的源盘绝对区间，不是文件逻辑偏移映射；格式定义的稀疏零区不算读故障。桌面会提示含补零的哈希，不将其回填或保存为普通摘要。
 
 `files read` 的字节流不能附带审计字段，因此发现读故障时返回 `readFaultsDetected` 错误并以 1 退出（包括 `--quiet` / `--text`）；stdout 可能已含部分或补零数据，必须丢弃。JSONL 返回 `error`，错误的 `details` 包含上述三个审计字段，不返回成功的字节结果；常驻会话在流的最终状态中返回同一错误，客户端以 1 退出。JSONL 的 `output` 不会为失败读取发布文件。需要保留容错数据及审计报告时使用 `files export`。
 
@@ -745,7 +745,7 @@ Ctrl+C / Ctrl+Break 取消任务、释放案件与挂载后以 130 退出；无�
 检材以只读方式打开。平台限制沿用后端（例如 Dokan/SMB 挂载仅 Windows）；
 `system paths reveal` 会打开系统文件管理器，不属于无界面分析流程。
 
-`RUST_LOG=lovelycarve_lib=debug` 开启后端诊断，日志写标准错误。
+`RUST_LOG=lovelycarve_core=debug,lovelycarve_backend=debug` 开启后端诊断，日志写标准错误。
 
 ## QCOW 镜像
 
@@ -774,7 +774,7 @@ just run-cli images open D:\evidence\disk.E01
 just test-ewf
 ```
 
-源码版本及本地兼容补丁见 `src-tauri/vendor/ewf/LOVELYCARVE.md`。
+源码版本及本地兼容补丁见 `vendor/ewf/LOVELYCARVE.md`。
 
 ## VMDK 后端
 
@@ -795,7 +795,7 @@ just run-cli images open D:\evidence\disk.vmdk
 just test-vmdk
 ```
 
-源码版本、补丁和测试素材见 `src-tauri/vendor/vmdk/LOVELYCARVE.md`。
+源码版本、补丁和测试素材见 `vendor/vmdk/LOVELYCARVE.md`。
 
 ## BitLocker 后端
 
@@ -829,7 +829,7 @@ lovelycarve:/> bitlocker unlock 0 --recovery-password
 lovelycarve:/> bitlocker export 0 --destination D:\output\volume.raw
 ```
 
-源码版本、本地补丁和公开样本范围见 `src-tauri/vendor/bitlocker/LOVELYCARVE.md`；
+源码版本、本地补丁和公开样本范围见 `vendor/bitlocker/LOVELYCARVE.md`；
 读取器测试用 `just test-bitlocker`。
 
 ## VHD / VHDX 后端

@@ -11,7 +11,7 @@ import json
 import struct
 import zlib
 
-OUTPUT = Path(__file__).resolve().parent.parent / 'src-tauri/vendor/jfs-reader/tests/fixtures'
+OUTPUT = Path(__file__).resolve().parent.parent / 'vendor/jfs-reader/tests/fixtures'
 STAMP = 0x12345678
 LONG_NAME = 'long_中文_' + 'x' * 180 + '\\tail'
 

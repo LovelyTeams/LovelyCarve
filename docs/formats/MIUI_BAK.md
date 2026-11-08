@@ -7,7 +7,7 @@ ZIP 与本机目录检材中的 `.bak` / `.ab` 自动尝试按小米 / Android B
 
 ## 格式与参考
 
-实现位于 `src-tauri/src/core/evidence/readers/mi_bak.rs`，ZIP 投影位于
+实现位于 `crates/core/src/evidence/readers/mi_bak.rs`，ZIP 投影位于
 `zip_image/bak.rs`。按完整 `ANDROID BACKUP\n` 魔数定位，避免把小米前缀中
 偶然出现的 `AN` 两个字符当作起点；Android Backup 版本支持 1–5。
 支持未压缩 TAR、zlib 和 GZIP payload；加密方式仅支持 `none`。

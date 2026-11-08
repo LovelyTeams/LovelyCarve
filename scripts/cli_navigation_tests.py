@@ -10,7 +10,7 @@ import zipfile
 
 
 def test_navigation(executable, environment):
-    fixture = Path(__file__).resolve().parents[1] / "src-tauri/vendor/ewf/tests/data/ntfs_sample.E01"
+    fixture = Path(__file__).resolve().parents[1] / "vendor/ewf/tests/data/ntfs_sample.E01"
     with tempfile.TemporaryDirectory(prefix="lovelycarve-navigation-") as directory:
         def run(*arguments, stdin=None, expected=0):
             result = subprocess.run([str(executable), "--quiet", *map(str, arguments)],

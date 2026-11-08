@@ -107,7 +107,7 @@ def build():
 
 
 if __name__ == "__main__":
-    directory = pathlib.Path(__file__).resolve().parents[1] / "src-tauri/vendor/gfs2-reader/tests/fixtures"
+    directory = pathlib.Path(__file__).resolve().parents[1] / "vendor/gfs2-reader/tests/fixtures"
     directory.mkdir(exist_ok=True, parents=True)
     raw = build()
     packed = zlib.compress(raw, 9)

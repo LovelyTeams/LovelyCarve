@@ -1,6 +1,6 @@
 # 贡献指南
 
-欢迎提交问题、文档修正、格式支持与功能改进。开始开发前阅读 [架构说明](docs/ARCHITECTURE.md) 与仓库约定 [AGENTS.md](AGENTS.md)。修改界面时同时阅读 [前端规范](docs/FRONTEND.md) 和 `src/styles/` 的主题、基元与动效样式；修改读取器时先读 [格式与读取器](docs/formats/README.md) 及对应的格式专题。
+欢迎提交问题、文档修正、格式支持与功能改进。开始开发前阅读 [架构说明](docs/ARCHITECTURE.md) 与仓库约定 [AGENTS.md](AGENTS.md)。修改桌面界面时同时阅读架构说明的 [桌面应用](docs/ARCHITECTURE.md#桌面应用) 一节与 `crates/desktop/src/` 的 `theme.rs`、`ui.rs`、`assets.rs`；修改读取器时先读 [格式与读取器](docs/formats/README.md) 及对应的格式专题。
 
 ## 环境
 
@@ -11,7 +11,7 @@ just bootstrap
 just --list
 ```
 
-任务统一通过 `just` 执行。前端开发用 `just dev-fe`，Windows 桌面开发用 `just dev`，命令行开发用 `just run-cli`。默认关闭 QR/OCR，需要这些功能时使用 `*-full` 入口并配置额外依赖。
+任务统一通过 `just` 执行。Windows 桌面开发用 `just dev`，命令行开发用 `just run-cli`。默认关闭 QR/OCR，CLI 需要这些功能时使用 `build-cli-full` / `pack-cli-full` 并配置额外依赖。
 
 ## 提交问题
 
@@ -22,11 +22,11 @@ just --list
 ## 修改约定
 
 - 沿用现有模块和接口，保持改动聚焦，保留与本次工作无关的变更。
-- Rust 核心逻辑放在 `src-tauri/src/core/` 的所属领域，命令包装放在 `commands/`，跨域编排放在 `app/workflows/`，长期状态由 `AppState` 管理；核心不依赖应用层或 Tauri。
-- Vue 使用 Composition API；业务状态放在 `src/features/<功能>/composables/`，通用能力放在 `src/composables/`，跨功能接线由 `src/app/` 持有。Tauri 调用和事件只通过 `src/lib/ipc/`。
-- 跨 IPC 功能同时更新核心实现、命令、注册表、`src-tauri/src/cli/commands.toml` 中的 CLI 命令、TypeScript 类型和调用方。
+- 取证核心逻辑放在 `crates/core/src/` 的所属领域，命令函数放在 `crates/backend/src/commands/`，跨域编排放在 `crates/backend/src/app/workflows/`，长期状态由 `AppState` 管理；core 不依赖后端、前端或 GUI 工具包。其他 crate 需要的条目才声明为 `pub`。
+- 桌面应用经 `Backend::run` 调用命令、经 `EventHub` 订阅事件，不阻塞界面线程；跨页面状态放在已有的 GPUI global / 实体中。
+- 跨前后端的功能同时更新核心实现、命令函数、`command_registry!` 注册表、`crates/cli/src/commands.toml` 中的 CLI 命令和桌面调用方。
 - 长任务接入取消、进度和错误反馈。整盘哈希与导出检查完整长度，失败或取消清理部分输出。
-- 界面文案通过 `tr()` 提供中英文版本，默认中文；新增文案同步维护词典并运行 `just i18n-check`。使用已有主题 token、`ui-*` 控件和 lucide 图标，验证三套主题、两种语言与窄窗口。
+- 界面文案使用简体中文与统一的取证术语。颜色取自 `theme.rs` 的主题 token，复用 `ui.rs` 的共享组件与已登记的 Lucide 图标，验证浅色、深色主题与窄窗口。
 - 用户可见变化按 [Keep a Changelog 0.3.0](https://keepachangelog.com/zh-CN/0.3.0/) 更新 `CHANGELOG.md` 的 `[Unreleased]`，使用英文变更分类并概括用户影响；行为、配置或流程变化同步更新对应文档（文档分工见 [文档导航](docs/README.md)）。
 - 新增第三方代码、数据或资源时保留版权、许可证和来源声明。
 
@@ -34,9 +34,9 @@ just --list
 
 | 改动 | 最低验证 |
 | --- | --- |
-| 前端 | `just typecheck`、`just test-fe`、`just build-fe`；结构改动另跑 `just frontend-structure-check`、`just ipc-check` |
 | Rust | `just fmt`、`just check`、`just clippy`、`just test`；模块迁移或公共读取接口改动另跑 `just check-examples` |
-| IPC | 前端与 Rust 检查，以及 `just ipc-check` |
+| 桌面应用 | Rust 检查与 `just test-desktop`，并在 `just dev` 中实际检查界面 |
+| 命令 | Rust 检查与 `just test-cli` |
 | 插件工作区 | `just fmt`、`just clippy-plugins`、`just test-plugins`；SDK 改动另跑 Rust 检查 |
 | Vendored 读取器 | `just fmt`、对应 `just test-*`（没有专用配方时用 `just test-vendor <目录>`）及可用的 `clippy-*`；主机集成变化另跑 Rust 检查 |
 | CLI 命令或流程 | 相关 Rust 检查与 `just test-cli`；验证已构建的程序用 `just smoke-cli <可执行文件>` |
@@ -51,9 +51,9 @@ Fork 仓库后创建工作分支，在本地完成改动与对应验证，再向
 ### 代码风格与范围
 
 - 以仓库约定、所属模块和相邻代码的写法为准。接收外部 PR 时，先确认问题在当前 `main` 上仍然存在，再整理实现、命名、导入、注释与测试，使其融入现有代码。
-- 优先复用已有模块、类型、IPC 包装、任务生命周期和 UI 基元。新增抽象应有明确职责；避免夹带无关重构、整文件格式化或词典重排。
+- 优先复用已有模块、类型、命令函数、任务生命周期和共享界面组件。新增抽象应有明确职责；避免夹带无关重构、整文件格式化或词典重排。
 - 保留既有的节点 ID、案件／检材身份、持久化值与接口语义。响应式状态、订阅与取消沿用现有所有权和代际检查，不能让旧任务清理或取消新任务。
-- 新增用户文案同时维护中英文；项目文档和 changelog 条目使用中文，变更分类沿用英文。用户行为、格式能力或验证边界有变化时，更新对应文档。
+- 项目文档和 changelog 条目使用中文，变更分类沿用英文。用户行为、格式能力或验证边界有变化时，更新对应文档。
 
 ### 标题与描述
 
@@ -73,7 +73,7 @@ PR 描述反映最终实现，不记录讨论经过、已放弃的方案或与�
 
 异步状态变化应覆盖与改动相关的成功、失败、取消、重试、案件切换及迟到结果；不要只检查实现细节。涉及共享导出流程时，同时检查普通导出和解密导出等实际调用入口。
 
-源码对照、mock IPC、组件测试、原生桌面操作和外部样本／oracle 验证应分别说明，不能相互替代。Windows PR 由 GitHub Actions 调用相同的 `just` 配方验证，不上传构建产物；产物只在版本标签发布流程中上传。贡献者仍需按改动范围完成本地验证。未执行的检查、缺失样本及保留的构建警告应如实说明。
+源码对照、单元测试、原生桌面操作和外部样本／oracle 验证应分别说明，不能相互替代。Windows PR 由 GitHub Actions 调用相同的 `just` 配方验证，不上传构建产物；产物只在版本标签发布流程中上传。贡献者仍需按改动范围完成本地验证。未执行的检查、缺失样本及保留的构建警告应如实说明。
 
 ### 合并要求
 

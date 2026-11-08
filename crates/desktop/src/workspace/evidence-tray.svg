@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="128" viewBox="0 0 240 128"
+     fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- The welcome page's evidence tray illustration. -->
+  <ellipse cx="120" cy="119" rx="86" ry="4" fill="INK" opacity=".06"/>
+  <rect x="40" y="74" width="160" height="40" rx="10" fill="RECESS" stroke="LINE" stroke-opacity=".45"/>
+  <g stroke="INK" stroke-opacity=".7">
+    <rect x="58" y="18" width="88" height="80" rx="10" fill="SURFACE"/>
+    <circle cx="94" cy="54" r="24" fill="RECESS"/>
+  </g>
+  <g fill="INK" opacity=".7">
+    <circle cx="67" cy="27" r="1.5"/>
+    <circle cx="137" cy="27" r="1.5"/>
+    <circle cx="94" cy="54" r="4"/>
+  </g>
+  <circle cx="94" cy="54" r="15" stroke="LINE" stroke-opacity=".45"/>
+  <path d="M132 84 109 62" stroke="INK" stroke-opacity=".7" stroke-width="3"/>
+  <circle cx="132" cy="84" r="5" fill="SURFACE" stroke="INK" stroke-opacity=".7"/>
+  <circle cx="108" cy="61" r="2.5" fill="ACCENT"/>
+  <path d="M40 90H200V104A10 10 0 0 1 190 114H50A10 10 0 0 1 40 104Z" fill="SURFACE" stroke="INK" stroke-opacity=".7"/>
+  <rect x="104" y="98" width="32" height="8" rx="4" fill="RECESS" stroke="LINE" stroke-opacity=".45"/>
+  <path d="M175 66V79" stroke="ACCENT" stroke-dasharray="2 4"/>
+  <path d="M171 76l4 4 4-4" stroke="ACCENT"/>
+</svg>

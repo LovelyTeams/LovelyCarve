@@ -17,7 +17,7 @@ MAXIMUM = (1 << 64) - 1
 SNAPSHOT = (1 << 32) - 1
 IMAGE_SIZE = 8 * 1024 * 1024
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / 'src-tauri/vendor/bcachefs-reader/tests/fixtures'
+OUTPUT = ROOT / 'vendor/bcachefs-reader/tests/fixtures'
 
 
 def crc(data, initial=0xffffffff, final=0xffffffff):

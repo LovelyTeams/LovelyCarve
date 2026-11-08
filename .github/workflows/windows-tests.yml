@@ -24,20 +24,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  frontend:
-    name: Frontend
-    runs-on: windows-2025
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          submodules: recursive
-          persist-credentials: false
-      - uses: ./.github/actions/setup-windows
-        with:
-          rust: 'false'
-      - run: just test-fe
-
   backend:
     name: Rust tests
     runs-on: windows-2025
@@ -49,6 +35,18 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-windows
       - run: just test
+
+  desktop:
+    name: Desktop app
+    runs-on: windows-2025
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-windows
+      - run: just test-desktop
 
   plugins:
     name: Plugins

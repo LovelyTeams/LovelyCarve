@@ -25,7 +25,7 @@ def fixture():
     for raw, encoded in zip(bodies, packed):
         chunks += struct.pack(">3I", offset, len(encoded), len(raw))
         offset += len(encoded)
-    output = Path("src-tauri/vendor/minifs/tests/fixtures")
+    output = Path("vendor/minifs/tests/fixtures")
     output.mkdir(parents=True, exist_ok=True)
     (output / "synthetic.minifs").write_bytes(header + names + records + chunks + b"".join(packed))
 

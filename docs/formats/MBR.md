@@ -7,7 +7,7 @@ MBR 与 EBR 由独立的 Rust 代码解析，不引入 libvsmbr 源码、动态�
 
 ## 实现入口
 
-- `src-tauri/src/core/evidence/partitions/mbr.rs`：MBR 探测、受约束的缺签名恢复、EBR 遍历和几何推断。
+- `crates/core/src/evidence/partitions/mbr.rs`：MBR 探测、受约束的缺签名恢复、EBR 遍历和几何推断。
 - `partitions/mbr/metadata.rs`：四个原始槽、类型字节、启动标志、原始及解码 CHS、磁盘签名与槽位字节偏移。
 - `partitions/mbr/reader.rs`：只读、受分区边界约束的随机与游标读取。
 - `evidence/image/open.rs`：对缺少可信几何的镜像采用 EBR 验证的扇区大小，然后进行分区与文件系统检测。

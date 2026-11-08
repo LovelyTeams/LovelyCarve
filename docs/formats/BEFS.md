@@ -3,7 +3,7 @@
 纯 Rust `befs-reader` 只读读取 BeOS / Haiku 的 Be File System。适配前检查了
 rusty-backup 的 `src/fs/bfs.rs`，复用其布局及读取思路，再按原生 Haiku 定义补齐
 分配校验、范围边界、目录交叉引用和扩展属性。固定源码、许可和样本来源见
-[ORIGIN.md](../../src-tauri/vendor/befs-reader/ORIGIN.md)。不链接 C 文件系统库，
+[ORIGIN.md](../../vendor/befs-reader/ORIGIN.md)。不链接 C 文件系统库，
 不依赖内核挂载或外部解包程序。
 
 ## 能力

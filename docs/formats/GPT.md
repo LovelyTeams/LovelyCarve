@@ -155,6 +155,6 @@ just run-example probe_partitions <image> --gpt
 临时 RAW 文件经过完整的 `DiskImage::open` 路径，验证四种几何、保护 MBR、空表和仅备份存活的情况。
 测试不依赖真实检材，也不修改进程环境；尚未与 libvsgpt 二进制在真实镜像上做差分比对。
 
-已提交的 EWF 样本 `src-tauri/vendor/ewf/tests/data/gpt_130_partitions.E01` 实际包含 131 个非空条目，
+已提交的 EWF 样本 `vendor/ewf/tests/data/gpt_130_partitions.E01` 实际包含 131 个非空条目，
 `probe_partitions --gpt` 全部发布：512 字节几何、主备头与两份数组 CRC 均通过校验，选用 LBA 1，
 没有恢复告警。文件名中的 130 不是条目数量的期望值。

@@ -7,15 +7,16 @@ inputs:
 runs:
   using: composite
   steps:
+    # scripts/build-plugins.mjs (just build-plugins / pack / pack-cli) runs on Bun.
     - uses: oven-sh/setup-bun@v2.2.0
       with:
-        bun-version-file: package.json
+        bun-version: 1.4.2
     - uses: extractions/setup-just@v4
     - name: Configure Rust and OpenSSL
       if: inputs.rust == 'true'
       shell: pwsh
       run: |
-        $manifest = Get-Content src-tauri/Cargo.toml -Raw
+        $manifest = Get-Content Cargo.toml -Raw
         $version = [regex]::Match($manifest, '(?m)^rust-version = "([^"]+)"').Groups[1].Value
         if (-not $version) { throw 'Missing rust-version in Cargo.toml' }
         if ($version.Split('.').Count -eq 2) { $version += '.0' }
@@ -34,12 +35,11 @@ runs:
       uses: actions/cache@v6.1.0
       with:
         path: |
-          ~/.bun/install/cache
           ~/.cargo/registry/cache
           ~/.cargo/registry/index
           ~/.cargo/git/db
-        key: windows-dependencies-v2-${{ github.job }}-${{ inputs.rust }}-${{ hashFiles('bun.lock', '**/Cargo.lock') }}
-        restore-keys: windows-dependencies-v2-${{ github.job }}-${{ inputs.rust }}-
+        key: windows-dependencies-v3-${{ github.job }}-${{ inputs.rust }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: windows-dependencies-v3-${{ github.job }}-${{ inputs.rust }}-
     - name: Bootstrap
       shell: pwsh
       run: just bootstrap

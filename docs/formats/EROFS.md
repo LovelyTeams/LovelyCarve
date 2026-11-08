@@ -30,7 +30,7 @@ Android sparse 包装应先展开为裸镜像；原生 GUI / Dokan 挂载需单�
 [lamco-admin/lamfold](https://github.com/lamco-admin/lamfold/tree/fabaad6af0c28b80535307b339b84110f3a3c12e/crates/lamfold-erofs)，
 crate 0.1.3，MIT OR Apache-2.0，许可证和 NOTICE 原样保留。本地增加超级块校验和、
 声明卷边界、精确 pcluster 源范围、元数据 / 文件限额、单文件缓存、UTF-8 与时间戳保留；
-详见 [本地修改](../../src-tauri/vendor/lamfold-erofs/LOVELYCARVE.md)。
+详见 [本地修改](../../vendor/lamfold-erofs/LOVELYCARVE.md)。
 
 保留上游由 erofs-utils 1.8.6 / 1.9.4 `mkfs.erofs` 生成的测试镜像与独立内容公式，覆盖
 四种压缩、紧凑索引、大小 pclusters、较小块、扩展槽、chunk 空洞及明确拒绝的格式。

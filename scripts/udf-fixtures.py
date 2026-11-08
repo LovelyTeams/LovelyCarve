@@ -11,7 +11,7 @@ from pathlib import Path
 import struct
 import zlib
 
-OUTPUT = Path(__file__).resolve().parent.parent / 'src-tauri/vendor/lamfold-udf/tests/fixtures'
+OUTPUT = Path(__file__).resolve().parent.parent / 'vendor/lamfold-udf/tests/fixtures'
 
 
 def fixture(block_size, extended):

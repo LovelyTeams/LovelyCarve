@@ -129,7 +129,7 @@ test('POSIX command quoting preserves evidence text literally', async t => {
   }
 });
 
-const cli = resolve(process.env.LOVELYCARVE_TEST_CLI ?? `src-tauri/target/debug/lovelycarve-cli${process.platform === 'win32' ? '.exe' : ''}`);
+const cli = resolve(process.env.LOVELYCARVE_TEST_CLI ?? `target/debug/lovelycarve-cli${process.platform === 'win32' ? '.exe' : ''}`);
 test('real CLI: named session, case, index, pages, quoted paths, error and export', { skip: !existsSync(cli) && 'build the CLI or set LOVELYCARVE_TEST_CLI', timeout: 180000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'lovelycarve-dsh-'));
   const evidence = join(directory, 'evidence');

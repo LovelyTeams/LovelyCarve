@@ -128,7 +128,7 @@ LUKS 由 Apache-2.0 的 vendored `luks-core` 与 RustCrypto 读取；libluksde �
 `oracle_luks1/2` 的 cryptsetup 大镜像测试由 `LUKS1_ORACLE` / `LUKS2_ORACLE` 控制，未配置时跳过；
 独立 Python 样本通过不等于已经运行了这些外部 cryptsetup 对照。
 
-读取器测试使用 `just test-luks` 与 `just clippy-luks`；涉及解锁界面或 IPC 时另跑前端与 IPC 检查。
+读取器测试使用 `just test-luks` 与 `just clippy-luks`；涉及解锁命令或界面时另跑 `just check`、`just test-cli` 与 `just test-desktop`。
 
 应用严格检查源范围、LUKS1 payload/keyslot 范围和 LUKS2 主头校验/布局。
 每次 KDF 预算 30 秒、整个密码解锁预算 90 秒，Argon2 内存上限 4 GiB；预算用于拒绝预测过贵的推导，

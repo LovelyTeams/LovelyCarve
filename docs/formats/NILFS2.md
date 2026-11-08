@@ -4,7 +4,7 @@
 crates.io / GitHub：`unearth` 仅识别卷；`rust-nilfs2` 是空 Rust 库和 C 工具源码；
 `btree-ondisk` 是采用不同节点标记的通用 B-tree，引擎不包含 NILFS2 的持久元数据解析。
 本实现复用 `unearth` 的 MIT 超级块前缀位置，新增有界的检查点、DAT、目录和内容读取。
-固定来源与许可见 [ORIGIN.md](../../src-tauri/vendor/nilfs2-reader/ORIGIN.md)。
+固定来源与许可见 [ORIGIN.md](../../vendor/nilfs2-reader/ORIGIN.md)。
 产品不链接 C 文件系统库，不调用内核挂载或外部提取器。
 
 ## 能力

@@ -1,5 +1,0 @@
-# Vendored crates may emit generated Rust code into their own target folders
-# while Cargo is compiling. Watching those build artifacts causes `tauri dev`
-# to restart Cargo recursively before the initial build can finish.
-vendor/*/target/
-vendor/**/target/

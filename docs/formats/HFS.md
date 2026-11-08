@@ -144,4 +144,4 @@ $env:FVDE_ORACLE_IMAGE = 'C:/path/to/fvdetest.cs.raw'
 just test-filevault --test oracle_fvde
 ```
 
-参考：[libfshfs 固定源码](https://github.com/libyal/libfshfs/tree/78321de1eda54b30261adf59b938781128591b2e)、[Apple TN1150](https://developer.apple.com/library/archive/technotes/tn/tn1150.html)、[Apple 固定 HFS 表](https://github.com/apple-oss-distributions/hfs/tree/d1bac2f062e6e9c0dfcce302d9aacb10173d0eea)、[FileVault 对照](FILEVAULT.md)。上游来源与各表的许可证见 `src-tauri/vendor/hfsplus/LOVELYCARVE.md`。
+参考：[libfshfs 固定源码](https://github.com/libyal/libfshfs/tree/78321de1eda54b30261adf59b938781128591b2e)、[Apple TN1150](https://developer.apple.com/library/archive/technotes/tn/tn1150.html)、[Apple 固定 HFS 表](https://github.com/apple-oss-distributions/hfs/tree/d1bac2f062e6e9c0dfcce302d9aacb10173d0eea)、[FileVault 对照](FILEVAULT.md)。上游来源与各表的许可证见 `vendor/hfsplus/LOVELYCARVE.md`。
