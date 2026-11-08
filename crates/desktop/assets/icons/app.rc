@@ -1,0 +1,4 @@
+// The application icon. Explorer shows the executable's first icon, and GPUI
+// registers icon resource 1 as its window class icon (taskbar, Alt+Tab).
+// GPUI Kit embeds the Windows manifest itself, so this script holds the icon only.
+1 ICON "icon.ico"

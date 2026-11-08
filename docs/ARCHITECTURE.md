@@ -42,7 +42,7 @@ crates/
 ├── core/           lovelycarve-core：十二个取证引擎域；examples/ 探针与基准，tests/、test_data/ 测试样本
 ├── backend/        lovelycarve-backend：AppState、任务登记、宿主类型、应用工作流、命令函数与命令注册表
 ├── cli/            lovelycarve-cli：独立 CLI；构建脚本由命令注册表和 commands.toml 生成分发与命令目录
-└── desktop/        lovelycarve-desktop：GPUI Kit 桌面应用，可执行文件 LovelyCarve
+└── desktop/        lovelycarve-desktop：GPUI Kit 桌面应用，可执行文件 LovelyCarve；构建脚本嵌入 Windows 应用图标
 vendor/             vendored 读取器 crate（各自独立的清单与锁文件）
 plugins/            插件子模块（独立 Cargo 工作区：SDK、lc-plugin-host 与随附插件）
 python/             基于 lovelycarve-core 的只读 Python 读取库
@@ -55,6 +55,7 @@ resources/          QR/OCR 构建运行时加载的模型
 GPUI 会为 serde_json 打开 `preserve_order`。若与 CLI 在同一次 Cargo 调用中编译，CLI 动态 JSON 输出的键顺序会随之改变；因此工作区 `default-members` 不含桌面应用，`just` 配方也总是单独编译它。检查 CLI 输出时不要把 `-p lovelycarve-desktop` 与 CLI 放在同一次构建中。
 
 后端构建脚本把 `binaries/` 下的 Dokan、OpenSSL 与 VC++ 运行时复制到当前 profile 目录，CLI、桌面应用及其测试直接运行即可找到；发行包由 `scripts/pack.ps1` / `scripts/pack-cli.ps1` 放到可执行文件旁。
+
 ## 后端结构
 
 后端分为两个 crate：`lovelycarve-core` 是不带应用状态的取证引擎，`lovelycarve-backend` 在其上提供共享状态、任务、工作流和命令函数。基础证据读者不引用文件系统或插件实现，文件系统不引用 catalog 或插件宿主，持久化调度器不直接读写分析结果和时间线。案件发布、索引和路径模型仍按业务协作；十二个域不要求形成完全独立的 crate 或 DAG。

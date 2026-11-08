@@ -12,6 +12,10 @@ publish.workspace = true
 name = "LovelyCarve"
 path = "src/main.rs"
 
+[target.'cfg(windows)'.dependencies]
+raw-window-handle = "0.6.2"
+winapi = { workspace = true, features = ["libloaderapi", "winuser"] }
+
 [dependencies]
 chrono.workspace = true
 dirs.workspace = true
@@ -45,9 +49,10 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true
 
-[target.'cfg(windows)'.dependencies]
-raw-window-handle = "0.6.2"
-winapi = { workspace = true, features = ["libloaderapi", "winuser"] }
+[build-dependencies]
+# Compiles `assets/icons/app.rc` into the executable's icon resource on
+# Windows (GPUI Kit already uses it for the manifest).
+embed-resource = "3.0.12"
 
 [lints]
 workspace = true

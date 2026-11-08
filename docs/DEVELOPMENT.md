@@ -137,7 +137,7 @@ Windows rustc 在大型测试 crate 发生增量编译崩溃时，可通过原�
 
 ReFS 使用纯 Rust 读取器；旧的 `librefs-13.dll` 只在 `lovelycarve-core` 显式的 `refs-dll-oracle` 特性下用于对照，不随正式包分发。Dokan、OpenSSL 与可选的 OpenCV DLL，以及模型和许可证属于构建 / 运行资源，由打包脚本放到可执行文件旁。`binaries/` 中的 `vcruntime140.dll`、`vcruntime140_1.dll`、`msvcp140.dll` 和 `msvcp140_1.dll` 是 Visual Studio 可再发行目录中的 VC++ 运行库，随主程序放在同一目录：主程序和 CLI 静态链接 `vcruntime`，但动态依赖 C++ 标准库 `msvcp140`（它又依赖 `vcruntime140` / `vcruntime140_1`），`lc-plugin-host`、`linuxinfo` 和 OpenSSL 的 `libcrypto` 动态依赖 `vcruntime140`；便携包打包时不对这些 DLL 做 UPX 压缩。发布前用 `dumpbin /dependents` 核对主程序、CLI、插件宿主、插件和随附 DLL 的依赖，除 Windows 自带组件外都应能在包内找到。测试夹具及其来源说明保存在 vendor 与 tests 目录中，不要用真实检材替换。
 
-品牌资源位于 `crates/desktop/assets/`：桌面应用内嵌的 `app-icon.png` / `app-icon-background.png` 与 Quicksand 字体，以及 `icons/` 中透明和带背景的原图与 Windows 图标 `icon.ico`。修改原图后需要同步导出 512px 的两张品牌 PNG；可执行文件目前没有嵌入 `icon.ico`。
+品牌资源位于 `crates/desktop/assets/`：桌面应用内嵌的 `app-icon.png` / `app-icon-background.png` 与 Quicksand 字体，以及 `icons/` 中透明和带背景的原图与 Windows 图标 `icon.ico`（16、24、32、48、64、256px）。修改原图后需要同步导出 512px 的两张品牌 PNG 和 `icon.ico`。桌面应用的构建脚本在 Windows 上把 `icons/app.rc` 编译为 `LovelyCarve.exe` 的 1 号图标资源：资源管理器显示它，GPUI 把它注册为窗口类图标，任务栏和 Alt+Tab 也随之显示。应用清单由 GPUI Kit 嵌入，`app.rc` 只含图标。
 
 ## 可选 QR/OCR 与发布构建
 

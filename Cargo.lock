@@ -5294,6 +5294,7 @@ version = "1.2.0"
 dependencies = [
  "chrono",
  "dirs 7.0.0",
+ "embed-resource",
  "futures",
  "gpui-kit",
  "lovelycarve-backend",
