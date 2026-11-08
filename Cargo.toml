@@ -90,6 +90,46 @@ opt-level = 3
 [profile.dev.package.crc32fast]
 opt-level = 3
 
+# The desktop app redraws the whole window on every animation frame. Keep
+# GPUI's layout, drawing and component code optimised in development as well,
+# so `just dev` animates smoothly; the app's own crate stays unoptimised.
+[profile.dev.package.taffy]
+opt-level = 3
+[profile.dev.package.gpui-pre]
+opt-level = 3
+[profile.dev.package.gpui-pre-windows]
+opt-level = 3
+[profile.dev.package.gpui-pre-sum-tree]
+opt-level = 3
+[profile.dev.package.gpui-pre-refineable]
+opt-level = 3
+[profile.dev.package.gpui-pre-util]
+opt-level = 3
+[profile.dev.package.gpui-pre-scheduler]
+opt-level = 3
+[profile.dev.package.gpui-base]
+opt-level = 3
+[profile.dev.package.gpui-component]
+opt-level = 3
+[profile.dev.package.accesskit]
+opt-level = 3
+[profile.dev.package.accesskit_consumer]
+opt-level = 3
+[profile.dev.package.accesskit_windows]
+opt-level = 3
+[profile.dev.package.resvg]
+opt-level = 3
+[profile.dev.package.usvg]
+opt-level = 3
+[profile.dev.package.tiny-skia]
+opt-level = 3
+[profile.dev.package.tiny-skia-path]
+opt-level = 3
+[profile.dev.package.etagere]
+opt-level = 3
+[profile.dev.package.lyon_tessellation]
+opt-level = 3
+
 [profile.release]
 # unwind（非 abort）：让 core::xlsx_table 的 catch_unwind 在发行版也能兜住
 # umya-spreadsheet 解析恶意/畸形 .xlsx 时的 panic —— 取证工具处理敌对镜像，

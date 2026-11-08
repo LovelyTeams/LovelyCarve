@@ -1,6 +1,8 @@
 //! Small presentation pieces the pages share: page toolbars and footers,
 //! empty states and label/value rows. They compose GPUI Kit components and
 //! read every color from the active theme.
+use std::time::Duration;
+
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     component::{
@@ -11,8 +13,8 @@ use gpui_kit::{
         tag::Tag,
         v_flex, ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, Size,
     },
-    div, px, AnyElement, App, Div, ElementId, Entity, FontWeight, InteractiveElement as _,
-    IntoElement, ParentElement, Pixels, SharedString, Styled, Window,
+    div, px, AnimationExt as _, AnyElement, App, Div, ElementId, Entity, FontWeight,
+    InteractiveElement as _, IntoElement, ParentElement, Pixels, SharedString, Styled, Window,
 };
 
 pub const TOOLBAR_HEIGHT: f32 = 48.;
@@ -148,20 +150,19 @@ pub fn result_workspace(
         .items_stretch()
         .bg(cx.theme().popover)
         .when_some(history, |layout, history| {
-            layout.child(
-                div()
-                    .w(px(if window.viewport_size().width < px(1120.) {
-                        210.
-                    } else {
-                        256.
-                    }))
-                    .flex_shrink_0()
-                    .h_full()
-                    .border_r_1()
-                    .border_color(cx.theme().border)
-                    .bg(cx.theme().table_foot)
-                    .child(history),
-            )
+            let rail = div()
+                .w(px(if window.viewport_size().width < px(1120.) {
+                    210.
+                } else {
+                    256.
+                }))
+                .flex_shrink_0()
+                .h_full()
+                .border_r_1()
+                .border_color(cx.theme().border)
+                .bg(cx.theme().table_foot)
+                .child(history);
+            layout.child(crate::motion::slide(rail, "history-rail", 16., cx))
         })
         .child(v_flex().flex_1().min_w_0().min_h_0().child(content))
 }
@@ -210,26 +211,43 @@ pub fn detail_frame(
     let Some(detail) = detail else {
         return frame.child(content);
     };
-    let dock = v_flex()
-        .size_full()
-        .border_l_1()
-        .border_color(cx.theme().border)
-        .bg(cx.theme().popover)
-        .child(detail);
+    let id = id.into();
+    let dock = |detail: AnyElement| {
+        v_flex()
+            .size_full()
+            .border_l_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().popover)
+            .child(detail)
+    };
     if overlay {
+        // The floating inspector slides in over the table like a drawer from
+        // the right edge, opaque all the way so the rows do not show through.
         frame.child(content).child(gpui_kit::deferred(
             div()
                 .absolute()
-                .right_0()
                 .top_0()
                 .h_full()
                 .w(width)
                 .max_w_full()
                 .occlude()
                 .shadow_lg()
-                .child(dock),
+                .child(dock(detail))
+                .with_animation(
+                    (id, "enter"),
+                    crate::motion::entrance(Duration::ZERO, cx),
+                    move |panel, progress| panel.right(-width * (1. - progress)),
+                ),
         ))
     } else {
+        // A docked inspector is opaque at once, since the table may run on
+        // beneath it; only its contents slide in.
+        let contents = crate::motion::slide(
+            v_flex().size_full().child(detail),
+            (id.clone(), "enter"),
+            -16.,
+            cx,
+        );
         frame.child(
             h_resizable(id)
                 .child(resizable_panel().child(content))
@@ -237,7 +255,7 @@ pub fn detail_frame(
                     resizable_panel()
                         .size(width)
                         .size_range(px(300.)..px(720.))
-                        .child(dock),
+                        .child(dock(contents.into_any_element())),
                 ),
         )
     }

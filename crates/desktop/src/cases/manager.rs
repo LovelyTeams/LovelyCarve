@@ -242,7 +242,7 @@ impl CaseManager {
             .children(cases.into_iter().enumerate().map(|(index, item)| {
                 let open_dir = item.dir.clone();
                 let removed = item.clone();
-                h_flex()
+                let row = h_flex()
                     .w_full()
                     .gap_3()
                     .px_3()
@@ -297,7 +297,14 @@ impl CaseManager {
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.remove_case(removed.clone(), window, cx)
                             })),
-                    )
+                    );
+                crate::motion::rise(
+                    row,
+                    ("case-row", index),
+                    crate::motion::stagger(index),
+                    6.,
+                    cx,
+                )
             }))
     }
 
@@ -353,7 +360,7 @@ impl CaseManager {
                     .ok()
                     .and_then(|value| value.as_str().map(str::to_uppercase))
                     .unwrap_or_default();
-                h_flex()
+                let row = h_flex()
                     .w_full()
                     .gap_3()
                     .px_3()
@@ -414,7 +421,14 @@ impl CaseManager {
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.remove_evidence(removed.clone(), window, cx)
                             })),
-                    )
+                    );
+                crate::motion::rise(
+                    row,
+                    ("case-evidence-row", index),
+                    crate::motion::stagger(index),
+                    6.,
+                    cx,
+                )
             }))
             .child(
                 ui::card(cx)

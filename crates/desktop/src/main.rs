@@ -18,6 +18,7 @@ mod events;
 mod evidence;
 mod files;
 mod format;
+mod motion;
 mod prefs;
 mod raid;
 mod search;

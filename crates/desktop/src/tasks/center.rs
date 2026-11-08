@@ -15,7 +15,7 @@ use gpui_kit::{
     },
     div,
     prelude::FluentBuilder as _,
-    px, App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable,
+    px, App, AppContext as _, Context, Div, Entity, EventEmitter, FocusHandle, Focusable,
     InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Render, SharedString,
     Styled as _, Subscription, Task, Window,
 };
@@ -118,7 +118,7 @@ impl TaskCenter {
         cx.notify();
     }
 
-    fn render_row(&self, row: &TaskRow, now_ms: i64, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_row(&self, row: &TaskRow, now_ms: i64, cx: &mut Context<Self>) -> Div {
         let subject = row.subject();
         let message = row.message();
         let percent = row.percent();
@@ -417,11 +417,24 @@ impl Render for TaskCenter {
                                                     )),
                                             ),
                                     )
+                                    // Rows rise in one after another when
+                                    // the hub opens, and each new task as it
+                                    // arrives.
                                     .when(!collapsed, |card| {
-                                        card.children(
-                                            rows.into_iter()
-                                                .map(|row| self.render_row(row, now, cx)),
-                                        )
+                                        card.children(rows.into_iter().enumerate().map(
+                                            |(index, row)| {
+                                                crate::motion::rise(
+                                                    self.render_row(row, now, cx),
+                                                    SharedString::from(format!(
+                                                        "task-row-{}",
+                                                        row.id
+                                                    )),
+                                                    crate::motion::stagger(index),
+                                                    6.,
+                                                    cx,
+                                                )
+                                            },
+                                        ))
                                     }),
                             )
                         }),

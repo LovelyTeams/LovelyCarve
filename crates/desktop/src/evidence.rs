@@ -8,7 +8,7 @@ mod platform;
 mod unlock;
 mod volumes;
 
-use std::rc::Rc;
+use std::{rc::Rc, time::Duration};
 
 use gpui_kit::{
     component::{
@@ -533,34 +533,54 @@ impl Render for EvidenceTab {
         match &self.state {
             LoadState::Loading { task_id } => {
                 let task_id = task_id.clone();
+                // Fade the progress in late, so evidence that opens at once
+                // does not flash it.
+                let loading = div().size_full().child(self.render_loading(&task_id, cx));
                 v_flex()
                     .size_full()
                     .px_2()
                     .pb_2()
-                    .child(ui::workspace_sheet(cx).child(self.render_loading(&task_id, cx)))
+                    .child(ui::workspace_sheet(cx).child(crate::motion::rise(
+                        loading,
+                        "evidence-loading",
+                        Duration::from_millis(150),
+                        0.,
+                        cx,
+                    )))
                     .into_any_element()
             }
             LoadState::Failed(message) => {
                 let message = message.clone();
+                let failed = div().size_full().child(self.render_failed(&message, cx));
                 v_flex()
                     .size_full()
                     .px_2()
                     .pb_2()
-                    .child(ui::workspace_sheet(cx).child(self.render_failed(&message, cx)))
+                    .child(ui::workspace_sheet(cx).child(crate::motion::rise(
+                        failed,
+                        "evidence-failed",
+                        Duration::ZERO,
+                        8.,
+                        cx,
+                    )))
                     .into_any_element()
             }
             LoadState::Ready(info) => {
                 let info = Rc::clone(info);
+                // Each page rises in when it is shown; the id changes with
+                // the page, so switching pages plays it again.
+                let page = crate::motion::rise(
+                    div().size_full().child(self.render_page()),
+                    SharedString::from(format!("page-{:?}", self.page)),
+                    Duration::ZERO,
+                    8.,
+                    cx,
+                );
                 h_flex()
                     .size_full()
                     .items_stretch()
                     .child(self.render_navigation(&info, window, cx))
-                    .child(
-                        ui::workspace_sheet(cx)
-                            .mr_2()
-                            .mb_2()
-                            .child(self.render_page()),
-                    )
+                    .child(ui::workspace_sheet(cx).mr_2().mb_2().child(page))
                     .into_any_element()
             }
         }

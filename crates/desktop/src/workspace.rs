@@ -6,7 +6,7 @@ mod sources;
 mod welcome;
 mod welcome_motion;
 
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use gpui_kit::{
     actions,
@@ -21,9 +21,9 @@ use gpui_kit::{
     },
     div, img,
     prelude::FluentBuilder as _,
-    px, App, AppContext as _, Context, Entity, ExternalPaths, FocusHandle, Focusable,
-    InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Render, Styled as _,
-    Subscription, Window,
+    px, Animation, AnimationExt as _, App, AppContext as _, Context, Div, Entity, ExternalPaths,
+    FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _,
+    Render, Styled as _, Subscription, Task, Window,
 };
 
 use crate::{
@@ -54,6 +54,10 @@ actions!(
 );
 
 const CONTEXT: &str = "Workspace";
+/// Where the task hub card rests under the title bar, and how far above it
+/// the card starts its drop.
+const HUB_TOP: f32 = 44.;
+const HUB_DROP: f32 = 8.;
 
 pub fn init(cx: &mut App) {
     tasks::center::init(cx);
@@ -73,6 +77,8 @@ pub struct Workspace {
     cases: Entity<CaseStore>,
     tasks: Entity<TaskStore>,
     task_hub: Option<(Entity<TaskCenter>, Subscription)>,
+    /// A task hub that was put away and is still fading out.
+    closing_hub: Option<(Entity<TaskCenter>, Task<()>)>,
     focus: FocusHandle,
     /// Evidence asked for before a case was active (dropped files, the
     /// command line); opened once a case is.
@@ -138,6 +144,7 @@ impl Workspace {
             cases,
             tasks,
             task_hub: None,
+            closing_hub: None,
             focus: cx.focus_handle(),
             pending_paths: Vec::new(),
             _subscriptions: subscriptions,
@@ -210,6 +217,7 @@ impl Workspace {
         self.tabs.clear();
         self.active = None;
         self.task_hub = None;
+        self.closing_hub = None;
         crate::raid::RaidStore::global(cx).update(cx, |store, cx| store.reset(cx));
         crate::evidence::PlatformStore::global(cx).update(cx, |store, cx| store.reset(cx));
         if let CaseEvent::Opened(case) = event {
@@ -310,17 +318,16 @@ impl Workspace {
                 hub.update(cx, TaskCenter::show_quick);
                 hub.focus_handle(cx).focus(window, cx);
             } else {
-                self.task_hub = None;
-                self.focus.focus(window, cx);
+                self.close_task_hub(window, cx);
             }
             cx.notify();
             return;
         }
+        self.closing_hub = None;
         let hub = cx.new(|cx| TaskCenter::new(quick, window, cx));
         let subscription =
             cx.subscribe_in(&hub, window, |this, _, event: &HubEvent, window, cx| {
-                this.task_hub = None;
-                this.focus.focus(window, cx);
+                this.close_task_hub(window, cx);
                 match event {
                     HubEvent::Close => {}
                     HubEvent::OpenCases => this.show_case_manager(window, cx),
@@ -335,6 +342,39 @@ impl Workspace {
         hub.focus_handle(cx).focus(window, cx);
         self.task_hub = Some((hub, subscription));
         cx.notify();
+    }
+
+    /// Put the task hub away: it fades out, then leaves the window.
+    fn close_task_hub(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((hub, _)) = self.task_hub.take() else {
+            return;
+        };
+        self.focus.focus(window, cx);
+        let exit = cx.theme().motion_tokens().duration_fast;
+        let removal = cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(exit).await;
+            this.update(cx, |this, cx| {
+                this.closing_hub = None;
+                cx.notify();
+            })
+            .ok();
+        });
+        self.closing_hub = Some((hub, removal));
+        cx.notify();
+    }
+
+    /// The floating card the task hub lives in, under the title bar.
+    fn hub_card(hub: &Entity<TaskCenter>, window: &Window, cx: &App) -> Div {
+        let height = (window.viewport_size().height - px(84.)).min(px(680.));
+        ui::card(cx)
+            .absolute()
+            .top(px(HUB_TOP))
+            .right(px(12.))
+            .w(px(440.))
+            .h(height)
+            .shadow_lg()
+            .overflow_hidden()
+            .child(hub.clone())
     }
 
     /// Ask for the evidence source; evidence needs an active, unlocked case.
@@ -550,19 +590,29 @@ impl Render for Workspace {
                 });
             let has_case = self.cases.read(cx).active().is_some();
             hub.update(cx, |hub, cx| hub.set_context(evidence, has_case, cx));
-            let height = (window.viewport_size().height - px(84.)).min(px(680.));
-            gpui_kit::deferred(
-                ui::card(cx)
-                    .absolute()
-                    .top(px(44.))
-                    .right(px(12.))
-                    .w(px(440.))
-                    .h(height)
-                    .shadow_lg()
-                    .occlude()
-                    .overflow_hidden()
-                    .child(hub.clone()),
-            )
+            // The hub drops in from under the title bar.
+            gpui_kit::deferred(Self::hub_card(hub, window, cx).occlude().with_animation(
+                "task-hub-enter",
+                crate::motion::entrance(Duration::ZERO, cx),
+                |card, progress| {
+                    card.top(px(HUB_TOP - HUB_DROP * (1. - progress)))
+                        .opacity(progress)
+                },
+            ))
+        });
+        let closing_hub = self.closing_hub.as_ref().map(|(hub, _)| {
+            let tokens = cx.theme().motion_tokens();
+            let curve = tokens.easing_exit.clone();
+            let exit =
+                Animation::new(tokens.duration_fast).with_easing(move |phase| curve.sample(phase));
+            gpui_kit::deferred(Self::hub_card(hub, window, cx).with_animation(
+                "task-hub-exit",
+                exit,
+                |card, progress| {
+                    card.top(px(HUB_TOP - HUB_DROP * progress))
+                        .opacity(1. - progress)
+                },
+            ))
         });
         let workspace = v_flex()
             .id("workspace")
@@ -594,10 +644,12 @@ impl Render for Workspace {
             .text_color(cx.theme().foreground)
             .child(self.render_title_bar(cx))
             .child(v_flex().flex_1().min_h_0().w_full().child(content))
-            .children(task_hub);
+            .children(task_hub)
+            .children(closing_hub);
         #[cfg(all(windows, target_arch = "x86_64"))]
-        let workspace =
-            workspace.child(crate::files::native::finish_frame(self.task_hub.is_some()));
+        let workspace = workspace.child(crate::files::native::finish_frame(
+            self.task_hub.is_some() || self.closing_hub.is_some(),
+        ));
         workspace
     }
 }

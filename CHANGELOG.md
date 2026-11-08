@@ -70,6 +70,7 @@
 
 ### Changed
 
+- 桌面端动画改为跟随显示器刷新率：欢迎页插画不再限帧（原先在 Windows 上实际不足 30 帧且节奏不均）；页面切换、导航类别高亮、页面列表收起展开、任务中心、文件详情与搜索记录栏增加过渡动画，欢迎页、案件管理与任务中心的列表依次淡入，均遵循系统「动画效果」设置。
 - **破坏性变更**：桌面应用改为基于 GPUI Kit 的原生界面（可执行文件仍为 `LovelyCarve.exe`），在进程内直接调用后端，不再依赖 WebView2。界面覆盖案件与检材管理、镜像信息（平台识别与手动指定、完整性校验、源镜像导出）、RAID 检测与手动重组、BitLocker / LUKS / VeraCrypt / FileVault 解锁、卷影副本、只读挂载与共享、iOS 备份解锁与检查、BCP 数据、文件浏览（标签、哈希、多选导出、文本 / 十六进制 / 源码预览，Windows x64 上经另行安装的 Outside In Viewer 预览原始格式）、全局搜索、时间线、文件恢复、分析结果与快速分析、任务中心和设置；界面文字为简体中文，沿用原有的用户数据目录与案件。
 - 仓库改为 Cargo 工作区：`crates/core`（取证引擎）、`crates/backend`（进程内后端与命令注册表 `command_registry!`）、`crates/cli` 与 `crates/desktop`，vendored 读取器、运行库与模型分别移到仓库根目录的 `vendor/`、`binaries/` 与 `resources/`，Python 读取库直接依赖 `lovelycarve-core`。`just dev` / `build` / `build-release` / `pack` 改为构建原生桌面应用，`just test-desktop` 运行其测试。
 - 平台识别结论不再用「·」分隔：镜像信息页的平台标签、悬停提示和任务中心的识别结果改用空格连接，备份结论只写一次备份工具；CLI 返回的 `displayPlatformName` 同样改为空格连接，例如「无人机 DJI」。

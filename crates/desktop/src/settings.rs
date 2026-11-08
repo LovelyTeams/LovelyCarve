@@ -438,7 +438,18 @@ impl Render for SettingsView {
                         }),
                     ),
             )
-            .child(div().max_h(px(440.)).child(body).overflow_y_scrollbar())
+            .child(
+                div()
+                    .max_h(px(440.))
+                    .child(crate::motion::rise(
+                        div().child(body),
+                        ("settings-section", section as usize),
+                        std::time::Duration::ZERO,
+                        6.,
+                        cx,
+                    ))
+                    .overflow_y_scrollbar(),
+            )
             .child(
                 h_flex()
                     .pt_3()

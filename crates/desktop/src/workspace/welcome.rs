@@ -1,4 +1,6 @@
 //! The start page: create or open a case, add evidence, reopen recent cases.
+use std::time::Duration;
+
 use gpui_kit::{
     component::{
         button::{Button, ButtonVariants as _},
@@ -118,12 +120,19 @@ impl Render for Welcome {
                     .justify_center()
                     .flex_wrap()
                     .gap_1p5()
-                    .children(FORMATS.into_iter().map(|format| {
-                        Tag::secondary()
-                            .outline()
-                            .small()
-                            .text_size(px(11.))
-                            .child(ui::mono(format, cx))
+                    .children(FORMATS.into_iter().enumerate().map(|(index, format)| {
+                        welcome_motion::rise(
+                            Tag::secondary()
+                                .outline()
+                                .small()
+                                .text_size(px(11.))
+                                .child(ui::mono(format, cx)),
+                            ("welcome-format", index),
+                            Duration::from_millis(200 + 18 * index as u64),
+                            6.,
+                            motion,
+                            cx,
+                        )
                     })),
             )
             .child(
@@ -199,7 +208,7 @@ impl Render for Welcome {
                     .min_h_0()
                     .children(recent.into_iter().enumerate().map(|(index, item)| {
                         let dir = item.dir;
-                        Button::new(("recent-case", index))
+                        let row = Button::new(("recent-case", index))
                             .ghost()
                             .w_full()
                             .h(px(64.))
@@ -255,7 +264,15 @@ impl Render for Welcome {
                                 cx.listener(move |this, _, _, cx| {
                                     this.open_recent(dir.clone(), cx)
                                 }),
-                            )
+                            );
+                        welcome_motion::rise(
+                            row,
+                            ("welcome-recent-row", index),
+                            Duration::from_millis(260) + crate::motion::stagger(index),
+                            10.,
+                            motion,
+                            cx,
+                        )
                     }))
                     .overflow_y_scrollbar(),
             );
@@ -284,9 +301,10 @@ impl Render for Welcome {
                                         .rounded(px(crate::theme::PANEL_RADIUS))
                                         .flex_shrink_0(),
                                     "welcome-brand-mark",
-                                    0,
+                                    Duration::ZERO,
                                     8.,
                                     motion,
+                                    cx,
                                 ))
                                 .child(welcome_motion::rise(
                                     v_flex().gap_2().child(ui::wordmark(44., cx)).child(
@@ -298,9 +316,10 @@ impl Render for Welcome {
                                         ),
                                     ),
                                     "welcome-wordmark",
-                                    80,
+                                    Duration::from_millis(80),
                                     8.,
                                     motion,
+                                    cx,
                                 )),
                         )
                         .child(
@@ -311,16 +330,18 @@ impl Render for Welcome {
                                 .child(welcome_motion::rise(
                                     import_card,
                                     "welcome-import-rise",
-                                    140,
+                                    Duration::from_millis(140),
                                     16.,
                                     motion,
+                                    cx,
                                 ))
                                 .child(welcome_motion::rise(
                                     recent_card,
                                     "welcome-recent-rise",
-                                    220,
+                                    Duration::from_millis(220),
                                     16.,
                                     motion,
+                                    cx,
                                 )),
                         )
                         .when_some(self.error.clone(), |this, error| {
