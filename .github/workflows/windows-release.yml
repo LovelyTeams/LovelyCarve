@@ -11,13 +11,12 @@ concurrency:
   group: windows-release-${{ github.ref }}
   cancel-in-progress: false
 
+# PR tests run in the separate Windows tests workflow. A tag with a suffix
+# (v2.0.0-beta.1) is a prerelease: a test build of the portable desktop app
+# only, without the CLI and plugin packages.
 jobs:
-  tests:
-    uses: ./.github/workflows/windows-tests.yml
-
   release:
     name: Build and publish Windows x64
-    needs: tests
     runs-on: windows-2025
     timeout-minutes: 240
     permissions:
@@ -29,6 +28,7 @@ jobs:
       CARGO_BUILD_JOBS: '2'
       CARGO_INCREMENTAL: '0'
       CARGO_TERM_COLOR: always
+      PRERELEASE: ${{ contains(github.ref_name, '-') }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -47,30 +47,45 @@ jobs:
       - name: Build and package the portable desktop app
         run: just pack -NoUpx
       - name: Build and package CLI
+        if: env.PRERELEASE != 'true'
         run: just pack-cli
       - name: Smoke-test release CLI
+        if: env.PRERELEASE != 'true'
         run: just smoke-cli target/release/lovelycarve-cli.exe
       - name: Package plugins
+        if: env.PRERELEASE != 'true'
         run: just pack-plugins
       - name: Stage assets and SHA-256 checksums
         run: |
+          $prerelease = $env:PRERELEASE -eq 'true'
           $desktop = @(Get-ChildItem dist-pack/LovelyCarve-v*-win-x64.7z -File)
-          $cliPackages = @(Get-ChildItem dist-pack/lovelycarve-cli-*.zip -File)
-          $plugins = @(Get-ChildItem dist-pack/*.lcpkg -File)
-          if (-not $desktop.Count -or -not $cliPackages.Count -or -not $plugins.Count) {
-            throw 'Expected the desktop archive, CLI ZIP and plugin packages'
+          if ($desktop.Count -ne 1) {
+            throw 'Expected one desktop archive'
           }
-          $assets = $desktop + $cliPackages + $plugins
           New-Item -ItemType Directory -Path release-assets | Out-Null
-          $assets | Copy-Item -Destination release-assets
+          # Named after the tag, so a prerelease archive is not taken for the release.
+          Copy-Item -LiteralPath $desktop[0].FullName -Destination "release-assets/LovelyCarve-$env:GITHUB_REF_NAME-win-x64.7z"
+          if (-not $prerelease) {
+            $cliPackages = @(Get-ChildItem dist-pack/lovelycarve-cli-*.zip -File)
+            $plugins = @(Get-ChildItem dist-pack/*.lcpkg -File)
+            if (-not $cliPackages.Count -or -not $plugins.Count) {
+              throw 'Expected the CLI ZIP and plugin packages'
+            }
+            ($cliPackages + $plugins) | Copy-Item -Destination release-assets
+          }
           Get-ChildItem release-assets -File | Sort-Object Name | ForEach-Object {
             $hash = Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256
             "$($hash.Hash.ToLowerInvariant())  $($_.Name)"
           } | Set-Content release-assets/SHA256SUMS.txt -Encoding utf8NoBOM
+          $contents = if ($prerelease) {
+            'Prerelease test build: includes only the portable desktop app (7z) and SHA-256 checksums, without the standalone CLI and plugin packages.'
+          } else {
+            'Includes the portable desktop app (7z), standalone CLI ZIP, plugin packages and SHA-256 checksums.'
+          }
           @"
           Windows x64 build of $env:GITHUB_SHA. QR/OCR is disabled. Binaries are unsigned.
 
-          Includes the portable desktop app (7z), standalone CLI ZIP, plugin packages and SHA-256 checksums.
+          $contents
           Dokany mounts require a separately installed driver. Native GUI and driver checks remain manual.
 
           Source checkout (GitHub source archives do not include the pinned plugin submodule):
@@ -90,7 +105,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           $arguments = @('release', 'create', $env:GITHUB_REF_NAME, '--verify-tag', '--title', "LovelyCarve $env:GITHUB_REF_NAME (Windows x64)", '--notes-file', 'release-notes.md')
-          if ($env:GITHUB_REF_NAME.Contains('-')) { $arguments += '--prerelease' }
+          if ($env:PRERELEASE -eq 'true') { $arguments += '--prerelease' }
           $arguments += @(Get-ChildItem release-assets -File | ForEach-Object FullName)
           gh @arguments
           if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publication failed' }

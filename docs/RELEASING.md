@@ -36,14 +36,14 @@ CHANGELOG 只使用实际有内容的英文分类（`Added`、`Changed`、`Depre
 
 ## 标签与发行产物
 
-把 `v<版本号>` 标签推送到对应的源码提交后，`Windows release` 工作流会先运行与 PR 相同的 Rust、桌面与插件测试，再执行 `just pack -NoUpx`、`just pack-cli`、`just smoke-cli` 与 `just pack-plugins`，上传 Windows x64 便携桌面包（7z）、CLI ZIP、插件 `.lcpkg` 和 `SHA256SUMS.txt`，自动创建 GitHub Release。例如，应用版本同步为 `1.2.1` 并提交后：
+把 `v<版本号>` 标签推送到对应的源码提交后，`Windows release` 工作流执行 `just pack -NoUpx`、`just pack-cli`、`just smoke-cli` 与 `just pack-plugins`，上传 Windows x64 便携桌面包（7z）、CLI ZIP、插件 `.lcpkg` 和 `SHA256SUMS.txt`，自动创建 GitHub Release。PR 测试由独立的 `Windows tests` 工作流运行，发布工作流不再重复。桌面包按标签命名为 `LovelyCarve-<标签>-win-x64.7z`。例如，应用版本同步为 `1.2.1` 并提交后：
 
 ```powershell
 git tag v1.2.1
 git push origin v1.2.1
 ```
 
-标签的基础版本必须与工作区版本一致；`v1.2.1-rc.1` 这类带后缀的标签发布为预发行版，`v1.2.1` 发布为正式版。已有标签不会因添加工作流而重新触发，请勿移动已发布的标签。工作流使用仓库内置的 `GITHUB_TOKEN`，发布 job 具有 `contents: write` 权限，无需另设 PAT 或个人凭据。
+标签的基础版本必须与工作区版本一致；`v1.2.1` 发布为正式版，`v1.2.1-rc.1`、`v2.0.0-beta.1` 这类带后缀的标签发布为预发行版。预发行版是桌面应用的测试构建，只发布便携桌面包与 `SHA256SUMS.txt`，不构建 CLI 和插件包。已有标签不会因添加工作流而重新触发，请勿移动已发布的标签。工作流使用仓库内置的 `GITHUB_TOKEN`，发布 job 具有 `contents: write` 权限，无需另设 PAT 或个人凭据。
 
 自动构建默认不含 QR/OCR，二进制未做代码签名，便携桌面包未做 UPX 压缩；原生 GUI 与 Dokany 驱动仍需人工验证。含 QR/OCR 的 CLI 继续使用上表的本地配方。
 
