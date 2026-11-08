@@ -11,6 +11,10 @@
 
 - 桌面端在「卷与分区」的同一弹窗中解锁 BitLocker、LUKS、VeraCrypt 和 FileVault 2，分区行可直接预选对应卷。
 
+### Removed
+
+- LovelyCarve 的 DSH 取证模式和 CLI skill 移除 forensic-board 看板集成。
+
 ## [1.3.0] - 2026-11-07
 
 ### Added
