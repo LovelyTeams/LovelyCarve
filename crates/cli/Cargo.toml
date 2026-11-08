@@ -8,6 +8,9 @@ license.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+winapi.workspace = true
+
 [[bin]]
 name = "lovelycarve-cli"
 path = "src/main.rs"
@@ -40,9 +43,6 @@ tracing-subscriber.workspace = true
 # 帮助与提示的列宽：中日韩全角字符占两列（已在依赖树中）。
 unicode-width = "0.2.2"
 uuid.workspace = true
-
-[target.'cfg(windows)'.dependencies]
-winapi.workspace = true
 
 [build-dependencies]
 quote = "1.0.47"

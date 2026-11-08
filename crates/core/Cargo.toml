@@ -44,6 +44,17 @@ qrcode-wechat = [
 ocr = ["dep:oar-ocr", "dep:oar-ocr-core", "dep:image"]
 ocr-cuda = ["ocr", "oar-ocr/cuda"]
 
+[target.'cfg(windows)'.dependencies]
+dokan = "0.3.1"
+dokan-sys = "0.3.1"
+# widestring is pinned to 0.4 by the dokan 0.3.1 FFI boundary: dokan's
+# FileSystemHandler trait + DOKAN_* structs use widestring 0.4 `U16CStr`/
+# `UCString<u16>` types, and dokan_mount.rs passes those values straight in.
+# Bumping to 1.x forks the type across the crate-version boundary (E0053/E0308),
+# so this tracks dokan (itself pinned to dokan2.dll) rather than the latest.
+widestring = "0.4"
+winapi.workspace = true
+
 [dependencies]
 ad1 = { package = "ad1-core", path = "../../vendor/ad1" }
 aes = "0.9.3"
@@ -210,17 +221,6 @@ zeroize.workspace = true
 zfs-rs = { path = "../../vendor/zfs" }
 zip.workspace = true
 zstd.workspace = true
-
-[target.'cfg(windows)'.dependencies]
-dokan = "0.3.1"
-dokan-sys = "0.3.1"
-# widestring is pinned to 0.4 by the dokan 0.3.1 FFI boundary: dokan's
-# FileSystemHandler trait + DOKAN_* structs use widestring 0.4 `U16CStr`/
-# `UCString<u16>` types, and dokan_mount.rs passes those values straight in.
-# Bumping to 1.x forks the type across the crate-version boundary (E0053/E0308),
-# so this tracks dokan (itself pinned to dokan2.dll) rather than the latest.
-widestring = "0.4"
-winapi.workspace = true
 
 [dev-dependencies]
 # The AD1 tests build images with the reader's independent fixture encoder.

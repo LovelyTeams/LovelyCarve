@@ -5,12 +5,12 @@
 # and the Python binding keep their own manifests and lockfiles.
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/backend", "crates/cli", "crates/desktop"]
+members = ["crates/backend", "crates/cli", "crates/core", "crates/desktop"]
 # A bare `cargo build` / `cargo test` leaves the desktop app out. GPUI turns
 # on serde_json's `preserve_order`; built in the same invocation, the CLI
 # would inherit it and change the key order of its dynamic JSON output.
 default-members = ["crates/core", "crates/backend", "crates/cli"]
-exclude = ["vendor", "plugins", "python"]
+exclude = ["plugins", "python", "vendor"]
 
 [workspace.package]
 version = "1.2.0"
@@ -25,14 +25,6 @@ publish = false
 # Dependencies shared by several workspace crates. Crate-specific ones stay in
 # the member manifests next to the code that needs them.
 [workspace.dependencies]
-lovelycarve-backend = { path = "crates/backend" }
-lovelycarve-core = { path = "crates/core" }
-# DLL plugin C ABI, LPP wire types and the shared plugin-library loader
-# (plugins/sdk; the plugins and lc-plugin-host build in their own workspace).
-lovelycarve-plugin = { path = "plugins/sdk", features = ["loader"] }
-ios-backup-core = { path = "vendor/ios-backup/core" }
-qcow2 = { path = "vendor/qcow2" }
-
 anyhow = "1.0.104"
 chrono = { version = "0.4.45", features = ["serde"] }
 # lovelycarve-cli 的子命令与参数解析；帮助由 cli/help.rs 按命令目录渲染。
@@ -43,9 +35,16 @@ dirs = "7.0.0"
 flate2 = "1.1.10"
 fs2 = "0.4.3"
 hex = "0.4.3"
+ios-backup-core = { path = "vendor/ios-backup/core" }
+lovelycarve-backend = { path = "crates/backend" }
+lovelycarve-core = { path = "crates/core" }
+# DLL plugin C ABI, LPP wire types and the shared plugin-library loader
+# (plugins/sdk; the plugins and lc-plugin-host build in their own workspace).
+lovelycarve-plugin = { path = "plugins/sdk", features = ["loader"] }
 # Independent MD5 oracle for tests and filesystem probes.
 md-5 = "0.11.0"
 parking_lot = "0.12.5"
+qcow2 = { path = "vendor/qcow2" }
 rusqlite = { version = "0.40.2", features = ["bundled-sqlcipher-vendored-openssl", "collation", "hooks"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
