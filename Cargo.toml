@@ -13,7 +13,7 @@ default-members = ["crates/core", "crates/backend", "crates/cli"]
 exclude = ["plugins", "python", "vendor"]
 
 [workspace.package]
-version = "1.2.0"
+version = "2.0.0"
 authors = ["LovelyCarve contributors"]
 edition = "2021"
 license = "AGPL-3.0-only"
