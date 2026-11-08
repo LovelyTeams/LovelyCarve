@@ -139,6 +139,8 @@ ReFS 使用纯 Rust 读取器；旧的 `librefs-13.dll` 只在 `lovelycarve-core
 
 品牌资源位于 `crates/desktop/assets/`：桌面应用内嵌的 `app-icon.png` / `app-icon-background.png` 与 Quicksand 字体，以及 `icons/` 中透明和带背景的原图与 Windows 图标 `icon.ico`（16、24、32、48、64、256px）。修改原图后需要同步导出 512px 的两张品牌 PNG 和 `icon.ico`。桌面应用的构建脚本在 Windows 上把 `icons/app.rc` 编译为 `LovelyCarve.exe` 的 1 号图标资源：资源管理器显示它，GPUI 把它注册为窗口类图标，任务栏和 Alt+Tab 也随之显示。应用清单由 GPUI Kit 嵌入，`app.rc` 只含图标。
 
+文件列表的文件类型、文件夹和展开箭头图标位于 `crates/desktop/assets/file_icons/`，是第三方 SVG 的原样副本，来源提交与许可证见该目录的 `README.md`、`LICENSE-GPL` 和 `THIRD_PARTY_NOTICES.md`。`crates/desktop/src/assets.rs` 的 `file_icons!` 列出打包的文件，`crates/desktop/src/files/icons/file_types.rs` 维护文件名、后缀到图标的对应关系；测试保证目录中的 SVG、打包清单与对应表三者一致，增删图标时要同步修改。界面其余图标是 GPUI Kit 的 Lucide 图标，登记在同一文件的 `icon_assets!` 中，另一项测试扫描界面源码，用到却未登记或登记了却没用到时失败。
+
 ## 可选 QR/OCR 与发布构建
 
 Windows 的 `build-cli-full` 启用 WeChat 二维码识别和带 CPU 回退的 CUDA OCR。需要准备版本匹配的 OpenCV 及 contrib 源码，用 `just build-opencv-contrib` 构建含 `wechat_qrcode` 的 OpenCV；核对安装目录中的 `vc*` 与 world 库名称后设置对应变量。官方的核心 OpenCV 发行包不包含所需模块。桌面应用没有 QR/OCR 界面，始终不启用这两个特性。

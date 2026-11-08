@@ -1,7 +1,15 @@
-//! File and directory glyphs shared by the browser and preview.
+//! File and directory icons shared by the file list, the directory tree and
+//! the detail view, all drawn in the muted foreground. A file's icon follows
+//! `file_types`: its whole name first, then the text after each dot from the
+//! longest down, then the part before the first dot. Evidence structures such
+//! as partitions, streams and unallocated space keep their own glyphs.
+mod file_types;
+
+use std::{collections::HashMap, sync::LazyLock};
+
 use gpui_kit::{
     assets::IconName as Glyph,
-    component::{ActiveTheme as _, Icon, IconName},
+    component::{ActiveTheme as _, Icon},
     px, App, Styled,
 };
 use lovelycarve_backend::core::{
@@ -10,183 +18,277 @@ use lovelycarve_backend::core::{
 };
 
 use super::source::source_language;
+use crate::assets::file_icon;
 
+/// What an entry draws ahead of its name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum FileIcon {
-    Folder,
-    Volume,
-    Container,
-    Snapshot,
-    Stream,
-    Unallocated,
-    Link,
-    Image,
-    Video,
-    Audio,
-    Document,
-    Spreadsheet,
-    Code,
-    Archive,
-    Executable,
-    Database,
-    Mail,
-    File,
+pub(super) enum Artwork {
+    /// A bundled file type icon, by name.
+    File(&'static str),
+    /// A catalog glyph, for what the file type icons do not cover.
+    Glyph(Glyph),
 }
 
-impl FileIcon {
-    fn special(id: &str) -> Option<Self> {
-        if id.starts_with("refs-snap:") {
-            Some(Self::Snapshot)
-        } else if id.starts_with("ntfs-ads:") {
-            Some(Self::Stream)
-        } else if id.starts_with("unalloc:") || id.starts_with("diskgap:") {
-            Some(Self::Unallocated)
-        } else if id.strip_prefix("host-docker:").is_some_and(|path| {
-            path.is_empty()
-                || path
-                    .strip_suffix(':')
-                    .is_some_and(|name| !name.contains(':'))
-        }) {
-            Some(Self::Container)
-        } else if id.strip_prefix("part:").is_some_and(numeric)
-            || id
-                .strip_prefix("lvm:")
-                .and_then(|id| id.split_once(':'))
-                .is_some_and(|(partition, volume)| numeric(partition) && numeric(volume))
-        {
-            Some(Self::Volume)
-        } else {
-            None
-        }
-    }
+const FOLDER: Artwork = Artwork::File("folder");
+const FOLDER_OPEN: Artwork = Artwork::File("folder_open");
+const CHEVRON_COLLAPSED: Artwork = Artwork::File("chevron_right");
+const CHEVRON_EXPANDED: Artwork = Artwork::File("chevron_down");
+/// Text the source preview can highlight that no association names.
+const SOURCE: Artwork = Artwork::File("code");
+const DEFAULT: Artwork = Artwork::File("file");
 
-    fn for_node(node: &FsNode) -> Self {
-        Self::special(&node.id).unwrap_or_else(|| match node.kind {
-            NodeKind::Dir => Self::Folder,
-            NodeKind::Symlink => Self::Link,
-            NodeKind::Unallocated => Self::Unallocated,
-            NodeKind::File => Self::for_filename(&node.name, &flat_ext_of(node)),
+/// The file type tables, keyed by lowercase name.
+struct Associations {
+    stems: HashMap<String, &'static str>,
+    suffixes: HashMap<String, &'static str>,
+    artwork: HashMap<&'static str, Artwork>,
+}
+
+fn by_name(table: &[(&'static str, &[&str])]) -> HashMap<String, &'static str> {
+    table
+        .iter()
+        .flat_map(|&(key, names)| {
+            names
+                .iter()
+                .map(move |name| (name.to_ascii_lowercase(), key))
         })
+        .collect()
+}
+
+static ASSOCIATIONS: LazyLock<Associations> = LazyLock::new(|| Associations {
+    stems: by_name(file_types::STEMS),
+    suffixes: by_name(file_types::SUFFIXES),
+    artwork: file_types::ARTWORK.iter().copied().collect(),
+});
+
+impl Associations {
+    /// The artwork of the key a whole name or a suffix is associated with.
+    fn lookup(&self, candidate: &str) -> Option<Artwork> {
+        self.stems
+            .get(candidate)
+            .or_else(|| self.suffixes.get(candidate))
+            .and_then(|key| self.artwork.get(key))
+            .copied()
     }
 
-    fn for_filename(name: &str, suffix: &str) -> Self {
-        if ["README", "LICENSE", "CHANGELOG"]
-            .iter()
-            .any(|alias| name.eq_ignore_ascii_case(alias))
-        {
-            return Self::Document;
+    fn file(&self, name: &str) -> Option<Artwork> {
+        let name = name.to_ascii_lowercase();
+        if let Some(artwork) = self.lookup(&name) {
+            return Some(artwork);
         }
-
-        match suffix {
-            "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "ico" | "avif" | "svg" | "tif"
-            | "tiff" | "heic" => Self::Image,
-            "mp4" | "webm" | "mov" | "mkv" | "avi" | "m4v" | "wmv" => Self::Video,
-            "mp3" | "wav" | "ogg" | "flac" | "m4a" | "aac" | "wma" => Self::Audio,
-            "md" | "markdown" | "mdown" | "mkd" | "pdf" | "ofd" | "doc" | "docx" | "odt"
-            | "rtf" | "ppt" | "pptx" | "odp" | "pages" | "key" | "wps" => Self::Document,
-            "csv" | "tsv" | "xls" | "xlsx" | "xlsm" | "xlsb" | "ods" | "et" => Self::Spreadsheet,
-            "zip" | "rar" | "7z" | "gz" | "bz2" | "xz" | "zst" | "lz4" | "tar" | "tgz" | "tbz2"
-            | "txz" | "cab" | "wim" | "arj" | "jar" | "war" | "apk" | "ipa" | "a" | "ar"
-            | "lib" => Self::Archive,
-            "dd" | "img" | "raw" | "iso" | "e01" | "ex01" | "aff" | "aff4" | "ad1" | "vhd"
-            | "vhdx" | "vmdk" | "vdi" | "qcow" | "qcow2" | "dmg" => Self::Volume,
-            "exe" | "dll" | "sys" | "com" | "scr" | "msi" | "drv" | "ocx" | "cpl" | "efi"
-            | "mui" | "elf" | "so" | "dylib" | "bin" | "o" | "ko" => Self::Executable,
-            "db" | "db3" | "sqlite" | "sqlite3" | "mdb" | "accdb" | "edb" | "frm" | "ibd"
-            | "realm" | "bcp" => Self::Database,
-            "eml" | "msg" | "pst" | "ost" | "mbox" => Self::Mail,
-            "txt" | "text" | "log" => Self::Code,
-            _ if source_language(name, suffix).is_some() => Self::Code,
-            _ => Self::File,
+        // `a.b.c` tries `b.c`, then `c`, then the stem `a`, so a suffix wins
+        // over a known stem: `Dockerfile.rs` is Rust, `Dockerfile.prod` is
+        // still a Dockerfile.
+        let mut rest = name.as_str();
+        let mut stem = None;
+        while let Some((prefix, suffix)) = rest.split_once('.') {
+            stem.get_or_insert(prefix);
+            if let Some(artwork) = self.lookup(suffix) {
+                return Some(artwork);
+            }
+            rest = suffix;
         }
+        stem.and_then(|stem| self.lookup(stem))
     }
+}
 
-    fn render(self, expanded: bool, cx: &App) -> Icon {
-        let theme = cx.theme();
-        let (icon, color) = match self {
-            Self::Folder => (
-                Icon::new(if expanded {
-                    IconName::FolderOpen
-                } else {
-                    IconName::Folder
-                }),
-                theme.warning,
-            ),
-            Self::Volume => (Icon::new(IconName::HardDrive), theme.info),
-            Self::Container => (Icon::new(Glyph::Container), theme.info),
-            Self::Snapshot => (Icon::new(Glyph::ClockArrowLeft), theme.warning),
-            Self::Stream => (Icon::new(Glyph::Layers), theme.warning),
-            Self::Unallocated => (Icon::new(Glyph::CircleDashed), theme.muted_foreground),
-            Self::Link => (Icon::new(Glyph::Link), theme.muted_foreground),
-            Self::Image => (Icon::new(Glyph::FileImage), theme.success),
-            Self::Video => (Icon::new(Glyph::FilePlay), theme.info),
-            Self::Audio => (Icon::new(Glyph::FileMusic), theme.info),
-            Self::Document => (Icon::new(Glyph::FileText), theme.primary),
-            Self::Spreadsheet => (Icon::new(Glyph::FileSpreadsheet), theme.success),
-            Self::Code => (Icon::new(Glyph::FileCode), theme.accent_foreground),
-            Self::Archive => (Icon::new(Glyph::FileArchive), theme.warning),
-            Self::Executable => (Icon::new(Glyph::FileCog), theme.danger),
-            Self::Database => (Icon::new(Glyph::Database), theme.warning),
-            Self::Mail => (Icon::new(Glyph::Mail), theme.info),
-            Self::File => (Icon::new(IconName::File), theme.muted_foreground),
-        };
-        icon.size(px(16.)).text_color(color)
-    }
+/// Evidence structures, recognised by node id rather than by name.
+fn structure(id: &str) -> Option<Artwork> {
+    let glyph = if id.starts_with("refs-snap:") {
+        Glyph::ClockArrowLeft
+    } else if id.starts_with("ntfs-ads:") {
+        Glyph::Layers
+    } else if id.starts_with("unalloc:") || id.starts_with("diskgap:") {
+        Glyph::CircleDashed
+    } else if id.strip_prefix("host-docker:").is_some_and(|path| {
+        path.is_empty()
+            || path
+                .strip_suffix(':')
+                .is_some_and(|name| !name.contains(':'))
+    }) {
+        Glyph::Container
+    } else if id.strip_prefix("part:").is_some_and(numeric)
+        || id
+            .strip_prefix("lvm:")
+            .and_then(|id| id.split_once(':'))
+            .is_some_and(|(partition, volume)| numeric(partition) && numeric(volume))
+    {
+        Glyph::HardDrive
+    } else {
+        return None;
+    };
+    Some(Artwork::Glyph(glyph))
 }
 
 fn numeric(id: &str) -> bool {
     !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_digit())
 }
 
+/// A file's artwork from its name; text the source preview can highlight
+/// falls back to the source icon.
+fn file_artwork(name: &str, suffix: &str) -> Artwork {
+    ASSOCIATIONS.file(name).unwrap_or_else(|| {
+        if source_language(name, suffix).is_some() {
+            SOURCE
+        } else {
+            DEFAULT
+        }
+    })
+}
+
+fn node_artwork(node: &FsNode) -> Artwork {
+    structure(&node.id).unwrap_or_else(|| match node.kind {
+        NodeKind::Dir => FOLDER,
+        NodeKind::Symlink => Artwork::Glyph(Glyph::Link),
+        NodeKind::Unallocated => Artwork::Glyph(Glyph::CircleDashed),
+        NodeKind::File => file_artwork(&node.name, &flat_ext_of(node)),
+    })
+}
+
+fn icon(artwork: Artwork, cx: &App) -> Icon {
+    match artwork {
+        Artwork::File(name) => Icon::empty().path(file_icon(name)),
+        Artwork::Glyph(glyph) => Icon::new(glyph),
+    }
+    .size(px(16.))
+    .text_color(cx.theme().muted_foreground)
+}
+
 pub(super) fn node_icon(node: &FsNode, cx: &App) -> Icon {
-    FileIcon::for_node(node).render(false, cx)
+    icon(node_artwork(node), cx)
 }
 
 pub(super) fn directory_icon(id: &str, expanded: bool, cx: &App) -> Icon {
-    FileIcon::special(id)
-        .unwrap_or(FileIcon::Folder)
-        .render(expanded, cx)
+    let folder = if expanded { FOLDER_OPEN } else { FOLDER };
+    icon(structure(id).unwrap_or(folder), cx)
+}
+
+/// The disclosure chevron of a tree row.
+pub(super) fn chevron_icon(expanded: bool, cx: &App) -> Icon {
+    icon(
+        if expanded {
+            CHEVRON_EXPANDED
+        } else {
+            CHEVRON_COLLAPSED
+        },
+        cx,
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::FileIcon;
+    use std::collections::{BTreeSet, HashMap};
+
+    use gpui_kit::assets::IconName as Glyph;
+
+    use super::{
+        file_artwork, file_types, structure, Artwork, ASSOCIATIONS, CHEVRON_COLLAPSED,
+        CHEVRON_EXPANDED, DEFAULT, FOLDER, FOLDER_OPEN, SOURCE,
+    };
 
     #[test]
-    fn file_icon_recognizes_special_names_and_foreign_formats() {
-        assert_eq!(FileIcon::for_filename(".GITIGNORE", ""), FileIcon::Code);
-        assert_eq!(FileIcon::for_filename("Dockerfile", ""), FileIcon::Code);
-        assert_eq!(FileIcon::for_filename("README", ""), FileIcon::Document);
+    fn file_names_resolve_through_their_associations() {
+        let cases = [
+            ("mod.rs", "rs", Artwork::File("rust")),
+            ("Dockerfile.rs", "rs", Artwork::File("rust")),
+            ("go.mod", "mod", Artwork::File("go")),
+            ("Dockerfile", "", Artwork::File("docker")),
+            ("Dockerfile.prod", "prod", Artwork::File("docker")),
+            ("eslint.config.js", "js", Artwork::File("eslint")),
+            (".GITIGNORE", "", Artwork::File("git")),
+            ("IMG_0001.JPG", "jpg", Artwork::File("image")),
+            ("backup.tar.gz", "gz", Artwork::File("archive")),
+            ("capture.E01", "e01", Artwork::Glyph(Glyph::HardDrive)),
+            ("KERNEL32.DLL", "dll", Artwork::File("binary")),
+            ("Outlook.pst", "pst", Artwork::File("envelope")),
+            ("report.csv", "csv", Artwork::File("database")),
+            ("notes.txt", "txt", Artwork::File("book")),
+            ("setup.log", "log", Artwork::File("info")),
+            ("build.gradle", "gradle", SOURCE),
+            ("entry.unknown", "unknown", DEFAULT),
+        ];
+        let resolved: Vec<_> = cases
+            .iter()
+            .map(|&(name, suffix, _)| (name, file_artwork(name, suffix)))
+            .collect();
+        let expected: Vec<_> = cases
+            .iter()
+            .map(|&(name, _, artwork)| (name, artwork))
+            .collect();
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn associations_are_unambiguous_and_drawable() {
+        let mut conflicts = Vec::new();
+        for table in [file_types::STEMS, file_types::SUFFIXES] {
+            let mut keys = HashMap::new();
+            for &(key, names) in table {
+                for name in names {
+                    if let Some(other) = keys
+                        .insert(name.to_ascii_lowercase(), key)
+                        .filter(|other| *other != key)
+                    {
+                        conflicts.push(format!("{name}: {other} / {key}"));
+                    }
+                }
+            }
+        }
+        let undrawn: Vec<&str> = file_types::STEMS
+            .iter()
+            .chain(file_types::SUFFIXES)
+            .map(|&(key, _)| key)
+            .filter(|key| !ASSOCIATIONS.artwork.contains_key(key))
+            .collect();
         assert_eq!(
-            FileIcon::for_filename("capture.E01", "e01"),
-            FileIcon::Volume
-        );
-        assert_eq!(
-            FileIcon::for_filename("backup.tar.gz", "gz"),
-            FileIcon::Archive
-        );
-        assert_eq!(
-            FileIcon::for_filename("report.csv", "csv"),
-            FileIcon::Spreadsheet
-        );
-        assert_eq!(
-            FileIcon::for_filename("entry.unknown", "unknown"),
-            FileIcon::File
+            (conflicts, undrawn, ASSOCIATIONS.artwork.len()),
+            (
+                Vec::<String>::new(),
+                Vec::<&str>::new(),
+                file_types::ARTWORK.len()
+            )
         );
     }
 
     #[test]
-    fn special_nodes_do_not_rely_on_the_display_name() {
-        assert_eq!(FileIcon::special("part:0"), Some(FileIcon::Volume));
-        assert_eq!(FileIcon::special("lvm:0:1"), Some(FileIcon::Volume));
-        assert_eq!(FileIcon::special("part:0:entry"), None);
-        assert_eq!(
-            FileIcon::special("host-docker:example:"),
-            Some(FileIcon::Container)
-        );
-        assert_eq!(FileIcon::special("host-docker:example:root"), None);
-        assert_eq!(FileIcon::special("ntfs-ads:1"), Some(FileIcon::Stream));
-        assert_eq!(FileIcon::special("refs-snap:1"), Some(FileIcon::Snapshot));
-        assert_eq!(FileIcon::special("diskgap:0"), Some(FileIcon::Unallocated));
+    fn the_bundled_file_icons_are_exactly_the_drawn_ones() {
+        let drawn: BTreeSet<&str> = file_types::ARTWORK
+            .iter()
+            .map(|&(_, artwork)| artwork)
+            .chain([
+                FOLDER,
+                FOLDER_OPEN,
+                CHEVRON_COLLAPSED,
+                CHEVRON_EXPANDED,
+                SOURCE,
+                DEFAULT,
+            ])
+            .filter_map(|artwork| match artwork {
+                Artwork::File(name) => Some(name),
+                Artwork::Glyph(_) => None,
+            })
+            .collect();
+        let bundled: BTreeSet<&str> = crate::assets::file_icon_names().collect();
+        assert_eq!(drawn, bundled);
+    }
+
+    #[test]
+    fn evidence_structures_do_not_rely_on_the_display_name() {
+        let cases = [
+            ("part:0", Some(Glyph::HardDrive)),
+            ("lvm:0:1", Some(Glyph::HardDrive)),
+            ("part:0:entry", None),
+            ("host-docker:example:", Some(Glyph::Container)),
+            ("host-docker:example:root", None),
+            ("ntfs-ads:1", Some(Glyph::Layers)),
+            ("refs-snap:1", Some(Glyph::ClockArrowLeft)),
+            ("diskgap:0", Some(Glyph::CircleDashed)),
+        ];
+        let resolved: Vec<_> = cases.iter().map(|&(id, _)| (id, structure(id))).collect();
+        let expected: Vec<_> = cases
+            .iter()
+            .map(|&(id, glyph)| (id, glyph.map(Artwork::Glyph)))
+            .collect();
+        assert_eq!(resolved, expected);
     }
 }

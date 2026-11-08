@@ -1,20 +1,25 @@
 //! The directory tree beside the file list. Partitions are the roots; a
-//! directory lists its subdirectories the first time it is expanded.
-use std::collections::HashMap;
+//! directory lists its subdirectories the first time it is expanded. A
+//! directory whose only entry is a subdirectory shares that subdirectory's
+//! row (`Windows/System32`), and the ancestors of the first visible row stay
+//! pinned above the list while it scrolls.
+mod row;
+
+use std::{collections::HashMap, ops::Range, rc::Rc};
 
 use gpui_kit::{
     component::{
-        h_flex,
-        list::ListItem,
-        tree::{tree, TreeEvent, TreeItem, TreeState},
-        ActiveTheme as _, Icon, IconName, Sizable as _,
+        tree::{tree, TreeEntry, TreeEvent, TreeItem, TreeState},
+        ActiveTheme as _,
     },
-    div, px, AppContext as _, Context, Entity, EventEmitter, InteractiveElement as _, IntoElement,
+    div,
+    prelude::FluentBuilder as _,
+    px, App, AppContext as _, Context, Entity, EventEmitter, InteractiveElement as _, IntoElement,
     KeyDownEvent, ParentElement as _, Render, ScrollStrategy, SharedString, Styled as _,
     Subscription, Window,
 };
 use lovelycarve_backend::{
-    commands::filesystem::filesystem as fs_commands,
+    commands::{app_error::AppError, filesystem::filesystem as fs_commands},
     core::{
         catalog::{directory_query::DirectoryQuery, flat_query::FlatFileFilter},
         filesystem::tree::fs_tree::{FsNode, NodeKind},
@@ -22,17 +27,23 @@ use lovelycarve_backend::{
     host::State,
 };
 
-use super::{icons::directory_icon, Crumb};
+use super::Crumb;
 use crate::backend::Backend;
+use row::{Place, Row, RowContext, ROW_HEIGHT};
 
 /// Directories listed per expansion; deeper listings stay in the table.
 const TREE_PAGE: usize = 2_000;
 const LOADING_SUFFIX: &str = "\u{0}loading";
+/// Bounds the walks along parent and fold links.
+const MAX_DEPTH: usize = 4096;
 
 struct NodeInfo {
     name: String,
     parent: Option<String>,
     children: Children,
+    /// The subdirectory that is this directory's only entry; its row
+    /// stands for both.
+    fold: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -51,6 +62,8 @@ pub struct DirTree {
     state: Entity<TreeState>,
     roots: Vec<TreeItem>,
     nodes: HashMap<String, NodeInfo>,
+    /// Directories sharing one row, by the row's id, outermost first.
+    chains: Rc<HashMap<String, Vec<Crumb>>>,
     selected: Option<String>,
     pending_reveal: Vec<SharedString>,
     roots_ready: bool,
@@ -81,6 +94,7 @@ impl DirTree {
             state,
             roots: Vec::new(),
             nodes: HashMap::new(),
+            chains: Rc::default(),
             selected: None,
             pending_reveal: Vec::new(),
             roots_ready: false,
@@ -104,7 +118,7 @@ impl DirTree {
             });
             current = info.parent.clone();
             guard += 1;
-            if guard > 4096 {
+            if guard > MAX_DEPTH {
                 return None;
             }
         }
@@ -116,11 +130,58 @@ impl DirTree {
         Some(frames)
     }
 
+    /// The id of the row that shows `id`: a directory folded into its only
+    /// subdirectory shares that subdirectory's row.
+    fn row_of(&self, id: &str) -> SharedString {
+        let mut row = id;
+        for _ in 0..MAX_DEPTH {
+            match self.nodes.get(row).and_then(|info| info.fold.as_deref()) {
+                Some(next) => row = next,
+                None => break,
+            }
+        }
+        row.to_owned().into()
+    }
+
     fn open_directory(&mut self, id: &str, cx: &mut Context<Self>) {
         if let Some(path) = self.path_to(id) {
             self.selected = Some(id.to_owned());
             cx.emit(OpenDirectory(path));
+            cx.notify();
         }
+    }
+
+    /// A click on a row: the row's own directory, the last of a folded chain.
+    fn open_row(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.state.update(cx, |state, cx| state.focus(window, cx));
+        self.open_directory(id, cx);
+    }
+
+    /// A click on one name of a folded row.
+    fn open_folded(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let row = self.row_of(id);
+        self.state.update(cx, |state, cx| {
+            state.focus(window, cx);
+            let index = state.index_of(&row);
+            state.set_selected_index(index, cx);
+        });
+        self.open_directory(id, cx);
+    }
+
+    /// A click on a pinned row: scroll back to the row itself.
+    fn reveal_pinned(
+        &mut self,
+        index: usize,
+        id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.state.update(cx, |state, cx| {
+            state.focus(window, cx);
+            state.set_selected_index(Some(index), cx);
+            state.scroll_to_item(index, ScrollStrategy::Top);
+        });
+        self.open_directory(id, cx);
     }
 
     /// Reveal the directory the list shows, loading only its missing ancestors.
@@ -162,7 +223,8 @@ impl DirTree {
                     .get(parent.as_str())
                     .is_some_and(|node| node.children != Children::Loaded)
                 {
-                    let placeholder = SharedString::from(format!("{parent}{LOADING_SUFFIX}"));
+                    let placeholder =
+                        SharedString::from(format!("{}{LOADING_SUFFIX}", self.row_of(parent)));
                     self.state.update(cx, |state, cx| {
                         state.reveal_item(&placeholder, ScrollStrategy::Center, cx)
                     });
@@ -171,11 +233,12 @@ impl DirTree {
             }
         }
         self.pending_reveal.clear();
+        let row = self.row_of(&target);
         self.state.update(cx, |state, cx| {
-            if state.index_of(&target).is_none() && missing.is_none() {
-                state.reveal_item(&target, ScrollStrategy::Center, cx);
+            if state.index_of(&row).is_none() && missing.is_none() {
+                state.reveal_item(&row, ScrollStrategy::Center, cx);
             }
-            state.set_selected_index(state.index_of(&target), cx);
+            state.set_selected_index(state.index_of(&row), cx);
             if let Some(index) = state.selected_index() {
                 state.scroll_to_item(index, ScrollStrategy::Center);
             }
@@ -196,6 +259,12 @@ impl DirTree {
     fn load_children(&mut self, parent: Option<String>, cx: &mut Context<Self>) {
         let image_id = self.image_id.clone();
         let parent_id = parent.clone().unwrap_or_else(|| "root".to_owned());
+        // Partitions keep their own rows; any other directory may share the
+        // row of its only entry.
+        let foldable = parent
+            .as_ref()
+            .and_then(|id| self.nodes.get(id))
+            .is_some_and(|info| info.parent.is_some());
         let query = DirectoryQuery {
             filter: FlatFileFilter {
                 kind_query: Some("目录".to_owned()),
@@ -204,28 +273,45 @@ impl DirTree {
             },
             ..DirectoryQuery::default()
         };
-        let page = Backend::global(cx).run(move |_, state| async move {
-            fs_commands::fs_children_page(
+        let listing = Backend::global(cx).run(move |_, state| async move {
+            let page = fs_commands::fs_children_page(
                 State::new(&state),
-                image_id,
-                parent_id,
+                image_id.clone(),
+                parent_id.clone(),
                 None,
                 Some(TREE_PAGE),
                 Some(query),
             )
-            .await
+            .await?;
+            let directories: Vec<FsNode> = page
+                .items
+                .into_iter()
+                .filter(|node| node.kind == NodeKind::Dir && !node.deleted)
+                .collect();
+            let only_entry = match (foldable, directories.as_slice()) {
+                (true, [directory]) => {
+                    let entries = fs_commands::fs_children_page(
+                        State::new(&state),
+                        image_id,
+                        parent_id,
+                        None,
+                        Some(2),
+                        None,
+                    )
+                    .await?;
+                    entries.next_cursor.is_none()
+                        && matches!(entries.items.as_slice(), [entry] if entry.id == directory.id)
+                }
+                _ => false,
+            };
+            Ok::<_, AppError>((directories, only_entry))
         });
         cx.spawn(async move |this, cx| {
-            let page = page.await;
+            let listing = listing.await;
             this.update(cx, |this, cx| {
-                match page {
-                    Ok(page) => {
-                        let directories: Vec<FsNode> = page
-                            .items
-                            .into_iter()
-                            .filter(|node| node.kind == NodeKind::Dir && !node.deleted)
-                            .collect();
-                        this.attach(parent, directories, cx);
+                match listing {
+                    Ok((directories, only_entry)) => {
+                        this.attach(parent, directories, only_entry, cx);
                     }
                     Err(error) => {
                         tracing::warn!("directory tree: {error}");
@@ -234,7 +320,7 @@ impl DirTree {
                             this.roots_ready = true;
                             this.pending_reveal.clear();
                         } else if let Some(parent) = parent {
-                            this.attach(Some(parent), Vec::new(), cx);
+                            this.attach(Some(parent), Vec::new(), false, cx);
                         }
                     }
                 }
@@ -246,7 +332,14 @@ impl DirTree {
     }
 
     /// Put loaded subdirectories under `parent` (the roots when `None`).
-    fn attach(&mut self, parent: Option<String>, directories: Vec<FsNode>, cx: &mut Context<Self>) {
+    /// When `only_entry`, the single subdirectory takes over the parent's row.
+    fn attach(
+        &mut self,
+        parent: Option<String>,
+        directories: Vec<FsNode>,
+        only_entry: bool,
+        cx: &mut Context<Self>,
+    ) {
         for node in &directories {
             self.nodes.insert(
                 node.id.clone(),
@@ -254,47 +347,126 @@ impl DirTree {
                     name: node.name.clone(),
                     parent: parent.clone(),
                     children: Children::Unloaded,
+                    fold: None,
                 },
             );
         }
-        let children: Vec<TreeItem> = directories.iter().map(directory_item).collect();
         match &parent {
             None => {
-                self.roots = children;
+                self.roots = directories.iter().map(directory_item).collect();
                 self.roots_ready = true;
             }
             Some(parent) => {
                 if let Some(info) = self.nodes.get_mut(parent) {
                     info.children = Children::Loaded;
                 }
-                let parent: SharedString = parent.clone().into();
-                replace_children(&mut self.roots, &parent, children);
+                match directories.first().filter(|_| only_entry) {
+                    Some(child) => self.fold(parent, child, cx),
+                    None => {
+                        let children = directories.iter().map(directory_item).collect();
+                        if let Some(item) = find_mut(&mut self.roots, &parent.clone().into()) {
+                            item.children = children;
+                        }
+                    }
+                }
             }
         }
         let roots = self.roots.clone();
-        let selected = self.selected.clone();
+        let selected = self.selected.as_deref().map(|id| self.row_of(id));
         self.state.update(cx, |state, cx| {
             state.set_items(roots, cx);
-            if let Some(index) = selected.and_then(|id| state.index_of(&id.into())) {
+            if let Some(index) = selected.and_then(|row| state.index_of(&row)) {
                 state.set_selected_index(Some(index), cx);
             }
         });
         self.reveal_selection(cx);
     }
+
+    /// Let `child`, the only entry of `parent`, take over the parent's row,
+    /// still expanded, and list its own subdirectories.
+    fn fold(&mut self, parent: &str, child: &FsNode, cx: &mut Context<Self>) {
+        let parent_name = match self.nodes.get_mut(parent) {
+            Some(info) => {
+                info.fold = Some(child.id.clone());
+                info.name.clone()
+            }
+            None => return,
+        };
+        let chains = Rc::make_mut(&mut self.chains);
+        let mut chain = chains.remove(parent).unwrap_or_else(|| {
+            vec![Crumb {
+                id: parent.to_owned(),
+                name: parent_name,
+            }]
+        });
+        chain.push(Crumb {
+            id: child.id.clone(),
+            name: child.name.clone(),
+        });
+        let label = chain
+            .iter()
+            .map(|crumb| crumb.name.as_str())
+            .collect::<Vec<_>>()
+            .join("/");
+        chains.insert(child.id.clone(), chain);
+        let row = TreeItem::new(child.id.clone(), label)
+            .expanded(true)
+            .child(placeholder(&child.id));
+        if let Some(item) = find_mut(&mut self.roots, &parent.to_owned().into()) {
+            *item = row;
+        }
+        if let Some(info) = self.nodes.get_mut(&child.id) {
+            info.children = Children::Loading;
+        }
+        self.load_children(Some(child.id.clone()), cx);
+    }
+
+    /// The guide around the selected row: its level and the rows it spans.
+    fn active_guide(&self, cx: &App) -> Option<(usize, Range<usize>)> {
+        let state = self.state.read(cx);
+        let selected = state.selected_index()?;
+        let level = state.entry(selected)?.depth().checked_sub(1)?;
+        let parent = (0..selected).rev().find(|&index| {
+            state
+                .entry(index)
+                .is_some_and(|entry| entry.depth() == level)
+        })?;
+        let end = (parent + 1..).find(|&index| {
+            state
+                .entry(index)
+                .is_none_or(|entry| entry.depth() <= level)
+        })?;
+        Some((level, parent + 1..end))
+    }
+
+    /// The ancestors of the first visible row to pin above the list.
+    fn pinned_rows(&self, cx: &App) -> Vec<Row> {
+        let state = self.state.read(cx);
+        let scrolled = -state.scroll_handle().0.borrow().base_handle.offset().y;
+        let first = (scrolled / px(ROW_HEIGHT)).max(0.) as usize;
+        let selected = state.selected_index();
+        row::pinned_indices(|index| state.entry(index).map(TreeEntry::depth), first)
+            .into_iter()
+            .filter_map(|index| {
+                state
+                    .entry(index)
+                    .map(|entry| Row::new(index, entry, selected == Some(index)))
+            })
+            .collect()
+    }
 }
 
-/// Replace the children of the item `id` anywhere below `items`.
-fn replace_children(items: &mut [TreeItem], id: &SharedString, children: Vec<TreeItem>) -> bool {
+/// The item `id` anywhere below `items`.
+fn find_mut<'a>(items: &'a mut [TreeItem], id: &SharedString) -> Option<&'a mut TreeItem> {
     for item in items.iter_mut() {
         if &item.id == id {
-            item.children = children;
-            return true;
+            return Some(item);
         }
-        if replace_children(&mut item.children, id, children.clone()) {
-            return true;
+        if let Some(found) = find_mut(&mut item.children, id) {
+            return Some(found);
         }
     }
-    false
+    None
 }
 
 impl Render for DirTree {
@@ -307,62 +479,28 @@ impl Render for DirTree {
                 .child(error.clone())
                 .into_any_element();
         }
-        let view = cx.entity().downgrade();
-        let rows = tree(&self.state, move |index, entry, selected, _, cx| {
-            let item = entry.item();
-            let id = item.id.clone();
-            let loading = id.ends_with(LOADING_SUFFIX);
-            let theme = cx.theme();
-            let icon = if loading {
-                Icon::new(IconName::Loader)
-                    .size(px(16.))
-                    .text_color(theme.muted_foreground)
-            } else {
-                directory_icon(&id, entry.is_expanded(), cx)
-            };
-            let chevron = entry.is_folder().then(|| {
-                Icon::new(if entry.is_expanded() {
-                    IconName::ChevronDown
-                } else {
-                    IconName::ChevronRight
-                })
-                .small()
-                .text_color(theme.muted_foreground)
-            });
-            let view = view.clone();
-            ListItem::new(index)
-                .selected(selected)
-                .pl(px(6.))
-                .pr(px(6.))
-                .h(px(28.))
-                .child(
-                    h_flex()
-                        .min_w_0()
-                        .h_full()
-                        .children((0..entry.depth().min(6)).map(|_| {
-                            div()
-                                .w(px(16.))
-                                .h_full()
-                                .flex_shrink_0()
-                                .pl(px(7.))
-                                .child(div().w(px(1.)).h_full().bg(theme.border))
-                        }))
-                        .child(div().w(px(16.)).flex_shrink_0().children(chevron))
-                        .child(div().ml_1().flex_shrink_0().child(icon))
-                        .child(div().ml_2().min_w_0().truncate().child(item.label.clone())),
-                )
-                .on_click(move |_, window, cx| {
-                    if loading {
-                        return;
-                    }
-                    view.update(cx, |this, cx| {
-                        this.state.update(cx, |state, cx| state.focus(window, cx));
-                        this.open_directory(&id, cx);
-                    })
-                    .ok();
-                })
+        let context = Rc::new(RowContext {
+            chains: self.chains.clone(),
+            open: self.selected.clone(),
+            active_guide: self.active_guide(cx),
         });
+        let view = cx.entity().downgrade();
+        let rows = tree(&self.state, {
+            let context = context.clone();
+            let view = view.clone();
+            move |index, entry, selected, _, cx| {
+                row::render(
+                    Row::new(index, entry, selected),
+                    Place::List,
+                    &context,
+                    view.clone(),
+                    cx,
+                )
+            }
+        });
+        let pinned = self.pinned_rows(cx);
         div()
+            .relative()
             .size_full()
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 if event.is_held
@@ -382,6 +520,9 @@ impl Render for DirTree {
                 }
             }))
             .child(rows.size_full())
+            .when(!pinned.is_empty(), |this| {
+                this.child(row::pinned(pinned, &context, view, cx))
+            })
             .into_any_element()
     }
 }

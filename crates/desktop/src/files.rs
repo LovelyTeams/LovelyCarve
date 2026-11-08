@@ -22,7 +22,7 @@ use gpui_kit::{
         resizable_panel,
         spinner::Spinner,
         table::{TableEvent, TableState},
-        v_flex, ActiveTheme as _, Disableable as _, IconName, Selectable as _, Sizable as _,
+        v_flex, ActiveTheme as _, Disableable as _, IconName, Selectable as _, Sizable as _, Size,
     },
     div,
     prelude::FluentBuilder as _,
@@ -52,6 +52,9 @@ use detail::FileDetail;
 pub(crate) use table::FILE_TAGS;
 use table::{FileTable, ListingScope};
 use tree::{DirTree, OpenDirectory};
+
+/// Listing rows are compact, close to the directory tree beside them.
+const LISTING_ROW_HEIGHT: f32 = 28.;
 
 /// One level of the current directory path.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -666,7 +669,9 @@ impl Render for FileBrowser {
                             this.open_node(node, window, cx);
                         }
                     }))
-                    .child(ui::data_table(&self.table)),
+                    .child(
+                        ui::data_table(&self.table).with_size(Size::Size(px(LISTING_ROW_HEIGHT))),
+                    ),
             )
             .child(self.render_footer(cx));
         let navigation_width = if crate::prefs::Preferences::global(cx).sidebar_collapsed {
