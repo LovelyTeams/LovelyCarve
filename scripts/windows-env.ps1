@@ -51,6 +51,8 @@ if (-not $env:CARGO_PROFILE_RELEASE_LTO) { $env:CARGO_PROFILE_RELEASE_LTO = 'thi
 if (-not $OpenSSLLib) { $OpenSSLLib = Join-Path $OpenSSLDir 'lib/VC/x64/MT' }
 $env:OPENSSL_NO_VENDOR = '1'
 $env:OPENSSL_STATIC = '1'
+# The unsuffixed Shining Light libraries are DLL import libraries, even in MT.
+if (-not $env:OPENSSL_LIBS) { $env:OPENSSL_LIBS = 'libssl_static:libcrypto_static' }
 $env:OPENSSL_DIR = $OpenSSLDir
 $env:OPENSSL_LIB_DIR = $OpenSSLLib
 $env:OPENSSL_INCLUDE_DIR = Join-Path $OpenSSLDir 'include'

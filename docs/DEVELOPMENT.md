@@ -64,7 +64,7 @@ just dev
 
 例如可设置 `CARGO_BUILD_JOBS=2` 调整编译并发，或设置 `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=link.exe` 切回 MSVC 链接器。`RUSTFLAGS` / `CARGO_ENCODED_RUSTFLAGS` 的优先级沿用 Cargo 规则，设置它们时需自行包含需要保留的链接线程参数。非 Windows 配方不加载该脚本。
 
-SQLCipher 配方设置 `OPENSSL_NO_VENDOR=1` 和 `OPENSSL_STATIC=1`，使用本机安装的 OpenSSL 开发文件；如改为从源码编译 OpenSSL，需要准备 Windows Perl 与 NASM。静态链接标记不保证没有 DLL 依赖，调整 `OPENSSL_LIBS` 或分发 DLL 前请检查二进制的实际依赖。
+SQLCipher 配方设置 `OPENSSL_NO_VENDOR=1` 和 `OPENSSL_STATIC=1`，使用本机安装的 OpenSSL 开发文件。Windows 配方默认通过 `OPENSSL_LIBS=libssl_static:libcrypto_static` 选择静态库；Shining Light 的 `libssl.lib` 和 `libcrypto.lib` 即使位于 `MT` 目录下也是 DLL 导入库。使用其他 OpenSSL 发行版时，可通过 `OPENSSL_LIBS` 指定其实际静态库名称，并检查二进制的 DLL 依赖。如改为从源码编译 OpenSSL，需要准备 Windows Perl 与 NASM。
 
 ## 日常任务
 
