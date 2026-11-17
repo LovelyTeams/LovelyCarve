@@ -25,8 +25,11 @@ runs:
         if ($LASTEXITCODE -ne 0) { throw 'Rust toolchain selection failed' }
         $openssl = Join-Path $env:ProgramFiles 'OpenSSL'
         $libraries = Join-Path $openssl 'lib/VC/x64/MT'
-        if (-not (Test-Path -LiteralPath (Join-Path $libraries 'libcrypto.lib'))) {
-          throw "Missing static OpenSSL libraries: $libraries"
+        foreach ($name in @('libssl_static.lib', 'libcrypto_static.lib')) {
+          $library = Join-Path $libraries $name
+          if (-not (Test-Path -LiteralPath $library -PathType Leaf)) {
+            throw "Missing static OpenSSL library: $library"
+          }
         }
         "OPENSSL_DIR=$openssl" >> $env:GITHUB_ENV
         "OPENSSL_LIB=$libraries" >> $env:GITHUB_ENV
