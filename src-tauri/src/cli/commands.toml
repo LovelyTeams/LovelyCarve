@@ -102,6 +102,7 @@ key = "SQLCipher 等加密数据库的密钥（JSON）"
 "files csv" = "CSV 与 TSV 表格"
 "files directories" = "目录导出"
 "files docker" = "镜像内的 Docker 容器视图"
+"files sqlite queries" = "镜像内的 SQLite 只读 SQL"
 "files empty-dirs" = "子树中没有文件的目录"
 "files ext4-journal" = "ext4 jbd2 日志"
 "files ext4-journal blocks" = "ext4 日志块"
@@ -1186,6 +1187,32 @@ description = "表名"
 description = "排序列"
 [command.params.descending]
 description = "降序排列"
+[command.params.key]
+type = "json"
+
+[[command]]
+path = "files sqlite queries get"
+ipc = "fs_sqlite_query"
+summary = "执行镜像内 SQLite 只读查询"
+description = "执行一条 SELECT（含 WITH），自动读取同目录 WAL，支持 SQLCipher。按 nextOffset 取下一页时保持 SQL 和参数不变，使用唯一 ORDER BY。查询返回列名、行和 WAL 文件名；整数以十进制字符串表示。"
+category = "read"
+args = ["path"]
+target = "nodeId"
+concurrent = true
+defaults = { offset = 0, limit = 50 }
+incomplete = ["shortenedCells"]
+examples = [
+    { command = "lovelycarve-cli files sqlite queries get /root/messages.db --sql \"SELECT COUNT(*) FROM messages\"", description = "计算消息总数" },
+]
+[command.params.parentId]
+description = "数据库所在目录的节点 ID，用于查找 -wal；默认从数据库路径或节点定位"
+[command.params.sql]
+description = "单条只读 SELECT 或 WITH … SELECT"
+[command.params.parameters]
+type = "json"
+description = "绑定到 ? 或 ?1 等占位符的 JSON 标量数组"
+[command.params.limit]
+description = "每页最多返回的行数（1–100）"
 [command.params.key]
 type = "json"
 

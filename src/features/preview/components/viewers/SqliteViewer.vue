@@ -1,7 +1,6 @@
 <template>
   <div class="sqlite-viewer">
     <div v-if="loading" class="state-row mono"><Loader2 :size="14" class="spin" /> {{ tr("正在解析 SQLite 数据库…") }}</div>
-    <div v-else-if="error" class="state-row mono error">{{ tr("SQLite 解析失败：{0}", { 0: error }) }}</div>
 
     <!-- 加密库：密钥输入表单 -->
     <div v-else-if="locked" class="lock-wrap">
@@ -69,14 +68,19 @@
       </form>
     </div>
 
-    <template v-else-if="digest">
+    <template v-else-if="digest || error">
       <!-- 左：表清单，末尾是「已删除记录」 -->
       <aside class="table-list">
+        <button class="table-item" :class="{ active: showSql }" :aria-pressed="showSql" @click="openSql">
+          <CodeXml :size="13" class="table-icon" />
+          <span class="table-name">{{ tr("SQL 查询") }}</span>
+        </button>
+        <div class="list-sep" aria-hidden="true" />
         <button
-          v-for="t in digest.tables"
+          v-for="t in digest?.tables"
           :key="t.name"
           class="table-item"
-          :class="{ active: !showDeleted && t.name === activeName }"
+          :class="{ active: !showDeleted && !showSql && t.name === activeName }"
           :title="t.name"
           @click="selectTable(t.name)"
         >
@@ -85,9 +89,10 @@
           <span class="table-name mono">{{ t.name }}</span>
           <span class="row-pill mono">{{ t.error ? '!' : t.row_count ?? '—' }}</span>
         </button>
-        <div v-if="!digest.tables.length" class="list-empty">{{ tr("没有用户表") }}</div>
-        <div class="list-sep" aria-hidden="true" />
+        <div v-if="digest && !digest.tables.length" class="list-empty">{{ tr("没有用户表") }}</div>
+        <div v-if="digest" class="list-sep" aria-hidden="true" />
         <button
+          v-if="digest"
           class="table-item"
           :class="{ active: showDeleted }"
           :title="tr('从空闲页、页内空闲区、WAL 与回滚日志中恢复已删除的行')"
@@ -101,12 +106,12 @@
 
       <!-- 右：所选表的数据，或已删除记录 -->
       <div class="grid-pane">
-        <div v-if="digest.encrypted" class="decrypted-bar"><LockOpen :size="12" /> {{ tr("已解密（SQLCipher）") }}</div>
-        <div v-if="digest.sidecars.length" class="wal-bar" :title="tr('预览是 SQLite 回放 WAL 中已提交事务后的状态，比主库文件更新')">
+        <div v-if="digest?.encrypted" class="decrypted-bar"><LockOpen :size="12" /> {{ tr("已解密（SQLCipher）") }}</div>
+        <div v-if="!showSql && digest?.sidecars.length" class="wal-bar" :title="tr('预览是 SQLite 回放 WAL 中已提交事务后的状态，比主库文件更新')">
           <History :size="12" /> {{ tr("已回放") }} {{ joinList(digest.sidecars, tr) }}
         </div>
         <SqliteDeletedRecords
-          v-if="deletedOpened"
+          v-if="digest && deletedOpened"
           v-show="showDeleted"
           :image-id="imageId"
           :node-id="nodeId"
@@ -115,8 +120,18 @@
           :tables="digest.tables"
           @counted="deletedCount = $event"
         />
-        <template v-if="!showDeleted">
-          <div v-if="!digest.tables.length" class="state-row mono">{{ tr("库内没有用户表。已删除的表可能留有数据，可在左侧打开「已删除记录」查找。") }}</div>
+        <SqliteQueryPanel
+          v-if="sqlOpened"
+          v-show="showSql"
+          :image-id="imageId"
+          :node-id="nodeId"
+          :parent-id="parentId ?? null"
+          :sqlite-key="activeKey"
+          :initial-table="sqlTable"
+        />
+        <template v-if="!showDeleted && !showSql">
+          <div v-if="error" class="state-row mono error">{{ tr("SQLite 解析失败：{0}", { 0: error }) }}</div>
+          <div v-else-if="!digest?.tables.length" class="state-row mono">{{ tr("库内没有用户表。已删除的表可能留有数据，可在左侧打开「已删除记录」查找。") }}</div>
           <div v-else-if="!activeName" class="state-row mono">{{ tr("在左侧选择一张表。") }}</div>
           <div v-else-if="rowsLoading && !rows.length" class="state-row mono"><Loader2 :size="14" class="spin" /> {{ tr("加载中…") }}</div>
           <div v-else-if="rowsError" class="state-row mono error">{{ rowsError }}</div>
@@ -194,13 +209,14 @@ import { vDisclosureMotion } from '../../../../composables/uiMotionDirectives';
 // 末尾的「已删除记录」第一次打开时才扫描，之后在切换表时保留结果。
 import { computed, nextTick, ref, watch } from 'vue';
 import {
-  ArchiveRestore, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
+  ArchiveRestore, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CodeXml,
   Eye, History, KeyRound, Loader2, Lock, LockOpen, Table2,
 } from 'lucide-vue-next';
 import { fsSqlitePreview, fsSqliteTableRows, SQLITE_LOCKED, type SqliteCell, type SqliteColumn, type SqliteDigest, type SqliteKey } from '../../../../lib/ipc/sqlite';
 import { highlightHtml } from '../../../../utils/highlight';
 import { sqliteCellClass, sqliteCellText } from '../../model/sqliteCell';
 import SqliteDeletedRecords from './SqliteDeletedRecords.vue';
+import SqliteQueryPanel from './SqliteQueryPanel.vue';
 import UiSelect, { type UiSelectOption } from '../../../../components/ui/UiSelect.vue';
 
 const props = defineProps<{
@@ -218,6 +234,10 @@ const loading = ref(false);
 const error = ref<string | null>(null);
 const digest = ref<SqliteDigest | null>(null);
 const activeName = ref<string | null>(null);
+const showSql = ref(false);
+const sqlOpened = ref(false);
+const sqlTable = ref<string | null>(null);
+let digestSequence = 0;
 
 // 解密表单状态。
 const locked = ref(false);
@@ -278,7 +298,7 @@ function focusMatch(index: number) {
   target?.scrollIntoView({ block: 'center', inline: 'nearest' });
 }
 
-watch([rows, showDeleted], () => emit('resetMatch'));
+watch([rows, showDeleted, showSql], () => emit('resetMatch'));
 defineExpose({ matchCount, focusMatch });
 
 const activeMeta = computed(() => digest.value?.tables.find((t) => t.name === activeName.value) ?? null);
@@ -318,11 +338,20 @@ function submitKey() {
 }
 
 function openDeleted() {
+  showSql.value = false;
   showDeleted.value = true;
   deletedOpened.value = true;
 }
 
+function openSql() {
+  showDeleted.value = false;
+  if (!sqlOpened.value) sqlTable.value = activeName.value;
+  sqlOpened.value = true;
+  showSql.value = true;
+}
+
 function selectTable(name: string) {
+  showSql.value = false;
   showDeleted.value = false;
   if (name === activeName.value) return;
   activeName.value = name;
@@ -392,6 +421,7 @@ async function loadRows(nextOffset: number) {
 }
 
 async function loadDigest(key?: SqliteKey) {
+  const sequence = ++digestSequence;
   reqSeq++;
   rowsLoading.value = false;
   loading.value = true;
@@ -409,6 +439,8 @@ async function loadDigest(key?: SqliteKey) {
   showDeleted.value = false;
   deletedOpened.value = false;
   deletedCount.value = null;
+  showSql.value = false;
+  sqlOpened.value = false;
   try {
     const d = await fsSqlitePreview({
       imageId: props.imageId,
@@ -416,6 +448,7 @@ async function loadDigest(key?: SqliteKey) {
       parentId: props.parentId ?? null,
       key,
     });
+    if (sequence !== digestSequence) return;
     digest.value = d;
     activeKey.value = key ?? null;
     const first = d.tables[0]?.name ?? null;
@@ -424,6 +457,7 @@ async function loadDigest(key?: SqliteKey) {
       loadRows(0);
     }
   } catch (err) {
+    if (sequence !== digestSequence) return;
     const msg = String(err);
     if (msg.includes(SQLITE_LOCKED)) {
       // 加密库：弹密钥表单。带 key 仍失败 = 密钥/参数不对。
@@ -431,17 +465,22 @@ async function loadDigest(key?: SqliteKey) {
       keyError.value = key ? tr("密钥或兼容参数不正确，请检查后重试。") : null;
       nextTick(() => firstInput.value?.focus());
     } else {
+      // A complex schema or view can exhaust the preview budget. A targeted
+      // SQL query still uses its own connection and execution budget.
+      activeKey.value = key ?? null;
       error.value = msg;
     }
   } finally {
-    loading.value = false;
-    unlocking.value = false;
+    if (sequence === digestSequence) {
+      loading.value = false;
+      unlocking.value = false;
+    }
   }
 }
 
 // 切换文件：重置表单与密钥，重新尝试（不带 key，触发加密检测）。
 watch(
-  () => [props.imageId, props.nodeId],
+  () => [props.imageId, props.nodeId, props.parentId],
   () => {
     passphrase.value = '';
     rawHexKey.value = '';

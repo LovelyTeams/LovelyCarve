@@ -9,8 +9,10 @@ fn session_from_bytes(bytes: Vec<u8>) -> SqliteSession {
     SqliteSession {
         image_id: "test-image".to_string(),
         node_id: "test-node".to_string(),
+        parent_id: None,
         main_name,
         sidecars: Vec::new(),
+        wal_issue: None,
         bytes_copied: bytes.len() as u64,
         truncated: false,
         head16: head16_from_bytes(&bytes),
@@ -22,6 +24,76 @@ fn detects_sqlite_magic() {
     assert!(looks_like_sqlite(b"SQLite format 3\0extra"));
     assert!(!looks_like_sqlite(b"not a db at all"));
     assert!(!looks_like_sqlite(b"SQLite format 3"));
+}
+
+#[test]
+fn readonly_query_binds_values_and_paginates_a_join_without_losing_integer_precision() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("chat.db");
+    let connection = Connection::open(&path).unwrap();
+    connection
+        .execute_batch(
+            "CREATE TABLE chats (id INTEGER PRIMARY KEY, name TEXT);
+         CREATE TABLE messages (id INTEGER PRIMARY KEY, chat_id INTEGER);
+         INSERT INTO chats VALUES (1, 'Work'), (2, 'Other');
+         INSERT INTO messages VALUES (9223372036854775806, 1), (9223372036854775807, 1), (1, 2);",
+        )
+        .unwrap();
+    drop(connection);
+    let session = session_from_bytes(std::fs::read(&path).unwrap());
+    let key = SqliteKey::default();
+    let sql = "/* Evidence query */ WITH selected AS (SELECT id FROM chats WHERE name = ?1)
+               SELECT messages.id FROM messages JOIN selected ON chat_id = selected.id
+               ORDER BY messages.id; -- done";
+    let parameters = [serde_json::json!("Work")];
+
+    for (offset, id, next) in [
+        (0, "9223372036854775806", Some(1)),
+        (1, "9223372036854775807", None),
+    ] {
+        let page = query_session(&session, &key, sql, &parameters, offset, 1).unwrap();
+        let page = serde_json::to_value(page).unwrap();
+        assert_eq!(page["columns"], serde_json::json!(["id"]));
+        assert_eq!(
+            page["rows"],
+            serde_json::json!([[{"kind":"integer","value":id}]])
+        );
+        assert_eq!(page["nextOffset"], serde_json::json!(next));
+    }
+    assert!(query_session(&session, &key, sql, &[], 0, 1).is_err());
+}
+
+#[test]
+fn readonly_query_blocks_writes_and_reports_unverified_input() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("chat.db");
+    let connection = Connection::open(&path).unwrap();
+    connection
+        .execute_batch("CREATE TABLE messages (id INTEGER);")
+        .unwrap();
+    drop(connection);
+    let mut session = session_from_bytes(std::fs::read(&path).unwrap());
+    let key = SqliteKey::default();
+    for sql in [
+        "DELETE FROM messages RETURNING id",
+        "CREATE TEMP TABLE temp_messages(id)",
+        "ATTACH DATABASE ':memory:' AS other",
+        "PRAGMA query_only = OFF",
+        "SELECT load_extension('unavailable')",
+        "SELECT sqlcipher_export('main')",
+        "SELECT 1; SELECT 2",
+        "EXPLAIN SELECT 1",
+    ] {
+        assert!(
+            query_session(&session, &key, sql, &[], 0, 1).is_err(),
+            "{sql}"
+        );
+    }
+    let page = query_session(&session, &key, "SELECT hex(zeroblob(200))", &[], 0, 1).unwrap();
+    assert_eq!(serde_json::to_value(page).unwrap()["shortenedCells"], true);
+    session.wal_issue = Some("missing sidecar bytes".to_owned());
+    let error = query_session(&session, &key, "SELECT 1", &[], 0, 1).unwrap_err();
+    assert!(error.to_string().contains("WAL"));
 }
 
 #[test]

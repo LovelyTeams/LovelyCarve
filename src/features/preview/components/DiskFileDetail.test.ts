@@ -144,6 +144,45 @@ describe('preview content composition', () => {
     expect(host.textContent).toContain('/notes.md'); expect(host.textContent).toContain('known-md5');
     expect(host.textContent).not.toContain('SHA256'); expect(host.querySelector('[aria-label="在独立窗口打开"]')).toBeNull();
   });
+  it('runs bound SQL after a schema preview failure and preserves large integer results', async () => {
+    const original = ipc.invoke.getMockImplementation()!;
+    ipc.invoke.mockImplementation(async (command, args) => {
+      if (command === 'fs_sqlite_preview') throw new Error('SQLite preview exceeded its execution budget');
+      if (command === 'fs_sqlite_query') return {
+        columns: ['id'], rows: [[{ kind: 'integer', value: '9223372036854775807' }]],
+        offset: args.offset, nextOffset: args.offset === 0 ? 50 : null, shortenedCells: false,
+        sidecars: ['messages.db-wal'],
+      };
+      return original(command, args);
+    });
+    node.value = { ...node.value, id: 'database', name: 'messages.db' };
+    await mount();
+    tab('原类型');
+    await vi.dynamicImportSettled();
+    await settle();
+    expect(host.textContent).toContain('SQLite 解析失败');
+    host.querySelector<HTMLButtonElement>('.table-item[aria-pressed]')!.click();
+    await settle();
+    const panel = host.querySelector<HTMLElement>('[aria-label="SQL 查询"]')!;
+    const sql = 'SELECT id FROM messages WHERE chat = ?1 ORDER BY id';
+    const editor = panel.querySelector('textarea')!;
+    editor.value = sql;
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+    const parameters = panel.querySelector('input')!;
+    parameters.value = '["work"]';
+    parameters.dispatchEvent(new Event('input', { bubbles: true }));
+    await settle();
+    panel.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await settle();
+    expect(ipc.invoke).toHaveBeenCalledWith('fs_sqlite_query', expect.objectContaining({
+      imageId: 'image-a', nodeId: 'database', parentId: 'root', sql, parameters: ['work'], offset: 0, limit: 50,
+    }));
+    expect(panel.querySelector('tbody')?.textContent).toContain('9223372036854775807');
+    expect(panel.textContent).toContain('messages.db-wal');
+    panel.querySelector<HTMLButtonElement>('[aria-label="下一页"]')!.click();
+    await settle();
+    expect(ipc.invoke).toHaveBeenLastCalledWith('fs_sqlite_query', expect.objectContaining({ sql, parameters: ['work'], offset: 50 }));
+  });
   it('binds text search refs and clears the previous match when selecting another file', async () => {
     await mount(); tab('文本'); await settle();
     const input = host.querySelector<HTMLInputElement>('[aria-label="搜索预览内容"]')!;

@@ -132,6 +132,7 @@ fn application_builder() -> tauri::Builder<tauri::Wry> {
             commands::preview::filesystem_native_preview::fs_sqlite_preview,
             commands::preview::filesystem_native_preview::fs_sqlite_deleted_records,
             commands::preview::filesystem_native_preview::fs_sqlite_table_rows,
+            commands::preview::filesystem_native_preview::fs_sqlite_query,
             commands::preview::filesystem_native_preview::fs_realm_preview,
             commands::preview::filesystem_native_preview::fs_realm_table_rows,
             commands::preview::filesystem_native_preview::fs_binary_preview,

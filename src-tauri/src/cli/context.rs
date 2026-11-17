@@ -564,6 +564,24 @@ impl Exec {
         if let Some(name) = &command.target {
             target = Some(self.target(context, command, name, &mut values).await?);
         }
+        if let Some(target) = target.as_mut().filter(|_| {
+            command.ipc_command.as_deref() == Some("fs_sqlite_query")
+                && missing(values.get("parentId"))
+        }) {
+            if target.location.is_none() {
+                let image_id = values["imageId"]
+                    .as_str()
+                    .ok_or_else(|| no_image(command, self.mode))?;
+                target.location =
+                    Some(super::navigation::locate_node(self, image_id, &target.node_id).await?);
+            }
+            let parent_id = target
+                .location
+                .as_ref()
+                .and_then(|location| location.iter().rev().nth(1))
+                .map_or("", |(_, id)| id.as_str());
+            values.insert("parentId".to_owned(), json!(parent_id));
+        }
         for name in &command.no_clobber {
             if let Some(path) = values.get(name).and_then(Value::as_str) {
                 if Path::new(path).exists() {

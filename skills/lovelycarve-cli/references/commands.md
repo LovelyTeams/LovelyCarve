@@ -268,6 +268,9 @@ LUKS、VeraCrypt 与 FileVault 加密容器
 - `lovelycarve-cli files sqlite get <path> [--node-id <string>] [--parent-id <string>] [--key <json>]`
   查看 SQLite 数据库结构
   Keywords: database, tables, schema.
+- `lovelycarve-cli files sqlite queries get <path> [--node-id <string>] [--parent-id <string>] --sql <string> [--parameters <json>] [--offset <number>] [--limit <number>] [--key <json>]`
+  执行镜像内 SQLite 只读查询。执行一条 SELECT（含 WITH），自动读取同目录 WAL，支持 SQLCipher。按 nextOffset 取下一页时保持 SQL 和参数不变，使用唯一 ORDER BY。查询返回列名、行和 WAL 文件名；整数以十进制字符串表示。
+  - `lovelycarve-cli files sqlite queries get /root/messages.db --sql "SELECT COUNT(*) FROM messages"`: 计算消息总数
 - `lovelycarve-cli files sqlite rows list [--node-id <string>] [--parent-id <string>] --table <string> [--offset <number>] [--limit <number>] [--order-by <string>] [--descending] [--key <json>] --path <string>`
   分页列出 SQLite 表记录
 - `lovelycarve-cli files stats get <path> [--node-id <string>] --path-hint <string>`

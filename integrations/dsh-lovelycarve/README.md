@@ -26,6 +26,8 @@
 
 调查结果的 `source` 来自 CLI 同次执行中解析后的检材和节点，包含源路径、实际 imageId、文件系统节点及可解析的证据内路径；切换检材或相同节点 ID 不会改变已返回结果的来源。SQLite 表记录额外附带数据库节点、表名与各行 `recordKeys`，其中主键属于 `sqlite` 地址空间，不得拼成文件系统节点 ID。没有可用主键或无法解析路径时明确保留未知。
 
+`files sqlite queries get` 支持通过 `args.sql` 与 `args.parameters` 在镜像内执行单条只读 SQL。该命令的 `source` 保存数据库节点和实际查询条件。分页用 `args.offset` 和 `args.limit`，每次沿用同一条带唯一 `ORDER BY` 的 SQL 和同一组参数。
+
 输出超限时 `recovery.restartCurrentPage` 为真，安全的读取返回缩小范围后的 `recovery.retryRequest`；它保留原 cursor/offset。当前页已经被丢弃，不能沿 `pagination.nextCursor` 跳过它。导出、变更和任务命令不提供重放建议。
 
 升级包含来源封装的 CLI 后，使用原版本结束旧常驻会话，再用新版本创建会话；常驻传输协议已更新，JSONL 默认响应形状保持不变，来源封装按请求启用。

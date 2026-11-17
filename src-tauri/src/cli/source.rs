@@ -49,6 +49,13 @@ pub(super) async fn capture(
             source[key] = value.clone();
         }
     }
+    if command.ipc_command.as_deref() == Some("fs_sqlite_query") {
+        for key in ["sql", "parameters", "limit"] {
+            if let Some(value) = values.get(key) {
+                source[key] = value.clone();
+            }
+        }
+    }
     if let Some(target) = target {
         source["addressSpace"] = json!("filesystem");
         source["nodeId"] = json!(target.node_id);

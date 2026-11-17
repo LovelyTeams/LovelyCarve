@@ -16,7 +16,10 @@ pub fn cached_session(
 ) -> anyhow::Result<Arc<SqliteSession>> {
     let hit = matches!(
         session.as_ref(),
-        Some(s) if s.image_id == image_id && s.node_id == node_id && sqlite_vfs::exists(&s.main_name)
+        Some(s) if s.image_id == image_id
+            && s.node_id == node_id
+            && s.parent_id.as_deref() == parent_id
+            && sqlite_vfs::exists(&s.main_name)
     );
     if !hit {
         *session = Some(Arc::new(load_session(image, image_id, node_id, parent_id)?));
@@ -45,25 +48,34 @@ pub(super) fn load_session(
     drop(main_bytes);
 
     let mut sidecars: Vec<String> = Vec::new();
-    let wal = sidecar_nodes(image, node_id, parent_id)
-        .into_iter()
-        .find(|sidecar| sidecar.suffix == "-wal");
-    if let Some(wal) = wal {
-        let imported = read_node_prefix(image, &wal.node_id)
-            .and_then(|(bytes, _)| sqlite_vfs::import_file(&wal_vfs_name(&main_name), &bytes));
-        match imported {
-            Ok(()) => sidecars.push(wal.name),
-            Err(error) => {
-                tracing::warn!("SQLite preview without {}: {error:#}", wal.name);
+    let imported_wal = find_sidecar_nodes(image, node_id, parent_id).and_then(|siblings| {
+        if let Some(wal) = siblings
+            .into_iter()
+            .find(|sidecar| sidecar.suffix == "-wal")
+        {
+            let (bytes, truncated) = read_node_prefix(image, &wal.node_id)
+                .with_context(|| format!("read {}", wal.name))?;
+            anyhow::ensure!(!truncated, "{} exceeds the preview import limit", wal.name);
+            if !bytes.is_empty() {
+                sqlite_vfs::import_file(&wal_vfs_name(&main_name), &bytes)
+                    .with_context(|| format!("import {}", wal.name))?;
+                sidecars.push(wal.name);
             }
         }
+        Ok(())
+    });
+    let wal_issue = imported_wal.err().map(|error| format!("{error:#}"));
+    if let Some(issue) = &wal_issue {
+        tracing::warn!("SQLite preview without verified WAL coverage: {issue}");
     }
 
     Ok(SqliteSession {
         image_id: image_id.to_string(),
         node_id: node_id.to_string(),
+        parent_id: parent_id.map(str::to_owned),
         main_name,
         sidecars,
+        wal_issue,
         bytes_copied,
         truncated,
         head16,
@@ -79,20 +91,25 @@ pub(crate) fn sidecar_nodes(
     node_id: &str,
     parent_id: Option<&str>,
 ) -> Vec<SidecarNode> {
+    find_sidecar_nodes(image, node_id, parent_id).unwrap_or_default()
+}
+
+fn find_sidecar_nodes(
+    image: &Arc<EvidenceSession>,
+    node_id: &str,
+    parent_id: Option<&str>,
+) -> anyhow::Result<Vec<SidecarNode>> {
     let parent = match parent_id {
         Some(parent) => parent.to_string(),
         None => parent_id_of(image, node_id).unwrap_or_default(),
     };
-    let Ok(siblings) = fs_tree::children_for_image(image, &parent) else {
-        return Vec::new();
-    };
-    let Some(target_name) = siblings
+    let siblings =
+        fs_tree::children_for_image(image, &parent).context("read SQLite parent directory")?;
+    let target_name = siblings
         .iter()
         .find(|sibling| sibling.id == node_id)
-        .map(|sibling| sibling.name.clone())
-    else {
-        return Vec::new();
-    };
+        .map(|sibling| &sibling.name)
+        .context("SQLite node not found in its parent directory")?;
     let mut found = Vec::new();
     for suffix in ["-wal", "-shm", "-journal"] {
         let wanted = format!("{target_name}{suffix}");
@@ -107,7 +124,7 @@ pub(crate) fn sidecar_nodes(
             });
         }
     }
-    found
+    Ok(found)
 }
 
 /// Read a file node up to [`MAX_PREVIEW_BYTES`], returning whether it was cut.
@@ -122,6 +139,11 @@ pub(crate) fn read_node_prefix(
         .map(|stat| stat.size.min(MAX_PREVIEW_BYTES) as usize)
         .unwrap_or(cap);
     let bytes = fs_tree::read_file_limited(image, node_id, read_limit)?;
+    anyhow::ensure!(
+        stat.is_none() || bytes.len() == read_limit,
+        "SQLite file was read short ({} of {read_limit} bytes)",
+        bytes.len()
+    );
     let truncated = stat.is_some_and(|stat| stat.size > MAX_PREVIEW_BYTES);
     Ok((bytes, truncated))
 }

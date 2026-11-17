@@ -1037,9 +1037,11 @@ SQLite 原类型预览的 schema/sample 与分页请求均通过 `core::preview:
 同目录的 `-wal` 一并导入，由 SQLite 自己校验并回放已提交的帧，加密库的 WAL 同样适用；表头为 WAL
 模式而没有 `-wal` 的库也能打开。`-shm` 用不到；`-journal` 不导入，因为热日志会让只读打开失败，
 删除记录视图会单独读取它。sidecar 在前端传入的父目录节点下查找，所以 `ntfs:`、`ext4:`、
-`folder:` 这类不含路径的节点 ID 也能找到。
+`folder:` 这类不含路径的节点 ID 也能找到。CLI 的 SQL 查询根据已解析的路径或节点补齐父目录。
 
-
+`fs_sqlite_query` 在同一 VFS 会话上执行单条只读 SQL，保留执行预算，并用 SQLite authorizer 拒绝
+写入、`ATTACH`、`PRAGMA` 和有副作用的函数。主库截断或 WAL 无法完整导入时，查询明确失败。
+结果逐页读取，无需再执行一次总数统计。来源封装保留解析后的数据库节点及查询条件，64 位整数以字符串传输。
 
 `core/preview/sqlite/sqlite_recovery.rs` 接入 vendored `sqlite-core`（`src-tauri/vendor/sqlite-core`，来自
 SecurityRonin/sqlite-forensic），为 SQLite 浏览器的「已删除记录」提供 `fs_sqlite_deleted_records`。
