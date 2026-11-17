@@ -85,4 +85,9 @@ test('recovery never echoes inline credentials or proposes replaying exports', (
   assert.equal(retrySmaller({ command: 'files export', args: { destination: '/out' } }), undefined);
   assert.deepEqual(retrySmaller({ command: 'files text get', session: 'exam', args: { offset: 2048, maxBytes: 8000 } }).args, { offset: 2048, maxBytes: 4000 });
   assert.equal(retrySmaller({ command: 'files list', session: 'exam', args: { pageSize: 1 } }), undefined);
+  const query = { command: 'files sqlite queries get', session: 'exam', args: {
+    nodeId: 'database', sql: 'SELECT id FROM messages WHERE chat_id = ? ORDER BY id', parameters: [12], offset: 50,
+  } };
+  assert.deepEqual(retrySmaller(query)?.args, { ...query.args, limit: 25 });
+  assert.equal(retrySmaller({ ...query, args: { ...query.args, key: { passphrase: 'secret' } } }), undefined);
 });

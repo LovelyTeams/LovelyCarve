@@ -203,3 +203,28 @@ export function fsSqliteTableRows(args: {
 }): Promise<SqliteRows> {
   return invokeCmd<SqliteRows>('fs_sqlite_table_rows', args);
 }
+
+export type SqliteQueryParameter = string | number | boolean | null;
+export type SqliteQueryCell = Exclude<SqliteCell, { kind: 'integer' }> | { kind: 'integer'; value: string };
+
+export interface SqliteQueryPage {
+  columns: string[];
+  rows: SqliteQueryCell[][];
+  offset: number;
+  nextOffset: number | null;
+  shortenedCells: boolean;
+  sidecars: string[];
+}
+
+export function fsSqliteQuery(args: {
+  imageId: string;
+  nodeId: string;
+  parentId?: string | null;
+  sql: string;
+  parameters?: SqliteQueryParameter[];
+  offset: number;
+  limit: number;
+  key?: SqliteKey;
+}): Promise<SqliteQueryPage> {
+  return invokeCmd<SqliteQueryPage>('fs_sqlite_query', args);
+}

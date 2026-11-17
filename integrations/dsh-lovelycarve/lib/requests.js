@@ -91,7 +91,8 @@ export function usageDetails(request, schema) {
 
 export function retrySmaller(request) {
   // Retrying a mutation, export or task could repeat side effects.
-  if (!request || !/(?: list| search|files text get)$/.test(request.command)) return undefined;
+  const sqliteQuery = request?.command === 'files sqlite queries get';
+  if (!request || (!sqliteQuery && !/(?: list| search|files text get)$/.test(request.command))) return undefined;
   const retry = { ...request, args: { ...request.args } };
   delete retry.id;
   if (request.command === 'files text get') {
@@ -100,6 +101,9 @@ export function retrySmaller(request) {
   } else if (request.command === 'files list') {
     if (retry.args.pageSize === 1) return undefined;
     retry.args.pageSize = Math.max(1, Math.floor((retry.args.pageSize ?? 50) / 2));
+  } else if (sqliteQuery) {
+    if (retry.args.limit === 1) return undefined;
+    retry.args.limit = Math.max(1, Math.floor((retry.args.limit ?? 50) / 2));
   } else if (retry.args.filter && typeof retry.args.filter === 'object') {
     if (retry.args.filter.limit === 1) return undefined;
     retry.args.filter = { ...retry.args.filter, limit: Math.max(1, Math.floor((retry.args.filter.limit ?? 50) / 2)) };

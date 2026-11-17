@@ -32,6 +32,8 @@ use query::*;
 mod schema;
 pub(crate) use schema::truncate_text;
 use schema::*;
+mod select;
+pub use select::{query_session, SqliteQueryPage};
 
 use std::sync::Arc;
 #[cfg(test)]
@@ -144,8 +146,10 @@ pub enum SqliteCell {
 pub struct SqliteSession {
     image_id: String,
     node_id: String,
+    parent_id: Option<String>,
     main_name: String,
     sidecars: Vec<String>,
+    wal_issue: Option<String>,
     bytes_copied: u64,
     truncated: bool,
     head16: Option<[u8; 16]>,

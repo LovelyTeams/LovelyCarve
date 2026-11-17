@@ -8,7 +8,9 @@ use crate::host::State;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree;
 use crate::core::preview::realm_preview::{self, RealmDigest, RealmRows};
-use crate::core::preview::sqlite::sqlite_preview::{self, SqliteDigest, SqliteKey, SqliteRows};
+use crate::core::preview::sqlite::sqlite_preview::{
+    self, SqliteDigest, SqliteKey, SqliteQueryPage, SqliteRows,
+};
 use crate::core::preview::sqlite::sqlite_recovery::{self, SqliteRecovery};
 use crate::core::preview::vim_swap::{self, VimSwapDigest};
 use crate::state::AppState;
@@ -105,6 +107,44 @@ pub async fn fs_sqlite_table_rows(
     })
     .await
     .map_err(|err| AppError::task_panicked("fs_sqlite_table_rows", err))?
+}
+
+/// Execute one bounded SELECT against the database in the preview VFS.
+#[cfg_attr(feature = "desktop", tauri::command)]
+#[allow(clippy::too_many_arguments)]
+pub async fn fs_sqlite_query(
+    state: State<'_, AppState>,
+    image_id: String,
+    node_id: String,
+    parent_id: Option<String>,
+    sql: String,
+    parameters: Option<Vec<serde_json::Value>>,
+    offset: u32,
+    limit: u32,
+    key: Option<SqliteKey>,
+) -> Result<SqliteQueryPage, AppError> {
+    let image = loaded_image_app_error(&state, &image_id).await?;
+    let cache = state.sqlite_session.clone();
+    tokio::task::spawn_blocking(move || {
+        let session = sqlite_preview::cached_session(
+            &mut cache.blocking_lock(),
+            &image,
+            &image_id,
+            &node_id,
+            parent_id.as_deref(),
+        )?;
+        sqlite_preview::query_session(
+            &session,
+            &key.unwrap_or_default(),
+            &sql,
+            parameters.as_deref().unwrap_or_default(),
+            offset,
+            limit,
+        )
+        .map_err(AppError::from)
+    })
+    .await
+    .map_err(|err| AppError::task_panicked("fs_sqlite_query", err))?
 }
 
 /// Realm 解析需要随机访问完整文件；不做前缀截断解析，避免把上限造成的缺页误判为

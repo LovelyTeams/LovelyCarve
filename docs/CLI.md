@@ -492,6 +492,14 @@ SquashFS 同名目录中的文件复用 `files read`、`files hash` 与 `files e
 SQLite、Realm、ZIP、CSV、可执行文件、GGUF、Vim 交换文件、NTFS 流与 USN 日志、ext4 日志分别在
 `files sqlite …`、`files realm …`、`files zip …` 等子集合中，`lovelycarve-cli files --help` 列出全部。
 
+用 `files sqlite queries get` 直接查询镜像里的数据库。以下 JSONL 请求使用已加载检材，绑定参数查询分组计数：
+
+```jsonl
+{"id":"count","command":"files sqlite queries get","withSource":true,"args":{"path":"/<卷名称>/messages.db","sql":"SELECT chat_id, COUNT(*) AS total FROM messages WHERE sent_at >= ?1 GROUP BY chat_id ORDER BY chat_id","parameters":["2026-08-01"],"limit":25}}
+```
+
+查询限制为库内的单条只读语句，支持 `SELECT` 和 CTE，禁止写操作、`ATTACH`、`PRAGMA` 和扩展加载。复用现有 SQLCipher `key` 参数与同目录 WAL 读取。响应中的 `columns` 按 SELECT 顺序对应行内单元格，整数值编码成十进制字符串以保留 64 位精度。单页最多 100 行，有后续时用原 SQL、参数和 `nextOffset` 查询下一页。分页查询应使用可唯一排序的 `ORDER BY`。长文本缩短或无效 UTF-8 被替换时，返回 `shortenedCells` 和不完整状态。开启 `withSource` 时，来源封装含数据库节点、SQL 和参数。任意 SQL 的结果由查询定义，通过 `files sqlite rows list` 获取已识别的表主键。
+
 ### RAID → LVM → Btrfs 的导航
 
 克隆主机可能具有相同 VG/PV UUID。`raid detect --image-ids <源检材ID>…` 只检测指定的已加载源检材，可在同一会话内分别组装各主机；空列表、未加载 ID、组装检材和卷影副本明确报错。省略该参数仍检测全部已加载源检材，`--image` 只提供初始检材，不限制成员集合。带范围的组装路径按源检材路径集合隔离缓存，并在进程重启后保持稳定；选取顺序和重复 ID 不改变范围。完整的单 PV LVM 也可直接从源检材分区导航，不必显式组装。多个会话不得同时打开同一案件目录。

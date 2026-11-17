@@ -7,6 +7,7 @@ import json
 import io
 import os
 import queue
+import sqlite3
 from pathlib import Path
 import struct
 import subprocess
@@ -23,7 +24,7 @@ from cli_timezone_tests import test_timezones
 from cli_integrity_tests import test_integrity
 from cli_agent_tests import test_agent_output
 from cli_navigation_tests import test_navigation
-from cli_optical_tests import test_optical_discs
+from cli_optical_tests import iso_fixture, test_optical_discs
 
 
 def documents(text):
@@ -81,6 +82,50 @@ def main():
         def session(requests, expected=0, arguments=()):
             result = run([*arguments, "session"], "\n".join(json.dumps(request) for request in requests), expected)
             return result, [json.loads(line) for line in result.stdout.splitlines()]
+
+        # The path and node ID variants both discover the database's WAL.
+        sqlite_evidence = root / "sqlite-evidence"
+        sqlite_evidence.mkdir()
+        sqlite_source = sqlite3.connect(root / "chat.db")
+        try:
+            sqlite_source.executescript("""
+                PRAGMA journal_mode = WAL;
+                PRAGMA wal_autocheckpoint = 0;
+                CREATE TABLE messages(id INTEGER PRIMARY KEY, chat_id INTEGER);
+                INSERT INTO messages VALUES (1, 3), (2, 3), (3, 5);
+            """)
+            for name in ("chat.db", "chat.db-wal"):
+                (sqlite_evidence / name).write_bytes((root / name).read_bytes())
+        finally:
+            sqlite_source.close()
+        sqlite_request = {
+            "id": "sqlite-query",
+            "command": "files sqlite queries get",
+            "withSource": True,
+            "args": {
+                "path": "/sqlite-evidence/chat.db",
+                "sql": "SELECT chat_id, COUNT(*) FROM messages WHERE id > ?1 GROUP BY chat_id ORDER BY chat_id",
+                "parameters": [0],
+                "limit": 1,
+            },
+        }
+        sqlite_next = {**sqlite_request, "id": "sqlite-next", "args": {
+            key: value for key, value in sqlite_request["args"].items() if key != "path"
+        }}
+        sqlite_next["args"].update(nodeId="folder:" + b"chat.db".hex(), offset=1)
+        _, sqlite_rows = session([sqlite_request, sqlite_next], arguments=["--image", str(sqlite_evidence)])
+        for row, values, next_offset in zip(sqlite_rows, [("3", "2"), ("5", "1")], [1, None], strict=True):
+            response = row["result"]
+            assert response["result"]["rows"] == [[{"kind": "integer", "value": value} for value in values]], row
+            assert response["result"]["sidecars"] == ["chat.db-wal"], row
+            assert response["result"]["nextOffset"] == next_offset, row
+            assert response["source"]["path"] == "/sqlite-evidence/chat.db", row
+            assert response["source"]["parameters"] == [0], row
+        sqlite_iso = root / "sqlite.iso"
+        sqlite_iso.write_bytes(iso_fixture((root / "chat.db").read_bytes())[0])
+        sqlite_result = run(["--image", str(sqlite_iso), "files", "sqlite", "queries", "get",
+                             "/part:0/PAYLOAD.BIN", "--sql", "SELECT COUNT(*) FROM messages"])
+        assert json.loads(sqlite_result.stdout)["rows"] == [[{"kind": "integer", "value": "3"}]]
 
         # Independent synthetic Buffalo ENC/bgn + TRX + DD-WRT SquashFS v3.
         firmware_fixtures = Path(__file__).resolve().parent.parent / "src-tauri/test_data/firmware"

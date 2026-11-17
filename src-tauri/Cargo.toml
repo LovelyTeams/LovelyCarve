@@ -204,7 +204,7 @@ rmpv = { version = "1.3.1", features = ["with-serde"] }
 rsqlite-vfs = { path = "vendor/rsqlite-vfs" }
 rufs = { path = "vendor/rufs" }
 
-rusqlite = { version = "0.40.2", features = ["bundled-sqlcipher-vendored-openssl", "collation", "hooks"] }
+rusqlite = { version = "0.40.2", features = ["bundled-sqlcipher-vendored-openssl", "collation", "hooks", "limits"] }
 sercomm-firmware = { path = "vendor/sercomm-firmware" }
 
 serde = { version = "1.0.229", features = ["derive"] }

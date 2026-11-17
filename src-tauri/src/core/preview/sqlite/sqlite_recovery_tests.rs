@@ -213,6 +213,15 @@ fn encrypted_wal_is_replayed_by_the_preview_and_noted_by_recovery() {
     assert!(digest.encrypted);
     assert_eq!(digest.sidecars, vec!["chat.db-wal".to_string()]);
     assert_eq!(digest.tables[0].row_count, Some(200 - deleted.len() as i64));
+    let page =
+        sqlite_preview::query_session(&session, &key, "SELECT COUNT(*) FROM messages", &[], 0, 1)
+            .unwrap();
+    let page = serde_json::to_value(page).unwrap();
+    assert_eq!(
+        page["rows"][0][0]["value"],
+        (200 - deleted.len()).to_string()
+    );
+    assert_eq!(page["sidecars"], serde_json::json!(["chat.db-wal"]));
 
     let recovery = recover(&image, &node.id, Some(&parent), &key).unwrap();
     assert_eq!(recovery.sidecars, Vec::<String>::new());

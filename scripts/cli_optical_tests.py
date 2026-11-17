@@ -11,8 +11,9 @@ import subprocess
 import tempfile
 
 
-def iso_fixture():
-    content = bytes((number * 17 + number // 101) % 256 for number in range(7001))
+def iso_fixture(content=None):
+    if content is None:
+        content = bytes((number * 17 + number // 101) % 256 for number in range(7001))
     image = bytearray(40 * 2048)
 
     def both32(target, offset, value):
