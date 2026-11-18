@@ -20,16 +20,19 @@ runs:
         if (-not $version) { throw 'Missing rust-version in Cargo.toml' }
         if ($version.Split('.').Count -eq 2) { $version += '.0' }
         $architecture = 'x64'
+        $opensslCrt = 'MT'
         if ($env:RUNNER_ARCH -eq 'ARM64') {
           $version += '-aarch64-pc-windows-msvc'
           $architecture = 'arm64'
+          # Keep OpenSSL static while matching the CLI's dynamic MSVC runtime.
+          $opensslCrt = 'MD'
         }
         rustup toolchain install $version --profile minimal
         if ($LASTEXITCODE -ne 0) { throw 'Rust toolchain installation failed' }
         rustup override set $version
         if ($LASTEXITCODE -ne 0) { throw 'Rust toolchain selection failed' }
         $openssl = Join-Path $env:ProgramFiles 'OpenSSL'
-        $libraries = Join-Path $openssl "lib/VC/$architecture/MT"
+        $libraries = Join-Path $openssl "lib/VC/$architecture/$opensslCrt"
         foreach ($name in @('libssl_static.lib', 'libcrypto_static.lib')) {
           $library = Join-Path $libraries $name
           if (-not (Test-Path -LiteralPath $library -PathType Leaf)) {

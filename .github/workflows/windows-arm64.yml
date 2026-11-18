@@ -1,8 +1,6 @@
 name: Windows ARM64 compile
 
 on:
-  push:
-    branches: [codex/windows-arm64]
   workflow_dispatch:
 
 permissions:
