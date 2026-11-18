@@ -14,19 +14,25 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if ($VisualStudio) {
+    $architecture = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'x64' }
+    $vcComponent = if ($architecture -eq 'arm64') { 'ARM64' } else { 'x86.x64' }
     if (-not $VsPath) {
         $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
         if (-not (Test-Path -LiteralPath $vswhere)) {
             throw 'Cannot find Visual Studio Installer. Set VS_PATH to your C++ tools installation.'
         }
-        $VsPath = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        $VsPath = & $vswhere -latest -products '*' -requires "Microsoft.VisualStudio.Component.VC.Tools.$vcComponent" -property installationPath
         if ($LASTEXITCODE -ne 0 -or -not $VsPath) {
-            throw 'Cannot find Visual Studio C++ x64 tools. Install them or set VS_PATH.'
+            throw "Cannot find Visual Studio C++ $architecture tools. Install them or set VS_PATH."
         }
     }
     Import-Module (Join-Path $VsPath 'Common7/Tools/Microsoft.VisualStudio.DevShell.dll')
-    Enter-VsDevShell -VsInstallPath $VsPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
-    if (-not $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER) {
+    Enter-VsDevShell -VsInstallPath $VsPath -SkipAutomaticLocation -DevCmdArguments "-arch=$architecture -host_arch=$architecture" | Out-Null
+    if ($architecture -eq 'arm64') {
+        if (-not $env:CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER) {
+            $env:CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER = 'link.exe'
+        }
+    } elseif (-not $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER) {
         $lldLinker = Join-Path $VsPath 'VC/Tools/Llvm/x64/bin/lld-link.exe'
         if (-not (Test-Path -LiteralPath $lldLinker -PathType Leaf)) {
             throw 'Cannot find lld-link.exe. Install the Visual Studio C++ Clang tools for Windows, or set CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER.'

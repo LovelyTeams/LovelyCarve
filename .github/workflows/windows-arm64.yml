@@ -1,0 +1,36 @@
+name: Windows ARM64 compile
+
+on:
+  push:
+    branches: [codex/windows-arm64]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-arm64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  arm64:
+    name: Native ARM64 desktop and CLI
+    runs-on: windows-11-arm
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CARGO_BUILD_JOBS: '3'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-windows
+      - name: Build desktop and bundled plugins
+        run: just build-release --no-bundle
+      - name: Build standalone CLI
+        run: just build-cli
