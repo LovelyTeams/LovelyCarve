@@ -31,6 +31,38 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-windows
       - name: Build desktop and bundled plugins
-        run: just build-release --no-bundle
+        run: just build-release --no-bundle --config "${{ github.workspace }}/src-tauri/tauri.arm64.conf.json"
       - name: Build standalone CLI
         run: just build-cli
+      - name: Verify native binaries and stage artifact
+        run: |
+          $binaries = @(
+            'src-tauri/target/release/LovelyCarve.exe',
+            'src-tauri/target/release/lovelycarve-cli.exe',
+            'plugins/target/release/lc-plugin-host.exe',
+            'plugins/linuxinfo/linuxinfo.dll'
+          )
+          foreach ($binary in $binaries) {
+            $bytes = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $binary).Path)
+            $header = [BitConverter]::ToInt32($bytes, 0x3c)
+            $machine = [BitConverter]::ToUInt16($bytes, $header + 4)
+            if ($machine -ne 0xaa64) {
+              throw ('Expected ARM64: {0} has machine type 0x{1:X4}' -f $binary, $machine)
+            }
+            Write-Host "$binary is ARM64"
+          }
+          & ./src-tauri/target/release/lovelycarve-cli.exe system get
+          if ($LASTEXITCODE -ne 0) { throw "CLI smoke check failed: $LASTEXITCODE" }
+          $pluginFiles = @('linuxinfo.dll', 'plugin.toml', 'schema.json', 'locales')
+          $pluginPath = 'arm64-build/plugins/linuxinfo'
+          New-Item -ItemType Directory -Path $pluginPath | Out-Null
+          Copy-Item -LiteralPath $binaries[0], $binaries[1], $binaries[2], 'LICENSE', 'THIRD_PARTY_NOTICES.md' -Destination arm64-build
+          foreach ($file in $pluginFiles) {
+            Copy-Item -LiteralPath "plugins/linuxinfo/$file" -Destination $pluginPath -Recurse
+          }
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: windows-arm64
+          path: arm64-build
+          if-no-files-found: error
+          retention-days: 7

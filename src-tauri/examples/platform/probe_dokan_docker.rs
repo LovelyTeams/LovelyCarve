@@ -8,16 +8,21 @@
 //! click around in Explorer), then unmounts. Dokan DEBUG / STDERR flags
 //! are forced on so kernel-side complaints land on the console.
 
-#![cfg(target_os = "windows")]
-
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 use std::env;
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 use std::sync::Arc;
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 use std::thread;
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 use std::time::Duration;
 
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 use lovelycarve_lib::core::filesystem::evidence_session::EvidenceSession;
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 use lovelycarve_lib::core::platform::dokan_mount;
 
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -63,4 +68,9 @@ fn main() -> anyhow::Result<()> {
     session.stop()?;
     println!("done");
     Ok(())
+}
+
+#[cfg(not(all(windows, not(target_arch = "aarch64"))))]
+fn main() -> anyhow::Result<()> {
+    anyhow::bail!("This Dokan probe requires an x86 or x64 Windows build");
 }

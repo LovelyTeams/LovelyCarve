@@ -32,17 +32,19 @@ if ($VisualStudio) {
         if (-not $env:CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER) {
             $env:CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER = 'link.exe'
         }
-    } elseif (-not $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER) {
-        $lldLinker = Join-Path $VsPath 'VC/Tools/Llvm/x64/bin/lld-link.exe'
-        if (-not (Test-Path -LiteralPath $lldLinker -PathType Leaf)) {
-            throw 'Cannot find lld-link.exe. Install the Visual Studio C++ Clang tools for Windows, or set CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER.'
+    } else {
+        if (-not $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER) {
+            $lldLinker = Join-Path $VsPath 'VC/Tools/Llvm/x64/bin/lld-link.exe'
+            if (-not (Test-Path -LiteralPath $lldLinker -PathType Leaf)) {
+                throw 'Cannot find lld-link.exe. Install the Visual Studio C++ Clang tools for Windows, or set CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER.'
+            }
+            $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER = (Get-Item -LiteralPath $lldLinker).FullName
         }
-        $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER = (Get-Item -LiteralPath $lldLinker).FullName
-    }
-    # Keep caller-supplied flags intact, and never pass LLD options to another linker.
-    $linkerName = Split-Path $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER -Leaf
-    if ($linkerName -in @('lld-link', 'lld-link.exe') -and -not $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS) {
-        $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS = '-C link-arg=/threads:1'
+        # Keep caller-supplied flags intact, and never pass LLD options to another linker.
+        $linkerName = Split-Path $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER -Leaf
+        if ($linkerName -in @('lld-link', 'lld-link.exe') -and -not $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS) {
+            $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS = '-C link-arg=/threads:1'
+        }
     }
     if ($OpenCV) {
         $llvmBin = Join-Path $VsPath 'VC/Tools/Llvm/x64/bin'

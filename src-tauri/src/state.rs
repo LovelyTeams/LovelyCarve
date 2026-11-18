@@ -8,7 +8,7 @@ use crate::core::casework::case::CaseState;
 use crate::core::extensions::plugin::PluginManager;
 use crate::core::extensions::task_scheduler::TaskScheduler;
 use crate::core::filesystem::evidence_session::EvidenceSession;
-#[cfg(target_os = "windows")]
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 use crate::core::platform::dokan_mount::{DokanMountSession, MountShareView};
 use crate::task_manager::TaskManager;
 use tokio::sync::Mutex;
@@ -52,10 +52,10 @@ pub struct AppState {
     /// instead of allocating a duplicate.
     pub assembled_arrays: Arc<Mutex<HashMap<String, String>>>,
     /// Live read-only Dokan projections keyed by mount id.
-    #[cfg(target_os = "windows")]
+    #[cfg(all(windows, not(target_arch = "aarch64")))]
     pub dokan_mounts: Arc<Mutex<HashMap<String, Arc<DokanMountSession>>>>,
     /// SMB shares published for live Dokan projections, keyed by mount id.
-    #[cfg(target_os = "windows")]
+    #[cfg(all(windows, not(target_arch = "aarch64")))]
     pub dokan_mount_shares: Arc<Mutex<HashMap<String, MountShareView>>>,
     /// The single active forensic case, if one is open: the case ledger
     /// connection, its cached evidence and volume records, and in-memory
@@ -144,9 +144,9 @@ impl AppState {
             scheduler,
             carve_scans: Arc::default(),
             assembled_arrays: Arc::default(),
-            #[cfg(target_os = "windows")]
+            #[cfg(all(windows, not(target_arch = "aarch64")))]
             dokan_mounts: Arc::default(),
-            #[cfg(target_os = "windows")]
+            #[cfg(all(windows, not(target_arch = "aarch64")))]
             dokan_mount_shares: Arc::default(),
             active_case: Arc::default(),
             removed_case_evidence: Arc::default(),
