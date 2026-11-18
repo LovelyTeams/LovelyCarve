@@ -6,32 +6,30 @@ import type { DiskFsNode } from '../model/model';
 import type { FileByteFocus } from '../model/navigation';
 import type { FilePreviewReadingState } from '../../../lib/models/filePreviewReadingState';
 
-/** Connects the file panel selection to its inline/detached preview owner. */
+/** Connects the active preview tab to its inline or detached preview owner. */
 export function useFilePreviewBridge(options: {
   imageId: () => string;
   indexOnly?: () => boolean;
   activate: (imageId: string) => boolean;
-  node: Ref<DiskFsNode | null>;
-  focusTarget: Ref<FileByteFocus | null>;
+  /** The file in the active preview tab, its byte focus and the path it was opened at. */
+  node: () => DiskFsNode | null;
+  focusTarget: () => FileByteFocus | null;
+  fullPath: () => string;
   visible: Ref<boolean>;
-  fullPath: (node: DiskFsNode) => string;
+  /** Docking a detached preview shows its file again with the window's reading context. */
+  restore: (node: DiskFsNode, focusTarget: FileByteFocus | null, readingState?: FilePreviewReadingState) => void;
   digest: (nodeId: string) => StoredDigest | undefined;
   ident: (nodeId: string) => FsTypeIdent | undefined;
   identified: (imageId: string, nodeId: string, ident: FsTypeIdent) => void;
-  readingState: Ref<FilePreviewReadingState | undefined>;
   snapshotReadingState: () => FilePreviewReadingState | undefined;
 }) {
-  const { node: detailNode, focusTarget: detailFocus, visible: previewVisible } = options;
-  watch(detailNode, node => { if (node?.id !== detailFocus.value?.nodeId) detailFocus.value = null; });
-  watch(detailNode, node => { if (node) previewVisible.value = true; });
+  const { visible: previewVisible } = options;
   const { opening, detached, detach, sync, focus } = usePreviewDock<DiskFsNode>({
     imageId: options.imageId,
     activate: options.activate,
     closed: () => { previewVisible.value = false; },
     restore: (node, focusTarget, readingState) => {
-      options.readingState.value = readingState;
-      detailNode.value = node;
-      detailFocus.value = focusTarget ? { nodeId: node.id, ...focusTarget } : null;
+      options.restore(node, focusTarget ? { nodeId: node.id, ...focusTarget } : null, readingState);
       previewVisible.value = true;
     },
   });
@@ -41,29 +39,31 @@ export function useFilePreviewBridge(options: {
     else previewVisible.value = !previewVisible.value;
   }
   function selectionOf(node: DiskFsNode) {
-    const fullPath = options.fullPath(node);
+    const fullPath = options.fullPath();
     const context = options.snapshotReadingState();
+    const focusTarget = options.focusTarget();
     return {
       indexOnly: options.indexOnly?.(),
       imageId: options.imageId(), nodeId: node.id, title: node.name, fullPath,
       node: { ...node, path: fullPath },
-      focusTarget: detailFocus.value?.nodeId === node.id ? detailFocus.value : undefined,
+      focusTarget: focusTarget?.nodeId === node.id ? focusTarget : undefined,
       ident: options.ident(node.id), digest: options.digest(node.id),
       readingState: context?.imageId === options.imageId() && context.nodeId === node.id ? context : undefined,
     };
   }
   async function detachPreview(position?: { x: number; y: number }) {
-    const node = detailNode.value;
+    const node = options.node();
     if (!node) return;
     const selection = selectionOf(node);
     const opened = await detach({ ...selection, position });
-    if (opened && options.imageId() === selection.imageId && detailNode.value === node) previewVisible.value = false;
+    if (opened && options.imageId() === selection.imageId && options.node()?.id === node.id) previewVisible.value = false;
   }
   watch(() => {
-    const node = detailNode.value;
-    return [node, detailFocus.value, options.imageId(), options.indexOnly?.(), node && options.ident(node.id), node && options.digest(node.id)];
+    const node = options.node();
+    return [node, options.focusTarget(), options.imageId(), options.indexOnly?.(), node && options.ident(node.id), node && options.digest(node.id)];
   }, () => {
-    if (detailNode.value) void sync(selectionOf(detailNode.value));
+    const node = options.node();
+    if (node) void sync(selectionOf(node));
   }, { flush: 'post' });
 
   function onDetailIdentified(payload: { nodeId: string; ident: FsTypeIdent }) {

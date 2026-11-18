@@ -49,8 +49,8 @@
     </label>
     <span class="ui-divider-v" aria-hidden="true"></span>
     <button class="ui-icon-btn" :aria-pressed="dockedPreviewVisible"
-      :title="previewDetached ? tr('显示独立预览') : tr('右侧预览')" :aria-label="previewDetached ? tr('显示独立预览') : tr('右侧预览')" @click="emit('togglePreview')">
-      <PanelRight :size="16" />
+      :title="previewLabel" :aria-label="previewLabel" @click="emit('togglePreview')">
+      <PanelBottom v-if="previewPlacement === 'bottom' && !previewDetached" :size="16" /><PanelRight v-else :size="16" />
     </button>
   </div>
 </div>
@@ -59,14 +59,17 @@
 <script setup lang="ts">
 import { tr } from '../../../composables/useLocale';
 
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { PanelLeft, PanelRight, ArrowUp, ChevronRight, HardDrive, Copy, Search, X, RefreshCw } from 'lucide-vue-next';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { PanelBottom, PanelLeft, PanelRight, ArrowUp, ChevronRight, HardDrive, Copy, Search, X, RefreshCw } from 'lucide-vue-next';
 import type { FileNavigationFrame } from '../model/navigation';
+import type { FilePreviewPlacement } from '../../preview/components/FilePreviewDock.vue';
 
 const props = defineProps<{
   stack: FileNavigationFrame[]; currentDirectoryPath: string; loading: boolean;
-  dockedPreviewVisible: boolean; previewDetached: boolean;
+  dockedPreviewVisible: boolean; previewDetached: boolean; previewPlacement: FilePreviewPlacement;
 }>();
+const previewLabel = computed(() => props.previewDetached ? tr('显示独立预览')
+  : props.previewPlacement === 'bottom' ? tr('下方预览') : tr('右侧预览'));
 const treeVisible = defineModel<boolean>('treeVisible', { required: true });
 const searchKeyword = defineModel<string>('searchKeyword', { required: true });
 const emit = defineEmits<{

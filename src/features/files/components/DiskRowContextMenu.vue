@@ -92,6 +92,7 @@ const open = defineModel<boolean>('open', { required: true });
 const emit = defineEmits<{
   'open-node': [];
   'show-detail': [];
+  'preview-checked': [];
   'return-to-original-dir': [];
   'toggle-mount': [];
   'export-file': [];
@@ -144,8 +145,13 @@ const entries = computed<UiContextMenuEntry[]>(() => {
   if (node.kind === 'dir') {
     list.push({ id: 'open', label: tr('打开'), icon: FolderOpen, hint: 'Enter', action: () => emit('open-node') });
     list.push({ id: 'detail', label: tr('查看详情'), icon: Info, action: () => emit('show-detail') });
+  } else if (manyFiles) {
+    list.push({
+      id: 'preview-checked', label: tr('预览勾选文件（{0}）', { 0: files.toLocaleString() }), icon: Eye,
+      title: tr('每个文件开一个预览标签页，切换时不用回到原目录'), action: () => emit('preview-checked'),
+    });
   } else {
-    list.push({ id: 'preview', label: tr('预览'), icon: Eye, hint: 'Enter', action: () => emit('show-detail') });
+    list.push({ id: 'preview', label: tr('预览'), icon: Eye, hint: 'Enter', title: tr('在预览中保持打开，单击其他文件不会替换它'), action: () => emit('show-detail') });
   }
   if (props.canReturnToOriginalDir) {
     list.push({

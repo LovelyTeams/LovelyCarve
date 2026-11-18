@@ -103,7 +103,7 @@ import { tr } from '../../../../composables/useLocale';
 // JSON / YAML / XML 的「原类型视图」：仿 jsoncrack 把结构化文本渲染成可折叠的
 // 节点图（图）与缩进折叠列表（树）。解析全在前端（parse.ts），不走后端/IPC——
 // 文本由父级 decodedText 经 :text 传入，与 CodeViewer 同源。
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   AlertTriangle,
   ChevronsDownUp,
@@ -246,10 +246,25 @@ function viewportSize() {
   const r = canvasEl.value?.getBoundingClientRect();
   return { width: r?.width ?? 0, height: r?.height ?? 0 };
 }
+/** The view the last fit produced. While the user has not zoomed or panned away
+ *  from it, a resized canvas fits again — the preview may open while its pane is
+ *  still growing, and a kept-open tab must not stay fitted to that first size. */
+let fitted: { zoom: number; panX: number; panY: number } | null = null;
 function doFit(): void {
   if (!okScene.value || !canvasEl.value) return;
   fit(okScene.value.bounds, viewportSize());
+  fitted = { zoom: zoom.value, panX: panX.value, panY: panY.value };
 }
+function refitAfterResize(): void {
+  const last = fitted;
+  if (last && last.zoom === zoom.value && last.panX === panX.value && last.panY === panY.value) doFit();
+}
+const canvasObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(refitAfterResize);
+watch(canvasEl, (element, previous) => {
+  if (previous) canvasObserver?.unobserve(previous);
+  if (element) canvasObserver?.observe(element);
+});
+onBeforeUnmount(() => canvasObserver?.disconnect());
 function zoomIn(): void {
   zoomByButton(1.2, viewportSize());
 }

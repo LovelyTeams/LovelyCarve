@@ -1,7 +1,7 @@
 <template>
   <div class="disk-file-list">
     <FileListToolbar :stack="stack" :current-directory-path="currentDirectoryPath" :loading="loading"
-      :docked-preview-visible="dockedPreviewVisible" :preview-detached="previewDetached"
+      :docked-preview-visible="dockedPreviewVisible" :preview-detached="previewDetached" :preview-placement="previewPlacement"
       v-model:tree-visible="treeVisible" v-model:search-keyword="searchKeyword"
       @go-up="goUp" @go-to="goTo" @copy-path="copyCurrentPath" @search-input="onSearchInput"
       @clear-search="clearSearchKeyword" @refresh="refresh" @toggle-preview="togglePreview"
@@ -9,10 +9,13 @@
 
     <div v-if="indexOnly" class="ui-alert info offline-notice" role="status"><CircleAlert :size="16" /><span>{{ tr("离线索引 · 源镜像不可用，可浏览已索引目录、筛选文件和查看属性。正文预览、导出、哈希及分析需恢复源镜像。") }}</span></div>
 
-    <div class="body" @mouseup="onBodyMouseUp">
+    <!-- 目录树、列表与预览共用一个网格：预览在列表右侧，或在列表下方与之上下分栏（目录树始终占满左侧）。
+         换位置只改网格区域，预览里打开的各文件不重新装载。 -->
+    <div ref="bodyRef" class="body" :class="{ 'preview-bottom': previewPlacement === 'bottom' }" @mouseup="onBodyMouseUp">
       <UiTransition kind="horizontal"><DiskFileTree
         :key="imageId + ':' + (volumeRevision ?? '')"
         v-show="treeVisible"
+        class="file-tree-area"
         :image-id="imageId"
         :path-stack="stack"
         :exportable="!indexOnly"
@@ -79,24 +82,36 @@
         <TreemapFooter v-else :view="treemapView" :include-deleted="treemapDeleted" :snapshot-status="snapshotStatus" />
 
       </div>
-      <UiTransition kind="dock">
-      <FilePreviewDock v-if="dockedPreviewVisible" :name="detailNode?.name ?? tr('文件预览')" :opening="previewOpening" :can-detach="!!detailNode"
-        @detach="detachPreview" @close="previewVisible = false">
-        <DiskFileDetail
-          v-if="detailNode"
-          ref="detailPreview"
-          standalone
-          :image-id="imageId"
-          :node="detailNode"
-          :index-only="indexOnly"
-          :reading-state="previewReadingState"
-          :focus-target="detailFocus?.nodeId === detailNode.id ? detailFocus : undefined"
-          :full-path="fullPathOf(detailNode)"
-          :digest="digestCache.get(detailNode.id)"
-          :ident="ftypeCache.get(detailNode.id) ?? null"
-          @identified="onDetailIdentified"
-        />
-        <div v-else class="ui-empty preview-empty"><span class="ui-empty-icon accent"><PanelRightOpen :size="26" /></span><p class="ui-empty-title">{{ tr("选择文件，即刻预览") }}</p><p class="ui-empty-desc">{{ tr("单击文件查看内容，双击目录进入") }}</p><p class="ui-empty-desc">{{ tr("拖动上方标题栏，可拆分为独立窗口") }}</p></div>
+      <UiTransition :kind="previewPlacement === 'bottom' ? 'collapse' : 'dock'">
+      <FilePreviewDock v-if="dockedPreviewVisible" class="file-preview-area" :name="tr('文件预览')" :opening="previewOpening" :can-detach="!!activePreview"
+        :placement="previewPlacement" :limit="previewLimit" can-move :move-locked="narrowWorkspace"
+        @detach="detachPreview" @close="previewVisible = false" @move="setPlacementPreference">
+        <template v-if="previewTabList.length" #tabs>
+          <FilePreviewTabs :tabs="previewTabList" :active-id="activePreview?.id ?? null"
+            @activate="previewTabs.activate" @close="previewTabs.close" @pin="previewTabs.pin"
+            @close-others="previewTabs.closeOthers" @close-all="previewTabs.closeAll"
+            @reveal="revealPreviewTab" @copy-path="copyPreviewTabPath" />
+        </template>
+        <!-- 最近用过的几个文件保持挂载、隐藏在当前文件下面：切回去即时显示，视图、搜索与滚动位置都还在。 -->
+        <div v-if="activePreview" ref="previewStack" class="preview-stack">
+          <div v-for="tab in mountedPreviewTabs" :key="tab.id" class="preview-instance" :class="{ active: tab.id === activePreview.id }"
+            :data-preview-tab="tab.id" :inert="tab.id !== activePreview.id || undefined" :aria-hidden="tab.id !== activePreview.id || undefined">
+            <DiskFileDetail
+              :ref="instance => registerPreview(tab.id, instance)"
+              standalone
+              :image-id="imageId"
+              :node="tab.node"
+              :index-only="indexOnly"
+              :reading-state="tab.readingState"
+              :focus-target="tab.focus ?? undefined"
+              :full-path="tab.fullPath"
+              :digest="digestCache.get(tab.node.id)"
+              :ident="ftypeCache.get(tab.node.id) ?? null"
+              @identified="onDetailIdentified"
+            />
+          </div>
+        </div>
+        <div v-else class="ui-empty preview-empty"><span class="ui-empty-icon accent"><component :is="previewPlacement === 'bottom' ? PanelBottomOpen : PanelRightOpen" :size="26" /></span><p class="ui-empty-title">{{ tr("选择文件，即刻预览") }}</p><p class="ui-empty-desc">{{ tr("单击文件查看内容，双击文件保持打开，在多个文件之间切换不用回到原目录") }}</p><p class="ui-empty-desc">{{ tr("拖动上方标题栏，可拆分为独立窗口") }}</p></div>
       </FilePreviewDock>
       </UiTransition>
     </div>
@@ -116,6 +131,7 @@
       @tag-pick="onTagPick"
       @open-node="onMenuOpenNode"
       @show-detail="onShowDetail"
+      @preview-checked="onPreviewChecked"
       @return-to-original-dir="onReturnToOriginalDir"
       @toggle-mount="onToggleRowMount"
       @export-file="onExportFile"
@@ -191,16 +207,21 @@
 import { tr } from '../../../composables/useLocale';
 
 import UiTransition from '../../../components/ui/UiTransition.vue';
-import { ref, computed, watch, reactive, shallowRef, nextTick, useTemplateRef, onActivated, onDeactivated, onUnmounted, onScopeDispose } from 'vue';
+import { ref, computed, watch, reactive, shallowRef, nextTick, useTemplateRef, onActivated, onDeactivated, onMounted, onUnmounted, onScopeDispose } from 'vue';
 import { menuPointBelow } from '../../../composables/useContextMenu';
 import { type FsTypeIdent, type StoredDigest } from '../../../lib/ipc/fs/derived';
 import {
+  PanelBottomOpen,
   PanelRightOpen,
   CircleAlert,
 } from 'lucide-vue-next';
 import DiskFileDetail from '../../preview/components/DiskFileDetail.vue';
-import FilePreviewDock from '../../preview/components/FilePreviewDock.vue';
+import FilePreviewDock, { type FilePreviewPlacement } from '../../preview/components/FilePreviewDock.vue';
+import FilePreviewTabs from './FilePreviewTabs.vue';
 import { useFilePreviewBridge } from '../composables/useFilePreviewBridge';
+import { useFilePreviewTabs } from '../composables/useFilePreviewTabs';
+import { PREVIEW_BATCH_LIMIT } from '../model/previewTabs';
+import { copyText } from '../../../composables/clipboard';
 import type { FilePreviewReadingState } from '../../../lib/models/filePreviewReadingState';
 import { useFileRowMenu } from '../composables/useFileRowMenu';
 import DiskFileTree from './DiskFileTree.vue';
@@ -217,7 +238,7 @@ import ExportModePicker from './ExportModePicker.vue';
 import { useFileExports } from '../composables/useFileExports';
 import { projectFileRows } from '../model/clientRows';
 import { activeFilterChips } from '../model/filterChips';
-import { notifyError } from '../../../composables/useToast';
+import { notifyError, notifyInfo } from '../../../composables/useToast';
 import { type FileTag } from '../model/tags';
 import { useFileTags } from '../composables/useFileTags';
 import { useEmptyDirFilter } from '../composables/useEmptyDirFilter';
@@ -258,7 +279,7 @@ import TreemapFooter from './TreemapFooter.vue';
 import TreemapToolbar from './TreemapToolbar.vue';
 import { useSizeTree, type TreemapMode } from '../composables/useSizeTree';
 import { TREEMAP_MAX_DEPTH, TREEMAP_MIN_DEPTH, isVolumeRootId, treemapAvailableAt, type FileViewMode } from '../model/treemap';
-import type { FileNavigationFrame } from '../model/navigation';
+import type { FileByteFocus, FileNavigationFrame } from '../model/navigation';
 
 type FsNode = DiskFsNode;
 
@@ -295,11 +316,46 @@ const { selectedKey, checkedIds, headerChecked, headerIndeterminate, toggleAll, 
 // 「隐藏空目录」开关（与左侧目录树共用同一单例），及当前列表里各目录的子树
 // 判定缓存（id → 整棵子树是否无文件；缺值时过滤退回 dirCounts===0 直接判断）。
 const { hideEmptyDirs } = useEmptyDirFilter();
-const detailNode = ref<FsNode | null>(null);
-const detailPreview = ref<{ getReadingState: () => FilePreviewReadingState } | null>(null);
-const previewReadingState = ref<FilePreviewReadingState>();
-const detailFocus = ref<{ nodeId: string; offset: number; length: number } | null>(null);
+
+// ── 预览标签页 ──
+// 预览里可同时打开同一检材的多个文件：单击把文件放进预览位（斜体标签，下一次单击替换它），
+// 双击、Enter 或菜单「预览」保持打开。打开的文件不随列表导航关闭，换目录后仍可直接切回；
+// 每个检材记住自己的一组。
+const previewInstances = new Map<string, { getReadingState: () => FilePreviewReadingState }>();
+const previewTabs = useFilePreviewTabs({
+  imageId: () => props.imageId,
+  readingStateOf: id => previewInstances.get(id)?.getReadingState(),
+});
+const { tabs: previewTabList, active: activePreview, mounted: mountedPreviewTabs } = previewTabs;
+function registerPreview(id: string, instance: unknown) {
+  const viewer = instance as { getReadingState?: () => FilePreviewReadingState } | null;
+  if (typeof viewer?.getReadingState === 'function') previewInstances.set(id, viewer as { getReadingState: () => FilePreviewReadingState });
+  else previewInstances.delete(id);
+}
 const previewVisible = ref(false);
+/** The file in the active preview tab. Assigning a node shows it in the preview
+ *  slot (or its open tab) and the preview; null means the list moved away from
+ *  its cursor row, which only lets a directory in the preview slot go. */
+const detailNode = computed<FsNode | null>({
+  get: () => activePreview.value?.node ?? null,
+  set: node => {
+    if (!node) {
+      previewTabs.release();
+      return;
+    }
+    previewTabs.show({ node, fullPath: fullPathOf(node) });
+    previewVisible.value = true;
+  },
+});
+const detailFocus = computed<FileByteFocus | null>({
+  get: () => activePreview.value?.focus ?? null,
+  set: focus => previewTabs.setFocus(focus),
+});
+/** Double click, Enter or the menu: the file stays open when another one is clicked. */
+function keepOpen(node: FsNode) {
+  previewTabs.show({ node, fullPath: fullPathOf(node), pin: true });
+  previewVisible.value = true;
+}
 const treeVisible = ref(true);
 const columnsOpen = ref(false);
 const activeRow = computed(() => {
@@ -309,9 +365,15 @@ const activeRow = computed(() => {
 const { previewOpening, previewDetached, dockedPreviewVisible, togglePreview: togglePreviewVisibility, detachPreview, onDetailIdentified } = useFilePreviewBridge({
   indexOnly: () => props.indexOnly === true,
   imageId: () => props.imageId, activate: imageId => props.activatePreview?.(imageId) ?? true,
-  node: detailNode, focusTarget: detailFocus, visible: previewVisible, fullPath: fullPathOf,
-  readingState: previewReadingState,
-  snapshotReadingState: () => detailPreview.value?.getReadingState() ?? previewReadingState.value,
+  node: () => activePreview.value?.node ?? null,
+  focusTarget: () => activePreview.value?.focus ?? null,
+  fullPath: () => activePreview.value?.fullPath ?? '',
+  visible: previewVisible,
+  restore: (node, focus, readingState) => previewTabs.show({ node, fullPath: fullPathOf(node), focus, readingState }),
+  snapshotReadingState: () => {
+    const tab = activePreview.value;
+    return tab ? previewInstances.get(tab.id)?.getReadingState() ?? tab.readingState : undefined;
+  },
   digest: nodeId => digestCache.get(nodeId), ident: nodeId => ftypeCache.get(nodeId),
   identified: (imageId, nodeId, ident) => {
     ftypeCache.set(nodeId, ident);
@@ -320,10 +382,55 @@ const { previewOpening, previewDetached, dockedPreviewVisible, togglePreview: to
   },
 });
 function togglePreview() {
-  // Opening preview explicitly must use the current cursor, including directories.
-  if (!previewDetached.value && !previewVisible.value && activeRow.value) detailNode.value = activeRow.value;
+  // Opening the preview explicitly shows the current cursor row, including directories.
+  if (!previewDetached.value && !previewVisible.value && activeRow.value) previewTabs.show({ node: activeRow.value, fullPath: fullPathOf(activeRow.value) });
   togglePreviewVisibility();
 }
+// Hiding the preview unmounts its viewers: their tabs keep the reading context.
+watch(dockedPreviewVisible, (visible, wasVisible) => { if (wasVisible && !visible) previewTabs.captureAll(); });
+// A hidden viewer must not keep playing.
+const previewStack = ref<HTMLElement | null>(null);
+watch(() => activePreview.value?.id, () => {
+  void nextTick(() => {
+    for (const media of previewStack.value?.querySelectorAll<HTMLMediaElement>('.preview-instance:not(.active) :is(video, audio)') ?? []) media.pause();
+  });
+});
+
+/** Opening one file of the list beside another keeps the list out of the way:
+ *  below it in a narrow workspace, or wherever the user put it. */
+const PLACEMENT_KEY = 'lovelycarve-preview-placement';
+const placementPreference = ref<FilePreviewPlacement>((() => {
+  try { return localStorage.getItem(PLACEMENT_KEY) === 'bottom' ? 'bottom' : 'right'; }
+  catch { return 'right'; }
+})());
+function setPlacementPreference(placement: FilePreviewPlacement) {
+  placementPreference.value = placement;
+  try { localStorage.setItem(PLACEMENT_KEY, placement); }
+  catch { /* Keep the choice for this session. */ }
+}
+/** Beside the list the preview needs the tree and the default columns (880px) plus its own 320px. */
+const SIDE_BY_SIDE_MIN_WIDTH = 1200;
+/** Below the list, the list keeps its filter bar, header, a few rows and its footer. */
+const LIST_MIN_HEIGHT = 240;
+const bodyRef = ref<HTMLElement | null>(null);
+const workspaceSize = ref({ width: 0, height: 0 });
+const narrowWorkspace = computed(() => workspaceSize.value.width > 0 && workspaceSize.value.width <= SIDE_BY_SIDE_MIN_WIDTH);
+const previewPlacement = computed<FilePreviewPlacement>(() => narrowWorkspace.value ? 'bottom' : placementPreference.value);
+const previewLimit = computed(() => {
+  const { width, height } = workspaceSize.value;
+  if (!width || !height) return undefined;
+  return previewPlacement.value === 'bottom' ? height - LIST_MIN_HEIGHT : Math.min(width * 0.4, width - 880);
+});
+let bodyObserver: ResizeObserver | undefined;
+onMounted(() => {
+  if (typeof ResizeObserver === 'undefined' || !bodyRef.value) return;
+  bodyObserver = new ResizeObserver(([entry]) => {
+    if (!entry) return;
+    workspaceSize.value = { width: Math.round(entry.contentRect.width), height: Math.round(entry.contentRect.height) };
+  });
+  bodyObserver.observe(bodyRef.value);
+});
+onUnmounted(() => bodyObserver?.disconnect());
 let loadGeneration = 0;
 const navigation = useFileNavigation({
   imageId: () => props.imageId, loadGeneration: () => loadGeneration,
@@ -492,11 +599,10 @@ function onTreemapSelect(node: FsNode) {
   }
 }
 
-/** 双击文件瓦片：打开预览。 */
+/** 双击文件瓦片：在预览中保持打开。 */
 function onTreemapOpen(node: FsNode) {
   treemapSelection.value = node.id;
-  detailNode.value = node;
-  previewVisible.value = true;
+  keepOpen(node);
 }
 
 /** 进入瓦片所在的目录：瓦片链上的每一层都推入面包屑。 */
@@ -525,8 +631,10 @@ function onMenuOpenNode() {
 // watch 不会重跑，必须单独听。
 watch(
   () => activeCase.value?.id ?? null,
-  caseId => {
+  (caseId, previousCaseId) => {
     navigation.invalidateLocate();
+    // Another case: the files kept open for its evidence no longer apply.
+    if (previousCaseId && caseId !== previousCaseId) previewTabs.reset();
     if (!caseId) return;
     if (digestCache.size > 0) {
       const entries: Record<string, StoredDigest> = {};
@@ -807,8 +915,7 @@ function onRowDblClick(node: FsNode) {
     onActivate(node);
     return;
   }
-  detailNode.value = node;
-  previewVisible.value = true;
+  keepOpen(node);
 }
 
 /** 鼠标侧键「后退」返回上级；树图自己处理（带缩回动画），预览里不响应。 */
@@ -933,7 +1040,7 @@ const { selectedIndexIn, scrollRowIntoView, onTableKeydown } = useFileTableKeybo
   menuOpen: anyMenuOpen,
   loading: () => loading.value,
   toggleAll, goUp, activate: onActivate,
-  preview: node => { detailNode.value = node; previewVisible.value = true; },
+  preview: keepOpen,
   setAnchor: selection.setAnchor,
   openMenu: openMenuFromKeyboard,
 });
@@ -1022,8 +1129,39 @@ function onShowDetail() {
   hideMenus();
   if (!node) return;
   selectedKey.value = rowKeyOf(node);
-  detailNode.value = node;
+  if (node.kind === 'dir') detailNode.value = node;
+  else keepOpen(node);
+}
+
+/** 菜单「预览勾选文件」：勾选的文件各开一个标签页（一次最多 PREVIEW_BATCH_LIMIT 个），停在第一个。 */
+function onPreviewChecked() {
+  hideMenus();
+  const files = checkedFiles.value;
+  if (files.length === 0) return;
+  const opened = files.slice(0, PREVIEW_BATCH_LIMIT);
+  for (const node of opened) previewTabs.show({ node, fullPath: fullPathOf(node), pin: true });
+  const first = previewTabList.value.find(tab => tab.node.id === opened[0]?.id);
+  if (first) previewTabs.activate(first.id);
   previewVisible.value = true;
+  if (files.length > opened.length) {
+    notifyInfo(tr("已打开前 {0} 个文件", { 0: opened.length }), tr("一次最多在预览中打开 {0} 个文件，共勾选 {1} 个。", { 0: PREVIEW_BATCH_LIMIT, 1: files.length.toLocaleString() }));
+  }
+}
+
+/** 标签页菜单「在文件列表中定位」：列表转到该文件所在目录并选中它，字节定位保留。 */
+async function revealPreviewTab(id: string) {
+  const tab = previewTabList.value.find(item => item.id === id);
+  if (!tab) return;
+  try {
+    await openFileByNodeId(tab.node.id, tab.focus?.offset, tab.focus?.length);
+  } catch (error) {
+    notifyError(tr("定位失败"), String(error));
+  }
+}
+
+function copyPreviewTabPath(id: string) {
+  const tab = previewTabList.value.find(item => item.id === id);
+  if (tab) void copyText(tab.fullPath, tr("{0} 条完整路径", { 0: 1 }));
 }
 
 let originalDirectoryRequest = 0;
@@ -1090,23 +1228,58 @@ onUnmounted(() => {
 .offline-notice { flex-shrink: 0; margin: 8px 12px 0; }
 .offline-notice > svg { flex-shrink: 0; }
 
-/* ── Body ── */
+/* ── Body ──
+   目录树占满左侧；预览在列表右侧（宽度由预览栏自身决定），或在列表下方与之分栏。
+   各栏的尺寸都写在元素上，网格轨道跟随，开合预览的宽高动画因此直接带动列表伸缩。 */
 .body {
   position: relative;
   container: file-workspace / inline-size;
   overflow: hidden;
   flex: 1;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: 'tree main preview';
   min-height: 0;
 }
 
+.body.preview-bottom {
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas: 'tree main' 'tree preview';
+}
+
+.file-tree-area { grid-area: tree; }
+.file-preview-area { grid-area: preview; }
+
 /* Central workspace keeps navigation, actions, and file results together. */
 .right-area {
-  flex: 1;
+  grid-area: main;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+}
+
+/* 打开的文件叠放在一起，只显示当前那个；其余保持挂载但不绘制、不可聚焦，切回时视图与滚动原样。 */
+.preview-stack {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.preview-instance {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.preview-instance:not(.active) {
+  visibility: hidden;
+  content-visibility: hidden;
+  pointer-events: none;
 }
 
 .content-row {
