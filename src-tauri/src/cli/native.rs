@@ -97,7 +97,7 @@ pub fn capabilities() -> Result<Value, CliError> {
         "qrcode": cfg!(feature = "qrcode-wechat"),
         "ocr": cfg!(feature = "ocr"),
         "ocrCuda": cfg!(feature = "ocr-cuda"),
-        "dokanMount": cfg!(target_os = "windows"),
+        "dokanMount": cfg!(all(windows, not(target_arch = "aarch64"))),
         "observability": {"eventsOption": "--events", "eventsStream": "stderr-jsonl", "heartbeatSeconds": 5,
             "progressStream": "stderr", "progressWithRedirectedStdout": true, "residentBackendEvents": true},
         "residentSessions": {

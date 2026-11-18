@@ -49,7 +49,7 @@ pub(crate) async fn remove_image_runtime(
     }
     state.tasks.forget_image(image_id);
     crate::app::workflows::evidence::purge_image_scans(state, image_id).await;
-    #[cfg(target_os = "windows")]
+    #[cfg(all(windows, not(target_arch = "aarch64")))]
     {
         let mounts = {
             let mut mounts = state.dokan_mounts.lock().await;

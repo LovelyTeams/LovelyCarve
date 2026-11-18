@@ -12,8 +12,7 @@
 //! Example (ReFS partition #2 of the Win Server E01):
 //!   cargo run --example probe_dokan_slice -- X:\EWF1 227540992 272501833728 Y
 
-#![cfg(target_os = "windows")]
-
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 use std::{
     env,
     fs::File,
@@ -22,12 +21,15 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 use dokan::{
     CreateFileInfo, DiskSpaceInfo, FileInfo, FileSystemHandler, FileSystemMounter, FillDataResult,
     FindData, MountFlags, MountOptions, OperationInfo, OperationResult, VolumeInfo,
     IO_SECURITY_CONTEXT,
 };
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 use widestring::{U16CStr, U16CString};
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 use winapi::{
     shared::ntstatus::{STATUS_ACCESS_DENIED, STATUS_INVALID_PARAMETER, STATUS_NO_SUCH_FILE},
     um::winnt::{
@@ -36,20 +38,24 @@ use winapi::{
     },
 };
 
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 const VOLUME_FILE: &str = "volume.bin";
 
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 struct SliceFs {
     backing: Arc<File>,
     base: u64,
     length: u64,
 }
 
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 #[derive(Clone, Copy)]
 enum Node {
     Root,
     Volume,
 }
 
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 impl SliceFs {
     fn resolve(&self, name: &U16CStr) -> OperationResult<Node> {
         let s = name.to_string_lossy();
@@ -80,6 +86,7 @@ impl SliceFs {
     }
 }
 
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 impl<'c, 'h: 'c> FileSystemHandler<'c, 'h> for SliceFs {
     type Context = Node;
 
@@ -184,6 +191,7 @@ impl<'c, 'h: 'c> FileSystemHandler<'c, 'h> for SliceFs {
     }
 }
 
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = env::args().collect();
     if args.len() != 5 {
@@ -223,4 +231,9 @@ fn main() -> anyhow::Result<()> {
     println!("ready — Ctrl+C to unmount (auto-unmounts after 10 min)");
     std::thread::sleep(Duration::from_secs(600));
     Ok(())
+}
+
+#[cfg(not(all(windows, not(target_arch = "aarch64"))))]
+fn main() -> anyhow::Result<()> {
+    anyhow::bail!("This Dokan probe requires an x86 or x64 Windows build");
 }

@@ -66,6 +66,8 @@ just dev
 
 SQLCipher 配方设置 `OPENSSL_NO_VENDOR=1` 和 `OPENSSL_STATIC=1`，使用本机安装的 OpenSSL 开发文件。Windows 配方默认通过 `OPENSSL_LIBS=libssl_static:libcrypto_static` 选择静态库；Shining Light 的 `libssl.lib` 和 `libcrypto.lib` 即使位于 `MT` 目录下也是 DLL 导入库。使用其他 OpenSSL 发行版时，可通过 `OPENSSL_LIBS` 指定其实际静态库名称，并检查二进制的 DLL 依赖。如改为从源码编译 OpenSSL，需要准备 Windows Perl 与 NASM。
 
+实验性的 Windows ARM64 工作流由 GitHub Actions 手动触发，编译桌面端、CLI 与随附插件，并上传供测试的二进制文件。OpenSSL 使用 ARM64 的 `MD` 静态库，以匹配 MSVC 动态运行库。这个构建关闭 QR/OCR、Dokan 挂载与挂载共享，跳过安装包生成；Dokan Rust 依赖当前只支持 x86 和 x64。
+
 ## 日常任务
 
 ```text

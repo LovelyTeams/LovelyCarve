@@ -3,25 +3,25 @@
 use crate::host::State;
 
 use crate::app::error::AppError;
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(all(windows, not(target_arch = "aarch64"))))]
 use crate::app::error::ErrorCode;
 use crate::state::AppState;
 
-#[cfg(target_os = "windows")]
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 use crate::core::platform::dokan_mount;
-#[cfg(target_os = "windows")]
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 pub use crate::core::platform::dokan_mount::{DokanMountView, MountShareView};
-#[cfg(target_os = "windows")]
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 use crate::core::platform::windows_share;
 
-#[cfg(target_os = "windows")]
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 use crate::app::access::loaded_image_app_error;
-#[cfg(target_os = "windows")]
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 use uuid::Uuid;
-#[cfg(target_os = "windows")]
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 use winapi::um::fileapi::GetLogicalDrives;
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(all(windows, not(target_arch = "aarch64"))))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DokanMountView {
     pub id: String,
@@ -32,7 +32,7 @@ pub struct DokanMountView {
     pub share: Option<MountShareView>,
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(all(windows, not(target_arch = "aarch64"))))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MountShareView {
     pub mount_id: String,
@@ -51,7 +51,7 @@ pub async fn fs_mount_readonly(
     mount_readonly_impl(state, image_id, node_id, mount_point).await
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 async fn mount_readonly_impl(
     state: State<'_, AppState>,
     image_id: String,
@@ -77,7 +77,7 @@ async fn mount_readonly_impl(
     Ok(view)
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(all(windows, not(target_arch = "aarch64"))))]
 async fn mount_readonly_impl(
     _state: State<'_, AppState>,
     _image_id: String,
@@ -86,7 +86,7 @@ async fn mount_readonly_impl(
 ) -> Result<DokanMountView, AppError> {
     Err(AppError::new(
         ErrorCode::UnsupportedFormat,
-        "Dokan read-only mount is only available on Windows",
+        "Dokan read-only mounts require an x86 or x64 Windows build",
     ))
 }
 
@@ -97,7 +97,7 @@ pub async fn fs_unmount_readonly(
     unmount_readonly_impl(state, mount_id).await
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 async fn unmount_readonly_impl(
     state: State<'_, AppState>,
     mount_id: String,
@@ -113,7 +113,7 @@ async fn unmount_readonly_impl(
         .map_err(AppError::from)
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(all(windows, not(target_arch = "aarch64"))))]
 async fn unmount_readonly_impl(
     _state: State<'_, AppState>,
     _mount_id: String,
@@ -125,7 +125,7 @@ pub async fn fs_mounts(state: State<'_, AppState>) -> Result<Vec<DokanMountView>
     mounts_impl(state).await
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 async fn mounts_impl(state: State<'_, AppState>) -> Result<Vec<DokanMountView>, AppError> {
     let shares = state.dokan_mount_shares.lock().await.clone();
     Ok(state
@@ -141,7 +141,7 @@ async fn mounts_impl(state: State<'_, AppState>) -> Result<Vec<DokanMountView>, 
         .collect())
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(all(windows, not(target_arch = "aarch64"))))]
 async fn mounts_impl(_state: State<'_, AppState>) -> Result<Vec<DokanMountView>, AppError> {
     Ok(Vec::new())
 }
@@ -154,7 +154,7 @@ pub async fn fs_suggest_mount_point(state: State<'_, AppState>) -> Result<String
         .ok_or_else(|| AppError::resource_limit("没有可用盘符"))
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 async fn available_mount_points_impl(state: State<'_, AppState>) -> Result<Vec<String>, AppError> {
     let active_mounts = state
         .dokan_mounts
@@ -181,11 +181,11 @@ async fn available_mount_points_impl(state: State<'_, AppState>) -> Result<Vec<S
     Ok(points)
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(all(windows, not(target_arch = "aarch64"))))]
 async fn available_mount_points_impl(_state: State<'_, AppState>) -> Result<Vec<String>, AppError> {
     Err(AppError::new(
         ErrorCode::UnsupportedFormat,
-        "Dokan read-only mount is only available on Windows",
+        "Dokan read-only mounts require an x86 or x64 Windows build",
     ))
 }
 
@@ -203,7 +203,7 @@ pub async fn fs_share_mount(
     share_mount_impl(state, mount_id, share_name).await
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 async fn share_mount_impl(
     state: State<'_, AppState>,
     mount_id: String,
@@ -253,7 +253,7 @@ async fn share_mount_impl(
     Ok(share)
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(all(windows, not(target_arch = "aarch64"))))]
 async fn share_mount_impl(
     _state: State<'_, AppState>,
     _mount_id: String,
@@ -261,7 +261,7 @@ async fn share_mount_impl(
 ) -> Result<MountShareView, AppError> {
     Err(AppError::new(
         ErrorCode::UnsupportedFormat,
-        "LAN sharing for mounted volumes is only available on Windows",
+        "LAN sharing for mounted volumes requires an x86 or x64 Windows build",
     ))
 }
 
@@ -272,12 +272,12 @@ pub async fn fs_unshare_mount(
     unshare_mount_impl(state, mount_id).await
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 async fn unshare_mount_impl(state: State<'_, AppState>, mount_id: String) -> Result<(), AppError> {
     unshare_mount_by_id(&state, &mount_id).await
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(all(windows, not(target_arch = "aarch64"))))]
 async fn unshare_mount_impl(
     _state: State<'_, AppState>,
     _mount_id: String,
@@ -285,7 +285,7 @@ async fn unshare_mount_impl(
     Ok(())
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(windows, not(target_arch = "aarch64")))]
 pub(crate) async fn unshare_mount_by_id(state: &AppState, mount_id: &str) -> Result<(), AppError> {
     let share = state.dokan_mount_shares.lock().await.get(mount_id).cloned();
     let Some(share) = share else {
