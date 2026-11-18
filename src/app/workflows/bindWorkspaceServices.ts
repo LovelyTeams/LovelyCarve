@@ -11,7 +11,7 @@ import { flushFileTagWrites } from '../../features/files/api';
 import { flushFileDerivedWrites } from '../../features/files/api';
 import { useAutoMount } from '../../features/evidence/api';
 import { registerAutoDetectReportPublished, disposeAutoDetect, ensureAutoDetectListener } from '../../features/evidence/api';
-import { disposeTaskCenter, useTaskCenter } from '../../features/tasks/api';
+import { disposeTaskCenter, useTaskCenter, useTaskEntries } from '../../features/tasks/api';
 import { disposeAnalysisResults } from '../../features/analysis/api';
 
 import { registerTaskContext } from '../../features/tasks/api';
@@ -48,9 +48,13 @@ export function bindWorkspaceServices(options: {
     ensureDetection: ensureAutoDetectListener,
   });
   const taskCenter = useTaskCenter();
+  const taskEntries = useTaskEntries();
   const stopAnalysisContext = registerAnalysisContext({
     caseDirectory: () => caseSession.activeCase.value?.dir ?? null,
-    completedRuns: () => taskCenter.tasks.value.flatMap(task => task.status === 'success' && task.result?.runId ? [task.result.runId] : []),
+    completedRuns: () => [
+      ...taskCenter.tasks.value.flatMap(task => task.status === 'success' && task.result?.runId ? [task.result.runId] : []),
+      ...taskEntries.entries.value.flatMap(entry => entry.source === 'builtin' && entry.status === 'success' && entry.view.labels.runId ? [entry.view.labels.runId] : []),
+    ],
   });
   let caseEpoch = 0;
   watch(() => caseSession.activeCase.value?.dir ?? null, () => { caseEpoch++; }, { flush: 'sync' });

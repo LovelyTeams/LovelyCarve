@@ -82,7 +82,7 @@
     <!-- Category rail and second-level navigation; pages share the same workspace. -->
     <SidebarNav
       v-if="showSidebarNav"
-      :groups="displaySidebarGroups"
+      :groups="sidebarGroups"
       :active-id="activePanel"
       @select="handleSidebarSelect"
     >
@@ -139,15 +139,6 @@
           @open-image="onOpenImageFromInfo"
         />
 
-        <BcpPanel
-          v-else-if="activePanel.startsWith('bcp') && imageId"
-          :image-id="imageId"
-          :catalog="bcpCatalogData"
-          :catalog-error="bcpCatalogError"
-          :preferred-file="bcpPreferredFile"
-          :category="activePanel.startsWith('bcp:') ? activePanel.slice(4) : ''"
-        />
-
         <WelcomeScreen
           v-else
           :busy="loading || isSwitching || isOpeningRecentCase"
@@ -187,20 +178,20 @@ import PhysicalDiskPicker from './features/evidence/components/PhysicalDiskPicke
 import RaidMemberDetectDialog from './features/raid/components/RaidMemberDetectDialog.vue';
 import SidebarNav from './app/components/SidebarNav.vue';
 import AnalysisResultsNav from './features/analysis/components/AnalysisResultsNav.vue';
-import { BcpPanel, CarvePanel, DiskFileList, DiskImageInfo, AnalysisResultsPanel, SearchResultsPanel, TimelinePanel, KEPT_ALIVE_PANELS } from './app/workspace/panels';
+import { CarvePanel, DiskFileList, DiskImageInfo, AnalysisResultsPanel, SearchResultsPanel, TimelinePanel, KEPT_ALIVE_PANELS } from './app/workspace/panels';
 import { ListTodo, Upload } from 'lucide-vue-next';
 import { useFileSession } from './features/evidence/api';
 import { useCaseSession } from './features/cases/api';
 import { useWorkspaceShell } from './app/workspace/useWorkspaceShell';
 import { useRaidMemberOpen } from './app/workflows/useRaidMemberOpen';
 import { useEvidenceOpen } from './app/workflows/useEvidenceOpen';
+import { useBcpImport } from './app/workflows/useBcpImport';
 import { useCaseWorkspace } from './app/workflows/useCaseWorkspace';
 import { bindWorkspaceServices } from './app/workflows/bindWorkspaceServices';
-import { useBcpWorkspace } from './app/workspace/useBcpWorkspace';
 import { useWorkspaceTaskHub } from './app/workspace/useWorkspaceTaskHub';
 import { useTabManager } from './app/workspace/useTabManager';
 import { notifyError } from './composables/useToast';
-import { bcpNavGroup } from './app/workspace/bcpNavigation';
+import { focusAnalysisResult } from './features/analysis/api';
 import type { SettingsSection } from './features/settings/model/types';
 
 const { recentCases, clearRecentCases } = useRecentCases();
@@ -233,7 +224,6 @@ const {
 // close + per-volume snapshot build/list.
 const { activeCase, refreshActive: refreshActiveCase, removeEvidence } = useCaseSession();
 const supportsRawAnalysis = computed(() => !imageInfo.value?.index_only && imageInfo.value?.source_format !== 'folder');
-const { bcpCatalogData, bcpCatalogError, preferredBcpFiles, bcpPreferredFile } = useBcpWorkspace(imageId, imageInfo);
 const {
   showRaidMemberDialog, raidMemberQueue, raidMemberStack, raidMemberDetecting,
   raidMemberOpening, raidMemberError, openRaidMemberDialog, addRaidMemberFiles, addRaidMemberPaths,
@@ -250,13 +240,24 @@ const {
   taskHubEvidence, taskHubEvidenceName, closeTaskHub, openTaskResult, toggleTaskHub, openQuickAnalysis,
 } = useWorkspaceTaskHub({ activeCase, imageId, showCaseManager, showPanel: panel => { activePanel.value = panel; } });
 
+const importBcp = useBcpImport({
+  caseId: () => activeCase.value?.id,
+  onPublished: (loadedId, runId) => {
+    if (imageId.value === loadedId && (activePanel.value === 'dashboard' || activePanel.value === 'analysis')) {
+      focusAnalysisResult(runId);
+      activePanel.value = 'analysis';
+    }
+  },
+});
+
 const {
   showAddImageDialog, showPhysicalDiskPicker, onPhysicalDiskSelect,
-  onPhysicalDiskPickerClose, onAddImageSelect, onOpenImageFromInfo,
+  onPhysicalDiskPickerClose, onAddImageSelect, onOpenImageFromInfo, openBcpFilePaths,
 } = useEvidenceOpen({
-  pickFiles, pickFolder, pickBcpFiles, openRaidMemberDialog, preferredBcpFiles,
+  pickFiles, pickFolder, pickBcpFiles, openRaidMemberDialog,
   openImagePath: (path, options) => openImagePath(path, options),
-  showPanel: panel => { activePanel.value = panel; },
+  openSelectedEvidence: path => openSelectedEvidence(path),
+  importBcp: path => { void importBcp(path, 'explicit'); },
 });
 
 const { onOpenCaseEvidence, onCaseEvidenceRemoved } = useCaseWorkspace({
@@ -276,6 +277,7 @@ const {
   handleOpenRecentCase,
   isOpeningRecentCase,
   openImagePath,
+  openSelectedEvidence,
   handleSidebarSelect,
   clearPendingOpenRequest,
   loadFileForTab,
@@ -285,7 +287,8 @@ const {
   openByPath,
   onNeedCase: () => { showCaseManager.value = true; },
   onOpenCaseEvidence,
-  onBcpFileOpen: (folder, fileName) => preferredBcpFiles.set(folder, fileName),
+  onBcpFilesOpen: openBcpFilePaths,
+  onZipOpened: path => { void importBcp(path, 'detect-zip'); },
   onRequestAddImage: () => { showAddImageDialog.value = true; },
   onCaseGateSatisfied: () => { showCaseManager.value = false; },
   onDroppedPaths: async paths => {
@@ -364,10 +367,7 @@ const loadLabel = computed(() => {
   return label;
 });
 
-const displaySidebarGroups = computed(() => bcpCatalogData.value
-  ? [...sidebarGroups.value, bcpNavGroup(bcpCatalogData.value)]
-  : sidebarGroups.value);
-const showSidebarNav = computed(() => displaySidebarGroups.value.length > 0);
+const showSidebarNav = computed(() => sidebarGroups.value.length > 0);
 
 /** Panels kept alive by the `<KeepAlive>` block; while one of them is shown
  *  the dashboard / welcome chain below must not render. */

@@ -16,6 +16,7 @@ import sys
 import tempfile
 import tarfile
 import threading
+import zipfile
 import zlib
 
 from cli_resident_tests import test_resident_sessions
@@ -82,6 +83,77 @@ def main():
         def session(requests, expected=0, arguments=()):
             result = run([*arguments, "session"], "\n".join(json.dumps(request) for request in requests), expected)
             return result, [json.loads(line) for line in result.stdout.splitlines()]
+
+        bcp_directory = root / "bcp export"
+        bcp_directory.mkdir()
+        bcp_zip = bcp_directory / "evidence.zip"
+        last_record = "群组\t结尾\t1030036\towner\t1\n"
+        with zipfile.ZipFile(bcp_zip, "w", zipfile.ZIP_DEFLATED) as archive:
+            shards = []
+            def add_shard(name, code, shard_contents, count, fields):
+                archive.writestr(name, shard_contents)
+                field_items = "".join(f'<ITEM key="{index}" eng="{field}" chn="{label}"/>'
+                                      for index, (field, label) in enumerate(fields, 1))
+                shards.append(
+                    f'<DATA><ITEM key="A010004" val="WA_MFORENSICS_{code}"/><ITEM key="I010039" val="UTF-8无BOM"/>'
+                    f'<DATASET name="WA_COMMON_010014"><DATA><ITEM key="H010020" val="{name}"/>'
+                    f'<ITEM key="I010034" val="{count}"/></DATA></DATASET>'
+                    f'<DATASET name="WA_COMMON_010015"><DATA>{field_items}</DATA></DATASET></DATA>'
+                )
+            account_fields = [("CONTACT_ACCOUNT_TYPE", "应用类型"), ("ACCOUNT_ID", "账号")]
+            group_fields = [("GROUP_NAME", "群组名称"), ("CONTENT", "内容"), *account_fields, ("DELETE_STATUS", "删除状态")]
+            add_shard("one.bcp", "020600", "群组\t结尾\t1030063\towner\t0\n" * 100, 100, group_fields)
+            add_shard("two.bcp", "020600", last_record, 1, group_fields)
+            add_shard("accounts.bcp", "020100",
+                      "1039999\tprofile-owner\thttps://i9.taou.com/maimai/photo.png\n"
+                      "1039999\tunconfirmed\thttps://example.org/i9.taou.com/maimai/photo.png\n",
+                      2, [*account_fields, ("USER_PHOTO", "头像")])
+            add_shard("direct.bcp", "020500",
+                      "1039999\tprofile-owner\t消息一\n1039999\tunconfirmed\t消息二\n",
+                      2, [*account_fields, ("CONTENT", "内容")])
+            archive.writestr("GAB_ZIP_INDEX.xml", '<MESSAGE><DATASET name="WA_COMMON_010013">'
+                             + "".join(shards) + "</DATASET></MESSAGE>")
+        bcp_case = root / "bcp case"
+        run(["cases", "create", str(bcp_case), "--name", "BCP import"])
+        for bcp_path in (bcp_zip, bcp_directory):
+            args = ["--case", str(bcp_case), "--image", str(bcp_path)]
+            imported = json.loads(run([*args, "analysis", "imports", "create"]).stdout)
+            assert imported["recordCount"] == 105 and not imported["reused"]
+            reused = json.loads(run([*args, "analysis", "imports", "create"]).stdout)
+            assert reused == {**imported, "reused": True}
+            tree = json.loads(run(["--case", str(bcp_case), "analysis", "tree", "get"]).stdout)
+            level = [leaf for evidence_item in tree for category in evidence_item["children"]
+                     for analyzer in category["children"] if analyzer["runId"] == imported["runId"]
+                     for leaf in analyzer["children"]]
+            by_type = {leaf["artifactType"]: leaf for leaf in level}
+            assert {kind: leaf["childCount"] for kind, leaf in by_type.items()} == {
+                "bcp.group_messages": 101, "bcp.messaging_accounts": 2, "bcp.direct_messages": 2,
+            }
+            for kind in ("bcp.messaging_accounts", "bcp.direct_messages"):
+                assert [(group["application"], group["account"], group.get("identifiedApplication"))
+                        for group in by_type[kind]["bcpGroups"]] == [
+                    ("1039999", "profile-owner", "1070109"), ("1039999", "unconfirmed", None)
+                ]
+            assert [(group["application"], group["account"], group["total"], group["deleted"])
+                    for group in by_type["bcp.group_messages"]["bcpGroups"]] == [
+                ("1030036", "owner", 1, 1), ("1030063", "owner", 100, 0)
+            ]
+            scope = json.dumps({"applications": ["1030036"], "account": "owner"})
+            records_args = [*args, "analysis", "records", "list", "--run-id", imported["runId"],
+                            "--record-type", "bcp.group_messages"]
+            assert json.loads(run(records_args).stdout)["total"] == 101
+            page = json.loads(run([*records_args, "--keyword", "结尾", "--bcp-scope", scope]).stdout)
+            assert page["total"] == 1
+            record = page["items"][0]
+            assert record["values"] == {"group_name": "群组", "content": "结尾",
+                                        "contact_account_type": "1030036", "account_id": "owner", "delete_status": "1"}
+            source = record["sources"][0]
+            if bcp_path == bcp_zip:
+                assert source == {"root": "root", "path": "two.bcp", "offset": 0, "length": len(last_record.encode())}
+            else:
+                assert source["path"] == bcp_zip.name and "two.bcp" in source["note"]
+            detail = json.loads(run([*args, "analysis", "records", "get", record["recordId"]]).stdout)
+            assert detail["record"] == record
 
         # The path and node ID variants both discover the database's WAL.
         sqlite_evidence = root / "sqlite-evidence"

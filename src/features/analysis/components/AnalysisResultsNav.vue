@@ -2,11 +2,14 @@
   <section class="result-navigation" :aria-label="tr('分析结果目录')">
     <label class="ui-search directory-search"><Search :size="13" aria-hidden="true" /><input ref="searchInput" v-model="search" :aria-label="tr('搜索结果项')" :placeholder="tr('搜索结果项…')" @keydown.esc.stop.prevent="clearSearch" /><button v-if="search" class="ui-icon-btn sm" type="button" :title="tr('清除目录搜索')" :aria-label="tr('清除目录搜索')" @click="clearSearch"><X :size="12" aria-hidden="true" /></button></label>
     <div ref="scroller" class="directory-scroll">
-      <div v-if="treeLoading && !groups.length" class="directory-state" role="status"><Loader2 :size="16" class="spin" aria-hidden="true" />{{ tr("正在读取分析结果…") }}</div>
+      <div v-if="treeLoading && !hasResults" class="directory-state" role="status"><Loader2 :size="16" class="spin" aria-hidden="true" />{{ tr("正在读取分析结果…") }}</div>
       <div v-else-if="treeError" class="directory-state" role="alert"><span>{{ tr("分析结果读取失败：{0}", { 0: treeError }) }}</span><button class="ui-btn link sm" @click="reload">{{ tr("重试") }}</button></div>
-      <div v-else-if="!groups.length" class="directory-state" role="status">{{ search ? tr("未找到结果项") : tr("暂无分析结果") }}</div>
+      <div v-else-if="!hasResults" class="directory-state" role="status">{{ search ? tr("未找到结果项") : tr("暂无分析结果") }}</div>
+      <template v-else>
+      <BcpResultDirectory v-for="directory in visibleBcp" :key="directory.run.nodeId" :directory="directory"
+        :selected-id="selectedNode?.nodeId" :searching="!!search.trim()" :node-label="nodeLabel" @select="openResult" />
       <!-- 分类做小节标题；每次运行一组：折叠按钮与运行标题（名称 + 目标，点开运行信息），下面是记录类型及条数。 -->
-      <section v-for="section in sections" v-else :key="section.category" class="result-section">
+      <section v-for="section in sections" :key="section.category" class="result-section">
         <h3 class="section-label">{{ section.category }}</h3>
         <div v-for="group in section.groups" :key="group.id" class="result-group">
           <div class="run-row" :class="{ selected: isCurrent(group.run) }">
@@ -30,6 +33,7 @@
           </UiTransition>
         </div>
       </section>
+      </template>
     </div>
   </section>
 </template>
@@ -38,11 +42,13 @@
 import { tr } from '../../../composables/useLocale';
 
 import UiTransition from '../../../components/ui/UiTransition.vue';
+import BcpResultDirectory from './BcpResultDirectory.vue';
 import { computed, nextTick, ref, watch } from 'vue';
 import { ChevronRight, Loader2, Search, TriangleAlert, X } from 'lucide-vue-next';
 import { useAnalysisResults } from '../composables/useAnalysisResults';
 import { useAnalysisLabels } from '../composables/useAnalysisLabels';
 import { buildAnalysisGroups, groupOfNode, sectionAnalysisGroups, type AnalysisResultGroup } from '../model/analysisResultView';
+import { buildBcpDirectories, searchBcpDirectory } from '../model/bcpDirectory';
 import type { AnalysisResultNode } from '../../../lib/ipc/analysisResults';
 const props = defineProps<{ imageId: string }>();
 const emit = defineEmits<{ select: [] }>();
@@ -53,7 +59,14 @@ const search = ref('');
 const searchInput = ref<HTMLInputElement | null>(null);
 const scroller = ref<HTMLElement | null>(null);
 const collapsedGroups = ref(new Set<string>());
-const groups = computed(() => buildAnalysisGroups(tree.value, props.imageId, search.value, nodeLabels));
+const bcp = computed(() => buildBcpDirectories(tree.value, props.imageId, tr));
+const visibleBcp = computed(() => bcp.value.flatMap(directory => searchBcpDirectory(directory, search.value, nodeLabel) ?? []));
+const groups = computed(() => {
+  const groupedRuns = new Set(bcp.value.map(directory => directory.run.runId));
+  return buildAnalysisGroups(tree.value, props.imageId, search.value, nodeLabels)
+    .filter(group => !group.run || !groupedRuns.has(group.run.runId));
+});
+const hasResults = computed(() => groups.value.length > 0 || visibleBcp.value.length > 0);
 const sections = computed(() => sectionAnalysisGroups(groups.value));
 const isCurrent = (node: AnalysisResultNode | null) => !!node && selectedNode.value?.nodeId === node.nodeId;
 const isExpanded = (group: AnalysisResultGroup) => !!search.value || !collapsedGroups.value.has(group.id);

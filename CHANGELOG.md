@@ -7,8 +7,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- 带索引的 BCP ZIP 可直接导入案件。导入结果进入桌面端「分析结果」与 CLI 的通用分析结果命令，并保留记录来源。
+
 ### Changed
 
+- BCP 分析结果按应用、账号和记录类型浏览，并显示各分组的删除数和总数。
 - 桌面端在「卷与分区」的同一弹窗中解锁 BitLocker、LUKS、VeraCrypt 和 FileVault 2，分区行可直接预选对应卷。
 
 ### Removed

@@ -45,6 +45,61 @@ beforeEach(() => {
 afterEach(() => { app?.unmount(); app = null; document.body.replaceChildren(); });
 
 describe('AnalysisResultsNav', () => {
+  it('groups BCP records by application and account with icons and deletion totals', async () => {
+    const messages = {
+      ...result('messages', 'one', '群聊消息'),
+      artifactType: 'bcp.group_messages',
+      pluginId: 'org.lovelycarve.bcp',
+      childCount: 18,
+      bcpGroups: [
+        { application: '1030036', account: 'owner', accountLabel: '测试账号', total: 3, deleted: 1 },
+        { application: '1420070', account: 'owner', accountLabel: null, total: 4, deleted: 1 },
+        { application: '1030063', account: 'owner', accountLabel: null, total: 5, deleted: 0 },
+        { application: '1039999', identifiedApplication: '1070109', account: 'maimai', accountLabel: null, total: 4, deleted: 1 },
+        { application: '1039999', account: 'unknown', accountLabel: null, total: 2, deleted: 0 },
+      ],
+    };
+    const bcpRun = { ...run, label: 'BCP 取证结果', pluginId: messages.pluginId, children: [messages] };
+    tree.value = [{
+      ...bcpRun, nodeId: 'evidence', kind: 'evidence', label: '采集结果.zip',
+      children: [{ ...bcpRun, nodeId: 'category', kind: 'class', children: [bcpRun] }],
+    }];
+    selectedNode.value = null;
+    await nextTick();
+    const button = (label: string) =>
+      [...host.querySelectorAll<HTMLButtonElement>('.bcp-row-button')]
+        .find(item => item.querySelector('.bcp-name')?.textContent === label)!;
+    const wechat = button('微信');
+    expect(wechat.querySelector('img')?.getAttribute('src')).toContain('wechat.png');
+    expect(wechat.querySelector('.bcp-count')?.textContent?.trim()).toBe('2/7');
+    expect(button('Telegram').querySelector('.bcp-count')?.textContent?.trim()).toBe('5');
+    expect(button('采集结果.zip')).toBeUndefined();
+    expect(host.querySelector('.bcp-row-button[aria-current]')).toBeNull();
+    expect(button('脉脉').querySelector('img')?.getAttribute('src')).toContain('maimai.jpg');
+    expect(button('其他即时通讯').title).toContain('1039999');
+    wechat.click();
+    await nextTick();
+    button('测试账号').click();
+    await nextTick();
+    button('群聊消息').click();
+    expect(state.selectNode).toHaveBeenCalledWith(expect.objectContaining({
+      childCount: 7,
+      bcpPath: ['采集结果.zip', '微信', '测试账号'],
+      bcpScope: { applications: ['1030036', '1420070'], account: 'owner' },
+    }));
+    const input = host.querySelector<HTMLInputElement>('input')!;
+    input.value = 'Telegram';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+    expect(button('Telegram')).toBeDefined();
+    expect(button('微信')).toBeUndefined();
+    input.value = '1039999';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+    expect(button('脉脉')).toBeDefined();
+    expect(button('其他即时通讯')).toBeDefined();
+  });
+
   it('shows the current evidence plugin results directly and selects the clicked result', () => {
     const items = [...host.querySelectorAll<HTMLButtonElement>('.result-item')];
     expect(items.map(item => item.querySelector('span')?.textContent)).toEqual(['用户列表', '登录记录']);

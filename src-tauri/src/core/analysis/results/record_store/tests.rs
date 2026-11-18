@@ -79,6 +79,7 @@ fn page<'a>(run_id: &'a str, sort: Option<&'a str>, keyword: Option<&'a str>) ->
         run_id,
         record_type: "test.user",
         keyword,
+        bcp_scope: None,
         sort,
         descending: false,
         skip: 0,

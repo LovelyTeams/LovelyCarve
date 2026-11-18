@@ -38,7 +38,7 @@ src/
 ├── App.vue                 主窗口根组件：主壳 + Toast/确认框宿主
 ├── AppShell.vue            唯一主壳装配点：标题栏、侧栏、标签页及面板连接
 ├── app/                    bootstrap、主壳组件、workspace 与跨功能 workflows
-├── features/               cases/evidence/files/preview/search/carving/timeline/analysis/bcp/tasks/raid/settings
+├── features/               cases/evidence/files/preview/search/carving/timeline/analysis/tasks/raid/settings
 │   └── <功能>/             components、composables、model 与就近测试；按需提供 api.ts
 ├── components/             ui/feedback/layout/display 共享组件
 ├── composables/            通用通知、确认、主题、动效与持久化；不引用业务状态
@@ -132,6 +132,10 @@ CLI JSONL 调度位于 `cli/session.rs`。`session --jobs N` 使用有界输入�
 `src-tauri/examples/` 按用途分类，所有 example 目标在 Cargo 中显式声明，通过 `just run-example <名称>` 调用；`just check-examples` 检查这些目标，用法见 [后端探针](../src-tauri/examples/README.md)。新增模块使用 `<name>.rs` 加 `<name>/`，不新增 `mod.rs`。
 
 `core::evidence::image::DiskImage` 负责镜像源、分区布局、字节读取、解密和定位缓存。`AppState.images` 登记的对象是 `Arc<core::filesystem::evidence_session::EvidenceSession>`：它持有同一个字节读者，并拥有宿主 Docker、NTFS 删除记录投影及外部卷注册表。字节扫描、RAID、哈希和源字节导出借用 `disk_image()`；文件树、预览和插件证据浏览借用 session。原证据 ID、路径、序列化字段和分区寻址保持不变。
+
+BCP 导入由内置任务流式读取 ZIP 成员或目录分片，按索引字段生成记录结构并经 `record_store` 分批写入检材的 `records.db`。所有分片完成后才发布，失败或取消时丢弃暂存运行。原始字段值、来源分片与分片内字节位置随记录保存；与插件结果共用结果树、分页、检索和审计查询。
+
+BCP 的应用与账号分组从已发布记录读取，提供各组的总数和已删除数。桌面端用应用编码映射构建目录；结果查询沿用已发布的运行和记录类型，以原始应用编码及账号限定范围。
 
 `EvidenceSession::raw_export_reader` 提供独立的 RAW 导出投影。`image_export_raw` 默认 `mode: source`，桌面镜像头部使用 `unlockedPartitions`，导出开始时固定已解锁的 LUKS / VeraCrypt / BitLocker 读者。明文放在原分区起始位置，容器开销对应的分区尾部补零；整盘大小、分区表、未解锁分区和分区间隙保留原字节。范围重叠、溢出、越界、明文过长及短读明确失败，关闭解密会话不回退到密文。该投影不影响普通读取、源哈希和证据身份；尾部补零是导出转换规则，源坏区仍沿用读故障审计。导出目标以 `create_new` 创建。
 
@@ -1135,7 +1139,7 @@ CLI 的 `mounts create/list/delete/share/unshare` 调用同一组命令，进程
 
 ### 右侧详情栏与固定窗口大小
 
-文件列表预览、全局搜索命中、时间线事件、文件恢复结果与分析结果记录的详情都在右侧展开，由 `<UiTransition kind="dock">` 包裹。搜索、时间线、雕刻、分析与 BCP 记录共用 `DetailDock.vue`（标题栏、可拖动宽度，共用 `lovelycarve-detail-width`）。文件列表的详细信息页（含独立窗口）及上述五类详情统一使用 `FileDetailLayout.vue`（完整名称、状态、操作区）、`FileDetailSection.vue`（分组与可选折叠）和 `FileDetailFields.vue`（标签/值、长内容换行、复制反馈）。常用信息默认展开，技术标识默认折叠；可用正文宽度达到 640px 时分组可并列，哈希、上下文等宽分组仍占整行。`analysis-detail.css` 仅承载上下文与复核提示样式。
+文件列表预览、全局搜索命中、时间线事件、文件恢复结果与分析结果记录的详情都在右侧展开，由 `<UiTransition kind="dock">` 包裹。搜索、时间线、雕刻与分析共用 `DetailDock.vue`（标题栏、可拖动宽度，共用 `lovelycarve-detail-width`）。文件列表的详细信息页（含独立窗口）及上述结果详情统一使用 `FileDetailLayout.vue`（完整名称、状态、操作区）、`FileDetailSection.vue`（分组与可选折叠）和 `FileDetailFields.vue`（标签/值、长内容换行、复制反馈）。常用信息默认展开，技术标识默认折叠；可用正文宽度达到 640px 时分组可并列，哈希、上下文等宽分组仍占整行。`analysis-detail.css` 仅承载上下文与复核提示样式。
 
 - 主窗口大小和位置由用户控制。切换页面（含 KeepAlive 激活/停用）、打开/关闭详情、卸载详情组件都不调用原生窗口缩放或移动接口。
 - 详情在当前窗口内以横向过渡展开/收起；足够宽时与表格并列，窄区域以右侧浮层展示。拖动详情分隔条只调整面板宽度并记住选择。
@@ -1191,7 +1195,7 @@ RAID 成员、当前检材卷快照和案件详情默认折叠，切换与锁定
 ### 分析结果目录与记录表
 
 `AppShell.vue` 将 `AnalysisResultsNav.vue` 放入 `SidebarNav` 的中间栏插槽；显示分析大类时替代静态子页面菜单，包括收起状态下的悬停预览。
-`SidebarNav` 使用左侧大类栏与中间子类栏，选中大类由主壳的当前页面推导；镜像、工具、分析分别组织页面，BCP 按检材额外追加。
+`SidebarNav` 使用左侧大类栏与中间子类栏，选中大类由主壳的当前页面推导；镜像、工具、分析分别组织页面。BCP 运行显示在该检材的分析目录。
 主窗口没有全局底部状态栏；主题切换集中在设置中心的「界面」，当前会话日志在「日志」中搜索、筛选、复制和清空，软件版本与本地构建时间位于「关于」。通用版本读取和控制台捕获由 `src/composables/useAppVersion.ts` 与 `useConsoleCapture.ts` 提供；日志在启动时捕获，即使设置未打开也持续收集，最多保留 5,000 条。
 分析中间栏直接显示插件执行结果，不重复大类标题或「分析结果」菜单；目录保留自身搜索框，大类栏底部只有子类栏展开 / 收起，不提供过滤或添加检材入口。收起子类栏后点击分析大类或展开按钮即可重新展开。目录仅显示当前检材，省略重复的检材层级，
 以结果分类为小节标题（`sectionAnalysisGroups`），按分析器运行分组列出记录类型及记录数：运行标题两行显示分析器与运行目标（系统或文件）并带告警数，点击打开运行概览，左侧按钮单独折叠；记录类型挂在中性树形缩进线上，记录数是右对齐的等宽数字，没有记录的类型退为次要色；只有告警的运行也列出。概览、任务中心等处改变选中项时，目录展开所在运行并只滚动目录自身。目录支持搜索记录类型、分析器与目标。
@@ -1278,7 +1282,7 @@ RAID 成员、当前检材卷快照和案件详情默认折叠，切换与锁定
 | 索引与快照 | 卷快照、全显、树图和文件查询 | `snapshot_*`、`fs_child_counts`、`snapshot-build-progress`；目录与全显经 `fs_children_page` / `fs_flat_page` 读取卷索引，树图经 `fs_size_tree` 读取卷索引汇总的空间占用树 |
 | 标签与派生数据 | 文件列表的标签、哈希与类型列 | `fs_tags_*`、`fs_digest_load_nodes` / `fs_digest_persist`、`fs_identify_type`、`fs_ftype_load_nodes` / `fs_ftype_persist` |
 | 校验与导出 | 哈希、导出任务 | `image_hash_compute`、`image_export_raw`、`fs_digest`、`fs_export*`、`image-hash-progress`、`image-export-progress`、`fs-export-dir-progress` |
-| 数据浏览 | 数据库预览和 BCP | `fs_sqlite*`、`fs_realm*`、`bcp_*` |
+| 数据浏览 | 数据库预览与 BCP 分析结果导入 | `fs_sqlite*`、`fs_realm*`、`bcp_import` |
 | 回源定位 | 搜索、时间线与分析结果的定位 | `fs_node_locate`、`fs_source_locate` |
 | 全局搜索 | `SearchResultsPanel.vue` | `global_search_*`、`global-search-progress` |
 | 时间线 | `TimelinePanel.vue` | `timeline_*`、`timeline-progress` |

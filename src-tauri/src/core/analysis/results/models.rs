@@ -40,7 +40,32 @@ pub struct AnalysisTreeNode {
     /// A result of an earlier LovelyCarve version (`analysis.db`), shown
     /// read-only without schema or provenance.
     pub legacy: bool,
+    /// A BCP record type's application/account partitions in the published run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bcp_groups: Option<Vec<BcpRowGroup>>,
     pub children: Vec<AnalysisTreeNode>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BcpRowGroup {
+    /// Application code or name as exported. Empty for device-level records.
+    pub application: String,
+    /// A more specific application supported by metadata within the published run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub identified_application: Option<String>,
+    pub account: String,
+    pub account_label: Option<String>,
+    pub total: u64,
+    pub deleted: u64,
+}
+
+/// Exact application/account scope within a published BCP record type.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BcpRecordScope {
+    pub applications: Vec<String>,
+    pub account: Option<String>,
 }
 
 /// A table column of a record type.

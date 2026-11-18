@@ -52,6 +52,7 @@ fn application_builder() -> tauri::Builder<tauri::Wry> {
         .invoke_handler(tauri::generate_handler![
             commands::analysis::bcp::bcp_catalog,
             commands::analysis::bcp::bcp_rows,
+            commands::analysis::bcp::bcp_import,
             commands::evidence::image::image_load,
             commands::evidence::image::image_info,
             commands::evidence::image::image_bad_regions,

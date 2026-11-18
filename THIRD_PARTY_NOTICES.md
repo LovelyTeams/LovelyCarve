@@ -1682,3 +1682,9 @@ images and native tools are not redistributed. Local changes and evidence:
 [reader origin](src-tauri/vendor/rust-fs-bcachefs/ORIGIN.md),
 [framework origin](src-tauri/vendor/rust-fs-core/ORIGIN.md),
 [adapter and fixtures](src-tauri/vendor/bcachefs-reader/ORIGIN.md).
+
+## BCP application icons
+
+The result directory icons in `src/assets/bcp-apps` come from the local
+Honglian GoldenEyes V4 installation's `icon` directory. Application logos
+and marks belong to their respective owners.

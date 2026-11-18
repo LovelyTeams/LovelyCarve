@@ -29,6 +29,7 @@ impl TaskResourceAcquireError {
 #[serde(rename_all = "camelCase")]
 pub enum TaskKind {
     AutoDetect,
+    BcpImport,
     BitlockerExport,
     BitlockerScan,
     BitlockerUnlock,

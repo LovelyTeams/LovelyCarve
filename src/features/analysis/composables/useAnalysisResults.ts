@@ -18,6 +18,7 @@ import {
   type RecordPropertyLayout,
 } from '../../../lib/ipc/analysisResults';
 import { buildAnalysisGroups } from '../model/analysisResultView';
+import { bcpDirectoryResults, buildBcpDirectories } from '../model/bcpDirectory';
 import { analysisCaseDirectory, analysisCompletedRuns } from './analysisContext';
 
 /** 分析结果表格的分页大小。 */
@@ -154,11 +155,15 @@ async function refreshTree(): Promise<void> {
     dirty.value = false;
     if (requestedAnalyzer === analyzer) requestedAnalyzer = null;
     const groups = currentImageId.value ? buildAnalysisGroups(next, currentImageId.value) : [];
-    const results = groups.flatMap(group => group.results);
+    const bcp = currentImageId.value ? buildBcpDirectories(next, currentImageId.value, tr) : [];
+    const bcpResults = bcp.flatMap(bcpDirectoryResults);
+    const representedRuns = new Set(bcp.map(directory => directory.run.runId));
+    const results = groups.filter(group => !group.run || !representedRuns.has(group.run.runId)).flatMap(group => group.results);
     const focusedGroup = analyzer ? groups.find(group => group.run?.runId === analyzer || group.run?.function === analyzer) : undefined;
-    const focused = focusedGroup ? firstPopulated(focusedGroup.results) ?? focusedGroup.run : null;
+    const focusedBcp = bcp.find(directory => directory.run.runId === focusedGroup?.run?.runId);
+    const focused = focusedBcp?.run ?? (focusedGroup ? firstPopulated(focusedGroup.results) ?? focusedGroup.run : null);
     const current = selectedNode.value;
-    const again = current ? findNode(next, current.nodeId) : null;
+    const again = current ? (findNode(next, current.nodeId) ?? bcpResults.find(node => node.nodeId === current.nodeId)) : null;
     if (focused) {
       clearSelection();
       selectedNode.value = focused;
@@ -168,7 +173,7 @@ async function refreshTree(): Promise<void> {
       await loadSelection();
     } else {
       clearSelection();
-      selectedNode.value = firstPopulated(results) ?? groups[0]?.run ?? null;
+      selectedNode.value = firstPopulated(results) ?? bcp[0]?.run ?? groups[0]?.run ?? null;
       if (selectedNode.value) await loadSelection();
     }
   } catch (error) {
@@ -190,6 +195,7 @@ async function loadRecords(): Promise<void> {
     const page = await analysisRecordsPage({
       imageId: node.imageId, runId: node.runId, recordType: node.artifactType, legacy: node.legacy,
       keyword: keyword.value.trim() || undefined,
+      bcpScope: node.bcpScope,
       sort: sort.value?.column, descending: sort.value?.descending,
       skip: pageIndex.value * ANALYSIS_PAGE_SIZE, limit: ANALYSIS_PAGE_SIZE,
     });
@@ -346,6 +352,7 @@ export function useAnalysisResults() {
         recordType: node.artifactType,
         legacy: node.legacy,
         keyword: exportKeyword,
+        bcpScope: node.bcpScope,
         sort: exportSort?.column,
         descending: exportSort?.descending,
         skip: collected.length,

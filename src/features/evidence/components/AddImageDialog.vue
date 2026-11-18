@@ -40,8 +40,8 @@
           <button class="ui-choice" @click="choose('bcp')">
             <span class="ui-choice-icon"><Database :size="20" /></span>
             <span class="ui-choice-text">
-              <span class="ui-choice-title">{{ tr("BCP 文件") }}</span>
-              <span class="ui-choice-desc">{{ tr("打开网安数据交换 BCP，按索引浏览分类与记录") }}</span>
+              <span class="ui-choice-title">{{ tr("BCP 文件与 ZIP 包") }}</span>
+              <span class="ui-choice-desc">{{ tr("直接读取 ZIP 包或 BCP 文件，导入案件的分析结果") }}</span>
             </span>
             <ChevronRight :size="18" class="ui-choice-arrow" />
           </button>

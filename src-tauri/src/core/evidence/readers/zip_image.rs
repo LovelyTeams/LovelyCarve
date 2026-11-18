@@ -305,6 +305,24 @@ impl ZipImage {
         self.read_entry(entry, max_bytes)
     }
 
+    /// Open an original regular ZIP member for bounded, sequential reading.
+    /// The callback owns its reader while other logical reads can proceed.
+    #[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]
+    pub(crate) fn with_member_reader<T>(
+        &self,
+        rel: &str,
+        read: impl FnOnce(&mut dyn Read, u64) -> Result<T>,
+    ) -> Result<T> {
+        let index = self
+            .lookup(rel)
+            .and_then(|entry| entry.archive_index)
+            .with_context(|| format!("not a readable regular ZIP member: {rel}"))?;
+        let mut archive = self.archive.lock().clone();
+        let mut member = archive.by_index(index)?;
+        let size = member.size();
+        read(&mut member, size).with_context(|| format!("read ZIP member {rel}"))
+    }
+
     /// Stream the member at `rel` to `visitor` in `chunk_size` windows. STORED
     /// members stream as borrowed slices into the outer mmap (O(1) heap); DEFLATE
     /// members decompress through a bounded buffer, so a multi-GiB member streams
