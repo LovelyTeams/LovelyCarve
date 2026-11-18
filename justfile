@@ -275,6 +275,12 @@ dev-full:
 build:
     {{ windowsenv }}; cargo build --no-default-features --features desktop
 
+# Compile the macOS desktop executable with its frontend assets.
+[group("desktop")]
+[macos]
+build-macos:
+    bun run tauri build --no-bundle
+
 # Build the desktop backend with WeChat QR and CUDA OCR (Windows).
 [group("desktop")]
 [windows]
