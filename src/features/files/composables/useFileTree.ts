@@ -7,8 +7,9 @@ import { isHostDockerContainerRootId } from '../model/model';
 import { fileTreePathFor, visibleFileTreeRows, type TreeNodeData, type TreeRow, type TreeStackFrame } from '../model/fileTree';
 import { useFileTreeMetadata } from './useFileTreeMetadata';
 import type { Ref } from 'vue';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 interface FileTreeOptions {
-  imageId: () => string; pathStack: () => TreeStackFrame[]; caseId: () => string | null;
+  imageId: () => ImageId; pathStack: () => TreeStackFrame[]; caseId: () => string | null;
   hideEmptyDirs: Ref<boolean>; navigate: (stack: TreeStackFrame[]) => void; openFile: (stack: TreeStackFrame[], fileId: string) => void;
 }
 export function useFileTree(options: FileTreeOptions) {
@@ -124,7 +125,7 @@ export function useFileTree(options: FileTreeOptions) {
     }
   }
 
-  async function loadChildren(parentId: string) {
+  async function loadChildren(parentId: NodeId) {
     const parent = nodes.get(parentId);
     if (!parent) return;
     if (parent.loaded || parent.loading) return;

@@ -7,6 +7,7 @@
 // `AUTODETECT_FAILED_EVENT` before its `task-lifecycle` registration goes.
 import { invokeCmd, type BackendAppError } from './client';
 import { onEvent, type UnlistenFn } from './events';
+import type { ImageId } from './ids';
 
 /** 检材平台词表,存储在 `evidence.platform`。 */
 export type EvidencePlatform =
@@ -56,7 +57,7 @@ export interface BackupConclusion {
 }
 
 export interface AutoDetectReport {
-  image_id: string;
+  image_id: ImageId;
   route: DetectRoute;
   platform: EvidencePlatform | null;
   platforms: EvidencePlatform[];
@@ -77,13 +78,13 @@ export const AUTODETECT_FINISHED_EVENT = 'autodetect-finished';
 export const AUTODETECT_FAILED_EVENT = 'autodetect-failed';
 
 export interface AutoDetectFailure {
-  image_id: string;
+  image_id: ImageId;
   /** 与命令错误同形;取消时 `code` 为 `cancelled`。 */
   error: BackendAppError;
 }
 
 /** 手动触发识别并(有案件时)回写检材行。 */
-export function autodetectEvidence(args: { imageId: string }): Promise<AutoDetectReport> {
+export function autodetectEvidence(args: { imageId: ImageId }): Promise<AutoDetectReport> {
   return invokeCmd<AutoDetectReport>('autodetect_evidence', args);
 }
 

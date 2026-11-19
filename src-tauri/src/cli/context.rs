@@ -299,7 +299,7 @@ impl Exec {
     /// environment is announced when it is opened, unless quiet.
     pub async fn current_image(&self, context: &mut Context) -> Result<Option<String>, CliError> {
         if let Some(id) = &context.image_id {
-            if self.state.images.lock().await.contains_key(id) {
+            if self.state.images.lock().await.contains_key(id.as_str()) {
                 return Ok(Some(id.clone()));
             }
             context.image_id = None;
@@ -325,8 +325,8 @@ impl Exec {
     ) -> Result<FsNodePage, CliError> {
         crate::commands::filesystem::filesystem::fs_children_page(
             crate::host::State::new(&self.state),
-            image_id.to_owned(),
-            parent_id,
+            image_id.into(),
+            parent_id.into(),
             cursor,
             Some(page_size),
             None,

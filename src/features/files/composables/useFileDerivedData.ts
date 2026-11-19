@@ -5,6 +5,7 @@ import { fsDigestLoadNodes, fsDigestPersist, fsFtypeLoadNodes, fsFtypePersist, t
 import { notifyError } from '../../../composables/useToast';
 import type { DiskFsNode as FsNode } from '../model/model';
 import { ALL_HASH_ALGOS, chunkNodeIds, fileNodeIdsForDerivedHydration } from '../model/derivedData';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 const pendingWrites = new Set<Promise<void>>();
 function trackWrite(write: Promise<unknown>, title: string) {
@@ -18,7 +19,7 @@ export async function flushFileDerivedWrites(): Promise<void> {
 
 /** Per-evidence derived columns; directory pages share one cache owner. */
 export function useFileDerivedData(options: {
-  imageId: () => string;
+  imageId: () => ImageId;
   queryGeneration: () => number;
   revealTypeColumn: () => void;
 }) {
@@ -80,7 +81,7 @@ export function useFileDerivedData(options: {
     }
   }
 
-  function persistDigests(imageId: string, entries: Record<string, StoredDigest>) {
+  function persistDigests(imageId: ImageId, entries: Record<string, StoredDigest>) {
     if (Object.keys(entries).length === 0) return;
     trackWrite(fsDigestPersist({ imageId, entries }), tr("保存哈希结果失败"));
   }
@@ -111,7 +112,7 @@ export function useFileDerivedData(options: {
     }
   }
 
-  function persistFtypes(imageId: string, entries: Record<string, FsTypeIdent>) {
+  function persistFtypes(imageId: ImageId, entries: Record<string, FsTypeIdent>) {
     if (Object.keys(entries).length === 0) return;
     trackWrite(fsFtypePersist({ imageId, entries }), tr("保存类型识别结果失败"));
   }

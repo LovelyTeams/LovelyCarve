@@ -6,10 +6,11 @@ import { broadcastPreview } from '../../preview/api';
 import type { DiskFsNode as FsNode } from '../model/model';
 import { HASH_ALGO_LABEL } from '../model/derivedData';
 import type { useFileDerivedData } from './useFileDerivedData';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 /** Batch calculation actions use the panel's existing cache and captured evidence. */
 export function useFileDerivedActions(options: {
-  imageId: () => string;
+  imageId: () => ImageId;
   data: ReturnType<typeof useFileDerivedData>;
   revealColumns: (keys: readonly string[]) => void;
 }) {

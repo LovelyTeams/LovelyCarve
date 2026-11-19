@@ -20,6 +20,7 @@ use parking_lot::{Condvar, Mutex as FairMutex};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
+use crate::core::common::ids::ImageId;
 use crate::core::evidence::crypto::bde_image::{
     BdeEncryptionMethod, BdeUnlockKey, VolumeByteReader,
 };
@@ -48,17 +49,17 @@ pub const INDEX_ONLY_READ_ERROR: &str = "源镜像不可用，当前仅能浏览
 #[derive(Debug, Clone)]
 pub enum DerivedImage {
     /// Plaintext view of an unlocked LUKS / VeraCrypt container.
-    Decrypted { parent: String },
+    Decrypted { parent: ImageId },
     /// Point-in-time view of an NTFS volume reconstructed from a shadow copy.
     ShadowCopy {
-        parent: String,
+        parent: ImageId,
         origin: crate::core::evidence::vss_image::ShadowCopyOrigin,
     },
 }
 
 impl DerivedImage {
     /// Id of the loaded image this one was derived from.
-    pub fn parent(&self) -> &str {
+    pub fn parent(&self) -> &ImageId {
         match self {
             Self::Decrypted { parent } | Self::ShadowCopy { parent, .. } => parent,
         }
@@ -69,7 +70,7 @@ impl DerivedImage {
 pub struct DiskImage {
     /// Set for a session-only image derived from another loaded image.
     pub derived: Option<DerivedImage>,
-    pub id: String,
+    pub id: ImageId,
     pub path: PathBuf,
     source: ImageSource,
     pub sector_size: usize,

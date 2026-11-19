@@ -1,5 +1,6 @@
 //! registration implementation.
 use super::*;
+use crate::core::common::ids::VolumeKey;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 
 /// Volume keys worth snapshotting on an image: the supported partition roots,
@@ -46,7 +47,7 @@ pub(crate) async fn snapshot_unlocked_volume(
     app: &AppHandle,
     state: &State<'_, AppState>,
     image: Arc<EvidenceSession>,
-    volume_key: String,
+    volume_key: VolumeKey,
 ) {
     let case = state.active_case.lock().await;
     let in_case = case
@@ -200,7 +201,7 @@ pub(crate) async fn register_and_snapshot(
                     state.tasks.clone(),
                     Arc::clone(&state.active_case),
                     Arc::clone(&image),
-                    volume_key,
+                    volume_key.into(),
                     token_id,
                 );
             }
@@ -226,7 +227,7 @@ pub(crate) async fn register_and_snapshot(
                     Arc::clone(&state.active_case),
                     state.tasks.clone(),
                     Arc::clone(&image),
-                    volume_key,
+                    volume_key.into(),
                     token_id,
                     false,
                 );
@@ -280,7 +281,7 @@ pub(super) fn admit(case: &mut CaseState, image: &EvidenceSession) -> Admission 
         .map(|evidence| evidence.added_at)
         .unwrap_or_else(case_ledger::now);
     match case.register_evidence(&EvidenceRef {
-        image_id: image.id.clone(),
+        image_id: image.id.to_string(),
         path: info.path,
         source_format: info.source_format,
         size_bytes: info.size_bytes,

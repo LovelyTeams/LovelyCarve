@@ -6,8 +6,9 @@ import { taskCancel } from '../../../lib/ipc/taskRuntime';
 import { confirm } from '../../../composables/useConfirm';
 import { notifyError, notifyInfo } from '../../../composables/useToast';
 import { isFinished } from '../model/carveView';
+import type { ImageId } from '../../../lib/ipc/ids';
 interface CarveHistoryOptions {
-  imageId: () => string; recovering: () => boolean; onSelected: () => Promise<void>;
+  imageId: () => ImageId; recovering: () => boolean; onSelected: () => Promise<void>;
   onReset: () => void; onStarted: () => void; onMoreResults: () => void;
 }
 export function useCarveHistory(options: CarveHistoryOptions) {
@@ -35,7 +36,7 @@ export function useCarveHistory(options: CarveHistoryOptions) {
     scan.value = task;
     await options.onSelected();
   }
-  async function refreshHistory(imageId: string, preferredId?: string) {
+  async function refreshHistory(imageId: ImageId, preferredId?: string) {
     if (disposed || imageId !== options.imageId()) return;
     const request = ++historyRequest;
     loadingHistory.value = true;

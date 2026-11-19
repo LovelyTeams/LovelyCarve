@@ -134,7 +134,7 @@ pub fn detect(images: &[Arc<DiskImage>], consumed: &HashSet<String>) -> Heuristi
     // Group RAID-metadata-free, unconsumed images by exact byte size.
     let mut by_size: BTreeMap<u64, Vec<Arc<DiskImage>>> = BTreeMap::new();
     for image in images {
-        if consumed.contains(&image.id) || carries_raid_metadata(image) {
+        if consumed.contains(image.id.as_str()) || carries_raid_metadata(image) {
             continue;
         }
         by_size.entry(image.len()).or_default().push(image.clone());

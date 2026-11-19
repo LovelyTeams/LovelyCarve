@@ -9,14 +9,15 @@ import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { invokeCmd } from './client';
 import { onWindowDestroyed } from './events';
 import type { FilePreviewReadingState } from '../models/filePreviewReadingState';
+import type { ImageId, NodeId } from './ids';
 
 export interface FilePreviewWindowArgs {
   indexOnly?: boolean;
   ownerId?: string;
   previewId?: string;
   position?: { x: number; y: number };
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
   fullPath: string;
   /** Window title (the file name). */
   title: string;

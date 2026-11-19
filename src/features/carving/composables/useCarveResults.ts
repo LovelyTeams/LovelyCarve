@@ -3,11 +3,12 @@ import { tr } from '../../../composables/useLocale';
 import { onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { carveResultsPage, type CarveArtifact, type CarveScanSnapshot } from '../../../lib/ipc/carve';
 import { mergeCarveArtifacts } from '../model/carveResults';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 const PAGE_SIZE = 500;
 
 /** Loads every signature result of the selected scan; the result tree needs all of them. */
-export function useCarveResults(options: { imageId: () => string; scan: () => CarveScanSnapshot | null }) {
+export function useCarveResults(options: { imageId: () => ImageId; scan: () => CarveScanSnapshot | null }) {
   let disposed = false; let generation = 0; let pending = false;
   // Pages arrive in result order and never mutate; a deep proxy over large scans is pure overhead.
   const artifacts = shallowRef<CarveArtifact[]>([]);

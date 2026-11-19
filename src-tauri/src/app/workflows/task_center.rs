@@ -208,7 +208,7 @@ pub fn native_entry(task: &TaskSnapshot) -> Option<TaskEntry> {
     let cancellable = task.outcome.is_none() && !cancelling && task.kind != TaskKind::DockerPrepare;
     Some(TaskEntry {
         id: task.id.clone(),
-        image_id: task.image_id.clone(),
+        image_id: task.image_id.as_deref().map(str::to_owned),
         status,
         cancelling,
         automatic: task.automatic,

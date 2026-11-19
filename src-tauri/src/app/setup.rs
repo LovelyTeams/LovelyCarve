@@ -7,6 +7,7 @@ use crate::app::workflows::task_journal::TaskJournal;
 use crate::{
     core::{
         analysis::identify::systems::SystemCache,
+        common::ids::ImageId,
         extensions::{
             plugin::PluginManager,
             task_scheduler::{
@@ -176,7 +177,7 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
 /// 派发),执行器把任务交给 lc-plugin-host 插件进程;系统作用域的任务从
 /// 已识别的系统里选目标。
 pub(crate) fn build_task_scheduler(
-    images: Arc<Mutex<HashMap<String, Arc<EvidenceSession>>>>,
+    images: Arc<Mutex<HashMap<ImageId, Arc<EvidenceSession>>>>,
     plugins: Arc<parking_lot::RwLock<Option<Arc<PluginManager>>>>,
     systems: Arc<SystemCache>,
 ) -> TaskScheduler {

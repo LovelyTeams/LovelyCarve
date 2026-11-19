@@ -1,5 +1,6 @@
 import { invokeCmd } from '../client';
 import type { ReadFaultReport } from './export';
+import type { ImageId, NodeId } from '../ids';
 
 
 
@@ -17,7 +18,7 @@ export interface FsDigest extends ReadFaultReport {
 }
 
 /** 按需计算一个文件的内容哈希；`algos` 选要算的算法（结果只回填这些字段）。 */
-export function fsDigest(args: { imageId: string; nodeId: string; algos: HashAlgo[] }): Promise<FsDigest> {
+export function fsDigest(args: { imageId: ImageId; nodeId: NodeId; algos: HashAlgo[] }): Promise<FsDigest> {
   return invokeCmd<FsDigest>('fs_digest', args);
 }
 
@@ -40,21 +41,21 @@ export interface FsTypeIdent {
 
 /** 按文件内容识别类型（Google Magika 本地推理），与扩展名无关——适合
  *  发现改后缀伪装的文件。只采样文件头尾各 4 KiB，大文件也很快。 */
-export function fsIdentifyType(args: { imageId: string; nodeId: string }): Promise<FsTypeIdent> {
+export function fsIdentifyType(args: { imageId: ImageId; nodeId: NodeId }): Promise<FsTypeIdent> {
   return invokeCmd<FsTypeIdent>('fs_identify_type', args);
 }
 
 /** 读取案件目录中本镜像已持久化的类型识别（节点 id → 识别结果）。无案件 /
  *  尚未识别 / 存档损坏时返回空表，浏览不受影响。 */
-export function fsFtypeLoad(args: { imageId: string }): Promise<Record<string, FsTypeIdent>> {
+export function fsFtypeLoad(args: { imageId: ImageId }): Promise<Record<string, FsTypeIdent>> {
   return invokeCmd<Record<string, FsTypeIdent>>('fs_ftype_load', args);
 }
 
 /** 只读取指定节点集合的类型识别结果。用于目录页/流式批次水合，避免整镜像
  *  类型识别表通过 IPC 一次性返回；后端会限制单次节点数。 */
 export function fsFtypeLoadNodes(args: {
-  imageId: string;
-  nodeIds: string[];
+  imageId: ImageId;
+  nodeIds: NodeId[];
 }): Promise<Record<string, FsTypeIdent>> {
   return invokeCmd<Record<string, FsTypeIdent>>('fs_ftype_load_nodes', args);
 }
@@ -63,7 +64,7 @@ export function fsFtypeLoadNodes(args: {
  *  覆盖该节点，其他节点保留，跨批次/会话累积）。无案件时返回 false（结果只
  *  活在本会话）；写入失败才会 reject。 */
 export function fsFtypePersist(args: {
-  imageId: string;
+  imageId: ImageId;
   entries: Record<string, FsTypeIdent>;
 }): Promise<boolean> {
   return invokeCmd<boolean>('fs_ftype_persist', args);
@@ -80,15 +81,15 @@ export interface StoredDigest {
 
 /** 读取案件目录中本镜像已持久化的哈希（节点 id → 摘要）。无案件 / 尚未
  *  持久化 / 存档损坏时返回空表，浏览不受影响。 */
-export function fsDigestLoad(args: { imageId: string }): Promise<Record<string, StoredDigest>> {
+export function fsDigestLoad(args: { imageId: ImageId }): Promise<Record<string, StoredDigest>> {
   return invokeCmd<Record<string, StoredDigest>>('fs_digest_load', args);
 }
 
 /** 只读取指定节点集合的哈希。用于目录页/流式批次水合，避免整镜像摘要表
  *  通过 IPC 一次性返回；后端会限制单次节点数。 */
 export function fsDigestLoadNodes(args: {
-  imageId: string;
-  nodeIds: string[];
+  imageId: ImageId;
+  nodeIds: NodeId[];
 }): Promise<Record<string, StoredDigest>> {
   return invokeCmd<Record<string, StoredDigest>>('fs_digest_load_nodes', args);
 }
@@ -96,7 +97,7 @@ export function fsDigestLoadNodes(args: {
 /** 把新计算的哈希合并进案件目录的持久化存档。无案件时返回 false（结果只
  *  活在本会话）；写入失败才会 reject。 */
 export function fsDigestPersist(args: {
-  imageId: string;
+  imageId: ImageId;
   entries: Record<string, StoredDigest>;
 }): Promise<boolean> {
   return invokeCmd<boolean>('fs_digest_persist', args);

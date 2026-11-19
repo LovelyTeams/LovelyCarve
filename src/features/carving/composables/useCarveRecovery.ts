@@ -6,11 +6,12 @@ import { IpcCommandError } from '../../../lib/ipc/client';
 import { carveRecover, type CarveRecoveryResult, type CarveScanSnapshot } from '../../../lib/ipc/carve';
 import { onTaskProgress, taskCancel, type BackendTaskProgressEvent } from '../../../lib/ipc/taskRuntime';
 import { notifyError, notifyInfo, notifySuccess } from '../../../composables/useToast';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 /** Carved artifacts and filesystem records to export; `null` artifacts means every carved result. */
 export interface RecoverySelection { artifactIds: string[] | null; fileIds: string[] }
 
-export function useCarveRecovery(options: { imageId: () => string; scan: () => CarveScanSnapshot | null }) {
+export function useCarveRecovery(options: { imageId: () => ImageId; scan: () => CarveScanSnapshot | null }) {
   const recovering = ref(false); const recoveryTaskId = ref<string | null>(null);
   const recoveryProgress = ref<BackendTaskProgressEvent | null>(null); const recoveryResult = ref<CarveRecoveryResult | null>(null);
   let disposed = false; let contextGeneration = 0; let unlisten: (() => void) | null = null;

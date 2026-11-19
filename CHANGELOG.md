@@ -17,6 +17,7 @@
 - 文件预览可放在列表右侧或下方；工作区较窄时自动放在列表下方，不再覆盖文件表。
 - 桌面端在「卷与分区」的同一弹窗中解锁 BitLocker、LUKS、VeraCrypt 和 FileVault 2，分区行可直接预选对应卷。
 - 卸载检材时先等它的任务停下（最多 5 秒）再释放临时文件、插件卷与挂载，任务中心不再残留已卸载检材的历史。
+- CLI `schema` 的 `requestBodyFields` 把检材、节点和卷标识的类型报告为 `ImageId` / `NodeId` / `VolumeKey`，并在 `schema` 中注明按字符串传递；请求写法不变。
 
 ### Removed
 

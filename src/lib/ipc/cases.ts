@@ -10,6 +10,7 @@
 import type { EvidencePlatform } from './autodetect';
 import { invokeCmd } from './client';
 import { onEvent } from './events';
+import type { ImageId, VolumeKey } from './ids';
 
 /** Disk-image source format (matches Rust `ImageFormat`, serde snake_case). */
 export type ImageFormat =
@@ -36,7 +37,7 @@ export type ImageFormat =
   | 'assembled';
 
 export interface EvidenceRef {
-  image_id: string;
+  image_id: ImageId;
   path: string;
   source_format: ImageFormat;
   size_bytes: number;
@@ -52,8 +53,8 @@ export interface EvidenceRef {
 /** One published volume of an evidence: its directory snapshot and whether a
  *  file index currently serves it. */
 export interface SnapshotRef {
-  volume_key: string;
-  image_id: string;
+  volume_key: VolumeKey;
+  image_id: ImageId;
   entry_count: number;
   truncated: boolean;
   built_at: string;
@@ -111,8 +112,8 @@ export interface CaseOption {
 /** Payload of the `snapshot-build-progress` event. */
 export interface SnapshotProgress {
   task_id: string;
-  image_id: string;
-  volume_key: string;
+  image_id: ImageId;
+  volume_key: VolumeKey;
   /** started | reused | walking | indexing | done | cancelled | error */
   phase: 'started' | 'reused' | 'walking' | 'indexing' | 'done' | 'cancelled' | 'error';
   entries: number;
@@ -185,7 +186,7 @@ export function caseEvidenceList(): Promise<EvidenceRef[]> {
 
 /** Remove an evidence image from the active case (cascades to its volumes,
  *  tags, tasks and analysis data). Returns the refreshed case info. */
-export function caseEvidenceRemove(args: { imageId: string }): Promise<CaseInfo> {
+export function caseEvidenceRemove(args: { imageId: ImageId }): Promise<CaseInfo> {
   return invokeCmd<CaseInfo>('case_evidence_remove', args);
 }
 
@@ -193,7 +194,7 @@ export function caseEvidenceRemove(args: { imageId: string }): Promise<CaseInfo>
  *  automatic detection and survives re-detection; `auto` clears it. Locked
  *  cases refuse. Returns the updated evidence. */
 export function caseEvidencePlatformSet(args: {
-  imageId: string;
+  imageId: ImageId;
   platform: EvidencePlatform | 'auto';
 }): Promise<EvidenceRef> {
   return invokeCmd<EvidenceRef>('case_evidence_platform_set', args);
@@ -202,8 +203,8 @@ export function caseEvidencePlatformSet(args: {
 /** Start (or force-rebuild) a volume snapshot. `taskId` doubles as the
  *  cancellation token id — pass it to `task_cancel` to abort. */
 export function snapshotBuild(args: {
-  imageId: string;
-  volumeKey: string;
+  imageId: ImageId;
+  volumeKey: VolumeKey;
   taskId: string;
 }): Promise<void> {
   return invokeCmd<void>('snapshot_build', args);
@@ -213,13 +214,13 @@ export function snapshotList(): Promise<SnapshotInfo[]> {
   return invokeCmd<SnapshotInfo[]>('snapshot_list');
 }
 
-export function snapshotDrop(args: { imageId: string; volumeKey: string }): Promise<void> {
+export function snapshotDrop(args: { imageId: ImageId; volumeKey: VolumeKey }): Promise<void> {
   return invokeCmd<void>('snapshot_drop', args);
 }
 
 /** Deterministic cancellation-token id for an auto-build (mirrors the Rust
  *  `format!("snapshot:{image_id}:{volume_key}")`). */
-export function autoSnapshotTaskId(imageId: string, volumeKey: string): string {
+export function autoSnapshotTaskId(imageId: ImageId, volumeKey: VolumeKey): string {
   return `snapshot:${imageId}:${volumeKey}`;
 }
 

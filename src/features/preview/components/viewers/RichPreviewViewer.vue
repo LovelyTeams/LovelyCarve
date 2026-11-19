@@ -45,9 +45,10 @@ import { mediaStreamUrl } from '../../../../lib/ipc/media';
 import { formatBytes } from '../../../../utils/format';
 import { useTheme } from '../../../../composables/useTheme';
 import IndeterminateBar from '../../../../components/ui/IndeterminateBar.vue';
+import type { ImageId } from '../../../../lib/ipc/ids';
 
 const props = defineProps<{
-  imageId: string;
+  imageId: ImageId;
   node: FsNode;
 }>();
 

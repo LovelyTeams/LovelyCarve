@@ -1,7 +1,8 @@
 /** Reading context carried when a file preview moves between windows. */
+import type { ImageId, NodeId } from '../ipc/ids';
 export interface FilePreviewReadingState {
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
   tab: 'detail' | 'raw' | 'text' | 'hex';
   searchQuery: string;
   encoding: string;

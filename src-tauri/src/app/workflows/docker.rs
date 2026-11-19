@@ -7,6 +7,7 @@ use serde::Serialize;
 
 use crate::core::casework::case_ledger;
 use crate::core::catalog::host_docker_index::{self, CaseTarget, PrepareMode};
+use crate::core::common::ids::{ImageId, NodeId};
 use crate::core::filesystem::docker::host_docker::{self, parse_host_docker_id};
 use crate::state::AppState;
 use crate::task_manager::{TaskCount, TaskFlag, TaskKind};
@@ -28,8 +29,8 @@ pub struct DockerIndexStatus {
 /// are then published into the case like any other volume.
 pub async fn fs_docker_prepare(
     state: State<'_, AppState>,
-    image_id: String,
-    root_id: String,
+    image_id: ImageId,
+    root_id: NodeId,
     case_dir: Option<String>,
     mode: PrepareMode,
 ) -> Result<DockerIndexStatus, AppError> {
@@ -81,7 +82,7 @@ pub async fn fs_docker_prepare(
                             }
                         },
                     )
-                    .map_or_else(|| root_id.clone(), |node| node.name);
+                    .map_or_else(|| root_id.to_string(), |node| node.name);
                 worker_tasks.update(task_id, |view| view.subject = vec![name]);
             }
             host_docker_index::prepare(

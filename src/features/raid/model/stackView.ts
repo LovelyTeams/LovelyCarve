@@ -2,10 +2,11 @@ import { joinList, sourceText, type Translator } from '../../../i18n/translate';
 import type { RaidStack, RaidArray, RaidArrayMember, RaidMemberOrigin, RaidMemberState, RaidVolumeGroup } from '../../../lib/ipc/raid';
 import { formatBinaryBytes as formatBytes } from '../../../utils/format';
 import { decodeRaid10Layout, hasStripeLayout } from './stripeLayout';
+import type { ImageId } from '../../../lib/ipc/ids';
 export { formatBytes };
 
 /** VGs with a PV on this image, or whose cross-PV logical volume this image is. */
-export function relevantRaidVolumeGroups(stack: RaidStack | null, imageId: string): RaidVolumeGroup[] {
+export function relevantRaidVolumeGroups(stack: RaidStack | null, imageId: ImageId): RaidVolumeGroup[] {
   return stack?.volume_groups.filter(vg =>
     vg.members.some(m => m.image_id === imageId)
     || vg.logical_volumes.some(lv => lv.assembled_image_id === imageId)) ?? [];
@@ -14,7 +15,7 @@ export function relevantRaidVolumeGroups(stack: RaidStack | null, imageId: strin
 /** Arrays this image participates in: a whole-disk member lives on it, an
  *  LV member's volume group has a PV on it, or the image IS the assembled
  *  synthetic device (its info page shows the array it came from). */
-export function relevantRaidArrays(s: RaidStack | null, imageId: string): RaidArray[] {
+export function relevantRaidArrays(s: RaidStack | null, imageId: ImageId): RaidArray[] {
   if (!s) return [];
   const vgOnImage = new Set(
     s.volume_groups

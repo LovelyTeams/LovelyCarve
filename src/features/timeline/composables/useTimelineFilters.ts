@@ -5,7 +5,8 @@ import { timelineTypes, type TimelineBucket, type TimelineQuery, type TimelineTy
 import { notifyError, notifyInfo } from '../../../composables/useToast';
 import { intersectBucketRange } from '../model/timelineHeatmap';
 import { TIMELINE_UNITS, bucketRange, drillDown, type TimelineUnitValue } from '../model/timelineView';
-export function useTimelineFilters(options: { imageId: () => string; tzHours: number }) {
+import type { ImageId } from '../../../lib/ipc/ids';
+export function useTimelineFilters(options: { imageId: () => ImageId; tzHours: number }) {
   const tzHours = options.tzHours;
   let disposed = false;
   const unit = ref<TimelineUnitValue>('year');

@@ -1,4 +1,5 @@
 import { invokeCmd } from './client';
+import type { ImageId } from './ids';
 
 export interface BcpField {
   key: string;
@@ -43,10 +44,10 @@ export interface BcpPage {
   nextCursor: BcpCursor | null;
 }
 
-export function bcpCatalog(imageId: string): Promise<BcpCatalog> {
+export function bcpCatalog(imageId: ImageId): Promise<BcpCatalog> {
   return invokeCmd('bcp_catalog', { imageId });
 }
 
-export function bcpRows(imageId: string, code: string, cursor: BcpCursor | null): Promise<BcpPage> {
+export function bcpRows(imageId: ImageId, code: string, cursor: BcpCursor | null): Promise<BcpPage> {
   return invokeCmd('bcp_rows', { imageId, code, cursor });
 }

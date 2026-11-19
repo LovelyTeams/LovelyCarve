@@ -1,5 +1,6 @@
 //! raid implementation.
 use super::*;
+use crate::core::common::ids::ImageId;
 use crate::core::evidence::image::DiskImage;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use sha2::{Digest, Sha256};
@@ -18,7 +19,7 @@ pub async fn raid_auto_detect(
     app: AppHandle,
     state: State<'_, AppState>,
     degraded_sets: Vec<String>,
-    image_ids: Option<Vec<String>>,
+    image_ids: Option<Vec<ImageId>>,
 ) -> Result<RaidStack, AppError> {
     // Snapshot only "real" loaded images — feeding a previously assembled
     // synthetic image back into detection would be double-counting and
@@ -104,7 +105,7 @@ pub async fn raid_auto_detect(
         let cache = state.assembled_arrays.lock().await;
         cache.clone()
     };
-    let live_image_ids: std::collections::HashSet<String> = {
+    let live_image_ids: std::collections::HashSet<ImageId> = {
         let images = state.images.lock().await;
         images.keys().cloned().collect()
     };
@@ -159,7 +160,7 @@ pub async fn raid_auto_detect(
         // one set are different devices with different labels.
         let cache_key = materialised.label.clone();
         if let Some(existing) = cache_snapshot.get(&cache_key) {
-            if live_image_ids.contains(existing) {
+            if live_image_ids.contains(existing.as_str()) {
                 record_assembled_image(&mut stack, materialised, existing.clone());
                 report_registration(assembled_index + 1);
                 continue;
@@ -198,8 +199,9 @@ pub async fn raid_auto_detect(
         // stands — never overwrite a loaded image's slot).
         if let Some(stable_id) = evidence_ids_by_path.get(synthetic.path.to_string_lossy().as_ref())
         {
-            if !live_image_ids.contains(stable_id) && adopted_ids.insert(stable_id.clone()) {
-                synthetic.id = stable_id.clone();
+            if !live_image_ids.contains(stable_id.as_str()) && adopted_ids.insert(stable_id.clone())
+            {
+                synthetic.id = ImageId::new(stable_id.as_str());
             }
         }
         pending.push(PendingRegistration {
@@ -226,7 +228,7 @@ pub async fn raid_auto_detect(
         {
             let materialised = &assembled[assembled_index];
             if let Some(existing) = cache.get(&cache_key) {
-                if images.contains_key(existing) {
+                if images.contains_key(existing.as_str()) {
                     record_assembled_image(&mut stack, materialised, existing.clone());
                     continue;
                 }
@@ -236,12 +238,12 @@ pub async fn raid_auto_detect(
             // or load may have registered it since the phase-1 snapshot.
             // Never overwrite a live slot — mint a fresh uuid instead.
             if images.contains_key(&image.id) {
-                image.id = uuid::Uuid::new_v4().to_string();
+                image.id = ImageId::new(uuid::Uuid::new_v4().to_string());
             }
             let image_id = image.id.clone();
             images.insert(image_id.clone(), Arc::new(EvidenceSession::from(image)));
-            cache.insert(cache_key, image_id.clone());
-            record_assembled_image(&mut stack, materialised, image_id);
+            cache.insert(cache_key, image_id.to_string());
+            record_assembled_image(&mut stack, materialised, image_id.into());
         }
     }
 
@@ -349,7 +351,7 @@ async fn register_assembled_image(
             .iter()
             .find(|(_, im)| im.path.to_string_lossy() == path_str)
         {
-            return Ok(id.clone());
+            return Ok(id.to_string());
         }
     }
     let length_lba = array.size_bytes / 512;
@@ -375,5 +377,5 @@ async fn register_assembled_image(
     let id = synthetic.id.clone();
     let mut images = state.images.lock().await;
     images.insert(id.clone(), Arc::new(EvidenceSession::from(synthetic)));
-    Ok(id)
+    Ok(id.into())
 }

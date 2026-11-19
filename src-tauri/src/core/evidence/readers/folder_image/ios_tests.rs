@@ -71,7 +71,7 @@ fn encrypted_backup_keeps_raw_tree_and_unlock_creates_child_session() {
         .unwrap();
     assert_eq!(
         child.derived.as_ref().map(DerivedImage::parent),
-        Some(source.id.as_str())
+        Some(&source.id)
     );
     assert!(child.path.to_string_lossy().starts_with("decrypted://ios/"));
     assert!(!child.info().ios_backup.unwrap().locked);

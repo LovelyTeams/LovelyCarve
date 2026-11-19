@@ -38,7 +38,7 @@ pub(super) fn emit(
                 },
                 events: None,
                 origin: RaidMemberOrigin::Whole {
-                    image_id: image.id.clone(),
+                    image_id: image.id.to_string(),
                     partition_id: 0,
                     byte_offset: 0,
                     byte_length: image.len(),

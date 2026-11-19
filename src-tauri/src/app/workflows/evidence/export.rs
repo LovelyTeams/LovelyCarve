@@ -1,5 +1,6 @@
 //! export implementation.
 use super::*;
+use crate::core::common::ids::ImageId;
 use crate::core::filesystem::evidence_session::ImageExportMode;
 
 /// Stream an entire image (regular or assembled) to a raw `.dd` file at
@@ -13,7 +14,7 @@ use crate::core::filesystem::evidence_session::ImageExportMode;
 pub async fn image_export_raw(
     app: AppHandle,
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     destination: String,
     task_id: String,
     read_fault_policy: Option<ReadFaultPolicy>,

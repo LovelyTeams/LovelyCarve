@@ -683,7 +683,7 @@ fn finish(
         warnings.push("PlatformIsEmpty".to_owned());
     }
     AutoDetectReport {
-        image_id: image.id.clone(),
+        image_id: image.id.to_string(),
         route,
         platform,
         platforms,

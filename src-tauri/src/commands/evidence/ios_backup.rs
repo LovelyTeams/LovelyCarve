@@ -1,4 +1,5 @@
 //! Read-only iOS backup unlock and upstream anomaly audit.
+use crate::core::common::ids::ImageId;
 use std::sync::Arc;
 
 use crate::host::State;
@@ -14,7 +15,7 @@ use crate::task_manager::TaskKind;
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn ios_backup_unlock(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     password: String,
     task_id: Option<String>,
 ) -> Result<ImageInfo, AppError> {
@@ -65,7 +66,7 @@ pub async fn ios_backup_unlock(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn ios_backup_audit(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     task_id: Option<String>,
 ) -> Result<serde_json::Value, AppError> {
     let source = loaded_image_app_error(&state, &image_id).await?;

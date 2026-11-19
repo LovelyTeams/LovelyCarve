@@ -1,4 +1,5 @@
 import { invokeCmd } from '../client';
+import type { ImageId, NodeId } from '../ids';
 
 
 
@@ -42,13 +43,13 @@ export interface FsExportDirProgress {
 
 export type ExportDirMode = 'tree' | 'zip';
 
-export function fsExport(args: { imageId: string; nodeId: string; destination: string }): Promise<FsExportResult> {
+export function fsExport(args: { imageId: ImageId; nodeId: NodeId; destination: string }): Promise<FsExportResult> {
   return invokeCmd<FsExportResult>('fs_export', args);
 }
 
 export function fsExportDir(args: {
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
   destination: string;
   taskId: string;
   mode: ExportDirMode;

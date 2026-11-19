@@ -1,8 +1,9 @@
+import type { ImageId, NodeId } from '../ipc/ids';
 
 
 
 export type FileLocationTarget = {
-  imageId: string;
+  imageId: ImageId;
   offset?: number;
   length?: number;
-} & ({ nodeId: string; rootId?: never; path?: never } | { rootId: string; path: string; nodeId?: never });
+} & ({ nodeId: NodeId; rootId?: never; path?: never } | { rootId: string; path: string; nodeId?: never });

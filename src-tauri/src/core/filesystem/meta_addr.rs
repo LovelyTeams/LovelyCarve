@@ -22,6 +22,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::core::common::ids::{ImageId, NodeId};
 use crate::core::filesystem::deleted::DELETED_RUN_PREFIX;
 use crate::core::filesystem::unalloc::{DISK_GAP_PREFIX, SYSFILE_PREFIX, UNALLOC_PREFIX};
 
@@ -84,12 +85,12 @@ pub struct MetaAddr {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileQuery {
-    pub image_id: String,
+    pub image_id: ImageId,
     pub vol_id: i64,
     pub meta_addr: i64,
     pub meta_addr_high: i64,
     #[serde(default)]
-    pub nid: Option<String>,
+    pub nid: Option<NodeId>,
     #[serde(default)]
     pub full_path: Option<String>,
     #[serde(default = "default_is_delete")]

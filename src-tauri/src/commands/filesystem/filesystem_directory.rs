@@ -5,6 +5,7 @@ use crate::{
     core::{
         catalog::directory_query::{self, DirectoryQuery},
         catalog::filedb::filedb_query::NodePage,
+        common::ids::{ImageId, NodeId},
     },
     state::AppState,
 };
@@ -16,8 +17,8 @@ use {
 
 pub(crate) async fn page(
     state: State<'_, AppState>,
-    image_id: String,
-    parent_id: String,
+    image_id: ImageId,
+    parent_id: NodeId,
     query: DirectoryQuery,
     cursor: Option<String>,
     page_size: Option<usize>,

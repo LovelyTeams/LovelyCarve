@@ -5,7 +5,8 @@ import { carveFormats, type CarveCategory, type CarveFormatInfo, type CarveStart
 import type { DiskPartition, ImageInfo } from '../../../lib/ipc/image';
 import { formatBytes } from '../../../utils/format';
 import { categories } from '../model/carveView';
-export function useCarveConfiguration(options: { imageId: () => string; imageInfo: () => ImageInfo | null; starting: () => boolean }) {
+import type { ImageId } from '../../../lib/ipc/ids';
+export function useCarveConfiguration(options: { imageId: () => ImageId; imageInfo: () => ImageInfo | null; starting: () => boolean }) {
   const GIB = 1024 ** 3;
   let disposed = false;
   let focusGeneration = 0;

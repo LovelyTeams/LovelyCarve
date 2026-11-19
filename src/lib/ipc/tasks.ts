@@ -9,6 +9,7 @@
 // `task` 表,重开案件后仍可见;进程内只保留运行句柄。时间戳是 RFC 3339 UTC。
 import { invokeCmd } from './client';
 import type { AnalyzerScope, AnalyzerTrigger } from './plugins';
+import type { ImageId, NodeId } from './ids';
 
 /** Rust `SchedTaskStatus`(serde lowercase)。 */
 export type SchedTaskStatus =
@@ -27,7 +28,7 @@ export type SchedTaskTrigger = AnalyzerTrigger;
 /** 任务的目标与选项。同一 (function, 检材, 目标) 是同一个作业。 */
 export interface SchedTaskParams {
   /** 文件作用域:分析的文件节点。 */
-  nodeId: string | null;
+  nodeId: NodeId | null;
   fileName: string | null;
   /** 系统作用域:识别出的系统(`linux@part:2`)。 */
   systemId: string | null;
@@ -40,7 +41,7 @@ export interface SchedTaskParams {
 export interface SchedTaskInfo {
   pluginId: string;
   analyzer: string;
-  imageId: string;
+  imageId: ImageId;
   trigger: SchedTaskTrigger;
   parentTid: number | null;
   error: string | null;
@@ -178,7 +179,7 @@ export function schedTaskFunctions(): Promise<SchedFunction[]> {
 }
 
 /** 已加载检材上识别出的操作系统(首次调用读取检材识别)。 */
-export function schedSystemsList(imageId: string): Promise<DetectedSystem[]> {
+export function schedSystemsList(imageId: ImageId): Promise<DetectedSystem[]> {
   return invokeCmd<DetectedSystem[]>('sched_systems_list', { imageId });
 }
 
@@ -186,8 +187,8 @@ export function schedSystemsList(imageId: string): Promise<DetectedSystem[]> {
  *  `options` 按分析器的选项 id;缺省的选项取默认值。 */
 export function schedTaskCreate(args: {
   function: string;
-  imageId: string;
-  nodeId?: string | null;
+  imageId: ImageId;
+  nodeId?: NodeId | null;
   fileName?: string | null;
   systemId?: string | null;
   options?: Record<string, unknown> | null;
@@ -220,7 +221,7 @@ export function schedTaskRemove(taskId: number): Promise<SchedTaskRecord> {
 }
 
 export function schedEvidencePostActionsSet(args: {
-  imageId: string;
+  imageId: ImageId;
   actionsJson: string | null;
 }): Promise<void> {
   return invokeCmd<void>('sched_evidence_post_actions_set', args);

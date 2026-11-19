@@ -19,6 +19,7 @@ import {
 } from '../../../lib/ipc/analysisResults';
 import { buildAnalysisGroups } from '../model/analysisResultView';
 import { analysisCaseDirectory, analysisCompletedRuns } from './analysisContext';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 /** 分析结果表格的分页大小。 */
 export const ANALYSIS_PAGE_SIZE = 100;
@@ -111,7 +112,7 @@ function clearSelection(): void {
 }
 
 /** Scope the shared directory and table to the active evidence tab. */
-function setImageId(imageId: string): void {
+function setImageId(imageId: ImageId): void {
   if (currentImageId.value === imageId) return;
   currentImageId.value = imageId;
   treeRequestId += 1;

@@ -45,8 +45,9 @@ import BitlockerCredentialForm from './BitlockerCredentialForm.vue';
 import BitlockerKeyForm from './BitlockerKeyForm.vue';
 import BitlockerMemoryCandidates from './BitlockerMemoryCandidates.vue';
 import BitlockerJobProgress from './BitlockerJobProgress.vue';
+import type { ImageId } from '../../../lib/ipc/ids';
 
-const props = defineProps<{ imageId: string; partitionId: number; active: boolean; unlocked: boolean }>();
+const props = defineProps<{ imageId: ImageId; partitionId: number; active: boolean; unlocked: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 
 const tabs: { id: BitlockerInputMode; label: string }[] = [

@@ -4,6 +4,7 @@
 //! gracefully — load returns empty, persist reports `false` — and
 //! identifications stay session-only.
 
+use crate::core::common::ids::{ImageId, NodeId};
 use std::collections::HashMap;
 
 use crate::host::State;
@@ -23,7 +24,7 @@ use {
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_ftype_load(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<HashMap<String, TypeIdentReport>, AppError> {
     let Some(case_dir) = evidence_case_dir(&state, &image_id).await else {
         return Ok(HashMap::new());
@@ -49,8 +50,8 @@ pub async fn fs_ftype_load(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_ftype_load_nodes(
     state: State<'_, AppState>,
-    image_id: String,
-    node_ids: Vec<String>,
+    image_id: ImageId,
+    node_ids: Vec<NodeId>,
 ) -> Result<HashMap<String, TypeIdentReport>, AppError> {
     let node_ids = bounded_unique_node_ids(node_ids)?;
     if node_ids.is_empty() {
@@ -80,7 +81,7 @@ pub async fn fs_ftype_load_nodes(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_ftype_persist(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     entries: HashMap<String, TypeIdentReport>,
 ) -> Result<bool, AppError> {
     if entries.is_empty() {

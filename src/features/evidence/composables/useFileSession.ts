@@ -9,13 +9,14 @@ import { onEvent } from '../../../lib/ipc/events';
 import { imageLoadFull } from '../../../lib/ipc/image';
 import type { ImageInfo } from '../../../lib/ipc/image';
 import { forgetUnlockedImageInfo, latestUnlockedImageInfo } from './unlockedImageInfo';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 
 export type OpenFileOutcome =
   /** `error` is a user-facing reason; absent when nothing was attempted
    *  (empty path). Callers decide how to surface it. */
   | { opened: false; error?: string }
-  | { opened: true; mode: 'image'; nextPanel: 'files' | 'dashboard'; imageId: string };
+  | { opened: true; mode: 'image'; nextPanel: 'files' | 'dashboard'; imageId: ImageId };
 
 type OpenFileOptions = {
   onBeforeLoad?: () => void;
@@ -134,7 +135,7 @@ export function registerBitlockerUnlockNavigator(navigate: () => void) {
 const bitlockerReminders = new Map<string, PersistentToastHandle>();
 
 /** Dismiss the reminder when this image's BitLocker unlock panel opens. */
-export function dismissBitlockerReminder(imageId: string) {
+export function dismissBitlockerReminder(imageId: ImageId) {
   bitlockerReminders.get(imageId)?.dismiss();
   bitlockerReminders.delete(imageId);
 }
@@ -199,7 +200,7 @@ export interface FileSessionSnapshot {
   currentFileName: string;
   parserName: string;
   loadProgress: LoadProgressEvent | null;
-  imageId: string;
+  imageId: ImageId;
   imageInfo: ImageInfo | null;
 }
 

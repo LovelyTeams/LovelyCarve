@@ -95,7 +95,7 @@ pub async fn carve_recover(
         .register_if_absent(
             options.task_id.clone(),
             TaskKind::CarveRecovery,
-            Some(image_id),
+            Some(image_id.into()),
         )
         .ok_or_else(|| AppError::invalid_input("恢复任务 ID 正在使用中"))?;
     task.update(|view| view.subject = vec![options.destination.clone()]);

@@ -4,7 +4,8 @@ import { computed, onActivated, onMounted, onScopeDispose, ref, shallowRef, watc
 import { timelineStart, timelineStatus, onTimelineProgress, type TimelineStatusInfo } from '../../../lib/ipc/timeline';
 import { taskCancel } from '../../../lib/ipc/taskRuntime';
 import { notifyError, notifyInfo } from '../../../composables/useToast';
-export function useTimelineBuild(options: { imageId: () => string; onBuilt: () => void }) {
+import type { ImageId } from '../../../lib/ipc/ids';
+export function useTimelineBuild(options: { imageId: () => ImageId; onBuilt: () => void }) {
   let generation = 0;
   let statusGeneration = 0;
   let disposed = false;

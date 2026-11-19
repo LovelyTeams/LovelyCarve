@@ -34,6 +34,7 @@ import {
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 
 import { useRecentCases } from './useRecentCases';
+import type { ImageId, VolumeKey } from '../../../lib/ipc/ids';
 
 const { recordCase, removeCase: forgetRecentCase } = useRecentCases();
 
@@ -104,7 +105,7 @@ function beginCaseMutation(): number {
   return ++caseRevision;
 }
 
-function progressKey(imageId: string, volumeKey: string): string {
+function progressKey(imageId: ImageId, volumeKey: VolumeKey): string {
   return `${imageId}:${volumeKey}`;
 }
 
@@ -326,23 +327,23 @@ export function useCaseSession() {
     }
   }
 
-  async function buildSnapshot(imageId: string, volumeKey: string): Promise<void> {
+  async function buildSnapshot(imageId: ImageId, volumeKey: VolumeKey): Promise<void> {
     const taskId = autoSnapshotTaskId(imageId, volumeKey);
     await snapshotBuild({ imageId, volumeKey, taskId });
   }
 
-  async function cancelBuild(imageId: string, volumeKey: string): Promise<void> {
+  async function cancelBuild(imageId: ImageId, volumeKey: VolumeKey): Promise<void> {
     await taskCancel({ taskId: autoSnapshotTaskId(imageId, volumeKey) });
   }
 
-  async function dropSnapshot(imageId: string, volumeKey: string): Promise<void> {
+  async function dropSnapshot(imageId: ImageId, volumeKey: VolumeKey): Promise<void> {
     await snapshotDrop({ imageId, volumeKey });
     await refreshSnapshots();
   }
 
   /** Remove an evidence image from the active case (cascades to its snapshots
    *  on the backend). Updates the active-case view from the returned info. */
-  async function removeEvidence(imageId: string): Promise<void> {
+  async function removeEvidence(imageId: ImageId): Promise<void> {
     const revision = beginCaseMutation();
     try {
       const next = await caseEvidenceRemove({ imageId });

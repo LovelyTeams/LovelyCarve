@@ -118,7 +118,8 @@ import { useCarveFilesystem } from '../composables/useCarveFilesystem';
 import { useRecoveryBrowser } from '../composables/useRecoveryBrowser';
 import { useCarvePreview } from '../composables/useCarvePreview';
 import { useCarveRecovery } from '../composables/useCarveRecovery';
-const props = defineProps<{ imageId: string; imageInfo: ImageInfo | null }>();
+import type { ImageId } from '../../../lib/ipc/ids';
+const props = defineProps<{ imageId: ImageId; imageInfo: ImageInfo | null }>();
 const initializing = ref(true);
 const initializationError = ref('');
 // Selecting a record starts reading its results; the drain must not hold the page's initialization.

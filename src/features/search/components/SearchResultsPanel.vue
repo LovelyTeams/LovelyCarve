@@ -126,7 +126,8 @@ import { useSearchExecution } from '../composables/useSearchExecution';
 import { useSearchExport } from '../composables/useSearchExport';
 import type { GlobalSearchHit } from '../../../lib/ipc/search';
 import type { FileLocationTarget } from '../../../lib/models/fileLocation';
-const props = defineProps<{ imageId: string; locating?: boolean }>();
+import type { ImageId } from '../../../lib/ipc/ids';
+const props = defineProps<{ imageId: ImageId; locating?: boolean }>();
 const emit = defineEmits<{ close: []; 'open-file': [target: FileLocationTarget] }>();
 const history = useSearchHistory({ imageId: () => props.imageId });
 const { historyVisible, tasks, loadingTasks, historyError, selectedSearchId, deletingTaskId, runningProgress,

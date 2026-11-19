@@ -5,11 +5,12 @@ import { fsRead } from '../../../lib/ipc/fs/read';
 import { mediaStreamUrl } from '../../../lib/ipc/media';
 import { createPreviewRequest } from './previewRequest';
 import { MEDIA_CAP, STREAM_MIME_EXT } from '../model/preview';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 /** One content viewer owns its Blob URL and cancellable stream-cache lease. */
 export function useMediaPreview(options: {
-  imageId: () => string;
-  nodeId: () => string;
+  imageId: () => ImageId;
+  nodeId: () => NodeId;
   nodeSize: () => number;
   category: () => string;
   mime: () => string;

@@ -3,7 +3,8 @@ import { tr } from '../../../composables/useLocale';
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { timelineDatas, type TimelineQuery, type TimelineRow } from '../../../lib/ipc/timeline';
 import { notifyError } from '../../../composables/useToast';
-export function useTimelineRows(options: { imageId: () => string; buildQuery: () => TimelineQuery }) {
+import type { ImageId } from '../../../lib/ipc/ids';
+export function useTimelineRows(options: { imageId: () => ImageId; buildQuery: () => TimelineQuery }) {
   const PAGE_SIZE = 200;
   const rows = shallowRef<TimelineRow[]>([]);
   const rowsTotal = ref(0);

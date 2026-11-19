@@ -13,6 +13,7 @@
 //! 把结论写回台账的检材行(平台、类型与完整报告 JSON);无案件时只返回报告。识别在
 //! `spawn_blocking` 上跑——分区根目录列举与归档条目走查都是同步 I/O。
 
+use crate::core::common::ids::ImageId;
 use std::sync::Arc;
 
 use crate::host::{AppHandle, State};
@@ -43,7 +44,7 @@ struct AutoDetectFailed<'a> {
 pub async fn autodetect_evidence(
     app: AppHandle,
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<AutoDetectReport, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     let task = register(&state.tasks, &image);

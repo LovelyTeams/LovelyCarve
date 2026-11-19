@@ -268,7 +268,7 @@ async fn stream_file(
         .images
         .lock()
         .await
-        .get(&image_id)
+        .get(image_id.as_str())
         .cloned()
         .ok_or_else(|| CliError::new("noImage", "检材已关闭"))?;
     let stat_node = node_id.clone();

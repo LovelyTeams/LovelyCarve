@@ -4,12 +4,13 @@ import { computed, onScopeDispose, ref, watch, type ComputedRef, type Ref } from
 import { fsPreviewText, type DecodedText } from '../../../lib/ipc/fs/read';
 import { highlightHtml } from '../../../utils/highlight';
 import type { PreviewCategory } from '../model/preview';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 type DetailTab = 'detail' | 'raw' | 'text' | 'hex';
 
 interface UseTextPreviewOptions {
-  imageId: () => string;
-  nodeId: () => string;
+  imageId: () => ImageId;
+  nodeId: () => NodeId;
   nodeKind: () => string;
   activeTab: Ref<DetailTab>;
   category: ComputedRef<PreviewCategory>;
@@ -57,7 +58,7 @@ function chunkText(text: string, target: number): string[] {
 }
 
 export function useTextPreview(options: UseTextPreviewOptions) {
-  const decoded = ref<(DecodedText & { nodeId: string }) | null>(null);
+  const decoded = ref<(DecodedText & { nodeId: NodeId }) | null>(null);
   const decodingSettled = ref(false);
   const encodingOverride = ref('');
   let decodingFor: number | null = null;

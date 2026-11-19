@@ -1,4 +1,5 @@
 import { invokeCmd } from './client';
+import type { ImageId } from './ids';
 
 
 
@@ -22,16 +23,16 @@ export interface BitlockerMetadata {
   used_space_only: boolean;
 }
 
-export function bitlockerMetadata(args: { imageId: string; partitionId: number }): Promise<BitlockerMetadata> {
+export function bitlockerMetadata(args: { imageId: ImageId; partitionId: number }): Promise<BitlockerMetadata> {
   return invokeCmd<BitlockerMetadata>('bitlocker_metadata', args);
 }
 
-export function bitlockerStatus(args: { imageId: string; partitionId: number }): Promise<BitlockerStatus> {
+export function bitlockerStatus(args: { imageId: ImageId; partitionId: number }): Promise<BitlockerStatus> {
   return invokeCmd<BitlockerStatus>('bitlocker_status', args);
 }
 
 export function bitlockerUnlock(args: {
-  imageId: string;
+  imageId: ImageId;
   partitionId: number;
   taskId: string;
   recoveryPassword?: string | null;
@@ -44,7 +45,7 @@ export function bitlockerUnlock(args: {
 }
 
 export function bitlockerUnlockWithVmk(args: {
-  imageId: string;
+  imageId: ImageId;
   partitionId: number;
   taskId: string;
   vmkHex: string;
@@ -53,7 +54,7 @@ export function bitlockerUnlockWithVmk(args: {
 }
 
 export function bitlockerScanMemory<T>(args: {
-  imageId: string;
+  imageId: ImageId;
   partitionId: number;
   memoryPath: string;
   taskId: string;
@@ -66,7 +67,7 @@ export function bitlockerScanMemory<T>(args: {
  *  sectors, including the partition table and unrelated partitions, are copied
  *  unchanged. Emits {@link IMAGE_EXPORT_PROGRESS_EVENT}. */
 export function bitlockerExportDecryptedImage(args: {
-  imageId: string;
+  imageId: ImageId;
   partitionId: number;
   destination: string;
   taskId: string;

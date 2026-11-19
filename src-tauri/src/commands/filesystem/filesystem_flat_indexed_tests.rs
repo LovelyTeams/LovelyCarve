@@ -48,7 +48,7 @@ fn offline_flat_pages_and_category_counts_do_not_read_unindexed_deleted_subtrees
     );
     let image = Arc::new(EvidenceSession::from_indexed_image(
         DiskImage::from_index_metadata(
-            "offline".into(),
+            "offline",
             directory.path().join("absent.E01"),
             ImageFormat::Ewf,
             1,

@@ -1,6 +1,7 @@
 import { sourceText, type Translator } from '../../../i18n/translate';
 import type { FsTypeIdent, HashAlgo } from '../../../lib/ipc/fs/derived';
 import type { DiskFsNode as FsNode } from './model';
+import type { NodeId } from '../../../lib/ipc/ids';
 
 export function ftypeCellText(t: FsTypeIdent): string {
   return t.inferred ? `${t.label} ${(t.score * 100).toFixed(0)}%` : t.label;
@@ -37,7 +38,7 @@ export function fileNodeIdsForDerivedHydration(nodes: FsNode[], alreadyHydrated:
   return ids;
 }
 
-export function chunkNodeIds(nodeIds: string[]): string[][] {
+export function chunkNodeIds(nodeIds: NodeId[]): string[][] {
   const chunks: string[][] = [];
   for (let i = 0; i < nodeIds.length; i += DERIVED_NODE_QUERY_LIMIT) {
     chunks.push(nodeIds.slice(i, i + DERIVED_NODE_QUERY_LIMIT));

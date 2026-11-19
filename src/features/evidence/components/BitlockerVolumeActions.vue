@@ -28,8 +28,9 @@ import { bitlockerStatus } from '../../../lib/ipc/bitlocker';
 import { useBitlockerJob, useBitlockerScanJob } from '../composables/useBitlockerUnlocks';
 import { useImageExport } from '../composables/useImageExport';
 import { bitlockerProgress } from '../model/bitlocker';
+import type { ImageId } from '../../../lib/ipc/ids';
 
-const props = defineProps<{ imageId: string; partitionId: number }>();
+const props = defineProps<{ imageId: ImageId; partitionId: number }>();
 const emit = defineEmits<{ open: []; unlocked: [partitionId: number] }>();
 const locked = ref(true);
 const encryption = ref<string | null>(null);

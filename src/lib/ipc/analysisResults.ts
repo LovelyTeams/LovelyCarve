@@ -3,6 +3,7 @@
 // LovelyCarve 写下的结果(legacy)只读展示,没有字段类型与来源路径。
 import { invokeCmd } from './client';
 import type { BadRegion } from './fs/export';
+import type { ImageId, NodeId } from './ids';
 
 export type AnalysisNodeKind = 'evidence' | 'class' | 'function' | 'result';
 
@@ -42,10 +43,10 @@ export interface RecordColumn {
 }
 
 export interface AnalysisResultNode {
-  nodeId: string;
+  nodeId: NodeId;
   kind: AnalysisNodeKind;
   label: string;
-  imageId: string;
+  imageId: ImageId;
   /** 结果分类(`baseinfo`、`vehicle`……)。 */
   typeName: string;
   pluginId: string;
@@ -53,7 +54,7 @@ export interface AnalysisResultNode {
   /** `<plugin id>/<analyzer>`。 */
   function: string;
   /** 文件分析的输入文件节点。 */
-  sourceNodeId: string | null;
+  sourceNodeId: NodeId | null;
   /** 运行的目标(系统名、文件名);整个检材为空。 */
   targetLabel: string;
   /** 结果项的记录类型。 */
@@ -74,7 +75,7 @@ export interface RecordSource {
   root?: string;
   /** 卷内路径。 */
   path?: string;
-  nodeId?: string;
+  nodeId?: NodeId;
   offset?: number;
   length?: number;
   /** 记录在来源里的位置(`第 12 行`)。 */
@@ -92,7 +93,7 @@ export interface AnalysisRecord {
   /** 按列 id 的值。 */
   values: Record<string, unknown>;
   sources: RecordSource[];
-  imageId: string;
+  imageId: ImageId;
   legacy: boolean;
 }
 
@@ -128,7 +129,7 @@ export interface AnalysisRunInput {
   path: string;
   root: string | null;
   rootPath: string | null;
-  nodeId: string | null;
+  nodeId: NodeId | null;
   size: number;
 }
 
@@ -136,7 +137,7 @@ export interface AnalysisRunWarning {
   code: string;
   message: string;
   path: string | null;
-  nodeId: string | null;
+  nodeId: NodeId | null;
 }
 
 export interface AnalysisRunRecordType {
@@ -178,7 +179,7 @@ export function analysisResultTree(): Promise<AnalysisResultNode[]> {
 
 /** 按选中结果项的 runId 服务端分页读取一种记录,翻页期间不切换运行。 */
 export function analysisRecordsPage(args: {
-  imageId: string;
+  imageId: ImageId;
   runId: string;
   recordType: string;
   legacy: boolean;
@@ -204,7 +205,7 @@ export function analysisRecordsPage(args: {
 
 /** 单条记录详情(表格行 → 右侧预览),带它所属类型的列。 */
 export function analysisRecordDetail(args: {
-  imageId: string;
+  imageId: ImageId;
   recordId: string;
 }): Promise<AnalysisRecordDetail | null> {
   return invokeCmd<AnalysisRecordDetail | null>('analysis_record_detail', args);
@@ -212,7 +213,7 @@ export function analysisRecordDetail(args: {
 
 /** 一次运行的审计(旧版结果没有审计,返回 null)。 */
 export function analysisRunGet(args: {
-  imageId: string;
+  imageId: ImageId;
   runId: string;
 }): Promise<AnalysisRunAudit | null> {
   return invokeCmd<AnalysisRunAudit | null>('analysis_run_get', args);

@@ -6,6 +6,7 @@
 //! into a [`SizeTree`] kept in [`crate::state::SizeTreeCache`]. For now only
 //! NTFS directories are served.
 
+use crate::core::common::ids::{ImageId, NodeId};
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -48,8 +49,8 @@ pub enum FsSizeTree {
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_size_tree(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     depth: Option<u32>,
     metric: Option<String>,
     include_deleted: Option<bool>,

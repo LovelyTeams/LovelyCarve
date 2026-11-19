@@ -13,6 +13,7 @@ import { FILE_TAGS, type FileTag } from '../model/tags';
 import { reactive } from 'vue';
 
 import { fsTagsApplyChanges, fsTagsLoad, fsTagsLoadNodes, fsTagsSave } from '../../../lib/ipc/fs/tags';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 const STORE_KEY = 'lc.fileTags';
 
@@ -53,7 +54,7 @@ function isFileTag(value: string): value is FileTag {
   return (FILE_TAGS as readonly string[]).includes(value);
 }
 
-function pendingFor(imageId: string): PendingTagChanges {
+function pendingFor(imageId: ImageId): PendingTagChanges {
   let pending = pendingCaseChanges.get(imageId);
   if (!pending) {
     pending = { upserts: {}, deletes: new Set() };
@@ -62,7 +63,7 @@ function pendingFor(imageId: string): PendingTagChanges {
   return pending;
 }
 
-function queueCaseTagChange(imageId: string, nodeIds: string[], tag: FileTag | null) {
+function queueCaseTagChange(imageId: ImageId, nodeIds: NodeId[], tag: FileTag | null) {
   if (nodeIds.length === 0) return;
   const pending = pendingFor(imageId);
   for (const nodeId of nodeIds) {
@@ -76,7 +77,7 @@ function queueCaseTagChange(imageId: string, nodeIds: string[], tag: FileTag | n
   }
 }
 
-function queueCaseTagUpserts(imageId: string, entries: Record<string, FileTag>) {
+function queueCaseTagUpserts(imageId: ImageId, entries: Record<string, FileTag>) {
   const pairs = Object.entries(entries);
   if (pairs.length === 0) return;
   const pending = pendingFor(imageId);
@@ -88,12 +89,12 @@ function queueCaseTagUpserts(imageId: string, entries: Record<string, FileTag>) 
 
 /** 把某镜像的完整标签表推到案件目录。无案件时后端 no-op（返回 false）；
  *  真实写盘失败只告警——localStorage 副本还在，重开本机不丢。 */
-function pushFullToCase(imageId: string) {
+function pushFullToCase(imageId: ImageId) {
   const entries: Record<string, string> = { ...(store[imageId] ?? {}) };
   trackWrite(fsTagsSave({ imageId, entries }));
 }
 
-function pushChangesToCase(imageId: string, changes: PendingTagChanges) {
+function pushChangesToCase(imageId: ImageId, changes: PendingTagChanges) {
   const upserts: Record<string, string> = { ...changes.upserts };
   const deleteNodeIds = Array.from(changes.deletes);
   if (Object.keys(upserts).length === 0 && deleteNodeIds.length === 0) return;
@@ -124,12 +125,12 @@ export async function flushFileTagWrites(): Promise<void> {
 }
 
 export function useFileTags() {
-  function tagOf(imageId: string, nodeId: string): FileTag | undefined {
+  function tagOf(imageId: ImageId, nodeId: NodeId): FileTag | undefined {
     return store[imageId]?.[nodeId];
   }
 
   /** 批量打标 / 清除（tag 为 null 时清除）。 */
-  function setTag(imageId: string, nodeIds: string[], tag: FileTag | null) {
+  function setTag(imageId: ImageId, nodeIds: NodeId[], tag: FileTag | null) {
     let bucket = store[imageId];
     if (!bucket) {
       if (!tag) {
@@ -152,7 +153,7 @@ export function useFileTags() {
    *  合并策略：本地缺的节点用存档补（换机器/清存储后恢复）；冲突本地优先
    *  （本地是本会话检查员刚改的）。合并后若与存档有出入则整表回写，覆盖
    *  「先打标、后开案件」的补存场景。`force` 用于案件切换后强制重拉。 */
-  async function hydrateTags(imageId: string, force = false) {
+  async function hydrateTags(imageId: ImageId, force = false) {
     if (!force && hydratedImages.has(imageId)) return;
     const generation = hydrationGeneration;
     let stored: Record<string, string>;
@@ -194,7 +195,7 @@ export function useFileTags() {
   /** 只水合指定节点集合的标签。适合文件列表当前目录 / 全显批次：读侧按需，
    *  写侧若发现本地副本与案件不一致，只把这些节点的本地优先结果增量回写，
    *  不会覆盖案件里未水合的其它标签。 */
-  async function hydrateTagsForNodes(imageId: string, nodeIds: string[], force = false) {
+  async function hydrateTagsForNodes(imageId: ImageId, nodeIds: NodeId[], force = false) {
     const uniqueNodeIds = Array.from(new Set(nodeIds));
     if (uniqueNodeIds.length === 0) return;
     let hydrated = hydratedNodeIdsByImage.get(imageId);

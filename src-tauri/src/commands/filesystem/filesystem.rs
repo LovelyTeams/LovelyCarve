@@ -1,6 +1,7 @@
 //! Filesystem-tree IPC: directory browsing and snapshot-index assisted
 //! child queries across every detected filesystem.
 
+use crate::core::common::ids::{ImageId, NodeId};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -33,8 +34,8 @@ pub use crate::commands::filesystem::filesystem_journal::{
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_children(
     state: State<'_, AppState>,
-    image_id: String,
-    parent_id: String,
+    image_id: ImageId,
+    parent_id: NodeId,
 ) -> Result<Vec<FsNode>, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     prepare_remote_partition(&state, &image, &parent_id).await?;
@@ -137,8 +138,8 @@ pub async fn fs_children(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_children_page(
     state: State<'_, AppState>,
-    image_id: String,
-    parent_id: String,
+    image_id: ImageId,
+    parent_id: NodeId,
     cursor: Option<String>,
     page_size: Option<usize>,
     query: Option<crate::core::catalog::directory_query::DirectoryQuery>,
@@ -295,9 +296,11 @@ pub async fn fs_children_page(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_child_counts(
     state: State<'_, AppState>,
-    image_id: String,
-    parent_ids: Vec<String>,
+    image_id: ImageId,
+    parent_ids: Vec<NodeId>,
 ) -> Result<HashMap<String, u64>, AppError> {
+    // The counts are keyed by plain node ids, as the snapshot indexes store them.
+    let parent_ids: Vec<String> = parent_ids.into_iter().map(String::from).collect();
     let image = {
         let images = state.images.lock().await;
         images.get(&image_id).cloned()
@@ -376,9 +379,11 @@ pub async fn fs_child_counts(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_subtree_empty_dirs(
     state: State<'_, AppState>,
-    image_id: String,
-    parent_ids: Vec<String>,
+    image_id: ImageId,
+    parent_ids: Vec<NodeId>,
 ) -> Result<HashMap<String, bool>, AppError> {
+    // The answers are keyed by plain node ids, as the snapshot indexes store them.
+    let parent_ids: Vec<String> = parent_ids.into_iter().map(String::from).collect();
     let image = {
         let images = state.images.lock().await;
         images.get(&image_id).cloned()
@@ -470,8 +475,8 @@ pub struct FsLocateResult {
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_node_locate(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
 ) -> Result<FsLocateResult, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     let targets = {

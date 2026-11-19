@@ -7,6 +7,7 @@ import { fsExport, fsExportDir } from '../../../lib/ipc/fs/export';
 import { taskCancel } from '../../../lib/ipc/taskRuntime';
 import { onEvent, type UnlistenFn } from '../../../lib/ipc/events';
 import { notifyError, notifySuccess, pushPersistentToast } from '../../../composables/useToast';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 export type ExportDirMode = 'tree' | 'zip';
 
@@ -18,7 +19,7 @@ export interface ExportableFsNode {
 }
 
 interface UseFileExportsOptions {
-  imageId: () => string;
+  imageId: () => ImageId;
   formatBytes: (bytes: number) => string;
 }
 

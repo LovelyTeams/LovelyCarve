@@ -1,6 +1,7 @@
 import { onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { fsZipPreview, type ZipPreview } from '../../../lib/ipc/zip';
-export function useZipArchive(options: { imageId: () => string; nodeId: () => string }) {
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
+export function useZipArchive(options: { imageId: () => ImageId; nodeId: () => NodeId }) {
   const loading = ref(false); const error = ref<string | null>(null); const report = shallowRef<ZipPreview | null>(null);
   let generation = 0; let disposed = false;
   async function load() {

@@ -123,6 +123,8 @@ src-tauri/src/
 
 命令函数不直接依赖 Tauri：状态、应用句柄、二进制响应和媒体租约所有者分别使用 `host::State`、`host::AppHandle`、`host::Response` 和 `host::LeaseOwner`，函数以 `#[cfg_attr(feature = "desktop", tauri::command)]` 标注。`desktop` 特性（`tauri.conf.json` 的 `build.features` 为 `tauri dev/build` 开启）引入 tauri、对话框与文件插件和 tauri-build，并由 `host/tauri_adapter.rs` 为这些类型实现 `CommandArg` / `IpcResponse`：状态取自 Tauri 托管状态，`AppHandle` 把事件转给 Tauri `emit` 并提供应用数据目录，`LeaseOwner` 对应调用窗口（窗口关闭即租约结束），`Response` 以原始字节返回。CLI 构建不启用该特性，`AppHandle` 的事件写到 `session --events` 的标准错误或直接丢弃，`LeaseOwner` 归进程所有。两种构建使用同一个应用数据目录，目录名取自 `tauri.conf.json` 的 identifier（构建脚本导出为 `LOVELYCARVE_APP_IDENTIFIER`）。命令需要新的宿主能力时扩展 `host` 类型，不在命令中引用 Tauri 类型。
 
+命令参数里的检材、文件节点和卷标识使用 `core::common::ids` 的 `ImageId`、`NodeId`、`VolumeKey`。它们序列化为普通字符串，IPC 与 CLI 的写法不变，CLI 目录也把它们当作字符串选项；`DiskImage::id`、`AppState.images` 的键和任务登记的检材同样是 `ImageId`。按卷、按节点的表用组合键 `VolumeRef` / `NodeRef`，不用字符串元组或拼接字符串。ID 可解引用为 `&str`，仍接收 `&str` 的读取与存储函数可以直接使用；从字符串得到 ID 必须显式转换，所以类型化参数不会误收另一种 ID。前端的对应类型在 `src/lib/ipc/ids.ts`。
+
 CLI 的可选 `--with-source` / JSONL `withSource` 在解析检材与路径后、命令执行前捕获来源，随后独立于条目投影封装 `source/result`；常驻会话传递同一请求标记，客户端先拆开原结果检查完整性、投影，再封装来源。来源不通过命令完成后的上下文查询猜测。SQLite 主键另标记 `sqlite` 地址空间，保留数据库节点和表名。DSH 默认启用来源封装，并在输出超限时保留原页位置生成只读重试建议。
 
 `filedb_volumes` 的 `indexes` 列出当前已发布索引对各文件系统的覆盖：直接卷索引的 `pathPrefix` 为 null，父分区内逻辑卷的覆盖由索引中的实际节点路径定位。`filedb_query_files` 区分缺失索引与零命中，并在查询前验证索引身份和完整性；截断索引不能产生完整的否定结论。
@@ -1307,10 +1309,10 @@ RAID 成员、当前检材卷快照和案件详情默认折叠，切换与锁定
 新增跨 IPC 功能通常需要同一改动完成：
 
 1. `src-tauri/src/core/` 增加核心逻辑。
-2. `src-tauri/src/commands/` 增加命令 wrapper（`#[cfg_attr(feature = "desktop", tauri::command)]`，宿主参数使用 `crate::host` 类型）。
+2. `src-tauri/src/commands/` 增加命令 wrapper（`#[cfg_attr(feature = "desktop", tauri::command)]`，宿主参数使用 `crate::host` 类型，检材、节点和卷标识使用 `ImageId` / `NodeId` / `VolumeKey`）。
 3. `src-tauri/src/lib.rs` 注册到 `tauri::generate_handler!`。
 4. `src-tauri/src/cli/commands.toml` 把它映射为一条 CLI 命令（集合、动词、位置参数、敏感与生成字段），否则构建失败。
-5. `src/lib/ipc/<domain>.ts` 增加类型化封装。
+5. `src/lib/ipc/<domain>.ts` 增加类型化封装，标识参数使用 `src/lib/ipc/ids.ts` 的类型。
 6. 组件或 composable 调用封装。
 7. 运行 `just ipc-check`、`just typecheck`、`just test-fe`、`just build-fe` 和相关 Rust 检查，完整矩阵见 [贡献指南](../CONTRIBUTING.md)。
 

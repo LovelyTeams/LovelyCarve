@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 use vsc::{SnapshotLayout, StoreDescriptor, StoreInfo, VssVolume};
 
+use crate::core::common::ids::ImageId;
 use crate::core::evidence::crypto::bitlocker::UnlockedVolume;
 use crate::core::evidence::image::{DerivedImage, DiskImage};
 use crate::core::evidence::partitions::{
@@ -69,7 +70,7 @@ pub struct ShadowVolumeInfo {
 /// Where a shadow-copy session image comes from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ShadowCopyOrigin {
-    pub parent_image_id: String,
+    pub parent_image_id: ImageId,
     pub partition_id: u8,
     pub index: usize,
     pub store_id: String,

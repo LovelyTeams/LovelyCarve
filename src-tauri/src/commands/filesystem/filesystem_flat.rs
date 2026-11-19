@@ -13,6 +13,7 @@
 //! 套谓词、比较器切页——三条路径对同一查询给出同一结果。索引与快照都不
 //! 下探已删除目录,其子树在这里实时拼接(结果进 `FlatWalkCache`)。
 
+use crate::core::common::ids::{ImageId, NodeId};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -69,8 +70,8 @@ mod indexed_tests;
 #[allow(clippy::too_many_arguments)]
 pub async fn fs_flat_page(
     state: State<'_, AppState>,
-    image_id: String,
-    parent_id: String,
+    image_id: ImageId,
+    parent_id: NodeId,
     allow_all_files: bool,
     keyword: Option<String>,
     sort: Option<String>,
@@ -97,8 +98,8 @@ pub async fn fs_flat_page(
         filter.keyword = keyword;
     }
     let request = FlatRequest {
-        image_id: image_id.clone(),
-        parent_id: parent_id.clone(),
+        image_id: image_id.to_string(),
+        parent_id: parent_id.to_string(),
         filter: filter.normalized(),
         sort: FlatSort {
             key: sort_key,
@@ -146,8 +147,8 @@ pub async fn fs_flat_page(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_flat_ext_counts(
     state: State<'_, AppState>,
-    image_id: String,
-    parent_id: String,
+    image_id: ImageId,
+    parent_id: NodeId,
 ) -> Result<FsFlatExtCounts, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     let sources = resolve_sources(&state, &image, &image_id, &parent_id).await;

@@ -1,4 +1,5 @@
 import { invokeCmd } from './client';
+import type { ImageId, NodeId } from './ids';
 
 
 
@@ -26,8 +27,8 @@ export interface CsvTable {
 /** 解析镜像内 CSV / TSV 文件为表格。`delimiter` 省略 / 'auto' 时后端自动嗅探；
  *  传 ',' / ';' / '\t' / '|' 则按该分隔符解析（前端切换分隔符时重新调用）。 */
 export function fsCsvPreview(args: {
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
   delimiter?: string;
 }): Promise<CsvTable> {
   return invokeCmd<CsvTable>('fs_csv_preview', args);

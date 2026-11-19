@@ -1,5 +1,6 @@
 import { invokeCmd } from './client';
 import { type HashAlgo } from './fs/derived';
+import type { ImageId } from './ids';
 // Wire types for a loaded evidence image, shared by the image-load, RAID and
 // encrypted-volume commands. They live in the IPC layer so domain modules do
 // not import from composables; consumers use this transport model directly.
@@ -50,7 +51,7 @@ export interface EwfAcquiryInfo {
 
 /** 卷影副本会话镜像的来源（`ImageInfo.shadow_copy`）。 */
 export interface ShadowCopyOrigin {
-  parent_image_id: string;
+  parent_image_id: ImageId;
   partition_id: number;
   /** 按创建时间排序的序号，最早为 0。 */
   index: number;
@@ -64,7 +65,7 @@ export interface ImageInfo {
   unlocked_partitions?: number[];
   /** Source unavailable; the session serves published case metadata indexes. */
   index_only?: boolean;
-  id: string;
+  id: ImageId;
   path: string;
   source_format: string;
   size_bytes: number;
@@ -122,7 +123,7 @@ export interface IosBackupInfo {
 
 
 export function imageHashCompute<T>(args: {
-  imageId: string;
+  imageId: ImageId;
   algorithms: HashAlgo[];
   taskId: string;
   readFaultPolicy?: 'strict' | 'zeroFillAndReport';
@@ -132,7 +133,7 @@ export function imageHashCompute<T>(args: {
 
 /** Minimal view of a loaded image for the manual-builder member picker. */
 export interface LoadedImage {
-  id: string;
+  id: ImageId;
   /** `assembled://<label>` for synthetic RAID images (filtered out as members). */
   path: string;
   size_bytes: number;
@@ -148,7 +149,7 @@ export function listLoadedImages(): Promise<LoadedImage[]> {
 /** The slice of `ImageInfo` this domain needs when resolving an assembled
  *  array's synthetic image (full shape is declared above). */
 export interface LoadedImageSummary {
-  id: string;
+  id: ImageId;
   /** `assembled://<label>` for synthetic RAID images. */
   path: string;
   source_format: string;
@@ -156,7 +157,7 @@ export interface LoadedImageSummary {
 }
 
 /** Look up an already-loaded image (incl. synthetic assembled ones) by id. */
-export function imageInfoById(args: { imageId: string }): Promise<LoadedImageSummary> {
+export function imageInfoById(args: { imageId: ImageId }): Promise<LoadedImageSummary> {
   return invokeCmd<LoadedImageSummary>('image_info', args);
 }
 
@@ -180,7 +181,7 @@ export function imageLoad(args: ImageLoadArgs): Promise<LoadedImageSummary> {
   return invokeCmd<LoadedImageSummary>('image_load', args);
 }
 
-export function imageUnload(args: { imageId: string }): Promise<void> {
+export function imageUnload(args: { imageId: ImageId }): Promise<void> {
   return invokeCmd<void>('image_unload', args);
 }
 
@@ -215,7 +216,7 @@ export interface ImageLoadPartition {
  *  partitions. Same command as `imageLoad`, typed for callers that need the
  *  partition list (e.g. auto-mount). Extra `ImageInfo` fields are ignored. */
 export interface ImageLoadDetail {
-  id: string;
+  id: ImageId;
   partitions: ImageLoadPartition[];
 }
 
@@ -254,7 +255,7 @@ export interface ImageExportResult {
  *  Emits throttled {@link IMAGE_EXPORT_PROGRESS_EVENT} updates and aborts
  *  (with a retained partial file) when `task_cancel({ taskId })` is called. */
 export function imageExportRaw(args: {
-  imageId: string;
+  imageId: ImageId;
   destination: string;
   taskId: string;
   readFaultPolicy?: 'strict' | 'zeroFillAndReport';
@@ -264,6 +265,6 @@ export function imageExportRaw(args: {
   return invokeCmd<ImageExportResult>('image_export_raw', args);
 }
 
-export function imageBadRegions(args: { imageId: string }): Promise<Omit<ImageExportResult, 'bytes_written'>> {
+export function imageBadRegions(args: { imageId: ImageId }): Promise<Omit<ImageExportResult, 'bytes_written'>> {
   return invokeCmd<Omit<ImageExportResult, 'bytes_written'>>('image_bad_regions', args);
 }

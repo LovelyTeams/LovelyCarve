@@ -2,9 +2,10 @@ import { onScopeDispose, reactive } from 'vue';
 import { fsChildCounts, fsSubtreeEmptyDirs } from '../../../lib/ipc/fs/query';
 import { containerFsChildrenPage as fsChildrenPage } from './containerReads';
 import { isHostDockerContainerRootId, type DiskFsNode as FsNode } from '../model/model';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 /** Snapshot-first counts and bounded live probes; synthetic Docker roots stay lazy. */
-export function useDirectoryMetadata(options: { imageId: () => string; generation: () => number }) {
+export function useDirectoryMetadata(options: { imageId: () => ImageId; generation: () => number }) {
   const dirCounts = reactive<Record<string, number>>({});
   const emptySubtree = reactive<Record<string, boolean>>({});
   const pending = new Set<string>();

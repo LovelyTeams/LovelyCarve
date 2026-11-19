@@ -89,11 +89,12 @@ import { useDialogFocus } from '../../../composables/useDialogFocus';
 import { useTaskCenter } from '../composables/useTaskCenter';
 import { usePluginCatalog } from '../composables/usePluginCatalog';
 import AnalyzerOptionsForm from './AnalyzerOptionsForm.vue';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 const props = defineProps<{
   visible: boolean;
-  imageId: string;
-  nodeId: string | null;
+  imageId: ImageId;
+  nodeId: NodeId | null;
   fileName: string;
 }>();
 

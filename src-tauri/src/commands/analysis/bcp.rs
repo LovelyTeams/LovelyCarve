@@ -1,5 +1,6 @@
 //! Read-only BCP catalog and bounded record pages for exported evidence.
 
+use crate::core::common::ids::ImageId;
 use std::path::PathBuf;
 
 use crate::host::State;
@@ -13,7 +14,7 @@ use crate::{
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn bcp_catalog(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<BcpCatalog, AppError> {
     let image = crate::app::access::loaded_image_app_error(&state, &image_id).await?;
     if image.folder.is_none() {
@@ -29,7 +30,7 @@ pub async fn bcp_catalog(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn bcp_rows(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     code: String,
     cursor: Option<BcpCursor>,
 ) -> Result<BcpPage, AppError> {

@@ -2,6 +2,7 @@
 //! auto-detection. The exporter emits `image-export-progress` events so
 //! the frontend renders a progress bar without polling.
 
+use crate::core::common::ids::ImageId;
 use std::{
     fs::File,
     io::{BufWriter, Write},
@@ -62,7 +63,7 @@ const LOAD_PROGRESS_THROTTLE: std::time::Duration = std::time::Duration::from_mi
 
 pub async fn image_info(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<ImageInfo, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     Ok(image.info())
@@ -98,7 +99,7 @@ pub struct ManualRaidResult {
 /// report survives app restarts and evidence reloads.
 pub async fn image_bad_regions(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<ReadFaultReport, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     image_read_fault_report(&state, &image_id, &image).await

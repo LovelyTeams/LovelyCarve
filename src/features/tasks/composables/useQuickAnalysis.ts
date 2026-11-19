@@ -13,6 +13,7 @@ import { computed, ref } from 'vue';
 import { usePersistedRef } from '../../../composables/usePersistedRef';
 import type { DetectedSystem, SchedFunction } from '../../../lib/ipc/tasks';
 import { categoryLabel, declaredPluginText, pluginTextKey, type PluginTextLookup } from '../../../lib/models/pluginText';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 /** longtime 耗时任务分类固定在侧栏末尾。 */
 export const LONGTIME_TYPE = 'longtime';
@@ -149,7 +150,7 @@ const TYPE_ORDER = [
 ];
 
 /** 记忆检材上次选择的系统。 */
-export function useSystemMemory(imageId: string) {
+export function useSystemMemory(imageId: ImageId) {
   return usePersistedRef<string | null>(`${SYSTEM_MEMORY_PREFIX}${imageId}`, null);
 }
 

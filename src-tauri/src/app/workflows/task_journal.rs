@@ -179,11 +179,11 @@ mod tests {
     fn starts_and_settlements_of_evidence_tasks_are_journaled() {
         let manager = TaskManager::default();
         let events = events_of(&manager);
-        let hash = manager.register("hash-1", TaskKind::ImageHash, Some("img".to_string()));
+        let hash = manager.register("hash-1", TaskKind::ImageHash, Some("img".into()));
         hash.update(|view| view.subject.push("/disk.E01".to_string()));
         hash.finish(TaskOutcome::Succeeded);
         drop(hash);
-        drop(manager.register("flat-1", TaskKind::FlatList, Some("img".to_string())));
+        drop(manager.register("flat-1", TaskKind::FlatList, Some("img".into())));
         drop(manager.register("load-1", TaskKind::ImageLoad, None));
 
         let actions: Vec<_> = events
@@ -209,7 +209,7 @@ mod tests {
         let manager = TaskManager::default();
         let observer = journal.clone();
         manager.set_event_sink(move |event| observer.observe(&event));
-        let hash = manager.register("hash-1", TaskKind::ImageHash, Some("img".to_string()));
+        let hash = manager.register("hash-1", TaskKind::ImageHash, Some("img".into()));
         hash.finish(TaskOutcome::Cancelled);
         drop(hash);
 
@@ -235,11 +235,11 @@ mod tests {
         let active_case = Arc::new(Mutex::new(Some(case)));
         let manager = TaskManager::default();
         let events = events_of(&manager);
-        let hash = manager.register("hash-1", TaskKind::ImageHash, Some("img".to_string()));
+        let hash = manager.register("hash-1", TaskKind::ImageHash, Some("img".into()));
         hash.update(|view| view.subject.push("/disk.E01".to_string()));
         hash.finish(TaskOutcome::Succeeded);
         drop(hash);
-        drop(manager.register("hash-2", TaskKind::ImageHash, Some("other".to_string())));
+        drop(manager.register("hash-2", TaskKind::ImageHash, Some("other".into())));
 
         for event in events.lock().expect("events").iter() {
             if let Some(action) = journal_action(event) {

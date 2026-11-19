@@ -98,6 +98,7 @@ import {
   visibleBase, wheelLines, zoomStep, type LayoutTransition, type TreemapView, type ZoomStep,
 } from '../model/treemapView';
 import { paintTreemap, resolvePalette, type PaintTile, type TreemapPalette } from './treemapCanvas';
+import type { NodeId } from '../../../lib/ipc/ids';
 
 const props = defineProps<{
   view: FsSizeTreeView | null;
@@ -126,7 +127,7 @@ const emit = defineEmits<{
   showList: [];
   retry: [];
   /** 很可能马上要进入（或回到）的目录：先把它的数据取来。 */
-  prefetch: [nodeId: string];
+  prefetch: [nodeId: NodeId];
 }>();
 
 type Tile = TreemapTile<FsSizeTreeEntry>;
@@ -592,7 +593,7 @@ function resetZoom() {
 }
 
 /** 菜单里的「打开」：按节点找到瓦片，像双击一样进入。 */
-function enterNode(nodeId: string): boolean {
+function enterNode(nodeId: NodeId): boolean {
   const index = layout.value.findIndex(tile => tile.entry?.node?.id === nodeId);
   if (index < 0 || layout.value[index].entry?.node?.kind !== 'dir') return false;
   enter(index);

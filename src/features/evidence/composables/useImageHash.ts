@@ -5,6 +5,7 @@ import { notifyError, notifySuccess } from '../../../composables/useToast';
 import { imageHashCompute } from '../../../lib/ipc/image';
 import { taskCancel } from '../../../lib/ipc/taskRuntime';
 import { onEvent, type UnlistenFn } from '../../../lib/ipc/events';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 // Module-scoped registry of in-flight source-image hash jobs. Pattern
 // mirrors useBitlockerUnlocks: the backend task runs on tokio's blocking
@@ -26,7 +27,7 @@ export interface HashResult {
 }
 
 export interface ImageHashJob {
-  imageId: string;
+  imageId: ImageId;
   taskId: string;
   algorithms: HashAlgo[];
   bytesDone: number;
@@ -57,22 +58,22 @@ function newTaskId(): string {
   return `hash-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function useImageHashJob(imageId: () => string): ComputedRef<ImageHashJob | undefined> {
+export function useImageHashJob(imageId: () => ImageId): ComputedRef<ImageHashJob | undefined> {
   return computed(() => jobs.get(imageId()));
 }
 
-export function useImageHashResult(imageId: () => string): ComputedRef<HashResult | undefined> {
+export function useImageHashResult(imageId: () => ImageId): ComputedRef<HashResult | undefined> {
   return computed(() => results.get(imageId()));
 }
 
 /** Reset cached results for an image — call when the image is unloaded or
  *  reloaded so a stale hash from a previous load doesn't surface. */
-export function clearImageHashResult(imageId: string) {
+export function clearImageHashResult(imageId: ImageId) {
   results.delete(imageId);
 }
 
 export async function startImageHash(
-  imageId: string,
+  imageId: ImageId,
   algorithms: HashAlgo[],
 ): Promise<boolean> {
   if (jobs.has(imageId)) {
@@ -149,7 +150,7 @@ export async function startImageHash(
   }
 }
 
-export async function cancelImageHash(imageId: string): Promise<void> {
+export async function cancelImageHash(imageId: ImageId): Promise<void> {
   const job = jobs.get(imageId);
   if (!job) return;
   job.cancelling = true;

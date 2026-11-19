@@ -7,6 +7,7 @@
 //! surface. Adding a new command means adding it to the matching
 //! submodule and registering it in `lib.rs`'s `invoke_handler!` list.
 
+use crate::core::common::ids::NodeId;
 use std::collections::HashSet;
 
 pub mod analysis;
@@ -27,7 +28,7 @@ pub mod timeline;
 pub(crate) const MAX_DERIVED_NODE_QUERY: usize = 5_000;
 
 pub(crate) fn bounded_unique_node_ids(
-    node_ids: Vec<String>,
+    node_ids: Vec<NodeId>,
 ) -> Result<Vec<String>, app_error::AppError> {
     if node_ids.len() > MAX_DERIVED_NODE_QUERY {
         return Err(app_error::AppError::resource_limit(format!(
@@ -43,7 +44,7 @@ pub(crate) fn bounded_unique_node_ids(
     let mut unique = Vec::with_capacity(node_ids.len());
     for node_id in node_ids {
         if seen.insert(node_id.clone()) {
-            unique.push(node_id);
+            unique.push(node_id.into());
         }
     }
     Ok(unique)

@@ -5,6 +5,7 @@ import { containerFsChildrenPage as fsChildrenPage } from './containerReads';
 import { notifyError } from '../../../composables/useToast';
 import type { FlatFileFilter, FlatSortColumn } from '../../../lib/ipc/fs/types';
 import type { DiskFsNode as FsNode } from '../model/model';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 export interface DirectoryQuery {
   filter?: FlatFileFilter;
@@ -14,8 +15,8 @@ export interface DirectoryQuery {
 
 /** Cursor pagination owns totals/cursors, while the panel coordinates navigation. */
 export function useDirectoryQuery(options: {
-  imageId: () => string;
-  parentId: () => string;
+  imageId: () => ImageId;
+  parentId: () => NodeId;
   generation: () => number;
   enabled: () => boolean;
   query: () => DirectoryQuery;
@@ -37,7 +38,7 @@ export function useDirectoryQuery(options: {
   onScopeDispose(() => { disposed = true; });
   const current = (generation: number) => !disposed && generation === options.generation();
 
-  async function loadDirectoryFirstPage(parentId: string, gen: number, restore: { targetId?: string | null; scrollTop?: number } = {}) {
+  async function loadDirectoryFirstPage(parentId: NodeId, gen: number, restore: { targetId?: string | null; scrollTop?: number } = {}) {
     if (!current(gen) || !options.enabled()) return;
     const imageId = options.imageId();
     const query = options.query();

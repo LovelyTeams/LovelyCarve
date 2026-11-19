@@ -1,32 +1,33 @@
 import { invokeCmd } from '../client';
+import type { ImageId, NodeId } from '../ids';
 
 
 
 /** Read up to `maxBytes` of a file (backend hard-caps at 2 MiB) as raw bytes.
  *  Returns an `ArrayBuffer` (Tauri raw IPC response) — wrap with `new Uint8Array(buf)`.
  *  Used by the detail panel's hex view; text / code / markdown use `fsPreviewText`. */
-export function fsPreview(args: { imageId: string; nodeId: string; maxBytes: number }): Promise<ArrayBuffer> {
+export function fsPreview(args: { imageId: ImageId; nodeId: NodeId; maxBytes: number }): Promise<ArrayBuffer> {
   return invokeCmd<ArrayBuffer>('fs_preview', args);
 }
 
 /** Read a whole file as raw bytes. The backend rejects files over 16 MiB even
  *  if a caller skips its frontend size guard. */
-export function fsRead(args: { imageId: string; nodeId: string }): Promise<ArrayBuffer> {
+export function fsRead(args: { imageId: ImageId; nodeId: NodeId }): Promise<ArrayBuffer> {
   return invokeCmd<ArrayBuffer>('fs_read', args);
 }
 
 /** Whole-file read for the Flyfish File Viewer rich preview path, with a much
  *  higher cap than `fsRead` (backend `fs_read_large`, 16 MiB). Larger files
  *  take the `fsMediaTemp` asset-protocol path instead. */
-export function fsReadLarge(args: { imageId: string; nodeId: string; taskId: string }): Promise<ArrayBuffer> {
+export function fsReadLarge(args: { imageId: ImageId; nodeId: NodeId; taskId: string }): Promise<ArrayBuffer> {
   return invokeCmd<ArrayBuffer>('fs_read_large', args);
 }
 
 /** Read one logical file range as raw bytes. The backend hard-caps each call at
  *  16 MiB and rejects offset + length overflow. */
 export function fsReadRange(args: {
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
   offset: number;
   length: number;
 }): Promise<ArrayBuffer> {
@@ -56,8 +57,8 @@ export interface DecodedText {
  *  （二者传同一个 PREVIEW_CAP，覆盖同一段前缀）。`encoding`（WHATWG 标签）跳过检测；
  *  `offset` 从文件中间读一段，未指定编码时按文件开头检测。 */
 export function fsPreviewText(args: {
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
   maxBytes: number;
   offset?: number;
   encoding?: string;

@@ -3,7 +3,7 @@
 
 use crate::host::{LeaseOwner, State};
 
-use crate::core::common::ids::NodeRef;
+use crate::core::common::ids::{ImageId, NodeId, NodeRef};
 use crate::core::common::text_decode::{self, Guess, Span};
 use crate::core::filesystem::tree::fs_tree::{self, FsStat};
 use crate::core::preview::media_cache::MediaKey;
@@ -22,8 +22,8 @@ const FS_READ_MAX_BYTES: u64 = 16 * 1024 * 1024;
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_read(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
 ) -> Result<crate::host::Response, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     let data = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, AppError> {
@@ -50,8 +50,8 @@ pub async fn fs_read(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_read_range(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     offset: u64,
     length: u64,
 ) -> Result<crate::host::Response, AppError> {
@@ -84,8 +84,8 @@ const FS_READ_LARGE_MAX_BYTES: u64 = 16 * 1024 * 1024;
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_read_large(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     task_id: String,
 ) -> Result<crate::host::Response, AppError> {
     let task = state
@@ -151,8 +151,8 @@ fn sanitize_media_ext(ext: Option<&str>) -> String {
 pub async fn fs_media_temp(
     owner: LeaseOwner,
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     ext: Option<String>,
     task_id: String,
 ) -> Result<String, AppError> {
@@ -279,8 +279,8 @@ pub async fn fs_media_release(state: State<'_, AppState>, task_id: String) -> Re
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_preview(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     max_bytes: usize,
 ) -> Result<crate::host::Response, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
@@ -307,8 +307,8 @@ pub async fn fs_preview(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_preview_text(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     max_bytes: usize,
     offset: Option<u64>,
     encoding: Option<String>,
@@ -371,8 +371,8 @@ pub async fn fs_preview_text(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_stat(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
 ) -> Result<FsStat, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     tokio::task::spawn_blocking(move || -> Result<FsStat, AppError> {

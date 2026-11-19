@@ -1,5 +1,6 @@
 import { shouldShowDirectoryWithEmptyFilter } from './emptyDirectoryFilter';
 import { isHostDockerContainerRootId } from './model';
+import type { NodeId } from '../../../lib/ipc/ids';
 export interface TreeStackFrame {
   id: string;
   name: string;
@@ -8,7 +9,7 @@ export interface TreeStackFrame {
 export interface TreeNodeData {
   id: string;
   name: string;
-  parentId: string | null;
+  parentId: NodeId | null;
   kind: 'dir' | 'file' | 'symlink' | 'unallocated';
   expanded: boolean;
   loaded: boolean;

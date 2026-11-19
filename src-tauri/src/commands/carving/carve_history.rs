@@ -1,5 +1,6 @@
 //! Current-image carving history. Sessions are retained in memory by `carve_start`.
 
+use crate::core::common::ids::ImageId;
 use std::{collections::HashMap, sync::Arc};
 
 use crate::host::State;
@@ -55,7 +56,7 @@ fn remove_finished_scan(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn carve_scan_list(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<Vec<CarveScanSnapshot>, AppError> {
     Ok(snapshots_for_image(
         &*state.carve_scans.lock().await,
@@ -67,7 +68,7 @@ pub async fn carve_scan_list(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn carve_scan_remove(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     scan_id: String,
 ) -> Result<(), AppError> {
     remove_finished_scan(&mut *state.carve_scans.lock().await, &image_id, &scan_id)

@@ -11,7 +11,7 @@ use super::{
 };
 use crate::{
     core::{
-        evidence::partitions::lvm2::test_support as lvm,
+        common::ids::ImageId, evidence::partitions::lvm2::test_support as lvm,
         filesystem::volumes::btrfs::test_support as btrfs,
     },
     host::AppHandle,
@@ -306,7 +306,7 @@ fn scoped_raid_detection_isolates_cloned_volume_bytes_and_cache_identity() {
                         exec.host.clone(),
                         crate::host::State::new(&state),
                         vec![],
-                        Some(ids),
+                        Some(ids.into_iter().map(ImageId::new).collect()),
                     )
                     .await
                     .err()
@@ -318,7 +318,13 @@ fn scoped_raid_detection_isolates_cloned_volume_bytes_and_cache_identity() {
                 // synthetic paths; no live image IDs enter the scope digest.
                 let restarted = AppState::new();
                 for (index, source) in sources.iter().enumerate() {
-                    let image = state.images.lock().await.get(source).unwrap().clone();
+                    let image = state
+                        .images
+                        .lock()
+                        .await
+                        .get(source.as_str())
+                        .unwrap()
+                        .clone();
                     let disk = crate::core::evidence::image::DiskImage::open_with_id(
                         format!("reopened-{index}"),
                         image.path.clone(),
@@ -334,7 +340,7 @@ fn scoped_raid_detection_isolates_cloned_volume_bytes_and_cache_identity() {
                         exec.host.clone(),
                         crate::host::State::new(&restarted),
                         vec![],
-                        Some(vec![format!("reopened-{index}")]),
+                        Some(vec![ImageId::new(format!("reopened-{index}"))]),
                     )
                     .await
                     .unwrap();
@@ -343,7 +349,9 @@ fn scoped_raid_detection_isolates_cloned_volume_bytes_and_cache_identity() {
                         .as_ref()
                         .unwrap();
                     assert_eq!(
-                        restarted.images.lock().await[id].path.to_string_lossy(),
+                        restarted.images.lock().await[id.as_str()]
+                            .path
+                            .to_string_lossy(),
                         assembled_paths[index]
                     );
                 }
@@ -451,7 +459,7 @@ fn duplicate_complex_volume_names_can_be_entered_by_id_and_path_before_indexing(
                 let temporary = tempfile::tempdir().unwrap();
                 let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join("vendor/ewf/tests/data/ntfs_sample.E01");
-                let mut image = DiskImage::open_with_id("duplicate-volumes".into(), path).unwrap();
+                let mut image = DiskImage::open_with_id("duplicate-volumes", path).unwrap();
                 let mut first = image.partitions[0].clone();
                 let label = "数据卷 (Basic data partition) · 备份";
                 let navigation_name = "数据卷_Basic_data_partition_备份";
@@ -570,7 +578,7 @@ async fn path_case_fallback_obeys_selected_apple_volume_flags_and_filesystem_kin
     let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("vendor/apfs/tests/data");
     for (file, insensitive) in [("basic.apfs", true), ("case-sensitive.apfs", false)] {
         let image = Arc::new(EvidenceSession::from(
-            DiskImage::open_with_id("apple".into(), fixtures.join(file)).unwrap(),
+            DiskImage::open_with_id("apple", fixtures.join(file)).unwrap(),
         ));
         assert_eq!(
             super::navigation::case_insensitive(image, "apfs:part:0:0:".into())
@@ -590,7 +598,7 @@ async fn path_case_fallback_obeys_selected_apple_volume_flags_and_filesystem_kin
         (PartitionKind::HfsX, false),
         (PartitionKind::Ext4, false),
     ] {
-        let mut image = DiskImage::open_with_id("policy".into(), source.clone()).unwrap();
+        let mut image = DiskImage::open_with_id("policy", source.clone()).unwrap();
         image.partitions[0].kind = kind;
         let image = Arc::new(EvidenceSession::from(image));
         assert_eq!(

@@ -8,6 +8,7 @@
 //! 事件与通用 `task-progress` 双通道上抛。取消后已落库的部分结果保留
 //! （任务行改 `cancelled`）。导出复用与表格一致的过滤/去重条件。
 
+use crate::core::common::ids::ImageId;
 use std::collections::HashSet;
 use std::io::Write;
 use std::path::PathBuf;
@@ -83,7 +84,7 @@ fn normalize_patterns(raw: &[String]) -> Vec<String> {
 pub async fn global_search_start(
     app: AppHandle,
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     search_id: String,
     options: GlobalSearchOptions,
 ) -> Result<GlobalSearchSummary, AppError> {
@@ -136,7 +137,7 @@ pub async fn global_search_start(
     let started_ms = now_ms();
     let meta = GlobalSearchMeta {
         search_id: search_id.clone(),
-        image_id: image_id.clone(),
+        image_id: image_id.to_string(),
         keywords,
         regexes,
         codepages: options.codepages.clone(),
@@ -164,7 +165,7 @@ pub async fn global_search_start(
         &state.global_searches,
         search_id.clone(),
         GlobalSearchRunState {
-            image_id: image_id.clone(),
+            image_id: image_id.to_string(),
             started_ms,
             files_done: 0,
             files_total: 0,
@@ -203,7 +204,7 @@ pub async fn global_search_start(
         let on_progress = |files_done: u64, files_total: u64, hits: u64, matched_files: u64| {
             let progress = GlobalSearchProgress {
                 search_id: scan_search_id.clone(),
-                image_id: scan_image_id.clone(),
+                image_id: scan_image_id.to_string(),
                 files_done,
                 files_total,
                 hits,
@@ -342,7 +343,7 @@ fn serialize_scope(options: &GlobalSearchOptions) -> serde_json::Value {
 #[allow(clippy::too_many_arguments)]
 pub async fn global_search_hits_page(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     search_id: String,
     skip: Option<u64>,
     limit: Option<u64>,
@@ -372,7 +373,7 @@ pub async fn global_search_hits_page(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn global_search_history_list(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     limit: Option<u32>,
 ) -> Result<Vec<GlobalSearchMeta>, AppError> {
     let case_dir = active_case_dir(&state).await?;
@@ -393,7 +394,7 @@ pub async fn global_search_history_list(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn global_search_history_delete(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     search_id: String,
 ) -> Result<bool, AppError> {
     let running = {
@@ -431,7 +432,7 @@ pub async fn global_search_history_delete(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn global_search_export(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     search_id: String,
     destination: String,
     keyword: Option<String>,

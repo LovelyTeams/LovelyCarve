@@ -9,6 +9,7 @@ import { kindLabel, type DiskFsNode as FsNode } from '../model/model';
 import type { HashAlgo } from '../../../lib/ipc/fs/derived';
 import type { FileTag } from '../model/tags';
 import type { useFileSelection } from './useFileSelection';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 /** What the row menu's batch actions act on: every visible checked row when it
  *  was opened on a checked row, otherwise only the row it was opened on. */
@@ -16,7 +17,7 @@ export type FileMenuScope = 'checked' | 'row';
 
 /** The row menu's targets drive its clipboard, export, analysis and tag actions alike. */
 export function useFileActions(options: {
-  imageId: () => string; rows: () => FsNode[]; node: () => FsNode | null; scope: () => FileMenuScope;
+  imageId: () => ImageId; rows: () => FsNode[]; node: () => FsNode | null; scope: () => FileMenuScope;
   currentPath: () => string; fullPathOf: (node: FsNode) => string;
   selection: ReturnType<typeof useFileSelection>;
   closeMenu: () => void;
@@ -24,7 +25,7 @@ export function useFileActions(options: {
   exportDirectory: (node: FsNode | null, directories: FsNode[]) => Promise<void>;
   digest: (files: FsNode[], algorithms: HashAlgo[]) => Promise<void>;
   identify: (files: FsNode[]) => Promise<void>;
-  setTag: (imageId: string, ids: string[], tag: FileTag | null) => void;
+  setTag: (imageId: ImageId, ids: string[], tag: FileTag | null) => void;
   revealTagColumn: () => void;
 }) {
   const { checkedIds, checkedFiles, checkedDirs } = options.selection;

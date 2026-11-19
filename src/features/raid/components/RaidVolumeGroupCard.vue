@@ -29,8 +29,9 @@ import { ChevronRight, ExternalLink, Loader2 } from 'lucide-vue-next';
 import { vDisclosureMotion } from '../../../composables/uiMotionDirectives';
 import type { RaidLogicalVolume, RaidVolumeGroup } from '../../../lib/ipc/raid';
 import { formatBytes, vgSummary } from '../model/stackView';
-const props = defineProps<{ vg: RaidVolumeGroup; imageId?: string; openingId?: string | null }>();
-const emit = defineEmits<{ open: [imageId: string | null] }>();
+import type { ImageId } from '../../../lib/ipc/ids';
+const props = defineProps<{ vg: RaidVolumeGroup; imageId?: ImageId; openingId?: string | null }>();
+const emit = defineEmits<{ open: [imageId: ImageId | null] }>();
 /** Complete logical volumes can be opened as images of their own. */
 const assembledVolumes = computed(() => props.vg.logical_volumes.filter(lv => lv.assembled_image_id));
 function physicalVolumeCount(lv: RaidLogicalVolume): number {

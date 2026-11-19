@@ -6,11 +6,12 @@ import { focusFilePreviewWindow, openFilePreviewWindow, type FilePreviewWindowAr
 import type { UnlistenFn } from '../../../lib/ipc/events';
 import { notifyError } from '../../../composables/useToast';
 import type { FilePreviewReadingState } from '../../../lib/models/filePreviewReadingState';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 /** Tracks ownership so returning a preview cannot target another evidence tab. */
 export function usePreviewDock<T>(options: {
-  imageId: () => string;
-  activate?: (imageId: string) => boolean;
+  imageId: () => ImageId;
+  activate?: (imageId: ImageId) => boolean;
   closed?: () => void;
   restore: (node: T, focusTarget?: FilePreviewWindowArgs['focusTarget'], readingState?: FilePreviewReadingState) => void;
 }) {

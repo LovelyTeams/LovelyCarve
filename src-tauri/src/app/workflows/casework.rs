@@ -26,6 +26,7 @@ use crate::core::analysis::identify::autodetect::EvidencePlatform;
 use crate::core::casework::case::{
     self, CaseInfo, CaseState, CreateCaseOptions, EvidenceRef, LockedEdit,
 };
+use crate::core::common::ids::ImageId;
 use crate::core::{casework::case_ledger, casework::case_paths, casework::case_registry};
 use crate::state::AppState;
 
@@ -224,7 +225,7 @@ async fn clear_removed_case_evidence(state: &State<'_, AppState>) {
 /// `image_unload` does per image — Dokan mounts, preview/media caches, and
 /// in-flight session-snapshot builds all get torn down.
 async fn unload_all_images(state: &State<'_, AppState>) {
-    let ids: Vec<String> = {
+    let ids: Vec<ImageId> = {
         let images = state.images.lock().await;
         images.keys().cloned().collect()
     };
@@ -410,7 +411,7 @@ pub async fn case_option_save(
 /// detected platform. Locked cases refuse edits.
 pub async fn case_evidence_platform_set(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     platform: String,
 ) -> Result<EvidenceRef, AppError> {
     let manual = match platform.as_str() {
@@ -447,7 +448,7 @@ pub async fn case_evidence_list(state: State<'_, AppState>) -> Result<Vec<Eviden
 
 pub async fn case_evidence_remove(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<CaseInfo, AppError> {
     {
         let mut removed = state.removed_case_evidence.lock().await;

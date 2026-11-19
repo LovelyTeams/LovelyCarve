@@ -2,6 +2,7 @@
 //! auto-detection. The exporter emits `image-export-progress` events so
 //! the frontend renders a progress bar without polling.
 
+use crate::core::common::ids::ImageId;
 use crate::host::AppHandle;
 use crate::host::State;
 
@@ -80,13 +81,13 @@ pub async fn image_load(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn image_info(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<ImageInfo, AppError> {
     crate::app::workflows::evidence::image_info(state, image_id).await
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub async fn image_unload(state: State<'_, AppState>, image_id: String) -> Result<(), AppError> {
+pub async fn image_unload(state: State<'_, AppState>, image_id: ImageId) -> Result<(), AppError> {
     crate::app::workflows::evidence::image_unload(state, image_id).await
 }
 
@@ -113,7 +114,7 @@ pub async fn raid_auto_detect(
     app: AppHandle,
     state: State<'_, AppState>,
     degraded_sets: Option<Vec<String>>,
-    image_ids: Option<Vec<String>>,
+    image_ids: Option<Vec<ImageId>>,
 ) -> Result<RaidStack, AppError> {
     crate::app::workflows::evidence::raid_auto_detect(
         app,
@@ -151,7 +152,7 @@ pub async fn raid_manual_assemble(
 pub async fn image_export_raw(
     app: AppHandle,
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     destination: String,
     task_id: String,
     read_fault_policy: Option<ReadFaultPolicy>,
@@ -175,7 +176,7 @@ pub async fn image_export_raw(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn image_bad_regions(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<ReadFaultReport, AppError> {
     crate::app::workflows::evidence::image_bad_regions(state, image_id).await
 }

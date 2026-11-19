@@ -4,9 +4,10 @@ import { onScopeDispose, watch } from 'vue';
 import { globalSearchStart, onGlobalSearchProgress, type GlobalSearchOptions, type GlobalSearchProgress } from '../../../lib/ipc/search';
 import type { UnlistenFn } from '../../../lib/ipc/events';
 import { notifyError, notifyInfo } from '../../../composables/useToast';
+import type { ImageId } from '../../../lib/ipc/ids';
 let searchSequence = 0;
 interface SearchExecutionOptions {
-  imageId: () => string; selectedSearchId: () => string | null;
+  imageId: () => ImageId; selectedSearchId: () => string | null;
   refreshTasks: (searchId?: string) => Promise<void>;
   acceptProgress: (progress: GlobalSearchProgress) => boolean;
   pollIncremental: () => Promise<void>; loadFirstPage: () => Promise<void>;

@@ -2,8 +2,9 @@ import { containerFsChildrenPage as fsChildrenPage } from './containerReads';
 import { fsChildCounts, fsSubtreeEmptyDirs } from '../../../lib/ipc/fs/query';
 import { winDriveLetters } from '../../../lib/ipc/filesystemMetadata';
 import { isHostDockerContainerRootId } from '../model/model';
+import type { ImageId } from '../../../lib/ipc/ids';
 interface FileTreeMetadataOptions {
-  imageId: () => string; current: (generation: number) => boolean;
+  imageId: () => ImageId; current: (generation: number) => boolean;
   publishCounts: (counts: Record<string, number>) => void;
   publishEmpty: (empty: Record<string, boolean>) => void;
   publishLetters: (letters: { id: string; letter: string }[]) => void;

@@ -22,7 +22,7 @@ fn fixture() -> (tempfile::TempDir, Arc<EvidenceSession>) {
     let case = tempfile::tempdir().expect("temporary case");
     let path = case.path().join("image.raw");
     std::fs::write(&path, vec![0; 4096]).expect("write raw fixture");
-    let mut image = crate::core::evidence::image::DiskImage::open_with_id("evidence".into(), path)
+    let mut image = crate::core::evidence::image::DiskImage::open_with_id("evidence", path)
         .expect("open fixture");
     image.partitions = vec![Partition {
         id: 0,

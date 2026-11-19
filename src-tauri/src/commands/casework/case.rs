@@ -15,6 +15,7 @@
 //! Snapshot orchestration and the `snapshot_*` commands live in
 //! `commands::casework::case_snapshot`.
 
+use crate::core::common::ids::ImageId;
 use crate::host::AppHandle;
 use crate::host::State;
 
@@ -135,7 +136,7 @@ pub async fn case_evidence_list(state: State<'_, AppState>) -> Result<Vec<Eviden
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn case_evidence_remove(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<CaseInfo, AppError> {
     crate::app::workflows::casework::case_evidence_remove(state, image_id).await
 }
@@ -144,7 +145,7 @@ pub async fn case_evidence_remove(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn case_evidence_platform_set(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     platform: String,
 ) -> Result<EvidenceRef, AppError> {
     crate::app::workflows::casework::case_evidence_platform_set(state, image_id, platform).await

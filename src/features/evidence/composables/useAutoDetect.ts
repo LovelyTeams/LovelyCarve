@@ -11,6 +11,7 @@ import {
 import { IpcCommandError } from '../../../lib/ipc/client';
 import { onEvent, type UnlistenFn } from '../../../lib/ipc/events';
 import { notifyError } from '../../../composables/useToast';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 // 自动识别平台的前端状态。
 // Module-scoped like useImageHash: the backend runs the detection as a
@@ -65,7 +66,7 @@ export function applyAutoDetectReport(report: AutoDetectReport) {
 }
 
 export function useAutoDetectReport(
-  imageId: () => string | null | undefined,
+  imageId: () => ImageId | null | undefined,
 ): ComputedRef<AutoDetectReport | undefined> {
   ensureAutoDetectListener();
   return computed(() => {
@@ -74,7 +75,7 @@ export function useAutoDetectReport(
   });
 }
 
-export function useAutoDetectPending(imageId: () => string | null | undefined): ComputedRef<boolean> {
+export function useAutoDetectPending(imageId: () => ImageId | null | undefined): ComputedRef<boolean> {
   return computed(() => {
     const id = imageId();
     return !!id && pending.has(id);
@@ -82,7 +83,7 @@ export function useAutoDetectPending(imageId: () => string | null | undefined): 
 }
 
 export function useAutoDetectError(
-  imageId: () => string | null | undefined,
+  imageId: () => ImageId | null | undefined,
 ): ComputedRef<string | undefined> {
   return computed(() => {
     const id = imageId();
@@ -91,7 +92,7 @@ export function useAutoDetectError(
 }
 
 /** 手动触发识别。 */
-export async function runAutoDetect(imageId: string): Promise<AutoDetectReport | null> {
+export async function runAutoDetect(imageId: ImageId): Promise<AutoDetectReport | null> {
   if (pending.has(imageId)) return reports.get(imageId) ?? null;
   pending.add(imageId);
   const epoch = generation;
@@ -116,7 +117,7 @@ export async function runAutoDetect(imageId: string): Promise<AutoDetectReport |
 }
 
 /** Drop cached state for an image — call when it is unloaded. */
-export function clearAutoDetectReport(imageId: string) {
+export function clearAutoDetectReport(imageId: ImageId) {
   imageGenerations.set(imageId, (imageGenerations.get(imageId) ?? 0) + 1);
   pending.delete(imageId);
   reports.delete(imageId);

@@ -1,5 +1,6 @@
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { fsSizeTree, type FsSizeTreeResult, type FsSizeTreeView } from '../../../lib/ipc/fs/sizeTree';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 /** 树图的度量：大小、文件数，或按大小排布、按最新修改时间着色。 */
 export type TreemapMode = 'bytes' | 'files' | 'age';
@@ -14,9 +15,9 @@ const CACHE_LIMIT = 16;
 /** 当前目录的树图数据。按请求缓存已就绪的视图，返回上级、再次进入都不必等后端；
  *  `prefetch` 提前取将要进入的目录，进入时直接从缓存显示。卷索引未就绪时随快照状态变化自动重试。 */
 export function useSizeTree(options: {
-  imageId: () => string;
+  imageId: () => ImageId;
   /** 当前目录；为 null 时不请求。 */
-  nodeId: () => string | null;
+  nodeId: () => NodeId | null;
   enabled: () => boolean;
   mode: () => TreemapMode;
   depth: () => number;
@@ -40,7 +41,7 @@ export function useSizeTree(options: {
   let queuedPrefetch: string | null = null;
   onScopeDispose(() => { generation++; epoch++; });
 
-  function requestFor(nodeId: string | null) {
+  function requestFor(nodeId: NodeId | null) {
     if (!options.enabled() || !nodeId) return null;
     return {
       imageId: options.imageId(),
@@ -128,7 +129,7 @@ export function useSizeTree(options: {
 
   /** 提前取 `nodeId` 按当前度量与层数的视图放进缓存，不动正在显示的视图。
    *  滚轮朝某个目录放大时调用：放大到头再滚一格进入，那时数据已经在手。 */
-  function prefetch(nodeId: string) {
+  function prefetch(nodeId: NodeId) {
     const current = requestFor(nodeId);
     if (!current) return;
     const key = JSON.stringify(current);

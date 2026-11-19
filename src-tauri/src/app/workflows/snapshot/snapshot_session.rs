@@ -33,13 +33,13 @@ use crate::core::catalog::filedb::filedb_store::{self, IndexSource};
 use crate::core::catalog::snapshot::volume_snapshot::{
     self, snapshot_file_name, volume_size_for_key, VolumeSnapshot, DEFAULT_MAX_SNAPSHOT_ENTRIES,
 };
-use crate::core::common::ids::VolumeRef;
+use crate::core::common::ids::{ImageId, VolumeKey, VolumeRef};
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::fs_all;
 use crate::state::{SessionIndex, SessionSnapshot, SessionSnapshots};
 use crate::task_manager::{TaskFlag, TaskKind, TaskManager};
 
-type ImageStore = Arc<Mutex<HashMap<String, Arc<EvidenceSession>>>>;
+type ImageStore = Arc<Mutex<HashMap<ImageId, Arc<EvidenceSession>>>>;
 type TaskStore = TaskManager;
 type ActiveCase = Arc<Mutex<Option<CaseState>>>;
 
@@ -163,7 +163,7 @@ pub(crate) fn spawn_session_snapshot(
     tasks: TaskStore,
     active_case: ActiveCase,
     image: Arc<EvidenceSession>,
-    volume_key: String,
+    volume_key: VolumeKey,
     token_id: String,
 ) {
     // Registration must precede spawn: a caller may immediately wait or unload.
@@ -431,7 +431,7 @@ pub(crate) fn spawn_session_snapshot(
                 Arc::new(SessionSnapshot {
                     body,
                     index,
-                    volume_key: volume_key.clone(),
+                    volume_key: volume_key.to_string(),
                     source_volume_size: built.header.source_volume_size,
                     entry_count: built.entry_count,
                     truncated: built.truncated,

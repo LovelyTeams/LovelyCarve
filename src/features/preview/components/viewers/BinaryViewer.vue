@@ -19,6 +19,7 @@ import { tr } from '../../../../composables/useLocale';
 import { computed, defineAsyncComponent, ref, watch } from 'vue';
 import { Loader2 } from 'lucide-vue-next';
 import { fsBinaryPreview, type NativeReport } from '../../../../lib/ipc/binary';
+import type { ImageId, NodeId } from '../../../../lib/ipc/ids';
 
 const PeViewer = defineAsyncComponent(() => import('./PeViewer.vue'));
 const ElfViewer = defineAsyncComponent(() => import('./ElfViewer.vue'));
@@ -26,8 +27,8 @@ const MachoViewer = defineAsyncComponent(() => import('./MachoViewer.vue'));
 const ArchiveViewer = defineAsyncComponent(() => import('./ArchiveViewer.vue'));
 
 const props = defineProps<{
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
 }>();
 
 const loading = ref(false);

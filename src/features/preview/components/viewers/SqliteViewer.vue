@@ -218,12 +218,13 @@ import { sqliteCellClass, sqliteCellText } from '../../model/sqliteCell';
 import SqliteDeletedRecords from './SqliteDeletedRecords.vue';
 import SqliteQueryPanel from './SqliteQueryPanel.vue';
 import UiSelect, { type UiSelectOption } from '../../../../components/ui/UiSelect.vue';
+import type { ImageId, NodeId } from '../../../../lib/ipc/ids';
 
 const props = defineProps<{
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
   /** 库所在目录的节点，用来查找同目录的 -wal / -journal。 */
-  parentId?: string | null;
+  parentId?: NodeId | null;
   query: string;
 }>();
 const emit = defineEmits<{ resetMatch: [] }>();

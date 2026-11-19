@@ -89,11 +89,12 @@ import { tr } from '../../../../composables/useLocale';
 import { joinList } from '../../../../i18n/translate';
 import { fsSqliteQuery, type SqliteKey, type SqliteQueryPage, type SqliteQueryParameter } from '../../../../lib/ipc/sqlite';
 import { sqliteCellClass, sqliteCellText } from '../../model/sqliteCell';
+import type { ImageId, NodeId } from '../../../../lib/ipc/ids';
 
 const props = defineProps<{
-  imageId: string;
-  nodeId: string;
-  parentId: string | null;
+  imageId: ImageId;
+  nodeId: NodeId;
+  parentId: NodeId | null;
   sqliteKey: SqliteKey | null;
   initialTable: string | null;
 }>();

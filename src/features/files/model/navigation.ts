@@ -1,9 +1,10 @@
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 
 
 export interface FileListNavigator {
-  imageId: string;
-  openFileByNodeId: (nodeId: string, offset?: number, length?: number) => Promise<void>;
+  imageId: ImageId;
+  openFileByNodeId: (nodeId: NodeId, offset?: number, length?: number) => Promise<void>;
   openFileBySource: (rootId: string, path: string) => Promise<void>;
 }
 
@@ -21,7 +22,7 @@ export interface FileScrollRestore {
 }
 
 export interface FileByteFocus {
-  nodeId: string;
+  nodeId: NodeId;
   offset: number;
   length: number;
 }

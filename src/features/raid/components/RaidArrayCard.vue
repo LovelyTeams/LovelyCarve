@@ -87,8 +87,9 @@ import {
   orderedMembers, originTitle, showDiagram, slotlessMembers,
 } from '../model/stackView';
 import RaidLayoutDiagram from './RaidLayoutDiagram.vue';
+import type { ImageId } from '../../../lib/ipc/ids';
 
-const props = defineProps<{ arr: RaidArray; imageId: string; imagePaths: ReadonlyMap<string, string>; opening: boolean; exporting: boolean; assembling?: boolean; diagramOpen: boolean; diagnostics?: string[] }>();
+const props = defineProps<{ arr: RaidArray; imageId: ImageId; imagePaths: ReadonlyMap<string, string>; opening: boolean; exporting: boolean; assembling?: boolean; diagramOpen: boolean; diagnostics?: string[] }>();
 const emit = defineEmits<{ open: []; export: []; 'assemble-degraded': []; 'diagram-toggle': [open: boolean] }>();
 const isCurrentImage = computed(() => props.arr.assembled_image_id === props.imageId);
 const statusIcons = { success: CircleCheck, warn: CircleAlert, info: CircleDot };

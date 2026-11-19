@@ -192,7 +192,8 @@ lovelycarve-cli complete powershell >> $PROFILE
 
 `schema <命令…>` 输出该命令的请求参数结构：`operationId`、`ipcCommand`、`category`、
 `hasRequestBody`、`requestBodyFields`（每个参数的 API 名称、Rust 类型、是否必填、说明、
-对应的命令行写法，和可选的 `enum`、`default`、`generated`（省略时自动生成）、`sensitive`（会脱敏））
+对应的命令行写法，和可选的 `enum`、`default`、`generated`（省略时自动生成）、`sensitive`（会脱敏）、`schema`；
+类型为 `ImageId`、`NodeId`、`VolumeKey` 的检材、节点和卷标识按字符串传递，`schema` 注明这一点）
 与 `output`（`json` 或 `bytes`）。路径参数解析到的节点参数记在 `pathResolvesTo`，删除类命令带 `destructive`。
 `schema --list` 列出全部命令。手写命令也有完整参数结构，`ipcCommand` 为 `null`；
 `path` 与节点 ID 的二选一关系见 `targetAlternatives`。`sessionOutput` 描述 JSONL 返回形式，

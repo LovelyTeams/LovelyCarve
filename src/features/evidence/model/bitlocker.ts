@@ -1,8 +1,9 @@
 import { sourceText, type Translator } from '../../../i18n/translate';
+import type { ImageId } from '../../../lib/ipc/ids';
 export type BitlockerUnlockMode = 'password' | 'recovery' | 'vmk' | 'key';
 
 export interface BitlockerUnlockJob {
-  imageId: string;
+  imageId: ImageId;
   partitionId: number;
   taskId: string;
   mode: BitlockerUnlockMode;
@@ -12,7 +13,7 @@ export interface BitlockerUnlockJob {
 }
 
 export interface BitlockerScanJob {
-  imageId: string;
+  imageId: ImageId;
   partitionId: number;
   taskId: string;
   bytesDone: number;

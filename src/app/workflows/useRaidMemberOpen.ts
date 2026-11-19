@@ -9,11 +9,12 @@ import type { RaidMemberQueueItem } from '../../features/raid/model/types';
 import { useRaidStack } from '../../features/raid/api';
 import { notifyInfo, notifyError } from '../../composables/useToast';
 import type { LoadFileOptions, OpenTabResult } from '../workspace/useTabManager';
+import type { ImageId } from '../../lib/ipc/ids';
 
 /** Stage members without activating tabs, detect only their arrays, then open assembled evidence. */
 export function useRaidMemberOpen(options: {
   activeCase: Ref<CaseInfo | null>;
-  removeEvidence: (imageId: string) => Promise<void>;
+  removeEvidence: (imageId: ImageId) => Promise<void>;
   pickFiles: (title: string) => Promise<string[]>;
   openImagePath: (path: string, options?: LoadFileOptions) => Promise<OpenTabResult>;
 }) {

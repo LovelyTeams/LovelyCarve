@@ -99,8 +99,9 @@ import { computed, ref, watch } from 'vue';
 import { ChevronLeft, ChevronRight, Database, Loader2 } from 'lucide-vue-next';
 import { bcpRows, type BcpCatalog, type BcpCursor, type BcpPage, type BcpRow } from '../../../lib/ipc/bcp';
 import { BCP_CATEGORIES, bcpCategory, bcpDatasetLabel, bcpSuffix } from '../model/bcpView';
+import type { ImageId } from '../../../lib/ipc/ids';
 
-const props = defineProps<{ imageId: string; catalog: BcpCatalog | null; catalogError: string; preferredFile: string; category: string }>();
+const props = defineProps<{ imageId: ImageId; catalog: BcpCatalog | null; catalogError: string; preferredFile: string; category: string }>();
 const selectedCode = ref('');
 const page = ref<BcpPage | null>(null);
 const selectedRow = ref<BcpRow | null>(null);

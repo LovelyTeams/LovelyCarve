@@ -1,5 +1,6 @@
 //! Background recovery scans: optional filesystem recovery, then raw-signature carving.
 
+use crate::core::common::ids::ImageId;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -114,7 +115,7 @@ pub fn carve_formats() -> Vec<carver::CarveFormatInfo> {
 pub async fn carve_start(
     app: AppHandle,
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     options: CarveStartOptions,
 ) -> Result<CarveStartResult, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
@@ -150,7 +151,7 @@ pub async fn carve_start(
     let mut created = CarveScanSession::new(
         scan_id.clone(),
         task_id.clone(),
-        image_id.clone(),
+        image_id.to_string(),
         scope_label,
         bytes_total,
     );
@@ -394,7 +395,7 @@ pub async fn carve_scan_resume(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn carve_latest_scan(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<Option<CarveScanSnapshot>, AppError> {
     let sessions = {
         let scans = state.carve_scans.lock().await;

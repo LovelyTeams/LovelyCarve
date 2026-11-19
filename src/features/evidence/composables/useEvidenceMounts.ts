@@ -7,6 +7,7 @@ import type { ImageInfo, DiskPartition } from '../../../lib/ipc/image';
 import type { MountTarget } from '../../../composables/useUiPreferences';
 import { notifySuccess, notifyError } from '../../../composables/useToast';
 import { partitionTitle } from '../model/evidenceOverview';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 interface EvidenceMountOptions {
   info: () => ImageInfo | null;
@@ -84,7 +85,7 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
     options.onUnlocked();
   }
 
-  function mountViewFor(nodeId: string): DokanMountView | null {
+  function mountViewFor(nodeId: NodeId): DokanMountView | null {
     const imageId = options.info()?.id;
     return mounts.value.find(m => m.image_id === imageId && m.root_node_id === nodeId) || null;
   }
@@ -160,7 +161,7 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
   // Mount toggle keyed by node id + a numeric busy/picker key, so both
   // per-partition (`part:N`, key = partition id) and synthetic-root (`tar:` /
   // `docker:`, key = SYNTHETIC_MOUNT_KEY) mounts share one code path.
-  async function beginMount(nodeId: string, key: number, title: string) {
+  async function beginMount(nodeId: NodeId, key: number, title: string) {
     const info = options.info();
     if (!info || disposed) return;
     const context = { imageId: info.id, generation };
@@ -236,13 +237,13 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
     }
   }
 
-  async function finishMountAt(nodeId: string, key: number, title: string, mountPoint: string) {
+  async function finishMountAt(nodeId: NodeId, key: number, title: string, mountPoint: string) {
     const imageId = options.info()?.id;
     if (!imageId || disposed) return;
     return performMount({ imageId, generation }, nodeId, key, title, mountPoint);
   }
 
-  async function performMount(context: { imageId: string; generation: number }, nodeId: string, key: number, title: string, mountPoint: string) {
+  async function performMount(context: { imageId: ImageId; generation: number }, nodeId: NodeId, key: number, title: string, mountPoint: string) {
     if (!current(context.generation) || busyPartitions.value.has(key)) return;
     pickerOpenFor.value = null;
     setBusy(key, true);

@@ -2,6 +2,7 @@
 // 单个成员内容。类型镜像 src-tauri/src/core/zip_preview.rs 的 Serialize 输出
 // （snake_case）。结构解析与成员解压都在 Rust 后端，前端只负责构树与渲染。
 import { invokeCmd } from './client';
+import type { ImageId, NodeId } from './ids';
 
 /** 压缩包内一个成员（文件 / 目录 / 符号链接 / 不可读）。 */
 export interface ZipPreviewEntry {
@@ -53,7 +54,7 @@ export interface ZipPreview {
 
 /** 解析镜像内 ZIP 文件的内部结构。非 ZIP / 损坏 / 过大尾部不可达时 reject，
  *  错误信息可直接展示。 */
-export function fsZipPreview(args: { imageId: string; nodeId: string }): Promise<ZipPreview> {
+export function fsZipPreview(args: { imageId: ImageId; nodeId: NodeId }): Promise<ZipPreview> {
   return invokeCmd<ZipPreview>('fs_zip_preview', args);
 }
 
@@ -61,8 +62,8 @@ export function fsZipPreview(args: { imageId: string; nodeId: string }): Promise
  *  （Tauri 原始 IPC 响应，用 `new Uint8Array(buf)` 包装）。目录 / 符号链接 / 加密 /
  *  未支持压缩方法的成员 reject。 */
 export function fsZipMemberRead(args: {
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
   memberPath: string;
   maxBytes: number;
 }): Promise<ArrayBuffer> {

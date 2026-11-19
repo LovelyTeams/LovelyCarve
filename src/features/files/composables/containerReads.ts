@@ -5,6 +5,7 @@
 import { tr } from '../../../composables/useLocale';
 import { fsChildren, fsChildrenPage, fsDockerPrepare, fsFlatPage } from '../../../lib/ipc/fs/query';
 import { useCaseSession } from '../../cases/api';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 const preparations = new Map<string, Promise<void>>();
 
@@ -12,7 +13,7 @@ function caseDirectory(): string | null {
   return useCaseSession().activeCase.value?.dir ?? null;
 }
 
-async function afterMerge<T>(args: { imageId: string; parentId: string | null }, read: () => Promise<T>): Promise<T> {
+async function afterMerge<T>(args: { imageId: ImageId; parentId: NodeId | null }, read: () => Promise<T>): Promise<T> {
   const root = args.parentId?.match(/^host-docker:[^:]+:/)?.[0];
   if (!root) return read();
   const caseDir = caseDirectory();

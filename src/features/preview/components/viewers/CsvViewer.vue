@@ -97,10 +97,11 @@ import { escapeHtml } from '../../../../utils/safeHtml';
 import { highlightHtml } from '../../../../utils/highlight';
 import IndeterminateBar from '../../../../components/ui/IndeterminateBar.vue';
 import UiSelect, { type UiSelectOption } from '../../../../components/ui/UiSelect.vue';
+import type { ImageId, NodeId } from '../../../../lib/ipc/ids';
 
 const props = defineProps<{
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
   /** 扩展名/识别给出的分隔符提示（.tsv → 制表符）；缺省时后端按内容嗅探。 */
   delimiter?: Delimiter;
   query?: string;

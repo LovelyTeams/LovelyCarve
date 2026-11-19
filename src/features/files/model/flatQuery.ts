@@ -4,6 +4,7 @@
 // 单测;DiskFileList 只负责把它拼进 `fsFlatPage` 的参数。
 import type { FlatFileFilter, FlatSortColumn } from '../../../lib/ipc/fs/types';
 import type { SizeFilterState, TimeColumnKey, TimeFilterState } from './filters';
+import type { NodeId } from '../../../lib/ipc/ids';
 
 /** 滚动分页的页大小。 */
 export const FLAT_PAGE_SIZE = 100;
@@ -129,6 +130,6 @@ export function buildFlatFilter(sources: FlatFilterSources): FlatFileFilter {
 }
 
 /** 全显行的稳定行键:同一节点 id(硬链接)可出现多行,用全局行号区分。 */
-export function flatRowKey(index: number, nodeId: string): string {
+export function flatRowKey(index: number, nodeId: NodeId): string {
   return `flat:${index}:${nodeId}`;
 }

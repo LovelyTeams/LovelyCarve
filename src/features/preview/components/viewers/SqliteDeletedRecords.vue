@@ -139,11 +139,12 @@ import { vDisclosureMotion } from '../../../../composables/uiMotionDirectives';
 import { fsSqliteDeletedRecords, type SqliteCell, type SqliteKey, type SqliteRecordOrigin, type SqliteRecoveredRecord, type SqliteRecovery, type SqliteTable, type SqliteTableLink } from '../../../../lib/ipc/sqlite';
 import { sqliteCellClass, sqliteCellText } from '../../model/sqliteCell';
 import UiSelect, { type UiSelectOption } from '../../../../components/ui/UiSelect.vue';
+import type { ImageId, NodeId } from '../../../../lib/ipc/ids';
 
 const props = defineProps<{
-  imageId: string;
-  nodeId: string;
-  parentId: string | null;
+  imageId: ImageId;
+  nodeId: NodeId;
+  parentId: NodeId | null;
   /** 浏览器解密该库时用的密钥；明文库为 null。 */
   sqliteKey: SqliteKey | null;
   /** 现存的表，用来给选中表的记录配上列名。 */

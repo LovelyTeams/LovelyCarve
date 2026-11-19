@@ -3,6 +3,7 @@
 //! These commands read one filesystem node and derive metadata from its
 //! contents: cryptographic digests and Magika type identification.
 
+use crate::core::common::ids::{ImageId, NodeId};
 use std::time::Instant;
 
 use crate::host::State;
@@ -32,8 +33,8 @@ pub struct FsDigest {
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_digest(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     algos: Vec<HashAlgo>,
 ) -> Result<FsDigest, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
@@ -104,8 +105,8 @@ pub async fn fs_digest(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_identify_type(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
 ) -> Result<magika_ident::TypeIdentReport, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     let node_for_log = node_id.clone();

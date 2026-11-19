@@ -1,5 +1,6 @@
 import { invokeCmd } from '../client';
 import type { FsNode } from './types';
+import type { ImageId, NodeId } from '../ids';
 
 /** 树图度量：`bytes` 按逻辑大小，`files` 按文件数。 */
 export type FsSizeTreeMetric = 'bytes' | 'files';
@@ -45,8 +46,8 @@ export type FsSizeTreeResult =
 
 /** 当前目录的树图数据：由卷索引一次聚合后缓存在后端，进出目录只做内存遍历。 */
 export function fsSizeTree(args: {
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
   depth?: number;
   metric?: FsSizeTreeMetric;
   includeDeleted?: boolean;

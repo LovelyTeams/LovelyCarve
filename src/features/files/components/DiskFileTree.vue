@@ -97,7 +97,8 @@ import { useCaseContext } from '../../cases/api';
 import { useEmptyDirFilter } from '../composables/useEmptyDirFilter';
 import { useFileTree } from '../composables/useFileTree';
 import type { TreeNodeData, TreeStackFrame } from '../model/fileTree';
-const props = defineProps<{ imageId: string; pathStack: TreeStackFrame[]; exportable: boolean }>();
+import type { ImageId } from '../../../lib/ipc/ids';
+const props = defineProps<{ imageId: ImageId; pathStack: TreeStackFrame[]; exportable: boolean }>();
 const emit = defineEmits<{
   navigate: [stack: TreeStackFrame[]];
   'open-file': [stack: TreeStackFrame[], fileId: string];

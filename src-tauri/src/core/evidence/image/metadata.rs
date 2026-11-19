@@ -18,7 +18,7 @@ impl DiskImage {
             raw_read_mode: self.raw_read_mode(),
             unlocked_partitions: Vec::new(),
             index_only: self.is_index_only(),
-            id: self.id.clone(),
+            id: self.id.to_string(),
             path: self.path.display().to_string(),
             source_format: match &self.derived {
                 Some(DerivedImage::Decrypted { .. }) if self.folder.is_some() => {

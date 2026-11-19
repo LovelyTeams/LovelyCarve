@@ -1,4 +1,5 @@
 import { invokeCmd } from './client';
+import type { ImageId } from './ids';
 
 
 
@@ -11,7 +12,7 @@ export interface RaidStack {
 }
 
 export interface RaidImage {
-  image_id: string;
+  image_id: ImageId;
   path: string;
   size_bytes: number;
   partition_count: number;
@@ -27,7 +28,7 @@ export interface RaidVolumeGroup {
 }
 
 export interface RaidVgMember {
-  image_id: string;
+  image_id: ImageId;
   partition_id: number;
   pv_local_id: string;
   pv_uuid: string;
@@ -47,7 +48,7 @@ export interface RaidLogicalVolume {
 
 export interface RaidLvSegment {
   pv_local_id: string;
-  image_id: string;
+  image_id: ImageId;
   partition_id: number;
   byte_offset: number;
   byte_length: number;
@@ -112,7 +113,7 @@ export interface RaidArrayMember {
 
 export type RaidMemberOrigin =
   | { kind: 'lv'; vg_uuid: string; vg_name: string; lv_name: string; size_bytes: number }
-  | { kind: 'whole'; image_id: string; partition_id: number; byte_offset: number; byte_length: number };
+  | { kind: 'whole'; image_id: ImageId; partition_id: number; byte_offset: number; byte_length: number };
 
 export interface RaidFilesystem {
   set_uuid: string;
@@ -132,7 +133,7 @@ export interface RaidFilesystem {
  *  detection to loaded source images and isolates cloned on-disk identities;
  *  omit it for all sources, rather than passing an empty array. Heavy-ish (reads member
  *  superblocks) but bounded. */
-export function raidAutoDetect(degradedSets: string[] = [], imageIds?: string[]): Promise<RaidStack> {
+export function raidAutoDetect(degradedSets: string[] = [], imageIds?: ImageId[]): Promise<RaidStack> {
   return invokeCmd<RaidStack>('raid_auto_detect', { degradedSets, imageIds });
 }
 
@@ -165,7 +166,7 @@ export interface ManualRaidPartition {
  *  logical size, and a preview of the partitions the geometry yields (empty
  *  when the parameters produce no recognisable table). */
 export interface ManualRaidResult {
-  image_id: string;
+  image_id: ImageId;
   size_bytes: number;
   partitions: ManualRaidPartition[];
 }

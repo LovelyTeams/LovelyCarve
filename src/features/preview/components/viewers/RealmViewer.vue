@@ -119,10 +119,11 @@ import {
 } from 'lucide-vue-next';
 import { fsRealmPreview, fsRealmTableRows, type RealmCell, type RealmColumn, type RealmDigest, type RealmLink } from '../../../../lib/ipc/realm';
 import { formatBytes } from '../../../../utils/format';
+import type { ImageId, NodeId } from '../../../../lib/ipc/ids';
 
 const props = defineProps<{
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
 }>();
 
 const PAGE_SIZE = 100;

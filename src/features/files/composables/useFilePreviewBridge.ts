@@ -5,12 +5,13 @@ import type { FsTypeIdent, StoredDigest } from '../../../lib/ipc/fs/derived';
 import type { DiskFsNode } from '../model/model';
 import type { FileByteFocus } from '../model/navigation';
 import type { FilePreviewReadingState } from '../../../lib/models/filePreviewReadingState';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 /** Connects the active preview tab to its inline or detached preview owner. */
 export function useFilePreviewBridge(options: {
-  imageId: () => string;
+  imageId: () => ImageId;
   indexOnly?: () => boolean;
-  activate: (imageId: string) => boolean;
+  activate: (imageId: ImageId) => boolean;
   /** The file in the active preview tab, its byte focus and the path it was opened at. */
   node: () => DiskFsNode | null;
   focusTarget: () => FileByteFocus | null;
@@ -18,9 +19,9 @@ export function useFilePreviewBridge(options: {
   visible: Ref<boolean>;
   /** Docking a detached preview shows its file again with the window's reading context. */
   restore: (node: DiskFsNode, focusTarget: FileByteFocus | null, readingState?: FilePreviewReadingState) => void;
-  digest: (nodeId: string) => StoredDigest | undefined;
-  ident: (nodeId: string) => FsTypeIdent | undefined;
-  identified: (imageId: string, nodeId: string, ident: FsTypeIdent) => void;
+  digest: (nodeId: NodeId) => StoredDigest | undefined;
+  ident: (nodeId: NodeId) => FsTypeIdent | undefined;
+  identified: (imageId: ImageId, nodeId: NodeId, ident: FsTypeIdent) => void;
   snapshotReadingState: () => FilePreviewReadingState | undefined;
 }) {
   const { visible: previewVisible } = options;
@@ -66,7 +67,7 @@ export function useFilePreviewBridge(options: {
     if (node) void sync(selectionOf(node));
   }, { flush: 'post' });
 
-  function onDetailIdentified(payload: { nodeId: string; ident: FsTypeIdent }) {
+  function onDetailIdentified(payload: { nodeId: NodeId; ident: FsTypeIdent }) {
     const imageId = options.imageId();
     options.identified(imageId, payload.nodeId, payload.ident);
     broadcastPreview({ kind: 'ident', imageId, ...payload });

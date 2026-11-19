@@ -4,6 +4,7 @@
 //! pagination, and their focused tests out of the broad filesystem command
 //! surface.
 
+use crate::core::common::ids::{ImageId, NodeId};
 use std::time::Instant;
 
 use crate::host::State;
@@ -54,8 +55,8 @@ pub struct Ext4JournalBlocksPage {
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_ext4_journal(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
 ) -> Result<Ext4Journal, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     let started = Instant::now();
@@ -81,8 +82,8 @@ pub async fn fs_ext4_journal(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_ext4_journal_blocks_page(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     cursor: Option<String>,
     page_size: Option<usize>,
 ) -> Result<Ext4JournalBlocksPage, AppError> {
@@ -118,8 +119,8 @@ pub async fn fs_ext4_journal_blocks_page(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_usn_journal(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
 ) -> Result<Vec<UsnRecord>, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     let started = Instant::now();
@@ -143,8 +144,8 @@ pub async fn fs_usn_journal(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_usn_journal_page(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     cursor: Option<String>,
     page_size: Option<usize>,
 ) -> Result<UsnJournalPage, AppError> {

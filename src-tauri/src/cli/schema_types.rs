@@ -1,8 +1,46 @@
 //! Expanded request objects for the common metadata and directory queries.
 use serde_json::{json, Value};
 
+/// The typed ids of `core::common::ids`, which travel as plain strings.
+fn id_schema(name: &str) -> Option<Value> {
+    let (optional, inner) = match name
+        .strip_prefix("Option<")
+        .and_then(|inner| inner.strip_suffix('>'))
+    {
+        Some(inner) => (true, inner),
+        None => (false, name),
+    };
+    let (array, inner) = match inner
+        .strip_prefix("Vec<")
+        .and_then(|inner| inner.strip_suffix('>'))
+    {
+        Some(inner) => (true, inner),
+        None => (false, inner),
+    };
+    let description = match inner {
+        "ImageId" => "检材 ID",
+        "NodeId" => "文件树节点 ID",
+        "VolumeKey" => "卷标识，如 part:2",
+        _ => return None,
+    };
+    let kind = match (array, optional) {
+        (false, false) => json!("string"),
+        (false, true) => json!(["string", "null"]),
+        (true, false) => json!("array"),
+        (true, true) => json!(["array", "null"]),
+    };
+    Some(if array {
+        json!({"type": kind, "items": {"type": "string", "description": description}})
+    } else {
+        json!({"type": kind, "description": description})
+    })
+}
+
 pub(super) fn for_type(name: Option<&str>) -> Option<Value> {
     let name = name?;
+    if let Some(schema) = id_schema(name) {
+        return Some(schema);
+    }
     if name == "FileFilter" || name.ends_with("::FileFilter") {
         let mut properties = serde_json::Map::new();
         for key in [
@@ -109,5 +147,25 @@ mod tests {
         )
         .unwrap();
         assert_eq!(query.filter.name_query.as_deref(), Some("*.conf"));
+    }
+
+    #[test]
+    fn typed_ids_are_described_as_strings() {
+        assert_eq!(
+            [
+                for_type(Some("ImageId")),
+                for_type(Some("Option<NodeId>")),
+                for_type(Some("Option<Vec<ImageId>>")),
+                for_type(Some("String")),
+            ],
+            [
+                Some(json!({"type": "string", "description": "检材 ID"})),
+                Some(json!({"type": ["string", "null"], "description": "文件树节点 ID"})),
+                Some(
+                    json!({"type": ["array", "null"], "items": {"type": "string", "description": "检材 ID"}})
+                ),
+                None,
+            ]
+        );
     }
 }

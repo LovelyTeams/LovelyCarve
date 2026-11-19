@@ -2,6 +2,7 @@
 //! Source-partition unlock also starts the existing snapshot/index workflow,
 //! whose `snapshot-build-progress` events report its independent completion.
 
+use crate::core::common::ids::ImageId;
 use crate::host::{AppHandle, State};
 use std::sync::Arc;
 
@@ -19,7 +20,7 @@ use {
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn filevault_inspect(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     options: crate::core::evidence::crypto::filevault::InspectOptions,
     task_id: Option<String>,
 ) -> Result<crate::core::evidence::crypto::filevault::Inventory, AppError> {
@@ -69,7 +70,7 @@ pub async fn filevault_inspect(
 pub async fn encrypted_volume_unlock(
     app: AppHandle,
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     options: UnlockOptions,
     task_id: Option<String>,
 ) -> Result<UnlockResult, AppError> {
@@ -173,7 +174,7 @@ pub async fn encrypted_volume_unlock(
                 &app,
                 &state,
                 Arc::clone(&source),
-                format!("part:{partition_id}"),
+                format!("part:{partition_id}").into(),
             )
             .await;
         } else {

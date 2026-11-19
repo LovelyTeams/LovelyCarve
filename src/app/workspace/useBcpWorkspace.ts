@@ -1,9 +1,10 @@
 import { computed, reactive, ref, watch, type Ref } from 'vue';
 import { bcpCatalog, type BcpCatalog } from '../../lib/ipc/bcp';
 import type { ImageInfo } from '../../lib/ipc/image';
+import type { ImageId } from '../../lib/ipc/ids';
 
 /** BCP navigation metadata follows the active folder-backed evidence. */
-export function useBcpWorkspace(imageId: Ref<string | null>, imageInfo: Ref<ImageInfo | null>) {
+export function useBcpWorkspace(imageId: Ref<ImageId | null>, imageInfo: Ref<ImageInfo | null>) {
   const bcpCatalogData = ref<BcpCatalog | null>(null);
   const bcpCatalogError = ref('');
   const preferredBcpFiles = reactive(new Map<string, string>());

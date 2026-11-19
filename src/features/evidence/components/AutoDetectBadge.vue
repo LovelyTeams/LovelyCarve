@@ -40,13 +40,14 @@ import { EVIDENCE_PLATFORMS, evidenceTypeLabel, manufactorLabel, platformLabel }
 import { runAutoDetect, useAutoDetectError, useAutoDetectPending, useAutoDetectReport } from '../composables/useAutoDetect';
 import { useTaskEntries } from '../../tasks/api';
 import { useCaseSession } from '../../cases/api';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 // 镜像信息页头部的平台结论（平台、厂商、检材类型）、手动指定与重新识别按钮。
 // 逐分区判定与告警随回写存入案件，页面只显示结论。手动指定的平台存在案件里，
 // 优先于自动识别，重新识别也不覆盖；选「自动识别」恢复自动结论。
 type PlatformChoice = EvidencePlatform | 'auto';
 
-const props = defineProps<{ imageId: string }>();
+const props = defineProps<{ imageId: ImageId }>();
 
 const report = useAutoDetectReport(() => props.imageId);
 const manualPending = useAutoDetectPending(() => props.imageId);

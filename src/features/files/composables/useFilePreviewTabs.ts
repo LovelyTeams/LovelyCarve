@@ -5,13 +5,14 @@ import {
   activatePreview, activePreviewTab, closePreviews, emptyPreviewTabs, mountedPreviews, pinPreview,
   releaseCursorPreview, showPreview, updatePreview, type FilePreviewClock, type FilePreviewRequest, type FilePreviewTabsState,
 } from '../model/previewTabs';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 /** The files one evidence has open in the file list's preview. Each evidence
  *  keeps its own set while the workspace switches between evidence tabs.
  *  A viewer that leaves the mounted set hands its reading context to its tab,
  *  so mounting it again returns to the same view, page and scroll position. */
 export function useFilePreviewTabs(options: {
-  imageId: () => string;
+  imageId: () => ImageId;
   /** The reading context of a mounted viewer, if it has one. */
   readingStateOf: (tabId: string) => FilePreviewReadingState | undefined;
 }) {

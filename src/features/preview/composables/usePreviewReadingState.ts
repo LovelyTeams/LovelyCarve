@@ -1,10 +1,11 @@
 import { nextTick, onScopeDispose, watch, type Ref } from 'vue';
 import { parseFilePreviewReadingState, type FilePreviewReadingState } from '../../../lib/models/filePreviewReadingState';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 /** Restores reading context after asynchronous bytes, text and native viewers are ready. */
 export function usePreviewReadingState(options: {
-  imageId: () => string;
-  nodeId: () => string;
+  imageId: () => ImageId;
+  nodeId: () => NodeId;
   initial: () => FilePreviewReadingState | undefined;
   body: Ref<HTMLElement | null>;
   tab: Ref<FilePreviewReadingState['tab']>;

@@ -1,10 +1,11 @@
 import { invokeCmd } from './client';
+import type { ImageId, NodeId } from './ids';
 
 
 
 export interface DokanMountView {
   id: string;
-  image_id: string;
+  image_id: ImageId;
   root_node_id: string;
   mount_point: string;
   running: boolean;
@@ -36,13 +37,13 @@ export function fsSuggestMountPoint(): Promise<string> {
  *  mount, and return its absolute path. `root` must already exist; the image-id
  *  layer groups one image's partitions together, under which the leaf is named
  *  from `name` (sanitized) with a numeric suffix on collision. */
-export function fsCreateMountDir(args: { root: string; imageId: string; name: string }): Promise<string> {
+export function fsCreateMountDir(args: { root: string; imageId: ImageId; name: string }): Promise<string> {
   return invokeCmd<string>('fs_create_mount_dir', args);
 }
 
 export function fsMountReadonly(args: {
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
   mountPoint: string;
 }): Promise<DokanMountView> {
   return invokeCmd<DokanMountView>('fs_mount_readonly', args);

@@ -2,6 +2,7 @@
 //! （见 `core::preview::ocr`），结果同步作为返回值回给前端。`predict` 是单次不可中断调用，故不发进度
 //! 事件；命令仍注册到 `TaskManager` 以参与后台 CPU/GPU 资源限流。
 
+use crate::core::common::ids::{ImageId, NodeId};
 use crate::host::State;
 
 use crate::core::filesystem::tree::fs_tree;
@@ -14,8 +15,8 @@ use {crate::app::access::loaded_image_app_error, crate::app::error::AppError};
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn ocr_scan(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     task_id: Option<String>,
 ) -> Result<OcrOutcome, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;

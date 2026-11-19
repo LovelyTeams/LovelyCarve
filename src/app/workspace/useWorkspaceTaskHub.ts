@@ -4,11 +4,12 @@ import { useUnifiedTaskCenter } from '../../features/tasks/api';
 import type { TaskHubTab } from '../../features/tasks/model/types';
 import type { TaskResultPanel } from '../../features/tasks/model/taskCenterView';
 import { focusAnalysisResult } from '../../features/analysis/api';
+import type { ImageId } from '../../lib/ipc/ids';
 
 /** Shell-owned task hub visibility and navigation; task tracking lives in the tasks feature. */
 export function useWorkspaceTaskHub(options: {
   activeCase: Ref<CaseInfo | null>;
-  imageId: Ref<string | null>;
+  imageId: Ref<ImageId | null>;
   showCaseManager: Ref<boolean>;
   showPanel: (panel: TaskResultPanel) => void;
 }) {

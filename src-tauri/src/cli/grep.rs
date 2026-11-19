@@ -39,7 +39,7 @@ pub async fn run(
     let summary = global_search_start(
         exec.host.clone(),
         crate::host::State::new(&exec.state),
-        image_id.to_owned(),
+        image_id.into(),
         search_id.clone(),
         options,
     )
@@ -54,7 +54,7 @@ pub async fn run(
     let total = loop {
         let page = global_search_hits_page(
             crate::host::State::new(&exec.state),
-            image_id.to_owned(),
+            image_id.into(),
             search_id.clone(),
             Some(hits.len() as u64),
             Some((limit - hits.len() as u64).min(2000)),

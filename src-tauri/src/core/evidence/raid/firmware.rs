@@ -46,7 +46,7 @@ impl FirmwareDisk {
                 byte_length,
             }),
             origin: RaidMemberOrigin::Whole {
-                image_id: image.id.clone(),
+                image_id: image.id.to_string(),
                 partition_id: 0,
                 byte_offset: 0,
                 byte_length,
@@ -147,7 +147,7 @@ pub(super) fn assemble_firmware_sets(
     let mut ddf_members = Vec::new();
     for image in images
         .iter()
-        .filter(|image| is_block_evidence(image) && !skip.contains(&image.id))
+        .filter(|image| is_block_evidence(image) && !skip.contains(image.id.as_str()))
     {
         let disk = FirmwareDisk::whole(image);
         let ddf = match super::ddf::probe(disk.reader.as_ref()) {
@@ -194,14 +194,14 @@ pub(super) fn assemble_firmware_sets(
                         disk.describe()
                     ));
                 }
-                out.claimed_images.insert(image.id.clone());
+                out.claimed_images.insert(image.id.to_string());
                 ddf_members.push(DdfMember {
                     metadata: *metadata,
                     disk,
                 });
             }
             (None, Some(mpb)) => {
-                out.claimed_images.insert(image.id.clone());
+                out.claimed_images.insert(image.id.to_string());
                 imsm_members.push(ImsmMember { mpb, disk });
             }
             (None, None) => {}

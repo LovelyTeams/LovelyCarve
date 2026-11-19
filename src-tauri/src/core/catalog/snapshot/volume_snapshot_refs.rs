@@ -71,7 +71,7 @@ pub(crate) fn build_refs_volume_snapshot(
     let header = SnapshotHeader {
         schema_version: SNAPSHOT_SCHEMA,
         volume_key: volume_key.into(),
-        image_id: image.id.clone().into(),
+        image_id: image.id.clone(),
         source_volume_size: volume_size_for_key(image, volume_key),
         built_at,
     };

@@ -1,4 +1,5 @@
 import type { AnalysisResultNode } from '../../../lib/ipc/analysisResults';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 /** One analyzer run of the evidence and its record types. */
 export interface AnalysisResultGroup {
@@ -36,7 +37,7 @@ export const declaredNodeLabels: AnalysisNodeLabels = {
  *  types, and a run with only warnings still appears. */
 export function buildAnalysisGroups(
   tree: AnalysisResultNode[],
-  imageId: string,
+  imageId: ImageId,
   query = '',
   labels: AnalysisNodeLabels = declaredNodeLabels,
 ): AnalysisResultGroup[] {

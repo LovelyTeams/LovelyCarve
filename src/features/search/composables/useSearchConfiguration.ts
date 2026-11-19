@@ -6,7 +6,8 @@ import type { FsNode } from '../../../lib/ipc/fs/types';
 import type { GlobalSearchOptions, SearchCodePage } from '../../../lib/ipc/search';
 import { createSearchDraft, searchConfigurationError, buildSearchOptions } from '../model/searchConfiguration';
 import { parseSearchPatterns } from '../model/searchResults';
-interface SearchConfigurationOptions { imageId: () => string; onSubmit: (options: GlobalSearchOptions) => void; }
+import type { ImageId } from '../../../lib/ipc/ids';
+interface SearchConfigurationOptions { imageId: () => ImageId; onSubmit: (options: GlobalSearchOptions) => void; }
 export function useSearchConfiguration(options: SearchConfigurationOptions) {
   let generation = 0;
   let disposed = false;

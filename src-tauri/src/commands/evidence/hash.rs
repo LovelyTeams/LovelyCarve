@@ -5,6 +5,7 @@
 //! is emitted on `image-hash-progress`; the command honors `task_cancel`
 //! between chunks.
 
+use crate::core::common::ids::ImageId;
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::Arc;
 use std::thread;
@@ -58,7 +59,7 @@ pub struct ImageHashResult {
 pub async fn image_hash_compute(
     app: AppHandle,
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     algorithms: Vec<HashAlgo>,
     task_id: String,
     read_fault_policy: Option<ReadFaultPolicy>,

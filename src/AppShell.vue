@@ -202,6 +202,7 @@ import { useTabManager } from './app/workspace/useTabManager';
 import { notifyError } from './composables/useToast';
 import { bcpNavGroup } from './app/workspace/bcpNavigation';
 import type { SettingsSection } from './features/settings/model/types';
+import type { ImageId } from './lib/ipc/ids';
 
 const { recentCases, clearRecentCases } = useRecentCases();
 const showToolSettings = ref(false);
@@ -298,7 +299,7 @@ const {
 // Search and timeline share evidence-aware navigation, including virtual file nodes.
 const diskFileListRef = ref<FileListNavigator | null>(null);
 
-function activateFilePreview(previewImageId: string): boolean {
+function activateFilePreview(previewImageId: ImageId): boolean {
   if (imageId.value !== previewImageId) return false;
   activePanel.value = 'files';
   return true;

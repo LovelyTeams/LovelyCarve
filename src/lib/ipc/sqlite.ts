@@ -1,4 +1,5 @@
 import { invokeCmd } from './client';
+import type { ImageId, NodeId } from './ids';
 
 
 
@@ -90,9 +91,9 @@ export const SQLITE_LOCKED = 'SQLITE_LOCKED';
  *  且消息以 `SQLITE_LOCKED` 开头。非 SQLite / 损坏的库也 reject，错误信息
  *  可直接展示。 */
 export function fsSqlitePreview(args: {
-  imageId: string;
-  nodeId: string;
-  parentId?: string | null;
+  imageId: ImageId;
+  nodeId: NodeId;
+  parentId?: NodeId | null;
   key?: SqliteKey;
 }): Promise<SqliteDigest> {
   return invokeCmd<SqliteDigest>('fs_sqlite_preview', args);
@@ -168,9 +169,9 @@ export interface SqliteRecovery {
  *  `key`，后端会按页重新解密；缺少或密钥不对时 reject 且消息以
  *  `SQLITE_LOCKED` 开头。 */
 export function fsSqliteDeletedRecords(args: {
-  imageId: string;
-  nodeId: string;
-  parentId?: string | null;
+  imageId: ImageId;
+  nodeId: NodeId;
+  parentId?: NodeId | null;
   key?: SqliteKey;
 }): Promise<SqliteRecovery> {
   return invokeCmd<SqliteRecovery>('fs_sqlite_deleted_records', args);
@@ -191,9 +192,9 @@ export interface SqliteRows {
  *  `limit` 后端硬上限 1000；加密库传同一 `key`。复用 fsSqlitePreview 的
  *  VFS 会话缓存，翻页/排序不重新读取整库。 */
 export function fsSqliteTableRows(args: {
-  imageId: string;
-  nodeId: string;
-  parentId?: string | null;
+  imageId: ImageId;
+  nodeId: NodeId;
+  parentId?: NodeId | null;
   table: string;
   offset: number;
   limit: number;
@@ -217,9 +218,9 @@ export interface SqliteQueryPage {
 }
 
 export function fsSqliteQuery(args: {
-  imageId: string;
-  nodeId: string;
-  parentId?: string | null;
+  imageId: ImageId;
+  nodeId: NodeId;
+  parentId?: NodeId | null;
   sql: string;
   parameters?: SqliteQueryParameter[];
   offset: number;

@@ -90,9 +90,10 @@ import {
   type HashAlgo,
 } from '../composables/useImageHash';
 import { notifyError } from '../../../composables/useToast';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 const props = defineProps<{
-  imageId: string;
+  imageId: ImageId;
   sizeBytes: number;
 }>();
 

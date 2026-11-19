@@ -68,7 +68,7 @@ fn standalone_backup_and_gzip_loading_observe_cancellation() {
         }
         let cancel = tokio_util::sync::CancellationToken::new();
         let error = DiskImage::open_cancellable(
-            "cancelled".into(),
+            "cancelled",
             file.path(),
             &|event| {
                 if matches!(event, OpenProgress::Decompressing { done, .. } if done > 0) {
@@ -97,7 +97,7 @@ fn cancelled_backup_loading_never_publishes_a_partial_zip_or_raw_fallback() {
     let cache = tempfile::tempdir().unwrap();
     let cancel = tokio_util::sync::CancellationToken::new();
     let error = DiskImage::open_cancellable(
-        "cancelled".into(),
+        "cancelled",
         file.path(),
         &|event| {
             if matches!(event, OpenProgress::Decompressing { done, .. } if done > 0) {
@@ -129,7 +129,7 @@ fn reports_backup_progress_through_the_observed_image_open_path() {
     }
     writer.finish().unwrap();
     let updates = std::sync::Mutex::new(Vec::new());
-    let image = DiskImage::open_with_id_observed("observed".into(), file.path(), &|event| {
+    let image = DiskImage::open_with_id_observed("observed", file.path(), &|event| {
         if let OpenProgress::Decompressing { label, done, total } = event {
             updates.lock().unwrap().push((label, done, total));
         }
@@ -443,7 +443,7 @@ fn restored_backups_keep_the_evidence_fingerprint() {
     write_phone_zip(&archive, &backup(false));
     let open = |evidence_cache| {
         DiskImage::open_cancellable(
-            "phone".into(),
+            "phone",
             &archive,
             &|_| {},
             None,

@@ -1,5 +1,6 @@
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { shadowCopyList, shadowCopyOpen, type ShadowCopyInfo, type ShadowVolumeInfo } from '../../../lib/ipc/shadow';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 /** A failed open, kept with its volume so that volume's copy list shows it. */
 export interface ShadowOpenError {
@@ -18,7 +19,7 @@ export function shadowCopyKey(volume: ShadowVolumeInfo, copy: ShadowCopyInfo): s
  * VSS (logical evidence, or a shadow copy session itself). Answers that arrive
  * after the page moved to another image, or unmounted, are dropped.
  */
-export function useShadowCopies(imageId: () => string | null) {
+export function useShadowCopies(imageId: () => ImageId | null) {
   const volumes = ref<ShadowVolumeInfo[]>([]);
   const loadError = ref('');
   const openError = ref<ShadowOpenError | null>(null);

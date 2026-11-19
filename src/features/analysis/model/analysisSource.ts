@@ -1,5 +1,6 @@
 import type { AnalysisRecord, RecordSource } from '../../../lib/ipc/analysisResults';
 import type { FileLocationTarget } from '../../../lib/models/fileLocation';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 export interface AnalysisSource {
   /** The path inside its volume, or the node id. */
@@ -11,7 +12,7 @@ export interface AnalysisSource {
 
 const text = (value: unknown): string => typeof value === 'string' && value.trim() ? value : '';
 
-function located(source: RecordSource, imageId: string): AnalysisSource | null {
+function located(source: RecordSource, imageId: ImageId): AnalysisSource | null {
   const range = source.offset !== undefined ? { offset: source.offset, length: source.length } : {};
   const note = source.note ?? null;
   if (source.root && source.path) {
@@ -24,7 +25,7 @@ function located(source: RecordSource, imageId: string): AnalysisSource | null {
 }
 
 /** Results of an earlier version kept their provenance in attributes. */
-function legacySources(record: AnalysisRecord, imageId: string): AnalysisSource[] {
+function legacySources(record: AnalysisRecord, imageId: ImageId): AnalysisSource[] {
   const values = record.values;
   const rootId = text(values['source.root']) || text(values['linux.root']);
   const path = text(values['source.path']);
@@ -39,7 +40,7 @@ function legacySources(record: AnalysisRecord, imageId: string): AnalysisSource[
 
 /** Provenance is an evidence address: a path inside a volume or a file-tree
  *  node, never a label or a record id. */
-export function analysisSources(record: AnalysisRecord, imageId: string): AnalysisSource[] {
+export function analysisSources(record: AnalysisRecord, imageId: ImageId): AnalysisSource[] {
   imageId = record.imageId || imageId;
   if (record.legacy) return legacySources(record, imageId);
   const seen = new Set<string>();

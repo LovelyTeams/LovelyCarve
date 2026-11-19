@@ -232,6 +232,7 @@ import FileMediaPreview from './FileMediaPreview.vue';
 import FileRangePreview from './viewers/FileRangePreview.vue';
 import type { UiSelectOption } from '../../../components/ui/UiSelect.vue';
 import FilePreviewFooter from './FilePreviewFooter.vue';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 // 重型原类型视图懒加载：CodeMirror 语言包、Flyfish File Viewer（rich）等只在打开对应
 // 文件时拉取，不拖累文件列表/详情面板的常用路径。
 const CodeViewer = defineAsyncComponent(() => import('./viewers/CodeViewer.vue'));
@@ -246,7 +247,7 @@ const RichPreviewViewer = defineAsyncComponent(() => import('./viewers/RichPrevi
 
 const props = defineProps<{
   indexOnly?: boolean;
-  imageId: string;
+  imageId: ImageId;
   node: FsNode;
   fullPath: string;
   /** 已计算的内容哈希（来自文件列表的 digestCache）；按算法可缺省——只算过
@@ -267,7 +268,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void;
   /** 详情面板就地识别成功后上报，父组件据此回灌列表「识别类型」列缓存。 */
-  (e: 'identified', payload: { nodeId: string; ident: FsTypeIdent }): void;
+  (e: 'identified', payload: { nodeId: NodeId; ident: FsTypeIdent }): void;
 }>();
 
 const activeTab = ref<DetailTab>('detail');

@@ -21,6 +21,7 @@ use crate::core::{
         identify::systems::SystemCache,
         results::{legacy_store, record_store},
     },
+    common::ids::ImageId,
     evidence::image::ReadFaultReport,
     extensions::plugin::{
         prepare_run, AnalyzerScope, PluginManager, ProgressSink, RunPlan, RunTargetSpec, TaskWorker,
@@ -55,7 +56,7 @@ type StagedRuns = Arc<Mutex<HashMap<(i64, u64), StagedRun>>>;
 
 /// 生产执行器:把任务交给插件 worker 的 `run.start`。
 pub struct PluginTaskRunner {
-    images: Arc<tokio::sync::Mutex<HashMap<String, Arc<EvidenceSession>>>>,
+    images: Arc<tokio::sync::Mutex<HashMap<ImageId, Arc<EvidenceSession>>>>,
     plugins: Arc<parking_lot::RwLock<Option<Arc<PluginManager>>>>,
     systems: Arc<SystemCache>,
     case_dir: PathBuf,
@@ -65,7 +66,7 @@ pub struct PluginTaskRunner {
 
 impl PluginTaskRunner {
     pub fn new(
-        images: Arc<tokio::sync::Mutex<HashMap<String, Arc<EvidenceSession>>>>,
+        images: Arc<tokio::sync::Mutex<HashMap<ImageId, Arc<EvidenceSession>>>>,
         plugins: Arc<parking_lot::RwLock<Option<Arc<PluginManager>>>>,
         systems: Arc<SystemCache>,
         case_dir: PathBuf,
@@ -87,7 +88,7 @@ impl PluginTaskRunner {
 
 /// 一次执行在异步任务里需要的全部状态。
 struct Execution {
-    images: Arc<tokio::sync::Mutex<HashMap<String, Arc<EvidenceSession>>>>,
+    images: Arc<tokio::sync::Mutex<HashMap<ImageId, Arc<EvidenceSession>>>>,
     manager: Arc<PluginManager>,
     systems: Arc<SystemCache>,
     case_dir: PathBuf,
@@ -125,7 +126,7 @@ impl Execution {
             .images
             .lock()
             .await
-            .get(&task.info.image_id)
+            .get(task.info.image_id.as_str())
             .cloned()
             .ok_or_else(|| format!("检材 {} 未加载", task.info.image_id))?;
         let definition = self
@@ -174,7 +175,7 @@ impl Execution {
         self.staged.lock().insert(
             (task.id, seq),
             StagedRun {
-                image_id: image.id.clone(),
+                image_id: image.id.to_string(),
                 run_id: run_id.clone(),
                 finished: None,
             },
@@ -198,7 +199,7 @@ impl Execution {
                     .path
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| image.id.clone());
+                    .unwrap_or_else(|| image.id.to_string());
                 prepare_run(
                     &RunPlan {
                         case_dir: &case_dir,

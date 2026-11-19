@@ -149,7 +149,8 @@ import { columnWidth, FLEXIBLE_COLUMN_WIDTH } from '../model/analysisPresentatio
 import { analysisSources } from '../model/analysisSource';
 import { isEmptyValue, recordCsvValue, recordValueText, severityLabel, severityTone, truncateText } from '../model/analysisValue';
 import type { FileLocationTarget } from '../../../lib/models/fileLocation';
-const props = defineProps<{ imageId: string; locating?: boolean }>();
+import type { ImageId } from '../../../lib/ipc/ids';
+const props = defineProps<{ imageId: ImageId; locating?: boolean }>();
 const emit = defineEmits<{ quickAnalysis: []; openFile: [target: FileLocationTarget] }>();
 const sources = (record: AnalysisRecord) => analysisSources(record, selectedNode.value?.imageId || props.imageId);
 function locateRecord(record: AnalysisRecord) {

@@ -4,8 +4,9 @@ import { tr } from '../../../../composables/useLocale';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { ChevronLeft, ChevronRight, Crosshair, Loader2 } from 'lucide-vue-next';
 import { fsReadRange } from '../../../../lib/ipc/fs/read';
+import type { ImageId, NodeId } from '../../../../lib/ipc/ids';
 
-const props = defineProps<{ imageId: string; nodeId: string; size: number; target: { offset: number; length: number } }>();
+const props = defineProps<{ imageId: ImageId; nodeId: NodeId; size: number; target: { offset: number; length: number } }>();
 const WINDOW_SIZE = 4096;
 const start = ref(0);
 const bytes = ref(new Uint8Array());

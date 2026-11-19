@@ -18,6 +18,7 @@ import { pluginTaskEntry } from '../model/taskEntryView';
 import { taskCaseContext } from './taskContext';
 import { disposeTaskEntries, removeTaskEntry, upsertTaskEntry, useTaskEntries } from './useTaskEntries';
 import { notifyError, notifyInfo } from '../../../composables/useToast';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 const functions = shallowRef<SchedFunction[]>([]);
 const functionsLoading = shallowRef(false);
@@ -114,8 +115,8 @@ export function useTaskCenter() {
    *  failures are always reported. */
   async function create(args: {
     function: string;
-    imageId: string;
-    nodeId?: string | null;
+    imageId: ImageId;
+    nodeId?: NodeId | null;
     fileName?: string | null;
     systemId?: string | null;
     options?: Record<string, unknown> | null;

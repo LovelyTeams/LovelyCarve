@@ -5,6 +5,7 @@ use std::{path::PathBuf, sync::Arc};
 use crate::app::error::AppError;
 use crate::core::casework::{case::EvidenceRef, case_ledger_volumes::VolumeRecord};
 use crate::core::catalog::filedb::filedb_file;
+use crate::core::common::ids::ImageId;
 use crate::core::evidence::image::DiskImage;
 use crate::core::filesystem::{
     evidence_session::EvidenceSession,
@@ -63,7 +64,7 @@ pub(super) async fn open_indexed_evidence(
         .images
         .lock()
         .await
-        .insert(image_id.to_string(), Arc::clone(&session));
+        .insert(ImageId::new(image_id), Arc::clone(&session));
     Ok(Some(session))
 }
 

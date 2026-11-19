@@ -10,6 +10,7 @@
 //!   `(image, volId, metaAddr, metaAddrHigh)` back to the node id the read
 //!   commands accept (`fs_read*`, `fs_preview*`, …).
 
+use crate::core::common::ids::{ImageId, VolumeKey};
 use std::sync::Arc;
 
 use crate::host::State;
@@ -51,7 +52,7 @@ pub struct FiledbIndexCoverage {
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn filedb_volumes(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<Vec<FiledbVolume>, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     if image.is_index_only() {
@@ -155,8 +156,8 @@ fn fs_all_volumes(image: &Arc<EvidenceSession>) -> anyhow::Result<Vec<FiledbVolu
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn filedb_query_files(
     state: State<'_, AppState>,
-    image_id: String,
-    volume_key: Option<String>,
+    image_id: ImageId,
+    volume_key: Option<VolumeKey>,
     filter: FileFilter,
 ) -> Result<Vec<filedb_query::FileHit>, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
@@ -361,8 +362,7 @@ mod tests {
     async fn missing_index_and_missing_image_are_errors_instead_of_empty_hits() {
         let directory = tempfile::tempdir().unwrap();
         let state = AppState::new();
-        let image =
-            Arc::new(EvidenceSession::open_with_id("img".into(), directory.path()).unwrap());
+        let image = Arc::new(EvidenceSession::open_with_id("img", directory.path()).unwrap());
         state.images.lock().await.insert("img".into(), image);
         let error = filedb_query_files(
             State::new(&state),

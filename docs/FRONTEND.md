@@ -58,6 +58,9 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
 - 组件和 composable 不直接 import `@tauri-apps/api/core` 或 `@tauri-apps/api/event`，统一调用
   `src/lib/ipc/*` 中带类型的函数（如 `bitlockerStatus({ imageId, partitionId })`）。`just ipc-check`
   强制检查这一边界。后端错误以 `IpcCommandError`（`code`、`message`、`retryable`）抛出。
+- 检材、文件节点和卷标识使用 `src/lib/ipc/ids.ts` 的 `ImageId`、`NodeId`、`VolumeKey`，IPC 封装、composable、
+  纯模型和组件 props 的参数与字段都这样声明。它们是“风味类型”：普通字符串（字面量、持久化的值）可以直接赋值，
+  但一种标识不能赋给另一种，参数顺序写反时类型检查会报错。分析结果树、结构图、任务和运行等其他标识仍是普通字符串。
 - 较重的面板通过 `defineAsyncComponent` 懒加载，延迟 120ms 后显示 `AsyncPanelLoading`；文件列表、
   搜索、雕刻、时间线与分析结果放在 `KeepAlive` 中，切换页面保留状态。
 - 组件样式写在 `<style scoped>`；共享样式表通过 `<style scoped src="../../../styles/xxx.css">` 引用（相对路径按组件实际层级调整）。

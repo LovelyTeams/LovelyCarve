@@ -17,7 +17,7 @@ impl PvSources {
     pub(super) fn from_images(images: &[Arc<DiskImage>]) -> Self {
         let mut sources = Self::default();
         for image in images {
-            sources.insert(image.id.clone(), image.clone());
+            sources.insert(image.id.to_string(), image.clone());
         }
         sources
     }
@@ -358,7 +358,7 @@ pub(super) fn enumerate_candidates(
                     byte_length,
                 }),
                 origin: RaidMemberOrigin::Whole {
-                    image_id: image.id.clone(),
+                    image_id: image.id.to_string(),
                     partition_id,
                     byte_offset,
                     byte_length,

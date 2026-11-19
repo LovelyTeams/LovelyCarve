@@ -2,17 +2,18 @@
 // generic metadata filter path over the lowercase copy columns, and the
 // MetaAddr `(imageId, volId, metaAddr, metaAddrHigh)` resolution channel.
 import { invokeCmd } from './client';
+import type { ImageId, VolumeKey } from './ids';
 
 /** One entry of an image's filesystem array; `volId` is its position. */
 export interface FiledbVolume {
   volId: number;
-  volumeKey: string;
+  volumeKey: VolumeKey;
   /** Node-id family used for numeric addressing: `ntfs` | `ext4` | `btrfs` | `path`. */
   fsPrefix: string;
   kind: string;
   size: number;
   /** Current published indexes that cover this filesystem; empty means unindexed. */
-  indexes: { volumeKey: string; pathPrefix: string | null; truncated: boolean }[];
+  indexes: { volumeKey: VolumeKey; pathPrefix: string | null; truncated: boolean }[];
 }
 
 /** Filter for `filedbQueryFiles`. Text needles are matched case-insensitively
@@ -50,7 +51,7 @@ export interface FiledbFileHit {
 /** `QueryFileSt`-style four-tuple address. `fullPath` is required for
  *  path-addressed filesystems (`metaAddr === 0`). */
 export interface FiledbFileQuery {
-  imageId: string;
+  imageId: ImageId;
   volId: number;
   metaAddr: number;
   metaAddrHigh: number;
@@ -59,13 +60,13 @@ export interface FiledbFileQuery {
   isDelete?: 1 | 2;
 }
 
-export function filedbVolumes(args: { imageId: string }): Promise<FiledbVolume[]> {
+export function filedbVolumes(args: { imageId: ImageId }): Promise<FiledbVolume[]> {
   return invokeCmd<FiledbVolume[]>('filedb_volumes', args);
 }
 
 export function filedbQueryFiles(args: {
-  imageId: string;
-  volumeKey?: string | null;
+  imageId: ImageId;
+  volumeKey?: VolumeKey | null;
   filter: FiledbFileFilter;
 }): Promise<FiledbFileHit[]> {
   return invokeCmd<FiledbFileHit[]>('filedb_query_files', {

@@ -1,5 +1,6 @@
 //! load implementation.
 use super::*;
+use crate::core::common::ids::ImageId;
 use crate::core::evidence::image::EvidenceCache;
 use crate::core::evidence::image::RawReadMode;
 use crate::core::filesystem::evidence_session::EvidenceSession;
@@ -196,7 +197,10 @@ pub async fn image_load(
                 let case = state.active_case.lock().await;
                 case.as_ref()
                     .and_then(|case| case.evidence_image_id_for_path(&path))
-                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
+                    .map_or_else(
+                        || ImageId::new(uuid::Uuid::new_v4().to_string()),
+                        ImageId::from,
+                    )
             }
         }
     };
@@ -236,7 +240,7 @@ fn image_load_key(path: &str) -> String {
 async fn load_image_runtime(
     state: &State<'_, AppState>,
     app: &AppHandle,
-    image_id: String,
+    image_id: ImageId,
     path: String,
     options: ImageOpenOptions,
     task: &crate::task_manager::TaskRegistration,
@@ -374,7 +378,7 @@ async fn load_image_runtime(
     );
     let arc_image = Arc::new(EvidenceSession::from(image));
     let mut images = state.images.lock().await;
-    images.insert(info.id.clone(), Arc::clone(&arc_image));
+    images.insert(arc_image.id.clone(), Arc::clone(&arc_image));
     drop(images);
     // If a case is open, register this image as evidence and auto-build a
     // volume snapshot for each browsable volume (background, cancellable).

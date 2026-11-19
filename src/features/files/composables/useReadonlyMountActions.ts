@@ -5,10 +5,11 @@ import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { fsCreateMountDir, fsMountReadonly, fsMounts, fsSuggestMountPoint, fsUnmountReadonly, type DokanMountView } from '../../../lib/ipc/mount';
 import { notifyError, pushPersistentToast } from '../../../composables/useToast';
 import { isHostDockerMountRoot, type DiskFsNode as FsNode } from '../model/model';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 /** Readonly mount actions for synthetic container roots; query state is independent. */
 export function useReadonlyMountActions(options: {
-  imageId: () => string;
+  imageId: () => ImageId;
   node: () => FsNode | null;
   target: () => 'drive' | 'folder';
   folderRoot: () => string;
@@ -28,7 +29,7 @@ export function useReadonlyMountActions(options: {
   }, { flush: 'sync' });
   onScopeDispose(() => { disposed = true; generation++; queryGeneration++; });
 
-  function mountViewForNode(nodeId: string): DokanMountView | null {
+  function mountViewForNode(nodeId: NodeId): DokanMountView | null {
     return readonlyMounts.value.find(view => view.image_id === options.imageId() && view.root_node_id === nodeId) ?? null;
   }
 
@@ -54,7 +55,7 @@ export function useReadonlyMountActions(options: {
     }
   }
 
-  async function chooseRowMountPoint(title: string, imageId: string, target: 'drive' | 'folder', root: string): Promise<string | null> {
+  async function chooseRowMountPoint(title: string, imageId: ImageId, target: 'drive' | 'folder', root: string): Promise<string | null> {
     if (target === 'drive') return fsSuggestMountPoint();
     if (root) {
       return fsCreateMountDir({ root, imageId, name: title });

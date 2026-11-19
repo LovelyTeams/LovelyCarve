@@ -14,6 +14,7 @@
 //! 读写台账的同步调度器方法都放到阻塞线程池执行([`on_blocking`]),
 //! 插件任务密集提交时不会占住异步运行时。
 
+use crate::core::common::ids::{ImageId, NodeId};
 use crate::host::State;
 use serde::Serialize;
 
@@ -49,7 +50,7 @@ pub async fn sched_task_functions(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn sched_systems_list(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<Vec<DetectedSystem>, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     let systems = std::sync::Arc::clone(&state.systems);
@@ -65,8 +66,8 @@ pub async fn sched_systems_list(
 pub async fn sched_task_create(
     state: State<'_, AppState>,
     function: String,
-    image_id: String,
-    node_id: Option<String>,
+    image_id: ImageId,
+    node_id: Option<NodeId>,
     file_name: Option<String>,
     system_id: Option<String>,
     options: Option<serde_json::Value>,
@@ -77,7 +78,7 @@ pub async fn sched_task_create(
         Some(_) => return Err(AppError::invalid_input("options 必须是对象")),
     };
     let params = TaskParams {
-        node_id,
+        node_id: node_id.map(String::from),
         file_name,
         system_id,
         target_label: None,
@@ -129,7 +130,7 @@ pub async fn sched_task_remove(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn sched_evidence_post_actions_set(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     actions_json: Option<String>,
 ) -> Result<(), AppError> {
     on_blocking(

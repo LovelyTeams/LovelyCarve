@@ -4,6 +4,7 @@
 //! because they share a small backend surface: NTFS / ReFS streams and HFS forks
 //! listing/read/export and recursive directory statistics.
 
+use crate::core::common::ids::{ImageId, NodeId};
 use std::path::PathBuf;
 
 use crate::host::State;
@@ -16,8 +17,8 @@ use {crate::app::access::loaded_image_app_error, crate::app::error::AppError};
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_streams(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
 ) -> Result<Vec<NtfsDataStream>, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     tokio::task::spawn_blocking(move || -> Result<Vec<NtfsDataStream>, AppError> {
@@ -30,8 +31,8 @@ pub async fn fs_streams(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_stream_preview(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     stream_name: String,
     max_bytes: usize,
 ) -> Result<Vec<u8>, AppError> {
@@ -52,8 +53,8 @@ pub async fn fs_stream_preview(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_stream_export(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     stream_name: String,
     destination: String,
 ) -> Result<u64, AppError> {
@@ -69,8 +70,8 @@ pub async fn fs_stream_export(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_dir_stats(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     path_hint: String,
 ) -> Result<FsDirStats, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;

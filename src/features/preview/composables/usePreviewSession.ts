@@ -6,10 +6,11 @@ import { fsIdentifyType, type FsTypeIdent } from '../../../lib/ipc/fs/derived';
 import type { FsNode } from '../../../lib/ipc/fs/types';
 import { notifyError } from '../../../composables/useToast';
 import { PREVIEW_CAP, type DetailTab } from '../model/preview';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 /** Prefix-read and local-identification state belong to one content-viewer instance. */
 export function usePreviewSession(options: {
-  imageId: () => string;
+  imageId: () => ImageId;
   indexOnly?: () => boolean;
   node: () => FsNode;
   activeTab: Ref<DetailTab>;
@@ -19,7 +20,7 @@ export function usePreviewSession(options: {
   resetMedia: () => void;
   loadNativeMedia: () => void;
   ensureDecodedText: () => Promise<void>;
-  identified: (payload: { nodeId: string; ident: FsTypeIdent }) => void;
+  identified: (payload: { nodeId: NodeId; ident: FsTypeIdent }) => void;
 }) {
   const loading = ref(false), error = ref<string | null>(null), bytes = ref<Uint8Array>(new Uint8Array());
   const localIdent = ref<FsTypeIdent | null>(null), identifying = ref(false);
@@ -28,7 +29,7 @@ export function usePreviewSession(options: {
   let disposed = false;
   let previousWasFile = false;
   let fileTab: DetailTab = 'raw';
-  function current(requestGeneration: number, imageId: string, nodeId: string) {
+  function current(requestGeneration: number, imageId: ImageId, nodeId: NodeId) {
     return !disposed && requestGeneration === generation && imageId === options.imageId() && nodeId === options.node().id;
   }
   async function loadPreview() {

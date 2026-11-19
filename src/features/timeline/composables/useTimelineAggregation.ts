@@ -4,7 +4,8 @@ import { onScopeDispose, ref, shallowRef } from 'vue';
 import { timelineCount, type TimelineBucket, type TimelineQuery } from '../../../lib/ipc/timeline';
 import { notifyError } from '../../../composables/useToast';
 import { bucketRange } from '../model/timelineView';
-export function useTimelineAggregation(options: { imageId: () => string; buildQuery: () => TimelineQuery; heatmapYear: () => number; tzHours: number }) {
+import type { ImageId } from '../../../lib/ipc/ids';
+export function useTimelineAggregation(options: { imageId: () => ImageId; buildQuery: () => TimelineQuery; heatmapYear: () => number; tzHours: number }) {
   const BUCKET_CAP = 5000;
   let disposed = false;
   const heatmapBuckets = shallowRef<TimelineBucket[]>([]);

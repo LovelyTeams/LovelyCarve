@@ -133,8 +133,9 @@ import {
   schedSystemsList,
   type DetectedSystem, type SchedFunction, type SchedTaskRecord, type SchedTaskStatus,
 } from '../../../lib/ipc/tasks';
+import type { ImageId } from '../../../lib/ipc/ids';
 
-const props = defineProps<{ imageId: string }>();
+const props = defineProps<{ imageId: ImageId }>();
 
 const emit = defineEmits<{ submitted: [] }>();
 

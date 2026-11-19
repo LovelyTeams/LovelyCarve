@@ -4,7 +4,8 @@ import { onScopeDispose, ref, watch } from 'vue';
 import { save } from '@tauri-apps/plugin-dialog';
 import { timelineExport, type TimelineQuery } from '../../../lib/ipc/timeline';
 import { notifyError, notifyExportSuccess } from '../../../composables/useToast';
-export function useTimelineExport(options: { imageId: () => string; buildQuery: () => TimelineQuery; total: () => number }) {
+import type { ImageId } from '../../../lib/ipc/ids';
+export function useTimelineExport(options: { imageId: () => ImageId; buildQuery: () => TimelineQuery; total: () => number }) {
   const exporting = ref(false);
   let generation = 0; let disposed = false;
   async function exportRows() {

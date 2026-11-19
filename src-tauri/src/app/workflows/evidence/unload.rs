@@ -1,4 +1,5 @@
 //! unload implementation.
+use crate::core::common::ids::ImageId;
 use std::time::Duration;
 
 use super::*;
@@ -7,7 +8,7 @@ use super::*;
 /// releases their resources anyway.
 const UNLOAD_TASK_STOP_TIMEOUT: Duration = Duration::from_secs(5);
 
-pub async fn image_unload(state: State<'_, AppState>, image_id: String) -> Result<(), AppError> {
+pub async fn image_unload(state: State<'_, AppState>, image_id: ImageId) -> Result<(), AppError> {
     remove_image_runtime(&state, &image_id).await
 }
 

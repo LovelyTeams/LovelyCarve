@@ -1,4 +1,5 @@
 import { invokeCmd } from './client';
+import type { ImageId, NodeId } from './ids';
 
 
 
@@ -76,15 +77,15 @@ export interface RealmRows {
 }
 
 export function fsRealmPreview(args: {
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
 }): Promise<RealmDigest> {
   return invokeCmd<RealmDigest>('fs_realm_preview', args);
 }
 
 export function fsRealmTableRows(args: {
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
   tableNumber: number;
   offset: number;
   limit: number;

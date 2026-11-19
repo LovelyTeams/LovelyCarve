@@ -204,19 +204,29 @@ fn output_of(kind: &Type) -> Output {
     Output::Json
 }
 
+/// The typed ids of `core::common::ids`, which travel as plain strings.
+const STRING_IDS: [&str; 3] = ["ImageId", "NodeId", "VolumeKey"];
+
+fn is_string(segment: &syn::PathSegment) -> bool {
+    segment.ident == "String" || STRING_IDS.iter().any(|id| segment.ident == id)
+}
+
 fn kind_of(kind: &Type) -> Kind {
     let Some(segment) = last_segment(kind) else {
         return Kind::Json;
     };
+    if is_string(segment) {
+        return Kind::String;
+    }
     match segment.ident.to_string().as_str() {
-        "String" | "PathBuf" => Kind::String,
+        "PathBuf" => Kind::String,
         "bool" => Kind::Boolean,
         "u8" | "u16" | "u32" | "u64" | "usize" | "i8" | "i16" | "i32" | "i64" | "isize" | "f32"
         | "f64" => Kind::Number,
         "Vec"
             if first_generic(segment)
                 .and_then(last_segment)
-                .is_some_and(|item| item.ident == "String") =>
+                .is_some_and(is_string) =>
         {
             Kind::Array
         }

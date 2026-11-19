@@ -5,13 +5,13 @@ impl DiskImage {
     /// Create an evidence identity for browsing verified, persisted metadata only.
     /// This deliberately skips geometry detection and cannot supply source bytes.
     pub fn from_index_metadata(
-        id: String,
+        id: impl Into<ImageId>,
         path: PathBuf,
         format: ImageFormat,
         size_bytes: u64,
     ) -> anyhow::Result<Self> {
         Self::from_source(
-            id,
+            id.into(),
             path,
             ImageSource::Indexed { format, size_bytes },
             &|_| {},
@@ -32,7 +32,7 @@ impl DiskImage {
         Self::open_with_id(uuid::Uuid::new_v4().to_string(), path)
     }
 
-    pub fn open_with_id(id: String, path: impl AsRef<Path>) -> anyhow::Result<Self> {
+    pub fn open_with_id(id: impl Into<ImageId>, path: impl AsRef<Path>) -> anyhow::Result<Self> {
         Self::open_with_id_observed(id, path, &noop_observer)
     }
 
@@ -41,7 +41,7 @@ impl DiskImage {
     /// to the UI. Runs synchronously on the caller's thread (the command runs it
     /// under `spawn_blocking`), so `progress` is invoked inline.
     pub fn open_with_id_observed(
-        id: String,
+        id: impl Into<ImageId>,
         path: impl AsRef<Path>,
         progress: OpenObserver<'_>,
     ) -> anyhow::Result<Self> {
@@ -63,7 +63,7 @@ impl DiskImage {
     }
 
     pub(crate) fn open_with_id_observed_qcow_key(
-        id: String,
+        id: impl Into<ImageId>,
         path: impl AsRef<Path>,
         progress: OpenObserver<'_>,
         qcow_key: Option<qcow2::EncryptionKey>,
@@ -79,13 +79,14 @@ impl DiskImage {
     }
 
     pub(crate) fn open_cancellable(
-        id: String,
+        id: impl Into<ImageId>,
         path: impl AsRef<Path>,
         progress: OpenObserver<'_>,
         qcow_key: Option<qcow2::EncryptionKey>,
         cache: EvidenceCache<'_>,
         cancel: &tokio_util::sync::CancellationToken,
     ) -> anyhow::Result<Self> {
+        let id = id.into();
         anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
         let path = path.as_ref().to_path_buf();
         progress(OpenProgress::Opening);
@@ -129,7 +130,7 @@ impl DiskImage {
             size_bytes: folder.total_size(),
             image: folder,
         };
-        let id = uuid::Uuid::new_v4().to_string();
+        let id = ImageId::new(uuid::Uuid::new_v4().to_string());
         let mut image = Self::from_source(
             id.clone(),
             PathBuf::from(format!("decrypted://ios/{}/{id}", self.id)),
@@ -143,7 +144,7 @@ impl DiskImage {
     }
 
     fn from_source(
-        id: String,
+        id: ImageId,
         path: PathBuf,
         source: ImageSource,
         progress: OpenObserver<'_>,
@@ -158,7 +159,7 @@ impl DiskImage {
     }
 
     pub(super) fn from_source_cancellable(
-        id: String,
+        id: ImageId,
         path: PathBuf,
         source: ImageSource,
         progress: OpenObserver<'_>,
@@ -476,7 +477,7 @@ impl DiskImage {
     /// multi-partition disk. Runs on the `spawn_blocking` open thread, so the
     /// synchronous decompression does not stall the async runtime.
     pub(super) fn open_ldplayer(
-        id: String,
+        id: ImageId,
         path: PathBuf,
         progress: OpenObserver<'_>,
         cancel: &tokio_util::sync::CancellationToken,
@@ -549,7 +550,7 @@ impl DiskImage {
     /// partition geometry and identity; this does not probe or read its bytes.
     #[inline(never)]
     pub(crate) fn from_logical_source(
-        id: String,
+        id: impl Into<ImageId>,
         label: String,
         source: Arc<dyn SectorSource + Send + Sync>,
         partitions: Vec<Partition>,
@@ -558,7 +559,7 @@ impl DiskImage {
         let size_bytes = source.size();
         let path = PathBuf::from(format!("assembled://{label}"));
         Self {
-            id,
+            id: id.into(),
             path,
             source: ImageSource::Assembled {
                 source,

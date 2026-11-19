@@ -26,6 +26,7 @@ use crate::core::{
         os_detect_adapters::{supports_os_detect, Fingerprint},
         win_drive_letters,
     },
+    common::ids::ImageId,
     evidence::partitions::PartitionKind,
     filesystem::{
         evidence_session::EvidenceSession,
@@ -82,7 +83,7 @@ pub struct SystemMount {
 /// forgets its entry (`remove_image_runtime`).
 #[derive(Default)]
 pub struct SystemCache {
-    entries: parking_lot::Mutex<HashMap<String, Arc<Vec<DetectedSystem>>>>,
+    entries: parking_lot::Mutex<HashMap<ImageId, Arc<Vec<DetectedSystem>>>>,
 }
 
 impl SystemCache {

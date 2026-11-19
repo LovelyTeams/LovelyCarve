@@ -1,4 +1,5 @@
 import { invokeCmd } from './client';
+import type { ImageId } from './ids';
 
 
 
@@ -19,6 +20,6 @@ export interface DriveLetterReport {
 /** 解析 Windows 源系统给各卷分配的原始盘符（`HKLM\SYSTEM\MountedDevices`）。
  *  读 SYSTEM 注册表配置单元（10–40 MiB）并关联到分区，后端 blocking 执行；
  *  非 Windows / 上锁 / 无 MountedDevices 时返回空 assignments。 */
-export function winDriveLetters(args: { imageId: string }): Promise<DriveLetterReport> {
+export function winDriveLetters(args: { imageId: ImageId }): Promise<DriveLetterReport> {
   return invokeCmd<DriveLetterReport>('win_drive_letters', args);
 }

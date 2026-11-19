@@ -279,7 +279,7 @@ mod tests {
             filedb_store::build_index_from_entries(&entries, &index, &source("root"))?;
             let image = EvidenceSession::from_indexed_image(
                 DiskImage::from_index_metadata(
-                    "img".into(),
+                    "img",
                     directory.path().join("missing"),
                     format,
                     4096,
@@ -374,7 +374,7 @@ mod tests {
         };
         let image = EvidenceSession::from_indexed_image(
             DiskImage::from_index_metadata(
-                "saved".into(),
+                "saved",
                 directory.path().join("missing.E01"),
                 ImageFormat::Ewf,
                 4096,

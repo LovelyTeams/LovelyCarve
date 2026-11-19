@@ -1,5 +1,6 @@
 import { invokeCmd } from './client';
 import type { ImageInfo } from './image';
+import type { ImageId } from './ids';
 
 /** Upstream native observation. Unrated findings retain a null severity. */
 export interface IosBackupFinding {
@@ -13,10 +14,10 @@ export interface IosBackupFinding {
   context: unknown;
 }
 
-export function iosBackupUnlock(args: { imageId: string; password: string; taskId: string }): Promise<ImageInfo> {
+export function iosBackupUnlock(args: { imageId: ImageId; password: string; taskId: string }): Promise<ImageInfo> {
   return invokeCmd<ImageInfo>('ios_backup_unlock', args);
 }
 
-export function iosBackupAudit(args: { imageId: string; taskId: string }): Promise<IosBackupFinding[]> {
+export function iosBackupAudit(args: { imageId: ImageId; taskId: string }): Promise<IosBackupFinding[]> {
   return invokeCmd<IosBackupFinding[]>('ios_backup_audit', args);
 }

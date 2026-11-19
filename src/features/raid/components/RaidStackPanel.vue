@@ -96,6 +96,7 @@ import RaidManualBuilder from './RaidManualBuilder.vue';
 import RaidArrayCard from './RaidArrayCard.vue';
 import RaidVolumeGroupCard from './RaidVolumeGroupCard.vue';
 import { exportBaseName, relevantRaidArrays, relevantRaidVolumeGroups } from '../model/stackView';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 const props = defineProps<{ info: ImageInfo }>();
 const emit = defineEmits<{ 'open-image': [path: string] }>();
@@ -185,7 +186,7 @@ async function assembleDegraded(arr: RaidArray) {
   }
 }
 
-async function openImage(imageId: string | null) {
+async function openImage(imageId: ImageId | null) {
   if (!imageId || openingId.value) return;
   const captured = generation;
   openingId.value = imageId;

@@ -1,6 +1,7 @@
 //! Filesystem export IPC: single-file export, directory tree / ZIP export,
 //! and streaming body-file timeline export.
 
+use crate::core::common::ids::{ImageId, NodeId};
 use std::io::Write as _;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -21,8 +22,8 @@ use {
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_export(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     destination: String,
 ) -> Result<FsExportResult, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
@@ -88,8 +89,8 @@ const EXPORT_DIR_PROGRESS_THROTTLE: Duration = Duration::from_millis(150);
 pub async fn fs_export_dir(
     app: AppHandle,
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     destination: String,
     task_id: String,
     mode: ExportDirMode,
@@ -244,8 +245,8 @@ pub async fn fs_export_dir(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_timeline_export(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     destination: String,
 ) -> Result<crate::core::timeline::mactime::MactimeSummary, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;

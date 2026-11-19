@@ -9,6 +9,7 @@
 //! 无 MountedDevices）保持可重算，否则解锁 BitLocker 后会被钉死在「什么都没找到」
 //! 上。无案件时退回会话级实时解析。
 
+use crate::core::common::ids::ImageId;
 use crate::host::State;
 
 use crate::core::analysis::identify::win_drive_letters::{
@@ -21,7 +22,7 @@ use {crate::app::access::loaded_image_app_error, crate::app::error::AppError};
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn win_drive_letters(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<DriveLetterReport, AppError> {
     // 快路径：案件里已缓存即直接返回（不读镜像、不解析配置单元）。锁只在取
     // 案件目录时短暂持有，绝不跨 spawn_blocking——否则重解析期间会卡住整个

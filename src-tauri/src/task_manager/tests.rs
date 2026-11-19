@@ -18,7 +18,7 @@ use std::time::Duration;
 #[test]
 fn dropping_registration_removes_task() {
     let manager = TaskManager::default();
-    let registration = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".to_string()));
+    let registration = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".into()));
     assert!(manager.contains("hash-1"));
     assert_eq!(registration.record().status(), TaskStatus::Queued);
 
@@ -75,15 +75,13 @@ fn cancellation_does_not_let_old_guard_remove_reused_id() {
 #[test]
 fn cancel_image_only_cancels_owned_tasks() {
     let manager = TaskManager::default();
-    let image_one_hash =
-        manager.register("hash-1", TaskKind::ImageHash, Some("image-1".to_string()));
+    let image_one_hash = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".into()));
     let image_one_snapshot = manager.register(
         "snapshot-1",
         TaskKind::SessionSnapshot,
-        Some("image-1".to_string()),
+        Some("image-1".into()),
     );
-    let image_two_hash =
-        manager.register("hash-2", TaskKind::ImageHash, Some("image-2".to_string()));
+    let image_two_hash = manager.register("hash-2", TaskKind::ImageHash, Some("image-2".into()));
 
     assert_eq!(manager.cancel_image("image-1"), 2);
     assert!(image_one_hash.token().is_cancelled());
@@ -95,8 +93,8 @@ fn cancel_image_only_cancels_owned_tasks() {
 #[tokio::test]
 async fn waiting_for_an_image_returns_once_its_cancelled_tasks_stop() {
     let manager = TaskManager::default();
-    let hash = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".to_string()));
-    let other = manager.register("hash-2", TaskKind::ImageHash, Some("image-2".to_string()));
+    let hash = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".into()));
+    let other = manager.register("hash-2", TaskKind::ImageHash, Some("image-2".into()));
     assert_eq!(manager.cancel_image("image-1"), 1);
     let worker = std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(50));
@@ -123,7 +121,7 @@ async fn waiting_for_an_image_returns_once_its_cancelled_tasks_stop() {
 #[tokio::test]
 async fn waiting_for_an_image_gives_up_on_tasks_that_hold_on() {
     let manager = TaskManager::default();
-    let stuck = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".to_string()));
+    let stuck = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".into()));
     manager.cancel_image("image-1");
 
     let holding = manager
@@ -146,13 +144,9 @@ fn cancel_image_kind_preserves_other_work() {
     let snapshot = manager.register(
         "snapshot-1",
         TaskKind::SessionSnapshot,
-        Some("image-1".to_string()),
+        Some("image-1".into()),
     );
-    let export = manager.register(
-        "export-1",
-        TaskKind::ImageExport,
-        Some("image-1".to_string()),
-    );
+    let export = manager.register("export-1", TaskKind::ImageExport, Some("image-1".into()));
 
     assert_eq!(
         manager.cancel_image_kind("image-1", TaskKind::SessionSnapshot),
@@ -166,7 +160,7 @@ fn cancel_image_kind_preserves_other_work() {
 #[test]
 fn status_and_list_return_active_task_snapshots() {
     let manager = TaskManager::default();
-    let first = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".to_string()));
+    let first = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".into()));
     let _second = manager.register("scan-1", TaskKind::BitlockerScan, None);
 
     let Some(status) = manager.status("hash-1") else {
@@ -206,7 +200,7 @@ fn lifecycle_sink_observes_queued_and_finished() {
     let registration = manager.register(
         "snapshot-1",
         TaskKind::VolumeSnapshot,
-        Some("image-1".to_string()),
+        Some("image-1".into()),
     );
     drop(registration);
 
@@ -267,7 +261,7 @@ impl TaskFailure for Failure {
 #[test]
 fn ended_session_tasks_stay_listed_with_their_view_and_outcome() {
     let manager = TaskManager::default();
-    let hash = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".to_string()));
+    let hash = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".into()));
     hash.update(|view| {
         view.subject = vec!["MD5".to_owned()];
         view.counts.insert(TaskCount::SyntheticBytes, 512);
@@ -444,7 +438,7 @@ fn progress_sink_observes_active_task_snapshot() {
 #[tokio::test]
 async fn acquired_resources_mark_task_running() {
     let manager = TaskManager::with_resource_limits(1, 1);
-    let task = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".to_string()));
+    let task = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".into()));
 
     let permit = manager.acquire_resources(&task).await;
 
@@ -464,7 +458,7 @@ async fn lifecycle_sink_observes_running_after_resource_acquire() {
             .push(event);
     });
 
-    let task = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".to_string()));
+    let task = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".into()));
     let permit = manager.acquire_resources(&task).await;
 
     assert!(permit.is_ok());
@@ -534,15 +528,11 @@ fn resource_classes_describe_task_kind_lanes() {
 #[tokio::test]
 async fn global_background_limit_blocks_excess_tasks() {
     let manager = TaskManager::with_resource_limits(1, 1);
-    let first = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".to_string()));
+    let first = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".into()));
     let first_permit = manager.acquire_resources(&first).await;
     assert!(first_permit.is_ok());
 
-    let second = manager.register(
-        "scan-1",
-        TaskKind::BitlockerScan,
-        Some("image-2".to_string()),
-    );
+    let second = manager.register("scan-1", TaskKind::BitlockerScan, Some("image-2".into()));
     let waiter_manager = manager.clone();
     let waiter = tokio::spawn(async move { waiter_manager.acquire_resources(&second).await });
     tokio::task::yield_now().await;
@@ -580,19 +570,11 @@ async fn cpu_limit_blocks_excess_cpu_tasks() {
 #[tokio::test]
 async fn same_image_sequential_io_is_serial() {
     let manager = TaskManager::with_resource_limits(2, 1);
-    let first = manager.register(
-        "export-1",
-        TaskKind::ImageExport,
-        Some("image-1".to_string()),
-    );
+    let first = manager.register("export-1", TaskKind::ImageExport, Some("image-1".into()));
     let first_permit = manager.acquire_resources(&first).await;
     assert!(first_permit.is_ok());
 
-    let second = manager.register(
-        "export-2",
-        TaskKind::ImageExport,
-        Some("image-1".to_string()),
-    );
+    let second = manager.register("export-2", TaskKind::ImageExport, Some("image-1".into()));
     let waiter_manager = manager.clone();
     let waiter = tokio::spawn(async move { waiter_manager.acquire_resources(&second).await });
     tokio::task::yield_now().await;
@@ -609,9 +591,9 @@ async fn same_image_sequential_io_is_serial() {
 #[tokio::test]
 async fn same_image_random_io_has_independent_limit() {
     let manager = TaskManager::with_all_resource_limits(3, 1, 2, 2, 1);
-    let first = manager.register("flat-1", TaskKind::FlatList, Some("image-1".to_string()));
-    let second = manager.register("flat-2", TaskKind::FlatList, Some("image-1".to_string()));
-    let third = manager.register("flat-3", TaskKind::FlatList, Some("image-1".to_string()));
+    let first = manager.register("flat-1", TaskKind::FlatList, Some("image-1".into()));
+    let second = manager.register("flat-2", TaskKind::FlatList, Some("image-1".into()));
+    let third = manager.register("flat-3", TaskKind::FlatList, Some("image-1".into()));
 
     let first_permit = manager.acquire_resources(&first).await;
     let second_permit = manager.acquire_resources(&second).await;
@@ -634,16 +616,8 @@ async fn same_image_random_io_has_independent_limit() {
 #[tokio::test]
 async fn different_images_can_acquire_until_global_limit() {
     let manager = TaskManager::with_resource_limits(2, 1);
-    let first = manager.register(
-        "export-1",
-        TaskKind::ImageExport,
-        Some("image-1".to_string()),
-    );
-    let second = manager.register(
-        "export-2",
-        TaskKind::ImageExport,
-        Some("image-2".to_string()),
-    );
+    let first = manager.register("export-1", TaskKind::ImageExport, Some("image-1".into()));
+    let second = manager.register("export-2", TaskKind::ImageExport, Some("image-2".into()));
 
     let first_permit = manager.acquire_resources(&first).await;
     let second_permit = manager.acquire_resources(&second).await;
@@ -655,11 +629,11 @@ async fn different_images_can_acquire_until_global_limit() {
 #[tokio::test]
 async fn waiting_resource_acquisition_observes_cancellation() {
     let manager = TaskManager::with_resource_limits(1, 1);
-    let first = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".to_string()));
+    let first = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".into()));
     let first_permit = manager.acquire_resources(&first).await;
     assert!(first_permit.is_ok());
 
-    let second = manager.register("hash-2", TaskKind::ImageHash, Some("image-2".to_string()));
+    let second = manager.register("hash-2", TaskKind::ImageHash, Some("image-2".into()));
     let second_token = second.token();
     let waiter_manager = manager.clone();
     let waiter = tokio::spawn(async move { waiter_manager.acquire_resources(&second).await });
@@ -678,14 +652,14 @@ async fn waiting_resource_acquisition_observes_cancellation() {
 #[tokio::test]
 async fn unbudgeted_tasks_run_while_background_permits_are_taken() {
     let manager = TaskManager::with_resource_limits(1, 1);
-    let hash = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".to_string()));
+    let hash = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".into()));
     let hash_permit = manager.acquire_resources(&hash).await;
     assert!(hash_permit.is_ok());
 
     let detect = manager.register(
         "autodetect:image-1",
         TaskKind::AutoDetect,
-        Some("image-1".to_string()),
+        Some("image-1".into()),
     );
     let detect_permit =
         tokio::time::timeout(Duration::from_secs(5), manager.acquire_resources(&detect)).await;
@@ -701,7 +675,7 @@ async fn permit_drop_wakes_waiting_task() {
     let first = manager.register(
         "snapshot-1",
         TaskKind::VolumeSnapshot,
-        Some("image-1".to_string()),
+        Some("image-1".into()),
     );
     let first_permit = manager.acquire_resources(&first).await;
     assert!(first_permit.is_ok());
@@ -709,7 +683,7 @@ async fn permit_drop_wakes_waiting_task() {
     let second = manager.register(
         "snapshot-2",
         TaskKind::VolumeSnapshot,
-        Some("image-2".to_string()),
+        Some("image-2".into()),
     );
     let waiter_manager = manager.clone();
     let waiter = tokio::spawn(async move { waiter_manager.acquire_resources(&second).await });

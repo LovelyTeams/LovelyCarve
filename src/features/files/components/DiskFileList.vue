@@ -280,6 +280,7 @@ import TreemapToolbar from './TreemapToolbar.vue';
 import { useSizeTree, type TreemapMode } from '../composables/useSizeTree';
 import { TREEMAP_MAX_DEPTH, TREEMAP_MIN_DEPTH, isVolumeRootId, treemapAvailableAt, type FileViewMode } from '../model/treemap';
 import type { FileByteFocus, FileNavigationFrame } from '../model/navigation';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 type FsNode = DiskFsNode;
 
@@ -287,7 +288,7 @@ type FsNode = DiskFsNode;
 // 保留导航栈 / 滚动 / 勾选状态）。显式命名便于 devtools 辨识，也不依赖文件名推断。
 defineOptions({ name: 'DiskFileList' });
 
-const props = defineProps<{ imageId: string; indexOnly?: boolean; volumeRevision?: string; activatePreview?: (imageId: string) => boolean }>();
+const props = defineProps<{ imageId: ImageId; indexOnly?: boolean; volumeRevision?: string; activatePreview?: (imageId: ImageId) => boolean }>();
 const { mountTarget, mountFolderRoot } = useUiPreferences();
 
 const {
@@ -846,9 +847,9 @@ watch(hideEmptyDirs, on => {
 });
 
 const sortContext = {
-  digestOf: (nodeId: string) => digestCache.get(nodeId),
+  digestOf: (nodeId: NodeId) => digestCache.get(nodeId),
   tagOf: (node: FsNode) => tagOfNode(node),
-  ftypeLabelOf: (nodeId: string) => ftypeCache.get(nodeId)?.label ?? '',
+  ftypeLabelOf: (nodeId: NodeId) => ftypeCache.get(nodeId)?.label ?? '',
   fullPathOf,
 };
 

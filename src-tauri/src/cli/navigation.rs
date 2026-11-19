@@ -23,7 +23,7 @@ pub(super) async fn locate_node(
     let task = exec.state.tasks.register(
         format!("cli-node-locate-{}", uuid::Uuid::new_v4()),
         TaskKind::FlatList,
-        Some(image_id.to_owned()),
+        Some(image_id.into()),
     );
     let cancellation = task.token();
     let located = async {

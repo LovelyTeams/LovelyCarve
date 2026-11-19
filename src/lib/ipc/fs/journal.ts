@@ -1,5 +1,6 @@
 import { invokeCmd } from '../client';
 import { type Page } from './types';
+import type { ImageId, NodeId } from '../ids';
 
 
 export interface MactimeSummary {
@@ -13,8 +14,8 @@ export interface MactimeSummary {
  * whole image, or a directory node id to scope the timeline to that subtree.
  */
 export function fsTimelineExport(args: {
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
   destination: string;
 }): Promise<MactimeSummary> {
   return invokeCmd<MactimeSummary>('fs_timeline_export', args);
@@ -35,8 +36,8 @@ export interface UsnRecord {
  * `lvm:N:M` volume key or any `ntfs:` node id on that volume.
  */
 export function fsUsnJournal(args: {
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
 }): Promise<UsnRecord[]> {
   return invokeCmd<UsnRecord[]>('fs_usn_journal', args);
 }
@@ -45,8 +46,8 @@ export function fsUsnJournal(args: {
  *  legacy `fsUsnJournal` still returns the full decoded window for existing
  *  callers. */
 export function fsUsnJournalPage(args: {
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
   cursor?: string | null;
   pageSize?: number | null;
 }): Promise<Page<UsnRecord>> {
@@ -81,8 +82,8 @@ export interface Ext4JournalBlocksPage {
  * `part:N` / `lvm:N:M` volume key. Returns historical block revisions.
  */
 export function fsExt4Journal(args: {
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
 }): Promise<Ext4Journal> {
   return invokeCmd<Ext4Journal>('fs_ext4_journal', args);
 }
@@ -91,8 +92,8 @@ export function fsExt4Journal(args: {
  *  one page of `JournalBlockRef` rows; revoked blocks are exposed as a count
  *  here to keep the paged response bounded. */
 export function fsExt4JournalBlocksPage(args: {
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
   cursor?: string | null;
   pageSize?: number | null;
 }): Promise<Ext4JournalBlocksPage> {

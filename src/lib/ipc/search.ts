@@ -9,6 +9,7 @@
 // = 删除整次搜索。
 import { invokeCmd } from './client';
 import { onEvent, type UnlistenFn } from './events';
+import type { ImageId, NodeId, VolumeKey } from './ids';
 
 /** 编码页。空数组 = 后端按全部编码处理。 */
 export type SearchCodePage = 'ASCII' | 'UTF-8' | 'UTF-16LE' | 'UTF-16BE' | 'GBK';
@@ -58,8 +59,8 @@ export interface GlobalSearchSummary {
 /** 一条命中记录（后端 `GlobalSearchHit` 的 wire 形状，snake_case 原样）。 */
 export interface GlobalSearchHit {
   hit_seq: number;
-  node_id: string;
-  volume_key: string;
+  node_id: NodeId;
+  volume_key: VolumeKey;
   file_path: string;
   file_name: string;
   file_size: number;
@@ -82,7 +83,7 @@ export interface GlobalSearchHit {
 /** 任务/历史条目（后端 `GlobalSearchMeta`）。 */
 export interface GlobalSearchHistoryEntry {
   search_id: string;
-  image_id: string;
+  image_id: ImageId;
   keywords: string[];
   regexes: string[];
   codepages: string[];
@@ -118,7 +119,7 @@ export interface GlobalSearchPage {
 /** `global-search-progress` 事件载荷。 */
 export interface GlobalSearchProgress {
   search_id: string;
-  image_id: string;
+  image_id: ImageId;
   files_done: number;
   files_total: number;
   hits: number;
@@ -135,7 +136,7 @@ export interface GlobalSearchExportResult {
  *  用）；命令在扫描完成后返回摘要（取消返回 status=cancelled 的部分结果）。
  *  长任务，可用 `taskCancel({ taskId: searchId })` 取消。 */
 export function globalSearchStart(args: {
-  imageId: string;
+  imageId: ImageId;
   searchId: string;
   options: GlobalSearchOptions;
 }): Promise<GlobalSearchSummary> {
@@ -145,7 +146,7 @@ export function globalSearchStart(args: {
 /** 命中分页（服务端过滤/去重/增量）。`afterSeq` 为增量轮询游标：只取
  *  hit_seq 大于该值的新命中。 */
 export function globalSearchHitsPage(args: {
-  imageId: string;
+  imageId: ImageId;
   searchId: string;
   skip?: number;
   limit?: number;
@@ -158,7 +159,7 @@ export function globalSearchHitsPage(args: {
 
 /** 任务列表（任务即历史；含运行中的任务，新→旧）。 */
 export function globalSearchHistoryList(args: {
-  imageId: string;
+  imageId: ImageId;
   limit?: number;
 }): Promise<GlobalSearchHistoryEntry[]> {
   return invokeCmd<GlobalSearchHistoryEntry[]>('global_search_history_list', args);
@@ -166,7 +167,7 @@ export function globalSearchHistoryList(args: {
 
 /** 删除整次搜索（运行中的先取消再删除任务与全部命中）。 */
 export function globalSearchHistoryDelete(args: {
-  imageId: string;
+  imageId: ImageId;
   searchId: string;
 }): Promise<boolean> {
   return invokeCmd<boolean>('global_search_history_delete', args);
@@ -174,7 +175,7 @@ export function globalSearchHistoryDelete(args: {
 
 /** 导出命中为 CSV，沿用与表格一致的过滤/去重条件。 */
 export function globalSearchExport(args: {
-  imageId: string;
+  imageId: ImageId;
   searchId: string;
   destination: string;
   keyword?: string;

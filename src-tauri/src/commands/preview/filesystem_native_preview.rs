@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::host::State;
 
-use crate::core::common::ids::NodeRef;
+use crate::core::common::ids::{ImageId, NodeId, NodeRef};
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree;
 use crate::core::preview::realm_preview::{self, RealmDigest, RealmRows};
@@ -20,9 +20,9 @@ use {crate::app::access::loaded_image_app_error, crate::app::error::AppError};
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_sqlite_preview(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
-    parent_id: Option<String>,
+    image_id: ImageId,
+    node_id: NodeId,
+    parent_id: Option<NodeId>,
     key: Option<SqliteKey>,
 ) -> Result<SqliteDigest, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
@@ -49,9 +49,9 @@ pub async fn fs_sqlite_preview(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_sqlite_deleted_records(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
-    parent_id: Option<String>,
+    image_id: ImageId,
+    node_id: NodeId,
+    parent_id: Option<NodeId>,
     key: Option<SqliteKey>,
 ) -> Result<SqliteRecovery, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
@@ -73,9 +73,9 @@ pub async fn fs_sqlite_deleted_records(
 #[allow(clippy::too_many_arguments)]
 pub async fn fs_sqlite_table_rows(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
-    parent_id: Option<String>,
+    image_id: ImageId,
+    node_id: NodeId,
+    parent_id: Option<NodeId>,
     table: String,
     offset: i64,
     limit: i64,
@@ -115,9 +115,9 @@ pub async fn fs_sqlite_table_rows(
 #[allow(clippy::too_many_arguments)]
 pub async fn fs_sqlite_query(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
-    parent_id: Option<String>,
+    image_id: ImageId,
+    node_id: NodeId,
+    parent_id: Option<NodeId>,
     sql: String,
     parameters: Option<Vec<serde_json::Value>>,
     offset: u32,
@@ -189,8 +189,8 @@ fn realm_bytes_cached(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_realm_preview(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
 ) -> Result<RealmDigest, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     let cache = state.realm_session.clone();
@@ -208,8 +208,8 @@ pub async fn fs_realm_preview(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_realm_table_rows(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     table_number: usize,
     offset: usize,
     limit: usize,
@@ -236,8 +236,8 @@ const BINARY_READ_CAP: usize = 64 * 1024 * 1024;
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_binary_preview(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
 ) -> Result<crate::core::preview::binary::binfmt::NativeReport, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     tokio::task::spawn_blocking(
@@ -264,8 +264,8 @@ const GGUF_READ_CAP: usize = 64 * 1024 * 1024;
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_gguf_preview(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
 ) -> Result<crate::core::preview::gguf::GgufReport, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     tokio::task::spawn_blocking(
@@ -328,8 +328,8 @@ fn zip_bytes_cached(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_zip_preview(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
 ) -> Result<crate::core::preview::zip_preview::ZipPreview, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     let cache = state.zip_session.clone();
@@ -361,8 +361,8 @@ pub async fn fs_zip_preview(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_zip_member_read(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     member_path: String,
     max_bytes: usize,
 ) -> Result<crate::host::Response, AppError> {
@@ -396,8 +396,8 @@ const CSV_READ_CAP: usize = 16 * 1024 * 1024;
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_csv_preview(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     delimiter: Option<String>,
 ) -> Result<crate::core::preview::tables::csv_table::CsvTable, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
@@ -425,8 +425,8 @@ pub async fn fs_csv_preview(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_vim_swap_preview(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
 ) -> Result<VimSwapDigest, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     tokio::task::spawn_blocking(move || {

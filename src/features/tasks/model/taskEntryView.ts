@@ -16,6 +16,7 @@ import { formatBytes } from '../../../utils/format';
 import { evidenceTypeLabel, platformLabel } from '../../evidence/model/autodetectLabels';
 import { parseTaskTime, type TaskResultPanel } from './taskCenterView';
 import { canCancelStatus, canRestartStatus, canStartStatus, isTerminalStatus } from './taskStatus';
+import type { VolumeKey } from '../../../lib/ipc/ids';
 
 /** The title of a native task kind the task center lists. */
 export function builtinTaskTitle(kind: BackendTaskKind, tr: Translator = sourceText): string {
@@ -40,7 +41,7 @@ export function builtinTaskTitle(kind: BackendTaskKind, tr: Translator = sourceT
 }
 
 /** A volume key as the file tree names it. */
-function volumeLabel(volumeKey: string, tr: Translator, label?: string): string {
+function volumeLabel(volumeKey: VolumeKey, tr: Translator, label?: string): string {
   const partition = /^part:(\d+)$/.exec(volumeKey)?.[1];
   if (partition !== undefined) return tr("分区 {0}{1}", { 0: partition, 1: label ? ` · ${label}` : '' });
   return volumeKey === 'root' ? tr("根目录") : volumeKey;

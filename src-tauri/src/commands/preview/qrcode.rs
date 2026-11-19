@@ -2,6 +2,7 @@
 //! WeChat 检测器 + 暴力变换扫描（见 `core::preview::qrcode`），进度走 `qr-scan-progress`
 //! 事件，可经 `task_cancel` 协作取消。结果同步作为返回值回给前端。
 
+use crate::core::common::ids::{ImageId, NodeId};
 use crate::host::{AppHandle, State};
 use serde::Serialize;
 
@@ -29,8 +30,8 @@ pub struct QrScanProgress {
 pub async fn qr_scan(
     app: AppHandle,
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     expected_count: u32,
     task_id: String,
 ) -> Result<QrScanOutcome, AppError> {

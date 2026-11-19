@@ -17,9 +17,10 @@ import { tr } from '../../../composables/useLocale';
 import { notifyError, pushPersistentToast } from '../../../composables/useToast';
 import { formatBytes } from '../../../utils/format';
 import { evidenceContext } from './evidenceContext';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 export interface ImageExportJob {
-  imageId: string;
+  imageId: ImageId;
   taskId: string;
   destination: string;
   bytesDone: number;
@@ -42,7 +43,7 @@ export function disposeImageExportJobs() {
 }
 
 type Exporter = (args: {
-  imageId: string;
+  imageId: ImageId;
   destination: string;
   taskId: string;
 }) => Promise<number | ImageExportResult>;
@@ -70,7 +71,7 @@ function exportSpeedText(job: ImageExportJob, fallbackDone = job.bytesDone): str
  *  `true` on a completed write, `false` on cancel-dialog / refusal / failure.
  *  Progress + cancel live in a persistent toast owned here. */
 async function startImageExport(opts: {
-  imageId: string;
+  imageId: ImageId;
   defaultFileName: string;
   title?: string;
   runningTitle?: string;
@@ -206,7 +207,7 @@ async function startImageExport(opts: {
 }
 
 async function startBitlockerDecryptedImageExport(opts: {
-  imageId: string;
+  imageId: ImageId;
   partitionId: number;
   defaultFileName: string;
 }): Promise<boolean> {
@@ -225,7 +226,7 @@ async function startBitlockerDecryptedImageExport(opts: {
 }
 
 /** Request cancellation of an in-flight export. Idempotent. */
-async function cancelImageExport(imageId: string): Promise<void> {
+async function cancelImageExport(imageId: ImageId): Promise<void> {
   const job = jobs.get(imageId);
   if (job) await cancelExportJob(job);
 }
@@ -248,7 +249,7 @@ export function useImageExport() {
     cancelImageExport,
     /** In-flight job for an image, or undefined. Reads the module-scoped
      *  reactive map, so calling it in a template / computed is tracked. */
-    jobFor: (imageId: string | null | undefined): ImageExportJob | undefined =>
+    jobFor: (imageId: ImageId | null | undefined): ImageExportJob | undefined =>
       imageId ? jobs.get(imageId) : undefined,
   };
 }

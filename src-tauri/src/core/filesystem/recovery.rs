@@ -121,7 +121,7 @@ pub fn scan(
     let (volumes, truncated) = discovery::discover(image, &options, &ranges, cancel, progress)?;
     let mut result = RecoveryScan {
         scan_id,
-        image_id: image.id.clone(),
+        image_id: image.id.to_string(),
         options,
         ranges,
         volumes,

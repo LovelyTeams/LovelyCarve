@@ -168,10 +168,11 @@ import { computed, ref, watch } from 'vue';
 import { AlertTriangle, Boxes, Loader2, Search } from 'lucide-vue-next';
 import { fsGgufPreview, type GgufMetaEntry, type GgufReport } from '../../../../lib/ipc/gguf';
 import { formatBytes } from '../../../../utils/format';
+import type { ImageId, NodeId } from '../../../../lib/ipc/ids';
 
 const props = defineProps<{
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
 }>();
 
 const loading = ref(false);

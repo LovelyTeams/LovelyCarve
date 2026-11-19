@@ -1,5 +1,6 @@
 //! Docker preparation command adapter.
 pub use crate::app::workflows::docker::DockerIndexStatus;
+use crate::core::common::ids::{ImageId, NodeId};
 use crate::host::State;
 use crate::{app::error::AppError, core::catalog::host_docker_index::PrepareMode, state::AppState};
 
@@ -11,8 +12,8 @@ use crate::{app::error::AppError, core::catalog::host_docker_index::PrepareMode,
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_docker_prepare(
     state: State<'_, AppState>,
-    image_id: String,
-    root_id: String,
+    image_id: ImageId,
+    root_id: NodeId,
     case_dir: Option<String>,
     mode: PrepareMode,
 ) -> Result<DockerIndexStatus, AppError> {

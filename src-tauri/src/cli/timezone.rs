@@ -127,7 +127,7 @@ async fn loaded(
         None => exec.current_image(context).await?,
     };
     let images = exec.state.images.lock().await;
-    Ok(id.and_then(|id| images.get(&id).cloned()))
+    Ok(id.and_then(|id| images.get(id.as_str()).cloned()))
 }
 
 struct Display {

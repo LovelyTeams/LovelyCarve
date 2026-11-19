@@ -1,5 +1,6 @@
 import { invokeCmd } from './client';
 import type { ImageInfo } from './image';
+import type { ImageId } from './ids';
 
 export type { ShadowCopyOrigin } from './image';
 
@@ -33,12 +34,12 @@ export interface ShadowVolumeInfo {
   error: string | null;
 }
 
-export function shadowCopyList(args: { imageId: string }): Promise<ShadowVolumeInfo[]> {
+export function shadowCopyList(args: { imageId: ImageId }): Promise<ShadowVolumeInfo[]> {
   return invokeCmd<ShadowVolumeInfo[]>('shadow_copy_list', args);
 }
 
 export function shadowCopyOpen(args: {
-  imageId: string;
+  imageId: ImageId;
   partitionId: number;
   index: number;
   taskId?: string;

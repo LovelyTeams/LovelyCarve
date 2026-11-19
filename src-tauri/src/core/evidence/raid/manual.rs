@@ -187,7 +187,7 @@ mod tests {
     fn raid1_reads_from_any_present_mirror() {
         let disk = pattern(64 * 1024, 4);
         let images = vec![image(disk.clone()), image(disk.clone())];
-        let ids: Vec<String> = images.iter().map(|image| image.id.clone()).collect();
+        let ids: Vec<String> = images.iter().map(|image| image.id.to_string()).collect();
         let full = manual_assemble(&images, &params(ids.clone(), 1, 0)).expect("raid1");
         assert_eq!(full.size_bytes, disk.len() as u64);
         let degraded = manual_assemble(&images, &params(vec![ids[0].clone(), String::new()], 1, 0))
@@ -199,7 +199,7 @@ mod tests {
     #[test]
     fn rejects_more_missing_columns_than_the_level_tolerates() {
         let images: Vec<_> = (0..4).map(|seed| image(pattern(64 * 1024, seed))).collect();
-        let ids: Vec<String> = images.iter().map(|image| image.id.clone()).collect();
+        let ids: Vec<String> = images.iter().map(|image| image.id.to_string()).collect();
         let mut request = params(ids, 5, 2);
         request.missing_slots = vec![0, 1];
         assert!(manual_assemble(&images, &request).is_err());

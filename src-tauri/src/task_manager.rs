@@ -19,6 +19,8 @@ use std::time::{Duration, Instant};
 
 use tokio_util::sync::CancellationToken;
 
+use crate::core::common::ids::ImageId;
+
 mod resources;
 
 use resources::TaskResources;
@@ -142,7 +144,7 @@ impl TaskManager {
         &self,
         task_id: impl Into<String>,
         kind: TaskKind,
-        image_id: Option<String>,
+        image_id: Option<ImageId>,
     ) -> TaskRegistration {
         let task_id = task_id.into();
         let (record, created) = {
@@ -172,7 +174,7 @@ impl TaskManager {
         &self,
         task_id: impl Into<String>,
         kind: TaskKind,
-        image_id: Option<String>,
+        image_id: Option<ImageId>,
     ) -> Option<TaskRegistration> {
         let task_id = task_id.into();
         let record = {
@@ -196,7 +198,7 @@ impl TaskManager {
         &self,
         task_id: &str,
         kind: TaskKind,
-        image_id: Option<String>,
+        image_id: Option<ImageId>,
     ) -> Arc<TaskRecord> {
         Arc::new(TaskRecord {
             id: task_id.to_owned(),

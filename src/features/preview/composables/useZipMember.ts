@@ -1,6 +1,7 @@
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { fsZipMemberRead, type ZipPreviewEntry } from '../../../lib/ipc/zip';
-export function useZipMember(options: { imageId: () => string; nodeId: () => string }) {
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
+export function useZipMember(options: { imageId: () => ImageId; nodeId: () => NodeId }) {
   const MEMBER_FETCH_CAP = 1024 * 1024;
   const HEX_VIEW_CAP = 32 * 1024;
   const TEXT_CHUNK_CHARS = 8000;

@@ -8,13 +8,16 @@
 //! cannot swap its parts and a per-image purge compares the image instead of
 //! matching a string prefix.
 //!
-//! New code takes these types; existing `&str` parameters convert when they
-//! are touched. Converting from a string is always explicit (`From`,
+//! Commands take their ids in these types, and so does the evidence session
+//! (`DiskImage::id`). Converting from a string is always explicit (`From`,
 //! [`ImageId::new`]), which is the point: an `&ImageId` parameter cannot
-//! receive a node id by accident.
+//! receive a node id by accident. The other direction is free: every id
+//! dereferences to `&str`, so the readers and stores that still take `&str`
+//! accept one unchanged, and they convert when they are touched.
 
 use std::borrow::Borrow;
 use std::fmt;
+use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
@@ -38,6 +41,14 @@ macro_rules! string_id {
         impl fmt::Display for $name {
             fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 formatter.write_str(&self.0)
+            }
+        }
+
+        impl Deref for $name {
+            type Target = str;
+
+            fn deref(&self) -> &str {
+                &self.0
             }
         }
 
@@ -86,6 +97,24 @@ macro_rules! string_id {
         impl PartialEq<String> for $name {
             fn eq(&self, other: &String) -> bool {
                 &self.0 == other
+            }
+        }
+
+        impl PartialEq<$name> for str {
+            fn eq(&self, other: &$name) -> bool {
+                self == other.0
+            }
+        }
+
+        impl PartialEq<$name> for &str {
+            fn eq(&self, other: &$name) -> bool {
+                *self == other.0
+            }
+        }
+
+        impl PartialEq<$name> for String {
+            fn eq(&self, other: &$name) -> bool {
+                *self == other.0
             }
         }
     };
@@ -164,6 +193,16 @@ mod tests {
         let images = HashMap::from([(ImageId::new("img-1"), 1)]);
         assert_eq!(images.get("img-1"), Some(&1));
         assert!(ImageId::new("img-1") == "img-1");
+    }
+
+    #[test]
+    fn ids_read_as_str_where_untyped_code_expects_one() {
+        fn untyped(id: &str) -> usize {
+            id.len()
+        }
+        let id = ImageId::new("img-1");
+        assert_eq!(untyped(&id), 5);
+        assert!("img-1" == id && String::from("img-1") == id);
     }
 
     #[test]

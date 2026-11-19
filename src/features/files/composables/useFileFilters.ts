@@ -5,10 +5,11 @@ import { SIZE_UNITS, LARGE_FILE_LIST } from '../model/filters';
 import { useSizeFilter } from './useSizeFilter';
 import { useTimeFilters } from './useTimeFilters';
 import { usePathFilter } from './usePathFilter';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 /** Query filter state and its floating editor share a single panel-scoped owner. */
 export function useFileFilters(options: {
-  imageId: () => string;
+  imageId: () => ImageId;
   entries: Ref<DiskFsNode[]>;
   stack: Ref<FileNavigationFrame[]>;
   flatMode: Ref<boolean>;

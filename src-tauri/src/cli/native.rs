@@ -395,7 +395,7 @@ async fn files_tree_list(
     let task = state.tasks.register(
         format!("cli-files-list-{}", uuid::Uuid::new_v4()),
         TaskKind::FlatList,
-        Some(image_id.clone()),
+        Some(image_id.as_str().into()),
     );
     let _permit = state
         .tasks

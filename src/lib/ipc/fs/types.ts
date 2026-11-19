@@ -1,3 +1,4 @@
+import type { NodeId, VolumeKey } from '../ids';
 
 
 
@@ -8,9 +9,9 @@ export interface DockerIndexStatus {
 }
 
 export interface FsNode {
-  id: string;
+  id: NodeId;
   name: string;
-  parent_id: string | null;
+  parent_id: NodeId | null;
   kind: 'dir' | 'file' | 'symlink' | 'unallocated';
   size: number;
   deleted: boolean;
@@ -31,7 +32,7 @@ export interface FsNode {
 
 /** 祖先帧：与文件列表 dirStack 帧同构（jump2Page 跳转定位用）。 */
 export interface FsLocateNode {
-  id: string;
+  id: NodeId;
   name: string;
   kind: string;
 }
@@ -39,10 +40,10 @@ export interface FsLocateNode {
 /** `fs_node_locate` 的返回：frames 为根→目标所在目录链（不含目标本身），
  *  fileId 是目标文件节点（目录定位时为 null）。 */
 export interface FsLocateResult {
-  node_id: string;
-  volume_key: string;
+  node_id: NodeId;
+  volume_key: VolumeKey;
   frames: FsLocateNode[];
-  file_id: string | null;
+  file_id: NodeId | null;
 }
 
 export interface FsWalkEntry {

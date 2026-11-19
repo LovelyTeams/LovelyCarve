@@ -1,6 +1,7 @@
 // GGUF（llama.cpp / ggml 大模型权重容器）解析 IPC：原类型视图里 .gguf 文件的
 // 结构化报告。类型镜像 src-tauri/src/core/gguf.rs 的 Serialize 输出（snake_case）。
 import { invokeCmd } from './client';
+import type { ImageId, NodeId } from './ids';
 
 /** 按 ggml 张量类型聚合的分布项。 */
 export interface GgufTypeCount {
@@ -60,6 +61,6 @@ export interface GgufReport {
 }
 
 /** 解析镜像内文件的 GGUF 结构。非 GGUF 文件 reject，错误信息可直接展示。 */
-export function fsGgufPreview(args: { imageId: string; nodeId: string }): Promise<GgufReport> {
+export function fsGgufPreview(args: { imageId: ImageId; nodeId: NodeId }): Promise<GgufReport> {
   return invokeCmd<GgufReport>('fs_gguf_preview', args);
 }

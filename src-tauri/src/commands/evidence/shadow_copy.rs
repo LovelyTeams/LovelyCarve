@@ -1,5 +1,6 @@
 //! List an image's Volume Shadow Copies and open one as a session image.
 
+use crate::core::common::ids::ImageId;
 use crate::host::State;
 use std::sync::Arc;
 
@@ -17,7 +18,7 @@ use {
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn shadow_copy_list(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<Vec<ShadowVolumeInfo>, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     reject_if_folder(&image)?;
@@ -32,7 +33,7 @@ pub async fn shadow_copy_list(
             copy.open_image_id = images
                 .values()
                 .find(|image| image.path.to_string_lossy().starts_with(&prefix))
-                .map(|image| image.id.clone());
+                .map(|image| image.id.to_string());
         }
     }
     Ok(volumes)
@@ -44,7 +45,7 @@ pub async fn shadow_copy_list(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn shadow_copy_open(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     partition_id: u8,
     index: usize,
     task_id: Option<String>,

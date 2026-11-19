@@ -22,7 +22,7 @@ impl DiskImage {
     }
 
     pub(crate) fn open_forced_raw_cancellable(
-        id: String,
+        id: impl Into<ImageId>,
         path: &Path,
         progress: OpenObserver<'_>,
         cancel: &tokio_util::sync::CancellationToken,
@@ -42,7 +42,7 @@ impl DiskImage {
             reader.segments().len(), reader.media_size(), path.display()
         );
         Self::from_source_cancellable(
-            id,
+            id.into(),
             path.to_path_buf(),
             ImageSource::SplitRaw { reader },
             progress,

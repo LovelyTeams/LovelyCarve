@@ -71,11 +71,12 @@ import type { UnlistenFn } from '../lib/ipc/events';
 import { onPreviewSelection, requestPreviewDock, requestPreviewSelection } from '../lib/ipc/previewDock';
 import { focusMainWindow } from '../lib/ipc/windows';
 import { parseFilePreviewReadingState, type FilePreviewReadingState } from '../lib/models/filePreviewReadingState';
+import type { NodeId } from '../lib/ipc/ids';
 
 interface FsNode {
   id: string;
   name: string;
-  parent_id: string | null;
+  parent_id: NodeId | null;
   kind: 'dir' | 'file' | 'symlink' | 'unallocated';
   size: number;
   deleted: boolean;
@@ -155,7 +156,7 @@ try {
   digest.value = null;
 }
 
-function onIdentified(payload: { nodeId: string; ident: FsTypeIdent }) {
+function onIdentified(payload: { nodeId: NodeId; ident: FsTypeIdent }) {
   if (payload.nodeId !== node.value?.id) return;
   ident.value = payload.ident;
   broadcastPreview({ kind: 'ident', imageId: imageId.value, nodeId: payload.nodeId, ident: payload.ident });

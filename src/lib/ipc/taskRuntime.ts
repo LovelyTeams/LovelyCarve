@@ -6,6 +6,7 @@
 import { onEvent, type UnlistenFn } from './events';
 import { invokeCmd } from './client';
 import type { SchedNotice, SchedTaskRecord, SchedTaskStatus } from './tasks';
+import type { ImageId } from './ids';
 
 export type BackendTaskKind =
   | 'autoDetect'
@@ -98,7 +99,7 @@ export type TaskOutcome =
 export interface BackendTaskSnapshot {
   id: string;
   kind: BackendTaskKind;
-  imageId: string | null;
+  imageId: ImageId | null;
   status: BackendTaskStatus;
   resourceClasses: BackendTaskResourceClass[];
   elapsedMs: number;
@@ -124,7 +125,7 @@ interface TaskEntryBase {
   /** 内置任务为任务 id;插件任务为 `plugin:<任务 id>`。 */
   id: string;
   /** 尚未属于任何检材的任务(打开检材)为 null。 */
-  imageId: string | null;
+  imageId: ImageId | null;
   /** 调度器的状态词:`pause` 为暂停的文件恢复扫描(或旧版本暂停的插件任务),`offline` 为没有报告结局就消失的任务。 */
   status: SchedTaskStatus;
   /** 已请求取消,任务正在停止。 */
@@ -173,7 +174,7 @@ export function taskStatus(args: { taskId: string }): Promise<TaskEntry | null> 
 }
 
 /** 任务中心的任务;`imageId` 省略时列出全部检材。不属于任何检材的任务总会列出。 */
-export function taskList(args: { imageId?: string | null } = {}): Promise<TaskEntry[]> {
+export function taskList(args: { imageId?: ImageId | null } = {}): Promise<TaskEntry[]> {
   return invokeCmd<TaskEntry[]>('task_list', { imageId: args.imageId ?? null });
 }
 

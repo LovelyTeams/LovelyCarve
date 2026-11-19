@@ -2,7 +2,8 @@
 import { tr } from '../../../composables/useLocale';
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { carvePreview, type CarveArtifact, type CarveScanSnapshot } from '../../../lib/ipc/carve';
-export function useCarvePreview(options: { imageId: () => string; scan: () => CarveScanSnapshot | null; artifact: () => CarveArtifact | null }) {
+import type { ImageId } from '../../../lib/ipc/ids';
+export function useCarvePreview(options: { imageId: () => ImageId; scan: () => CarveScanSnapshot | null; artifact: () => CarveArtifact | null }) {
   const MAX_IMAGE_PREVIEW_BYTES = 8 * 1024 ** 2;
   const previewLoading = ref(false); const previewUrl = ref<string | null>(null);
   let previewRequest = 0; let disposed = false;

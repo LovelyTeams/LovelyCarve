@@ -14,6 +14,7 @@
 // 维度清单；插件任务收尾的写路径增量投影在后端自动发生。
 import { invokeCmd } from './client';
 import { onEvent, type UnlistenFn } from './events';
+import type { ImageId } from './ids';
 
 /** 时间桶粒度：年/月/日/时/分/秒，默认 year。 */
 export type TimelineUnit = 'year' | 'month' | 'day' | 'hour' | 'minute' | 'second';
@@ -132,7 +133,7 @@ export interface TimelineBuildSummary {
 
 /** `timeline-progress` 事件载荷。 */
 export interface TimelineProgress {
-  image_id: string;
+  image_id: ImageId;
   done: number;
   total: number;
   rows: number;
@@ -151,24 +152,24 @@ export interface TimelineExportResult {
 }
 
 /** 查询状态机 + 时间范围（进页第一跳）。 */
-export function timelineStatus(args: { imageId: string }): Promise<TimelineStatusInfo> {
+export function timelineStatus(args: { imageId: ImageId }): Promise<TimelineStatusInfo> {
   return invokeCmd<TimelineStatusInfo>('timeline_status', args);
 }
 
 /** 创建重建任务（遍历存量源数据整体重投影；长任务，取消走
  *  `taskCancel({ taskId: 'timeline-build-' + imageId })`）。 */
-export function timelineStart(args: { imageId: string }): Promise<TimelineBuildSummary> {
+export function timelineStart(args: { imageId: ImageId }): Promise<TimelineBuildSummary> {
   return invokeCmd<TimelineBuildSummary>('timeline_start', args);
 }
 
 /** 两级（应用 → 数据类型）维度清单。 */
-export function timelineTypes(args: { imageId: string }): Promise<TimelineTypeGroup[]> {
+export function timelineTypes(args: { imageId: ImageId }): Promise<TimelineTypeGroup[]> {
   return invokeCmd<TimelineTypeGroup[]>('timeline_types', args);
 }
 
 /** strftime 时间桶聚合（`limit` 缺省 = 全部桶）。 */
 export function timelineCount(args: {
-  imageId: string;
+  imageId: ImageId;
   query: TimelineQuery;
   limit?: number;
   offset?: number;
@@ -178,7 +179,7 @@ export function timelineCount(args: {
 
 /** 明细分页（默认 tl_time desc；order: 'asc' | 'desc'）。 */
 export function timelineDatas(args: {
-  imageId: string;
+  imageId: ImageId;
   query: TimelineQuery;
   skip?: number;
   limit?: number;
@@ -188,13 +189,13 @@ export function timelineDatas(args: {
 }
 
 /** 检材时间线的时间范围 min/max(tl_time)。 */
-export function timelineRange(args: { imageId: string }): Promise<TimelineRange | null> {
+export function timelineRange(args: { imageId: ImageId }): Promise<TimelineRange | null> {
   return invokeCmd<TimelineRange | null>('timeline_range', args);
 }
 
 /** 导出为 CSV，沿用与明细表一致的过滤条件。 */
 export function timelineExport(args: {
-  imageId: string;
+  imageId: ImageId;
   query: TimelineQuery;
   destination: string;
 }): Promise<TimelineExportResult> {

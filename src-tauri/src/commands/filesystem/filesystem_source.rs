@@ -1,3 +1,4 @@
+use crate::core::common::ids::{ImageId, NodeId};
 use crate::host::State;
 use crate::{
     core::{
@@ -17,8 +18,8 @@ use {
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_source_locate(
     state: State<'_, AppState>,
-    image_id: String,
-    root_id: String,
+    image_id: ImageId,
+    root_id: NodeId,
     path: String,
 ) -> Result<FsLocateResult, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
@@ -40,7 +41,7 @@ pub async fn fs_source_locate(
         .map_err(|error| AppError::not_found(format!("定位源文件失败：{error:#}")))?;
         let node_id = nodes
             .last()
-            .map_or_else(|| root_id.clone(), |node| node.id.clone());
+            .map_or_else(|| root_id.to_string(), |node| node.id.clone());
         let file_id = if nodes.last().is_some_and(|node| node.kind != NodeKind::Dir) {
             nodes.pop().map(|node| node.id)
         } else {
@@ -56,7 +57,7 @@ pub async fn fs_source_locate(
             .collect();
         Ok(FsLocateResult {
             node_id,
-            volume_key: root_id,
+            volume_key: root_id.into(),
             frames,
             file_id,
         })

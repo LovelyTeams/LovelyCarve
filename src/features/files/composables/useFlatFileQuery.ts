@@ -6,6 +6,7 @@ import { notifyError } from '../../../composables/useToast';
 import type { FlatFileFilter, FlatSortColumn, FsWalkEntry } from '../../../lib/ipc/fs/types';
 import type { DiskFsNode as FsNode } from '../model/model';
 import { FLAT_PAGE_SIZE, FLAT_CATCHUP_PAGE_SIZE, flatRowKey } from '../model/flatQuery';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 export interface FlatQueryRequest {
   keyword: string | null;
@@ -16,8 +17,8 @@ export interface FlatQueryRequest {
 
 /** Recursive server-filtered pagination, including scroll catch-up. */
 export function useFlatFileQuery(options: {
-  imageId: () => string;
-  parentId: () => string;
+  imageId: () => ImageId;
+  parentId: () => NodeId;
   pathPrefix: () => string;
   generation: () => number;
   enabled: () => boolean;
@@ -48,7 +49,7 @@ export function useFlatFileQuery(options: {
     }));
   }
 
-  async function loadFlatFirstPage(parentId: string, gen: number) {
+  async function loadFlatFirstPage(parentId: NodeId, gen: number) {
     if (!current(gen) || !options.enabled()) return;
     const signature = options.signature();
     lastLoadedFlatSignature = signature;

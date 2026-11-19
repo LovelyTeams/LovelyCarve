@@ -536,7 +536,7 @@ fn backup_view_fixture(format: ImageFormat) -> (tempfile::TempDir, DiskImage) {
         }
         _ => panic!("backup fixture requires ZIP or folder"),
     };
-    let image = DiskImage::open_with_id("phone".into(), path).unwrap();
+    let image = DiskImage::open_with_id("phone", path).unwrap();
     (directory, image)
 }
 
@@ -602,7 +602,7 @@ fn old_file_only_backup_index_is_retired_before_browsing_and_rebuilt_as_director
     let fingerprint = disk.evidence_fingerprint();
     assert_ne!(fingerprint, legacy_fingerprint);
     assert_eq!(
-        DiskImage::open_with_id("other-runtime-id".into(), &disk.path)
+        DiskImage::open_with_id("other-runtime-id", &disk.path)
             .unwrap()
             .evidence_fingerprint(),
         fingerprint

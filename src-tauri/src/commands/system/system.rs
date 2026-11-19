@@ -1,6 +1,7 @@
 //! Cross-cutting IPC: the task center (every task, plugin jobs included),
 //! task cancellation, module catalogue.
 
+use crate::core::common::ids::ImageId;
 use std::path::PathBuf;
 
 use crate::host::State;
@@ -35,7 +36,7 @@ pub async fn task_status(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn task_list(
     state: State<'_, AppState>,
-    image_id: Option<String>,
+    image_id: Option<ImageId>,
 ) -> Result<Vec<TaskEntry>, AppError> {
     task_center::list(&state, image_id.as_deref()).await
 }

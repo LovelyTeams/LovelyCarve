@@ -61,7 +61,7 @@ pub fn detect_with_options_observed(
             }
         }
         image_summaries.push(RaidImage {
-            image_id: image.id.clone(),
+            image_id: image.id.to_string(),
             path: image.path.display().to_string(),
             size_bytes: image.len(),
             partition_count: image.partitions.len(),

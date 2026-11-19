@@ -10,12 +10,13 @@
 // 不同步；拖出的面板跟随主列表的文件选择由 lib/ipc/previewDock 的 Tauri 事件单独传递。
 import { onBeforeUnmount } from 'vue';
 import type { FsTypeIdent, StoredDigest } from '../../../lib/ipc/fs/derived';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 const KEY = 'lovelycarve-preview-sync';
 
 export type PreviewSyncMessage =
-  | { kind: 'ident'; imageId: string; nodeId: string; ident: FsTypeIdent }
-  | { kind: 'digest'; imageId: string; nodeId: string; digest: StoredDigest };
+  | { kind: 'ident'; imageId: ImageId; nodeId: NodeId; ident: FsTypeIdent }
+  | { kind: 'digest'; imageId: ImageId; nodeId: NodeId; digest: StoredDigest };
 
 // 广播一条预览数据给其它窗口。附带 nonce，使同一文件重复算出相同结果时
 // localStorage 的值仍会变化，从而照常触发 `storage` 事件。best-effort：隐私

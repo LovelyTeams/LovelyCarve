@@ -8,6 +8,7 @@
 // import `@tauri-apps/api/core` (the only place besides client.ts that does).
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { invokeCmd } from './client';
+import type { ImageId, NodeId } from './ids';
 
 /** Materialise a media node to a temp file and return its absolute path. Streams
  *  a full copy (long for large clips) so it is cancellable via `taskId`
@@ -15,8 +16,8 @@ import { invokeCmd } from './client';
  *  content-types it correctly — pass the extension derived from the effective /
  *  identified MIME so a renamed clip still decodes. */
 export function fsMediaTemp(args: {
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
   ext?: string;
   taskId: string;
 }): Promise<string> {

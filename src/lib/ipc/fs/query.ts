@@ -1,13 +1,14 @@
 import { invokeCmd } from '../client';
 import { type DockerIndexStatus, type FsNode, type FlatFileFilter, type FlatSortColumn, type Page, type FsLocateResult, type FsFlatPage } from './types';
+import type { ImageId, NodeId } from '../ids';
 
 
 /** Prepare only this container; success includes its persisted directory index. */
-export function fsDockerPrepare(args: { imageId: string; rootId: string; caseDir: string | null; mode: 'status' | 'build' }): Promise<DockerIndexStatus> {
+export function fsDockerPrepare(args: { imageId: ImageId; rootId: string; caseDir: string | null; mode: 'status' | 'build' }): Promise<DockerIndexStatus> {
   return invokeCmd('fs_docker_prepare', args);
 }
 
-export function fsChildren(args: { imageId: string; parentId: string | null }): Promise<FsNode[]> {
+export function fsChildren(args: { imageId: ImageId; parentId: NodeId | null }): Promise<FsNode[]> {
   return invokeCmd<FsNode[]>('fs_children', args);
 }
 
@@ -17,8 +18,8 @@ export function fsChildren(args: { imageId: string; parentId: string | null }): 
  *  without one large IPC response. The legacy `fsChildren` remains available
  *  for existing full-directory callers. */
 export function fsChildrenPage(args: {
-  imageId: string;
-  parentId: string | null;
+  imageId: ImageId;
+  parentId: NodeId | null;
   cursor?: string | null;
   pageSize?: number | null;
   query?: { filter?: FlatFileFilter; sort?: FlatSortColumn | null; descending?: boolean };
@@ -29,14 +30,14 @@ export function fsChildrenPage(args: {
 /** 把一个节点解析为可导航的祖先帧链（全局搜索跳转定位）。文件走案件
  *  filedb 的 pid 链；分区/未分配/磁盘间隙虚拟节点按 id 前缀合成。 */
 export function fsNodeLocate(args: {
-  imageId: string;
-  nodeId: string;
+  imageId: ImageId;
+  nodeId: NodeId;
 }): Promise<FsLocateResult> {
   return invokeCmd<FsLocateResult>('fs_node_locate', args);
 }
 
 /** Resolve plugin provenance directly in its evidence volume, without filedb. */
-export function fsSourceLocate(args: { imageId: string; rootId: string; path: string }): Promise<FsLocateResult> {
+export function fsSourceLocate(args: { imageId: ImageId; rootId: string; path: string }): Promise<FsLocateResult> {
   return invokeCmd<FsLocateResult>('fs_source_locate', args);
 }
 
@@ -46,8 +47,8 @@ export function fsSourceLocate(args: { imageId: string; rootId: string; path: st
  *  `keyword` 命中名称或路径,`sort`/`sortdesc` 服务端排序,`filter` 是列漏斗
  *  的表达式过滤;`refresh` 让后端丢掉该起点的实时遍历缓存重走。 */
 export function fsFlatPage(args: {
-  imageId: string;
-  parentId: string;
+  imageId: ImageId;
+  parentId: NodeId;
   deepsearch: boolean;
   keyword?: string | null;
   sort?: FlatSortColumn | null;
@@ -67,7 +68,7 @@ export function fsFlatPage(args: {
  *  the caller falls back to a bounded live probe just for those. Replaces the
  *  per-subdir `fsChildren` count fan-out whenever a snapshot exists. */
 export function fsChildCounts(
-  args: { imageId: string; parentIds: string[] },
+  args: { imageId: ImageId; parentIds: string[] },
 ): Promise<Record<string, number>> {
   return invokeCmd<Record<string, number>>('fs_child_counts', args);
 }
@@ -81,7 +82,7 @@ export function fsChildCounts(
  *  "hide empty directories" filter, which hides a dir when its whole subtree is
  *  file-less (not just when it is directly empty). */
 export function fsSubtreeEmptyDirs(
-  args: { imageId: string; parentIds: string[] },
+  args: { imageId: ImageId; parentIds: string[] },
 ): Promise<Record<string, boolean>> {
   return invokeCmd<Record<string, boolean>>('fs_subtree_empty_dirs', args);
 }

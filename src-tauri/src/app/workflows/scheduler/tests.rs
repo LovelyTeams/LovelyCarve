@@ -319,7 +319,7 @@ async fn system_runs_publish_typed_records_with_provenance_and_facts() {
     let tree = analysis_query::analysis_tree(
         &case_dir,
         &[AnalysisTreeEvidence {
-            image_id: fixture.image.id.clone(),
+            image_id: fixture.image.id.to_string(),
             label: "kali-root".to_owned(),
         }],
     )

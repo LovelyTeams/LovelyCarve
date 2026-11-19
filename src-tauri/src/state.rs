@@ -6,6 +6,7 @@ use std::sync::{Arc, Weak};
 
 use crate::core::carving::carve_session::CarveScanSession;
 use crate::core::casework::case::CaseState;
+use crate::core::common::ids::ImageId;
 use crate::core::extensions::plugin::PluginManager;
 use crate::core::extensions::task_scheduler::TaskScheduler;
 use crate::core::filesystem::evidence_session::EvidenceSession;
@@ -23,7 +24,7 @@ use tokio::sync::Mutex;
 /// does; durable state (case manifest, filedb index, task store, search /
 /// timeline results) is persisted by the case layer, not by this struct.
 pub struct AppState {
-    pub images: Arc<Mutex<HashMap<String, Arc<EvidenceSession>>>>,
+    pub images: Arc<Mutex<HashMap<ImageId, Arc<EvidenceSession>>>>,
     /// Case generation and publication gate, never held during decompression.
     pub image_load_context: Mutex<u64>,
     /// Per-path single-flight locks for `image_load`. The map keeps weak
@@ -68,7 +69,7 @@ pub struct AppState {
     /// `image_load` may still be opening in a blocking worker. Late and queued
     /// loads keep seeing this tombstone until the case changes, so none can
     /// resurrect the evidence row the user just removed.
-    pub removed_case_evidence: Arc<Mutex<HashSet<String>>>,
+    pub removed_case_evidence: Arc<Mutex<HashSet<ImageId>>>,
     /// Single-slot cache for the SQLite preview: the most recently opened
     /// database imported into the process-local preview VFS. Paging / sorting
     /// the same file reuses it instead of re-reading the bytes; switching to
@@ -130,7 +131,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn new() -> Self {
-        let images: Arc<Mutex<HashMap<String, Arc<EvidenceSession>>>> = Arc::default();
+        let images: Arc<Mutex<HashMap<ImageId, Arc<EvidenceSession>>>> = Arc::default();
         let plugins: Arc<parking_lot::RwLock<Option<Arc<PluginManager>>>> = Arc::default();
         let systems: Arc<SystemCache> = Arc::default();
         let scheduler = crate::app::setup::build_task_scheduler(

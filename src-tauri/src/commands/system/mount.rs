@@ -1,5 +1,6 @@
 //! Read-only filesystem projection commands.
 
+use crate::core::common::ids::{ImageId, NodeId};
 use crate::host::State;
 use crate::state::AppState;
 
@@ -8,8 +9,8 @@ use crate::app::error::AppError;
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_mount_readonly(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     mount_point: String,
 ) -> Result<DokanMountView, AppError> {
     crate::app::workflows::mount::fs_mount_readonly(state, image_id, node_id, mount_point).await
@@ -70,7 +71,7 @@ pub async fn fs_unshare_mount(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub fn fs_create_mount_dir(
     root: String,
-    image_id: String,
+    image_id: ImageId,
     name: String,
 ) -> Result<String, AppError> {
     crate::app::workflows::mount::fs_create_mount_dir(root, image_id, name)

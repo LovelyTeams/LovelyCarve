@@ -5,8 +5,9 @@ import { save } from '@tauri-apps/plugin-dialog';
 import { globalSearchExport, type GlobalSearchDistinct, type GlobalSearchHistoryEntry } from '../../../lib/ipc/search';
 import { notifyError, notifyExportSuccess } from '../../../composables/useToast';
 import { taskDisplayTitle } from '../model/searchResults';
+import type { ImageId } from '../../../lib/ipc/ids';
 interface SearchExportOptions {
-  imageId: () => string; selectedTask: () => GlobalSearchHistoryEntry | null;
+  imageId: () => ImageId; selectedTask: () => GlobalSearchHistoryEntry | null;
   keyword: () => string; distinct: () => GlobalSearchDistinct;
 }
 export function useSearchExport(options: SearchExportOptions) {

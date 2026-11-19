@@ -5,12 +5,13 @@ import { type FileListNavigator } from '../../features/files/model/navigation';
 
 import { type FileLocationTarget } from '../../lib/models/fileLocation';
 import { nextTick, ref, watch } from 'vue';
+import type { ImageId } from '../../lib/ipc/ids';
 
 /** Activate the source evidence before using its asynchronously mounted list. */
 export function useResultNavigation(options: {
   caseKey: () => string | null;
-  imageId: () => string | null;
-  openImage: (imageId: string) => Promise<boolean>;
+  imageId: () => ImageId | null;
+  openImage: (imageId: ImageId) => Promise<boolean>;
   showFiles: () => void;
   isFilesActive: () => boolean;
   panel: () => FileListNavigator | null;

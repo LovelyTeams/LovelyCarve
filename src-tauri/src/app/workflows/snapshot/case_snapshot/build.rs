@@ -1,5 +1,6 @@
 //! build implementation.
 use super::*;
+use crate::core::common::ids::VolumeKey;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 
 /// Background build (or reuse) of one volume's snapshot and index.
@@ -10,7 +11,7 @@ pub(crate) fn spawn_volume_snapshot(
     active_case: Arc<Mutex<Option<CaseState>>>,
     tasks: TaskManager,
     image: Arc<EvidenceSession>,
-    volume_key: String,
+    volume_key: VolumeKey,
     token_id: String,
     force_rebuild: bool,
 ) {
@@ -138,7 +139,7 @@ pub(super) async fn run_volume_snapshot(
             IndexJob {
                 task_id: token_id.to_string(),
                 case_dir,
-                image_id: image.id.clone(),
+                image_id: image.id.to_string(),
                 volume_key: volume_key.to_string(),
                 snapshot_path: published.snapshot_path,
                 staging_dir,
@@ -254,7 +255,7 @@ pub(super) async fn run_volume_snapshot(
         IndexJob {
             task_id: token_id.to_string(),
             case_dir,
-            image_id: image.id.clone(),
+            image_id: image.id.to_string(),
             volume_key: volume_key.to_string(),
             snapshot_path,
             staging_dir,

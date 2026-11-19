@@ -3,6 +3,7 @@ import { onEvent, type UnlistenFn } from './events';
 import type { ReadFaultReport } from './fs/export';
 import type { FsNode } from './fs/types';
 import type { DiskPartition } from './image';
+import type { ImageId } from './ids';
 
 export type CarveScope = 'whole' | 'unallocated' | 'partition' | 'range';
 export type CarveSessionStatus = 'queued' | 'running' | 'paused' | 'completed' | 'cancelled' | 'failed';
@@ -77,7 +78,7 @@ export interface FilesystemScanSummary {
 export interface CarveScanSnapshot {
   scan_id: string;
   task_id: string;
-  image_id: string;
+  image_id: ImageId;
   created_unix_ms: number;
   /** Set once the scan ended. */
   finished_unix_ms: number | null;
@@ -144,7 +145,7 @@ export interface RecoveryDirectory {
 /** Filesystem recovery result of a scan session. */
 export interface RecoveryScan {
   scan_id: string;
-  image_id: string;
+  image_id: ImageId;
   options: RecoveryFilesystems;
   ranges: { start_sector: number; sector_count: number }[];
   volumes: RecoveryVolume[];
@@ -185,7 +186,7 @@ export function carveFormats(): Promise<CarveFormatInfo[]> {
 }
 
 export function carveStart(args: {
-  imageId: string;
+  imageId: ImageId;
   options: CarveStartOptions;
 }): Promise<CarveStartResult> {
   return invokeCmd<CarveStartResult>('carve_start', args);
@@ -203,7 +204,7 @@ export function carveScanResume(args: { scanId: string }): Promise<CarveScanSnap
   return invokeCmd<CarveScanSnapshot>('carve_scan_resume', args);
 }
 
-export function carveLatestScan(args: { imageId: string }): Promise<CarveScanSnapshot | null> {
+export function carveLatestScan(args: { imageId: ImageId }): Promise<CarveScanSnapshot | null> {
   return invokeCmd<CarveScanSnapshot | null>('carve_latest_scan', args);
 }
 
@@ -250,10 +251,10 @@ export function onCarveScanProgress(
 }
 
 /** Retained carving sessions for the current evidence, newest first. */
-export function carveScanList(args: { imageId: string }): Promise<CarveScanSnapshot[]> {
+export function carveScanList(args: { imageId: ImageId }): Promise<CarveScanSnapshot[]> {
   return invokeCmd<CarveScanSnapshot[]>('carve_scan_list', args);
 }
 
-export function carveScanRemove(args: { imageId: string; scanId: string }): Promise<void> {
+export function carveScanRemove(args: { imageId: ImageId; scanId: string }): Promise<void> {
   return invokeCmd<void>('carve_scan_remove', args);
 }

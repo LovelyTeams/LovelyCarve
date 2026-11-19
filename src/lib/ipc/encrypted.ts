@@ -1,5 +1,6 @@
 import { invokeCmd } from './client';
 import type { ImageInfo } from './image';
+import type { ImageId, VolumeKey } from './ids';
 
 export interface EncryptedUnlockOptions {
   target?: 'newImage' | 'sourcePartition';
@@ -16,7 +17,7 @@ export interface EncryptedUnlockOptions {
 }
 
 export interface EncryptedUnlockResult {
-  volume_key?: string;
+  volume_key?: VolumeKey;
   logical_volume_identifier?: string;
   logical_volume_index?: number;
   image: ImageInfo;
@@ -29,7 +30,7 @@ export interface EncryptedUnlockResult {
 }
 
 export function encryptedVolumeUnlock(args: {
-  imageId: string;
+  imageId: ImageId;
   options: EncryptedUnlockOptions;
   taskId?: string;
 }): Promise<EncryptedUnlockResult> {
@@ -50,7 +51,7 @@ export interface FilevaultInventory {
   metadata_pointer_offset: number; encrypted_metadata_offset: number;
 }
 export function filevaultInspect(args: {
-  imageId: string; options: Pick<EncryptedUnlockOptions, 'partitionId' | 'offset' | 'length' | 'encryptedRootPlistPath'>;
+  imageId: ImageId; options: Pick<EncryptedUnlockOptions, 'partitionId' | 'offset' | 'length' | 'encryptedRootPlistPath'>;
   taskId?: string;
 }): Promise<FilevaultInventory> {
   return invokeCmd<FilevaultInventory>('filevault_inspect', args);

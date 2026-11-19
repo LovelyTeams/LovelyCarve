@@ -4,6 +4,7 @@
 //! not evidence of it) commands degrade gracefully — load returns empty, writes
 //! report `false` — and tags live only in the frontend's localStorage copy.
 
+use crate::core::common::ids::{ImageId, NodeId};
 use std::collections::{HashMap, HashSet};
 
 use crate::host::State;
@@ -22,7 +23,7 @@ use {
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_tags_load(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<HashMap<String, String>, AppError> {
     let case_dir = state
         .active_case
@@ -54,8 +55,8 @@ pub async fn fs_tags_load(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_tags_load_nodes(
     state: State<'_, AppState>,
-    image_id: String,
-    node_ids: Vec<String>,
+    image_id: ImageId,
+    node_ids: Vec<NodeId>,
 ) -> Result<HashMap<String, String>, AppError> {
     let node_ids = bounded_unique_node_ids(node_ids)?;
     if node_ids.is_empty() {
@@ -90,9 +91,9 @@ pub async fn fs_tags_load_nodes(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_tags_apply_changes(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     upserts: HashMap<String, String>,
-    delete_node_ids: Vec<String>,
+    delete_node_ids: Vec<NodeId>,
 ) -> Result<bool, AppError> {
     let mut delete_node_ids = bounded_unique_node_ids(delete_node_ids)?;
     let total_requested = upserts.len() + delete_node_ids.len();
@@ -144,7 +145,7 @@ pub async fn fs_tags_apply_changes(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_tags_save(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     entries: HashMap<String, String>,
 ) -> Result<bool, AppError> {
     let count = entries.len();

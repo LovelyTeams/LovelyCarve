@@ -11,8 +11,7 @@ use std::path::Path;
 const BUILT_AT: &str = "2026-09-19T00:00:00.000Z";
 
 fn image_with_containers(path: &Path, seed_mapping: bool) -> Arc<EvidenceSession> {
-    let image =
-        Arc::new(EvidenceSession::open_with_id("docker-fixture".into(), path).expect("image"));
+    let image = Arc::new(EvidenceSession::open_with_id("docker-fixture", path).expect("image"));
     let mut source = FsSession::new(&image)
         .children("root")
         .expect("source nodes");

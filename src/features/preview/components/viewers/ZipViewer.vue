@@ -115,7 +115,8 @@ import { formatTimestamp } from '../../../../utils/time';
 import { useZipArchive } from '../../composables/useZipArchive';
 import { useZipMember } from '../../composables/useZipMember';
 import ZipMemberTree from './ZipMemberTree.vue';
-const props = defineProps<{ imageId: string; nodeId: string }>();
+import type { ImageId, NodeId } from '../../../../lib/ipc/ids';
+const props = defineProps<{ imageId: ImageId; nodeId: NodeId }>();
 const { loading, error, report } = useZipArchive({ imageId: () => props.imageId, nodeId: () => props.nodeId });
 const { selected, memberBytes, memberLoading, memberError, memberTab, canPreview, memberTruncated, textChunks, hexCapped, hexRows, HEX_VIEW_CAP, selectMember } = useZipMember({ imageId: () => props.imageId, nodeId: () => props.nodeId });
 const ratioLabel = computed(() => {

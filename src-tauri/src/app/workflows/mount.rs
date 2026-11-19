@@ -1,5 +1,6 @@
 //! Read-only filesystem projection commands.
 
+use crate::core::common::ids::{ImageId, NodeId};
 use crate::host::State;
 
 use crate::app::error::AppError;
@@ -44,8 +45,8 @@ pub struct MountShareView {
 
 pub async fn fs_mount_readonly(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     mount_point: String,
 ) -> Result<DokanMountView, AppError> {
     mount_readonly_impl(state, image_id, node_id, mount_point).await
@@ -54,8 +55,8 @@ pub async fn fs_mount_readonly(
 #[cfg(all(windows, not(target_arch = "aarch64")))]
 async fn mount_readonly_impl(
     state: State<'_, AppState>,
-    image_id: String,
-    node_id: String,
+    image_id: ImageId,
+    node_id: NodeId,
     mount_point: String,
 ) -> Result<DokanMountView, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
@@ -63,7 +64,15 @@ async fn mount_readonly_impl(
     let session = tokio::task::spawn_blocking({
         let mount_id = mount_id.clone();
         let image_id = image_id.clone();
-        move || dokan_mount::start_readonly_mount(mount_id, image_id, image, node_id, mount_point)
+        move || {
+            dokan_mount::start_readonly_mount(
+                mount_id,
+                image_id.into(),
+                image,
+                node_id.into(),
+                mount_point,
+            )
+        }
     })
     .await
     .map_err(|err| AppError::task_panicked("Dokan mount", err))?
@@ -314,7 +323,7 @@ pub(crate) async fn unshare_mount_by_id(state: &AppState, mount_id: &str) -> Res
 /// NTFS/emptiness afterwards.
 pub fn fs_create_mount_dir(
     root: String,
-    image_id: String,
+    image_id: ImageId,
     name: String,
 ) -> Result<String, AppError> {
     create_mount_dir_impl(&root, &image_id, &name)

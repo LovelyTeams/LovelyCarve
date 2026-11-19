@@ -1,5 +1,6 @@
 //! Immediate task status, progress and record models.
 use super::{TaskOutcome, TaskResourceClass, TaskView};
+use crate::core::common::ids::ImageId;
 use serde::Serialize;
 use std::{
     sync::Mutex,
@@ -88,7 +89,7 @@ pub enum TaskProgressUnit {
 pub struct TaskRecord {
     pub(super) id: String,
     pub(super) kind: TaskKind,
-    pub(super) image_id: Option<String>,
+    pub(super) image_id: Option<ImageId>,
     pub(super) token: CancellationToken,
     pub(super) started_at: Instant,
     /// Wall-clock registration time (Unix milliseconds).
@@ -116,7 +117,7 @@ pub(super) struct TaskState {
 pub struct TaskSnapshot {
     pub id: String,
     pub kind: TaskKind,
-    pub image_id: Option<String>,
+    pub image_id: Option<ImageId>,
     pub status: TaskStatus,
     pub resource_classes: Vec<TaskResourceClass>,
     pub elapsed_ms: u64,

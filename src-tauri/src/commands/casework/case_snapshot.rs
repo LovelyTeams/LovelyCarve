@@ -14,6 +14,7 @@
 //! `task_id` for a manual rebuild) and emits [`SNAPSHOT_PROGRESS_EVENT`]
 //! events. Cancel via the existing `task_cancel` command.
 
+use crate::core::common::ids::{ImageId, VolumeKey};
 use crate::host::AppHandle;
 use crate::host::State;
 
@@ -25,8 +26,8 @@ use crate::state::AppState;
 pub async fn snapshot_build(
     app: AppHandle,
     state: State<'_, AppState>,
-    image_id: String,
-    volume_key: String,
+    image_id: ImageId,
+    volume_key: VolumeKey,
     task_id: String,
 ) -> Result<(), AppError> {
     crate::app::workflows::snapshot::case_snapshot::snapshot_build(
@@ -43,8 +44,8 @@ pub async fn snapshot_list(state: State<'_, AppState>) -> Result<Vec<SnapshotInf
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn snapshot_drop(
     state: State<'_, AppState>,
-    image_id: String,
-    volume_key: String,
+    image_id: ImageId,
+    volume_key: VolumeKey,
 ) -> Result<(), AppError> {
     crate::app::workflows::snapshot::case_snapshot::snapshot_drop(state, image_id, volume_key).await
 }

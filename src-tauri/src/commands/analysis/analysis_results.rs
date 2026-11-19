@@ -1,6 +1,7 @@
 //! 分析结果浏览 IPC:结果树、分页表格、单条详情与运行审计。
 //! 节点名与列定义来自插件声明;旧案件的结果只读展示。
 
+use crate::core::common::ids::ImageId;
 use crate::host::State;
 
 use crate::{
@@ -50,7 +51,7 @@ pub async fn analysis_result_tree(
 #[allow(clippy::too_many_arguments)] // Flat IPC fields also generate the CLI options.
 pub async fn analysis_records_page(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     run_id: String,
     record_type: String,
     legacy: Option<bool>,
@@ -84,7 +85,7 @@ pub async fn analysis_records_page(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn analysis_record_detail(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     record_id: String,
 ) -> Result<Option<AnalysisRecordDetail>, AppError> {
     let case_dir = active_case_dir(&state).await?;
@@ -100,7 +101,7 @@ pub async fn analysis_record_detail(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn analysis_run_get(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     run_id: String,
 ) -> Result<Option<RunAudit>, AppError> {
     let case_dir = active_case_dir(&state).await?;

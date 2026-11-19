@@ -5,10 +5,11 @@ import { fsNodeLocate, fsSourceLocate } from '../../../lib/ipc/fs/query';
 import type { FsLocateResult } from '../../../lib/ipc/fs/types';
 import { rowKeyOf, type DiskFsNode as FsNode } from '../model/model';
 import type { FileNavigationFrame as StackFrame, FileScrollRestore, FileByteFocus } from '../model/navigation';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 /** Breadcrumb/tree navigation and external source resolution have one panel owner. */
 export function useFileNavigation(options: {
-  imageId: () => string;
+  imageId: () => ImageId;
   loadGeneration: () => number;
   entries: Ref<FsNode[]>;
   filteredRows: () => FsNode[];
@@ -77,7 +78,7 @@ export function useFileNavigation(options: {
 
   /** Resolve search/timeline sources, reveal the row and optionally focus matched bytes.
    *  Unallocated clusters and disk gaps use the same virtual-node lookup. */
-  async function openFileByNodeId(nodeId: string, offset?: number, length = 1) {
+  async function openFileByNodeId(nodeId: NodeId, offset?: number, length = 1) {
     return openLocatedFile(() => fsNodeLocate({ imageId: options.imageId(), nodeId }), offset, length);
   }
   async function openFileBySource(rootId: string, path: string) {

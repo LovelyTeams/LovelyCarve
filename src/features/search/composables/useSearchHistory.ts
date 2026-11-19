@@ -7,8 +7,9 @@ import { confirm } from '../../../composables/useConfirm';
 import { notifyError, notifyInfo } from '../../../composables/useToast';
 import { taskDisplayTitle } from '../model/searchResults';
 import { searchProgressPercent } from '../model/searchTaskView';
+import type { ImageId } from '../../../lib/ipc/ids';
 
-export function useSearchHistory(options: { imageId: () => string }) {
+export function useSearchHistory(options: { imageId: () => ImageId }) {
   const historyVisible = ref(false);
   const tasks = shallowRef<GlobalSearchHistoryEntry[]>([]);
   const loadingTasks = ref(false);

@@ -7,10 +7,11 @@ import { ocrScan, type OcrOutcome } from '../../../lib/ipc/ocr';
 import { onEvent, type UnlistenFn } from '../../../lib/ipc/events';
 import { qrScan, type QrScanOutcome, type QrScanProgress } from '../../../lib/ipc/qrcode';
 import { notifyError } from '../../../composables/useToast';
+import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 interface UseImageRecognitionOptions {
-  imageId: () => string;
-  nodeId: () => string;
+  imageId: () => ImageId;
+  nodeId: () => NodeId;
   category: () => string;
 }
 

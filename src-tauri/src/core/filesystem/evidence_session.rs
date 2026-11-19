@@ -107,7 +107,10 @@ impl EvidenceSession {
         DiskImage::open(path).map(Self::from)
     }
 
-    pub fn open_with_id(id: String, path: impl AsRef<Path>) -> anyhow::Result<Self> {
+    pub fn open_with_id(
+        id: impl Into<crate::core::common::ids::ImageId>,
+        path: impl AsRef<Path>,
+    ) -> anyhow::Result<Self> {
         DiskImage::open_with_id(id, path).map(Self::from)
     }
 

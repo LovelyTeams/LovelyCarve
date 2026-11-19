@@ -12,6 +12,7 @@ import { onEvent, type UnlistenFn } from '../../../lib/ipc/events';
 // observable progress alive so any component can pick it back up.
 
 import type { BitlockerKeyCredential, BitlockerUnlockMode, BitlockerUnlockJob, BitlockerScanJob, BitlockerVmkScanResult } from '../model/bitlocker';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 interface UnlockProgressEvent {
   task_id: string;
@@ -31,7 +32,7 @@ const unlockListeners = new Map<string, UnlistenFn>();
 const scanJobs = reactive(new Map<string, BitlockerScanJob>());
 const scanListeners = new Map<string, UnlistenFn>();
 
-function jobKey(imageId: string, partitionId: number): string {
+function jobKey(imageId: ImageId, partitionId: number): string {
   return `${imageId}:${partitionId}`;
 }
 
@@ -43,26 +44,26 @@ function newTaskId(prefix: string): string {
 }
 
 export function useBitlockerJob(
-  imageId: () => string,
+  imageId: () => ImageId,
   partitionId: () => number,
 ): ComputedRef<BitlockerUnlockJob | undefined> {
   return computed(() => unlockJobs.get(jobKey(imageId(), partitionId())));
 }
 
 export function useBitlockerScanJob(
-  imageId: () => string,
+  imageId: () => ImageId,
   partitionId: () => number,
 ): ComputedRef<BitlockerScanJob | undefined> {
   return computed(() => scanJobs.get(jobKey(imageId(), partitionId())));
 }
 
-export function bitlockerJobSnapshot(imageId: string, partitionId: number): BitlockerUnlockJob | undefined {
+export function bitlockerJobSnapshot(imageId: ImageId, partitionId: number): BitlockerUnlockJob | undefined {
   return unlockJobs.get(jobKey(imageId, partitionId));
 }
 
 interface BitlockerSnapshotWorkflow {
   context: () => unknown;
-  unlocked: (imageId: string, partitionId: number) => void;
+  unlocked: (imageId: ImageId, partitionId: number) => void;
 }
 let snapshotWorkflow: BitlockerSnapshotWorkflow | null = null;
 let generation = 0;
@@ -80,7 +81,7 @@ export function disposeBitlockerJobs(): void {
 }
 
 async function runUnlock(
-  imageId: string,
+  imageId: ImageId,
   partitionId: number,
   mode: BitlockerUnlockMode,
   payload: Record<string, unknown>,
@@ -149,7 +150,7 @@ async function runUnlock(
 
 /** Recovery-key unlock. Sends `recoveryPassword` and leaves `password` null. */
 export function startBitlockerRecoveryUnlock(
-  imageId: string,
+  imageId: ImageId,
   partitionId: number,
   recoveryPassword: string,
 ): Promise<boolean> {
@@ -165,7 +166,7 @@ export function startBitlockerRecoveryUnlock(
 
 /** User-password unlock. Sends `password` and leaves `recoveryPassword` null. */
 export function startBitlockerPasswordUnlock(
-  imageId: string,
+  imageId: ImageId,
   partitionId: number,
   password: string,
 ): Promise<boolean> {
@@ -181,7 +182,7 @@ export function startBitlockerPasswordUnlock(
 
 /** VMK unlock — used after a memory-image scan surfaces a candidate. */
 export function startBitlockerVmkUnlock(
-  imageId: string,
+  imageId: ImageId,
   partitionId: number,
   vmkHex: string,
 ): Promise<boolean> {
@@ -195,14 +196,14 @@ export function startBitlockerVmkUnlock(
   );
 }
 
-export function startBitlockerKeyUnlock(imageId: string, partitionId: number, credential: BitlockerKeyCredential): Promise<boolean> {
+export function startBitlockerKeyUnlock(imageId: ImageId, partitionId: number, credential: BitlockerKeyCredential): Promise<boolean> {
   if (credential.kind === 'vmk') return startBitlockerVmkUnlock(imageId, partitionId, credential.vmkHex);
   const payload = credential.kind === 'startup' ? { startupKeyPath: credential.startupKeyPath }
     : credential.kind === 'fvek' ? { fvekHex: credential.fvekHex, tweakHex: credential.tweakHex || null } : {};
   return runUnlock(imageId, partitionId, 'key', payload, 'bitlocker_unlock', tr("分区 {0} 已解锁", { 0: partitionId }));
 }
 
-export async function cancelBitlockerUnlock(imageId: string, partitionId: number): Promise<void> {
+export async function cancelBitlockerUnlock(imageId: ImageId, partitionId: number): Promise<void> {
   const key = jobKey(imageId, partitionId);
   const job = unlockJobs.get(key);
   if (!job) return;
@@ -220,7 +221,7 @@ export async function cancelBitlockerUnlock(imageId: string, partitionId: number
  *  dialog can render a progress bar. Returns the parsed candidate list (or
  *  `null` on error / cancellation). */
 export async function startBitlockerMemoryScan(
-  imageId: string,
+  imageId: ImageId,
   partitionId: number,
   memoryPath: string,
 ): Promise<BitlockerVmkScanResult | null> {
@@ -273,7 +274,7 @@ export async function startBitlockerMemoryScan(
   }
 }
 
-export async function cancelBitlockerMemoryScan(imageId: string, partitionId: number): Promise<void> {
+export async function cancelBitlockerMemoryScan(imageId: ImageId, partitionId: number): Promise<void> {
   const key = jobKey(imageId, partitionId);
   const job = scanJobs.get(key);
   if (!job) return;

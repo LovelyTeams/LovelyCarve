@@ -19,6 +19,7 @@
 //! 检材还没有建过时间线时按空结果返回，不建库。插件任务收尾的写路径增量
 //! 投影在 `task_scheduler::executor`（按 run_id 级联删 + 重投影），不经命令层。
 
+use crate::core::common::ids::ImageId;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -85,10 +86,10 @@ async fn active_case_dir(state: &AppState) -> Result<PathBuf, AppError> {
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn timeline_status(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<TimelineStatusInfo, AppError> {
     let case_dir = active_case_dir(&state).await?;
-    let running = state.timeline_builds.lock().contains_key(&image_id);
+    let running = state.timeline_builds.lock().contains_key(image_id.as_str());
     tokio::task::spawn_blocking(move || compute_status(&case_dir, &image_id, running))
         .await
         .map_err(|err| AppError::task_panicked("timeline_status", err))?
@@ -102,7 +103,7 @@ pub async fn timeline_status(
 pub async fn timeline_start(
     app: AppHandle,
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<TimelineBuildSummary, AppError> {
     let case_dir = active_case_dir(&state).await?;
     let image = crate::app::access::loaded_image_app_error(&state, &image_id).await?;
@@ -123,7 +124,7 @@ pub async fn timeline_start(
 
     let registration = RunRegistration::insert(
         &state.timeline_builds,
-        image_id.clone(),
+        image_id.to_string(),
         TimelineBuildRunState {
             started_ms,
             done: 0,
@@ -142,7 +143,7 @@ pub async fn timeline_start(
         let _resource_permit = resource_permit;
         let on_progress = |done: u64, total: u64, rows: u64| {
             let progress = TimelineProgress {
-                image_id: scan_image_id.clone(),
+                image_id: scan_image_id.to_string(),
                 done,
                 total,
                 rows,
@@ -210,7 +211,7 @@ pub async fn timeline_start(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn timeline_types(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<Vec<TimelineTypeGroup>, AppError> {
     let case_dir = active_case_dir(&state).await?;
     tokio::task::spawn_blocking(
@@ -228,7 +229,7 @@ pub async fn timeline_types(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn timeline_count(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     query: TimelineQuery,
     limit: Option<u64>,
     offset: Option<u64>,
@@ -250,7 +251,7 @@ pub async fn timeline_count(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn timeline_datas(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     query: TimelineQuery,
     skip: Option<u64>,
     limit: Option<u64>,
@@ -286,7 +287,7 @@ pub async fn timeline_datas(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn timeline_range(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
 ) -> Result<Option<TimelineRange>, AppError> {
     let case_dir = active_case_dir(&state).await?;
     tokio::task::spawn_blocking(move || -> anyhow::Result<Option<TimelineRange>> {
@@ -309,7 +310,7 @@ pub async fn timeline_range(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn timeline_export(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     query: TimelineQuery,
     destination: String,
 ) -> Result<TimelineExportResult, AppError> {

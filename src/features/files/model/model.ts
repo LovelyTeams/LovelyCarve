@@ -1,5 +1,6 @@
 import { sourceText, type Translator } from '../../../i18n/translate';
 import type { FsNode } from '../../../lib/ipc/fs/types';
+import type { NodeId } from '../../../lib/ipc/ids';
 
 /** Backend node with presentation-only path and stable row identity. */
 export interface DiskFsNode extends FsNode {
@@ -141,14 +142,14 @@ export function nameQueryMatcher(query: string): (lowerName: string) => boolean 
 }
 
 export type DiskFileSortContext = {
-  digestOf: (nodeId: string) => {
+  digestOf: (nodeId: NodeId) => {
     md5?: string | null;
     sha1?: string | null;
     sha256?: string | null;
     sm3?: string | null;
   } | undefined;
   tagOf: (node: DiskFsNode) => string | undefined;
-  ftypeLabelOf: (nodeId: string) => string;
+  ftypeLabelOf: (nodeId: NodeId) => string;
   fullPathOf: (node: DiskFsNode) => string;
 };
 

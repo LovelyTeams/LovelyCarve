@@ -135,10 +135,11 @@ import { useDialogFocus } from '../../../composables/useDialogFocus';
 import { formatEpochSeconds } from '../../../utils/format';
 import type { CaseListItem, EvidenceRef } from '../../../lib/ipc/cases';
 import type { RaidArray, RaidStack } from '../../../lib/ipc/raid';
+import type { ImageId, VolumeKey } from '../../../lib/ipc/ids';
 
 const props = defineProps<{
   visible: boolean;
-  imageId: string;
+  imageId: ImageId;
   imageInfo: ImageInfo | null;
 }>();
 
@@ -330,11 +331,11 @@ const currentVolumes = computed<VolumeChoice[]>(() => {
   }));
 });
 
-function snapshotFor(volumeKey: string) {
+function snapshotFor(volumeKey: VolumeKey) {
   return snapshots.value.find((s) => s.image_id === props.imageId && s.volume_key === volumeKey);
 }
 
-function progressFor(volumeKey: string) {
+function progressFor(volumeKey: VolumeKey) {
   return buildProgress.value.get(`${props.imageId}:${volumeKey}`);
 }
 
@@ -490,7 +491,7 @@ async function onRemoveEvidence(ev: EvidenceRef) {
   }
 }
 
-async function onSnapshotAction(volumeKey: string, action: 'build' | 'cancel') {
+async function onSnapshotAction(volumeKey: VolumeKey, action: 'build' | 'cancel') {
   const imageId = props.imageId;
   const actionKey = `${imageId}:${volumeKey}`;
   if (snapshotActions.value.has(actionKey) || actionBusy.value || (action === 'build' && activeCase.value?.locked)) return;

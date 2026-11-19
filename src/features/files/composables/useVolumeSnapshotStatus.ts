@@ -2,6 +2,7 @@
 import { tr } from '../../../composables/useLocale';
 import { computed, type Ref } from 'vue';
 import { useCaseSnapshots } from '../../cases/api';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 interface StackFrame {
   id: string;
@@ -22,7 +23,7 @@ export function volumeKeyOfId(id: string): string {
 }
 
 export function useVolumeSnapshotStatus(options: {
-  imageId: () => string;
+  imageId: () => ImageId;
   stack: Ref<StackFrame[]>;
 }) {
   const { activeCase, snapshots, buildProgress } = useCaseSnapshots();

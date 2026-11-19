@@ -251,7 +251,7 @@ fn stage_volume(
     let header = SnapshotHeader {
         schema_version: SNAPSHOT_SCHEMA,
         volume_key: root.into(),
-        image_id: image.id.clone().into(),
+        image_id: image.id.clone(),
         source_volume_size: image.len(),
         built_at,
     };

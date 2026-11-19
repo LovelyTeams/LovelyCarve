@@ -124,8 +124,9 @@ import {
 import type { SchedNoticeKind, SchedTaskRecord, SchedTaskStatus } from '../../../lib/ipc/tasks';
 import type { PluginTaskEntry, TaskAction, TaskEntry } from '../../../lib/ipc/taskRuntime';
 import { TASK_STATUS_LABEL } from '../model/taskStatus';
+import type { ImageId } from '../../../lib/ipc/ids';
 
-const props = defineProps<{ imageId: string | null }>();
+const props = defineProps<{ imageId: ImageId | null }>();
 /** `openResult` carries the plugin run so the analysis page can open its results. */
 const emit = defineEmits<{ quickAnalysis: []; openResult: [panel: TaskResultPanel, analyzer: string | null] }>();
 

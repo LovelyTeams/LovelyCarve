@@ -1,6 +1,7 @@
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { globalSearchHitsPage, type GlobalSearchDistinct, type GlobalSearchHit } from '../../../lib/ipc/search';
-interface SearchHitsOptions { imageId: () => string; searchId: () => string | null; running: () => boolean; }
+import type { ImageId } from '../../../lib/ipc/ids';
+interface SearchHitsOptions { imageId: () => ImageId; searchId: () => string | null; running: () => boolean; }
 /** One owner for the selected search's completed pages and running cursor. */
 export function useSearchHits(options: SearchHitsOptions) {
   const hits = shallowRef<GlobalSearchHit[]>([]);

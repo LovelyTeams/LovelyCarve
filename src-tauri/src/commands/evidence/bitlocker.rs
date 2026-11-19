@@ -3,6 +3,7 @@
 //! never persist. There is no persistence layer, so recovered keys and
 //! failed-attempt history are not retained — each unlock runs independently.
 
+use crate::core::common::ids::ImageId;
 use std::{
     fs::File,
     io::{BufWriter, Read, Write},
@@ -40,7 +41,7 @@ const EXPORT_PROGRESS_THROTTLE: Duration = Duration::from_millis(150);
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn bitlocker_metadata(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     partition_id: u8,
 ) -> Result<crate::core::evidence::crypto::bde_image::BdeMetadataInfo, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
@@ -78,7 +79,7 @@ pub async fn bitlocker_metadata(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn bitlocker_status(
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     partition_id: u8,
 ) -> Result<BitlockerStatus, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
@@ -93,7 +94,7 @@ pub async fn bitlocker_status(
 pub async fn bitlocker_unlock(
     app: AppHandle,
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     partition_id: u8,
     recovery_password: Option<String>,
     password: Option<String>,
@@ -237,7 +238,7 @@ pub async fn bitlocker_unlock(
 pub async fn bitlocker_scan_memory(
     app: AppHandle,
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     partition_id: u8,
     memory_path: String,
     task_id: String,
@@ -354,7 +355,7 @@ pub async fn bitlocker_scan_memory(
 pub async fn bitlocker_unlock_with_vmk(
     app: AppHandle,
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     partition_id: u8,
     vmk_hex: String,
     task_id: Option<String>,
@@ -446,7 +447,7 @@ pub async fn bitlocker_unlock_with_vmk(
 pub async fn bitlocker_export_decrypted_image(
     app: AppHandle,
     state: State<'_, AppState>,
-    image_id: String,
+    image_id: ImageId,
     partition_id: u8,
     destination: String,
     task_id: String,

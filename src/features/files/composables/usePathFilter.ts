@@ -1,6 +1,7 @@
 import { computed, nextTick, reactive, ref, type Ref } from 'vue';
 import { containerFsChildren as fsChildren } from './containerReads';
 import type { DiskFsNode } from '../model/model';
+import type { ImageId } from '../../../lib/ipc/ids';
 
 export interface PathFilterStackFrame {
   id: string;
@@ -28,7 +29,7 @@ interface FilterPopoverState {
 }
 
 interface UsePathFilterOptions {
-  imageId: () => string;
+  imageId: () => ImageId;
   stack: Ref<PathFilterStackFrame[]>;
   filters: Record<string, string>;
   entries: Ref<DiskFsNode[]>;

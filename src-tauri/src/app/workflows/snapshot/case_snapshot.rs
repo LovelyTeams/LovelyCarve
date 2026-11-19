@@ -48,6 +48,7 @@ use crate::core::casework::case_paths;
 use crate::core::catalog::snapshot::volume_snapshot::{
     self, volume_size_for_key, DEFAULT_MAX_SNAPSHOT_ENTRIES,
 };
+use crate::core::common::ids::{ImageId, VolumeKey};
 use crate::core::evidence::image::{ImageFormat, PartitionKind};
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::fs_all;
@@ -118,8 +119,8 @@ struct PublishedVolume {
 pub async fn snapshot_build(
     app: AppHandle,
     state: State<'_, AppState>,
-    image_id: String,
-    volume_key: String,
+    image_id: ImageId,
+    volume_key: VolumeKey,
     task_id: String,
 ) -> Result<(), AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
@@ -168,8 +169,8 @@ pub async fn snapshot_list(state: State<'_, AppState>) -> Result<Vec<SnapshotInf
 
 pub async fn snapshot_drop(
     state: State<'_, AppState>,
-    image_id: String,
-    volume_key: String,
+    image_id: ImageId,
+    volume_key: VolumeKey,
 ) -> Result<(), AppError> {
     {
         let guard = state.active_case.lock().await;
@@ -200,12 +201,12 @@ pub async fn snapshot_drop(
 fn is_stale(
     record: &VolumeRecord,
     snapshot_path: &Path,
-    images: &HashMap<String, Arc<EvidenceSession>>,
+    images: &HashMap<ImageId, Arc<EvidenceSession>>,
 ) -> bool {
     if !snapshot_path.is_file() {
         return true;
     }
-    match images.get(&record.image_id) {
+    match images.get(record.image_id.as_str()) {
         Some(image) => {
             !image.is_index_only()
                 && volume_size_for_key(image, &record.volume_key) != record.source_size

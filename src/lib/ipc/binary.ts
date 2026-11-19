@@ -2,6 +2,7 @@
 // 后端按文件魔数自动分派（fs_binary_preview → core::binfmt），返回带 `kind` 标签的
 // 联合。类型镜像 src-tauri/src/core/binfmt*.rs 的 Serialize 输出。
 import { invokeCmd } from './client';
+import type { ImageId, NodeId } from './ids';
 
 // ───────────────────────── PE ─────────────────────────
 
@@ -276,6 +277,6 @@ export type NativeReport =
   | ({ kind: 'archive' } & ArchiveReport);
 
 /** 解析镜像内文件的二进制结构（自动按魔数分派）。非受支持格式 reject，错误信息可直接展示。 */
-export function fsBinaryPreview(args: { imageId: string; nodeId: string }): Promise<NativeReport> {
+export function fsBinaryPreview(args: { imageId: ImageId; nodeId: NodeId }): Promise<NativeReport> {
   return invokeCmd<NativeReport>('fs_binary_preview', args);
 }
