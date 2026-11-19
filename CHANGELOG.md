@@ -16,6 +16,10 @@
 - 文件预览可放在列表右侧或下方；工作区较窄时自动放在列表下方，不再覆盖文件表。
 - 桌面端在「卷与分区」的同一弹窗中解锁 BitLocker、LUKS、VeraCrypt 和 FileVault 2，分区行可直接预选对应卷。
 
+### Fixed
+
+- 插件清单、schema.json 与多语言文件带 UTF-8 BOM 时不再解析失败。
+
 ### Removed
 
 - LovelyCarve 的 DSH 取证模式和 CLI skill 移除 forensic-board 看板集成。

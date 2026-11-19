@@ -189,7 +189,8 @@ fn read_schema(directory: &Path) -> Result<Option<Hello>> {
     let Some(bytes) = read_bounded(&path)? else {
         return Ok(None);
     };
-    serde_json::from_slice(&bytes)
+    let slice = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&bytes);
+    serde_json::from_slice(slice)
         .map(Some)
         .map_err(|error| PluginError::Manifest(format!("{}: {error}", path.display())))
 }
@@ -219,7 +220,8 @@ fn read_locales(directory: &Path) -> Result<Locales> {
         let Some(bytes) = read_bounded(&path)? else {
             continue;
         };
-        let text = String::from_utf8(bytes)
+        let slice = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&bytes);
+        let text = std::str::from_utf8(slice)
             .map_err(|_| PluginError::Manifest(format!("{} is not UTF-8", path.display())))?;
         let table: toml::Table = toml::from_str(&text)
             .map_err(|error| PluginError::Manifest(format!("{}: {error}", path.display())))?;
@@ -347,6 +349,27 @@ scope = "evidence"
         let mut forged = described.clone();
         forged.schema_hash = "fnv1a64:0000000000000000".to_owned();
         assert!(definition.verify_hello(&forged).is_err());
+    }
+
+    #[test]
+    fn byte_order_marks_in_manifest_schema_and_locales_are_ignored() {
+        let directory = tempfile::tempdir().expect("package");
+        let described = hello(vec![user_schema("用户")]);
+        write_package(directory.path(), Some(&described));
+        // Windows editors and shells commonly emit UTF-8 BOMs.
+        prepend_byte_order_mark(&directory.path().join(MANIFEST_FILE));
+        prepend_byte_order_mark(&directory.path().join(SCHEMA_FILE));
+        prepend_byte_order_mark(&directory.path().join(LOCALES_DIRECTORY).join("en.toml"));
+        let definition = PluginDefinition::load(directory.path(), true).expect("package");
+        assert_eq!(definition.record_schemas().len(), 1);
+        assert_eq!(definition.locales["en"]["analyzer.scan"], "Scan");
+        definition.verify_hello(&described).expect("same library");
+    }
+
+    fn prepend_byte_order_mark(path: &Path) {
+        let mut bytes = b"\xef\xbb\xbf".to_vec();
+        bytes.extend_from_slice(&fs::read(path).expect("read"));
+        fs::write(path, bytes).expect("write");
     }
 
     #[test]
