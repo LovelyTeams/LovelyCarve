@@ -226,7 +226,30 @@ fn parse_table(
         }
         let start = u64::from(parsed.start_lba);
         let end = start + u64::from(parsed.length_lba);
-        if start == 0 || end > max_sector {
+        if start == 0 {
+            table.warn(format!(
+                "MBR slot {index} starts at LBA 0 (invalid)"
+            ));
+            continue;
+        }
+        if end > max_sector {
+            if !parsed.is_extended() && start < max_sector {
+                let clamped_sectors = max_sector - start;
+                let slice = PartitionSlice::new(
+                    ctx.source,
+                    start * ctx.sector_size as u64,
+                    clamped_sectors * ctx.sector_size as u64,
+                );
+                if probe_volume(&slice, ctx.sector_size)?.is_some() {
+                    let mut clamped = parsed;
+                    clamped.length_lba = u32::try_from(clamped_sectors).unwrap_or(u32::MAX);
+                    table.warn(format!(
+                        "MBR slot {index} tail {end} exceeds image ({max_sector} sectors); clamping to {clamped_sectors} sectors"
+                    ));
+                    append_partition(&mut table, clamped, 0, index, start)?;
+                    continue;
+                }
+            }
             table.warn(format!(
                 "MBR slot {index} range {start}..{end} exceeds usable evidence range"
             ));

@@ -21,7 +21,7 @@ use crate::core::analysis::identify::os_detect::{self, DetectedOs, OsFingerprint
 use crate::core::evidence::image::{Partition, PartitionKind};
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree::{self, FsNode, NodeKind};
-use crate::core::filesystem::volumes::lvm::LvmVolume;
+use crate::core::filesystem::volumes::{apfs, lvm::LvmVolume};
 
 /// Per-file read ceiling for fingerprint probes. Most fingerprints are
 /// tiny (`/etc/os-release`, `SystemVersion.plist`, `boot.cfg` are all
@@ -166,6 +166,34 @@ pub fn detect_image(image: &Arc<EvidenceSession>) -> anyhow::Result<Vec<OsDetect
                     }),
                 }
             }
+            PartitionKind::ApfsContainer => {
+                let reader = image.filesystem_session(&format!("part:{}", partition.id));
+                let container = reader
+                    .partitions
+                    .iter()
+                    .find(|candidate| candidate.id == partition.id)
+                    .unwrap_or(partition);
+                match apfs::list_apfs_volumes(Arc::clone(reader), container) {
+                    Ok(volumes) => {
+                        if volumes.is_empty() {
+                            out.push(unsupported_partition_entry(partition));
+                        } else {
+                            for vol in &volumes {
+                                out.push(detect_apfs_volume(image, partition, vol));
+                            }
+                        }
+                    }
+                    Err(err) => out.push(OsDetectionPartition {
+                        partition_id: partition.id,
+                        partition_label: partition_label(partition),
+                        partition_kind: "apfscontainer".to_string(),
+                        filesystem_opened: false,
+                        error: Some(err.to_string()),
+                        detections: Vec::new(),
+                        bitlocker_locked: false,
+                    }),
+                }
+            }
             PartitionKind::Bitlocker if image.bitlocker_unlocked(partition.id).is_none() => {
                 out.push(OsDetectionPartition {
                     partition_id: partition.id,
@@ -256,6 +284,56 @@ fn detect_logical_volume(
             partition_id: partition.id,
             partition_label: format!("LV {}/{} · {}", partition.id, lv.index, lv.name),
             partition_kind: format!("lvm:{}", kind_str(lv.kind)),
+            filesystem_opened: false,
+            error: Some(err.to_string()),
+            detections: Vec::new(),
+            bitlocker_locked: false,
+        },
+    }
+}
+
+fn detect_apfs_volume(
+    image: &Arc<EvidenceSession>,
+    partition: &Partition,
+    vol: &apfs::ApfsVolumeInfo,
+) -> OsDetectionPartition {
+    let label = if vol.name.trim().is_empty() {
+        format!("APFS {}/{}", partition.id, vol.index)
+    } else {
+        format!("APFS {}/{} · {}", partition.id, vol.index, vol.name)
+    };
+    if vol.encrypted {
+        return OsDetectionPartition {
+            partition_id: partition.id,
+            partition_label: label,
+            partition_kind: "apfs".to_string(),
+            filesystem_opened: false,
+            error: Some("encrypted APFS volume".to_string()),
+            detections: Vec::new(),
+            bitlocker_locked: false,
+        };
+    }
+    let fingerprint = Fingerprint {
+        image: Arc::clone(image),
+        root_id: format!("apfs:part:{}:{}:", partition.id, vol.index),
+    };
+    match fs_tree::children_for_image(image, &fingerprint.root_id) {
+        Ok(_) => {
+            let detections = os_detect::detect(&fingerprint);
+            OsDetectionPartition {
+                partition_id: partition.id,
+                partition_label: label,
+                partition_kind: "apfs".to_string(),
+                filesystem_opened: true,
+                error: None,
+                detections,
+                bitlocker_locked: false,
+            }
+        }
+        Err(err) => OsDetectionPartition {
+            partition_id: partition.id,
+            partition_label: label,
+            partition_kind: "apfs".to_string(),
             filesystem_opened: false,
             error: Some(err.to_string()),
             detections: Vec::new(),

@@ -309,11 +309,21 @@ fn read_array(
     }
     let usable_known = header.first_usable_lba != 0 || header.last_usable_lba != 0;
     if usable_known
-        && (header.first_usable_lba > header.last_usable_lba || header.last_usable_lba >= sectors)
+        && (header.first_usable_lba > header.last_usable_lba || header.first_usable_lba >= sectors)
     {
         warnings.push(format!("GPT header LBA {lba}: invalid usable LBA range"));
         return Ok(None);
     }
+    let tail_clamped_disk = usable_known && header.last_usable_lba >= sectors;
+    let effective_last_usable = if tail_clamped_disk {
+        warnings.push(format!(
+            "GPT header LBA {lba}: last_usable_lba ({}) exceeds image ({sectors} sectors); mounting in tail-clamped lenient mode",
+            header.last_usable_lba
+        ));
+        sectors.saturating_sub(1)
+    } else {
+        header.last_usable_lba
+    };
     let geometry_valid = header.current_lba == lba
         && (lba == 1 || header.backup_lba == 1)
         && header.backup_lba != 0
@@ -321,11 +331,12 @@ fn read_array(
         && header.backup_lba != lba
         && header.first_usable_lba > 1
         && usable_known
-        && !(header.first_usable_lba..=header.last_usable_lba).contains(&lba)
-        && !(header.first_usable_lba..=header.last_usable_lba).contains(&header.backup_lba)
+        && !tail_clamped_disk
+        && !(header.first_usable_lba..=effective_last_usable).contains(&lba)
+        && !(header.first_usable_lba..=effective_last_usable).contains(&header.backup_lba)
         && (array_length == 0
             || array_last_lba < header.first_usable_lba
-            || header.entries_lba > header.last_usable_lba);
+            || header.entries_lba > effective_last_usable);
     if !geometry_valid || header.revision != 0x0001_0000 || header.reserved != 0 {
         warnings.push(format!(
             "GPT header LBA {lba}: unverified geometry, revision or reserved field"
@@ -358,14 +369,41 @@ fn read_array(
         if entry.type_guid.is_nil() {
             continue;
         }
+        let mut clamped_entry_tail = false;
+        if entry.first_lba != 0
+            && entry.first_lba < sectors
+            && entry.last_lba >= sectors
+            && entry.last_lba >= entry.first_lba
+            && (!usable_known
+                || (entry.first_lba >= header.first_usable_lba
+                    && entry.last_lba <= header.last_usable_lba))
+        {
+            let slice = super::super::PartitionSlice::new(
+                source,
+                entry.first_lba * sector_size as u64,
+                (sectors - entry.first_lba) * sector_size as u64,
+            );
+            if header.header_crc_valid
+                || super::super::volume_probe::probe_volume(&slice, sector_size)?.is_some()
+            {
+                warnings.push(format!(
+                    "GPT header LBA {lba} slot {index}: clamped last_lba {} to truncated image tail {}",
+                    entry.last_lba,
+                    sectors - 1
+                ));
+                entry.last_lba = sectors - 1;
+                clamped_entry_tail = true;
+            }
+        }
         entry.valid = entry.first_lba != 0
             && entry.last_lba >= entry.first_lba
             && entry.last_lba < sectors
             && (!usable_known
                 || (entry.first_lba >= header.first_usable_lba
-                    && entry.last_lba <= header.last_usable_lba))
+                    && (entry.last_lba <= header.last_usable_lba || clamped_entry_tail)))
             && !(entry.first_lba..=entry.last_lba).contains(&lba)
             && (header.backup_lba == 0
+                || header.backup_lba >= sectors
                 || !(entry.first_lba..=entry.last_lba).contains(&header.backup_lba))
             && (array_length == 0
                 || entry.last_lba < header.entries_lba

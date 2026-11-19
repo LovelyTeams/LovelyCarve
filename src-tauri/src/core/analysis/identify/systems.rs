@@ -22,7 +22,7 @@ use serde::Serialize;
 use crate::core::{
     analysis::identify::{
         fstab::{self, DeviceSpec},
-        os_detect::{self, DetectedOs, OsFamily},
+        os_detect::{self, DetectedOs, OsFamily, OsFingerprint},
         os_detect_adapters::{supports_os_detect, Fingerprint},
         win_drive_letters,
     },
@@ -32,12 +32,18 @@ use crate::core::{
         fs_all::{directory_root, FsAll, FsEntry, ROOT_VOLUME_KEY},
         tree::fs_tree::{self, NodeKind},
         volume_identity::{self, VolumeIdentity},
-        volumes::lvm::LvmVolume,
+        volumes::{apfs, lvm::LvmVolume},
     },
 };
 
 /// Largest `/etc/fstab` read.
 const FSTAB_CAP: usize = 1024 * 1024;
+/// Largest macOS `/usr/share/firmlinks` read.
+const FIRMLINKS_CAP: usize = 256 * 1024;
+const APFS_ROLE_RECOVERY: u16 = 4;
+const APFS_ROLE_VM: u16 = 8;
+const APFS_ROLE_PREBOOT: u16 = 16;
+const APFS_ROLE_DATA: u16 = 64;
 /// Most child directories probed below a volume root.
 const NESTED_PROBES: usize = 32;
 
@@ -112,6 +118,18 @@ pub fn discover(image: &Arc<EvidenceSession>) -> Vec<DetectedSystem> {
         if !probed(entry) {
             continue;
         }
+        // Skip the APFS container wrapper when expanded volume entries exist so we
+        // don't surface duplicate macOS detections.
+        if entry.kind == PartitionKind::ApfsContainer && entry.volume_key.starts_with("part:") {
+            let prefix = format!("apfs:{}:", entry.volume_key);
+            if volumes
+                .entries()
+                .iter()
+                .any(|other| other.volume_key.starts_with(&prefix))
+            {
+                continue;
+            }
+        }
         for (node, node_path, detected) in detect_volume(image, entry) {
             found.push((entry.clone(), node, node_path, detected));
         }
@@ -135,8 +153,8 @@ pub fn discover(image: &Arc<EvidenceSession>) -> Vec<DetectedSystem> {
             match detected.family {
                 OsFamily::Linux => context.linux_mounts(&entry, &node, &mut mounts),
                 OsFamily::Windows => context.windows_mounts(&entry, &mut mounts),
-                OsFamily::MacOs
-                | OsFamily::Esxi
+                OsFamily::MacOs => context.macos_mounts(&entry, &node, &mut mounts),
+                OsFamily::Esxi
                 | OsFamily::MikroTik
                 | OsFamily::OpenWrt
                 | OsFamily::DingTalk
@@ -203,7 +221,9 @@ fn detect_volume(
     if let Some(detected) = os_detect::detect(&at_root).into_iter().next() {
         return vec![(root, String::new(), detected)];
     }
-    let nested = entry.volume_key == ROOT_VOLUME_KEY || entry.kind == PartitionKind::Btrfs;
+    let nested = entry.volume_key == ROOT_VOLUME_KEY
+        || entry.kind == PartitionKind::Btrfs
+        || (entry.kind == PartitionKind::ApfsContainer && entry.volume_key.starts_with("part:"));
     if !nested {
         return Vec::new();
     }
@@ -305,6 +325,142 @@ impl<'a> MountContext<'a> {
                 node_path: String::new(),
                 source: "drive_letter",
             });
+        }
+    }
+
+    fn macos_mounts(&self, entry: &FsEntry, node: &str, mounts: &mut Vec<SystemMount>) {
+        let Some((apfs::ApfsSource::Partition { part_id, volume_index }, _)) =
+            apfs::parse_apfs_id(node).or_else(|| apfs::parse_apfs_id(&entry.volume_key))
+        else {
+            return;
+        };
+        let reader = self.image.filesystem_session(&format!("part:{part_id}"));
+        let Some(partition) = reader
+            .partitions
+            .iter()
+            .find(|candidate| candidate.id == part_id)
+        else {
+            return;
+        };
+        let Ok(vols) = apfs::list_apfs_volumes(Arc::clone(reader), partition) else {
+            return;
+        };
+        let Some(sys_vol) = vols.iter().find(|v| v.index == volume_index) else {
+            return;
+        };
+        let has_group = sys_vol.volume_group_id != [0u8; 16];
+        let same_group = |cand: &&apfs::ApfsVolumeInfo| -> bool {
+            if cand.index == sys_vol.index || cand.encrypted {
+                return false;
+            }
+            if has_group {
+                cand.volume_group_id == sys_vol.volume_group_id
+            } else {
+                cand.role != 0
+                    || cand.name.ends_with(" - Data")
+                    || cand.name.eq_ignore_ascii_case("Data")
+            }
+        };
+
+        let push_role_mount = |role: u16, mount_path: &str, mounts: &mut Vec<SystemMount>| {
+            if let Some(sibling) = vols
+                .iter()
+                .find(|v| same_group(v) && (v.role & role) != 0)
+            {
+                let vkey = format!("apfs:part:{part_id}:{}:", sibling.index);
+                if !mounts.iter().any(|m| m.path == mount_path) {
+                    mounts.push(SystemMount {
+                        path: mount_path.to_string(),
+                        root: vkey.clone(),
+                        node: vkey,
+                        node_path: String::new(),
+                        source: "apfs_group",
+                        listed: true,
+                    });
+                }
+            }
+        };
+
+        push_role_mount(APFS_ROLE_PREBOOT, "System/Volumes/Preboot", mounts);
+        push_role_mount(APFS_ROLE_RECOVERY, "System/Volumes/Recovery", mounts);
+        push_role_mount(APFS_ROLE_VM, "System/Volumes/VM", mounts);
+
+        let data_vol = vols
+            .iter()
+            .find(|v| same_group(v) && (v.role & APFS_ROLE_DATA) != 0)
+            .or_else(|| {
+                vols.iter().find(|v| {
+                    v.index != sys_vol.index
+                        && !v.encrypted
+                        && (v.name.ends_with(" - Data") || v.name.eq_ignore_ascii_case("Data"))
+                })
+            });
+        let Some(data_vol) = data_vol else {
+            return;
+        };
+        let data_root = format!("apfs:part:{part_id}:{}:", data_vol.index);
+        if !mounts.iter().any(|m| m.path == "System/Volumes/Data") {
+            mounts.push(SystemMount {
+                path: "System/Volumes/Data".to_string(),
+                root: data_root.clone(),
+                node: data_root.clone(),
+                node_path: String::new(),
+                source: "apfs_group",
+                listed: true,
+            });
+        }
+
+        let sys_fp = Fingerprint::new(Arc::clone(self.image), node.to_owned());
+        let firmlink_pairs: Vec<(String, String)> = match sys_fp.read_small("/usr/share/firmlinks", FIRMLINKS_CAP) {
+            Ok(Some(bytes)) => String::from_utf8_lossy(&bytes)
+                .lines()
+                .filter_map(|line| {
+                    let line = line.trim();
+                    if line.is_empty() || line.starts_with('#') {
+                        return None;
+                    }
+                    let (sys_raw, data_raw) = line
+                        .split_once('\t')
+                        .or_else(|| line.split_once(char::is_whitespace))
+                        .unwrap_or((line, line));
+                    let sys_rel = sys_raw.trim().trim_start_matches('/').to_string();
+                    let data_rel = data_raw.trim().trim_start_matches('/').to_string();
+                    if sys_rel.is_empty() || data_rel.is_empty() {
+                        None
+                    } else {
+                        Some((sys_rel, data_rel))
+                    }
+                })
+                .collect(),
+            _ => vec![
+                ("Users".to_string(), "Users".to_string()),
+                ("private/var".to_string(), "private/var".to_string()),
+                ("Library".to_string(), "Library".to_string()),
+                ("Applications".to_string(), "Applications".to_string()),
+                ("Volumes".to_string(), "Volumes".to_string()),
+            ],
+        };
+
+        if let Ok(data_handle) =
+            apfs::ApfsVolume::open_index(Arc::clone(reader), partition, data_vol.index)
+        {
+            for (sys_rel, data_rel) in firmlink_pairs {
+                if mounts.iter().any(|m| m.path == sys_rel) {
+                    continue;
+                }
+                let data_abs = format!("/{data_rel}");
+                if !data_handle.exists(&data_abs) {
+                    continue;
+                }
+                mounts.push(SystemMount {
+                    path: sys_rel,
+                    root: data_root.clone(),
+                    node: apfs::apfs_node_id(part_id, data_vol.index, &data_abs),
+                    node_path: data_abs,
+                    source: "firmlink",
+                    listed: true,
+                });
+            }
         }
     }
 

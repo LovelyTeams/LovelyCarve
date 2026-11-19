@@ -330,11 +330,185 @@ pub fn detect_partitions_with_meta(
             return Ok(table);
         }
     }
+    let fallback = lenient_superblock_partitions(source, sector_size)?;
+    if !fallback.is_empty() {
+        tracing::warn!(
+            count = fallback.len(),
+            "partition table absent/damaged; recovered filesystems via lenient superblock signature scan"
+        );
+        return Ok(DetectedTable {
+            partitions: fallback,
+            scheme: Some(TableScheme::Volume),
+            disk_id: None,
+        });
+    }
     Ok(DetectedTable {
         partitions: Vec::new(),
         scheme: None,
         disk_id: None,
     })
+}
+
+/// Lenient fallback scan for X-Ways cleaned / wiped-table images: searches the leading
+/// region plus standard MiB alignments for unambiguous filesystem signatures
+/// (`NTFS $Boot`, `ext2/3/4 0xEF53`, `APFS NXSB`).
+fn lenient_superblock_partitions(
+    source: &dyn SectorSource,
+    sector_size: usize,
+) -> anyhow::Result<Vec<Partition>> {
+    let total_size = source.size();
+    let sector = u64::try_from(sector_size).unwrap_or(512).max(512);
+    if total_size < 2048 {
+        return Ok(Vec::new());
+    }
+
+    const PREFIX_SCAN_CAP: u64 = 16 * 1024 * 1024;
+    const WINDOW_BYTES: usize = 2 * 1024 * 1024;
+    const SUPERBLOCK_WINDOW: usize = 2048;
+
+    let mut found: Vec<(u64, u64, PartitionKind)> = Vec::new();
+    let already_covered = |found: &[(u64, u64, PartitionKind)], off: u64| -> bool {
+        found
+            .iter()
+            .any(|(s, len, _)| off >= *s && off < s.saturating_add(*len))
+    };
+
+    let prefix_limit = total_size.min(PREFIX_SCAN_CAP);
+    let mut base = 0u64;
+    while base < prefix_limit {
+        let to_read = ((prefix_limit - base) as usize + SUPERBLOCK_WINDOW)
+            .min(WINDOW_BYTES + SUPERBLOCK_WINDOW);
+        let chunk = source.read(base, to_read)?;
+        if chunk.len() < 512 {
+            break;
+        }
+        let step = 512usize;
+        let scan_end = ((prefix_limit - base) as usize).min(chunk.len().saturating_sub(512));
+        let mut rel = 0usize;
+        while rel <= scan_end {
+            let abs = base + rel as u64;
+            if already_covered(&found, abs) {
+                rel += step;
+                continue;
+            }
+            if let Some((kind, est_len)) =
+                probe_signature_at_window(&chunk[rel..], source, sector_size, abs, total_size)
+            {
+                let start_lba = abs / sector;
+                let max_len = total_size.saturating_sub(start_lba * sector);
+                let length_bytes = est_len.min(max_len).max(sector);
+                found.push((start_lba * sector, length_bytes, kind));
+                if found.len() >= 16 {
+                    break;
+                }
+            }
+            rel += step;
+        }
+        if found.len() >= 16 {
+            break;
+        }
+        base = base.saturating_add(WINDOW_BYTES as u64);
+    }
+
+    // Also probe common sparse MiB alignments beyond the first 16 MiB.
+    for mib in [32u64, 64, 100, 128, 256, 512, 1024] {
+        let abs = mib * 1024 * 1024;
+        if abs + 2048 > total_size || already_covered(&found, abs) || found.len() >= 16 {
+            continue;
+        }
+        let chunk = source.read(abs, SUPERBLOCK_WINDOW)?;
+        if let Some((kind, est_len)) =
+            probe_signature_at_window(&chunk, source, sector_size, abs, total_size)
+        {
+            let start_lba = abs / sector;
+            let max_len = total_size.saturating_sub(start_lba * sector);
+            let length_bytes = est_len.min(max_len).max(sector);
+            found.push((start_lba * sector, length_bytes, kind));
+        }
+    }
+
+    Ok(found
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, (abs, len_bytes, kind))| {
+            let id = u8::try_from(idx).ok()?;
+            Some(Partition {
+                id,
+                kind,
+                start_lba: abs / sector,
+                length_lba: (len_bytes / sector).max(1),
+                label: Some("Recovered (Signature)".to_string()),
+                unique_guid: None,
+                amiga_geometry: None,
+            })
+        })
+        .collect())
+}
+
+fn probe_signature_at_window(
+    window: &[u8],
+    source: &dyn SectorSource,
+    sector_size: usize,
+    abs: u64,
+    total_size: u64,
+) -> Option<(PartitionKind, u64)> {
+    if window.len() < 512 {
+        return None;
+    }
+    let avail = total_size.saturating_sub(abs);
+
+    // 1. NTFS $Boot signature
+    if &window[3..11] == b"NTFS    " && window[510] == 0x55 && window[511] == 0xAA {
+        let bps = u16::from_le_bytes([window[11], window[12]]);
+        let spc = window[13];
+        if matches!(bps, 512 | 1024 | 2048 | 4096) && spc != 0 && spc.is_power_of_two() {
+            let slice = PartitionSlice::new(source, abs, avail);
+            if let Ok(Some(hit)) = volume_probe::probe_volume(&slice, sector_size) {
+                let total_sectors = u64::from_le_bytes(window[40..48].try_into().ok()?);
+                let declared = total_sectors.saturating_add(1).saturating_mul(u64::from(bps));
+                let len = if declared > u64::from(bps) {
+                    declared.min(avail)
+                } else {
+                    avail
+                };
+                return Some((hit.kind, len));
+            }
+        }
+    }
+
+    // 2. APFS NXSB superblock magic (+32)
+    if &window[32..36] == b"NXSB" {
+        let block_size = u32::from_le_bytes(window[36..40].try_into().ok()?);
+        let block_count = u64::from_le_bytes(window[40..48].try_into().ok()?);
+        if (4096..=65536).contains(&block_size) && block_size.is_power_of_two() && block_count > 0 {
+            let slice = PartitionSlice::new(source, abs, avail);
+            if let Ok(Some(hit)) = volume_probe::probe_volume(&slice, sector_size) {
+                let len = block_count
+                    .saturating_mul(u64::from(block_size))
+                    .min(avail);
+                return Some((hit.kind, len));
+            }
+        }
+    }
+
+    // 3. ext2/3/4 superblock magic 0xEF53 at partition + 0x438 (requires sector >= 4 KiB aligned or offset > 0)
+    if abs > 0 && window.len() >= 0x468 && window[0x438] == 0x53 && window[0x439] == 0xEF {
+        let inodes = u32::from_le_bytes(window[0x400..0x404].try_into().ok()?);
+        let blocks = u32::from_le_bytes(window[0x404..0x408].try_into().ok()?);
+        let log_bs = u32::from_le_bytes(window[0x418..0x41c].try_into().ok()?);
+        if inodes > 0 && blocks > 0 && log_bs <= 6 {
+            let slice = PartitionSlice::new(source, abs, avail);
+            if let Ok(Some(hit)) = volume_probe::probe_volume(&slice, sector_size) {
+                let block_bytes = 1024u64 << log_bs;
+                let blocks_hi = u64::from(u32::from_le_bytes(window[0x550..0x554].try_into().ok()?));
+                let full_blocks = (blocks_hi << 32) | u64::from(blocks);
+                let len = full_blocks.saturating_mul(block_bytes).min(avail);
+                return Some((hit.kind, len));
+            }
+        }
+    }
+
+    None
 }
 
 /// Container-style kind that represents an opaque payload — re-running
@@ -783,5 +957,94 @@ mod tests {
             tree[0].children.is_empty(),
             "max_depth=1 must surface only top-level partitions"
         );
+    }
+
+    #[test]
+    fn lenient_fallback_recovers_ntfs_and_ext4_when_table_wiped() {
+        let sector = 512usize;
+        let mut buf = vec![0u8; 4 * 1024 * 1024];
+
+        // Plant valid NTFS $Boot at 1 MiB (offset 0x10_0000, LBA 2048), leaving MBR/GPT empty zeros.
+        let ntfs_off = 1024 * 1024;
+        buf[ntfs_off..ntfs_off + 3].copy_from_slice(&[0xEB, 0x52, 0x90]);
+        buf[ntfs_off + 3..ntfs_off + 11].copy_from_slice(b"NTFS    ");
+        buf[ntfs_off + 11..ntfs_off + 13].copy_from_slice(&512u16.to_le_bytes());
+        buf[ntfs_off + 13] = 8; // sectors/cluster
+        buf[ntfs_off + 40..ntfs_off + 48].copy_from_slice(&2047u64.to_le_bytes());
+        buf[ntfs_off + 510..ntfs_off + 512].copy_from_slice(&[0x55, 0xAA]);
+
+        // Plant valid ext4 superblock at 2 MiB (offset 0x20_0000, LBA 4096).
+        let ext4_off = 2 * 1024 * 1024;
+        buf[ext4_off + 0x400..ext4_off + 0x404].copy_from_slice(&128u32.to_le_bytes());
+        buf[ext4_off + 0x404..ext4_off + 0x408].copy_from_slice(&1024u32.to_le_bytes());
+        buf[ext4_off + 0x418..ext4_off + 0x41c].copy_from_slice(&2u32.to_le_bytes()); // 4KiB block
+        buf[ext4_off + 0x438..ext4_off + 0x43a].copy_from_slice(&[0x53, 0xEF]);
+
+        let src = BufSource(buf);
+        let parts = detect_partitions(&src, sector).expect("lenient recovery");
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].kind, PartitionKind::Ntfs);
+        assert_eq!(parts[0].start_lba, 2048);
+        assert_eq!(parts[1].kind, PartitionKind::Ext4);
+        assert_eq!(parts[1].start_lba, 4096);
+    }
+
+    #[test]
+    fn mbr_tail_truncated_xways_image_clamps_instead_of_dropping() {
+        let sector = 512usize;
+        let mut buf = vec![0u8; 4096 * sector]; // 2 MiB truncated image (4096 sectors)
+        buf[510] = 0x55;
+        buf[511] = 0xAA;
+        let entry = 0x1BEusize;
+        buf[entry + 4] = 0x07;
+        buf[entry + 8..entry + 12].copy_from_slice(&2048u32.to_le_bytes());
+        buf[entry + 12..entry + 16].copy_from_slice(&100_000u32.to_le_bytes()); // exceeds 4096!
+        let ntfs_off = 2048 * sector;
+        buf[ntfs_off..ntfs_off + 3].copy_from_slice(&[0xEB, 0x52, 0x90]);
+        buf[ntfs_off + 3..ntfs_off + 11].copy_from_slice(b"NTFS    ");
+        buf[ntfs_off + 11..ntfs_off + 13].copy_from_slice(&512u16.to_le_bytes());
+        buf[ntfs_off + 13] = 8;
+        buf[ntfs_off + 40..ntfs_off + 48].copy_from_slice(&99_999u64.to_le_bytes());
+        buf[ntfs_off + 510..ntfs_off + 512].copy_from_slice(&[0x55, 0xAA]);
+
+        let src = BufSource(buf);
+        let parts = detect_partitions(&src, sector).expect("clamped mbr");
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].start_lba, 2048);
+        assert_eq!(parts[0].length_lba, 2048);
+    }
+
+    #[test]
+    fn lenient_scan_recovers_ext_superblock_without_partition_table() {
+        // X-Ways style cleaned image: no MBR signature, no GPT, just a bare
+        // ext4 superblock at the usual 1 MiB alignment.
+        let mut buf = vec![0u8; 8 * 1024 * 1024];
+        let base = 1024 * 1024usize;
+        buf[base + 0x400..base + 0x404].copy_from_slice(&16u32.to_le_bytes());
+        buf[base + 0x404..base + 0x408].copy_from_slice(&4096u32.to_le_bytes());
+        buf[base + 0x418..base + 0x41c].copy_from_slice(&2u32.to_le_bytes());
+        buf[base + 0x438] = 0x53;
+        buf[base + 0x439] = 0xEF;
+
+        let src = BufSource(buf);
+        let table = detect_partitions_with_meta(&src, 512).expect("lenient recovery");
+        assert_eq!(table.scheme, Some(TableScheme::Volume));
+        assert_eq!(table.partitions.len(), 1, "one recovered filesystem");
+        let recovered = &table.partitions[0];
+        assert_eq!(recovered.kind, PartitionKind::Ext4);
+        assert_eq!(recovered.start_lba, (1024 * 1024) / 512);
+        assert_eq!(
+            recovered.label.as_deref(),
+            Some("Recovered (Signature)"),
+            "recovered entries must be clearly labelled"
+        );
+    }
+
+    #[test]
+    fn lenient_scan_stays_quiet_on_blank_images() {
+        let src = BufSource(vec![0u8; 8 * 1024 * 1024]);
+        let table = detect_partitions_with_meta(&src, 512).expect("blank image");
+        assert!(table.partitions.is_empty(), "no signatures, no recovery");
+        assert_eq!(table.scheme, None);
     }
 }

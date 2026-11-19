@@ -19,6 +19,7 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{anyhow, Result};
+pub use apfs::VolumeInfo as ApfsVolumeInfo;
 use apfs::{ApfsVolume as ContainerVolume, EntryKind, VolumeInfo};
 use chrono::{TimeZone, Utc};
 
@@ -172,6 +173,11 @@ impl ApfsVolume {
 
     pub fn root_children(&self) -> Result<Vec<FsNode>> {
         self.children("")
+    }
+
+    pub fn exists(&self, path: &str) -> bool {
+        self.with_volume(|vol| Ok(vol.exists(path).unwrap_or(false)))
+            .unwrap_or(false)
     }
 
     /// The selected volume's APFS_INCOMPAT_CASE_INSENSITIVE flag.
@@ -424,7 +430,7 @@ impl ApfsVolume {
     }
 }
 
-fn list_apfs_volumes(image: Arc<DiskImage>, partition: &Partition) -> Result<Vec<VolumeInfo>> {
+pub fn list_apfs_volumes(image: Arc<DiskImage>, partition: &Partition) -> Result<Vec<VolumeInfo>> {
     let cursor = PartitionCursor::new(image, partition)?;
     ContainerVolume::list_volumes(cursor)
         .map_err(|err| anyhow!("APFS list volumes partition {}: {err}", partition.id))
@@ -528,16 +534,15 @@ impl PartitionCursor {
             .start_lba
             .checked_mul(sector_size)
             .ok_or_else(|| anyhow!("APFS partition offset overflow"))?;
-        let length_bytes = partition
+        let raw_length_bytes = partition
             .length_lba
             .checked_mul(sector_size)
             .ok_or_else(|| anyhow!("APFS partition length overflow"))?;
-        if base_offset
-            .checked_add(length_bytes)
-            .is_none_or(|end| end > image.len())
-        {
-            anyhow::bail!("APFS partition exceeds source");
+        if base_offset >= image.len() {
+            anyhow::bail!("APFS partition offset exceeds source");
         }
+        // Clamp truncated/sparse tail so cleaned APFS images still mount cleanly.
+        let length_bytes = raw_length_bytes.min(image.len() - base_offset);
         Ok(Self {
             image,
             base_offset,
