@@ -12,6 +12,9 @@ impl<R: Read + Seek> VmdkReader<R> {
         let offset = lba * 512;
         match &self.fmt {
             FormatState::Flat => Ok(true),
+            FormatState::MultiSparse(multi) => {
+                Ok(multi.lock_inner()?.lookup_gte(offset)? != 0)
+            }
             FormatState::Sparse {
                 grain_dir,
                 grain_size_bytes,

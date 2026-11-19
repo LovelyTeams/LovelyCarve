@@ -36,6 +36,10 @@ impl<R: Read + Seek> VmdkReader<R> {
             | FormatState::SeSparse {
                 grain_size_bytes, ..
             } => *grain_size_bytes,
+            FormatState::MultiSparse(multi) => multi
+                .lock_inner()
+                .map(|m| m.first_grain_size_bytes())
+                .unwrap_or(0),
             FormatState::Flat => 0,
         }
     }
@@ -257,8 +261,8 @@ impl<R: Read + Seek> Read for VmdkReader<R> {
         }
         let remaining_virtual = (self.virtual_disk_size - self.pos) as usize;
 
-        // Flat: direct pass-through to the inner reader at the current position.
-        if matches!(self.fmt, FormatState::Flat) {
+        // Flat / MultiSparse: direct pass-through to the inner reader at the current position.
+        if matches!(self.fmt, FormatState::Flat | FormatState::MultiSparse(_)) {
             let to_read = buf.len().min(remaining_virtual);
             self.inner.seek(SeekFrom::Start(self.pos))?;
             let n = self.inner.read(&mut buf[..to_read])?;

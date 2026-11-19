@@ -13,7 +13,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 use std::io::{Read, Seek, SeekFrom};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 mod dynamic;
 mod error;
@@ -56,23 +56,50 @@ enum VhdInner {
         file: Box<dyn ReadSeekSend>,
         bat: dynamic::BlockAllocationTable,
         block_size: u32,
+        is_differencing: bool,
+        parent: Option<Box<VhdReader>>,
     },
 }
 
+const MAX_VHD_CHAIN_DEPTH: usize = 32;
+
 impl VhdReader {
-    /// Open a VHD disk image.
-    ///
-    /// Returns [`VhdError`] if the file is not a valid VHD, or if it is a
-    /// Differencing disk (parent resolution is not supported).
+    /// Open a VHD disk image (Fixed, Dynamic, or Differencing chain).
     pub fn open(path: &Path) -> Result<Self, VhdError> {
-        Self::open_reader(Box::new(std::fs::File::open(path)?))
+        Self::open_chain(path, 0)
     }
 
-    /// Open a VHD image from any seekable byte source (a `Cursor` over inflated
-    /// bytes, a positioned sub-range of a `.zip`, …) rather than a file path —
-    /// so an image stored inside an archive can be read without extracting it to
-    /// a temp file first.
-    pub fn open_reader(mut backing: Box<dyn ReadSeekSend>) -> Result<Self, VhdError> {
+    fn open_chain(path: &Path, depth: usize) -> Result<Self, VhdError> {
+        if depth >= MAX_VHD_CHAIN_DEPTH {
+            return Err(VhdError::DifferencingNotSupported);
+        }
+        Self::open_reader_internal(
+            Box::new(std::fs::File::open(path)?),
+            path.parent(),
+            depth,
+            None,
+        )
+    }
+
+    /// Open a VHD image from any seekable byte source without resolving external parent paths.
+    pub fn open_reader(backing: Box<dyn ReadSeekSend>) -> Result<Self, VhdError> {
+        Self::open_reader_internal(backing, None, 0, None)
+    }
+
+    /// Open a Differencing (or Dynamic) VHD image over an arbitrary byte source with an explicit parent reader.
+    pub fn open_reader_with_parent(
+        backing: Box<dyn ReadSeekSend>,
+        parent: VhdReader,
+    ) -> Result<Self, VhdError> {
+        Self::open_reader_internal(backing, None, 0, Some(Box::new(parent)))
+    }
+
+    fn open_reader_internal(
+        mut backing: Box<dyn ReadSeekSend>,
+        dir: Option<&Path>,
+        depth: usize,
+        explicit_parent: Option<Box<VhdReader>>,
+    ) -> Result<Self, VhdError> {
         let file_len = backing.seek(SeekFrom::End(0))?;
         let footer_offset = file_len.checked_sub(512).ok_or(VhdError::FileTooSmall)?;
         backing.seek(SeekFrom::Start(footer_offset))?;
@@ -87,7 +114,8 @@ impl VhdReader {
                 }
                 (VhdInner::Fixed { file: backing }, footer.current_size)
             }
-            footer::DiskType::Dynamic => {
+            footer::DiskType::Dynamic | footer::DiskType::Differencing => {
+                let is_differencing = footer.disk_type == footer::DiskType::Differencing;
                 if footer
                     .data_offset
                     .checked_add(1024)
@@ -98,6 +126,24 @@ impl VhdReader {
                 backing.seek(SeekFrom::Start(footer.data_offset))?;
                 let mut header_bytes = [0; 1024];
                 backing.read_exact(&mut header_bytes)?;
+                let parent = if is_differencing {
+                    if let Some(p) = explicit_parent {
+                        Some(p)
+                    } else if let Some(base_dir) = dir {
+                        let candidates = dynamic::parse_parent_locator_candidates(
+                            &header_bytes,
+                            &mut backing,
+                            footer_offset,
+                        );
+                        let parent_path = resolve_vhd_parent_path(base_dir, &candidates)
+                            .ok_or(VhdError::DifferencingNotSupported)?;
+                        Some(Box::new(Self::open_chain(&parent_path, depth + 1)?))
+                    } else {
+                        return Err(VhdError::DifferencingNotSupported);
+                    }
+                } else {
+                    None
+                };
                 let mut header = dynamic::DynamicHeader::parse(&header_bytes, 0)?;
                 let table_bytes = u64::from(header.max_bat_entries) * 4;
                 // Bound allocation independently of the untrusted container length.
@@ -122,6 +168,8 @@ impl VhdReader {
                         file: backing,
                         bat,
                         block_size: header.block_size,
+                        is_differencing,
+                        parent,
                     },
                     footer.current_size,
                 )
@@ -149,13 +197,40 @@ impl VhdReader {
         self.original_size
     }
 
-    /// Disk type (Fixed or Dynamic).
+    /// Disk type (Fixed, Dynamic, or Differencing).
     pub fn disk_type(&self) -> DiskType {
         match &self.inner {
             VhdInner::Fixed { .. } => DiskType::Fixed,
-            VhdInner::Dynamic { .. } => DiskType::Dynamic,
+            VhdInner::Dynamic {
+                is_differencing: true,
+                ..
+            } => DiskType::Differencing,
+            VhdInner::Dynamic {
+                is_differencing: false,
+                ..
+            } => DiskType::Dynamic,
         }
     }
+}
+
+fn resolve_vhd_parent_path(dir: &Path, candidates: &[String]) -> Option<PathBuf> {
+    for raw in candidates {
+        let normalized = raw.replace('\\', "/");
+        let rel = Path::new(&normalized);
+        if !rel.is_absolute() {
+            let joined = dir.join(rel);
+            if joined.is_file() {
+                return Some(joined);
+            }
+        }
+        if let Some(fname) = rel.file_name() {
+            let same_dir = dir.join(fname);
+            if same_dir.is_file() {
+                return Some(same_dir);
+            }
+        }
+    }
+    None
 }
 
 impl Read for VhdReader {
@@ -178,20 +253,79 @@ impl Read for VhdReader {
                 file,
                 bat,
                 block_size,
+                parent,
+                ..
             } => {
                 let block_size_u64 = u64::from(*block_size);
                 let block_end = ((self.pos / block_size_u64) + 1) * block_size_u64;
-                let chunk = to_read.min((block_end - self.pos) as usize);
+                let mut chunk = to_read.min((block_end - self.pos) as usize);
 
-                if let Some(file_off) = bat
+                if let Some(parent_reader) = parent.as_mut() {
+                    if let Some((payload_off, bmp_off, bit_mask, sector_in_block, sectors_per_block)) =
+                        bat.differencing_sector_location(self.pos)
+                            .map_err(|e| std::io::Error::other(e.to_string()))?
+                    {
+                        let mut b = [0u8; 1];
+                        file.seek(SeekFrom::Start(bmp_off))?;
+                        file.read_exact(&mut b)?;
+                        let owned_by_child = (b[0] & bit_mask) != 0;
+
+                        // Coalesce contiguous same-owner 512-byte sectors inside the block.
+                        let mut run_sectors = 1u64;
+                        let first_bit = (sector_in_block % 8) + 1;
+                        let mut cur_byte = b[0];
+                        let mut byte_off = bmp_off;
+                        for s in (sector_in_block + 1)..sectors_per_block {
+                            let bit_pos = s % 8;
+                            if bit_pos == 0 && s != sector_in_block + first_bit {
+                                byte_off += 1;
+                                file.seek(SeekFrom::Start(byte_off))?;
+                                file.read_exact(&mut b)?;
+                                cur_byte = b[0];
+                            } else if bit_pos == 0 {
+                                byte_off += 1;
+                                file.seek(SeekFrom::Start(byte_off))?;
+                                file.read_exact(&mut b)?;
+                                cur_byte = b[0];
+                            }
+                            if ((cur_byte & (0x80 >> bit_pos)) != 0) != owned_by_child {
+                                break;
+                            }
+                            run_sectors += 1;
+                        }
+                        let sector_run_end =
+                            ((self.pos / 512) + run_sectors) * 512;
+                        chunk = chunk.min((sector_run_end - self.pos) as usize);
+
+                        if owned_by_child {
+                            file.seek(SeekFrom::Start(payload_off))?;
+                            file.read_exact(&mut buf[..chunk])?;
+                        } else {
+                            parent_reader.seek(SeekFrom::Start(self.pos))?;
+                            parent_reader.read_exact(&mut buf[..chunk])?;
+                        }
+                        self.pos += chunk as u64;
+                        Ok(chunk)
+                    } else {
+                        parent_reader.seek(SeekFrom::Start(self.pos))?;
+                        let n = parent_reader.read(&mut buf[..chunk])?;
+                        if n == 0 && chunk > 0 {
+                            buf[..chunk].fill(0);
+                            self.pos += chunk as u64;
+                            Ok(chunk)
+                        } else {
+                            self.pos += n as u64;
+                            Ok(n)
+                        }
+                    }
+                } else if let Some(file_off) = bat
                     .file_offset_for_byte(self.pos)
                     .map_err(|e| std::io::Error::other(e.to_string()))?
                 {
                     file.seek(SeekFrom::Start(file_off))?;
                     file.read_exact(&mut buf[..chunk])?;
-                    let n = chunk;
-                    self.pos += n as u64;
-                    Ok(n)
+                    self.pos += chunk as u64;
+                    Ok(chunk)
                 } else {
                     // Sparse block — return zeroes.
                     buf[..chunk].fill(0);
@@ -493,6 +627,73 @@ mod tests {
         );
     }
 
-    // ── Differential test: bytes must match qemu-img convert -O raw output ────
-    //
+    #[test]
+    fn differencing_vhd_resolves_parent_via_locator_and_sector_bitmap() {
+        use std::io::Write as _;
+        let dir = tempfile::tempdir().unwrap();
+
+        // Fixed parent (2 blocks * 512B = 1024B): sector 0 = 0x11, sector 1 = 0x22.
+        let mut base = vec![0x11u8; 512];
+        base.extend(vec![0x22u8; 512]);
+        let base_vhd = fixed_vhd_bytes(&base);
+        std::fs::write(dir.path().join("base.vhd"), base_vhd).unwrap();
+
+        // Child differencing VHD: block_size=512, 2 BAT entries:
+        // block 0 allocated with bitmap bit 0 = 1 (child owns sector 0 -> 0xCC)
+        // block 1 allocated with bitmap bit 0 = 0 (inherits parent sector 1 -> 0x22)
+        // Locator entry "W2ru" pointing to "base.vhd".
+        let rel_u16: Vec<u8> = "base.vhd".encode_utf16().flat_map(u16::to_le_bytes).collect();
+        let mut child = vec![0u8; 512 * 10];
+        // Footer helpers (type=4 Differencing, data_offset=512, current_size=1024).
+        let mut f = footer::test_fixed_footer(1024);
+        f[16..24].copy_from_slice(&512u64.to_be_bytes());
+        f[60..64].copy_from_slice(&4u32.to_be_bytes());
+        let mut sum: u32 = 0;
+        for (i, &b) in f.iter().enumerate() {
+            if !(64..68).contains(&i) {
+                sum = sum.wrapping_add(u32::from(b));
+            }
+        }
+        f[64..68].copy_from_slice(&(!sum).to_be_bytes());
+
+        child[0..512].copy_from_slice(&f);
+        let tail = child.len() - 512;
+        child[tail..].copy_from_slice(&f);
+
+        // Dynamic header at offset 512 (bat_offset=1536, max_bat_entries=2, block_size=512).
+        child[512..520].copy_from_slice(b"cxsparse");
+        child[512 + 16..512 + 24].copy_from_slice(&1536u64.to_be_bytes());
+        child[512 + 28..512 + 32].copy_from_slice(&2u32.to_be_bytes());
+        child[512 + 32..512 + 36].copy_from_slice(&512u32.to_be_bytes());
+        // Parent locator 0 ("W2ru") pointing to offset 2048.
+        let loc_off = 512 + 576;
+        child[loc_off..loc_off + 4].copy_from_slice(b"W2ru");
+        child[loc_off + 8..loc_off + 12].copy_from_slice(&(rel_u16.len() as u32).to_be_bytes());
+        child[loc_off + 16..loc_off + 24].copy_from_slice(&2048u64.to_be_bytes());
+
+        // BAT at 1536: block 0 = sector 5 (2560), block 1 = sector 7 (3584).
+        child[1536..1540].copy_from_slice(&5u32.to_be_bytes());
+        child[1540..1544].copy_from_slice(&7u32.to_be_bytes());
+        // Parent locator bytes at 2048.
+        child[2048..2048 + rel_u16.len()].copy_from_slice(&rel_u16);
+        // Block 0 (sector 5 = 2560): bitmap bit 0 set (0x80), payload = 0xCC.
+        child[2560] = 0x80;
+        child[3072..3584].fill(0xCC);
+        // Block 1 (sector 7 = 3584): bitmap bit 0 clear (0x00), payload = 0xDD (ignored!).
+        child[3584] = 0x00;
+        child[4096..4608].fill(0xDD);
+
+        let child_path = dir.path().join("child.vhd");
+        std::fs::File::create(&child_path)
+            .unwrap()
+            .write_all(&child)
+            .unwrap();
+
+        let mut reader = VhdReader::open(&child_path).expect("differencing child opens");
+        assert_eq!(reader.disk_type(), DiskType::Differencing);
+        let mut out = vec![0u8; 1024];
+        reader.read_exact(&mut out).expect("read full differencing disk");
+        assert_eq!(&out[0..512], &[0xCCu8; 512][..]);
+        assert_eq!(&out[512..1024], &[0x22u8; 512][..]);
+    }
 }

@@ -92,16 +92,6 @@ impl VmdkHandle {
             let parent = if parent_cid == u32::MAX {
                 None
             } else {
-                // The upstream multi-sparse path erases allocation provenance.
-                // Refuse such delta layers instead of hiding parent data with zeroes.
-                let info = reader.info();
-                ensure!(
-                    !matches!(
-                        info.disk_type.as_str(),
-                        "twoGbMaxExtentSparse" | "vmfsSparse" | "vmfsThin" | "custom"
-                    ),
-                    "VMDK multi-extent delta layers are not supported; use a consolidated image"
-                );
                 let hint = reader
                     .descriptor_text()
                     .lines()
@@ -112,20 +102,32 @@ impl VmdkHandle {
                     })
                     .filter(|hint| !hint.is_empty())
                     .context("VMDK parentCID requires parentFileNameHint")?;
-                let relative = Path::new(hint);
-                ensure!(
-                    !relative.components().any(|component| matches!(
+                let normalized_hint = hint.replace('\\', "/");
+                let relative = Path::new(&normalized_hint);
+                let dir = canonical
+                    .parent()
+                    .context("VMDK layer has no directory")?;
+                let candidate = if !relative.components().any(|component| {
+                    matches!(
                         component,
                         Component::ParentDir | Component::RootDir | Component::Prefix(_)
-                    )),
-                    "VMDK parent must be inside the image directory: {hint}"
-                );
-                Some(
-                    canonical
-                        .parent()
-                        .context("VMDK layer has no directory")?
-                        .join(relative),
-                )
+                    )
+                }) {
+                    dir.join(relative)
+                } else {
+                    // Preserve strict directory boundary while still resolving same-directory
+                    // parent backups when a descriptor records an absolute or nested Windows path.
+                    let base_name = relative
+                        .file_name()
+                        .context("VMDK parent has no filename")?;
+                    let same_dir = dir.join(base_name);
+                    ensure!(
+                        same_dir.exists(),
+                        "VMDK parent must be inside the image directory: {hint}"
+                    );
+                    same_dir
+                };
+                Some(candidate)
             };
             layers.push(reader);
             match parent {

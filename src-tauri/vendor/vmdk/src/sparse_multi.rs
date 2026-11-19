@@ -3,13 +3,16 @@
 //! Each SPARSE extent is an independent binary VMDK file with its own
 //! `SparseExtentHeader`, grain directory, and grain tables.
 
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use crate::cowd::{self, COWD_GTES_PER_GT};
 use crate::descriptor::SparseEntry;
 use crate::header::{SparseExtentHeader, SECTOR_SIZE};
+use crate::AllocatedGrain;
 
 struct SparseChunk {
     byte_start: u64,
@@ -17,6 +20,7 @@ struct SparseChunk {
     grain_dir: Vec<u32>,
     grain_size_bytes: u64,
     num_gtes_per_gt: u64,
+    gt_cache: HashMap<u32, Vec<u32>>,
     file: BufReader<File>,
 }
 
@@ -24,6 +28,33 @@ pub(crate) struct MultiSparseReader {
     chunks: Vec<SparseChunk>,
     pos: u64,
     total_bytes: u64,
+}
+
+#[derive(Clone)]
+pub(crate) struct SharedMultiSparse(Arc<Mutex<MultiSparseReader>>);
+
+impl SharedMultiSparse {
+    pub(crate) fn new(reader: MultiSparseReader) -> Self {
+        Self(Arc::new(Mutex::new(reader)))
+    }
+
+    pub(crate) fn lock_inner(&self) -> io::Result<std::sync::MutexGuard<'_, MultiSparseReader>> {
+        self.0
+            .lock()
+            .map_err(|_| io::Error::other("multi-sparse reader mutex poisoned"))
+    }
+}
+
+impl Read for SharedMultiSparse {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.lock_inner()?.read(buf)
+    }
+}
+
+impl Seek for SharedMultiSparse {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        self.lock_inner()?.seek(pos)
+    }
 }
 
 impl MultiSparseReader {
@@ -67,6 +98,7 @@ impl MultiSparseReader {
                     grain_dir,
                     grain_size_bytes,
                     num_gtes_per_gt: COWD_GTES_PER_GT as u64,
+                    gt_cache: HashMap::new(),
                     file,
                 });
                 byte_offset = byte_end;
@@ -139,6 +171,7 @@ impl MultiSparseReader {
                 grain_dir,
                 grain_size_bytes,
                 num_gtes_per_gt,
+                gt_cache: HashMap::new(),
                 file,
             });
             byte_offset = end;
@@ -155,6 +188,82 @@ impl MultiSparseReader {
         self.chunks
             .iter()
             .position(|c| pos >= c.byte_start && pos < c.byte_end)
+    }
+
+    pub(crate) fn first_grain_size_bytes(&self) -> u64 {
+        self.chunks
+            .first()
+            .map(|c| c.grain_size_bytes)
+            .unwrap_or(0)
+    }
+
+    fn read_gte_for_chunk(chunk: &mut SparseChunk, gt_sector: u32, gte_local_idx: usize) -> io::Result<u32> {
+        if gt_sector == 0 {
+            return Ok(0);
+        }
+        if let Some(gt) = chunk.gt_cache.get(&gt_sector) {
+            return Ok(gt.get(gte_local_idx).copied().unwrap_or(0));
+        }
+        let gt_len = chunk.num_gtes_per_gt as usize;
+        let gt_offset = u64::from(gt_sector) * SECTOR_SIZE;
+        chunk.file.seek(SeekFrom::Start(gt_offset))?;
+        let mut raw = vec![0u8; gt_len * 4];
+        chunk.file.read_exact(&mut raw)?;
+        let entries: Vec<u32> = raw
+            .chunks_exact(4)
+            .map(|c| u32::from_le_bytes(c.try_into().expect("4-byte GTE")))
+            .collect();
+        let val = entries.get(gte_local_idx).copied().unwrap_or(0);
+        if chunk.gt_cache.len() >= 1024 {
+            chunk.gt_cache.clear();
+        }
+        chunk.gt_cache.insert(gt_sector, entries);
+        Ok(val)
+    }
+
+    /// Look up raw grain table entry at `virtual_offset` (0 = inherited hole, 1 = explicit zero, >1 = sector).
+    pub(crate) fn lookup_gte(&mut self, virtual_offset: u64) -> io::Result<u32> {
+        let Some(chunk_idx) = self.chunk_for(virtual_offset) else {
+            return Ok(0);
+        };
+        let chunk = &mut self.chunks[chunk_idx];
+        let local_pos = virtual_offset - chunk.byte_start;
+        let grain_idx = local_pos / chunk.grain_size_bytes;
+        let gd_idx = (grain_idx / chunk.num_gtes_per_gt) as usize;
+        let gte_local_idx = (grain_idx % chunk.num_gtes_per_gt) as usize;
+        let gt_sector = chunk.grain_dir.get(gd_idx).copied().unwrap_or(0);
+        Self::read_gte_for_chunk(chunk, gt_sector, gte_local_idx)
+    }
+
+    pub(crate) fn iter_allocated_grains(&mut self, max_disk_bytes: u64) -> io::Result<Vec<AllocatedGrain>> {
+        let max_lba = max_disk_bytes / SECTOR_SIZE;
+        let mut result = Vec::new();
+        for chunk in &mut self.chunks {
+            let grain_sectors = chunk.grain_size_bytes / SECTOR_SIZE;
+            let num_gtes = chunk.num_gtes_per_gt as usize;
+            let chunk_start_lba = chunk.byte_start / SECTOR_SIZE;
+            for gd_idx in 0..chunk.grain_dir.len() {
+                let gt_sector = chunk.grain_dir[gd_idx];
+                if gt_sector == 0 {
+                    continue;
+                }
+                let _ = Self::read_gte_for_chunk(chunk, gt_sector, 0)?;
+                let gt = &chunk.gt_cache[&gt_sector];
+                for (gte_idx, &gte) in gt.iter().enumerate() {
+                    if gte > 1 {
+                        let grain_idx = gd_idx as u64 * num_gtes as u64 + gte_idx as u64;
+                        let start_lba = chunk_start_lba + grain_idx * grain_sectors;
+                        if start_lba < max_lba {
+                            result.push(AllocatedGrain {
+                                start_lba,
+                                sector_count: grain_sectors,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        Ok(result)
     }
 }
 

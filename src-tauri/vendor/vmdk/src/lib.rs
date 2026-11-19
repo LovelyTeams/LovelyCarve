@@ -34,7 +34,7 @@ pub use error::VmdkError;
 use descriptor::parse_text_descriptor;
 use flat::MultiExtentReader;
 use header::{SparseExtentHeader, GD_AT_END, SECTOR_SIZE};
-use sparse_multi::MultiSparseReader;
+use sparse_multi::{MultiSparseReader, SharedMultiSparse};
 
 // ── Public API types ──────────────────────────────────────────────────────────
 
@@ -129,6 +129,8 @@ pub(crate) enum FormatState {
     },
     /// Raw flat extents — reads pass through directly to the inner reader.
     Flat,
+    /// Multi-extent sparse files (twoGbMaxExtentSparse, vmfsSparse, vmfsThin, custom sparse).
+    MultiSparse(SharedMultiSparse),
 }
 
 // ── VmdkReader ────────────────────────────────────────────────────────────────
@@ -408,6 +410,13 @@ impl<R: Read + Seek> VmdkReader<R> {
             FormatState::SeSparse {
                 grain_size_bytes, ..
             } => (*grain_size_bytes / SECTOR_SIZE, *grain_size_bytes, false),
+            FormatState::MultiSparse(multi) => {
+                let gsz = multi
+                    .lock_inner()
+                    .map(|m| m.first_grain_size_bytes())
+                    .unwrap_or(0);
+                (gsz / SECTOR_SIZE, gsz, false)
+            }
             FormatState::Flat => (0, 0, false),
         };
         VmdkInfo {
@@ -515,6 +524,10 @@ impl<R: Read + Seek> VmdkReader<R> {
         let virtual_offset = lba * SECTOR_SIZE;
         match &self.fmt {
             FormatState::Flat => Ok(true),
+            FormatState::MultiSparse(multi) => {
+                let gte = multi.lock_inner()?.lookup_gte(virtual_offset)?;
+                Ok(gte > 1)
+            }
             FormatState::Sparse {
                 grain_dir,
                 grain_size_bytes,
@@ -591,6 +604,10 @@ impl<R: Read + Seek> VmdkReader<R> {
     /// The iterator is eager — it collects all GTE reads upfront to avoid borrow issues.
     pub fn iter_allocated_grains(&mut self) -> io::Result<Vec<AllocatedGrain>> {
         let (grain_dir, grain_size_bytes, num_gtes_per_gt) = match &self.fmt {
+            FormatState::MultiSparse(multi) => {
+                let max_bytes = self.virtual_disk_size;
+                return multi.lock_inner()?.iter_allocated_grains(max_bytes);
+            }
             FormatState::Flat => {
                 // All sectors allocated; yield the entire virtual disk as one grain.
                 let sector_count = self.virtual_disk_size / SECTOR_SIZE;
@@ -859,14 +876,17 @@ impl VmdkFileReader {
                 }
                 // ESXi sparse formats: SPARSE/VMFSSPARSE extent type — binary VMDK4 or COWD.
                 "vmfsSparse" | "vmfsThin" | "twoGbMaxExtentSparse" => {
-                    let multi = MultiSparseReader::open(dir, &desc.sparse_extents)?;
+                    let multi = SharedMultiSparse::new(MultiSparseReader::open(
+                        dir,
+                        &desc.sparse_extents,
+                    )?);
                     let virtual_disk_size =
                         desc.sparse_capacity_sectors
                             .checked_mul(SECTOR_SIZE)
                             .ok_or(VmdkError::GeometryOverflow { field: "capacity" })?;
                     Ok(VmdkReader {
-                        inner: Box::new(multi) as Box<dyn ReadSeek + Send>,
-                        fmt: FormatState::Flat,
+                        inner: Box::new(multi.clone()) as Box<dyn ReadSeek + Send>,
+                        fmt: FormatState::MultiSparse(multi),
                         virtual_disk_size,
                         disk_type: desc.create_type,
                         pos: 0,
@@ -942,14 +962,17 @@ impl VmdkFileReader {
                             rgd_recovery_count: 0,
                         })
                     } else if !desc.sparse_extents.is_empty() {
-                        let multi = MultiSparseReader::open(dir, &desc.sparse_extents)?;
+                        let multi = SharedMultiSparse::new(MultiSparseReader::open(
+                            dir,
+                            &desc.sparse_extents,
+                        )?);
                         let virtual_disk_size = desc
                             .sparse_capacity_sectors
                             .checked_mul(SECTOR_SIZE)
                             .ok_or(VmdkError::GeometryOverflow { field: "capacity" })?;
                         Ok(VmdkReader {
-                            inner: Box::new(multi) as Box<dyn ReadSeek + Send>,
-                            fmt: FormatState::Flat,
+                            inner: Box::new(multi.clone()) as Box<dyn ReadSeek + Send>,
+                            fmt: FormatState::MultiSparse(multi),
                             virtual_disk_size,
                             disk_type: desc.create_type,
                             pos: 0,

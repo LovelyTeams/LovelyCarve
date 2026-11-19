@@ -110,6 +110,133 @@ impl BlockAllocationTable {
         let offset_in_block = virtual_byte % block_size;
         Ok(Some(block_file_offset + offset_in_block))
     }
+
+    /// Return `(payload_file_offset, bitmap_byte_file_offset, bitmap_bit_mask, sector_in_block, sectors_per_block)`
+    /// for an allocated BAT block, or `None` if `bat_entry == BAT_ENTRY_UNUSED`.
+    pub fn differencing_sector_location(
+        &self,
+        virtual_byte: u64,
+    ) -> Result<Option<(u64, u64, u8, u64, u64)>> {
+        let block_size = u64::from(self.block_size);
+        let block_index = (virtual_byte / block_size) as usize;
+        if block_index >= self.entries.len() {
+            return Err(VhdError::BlockOutOfBounds);
+        }
+        let bat_entry = self.entries[block_index];
+        if bat_entry == BAT_ENTRY_UNUSED {
+            return Ok(None);
+        }
+        let bitmap_start = u64::from(bat_entry) * 512;
+        let offset_in_block = virtual_byte % block_size;
+        let sector_in_block = offset_in_block / 512;
+        let sectors_per_block = block_size / 512;
+        let bitmap_byte_file_offset = bitmap_start + (sector_in_block / 8);
+        let bit_mask = 0x80u8 >> (sector_in_block % 8);
+        let payload_file_offset =
+            bitmap_start + bitmap_sectors(self.block_size) * 512 + offset_in_block;
+        Ok(Some((
+            payload_file_offset,
+            bitmap_byte_file_offset,
+            bit_mask,
+            sector_in_block,
+            sectors_per_block,
+        )))
+    }
+}
+
+/// Extract ordered candidate parent path strings from a 1024-byte VHD dynamic header
+/// (MS-VHD §2.3 Parent Locator Entries + Parent Unicode Name).
+pub fn parse_parent_locator_candidates<R: std::io::Read + std::io::Seek>(
+    header_bytes: &[u8],
+    backing: &mut R,
+    footer_offset: u64,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    if header_bytes.len() < DYNAMIC_HEADER_SIZE {
+        return out;
+    }
+
+    // First prefer W2ru (Windows relative UTF-16LE), then Wi2r / W2ku / Wi2k / Mac.
+    let mut locators = Vec::new();
+    for i in 0..8 {
+        let base = 576 + i * 24;
+        let code = [
+            header_bytes[base],
+            header_bytes[base + 1],
+            header_bytes[base + 2],
+            header_bytes[base + 3],
+        ];
+        let data_len = be_u32(header_bytes, base + 8) as usize;
+        let data_off = be_u64(header_bytes, base + 16);
+        if code == [0; 4] || data_len == 0 || data_len > 65536 {
+            continue;
+        }
+        if data_off
+            .checked_add(data_len as u64)
+            .is_none_or(|end| end > footer_offset)
+        {
+            continue;
+        }
+        let prio: u8 = match &code {
+            b"W2ru" => 0,
+            b"Wi2r" => 1,
+            b"Mac " => 2,
+            b"W2ku" => 3,
+            b"Wi2k" => 4,
+            b"MacX" => 5,
+            _ => 6,
+        };
+        locators.push((prio, code, data_len, data_off));
+    }
+    locators.sort_by_key(|(prio, ..)| *prio);
+
+    for (_, code, data_len, data_off) in locators {
+        if backing.seek(std::io::SeekFrom::Start(data_off)).is_err() {
+            continue;
+        }
+        let mut raw = vec![0u8; data_len];
+        if backing.read_exact(&mut raw).is_err() {
+            continue;
+        }
+        let decoded = match &code {
+            b"W2ru" | b"W2ku" | b"Wi2r" | b"Wi2k" => decode_utf16le(&raw),
+            _ => decode_utf8_trimmed(&raw),
+        };
+        if !decoded.is_empty() && !out.contains(&decoded) {
+            out.push(decoded);
+        }
+    }
+
+    // Fallback: Parent Unicode Name (512 bytes UTF-16BE at offset 64).
+    let pname = decode_utf16be(&header_bytes[64..576]);
+    if !pname.is_empty() && !out.contains(&pname) {
+        out.push(pname);
+    }
+
+    out
+}
+
+fn decode_utf16le(raw: &[u8]) -> String {
+    let words: Vec<u16> = raw
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .take_while(|&w| w != 0)
+        .collect();
+    String::from_utf16_lossy(&words).trim().to_string()
+}
+
+fn decode_utf16be(raw: &[u8]) -> String {
+    let words: Vec<u16> = raw
+        .chunks_exact(2)
+        .map(|c| u16::from_be_bytes([c[0], c[1]]))
+        .take_while(|&w| w != 0)
+        .collect();
+    String::from_utf16_lossy(&words).trim().to_string()
+}
+
+fn decode_utf8_trimmed(raw: &[u8]) -> String {
+    let end = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
+    String::from_utf8_lossy(&raw[..end]).trim().to_string()
 }
 
 #[cfg(test)]

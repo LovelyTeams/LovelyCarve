@@ -223,12 +223,14 @@ impl<R: Read + Seek> ApfsVolume<R> {
             .enumerate()
             .filter(|(_, oid)| *oid != 0)
         {
-            let vol_sb = read_volume_superblock(
+            let Ok(vol_sb) = read_volume_superblock(
                 &mut reader,
                 container.container_omap_root,
                 container.nxsb.block_size,
                 vol_oid,
-            )?;
+            ) else {
+                continue;
+            };
             volumes.push(volume_info_from_superblock(
                 volume_index,
                 vol_oid,
@@ -262,9 +264,10 @@ impl<R: Read + Seek> ApfsVolume<R> {
                 "encrypted APFS volume requires FileVault keybag unlock".into(),
             ));
         }
-        if vol_sb.incompatible_features & !0x0b != 0 {
+        // 0x01 CASE_INSENSITIVE | 0x02 DATALESS_SNAPS | 0x08 NORMALIZATION_INSENSITIVE | 0x20 SEALED_VOLUME
+        if vol_sb.incompatible_features & !0x2b != 0 {
             return Err(ApfsError::Unsupported(format!(
-                "volume incompatible features {:#x} (sealed, encryption rolling or incomplete restore)",
+                "volume incompatible features {:#x} (encryption rolling or incomplete restore)",
                 vol_sb.incompatible_features
             )));
         }
@@ -397,16 +400,16 @@ impl<R: Read + Seek> ApfsVolume<R> {
         for entry in entries.iter_mut() {
             match entry.kind {
                 EntryKind::File => {
-                    if let Some(header) = self.compression(entry.oid)? {
+                    if let Ok(Some(header)) = self.compression(entry.oid) {
                         entry.size = header.uncompressed_size;
                     }
                 }
                 EntryKind::Symlink => {
-                    if let Some(target) = self.symlink_target(entry.oid)? {
+                    if let Ok(Some(target)) = self.symlink_target(entry.oid) {
                         entry.size = target.len() as u64;
-                        entry.link_target = Some(String::from_utf8(target).map_err(|error| {
-                            ApfsError::CorruptedData(format!("invalid symlink UTF-8: {error}"))
-                        })?);
+                        if let Ok(text) = String::from_utf8(target) {
+                            entry.link_target = Some(text);
+                        }
                     }
                 }
                 EntryKind::Directory => {}

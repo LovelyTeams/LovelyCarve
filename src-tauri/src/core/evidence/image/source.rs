@@ -431,10 +431,10 @@ impl ImageSource {
                 Ok((filled, Vec::new()))
             }
             Self::Phdi { reader } => {
-                let filled = reader
-                    .read_at(start, dst)
-                    .with_context(|| format!("failed to read PHDI at offset {start}"))?;
-                Ok((filled, Vec::new()))
+                let (filled, faults) = tolerant_fill(start, dst, |off, dst| {
+                    reader.read_at(off, dst).map_err(anyhow::Error::from)
+                });
+                Ok((filled, faults))
             }
             Self::Dmg { mmap, .. } => {
                 let start = usize::try_from(start)
@@ -457,16 +457,16 @@ impl ImageSource {
                 Ok((filled, faults))
             }
             Self::Qcow2 { reader, .. } => {
-                let filled = reader
-                    .read_at(start, dst)
-                    .with_context(|| format!("failed to read QCOW2 at offset {start}"))?;
-                Ok((filled, Vec::new()))
+                let (filled, faults) = tolerant_fill(start, dst, |off, dst| {
+                    reader.read_at(off, dst).map_err(anyhow::Error::from)
+                });
+                Ok((filled, faults))
             }
             Self::Vdi { reader, .. } => {
-                let filled = reader
-                    .read_at(start, dst)
-                    .with_context(|| format!("failed to read VDI at offset {start}"))?;
-                Ok((filled, Vec::new()))
+                let (filled, faults) = tolerant_fill(start, dst, |off, dst| {
+                    reader.read_at(off, dst).map_err(anyhow::Error::from)
+                });
+                Ok((filled, faults))
             }
             Self::VhdFamily { reader, .. } => {
                 let (filled, faults) = tolerant_fill(start, dst, |off, dst| {

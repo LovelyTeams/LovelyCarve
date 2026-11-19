@@ -128,17 +128,30 @@ fn vmdk_missing_extent_is_an_open_error_and_truncation_is_a_read_fault() {
 }
 
 #[test]
-fn vmdk_multi_extent_delta_is_rejected_explicitly() {
+fn vmdk_multi_extent_delta_reads_child_and_inherits_parent() {
     let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("delta.vmdk");
+    let base = directory.path().join("base.vmdk");
+    std::fs::write(&base, sparse_layer(1, None, [8, 16])).unwrap();
+
+    // Multi-extent sparse child overriding grain 0 (0x41 -> 0x42 at sector 16)
+    // and leaving grain 1 sparse (GTE = 0 -> inherits 0x42 from base).
+    let mut part = sparse_layer(2, None, [16, 0]);
+    part[4096..8192].fill(0x55);
+    part[8192..12288].fill(0x41);
+    std::fs::write(directory.path().join("part.vmdk"), part).unwrap();
+
+    let delta = directory.path().join("delta.vmdk");
     std::fs::write(
-        directory.path().join("part.vmdk"),
-        sparse_layer(2, None, [0, 0]),
+        &delta,
+        "# Disk DescriptorFile\ncreateType=\"twoGbMaxExtentSparse\"\nCID=00000002\nparentCID=00000001\nparentFileNameHint=\"base.vmdk\"\nRW 16 SPARSE \"part.vmdk\"\n",
     )
     .unwrap();
-    std::fs::write(&path, "# Disk DescriptorFile\ncreateType=\"twoGbMaxExtentSparse\"\nCID=00000002\nparentCID=00000001\nparentFileNameHint=\"base.vmdk\"\nRW 16 SPARSE \"part.vmdk\"\n").unwrap();
-    assert!(VmdkHandle::open(&path)
-        .unwrap_err()
-        .to_string()
-        .contains("multi-extent delta"));
+
+    let mut reader = VmdkHandle::open(&delta).expect("multi-extent sparse delta opens");
+    let mut grain0 = vec![0u8; 4096];
+    let mut grain1 = vec![0u8; 4096];
+    reader.read_at(0, &mut grain0).unwrap();
+    reader.read_at(4096, &mut grain1).unwrap();
+    assert_eq!(grain0, vec![0x41u8; 4096]);
+    assert_eq!(grain1, vec![0x42u8; 4096]);
 }

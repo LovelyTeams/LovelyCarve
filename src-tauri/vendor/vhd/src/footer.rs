@@ -16,7 +16,7 @@ pub const CURRENT_VERSION: u32 = 0x0001_0000;
 pub enum DiskType {
     Fixed = 2,
     Dynamic = 3,
-    // Differencing = 4 — rejected at open time
+    Differencing = 4,
 }
 
 /// Parsed VHD footer fields relevant to container reading.
@@ -61,7 +61,7 @@ impl VhdFooter {
         let disk_type = match disk_type_raw {
             2 => DiskType::Fixed,
             3 => DiskType::Dynamic,
-            4 => return Err(VhdError::DifferencingNotSupported),
+            4 => DiskType::Differencing,
             other => return Err(VhdError::UnknownDiskType(other)),
         };
 
@@ -162,13 +162,13 @@ mod tests {
     }
 
     #[test]
-    fn differencing_rejected() {
+    fn differencing_parsed_cleanly() {
         let mut f = base();
         f[60..64].copy_from_slice(&4u32.to_be_bytes());
-        assert!(matches!(
-            VhdFooter::parse(&f),
-            Err(VhdError::DifferencingNotSupported)
-        ));
+        let checksum_bytes = checksum(&f).to_be_bytes();
+        f[64..68].copy_from_slice(&checksum_bytes);
+        let parsed = VhdFooter::parse(&f).expect("differencing footer parses");
+        assert_eq!(parsed.disk_type, DiskType::Differencing);
     }
 
     #[test]

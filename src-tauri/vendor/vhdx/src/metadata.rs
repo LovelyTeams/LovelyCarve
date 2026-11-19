@@ -37,12 +37,14 @@ pub const GUID_PARENT_LOCATOR: [u8; 16] = [
 pub struct VhdxMetadata {
     /// Data block size in bytes (default 32 MB).
     pub block_size: u32,
-    /// True if this is a differencing disk (not supported for forensics).
+    /// True if this is a differencing disk.
     pub has_parent: bool,
     /// Total virtual disk size in bytes.
     pub virtual_disk_size: u64,
     /// Logical sector size (typically 512).
     pub logical_sector_size: u32,
+    /// Key-value entries parsed from `GUID_PARENT_LOCATOR`, e.g. `("relative_path", "..\\base.vhdx")`.
+    pub parent_locators: Vec<(String, String)>,
 }
 
 impl VhdxMetadata {
@@ -101,6 +103,7 @@ pub fn parse_metadata(data: &[u8], region_offset: u64, region_len: u32) -> Resul
     let mut has_parent = false;
     let mut virtual_disk_size: Option<u64> = None;
     let mut logical_sector_size: Option<u32> = None;
+    let mut parent_locators: Vec<(String, String)> = Vec::new();
 
     for i in 0..entry_count {
         let base = 32 + i * 32;
@@ -129,6 +132,8 @@ pub fn parse_metadata(data: &[u8], region_offset: u64, region_len: u32) -> Resul
             virtual_disk_size = Some(le_u64(item_data, 0));
         } else if guid == GUID_LOGICAL_SECTOR_SIZE && item_data.len() >= 4 {
             logical_sector_size = Some(le_u32(item_data, 0));
+        } else if guid == GUID_PARENT_LOCATOR && item_data.len() >= 20 {
+            parse_parent_locator_entries(item_data, &mut parent_locators);
         }
     }
 
@@ -138,5 +143,40 @@ pub fn parse_metadata(data: &[u8], region_offset: u64, region_len: u32) -> Resul
         virtual_disk_size: virtual_disk_size
             .ok_or(VhdxError::MetadataMissing("VirtualDiskSize"))?,
         logical_sector_size: logical_sector_size.unwrap_or(512),
+        parent_locators,
     })
+}
+
+fn parse_parent_locator_entries(item_data: &[u8], out: &mut Vec<(String, String)>) {
+    let kv_count = le_u16(item_data, 18) as usize;
+    for idx in 0..kv_count.min(64) {
+        let off = 20 + idx * 12;
+        if off + 12 > item_data.len() {
+            break;
+        }
+        let key_off = le_u32(item_data, off) as usize;
+        let val_off = le_u32(item_data, off + 4) as usize;
+        let key_len = le_u16(item_data, off + 8) as usize;
+        let val_len = le_u16(item_data, off + 10) as usize;
+        let Some(key_bytes) = item_data.get(key_off..key_off.saturating_add(key_len)) else {
+            continue;
+        };
+        let Some(val_bytes) = item_data.get(val_off..val_off.saturating_add(val_len)) else {
+            continue;
+        };
+        let key = decode_utf16le(key_bytes);
+        let val = decode_utf16le(val_bytes);
+        if !key.is_empty() && !val.is_empty() {
+            out.push((key, val));
+        }
+    }
+}
+
+fn decode_utf16le(raw: &[u8]) -> String {
+    let words: Vec<u16> = raw
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .take_while(|&w| w != 0)
+        .collect();
+    String::from_utf16_lossy(&words).trim().to_string()
 }

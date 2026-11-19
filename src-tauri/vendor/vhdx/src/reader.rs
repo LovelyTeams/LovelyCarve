@@ -35,24 +35,24 @@ pub struct VhdxReader {
 /// Minimum container size: covers magic, both headers, and both region tables.
 const MIN_CONTAINER_SIZE: u64 = 0x0025_0000;
 
+const MAX_VHDX_CHAIN_DEPTH: usize = 32;
+
 impl VhdxReader {
-    /// Open a VHDX container from a path with **bounded** memory.
-    ///
-    /// Reads only the small fixed structures (headers, region table, metadata,
-    /// BAT, and — for a dirty image — the log region) at construction; the
-    /// payload blocks are read on demand. A 2 TB image no longer means a 2 TB
-    /// heap.
+    /// Open a VHDX container from a path with **bounded** memory, automatically
+    /// resolving any differencing parent chain from `GUID_PARENT_LOCATOR`.
     pub fn open(path: &Path) -> Result<Self> {
+        Self::open_chain(path, 0)
+    }
+
+    fn open_chain(path: &Path, depth: usize) -> Result<Self> {
+        if depth >= MAX_VHDX_CHAIN_DEPTH {
+            return Err(VhdxError::DifferencingNotSupported);
+        }
         let file = File::open(path)?;
-        Self::from_backing(Backing::File(file), None)
+        Self::parse_backing_internal(Backing::File(file), None, path.parent(), depth)
     }
 
     /// Construct a reader over an arbitrary positioned [`Backing`].
-    ///
-    /// The escape hatch behind [`open`](Self::open) (and the issen zip bridge):
-    /// a [`Backing::Sub`] reads a STORED zip entry in place, a [`Backing::Mem`]
-    /// reads inflated/owned bytes. Parsing and reads are identical across all
-    /// three backings.
     pub fn from_backing(backing: Backing, parent: Option<Box<VhdxReader>>) -> Result<Self> {
         Self::parse_backing(backing, parent)
     }
@@ -124,6 +124,15 @@ impl VhdxReader {
     /// Bounded parse: read the small fixed structures via positioned reads, then
     /// build the log overlay (empty for a clean image).
     fn parse_backing(backing: Backing, parent: Option<Box<VhdxReader>>) -> Result<Self> {
+        Self::parse_backing_internal(backing, parent, None, 0)
+    }
+
+    fn parse_backing_internal(
+        backing: Backing,
+        parent: Option<Box<VhdxReader>>,
+        base_dir: Option<&Path>,
+        depth: usize,
+    ) -> Result<Self> {
         let mut magic = [0u8; 8];
         let n = backing.read_at(&mut magic, 0)?;
         if n < 8 || &magic != FILE_MAGIC {
@@ -139,7 +148,7 @@ impl VhdxReader {
             let header = parse_active_header(&head)?;
             crate::log::build_overlay(&backing, &header)?
         };
-        Self::assemble(backing, overlay, parent)
+        Self::assemble_internal(backing, overlay, parent, base_dir, depth)
     }
 
     /// Shared tail: parse region table → metadata → BAT from small positioned
@@ -149,6 +158,16 @@ impl VhdxReader {
         backing: Backing,
         overlay: LogOverlay,
         parent: Option<Box<VhdxReader>>,
+    ) -> Result<Self> {
+        Self::assemble_internal(backing, overlay, parent, None, 0)
+    }
+
+    fn assemble_internal(
+        backing: Backing,
+        overlay: LogOverlay,
+        mut parent: Option<Box<VhdxReader>>,
+        base_dir: Option<&Path>,
+        depth: usize,
     ) -> Result<Self> {
         // Region tables sit at fixed offsets within the first 1 MB; read that
         // prefix once (small, bounded) and parse the region table from it,
@@ -171,7 +190,13 @@ impl VhdxReader {
         let meta = parse_metadata(&meta_region, 0, regions.metadata.length)?;
         meta.validate()?;
         if meta.has_parent && parent.is_none() {
-            return Err(VhdxError::DifferencingNotSupported);
+            if let Some(dir) = base_dir {
+                let parent_path = resolve_vhdx_parent_path(dir, &meta.parent_locators)
+                    .ok_or(VhdxError::DifferencingNotSupported)?;
+                parent = Some(Box::new(Self::open_chain(&parent_path, depth + 1)?));
+            } else {
+                return Err(VhdxError::DifferencingNotSupported);
+            }
         }
 
         let bat_region = read_region(
@@ -350,4 +375,37 @@ impl Seek for VhdxReader {
         self.pos = new_pos as u64;
         Ok(self.pos)
     }
+}
+
+fn resolve_vhdx_parent_path(dir: &Path, locators: &[(String, String)]) -> Option<std::path::PathBuf> {
+    let mut candidates = Vec::new();
+    for preferred_key in ["relative_path", "volume_path", "absolute_win32_path"] {
+        for (k, v) in locators {
+            if k.eq_ignore_ascii_case(preferred_key) {
+                candidates.push(v.as_str());
+            }
+        }
+    }
+    for (k, v) in locators {
+        if !candidates.contains(&v.as_str()) && k.contains("path") {
+            candidates.push(v.as_str());
+        }
+    }
+    for raw in candidates {
+        let normalized = raw.replace('\\', "/");
+        let p = Path::new(&normalized);
+        if !p.is_absolute() {
+            let joined = dir.join(p);
+            if joined.is_file() {
+                return Some(joined);
+            }
+        }
+        if let Some(fname) = p.file_name() {
+            let same_dir = dir.join(fname);
+            if same_dir.is_file() {
+                return Some(same_dir);
+            }
+        }
+    }
+    None
 }

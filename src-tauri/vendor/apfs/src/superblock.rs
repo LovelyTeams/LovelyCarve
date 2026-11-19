@@ -314,7 +314,8 @@ pub fn find_latest_nxsb<R: Read + Seek>(
     let mut best: Option<NxSuperblock> = None;
     let mut best_xid: u64 = 0;
 
-    for i in 0..count as u64 {
+    // Bounded to prevent multi-second hangs if a malformed sparse image has a huge xp_desc_blocks.
+    for i in 0..(count as u64).min(4096) {
         let block_num = base + i;
         let offset = block_num * block_size as u64;
 

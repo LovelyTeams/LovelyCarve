@@ -161,6 +161,7 @@ mod tests {
             has_parent: true,
             virtual_disk_size: 20 * BLOCK,
             logical_sector_size: SECTOR as u32,
+            parent_locators: Vec::new(),
         }
     }
 

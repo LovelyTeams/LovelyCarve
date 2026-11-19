@@ -64,9 +64,15 @@ fn vhd_family_signature_detection_without_extension_and_corruption_rejection() {
 }
 
 #[test]
-fn vhdx_missing_parent_is_an_error() {
-    let error = VhdHandle::open_vhdx(&fixtures("vhdx").join("fat-differential.vhdx")).unwrap_err();
-    assert!(format!("{error:#}").contains("parent"));
+fn vhdx_differential_disk_resolves_its_parent_chain() {
+    // The differencing VHDX carries a GUID_PARENT_LOCATOR pointing at
+    // fat-parent.vhdx in the same directory; the opener resolves and merges
+    // the chain automatically instead of refusing the disk.
+    let differential = VhdHandle::open_vhdx(&fixtures("vhdx").join("fat-differential.vhdx"))
+        .expect("parent chain resolves from the locator");
+    let parent = VhdHandle::open_vhdx(&fixtures("vhdx").join("fat-parent.vhdx"))
+        .expect("the locator target opens standalone");
+    assert_eq!(differential.media_size(), parent.media_size());
 }
 
 #[test]
