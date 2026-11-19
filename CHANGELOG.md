@@ -57,6 +57,7 @@
 - CLI 案件后台进程：停止读取的客户端不再占住后台进程的工作线程。进度在有界队列中等待，客户端读取跟不上时丢弃较新的进度事件，结果照常送达。
 - CLI `plugin ls` 的文本输出列出插件包（此前表格为空）。
 - 插件包中的条目若是 Windows 设备名（如 `locales/CON.toml`）、带保留字符或以点、空格结尾，或同一路径出现两次，安装时拒绝，不再写出这样的文件。
+- 插件包的 `plugin.toml`、`schema.json` 与 `locales/*.toml` 以 UTF-8 BOM 开头时（Windows 记事本与 PowerShell 常这样保存）照常加载，不再报 TOML / JSON 解析错误。
 - VeraCrypt：设置了 PIM 的 RIPEMD-160 卷按 `15000 + 1000·PIM` 次迭代派生（此前误用系统加密公式），TrueCrypt 卷按 TrueCrypt 自己的迭代次数派生，二者此前都无法打开；就地加密完成的卷、4096 字节扇区的卷和卷头版本 3–4 的 TrueCrypt 卷不再被拒绝。
 
 ## [1.4.0] - 2026-11-23

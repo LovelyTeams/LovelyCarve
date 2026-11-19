@@ -31,6 +31,8 @@ pub const README_FILE: &str = "README.md";
 
 /// Largest `schema.json`, locale file and README read.
 const MAX_METADATA_FILE: u64 = 4 * 1024 * 1024;
+/// Windows editors and PowerShell often start UTF-8 files with it.
+const UTF8_BOM: &[u8] = b"\xef\xbb\xbf";
 const MAX_LOCALE_KEY: usize = 256;
 const MAX_LOCALE_TEXT: usize = 4096;
 
@@ -213,7 +215,7 @@ fn read_schema(directory: &Path) -> Result<Option<Hello>> {
     let Some(bytes) = read_bounded(&path)? else {
         return Ok(None);
     };
-    serde_json::from_slice(&bytes)
+    serde_json::from_slice(bytes.trim_prefix(UTF8_BOM))
         .map(Some)
         .map_err(|error| PluginError::Manifest(format!("{}: {error}", path.display())))
 }
@@ -243,9 +245,9 @@ fn read_locales(directory: &Path) -> Result<Locales> {
         let Some(bytes) = read_bounded(&path)? else {
             continue;
         };
-        let text = String::from_utf8(bytes)
+        let text = std::str::from_utf8(bytes.trim_prefix(UTF8_BOM))
             .map_err(|_| PluginError::Manifest(format!("{} is not UTF-8", path.display())))?;
-        let table: toml::Table = toml::from_str(&text)
+        let table: toml::Table = toml::from_str(text)
             .map_err(|error| PluginError::Manifest(format!("{}: {error}", path.display())))?;
         let mut catalog = BTreeMap::new();
         for (key, value) in table {
@@ -371,6 +373,35 @@ scope = "evidence"
         let mut forged = described.clone();
         forged.schema_hash = "fnv1a64:0000000000000000".to_owned();
         assert!(definition.verify_hello(&forged).is_err());
+    }
+
+    #[test]
+    fn byte_order_marks_in_manifest_schema_and_locales_are_ignored() {
+        let described = hello(vec![user_schema("用户")]);
+        let plain = tempfile::tempdir().expect("package");
+        write_package(plain.path(), Some(&described));
+        let marked = tempfile::tempdir().expect("package");
+        write_package(marked.path(), Some(&described));
+        for file in [
+            marked.path().join(MANIFEST_FILE),
+            marked.path().join(SCHEMA_FILE),
+            marked.path().join(LOCALES_DIRECTORY).join("en.toml"),
+        ] {
+            let mut bytes = UTF8_BOM.to_vec();
+            bytes.extend(fs::read(&file).expect("read"));
+            fs::write(&file, bytes).expect("write");
+        }
+        let expected = PluginDefinition::load(plain.path(), true).expect("package");
+        let definition = PluginDefinition::load(marked.path(), true).expect("package with BOMs");
+        assert_eq!(
+            (
+                &definition.manifest,
+                &definition.described,
+                &definition.locales
+            ),
+            (&expected.manifest, &expected.described, &expected.locales)
+        );
+        definition.verify_hello(&described).expect("same library");
     }
 
     #[test]

@@ -251,6 +251,8 @@ impl PluginManifest {
     }
 
     pub fn parse(text: &str) -> Result<Self> {
+        // Windows editors and PowerShell often start UTF-8 files with a BOM.
+        let text = text.trim_prefix('\u{feff}');
         let manifest: Self = toml::from_str(text).map_err(|error| {
             let legacy = toml::from_str::<toml::Table>(text).is_ok_and(|table| {
                 ["protocol_min", "capabilities", "task", "process"]

@@ -193,3 +193,12 @@ fn sizes_parse_binary_and_decimal_units() {
     assert_eq!(parse_size("1073741824"), Some(1 << 30));
     assert_eq!(parse_size("lots"), None);
 }
+
+#[test]
+fn a_leading_byte_order_mark_is_ignored() {
+    let text = "id = \"org.test.bom\"\nname = \"BOM\"\nversion = \"1.0.0\"\nprotocol = 2\nlibrary = \"test\"\n";
+    assert_eq!(
+        PluginManifest::parse(&format!("\u{feff}{text}")).expect("manifest with a BOM"),
+        PluginManifest::parse(text).expect("manifest")
+    );
+}
