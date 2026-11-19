@@ -37,7 +37,7 @@ pub const GUID_PARENT_LOCATOR: [u8; 16] = [
 pub struct VhdxMetadata {
     /// Data block size in bytes (default 32 MB).
     pub block_size: u32,
-    /// True if this is a differencing disk (not supported for forensics).
+    /// True if this is a differencing disk.
     pub has_parent: bool,
     /// Total virtual disk size in bytes.
     pub virtual_disk_size: u64,
@@ -86,38 +86,48 @@ impl VhdxMetadata {
 }
 
 pub fn parse_metadata(data: &[u8], region_offset: u64, region_len: u32) -> Result<VhdxMetadata> {
-    let start = region_offset as usize;
-    let end = start + region_len as usize;
-    if data.len() < end || end < start + 8 {
-        return Err(VhdxError::MetadataMissing("region out of bounds"));
-    }
-    let region = &data[start..end];
-    if &region[0..8] != METADATA_TABLE_SIGNATURE {
+    parse_metadata_items(data, region_offset, region_len).map(|(metadata, _)| metadata)
+}
+
+pub(crate) fn parse_metadata_items(
+    data: &[u8],
+    region_offset: u64,
+    region_len: u32,
+) -> Result<(VhdxMetadata, Option<&[u8]>)> {
+    let invalid_region =
+        || VhdxError::InvalidMetadata("metadata region or entry table out of bounds");
+    let start = usize::try_from(region_offset).map_err(|_| invalid_region())?;
+    let region = data
+        .get(start..)
+        .and_then(|data| data.get(..region_len as usize))
+        .filter(|region| region.len() >= 32)
+        .ok_or_else(invalid_region)?;
+    if &region[..8] != METADATA_TABLE_SIGNATURE {
         return Err(VhdxError::MetadataMissing("bad metadata signature"));
     }
     let entry_count = le_u16(region, 10) as usize;
+    const METADATA_TABLE_LEN: usize = 64 * 1024;
+    if 32 + entry_count * 32 > region.len().min(METADATA_TABLE_LEN) {
+        return Err(invalid_region());
+    }
 
     let mut block_size: Option<u32> = None;
     let mut has_parent = false;
     let mut virtual_disk_size: Option<u64> = None;
     let mut logical_sector_size: Option<u32> = None;
+    let mut parent_locator = None;
 
     for i in 0..entry_count {
         let base = 32 + i * 32;
-        if base + 32 > region.len() {
-            break;
-        }
         let mut guid = [0u8; 16];
         guid.copy_from_slice(&region[base..base + 16]);
         let item_offset = le_u32(region, base + 16) as usize;
         let item_len = le_u32(region, base + 20) as usize;
 
-        let data_start = start + item_offset;
-        let data_end = data_start + item_len;
-        if data.len() < data_end {
-            continue;
-        }
-        let item_data = &data[data_start..data_end];
+        let item_data = region
+            .get(item_offset..)
+            .and_then(|data| data.get(..item_len))
+            .ok_or(VhdxError::InvalidMetadata("metadata item out of bounds"))?;
 
         if guid == GUID_FILE_PARAMETERS && item_data.len() >= 8 {
             block_size = Some(le_u32(item_data, 0));
@@ -129,14 +139,23 @@ pub fn parse_metadata(data: &[u8], region_offset: u64, region_len: u32) -> Resul
             virtual_disk_size = Some(le_u64(item_data, 0));
         } else if guid == GUID_LOGICAL_SECTOR_SIZE && item_data.len() >= 4 {
             logical_sector_size = Some(le_u32(item_data, 0));
+        } else if guid == GUID_PARENT_LOCATOR {
+            if item_offset < METADATA_TABLE_LEN || parent_locator.replace(item_data).is_some() {
+                return Err(VhdxError::InvalidMetadata(
+                    "invalid VHDX parent locator entry",
+                ));
+            }
         }
     }
 
-    Ok(VhdxMetadata {
-        block_size: block_size.ok_or(VhdxError::MetadataMissing("BlockSize"))?,
-        has_parent,
-        virtual_disk_size: virtual_disk_size
-            .ok_or(VhdxError::MetadataMissing("VirtualDiskSize"))?,
-        logical_sector_size: logical_sector_size.unwrap_or(512),
-    })
+    Ok((
+        VhdxMetadata {
+            block_size: block_size.ok_or(VhdxError::MetadataMissing("BlockSize"))?,
+            has_parent,
+            virtual_disk_size: virtual_disk_size
+                .ok_or(VhdxError::MetadataMissing("VirtualDiskSize"))?,
+            logical_sector_size: logical_sector_size.unwrap_or(512),
+        },
+        parent_locator,
+    ))
 }

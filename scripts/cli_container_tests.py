@@ -196,6 +196,20 @@ def test_containers(cli, root):
             cli.results([add(fixtures / sample["name"]), export_evidence("export", ALIAS, raw_export)])
             assert raw_export.stat().st_size == sample["size"]
             assert hashlib.sha256(raw_export.read_bytes()).hexdigest() == sample["sha256"], sample
+    fixtures = VENDOR / "vhdx/tests/data"
+    child_raw = root / "fat-differential.vhdx.raw"
+    cli.results([
+        add(fixtures / "fat-differential.vhdx"),
+        export_evidence("export", ALIAS, child_raw, "--strict"),
+    ])
+    parent = (root / "fat-parent.vhdx.raw").read_bytes()
+    child = child_raw.read_bytes()
+    assert len(child) == len(parent)
+    start, changed, end = (sector * 512 for sector in (133, 134, 136))
+    assert child[start:changed] == parent[start:changed]
+    assert child[changed:changed + 512] != parent[changed:changed + 512]
+    assert child[changed + 6] == 0xFF
+    assert child[changed + 512:end] == parent[changed + 512:end]
     print("CLI container tests passed: PHDI, QCOW credentials, multi-member GZIP, split and forced RAW, EWF, VMDK, VHD and VHDX")
 
 

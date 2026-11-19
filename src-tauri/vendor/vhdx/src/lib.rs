@@ -19,6 +19,7 @@ mod error;
 pub mod header;
 mod log;
 pub mod metadata;
+mod parent_locator;
 mod reader;
 pub mod region;
 #[cfg(feature = "vfs")]

@@ -34,6 +34,12 @@ pub enum VhdxError {
     Io(#[from] std::io::Error),
     #[error("VHDX has a parent locator (differencing disk not supported)")]
     DifferencingNotSupported,
+    #[error("VHDX parent DataWriteGuid mismatch")]
+    ParentIdMismatch,
+    #[error("VHDX parent capacity or logical sector size mismatch")]
+    ParentGeometryMismatch,
+    #[error("could not open the VHDX parent")]
+    ParentResolution(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
 
 pub type Result<T> = std::result::Result<T, VhdxError>;

@@ -15,6 +15,7 @@ pub const HEADER_SIZE: usize = 4096;
 #[derive(Debug, Clone)]
 pub struct VhdxHeader {
     pub sequence_number: u64,
+    pub data_write_guid: [u8; 16],
     pub log_guid: [u8; 16],
     pub log_offset: u64,
     pub log_length: u32,
@@ -59,6 +60,7 @@ fn parse_one_header(data: &[u8], offset: usize) -> Result<VhdxHeader> {
     let log_offset = le_u64(slice, 72);
     Ok(VhdxHeader {
         sequence_number,
+        data_write_guid: le_arr16(slice, 32),
         log_guid,
         log_offset,
         log_length,

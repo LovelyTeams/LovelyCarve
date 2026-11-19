@@ -7,8 +7,9 @@ use crate::bat::{Bat, ReadTarget};
 use crate::error::{Result, VhdxError};
 use crate::header::{parse_active_header, REGION_TABLE1_OFFSET, REGION_TABLE2_OFFSET};
 use crate::log::LogOverlay;
-use crate::metadata::{parse_metadata, VhdxMetadata};
-use crate::region::parse_region_table;
+use crate::metadata::{parse_metadata_items, VhdxMetadata};
+use crate::parent_locator::ParentLocator;
+use crate::region::{parse_region_table, REGION_TABLE_CRC_COVERAGE};
 use crate::FILE_MAGIC;
 
 /// Read-only VHDX container reader.
@@ -28,12 +29,13 @@ pub struct VhdxReader {
     overlay: LogOverlay,
     bat: Bat,
     meta: VhdxMetadata,
+    data_write_guid: [u8; 16],
     pos: u64,
     parent: Option<Box<VhdxReader>>,
 }
 
-/// Minimum container size: covers magic, both headers, and both region tables.
 const MIN_CONTAINER_SIZE: u64 = 0x0025_0000;
+const HEADER_PREFIX_LEN: usize = REGION_TABLE2_OFFSET as usize + REGION_TABLE_CRC_COVERAGE;
 
 impl VhdxReader {
     /// Open a VHDX container from a path with **bounded** memory.
@@ -54,7 +56,22 @@ impl VhdxReader {
     /// reads inflated/owned bytes. Parsing and reads are identical across all
     /// three backings.
     pub fn from_backing(backing: Backing, parent: Option<Box<VhdxReader>>) -> Result<Self> {
-        Self::parse_backing(backing, parent)
+        Self::parse_backing(backing, |_| {
+            parent.ok_or(VhdxError::DifferencingNotSupported)
+        })
+    }
+
+    /// Resolve the parent of a differencing image using its relative locator.
+    ///
+    /// The caller chooses which files may be opened. The reader validates the
+    /// returned parent's identity and geometry before exposing any data.
+    pub fn from_backing_resolving_parent(
+        backing: Backing,
+        resolve_parent: impl FnOnce(Option<&str>) -> Result<Self>,
+    ) -> Result<Self> {
+        Self::parse_backing(backing, |locator| {
+            resolve_parent(locator.relative_path.as_deref()).map(Box::new)
+        })
     }
 
     /// Open a VHDX container from owned bytes (legacy in-RAM path).
@@ -76,7 +93,7 @@ impl VhdxReader {
     /// Open a differencing (child) disk over an arbitrary backing with its
     /// parent chain.
     pub fn from_backing_with_parent(backing: Backing, parent: VhdxReader) -> Result<Self> {
-        Self::parse_backing(backing, Some(Box::new(parent)))
+        Self::from_backing(backing, Some(Box::new(parent)))
     }
 
     /// Open a VHDX container from any boxed `Read + Seek + Send` reader.
@@ -114,16 +131,26 @@ impl VhdxReader {
         if (data.len() as u64) < MIN_CONTAINER_SIZE {
             return Err(VhdxError::ContainerTooSmall(MIN_CONTAINER_SIZE));
         }
-        crate::log::apply(&mut data)?;
+        let header = crate::log::apply(&mut data)?;
         // The log is already folded into `data`, so the overlay is empty and
         // the backing serves the committed bytes directly.
         let backing = Backing::from_bytes(data);
-        Self::assemble(backing, LogOverlay::default(), parent)
+        let head = backing.read_exact_at(0, HEADER_PREFIX_LEN)?;
+        Self::assemble(
+            backing,
+            LogOverlay::default(),
+            head,
+            header.data_write_guid,
+            |_| parent.ok_or(VhdxError::DifferencingNotSupported),
+        )
     }
 
     /// Bounded parse: read the small fixed structures via positioned reads, then
     /// build the log overlay (empty for a clean image).
-    fn parse_backing(backing: Backing, parent: Option<Box<VhdxReader>>) -> Result<Self> {
+    fn parse_backing(
+        backing: Backing,
+        resolve_parent: impl FnOnce(&ParentLocator) -> Result<Box<Self>>,
+    ) -> Result<Self> {
         let mut magic = [0u8; 8];
         let n = backing.read_at(&mut magic, 0)?;
         if n < 8 || &magic != FILE_MAGIC {
@@ -132,14 +159,16 @@ impl VhdxReader {
         if backing.len() < MIN_CONTAINER_SIZE {
             return Err(VhdxError::ContainerTooSmall(MIN_CONTAINER_SIZE));
         }
-        let overlay = {
-            // The header lives in the first 1 MB; read that slice to select the
-            // active header and (if dirty) drive the log overlay.
-            let head = backing.read_exact_at(0, MIN_CONTAINER_SIZE as usize)?;
-            let header = parse_active_header(&head)?;
-            crate::log::build_overlay(&backing, &header)?
-        };
-        Self::assemble(backing, overlay, parent)
+        let head = backing.read_exact_at(0, HEADER_PREFIX_LEN)?;
+        let header = parse_active_header(&head)?;
+        let overlay = crate::log::build_overlay(&backing, &header)?;
+        Self::assemble(
+            backing,
+            overlay,
+            head,
+            header.data_write_guid,
+            resolve_parent,
+        )
     }
 
     /// Shared tail: parse region table → metadata → BAT from small positioned
@@ -148,17 +177,19 @@ impl VhdxReader {
     fn assemble(
         backing: Backing,
         overlay: LogOverlay,
-        parent: Option<Box<VhdxReader>>,
+        mut head: Vec<u8>,
+        data_write_guid: [u8; 16],
+        resolve_parent: impl FnOnce(&ParentLocator) -> Result<Box<Self>>,
     ) -> Result<Self> {
         // Region tables sit at fixed offsets within the first 1 MB; read that
         // prefix once (small, bounded) and parse the region table from it,
         // applying the log overlay so a log-patched region table is honoured.
-        let mut head = backing.read_exact_at(0, MIN_CONTAINER_SIZE as usize)?;
         overlay.patch(&mut head, 0);
 
         let container_len = backing.len();
         let regions = parse_region_table(&head, REGION_TABLE1_OFFSET as usize, container_len)
             .or_else(|_| parse_region_table(&head, REGION_TABLE2_OFFSET as usize, container_len))?;
+        drop(head);
 
         // Metadata + BAT can live past the first 1 MB; read each region by its
         // own offset/length and patch with the overlay.
@@ -168,11 +199,17 @@ impl VhdxReader {
             regions.metadata.file_offset,
             regions.metadata.length,
         )?;
-        let meta = parse_metadata(&meta_region, 0, regions.metadata.length)?;
+        let (meta, parent_locator) =
+            parse_metadata_items(&meta_region, 0, regions.metadata.length)?;
         meta.validate()?;
-        if meta.has_parent && parent.is_none() {
-            return Err(VhdxError::DifferencingNotSupported);
-        }
+        let locator = if meta.has_parent {
+            Some(ParentLocator::parse(
+                parent_locator.ok_or(VhdxError::MetadataMissing("ParentLocator"))?,
+            )?)
+        } else {
+            None
+        };
+        drop(meta_region);
 
         let bat_region = read_region(
             &backing,
@@ -181,12 +218,28 @@ impl VhdxReader {
             regions.bat.length,
         )?;
         let bat = Bat::parse(&bat_region, 0, regions.bat.length, meta.clone())?;
+        drop(bat_region);
+        let parent = if let Some(locator) = locator {
+            let parent = resolve_parent(&locator)?;
+            if locator.data_write_guid != parent.data_write_guid {
+                return Err(VhdxError::ParentIdMismatch);
+            }
+            if meta.virtual_disk_size != parent.virtual_disk_size()
+                || meta.logical_sector_size != parent.logical_sector_size()
+            {
+                return Err(VhdxError::ParentGeometryMismatch);
+            }
+            Some(parent)
+        } else {
+            None
+        };
 
         Ok(Self {
             backing,
             overlay,
             bat,
             meta,
+            data_write_guid,
             pos: 0,
             parent,
         })

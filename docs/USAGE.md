@@ -82,6 +82,8 @@ ZIP 或文件夹检材中的小米 `.bak` 备份会自动显示为同名目录�
 
 不完整 RAW 可以通过 CLI `evidence add <镜像路径> --raw-read-mode force` 或 IPC `rawReadMode: "force"` 显式强行读取连续分片前缀；桌面文件选择器保持默认严格检查。强行读取的补零字节保留坏区审计，模式只在当前进程有效，完整性边界见 [SMRAW](formats/SMRAW.md#不完整-raw-的强行读取)。
 
+添加 VHDX 差分盘时选择子盘，并保留父盘的相对目录结构。父盘缺失或身份不符时无法打开检材，目录约束见 [VHD / VHDX](formats/VHD.md)。
+
 QCOW 支持 v1/v2/v3、DEFLATE 压缩和 RAW/QCOW 差分父链；相对父路径按子镜像所在目录解析，缺少父文件会报错。legacy AES 镜像可通过 CLI / IPC 提供密码或原始密钥，桌面文件选择器尚无专用密码弹窗。完整能力和边界见 [QCOW](formats/QCOW.md)。
 
 Parallels 镜像请选择 `DiskDescriptor.xml` 或 `.hdd` 目录，保留数据文件在原目录内；支持 v2 固定、稀疏、分段及差分父链。独立 `.hds` 仅适用于没有父链的基础盘；有描述符时会提示选择描述符。扩展 HDS / v1 / Parallels 加密明确报错，范围与验证见 [PHDI](formats/PHDI.md)。

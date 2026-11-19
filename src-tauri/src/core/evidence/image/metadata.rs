@@ -141,6 +141,11 @@ impl DiskImage {
 
     pub(super) fn source_file_stability_snapshots_at_open(&self) -> Vec<SourceFileSnapshot> {
         match &self.source {
+            ImageSource::VhdFamily {
+                reader,
+                format: ImageFormat::Vhdx,
+                ..
+            } => reader.lock().file_snapshots().to_vec(),
             ImageSource::Raw { .. }
             | ImageSource::Qcow2 { .. }
             | ImageSource::Vdi { .. }

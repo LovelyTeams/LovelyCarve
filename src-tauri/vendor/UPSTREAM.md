@@ -45,7 +45,7 @@
 | `vdi` | `0.2.0` | [f1f88806c260](https://github.com/cohaereo/vdi-rs/commit/f1f88806c26042de342d1fbcb7f286590686e2fc) | 发布版本已最新；保留稀疏块、边界检查和 positioned I/O 重写。 |
 | `veracrypt` | `0.2.4` | [e3883a5b347f](https://github.com/SecurityRonin/veracrypt-forensic/commit/e3883a5b347f50b51de70ca08655b2fd4b0885b2) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
 | `vhd` | `0.1.4` | [2835523fe39c](https://github.com/SecurityRonin/vhd-forensic/commit/2835523fe39c16740133dc8d51932cad46bcc4b6) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
-| `vhdx` | `0.4.1` | [b03f1f5c1be9](https://github.com/SecurityRonin/vhdx-forensic/commit/b03f1f5c1be960d79af73f895017169171c00996) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
+| `vhdx` | `0.4.1` | [b03f1f5c1be9](https://github.com/SecurityRonin/vhdx-forensic/commit/b03f1f5c1be960d79af73f895017169171c00996) | 增加父盘定位器解析及父盘身份与几何校验，见 [VHD / VHDX](../../docs/formats/VHD.md)。 |
 | `vmdk` | `0.8.4` | [8a9831125c6d](https://github.com/SecurityRonin/vmdk-forensic/commit/8a9831125c6db5cff9a24414481037487a92d410) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
 | `vsc` | `0.2.2` | [0af70bed6910](https://github.com/SecurityRonin/vsc-forensic/commit/0af70bed6910fef542224ecd94928b4bc0ae920b) | 2026-10-13 对照 libvshadow 全部 48 个 API；补块/区间枚举、seek/read、严格 catalog/存储头与 NTFS 尺寸校验；真实双副本验证及限制见 [VSS](../../docs/formats/VSS.md)。 |
 | `xfs-fuse` | `0.6.0` | [2ea4e250db00](https://github.com/KhaledEmaraDev/xfuse/commit/2ea4e250db00d3f0f845499c8a83f85b9a77b7f8) | 合入上游 v1 inode / real-time 标记；本地 XFS 1–5、目录、属性、checked extent/范围读取、纳秒时间与 meta UUID 补丁见 [XFS](../../docs/formats/XFS.md)。无独立 real-time 设备时拒绝正文。未引入上游 FUSE 服务或 libfsxfs C 实现。 |

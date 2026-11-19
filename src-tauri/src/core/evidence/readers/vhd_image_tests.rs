@@ -1,6 +1,7 @@
 use super::*;
-use crate::core::evidence::image::{DiskImage, ImageFormat};
+use crate::core::evidence::image::{BadRegion, DiskImage, ImageFormat};
 use sha2::{Digest, Sha256};
+use std::io::Write;
 
 fn fixtures(kind: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -65,8 +66,98 @@ fn vhd_family_signature_detection_without_extension_and_corruption_rejection() {
 
 #[test]
 fn vhdx_missing_parent_is_an_error() {
-    let error = VhdHandle::open_vhdx(&fixtures("vhdx").join("fat-differential.vhdx")).unwrap_err();
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("child.vhdx");
+    std::fs::copy(fixtures("vhdx").join("fat-differential.vhdx"), &path).unwrap();
+    let error = VhdHandle::open_vhdx(&path).unwrap_err();
     assert!(format!("{error:#}").contains("parent"));
+}
+
+#[test]
+fn vhdx_differencing_reads_child_and_parent_sectors() {
+    const START: u64 = 133 * 512;
+    let directory = fixtures("vhdx");
+    let image = DiskImage::open(&directory.join("fat-differential.vhdx")).unwrap();
+    let parent = DiskImage::open(&directory.join("fat-parent.vhdx")).unwrap();
+    let (bytes, faults) = image.read_range_traced(START, 3 * 512).unwrap();
+    let parent_bytes = parent.read_range(START, 3 * 512).unwrap();
+    assert_eq!(
+        (image.len(), image.info().source_format),
+        (parent.len(), ImageFormat::Vhdx)
+    );
+    assert_eq!(&bytes[..512], &parent_bytes[..512]);
+    assert_ne!(&bytes[512..1024], &parent_bytes[512..1024]);
+    assert_eq!(bytes[512 + 6], 0xff);
+    assert_eq!(&bytes[1024..], &parent_bytes[1024..]);
+    assert!(faults.is_empty());
+}
+
+#[test]
+fn vhdx_rejects_wrong_parent_and_checks_parent_stability() {
+    let directory = tempfile::tempdir().unwrap();
+    let child = directory.path().join("child.vhdx");
+    let parent = directory.path().join("fat-parent.vhdx");
+    let samples = fixtures("vhdx");
+    std::fs::copy(samples.join("fat-differential.vhdx"), &child).unwrap();
+    std::fs::copy(samples.join("ext2.vhdx"), &parent).unwrap();
+    let error = DiskImage::open(&child).unwrap_err();
+    assert!(format!("{error:#}").contains("parent DataWriteGuid mismatch"));
+
+    std::fs::copy(samples.join("fat-parent.vhdx"), &parent).unwrap();
+    let image = DiskImage::open(&child).unwrap();
+    image.validate_source_file_stable().unwrap();
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&parent)
+        .unwrap();
+    file.write_all(&[0]).unwrap();
+    assert!(image.validate_source_file_stable().is_err());
+}
+
+#[test]
+fn vhdx_parent_cycle_is_an_error() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("fat-parent.vhdx");
+    std::fs::copy(fixtures("vhdx").join("fat-differential.vhdx"), &path).unwrap();
+    let error = DiskImage::open(&path).unwrap_err();
+    assert!(format!("{error:#}").contains("VHDX parent chain contains a cycle"));
+}
+
+#[test]
+fn vhdx_parent_read_faults_are_reported_at_child_offsets() {
+    const START: u64 = 133 * 512;
+    let directory = tempfile::tempdir().unwrap();
+    let child = directory.path().join("child.vhdx");
+    let parent = directory.path().join("fat-parent.vhdx");
+    let samples = fixtures("vhdx");
+    std::fs::copy(samples.join("fat-differential.vhdx"), &child).unwrap();
+    std::fs::copy(samples.join("fat-parent.vhdx"), &parent).unwrap();
+    // Preserve the parent's metadata and BAT, but remove its allocated payload.
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(&parent)
+        .unwrap()
+        .set_len(4 * 1024 * 1024)
+        .unwrap();
+
+    let image = DiskImage::open(&child).unwrap();
+    let (bytes, faults) = image.read_range_traced(START, 3 * 512).unwrap();
+    assert_eq!(
+        faults,
+        [
+            BadRegion {
+                offset: START,
+                len: 512
+            },
+            BadRegion {
+                offset: START + 1024,
+                len: 512
+            },
+        ]
+    );
+    assert_eq!(&bytes[..512], &[0; 512]);
+    assert_eq!(bytes[512 + 6], 0xff);
+    assert_eq!(&bytes[1024..], &[0; 512]);
 }
 
 #[test]

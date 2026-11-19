@@ -16,10 +16,10 @@ use crate::header::{crc32c, parse_active_header, VhdxHeader};
 /// [`build_overlay`] instead, which records the same patched sectors into a
 /// small in-RAM overlay applied on top of positioned reads — so the two paths
 /// are byte-identical for the same image.
-pub(crate) fn apply(data: &mut [u8]) -> Result<()> {
+pub(crate) fn apply(data: &mut [u8]) -> Result<VhdxHeader> {
     let header = parse_active_header(data)?;
     if header.log_length == 0 || header.log_guid == [0u8; 16] {
-        return Ok(());
+        return Ok(header);
     }
     let log_start = header.log_offset as usize;
     let log_end = log_start.saturating_add(header.log_length as usize);
@@ -30,7 +30,7 @@ pub(crate) fn apply(data: &mut [u8]) -> Result<()> {
     for entry in entries {
         apply_entry(data, &entry);
     }
-    Ok(())
+    Ok(header)
 }
 
 /// A committed-log overlay: the sectors the log replays on top of the on-disk

@@ -738,6 +738,11 @@ pub(super) fn source_file_meta(
             let on_disk = match source {
                 ImageSource::Ewf { reader, .. } => reader.lock().segments_on_disk_bytes(),
                 ImageSource::Vmdk { reader, .. } => reader.lock().files_on_disk_bytes(),
+                ImageSource::VhdFamily {
+                    reader,
+                    format: ImageFormat::Vhdx,
+                    ..
+                } => reader.lock().files_on_disk_bytes(),
                 ImageSource::Ad1 { image } => Some(image.outer_len()),
                 ImageSource::SplitRaw { reader } => Some(reader.media_size()),
                 ImageSource::Cue { image } => {
@@ -765,12 +770,7 @@ pub(super) fn open_raw_mmap(path: &Path, format: ImageFormat) -> anyhow::Result<
 pub(super) fn source_file_snapshot(path: &Path) -> anyhow::Result<SourceFileSnapshot> {
     let meta = std::fs::metadata(path)
         .with_context(|| format!("failed to stat source image file: {}", path.display()))?;
-    Ok(SourceFileSnapshot {
-        path: path.to_path_buf(),
-        len: meta.len(),
-        modified_unix_ms: meta.modified().ok().and_then(unix_ms),
-        created_unix_ms: meta.created().ok().and_then(unix_ms),
-    })
+    Ok(SourceFileSnapshot::from_metadata(path, &meta))
 }
 
 pub(super) fn validate_source_file_snapshots(

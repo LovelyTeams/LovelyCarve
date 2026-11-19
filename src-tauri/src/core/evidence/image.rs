@@ -141,11 +141,22 @@ pub struct DiskImage {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct SourceFileSnapshot {
+pub(super) struct SourceFileSnapshot {
     path: PathBuf,
-    len: u64,
+    pub(super) len: u64,
     modified_unix_ms: Option<i64>,
     created_unix_ms: Option<i64>,
+}
+
+impl SourceFileSnapshot {
+    pub(super) fn from_metadata(path: &Path, metadata: &std::fs::Metadata) -> Self {
+        Self {
+            path: path.to_path_buf(),
+            len: metadata.len(),
+            modified_unix_ms: metadata.modified().ok().and_then(unix_ms),
+            created_unix_ms: metadata.created().ok().and_then(unix_ms),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
