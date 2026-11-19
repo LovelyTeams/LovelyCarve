@@ -313,9 +313,6 @@ pub(crate) fn partition_node(image: &Arc<EvidenceSession>, partition: &Partition
         },
         size: partition.length_lba * image.sector_size as u64,
         deleted: false,
-        // Recovered (signature-scanned) volumes carry no partition-table
-        // entry; flag them so the UI distinguishes them from table-backed
-        // partitions (P1-13).
         inode: None,
         timestamps: Mactb::default(),
         link_target: None,

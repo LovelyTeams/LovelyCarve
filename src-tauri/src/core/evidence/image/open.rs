@@ -422,6 +422,17 @@ impl DiskImage {
                         }
                     }
                 }
+                if detected.scheme.is_none() {
+                    let recovered = partitions::recovery::scan(&probe_source, sector_size, cancel)?;
+                    if !recovered.is_empty() {
+                        tracing::info!(
+                            count = recovered.len(),
+                            "recovered volumes from filesystem signatures"
+                        );
+                        detected.partitions = recovered;
+                        detected.scheme = Some(TableScheme::Recovered);
+                    }
+                }
                 let partitions::DetectedTable {
                     mut partitions,
                     scheme,
@@ -431,7 +442,13 @@ impl DiskImage {
                     done: 0,
                     total: partitions.len(),
                 });
-                partitions::refine_partition_kinds(&probe_source, &mut partitions, sector_size)?;
+                if scheme != Some(TableScheme::Recovered) {
+                    partitions::refine_partition_kinds(
+                        &probe_source,
+                        &mut partitions,
+                        sector_size,
+                    )?;
+                }
                 progress(OpenProgress::DetectingFilesystems {
                     done: partitions.len(),
                     total: partitions.len(),

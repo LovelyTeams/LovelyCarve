@@ -29,6 +29,7 @@ export const SCHEME_LABELS: Record<string, string> = {
   mdadm: 'MDADM RAID',
   lvm2: 'LVM2 物理卷',
   volume: '整盘卷',
+  recovered: '签名恢复',
 };
 
 

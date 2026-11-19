@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::analysis::identify::os_detect_adapters::{
-    kind_str, supports_os_detect, Fingerprint,
+    apfs_roots, kind_str, supports_os_detect, Fingerprint,
 };
 use crate::core::evidence::image::{ImageFormat, Partition, PartitionKind};
 use crate::core::filesystem::evidence_session::EvidenceSession;
@@ -287,6 +287,30 @@ fn walk_partitions(
     for partition in &partitions {
         ensure_active(cancel)?;
         match partition.kind {
+            PartitionKind::ApfsContainer => {
+                let root_id = format!("part:{}", partition.id);
+                match apfs_roots(image, &root_id) {
+                    Ok(nodes) if nodes.is_empty() => out.push(unsupported_partition(partition)),
+                    Ok(nodes) => {
+                        for node in nodes {
+                            ensure_active(cancel)?;
+                            out.push(probe_root(
+                                image,
+                                node.id,
+                                partition.id,
+                                node.name,
+                                kind_str(partition.kind).to_owned(),
+                                fstype::partition_ftype(partition.kind),
+                            ));
+                        }
+                    }
+                    Err(error) => {
+                        let mut entry = unsupported_partition(partition);
+                        entry.error = Some(error.to_string());
+                        out.push(entry);
+                    }
+                }
+            }
             PartitionKind::Lvm => {
                 // 已解锁分区里的 LVM 从该分区的明文视图读取。
                 let reader = image.filesystem_session(&format!("part:{}", partition.id));

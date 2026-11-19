@@ -459,22 +459,7 @@ impl VolumeProbe for ApfsProbe {
     }
 
     fn probe(&self, ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeHit>> {
-        if !has_apfs_header(ctx.head) {
-            return Ok(None);
-        }
-        let size = u32::from_le_bytes(ctx.head[36..40].try_into()?);
-        let block = ctx.source.read(0, size as usize)?;
-        let superblock = match apfs::superblock::NxSuperblock::parse(&block) {
-            Ok(superblock) => superblock,
-            Err(_) => return Ok(None),
-        };
-        if block.len() != size as usize
-            || !apfs::fletcher::verify_object(&block)
-            || superblock
-                .block_count
-                .checked_mul(u64::from(size))
-                .is_none_or(|length| length > ctx.size)
-        {
+        if apfs_size(ctx)?.is_none() {
             return Ok(None);
         }
         Ok(Some(VolumeProbeHit::new(
@@ -485,6 +470,24 @@ impl VolumeProbe for ApfsProbe {
             "APFS NXSB identity, geometry and Fletcher checksum",
         )))
     }
+}
+
+pub(super) fn apfs_size(ctx: &DetectCtx<'_>) -> Result<Option<u64>> {
+    if !has_apfs_header(ctx.head) {
+        return Ok(None);
+    }
+    let size = u32::from_le_bytes(ctx.head[36..40].try_into()?);
+    let block = ctx.source.read(0, size as usize)?;
+    let Ok(superblock) = apfs::superblock::NxSuperblock::parse(&block) else {
+        return Ok(None);
+    };
+    if block.len() != size as usize || !apfs::fletcher::verify_object(&block) {
+        return Ok(None);
+    }
+    Ok(superblock
+        .block_count
+        .checked_mul(u64::from(size))
+        .filter(|&length| length <= ctx.size))
 }
 
 impl VolumeProbe for SquashfsProbe {
@@ -857,7 +860,7 @@ fn has_apfs_header(bytes: &[u8]) -> bool {
     bytes.get(32..36) == Some(b"NXSB") && (4096..=65536).contains(&size) && size.is_power_of_two()
 }
 
-fn has_ext_magic(bytes: &[u8]) -> bool {
+pub(super) fn has_ext_magic(bytes: &[u8]) -> bool {
     bytes.len() >= EXT_MAGIC_OFFSET + 2
         && bytes[EXT_MAGIC_OFFSET] == 0x53
         && bytes[EXT_MAGIC_OFFSET + 1] == 0xEF
@@ -870,7 +873,7 @@ fn has_lvm_label(bytes: &[u8]) -> bool {
     })
 }
 
-fn has_ntfs_oem(bytes: &[u8]) -> bool {
+pub(super) fn has_ntfs_oem(bytes: &[u8]) -> bool {
     bytes.len() >= NTFS_OEM_OFFSET + 8
         && &bytes[NTFS_OEM_OFFSET..NTFS_OEM_OFFSET + 8] == b"NTFS    "
 }

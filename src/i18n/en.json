@@ -854,6 +854,7 @@
   "LUKS 容器": "LUKS container",
   "LVM2 物理卷": "LVM2 physical volume",
   "整盘卷": "Whole-disk volume",
+  "签名恢复": "Signature recovery",
   "{0} {1} – {2}，共 {3} {4}\n字节偏移 0x{5}": "{0} {1} – {2}, total {3} {4}\nByte offset 0x{5}",
   "逻辑大小": "Logical size",
   "{0} 字节": "{0} bytes",

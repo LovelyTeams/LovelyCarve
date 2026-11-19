@@ -57,7 +57,7 @@
 
 - 后端：`just fmt`、`just check`、`just clippy`、`just test --jobs 1`。Windows 页面文件不足时避免并行编译全部示例。
 - 独立库：`just test-vendor <目录名>`；已有专用 reader 配方仍优先使用。
-- ext4 原始夹具来自上游并校验 SHA-256，详见 `ext4-view/test_data/README.md`；测试通过 Rust zstd 在内存解码，不依赖系统 zstd 程序。
+- ext4 原始夹具来自上游并校验 SHA-256，详见 `ext4-view/test_data/README.md`；测试通过 Rust zstd 在内存解码，不依赖系统 zstd 程序。`Ext4::size_from_superblock` 将主超级块的解析和尺寸校验复用于宿主的签名恢复。
 - 可选外部镜像/oracle 未提供时，忽略的测试不代表真实镜像已验证。
 
 | 新增 vendor | 来源 | 本地范围 |

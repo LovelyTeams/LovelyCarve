@@ -42,6 +42,7 @@ pub mod nilfs2;
 pub mod ocfs2;
 pub mod optical_disc;
 pub mod qnx;
+pub(super) mod recovery;
 pub mod reiserfs;
 pub mod rom_images;
 pub mod squashfs;
@@ -123,6 +124,8 @@ pub enum TableScheme {
     Mdadm,
     Lvm2,
     Volume,
+    /// Filesystem ranges inferred from on-disk signatures without a table.
+    Recovered,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

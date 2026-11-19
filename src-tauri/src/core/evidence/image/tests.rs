@@ -81,6 +81,67 @@ fn opens_raw_gpt_with_crc_validated_geometry_and_backup_recovery() {
 }
 
 #[test]
+fn opens_filesystems_at_nonzero_offsets_without_a_partition_table() {
+    use crate::core::filesystem::{evidence_session::EvidenceSession, tree::fs_tree};
+
+    const NTFS_START: usize = 1024 * 1024;
+    const EXT_START: usize = 4 * 1024 * 1024;
+    const APFS_START: usize = 5 * 1024 * 1024;
+    const EXT: &[u8] = include_bytes!("../../../../vendor/ext4-view/test_data/audit_ext.bin");
+    const APFS: &[u8] = include_bytes!("../../../../vendor/apfs/tests/data/basic.apfs");
+    let ntfs_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("vendor/vhd/tests/data/ntfs_fixed.vhd");
+    let ntfs = std::fs::read(ntfs_path).unwrap();
+    let ntfs = &ntfs[128 * 512..(128 + 6016) * 512];
+    let mut bytes = vec![0; APFS_START + APFS.len()];
+    bytes[NTFS_START..NTFS_START + ntfs.len()].copy_from_slice(ntfs);
+    bytes[EXT_START..EXT_START + EXT.len()].copy_from_slice(EXT);
+    bytes[APFS_START..].copy_from_slice(APFS);
+    let mut file = NamedTempFile::new().unwrap();
+    file.write_all(&bytes).unwrap();
+    file.flush().unwrap();
+    let image = Arc::new(EvidenceSession::open(file.path()).expect("open tableless image"));
+    assert_eq!(
+        (image.table_scheme, image.disk_id.as_deref()),
+        (Some(TableScheme::Recovered), None)
+    );
+    let spans = image
+        .partitions
+        .iter()
+        .map(|part| (part.kind, part.start_lba, part.length_lba))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        spans,
+        vec![
+            (PartitionKind::Ntfs, (NTFS_START / 512) as u64, 6016),
+            (PartitionKind::Ext4, (EXT_START / 512) as u64, 128),
+            (PartitionKind::ApfsContainer, (APFS_START / 512) as u64, 128),
+        ]
+    );
+    for root in ["part:0", "part:1", "apfs:part:2:0:"] {
+        assert!(!fs_tree::children_for_image(&image, root)
+            .unwrap()
+            .is_empty());
+    }
+}
+
+#[test]
+fn empty_gpt_takes_precedence_over_filesystem_signatures() {
+    const EXT: &[u8] = include_bytes!("../../../../vendor/ext4-view/test_data/audit_ext.bin");
+    let mut bytes = partitions::gpt::fixture(512, 4, 128, 0);
+    let offset = 128 * 512;
+    bytes[offset..offset + EXT.len()].copy_from_slice(EXT);
+    let mut file = NamedTempFile::new().unwrap();
+    file.write_all(&bytes).unwrap();
+    file.flush().unwrap();
+    let info = DiskImage::open(file.path()).unwrap().info();
+    assert_eq!(
+        (info.table_scheme, info.partitions),
+        (Some(TableScheme::Gpt), vec![])
+    );
+}
+
+#[test]
 fn mbr_geometry_inference_does_not_override_a_detected_gpt() {
     let mut bytes = vec![0; 200 * 512];
     bytes[510..512].copy_from_slice(&[0x55, 0xaa]);

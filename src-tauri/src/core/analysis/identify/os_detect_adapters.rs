@@ -139,6 +139,29 @@ pub fn detect_image(image: &Arc<EvidenceSession>) -> anyhow::Result<Vec<OsDetect
     let partitions = image.info().partitions;
     for partition in &partitions {
         match partition.kind {
+            PartitionKind::ApfsContainer => {
+                let root_id = format!("part:{}", partition.id);
+                let mut container = unsupported_partition_entry(partition);
+                match apfs_roots(image, &root_id) {
+                    Ok(nodes) => {
+                        let count = out.len();
+                        for node in nodes {
+                            let volume = OsDetectionPartition {
+                                partition_label: node.name,
+                                ..unsupported_partition_entry(partition)
+                            };
+                            out.push(detect_root(image, node.id, volume));
+                        }
+                        if out.len() == count {
+                            out.push(container);
+                        }
+                    }
+                    Err(error) => {
+                        container.error = Some(error.to_string());
+                        out.push(container);
+                    }
+                }
+            }
             PartitionKind::Lvm => {
                 let reader = image.filesystem_session(&format!("part:{}", partition.id));
                 let container = reader
@@ -187,37 +210,24 @@ pub fn detect_image(image: &Arc<EvidenceSession>) -> anyhow::Result<Vec<OsDetect
     Ok(out)
 }
 
+pub(super) fn apfs_roots(
+    image: &Arc<EvidenceSession>,
+    root_id: &str,
+) -> anyhow::Result<Vec<FsNode>> {
+    let mut nodes = fs_tree::children_for_image(image, root_id)?;
+    nodes.retain(|node| node.kind == NodeKind::Dir);
+    Ok(nodes)
+}
+
 fn detect_partition(image: &Arc<EvidenceSession>, partition: &Partition) -> OsDetectionPartition {
-    let fingerprint = Fingerprint {
-        image: Arc::clone(image),
-        root_id: format!("part:{}", partition.id),
-    };
-    // Trial-list the root so we report FS-open failures distinctly from
-    // "FS opened, no fingerprint matched". Keeping the listing lets the
-    // detector skip the work entirely on a corrupt FS.
-    match fs_tree::children_for_image(image, &fingerprint.root_id) {
-        Ok(_) => {
-            let detections = os_detect::detect(&fingerprint);
-            OsDetectionPartition {
-                partition_id: partition.id,
-                partition_label: partition_label(partition),
-                partition_kind: kind_str(partition.kind).to_string(),
-                filesystem_opened: true,
-                error: None,
-                detections,
-                bitlocker_locked: matches!(partition.kind, PartitionKind::Bitlocker),
-            }
-        }
-        Err(err) => OsDetectionPartition {
-            partition_id: partition.id,
-            partition_label: partition_label(partition),
-            partition_kind: kind_str(partition.kind).to_string(),
-            filesystem_opened: false,
-            error: Some(err.to_string()),
-            detections: Vec::new(),
-            bitlocker_locked: false,
-        },
-    }
+    let mut result = detect_root(
+        image,
+        format!("part:{}", partition.id),
+        unsupported_partition_entry(partition),
+    );
+    result.bitlocker_locked =
+        result.filesystem_opened && partition.kind == PartitionKind::Bitlocker;
+    result
 }
 
 fn detect_logical_volume(
@@ -225,44 +235,33 @@ fn detect_logical_volume(
     partition: &Partition,
     lv: &crate::core::filesystem::volumes::lvm::LvmLogicalVolume,
 ) -> OsDetectionPartition {
-    if !supports_os_detect(lv.kind) {
-        return OsDetectionPartition {
-            partition_id: partition.id,
-            partition_label: format!("LV {}/{} · {}", partition.id, lv.index, lv.name),
-            partition_kind: format!("lvm:{}", kind_str(lv.kind)),
-            filesystem_opened: false,
-            error: None,
-            detections: Vec::new(),
-            bitlocker_locked: false,
-        };
-    }
-    let fingerprint = Fingerprint {
-        image: Arc::clone(image),
-        root_id: format!("lvm:{}:{}", partition.id, lv.index),
+    let entry = OsDetectionPartition {
+        partition_label: format!("LV {}/{} · {}", partition.id, lv.index, lv.name),
+        partition_kind: format!("lvm:{}", kind_str(lv.kind)),
+        ..unsupported_partition_entry(partition)
     };
+    if supports_os_detect(lv.kind) {
+        detect_root(image, format!("lvm:{}:{}", partition.id, lv.index), entry)
+    } else {
+        entry
+    }
+}
+
+fn detect_root(
+    image: &Arc<EvidenceSession>,
+    root_id: String,
+    mut entry: OsDetectionPartition,
+) -> OsDetectionPartition {
+    let fingerprint = Fingerprint::new(Arc::clone(image), root_id);
+    // An unreadable filesystem differs from a readable one with no OS markers.
     match fs_tree::children_for_image(image, &fingerprint.root_id) {
         Ok(_) => {
-            let detections = os_detect::detect(&fingerprint);
-            OsDetectionPartition {
-                partition_id: partition.id,
-                partition_label: format!("LV {}/{} · {}", partition.id, lv.index, lv.name),
-                partition_kind: format!("lvm:{}", kind_str(lv.kind)),
-                filesystem_opened: true,
-                error: None,
-                detections,
-                bitlocker_locked: false,
-            }
+            entry.filesystem_opened = true;
+            entry.detections = os_detect::detect(&fingerprint);
         }
-        Err(err) => OsDetectionPartition {
-            partition_id: partition.id,
-            partition_label: format!("LV {}/{} · {}", partition.id, lv.index, lv.name),
-            partition_kind: format!("lvm:{}", kind_str(lv.kind)),
-            filesystem_opened: false,
-            error: Some(err.to_string()),
-            detections: Vec::new(),
-            bitlocker_locked: false,
-        },
+        Err(error) => entry.error = Some(error.to_string()),
     }
+    entry
 }
 
 fn unsupported_partition_entry(partition: &Partition) -> OsDetectionPartition {
@@ -452,6 +451,43 @@ mod tests {
             .map(|partition| (partition.partition_kind, partition.filesystem_opened))
             .collect();
         assert_eq!(probed, vec![("fat12".to_owned(), true)]);
+    }
+
+    #[test]
+    fn probes_each_apfs_volume_and_reports_its_open_status() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("vendor/apfs/tests/data/basic.apfs");
+        let image = Arc::new(EvidenceSession::open(path).expect("open APFS fixture"));
+        let volumes = detect_image(&image).expect("probe APFS volumes");
+        let status = volumes
+            .iter()
+            .map(|volume| {
+                (
+                    volume.partition_id,
+                    volume.filesystem_opened,
+                    volume.error.is_some(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(status, vec![(0, true, false), (0, false, true)]);
+        assert_ne!(volumes[0].partition_label, volumes[1].partition_label);
+        let platform = super::super::autodetect::detect_image(
+            &image,
+            &tokio_util::sync::CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            platform
+                .partitions
+                .iter()
+                .map(|volume| (
+                    volume.partition_id,
+                    volume.filesystem_opened,
+                    volume.error.is_some()
+                ))
+                .collect::<Vec<_>>(),
+            status
+        );
     }
 
     /// Env-gated regression guard for the SOFTWARE-hive-truncation bug:

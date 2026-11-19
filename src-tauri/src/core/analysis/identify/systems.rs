@@ -23,7 +23,7 @@ use crate::core::{
     analysis::identify::{
         fstab::{self, DeviceSpec},
         os_detect::{self, DetectedOs, OsFamily},
-        os_detect_adapters::{supports_os_detect, Fingerprint},
+        os_detect_adapters::{apfs_roots, supports_os_detect, Fingerprint},
         win_drive_letters,
     },
     common::ids::ImageId,
@@ -200,25 +200,39 @@ fn detect_volume(
             return Vec::new();
         }
     };
-    let at_root = Fingerprint::new(Arc::clone(image), root.clone());
-    if let Some(detected) = os_detect::detect(&at_root).into_iter().next() {
-        return vec![(root, String::new(), detected)];
+    let apfs_container = entry.kind == PartitionKind::ApfsContainer;
+    if !apfs_container {
+        let at_root = Fingerprint::new(Arc::clone(image), root.clone());
+        if let Some(detected) = os_detect::detect(&at_root).into_iter().next() {
+            return vec![(root, String::new(), detected)];
+        }
     }
-    let nested = entry.volume_key == ROOT_VOLUME_KEY || entry.kind == PartitionKind::Btrfs;
-    if !nested {
+    if !apfs_container && entry.volume_key != ROOT_VOLUME_KEY && entry.kind != PartitionKind::Btrfs
+    {
         return Vec::new();
     }
-    let children = match fs_tree::children_for_image(image, &root) {
+    let children = if apfs_container {
+        apfs_roots(image, &root)
+    } else {
+        fs_tree::children_for_image(image, &root)
+    };
+    let children = match children {
         Ok(children) => children,
         Err(error) => {
             tracing::debug!(volume = %entry.volume_key, "system probe: {error:#}");
             return Vec::new();
         }
     };
+    // APFS children are actual volume roots, so the directory-probe cap does not apply.
+    let limit = if apfs_container {
+        children.len()
+    } else {
+        NESTED_PROBES
+    };
     children
         .into_iter()
         .filter(|child| child.kind == NodeKind::Dir && !child.deleted)
-        .take(NESTED_PROBES)
+        .take(limit)
         .filter_map(|child| {
             let fingerprint = Fingerprint::new(Arc::clone(image), child.id.clone());
             os_detect::detect(&fingerprint)

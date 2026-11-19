@@ -206,6 +206,20 @@ struct Ext4Inner {
 pub struct Ext4(Rc<Ext4Inner>);
 
 impl Ext4 {
+    /// Validate a primary superblock and return the filesystem size in bytes.
+    /// The slice starts at filesystem offset 1024. Group descriptors and the
+    /// journal are checked separately by [`Self::load`].
+    pub fn size_from_superblock(bytes: &[u8]) -> Option<u64> {
+        let bytes = bytes.get(..Superblock::SIZE_IN_BYTES_ON_DISK)?;
+        if bytes[0x5a..0x5c] != [0, 0] {
+            return None;
+        }
+        let superblock = Superblock::from_bytes(bytes).ok()?;
+        superblock
+            .blocks_count
+            .checked_mul(u64::from(superblock.block_size.to_u32()))
+    }
+
     /// Load an `Ext4` instance from the given `reader`.
     ///
     /// This reads and validates the superblock, block group
