@@ -84,8 +84,8 @@ pub(crate) async fn session_index_targets(
     let sessions = state.session_snapshots.lock().await;
     sessions
         .iter()
-        .filter_map(|((session_image_id, _), snapshot)| {
-            if session_image_id != image_id
+        .filter_map(|(volume, snapshot)| {
+            if volume.image != image_id
                 || snapshot.source_volume_size != volume_size_for_key(image, &snapshot.volume_key)
                 || (coverage == IndexCoverage::Complete && snapshot.truncated)
             {

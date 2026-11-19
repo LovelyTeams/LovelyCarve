@@ -119,7 +119,7 @@ mod load;
 pub(crate) use load::image_load;
 
 mod unload;
-pub(crate) use unload::{image_unload, purge_image_scans, remove_image_runtime};
+pub(crate) use unload::{image_unload, remove_image_runtime};
 
 mod assembly;
 pub(crate) use assembly::{raid_auto_detect, raid_manual_assemble};

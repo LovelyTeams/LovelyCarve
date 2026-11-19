@@ -17,7 +17,12 @@ autoexamples = false
 
 [lib]
 name = "lovelycarve_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# rlib only: the desktop app, the CLI, examples, tests and the Python binding
+# all link the backend statically. Tauri's mobile `staticlib` / `cdylib`
+# outputs are unused on the desktop targets and made every build archive a
+# multi-GB static library and link a full DLL of the backend; in release they
+# also forced machine code for the whole crate on top of the final LTO pass.
+crate-type = ["rlib"]
 
 # Force the raw cargo binary to LovelyCarve.exe (matches `productName` in
 # tauri.conf.json). Without this, the bin target defaults to the lowercase

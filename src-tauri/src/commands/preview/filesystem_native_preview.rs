@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use crate::host::State;
 
+use crate::core::common::ids::NodeRef;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree;
 use crate::core::preview::realm_preview::{self, RealmDigest, RealmRows};
@@ -157,7 +158,7 @@ fn realm_bytes_cached(
     image_id: &str,
     node_id: &str,
 ) -> Result<(Arc<[u8]>, u64), AppError> {
-    let key = format!("{image_id}\u{1f}{node_id}");
+    let key = NodeRef::new(image_id, node_id);
     if let Some(entry) = cache.as_ref() {
         if entry.key == key {
             return Ok((entry.bytes.clone(), entry.file_size));
@@ -301,7 +302,7 @@ fn zip_bytes_cached(
     image_id: &str,
     node_id: &str,
 ) -> Result<(Arc<Vec<u8>>, bool), AppError> {
-    let key = format!("{image_id}\u{1f}{node_id}");
+    let key = NodeRef::new(image_id, node_id);
     if let Some(entry) = cache.as_ref() {
         if entry.key == key {
             return Ok((entry.bytes.clone(), entry.truncated));

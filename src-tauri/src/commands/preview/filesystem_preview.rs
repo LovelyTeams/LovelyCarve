@@ -3,8 +3,10 @@
 
 use crate::host::{LeaseOwner, State};
 
+use crate::core::common::ids::NodeRef;
 use crate::core::common::text_decode::{self, Guess, Span};
 use crate::core::filesystem::tree::fs_tree::{self, FsStat};
+use crate::core::preview::media_cache::MediaKey;
 use crate::state::AppState;
 use crate::task_manager::{TaskKind, TaskProgressUnit};
 use {crate::app::access::loaded_image_app_error, crate::app::error::AppError};
@@ -171,7 +173,10 @@ pub async fn fs_media_temp(
     let token = task.token();
     let image = loaded_image_app_error(&state, &image_id).await?;
     let ext = sanitize_media_ext(ext.as_deref());
-    let key = format!("{image_id}\u{1f}{node_id}\u{1f}{ext}");
+    let key = MediaKey {
+        node: NodeRef::new(image_id.as_str(), node_id.as_str()),
+        ext: ext.to_string(),
+    };
     let key_lock = state.media_temp.lock().await.key_lock(&key);
     let key_guard = tokio::select! {
         biased;

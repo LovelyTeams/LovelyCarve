@@ -33,6 +33,7 @@ use crate::core::catalog::filedb::filedb_store::{self, IndexSource};
 use crate::core::catalog::snapshot::volume_snapshot::{
     self, snapshot_file_name, volume_size_for_key, VolumeSnapshot, DEFAULT_MAX_SNAPSHOT_ENTRIES,
 };
+use crate::core::common::ids::VolumeRef;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::fs_all;
 use crate::state::{SessionIndex, SessionSnapshot, SessionSnapshots};
@@ -90,21 +91,21 @@ pub(crate) async fn purge_session_snapshots(
     session_snapshots
         .lock()
         .await
-        .retain(|(img, _), _| img != image_id);
+        .retain(|volume, _| volume.image != image_id);
 }
 
 /// The session snapshot covering `parent_id` for `image_id`, if any. Mirrors
 /// `CaseState::covering_snapshot` over the caseless store; the caller already
 /// holds the lock guard.
 pub(crate) fn covering_session_snapshot(
-    store: &HashMap<(String, String), Arc<SessionSnapshot>>,
+    store: &HashMap<VolumeRef, Arc<SessionSnapshot>>,
     image_id: &str,
     parent_id: &str,
 ) -> Option<Arc<SessionSnapshot>> {
     store
         .iter()
-        .find(|((img, _), snap)| {
-            img == image_id
+        .find(|(volume, snap)| {
+            volume.image == image_id
                 && snap
                     .body
                     .as_ref()
@@ -117,13 +118,13 @@ pub(crate) fn covering_session_snapshot(
 /// session snapshots (`Some(0)` for a walked-but-empty dir, `None` when no
 /// session snapshot has any record). Mirrors `CaseState::snapshot_child_count`.
 pub(crate) fn session_child_count(
-    store: &HashMap<(String, String), Arc<SessionSnapshot>>,
+    store: &HashMap<VolumeRef, Arc<SessionSnapshot>>,
     image_id: &str,
     parent_id: &str,
 ) -> Option<usize> {
     store
         .iter()
-        .filter(|((img, _), _)| img == image_id)
+        .filter(|(volume, _)| volume.image == image_id)
         .find_map(|(_, snap)| {
             snap.body
                 .as_ref()
@@ -136,13 +137,13 @@ pub(crate) fn session_child_count(
 /// exists somewhere, `None` = no session snapshot can answer). Mirrors
 /// `CaseState::snapshot_subtree_empty` over the caseless store.
 pub(crate) fn session_subtree_empty(
-    store: &HashMap<(String, String), Arc<SessionSnapshot>>,
+    store: &HashMap<VolumeRef, Arc<SessionSnapshot>>,
     image_id: &str,
     parent_id: &str,
 ) -> Option<bool> {
     store
         .iter()
-        .filter(|((img, _), _)| img == image_id)
+        .filter(|(volume, _)| volume.image == image_id)
         .find_map(|(_, snap)| {
             snap.body
                 .as_ref()
@@ -175,7 +176,7 @@ pub(crate) fn spawn_session_snapshot(
     };
     task.set_automatic();
     tokio::spawn(async move {
-        let key = (image.id.clone(), volume_key.clone());
+        let key = VolumeRef::new(image.id.clone(), volume_key.clone());
         let current_size = volume_size_for_key(&image, &volume_key);
 
         // Reuse a fresh in-memory snapshot instead of re-walking (covers the

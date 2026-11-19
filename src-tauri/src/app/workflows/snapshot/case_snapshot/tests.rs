@@ -636,7 +636,7 @@ fn old_file_only_backup_index_is_retired_before_browsing_and_rebuilt_as_director
     let header = SnapshotHeader {
         schema_version: SNAPSHOT_SCHEMA,
         volume_key: "root".into(),
-        image_id: image.id.clone(),
+        image_id: image.id.clone().into(),
         source_volume_size: image.len(),
         built_at: built_at.into(),
     };

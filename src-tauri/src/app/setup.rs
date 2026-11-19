@@ -3,6 +3,7 @@
 //! hook adds its Tauri-only resources on top.
 use crate::app::workflows::scheduler::PluginTaskRunner;
 use crate::app::workflows::task_center::{self, TaskEntryEvent};
+use crate::app::workflows::task_journal::TaskJournal;
 use crate::{
     core::{
         analysis::identify::systems::SystemCache,
@@ -24,7 +25,8 @@ use std::{collections::HashMap, path::Path, sync::Arc};
 use tokio::sync::Mutex;
 
 /// Prepare `state` for commands: create the preview scratch directory,
-/// discover plugins and route task, scheduler and plugin events to `host`.
+/// discover plugins, start the task journal and route task, scheduler and
+/// plugin events to `host`.
 /// Returns the scratch directory so the desktop can expose it to its asset
 /// protocol.
 pub(crate) fn initialize(
@@ -36,14 +38,19 @@ pub(crate) fn initialize(
     )?);
     *state.media_scratch.lock() = Some(Arc::clone(&scratch));
     discover_plugins(state, host);
-    route_task_events(state, host);
+    let journal = TaskJournal::start(Arc::clone(&state.active_case))?;
+    if state.task_journal.set(journal.clone()).is_err() {
+        tracing::warn!("task journal was already started; keeping the first writer");
+    }
+    route_task_events(state, host, journal);
     Ok(scratch)
 }
 
 /// Every task change reaches the task center as one `task-entry` event:
 /// plugin jobs from the scheduler, native tasks from the registry (whose
 /// lifecycle and progress events also keep going out for their pages).
-fn route_task_events(state: &AppState, host: &AppHandle) {
+/// Native tasks of case evidence also reach the case journal.
+fn route_task_events(state: &AppState, host: &AppHandle, journal: TaskJournal) {
     let events = host.clone();
     state.scheduler.set_event_sink(move |event| {
         let event = match event {
@@ -61,6 +68,7 @@ fn route_task_events(state: &AppState, host: &AppHandle) {
     let tasks = state.tasks.clone();
     let carve_scans = Arc::clone(&state.carve_scans);
     state.tasks.set_event_sink(move |event| {
+        journal.observe(&event);
         emit(&events, crate::task_manager::TASK_LIFECYCLE_EVENT, &event);
         if event.task.kind == TaskKind::CarveScan {
             // A scan's entry is its session: show it stopping.

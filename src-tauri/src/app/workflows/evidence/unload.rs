@@ -1,18 +1,70 @@
 //! unload implementation.
+use std::time::Duration;
+
 use super::*;
+
+/// How long unloading waits for the image's cancelled tasks to stop before it
+/// releases their resources anyway.
+const UNLOAD_TASK_STOP_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub async fn image_unload(state: State<'_, AppState>, image_id: String) -> Result<(), AppError> {
     remove_image_runtime(&state, &image_id).await
 }
 
+/// Unloads one image: revokes its registration, cancels its tasks and waits
+/// for them to stop, then releases everything the process holds for it.
+///
+/// The destructuring below names every [`AppState`] field, so adding a field
+/// does not compile until this function either releases the field's per-image
+/// state or says why the field holds none.
 pub(crate) async fn remove_image_runtime(
     state: &State<'_, AppState>,
     image_id: &str,
 ) -> Result<(), AppError> {
+    let AppState {
+        images,
+        // The case generation gate; holds no image state.
+        image_load_context: _,
+        // Weak per-path entries that free themselves.
+        image_load_locks: _,
+        plugins,
+        systems,
+        // Serialises plugin opens; holds no image state.
+        plugin_open_lock: _,
+        tasks,
+        // Case-scope tasks, withdrawn when evidence leaves the case.
+        scheduler: _,
+        carve_scans,
+        assembled_arrays,
+        #[cfg(all(windows, not(target_arch = "aarch64")))]
+        dokan_mounts,
+        // Unshared with each Dokan mount below.
+        #[cfg(all(windows, not(target_arch = "aarch64")))]
+            dokan_mount_shares: _,
+        active_case: _,
+        // Case-scope tombstones, cleared when the case changes.
+        removed_case_evidence: _,
+        sqlite_session,
+        zip_session,
+        realm_session,
+        session_snapshots,
+        media_temp,
+        // Shared scratch directory and admission lock.
+        media_scratch: _,
+        media_writer: _,
+        // Each run's `RunRegistration` leaves when its cancelled task stops.
+        global_searches: _,
+        timeline_builds: _,
+        flat_walk_cache,
+        size_trees,
+        // Records into whichever case is active; holds no image state.
+        task_journal: _,
+    } = &**state;
+
     // Revoke registration before cleanup so an in-flight unlock cannot publish
     // a child after its source is closed.
     let (removed_image, children) = {
-        let mut images = state.images.lock().await;
+        let mut images = images.lock().await;
         let removed = images.remove(image_id);
         let children = images
             .values()
@@ -43,16 +95,31 @@ pub(crate) async fn remove_image_runtime(
             record(error);
         }
     }
-    let cancelled_tasks = state.tasks.cancel_image(image_id);
+    // Stop the image's work before releasing what that work reads: temp
+    // files, plugin volumes and mounts are only released once its tasks let
+    // go, or after the timeout for tasks that ignore cancellation.
+    let cancelled_tasks = tasks.cancel_image(image_id);
     if cancelled_tasks > 0 {
         tracing::info!("image_unload cancelled {cancelled_tasks} task(s) for image={image_id}");
     }
-    state.tasks.forget_image(image_id);
-    crate::app::workflows::evidence::purge_image_scans(state, image_id).await;
+    let holding = tasks
+        .wait_image_stopped(image_id, UNLOAD_TASK_STOP_TIMEOUT)
+        .await;
+    if !holding.is_empty() {
+        tracing::warn!(
+            "image_unload releases image={image_id} while tasks still stop: {}",
+            holding.join(", ")
+        );
+    }
+    tasks.forget_image(image_id);
+    carve_scans
+        .lock()
+        .await
+        .retain(|_, session| session.read().image_id != image_id);
     #[cfg(all(windows, not(target_arch = "aarch64")))]
     {
         let mounts = {
-            let mut mounts = state.dokan_mounts.lock().await;
+            let mut mounts = dokan_mounts.lock().await;
             let ids = mounts
                 .iter()
                 .filter(|(_, session)| session.view().image_id == image_id)
@@ -77,7 +144,7 @@ pub(crate) async fn remove_image_runtime(
     }
     if let Some(image) = removed_image {
         image.revoke_decrypted_partitions();
-        let manager = state.plugins.read().clone();
+        let manager = plugins.read().clone();
         for volume in image.take_external_volumes() {
             if let Err(error) = volume.close().await {
                 tracing::debug!("plugin fs.close failed during image unload: {error}");
@@ -87,47 +154,48 @@ pub(crate) async fn remove_image_runtime(
             }
         }
     }
-    state.systems.forget(image_id);
-    let mut assembled = state.assembled_arrays.lock().await;
-    assembled.retain(|_key, registered_id| registered_id != image_id);
-    drop(assembled);
-    let image_key_prefix = format!("{image_id}\u{1f}");
-    let mut realm_session = state.realm_session.lock().await;
-    if realm_session
-        .as_ref()
-        .is_some_and(|entry| entry.key.starts_with(image_key_prefix.as_str()))
+    systems.forget(image_id);
+    assembled_arrays
+        .lock()
+        .await
+        .retain(|_key, registered_id| registered_id != image_id);
     {
-        *realm_session = None;
+        let mut realm_session = realm_session.lock().await;
+        if realm_session
+            .as_ref()
+            .is_some_and(|entry| entry.key.image == image_id)
+        {
+            *realm_session = None;
+        }
     }
-    drop(realm_session);
-    let mut zip_session = state.zip_session.lock().await;
-    if zip_session
-        .as_ref()
-        .is_some_and(|entry| entry.key.starts_with(image_key_prefix.as_str()))
     {
-        *zip_session = None;
+        let mut zip_session = zip_session.lock().await;
+        if zip_session
+            .as_ref()
+            .is_some_and(|entry| entry.key.image == image_id)
+        {
+            *zip_session = None;
+        }
     }
-    drop(zip_session);
-    let mut sqlite_session = state.sqlite_session.lock().await;
-    if sqlite_session
-        .as_ref()
-        .is_some_and(|session| session.image_id() == image_id)
     {
-        *sqlite_session = None;
+        let mut sqlite_session = sqlite_session.lock().await;
+        if sqlite_session
+            .as_ref()
+            .is_some_and(|session| session.image_id() == image_id)
+        {
+            *sqlite_session = None;
+        }
     }
-    drop(sqlite_session);
-    state.flat_walk_cache.lock().purge_image(image_id);
-    state.size_trees.lock().purge_image(image_id);
+    flat_walk_cache.lock().purge_image(image_id);
+    size_trees.lock().purge_image(image_id);
     // Drop (and delete) any media temp files materialised for this image's
     // video / audio previews — their node ids will never be looked up again.
-    let mut media_temp = state.media_temp.lock().await;
-    media_temp.purge_image(image_id);
-    drop(media_temp);
-    // Cancel any in-flight caseless session-snapshot build for this image and
-    // drop its installed session snapshots.
+    media_temp.lock().await.purge_image(image_id);
+    // Drop the image's installed caseless session snapshots; their builds
+    // were cancelled with the image's other tasks.
     crate::app::workflows::snapshot::snapshot_session::purge_session_snapshots(
-        &state.session_snapshots,
-        &state.tasks,
+        session_snapshots,
+        tasks,
         image_id,
     )
     .await;
@@ -135,9 +203,4 @@ pub(crate) async fn remove_image_runtime(
         Some(error) => Err(error),
         None => Ok(()),
     }
-}
-
-pub(crate) async fn purge_image_scans(state: &State<'_, AppState>, image_id: &str) {
-    let mut scans = state.carve_scans.lock().await;
-    scans.retain(|_, session| session.read().image_id != image_id);
 }

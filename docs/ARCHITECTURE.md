@@ -151,7 +151,7 @@ UBIFS 适配器 `filesystem::volumes::ubifs` 将裸分区、固件明文和 UBI 
 
 CramFS / Linux ROMFS 复用 vendor 的 lamfold Rust 读取器，适配器位于 `filesystem/volumes/rom_images.rs`。完整、流式与范围读取经同一文件内容路径，声明范围、CRC/校验和与循环目录明确校验；裸镜像用字节几何，真实分区保留原始 LBA，原容器字节不变。能力和限制见 [ROM_IMAGES](formats/ROM_IMAGES.md)。
 
-外部卷通过 `filesystem::external_volume::ExternalVolume` 提供只读 Volume 和关闭契约；插件 `RemoteVolume` 实现这个接口。未知分区的插件探测、源登记和卷安装由 `app/workflows/filesystem.rs` 编排。卸载先撤销 AppState 登记、取消任务和停止挂载，再 drain 外部卷并逐项关闭、移除源和其他缓存；持有调用句柄的线程释放前，provider backing 继续存活。字节读者本身不持有插件连接。
+外部卷通过 `filesystem::external_volume::ExternalVolume` 提供只读 Volume 和关闭契约；插件 `RemoteVolume` 实现这个接口。未知分区的插件探测、源登记和卷安装由 `app/workflows/filesystem.rs` 编排。卸载（`remove_image_runtime`）先撤销 AppState 登记并递归卸载派生镜像，再取消该镜像的任务并等它们停下（`TaskManager::wait_image_stopped`，最多 5 秒，超时只记警告），之后才停止挂载、drain 外部卷并逐项关闭、移除源和其他缓存；持有调用句柄的线程释放前，provider backing 继续存活。字节读者本身不持有插件连接。`remove_image_runtime` 解构 `AppState` 的全部字段：新增字段不写明卸载时如何清理（或为何不涉及检材）就无法编译。
 
 `core/extensions/task_scheduler` 保留台账、状态机、派发、恢复、进度、看门狗和 post-action 契约。生产 `PluginTaskRunner` 位于 `app/workflows/scheduler.rs`，负责准备运行（`core/extensions/plugin/run_setup.rs`）、实例存活、执行、`records.db` 发布、时间线投影和结果清理；清理失败仍按原语义记录告警并完成任务删除。插件 SDK 保留 ABI、LPP 载荷与记录结构定义，`core/analysis/results/` 的 `record_store` / `record_query` 按结构保存与查询类型化记录，`models.rs` 是结果树、表格与详情的 IPC 投影；存储不依赖插件宿主，插件卸载后结果仍可读。
 
@@ -405,7 +405,9 @@ CLI `files read` 在单次、JSONL 与常驻会话中都拒绝把有读故障的
 长任务应返回任务 id 或明确结果，进度通过事件发送，取消走 `task_cancel`。后端长任务统一注册到
 `TaskManager`，注册守卫负责在成功、错误、取消和 worker panic 后自动清理。任务记录包含任务类型、可选的
 镜像归属、状态（`queued`、`running` 或 `cancellationRequested`）和已运行时间。`image_unload` 会先取消该镜像的
-全部关联任务，避免已捕获 `Arc<DiskImage>` 的后台工作在卸载后继续消耗 I/O。
+全部关联任务并等它们停下，避免已捕获 `Arc<DiskImage>` 的后台工作在卸载后继续消耗 I/O 或读写已释放的临时文件；
+停下的任务已进入历史，随后清除该镜像的历史时一并清除。全局搜索与时间线重建的运行登记（`RunRegistration`）在
+任何退出路径上移除，不会残留「运行中」。
 
 每个任务还带一份任务中心视图（`TaskView`：对象片段、阶段、进度、计数、标签与标志），由命令经自己的登记
 填写（`TaskRegistration::update`，或按 id 的 `TaskManager::update` / `emit_progress`），并在最后一个登记释放前
@@ -696,14 +698,21 @@ iOS 整盘镜像没有独立判定路径；归档与目录检材的合成根没�
 
 **审计（`core::casework::case_journal`）。** 建案、开关、改名、锁定、检材增删都与对应的审计记录在同一个台账
 事务里提交。每条记录的 `hash = sha256(前一条 hash ‖ 长度前缀的各字段)`，链首是案件 uid；
-`case_journal::verify` 重算整条链，篡改或删除中间记录都会断链。
+`case_journal::verify` 重算整条链，篡改或删除中间记录都会断链。案件检材上的任务（`TaskKind::journaled`，
+只排除全显列表、媒体物化、二维码与 OCR 等预览辅助）由 `app/workflows/task_journal.rs` 记录：取得资源开始运行时记
+`task.started`，最后一个登记释放时记 `task.settled`；明细是任务 id、种类、是否自动触发、创建与结束时间、结局以及
+任务视图（对象片段、计数、标签与标志）。生命周期事件同步发出，由专用线程排队写入；CLI 退出和桌面端退出在关闭案件前
+先写完队列。案件先于任务关闭或进程中断时没有 `task.settled`，该任务在审计链中保持未完成，事后不补写结束时间。
 
 **生命周期（`core::casework::case` / `commands::casework::case`）。** `case_create` 建目录、取进程锁、建台账（文件已存在
 时拒绝，绝不覆盖）；默认编号 `LC-YYYYMMDD-xxxxxx`，检验人默认取系统用户名。`case_open` 取进程锁、
 校验台账、载入检材与卷记录并自愈（`case_heal.rs`：清空 `staging/`、删除不属于任何检材的检材目录、
 快照文件缺失的卷记录删除、索引文件缺失的卷下线索引、回收卷目录里记录之外的旧代文件与没有记录的卷
 目录），再记 `case.open`。`case_close` 记审计、checkpoint 台账 WAL、释放连接与锁，再卸载运行态镜像。
-`case_lock`/`case_unlock` 翻转逻辑锁（锁定后拒绝改名、移除检材、手动指定平台与重建快照）；`case_remove` 只删除案件自己的文件
+`case_lock`/`case_unlock` 翻转逻辑锁：锁定后拒绝改名、添加与移除检材、手动指定平台以及构建与删除快照，
+完整清单是 `case::LockedEdit`，统一经 `CaseState::ensure_unlocked` 拒绝，错误码 `caseLocked`；台账自身的写入方法
+（改名、登记检材、移除检材、指定平台）自行检查，桌面端与 CLI 走同一处。已登记检材的路径刷新、识别结论回写、
+缺失卷的首次快照与索引发布不受锁影响；`case_remove` 只删除案件自己的文件
 （台账、锁、`evidence/`、`staging/`），目录里的其它内容原样保留，目录空了才删除目录本身；
 `case_list` 读应用数据目录下的本地登记簿（`core::casework::case_registry`）并附台账档案；
 `case_option_query`/`case_option_save` 读写 `setting` 表。`CaseState` 是台账的读缓存（检材与卷记录）

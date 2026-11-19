@@ -181,6 +181,7 @@ pub(crate) async fn register_and_snapshot(
         Admission::SourceTaken { existing_image_id } => Err(AppError::invalid_input(format!(
             "该来源已作为检材 {existing_image_id} 登记在当前案件中"
         ))),
+        Admission::Locked(locked) => Err(AppError::from(locked)),
         Admission::Caseless => {
             // No case open: build directory snapshots into the session store
             // so caseless browsing / 全显 / child-counts are served from an
@@ -295,12 +296,15 @@ pub(super) fn admit(case: &mut CaseState, image: &EvidenceSession) -> Admission 
         Ok(EvidenceRegistration::SourceTaken { existing_image_id }) => {
             Admission::SourceTaken { existing_image_id }
         }
-        Err(err) => {
-            tracing::warn!("case: register evidence {} failed: {err:#}", image.id);
-            Admission::Admitted {
-                first_online: false,
+        Err(err) => match err.downcast_ref::<CaseLocked>() {
+            Some(locked) => Admission::Locked(*locked),
+            None => {
+                tracing::warn!("case: register evidence {} failed: {err:#}", image.id);
+                Admission::Admitted {
+                    first_online: false,
+                }
             }
-        }
+        },
     }
 }
 

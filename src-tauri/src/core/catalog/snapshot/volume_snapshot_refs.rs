@@ -70,8 +70,8 @@ pub(crate) fn build_refs_volume_snapshot(
 
     let header = SnapshotHeader {
         schema_version: SNAPSHOT_SCHEMA,
-        volume_key: volume_key.to_string(),
-        image_id: image.id.clone(),
+        volume_key: volume_key.into(),
+        image_id: image.id.clone().into(),
         source_volume_size: volume_size_for_key(image, volume_key),
         built_at,
     };
@@ -306,7 +306,7 @@ pub(crate) fn build_refs_volume_snapshot(
     let file_name = out_path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| snapshot_file_name(&header.image_id, volume_key));
+        .unwrap_or_else(|| snapshot_file_name(header.image_id.as_str(), volume_key));
 
     Ok(VolumeSnapshotBuilt {
         header,

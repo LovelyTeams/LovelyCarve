@@ -36,10 +36,14 @@ use crate::core::casework::case_ledger_volumes::{
 use crate::core::casework::case_lock::CaseLock;
 use crate::core::casework::case_paths;
 use crate::core::catalog::snapshot::volume_snapshot::VolumeSnapshot;
+use crate::core::common::ids::VolumeRef;
 
+#[path = "case_guard.rs"]
+mod guard;
 #[path = "case_types.rs"]
 mod types;
 
+pub use guard::{CaseLocked, LockedEdit};
 use types::{evidence_ref_from_record, source_format_name};
 pub use types::{
     snapshot_ref, CaseInfo, CreateCaseOptions, EvidenceRef, EvidenceRegistration,
@@ -53,8 +57,8 @@ pub struct CaseState {
     profile: CaseProfile,
     evidence: Vec<EvidenceRecord>,
     volumes: Vec<VolumeRecord>,
-    /// 索引不可用时回退用的内存快照体,按 `(image_id, volume_key)`。
-    pub snapshots: HashMap<(String, String), Arc<VolumeSnapshot>>,
+    /// 索引不可用时回退用的内存快照体,按检材与卷。
+    pub snapshots: HashMap<VolumeRef, Arc<VolumeSnapshot>>,
     _lock: CaseLock,
 }
 
@@ -111,6 +115,17 @@ impl CaseState {
         self.profile.locked
     }
 
+    /// Refuses `edit` while the case is locked. The case's own mutators call
+    /// it; commands call it before work whose side effects precede the
+    /// mutator.
+    pub fn ensure_unlocked(&self, edit: LockedEdit) -> Result<(), CaseLocked> {
+        if self.profile.locked {
+            Err(CaseLocked { edit })
+        } else {
+            Ok(())
+        }
+    }
+
     pub fn info(&self) -> CaseInfo {
         CaseInfo {
             id: self.profile.case_uid.clone(),
@@ -142,9 +157,34 @@ impl CaseState {
         Ok(value)
     }
 
+    /// Appends one task event to the audit chain when `image_id` is evidence
+    /// of this case. Returns whether it was recorded.
+    pub fn journal_task_event(
+        &self,
+        action: &str,
+        image_id: &str,
+        detail: &str,
+    ) -> anyhow::Result<bool> {
+        if !self.has_evidence(image_id) {
+            return Ok(false);
+        }
+        let tx = case_ledger::write_transaction(&self.ledger)?;
+        case_journal::append(
+            &tx,
+            &self.profile.case_uid,
+            Event {
+                action,
+                evidence: Some(image_id),
+                detail,
+            },
+        )?;
+        tx.commit()?;
+        Ok(true)
+    }
+
     // ----- profile & settings ----------------------------------------------
 
-    /// 逻辑锁:锁定后界面拒绝编辑。
+    /// 逻辑锁:锁定后拒绝 [`LockedEdit`] 列出的编辑。
     pub fn set_locked(&mut self, locked: bool) -> anyhow::Result<()> {
         if self.profile.locked == locked {
             return Ok(());
@@ -161,6 +201,7 @@ impl CaseState {
     }
 
     pub fn rename(&mut self, name: &str) -> anyhow::Result<()> {
+        self.ensure_unlocked(LockedEdit::Rename)?;
         let name = name.trim();
         if name.is_empty() {
             anyhow::bail!("case name must not be empty");
@@ -357,8 +398,8 @@ pub fn snapshot_publication(
     fingerprint: &str,
 ) -> SnapshotPublication {
     SnapshotPublication {
-        image_id: built.header.image_id.clone(),
-        volume_key: built.header.volume_key.clone(),
+        image_id: built.header.image_id.to_string(),
+        volume_key: built.header.volume_key.to_string(),
         vol_id,
         source_size: built.header.source_volume_size,
         fingerprint: fingerprint.to_string(),
@@ -428,8 +469,8 @@ pub(crate) mod test_support {
         let built = VolumeSnapshotBuilt {
             header: SnapshotHeader {
                 schema_version: SNAPSHOT_SCHEMA,
-                volume_key: volume_key.to_string(),
-                image_id: image_id.to_string(),
+                volume_key: volume_key.into(),
+                image_id: image_id.into(),
                 source_volume_size: 1,
                 built_at: built_at.to_string(),
             },

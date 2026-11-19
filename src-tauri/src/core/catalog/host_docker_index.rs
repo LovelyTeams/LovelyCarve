@@ -250,8 +250,8 @@ fn stage_volume(
     let mut temporary = NamedTempFile::new_in(&case.staging_dir)?;
     let header = SnapshotHeader {
         schema_version: SNAPSHOT_SCHEMA,
-        volume_key: root.to_owned(),
-        image_id: image.id.clone(),
+        volume_key: root.into(),
+        image_id: image.id.clone().into(),
         source_volume_size: image.len(),
         built_at,
     };

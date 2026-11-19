@@ -80,19 +80,31 @@ const SUBTREE_SCAN_CAP: usize = 200_000;
 
 /// A `parent_id` that [`children_for_image`] accepts — `"part:2"`, `"root"`,
 /// etc. This is the unit a snapshot covers and the key it is filed under.
-pub type VolumeKey = String;
+pub use crate::core::common::ids::VolumeKey;
+use crate::core::common::ids::{ImageId, VolumeRef};
 
 /// First line of a `.dirz` file. Holds only values known before the walk
-/// starts; the entry count / truncation flag live in the case manifest.
+/// starts; the entry count / truncation flag live in the case manifest. The
+/// typed ids serialize as the same JSON strings as before.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotHeader {
     pub schema_version: u32,
     pub volume_key: VolumeKey,
-    pub image_id: String,
+    pub image_id: ImageId,
     /// Size of the source volume at build time, used for staleness checks.
     pub source_volume_size: u64,
     /// RFC3339 build timestamp.
     pub built_at: String,
+}
+
+impl SnapshotHeader {
+    /// The volume this snapshot covers.
+    pub fn volume_ref(&self) -> VolumeRef {
+        VolumeRef {
+            image: self.image_id.clone(),
+            volume: self.volume_key.clone(),
+        }
+    }
 }
 
 /// One node in a snapshot, paired with the query parent it was listed under
@@ -129,7 +141,7 @@ impl VolumeSnapshot {
         }
         let mut by_parent: HashMap<String, Vec<usize>> = HashMap::new();
         let mut walked_dirs: HashSet<String> = HashSet::new();
-        walked_dirs.insert(header.volume_key.clone());
+        walked_dirs.insert(header.volume_key.to_string());
         for (idx, entry) in entries.iter().enumerate() {
             by_parent.entry(entry.parent.clone()).or_default().push(idx);
             // The builder descends into exactly the non-deleted directories,

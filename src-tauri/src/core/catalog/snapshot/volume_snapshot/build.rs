@@ -148,8 +148,8 @@ pub fn build_volume_snapshot(
 
     let header = SnapshotHeader {
         schema_version: SNAPSHOT_SCHEMA,
-        volume_key: volume_key.to_string(),
-        image_id: image.id.clone(),
+        volume_key: volume_key.into(),
+        image_id: image.id.clone().into(),
         source_volume_size: volume_size_for_key(image, volume_key),
         built_at,
     };
@@ -221,7 +221,7 @@ pub fn build_volume_snapshot(
     let file_name = out_path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| snapshot_file_name(&header.image_id, volume_key));
+        .unwrap_or_else(|| snapshot_file_name(header.image_id.as_str(), volume_key));
 
     Ok(VolumeSnapshotBuilt {
         header,
@@ -247,8 +247,8 @@ pub(super) fn build_ntfs_volume_snapshot(
 ) -> anyhow::Result<VolumeSnapshotBuilt> {
     let header = SnapshotHeader {
         schema_version: SNAPSHOT_SCHEMA,
-        volume_key: volume_key.to_string(),
-        image_id: image.id.clone(),
+        volume_key: volume_key.into(),
+        image_id: image.id.clone().into(),
         source_volume_size: volume_size_for_key(image, volume_key),
         built_at,
     };
@@ -300,7 +300,7 @@ pub(super) fn write_tree_snapshot(
     cancel: &CancellationToken,
     on_progress: &mut dyn FnMut(u64),
 ) -> anyhow::Result<VolumeSnapshotBuilt> {
-    let volume_key = header.volume_key.clone();
+    let volume_key = header.volume_key.to_string();
 
     let mut by_parent: HashMap<u64, Vec<usize>> = HashMap::new();
     for (idx, edge) in edges.iter().enumerate() {
@@ -486,7 +486,7 @@ pub(super) fn write_tree_snapshot(
     let file_name = out_path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| snapshot_file_name(&header.image_id, &volume_key));
+        .unwrap_or_else(|| snapshot_file_name(header.image_id.as_str(), &volume_key));
 
     Ok(VolumeSnapshotBuilt {
         header,

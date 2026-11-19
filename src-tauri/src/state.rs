@@ -1,3 +1,4 @@
+use crate::app::workflows::task_journal::TaskJournal;
 use crate::core::analysis::identify::systems::SystemCache;
 use crate::core::preview::media_cache::{MediaScratch, MediaTempCache};
 use std::collections::{HashMap, HashSet};
@@ -76,19 +77,19 @@ pub struct AppState {
     pub sqlite_session:
         Arc<Mutex<Option<Arc<crate::core::preview::sqlite::sqlite_preview::SqliteSession>>>>,
     /// Single-slot cache of the most recently materialised inner ZIP's bytes,
-    /// keyed by `"{image_id}\u{1f}{node_id}"`. The structure preview must read
+    /// keyed by its node ([`NodeRef`](crate::core::common::ids::NodeRef)). The structure preview must read
     /// the whole archive (its central directory sits at the file end, and the
     /// file-node read primitives have no ranged read), so member-content clicks
     /// reuse these bytes instead of re-reading the file. Switching to another
     /// archive drops the previous buffer.
     pub zip_session: Arc<Mutex<Option<ZipBytesCache>>>,
     /// Single-slot cache for the Realm native preview: the most recently read
-    /// `.realm` file bytes, keyed by `"{image_id}\u{1f}{node_id}"`. The vendored
+    /// `.realm` file bytes, keyed by its node ([`NodeRef`](crate::core::common::ids::NodeRef)). The vendored
     /// reader works from immutable in-memory bytes, so paging a table reuses
     /// this shared slice instead of re-reading the file or creating a temp copy.
     pub realm_session: Arc<Mutex<Option<RealmBytesCache>>>,
     /// Volume snapshots built on image load when NO case is open, keyed by
-    /// `(image_id, volume_key)`. Process-local — the `.dirz` is built to a temp
+    /// evidence and volume ([`VolumeRef`](crate::core::common::ids::VolumeRef)). Process-local — the `.dirz` is built to a temp
     /// file, imported into a temp index file, then deleted — so caseless
     /// browsing / 全显 / child-counts are served from an index just like the
     /// case path, without ever creating a case directory. Purged per-image on
@@ -99,8 +100,8 @@ pub struct AppState {
     /// directory so the Tauri `asset` protocol — which serves real files with
     /// full HTTP Range / seek support — can stream them at any size. The
     /// in-memory Blob path (`fs_read` → object URL) is capped at 16 MiB and
-    /// cannot seek, so large clips never previewed. Keyed by
-    /// `"{image_id}\u{1f}{node_id}\u{1f}{ext}"`; a byte-bounded LRU whose
+    /// cannot seek, so large clips never previewed. Keyed by node and
+    /// extension ([`MediaKey`](crate::core::preview::media_cache::MediaKey)); a byte-bounded LRU whose
     /// viewer leases prevent eviction until release. The base directory is created and
     /// added to the asset-protocol scope by the `lib.rs` setup hook.
     pub media_temp: Arc<Mutex<MediaTempCache>>,
@@ -110,17 +111,21 @@ pub struct AppState {
     /// 在跑的全局搜索任务登记（`state.global_searches`）：命令层任务列表 /
     /// 删除时判定运行态、孤儿 running 行修复的存活集。命中与终态的权威
     /// 存储在检材的 `search.db`（`core::search::global_search_store`）。
-    pub global_searches: Arc<Mutex<HashMap<String, GlobalSearchRunState>>>,
+    /// 每次搜索经 [`RunRegistration`] 登记，任何退出路径都会移除。
+    pub global_searches: RunRegistry<GlobalSearchRunState>,
     /// 在跑的时间线重建登记(`state.timeline_builds`,按检材 image id 一条):
     /// 时间线 running 判定 + 重复 start 拦截 + 孤儿 running 状态修复的存活集。
-    /// 权威状态在检材的 `timeline.db`。
-    pub timeline_builds: Arc<Mutex<HashMap<String, TimelineBuildRunState>>>,
+    /// 权威状态在检材的 `timeline.db`。每次重建经 [`RunRegistration`] 登记。
+    pub timeline_builds: RunRegistry<TimelineBuildRunState>,
     /// 文件全显(allowAllFiles)实时遍历结果的小缓存,见 [`FlatWalkCache`]。
     /// 同步锁:只在 `spawn_blocking` 线程里短暂持有。
     pub flat_walk_cache: Arc<parking_lot::Mutex<FlatWalkCache>>,
     /// 树图视图由卷索引聚合出的空间占用树,见 [`SizeTreeCache`]。同步锁只在
     /// 取槽位时短暂持有,构建在槽位自己的 `OnceCell` 里进行。
     pub size_trees: Arc<parking_lot::Mutex<SizeTreeCache>>,
+    /// The case journal writer for task events, set by `app::setup::initialize`.
+    /// Shutdown flushes it before the case closes.
+    pub(crate) task_journal: std::sync::OnceLock<TaskJournal>,
 }
 
 impl AppState {
@@ -161,6 +166,7 @@ impl AppState {
             timeline_builds: Arc::default(),
             flat_walk_cache: Arc::default(),
             size_trees: Arc::default(),
+            task_journal: std::sync::OnceLock::new(),
         }
     }
 }
@@ -177,7 +183,7 @@ mod size_tree;
 mod snapshot;
 mod walk;
 pub use preview::{RealmBytesCache, ZipBytesCache};
-pub use runs::{GlobalSearchRunState, TimelineBuildRunState};
+pub use runs::{GlobalSearchRunState, RunRegistration, RunRegistry, TimelineBuildRunState};
 pub use size_tree::{SizeTreeCache, SizeTreeSlot};
 pub use snapshot::{SessionIndex, SessionSnapshot, SessionSnapshots};
 pub use walk::{FlatWalkCache, FlatWalkKind, FlatWalkRows};

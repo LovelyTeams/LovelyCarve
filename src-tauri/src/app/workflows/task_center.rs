@@ -8,12 +8,11 @@
 //! search its search id, a timeline build `timeline-build-<image id>`), and
 //! `plugin:<job id>` for plugin jobs; [`cancel`] takes either.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 
 use serde::Serialize;
-use tokio::sync::Mutex;
 
 use crate::app::error::AppError;
 use crate::core::carving::carve_session::{CarveScanPhase, CarveScanSnapshot, CarveSessionStatus};
@@ -23,7 +22,7 @@ use crate::core::extensions::task_scheduler::{SchedNotice, SchedTaskRecord, Sche
 use crate::core::search::global_search_store::{self, GlobalSearchMeta};
 use crate::core::timeline::{timeline_project, timeline_store::TimelineMetaRow};
 use crate::host::AppHandle;
-use crate::state::{AppState, GlobalSearchRunState, TimelineBuildRunState};
+use crate::state::{AppState, GlobalSearchRunState, RunRegistry, TimelineBuildRunState};
 use crate::task_manager::{
     TaskAmount, TaskCount, TaskFlag, TaskKind, TaskListing, TaskManager, TaskOutcome,
     TaskProgressUnit, TaskSnapshot, TaskStage, TaskStatus, TaskView,
@@ -475,18 +474,18 @@ pub async fn list(state: &AppState, image_id: Option<&str>) -> Result<Vec<TaskEn
 fn stored_entries(
     case_dir: &Path,
     evidence: &[String],
-    searches: &Mutex<HashMap<String, GlobalSearchRunState>>,
-    builds: &Mutex<HashMap<String, TimelineBuildRunState>>,
+    searches: &RunRegistry<GlobalSearchRunState>,
+    builds: &RunRegistry<TimelineBuildRunState>,
 ) -> Result<Vec<TaskEntry>, AppError> {
     let mut entries = Vec::new();
     for image_id in evidence {
         let history =
             global_search_store::history_list(case_dir, image_id, SEARCH_HISTORY_LIMIT, || {
-                searches.blocking_lock().keys().cloned().collect()
+                searches.lock().keys().cloned().collect()
             })
             .map_err(|error| AppError::from_anyhow(error.context("读取搜索任务列表失败")))?;
         entries.extend(history.into_iter().map(search_entry));
-        let building = builds.blocking_lock().contains_key(image_id);
+        let building = builds.lock().contains_key(image_id);
         let timeline = timeline_project::compute_status(case_dir, image_id, building)
             .map_err(|error| AppError::from_anyhow(error.context("读取时间线状态失败")))?;
         if let Some(meta) = timeline.meta {

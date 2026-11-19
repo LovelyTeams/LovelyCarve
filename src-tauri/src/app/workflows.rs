@@ -8,3 +8,4 @@ pub(crate) mod mount;
 pub(crate) mod scheduler;
 pub(crate) mod snapshot;
 pub(crate) mod task_center;
+pub(crate) mod task_journal;

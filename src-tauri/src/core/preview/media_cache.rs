@@ -4,7 +4,17 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 
+use crate::core::common::ids::NodeRef;
+
 pub const MEDIA_BUDGET: u64 = 4 * 1024 * 1024 * 1024;
+
+/// One materialised preview: the evidence node and the extension it was
+/// written with.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MediaKey {
+    pub node: NodeRef,
+    pub ext: String,
+}
 
 struct Entry {
     file: tempfile::TempPath,
@@ -15,23 +25,23 @@ struct Entry {
 
 #[derive(Default)]
 pub struct MediaTempCache {
-    entries: HashMap<String, Entry>,
-    locks: HashMap<String, Weak<tokio::sync::Mutex<()>>>,
+    entries: HashMap<MediaKey, Entry>,
+    locks: HashMap<MediaKey, Weak<tokio::sync::Mutex<()>>>,
     clock: u64,
 }
 
 impl MediaTempCache {
-    pub fn key_lock(&mut self, key: &str) -> Arc<tokio::sync::Mutex<()>> {
+    pub fn key_lock(&mut self, key: &MediaKey) -> Arc<tokio::sync::Mutex<()>> {
         self.locks.retain(|_, lock| lock.strong_count() > 0);
         if let Some(lock) = self.locks.get(key).and_then(Weak::upgrade) {
             return lock;
         }
         let lock = Arc::new(tokio::sync::Mutex::new(()));
-        self.locks.insert(key.into(), Arc::downgrade(&lock));
+        self.locks.insert(key.clone(), Arc::downgrade(&lock));
         lock
     }
 
-    pub fn acquire(&mut self, key: &str, lease: &str, owner: &str) -> Option<PathBuf> {
+    pub fn acquire(&mut self, key: &MediaKey, lease: &str, owner: &str) -> Option<PathBuf> {
         self.clock += 1;
         let entry = self.entries.get_mut(key)?;
         if !entry.file.exists() {
@@ -75,7 +85,7 @@ impl MediaTempCache {
 
     pub fn insert(
         &mut self,
-        key: String,
+        key: MediaKey,
         file: tempfile::TempPath,
         size: u64,
         lease: String,
@@ -96,8 +106,7 @@ impl MediaTempCache {
     }
 
     pub fn purge_image(&mut self, image_id: &str) {
-        let prefix = format!("{image_id}\u{1f}");
-        self.entries.retain(|key, _| !key.starts_with(&prefix));
+        self.entries.retain(|key, _| key.node.image != image_id);
     }
 
     pub fn clear(&mut self) {
@@ -175,17 +184,40 @@ impl Drop for MediaScratch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn add(cache: &mut MediaTempCache, key: &str, size: u64) -> PathBuf {
+    fn key(image: &str, node: &str) -> MediaKey {
+        MediaKey {
+            node: NodeRef::new(image, node),
+            ext: "mp4".to_string(),
+        }
+    }
+    /// Adds `node` of `image`, leased under the node name.
+    fn add_in(cache: &mut MediaTempCache, image: &str, node: &str, size: u64) -> PathBuf {
         cache.make_room(size).expect("space");
         cache.insert(
-            key.into(),
+            key(image, node),
             tempfile::NamedTempFile::new()
                 .expect("file")
                 .into_temp_path(),
             size,
-            key.into(),
+            node.into(),
             "main".into(),
         )
+    }
+    fn add(cache: &mut MediaTempCache, node: &str, size: u64) -> PathBuf {
+        add_in(cache, "image", node, size)
+    }
+    #[test]
+    fn purging_an_image_keeps_other_images_entries() {
+        let mut cache = MediaTempCache::default();
+        let purged = add_in(&mut cache, "a", "node", 1);
+        // A separator-joined key `a\u{1f}…` would also have matched this one.
+        let kept = add_in(&mut cache, "a\u{1f}b", "node", 1);
+        cache.purge_image("a");
+        assert!(!purged.exists());
+        assert!(kept.exists());
+        assert!(cache
+            .acquire(&key("a\u{1f}b", "node"), "lease", "main")
+            .is_some());
     }
     #[test]
     fn active_files_are_pinned_and_released_files_are_evicted_by_bytes() {
@@ -200,13 +232,13 @@ mod tests {
     #[test]
     fn leases_and_key_locks_are_independent() {
         let mut cache = MediaTempCache::default();
-        add(&mut cache, "image\u{1f}node", MEDIA_BUDGET);
-        cache.acquire("image\u{1f}node", "second", "preview");
-        cache.release("image\u{1f}node");
+        add(&mut cache, "node", MEDIA_BUDGET);
+        cache.acquire(&key("image", "node"), "second", "preview");
+        cache.release("node");
         assert!(cache.make_room(1).is_err());
         assert!(Arc::ptr_eq(
-            &cache.key_lock("same"),
-            &cache.key_lock("same")
+            &cache.key_lock(&key("image", "same")),
+            &cache.key_lock(&key("image", "same"))
         ));
         cache.release("second");
         assert!(cache.make_room(1).is_ok());
@@ -228,7 +260,7 @@ mod tests {
     fn destroying_one_window_keeps_other_window_leases() {
         let mut cache = MediaTempCache::default();
         add(&mut cache, "shared", MEDIA_BUDGET);
-        cache.acquire("shared", "preview-lease", "preview");
+        cache.acquire(&key("image", "shared"), "preview-lease", "preview");
         cache.release_owner("main");
         assert!(cache.make_room(1).is_err());
         cache.release_owner("preview");

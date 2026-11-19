@@ -548,6 +548,8 @@ async fn interrupted() {
 }
 
 pub(super) async fn shutdown(state: &AppState) {
+    // Record the tasks that already ended while their case is still open.
+    crate::app::lifecycle::flush_task_journal(state).await;
     for task in state.tasks.list() {
         state.tasks.cancel(&task.id);
     }

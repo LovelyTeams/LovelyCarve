@@ -204,7 +204,7 @@ async fn resolve_sources(
             .unwrap_or_default();
         let snapshot = active.as_ref().and_then(|case| {
             let snapshot = case.covering_snapshot(image_id, parent_id)?;
-            case.volume(image_id, &snapshot.header.volume_key)
+            case.volume(image_id, snapshot.header.volume_key.as_str())
                 .is_some_and(|record| !record.truncated)
                 .then_some(snapshot)
         });

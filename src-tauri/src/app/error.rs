@@ -8,6 +8,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::core::casework::case::CaseLocked;
 use crate::core::extensions::task_scheduler::SchedError;
 use crate::task_manager::{TaskFailure, TaskResourceAcquireError};
 
@@ -24,6 +25,8 @@ pub enum ErrorCode {
     TaskPanicked,
     NotFound,
     InvalidInput,
+    /// The active case is locked and refuses the edit.
+    CaseLocked,
     Io,
     Internal,
 }
@@ -90,6 +93,9 @@ impl AppError {
     }
 
     pub fn from_anyhow(error: anyhow::Error) -> Self {
+        if let Some(locked) = error.downcast_ref::<CaseLocked>() {
+            return Self::from(*locked);
+        }
         Self::from_message(format!("{error:#}"))
     }
 
@@ -117,6 +123,12 @@ impl AppError {
 impl From<anyhow::Error> for AppError {
     fn from(error: anyhow::Error) -> Self {
         Self::from_anyhow(error)
+    }
+}
+
+impl From<CaseLocked> for AppError {
+    fn from(error: CaseLocked) -> Self {
+        Self::new(ErrorCode::CaseLocked, error.to_string())
     }
 }
 
@@ -299,6 +311,24 @@ mod tests {
         assert_eq!(
             AppError::from_message("open 'memory.raw': Access denied").code,
             ErrorCode::PermissionDenied
+        );
+    }
+
+    #[test]
+    fn maps_case_lock_refusals_through_anyhow_context() {
+        let refusal = crate::core::casework::case::CaseLocked {
+            edit: crate::core::casework::case::LockedEdit::AddEvidence,
+        };
+        let error = AppError::from(anyhow::Error::new(refusal).context("register evidence"));
+
+        assert_eq!(
+            serde_json::to_value(error).unwrap(),
+            json!({
+                "code": "caseLocked",
+                "message": "case is locked; unlock it before adding evidence",
+                "context": null,
+                "retryable": false
+            })
         );
     }
 

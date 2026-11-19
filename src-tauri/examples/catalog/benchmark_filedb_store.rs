@@ -335,8 +335,8 @@ fn write_generated_snapshot_file(
 ) -> anyhow::Result<()> {
     let header = SnapshotHeader {
         schema_version: SNAPSHOT_SCHEMA,
-        volume_key: volume_key.to_string(),
-        image_id: image_id.to_string(),
+        volume_key: volume_key.into(),
+        image_id: image_id.into(),
         source_volume_size: 1024,
         built_at: "2026-07-27T00:00:00Z".to_string(),
     };

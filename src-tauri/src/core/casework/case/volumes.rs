@@ -178,14 +178,12 @@ impl CaseState {
 
     /// 安装一份内存快照体(索引建立失败时的浏览回退)。
     pub fn install_snapshot(&mut self, snapshot: Arc<VolumeSnapshot>) {
-        let header = &snapshot.header;
-        let key = (header.image_id.clone(), header.volume_key.clone());
-        self.snapshots.insert(key, snapshot);
+        self.snapshots
+            .insert(snapshot.header.volume_ref(), snapshot);
     }
 
     pub fn remove_snapshot_body(&mut self, image_id: &str, volume_key: &str) {
-        self.snapshots
-            .remove(&(image_id.to_string(), volume_key.to_string()));
+        self.snapshots.remove(&VolumeRef::new(image_id, volume_key));
     }
 
     /// 覆盖 `parent_id` 的内存快照体。
@@ -196,7 +194,7 @@ impl CaseState {
     ) -> Option<Arc<VolumeSnapshot>> {
         self.snapshots
             .iter()
-            .find(|((img, _), snapshot)| img == image_id && snapshot.covers(parent_id))
+            .find(|(volume, snapshot)| volume.image == image_id && snapshot.covers(parent_id))
             .map(|(_, snapshot)| Arc::clone(snapshot))
     }
 
@@ -204,7 +202,7 @@ impl CaseState {
     pub fn snapshot_child_count(&self, image_id: &str, parent_id: &str) -> Option<usize> {
         self.snapshots
             .iter()
-            .filter(|((img, _), _)| img == image_id)
+            .filter(|(volume, _)| volume.image == image_id)
             .find_map(|(_, snapshot)| snapshot.child_count(parent_id))
     }
 
@@ -212,7 +210,7 @@ impl CaseState {
     pub fn snapshot_subtree_empty(&self, image_id: &str, parent_id: &str) -> Option<bool> {
         self.snapshots
             .iter()
-            .filter(|((img, _), _)| img == image_id)
+            .filter(|(volume, _)| volume.image == image_id)
             .find_map(|(_, snapshot)| snapshot.subtree_has_file(parent_id))
             .map(|has_file| !has_file)
     }

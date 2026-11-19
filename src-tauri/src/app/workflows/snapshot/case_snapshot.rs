@@ -39,7 +39,8 @@ use crate::app::access::loaded_image_app_error;
 use crate::app::error::AppError;
 use crate::app::workflows::snapshot::snapshot_install::{index_published_snapshot, IndexJob};
 use crate::core::casework::case::{
-    self, CaseState, EvidenceRef, EvidenceRegistration, SnapshotInfo, SnapshotPublish,
+    self, CaseLocked, CaseState, EvidenceRef, EvidenceRegistration, LockedEdit, SnapshotInfo,
+    SnapshotPublish,
 };
 use crate::core::casework::case_ledger;
 use crate::core::casework::case_ledger_volumes::{SnapshotPublication, VolumeRecord};
@@ -99,6 +100,8 @@ enum Admission {
     Removed,
     /// The same source is already another evidence of the case.
     SourceTaken { existing_image_id: String },
+    /// The case is locked and refuses new evidence.
+    Locked(CaseLocked),
 }
 
 /// The published state of one volume, captured under the case lock.
@@ -129,12 +132,7 @@ pub async fn snapshot_build(
                     "no active case — open or create a case first",
                 ));
             }
-            Some(case) if case.is_locked() => {
-                return Err(AppError::invalid_input(
-                    "case is locked; unlock it before rebuilding snapshots",
-                ));
-            }
-            Some(_) => {}
+            Some(case) => case.ensure_unlocked(LockedEdit::BuildSnapshot)?,
         }
     }
     spawn_volume_snapshot(
@@ -175,15 +173,19 @@ pub async fn snapshot_drop(
 ) -> Result<(), AppError> {
     {
         let guard = state.active_case.lock().await;
-        if guard.is_none() {
-            return Err(AppError::invalid_input("no active case"));
+        match guard.as_ref() {
+            None => return Err(AppError::invalid_input("no active case")),
+            Some(case) => case.ensure_unlocked(LockedEdit::DropSnapshot)?,
         }
     }
     let active_case = Arc::clone(&state.active_case);
     tokio::task::spawn_blocking(move || {
         let mut guard = active_case.blocking_lock();
         match guard.as_mut() {
-            Some(case) => case.drop_volume(&image_id, &volume_key),
+            Some(case) => {
+                case.ensure_unlocked(LockedEdit::DropSnapshot)?;
+                case.drop_volume(&image_id, &volume_key)
+            }
             None => Ok(()),
         }
     })

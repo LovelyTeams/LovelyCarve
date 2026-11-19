@@ -25,7 +25,7 @@ use crate::core::search::global_search_store::{
     self, GlobalSearchDistinct, GlobalSearchMeta, GlobalSearchPage, GlobalSearchPageQuery,
 };
 use crate::core::search::keyword::keyword_search::MatcherSet;
-use crate::state::{AppState, GlobalSearchRunState};
+use crate::state::{AppState, GlobalSearchRunState, RunRegistration};
 use crate::task_manager::{TaskCount, TaskFlag, TaskKind, TaskOutcome, TaskProgressUnit};
 use {crate::app::access::loaded_image_app_error, crate::commands::quote_csv_field};
 
@@ -160,7 +160,8 @@ pub async fn global_search_start(
     };
     // 先登记在跑、再落 running 行：任务列表先读行、后取存活集，读到的
     // running 行必然已登记，刚启动的搜索不会被当成孤儿改判 failed。
-    state.global_searches.lock().await.insert(
+    let registration = RunRegistration::insert(
+        &state.global_searches,
         search_id.clone(),
         GlobalSearchRunState {
             image_id: image_id.clone(),
@@ -183,7 +184,7 @@ pub async fn global_search_start(
         Err(err) => Err(AppError::task_panicked("global_search_start", err)),
     };
     if let Err(error) = created {
-        state.global_searches.lock().await.remove(&search_id);
+        drop(registration);
         return Err(error);
     }
 
@@ -222,7 +223,7 @@ pub async fn global_search_start(
                 Some(files_total),
                 None,
             );
-            if let Ok(mut runs) = runs.try_lock() {
+            if let Some(mut runs) = runs.try_lock() {
                 if let Some(run) = runs.get_mut(&progress.search_id) {
                     run.files_done = files_done;
                     run.files_total = files_total;
@@ -292,7 +293,7 @@ pub async fn global_search_start(
             );
         }
     }
-    state.global_searches.lock().await.remove(&search_id);
+    drop(registration);
     match &scanned {
         Ok(summary) => {
             task.update(|view| {
@@ -379,7 +380,7 @@ pub async fn global_search_history_list(
     let runs = Arc::clone(&state.global_searches);
     tokio::task::spawn_blocking(move || {
         global_search_store::history_list(&case_dir, &image_id, limit, || {
-            runs.blocking_lock().keys().cloned().collect()
+            runs.lock().keys().cloned().collect()
         })
     })
     .await
@@ -396,7 +397,7 @@ pub async fn global_search_history_delete(
     search_id: String,
 ) -> Result<bool, AppError> {
     let running = {
-        let runs = state.global_searches.lock().await;
+        let runs = state.global_searches.lock();
         runs.get(&search_id)
             .is_some_and(|run| run.image_id == image_id)
     };
@@ -405,10 +406,7 @@ pub async fn global_search_history_delete(
         let deadline = Instant::now() + DELETE_CANCEL_WAIT;
         while Instant::now() < deadline {
             tokio::time::sleep(Duration::from_millis(100)).await;
-            let still_running = {
-                let runs = state.global_searches.lock().await;
-                runs.contains_key(&search_id)
-            };
+            let still_running = state.global_searches.lock().contains_key(&search_id);
             if !still_running {
                 break;
             }
@@ -424,7 +422,7 @@ pub async fn global_search_history_delete(
     .await
     .map_err(|err| AppError::task_panicked("global_search_history_delete", err))?
     .map_err(|err| AppError::from_anyhow(err.context("删除搜索任务失败")))?;
-    state.global_searches.lock().await.remove(&search_id);
+    state.global_searches.lock().remove(&search_id);
     Ok(deleted)
 }
 

@@ -15,7 +15,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use tokio_util::sync::CancellationToken;
 
@@ -51,6 +51,8 @@ struct TaskManagerInner {
     /// free again: a new registration under the same id is a new task.
     stopping: Mutex<Vec<Arc<TaskRecord>>>,
     finished: Mutex<VecDeque<TaskSnapshot>>,
+    /// Woken whenever a task's last registration drops.
+    released: tokio::sync::Notify,
     /// Bumped when the case changes (see [`TaskManager::forget_unowned`]).
     generation: AtomicU64,
     resources: TaskResources,
@@ -103,6 +105,7 @@ impl TaskManager {
                 records: Mutex::new(HashMap::new()),
                 stopping: Mutex::new(Vec::new()),
                 finished: Mutex::new(VecDeque::new()),
+                released: tokio::sync::Notify::new(),
                 generation: AtomicU64::new(0),
                 resources,
                 event_sink: Mutex::new(None),
@@ -268,6 +271,44 @@ impl TaskManager {
         self.finished_tasks().iter().cloned().collect()
     }
 
+    /// Waits until no task of `image_id` is live or stopping, for at most
+    /// `timeout`. Returns the ids of the tasks still holding on. A task
+    /// cancelled before the wait is in the finished history by the time it
+    /// stops counting here, so [`forget_image`](Self::forget_image) after the
+    /// wait also drops it.
+    pub async fn wait_image_stopped(&self, image_id: &str, timeout: Duration) -> Vec<String> {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            // Created before the check: `notify_waiters` wakes every future
+            // that exists when it is called, polled or not.
+            let released = self.inner.released.notified();
+            let holding = self.image_tasks(image_id);
+            if holding.is_empty() {
+                return holding;
+            }
+            if tokio::time::timeout_at(deadline, released).await.is_err() {
+                return self.image_tasks(image_id);
+            }
+        }
+    }
+
+    /// Ids of the live and stopping tasks of `image_id`.
+    fn image_tasks(&self, image_id: &str) -> Vec<String> {
+        let mut ids: Vec<String> = self
+            .records()
+            .values()
+            .filter(|record| record.image_id() == Some(image_id))
+            .map(|record| record.id().to_owned())
+            .collect();
+        ids.extend(
+            self.stopping()
+                .iter()
+                .filter(|record| record.image_id() == Some(image_id))
+                .map(|record| record.id().to_owned()),
+        );
+        ids
+    }
+
     /// Drops the ended tasks of an unloaded image.
     pub fn forget_image(&self, image_id: &str) {
         self.finished_tasks()
@@ -388,20 +429,25 @@ impl TaskManager {
         if !last {
             return;
         }
-        self.stopping()
-            .retain(|stopping| !Arc::ptr_eq(stopping, record));
         let snapshot = record.final_snapshot();
-        if record.kind.listing() == TaskListing::Session
-            && (record.image_id.is_some()
-                || record.generation == self.inner.generation.load(Ordering::Acquire))
         {
-            let mut finished = self.finished_tasks();
-            finished.retain(|task| task.id != snapshot.id);
-            finished.push_back(snapshot.clone());
-            while finished.len() > FINISHED_HISTORY_LIMIT {
-                finished.pop_front();
+            // Leave `stopping` and enter the history under one lock, so a
+            // waiter that no longer sees the task also sees its history entry.
+            let mut stopping = self.stopping();
+            stopping.retain(|stopping| !Arc::ptr_eq(stopping, record));
+            if record.kind.listing() == TaskListing::Session
+                && (record.image_id.is_some()
+                    || record.generation == self.inner.generation.load(Ordering::Acquire))
+            {
+                let mut finished = self.finished_tasks();
+                finished.retain(|task| task.id != snapshot.id);
+                finished.push_back(snapshot.clone());
+                while finished.len() > FINISHED_HISTORY_LIMIT {
+                    finished.pop_front();
+                }
             }
         }
+        self.inner.released.notify_waiters();
         self.send_lifecycle(TaskLifecyclePhase::Finished, snapshot);
     }
 

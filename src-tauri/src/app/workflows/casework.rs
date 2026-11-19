@@ -23,7 +23,9 @@ use serde::{Deserialize, Serialize};
 use crate::app::error::{AppError, ErrorCode};
 use crate::app::workflows::snapshot::case_snapshot::snapshot_already_loaded_images;
 use crate::core::analysis::identify::autodetect::EvidencePlatform;
-use crate::core::casework::case::{self, CaseInfo, CaseState, CreateCaseOptions, EvidenceRef};
+use crate::core::casework::case::{
+    self, CaseInfo, CaseState, CreateCaseOptions, EvidenceRef, LockedEdit,
+};
 use crate::core::{casework::case_ledger, casework::case_paths, casework::case_registry};
 use crate::state::AppState;
 
@@ -226,6 +228,11 @@ async fn unload_all_images(state: &State<'_, AppState>) {
         let images = state.images.lock().await;
         images.keys().cloned().collect()
     };
+    // Cancel every image's tasks up front so they stop together rather than
+    // one image's wait at a time.
+    for image_id in &ids {
+        state.tasks.cancel_image(image_id);
+    }
     for image_id in ids {
         if let Err(err) =
             crate::app::workflows::evidence::remove_image_runtime(state, &image_id).await
@@ -350,11 +357,6 @@ pub async fn case_rename(
         let Some(case) = guard.as_mut() else {
             return Err(AppError::invalid_input("no active case"));
         };
-        if case.is_locked() {
-            return Err(AppError::invalid_input(
-                "case is locked; unlock it before editing",
-            ));
-        }
         case.rename(&name).map_err(AppError::from)?;
         (case.info(), case.dir.display().to_string())
     };
@@ -428,11 +430,6 @@ pub async fn case_evidence_platform_set(
     let Some(case) = guard.as_mut() else {
         return Err(AppError::invalid_input("no active case"));
     };
-    if case.is_locked() {
-        return Err(AppError::invalid_input(
-            "case is locked; unlock it before editing",
-        ));
-    }
     case.set_evidence_platform(&image_id, manual.map(EvidencePlatform::as_str))
         .map_err(AppError::from)?
         .ok_or_else(|| {
@@ -456,14 +453,16 @@ pub async fn case_evidence_remove(
         let mut removed = state.removed_case_evidence.lock().await;
         removed.insert(image_id.clone());
     }
+    // Refuse before withdrawing tasks: the lock must not leave cancelled tasks
+    // behind evidence that stays in the case.
     let refusal = {
         let guard = state.active_case.lock().await;
         match guard.as_ref() {
             None => Some(AppError::invalid_input("no active case")),
-            Some(case) if case.is_locked() => Some(AppError::invalid_input(
-                "case is locked; unlock it before removing evidence",
-            )),
-            Some(_) => None,
+            Some(case) => case
+                .ensure_unlocked(LockedEdit::RemoveEvidence)
+                .err()
+                .map(AppError::from),
         }
     };
     if let Some(refusal) = refusal {
@@ -488,13 +487,25 @@ pub async fn case_evidence_remove(
             None
         }
     };
-    let (info, cleanup) = {
+    let detached = {
         let mut guard = state.active_case.lock().await;
-        let Some(case) = guard.as_mut() else {
-            return Err(AppError::invalid_input("no active case"));
-        };
-        let cleanup = case.detach_evidence(&image_id).map_err(AppError::from)?;
-        (case.info(), cleanup)
+        match guard.as_mut() {
+            None => Err(AppError::invalid_input("no active case")),
+            Some(case) => case
+                .detach_evidence(&image_id)
+                .map(|cleanup| (case.info(), cleanup))
+                .map_err(AppError::from),
+        }
+    };
+    let (info, cleanup) = match detached {
+        Ok(detached) => detached,
+        Err(error) => {
+            // The evidence stays in the case, so later loads must not treat
+            // it as removed.
+            let mut removed = state.removed_case_evidence.lock().await;
+            removed.remove(&image_id);
+            return Err(error);
+        }
     };
     if let Some(withdrawal) = &withdrawal {
         state.scheduler.forget_evidence(withdrawal);

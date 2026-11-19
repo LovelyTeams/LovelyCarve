@@ -452,8 +452,8 @@ pub(crate) mod test_support {
     pub(crate) fn header() -> SnapshotHeader {
         SnapshotHeader {
             schema_version: crate::core::catalog::snapshot::volume_snapshot::SNAPSHOT_SCHEMA,
-            volume_key: "part:0".to_string(),
-            image_id: "img".to_string(),
+            volume_key: "part:0".into(),
+            image_id: "img".into(),
             source_volume_size: 1024,
             built_at: "2026-07-27T00:00:00Z".to_string(),
         }
@@ -687,7 +687,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let snapshot = dir.path().join("wrong.dirz");
         let mut header = header();
-        header.volume_key = "part:9".to_string();
+        header.volume_key = "part:9".into();
         write_snapshot_file_with_header(&snapshot, &header, &entries());
         let output = dir.path().join("index.db");
         let error = build_index(&snapshot, &output, &source("part:0"), None, None)

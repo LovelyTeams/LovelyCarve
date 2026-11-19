@@ -35,7 +35,7 @@ use crate::core::timeline::timeline_project::{
 use crate::core::timeline::timeline_store::{
     self, TimelineBucket, TimelineDataPage, TimelineQuery, TimelineRow, TimelineTypeGroup,
 };
-use crate::state::{AppState, TimelineBuildRunState};
+use crate::state::{AppState, RunRegistration, TimelineBuildRunState};
 use crate::task_manager::{TaskCount, TaskKind, TaskOutcome, TaskProgressUnit};
 
 /// 进度事件（前端按 `image_id` 过滤）。
@@ -88,10 +88,7 @@ pub async fn timeline_status(
     image_id: String,
 ) -> Result<TimelineStatusInfo, AppError> {
     let case_dir = active_case_dir(&state).await?;
-    let running = {
-        let builds = state.timeline_builds.lock().await;
-        builds.contains_key(&image_id)
-    };
+    let running = state.timeline_builds.lock().contains_key(&image_id);
     tokio::task::spawn_blocking(move || compute_status(&case_dir, &image_id, running))
         .await
         .map_err(|err| AppError::task_panicked("timeline_status", err))?
@@ -124,7 +121,8 @@ pub async fn timeline_start(
     let started_ms = now_ms();
     tracing::info!("timeline_start begin image={image_id}");
 
-    state.timeline_builds.lock().await.insert(
+    let registration = RunRegistration::insert(
+        &state.timeline_builds,
         image_id.clone(),
         TimelineBuildRunState {
             started_ms,
@@ -162,7 +160,7 @@ pub async fn timeline_start(
                 (total > 0).then_some(total),
                 None,
             );
-            if let Ok(mut runs) = runs.try_lock() {
+            if let Some(mut runs) = runs.try_lock() {
                 if let Some(run) = runs.get_mut(&progress.image_id) {
                     run.done = done;
                     run.total = total;
@@ -174,7 +172,7 @@ pub async fn timeline_start(
     })
     .await;
 
-    state.timeline_builds.lock().await.remove(&image_id);
+    drop(registration);
     let built = outcome
         .map_err(|err| AppError::task_panicked("timeline_start", err))
         .and_then(|built| {

@@ -32,11 +32,22 @@ impl CaseState {
     }
 
     /// 登记(或刷新)一个检材,以 `image_id` 幂等;同一来源已是另一个检材时
-    /// 不登记。
+    /// 不登记。锁定的案件只刷新已登记的检材,新检材以 [`CaseLocked`] 拒绝。
     pub fn register_evidence(
         &mut self,
         evidence: &EvidenceRef,
     ) -> anyhow::Result<EvidenceRegistration> {
+        if !self.has_evidence(&evidence.image_id) {
+            if let Err(locked) = self.ensure_unlocked(LockedEdit::AddEvidence) {
+                // A source that already is other evidence says so instead.
+                return match self.evidence_image_id_for_path(&evidence.path) {
+                    Some(existing_image_id) => {
+                        Ok(EvidenceRegistration::SourceTaken { existing_image_id })
+                    }
+                    None => Err(locked.into()),
+                };
+            }
+        }
         let format = source_format_name(evidence.source_format);
         let path_key = evidence_path_key(&evidence.path);
         let previous = self
@@ -124,6 +135,7 @@ impl CaseState {
     /// 删除检材的台账行(级联带走卷记录、标签、盘符、读故障与任务)并刷新
     /// 缓存;返回需要在案件锁外执行的目录清理。
     pub fn detach_evidence(&mut self, image_id: &str) -> anyhow::Result<EvidenceRemovalCleanup> {
+        self.ensure_unlocked(LockedEdit::RemoveEvidence)?;
         let detail = self
             .evidence
             .iter()
@@ -152,7 +164,7 @@ impl CaseState {
         }
         self.evidence.retain(|record| record.uid != image_id);
         self.volumes.retain(|record| record.image_id != image_id);
-        self.snapshots.retain(|(id, _), _| id != image_id);
+        self.snapshots.retain(|volume, _| volume.image != image_id);
         Ok(EvidenceRemovalCleanup {
             evidence_dir: case_paths::evidence_dir(&self.dir, image_id),
         })
@@ -186,6 +198,7 @@ impl CaseState {
         image_id: &str,
         platform: Option<&str>,
     ) -> anyhow::Result<Option<EvidenceRef>> {
+        self.ensure_unlocked(LockedEdit::SetPlatform)?;
         let Some(current) = self.evidence.iter().find(|record| record.uid == image_id) else {
             return Ok(None);
         };

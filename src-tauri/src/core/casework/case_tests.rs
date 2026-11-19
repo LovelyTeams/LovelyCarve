@@ -29,8 +29,8 @@ fn built(image_id: &str, volume_key: &str, built_at: &str) -> VolumeSnapshotBuil
     VolumeSnapshotBuilt {
         header: SnapshotHeader {
             schema_version: SNAPSHOT_SCHEMA,
-            volume_key: volume_key.to_string(),
-            image_id: image_id.to_string(),
+            volume_key: volume_key.into(),
+            image_id: image_id.into(),
             source_volume_size: 4096,
             built_at: built_at.to_string(),
         },
@@ -297,15 +297,84 @@ fn heal_prunes_orphans_and_repairs_records() {
     assert_eq!(again.volumes().len(), 2);
 }
 
+fn refused_edit(error: anyhow::Error) -> Option<LockedEdit> {
+    error.downcast_ref::<CaseLocked>().map(|locked| locked.edit)
+}
+
+#[test]
+fn a_locked_case_refuses_locked_edits_and_keeps_upkeep() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut case = create_case(dir.path(), options("c")).expect("create");
+    case.register_evidence(&evidence("img", "/x.E01"))
+        .expect("add");
+    publish_volume(&mut case, "img", "part:0", "2026-10-09T01:00:00.000Z");
+    case.set_locked(true).expect("lock");
+    let journaled = journal_actions(&case).len();
+
+    assert_eq!(
+        [
+            refused_edit(case.rename("other").expect_err("rename")),
+            refused_edit(
+                case.register_evidence(&evidence("new", "/new.E01"))
+                    .expect_err("add")
+            ),
+            refused_edit(
+                case.set_evidence_platform("img", Some("windows"))
+                    .expect_err("platform")
+            ),
+            refused_edit(case.detach_evidence("img").err().expect("remove")),
+        ],
+        [
+            Some(LockedEdit::Rename),
+            Some(LockedEdit::AddEvidence),
+            Some(LockedEdit::SetPlatform),
+            Some(LockedEdit::RemoveEvidence),
+        ]
+    );
+    assert_eq!(
+        case.ensure_unlocked(LockedEdit::BuildSnapshot),
+        Err(CaseLocked {
+            edit: LockedEdit::BuildSnapshot
+        })
+    );
+    // A source that already is other evidence still says so.
+    assert_eq!(
+        case.register_evidence(&evidence("alias", "/x.E01"))
+            .expect("alias"),
+        EvidenceRegistration::SourceTaken {
+            existing_image_id: "img".to_string()
+        }
+    );
+
+    // Upkeep continues: relinking registered evidence, detection write-back
+    // and the first snapshot of a volume that has none.
+    assert_eq!(
+        case.register_evidence(&evidence("img", "/moved/x.E01"))
+            .expect("relink"),
+        EvidenceRegistration::Known
+    );
+    assert!(case
+        .record_evidence_detection("img", Some("windows"), "disk", "{}")
+        .expect("detection"));
+    publish_volume(&mut case, "img", "part:1", "2026-10-09T02:00:00.000Z");
+
+    assert_eq!(case.info().name, "c");
+    assert_eq!(case.evidence_refs().len(), 1);
+    assert_eq!(case.volumes().len(), 2);
+    assert_eq!(journal_actions(&case)[journaled..], ["evidence.relink"]);
+    case.set_locked(false).expect("unlock");
+    case.rename("renamed").expect("rename after unlock");
+}
+
 #[test]
 fn lock_rename_and_remove_keep_foreign_files() {
     let dir = tempfile::tempdir().expect("tempdir");
     let case_dir = dir.path().join("case");
     let mut case = create_case(&case_dir, options("c")).expect("create");
-    case.set_locked(true).expect("lock");
-    assert!(case.info().locked);
     case.rename("renamed").expect("rename");
     assert!(case.rename("  ").is_err());
+    case.set_locked(true).expect("lock");
+    assert!(case.info().locked);
     case.close();
 
     let peeked = peek_case(&case_dir).expect("peek");

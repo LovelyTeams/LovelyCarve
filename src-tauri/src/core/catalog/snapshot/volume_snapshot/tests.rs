@@ -20,8 +20,8 @@ fn node(id: &str, name: &str, kind: NodeKind) -> FsNode {
 fn header() -> SnapshotHeader {
     SnapshotHeader {
         schema_version: SNAPSHOT_SCHEMA,
-        volume_key: "part:0".to_string(),
-        image_id: "img-1".to_string(),
+        volume_key: "part:0".into(),
+        image_id: "img-1".into(),
         source_volume_size: 1024,
         built_at: "2026-05-29T00:00:00Z".to_string(),
     }

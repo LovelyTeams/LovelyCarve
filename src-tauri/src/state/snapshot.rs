@@ -1,5 +1,6 @@
 //! Runtime snapshot state.
 use crate::core::catalog::snapshot::volume_snapshot::VolumeSnapshot;
+use crate::core::common::ids::VolumeRef;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -38,6 +39,6 @@ impl Drop for SessionSnapshot {
     }
 }
 
-/// Caseless volume snapshots keyed by `(image_id, volume_key)`. See
+/// Caseless volume snapshots by evidence and volume. See
 /// [`super::AppState::session_snapshots`].
-pub type SessionSnapshots = Arc<Mutex<HashMap<(String, String), Arc<SessionSnapshot>>>>;
+pub type SessionSnapshots = Arc<Mutex<HashMap<VolumeRef, Arc<SessionSnapshot>>>>;

@@ -22,6 +22,7 @@ export interface BackendAppError {
     | 'taskPanicked'
     | 'notFound'
     | 'invalidInput'
+    | 'caseLocked'
     | 'io'
     | 'internal';
   message: string;

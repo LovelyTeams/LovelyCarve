@@ -23,6 +23,35 @@ pub enum TaskListing {
 }
 
 impl TaskKind {
+    /// Whether the case journal records the start and settlement of this
+    /// kind's tasks on case evidence. Only preview helpers that serve the
+    /// interface and touch no examination result are left out.
+    pub fn journaled(self) -> bool {
+        match self {
+            Self::FlatList | Self::MediaMaterialization | Self::OcrScan | Self::QrScan => false,
+            Self::AutoDetect
+            | Self::BitlockerExport
+            | Self::BitlockerScan
+            | Self::BitlockerUnlock
+            | Self::CarveRecovery
+            | Self::CarveScan
+            | Self::DirectoryExport
+            | Self::DockerPrepare
+            | Self::EncryptedVolumeUnlock
+            | Self::FilevaultInspect
+            | Self::GlobalSearch
+            | Self::ImageExport
+            | Self::ImageHash
+            | Self::ImageLoad
+            | Self::IosBackupAudit
+            | Self::IosBackupUnlock
+            | Self::SessionSnapshot
+            | Self::ShadowCopyOpen
+            | Self::TimelineBuild
+            | Self::VolumeSnapshot => true,
+        }
+    }
+
     pub fn listing(self) -> TaskListing {
         match self {
             Self::AutoDetect

@@ -92,6 +92,54 @@ fn cancel_image_only_cancels_owned_tasks() {
     assert!(manager.contains("hash-2"));
 }
 
+#[tokio::test]
+async fn waiting_for_an_image_returns_once_its_cancelled_tasks_stop() {
+    let manager = TaskManager::default();
+    let hash = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".to_string()));
+    let other = manager.register("hash-2", TaskKind::ImageHash, Some("image-2".to_string()));
+    assert_eq!(manager.cancel_image("image-1"), 1);
+    let worker = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(50));
+        drop(hash);
+    });
+
+    let holding = manager
+        .wait_image_stopped("image-1", Duration::from_secs(10))
+        .await;
+    // The stopped task is already in the history, so forgetting the image
+    // right after the wait leaves none of its entries behind.
+    let finished_before_forget = manager.finished().len();
+    manager.forget_image("image-1");
+
+    assert_eq!(
+        (holding, finished_before_forget, manager.finished().len()),
+        (Vec::<String>::new(), 1, 0)
+    );
+    assert!(manager.contains("hash-2"));
+    worker.join().expect("worker");
+    drop(other);
+}
+
+#[tokio::test]
+async fn waiting_for_an_image_gives_up_on_tasks_that_hold_on() {
+    let manager = TaskManager::default();
+    let stuck = manager.register("hash-1", TaskKind::ImageHash, Some("image-1".to_string()));
+    manager.cancel_image("image-1");
+
+    let holding = manager
+        .wait_image_stopped("image-1", Duration::from_millis(50))
+        .await;
+
+    assert_eq!(holding, ["hash-1"]);
+    drop(stuck);
+    assert_eq!(
+        manager
+            .wait_image_stopped("image-1", Duration::from_millis(50))
+            .await,
+        Vec::<String>::new()
+    );
+}
+
 #[test]
 fn cancel_image_kind_preserves_other_work() {
     let manager = TaskManager::default();
