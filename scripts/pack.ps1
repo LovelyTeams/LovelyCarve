@@ -52,7 +52,17 @@ Get-ChildItem -LiteralPath $binaries -Filter '*.dll' -File | Where-Object {
     $_.Name -notin @('libewf.dll', 'libvmdk.dll', 'libbde.dll', 'libvhdi.dll', 'librefs-13.dll', 'bzip2.dll', 'zlib.dll') -and
     ($QrOcr -or $_.Name -ne 'opencv_world4130.dll')
 } | Copy-Item -Destination $stage -Force
-Write-Host "==> staged $((Get-ChildItem (Join-Path $stage '*.dll')).Count) runtime DLLs next to the exe"
+# Native components (the inference DLL) from target\release: the same set
+# tauri.components.conf.json adds to the installers.
+$componentBundle = Get-Content -LiteralPath (Join-Path $Root 'src-tauri\tauri.components.conf.json') -Raw | ConvertFrom-Json
+foreach ($resource in $componentBundle.bundle.resources.PSObject.Properties) {
+    $source = Join-Path (Join-Path $Root 'src-tauri') $resource.Name
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+        throw "native component not found: $source`nRun ``just build-components --release`` first (or use ``just pack``)."
+    }
+    Copy-Item -LiteralPath $source -Destination (Join-Path $stage $resource.Value) -Force
+}
+Write-Host "==> staged $((Get-ChildItem (Join-Path $stage '*.dll')).Count) runtime and component DLLs next to the exe"
 # The app-local Visual C++ runtime (vcruntime140*, msvcp140*) stays exactly as
 # Microsoft signed it.
 $dlls = Get-ChildItem (Join-Path $stage '*.dll') | Where-Object { $_.Name -notlike 'vcruntime*.dll' -and $_.Name -notlike 'msvcp*.dll' }

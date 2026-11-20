@@ -11,10 +11,14 @@
 
 - 文件列表的预览可同时打开同一检材的多个文件：单击文件在预览位查看，双击、Enter 或菜单「预览」保持打开，勾选的多个文件可一次各开一个标签页。打开的文件不随目录切换关闭，切回时保留视图、搜索与滚动位置；每个检材记住自己打开的文件。
 - 案件操作审计记录案件检材上的任务：哈希、导出、恢复、搜索、时间线、快照等任务开始时记 `task.started`，结束时以 `task.settled` 记录结局、对象与计数；案件先关闭或进程中断的任务保持未完成，不补写结束时间。
+- 带索引的 BCP ZIP 可直接导入案件。导入结果进入桌面端「分析结果」与 CLI 的通用分析结果命令，并保留记录来源。
 
 ### Changed
 
 - 文件预览可放在列表右侧或下方；工作区较窄时自动放在列表下方，不再覆盖文件表。
+- Magika 文件类型识别和 OCR 移入随程序分发的推理组件 `lovelycarve_inference.dll`，ONNX Runtime 与模型随组件在首次使用时加载：Windows CLI 从约 52 MB 降至约 30 MB，桌面主程序同样减少约 22 MB；主程序和 CLI 启动时不再加载 DirectML、D3D12 与 DXGI。安装包、便携包和 CLI 包把组件放在主程序旁；`system get` 的 `components.inference` 报告组件能否加载及其 OCR 执行方式。
+- 从源码构建时，OCR 改由推理组件的 `ocr` / `ocr-cuda` 特性开启（`just build-components --features ocr-cuda`），后端 crate 不再提供这两个特性；`*-full` 配方的用法不变。
+- BCP 分析结果按应用、账号和记录类型浏览，并显示各分组的删除数和总数。
 - 桌面端在「卷与分区」的同一弹窗中解锁 BitLocker、LUKS、VeraCrypt 和 FileVault 2，分区行可直接预选对应卷。
 - 卸载检材时先等它的任务停下（最多 5 秒）再释放临时文件、插件卷与挂载，任务中心不再残留已卸载检材的历史。
 - CLI `schema` 的 `requestBodyFields` 把检材、节点和卷标识的类型报告为 `ImageId` / `NodeId` / `VolumeKey`，并在 `schema` 中注明按字符串传递；请求写法不变。
@@ -22,6 +26,11 @@
 ### Removed
 
 - LovelyCarve 的 DSH 取证模式和 CLI skill 移除 forensic-board 看板集成。
+- 安装包、便携包和 CLI 包不再附带 `libcrypto-4-x64.dll`：OpenSSL 已静态链接，没有程序再加载它，每个包少约 7 MB。
+
+### Fixed
+
+- 使用 Cargo 1.100 及更新版本时，带 OCR 的完整构建不再因 ONNX Runtime 构建脚本按旧目录层级拷贝 DLL 而失败；CUDA / TensorRT 执行提供者与 DirectML DLL 重新放在推理组件旁。
 
 ### Fixed
 

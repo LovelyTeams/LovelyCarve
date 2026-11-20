@@ -95,6 +95,7 @@ pub fn function_nodes(
                 child_count: children.len() as u64,
                 warning_count: 0,
                 legacy: true,
+                bcp_groups: None,
                 children,
             },
         ));
@@ -136,6 +137,7 @@ fn result_nodes(
         child_count: count,
         warning_count: 0,
         legacy: true,
+        bcp_groups: None,
         children: Vec::new(),
     };
     let mut children = Vec::new();

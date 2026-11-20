@@ -45,7 +45,7 @@ verify-fe: ipc-check frontend-structure-check i18n-check typecheck test-fe build
 
 # Run the backend checks required for a contribution.
 [group("verify")]
-verify-rust: fmt check clippy test
+verify-rust: fmt check clippy clippy-components test test-components
 
 # Run the SDK, process host and linuxinfo checks.
 [group("verify")]
@@ -124,10 +124,11 @@ update-fe:
     bun update
     bun scripts/copy-file-viewer-assets.mjs
 
-# Format the backend, the plugin workspace and all maintained reader crates.
+# Format the backend, the component and plugin workspaces and all maintained reader crates.
 [group("backend")]
 fmt:
     cd src-tauri && cargo fmt
+    cd src-tauri/components && cargo fmt
     cd plugins && cargo fmt
     cd src-tauri/vendor/qcow2 && cargo fmt
     cd src-tauri/vendor/vdi && cargo fmt
@@ -190,10 +191,11 @@ fmt:
     cd src-tauri/vendor/notatin && cargo fmt
     cd src-tauri/vendor/magika && cargo fmt
 
-# Refresh backend dependencies within the reviewed manifest constraints.
+# Refresh backend and component dependencies within the reviewed manifest constraints.
 [group("backend")]
 update-rust:
     cargo update --manifest-path src-tauri/Cargo.toml
+    cargo update --manifest-path src-tauri/components/Cargo.toml
 
 # Compile-check the standalone CLI backend and the desktop build, without QR/OCR.
 [group("backend")]
@@ -214,6 +216,24 @@ clippy:
 [working-directory("src-tauri")]
 test *args:
     {{ cargo_env }}cargo test --no-default-features {{ args }}
+
+# Build the native components (the inference DLL) beside the backend executables; pass --release or --features ocr / ocr-cuda.
+[group("backend")]
+[working-directory("src-tauri/components")]
+build-components *args:
+    {{ cargo_env }}cargo build --locked {{ args }}
+
+# Test the component ABI and the inference component without OCR; optionally pass a test filter and Cargo arguments.
+[group("backend")]
+[working-directory("src-tauri/components")]
+test-components *args:
+    {{ cargo_env }}cargo test --locked --workspace {{ args }}
+
+# Lint the component workspace without OCR.
+[group("backend")]
+[working-directory("src-tauri/components")]
+clippy-components:
+    {{ cargo_env }}cargo clippy --locked --workspace --all-targets
 
 # Build lc-plugin-host and stage every plugin package (library and schema.json); pass --release for bundles.
 [group("plugins")]
@@ -255,7 +275,7 @@ update-tauri:
 # Run the Tauri desktop app without QR/OCR (Windows).
 [group("desktop")]
 [windows]
-dev:
+dev: build-components
     bun scripts/copy-file-viewer-assets.mjs
     {{ cargo_env }}bun scripts/build-plugins.mjs
     {{ windowsenv }}; bun run tauri dev
@@ -263,45 +283,45 @@ dev:
 # Run the Tauri desktop app with WeChat QR and CUDA OCR (Windows).
 [group("desktop")]
 [windows]
-dev-full:
+dev-full: (build-components "--features" "ocr-cuda")
     bun scripts/copy-file-viewer-assets.mjs
     {{ cargo_env }}bun scripts/build-plugins.mjs
-    {{ vsenv }}; bun run tauri dev --features qrcode-wechat,ocr-cuda --config '{{ justfile_directory() }}\src-tauri\tauri.full.conf.json'
+    {{ vsenv }}; bun run tauri dev --features qrcode-wechat --config '{{ justfile_directory() }}\src-tauri\tauri.full.conf.json'
 
-# Build the desktop backend without QR/OCR (Windows).
+# Build the desktop backend and inference component without QR/OCR (Windows).
 [group("desktop")]
 [windows]
 [working-directory("src-tauri")]
-build:
+build: build-components
     {{ windowsenv }}; cargo build --no-default-features --features desktop
 
-# Compile the macOS desktop executable with its frontend assets.
+# Compile the macOS desktop executable and inference component with its frontend assets.
 [group("desktop")]
 [macos]
-build-macos:
+build-macos: (build-components "--release")
     bun run tauri build --no-bundle
 
-# Build the desktop backend with WeChat QR and CUDA OCR (Windows).
+# Build the desktop backend with WeChat QR and the inference component with CUDA OCR (Windows).
 [group("desktop")]
 [windows]
 [working-directory("src-tauri")]
-build-full:
-    {{ vsenv }}; $env:TAURI_CONFIG=Get-Content -Raw -LiteralPath '{{ justfile_directory() }}\src-tauri\tauri.full.conf.json'; cargo build --no-default-features --features 'desktop qrcode-wechat ocr-cuda'
+build-full: (build-components "--features" "ocr-cuda")
+    {{ vsenv }}; $env:TAURI_CONFIG=Get-Content -Raw -LiteralPath '{{ justfile_directory() }}\src-tauri\tauri.full.conf.json'; cargo build --no-default-features --features 'desktop qrcode-wechat'
 
 # Build the desktop release bundle without QR/OCR (Windows).
 [group("desktop")]
 [windows]
-build-release *args:
+build-release *args: (build-components "--release")
     {{ cargo_env }}bun scripts/build-plugins.mjs --release
     pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\prune-bundle-dlls.ps1'
-    {{ windowsenv }}; bun run tauri build --config '{{ justfile_directory() }}\src-tauri\tauri.plugins.conf.json' {{ args }}
+    {{ windowsenv }}; bun run tauri build --config '{{ justfile_directory() }}\src-tauri\tauri.plugins.conf.json' --config '{{ justfile_directory() }}\src-tauri\tauri.components.conf.json' {{ args }}
 
 # Build the desktop release bundle with QR/OCR, models and plugins (Windows).
 [group("desktop")]
 [windows]
-build-release-full *args:
+build-release-full *args: (build-components "--release" "--features" "ocr-cuda")
     {{ cargo_env }}bun scripts/build-plugins.mjs --release
-    {{ vsenv }}; bun run tauri build --features qrcode-wechat,ocr-cuda --config '{{ justfile_directory() }}\src-tauri\tauri.plugins.conf.json' --config '{{ justfile_directory() }}\src-tauri\tauri.full.conf.json' {{ args }}
+    {{ vsenv }}; bun run tauri build --features qrcode-wechat --config '{{ justfile_directory() }}\src-tauri\tauri.plugins.conf.json' --config '{{ justfile_directory() }}\src-tauri\tauri.components.conf.json' --config '{{ justfile_directory() }}\src-tauri\tauri.full.conf.json' {{ args }}
 
 # Build and package the portable Windows desktop app.
 [group("desktop")]
@@ -330,40 +350,40 @@ repack-full:
 # Run the CLI without QR/OCR.
 [group("cli")]
 [working-directory("src-tauri")]
-run-cli *args:
+run-cli *args: (build-components "--quiet")
     @{{ cargo_env }}cargo run --no-default-features --bin lovelycarve-cli -- {{ args }}
 
-# Build the standalone release CLI (no Tauri) without QR/OCR.
+# Build the standalone release CLI (no Tauri) and inference component without QR/OCR.
 [group("cli")]
 [windows]
 [working-directory("src-tauri")]
-build-cli:
+build-cli: (build-components "--release")
     {{ windowsenv }}; cargo build --no-default-features --release --bin lovelycarve-cli
 
-# Build the standalone release CLI (no Tauri) without QR/OCR.
+# Build the standalone release CLI (no Tauri) and inference component without QR/OCR.
 [group("cli")]
 [unix]
 [working-directory("src-tauri")]
-build-cli:
+build-cli: (build-components "--release")
     cargo build --no-default-features --release --bin lovelycarve-cli
 
-# Build the standalone release CLI with WeChat QR and CUDA OCR.
+# Build the standalone release CLI with WeChat QR and the inference component with CUDA OCR.
 [group("cli")]
 [windows]
 [working-directory("src-tauri")]
-build-cli-full:
-    {{ vsenv }}; cargo build --no-default-features --features 'qrcode-wechat ocr-cuda' --release --bin lovelycarve-cli
+build-cli-full: (build-components "--release" "--features" "ocr-cuda")
+    {{ vsenv }}; cargo build --no-default-features --features qrcode-wechat --release --bin lovelycarve-cli
 
-# Build the standalone release CLI with WeChat QR and CPU OCR.
+# Build the standalone release CLI with WeChat QR and the inference component with CPU OCR.
 [group("cli")]
 [unix]
 [working-directory("src-tauri")]
-build-cli-full:
-    cargo build --no-default-features --features 'qrcode-wechat ocr' --release --bin lovelycarve-cli
+build-cli-full: (build-components "--release" "--features" "ocr")
+    cargo build --no-default-features --features qrcode-wechat --release --bin lovelycarve-cli
 
-# Build the development CLI and run end-to-end smoke tests.
+# Build the development CLI and inference component and run end-to-end smoke tests.
 [group("cli")]
-test-cli:
+test-cli: build-components
     {{ cargo_env }}cd src-tauri && cargo build --no-default-features --bin lovelycarve-cli
     {{ python }} scripts/test-cli.py {{ cli_executable }}
 

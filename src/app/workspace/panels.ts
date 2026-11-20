@@ -15,6 +15,5 @@ export const AnalysisResultsPanel = createAsyncPanel(() => import('../../feature
 export const SearchResultsPanel = createAsyncPanel(() => import('../../features/search/components/SearchResultsPanel.vue'));
 export const TimelinePanel = createAsyncPanel(() => import('../../features/timeline/components/TimelinePanel.vue'));
 export const CarvePanel = createAsyncPanel(() => import('../../features/carving/components/CarvePanel.vue'));
-export const BcpPanel = createAsyncPanel(() => import('../../features/bcp/components/BcpPanel.vue'));
 
 export const KEPT_ALIVE_PANELS = new Set(['files', 'search-results', 'carve', 'timeline', 'analysis']);

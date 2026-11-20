@@ -37,9 +37,10 @@ jobs:
           $rustVersion = [regex]::Match((Get-Content src-tauri/Cargo.toml -Raw), '(?m)^version = "([^"]+)"').Groups[1].Value
           $pythonVersion = [regex]::Match((Get-Content python/pyproject.toml -Raw), '(?m)^version = "([^"]+)"').Groups[1].Value
           $pythonRustVersion = [regex]::Match((Get-Content python/Cargo.toml -Raw), '(?m)^version = "([^"]+)"').Groups[1].Value
+          $componentVersion = [regex]::Match((Get-Content src-tauri/components/Cargo.toml -Raw), '(?m)^version = "([^"]+)"').Groups[1].Value
           $tag = $env:GITHUB_REF_NAME
-          if ($tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$' -or $tag.Split('-')[0] -ne "v$version" -or $version -ne $tauriVersion -or $version -ne $rustVersion -or $version -ne $pythonVersion -or $version -ne $pythonRustVersion) {
-            throw "Tag $tag does not match manifest versions: $version / $tauriVersion / $rustVersion / $pythonVersion / $pythonRustVersion"
+          if ($tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$' -or $tag.Split('-')[0] -ne "v$version" -or $version -ne $tauriVersion -or $version -ne $rustVersion -or $version -ne $pythonVersion -or $version -ne $pythonRustVersion -or $version -ne $componentVersion) {
+            throw "Tag $tag does not match manifest versions: $version / $tauriVersion / $rustVersion / $pythonVersion / $pythonRustVersion / $componentVersion"
           }
       - uses: ./.github/actions/setup-windows
       - name: Build desktop MSI

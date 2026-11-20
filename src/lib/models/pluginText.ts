@@ -39,6 +39,7 @@ function sharedCategoryLabel(category: string, tr: Translator): string | null {
     case 'fileanalyzer': return tr("文件分析");
     case 'filesystem': return tr("文件系统");
     case 'analysis': return tr("数据分析");
+    case 'bcp': return tr("BCP 数据");
     case 'longtime': return tr("耗时任务");
     default: return null;
   }

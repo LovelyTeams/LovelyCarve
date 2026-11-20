@@ -11,11 +11,11 @@ export function useEvidenceOpen(options: {
   pickFolder: () => Promise<string | null>;
   pickBcpFiles: () => Promise<string[]>;
   openImagePath: (path: string, options?: LoadFileOptions) => Promise<OpenTabResult>;
+  openSelectedEvidence: (path: string) => Promise<OpenTabResult>;
   openRaidMemberDialog: () => Promise<void>;
-  preferredBcpFiles: Map<string, string>;
-  showPanel: (panel: string) => void;
+  importBcp: (path: string) => void;
 }) {
-  const { pickFiles, pickFolder, pickBcpFiles, openImagePath, openRaidMemberDialog, preferredBcpFiles } = options;
+  const { pickFiles, pickFolder, pickBcpFiles, openImagePath, openRaidMemberDialog, importBcp } = options;
   const showAddImageDialog = ref(false);
   const showPhysicalDiskPicker = ref(false);
   /** Resolver for the in-flight `pickPhysicalDisk()` promise — settled by the
@@ -54,7 +54,7 @@ export function useEvidenceOpen(options: {
       const paths = await pickFiles(tr("选择磁盘镜像（可多选）"));
       for (const path of paths) {
         if (/\.bcp$/i.test(path)) await openBcpFilePaths([path]);
-        else await openImagePath(path);
+        else await options.openSelectedEvidence(path);
       }
     } else if (kind === 'folder') {
       const path = await pickFolder();
@@ -78,12 +78,10 @@ export function useEvidenceOpen(options: {
   }
 
   async function openBcpFilePaths(files: string[]) {
-    const folders = [...new Set(files.map(file => file.replace(/[\\/][^\\/]+$/, '')))];
-    for (const folder of folders) {
-      const lastFile = files.filter(file => file.replace(/[\\/][^\\/]+$/, '') === folder).at(-1);
-      if (lastFile) preferredBcpFiles.set(folder, lastFile.split(/[\\/]/).at(-1) ?? '');
-      const result = await openImagePath(folder, { forceImage: true });
-      if (result.ok) options.showPanel('bcp');
+    const evidencePaths = new Set(files.map(path => /\.zip$/i.test(path) ? path : path.replace(/[\\/][^\\/]+$/, '')));
+    for (const path of evidencePaths) {
+      const result = await openImagePath(path, { forceImage: true, waitUntilReady: true });
+      if (result.ok) importBcp(path);
     }
   }
 
@@ -103,6 +101,6 @@ export function useEvidenceOpen(options: {
 
   return {
     showAddImageDialog, showPhysicalDiskPicker, onPhysicalDiskSelect,
-    onPhysicalDiskPickerClose, onAddImageSelect, onOpenImageFromInfo,
+    onPhysicalDiskPickerClose, onAddImageSelect, onOpenImageFromInfo, openBcpFilePaths,
   };
 }

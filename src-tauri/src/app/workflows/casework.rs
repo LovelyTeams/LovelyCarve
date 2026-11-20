@@ -184,6 +184,10 @@ async fn exit_active_case(state: &State<'_, AppState>) {
     state
         .tasks
         .cancel_kind(crate::task_manager::TaskKind::ImageLoad);
+    state
+        .tasks
+        .cancel_kind(crate::task_manager::TaskKind::BcpImport);
+    let _bcp_drained = state.bcp_imports.write().await;
     state.tasks.forget_unowned();
 
     // 任务调度先解绑:运行中任务置 offline、终止插件 worker,再释放案件连接。
@@ -471,6 +475,13 @@ pub async fn case_evidence_remove(
         removed.remove(&image_id);
         return Err(refusal);
     }
+    let bcp_drained = {
+        let _admission = state.image_load_context.lock().await;
+        state
+            .tasks
+            .cancel_image_kind(&image_id, crate::task_manager::TaskKind::BcpImport);
+        state.bcp_imports.write().await
+    };
     // 检材下线:先取消它的全部未终结任务(调度器持独立台账连接,不与案件锁
     // 互斥),再删检材行——台账级联带走它的任务、卷记录与标签。
     let withdrawal = match state.scheduler.withdraw_evidence(&image_id).await {
@@ -508,6 +519,7 @@ pub async fn case_evidence_remove(
             return Err(error);
         }
     };
+    drop(bcp_drained);
     if let Some(withdrawal) = &withdrawal {
         state.scheduler.forget_evidence(withdrawal);
     }

@@ -30,6 +30,10 @@ pub struct EvidenceSession {
     image: Arc<DiskImage>,
     pub(crate) host_docker: OnceLock<Option<Arc<HostDocker>>>,
     pub(crate) host_docker_cache_dir: parking_lot::RwLock<Option<PathBuf>>,
+    #[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]
+    pub(crate) bcp_package: parking_lot::Mutex<Option<Arc<crate::core::analysis::bcp::BcpPackage>>>,
+    #[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]
+    pub(crate) bcp_import_lock: Arc<tokio::sync::Mutex<()>>,
     external_volumes: Mutex<HashMap<String, Arc<dyn ExternalVolume>>>,
     ntfs_deleted: Mutex<HashMap<NtfsSource, Arc<NtfsDeletedSnapshot>>>,
 }
@@ -72,6 +76,10 @@ impl From<Arc<DiskImage>> for EvidenceSession {
             image,
             host_docker: OnceLock::new(),
             host_docker_cache_dir: parking_lot::RwLock::new(None),
+            #[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]
+            bcp_package: parking_lot::Mutex::new(None),
+            #[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]
+            bcp_import_lock: Arc::default(),
             external_volumes: Mutex::new(HashMap::new()),
             ntfs_deleted: Mutex::new(HashMap::new()),
         }

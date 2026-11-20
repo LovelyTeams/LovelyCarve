@@ -2,7 +2,6 @@
   "bundle": {
     "resources": {
       "binaries/dokan2.dll": null,
-      "binaries/libcrypto-4-x64.dll": null,
       "binaries/msvcp140.dll": null,
       "binaries/msvcp140_1.dll": null,
       "binaries/vcruntime140.dll": null,

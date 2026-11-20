@@ -38,7 +38,8 @@ jobs:
             'src-tauri/target/release/LovelyCarve.exe',
             'src-tauri/target/release/lovelycarve-cli.exe',
             'plugins/target/release/lc-plugin-host.exe',
-            'plugins/linuxinfo/linuxinfo.dll'
+            'plugins/linuxinfo/linuxinfo.dll',
+            'src-tauri/target/release/lovelycarve_inference.dll'
           )
           foreach ($binary in $binaries) {
             $bytes = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $binary).Path)
@@ -54,7 +55,7 @@ jobs:
           $pluginFiles = @('linuxinfo.dll', 'plugin.toml', 'schema.json', 'locales')
           $pluginPath = 'arm64-build/plugins/linuxinfo'
           New-Item -ItemType Directory -Path $pluginPath | Out-Null
-          Copy-Item -LiteralPath $binaries[0], $binaries[1], $binaries[2], 'LICENSE', 'THIRD_PARTY_NOTICES.md' -Destination arm64-build
+          Copy-Item -LiteralPath $binaries[0], $binaries[1], $binaries[2], $binaries[4], 'LICENSE', 'THIRD_PARTY_NOTICES.md' -Destination arm64-build
           foreach ($file in $pluginFiles) {
             Copy-Item -LiteralPath "plugins/linuxinfo/$file" -Destination $pluginPath -Recurse
           }

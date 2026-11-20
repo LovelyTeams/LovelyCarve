@@ -32,8 +32,10 @@ type WorkspaceShellOptions = {
   onCaseGateSatisfied?: () => void;
   /** Restore the selected case's evidence, including reconstructed RAID images. */
   onOpenCaseEvidence?: (paths: string[]) => Promise<void>;
-  /** Remember which BCP file a drag-and-drop open should highlight. */
-  onBcpFileOpen?: (folder: string, fileName: string) => void;
+  /** Import explicitly dropped BCP files through the same path as the picker. */
+  onBcpFilesOpen?: (paths: string[]) => Promise<void>;
+  /** Check a ZIP explicitly added by the user for BCP results after it opens. */
+  onZipOpened?: (path: string) => void;
   /** Let the active workflow consume native drops before normal tab opening. */
   onDroppedPaths?: (paths: string[]) => Promise<boolean>;
 };
@@ -122,6 +124,14 @@ export function useWorkspaceShell(options: WorkspaceShellOptions) {
   const openImagePath = (path: string, opts?: LoadFileOptions): Promise<OpenTabResult> =>
     backgroundLoads.open(path, opts);
 
+  async function openSelectedEvidence(path: string, opts?: LoadFileOptions): Promise<OpenTabResult> {
+    if (!options.onZipOpened || !/\.zip$/i.test(path)) return openImagePath(path, opts);
+    const caseId = activeCase.value?.id;
+    const result = await openImagePath(path, { ...opts, waitUntilReady: true });
+    if (result.ok && !result.queued && caseId && activeCase.value?.id === caseId) options.onZipOpened(path);
+    return result;
+  }
+
   const handleSidebarSelect = (id: string) => {
     activePanel.value = id;
   };
@@ -146,16 +156,12 @@ export function useWorkspaceShell(options: WorkspaceShellOptions) {
   }
 
   async function openDroppedPaths(paths: string[]): Promise<void> {
+    const bcpFiles = paths.filter(path => /\.bcp$/i.test(path));
+    if (bcpFiles.length && options.onBcpFilesOpen) await options.onBcpFilesOpen(bcpFiles);
     for (const path of paths) {
-      if (/\.bcp$/i.test(path)) {
-        const folder = path.replace(/[\\/][^\\/]+$/, '');
-        options.onBcpFileOpen?.(folder, path.split(/[\\/]/).at(-1) ?? '');
-        const result = await tabManager.openNewTab(folder, { forceImage: true });
-        if (result.ok) activePanel.value = 'bcp';
-        continue;
-      }
+      if (/\.bcp$/i.test(path) && options.onBcpFilesOpen) continue;
       const pathInfo = await systemPathInfo(path).catch(() => null);
-      await openImagePath(path, { forceImage: pathInfo?.is_directory === true });
+      await openSelectedEvidence(path, { forceImage: pathInfo?.is_directory === true });
     }
   }
 
@@ -316,6 +322,7 @@ export function useWorkspaceShell(options: WorkspaceShellOptions) {
     handleOpenRecentCase,
     isOpeningRecentCase,
     openImagePath,
+    openSelectedEvidence,
     handleSidebarSelect,
     clearPendingOpenRequest,
     /** TabManager hook implementations (AppShell.vue wires these via

@@ -3,7 +3,10 @@
     <p class="sr-only" role="status">{{ statusText }}</p>
     <!-- 搜索、阅读方式与导出共用一条工具栏，完整路径与完成时间留在页脚。 -->
     <div v-if="selectedNode" class="ui-toolbar results-toolbar" :class="{ records: selectedNode.kind === 'result' }">
-      <span v-if="selectedNode.kind === 'result'" class="result-scope" :title="[nodeLabel(selectedNode), selectedNode.targetLabel].filter(Boolean).join(' · ')"><span>{{ nodeLabel(selectedNode) }}</span><small class="ui-count">{{ recordsTotal.toLocaleString() }}</small></span>
+      <span v-if="selectedNode.kind === 'result'" class="result-scope" :title="selectedNode.bcpPath ? crumbLabel : [nodeLabel(selectedNode), selectedNode.targetLabel].filter(Boolean).join(' · ')">
+        <span>{{ selectedNode.bcpPath ? [...selectedNode.bcpPath.slice(1), nodeLabel(selectedNode)].join(' › ') : nodeLabel(selectedNode) }}</span>
+        <small class="ui-count">{{ recordsTotal.toLocaleString() }}</small>
+      </span>
       <form v-if="selectedNode.kind === 'result'" class="ui-search record-search" :class="{ applied: keyword }" @submit.prevent="applyKeyword(keywordInput)">
         <Search :size="14" />
         <input v-model="keywordInput" :aria-label="tr('搜索当前结果')" :placeholder="tr('搜索当前结果，回车确认…')" />
@@ -243,7 +246,7 @@ const runNode = computed(() => {
   if (!node) return null;
   const find = (nodes: AnalysisResultNode[]): AnalysisResultNode | null => {
     for (const item of nodes) {
-      if (item.kind === 'function' && item.children.some(child => child.nodeId === node.nodeId)) return item;
+      if (item.kind === 'function' && item.runId === node.runId && item.imageId === node.imageId) return item;
       const found = find(item.children);
       if (found) return found;
     }
@@ -331,6 +334,7 @@ const selectedCrumb = computed<string[]>(() => {
     return false;
   };
   if (!selectedNode.value) return [];
+  if (selectedNode.value.bcpPath) return [...selectedNode.value.bcpPath, nodeLabel(selectedNode.value)];
   walk(tree.value);
   return crumb;
 });

@@ -12,7 +12,6 @@ export * as cases from './cases';
 export * as raid from './raid';
 export * as plugins from './plugins';
 export * as autodetect from './autodetect';
-export * as bcp from './bcp';
 export { invokeCmd } from './client';
 export { onEvent, emitEvent, type UnlistenFn } from './events';
 export * from './carve';

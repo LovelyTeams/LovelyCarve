@@ -26,8 +26,7 @@ Each entry is a command's synopsis and its description. Positional arguments com
 
 ## Contents
 
-- [analysis](#analysis): 插件分析结果：结果树、记录、详情与运行审计
-- [bcp](#bcp): BCP 数据包
+- [analysis](#analysis): 分析结果：导入、结果树、记录、详情与运行审计
 - [bitlocker](#bitlocker): BitLocker 卷：状态、元数据、解锁与解密导出
 - [carve](#carve): 文件恢复：文件系统记录恢复与签名雕刻
 - [cases](#cases): 案件：创建、打开、设置与检材
@@ -53,26 +52,19 @@ Each entry is a command's synopsis and its description. Positional arguments com
 
 ## analysis
 
-插件分析结果：结果树、记录、详情与运行审计
+分析结果：导入、结果树、记录、详情与运行审计
 
+- `lovelycarve-cli analysis imports create [--replace]`
+  将 BCP 检材发布为案件分析结果。打开案件并选择 BCP ZIP 或目录检材。导入后使用 analysis tree get 和 analysis records list 查询。
 - `lovelycarve-cli analysis records get <record-id>`
   查看一条分析记录
-- `lovelycarve-cli analysis records list --run-id <string> --record-type <string> [--legacy] [--keyword <string>] [--sort <string>] [--descending] [--skip <number>] [--limit <number>]`
+- `lovelycarve-cli analysis records list --run-id <string> --record-type <string> [--legacy] [--keyword <string>] [--bcp-scope <json>] [--sort <string>] [--descending] [--skip <number>] [--limit <number>]`
   分页列出分析记录。按记录类型分页读取指定 runId 的记录，可按关键词过滤、按列排序；runId 来自分析结果树，分页期间固定运行身份。
   - `lovelycarve-cli analysis records list --run-id <runId> --record-type linux.user --sort uid`: 按 UID 排序列出一次运行的用户记录
 - `lovelycarve-cli analysis runs get <run-id>`
   查看一次分析运行的审计信息。运行的目标、输入文件、选项、画像事实、告警与读不出而以零填充的源字节。
 - `lovelycarve-cli analysis tree get`
   查看分析结果树。分析结果树：检材 → 分类 → 分析器运行 → 记录类型。旧案件的插件结果以 legacy 节点只读列出。未打开案件时返回空树。
-
-## bcp
-
-BCP 数据包
-
-- `lovelycarve-cli bcp rows list --code <string> [--cursor <json>]`
-  分页列出 BCP 数据表记录
-- `lovelycarve-cli bcp tables list`
-  列出检材中的 BCP 数据表
 
 ## bitlocker
 

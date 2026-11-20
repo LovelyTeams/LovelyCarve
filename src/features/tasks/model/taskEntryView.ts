@@ -22,6 +22,7 @@ import type { VolumeKey } from '../../../lib/ipc/ids';
 export function builtinTaskTitle(kind: BackendTaskKind, tr: Translator = sourceText): string {
   switch (kind) {
     case 'imageLoad': return tr("检材加载");
+    case 'bcpImport': return tr("导入 BCP 结果");
     case 'imageExport':
     case 'bitlockerExport': return tr("镜像导出");
     case 'imageHash': return tr("镜像哈希");
@@ -103,6 +104,9 @@ export function builtinMessage(entry: BuiltinTaskEntry, tr: Translator = sourceT
     : '';
   const truncated = view.flags.includes('truncated');
   switch (entry.kind) {
+    case 'bcpImport':
+      if (status === 'success') return tr("{0} 条记录", { 0: number('rows') });
+      return active && total ? tr("{0} / {1} 条记录", { 0: done.toLocaleString(), 1: total.toLocaleString() }) : '';
     case 'imageLoad':
       if (status === 'success') return tr("检材已就绪");
       if (status === 'cancel') return tr("加载已取消");
@@ -203,7 +207,10 @@ const BUILTIN_PANEL: Partial<Record<BackendTaskKind, TaskResultPanel>> = {
 
 /** Native work leads back to its page; a plugin job once its run published records or warnings. */
 export function taskEntryResultPanel(entry: TaskEntry): TaskResultPanel | null {
-  if (entry.source === 'builtin') return BUILTIN_PANEL[entry.kind] ?? null;
+  if (entry.source === 'builtin') {
+    if (entry.kind === 'bcpImport') return entry.status === 'success' && entry.view.labels.runId ? 'analysis' : null;
+    return BUILTIN_PANEL[entry.kind] ?? null;
+  }
   const published = (entry.job.result?.recordCount ?? 0) + (entry.job.result?.warningCount ?? 0);
   return entry.status === 'success' && published > 0 ? 'analysis' : null;
 }

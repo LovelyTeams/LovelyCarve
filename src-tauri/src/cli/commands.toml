@@ -70,7 +70,8 @@ dir = "案件目录"
 key = "SQLCipher 等加密数据库的密钥（JSON）"
 
 [groups]
-"analysis" = "插件分析结果：结果树、记录、详情与运行审计"
+"analysis" = "分析结果：导入、结果树、记录、详情与运行审计"
+"analysis imports" = "取证结果导入"
 "analysis records" = "分析记录"
 "analysis runs" = "分析运行"
 "analysis tree" = "分析结果树"
@@ -191,6 +192,9 @@ description = "记录类型（分析结果树结果项的 artifactType，如 lin
 description = "读取旧案件的插件结果（结果树节点 legacy 为 true 时）"
 [command.params.keyword]
 description = "关键词：匹配标题与文本类列（ASCII 不区分大小写）"
+[command.params.bcpScope]
+type = "json"
+description = "BCP 分组筛选，例如 {\"applications\":[\"1030036\"],\"account\":\"\"}；值取自结果树的 bcpGroups"
 [command.params.sort]
 description = "排序列：列 id 或 title；省略时按记录产生顺序"
 [command.params.descending]
@@ -219,12 +223,22 @@ missing = "找不到分析运行"
 [command.params.runId]
 description = "分析运行 ID"
 
+[[command]]
+path = "analysis imports create"
+ipc = "bcp_import"
+summary = "将 BCP 检材发布为案件分析结果"
+description = "打开案件并选择 BCP ZIP 或目录检材。导入后使用 analysis tree get 和 analysis records list 查询。"
+category = "create"
+[command.params.replace]
+description = "重新导入，在成功发布后替换上次的 BCP 分析结果"
+
 # ── bcp ─────────────────────────────────────────────────────────────────────
 
 [[command]]
 path = "bcp tables list"
 ipc = "bcp_catalog"
 summary = "列出检材中的 BCP 数据表"
+hide_command = true
 category = "read"
 concurrent = true
 
@@ -232,6 +246,7 @@ concurrent = true
 path = "bcp rows list"
 ipc = "bcp_rows"
 summary = "分页列出 BCP 数据表记录"
+hide_command = true
 category = "read"
 concurrent = true
 [command.params.code]
@@ -239,6 +254,9 @@ description = "数据表编码（bcp tables list 返回）"
 [command.params.cursor]
 type = "json"
 description = "上一页返回的游标（JSON）"
+[command.params.startRow]
+type = "number"
+description = "从 1 开始的记录序号；不可与 --cursor 同用"
 
 # ── bitlocker ───────────────────────────────────────────────────────────────
 

@@ -14,7 +14,7 @@
 
 ## 版本与构建
 
-1. 同步 `package.json`、`src-tauri/Cargo.toml` 与 `src-tauri/tauri.conf.json` 中的应用版本，以及 `python/pyproject.toml`、`python/Cargo.toml` 和 Python 包的 `__version__`。依赖锁文件一并提交，插件版本按其独立的兼容要求维护。
+1. 同步 `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json` 与 `src-tauri/components/Cargo.toml`（原生组件）中的应用版本，以及 `python/pyproject.toml`、`python/Cargo.toml` 和 Python 包的 `__version__`。依赖锁文件一并提交，插件版本按其独立的兼容要求维护。
 2. 按 [Keep a Changelog 0.3.0](https://keepachangelog.com/zh-CN/0.3.0/) 把 CHANGELOG 中实际纳入本次发布的 `[Unreleased]` 条目整理为 `## [版本号] - YYYY-MM-DD`，并记录格式或案件兼容性变化；未发布的内容保留在 `[Unreleased]`，没有剩余条目时保留空的 `[Unreleased]` 标题。
 3. 根据功能组合选择本地构建与打包入口：
 
@@ -26,7 +26,7 @@
 | Windows Python wheel | `just build-python` | — |
 | 插件独立包 | `just pack-plugins` | — |
 
-`repack` / `repack-full` 复用已有的桌面产物，必须与编译特性一致；`repack-cli` 按 CLI 的实际能力选择资源。运行库、模型与插件清单由打包配置决定，不要按文件后缀猜测所需资源。
+`repack` / `repack-full` 复用已有的桌面产物，必须与编译特性一致；`repack-cli` 按 CLI 的实际能力选择资源。运行库、原生组件、模型与插件清单由打包配置决定，不要按文件后缀猜测所需资源。
 
 CHANGELOG 只使用实际有内容的英文分类（`Added`、`Changed`、`Deprecated`、`Removed`、`Fixed`、`Security`），版本按时间倒序排列，不保留空分类，也不直接粘贴提交记录。版本号使用程序的完整语义化版本，Git 标签为 `v<版本号>`（例如 `1.0.0` 对应 `v1.0.0`），版本链接指向对应的比较页或 Release 页，`[Unreleased]` 的比较起点为最新的发布标签。
 

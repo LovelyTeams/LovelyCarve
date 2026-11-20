@@ -10,9 +10,9 @@ function setup() {
     pickFolder: vi.fn(async (): Promise<string | null> => null),
     pickBcpFiles: vi.fn(async () => [] as string[]),
     openImagePath: vi.fn(async () => ({ ok: true as const })),
+    openSelectedEvidence: vi.fn(async () => ({ ok: true as const })),
     openRaidMemberDialog: vi.fn(async () => {}),
-    preferredBcpFiles: new Map<string, string>(),
-    showPanel: vi.fn(),
+    importBcp: vi.fn(),
   };
   return { options, flow: useEvidenceOpen(options) };
 }
@@ -20,15 +20,16 @@ function setup() {
 beforeEach(() => vi.clearAllMocks());
 
 describe('evidence source opening', () => {
-  it('groups BCP selections by folder and remembers each last selected file', async () => {
+  it('groups loose BCP files by folder and opens ZIP packages directly', async () => {
     const { options, flow } = setup();
-    options.pickBcpFiles.mockResolvedValue(['D:/a/first.bcp', 'D:/b/only.bcp', 'D:/a/last.bcp']);
+    options.pickBcpFiles.mockResolvedValue(['D:/a/first.bcp', 'D:/b/only.bcp', 'D:/a/last.bcp', 'D:/a/package.ZIP']);
     await flow.onAddImageSelect('bcp');
     expect(options.openImagePath.mock.calls).toEqual([
-      ['D:/a', { forceImage: true }], ['D:/b', { forceImage: true }],
+      ['D:/a', { forceImage: true, waitUntilReady: true }],
+      ['D:/b', { forceImage: true, waitUntilReady: true }],
+      ['D:/a/package.ZIP', { forceImage: true, waitUntilReady: true }],
     ]);
-    expect([...options.preferredBcpFiles]).toEqual([['D:/a', 'last.bcp'], ['D:/b', 'only.bcp']]);
-    expect(options.showPanel.mock.calls).toEqual([['bcp'], ['bcp']]);
+    expect(options.importBcp.mock.calls).toEqual([['D:/a'], ['D:/b'], ['D:/a/package.ZIP']]);
   });
 
   it('cancels the physical disk chooser without loading or reporting an error', async () => {

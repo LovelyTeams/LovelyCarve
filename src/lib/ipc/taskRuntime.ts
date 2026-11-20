@@ -10,6 +10,7 @@ import type { ImageId } from './ids';
 
 export type BackendTaskKind =
   | 'autoDetect'
+  | 'bcpImport'
   | 'bitlockerExport'
   | 'bitlockerScan'
   | 'bitlockerUnlock'
@@ -59,7 +60,7 @@ export type TaskCount =
   | 'badRegions';
 
 /** Rust `TaskLabel`:原样展示的结果值(平台 id、厂商名、检材类型、加密方案、算法、压缩包成员)。 */
-export type TaskLabel = 'platform' | 'platformName' | 'evidenceType' | 'scheme' | 'cipher' | 'item';
+export type TaskLabel = 'platform' | 'platformName' | 'evidenceType' | 'scheme' | 'cipher' | 'item' | 'runId';
 
 export type TaskFlag = 'truncated' | 'persisted' | 'reused' | 'backup';
 

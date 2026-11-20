@@ -8,8 +8,11 @@
 use std::path::Path;
 
 use crate::core::analysis::results::{
+    bcp_groups,
     legacy_query::{self, LegacyRecordsQuery},
-    models::{AnalysisRecord, AnalysisRecordDetail, AnalysisRecordsPage, AnalysisTreeNode},
+    models::{
+        AnalysisRecord, AnalysisRecordDetail, AnalysisRecordsPage, AnalysisTreeNode, BcpRecordScope,
+    },
     record_query::{self, PublishedRun, RecordsQuery, RunAudit, StoredRecord},
 };
 
@@ -33,18 +36,27 @@ pub fn analysis_tree(
                 if types.is_empty() && run.warning_count == 0 {
                     continue;
                 }
-                let children = types
+                let is_bcp = run.plugin_id == crate::core::analysis::bcp::import::BCP_PLUGIN_ID;
+                let mut children = types
                     .iter()
-                    .map(|record_type| {
-                        result_node(
+                    .map(|record_type| -> anyhow::Result<_> {
+                        let mut result = result_node(
                             &item.image_id,
                             &run,
                             &record_type.schema.record_type,
                             &record_type.schema.label,
                             record_type.record_count,
-                        )
+                        );
+                        if is_bcp {
+                            result.bcp_groups =
+                                bcp_groups::groups(&connection, &run.run_id, record_type)?;
+                        }
+                        Ok(result)
                     })
-                    .collect::<Vec<_>>();
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+                if is_bcp {
+                    bcp_groups::identify_messaging_groups(&mut children);
+                }
                 functions.push((
                     run.category.clone(),
                     function_node(&item.image_id, &run, children),
@@ -86,6 +98,7 @@ pub fn analysis_tree(
             child_count: classes.len() as u64,
             warning_count: 0,
             legacy: false,
+            bcp_groups: None,
             children: classes,
         });
     }
@@ -110,6 +123,7 @@ fn class_node(image_id: &str, category: &str) -> AnalysisTreeNode {
         child_count: 0,
         warning_count: 0,
         legacy: false,
+        bcp_groups: None,
         children: Vec::new(),
     }
 }
@@ -137,6 +151,7 @@ fn function_node(
         child_count: children.len() as u64,
         warning_count: run.warning_count,
         legacy: false,
+        bcp_groups: None,
         children,
     }
 }
@@ -166,6 +181,7 @@ fn result_node(
         child_count: count,
         warning_count: 0,
         legacy: false,
+        bcp_groups: None,
         children: Vec::new(),
     }
 }
@@ -178,6 +194,7 @@ pub struct AnalysisRecordsQuery<'a> {
     pub record_type: &'a str,
     pub legacy: bool,
     pub keyword: Option<&'a str>,
+    pub bcp_scope: Option<&'a BcpRecordScope>,
     /// A column id, or `title`.
     pub sort: Option<&'a str>,
     pub descending: bool,
@@ -190,6 +207,7 @@ pub fn records_page(
     query: &AnalysisRecordsQuery<'_>,
 ) -> anyhow::Result<AnalysisRecordsPage> {
     if query.legacy {
+        anyhow::ensure!(query.bcp_scope.is_none(), "旧分析结果没有 BCP 应用分组");
         return legacy_query::records_page(
             case_dir,
             &LegacyRecordsQuery {
@@ -218,6 +236,7 @@ pub fn records_page(
             run_id: query.run_id,
             record_type: query.record_type,
             keyword: query.keyword,
+            bcp_scope: query.bcp_scope,
             sort: query.sort,
             descending: query.descending,
             skip: query.skip,

@@ -371,7 +371,7 @@ const sections = computed(() => groupTaskSections(visibleTasks.value).map(sectio
 
 function openResult(entry: TaskEntry) {
   const target = taskEntryResultPanel(entry);
-  if (target) emit('openResult', target, entry.source === 'plugin' ? entry.job.result?.runId ?? entry.job.name : null);
+  if (target) emit('openResult', target, entry.source === 'plugin' ? entry.job.result?.runId ?? entry.job.name : entry.view.labels.runId ?? null);
 }
 
 async function runTaskAction(entry: TaskEntry, action: RowAction | 'remove') {

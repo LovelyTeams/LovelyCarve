@@ -1,0 +1,36 @@
+# Native components: dynamic libraries that keep large dependencies out of
+# LovelyCarve.exe and lovelycarve-cli.exe. The executables load them on first
+# use through the C ABI in `abi`; see docs/ARCHITECTURE.md. `just
+# build-components` builds this workspace into the backend target directory
+# (`.cargo/config.toml`), so each library sits next to the executables that
+# load it in development, tests and release staging alike.
+[workspace]
+resolver = "2"
+members = ["abi", "inference"]
+
+[workspace.package]
+version = "1.3.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+# Matches the backend; oar-ocr and ort need a current toolchain.
+rust-version = "1.99"
+publish = false
+
+[workspace.lints.clippy]
+uninlined_format_args = "warn"
+
+# ort-sys rc.12 locates the profile directory by OUT_DIR depth, which Cargo's
+# newer build-dir layout breaks for every OCR build (`copy-dylibs`); the
+# vendored copy finds it robustly (vendor/ort-sys/LOVELYCARVE.md).
+[patch.crates-io]
+ort-sys = { path = "../vendor/ort-sys" }
+
+# Same size-first shipping profile as the backend. Components turn panics into
+# error replies at the C ABI boundary, which needs unwinding in releases too.
+[profile.release]
+panic = "unwind"
+codegen-units = 1
+lto = true
+incremental = false
+opt-level = "s"
+strip = true

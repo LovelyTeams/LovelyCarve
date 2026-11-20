@@ -27,6 +27,8 @@ pub struct AppState {
     pub images: Arc<Mutex<HashMap<ImageId, Arc<EvidenceSession>>>>,
     /// Case generation and publication gate, never held during decompression.
     pub image_load_context: Mutex<u64>,
+    /// Drain staged BCP writers before releasing the case or deleting its evidence files.
+    pub(crate) bcp_imports: Arc<tokio::sync::RwLock<()>>,
     /// Per-path single-flight locks for `image_load`. The map keeps weak
     /// references so completed/abandoned paths do not accumulate, while every
     /// concurrent caller for the same evidence path serialises behind the
@@ -143,6 +145,7 @@ impl AppState {
             images,
             image_load_locks: Arc::default(),
             image_load_context: Mutex::new(0),
+            bcp_imports: Arc::default(),
             plugins,
             systems,
             plugin_open_lock: Arc::default(),

@@ -3,11 +3,13 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use lovelycarve_component_abi::inference::OcrExecution;
 use serde::Serialize;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
 
 use super::{TaskKind, TaskRecord, TaskResourceAcquireError};
+use crate::core::platform::components::inference::loaded_ocr_execution;
 
 const DEFAULT_GLOBAL_BACKGROUND_LIMIT: usize = 2;
 const DEFAULT_IMAGE_SEQUENTIAL_IO_LIMIT: usize = 1;
@@ -75,7 +77,6 @@ impl TaskResourceProfile {
         }
     }
 
-    #[cfg(feature = "ocr-cuda")]
     const fn background_random_io_gpu() -> Self {
         Self {
             global_background: true,
@@ -126,7 +127,8 @@ impl TaskKind {
         match self {
             // Browsing waits for a container's merged index.
             Self::AutoDetect | Self::DockerPrepare => TaskResourceProfile::unbudgeted(),
-            Self::BitlockerExport
+            Self::BcpImport
+            | Self::BitlockerExport
             | Self::BitlockerUnlock
             | Self::EncryptedVolumeUnlock
             | Self::CarveRecovery
@@ -146,7 +148,7 @@ impl TaskKind {
             | Self::IosBackupUnlock
             | Self::FilevaultInspect => TaskResourceProfile::background_random_io_cpu(),
             Self::QrScan => TaskResourceProfile::background_random_io_cpu(),
-            Self::OcrScan => ocr_resource_profile(),
+            Self::OcrScan => ocr_resource_profile(loaded_ocr_execution()),
         }
     }
 }
@@ -295,14 +297,20 @@ fn default_cpu_task_limit() -> usize {
         .unwrap_or(1)
 }
 
-#[cfg(feature = "ocr-cuda")]
-const fn ocr_resource_profile() -> TaskResourceProfile {
-    TaskResourceProfile::background_random_io_gpu()
+/// OCR takes the GPU slot when the loaded inference component runs it on
+/// CUDA (falling back to the CPU without a usable GPU), otherwise a CPU slot.
+/// `ocr_scan` loads the component before it registers the task.
+const fn ocr_resource_profile(execution: Option<OcrExecution>) -> TaskResourceProfile {
+    match execution {
+        Some(OcrExecution::Cuda) => TaskResourceProfile::background_random_io_gpu(),
+        Some(OcrExecution::Cpu) | None => TaskResourceProfile::background_random_io_cpu(),
+    }
 }
 
-#[cfg(not(feature = "ocr-cuda"))]
-const fn ocr_resource_profile() -> TaskResourceProfile {
-    TaskResourceProfile::background_random_io_cpu()
+/// Resource classes of an OCR task for a given component build.
+#[cfg(test)]
+pub(super) fn ocr_resource_classes(execution: Option<OcrExecution>) -> Vec<TaskResourceClass> {
+    ocr_resource_profile(execution).classes()
 }
 
 async fn acquire_owned_cancelable(

@@ -1,0 +1,4 @@
+# The vendored ort-sys build script embeds build/download/dist.txt and splits it
+# on '\n'; a CRLF checkout (core.autocrlf on Windows) leaves '\r' in every hash
+# and URL, so the cached ONNX Runtime binaries are never found.
+src-tauri/vendor/ort-sys/** text eol=lf

@@ -14,6 +14,10 @@ const {
   snapshotDropMock,
   onEventMock,
   taskCancelMock,
+  imageLoadMock,
+  listLoadedImagesMock,
+  fsSourceLocateMock,
+  importBcpAnalysisMock,
   systemPathInfoMock,
   getCurrentWebviewWindowMock,
   onDragDropEventMock,
@@ -31,6 +35,10 @@ const {
   snapshotDropMock: vi.fn(),
   onEventMock: vi.fn(),
   taskCancelMock: vi.fn(),
+  imageLoadMock: vi.fn(),
+  listLoadedImagesMock: vi.fn(),
+  fsSourceLocateMock: vi.fn(),
+  importBcpAnalysisMock: vi.fn(),
   systemPathInfoMock: vi.fn(),
   getCurrentWebviewWindowMock: vi.fn(),
   onDragDropEventMock: vi.fn(),
@@ -63,6 +71,10 @@ vi.mock('../../lib/ipc/events', () => ({
 
 vi.mock('../../lib/ipc/taskRuntime', () => ({ taskCancel: taskCancelMock }));
 
+vi.mock('../../lib/ipc/image', () => ({ imageLoad: imageLoadMock, listLoadedImages: listLoadedImagesMock }));
+vi.mock('../../lib/ipc/fs/query', () => ({ fsSourceLocate: fsSourceLocateMock }));
+vi.mock('../../lib/ipc/analysisResults', () => ({ importBcpAnalysis: importBcpAnalysisMock }));
+
 vi.mock('../../lib/ipc/system', () => ({
   systemPathInfo: systemPathInfoMock,
 }));
@@ -94,6 +106,8 @@ vi.mock('../../composables/useToast', () => ({
 import { useCaseSession } from '../../features/cases/composables/useCaseSession';
 import { useWorkspaceShell } from './useWorkspaceShell';
 import { notifyError } from '../../composables/useToast';
+import { useBcpImport } from '../workflows/useBcpImport';
+import { IpcCommandError } from '../../lib/ipc/client';
 
 type DragDropEventHandler = (event: { payload: { type: 'enter' | 'over' | 'drop' | 'leave'; paths?: string[] } }) => void | Promise<void>;
 
@@ -289,6 +303,70 @@ describe('useWorkspaceShell case gate', () => {
       expect(onNeedCase).not.toHaveBeenCalled();
       expect(systemPathInfoMock).not.toHaveBeenCalled();
       expect(openByPath).not.toHaveBeenCalled();
+    } finally { app.unmount(); host.remove(); }
+  });
+
+  it.each([true, false])('checks a dropped ZIP after loading and imports only when it has a BCP index (%s)', async hasIndex => {
+    const path = 'D:/evidence/export.ZIP';
+    const image = { id: 'zip-image', path };
+    const onPublished = vi.fn();
+    const openByPath = vi.fn().mockResolvedValue({ opened: true, nextPanel: 'dashboard', imageId: image.id });
+    const currentCase = makeCase('case-bcp');
+    caseCreateMock.mockResolvedValue(currentCase);
+    caseActiveMock.mockResolvedValue(currentCase);
+    const { activeCase, createCase } = useCaseSession();
+    await createCase(currentCase.dir, currentCase.name);
+    systemPathInfoMock.mockResolvedValue({ is_directory: false });
+    listLoadedImagesMock.mockResolvedValue([image]);
+    if (hasIndex) fsSourceLocateMock.mockResolvedValue({ file_id: 'zip:index' });
+    else fsSourceLocateMock.mockRejectedValue(new IpcCommandError({
+      code: 'notFound', message: 'index missing', context: null, retryable: false,
+    }));
+    importBcpAnalysisMock.mockResolvedValue({ runId: 'bcp-run' });
+    let finishLoad!: (result: typeof image) => void;
+    imageLoadMock.mockImplementation(() => new Promise(resolve => { finishLoad = resolve; }));
+
+    let shell!: ReturnType<typeof useWorkspaceShell>;
+    const host = document.createElement('div');
+    const app = createApp(defineComponent({ setup() {
+      const importBcp = useBcpImport({ caseId: () => activeCase.value?.id, onPublished });
+      shell = useWorkspaceShell({
+        isEvidenceMode: ref(false), openByPath, onNeedCase: vi.fn(), onRequestAddImage: vi.fn(),
+        onZipOpened: file => { void importBcp(file, 'detect-zip'); },
+      });
+      return () => null;
+    } }));
+    try {
+      app.mount(host);
+      await flushMountedDragSetup();
+      if (!dragDropHandler) throw new Error('missing native drag subscription');
+      initTabManagerHooks({
+        onLoadFile: shell.loadFileForTab, onTeardown: vi.fn(), getActivePanel: () => shell.activePanel.value,
+        setActivePanel: vi.fn(), isBusy: () => false, captureSession: () => ({}), restoreSession: vi.fn(),
+      });
+      const drop = { payload: { type: 'drop' as const, paths: [path] } };
+      const opening = dragDropHandler(drop);
+      await vi.waitFor(() => expect(imageLoadMock).toHaveBeenCalledExactlyOnceWith({
+        path, taskId: expect.any(String), caseDir: currentCase.dir,
+      }));
+      expect(fsSourceLocateMock).not.toHaveBeenCalled();
+      finishLoad(image);
+      await opening;
+      await vi.waitFor(() => expect(fsSourceLocateMock).toHaveBeenCalledExactlyOnceWith({
+        imageId: image.id, rootId: 'root', path: 'GAB_ZIP_INDEX.xml',
+      }));
+      if (hasIndex) {
+        expect(importBcpAnalysisMock).toHaveBeenCalledExactlyOnceWith(image.id);
+        await vi.waitFor(() => expect(onPublished).toHaveBeenCalledExactlyOnceWith(image.id, 'bcp-run'));
+        // Re-dropping an already-open ZIP can start the import without another image load.
+        await dragDropHandler(drop);
+        await vi.waitFor(() => expect(importBcpAnalysisMock).toHaveBeenCalledTimes(2));
+        expect(imageLoadMock).toHaveBeenCalledTimes(1);
+      } else {
+        expect(importBcpAnalysisMock).not.toHaveBeenCalled();
+        expect(onPublished).not.toHaveBeenCalled();
+        expect(notifyError).not.toHaveBeenCalled();
+      }
     } finally { app.unmount(); host.remove(); }
   });
 

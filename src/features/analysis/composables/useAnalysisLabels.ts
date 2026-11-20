@@ -11,6 +11,9 @@ export function useAnalysisLabels() {
   const catalog = usePluginCatalog();
 
   function nodeLabel(node: AnalysisResultNode): string {
+    if (node.pluginId === 'org.lovelycarve.bcp' && (node.kind === 'function' || node.kind === 'result')) {
+      return tr(node.label);
+    }
     switch (node.kind) {
       case 'function': return catalog.text(node.pluginId, pluginTextKey.analyzer(node.analyzer), node.label);
       case 'result': return catalog.text(node.pluginId, pluginTextKey.record(node.artifactType), node.label);

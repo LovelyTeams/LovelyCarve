@@ -322,8 +322,8 @@ export function useFileSession() {
   async function pickBcpFiles(): Promise<string[]> {
     const selected = await open({
       multiple: true,
-      title: tr("选择 BCP 文件（可多选）"),
-      filters: [{ name: tr("BCP 数据文件"), extensions: ['bcp'] }],
+      title: tr("选择 BCP 文件或 ZIP 包（可多选）"),
+      filters: [{ name: tr("BCP 文件与 ZIP 包"), extensions: ['bcp', 'zip'] }],
     });
     if (!selected) return [];
     return Array.isArray(selected) ? selected as string[] : [selected as string];

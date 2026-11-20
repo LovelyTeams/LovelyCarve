@@ -66,7 +66,25 @@ export interface AnalysisResultNode {
   /** 运行留下的告警数(功能节点)。 */
   warningCount: number;
   legacy: boolean;
+  bcpGroups?: BcpRowGroup[];
+  /** Selection scope and breadcrumb attached to BCP directory leaves in the workspace. */
+  bcpScope?: BcpRecordScope;
+  bcpPath?: string[];
   children: AnalysisResultNode[];
+}
+
+export interface BcpRowGroup {
+  application: string;
+  identifiedApplication?: string;
+  account: string;
+  accountLabel: string | null;
+  total: number;
+  deleted: number;
+}
+
+export interface BcpRecordScope {
+  applications: string[];
+  account?: string;
 }
 
 /** 记录的来源:卷内路径(`root` + `path`)或文件树节点,可带字节范围。 */
@@ -177,6 +195,10 @@ export function analysisResultTree(): Promise<AnalysisResultNode[]> {
   return invokeCmd<AnalysisResultNode[]>('analysis_result_tree');
 }
 
+export function importBcpAnalysis(imageId: ImageId): Promise<{ runId: string; recordCount: number; reused: boolean }> {
+  return invokeCmd('bcp_import', { imageId });
+}
+
 /** 按选中结果项的 runId 服务端分页读取一种记录,翻页期间不切换运行。 */
 export function analysisRecordsPage(args: {
   imageId: ImageId;
@@ -184,6 +206,7 @@ export function analysisRecordsPage(args: {
   recordType: string;
   legacy: boolean;
   keyword?: string;
+  bcpScope?: BcpRecordScope;
   /** 列 id,或 `title`。 */
   sort?: string;
   descending?: boolean;
@@ -196,6 +219,7 @@ export function analysisRecordsPage(args: {
     recordType: args.recordType,
     legacy: args.legacy,
     keyword: args.keyword ?? null,
+    ...(args.bcpScope ? { bcpScope: args.bcpScope } : {}),
     sort: args.sort ?? null,
     descending: args.descending ?? false,
     skip: args.skip,

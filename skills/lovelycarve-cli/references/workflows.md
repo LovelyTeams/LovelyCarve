@@ -139,6 +139,18 @@ lovelycarve-cli --session exam files text get --node-id "<returned-file-node-id>
 
 The metadata filter matches names and extensions, not document contents. Its `offset` / `limit` belong inside the JSON object. In the last line, replace `16383` with the `nextOffset` the previous page returned.
 
+### BCP exchange packages
+
+Open a case and pass the BCP ZIP, its extracted directory, or its containing directory when it has only one ZIP as `--image`. Import once, then use the same published analysis results as for a plugin run.
+
+```text
+lovelycarve-cli --case "<absolute-case-dir>" --image "<absolute-bcp-zip-or-directory>" analysis imports create
+lovelycarve-cli --case "<absolute-case-dir>" analysis tree get
+lovelycarve-cli --case "<absolute-case-dir>" --image "<absolute-bcp-zip-or-directory>" analysis records list --run-id "<run-id>" --record-type bcp.group_messages
+```
+
+Pick `runId` and `artifactType` from the result tree. Use the usual record pagination, keyword search and detail commands. Retain `sources` as provenance. A repeated import reuses the published run. Supply `--replace` to reread the package and publish a replacement run.
+
 ### Filename glob search
 
 After [case and index preparation](#sessions-and-cases), query metadata directly instead of paging every directory and filtering with `jq`. `indexes files list` accepts `filter.nameGlob`, a case-insensitive pattern over the **whole filename**. It supports `*` (zero or more characters), `?` (one character), `[abc]`, `[a-z]` and `[^abc]` (negated class). `%` and `_` are literal, not SQL wildcards; `[[]` matches a literal `[`. This is SQLite GLOB syntax, not regex or shell expansion: braces and `**` have no special directory meaning. Use `pathPrefix` separately for a directory scope, taking its spelling from returned `fullPath` values. Indexed paths may include an evidence/volume root name (for example `/evidence/var/log/auth.log.1`), so do not assume `/var/log/` or construct a prefix from the volume key.

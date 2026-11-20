@@ -32,6 +32,7 @@
 | `ios-backup` | `0.1.0` | [8d8cef447ae2](https://github.com/SecurityRonin/ios-backup-forensic/commit/8d8cef447ae212e7dd22dc0425156bf4ddfcfa05) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
 | `luks` | `0.1.8` | [284f06487d7a](https://github.com/SecurityRonin/luks-forensic/commit/284f06487d7a66f13ed27c61be5e26f0863c0e4f) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
 | `magika` | `1.1.1-dev` | [26b6a9ba7e92](https://github.com/google/magika/commit/26b6a9ba7e92f2b0a3745970a9190ec0dde9bf83) | 同步最后的 ORT 兼容源码（RAR MIME 修正）；上游 2.0.0-dev 已迁至 tract 且未发布，本次不迁移推理运行时，也不降级至 1.1.0。 |
+| `ort-sys` | `2.0.0-rc.12` | crates.io 包，[079ecb47034e](https://github.com/pykeio/ort/commit/079ecb47034ec8188e3a06fc04f49ec28a6499e8) | 仅供 `src-tauri/components` 通过 `[patch.crates-io]` 使用；`copy_dylibs` 改为从最近的 `build` 目录推出 profile 目录，适配 Cargo 新的 build-dir 布局，其余源码与下载清单不变，见 LOVELYCARVE.md。 |
 | `notatin` | `1.0.1` | [ae3a70611bc3](https://github.com/strozfriedberg/notatin/commit/ae3a70611bc37b2ca04637671ceb14ccab9d5a87) | 同步默认分支的 nom 8 / thiserror 2 解析器和版权更新；保留独立 crate 布局。 |
 | `ntfs` | `0.4.0` | [47ae0168f6c6](https://github.com/ColinFinck/ntfs/commit/47ae0168f6c607208b27c61ed89b4ffac9a3c99a) | 默认分支运行时代码已最新；保留损坏 attribute-list 迭代终止修复；按属性类型在解引用前过滤，避免重解析查询展开无关的过期引用。 |
 | `qcow2` | `0.1.3-lovelycarve` | [3ed3ff55b96a](https://github.com/vasi/qcow2-rs/commit/3ed3ff55b96a2f519216ace7b3a02ac29bf8ba65) | 2026-10-13 对照 libqcow 全部 42 API；原创 Rust v1/2/3、DEFLATE、RAW/QCOW 父链、legacy AES、元数据/seek/cancel；边界及许可证见 LOVELYCARVE.md 与 [QCOW](../../docs/formats/QCOW.md)。 |

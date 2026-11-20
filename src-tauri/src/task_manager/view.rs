@@ -30,6 +30,7 @@ impl TaskKind {
         match self {
             Self::FlatList | Self::MediaMaterialization | Self::OcrScan | Self::QrScan => false,
             Self::AutoDetect
+            | Self::BcpImport
             | Self::BitlockerExport
             | Self::BitlockerScan
             | Self::BitlockerUnlock
@@ -55,6 +56,7 @@ impl TaskKind {
     pub fn listing(self) -> TaskListing {
         match self {
             Self::AutoDetect
+            | Self::BcpImport
             | Self::BitlockerExport
             | Self::CarveRecovery
             | Self::DirectoryExport
@@ -123,6 +125,8 @@ pub enum TaskLabel {
     Cipher,
     /// The archive member being decompressed.
     Item,
+    /// Published analysis run for the task's result link.
+    RunId,
 }
 
 /// A yes-or-no fact about a task's result.

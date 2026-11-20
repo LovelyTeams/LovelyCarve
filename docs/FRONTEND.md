@@ -13,7 +13,7 @@
 任务中心、动效开关的实现）见 [ARCHITECTURE.md](ARCHITECTURE.md)，开发命令见
 [DEVELOPMENT.md](DEVELOPMENT.md)。
 
-前端按应用装配、12 个业务功能、共享 UI/能力和类型化 IPC 组织。模块接口与资源生命周期见 [前端模块与生命周期](FRONTEND_STRUCTURE.md)。
+前端按应用装配、业务功能、共享 UI/能力和类型化 IPC 组织。模块接口与资源生命周期见 [前端模块与生命周期](FRONTEND_STRUCTURE.md)。
 
 ## 1. 设计原则
 
@@ -43,7 +43,7 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
 | `src/App.vue` | 主窗口根组件，挂载外壳、`ToastHost` 与 `ConfirmDialogHost`。 |
 | `src/views/FilePreviewWindow.vue` | 独立预览窗口（`?view=file-preview`），不构建主窗口外壳。 |
 | `src/app/` | 挂载前初始化、主壳组件、标签/导航和跨功能工作流；唯一的业务接线层。 |
-| `src/features/` | cases、evidence、files、preview、search、carving、timeline、analysis、bcp、tasks、raid、settings；每个功能就近放组件、composable、纯模型及测试。 |
+| `src/features/` | cases、evidence、files、preview、search、carving、timeline、analysis、tasks、raid、settings；每个功能就近放组件、composable、纯模型及测试。 |
 | `src/components/` | `ui/`、`feedback/`、`layout/`、`display/` 共享组件，不引用业务状态。 |
 | `src/composables/` | 与业务无关的通知、确认、主题、动效、持久化及通用交互。 |
 | `src/lib/models/` | 文件定位等跨功能纯契约；传输类型仍属于 IPC。 |
@@ -229,7 +229,7 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
 - 标签页行下方采用三栏：左侧紧凑大类栏、中间当前大类的子页面、右侧工作区。镜像包含镜像信息与文件列表；
   工具包含全局搜索、时间线与文件恢复（文件夹或离线索引隐藏文件恢复）；分析直接列出插件执行结果，点击结果在右侧查看记录。
   点击大类展开子类栏并恢复该大类最近访问的页面；任务跳转、文件定位与标签恢复同步导航选中项。
-  子类栏可收起；BCP 检材额外保留 BCP 数据大类。左侧大类栏底部只保留子类栏展开 / 收起按钮，不提供过滤或添加检材入口。
+  子类栏可收起；BCP 结果显示在分析目录。左侧大类栏底部只保留子类栏展开 / 收起按钮，不提供过滤或添加检材入口。
   中间栏直接从子页面列表开始，不重复显示大类标题；分析结果目录保留自身的搜索框。
   悬停或键盘聚焦大类显示对应子类：展开时直接在中间栏预览，收起时临时浮出；不切换右侧页面，也不挤压内容区。
   预览其他大类或收起状态的浮出栏时，右侧整个工作区覆盖轻微遮影；移出、按 Esc 或完成页面切换后恢复，遮影不拦截鼠标操作。

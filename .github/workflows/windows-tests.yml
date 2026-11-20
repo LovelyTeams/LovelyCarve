@@ -49,6 +49,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-windows
       - run: just test
+      - run: just test-components
 
   plugins:
     name: Plugins

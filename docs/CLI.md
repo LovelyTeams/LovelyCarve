@@ -23,7 +23,9 @@ just build-cli
 启用带 CPU 回退的 CUDA OCR；Unix 完整配方使用 CPU OCR。轻量构建中相关命令仍然列出，
 但返回后端的功能未启用错误；文件系统、搜索、案件和插件不受影响。
 `lovelycarve-cli system get` 输出版本、平台、`standalone`（未链接桌面运行时）、命令数、
-QR/OCR/挂载功能开关和会话协议。
+QR/OCR/挂载功能开关和会话协议。`files identify`（Magika）和 `files ocr scan` 在程序旁的推理组件
+`lovelycarve_inference.dll` 中运行，CLI 本身不链接 ONNX Runtime；组件缺失时这两个命令报错，其余功能不受影响。
+`system get` 的 `components.inference` 报告组件是否可加载、路径、版本和 OCR 执行方式，`ocr` / `ocrCuda` 取自实际加载的组件。
 
 CLI 构建不启用 Cargo 的 `desktop` 特性，所以不包含 Tauri、WebView2 或 GTK 依赖，
 Linux 上也不需要桌面库。Windows 构建在链接时嵌入 `asInvoker` 清单（`src-tauri/cli.manifest`），
@@ -31,7 +33,7 @@ Linux 上也不需要桌面库。Windows 构建在链接时嵌入 `asInvoker` �
 案件登记与偏好放在与桌面端相同的用户数据目录（由 `tauri.conf.json` 的 identifier 决定），
 两个程序看到同一份案件列表。
 
-`just pack-cli` 构建并打包轻量 Windows CLI，包含运行库、`lc-plugin-host`、插件、本手册及代理技能；
+`just pack-cli` 构建并打包轻量 Windows CLI，包含运行库、推理组件、`lc-plugin-host`、插件、本手册及代理技能；
 `just pack-cli-full` 另启用 QR/OCR 并携带 OpenCV 与模型。`just repack-cli` 按现有二进制
 `system get` 报告的实际功能打包。开发配方在 `src-tauri` 目录执行，建议向 `just run-cli`
 传绝对检材路径；直接运行 exe 时相对路径以当前工作目录为准。插件包从程序旁的 `plugins/` 与用户数据目录的
@@ -94,6 +96,20 @@ JSONL 使用请求顶层的可选 `timezone`（不是 `args` 的成员），只�
 `sessions open ... --timezone Asia/Shanghai` 设置后台会话默认；普通 `--session` 请求或
 `sessions attach ... --timezone UTC` 的覆盖只作用于该请求或连接，不改后台默认。
 
+## BCP 数据
+
+`analysis imports create` 将 BCP 包发布到活动案件的标准分析结果库。`--image` 接受 ZIP、已解包 BCP 目录，或包含单个 BCP ZIP 的外层目录。ZIP 的根目录须有 `GAB_ZIP_INDEX.xml`。导入按索引顺序合并同表分片，无需事先解包或构建卷索引。
+
+```powershell
+lovelycarve-cli --case "<案件目录>" --image "<BCP ZIP 或目录路径>" analysis imports create
+lovelycarve-cli --case "<案件目录>" analysis tree get
+lovelycarve-cli --case "<案件目录>" --image "<BCP ZIP 或目录路径>" analysis records list --run-id "<运行 ID>" --record-type bcp.group_messages
+```
+
+导入返回 `runId`。在结果树「BCP 取证结果」下查看实际的 `artifactType` 与记录数。已发布的结果支持普通分析命令的分页、关键词检索、排序、单条详情和运行审计。记录的 `sources` 保留分片及源内位置。重复导入复用上一次发布的运行。使用 `--replace` 重新读取源件，完整发布后替换旧结果。
+
+结果树的 BCP 记录类型可包含 `bcpGroups`，列出原始应用编码、账号、总数和已删除数。通过导出元数据识别的具体应用编码可在 `identifiedApplication` 中查看。用常规 `analysis records list` 查询整类记录，或传入 `--bcp-scope` JSON 按原始编码和账号查询分组，例如 `{"applications":["1030036"],"account":"<账号>"}`。省略 `account` 时会查询所选应用下的所有账号；空字符串匹配无账号的记录。
+
 ## 命令结构
 
 ```text
@@ -127,7 +143,7 @@ lovelycarve-cli --case "D:\cases\demo" cases get
 | `carve` | 文件恢复：文件系统记录恢复与签名雕刻 |
 | `bitlocker`、`encrypted-volumes`、`filevault`、`ios-backups`、`shadow-copies` | 加密卷、iOS 备份与卷影副本 |
 | `mounts` | 只读挂载与 SMB 共享（Windows） |
-| `plugins`、`analysis`、`bcp` | 插件、插件任务、分析结果与 BCP 数据 |
+| `plugins`、`analysis` | 插件、插件任务、分析结果与 BCP 导入 |
 | `raid`、`disks` | RAID 组装与主机物理磁盘 |
 | `tasks` | 任务中心：插件任务与内置任务的列出、查看、取消，以及等待后台任务结束 |
 | `sessions` | 命名常驻会话：启动、连接、查看、列出与关闭，供多个普通 CLI 进程复用已打开的检材 |

@@ -26,6 +26,9 @@ pub(crate) async fn remove_image_runtime(
         images,
         // The case generation gate; holds no image state.
         image_load_context: _,
+        // Case-scope lease that closing the case drains; an image's BCP
+        // import is one of the tasks cancelled and awaited below.
+        bcp_imports: _,
         // Weak per-path entries that free themselves.
         image_load_locks: _,
         plugins,

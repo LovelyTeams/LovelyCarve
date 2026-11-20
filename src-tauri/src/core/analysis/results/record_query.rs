@@ -10,7 +10,8 @@ use serde::Serialize;
 
 use crate::core::{
     analysis::results::{
-        models::{ColumnChoice, RecordColumn, RecordSource},
+        bcp_groups,
+        models::{BcpRecordScope, ColumnChoice, RecordColumn, RecordSource},
         record_store::{
             self, column_json, registered_schema, sort_column, table_name, value_column, RunInput,
             RunTarget,
@@ -190,6 +191,7 @@ pub struct RecordsQuery<'a> {
     pub record_type: &'a str,
     /// Matches the title and every text-like column.
     pub keyword: Option<&'a str>,
+    pub bcp_scope: Option<&'a BcpRecordScope>,
     /// A field id, or `title`; emission order when absent.
     pub sort: Option<&'a str>,
     pub descending: bool,
@@ -246,6 +248,9 @@ pub fn records_page(
         }
         filter = format!(" AND ({})", alternatives.join(" OR "));
         parameters.push(Box::new(format!("%{}%", escape_like(keyword))));
+    }
+    if let Some(scope) = query.bcp_scope {
+        bcp_groups::append_scope(&schema, scope, &mut filter, &mut parameters)?;
     }
     let order = match query.sort {
         Some("title") => "r.title".to_owned(),
