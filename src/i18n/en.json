@@ -2493,5 +2493,13 @@
   "复制原路径": "Copy original path",
   "记录操作": "Record actions",
   "复制「{0}」": "Copy “{0}”",
-  "复制整条记录": "Copy whole record"
+  "复制整条记录": "Copy whole record",
+  "NTFS 备用数据流 (ADS) ({0})": "NTFS Alternate Data Streams (ADS) ({0})",
+  "常驻": "Resident",
+  "非常驻": "Non-Resident",
+  "（空数据流）": "(Empty stream)",
+  "数据流预览失败": "Stream preview failed",
+  "导出命名数据流 :{0}": "Export named stream :{0}",
+  "数据流导出成功": "Stream exported",
+  "数据流导出失败": "Stream export failed"
 }

@@ -24,7 +24,7 @@
       />
 
       <div ref="previewBody" class="preview-body" v-content-motion="node.id + ':' + activeTab" :class="{ metadata: activeTab === 'detail', flush: (activeTab === 'hex' && !!focusTarget) || (activeTab === 'raw' && (category === 'structured' || category === 'csv' || category === 'code' || category === 'binary' || category === 'gguf' || category === 'sqlite' || category === 'realm' || category === 'rich' || category === 'zip' || isMediaCategory)) }">
-        <FileMetadataPanel v-if="activeTab === 'detail'" :node="node" :full-path="fullPath" :extension="ext"
+        <FileMetadataPanel v-if="activeTab === 'detail'" :image-id="imageId" :index-only="indexOnly" :node="node" :full-path="fullPath" :extension="ext"
           :ident="effectiveIdent" :digest="digest" :ext-mismatch="extMismatch" />
         <template v-else>
           <div v-if="indexOnly" class="state-row mono">{{ tr("源镜像不可用，仅能查看索引中的文件属性。") }}</div>
