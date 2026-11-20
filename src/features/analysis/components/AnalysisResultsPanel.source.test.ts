@@ -6,6 +6,7 @@ import type { AnalysisRecord, RecordColumn } from '../../../lib/ipc/analysisResu
 
 const state = vi.hoisted(() => ({
   results: {} as Record<string, unknown>,
+  invokeCmd: vi.fn(),
   exportRecords: vi.fn(),
   toggleSort: vi.fn(),
   saveText: vi.fn(),
@@ -25,7 +26,7 @@ vi.mock('../composables/useAnalysisLabels', () => ({
     nodeLabels: { node: (node: { label: string }) => node.label, category: (node: { typeName: string }) => node.typeName },
   }),
 }));
-vi.mock('../../../lib/ipc/client', () => ({ invokeCmd: vi.fn() }));
+vi.mock('../../../lib/ipc/client', () => ({ invokeCmd: state.invokeCmd }));
 vi.mock('../../../lib/ipc/events', () => ({ onEvent: async () => () => {}, emitEvent: vi.fn() }));
 vi.mock('../../../composables/export', () => ({ saveTextWithDialog: state.saveText }));
 vi.mock('../../../composables/useToast', () => ({
@@ -341,5 +342,61 @@ describe('analysis run overview', () => {
     const action = [...host.querySelectorAll<HTMLButtonElement>('.table-scroll .ui-empty-actions button')].find(button => button.textContent?.includes('查看运行信息'))!;
     action.click();
     expect(state.results.selectNode).toHaveBeenCalledWith(run);
+  });
+
+  it('filters records to alerts only and toggles visible columns via the column picker', async () => {
+    const normalRec: AnalysisRecord = { ...record, recordId: 'normal-1', title: 'normal', severity: null };
+    const alertRec: AnalysisRecord = { ...record, recordId: 'alert-1', title: 'suspicious', severity: 'high' };
+    (state.results.records as ReturnType<typeof ref>).value = [normalRec, alertRec];
+    (state.results.recordsTotal as ReturnType<typeof ref>).value = 2;
+    await nextTick();
+    expect(host.querySelectorAll('tbody tr')).toHaveLength(2);
+
+    const filterBtns = host.querySelectorAll<HTMLButtonElement>('.severity-filter button');
+    filterBtns[1].click();
+    await nextTick();
+    expect(host.querySelectorAll('tbody tr')).toHaveLength(1);
+    expect(host.querySelector('tbody tr')?.getAttribute('data-record-id')).toBe('alert-1');
+
+    host.querySelector<HTMLButtonElement>('.column-picker-trigger')!.click();
+    await nextTick();
+    const checkboxes = host.querySelectorAll<HTMLInputElement>('.column-picker-item input[type="checkbox"]');
+    expect(checkboxes).toHaveLength(3);
+    checkboxes[2].checked = true;
+    checkboxes[2].dispatchEvent(new Event('change'));
+    await nextTick();
+    expect([...host.querySelectorAll('thead th')].map(header => header.textContent?.trim())).toEqual(['序号', '用户名', '大小', 'Shell', '源文件']);
+  });
+
+  it('renders clickable path targets and embedded evidence media preview in record detail', async () => {
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL = vi.fn(() => 'blob:media-preview');
+      static revokeObjectURL = vi.fn();
+    });
+    state.invokeCmd.mockImplementation(async (command: string) => {
+      if (command === 'fs_source_locate') return { file_id: 'node-img-1', node_id: 'node-img-1', ancestors: [] };
+      if (command === 'fs_read') return new Uint8Array([0xff, 0xd8, 0xff]).buffer;
+      return undefined;
+    });
+
+    const mediaRecord: AnalysisRecord = {
+      recordId: 'rec-media', runId: 'run-1', recordType: 'ios.airdrop_transfer', title: 'IMG_0001.jpg', severity: null,
+      values: { filename: 'IMG_0001.jpg', media_path: 'var/mobile/Media/DCIM/100APPLE/IMG_0001.jpg' },
+      sources: [{ root: 'folder:', path: 'var/mobile/Media/DCIM/100APPLE/IMG_0001.jpg', note: 'AirDrop 检材媒体文件' }],
+      imageId: 'source-disk', legacy: false,
+    };
+    (state.results.detail as ReturnType<typeof ref>).value = mediaRecord;
+    (state.results.detailColumns as ReturnType<typeof ref>).value = [column('filename', '文件名'), column('media_path', '检材媒体路径', { kind: 'path' })];
+    for (let i = 0; i < 6; i++) await nextTick();
+
+    const img = host.querySelector<HTMLImageElement>('.dock-media-img');
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute('src')).toBe('blob:media-preview');
+
+    const pathBtn = [...host.querySelectorAll<HTMLButtonElement>('.source-file button')].find(btn => btn.textContent?.includes('IMG_0001.jpg'));
+    expect(pathBtn).toBeDefined();
+    pathBtn!.click();
+    expect(openFile).toHaveBeenCalledWith({ imageId: 'source-disk', rootId: 'folder:', path: 'var/mobile/Media/DCIM/100APPLE/IMG_0001.jpg' });
+    vi.unstubAllGlobals();
   });
 });

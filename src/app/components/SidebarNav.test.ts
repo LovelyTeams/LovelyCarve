@@ -249,4 +249,28 @@ describe('SidebarNav', () => {
     expect(pages()).toEqual(['全部数据']);
     expect(host.querySelector('.page-button .ui-badge')?.textContent).toBe((1204).toLocaleString());
   });
+
+  it('resizes sidebar width by dragging the handle and persists it within bounds', async () => {
+    mount();
+    const aside = host.querySelector<HTMLElement>('.sidebar-nav')!;
+    expect(aside.style.width).toBe('288px');
+
+    const resizer = host.querySelector<HTMLElement>('.sidebar-resizer')!;
+    resizer.dispatchEvent(new MouseEvent('mousedown', { clientX: 288, bubbles: true, cancelable: true }));
+    await settle();
+    expect(aside.classList.contains('resizing')).toBe(true);
+
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 360 }));
+    await settle();
+    expect(aside.style.width).toBe('360px');
+
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 900 }));
+    await settle();
+    expect(aside.style.width).toBe('640px');
+
+    window.dispatchEvent(new MouseEvent('mouseup'));
+    await settle();
+    expect(aside.classList.contains('resizing')).toBe(false);
+    expect(localStorage.getItem('lovelycarve-sidebar-width')).toBe('640');
+  });
 });
