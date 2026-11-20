@@ -1396,7 +1396,7 @@ RAID 成员、当前检材卷快照和案件详情默认折叠，切换与锁定
 | 任务中心 | 任务中心、检材加载页、镜像信息页 | `task_list`、`task_status`、`task_cancel`、`task-entry`；`task-lifecycle`、`task-progress` |
 | 主机路径 | 拖放添加检材 | `system_path_info`（判断拖入的路径是否为目录） |
 
-下列命令目前没有桌面调用方（部分在 `src/lib/ipc/` 保留了类型化封装），上表的通配符不包括它们：`image_bad_regions`、`os_detect`、`case_option_query` / `case_option_save`、`filedb_*`、`fs_stat`、`fs_dir_stats`、`fs_digest_load` / `fs_ftype_load`（整镜像兼容入口）、`fs_streams` / `fs_stream_preview` / `fs_stream_export`、`fs_vim_swap_preview`、`fs_usn_journal*` / `fs_ext4_journal*`、`fs_timeline_export`、`timeline_range`、`carve_latest_scan`、`sched_evidence_post_actions_set`、`module_summary` 与 `reveal_path`。它们大多是 CLI 命令的后端，其余都可经 `lovelycarve-cli rpc <命令名>` 调用（`rpc --list` 列出全部）。
+下列命令目前没有桌面调用方（部分在 `src/lib/ipc/` 保留了类型化封装），上表的通配符不包括它们：`image_bad_regions`、`os_detect`、`case_option_query` / `case_option_save`、`filedb_*`、`fs_stat`、`fs_dir_stats`、`fs_digest_load` / `fs_ftype_load`（整镜像兼容入口）、`fs_streams` / `fs_stream_preview` / `fs_stream_export`、`fs_usn_journal*` / `fs_ext4_journal*`、`fs_timeline_export`、`timeline_range`、`carve_latest_scan`、`sched_evidence_post_actions_set`、`module_summary` 与 `reveal_path`。它们大多是 CLI 命令的后端，其余都可经 `lovelycarve-cli rpc <命令名>` 调用（`rpc --list` 列出全部）。
 
 ## 扩展流程
 

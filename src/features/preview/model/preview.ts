@@ -9,6 +9,7 @@ export type PreviewCategory =
   | 'binary'
   | 'gguf'
   | 'kdbx'
+  | 'vimswap'
   | 'sqlite'
   | 'realm'
   | 'rich'

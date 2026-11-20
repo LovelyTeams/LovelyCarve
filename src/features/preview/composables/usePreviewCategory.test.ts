@@ -81,6 +81,16 @@ describe('usePreviewCategory', () => {
     expect(resolve({ ext: 'kdb', bytes: keepass1 }).category).toBe('unsupported');
   });
 
+  it('opens Vim swap files by their block-0 magic, whatever the name or content guess', () => {
+    const swap = new Uint8Array([...new TextEncoder().encode('b0VIM 9.1'), 0x00]);
+    expect(resolve({ ext: 'swp', bytes: swap }).category).toBe('vimswap');
+    expect(resolve({ ext: 'swm', bytes: swap }).category).toBe('vimswap');
+    expect(resolve({ ext: '', bytes: swap, typeIdent: ident({}) }).category).toBe('vimswap');
+    // Another program's .swp, or a header cut short, keeps the usual views.
+    expect(resolve({ ext: 'swp', bytes: TEXT }).category).toBe('code');
+    expect(resolve({ ext: 'swp', bytes: new TextEncoder().encode('b0VIM') }).category).toBe('code');
+  });
+
   it('keeps directories out of file viewers even when content hints exist', () => {
     expect(resolve({ ext: 'sqlite', kind: 'dir', bytes: TEXT, typeIdent: ident({}) }).category).toBe('unsupported');
   });

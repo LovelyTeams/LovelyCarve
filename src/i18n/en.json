@@ -2589,5 +2589,19 @@
   "移除索引源失败": "Failed to remove the source",
   "删除下载的插件包失败": "Failed to delete the downloaded package",
   "读取索引源失败": "Failed to read the sources",
-  "读取插件清单失败": "Failed to read the plugin list"
+  "读取插件清单失败": "Failed to read the plugin list",
+  "正在解析 Vim 交换文件…": "Parsing the Vim swap file…",
+  "无法解析 Vim 交换文件": "Cannot parse the Vim swap file",
+  "未记录原文件名": "Original file name not recorded",
+  "疑似加密": "Possibly encrypted",
+  "用户": "User",
+  "主机": "Host",
+  "数据块": "Data blocks",
+  "指针块": "Pointer blocks",
+  "未知块": "Unknown blocks",
+  "读取字节": "Bytes read",
+  "恢复的行": "Recovered lines",
+  "高亮关键词": "Highlight keyword",
+  "复制恢复的行": "Copy recovered lines",
+  "没有恢复出文本行": "No lines recovered"
 }

@@ -99,6 +99,13 @@ function looksKdbx(bytes: Uint8Array): boolean {
     (bytes[4] === 0x67 || bytes[4] === 0x66) && bytes[5] === 0xfb && bytes[6] === 0x4b && bytes[7] === 0xb5;
 }
 
+const VIM_SWAP_MAGIC = [0x62, 0x30, 0x56, 0x49, 0x4d, 0x20]; // "b0VIM "
+
+/** A Vim swap file, whatever its name (.swp, .swo, .swn, …): block 0 starts with `b0VIM `. */
+function looksVimSwap(bytes: Uint8Array): boolean {
+  return bytes.length >= 8 && VIM_SWAP_MAGIC.every((value, index) => bytes[index] === value);
+}
+
 function categoryFromExtAndBytes(nodeKind: string, ext: string, bytes: Uint8Array): PreviewCategory {
   if (nodeKind !== 'file') return 'unsupported';
   const normalizedExt = ext.toLowerCase();
@@ -135,6 +142,7 @@ function categoryFromExtAndBytes(nodeKind: string, ext: string, bytes: Uint8Arra
   }
   if (bytes.length >= 4 && bytes[0] === 0x47 && bytes[1] === 0x47 && bytes[2] === 0x55 && bytes[3] === 0x46) return 'gguf';
   if (looksKdbx(bytes)) return 'kdbx';
+  if (looksVimSwap(bytes)) return 'vimswap';
   if (looksRealm(bytes)) return 'realm';
   if (looksSqlite(bytes)) return 'sqlite';
   if (bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b) return 'zip';
@@ -248,8 +256,9 @@ export function usePreviewCategory(options: UsePreviewCategoryOptions) {
   const category = computed<PreviewCategory>(() => {
     if (options.nodeKind() !== 'file') return 'unsupported';
     // Magika has no KeePass label and reads the encrypted payload as noise;
-    // the KDBX signature decides.
+    // the KDBX signature decides. A Vim swap file reads as text to it.
     if (looksKdbx(options.bytes())) return 'kdbx';
+    if (looksVimSwap(options.bytes())) return 'vimswap';
     const ident = identCategory.value;
     // 特例：扩展名已指明 rich（Flyfish 渲染）而 magika 只给出泛文本判定时让扩展名
     // 赢——否则 .eml/.rtf/.mbox 这类文本型扩展会被 text/plain 高置信度识别抢到
