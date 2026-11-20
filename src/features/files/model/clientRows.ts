@@ -107,7 +107,8 @@ export function projectFileRows(input: ClientFileRows, tr: Translator = sourceTe
     out = out.filter(node => matchesTimeFilter(node, key));
   }
 
-  // 隐藏空目录：开关开启、且不在根（根列出的是分区，不该按空隐藏整卷）时，
+  // 隐藏空目录（只在客户端过滤模式走到这里；服务端分页时由后端
+  // DirectoryQuery.hideEmptyDirs 判定）：开关开启、且不在根（根列出的是分区，不该按空隐藏整卷）时，
   // 丢掉「整棵子树无文件」的目录行。优先用快照子树判定（emptySubtree，含递归
   // 只有空目录的情形，如 sbin / usr）；尚未判定时保留导航入口，
   // 待可见行计数返回再隐藏确认为空的目录。Docker 容器根是必须可见的导航/

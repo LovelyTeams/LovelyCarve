@@ -1,7 +1,8 @@
 
 import { tr } from '../../../composables/useLocale';
 import { computed, onScopeDispose, reactive, ref, watch } from 'vue';
-import { containerFsChildren as fsChildren } from './containerReads';
+import { containerFsChildren as fsChildren, containerFsChildrenPage as fsChildrenPage } from './containerReads';
+import type { FsNode } from '../../../lib/ipc/fs/types';
 import { notifyError } from '../../../composables/useToast';
 import { isHostDockerContainerRootId } from '../model/model';
 import { fileTreePathFor, visibleFileTreeRows, type TreeNodeData, type TreeRow, type TreeStackFrame } from '../model/fileTree';
@@ -14,6 +15,7 @@ interface FileTreeOptions {
 }
 export function useFileTree(options: FileTreeOptions) {
   const TREE_FILE_CAP = 300;
+  const TREE_PAGE_SIZE = 500;
   const MORE_PREFIX = '__tree_more__:';
   const hideEmptyDirs = options.hideEmptyDirs;
   let disposed = false; let navigationGeneration = 0;
@@ -125,6 +127,27 @@ export function useFileTree(options: FileTreeOptions) {
     }
   }
 
+  /** The backend drops deleted entries and orders directories first, so the
+   *  tree reads only the pages holding the subdirectories and its first
+   *  TREE_FILE_CAP files instead of the whole directory. */
+  async function fetchTreeChildren(parentId: NodeId) {
+    const imageId = options.imageId();
+    const query = { filter: { deleted: false } };
+    const dirs: FsNode[] = [];
+    const files: FsNode[] = [];
+    let cursor: string | null = null;
+    let total = 0;
+    do {
+      const page = await fsChildrenPage({ imageId, parentId, cursor, pageSize: TREE_PAGE_SIZE, query });
+      if (page.nextCursor && page.nextCursor === cursor) throw new Error(tr("目录分页未前进，请刷新后重试"));
+      for (const node of page.items) (node.kind === 'dir' ? dirs : files).push(node);
+      cursor = page.nextCursor;
+      total = page.total ?? dirs.length + files.length;
+    } while (cursor && files.length < TREE_FILE_CAP);
+    const shown = files.slice(0, TREE_FILE_CAP);
+    return { nodes: [...dirs, ...shown], skippedFiles: Math.max(0, total - dirs.length - shown.length) };
+  }
+
   async function loadChildren(parentId: NodeId) {
     const parent = nodes.get(parentId);
     if (!parent) return;
@@ -132,26 +155,12 @@ export function useFileTree(options: FileTreeOptions) {
     const gen = loadGeneration;
     parent.loading = true;
     try {
-      const fetched = await fsChildren({
-        imageId: options.imageId(),
-        parentId,
-      });
+      const { nodes: fetched, skippedFiles } = await fetchTreeChildren(parentId);
       if (!current(gen)) return;
       const ids: string[] = [];
       const dirIds: string[] = [];
-      let fileCount = 0;
-      let skippedFiles = 0;
       for (const n of fetched) {
-        if (n.deleted) continue;
-        if (n.kind !== 'dir') {
-          fileCount += 1;
-          if (fileCount > TREE_FILE_CAP) {
-            skippedFiles += 1;
-            continue;
-          }
-        } else {
-          dirIds.push(n.id);
-        }
+        if (n.kind === 'dir') dirIds.push(n.id);
         ids.push(n.id);
         const existing = nodes.get(n.id);
         if (existing) {
@@ -189,7 +198,8 @@ export function useFileTree(options: FileTreeOptions) {
           driveLetter: null,
         });
       }
-      parent.childCount = fetched.length;
+      // 分页只读到不含已删除项的前若干页，拿不到包含已删除项的子项总数；父目录
+      // 计数交给可见行的计数探测（与其他来源同口径），这里不再覆盖。
       // 「隐藏空目录」开着时，先判定这批子目录再公布 childrenOf。这样展开节点
       // 时只出现最终结果，不会先闪过随后被过滤掉的空目录。
       if (hideEmptyDirs.value) {

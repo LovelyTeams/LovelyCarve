@@ -11,6 +11,8 @@ export interface DirectoryQuery {
   filter?: FlatFileFilter;
   sort?: FlatSortColumn | null;
   descending?: boolean;
+  /** The backend leaves out directories whose whole subtree holds no file. */
+  hideEmptyDirs?: boolean;
 }
 
 /** Cursor pagination owns totals/cursors, while the panel coordinates navigation. */

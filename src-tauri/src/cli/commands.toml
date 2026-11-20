@@ -2134,6 +2134,10 @@ ipc = "fs_preview"
 by = "files read"
 
 [[superseded]]
+ipc = "fs_preview_text_encoding"
+by = "files text get"
+
+[[superseded]]
 ipc = "fs_usn_journal"
 by = "files usn-journal records list"
 

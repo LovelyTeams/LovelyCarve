@@ -19,7 +19,7 @@ beforeEach(() => {
   vi.resetAllMocks(); node.value = { ...node.value, id: 'markdown', name: 'notes.md', kind: 'file' };
   ipc.invoke.mockImplementation(async command => {
     if (command === 'fs_preview') return new TextEncoder().encode(content).buffer;
-    if (command === 'fs_preview_text') return { text: content, encoding: 'UTF-8', from_bom: false, had_errors: false };
+    if (command === 'fs_preview_text_encoding') return { encoding: 'UTF-8', from_bom: false, had_errors: false, continues: false };
     return {};
   });
   host = document.createElement('div'); document.body.append(host);

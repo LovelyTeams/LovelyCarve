@@ -22,7 +22,10 @@ export function fsChildrenPage(args: {
   parentId: NodeId | null;
   cursor?: string | null;
   pageSize?: number | null;
-  query?: { filter?: FlatFileFilter; sort?: FlatSortColumn | null; descending?: boolean };
+  /** Backend filter / sort (`core::catalog::directory_query::DirectoryQuery`);
+   *  `hideEmptyDirs` leaves out directories whose whole subtree holds no file
+   *  (ignored at the image root; directories no snapshot can judge stay). */
+  query?: { filter?: FlatFileFilter; sort?: FlatSortColumn | null; descending?: boolean; hideEmptyDirs?: boolean };
 }): Promise<Page<FsNode>> {
   return invokeCmd<Page<FsNode>>('fs_children_page', args);
 }

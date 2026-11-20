@@ -1,7 +1,7 @@
 
 import { tr } from '../../../composables/useLocale';
 import { computed, onScopeDispose, ref, watch, type ComputedRef, type Ref } from 'vue';
-import { fsPreviewText, type DecodedText } from '../../../lib/ipc/fs/read';
+import { fsPreviewText, fsPreviewTextEncoding, type TextEncodingGuess } from '../../../lib/ipc/fs/read';
 import { highlightHtml } from '../../../utils/highlight';
 import type { PreviewCategory } from '../model/preview';
 import type { ImageId, NodeId } from '../../../lib/ipc/ids';
@@ -20,6 +20,36 @@ interface UseTextPreviewOptions {
 }
 
 const TEXT_CHUNK_CHARS = 8000;
+
+/** The backend's encoding verdict for one node's preview prefix. */
+interface DetectedText extends TextEncodingGuess {
+  nodeId: NodeId;
+  /** Backend-decoded text, only when this WebView has no decoder for `encoding`. */
+  text: string | null;
+}
+
+function supportsDecoding(label: string): boolean {
+  try {
+    new TextDecoder(label);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Decode the preview bytes as the backend's first run does: a leading BOM is
+ *  dropped, and when more of the file follows (`continues`), a character cut
+ *  at the end stays out of the text. A streaming decode keeps state, so each
+ *  call takes a fresh decoder. */
+function decodeDetected(bytes: Uint8Array, guess: TextEncodingGuess): string | null {
+  let decoder: TextDecoder;
+  try {
+    decoder = new TextDecoder(guess.encoding, { fatal: false });
+  } catch {
+    return null;
+  }
+  return decoder.decode(bytes, { stream: guess.continues });
+}
 
 const decoderCache = new Map<string, TextDecoder>();
 
@@ -58,7 +88,7 @@ function chunkText(text: string, target: number): string[] {
 }
 
 export function useTextPreview(options: UseTextPreviewOptions) {
-  const decoded = ref<(DecodedText & { nodeId: NodeId }) | null>(null);
+  const decoded = ref<DetectedText | null>(null);
   const decodingSettled = ref(false);
   const encodingOverride = ref('');
   let decodingFor: number | null = null;
@@ -90,7 +120,11 @@ export function useTextPreview(options: UseTextPreviewOptions) {
     }
 
     const decodedValue = decoded.value;
-    if (decodedValue && decodedValue.nodeId === options.nodeId()) return decodedValue.text;
+    if (decodedValue && decodedValue.nodeId === options.nodeId()) {
+      if (decodedValue.text !== null) return decodedValue.text;
+      const text = decodeDetected(bytes, decodedValue);
+      if (text !== null) return text;
+    }
     if (bytes.length === 0) return '';
     try {
       return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
@@ -146,14 +180,17 @@ export function useTextPreview(options: UseTextPreviewOptions) {
     if (decoded.value?.nodeId === nodeId) return;
     if (decodingFor === requestGeneration) return;
     decodingFor = requestGeneration;
+    const stale = () =>
+      disposed || requestGeneration !== generation || imageId !== options.imageId() || nodeId !== options.nodeId();
     try {
-      const result = await fsPreviewText({
-        imageId,
-        nodeId,
-        maxBytes: options.previewCap,
-      });
-      if (disposed || requestGeneration !== generation || imageId !== options.imageId() || nodeId !== options.nodeId()) return;
-      decoded.value = { ...result, nodeId };
+      // Only the verdict crosses IPC; `decodedText` decodes the preview bytes
+      // this view already holds (same prefix, same PREVIEW_CAP).
+      const request = { imageId, nodeId, maxBytes: options.previewCap };
+      const guess = await fsPreviewTextEncoding(request);
+      if (stale()) return;
+      const text = supportsDecoding(guess.encoding) ? null : (await fsPreviewText(request)).text;
+      if (stale()) return;
+      decoded.value = { ...guess, nodeId, text };
     } catch {
       // Keep the UTF-8 fallback in place; preview should not fail because
       // charset detection did.

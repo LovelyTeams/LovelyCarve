@@ -216,8 +216,12 @@ RAID 检测（`evidence/raid`）分六步：读取各检材的 LVM PV 并物化�
 2. 用户选择镜像文件、文件夹证据、物理磁盘或 RAID 成员。
 3. 前端调用 `image_load`，后端把证据注册到内存状态和活动案件。
 
-4. 侧栏显示镜像信息与文件列表，文件树按需调用 `fs_children` 或快照索引。
-5. 文件详情通过 `fs_preview`、`fs_preview_text`、原类型预览命令读取内容；「rich」类别由前端
+4. 侧栏显示镜像信息与文件列表。文件树展开目录时调用 `fs_children_page`（后端排除已删除项、目录优先，
+   只读取到前 300 个文件所在的页），子项计数只对可见行查询。
+5. 文件详情通过 `fs_preview`、原类型预览命令读取内容。文本类视图只经 `fs_preview_text_encoding`
+   取 `fs_preview_text` 第一段的编码结论，再用 `TextDecoder` 解码 `fs_preview` 已返回的同一段字节
+   （encoding_rs 与 `TextDecoder` 遵循同一份 WHATWG 编码标准；`continues` 为真时末尾截断的字符
+   不进文本）；WebView 不支持该编码时才回退到返回整段文本的 `fs_preview_text`。「rich」类别由前端
    `RichPreviewViewer`（Flyfish File Viewer）自取字节（`fs_read_large` / `fs_media_temp`）渲染。
 6. 长任务通过 Tauri event 推送进度，例如镜像加载、哈希、导出、BitLocker、快照构建。
 
@@ -937,7 +941,11 @@ live listing。`fs_flat_page` 只使用非截断快照的索引，仍会对索�
 offset。当前普通目录已提供 `fs_children_page`，案件模式下会优先使用 SQLite 快照索引返回单页，
 索引未覆盖时沿用 `fs_children` 的案件快照 / session 快照优先路径；
 文件列表通过 `fs_children_page` 的可选 `query` 参数发送元数据过滤和排序，采用目录优先、排序键、节点 ID 的稳定游标；SQLite 索引只取单页，实时来源在后端过滤排序。
-未传 `query` 的兼容调用仍按 `(name,id)` 分页。哈希/标签等派生列、路径和隐藏空目录筛选通过有界分页取得完整目录后沿用客户端语义；普通滚动按需补页，定位目标会补齐到目标页。
+「隐藏空目录」也随 `query.hideEmptyDirs` 交给后端，从当页和总数中一起去掉整棵子树没有文件的子目录：SQLite 索引路径先用一条
+`INDEXED BY pid` 查询筛出没有直接文件的子目录，只对这些候选做子树遍历（`core::catalog::filedb::filedb_subtree`），
+再以 `nid NOT IN json_each(?)` 排除；内存快照与实时路径沿用 `fs_subtree_empty_dirs` 的案件快照 → 索引 → session 快照判定。
+已删除目录、Docker 容器根和任何来源都判定不了的目录保留显示，镜像根层不过滤。
+未传 `query` 的兼容调用仍按 `(name,id)` 分页。哈希/标签等派生列和路径筛选通过有界分页取得完整目录后沿用客户端语义；普通滚动按需补页，定位目标会补齐到目标页。
 目录计数只对可见行查询，未索引目录通过 `pageSize:1` 获取总数，不再传输其完整子列表。无快照的实时来源仍可能需要枚举整目录以计数和排序。NTFS USN Journal
 提供 `fs_usn_journal_page`，ext4 jbd2 历史 block revisions 提供 `fs_ext4_journal_blocks_page`。旧
 `fs_children`、`fs_usn_journal` 和 `fs_ext4_journal` 仅作为兼容入口保留，新的 UI 或

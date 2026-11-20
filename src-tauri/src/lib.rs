@@ -106,6 +106,7 @@ fn application_builder() -> tauri::Builder<tauri::Wry> {
             commands::preview::filesystem_preview::fs_media_release,
             commands::preview::filesystem_preview::fs_preview,
             commands::preview::filesystem_preview::fs_preview_text,
+            commands::preview::filesystem_preview::fs_preview_text_encoding,
             commands::preview::filesystem_preview::fs_stat,
             commands::filesystem::filesystem_export::fs_export,
             commands::filesystem::filesystem_export::fs_export_dir,

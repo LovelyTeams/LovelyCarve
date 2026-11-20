@@ -28,6 +28,9 @@ pub async fn fs_streams(
     .map_err(|error| AppError::task_panicked("fs_streams", error))?
 }
 
+/// Read up to `max_bytes` (hard-capped at 2 MiB) of one named data stream as a
+/// raw binary response (`ArrayBuffer` in the WebView, binary CLI output), like
+/// `fs_preview`, instead of a JSON integer array several times its size.
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_stream_preview(
     state: State<'_, AppState>,
@@ -35,9 +38,9 @@ pub async fn fs_stream_preview(
     node_id: NodeId,
     stream_name: String,
     max_bytes: usize,
-) -> Result<Vec<u8>, AppError> {
+) -> Result<crate::host::Response, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
-    tokio::task::spawn_blocking(move || -> Result<Vec<u8>, AppError> {
+    let data = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, AppError> {
         fs_tree::read_named_stream(
             &image,
             &node_id,
@@ -47,7 +50,8 @@ pub async fn fs_stream_preview(
         .map_err(AppError::from_anyhow)
     })
     .await
-    .map_err(|error| AppError::task_panicked("fs_stream_preview", error))?
+    .map_err(|error| AppError::task_panicked("fs_stream_preview", error))??;
+    Ok(crate::host::Response::new(data))
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]

@@ -63,6 +63,32 @@ impl TextPage {
     }
 }
 
+/// A [`TextPage`] verdict without its text. The WebView decodes the preview
+/// bytes it already holds with `TextDecoder(encoding)`: encoding_rs and
+/// `TextDecoder` implement the same WHATWG Encoding Standard, so the same
+/// label yields the same text and the decoded text need not cross IPC again.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TextEncodingGuess {
+    pub encoding: String,
+    pub from_bom: bool,
+    pub had_errors: bool,
+    /// More of the file follows the bytes: a character cut at their end stays
+    /// out of the text (`TextDecoder` with `stream: true`), as
+    /// [`decode_span`] keeps it for the next run.
+    pub continues: bool,
+}
+
+impl From<&TextPage> for TextEncodingGuess {
+    fn from(page: &TextPage) -> Self {
+        Self {
+            encoding: page.encoding.clone(),
+            from_bom: page.from_bom,
+            had_errors: page.had_errors,
+            continues: page.next_offset.is_some(),
+        }
+    }
+}
+
 /// Where a run of bytes sits in its file.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Span {

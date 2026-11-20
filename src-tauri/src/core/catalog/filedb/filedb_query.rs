@@ -8,10 +8,11 @@
 //! * 子项计数 —— 构建时预计算的计数缓存点查;
 //! * MetaAddr 解析 —— `(meta_addr, meta_addr_high)` 回到适配器节点 id。
 //!
+//! 子树是否只剩空目录的判定在同级的 `filedb_subtree`。
 //! 文件全显(allowAllFiles)的子树分页在同级的 `filedb_flat`。未被走树覆盖的
 //! 目录(`filedb_walked_dirs` 无行)返回 `None`,命令层回退实时遍历。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::Context;
@@ -19,12 +20,10 @@ use rusqlite::{params, params_from_iter, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 use crate::core::catalog::filedb::filedb_file;
-use crate::core::filesystem::meta_addr::IS_DELETE_DELETED;
 use crate::core::filesystem::tree::fs_tree::FsNode;
 
 const DEFAULT_PAGE_SIZE: usize = 500;
 pub(crate) const MAX_PAGE_SIZE: usize = 5_000;
-const SUBTREE_SCAN_CAP: usize = 200_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -227,40 +226,6 @@ pub fn child_counts(
     Ok(counts)
 }
 
-pub fn subtree_has_file(index: &Path, parent_id: &str) -> anyhow::Result<Option<bool>> {
-    let conn = filedb_file::open_reader(index)?;
-    let start_key = parent_key(parent_id);
-    if !walked_dir_exists(&conn, start_key)? {
-        return Ok(None);
-    }
-
-    let mut stack = vec![start_key.to_string()];
-    let mut visited = HashSet::from([start_key.to_string()]);
-    let mut budget = SUBTREE_SCAN_CAP;
-    while let Some(parent) = stack.pop() {
-        let children = child_edges(&conn, &parent)?;
-        for child in children {
-            if budget == 0 {
-                return Ok(None);
-            }
-            budget -= 1;
-            if child.is_deleted {
-                continue;
-            }
-            if child.kind != "dir" {
-                return Ok(Some(true));
-            }
-            if !walked_dir_exists(&conn, &child.nid)? {
-                return Ok(None);
-            }
-            if visited.insert(child.nid.clone()) {
-                stack.push(child.nid);
-            }
-        }
-    }
-    Ok(Some(false))
-}
-
 /// The generic filter path (name / path / extension / size / kind / delete),
 /// paged with `LIMIT ? OFFSET ?` and naturally ordered.
 pub fn query_files(index: &Path, filter: &FileFilter) -> anyhow::Result<Vec<FileHit>> {
@@ -437,32 +402,6 @@ pub(crate) fn parent_key(parent_id: &str) -> &str {
     } else {
         parent_id
     }
-}
-
-struct ChildEdge {
-    nid: String,
-    kind: String,
-    is_deleted: bool,
-}
-
-fn child_edges(conn: &Connection, parent_id: &str) -> anyhow::Result<Vec<ChildEdge>> {
-    let mut stmt = conn.prepare_cached(
-        "SELECT nid, kind, is_delete FROM filedb
-         WHERE pid = ?1
-         ORDER BY name COLLATE natsort ASC, nid ASC",
-    )?;
-    let rows = stmt.query_map(params![parent_id], |row| {
-        Ok(ChildEdge {
-            nid: row.get(0)?,
-            kind: row.get(1)?,
-            is_deleted: row.get::<_, i64>(2)? == IS_DELETE_DELETED,
-        })
-    })?;
-    let mut edges = Vec::new();
-    for row in rows {
-        edges.push(row?);
-    }
-    Ok(edges)
 }
 
 fn flat_children(conn: &Connection, parent_id: &str) -> anyhow::Result<Vec<FsNode>> {
@@ -771,17 +710,9 @@ mod tests {
     }
 
     #[test]
-    fn subtree_probe_and_category_summary_read_the_index() {
+    fn category_summary_reads_the_index() {
         let dir = tempfile::tempdir().expect("tempdir");
         let index = build_test_index(dir.path(), "part:0", &entries());
-        assert_eq!(
-            subtree_has_file(&index, "part:0").expect("subtree"),
-            Some(true)
-        );
-        assert_eq!(
-            subtree_has_file(&index, "empty").expect("subtree"),
-            Some(false)
-        );
         assert_eq!(
             category_summary(&index, "part:0")
                 .expect("summary")

@@ -5,3 +5,4 @@ pub mod filedb_file;
 pub mod filedb_flat;
 pub mod filedb_query;
 pub mod filedb_store;
+pub mod filedb_subtree;

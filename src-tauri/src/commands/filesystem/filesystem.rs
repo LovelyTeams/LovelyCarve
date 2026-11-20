@@ -16,8 +16,7 @@ use crate::commands::filesystem::filesystem_page::{
 };
 use crate::commands::filesystem::filesystem_snapshot_index::{
     case_index_targets, index_targets, query_snapshot_index_child_counts,
-    query_snapshot_index_children, query_snapshot_index_subtree_empties, IndexCoverage,
-    SnapshotIndexTarget,
+    query_snapshot_index_children, IndexCoverage, SnapshotIndexTarget,
 };
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::fs_dispatch::Volume as _;
@@ -384,68 +383,10 @@ pub async fn fs_subtree_empty_dirs(
 ) -> Result<HashMap<String, bool>, AppError> {
     // The answers are keyed by plain node ids, as the snapshot indexes store them.
     let parent_ids: Vec<String> = parent_ids.into_iter().map(String::from).collect();
-    let image = {
-        let images = state.images.lock().await;
-        images.get(&image_id).cloned()
-    };
-    let mut empties = HashMap::with_capacity(parent_ids.len());
-    // In-memory case bodies first (volumes whose index could not be built).
-    let mut missing_parent_ids = Vec::with_capacity(parent_ids.len());
-    let has_case = {
-        let active = state.active_case.lock().await;
-        match active.as_ref() {
-            Some(case) => {
-                for parent_id in parent_ids {
-                    match case.snapshot_subtree_empty(&image_id, &parent_id) {
-                        Some(empty) => {
-                            empties.insert(parent_id, empty);
-                        }
-                        None => missing_parent_ids.push(parent_id),
-                    }
-                }
-                true
-            }
-            None => {
-                missing_parent_ids = parent_ids;
-                false
-            }
-        }
-    };
-    // Then the volume indexes (case or caseless session).
-    if let Some(image) = image.as_deref() {
-        let targets = index_targets(&state, image, &image_id, IndexCoverage::Any).await;
-        if !targets.is_empty() && !missing_parent_ids.is_empty() {
-            let parent_ids_for_index = missing_parent_ids.clone();
-            let indexed_empties = tokio::task::spawn_blocking(move || {
-                query_snapshot_index_subtree_empties(&targets, &parent_ids_for_index)
-            })
-            .await
-            .map_err(|err| AppError::task_panicked("fs_subtree_empty_dirs index", err))?;
-            match indexed_empties {
-                Ok(indexed_empties) => {
-                    empties.extend(indexed_empties);
-                    missing_parent_ids.retain(|parent_id| !empties.contains_key(parent_id));
-                }
-                Err(err) => {
-                    tracing::warn!("fs_subtree_empty_dirs index err image={image_id}: {err}");
-                }
-            }
-        }
-    }
-    // Caseless in-memory session bodies last.
-    if !has_case {
-        let sessions = state.session_snapshots.lock().await;
-        for parent_id in missing_parent_ids {
-            if let Some(empty) =
-                crate::app::workflows::snapshot::snapshot_session::session_subtree_empty(
-                    &sessions, &image_id, &parent_id,
-                )
-            {
-                empties.insert(parent_id, empty);
-            }
-        }
-    }
-    Ok(empties)
+    crate::commands::filesystem::filesystem_directory::subtree_empty_dirs(
+        &state, &image_id, parent_ids,
+    )
+    .await
 }
 
 // ── 节点定位（全局搜索跳转 / jump2Page 支撑）─────────────────────────

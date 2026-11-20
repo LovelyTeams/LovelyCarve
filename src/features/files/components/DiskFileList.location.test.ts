@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp, defineComponent, h, nextTick, ref, type App } from 'vue';
 import type { FileListNavigator } from '../model/navigation';
+import { useEmptyDirFilter } from '../composables/useEmptyDirFilter';
 import DiskFileList from './DiskFileList.vue';
 
 const ipc = vi.hoisted(() => ({ invoke: vi.fn(), open: vi.fn(), focus: vi.fn(), emit: vi.fn() }));
@@ -248,6 +249,30 @@ describe('file list location integration', () => {
     expect(ipc.invoke.mock.calls.filter(([command]) => command === 'fs_children_page')).toHaveLength(1);
     expect(host.querySelector('.list-footer')?.textContent).toContain('10,000');
     expect(host.querySelectorAll('.disk-file-row').length).toBeLessThan(100);
+  });
+  it('lets the backend hide empty directories instead of reading the whole directory', async () => {
+    const { hideEmptyDirs } = useEmptyDirFilter();
+    hideEmptyDirs.value = true;
+    try {
+      const original = ipc.invoke.getMockImplementation()!;
+      ipc.invoke.mockImplementation(async (command, args) => {
+        if (command === 'fs_children_page' && args.parentId === 'part:0:dir') return {
+          items: [node, ...Array.from({ length: 499 }, (_, index) => ({ ...node, id: `row-${index}`, name: `file-${index}.txt` }))],
+          nextCursor: 'next-page', total: 10_000,
+        };
+        return original(command, args);
+      });
+      await mount();
+      await panel.value!.openFileByNodeId(node.id);
+      await settle();
+      const pages = ipc.invoke.mock.calls.filter(([command, args]) => command === 'fs_children_page' && args.parentId === 'part:0:dir');
+      expect(pages).toHaveLength(1);
+      expect(pages[0][1].query).toEqual(expect.objectContaining({ hideEmptyDirs: true }));
+      expect(ipc.invoke.mock.calls.some(([command]) => command === 'fs_subtree_empty_dirs')).toBe(false);
+      expect(host.querySelector('.list-footer')?.textContent).toContain('10,000');
+    } finally {
+      hideEmptyDirs.value = false;
+    }
   });
   it('loads through the cursor to locate a file beyond the first directory page', async () => {
     const original = ipc.invoke.getMockImplementation()!;

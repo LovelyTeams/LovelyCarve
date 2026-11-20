@@ -5,7 +5,8 @@ import type { ImageId, NodeId } from '../ids';
 
 /** Read up to `maxBytes` of a file (backend hard-caps at 2 MiB) as raw bytes.
  *  Returns an `ArrayBuffer` (Tauri raw IPC response) — wrap with `new Uint8Array(buf)`.
- *  Used by the detail panel's hex view; text / code / markdown use `fsPreviewText`. */
+ *  Feeds the detail panel's hex view, and its text / code / Markdown views after
+ *  decoding with the label from `fsPreviewTextEncoding`. */
 export function fsPreview(args: { imageId: ImageId; nodeId: NodeId; maxBytes: number }): Promise<ArrayBuffer> {
   return invokeCmd<ArrayBuffer>('fs_preview', args);
 }
@@ -64,4 +65,21 @@ export function fsPreviewText(args: {
   encoding?: string;
 }): Promise<DecodedText> {
   return invokeCmd<DecodedText>('fs_preview_text', args);
+}
+
+/** `fsPreviewText` 第一段的编码结论，不含文本（core::text_decode::TextEncodingGuess）。 */
+export interface TextEncodingGuess {
+  /** WHATWG 规范名，可直接作为 `TextDecoder` 的 label。 */
+  encoding: string;
+  from_bom: boolean;
+  had_errors: boolean;
+  /** 这段字节之后文件还有内容：末尾被截断的字符不进文本（`TextDecoder` 用 `stream: true`）。 */
+  continues: boolean;
+}
+
+/** 检测 `fsPreview` 同一段前缀的文本编码（与 `fsPreviewText` 第一段同一套检测），不回传文本。
+ *  encoding_rs 与 `TextDecoder` 实现同一份 WHATWG 编码标准，前端用 `encoding` 解码自己持有的
+ *  字节即可得到相同文本。两个命令须传同一个 `maxBytes`（PREVIEW_CAP）。 */
+export function fsPreviewTextEncoding(args: { imageId: ImageId; nodeId: NodeId; maxBytes: number }): Promise<TextEncodingGuess> {
+  return invokeCmd<TextEncodingGuess>('fs_preview_text_encoding', args);
 }

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::core::casework::case::CaseState;
-use crate::core::catalog::filedb::filedb_query;
+use crate::core::catalog::filedb::{filedb_query, filedb_subtree};
 use crate::core::catalog::snapshot::volume_snapshot::volume_size_for_key;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree::FsNode;
@@ -149,18 +149,23 @@ pub(crate) fn query_snapshot_index_child_counts(
     Ok(counts)
 }
 
+/// Subtree emptiness per directory; the first index that can judge a
+/// directory decides it. Each index is read over one connection for the
+/// whole batch.
 pub(crate) fn query_snapshot_index_subtree_empties(
     targets: &[SnapshotIndexTarget],
     parent_ids: &[String],
 ) -> anyhow::Result<HashMap<String, bool>> {
     let mut empties = HashMap::with_capacity(parent_ids.len());
-    for parent_id in parent_ids {
-        for target in targets {
-            if let Some(has_file) = filedb_query::subtree_has_file(&target.index, parent_id)? {
-                empties.insert(parent_id.clone(), !has_file);
-                break;
-            }
+    let mut pending = parent_ids.to_vec();
+    for target in targets {
+        if pending.is_empty() {
+            break;
         }
+        for (parent_id, has_file) in filedb_subtree::subtree_has_files(&target.index, &pending)? {
+            empties.insert(parent_id, !has_file);
+        }
+        pending.retain(|parent_id| !empties.contains_key(parent_id));
     }
     Ok(empties)
 }

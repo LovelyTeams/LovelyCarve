@@ -754,10 +754,11 @@ async function loadCurrent(reload: { keepPanels?: boolean } = {}) {
   }
 }
 
-// Derived fields and recursive empty-directory checks require the complete
-// directory. Fetch bounded pages before applying those legacy predicates.
-const directoryClientFilter = computed(() => hideEmptyDirs.value
-  || Boolean(effectiveFilters.path?.trim())
+// Derived fields (hashes, tags, identified types), path filters and client-only
+// sort keys require the complete directory: fetch bounded pages before applying
+// those legacy predicates. "Hide empty directories" is judged by the backend
+// from the volume snapshot, so the server-paged list keeps paging with it on.
+const directoryClientFilter = computed(() => Boolean(effectiveFilters.path?.trim())
   || Object.entries(effectiveFilters).some(([key, value]) => value && !FLAT_SERVER_FILTER_COLUMNS.has(key))
   || Boolean(sortKey.value && !flatSortColumn(sortKey.value)));
 // 条件由后端执行时，返回的总数是符合条件的条目数（页脚改称「符合条件」）；
@@ -768,6 +769,7 @@ const serverNarrowed = computed(() => deepsearch.value
 const directoryRequest = computed(() => directoryClientFilter.value ? {} : {
   filter: buildFlatRequest().filter,
   sort: flatSortColumn(sortKey.value), descending: sortDir.value === 'desc',
+  ...(hideEmptyDirs.value ? { hideEmptyDirs: true } : {}),
 });
 const directoryRequestSignature = computed(() => JSON.stringify({
   request: directoryRequest.value, client: directoryClientFilter.value,
@@ -810,7 +812,7 @@ const directoryQuery = useDirectoryQuery({
   clientFilter: () => directoryClientFilter.value,
   entries, loading,
   hydrated: hydrateDerivedForNodes,
-  firstPageLoaded: async (nodes, generation) => { if (hideEmptyDirs.value) await fetchEmptySubtrees(nodes, generation); },
+  firstPageLoaded: async (nodes, generation) => { if (hideEmptyDirs.value && directoryClientFilter.value) await fetchEmptySubtrees(nodes, generation); },
   beforeAppend: () => viewport.beforeAppend(),
   wantedThrough: () => range.value.end + FLAT_PREFETCH_ROWS,
 });
@@ -840,10 +842,11 @@ const exportSelection = computed(() => {
   };
 });
 
-// 列表已展示时打开「隐藏空目录」：为当前条目补一次子树判定，让过滤即时生效
-// （filteredEntries 读 hideEmptyDirs，开关一变即重算，这里补齐它依赖的数据）。
+// 服务端分页时，开关进入请求签名，变化后整页重载、由后端判定空目录。客户端
+// 过滤模式下 filteredEntries 自己读 hideEmptyDirs：打开时为当前条目补一次子树
+// 判定，让过滤即时生效。
 watch(hideEmptyDirs, on => {
-  if (on) void fetchEmptySubtrees(entries.value, loadGeneration);
+  if (on && directoryClientFilter.value) void fetchEmptySubtrees(entries.value, loadGeneration);
 });
 
 const sortContext = {

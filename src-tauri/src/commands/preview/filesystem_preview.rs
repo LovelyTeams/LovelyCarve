@@ -314,58 +314,101 @@ pub async fn fs_preview_text(
     encoding: Option<String>,
 ) -> Result<text_decode::TextPage, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
-    let forced = match encoding {
-        Some(label) => Some(text_decode::encoding_for_label(&label).ok_or_else(|| {
-            AppError::invalid_input(format!(
-                "未知编码：{label}（使用 WHATWG 标签，如 utf-8、gbk、gb18030、big5、shift_jis、utf-16le）"
-            ))
-        })?),
-        None => None,
+    let choice = match encoding {
+        Some(label) => {
+            TextEncoding::Forced(text_decode::encoding_for_label(&label).ok_or_else(|| {
+                AppError::invalid_input(format!(
+                    "未知编码：{label}（使用 WHATWG 标签，如 utf-8、gbk、gb18030、big5、shift_jis、utf-16le）"
+                ))
+            })?)
+        }
+        None => TextEncoding::Detect,
     };
-    tokio::task::spawn_blocking(move || -> Result<text_decode::TextPage, AppError> {
-        let limit = max_bytes.clamp(text_decode::MIN_SPAN_BYTES, 2 * 1024 * 1024);
-        let offset = offset.unwrap_or(0);
-        let mut session = fs_tree::FsSession::new(&image);
-        // One byte past the limit says whether more of the file follows.
-        let mut read = |from: u64| -> Result<(Vec<u8>, bool), AppError> {
-            let mut bytes = (if from == 0 {
-                session.read_file_limited(&node_id, limit + 1)
-            } else {
-                session.read_file_range(&node_id, from, limit + 1)
-            })
-            .map_err(AppError::from_anyhow)?;
-            let continues = bytes.len() > limit;
-            bytes.truncate(limit);
-            Ok((bytes, continues))
-        };
-        let (bytes, continues) = read(offset)?;
-        let span = match (offset == 0, continues) {
-            (true, false) => Span::Whole,
-            (true, true) => Span::Head,
-            (false, true) => Span::Middle,
-            (false, false) => Span::Tail,
-        };
-        let guess = match forced {
-            Some(encoding) => Guess {
-                encoding,
-                from_bom: false,
-            },
-            None if offset == 0 => text_decode::detect(&bytes, span),
-            None => {
-                let (head, continues) = read(0)?;
-                let span = if continues { Span::Head } else { Span::Whole };
-                text_decode::detect(&head, span)
-            }
-        };
-        let (decoded, covered) = text_decode::decode_span(&bytes, span, guess);
-        Ok(text_decode::TextPage::new(
-            decoded,
-            offset,
-            continues.then(|| offset + covered as u64),
-        ))
+    tokio::task::spawn_blocking(move || {
+        read_text_page(&image, &node_id, max_bytes, offset.unwrap_or(0), choice)
     })
     .await
     .map_err(|err| AppError::task_panicked("fs_preview_text", err))?
+}
+
+/// The encoding verdict of `fs_preview_text`'s first run, without its text:
+/// the same bounded prefix `fs_preview` returns, the same detection. The
+/// WebView decodes its copy of those bytes with `TextDecoder`, which follows
+/// the same WHATWG Encoding Standard as encoding_rs, so the text does not cross
+/// IPC a second time. Callers pass the same `max_bytes` to both commands.
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn fs_preview_text_encoding(
+    state: State<'_, AppState>,
+    image_id: ImageId,
+    node_id: NodeId,
+    max_bytes: usize,
+) -> Result<text_decode::TextEncodingGuess, AppError> {
+    let image = loaded_image_app_error(&state, &image_id).await?;
+    tokio::task::spawn_blocking(move || {
+        read_text_page(&image, &node_id, max_bytes, 0, TextEncoding::Detect)
+            .map(|page| text_decode::TextEncodingGuess::from(&page))
+    })
+    .await
+    .map_err(|err| AppError::task_panicked("fs_preview_text_encoding", err))?
+}
+
+/// How a text run picks its encoding.
+#[derive(Clone, Copy)]
+enum TextEncoding {
+    /// Detect it from the start of the file: a byte order mark, else chardetng.
+    Detect,
+    /// The caller named it.
+    Forced(&'static encoding_rs::Encoding),
+}
+
+/// One run of a file's text from `offset`, at most `max_bytes` long (clamped
+/// to 2 MiB). Blocking: call it from a blocking thread.
+fn read_text_page(
+    image: &std::sync::Arc<crate::core::filesystem::evidence_session::EvidenceSession>,
+    node_id: &NodeId,
+    max_bytes: usize,
+    offset: u64,
+    choice: TextEncoding,
+) -> Result<text_decode::TextPage, AppError> {
+    let limit = max_bytes.clamp(text_decode::MIN_SPAN_BYTES, 2 * 1024 * 1024);
+    let mut session = fs_tree::FsSession::new(image);
+    // One byte past the limit says whether more of the file follows.
+    let mut read = |from: u64| -> Result<(Vec<u8>, bool), AppError> {
+        let mut bytes = (if from == 0 {
+            session.read_file_limited(node_id, limit + 1)
+        } else {
+            session.read_file_range(node_id, from, limit + 1)
+        })
+        .map_err(AppError::from_anyhow)?;
+        let continues = bytes.len() > limit;
+        bytes.truncate(limit);
+        Ok((bytes, continues))
+    };
+    let (bytes, continues) = read(offset)?;
+    let span = match (offset == 0, continues) {
+        (true, false) => Span::Whole,
+        (true, true) => Span::Head,
+        (false, true) => Span::Middle,
+        (false, false) => Span::Tail,
+    };
+    let guess = match choice {
+        TextEncoding::Forced(encoding) => Guess {
+            encoding,
+            from_bom: false,
+        },
+        TextEncoding::Detect if offset == 0 => text_decode::detect(&bytes, span),
+        TextEncoding::Detect => {
+            let (head, continues) = read(0)?;
+            let span = if continues { Span::Head } else { Span::Whole };
+            text_decode::detect(&head, span)
+        }
+    };
+    let (decoded, covered) = text_decode::decode_span(&bytes, span, guess);
+    Ok(text_decode::TextPage::new(
+        decoded,
+        offset,
+        continues.then(|| offset + covered as u64),
+    ))
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
