@@ -31,6 +31,7 @@
 - 插件清单可声明 `description`、`publisher`、`license`（`plugin.description` 键翻译说明），插件包可带 `README.md`；「设置 → 插件」显示说明、发布者与许可证，详情中可展开说明文档。
 - 分析运行的审计记录任务实例加载的插件库文件的 SHA-256（「分析结果」的运行信息与 CLI `results run` 的 `librarySha256`），同版本号的不同构建因此可以区分。
 - 插件 SDK 的测试工具 `TestRun::snapshot()` 把一次运行的全部输出写成稳定文本，供 `insta` 快照测试；`linuxinfo` 用它覆盖整次运行。
+- SQLite 浏览器的「已删除记录」对 SQLCipher 加密库同样读取同目录的 `-wal` 与 `-journal`：用解锁数据库的密钥解密后雕刻未检查点的 WAL 帧、比对回滚日志中最后一个事务前的页面，此前这两类文件被跳过。无法解密的页面不参与，结果中注明数量。
 
 ### Changed
 

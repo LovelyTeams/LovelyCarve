@@ -9,14 +9,18 @@
 //! recovered, and a rollback journal is diffed against the current rows. Live
 //! rows are never reported. An encrypted database is first decrypted page by
 //! page with the key the browser unlocked it with (a logical export would
-//! drop the free pages that hold the evidence); its sidecars are skipped.
+//! drop the free pages that hold the evidence), and its `-wal` / `-journal`
+//! with the same keys.
 
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context};
 use serde::Serialize;
 use sqlite_core::recovery::{self, Attribution, CarvedRecord, RecoverySource};
-use sqlite_core::sqlcipher::{self, CipherParams, DecryptError, SqlCipherKey, SqlCipherVersion};
+use sqlite_core::sqlcipher::{
+    self, CipherParams, DecryptError, DecryptedSidecar, SidecarError, SqlCipherKey,
+    SqlCipherVersion,
+};
 use sqlite_core::{Database, Value};
 
 use crate::core::common::error::Failure;
@@ -271,6 +275,48 @@ fn read_sidecar(
     }
 }
 
+/// Decrypts an encrypted database's `-wal` or `-journal`.
+type DecryptSidecar = fn(&sqlcipher::Decrypted, &[u8]) -> Result<DecryptedSidecar, SidecarError>;
+
+/// The sidecar ending in `suffix` as recovery reads it: as stored next to a
+/// plaintext database, decrypted with the database's keys next to an
+/// encrypted one. `None`, with a note when it exists, when it cannot take part.
+fn sidecar(
+    image: &Arc<EvidenceSession>,
+    nodes: &[sqlite_preview::SidecarNode],
+    suffix: &str,
+    decrypt: Option<(&sqlcipher::Decrypted, DecryptSidecar)>,
+    notes: &mut Vec<String>,
+) -> Option<(String, Vec<u8>)> {
+    let node = nodes.iter().find(|node| node.suffix == suffix)?;
+    let bytes = read_sidecar(image, node, notes).filter(|bytes| !bytes.is_empty())?;
+    let Some((database, decrypt)) = decrypt else {
+        return Some((node.name.clone(), bytes));
+    };
+    match decrypt(database, &bytes) {
+        Ok(DecryptedSidecar { plaintext, omitted }) => {
+            if omitted > 0 {
+                notes.push(format!(
+                    "{} 中 {omitted} 个页面无法用该密钥解密，未参与恢复",
+                    node.name
+                ));
+            }
+            Some((node.name.clone(), plaintext))
+        }
+        Err(SidecarError::Malformed) => {
+            notes.push(format!("{} 的文件头无效，未参与恢复", node.name));
+            None
+        }
+        Err(SidecarError::PageSizeMismatch { database, wal }) => {
+            notes.push(format!(
+                "{} 的页大小 {wal} 与数据库的 {database} 不符，未参与恢复",
+                node.name
+            ));
+            None
+        }
+    }
+}
+
 /// Recover deleted records from the SQLite database at `node_id`; `parent_id`
 /// is its directory, where the `-wal` / `-journal` sidecars are looked up.
 pub fn recover(
@@ -288,41 +334,37 @@ pub fn recover(
     let mut notes = Vec::new();
     let mut sidecars = Vec::new();
     let sidecar_nodes = sqlite_preview::sidecar_nodes(image, node_id, parent_id);
-    let find_sidecar = |suffix: &str| sidecar_nodes.iter().find(|node| node.suffix == suffix);
 
-    let encrypted = !sqlite_preview::looks_like_sqlite(&bytes);
-    let (plaintext, cipher) = if encrypted {
-        let decrypted = decrypt(&bytes, key)?;
-        let label = cipher_label(decrypted.version, decrypted.page_size);
-        (decrypted.plaintext, Some(label))
+    let decrypted = if sqlite_preview::looks_like_sqlite(&bytes) {
+        None
     } else {
-        (bytes, None)
+        Some(decrypt(&bytes, key)?)
     };
-
-    let (wal, journal) = if encrypted {
-        if find_sidecar("-wal").is_some() || find_sidecar("-journal").is_some() {
-            notes.push("加密库的 -wal / -journal 也是密文，暂未参与恢复".to_string());
-        }
-        (None, None)
+    let cipher = decrypted
+        .as_ref()
+        .map(|decrypted| cipher_label(decrypted.version, decrypted.page_size));
+    let keys = |decrypt: DecryptSidecar| decrypted.as_ref().map(|database| (database, decrypt));
+    let wal = sidecar(
+        image,
+        &sidecar_nodes,
+        "-wal",
+        keys(sqlcipher::Decrypted::decrypt_wal),
+        &mut notes,
+    );
+    // A WAL and a rollback journal are exclusive journal modes; with a WAL in
+    // play the journal (if any) is stale.
+    let journal = if wal.is_some() {
+        None
     } else {
-        let wal = find_sidecar("-wal").and_then(|node| {
-            read_sidecar(image, node, &mut notes)
-                .filter(|bytes| !bytes.is_empty())
-                .map(|bytes| (node.name.clone(), bytes))
-        });
-        // A WAL and a rollback journal are exclusive journal modes; with a WAL
-        // in play the journal (if any) is stale.
-        let journal = if wal.is_some() {
-            None
-        } else {
-            find_sidecar("-journal").and_then(|node| {
-                read_sidecar(image, node, &mut notes)
-                    .filter(|bytes| !bytes.is_empty())
-                    .map(|bytes| (node.name.clone(), bytes))
-            })
-        };
-        (wal, journal)
+        sidecar(
+            image,
+            &sidecar_nodes,
+            "-journal",
+            keys(sqlcipher::Decrypted::decrypt_rollback_journal),
+            &mut notes,
+        )
     };
+    let plaintext = decrypted.map_or(bytes, |decrypted| decrypted.plaintext);
 
     let database = match &wal {
         Some((name, wal)) => {

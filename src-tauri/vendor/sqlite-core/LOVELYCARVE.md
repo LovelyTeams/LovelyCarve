@@ -32,6 +32,15 @@ Local changes:
   (SHA1, 1 KiB pages, 4,000 iterations; version 1 has no page HMAC, so a
   coherent decrypted page-1 header is the key check), and `decrypt_with`
   takes explicit `CipherParams` for non-default databases such as WeChat's.
+- `src/sqlcipher/sidecar.rs` is new: `Decrypted::decrypt_wal` and
+  `Decrypted::decrypt_rollback_journal` decrypt the database's `-wal` frames
+  and `-journal` page records with the keys that decrypted it. Frame and
+  record checksums, which SQLite computed over the ciphertext, are
+  recomputed over the plaintext where they verified and left wrong where they
+  did not, so the WAL timeline and the journal reader reach the same verdicts
+  on the plaintext; a zeroed (`journal_mode=PERSIST`) journal is read from
+  the sector `RollbackJournal::parse` scores best. Decryption stops at the
+  first page that does not authenticate and reports how many were left out.
 - The `forensicnomicon` dependency is replaced by local header-offset
   constants, and the `state-history` adapter (`to_temporal_cohort`) is removed
   with its test.

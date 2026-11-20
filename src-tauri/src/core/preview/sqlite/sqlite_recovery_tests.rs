@@ -175,9 +175,10 @@ fn uncheckpointed_wal_is_found_through_the_parent_directory() {
 }
 
 /// SQLite replays an encrypted WAL in the preview once the key is given; the
-/// deleted-record view, which parses pages itself, leaves it out with a note.
+/// deleted-record view, which parses pages itself, decrypts its frames with
+/// the database's keys and carves them.
 #[test]
-fn encrypted_wal_is_replayed_by_the_preview_and_noted_by_recovery() {
+fn encrypted_wal_is_replayed_by_the_preview_and_carved_by_recovery() {
     let working = tempfile::tempdir().unwrap();
     let evidence = tempfile::tempdir().unwrap();
     let path = working.path().join("chat.db");
@@ -224,11 +225,58 @@ fn encrypted_wal_is_replayed_by_the_preview_and_noted_by_recovery() {
     assert_eq!(page["sidecars"], serde_json::json!(["chat.db-wal"]));
 
     let recovery = recover(&image, &node.id, Some(&parent), &key).unwrap();
-    assert_eq!(recovery.sidecars, Vec::<String>::new());
     assert_eq!(
-        recovery.notes,
-        vec!["加密库的 -wal / -journal 也是密文，暂未参与恢复".to_string()]
+        (recovery.sidecars.clone(), recovery.notes.clone()),
+        (vec!["chat.db-wal".to_string()], Vec::new())
     );
+    let from_wal: Vec<&str> = recovery
+        .records
+        .iter()
+        .filter(|record| record.origin == RecordOrigin::WalFrame)
+        .filter_map(body)
+        .collect();
+    assert!(!from_wal.is_empty());
+    assert!(from_wal
+        .iter()
+        .all(|body| deleted.iter().any(|deleted| deleted == body)));
+}
+
+/// SQLCipher encrypts the journal's page records with the database's keys;
+/// PERSIST zeroed the header (and its checksum nonce) on commit.
+#[test]
+fn encrypted_persist_journal_yields_the_last_transactions_deleted_rows() {
+    let directory = tempfile::tempdir().unwrap();
+    let connection = Connection::open(directory.path().join("chat.db")).unwrap();
+    connection
+        .execute_batch(
+            "PRAGMA key = 'evidence-key';
+             PRAGMA secure_delete = OFF; PRAGMA journal_mode = PERSIST;",
+        )
+        .unwrap();
+    fill(&connection, 120);
+    let deleted = delete_every_third(&connection);
+    drop(connection);
+
+    let (image, parent, node) = open_evidence(directory.path(), "chat.db");
+    let key = SqliteKey {
+        passphrase: Some("evidence-key".into()),
+        ..SqliteKey::default()
+    };
+    let recovery = recover(&image, &node.id, Some(&parent), &key).unwrap();
+    assert_eq!(
+        (recovery.sidecars.clone(), recovery.notes.clone()),
+        (vec!["chat.db-journal".to_string()], Vec::new())
+    );
+    let mut from_journal: Vec<&str> = recovery
+        .records
+        .iter()
+        .filter(|record| record.origin == RecordOrigin::JournalDeleted)
+        .filter_map(body)
+        .collect();
+    from_journal.sort_unstable();
+    let mut expected: Vec<&str> = deleted.iter().map(String::as_str).collect();
+    expected.sort_unstable();
+    assert_eq!(from_journal, expected);
 }
 
 #[test]

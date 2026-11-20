@@ -29,6 +29,15 @@
 //! matches no profile and fails loud ([`DecryptError::KeyOrParametersMismatch`]) —
 //! never a silent wrong-output.
 //!
+//! # Sidecars
+//!
+//! The `-wal` frames and rollback `-journal` page records hold pages encrypted
+//! with the database's keys; their headers stay plaintext, and `SQLite`
+//! checksummed the encrypted pages. [`Decrypted::decrypt_wal`] and
+//! [`Decrypted::decrypt_rollback_journal`] reuse the keys that decrypted the
+//! database and rewrite those checksums, so the plaintext sidecars read as
+//! `SQLite` would have written them for an unencrypted database.
+//!
 //! # Crypto provenance
 //!
 //! Every primitive is an audited `RustCrypto` crate (`pbkdf2`, `hmac`, `sha1`,
@@ -40,6 +49,10 @@ use cipher::{BlockDecryptMut, KeyIvInit};
 use hmac::{Hmac, Mac};
 use sha1::Sha1;
 use sha2::Sha512;
+
+mod sidecar;
+
+pub use sidecar::{DecryptedSidecar, SidecarError};
 
 /// Per-file random salt length, and the length of page 1's plaintext magic.
 const SALT_LEN: usize = 16;
@@ -192,12 +205,15 @@ pub struct Decrypted {
     pub version: SqlCipherVersion,
     /// Logical page size in bytes.
     pub page_size: u32,
+    /// The keys, kept for the database's `-wal` and `-journal`.
+    cipher: PageCipher,
 }
 
 /// The `PBKDF2`/HMAC digest a profile uses.
 type Prf = CipherDigest;
 
 /// A fully-specified `SQLCipher` cipher configuration.
+#[derive(Clone, Copy)]
 struct Profile {
     version: SqlCipherVersion,
     page_size: usize,
@@ -207,6 +223,21 @@ struct Profile {
     reserve: usize,
     /// HMAC tag length (SHA-1 → 20, SHA-512 → 64, 0 without a page HMAC).
     hmac_len: usize,
+}
+
+/// A profile with the keys derived for one database. Its `-wal` frames and
+/// `-journal` records are encrypted under the same keys.
+struct PageCipher {
+    profile: Profile,
+    enc_key: [u8; KEY_LEN],
+    hmac_key: [u8; KEY_LEN],
+}
+
+impl PageCipher {
+    /// Authenticate and decrypt one page (see [`decrypt_page`]).
+    fn decrypt_page(&self, page: &[u8], pgno: u32) -> Option<Vec<u8>> {
+        decrypt_page(&self.profile, &self.enc_key, &self.hmac_key, page, pgno)
+    }
 }
 
 /// The default profiles [`decrypt`] tries, newest first.
@@ -340,29 +371,27 @@ fn decrypt_page(
 }
 
 /// Decrypt every page under an already-selected profile.
-fn decrypt_all(
-    profile: &Profile,
-    enc_key: &[u8; KEY_LEN],
-    hmac_key: &[u8],
-    ciphertext: &[u8],
-) -> Result<Decrypted, DecryptError> {
-    let page_count = ciphertext.len() / profile.page_size;
-    let mut out = Vec::with_capacity(page_count * profile.page_size);
+fn decrypt_all(cipher: PageCipher, ciphertext: &[u8]) -> Result<Decrypted, DecryptError> {
+    let page_size = cipher.profile.page_size;
+    let page_count = ciphertext.len() / page_size;
+    let mut out = Vec::with_capacity(page_count * page_size);
     for i in 0..page_count {
         let pgno = u32::try_from(i + 1).map_err(|_| DecryptError::TooLarge)?;
-        let start = i * profile.page_size;
-        let end = start + profile.page_size;
+        let start = i * page_size;
+        let end = start + page_size;
         let page = ciphertext
             .get(start..end)
             .ok_or(DecryptError::PageAuthFailed(pgno))?;
-        let plain = decrypt_page(profile, enc_key, hmac_key, page, pgno)
+        let plain = cipher
+            .decrypt_page(page, pgno)
             .ok_or(DecryptError::PageAuthFailed(pgno))?;
         out.extend_from_slice(&plain);
     }
     Ok(Decrypted {
         plaintext: out,
-        version: profile.version,
-        page_size: u32::try_from(profile.page_size).unwrap_or(u32::MAX),
+        version: cipher.profile.version,
+        page_size: u32::try_from(page_size).unwrap_or(u32::MAX),
+        cipher,
     })
 }
 
@@ -410,8 +439,16 @@ fn try_profile(
     let salt = ciphertext.get(..SALT_LEN)?;
     let (enc_key, hmac_key) = derive_keys(profile, key, salt);
     let page1 = ciphertext.get(..profile.page_size)?;
-    page_one_ok(profile, &enc_key, &hmac_key, page1)
-        .then(|| decrypt_all(profile, &enc_key, &hmac_key, ciphertext))
+    page_one_ok(profile, &enc_key, &hmac_key, page1).then(|| {
+        decrypt_all(
+            PageCipher {
+                profile: *profile,
+                enc_key,
+                hmac_key,
+            },
+            ciphertext,
+        )
+    })
 }
 
 /// Decrypt a `SQLCipher` database into a plaintext `SQLite` byte stream, detecting

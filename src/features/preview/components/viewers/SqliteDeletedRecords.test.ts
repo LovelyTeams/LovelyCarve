@@ -178,11 +178,11 @@ describe('sqlite deleted records', () => {
 
   it('shows notes, dropped schemas and the empty state', async () => {
     rpc.deleted.mockResolvedValue(recovery({
-      notes: ['加密库的 -wal / -journal 也是密文，暂未参与恢复'],
+      notes: ['chat.db-wal 中 2 个页面无法用该密钥解密，未参与恢复'],
       schemas: [{ object_type: 'table', name: 'secrets', table_name: 'secrets', root_page: 4, sql: 'CREATE TABLE secrets(x)' }],
     }));
     await mount();
-    expect(host.querySelector('.ui-alert.warn')?.textContent).toContain('暂未参与恢复');
+    expect(host.querySelector('.ui-alert.warn')?.textContent).toContain('未参与恢复');
     expect(host.querySelector('.schema-summary')?.textContent).toContain('已删除的表结构');
     expect(host.querySelector('.schema-sql')?.textContent).toBe('CREATE TABLE secrets(x)');
     expect(host.textContent).toContain('未发现已删除记录');
