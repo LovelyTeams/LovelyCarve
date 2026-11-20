@@ -39,4 +39,4 @@ mod volume;
 pub use crypto::{Cipher, Prf};
 pub use error::{Result, VeraError};
 pub use header::{Flavor, VeraHeader};
-pub use volume::{DecryptedVolume, VeraVolume, VolumeInfo};
+pub use volume::{apply_keyfiles, DecryptedVolume, VeraVolume, VolumeInfo};

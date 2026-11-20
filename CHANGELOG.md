@@ -9,6 +9,7 @@
 
 ### Added
 
+- `veracrypt-core` 新增 VeraCrypt / TrueCrypt keyfile 解锁支持（`apply_keyfiles` CRC-32 64 字节池混入与 `VeraVolume::unlock_with_keyfiles`）。
 - 文件列表的预览可同时打开同一检材的多个文件：单击文件在预览位查看，双击、Enter 或菜单「预览」保持打开，勾选的多个文件可一次各开一个标签页。打开的文件不随目录切换关闭，切回时保留视图、搜索与滚动位置；每个检材记住自己打开的文件。
 - 案件操作审计记录案件检材上的任务：哈希、导出、恢复、搜索、时间线、快照等任务开始时记 `task.started`，结束时以 `task.settled` 记录结局、对象与计数；案件先关闭或进程中断的任务保持未完成，不补写结束时间。
 

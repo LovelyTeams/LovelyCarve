@@ -49,6 +49,59 @@ impl VolumeInfo {
     }
 }
 
+/// VeraCrypt keyfile mixing constants (per VeraCrypt `Common/Keyfiles.h`).
+const KEYFILE_POOL_SIZE: usize = 64;
+const KEYFILE_MAX_READ_LEN: usize = 1024 * 1024;
+
+/// Mix keyfile contents into `password` using the VeraCrypt/TrueCrypt
+/// CRC-32 64-byte keyfile pool algorithm (`KeyFilesApply`).
+///
+/// Reads up to 1 MiB from each keyfile, accumulates big-endian CRC-32 bytes
+/// into a 64-byte pool, and wraps-adds the pool onto `password` (zero-padded
+/// to 64 bytes when shorter). Returns `password` unchanged if `keyfiles` is empty.
+#[must_use]
+pub fn apply_keyfiles(password: &[u8], keyfiles: &[&[u8]]) -> Vec<u8> {
+    if keyfiles.is_empty() {
+        return password.to_vec();
+    }
+    let mut pool = [0u8; KEYFILE_POOL_SIZE];
+    for kf in keyfiles {
+        let mut crc: u32 = 0xFFFF_FFFF;
+        let mut write_pos = 0usize;
+        for &byte in kf.iter().take(KEYFILE_MAX_READ_LEN) {
+            crc = crc32_update_byte(crc, byte);
+            pool[write_pos] = pool[write_pos].wrapping_add((crc >> 24) as u8);
+            pool[write_pos + 1] = pool[write_pos + 1].wrapping_add((crc >> 16) as u8);
+            pool[write_pos + 2] = pool[write_pos + 2].wrapping_add((crc >> 8) as u8);
+            pool[write_pos + 3] = pool[write_pos + 3].wrapping_add(crc as u8);
+            write_pos += 4;
+            if write_pos >= KEYFILE_POOL_SIZE {
+                write_pos = 0;
+            }
+        }
+    }
+    let out_len = password.len().max(KEYFILE_POOL_SIZE);
+    let mut out = vec![0u8; out_len];
+    out[..password.len()].copy_from_slice(password);
+    for (i, &p) in pool.iter().enumerate() {
+        out[i] = out[i].wrapping_add(p);
+    }
+    out
+}
+
+#[inline]
+fn crc32_update_byte(crc: u32, byte: u8) -> u32 {
+    let mut c = crc ^ u32::from(byte);
+    for _ in 0..8 {
+        c = if c & 1 != 0 {
+            (c >> 1) ^ 0xEDB8_8320
+        } else {
+            c >> 1
+        };
+    }
+    c
+}
+
 impl VeraVolume {
     /// Unlock a VeraCrypt/TrueCrypt volume with `password` (no PIM).
     ///
@@ -72,6 +125,27 @@ impl VeraVolume {
         pim: u32,
     ) -> Result<DecryptedVolume<R>> {
         Self::unlock_at(reader, password, pim, NORMAL_HEADER_OFFSET)
+    }
+
+    /// Unlock a VeraCrypt/TrueCrypt volume (normal or hidden) using `password`
+    /// mixed with one or more keyfiles via [`apply_keyfiles`].
+    ///
+    /// # Errors
+    /// As [`Self::unlock_with_password`].
+    pub fn unlock_with_keyfiles<R: Read + Seek>(
+        reader: R,
+        password: &[u8],
+        keyfiles: &[&[u8]],
+        pim: u32,
+        hidden: bool,
+    ) -> Result<DecryptedVolume<R>> {
+        let effective = apply_keyfiles(password, keyfiles);
+        let offset = if hidden {
+            HIDDEN_HEADER_OFFSET
+        } else {
+            NORMAL_HEADER_OFFSET
+        };
+        Self::unlock_at(reader, &effective, pim, offset)
     }
 
     /// Unlock the HIDDEN volume with `password` (its header is at 64 KiB). Used to
@@ -470,6 +544,57 @@ mod tests {
     fn undeclared_size_is_rejected() {
         let (container, _) = build_volume_with(false);
         assert!(VeraVolume::unlock_with_pim(Cursor::new(container), PASSWORD, 1).is_err());
+    }
+
+    #[test]
+    fn apply_keyfiles_empty_returns_password_unchanged() {
+        assert_eq!(apply_keyfiles(b"secret", &[]), b"secret");
+    }
+
+    #[test]
+    fn keyfile_unlock_verifies_crc_pool_mixing() {
+        let keyfile_data = b"super-secret-forensic-keyfile-material-1234567890";
+        let mixed = apply_keyfiles(b"pass", &[keyfile_data]);
+        assert_eq!(mixed.len(), 64);
+        assert_ne!(&mixed[..4], b"pass");
+
+        let salt = [0x11u8; SALT_LEN];
+        let master_key = [0x24u8; 64];
+        let mut dec = [0u8; HEADER_LEN];
+        dec[0..4].copy_from_slice(b"VERA");
+        dec[4..6].copy_from_slice(&5u16.to_be_bytes());
+        let data_size = (DATA_SECTORS * DATA_SECTOR) as u64;
+        dec[36..44].copy_from_slice(&data_size.to_be_bytes());
+        dec[44..52].copy_from_slice(&DATA_START.to_be_bytes());
+        dec[52..60].copy_from_slice(&data_size.to_be_bytes());
+        dec[64..68].copy_from_slice(&512u32.to_be_bytes());
+        dec[192..256].copy_from_slice(&master_key);
+        let crc_mk = crc32fast::hash(&dec[192..448]);
+        dec[8..12].copy_from_slice(&crc_mk.to_be_bytes());
+        let crc_hdr = crc32fast::hash(&dec[0..188]);
+        dec[188..192].copy_from_slice(&crc_hdr.to_be_bytes());
+
+        let header_key = Prf::Sha512.derive(&mixed, &salt, Prf::Sha512.iterations_pim(1), 64);
+        let mut header_ct = dec.to_vec();
+        let hk: [u8; 64] = header_key.try_into().unwrap();
+        xts_encrypt_aes(&hk, &mut header_ct, HEADER_LEN, 0);
+
+        let mut container = Vec::new();
+        container.extend_from_slice(&salt);
+        container.extend_from_slice(&header_ct);
+        container.extend_from_slice(&vec![0u8; data_size as usize]);
+
+        let vol = VeraVolume::unlock_with_keyfiles(
+            Cursor::new(container.clone()),
+            b"pass",
+            &[keyfile_data],
+            1,
+            false,
+        )
+        .expect("unlock with password + keyfile");
+        assert_eq!(vol.master_key(), &master_key);
+
+        assert!(VeraVolume::unlock_with_pim(Cursor::new(container), b"pass", 1).is_err());
     }
 
     #[test]
