@@ -1,5 +1,7 @@
 //! platform domain modules.
 
+#[cfg(any(not(feature = "reader-library"), feature = "desktop", test))]
+pub mod components;
 #[cfg(all(
     target_os = "windows",
     any(not(feature = "reader-library"), feature = "desktop", test)

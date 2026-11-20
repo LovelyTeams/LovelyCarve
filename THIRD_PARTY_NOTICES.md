@@ -278,10 +278,11 @@ distribution before release.
 `msvcp140_1.dll` under `src-tauri/binaries` are the unmodified,
 Microsoft-signed Visual C++ runtime from the Visual Studio redistributable
 folder (`VC\Redist\MSVC\14.50.35710\x64\Microsoft.VC145.CRT`, file version
-14.50.35719.0). They are deployed next to the executables because the desktop
-app and the CLI link the C++ standard library dynamically, and
-`lc-plugin-host.exe`, the bundled `linuxinfo` plugin and OpenSSL's
-`libcrypto-4-x64.dll` link the Visual C++ runtime dynamically. They are
+14.50.35719.0). They are deployed next to the executables because the
+inference component `lovelycarve_inference.dll` (ONNX Runtime) links the C++
+standard library dynamically, and the standalone CLI, `lc-plugin-host.exe` and
+the bundled `linuxinfo` plugin link the Visual C++ runtime dynamically. OpenSSL
+is linked statically into the executables and ships no DLL. They are
 redistributed as Distributable Code under the Microsoft Visual Studio license
 terms (<https://aka.ms/vs/18/redistribution>); the Universal CRT they use ships
 with Windows 10 and later. The resources shipped depend on the build

@@ -111,7 +111,7 @@ src-tauri/src/
     ├── timeline.rs + timeline/     时间线投影、存储、USN 和 mactime
     ├── preview.rs + preview/       二进制、SQLite、表格和其他原类型预览
     ├── extensions.rs + extensions/ 插件宿主和持久化任务调度
-    ├── platform.rs + platform/     FFI、Dokan、Windows 共享和资源
+    ├── platform.rs + platform/     原生组件加载、FFI、Dokan、Windows 共享和资源
     └── common.rs + common/         哈希、自然排序和文本解码
 ```
 
@@ -120,6 +120,14 @@ src-tauri/src/
 `lib.rs` 保留唯一的命令注册表，以及 `desktop` 特性下的 Tauri builder。`app/setup.rs` 的 `initialize`（插件发现、任务调度、媒体缓存）由桌面 `setup` 和 CLI 共用，桌面退出和 CLI 共用 `app/lifecycle.rs` 的媒体、插件清理步骤。CLI 生成器沿模块声明解析嵌套命令路径和真实函数签名，与 `cli/commands.toml` 的命令定义一起生成分发代码与命令目录（见[命令行与桌面只读挂载](#命令行与桌面只读挂载)）。
 
 `python/` 是 PyO3 / maturin 的只读 `lovelycarve` 包，直接使用 `DiskImage`、`EvidenceSession` 与文件系统读取接口，不经过命令、`AppState` 或应用初始化。它启用后端 `reader-library` 库配置，排除应用、案件、catalog、分析、预览、搜索、插件和挂载模块；默认 CLI、`desktop` 及后端单元测试仍编译完整模块。Cargo 依赖图暂与后端共用，扩展只链接读取实现。证据路径规范化实现在 `common::evidence_path`，原有 `casework::case::evidence_path_key` 保留同一函数的重导出，使读取器不必依赖案件模块。Python API、构建与限制见 [Python 读取库](../python/README.md)。
+
+### 原生组件
+
+体积大、接口窄且只在部分操作中用到的依赖放在原生组件里，主程序和 CLI 不链接它们。`src-tauri/components/` 是独立的 Cargo 工作区：`abi`（`lovelycarve-component-abi`）定义 C ABI v1 和各组件的方法契约，宿主与组件共用；`inference` 构建推理组件 `lovelycarve_inference.dll`（Linux / macOS 为 `liblovelycarve_inference.so` / `.dylib`），内含静态链接的 ONNX Runtime、内嵌的 Magika 模型和可选的 PP-OCRv6 管线。`files identify`（`fs_identify_type`）和 OCR（`ocr_scan`）通过它运行，可执行文件因此不再链接 ONNX Runtime，启动时也不加载它依赖的 DirectML、D3D12 与 C++ 运行库。
+
+`core::platform::components` 在第一次调用时加载组件，此后在进程内一直保留，不卸载。它只搜索可执行文件所在目录；Cargo 的测试与示例程序（位于 `deps/`、`examples/`，或较新构建目录布局下的 `build/<包>/<哈希>/out/`）另加上所在的 profile 目录。当前目录和 `PATH` 不在搜索范围内，检材目录无法植入同名库；组件自身的依赖从组件目录和系统目录解析。入口 `lovelycarve_component_v1` 返回函数表，宿主校验 ABI 版本和表大小。每次调用传入方法名、JSON 参数和二进制载荷（文件字节不重新编码），应答缓冲由组件分配、并由组件的 `free_buffer` 释放；panic 在边界被捕获并转为错误应答。加载失败不缓存，补上组件后下一次调用即可加载。
+
+组件构建在宿主的 target 目录中（`components/.cargo/config.toml`；设置 `CARGO_TARGET_DIR` 时两边一同改变），与开发版、测试和 release 可执行文件相邻，`dev`、`test-cli`、`build-cli` 和 `build-release` 等配方会先运行 `build-components`。安装包、便携包和 CLI 包从 `src-tauri/tauri.components.conf.json` 获取同一组库，放在主程序旁。OCR 由组件的 `ocr` / `ocr-cuda` 特性决定；带 OCR 的构建由 ort-sys 构建脚本把 ONNX Runtime 的执行提供者与 DirectML DLL 链接到同一个 profile 目录，ONNX Runtime 在组件旁加载它们（`src-tauri/vendor/ort-sys` 修正了它在 Cargo 新构建目录布局下的路径推算）。组件的 `component.describe` 报告 `fileTypes` 和 OCR 执行方式（`cpu` / `cuda` / 无）；`system get` 的 `ocr`、`ocrCuda` 和 `components.inference` 都取自实际加载的组件。`ocr_scan` 登记任务前先加载组件，CUDA 构建的 OCR 任务占用 GPU 槽位，其余占用 CPU 槽位。新增组件时，方法与载荷写进 `abi` 的契约模块，宿主只依赖 `abi`，不把组件的依赖加回主 crate。
 
 命令函数不直接依赖 Tauri：状态、应用句柄、二进制响应和媒体租约所有者分别使用 `host::State`、`host::AppHandle`、`host::Response` 和 `host::LeaseOwner`，函数以 `#[cfg_attr(feature = "desktop", tauri::command)]` 标注。`desktop` 特性（`tauri.conf.json` 的 `build.features` 为 `tauri dev/build` 开启）引入 tauri、对话框与文件插件和 tauri-build，并由 `host/tauri_adapter.rs` 为这些类型实现 `CommandArg` / `IpcResponse`：状态取自 Tauri 托管状态，`AppHandle` 把事件转给 Tauri `emit` 并提供应用数据目录，`LeaseOwner` 对应调用窗口（窗口关闭即租约结束），`Response` 以原始字节返回。CLI 构建不启用该特性，`AppHandle` 的事件写到 `session --events` 的标准错误或直接丢弃，`LeaseOwner` 归进程所有。两种构建使用同一个应用数据目录，目录名取自 `tauri.conf.json` 的 identifier（构建脚本导出为 `LOVELYCARVE_APP_IDENTIFIER`）。命令需要新的宿主能力时扩展 `host` 类型，不在命令中引用 Tauri 类型。
 

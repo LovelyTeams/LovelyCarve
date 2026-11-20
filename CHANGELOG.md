@@ -13,12 +13,19 @@
 
 ### Changed
 
+- Magika 文件类型识别和 OCR 移入随程序分发的推理组件 `lovelycarve_inference.dll`，ONNX Runtime 与模型随组件在首次使用时加载：Windows CLI 从约 52 MB 降至约 30 MB，桌面主程序同样减少约 22 MB；主程序和 CLI 启动时不再加载 DirectML、D3D12 与 DXGI。安装包、便携包和 CLI 包把组件放在主程序旁；`system get` 的 `components.inference` 报告组件能否加载及其 OCR 执行方式。
+- 从源码构建时，OCR 改由推理组件的 `ocr` / `ocr-cuda` 特性开启（`just build-components --features ocr-cuda`），后端 crate 不再提供这两个特性；`*-full` 配方的用法不变。
 - BCP 分析结果按应用、账号和记录类型浏览，并显示各分组的删除数和总数。
 - 桌面端在「卷与分区」的同一弹窗中解锁 BitLocker、LUKS、VeraCrypt 和 FileVault 2，分区行可直接预选对应卷。
 
 ### Removed
 
 - LovelyCarve 的 DSH 取证模式和 CLI skill 移除 forensic-board 看板集成。
+- 安装包、便携包和 CLI 包不再附带 `libcrypto-4-x64.dll`：OpenSSL 已静态链接，没有程序再加载它，每个包少约 7 MB。
+
+### Fixed
+
+- 使用 Cargo 1.100 及更新版本时，带 OCR 的完整构建不再因 ONNX Runtime 构建脚本按旧目录层级拷贝 DLL 而失败；CUDA / TensorRT 执行提供者与 DirectML DLL 重新放在推理组件旁。
 
 ## [1.3.0] - 2026-11-07
 

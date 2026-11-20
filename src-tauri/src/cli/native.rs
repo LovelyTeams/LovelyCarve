@@ -4,6 +4,7 @@
 //! `cli/commands.toml` alongside the generated commands.
 use std::{io::Write, sync::Arc};
 
+use lovelycarve_component_abi::inference::OcrExecution;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 
@@ -15,9 +16,12 @@ use super::{
 };
 use crate::{
     app::workflows::task_center,
-    core::filesystem::{
-        evidence_session::EvidenceSession,
-        tree::fs_tree::{FsNode, FsSession},
+    core::{
+        filesystem::{
+            evidence_session::EvidenceSession,
+            tree::fs_tree::{FsNode, FsSession},
+        },
+        platform::components,
     },
     state::AppState,
     task_manager::TaskKind,
@@ -76,8 +80,34 @@ pub async fn busy(state: &AppState) -> Result<bool, CliError> {
         .any(|task| task.status.is_active()))
 }
 
+/// Availability of the inference component that `files identify` and
+/// `files ocr scan` load; reported as it is, so packages are checked against
+/// the libraries they actually ship.
+fn inference_component(
+    loaded: &anyhow::Result<&'static components::inference::Inference>,
+) -> Value {
+    match loaded {
+        Ok(inference) => {
+            let capabilities = inference.capabilities();
+            json!({
+                "available": true,
+                "path": inference.path().display().to_string(),
+                "version": inference.version(),
+                "fileTypes": capabilities.file_types,
+                "ocr": capabilities.ocr,
+            })
+        }
+        Err(error) => json!({"available": false, "error": format!("{error:#}")}),
+    }
+}
+
 pub fn capabilities() -> Result<Value, CliError> {
     let catalog = catalog::catalog()?;
+    let inference = components::inference::load();
+    let ocr = inference
+        .as_ref()
+        .ok()
+        .and_then(|inference| inference.capabilities().ocr);
     Ok(json!({
         "version": catalog.version,
         "platform": std::env::consts::OS,
@@ -95,8 +125,9 @@ pub fn capabilities() -> Result<Value, CliError> {
         "commands": catalog.commands.len(),
         "exitCodes": {"success": 0, "failure": 1, "incompleteResult": super::incomplete::EXIT_INCOMPLETE, "interrupted": 130},
         "qrcode": cfg!(feature = "qrcode-wechat"),
-        "ocr": cfg!(feature = "ocr"),
-        "ocrCuda": cfg!(feature = "ocr-cuda"),
+        "ocr": ocr.is_some(),
+        "ocrCuda": ocr == Some(OcrExecution::Cuda),
+        "components": {"inference": inference_component(&inference)},
         "dokanMount": cfg!(target_os = "windows"),
         "observability": {"eventsOption": "--events", "eventsStream": "stderr-jsonl", "heartbeatSeconds": 5,
             "progressStream": "stderr", "progressWithRedirectedStdout": true, "residentBackendEvents": true},

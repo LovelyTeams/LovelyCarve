@@ -1,0 +1,5 @@
+# Build into the backend's target directory so each component lands next to
+# LovelyCarve.exe / lovelycarve-cli.exe (and one level above test binaries).
+# CARGO_TARGET_DIR still overrides this for both workspaces alike.
+[build]
+target-dir = "../target"

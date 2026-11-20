@@ -23,7 +23,9 @@ just build-cli
 启用带 CPU 回退的 CUDA OCR；Unix 完整配方使用 CPU OCR。轻量构建中相关命令仍然列出，
 但返回后端的功能未启用错误；文件系统、搜索、案件和插件不受影响。
 `lovelycarve-cli system get` 输出版本、平台、`standalone`（未链接桌面运行时）、命令数、
-QR/OCR/挂载功能开关和会话协议。
+QR/OCR/挂载功能开关和会话协议。`files identify`（Magika）和 `files ocr scan` 在程序旁的推理组件
+`lovelycarve_inference.dll` 中运行，CLI 本身不链接 ONNX Runtime；组件缺失时这两个命令报错，其余功能不受影响。
+`system get` 的 `components.inference` 报告组件是否可加载、路径、版本和 OCR 执行方式，`ocr` / `ocrCuda` 取自实际加载的组件。
 
 CLI 构建不启用 Cargo 的 `desktop` 特性，所以不包含 Tauri、WebView2 或 GTK 依赖，
 Linux 上也不需要桌面库。Windows 构建在链接时嵌入 `asInvoker` 清单（`src-tauri/cli.manifest`），
@@ -31,7 +33,7 @@ Linux 上也不需要桌面库。Windows 构建在链接时嵌入 `asInvoker` �
 案件登记与偏好放在与桌面端相同的用户数据目录（由 `tauri.conf.json` 的 identifier 决定），
 两个程序看到同一份案件列表。
 
-`just pack-cli` 构建并打包轻量 Windows CLI，包含运行库、`lc-plugin-host`、插件、本手册及代理技能；
+`just pack-cli` 构建并打包轻量 Windows CLI，包含运行库、推理组件、`lc-plugin-host`、插件、本手册及代理技能；
 `just pack-cli-full` 另启用 QR/OCR 并携带 OpenCV 与模型。`just repack-cli` 按现有二进制
 `system get` 报告的实际功能打包。开发配方在 `src-tauri` 目录执行，建议向 `just run-cli`
 传绝对检材路径；直接运行 exe 时相对路径以当前工作目录为准。插件包从程序旁的 `plugins/` 与用户数据目录的

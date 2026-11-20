@@ -462,25 +462,26 @@ fn resource_classes_describe_task_kind_lanes() {
         ]
     );
 
-    #[cfg(feature = "ocr-cuda")]
+    // OCR follows the inference component's build: CUDA takes the GPU slot.
+    use lovelycarve_component_abi::inference::OcrExecution;
     assert_eq!(
-        TaskKind::OcrScan.resource_classes(),
+        resources::ocr_resource_classes(Some(OcrExecution::Cuda)),
         vec![
             TaskResourceClass::GlobalBackground,
             TaskResourceClass::ImageRandomIo,
             TaskResourceClass::Gpu,
         ]
     );
-
-    #[cfg(not(feature = "ocr-cuda"))]
-    assert_eq!(
-        TaskKind::OcrScan.resource_classes(),
-        vec![
-            TaskResourceClass::GlobalBackground,
-            TaskResourceClass::ImageRandomIo,
-            TaskResourceClass::Cpu,
-        ]
-    );
+    for execution in [Some(OcrExecution::Cpu), None] {
+        assert_eq!(
+            resources::ocr_resource_classes(execution),
+            vec![
+                TaskResourceClass::GlobalBackground,
+                TaskResourceClass::ImageRandomIo,
+                TaskResourceClass::Cpu,
+            ]
+        );
+    }
 }
 
 #[tokio::test]

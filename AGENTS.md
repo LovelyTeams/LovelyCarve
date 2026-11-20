@@ -33,6 +33,7 @@ Use `docs/README.md` for the documentation map and `CONTRIBUTING.md` / `docs/DEV
 - `src-tauri/src/core/`: forensic engines, parsers, indexing, filesystems, search, timeline, carving, and plugin runtime.
 - `src-tauri/src/state.rs`: shared application state.
 - `src-tauri/src/task_manager.rs` and `src-tauri/src/task_manager/`: immediate task registration, cancellation, resource limits, each task's task-center view and outcome, and task models.
+- `src-tauri/components/`: separate Cargo workspace of native components — `abi` (crate `lovelycarve-component-abi`: the C ABI and each component's method contract, shared with the host) and `inference` (`lovelycarve_inference.dll`: ONNX Runtime, the embedded Magika model and the optional PP-OCRv6 pipeline). It builds into the backend target directory, beside the executables, and the host loads it on first use through `core::platform::components`. The workspace patches `ort-sys` with `src-tauri/vendor/ort-sys`, whose build script places the ONNX Runtime provider DLLs correctly under Cargo's newer build-dir layout.
 - `src-tauri/vendor/`: vendored filesystem and parser crates.
 - `src-tauri/examples/`: standalone probes for partition and filesystem work.
 - `plugins/`: Git submodule pointing to `LovelyTeams/LovelyCarve-Plugins`, with a separate Cargo workspace — `sdk` (crate `lovelycarve-plugin`: C ABI, LPP v2 payloads, record schemas, Rust plugin API and the `testing` harness; also a host dependency), `sdk-derive` (`#[derive(Record)]`), `host` (`lc-plugin-host`, the process-isolation loader), and the bundled analyzer `linuxinfo`, a `cdylib` next to its `plugin.toml`, `schema.json` and `locales/`. Initialize with `just bootstrap`; commit and push plugin changes before updating the main repository's submodule pointer.
@@ -43,7 +44,7 @@ Use `docs/README.md` for the documentation map and `CONTRIBUTING.md` / `docs/DEV
 Use the repository-root `Justfile` as the task entry point. Do not replace an existing recipe with a direct `bun`, `cargo`, or Tauri command. Run `just bootstrap` for initial setup; it initializes the pinned plugin submodule and installs frontend dependencies with the frozen lockfile. Run `just --list` when the available tasks may have changed, and use `just --show <recipe>` or `just --dry-run <recipe>` to inspect platform-specific commands and dependencies. Prerequisites and environment overrides are documented in `docs/DEVELOPMENT.md`; toolchain versions come from `src-tauri/Cargo.toml` and `package.json`.
 
 - `just verify-fe`: run IPC, structure and translation checks, type-checking, frontend tests and the production build.
-- `just verify-rust`: run `fmt`, `check`, `clippy` and backend tests.
+- `just verify-rust`: run `fmt`, `check`, `clippy` and backend tests, plus the component workspace's Clippy and tests.
 - `just verify-plugins`: run formatting, plugin linting and plugin tests.
 - `just dev-fe`: run the Vite frontend, including the file-viewer asset preparation step.
 - `just dev`: run the Tauri desktop app without QR/OCR using the configured Visual Studio and OpenSSL environment; `just dev-full` also enables QR/OCR and configures OpenCV.
@@ -59,6 +60,7 @@ Use the repository-root `Justfile` as the task entry point. Do not replace an ex
 - `just clippy`: lint the Rust backend in both the standalone CLI and the `desktop` configurations, without the optional OpenCV QR feature.
 - `just test`: run the Rust backend tests without the optional OpenCV QR feature.
 - `just test <name>`: run a targeted Rust test by substring.
+- `just build-components [--release] [--features ocr|ocr-cuda]`: build the native components into `src-tauri/target/<profile>/`; `dev`, `build`, `run-cli`, `test-cli`, `build-cli` and `build-release` (and their `*-full` variants) run it first. `just test-components` / `just clippy-components` test / lint the component workspace without OCR.
 - `just test-ewf`: test the vendored pure Rust EWF reader and sample corpus.
 - `just test-bitlocker` / `just clippy-bitlocker`: test / lint the vendored pure Rust BitLocker decryptor; set `BDE_ORACLE_IMAGE` to run the full external dfvfs oracle.
 - `just test-vhd` / `just test-vhdx`: test the vendored Rust VHD/VHDX readers and committed image fixtures.
@@ -97,7 +99,7 @@ Use the repository-root `Justfile` as the task entry point. Do not replace an ex
 - `just icons`: regenerate platform icons and frontend brand variants from `src-tauri/icons/source*.png`.
 - `just qr-env` / `just build-opencv-contrib` / `just qr-test <image> [count]`: show the resolved Visual Studio and OpenCV paths, build contrib OpenCV with `wechat_qrcode` into `OPENCV_INSTALL`, and decode a QR image with the WeChat detector.
 
-Windows `*-full` builds enable `qrcode-wechat,ocr-cuda` (CUDA OCR with CPU fallback); Unix `build-cli-full` enables `qrcode-wechat,ocr`. Default builds need neither OpenCV nor CUDA. Windows host and plugin recipes load `scripts/windows-env.ps1` in the same shell, initialize the VS x64 environment, and default to VS's `lld-link`, one Cargo job, one linker thread and Thin LTO for release. Install the Visual Studio C++ Clang tools; only OpenCV builds configure libclang. Preserve caller overrides through the documented Cargo environment variables and just variables rather than hard-coding local paths into recipes. Standalone vendored reader recipes retain their own Cargo configuration.
+Windows `*-full` builds enable `qrcode-wechat` on the host and `ocr-cuda` (CUDA OCR with CPU fallback) on the inference component; Unix `build-cli-full` enables `qrcode-wechat` and the component's `ocr`. Default builds need neither OpenCV nor CUDA. Windows host and plugin recipes load `scripts/windows-env.ps1` in the same shell, initialize the VS x64 environment, and default to VS's `lld-link`, one Cargo job, one linker thread and Thin LTO for release. Install the Visual Studio C++ Clang tools; only OpenCV builds configure libclang. Preserve caller overrides through the documented Cargo environment variables and just variables rather than hard-coding local paths into recipes. Standalone vendored reader recipes retain their own Cargo configuration.
 
 Vue type-checking uses the `typescript` npm alias for `typescript-native-bridge`, with the alias and override pinned to the same complete version. Preserve compatibility with `vue-tsc`; do not replace it directly with `typescript@7`. Rich previews use matching `@file-viewer/vue3-full` / `@file-viewer/vite-plugin` versions and offline assets; generated `public/file-viewer/` resources are not committed.
 
@@ -126,6 +128,8 @@ Commands do not depend on Tauri. Annotate them with `#[cfg_attr(feature = "deskt
 Native decrypted partition views are attached to `EvidenceSession` with the source image and partition IDs preserved; filesystem dispatch resolves the attached view. Do not replace source identity or geometry with decrypted offsets. Verified `index_only` sessions may browse persisted directory metadata when the original evidence is missing, but byte reads must fail explicitly; do not start automatic snapshot, hash or platform-detection work on them.
 
 Plugin execution, analysis publication, timeline projection and result cleanup are wired through `app/workflows/scheduler.rs`. The persistent scheduler calls the existing `TaskRunner` contract; it does not open analysis or timeline stores. Validated JSON/IPC analysis models live under `core/analysis/results/models.rs`; LPP and ABI definitions remain in the plugin SDK.
+
+Large dependencies that only some operations need live in native components (`src-tauri/components`), not in the executables: today ONNX Runtime, Magika and OCR in `lovelycarve_inference`. Do not add `ort`, `magika`, `oar-ocr` or similar back to the host crate; extend the component, put new methods and payload types in its contract module in `abi`, and call it through `core::platform::components`. Components are loaded only from the executable's directory (plus the Cargo profile directory for test and example binaries), never unloaded, and report their capabilities through `component.describe`; `system get` reports what the loaded component can do. See `docs/ARCHITECTURE.md`.
 
 `src-tauri/src/core/` contains twelve domain engines: evidence, filesystem, catalog, casework, analysis, carving, search, timeline, preview, extensions, platform, and common. Place new code in its owning domain; core must not depend on app, commands, state, cli, or Tauri. Keep each file focused on one concern. Add new parsers, filesystems, or scanners as explicit modules or trait implementations instead of growing broad switch statements. The current `mod.rs` files are existing exceptions; do not create new `mod.rs` paths for new modules.
 
@@ -235,6 +239,7 @@ Use this minimum local verification matrix:
 - Rust-only changes: `just fmt`, `just check`, `just clippy`, and `just test`; module moves or public reader-interface changes also need `just check-examples`.
 - IPC changes: all relevant frontend and Rust checks above, plus `just ipc-check`.
 - Plugin workspace changes (`plugins/`): `just fmt`, `just clippy-plugins`, `just test-plugins`; SDK changes also need the Rust checks above, since the host depends on the SDK.
+- Component workspace changes (`src-tauri/components/`): `just fmt`, `just clippy-components`, `just test-components` and `just test-cli`; `abi` changes also need the Rust checks above, since the host depends on it.
 - Vendored reader changes: `just fmt` plus the corresponding `just test-*` recipe, or `just test-vendor <directory>` when none exists; host integration changes also need Rust checks. Use reader lint recipes where available.
 - CLI command/workflow changes: relevant Rust checks plus `just test-cli`, or `just smoke-cli <executable>` when verifying an already-built binary; run `just update-cli-skill` when commands, options or their descriptions change, and update the skill's hand-written pages when a workflow changes.
 - Documentation-only changes: check relative links, referenced paths, recipe names and descriptions against the current implementation; application builds are not required.

@@ -10,6 +10,9 @@ $executable = Join-Path $Root 'src-tauri/target/release/lovelycarve-cli.exe'
 if (-not (Test-Path -LiteralPath $executable)) { throw 'Run just build-cli first.' }
 $capabilities = & $executable system get | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0) { throw 'Cannot read CLI capabilities.' }
+if (-not $capabilities.components.inference.available) {
+    throw "The CLI cannot load its inference component: $($capabilities.components.inference.error)"
+}
 if ($RequireQrOcr -and (-not $capabilities.qrcode -or -not $capabilities.ocr)) {
     throw 'The binary does not enable QR/OCR. Run just build-cli-full before packaging.'
 }
@@ -23,6 +26,11 @@ Get-ChildItem -LiteralPath (Join-Path $Root 'src-tauri/binaries') -Filter '*.dll
     $_.Name -notin @('libewf.dll', 'libvmdk.dll', 'libbde.dll', 'libvhdi.dll', 'librefs-13.dll', 'bzip2.dll', 'zlib.dll') -and
     ($capabilities.qrcode -or $_.Name -ne 'opencv_world4130.dll')
 } | Copy-Item -Destination $stage
+# Native components (the inference DLL) the release build put beside the CLI.
+$componentBundle = Get-Content -LiteralPath (Join-Path $Root 'src-tauri/tauri.components.conf.json') -Raw | ConvertFrom-Json
+foreach ($resource in $componentBundle.bundle.resources.PSObject.Properties) {
+    Copy-Item -LiteralPath (Join-Path (Join-Path $Root 'src-tauri') $resource.Name) -Destination (Join-Path $stage $resource.Value)
+}
 foreach ($feature in @('ocr', 'qrcode')) {
     if ($capabilities.$feature) {
         $resourcesTarget = Join-Path $stage 'resources'
@@ -50,7 +58,7 @@ Get-ChildItem -LiteralPath $skillSource -Force | Where-Object Name -ne 'bin' |
 Copy-Item -LiteralPath (Join-Path $Root 'LICENSE') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $Root 'THIRD_PARTY_NOTICES.md') -Destination $stage
 $stagedCapabilities = & (Join-Path $stage 'lovelycarve-cli.exe') system get | ConvertFrom-Json
-if ($LASTEXITCODE -ne 0 -or $stagedCapabilities.qrcode -ne $capabilities.qrcode -or $stagedCapabilities.ocr -ne $capabilities.ocr) {
+if ($LASTEXITCODE -ne 0 -or $stagedCapabilities.qrcode -ne $capabilities.qrcode -or $stagedCapabilities.ocr -ne $capabilities.ocr -or -not $stagedCapabilities.components.inference.available) {
     throw 'The staged CLI cannot report matching capabilities; check its runtime dependencies.'
 }
 if ($StageSkill) {
@@ -64,7 +72,7 @@ if ($StageSkill) {
         Copy-Item -LiteralPath $ignoreFile -Destination $runtimeStage
     }
     $runtimeCapabilities = & (Join-Path $runtimeStage 'lovelycarve-cli.exe') system get | ConvertFrom-Json
-    if ($LASTEXITCODE -ne 0 -or $runtimeCapabilities.qrcode -ne $capabilities.qrcode -or $runtimeCapabilities.ocr -ne $capabilities.ocr) {
+    if ($LASTEXITCODE -ne 0 -or $runtimeCapabilities.qrcode -ne $capabilities.qrcode -or $runtimeCapabilities.ocr -ne $capabilities.ocr -or -not $runtimeCapabilities.components.inference.available) {
         throw 'The skill runtime cannot report matching capabilities.'
     }
     # Validate every directory move against the requested repository root.

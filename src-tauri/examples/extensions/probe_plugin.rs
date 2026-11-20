@@ -123,6 +123,7 @@ async fn main() -> anyhow::Result<()> {
                 &record_query::RecordsQuery {
                     run_id: &run_id,
                     record_type: &record_type.schema.record_type,
+                    bcp_scope: None,
                     keyword: None,
                     sort: None,
                     descending: false,
