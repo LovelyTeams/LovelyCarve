@@ -2446,5 +2446,19 @@
   "复制原路径": "Copy original path",
   "记录操作": "Record actions",
   "复制「{0}」": "Copy “{0}”",
-  "复制整条记录": "Copy whole record"
+  "复制整条记录": "Copy whole record",
+  "正在解析 Vim Swap (.swp) 未保存缓冲区…": "Parsing Vim Swap (.swp) unsaved buffer…",
+  "未知原文件": "Unknown original file",
+  "已加密": "Encrypted",
+  "行": "rows",
+  "复制恢复内容": "Copy recovered content",
+  "用户": "User",
+  "主机": "Host",
+  "修改时间": "Modified",
+  "页大小": "Page size",
+  "数据块/指针块/未知块": "Data / Pointer / Unknown blocks",
+  "检测到 Vim 加密交换文件（header 可读但数据块已加密），暂无法明文提取未保存行。": "Encrypted Vim swap detected (header readable, blocks encrypted); plaintext extraction unavailable.",
+  "无匹配关键词的恢复行": "No recovered lines match keyword",
+  "未提取到文本行": "No text lines extracted",
+  "Vim Swap 恢复内容": "Vim Swap Recovered Content"
 }

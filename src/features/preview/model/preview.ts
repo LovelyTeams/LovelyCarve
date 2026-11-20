@@ -12,6 +12,7 @@ export type PreviewCategory =
   | 'realm'
   | 'rich'
   | 'zip'
+  | 'vimswap'
   | 'unsupported';
 
 /** Shared content-preview limits and view state; window docking has a separate owner. */

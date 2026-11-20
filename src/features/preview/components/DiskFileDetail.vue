@@ -23,7 +23,7 @@
         @qr-scan="runQrScan" @ocr-scan="runOcrScan"
       />
 
-      <div ref="previewBody" class="preview-body" v-content-motion="node.id + ':' + activeTab" :class="{ metadata: activeTab === 'detail', flush: (activeTab === 'hex' && !!focusTarget) || (activeTab === 'raw' && (category === 'structured' || category === 'csv' || category === 'code' || category === 'binary' || category === 'gguf' || category === 'sqlite' || category === 'realm' || category === 'rich' || category === 'zip' || isMediaCategory)) }">
+      <div ref="previewBody" class="preview-body" v-content-motion="node.id + ':' + activeTab" :class="{ metadata: activeTab === 'detail', flush: (activeTab === 'hex' && !!focusTarget) || (activeTab === 'raw' && (category === 'structured' || category === 'csv' || category === 'code' || category === 'binary' || category === 'gguf' || category === 'sqlite' || category === 'realm' || category === 'rich' || category === 'zip' || category === 'vimswap' || isMediaCategory)) }">
         <FileMetadataPanel v-if="activeTab === 'detail'" :node="node" :full-path="fullPath" :extension="ext"
           :ident="effectiveIdent" :digest="digest" :ext-mismatch="extMismatch" />
         <template v-else>
@@ -120,6 +120,15 @@
               class="zip-view"
               :image-id="imageId"
               :node-id="node.id"
+            />
+
+            <VimSwapViewer
+              v-else-if="category === 'vimswap'"
+              :key="node.id"
+              class="code-view"
+              :image-id="imageId"
+              :node-id="node.id"
+              :query="searchQuery"
             />
 
             <FileMediaPreview v-else-if="isMediaCategory" :node="node" :category="category" :is-stream-media="isStreamMedia"
@@ -243,6 +252,7 @@ const GgufViewer = defineAsyncComponent(() => import('./viewers/GgufViewer.vue')
 const SqliteViewer = defineAsyncComponent(() => import('./viewers/SqliteViewer.vue'));
 const RealmViewer = defineAsyncComponent(() => import('./viewers/RealmViewer.vue'));
 const ZipViewer = defineAsyncComponent(() => import('./viewers/ZipViewer.vue'));
+const VimSwapViewer = defineAsyncComponent(() => import('./viewers/VimSwapViewer.vue'));
 const RichPreviewViewer = defineAsyncComponent(() => import('./viewers/RichPreviewViewer.vue'));
 
 const props = defineProps<{

@@ -71,6 +71,8 @@ export const SQLITE_EXT = new Set(['db', 'db3', 'sqlite', 'sqlite3']);
 /** Realm 移动端对象库——预览侧走 Realm 表浏览视图（vendored realm-db-reader，
  *  内存读取，不落临时文件）。 */
 export const REALM_EXT = new Set(['realm']);
+/** Vim swap 临时交换文件（.swp/.swo/.swn）——预览侧走未保存缓冲区提取视图（VimSwapViewer）。 */
+export const VIM_SWAP_EXT = new Set(['swp', 'swo', 'swn']);
 export const EMAIL_EXT = new Set(['eml', 'msg', 'pst', 'ost', 'mbox']);
 
 /** Flyfish File Viewer（@file-viewer/vue3-full）「rich」预览——预览侧交给浏览器

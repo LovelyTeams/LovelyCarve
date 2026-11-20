@@ -81,4 +81,13 @@ describe('usePreviewCategory', () => {
       expect(resolve({ ext, typeIdent: ident({ label: 'sqlite', is_text: false }) }).category).toBe('sqlite');
     }
   });
+
+  it('detects Vim swap files (.swp/.swo/.swn) by extension and b0VIM magic header', () => {
+    const VIM_SWAP = new Uint8Array([0x62, 0x30, 0x56, 0x49, 0x4d, 0x20, 0x39, 0x2e, 0x31]); // "b0VIM 9.1"
+    for (const ext of ['swp', 'swo', 'swn']) {
+      expect(resolve({ ext, bytes: BINARY }).category).toBe('vimswap');
+    }
+    expect(resolve({ ext: 'tmp', bytes: VIM_SWAP, typeIdent: ident({ label: 'txt', is_text: true }) }).category).toBe('vimswap');
+    expect(resolve({ ext: '', bytes: VIM_SWAP }).category).toBe('vimswap');
+  });
 });
