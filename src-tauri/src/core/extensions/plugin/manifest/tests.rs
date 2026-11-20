@@ -160,3 +160,18 @@ fn sizes_parse_binary_and_decimal_units() {
     assert_eq!(parse_size("1073741824"), Some(1 << 30));
     assert_eq!(parse_size("lots"), None);
 }
+
+#[test]
+fn byte_order_mark_is_stripped_before_parsing() {
+    let manifest = PluginManifest::parse(concat!(
+        "\u{feff}",
+        r#"id = "org.test.bom"
+name = "BOM"
+version = "1"
+protocol = 2
+library = "test"
+"#,
+    ))
+    .expect("a UTF-8 BOM must not break parsing");
+    assert_eq!(manifest.id, "org.test.bom");
+}

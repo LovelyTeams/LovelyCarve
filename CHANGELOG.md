@@ -26,6 +26,10 @@
 - 目录树展开改用后端分页：排除已删除项、目录优先并按名称自然排序，大目录只读取到前 300 个文件。
 - 文本预览只从后端取编码检测结果（新命令 `fs_preview_text_encoding`），用已读取的预览字节在前端解码，不再重复传输解码后的文本；NTFS 命名流预览命令 `fs_stream_preview` 改为返回二进制数据。
 
+### Fixed
+
+- 插件清单、schema.json 与多语言文件带 UTF-8 BOM 时不再解析失败。
+
 ### Removed
 
 - LovelyCarve 的 DSH 取证模式和 CLI skill 移除 forensic-board 看板集成。

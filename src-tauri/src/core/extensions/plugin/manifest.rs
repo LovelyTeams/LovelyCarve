@@ -226,6 +226,7 @@ impl PluginManifest {
     }
 
     pub fn parse(text: &str) -> Result<Self> {
+        let text = text.trim_start_matches('\u{feff}');
         let manifest: Self = toml::from_str(text).map_err(|error| {
             let legacy = toml::from_str::<toml::Table>(text).is_ok_and(|table| {
                 ["protocol_min", "capabilities", "task", "process"]
