@@ -120,3 +120,22 @@
     .sidebar-nav { width: 252px; }
     .hover-preview .page-sidebar { width: 188px; }
 }
+
+.sidebar-nav.resizing {
+    transition: none;
+    user-select: none;
+}
+.sidebar-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 100;
+    transition: background var(--transition-fast);
+}
+.sidebar-resizer:hover,
+.sidebar-resizer.active {
+    background: var(--primary-color);
+}

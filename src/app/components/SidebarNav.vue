@@ -1,5 +1,5 @@
 <template>
-  <aside class="sidebar-nav" :class="{ collapsed, 'hover-preview': collapsed && hoverPreview }" :aria-label="tr('工作区导航')" @pointerleave="closeHover" @focusout="onFocusOut" @keydown.esc="dismissHover">
+  <aside class="sidebar-nav" :class="{ collapsed, 'hover-preview': collapsed && hoverPreview, resizing: isResizing }" :style="!collapsed ? { width: sidebarWidth + 'px' } : undefined" :aria-label="tr('工作区导航')" @pointerleave="closeHover" @focusout="onFocusOut" @keydown.esc="dismissHover">
     <div class="category-rail">
       <nav class="category-list" :aria-label="tr('工作区大类')">
         <button
@@ -51,13 +51,14 @@
       </nav>
       <div v-if="showContext" class="sidebar-context"><slot name="context" :select="selectItem" /></div>
     </section>
+    <div v-if="!collapsed" class="sidebar-resizer" :class="{ active: isResizing }" :title="tr('拖拽调整侧栏宽度')" :aria-label="tr('拖拽调整侧栏宽度')" @mousedown.stop.prevent="startResize" />
   </aside>
 </template>
 
 <script setup lang="ts">
 import { tr } from '../../composables/useLocale';
 
-import { computed, ref, useId, useSlots, watch, type Component } from 'vue';
+import { computed, onBeforeUnmount, ref, useId, useSlots, watch, type Component } from 'vue';
 import {
   BarChart3, Database, FileQuestion, Files, FileSearch, Globe, HardDrive,
   Info, Package, PanelLeftClose, PanelLeftOpen, Phone, ScanSearch, Search, Send, Share2, Wifi, Wrench,
@@ -81,6 +82,48 @@ watch(collapsed, value => {
   try { localStorage.setItem(collapsedKey, String(value)); }
   catch { /* Navigation remains usable when storage is unavailable. */ }
 });
+
+const DEFAULT_SIDEBAR_WIDTH = 288;
+const MIN_SIDEBAR_WIDTH = 200;
+const MAX_SIDEBAR_WIDTH = 640;
+const widthKey = 'lovelycarve-sidebar-width';
+const sidebarWidth = ref((() => {
+  try {
+    const saved = localStorage.getItem(widthKey);
+    const num = saved ? Number(saved) : DEFAULT_SIDEBAR_WIDTH;
+    return Number.isFinite(num) && num >= MIN_SIDEBAR_WIDTH && num <= MAX_SIDEBAR_WIDTH ? num : DEFAULT_SIDEBAR_WIDTH;
+  } catch {
+    return DEFAULT_SIDEBAR_WIDTH;
+  }
+})());
+watch(sidebarWidth, value => {
+  try { localStorage.setItem(widthKey, String(value)); }
+  catch { /* Navigation remains usable when storage is unavailable. */ }
+});
+
+const isResizing = ref(false);
+let stopActiveResize: (() => void) | null = null;
+function startResize(e: MouseEvent) {
+  if (collapsed.value) return;
+  stopActiveResize?.();
+  isResizing.value = true;
+  const startX = e.clientX;
+  const startWidth = sidebarWidth.value;
+  const onMouseMove = (moveEvent: MouseEvent) => {
+    const delta = moveEvent.clientX - startX;
+    sidebarWidth.value = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, startWidth + delta));
+  };
+  const cleanup = () => {
+    isResizing.value = false;
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', cleanup);
+    if (stopActiveResize === cleanup) stopActiveResize = null;
+  };
+  stopActiveResize = cleanup;
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', cleanup);
+}
+onBeforeUnmount(() => { stopActiveResize?.(); });
 
 // Page state remains shell-owned, so task links, file location and evidence-tab
 // restoration select the same category as direct sidebar clicks.

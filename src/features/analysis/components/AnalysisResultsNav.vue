@@ -7,7 +7,10 @@
       <div v-else-if="!groups.length" class="directory-state" role="status">{{ search ? tr("未找到结果项") : tr("暂无分析结果") }}</div>
       <!-- 分类做小节标题；每次运行一组：折叠按钮与运行标题（名称 + 目标，点开运行信息），下面是记录类型及条数。 -->
       <section v-for="section in sections" v-else :key="section.category" class="result-section">
-        <h3 class="section-label">{{ section.category }}</h3>
+        <h3 class="section-label">
+          <component :is="categoryIcon(section.category)" :size="13" class="section-icon" aria-hidden="true" />
+          <span>{{ section.category }}</span>
+        </h3>
         <div v-for="group in section.groups" :key="group.id" class="result-group">
           <div class="run-row" :class="{ selected: isCurrent(group.run) }">
             <button class="run-toggle" type="button" :aria-expanded="isExpanded(group)" :title="isExpanded(group) ? tr('收起') : tr('展开')"
@@ -38,8 +41,8 @@
 import { tr } from '../../../composables/useLocale';
 
 import UiTransition from '../../../components/ui/UiTransition.vue';
-import { computed, nextTick, ref, watch } from 'vue';
-import { ChevronRight, Loader2, Search, TriangleAlert, X } from 'lucide-vue-next';
+import { computed, nextTick, ref, watch, type Component } from 'vue';
+import { Bluetooth, Camera, ChevronRight, Cloud, Folder, Globe, HardDrive, Image, KeyRound, Loader2, MapPin, MessageSquare, Radio, Search, Settings, TriangleAlert, User, Wifi, X } from 'lucide-vue-next';
 import { useAnalysisResults } from '../composables/useAnalysisResults';
 import { useAnalysisLabels } from '../composables/useAnalysisLabels';
 import { buildAnalysisGroups, groupOfNode, sectionAnalysisGroups, type AnalysisResultGroup } from '../model/analysisResultView';
@@ -60,6 +63,23 @@ const isCurrent = (node: AnalysisResultNode | null) => !!node && selectedNode.va
 const isExpanded = (group: AnalysisResultGroup) => !!search.value || !collapsedGroups.value.has(group.id);
 const runName = (group: AnalysisResultGroup) => [group.label, group.target].filter(Boolean).join(' · ');
 const runTitle = (group: AnalysisResultGroup) => [group.category, group.label, group.target || tr("整个检材")].join(' · ');
+function categoryIcon(category: string): Component {
+  const c = category.toLowerCase();
+  if (c.includes('usb') || c.includes('u盘') || c.includes('磁盘') || c.includes('disk') || c.includes('卷')) return HardDrive;
+  if (c.includes('照片') || c.includes('相册') || c.includes('photo') || c.includes('camera') || c.includes('相机')) return Camera;
+  if (c.includes('媒体') || c.includes('media') || c.includes('video') || c.includes('音频') || c.includes('视频')) return Image;
+  if (c.includes('airdrop') || c.includes('隔空投送')) return Radio;
+  if (c.includes('whatsapp') || c.includes('微信') || c.includes('wechat') || c.includes('telegram') || c.includes('交互') || c.includes('消息') || c.includes('短信') || c.includes('通话') || c.includes('chat') || c.includes('message')) return MessageSquare;
+  if (c.includes('icloud') || c.includes('云') || c.includes('备份') || c.includes('cloud') || c.includes('backup')) return Cloud;
+  if (c.includes('账户') || c.includes('account') || c.includes('user') || c.includes('用户')) return User;
+  if (c.includes('钥匙') || c.includes('keychain') || c.includes('sim') || c.includes('安全') || c.includes('security') || c.includes('密码')) return KeyRound;
+  if (c.includes('位置') || c.includes('定位') || c.includes('gps') || c.includes('location') || c.includes('map')) return MapPin;
+  if (c.includes('网络') || c.includes('wifi') || c.includes('wi-fi') || c.includes('network')) return Wifi;
+  if (c.includes('蓝牙') || c.includes('bluetooth')) return Bluetooth;
+  if (c.includes('浏览') || c.includes('safari') || c.includes('chrome') || c.includes('web') || c.includes('webkit')) return Globe;
+  if (c.includes('系统') || c.includes('system') || c.includes('配置') || c.includes('settings')) return Settings;
+  return Folder;
+}
 function clearSearch() { search.value = ''; searchInput.value?.focus(); }
 function toggleGroup(id: string) {
   if (collapsedGroups.value.has(id)) collapsedGroups.value.delete(id);
@@ -95,7 +115,8 @@ watch(() => props.imageId, imageId => {
 .directory-search { flex-shrink: 0; margin: 12px 12px 4px; padding-right: 4px; }
 .directory-scroll { position: relative; flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 16px; }
 .result-section + .result-section { margin-top: 8px; }
-.section-label { margin: 0; padding: 12px 8px 4px; color: var(--text-secondary); font-size: 11px; font-weight: 600; line-height: 16px; }
+.section-label { display: flex; align-items: center; gap: 6px; margin: 0; padding: 12px 8px 4px; color: var(--text-secondary); font-size: 11px; font-weight: 600; line-height: 16px; }
+.section-icon { flex-shrink: 0; color: var(--primary-color); opacity: 0.85; }
 
 /* 运行标题：左侧是折叠按钮，右侧整块打开运行信息；两行分别是分析器名称与运行目标。 */
 .run-row { display: flex; align-items: stretch; min-width: 0; border-radius: var(--radius-md); transition: background var(--transition-fast); }
