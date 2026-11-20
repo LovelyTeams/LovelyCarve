@@ -394,6 +394,44 @@ fn page_one_ok(profile: &Profile, enc_key: &[u8; KEY_LEN], hmac_key: &[u8], page
         .is_some_and(|plain| plausible_page_one(&plain, profile.page_size))
 }
 
+/// Detect the matching `SQLCipher` profile and derived keys for `ciphertext`,
+/// honoring `params` when supplied or trying [`DETECTED_VERSIONS`] in order.
+fn detect_profile(
+    ciphertext: &[u8],
+    key: &SqlCipherKey,
+    params: Option<&CipherParams>,
+) -> Result<(Profile, [u8; KEY_LEN], [u8; KEY_LEN]), DecryptError> {
+    if ciphertext.len() < SALT_LEN {
+        return Err(DecryptError::TooSmall);
+    }
+    let salt = ciphertext.get(..SALT_LEN).ok_or(DecryptError::TooSmall)?;
+    let candidates: Vec<CipherParams> = if let Some(p) = params {
+        vec![*p]
+    } else {
+        DETECTED_VERSIONS
+            .iter()
+            .filter_map(|version| CipherParams::compatibility(*version))
+            .collect()
+    };
+    for cand in candidates {
+        let profile = cand.profile();
+        if profile.page_size == 0
+            || ciphertext.len() < profile.page_size
+            || !ciphertext.len().is_multiple_of(profile.page_size)
+        {
+            continue;
+        }
+        let (enc_key, hmac_key) = derive_keys(&profile, key, salt);
+        let Some(page1) = ciphertext.get(..profile.page_size) else {
+            continue;
+        };
+        if page_one_ok(&profile, &enc_key, &hmac_key, page1) {
+            return Ok((profile, enc_key, hmac_key));
+        }
+    }
+    Err(DecryptError::KeyOrParametersMismatch)
+}
+
 /// Decrypt under one profile, or `None` when its geometry or page-1 check does
 /// not fit the database.
 fn try_profile(
@@ -412,6 +450,180 @@ fn try_profile(
     let page1 = ciphertext.get(..profile.page_size)?;
     page_one_ok(profile, &enc_key, &hmac_key, page1)
         .then(|| decrypt_all(profile, &enc_key, &hmac_key, ciphertext))
+}
+
+/// Decrypt a `SQLCipher` `-wal` sidecar into a plaintext `SQLite` WAL stream,
+/// preserving plaintext header/frame metadata and recomputing frame checksums
+/// over the decrypted pages when the original encrypted checksum chain verified.
+pub fn decrypt_wal(
+    db_ciphertext: &[u8],
+    wal_ciphertext: &[u8],
+    key: &SqlCipherKey,
+    params: Option<&CipherParams>,
+) -> Result<Vec<u8>, DecryptError> {
+    const WAL_HEADER_SIZE: usize = 32;
+    const WAL_FRAME_HEADER_SIZE: usize = 24;
+
+    if wal_ciphertext.len() < WAL_HEADER_SIZE {
+        return Ok(wal_ciphertext.to_vec());
+    }
+    let hdr = &wal_ciphertext[..WAL_HEADER_SIZE];
+    let magic = u32::from_be_bytes([hdr[0], hdr[1], hdr[2], hdr[3]]);
+    let Some(endian) = crate::WalChecksumEndian::from_magic(magic) else {
+        return Ok(wal_ciphertext.to_vec());
+    };
+
+    let (profile, enc_key, hmac_key) = detect_profile(db_ciphertext, key, params)?;
+    let wal_page_size = u32::from_be_bytes([hdr[8], hdr[9], hdr[10], hdr[11]]) as usize;
+    if wal_page_size != profile.page_size || wal_page_size == 0 {
+        return Err(DecryptError::KeyOrParametersMismatch);
+    }
+
+    let (mut orig_s0, mut orig_s1) = crate::wal_checksum(endian, 0, 0, &hdr[0..24]);
+    let stored_h0 = u32::from_be_bytes([hdr[24], hdr[25], hdr[26], hdr[27]]);
+    let stored_h1 = u32::from_be_bytes([hdr[28], hdr[29], hdr[30], hdr[31]]);
+    let mut orig_chain_valid = orig_s0 == stored_h0 && orig_s1 == stored_h1;
+    let (mut plain_s0, mut plain_s1) = (orig_s0, orig_s1);
+
+    let hdr_salt1 = &hdr[16..20];
+    let hdr_salt2 = &hdr[20..24];
+    let stride = WAL_FRAME_HEADER_SIZE + profile.page_size;
+
+    let mut out = Vec::with_capacity(wal_ciphertext.len());
+    out.extend_from_slice(hdr);
+
+    for frame in wal_ciphertext[WAL_HEADER_SIZE..].chunks_exact(stride) {
+        let f_hdr = &frame[..WAL_FRAME_HEADER_SIZE];
+        let enc_page = &frame[WAL_FRAME_HEADER_SIZE..];
+        let pgno = u32::from_be_bytes([f_hdr[0], f_hdr[1], f_hdr[2], f_hdr[3]]);
+        if pgno == 0 {
+            break;
+        }
+        if orig_chain_valid {
+            if &f_hdr[8..12] != hdr_salt1 || &f_hdr[12..16] != hdr_salt2 {
+                orig_chain_valid = false;
+            } else {
+                let (ns0, ns1) = crate::wal_checksum(endian, orig_s0, orig_s1, &f_hdr[0..8]);
+                let (ns0, ns1) = crate::wal_checksum(endian, ns0, ns1, enc_page);
+                let sf0 = u32::from_be_bytes([f_hdr[16], f_hdr[17], f_hdr[18], f_hdr[19]]);
+                let sf1 = u32::from_be_bytes([f_hdr[20], f_hdr[21], f_hdr[22], f_hdr[23]]);
+                if sf0 == ns0 && sf1 == ns1 {
+                    orig_s0 = ns0;
+                    orig_s1 = ns1;
+                } else {
+                    orig_chain_valid = false;
+                }
+            }
+        }
+        let Some(plain_page) = decrypt_page(&profile, &enc_key, &hmac_key, enc_page, pgno) else {
+            break;
+        };
+        let mut out_fhdr = f_hdr.to_vec();
+        if orig_chain_valid {
+            let (ns0, ns1) = crate::wal_checksum(endian, plain_s0, plain_s1, &out_fhdr[0..8]);
+            let (ns0, ns1) = crate::wal_checksum(endian, ns0, ns1, &plain_page);
+            plain_s0 = ns0;
+            plain_s1 = ns1;
+            out_fhdr[16..20].copy_from_slice(&plain_s0.to_be_bytes());
+            out_fhdr[20..24].copy_from_slice(&plain_s1.to_be_bytes());
+        } else {
+            // Preserve invalid checksum semantics across salt resets or corrupt frames.
+            let broken = plain_s0.wrapping_add(1);
+            out_fhdr[16..20].copy_from_slice(&broken.to_be_bytes());
+        }
+        out.extend_from_slice(&out_fhdr);
+        out.extend_from_slice(&plain_page);
+    }
+
+    Ok(out)
+}
+
+/// Decrypt a `SQLCipher` rollback `-journal` into a plaintext rollback journal.
+pub fn decrypt_rollback_journal(
+    db_ciphertext: &[u8],
+    journal_ciphertext: &[u8],
+    key: &SqlCipherKey,
+    params: Option<&CipherParams>,
+) -> Result<Vec<u8>, DecryptError> {
+    let (profile, enc_key, hmac_key) = detect_profile(db_ciphertext, key, params)?;
+    let ps = profile.page_size;
+    let stride = 4usize.saturating_add(ps).saturating_add(4);
+    if journal_ciphertext.len() < 28 + stride {
+        return Ok(journal_ciphertext.to_vec());
+    }
+
+    let (sector_start, nonce_opt) = if journal_ciphertext.starts_with(&crate::JOURNAL_MAGIC) {
+        let sector = u32::from_be_bytes([
+            journal_ciphertext[20],
+            journal_ciphertext[21],
+            journal_ciphertext[22],
+            journal_ciphertext[23],
+        ]) as usize;
+        let nonce = u32::from_be_bytes([
+            journal_ciphertext[12],
+            journal_ciphertext[13],
+            journal_ciphertext[14],
+            journal_ciphertext[15],
+        ]);
+        (sector.max(28), Some(nonce))
+    } else {
+        // Tier B: PERSIST zeroed header; locate sector boundary where record 0 decrypts cleanly.
+        let mut detected = None;
+        for cand in [512usize, 4096, ps] {
+            if let Some(rec) = cand
+                .checked_add(stride)
+                .and_then(|end| journal_ciphertext.get(cand..end))
+            {
+                let pgno = u32::from_be_bytes([rec[0], rec[1], rec[2], rec[3]]);
+                let enc_page = &rec[4..4 + ps];
+                if pgno >= 1
+                    && decrypt_page(&profile, &enc_key, &hmac_key, enc_page, pgno).is_some_and(
+                        |plain| {
+                            if pgno == 1 {
+                                plausible_page_one(&plain, ps)
+                            } else {
+                                profile.hmac_len > 0
+                                    || matches!(plain.first(), Some(0x02 | 0x05 | 0x0a | 0x0d))
+                            }
+                        },
+                    )
+                {
+                    detected = Some(cand);
+                    break;
+                }
+            }
+        }
+        (detected.unwrap_or(ps), None)
+    };
+
+    if sector_start >= journal_ciphertext.len() {
+        return Ok(journal_ciphertext.to_vec());
+    }
+
+    let mut out = Vec::with_capacity(journal_ciphertext.len());
+    out.extend_from_slice(&journal_ciphertext[..sector_start]);
+
+    for rec in journal_ciphertext[sector_start..].chunks_exact(stride) {
+        let pgno = u32::from_be_bytes([rec[0], rec[1], rec[2], rec[3]]);
+        if pgno == 0 {
+            out.extend_from_slice(rec);
+            break;
+        }
+        let enc_page = &rec[4..4 + ps];
+        let Some(plain_page) = decrypt_page(&profile, &enc_key, &hmac_key, enc_page, pgno) else {
+            break;
+        };
+        let cksum = if let Some(n) = nonce_opt {
+            crate::journal_cksum(n, &plain_page).to_be_bytes()
+        } else {
+            [rec[4 + ps], rec[5 + ps], rec[6 + ps], rec[7 + ps]]
+        };
+        out.extend_from_slice(&pgno.to_be_bytes());
+        out.extend_from_slice(&plain_page);
+        out.extend_from_slice(&cksum);
+    }
+
+    Ok(out)
 }
 
 /// Decrypt a `SQLCipher` database into a plaintext `SQLite` byte stream, detecting
@@ -448,4 +660,257 @@ pub fn decrypt_with(
     }
     try_profile(&params.profile(), ciphertext, key)
         .unwrap_or(Err(DecryptError::KeyOrParametersMismatch))
+}
+
+#[cfg(test)]
+mod tests {
+    use cipher::BlockEncryptMut;
+
+    use super::*;
+
+    type Aes256CbcEnc = cbc::Encryptor<Aes256>;
+
+    fn build_plain_db_pages(page_size: usize, reserve: usize) -> (Vec<u8>, Vec<u8>) {
+        let mut page1 = vec![0u8; page_size];
+        page1[..SALT_LEN].copy_from_slice(SQLITE_MAGIC);
+        page1[16..18].copy_from_slice(&(page_size as u16).to_be_bytes());
+        page1[18] = 1;
+        page1[19] = 1;
+        page1[20] = reserve as u8;
+        page1[21..24].copy_from_slice(&[64, 32, 32]);
+        page1[24..28].copy_from_slice(&1u32.to_be_bytes());
+        page1[28..32].copy_from_slice(&2u32.to_be_bytes());
+        page1[100] = 0x0d; // valid leaf table page header type
+        let usable = page_size - reserve;
+        page1[105..107].copy_from_slice(&(usable as u16).to_be_bytes());
+
+        let mut page2 = vec![0u8; page_size];
+        page2[0] = 0x0d;
+        page2[5..7].copy_from_slice(&(usable as u16).to_be_bytes());
+        page2[16..24].copy_from_slice(b"FORENSIC");
+
+        (page1, page2)
+    }
+
+    fn encrypt_test_page(
+        profile: &Profile,
+        enc_key: &[u8; KEY_LEN],
+        hmac_key: &[u8],
+        salt: &[u8; SALT_LEN],
+        plain: &[u8],
+        pgno: u32,
+        iv: [u8; IV_LEN],
+    ) -> Vec<u8> {
+        let layout = PageLayout::for_page(profile, pgno).expect("layout");
+        let mut out = vec![0u8; profile.page_size];
+        if pgno == 1 {
+            out[..SALT_LEN].copy_from_slice(salt);
+        }
+        let mut ct = plain[layout.start..layout.iv_start].to_vec();
+        let ct_len = ct.len();
+        let enc = Aes256CbcEnc::new_from_slices(enc_key, &iv).expect("aes-256-cbc");
+        let encrypted = enc
+            .encrypt_padded_mut::<NoPadding>(&mut ct, ct_len)
+            .expect("aligned page block");
+        out[layout.start..layout.iv_start].copy_from_slice(encrypted);
+        out[layout.iv_start..layout.iv_start + IV_LEN].copy_from_slice(&iv);
+
+        let auth_region = &out[layout.start..layout.iv_start + IV_LEN];
+        let mut mac = <Hmac<Sha512> as Mac>::new_from_slice(hmac_key).expect("hmac key");
+        mac.update(auth_region);
+        mac.update(&pgno.to_le_bytes());
+        let tag = mac.finalize().into_bytes();
+        out[layout.iv_start + IV_LEN..layout.iv_start + IV_LEN + profile.hmac_len]
+            .copy_from_slice(&tag);
+        out
+    }
+
+    fn build_v4_test_fixture() -> (
+        Profile,
+        SqlCipherKey,
+        [u8; KEY_LEN],
+        [u8; KEY_LEN],
+        [u8; SALT_LEN],
+        Vec<u8>,
+        Vec<u8>,
+        Vec<u8>,
+    ) {
+        let params = CipherParams::compatibility(4).expect("v4 profile");
+        let profile = params.profile();
+        let raw = [0x42u8; KEY_LEN];
+        let key = SqlCipherKey::RawKey(raw);
+        let salt = [0x17u8; SALT_LEN];
+        let (enc_key, hmac_key) = derive_keys(&profile, &key, &salt);
+        let (plain1, plain2) = build_plain_db_pages(profile.page_size, profile.reserve);
+        let enc1 = encrypt_test_page(&profile, &enc_key, &hmac_key, &salt, &plain1, 1, [0x01; 16]);
+        let enc2 = encrypt_test_page(&profile, &enc_key, &hmac_key, &salt, &plain2, 2, [0x02; 16]);
+        let mut db_ct = Vec::with_capacity(profile.page_size * 2);
+        db_ct.extend_from_slice(&enc1);
+        db_ct.extend_from_slice(&enc2);
+        (profile, key, enc_key, hmac_key, salt, plain1, plain2, db_ct)
+    }
+
+    fn wal_frame(
+        pgno: u32,
+        commit_pages: u32,
+        salt1: &[u8],
+        salt2: &[u8],
+        endian: crate::WalChecksumEndian,
+        prev_s: (u32, u32),
+        page: &[u8],
+    ) -> (Vec<u8>, (u32, u32)) {
+        let mut fhdr = vec![0u8; 24];
+        fhdr[0..4].copy_from_slice(&pgno.to_be_bytes());
+        fhdr[4..8].copy_from_slice(&commit_pages.to_be_bytes());
+        fhdr[8..12].copy_from_slice(salt1);
+        fhdr[12..16].copy_from_slice(salt2);
+        let (s0, s1) = crate::wal_checksum(endian, prev_s.0, prev_s.1, &fhdr[0..8]);
+        let (s0, s1) = crate::wal_checksum(endian, s0, s1, page);
+        fhdr[16..20].copy_from_slice(&s0.to_be_bytes());
+        fhdr[20..24].copy_from_slice(&s1.to_be_bytes());
+        let mut out = fhdr;
+        out.extend_from_slice(page);
+        (out, (s0, s1))
+    }
+
+    #[test]
+    fn decrypt_wal_recomputes_valid_chain_and_marks_broken_frames() {
+        let (profile, key, enc_key, hmac_key, salt, _plain1, mut plain2_updated, db_ct) =
+            build_v4_test_fixture();
+        plain2_updated[16..24].copy_from_slice(b"WALFRAME");
+        let enc_wal_page = encrypt_test_page(
+            &profile,
+            &enc_key,
+            &hmac_key,
+            &salt,
+            &plain2_updated,
+            2,
+            [0x09; 16],
+        );
+
+        let endian = crate::WalChecksumEndian::Big;
+        let salt1 = [0xAA, 0xBB, 0xCC, 0xDD];
+        let salt2 = [0x11, 0x22, 0x33, 0x44];
+        let mut hdr = vec![0u8; 32];
+        hdr[0..4].copy_from_slice(&0x377f_0683u32.to_be_bytes());
+        hdr[4..8].copy_from_slice(&3_007_000u32.to_be_bytes());
+        hdr[8..12].copy_from_slice(&(profile.page_size as u32).to_be_bytes());
+        hdr[16..20].copy_from_slice(&salt1);
+        hdr[20..24].copy_from_slice(&salt2);
+        let (h0, h1) = crate::wal_checksum(endian, 0, 0, &hdr[0..24]);
+        hdr[24..28].copy_from_slice(&h0.to_be_bytes());
+        hdr[28..32].copy_from_slice(&h1.to_be_bytes());
+
+        let (frame1, (f1_s0, f1_s1)) =
+            wal_frame(2, 2, &salt1, &salt2, endian, (h0, h1), &enc_wal_page);
+        let mut wal_ct = hdr.clone();
+        wal_ct.extend_from_slice(&frame1);
+
+        let wal_plain = decrypt_wal(&db_ct, &wal_ct, &key, None).expect("decrypt valid wal");
+        assert_eq!(wal_plain.len(), 32 + 24 + profile.page_size);
+        let dec_fhdr = &wal_plain[32..56];
+        let dec_page = &wal_plain[56..];
+        assert_eq!(dec_page[16..24], *b"WALFRAME");
+        // Verify decrypted page retains authentic encrypted tail bytes while body matches plaintext.
+        assert_eq!(
+            dec_page[..profile.page_size - profile.reserve],
+            plain2_updated[..profile.page_size - profile.reserve]
+        );
+        let (want_s0, want_s1) = crate::wal_checksum(endian, h0, h1, &dec_fhdr[0..8]);
+        let (want_s0, want_s1) = crate::wal_checksum(endian, want_s0, want_s1, dec_page);
+        assert_eq!(&dec_fhdr[16..20], &want_s0.to_be_bytes());
+        assert_eq!(&dec_fhdr[20..24], &want_s1.to_be_bytes());
+
+        // Second WAL where frame 1 has a mismatched salt -> checksum must stay broken.
+        let (mut bad_salt_frame, _) = wal_frame(
+            2,
+            2,
+            &[0x99; 4],
+            &salt2,
+            endian,
+            (f1_s0, f1_s1),
+            &enc_wal_page,
+        );
+        bad_salt_frame[8..12].copy_from_slice(&[0x99; 4]);
+        let mut wal_bad = hdr;
+        wal_bad.extend_from_slice(&bad_salt_frame);
+        let wal_bad_plain = decrypt_wal(&db_ct, &wal_bad, &key, None).expect("decrypt broken wal");
+        let bad_fhdr = &wal_bad_plain[32..56];
+        let bad_page = &wal_bad_plain[56..];
+        let (valid_if_recomputed, _) = crate::wal_checksum(endian, h0, h1, &bad_fhdr[0..8]);
+        let (valid_if_recomputed, _) =
+            crate::wal_checksum(endian, valid_if_recomputed, h1, bad_page);
+        assert_ne!(
+            u32::from_be_bytes([bad_fhdr[16], bad_fhdr[17], bad_fhdr[18], bad_fhdr[19]]),
+            valid_if_recomputed
+        );
+    }
+
+    #[test]
+    fn decrypt_wal_handles_non_wal_and_rejects_mismatched_page_size() {
+        let (_profile, key, _enc_key, _hmac_key, _salt, _p1, _p2, db_ct) = build_v4_test_fixture();
+        assert_eq!(
+            decrypt_wal(&db_ct, b"short", &key, None).expect("short"),
+            b"short"
+        );
+        let non_wal = vec![0x11u8; 64];
+        assert_eq!(
+            decrypt_wal(&db_ct, &non_wal, &key, None).expect("non-wal"),
+            non_wal
+        );
+
+        let mut mismatch_hdr = vec![0u8; 32];
+        mismatch_hdr[0..4].copy_from_slice(&0x377f_0683u32.to_be_bytes());
+        mismatch_hdr[8..12].copy_from_slice(&1024u32.to_be_bytes());
+        assert_eq!(
+            decrypt_wal(&db_ct, &mismatch_hdr, &key, None),
+            Err(DecryptError::KeyOrParametersMismatch)
+        );
+    }
+
+    #[test]
+    fn decrypt_rollback_journal_handles_standard_and_persist_headers() {
+        let (profile, key, enc_key, hmac_key, salt, plain1, plain2, db_ct) =
+            build_v4_test_fixture();
+        let ps = profile.page_size;
+        let enc2 = encrypt_test_page(&profile, &enc_key, &hmac_key, &salt, &plain2, 2, [0x05; 16]);
+        let nonce = 0x1357_2468u32;
+
+        // Standard rollback journal with JOURNAL_MAGIC and sector_size = 512.
+        let mut std_journal = vec![0u8; 512];
+        std_journal[..8].copy_from_slice(&crate::JOURNAL_MAGIC);
+        std_journal[8..12].copy_from_slice(&1u32.to_be_bytes());
+        std_journal[12..16].copy_from_slice(&nonce.to_be_bytes());
+        std_journal[20..24].copy_from_slice(&512u32.to_be_bytes());
+        std_journal[24..28].copy_from_slice(&(ps as u32).to_be_bytes());
+        std_journal.extend_from_slice(&2u32.to_be_bytes());
+        std_journal.extend_from_slice(&enc2);
+        std_journal.extend_from_slice(&crate::journal_cksum(nonce, &enc2).to_be_bytes());
+        std_journal.extend(std::iter::repeat_n(0u8, 4 + ps + 4));
+
+        let out_std =
+            decrypt_rollback_journal(&db_ct, &std_journal, &key, None).expect("std journal");
+        let rec_page = &out_std[516..516 + ps];
+        assert_eq!(
+            rec_page[..ps - profile.reserve],
+            plain2[..ps - profile.reserve]
+        );
+        let recomputed = crate::journal_cksum(nonce, rec_page).to_be_bytes();
+        assert_eq!(&out_std[516 + ps..520 + ps], &recomputed);
+
+        // PERSIST zeroed header with page 1 stored at 512-byte sector boundary.
+        let enc1 = encrypt_test_page(&profile, &enc_key, &hmac_key, &salt, &plain1, 1, [0x06; 16]);
+        let mut persist_journal = vec![0u8; 512];
+        persist_journal.extend_from_slice(&1u32.to_be_bytes());
+        persist_journal.extend_from_slice(&enc1);
+        let preserved_cksum = [0xDE, 0xAD, 0xBE, 0xEF];
+        persist_journal.extend_from_slice(&preserved_cksum);
+
+        let out_persist = decrypt_rollback_journal(&db_ct, &persist_journal, &key, None)
+            .expect("persist journal");
+        let dec1 = &out_persist[516..516 + ps];
+        assert_eq!(dec1[..SALT_LEN], SQLITE_MAGIC[..]);
+        assert_eq!(dec1[16..24], plain1[16..24]);
+        assert_eq!(&out_persist[516 + ps..520 + ps], &preserved_cksum);
+    }
 }
