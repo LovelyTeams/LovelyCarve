@@ -15,6 +15,7 @@ import {
   SQLITE_EXT,
   STRUCTURED_EXT,
   VIDEO_EXT,
+  VIM_SWAP_EXT,
   ZIP_EXT,
 } from '../../../utils/fileCategory';
 import type { FsTypeIdent } from '../../../lib/ipc/fs/derived';
@@ -36,6 +37,11 @@ const SQLITE_MAGIC = [
 
 const REALM_MAGIC_OFFSET = 16;
 const REALM_MAGIC = [0x54, 0x2d, 0x44, 0x42]; // "T-DB"
+const VIM_SWAP_MAGIC = [0x62, 0x30, 0x56, 0x49, 0x4d]; // "b0VIM"
+
+function looksVimSwap(bytes: Uint8Array): boolean {
+  return bytes.length >= VIM_SWAP_MAGIC.length && VIM_SWAP_MAGIC.every((value, index) => bytes[index] === value);
+}
 
 const RENDERABLE_IMAGE_MIME = new Set([
   'image/png',
@@ -104,6 +110,7 @@ function categoryFromExtAndBytes(nodeKind: string, ext: string, bytes: Uint8Arra
   if (SQLITE_EXT.has(normalizedExt)) return 'sqlite';
   if (RICH_EXT.has(normalizedExt)) return 'rich';
   if (ZIP_EXT.has(normalizedExt)) return 'zip';
+  if (VIM_SWAP_EXT.has(normalizedExt)) return 'vimswap';
   if (STRUCTURED_EXT.has(normalizedExt)) return 'structured';
   if (CSV_EXT.has(normalizedExt)) return 'csv';
   if (CODE_EXT.has(normalizedExt)) return 'code';
@@ -128,6 +135,7 @@ function categoryFromExtAndBytes(nodeKind: string, ext: string, bytes: Uint8Arra
   if (looksRealm(bytes)) return 'realm';
   if (looksSqlite(bytes)) return 'sqlite';
   if (bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b) return 'zip';
+  if (looksVimSwap(bytes)) return 'vimswap';
   return looksTextual(bytes) ? 'code' : 'unsupported';
 }
 
@@ -237,6 +245,7 @@ export function usePreviewCategory(options: UsePreviewCategoryOptions) {
 
   const category = computed<PreviewCategory>(() => {
     if (options.nodeKind() !== 'file') return 'unsupported';
+    if (looksVimSwap(options.bytes())) return 'vimswap';
     const ident = identCategory.value;
     // 特例：扩展名已指明 rich（Flyfish 渲染）而 magika 只给出泛文本判定时让扩展名
     // 赢——否则 .eml/.rtf/.mbox 这类文本型扩展会被 text/plain 高置信度识别抢到
