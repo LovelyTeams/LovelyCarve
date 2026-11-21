@@ -1,5 +1,7 @@
 # 安全报告
 
+系统资产、组件、信任边界与风险判断依据见 [安全模型](SECURITY_MODEL.md)。
+
 ## 报告渠道
 
 安全问题请使用本仓库 [Security Advisories](https://github.com/LovelyTeams/LovelyCarve/security/advisories) 中的 **Report a vulnerability** 私密报告入口。如果未显示该入口，请先提交一个只询问私密联系方式的 issue，不公开漏洞细节、利用样本或真实检材。入口需要维护者在 GitHub 开启，操作见 [GitHub 私密报告说明](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/report-privately)。

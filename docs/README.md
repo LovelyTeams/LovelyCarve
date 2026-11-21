@@ -38,5 +38,6 @@ vendored 读取器的上游版本与本地补丁记录在 [vendor/UPSTREAM.md](.
 | 开发插件 | [LPP 协议与 SDK](PLUGIN_PROTOCOL.md) |
 | 发布版本 | [发布指南](RELEASING.md)、[第三方声明](../THIRD_PARTY_NOTICES.md) |
 | 报告安全问题 | [安全策略](../SECURITY.md) |
+| 理解安全资产、攻击面与信任边界 | [安全模型](../SECURITY_MODEL.md) |
 
 新增或修改功能时同步更新所属文档：用户可见的变化写入 [CHANGELOG](../CHANGELOG.md) 的 `[Unreleased]`，格式能力写入对应的格式专题。测试样本的来源、许可与哈希保存在样本目录，第三方许可证与来源说明随代码保留。
