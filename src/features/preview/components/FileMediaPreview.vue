@@ -4,8 +4,8 @@
          后端 fs_media_temp 先把节点物化到临时文件，再由 <video>/<audio>
          通过 asset 协议按需取字节范围（支持跳转 / 大文件）。 -->
     <template v-if="isStreamMedia">
-      <div v-if="streamLoading" class="state-row mono">{{ tr("准备预览…") }}</div>
-      <div v-else-if="streamError" class="state-row mono error">{{ streamError }}</div>
+      <PreviewState v-if="streamLoading" tone="loading" :title="tr('准备预览…')" />
+      <PreviewState v-else-if="streamError" tone="error" :icon="CircleAlert" :title="tr('无法播放')" :description="streamError" />
       <video
         v-else-if="streamUrl && category === 'video'"
         :key="node.id"
@@ -26,11 +26,10 @@
     </template>
     <!-- 图片：整文件读入内存以 Blob 预览（受 MEDIA_CAP 约束）。 -->
     <template v-else>
-      <div v-if="mediaTooLarge" class="state-row mono">
-        {{ tr("文件过大（") }}{{ formatBytes(node.size) }}{{ tr("），无法预览，请导出后查看。") }}
-      </div>
-      <div v-else-if="mediaLoading" class="state-row mono">{{ tr("加载中…") }}</div>
-      <div v-else-if="mediaError" class="state-row mono error">{{ mediaError }}</div>
+      <PreviewState v-if="mediaTooLarge" :icon="ImageOff" :title="tr('图片过大，无法预览')"
+        :description="tr('文件大小 {0}；请导出后查看。', { 0: formatBytes(node.size) })" />
+      <PreviewState v-else-if="mediaLoading" tone="loading" :title="tr('加载中…')" />
+      <PreviewState v-else-if="mediaError" tone="error" :icon="CircleAlert" :title="tr('无法显示图片')" :description="mediaError" mono-description />
       <template v-else-if="mediaUrl">
       <div v-if="category === 'image'" class="qr-image-area">
         <div class="qr-stage">
@@ -177,7 +176,8 @@
 import { tr } from '../../../composables/useLocale';
 
 import type { Ref } from 'vue';
-import { X, Copy, Check, QrCode, ScanText } from 'lucide-vue-next';
+import { X, Copy, Check, CircleAlert, ImageOff, QrCode, ScanText } from 'lucide-vue-next';
+import PreviewState from './PreviewState.vue';
 import type { FsNode } from '../../../lib/ipc/fs/types';
 import type { PreviewCategory } from '../model/preview';
 import { formatPreviewBytes as formatBytes } from '../model/preview';
@@ -197,16 +197,17 @@ const emit = defineEmits<{ mediaError: []; imageLoad: []; cancelQr: []; copyQr: 
 
 <style scoped>
 .mono { font-family: var(--font-mono); font-size: 12px; }
-.state-row { padding: 24px; text-align: center; color: var(--text-secondary); }
-.state-row.error { color: var(--sev-critical-fg); }
+/* 媒体放在中性底色上，图片边界与透明区一眼可辨。 */
 .media-wrap {
   flex: 1;
   min-height: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   overflow: auto;
-  padding: 12px;
+  padding: 16px;
+  background: var(--surface-primary);
 }
 
 .media-view {
@@ -214,6 +215,7 @@ const emit = defineEmits<{ mediaError: []; imageLoad: []; cancelQr: []; copyQr: 
   max-height: 100%;
   object-fit: contain;
   border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
 }
 
 .media-audio {
@@ -225,8 +227,8 @@ const emit = defineEmits<{ mediaError: []; imageLoad: []; cancelQr: []; copyQr: 
 .qr-image-area {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-width: 100%;
+  gap: 12px;
+  width: 100%;
   max-height: 100%;
   min-height: 0;
 }
@@ -262,12 +264,15 @@ const emit = defineEmits<{ mediaError: []; imageLoad: []; cancelQr: []; copyQr: 
   fill: var(--sev-critical-bg);
 }
 
-.qr-results {
+/* 识别结果：每类一个卡片（唯一的描边），里面的条目只用浅底区分。 */
+.qr-results,
+.ocr-results {
   flex-shrink: 0;
+  padding: 12px;
   border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
   background: var(--surface-secondary);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
+  box-shadow: var(--card-shadow);
 }
 
 .qr-results-head {
@@ -322,15 +327,13 @@ const emit = defineEmits<{ mediaError: []; imageLoad: []; cancelQr: []; copyQr: 
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 6px 8px;
-  border: 1px solid var(--border-color);
+  padding: 8px;
   border-radius: var(--radius-md);
   background: var(--surface-primary);
-  transition: border-color var(--transition-fast), background var(--transition-fast);
+  transition: background var(--transition-fast);
 }
 
 .qr-item.active {
-  border-color: var(--primary-color);
   background: var(--sidebar-active-bg);
 }
 
@@ -408,14 +411,6 @@ const emit = defineEmits<{ mediaError: []; imageLoad: []; cancelQr: []; copyQr: 
   background: color-mix(in srgb, var(--primary-color) 35%, transparent);
 }
 
-.ocr-results {
-  flex-shrink: 0;
-  border: 1px solid var(--border-color);
-  background: var(--surface-secondary);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
-}
-
 .ocr-results-head {
   display: flex;
   align-items: center;
@@ -452,19 +447,8 @@ const emit = defineEmits<{ mediaError: []; imageLoad: []; cancelQr: []; copyQr: 
   white-space: pre-wrap;
   word-break: break-word;
   user-select: text;
-  border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   background: var(--surface-primary);
-}
-
-.trunc-note {
-  color: var(--sev-warn-fg);
-  border: 1px solid var(--sev-warn-border);
-  background: var(--sev-warn-bg);
-  border-radius: var(--radius-md);
-  padding: 6px 10px;
-  margin-bottom: 8px;
-  font-size: 12px;
 }
 
 </style>

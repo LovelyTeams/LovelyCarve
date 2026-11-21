@@ -1,6 +1,6 @@
 <template>
   <div class="sqlite-viewer">
-    <div v-if="loading" class="state-row mono"><Loader2 :size="14" class="spin" /> {{ tr("正在解析 SQLite 数据库…") }}</div>
+    <PreviewState v-if="loading" tone="loading" :title="tr('正在解析 SQLite 数据库…')" />
 
     <!-- 加密库：密钥输入表单 -->
     <div v-else-if="locked" class="lock-wrap">
@@ -36,8 +36,8 @@
           spellcheck="false"
         />
 
-        <details v-disclosure-motion class="lock-adv" :open="showAdvanced">
-          <summary class="mono">{{ tr("高级参数（旧版库 / 微信）") }}</summary>
+        <details v-disclosure-motion class="ui-disclosure lock-adv" :open="showAdvanced">
+          <summary><ChevronRight :size="13" class="ui-chevron" />{{ tr("高级参数（旧版库 / 微信）") }}</summary>
           <div class="adv-grid">
             <label class="adv-field">
               <span class="adv-k">{{ tr("兼容版本") }}</span>
@@ -58,7 +58,7 @@
           </div>
         </details>
 
-        <div v-if="keyError" class="lock-err">{{ keyError }}</div>
+        <p v-if="keyError" class="ui-field-error" role="alert"><CircleAlert :size="12" /><span>{{ keyError }}</span></p>
 
         <button type="submit" class="ui-btn primary lock-submit" :disabled="!canSubmit || unlocking">
           <Loader2 v-if="unlocking" :size="14" class="spin" />
@@ -69,6 +69,19 @@
     </div>
 
     <template v-else-if="digest || error">
+      <!-- 面板较窄时表清单收起，改由视图栏里的下拉框选表、SQL 查询或已删除记录。 -->
+      <PreviewChromeSlot area="tools">
+        <UiSelect :model-value="sourceValue" class="sm mono source-picker" :options="sourceOptions" :aria-label="tr('数据表')"
+          @update:model-value="selectSource" />
+      </PreviewChromeSlot>
+      <!-- 库的状态（已解密、已回放 WAL）放进状态栏。 -->
+      <PreviewChromeSlot area="statusStart">
+        <span v-if="digest?.encrypted" class="ui-badge sm success"><LockOpen :size="11" />{{ tr("已解密（SQLCipher）") }}</span>
+        <span v-if="digest?.sidecars.length" class="ui-badge sm info" :title="tr('预览是 SQLite 回放 WAL 中已提交事务后的状态，比主库文件更新')">
+          <History :size="11" />{{ tr("已回放") }} {{ joinList(digest.sidecars, tr) }}
+        </span>
+      </PreviewChromeSlot>
+
       <!-- 左：表清单，末尾是「已删除记录」 -->
       <aside class="table-list">
         <button class="table-item" :class="{ active: showSql }" :aria-pressed="showSql" @click="openSql">
@@ -106,13 +119,10 @@
 
       <!-- 右：所选表的数据，或已删除记录 -->
       <div class="grid-pane">
-        <div v-if="digest?.encrypted" class="decrypted-bar"><LockOpen :size="12" /> {{ tr("已解密（SQLCipher）") }}</div>
-        <div v-if="!showSql && digest?.sidecars.length" class="wal-bar" :title="tr('预览是 SQLite 回放 WAL 中已提交事务后的状态，比主库文件更新')">
-          <History :size="12" /> {{ tr("已回放") }} {{ joinList(digest.sidecars, tr) }}
-        </div>
         <SqliteDeletedRecords
           v-if="digest && deletedOpened"
           v-show="showDeleted"
+          :active="showDeleted"
           :image-id="imageId"
           :node-id="nodeId"
           :parent-id="parentId ?? null"
@@ -123,6 +133,7 @@
         <SqliteQueryPanel
           v-if="sqlOpened"
           v-show="showSql"
+          :active="showSql"
           :image-id="imageId"
           :node-id="nodeId"
           :parent-id="parentId ?? null"
@@ -130,11 +141,16 @@
           :initial-table="sqlTable"
         />
         <template v-if="!showDeleted && !showSql">
-          <div v-if="error" class="state-row mono error">{{ tr("SQLite 解析失败：{0}", { 0: error }) }}</div>
-          <div v-else-if="!digest?.tables.length" class="state-row mono">{{ tr("库内没有用户表。已删除的表可能留有数据，可在左侧打开「已删除记录」查找。") }}</div>
-          <div v-else-if="!activeName" class="state-row mono">{{ tr("在左侧选择一张表。") }}</div>
-          <div v-else-if="rowsLoading && !rows.length" class="state-row mono"><Loader2 :size="14" class="spin" /> {{ tr("加载中…") }}</div>
-          <div v-else-if="rowsError" class="state-row mono error">{{ rowsError }}</div>
+          <PreviewState v-if="error" tone="error" :icon="CircleAlert" :title="tr('SQLite 解析失败')" :description="error" mono-description>
+            <button type="button" class="ui-btn sm" @click="openSql"><CodeXml :size="13" />{{ tr("SQL 查询") }}</button>
+          </PreviewState>
+          <PreviewState v-else-if="!digest?.tables.length" :icon="Table2" :title="tr('没有用户表')"
+            :description="tr('已删除的表可能留有数据，可打开「已删除记录」查找。')">
+            <button type="button" class="ui-btn sm" @click="openDeleted"><ArchiveRestore :size="13" />{{ tr("已删除记录") }}</button>
+          </PreviewState>
+          <PreviewState v-else-if="!activeName" :icon="Table2" :title="tr('选择一张表查看数据。')" />
+          <PreviewState v-else-if="rowsLoading && !rows.length" tone="loading" :title="tr('加载中…')" />
+          <PreviewState v-else-if="rowsError" tone="error" :icon="CircleAlert" :title="tr('读取表失败')" :description="rowsError" mono-description />
           <template v-else>
             <div ref="gridEl" class="grid-scroll">
               <table class="data-table db-table">
@@ -177,20 +193,21 @@
               </table>
             </div>
 
-            <footer class="pager">
-              <span class="pager-info mono">
+            <PreviewChromeSlot area="statusEnd">
+              <span class="ui-footbar-stat pager-info">
                 <Loader2 v-if="rowsLoading" :size="12" class="spin" />
-                {{ rangeStart }}–{{ rangeEnd }} / {{ total }}
+                <strong>{{ rangeStart.toLocaleString() }}–{{ rangeEnd.toLocaleString() }}</strong> / {{ total.toLocaleString() }}
               </span>
-              <span class="pager-spacer" />
-              <button class="ui-icon-btn sm bordered" :title="tr('上一页')" :aria-label="tr('上一页')" :disabled="pageIndex <= 0 || rowsLoading" @click="prevPage">
-                <ChevronLeft :size="14" />
-              </button>
-              <span class="pager-page mono">{{ pageIndex + 1 }} / {{ pageCount }}</span>
-              <button class="ui-icon-btn sm bordered" :title="tr('下一页')" :aria-label="tr('下一页')" :disabled="pageIndex >= pageCount - 1 || rowsLoading" @click="nextPage">
-                <ChevronRight :size="14" />
-              </button>
-            </footer>
+              <div class="pager">
+                <button type="button" class="ui-icon-btn sm" :title="tr('上一页')" :aria-label="tr('上一页')" :disabled="pageIndex <= 0 || rowsLoading" @click="prevPage">
+                  <ChevronLeft :size="14" />
+                </button>
+                <span class="pager-page mono">{{ pageIndex + 1 }} / {{ pageCount }}</span>
+                <button type="button" class="ui-icon-btn sm" :title="tr('下一页')" :aria-label="tr('下一页')" :disabled="pageIndex >= pageCount - 1 || rowsLoading" @click="nextPage">
+                  <ChevronRight :size="14" />
+                </button>
+              </div>
+            </PreviewChromeSlot>
           </template>
         </template>
       </div>
@@ -209,9 +226,11 @@ import { vDisclosureMotion } from '../../../../composables/uiMotionDirectives';
 // 末尾的「已删除记录」第一次打开时才扫描，之后在切换表时保留结果。
 import { computed, nextTick, ref, watch } from 'vue';
 import {
-  ArchiveRestore, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CodeXml,
+  ArchiveRestore, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleAlert, CodeXml,
   Eye, History, KeyRound, Loader2, Lock, LockOpen, Table2,
 } from 'lucide-vue-next';
+import PreviewChromeSlot from '../PreviewChromeSlot.vue';
+import PreviewState from '../PreviewState.vue';
 import { fsSqlitePreview, fsSqliteTableRows, SQLITE_LOCKED, type SqliteCell, type SqliteColumn, type SqliteDigest, type SqliteKey } from '../../../../lib/ipc/sqlite';
 import { highlightHtml } from '../../../../utils/highlight';
 import { sqliteCellClass, sqliteCellText } from '../../model/sqliteCell';
@@ -303,6 +322,31 @@ watch([rows, showDeleted, showSql], () => emit('resetMatch'));
 defineExpose({ matchCount, focusMatch });
 
 const activeMeta = computed(() => digest.value?.tables.find((t) => t.name === activeName.value) ?? null);
+
+// 窄面板里代替表清单的下拉框：SQL 查询、各表（附行数）与已删除记录。表名不会含 NUL。
+const SQL_SOURCE = '\u0000sql';
+const DELETED_SOURCE = '\u0000deleted';
+const sourceValue = computed(() => (showSql.value ? SQL_SOURCE : showDeleted.value ? DELETED_SOURCE : activeName.value ?? ''));
+const sourceOptions = computed<UiSelectOption<string>[]>(() => [
+  ...(sourceValue.value === '' ? [{ value: '', label: tr('选择数据表'), disabled: true }] : []),
+  { value: SQL_SOURCE, label: tr('SQL 查询') },
+  ...(digest.value?.tables ?? []).map((table) => ({
+    value: table.name,
+    label: table.error ? tr('{0}（解析失败）', { 0: table.name })
+      : table.row_count === null ? tr('{0}（视图）', { 0: table.name })
+        : tr('{0}（{1} 行）', { 0: table.name, 1: table.row_count.toLocaleString() }),
+  })),
+  ...(digest.value ? [{
+    value: DELETED_SOURCE,
+    label: deletedCount.value === null ? tr('已删除记录') : tr('已删除记录（{0}）', { 0: deletedCount.value.toLocaleString() }),
+  }] : []),
+]);
+
+function selectSource(value: string) {
+  if (value === SQL_SOURCE) openSql();
+  else if (value === DELETED_SOURCE) openDeleted();
+  else if (value) selectTable(value);
+}
 const pageIndex = computed(() => Math.floor(offset.value / PAGE_SIZE));
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)));
 const rangeStart = computed(() => (total.value === 0 ? 0 : offset.value + 1));
@@ -552,21 +596,11 @@ watch(
 
 .lock-adv { font-size: 12px; }
 .lock-adv summary {
-  cursor: pointer;
   color: var(--text-secondary);
   font-size: 12px;
   padding: 2px 0;
-  list-style: none;
 }
-.lock-adv summary:hover { color: var(--primary-color); }
-.lock-adv summary::-webkit-details-marker { display: none; }
-.lock-adv summary::before {
-  content: '▸';
-  display: inline-block;
-  margin-right: 4px;
-  transition: transform var(--transition-fast);
-}
-.lock-adv[open] summary::before { transform: rotate(90deg); }
+.lock-adv summary:hover { color: var(--text-primary); }
 .adv-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
@@ -581,11 +615,6 @@ watch(
   align-items: center;
   gap: 6px;
   margin-top: 8px;
-}
-
-.lock-err {
-  font-size: 12px;
-  color: var(--sev-critical-fg);
 }
 
 .lock-submit { align-self: stretch; }
@@ -604,25 +633,6 @@ watch(
 }
 
 /* ── 右侧数据网格 ── */
-.decrypted-bar,
-.wal-bar {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  font-size: 11px;
-  border-bottom: 1px solid var(--border-color);
-}
-.decrypted-bar {
-  color: var(--sev-success-fg);
-  background: var(--sev-success-bg);
-}
-.wal-bar {
-  color: var(--sev-info-fg);
-  background: var(--sev-info-bg);
-}
-
 .db-table th.sortable { cursor: pointer; user-select: none; }
 .db-table th.sortable:hover { background: var(--hover-bg); }
 .db-table th.sorted { color: var(--primary-color); }

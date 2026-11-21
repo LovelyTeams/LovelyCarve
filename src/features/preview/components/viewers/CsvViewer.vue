@@ -1,41 +1,31 @@
 <template>
   <div class="csv-viewer">
-    <!-- 加载 / 错误 / 空态 -->
-    <div v-if="loading" class="state-row">
-      <IndeterminateBar :label="tr('正在解析表格…')" />
-    </div>
-    <div v-else-if="error" class="state-row mono error">
-      <AlertTriangle :size="14" /> {{ tr("无法解析为表格：{0}", { 0: error }) }}
-    </div>
-    <div v-else-if="isEmpty" class="state-row mono">{{ tr("空文档，无可视化内容。") }}</div>
+    <PreviewState v-if="loading" tone="loading" :title="tr('正在解析表格…')" />
+    <PreviewState v-else-if="error" tone="error" :icon="CircleAlert" :title="tr('无法解析为表格')" :description="error" mono-description />
+    <PreviewState v-else-if="isEmpty" :icon="Sheet" :title="tr('空文档，无可视化内容。')" />
 
     <template v-else>
-      <!-- 工具栏：首行表头开关 + 分隔符选择（切换即后端重解析）+ 行列统计总览 -->
-      <div class="toolbar">
+      <!-- 首行表头与分隔符（切换即后端重解析）放进视图栏，行列统计与排序放进状态栏。 -->
+      <PreviewChromeSlot area="tools">
         <button
-          class="ui-btn sm"
-          :class="{ active: headerMode }"
+          type="button"
+          class="ui-btn sm ghost"
           :aria-pressed="headerMode"
           :title="tr('把首行当作表头')"
           @click="headerMode = !headerMode"
         >
           <Heading :size="13" /> {{ tr("首行表头") }}
         </button>
-
-        <label class="delim-pick">
-          <span class="delim-lead">{{ tr("分隔符") }}</span>
-          <UiSelect v-model="manualDelim" class="sm mono" :options="delimiterOptions" />
-        </label>
-
-        <span v-if="sortCol !== null" class="sort-tag" :title="tr('点击列头切换排序，再点一次可清除')">
+        <UiSelect v-model="manualDelim" class="sm mono delim-select" :options="delimiterOptions" :aria-label="tr('分隔符')" />
+      </PreviewChromeSlot>
+      <PreviewChromeSlot area="statusStart">
+        <span class="ui-footbar-stat"><strong>{{ totalDataRows.toLocaleString() }}</strong> {{ tr("行") }}</span>
+        <span class="ui-footbar-stat"><strong>{{ colCount.toLocaleString() }}</strong> {{ tr("列") }}</span>
+        <button v-if="sortCol !== null" type="button" class="ui-badge sm sort-badge" :title="tr('清除排序')" @click="clearSort">
           {{ sortDir === 'asc' ? tr("按「{0}」升序", { 0: headerCells[sortCol] }) : tr("按「{0}」降序", { 0: headerCells[sortCol] }) }}
-          <button class="sort-clear" :title="tr('清除排序')" @click="clearSort"><X :size="11" /></button>
-        </span>
-
-        <span class="spacer"></span>
-
-        <span class="stat mono">{{ totalDataRows.toLocaleString() }} {{ tr("行 ×") }} {{ colCount }} {{ tr("列") }}</span>
-      </div>
+          <X :size="11" />
+        </button>
+      </PreviewChromeSlot>
 
       <!-- 表格 -->
       <div class="grid-scroll" ref="rootEl">
@@ -74,10 +64,10 @@
         </table>
       </div>
 
-      <div v-if="capNotes.length" class="cap-note mono">
-        <AlertTriangle :size="12" />
-        <span>{{ capNotes.join('　') }}</span>
-      </div>
+      <p v-if="capNotes.length" class="ui-alert warn cap-note" role="note">
+        <AlertTriangle :size="14" />
+        <span>{{ capNotes.join(' ') }}</span>
+      </p>
     </template>
   </div>
 </template>
@@ -90,13 +80,14 @@ import { tr } from '../../../../composables/useLocale';
 // （切换即后端重解析）、列头点击排序、关键字高亮/计数/定位。自取数据型（同
 // SqliteViewer / PeViewer）：父级只传 image-id / node-id，不再透传文本。
 import { computed, ref, watch, onBeforeUnmount } from 'vue';
-import { AlertTriangle, ArrowDown, ArrowUp, ChevronsUpDown, Heading, X } from 'lucide-vue-next';
+import { AlertTriangle, ArrowDown, ArrowUp, ChevronsUpDown, CircleAlert, Heading, Sheet, X } from 'lucide-vue-next';
 import { DELIMITERS, type Delimiter } from '../../model/csv';
 import { fsCsvPreview, type CsvTable } from '../../../../lib/ipc/csv';
 import { escapeHtml } from '../../../../utils/safeHtml';
 import { highlightHtml } from '../../../../utils/highlight';
-import IndeterminateBar from '../../../../components/ui/IndeterminateBar.vue';
 import UiSelect, { type UiSelectOption } from '../../../../components/ui/UiSelect.vue';
+import PreviewChromeSlot from '../PreviewChromeSlot.vue';
+import PreviewState from '../PreviewState.vue';
 import type { ImageId, NodeId } from '../../../../lib/ipc/ids';
 
 const props = defineProps<{
@@ -331,80 +322,21 @@ defineExpose({ focusMatch });
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--surface-primary);
-}
-/* ── 状态行 ── */
-.state-row {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 24px;
-  font-size: 12px;
-  line-height: 1.6;
-  text-align: center;
-  color: var(--text-secondary);
-}
-.state-row.error {
-  color: var(--sev-critical-fg);
-}
-
-/* ── 工具栏 ── */
-.toolbar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 40px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border-color);
   background: var(--surface-secondary);
 }
 
-.delim-pick {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.delim-lead {
-  font-size: 12px;
-  color: var(--text-secondary);
+/* 视图栏里的分隔符选择：与幽灵按钮同高。 */
+.delim-select {
+  height: 26px;
 }
 
-/* 当前排序标签（可一键清除）。 */
-.sort-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 22px;
-  font-size: 11px;
-  padding: 0 3px 0 8px;
-  border-radius: var(--radius-sm);
-  background: var(--sev-info-bg);
-  color: var(--sev-info-fg);
-}
-.sort-clear {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: inherit;
+/* 状态栏里的当前排序：点一下清除，回到文件中的原始顺序。 */
+.sort-badge {
   cursor: pointer;
 }
-.sort-clear:hover {
-  background: var(--sev-info-bg-hover);
-}
 
-.spacer {
-  flex: 1;
-}
-.stat {
-  font-size: 11px;
-  color: var(--text-secondary);
+.sort-badge:hover {
+  color: var(--text-primary);
 }
 
 /* ── 表格 ── */
@@ -480,14 +412,7 @@ defineExpose({ focusMatch });
 /* ── 截断提示 ── */
 .cap-note {
   flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  font-size: 12px;
-  border-top: 1px solid var(--sev-warn-border);
-  background: var(--sev-warn-bg);
-  color: var(--sev-warn-fg);
+  margin: 8px 12px;
 }
 
 /* 命中高亮（v-html 注入的 <mark>），与其它预览视图一致；当前命中用强调色。 */

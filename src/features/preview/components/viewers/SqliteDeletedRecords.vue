@@ -1,6 +1,6 @@
 <template>
   <div class="deleted-pane">
-    <div v-if="loading" class="state-row mono"><Loader2 :size="14" class="spin" /> {{ tr("正在扫描已删除记录…") }}</div>
+    <PreviewState v-if="loading" tone="loading" :title="tr('正在扫描已删除记录…')" />
 
     <div v-else-if="error" class="ui-alert danger load-alert" role="alert">
       <AlertCircle :size="14" />
@@ -9,15 +9,17 @@
     </div>
 
     <template v-else-if="result">
-      <div class="deleted-toolbar">
-        <UiSelect v-model="tableFilter" class="sm" :options="tableOptions" :aria-label="tr('按表筛选')" />
-        <UiSelect v-model="originFilter" class="sm" :options="originOptions" :aria-label="tr('按来源筛选')" />
+      <!-- 筛选放进视图栏，扫描概况放进状态栏（只在本视图显示时）。 -->
+      <PreviewChromeSlot area="tools" :active="active">
+        <UiSelect v-model="tableFilter" class="sm filter-select" :options="tableOptions" :aria-label="tr('按表筛选')" />
+        <UiSelect v-model="originFilter" class="sm filter-select" :options="originOptions" :aria-label="tr('按来源筛选')" />
+      </PreviewChromeSlot>
+      <PreviewChromeSlot area="statusStart" :active="active">
+        <span class="ui-footbar-stat deleted-facts">{{ facts }}</span>
         <span v-if="result.omitted" class="ui-badge sm warn" :title="tr('结果超过 {0} 条，只列出前 {1} 条', { 0: MAX_LISTED, 1: MAX_LISTED })">
           {{ tr("另有") }} {{ result.omitted.toLocaleString() }} {{ tr("条未列出") }}
         </span>
-        <span class="toolbar-spacer" />
-        <span class="deleted-facts mono">{{ facts }}</span>
-      </div>
+      </PreviewChromeSlot>
 
       <div v-if="result.notes.length || result.schemas.length" class="deleted-extras">
         <div v-for="note in result.notes" :key="note" class="ui-alert warn">
@@ -107,17 +109,18 @@
           </table>
         </div>
 
-        <footer class="pager">
-          <span class="pager-info mono">{{ rangeStart }}–{{ rangeEnd }} / {{ filtered.length.toLocaleString() }}</span>
-          <span class="pager-spacer" />
-          <button class="ui-icon-btn sm bordered" :title="tr('上一页')" :aria-label="tr('上一页')" :disabled="pageIndex <= 0" @click="offset -= PAGE_SIZE">
-            <ChevronLeft :size="14" />
-          </button>
-          <span class="pager-page mono">{{ pageIndex + 1 }} / {{ pageCount }}</span>
-          <button class="ui-icon-btn sm bordered" :title="tr('下一页')" :aria-label="tr('下一页')" :disabled="pageIndex >= pageCount - 1" @click="offset += PAGE_SIZE">
-            <ChevronRight :size="14" />
-          </button>
-        </footer>
+        <PreviewChromeSlot area="statusEnd" :active="active">
+          <span class="ui-footbar-stat"><strong>{{ rangeStart.toLocaleString() }}–{{ rangeEnd.toLocaleString() }}</strong> / {{ filtered.length.toLocaleString() }}</span>
+          <div class="pager">
+            <button type="button" class="ui-icon-btn sm" :title="tr('上一页')" :aria-label="tr('上一页')" :disabled="pageIndex <= 0" @click="offset -= PAGE_SIZE">
+              <ChevronLeft :size="14" />
+            </button>
+            <span class="pager-page mono">{{ pageIndex + 1 }} / {{ pageCount }}</span>
+            <button type="button" class="ui-icon-btn sm" :title="tr('下一页')" :aria-label="tr('下一页')" :disabled="pageIndex >= pageCount - 1" @click="offset += PAGE_SIZE">
+              <ChevronRight :size="14" />
+            </button>
+          </div>
+        </PreviewChromeSlot>
       </template>
     </template>
   </div>
@@ -133,15 +136,17 @@ import { joinList } from '../../../../i18n/translate';
 // 单元格会标出来。
 import { computed, ref, shallowRef, watch } from 'vue';
 import {
-  AlertCircle, AlertTriangle, ArchiveRestore, ChevronLeft, ChevronRight, FilterX, Loader2,
+  AlertCircle, AlertTriangle, ArchiveRestore, ChevronLeft, ChevronRight, FilterX,
 } from 'lucide-vue-next';
 import { vDisclosureMotion } from '../../../../composables/uiMotionDirectives';
 import { fsSqliteDeletedRecords, type SqliteCell, type SqliteKey, type SqliteRecordOrigin, type SqliteRecoveredRecord, type SqliteRecovery, type SqliteTable, type SqliteTableLink } from '../../../../lib/ipc/sqlite';
 import { sqliteCellClass, sqliteCellText } from '../../model/sqliteCell';
 import UiSelect, { type UiSelectOption } from '../../../../components/ui/UiSelect.vue';
+import PreviewChromeSlot from '../PreviewChromeSlot.vue';
+import PreviewState from '../PreviewState.vue';
 import type { ImageId, NodeId } from '../../../../lib/ipc/ids';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   imageId: ImageId;
   nodeId: NodeId;
   parentId: NodeId | null;
@@ -149,7 +154,9 @@ const props = defineProps<{
   sqliteKey: SqliteKey | null;
   /** 现存的表，用来给选中表的记录配上列名。 */
   tables: SqliteTable[];
-}>();
+  /** 本视图正在显示：只有这时它的筛选与翻页才放进预览的视图栏和状态栏。 */
+  active?: boolean;
+}>(), { active: true });
 
 const emit = defineEmits<{
   /** 扫描完成：恢复到的记录总数（含未列出的）。 */
@@ -378,19 +385,12 @@ watch(
   overflow: hidden;
 }
 
-.deleted-toolbar {
-  flex: 0 0 auto;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border-color);
+.filter-select {
+  max-width: 200px;
+  height: 26px;
 }
-.toolbar-spacer { flex: 1; }
 .deleted-facts {
-  font-size: 11px;
-  color: var(--text-secondary);
+  font-family: var(--font-mono);
 }
 
 .load-alert {

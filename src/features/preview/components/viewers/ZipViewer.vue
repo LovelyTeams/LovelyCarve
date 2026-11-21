@@ -1,85 +1,57 @@
 <template>
   <div class="zip-viewer">
-    <div v-if="loading" class="state-row mono"><Loader2 :size="14" class="spin" /> {{ tr("正在解析压缩包结构…") }}</div>
-    <div v-else-if="error" class="state-row mono error">{{ error }}</div>
+    <PreviewState v-if="loading" tone="loading" :title="tr('正在解析压缩包结构…')" />
+    <PreviewState v-else-if="error" tone="error" :icon="CircleAlert" :title="tr('无法解析压缩包')" :description="error" mono-description />
 
     <template v-else-if="report">
-      <!-- 概览 -->
-      <header class="zip-overview">
-        <div class="ov-title">
-          <div class="ov-icon"><FileArchive :size="20" /></div>
-          <div class="ov-tiles">
-            <div class="ov-tile">
-              <span class="ov-num mono">{{ report.file_count.toLocaleString() }}</span>
-              <span class="ov-label">{{ tr("文件") }}</span>
-            </div>
-            <div class="ov-tile">
-              <span class="ov-num mono">{{ report.dir_count.toLocaleString() }}</span>
-              <span class="ov-label">{{ tr("目录") }}</span>
-            </div>
-            <div class="ov-tile">
-              <span class="ov-num mono">{{ formatBytes(report.total_uncompressed) }}</span>
-              <span class="ov-label">{{ tr("解压总量") }}</span>
-            </div>
-            <div class="ov-tile">
-              <span class="ov-num mono">{{ formatBytes(report.total_compressed) }}</span>
-              <span class="ov-label">{{ tr("压缩总量") }}</span>
-            </div>
-            <div class="ov-tile">
-              <span class="ov-num mono">{{ ratioLabel }}</span>
-              <span class="ov-label">{{ tr("压缩率") }}</span>
-            </div>
-            <div v-if="report.encrypted_count > 0" class="ov-tile warn">
-              <span class="ov-num mono"><Lock :size="13" /> {{ report.encrypted_count.toLocaleString() }}</span>
-              <span class="ov-label">{{ tr("加密项") }}</span>
-            </div>
-          </div>
-        </div>
-        <div v-if="report.comment" class="ov-comment mono" :title="report.comment">{{ tr("注释：{0}", { 0: report.comment }) }}</div>
-        <div v-for="(w, i) in report.warnings" :key="i" class="ov-warn mono"><AlertTriangle :size="12" /> {{ w }}</div>
-      </header>
+      <!-- 概况放进状态栏；注释与解析警告留在内容顶部。 -->
+      <PreviewChromeSlot area="statusStart">
+        <span class="ui-footbar-stat"><strong>{{ report.file_count.toLocaleString() }}</strong> {{ tr("个文件") }}</span>
+        <span class="ui-footbar-stat"><strong>{{ report.dir_count.toLocaleString() }}</strong> {{ tr("个目录") }}</span>
+        <span class="ui-footbar-stat" :title="tr('压缩总量 {0}，压缩率 {1}', { 0: formatBytes(report.total_compressed), 1: ratioLabel })">
+          {{ tr("解压总量") }} <strong>{{ formatBytes(report.total_uncompressed) }}</strong>
+        </span>
+        <span v-if="report.encrypted_count > 0" class="ui-badge sm warn"><Lock :size="11" />{{ tr("加密项") }} {{ report.encrypted_count.toLocaleString() }}</span>
+      </PreviewChromeSlot>
 
-      <!-- 左树 + 右预览 -->
+      <div v-if="report.comment || report.warnings.length" class="zip-notes">
+        <p v-if="report.comment" class="zip-comment mono" :title="report.comment">{{ tr("注释：{0}", { 0: report.comment }) }}</p>
+        <p v-for="(w, i) in report.warnings" :key="i" class="ui-alert warn" role="note"><AlertTriangle :size="14" /><span>{{ w }}</span></p>
+      </div>
+
+      <!-- 成员树 + 成员预览：宽面板左右并排，窄面板上下排列。 -->
       <div class="zip-body">
         <ZipMemberTree :report="report" :selected="selected" @select="selectMember" />
         <div class="zip-preview-pane">
-          <div v-if="!selected" class="ui-empty member-empty">
-            <span class="ui-empty-icon"><FileSearch :size="22" /></span>
-            <p class="ui-empty-desc">{{ tr("选择左侧一个文件以预览其内容") }}</p>
-          </div>
+          <PreviewState v-if="!selected" :icon="FileSearch" :title="tr('选择一个文件以预览其内容')" />
           <template v-else>
             <div class="member-head">
-              <component :is="iconFor(selected)" :size="15" class="mh-icon" :class="iconClass(selected)" />
-              <span class="mh-name mono" :title="selected.path">{{ selected.name }}</span>
-              <span class="mh-spacer"></span>
-              <div v-if="canPreview" class="ui-seg mh-tabs">
-                <button class="ui-seg-item" :class="{ active: memberTab === 'text' }" @click="memberTab = 'text'">{{ tr("文本") }}</button>
-                <button class="ui-seg-item" :class="{ active: memberTab === 'hex' }" @click="memberTab = 'hex'">{{ tr("十六进制") }}</button>
+              <component :is="iconFor(selected)" :size="16" class="mh-icon" :class="iconClass(selected)" />
+              <div class="mh-text">
+                <span class="mh-name mono" :title="selected.path">{{ selected.name }}</span>
+                <span class="mh-meta mono">{{ memberMeta }}</span>
               </div>
-            </div>
-            <div class="member-meta mono">
-              <span>{{ formatBytes(selected.size) }}</span>
-              <span v-if="selected.method">· {{ selected.method }}</span>
-              <span v-if="selected.crc32">· CRC {{ selected.crc32 }}</span>
-              <span v-if="selected.modified">· {{ formatTimestamp(selected.modified) }}</span>
+              <div v-if="canPreview" class="ui-seg mh-tabs" role="group" :aria-label="tr('成员视图')">
+                <button type="button" class="ui-seg-item" :aria-pressed="memberTab === 'text'" @click="memberTab = 'text'">{{ tr("文本") }}</button>
+                <button type="button" class="ui-seg-item" :aria-pressed="memberTab === 'hex'" @click="memberTab = 'hex'">{{ tr("十六进制") }}</button>
+              </div>
             </div>
 
             <!-- 符号链接：只显示目标，不读取内容 -->
-            <div v-if="selected.kind === 'symlink'" class="member-note mono">
-              {{ tr("符号链接 →") }}<span class="link-target">{{ selected.link_target || tr("（未知目标）") }}</span>
-            </div>
+            <PreviewState v-if="selected.kind === 'symlink'" :icon="Link2" :title="tr('符号链接')"
+              :description="selected.link_target || tr('（未知目标）')" mono-description />
             <!-- 加密 / 不支持压缩方法：不可预览 -->
-            <div v-else-if="selected.kind === 'other'" class="member-note mono">
-              {{ tr("该成员") }}{{ selected.encrypted ? tr("已加密") : tr("使用了未支持的压缩方法") }}{{ tr("，无法解压预览；可导出后用其他工具处理。") }}
-            </div>
+            <PreviewState v-else-if="selected.kind === 'other'" :icon="Lock" :title="selected.encrypted ? tr('成员已加密') : tr('不支持的压缩方法')"
+              :description="tr('无法解压预览；可导出后用其他工具处理。')" />
 
             <template v-else>
-              <div v-if="memberLoading" class="state-row mono"><Loader2 :size="13" class="spin" /> {{ tr("解压中…") }}</div>
-              <div v-else-if="memberError" class="state-row mono error">{{ memberError }}</div>
+              <PreviewState v-if="memberLoading" tone="loading" :title="tr('解压中…')" />
+              <PreviewState v-else-if="memberError" tone="error" :icon="CircleAlert" :title="tr('解压失败')" :description="memberError" mono-description />
               <template v-else-if="memberBytes">
-                <div v-if="memberTruncated" class="trunc-note mono">
-                  {{ tr("已截断：仅读取前 {0}（成员共 {1}）", { 0: formatBytes(memberBytes.length), 1: formatBytes(selected.size) }) }}
-                </div>
+                <p v-if="memberTruncated" class="ui-alert warn trunc-note" role="note">
+                  <AlertTriangle :size="14" />
+                  <span>{{ tr("已截断：仅读取前 {0}（成员共 {1}）", { 0: formatBytes(memberBytes.length), 1: formatBytes(selected.size) }) }}</span>
+                </p>
 
                 <div v-if="memberTab === 'text'" class="text-view mono">
                   <div v-for="(chunk, ci) in textChunks" :key="ci" class="text-chunk">{{ chunk }}</div>
@@ -91,9 +63,10 @@
                     <span class="hx-bytes">{{ r.bytes }}</span>
                     <span class="hx-ascii">{{ r.ascii }}</span>
                   </div>
-                  <div v-if="hexCapped" class="trunc-note mono">
-                    {{ tr("十六进制仅显示前") }} {{ formatBytes(HEX_VIEW_CAP) }}{{ tr("；如需完整内容请导出该文件。") }}
-                  </div>
+                  <p v-if="hexCapped" class="ui-alert warn trunc-note" role="note">
+                    <AlertTriangle :size="14" />
+                    <span>{{ tr("十六进制仅显示前") }} {{ formatBytes(HEX_VIEW_CAP) }}{{ tr("；如需完整内容请导出该文件。") }}</span>
+                  </p>
                 </div>
               </template>
             </template>
@@ -108,13 +81,15 @@
 import { tr } from '../../../../composables/useLocale';
 
 import { computed } from 'vue';
-import { AlertTriangle, FileArchive, FileSearch, Folder, File, Link2, Loader2, Lock } from 'lucide-vue-next';
+import { AlertTriangle, CircleAlert, FileSearch, Folder, File, Link2, Lock } from 'lucide-vue-next';
 import type { ZipPreviewEntry } from '../../../../lib/ipc/zip';
 import { formatBytes } from '../../../../utils/format';
 import { formatTimestamp } from '../../../../utils/time';
 import { useZipArchive } from '../../composables/useZipArchive';
 import { useZipMember } from '../../composables/useZipMember';
 import ZipMemberTree from './ZipMemberTree.vue';
+import PreviewChromeSlot from '../PreviewChromeSlot.vue';
+import PreviewState from '../PreviewState.vue';
 import type { ImageId, NodeId } from '../../../../lib/ipc/ids';
 const props = defineProps<{ imageId: ImageId; nodeId: NodeId }>();
 const { loading, error, report } = useZipArchive({ imageId: () => props.imageId, nodeId: () => props.nodeId });
@@ -124,6 +99,18 @@ const ratioLabel = computed(() => {
   if (!r || r.total_uncompressed === 0) return '—';
   const saved = 1 - r.total_compressed / r.total_uncompressed;
   return `${(saved * 100).toFixed(0)}%`;
+});
+
+/** 大小、压缩方法、CRC 与修改时间，一行写在成员名下面。 */
+const memberMeta = computed(() => {
+  const entry = selected.value;
+  if (!entry) return '';
+  return [
+    formatBytes(entry.size),
+    entry.method,
+    entry.crc32 ? `CRC ${entry.crc32}` : '',
+    entry.modified ? formatTimestamp(entry.modified) : '',
+  ].filter(Boolean).join(' · ');
 });
 
 function iconFor(e: ZipPreviewEntry) {

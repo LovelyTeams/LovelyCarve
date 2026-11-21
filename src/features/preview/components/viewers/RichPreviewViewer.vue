@@ -1,15 +1,10 @@
 <template>
   <div class="rich-preview">
-    <div v-if="loading" class="state-row">
-      <IndeterminateBar :label="phaseLabel" />
-    </div>
-    <div v-else-if="tooLarge" class="state-row mono">
-      {{ tr("文件过大（") }}{{ formatBytes(node.size) }}{{ tr("），不渲染预览以免占用过多内存；请导出后查看，或切换到「文本 / 十六进制」视图。") }}
-    </div>
-    <div v-else-if="empty" class="state-row mono">{{ tr("空文件（0 字节），无可渲染内容。") }}</div>
-    <div v-else-if="error" class="state-row mono error">
-      <AlertTriangle :size="14" /> {{ tr("无法渲染「{0}」：{1}。请切换到「文本 / 十六进制」视图。", { 0: node.name, 1: error }) }}
-    </div>
+    <PreviewState v-if="loading" tone="loading" :title="phaseLabel" />
+    <PreviewState v-else-if="tooLarge" :icon="FileWarning" :title="tr('文件过大，不渲染预览')"
+      :description="tr('文件大小 {0}；请导出后查看，或切换到「文本 / 十六进制」视图。', { 0: formatBytes(node.size) })" />
+    <PreviewState v-else-if="empty" :icon="FileX" :title="tr('空文件（0 字节），无可渲染内容。')" />
+    <PreviewState v-else-if="error" tone="error" :icon="CircleAlert" :title="tr('无法渲染此文件')" :description="error" mono-description />
     <!-- Flyfish File Viewer 自带工具栏 / 渲染面与 Shadow DOM 隔离，整个容器交由其管理；
          theme 经 options 注入，切换主题时以 :key 重挂（库对 options 的响应性未验证）。 -->
     <FileViewer
@@ -35,7 +30,8 @@ import { tr, useLocale } from '../../../../composables/useLocale';
 // 小文件走可取消的 16 MiB 内存读取；PDF 可用 asset Range 流式读取。
 // 非流式渲染器限制为 64 MiB，避免 URL 路径被库整读为数 GiB。
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { AlertTriangle } from 'lucide-vue-next';
+import { CircleAlert, FileWarning, FileX } from 'lucide-vue-next';
+import PreviewState from '../PreviewState.vue';
 import { FileViewer } from '@file-viewer/vue3-full';
 import type { FileViewerOptions } from '@file-viewer/vue3-full';
 import '@file-viewer/vue3/dist/file-viewer3.css';
@@ -44,7 +40,6 @@ import { createPreviewRequest } from '../../composables/previewRequest';
 import { mediaStreamUrl } from '../../../../lib/ipc/media';
 import { formatBytes } from '../../../../utils/format';
 import { useTheme } from '../../../../composables/useTheme';
-import IndeterminateBar from '../../../../components/ui/IndeterminateBar.vue';
 import type { ImageId } from '../../../../lib/ipc/ids';
 
 const props = defineProps<{
@@ -161,23 +156,6 @@ const viewerOptions = computed<FileViewerOptions>(() => ({
   height: 100%;
   min-height: 0;
   background: var(--bg-primary);
-}
-
-.state-row {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 24px;
-  font-size: 12px;
-  line-height: 1.6;
-  text-align: center;
-  color: var(--text-secondary);
-}
-
-.state-row.error {
-  color: var(--sev-critical-fg);
 }
 
 .rich-viewer {

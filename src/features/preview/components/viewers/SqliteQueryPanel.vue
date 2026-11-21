@@ -64,20 +64,21 @@
           </tbody>
         </table>
       </div>
-      <footer class="pager">
-        <span class="pager-info mono" role="status">
-          {{ page.rows.length ? page.offset + 1 : 0 }}–{{ page.offset + page.rows.length }}
+      <PreviewChromeSlot area="statusEnd" :active="active">
+        <span class="ui-footbar-stat pager-info" role="status">
+          <strong>{{ (page.rows.length ? page.offset + 1 : 0).toLocaleString() }}–{{ (page.offset + page.rows.length).toLocaleString() }}</strong>
         </span>
-        <span class="pager-spacer" />
-        <button class="ui-icon-btn sm bordered" :title="tr('上一页')" :aria-label="tr('上一页')"
-          :disabled="busy || page.offset === 0" @click="load(Math.max(0, page.offset - PAGE_SIZE))">
-          <ChevronLeft :size="14" />
-        </button>
-        <button class="ui-icon-btn sm bordered" :title="tr('下一页')" :aria-label="tr('下一页')"
-          :disabled="busy || page.nextOffset === null" @click="load(page.nextOffset)">
-          <ChevronRight :size="14" />
-        </button>
-      </footer>
+        <div class="pager">
+          <button type="button" class="ui-icon-btn sm" :title="tr('上一页')" :aria-label="tr('上一页')"
+            :disabled="busy || page.offset === 0" @click="load(Math.max(0, page.offset - PAGE_SIZE))">
+            <ChevronLeft :size="14" />
+          </button>
+          <button type="button" class="ui-icon-btn sm" :title="tr('下一页')" :aria-label="tr('下一页')"
+            :disabled="busy || page.nextOffset === null" @click="load(page.nextOffset)">
+            <ChevronRight :size="14" />
+          </button>
+        </div>
+      </PreviewChromeSlot>
     </template>
   </section>
 </template>
@@ -89,15 +90,18 @@ import { tr } from '../../../../composables/useLocale';
 import { joinList } from '../../../../i18n/translate';
 import { fsSqliteQuery, type SqliteKey, type SqliteQueryPage, type SqliteQueryParameter } from '../../../../lib/ipc/sqlite';
 import { sqliteCellClass, sqliteCellText } from '../../model/sqliteCell';
+import PreviewChromeSlot from '../PreviewChromeSlot.vue';
 import type { ImageId, NodeId } from '../../../../lib/ipc/ids';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   imageId: ImageId;
   nodeId: NodeId;
   parentId: NodeId | null;
   sqliteKey: SqliteKey | null;
   initialTable: string | null;
-}>();
+  /** 本视图正在显示：只有这时它的翻页才放进预览的状态栏。 */
+  active?: boolean;
+}>(), { active: true });
 
 const PAGE_SIZE = 50;
 const sql = ref(props.initialTable

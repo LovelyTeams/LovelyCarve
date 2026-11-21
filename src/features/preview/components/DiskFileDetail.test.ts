@@ -25,8 +25,9 @@ beforeEach(() => {
   host = document.createElement('div'); document.body.append(host);
 });
 afterEach(() => { app?.unmount(); host.remove(); vi.unstubAllGlobals(); });
-async function mount(readingState?: FilePreviewReadingState, indexOnly = false) { app = createApp({ render: () => h(DiskFileDetail, { indexOnly, imageId: 'image-a', node: node.value, fullPath: '/notes.md', standalone: true, digest: { md5: 'known-md5' }, readingState }) }); app.mount(host); await settle(); }
+async function mount(readingState?: FilePreviewReadingState, indexOnly = false) { app = createApp({ render: () => h(DiskFileDetail, { indexOnly, imageId: 'image-a', node: node.value, fullPath: '/notes.md', digest: { md5: 'known-md5' }, readingState }) }); app.mount(host); await settle(); }
 function tab(label: string) { [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent === label)!.click(); }
+async function openFind() { host.querySelector<HTMLButtonElement>('[aria-label="查找"]')!.click(); await settle(); }
 
 describe('preview content composition', () => {
   it('preserves the offline attribute reading position when docking or detaching', async () => {
@@ -38,7 +39,8 @@ describe('preview content composition', () => {
     expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('详细信息');
     expect(host.textContent).toContain('/notes.md'); expect(host.textContent).toContain('known-md5');
     expect([...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].filter(button => button.disabled)).toHaveLength(3);
-    expect(host.querySelector('.preview-toolbar')).toBeNull(); expect(ipc.invoke).not.toHaveBeenCalled();
+    expect(host.querySelector('[aria-label="查找"]')).toBeNull(); expect(host.textContent).toContain('离线索引');
+    expect(ipc.invoke).not.toHaveBeenCalled();
     node.value = { ...node.value, id: 'next-file' }; await settle();
     expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('详细信息'); expect(ipc.invoke).not.toHaveBeenCalled();
   });
@@ -49,14 +51,14 @@ describe('preview content composition', () => {
     expect(host.querySelectorAll('.text-view mark')).toHaveLength(2);
     expect([host.querySelector('.preview-body')?.scrollTop, host.querySelector('.preview-body')?.scrollLeft]).toEqual([90, 12]);
   });
-  it('pages hexadecimal bytes through the extracted footer', async () => {
+  it('pages hexadecimal bytes through the status bar', async () => {
     const original = ipc.invoke.getMockImplementation()!;
     ipc.invoke.mockImplementation(async (command, args) => command === 'fs_preview' ? new Uint8Array(8192).buffer : original(command, args));
     node.value = { ...node.value, name: 'bytes.bin', size: 8192 }; await mount(); tab('十六进制'); await settle();
-    expect(host.querySelector('.footer-divider')?.textContent).toContain('/ 4');
+    expect(host.querySelector('.preview-statusbar .page-total')?.textContent).toContain('/ 4');
     expect(host.querySelector<HTMLButtonElement>('[aria-label="上一页"]')?.disabled).toBe(true);
     host.querySelector<HTMLButtonElement>('[aria-label="下一页"]')!.click(); await settle();
-    expect(host.querySelector('.page-current')?.textContent).toBe('2');
+    expect(host.querySelector<HTMLInputElement>('[aria-label="当前页"]')?.value).toBe('2');
     expect(host.querySelector('.hex-row:not(.hex-header-row) .hex-offset')?.textContent).toBe('0800h');
     expect(host.querySelector<HTMLButtonElement>('[aria-label="上一页"]')?.disabled).toBe(false);
   });
@@ -75,15 +77,18 @@ describe('preview content composition', () => {
     const image = host.querySelector<HTMLImageElement>('.media-view')!;
     for (const [key, value] of Object.entries({ naturalWidth: 100, naturalHeight: 50, clientWidth: 200, clientHeight: 100 })) Object.defineProperty(image, key, { value });
     image.dispatchEvent(new Event('load')); await settle();
-    [...host.querySelectorAll<HTMLButtonElement>('.preview-toolbar button')].find(button => button.textContent?.includes('识别文字'))!.click(); await settle();
+    [...host.querySelectorAll<HTMLButtonElement>('.preview-viewbar button')].find(button => button.textContent?.includes('识别文字'))!.click(); await settle();
+    expect(host.querySelector('.preview-statusbar')?.textContent).toContain('100 × 50 px');
     expect(host.querySelector('.ocr-overlay')?.getAttribute('viewBox')).toBe('0 0 100 50');
     expect(host.querySelector<HTMLElement>('.ocr-text-span')?.style.left).toBe('10px');
     expect(host.querySelector('.ocr-text-block')?.textContent).toBe('image text');
     app.unmount(); expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview');
   });
 
-  it('renders safe Markdown and navigates its hits through the extracted toolbar', async () => {
+  it('renders safe Markdown and navigates its hits through the find bar', async () => {
     await mount();
+    expect(host.querySelector('[aria-label="搜索预览内容"]')).toBeNull();
+    await openFind();
     const input = host.querySelector<HTMLInputElement>('[aria-label="搜索预览内容"]')!;
     input.value = 'needle'; input.dispatchEvent(new Event('input', { bubbles: true })); await settle();
     const marks = host.querySelectorAll<HTMLElement>('.md-body mark'); expect(marks).toHaveLength(2);
@@ -111,7 +116,9 @@ describe('preview content composition', () => {
     tab('原类型');
     await vi.dynamicImportSettled();
     await settle();
+    expect(host.querySelector('.preview-statusbar')?.textContent).toContain('1–1 / 101');
 
+    await openFind();
     const input = host.querySelector<HTMLInputElement>('[aria-label="搜索当前页"]')!;
     input.value = '每天';
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -179,12 +186,12 @@ describe('preview content composition', () => {
     }));
     expect(panel.querySelector('tbody')?.textContent).toContain('9223372036854775807');
     expect(panel.textContent).toContain('messages.db-wal');
-    panel.querySelector<HTMLButtonElement>('[aria-label="下一页"]')!.click();
+    host.querySelector<HTMLButtonElement>('.preview-statusbar [aria-label="下一页"]')!.click();
     await settle();
     expect(ipc.invoke).toHaveBeenLastCalledWith('fs_sqlite_query', expect.objectContaining({ sql, parameters: ['work'], offset: 50 }));
   });
   it('binds text search refs and clears the previous match when selecting another file', async () => {
-    await mount(); tab('文本'); await settle();
+    await mount(); tab('文本'); await settle(); await openFind();
     const input = host.querySelector<HTMLInputElement>('[aria-label="搜索预览内容"]')!;
     input.value = 'needle'; input.dispatchEvent(new Event('input', { bubbles: true })); await settle();
     host.querySelectorAll<HTMLElement>('.text-view mark').forEach(mark => { mark.scrollIntoView = vi.fn(); });
@@ -192,5 +199,24 @@ describe('preview content composition', () => {
     expect(host.querySelector('.text-view mark.current')).not.toBeNull();
     node.value = { ...node.value, id: 'next', name: 'next.md' }; await settle();
     expect(host.querySelector('.match-count')?.textContent).toContain('0/2'); expect(host.querySelector('mark.current')).toBeNull();
+  });
+  it('opens the find bar with Ctrl+F and clears it with Escape', async () => {
+    await mount(); tab('文本'); await settle();
+    host.querySelector('.preview-body')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true }));
+    await settle();
+    const input = host.querySelector<HTMLInputElement>('[aria-label="搜索预览内容"]')!;
+    input.value = 'needle'; input.dispatchEvent(new Event('input', { bubbles: true })); await settle();
+    expect(host.querySelectorAll('.text-view mark')).toHaveLength(2);
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+    expect(host.querySelector('[aria-label="搜索预览内容"]')).toBeNull();
+    expect(host.querySelectorAll('.text-view mark')).toHaveLength(0);
+  });
+  it('offers the text and hex views when a file has no native view', async () => {
+    const original = ipc.invoke.getMockImplementation()!;
+    ipc.invoke.mockImplementation(async (command, args) => command === 'fs_preview' ? new Uint8Array([0, 1, 2, 0, 0, 255]).buffer : original(command, args));
+    node.value = { ...node.value, id: 'blob', name: 'blob.dat', size: 6 }; await mount(); tab('原类型'); await settle();
+    expect(host.textContent).toContain('无法按原类型显示');
+    [...host.querySelectorAll<HTMLButtonElement>('.preview-body button')].find(button => button.textContent?.includes('查看十六进制'))!.click(); await settle();
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('十六进制');
   });
 });

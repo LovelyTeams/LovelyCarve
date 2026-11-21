@@ -1,0 +1,87 @@
+/* Rendered Markdown in the native view. Output comes from useMarkdown's
+   safe-by-construction renderer; included through `<style scoped src>`, so
+   the rules reach the rendered nodes with :deep(). */
+.md-body {
+  max-width: 760px;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+.md-body :deep(p) { margin: 0 0 8px; }
+.md-body :deep(p:last-child) { margin-bottom: 0; }
+
+.md-body :deep(.md-heading) {
+  margin: 16px 0 8px;
+  color: var(--text-primary);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.md-body :deep(.md-heading:first-child) { margin-top: 0; }
+.md-body :deep(.md-h1) { padding-bottom: 4px; border-bottom: 1px solid var(--border-color); font-size: 18px; }
+.md-body :deep(.md-h2) { padding-bottom: 4px; border-bottom: 1px solid var(--border-color); font-size: 16px; }
+.md-body :deep(.md-h3) { font-size: 14px; }
+.md-body :deep(.md-h4) { font-size: 13px; }
+.md-body :deep(.md-h5),
+.md-body :deep(.md-h6) { color: var(--text-secondary); font-size: 12px; }
+
+.md-body :deep(.md-list) { margin: 8px 0; padding-left: 20px; }
+.md-body :deep(.md-list li) { margin: 2px 0; }
+
+.md-body :deep(.md-inline-code) {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-tertiary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.md-body :deep(.md-code-block) {
+  margin: 8px 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.md-body :deep(.md-code-block code) { font-family: var(--font-mono); }
+
+.md-body :deep(.md-quote) {
+  margin: 8px 0;
+  padding: 2px 12px;
+  border-left: 3px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.md-body :deep(.md-hr) {
+  margin: 16px 0;
+  border: none;
+  border-top: 1px solid var(--border-color);
+}
+
+.md-body :deep(.md-table) {
+  margin: 8px 0;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.md-body :deep(.md-table th),
+.md-body :deep(.md-table td) {
+  padding: 4px 10px;
+  border: 1px solid var(--border-color);
+  text-align: left;
+}
+
+.md-body :deep(.md-table th) {
+  background: var(--surface-primary);
+  font-weight: 600;
+}
+
+.md-body :deep(a) { color: var(--primary-color); text-decoration: none; }
+.md-body :deep(a:hover) { text-decoration: underline; }

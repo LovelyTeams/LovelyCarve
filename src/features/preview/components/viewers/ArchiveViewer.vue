@@ -2,36 +2,41 @@
   <div class="report-viewer archive-viewer">
     <template v-if="report">
       <!-- 概览 -->
-      <section class="card overview">
-        <div class="title-row">
-          <div class="title-icon"><Library :size="22" /></div>
-          <div class="title-text">
-            <h3 class="model-name">{{ report.format }}</h3>
-            <div class="chips">
-              <span class="chip accent">{{ report.member_count }} {{ tr("成员") }}</span>
-              <span class="chip">{{ report.total_symbols }} {{ tr("符号") }}</span>
-              <span v-if="report.truncated" class="chip warn">{{ tr("读取已截断") }}</span>
-            </div>
+      <header class="report-head">
+        <div class="report-icon"><Library :size="20" /></div>
+        <div class="report-title">
+          <h3 class="report-name">{{ report.format }}</h3>
+          <div class="report-badges">
+            <span v-if="report.truncated" class="ui-badge sm warn">{{ tr("读取已截断") }}</span>
           </div>
         </div>
+      </header>
 
-        <div class="tiles">
-          <div class="tile"><span class="tile-num">{{ report.member_count }}</span><span class="tile-label">{{ tr("成员") }}</span></div>
-          <div class="tile"><span class="tile-num">{{ report.total_symbols }}</span><span class="tile-label">{{ tr("导出符号") }}</span></div>
-          <div class="tile"><span class="tile-num">{{ formatBytes(report.file_size) }}</span><span class="tile-label">{{ tr("文件大小") }}</span></div>
+      <dl class="report-stats">
+        <div class="report-stat"><dt>{{ tr("成员") }}</dt><dd>{{ report.member_count }}</dd></div>
+        <div class="report-stat"><dt>{{ tr("导出符号") }}</dt><dd>{{ report.total_symbols }}</dd></div>
+        <div class="report-stat"><dt>{{ tr("文件大小") }}</dt><dd>{{ formatBytes(report.file_size) }}</dd></div>
+      </dl>
+
+      <!-- 解析警告 -->
+      <section v-if="report.parse_warnings.length" class="ui-alert warn report-warnings" role="note">
+        <AlertTriangle :size="14" />
+        <div class="warn-body">
+          <p class="warn-title">{{ tr("解析警告") }}</p>
+          <p v-for="(w, i) in report.parse_warnings" :key="i" class="warn-line mono">{{ w }}</p>
         </div>
       </section>
 
       <!-- 成员 -->
-      <section class="card">
-        <div class="card-head">
-          <h4 class="card-title">{{ tr("成员") }} <span class="count-badge mono">{{ report.member_count }}</span></h4>
-          <div class="filter">
-            <Search :size="12" />
-            <input v-model="memberFilter" type="text" :placeholder="tr('过滤成员名')" spellcheck="false" />
-          </div>
+      <section class="section">
+        <div class="section-head">
+          <h4 class="section-title">{{ tr("成员") }} <span class="ui-count">{{ report.member_count }}</span></h4>
+          <label class="ui-search section-filter">
+            <Search :size="13" aria-hidden="true" />
+            <input v-model="memberFilter" type="text" :placeholder="tr('过滤成员名')" :aria-label="tr('过滤成员名')" spellcheck="false" />
+          </label>
         </div>
-        <div class="table-scroll">
+        <div class="table-scroll members">
           <table class="data-table g-table">
             <thead><tr><th>{{ tr("名称") }}</th><th>{{ tr("格式") }}</th><th>{{ tr("大小") }}</th><th>{{ tr("数据偏移") }}</th><th class="ralign">{{ tr("符号") }}</th></tr></thead>
             <tbody>
@@ -49,12 +54,6 @@
           </table>
         </div>
       </section>
-
-      <!-- 解析警告 -->
-      <section v-if="report.parse_warnings.length" class="card warn-card">
-        <div class="card-head"><h4 class="card-title"><AlertTriangle :size="13" /> {{ tr("解析警告") }}</h4></div>
-        <div v-for="(w, i) in report.parse_warnings" :key="i" class="warn-line mono">{{ w }}</div>
-      </section>
     </template>
   </div>
 </template>
@@ -64,7 +63,7 @@ import { tr } from '../../../../composables/useLocale';
 
 // Unix ar 归档（.a 静态库 / 导入库）的「原类型视图」：由 BinaryViewer 传入已解析
 // 的 ArchiveReport，列出成员（名称 / 格式 / 大小 / 数据偏移 / 导出符号数）与符号
-// 总数。视觉与 PeViewer 一致。
+// 总数。版式与 PeViewer 一致。
 import { computed, ref } from 'vue';
 import { AlertTriangle, Library, Search } from 'lucide-vue-next';
 import type { ArchiveReport } from '../../../../lib/ipc/binary';
@@ -88,7 +87,7 @@ const filteredMembers = computed(() => {
 
 <style scoped src="../../../../styles/report-viewer.css"></style>
 <style scoped>
-.table-scroll {
+.members {
   max-height: 520px;
 }
 </style>

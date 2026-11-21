@@ -1,37 +1,25 @@
 <template>
   <div class="structured-viewer">
-    <!-- 工具栏 -->
-    <div class="toolbar">
-      <div class="ui-seg">
-        <button class="ui-seg-item" :class="{ active: view === 'graph' }" @click="view = 'graph'" :title="tr('节点图')">
+    <!-- 图 / 树切换放进视图栏；格式与节点数放进状态栏。 -->
+    <PreviewChromeSlot area="tools">
+      <div class="ui-seg structure-mode" role="group" :aria-label="tr('结构视图')">
+        <button type="button" class="ui-seg-item" :aria-pressed="view === 'graph'" :title="tr('节点图')" @click="view = 'graph'">
           <Network :size="13" /> {{ tr("图") }}
         </button>
-        <button class="ui-seg-item" :class="{ active: view === 'tree' }" @click="view = 'tree'" :title="tr('树视图')">
+        <button type="button" class="ui-seg-item" :aria-pressed="view === 'tree'" :title="tr('树视图')" @click="view = 'tree'">
           <ListTree :size="13" /> {{ tr("树") }}
         </button>
       </div>
-
+    </PreviewChromeSlot>
+    <PreviewChromeSlot area="statusStart">
       <span class="ui-badge sm mono">{{ format.toUpperCase() }}</span>
-      <span v-if="okScene" class="stat mono">{{ nodeCount.toLocaleString() }} {{ tr("节点") }}</span>
-
-      <div class="spacer"></div>
-
-      <template v-if="view === 'graph' && okScene">
-        <button class="ui-icon-btn sm" @click="expandAll" :title="tr('全部展开')" :aria-label="tr('全部展开')"><ChevronsUpDown :size="14" /></button>
-        <button class="ui-icon-btn sm" @click="collapseAll" :title="tr('全部折叠')" :aria-label="tr('全部折叠')"><ChevronsDownUp :size="14" /></button>
-        <span class="ui-divider-v"></span>
-        <button class="ui-icon-btn sm" @click="zoomOut" :title="tr('缩小')" :aria-label="tr('缩小')"><ZoomOut :size="14" /></button>
-        <span class="zoom mono" @click="resetView" :title="tr('重置缩放')">{{ Math.round(zoom * 100) }}%</span>
-        <button class="ui-icon-btn sm" @click="zoomIn" :title="tr('放大')" :aria-label="tr('放大')"><ZoomIn :size="14" /></button>
-        <button class="ui-icon-btn sm" @click="doFit" :title="tr('适应窗口')" :aria-label="tr('适应窗口')"><Frame :size="14" /></button>
-      </template>
-    </div>
+      <span v-if="okScene" class="ui-footbar-stat"><strong>{{ nodeCount.toLocaleString() }}</strong> {{ tr("节点") }}</span>
+    </PreviewChromeSlot>
 
     <!-- 错误 / 空 -->
-    <div v-if="scene.kind === 'error'" class="state-row mono error">
-      <AlertTriangle :size="14" /> {{ tr("无法解析为 {0} 结构：{1}。请切换到「文本 / 十六进制」视图。", { 0: format.toUpperCase(), 1: scene.message }) }}
-    </div>
-    <div v-else-if="scene.kind === 'empty'" class="state-row mono">{{ tr("空文档，无可视化内容。") }}</div>
+    <PreviewState v-if="scene.kind === 'error'" tone="error" :icon="CircleAlert" :title="tr('无法解析为 {0} 结构', { 0: format.toUpperCase() })"
+      :description="scene.message" mono-description />
+    <PreviewState v-else-if="scene.kind === 'empty'" :icon="Braces" :title="tr('空文档，无可视化内容。')" />
 
     <!-- 图视图 -->
     <div
@@ -87,7 +75,16 @@
         </div>
       </div>
 
-      <div class="hint mono">{{ tr("滚轮缩放 · 拖拽平移") }}</div>
+      <!-- 画布控件浮在右下角：展开 / 折叠与缩放只属于节点图。 -->
+      <div class="canvas-controls" @pointerdown.stop>
+        <button type="button" class="ui-icon-btn sm" :title="tr('全部展开')" :aria-label="tr('全部展开')" @click="expandAll"><ChevronsUpDown :size="14" /></button>
+        <button type="button" class="ui-icon-btn sm" :title="tr('全部折叠')" :aria-label="tr('全部折叠')" @click="collapseAll"><ChevronsDownUp :size="14" /></button>
+        <span class="ui-divider-v"></span>
+        <button type="button" class="ui-icon-btn sm" :title="tr('缩小')" :aria-label="tr('缩小')" @click="zoomOut"><ZoomOut :size="14" /></button>
+        <button type="button" class="zoom-reset mono" :title="tr('重置缩放')" @click="resetView">{{ Math.round(zoom * 100) }}%</button>
+        <button type="button" class="ui-icon-btn sm" :title="tr('放大')" :aria-label="tr('放大')" @click="zoomIn"><ZoomIn :size="14" /></button>
+        <button type="button" class="ui-icon-btn sm" :title="tr('适应窗口')" :aria-label="tr('适应窗口')" @click="doFit"><Frame :size="14" /></button>
+      </div>
     </div>
 
     <!-- 树视图 -->
@@ -106,8 +103,10 @@ import { tr } from '../../../../composables/useLocale';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   AlertTriangle,
+  Braces,
   ChevronsDownUp,
   ChevronsUpDown,
+  CircleAlert,
   Frame,
   ListTree,
   Minus,
@@ -116,6 +115,8 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-vue-next';
+import PreviewChromeSlot from '../PreviewChromeSlot.vue';
+import PreviewState from '../PreviewState.vue';
 import { parseStructured, type PFormat } from '../../model/structured/parse';
 import { buildGraph, NODE_CAP, rowCenterY, type GEdge, type GNode, type GRow } from '../../model/structured/graph';
 import { layoutGraph } from '../../model/structured/layout';
@@ -300,46 +301,6 @@ watch(view, (v) => {
   min-height: 0;
   background: var(--surface-primary);
 }
-/* ── 工具栏 ── */
-.toolbar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--surface-secondary);
-}
-.stat {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-.spacer {
-  flex: 1;
-}
-.zoom {
-  font-size: 11px;
-  color: var(--text-secondary);
-  min-width: 38px;
-  text-align: center;
-  cursor: pointer;
-  user-select: none;
-}
-
-/* ── 状态行 ── */
-.state-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  padding: 14px 16px;
-}
-.state-row.error {
-  color: var(--sev-critical-fg);
-}
-
 /* ── 画布 ── */
 .canvas {
   position: relative;
@@ -489,17 +450,48 @@ watch(view, (v) => {
   background: var(--sev-warn-bg);
   color: var(--sev-warn-fg);
 }
-.hint {
+/* 浮在画布右下角的控件条：一个闭合表面，里面的图标按钮不再套框。 */
+.canvas-controls {
   position: absolute;
-  bottom: 8px;
-  right: 10px;
-  font-size: 11px;
-  color: var(--text-secondary);
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
+  right: 12px;
+  bottom: 12px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-secondary);
+  box-shadow: var(--card-shadow);
+  cursor: default;
+}
+
+.canvas-controls .ui-divider-v {
+  height: 16px;
+  margin: 0 4px;
+}
+
+.zoom-reset {
+  min-width: 44px;
+  height: 24px;
+  padding: 0 4px;
+  border: 0;
   border-radius: var(--radius-sm);
-  padding: 2px 7px;
-  pointer-events: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.zoom-reset:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.zoom-reset:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: -2px;
 }
 
 /* ── 树视图 ── */

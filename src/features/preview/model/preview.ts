@@ -22,7 +22,7 @@ export const PREVIEW_TABS = [
   { key: 'detail', label: '详细信息' }, { key: 'raw', label: '原类型' },
   { key: 'text', label: '文本' }, { key: 'hex', label: '十六进制' },
 ] as const;
-export const PREVIEW_PAGE_SIZES = [1024, 2048, 4096, 8192].map(bytes => ({ value: bytes, label: `${bytes / 1024}kb` }));
+export const PREVIEW_PAGE_SIZES = [1024, 2048, 4096, 8192].map(bytes => ({ value: bytes, label: `${bytes / 1024} KiB` }));
 export const STREAM_MIME_EXT: Readonly<Record<string, string>> = {
   'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov', 'video/x-matroska': 'mkv',
   'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/ogg': 'ogg', 'audio/flac': 'flac',

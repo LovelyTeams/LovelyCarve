@@ -1,201 +1,191 @@
 <template>
-  <section
-    class="disk-file-detail"
-    :class="{ standalone }"
-    :style="standalone ? undefined : { height: `${panelHeight}px` }"
-  >
-    <div
-      v-if="!standalone"
-      class="resize-handle"
-      :title="tr('拖动调整面板高度')"
-      @pointerdown="onResizeStart"
-    ></div>
-    <div class="preview-pane">
-      <FilePreviewToolbar :standalone="standalone" :node-kind="node.kind" :focus-target="!!focusTarget" :index-only="indexOnly"
-        v-model:active-tab="activeTab" v-model:search-query="searchQuery" v-model:encoding-override="encodingOverride"
-        v-model:charset-menu-open="charsetMenuOpen" :selected-charsets="selectedCharsets" :selected-charset-count="selectedCharsetList.length"
-        :needs-decoded-text="needsDecodedText" :encoding-title="encodingTitle" :encoding-warn="encodingWarn" :encoding-options="encodingOptions"
-        :match-count="matchCount" :current-match="currentMatch" :is-media-category="isMediaCategory" :category="category"
-        :sqlite-search-available="sqliteViewerRef?.matchCount != null"
-        :ext-mismatch="extMismatch" :identifying="identifying" :ident-btn-title="identBtnTitle" :effective-ident="effectiveIdent"
-        :qr-scanning="qrScanning" :ocr-scanning="ocrScanning" @close="emit('close')" @external="openExternal"
-        @toggle-charset="toggleCharset" @search-keydown="onSearchKeydown" @goto-match="gotoMatch" @identify="identifyType"
-        @qr-scan="runQrScan" @ocr-scan="runOcrScan"
+  <!-- 文件预览：视图栏（切换视图 + 当前视图的工具）、按需出现的查找栏、内容区、状态栏
+       （文件的真实类型、大小、编码与翻页）。各查看器经 PreviewChromeSlot 把自己的工具与
+       统计放进视图栏和状态栏，不再各自叠一层工具条。 -->
+  <section class="file-preview" @keydown="onPreviewKeydown">
+    <PreviewViewBar
+      ref="viewBar"
+      v-model:active-tab="activeTab"
+      v-model:charset-menu-open="charsetMenuOpen"
+      :index-only="indexOnly"
+      :file-content="fileContent"
+      :focus-target="!!focusTarget"
+      :category="category"
+      :searchable="searchable"
+      :find-visible="findVisible"
+      :find-bar-id="findBarId"
+      :selected-charsets="selectedCharsets"
+      :qr-scanning="qrScanning"
+      :ocr-scanning="ocrScanning"
+      @toggle-find="toggleFind"
+      @toggle-charset="toggleCharset"
+      @qr-scan="runQrScan"
+      @ocr-scan="runOcrScan"
+    />
+    <UiTransition kind="collapse">
+      <PreviewFindBar
+        v-if="findVisible"
+        :id="findBarId"
+        ref="findBar"
+        v-model:query="searchQuery"
+        :match-count="matchCount"
+        :current-match="currentMatch"
+        :page-only="searchesSqlitePage"
+        @goto="gotoMatch"
+        @close="closeFind"
+        @keydown="onSearchKeydown"
       />
+    </UiTransition>
 
-      <div ref="previewBody" class="preview-body" v-content-motion="node.id + ':' + activeTab" :class="{ metadata: activeTab === 'detail', flush: (activeTab === 'hex' && !!focusTarget) || (activeTab === 'raw' && (category === 'structured' || category === 'csv' || category === 'code' || category === 'binary' || category === 'gguf' || category === 'sqlite' || category === 'realm' || category === 'rich' || category === 'zip' || isMediaCategory)) }">
-        <FileMetadataPanel v-if="activeTab === 'detail'" :node="node" :full-path="fullPath" :extension="ext"
-          :ident="effectiveIdent" :digest="digest" :ext-mismatch="extMismatch" />
-        <template v-else>
-          <div v-if="indexOnly" class="state-row mono">{{ tr("源镜像不可用，仅能查看索引中的文件属性。") }}</div>
-          <FileRangePreview v-else-if="activeTab === 'hex' && focusTarget" :image-id="imageId" :node-id="node.id" :size="node.size" :target="focusTarget" />
-          <div v-else-if="loading" class="state-row mono">{{ tr("加载中…") }}</div>
-          <div v-else-if="error" class="state-row mono error">{{ error }}</div>
-          <div v-else-if="node.kind === 'dir'" class="state-row mono">{{ tr("目录没有内容可预览，详见「详细信息」标签页。") }}</div>
+    <div ref="previewBody" v-content-motion="node.id + ':' + activeTab" class="preview-body" tabindex="-1">
+      <FileMetadataPanel v-if="activeTab === 'detail'" :node="node" :full-path="fullPath" :extension="ext"
+        :ident="effectiveIdent" :digest="digest" :ext-mismatch="extMismatch" />
+      <template v-else>
+        <PreviewState v-if="indexOnly" :icon="HardDriveDownload" :title="tr('源镜像不可用')" :description="tr('源镜像不可用，仅能查看索引中的文件属性。')" />
+        <PreviewState v-else-if="node.kind !== 'file'" :icon="FolderOpen" :title="tr('没有内容可预览')" :description="tr('目录没有内容可预览，详见「详细信息」标签页。')" />
+        <FileRangePreview v-else-if="activeTab === 'hex' && focusTarget" class="viewer-fill" :image-id="imageId" :node-id="node.id" :size="node.size" :target="focusTarget" />
+        <PreviewState v-else-if="loading" tone="loading" :title="tr('加载中…')" />
+        <PreviewState v-else-if="error" tone="error" :icon="CircleAlert" :title="tr('读取文件失败')" :description="error" mono-description>
+          <button type="button" class="ui-btn sm" @click="loadPreview">{{ tr("重试") }}</button>
+        </PreviewState>
+        <PreviewState v-else-if="node.size === 0" :icon="FileX" :title="tr('空文件')" :description="tr('文件大小为 0 字节，没有可预览的内容。')" />
 
-          <!-- 原类型视图：按文件原生类型渲染 -->
-          <template v-else-if="activeTab === 'raw'">
-            <div v-if="category === 'markdown'" :ref="previewSearch.mdEl" class="md-body"></div>
+        <!-- 原类型视图：按文件原生类型渲染 -->
+        <template v-else-if="activeTab === 'raw'">
+          <div v-if="category === 'markdown'" :ref="previewSearch.mdEl" class="md-body document"></div>
 
-            <StructuredViewer
-              v-else-if="category === 'structured'"
-              :key="node.id"
-              class="structured-view"
-              :text="decodedText"
-              :format="structuredFormat"
-              :query="searchQuery"
-            />
+          <StructuredViewer v-else-if="category === 'structured'" :key="node.id" class="viewer-fill"
+            :text="decodedText" :format="structuredFormat" :query="searchQuery" />
 
-            <CsvViewer
-              v-else-if="category === 'csv'"
-              :ref="previewSearch.csvViewerRef"
-              :key="node.id"
-              class="csv-view"
-              :image-id="imageId"
-              :node-id="node.id"
-              :delimiter="csvDelimiter"
-              :query="searchQuery"
-              @matches="csvMatchCount = $event"
-            />
+          <CsvViewer v-else-if="category === 'csv'" :ref="previewSearch.csvViewerRef" :key="node.id" class="viewer-fill"
+            :image-id="imageId" :node-id="node.id" :delimiter="csvDelimiter" :query="searchQuery" @matches="csvMatchCount = $event" />
 
-            <CodeViewer
-              v-else-if="category === 'code'"
-              :ref="previewSearch.codeViewerRef"
-              class="code-view"
-              :code="decodedText"
-              :filename="node.name"
-              :dark="dark"
-              :query="searchQuery"
-            />
+          <CodeViewer v-else-if="category === 'code'" :ref="previewSearch.codeViewerRef" class="viewer-fill"
+            :code="decodedText" :filename="node.name" :dark="dark" :query="searchQuery" />
 
-            <BinaryViewer
-              v-else-if="category === 'binary'"
-              :key="node.id"
-              class="binary-view"
-              :image-id="imageId"
-              :node-id="node.id"
-            />
+          <BinaryViewer v-else-if="category === 'binary'" :key="node.id" class="viewer-fill" :image-id="imageId" :node-id="node.id" />
 
-            <GgufViewer
-              v-else-if="category === 'gguf'"
-              :key="node.id"
-              class="gguf-view"
-              :image-id="imageId"
-              :node-id="node.id"
-            />
+          <GgufViewer v-else-if="category === 'gguf'" :key="node.id" class="viewer-fill" :image-id="imageId" :node-id="node.id" />
 
-            <SqliteViewer
-              v-else-if="category === 'sqlite'"
-              :key="node.id"
-              :ref="previewSearch.sqliteViewerRef"
-              class="sqlite-view"
-              :image-id="imageId"
-              :node-id="node.id"
-              :parent-id="node.parent_id"
-              :query="searchQuery"
-              @reset-match="resetMatchNav"
-            />
+          <SqliteViewer v-else-if="category === 'sqlite'" :key="node.id" :ref="previewSearch.sqliteViewerRef" class="viewer-fill"
+            :image-id="imageId" :node-id="node.id" :parent-id="node.parent_id" :query="searchQuery" @reset-match="resetMatchNav" />
 
-            <RealmViewer
-              v-else-if="category === 'realm'"
-              :key="node.id"
-              class="realm-view"
-              :image-id="imageId"
-              :node-id="node.id"
-            />
+          <RealmViewer v-else-if="category === 'realm'" :key="node.id" class="viewer-fill" :image-id="imageId" :node-id="node.id" />
 
-            <!-- 文档 / 办公 / 邮件 / 非 zip 压缩包 / CAD / 3D / 图表等「rich」类别统一交给
-                 Flyfish File Viewer（RichPreviewViewer），库内按扩展名分派渲染器。 -->
-            <RichPreviewViewer
-              v-else-if="category === 'rich'"
-              :key="node.id"
-              class="rich-view"
-              :image-id="imageId"
-              :node="node"
-            />
+          <!-- 文档 / 办公 / 邮件 / 非 zip 压缩包 / CAD / 3D / 图表等「rich」类别统一交给
+               Flyfish File Viewer（RichPreviewViewer），库内按扩展名分派渲染器。 -->
+          <RichPreviewViewer v-else-if="category === 'rich'" :key="node.id" class="viewer-fill" :image-id="imageId" :node="node" />
 
-            <ZipViewer
-              v-else-if="category === 'zip'"
-              :key="node.id"
-              class="zip-view"
-              :image-id="imageId"
-              :node-id="node.id"
-            />
+          <ZipViewer v-else-if="category === 'zip'" :key="node.id" class="viewer-fill" :image-id="imageId" :node-id="node.id" />
 
-            <FileMediaPreview v-else-if="isMediaCategory" :node="node" :category="category" :is-stream-media="isStreamMedia"
-              :media-too-large="mediaTooLarge" :media-url="mediaUrl" :media-loading="mediaLoading" :media-error="mediaError"
-              :stream-url="streamUrl" :stream-loading="streamLoading" :stream-error="streamError"
-              :recognition="recognitionView" :elements="recognitionElements" v-model:qr-expected="qrExpected" v-model:qr-active-index="qrActiveIndex"
-              @media-error="onMediaError" @image-load="onImageLoad" @cancel-qr="cancelQrScan" @copy-qr="copyQrText" @copy-ocr="copyAllOcrText"
-            />
+          <FileMediaPreview v-else-if="isMediaCategory" :node="node" :category="category" :is-stream-media="isStreamMedia"
+            :media-too-large="mediaTooLarge" :media-url="mediaUrl" :media-loading="mediaLoading" :media-error="mediaError"
+            :stream-url="streamUrl" :stream-loading="streamLoading" :stream-error="streamError"
+            :recognition="recognitionView" :elements="recognitionElements" v-model:qr-expected="qrExpected" v-model:qr-active-index="qrActiveIndex"
+            @media-error="onMediaError" @image-load="onImageLoad" @cancel-qr="cancelQrScan" @copy-qr="copyQrText" @copy-ocr="copyAllOcrText"
+          />
 
-            <div v-else class="state-row mono">{{ tr("该类型暂不支持原类型视图，请切换到文本 / 十六进制视图。") }}</div>
-          </template>
+          <PreviewState v-else :icon="FileQuestionMark" :title="tr('无法按原类型显示')"
+            :description="tr('该类型暂不支持原类型视图，请切换到文本 / 十六进制视图。')">
+            <button type="button" class="ui-btn sm" @click="activeTab = 'text'"><TextAlignStart :size="13" />{{ tr("查看文本") }}</button>
+            <button type="button" class="ui-btn sm" @click="activeTab = 'hex'"><Binary :size="13" />{{ tr("查看十六进制") }}</button>
+            <button v-if="!effectiveIdent" type="button" class="ui-btn sm" :disabled="identifying" @click="identifyType">
+              <Loader2 v-if="identifying" :size="13" class="spin" /><ScanSearch v-else :size="13" />{{ tr("识别真实类型") }}
+            </button>
+          </PreviewState>
+        </template>
 
-          <template v-else-if="activeTab === 'text'">
-            <div v-if="truncated" class="trunc-note mono">{{ tr("已截断：仅显示前 {0}（共 {1}）", { 0: formatBytes(bytes.length), 1: formatBytes(node.size) }) }}</div>
-            <!-- 无关键字时按纯文本渲染，且切成块、用 content-visibility 让浏览器只布局可视块——
-                 否则上百万字符（尤其二进制文件解码后几乎无换行）一次性整体布局会卡死（切到文本视图很卡）。
-                 仅在搜索时才走单个 <pre v-html>（注入 <mark> 高亮，命中导航需整块在 DOM 里）。 -->
-            <pre v-if="searchQuery" :ref="previewSearch.textEl" class="text-view mono" v-html="highlightedTextHtml"></pre>
-            <div v-else :ref="previewSearch.textEl" class="text-view text-chunks mono">
-              <div v-for="(chunk, ci) in textChunks" :key="ci" class="text-chunk">{{ chunk }}</div>
-            </div>
-          </template>
-
-          <div
-            v-else-if="activeTab === 'hex'"
-            :ref="previewSearch.hexEl"
-            class="hex-view mono"
-            :style="{ '--hex-grid-cols': hexGridCols }"
-            @mousedown="onHexMouseDown"
-            @contextmenu="onHexContextMenu"
-          >
-            <div class="hex-row hex-header-row">
-              <span class="hex-offset">Offset</span>
-              <span class="hex-bytes">{{ hexHeaderBytes }}</span>
-              <span v-for="c in selectedCharsetList" :key="c.id" class="hex-text-col" :data-cs="c.id">{{ c.label }}</span>
-            </div>
-            <div v-for="row in hexRows" :key="row.offset" class="hex-row">
-              <span class="hex-offset">{{ row.offset }}</span>
-              <span class="hex-bytes"><span
-                v-for="b in row.bytes"
-                :key="b.off"
-                class="hb"
-                :data-off="b.off"
-                :class="{ m: b.m, cur: b.cur, sel: inSel(b.off) }"
-              >{{ b.hex }}</span>{{ row.padStr }}</span>
-              <span
-                v-for="(col, ci) in row.cols"
-                :key="ci"
-                class="hex-text-col"
-                :data-cs="selectedCharsetList[ci]?.id"
-              ><span
-                v-for="(c, k) in col"
-                :key="k"
-                class="hc"
-                :data-off="c.off"
-                :class="{ m: c.m, cur: c.cur, sel: inSel(c.off) }"
-              >{{ c.ch }}</span></span>
-            </div>
+        <template v-else-if="activeTab === 'text'">
+          <!-- 只读取了文件开头时由状态栏提示。无关键字时按纯文本渲染，且切成块、用 content-visibility 让浏览器只布局可视块——
+               否则上百万字符（尤其二进制文件解码后几乎无换行）一次性整体布局会卡死（切到文本视图很卡）。
+               仅在搜索时才走单个 <pre v-html>（注入 <mark> 高亮，命中导航需整块在 DOM 里）。 -->
+          <pre v-if="searchQuery" :ref="previewSearch.textEl" class="text-view document mono" v-html="highlightedTextHtml"></pre>
+          <div v-else :ref="previewSearch.textEl" class="text-view document text-chunks mono">
+            <div v-for="(chunk, ci) in textChunks" :key="ci" class="text-chunk">{{ chunk }}</div>
           </div>
         </template>
-        </div>
 
-        <FilePreviewFooter v-if="!focusTarget && !loading && !error && activeTab === 'hex' && (totalPages > 1 || hasSelection)"
-          v-model:page="page" v-model:page-size="pageSize" :total-pages="totalPages" :has-selection="hasSelection"
-          :sel-count="selCount" :sel-min="selMin" :sel-max="selMax" />
-      </div>
-      <UiContextMenu
-        v-model:open="hexMenu.open"
-        :x="hexMenu.x"
-        :y="hexMenu.y"
-        :entries="hexMenuEntries"
-        :label="tr('十六进制选区操作')"
-        :heading="hexMenuHeading"
-        :subheading="hexMenuSubheading"
-        :heading-icon="Binary"
-      />
+        <div
+          v-else-if="activeTab === 'hex'"
+          :ref="previewSearch.hexEl"
+          class="hex-view document mono"
+          :style="{ '--hex-grid-cols': hexGridCols }"
+          @mousedown="onHexMouseDown"
+          @contextmenu="onHexContextMenu"
+        >
+          <div class="hex-row hex-header-row">
+            <span class="hex-offset">Offset</span>
+            <span class="hex-bytes">{{ hexHeaderBytes }}</span>
+            <span v-for="c in selectedCharsetList" :key="c.id" class="hex-text-col" :data-cs="c.id">{{ c.label }}</span>
+          </div>
+          <div v-for="row in hexRows" :key="row.offset" class="hex-row">
+            <span class="hex-offset">{{ row.offset }}</span>
+            <span class="hex-bytes"><span
+              v-for="b in row.bytes"
+              :key="b.off"
+              class="hb"
+              :data-off="b.off"
+              :class="{ m: b.m, cur: b.cur, sel: inSel(b.off) }"
+            >{{ b.hex }}</span>{{ row.padStr }}</span>
+            <span
+              v-for="(col, ci) in row.cols"
+              :key="ci"
+              class="hex-text-col"
+              :data-cs="selectedCharsetList[ci]?.id"
+            ><span
+              v-for="(c, k) in col"
+              :key="k"
+              class="hc"
+              :data-off="c.off"
+              :class="{ m: c.m, cur: c.cur, sel: inSel(c.off) }"
+            >{{ c.ch }}</span></span>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <PreviewStatusBar
+      v-if="node.kind === 'file'"
+      ref="statusBar"
+      v-model:encoding="encodingOverride"
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :index-only="indexOnly"
+      :size="node.size"
+      :extension="ext"
+      :ident="effectiveIdent"
+      :identifying="identifying"
+      :ident-title="identBtnTitle"
+      :ext-mismatch="extMismatch"
+      :truncated="prefixTruncated"
+      :preview-bytes="bytes.length"
+      :encoding-visible="needsDecodedText"
+      :encoding-warn="encodingWarn"
+      :encoding-title="encodingTitle"
+      :encoding-options="encodingOptions"
+      :hex-paging="hexPaging"
+      :total-pages="totalPages"
+      :has-selection="hasSelection"
+      :sel-count="selCount"
+      :sel-min="selMin"
+      :sel-max="selMax"
+      @identify="identifyType"
+    >
+      <template #start>
+        <span v-if="imageSize" class="ui-footbar-stat mono">{{ imageSize }}</span>
+      </template>
+    </PreviewStatusBar>
+
+    <UiContextMenu
+      v-model:open="hexMenu.open"
+      :x="hexMenu.x"
+      :y="hexMenu.y"
+      :entries="hexMenuEntries"
+      :label="tr('十六进制选区操作')"
+      :heading="hexMenuHeading"
+      :subheading="hexMenuSubheading"
+      :heading-icon="Binary"
+    />
   </section>
 </template>
 
@@ -204,34 +194,38 @@ import { tr } from '../../../composables/useLocale';
 
 import FileMetadataPanel from './FileMetadataPanel.vue';
 import { vContentMotion } from '../../../composables/uiMotionDirectives';
-import { ref, computed, watch, defineAsyncComponent } from 'vue';
+import { ref, computed, watch, nextTick, defineAsyncComponent, useId } from 'vue';
 import type { FsTypeIdent } from '../../../lib/ipc/fs/derived';
 import type { FsNode } from '../../../lib/ipc/fs/types';
 import { useMediaPreview } from '../composables/useMediaPreview';
 import { usePreviewSession } from '../composables/usePreviewSession';
 import { usePreviewReadingState } from '../composables/usePreviewReadingState';
 import type { FilePreviewReadingState } from '../../../lib/models/filePreviewReadingState';
-import { PREVIEW_CAP, MEDIA_CAP, formatPreviewBytes as formatBytes, type DetailTab } from '../model/preview';
-import { openFilePreviewWindow } from '../../../lib/ipc/windows';
+import { PREVIEW_CAP, MEDIA_CAP, type DetailTab } from '../model/preview';
 import { renderMarkdownPreview } from '../composables/useMarkdown';
 import { usePreviewSearch } from '../composables/usePreviewSearch';
 import { useTheme } from '../../../composables/useTheme';
-import { notifyError } from '../../../composables/useToast';
 import { useImageRecognition } from '../composables/useImageRecognition';
 import { usePreviewCategory } from '../composables/usePreviewCategory';
-import { useResizablePanel } from '../composables/useResizablePanel';
 import { useTextPreview } from '../composables/useTextPreview';
 import { useHexPreview } from '../composables/useHexPreview';
+import { providePreviewChrome } from '../composables/previewChrome';
 import { CHARSETS, type CharsetOption } from '../model/charsets';
-import { Binary, Hash, Languages, Type, X } from 'lucide-vue-next';
+import {
+  Binary, CircleAlert, FileQuestionMark, FileX, FolderOpen, HardDriveDownload, Hash, Languages,
+  Loader2, ScanSearch, TextAlignStart, Type, X,
+} from 'lucide-vue-next';
 import UiContextMenu, { type UiContextMenuEntry } from '../../../components/ui/UiContextMenu.vue';
+import UiTransition from '../../../components/ui/UiTransition.vue';
 import { useContextMenu } from '../../../composables/useContextMenu';
 import { compactMenuEntries } from '../../../utils/menuPlacement';
-import FilePreviewToolbar from './FilePreviewToolbar.vue';
+import PreviewViewBar from './PreviewViewBar.vue';
+import PreviewFindBar from './PreviewFindBar.vue';
+import PreviewStatusBar from './PreviewStatusBar.vue';
+import PreviewState from './PreviewState.vue';
 import FileMediaPreview from './FileMediaPreview.vue';
 import FileRangePreview from './viewers/FileRangePreview.vue';
 import type { UiSelectOption } from '../../../components/ui/UiSelect.vue';
-import FilePreviewFooter from './FilePreviewFooter.vue';
 import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 // 重型原类型视图懒加载：CodeMirror 语言包、Flyfish File Viewer（rich）等只在打开对应
 // 文件时拉取，不拖累文件列表/详情面板的常用路径。
@@ -256,18 +250,14 @@ const props = defineProps<{
   digest?: { md5?: string | null; sha1?: string | null; sha256?: string | null; sm3?: string | null } | null;
   /** Magika 按内容识别的真实类型（来自列表 ftypeCache）。驱动「原类型视图」
    *  按真实类型而非扩展名渲染——可看穿改后缀伪装；缺省时退回扩展名判定。
-   *  详情面板也可就地识别填充（见 identifyType）。 */
+   *  状态栏也可就地识别填充（见 identifyType）。 */
   ident?: FsTypeIdent | null;
-  /** Rendered inside its own pop-out window — fill the viewport and hide the
-   *  "open externally" button (can't pop out further). */
-  standalone?: boolean;
   focusTarget?: { offset: number; length: number };
   readingState?: FilePreviewReadingState;
 }>();
 
 const emit = defineEmits<{
-  (e: 'close'): void;
-  /** 详情面板就地识别成功后上报，父组件据此回灌列表「识别类型」列缓存。 */
+  /** 就地识别成功后上报，父组件据此回灌列表「识别类型」列缓存。 */
   (e: 'identified', payload: { nodeId: NodeId; ident: FsTypeIdent }): void;
 }>();
 
@@ -277,11 +267,15 @@ const page = ref(1);
 const pageSize = ref(2048);
 const previewBody = ref<HTMLElement | null>(null);
 
-const { panelHeight, onResizeStart } = useResizablePanel({
-  storageKey: 'lc.detailPanelHeight',
-  defaultHeight: 360,
-  minHeight: 180,
-  maxViewportRatio: 0.7,
+// 视图栏与状态栏是本实例的「外框」：查看器把工具和统计放进来（保持挂载的隐藏标签页
+// 各有自己的一份，不会画到当前标签页上）。
+const viewBar = ref<InstanceType<typeof PreviewViewBar> | null>(null);
+const statusBar = ref<InstanceType<typeof PreviewStatusBar> | null>(null);
+const findBar = ref<InstanceType<typeof PreviewFindBar> | null>(null);
+providePreviewChrome({
+  tools: computed(() => viewBar.value?.tools ?? null),
+  statusStart: computed(() => statusBar.value?.start ?? null),
+  statusEnd: computed(() => statusBar.value?.end ?? null),
 });
 
 const { loading, error, bytes, localIdent, identifying, loadPreview, identifyType } = usePreviewSession({
@@ -306,6 +300,9 @@ const ext = computed(() => {
   const i = props.node.name.lastIndexOf('.');
   return i > 0 && i < props.node.name.length - 1 ? props.node.name.slice(i + 1) : '';
 });
+
+/** 有内容可读的文件：目录与离线索引只有「详细信息」。 */
+const fileContent = computed(() => props.node.kind === 'file' && !props.indexOnly);
 
 // ---- Magika 识别结果驱动的类别 ------------------------------------------
 // 识别结果可能来自列表（prop.ident）或本面板就地识别（localIdent）。
@@ -338,7 +335,7 @@ const truncated = computed(() => props.node.kind === 'file' && props.node.size >
 
 const renderedMarkdown = computed(() => renderMarkdownPreview(decodedText.value));
 
-// 「识别真实类型」按钮的状态：识别中、是否检出伪装、按钮文案与提示。
+// 状态栏「真实类型」的提示：未识别时说明用途，识别后给出类型、依据与伪装判断。
 const identBtnTitle = computed<string>(() => {
   const t = effectiveIdent.value;
   if (!t) return tr("Magika 按文件内容识别真实类型，不依赖扩展名，可发现修改扩展名伪装的文件");
@@ -435,33 +432,71 @@ const previewSearch = usePreviewSearch({
 });
 const { currentMatch, matchCount, csvMatchCount, sqliteViewerRef, gotoMatch, onSearchKeydown, resetMatchNav } = previewSearch;
 
+// ---- 查找 ---------------------------------------------------------------
+// 只在有可查找文本的视图里提供；查找栏按查找开关 / Ctrl+F 打开，有查找词时一直显示。
+const findBarId = `preview-find-${useId()}`;
+const findOpen = ref(false);
+const hasContent = computed(() => fileContent.value && props.node.size > 0);
+const searchesSqlitePage = computed(() => activeTab.value === 'raw' && category.value === 'sqlite');
+const searchable = computed(() => {
+  if (!hasContent.value) return false;
+  switch (activeTab.value) {
+    case 'detail': return false;
+    case 'hex': return !props.focusTarget;
+    case 'text': return true;
+    case 'raw':
+      if (category.value === 'sqlite') return sqliteViewerRef.value?.matchCount != null;
+      return category.value === 'markdown' || category.value === 'code' || category.value === 'structured' || category.value === 'csv';
+    default: return false;
+  }
+});
+const findVisible = computed(() => searchable.value && (findOpen.value || searchQuery.value !== ''));
+
+function openFind() {
+  if (!searchable.value) return;
+  findOpen.value = true;
+  void nextTick(() => findBar.value?.focus());
+}
+
+function closeFind() {
+  const root = findBar.value?.$el as HTMLElement | undefined;
+  const hadFocus = !!root && root.contains(document.activeElement);
+  findOpen.value = false;
+  searchQuery.value = '';
+  if (hadFocus) void nextTick(() => viewBar.value?.focusFindToggle());
+}
+
+function toggleFind() {
+  if (findVisible.value) closeFind();
+  else openFind();
+}
+
+/** Ctrl+F opens the find bar of the preview that has focus. */
+function onPreviewKeydown(event: KeyboardEvent) {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 'f' || !searchable.value) return;
+  event.preventDefault();
+  event.stopPropagation();
+  openFind();
+}
+
+// ---- 状态栏 -------------------------------------------------------------
+/** 读取文件开头一段的视图（文本、十六进制与文本类原类型视图）。 */
+const usesPrefix = computed(() => activeTab.value === 'text'
+  || (activeTab.value === 'hex' && !props.focusTarget)
+  || (activeTab.value === 'raw' && (category.value === 'markdown' || category.value === 'code' || category.value === 'structured')));
+const prefixTruncated = computed(() => fileContent.value && !loading.value && !error.value && bytes.value.length > 0 && truncated.value && usesPrefix.value);
+const hexPaging = computed(() => activeTab.value === 'hex' && !props.focusTarget && hasContent.value && !loading.value && !error.value);
+const imageSize = computed(() => {
+  const natural = recognitionView.value.imageNatural;
+  return activeTab.value === 'raw' && category.value === 'image' && natural ? `${natural.w} × ${natural.h} px` : '';
+});
+
 const { mediaUrl, mediaLoading, mediaError, streamUrl, streamLoading, streamError,
   loadMedia, loadStreamMedia, resetMedia, onMediaError } = useMediaPreview({
   imageId: () => props.imageId, nodeId: () => props.node.id, nodeSize: () => props.node.size,
   category: () => category.value, mime: () => effectiveMime.value, extension: () => ext.value,
   isBlobMedia: () => isBlobMedia.value, isStreamMedia: () => isStreamMedia.value,
 });
-
-// Pop the preview out into its own OS window (shares this process's loaded
-// image, so the standalone window re-fetches bytes through the fs commands).
-async function openExternal() {
-  try {
-    await openFilePreviewWindow({
-      indexOnly: props.indexOnly,
-      imageId: props.imageId,
-      nodeId: props.node.id,
-      fullPath: props.fullPath,
-      title: props.node.name,
-      node: props.node,
-      ident: effectiveIdent.value,
-      digest: props.digest,
-      focusTarget: props.focusTarget,
-      readingState: getReadingState(),
-    });
-  } catch (e) {
-    notifyError(tr("打开独立窗口失败"), String(e));
-  }
-}
 
 // Lazy-load media the first time the user lands on the native view (covers
 // switching tabs after the initial load, and category flips from the text
@@ -500,45 +535,22 @@ const { getReadingState } = usePreviewReadingState({
   restoreMatch: previewSearch.restoreMatch,
 });
 defineExpose({ getReadingState });
-
 </script>
 
+<style scoped src="../styles/markdown-preview.css"></style>
 <style scoped>
-.disk-file-detail {
+.file-preview {
   position: relative;
   display: flex;
+  flex: 1;
   flex-direction: column;
-  border-top: 1px solid var(--border-color);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  container: file-preview / inline-size;
   background: var(--surface-secondary);
-  min-height: 180px;
-  flex-shrink: 0;
   color: var(--text-primary);
   font-family: var(--font-ui), sans-serif;
-}
-
-/* 顶缘拖拽条：高度由 JS 钳制（180px ~ 70vh），存 localStorage 跨会话记忆。 */
-.resize-handle {
-  position: absolute;
-  top: -3px;
-  left: 0;
-  right: 0;
-  height: 7px;
-  cursor: row-resize;
-  z-index: 3;
-  touch-action: none;
-}
-
-.resize-handle:hover {
-  background: var(--primary-glow);
-}
-
-/* In its own window: fill the available space, no embedded-panel framing. */
-.disk-file-detail.standalone {
-  height: 100%;
-  min-height: 0;
-  max-height: none;
-  flex: 1;
-  border-top: none;
 }
 
 .mono {
@@ -546,12 +558,27 @@ defineExpose({ getReadingState });
   font-size: 12px;
 }
 
-.preview-pane {
-  flex: 1;
+/* 内容区：文档类视图（文本、Markdown、十六进制）随内容增高、由这里滚动；自管布局的
+   查看器（viewer-fill）撑满并自己滚动。点进内容后它取得焦点，Ctrl+F 就能打开查找。 */
+.preview-body {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  min-width: 0;
   min-height: 0;
+  overflow: auto;
+  background: var(--surface-secondary);
+  font-size: 12px;
+  outline: none;
+}
+
+.viewer-fill {
+  flex: 1;
+  min-height: 0;
+}
+
+.document {
+  flex-shrink: 0;
+  padding: 12px 16px;
 }
 
 /* Keyword-match highlight for text / hex / markdown views (CodeMirror uses
@@ -562,166 +589,18 @@ defineExpose({ getReadingState });
   color: inherit;
   border-radius: 2px;
 }
+
 .preview-body :deep(mark.current) {
   background: var(--primary-solid);
   color: var(--accent-contrast);
 }
-
-.preview-body {
-  flex: 1;
-  overflow: auto;
-  padding: 8px 16px;
-  background: var(--surface-secondary);
-  font-size: 12px;
-}
-
-.preview-body.metadata { padding: 0; }
-
-.state-row {
-  padding: 24px;
-  text-align: center;
-  color: var(--text-secondary);
-}
-
-.state-row.error {
-  color: var(--sev-critical-fg);
-}
-
-/* Code (CodeMirror) and media manage their own layout — drop the padding
-   and let them fill the pane. */
-.preview-body.flush {
-  padding: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.code-view {
-  flex: 1;
-  min-height: 0;
-}
-
-/* JSON/YAML/XML 结构节点图视图同理（自管平移/缩放，flush 容器内占满）。 */
-.structured-view {
-  flex: 1;
-  min-height: 0;
-}
-
-/* CSV/TSV 表格视图同理（自管滚动，flush 容器内占满）。 */
-.csv-view {
-  flex: 1;
-  min-height: 0;
-}
-
-/* 二进制结构视图（ELF / Mach-O / PE / ar）自己滚动（与 code-view 同理，flush 容器内占满）。 */
-.binary-view {
-  flex: 1;
-  min-height: 0;
-}
-
-/* GGUF 模型结构视图同理。 */
-.gguf-view {
-  flex: 1;
-  min-height: 0;
-}
-
-/* SQLite / Realm 表浏览视图同理。 */
-.sqlite-view,
-.realm-view {
-  flex: 1;
-  min-height: 0;
-}
-
-/* ZIP 内部结构 + 成员预览视图同理（自管两栏布局与滚动，flush 容器内占满）。 */
-.zip-view {
-  flex: 1;
-  min-height: 0;
-}
-
-/* rich 视图（Flyfish File Viewer）同理（自管滚动，flush 容器内占满）。 */
-.rich-view {
-  flex: 1;
-  min-height: 0;
-}
-
-/* Rendered Markdown (原类型视图). Output comes from useMarkdown's
-   safe-by-construction renderer — same path as the AI panel. */
-.md-body {
-  color: var(--text-primary);
-  font-size: 13px;
-  line-height: 1.7;
-  word-break: break-word;
-}
-.md-body :deep(p) { margin: 0 0 8px; }
-.md-body :deep(p:last-child) { margin-bottom: 0; }
-.md-body :deep(.md-heading) {
-  margin: 14px 0 8px;
-  line-height: 1.35;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-.md-body :deep(.md-h1) { font-size: 18px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px; }
-.md-body :deep(.md-h2) { font-size: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 3px; }
-.md-body :deep(.md-h3) { font-size: 15px; }
-.md-body :deep(.md-h4) { font-size: 14px; }
-.md-body :deep(.md-h5),
-.md-body :deep(.md-h6) { font-size: 12px; color: var(--text-secondary); }
-.md-body :deep(.md-list) { margin: 6px 0; padding-left: 20px; }
-.md-body :deep(.md-list li) { margin: 2px 0; }
-.md-body :deep(.md-inline-code) {
-  background: var(--surface-tertiary);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 1px 5px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-color);
-}
-.md-body :deep(.md-code-block) {
-  margin: 8px 0;
-  padding: 8px 10px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-secondary);
-  border-radius: var(--radius-sm);
-  overflow: auto;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.5;
-}
-.md-body :deep(.md-code-block code) { font-family: var(--font-mono); }
-.md-body :deep(.md-quote) {
-  margin: 8px 0;
-  padding: 4px 12px;
-  border-left: 3px solid var(--border-color);
-  color: var(--text-secondary);
-}
-.md-body :deep(.md-hr) {
-  border: none;
-  border-top: 1px solid var(--border-color);
-  margin: 12px 0;
-}
-.md-body :deep(.md-table) {
-  border-collapse: collapse;
-  margin: 8px 0;
-  font-size: 12px;
-}
-.md-body :deep(.md-table th),
-.md-body :deep(.md-table td) {
-  border: 1px solid var(--border-color);
-  padding: 4px 8px;
-  text-align: left;
-}
-.md-body :deep(.md-table th) {
-  background: var(--surface-tertiary);
-  font-weight: 600;
-}
-.md-body :deep(a) { color: var(--primary-color); text-decoration: none; }
-.md-body :deep(a:hover) { text-decoration: underline; }
 
 .text-view {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-all;
   color: var(--text-primary);
+  line-height: 1.6;
 }
 
 /* 分块文本容器：每块用 content-visibility 让浏览器跳过视口外块的布局/绘制，切到文本视图与
@@ -733,21 +612,28 @@ defineExpose({ getReadingState });
 }
 
 .hex-view {
-  line-height: 1.55;
+  line-height: 1.6;
   /* 撑满预览区宽度，让文本列的 1fr 按列数均分、铺满不留空；列多到放不下时各列
      退到 18ch 下限并溢出，由 .preview-body 横向滚动，所有行随之一同平移。 */
   width: 100%;
+  min-width: max-content;
   /* 永久禁用原生文本选择：十六进制视图有自己的字节级拖选，原生选择会与之叠加
      （还会选中偏移列）。须常开——只在拖动时设会因 class 异步生效而来不及。 */
   user-select: none;
   -webkit-user-select: none;
 }
 
+/* 表头吸顶：负外边距铺满内边距，滚动时只露出列名一行。 */
 .hex-header-row {
-  color: var(--text-secondary);
-  margin-bottom: 4px;
+  position: sticky;
+  top: -12px;
+  z-index: 1;
+  width: auto;
+  margin: -12px -16px 4px;
+  padding: 12px 16px 4px;
   border-bottom: 1px solid var(--border-color);
-  padding-bottom: 2px;
+  background: var(--surface-secondary);
+  color: var(--text-secondary);
 }
 
 .hex-row {
@@ -804,5 +690,4 @@ defineExpose({ getReadingState });
   background: var(--primary-solid);
   color: var(--accent-contrast);
 }
-
 </style>

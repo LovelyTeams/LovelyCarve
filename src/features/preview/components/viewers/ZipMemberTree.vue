@@ -1,14 +1,15 @@
 <template>
         <div class="zip-tree-pane">
-          <div class="tree-toolbar">
-            <div class="ui-search filter">
-              <Search :size="13" />
-              <input v-model="filter" type="text" :placeholder="tr('过滤路径')" spellcheck="false" />
+          <!-- 路径过滤与全部展开 / 折叠放进视图栏。 -->
+          <PreviewChromeSlot area="tools">
+            <div class="ui-search zip-filter">
+              <Search :size="13" aria-hidden="true" />
+              <input v-model="filter" type="text" class="mono" :placeholder="tr('过滤路径')" :aria-label="tr('过滤路径')" spellcheck="false" />
             </div>
-            <button v-if="!filterQuery" class="ui-icon-btn sm bordered" :title="allExpanded ? tr('全部折叠') : tr('全部展开')" :aria-label="allExpanded ? tr('全部折叠') : tr('全部展开')" @click="toggleAll">
-              <component :is="allExpanded ? FoldVertical : UnfoldVertical" :size="14" />
+            <button v-if="!filterQuery" type="button" class="ui-icon-btn" :title="allExpanded ? tr('全部折叠') : tr('全部展开')" :aria-label="allExpanded ? tr('全部折叠') : tr('全部展开')" @click="toggleAll">
+              <component :is="allExpanded ? FoldVertical : UnfoldVertical" :size="16" />
             </button>
-          </div>
+          </PreviewChromeSlot>
 
           <!-- 过滤态：匹配项扁平列表；否则可折叠目录树。两种行都虚拟化渲染——
                中央目录最多列出 5 万个成员，全部铺成 DOM 会卡住预览面板。 -->
@@ -64,6 +65,7 @@ import { useZipTree } from '../../composables/useZipTree';
 import { formatBytes } from '../../../../utils/format';
 import type { ZipPreview, ZipPreviewEntry } from '../../../../lib/ipc/zip';
 import type { ZipTreeNode as TreeNode } from '../../model/zipTree';
+import PreviewChromeSlot from '../PreviewChromeSlot.vue';
 const props = defineProps<{ report: ZipPreview; selected: ZipPreviewEntry | null }>();
 const emit = defineEmits<{ select: [entry: ZipPreviewEntry] }>();
 const { filter, filterQuery, listRows, allExpanded, toggleAll, onRowClick, onEntryClick, isOpen } = useZipTree({ report: () => props.report, onSelect: entry => emit('select', entry) });

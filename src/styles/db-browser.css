@@ -1,33 +1,18 @@
 /* Shared table-browser layout for the database viewers (SQLite / Realm): a
-   table list on the left, a paged data grid on the right. Included per
-   component through `<style scoped src>`. */
-.state-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 16px;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.state-row.error {
-  color: var(--sev-critical-fg);
-}
-
-.empty-db {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
+   table list on the left and the data grid on the right. Inside a file
+   preview the paging controls and the database state live in its status bar
+   and, when the preview is narrow, the table list folds into a dropdown in its
+   view bar (`.source-picker`). Included per component through
+   `<style scoped src>`. */
 
 /* ── Table list ── */
 .table-list {
-  flex: 0 0 210px;
+  flex: 0 0 200px;
   min-width: 0;
   overflow-y: auto;
   border-right: 1px solid var(--border-color);
   background: var(--surface-primary);
-  padding: 6px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -36,7 +21,8 @@
 .table-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  flex-shrink: 0;
   width: 100%;
   min-height: 30px;
   border: none;
@@ -84,7 +70,7 @@
 .row-pill {
   flex: 0 0 auto;
   font-size: 11px;
-  padding: 0 7px;
+  padding: 0 6px;
   border-radius: 999px;
   background: var(--chip-count-bg);
   color: var(--text-secondary);
@@ -93,6 +79,23 @@
 .row-pill.warn {
   color: var(--sev-warn-fg);
   background: var(--sev-warn-bg);
+}
+
+/* The dropdown that stands in for the list in a narrow preview. */
+.source-picker {
+  display: none;
+  max-width: 260px;
+  height: 26px;
+}
+
+@container file-preview (max-width: 639px) {
+  .table-list {
+    display: none;
+  }
+
+  .source-picker {
+    display: inline-flex;
+  }
 }
 
 /* ── Data grid ── */
@@ -128,32 +131,20 @@
   color: var(--text-secondary);
 }
 
-/* ── Pager ── */
-.pager {
-  flex: 0 0 auto;
-  display: flex;
+/* ── Paging (in the preview's status bar) ── */
+.pager-info {
   align-items: center;
-  gap: 8px;
-  min-height: 34px;
-  padding: 4px 12px;
-  border-top: 1px solid var(--border-color);
-  background: var(--surface-primary);
-  font-size: 11px;
 }
 
-.pager-info {
+.pager {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  color: var(--text-secondary);
-}
-
-.pager-spacer {
-  flex: 1;
+  gap: 4px;
 }
 
 .pager-page {
+  min-width: 48px;
   color: var(--text-secondary);
-  min-width: 56px;
+  font-size: 11px;
   text-align: center;
 }

@@ -1,16 +1,21 @@
 <template>
   <div class="realm-viewer">
-    <div v-if="loading" class="state-row mono">
-      <Loader2 :size="14" class="spin" />
-      {{ tr("正在解析 Realm 数据库…") }}
-    </div>
-    <div v-else-if="error" class="state-row mono error">{{ tr("Realm 解析失败：{0}", { 0: error }) }}</div>
-
-    <div v-else-if="digest && !digest.tables.length" class="empty-db">
-      <div class="state-row mono">{{ tr("库内没有可显示的表。") }}</div>
-    </div>
+    <PreviewState v-if="loading" tone="loading" :title="tr('正在解析 Realm 数据库…')" />
+    <PreviewState v-else-if="error" tone="error" :icon="CircleAlert" :title="tr('Realm 解析失败')" :description="error" mono-description />
+    <PreviewState v-else-if="digest && !digest.tables.length" :icon="Database" :title="tr('库内没有可显示的表。')" />
 
     <template v-else-if="digest">
+      <!-- 面板较窄时表清单收进视图栏的下拉框；库的概况与翻页放进状态栏。 -->
+      <PreviewChromeSlot area="tools">
+        <UiSelect :model-value="activeTableNumber" class="sm mono source-picker" :options="tableOptions" :aria-label="tr('数据表')"
+          @update:model-value="selectTable" />
+      </PreviewChromeSlot>
+      <PreviewChromeSlot area="statusStart">
+        <span class="ui-badge sm mono">Realm</span>
+        <span class="ui-footbar-stat"><strong>{{ digest.tables.length.toLocaleString() }}</strong> {{ tr("表") }}</span>
+        <span class="ui-footbar-stat">{{ tr("读取") }} <strong>{{ formatBytes(digest.bytesRead) }}</strong></span>
+      </PreviewChromeSlot>
+
       <aside class="table-list">
         <button
           v-for="table in digest.tables"
@@ -29,28 +34,14 @@
       </aside>
 
       <div class="grid-pane">
-        <header class="realm-head">
-          <div class="realm-title">
-            <Database :size="15" />
-            <span>Realm</span>
-            <span class="ui-badge sm mono">{{ digest.tables.length }} {{ tr("表") }}</span>
-          </div>
-          <div class="realm-meta mono">
-            <span>{{ tr("读取") }} {{ formatBytes(digest.bytesRead) }}</span>
-          </div>
-        </header>
-
-        <div v-if="digest.notes.length" class="note-row">
-          <AlertTriangle :size="13" />
+        <p v-if="digest.notes.length" class="ui-alert warn realm-note" role="note">
+          <AlertTriangle :size="14" />
           <span>{{ digest.notes.join(' ') }}</span>
-        </div>
+        </p>
 
-        <div v-if="activeTableNumber === null" class="state-row mono">{{ tr("在左侧选择一张表。") }}</div>
-        <div v-else-if="rowsLoading && !rows.length" class="state-row mono">
-          <Loader2 :size="14" class="spin" />
-          {{ tr("加载中…") }}
-        </div>
-        <div v-else-if="rowsError" class="state-row mono error">{{ rowsError }}</div>
+        <PreviewState v-if="activeTableNumber === null" :icon="Table2" :title="tr('选择一张表查看数据。')" />
+        <PreviewState v-else-if="rowsLoading && !rows.length" tone="loading" :title="tr('加载中…')" />
+        <PreviewState v-else-if="rowsError" tone="error" :icon="CircleAlert" :title="tr('读取表失败')" :description="rowsError" mono-description />
 
         <template v-else>
           <div class="grid-scroll">
@@ -85,20 +76,21 @@
             </table>
           </div>
 
-          <footer class="pager">
-            <span class="pager-info mono">
+          <PreviewChromeSlot area="statusEnd">
+            <span class="ui-footbar-stat pager-info">
               <Loader2 v-if="rowsLoading" :size="12" class="spin" />
-              {{ rangeStart }}–{{ rangeEnd }} / {{ total }}
+              <strong>{{ rangeStart.toLocaleString() }}–{{ rangeEnd.toLocaleString() }}</strong> / {{ total.toLocaleString() }}
             </span>
-            <span class="pager-spacer" />
-            <button class="ui-icon-btn sm bordered" :title="tr('上一页')" :aria-label="tr('上一页')" :disabled="pageIndex <= 0 || rowsLoading" @click="prevPage">
-              <ChevronLeft :size="14" />
-            </button>
-            <span class="pager-page mono">{{ pageIndex + 1 }} / {{ pageCount }}</span>
-            <button class="ui-icon-btn sm bordered" :title="tr('下一页')" :aria-label="tr('下一页')" :disabled="pageIndex >= pageCount - 1 || rowsLoading" @click="nextPage">
-              <ChevronRight :size="14" />
-            </button>
-          </footer>
+            <div class="pager">
+              <button type="button" class="ui-icon-btn sm" :title="tr('上一页')" :aria-label="tr('上一页')" :disabled="pageIndex <= 0 || rowsLoading" @click="prevPage">
+                <ChevronLeft :size="14" />
+              </button>
+              <span class="pager-page mono">{{ pageIndex + 1 }} / {{ pageCount }}</span>
+              <button type="button" class="ui-icon-btn sm" :title="tr('下一页')" :aria-label="tr('下一页')" :disabled="pageIndex >= pageCount - 1 || rowsLoading" @click="nextPage">
+                <ChevronRight :size="14" />
+              </button>
+            </div>
+          </PreviewChromeSlot>
         </template>
       </div>
     </template>
@@ -113,12 +105,16 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  CircleAlert,
   Database,
   Loader2,
   Table2,
 } from 'lucide-vue-next';
 import { fsRealmPreview, fsRealmTableRows, type RealmCell, type RealmColumn, type RealmDigest, type RealmLink } from '../../../../lib/ipc/realm';
 import { formatBytes } from '../../../../utils/format';
+import UiSelect, { type UiSelectOption } from '../../../../components/ui/UiSelect.vue';
+import PreviewChromeSlot from '../PreviewChromeSlot.vue';
+import PreviewState from '../PreviewState.vue';
 import type { ImageId, NodeId } from '../../../../lib/ipc/ids';
 
 const props = defineProps<{
@@ -156,8 +152,19 @@ function columnTitle(column: RealmColumn): string {
   return parts.join(' · ');
 }
 
-function selectTable(tableNumber: number) {
-  if (tableNumber === activeTableNumber.value) return;
+// 窄面板里代替表清单的下拉框。
+const tableOptions = computed<UiSelectOption<number | null>[]>(() => [
+  ...(activeTableNumber.value === null ? [{ value: null, label: tr('选择数据表'), disabled: true }] : []),
+  ...(digest.value?.tables ?? []).map(table => ({
+    value: table.tableNumber,
+    label: table.error ? tr('{0}（解析失败）', { 0: table.name })
+      : table.rowCount === null ? table.name
+        : tr('{0}（{1} 行）', { 0: table.name, 1: table.rowCount.toLocaleString() }),
+  })),
+]);
+
+function selectTable(tableNumber: number | null) {
+  if (tableNumber === null || tableNumber === activeTableNumber.value) return;
   activeTableNumber.value = tableNumber;
   loadRows(0);
 }
@@ -317,49 +324,9 @@ watch(
   color: var(--text-primary);
 }
 
-.table-list {
-  flex-basis: 220px;
-}
-
-.realm-head {
+.realm-note {
   flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 40px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--surface-primary);
-}
-
-.realm-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.realm-meta {
-  margin-left: auto;
-  display: flex;
-  gap: 10px;
-  font-size: 11px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.note-row {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  font-size: 12px;
-  color: var(--sev-warn-fg);
-  background: var(--sev-warn-bg);
-  border-bottom: 1px solid var(--border-color);
+  margin: 8px 12px;
 }
 
 .col-head {
@@ -377,9 +344,9 @@ watch(
 
 .type-pill {
   flex: 0 0 auto;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
-  padding: 0 5px;
+  padding: 0 6px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);

@@ -98,7 +98,6 @@
             :data-preview-tab="tab.id" :inert="tab.id !== activePreview.id || undefined" :aria-hidden="tab.id !== activePreview.id || undefined">
             <DiskFileDetail
               :ref="instance => registerPreview(tab.id, instance)"
-              standalone
               :image-id="imageId"
               :node="tab.node"
               :index-only="indexOnly"

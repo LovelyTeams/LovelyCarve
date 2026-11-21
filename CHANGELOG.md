@@ -16,6 +16,8 @@
 ### Changed
 
 - 文件预览可放在列表右侧或下方；工作区较窄时自动放在列表下方，不再覆盖文件表。
+- 重新设计原类型视图：视图切换与当前视图的工具合成一行，查找栏按查找按钮或 Ctrl+F 打开；真实类型识别、文件大小、文本编码与翻页移到底部状态栏。CSV、JSON / YAML / XML、SQLite、Realm 和 ZIP 不再各自叠一层工具条；面板较窄时 SQLite / Realm 的表清单收进下拉框，ZIP 成员树与成员预览上下排列。PE / ELF / Mach-O / ar / GGUF 报告改为平铺分节，加载、出错和不支持的状态统一给出原因与下一步。
+- 原类型视图新增 CHM、UMD、FB2 电子书，HEIC / HEIF、TIFF、JPEG XL 图片，以及韩文（HWP / HWPX）、WordPerfect 和 dBASE 文件，经 Flyfish File Viewer 渲染。
 - Magika 文件类型识别和 OCR 移入随程序分发的推理组件 `lovelycarve_inference.dll`，ONNX Runtime 与模型随组件在首次使用时加载：Windows CLI 从约 52 MB 降至约 30 MB，桌面主程序同样减少约 22 MB；主程序和 CLI 启动时不再加载 DirectML、D3D12 与 DXGI。安装包、便携包和 CLI 包把组件放在主程序旁；`system get` 的 `components.inference` 报告组件能否加载及其 OCR 执行方式。
 - 从源码构建时，OCR 改由推理组件的 `ocr` / `ocr-cuda` 特性开启（`just build-components --features ocr-cuda`），后端 crate 不再提供这两个特性；`*-full` 配方的用法不变。
 - BCP 分析结果按应用、账号和记录类型浏览，并显示各分组的删除数和总数。

@@ -2,63 +2,58 @@
   <div class="report-viewer pe-viewer">
     <template v-if="report">
       <!-- 概览：格式 / 类型 + 标签 + 关键数字 + 技术细节 -->
-      <section class="card overview">
-        <div class="title-row">
-          <div class="title-icon"><Binary :size="22" /></div>
-          <div class="title-text">
-            <h3 class="model-name">{{ titleText }}</h3>
-            <div class="chips">
-              <span class="chip accent">{{ report.format }}</span>
-              <span class="chip">{{ report.machine_label }}</span>
-              <span class="chip">{{ kindBadge }}</span>
-              <span class="chip">{{ report.subsystem_label }}</span>
-              <span v-if="report.is_dotnet" class="chip info">.NET / CLR</span>
-              <span v-if="report.is_signed" class="chip success"><ShieldCheck :size="11" /> {{ tr("含签名块") }}</span>
-              <span v-else class="chip"><Shield :size="11" /> {{ tr("无签名") }}</span>
-              <span v-if="packedSuspect" class="chip critical"><AlertTriangle :size="11" /> {{ tr("高熵节区，疑似加壳") }}</span>
-              <span v-if="report.overlay" class="chip warn"><AlertTriangle :size="11" /> Overlay {{ formatBytes(report.overlay.size) }}</span>
-              <span v-if="report.truncated" class="chip warn">{{ tr("读取已截断") }}</span>
-            </div>
+      <header class="report-head">
+        <div class="report-icon"><Binary :size="20" /></div>
+        <div class="report-title">
+          <h3 class="report-name">{{ titleText }}</h3>
+          <div class="report-badges">
+            <span class="ui-badge sm mono">{{ report.format }}</span>
+            <span class="ui-badge sm mono">{{ report.machine_label }}</span>
+            <span class="ui-badge sm mono">{{ kindBadge }}</span>
+            <span class="ui-badge sm mono">{{ report.subsystem_label }}</span>
+            <span v-if="report.is_dotnet" class="ui-badge sm mono info">.NET / CLR</span>
+            <span v-if="report.is_signed" class="ui-badge sm success"><ShieldCheck :size="11" />{{ tr("含签名块") }}</span>
+            <span v-else class="ui-badge sm"><Shield :size="11" />{{ tr("无签名") }}</span>
+            <span v-if="packedSuspect" class="ui-badge sm danger"><AlertTriangle :size="11" />{{ tr("高熵节区，疑似加壳") }}</span>
+            <span v-if="report.overlay" class="ui-badge sm warn"><AlertTriangle :size="11" />Overlay {{ formatBytes(report.overlay.size) }}</span>
+            <span v-if="report.truncated" class="ui-badge sm warn">{{ tr("读取已截断") }}</span>
           </div>
         </div>
+      </header>
 
-        <div class="tiles">
-          <div class="tile">
-            <span class="tile-num">{{ report.sections.length }}</span>
-            <span class="tile-label">{{ tr("节区") }}</span>
-          </div>
-          <div class="tile">
-            <span class="tile-num">{{ report.imports.length }}</span>
-            <span class="tile-label">{{ tr("导入 DLL") }}</span>
-          </div>
-          <div class="tile">
-            <span class="tile-num">{{ report.exports?.total ?? 0 }}</span>
-            <span class="tile-label">{{ tr("导出符号") }}</span>
-          </div>
-          <div class="tile">
-            <span class="tile-num">{{ formatBytes(report.file_size) }}</span>
-            <span class="tile-label">{{ tr("文件大小") }}</span>
-          </div>
-        </div>
+      <dl class="report-stats">
+        <div class="report-stat"><dt>{{ tr("节区") }}</dt><dd>{{ report.sections.length }}</dd></div>
+        <div class="report-stat"><dt>{{ tr("导入 DLL") }}</dt><dd>{{ report.imports.length }}</dd></div>
+        <div class="report-stat"><dt>{{ tr("导出符号") }}</dt><dd>{{ report.exports?.total ?? 0 }}</dd></div>
+        <div class="report-stat"><dt>{{ tr("文件大小") }}</dt><dd>{{ formatBytes(report.file_size) }}</dd></div>
+      </dl>
 
-        <div class="detail-grid">
-          <div><span class="dk">{{ tr("编译时间") }}</span><span class="dv mono">{{ report.timestamp_utc ? formatTimestamp(report.timestamp_utc) : '—' }}</span></div>
-          <div><span class="dk">{{ tr("入口点") }}</span><span class="dv mono">{{ hex(report.entry_point) }}{{ report.entry_section ? ` (${report.entry_section})` : '' }}</span></div>
-          <div><span class="dk">{{ tr("镜像基址") }}</span><span class="dv mono">{{ report.image_base }}</span></div>
-          <div><span class="dk">{{ tr("镜像大小") }}</span><span class="dv mono">{{ formatBytes(report.size_of_image) }}</span></div>
-          <div><span class="dk">{{ tr("链接器版本") }}</span><span class="dv mono">{{ report.linker_version }}</span></div>
-          <div><span class="dk">{{ tr("目标系统版本") }}</span><span class="dv mono">{{ report.os_version }}</span></div>
-          <div><span class="dk">{{ tr("校验和") }}</span><span class="dv mono">{{ hex(report.checksum) }}</span></div>
-          <div><span class="dk">{{ tr("头部大小") }}</span><span class="dv mono">{{ formatBytes(report.size_of_headers) }}</span></div>
-          <div class="wide"><span class="dk">{{ tr("文件特性") }}</span><span class="dv mono">{{ joinList(report.characteristic_flags, tr) || '—' }}</span></div>
-          <div class="wide"><span class="dk">{{ tr("安全特性") }}</span><span class="dv mono">{{ joinList(report.dll_characteristic_flags, tr) || '—' }}</span></div>
+      <dl class="report-fields">
+        <div><dt>{{ tr("编译时间") }}</dt><dd>{{ report.timestamp_utc ? formatTimestamp(report.timestamp_utc) : '—' }}</dd></div>
+        <div><dt>{{ tr("入口点") }}</dt><dd>{{ hex(report.entry_point) }}{{ report.entry_section ? ` (${report.entry_section})` : '' }}</dd></div>
+        <div><dt>{{ tr("镜像基址") }}</dt><dd>{{ report.image_base }}</dd></div>
+        <div><dt>{{ tr("镜像大小") }}</dt><dd>{{ formatBytes(report.size_of_image) }}</dd></div>
+        <div><dt>{{ tr("链接器版本") }}</dt><dd>{{ report.linker_version }}</dd></div>
+        <div><dt>{{ tr("目标系统版本") }}</dt><dd>{{ report.os_version }}</dd></div>
+        <div><dt>{{ tr("校验和") }}</dt><dd>{{ hex(report.checksum) }}</dd></div>
+        <div><dt>{{ tr("头部大小") }}</dt><dd>{{ formatBytes(report.size_of_headers) }}</dd></div>
+        <div class="wide"><dt>{{ tr("文件特性") }}</dt><dd>{{ joinList(report.characteristic_flags, tr) || '—' }}</dd></div>
+        <div class="wide"><dt>{{ tr("安全特性") }}</dt><dd>{{ joinList(report.dll_characteristic_flags, tr) || '—' }}</dd></div>
+      </dl>
+
+      <!-- 解析警告 -->
+      <section v-if="report.parse_warnings.length" class="ui-alert warn report-warnings" role="note">
+        <AlertTriangle :size="14" />
+        <div class="warn-body">
+          <p class="warn-title">{{ tr("解析警告") }}</p>
+          <p v-for="(w, i) in report.parse_warnings" :key="i" class="warn-line mono">{{ w }}</p>
         </div>
       </section>
 
       <!-- 节区表 -->
-      <section class="card">
-        <div class="card-head">
-          <h4 class="card-title">{{ tr("节区") }} <span class="count-badge mono">{{ report.sections.length }}</span></h4>
+      <section class="section">
+        <div class="section-head">
+          <h4 class="section-title">{{ tr("节区") }} <span class="ui-count">{{ report.sections.length }}</span></h4>
         </div>
         <div class="table-scroll">
           <table class="data-table g-table">
@@ -91,38 +86,41 @@
       </section>
 
       <!-- 导入表 -->
-      <section v-if="report.imports.length" class="card">
-        <div class="card-head">
-          <h4 class="card-title">{{ tr("导入表") }} <span class="count-badge mono">{{ report.imports.length }} DLL</span></h4>
-          <div class="filter">
-            <Search :size="12" />
-            <input v-model="importFilter" type="text" :placeholder="tr('过滤 DLL / 函数')" spellcheck="false" />
-          </div>
+      <section v-if="report.imports.length" class="section">
+        <div class="section-head">
+          <h4 class="section-title">{{ tr("导入表") }} <span class="ui-count">{{ report.imports.length }}</span></h4>
+          <label class="ui-search section-filter">
+            <Search :size="13" aria-hidden="true" />
+            <input v-model="importFilter" type="text" :placeholder="tr('过滤 DLL / 函数')" :aria-label="tr('过滤 DLL / 函数')" spellcheck="false" />
+          </label>
         </div>
-        <details v-disclosure-motion v-for="(imp, i) in filteredImports" :key="`${i}-${imp.dll}`" class="disclosure">
-          <summary>
-            <span class="mono strong">{{ imp.dll }}</span>
-            <span v-if="imp.delayed" class="chip warn">{{ tr("延迟导入") }}</span>
-            <span class="dim">{{ imp.total }} {{ tr("函数") }}{{ imp.total > imp.functions.length ? tr("（前 {0}）", { 0: imp.functions.length }) : '' }}</span>
-          </summary>
-          <div class="func-list mono">
-            <span v-for="(f, fi) in imp.functions" :key="fi" class="func">{{ f }}</span>
-          </div>
-        </details>
-        <div v-if="filteredImports.length === 0" class="empty-row">{{ tr("无匹配项") }}</div>
+        <div class="framed-list">
+          <details v-for="(imp, i) in filteredImports" :key="`${i}-${imp.dll}`" v-disclosure-motion class="ui-disclosure disclosure">
+            <summary>
+              <ChevronRight :size="13" class="ui-chevron" />
+              <span class="mono strong">{{ imp.dll }}</span>
+              <span v-if="imp.delayed" class="ui-badge sm warn">{{ tr("延迟导入") }}</span>
+              <span class="dim">{{ imp.total }} {{ tr("函数") }}{{ imp.total > imp.functions.length ? tr("（前 {0}）", { 0: imp.functions.length }) : '' }}</span>
+            </summary>
+            <div class="func-list mono">
+              <span v-for="(f, fi) in imp.functions" :key="fi" class="func">{{ f }}</span>
+            </div>
+          </details>
+          <div v-if="filteredImports.length === 0" class="empty-row">{{ tr("无匹配项") }}</div>
+        </div>
       </section>
 
       <!-- 导出表 -->
-      <section v-if="report.exports && report.exports.entries.length" class="card">
-        <div class="card-head">
-          <h4 class="card-title">
-            {{ tr("导出表") }} <span class="count-badge mono">{{ report.exports.total }}</span>
-            <span v-if="report.exports.dll_name" class="dim mono">· {{ report.exports.dll_name }}</span>
+      <section v-if="report.exports && report.exports.entries.length" class="section">
+        <div class="section-head">
+          <h4 class="section-title">
+            {{ tr("导出表") }} <span class="ui-count">{{ report.exports.total }}</span>
+            <span v-if="report.exports.dll_name" class="dim mono">{{ report.exports.dll_name }}</span>
           </h4>
-          <div class="filter">
-            <Search :size="12" />
-            <input v-model="exportFilter" type="text" :placeholder="tr('过滤名称 / 序号')" spellcheck="false" />
-          </div>
+          <label class="ui-search section-filter">
+            <Search :size="13" aria-hidden="true" />
+            <input v-model="exportFilter" type="text" :placeholder="tr('过滤名称 / 序号')" :aria-label="tr('过滤名称 / 序号')" spellcheck="false" />
+          </label>
         </div>
         <div class="table-scroll">
           <table class="data-table g-table">
@@ -143,30 +141,30 @@
       </section>
 
       <!-- 版本信息 -->
-      <section v-if="report.version_info" class="card">
-        <div class="card-head"><h4 class="card-title">{{ tr("版本信息") }}</h4></div>
-        <div class="detail-grid">
-          <div><span class="dk">{{ tr("文件版本") }}</span><span class="dv mono">{{ report.version_info.file_version ?? '—' }}</span></div>
-          <div><span class="dk">{{ tr("产品版本") }}</span><span class="dv mono">{{ report.version_info.product_version ?? '—' }}</span></div>
+      <section v-if="report.version_info" class="section">
+        <div class="section-head"><h4 class="section-title">{{ tr("版本信息") }}</h4></div>
+        <dl class="report-fields">
+          <div><dt>{{ tr("文件版本") }}</dt><dd>{{ report.version_info.file_version ?? '—' }}</dd></div>
+          <div><dt>{{ tr("产品版本") }}</dt><dd>{{ report.version_info.product_version ?? '—' }}</dd></div>
           <div v-for="(s, si) in report.version_info.strings" :key="`${si}-${s.key}`" :class="{ wide: s.value.length > 40 }">
-            <span class="dk">{{ s.key }}</span><span class="dv mono">{{ s.value || '—' }}</span>
+            <dt>{{ s.key }}</dt><dd>{{ s.value || '—' }}</dd>
           </div>
-        </div>
+        </dl>
       </section>
 
       <!-- 调试目录 -->
-      <section v-if="report.debug.length" class="card">
-        <div class="card-head"><h4 class="card-title">{{ tr("调试目录") }}</h4></div>
+      <section v-if="report.debug.length" class="section">
+        <div class="section-head"><h4 class="section-title">{{ tr("调试目录") }}</h4></div>
         <div v-for="(d, i) in report.debug" :key="i" class="debug-entry">
-          <span class="chip">{{ d.kind }}</span>
+          <span class="ui-badge sm mono">{{ d.kind }}</span>
           <span v-if="d.pdb_path" class="mono pdb-path">{{ d.pdb_path }}</span>
           <span v-if="d.guid" class="mono dim">GUID {{ d.guid }}{{ d.age != null ? ` · Age ${d.age}` : '' }}</span>
         </div>
       </section>
 
       <!-- 数据目录 -->
-      <section class="card">
-        <div class="card-head"><h4 class="card-title">{{ tr("数据目录") }}</h4></div>
+      <section class="section">
+        <div class="section-head"><h4 class="section-title">{{ tr("数据目录") }}</h4></div>
         <div class="table-scroll">
           <table class="data-table g-table">
             <thead><tr><th>{{ tr("目录") }}</th><th>RVA</th><th>{{ tr("大小") }}</th></tr></thead>
@@ -180,12 +178,6 @@
           </table>
         </div>
       </section>
-
-      <!-- 解析警告 -->
-      <section v-if="report.parse_warnings.length" class="card warn-card">
-        <div class="card-head"><h4 class="card-title"><AlertTriangle :size="13" /> {{ tr("解析警告") }}</h4></div>
-        <div v-for="(w, i) in report.parse_warnings" :key="i" class="warn-line mono">{{ w }}</div>
-      </section>
     </template>
   </div>
 </template>
@@ -197,9 +189,9 @@ import { joinList } from '../../../../i18n/translate';
 import { vDisclosureMotion } from '../../../../composables/uiMotionDirectives';
 // PE 文件的「原类型视图」：由 BinaryViewer 传入已解析的 PeReport，按取证视角渲染
 // （编译时间 / 节区熵 / 导入导出 / PDB 路径 / 版本资源 / overlay）。
-// 视觉与 GgufViewer 一致：概览头 + 数据块 + 卡片化表格。
+// 版式与其他结构化报告一致：概览头 + 关键数字 + 平铺的分节。
 import { computed, ref } from 'vue';
-import { AlertTriangle, Binary, Search, Shield, ShieldCheck } from 'lucide-vue-next';
+import { AlertTriangle, Binary, ChevronRight, Search, Shield, ShieldCheck } from 'lucide-vue-next';
 import type { PeReport } from '../../../../lib/ipc/binary';
 import { formatBytes } from '../../../../utils/format';
 import { formatTimestamp } from '../../../../utils/time';
@@ -281,7 +273,6 @@ const filteredExports = computed(() => {
   gap: 8px;
   flex-wrap: wrap;
   font-size: 12px;
-  padding: 3px 0;
 }
 .pdb-path {
   color: var(--text-primary);

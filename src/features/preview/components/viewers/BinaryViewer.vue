@@ -1,12 +1,12 @@
 <template>
   <div class="binary-viewer">
-    <div v-if="loading" class="state-row mono"><Loader2 :size="14" class="spin" /> {{ tr("正在解析二进制结构…") }}</div>
-    <div v-else-if="error" class="state-row mono error">{{ error }}</div>
+    <PreviewState v-if="loading" tone="loading" :title="tr('正在解析二进制结构…')" />
+    <PreviewState v-else-if="error" tone="error" :icon="CircleAlert" :title="tr('无法解析二进制结构')" :description="error" mono-description />
     <PeViewer v-else-if="peReport" :report="peReport" />
     <ElfViewer v-else-if="elfReport" :report="elfReport" />
     <MachoViewer v-else-if="machoReport" :report="machoReport" />
     <ArchiveViewer v-else-if="archiveReport" :report="archiveReport" />
-    <div v-else class="state-row mono">{{ tr("无法识别的二进制格式。") }}</div>
+    <PreviewState v-else :icon="FileQuestionMark" :title="tr('无法识别的二进制格式。')" />
   </div>
 </template>
 
@@ -17,8 +17,9 @@ import { tr } from '../../../../composables/useLocale';
 // 按格式渲染 ELF / Mach-O / PE / ar 子视图。loading / error 在此统一处理，子视图
 // 只接收已解析的报告（prop 驱动）。
 import { computed, defineAsyncComponent, ref, watch } from 'vue';
-import { Loader2 } from 'lucide-vue-next';
+import { CircleAlert, FileQuestionMark } from 'lucide-vue-next';
 import { fsBinaryPreview, type NativeReport } from '../../../../lib/ipc/binary';
+import PreviewState from '../PreviewState.vue';
 import type { ImageId, NodeId } from '../../../../lib/ipc/ids';
 
 const PeViewer = defineAsyncComponent(() => import('./PeViewer.vue'));
@@ -64,20 +65,10 @@ watch(() => [props.imageId, props.nodeId], load, { immediate: true });
   flex-direction: column;
   min-height: 0;
 }
-/* 子视图自身滚动；分发器只在 loading / error 时显示状态行。 */
-.binary-viewer > :not(.state-row) {
+
+/* 子视图自身滚动。 */
+.binary-viewer > * {
   flex: 1;
   min-height: 0;
-}
-.state-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  padding: 14px 16px;
-}
-.state-row.error {
-  color: var(--sev-critical-fg);
 }
 </style>

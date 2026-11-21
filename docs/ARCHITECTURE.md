@@ -190,8 +190,8 @@ RAID 检测（`evidence/raid`）分六步：读取各检材的 LVM PV 并物化�
 - RAID/物理磁盘：`raid_auto_detect`、`raid_manual_assemble`、`physical_disks_list`
 - 文件恢复（文件系统记录与签名雕刻）：`carve_formats`、`carve_start`、`carve_scan_status`、`carve_scan_pause`、`carve_scan_resume`、`carve_scan_list`、`carve_scan_remove`、`carve_results_page`、`carve_filesystem_results`、`carve_preview`、`carve_recover`
 - 文件系统：`fs_children`、`fs_flat_page`、`fs_flat_ext_counts`、`fs_size_tree`、`fs_read`、`fs_read_large`、`fs_media_temp`、`fs_preview*`、`fs_export*`、`fs_digest`、`fs_identify_type`
-- 原类型预览：SQLite、Realm、二进制、GGUF、ZIP、CSV、Vim swap 等（后端解析）；文档/办公/邮件/压缩包/CAD/3D/图表等
-  「rich」类别由前端 Flyfish File Viewer 渲染，字节经 `fs_read_large`（≤16 MiB，可取消且受任务并发限制的 ArrayBuffer）或
+- 原类型预览：SQLite、Realm、二进制、GGUF、ZIP、CSV、Vim swap 等（后端解析）；文档/办公/邮件/电子书/压缩包/CAD/3D/图表，
+  以及 WebView 不能解码的 HEIC、TIFF、JPEG XL 图片等「rich」类别由前端 Flyfish File Viewer 渲染，字节经 `fs_read_large`（≤16 MiB，可取消且受任务并发限制的 ArrayBuffer）或
   `fs_media_temp` + asset 协议供给。PDF 支持 Range，单文件≤4 GiB；非流式富预览≤64 MiB，超限提示导出。
   `previewRequest` 为每个查看器分配 UUID，切换/卸载时取消读取并调用 `fs_media_release` 释放缓存引用，迟到响应同样释放。
   同一 `(image,node,ext)` 的物化互斥，完成前使用唯一临时文件，单写入通道约束瞬时磁盘占用。

@@ -2,8 +2,10 @@
 import { tr } from '../../../../composables/useLocale';
 
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
-import { ChevronLeft, ChevronRight, Crosshair, Loader2 } from 'lucide-vue-next';
+import { ChevronLeft, ChevronRight, CircleAlert, Crosshair } from 'lucide-vue-next';
 import { fsReadRange } from '../../../../lib/ipc/fs/read';
+import PreviewChromeSlot from '../PreviewChromeSlot.vue';
+import PreviewState from '../PreviewState.vue';
 import type { ImageId, NodeId } from '../../../../lib/ipc/ids';
 
 const props = defineProps<{ imageId: ImageId; nodeId: NodeId; size: number; target: { offset: number; length: number } }>();
@@ -66,12 +68,26 @@ onBeforeUnmount(() => { generation++; });
 
 <template>
   <section class="range-preview" :aria-label="tr('命中字节预览')">
-    <header class="range-toolbar">
-      <span>{{ tr("命中") }} <strong class="mono">0x{{ hex(target.offset) }}</strong> · {{ target.length }} {{ tr("字节") }}</span>
-      <button type="button" class="ui-icon-btn sm bordered" :title="tr('回到命中位置')" :aria-label="tr('回到命中位置')" :disabled="loading" @click="goTo(target.offset)"><Crosshair :size="14" /></button>
-    </header>
-    <div v-if="loading" class="range-state" role="status"><Loader2 :size="18" class="spin" />{{ tr("正在读取命中位置…") }}</div>
-    <div v-else-if="error" class="range-state error" role="alert">{{ error }}<button type="button" class="ui-btn sm" @click="load">{{ tr("重试") }}</button></div>
+    <!-- 回到命中放进视图栏；命中位置与分段翻页放进状态栏。 -->
+    <PreviewChromeSlot area="tools">
+      <button type="button" class="ui-btn sm ghost" :title="tr('回到命中位置')" :aria-label="tr('回到命中位置')" :disabled="loading" @click="goTo(target.offset)">
+        <Crosshair :size="13" />{{ tr("回到命中") }}
+      </button>
+    </PreviewChromeSlot>
+    <PreviewChromeSlot area="statusStart">
+      <span class="ui-footbar-stat">{{ tr("命中") }} <strong>0x{{ hex(target.offset) }}</strong> {{ target.length }} {{ tr("字节") }}</span>
+    </PreviewChromeSlot>
+    <PreviewChromeSlot area="statusEnd">
+      <span class="ui-footbar-stat mono">{{ start.toLocaleString() }}–{{ end.toLocaleString() }} / {{ size.toLocaleString() }} B</span>
+      <span class="range-actions">
+        <button type="button" class="ui-icon-btn sm" :title="tr('上一段')" :aria-label="tr('上一段')" :disabled="loading || start <= 0" @click="goTo(start - WINDOW_SIZE)"><ChevronLeft :size="14" /></button>
+        <button type="button" class="ui-icon-btn sm" :title="tr('下一段')" :aria-label="tr('下一段')" :disabled="loading || start + WINDOW_SIZE >= size" @click="goTo(start + WINDOW_SIZE)"><ChevronRight :size="14" /></button>
+      </span>
+    </PreviewChromeSlot>
+    <PreviewState v-if="loading" tone="loading" :title="tr('正在读取命中位置…')" />
+    <PreviewState v-else-if="error" tone="error" :icon="CircleAlert" :title="tr('无法读取命中位置')" :description="error">
+      <button type="button" class="ui-btn sm" @click="load">{{ tr("重试") }}</button>
+    </PreviewState>
     <div v-else ref="content" class="range-content mono" tabindex="0" :aria-label="tr('十六进制内容')">
       <div class="hex-row heading"><span>Offset</span><span>HEX</span><span>ASCII</span></div>
       <div v-for="row in rows" :key="row.offset" class="hex-row">
@@ -80,24 +96,16 @@ onBeforeUnmount(() => { generation++; });
         <span class="ascii"><span v-for="cell in row.cells" :key="cell.offset" :class="{ hit: cell.hit }">{{ cell.char }}</span></span>
       </div>
     </div>
-    <footer class="range-toolbar">
-      <span class="mono">{{ start.toLocaleString() }}–{{ end.toLocaleString() }} / {{ size.toLocaleString() }} B</span>
-      <span class="range-actions"><button type="button" class="ui-icon-btn sm bordered" :aria-label="tr('上一段')" :disabled="loading || start <= 0" @click="goTo(start - WINDOW_SIZE)"><ChevronLeft :size="15" /></button><button type="button" class="ui-icon-btn sm bordered" :aria-label="tr('下一段')" :disabled="loading || start + WINDOW_SIZE >= size" @click="goTo(start + WINDOW_SIZE)"><ChevronRight :size="15" /></button></span>
-    </footer>
   </section>
 </template>
 
 <style scoped>
 .range-preview { display: flex; flex-direction: column; min-height: 0; height: 100%; }
-.range-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; color: var(--text-secondary); font-size: 11px; }
-.range-toolbar strong { color: var(--text-primary); font-weight: 500; }
-.range-actions { display: flex; gap: 4px; }
-.range-state { display: flex; align-items: center; justify-content: center; flex: 1; gap: 8px; padding: 24px; color: var(--text-secondary); font-size: 12px; }
-.error { color: var(--sev-critical-fg); }
-.range-content { flex: 1; min-height: 0; overflow: auto; padding: 0 12px; font-size: 12px; line-height: 24px; }
+.range-actions { display: inline-flex; gap: 4px; }
+.range-content { flex: 1; min-height: 0; overflow: auto; padding: 0 16px 12px; font-size: 12px; line-height: 24px; outline: none; }
 .hex-row { display: grid; grid-template-columns: 10ch 47ch 16ch; column-gap: 2ch; width: max-content; }
 .heading, .offset { color: var(--text-secondary); }
-.heading { position: sticky; top: 0; background: var(--surface-secondary); }
+.heading { position: sticky; top: 0; padding-top: 8px; border-bottom: 1px solid var(--border-color); background: var(--surface-secondary); }
 .byte-cells { display: grid; grid-template-columns: repeat(16, 2ch); gap: 1ch; }
 .hit { color: var(--primary-color); background: var(--primary-soft); outline: 1px solid var(--primary-color); border-radius: var(--radius-sm); }
 </style>

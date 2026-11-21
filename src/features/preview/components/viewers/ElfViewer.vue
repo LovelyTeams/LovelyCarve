@@ -2,58 +2,65 @@
   <div class="report-viewer elf-viewer">
     <template v-if="report">
       <!-- 概览 -->
-      <section class="card overview">
-        <div class="title-row">
-          <div class="title-icon"><Cpu :size="22" /></div>
-          <div class="title-text">
-            <h3 class="model-name">{{ report.elf_type }}</h3>
-            <div class="chips">
-              <span class="chip accent">{{ report.format }}</span>
-              <span class="chip">{{ report.machine_label }}</span>
-              <span class="chip">{{ report.endianness }}</span>
-              <span class="chip">{{ report.os_abi_label }}</span>
-              <span v-for="f in report.security_flags" :key="f" class="chip" :class="sevClass(f)">{{ f }}</span>
-              <span v-if="report.truncated" class="chip warn">{{ tr("读取已截断") }}</span>
-            </div>
+      <header class="report-head">
+        <div class="report-icon"><Cpu :size="20" /></div>
+        <div class="report-title">
+          <h3 class="report-name">{{ report.elf_type }}</h3>
+          <div class="report-badges">
+            <span class="ui-badge sm mono">{{ report.format }}</span>
+            <span class="ui-badge sm mono">{{ report.machine_label }}</span>
+            <span class="ui-badge sm mono">{{ report.endianness }}</span>
+            <span class="ui-badge sm mono">{{ report.os_abi_label }}</span>
+            <span v-for="f in report.security_flags" :key="f" class="ui-badge sm" :class="sevClass(f)">{{ f }}</span>
+            <span v-if="report.truncated" class="ui-badge sm warn">{{ tr("读取已截断") }}</span>
           </div>
         </div>
+      </header>
 
-        <div class="tiles">
-          <div class="tile"><span class="tile-num">{{ report.sections.length }}</span><span class="tile-label">{{ tr("节") }}</span></div>
-          <div class="tile"><span class="tile-num">{{ report.program_headers.length }}</span><span class="tile-label">{{ tr("段") }}</span></div>
-          <div class="tile"><span class="tile-num">{{ report.needed.length }}</span><span class="tile-label">{{ tr("依赖库") }}</span></div>
-          <div class="tile"><span class="tile-num">{{ formatBytes(report.file_size) }}</span><span class="tile-label">{{ tr("文件大小") }}</span></div>
-        </div>
+      <dl class="report-stats">
+        <div class="report-stat"><dt>{{ tr("节") }}</dt><dd>{{ report.sections.length }}</dd></div>
+        <div class="report-stat"><dt>{{ tr("段") }}</dt><dd>{{ report.program_headers.length }}</dd></div>
+        <div class="report-stat"><dt>{{ tr("依赖库") }}</dt><dd>{{ report.needed.length }}</dd></div>
+        <div class="report-stat"><dt>{{ tr("文件大小") }}</dt><dd>{{ formatBytes(report.file_size) }}</dd></div>
+      </dl>
 
-        <div class="detail-grid">
-          <div><span class="dk">{{ tr("入口") }}</span><span class="dv mono">{{ report.entry }}</span></div>
-          <div><span class="dk">ABI</span><span class="dv mono">{{ report.os_abi_label }}</span></div>
-          <div v-if="report.interpreter" class="wide"><span class="dk">{{ tr("解释器") }}</span><span class="dv mono">{{ report.interpreter }}</span></div>
-          <div v-if="report.soname" class="wide"><span class="dk">SONAME</span><span class="dv mono">{{ report.soname }}</span></div>
-          <div v-if="report.build_id" class="wide"><span class="dk">Build ID</span><span class="dv mono">{{ report.build_id }}</span></div>
+      <dl class="report-fields">
+        <div><dt>{{ tr("入口") }}</dt><dd>{{ report.entry }}</dd></div>
+        <div><dt>ABI</dt><dd>{{ report.os_abi_label }}</dd></div>
+        <div v-if="report.interpreter" class="wide"><dt>{{ tr("解释器") }}</dt><dd>{{ report.interpreter }}</dd></div>
+        <div v-if="report.soname" class="wide"><dt>SONAME</dt><dd>{{ report.soname }}</dd></div>
+        <div v-if="report.build_id" class="wide"><dt>Build ID</dt><dd>{{ report.build_id }}</dd></div>
+      </dl>
+
+      <!-- 解析警告 -->
+      <section v-if="report.parse_warnings.length" class="ui-alert warn report-warnings" role="note">
+        <AlertTriangle :size="14" />
+        <div class="warn-body">
+          <p class="warn-title">{{ tr("解析警告") }}</p>
+          <p v-for="(w, i) in report.parse_warnings" :key="i" class="warn-line mono">{{ w }}</p>
         </div>
       </section>
 
       <!-- 依赖库 -->
-      <section v-if="report.needed.length" class="card">
-        <div class="card-head"><h4 class="card-title">{{ tr("依赖库（DT_NEEDED）") }} <span class="count-badge mono">{{ report.needed.length }}</span></h4></div>
-        <div class="tag-list mono">
+      <section v-if="report.needed.length" class="section">
+        <div class="section-head"><h4 class="section-title">{{ tr("依赖库（DT_NEEDED）") }} <span class="ui-count">{{ report.needed.length }}</span></h4></div>
+        <div class="tag-list">
           <span v-for="(lib, i) in report.needed" :key="i" class="tag">{{ lib }}</span>
         </div>
       </section>
 
       <!-- 运行时库搜索路径 -->
-      <section v-if="report.rpaths.length || report.runpaths.length" class="card">
-        <div class="card-head"><h4 class="card-title">{{ tr("运行时库搜索路径") }}</h4></div>
-        <div class="detail-grid">
-          <div v-for="(p, i) in report.runpaths" :key="`run-${i}`" class="wide"><span class="dk">RUNPATH</span><span class="dv mono">{{ p }}</span></div>
-          <div v-for="(p, i) in report.rpaths" :key="`rp-${i}`" class="wide"><span class="dk">RPATH</span><span class="dv mono">{{ p }}</span></div>
-        </div>
+      <section v-if="report.rpaths.length || report.runpaths.length" class="section">
+        <div class="section-head"><h4 class="section-title">{{ tr("运行时库搜索路径") }}</h4></div>
+        <dl class="report-fields">
+          <div v-for="(p, i) in report.runpaths" :key="`run-${i}`" class="wide"><dt>RUNPATH</dt><dd>{{ p }}</dd></div>
+          <div v-for="(p, i) in report.rpaths" :key="`rp-${i}`" class="wide"><dt>RPATH</dt><dd>{{ p }}</dd></div>
+        </dl>
       </section>
 
       <!-- 程序头（段） -->
-      <section v-if="report.program_headers.length" class="card">
-        <div class="card-head"><h4 class="card-title">{{ tr("程序头（段）") }} <span class="count-badge mono">{{ report.program_headers.length }}</span></h4></div>
+      <section v-if="report.program_headers.length" class="section">
+        <div class="section-head"><h4 class="section-title">{{ tr("程序头（段）") }} <span class="ui-count">{{ report.program_headers.length }}</span></h4></div>
         <div class="table-scroll">
           <table class="data-table g-table">
             <thead><tr><th>{{ tr("类型") }}</th><th>{{ tr("权限") }}</th><th>{{ tr("文件偏移") }}</th><th>{{ tr("虚拟地址") }}</th><th>{{ tr("文件大小") }}</th><th>{{ tr("内存大小") }}</th></tr></thead>
@@ -72,8 +79,8 @@
       </section>
 
       <!-- 节（含熵） -->
-      <section v-if="report.sections.length" class="card">
-        <div class="card-head"><h4 class="card-title">{{ tr("节") }} <span class="count-badge mono">{{ report.sections.length }}</span></h4></div>
+      <section v-if="report.sections.length" class="section">
+        <div class="section-head"><h4 class="section-title">{{ tr("节") }} <span class="ui-count">{{ report.sections.length }}</span></h4></div>
         <div class="table-scroll">
           <table class="data-table g-table">
             <thead><tr><th>{{ tr("名称") }}</th><th>{{ tr("类型") }}</th><th>{{ tr("标志") }}</th><th>{{ tr("地址") }}</th><th>{{ tr("文件偏移") }}</th><th>{{ tr("大小") }}</th><th class="th-entropy">{{ tr("熵") }}</th></tr></thead>
@@ -99,34 +106,28 @@
       </section>
 
       <!-- 符号摘要 -->
-      <section class="card">
-        <div class="card-head">
-          <h4 class="card-title">{{ tr("符号摘要") }}</h4>
-          <div v-if="report.symbol_summary.exported.length || report.symbol_summary.imported.length" class="filter">
-            <Search :size="12" />
-            <input v-model="symFilter" type="text" :placeholder="tr('过滤符号')" spellcheck="false" />
-          </div>
+      <section class="section">
+        <div class="section-head">
+          <h4 class="section-title">{{ tr("符号摘要") }}</h4>
+          <label v-if="report.symbol_summary.exported.length || report.symbol_summary.imported.length" class="ui-search section-filter">
+            <Search :size="13" aria-hidden="true" />
+            <input v-model="symFilter" type="text" :placeholder="tr('过滤符号')" :aria-label="tr('过滤符号')" spellcheck="false" />
+          </label>
         </div>
-        <div class="detail-grid">
-          <div><span class="dk">{{ tr("动态符号") }}</span><span class="dv mono">{{ report.symbol_summary.dynsym_count }}</span></div>
-          <div><span class="dk">{{ tr("调试符号") }}</span><span class="dv mono">{{ report.symbol_summary.symtab_count }}{{ report.symbol_summary.stripped ? tr(" · 已剥离") : '' }}</span></div>
-        </div>
+        <dl class="report-fields">
+          <div><dt>{{ tr("动态符号") }}</dt><dd>{{ report.symbol_summary.dynsym_count }}</dd></div>
+          <div><dt>{{ tr("调试符号") }}</dt><dd>{{ report.symbol_summary.symtab_count }}{{ report.symbol_summary.stripped ? tr(" · 已剥离") : '' }}</dd></div>
+        </dl>
         <div class="sym-cols">
           <div v-if="report.symbol_summary.exported.length" class="sym-col">
-            <div class="sym-head mono">{{ tr("导出符号") }} {{ report.symbol_summary.exported.length }}{{ report.symbol_summary.exported_truncated ? '+' : '' }}</div>
+            <div class="sym-head">{{ tr("导出符号") }} <span class="ui-count">{{ report.symbol_summary.exported.length }}{{ report.symbol_summary.exported_truncated ? '+' : '' }}</span></div>
             <div class="func-list mono"><span v-for="(s, i) in filteredExported" :key="i" class="func">{{ s }}</span></div>
           </div>
           <div v-if="report.symbol_summary.imported.length" class="sym-col">
-            <div class="sym-head mono">{{ tr("导入符号") }} {{ report.symbol_summary.imported.length }}{{ report.symbol_summary.imported_truncated ? '+' : '' }}</div>
+            <div class="sym-head">{{ tr("导入符号") }} <span class="ui-count">{{ report.symbol_summary.imported.length }}{{ report.symbol_summary.imported_truncated ? '+' : '' }}</span></div>
             <div class="func-list mono"><span v-for="(s, i) in filteredImported" :key="i" class="func">{{ s }}</span></div>
           </div>
         </div>
-      </section>
-
-      <!-- 解析警告 -->
-      <section v-if="report.parse_warnings.length" class="card warn-card">
-        <div class="card-head"><h4 class="card-title"><AlertTriangle :size="13" /> {{ tr("解析警告") }}</h4></div>
-        <div v-for="(w, i) in report.parse_warnings" :key="i" class="warn-line mono">{{ w }}</div>
       </section>
     </template>
   </div>
@@ -137,7 +138,7 @@ import { tr } from '../../../../composables/useLocale';
 
 // ELF 文件的「原类型视图」：由 BinaryViewer 传入已解析的 ElfReport，按取证视角
 // 渲染（机器/ABI、安全缓解、解释器/soname/依赖、build-id、段/节熵、符号摘要）。
-// 视觉与 PeViewer 一致。
+// 版式与 PeViewer 一致。
 import { computed, ref } from 'vue';
 import { AlertTriangle, Cpu, Search } from 'lucide-vue-next';
 import type { ElfReport } from '../../../../lib/ipc/binary';
@@ -162,7 +163,7 @@ function entropyClass(e: number): string {
 
 // 安全缓解标签上色：可执行栈是危险（红），stripped 是中性提醒（黄），其余正面（绿）。
 function sevClass(flag: string): string {
-  if (flag.includes('危险')) return 'critical';
+  if (flag.includes('危险')) return 'danger';
   if (flag.includes('剥离') || flag.includes('stripped')) return 'warn';
   return 'success';
 }
@@ -186,18 +187,22 @@ const filteredImported = computed(() => {
 <style scoped>
 .sym-cols {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 12px;
-  margin-top: 12px;
 }
 .sym-head {
-  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
   color: var(--text-secondary);
-  margin-bottom: 6px;
+  font-size: 11px;
 }
-.func-list {
-  padding: 0;
+.sym-col .func-list {
   max-height: 220px;
   overflow: auto;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
 }
 </style>

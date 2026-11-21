@@ -34,7 +34,6 @@
       <DiskFileDetail
         v-if="node && imageId"
         ref="detailPreview"
-        standalone
         :image-id="imageId"
         :index-only="indexOnly"
         :node="node"
@@ -44,7 +43,6 @@
         :digest="digest"
         :focus-target="focusTarget"
         @identified="onIdentified"
-        @close="closeWindow"
       />
       <div v-else class="pw-empty mono">{{ tr("无法加载文件预览参数。") }}</div>
     </div>

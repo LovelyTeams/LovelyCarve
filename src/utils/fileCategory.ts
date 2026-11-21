@@ -87,8 +87,12 @@ export const RICH_EXT = new Set([
   'xls', 'xlsx', 'xlsm', 'xlsb', 'xlt', 'xltx', 'xltm', 'ods', 'fods', 'numbers',
   // PowerPoint
   'ppt', 'pptx', 'pptm', 'pot', 'potx', 'potm', 'pps', 'ppsx', 'ppsm',
-  // 版式文档
-  'pdf', 'ofd', 'epub',
+  // 韩文 / WordPerfect / dBASE（.key 多为 PEM 私钥，留在文本视图，不当作 Keynote）
+  'hwp', 'hwpx', 'wpd', 'dbf',
+  // 版式文档与电子书
+  'pdf', 'ofd', 'epub', 'fb2', 'umd', 'chm',
+  // WebView 自身不能解码的图片
+  'heic', 'heif', 'tif', 'tiff', 'jxl',
   // 邮件（pst/ost 库不支持，排除）
   'eml', 'msg', 'mbox',
   // 非 zip 压缩包（zip/jar/war/apk/ear 仍走 ZipViewer；wim/arj/ipa/lz4/ar 排除）
