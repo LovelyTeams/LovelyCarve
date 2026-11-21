@@ -16,6 +16,7 @@
 ### Changed
 
 - 文件预览可放在列表右侧或下方；工作区较窄时自动放在列表下方，不再覆盖文件表。
+- 文件列表、目录树、预览标签页和详情面板的文件图标换成一套 16px 线性图标：按文件名和后缀区分常见编程语言、脚本、配置、日志、字体和锁文件；可执行文件、压缩包、表格、邮件和数据库各有专门图标（可执行文件不再显示为齿轮，CSV 显示为表格），展开的目录显示为打开的文件夹。分区、未分配空间、NTFS 命名数据流、ReFS 快照、符号链接和 Docker 视图的图标按同一网格重绘，各类别的颜色不变。
 - 重新设计原类型视图：视图切换与当前视图的工具合成一行，查找栏按查找按钮或 Ctrl+F 打开；真实类型识别、文件大小、文本编码与翻页移到底部状态栏。CSV、JSON / YAML / XML、SQLite、Realm 和 ZIP 不再各自叠一层工具条；面板较窄时 SQLite / Realm 的表清单收进下拉框，ZIP 成员树与成员预览上下排列。PE / ELF / Mach-O / ar / GGUF 报告改为平铺分节，加载、出错和不支持的状态统一给出原因与下一步。
 - 原类型视图新增 CHM、UMD、FB2 电子书，HEIC / HEIF、TIFF、JPEG XL 图片，以及韩文（HWP / HWPX）、WordPerfect 和 dBASE 文件，经 Flyfish File Viewer 渲染。
 - Magika 文件类型识别和 OCR 移入随程序分发的推理组件 `lovelycarve_inference.dll`，ONNX Runtime 与模型随组件在首次使用时加载：Windows CLI 从约 52 MB 降至约 30 MB，桌面主程序同样减少约 22 MB；主程序和 CLI 启动时不再加载 DirectML、D3D12 与 DXGI。安装包、便携包和 CLI 包把组件放在主程序旁；`system get` 的 `components.inference` 报告组件能否加载及其 OCR 执行方式。

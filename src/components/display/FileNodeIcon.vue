@@ -1,32 +1,26 @@
 <template>
-  <component :is="icon" :size="size" class="file-node-icon" :class="kindClass" />
+  <svg
+    class="file-node-icon"
+    :class="kindClass"
+    :width="size"
+    :height="size"
+    :viewBox="svg.viewBox"
+    :fill="svg.fill"
+    :data-icon="iconName"
+    aria-hidden="true"
+    focusable="false"
+    v-html="svg.body"
+  />
 </template>
 
 <script setup lang="ts">
 // 文件/目录/分区节点的统一图标：目录树与文件列表共用这一份选型与配色，
-// 两边不再各自维护（图标按扩展名分类，配色全走主题 token）。
+// 两边不再各自维护。形状按文件名查图标表（utils/fileIcons），配色按扩展名
+// 类别走主题 token；SVG 随包内联，绘制颜色统一换成 currentColor。
 import { computed } from 'vue';
-import {
-  CircleDashed,
-  Container,
-  Database,
-  File as FileIcon,
-  FileArchive,
-  FileAudio,
-  FileCode,
-  FileCog,
-  FileImage,
-  FileSpreadsheet,
-  FileText,
-  FileVideo,
-  Folder,
-  HardDrive,
-  History,
-  Layers,
-  Link as LinkIcon,
-  Mail,
-} from 'lucide-vue-next';
 import { iconCategoryOf, type IconCategory } from '../../utils/fileCategory';
+import { fileIconOf, NODE_ICON, type FileIconName } from '../../utils/fileIcons';
+import { fileIconSvg } from './fileIconSvg';
 
 const props = withDefaults(
   defineProps<{
@@ -37,24 +31,11 @@ const props = withDefaults(
     /** 文件名，按扩展名分类别。 */
     name: string;
     size?: number;
+    /** 目录在树里已展开：画打开的文件夹。 */
+    expanded?: boolean;
   }>(),
-  { size: 14 },
+  { size: 14, expanded: false },
 );
-
-const CATEGORY_ICON: Record<IconCategory, typeof FileIcon> = {
-  image: FileImage,
-  video: FileVideo,
-  audio: FileAudio,
-  pdf: FileText,
-  document: FileText,
-  spreadsheet: FileSpreadsheet,
-  code: FileCode,
-  archive: FileArchive,
-  executable: FileCog,
-  database: Database,
-  email: Mail,
-  other: FileIcon,
-};
 
 const isPartition = computed(() => /^part:\d+$/.test(props.id) || /^lvm:\d+:\d+$/.test(props.id));
 
@@ -71,6 +52,7 @@ const isSnapshot = computed(() => props.id.startsWith('refs-snap:'));
 // 附加数据流，名字带 `:`/`(数据流)` 同样无从按扩展名识别。
 const isAds = computed(() => props.id.startsWith('ntfs-ads:'));
 
+// 未分配空间与分区间隙：虚线框表示不属于任何文件或分区的区域。
 const isUnalloc = computed(
   () =>
     props.kind === 'unallocated' ||
@@ -85,16 +67,18 @@ const category = computed<IconCategory>(() => {
   return iconCategoryOf(ext.toLowerCase());
 });
 
-const icon = computed(() => {
-  if (isDockerGroup.value || isDockerContainerRoot.value) return Container;
-  if (isSnapshot.value) return History;
-  if (isAds.value) return Layers;
-  if (isUnalloc.value) return CircleDashed;
-  if (isPartition.value) return HardDrive;
-  if (props.kind === 'dir') return Folder;
-  if (props.kind === 'symlink') return LinkIcon;
-  return CATEGORY_ICON[category.value];
+const iconName = computed<FileIconName>(() => {
+  if (isDockerGroup.value || isDockerContainerRoot.value) return NODE_ICON.container;
+  if (isSnapshot.value) return NODE_ICON.snapshot;
+  if (isAds.value) return NODE_ICON.dataStream;
+  if (isUnalloc.value) return NODE_ICON.unallocated;
+  if (isPartition.value) return NODE_ICON.partition;
+  if (props.kind === 'dir') return props.expanded ? NODE_ICON.folderOpen : NODE_ICON.folder;
+  if (props.kind === 'symlink') return NODE_ICON.symlink;
+  return fileIconOf(props.name, category.value);
 });
+
+const svg = computed(() => fileIconSvg(iconName.value));
 
 const kindClass = computed(() => {
   if (isDockerGroup.value || isDockerContainerRoot.value) return 'kind-container';

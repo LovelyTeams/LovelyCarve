@@ -50,6 +50,7 @@
             :id="row.node.id"
             :kind="row.node.kind"
             :name="row.node.name"
+            :expanded="row.node.expanded"
             :size="13"
             class="tree-node-icon"
           />

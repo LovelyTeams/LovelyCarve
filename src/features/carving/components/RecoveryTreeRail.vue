@@ -8,7 +8,7 @@
           <ChevronRight v-if="row.expandable" :size="12" class="tree-chevron" :class="{ open: expanded.has(row.entry.key) }" />
         </span>
         <ScanSearch v-if="row.entry.kind === 'signatures'" :size="13" class="tree-node-icon signature-icon" />
-        <FileNodeIcon v-else :id="row.entry.kind === 'volume' ? 'part:0' : row.entry.key" kind="dir" :name="row.entry.name" :size="13" class="tree-node-icon" />
+        <FileNodeIcon v-else :id="row.entry.kind === 'volume' ? 'part:0' : row.entry.key" kind="dir" :name="row.entry.name" :expanded="row.expandable && expanded.has(row.entry.key)" :size="13" class="tree-node-icon" />
         <span class="tree-name" :class="{ deleted: row.entry.node?.deleted }">{{ row.entry.name }}</span>
         <span v-if="row.entry.fileCount" class="tree-count mono">{{ row.entry.fileCount.toLocaleString() }}</span>
       </button>
