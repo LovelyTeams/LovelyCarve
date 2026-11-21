@@ -1690,6 +1690,14 @@ The result directory icons in `src/assets/bcp-apps` come from the local
 Honglian GoldenEyes V4 installation's `icon` directory. Application logos
 and marks belong to their respective owners.
 
+## Android robot
+
+The Android system icon (`AndroidHead` in
+`src/components/display/extraIcons.ts`) is a simplified drawing of the Android
+robot. The Android robot is reproduced or modified from work created and shared
+by Google and used according to terms described in the Creative Commons 3.0
+Attribution License (<https://creativecommons.org/licenses/by/3.0/>).
+
 ## File-node icons (Zed)
 
 The file-type, folder and evidence-node icons in `src/assets/file-icons/zed`

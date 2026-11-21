@@ -41,7 +41,7 @@
       <FileMetadataPanel v-if="activeTab === 'detail'" :node="node" :full-path="fullPath" :extension="ext"
         :ident="effectiveIdent" :digest="digest" :ext-mismatch="extMismatch" />
       <template v-else>
-        <PreviewState v-if="indexOnly" :icon="HardDriveDownload" :title="tr('源镜像不可用')" :description="tr('源镜像不可用，仅能查看索引中的文件属性。')" />
+        <PreviewState v-if="indexOnly" :icon="Unplug" :title="tr('源镜像不可用')" :description="tr('源镜像不可用，仅能查看索引中的文件属性。')" />
         <PreviewState v-else-if="node.kind !== 'file'" :icon="FolderOpen" :title="tr('没有内容可预览')" :description="tr('目录没有内容可预览，详见「详细信息」标签页。')" />
         <FileRangePreview v-else-if="activeTab === 'hex' && focusTarget" class="viewer-fill" :image-id="imageId" :node-id="node.id" :size="node.size" :target="focusTarget" />
         <PreviewState v-else-if="loading" tone="loading" :title="tr('加载中…')" />
@@ -212,8 +212,8 @@ import { useHexPreview } from '../composables/useHexPreview';
 import { providePreviewChrome } from '../composables/previewChrome';
 import { CHARSETS, type CharsetOption } from '../model/charsets';
 import {
-  Binary, CircleAlert, FileQuestionMark, FileX, FolderOpen, HardDriveDownload, Hash, Languages,
-  Loader2, ScanSearch, TextAlignStart, Type, X,
+  Binary, CircleAlert, FileQuestionMark, FileX, FolderOpen, Hash, Languages,
+  Loader2, ScanSearch, TextAlignStart, Type, Unplug, X,
 } from 'lucide-vue-next';
 import UiContextMenu, { type UiContextMenuEntry } from '../../../components/ui/UiContextMenu.vue';
 import UiTransition from '../../../components/ui/UiTransition.vue';

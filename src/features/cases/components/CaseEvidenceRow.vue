@@ -1,7 +1,7 @@
 <template>
   <article class="evidence-row" :class="{ current }">
     <div class="evidence-main">
-      <div class="evidence-icon"><Boxes v-if="raidLevel !== undefined" :size="20" /><HardDrive v-else :size="20" /></div>
+      <div class="evidence-icon"><Server v-if="raidLevel !== undefined" :size="20" /><HardDrive v-else :size="20" /></div>
       <button class="evidence-name" :disabled="busy" :title="tr('打开 {0}', { 0: evidence.path })" @click="emit('open', evidence)">
         <span class="file-name">{{ fileName }}</span>
         <span class="file-meta">
@@ -33,7 +33,7 @@ import { tr } from '../../../composables/useLocale';
 
 import UiTransition from '../../../components/ui/UiTransition.vue';
 import { computed, ref, useId } from 'vue';
-import { Boxes, ChevronDown, HardDrive, Trash2 } from 'lucide-vue-next';
+import { ChevronDown, HardDrive, Server, Trash2 } from 'lucide-vue-next';
 import type { EvidenceRef } from '../../../lib/ipc/cases';
 import { formatBytes, formatEpochSeconds } from '../../../utils/format';
 

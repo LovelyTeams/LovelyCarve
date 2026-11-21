@@ -2,7 +2,7 @@
 import { tr } from '../../../composables/useLocale';
 
 import { computed, onMounted, onScopeDispose, ref, watch } from 'vue';
-import { CalendarRange, TriangleAlert, CircleAlert, Download, Loader2, RefreshCw, SlidersHorizontal, Undo2, X, Search, BarChart3, Plus } from 'lucide-vue-next';
+import { CalendarRange, TriangleAlert, CircleAlert, Download, Loader2, RefreshCw, SlidersHorizontal, Undo2, X, Search, ChartGantt, Plus } from 'lucide-vue-next';
 import UiTransition from '../../../components/ui/UiTransition.vue';
 import WorkspaceStartState from '../../../components/layout/WorkspaceStartState.vue';
 import TimelineOverview from './TimelineOverview.vue';
@@ -70,7 +70,7 @@ onScopeDispose(() => { initGeneration++; });
 <template>
   <section class="timeline-panel" :aria-label="tr('时间线')">
     <WorkspaceStartState v-if="!building && (!statusInfo || statusInfo.status === 'buildRequired')"
-      :icon="BarChart3" :loading="!statusInfo && !statusError"
+      :icon="ChartGantt" :loading="!statusInfo && !statusError"
       :title="statusError ? tr('读取时间线失败') : statusInfo ? tr('还没有时间线') : tr('正在读取时间线…')"
       :description="statusError || tr('汇总文件时间与分析事件，查看事件发生顺序。')"
       :action-label="statusError ? tr('重试') : tr('创建时间线')" :action-icon="statusError ? RefreshCw : Plus"

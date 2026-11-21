@@ -27,10 +27,10 @@
       </div>
     </div>
     <div v-if="treeError" class="ui-empty state-box error" role="alert"><span class="ui-empty-icon"><CircleAlert :size="24" /></span><p class="ui-empty-desc">{{ tr("分析结果读取失败：{0}", { 0: treeError }) }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="reload">{{ tr("重试") }}</button></div></div>
-    <WorkspaceStartState v-else-if="!selectedNode" :icon="DatabaseZap" :loading="treeLoading"
+    <WorkspaceStartState v-else-if="!selectedNode" :icon="ScanSearch" :loading="treeLoading"
       :title="treeLoading ? tr('正在读取分析结果…') : tree.length ? tr('选择一个结果项') : tr('当前检材还没有分析结果')"
       :description="tree.length ? tr('在左侧结果目录中选择结果项，查看解析出的记录。') : tr('选择分析功能，完成后结果会显示在这里。')"
-      :action-label="tree.length ? undefined : tr('快速分析')" :action-icon="DatabaseZap" role="status" @action="emit('quickAnalysis')">
+      :action-label="tree.length ? undefined : tr('快速分析')" :action-icon="Zap" role="status" @action="emit('quickAnalysis')">
       <template #toolbar><button class="ui-btn ghost" :disabled="treeLoading" @click="reload"><RefreshCw :size="14" />{{ tr("刷新") }}</button></template>
     </WorkspaceStartState>
     <div v-else-if="selectedNode.kind === 'function'" class="results-body">
@@ -136,7 +136,7 @@ import FileDetailFields, { type FileDetailField } from '../../../components/layo
 import AnalysisRunOverview from './AnalysisRunOverview.vue';
 import AnalysisPropertyList from './AnalysisPropertyList.vue';
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue';
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, CircleAlert, ClipboardList, Copy, DatabaseZap, Download, Inbox, List, Loader2, LocateFixed, PanelRightOpen, RefreshCw, Search, Table2, X } from 'lucide-vue-next';
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, CircleAlert, ClipboardList, Copy, Download, Inbox, List, Loader2, LocateFixed, PanelRightOpen, RefreshCw, ScanSearch, Search, Table2, X, Zap } from 'lucide-vue-next';
 import UiContextMenu, { type UiContextMenuEntry } from '../../../components/ui/UiContextMenu.vue';
 import { copyText } from '../../../composables/clipboard';
 import { useContextMenu } from '../../../composables/useContextMenu';

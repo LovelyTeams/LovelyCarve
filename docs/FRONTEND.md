@@ -488,12 +488,15 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 ## 10. 图标
 
 - 只用 `lucide-vue-next`（`import { Search } from 'lucide-vue-next'`，`<Search :size="14" />`）；
-  不引入其他图标库，界面中不使用 emoji。
+  不引入其他图标库，界面中不使用 emoji。Lucide 没有的图形按它的 24px 网格与 2px 线宽绘制，经
+  `createLucideIcon` 登记在 `src/components/display/extraIcons.ts`，用法与 Lucide 图标相同。
 - 唯一的例外是文件节点图标：`FileNodeIcon`（文件类型、文件夹、分区等检材节点）使用
   `src/assets/file-icons/` 下随包的 SVG，出处与许可见该目录 README 和 `THIRD_PARTY_NOTICES.md`。
   形状由 `src/utils/fileIcons.ts` 按文件名判定，颜色仍按文件类别取 token；SVG 内联渲染，
   文件里的绘制颜色只是占位，统一换成 `currentColor`。新增文件图标放进该目录并补上查找表，
   文件列表里不混用 Lucide 图标。
+- 同一概念全应用用同一个图标（RAID 用 `Server`，分区间隙用虚线方框），同一面板里并列的图标彼此不重复；
+  工作区页面的起始状态图标与侧栏里该页的图标一致。
 - 图标高度约等于相邻文字的行高：
 
 | 尺寸 | 场景 |

@@ -76,7 +76,7 @@
           </UiTransition>
         </div>
       </template>
-      <WorkspaceStartState v-else :icon="ScanSearch" :loading="initializing || loadingHistory"
+      <WorkspaceStartState v-else :icon="ArchiveRestore" :loading="initializing || loadingHistory"
         :title="initializationError || historyError ? tr('读取扫描记录失败') : initializing || loadingHistory ? tr('正在读取扫描记录…') : tr('还没有恢复扫描')"
         :description="initializationError || historyError || tr('读取已删除记录、重建丢失分区，并按文件签名查找残留文件')"
         :action-label="initializationError || historyError ? tr('重试') : tr('新建扫描')" :action-icon="initializationError || historyError ? RefreshCw : Plus" @action="initializationError || historyError ? initializePanel() : configExpanded = true">
@@ -105,7 +105,7 @@ import CarveHistoryList from './CarveHistoryList.vue';
 import CarveCreateDialog from './CarveCreateDialog.vue';
 import RecoveryBrowser from './RecoveryBrowser.vue';
 import RecoveryFileDetail from './RecoveryFileDetail.vue';
-import { AlertTriangle, RefreshCw, CheckCircle2, Download, FileSearch, Loader2, Pause, Play, Filter, Plus, ScanSearch, PanelLeft, CircleAlert, CircleSlash, X } from 'lucide-vue-next';
+import { AlertTriangle, ArchiveRestore, RefreshCw, CheckCircle2, Download, FileSearch, Loader2, Pause, Play, Filter, Plus, PanelLeft, CircleAlert, CircleSlash, X } from 'lucide-vue-next';
 import type { RecoveryCandidate } from '../../../lib/ipc/carve';
 import type { ImageInfo } from '../../../lib/ipc/image';
 import { formatBytes } from '../../../utils/format';

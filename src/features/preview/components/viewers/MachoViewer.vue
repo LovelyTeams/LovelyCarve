@@ -3,7 +3,7 @@
     <template v-if="report">
       <!-- 概览 -->
       <header class="report-head">
-        <div class="report-icon"><Package :size="20" /></div>
+        <div class="report-icon"><Binary :size="20" /></div>
         <div class="report-title">
           <h3 class="report-name">{{ report.filetype_label }}</h3>
           <div class="report-badges">
@@ -139,7 +139,7 @@ import { vDisclosureMotion } from '../../../../composables/uiMotionDirectives';
 // 视角渲染（CPU/类型/标志、UUID、最低系统、依赖 dylib、段/节熵、加载命令分布、
 // 符号摘要、代码签名/加密）。通用二进制列出全部架构。版式与 PeViewer 一致。
 import { computed } from 'vue';
-import { AlertTriangle, ChevronRight, Package, ShieldCheck } from 'lucide-vue-next';
+import { AlertTriangle, Binary, ChevronRight, ShieldCheck } from 'lucide-vue-next';
 import type { MachoReport } from '../../../../lib/ipc/binary';
 import { formatBytes } from '../../../../utils/format';
 

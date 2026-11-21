@@ -10,7 +10,7 @@
     >
       <div class="ui-modal raid-modal">
         <header class="ui-modal-header">
-          <span class="ui-modal-icon"><Layers :size="18" /></span>
+          <span class="ui-modal-icon"><Server :size="18" /></span>
           <div class="ui-modal-heading">
             <h2 id="raid-detect-title" class="ui-modal-title">{{ tr("RAID 自动检测") }}</h2>
             <p class="ui-modal-subtitle">{{ tr("逐块放入成员盘，自动检测阵列；确认后再打开重组镜像") }}</p>
@@ -176,11 +176,11 @@ import {
   CircleDashed,
   ExternalLink,
   HardDrive,
-  Layers,
   Loader2,
   Plus,
   RefreshCw,
   Search,
+  Server,
   Trash2,
   X,
 } from 'lucide-vue-next';

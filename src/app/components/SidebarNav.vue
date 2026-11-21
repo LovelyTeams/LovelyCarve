@@ -59,7 +59,7 @@ import { tr } from '../../composables/useLocale';
 
 import { computed, ref, useId, useSlots, watch, type Component } from 'vue';
 import {
-  BarChart3, Database, FileQuestion, Files, FileSearch, Globe, HardDrive,
+  ArchiveRestore, ChartGantt, Database, FileQuestion, Files, Globe, HardDrive,
   Info, Package, PanelLeftClose, PanelLeftOpen, Phone, ScanSearch, Search, Send, Share2, Wifi, Wrench,
 } from 'lucide-vue-next';
 import type { NavGroup } from '../workspace/types';
@@ -123,7 +123,7 @@ function selectItem(id: string) {
 }
 
 const iconMap: Record<string, Component> = {
-  BarChart3, Database, Files, FileSearch, Globe, HardDrive, Info, Package,
+  ArchiveRestore, ChartGantt, Database, Files, Globe, HardDrive, Info, Package,
   Phone, ScanSearch, Search, Send, Share2, Wifi, Wrench,
 };
 function getIcon(name: string) { return iconMap[name] ?? FileQuestion; }

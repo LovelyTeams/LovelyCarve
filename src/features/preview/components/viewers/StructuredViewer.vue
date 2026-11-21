@@ -83,7 +83,7 @@
         <button type="button" class="ui-icon-btn sm" :title="tr('缩小')" :aria-label="tr('缩小')" @click="zoomOut"><ZoomOut :size="14" /></button>
         <button type="button" class="zoom-reset mono" :title="tr('重置缩放')" @click="resetView">{{ Math.round(zoom * 100) }}%</button>
         <button type="button" class="ui-icon-btn sm" :title="tr('放大')" :aria-label="tr('放大')" @click="zoomIn"><ZoomIn :size="14" /></button>
-        <button type="button" class="ui-icon-btn sm" :title="tr('适应窗口')" :aria-label="tr('适应窗口')" @click="doFit"><Frame :size="14" /></button>
+        <button type="button" class="ui-icon-btn sm" :title="tr('适应窗口')" :aria-label="tr('适应窗口')" @click="doFit"><Scan :size="14" /></button>
       </div>
     </div>
 
@@ -107,11 +107,11 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   CircleAlert,
-  Frame,
   ListTree,
   Minus,
   Network,
   Plus,
+  Scan,
   ZoomIn,
   ZoomOut,
 } from 'lucide-vue-next';

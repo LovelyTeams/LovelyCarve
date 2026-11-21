@@ -32,7 +32,7 @@
 import { tr } from '../../../composables/useLocale';
 
 import { computed } from 'vue';
-import { Archive, Boxes, Container, Copy, FolderOpen, HardDrive, HardDriveDownload, History, Loader2, LockOpen } from 'lucide-vue-next';
+import { Archive, Container, Copy, FolderOpen, HardDrive, HardDriveDownload, History, Loader2, LockOpen, Server } from 'lucide-vue-next';
 import type { ImageInfo } from '../../../lib/ipc/image';
 import { evidenceDisplayName, formatBytes } from '../model/evidenceOverview';
 import AutoDetectBadge from './AutoDetectBadge.vue';
@@ -102,7 +102,7 @@ const evidenceIcon = computed(() => {
     case 'shadow_copy':
       return History;
     case 'assembled':
-      return Boxes;
+      return Server;
     default:
       return HardDrive;
   }

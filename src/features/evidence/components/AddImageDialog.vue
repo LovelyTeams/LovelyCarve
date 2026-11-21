@@ -47,7 +47,7 @@
           </button>
 
           <button class="ui-choice" @click="choose('raid')">
-            <span class="ui-choice-icon"><Layers :size="20" /></span>
+            <span class="ui-choice-icon"><Server :size="20" /></span>
             <span class="ui-choice-text">
               <span class="ui-choice-title">{{ tr("RAID 磁盘") }}</span>
               <span class="ui-choice-desc">{{ tr("逐块放入成员盘，自动检测阵列；确认后再打开重组镜像") }}</span>
@@ -76,7 +76,7 @@ import { tr } from '../../../composables/useLocale';
 import { type AddImageKind } from '../model/types';
 
 import { onUnmounted, watch } from 'vue';
-import { ChevronRight, Database, FolderOpen, HardDrive, HardDriveDownload, Layers, Plus, X } from 'lucide-vue-next';
+import { ChevronRight, Database, FolderOpen, HardDrive, HardDriveDownload, Plus, Server, X } from 'lucide-vue-next';
 
 const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits<{

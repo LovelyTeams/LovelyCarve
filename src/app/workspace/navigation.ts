@@ -8,10 +8,10 @@ import { type NavItem, type NavGroup } from './types';
 export function buildImageNavGroups(options: { supportsRawAnalysis?: boolean } = {}): NavGroup[] {
   const toolItems: NavItem[] = [
     { id: 'search-results', icon: 'Search', get label() { return tr("全局搜索"); }, badge: null, badgeType: '' },
-    { id: 'timeline', icon: 'BarChart3', get label() { return tr("时间线"); }, badge: null, badgeType: '' },
+    { id: 'timeline', icon: 'ChartGantt', get label() { return tr("时间线"); }, badge: null, badgeType: '' },
     ...(options.supportsRawAnalysis === false
       ? []
-      : [{ id: 'carve', icon: 'FileSearch', get label() { return tr("文件恢复"); }, badge: null, badgeType: '' }]),
+      : [{ id: 'carve', icon: 'ArchiveRestore', get label() { return tr("文件恢复"); }, badge: null, badgeType: '' }]),
   ];
   return [
     {

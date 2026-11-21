@@ -1,7 +1,7 @@
 <template>
   <section v-if="visible" class="ui-card panel-card raid-card">
     <header class="ui-card-header panel-header">
-      <h3 class="ui-card-title"><Boxes :size="15" />{{ tr("RAID 检测") }}</h3>
+      <h3 class="ui-card-title"><Server :size="15" />{{ tr("RAID 检测") }}</h3>
       <span v-if="arrayCount > 0" class="ui-count accent">{{ arrayCount }} {{ tr("阵列") }}</span>
       <div v-if="info.source_format !== 'assembled'" class="header-actions">
         <button
@@ -80,10 +80,10 @@ import { vDisclosureMotion } from '../../../composables/uiMotionDirectives';
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import {
   AlertTriangle,
-  Boxes,
   ChevronRight,
   Loader2,
   RefreshCw,
+  Server,
   Wrench,
 } from 'lucide-vue-next';
 import { imageInfoById } from '../../../lib/ipc/image';

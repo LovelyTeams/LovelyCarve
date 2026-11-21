@@ -3,7 +3,7 @@
     <template v-if="report">
       <!-- 概览 -->
       <header class="report-head">
-        <div class="report-icon"><Cpu :size="20" /></div>
+        <div class="report-icon"><Binary :size="20" /></div>
         <div class="report-title">
           <h3 class="report-name">{{ report.elf_type }}</h3>
           <div class="report-badges">
@@ -140,7 +140,7 @@ import { tr } from '../../../../composables/useLocale';
 // 渲染（机器/ABI、安全缓解、解释器/soname/依赖、build-id、段/节熵、符号摘要）。
 // 版式与 PeViewer 一致。
 import { computed, ref } from 'vue';
-import { AlertTriangle, Cpu, Search } from 'lucide-vue-next';
+import { AlertTriangle, Binary, Search } from 'lucide-vue-next';
 import type { ElfReport } from '../../../../lib/ipc/binary';
 import { formatBytes } from '../../../../utils/format';
 

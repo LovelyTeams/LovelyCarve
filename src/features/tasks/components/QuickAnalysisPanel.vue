@@ -112,11 +112,13 @@ import UiSelect from '../../../components/ui/UiSelect.vue';
 import UiTransition from '../../../components/ui/UiTransition.vue';
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import {
-  Apple, AppWindow, Bot, ChartColumn, ChevronDown, ChevronsDownUp, ChevronsUpDown, CircleAlert, CircleCheck, CirclePause,
-  CircleSlash, CircleX, Clock, Database, FileSearch, FolderTree, Globe, Hourglass, Info, Laptop, Loader2, MonitorCog,
-  MonitorX, MoreHorizontal, Play, Router, RotateCcw, ScrollText, Search, Shapes, Star, Terminal, Unplug, Workflow, X, Zap,
+  Apple, AppWindow, ChartColumn, ChevronDown, ChevronsDownUp, ChevronsUpDown, CircleAlert, CircleCheck, CirclePause,
+  CircleSlash, CircleX, Clock, Database, FileSearch, FolderTree, Globe, Hourglass, Info, Laptop, LayoutGrid, Loader2,
+  Monitor, MonitorCog, MonitorX, MoreHorizontal, Play, Router, RotateCcw, ScrollText, Search, ServerCog, Shapes,
+  Smartphone, Star, Terminal, Unplug, X, Zap,
   type LucideIcon,
 } from 'lucide-vue-next';
+import { AndroidHead } from '../../../components/display/extraIcons';
 
 import { confirm } from '../../../composables/useConfirm';
 import {
@@ -384,12 +386,13 @@ function onPickSystem(systemId: string): void {
   activeSystemId.value = systemId;
 }
 
+/** System family icons; they stay clear of the category icons above (AppWindow, MonitorCog) that share this panel. */
 function familyIcon(family: string): LucideIcon {
   const icons: Record<string, LucideIcon> = {
-    android: Bot, harmony: Workflow, ios: Apple, windows: AppWindow, macos: Laptop, linux: Terminal,
-    openwrt: Router, mikrotik: Router, esxi: MonitorCog,
+    android: AndroidHead, harmony: Smartphone, ios: Apple, windows: LayoutGrid, macos: Laptop, linux: Terminal,
+    openwrt: Router, mikrotik: Router, esxi: ServerCog,
   };
-  return icons[family] ?? Workflow;
+  return icons[family] ?? Monitor;
 }
 
 /** 确定:已有结果时确认替换,再为每个插件的每个功能建任务(默认选项)。 */
