@@ -1,5 +1,5 @@
 //! Build-time command discovery must follow declarations rather than scan files.
-#[path = "../build/cli_catalog/source.rs"]
+#[path = "../build/cli_rpc/source.rs"]
 mod source;
 
 use std::{fs, path::Path};

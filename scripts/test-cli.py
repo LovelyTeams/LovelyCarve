@@ -1,31 +1,40 @@
-"""End-to-end tests against the standalone CLI process (no desktop runtime, window or web server)."""
-import gzip
-import hashlib
+"""End-to-end tests against the standalone CLI process (no desktop runtime, window or web server).
+
+python scripts/test-cli.py <executable> [section ...]   runs every section, or the ones named.
+"""
+import argparse
 import ctypes
 from ctypes import wintypes
+import hashlib
 import json
-import io
 import os
-import queue
-import sqlite3
 from pathlib import Path
+import queue
+import signal
+import sqlite3
 import struct
 import subprocess
-import signal
-import sys
 import tempfile
-import tarfile
 import threading
 import zipfile
 import zlib
 
-from cli_resident_tests import test_resident_sessions
-from cli_observability_tests import test_observability
-from cli_timezone_tests import test_timezones
+from cli_backend_tests import test_backend
+from cli_container_tests import test_containers, test_encryption
+from cli_format_tests import test_formats
 from cli_integrity_tests import test_integrity
-from cli_agent_tests import test_agent_output
 from cli_navigation_tests import test_navigation
+from cli_observability_tests import test_observability
 from cli_optical_tests import iso_fixture, test_optical_discs
+from cli_output_tests import test_output
+from cli_support import Cli, isolated, node, path_id, request, says
+from cli_timezone_tests import test_timezones
+
+CONTENT = b"hello forensic world\npassword test\n"
+
+
+def png_chunk(kind, data):
+    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
 
 
 def documents(text):
@@ -52,1720 +61,677 @@ def documents(text):
     return items
 
 
-def main():
-    executable = Path(sys.argv[1]).resolve()
-    # Scope variables of the caller's shell must not leak into the cases below.
-    environment = {key: value for key, value in os.environ.items()
-                   if key not in {"LOVELYCARVE_IMAGE", "LOVELYCARVE_CASE", "LOVELYCARVE_SESSION"}}
-    with tempfile.TemporaryDirectory(prefix="lovelycarve-cli-test-") as directory:
-        root = Path(directory)
-        evidence = root / "evidence with spaces"
-        volume_name = "evidence_with_spaces"
-        evidence.mkdir()
-        content = b"hello forensic world\npassword test\n"
-        (evidence / "hello.txt").write_bytes(content)
-        copied = root / "copy.bin"
-        node = "folder:" + b"hello.txt".hex()
+def test_discovery(cli, root):
+    """What the CLI says about itself needs no evidence: its build, commands,
+    help, completion, usage errors and dry runs."""
+    system = cli.json("system")
+    assert system["standalone"], "the CLI must be built without the desktop runtime"
+    assert system["batch"]["maxJobs"] == 64 and system["exitCodes"]["incompleteResult"] == 2, system
+    assert system["rpcOperations"] >= 140, system["rpcOperations"]
+    catalogue = cli.json("schema")
+    commands = [entry["command"] for entry in catalogue["commands"]]
+    for expected in ["ls", "cat", "evidence add", "sqlite query", "case open", "unlock", "rpc", "batch"]:
+        assert expected in commands, expected
+    assert "case serve" not in commands and "__complete" not in commands
+    add = cli.json("schema", "evidence", "add")
+    password = next(option for option in add["options"] if option["flag"] == "--qcow-password")
+    assert password["valueName"] == "@文件" and password["optionalValue"], password
+    assert cli.json("schema", "cat")["output"] == "bytes"
+    assert cli.json("schema", "case", "rm")["confirm"]
+    assert any(item["name"] == "fs_size_tree" for item in cli.json("rpc", "--list")["items"])
+    candidates = [line.split("\t")[0] for line in cli.run("__complete", "s").stdout.splitlines()]
+    assert {"search", "sqlite", "strings", "stat", "streams"} <= set(candidates), candidates
+    assert "serve" not in [line.split("\t")[0] for line in cli.run("__complete", "case", "").stdout.splitlines()]
+    for shell in ("bash", "zsh", "fish", "powershell"):
+        assert "__complete" in cli.run("completion", shell).stdout, shell
+    assert "浏览与读取" in cli.run("--help").stdout and "--offset" in cli.run("cat", "--help").stdout
+    assert "schema hash" in cli.run("hash", "--help").stdout
+    # Usage errors name the problem and where help is; --json makes them one JSON line.
+    assert says(cli.run("lss", "/", expected=1).stderr, "未知命令：lss")
+    error = json.loads(cli.run("--json", "ls", "/x", "--limt", "5", expected=1).stderr)["error"]
+    assert error["code"] == "usage" and "--limit" in error["message"], error
+    cli.run("--unknown", expected=1)
+    for jobs in ("0", "65"):
+        cli.run("batch", "--jobs", jobs, expected=1)
+    # The previous command names are gone, not aliased.
+    for removed in (["files", "list"], ["images", "open", "x"], ["sessions", "list"], ["image_load"]):
+        assert says(cli.run(*removed, expected=1).stderr, "未知命令"), removed
+    # A relative path outside the shell says how to write an address.
+    assert says(cli.run("ls", "ev/part:0", expected=1).stderr, "检材内路径须以 / 开头")
+    # --dry-run shows the parsed request without touching evidence or reading secrets.
+    missing = root / "missing.E01"
+    (root / "password.txt").write_text("hunter2", encoding="utf-8")
+    preview = cli.json("--dry-run", "evidence", "add", missing, "--qcow-password", "@" + str(root / "password.txt"))
+    assert preview["command"] == "evidence add" and preview["executed"] is False, preview
+    assert "hunter2" not in json.dumps(preview) and not missing.exists()
+    preview = cli.json("--dry-run", "hash", "/x/part:0/a", "--algo", "md5,sha256")
+    assert preview["request"]["hash"]["algo"] == ["md5", "sha256"], preview
+    # Secrets never come from argv.
+    assert says(cli.run("evidence", "add", missing, "--qcow-password", "hunter2", expected=1).stderr, "@文件")
+    # Destructive commands are refused where nobody can be asked.
+    refused = cli.run("case", "rm", root / "no such case", expected=1)
+    assert "Aborted." in refused.stderr, refused.stderr
+    # Looking up or cancelling a task that does not exist fails instead of passing for a success.
+    missing_task = cli.run("--json", "tasks", "show", "no-such-task", expected=1)
+    assert missing_task.stdout == "" and json.loads(missing_task.stderr)["error"]["code"] == "notFound", missing_task
+    assert says(cli.run("tasks", "cancel", "no-such-task", expected=1).stderr, "找不到运行中的任务")
+    # What lives only as long as a process is refused where it would end at once.
+    assert says(cli.run("--image", root, "carve", "start", expected=1).stderr, "case open")
+    print("CLI discovery tests passed: system, schema, rpc list, completion, help, usage errors, dry runs and refusals")
 
-        def run(arguments, stdin=None, expected=0):
-            process = subprocess.run([str(executable), *arguments], input=stdin,
-                                     text=True, encoding="utf-8", capture_output=True,
-                                     timeout=120, cwd=root, env=environment)
-            assert process.returncode == expected, (arguments, process.returncode, process.stdout, process.stderr)
-            return process
 
-        def run_bytes(arguments, expected=0):
-            process = subprocess.run([str(executable), *arguments], capture_output=True,
-                                     timeout=120, cwd=root, env=environment)
-            assert process.returncode == expected, (arguments, process.returncode, process.stdout, process.stderr)
-            return process
+def test_batches(cli, root):
+    """Batch requests are command lines; queries overlap, everything else is a
+    barrier, references wait for what they refer to, and one bad line does
+    not stop the others."""
+    evidence = root / "evidence"
+    evidence.mkdir()
+    (evidence / "hello.txt").write_bytes(CONTENT)
+    hello = "/ev/folder:/hello.txt"
+    requests = [
+        request("open", "evidence", "add", evidence, "--as", "ev"),
+        request("read", "cat", hello, "--length", "8"),
+        request("digest", "hash", hello, "--algo", "sha256"),
+        request("stat", "stat", hello),
+        request("dependent", "cat", {"$ref": "stat#/path"}, "--length", "8"),
+        request("by-id", "cat", node("ev", path_id("folder:", "hello.txt")), "--length", "8"),
+        request("bad", "ls", "/ev", "--typo"),
+        request("relative", "ls", "ev"),
+        {"id": "previous", "command": "images open", "args": {"path": str(evidence)}},
+        request("missing-task", "tasks", "show", "no-such-task"),
+        request("wait", "tasks", "wait"),
+        request("close", "evidence", "close", "ev"),
+        request("remaining", "evidence", "ls"),
+    ]
+    _, serial = cli.batch(requests, expected=1)
+    _, parallel = cli.batch(requests, expected=1, jobs=4)
+    # A serial batch answers in request order.
+    assert [row["id"] for row in serial] == [item["id"] for item in requests], serial
+    rows = {row["id"]: row for row in parallel}
+    assert len(rows) == len(requests), parallel
+    eight = {"encoding": "hex", "data": CONTENT[:8].hex()}
+    assert rows["read"]["result"] == rows["dependent"]["result"] == rows["by-id"]["result"] == eight, rows
+    assert rows["digest"]["result"]["items"][0]["sha256"] == hashlib.sha256(CONTENT).hexdigest()
+    assert rows["remaining"]["result"]["items"] == []
+    errors = {"bad", "relative", "previous", "missing-task"}
+    assert all("result" in row for key, row in rows.items() if key not in errors), rows
+    assert all(rows[key]["error"]["code"] and rows[key]["error"]["message"] for key in errors), rows
+    assert rows["bad"]["error"]["code"] == "usage" and rows["missing-task"]["error"]["code"] == "notFound", rows
+    assert "argv" in rows["previous"]["error"]["message"], rows["previous"]
+    assert isinstance(rows["wait"]["result"]["tasks"], list), rows["wait"]
+    serial_rows = {row["id"]: row for row in serial}
+    assert all(serial_rows[key] == rows[key] for key in ["read", "digest", "dependent", "remaining"])
+    # Results can be saved to new files instead of returned, and never overwrite.
+    saved = root / "saved.bin"
+    rows = cli.results([request("open", "evidence", "add", evidence, "--as", "ev"),
+                        request("save", "cat", hello, output=saved)])
+    assert rows["save"] == {"output": str(saved)} and saved.read_bytes() == CONTENT
+    _, rows = cli.batch([request("open", "evidence", "add", evidence, "--as", "ev"),
+                         request("again", "cat", hello, output=saved)], expected=1)
+    assert "error" in rows[1] and saved.read_bytes() == CONTENT, rows
+    # Process options belong to the batch process, not to its requests.
+    _, rows = cli.batch([request("scoped", "--image", evidence, "ls", "/")], expected=1)
+    assert rows[0]["error"]["code"] == "usage", rows
 
-        def session(requests, expected=0, arguments=()):
-            result = run([*arguments, "session"], "\n".join(json.dumps(request) for request in requests), expected)
-            return result, [json.loads(line) for line in result.stdout.splitlines()]
+    # Agents keep stdin open and wait for a response before sending more.
+    process = subprocess.Popen([str(cli.executable), "--image", str(evidence), "batch", "-j", "4"],
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               text=True, encoding="utf-8", cwd=root, env=cli.environment)
+    responses = queue.Queue()
+    reader = threading.Thread(target=lambda: responses.put(process.stdout.readline()), daemon=True)
+    try:
+        process.stdin.write(json.dumps(request("live", "cat", "/evidence/folder:/hello.txt", "--length", "8")) + "\n")
+        process.stdin.flush()
+        reader.start()
+        live = json.loads(responses.get(timeout=60))
+        assert live == {"id": "live", "result": eight}, live
+        assert process.poll() is None, "batch exited before stdin EOF"
+        process.stdin.close()
+        process.wait(timeout=60)
+        assert process.returncode == 0, process.stderr.read()
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        for stream in [process.stdin, process.stdout, process.stderr]:
+            stream.close()
+        reader.join(timeout=5)
 
-        bcp_directory = root / "bcp export"
-        bcp_directory.mkdir()
-        bcp_zip = bcp_directory / "evidence.zip"
-        last_record = "群组\t结尾\t1030036\towner\t1\n"
-        with zipfile.ZipFile(bcp_zip, "w", zipfile.ZIP_DEFLATED) as archive:
-            shards = []
-            def add_shard(name, code, shard_contents, count, fields):
-                archive.writestr(name, shard_contents)
-                field_items = "".join(f'<ITEM key="{index}" eng="{field}" chn="{label}"/>'
-                                      for index, (field, label) in enumerate(fields, 1))
-                shards.append(
-                    f'<DATA><ITEM key="A010004" val="WA_MFORENSICS_{code}"/><ITEM key="I010039" val="UTF-8无BOM"/>'
-                    f'<DATASET name="WA_COMMON_010014"><DATA><ITEM key="H010020" val="{name}"/>'
-                    f'<ITEM key="I010034" val="{count}"/></DATA></DATASET>'
-                    f'<DATASET name="WA_COMMON_010015"><DATA>{field_items}</DATA></DATASET></DATA>'
-                )
-            account_fields = [("CONTACT_ACCOUNT_TYPE", "应用类型"), ("ACCOUNT_ID", "账号")]
-            group_fields = [("GROUP_NAME", "群组名称"), ("CONTENT", "内容"), *account_fields, ("DELETE_STATUS", "删除状态")]
-            add_shard("one.bcp", "020600", "群组\t结尾\t1030063\towner\t0\n" * 100, 100, group_fields)
-            add_shard("two.bcp", "020600", last_record, 1, group_fields)
-            add_shard("accounts.bcp", "020100",
-                      "1039999\tprofile-owner\thttps://i9.taou.com/maimai/photo.png\n"
-                      "1039999\tunconfirmed\thttps://example.org/i9.taou.com/maimai/photo.png\n",
-                      2, [*account_fields, ("USER_PHOTO", "头像")])
-            add_shard("direct.bcp", "020500",
-                      "1039999\tprofile-owner\t消息一\n1039999\tunconfirmed\t消息二\n",
-                      2, [*account_fields, ("CONTENT", "内容")])
-            archive.writestr("GAB_ZIP_INDEX.xml", '<MESSAGE><DATASET name="WA_COMMON_010013">'
-                             + "".join(shards) + "</DATASET></MESSAGE>")
-        bcp_case = root / "bcp case"
-        run(["cases", "create", str(bcp_case), "--name", "BCP import"])
-        for bcp_path in (bcp_zip, bcp_directory):
-            args = ["--case", str(bcp_case), "--image", str(bcp_path)]
-            imported = json.loads(run([*args, "analysis", "imports", "create"]).stdout)
-            assert imported["recordCount"] == 105 and not imported["reused"]
-            reused = json.loads(run([*args, "analysis", "imports", "create"]).stdout)
-            assert reused == {**imported, "reused": True}
-            tree = json.loads(run(["--case", str(bcp_case), "analysis", "tree", "get"]).stdout)
-            level = [leaf for evidence_item in tree for category in evidence_item["children"]
-                     for analyzer in category["children"] if analyzer["runId"] == imported["runId"]
-                     for leaf in analyzer["children"]]
-            by_type = {leaf["artifactType"]: leaf for leaf in level}
-            assert {kind: leaf["childCount"] for kind, leaf in by_type.items()} == {
-                "bcp.group_messages": 101, "bcp.messaging_accounts": 2, "bcp.direct_messages": 2,
-            }
-            for kind in ("bcp.messaging_accounts", "bcp.direct_messages"):
-                assert [(group["application"], group["account"], group.get("identifiedApplication"))
-                        for group in by_type[kind]["bcpGroups"]] == [
-                    ("1039999", "profile-owner", "1070109"), ("1039999", "unconfirmed", None)
-                ]
-            assert [(group["application"], group["account"], group["total"], group["deleted"])
-                    for group in by_type["bcp.group_messages"]["bcpGroups"]] == [
-                ("1030036", "owner", 1, 1), ("1030063", "owner", 100, 0)
-            ]
-            scope = json.dumps({"applications": ["1030036"], "account": "owner"})
-            records_args = [*args, "analysis", "records", "list", "--run-id", imported["runId"],
-                            "--record-type", "bcp.group_messages"]
-            assert json.loads(run(records_args).stdout)["total"] == 101
-            page = json.loads(run([*records_args, "--keyword", "结尾", "--bcp-scope", scope]).stdout)
-            assert page["total"] == 1
-            record = page["items"][0]
-            assert record["values"] == {"group_name": "群组", "content": "结尾",
-                                        "contact_account_type": "1030036", "account_id": "owner", "delete_status": "1"}
-            source = record["sources"][0]
-            if bcp_path == bcp_zip:
-                assert source == {"root": "root", "path": "two.bcp", "offset": 0, "length": len(last_record.encode())}
-            else:
-                assert source["path"] == bcp_zip.name and "two.bcp" in source["note"]
-            detail = json.loads(run([*args, "analysis", "records", "get", record["recordId"]]).stdout)
-            assert detail["record"] == record
+    # Optional private evidence stays outside the repository. Compare actual
+    # file system queries and bounded reads between serial and parallel runs.
+    real_image = os.environ.get("LOVELYCARVE_CLI_TEST_IMAGE")
+    if real_image:
+        def real_queries(jobs):
+            process = subprocess.Popen([str(cli.executable), "--image", real_image, "batch", "--jobs", str(jobs)],
+                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                       text=True, encoding="utf-8", cwd=root, env=cli.environment)
+            replies = queue.Queue()
 
-        # The path and node ID variants both discover the database's WAL.
-        sqlite_evidence = root / "sqlite-evidence"
-        sqlite_evidence.mkdir()
-        sqlite_source = sqlite3.connect(root / "chat.db")
-        try:
-            sqlite_source.executescript("""
-                PRAGMA journal_mode = WAL;
-                PRAGMA wal_autocheckpoint = 0;
-                CREATE TABLE messages(id INTEGER PRIMARY KEY, chat_id INTEGER);
-                INSERT INTO messages VALUES (1, 3), (2, 3), (3, 5);
-            """)
-            for name in ("chat.db", "chat.db-wal"):
-                (sqlite_evidence / name).write_bytes((root / name).read_bytes())
-        finally:
-            sqlite_source.close()
-        sqlite_request = {
-            "id": "sqlite-query",
-            "command": "files sqlite queries get",
-            "withSource": True,
-            "args": {
-                "path": "/sqlite-evidence/chat.db",
-                "sql": "SELECT chat_id, COUNT(*) FROM messages WHERE id > ?1 GROUP BY chat_id ORDER BY chat_id",
-                "parameters": [0],
-                "limit": 1,
-            },
-        }
-        sqlite_next = {**sqlite_request, "id": "sqlite-next", "args": {
-            key: value for key, value in sqlite_request["args"].items() if key != "path"
-        }}
-        sqlite_next["args"].update(nodeId="folder:" + b"chat.db".hex(), offset=1)
-        _, sqlite_rows = session([sqlite_request, sqlite_next], arguments=["--image", str(sqlite_evidence)])
-        for row, values, next_offset in zip(sqlite_rows, [("3", "2"), ("5", "1")], [1, None], strict=True):
-            response = row["result"]
-            assert response["result"]["rows"] == [[{"kind": "integer", "value": value} for value in values]], row
-            assert response["result"]["sidecars"] == ["chat.db-wal"], row
-            assert response["result"]["nextOffset"] == next_offset, row
-            assert response["source"]["path"] == "/sqlite-evidence/chat.db", row
-            assert response["source"]["parameters"] == [0], row
-        sqlite_iso = root / "sqlite.iso"
-        sqlite_iso.write_bytes(iso_fixture((root / "chat.db").read_bytes())[0])
-        sqlite_result = run(["--image", str(sqlite_iso), "files", "sqlite", "queries", "get",
-                             "/part:0/PAYLOAD.BIN", "--sql", "SELECT COUNT(*) FROM messages"])
-        assert json.loads(sqlite_result.stdout)["rows"] == [[{"kind": "integer", "value": "3"}]]
+            def collect():
+                for line in process.stdout:
+                    replies.put(line)
+                replies.put(None)
+            thread = threading.Thread(target=collect, daemon=True)
+            thread.start()
 
-        # Independent synthetic Buffalo ENC/bgn + TRX + DD-WRT SquashFS v3.
-        firmware_fixtures = Path(__file__).resolve().parent.parent / "src-tauri/test_data/firmware"
-        firmware_node = "squashfs:part:0:" + b"/hello".hex()
-        firmware_content = b"Independent DD-WRT fixture.\n" * 64
-        for fixture_name in ("synthetic.enc", "synthetic-bgn.enc"):
-            _, firmware_rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(firmware_fixtures / fixture_name)}},
-                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "read", "command": "files read", "args": {"nodeId": firmware_node, "offset": 11, "length": 93}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": firmware_node, "algos": ["sha256"]}},
-            ])
-            assert all("result" in row for row in firmware_rows), firmware_rows
-            assert firmware_rows[0]["result"]["sourceFormat"] == "firmware"
-            assert firmware_rows[0]["result"]["sectorSize"] == 1
-            assert firmware_rows[1]["result"]["items"][0]["name"] == "hello"
-            assert firmware_rows[2]["result"]["data"] == firmware_content[11:104].hex()
-            assert firmware_rows[3]["result"]["sha256"] == hashlib.sha256(firmware_content).hexdigest()
-
-        # Independent MINIFS v3 fixture: shared LZMA chunks and native commands.
-        minifs_fixture = Path(__file__).resolve().parent.parent / "src-tauri/vendor/minifs/tests/fixtures/synthetic.minifs"
-        minifs_content = bytes(range(256)) * 289 + b"MINIFS test\n"
-        minifs_source = minifs_fixture.read_bytes()
-        minifs_header = bytearray(148)
-        for offset, value in [(0x18, 128 + len(minifs_source)), (0x20, 1),
-                              (0x54, 128), (0x58, len(minifs_source))]:
-            struct.pack_into(">I", minifs_header, offset, value)
-        minifs_wrapped = root / "minifs-firmware.bin"
-        minifs_wrapped.write_bytes(minifs_header + minifs_source)
-        minifs_node = "minifs:part:0:" + b"/web/js/app.js".hex()
-        for minifs_path in (minifs_fixture, minifs_wrapped):
-            _, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(minifs_path)}},
-                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "read", "command": "files read", "args": {"nodeId": minifs_node, "offset": 65530, "length": 100}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": minifs_node, "algos": ["sha256"]}},
-            ])
-            assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["partitions"][0]["kind"] == "minifs"
-            assert rows[0]["result"]["sectorSize"] == 1
-            assert any(item["name"] == "web" and item["kind"] == "dir" for item in rows[1]["result"]["items"])
-            assert rows[2]["result"]["data"] == minifs_content[65530:65630].hex()
-            assert rows[3]["result"]["sha256"] == hashlib.sha256(minifs_content).hexdigest()
-
-        # EROFS and F2FS: independent/reference fixtures through native commands.
-        flash_vendor = Path(__file__).resolve().parent.parent / "src-tauri/vendor"
-        f2fs_path = root / "synthetic.f2fs"
-        f2fs_path.write_bytes(zlib.decompress((flash_vendor / "f2fs-reader/tests/fixtures/synthetic.f2fs.zlib").read_bytes()))
-        f2fs_body = bytearray(bytes(range(256)) * (1000 * 16) + bytes(range(37)))
-        f2fs_body[3 * 4096:5 * 4096] = bytes(8192)
-        for flash_kind, flash_path, flash_file, flash_body, flash_offset in [
-            ("erofs", flash_vendor / "lamfold-erofs/tests/fixtures/erofs.img", "/big.dat", bytes(range(256)) * 1171 + bytes(range(224)), 4090),
-            ("f2fs", f2fs_path, "/big.bin", bytes(f2fs_body), 913 * 4096 - 9),
-        ]:
-            flash_node = flash_kind + ":part:0:" + flash_file.encode().hex()
-            _, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(flash_path)}},
-                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "read", "command": "files read", "args": {"nodeId": flash_node, "offset": flash_offset, "length": 121}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": flash_node, "algos": ["sha256"]}},
-            ])
-            assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["partitions"][0]["kind"] == flash_kind
-            assert rows[0]["result"]["sectorSize"] == 1
-            assert rows[1]["result"]["items"]
-            assert rows[2]["result"]["data"] == flash_body[flash_offset:flash_offset + 121].hex()
-            assert rows[3]["result"]["sha256"] == hashlib.sha256(flash_body).hexdigest()
-
-        # bcachefs: native snapshot namespace, checksummed reflinks and >5 GiB holes.
-        bcachefs_source = zlib.decompress((flash_vendor / "bcachefs-reader/tests/fixtures/invented.zlib").read_bytes())
-        bcachefs_path = root / "invented.bcachefs"
-        bcachefs_path.write_bytes(bcachefs_source)
-        bcachefs_export = root / "bcachefs-export.bin"
-        bcachefs_node = "bcachefs:part:0:" + b"/checksum.bin".hex()
-        _, rows = session([
-            {"id": "open", "command": "images open", "args": {"path": str(bcachefs_path)}},
-            {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-            {"id": "live", "command": "files read", "args": {"nodeId": "bcachefs:part:0:" + b"/sv/version.txt".hex(), "length": 4}},
-            {"id": "past", "command": "files read", "args": {"nodeId": "bcachefs:part:0:" + b"/snap/version.txt".hex(), "length": 4}},
-            {"id": "sparse", "command": "files read", "args": {"nodeId": "bcachefs:part:0:" + b"/sparse.bin".hex(), "offset": 5 * 1024**3, "length": 5}},
-            {"id": "hash", "command": "files hash", "args": {"nodeId": bcachefs_node, "algos": ["sha256"]}},
-            {"id": "export", "command": "files export", "args": {"nodeId": bcachefs_node, "destination": str(bcachefs_export)}},
-        ])
-        assert all("result" in row for row in rows), rows
-        assert rows[0]["result"]["partitions"][0]["kind"] == "bcachefs"
-        assert len(rows[1]["result"]["items"]) == 10
-        assert rows[2]["result"]["data"] == b"LIVE".hex()
-        assert rows[3]["result"]["data"] == b"PAST".hex()
-        assert rows[4]["result"]["data"] == b"TAIL!".hex()
-        bcachefs_body = bytes((index * 17 + 3) % 256 for index in range(513))
-        assert rows[5]["result"]["sha256"] == hashlib.sha256(bcachefs_body).hexdigest()
-        assert bcachefs_export.read_bytes() == bcachefs_body
-        assert bcachefs_path.read_bytes() == bcachefs_source
-        bcachefs_backup = bytearray(bcachefs_source)
-        bcachefs_backup[4096] ^= 1
-        bcachefs_backup_path = root / "backup-only.bcachefs"
-        bcachefs_backup_path.write_bytes(bcachefs_backup)
-        _, rows = session([
-            {"id": "open", "command": "images open", "args": {"path": str(bcachefs_backup_path)}},
-            {"id": "hash", "command": "files hash", "args": {"nodeId": bcachefs_node, "algos": ["sha256"]}},
-        ])
-        assert all("result" in row for row in rows), rows
-        assert rows[0]["result"]["partitions"][0]["kind"] == "bcachefs"
-        assert rows[1]["result"]["sha256"] == hashlib.sha256(bcachefs_body).hexdigest()
-        if os.environ.get("BCACHEFS_ORACLE_DIR"):
-            native_root = Path(os.environ["BCACHEFS_ORACLE_DIR"])
-            for native_name in ["512-none", "4096-lz4", "4096-zstd", "4096-gzip"]:
-                native_manifest = json.loads((native_root / (native_name + ".json")).read_text(encoding="utf8"))
-                expected = {entry["path"]: entry for entry in native_manifest["entries"]}
-                _, rows = session([
-                    {"id": "open", "command": "images open", "args": {"path": str(native_root / (native_name + ".img"))}},
-                    {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-                    {"id": "hash", "command": "files hash", "args": {"nodeId": "bcachefs:part:0:" + b"/compressible.bin".hex(), "algos": ["sha256"]}},
-                ])
-                assert all("result" in row for row in rows), rows
-                assert rows[0]["result"]["partitions"][0]["kind"] == "bcachefs"
-                assert any(item["name"] == "中文\\证据.txt" for item in rows[1]["result"]["items"])
-                assert rows[2]["result"]["sha256"] == expected["compressible.bin"]["sha256"]
-
-        # NILFS2: current checkpoint, sparse/direct B-tree reads and absent native atime.
-        nilfs2_source = zlib.decompress((flash_vendor / "nilfs2-reader/tests/fixtures/invented-1024.zlib").read_bytes())
-        nilfs2_path = root / "invented.nilfs2"
-        nilfs2_path.write_bytes(nilfs2_source)
-        nilfs2_node = "nilfs2:part:0:" + b"/hello".hex()
-        _, rows = session([
-            {"id": "open", "command": "images open", "args": {"path": str(nilfs2_path)}},
-            {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-            {"id": "hash", "command": "files hash", "args": {"nodeId": nilfs2_node, "algos": ["sha256"]}},
-            {"id": "range", "command": "files read", "args": {"nodeId": "nilfs2:part:0:" + b"/sparse".hex(), "offset": 1019, "length": 97}},
-        ])
-        assert all("result" in row for row in rows), rows
-        assert rows[0]["result"]["partitions"][0]["kind"] == "nilfs2"
-        assert len(rows[1]["result"]["items"]) == 9
-        assert rows[2]["result"]["sha256"] == hashlib.sha256(b"hello NILFS2 evidence\n").hexdigest()
-        assert rows[3]["result"]["data"] == (bytes(5) + bytes((index * 23 + 7) & 255 for index in range(92))).hex()
-        assert nilfs2_path.read_bytes() == nilfs2_source
-        nilfs2_backup = bytearray(nilfs2_source)
-        nilfs2_backup[1024 + 16] ^= 1
-        nilfs2_backup_path = root / "backup-only.nilfs2"
-        nilfs2_backup_path.write_bytes(nilfs2_backup)
-        _, rows = session([
-            {"id": "open", "command": "images open", "args": {"path": str(nilfs2_backup_path)}},
-            {"id": "hash", "command": "files hash", "args": {"nodeId": nilfs2_node, "algos": ["sha256"]}},
-        ])
-        assert all("result" in row for row in rows), rows
-        assert rows[0]["result"]["partitions"][0]["kind"] == "nilfs2"
-        assert rows[1]["result"]["sha256"] == hashlib.sha256(b"hello NILFS2 evidence\n").hexdigest()
-        assert nilfs2_backup_path.read_bytes() == nilfs2_backup
-
-        if os.environ.get("NILFS2_ORACLE_DIR"):
-            native_root = Path(os.environ["NILFS2_ORACLE_DIR"])
-            for native_name in ["nilfs2-1024-2048-block_count", "nilfs2-2048-1024-block_count", "nilfs2-4096-512-block_count", "nilfs2-4096-2048-none", "nilfs2-4096-512-cleaned"]:
-                selected_root = Path(os.environ.get("NILFS2_GC_ORACLE_DIR", str(native_root))) if native_name.endswith("cleaned") else native_root
-                native_manifest = json.loads((selected_root / (native_name + ".json")).read_text(encoding="utf8"))
-                _, rows = session([
-                    {"id": "open", "command": "images open", "args": {"path": str(selected_root / (native_name + ".img"))}},
-                    {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-                    {"id": "hash", "command": "files hash", "args": {"nodeId": "nilfs2:part:0:" + b"/large".hex(), "algos": ["sha256"]}},
-                ])
-                assert all("result" in row for row in rows), rows
-                assert rows[0]["result"]["partitions"][0]["kind"] == "nilfs2"
-                assert any(item["name"] == "中文\\evidence" for item in rows[1]["result"]["items"])
-                assert rows[2]["result"]["sha256"] == native_manifest["records"]["/large"]["sha256"]
-                for file_name in ["/sparse", "/fragmented", "/versioned"]:
-                    _, checked = session([
-                        {"id": "open", "command": "images open", "args": {"path": str(selected_root / (native_name + ".img"))}},
-                        {"id": "hash", "command": "files hash", "args": {"nodeId": "nilfs2:part:0:" + file_name.encode().hex(), "algos": ["sha256"]}},
-                    ])
-                    assert all("result" in row for row in checked), checked
-                    assert checked[1]["result"]["sha256"] == native_manifest["records"][file_name]["sha256"]
-
-        # OCFS2: resource allocation, a native-sized clean journal, sparse ranges and EAs.
-        ocfs2_source = zlib.decompress((flash_vendor / "ocfs2-reader/tests/fixtures/discontiguous-ecc.zlib").read_bytes())
-        ocfs2_path = root / "invented.ocfs2"
-        ocfs2_path.write_bytes(ocfs2_source)
-        ocfs2_node = "ocfs2:part:0:" + b"/hello".hex()
-        ocfs2_export = root / "ocfs2-attribute.bin"
-        _, rows = session([
-            {"id": "open", "command": "images open", "args": {"path": str(ocfs2_path)}},
-            {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-            {"id": "hash", "command": "files hash", "args": {"nodeId": ocfs2_node, "algos": ["sha256"]}},
-            {"id": "range", "command": "files read", "args": {"nodeId": "ocfs2:part:0:" + b"/sparse".hex(), "offset": 4091, "length": 97}},
-            {"id": "streams", "command": "files streams list", "args": {"nodeId": ocfs2_node}},
-            {"id": "inline", "command": "files streams get", "args": {"nodeId": ocfs2_node, "streamName": "user.inline", "maxBytes": 100}},
-            {"id": "export", "command": "files streams export", "args": {"nodeId": ocfs2_node, "streamName": "user.external", "destination": str(ocfs2_export)}},
-        ])
-        assert all("result" in row for row in rows), rows
-        assert rows[0]["result"]["partitions"][0]["kind"] == "ocfs2"
-        assert len(rows[1]["result"]["items"]) == 8
-        assert rows[2]["result"]["sha256"] == hashlib.sha256(b"hello OCFS2 evidence\n").hexdigest()
-        assert rows[3]["result"]["data"] == (bytes(5) + bytes((index * 17 + 5) & 255 for index in range(92))).hex()
-        assert any(item["name"] == "user.external" for item in rows[4]["result"])
-        assert rows[5]["result"] == {"encoding": "hex", "data": b"\0\xfffixture".hex()}
-        assert ocfs2_export.read_bytes() == bytes(range(100))
-        assert ocfs2_path.read_bytes() == ocfs2_source
-
-        # GFS2: resource allocation, a native-sized clean journal, sparse ranges and EAs.
-        gfs2_source = zlib.decompress((flash_vendor / "gfs2-reader/tests/fixtures/invented-4096.zlib").read_bytes())
-        gfs2_path = root / "invented.gfs2"
-        gfs2_path.write_bytes(gfs2_source)
-        gfs2_node = "gfs2:part:0:" + b"/hello".hex()
-        gfs2_export = root / "gfs2-attribute.bin"
-        _, rows = session([
-            {"id": "open", "command": "images open", "args": {"path": str(gfs2_path)}},
-            {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-            {"id": "hash", "command": "files hash", "args": {"nodeId": gfs2_node, "algos": ["sha256"]}},
-            {"id": "range", "command": "files read", "args": {"nodeId": "gfs2:part:0:" + b"/sparse".hex(), "offset": 4091, "length": 97}},
-            {"id": "streams", "command": "files streams list", "args": {"nodeId": gfs2_node}},
-            {"id": "inline", "command": "files streams get", "args": {"nodeId": gfs2_node, "streamName": "user.inline", "maxBytes": 100}},
-            {"id": "export", "command": "files streams export", "args": {"nodeId": gfs2_node, "streamName": "user.external", "destination": str(gfs2_export)}},
-        ])
-        assert all("result" in row for row in rows), rows
-        assert rows[0]["result"]["partitions"][0]["kind"] == "gfs2"
-        assert len(rows[1]["result"]["items"]) == 6
-        assert rows[2]["result"]["sha256"] == hashlib.sha256(b"hello native-style GFS2\n").hexdigest()
-        assert rows[3]["result"]["data"] == (bytes(5) + bytes((index * 17 + 5) & 255 for index in range(92))).hex()
-        assert any(item["name"] == "user.external" for item in rows[4]["result"])
-        assert rows[5]["result"] == {"encoding": "hex", "data": b"\0\xfffixture".hex()}
-        assert gfs2_export.read_bytes() == bytes(range(100))
-        assert gfs2_path.read_bytes() == gfs2_source
-
-        # Opt-in native GFS2 inputs generated by mkfs/Linux/fsck, verified by the reader audit.
-        if os.environ.get("GFS2_ORACLE_DIR"):
-            native_root = Path(os.environ["GFS2_ORACLE_DIR"])
-            for native_name in ["gfs2-512-1801", "gfs2-1024-1802", "gfs2-2048-1801", "gfs2-4096-1802"]:
-                native_manifest = json.loads((native_root / (native_name + ".json")).read_text(encoding="utf8"))
-                _, rows = session([
-                    {"id": "open", "command": "images open", "args": {"path": str(native_root / (native_name + ".img"))}},
-                    {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-                    {"id": "hash", "command": "files hash", "args": {"nodeId": "gfs2:part:0:" + b"/large".hex(), "algos": ["sha256"]}},
-                    {"id": "attribute", "command": "files streams get", "args": {"nodeId": "gfs2:part:0:" + b"/hello".hex(), "streamName": "user.large", "maxBytes": 97}},
-                ])
-                assert all("result" in row for row in rows), rows
-                assert rows[0]["result"]["partitions"][0]["kind"] == "gfs2"
-                assert any(item["name"] == "中文\\evidence" for item in rows[1]["result"]["items"])
-                assert rows[2]["result"]["sha256"] == native_manifest["records"]["/large"]["sha256"]
-                assert rows[3]["result"] == {"encoding": "hex", "data": bytes((index * 23 + 7) & 255 for index in range(97)).hex()}
-
-        # Opt-in native OCFS2 inputs generated by mkfs/Linux/fsck, verified by the reader audit.
-        if os.environ.get("OCFS2_ORACLE_DIR"):
-            native_root = Path(os.environ["OCFS2_ORACLE_DIR"])
-            for native_name in ["ocfs2-512-4096", "ocfs2-1024-4096", "ocfs2-2048-16384", "ocfs2-4096-65536"]:
-                native_manifest = json.loads((native_root / (native_name + ".json")).read_text(encoding="utf8"))
-                _, rows = session([
-                    {"id": "open", "command": "images open", "args": {"path": str(native_root / (native_name + ".img"))}},
-                    {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-                    {"id": "hash", "command": "files hash", "args": {"nodeId": "ocfs2:part:0:" + b"/large".hex(), "algos": ["sha256"]}},
-                    {"id": "attribute", "command": "files streams get", "args": {"nodeId": "ocfs2:part:0:" + b"/hello".hex(), "streamName": "user.large", "maxBytes": 97}},
-                ])
-                assert all("result" in row for row in rows), rows
-                assert rows[0]["result"]["partitions"][0]["kind"] == "ocfs2"
-                assert any(item["name"] == "中文\\evidence" for item in rows[1]["result"]["items"])
-                assert rows[2]["result"]["sha256"] == native_manifest["records"]["/large"]["sha256"]
-                assert rows[3]["result"] == {"encoding": "hex", "data": bytes((index * 23 + 7) & 255 for index in range(97)).hex()}
-                for file_name in ["/fragmented", "/clone-fragmented", "/unwritten", "/preallocated-empty"]:
-                    if file_name not in native_manifest["records"]:
-                        continue
-                    _, checked = session([
-                        {"id": "open", "command": "images open", "args": {"path": str(native_root / (native_name + ".img"))}},
-                        {"id": "hash", "command": "files hash", "args": {"nodeId": "ocfs2:part:0:" + file_name.encode().hex(), "algos": ["sha256"]}},
-                    ])
-                    assert all("result" in row for row in checked), checked
-                    assert checked[1]["result"]["sha256"] == native_manifest["records"][file_name]["sha256"]
-
-        # BeFS: both endian orders, indirect/double runs and typed attributes.
-        for befs_name, befs_block in [("le-1024-2560", 1024), ("be-4096-2560", 4096), ("le-1024-10000", 1024)]:
-            befs_path = root / (befs_name + ".befs")
-            befs_source = zlib.decompress((flash_vendor / ("befs-reader/tests/fixtures/" + befs_name + ".zlib")).read_bytes())
-            befs_path.write_bytes(befs_source)
-            befs_node = "befs:part:0:" + b"/big.bin".hex()
-            befs_body = bytes((index * 17 + 5) & 255 for index in range(26 * befs_block - 37))
-            befs_attribute = bytes((index * 23 + 7) & 255 for index in range(12003))
-            befs_export = root / (befs_name + "-export.bin")
-            befs_attr_export = root / (befs_name + "-attribute.bin")
-            befs_offset = 18 * befs_block - 11
-            _, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(befs_path)}},
-                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "read", "command": "files read", "args": {"nodeId": befs_node, "offset": befs_offset, "length": 73}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": befs_node, "algos": ["sha256"]}},
-                {"id": "export", "command": "files export", "args": {"nodeId": befs_node, "destination": str(befs_export)}},
-                {"id": "streams", "command": "files streams list", "args": {"nodeId": befs_node}},
-                {"id": "inline", "command": "files streams get", "args": {"nodeId": befs_node, "streamName": "custom", "maxBytes": 100}},
-                {"id": "attribute", "command": "files streams get", "args": {"nodeId": befs_node, "streamName": "big-attribute", "maxBytes": 97}},
-                {"id": "attribute-export", "command": "files streams export", "args": {"nodeId": befs_node, "streamName": "big-attribute", "destination": str(befs_attr_export)}},
-                {"id": "name", "command": "files read", "args": {"nodeId": "befs:part:0:" + "/中文\\evidence".encode().hex(), "offset": 0, "length": 100}},
-            ])
-            assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["partitions"][0]["kind"] == "befs"
-            assert any(item["name"] == "中文\\evidence" for item in rows[1]["result"]["items"])
-            assert rows[2]["result"]["data"] == befs_body[befs_offset:befs_offset + 73].hex()
-            assert rows[3]["result"]["sha256"] == hashlib.sha256(befs_body).hexdigest()
-            assert befs_export.read_bytes() == befs_body
-            assert any(stream["name"] == "big-attribute" for stream in rows[5]["result"])
-            assert rows[6]["result"] == {"encoding": "hex", "data": b"\x00\xffinline\x80".hex()}
-            assert rows[7]["result"] == {"encoding": "hex", "data": befs_attribute[:97].hex()}
-            assert befs_attr_export.read_bytes() == befs_attribute
-            assert rows[9]["result"]["data"] == b"names".hex()
-            assert befs_path.read_bytes() == befs_source
-
-        # Opt-in publisher-verified hrev60295 native image from test-befs-native.
-        if os.environ.get("BEFS_ORACLE_IMAGE"):
-            native_node = "befs:part:0:" + b"/system/packages/haiku-r1~beta6_hrev60295-1-x86_64.hpkg".hex()
-            _, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": os.environ["BEFS_ORACLE_IMAGE"]}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": native_node, "algos": ["sha256"]}},
-            ])
-            assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["partitions"][0]["kind"] == "befs"
-            assert rows[1]["result"]["sha256"] == "f624ff224ac0cc68c22300e15babc3e058b09fc145f0af19f3257c0c5e9c85dc"
-
-        # Amiga: independent OFS/FFS variants, native multi-block RDB and links.
-        amiga_body = bytes((index * 17 + 5) & 255 for index in range(200013))
-        for amiga_name, amiga_parts in [("dos0-512-1760", (0,)), ("links-dos3", (0,)), ("dos7-4096-1760", (0,)), ("rdb-multiblock", (0, 1, 3))]:
-            amiga_path = root / (amiga_name + ".hdf")
-            amiga_source = zlib.decompress((flash_vendor / ("amiga-reader/tests/fixtures/" + amiga_name + ".zlib")).read_bytes())
-            amiga_path.write_bytes(amiga_source)
-            for amiga_part in amiga_parts:
-                amiga_prefix = "amiga:part:" + str(amiga_part) + ":"
-                amiga_node = amiga_prefix + "/Café.bin".encode().hex()
-                amiga_export = root / (amiga_name + str(amiga_part) + "-export.bin")
-                _, rows = session([
-                    {"id": "open", "command": "images open", "args": {"path": str(amiga_path)}},
-                    {"id": "list", "command": "files list", "args": {"parentId": "part:" + str(amiga_part)}},
-                    {"id": "nested", "command": "files list", "args": {"parentId": amiga_prefix + b"/sub".hex(), "pageSize": 200}},
-                    {"id": "read", "command": "files read", "args": {"nodeId": amiga_node, "offset": 73720, "length": 73}},
-                    {"id": "hash", "command": "files hash", "args": {"nodeId": amiga_node, "algos": ["sha256"]}},
-                    {"id": "export", "command": "files export", "args": {"nodeId": amiga_node, "destination": str(amiga_export)}},
-                    {"id": "name", "command": "files read", "args": {"nodeId": amiga_prefix + "/back\\slash".encode().hex(), "offset": 0, "length": 100}},
-                ])
-                assert all("result" in row for row in rows), rows
-                assert rows[0]["result"]["partitions"][amiga_part]["kind"] == "amiga"
-                assert any(item["name"] == "Café.bin" for item in rows[1]["result"]["items"])
-                assert len(rows[2]["result"]["items"]) == 101
-                assert rows[3]["result"]["data"] == amiga_body[73720:73793].hex()
-                assert rows[4]["result"]["sha256"] == hashlib.sha256(amiga_body).hexdigest()
-                assert amiga_export.read_bytes() == amiga_body
-                assert rows[6]["result"]["data"] == b"Unix-safe evidence name".hex()
-                assert amiga_path.read_bytes() == amiga_source
-
-        # ReiserFS v3: both key/bitmap layouts, sparse indirect and packed tails.
-        for reiser_name, reiser_block in [("v35-1024-old", 1024), ("v36-4096-relocated", 4096)]:
-            reiser_path = root / (reiser_name + ".reiserfs")
-            reiser_path.write_bytes(zlib.decompress((flash_vendor / ("reiserfs-reader/tests/fixtures/" + reiser_name + ".zlib")).read_bytes()))
-            reiser_body = bytes((index * 17 + 5) & 255 for index in range(reiser_block)) + bytes(reiser_block) + bytes((index * 23 + 7) & 255 for index in range(reiser_block)) + b"packed tail"
-            reiser_node = "reiserfs:part:0:" + b"/big.bin".hex()
-            reiser_export = root / (reiser_name + "-export.bin")
-            reiser_offset = reiser_block - 7
-            _, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(reiser_path)}},
-                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "nested", "command": "files list", "args": {"parentId": "reiserfs:part:0:" + b"/sub".hex()}},
-                {"id": "read", "command": "files read", "args": {"nodeId": reiser_node, "offset": reiser_offset, "length": 71}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": reiser_node, "algos": ["sha256"]}},
-                {"id": "export", "command": "files export", "args": {"nodeId": reiser_node, "destination": str(reiser_export)}},
-                {"id": "unicode", "command": "files read", "args": {"nodeId": "reiserfs:part:0:" + "/中文\\evidence".encode().hex(), "offset": 0, "length": 100}},
-            ])
-            assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["partitions"][0]["kind"] == "reiserfs"
-            assert any(item["name"] == "中文\\evidence" for item in rows[1]["result"]["items"])
-            assert not any(item["name"] == "hidden" for item in rows[1]["result"]["items"])
-            assert rows[2]["result"]["items"][0]["name"] == "nested"
-            assert rows[3]["result"]["data"] == reiser_body[reiser_offset:reiser_offset + 71].hex()
-            assert rows[4]["result"]["sha256"] == hashlib.sha256(reiser_body).hexdigest()
-            assert reiser_export.read_bytes() == reiser_body
-            assert rows[6]["result"]["data"] == b"names".hex()
-
-        # JFS: multiple IAGs, sparse/unwritten data, Unix names and hardlinks.
-        for jfs_name, jfs_block in [("multi-iag-512-legacy", 512), ("multi-iag-4096-indexed", 4096)]:
-            jfs_path = root / (jfs_name + ".jfs")
-            jfs_path.write_bytes(zlib.decompress((flash_vendor / ("jfs-reader/tests/fixtures/" + jfs_name + ".zlib")).read_bytes()))
-            jfs_expected = bytearray(12 * jfs_block + 37)
-            for logical, count, factor in [(0, 2 * jfs_block, 17), (10 * jfs_block, jfs_block, 23), (12 * jfs_block, 37, 29)]:
-                jfs_expected[logical:logical + count] = bytes((index * factor + 5) & 255 for index in range(count))
-            jfs_node = "jfs:part:0:" + b"/big.bin".hex()
-            jfs_long_name = "long_中文_" + "x" * 180 + "\\tail"
-            jfs_export = root / (jfs_name + "-export.bin")
-            jfs_offset = 6 * jfs_block - 7
-            _, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(jfs_path)}},
-                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "nested", "command": "files list", "args": {"parentId": "jfs:part:0:" + b"/sub".hex()}},
-                {"id": "read", "command": "files read", "args": {"nodeId": jfs_node, "offset": jfs_offset, "length": 71}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": jfs_node, "algos": ["sha256"]}},
-                {"id": "export", "command": "files export", "args": {"nodeId": jfs_node, "destination": str(jfs_export)}},
-                {"id": "unicode", "command": "files read", "args": {"nodeId": "jfs:part:0:" + ("/" + jfs_long_name).encode().hex(), "offset": 0, "length": 100}},
-            ])
-            assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["partitions"][0]["kind"] == "jfs"
-            assert any(item["name"] == jfs_long_name for item in rows[1]["result"]["items"])
-            assert rows[2]["result"]["items"][0]["name"] == "nested.txt"
-            assert rows[3]["result"]["data"] == jfs_expected[jfs_offset:jfs_offset + 71].hex()
-            assert rows[4]["result"]["sha256"] == hashlib.sha256(jfs_expected).hexdigest()
-            assert jfs_export.read_bytes() == jfs_expected
-            assert rows[6]["result"]["data"] == b"unicode path".hex()
-
-        # Classic HFS: retain local times and independently export both forks.
-        hfs_path = root / "classic-hfs.img"
-        hfs_path.write_bytes(zlib.decompress((flash_vendor / "classic-hfs/tests/fixtures/fragmented-1024.zlib").read_bytes()))
-        hfs_node = "hfs:part:0:" + "/Café.bin".encode().hex()
-        hfs_body = bytes((index * 17 + 3) & 255 for index in range(3 * 1024 + 37))
-        hfs_resource = bytes((index * 23 + 5) & 255 for index in range(3 * 1024 + 19))
-        hfs_data_export = root / "hfs-data.bin"
-        hfs_resource_export = root / "hfs-resource.bin"
-        _, rows = session([
-            {"id": "open", "command": "images open", "args": {"path": str(hfs_path)}},
-            {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-            {"id": "read", "command": "files read", "args": {"nodeId": hfs_node, "offset": 3065, "length": 121}},
-            {"id": "hash", "command": "files hash", "args": {"nodeId": hfs_node, "algos": ["sha256"]}},
-            {"id": "export", "command": "files export", "args": {"nodeId": hfs_node, "destination": str(hfs_data_export)}},
-            {"id": "streams", "command": "files streams list", "args": {"nodeId": hfs_node}},
-            {"id": "resource", "command": "files streams get", "args": {"nodeId": hfs_node, "streamName": "com.apple.ResourceFork", "maxBytes": 100}},
-            {"id": "resource-export", "command": "files streams export", "args": {"nodeId": hfs_node, "streamName": "com.apple.ResourceFork", "destination": str(hfs_resource_export)}},
-        ])
-        assert all("result" in row for row in rows), rows
-        assert rows[0]["result"]["partitions"][0]["kind"] == "hfs"
-        assert any(item["name"] == "Café.bin" for item in rows[1]["result"]["items"])
-        assert rows[2]["result"]["data"] == hfs_body[3065:3065 + 121].hex()
-        assert rows[3]["result"]["sha256"] == hashlib.sha256(hfs_body).hexdigest()
-        assert hfs_data_export.read_bytes() == hfs_body
-        assert any(stream["name"] == "com.apple.ResourceFork" for stream in rows[5]["result"])
-        assert rows[6]["result"] == {"encoding": "hex", "data": hfs_resource[:100].hex()}
-        assert hfs_resource_export.read_bytes() == hfs_resource
-
-        # Minix V1/V2/V3: all read paths share sparse and indirect mappings.
-        minix_fixtures = flash_vendor / "minix-reader/tests/fixtures"
-        for minix_name, zone_size, pointers in [
-            ("v1-30-1024-1-be", 2048, 512),
-            ("v2-30-1024-2-le", 4096, 256),
-            ("v3-60-1024-0-le", 1024, 256),
-        ]:
-            minix_path = root / (minix_name + ".img")
-            minix_path.write_bytes(zlib.decompress((minix_fixtures / (minix_name + ".zlib")).read_bytes()))
-            minix_expected = bytearray((7 + pointers + 2) * zone_size + 37)
-            for logical_zone, factor in [(0, 13), (2, 17), (7, 17), (7 + pointers + 2, 19)]:
-                start = logical_zone * zone_size
-                count = min(zone_size, len(minix_expected) - start)
-                minix_expected[start:start + count] = bytes((index * factor + 7) & 255 for index in range(count))
-            minix_node = "minix:part:0:" + b"/big.bin".hex()
-            minix_export = root / (minix_name + "-export.bin")
-            minix_offset = 7 * zone_size - 7
-            requests = [
-                {"id": "open", "command": "images open", "args": {"path": str(minix_path)}},
-                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "nested", "command": "files list", "args": {"parentId": "minix:part:0:" + b"/sub".hex()}},
-                {"id": "read", "command": "files read", "args": {"nodeId": minix_node, "offset": minix_offset, "length": 121}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": minix_node, "algos": ["sha256"]}},
-                {"id": "export", "command": "files export", "args": {"nodeId": minix_node, "destination": str(minix_export)}},
-            ]
-            if not minix_name.startswith("v1"):
-                requests.append({"id": "triple", "command": "files read", "args": {
-                    "nodeId": "minix:part:0:" + b"/triple.bin".hex(),
-                    "offset": (7 + pointers + pointers * pointers) * zone_size, "length": 37}})
-            _, rows = session(requests)
-            assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["partitions"][0]["kind"] == "minix"
-            assert any(item["name"] == "text.txt" for item in rows[1]["result"]["items"])
-            assert any(item["name"] == "nested.txt" for item in rows[2]["result"]["items"])
-            assert rows[3]["result"]["data"] == minix_expected[minix_offset:minix_offset + 121].hex()
-            assert rows[4]["result"]["sha256"] == hashlib.sha256(minix_expected).hexdigest()
-            assert minix_export.read_bytes() == minix_expected
-            if len(rows) == 7:
-                assert rows[6]["result"]["data"] == bytes((index * 19 + 7) & 255 for index in range(37)).hex()
-
-        # UDF reference images: FE/EFE, nested tree, range/hash/export through JSONL.
-        udf_fixtures = flash_vendor / "lamfold-udf/tests/fixtures"
-        for udf_name, udf_file, udf_expected in [
-            ("udf102", "/big.dat", bytes(index % 256 for index in range(5000))),
-            ("udf201", "/big.bin", bytes((index * 11 + index // 257) & 255 for index in range(70000))),
-        ]:
-            udf_path = root / (udf_name + ".iso")
-            udf_path.write_bytes(zlib.decompress((udf_fixtures / (udf_name + ".zlib")).read_bytes()))
-            udf_node = "udf:part:0:" + udf_file.encode().hex()
-            udf_export = root / (udf_name + "-export.bin")
-            _, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(udf_path)}},
-                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "nested", "command": "files list", "args": {"parentId": "udf:part:0:" + b"/sub".hex()}},
-                {"id": "read", "command": "files read", "args": {"nodeId": udf_node, "offset": 2041, "length": 121}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": udf_node, "algos": ["sha256"]}},
-                {"id": "export", "command": "files export", "args": {"nodeId": udf_node, "destination": str(udf_export)}},
-            ])
-            assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["partitions"][0]["kind"] == "udf"
-            assert any(item["name"] == "sub" for item in rows[1]["result"]["items"])
-            assert any(item["name"] == "inner.txt" for item in rows[2]["result"]["items"])
-            assert rows[3]["result"]["data"] == udf_expected[2041:2162].hex()
-            assert rows[4]["result"]["sha256"] == hashlib.sha256(udf_expected).hexdigest()
-            assert udf_export.read_bytes() == udf_expected
-
-        # QNX4 extent-chain and independently QNX-created QNX6 reference image.
-        qnx_fixtures = flash_vendor / "qnx-reader/tests/fixtures"
-        with tarfile.open(qnx_fixtures / "nfi-qnx6.tar.gz", "r:gz") as archive:
-            qnx6_body = archive.extractfile("this_file_is_large").read()
-        for qnx_kind, qnx_fixture, qnx_file, qnx_expected in [
-            ("qnx4", "qnx4.zlib", "/big.bin", bytes((index * 13 + 7) % 256 for index in range(1300))),
-            ("qnx6", "nfi-qnx6.zlib", "/this_file_is_large", qnx6_body),
-        ]:
-            qnx_path = root / (qnx_kind + ".img")
-            qnx_path.write_bytes(zlib.decompress((qnx_fixtures / qnx_fixture).read_bytes()))
-            qnx_node = qnx_kind + ":part:0:" + qnx_file.encode().hex()
-            _, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(qnx_path)}},
-                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "read", "command": "files read", "args": {"nodeId": qnx_node, "offset": 500, "length": 121}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": qnx_node, "algos": ["sha256"]}},
-            ])
-            assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["partitions"][0]["kind"] == qnx_kind
-            assert rows[1]["result"]["items"]
-            assert rows[2]["result"]["data"] == qnx_expected[500:621].hex()
-            assert rows[3]["result"]["sha256"] == hashlib.sha256(qnx_expected).hexdigest()
-
-        # Native CramFS / ROMFS: library-backed tree, page-crossing reads and hash.
-        rom_fixtures = Path(__file__).resolve().parent.parent / "src-tauri/test_data/rom-images"
-        rom_content = (rom_fixtures / "payload.bin").read_bytes()
-        for rom_name, rom_kind in [("synthetic-le.cramfs", "cramfs"), ("synthetic-be.cramfs", "cramfs"), ("synthetic.romfs", "romfs")]:
-            rom_node = rom_kind + ":part:0:" + b"/payload.bin".hex()
-            _, rom_rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(rom_fixtures / rom_name)}},
-                {"id": "list", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "read", "command": "files read", "args": {"nodeId": rom_node, "offset": 8180, "length": 100}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": rom_node, "algos": ["sha256"]}},
-            ])
-            assert all("result" in row for row in rom_rows), rom_rows
-            assert rom_rows[0]["result"]["partitions"][0]["kind"] == rom_kind
-            assert rom_rows[0]["result"]["sectorSize"] == 1
-            assert any(item["name"] == "nested" and item["kind"] == "dir" for item in rom_rows[1]["result"]["items"])
-            assert rom_rows[2]["result"]["data"] == rom_content[8180:8280].hex()
-            assert rom_rows[3]["result"]["sha256"] == hashlib.sha256(rom_content).hexdigest()
-
-        # Native firmware envelopes retain the established CramFS content paths.
-        for wrapper in ("synthetic-uimage.bin", "synthetic-safeloader.bin", "synthetic.chk"):
-            wrapper_node = "cramfs:part:0:" + b"/payload.bin".hex()
-            _, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(firmware_fixtures / wrapper)}},
-                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "read", "command": "files read", "args": {"nodeId": wrapper_node, "offset": 8180, "length": 100}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": wrapper_node, "algos": ["sha256"]}},
-            ])
-            assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["sourceFormat"] == "firmware"
-            assert rows[2]["result"]["data"] == rom_content[8180:8280].hex()
-            assert rows[3]["result"]["sha256"] == hashlib.sha256(rom_content).hexdigest()
-
-        # Independently encoded v3 gzip / raw LZMA / LZMA-alone / properties,
-        # in both byte orders and with range reads crossing compressed blocks.
-        squashfs_fixtures = firmware_fixtures.parent.parent / "vendor/backhand/test_data"
-        squashfs_content = b"Independent Rust LZMA fixture.\n" * 350
-        for mode in ("raw", "alone", "props", "gzip"):
-            for endian in ("le", "be"):
-                _, rows = session([
-                    {"id": "open", "command": "images open", "args": {"path": str(squashfs_fixtures / f"lzma-v3-{mode}-{endian}.squashfs")}},
-                    {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
-                    {"id": "read", "command": "files read", "args": {"nodeId": firmware_node, "offset": 4080, "length": 100}},
-                    {"id": "hash", "command": "files hash", "args": {"nodeId": firmware_node, "algos": ["sha256"]}},
-                ])
-                assert all("result" in row for row in rows), rows
-                assert rows[1]["result"]["items"][0]["name"] == "hello"
-                assert rows[2]["result"]["data"] == squashfs_content[4080:4180].hex()
-                assert rows[3]["result"]["sha256"] == hashlib.sha256(squashfs_content).hexdigest()
-
-        # Legacy SquashFS: independent v1/v2 bitfields, fragments, both byte
-        # orders, bounded markerless LZMA and the encrypted firmware path.
-        legacy_fixtures = squashfs_fixtures / "legacy"
-        legacy_paths = sorted(legacy_fixtures.glob("*.squashfs"))
-        legacy_paths.append(firmware_fixtures / "synthetic-legacy-squashfs.enc")
-        legacy_node = "squashfs:part:0:" + b"/payload.bin".hex()
-        for path in legacy_paths:
-            payload_name = ("payload-32k.bin" if "32k" in path.name else
-                            "payload-64k.bin" if "64k" in path.name else "payload.bin")
-            legacy_content = (legacy_fixtures / payload_name).read_bytes()
-            _, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(path)}},
-                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "read", "command": "files read", "args": {"nodeId": legacy_node, "offset": 8180, "length": 100}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": legacy_node, "algos": ["sha256"]}},
-            ])
-            assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["partitions"][0]["kind"] == "squashfs"
-            entries = {entry["name"]: entry for entry in rows[1]["result"]["items"]}
-            assert set(entries) == {"payload.bin", "alias.bin", "子目录", "link", "huge-link", "empty.txt", "block", "char", "fifo", "socket"}
-            assert rows[2]["result"]["data"] == legacy_content[8180:8280].hex()
-            assert rows[3]["result"]["sha256"] == hashlib.sha256(legacy_content).hexdigest()
-
-        # Sercomm source geometry stays compressed; UBI navigation uses decoded bytes.
-        sercomm_stored = root / "sercomm-stored.img"
-        sercomm_stored.write_bytes(zlib.decompress((firmware_fixtures / "synthetic-sercomm-stored.img.zlib").read_bytes()))
-        sercomm_node = "squashfs:ubi:part:0:2:" + b"/hello".hex()
-        for sercomm_path in [firmware_fixtures / "synthetic-sercomm-deflate.img", sercomm_stored]:
-            _, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(sercomm_path)}},
-                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "files", "command": "files list", "args": {"parentId": "squashfs:ubi:part:0:2:"}},
-                {"id": "read", "command": "files read", "args": {"nodeId": sercomm_node, "offset": 11, "length": 93}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": sercomm_node, "algos": ["sha256"]}},
-            ])
-            assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["sourceFormat"] == "firmware"
-            assert rows[0]["result"]["sizeBytes"] == sercomm_path.stat().st_size
-            assert rows[0]["result"]["unlockedPartitions"] == []
-            assert {entry["name"] for entry in rows[1]["result"]["items"]} == {"root", "root.img"}
-            assert rows[2]["result"]["items"][0]["name"] == "hello"
-            assert rows[3]["result"]["data"] == firmware_content[11:104].hex()
-            assert rows[4]["result"]["sha256"] == hashlib.sha256(firmware_content).hexdigest()
-
-        # UBIFS: independent stored/LZO/DEFLATE/Zstd trees and encrypted firmware.
-        ubifs_fixtures = firmware_fixtures.parent.parent / "vendor/ubidump/test_data"
-        ubifs_content = (ubifs_fixtures / "payload.bin").read_bytes()
-        ubifs_node = "ubifs:part:0:" + b"/payload.bin".hex()
-        ubifs_paths = [ubifs_fixtures / f"synthetic-{codec}.ubifs" for codec in ("stored", "lzo", "deflate", "zstd", "zstd-compressed")]
-        ubifs_paths.append(firmware_fixtures / "synthetic-ubifs.enc")
-        for path in ubifs_paths:
-            _, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(path)}},
-                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "read", "command": "files read", "args": {"nodeId": ubifs_node, "offset": 8180, "length": 100}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": ubifs_node, "algos": ["sha256"]}},
-            ])
-            assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["partitions"][0]["kind"] == "ubifs"
-            assert rows[2]["result"]["data"] == ubifs_content[8180:8280].hex()
-            assert rows[3]["result"]["sha256"] == hashlib.sha256(ubifs_content).hexdigest()
-
-        # JFFS2: version replay, both byte orders, four codecs and firmware bytes.
-        jffs2_fixtures = firmware_fixtures.parent.parent / "vendor/jffs2/test_data"
-        jffs2_content = (jffs2_fixtures / "payload.bin").read_bytes()
-        jffs2_node = "jffs2:part:0:" + b"/payload.bin".hex()
-        jffs2_paths = [jffs2_fixtures / f"synthetic-{order}-{codec}.jffs2" for order in ("le", "be") for codec in ("stored", "rtime", "zlib", "lzo")]
-        jffs2_paths.append(firmware_fixtures / "synthetic-jffs2.enc")
-        for path in jffs2_paths:
-            _, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(path)}},
-                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "read", "command": "files read", "args": {"nodeId": jffs2_node, "offset": 8180, "length": 100}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": jffs2_node, "algos": ["sha256"]}},
-            ])
-            assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["partitions"][0]["kind"] == "jffs2"
-            assert {entry["name"] for entry in rows[1]["result"]["items"]} == {"payload.bin", "alias.bin", "子目录", "link", "empty.txt", "cut.txt"}
-            assert rows[2]["result"]["data"] == jffs2_content[8180:8280].hex()
-            assert rows[3]["result"]["sha256"] == hashlib.sha256(jffs2_content).hexdigest()
-
-        # YAFFS2: NAND geometry, hard links, UTF-8 names and page-crossing ranges.
-        yaffs2_fixtures = firmware_fixtures.parent.parent / "vendor/yaffs2-reader/test_data"
-        yaffs2_content = b"Native YAFFS2 fixture.\n" * 300
-        yaffs2_node = "yaffs2:part:0:" + "/目录/hello".encode().hex()
-        for yaffs2_path in [yaffs2_fixtures / "base-le.yaffs", yaffs2_fixtures / "base-be-ecc.yaffs", firmware_fixtures / "synthetic-yaffs2.enc"]:
-            _, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(yaffs2_path)}},
-                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "read", "command": "files read", "args": {"nodeId": yaffs2_node, "offset": 2047, "length": 4097}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": yaffs2_node, "algos": ["sha256"]}},
-            ])
-            assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["partitions"][0]["kind"] == "yaffs2"
-            assert {entry["name"] for entry in rows[1]["result"]["items"]} == {"目录", "alias", "link", "console", "empty"}
-            assert rows[2]["result"]["data"] == yaffs2_content[2047:6144].hex()
-            assert rows[3]["result"]["sha256"] == hashlib.sha256(yaffs2_content).hexdigest()
-
-        # YAFFS1 has dispersed tags, two-bit serials and a distinct partition kind.
-        yaffs1_content = b"Native YAFFS1 data.\n" * 61
-        yaffs1_node = "yaffs1:part:0:" + "/目录/message".encode().hex()
-        for yaffs1_path in [yaffs2_fixtures / "legacy-le.yaffs", yaffs2_fixtures / "legacy-be.yaffs", firmware_fixtures / "synthetic-yaffs1.enc"]:
-            _, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(yaffs1_path)}},
-                {"id": "root", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "read", "command": "files read", "args": {"nodeId": yaffs1_node, "offset": 511, "length": 517}},
-                {"id": "hash", "command": "files hash", "args": {"nodeId": yaffs1_node, "algos": ["sha256"]}},
-            ])
-            assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["partitions"][0]["kind"] == "yaffs1"
-            assert {entry["name"] for entry in rows[1]["result"]["items"]} == {"目录", "alias", "sym", "console", "empty"}
-            assert rows[2]["result"]["data"] == yaffs1_content[511:1028].hex()
-            assert rows[3]["result"]["sha256"] == hashlib.sha256(yaffs1_content).hexdigest()
-
-        # Discovery needs no evidence: system facts, request schemas, help and completion.
-        system = json.loads(run(["system", "get"]).stdout)
-        assert system["standalone"], "the CLI must be built without the desktop runtime"
-        assert system["session"]["maxJobs"] == 64 and system["session"]["protocolVersion"] == 3
-        schemas = json.loads(run(["schema", "--list"]).stdout)
-        assert system["commands"] >= len(schemas) >= 140, (system["commands"], len(schemas))
-        assert {"command": "lovelycarve-cli files media create", "ipcCommand": "fs_media_temp",
-                "operationId": "files.media.create"} in schemas
-        schema = json.loads(run(["schema", "images", "open"]).stdout)
-        assert schema["ipcCommand"] == "image_load" and schema["operationId"] == "images.open"
-        assert next(field for field in schema["requestBodyFields"] if field["name"] == "qcowPassword")["sensitive"]
-        for command in (["files", "list"], ["files", "tree", "list"], ["files", "get"], ["files", "read"], ["files", "hash"]):
-            contract = json.loads(run(["schema", *command]).stdout)
-            fields = {field["name"] for field in contract["requestBodyFields"]}
-            assert "path" in fields and "imageId" in fields, contract
-            assert contract["targetAlternatives"] == ["path", "parentId" if command == ["files", "list"] else "nodeId"]
-        run(["files", "children", "list"], expected=1)
-        for body in ({"offset": "1"}, {"offset": -1}, {"typo": True}):
-            run(["files", "read", "--body", json.dumps({"path": "/x", **body}), "--dry-run"], expected=1)
-        candidates = [line.split("\t")[0] for line in run(["complete", "--", "files", "s"]).stdout.splitlines()]
-        assert {"search", "sqlite", "strings"} <= set(candidates), candidates
-        run(["--help"])
-        run(["files", "read", "--help"])
-        assert "schema files hash" in run(["files", "hash", "--help"]).stdout
-        assert "images open" in run(["image_load"], expected=1).stderr
-        run(["--unknown"], expected=1)
-        run(["session", "--jobs", "0"], expected=1)
-        run(["session", "--jobs", "65"], expected=1)
-        # --dry-run shows the backend request without touching evidence or printing secrets.
-        missing = root / "missing.E01"
-        preview = json.loads(run(["images", "open", str(missing), "--qcow-password", "hunter2", "--dry-run"]).stdout)
-        assert preview["ipcCommand"] == "image_load" and preview["body"]["path"] == str(missing), preview
-        assert preview["body"]["qcowPassword"] == "<redacted>" and not missing.exists()
-        # Destructive commands need --force where nobody can be asked.
-        refused = run(["cases", "delete", str(root / "no such case")], expected=1)
-        assert "Aborted." in refused.stderr, refused.stderr
-        # Looking up or cancelling a task that does not exist fails instead of passing for a success.
-        missing_task = run(["tasks", "get", "no-such-task"], expected=1)
-        assert missing_task.stdout == "" and "找不到任务" in missing_task.stderr, missing_task
-        missing_cancel = run(["tasks", "cancel", "no-such-task"], expected=1)
-        assert missing_cancel.stdout == "" and "找不到运行中的任务" in missing_cancel.stderr, missing_cancel
-        # Results keep the order the backend wrote their fields in.
-        assert run(["schema", "images", "open"]).stdout.startswith('{"operationId":"images.open",')
-        # A required subject may come from --body; arrays take several values after one option.
-        preview = json.loads(run(["images", "open", "--body", json.dumps({"path": str(missing)}), "--dry-run"]).stdout)
-        assert preview["body"]["path"] == str(missing), preview
-        preview = json.loads(run(["files", "hash", "/x", "--algos", "md5", "sha256", "--dry-run"]).stdout)
-        assert preview["body"]["algos"] == ["md5", "sha256"], preview
-        assert json.loads(run(["complete", "bash", "--dry-run"]).stdout)["executed"] is False
-        # Hidden commands stay out of help, completion and suggestions; discovery
-        # and documentation commands are gone in favour of the agent skill.
-        assert "sessions serve" not in run(["sessions", "--help"]).stdout
-        assert "serve" not in run(["complete", "--", "sessions", "s"]).stdout.split()
-        for removed in (["cli", "search", "export a file"], ["tools"], ["docs", "list"]):
-            run(removed, expected=1)
-        _, rows = session([
-            {"id": "schema", "command": "schema", "args": {"command": ["files", "hash"]}},
-            {"id": "docs", "command": "docs get", "args": {"page": "CLI.md"}},
-        ], expected=1)
-        assert rows[0]["result"]["ipcCommand"] == "fs_digest", rows[0]
-        assert rows[1]["error"]["code"], rows[1]
-        # .env.local overrides .env, and a scope taken from either is announced.
-        (root / ".env").write_text(f"LOVELYCARVE_IMAGE={root / 'missing.E01'}\n", encoding="utf-8")
-        (root / ".env.local").write_text(f"LOVELYCARVE_IMAGE={evidence}\n", encoding="utf-8")
-        try:
-            scoped = run(["images", "get"])
-            assert Path(json.loads(scoped.stdout)["path"]).name == evidence.name, scoped.stdout
-            assert "来自 .env.local 中的 LOVELYCARVE_IMAGE" in scoped.stderr, scoped.stderr
-            assert "使用检材" not in run(["--quiet", "images", "get"]).stderr
-        finally:
-            (root / ".env").unlink()
-            (root / ".env.local").unlink()
-        missing_scope = run(["images", "get"], expected=1).stderr
-        assert "未指定检材" in missing_scope and "LOVELYCARVE_IMAGE" in missing_scope, missing_scope
-
-        # Selecting an already loaded image must change the persistent context,
-        # while supplying imageId to an ordinary query must not change it.
-        second_evidence = root / "second evidence"
-        second_evidence.mkdir()
-        _, selections = session([
-            {"id": "first", "command": "images open", "args": {"path": str(evidence)}},
-            {"id": "cd-first", "command": "context set", "args": {"dir": volume_name}},
-            {"id": "second", "command": "images open", "args": {"path": str(second_evidence)}},
-            {"id": "set-first", "command": "context set", "args": {"imageId": {"$ref": "first#/id"}}},
-            {"id": "use-second", "command": "context use", "args": {"imageId": {"$ref": "second#/id"}}},
-            {"id": "query-first", "command": "files list", "args": {"imageId": {"$ref": "first#/id"}}},
-            {"id": "current", "command": "context get"},
-            {"id": "open-id", "command": "images open", "args": {"path": {"$ref": "first#/id"}}},
-            {"id": "expired", "command": "images open", "args": {"path": "assembled://missing-array"}},
-            {"id": "unknown-id", "command": "images open", "args": {"path": "d462a771-85d2-410b-ad72-016b0ced24a1"}},
-        ], expected=1)
-        selected = {row["id"]: row for row in selections}
-        assert selected["set-first"]["result"]["image"]["id"] == selected["first"]["result"]["id"]
-        assert selected["use-second"]["result"]["image"]["id"] == selected["second"]["result"]["id"]
-        assert selected["current"]["result"]["image"]["id"] == selected["second"]["result"]["id"]
-        assert selected["use-second"]["result"]["dir"] == "/"
-        assert selected["open-id"]["result"]["id"] == selected["first"]["result"]["id"]
-        assert all(selected[key]["error"]["code"] == "notFound" for key in ("expired", "unknown-id"))
-        run(["context", "use", "d462a771-85d2-410b-ad72-016b0ced24a1", "--dry-run"])
-
-        concurrent_requests = [
-            {"id": "open", "command": "images open", "args": {"path": str(evidence)}},
-            {"id": "cd", "command": "context set", "args": {"dir": volume_name}},
-            {"id": "read", "command": "files read", "args": {"nodeId": node, "offset": 0, "length": 8}},
-            {"id": "digest", "command": "files hash", "args": {"nodeId": node, "algos": ["sha256"]}},
-            {"id": "stat", "command": "files get", "args": {"path": "hello.txt"}},
-            {"id": "dependent", "command": "files read", "args": {"nodeId": {"$ref": "stat#/nodeId"}, "offset": 0, "length": 8}},
-            {"id": "bad", "command": "images list", "args": {"typo": True}},
-            {"id": "invalid-args", "command": "images list", "args": []},
-            {"id": "legacy", "command": "image_load", "args": {"path": str(evidence)}},
-            {"id": "missing-task", "command": "tasks get", "args": {"taskId": "no-such-task"}},
-            {"id": "wait", "command": "tasks wait"},
-            {"id": "close", "command": "images close", "args": {"imageId": {"$ref": "open#/id"}}},
-            {"id": "remaining", "command": "images list"},
-        ]
-        _, serial = session(concurrent_requests, expected=1)
-        result = run(["session", "--jobs", "4"], "\n".join(json.dumps(request) for request in concurrent_requests), expected=1)
-        concurrent_rows = {row["id"]: row for row in map(json.loads, result.stdout.splitlines())}
-        assert len(concurrent_rows) == len(concurrent_requests), result.stdout
-        assert concurrent_rows["read"]["result"] == {"encoding": "hex", "data": content[:8].hex()}
-        assert concurrent_rows["dependent"]["result"] == concurrent_rows["read"]["result"]
-        assert concurrent_rows["digest"]["result"]["sha256"] == hashlib.sha256(content).hexdigest()
-        assert concurrent_rows["cd"]["result"]["dir"] == "/" + volume_name
-        assert concurrent_rows["remaining"]["result"] == []
-        errors = {"bad", "invalid-args", "legacy", "missing-task"}
-        assert all("result" in row for key, row in concurrent_rows.items() if key not in errors), concurrent_rows
-        assert all("code" in concurrent_rows[key]["error"] and "message" in concurrent_rows[key]["error"] for key in errors)
-        assert "images open" in concurrent_rows["legacy"]["error"]["message"]
-        # A lookup that finds nothing is an error, not an empty success.
-        assert concurrent_rows["missing-task"]["error"]["code"] == "notFound", concurrent_rows
-        assert isinstance(concurrent_rows["wait"]["result"]["tasks"], list), concurrent_rows
-        # The serial run of the same requests returns the same results, in request order.
-        assert [row["id"] for row in serial] == [request["id"] for request in concurrent_requests]
-        serial_rows = {row["id"]: row for row in serial}
-        assert all(serial_rows[key] == concurrent_rows[key] for key in ["read", "digest", "dependent", "remaining"])
-
-        # AI clients keep stdin open and wait for a response before sending more.
-        process = subprocess.Popen([str(executable), "--image", str(evidence), "session", "-j", "4"],
-                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                   text=True, encoding="utf-8", cwd=root, env=environment)
-        response_queue = queue.Queue()
-        reader_thread = threading.Thread(target=lambda: response_queue.put(process.stdout.readline()), daemon=True)
-        try:
-            process.stdin.write(json.dumps({"id": "live", "command": "files read", "args": {"nodeId": node, "offset": 0, "length": 8}}) + "\n")
-            process.stdin.flush()
-            reader_thread.start()
-            live = json.loads(response_queue.get(timeout=30))
-            assert live == {"id": "live", "result": concurrent_rows["read"]["result"]}, live
-            assert process.poll() is None, "session exited before stdin EOF"
-            process.stdin.close()
-            process.wait(timeout=30)
-            assert process.returncode == 0, process.stderr.read()
-        finally:
-            if process.poll() is None:
-                process.kill()
-                process.wait()
-            for stream in [process.stdin, process.stdout, process.stderr]:
-                stream.close()
-            reader_thread.join(timeout=5)
-
-        # Optional private evidence stays outside the repository. Compare actual
-        # filesystem queries and bounded bytes between serial and parallel runs.
-        real_image = os.environ.get("LOVELYCARVE_CLI_TEST_IMAGE")
-        if real_image:
-            def real_queries(jobs):
-                # Keep one evidence session per mode, avoiding repeated E01 opens.
-                with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as diagnostics:
-                    process = subprocess.Popen([str(executable), "--image", real_image, "session", "--jobs", str(jobs)],
-                                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=diagnostics,
-                                               text=True, encoding="utf-8", cwd=root, env=environment)
-                    replies = queue.Queue()
-                    def collect():
-                        for line in process.stdout:
-                            replies.put(line)
-                        replies.put(None)
-                    thread = threading.Thread(target=collect, daemon=True)
-                    thread.start()
-                    def batch(requests):
-                        for request in requests:
-                            process.stdin.write(json.dumps(request) + "\n")
-                        process.stdin.flush()
-                        pending = {request["id"] for request in requests}
-                        results = {}
-                        while pending:
-                            line = replies.get(timeout=120)
-                            assert line is not None, "real evidence session ended early"
-                            row = json.loads(line)
-                            assert row["id"] in pending and "result" in row, row
-                            pending.remove(row["id"])
-                            results[row["id"]] = row["result"]
-                        return results
-                    def children(parents, prefix):
-                        return batch([{"id": f"{prefix}-{index}", "command": "files list", "args": {"parentId": parent}}
-                                      for index, parent in enumerate(parents)])
-                    try:
-                        roots = children([""], "roots")["roots-0"]
-                        directories = [entry["id"] for entry in roots["items"] if entry["kind"] == "dir"][:4]
-                        assert directories, "real evidence has no browsable volumes"
-                        directory_rows = children(directories, "dir")
-                        def files_in(pages):
-                            return sorted((entry for page in pages.values() for entry in page["items"]
-                                           if entry["kind"] == "file" and entry["size"] > 0 and not entry["deleted"]),
-                                          key=lambda entry: entry["id"])[:4]
-                        files = files_in(directory_rows)
-                        # Files may live below a filesystem's top-level directories.
-                        nested = sorted(entry["id"] for page in directory_rows.values() for entry in page["items"]
-                                        if entry["kind"] == "dir" and not entry["deleted"])[:8]
-                        if not files and nested:
-                            nested_rows = children(nested, "nested")
-                            directory_rows.update(nested_rows)
-                            files = files_in(nested_rows)
-                        assert files, "real evidence has no file for bounded read verification"
-                        byte_rows = batch([{"id": f"bytes-{index}", "command": "files read", "args": {
-                            "nodeId": entry["id"], "offset": 0, "length": min(4096, entry["size"])}}
-                            for index, entry in enumerate(files)])
-                        process.stdin.close()
-                        process.wait(timeout=120)
-                        assert process.returncode == 0
-                        return directory_rows, byte_rows
-                    finally:
-                        if process.poll() is None:
-                            process.kill()
-                            process.wait()
-                        thread.join(timeout=5)
-                        process.stdin.close()
-                        process.stdout.close()
-            serial_directories, serial_bytes = real_queries(1)
-            parallel_directories, parallel_bytes = real_queries(4)
-            assert parallel_directories == serial_directories, "real evidence directory queries differ under concurrency"
-            assert parallel_bytes == serial_bytes, "real evidence range reads differ under concurrency"
-            print(f"Real evidence concurrency passed: {len(serial_directories)} directories, {len(serial_bytes)} bounded file reads", flush=True)
-
-        # Parallels: an independently built split plain/sparse disk is exposed
-        # as guest bytes by the same images open/export/close command surface.
-        phdi_bundle = root / "Parallels evidence.hdd"
-        phdi_bundle.mkdir()
-        phdi_plain = b"plain guest sector".ljust(512, b"\0")
-        (phdi_bundle / "plain.hds").write_bytes(phdi_plain)
-        phdi_sparse = bytearray(1024)
-        phdi_sparse[:16] = b"WithoutFreeSpace"
-        for offset, value in [(16, 2), (28, 1), (32, 2), (48, 1), (64, 1)]:
-            struct.pack_into("<I", phdi_sparse, offset, value)
-        struct.pack_into("<Q", phdi_sparse, 36, 2)
-        phdi_sparse[512:] = b"sparse guest sector".ljust(512, b"\0")
-        (phdi_bundle / "sparse.hds").write_bytes(phdi_sparse)
-        phdi_descriptor = """<?xml version="1.0" encoding="UTF-8"?>
-<Parallels_disk_image Version="1.0"><Disk_Parameters><Disk_size>3</Disk_size></Disk_Parameters>
-<StorageData><Storage><Start>0</Start><End>1</End><Blocksize>1</Blocksize><Image>
-<GUID>{11111111-1111-1111-1111-111111111111}</GUID><Type>Plain</Type><File>plain.hds</File>
-</Image></Storage><Storage><Start>1</Start><End>3</End><Blocksize>1</Blocksize><Image>
-<GUID>{11111111-1111-1111-1111-111111111111}</GUID><Type>Compressed</Type><File>sparse.hds</File>
-</Image></Storage></StorageData></Parallels_disk_image>"""
-        (phdi_bundle / "DiskDescriptor.xml").write_text(phdi_descriptor, encoding="utf-8")
-        for suffix, source_path in [("bundle", phdi_bundle), ("descriptor", phdi_bundle / "DiskDescriptor.xml")]:
-            destination = root / f"phdi-{suffix}.raw"
-            result, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(source_path)}},
-                {"id": "export", "command": "images export", "args": {
-                    "destination": str(destination), "taskId": f"phdi-{suffix}", "readFaultPolicy": "strict"}},
-                {"id": "close", "command": "images close", "args": {"imageId": {"$ref": "open#/id"}}},
-            ])
-            assert all("result" in row for row in rows), rows
-            assert rows[0]["result"]["sourceFormat"] == "phdi", rows
-            assert destination.read_bytes() == phdi_plain + bytes(phdi_sparse[512:]) + bytes(512)
-            assert (phdi_bundle / "plain.hds").read_bytes() == phdi_plain
-            assert (phdi_bundle / "sparse.hds").read_bytes() == phdi_sparse
-
-        # A recognized corrupt descriptor must fail, rather than become RAW.
-        (phdi_bundle / "DiskDescriptor.xml").write_text("broken", encoding="utf-8")
-        result, rows = session([{"id": "broken-phdi", "command": "images open", "args": {
-            "path": str(phdi_bundle / "DiskDescriptor.xml")}}], expected=1)
-        assert "error" in rows[0], result
-
-        # The generated images open dispatch must accept transient QCOW
-        # credentials, export logical bytes, and preserve the source image.
-        qcow_fixtures = Path(__file__).resolve().parents[1] / "src-tauri/vendor/qcow2/tests/data"
-        qcow_plain = (qcow_fixtures / "plain.bin").read_bytes()
-        qcow_key_hex = (b"qcow-test" + bytes(7)).hex()
-        for version in (1, 2, 3):
-            for encoding, credential in [("deflate", {}), ("aes", {"qcowPassword": "qcow-test"}),
-                                         ("aes", {"qcowKeyHex": qcow_key_hex})]:
-                source_path = qcow_fixtures / f"v{version}-{encoding}.qcow"
-                original = source_path.read_bytes()
-                destination = root / f"qcow-{version}-{encoding}-{len(credential)}-{list(credential)}.raw"
-                result, rows = session([
-                    {"id": "open", "command": "images open", "args": {"path": str(source_path), **credential}},
-                    {"id": "export", "command": "images export", "args": {
-                        "destination": str(destination), "taskId": "qcow-export", "readFaultPolicy": "strict"}},
-                    {"id": "close", "command": "images close", "args": {"imageId": {"$ref": "open#/id"}}},
-                ])
-                assert all("result" in row for row in rows), rows
-                assert rows[0]["result"]["sourceFormat"] == "qcow2", rows
-                expected = qcow_plain + bytes(4096) if encoding == "deflate" else bytes(4096) + qcow_plain
-                assert destination.read_bytes() == expected
-                assert source_path.read_bytes() == original
-                assert "qcow-test" not in result.stdout + result.stderr
-                assert qcow_key_hex not in result.stdout + result.stderr
-        for credential in [{}, {"qcowPassword": "qcow-test", "qcowKeyHex": qcow_key_hex},
-                           {"qcowKeyHex": "aa"}, {"qcowPassword": "非 ASCII"}]:
-            result, rows = session([{"id": "invalid", "command": "images open", "args": {
-                "path": str(qcow_fixtures / "v2-aes.qcow"), **credential}}], expected=1)
-            assert "error" in rows[0], result
-
-        # Independent Python/zlib multi-member GZIP through the actual evidence
-        # commands: headers/data may cross member boundaries, including empties.
-        tar_stream = io.BytesIO()
-        with tarfile.open(fileobj=tar_stream, mode="w") as archive:
-            for name, data in [("first.txt", b"first"), ("second.txt", content)]:
-                header = tarfile.TarInfo(name)
-                header.size = len(data)
-                archive.addfile(header, io.BytesIO(data))
-        tar_bytes = tar_stream.getvalue()
-        gzip_bytes = b"".join(gzip.compress(chunk, mtime=0) for chunk in
-                              [b"", tar_bytes[:600], tar_bytes[600:1300], tar_bytes[1300:], b""])
-        for suffix in [".tgz", ".tar.gz"]:
-            compressed_tar = root / ("multi-member" + suffix)
-            compressed_tar.write_bytes(gzip_bytes)
-            output = root / ("gzip-read" + suffix + ".txt")
-            result, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(compressed_tar)}},
-                {"id": "children", "command": "files list", "args": {"parentId": "tar:"}},
-                {"id": "read", "command": "files read", "args": {"nodeId": "tar:" + b"second.txt".hex()}, "output": str(output)},
-                {"id": "digest", "command": "files hash", "args": {"nodeId": "tar:" + b"second.txt".hex(), "algos": ["sha256"]}},
-                {"id": "wait", "command": "tasks wait"},
-                {"id": "close", "command": "images close", "args": {"imageId": {"$ref": "open#/id"}}},
-            ])
-            rows = {row["id"]: row for row in rows}
-            assert all("result" in row for row in rows.values()), rows
-            assert rows["open"]["result"]["sourceFormat"] == "tar", rows
-            assert {entry["name"] for entry in rows["children"]["result"]["items"]} == {"first.txt", "second.txt"}, rows
-            assert output.read_bytes() == content
-            assert rows["digest"]["result"]["sha256"] == hashlib.sha256(content).hexdigest()
-            assert compressed_tar.read_bytes() == gzip_bytes
-
-        # A bad trailer after a valid tar must not publish a partial tar tree.
-        # Preserve the extension probe's existing RAW fallback for inspection.
-        corrupt_gzip = bytearray(gzip_bytes)
-        corrupt_gzip[-8] ^= 1
-        corrupt_tar = root / "corrupt-tail.tgz"
-        corrupt_tar.write_bytes(corrupt_gzip)
-        result, rows = session([
-            {"id": "open", "command": "images open", "args": {"path": str(corrupt_tar)}},
-            {"id": "close", "command": "images close", "args": {"imageId": {"$ref": "open#/id"}}},
-        ])
-        assert all("result" in row for row in rows), rows
-        assert rows[0]["result"]["sourceFormat"] == "raw", rows
-
-        encrypted_fixtures = Path(__file__).resolve().parents[1] / "src-tauri/tests/data/encrypted"
-        plaintext = (encrypted_fixtures / "plain.img").read_bytes()
-        for filename, scheme, hidden in [
-            ("luks1.img", "luks", False), ("luks2.img", "luks", False),
-            ("veracrypt.hc", "veracrypt", False), ("hidden.hc", "veracrypt", True),
-        ]:
-            exported_plain = root / (filename + ".raw")
-            exported_file = root / (filename + ".txt")
-            options = {"scheme": scheme, "password": "lovelycarve-test", "hidden": hidden,
-                       "pim": 1 if scheme == "veracrypt" else 0}
-            if filename == "luks1.img":
-                options["partitionId"] = 0
-            encrypted_result, encrypted_rows = session([
-                {"id": "source", "command": "images open", "args": {"path": str(encrypted_fixtures / filename)}},
-                {"id": "unlock", "command": "encrypted-volumes unlock", "args": {"options": options}},
-                {"id": "plain", "command": "images open", "args": {"path": {"$ref": "unlock#/image/path"}}},
-                {"id": "files", "command": "files list", "args": {"parentId": "part:0"}},
-                {"id": "read", "command": "files read", "args": {"nodeId": "fat:part:0:" + b"/HELLO.TXT".hex()}, "output": str(exported_file)},
-                {"id": "export", "command": "images export", "args": {"destination": str(exported_plain), "taskId": "encrypted-export", "readFaultPolicy": "strict"}},
-                {"id": "close", "command": "images close", "args": {"imageId": {"$ref": "source#/id"}}},
-                {"id": "remaining", "command": "images list"},
-            ])
-            assert all("result" in row for row in encrypted_rows), encrypted_rows
-            assert "HELLO.TXT" in [item["name"] for item in encrypted_rows[3]["result"]["items"]], encrypted_rows[3]
-            assert exported_plain.read_bytes() == plaintext, filename
-            assert exported_file.read_bytes() == b"LovelyCarve encrypted evidence fixture.\n", filename
-            assert encrypted_rows[1]["result"]["image"]["sourceFormat"] == "decrypted"
-            assert encrypted_rows[-1]["result"] == [], "decrypted child survived source unload"
-            assert "lovelycarve-test" not in encrypted_result.stdout + encrypted_result.stderr
-
-            attached_file = root / (filename + ".attached.txt")
-            attached_raw = root / (filename + ".source.raw")
-            attached_plain = root / (filename + ".attached.raw")
-            attached_case = root / (filename + "-case")
-            attached_result, attached_rows = session([
-                {"id": "case", "command": "cases create", "args": {"dir": str(attached_case), "name": "attached unlock"}},
-                {"id": "source", "command": "images open", "args": {"path": str(encrypted_fixtures / filename)}},
-                {"id": "unlock", "command": "encrypted-volumes unlock", "args": {"options": {**options, "target": "sourcePartition"}}},
-                {"id": "images", "command": "images list"},
-                {"id": "wait", "command": "tasks wait"},
-                {"id": "indexes", "command": "indexes list"},
-                {"id": "read", "command": "files read", "args": {"nodeId": "fat:part:0:" + b"/HELLO.TXT".hex()}, "output": str(attached_file)},
-                {"id": "raw", "command": "images export", "args": {"destination": str(attached_raw), "taskId": "attached-raw", "readFaultPolicy": "strict"}},
-                {"id": "plaintext", "command": "images export", "args": {"destination": str(attached_plain), "taskId": "attached-plaintext", "readFaultPolicy": "strict", "mode": "unlockedPartitions"}},
-                {"id": "close", "command": "cases close"},
-                {"id": "unconfirmed", "command": "cases delete", "args": {"dir": str(attached_case)}},
-                {"id": "remove", "command": "cases delete", "args": {"dir": str(attached_case)}, "force": True},
-            ], expected=1)
-            attached_rows = {row["id"]: row for row in attached_rows}
-            assert attached_rows["unconfirmed"]["error"]["code"] == "aborted", attached_rows["unconfirmed"]
-            assert all("result" in row for key, row in attached_rows.items() if key != "unconfirmed"), attached_rows
-            source_id = attached_rows["source"]["result"]["id"]
-            attached = attached_rows["unlock"]["result"]
-            assert attached["image"]["id"] == source_id and attached["volumeKey"] == "part:0"
-            assert attached["image"]["unlockedPartitions"] == [0]
-            assert len(attached_rows["images"]["result"]) == 1, "in-place unlock created another image"
-            assert any(index["imageId"] == source_id and index["volumeKey"] == "part:0" and index["indexed"]
-                       for index in attached_rows["indexes"]["result"]), (filename, attached_rows["indexes"], attached_result.stderr)
-            assert attached_file.read_bytes() == b"LovelyCarve encrypted evidence fixture.\n"
-            assert attached_raw.read_bytes() == (encrypted_fixtures / filename).read_bytes(), "source export changed after unlock"
-            converted = attached_plain.read_bytes()
-            assert len(converted) == attached_raw.stat().st_size
-            assert converted[:len(plaintext)] == plaintext, filename
-            assert converted[len(plaintext):] == bytes(len(converted) - len(plaintext)), filename
-
-        result, rows = session([
-            {"id": "image", "command": "images open", "args": {"path": str(evidence)}},
-            {"id": "roots", "command": "files list", "args": {"parentId": ""}},
-            {"id": "read", "command": "files read", "args": {"imageId": {"$ref": "image#/id"}, "nodeId": node}, "output": str(copied)},
-            {"id": "digest", "command": "files hash", "args": {"nodeId": node, "algos": ["sha256"]}},
-            {"id": "preview", "command": "files media create", "args": {"nodeId": node, "ext": "txt", "taskId": "preview-1"}},
-            {"id": "wait", "command": "tasks wait"},
-        ])
-        assert len(rows) == 6, result.stdout
-        assert all("result" in row for row in rows), rows
-        assert copied.read_bytes() == content
-        assert rows[3]["result"]["sha256"] == hashlib.sha256(content).hexdigest()
-        assert not Path(rows[4]["result"]).exists(), "preview lease leaked after process exit"
-
-        # A shell script runs one command per line and stops at the first failure.
-        exported = root / "export.txt"
-        script = f'''images open "{evidence}"
-cd "{volume_name}"
-files list
-files read hello.txt --length 5
-files hash hello.txt
-files export hello.txt --destination "{exported}"
-'''
-        outputs = documents(run(["shell"], script).stdout)
-        assert exported.read_bytes() == content
-        assert outputs[0]["id"] and outputs[0]["path"] == str(evidence), outputs
-        assert "hello.txt" in [item["name"] for item in outputs[1]["items"]], outputs
-        assert outputs[2] == "hello", outputs
-        assert outputs[3]["sha256"] == hashlib.sha256(content).hexdigest(), outputs
-        refused = run(["shell"], script, expected=1)
-        assert "已存在" in refused.stderr, refused.stderr
-        assert exported.read_bytes() == content
-
-        # Path-based browsing, ranged reads, strings and content identification.
-        # Content recognition must ignore the misleading filename extension.
-        python_content = b"#!/usr/bin/env python3\nimport sys\nprint('LovelyCarve forensic CLI')\n" * 20
-        (evidence / "signature.bin").write_bytes(python_content)
-        unicode_text = "中文取证字符串"
-        (evidence / "unicode.bin").write_bytes(b"\0" + unicode_text.encode("utf-8") + b"\0")
-        (evidence / "wide.bin").write_bytes(("\0" + unicode_text + "\0").encode("utf-16le"))
-        (evidence / "latin1.bin").write_bytes(b"caf\xe9")
-        result, rows = session([
-            {"id": "open", "command": "images open", "args": {"path": str(evidence)}},
-            {"id": "root", "command": "files list", "args": {"path": "/"}},
-            {"id": "wait", "command": "tasks wait"},
-            {"id": "cd", "command": "context set", "args": {"dir": "/" + volume_name}},
-            {"id": "pwd", "command": "context get"},
-            {"id": "page", "command": "files list", "args": {"path": ".", "pageSize": 2}},
-            {"id": "page-by-id", "command": "files list", "args": {"parentId": "folder:", "pageSize": 2}},
-            {"id": "next", "command": "files list", "args": {"cursor": {"$ref": "page#/nextCursor"}, "pageSize": 1000}},
-            {"id": "all", "command": "files list", "args": {"pageSize": 1000}},
-            {"id": "tree", "command": "files tree list", "args": {"depth": 2}},
-            {"id": "stat", "command": "files get", "args": {"path": "hello.txt"}},
-            {"id": "hex", "command": "files read", "args": {"path": "hello.txt", "offset": 6, "length": 8}},
-            {"id": "strings", "command": "files strings list", "args": {"path": "hello.txt"}},
-            {"id": "utf8", "command": "files strings list", "args": {"path": "unicode.bin", "encoding": "utf-8"}},
-            {"id": "utf16", "command": "files strings list", "args": {"path": "wide.bin", "encoding": "utf-16le"}},
-            {"id": "limited", "command": "files strings list", "args": {"path": "hello.txt", "limit": 1}},
-            {"id": "file", "command": "files identify", "args": {"path": "signature.bin"}},
-        ])
-        browsed = {row["id"]: row["result"] for row in rows}
-        assert browsed["root"]["items"][0]["name"] == volume_name, browsed["root"]
-        assert browsed["cd"]["dir"] == browsed["pwd"]["dir"] == "/" + volume_name, browsed["pwd"]
-        assert browsed["page"] == browsed["page-by-id"]
-        assert browsed["page"]["nextCursor"] and browsed["next"]["nextCursor"] is None
-        assert browsed["page"]["items"] + browsed["next"]["items"] == browsed["all"]["items"]
-        path_args = ["--image", str(evidence), "files", "list"]
-        page_body = {"path": "/" + volume_name, "pageSize": 2}
-        body_page = json.loads(run([*path_args, "--body", json.dumps(page_body)]).stdout)
-        option_page = json.loads(run([*path_args, "--path", page_body["path"], "--page-size", "2"]).stdout)
-        # Reading a live folder can update host access times after the session
-        # captured its index. Compare every other field across processes.
-        for page in (body_page, option_page, browsed["page"]):
-            for item in page["items"]:
-                item["timestamps"].pop("accessed", None)
-                item.get("timestampsOriginal", {}).pop("accessed", None)
-        assert body_page == option_page == browsed["page"], (body_page, option_page, browsed["page"])
-        assert all("parentId" in item and "parent_id" not in item for item in browsed["all"]["items"])
-        assert "hello.txt" in [item["node"]["name"] for item in browsed["tree"]["items"]]
-        assert browsed["stat"]["size"] == len(content) and browsed["stat"]["nodeId"] == node
-        assert browsed["stat"]["path"] == f"/{volume_name}/hello.txt", browsed["stat"]
-        assert "timestamps" in browsed["stat"] and not browsed["stat"]["indexOnly"]
-        assert browsed["hex"] == {"encoding": "hex", "data": content[6:14].hex()}
-        assert browsed["strings"]["strings"] == [
-            {"offset": 0, "text": "hello forensic world", "truncated": False},
-            {"offset": content.index(b"password"), "text": "password test", "truncated": False},
-        ]
-        assert browsed["utf8"]["strings"] == [{"offset": 1, "text": unicode_text, "truncated": False}]
-        assert browsed["utf16"]["strings"] == [{"offset": 2, "text": unicode_text, "truncated": False}]
-        assert len(browsed["limited"]["strings"]) == 1 and browsed["limited"]["truncated"]
-        assert browsed["file"]["label"] == "python" and browsed["file"]["inferred"], browsed["file"]
-        assert browsed["file"]["fileLen"] == len(python_content)
-        # One-shot reads write the bytes themselves to stdout.
-        image_path = ["--image", str(evidence)]
-        assert run_bytes([*image_path, "files", "read", f"/{volume_name}/hello.txt", "--offset", "6", "--length", "8"]).stdout == b"forensic"
-        latin1 = f"/{volume_name}/latin1.bin"
-        assert run_bytes([*image_path, "files", "read", latin1]).stdout == b"caf\xe9"
-        # --text decodes UTF-8 and replaces what is not.
-        assert run_bytes([*image_path, "files", "read", latin1, "--text"]).stdout == "caf�".encode("utf-8")
-        identified = json.loads(run([*image_path, "files", "identify", f"/{volume_name}/signature.bin"]).stdout)
-        assert identified["label"] == "python", identified
-
-        result, rows = session([
-            {"id": "bad", "command": "images list", "args": {"typo": True}},
-            {"id": "good", "command": "images list"},
-        ], expected=1)
-        assert ["error" in row for row in rows] == [True, False]
-
-        def chunk(kind, data):
-            return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
-
-        png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))
-        png += chunk(b"IDAT", zlib.compress(b"\0\xff\0\0")) + chunk(b"IEND", b"")
-        disk = root / "disk.img"
-        disk.write_bytes((b"\0" * 512 + png).ljust(16384, b"\0"))
-        recovered = root / "recovered"
-        result, rows = session([
-            {"id": "open", "command": "images open", "args": {"path": str(disk)}},
-            {"id": "scan", "command": "carve scans create", "args": {"options": {"format_ids": ["png"]}}},
-            {"id": "wait", "command": "tasks wait"},
-            {"id": "status", "command": "carve scans get", "args": {"scanId": {"$ref": "scan#/scanId"}}},
-            {"id": "recover", "command": "carve scans export", "args": {"scanId": {"$ref": "scan#/scanId"}, "options": {"destination": str(recovered), "task_id": "recover-1"}}},
-            {"id": "tasks", "command": "tasks list"},
-        ])
-        assert rows[3]["result"]["status"] == "completed", rows
-        assert rows[3]["result"]["artifactsFound"] == 1, rows
-        # tasks wait reports the scan that kept running after its command returned.
-        waited = {task["id"]: task for task in rows[2]["result"]["tasks"]}
-        assert waited[rows[1]["result"]["taskId"]]["status"] == "success", rows
-        assert rows[4]["result"]["recovered"] == 1, rows
-        assert next(recovered.glob("*.png")).read_bytes() == png
-        # The task center lists the scan by its session and the export by its task id.
-        entries = {entry.get("kind"): entry for entry in rows[5]["result"]}
-        scan_entry = entries["carveScan"]
-        assert scan_entry["source"] == "builtin" and scan_entry["status"] == "success", scan_entry
-        assert scan_entry["scanId"] == rows[1]["result"]["scanId"], scan_entry
-        assert scan_entry["view"]["counts"]["found"] == 1, scan_entry
-        export_entry = entries["carveRecovery"]
-        assert export_entry["id"] == "recover-1" and export_entry["status"] == "success", export_entry
-        assert export_entry["view"]["subject"] == [str(recovered)], export_entry
-        assert export_entry["view"]["counts"]["files"] == 1, export_entry
-
-        # Filesystem recovery shares the scan session: a deleted FAT12 entry is
-        # listed by carve files list and exported by candidate ID.
-        floppy = bytearray(2880 * 512)
-        floppy[0:3] = b"\xeb\x3c\x90"
-        floppy[3:11] = b"MSDOS5.0"
-        struct.pack_into("<HBHBHHBH", floppy, 11, 512, 1, 1, 2, 224, 2880, 0xF0, 9)
-        floppy[38] = 0x29
-        floppy[43:62] = b"RECOVERY   FAT12   "
-        floppy[510:512] = b"\x55\xaa"
-        for table in (512, 10 * 512):
-            floppy[table:table + 3] = b"\xf0\xff\xff"
-        entry = 19 * 512
-        floppy[entry:entry + 12] = b"\xe5ELETED TXT\x20"
-        struct.pack_into("<HI", floppy, entry + 26, 2, 5)
-        floppy[33 * 512:33 * 512 + 5] = b"hello"
-        deleted_image = root / "deleted-fat.img"
-        deleted_image.write_bytes(bytes(floppy))
-        restored = root / "restored"
-        result, rows = session([
-            {"id": "open", "command": "images open", "args": {"path": str(deleted_image)}},
-            {"id": "scan", "command": "carve scans create", "args": {"options": {"signatures": False, "filesystems": {"fat": True}}}},
-            {"id": "wait", "command": "tasks wait"},
-            {"id": "status", "command": "carve scans get", "args": {"scanId": {"$ref": "scan#/scanId"}}},
-            {"id": "files", "command": "carve files list", "args": {"scanId": {"$ref": "scan#/scanId"}}},
-            {"id": "recover", "command": "carve scans export", "args": {"scanId": {"$ref": "scan#/scanId"}, "options": {"artifact_ids": [], "file_ids": ["0"], "destination": str(restored), "task_id": "recover-files-1"}}},
-        ])
-        assert rows[3]["result"]["status"] == "completed", rows
-        assert rows[3]["result"]["filesystem"]["files"] == 1, rows
-        candidate = rows[4]["result"]["candidates"][0]
-        assert candidate["node"]["deleted"] and candidate["readable"], rows
-        exported = rows[5]["result"]["files"]
-        assert rows[5]["result"]["recovered"] == 0 and exported["recovered"] == 1, rows
-        # Recovered files keep their folders under one folder per volume.
-        export_root = Path(exported["directory"])
-        outputs = sorted(path for path in export_root.rglob("*") if path.is_file() and path.name != "recovery-report.jsonl")
-        assert [path.read_bytes() for path in outputs] == [b"hello"], outputs
-        relative = outputs[0].relative_to(export_root).parts
-        assert len(relative) == 2 and relative[0].startswith("v0-"), relative
-        report = [json.loads(line) for line in Path(exported["reportPath"]).read_text(encoding="utf-8").splitlines()]
-        assert report[1]["relative_output"] == "/".join(relative), report
-
-        # Split RAW exports must include every member, including unaligned cuts.
-        split_bytes = bytes(range(256)) * 513
-        split_first = root / "split evidence.raw.001"
-        split_second = root / "split evidence.raw.002"
-        split_third = root / "split evidence.raw.003"
-        split_first.write_bytes(split_bytes[:517])
-        split_second.write_bytes(split_bytes[517:65539])
-        split_third.write_bytes(split_bytes[65539:])
-        split_export = root / "split-export.raw"
-        result, rows = session([
-            {"id": "open", "command": "images open", "args": {"path": str(split_first)}},
-            {"id": "export", "command": "images export", "args": {"destination": str(split_export), "taskId": "split-export", "readFaultPolicy": "strict"}},
-            {"id": "close", "command": "images close", "args": {"imageId": {"$ref": "open#/id"}}},
-        ])
-        assert all("result" in row for row in rows), rows
-        assert rows[0]["result"]["sourceFormat"] == "raw", rows
-        assert rows[0]["result"]["sizeBytes"] == len(split_bytes), rows
-        assert split_export.read_bytes() == split_bytes
-        assert split_first.read_bytes() == split_bytes[:517]
-        assert split_second.read_bytes() == split_bytes[517:65539]
-        assert split_third.read_bytes() == split_bytes[65539:]
-        split_second.unlink()
-        result, rows = session([{"id": "open", "command": "images open", "args": {"path": str(split_first)}}], expected=1)
-        assert "error" in rows[0], result.stdout
-
-        # Forced RAW opens and exports the prefix, without silently changing a live policy.
-        forced_export = root / "forced-prefix.raw"
-        result, rows = session([
-            {"id": "open", "command": "images open", "args": {"path": str(split_first), "rawReadMode": "force"}},
-            {"id": "export", "command": "images export", "args": {"destination": str(forced_export), "taskId": "forced-export", "readFaultPolicy": "strict"}},
-            {"id": "mode-conflict", "command": "images open", "args": {"path": str(split_first), "rawReadMode": "strict"}},
-            {"id": "close", "command": "images close", "args": {"imageId": {"$ref": "open#/id"}}},
-        ], expected=1)
-        assert rows[0]["result"]["rawReadMode"] == "force", rows
-        assert rows[0]["result"]["sizeBytes"] == 517, rows
-        assert "result" in rows[1] and "error" in rows[2] and "result" in rows[3], rows
-        assert forced_export.read_bytes() == split_bytes[:517]
-
-        # Hash and export actual EWF evidence through the public headless commands.
-        fixtures = Path(__file__).resolve().parents[1] / "src-tauri/vendor/ewf/tests/data"
-        for name, expected_md5 in [
-            ("ntfs_sample.E01", "e4e9578a9c8bf6c6b375a80c630196a4"),
-            ("zeros_128s_compressed.Ex01", hashlib.md5(bytes(65536)).hexdigest()),
-        ]:
-            raw_export = root / (name + ".raw")
-            result, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(fixtures / name)}},
-                {"id": "hash", "command": "images hash", "args": {"algorithms": ["md5", "sha1"], "taskId": "ewf-hash", "readFaultPolicy": "strict"}},
-                {"id": "export", "command": "images export", "args": {"destination": str(raw_export), "taskId": "ewf-export"}},
-            ])
-            assert all("result" in row for row in rows), rows
-            raw_bytes = raw_export.read_bytes()
-            assert hashlib.md5(raw_bytes).hexdigest() == expected_md5
-            hashes = rows[1]["result"]
-            assert hashes["md5"] == expected_md5, hashes
-            assert hashes["sha1"] == hashlib.sha1(raw_bytes).hexdigest(), hashes
-            assert not hashes["readFaultsDetected"], hashes
-
-        # VMDK compressed and split extents must export the original virtual bytes.
-        fixtures = Path(__file__).resolve().parents[1] / "src-tauri/vendor/vmdk/tests/data"
-        for name, expected in [
-            ("compressed_stream_opt.vmdk", bytes(range(64)) * 1024),
-            ("tw_sparse_data.vmdk", bytes(range(256)) * 16384),
-            ("mono_flat.vmdk", bytes(1024 * 1024)),
-        ]:
-            raw_export = root / (name + ".raw")
-            result, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(fixtures / name)}},
-                {"id": "export", "command": "images export", "args": {"destination": str(raw_export), "taskId": "vmdk-export"}},
-            ])
-            assert all("result" in row for row in rows), rows
-            assert raw_export.read_bytes() == expected, name
-
-        # Full logical streams must match hashes captured with the previous
-        # independent libvhdi reader. The CLI itself does not load that DLL.
-        for kind in ("vhd", "vhdx"):
-            fixtures = Path(__file__).resolve().parents[1] / "src-tauri/vendor" / kind / "tests/data"
-            oracle = json.loads((fixtures / "LOVELYCARVE_ORACLE.json").read_text(encoding="utf-8"))
-            for sample in oracle["images"]:
-                raw_export = root / (sample["name"] + ".raw")
-                result, rows = session([
-                    {"id": "open", "command": "images open", "args": {"path": str(fixtures / sample["name"])}},
-                    {"id": "export", "command": "images export", "args": {"destination": str(raw_export), "taskId": "vhd-export"}},
-                ])
-                assert all("result" in row for row in rows), rows
-                assert raw_export.stat().st_size == sample["size"]
-                assert hashlib.sha256(raw_export.read_bytes()).hexdigest() == sample["sha256"], sample
-
-        # Unlock and export through the public commands, checking only retained
-        # oracle sectors of the minimized dfvfs projection (not the omitted data).
-        fixture = Path(__file__).resolve().parents[1] / "src-tauri/vendor/bitlocker/tests/data/bdetogo-projection.bin.gz"
-        encrypted = root / "bitlocker.bin"
-        encrypted.write_bytes(gzip.decompress(fixture.read_bytes()))
-        decrypted = root / "bitlocker-decrypted.bin"
-        current_raw = root / "bitlocker-current.raw"
-        partition = {"$ref": "open#/partitions/0/id"}
-        result, rows = session([
-            {"id": "open", "command": "images open", "args": {"path": str(encrypted)}},
-            {"id": "unlock", "command": "bitlocker unlock", "args": {"partitionId": partition, "password": "bde-TEST"}},
-            {"id": "status", "command": "bitlocker get", "args": {"partitionId": partition}},
-            {"id": "export", "command": "bitlocker export", "args": {"partitionId": partition, "destination": str(decrypted), "taskId": "bde-export"}},
-            {"id": "current", "command": "images export", "args": {"destination": str(current_raw), "taskId": "bde-current", "mode": "unlockedPartitions"}},
-        ])
-        assert all("result" in row for row in rows), rows
-        assert rows[1]["result"]["locked"] is False and rows[2]["result"]["locked"] is False
-        assert "bde-TEST" not in result.stdout + result.stderr
-        assert decrypted.stat().st_size == encrypted.stat().st_size
-        assert current_raw.read_bytes() == decrypted.read_bytes()
-        with decrypted.open("rb") as stream:
-            assert hashlib.sha256(stream.read(512)).hexdigest() == "139b857c537e341ceb98bcfde2d31825efcf4b0c0281dd66672e954b34ed28f3"
-            stream.seek(0x8000)
-            assert hashlib.sha256(stream.read(4096)).hexdigest() == "1d138f11707f0a3b4832c5173167c756e1bac9796518b64800d5dc374986fe4d"
-
-        # Independent cipher projections exercise every credential path.
-        bde_data = fixture.parent
-        for method, sector_size, credential in [
-            (0x8001, 512, {}),
-            (0x8005, 4096, {"startupKeyPath": str(bde_data / "parity-startup.bek")}),
-            (0x8004, 512, {"vmkHex": "46" * 32}),
-            (0x8001, 4096, {"fvekHex": bytes(range(1, 33)).hex(), "tweakHex": bytes(range(65, 97)).hex()}),
-        ]:
-            projection = (bde_data / f"parity-{method:04x}-{sector_size}.bin").read_bytes()
-            block_size = struct.unpack_from("<I", projection, 4)[0]
-            image = bytearray(0x80000)
-            image[:512] = projection[8:520]
-            for offset in [0x20000, 0x30000, 0x40000]:
-                image[offset:offset + block_size] = projection[520:520 + block_size]
-            sectors = projection[520 + block_size:]
-            image[0x10000:0x10000 + sector_size] = sectors[:sector_size]
-            image[0x12000:0x12000 + sector_size] = sectors[sector_size:]
-            encrypted = root / f"bde-{method:04x}-{sector_size}.bin"
-            encrypted.write_bytes(image)
-            decrypted = root / f"bde-{method:04x}-{sector_size}-plain.bin"
-            result, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(encrypted)}},
-                {"id": "metadata", "command": "bitlocker metadata get", "args": {"partitionId": partition}},
-                {"id": "unlock", "command": "bitlocker vmks unlock" if "vmkHex" in credential else "bitlocker unlock", "args": {"partitionId": partition, **credential}},
-                {"id": "export", "command": "bitlocker export", "args": {"partitionId": partition, "destination": str(decrypted), "taskId": "parity-export"}},
-            ])
-            assert all("result" in row for row in rows), rows
-            metadata = rows[1]["result"]
-            assert metadata["encryptionMethod"] == method and metadata["bytesPerSector"] == sector_size
-            assert metadata["protectorTypes"] == [0, 0x0200]
-            if "vmkHex" in credential:
-                assert rows[2]["result"]["status"]["locked"] is False
-                assert rows[2]["result"]["recoveryKey"] == ""
-            else:
-                assert rows[2]["result"]["locked"] is False
-            plain = bytearray((index * 7 + 19) % 256 for index in range(sector_size))
-            plain[3:11] = b"NTFS    "
-            decrypted_bytes = decrypted.read_bytes()
-            assert len(decrypted_bytes) == len(image) and decrypted_bytes[:sector_size] == plain
-            assert decrypted_bytes[0x12000:0x12000 + sector_size] == plain
-            assert decrypted_bytes[0x10000:0x10000 + sector_size] == bytes(sector_size)
-            assert decrypted_bytes[0x20000:0x30000] == bytes(0x10000)
-
-        if system["qrcode"] or system["ocr"]:
-            blank = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 256, 64, 8, 2, 0, 0, 0))
-            blank += chunk(b"IDAT", zlib.compress((b"\0" + b"\xff" * (256 * 3)) * 64)) + chunk(b"IEND", b"")
-            (evidence / "blank.png").write_bytes(blank)
-            requests = [{"id": "image", "command": "images open", "args": {"path": str(evidence)}}]
-            image_node = "folder:" + b"blank.png".hex()
-            if system["qrcode"]:
-                requests.append({"id": "qr", "command": "files qr-codes scan", "args": {"nodeId": image_node, "expectedCount": 1, "taskId": "qr-1"}})
-            if system["ocr"]:
-                requests.append({"id": "ocr", "command": "files ocr scan", "args": {"nodeId": image_node, "taskId": "ocr-1"}})
-            result, rows = session(requests)
-            assert all("result" in row for row in rows), result
-
-        # A real case must close cleanly and be reopenable by the next process.
-        case = root / "case"
-        nested = evidence / "nested"
-        nested.mkdir()
-        (nested / "report.txt").write_text("Password nested\npassword second\n", encoding="utf-8")
-        run(["cases", "create", str(case), "--name", "CLI smoke test"])
-        result, rows = session([
-            {"id": "image", "command": "images open", "args": {"path": str(evidence)}},
-            {"id": "wait", "command": "tasks wait"},
-            {"id": "search", "command": "searches create", "args": {"searchId": "cli-search", "options": {"keys": ["password"]}}},
-            {"id": "timeline", "command": "timeline build"},
-            {"id": "plugins", "command": "plugins list"},
-        ], arguments=["--case", str(case)])
-        assert all("result" in row for row in rows), rows
-        assert rows[2]["result"]["totalMatches"] >= 1, rows
-        # files search uses the same persisted global-search results, with scopes,
-        # case handling, regex matching, and a display limit independent of storage.
-        grep_script = f'''images open "{evidence}"
-tasks wait
-cd "{volume_name}"
-files search Password hello.txt --codepage UTF-8 --search-id case-sensitive
-files search password nested --ignore-case --codepage UTF-8 --limit 1 --search-id scoped-grep
-files search "pass(word)?" hello.txt --regex --codepage UTF-8 --search-id regex-grep
-searches hits list --search-id scoped-grep --limit 10
-'''
-        grep_rows = documents(run(["--case", str(case), "shell"], grep_script).stdout)
-        assert len(grep_rows) == 6, grep_rows
-        # tasks wait reports the background work (indexes of the case's evidence) it waited for.
-        assert all(task["status"] == "success" for task in grep_rows[1]["tasks"]), grep_rows
-        assert grep_rows[2]["total"] == 0, grep_rows
-        scoped = grep_rows[3]
-        assert scoped["summary"]["status"] == "success" and scoped["summary"]["searchId"] == "scoped-grep"
-        assert scoped["total"] == 2 and len(scoped["hits"]) == 1 and scoped["truncated"], scoped
-        assert scoped["hits"][0]["nodeId"] == "folder:" + b"nested/report.txt".hex(), scoped
-        assert grep_rows[4]["total"] >= 1 and all(hit["patternKind"] == "regex" for hit in grep_rows[4]["hits"])
-        assert grep_rows[5]["total"] == 2 and len(grep_rows[5]["items"]) == 2, grep_rows
-        run([*image_path, "files", "search", "password"], expected=1)
-
-        # Missing source bytes force offline sessions; path resolution and the
-        # recursive listing must still come entirely from the published case indexes.
-        moved_evidence = root / "temporarily absent evidence"
-        evidence.rename(moved_evidence)
-        offline_script = f'''images open "{evidence}"
-cd "{volume_name}"
-files list --path nested
-files tree list --path . --depth 128 --name REPORT
-cd nested
-context get
-'''
-        try:
-            offline_rows = documents(run(["--case", str(case), "shell"], offline_script).stdout)
-            assert offline_rows[0]["indexOnly"], offline_rows
-            assert [item["name"] for item in offline_rows[1]["items"]] == ["report.txt"]
-            assert [item["path"] for item in offline_rows[2]["items"]] == [f"/{volume_name}/nested/report.txt"]
-            assert offline_rows[3]["dir"] == f"/{volume_name}/nested"
-            result, rows = session([
-                {"id": "open", "command": "images open", "args": {"path": str(evidence)}},
-                {"id": "cd", "command": "context set", "args": {"dir": "/" + volume_name}},
-                {"id": "stat", "command": "files get", "args": {"path": "nested/report.txt"}},
-                {"id": "tree", "command": "files tree list", "args": {"path": "nested", "depth": 2}},
-                {"id": "hex", "command": "files read", "args": {"path": "hello.txt"}},
-                {"id": "strings", "command": "files strings list", "args": {"path": "hello.txt"}},
-                {"id": "file", "command": "files identify", "args": {"path": "hello.txt"}},
-                {"id": "pwd", "command": "context get"},
-            ], expected=1, arguments=["--case", str(case)])
-            offline_results = {row["id"]: row for row in rows}
-            assert offline_results["stat"]["result"]["indexOnly"] and offline_results["stat"]["result"]["name"] == "report.txt"
-            assert [item["path"] for item in offline_results["tree"]["result"]["items"]] == [f"/{volume_name}/nested/report.txt"]
-            assert all("error" in offline_results[command] for command in ("hex", "strings", "file"))
-            assert offline_results["pwd"]["result"]["dir"] == "/" + volume_name
-            run(["--case", str(case), *image_path, "files", "search", "password"], expected=1)
-        finally:
-            moved_evidence.rename(evidence)
-        active = json.loads(run(["--case", str(case), "cases", "get"]).stdout)
-        assert active["name"] == "CLI smoke test", active
-        run(["cases", "delete", str(case), "--force"])
-
-        if os.name == "nt":
-            # Nothing from the desktop runtime is linked, let alone started.
-            binary = executable.read_bytes()
-            assert b"WebView2Loader" not in binary, "the CLI links the desktop WebView"
-            assert b"requireAdministrator" not in binary, "the CLI requests elevation"
-            process = subprocess.Popen([str(executable), "session"], stdin=subprocess.PIPE,
-                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                       encoding="utf-8", creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
-                                       cwd=root, env=environment)
-            try:
-                process.stdin.write('{"id":"ready","command":"images list"}\n')
+            def ask(items):
+                for item in items:
+                    process.stdin.write(json.dumps(item) + "\n")
                 process.stdin.flush()
-                assert json.loads(process.stdout.readline())["id"] == "ready"
-                windows = []
-                callback_type = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
-                ctypes.windll.user32.GetWindowThreadProcessId.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
-                ctypes.windll.user32.GetWindowTextW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_int]
-                ctypes.windll.user32.GetClassNameW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_int]
-                ctypes.windll.user32.GetWindowRect.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.RECT)]
+                pending, results = {item["id"] for item in items}, {}
+                while pending:
+                    line = replies.get(timeout=300)
+                    assert line is not None, "real evidence batch ended early"
+                    row = json.loads(line)
+                    assert row["id"] in pending and "result" in row, row
+                    pending.remove(row["id"])
+                    results[row["id"]] = row["result"]
+                return results
 
-                @callback_type
-                def inspect_window(window, _):
-                    owner = ctypes.c_ulong()
-                    ctypes.windll.user32.GetWindowThreadProcessId(window, ctypes.byref(owner))
-                    if owner.value == process.pid:
-                        title = ctypes.create_unicode_buffer(512)
-                        class_name = ctypes.create_unicode_buffer(512)
-                        ctypes.windll.user32.GetWindowTextW(window, title, len(title))
-                        ctypes.windll.user32.GetClassNameW(window, class_name, len(class_name))
-                        rectangle = wintypes.RECT()
-                        ctypes.windll.user32.GetWindowRect(window, ctypes.byref(rectangle))
-                        windows.append((window, title.value, class_name.value, tuple(getattr(rectangle, field) for field in ("left", "top", "right", "bottom"))))
-                    return True
+            def listings(paths, prefix):
+                return ask([request(f"{prefix}-{index}", "ls", path) for index, path in enumerate(paths)])
+            try:
+                alias = ask([request("evidence", "evidence", "ls")])["evidence"]["items"][0]["path"]
+                volumes = [item["path"] for item in listings([alias], "roots")["roots-0"]["items"] if item["kind"] == "dir"][:4]
+                assert volumes, "real evidence has no browsable volumes"
+                directories = listings(volumes, "dir")
 
-                ctypes.windll.user32.EnumWindows(inspect_window, None)
-                assert not windows, f"CLI created a window: {windows}"
-                process.send_signal(signal.CTRL_BREAK_EVENT)
-                assert process.wait(timeout=15) == 130
+                def files_in(pages):
+                    return sorted((entry for page in pages.values() for entry in page["items"]
+                                   if entry["kind"] == "file" and entry["size"] > 0 and not entry["deleted"]),
+                                  key=lambda entry: entry["path"])[:4]
+                files = files_in(directories)
+                nested = sorted(entry["path"] for page in directories.values() for entry in page["items"]
+                                if entry["kind"] == "dir" and not entry["deleted"])[:8]
+                if not files and nested:
+                    nested_pages = listings(nested, "nested")
+                    directories.update(nested_pages)
+                    files = files_in(nested_pages)
+                assert files, "real evidence has no file for bounded read verification"
+                reads = ask([request(f"bytes-{index}", "cat", node(alias.strip("/"), entry["id"]), "--length",
+                                     min(4096, entry["size"])) for index, entry in enumerate(files)])
+                process.stdin.close()
+                process.wait(timeout=300)
+                assert process.returncode == 0
+                return directories, reads
             finally:
                 if process.poll() is None:
                     process.kill()
-                process.communicate(timeout=15)
+                    process.wait()
+                thread.join(timeout=5)
+                process.stdout.close()
+        serial_directories, serial_reads = real_queries(1)
+        parallel_directories, parallel_reads = real_queries(4)
+        assert parallel_directories == serial_directories, "real evidence directory queries differ under concurrency"
+        assert parallel_reads == serial_reads, "real evidence range reads differ under concurrency"
+        print(f"Real evidence concurrency passed: {len(serial_directories)} directories, {len(serial_reads)} bounded reads")
+    print("CLI batch tests passed: argv requests, references, serial and parallel answers, saved results, open stdin")
 
-    test_resident_sessions(executable, environment)
-    test_navigation(executable, environment)
-    test_agent_output(executable, environment)
-    test_observability(executable, environment)
-    test_timezones(executable, environment)
-    test_integrity(executable, environment)
-    test_optical_discs(executable, environment)
-    print("CLI smoke tests passed: discovery, dry run, JSONL, browsing, binary read, hash, preview cleanup, export, errors, carving, search, timeline, case lifecycle, windowless startup and interrupt")
+
+def test_browsing(cli, root):
+    """Browsing a folder: pages, cursors, trees, properties, ranged reads,
+    strings, content types and text, in batches, one-shot and in the shell."""
+    evidence = root / "evidence with spaces"
+    evidence.mkdir()
+    (evidence / "hello.txt").write_bytes(CONTENT)
+    python_content = b"#!/usr/bin/env python3\nimport sys\nprint('LovelyCarve forensic CLI')\n" * 20
+    (evidence / "signature.bin").write_bytes(python_content)
+    unicode_text = "中文取证字符串"
+    (evidence / "unicode.bin").write_bytes(b"\0" + unicode_text.encode("utf-8") + b"\0")
+    (evidence / "wide.bin").write_bytes(("\0" + unicode_text + "\0").encode("utf-16le"))
+    (evidence / "latin1.bin").write_bytes(b"caf\xe9")
+    alias = "evidence-with-spaces"
+    folder = f"/{alias}/folder:"
+    hello = folder + "/hello.txt"
+    rows = cli.results([
+        request("open", "evidence", "add", evidence),
+        request("root", "ls", "/"),
+        request("wait", "tasks", "wait"),
+        request("page", "ls", folder, "--limit", "2"),
+        request("page-by-id", "ls", node(alias, "folder:"), "--limit", "2"),
+        request("next", "ls", folder, "--cursor", {"$ref": "page#/nextCursor"}, "--limit", "1000"),
+        request("all", "ls", folder, "--all"),
+        request("tree", "tree", f"/{alias}", "--depth", "2"),
+        request("stat", "stat", hello),
+        request("hex", "cat", hello, "--offset", "6", "--length", "8"),
+        request("strings", "strings", hello),
+        request("utf8", "strings", folder + "/unicode.bin", "--encoding", "utf-8"),
+        request("utf16", "strings", folder + "/wide.bin", "--encoding", "utf-16le"),
+        request("limited", "strings", hello, "--limit", "1"),
+        request("file", "identify", folder + "/signature.bin"),
+        request("text", "text", hello),
+    ])
+    assert rows["open"]["items"][0]["alias"] == alias and rows["root"]["items"][0]["path"] == f"/{alias}", rows["root"]
+    assert rows["page"] == rows["page-by-id"], (rows["page"], rows["page-by-id"])
+    assert rows["page"]["nextCursor"] and rows["next"]["nextCursor"] is None
+    assert rows["page"]["items"] + rows["next"]["items"] == rows["all"]["items"]
+    assert all(item["path"].startswith(folder + "/") and "parentId" in item for item in rows["all"]["items"])
+    # The same page from a one-shot process; reading a live folder may update
+    # host access times in between, so those are left out.
+    one_shot = cli.json("--image", evidence, "ls", folder, "--limit", "2")
+    for page in (one_shot, rows["page"]):
+        for item in page["items"]:
+            item["timestamps"].pop("accessed", None)
+            item.get("timestampsOriginal", {}).pop("accessed", None)
+    assert one_shot == rows["page"], (one_shot, rows["page"])
+    assert hello in [item["path"] for item in rows["tree"]["items"]], rows["tree"]
+    stat = rows["stat"]
+    assert stat["size"] == len(CONTENT) and stat["nodeId"] == path_id("folder:", "hello.txt"), stat
+    assert stat["path"] == hello and stat["parent"] == folder and not stat["indexOnly"] and "timestamps" in stat
+    assert rows["hex"] == {"encoding": "hex", "data": CONTENT[6:14].hex()}
+    assert rows["strings"]["strings"] == [
+        {"offset": 0, "text": "hello forensic world", "truncated": False},
+        {"offset": CONTENT.index(b"password"), "text": "password test", "truncated": False},
+    ], rows["strings"]
+    assert rows["utf8"]["strings"] == [{"offset": 1, "text": unicode_text, "truncated": False}]
+    assert rows["utf16"]["strings"] == [{"offset": 2, "text": unicode_text, "truncated": False}]
+    assert len(rows["limited"]["strings"]) == 1 and rows["limited"]["truncated"]
+    assert rows["file"]["label"] == "python" and rows["file"]["inferred"], rows["file"]
+    assert rows["file"]["fileLen"] == len(python_content)
+    assert rows["text"]["text"] == CONTENT.decode() and rows["text"]["nextOffset"] is None, rows["text"]
+    # One-shot reads write the bytes themselves to stdout; text is plain text.
+    image = ("--image", evidence)
+    assert cli.run(*image, "cat", hello, "--offset", "6", "--length", "8", binary=True).stdout == b"forensic"
+    assert cli.run(*image, "cat", folder + "/latin1.bin", binary=True).stdout == b"caf\xe9"
+    assert cli.run(*image, "text", hello).stdout == CONTENT.decode()
+    assert cli.json(*image, "identify", folder + "/signature.bin")["label"] == "python"
+    listing = cli.run(*image, "ls", folder).stdout
+    assert "hello.txt" in listing and "{" not in listing, listing
+    assert "SHA256 (" + hello + ") = " + hashlib.sha256(CONTENT).hexdigest() in cli.run(*image, "hash", hello).stdout
+
+    # A shell script runs one command per line, from the shell's directory,
+    # and stops at the first failure.
+    exported = root / "export.txt"
+    script = f'''evidence add "{evidence}" --as ev
+cd /ev/folder:
+pwd
+ls
+cat hello.txt --length 5
+hash hello.txt --algo sha256
+export hello.txt -o "{exported}"
+'''
+    outputs = documents(cli.run("--json", "shell", stdin=script).stdout)
+    assert outputs[0]["items"][0]["alias"] == "ev" and outputs[1] == "/ev/folder:", outputs
+    assert "hello.txt" in [item["name"] for item in outputs[2]["items"]], outputs
+    assert outputs[3] == {"encoding": "hex", "data": b"hello".hex()}, outputs
+    assert outputs[4]["items"][0]["sha256"] == hashlib.sha256(CONTENT).hexdigest(), outputs
+    assert exported.read_bytes() == CONTENT
+    refused = cli.run("shell", stdin=script, expected=1)
+    assert says(refused.stderr, "已存在"), refused.stderr
+    assert exported.read_bytes() == CONTENT
+
+    # A preview file a command makes for another program is gone when the process ends.
+    rows = cli.results([
+        request("open", "evidence", "add", evidence, "--as", "ev"),
+        request("preview", "rpc", "fs_media_temp", "--body",
+                json.dumps({"imageId": "ev", "nodeId": path_id("folder:", "hello.txt"), "ext": "txt", "taskId": "preview-1"})),
+        request("wait", "tasks", "wait"),
+    ])
+    assert isinstance(rows["preview"], str) and rows["preview"].endswith(".txt"), rows["preview"]
+    assert not Path(rows["preview"]).exists(), "preview file leaked after the process ended"
+    print("CLI browsing tests passed: pages, cursors, tree, stat, ranges, strings, identify, text, shell scripts, preview cleanup")
+
+
+def test_analysis(cli, root):
+    """SQLite with its WAL, and BCP packages published as analysis results."""
+    # The path and node ID forms both discover the database's WAL.
+    sqlite_evidence = root / "sqlite-evidence"
+    sqlite_evidence.mkdir()
+    source = sqlite3.connect(root / "chat.db")
+    try:
+        source.executescript("""
+            PRAGMA journal_mode = WAL;
+            PRAGMA wal_autocheckpoint = 0;
+            CREATE TABLE messages(id INTEGER PRIMARY KEY, chat_id INTEGER);
+            INSERT INTO messages VALUES (1, 3), (2, 3), (3, 5);
+        """)
+        for name in ("chat.db", "chat.db-wal"):
+            (sqlite_evidence / name).write_bytes((root / name).read_bytes())
+    finally:
+        source.close()
+    sql = "SELECT chat_id, COUNT(*) FROM messages WHERE id > ?1 GROUP BY chat_id ORDER BY chat_id"
+    rows = cli.results([
+        request("open", "evidence", "add", sqlite_evidence, "--as", "db"),
+        request("first", "sqlite", "query", "/db/folder:/chat.db", sql, "--param", "0", "--limit", "1"),
+        request("next", "sqlite", "query", node("db", path_id("folder:", "chat.db")), sql, "--param", "0",
+                "--limit", "1", "--offset", "1"),
+        request("tables", "sqlite", "tables", "/db/folder:/chat.db"),
+        request("rows", "sqlite", "rows", "/db/folder:/chat.db", "messages", "--limit", "2"),
+    ])
+    for key, values, next_offset in [("first", ("3", "2"), 1), ("next", ("5", "1"), None)]:
+        page = rows[key]
+        assert page["rows"] == [[{"kind": "integer", "value": value} for value in values]], page
+        assert page["sidecars"] == ["chat.db-wal"] and page["nextOffset"] == next_offset, page
+        assert page["path"] == "/db/folder:/chat.db", page
+    assert "messages" in json.dumps(rows["tables"]), rows["tables"]
+    assert len(rows["rows"]["rows"]) == 2, rows["rows"]
+    # Writes are refused before they reach the database.
+    _, refused = cli.batch([request("open", "evidence", "add", sqlite_evidence, "--as", "db"),
+                            request("write", "sqlite", "query", "/db/folder:/chat.db", "DELETE FROM messages")], expected=1)
+    assert "error" in refused[1], refused
+    iso = root / "sqlite.iso"
+    iso.write_bytes(iso_fixture((root / "chat.db").read_bytes())[0])
+    counted = cli.json("--image", iso, "sqlite", "query", "/sqlite/part:0/PAYLOAD.BIN", "SELECT COUNT(*) FROM messages")
+    assert counted["rows"] == [[{"kind": "integer", "value": "3"}]], counted
+
+    # BCP packages, as a ZIP and as a directory, publish once and reuse the run.
+    bcp_directory = root / "bcp export"
+    bcp_directory.mkdir()
+    bcp_zip = bcp_directory / "evidence.zip"
+    last_record = "群组\t结尾\t1030036\towner\t1\n"
+    with zipfile.ZipFile(bcp_zip, "w", zipfile.ZIP_DEFLATED) as archive:
+        shards = []
+
+        def add_shard(name, code, shard_contents, count, fields):
+            archive.writestr(name, shard_contents)
+            items = "".join(f'<ITEM key="{index}" eng="{field}" chn="{label}"/>' for index, (field, label) in enumerate(fields, 1))
+            shards.append(
+                f'<DATA><ITEM key="A010004" val="WA_MFORENSICS_{code}"/><ITEM key="I010039" val="UTF-8无BOM"/>'
+                f'<DATASET name="WA_COMMON_010014"><DATA><ITEM key="H010020" val="{name}"/>'
+                f'<ITEM key="I010034" val="{count}"/></DATA></DATASET>'
+                f'<DATASET name="WA_COMMON_010015"><DATA>{items}</DATA></DATASET></DATA>')
+        account_fields = [("CONTACT_ACCOUNT_TYPE", "应用类型"), ("ACCOUNT_ID", "账号")]
+        group_fields = [("GROUP_NAME", "群组名称"), ("CONTENT", "内容"), *account_fields, ("DELETE_STATUS", "删除状态")]
+        add_shard("one.bcp", "020600", "群组\t结尾\t1030063\towner\t0\n" * 100, 100, group_fields)
+        add_shard("two.bcp", "020600", last_record, 1, group_fields)
+        add_shard("accounts.bcp", "020100",
+                  "1039999\tprofile-owner\thttps://i9.taou.com/maimai/photo.png\n"
+                  "1039999\tunconfirmed\thttps://example.org/i9.taou.com/maimai/photo.png\n",
+                  2, [*account_fields, ("USER_PHOTO", "头像")])
+        add_shard("direct.bcp", "020500", "1039999\tprofile-owner\t消息一\n1039999\tunconfirmed\t消息二\n",
+                  2, [*account_fields, ("CONTENT", "内容")])
+        archive.writestr("GAB_ZIP_INDEX.xml", '<MESSAGE><DATASET name="WA_COMMON_010013">' + "".join(shards) + "</DATASET></MESSAGE>")
+    case = root / "bcp case"
+    cli.run("case", "new", case, "--name", "BCP import")
+    for alias, package in (("bcp-zip", bcp_zip), ("bcp-dir", bcp_directory)):
+        scope = ("-C", case)
+        cli.run(*scope, "evidence", "add", package, "--as", alias)
+        imported = cli.json(*scope, "results", "import", alias)
+        assert imported["recordCount"] == 105 and not imported["reused"], imported
+        assert cli.json(*scope, "results", "import", alias) == {**imported, "reused": True}
+        tree = cli.json(*scope, "results", "ls")
+        level = [leaf for item in tree for category in item["children"] for analyzer in category["children"]
+                 if analyzer["runId"] == imported["runId"] for leaf in analyzer["children"]]
+        by_type = {leaf["artifactType"]: leaf for leaf in level}
+        assert {kind: leaf["childCount"] for kind, leaf in by_type.items()} == {
+            "bcp.group_messages": 101, "bcp.messaging_accounts": 2, "bcp.direct_messages": 2}, by_type
+        for kind in ("bcp.messaging_accounts", "bcp.direct_messages"):
+            assert [(group["application"], group["account"], group.get("identifiedApplication"))
+                    for group in by_type[kind]["bcpGroups"]] == [
+                ("1039999", "profile-owner", "1070109"), ("1039999", "unconfirmed", None)]
+        assert [(group["application"], group["account"], group["total"], group["deleted"])
+                for group in by_type["bcp.group_messages"]["bcpGroups"]] == [
+            ("1030036", "owner", 1, 1), ("1030063", "owner", 100, 0)]
+        rows_args = [*scope, "results", "rows", imported["runId"], "bcp.group_messages", "--evidence", alias]
+        assert cli.json(*rows_args)["total"] == 101
+        page = cli.json(*rows_args, "--keyword", "结尾", "--bcp-app", "1030036", "--bcp-account", "owner")
+        assert page["total"] == 1, page
+        record = page["items"][0]
+        assert record["values"] == {"group_name": "群组", "content": "结尾", "contact_account_type": "1030036",
+                                    "account_id": "owner", "delete_status": "1"}, record
+        origin = record["sources"][0]
+        if package == bcp_zip:
+            assert origin == {"root": "root", "path": "two.bcp", "offset": 0, "length": len(last_record.encode())}, origin
+        else:
+            assert origin["path"] == bcp_zip.name and "two.bcp" in origin["note"], origin
+        assert cli.json(*scope, "results", "show", record["recordId"], "--evidence", alias)["record"] == record
+    missing = cli.run("--json", "-C", case, "results", "show", "no-such-record", "--evidence", "bcp-zip", expected=1)
+    assert json.loads(missing.stderr)["error"]["code"] == "notFound", missing.stderr
+    print("CLI analysis tests passed: SQLite WAL by path and node ID, read-only queries, ISO members, BCP import and results")
+
+
+def test_carving(cli, root):
+    """Signature carving and file system recovery run as scans in the
+    background of a batch, and export what they found."""
+    png = b"\x89PNG\r\n\x1a\n" + png_chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))
+    png += png_chunk(b"IDAT", zlib.compress(b"\0\xff\0\0")) + png_chunk(b"IEND", b"")
+    disk = root / "disk.img"
+    disk.write_bytes((b"\0" * 512 + png).ljust(16384, b"\0"))
+    recovered = root / "recovered"
+    rows = cli.results([
+        request("open", "evidence", "add", disk, "--as", "disk"),
+        request("scan", "carve", "start", "--types", "png"),
+        request("wait", "tasks", "wait"),
+        request("status", "carve", "status", {"$ref": "scan#/scanId"}),
+        request("results", "carve", "results", {"$ref": "scan#/scanId"}),
+        request("recover", "carve", "export", {"$ref": "scan#/scanId"}, "-o", recovered),
+        request("tasks", "tasks", "ls"),
+        request("scans", "carve", "ls"),
+    ])
+    assert rows["status"]["status"] == "completed" and rows["status"]["artifactsFound"] == 1, rows["status"]
+    # tasks wait reports the scan that kept running after its command returned.
+    assert [task["status"] for task in rows["wait"]["tasks"] if task["kind"] == "carveScan"] == ["success"], rows["wait"]
+    assert rows["recover"]["recovered"] == 1, rows["recover"]
+    assert next(recovered.glob("*.png")).read_bytes() == png
+    entries = {entry.get("kind"): entry for entry in rows["tasks"]["items"]}
+    scan = entries["carveScan"]
+    assert scan["source"] == "builtin" and scan["status"] == "success" and scan["scanId"] == rows["scan"]["scanId"], scan
+    assert scan["view"]["counts"]["found"] == 1, scan
+    recovery = entries["carveRecovery"]
+    assert recovery["status"] == "success" and recovery["view"]["subject"] == [str(recovered)], recovery
+    assert recovery["view"]["counts"]["files"] == 1, recovery
+    assert any(item["scanId"] == rows["scan"]["scanId"] for item in rows["scans"]["items"]), rows["scans"]
+    artifact = rows["results"]["items"][0]["id"]
+    cut = cli.results([request("open", "evidence", "add", disk, "--as", "disk"),
+                       request("scan", "carve", "start", "--types", "png"),
+                       request("wait", "tasks", "wait"),
+                       request("cat", "carve", "cat", {"$ref": "scan#/scanId"}, artifact)])
+    assert cut["cat"] == {"encoding": "hex", "data": png.hex()}, cut["cat"]
+
+    # File system recovery shares the scan: a deleted FAT12 entry is listed and
+    # exported by its candidate number.
+    floppy = bytearray(2880 * 512)
+    floppy[0:3] = b"\xeb\x3c\x90"
+    floppy[3:11] = b"MSDOS5.0"
+    struct.pack_into("<HBHBHHBH", floppy, 11, 512, 1, 1, 2, 224, 2880, 0xF0, 9)
+    floppy[38] = 0x29
+    floppy[43:62] = b"RECOVERY   FAT12   "
+    floppy[510:512] = b"\x55\xaa"
+    for table in (512, 10 * 512):
+        floppy[table:table + 3] = b"\xf0\xff\xff"
+    entry = 19 * 512
+    floppy[entry:entry + 12] = b"\xe5ELETED TXT\x20"
+    struct.pack_into("<HI", floppy, entry + 26, 2, 5)
+    floppy[33 * 512:33 * 512 + 5] = b"hello"
+    deleted_image = root / "deleted-fat.img"
+    deleted_image.write_bytes(bytes(floppy))
+    restored = root / "restored"
+    rows = cli.results([
+        request("open", "evidence", "add", deleted_image, "--as", "fat"),
+        request("scan", "carve", "start", "--no-signatures", "--fs", "fat"),
+        request("wait", "tasks", "wait"),
+        request("status", "carve", "status", {"$ref": "scan#/scanId"}),
+        request("files", "carve", "results", {"$ref": "scan#/scanId"}, "--fs"),
+        request("recover", "carve", "export", {"$ref": "scan#/scanId"}, "-o", restored, "--no-artifacts", "--files", "0"),
+    ])
+    assert rows["status"]["status"] == "completed" and rows["status"]["filesystem"]["files"] == 1, rows["status"]
+    candidate = rows["files"]["candidates"][0]
+    assert candidate["node"]["deleted"] and candidate["readable"], rows["files"]
+    exported = rows["recover"]["files"]
+    assert rows["recover"]["recovered"] == 0 and exported["recovered"] == 1, rows["recover"]
+    # Recovered files keep their folders under one folder per volume.
+    export_root = Path(exported["directory"])
+    outputs = sorted(path for path in export_root.rglob("*") if path.is_file() and path.name != "recovery-report.jsonl")
+    assert [path.read_bytes() for path in outputs] == [b"hello"], outputs
+    relative = outputs[0].relative_to(export_root).parts
+    assert len(relative) == 2 and relative[0].startswith("v0-"), relative
+    report = [json.loads(line) for line in Path(exported["reportPath"]).read_text(encoding="utf-8").splitlines()]
+    assert report[1]["relative_output"] == "/".join(relative), report
+    print("CLI carving tests passed: PNG carving, scan tasks, carve cat, FAT record recovery and export layout")
+
+
+def test_cases(cli, root):
+    """A case outlives its processes: indexes, searches and timelines persist,
+    and evidence that went missing stays browsable from the indexes."""
+    evidence = root / "evidence"
+    nested = evidence / "nested"
+    nested.mkdir(parents=True)
+    (evidence / "hello.txt").write_bytes(CONTENT)
+    (nested / "report.txt").write_text("Password nested\npassword second\n", encoding="utf-8")
+    case = root / "case"
+    created = cli.json("case", "new", case, "--name", "CLI smoke test")
+    assert created["name"] == "CLI smoke test", created
+    scope = ("-C", case)
+    hello = "/ev/folder:/hello.txt"
+    rows = cli.results([
+        request("image", "evidence", "add", evidence, "--as", "ev", "--wait"),
+        request("search", "grep", "password", "/ev"),
+        request("timeline", "timeline", "build"),
+        request("plugins", "plugin", "ls"),
+        request("volumes", "volumes"),
+    ], *scope)
+    assert rows["image"]["indexes"] and all(index["state"] == "ready" for index in rows["image"]["indexes"]), rows["image"]
+    assert rows["search"]["total"] >= 1, rows["search"]
+    assert rows["volumes"]["items"][0]["index"] == "ready", rows["volumes"]
+    # grep searches through the global search, saved in the case, with scopes,
+    # case matching, regular expressions and a display limit apart from storage.
+    rows = cli.results([
+        request("wait", "tasks", "wait"),
+        request("case-sensitive", "grep", "Password", hello, "--encoding", "UTF-8"),
+        request("scoped", "grep", "password", "/ev/folder:/nested", "-i", "--encoding", "UTF-8", "--limit", "1"),
+        request("regex", "grep", "pass(word)?", hello, "-E", "--encoding", "UTF-8"),
+        request("hits", "search", "hits", {"$ref": "scoped#/items/0/searchId"}, "--limit", "10"),
+        request("find", "find", "*.TXT", "--under", "/ev/folder:/nested"),
+        request("saved", "search", "ls"),
+    ], *scope)
+    assert rows["case-sensitive"]["total"] == 0, rows["case-sensitive"]
+    scoped = rows["scoped"]
+    assert scoped["searches"][0]["status"] == "success", scoped
+    assert scoped["total"] == 2 and len(scoped["items"]) == 1 and scoped["truncated"], scoped
+    assert scoped["items"][0]["path"] == "/ev/folder:/nested/report.txt", scoped
+    assert rows["regex"]["total"] >= 1, rows["regex"]
+    assert rows["hits"]["total"] == 2 and len(rows["hits"]["items"]) == 2, rows["hits"]
+    assert [item["path"] for item in rows["find"]["items"]] == ["/ev/folder:/nested/report.txt"], rows["find"]
+    assert len(rows["saved"]["items"]) >= 4, rows["saved"]
+    # grep needs a case to keep its results in.
+    assert says(cli.run("--image", evidence, "grep", "password", expected=1).stderr, "案件")
+
+    # Evidence that went missing stays browsable from the case's indexes; its
+    # bytes fail explicitly.
+    moved = root / "temporarily absent evidence"
+    evidence.rename(moved)
+    try:
+        rows = cli.results([
+            request("list", "ls", "/ev/folder:/nested"),
+            request("tree", "tree", "/ev/folder:", "--depth", "128", "--name", "REPORT"),
+            request("stat", "stat", "/ev/folder:/nested/report.txt"),
+            request("evidence", "evidence", "ls"),
+        ], *scope)
+        listed = rows["evidence"]["items"][0]
+        assert listed["loaded"] and listed["indexOnly"], listed
+        assert [item["name"] for item in rows["list"]["items"]] == ["report.txt"]
+        assert [item["path"] for item in rows["tree"]["items"]] == ["/ev/folder:/nested/report.txt"], rows["tree"]
+        assert rows["stat"]["indexOnly"] and rows["stat"]["name"] == "report.txt"
+        _, failed = cli.batch([request("bytes", "cat", hello), request("strings", "strings", hello),
+                               request("identify", "identify", hello), request("grep", "grep", "password", "/ev")],
+                              *scope, expected=1)
+        assert all("error" in row for row in failed), failed
+        shell = cli.run(*scope, "shell", stdin="cd /ev/folder:/nested\npwd\nls\n")
+        assert shell.stdout.splitlines()[0] == "/ev/folder:/nested" and "report.txt" in shell.stdout, shell.stdout
+    finally:
+        moved.rename(evidence)
+    status = cli.json(*scope, "case")
+    assert status["case"]["name"] == "CLI smoke test" and status["evidence"][0]["alias"] == "ev", status
+    assert any(item["dir"] == str(case) for item in cli.json("case", "ls")["items"])
+    cli.run("case", "rm", case, "-y")
+    assert not (case / "case.db").exists()
+    print("CLI case tests passed: indexes, grep scopes, saved searches, find, timeline, offline browsing, status and removal")
+
+
+def test_process(cli, root):
+    """Optional QR/OCR, and on Windows: no window, no elevation, and Ctrl+Break ends with 130."""
+    system = cli.json("system")
+    if system["qrcode"] or system["ocr"]:
+        evidence = root / "images"
+        evidence.mkdir()
+        blank = b"\x89PNG\r\n\x1a\n" + png_chunk(b"IHDR", struct.pack(">IIBBBBB", 256, 64, 8, 2, 0, 0, 0))
+        blank += png_chunk(b"IDAT", zlib.compress((b"\0" + b"\xff" * (256 * 3)) * 64)) + png_chunk(b"IEND", b"")
+        (evidence / "blank.png").write_bytes(blank)
+        requests = [request("open", "evidence", "add", evidence, "--as", "ev")]
+        if system["qrcode"]:
+            requests.append(request("qr", "qr", "/ev/folder:/blank.png", "--expect", "1"))
+        if system["ocr"]:
+            requests.append(request("ocr", "ocr", "/ev/folder:/blank.png"))
+        cli.results(requests)
+    if os.name != "nt":
+        print("CLI process tests passed: optional image recognition")
+        return
+    binary = cli.executable.read_bytes()
+    assert b"WebView2Loader" not in binary, "the CLI links the desktop WebView"
+    assert b"requireAdministrator" not in binary, "the CLI requests elevation"
+    process = subprocess.Popen([str(cli.executable), "batch"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, text=True, encoding="utf-8",
+                               creationflags=subprocess.CREATE_NEW_PROCESS_GROUP, cwd=root, env=cli.environment)
+    try:
+        process.stdin.write(json.dumps(request("ready", "evidence", "ls")) + "\n")
+        process.stdin.flush()
+        assert json.loads(process.stdout.readline())["id"] == "ready"
+        windows = []
+        callback_type = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+        user32 = ctypes.windll.user32
+        user32.GetWindowThreadProcessId.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+        user32.GetWindowTextW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_int]
+        user32.GetClassNameW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_int]
+        user32.GetWindowRect.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.RECT)]
+
+        @callback_type
+        def inspect_window(window, _):
+            owner = ctypes.c_ulong()
+            user32.GetWindowThreadProcessId(window, ctypes.byref(owner))
+            if owner.value == process.pid:
+                title = ctypes.create_unicode_buffer(512)
+                class_name = ctypes.create_unicode_buffer(512)
+                user32.GetWindowTextW(window, title, len(title))
+                user32.GetClassNameW(window, class_name, len(class_name))
+                windows.append((title.value, class_name.value))
+            return True
+
+        user32.EnumWindows(inspect_window, None)
+        assert not windows, f"CLI created a window: {windows}"
+        process.send_signal(signal.CTRL_BREAK_EVENT)
+        assert process.wait(timeout=30) == 130
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.communicate(timeout=30)
+    print("CLI process tests passed: optional image recognition, windowless startup, no elevation, interrupt status")
+
+
+SECTIONS = {
+    "discovery": test_discovery,
+    "formats": test_formats,
+    "containers": test_containers,
+    "encryption": test_encryption,
+    "batch": test_batches,
+    "browsing": test_browsing,
+    "analysis": test_analysis,
+    "carving": test_carving,
+    "cases": test_cases,
+    "backend": test_backend,
+    "navigation": test_navigation,
+    "output": test_output,
+    "observability": test_observability,
+    "timezones": test_timezones,
+    "integrity": test_integrity,
+    "optical": test_optical_discs,
+    "process": test_process,
+}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("executable", type=Path)
+    parser.add_argument("sections", nargs="*", metavar="section", help="any of: " + ", ".join(SECTIONS))
+    options = parser.parse_args()
+    unknown = [name for name in options.sections if name not in SECTIONS]
+    if unknown:
+        parser.error("unknown sections: " + ", ".join(unknown))
+    executable = options.executable.resolve()
+    for name in options.sections or SECTIONS:
+        with tempfile.TemporaryDirectory(prefix=f"lovelycarve-cli-{name}-") as directory:
+            root = Path(directory)
+            SECTIONS[name](Cli(executable, root, isolated(os.environ, root)), root)
+    print("CLI end-to-end tests passed: " + ", ".join(options.sections or SECTIONS))
 
 
 if __name__ == "__main__":

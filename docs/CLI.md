@@ -1,982 +1,421 @@
 # LovelyCarve CLI
 
-`lovelycarve-cli` 是独立的取证命令行工具：不链接 Tauri、WebView 或任何桌面窗口运行时，
-自行初始化后端状态，直接调用与桌面端相同的解析器、案件库、插件和任务调度。
-命令统一为 `<集合>… <动词>` 形式，标准输出只放结果（JSON 或原始字节），提示与错误走标准错误，
-用帮助与 `schema` 查看命令和请求结构，编码代理使用随包提供的[代理技能](#编码代理与小输出)，
-`--dry-run`、`--body`、`--force` 在所有命令上含义一致。
+`lovelycarve-cli` 是独立的取证命令行工具：不链接 Tauri、WebView 或任何桌面窗口运行时，自行初始化后端状态，直接调用与桌面端相同的解析器、案件库、插件和任务调度。
 
-常用章节：[构建与运行](#构建与运行)、[命令结构](#命令结构)、[发现命令](#发现命令)、
-[输出与退出码](#输出与退出码)、[参数](#参数)、[浏览检材](#浏览检材)、[常驻会话](#常驻会话)、[交互 shell](#交互-shell)、
-[JSONL 会话](#jsonl-会话)、[生命周期与边界](#生命周期与边界)。iOS 备份命令见 [iOS 备份](IOS_BACKUPS.md#cli)。
+- 检材内的位置写成**地址**：`/` 列出检材，`/<别名>` 列出一份检材的分区与卷，`/<别名>/<卷>/<路径>` 指向文件，`/<别名>/@<节点 ID>` 按 ID 指向任意节点。
+- 读取检材内容用熟悉的动词：`ls`、`tree`、`stat`、`cat`、`text`、`strings`、`hash`、`find`、`grep`、`export`；其余命令是「名词 动词」：`case new`、`evidence add`、`unlock`、`carve start`、`results rows`。
+- 结果默认是给人看的文本；加 `--json` 输出 JSON，供脚本和编码代理使用。
+- 案件是工作区。`case open` 为案件启动一个**后台进程**，之后指向该案件的命令都在其中执行，复用已打开的检材、解锁与组装结果；没有后台进程时每条命令自己打开检材。
+- 没有专门命令的后端功能用 `rpc <后端命令>` 按名称调用，参数与桌面端 IPC 相同。
+
+常用章节：[快速开始](#快速开始)、[地址](#地址)、[案件与后台进程](#案件与后台进程)、[输出与退出码](#输出与退出码)、[参数](#参数)、[浏览与读取](#浏览与读取)、[批量请求](#批量请求)。iOS 备份见 [iOS 备份](IOS_BACKUPS.md#cli)。
 
 ## 构建与运行
 
 ```powershell
 just run-cli --help
-just run-cli images open "D:\evidence\disk.E01"
+just run-cli --image "D:\evidence\disk.E01" ls /disk
 just build-cli
 ```
 
-`just build-cli` 构建 `src-tauri/target/release/lovelycarve-cli.exe`，默认关闭二维码和 OCR，
-无需 OpenCV 或 CUDA。需要 QR/OCR 时使用 `just build-cli-full`：Windows 配置 Visual Studio/OpenCV/OpenSSL，
-启用带 CPU 回退的 CUDA OCR；Unix 完整配方使用 CPU OCR。轻量构建中相关命令仍然列出，
-但返回后端的功能未启用错误；文件系统、搜索、案件和插件不受影响。
-`lovelycarve-cli system get` 输出版本、平台、`standalone`（未链接桌面运行时）、命令数、
-QR/OCR/挂载功能开关和会话协议。`files identify`（Magika）和 `files ocr scan` 在程序旁的推理组件
-`lovelycarve_inference.dll` 中运行，CLI 本身不链接 ONNX Runtime；组件缺失时这两个命令报错，其余功能不受影响。
-`system get` 的 `components.inference` 报告组件是否可加载、路径、版本和 OCR 执行方式，`ocr` / `ocrCuda` 取自实际加载的组件。
+`just build-cli` 构建 `src-tauri/target/release/lovelycarve-cli.exe`，默认关闭二维码和 OCR，无需 OpenCV 或 CUDA。需要 QR/OCR 时使用 `just build-cli-full`：Windows 配置 Visual Studio / OpenCV / OpenSSL，启用带 CPU 回退的 CUDA OCR；Unix 完整配方使用 CPU OCR。轻量构建中 `qr`、`ocr` 仍然列出，但返回功能未启用错误。`identify`（Magika）和 `ocr` 在程序旁的推理组件 `lovelycarve_inference.dll` 中运行，CLI 本身不链接 ONNX Runtime；组件缺失时这两个命令报错，其余功能不受影响。`lovelycarve-cli system` 报告版本、平台、`standalone`（未链接桌面运行时）、QR / OCR / 挂载功能、推理组件（`components.inference`）和后台进程协议。
 
-CLI 构建不启用 Cargo 的 `desktop` 特性，所以不包含 Tauri、WebView2 或 GTK 依赖，
-Linux 上也不需要桌面库。Windows 构建在链接时嵌入 `asInvoker` 清单（`src-tauri/cli.manifest`），
-普通镜像分析不会弹出 UAC，管道可直接使用；读取物理盘、Dokan 挂载或扫描内存时，从管理员终端运行。
-案件登记与偏好放在与桌面端相同的用户数据目录（由 `tauri.conf.json` 的 identifier 决定），
-两个程序看到同一份案件列表。
+CLI 构建不启用 Cargo 的 `desktop` 特性，不包含 Tauri、WebView2 或 GTK 依赖，Linux 上也不需要桌面库。Windows 构建在链接时嵌入 `asInvoker` 清单（`src-tauri/cli.manifest`），普通镜像分析不会弹出 UAC，管道可直接使用；读取物理盘、Dokan 挂载或扫描内存时从管理员终端运行。案件登记与偏好放在与桌面端相同的用户数据目录，两个程序看到同一份案件列表。
 
-`just pack-cli` 构建并打包轻量 Windows CLI，包含运行库、推理组件、`lc-plugin-host`、插件、本手册及代理技能；
-`just pack-cli-full` 另启用 QR/OCR 并携带 OpenCV 与模型。`just repack-cli` 按现有二进制
-`system get` 报告的实际功能打包。开发配方在 `src-tauri` 目录执行，建议向 `just run-cli`
-传绝对检材路径；直接运行 exe 时相对路径以当前工作目录为准。插件包从程序旁的 `plugins/` 与用户数据目录的
-`plugins/` 发现，每个插件实例都在程序旁的 `lc-plugin-host` 进程中运行；`plugins create <插件包.lcpkg>` 安装插件包。
+`just pack-cli` 构建并打包轻量 Windows CLI，包含运行库、推理组件、`lc-plugin-host`、插件、本手册及代理技能；`just pack-cli-full` 另启用 QR/OCR 并携带 OpenCV 与模型。`just repack-cli` 按现有二进制 `system` 报告的实际功能打包。插件包从程序旁与用户数据目录的 `plugins/` 发现，每个插件实例都在程序旁的 `lc-plugin-host` 进程中运行；`plugin install <插件包.lcpkg>` 安装插件包。
+
+## 快速开始
+
+新调查先建案件，再登记检材，让后台构建的卷索引、搜索、时间线和分析结果保存在案件中：
+
+```powershell
+lovelycarve-cli case new "D:\cases\nas" --name "NAS 检验" --open
+lovelycarve-cli -C "D:\cases\nas" evidence add "D:\evidence\nas.E01" --as nas --wait
+lovelycarve-cli -C "D:\cases\nas" volumes
+lovelycarve-cli -C "D:\cases\nas" ls /nas/part:0/etc
+lovelycarve-cli -C "D:\cases\nas" text /nas/part:0/etc/os-release
+lovelycarve-cli -C "D:\cases\nas" hash /nas/part:0/etc/shadow --algo sha256
+lovelycarve-cli -C "D:\cases\nas" export /nas/part:0/home/alice -o "D:\output\alice"
+lovelycarve-cli -C "D:\cases\nas" case close
+```
+
+`--open` 启动案件后台进程，后面每条带 `-C` 的命令都在其中执行，不再重复打开 E01。`evidence add --wait` 等待卷索引建好并报告各卷状态。命令在案件目录内运行时可省略 `-C`。
+
+只读一个文件、不需要保存任何结果时，可以不建案件：
+
+```powershell
+lovelycarve-cli --image "D:\evidence\disk.E01" cat /disk/part:0/Windows/System32/config/SAM > SAM
+```
+
+`lovelycarve-cli` 不带参数时给出入门提示，`--help` 列出全部命令，`<命令> --help` 显示一条命令的参数、默认值与示例，`schema <命令>` 以 JSON 描述同样的内容。
+
+## 命令一览
+
+| 分组 | 命令 |
+| --- | --- |
+| 案件与检材 | `case`（`status` / `new` / `open` / `close` / `ls` / `lock` / `unlock` / `rm`）、`evidence`（`ls` / `add` / `show` / `close` / `rm` / `hash` / `export` / `bad-regions`）、`volumes`、`encryption`、`unlock`、`raid`（`detect` / `assemble`）、`vss`（`ls` / `open`） |
+| 浏览与读取 | `ls`、`tree`、`stat`、`cat`、`text`、`strings`、`hash`、`identify`、`streams`、`export`、`bodyfile` |
+| 查找与解析 | `find`、`grep`、`journal`、`inspect`、`sqlite`（`tables` / `rows` / `query` / `deleted`）、`ocr`、`qr` |
+| 分析 | `search`（`ls` / `hits` / `export` / `rm`）、`timeline`（`status` / `build` / `ls` / `stats` / `export`）、`carve`（`ls` / `formats` / `start` / `status` / `results` / `cat` / `pause` / `resume` / `export` / `rm`）、`plugin`、`analyze`、`results`（`ls` / `rows` / `show` / `run` / `import`） |
+| 任务与主机 | `tasks`（`ls` / `show` / `wait` / `cancel` / `restart` / `rm`）、`index`（`ls` / `build` / `rm`）、`mount`、`umount`、`tz`（`set`）、`system`、`disks` |
+| 程序 | `shell`、`batch`、`rpc`、`schema`、`completion` |
+
+分组命令单独给出时执行其默认子命令（`case` 即 `case status`，`evidence` 即 `evidence ls`）。全部命令的用法由命令树生成，见代理技能的 [`references/commands.md`](../skills/lovelycarve-cli/references/commands.md)。
+
+## 地址
+
+- `/` 列出检材；`/<别名>` 列出一份检材的分区与卷；`/<别名>/<卷>/<路径>` 指向卷内的文件或目录，例如 `/nas/part:0/etc/passwd`。
+- 卷这一段写根目录条目的 ID：分区 `part:0`、LVM 逻辑卷 `lvm:0:1`、尚不可读的分区（如锁定的 LUKS 容器）`unsupported:0`；目录与归档检材只有一个根条目，如 `/<别名>/folder:`、`/<别名>/tar:`。这一段也接受该条目的名称，但 ID 稳定、只含 ASCII，不受卷名中的空格、括号、`·` 或重名影响。卷入口名称只保留字母、数字、中文、`.`、`-`、`_`，其余分隔符合并为 `_`（`ext4 (md · host:0)` → `ext4_md_host_0`），转换后重名的卷须用 ID。
+- 卷以下的各级按实际文件名解析，支持 `.` 与 `..`。名称优先精确匹配；没有精确命中时，NTFS、FAT/exFAT、HFS+ 与不区分大小写的 APFS 卷接受唯一的忽略大小写匹配，多个候选报歧义；其他文件系统保持精确匹配。合成节点使用中文名，如 `分区0`、`$未分配簇`、`未使用空间1`，以列表为准。
+- `/<别名>/@<节点 ID>` 按结果返回的 `id` 指向节点，用于同名文件、已删除条目、命名流和未分配空间；`ls -l` 显示 ID。ID 精确指向该节点，不跟随符号链接。不要按名称拼接 ID。
+- 每个列出的条目都带有可直接使用的 `path`。路径解析不到时以 `notFound` 失败，并写明所在目录和找不到的名称。
+- 别名默认取文件名到第一个点为止的部分（`nps-2010-emails.E01` → `nps-2010-emails`），也可用 `evidence add --as` 指定；案件检材的别名保存在案件中，每个进程看到同一个地址。派生的检材（解锁的容器、组装的阵列、卷影副本）由命令起别名，或用 `--as` 指定。
+
+### 符号链接
+
+路径像 shell 一样跟随符号链接：路径中间的链接总是跟随；末尾的链接由读取、哈希、导出、文本和列目录等命令跟随，`stat` 描述链接本身并返回 `linkTarget`。经过链接的路径在 `stat` 结果的 `path` 中显示实际到达的位置。
+
+相对目标从链接所在目录解析；绝对目标从链接所在卷的根解析（分区、逻辑卷、APFS 卷、btrfs 子卷、容器或目录 / 归档检材的根），不从工作区根开始，`..` 也不越过该根。一条路径最多跟随 40 个链接。目标位于另一个卷（单独挂载的 `/usr`、`/var`，或根文件系统挂载自另一个 btrfs 子卷）、指向 Windows 盘符（`C:\…`）、卷适配器没有提供目标或成环时明确失败，不会猜测，也不会读取主机上的同名文件。目录导出保留目录树内的链接，不跟随。
+
+### Git Bash / MSYS2
+
+Git Bash 和 MSYS2 启动 Windows 程序时，会把以 `/` 开头的参数改写成主机路径，加引号也一样：`/nas/etc` 变成 `C:/Program Files/Git/nas/etc`；含 `:/` 的地址（如 `/ev/folder:/a.txt`）被当成路径列表，变成以 `;` 分隔的两个主机路径。CLI 识别出改写到 MSYS 安装目录（含 `usr/bin/msys-2.0.dll`）下的这两种形式时还原为原来的地址；无法还原的（例如改写到 `/c` 等挂载目录）报错说明原因。`grep` 的模式等其他以 `/` 开头的参数不会还原，需在这次调用前加 `MSYS2_ARG_CONV_EXCL='*'`（Git Bash 也可用 `MSYS_NO_PATHCONV=1`）：
+
+```sh
+MSYS2_ARG_CONV_EXCL='*' lovelycarve-cli -C 'D:/cases/nas' grep /etc/passwd /nas/part:0
+```
+
+## 案件与后台进程
+
+命令按以下顺序确定案件：`-C <目录>`、环境变量 `LOVELYCARVE_CASE`、当前目录或其上级中的案件（此时在标准错误提示使用了哪个案件）。`case new`、`case ls`、`case rm` 自己给出或不需要案件目录。
+
+| 命令 | 作用 |
+| --- | --- |
+| `case new <目录> [--name] [--number] [--description] [--examiner] [--open]` | 创建案件；`--open` 同时启动它的后台进程 |
+| `case open [目录]` / `case close [目录]` | 启动 / 停止案件后台进程 |
+| `case status` | 当前案件、后台进程、检材与别名、卷索引和运行中的任务 |
+| `case ls` | 本机登记的案件，`backend` 标出有后台进程的 |
+| `case lock` / `case unlock` | 锁定 / 解锁案件 |
+| `case rm <目录>` | 删除案件目录中由 LovelyCarve 创建的台账、检材数据与暂存区；先确认，后台进程运行时拒绝 |
+| `evidence add <检材路径>… [--as 别名] [--wait]` | 打开检材；有案件时登记进案件并在后台建立卷索引 |
+| `evidence ls` / `evidence show [别名]` | 检材与别名 / 一份检材的格式、大小、分区与采集元数据 |
+| `evidence close <别名>` | 在当前进程中关闭检材（不改动案件），同时关闭由它派生的检材 |
+| `evidence rm <别名>` | 从案件中移除检材及其卷索引、搜索与分析结果；先确认 |
+| `volumes [别名]` | 分区与卷：文件系统、加密状态与索引状态 |
+| `index ls` / `index build <卷>` / `index rm <卷>` | 卷索引的列表 / 构建（后台运行）/ 删除 |
+
+**后台进程。** `case open` 为案件启动一个后台 `lovelycarve-cli` 进程，它持有案件、检材句柄、读取缓存、解锁的卷、组装的阵列、雕刻扫描和挂载。之后指向该案件的命令（以及 `shell`、`batch`）都交给它执行，原始字节分块传回，进度和事件照常显示。同一个案件同一时间只由一个进程打开；后台进程运行时不要让桌面端打开同一案件。`case close` 等待仍在运行的工作，取消其余任务，释放检材后退出；关闭前已经失败、但还没有报告的后台任务在此时以 `tasksFailed` 报告。
+
+没有后台进程时，每条命令打开案件和检材、执行、等待自己启动的后台任务后退出。只在进程存活期间有意义的命令——`unlock`、`raid assemble`、`carve start`、`vss open`、`mount`——此时以 `needsBackend` 拒绝：先 `case open`，或在 `shell` / `batch` 中一并执行。
+
+后台进程意外结束（崩溃、被结束、主机重启）时，记录它的文件锁随之释放：下一条命令清理残留记录并以 `caseBackendExited` 失败一次，之后的命令各自运行，直到再次 `case open`。解锁、组装、扫描和挂载属于旧进程，需要重新建立。后台进程只监听本机回环地址，用私有随机凭据认证，`case status` 不显示凭据；连接记录与日志在用户数据目录的 `cli-backends/`（测试可用 `LOVELYCARVE_BACKEND_DIR` 隔离）。主机路径在输入命令处解析为绝对路径，再交给后台进程。
+
+**检材与卷索引。** 有案件时，`evidence add` 把检材登记进案件并在后台为各卷建立索引；`--wait` 等待索引与识别任务并报告各卷状态。`volumes` 与 `index ls` 的 `state` 为 `ready` 时索引覆盖该卷；`building` 尚未完成，`stale`、`truncated` 不代表卷的当前全部内容。缺失或过期的卷用 `index build /<别名>/<卷>` 构建，再 `tasks wait` 并核对。目录与归档检材整体是一个卷，索引显示在 `/<别名>`。没有案件时索引只在本进程内使用，退出即丢弃。
+
+案件中原始检材缺失时（`indexOnly: true`），仍可按索引浏览已索引的目录，读取字节的命令明确报错，不会自动启动快照、哈希或平台识别。锁定的案件以 `caseLocked` 拒绝改名、添加或移除检材、手动指定平台以及构建或删除卷索引。案件检材上任务的开始与结局写入案件审计（`task.started` / `task.settled`）。
+
+## 输出与退出码
+
+**标准输出**只放结果：
+
+- 默认是给人看的文本：列表为对齐的表格并在末尾提示如何继续翻页，单个对象为「字段 值」，`hash` 为 `SHA256 (<地址>) = <摘要>` 形式，可直接用于核对。
+- `--json` 输出一份 JSON：标准输出是终端时缩进显示，管道和重定向中为单行。结构字段统一为 camelCase；检材中的数据库列名、插件字段名等保持原样。列表结果中 `nextCursor`、`total`、`truncated` 写在 `items` 之前。
+- `--json=字段1,字段2` 只保留列表条目的这些字段，点路径保持嵌套（`timestamps.modified`），分页与时区字段保留；不适用于文件内容，写错格式在执行前失败。
+- `cat`、`carve cat` 输出原始字节，可直接重定向到文件；加 `--json` 时改为 `{"encoding":"hex","data":"…"}`，单次最多 16 MiB。
+- 没有返回值的命令标准输出为空，终端中在标准错误显示 `✓ 完成`。按 ID 查找且对象必须存在的命令（`tasks show`、`results show`、`results run`）找不到时以 `notFound` 失败。
+
+**标准错误**放进度、提示和错误：
+
+- 普通命令显示命令名、后端阶段、该阶段的完成量与耗时；终端中原地刷新，管道和日志中输出普通文本，长命令每 5 秒报告一次仍在执行。阶段来自真实后端观察，未知总量不显示百分比。支持 OSC 9;4 的终端（如 Windows Terminal）在标签页或任务栏显示进度，`LOVELYCARVE_NO_OSC_PROGRESS=1` 关闭。
+- `-q` / `--quiet` 或 `LOVELYCARVE_QUIET=1` 关闭进度、横幅等非必要输出；`--json` 同样关闭进度。错误与「结果不完整」警告不受影响。
+- `--events` 把生命周期与进度事件以 `{"event":"…","payload":…}` 行写到标准错误：`cli-command`（`command`、`commandId`、`phase`、`elapsedMs`、`stage`）、`cli-error`、`cli-warning`、任务事件，以及 `image-load-progress`、`raid-detect-progress` 等后端事件。启用后不显示人类进度行；`-q --events` 适合脚本。
+- 错误显示为带边框的块：命令行与本程序的错误为 `┌ 错误`，后端命令失败为 `┌ 后端错误`、`│ [错误代码] 说明` 与一行 `IPC <后端命令>`；设置 `DEBUG=1` 时附带详情。加 `--json` 时改为一行 `{"error":{"code":"…","message":"…","details":…,"operation":"…"}}`，不完整结果的警告为一行 `{"warning":{…}}`。
+- 只有输出是终端且不在 CI 中时才着色，`NO_COLOR` 关闭、`FORCE_COLOR` 强制。后端诊断默认过滤到 `error`，`RUST_LOG=lovelycarve_lib=debug` 等可放宽。
+
+**退出码**：`0` 成功且结果完整；`1` 失败（命令行错误、后端错误、找不到对象、未确认或拒绝的操作、后台任务失败）；`2` 命令完成但结果不完整；`130` 被 Ctrl+C / Ctrl+Break 中断，或在提问时按 Esc / Ctrl+C 取消。
+
+结果不完整时结果照常输出，随后在标准错误给出 `┌ 警告` 块（`--quiet` 不关闭），列出说明不完整的字段：
+
+| 命令 | 不完整的字段 |
+| --- | --- |
+| `hash`、`export` | `readFaultsDetected`、`syntheticBytes`（以零填充了读不出的源扇区）、`truncated`、`cancelled` |
+| `evidence hash`、`evidence export` | `readFaultsDetected`、`syntheticBytes` |
+| `grep` | `summary.readErrors`、`summary.truncated`（有文件读不出，或搜索本身达到上限） |
+| `find` | `unindexed`（范围内有卷没有索引） |
+| `sqlite query` | `shortenedCells`（长文本被缩短或无效 UTF-8 被替换） |
+| `carve export` | 失败文件、合成字节、报告写入失败 |
+
+`--limit` 等调用方给出的上限不算不完整。错误代码与桌面端共用，由错误类型决定：`notFound`、`invalidInput`、`alreadyExists`、`cancelled`、`corruptData`、`unsupportedFormat`、`resourceLimit`、`permissionDenied`、`sourceChanged`、`caseLocked`、`readFaultsDetected`、`internal` 等；CLI 另有 `usage`、`noImage`、`needsBackend`、`aborted`、`tasksFailed`、`indexUnavailable`、`caseBackendExited`、`caseBackendRunning` 等。
+
+## 参数
+
+- 位置参数是命令作用的对象（地址、检材路径、扫描 ID……），其余用 `--选项`。多个值用逗号写在一个选项里（`--algo md5,sha256`、`--types png,pdf`），或重复选项（`--member disk1 --member disk2`），以帮助中的写法为准。
+- 大小可带单位：`4096`、`64K`、`10M`、`2G`。时间（`timeline --from`）接受 Unix 秒、RFC 3339 或日期 `2024-06-01`。
+- 主机路径在输入命令的位置解析为绝对路径。`assembled://…`、`decrypted://…` 等派生检材引用保持原样。
+- **密码与密钥从不写在命令行上**：`--password @文件` 读取文件并去掉末尾换行，`--password -` 读取标准输入，单写 `--password` 时在终端中以 `•` 遮盖输入。在 `batch` 中只能用 `@文件`。密码不写入案件、任务描述或日志，`--dry-run` 显示为 `<redacted>`。
+- `--dry-run` 显示解析后的请求，不打开检材、不执行。
+- 删除或丢弃数据的命令（`case rm`、`evidence rm`、`index rm`、`search rm`、`carve rm`、`plugin rm`、`tasks rm`、`umount`）在终端中先确认；没有人可确认时必须加 `-y`，否则显示 `Aborted.` 并以 1 退出。
+- 写主机文件的命令（`-o`）要求目标不存在：已存在时以 `alreadyExists` 失败，不写入任何内容；重跑批量导出请使用新的目标。文件先在目标目录暂存，成功后才发布；失败的导出不留下半成品。
+
+## 浏览与读取
+
+| 命令 | 作用 |
+| --- | --- |
+| `ls [地址] [-l] [--limit N] [--cursor 游标] [--all] [--sort 键] [--desc] [--deleted \| --no-deleted] [--ext 扩展名]` | 列目录，每页默认 200 条（1–5000）；`nextCursor` 非空时用 `--cursor` 继续，`--all` 读取全部页；`-l` 同时显示节点 ID、inode 与全部时间；排序与过滤在后端执行，目录总在文件之前。`ls /` 列出检材，`ls /<别名>` 列出分区与卷；对文件 `ls` 显示该文件 |
+| `tree <地址> [--depth N] [--name 文本] [--limit N]` | 递归列出目录树：深度默认 2（上限 128），`--name` 忽略大小写包含匹配，最多检查 `--limit` 个条目（默认 10000）；`truncated` 为真表示遍历提前停止 |
+| `stat <地址> [--content]` | 属性：名称、类型、大小、inode、时间、删除状态、链接目标、节点 ID 与上级地址；`--content` 加上 MIME、魔数、熵与数据运行段 |
+| `cat <地址> [--offset N] [--length N] [--member 成员] [--stream 流名]` | 原始字节；`--member` 读取 ZIP 成员，`--stream` 读取命名数据流 |
+| `text <地址> [--encoding 标签] [--offset N] [--max-bytes N]` | 识别编码并解码为 UTF-8，每段最多 2 MiB 源字节；`nextOffset` 非空时用 `--offset` 继续，段末被截断的字符留给下一段，后续段沿用文件开头识别出的编码；`--encoding gbk` 等 WHATWG 标签跳过识别 |
+| `strings <地址> [--encoding ascii\|utf-8\|utf-16le\|utf-16be] [--min-length N] [--offset N] [--length N] [--limit N]` | 可打印字符串及其文件内偏移 |
+| `hash <地址>… [--algo md5,sha1,sha256,sm3]` | 文件哈希，默认 MD5、SHA-1、SHA-256 |
+| `identify <地址>` | 按内容识别类型（Magika），不看扩展名 |
+| `streams <地址>` | NTFS 命名数据流、HFS+ 资源分叉，以及 BeFS / GFS2 / OCFS2 的扩展属性 |
+| `export <地址>… -o <输出> [--zip] [--stream 流名]` | 导出文件，目录导出为目录树（`--zip` 为 ZIP）；多个地址导出到一个新目录，各自按名称放入 |
+| `bodyfile <卷或目录> -o <文件>` | 导出 mactime body 文件 |
+
+`hash` 采用容错并报告策略：读到坏扇区时仍返回摘要，结果中的 `readFaultsDetected`、`syntheticBytes`、`badRegions` 描述以零填充的源盘区间，并以 2 退出；该摘要不代表完整原文件，`truncated: false` 也不表示没有读故障。报告覆盖本次操作命中的源盘绝对区间；格式定义的稀疏零区不算读故障。`cat` 的字节流不能附带审计，因此遇到读故障时以 `readFaultsDetected` 失败（退出码 1），标准输出中可能已有部分数据，必须丢弃；需要保留容错数据与审计报告时用 `export`。
+
+浏览命令优先查询案件卷索引或本进程的临时索引，未被索引覆盖的目录回退到快照或实时读取。`ls`、`tree`、`stat` 按[文件时间与时区](#文件时间与时区)显示时间。
+
+**结构化文件。** `inspect <地址>` 解析 SQLite、Realm、ZIP、CSV、可执行文件（PE / ELF / Mach-O / ar）、GGUF 与 Vim 交换文件，`--as` 在类型不明确时指定解析器。SQLite 另有：
+
+- `sqlite tables <db>` 列出表、视图与索引的结构和行数；`sqlite rows <db> <表> [--order-by 列] [--desc] [--offset N] [--limit N]` 分页读取记录；`sqlite deleted <db>` 从空闲页、日志与 WAL 恢复已删除的记录。
+- `sqlite query <db> "<SQL>" [--param 值]… [--offset N] [--limit N]` 执行单条只读 `SELECT` 或 `WITH … SELECT`，`?1`、`?2`… 按顺序绑定 `--param`；禁止写操作、`ATTACH`、`PRAGMA` 和扩展加载。单页最多 100 行，有后续时用相同 SQL、参数和返回的 `nextOffset` 继续，应使用能唯一排序的 `ORDER BY`。`columns` 按 SELECT 顺序对应单元格，整数编码为十进制字符串以保留 64 位精度。
+- 同目录的 WAL 自动读取（`sidecars` 列出用到的文件）。SQLCipher 数据库用 `--passphrase @文件` 或 `--raw-key @文件`，必要时配合 `--cipher-compat`、`--cipher-page-size`、`--kdf-iter`。
+
+```powershell
+lovelycarve-cli -C "D:\cases\nas" sqlite query /nas/part:0/data/msgstore.db "SELECT chat_id, COUNT(*) FROM messages WHERE sent_at >= ?1 GROUP BY chat_id ORDER BY chat_id" --param 2026-08-01 --limit 25
+```
+
+`ocr <图片>` 识别文字，`qr <图片> [--expect N]` 识别二维码，需要完整构建。
+
+## 查找
+
+**按文件名查找。** `find <通配符>` 在卷索引中按完整文件名做忽略大小写的匹配：`*`、`?`、`[abc]`、`[a-z]`、`[^abc]`；`%`、`_` 是普通字符，`[[]` 匹配字面的 `[`；不展开花括号，`**` 不表示递归目录。`--under <地址>` 限定检材、卷或目录，`--type file|dir|symlink`、`--deleted` / `--no-deleted`、`--min-size` / `--max-size` 进一步筛选；条件在分页前生效。每个卷最多返回 `--limit` 条（默认 200），`truncated` 表示有卷达到上限，用 `--offset` 继续。范围内没有索引的卷列在 `unindexed` 中并使结果不完整；一个可查的索引都没有时以 `indexUnavailable` 失败。
+
+```powershell
+lovelycarve-cli -C "D:\cases\nas" find "auth*.log.*" --under /nas/part:0/var/log --type file
+```
+
+**按内容搜索。** `grep <模式> [地址]` 用全局搜索查找文件内容：省略地址时搜索全部检材，地址可以是检材、卷、目录或单个文件。需要案件和可读的原始检材，命中保存在案件中。默认区分大小写并包含已删除文件：`-i` 忽略大小写，`-E` 按正则匹配，`--no-deleted` 排除已删除文件，`--encoding UTF-8,GBK` 限定编码（默认全部支持的编码）。结果为 `items`（每条带 `path`、`offset`、`context` 和 `searchId`）、`total`、`truncated`、`summary` 与每份检材的 `searches`；`--limit`（默认 1000）只限制本次返回的条数。
+
+| 命令 | 作用 |
+| --- | --- |
+| `search ls [--evidence 别名]` | 案件中保存的搜索 |
+| `search hits <搜索ID> [--offset N] [--limit N] [--keyword 文本] [--distinct file\|sha256]` | 分页读取一次搜索的全部命中 |
+| `search export <搜索ID> -o <新 CSV>` | 把命中导出为 CSV |
+| `search rm <搜索ID>` | 删除一次搜索及其命中 |
+
+`journal <卷或卷中的文件> [--limit N] [--cursor 游标]` 分页读取 NTFS USN 日志或 ext4 jbd2 日志块。
 
 ## 文件时间与时区
 
-`files list`、`files get`、`files tree list` 默认使用 `auto` 显示策略。
-显式 `--timezone` 覆盖会话默认；`auto` 依次选择检材显示设置、案件显示设置、检材内的系统时区，最后回退 UTC。
-不会采用运行 CLI 的计算机时区。`--timezone evidence` 强制使用检材配置，无法识别或存在歧义时返回错误；
-`--timezone case` 强制使用案件设置，未设置时返回错误。
+`ls`、`tree`、`stat` 转换时间用于显示；文件字节、哈希、案件索引、插件结果与时间线保持原值。默认 `auto` 依次使用检材的显示设置、案件的显示设置、检材内的系统时区，最后回退 UTC；不会采用运行 CLI 的计算机时区。
+
+| 用法 | 作用 |
+| --- | --- |
+| `--tz <时区>` | 只对这条命令生效：`auto`、`evidence`（强制检材配置，无法识别或有歧义时报错）、`case`（强制案件设置，未设置时报错）、`UTC`、IANA 名称（按每个日期的历史偏移与夏令时）或固定偏移 `+05:45` / `-04:00`；无效时区在打开任何检材之前失败 |
+| `tz [地址]` | 有效时区、来源、配置路径、候选与告警 |
+| `tz set <时区>` / `tz set <时区> /<别名>` | 保存在案件中：前者对整个案件，后者只对该检材；`auto` 清除对应设置 |
+
+自动识别只探测同一检材内的 Linux / NAS 文件系统根，以及 Btrfs 下一层至多 32 个目录 / 子卷，不递归扫描用户数据。优先读取 `/etc/localtime`：链接中的 `zoneinfo/<IANA 名称>` 直接识别，并优先使用检材 `/usr/share/zoneinfo/` 内的原始 TZif 规则；复制的 TZif 文件按内容解析，标识为 `TZif:sha256:…`。其次检查 `/etc/timezone`、`/etc/sysconfig/clock` 的 `ZONE` / `TIMEZONE`、`/etc/TZ`、OpenWrt `/etc/config/system` 的 `zonename`。文本配置上限 4 KiB、TZif 上限 1 MiB；只在检材内解析路径，`/etc`、`/usr` 等可为检材内的相对、绝对或链式符号链接，每次查找最多 40 次跳转。越过系统根的 `..`、主机盘符 / UNC 路径、断链和循环链接报告为读取限制，不会读取主机上的同名配置。配置冲突或多个系统时区不一致时不随意选第一个；回退的 UTC 只表示显示回退，不表示检材原来使用 UTC。
+
+节点的 `timestamps` 是显示结果；转换后与原值不同时附带 `timestampsOriginal`。`stat` 的 `timestampDisplay.timeZone` 记录所选时区、来源与告警；列表把同一时区合并到顶层 `timestampDisplay.timeZones`，混合时区时条目的 `timestampTimeZone` 是该数组的索引。FAT/exFAT 等没有已知偏移的本地时间和 `-00:00` 保持原值，列入 `timestampDisplay.unconvertedFields`（列表条目为 `timestampUnconvertedFields`），不会补成 UTC。
+
+## 加密卷
+
+| 命令 | 作用 |
+| --- | --- |
+| `encryption <地址>` | 加密类型与状态：BitLocker 元数据（算法、卷 GUID、FILETIME、描述、保护器类型，不含密钥）、FileVault 逻辑卷目录、LUKS 状态 |
+| `unlock <地址> [凭据] [--scheme bitlocker\|luks\|veracrypt\|filevault\|ios]` | 解锁；类型按分区识别，VeraCrypt（没有签名）须指定 |
+| `evidence export /<别名>/part:N -o <新文件>` | 导出解锁后的 BitLocker 卷 |
+| `evidence export <别名> -o <新文件> --unlocked` | 整盘导出，已解锁的分区写成明文，其余字节保持源数据 |
+
+解锁只在进程存活期间有效，需在后台进程、`shell` 或 `batch` 中进行；解锁的卷和凭据不保存为案件检材，后台进程重启后需重新解锁。`tasks cancel <任务ID>` 可取消解锁，KDF 执行中可能延迟响应。
+
+- **BitLocker**：只给一种凭据 `--password`、`--recovery-password`、`--startup-key <.BEK>`、`--fvek`（Elephant Diffuser 另给 `--tweak`）或 `--vmk`；都不给时尝试卷内明文密钥。`--vmk-from <内存镜像>` 在内存中搜索 VMK 并逐个尝试，卷没有恢复密码保护器时也可解锁。原始 FVEK 没有认证，须核验解密结果；TPM / SID 保护器不支持。明文接在原分区上，之后照常浏览。能力与限制见 [BitLocker](formats/BITLOCKER.md)。
+- **LUKS**：LUKS1 / LUKS2 用 `--password`，或已恢复的卷主密钥 `--master-key`（按头部摘要核验）。整份镜像的 LUKS 容器显示为 `unsupported:0`。见 [LUKS](formats/LUKS.md)。
+- **VeraCrypt**：`--scheme veracrypt`，按需给 `--pim`（0–1000）与 `--hidden`。不支持密钥文件、系统加密和备份头恢复。
+- **FileVault 2**：先用 `encryption` 列出逻辑卷，再用 `--logical-volume <index>` 解锁；`--password` 也接受个人恢复密码，也可给 `--master-key`；`--plist` 指向本地 EncryptedRoot.plist(.wipekey)，`encryption` 与 `unlock` 应给同一个。多个逻辑卷须各自用 `--new-image`。APFS 原生加密不能由此解锁。见 [FileVault](formats/FILEVAULT.md)。
+- **iOS 备份**：`unlock /<别名> --password @文件`（`--scheme ios`）。见 [iOS 备份](IOS_BACKUPS.md#cli)。
+
+LUKS、VeraCrypt 与 FileVault 默认把明文接在源检材上：结果的 `path` 指向可读的卷（如 `/lk/part:0`），源检材 ID 不变，案件随后为它补建索引。`--new-image [--as 别名]` 改为注册一份独立的解密检材（`decrypted://…`），关闭源检材时一并关闭；`--offset` / `--length`（相对源检材的字节）选择非分区区域，总是生成独立检材。明文接在源检材上时，`evidence hash` 和普通 `evidence export` 仍读取源密文，`--unlocked` 才按导出开始时的解锁状态把明文写进原分区位置（较短明文之后补零，分区表、其他区域及整盘大小保留）。不支持的布局（分离头部、LUKS2 完整性 / 重加密 / 多数据段）和超过 KDF 资源预算时明确报错。
 
 ```powershell
-lovelycarve-cli --image "D:\evidence\nas.E01" timezones get
-lovelycarve-cli --image "D:\evidence\nas.E01" --timezone Asia/Shanghai files get "/<卷名称>/report.txt"
-lovelycarve-cli --image "D:\evidence\nas.E01" --timezone=-04:00 files list --path "/<卷名称>"
-lovelycarve-cli --case "D:\cases\nas" timezones set Asia/Shanghai --scope case
-lovelycarve-cli --case "D:\cases\nas" --image "D:\evidence\nas.E01" timezones set Asia/Taipei --scope image
-lovelycarve-cli --session nas timezones set evidence
-lovelycarve-cli --session nas --timezone UTC files get "/<卷名称>/report.txt"
+lovelycarve-cli case open "D:\cases\laptop"
+lovelycarve-cli -C "D:\cases\laptop" encryption /laptop/part:2
+lovelycarve-cli -C "D:\cases\laptop" unlock /laptop/part:2 --recovery-password "@D:\keys\recovery.txt"
+lovelycarve-cli -C "D:\cases\laptop" ls /laptop/part:2
+lovelycarve-cli -C "D:\cases\laptop" evidence export /laptop/part:2 -o "D:\output\volume.raw"
 ```
 
-`--scope session`（默认）只在当前 shell、JSONL 或常驻会话中保存；普通命令退出即失效。
-`--scope case` / `image` 写入当前案件，在下次进程打开同一案件后继续生效；检材设置按规范化源路径关联，
-不会因为临时运行时 UUID 变化失效。`timezones set auto --scope case|image` 清除对应层的覆盖。
-显式时区支持 IANA 名称（例如 `Asia/Shanghai`、`America/New_York`）、`UTC`、`+05:45`、`-04:00`。
-IANA 时区根据每个时间戳的日期应用历史偏移和夏令时；固定偏移始终保持给定值。
+## RAID、LVM 与卷影副本
 
-自动识别只探测同一检材内的 Linux/NAS 文件系统根，以及 Btrfs 下一层的至多 32 个目录/子卷，
-不递归扫描用户数据。优先读取 `/etc/localtime`：链接中的 `zoneinfo/<IANA 名称>` 可直接识别，
-并优先使用检材 `/usr/share/zoneinfo/` 内的原始 TZif 规则；复制的 TZif 文件按内容解析，
-用 `TZif:sha256:…` 标识，无法仅凭内容断言其 IANA 名称。其次检查 `/etc/timezone`、
-`/etc/sysconfig/clock` 的 `ZONE`/`TIMEZONE`、`/etc/TZ`、OpenWrt `/etc/config/system` 的 `zonename`。
-文本配置上限 4 KiB、TZif 上限 1 MiB；只在检材内解析路径，不让主机系统跟随检材链接。
-`/etc`、`/usr` 等中间目录可为检材内的相对、绝对或链式符号链接，绝对目标锚定当前系统根；
-每次查找最多 40 次链接跳转、256 个路径分量。越过该根的 `..`、主机盘符 / UNC 路径、
-断链和循环链接明确报告读取限制；不会回退读取检验主机的同名配置。
-没有原始 TZif 时，IANA 名称使用程序内置规则；无法识别的 POSIX/vendor 字符串会报告为未知，需手工指定。
-`localtime` 是有效配置时优先于其他文本配置；其他文本配置冲突或多个系统时区不一致时不随意选第一个。
-节点所在卷有唯一时区时使用该卷时区；否则只继承同一检材中唯一的系统时区。
-缺配置、冲突、读取失败或离线索引无法读源时，`auto` 输出 UTC 和原因；
-这表示显示回退，不表示检材系统原来使用 UTC。可用 `timezones get` 检查候选、配置路径、来源与告警。
+完整的单 PV LVM 卷可直接在源检材的分区下浏览（`/<别名>/lvm:…`），不必组装。跨盘阵列先把各成员盘登记进同一案件，再在后台进程中运行 `raid detect`：读取 LVM、md 与固件 RAID 元数据，组装完整的阵列，并把每个组装出的阵列或逻辑卷注册为带别名的检材（结果的 `assembled[].path`）；再次运行复用已组装的结果。不完整或不支持的卷不会组装，原因见 `diagnostics`。无元数据的等大成员盘按 RAID0 / 5 推定。
 
-节点的 `timestamps` 是显示结果；仅在转换后的对象与原始对象不同的情况下附带 `timestampsOriginal`，保留后端原始字符串。
-`files get` 的 `timestampDisplay.timeZone` 记录所选时区、来源、配置路径及告警。
-`files list` / `files tree list` 把相同的时区及来源合并到响应顶层 `timestampDisplay.timeZones` 数组；
-单一时区适用于全部条目，混合时区时节点的 `timestampTimeZone` 是该数组的零基索引。
-FAT/exFAT 等没有已知偏移的本地时间，以及 `-00:00`（偏移未知），保持原值并列入
-`files get` 的 `timestampDisplay.unconvertedFields`（列表节点为 `timestampUnconvertedFields`，空时省略），不会补成 UTC 或强行换算。角色（modified/accessed/created/mftChanged/birth）
-和小数位数保持不变。仅上述三个文件浏览命令转换时间，文件字节、哈希、案件索引、插件原始结果与时间线不变。
+- 克隆主机可能有相同的 VG/PV UUID：`raid detect --member <别名>`（可重复）只检测这些源检材，可在同一进程内分别组装各主机；组装出的检材和卷影副本不能作为成员。
+- 成员缺失或过期的 md 阵列等待确认：`raid detect --degraded <setUuid>` 降级组装该阵列。
+- `raid assemble --members a,b,c --level 5 [--layout] [--chunk-sectors] [--data-offset-sectors] [--missing 列] [--as 别名]` 按给定几何手动组装，缺失的列写 `-`。
+- `assembled://` 引用只在组装它的进程中有效；后台进程结束后需重新检测。
 
-shell 中可逐条写 `--timezone`，也可 `timezones set` 修改会话默认。
-JSONL 使用请求顶层的可选 `timezone`（不是 `args` 的成员），只覆盖当前请求，并行查询互不影响：
+LVM 卷中的文件节点 ID 形如 `btrfs:lvm:<分区>:<卷索引>:<子卷>:<inode>`，由目录枚举给出，不能从卷名推测；复制返回的地址或 ID。`vss ls /<别名>` 列出 NTFS 卷影副本，`vss open /<别名>/part:N <序号> [--as 别名]` 把一个副本打开为只读检材（见 [卷影副本](formats/VSS.md)）。
 
-```json
-{"id":"local","command":"files get","args":{"path":"/<卷名称>/report.txt"},"timezone":"Asia/Shanghai"}
-{"id":"utc","command":"files get","args":{"path":"/<卷名称>/report.txt"},"timezone":"UTC"}
-```
+## 文件恢复
 
-`sessions open ... --timezone Asia/Shanghai` 设置后台会话默认；普通 `--session` 请求或
-`sessions attach ... --timezone UTC` 的覆盖只作用于该请求或连接，不改后台默认。
+文件系统记录恢复与签名雕刻是同一次扫描的两个阶段，由 `carve start` 在后台运行，需在后台进程、`shell` 或 `batch` 中进行；扫描记录只在进程内存中，应在同一进程中扫描、读取和导出。
 
-## BCP 数据
+| 命令 | 作用 |
+| --- | --- |
+| `carve start [别名] [--fs fat,ntfs,exfat] [--existing] [--types png,pdf] [--no-signatures] [--scope whole\|unallocated\|partition\|range]` | 开始扫描；`--fs` 启用对应文件系统的记录恢复（默认只做签名雕刻），`--existing` 同时列出已知分区的现存文件；`--partition`、`--start-sector`、`--sectors` 选择范围；`--max-file-size`、`--max-results` 限制雕刻结果 |
+| `carve status <扫描ID>` | 阶段、进度与摘要；`filesystem` 给出卷 / 目录 / 文件数、截断、读取故障与阶段错误 |
+| `carve results <扫描ID> [--format] [--category] [--min-confidence] [--cursor] [--limit]` | 雕刻出的文件 |
+| `carve results <扫描ID> --fs` | 文件系统恢复出的记录：目录在 `directories`，文件在 `candidates`；该阶段结束前为空 |
+| `carve cat <扫描ID> <结果ID>` | 一个雕刻结果的内容 |
+| `carve pause` / `carve resume` | 暂停 / 继续；暂停的扫描须先继续或取消，`tasks wait` 才会返回 |
+| `carve export <扫描ID> -o <新目录> [--artifacts ID,…] [--no-artifacts] [--files 编号,…]` | 导出：默认全部雕刻结果，`--files` 加入可读的文件系统候选 |
+| `carve ls` / `carve formats` / `carve rm <扫描ID>` | 扫描列表 / 可雕刻的格式 / 删除已结束的扫描 |
 
-`analysis imports create` 将 BCP 包发布到活动案件的标准分析结果库。`--image` 接受 ZIP、已解包 BCP 目录，或包含单个 BCP ZIP 的外层目录。ZIP 的根目录须有 `GAB_ZIP_INDEX.xml`。导入按索引顺序合并同表分片，无需事先解包或构建卷索引。
+导出的文件系统记录按 `v<卷号>-<卷标>/原目录/文件名` 保持目录结构，每个文件的状态、来源、`relative_output` 与 SHA-256 写在 JSONL 报告中。NTFS 重建卷的 `reconstruction` 给出 MFT 位置与推导的几何；回收站还原项带 `sourceNode` / `sourcePath`。`--files` 只接受本次扫描中可读的候选编号，不接受任意数据映射。能力与限制见[文件恢复](USAGE.md#文件恢复)。
 
 ```powershell
-lovelycarve-cli --case "<案件目录>" --image "<BCP ZIP 或目录路径>" analysis imports create
-lovelycarve-cli --case "<案件目录>" analysis tree get
-lovelycarve-cli --case "<案件目录>" --image "<BCP ZIP 或目录路径>" analysis records list --run-id "<运行 ID>" --record-type bcp.group_messages
+lovelycarve-cli -C "D:\cases\usb" carve start usb --fs fat,exfat --no-signatures
+lovelycarve-cli -C "D:\cases\usb" tasks wait
+lovelycarve-cli -C "D:\cases\usb" carve results "<扫描ID>" --fs
+lovelycarve-cli -C "D:\cases\usb" carve export "<扫描ID>" -o "D:\output\recovered" --no-artifacts --files 0,3
 ```
 
-导入返回 `runId`。在结果树「BCP 取证结果」下查看实际的 `artifactType` 与记录数。已发布的结果支持普通分析命令的分页、关键词检索、排序、单条详情和运行审计。记录的 `sources` 保留分片及源内位置。重复导入复用上一次发布的运行。使用 `--replace` 重新读取源件，完整发布后替换旧结果。
+## 插件与分析结果
 
-结果树的 BCP 记录类型可包含 `bcpGroups`，列出原始应用编码、账号、总数和已删除数。通过导出元数据识别的具体应用编码可在 `identifiedApplication` 中查看。用常规 `analysis records list` 查询整类记录，或传入 `--bcp-scope` JSON 按原始编码和账号查询分组，例如 `{"applications":["1030036"],"account":"<账号>"}`。省略 `account` 时会查询所选应用下的所有账号；空字符串匹配无账号的记录。
+| 命令 | 作用 |
+| --- | --- |
+| `plugin ls` / `plugin install <插件包>` / `plugin rm <插件ID>` | 插件包 |
+| `analyze ls [--evidence 别名]` | 分析器（作用域、平台与选项）及检材上识别出的系统（ID 如 `linux@part:2`） |
+| `analyze run <分析器> [--system 系统ID] [--file 地址] [--option 键=值]… [--options-json JSON]` | 创建插件任务：系统级给 `--system`，文件级给 `--file`，检材级都不给；选项值是 JSON 时保持类型，省略的取默认值 |
+| `results ls` | 结果树：检材 → 分类 → 分析器运行 → 记录类型，带 `runId` |
+| `results rows <运行ID> <记录类型> [--keyword] [--sort 列] [--desc] [--offset] [--limit] [--legacy]` | 分页读取记录；同一次分页固定 runId，新任务完成不会切换 |
+| `results show <记录ID>` / `results run <运行ID>` | 单条记录 / 一次运行的输入、选项、画像事实、告警与补零的源字节 |
+| `results import [别名] [--replace]` | 把 BCP 数据包发布为分析结果 |
 
-## 命令结构
+同一分析器、检材与目标最多一个未结束的任务，重复创建返回已有任务。插件任务不能暂停：`tasks cancel plugin:<n>` 结束执行，`tasks restart plugin:<n>` 从头再跑，成功后新结果替换旧结果；`tasks rm plugin:<n>` 删除任务及其发布的结果。旧版本插件写下的结果在树中带 `legacy: true`，读取时加 `--legacy`。
+
+```powershell
+lovelycarve-cli -C "D:\cases\nas" analyze run org.lovelycarve.linuxinfo/linuxbaseinfo --system linux@part:2 --option 'items=["users","logins"]'
+lovelycarve-cli -C "D:\cases\nas" tasks wait
+lovelycarve-cli -C "D:\cases\nas" results rows "<运行ID>" linux.user --sort uid --desc
+```
+
+**BCP 数据包。** 把 BCP ZIP、已解包的 BCP 目录或只含一个 BCP ZIP 的外层目录作为检材登记进案件，再 `results import`：ZIP 根目录须有 `GAB_ZIP_INDEX.xml`，按索引顺序合并同表分片，无需解包或构建卷索引。在结果树「BCP 取证结果」下查看 `artifactType` 与记录数；记录的 `sources` 保留分片及源内位置。记录类型的 `bcpGroups` 列出原始应用编码、账号、总数和已删除数，`identifiedApplication` 为通过导出元数据识别的应用；`results rows --bcp-app <编码> --bcp-account <账号>` 按分组查询（空字符串匹配无账号的记录）。重复导入复用上一次发布的运行，`--replace` 重新读取源件并替换。
+
+## 时间线
+
+| 命令 | 作用 |
+| --- | --- |
+| `timeline build [--evidence 别名]` | 构建或重建时间线（需要案件）；不运行分析器，需要其记录的先运行对应分析器 |
+| `timeline status` | 构建状态、时间范围与事件类型 |
+| `timeline ls [--from] [--to] [--app 应用]… [--type 编号]… [--text 文本] [--deleted] [--offset] [--limit] [--desc]` | 分页列出事件 |
+| `timeline stats [同上的过滤] [--by year\|month\|day\|hour\|minute\|second] [--utc-offset 小时]` | 按时间桶计数；`--utc-offset` 是统计用的固定偏移，与显示时区 `--tz` 无关 |
+| `timeline export [同上的过滤] -o <新 CSV>` | 导出事件 |
+
+没有已知偏移的时间不会投影为确定时刻；缺少事件不能证明没有发生活动。
+
+## 后台任务
+
+后台任务是命令返回后仍在运行的任务（`carve start`、`index build`、插件任务），以及检材登记到案件后自动开始的卷索引、平台识别与插件任务。
+
+- 一次性命令输出结果后等待本进程的后台任务，任一失败或结束时没有报告结果时显示 `tasksFailed` 并以 1 退出；取消不算失败。无案件检材的临时索引只是缓存，退出时直接取消。
+- `tasks ls [--evidence 别名]` 与桌面任务中心列出同一份任务：插件任务（ID 为 `plugin:<n>`）与内置任务（种类、对象、阶段、进度、计数与结局）。没有后台进程时，一个进程只看得到自己的内置任务。
+- `tasks show <ID>` 查看一条，找不到时以 `notFound` 失败；`tasks cancel <ID>` 取消运行中的任务，内置任务在下一个检查点停下，找不到或已结束的任务报错。
+- `tasks wait` 在没有活动任务时返回 `{"tasks":[…]}`：上次报告以来结束的后台任务及其 `status`；任一失败时以 `tasksFailed` 失败，取消的任务列出但不算失败。扫描、搜索和分析的结果用各自的命令读取。
+
+## 交互 shell
 
 ```text
-lovelycarve-cli [全局选项] <集合> [<子集合>…] <动词> [<主体>] [选项]
+lovelycarve-cli -C D:\cases\nas shell
+lovelycarve:/> cd /nas/part:0/home
+lovelycarve:/nas/part:0/home> ls
+lovelycarve:/nas/part:0/home> tree alice --depth 3 --name report
+lovelycarve:/nas/part:0/home> stat alice/report.txt
+lovelycarve:/nas/part:0/home> export alice/report.txt -o "D:\output\report.txt"
+lovelycarve:/nas/part:0/home> exit
+```
+
+`shell` 在一个进程中逐行执行命令，语法与命令行相同（省略程序名），案件、检材、解锁与扫描在命令之间保持；案件有后台进程时每行交给它执行。`cd <地址>` 切换目录（也接受 `/<别名>/@<ID>`），`pwd` 显示当前目录，`help` 显示帮助，`exit` 退出；相对地址从当前目录开始，`ls`、`grep` 省略地址时、`find` 省略 `--under` 时作用于当前目录。引号只负责分组，Windows 反斜杠保持原样，不做变量展开或管道。`-C`、`--image` 只能在启动 shell 时给出。
+
+标准输入不是终端时，`shell` 执行传入的脚本：忽略空行和 `#` 注释，不显示提示符，遇到第一个失败的命令即停止并以 1 退出；有不完整结果时以 2 退出。脚本中的密码须用 `@文件`。
+
+## 批量请求
+
+`batch` 从标准输入逐行读取请求，每行写一行响应。请求就是命令行本身：
+
+```jsonl
+{"id":"add","argv":["evidence","add","D:/evidence/disk.img","--as","disk"]}
+{"id":"roots","argv":["ls","/disk"]}
+{"id":"scan","argv":["carve","start","disk","--types","png,pdf"]}
+{"id":"done","argv":["tasks","wait"]}
+{"id":"status","argv":["carve","status",{"$ref":"scan#/scanId"}]}
+{"id":"recover","argv":["carve","export",{"$ref":"scan#/scanId"},"-o","D:/output/carved"]}
 ```
 
 ```powershell
-lovelycarve-cli images open "D:\evidence\disk.E01"
-lovelycarve-cli --image "D:\evidence\disk.E01" files tree list --path / --depth 2
-lovelycarve-cli --image "D:\evidence\disk.E01" files read "/<卷名称>/Windows/System32/config/SAM" > SAM
-lovelycarve-cli --image "D:\evidence\disk.E01" files hash "/<卷名称>/Users/alice/report.docx"
-lovelycarve-cli --case "D:\cases\demo" cases get
+Get-Content .\workflow.jsonl | lovelycarve-cli -C "D:\cases\demo" batch --jobs 4
 ```
 
-集合是复数名词，最后一个词是动词。动词表固定：`get` 查看单个对象（不用 info/status/show），
-`list` 列出（不用 ls/page/query）与 `count` 计数（两者都不带位置参数），`create`、`update`（整体替换）、
-`edit`（部分修改）、`delete`（不用 remove/drop），以及领域动作 `open`、`close`、`read`、`export`、`hash`、
-`identify`、`search`、`scan`、`detect`、`lookup`、`unlock`、`lock`、`assemble`、`build`、`audit`、`start`、
-`pause`、`resume`、`restart`、`cancel`、`wait`、`release`、`share`、`unshare`、`reveal`、`set`、`use`（如选择检材的
-`context use`）、`attach` 与 `serve`。动词表定义在 `src-tauri/build/cli_catalog/resolve.rs`。
-位置参数是动词作用的对象（检材路径、镜像内路径、分区序号、扫描 ID……），其余参数用 `--选项`。
+- 每行一个对象：`id`（非空且唯一）、`argv`（命令行各词，与终端中输入的相同）和可选的 `output`（把结果写入新的主机文件，响应为 `{"output":"<路径>"}`）。旧格式的 `command` / `args` 请求以 `usage` 错误提示改写为 `argv`。
+- 响应为 `{"id":…,"result":…}` 或 `{"id":…,"error":{"code","message","details"}}`；结果不完整时在 `result` 后附 `"warning"`。能解析出字符串 ID 的无效请求保留该 ID，无法解析的行使用 `"id":null`。
+- `argv` 中的 `{"$ref":"<id>#/<JSON 指针>"}` 取先前成功结果中的值；引用尚在执行的请求时先等待它完成，失败、未知 ID 和不存在的指针明确报错。
+- 请求中可用 `--json=字段`、`--tz`、`-y`、`--dry-run`；`-C`、`--image`、`-q`、`--events` 属于 `batch` 进程本身，写在 `batch` 之前。删除类命令需要 `-y`，否则返回 `aborted`；密码只能用 `@文件`。
+- 原始字节返回 `{"encoding":"hex","data":"…"}`，单次最多 16 MiB，用 `--offset` / `--length` 分段，或用 `output` 写入文件。
+- `--jobs N`（简写 `-j`，1–64，默认 1）允许只读查询重叠执行；其余命令是屏障，先等此前的请求完成。并发时响应按完成顺序输出，按 `id` 关联。
+- 案件有后台进程时，每个请求交给它执行；否则 `batch` 进程自己持有案件和检材，解锁与扫描在输入结束前一直有效。
+- 标准输入保持打开时也持续返回已完成的结果；输入结束后等待已派发的请求和后台任务再退出。单条失败不影响后续请求，但以 1 退出；没有失败而有不完整结果时以 2 退出。单行上限 16 MiB，一次最多 10000 个请求。
 
-| 集合 | 内容 |
-| --- | --- |
-| `images` | 检材：打开、查看、关闭、RAW 导出、哈希、坏区域审计、平台与操作系统识别、案件中的哈希／类型／标签 |
-| `files` | 检材内的文件：按路径浏览、读取、搜索、哈希、识别、导出，以及 SQLite、Realm、ZIP、CSV、可执行文件、日志等结构解析 |
-| `cases` | 案件：创建、打开、关闭、锁定、设置与案件检材 |
-| `indexes` | 卷索引：构建、列出、删除与元数据查询 |
-| `searches` | 全局搜索：运行、历史、命中分页与导出 |
-| `timeline` | 时间线：构建、事件、计数与导出 |
-| `carve` | 文件恢复：文件系统记录恢复与签名雕刻 |
-| `bitlocker`、`encrypted-volumes`、`filevault`、`ios-backups`、`shadow-copies` | 加密卷、iOS 备份与卷影副本 |
-| `mounts` | 只读挂载与 SMB 共享（Windows） |
-| `plugins`、`analysis` | 插件、插件任务、分析结果与 BCP 导入 |
-| `raid`、`disks` | RAID 组装与主机物理磁盘 |
-| `tasks` | 任务中心：插件任务与内置任务的列出、查看、取消，以及等待后台任务结束 |
-| `sessions` | 命名常驻会话：启动、连接、查看、列出与关闭，供多个普通 CLI 进程复用已打开的检材 |
-| `timezones` | 文件时间显示时区：检查来源、自动识别 Linux/NAS 配置与保存案件、检材或会话设置 |
-| `system`、`context` | 本程序与主机、会话上下文 |
-| `schema`、`complete`、`session`、`shell` | 根命令：请求结构、shell 补全、JSONL 会话、交互 shell |
+## rpc 与 schema
 
-桌面端注册的每个后端命令都恰好对应一个 CLI 命令（或在 `src-tauri/src/cli/commands.toml`
-中注明被哪条命令覆盖）。新增后端命令未写入该文件、动词不在动词表里或参数名冲突时构建失败，
-CLI 不会静默漏接功能。
-
-### 全局选项与上下文
-
-| 选项 | 作用 |
-| --- | --- |
-| `-i, --image <ID\|路径>` | 命令作用的检材：已加载检材的 ID，或检材路径（第一次用到时打开） |
-| `--case <目录>` | 运行前打开的案件 |
-| `--session <名称>` | 将普通命令交给已有的命名常驻会话；也可设置环境变量 `LOVELYCARVE_SESSION` |
-| `--events` | 普通命令、shell 与 JSONL 会话的生命周期及后端进度以 JSONL 写入 stderr |
-| `-q, --quiet` | 不输出横幅、进度等非必要信息 |
-| `-h, --help` / `-v, --version` | 帮助与版本 |
-
-省略 `--image` 时依次取环境变量 `LOVELYCARVE_IMAGE`、当前目录 `.env.local` 与 `.env` 中的同名变量
-（`.env.local` 优先）和会话当前检材；`--case` 同理取 `LOVELYCARVE_CASE`。进程环境优先于这两个文件，
-文件只读取这两个变量，也不会传给插件等子进程。检材取自环境变量或文件时，第一次用到它时在标准错误
-提示 `使用检材：<值>（来自 .env.local 中的 LOVELYCARVE_IMAGE）`，`--quiet` 关闭该提示；设置 `DEBUG=1`
-时还会提示 `使用案件：<目录>（来自 --case）`。命令需要检材却没有指定时，错误逐条列出可用的指定方式。
-有案件时，`images open` 把检材登记进案件并在后台建立卷索引；没有案件时索引只在本进程内使用，
-退出即丢弃。
-
-### 不完整 RAW
-
-默认打开会检查可观察到的 RAW 编号缺口。需要读取不完整镜像时显式使用：
+`rpc <后端命令> --body <JSON>` 按名称调用任意后端命令，参数名与桌面端 IPC 相同（camelCase），`--body` 可写 `@文件`；`imageId` 也可以写检材别名。`rpc --list` 列出全部后端命令及参数。它用于没有专门命令的功能，例如目录大小树、iOS 备份审计、插件相对路径定位或手动指定平台：
 
 ```powershell
-lovelycarve-cli images open "D:\evidence\disk.001" --raw-read-mode force
+lovelycarve-cli -C "D:\cases\nas" rpc fs_size_tree --body '{"imageId":"nas","nodeId":"part:0"}'
+lovelycarve-cli -C "D:\cases\nas" rpc case_evidence_platform_set --body '{"imageId":"nas","platform":"linux"}'
 ```
 
-强行模式只拼接从所选文件开始的连续前缀，遇到缺片即停止；也支持 `disk.dd` 接
-`disk.001` 或 `disk.002`。跨容量读取截短，完全越界读取返回有坏区审计的零字节，
-运行中短读保留已读部分。`rawReadMode` 返回 `force`；默认值为 `strict`。
-模式只在当前进程的已打开检材上生效；用 `shell` 或 JSONL `session` 继续浏览、哈希与导出，
-JSONL 参数为 `rawReadMode: "force"`。关闭后需再次指定，不能与 QCOW 凭据一起使用。
-已加载为另一模式时先 `images close` 再打开。源变化和最终短读仍会使哈希、导出失败；
-导出的可用前缀不表示原始镜像完整。详细边界见 [SMRAW](formats/SMRAW.md#不完整-raw-的强行读取)。
-
-## 发现命令
+`schema` 列出全部命令，`schema <命令…>` 输出一条命令的参数、选项、默认值、可选值、输出类型（`json` / `bytes`）、是否可并发、是否需要确认、不完整字段和对应的批量请求写法。`completion <bash|zsh|fish|powershell>` 输出补全脚本，候选来自同一棵命令树：
 
 ```powershell
-lovelycarve-cli                                  # 入门提示
-lovelycarve-cli --help                           # 全部集合
-lovelycarve-cli files --help                     # 一个集合的命令
-lovelycarve-cli files read --help                # 一条命令的参数、选项与示例
-lovelycarve-cli schema files hash                # 后端请求结构
-lovelycarve-cli complete powershell >> $PROFILE
+lovelycarve-cli completion powershell >> $PROFILE
 ```
 
-帮助采用 yargs 的版式：先是用法行与说明，再依次是「命令」（集合帮助）或「位置参数」「全局选项」「选项」
-「示例」表格。说明按终端宽度换行，标准输出不是终端时按 80 列；每行右侧标注 `[字符串]`、`[必填]`、
-`[可选值: …]`、`[默认: …]` 等。集合帮助列出完整的命令行（如 `lovelycarve-cli images open <path>`），
-命令帮助末尾提示对应的 `schema` 命令。只输入集合名（如 `lovelycarve-cli images`）时显示该集合的帮助。
+## 挂载
 
-`schema <命令…>` 输出该命令的请求参数结构：`operationId`、`ipcCommand`、`category`、
-`hasRequestBody`、`requestBodyFields`（每个参数的 API 名称、Rust 类型、是否必填、说明、
-对应的命令行写法，和可选的 `enum`、`default`、`generated`（省略时自动生成）、`sensitive`（会脱敏）、`schema`；
-类型为 `ImageId`、`NodeId`、`VolumeKey` 的检材、节点和卷标识按字符串传递，`schema` 注明这一点）
-与 `output`（`json` 或 `bytes`）。路径参数解析到的节点参数记在 `pathResolvesTo`，删除类命令带 `destructive`。
-`schema --list` 列出全部命令。手写命令也有完整参数结构，`ipcCommand` 为 `null`；
-`path` 与节点 ID 的二选一关系见 `targetAlternatives`。`sessionOutput` 描述 JSONL 返回形式，
-原始字节在会话中统一返回 `{encoding:"hex", data:"…"}`，可用请求的 `output` 保存到主机文件。
+`mount <地址> [挂载点] [--share 共享名]` 把卷或目录以只读方式挂载（Windows，Dokan），`--share` 同时以 SMB 共享；不带参数时列出挂载，`umount <挂载ID>` 卸载（先确认）。挂载只在后台进程存活期间有效，需要长期保留的内容请导出。
 
-`complete <bash|zsh|fish|powershell>` 输出补全脚本；按 Tab 时 shell 以 `complete -- <单词…>`
-回调本程序取候选，候选来自同一份命令目录，包括 `-q`、`-f`、`-j` 等短选项和枚举值。
+## 检材格式说明
 
-由编码代理运行时（`CLAUDECODE=1`、`CODEX_THREAD_ID`、`GEMINI_CLI=1`、`CURSOR_AGENT=1` 等代理文档化的
-环境变量），根和分组帮助开头附加一段英文说明（具体命令帮助不重复）：不要逐层调用 `--help` 探索命令，
-改从代理技能的命令参考中查找，用 `<命令> --help` 查看单个命令、用 `schema` 查看请求结构。
+- **不完整的分段 RAW**：默认检查可观察到的编号缺口。`evidence add <第一段> --raw-read-mode force` 只拼接从所选文件开始的连续前缀，只在当前进程有效，不能与 QCOW 凭据同用；导出的前缀不表示原始镜像完整。已按另一模式加载时先 `evidence close`。见 [SMRAW](formats/SMRAW.md#不完整-raw-的强行读取)。
+- **QCOW**：压缩簇与差分父链自动读取；legacy AES 镜像用 `--qcow-password @文件` 或 `--qcow-key @文件`（16 字节，二选一）。该格式没有密钥验证器，成功打开不证明密码正确。见 [QCOW](formats/QCOW.md)。
+- **EWF、VMDK、VHD / VHDX**：纯 Rust 读取器，不依赖 libewf / libvmdk / libvhdi。能力与限制见 [EWF](formats/EWF.md)、[VMDK](formats/VMDK.md)、[VHD / VHDX](formats/VHD.md)。
+- **光盘**：ISO、Mode 1 / XA Form 1 的 BIN 和 CUE；多轨或多数据文件选择 `.cue`，`evidence show` 的 `opticalDisc` 给出轨道、会话与来源范围。见 [CDFS](formats/CDFS.md)。
+- **UBI 与小米 HDR1 固件**：命名卷列在 `/<别名>/part:0` 下，`<卷名>.img` 提供原始逻辑字节。见 [UBI](formats/UBI.md)。
+- **bcachefs**：按列出的目录项进入原生子卷与 snapshot，不同视图中相同的 inode 编号指向各自的内容；只支持单设备。见 [bcachefs](formats/BCACHEFS.md)。
+- **NILFS2**：显示最新提交的目录树；稀疏区读零，已分配数据缺失或日志 CRC 不匹配报错，dirty / recovery 卷明确拒绝；CLI 暂不选择历史检查点。见 [NILFS2](formats/NILFS2.md)。
+- **BeFS / GFS2 / OCFS2**：内联与外联扩展属性用 `streams`、`cat --stream`、`export --stream` 读取，GFS2 / OCFS2 保留 `user.` 等命名空间前缀；需要日志重放的卷明确拒绝。
 
-## 编码代理与小输出
+## 编码代理
 
 CLI 安装包的 `skills/lovelycarve-cli/` 是供编码代理使用的技能，复制到代理的技能目录即可使用：
 
 | 文件 | 内容 |
 | --- | --- |
-| `SKILL.md` | 任务入口：按目标跳转流程、启动会话、限制输出与检查完整性 |
-| `bin/` | 独立安装 skill 时随附的 CLI、运行库、插件加载器与插件，由 `just stage-cli-skill` 生成，不提交二进制到 Git |
-| `references/commands.md` | 全部命令按集合列出的用法（位置参数、选项、可选值）与说明，由命令目录生成 |
-| `references/workflows.md` | 按需读取的操作流程：案件与会话、分页与 JSONL、文件定位与解析、内容搜索、RAID/LVM、解锁、恢复、插件、时间线及哈希导出 |
-
-Windows 独立安装 skill 时，先用 `just build-cli` 与 `just build-plugins --release` 构建所需程序，再运行 `just stage-cli-skill`，把现有 release 的 CLI、DLL、插件及许可证放进 `skills/lovelycarve-cli/bin/`。刷新前的 `bin/` 保留在该次 `dist-pack/` 暂存目录中。复制整个 `skills/lovelycarve-cli/` 即可安装；Pi 的全局目录为 `~/.pi/agent/skills/lovelycarve-cli/`，运行中的 Pi 用 `/reload` 重新发现。
-skill 优先按自身位置解析 `bin/lovelycarve-cli.exe`，不依赖固定主机路径或修改 `PATH`，也不要求切换工作目录。普通 CLI 压缩包仍将运行文件放在包根目录，不重复包含本机 skill 的 `bin/`；需要独立的完整 skill 时使用上述暂存流程。
-
-`references/commands.md` 由 `just update-cli-skill` 从命令目录生成，与该版本的命令一致；命令、选项或说明变化后
-内容过期时后端测试失败。手写页面中的命令行与 JSONL 请求同样由测试对照命令目录解析。
-连续查询优先 `sessions open exam --image <检材路径>`，后续加 `--session exam -q`，结束后 `sessions close exam`。
-`schema` 描述顶层请求字段，并展开常用文件过滤器和目录查询结构；其余嵌套类型参考对应工作流。恢复选项、时间线查询等内部字段仍按各自契约命名，不能统一改成 camelCase。
-JSONL 中单条请求失败不会阻止后续请求；分阶段检查准备和扫描结果，再提交依赖它们的分析或导出请求。
-操作流程还说明 Git Bash / MSYS2 调用 Windows 程序时的路径转换、参数文件与会话主机路径的解析区别、符号链接的跟随规则、大文本分段与编码误判的处理及批量导出；LUKS 有独立的解锁、明文检材选择与导出示例。
-代理的用法错误只显示错误、建议命令和一行帮助提示；人类终端保留完整帮助。
-
-DSH 或其他未自动识别的调用方可设置 `LOVELYCARVE_AGENT=1` 显式启用代理模式：
-JSON 结果紧凑输出，错误和不完整结果警告为单行 JSON，目录默认每页 50 条，关闭终端颜色和交互提示。
-设置为 `0`、`false`、`no`、`off` 或空值则关闭代理识别，优先于继承的代理环境变量。
-`system get` 的 `output.agentMode` 报告当前进程的实际模式；`-q` 另行关闭进度等非必要输出。
-
-DSH 的 LovelyCarve 模式由 `just stage-dsh` 生成，每次调查先创建或打开对应案件，加载检材后等待任务并核验所需卷索引，再开始浏览、读取或分析；已知路径也遵循此流程，不支持索引的卷明确记录限制。以最小检材范围回答问题；已有哈希可记录，无校验需求时不自动计算整盘哈希。Linux/PVE 版本流程区分 `pve-manager`、`proxmox-ve`、基础系统与已安装内核；唯一内核文件或默认引导项不能证明采集时实际运行的内核。
-
-模式优先使用 `lovelycarve` 结构化工具：`command` 为完整命令路径，`args` 为 API 参数对象，`session` 为命名会话；生命周期命令用 `args.name` 并省略 `session`。工具通过 DSH 执行器运行 CLI，设置代理模式，返回请求 ID、退出码、结果、错误、警告及输出截断状态，保留分页和时区来源。超过 48 KiB 的结果明确报错，不返回裁剪后的 JSON；缩小页大小、选择 `fields` 或分段读取后重试。原始字节使用文件导出命令。shell 调用仍应立即检查 `$LASTEXITCODE`，再解析 JSON 或执行依赖步骤。
-
-列表型 `list` / `search` 命令支持 `--fields name,id,kind,size,timestamps.modified`，仅投影条目字段；
-响应顶层元数据（包括分页和时区来源）保留。点路径保持嵌套对象，未知字段省略，缺失值为 null 时保留 null。
-裸数组逐条投影；对象优先投影 `items`，否则需要唯一的顶层数组（如 `sessions`、`rows`），其余元数据保留；无法判断或条目非对象时报错。
-树列表字段从条目开始，例如 `node.id,node.name,node.timestamps.modified`。
-时区索引与无法转换字段仍随节点保留；需要原始时间时显式选择 `timestampsOriginal`。
-分页字段 `nextCursor` / `total` / `truncated` 始终写在 `items` 前；输出被截断时仍须用游标继续读取，不能当作完整结果。
-
-```powershell
-lovelycarve-cli --session exam -q files list --path / --page-size 50 --fields name,id,kind,size,timestamps.modified
-```
-
-JSONL 将投影放在请求顶层的可选 `fields` 字符串中，而不是 `args`：
-
-```json
-{"id":"page","command":"files list","args":{"path":"/","pageSize":50},"fields":"name,id,kind,size,timestamps.modified"}
-```
-
-### 结构化帮助、来源与错误恢复
-
-DSH 可在没有会话时调用 `{"command":"schema files list"}`，或 `{"command":"files list","help":true}`。`schema` 返回命令说明、CLI 用法、嵌套文件过滤器和目录查询结构、JSONL 的 `requestExample` 及 DSH 的 `toolRequestExample`；参数所属的请求顶层与 `args` 分开列出。`command` 不包含 `--help`、选项或位置参数。
-
-```json
-{"command":"files list","session":"exam","args":{"path":"/","pageSize":20},"fields":"id,name,kind,size"}
-{"command":"indexes list","session":"exam"}
-{"command":"sessions close","args":{"name":"exam"}}
-```
-
-`fields` 在顶层；案件级 `indexes list` 不接收 `imageId`；生命周期用 `args.name`，不传 `session`。DSH 的 `usage` 错误列出 `error.details.allowedFields`、`schemaRequest` 和可以确定的 `retryRequest`；需要重新输入凭据的情况只给隐藏秘密的示例。修正必须由调用方显式重试，工具不自动执行。
-
-普通 JSON 命令可加 `--with-source`，将输出封装为 `{"source":{…},"result":…}`；JSONL 使用顶层 `"withSource":true`。DSH 调查命令自动启用并将 `source` 与原始 `result` 分开返回。来源在同次命令解析后、实际执行前捕获，包含案件 ID、实际检材 ID、源检材路径、节点 ID、可解析的卷/证据内路径和读取范围；新打开的检材补充实际登记身份。来源不受 `fields` 投影影响；命名会话切换检材或克隆主机共享节点 ID 时仍可区分。无法解析路径时 `path` 为 null 并记录 `pathResolutionError`，不伪造来源。字节流命令不使用该封装，文本用 `files text get`，原始文件用 `files export`。
-
-SQLite 表记录的来源还包含 `table` 和与返回行逐一对应的 `recordKeys`，其 `addressSpace` 为 `sqlite`，`primaryKey` 为实际主键列及其值；没有可用主键时为 null。主键名即使叫 `inode` 也不属于文件系统节点空间，引用时保留数据库节点、表名和主键，不拼接为 ext4 节点 ID。
-
-DSH 超限响应不交付当前页，`recovery.restartCurrentPage` 为 true。安全的读取会提供缩小范围后的 `recovery.retryRequest`，保留原请求的 cursor/offset；不能直接沿被丢弃页面的 `pagination.nextCursor` 跳页。导出、变更和任务命令不提供重放建议。
-
-## 输出与退出码
-
-- 结果写标准输出。人类终端中的结构化结果是缩进两格的 JSON；stdout 重定向、管道或编码代理环境输出紧凑 JSON。后端结构字段统一使用 camelCase（如 `imageId`、`nextCursor`、`bytesHashed`）；
-  证据中的数据库列名、插件字段名和任意 JSON 对象键保留原样。此转换仅在 CLI 输出边界执行，
-  桌面 IPC 和案件存储格式不变；只有标准输出是终端且
-  不在 CI 中时才着色（`NO_COLOR` 关闭、`FORCE_COLOR` 强制）。内容类命令（`files read`、
-  `files zip members get`、`carve artifacts get` 等）输出原始字节，可直接重定向到文件；
-  `--text` 按 UTF-8 解码，无效字节替换为 U+FFFD。
-- 没有返回值的命令（后端只报告成功）标准输出为空；在终端中标准错误显示一行 `✓ 完成` 之类的确认。
-  查询结果为空时标准输出写 `null`，不显示 `✓`；按 ID 查找且对象必须存在的命令（`tasks get`、
-  `analysis records get`、`analysis runs get`、`indexes files lookup`）找不到时以 `notFound` 失败。
-- 横幅 `lovelycarve-cli · v<版本>`、进度、交互提问、提示和错误都写标准错误。横幅只在标准错误是终端时
-  出现；普通命令默认输出命令名、后端阶段、该阶段已完成/总量和耗时，stdout 重定向后仍然可见。
-  stderr 为彩色终端时原地刷新动画；管道和日志中输出普通文本，长命令每 5 秒报告一次仍在执行。
-  `--quiet` 或 `LOVELYCARVE_QUIET=1` 关闭这些提示；显式 `--events` 仍输出事件。
-  阶段来自真实后端观察，未知总量不显示百分比；心跳仅表示 CLI 仍在执行，不证明磁盘正在推进。
-  终端进度指 Windows Terminal 等支持 OSC 9;4 的终端在标签页或任务栏显示的进度，`--quiet` 或
-  `LOVELYCARVE_NO_OSC_PROGRESS=1` 关闭。
-- `--events` 是全局选项，不再限于 `session`。启用后关闭人类进度行，stderr 的事件形式为
-  `{"event":"…","payload":…}`；stdout 仍只有原来的 JSON 或原始字节，`--quiet --events` 可用于脚本。
-  普通命令额外报告 `cli-command`：`command`、唯一 `commandId`、`phase`（`started/running/completed/failed/cancelled`）、
-  `elapsedMs` 和最近的 `stage`。执行错误用 `cli-error` 保留错误代码、说明、后端命令名与详情；
-  底层诊断日志仍可能写入 stderr。JSONL 请求的成功/失败结果继续写在 stdout。
-  隐式通过 `--image` 打开的检材也有 `image-load-progress`；`raid-detect-progress` 的阶段依次覆盖 LVM 成员元数据、
-  md 元数据、md 组装、固件 RAID、LVM 逻辑卷、无元数据推定和组装卷注册，`current/total` 只属于当前阶段。
-  退出时等待并清理后台任务，只有非自动快照任务继续显示 `tasks wait`；主动取消的会话快照不影响前台进度。CLI 诊断默认过滤到 `error`；
-  `RUST_LOG` 可覆盖（如 `RUST_LOG=warn`）。读故障按每次容错读取汇总，完整坏区仍保留在审计字段中。
-
-  ```powershell
-  lovelycarve-cli images open "D:\evidence\disk.E01" > image.json
-  lovelycarve-cli --quiet --events --image "D:\evidence\disk.E01" raid detect > raid.json 2> progress.jsonl
-  lovelycarve-cli --session exam --events raid detect > raid.json 2> progress.jsonl
-  ```
-- 错误显示为带边框的块：命令行、参数与本程序的错误为 `┌ 错误` 加说明；后端命令失败为 `┌ 后端错误`、
-  `│ [错误代码] 说明`，以及一行 `IPC <后端命令>`。设置 `DEBUG=1` 时附带后端详情。
-  由编码代理运行时（识别方式见[发现命令](#发现命令)）改为标准错误上的一行 JSON，与 JSONL 会话的字段相同：
-  `{"error":{"code":"…","message":"…"}}`，后端提供时附 `details`，后端命令失败时附 `ipcCommand`；
-  结果不完整的警告同样为一行 `{"warning":{"code":"incompleteResult",…}}`。`--events` 仍优先输出事件。
-- 错误代码与桌面端共用一套，由错误的类型决定而不是从报错文字推断，CLI 自己读取检材时也一样：`notFound`、
-  `invalidInput`、`cancelled`、`corruptData`、`unsupportedFormat`、`resourceLimit`、`permissionDenied`、
-  `sourceChanged`、`caseLocked`、`io`、`internal` 等；CLI 另有 `usage`、`noImage`、`aborted`、`tasksFailed`、
-  `sessionExited` 等自己的代码。
-- 后台任务指命令返回后仍在运行的任务（`carve scans create`、`indexes create`、插件任务等），以及检材登记到案件后
-  自动开始的卷索引、平台识别与插件任务；命令自己等待完成的任务由命令结果报告。一次性命令输出结果后等待后台任务，
-  任一失败或结束时没有报告结果时显示 `tasksFailed` 错误块，列出每个失败的任务，并以 1 退出；取消不算失败。
-  无案件检材的临时会话索引只是缓存，不参与判断。
-- 结果不完整时以 `2` 退出：结果照常写到标准输出，标准错误随后显示 `┌ 警告` 块，列出说明不完整的字段
-  （`--events` 时改为 `cli-warning` 事件，`--quiet` 不关闭）。包括读取时以零填充坏扇区的哈希与导出
-  （`readFaultsDetected`、`syntheticBytes`：`images hash`、`images export`、`files hash`、`files export`、
-  `files directories export`）、提前停止的目录导出（`truncated`、`cancelled`）、有文件读不出或命中达到上限的搜索
-  （`searches create` 的 `readErrors`、`truncated`，`files search` 的 `summary.readErrors`、`summary.truncated`），
-  以及有失败文件、合成字节或报告写入失败的恢复导出（`carve scans export`）。`--limit` 等调用方给出的上限不算不完整。
-  每个命令算数的字段由命令目录 `src-tauri/src/cli/commands.toml` 的 `incomplete` 声明。
-- 退出码：`0` 成功且结果完整；`1` 失败（命令行错误、后端错误、找不到对象、未确认或拒绝的删除、后台任务失败、
-  会话中任一请求失败）；`2` 命令完成但结果不完整；`130` 被 Ctrl+C / Ctrl+Break / SIGINT / SIGTERM 中断，
-  或在提问时按 Esc / Ctrl+C 取消（提问处显示 `■`，不再另外显示错误块）。
-
-## 参数
-
-- 位置参数是命令的主体，选项用 kebab-case（`--read-fault-policy`）。API 名称是后端的 camelCase
-  参数名（`readFaultPolicy`），也是 `--body`、`schema` 和 JSONL 会话使用的键；不接受 snake_case 或命令行选项名作为 JSON 键。
-  位置参数也可以写成同名选项（`files get --path <路径>`、`images open --path <检材路径>`），两种写法不能同时使用；
-  位置参数按顺序对应，如 `files search <模式> [路径]` 的路径可写成 `--path`。帮助只列出位置写法。
-  `list` 与 `count` 命令不接受位置参数，收到时提示改写成 `--path`。
-- 数字直接写；布尔选项单写 `--descending` 为真，`--descending=false` 为假；数组可在一个选项后
-  列出多个值（`--algos md5 sha256`）、重复选项（`--algos md5 --algos sha256`）或传一个 JSON 数组，
-  列出多个值时把位置参数写在数组选项之前；枚举的可选值列在帮助中。
-  结构体参数传 JSON 文本或 `@文件路径`；不是 JSON 的单个词按字符串处理。
-  顶层参数名是 camelCase，嵌套选项沿用原类型的 serde 命名（很多为 snake_case）。
-- `--body '<JSON 对象>'` 或 `--body @request.json` 一次给出全部参数，显式选项覆盖其中的同名键；
-  必填的位置参数也可以写在其中（`images open --body '{"path":"D:/evidence/disk.E01"}'`），两处都没有时
-  报 `缺少参数`。
-- 缺少必填值时，终端中逐项提问：`◆` 提出问题，回车后变为 `◇` 并显示答案，枚举给出选择列表；
-  脚本、CI 和代理中直接报 `缺少 --<选项>`，不会猜测。
-- 密码与密钥类参数（`--password`、`--qcow-password`、`--vmk-hex` 等）：`--password <值>`；
-  `--password @文件` 读取文件并去掉末尾换行；单写 `--password` 或 `--password -` 时，
-  终端中以 `•` 遮盖输入，否则读取管道传入的标准输入，例如
-  `Get-Content secret.txt | lovelycarve-cli bitlocker unlock 0 --password`。
-  密码不写入案件、任务描述或日志。
-- `--dry-run` 输出将发送的请求 `{command, ipcCommand, body}`，不打开检材、不执行，
-  密码等敏感字段显示为 `<redacted>`。
-- 删除类命令（`delete` 动词，以及 `images tags update`、`mounts delete` 等会丢弃数据的命令）
-  在终端中先确认；没有人可以确认时必须加 `--force`（`-f`），否则显示问题和 `Aborted.` 并以 1 退出。
-  在终端中回答「否」同样显示 `Aborted.` 并以 1 退出：命令没有执行。
-- 写主机文件的命令（`--destination`）要求目标不存在，避免覆盖已有文件；目标已存在时以 `alreadyExists`
-  失败且不写入任何内容，重跑批量导出时请使用新的目标目录。`files export` 只导出单个文件，用于目录时以
-  `isDirectory` 失败并给出 `files directories export` 的写法；导出若干选定文件可在 JSONL 会话中逐个提交
-  `files export` 请求，单条失败不影响其余请求。
-  文件创建／发布时也检查重名，不依赖命令启动前的路径检查。单文件、命名数据流和 ZIP 导出先在目标目录暂存，写入失败时清理暂存文件，成功后才发布；失败的单文件导出可以直接重试。
-  `files directories export --mode tree` 要求目标目录不存在（已有空目录也拒绝），可自动创建父目录；不会合并到已有目录。取消或部分失败时保留已完成的文件，失败文件不保留半成品；重试请选择新的目标目录。
-  `--mode zip` 同样要求目标不存在；返回的 `skippedCount` / `truncated` 表示归档可能只含部分条目。
-- `taskId`、`searchId` 省略时自动生成；需要用 `tasks cancel <taskId>` 取消时可显式指定。
-
-`files hash` 采用容错并报告策略：摘要结果包含 `readFaultsDetected`、`syntheticBytes`、`badRegions`，字段名在桌面 IPC 中为 snake_case。检测到源坏区时仍返回摘要，但以 2 退出并在标准错误显示警告；该摘要包含合成补零，不代表完整原文件，`truncated=false` 也不表示没有读故障。脚本应检查退出码或 `readFaultsDetected` 后再采信摘要。报告只覆盖本次操作命中的源盘绝对区间，不是文件逻辑偏移映射；格式定义的稀疏零区不算读故障。桌面会提示含补零的哈希，不将其回填或保存为普通摘要。
-
-`files read` 的字节流不能附带审计字段，因此发现读故障时返回 `readFaultsDetected` 错误并以 1 退出（包括 `--quiet` / `--text`）；stdout 可能已含部分或补零数据，必须丢弃。JSONL 返回 `error`，错误的 `details` 包含上述三个审计字段，不返回成功的字节结果；常驻会话在流的最终状态中返回同一错误，客户端以 1 退出。JSONL 的 `output` 不会为失败读取发布文件。需要保留容错数据及审计报告时使用 `files export`。
-
-## 浏览检材
-
-### 先建案、建索引，再按文件名查找
-
-新调查先创建案件，再加载检材，让后台构建的卷索引保存在案件中；用户已指定案件时复用该案件。`tasks wait` 后检查 `indexes list`，按 `imageId` / `volumeKey` 确认所需卷为 `indexed: true`、`stale: false`、`truncated: false`。`indexes volumes list` 同时返回 `indexes`：当前可查询的索引键、覆盖子树 `pathPrefix` 和 `truncated`。LVM 子卷可能由父分区索引覆盖，查询时使用该映射而非直接把节点前缀当索引键。空 `indexes` 表示没有当前已发布覆盖；缺失或过期的卷用 `indexes create --volume-key <卷键>` 构建，再等待并检查。
-
-```text
-lovelycarve-cli -q sessions open exam
-lovelycarve-cli -q --session exam cases create "<新案件绝对路径>" --name "<案件名称>"
-lovelycarve-cli -q --session exam images open "<检材绝对路径>"
-lovelycarve-cli -q --session exam tasks wait
-lovelycarve-cli -q --session exam indexes list
-```
-
-`indexes files list --filter` 的 `nameGlob` 按完整文件名进行忽略大小写的匹配，支持 `*`、`?`、`[abc]`、`[a-z]` 和 `[^abc]`；`%`、`_` 是普通字符，`[[]` 可匹配字面 `[`。使用 SQLite GLOB 语义，不展开花括号，`**` 不表示递归目录。目录范围单独用 `pathPrefix`，其拼写取自查询返回的 `fullPath`：索引路径可能带检材或卷根名，例如 `/evidence/var/log/auth.log.1`，不能固定假设为 `/var/log/`。可先仅按文件名查询，再按实际父路径缩小范围。过滤在分页前执行，不需要逐页枚举目录后再用 jq 筛选。
-
-例如把下面对象保存为 UTF-8 的 `find.json`，按返回的索引路径前缀查找轮转日志；`<索引根>` 需替换为实际值：
-
-```json
-{"nameGlob":"auth*.log.*","pathPrefix":"/<索引根>/var/log/","kinds":["file"],"limit":100,"offset":0}
-```
-
-```text
-lovelycarve-cli --session exam indexes files list --volume-key "<卷键>" --filter @find.json
-```
-
-去掉 `pathPrefix` 查整个卷，省略 `--volume-key` 查当前检材所有已有索引的卷，各卷分别应用 `limit` / `offset`；需完整结果时按卷分页，保持过滤条件不变。该命令搜索文件名元数据，不读取文件内容；`files search` 搜索内容。没有匹配的当前索引或索引被截断时，此查询明确失败；成功查询返回的空数组才表示已查询范围内无命中。
-
-镜像内路径用 `/` 分隔。`/` 是检材的合成根，列出分区和卷（目录检材、归档等同样先显示根名称）；
-不以 `/` 开头的路径相对会话当前目录，支持 `.` 和 `..`，并按[符号链接](#符号链接)的规则跟随链接。
-路径在合成根的首段也接受该层节点的 ID，例如 `/part:0/Windows/System32/config/SAM`，
-或先运行 `context set --dir /part:0`，再使用卷内相对路径。ID 取自根目录 `files list --path /`
-返回的 `items[].id`（`part:0` 仅为示例），精确匹配，不受卷名中的空格、括号、`·` 或重名影响；
-shell、JSONL 和常驻会话均支持，`cd /part:0` 同样可用。进入卷后的各级仍按实际文件名解析。
-如果一个根节点的名称恰好等于另一个根节点的 ID，会明确报歧义，改用 `--node-id` 等 ID 选项。
-卷入口名称统一使用字母、数字、中文、`.`、`-`、`_`；空格、括号、`·` 和其他标点分隔符
-合并为 `_`，例如 `ext4 (md · host:0)` → `ext4_md_host_0`、
-`APFS 0 · Macintosh HD` → `APFS_0_Macintosh_HD`。该规则也用于 LVM、Btrfs 子卷、Docker、
-卷影副本、挂载卷标和目录／归档的合成根；定位面包屑使用同一名称。
-卷内真实目录和文件名、原始卷标元数据与节点 ID 保持原样。
-转换后重名的卷仍需按 ID 区分。
-
-```powershell
-lovelycarve-cli --image "D:\evidence\disk.E01" files list --path /
-lovelycarve-cli --image "D:\evidence\disk.E01" files read /part:0/Windows/System32/config/SAM > SAM
-lovelycarve-cli --image "D:\evidence\disk.E01" files tree list --path /part:0/Users --depth 3
-```
-
-每个解析镜像内路径的命令都接受 `--path <路径>`，也都接受节点 ID `--node-id <ID>`（取 `files list`
-输出的 `items[].id`），用于同名节点、删除条目和特殊流；`files list`、`files flat list`、
-`files extensions count` 原有的 `--parent-id` 与 Docker 命令的 `--root-id` 仍可使用。
-`files lookup` 例外：它的 `--path` 是相对 `--root-id` 的来源路径。
-节点 ID 精确指向该节点，不跟随符号链接。路径解析不到时以 `notFound` 失败，并写明所在目录和找不到的名称。
-`files get --node-id` 与下述目录切换入口不要求打开案件。重名分区（例如两个 `Basic_data_partition`）可先运行
-`context set --node-id part:2`，再用 `files get Windows` 等相对路径；`--node-id` 与 `--dir` 互斥。
-上下文保存节点 ID，因此显示路径同名也不会切到另一卷。`context get` 的 `nodeId` 可确认当前目录身份。
-
-名称优先精确匹配；没有精确命中时，NTFS、FAT/exFAT、HFS+ 与设置为不区分大小写的 APFS 卷
-尝试唯一的忽略大小写匹配，多个候选仍报歧义。其他文件系统和合成根保持精确匹配；
-无法读取卷标志的离线 APFS 也保持精确匹配。合成节点名称使用中文，例如 `分区0`、`$未分配簇`、
-`未使用空间1`；实际名称以 `files list` 为准，节点 ID 不受显示名称影响。
-
-### 符号链接
-
-路径像 shell 一样跟随符号链接。路径中间的链接总是跟随；末尾的链接由读取、哈希、导出、文本、
-列目录等需要内容的命令及 `context set` 跟随，`files get` 与 `files ancestors list` 则描述链接本身，
-`files get` 返回其 `linkTarget`。经过链接的路径在 `files get` 结果的 `path` 中显示实际到达的位置。
-
-相对目标从链接所在目录解析；绝对目标从链接所在卷的根解析（分区、逻辑卷、APFS 卷、btrfs 子卷、
-容器或目录／归档检材的根），不从合成根 `/` 开始，目标中的 `..` 也不越过该根。一条路径最多跟随
-40 个链接。目标位于另一个卷（单独挂载的 `/usr`、`/var`，或根文件系统挂载自另一个 btrfs 子卷）、
-指向 Windows 盘符（`C:\…`）或卷适配器没有提供目标时明确失败，不会猜测，也不会读取主机上的同名文件；
-此时按错误中给出的链接目标到对应的卷中定位。`files directories export` 跳过目录树内的链接，不跟随。
-
-### Git Bash / MSYS2
-
-Git Bash 和 MSYS2 启动 Windows 程序时，会把以 `/` 开头的参数改写成主机路径，加引号也一样：
-`/分区1/etc` 变成 `C:/Program Files/Git/分区1/etc`。CLI 识别出改写到 MSYS 安装目录下的镜像内路径
-（该目录含 `usr/bin/msys-2.0.dll`）时还原为原来的路径；无法还原的（例如改写到 `/tmp` 等挂载目录）
-在错误中说明原因。搜索模式等其他以 `/` 开头的参数不会还原，需在这次调用前加 `MSYS2_ARG_CONV_EXCL='*'`：
-
-```sh
-MSYS2_ARG_CONV_EXCL='*' lovelycarve-cli --session exam files search /etc/passwd --path '/<卷名称>'
-```
-
-| 命令 | 作用 |
-| --- | --- |
-| `files list [--path 路径 \| --parent-id ID] [--cursor 游标] [--page-size N] [--query JSON]` | 统一调用 `fs_children_page`；默认列当前目录，返回 `{nextCursor, total?, truncated, …, items:[节点]}`。`nextCursor` 非空时继续请求下一页；人类环境每页默认 500，编码代理环境默认 50，显式 `--page-size` 优先，范围 1–5000 |
-| `files tree list [--path 路径 \| --node-id ID] [--depth N] [--name 文本] [--limit N]` | 递归遍历目录；`--depth` 递归（上限 128），`--name` 忽略大小写包含匹配，最多检查 `--limit` 个节点（默认 10000，上限 100000）。返回 `{items:[{path,node}], truncated}` |
-| `files get [路径 \| --node-id ID]` | 节点属性（名称、类型、大小、inode、时间戳、删除状态、链接目标），附 `nodeId`、`path`、`indexOnly` |
-| `files read <路径> [--offset N] [--length N] [--text]` | 文件内容流式写到标准输出 |
-| `files text get <路径> [--max-bytes N] [--offset N] [--encoding 标签]` | 识别编码并解码为 UTF-8，每段最多 2 MiB；`nextOffset` 非空时用 `--offset` 继续读下一段（段末被截断的字符留给下一段），后续段默认沿用文件开头识别出的编码；`--encoding gbk` 等 WHATWG 标签跳过识别 |
-| `files hash <路径> [--algos …]` | MD5 / SHA-1 / SHA-256 / SM3 |
-| `files identify <路径>` | Magika 内容类型识别，不依赖扩展名 |
-| `files strings list <路径> [--encoding …] [--min-length N]` | 可打印字符串及文件内偏移，支持 ASCII、UTF-8、UTF-16LE/BE |
-| `files search <模式> [路径]` | 在子树内容中搜索关键词或正则 |
-| `files export <路径> --destination <主机路径>` | 导出单个文件；目录用 `files directories export --mode tree\|zip` |
-
-光盘 ISO、Mode 1 / XA Form 1 的 2352 字节 BIN 和 CUE 可用 `--image <镜像路径>` 或
-`images open` 加载。多轨/多数据文件选择 `.cue`；`images get` 的 `opticalDisc` 返回
-轨道、会话、INDEX、物理宽度与来源范围。CDFS 文件支持 Joliet、范围读、哈希及导出。
-CUE 的镜像哈希/RAW 导出是 FILE 顺序的完整原始字节拼接，不含 CUE 文本、不合成未存储
-间隙；保存解释所需的 CUE 与文件边界。参见 [光盘格式说明](formats/CDFS.md)。
-
-UBI 镜像及小米 HDR1 固件通过 `--image <镜像路径>` 或 `images open` 加载。
-用 `files list --parent-id part:0` 查看命名卷：`<卷名>.img` 提供原始逻辑字节，
-SquashFS 同名目录中的文件复用 `files read`、`files hash` 与 `files export`。
-实际分区号、卷名和节点 ID 以列表为准；格式边界见 [UBI](formats/UBI.md)。
-
-`files list`、`files tree list`、`files get` 与路径解析复用目录分页接口，优先查询案件卷索引或本进程的临时索引，
-未被索引覆盖的目录沿用后端的快照／实时回退。原检材缺失时（案件中的 `index_only` 检材）
-仍可浏览已索引目录，读取字节的命令明确报错。达到深度或数量上限时 `truncated` 为真，
-不能当作完整列表。
-`files tree list` 的 `items[].path` 是从检材合成根开始的绝对路径，包含遍历根的全部祖先，
-可传给 `files get`、`files read` 等命令。若任一级存在同名节点，路径仍有歧义，应使用该项的
-`node.id`。按 ID 定位优先读取案件或临时卷索引的父链；索引未就绪时分页查找目录，
-最多检查 1000000 个节点、128 层目录，达到上限会明确报错，可等待卷索引完成后重试。
-
-`files search` 复用全局搜索，默认搜索当前目录子树，路径指向文件时只搜该文件，`/` 搜索全部已索引卷；
-需要打开案件、卷索引已建立且原检材可读。默认区分大小写并包含已删除文件：`--ignore-case`、
-`--regex`、`--exclude-deleted`，`--codepage UTF-8` 指定编码（可重复，省略时搜索全部支持的编码）。
-返回 `{summary, hits, total, truncated}`；`--limit` 只限制返回条数（默认 10000），完整命中保存在案件中，
-可用 `searches hits list --search-id <ID>` 继续分页。
-
-字节层面的属性（MIME、熵、数据运行段）用 `files content get`，自动识别编码的文本用 `files text get`；
-SQLite、Realm、ZIP、CSV、可执行文件、GGUF、Vim 交换文件、NTFS 流与 USN 日志、ext4 日志分别在
-`files sqlite …`、`files realm …`、`files zip …` 等子集合中，`lovelycarve-cli files --help` 列出全部。
-
-用 `files sqlite queries get` 直接查询镜像里的数据库。以下 JSONL 请求使用已加载检材，绑定参数查询分组计数：
-
-```jsonl
-{"id":"count","command":"files sqlite queries get","withSource":true,"args":{"path":"/<卷名称>/messages.db","sql":"SELECT chat_id, COUNT(*) AS total FROM messages WHERE sent_at >= ?1 GROUP BY chat_id ORDER BY chat_id","parameters":["2026-08-01"],"limit":25}}
-```
-
-查询限制为库内的单条只读语句，支持 `SELECT` 和 CTE，禁止写操作、`ATTACH`、`PRAGMA` 和扩展加载。复用现有 SQLCipher `key` 参数与同目录 WAL 读取。响应中的 `columns` 按 SELECT 顺序对应行内单元格，整数值编码成十进制字符串以保留 64 位精度。单页最多 100 行，有后续时用原 SQL、参数和 `nextOffset` 查询下一页。分页查询应使用可唯一排序的 `ORDER BY`。长文本缩短或无效 UTF-8 被替换时，返回 `shortenedCells` 和不完整状态。开启 `withSource` 时，来源封装含数据库节点、SQL 和参数。任意 SQL 的结果由查询定义，通过 `files sqlite rows list` 获取已识别的表主键。
-
-### RAID → LVM → Btrfs 的导航
-
-克隆主机可能具有相同 VG/PV UUID。`raid detect --image-ids <源检材ID>…` 只检测指定的已加载源检材，可在同一会话内分别组装各主机；空列表、未加载 ID、组装检材和卷影副本明确报错。省略该参数仍检测全部已加载源检材，`--image` 只提供初始检材，不限制成员集合。带范围的组装路径按源检材路径集合隔离缓存，并在进程重启后保持稳定；选取顺序和重复 ID 不改变范围。完整的单 PV LVM 也可直接从源检材分区导航，不必显式组装。多个会话不得同时打开同一案件目录。
-
-在同一个 `shell` 或 JSONL `session` 中依次打开成员盘并运行 `raid detect`。
-所有完整、未用作 md 成员的线性逻辑卷（包含单 PV 卷）都会注册为独立检材；
-`volumeGroups[].logicalVolumes[].assembledImageId` 是可直接选择的检材 ID。
-不完整或不支持的卷不会伪造这个 ID，具体原因见检测结果的 `diagnostics`。
-
-```text
-images open "D:/evidence/member1.img"
-images open "D:/evidence/member2.img"
-raid detect
-images list
-context use <逻辑卷的 assembledImageId>
-files list
-context set --node-id <上一步返回的卷ID>
-files list
-files read hello.txt
-```
-
-`context use <检材 ID>` 选择检材并回到 `/`；`context set --image <检材 ID>` 也能切换，
-切换到不同检材时清除旧目录。对已加载检材的普通查询中，`imageId`／`--image` 只限定该次查询。
-`images open <已加载检材 UUID>` 或 `images open "assembled://…"` 会复用已有检材并设为当前检材。
-`assembled://` 是当前会话内的引用；程序退出或卷已关闭后，需重新加载成员盘并运行 `raid detect`，
-不能把它当作主机磁盘路径。找不到会话时会返回 `notFound` 和恢复步骤。
-
-JSONL 可直接引用检测结果及卷 ID，避免抄写 ID 和转义卷名：
-
-```jsonl
-{"id":"raid","command":"raid detect"}
-{"id":"use","command":"context use","args":{"imageId":{"$ref":"raid#/volumeGroups/0/logicalVolumes/0/assembledImageId"}}}
-{"id":"roots","command":"files list"}
-{"id":"cd","command":"context set","args":{"nodeId":{"$ref":"roots#/items/0/id"}}}
-{"id":"files","command":"files list"}
-{"id":"read","command":"files read","args":{"path":"hello.txt","length":4096}}
-```
-
-仍可沿原始检材的 LVM 分区进入逻辑卷：识别到的 Btrfs／ext／XFS／NTFS 卷显示为 `kind: "dir"`。
-原始 LV 键为 `lvm:<分区ID>:<卷索引>`；Btrfs 文件节点为
-`btrfs:lvm:<分区ID>:<卷索引>:<子卷ID>:<inode>`。
-例如 `btrfs:lvm:0:1:5:256` 表示分区 0、卷索引 1、子卷 5 的 inode 256；
-这些值由目录枚举提供，不能从卷名猜测。默认 FS 树使用子卷 5，常见根 inode 为 256，
-但脚本应复制 `files list` 返回的 `items[].id`，或使用上面的普通路径导航。
-
-
-### bcachefs 子卷与 snapshot
-
-bcachefs 复用现有 `files list/read/hash/export` 等命令。按列出的目录项进入
-原生子卷和 snapshot，不需要构造 inode ID；相同 inode 编号在不同视图中
-仍指向各自的内容。保留返回的节点 ID，路径会同时保持来源分区和视图入口。
-单设备、压缩、日志重放与验证边界见 [bcachefs](formats/BCACHEFS.md)。
-
-### NILFS2 当前检查点
-
-NILFS2 复用 `files list/read/hash/export` 等现有命令，显示最新提交的目录树。
-硬链接保持 inode 身份和不同路径；稀疏区读零，已分配数据缺失或日志 CRC 不匹配报错。
-它没有独立存储 atime，输出保留为空；dirty / recovery 卷明确拒绝。
-历史 snapshot 已由独立 Rust 读取器 API 支持，CLI 暂无原生历史视图的选择命令。
-范围、原生 GC 样本和验证边界见 [NILFS2](formats/NILFS2.md)。
-
-### BeFS / GFS2 / OCFS2 扩展属性
-
-BeOS / Haiku BeFS、GFS2 与 OCFS2 文件通过现有 `files streams list`、`files streams get` 和
-`files streams export` 接口提供内联 / 外联扩展属性。复制列表返回的流名，不将流名
-解释为主机路径；导出目标必须为新文件。属性原始数据不做文本转换。
-读取范围、原生样本和时间编码边界见 [BeFS](formats/BEFS.md) / [GFS2](formats/GFS2.md) / [OCFS2](formats/OCFS2.md)。
-GFS2 / OCFS2 返回 `user.` 等原生命名空间前缀；需要日志重放的卷会明确拒绝。
-
-
-## 常驻会话
-
-升级包含来源封装的 CLI 后，使用原版本结束旧常驻会话，再用新版本创建会话；常驻传输协议已更新，JSONL 默认响应形状保持不变，来源封装按请求启用。
-
-连续取证建议先启动命名会话。后台进程保持案件、E01 句柄、读取缓存、RAID/LVM 组装卷、
-当前检材和目录；后续普通命令连接同一进程，无需重新打开检材或手写 JSONL：
-
-```powershell
-lovelycarve-cli --image "D:\evidence\disk.E01" sessions open exam
-lovelycarve-cli --session exam raid detect
-lovelycarve-cli --session exam images list
-lovelycarve-cli --session exam context use <assembledImageId>
-lovelycarve-cli --session exam files list
-lovelycarve-cli --session exam files read "/<卷名称>/report.txt" --text
-```
-
-`raid detect` 只需执行一次；后续命令沿用已注册的组装卷及其 ID。未提供 `--image` 时，
-新会话也可以先启动，再用 `--session exam images open <路径>` 加载检材。
-`sessions open` 返回后台 PID、当前上下文和检材数量；对已运行的同名会话重复调用会返回其状态，
-同时传 `--image` 或 `--case` 会报错，避免误以为已切换上下文。切换检材用 `context use` / `images open`，
-切换案件用 `cases open`。启动时的环境变量与 `.env` 默认值只应用一次。
-
-也可以进入连接终端，逐行输入相同命令，省去每行的程序名与 `--session`：
-
-```text
-lovelycarve-cli sessions attach exam
-lovelycarve:exam> files list
-lovelycarve:exam> cd "<卷名称>/Users"
-lovelycarve:exam> files hash alice/report.txt
-lovelycarve:exam> exit
-```
-
-`cd` / `pwd` 操作共享的检材目录，`help` 显示命令帮助；`exit`、`quit`、`detach` 和输入结束只断开连接，
-后台检材与组装状态继续保留。也可将普通命令脚本传给 `sessions attach exam`；脚本遇错即停止。
-重名卷可在连接中用 `cd --node-id part:2` 进入，或从其他终端运行
-`lovelycarve-cli --session exam context set --node-id part:2`；后续相对路径沿所选 ID 解析。
-退出连接后仍可从其他终端继续：
-
-```powershell
-$env:LOVELYCARVE_SESSION = "exam"
-lovelycarve-cli files list
-lovelycarve-cli context get
-lovelycarve-cli sessions get exam
-lovelycarve-cli sessions list
-lovelycarve-cli sessions close exam
-Remove-Item Env:LOVELYCARVE_SESSION
-```
-
-显式 `--session` 优先于环境变量。帮助、`schema` 与 `system get` 仍在本地运行。
-会话管理命令在普通 CLI 中运行，不能嵌入 `shell`、JSONL 或另一个连接终端。
-同一会话的请求串行执行，后台任务继续运行；多个连接共享当前检材与目录，要隔离工作流时使用不同名称。
-删除类命令需要显式 `--force`；可省略值的密码选项由客户端询问，然后传给会话。
-原始字节保持原样输出，较大的 `files read` 按块传输，不受 JSONL 单次 16 MiB 的限制；途中读取或传输失败返回非零退出码。
-
-相对主机路径以 `sessions open` 时的工作目录为准，`sessions get` 的 `workingDirectory` 可查看；
-跨终端使用时，检材、案件与导出路径建议写绝对路径。CLI 的 `--body @文件` 由当前客户端读取。
-连接断开或后台进程崩溃时命令报错，不会自动重试或悄悄启动新的后端。崩溃后可用同名 `sessions open`
-重新启动，但内存中的卷 ID、目录、任务和解锁状态需要重建；本功能不连接桌面端进程。
-后台进程运行期间一直持有会话名的文件锁：命令连不上会话且能取得该锁时，说明进程已退出（崩溃、被结束或主机重启），
-于是在锁内删除残留记录并以 `sessionExited` 失败；之后 `sessions list` 不再列出它，`sessions close` 对这样的会话
-直接成功并返回 `"exited": true`。仍持有锁却没有应答（例如还在打开检材）时报 `sessionUnavailable`。
-
-会话名为 1–64 个 ASCII 字母、数字、下划线或连字符。连接信息与日志位于用户数据目录的 `cli-sessions/`，
-使用文件锁防止同名进程冲突；服务仅监听本机回环地址，以私有随机凭据认证，状态输出不包含凭据。
-测试可用 `LOVELYCARVE_SESSION_DIR` 隔离目录。`sessions close` 取消后台任务、释放案件、检材和插件后退出，
-长期不用的会话应显式关闭。关闭前已经失败、但还没有被 `tasks wait` 报告的后台任务在关闭后以 `tasksFailed` 报告，
-命令以 1 退出。
-
-## 交互 shell
-
-```text
-lovelycarve-cli shell
-lovelycarve:/> images open "D:\evidence\disk.vmdk"
-lovelycarve:/> files list
-lovelycarve:/> cd "<卷名称>/Users"
-lovelycarve:/<卷名称>/Users> files tree list --depth 3 --name report
-lovelycarve:/<卷名称>/Users> files get alice/report.txt
-lovelycarve:/<卷名称>/Users> files read alice/report.txt --length 4096 --text
-lovelycarve:/<卷名称>/Users> files export alice/report.txt --destination "D:\output\report.txt"
-lovelycarve:/<卷名称>/Users> exit
-```
-
-`shell` 在一个进程中逐行执行命令，语法与命令行相同（省略程序名），案件与检材在命令之间保持打开。
-`cd <路径>` 切换镜像内目录（同 `context set --dir`），`pwd` 显示当前目录，`help` 显示帮助，`exit` 退出。
-`cd --node-id <ID>` 等同于 `context set --node-id <ID>`，可进入名称相同的分区或目录，
-无须打开案件；例如先 `files list` 查看 ID，再 `cd --node-id part:2`、`files get Windows`。
-引号只负责参数分组，Windows 反斜杠保持原样，不做变量展开或管道；单引号适合包住 JSON。
-`--case` 只能在启动时给出，会话中改用 `cases open`。
-
-标准输入不是终端时，`shell` 执行管道传入的脚本：忽略空行和 `#` 注释，不显示提示符，
-遇到第一个失败的命令即停止并以 1 退出。脚本中的密码参数不会从标准输入读取（标准输入就是脚本），
-必须直接给值或用 `@文件`。
-
-## JSONL 会话
-
-```powershell
-Get-Content .\workflow.jsonl | lovelycarve-cli --case "D:\cases\demo" session --events
-```
-
-```jsonl
-{"id":"image","command":"images open","args":{"path":"D:/evidence/disk.img"}}
-{"id":"roots","command":"files list","args":{"imageId":{"$ref":"image#/id"},"parentId":""}}
-{"id":"scan","command":"carve scans create","args":{"options":{"format_ids":["png","pdf"],"scope":"whole"}}}
-{"id":"done","command":"tasks wait"}
-{"id":"status","command":"carve scans get","args":{"scanId":{"$ref":"scan#/scanId"}}}
-{"id":"recover","command":"carve scans export","args":{"scanId":{"$ref":"scan#/scanId"},"options":{"destination":"D:/output/carved","task_id":"recover-1"}}}
-```
-
-每行一个请求：`id`（非空且唯一）、`command`（命令路径，如 `"files read"`）、`args`（只接受 `schema` 中的 camelCase API 参数名），
-可选的 `output`（把结果写入新文件）、`force`（确认删除类命令）和
-`dryRun`。接受路径的命令既可以传 `path`，也可以传节点 ID。
-
-- 每条响应是一行 `{"id":"…","result":…}` 或 `{"id":"…","error":{"code":"…","message":"…"}}`，
-  `details` 仅在后端提供详情时出现，写出后立即 flush。结果不完整（见[输出与退出码](#输出与退出码)）时成功响应在
-  `result` 后附带 `"warning":{"code":"incompleteResult","message":"…","details":{"fields":{…}}}`。失效的 `assembled://` 引用返回 `notFound`，说明应在组装所在会话
-  通过 `images list` 获取 image ID、再 `context use <imageId>`，并给出会话已退出时重新加载成员盘与检测的恢复步骤。
-  它不是主机文件路径，不会再作为 Windows 文件名打开。能解析出字符串 ID 的无效请求保留该 ID，
-  无法解析的行使用 `"id":null`。`result` 保留后端命令原始的 JSON 字段。
-- 原始字节返回 `{"encoding":"hex","data":"…"}`，`files read` 单次最多 16 MiB，可用 `offset`/`length`
-  分段；带 `output` 时原始字节或 JSON 写入不存在的新文件，结果为 `{"output":"<路径>"}`。
-- `{"$ref":"<id>#/<JSON 指针>"}` 引用先前成功请求的结果；引用尚在执行的请求时先等待它完成，
-  失败、未知 ID 和不存在的指针明确报错。
-- `--jobs N`（简写 `-j`，1–64，默认 1）允许并发：目录浏览、文件读取／哈希、内容搜索、结果分页、
-  任务状态等查询可以重叠执行，其他命令是屏障，先等此前的请求完成再执行。打开／关闭检材、
-  切换案件、`context set` 和 `tasks wait` 因此保持顺序；并发查询使用派发时的当前检材和目录。
-  并发响应按完成顺序输出，客户端必须按 `id` 关联。
-- 删除类命令需要在请求中加 `"force": true`，否则返回 `aborted` 错误。
-- `tasks wait` 等待进程内任务与插件任务结束，返回 `{"tasks":[…]}`：上次报告以来结束的后台任务及其
-  `id`、`kind`（插件任务为 `plugin`）、`subject`、`status` 与 `error`。任一后台任务失败或结束时没有报告结果时
-  返回 `tasksFailed` 错误，`details` 为同一报告；只在请求自己的结果中报告的任务不会重复出现。
-- 旧版命令名（如 `image_load`、`fs_read_range`、`ls`、`wait`）返回错误，并在消息中给出现在的命令。
-- 单行上限 16 MiB，单会话最多 10000 个请求。标准输入保持打开时也持续返回已完成的结果；
-  EOF 后先等待所有已派发请求，再等待后台任务，后台任务失败时在标准错误报告 `tasksFailed`。
-  单条失败不影响后续请求，但会话以 1 退出；没有失败而有不完整结果时以 2 退出。
-- 全局 `--events` 把进度与生命周期事件以 `{"event":"…","payload":…}` 行写到标准错误；
-  标准输出只有响应，没有横幅、进度或提示。
-
-### 代理调用
-
-代理宜先在代理技能的命令参考中找命令、用 `schema` 查看请求字段，再启动一个长期运行的会话进程，
-在同一进程中对已打开的检材连续提交请求，无需解析终端表格或中文提示：
-
-```text
-lovelycarve-cli --image "D:\evidence\disk.E01" session --jobs 4
-```
-
-```jsonl
-{"id":"info","command":"images get"}
-{"id":"roots","command":"files list","args":{"path":"/"}}
-{"id":"tasks","command":"tasks list"}
-{"id":"barrier","command":"tasks wait"}
-```
-
-协议版本为 3；旧的 `files children list` 已合并到 `files list`，原先递归浏览改为
-`files tree list`，`files list` 不再接受位置参数或 `depth/name/limit`。脚本需改用 camelCase 结果字段和 `$ref` 指针。
-`files hash` 直接调用 `fs_digest`，路径与节点 ID 共享同一参数及结果契约。
-
-`system get` 的 `session` 对象描述协议版本、请求字段、并发上限和行长度限制。
-标准错误只承载诊断与可选事件，代理应分别读取标准输出和标准错误。
-
-`just test-cli` 覆盖并发、屏障、结果引用、错误关联和保持 stdin 打开的进程级回归。
-设置 `LOVELYCARVE_CLI_TEST_IMAGE` 为外部镜像路径后运行 `just test-cli` 或
-`just smoke-cli <可执行文件>`，会额外对比顺序与并发的目录查询和有界文件读取；该样本不加入仓库。
+| `SKILL.md` | 任务入口：地址、先建案件、限制输出与检查完整性 |
+| `bin/` | 独立安装时随附的 CLI、运行库、插件加载器与插件，由 `just stage-cli-skill` 生成，不提交到 Git |
+| `references/commands.md` | 全部命令的用法与说明，由命令树生成 |
+| `references/workflows.md` | 按需读取的流程：案件与后台进程、分页与批量请求、文件定位与解析、内容搜索、RAID/LVM、解锁、恢复、插件、时间线、哈希与导出 |
+
+Windows 独立安装时，先用 `just build-cli` 与 `just build-plugins --release` 构建所需程序，再运行 `just stage-cli-skill`，把现有 release 的 CLI、DLL、插件及许可证放进 `skills/lovelycarve-cli/bin/`。技能按自身位置解析 `bin/lovelycarve-cli.exe`，不依赖固定主机路径或修改 `PATH`。`references/commands.md` 由 `just update-cli-skill` 生成，命令、选项或说明变化后内容过期时后端测试失败；手写页面中的命令行与批量请求同样由测试按命令树解析。代理应使用 `--json`：结果为单行 JSON，进度关闭，错误为一行 JSON，按退出码判断完整性。
 
 ## 生命周期与边界
 
-未指定常驻会话时，单条命令启动后端、执行命令、等待它启动的后台任务结束后退出，后台任务失败时以 1 退出；
-无案件检材的临时卷索引会被取消，因为退出时本来就会丢弃。退出前取消剩余任务、关闭案件、停止插件并删除预览临时文件。
-Ctrl+C / Ctrl+Break 取消任务、释放案件与挂载后以 130 退出；无法取消的阻塞读取最多再等 10 秒。
+没有后台进程时，每条命令执行后等待它启动的后台任务结束再退出；退出前取消剩余任务、关闭案件、停止插件并删除预览临时文件。Ctrl+C / Ctrl+Break 取消任务、释放案件与挂载后以 130 退出；无法取消的阻塞读取最多再等 10 秒。检材以只读方式打开；案件锁、源读取审计、文件格式限制和任务资源预算与桌面端一致。平台限制沿用后端（例如 Dokan / SMB 挂载仅 Windows）。
 
-挂载、SMB 共享和媒体预览临时文件只在进程存活期间有效，应在常驻会话、`shell` 或 `session` 中使用，
-需要长期保留的内容请导出。暂停的雕刻请先恢复或取消再等待；CLI 退出不保存内存中的雕刻记录，
-应在同一个会话中扫描、分页与恢复。
+## 测试
 
-案件锁、源读取审计、文件格式限制和任务资源预算与桌面端一致：锁定的案件以 `caseLocked` 拒绝改名、添加或移除检材、
-手动指定平台以及构建或删除卷索引（`indexes create` / `indexes delete`；`images open` 加入新检材也会被拒绝并关闭该检材），案件检材上任务的开始与结局写入
-案件审计（`task.started` / `task.settled`）。不要让桌面端和 CLI 同时打开同一案件；
-检材以只读方式打开。平台限制沿用后端（例如 Dokan/SMB 挂载仅 Windows）；
-`system paths reveal` 会打开系统文件管理器，不属于无界面分析流程。
-
-`RUST_LOG=lovelycarve_lib=debug` 开启后端诊断，日志写标准错误。
-
-## QCOW 镜像
-
-QCOW v1/v2/v3 的压缩簇和差分父链自动读取；legacy AES 镜像用 `--qcow-password` 或
-`--qcow-key-hex`（16 字节 key，二选一）打开：
-
-```powershell
-lovelycarve-cli images open "D:\evidence\disk.qcow2" --qcow-password
-```
-
-单写 `--qcow-password` 时在终端中提问或读取管道输入。JSONL 中写作
-`{"id":"qcow","command":"images open","args":{"path":"D:/evidence/disk.qcow2","qcowPassword":"<密码>"}}`。
-legacy AES 没有密钥验证器，成功打开不证明密码正确；QCOW 内嵌 LUKS、Zstd、
-extended L2、external data file 和历史快照切换不支持。完整对照见 [QCOW](formats/QCOW.md)。
-
-## EWF 后端
-
-E01/Ex01 使用 [ewf-forensic](https://github.com/SecurityRonin/ewf-forensic) 仓库中的
-`ewf` 0.4.10 纯 Rust 读取器，与桌面和挂载入口共用，不需要 `libewf.dll`。
-支持多分卷、随机读取、zlib、Ex01 bzip2/模式填充、存储哈希与采集元数据。
-打开时检查分卷序号和块表覆盖，缺失分卷会报错；坏块通过原有读取故障机制报告。
-加密的 EWF2 容器仍会明确返回不支持；BitLocker 卷解锁是独立功能。
-
-```powershell
-just run-cli images open D:\evidence\disk.E01
-just test-ewf
-```
-
-源码版本及本地兼容补丁见 `src-tauri/vendor/ewf/LOVELYCARVE.md`。
-
-## VMDK 后端
-
-VMDK 使用 [vmdk-forensic](https://github.com/SecurityRonin/vmdk-forensic) 中的
-`vmdk-core` 0.8.4 纯 Rust 读取器，桌面、CLI 和挂载共用，不需要 `libvmdk.dll`。
-支持 monolithicFlat、monolithicSparse、streamOptimized 压缩镜像、分卷 flat/sparse，
-以及读取器支持的 COWD / seSparse 格式。打开描述符时需保留相邻分卷，缺失文件会报错；
-直接打开 `*-flat.vmdk` 会优先寻找描述符，无描述符时按原始磁盘读取。
-
-单文件稀疏快照及 seSparse 描述符按 `parentFileNameHint` 读取父盘，检查 CID、容量和循环；
-所有父盘、描述符和分卷都纳入源变化检测。父盘需位于当前镜像目录或其子目录。
-多分卷差异快照（含 vmfsSparse/vmfsThin/custom 差异层）暂不支持，须先合并为完整镜像；
-缺少父盘不会被当成空洞补零。损坏块仍通过原有读取故障机制报告。
-LDPlayer 备份内部的内存 VMDK 保留已有纯 Rust 读取路径。
-
-```powershell
-just run-cli images open D:\evidence\disk.vmdk
-just test-vmdk
-```
-
-源码版本、补丁和测试素材见 `src-tauri/vendor/vmdk/LOVELYCARVE.md`。
-
-## BitLocker 后端
-
-[bitlocker-forensic](https://github.com/SecurityRonin/bitlocker-forensic) 的 `bitlocker-core`
-0.3.5 负责密码与 48 位恢复密码解锁，不需要 `libbde.dll`。VMK 内存扫描、
-从 VMK 恢复恢复密码、解锁及解密导出都可以在 CLI 中使用。直接读取 RAW / EWF / VMDK 等镜像内的
-分区，无需将整个加密卷转储到临时目录；源镜像关闭后读取失败，不延长检材句柄生命周期。
-
-解锁进度仍使用原事件：密钥派生前为 0，认证完成后为卷大小；它不表示已复制的数据。
-取消在派生前后检查，派生进行中可能稍后才响应。错误密码/密钥认证失败和截断密文均报错。
-
-支持六种 AES-CBC / Elephant Diffuser / XTS 方法（包括 0x8001），按 BPB 扇区大小解密；
-另支持明文密钥、BEK、直接 VMK / FVEK，以及 Vista 与 used-space-only（EOW）卷。
-完整 libbde 对照、真实样本验证范围和限制见 [BITLOCKER](formats/BITLOCKER.md)。
-
-`bitlocker metadata get <分区>` 无需凭据，返回算法、卷 GUID、原始 FILETIME（十进制字符串）、
-卷描述和保护器 ID/类型，不返回密钥 payload。`bitlocker unlock <分区>` 只选一种凭据：
-`--password`、`--recovery-password`、`--startup-key-path` 或 `--fvek-hex`（Diffuser 时加 `--tweak-hex`）；
-全不传则尝试卷内明文密钥。原始 FVEK 没有认证标签，须核验解密结果。
-`bitlocker vmks scan <内存镜像> --partition-id <分区>` 在内存镜像中搜索 VMK，
-`bitlocker vmks unlock <分区> --vmk-hex` 直接认证 FVEK，卷没有恢复密码保护器时也可解锁；
-结果 `recovery_key` 在无可提取密码时为空字符串。TPM/SID 不支持。
-`bitlocker export <分区> --destination <主机路径>` 导出解密卷，不覆盖已有文件；
-遇到已审计的合成源字节会失败，可查询 `images bad-regions list`。
-
-```powershell
-lovelycarve-cli shell
-lovelycarve:/> images open D:\evidence\encrypted.E01
-lovelycarve:/> bitlocker metadata get 0
-lovelycarve:/> bitlocker unlock 0 --recovery-password
-lovelycarve:/> bitlocker export 0 --destination D:\output\volume.raw
-```
-
-源码版本、本地补丁和公开样本范围见 `src-tauri/vendor/bitlocker/LOVELYCARVE.md`；
-读取器测试用 `just test-bitlocker`。
-
-## VHD / VHDX 后端
-
-VHD 使用 [vhd-forensic](https://github.com/SecurityRonin/vhd-forensic) 的 `vhd-core` 0.1.4，
-VHDX 使用 [vhdx-forensic](https://github.com/SecurityRonin/vhdx-forensic) 的 `vhdx-core` 0.4.1。
-桌面和 `lovelycarve-cli` 共用这些 Rust 读取器，运行和打包均无需 `libvhdi.dll`。
-
-支持固定盘、动态盘、随机读取与 RAW 导出，按签名识别改名后的镜像。VHD 使用 footer 的
-CurrentSize（当前容量），校验和错误会报错，不再通过 RAW 回退绕过。VHD 本地补丁只读取
-footer、动态头和 BAT（分配表上限 64 MiB），不会为打开大镜像而读入整个文件；截断的已分配
-数据块会报错。VHDX 使用按需读取，脏日志在内存覆盖层中重放，不修改检材。
-
-VHD 上游不支持差分盘；VHDX 上游虽有显式父盘 API，现有命令尚无父盘绑定参数，
-所以差分 VHD/VHDX 均明确拒绝，不会将缺失父盘的数据伪装为零。
-
-```powershell
-just run-cli images open D:\evidence\disk.vhdx
-just test-vhd
-just test-vhdx
-just test-cli
-```
-
-回归样本来源、固定的上游提交和本地改动见两个 vendor 目录的 `LOVELYCARVE.md`。
-全盘 SHA-256 参考值来自 libvhdi 对公开样本的独立读取，测试本身不依赖该 DLL。
-
-## LUKS / VeraCrypt 解锁
-
-`encrypted-volumes unlock` 把已加载检材中的加密区域注册为会话内只读镜像，返回 `image.id` 和
-`image.path`（`decrypted://…`），可再交给 `images open`，然后使用现有的文件系统、搜索、哈希、雕刻、
-挂载及 RAW 导出命令。桌面镜像信息页「卷与分区」卡片的「解锁加密容器」与 LUKS 分区行的「解锁」
-也提供相同入口。`.hc`、`.tc`、`.luks` 文件可直接加载。
-桌面提交后立即关闭密码弹窗，在「任务中心」显示后台解锁状态、取消与失败原因，
-成功后在源镜像分区内浏览并自动补建索引，不切换或新增镜像标签页；切换页面不取消任务。
-从分区行进入时固定该分区。CLI 命令等待解锁结果，便于后续 JSONL 引用。
-桌面使用 `options.target: "sourcePartition"`，返回原 `image.id` 与 `volume_key`，文件节点沿用
-`part:N`；源镜像哈希仍读取源密文，RAW 导出省略 `mode` 或使用 `"source"` 时也读取源字节。
-桌面「导出源镜像」使用 `images export` 的 `mode: "unlockedPartitions"`：以导出开始时的
-已解锁状态投影所有 LUKS / VeraCrypt / BitLocker 分区，明文从原分区起始位置写入，
-较短明文后的分区尾部补零；分区表、其他分区及整盘大小保留。导出开始后的解锁不改变本次输出，
-解密会话关闭、短读或越界时报错。目标文件必须不存在，避免覆盖源镜像或已有导出。
-省略 `target` 或使用 `"newImage"` 时保留下方示例的独立解密镜像行为，便于显式导出明文。
-原分区接入要求解密内容为单个完整卷。
-
-密码在 `options` 中，宜写入文件后用 `--options @unlock.json` 传入，避免出现在命令行历史中；
-`--dry-run` 会把 `options.password` 与 `options.masterKeyHex` 显示为 `<redacted>`。JSONL 会话示例：
-
-```jsonl
-{"id":"source","command":"images open","args":{"path":"D:/evidence/container.hc"}}
-{"id":"unlock","command":"encrypted-volumes unlock","args":{"imageId":{"$ref":"source#/id"},"options":{"scheme":"veracrypt","password":"example-password","pim":0,"hidden":false},"taskId":"unlock-1"}}
-{"id":"plain","command":"images open","args":{"path":{"$ref":"unlock#/image/path"}}}
-{"id":"roots","command":"files list","args":{"parentId":""}}
-{"id":"export","command":"images export","args":{"destination":"D:/exports/plain.raw","taskId":"export-1","readFaultPolicy":"strict"}}
-```
-
-LUKS 使用 `"scheme":"luks"`，不传 `pim`/`hidden`。密码之外，也可只传 `options.masterKeyHex`（已恢复卷主密钥的十六进制，不与密码同时传）；LUKS1/2 均先核验密钥摘要。算法与能力对照见 [LUKS](formats/LUKS.md)。`options.partitionId` 选择分区；
-也可指定相对源镜像的字节 `offset` 和 `length`（省略长度时到源末尾），两种区域选择
-不能混用。默认整个源镜像。VeraCrypt 没有明文签名，需要用户明确选择格式和隐藏卷。
-密码按 UTF-8 字节传入；命令本身不保存密码或导出主密钥。
-
-LUKS1 与 LUKS2（单个动态数据段，PBKDF2 / Argon2i / Argon2id，512 / 4096 字节加密扇区）支持的
-密码算法、IV 方案与哈希见 [LUKS](formats/LUKS.md)。VeraCrypt 支持普通／隐藏卷（512 字节扇区）、
-上游支持的 AES / Serpent / Twofish 及其级联、PIM 0–1000。分区识别使用 512 字节逻辑扇区。
-暂不支持密钥文件、分离头部、备份头恢复、系统加密、LUKS2 完整性 / 重加密 / 多数据段 / 固定长度数据段，
-也不声明完整的 TrueCrypt 兼容性。LUKS2 主头校验失败时报错，不自动尝试备份头；超过 KDF 资源预算同样报错。
-
-`tasks cancel <taskId>` 可以取消解锁；KDF 当前执行阶段可能延迟响应。
-`images close <ID>` 可锁定返回的解密镜像；关闭源镜像会递归移除其解密镜像。
-解密镜像和凭据不会作为可自动恢复的案件检材保存，进程结束后需重新解锁。
-读取按需解密；只有显式执行导出、预览或分析缓存操作才会产生相应的明文输出。
-
-## FileVault 2 / CoreStorage 解锁
-
-先用 `filevault get --options '{}'` 读取逻辑卷目录和法证观察，再将选中的 `index` 作为
-`logicalVolumeIndex` 传给 `encrypted-volumes unlock`。区域选择沿用 `partitionId` 或
-`offset` / `length`；两个命令应使用同一区域。下例的输入是独立 CoreStorage 分区镜像：
-
-```jsonl
-{"id":"source","command":"images open","args":{"path":"D:/evidence/corestorage.raw"}}
-{"id":"inventory","command":"filevault get","args":{"options":{},"taskId":"fv-inventory"}}
-{"id":"unlock","command":"encrypted-volumes unlock","args":{"options":{"scheme":"filevault","password":"example-password","logicalVolumeIndex":0,"target":"newImage"},"taskId":"fv-unlock"}}
-{"id":"plain","command":"images open","args":{"path":{"$ref":"unlock#/image/path"}}}
-{"id":"files","command":"files list","args":{"parentId":"part:0"}}
-```
-
-`password` 同时接受个人恢复密码；也可改用 `masterKeyHex`（16 字节 VMK 或 32 字节
-XTS 密钥对）。可选 `encryptedRootPlistPath` 指向本地 XML / EncryptedRoot.plist.wipekey，
-应同时传给 inspect 和 unlock。单逻辑卷支持原分区投影；多逻辑卷必须分别使用
-`newImage`，以隔离文件 ID 和索引。完整能力、上游 API 对照和不支持的布局见
-[FileVault](formats/FILEVAULT.md)。APFS 原生加密使用另一种格式，当前不能由此解锁。
-
-## 文件恢复命令
-
-文件系统恢复与签名雕刻是同一个扫描会话的两个阶段，都由 `carve scans create` 发起，支持 `carve scans pause/resume` 与 `tasks cancel`。`options.filesystems` 的 `fat` / `ntfs` / `exfat` 严格控制各族探测（缺省全部关闭，即只做签名雕刻），`include_existing` 同时列出已知分区的现存文件；`signatures` 缺省为 true，设为 false 时只恢复文件系统记录。`scope` 除 `whole` / `partition` / `unallocated` 外还接受 `range`，配合 `start_sector` 与 `sector_count`。以下为 JSONL 示例（先用 `--image` 指定检材）：
-
-```jsonl
-{"id":"scan","command":"carve scans create","args":{"options":{"scope":"whole","filesystems":{"fat":true,"ntfs":true,"exfat":true,"include_existing":false},"signatures":false}}}
-{"id":"done","command":"tasks wait"}
-{"id":"status","command":"carve scans get","args":{"scanId":{"$ref":"scan#/scanId"}}}
-{"id":"files","command":"carve files list","args":{"scanId":{"$ref":"scan#/scanId"}}}
-{"id":"export","command":"carve scans export","args":{"scanId":{"$ref":"scan#/scanId"},"options":{"artifact_ids":[],"file_ids":["0"],"destination":"D:/output/recovery","task_id":"recover-files-1"}}}
-```
-
-快照的 `phase` 表示正在运行的阶段，`filesystem` 摘要给出阶段进度、卷/目录/文件数、截断、读取故障与阶段错误。`carve files list` 在文件系统阶段结束前返回 `null`；NTFS 重建卷的 `reconstruction` 给出 MFT 位置和推导几何，目录在 `directories` 中，文件在 `candidates` 中，回收站还原项包含 `sourceNode/sourcePath`，其原始数据映射和身份不变。
-
-`carve scans export` 的 `file_ids` 只接受该会话文件系统结果中的候选编号，且候选必须 `readable`，不能传入任意原始数据映射；`artifact_ids` 为 `null`（缺省）时恢复全部雕刻结果，同时传 `file_ids` 时可用 `[]` 只恢复文件系统记录。顶层计数描述雕刻结果，`files` 描述文件系统记录：输出目录、成功/失败数、JSONL 报告路径与读取故障。文件系统记录在输出目录中按 `v<卷号>-<卷标>/原目录/文件名` 保持目录结构，具体文件状态、来源、`relative_output` 和 SHA-256 见 JSONL 报告。能力和限制见[文件恢复](USAGE.md#文件恢复)。
-
-### 插件分析
-
-系统级分析器在检材上识别出的操作系统上运行：`plugins systems list` 列出系统 ID（如 `linux@part:2`）及其挂载的卷，`plugins functions list` 列出分析器的作用域、适用平台与选项。
-
-```bash
-lovelycarve-cli plugins tasks create --function org.lovelycarve.linuxinfo/linuxbaseinfo --system-id linux@part:2 --options '{"items":["users","logins"]}'
-lovelycarve-cli tasks wait
-lovelycarve-cli analysis tree get
-lovelycarve-cli analysis records list --run-id <runId> --record-type linux.user --sort uid --descending
-lovelycarve-cli analysis runs get <runId>
-```
-
-检材级分析器不需要 `--system-id`，文件级分析器给 `--node-id` 与 `--file-name`；省略的选项取默认值。同一（分析器、检材、目标）最多一个未结束的任务，重复创建返回已有任务。插件任务不能暂停：`plugins tasks cancel` 结束执行，`plugins tasks restart` 从头再跑，成功后新结果替换旧结果。
-
-`tasks list` 与桌面任务中心列出同一份任务：插件任务（id 为 `plugin:<任务 id>`，带完整任务行）与内置任务（带种类、对象、阶段、进度、计数与结局），`--image-id` 只列一份检材的任务。`tasks get <id>` 查看一条，找不到时以 `notFound` 失败。`tasks cancel <id>` 取消运行中的内置任务或插件任务，返回 `{"id","status"}`：`cancelling` 表示内置任务在下一个检查点停下，`cancelled` 表示插件任务已停止；找不到或已经结束的任务报错。全局搜索与时间线构建的记录来自案件，其余内置任务只列出本进程运行过的，因此一次性命令看不到其他进程的内置任务，查看或取消后台任务应在常驻会话中进行。
-
-`analysis tree get` 按检材 → 分类 → 分析器运行 → 记录类型返回已发布的结果及其 `runId`。`analysis records list` 必须传 `--run-id` 与 `--record-type`，可用 `--keyword` 检索标题与文本类列、`--sort <列 id 或 title>` 与 `--descending` 排序；同一次分页或导出固定 runId，新任务完成时不会切换。`analysis runs get` 给出运行的输入文件、选项、画像事实、告警与读不出而以零填充的源字节。旧版本插件写下的结果在树中带 `legacy: true`，读取时加 `--legacy`。删除插件任务只删除该任务发布的运行结果。
+`just test-cli` 构建开发版 CLI 并运行端到端测试 `scripts/test-cli.py`：读取器夹具、镜像容器与加密卷、批量请求、浏览、SQLite 与 BCP、雕刻、案件、后台进程、地址、输出、事件、时区、读故障、光盘和无窗口启动。`just smoke-cli <可执行文件>` 对现有二进制运行同一套测试；开发时可只跑其中几节，例如 `python scripts/test-cli.py <可执行文件> backend batch`。设置 `LOVELYCARVE_CLI_TEST_IMAGE` 为外部镜像路径时，额外对比顺序与并发的目录查询和有界读取；`BCACHEFS_ORACLE_DIR`、`NILFS2_ORACLE_DIR`、`GFS2_ORACLE_DIR`、`OCFS2_ORACLE_DIR`、`BEFS_ORACLE_IMAGE` 加入对应格式的原生样本。这些外部样本不加入仓库。

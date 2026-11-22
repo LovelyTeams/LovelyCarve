@@ -1,26 +1,24 @@
 //! The standalone command-line interface. It never starts the desktop
-//! runtime: it builds `AppState` itself and calls the command functions
-//! through a dispatch generated from the backend registry and the reviewed
-//! schema in `cli/commands.toml` (see build/cli_catalog.rs).
+//! runtime: it builds `AppState` itself and calls the backend command
+//! functions directly.
 //!
-//! Commands are `<collection>… <verb>`, with JSON results on stdout, messages
-//! on stderr, help and `schema` for discovery, and `--dry-run`, `--body` and
-//! `--force` on every command. Coding agents learn the commands from the
-//! packaged skill, whose command reference is rendered from the same
-//! catalogue (`skill_tests`).
-mod argv;
+//! Evidence is addressed by path from the workspace root: `/<alias>/<path>`.
+//! Reading inside evidence uses the verbs people know (`ls`, `cat`, `stat`,
+//! `find`, `grep`…); everything else is `<noun> <verb>`. Results are text for
+//! people and JSON with `--json`. A case backend (`case open`) keeps evidence
+//! open between commands; without one each command runs in its own process.
+//! `rpc` reaches every registered backend command by name.
+pub(crate) mod backend;
 mod background;
+mod batch;
 mod browsing;
-mod catalog;
+mod cmd;
 mod complete;
-mod context;
-mod dotenv;
-mod grep;
+mod exec;
 mod help;
 mod incomplete;
 mod interactive;
 mod msys;
-mod native;
 mod navigation;
 #[cfg(test)]
 mod navigation_tests;
@@ -28,18 +26,19 @@ mod output;
 mod progress;
 mod projection;
 mod prompt;
-mod resident;
+mod render;
 mod runtime;
 mod schema;
-mod schema_types;
-mod session;
 mod shell;
 #[cfg(test)]
 mod skill_tests;
-mod source;
+mod stream;
 mod strings;
+mod text;
 mod timezone;
+mod types;
 mod wire;
+mod workspace;
 
 use std::{borrow::Cow, sync::OnceLock};
 
@@ -49,7 +48,7 @@ use serde_json::{Map, Value};
 use crate::app::error::{AppError, ErrorCode};
 
 mod generated {
-    include!(concat!(env!("OUT_DIR"), "/cli_dispatch.rs"));
+    include!(concat!(env!("OUT_DIR"), "/cli_rpc_dispatch.rs"));
 }
 
 pub use runtime::run;
@@ -60,7 +59,7 @@ pub enum Origin {
     /// The command line, its values or the CLI itself.
     #[default]
     Cli,
-    /// A backend command, named by its operation when known.
+    /// A backend operation, named when known.
     Backend(Option<String>),
 }
 
@@ -192,7 +191,7 @@ pub(crate) fn internal_error(error: impl std::fmt::Display) -> CliError {
 }
 
 /// Structured data. Its JSON text keeps object keys in the order the command
-/// wrote them, as cf prints an API response; the value is parsed on demand.
+/// wrote them; the value is parsed on demand.
 #[derive(Debug)]
 pub(crate) struct Json {
     text: Option<String>,
@@ -205,6 +204,14 @@ impl Json {
             text: Some(serde_json::to_string(&wire::Camel(data))?),
             value: OnceLock::new(),
         })
+    }
+
+    /// JSON text received from elsewhere, such as a case backend.
+    pub fn from_text(text: String) -> Self {
+        Self {
+            text: Some(text),
+            value: OnceLock::new(),
+        }
     }
 
     pub fn value(&self) -> &Value {
@@ -256,26 +263,17 @@ impl From<Value> for Json {
 pub(crate) enum Output {
     /// Structured data; `null` means the command returned nothing.
     Json(Json),
-    /// Raw content for stdout.
+    /// Raw content.
     Bytes(Vec<u8>),
-    /// Raw content the command already wrote to stdout.
+    /// A file range the transport streams to where it goes.
+    Stream(stream::ReadPlan),
+    /// Raw content already written to stdout.
     Written,
 }
 
 impl Output {
     pub fn json(value: Value) -> Self {
         Self::Json(value.into())
-    }
-
-    /// The JSONL session form: raw bytes are hex encoded.
-    fn into_json(self) -> Json {
-        match self {
-            Self::Json(json) => json,
-            Self::Bytes(bytes) => {
-                serde_json::json!({"encoding": "hex", "data": hex::encode(bytes)}).into()
-            }
-            Self::Written => Value::Null.into(),
-        }
     }
 }
 
@@ -285,7 +283,10 @@ pub(crate) fn json_output(value: impl Serialize) -> Result<Output, CliError> {
 
 fn validate_keys(args: &Map<String, Value>, allowed: &[&str]) -> Result<(), CliError> {
     if let Some(key) = args.keys().find(|key| !allowed.contains(&key.as_str())) {
-        return Err(CliError::invalid(format!("未知参数：{key}")));
+        return Err(CliError::invalid(format!(
+            "未知参数：{key}（可用：{}）",
+            allowed.join("、")
+        )));
     }
     Ok(())
 }

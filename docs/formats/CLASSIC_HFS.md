@@ -22,9 +22,9 @@
 资源分叉可通过已有 CLI 使用，例如：
 
 ```text
-files streams list --path /Café.bin
-files streams get /Café.bin --stream-name com.apple.ResourceFork
-files streams export /Café.bin --stream-name com.apple.ResourceFork --destination resource.bin
+lovelycarve-cli --image classic.img streams /classic/part:0/Café.bin
+lovelycarve-cli --image classic.img cat /classic/part:0/Café.bin --stream com.apple.ResourceFork --length 4096
+lovelycarve-cli --image classic.img export /classic/part:0/Café.bin --stream com.apple.ResourceFork -o resource.bin
 ```
 
 命名流传输沿用既有 `name / size / resident` 结构，HFS 两个分叉均为非 resident。

@@ -24,7 +24,7 @@ const MAX_LINKS: usize = 40;
 /// followed: such a path has no other reading.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LastLink {
-    /// The link itself, as `files get` reports it with its `linkTarget`.
+    /// The link itself, as `stat` reports it with its `linkTarget`.
     Keep,
     /// What the link points to, as reading, hashing, exporting or listing needs.
     Follow,
@@ -58,7 +58,7 @@ fn child_path(location: &[(String, String)], name: &str) -> String {
 
 /// The root directory of a volume: a partition, a logical volume, an APFS
 /// volume, a btrfs subvolume or a container's file system.
-fn volume_root(id: &str) -> bool {
+pub(super) fn volume_root(id: &str) -> bool {
     let number = |text: &str| !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit());
     match id.split(':').collect::<Vec<_>>().as_slice() {
         ["part", partition] => number(partition),
@@ -195,7 +195,7 @@ where
             .filter(|target| !target.is_empty())
             .ok_or_else(|| {
                 CliError::invalid(format!(
-                    "无法跟随符号链接 {link}：卷中没有读到链接目标；用 files get 查看该节点"
+                    "无法跟随符号链接 {link}：卷中没有读到链接目标；用 stat 查看该节点"
                 ))
             })?;
         if windows_absolute(target) {
@@ -253,7 +253,7 @@ where
             if node.name == component || (location.is_empty() && node.id == component) {
                 if child.is_some() {
                     return Err(CliError::invalid(
-                        "同名节点不唯一，请改用节点 ID 指定（files list 输出的 items[].id）",
+                        "同名节点不唯一：改用 /<别名>/@<节点ID> 指定（ls -l 显示节点 ID）",
                     ));
                 }
                 child = Some(node);
@@ -270,17 +270,20 @@ where
     if child.is_none() && folded_child.is_some() && case_insensitive(parent.to_owned()).await? {
         if folded_ambiguous {
             return Err(CliError::invalid(
-                "忽略大小写后节点不唯一，请改用节点 ID 指定（files list 输出的 items[].id）",
+                "忽略大小写后节点不唯一：改用 /<别名>/@<节点ID> 指定（ls -l 显示节点 ID）",
             ));
         }
         child = folded_child;
     }
     child.ok_or_else(|| {
         let parent = display_path(location);
-        CliError::new(
+        let mut error = CliError::new(
             "notFound",
-            format!("{parent} 下找不到「{component}」；用 files list --path \"{parent}\" 查看名称"),
-        )
+            format!("{parent} 下找不到「{component}」；用 ls 查看名称"),
+        );
+        // The caller names the parent by its address.
+        error.details = Some(serde_json::json!({"missing": component, "parent": location}));
+        error
     })
 }
 

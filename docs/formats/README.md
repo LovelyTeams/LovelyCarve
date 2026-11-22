@@ -49,6 +49,9 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | FileVault 2 | [FILEVAULT.md](FILEVAULT.md) | filevault-forensic 接入与 libfvde 88 API；多 LV、密码/恢复/VMK、主备元数据、segment map 与 HFS 明文视图 |
 | 卷影副本 | [VSS.md](VSS.md) | libvshadow 对照；存储区链重建、原始块枚举、catalog 校验与尺寸恢复 |
 | RAW / 分段 RAW | [SMRAW.md](SMRAW.md) | libsmraw 72 API 对照；分段发现、随机读写、缺段/源变化检查；读取接入宿主 |
+| EWF（E01 / Ex01） | [EWF.md](EWF.md) | ewf-forensic 纯 Rust 读取器；多分卷、zlib / bzip2、存储哈希与采集元数据、坏块报告；加密 EWF2 明确拒绝 |
+| VMDK | [VMDK.md](VMDK.md) | vmdk-core 纯 Rust 读取器；flat / sparse / streamOptimized、分卷、COWD / seSparse 与单文件父盘链 |
+| VHD / VHDX | [VHD.md](VHD.md) | vhd-core / vhdx-core；固定盘与动态盘、VHDX 日志内存重放；差分盘明确拒绝 |
 | QCOW / QCOW2 | [QCOW.md](QCOW.md) | libqcow 全部 42 API；v1/2/3、DEFLATE、RAW/QCOW 父链、legacy AES 与完整性检查 |
 | Parallels PHDI | [PHDI.md](PHDI.md) | libphdi 56 API 对照；纯 Rust v2 Plain / Sparse / Split / 差分父链、XML 元数据及完整性检查 |
 | UBI / HDR1 固件 | [UBI.md](UBI.md) | rust_ubidump 只读库；小米扩展分段表、UBI 逻辑块重组、原始卷读取与内嵌 SquashFS / UBIFS 浏览 |
@@ -58,7 +61,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | 小米备份 | [MIUI_BAK.md](MIUI_BAK.md) | ZIP / 目录内 `.bak` 自动展开；Android Backup 头、TAR 与压缩流 |
 | iOS 备份 | [IOS_BACKUPS.md](../IOS_BACKUPS.md) | 本地备份浏览、加密备份解锁与异常检查 |
 
-其余格式（Btrfs、ZFS、UFS，以及 EWF、VMDK、VHD / VHDX、VDI、DMG、AD1 等镜像容器）的实现位置见 [架构说明的镜像与证据源](../ARCHITECTURE.md#镜像与证据源)，上游版本、本地补丁与测试样本记录在各 vendor 目录的 `LOVELYCARVE.md` / `ORIGIN.md` 中。命令行下的镜像打开、解锁和导出示例见 [CLI 手册](../CLI.md)。
+其余格式（Btrfs、ZFS、UFS，以及 VDI、DMG、AD1 等镜像容器）的实现位置见 [架构说明的镜像与证据源](../ARCHITECTURE.md#镜像与证据源)，上游版本、本地补丁与测试样本记录在各 vendor 目录的 `LOVELYCARVE.md` / `ORIGIN.md` 中。命令行下的检材登记、解锁和导出示例见 [CLI 手册](../CLI.md)。
 
 ## 维护要求
 

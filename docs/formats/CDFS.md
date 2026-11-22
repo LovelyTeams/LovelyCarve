@@ -63,7 +63,7 @@ CUE 的 `size_bytes`、十六进制、整镜像哈希和 RAW 导出是 FILE 顺�
 不同物理宽度；重新解释时必须保留原始 CUE 和文件边界记录。
 
 既有 `image_load` / `image_info` / `image_list` 返回 `ImageInfo.optical_disc`，
-CLI 的 `images open` / `images get` 可读取：
+CLI 的 `evidence add` / `evidence show` 可读取：
 
 CLI 沿用统一 camelCase 输出，字段为 `opticalDisc`、`sectorBytes`、`sourceOffset` 等；
 以下字段名为 Rust / IPC 的 snake_case。

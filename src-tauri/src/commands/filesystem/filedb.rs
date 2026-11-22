@@ -173,7 +173,7 @@ pub async fn filedb_query_files(
         .cloned()
         .collect();
     if targets.is_empty() {
-        return Err(AppError::not_found("没有可查询的已发布索引；这不表示文件不存在。用 indexes volumes list 查看 indexes 中的实际索引键和 pathPrefix，再用 indexes list 核验状态")
+        return Err(AppError::not_found("没有可查询的已发布索引；这不表示文件不存在。卷索引建立在案件中：用 index ls 查看状态，用 index build <卷> 构建")
             .with_context_value(serde_json::json!({"reason":"indexUnavailable", "imageId":image_id,
                 "volumeKey":volume_key, "availableIndexKeys":available.iter().map(|target| &target.volume_key).collect::<Vec<_>>()})));
     }

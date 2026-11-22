@@ -28,7 +28,7 @@ LVM2 元数据与线性逻辑卷由纯 Rust 代码解析，文件系统读取与
 | 非线性 striped / mirror / RAID / snapshot / thin / cache | 保留 LV 名称、大小与 segment 元数据，明确拒绝正文读取；没有实现这些布局的语义 |
 | LVM1、写入、修复磁盘元数据 | 未实现；证据只读 |
 
-完整卷经 `raid detect` 注册后，返回 `assembledImageId`，可用 `context use <ID>` 选择，再通过 `files list` 返回的卷名称进入。Btrfs 逻辑卷在原 PV 目录中也是可进入的目录；完整操作示例见 [CLI 导航](../CLI.md#raid--lvm--btrfs-的导航)。
+完整卷经 `raid detect` 注册为带别名的检材（结果的 `assembled[].path`），直接按该地址浏览。Btrfs 逻辑卷在原 PV 目录中也是可进入的目录；命令说明见 [CLI 手册](../CLI.md#raidlvm-与卷影副本)。
 
 ## 全部 69 个公开 API
 
@@ -113,7 +113,7 @@ LVM2 元数据与线性逻辑卷由纯 Rust 代码解析，文件系统读取与
 
 ## 实现入口与验证
 
-CLI 的 `raid detect --image-ids <源检材ID>…` 可限定参与组装的源检材；克隆主机使用相同 VG/PV UUID 时应分别指定成员，不能混作一个 VG。限定范围的合成检材身份包含源路径集合，避免复用其他克隆主机的缓存；不指定范围时保留全部源检材检测与重复 PV 歧义诊断。单 PV 中可完整寻址的逻辑卷也可直接通过源检材浏览。
+CLI 的 `raid detect --member <别名>`（可重复）可限定参与组装的源检材；克隆主机使用相同 VG/PV UUID 时应分别指定成员，不能混作一个 VG。限定范围的合成检材身份包含源路径集合，避免复用其他克隆主机的缓存；不指定范围时保留全部源检材检测与重复 PV 歧义诊断。单 PV 中可完整寻址的逻辑卷也可直接通过源检材浏览。
 
 - `core/evidence/partitions/lvm2/header.rs`：二进制标签、弱 CRC、完整 MDA、活动文本和来源范围。`text.rs`：共享 grammar 与全部元数据模型。`layout.rs`：完整线性 byte map、范围拆分、独立 read/seek cursor。
 - `core/filesystem/volumes/lvm.rs`：导航、原始 LV 字节、读取错误和空闲 PE 投影。ext/XFS/Btrfs/NTFS 原生读者复用这个 map；不会替换证据 ID、分区 ID 或原始分区几何。

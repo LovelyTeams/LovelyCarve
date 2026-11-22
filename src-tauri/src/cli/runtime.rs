@@ -1,26 +1,30 @@
-//! The process: parse, answer what needs no evidence directly, otherwise start
-//! the backend (state, plugins, event sink) on a dedicated thread with its own
-//! tokio runtime, run the command, wait for its background work and shut down.
-//! No desktop runtime, window or WebView is ever created.
+//! The process: parse, answer what needs no evidence directly, forward to a
+//! case backend when one serves the case, otherwise start the backend state
+//! (AppState, plugins, event sink) on a dedicated thread with its own tokio
+//! runtime, run the command, wait for its background work and shut down. No
+//! desktop runtime, window or WebView is ever created.
 use std::{
-    io::{IsTerminal, Write},
+    io::Write,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
-use serde_json::{json, Map, Value};
+use clap::Parser;
+use serde_json::{json, Value};
 
 use super::{
-    argv::{self, Globals, Invocation, Parsed},
+    backend,
     background::Background,
-    catalog::{self, Catalog},
-    complete,
-    context::{self, Context, Exec, Executed, Mode, Request},
-    dotenv, generated,
-    incomplete::{Incomplete, EXIT_INCOMPLETE},
-    interactive, native,
-    output::{self, Role},
+    cmd::{self, CaseCommand, Cli, Command, Globals},
+    exec::{Exec, Executed, Mode, RequestOptions},
+    help,
+    incomplete::{self, EXIT_INCOMPLETE},
+    interactive, output,
     progress::{Options, Reporter},
-    resident, session, shell, CliError, Output,
+    projection, render,
+    types::HostPath,
+    workspace::Workspace,
+    CliError, Output,
 };
 use crate::{host::AppHandle, state::AppState, task_manager::TaskKind};
 
@@ -29,84 +33,401 @@ pub fn run() -> i32 {
         .skip(1)
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect();
-    let catalog = match catalog::catalog() {
-        Ok(catalog) => catalog,
+    match main(&args) {
+        Ok(code) => code,
         Err(error) => {
             output::report_error(&error);
-            return error.exit_code;
-        }
-    };
-    match argv::parse(catalog, &args) {
-        Parsed::Splash => {
-            splash(catalog);
-            0
-        }
-        Parsed::Version { quiet } => {
-            output::open_session(quiet);
-            println!("{}", env!("CARGO_PKG_VERSION"));
-            0
-        }
-        Parsed::Help(help) => {
-            output::open_session(false);
-            completions_hint(false);
-            print!("{help}");
-            0
-        }
-        Parsed::UsageError { help, error } => {
-            output::open_session(false);
-            if let Some(help) = help {
-                eprint!("{help}");
-            }
-            output::report_error(&error);
             error.exit_code
-        }
-        Parsed::Complete(words) => {
-            let mut stdout = std::io::stdout().lock();
-            for (value, description) in complete::candidates(catalog, &words) {
-                if writeln!(stdout, "{value}\t{}", output::sanitize(&description)).is_err() {
-                    return 1;
-                }
-            }
-            0
-        }
-        Parsed::Run {
-            globals,
-            invocation,
-        } => {
-            let events = globals.events;
-            match command(catalog, globals, invocation) {
-                Ok(code) => code,
-                Err(error) => {
-                    report_error(&error, events);
-                    error.exit_code
-                }
-            }
         }
     }
 }
 
-fn report_error(error: &CliError, events: bool) {
-    if !events {
-        output::report_error(error);
-        return;
+/// Parse `words` (without the program name).
+pub fn parse(words: &[String]) -> Result<Cli, CliError> {
+    Cli::try_parse_from(std::iter::once("lovelycarve-cli".to_owned()).chain(words.iter().cloned()))
+        .map_err(|error| help::usage_error(words, &error))
+}
+
+fn main(args: &[String]) -> Result<i32, CliError> {
+    if let Some(code) = help::intercept(args) {
+        return Ok(code);
     }
-    if error.reported {
-        return;
+    // A line that does not parse still fails in the form it asked for.
+    output::set_json_mode(
+        args.iter()
+            .any(|arg| arg == "--json" || arg.starts_with("--json=")),
+    );
+    let cli = parse(args)?;
+    let mut globals = cli.globals;
+    // JSON is for programs: progress for people stays off (--events reports it).
+    globals.quiet |= globals.json.is_some();
+    output::set_json_mode(globals.json.is_some());
+    let Some(mut command) = cli.command else {
+        help::splash();
+        return Ok(0);
+    };
+    check_projection(&command, &globals)?;
+    if let Some(code) = local(&command, &globals)? {
+        return Ok(code);
+    }
+    if globals.dry_run {
+        output::open_session(true);
+        print_json(&dry_run(&command)?, None)?;
+        return Ok(0);
+    }
+    output::open_session(globals.quiet || globals.events);
+    for (name, secret) in command.secrets_mut() {
+        secret.resolve(name, !interactive::is_non_interactive_or_ci())?;
+    }
+    let case = case_dir(&globals, &command)?;
+    let options = RequestOptions {
+        tz: globals.tz.clone(),
+        yes: globals.yes,
+    };
+    // Process management.
+    if let Command::Case(cmd::case::CaseArgs {
+        command:
+            Some(
+                case_command @ (CaseCommand::Open(_)
+                | CaseCommand::Close(_)
+                | CaseCommand::Serve(_)),
+            ),
+    }) = &command
+    {
+        return manage(case_command, case.as_deref(), &globals);
+    }
+    let running = match case.as_deref() {
+        Some(dir) => match backend::state(dir)? {
+            backend::State::Running => Some(dir.to_owned()),
+            backend::State::Exited => return Err(backend_exited(dir)),
+            backend::State::NotRunning => None,
+        },
+        None => None,
+    };
+    if let Command::Shell = command {
+        return match running {
+            Some(dir) => runtime()?.block_on(super::shell::run_with(
+                super::shell::Runner::Remote(dir),
+                &globals,
+            )),
+            None => start(globals, case, Work::Shell),
+        };
+    }
+    if let Command::Batch(args) = &command {
+        if !(1..=64).contains(&args.jobs) {
+            return Err(CliError::new("usage", "--jobs 的范围是 1–64"));
+        }
+        return match running {
+            Some(dir) => super::batch::run_client(dir, args.jobs),
+            None => start(globals, case, Work::Batch { jobs: args.jobs }),
+        };
+    }
+    if let Some(dir) = running.as_deref() {
+        return forward(dir, &command, options, &globals);
+    }
+    let new_case = match &command {
+        Command::Case(cmd::case::CaseArgs {
+            command: Some(CaseCommand::New(new)),
+        }) if new.open => Some(new.dir.text()),
+        _ => None,
+    };
+    let code = start(
+        globals.clone(),
+        case,
+        Work::OneShot {
+            command: Box::new(command),
+            options,
+        },
+    )?;
+    if let (0, Some(dir)) = (code, new_case) {
+        let info = backend::open(&dir)?;
+        output::note(
+            &format!(
+                "案件后台进程已启动（pid {}）：之后指向该案件的命令复用已打开的检材",
+                info["pid"]
+            ),
+            globals.quiet,
+        );
+    }
+    Ok(code)
+}
+
+fn backend_exited(dir: &str) -> CliError {
+    CliError::new(
+        "caseBackendExited",
+        format!(
+            "案件 {dir} 的后台进程已退出，残留记录已清理；运行 case open 重新启动\
+             （解锁、组装卷和挂载需要重新建立）"
+        ),
+    )
+}
+
+/// Commands that need neither the backend nor evidence.
+pub(super) fn local(command: &Command, globals: &Globals) -> Result<Option<i32>, CliError> {
+    match command {
+        Command::Schema(args) => {
+            print_json(&super::schema::describe(&args.words)?, None)?;
+            Ok(Some(0))
+        }
+        Command::Completion(args) => {
+            print!("{}", super::complete::script(args.shell));
+            Ok(Some(0))
+        }
+        Command::Complete(args) => {
+            let mut stdout = std::io::stdout().lock();
+            for (value, description) in super::complete::candidates(&args.words) {
+                if writeln!(stdout, "{value}\t{}", output::sanitize(&description)).is_err() {
+                    return Ok(Some(1));
+                }
+            }
+            Ok(Some(0))
+        }
+        Command::System => {
+            let value = cmd::system::capabilities();
+            if globals.json.is_some() {
+                print_json(&value, globals.json.as_deref())?;
+            } else {
+                output::print_text(&render::outline(&value))?;
+            }
+            Ok(Some(0))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// `--json=fields` is checked before anything runs: a malformed list, or one
+/// for raw content, fails without side effects.
+pub(super) fn check_projection(command: &Command, globals: &Globals) -> Result<(), CliError> {
+    let fields = projection::parse(globals.json.as_deref())?;
+    if !fields.is_empty() && command.meta().output == cmd::OutputKind::Bytes {
+        return Err(CliError::new(
+            "usage",
+            format!(
+                "{} 输出文件内容，不是列表：用 --json 取十六进制 JSON，不要写字段",
+                command.path()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// What `--dry-run` prints: the parsed request, secrets redacted.
+pub(super) fn dry_run(command: &Command) -> Result<Value, CliError> {
+    let mut value = serde_json::to_value(command)?;
+    redact(&mut value);
+    Ok(json!({
+        "command": command.path(),
+        "request": value,
+        "executed": false,
+    }))
+}
+
+/// Replace every secret value with `<redacted>`.
+fn redact(value: &mut Value) {
+    match value {
+        Value::Object(fields) => {
+            for (key, child) in fields.iter_mut() {
+                if key == "value" && child.is_string() {
+                    *child = json!("<redacted>");
+                } else {
+                    redact(child);
+                }
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(redact),
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+    }
+}
+
+/// `case.db` marks a case directory.
+fn is_case(dir: &Path) -> bool {
+    dir.join(crate::core::casework::case_paths::LEDGER_FILE)
+        .is_file()
+}
+
+/// The case a command works in: `-C`, `LOVELYCARVE_CASE`, or the case the
+/// working directory is in. Commands that name their case themselves keep it.
+fn case_dir(globals: &Globals, command: &Command) -> Result<Option<String>, CliError> {
+    if let Command::Case(cmd::case::CaseArgs {
+        command: Some(case_command),
+    }) = command
+    {
+        match case_command {
+            CaseCommand::Open(dir) | CaseCommand::Close(dir) => {
+                if let Some(dir) = &dir.dir {
+                    return Ok(Some(dir.text()));
+                }
+            }
+            CaseCommand::Serve(dir) => return Ok(Some(dir.dir.text())),
+            // Creating, listing or removing cases happens outside any case.
+            CaseCommand::New(_) | CaseCommand::Ls | CaseCommand::Rm(_) => return Ok(None),
+            CaseCommand::Status | CaseCommand::Lock | CaseCommand::Unlock => {}
+        }
+    }
+    if let Some(dir) = &globals.case {
+        return Ok(Some(dir.text()));
+    }
+    if let Some(dir) = std::env::var_os("LOVELYCARVE_CASE").filter(|dir| !dir.is_empty()) {
+        let dir = super::types::parse_host_path(&dir.to_string_lossy())
+            .map_err(|message| CliError::new("usage", message))?;
+        return Ok(Some(dir.text()));
+    }
+    let Ok(current) = std::env::current_dir() else {
+        return Ok(None);
+    };
+    let found: Option<PathBuf> = current
+        .ancestors()
+        .find(|dir| is_case(dir))
+        .map(Path::to_owned);
+    if let Some(dir) = &found {
+        if !globals.quiet && !globals.events {
+            output::note(
+                &format!("使用案件：{}（当前目录所在的案件）", dir.display()),
+                false,
+            );
+        }
+    }
+    Ok(found.map(|dir| HostPath::new(dir).text()))
+}
+
+fn manage(command: &CaseCommand, case: Option<&str>, globals: &Globals) -> Result<i32, CliError> {
+    let dir = case
+        .ok_or_else(|| CliError::new("usage", "需要案件目录：case open <目录>，或用 -C <目录>"))?;
+    match command {
+        CaseCommand::Open(_) => {
+            let info = backend::open(dir)?;
+            present(&Command::System, Output::json(info), globals).map(|_| 0)
+        }
+        CaseCommand::Close(_) => {
+            let info = backend::close(dir)?;
+            present(&Command::System, Output::json(info), globals).map(|_| 0)
+        }
+        CaseCommand::Serve(_) => {
+            let prepared = backend::prepare(dir)?;
+            start(
+                globals.clone(),
+                Some(dir.to_owned()),
+                Work::Backend(prepared),
+            )
+        }
+        _ => Err(super::internal_error("不是进程管理命令")),
+    }
+}
+
+/// Run `command` in the case backend, confirming destructive commands here
+/// where a person may be asked.
+fn forward(
+    dir: &str,
+    command: &Command,
+    mut options: RequestOptions,
+    globals: &Globals,
+) -> Result<i32, CliError> {
+    let meta = command.meta();
+    if let (Some(question), false) = (meta.confirm, options.yes) {
+        if !super::prompt::confirm_delete(false, Some(question))? {
+            eprintln!("Aborted.");
+            return Err(CliError::aborted());
+        }
+        options.yes = true;
     }
     let reporter = Reporter::new(Options {
-        quiet: true,
-        events: true,
+        quiet: globals.quiet,
+        events: globals.events,
     });
-    let payload = json!({"code": error.code, "message": error.message, "details": error.details,
-        "ipcCommand": match &error.origin { super::Origin::Backend(operation) => operation.as_deref(), super::Origin::Cli => None }});
-    if let Err(error) = reporter.event("cli-error", payload) {
-        eprintln!("无法写出 CLI 错误事件：{error}");
+    // Evidence named with --image joins the backend's workspace first.
+    if !globals.images.is_empty() {
+        let add = Command::Evidence(cmd::evidence::EvidenceArgs {
+            command: Some(cmd::evidence::EvidenceCommand::Add(
+                cmd::evidence::AddArgs {
+                    paths: globals.images.clone(),
+                    alias: None,
+                    raw_read_mode: None,
+                    qcow_password: None,
+                    qcow_key: None,
+                    wait: false,
+                },
+            )),
+        });
+        backend::forward(dir, &add, options.clone(), &reporter)?;
     }
+    let mut monitor = reporter.start(command.path());
+    let result = forwarded(dir, command, options, &reporter, globals);
+    monitor.finish(&result);
+    present(command, result?, globals)
+}
+
+/// Run `command` in the case backend: raw bytes stream to stdout, or with
+/// `--json` come back to be printed as JSON.
+pub(super) fn forwarded(
+    dir: &str,
+    command: &Command,
+    options: RequestOptions,
+    reporter: &Reporter,
+    globals: &Globals,
+) -> Result<Output, CliError> {
+    if globals.json.is_none() || command.meta().output != cmd::OutputKind::Bytes {
+        return backend::forward(dir, command, options, reporter);
+    }
+    let mut bytes = super::stream::Bounded::default();
+    match backend::forward_into(dir, command, options, Some(reporter), &mut bytes)? {
+        Output::Written => Ok(Output::Bytes(bytes.into_inner())),
+        other => Ok(other),
+    }
+}
+
+/// Print a result for people or, with `--json`, as JSON; returns the exit
+/// status (2 for an incomplete result).
+pub(super) fn present(
+    command: &Command,
+    output: Output,
+    globals: &Globals,
+) -> Result<i32, CliError> {
+    let meta = command.meta();
+    let incomplete = incomplete::check(meta.incomplete, &output);
+    match output {
+        Output::Json(json) => {
+            if globals.json.is_some() {
+                print_json(json.value(), globals.json.as_deref())?;
+            } else if json.is_null() {
+                output::confirm_done("完成", globals.quiet || globals.events);
+            } else {
+                let value = json.value();
+                let text = cmd::render(command, value).unwrap_or_else(|| render::generic(value));
+                output::print_text(&text)?;
+            }
+        }
+        // JSON consumers get raw content as JSON too, as batch responses carry it.
+        Output::Bytes(bytes) if globals.json.is_some() => {
+            print_json(
+                &json!({"encoding": "hex", "data": hex::encode(bytes)}),
+                None,
+            )?;
+        }
+        Output::Bytes(bytes) => output::print_bytes(&bytes)?,
+        Output::Written => {}
+        Output::Stream(_) => return Err(super::internal_error("流式结果没有写出")),
+    }
+    Ok(match incomplete {
+        Some(incomplete) => {
+            report_incomplete(&incomplete, globals.events);
+            EXIT_INCOMPLETE
+        }
+        None => 0,
+    })
+}
+
+fn print_json(value: &Value, fields: Option<&str>) -> Result<(), CliError> {
+    let fields = projection::parse(fields)?;
+    let output = projection::apply(Output::json(value.clone()), &fields)?;
+    if let Output::Json(json) = output {
+        output::print_text(&output::format_json(&json))?;
+    }
+    Ok(())
 }
 
 /// Say that the result just printed is incomplete: a framed warning, or a
 /// `cli-warning` event under `--events`.
-pub(super) fn report_incomplete(incomplete: &Incomplete, events: bool) {
+pub(super) fn report_incomplete(incomplete: &incomplete::Incomplete, events: bool) {
     if !events {
         output::report_incomplete(incomplete);
         return;
@@ -125,224 +446,75 @@ pub(super) fn report_incomplete(incomplete: &Incomplete, events: bool) {
     }
 }
 
-fn splash(catalog: &Catalog) {
-    let binary = &catalog.binary;
-    let line = |command: &str, description: &str| {
-        let text = format!("{binary} {command}");
-        let padding = " ".repeat(48usize.saturating_sub(output::display_width(&text)));
-        format!(
-            "  {}{padding} {}",
-            output::paint(Role::Code, &text),
-            output::paint(Role::Muted, description)
-        )
-    };
-    let lines = [
-        output::headline(),
-        String::new(),
-        "LovelyCarve 取证命令行：打开检材、浏览与解析文件、搜索、恢复与导出。".into(),
-        String::new(),
-        output::bold("开始使用："),
-        line("images open <检材路径>", "打开检材"),
-        line(
-            "sessions open exam --image <检材路径>",
-            "保持检材打开，供连续命令复用",
-        ),
-        line("sessions attach exam", "连接会话，直接输入普通命令"),
-        line("files list --path / --image <检材路径>", "浏览检材"),
-        line("--help", "浏览全部命令"),
-        line("<命令> --help", "查看单个命令"),
-        line("complete powershell", "安装 shell 补全"),
-        String::new(),
-        format!(
-            "{}  {}",
-            output::bold("文档："),
-            output::paint(Role::Brand, "https://github.com/LovelyTeams/LovelyCarve")
-        ),
-        String::new(),
-    ];
-    println!("{}", lines.join("\n"));
-}
-
-/// A one-time tip about shell completion on the first run at a terminal.
-fn completions_hint(quiet: bool) {
-    if quiet || !std::io::stderr().is_terminal() {
+fn report_error(error: &CliError, events: bool) {
+    if !events {
+        output::report_error(error);
         return;
     }
-    let Some(path) = crate::host::default_app_data_dir().map(|dir| dir.join("cli-state.json"))
-    else {
-        return;
-    };
-    let mut state: Value = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_else(|| json!({}));
-    if state["completions"]["prompted"] == true {
+    if error.reported {
         return;
     }
-    eprintln!(
-        "{}",
-        output::paint(
-            Role::Muted,
-            "提示：运行 `lovelycarve-cli complete <bash|zsh|fish|powershell>` 安装 shell 补全。"
-        )
-    );
-    state["completions"] = json!({"prompted": true});
-    let saved = path
-        .parent()
-        .map_or(Ok(()), std::fs::create_dir_all)
-        .and_then(|()| std::fs::write(&path, state.to_string()));
-    if let Err(error) = saved {
-        tracing::debug!("save CLI state: {error}");
+    let reporter = Reporter::new(Options {
+        quiet: true,
+        events: true,
+    });
+    let payload = json!({"code": error.code, "message": error.message, "details": error.details,
+        "operation": match &error.origin { super::Origin::Backend(operation) => operation.as_deref(), super::Origin::Cli => None }});
+    if let Err(error) = reporter.event("cli-error", payload) {
+        eprintln!("无法写出 CLI 错误事件：{error}");
     }
 }
 
-/// Prints a result; an incomplete one is reported and ends with status 2.
-fn print(
-    executed: Executed,
-    invocation: &Invocation,
-    quiet: bool,
-    events: bool,
-) -> Result<i32, CliError> {
-    output::print_output(executed.output, invocation.command, quiet, invocation.text)?;
-    Ok(match executed.incomplete {
-        Some(incomplete) => {
-            report_incomplete(&incomplete, events);
-            EXIT_INCOMPLETE
-        }
-        None => 0,
-    })
-}
-
-fn command(
-    catalog: &'static Catalog,
-    globals: Globals,
-    invocation: Invocation,
-) -> Result<i32, CliError> {
-    if let Some(zone) = globals.timezone.as_deref() {
-        super::timezone::validate(zone)?;
-    }
-    let native = invocation.command.native.as_deref();
-    // Completion output must stay parseable: no banner, no hint.
-    if native == Some("complete") {
-        if invocation.dry_run {
-            let preview = context::preview(invocation.command, &invocation.values, None)?;
-            return print(Output::Json(preview).into(), &invocation, true, false);
-        }
-        return match invocation.values.get("shell").and_then(Value::as_str) {
-            Some(shell) => {
-                let script = complete::script(&catalog.binary, shell)
-                    .ok_or_else(|| CliError::invalid(format!("不支持的 shell：{shell}")))?;
-                print!("{script}");
-                Ok(0)
-            }
-            None => {
-                eprintln!(
-                    "用法：{0} complete <bash|zsh|fish|powershell>\n       {0} complete bash >> ~/.bashrc",
-                    catalog.binary
-                );
-                Ok(1)
-            }
-        };
-    }
-    output::open_session(globals.quiet || globals.events);
-    completions_hint(globals.quiet || globals.events);
-    if invocation.dry_run {
-        let scope = globals
-            .image
-            .clone()
-            .or_else(|| dotenv::variable("LOVELYCARVE_IMAGE"));
-        let preview = context::preview(invocation.command, &invocation.values, scope.as_deref())?;
-        return print(
-            Output::Json(preview).into(),
-            &invocation,
-            globals.quiet,
-            globals.events,
-        );
-    }
-    if let Some(output) = native::offline(invocation.command, &invocation.values, Mode::OneShot) {
-        let fields = super::projection::parse(invocation.fields.as_deref())?;
-        let output = super::projection::apply(output?, &fields)?;
-        let output = super::source::wrap(
-            output,
-            invocation
-                .with_source
-                .then(|| json!({"operationId":invocation.command.operation_id})),
-        );
-        return print(output.into(), &invocation, globals.quiet, globals.events);
-    }
-    if native == Some("sessions-serve") {
-        let prepared = resident::prepare(resident::name(&invocation)?)?;
-        return Ok(backend(globals, Work::Resident(prepared)));
-    }
-    if native.is_some_and(|native| native.starts_with("sessions-")) {
-        return resident::manage(&globals, &invocation);
-    }
-    if let Some(name) = resident::selected(&globals) {
-        return resident::forward(&name, &globals, invocation);
-    }
-    match native {
-        Some("session") => {
-            let jobs = invocation
-                .values
-                .get("jobs")
-                .and_then(Value::as_u64)
-                .unwrap_or(1);
-            if !(1..=64).contains(&jobs) {
-                return Err(CliError::new("usage", "--jobs 的范围是 1–64"));
-            }
-            Ok(backend(
-                globals,
-                Work::Session {
-                    jobs: jobs as usize,
-                },
-            ))
-        }
-        Some("shell") => Ok(backend(globals, Work::Shell)),
-        _ => Ok(backend(globals, Work::OneShot(invocation))),
-    }
-}
-
-enum Work {
-    OneShot(Invocation),
-    Session { jobs: usize },
+pub(super) enum Work {
+    OneShot {
+        command: Box<Command>,
+        options: RequestOptions,
+    },
+    Batch {
+        jobs: usize,
+    },
     Shell,
-    Resident(resident::Prepared),
+    Backend(backend::Prepared),
 }
 
-fn backend(globals: Globals, work: Work) -> i32 {
+/// The stack of every thread that runs commands. Parser recursion and the
+/// command futures (large in debug builds) need more than the defaults: a
+/// batch request, for one, runs its whole command on a blocking thread.
+const STACK_SIZE: usize = 16 * 1024 * 1024;
+
+/// The tokio runtime commands run on.
+pub(super) fn runtime() -> Result<tokio::runtime::Runtime, CliError> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_name("lovelycarve-cli-worker")
+        .thread_stack_size(STACK_SIZE)
+        .build()
+        .map_err(super::internal_error)
+}
+
+/// Run `work` on a thread with a large stack and its own tokio runtime.
+fn start(globals: Globals, case: Option<String>, work: Work) -> Result<i32, CliError> {
     let events = globals.events;
-    // Deep parser recursion needs more than the default main-thread stack.
     let thread = std::thread::Builder::new()
         .name("lovelycarve-cli".into())
-        .stack_size(16 * 1024 * 1024)
+        .stack_size(STACK_SIZE)
         .spawn(move || {
-            let runtime = match tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .thread_name("lovelycarve-cli-worker")
-                .build()
-            {
+            let runtime = match runtime() {
                 Ok(runtime) => runtime,
                 Err(error) => {
-                    report_error(&super::internal_error(error), events);
+                    report_error(&error, events);
                     return 1;
                 }
             };
-            let code = runtime.block_on(serve(globals, work));
+            let code = runtime.block_on(serve(globals, case, work));
             // Cancelled tasks clean up within `serve`; a blocking read that
             // has no cancellation (a stream to stdout) must not hold the exit.
             runtime.shutdown_timeout(std::time::Duration::from_secs(10));
             code
-        });
-    match thread.map(std::thread::JoinHandle::join) {
-        Ok(Ok(code)) => code,
-        Ok(Err(_)) => {
-            report_error(&super::internal_error("CLI 工作线程异常退出"), events);
-            1
-        }
-        Err(error) => {
-            report_error(&super::internal_error(error), events);
-            1
-        }
+        })?;
+    match thread.join() {
+        Ok(code) => Ok(code),
+        Err(_) => Err(super::internal_error("CLI 工作线程异常退出")),
     }
 }
 
@@ -373,58 +545,47 @@ fn host(reporter: Reporter, background: Background) -> AppHandle {
     )
 }
 
-async fn serve(globals: Globals, work: Work) -> i32 {
-    init_tracing();
+/// A fresh backend state, initialized as the desktop app initializes its own.
+pub(super) fn exec(mode: Mode, quiet: bool, events: bool) -> Result<Exec, CliError> {
     let reporter = Reporter::new(Options {
-        quiet: globals.quiet || matches!(work, Work::Session { .. } | Work::Resident(_)),
-        events: globals.events,
+        quiet: quiet || matches!(mode, Mode::Batch | Mode::Backend),
+        events,
     });
     let background = Background::default();
     let host = host(reporter.clone(), background.clone());
     let state = Arc::new(AppState::new());
-    if let Err(error) = crate::app::setup::initialize(&state, &host) {
-        report_error(
-            &super::internal_error(format!("初始化失败：{error}")),
-            globals.events,
-        );
-        return 1;
-    }
-    let mode = match work {
-        Work::OneShot(_) => Mode::OneShot,
-        Work::Session { .. } | Work::Resident(_) => Mode::Session,
-        Work::Shell => Mode::Shell,
-    };
-    let exec = Exec {
+    crate::app::setup::initialize(&state, &host)
+        .map_err(|error| super::internal_error(format!("初始化失败：{error}")))?;
+    Ok(Exec {
         host,
-        state: Arc::clone(&state),
+        state,
         mode,
-        quiet: globals.quiet,
         reporter,
         background,
+        workspace: Workspace::default(),
+    })
+}
+
+async fn serve(globals: Globals, case: Option<String>, work: Work) -> i32 {
+    init_tracing();
+    let mode = match &work {
+        Work::OneShot { .. } => Mode::OneShot,
+        Work::Batch { .. } => Mode::Batch,
+        Work::Shell => Mode::Shell,
+        Work::Backend(_) => Mode::Backend,
     };
-    let (scope, scope_source) = match globals.image.clone() {
-        Some(image) => (Some(image), None),
-        None => match dotenv::lookup("LOVELYCARVE_IMAGE") {
-            Some((image, source)) => (Some(image), Some(source.describe("LOVELYCARVE_IMAGE"))),
-            None => (None, None),
-        },
-    };
-    let mut context = Context {
-        timezone: globals.timezone.clone(),
-        scope,
-        scope_source,
-        ..Context::default()
-    };
-    let case = match globals.case.clone() {
-        Some(dir) => Some((dir, "--case".to_owned())),
-        None => dotenv::lookup("LOVELYCARVE_CASE")
-            .map(|(dir, source)| (dir, source.describe("LOVELYCARVE_CASE"))),
+    let exec = match exec(mode, globals.quiet, globals.events) {
+        Ok(exec) => exec,
+        Err(error) => {
+            report_error(&error, globals.events);
+            return 1;
+        }
     };
     let outcome = tokio::select! {
-        outcome = perform(&exec, &mut context, case, work, globals.events) => outcome,
+        outcome = perform(&exec, &globals, case, work) => outcome,
         () = interrupted() => {
-            for task in state.tasks.list() {
-                state.tasks.cancel(&task.id);
+            for task in exec.state.tasks.list() {
+                exec.state.tasks.cancel(&task.id);
             }
             Err(CliError::exit(130))
         }
@@ -436,62 +597,48 @@ async fn serve(globals: Globals, work: Work) -> i32 {
             error.exit_code
         }
     };
-    shutdown(&state).await;
+    shutdown(&exec.state).await;
     code
 }
 
-/// The case to open before the command, with where it was given; announced
-/// under `DEBUG`, as cf announces the account.
+/// Open the case and the `--image` evidence, then run the work.
 async fn perform(
     exec: &Exec,
-    context: &mut Context,
-    case: Option<(String, String)>,
+    globals: &Globals,
+    case: Option<String>,
     work: Work,
-    events: bool,
 ) -> Result<i32, CliError> {
-    if let Some((dir, source)) = case {
-        if interactive::debug() {
-            eprintln!("使用案件：{}（来自 {source}）", output::sanitize(&dir));
-        }
-        let args = Map::from_iter([("dir".to_owned(), json!(dir))]);
+    if let Some(dir) = case {
         let foreground = exec.background.foreground();
-        let opened = generated::dispatch(&exec.host, &exec.state, "case_open", args).await;
+        let opened =
+            crate::commands::casework::case::case_open(exec.host.clone(), exec.state(), dir)
+                .await
+                .map_err(|error| super::command_error(error).in_operation("case_open"));
         foreground.finish(&opened);
         opened?;
     }
+    for image in &globals.images {
+        exec.add(&image.text(), None, Default::default()).await?;
+    }
     let code = match work {
-        Work::OneShot(invocation) => {
-            let executed = exec
-                .execute(
-                    context,
-                    Request {
-                        timezone: None,
-                        command: invocation.command,
-                        values: invocation.values.clone(),
-                        ask: invocation.ask.clone(),
-                        force: invocation.force,
-                        dry_run: false,
-                        text: invocation.text,
-                        fields: invocation.fields.clone(),
-                        with_source: invocation.with_source,
-                    },
-                )
-                .await?;
-            print(executed, &invocation, exec.quiet, events)?
+        Work::OneShot { command, options } => {
+            let command = *command;
+            let executed = exec.run(command.clone(), &options).await?;
+            deliver(exec, &command, executed, globals).await?
         }
-        Work::Session { jobs, .. } => session::json_lines(exec.clone(), context, jobs).await?,
-        Work::Shell => shell::run(exec, context).await?,
-        Work::Resident(prepared) => return resident::serve(exec, context, prepared).await,
+        Work::Batch { jobs } => super::batch::run(exec.clone(), jobs).await?,
+        Work::Shell => super::shell::run(exec, globals).await?,
+        Work::Backend(prepared) => return backend::serve(exec, prepared).await,
     };
+    // Indexes of caseless evidence are process-local and discarded anyway.
     exec.state.tasks.cancel_kind(TaskKind::SessionSnapshot);
-    let mut monitor = (exec.mode != Mode::Session
-        && exec
-            .state
-            .tasks
-            .list()
-            .iter()
-            .any(|task| task.kind != TaskKind::SessionSnapshot))
-    .then(|| exec.reporter.start("tasks wait（等待后台任务）"));
+    let mut monitor = exec
+        .state
+        .tasks
+        .list()
+        .iter()
+        .any(|task| task.kind != TaskKind::SessionSnapshot)
+        .then(|| exec.reporter.start("tasks wait（等待后台任务）"));
     let result = finish(exec).await;
     if let Some(monitor) = &mut monitor {
         monitor.finish(&result);
@@ -500,8 +647,32 @@ async fn perform(
     Ok(code)
 }
 
-/// Before exit: indexes of caseless images are process-local and discarded
-/// anyway, so stop building them; then wait for every other task. A failed
+/// Print one command's result where it ran; a streamed read goes to stdout.
+pub(super) async fn deliver(
+    exec: &Exec,
+    command: &Command,
+    executed: Executed,
+    globals: &Globals,
+) -> Result<i32, CliError> {
+    match executed.output {
+        Output::Stream(plan) if globals.json.is_some() => {
+            let bytes = super::stream::buffer(exec, plan).await?;
+            present(command, Output::Bytes(bytes), globals)
+        }
+        Output::Stream(plan) => {
+            super::stream::stream(exec, plan, |chunk| {
+                let mut stdout = std::io::stdout().lock();
+                stdout.write_all(chunk)?;
+                stdout.flush()
+            })
+            .await?;
+            Ok(0)
+        }
+        output => present(command, output, globals),
+    }
+}
+
+/// Before exit: wait for every task the work left behind. A failed
 /// background task fails the process, after the command's own output.
 async fn finish(exec: &Exec) -> Result<(), CliError> {
     exec.state.tasks.cancel_kind(TaskKind::SessionSnapshot);
@@ -560,4 +731,29 @@ pub(super) async fn shutdown(state: &AppState) {
     }
     crate::app::lifecycle::shutdown_plugins(state).await;
     crate::app::lifecycle::release_media(state).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dry_runs_redact_secrets_and_never_run() {
+        let cli = parse(&[
+            "unlock".to_owned(),
+            "/nas/part:2".to_owned(),
+            "--password".to_owned(),
+            "@secret.txt".to_owned(),
+        ])
+        .unwrap();
+        let mut command = cli.command.unwrap();
+        for (_, secret) in command.secrets_mut() {
+            *secret = super::super::types::Secret::Value("hunter2".into());
+        }
+        let shown = dry_run(&command).unwrap();
+        assert_eq!(shown["command"], "unlock");
+        assert_eq!(shown["executed"], false);
+        assert!(!shown.to_string().contains("hunter2"));
+        assert!(shown.to_string().contains("<redacted>"));
+    }
 }

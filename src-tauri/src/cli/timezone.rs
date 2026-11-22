@@ -7,17 +7,23 @@ use std::{collections::BTreeMap, sync::Arc};
 use chrono::{DateTime, FixedOffset, Timelike};
 use jiff::tz::{Offset, TimeZone, TimeZoneDatabase};
 use serde::Serialize;
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-use super::{
-    catalog::Command,
-    context::{Context, Exec},
-    generated, CliError, Output,
-};
+use super::{exec::Exec, CliError};
 use crate::core::{
-    casework::case::evidence_path_key, filesystem::evidence_session::EvidenceSession,
+    casework::case::evidence_path_key, common::ids::ImageId,
+    filesystem::evidence_session::EvidenceSession,
 };
+
+/// What holds the timestamps being converted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shape {
+    /// One node.
+    Node,
+    /// A page whose `items` are nodes.
+    Page,
+}
 
 const CASE_KEY: &str = "cli.timezone";
 
@@ -99,18 +105,10 @@ async fn settings(exec: &Exec) -> Result<BTreeMap<String, String>, CliError> {
     if exec.state.active_case.lock().await.is_none() {
         return Ok(BTreeMap::new());
     }
-    let output = generated::dispatch(
-        &exec.host,
-        &exec.state,
-        "case_option_query",
-        Map::from_iter([("prefix".into(), json!(CASE_KEY))]),
-    )
-    .await?;
-    let Output::Json(output) = output else {
-        return Err(super::internal_error("案件设置返回非 JSON 结果"));
-    };
-    let entries: Vec<crate::app::workflows::casework::CaseOption> =
-        serde_json::from_value(output.value().clone())?;
+    let entries =
+        crate::commands::casework::case::case_option_query(exec.state(), Some(CASE_KEY.to_owned()))
+            .await
+            .map_err(|error| super::command_error(error).in_operation("case_option_query"))?;
     Ok(entries
         .into_iter()
         .map(|entry| (entry.key, entry.value))
@@ -119,15 +117,12 @@ async fn settings(exec: &Exec) -> Result<BTreeMap<String, String>, CliError> {
 
 async fn loaded(
     exec: &Exec,
-    context: &mut Context,
-    values: &Map<String, Value>,
+    image_id: Option<&ImageId>,
 ) -> Result<Option<Arc<EvidenceSession>>, CliError> {
-    let id = match values.get("imageId").and_then(Value::as_str) {
-        Some(reference) => Some(exec.resolve_image(context, reference).await?),
-        None => exec.current_image(context).await?,
-    };
-    let images = exec.state.images.lock().await;
-    Ok(id.and_then(|id| images.get(id.as_str()).cloned()))
+    match image_id {
+        Some(image_id) => exec.image(image_id).await.map(Some),
+        None => Ok(None),
+    }
 }
 
 struct Display {
@@ -147,24 +142,14 @@ impl Display {
 
 async fn display(
     exec: &Exec,
-    context: &Context,
     image: Option<Arc<EvidenceSession>>,
     override_zone: Option<&str>,
 ) -> Result<Display, CliError> {
-    let policy = override_zone
-        .or(context.timezone.as_deref())
-        .unwrap_or("auto");
+    let policy = override_zone.unwrap_or("auto");
     validate(policy)?;
     let mut configured = None;
     if !matches!(policy, "auto" | "evidence" | "case") {
-        configured = Some(Selection::configured(
-            policy,
-            if override_zone.is_some() || exec.mode == super::context::Mode::OneShot {
-                "command"
-            } else {
-                "session"
-            },
-        )?);
+        configured = Some(Selection::configured(policy, "command")?);
     } else if policy != "evidence" {
         let entries = settings(exec).await?;
         let preference = image
@@ -183,7 +168,7 @@ async fn display(
             configured = Some(Selection::configured(zone, source)?);
         } else if policy == "case" {
             return Err(CliError::invalid(
-                "案件未设置显示时区；先运行 timezones set Asia/Shanghai --scope case",
+                "案件未设置显示时区；先运行 tz set Asia/Shanghai",
             ));
         }
     }
@@ -201,107 +186,76 @@ async fn display(
     })
 }
 
-pub(super) async fn run(
+/// `tz`: the effective display zone for `image_id`'s evidence, with the
+/// candidates detection found.
+pub(super) async fn get(
     exec: &Exec,
-    context: &mut Context,
-    command: &Command,
-    values: &Map<String, Value>,
+    image_id: Option<&ImageId>,
     override_zone: Option<&str>,
-) -> Result<Output, CliError> {
-    if command.native.as_deref() == Some("timezones-set") {
-        let zone = values
-            .get("zone")
-            .and_then(Value::as_str)
-            .ok_or_else(|| CliError::invalid("缺少 zone"))?;
-        validate(zone)?;
-        let scope = values
-            .get("scope")
-            .and_then(Value::as_str)
-            .unwrap_or("session");
-        if scope == "session" {
-            context.timezone = (zone != "auto").then(|| zone.to_owned());
-        } else {
-            if matches!(zone, "case" | "evidence") {
-                return Err(CliError::invalid(
-                    "持久设置需要具体时区或 auto；evidence/case 策略仅用于会话与 --timezone",
-                ));
-            }
-            let key = if scope == "image" {
-                let image = loaded(exec, context, values)
-                    .await?
-                    .ok_or_else(|| CliError::new("noImage", "保存检材时区需要当前检材"))?;
-                image_key(&image)
-            } else {
-                CASE_KEY.to_owned()
-            };
-            generated::dispatch(
-                &exec.host,
-                &exec.state,
-                "case_option_save",
-                Map::from_iter([("entries".into(), json!([{"key": key, "value": zone}]))]),
-            )
-            .await?;
-        }
-        return Ok(Output::json(
-            json!({"zone": zone, "scope": scope, "saved": true}),
+) -> Result<Value, CliError> {
+    let image = loaded(exec, image_id).await?;
+    let display = display(exec, image, override_zone).await?;
+    Ok(
+        json!({"effective": display.select(None)?, "candidates": display.detected.candidates,
+        "unresolvedVolumes": display.detected.unresolved_volumes, "policy": override_zone.unwrap_or("auto")}),
+    )
+}
+
+/// `tz set`: save `zone` for the case, or for one evidence item.
+pub(super) async fn set(
+    exec: &Exec,
+    image_id: Option<&ImageId>,
+    zone: &str,
+) -> Result<Value, CliError> {
+    validate(zone)?;
+    if matches!(zone, "case" | "evidence") {
+        return Err(CliError::invalid(
+            "保存的设置需要具体时区或 auto；evidence、case 只用于 --tz",
         ));
     }
-    let image = loaded(exec, context, values).await?;
-    let display = display(exec, context, image, override_zone).await?;
-    Ok(Output::json(
-        json!({"effective": display.select(None)?, "candidates": display.detected.candidates, "unresolvedVolumes": display.detected.unresolved_volumes,
-        "sessionDefault": context.timezone, "policy": override_zone.or(context.timezone.as_deref()).unwrap_or("auto")}),
-    ))
-}
-
-pub(super) async fn render(
-    exec: &Exec,
-    context: &Context,
-    command: &Command,
-    values: &Map<String, Value>,
-    override_zone: Option<&str>,
-    output: Output,
-) -> Result<Output, CliError> {
-    if !matches!(
-        command.path().as_str(),
-        "files list" | "files get" | "files tree list"
-    ) {
-        return Ok(output);
+    if exec.state.active_case.lock().await.is_none() {
+        return Err(CliError::new(
+            "usage",
+            "时区设置保存在案件中：用 -C <案件目录> 指定案件；只影响一条命令时用 --tz",
+        ));
     }
-    let Output::Json(output) = output else {
-        return Ok(output);
+    let (key, scope) = match loaded(exec, image_id).await? {
+        Some(image) => (image_key(&image), "evidence"),
+        None => (CASE_KEY.to_owned(), "case"),
     };
-    let image = {
-        let images = exec.state.images.lock().await;
-        values
-            .get("imageId")
-            .and_then(Value::as_str)
-            .and_then(|id| images.get(id))
-            .cloned()
-    };
-    let display = display(exec, context, image, override_zone).await?;
-    let mut value = output.value().clone();
-    render_response(&mut value, &display, command.path().as_str())?;
-    Ok(Output::json(value))
+    crate::commands::casework::case::case_option_save(
+        exec.state(),
+        vec![crate::app::workflows::casework::CaseOption {
+            key,
+            value: zone.to_owned(),
+        }],
+    )
+    .await
+    .map_err(|error| super::command_error(error).in_operation("case_option_save"))?;
+    Ok(json!({"zone": zone, "scope": scope, "saved": true}))
 }
 
-fn render_response(value: &mut Value, display: &Display, path: &str) -> Result<(), CliError> {
-    if path == "files get" {
+/// Convert the node timestamps of `value` for display.
+pub(super) async fn apply(
+    exec: &Exec,
+    image_id: &ImageId,
+    override_zone: Option<&str>,
+    value: &mut Value,
+    shape: Shape,
+) -> Result<(), CliError> {
+    let image = loaded(exec, Some(image_id)).await?;
+    let display = display(exec, image, override_zone).await?;
+    render_response(value, &display, shape)
+}
+
+fn render_response(value: &mut Value, display: &Display, shape: Shape) -> Result<(), CliError> {
+    if shape == Shape::Node {
         return render_node(value, display);
     }
     let mut zones = Vec::new();
     let mut indexes = Vec::new();
     if let Some(items) = value.get_mut("items").and_then(Value::as_array_mut) {
-        for item in items.iter_mut() {
-            let node = if path == "files tree list" {
-                item.get_mut("node")
-            } else {
-                Some(item)
-            };
-            let Some(node) = node else {
-                indexes.push(None);
-                continue;
-            };
+        for node in items.iter_mut() {
             render_node(node, display)?;
             let metadata = node
                 .as_object_mut()
@@ -329,12 +283,7 @@ fn render_response(value: &mut Value, display: &Display, path: &str) -> Result<(
         if zones.len() > 1 {
             for (item, index) in items.iter_mut().zip(indexes) {
                 if let Some(index) = index {
-                    let node = if path == "files tree list" {
-                        &mut item["node"]
-                    } else {
-                        item
-                    };
-                    node["timestampTimeZone"] = json!(index);
+                    item["timestampTimeZone"] = json!(index);
                 }
             }
         }
@@ -486,7 +435,7 @@ mod tests {
             json!({"modified":"2024-01-01T00:00:00+00:00", "created":"2024-01-01T01:00:00"});
         let node = json!({"id":"test", "timestamps": original});
         let mut response = json!({"items":[node.clone(), node], "nextCursor":null});
-        render_response(&mut response, &display, "files list").unwrap();
+        render_response(&mut response, &display, Shape::Page).unwrap();
         assert_eq!(
             response["timestampDisplay"]["timeZones"]
                 .as_array()
@@ -502,7 +451,7 @@ mod tests {
             assert_eq!(node["timestampUnconvertedFields"], json!(["created"]));
         }
         let mut empty = json!({"items":[]});
-        render_response(&mut empty, &display, "files list").unwrap();
+        render_response(&mut empty, &display, Shape::Page).unwrap();
         assert_eq!(empty["timestampDisplay"]["timeZones"][0]["source"], "test");
     }
 
@@ -521,10 +470,10 @@ mod tests {
             strict_evidence: true,
         };
         let mut response = json!({"items":[
-            {"node":{"id":"ntfs:part:0:5", "timestamps":{"modified":"2024-01-01T00:00:00Z"}}},
-            {"node":{"id":"ntfs:part:1:5", "timestamps":{"modified":"2024-01-01T00:00:00Z"}}}
+            {"id":"ntfs:part:0:5", "timestamps":{"modified":"2024-01-01T00:00:00Z"}},
+            {"id":"ntfs:part:1:5", "timestamps":{"modified":"2024-01-01T00:00:00Z"}}
         ]});
-        render_response(&mut response, &display, "files tree list").unwrap();
+        render_response(&mut response, &display, Shape::Page).unwrap();
         assert_eq!(
             response["timestampDisplay"]["timeZones"]
                 .as_array()
@@ -532,14 +481,14 @@ mod tests {
                 .len(),
             2
         );
-        assert_eq!(response["items"][0]["node"]["timestampTimeZone"], 0);
-        assert_eq!(response["items"][1]["node"]["timestampTimeZone"], 1);
+        assert_eq!(response["items"][0]["timestampTimeZone"], 0);
+        assert_eq!(response["items"][1]["timestampTimeZone"], 1);
         assert_eq!(
-            response["items"][0]["node"]["timestamps"]["modified"],
+            response["items"][0]["timestamps"]["modified"],
             "2024-01-01T08:00:00+08:00"
         );
         assert_eq!(
-            response["items"][1]["node"]["timestamps"]["modified"],
+            response["items"][1]["timestamps"]["modified"],
             "2023-12-31T20:00:00-04:00"
         );
     }

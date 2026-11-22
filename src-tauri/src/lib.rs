@@ -38,9 +38,8 @@ pub fn run() {
 }
 
 /// The desktop builder and the backend command registry. The CLI build script
-/// reads this `generate_handler!` list to generate its dispatch, so every
-/// command registered here is also mapped (or explicitly excluded) in
-/// `src/cli/commands.toml`.
+/// reads this `generate_handler!` list to generate the `rpc` dispatch, so every
+/// command registered here can also be called from the command line.
 #[cfg(feature = "desktop")]
 fn application_builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()

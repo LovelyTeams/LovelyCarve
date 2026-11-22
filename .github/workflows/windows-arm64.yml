@@ -50,7 +50,7 @@ jobs:
             }
             Write-Host "$binary is ARM64"
           }
-          & ./src-tauri/target/release/lovelycarve-cli.exe system get
+          & ./src-tauri/target/release/lovelycarve-cli.exe --json system
           if ($LASTEXITCODE -ne 0) { throw "CLI smoke check failed: $LASTEXITCODE" }
           $pluginFiles = @('linuxinfo.dll', 'plugin.toml', 'schema.json', 'locales')
           $pluginPath = 'arm64-build/plugins/linuxinfo'

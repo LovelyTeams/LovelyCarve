@@ -1,13 +1,12 @@
-//! Follow ordinary CLI paths from RAID detection through LVM/Btrfs to bytes.
+//! Follow ordinary command lines from RAID detection through LVM/Btrfs to
+//! bytes, and resolve addresses by name, by root ID and by node ID.
 use std::{io::Write, sync::Arc};
 
 use serde_json::{json, Value};
 
 use super::{
-    browsing::LastLink,
-    catalog,
-    context::{Context, Exec, Mode, Request},
-    Output,
+    exec::{Exec, Mode, RequestOptions},
+    CliError, Output,
 };
 use crate::{
     core::{
@@ -18,39 +17,54 @@ use crate::{
     state::AppState,
 };
 
-async fn execute(exec: &Exec, context: &mut Context, path: &str, args: Value) -> Value {
-    let command = catalog::catalog().unwrap().find_path(path).unwrap();
-    let values = args.as_object().unwrap().clone();
-    command.validate(&values).unwrap();
-    match exec
-        .execute(
-            context,
-            Request {
-                timezone: None,
-                command,
-                values,
-                ask: vec![],
-                force: false,
-                dry_run: false,
-                text: false,
-                fields: None,
-                with_source: false,
-            },
-        )
-        .await
-        .unwrap()
-        .output
-    {
-        Output::Json(result) => result.value().clone(),
-        Output::Bytes(bytes) => json!({"data": hex::encode(bytes)}),
-        Output::Written => panic!("session output"),
+fn exec(directory: &std::path::Path, state: Arc<AppState>, mode: Mode) -> Exec {
+    Exec {
+        reporter: super::progress::Reporter::silent(),
+        host: AppHandle::new(Some(directory.to_owned()), |_, _| Ok(())),
+        state,
+        mode,
+        background: Default::default(),
+        workspace: Default::default(),
     }
 }
 
+/// Run one command line where the evidence is held.
+async fn try_run(exec: &Exec, argv: &[&str]) -> Result<Value, CliError> {
+    let words: Vec<String> = argv.iter().map(|word| (*word).to_owned()).collect();
+    let command = super::runtime::parse(&words)?
+        .command
+        .ok_or_else(|| CliError::invalid("no command"))?;
+    let output = exec.run(command, &RequestOptions::default()).await?.output;
+    Ok(match output {
+        Output::Json(json) => json.value().clone(),
+        Output::Bytes(bytes) => json!({"data": hex::encode(bytes)}),
+        Output::Stream(plan) => {
+            json!({"data": hex::encode(super::stream::buffer(exec, plan).await?)})
+        }
+        Output::Written => Value::Null,
+    })
+}
+
+async fn run(exec: &Exec, argv: &[&str]) -> Value {
+    match try_run(exec, argv).await {
+        Ok(value) => value,
+        Err(error) => panic!("{argv:?}: {} {}", error.code, error.message),
+    }
+}
+
+fn names(listing: &Value) -> Vec<String> {
+    listing["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["name"].as_str().unwrap().to_owned())
+        .collect()
+}
+
 #[test]
-fn raid_lvm_btrfs_navigation_uses_selected_images_and_discovered_paths() {
-    // Match the CLI's worker stack: generated dispatch and parser futures are
-    // larger than the Windows test harness's default stack.
+fn raid_lvm_btrfs_navigation_uses_assembled_aliases_and_discovered_paths() {
+    // Match the CLI's worker stack: command and parser futures are larger
+    // than the Windows test harness's default stack.
     std::thread::Builder::new()
         .stack_size(16 * 1024 * 1024)
         .spawn(|| {
@@ -66,7 +80,7 @@ fn raid_lvm_btrfs_navigation_uses_selected_images_and_discovered_paths() {
 
 async fn navigate_raid_lvm_btrfs(on_md: bool) {
     let temporary = tempfile::tempdir().unwrap();
-    let mut source = tempfile::NamedTempFile::new().unwrap();
+    let source = temporary.path().join("member.raw");
     let mut bytes = lvm::fragmented(&btrfs::image());
     if on_md {
         use crate::core::evidence::raid::mdadm_super::test_support::V1Fields;
@@ -81,41 +95,25 @@ async fn navigate_raid_lvm_btrfs(on_md: bool) {
         member.extend_from_slice(&bytes);
         bytes = member;
     }
-    source.write_all(&bytes).unwrap();
+    std::fs::File::create(&source)
+        .unwrap()
+        .write_all(&bytes)
+        .unwrap();
     let state = Arc::new(AppState::new());
-    let exec = Exec {
-        reporter: super::progress::Reporter::silent(),
-        host: AppHandle::new(Some(temporary.path().to_owned()), |_, _| Ok(())),
-        state: state.clone(),
-        mode: Mode::Session,
-        quiet: true,
-        background: Default::default(),
-    };
-    let mut context = Context::default();
-    let source_info = execute(
+    let exec = exec(temporary.path(), state.clone(), Mode::Batch);
+    let added = run(
         &exec,
-        &mut context,
-        "images open",
-        json!({"path": source.path()}),
+        &[
+            "evidence",
+            "add",
+            source.to_str().unwrap(),
+            "--as",
+            "member",
+        ],
     )
     .await;
-    execute(
-        &exec,
-        &mut context,
-        "images open",
-        json!({"path": temporary.path()}),
-    )
-    .await;
-    let selected = execute(
-        &exec,
-        &mut context,
-        "context set",
-        json!({"imageId": source_info["id"]}),
-    )
-    .await;
-    assert_eq!(selected["image"]["id"], source_info["id"]);
-    assert_eq!(selected["dir"], "/");
-    let stack = execute(&exec, &mut context, "raid detect", json!({})).await;
+    assert_eq!(added["items"][0]["address"], "/member");
+    let stack = run(&exec, &["raid", "detect"]).await;
     if on_md {
         assert_eq!(stack["arrays"].as_array().unwrap().len(), 1);
         assert_eq!(
@@ -123,76 +121,47 @@ async fn navigate_raid_lvm_btrfs(on_md: bool) {
             stack["arrays"][0]["assembledImageId"]
         );
     }
-    let logical_image = stack["volumeGroups"][0]["logicalVolumes"][0]["assembledImageId"]
+    let logical = stack["volumeGroups"][0]["logicalVolumes"][0]["assembledImageId"]
         .as_str()
         .unwrap()
         .to_owned();
-    let again = execute(&exec, &mut context, "raid detect", json!({})).await;
-    assert_eq!(
-        again["volumeGroups"][0]["logicalVolumes"][0]["assembledImageId"],
-        logical_image
-    );
-    let selected = execute(
-        &exec,
-        &mut context,
-        "context use",
-        json!({"imageId": logical_image}),
-    )
-    .await;
-    assert_eq!(selected["image"]["id"], logical_image);
-    let roots = execute(&exec, &mut context, "files list", json!({})).await;
-    let volume_name = roots["items"][0]["name"].as_str().unwrap();
-    assert!(
-        !volume_name.contains('/'),
-        "volume label must be one navigation component"
-    );
-    assert_eq!(roots["items"][0]["kind"], "dir");
-    execute(
-        &exec,
-        &mut context,
-        "context set",
-        json!({"dir": volume_name}),
-    )
-    .await;
-    let files = execute(&exec, &mut context, "files list", json!({})).await;
-    assert!(files["items"]
+    let address = stack["assembled"]
         .as_array()
         .unwrap()
         .iter()
-        .any(|node| node["name"] == "hello.txt"));
-    let bytes = execute(
-        &exec,
-        &mut context,
-        "files read",
-        json!({"path": "hello.txt"}),
-    )
-    .await;
-    assert_eq!(bytes["data"], hex::encode(btrfs::CONTENT));
-    assert!(exec
-        .locate(&context, &logical_image, "HELLO.TXT", LastLink::Follow)
+        .find(|item| item["imageId"] == logical.as_str())
+        .unwrap()["path"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    // Detecting again reuses the assembled evidence and its alias.
+    let again = run(&exec, &["raid", "detect"]).await;
+    assert_eq!(
+        again["volumeGroups"][0]["logicalVolumes"][0]["assembledImageId"],
+        logical
+    );
+    let roots = run(&exec, &["ls", &address]).await;
+    let volume = roots["items"][0]["path"].as_str().unwrap().to_owned();
+    assert_eq!(roots["items"][0]["kind"], "dir");
+    assert!(volume.starts_with(&format!("{address}/")));
+    assert_eq!(
+        volume.matches('/').count(),
+        2,
+        "a volume is one address component: {volume}"
+    );
+    let files = run(&exec, &["ls", &volume]).await;
+    assert!(names(&files).contains(&"hello.txt".to_owned()), "{files}");
+    let read = run(&exec, &["cat", &format!("{volume}/hello.txt")]).await;
+    assert_eq!(read["data"], hex::encode(btrfs::CONTENT));
+    // Btrfs names are case-sensitive.
+    assert!(try_run(&exec, &["cat", &format!("{volume}/HELLO.TXT")])
         .await
         .is_err());
-    let info = execute(&exec, &mut context, "images get", json!({})).await;
-    for reference in [
-        logical_image.clone(),
-        logical_image.to_uppercase(),
-        info["path"].as_str().unwrap().to_owned(),
-    ] {
-        let reopened = execute(
-            &exec,
-            &mut context,
-            "images open",
-            json!({"path": reference}),
-        )
-        .await;
-        assert_eq!(reopened["id"], logical_image);
-        assert_eq!(context.pwd(), "/");
-    }
-    let images = execute(&exec, &mut context, "images list", json!({})).await;
+    let listed = run(&exec, &["ls", "/"]).await;
     assert_eq!(
-        images.as_array().unwrap().len(),
-        if on_md { 4 } else { 3 },
-        "reopening must reuse the registered volume"
+        listed["items"].as_array().unwrap().len(),
+        if on_md { 3 } else { 2 },
+        "evidence: the member, its assembled array (md) and its logical volume"
     );
     exec.background.wait(&state).await.unwrap();
 }
@@ -205,15 +174,7 @@ fn scoped_raid_detection_isolates_cloned_volume_bytes_and_cache_identity() {
             tokio::runtime::Runtime::new().unwrap().block_on(async {
                 let temporary = tempfile::tempdir().unwrap();
                 let state = Arc::new(AppState::new());
-                let exec = Exec {
-                    reporter: super::progress::Reporter::silent(),
-                    host: AppHandle::new(Some(temporary.path().to_owned()), |_, _| Ok(())),
-                    state: state.clone(),
-                    mode: Mode::Session,
-                    quiet: true,
-                    background: Default::default(),
-                };
-                let mut context = Context::default();
+                let exec = exec(temporary.path(), state.clone(), Mode::Batch);
                 let mut sources = Vec::new();
                 let mut expected = Vec::new();
                 for name in ["first", "second"] {
@@ -227,60 +188,43 @@ fn scoped_raid_detection_isolates_cloned_volume_bytes_and_cache_identity() {
                     filesystem[offset..offset + content.len()].copy_from_slice(&content);
                     let path = temporary.path().join(format!("{name}.raw"));
                     std::fs::write(&path, lvm::fragmented(&filesystem)).unwrap();
-                    let image =
-                        execute(&exec, &mut context, "images open", json!({"path": path})).await;
-                    sources.push(image["id"].as_str().unwrap().to_owned());
+                    let added = run(&exec, &["evidence", "add", path.to_str().unwrap()]).await;
+                    sources.push(added["items"][0]["id"].as_str().unwrap().to_owned());
                     expected.push(content);
                 }
-                let ambiguous = execute(&exec, &mut context, "raid detect", json!({})).await;
+                let ambiguous = run(&exec, &["raid", "detect"]).await;
                 assert!(
                     ambiguous["volumeGroups"][0]["logicalVolumes"][0]["assembledImageId"].is_null()
                 );
                 let mut assembled_ids = Vec::new();
                 let mut assembled_paths = Vec::new();
-                for (source, content) in sources.iter().zip(&expected) {
-                    let stack = execute(
-                        &exec,
-                        &mut context,
-                        "raid detect",
-                        json!({"imageIds": [source]}),
-                    )
-                    .await;
+                for (member, content) in ["first", "second"].iter().zip(&expected) {
+                    let stack = run(&exec, &["raid", "detect", "--member", member]).await;
                     assert_eq!(stack["images"].as_array().unwrap().len(), 1);
                     let image_id = stack["volumeGroups"][0]["logicalVolumes"][0]
                         ["assembledImageId"]
                         .as_str()
                         .unwrap()
                         .to_owned();
-                    let again = execute(
+                    let again = run(
                         &exec,
-                        &mut context,
-                        "raid detect",
-                        json!({"imageIds": [source, source]}),
+                        &["raid", "detect", "--member", member, "--member", member],
                     )
                     .await;
                     assert_eq!(
                         again["volumeGroups"][0]["logicalVolumes"][0]["assembledImageId"],
                         image_id
                     );
-                    execute(
-                        &exec,
-                        &mut context,
-                        "context use",
-                        json!({"imageId": image_id}),
-                    )
-                    .await;
-                    let roots = execute(&exec, &mut context, "files list", json!({})).await;
-                    let volume = roots["items"][0]["name"].as_str().unwrap();
-                    let bytes = execute(
-                        &exec,
-                        &mut context,
-                        "files read",
-                        json!({"path": format!("/{volume}/hello.txt")}),
-                    )
-                    .await;
+                    let address = stack["assembled"][0]["path"].as_str().unwrap().to_owned();
+                    let roots = run(&exec, &["ls", &address]).await;
+                    let volume = roots["items"][0]["path"].as_str().unwrap().to_owned();
+                    let bytes = run(&exec, &["cat", &format!("{volume}/hello.txt")]).await;
                     assert_eq!(bytes, json!({"data": hex::encode(content)}));
-                    let info = execute(&exec, &mut context, "images get", json!({})).await;
+                    let info = run(
+                        &exec,
+                        &["evidence", "show", address.trim_start_matches('/')],
+                    )
+                    .await;
                     assembled_paths.push(info["path"].as_str().unwrap().to_owned());
                     assembled_ids.push(image_id);
                 }
@@ -364,79 +308,52 @@ fn scoped_raid_detection_isolates_cloned_volume_bytes_and_cache_identity() {
 }
 
 #[test]
-fn caseless_ntfs_ids_case_matching_and_absolute_tree_paths() {
+fn caseless_ntfs_ids_case_matching_and_tree_addresses() {
     std::thread::Builder::new()
         .stack_size(16 * 1024 * 1024)
         .spawn(|| {
             tokio::runtime::Runtime::new().unwrap().block_on(async {
-                for mode in [Mode::OneShot, Mode::Session] {
+                for mode in [Mode::OneShot, Mode::Batch] {
                     let temporary = tempfile::tempdir().unwrap();
                     let state = Arc::new(AppState::new());
-                    let exec = Exec {
-                        reporter: super::progress::Reporter::silent(),
-                        host: AppHandle::new(Some(temporary.path().to_owned()), |_, _| Ok(())),
-                        state: state.clone(),
-                        mode,
-                        quiet: true,
-                        background: Default::default(),
-                    };
-                    let mut context = Context::default();
+                    let exec = exec(temporary.path(), state.clone(), mode);
                     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                         .join("vendor/ewf/tests/data/ntfs_sample.E01");
-                    execute(&exec, &mut context, "images open", json!({"path": path})).await;
-                    let roots = execute(&exec, &mut context, "files list", json!({})).await;
-                    let volume = roots["items"]
+                    run(
+                        &exec,
+                        &["evidence", "add", path.to_str().unwrap(), "--as", "ntfs"],
+                    )
+                    .await;
+                    let roots = run(&exec, &["ls", "/ntfs"]).await;
+                    assert!(roots["items"]
                         .as_array()
                         .unwrap()
                         .iter()
-                        .find(|node| node["id"] == "part:0")
-                        .unwrap();
-                    let volume_name = volume["name"].as_str().unwrap();
-                    execute(
-                        &exec,
-                        &mut context,
-                        "context set",
-                        json!({"nodeId": "part:0"}),
-                    )
-                    .await;
-                    let file = execute(
-                        &exec,
-                        &mut context,
-                        "files get",
-                        json!({"path": "FILE1.TXT"}),
-                    )
-                    .await;
+                        .any(|node| node["path"] == "/ntfs/part:0"));
+                    // NTFS folds case: a unique case-insensitive match is the file.
+                    let file = run(&exec, &["stat", "/ntfs/part:0/FILE1.TXT"]).await;
                     assert_eq!(file["name"], "file1.txt");
-                    assert_eq!(file["path"], format!("/{volume_name}/file1.txt"));
+                    assert_eq!(file["path"], "/ntfs/part:0/file1.txt");
                     for indexed in [false, true] {
                         if indexed {
                             exec.background.wait(&state).await.unwrap();
                         }
-                        let by_id = execute(
+                        let by_id = run(
                             &exec,
-                            &mut context,
-                            "files get",
-                            json!({"nodeId": file["id"]}),
+                            &["stat", &format!("/ntfs/@{}", file["id"].as_str().unwrap())],
                         )
                         .await;
                         assert_eq!(by_id["path"], file["path"]);
                         assert_eq!(by_id["id"], file["id"]);
                     }
-                    for args in [
-                        json!({"path": ".", "name": "file1"}),
-                        json!({"nodeId": "part:0", "name": "file1"}),
-                    ] {
-                        let tree = execute(&exec, &mut context, "files tree list", args).await;
-                        assert_eq!(tree["items"][0]["path"], file["path"]);
-                        let round_trip = execute(
-                            &exec,
-                            &mut context,
-                            "files get",
-                            json!({"path": tree["items"][0]["path"]}),
-                        )
-                        .await;
-                        assert_eq!(round_trip["id"], file["id"]);
-                    }
+                    let tree = run(&exec, &["tree", "/ntfs/part:0", "--name", "file1"]).await;
+                    assert_eq!(tree["items"][0]["path"], file["path"]);
+                    let round_trip =
+                        run(&exec, &["stat", tree["items"][0]["path"].as_str().unwrap()]).await;
+                    assert_eq!(round_trip["id"], file["id"]);
+                    let from_root =
+                        run(&exec, &["tree", "/ntfs", "--depth", "3", "--name", "file1"]).await;
+                    assert_eq!(from_root["items"][0]["path"], file["path"]);
                     assert!(state.active_case.lock().await.is_none());
                     exec.background.wait(&state).await.unwrap();
                 }
@@ -448,7 +365,7 @@ fn caseless_ntfs_ids_case_matching_and_absolute_tree_paths() {
 }
 
 #[test]
-fn duplicate_complex_volume_names_can_be_entered_by_id_and_path_before_indexing() {
+fn duplicate_complex_volume_names_are_entered_by_root_id_and_node_id() {
     std::thread::Builder::new()
         .stack_size(16 * 1024 * 1024)
         .spawn(|| {
@@ -473,91 +390,43 @@ fn duplicate_complex_volume_names_can_be_entered_by_id_and_path_before_indexing(
                     .lock()
                     .await
                     .insert(image.id.clone(), Arc::new(EvidenceSession::from(image)));
-                let exec = Exec {
-                    reporter: super::progress::Reporter::silent(),
-                    host: AppHandle::new(Some(temporary.path().to_owned()), |_, _| Ok(())),
-                    state,
-                    mode: Mode::Session,
-                    quiet: true,
-                    background: Default::default(),
-                };
-                let mut context = Context {
-                    image_id: Some("duplicate-volumes".into()),
-                    ..Context::default()
-                };
-                let info = execute(&exec, &mut context, "images get", json!({})).await;
+                let exec = exec(temporary.path(), state, Mode::Batch);
+                let alias = run(&exec, &["ls", "/"]).await["items"][0]["name"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned();
+                let info = run(&exec, &["evidence", "show", &alias]).await;
                 assert_eq!(info["partitions"][0]["label"], label);
-                assert!(exec
-                    .locate(
-                        &context,
-                        "duplicate-volumes",
-                        &format!("/{navigation_name}"),
-                        LastLink::Follow
-                    )
+                let ambiguous = try_run(&exec, &["stat", &format!("/{alias}/{navigation_name}")])
                     .await
-                    .unwrap_err()
-                    .message
-                    .contains("不唯一"));
+                    .unwrap_err();
+                assert!(
+                    ambiguous.message.contains("不唯一"),
+                    "{}",
+                    ambiguous.message
+                );
                 for partition in [0, 2] {
-                    let alias = format!("/part:{partition}");
-                    let named = execute(
-                        &exec,
-                        &mut context,
-                        "files get",
-                        json!({"path": format!("{alias}/FILE1.TXT")}),
-                    )
-                    .await;
+                    let volume = format!("/{alias}/part:{partition}");
+                    let named = run(&exec, &["stat", &format!("{volume}/FILE1.TXT")]).await;
                     assert!(named["id"]
                         .as_str()
                         .unwrap()
                         .starts_with(&format!("ntfs:part:{partition}:")));
-                    assert_eq!(named["path"], format!("/{navigation_name}/file1.txt"));
-                    let by_alias = execute(
+                    assert_eq!(named["path"], format!("{volume}/file1.txt"));
+                    let by_path = run(&exec, &["cat", &format!("{volume}/file1.txt")]).await;
+                    let by_id = run(
                         &exec,
-                        &mut context,
-                        "files read",
-                        json!({"path": format!("{alias}/file1.txt")}),
+                        &[
+                            "cat",
+                            &format!("/{alias}/@{}", named["id"].as_str().unwrap()),
+                        ],
                     )
                     .await;
-                    let by_id = execute(
-                        &exec,
-                        &mut context,
-                        "files read",
-                        json!({"nodeId": named["id"]}),
-                    )
-                    .await;
-                    assert_eq!(by_alias, by_id);
+                    assert_eq!(by_path, by_id);
                 }
-                let selected = execute(
-                    &exec,
-                    &mut context,
-                    "context set",
-                    json!({"dir": "/part:2"}),
-                )
-                .await;
-                assert_eq!(selected["dir"], format!("/{navigation_name}"));
-                assert_eq!(context.location.last().unwrap().1, "part:2");
-                let file = execute(
-                    &exec,
-                    &mut context,
-                    "files get",
-                    json!({"path": "FILE1.TXT"}),
-                )
-                .await;
-                assert!(file["id"].as_str().unwrap().starts_with("ntfs:part:2:"));
-                let located = execute(
-                    &exec,
-                    &mut context,
-                    "files get",
-                    json!({"nodeId": file["id"]}),
-                )
-                .await;
-                assert_eq!(located["path"], format!("/{navigation_name}/file1.txt"));
-                execute(&exec, &mut context, "context set", json!({"dir": ".."})).await;
-                assert_eq!(context.pwd(), "/");
                 assert!(super::navigation::locate_node(
                     &exec,
-                    "duplicate-volumes",
+                    &ImageId::new("duplicate-volumes"),
                     "ntfs:part:2:999999"
                 )
                 .await

@@ -77,7 +77,7 @@ jobs:
             file "$binary"
             otool -L "$binary"
           done
-          "$cli" system get
+          "$cli" --json system
           stage=macos-arm64
           mkdir -p "$stage/plugins/linuxinfo"
           cp "$desktop" "$cli" "$plugin_host" "$inference" LICENSE THIRD_PARTY_NOTICES.md "$stage/"

@@ -1,14 +1,14 @@
 //! Forms and confirmations: a person at a terminal fills in missing values,
 //! while scripts, CI and agents must pass them as options (secrets may also
-//! arrive on stdin). Prompts are drawn the way cf's clack prompts are: a gray
-//! guide line, a cyan `◆` while active, then a green `◇` with the answer, a
-//! red `■` when cancelled, or a yellow `▲` with the problem.
+//! arrive on stdin). A prompt is a gray guide line, a cyan `◆` while active,
+//! then a green `◇` with the answer, a red `■` when cancelled, or a yellow
+//! `▲` with the problem.
 use std::io::{IsTerminal, Read, Write};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use super::{
-    help, interactive,
+    interactive,
     output::{self, paint, tone, Role, Tone},
     CliError,
 };
@@ -141,7 +141,7 @@ impl State {
 /// The guide line and the question, wrapped under its symbol.
 fn header(message: &str, state: State) -> String {
     let mut lines = vec![tone(Tone::Gray, "│")];
-    for (index, line) in help::wrap(message, columns().saturating_sub(3))
+    for (index, line) in super::text::wrap(message, columns().saturating_sub(3))
         .into_iter()
         .enumerate()
     {
@@ -255,60 +255,6 @@ pub fn text(
     }
 }
 
-/// Pick one of `choices` with the arrow keys.
-pub fn select(message: &str, choices: &[String]) -> Result<String, CliError> {
-    let message = output::sanitize(message);
-    let choices: Vec<String> = choices
-        .iter()
-        .map(|choice| output::sanitize(choice))
-        .collect();
-    if choices.is_empty() {
-        return Err(CliError::invalid("没有可选的值"));
-    }
-    let _terminal = Terminal::enter()?;
-    let mut screen = Screen::default();
-    let mut cursor = 0usize;
-    loop {
-        let bar = State::Active.bar();
-        let mut frame = header(&message, State::Active);
-        for (index, choice) in choices.iter().enumerate() {
-            let option = if index == cursor {
-                format!("{} {choice}", tone(Tone::Green, "●"))
-            } else {
-                format!("{} {}", tone(Tone::Dim, "○"), tone(Tone::Dim, choice))
-            };
-            frame.push_str(&format!("\n{bar}  {option}"));
-        }
-        frame.push_str(&format!(
-            "\n{bar}  {} 切换 • {} 确认\n{}",
-            tone(Tone::Dim, "↑/↓"),
-            tone(Tone::Dim, "Enter:"),
-            State::Active.end()
-        ));
-        screen.draw(&frame)?;
-        let key = next_key()?;
-        if cancelled(&key) {
-            screen.finish(&answer(&message, State::Cancel, &choices[cursor]))?;
-            return Err(CliError::cancelled());
-        }
-        match key.code {
-            KeyCode::Up | KeyCode::Left | KeyCode::Char('k') | KeyCode::Char('h') => {
-                cursor = cursor.checked_sub(1).unwrap_or(choices.len() - 1)
-            }
-            KeyCode::Down
-            | KeyCode::Right
-            | KeyCode::Tab
-            | KeyCode::Char('j')
-            | KeyCode::Char('l') => cursor = (cursor + 1) % choices.len(),
-            KeyCode::Enter => {
-                screen.finish(&answer(&message, State::Submit, &choices[cursor]))?;
-                return Ok(choices[cursor].clone());
-            }
-            _ => {}
-        }
-    }
-}
-
 /// Yes or no, starting at `initial`.
 pub fn confirm(message: &str, initial: bool) -> Result<bool, CliError> {
     let message = output::sanitize(message);
@@ -398,32 +344,11 @@ pub fn required_field(flag: &str, description: &str, secret: bool) -> Result<Str
     })
 }
 
-/// One of a fixed set of values the caller did not pass.
-pub fn required_choice(
-    flag: &str,
-    description: &str,
-    choices: &[String],
-) -> Result<String, CliError> {
-    if interactive::is_non_interactive_or_ci() {
-        return Err(CliError::invalid(format!(
-            "缺少 --{flag}（可选值：{}）。请使用 --{flag} <值>，或在终端中交互运行。",
-            choices.join(", ")
-        )));
-    }
-    output::open_session(false);
-    let message = if description.is_empty() {
-        format!("选择 --{flag} 的值")
-    } else {
-        description.to_owned()
-    };
-    select(&message, choices)
-}
-
-/// Ask before a destructive command. `--force` is the only way past this in
+/// Ask before a destructive command. `-y` is the only way past this in
 /// scripts: without a person to ask, it prints the question and `Aborted.`
 /// and fails. An interactive decline returns `false`; the caller aborts.
-pub fn confirm_delete(force: bool, message: Option<&str>) -> Result<bool, CliError> {
-    if force {
+pub fn confirm_delete(yes: bool, message: Option<&str>) -> Result<bool, CliError> {
+    if yes {
         return Ok(true);
     }
     let question = match message {
@@ -434,7 +359,7 @@ pub fn confirm_delete(force: bool, message: Option<&str>) -> Result<bool, CliErr
         eprint!(
             "{} {question}\n  {}\nAborted.\n",
             paint(Role::Warning, "?"),
-            paint(Role::Muted, "（非交互环境：传入 --force 以确认）")
+            paint(Role::Muted, "（非交互环境：加 -y 确认）")
         );
         return Err(CliError::aborted());
     }

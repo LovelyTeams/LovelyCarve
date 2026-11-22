@@ -7,7 +7,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [使用指南](USAGE.md) | 案件与检材、镜像信息、文件浏览与预览、校验与导出、全局搜索、时间线、文件恢复、插件分析、BCP 数据与只读挂载 |
-| [CLI 手册](CLI.md) | 独立的 `lovelycarve-cli`：命令结构、发现命令、编码代理技能、输出与参数约定、浏览检材、交互 shell、JSONL 会话，以及镜像与加密卷的命令行用法 |
+| [CLI 手册](CLI.md) | 独立的 `lovelycarve-cli`：地址、案件与后台进程、输出与退出码、浏览与查找、加密卷、RAID、文件恢复、插件、时间线、交互 shell、批量请求与 `rpc`，以及编码代理技能 |
 | [Python 读取库](../python/README.md) | PyO3 `lovelycarve`：只读打开镜像、分区与目录浏览、文件属性、范围读取和 seekable 文件对象 |
 | [iOS 备份](IOS_BACKUPS.md) | iTunes / Finder 本地备份的浏览、加密备份解锁与异常检查 |
 | [Linux 基本信息插件](LINUXINFO.md) | 内置 `linuxinfo` 插件的分析范围、构建部署与验证 |
@@ -21,7 +21,7 @@
 | 文件系统 | [NTFS](formats/NTFS.md) · [ext2/3/4](formats/EXT.md) · [FAT / exFAT](formats/FAT.md) · [XFS](formats/XFS.md) · [ReFS](formats/REFS.md) · [APFS](formats/APFS.md) · [传统 HFS](formats/CLASSIC_HFS.md) · [HFS+ / HFSX](formats/HFS.md) · [ISO 9660 与光盘 BIN / CUE](formats/CDFS.md) · [UDF](formats/UDF.md) · [CramFS / ROMFS](formats/ROM_IMAGES.md) · [Minix FS](formats/MINIX.md) · [JFS](formats/JFS.md) · [ReiserFS](formats/REISERFS.md) · [Amiga OFS / FFS](formats/AMIGA.md) · [BeFS](formats/BEFS.md) · [GFS2](formats/GFS2.md) · [OCFS2](formats/OCFS2.md) · [NILFS2](formats/NILFS2.md) · [bcachefs](formats/BCACHEFS.md) · [MINIFS](formats/MINIFS.md) · [F2FS](formats/F2FS.md) · [EROFS](formats/EROFS.md) · [QNX4 / QNX6](formats/QNX.md) · [SquashFS](formats/SQUASHFS.md) · [JFFS2](formats/JFFS2.md) · [YAFFS1](formats/YAFFS1.md) · [YAFFS2](formats/YAFFS2.md) · [UBIFS](formats/UBIFS.md) |
 | 分区、卷与阵列 | [GPT](formats/GPT.md) · [MBR / EBR](formats/MBR.md) · [LVM2](formats/LVM.md) · [Linux md RAID](formats/MDRAID.md) · [固件 RAID](formats/FIRMWARE_RAID.md) |
 | 加密与快照 | [LUKS](formats/LUKS.md) · [BitLocker](formats/BITLOCKER.md) · [FileVault 2](formats/FILEVAULT.md) · [卷影副本](formats/VSS.md) |
-| 镜像容器与固件 | [RAW / 分段 RAW](formats/SMRAW.md) · [QCOW / QCOW2](formats/QCOW.md) · [Parallels PHDI](formats/PHDI.md) · [UBI / 小米 HDR1 固件](formats/UBI.md) · [路由器固件](formats/FIRMWARE.md) · [固件兼容性调查](formats/FIRMWARE_COMPATIBILITY.md) |
+| 镜像容器与固件 | [RAW / 分段 RAW](formats/SMRAW.md) · [EWF](formats/EWF.md) · [VMDK](formats/VMDK.md) · [VHD / VHDX](formats/VHD.md) · [QCOW / QCOW2](formats/QCOW.md) · [Parallels PHDI](formats/PHDI.md) · [UBI / 小米 HDR1 固件](formats/UBI.md) · [路由器固件](formats/FIRMWARE.md) · [固件兼容性调查](formats/FIRMWARE_COMPATIBILITY.md) |
 | 压缩与备份 | [GZIP](formats/GZIP.md) · [Android 备份](formats/ANDROID_BACKUP.md) · [小米备份](formats/MIUI_BAK.md) · [iOS 备份](IOS_BACKUPS.md) |
 
 vendored 读取器的上游版本与本地补丁记录在 [vendor/UPSTREAM.md](../src-tauri/vendor/UPSTREAM.md)，后端探针程序见 [examples/README.md](../src-tauri/examples/README.md)。

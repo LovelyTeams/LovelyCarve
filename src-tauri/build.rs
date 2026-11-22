@@ -1,10 +1,10 @@
-#[path = "build/cli_catalog.rs"]
-mod cli_catalog;
+#[path = "build/cli_rpc.rs"]
+mod cli_rpc;
 
 fn main() {
     export_app_identifier();
-    if let Err(error) = cli_catalog::generate() {
-        panic!("failed to generate the CLI:\n{error}");
+    if let Err(error) = cli_rpc::generate() {
+        panic!("failed to generate the CLI rpc dispatch:\n{error}");
     }
     #[cfg(feature = "desktop")]
     desktop::build();

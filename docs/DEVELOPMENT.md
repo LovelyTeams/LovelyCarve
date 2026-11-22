@@ -92,7 +92,7 @@ just --dry-run pack           # 展开依赖与命令，但不执行
 
 `verify-fe` 汇总 IPC、结构、中英文词条、类型检查、前端测试和生产构建；`verify-rust` 汇总格式化、编译、Clippy 和后端测试，并包括原生组件的 Clippy 与测试；`verify-plugins` 汇总格式化、插件 Clippy 和插件测试。按 [贡献指南](../CONTRIBUTING.md#验证) 选择验证范围。
 
-Cargo 默认特性为空。`desktop` 特性引入 Tauri、对话框与文件插件和 tauri-build，桌面二进制 `LovelyCarve` 只在该特性下构建：`tauri dev` / `tauri build` 通过 `tauri.conf.json` 的 `build.features` 开启，`just build` / `build-full` 显式传入。`lovelycarve-cli` 不启用它，是不链接 Tauri、WebView 或 GTK 的独立程序。后端库 `lovelycarve_lib` 只编译 `rlib`：桌面程序、CLI、示例、测试和 Python 绑定都静态链接它，不另生成 Tauri 移动端模板的 `staticlib` / `cdylib`（它们在每次构建时多写一个数 GB 的静态库并链接一份完整 DLL）。桌面包和 CLI 包各自只含一个可执行文件，拆出共享 DLL 不会减小任一安装包，Rust `dylib` 还无法参与发布配置的 LTO。`just check` 和 `just clippy` 依次检查独立 CLI 与桌面两种配置；`just test` 在不含桌面运行时的配置下运行后端测试。Magika 文件类型识别和 OCR 在推理组件 `lovelycarve_inference.dll` 中运行（`src-tauri/components/`，见[架构说明](ARCHITECTURE.md#原生组件)）：它经 C ABI 单独构建，只把 ONNX Runtime 等可选的大依赖移出可执行文件并在首次使用时加载，安装包总体积基本不变。组件构建在 `src-tauri/target/<profile>/`，紧挨主程序和 CLI。需要运行程序的配方会先构建组件；直接用 `cargo run` 时需先运行一次 `just build-components`，否则 `files identify` 和 OCR 会报告缺少组件。新增后端命令还要在 `src-tauri/src/cli/commands.toml` 中映射为 CLI 命令，命名规则不满足时构建脚本报错，规则见[架构说明](ARCHITECTURE.md#命令行与桌面只读挂载)。
+Cargo 默认特性为空。`desktop` 特性引入 Tauri、对话框与文件插件和 tauri-build，桌面二进制 `LovelyCarve` 只在该特性下构建：`tauri dev` / `tauri build` 通过 `tauri.conf.json` 的 `build.features` 开启，`just build` / `build-full` 显式传入。`lovelycarve-cli` 不启用它，是不链接 Tauri、WebView 或 GTK 的独立程序。后端库 `lovelycarve_lib` 只编译 `rlib`：桌面程序、CLI、示例、测试和 Python 绑定都静态链接它，不另生成 Tauri 移动端模板的 `staticlib` / `cdylib`（它们在每次构建时多写一个数 GB 的静态库并链接一份完整 DLL）。桌面包和 CLI 包各自只含一个可执行文件，拆出共享 DLL 不会减小任一安装包，Rust `dylib` 还无法参与发布配置的 LTO。`just check` 和 `just clippy` 依次检查独立 CLI 与桌面两种配置；`just test` 在不含桌面运行时的配置下运行后端测试。Magika 文件类型识别和 OCR 在推理组件 `lovelycarve_inference.dll` 中运行（`src-tauri/components/`，见[架构说明](ARCHITECTURE.md#原生组件)）：它经 C ABI 单独构建，只把 ONNX Runtime 等可选的大依赖移出可执行文件并在首次使用时加载，安装包总体积基本不变。组件构建在 `src-tauri/target/<profile>/`，紧挨主程序和 CLI。需要运行程序的配方会先构建组件；直接用 `cargo run` 时需先运行一次 `just build-components`，否则 CLI 的 `identify` 和 OCR 会报告缺少组件。新注册的后端命令自动可经 CLI 的 `rpc` 调用；常用于命令行的功能再在 `src-tauri/src/cli/cmd/` 增加专门命令，见[架构说明](ARCHITECTURE.md#命令行与桌面只读挂载)。
 
 `fmt` 覆盖主 crate、插件与维护中的读取器。公共读取接口改动后运行 `check-examples`。参数含空格时，需要保留一层传给子 shell 的引号：
 
@@ -123,7 +123,7 @@ Windows rustc 在大型测试 crate 发生增量编译崩溃时，可通过原�
 
 `build-plugins` 按提交的锁文件构建宿主和各插件库，把动态库复制到 `plugin.toml` 旁，并用 `lc-plugin-host --describe` 写出 `schema.json`；`--plugin <目录>` 只构建一个插件库，沿用已构建的加载器。`dev` 使用开发版插件；`build-release` 与 CLI 打包先构建发布版插件。修改插件时先在插件仓库提交并推送，再在主仓库提交子模块指针，不要只提交指针而漏推插件提交。
 
-安装包和便携包共用 `src-tauri/tauri.plugins.conf.json`：主程序旁放置 `lc-plugin-host.exe`，`plugins/linuxinfo/` 包含 `plugin.toml`、DLL、`schema.json` 与 `locales/`，插件不嵌入主程序。`just pack-plugins` 为每个工作区插件生成可在「设置 → 插件」或 `plugins create` 安装的 `.lcpkg`。接口与工件来源见 [插件协议](PLUGIN_PROTOCOL.md) 和 [Linux 基本信息插件](LINUXINFO.md)。
+安装包和便携包共用 `src-tauri/tauri.plugins.conf.json`：主程序旁放置 `lc-plugin-host.exe`，`plugins/linuxinfo/` 包含 `plugin.toml`、DLL、`schema.json` 与 `locales/`，插件不嵌入主程序。`just pack-plugins` 为每个工作区插件生成可在「设置 → 插件」或 CLI `plugin install` 安装的 `.lcpkg`。接口与工件来源见 [插件协议](PLUGIN_PROTOCOL.md) 和 [Linux 基本信息插件](LINUXINFO.md)。
 
 ReFS 使用纯 Rust 读取器；旧的 `librefs-13.dll` 只在显式的 `refs-dll-oracle` 特性下用于对照，不随正式包分发。Dokan 与可选的 OpenCV DLL，以及模型和许可证属于构建 / 运行资源，按打包配置分发；OpenSSL 静态链接进主程序、CLI 和 Python 扩展，不随包分发 DLL；推理组件 `lovelycarve_inference.dll` 由 `src-tauri/tauri.components.conf.json` 声明，从 `src-tauri/target/release` 随包放在主程序旁。`src-tauri/binaries` 中的 `vcruntime140.dll`、`vcruntime140_1.dll`、`msvcp140.dll` 和 `msvcp140_1.dll` 是 Visual Studio 可再发行目录中的 VC++ 运行库，随主程序放在同一目录：桌面主程序静态链接 `vcruntime`，独立 CLI、`lc-plugin-host` 和 `linuxinfo` 动态依赖 `vcruntime140`；含 ONNX Runtime 的推理组件另外依赖 C++ 标准库 `msvcp140` / `msvcp140_1`（它们又依赖 `vcruntime140` / `vcruntime140_1`），以及系统自带的 DirectML、D3D12 与 DXGI。便携包打包时不对这些 VC++ 运行库做 UPX 压缩。Tauri 的 MSI 打包会收入 `src-tauri/target/release` 根目录下的所有 DLL，`build-release` 因此先删除其中未在打包配置里声明的 DLL（例如完整构建留下的 OpenCV 和 ONNX Runtime 执行提供者）。发布前用 `dumpbin /dependents` 核对主程序、CLI、推理组件、插件宿主、插件和随附 DLL 的依赖，除 Windows 自带组件外都应能在包内找到。测试夹具及其来源说明保存在 vendor 与 tests 目录中，不要用真实检材替换。
 
@@ -137,11 +137,7 @@ Unix 的 `build-cli-full` 为 CLI 启用 `qrcode-wechat`，推理组件以 `ocr`
 
 `pack` / `pack-cli` 默认不带 QR/OCR 资源；完整包使用 `pack-full` / `pack-cli-full`，额外资源来自 `src-tauri/tauri.full.conf.json`。`repack` / `repack-full` 复用已有的桌面产物，必须与编译特性一致；`repack-cli` 按 CLI 的实际能力选择资源。便携包输出到 `dist-pack/`，安装包输出到 `src-tauri/target/release/bundle/`。
 
-`stage-cli-skill` 复用现有 Windows release CLI 与插件，按同一打包清单生成 `skills/lovelycarve-cli/bin/`；它不执行编译。运行文件与 DLL 保持相邻，插件与可选模型沿用包内路径，许可证随运行文件复制。该目录的生成文件由其 `.gitignore` 排除，独立安装时需复制完整 skill 目录；具体使用见 [CLI 代理技能](CLI.md#编码代理与小输出)。
-
-DSH 模式源码位于 `integrations/dsh-lovelycarve/`，与主仓库的 `skills/lovelycarve-cli/` 共用技能。`just stage-dsh` 先暂存现有 release 运行库，再生成 `dist-pack/dsh-lovelycarve/`，旧包保留在 `dist-pack/dsh-previous-*/`。它不执行编译；CLI 修改后先运行 `just build-cli`，插件运行库需已由 `just build-plugins --release` 生成。安装见包内 `INSTALL.md`；使用本地链接的 DSH 在重启并创建新对话后加载更新的模式与技能。
-
-`just test-dsh` 验证结构化工具的退出码、错误 / 警告、输出上限、取消与沙箱策略传递，并用合成检材覆盖命名会话、建案、索引、分页、特殊字符路径和导出不覆盖。集成测试默认使用已构建的 debug CLI；可设置 `LOVELYCARVE_TEST_CLI` 指向其他二进制。此配方使用 Node.js 内置测试运行器，不需要安装 DSH 或额外包。
+`stage-cli-skill` 复用现有 Windows release CLI 与插件，按同一打包清单生成 `skills/lovelycarve-cli/bin/`；它不执行编译。运行文件与 DLL 保持相邻，插件与可选模型沿用包内路径，许可证随运行文件复制。该目录的生成文件由其 `.gitignore` 排除，独立安装时需复制完整 skill 目录；具体使用见 [CLI 代理技能](CLI.md#编码代理)。
 
 Windows GitHub Actions 使用 `windows-2025` 执行 `just test-fe`、`just test`、`just test-components` 与 `just test-plugins`；PR 只运行测试，不执行发行构建或上传构建产物。Rust 测试仍需编译测试程序。`v*` 标签在测试成功后自动构建 MSI、CLI ZIP 与插件包并发布到 GitHub Release。云端默认不启用 QR/OCR，macOS/Linux、原生 GUI 与驱动功能仍需单独验证，发布步骤见 [发布指南](RELEASING.md)。
 

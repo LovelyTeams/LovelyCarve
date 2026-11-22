@@ -105,7 +105,7 @@ pub async fn image_load(
         .split_once(':')
         .is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("assembled"));
     let session_hint = if assembled_reference {
-        Some("组装卷引用未在当前会话加载或已失效。assembled:// 不是主机文件路径；请在组装所在会话中运行 images list 获取 image ID，再用 context use <imageId> 或 images open <imageId> 选择。若原进程已退出，请先 sessions open <名称>，在同一会话加载成员镜像并运行 raid detect，使用返回的 assembledImageId。")
+        Some("组装卷引用不在当前进程中或已失效：assembled:// 不是主机文件路径，组装卷只存在于组装它的进程。在同一进程（CLI 的案件后台进程、shell 或 batch）中打开成员检材并重新运行 RAID 检测，使用返回的组装卷。")
     } else if reference_id.is_some() {
         Some("image ID not loaded; open its source or load the member images and run RAID detection again")
     } else if path.starts_with("decrypted://") {
@@ -133,10 +133,14 @@ pub async fn image_load(
             .map(|image| image.info())
             .ok_or_else(|| {
                 let error = AppError::not_found(hint);
-                if assembled_reference { error.with_context_value(serde_json::json!({
+                if assembled_reference {
+                    error.with_context_value(serde_json::json!({
                     "reference": path, "referenceType": "assembled", "requiresLiveSession": true,
-                    "recovery": ["sessions attach <name>", "images list", "context use <imageId>", "raid detect"]
-                })) } else { error }
+                    "recovery": ["case open <案件目录>", "evidence add <成员检材>", "raid detect"]
+                }))
+                } else {
+                    error
+                }
             });
     }
     let context = state.image_load_context.lock().await;

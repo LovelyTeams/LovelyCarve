@@ -1,79 +1,74 @@
 ---
 name: lovelycarve-cli
-description: Use lovelycarve-cli for forensic analysis of disk images, folders, archives, backups, physical disks and RAID members. Browse, search, recover, unlock, hash and export evidence through persistent sessions and structured results. Applies to CLI analysis, not LovelyCarve source development or desktop UI operation.
+description: Use lovelycarve-cli for forensic analysis of disk images, folders, archives, backups, physical disks and RAID members. Browse, search, recover, unlock, hash and export evidence by address (/<alias>/<volume>/<path>), with text or JSON results and a case backend that keeps evidence open. Applies to CLI analysis, not LovelyCarve source development or desktop UI operation.
 ---
 
 # lovelycarve-cli
 
-Analyze evidence read-only with `lovelycarve-cli [global options] <collection>… <verb> [subject] [options]`. Results go to stdout as JSON (compact for agents), or raw bytes for content commands; progress and errors go to stderr.
+Analyze evidence read-only. Reading inside evidence uses the verbs people know — `ls`, `tree`, `stat`, `cat`, `text`, `strings`, `hash`, `find`, `grep`, `export` — and everything else is `<noun> <verb>`: `case new`, `evidence add`, `unlock`, `carve start`, `results rows`. Results are text for people. Add `--json` for one JSON document on stdout (raw content becomes `{"encoding":"hex","data":…}`, at most 16 MiB); then progress stays off and a failure is one JSON line on stderr.
 
-Set `LOVELYCARVE_AGENT=1` in the CLI child process environment for explicit machine output, including under DSH: compact JSON, JSON errors/warnings, bounded default directory pages and no interactive prompts or terminal colors. `system get` reports `output.agentMode`. Use `-q` to suppress progress. False-like values (`0`, `false`, `no`, `off`, empty) disable agent detection even when a harness marker is inherited.
+Resolve the skill root from this `SKILL.md`'s absolute location. Prefer its `bin/lovelycarve-cli.exe` on Windows (`bin/lovelycarve-cli` on Unix, when supplied); every bare `lovelycarve-cli` example means that resolved executable, not a requirement to add it to `PATH`. Keep the adjacent DLLs, `lc-plugin-host`, `plugins/` and any `resources/` together; do not change the working directory to `bin`. Without a bundled executable use the CLI package root or `PATH`; in a source checkout, `just stage-cli-skill` stages an existing release and `just run-cli` runs a development build. `system` reports the version, optional features (QR, OCR) and the inference component.
 
-When DSH supplies the `lovelycarve` tool, prefer it for structured CLI calls. Give the full command in `command`, API parameter names in the `args` object, and the resident name in `session`. For lifecycle commands such as `sessions open`, omit `session` and pass `args.name`. Inspect `exitCode`, `error`, `warning` and `outputTruncated` before dependent requests; tool truncation is not a usable partial result. The tool preserves pagination/provenance, enables agent mode and reuses the DSH executor's policy and cancellation. Use `files text get` for text and `files export` for exact bytes.
+Quote executable paths; PowerShell needs the call operator `&`. See [shells and quoting](references/workflows.md#shells-quoting-and-git-bash) for Git Bash, which rewrites arguments that start with `/`.
 
-Resolve the skill root from this `SKILL.md`'s absolute location. Prefer its `bin/lovelycarve-cli.exe` on Windows (`bin/lovelycarve-cli` on Unix, when supplied); every bare `lovelycarve-cli` example below means that resolved executable, not a requirement to add it to `PATH`. Keep the adjacent DLLs, plugin loader, `plugins/` and any `resources/` together. Do not change the working directory to `bin` just to run it. If no bundled executable exists, use the standalone CLI package root or `PATH`; in a source checkout, `just stage-cli-skill` stages an existing release and `just run-cli` runs a development build. The staged Windows x64 runtime is platform-specific; `system get` reports its version and optional features.
+## Addresses
 
-Quote executable paths; PowerShell needs the call operator `&`. Git Bash / MSYS2 rewrites arguments that start with `/` into host paths even when quoted: the CLI turns rewritten evidence paths back, but any other such argument (a search pattern like `/etc/passwd`) needs `MSYS2_ARG_CONV_EXCL='*'` on the call. See [shell invocation](references/workflows.md#shell-invocation-and-argument-files) for JSON files and shell-specific examples.
+- `/` lists the evidence, `/<alias>` one evidence item's partitions and volumes, and `/<alias>/<volume>/<path>` a file: `/nas/part:0/etc/passwd`. The volume segment is the root entry's ID (`part:0`, `lvm:0:1`, `unsupported:0`); folder and archive evidence have one root entry such as `/<alias>/folder:` or `/<alias>/tar:`.
+- `/<alias>/@<node id>` names any node by the `id` a result returned — duplicate names, deleted entries, streams and unallocated space. Copy IDs and paths from results; never build them.
+- Every listed entry carries its `path`. NTFS, FAT/exFAT, HFS+ and case-insensitive APFS accept another letter case; symbolic links are followed as a shell follows them, and `stat` describes a final link itself.
+- Aliases come from `--as` or the file name and are saved in the case. `evidence ls` lists them.
 
-Discover DSH requests without a session using `{"command":"schema files list"}` or `{"command":"files list","help":true}`. Keep `command` free of `--help` and positional values. A complete listing request is `{"command":"files list","session":"exam","args":{"path":"/","pageSize":20},"fields":"id,name,kind,size"}`. `fields` belongs at the top level. `indexes list` is case-wide and takes no `imageId`; inspect its returned rows to select an image. Close with `{"command":"sessions close","args":{"name":"exam"}}`, without `session`. On `usage`, inspect `error.details.allowedFields`, `schemaRequest` and any `retryRequest`; review and explicitly retry the correction. The tool never executes a correction automatically.
+## Start with a case
 
-DSH returns the CLI's resolved `source` with evidence path, image ID, node ID and available volume/path identity. Cite that source rather than the session's later selection. SQLite `recordKeys` identify database records within the source table, not filesystem nodes; never construct a file node ID from a database primary key. For ordinary CLI JSON commands, add `--with-source` to opt into `{"source":…, "result":…}`; JSONL uses top-level `"withSource":true`. Raw byte commands do not support this envelope.
-
-## Choose the workflow
-
-Read only the relevant sections of [workflows.md](references/workflows.md). Search [commands.md](references/commands.md) by collection or keyword (`hash` / `哈希`, `unlock` / `解锁`, `export` / `导出`) for exact commands and options; do not load the whole catalogue by default.
-
-| Task | Start here |
-| --- | --- |
-| Open evidence, select a case, reuse a process | [Sessions and cases](references/workflows.md#sessions-and-cases) |
-| Find a file, read text or inspect a native format | [Find and inspect files](references/workflows.md#find-and-inspect-files), [paths and node IDs](references/workflows.md#paths-and-node-ids) |
-| Search file contents across a subtree or evidence | [Content search](references/workflows.md#content-search-and-global-search) |
-| Identify Linux/PVE software or kernel versions | [Linux and PVE versions](references/workflows.md#linux-and-pve-versions) |
-| Assemble disks or unlock a volume | [RAID and LVM](references/workflows.md#raid-lvm-and-assembled-volumes), [BitLocker](references/workflows.md#bitlocker), [LUKS](references/workflows.md#luks), [VeraCrypt and FileVault](references/workflows.md#luks-veracrypt-and-filevault) |
-| Recover deleted records or carve signatures | [File recovery](references/workflows.md#file-recovery) |
-| Run analyzers or query events | [Plugin analysis](references/workflows.md#plugin-analysis), [timelines](references/workflows.md#timelines) |
-| Hash or save evidence bytes | [Hashes and exports](references/workflows.md#hashes-exports-and-read-faults) |
-| Batch requests, handle large results or wait for work | [JSONL](references/workflows.md#batch-with-jsonl), [pagination](references/workflows.md#pagination-and-projection), [background tasks](references/workflows.md#background-tasks) |
-
-Every command that resolves an evidence path takes it as `--path <path>` and a returned node ID as `--node-id <id>`; where the synopsis shows a positional `<path>` it may be written positionally instead, but `list` commands take no positional arguments. Use `<command> --help` for option defaults and `schema <command>` for top-level camelCase request keys. Nested JSON objects keep their own contract: recovery options and timeline queries include snake_case keys. `schema` expands common file filters and directory queries. For other nested types, use the workflow examples or matching source type rather than guessing.
-
-## Start once, inspect, then act
-
-Start with the smallest evidence set that can answer the question. Record supplied identity metadata; compute hashes only when requested or needed for verification, and honor an explicit request to skip them. Every investigation starts by creating a case or opening the user-selected existing case before loading evidence. Wait for its tasks and verify the relevant volume indexes before browsing, reading or analysis, including known-path reads. Record unsupported, encrypted or unindexable volumes as coverage limitations. Use a unique session name; replace paths and IDs with actual values:
+Every investigation starts by creating a case, or opening the user's existing one, before adding evidence, so volume indexes, searches, timelines and analysis results persist. Use the smallest evidence set that answers the question.
 
 ```text
-lovelycarve-cli -q sessions open exam
-lovelycarve-cli -q --session exam cases create "<new-absolute-case-dir>" --name "<case-name>"
-lovelycarve-cli -q --session exam images open "<absolute-evidence-path>"
-lovelycarve-cli -q --session exam tasks wait
-lovelycarve-cli -q --session exam indexes list
-lovelycarve-cli -q --session exam images get
-lovelycarve-cli -q --session exam files list --path / --page-size 50 --fields name,id,kind,size
+lovelycarve-cli case new "<new-absolute-case-dir>" --name "<case-name>" --open
+lovelycarve-cli -C "<case-dir>" evidence add "<absolute-evidence-path>" --as nas --wait
+lovelycarve-cli -C "<case-dir>" volumes
+lovelycarve-cli -C "<case-dir>" ls /nas/part:0
+lovelycarve-cli -C "<case-dir>" stat /nas/part:0/etc/os-release
+lovelycarve-cli -C "<case-dir>" case close
 ```
 
-Reuse a user-selected existing case with `--case "<absolute-case-dir>"` when opening a new session. With an already running `--session`, switch explicitly using `cases open`; a global `--case` is rejected. Never open one case concurrently in multiple sessions or the desktop app. Evidence registration builds indexes automatically; inspect `indexes list` for the selected image/volume (`indexed: true`, `stale: false`, `truncated: false`). If a required index is missing, get its volume key from `indexes volumes list`, run `indexes create --volume-key <key>`, wait, and check again. A listed volume alone does not prove its index is ready. Keep unlocked volumes, assembled arrays and recovery scans in the same session. Close a session you created only after required work finishes; leave a user's reused session open unless asked to close it. If the process exited, `sessionExited` clears its record: reopen the session and rebuild in-memory state.
+`--open` starts the case's backend: every later command naming the case (`-C`, `LOVELYCARVE_CASE`, or a working directory inside it) runs there and reuses its open evidence, unlocked volumes, assembled arrays, scans and mounts. Without a backend each command opens the evidence itself — fine for one-off reads — and work that would end with the process (`unlock`, `raid assemble`, `carve start`, `vss open`, `mount`) is refused with `needsBackend`. `case status` shows the backend, evidence, indexes and running tasks. Close a backend you started when the work is done; leave a user's running backend open.
 
-Paths inside evidence use `/`; `/` lists volumes. Symbolic links are followed as a shell follows them: always in the middle of a path, and at its end when reading, hashing, exporting, decoding or listing; `files get` reports the link itself with `linkTarget`. Copy returned node IDs for duplicate names, deleted entries and special streams; do not construct IDs. Relative host paths resolve against the session's starting directory, so use absolute host paths. Verify the selected image before acting: defaults may come from `LOVELYCARVE_IMAGE`, `LOVELYCARVE_CASE`, `LOVELYCARVE_SESSION` or local dotenv files.
+`evidence add --wait` waits for the volume indexes and reports them. Before relying on `find`, `grep` or an absence, check `volumes` or `index ls`: `ready` covers the volume; `building`, `stale` and `truncated` do not. Record encrypted, unsupported or unindexed volumes as coverage limits. `--image <path>` opens evidence for one command without a case.
 
-## Bound output without losing evidence
+## Keep output small without losing evidence
 
-Start with small pages and `--fields` containing identity plus the needed fields. `--fields` applies only to `list` / `search`, not `get`, text reads or mutations. For directory pages, follow `nextCursor` with `--cursor` until null; decoded text follows `nextOffset` with `--offset`; other collections use `skip`/`limit` or `offset`. A page, a bounded tree walk or a tool-truncated response cannot establish that no other matches exist. After tool output overflow, use `recovery.retryRequest` to reread the current page with its original cursor/offset; the discarded page’s next cursor must not skip those entries. Prefer native filtering and decoded `files text get` or a format-specific parser over dumping raw bytes.
-
-For filename patterns use `indexes files list --filter` with `nameGlob`, scoped by `pathPrefix` if needed; it filters before paging. See [filename glob search](references/workflows.md#filename-glob-search). `files search` searches contents, and `jq` only filters results already returned.
+- `--json=name,path,size` keeps only those fields of each list entry; paging and time zone fields stay.
+- Directory pages hold `--limit` entries (default 200): follow `nextCursor` with `--cursor` until it is null, or use `--all`. Text follows `nextOffset` with `--offset`; `find`, `search hits` and `results rows` page with `--offset` / `--limit`.
+- A page, a bounded `tree` walk or a capped `grep` cannot show that nothing else matches. Prefer `find` (indexed names), `grep` (contents), `text` (decoded text) or a format parser (`sqlite`, `inspect`) over dumping bytes.
 
 ## Check the outcome
 
 | Exit | Meaning |
 | --- | --- |
-| `0` | Command succeeded; inspect task outcomes and result coverage too |
-| `1` | Failure, including not found or a failed background task |
-| `2` | Incomplete result; inspect the reported fields and warnings |
+| `0` | Success; still read task outcomes and coverage |
+| `1` | Failure, including not found, a refused or unconfirmed command and a failed background task |
+| `2` | Incomplete result: it is printed, then a warning names the fields that make it incomplete |
 | `130` | Interrupted |
 
-- Under a coding agent, a failure is one JSON line on stderr, `{"error":{"code":…,"message":…}}` (with `details` and `ipcCommand` when known), and an incomplete result adds `{"warning":{…}}` after the stdout result. Branch on `code`: `notFound`, `alreadyExists`, `isDirectory`, `usage`, `sessionExited`, `readFaultsDetected`, ….
-- In PowerShell, capture native stdout, inspect `$LASTEXITCODE` immediately, then decode JSON or run dependent commands. Exit 1/130 stops the dependent chain; exit 2 requires inspecting the incomplete result. Do not let `Out-Null`, a pipeline or a later successful command hide an earlier error.
-- JSONL reports each request through `result`, `error` and optional `warning`; a failed request does not stop subsequent lines. Inspect the relevant responses before submitting dependent work.
-- `readFaultsDetected`, nonempty `badRegions` or nonzero `syntheticBytes` mean synthesized zeroes contributed to a hash or export. Report the audit; those digests do not authenticate the missing source bytes. Check logical lengths and byte counts. A failed raw read may already have emitted partial stdout: discard it.
-- Preserve timestamp role and provenance. Display conversion does not establish an evidence time zone; unknown-offset times stay unconverted. See [time zones](references/workflows.md#file-times-and-time-zones).
-- Exports never overwrite: an existing destination fails with `alreadyExists` before anything is written, so a rerun needs new destinations (a fresh directory per batch run). Export a directory with `files directories export`; several chosen files with one `files export` request each in a JSONL session. For an authorized destructive command, inspect `--dry-run` before using `--force` (JSONL `"force": true`). Keep secrets out of arguments with `--password @<file>` or stdin; do not echo credential files or JSONL requests containing secrets.
-- Report the evidence and file/volume identity, examined scope, findings, relevant times, output paths and any incomplete or unsupported coverage. Missing source bytes, failed indexes and unsupported formats cannot establish absence of evidence. Format limits live under `docs/formats/` in the [LovelyCarve repository](https://github.com/LovelyTeams/LovelyCarve).
+- Branch on the error `code`: `notFound`, `alreadyExists`, `usage`, `needsBackend`, `readFaultsDetected`, `indexUnavailable`, `caseBackendExited`, `caseLocked`, …. In PowerShell inspect `$LASTEXITCODE` right after each call; exit 1 or 130 stops a dependent chain.
+- `readFaultsDetected`, nonempty `badRegions` or nonzero `syntheticBytes` mean zero-filled source bytes went into a hash or export; such digests do not authenticate the missing bytes. `cat` over them fails (exit 1) after any partial output — discard it, and use `export` to keep the data with its audit.
+- Exports never overwrite: an existing destination fails with `alreadyExists` before anything is written. Rerun into new paths.
+- Commands that delete or discard data ask first; scripts and batches need `-y`. `--dry-run` shows the parsed request without running it.
+- Passwords and keys are never literal arguments: `--password @<file>`, `--password -` (stdin), or `--password` alone to be asked at a terminal.
+- Report the evidence, address, examined scope, findings, relevant times, output paths and anything incomplete or unsupported. Missing source bytes, failed indexes and unsupported formats do not establish absence. Format limits are in `docs/formats/` of the [LovelyCarve repository](https://github.com/LovelyTeams/LovelyCarve).
+
+## Choose the workflow
+
+Read only the sections of [workflows.md](references/workflows.md) the task needs. Search [commands.md](references/commands.md) by command or keyword (`hash` / `哈希`, `unlock` / `解锁`, `export` / `导出`) for exact options; `lovelycarve-cli <command> --help` shows defaults and `lovelycarve-cli schema <command>` describes them as JSON.
+
+| Task | Start here |
+| --- | --- |
+| Cases, evidence, the backend, scripts | [Cases and the backend](references/workflows.md#cases-evidence-and-the-backend), [batch](references/workflows.md#batch-requests), [shell](references/workflows.md#the-shell) |
+| Find a file, read text, parse a database | [Find and read files](references/workflows.md#find-and-read-files), [filename globs](references/workflows.md#filename-globs) |
+| Search file contents | [Content search](references/workflows.md#content-search) |
+| Linux or PVE software and kernel versions | [Linux and PVE versions](references/workflows.md#linux-and-pve-versions) |
+| Assemble disks or unlock a volume | [RAID and LVM](references/workflows.md#raid-lvm-and-assembled-volumes), [encrypted volumes](references/workflows.md#encrypted-volumes) |
+| Recover deleted files or carve signatures | [File recovery](references/workflows.md#file-recovery) |
+| Run analyzers or query events | [Plugin analysis](references/workflows.md#plugin-analysis), [timelines](references/workflows.md#timelines) |
+| Hash or save evidence bytes | [Hashes, exports and read faults](references/workflows.md#hashes-exports-and-read-faults) |
+| Anything without its own command | [rpc](references/workflows.md#backend-commands-without-their-own-command) |

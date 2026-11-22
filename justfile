@@ -392,12 +392,7 @@ test-cli: build-components
 smoke-cli executable:
     {{ python }} scripts/test-cli.py '{{ executable }}'
 
-# Test the structured DSH tool and its CLI transport using synthetic evidence.
-[group("cli")]
-test-dsh:
-    node --test integrations/dsh-lovelycarve/test/*.test.js
-
-# Regenerate the agent skill's command reference from the CLI command catalogue.
+# Regenerate the agent skill's command reference from the CLI command tree.
 [group("cli")]
 [working-directory("src-tauri")]
 update-cli-skill:
@@ -428,12 +423,6 @@ repack-cli:
 [windows]
 stage-cli-skill:
     pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\pack-cli.ps1' -StageSkill
-
-# Refresh the DSH forensic preset, skill and existing Windows release runtime.
-[group("cli")]
-[windows]
-stage-dsh: stage-cli-skill
-    pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\stage-dsh.ps1'
 
 # Test the read-only Rust ReFS port independently of the desktop host.
 [group("readers")]

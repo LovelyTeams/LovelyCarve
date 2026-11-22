@@ -59,9 +59,9 @@
 
 ## 不完整 RAW 的强行读取
 
-默认 `image_load` / `images open` 仍采用严格模式。CLI 指定 `--raw-read-mode force`，
+默认 `image_load` / `evidence add` 仍采用严格模式。CLI 指定 `--raw-read-mode force`，
 或 IPC 传 `rawReadMode: "force"`，可显式把所选普通文件作为 RAW 连续前缀打开。
-`ImageInfo.raw_read_mode` 返回当前模式。模式仅当前会话有效，不保存到案件；重新打开时需再次指定。
+`ImageInfo.raw_read_mode` 返回当前模式。模式仅当前进程有效，不保存到案件；重新打开时需再次指定。
 同一路径已加载为另一模式时必须先关闭，避免悄悄改变所有读者的语义。
 
 - 从所选数字扩展分片开始向后找，不向前查找；续片位宽钳制为 3–5 位，允许数字进位。
@@ -89,7 +89,7 @@
 
 `just test smraw --lib --jobs 1` 覆盖 GPT 头/数组非扇区对齐分段后的识别、完整/范围/大缓冲读取与 SHA-256、
 所有段快照、后续段拒绝和普通 RAW mmap。`just test-cli` 中 Python 构造三个不等长段，
-通过真实的 `images open` / `images export`（`image_load` / `image_export_raw`）验证完整导出和缺段报错。
+通过真实的 `evidence add` / `evidence export`（`image_load` / `image_export_raw`）验证完整导出、缺段报错与强行模式的前缀导出。
 
 编译/lint 用 `just check`、`just clippy`、`just clippy-smraw`、`just check-examples`，格式化走 `just fmt`。
 未运行真实检材或 libsmraw 二进制 oracle，不声称实际采集软件命名与 .info 已逐字节验证；macOS/Linux 仍需单独验证。

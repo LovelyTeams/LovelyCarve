@@ -1,11 +1,12 @@
 //! ID ancestry from current indexes, with live directory pages before indexing.
 use std::{collections::HashSet, sync::Arc};
 
-use super::{browsing, context::Exec, CliError};
+use super::{browsing, exec::Exec, CliError};
 use crate::{
     commands::filesystem::filesystem_snapshot_index::{index_targets, IndexCoverage},
     core::{
         catalog::filedb::{filedb_file, filedb_query},
+        common::ids::ImageId,
         evidence::image::PartitionKind,
         filesystem::{
             evidence_session::EvidenceSession,
@@ -17,13 +18,13 @@ use crate::{
 
 pub(super) async fn locate_node(
     exec: &Exec,
-    image_id: &str,
+    image_id: &ImageId,
     node_id: &str,
 ) -> Result<Vec<(String, String)>, CliError> {
     let task = exec.state.tasks.register(
         format!("cli-node-locate-{}", uuid::Uuid::new_v4()),
         TaskKind::FlatList,
-        Some(image_id.into()),
+        Some(image_id.clone()),
     );
     let cancellation = task.token();
     let located = async {
@@ -34,14 +35,7 @@ pub(super) async fn locate_node(
             .await
             .map_err(crate::app::error::AppError::from)
             .map_err(super::command_error)?;
-        let image = exec
-            .state
-            .images
-            .lock()
-            .await
-            .get(image_id)
-            .cloned()
-            .ok_or_else(|| CliError::invalid("检材已关闭"))?;
+        let image = exec.image(image_id).await?;
         let targets = index_targets(&exec.state, &image, image_id, IndexCoverage::Any).await;
         let target = node_id.to_owned();
         let indexed = tokio::task::spawn_blocking(move || {
@@ -65,7 +59,7 @@ pub(super) async fn locate_node(
         })
         .await
         .map_err(super::internal_error)??;
-        let mut page = |parent, cursor, limit| exec.page(image_id, parent, cursor, limit);
+        let mut page = |parent: String, cursor, limit| exec.page(image_id, parent, cursor, limit);
         match indexed {
             Some((parent, chain)) => {
                 let mut location = browsing::locate_id(&parent, &cancellation, &mut page).await?;

@@ -1,8 +1,9 @@
 //! Git Bash and MSYS2 rewrite an argument that starts with `/` into a path
 //! below their installation before a native Windows program sees it:
-//! `/分区1/etc` arrives as `C:/Program Files/Git/分区1/etc`. An evidence path
-//! never starts with a drive letter, so such a path is turned back into the
-//! one that was typed; one that cannot be is explained instead.
+//! `/分区1/etc` arrives as `C:/Program Files/Git/分区1/etc`, and one holding
+//! `:/` as a path list, `/ev/folder:/a` as `C:\Git\ev\folder;C:\Git\a`. An
+//! evidence path never starts with a drive letter, so such a path is turned
+//! back into the one that was typed; one that cannot be is explained instead.
 use std::borrow::Cow;
 
 use super::CliError;
@@ -16,37 +17,54 @@ fn drive_path(path: &str) -> bool {
         && matches!(bytes[2], b'/' | b'\\')
 }
 
-/// The evidence path that was typed, when MSYS rewrote it below the root of
-/// an MSYS installation (the directory holding `usr/bin/msys-2.0.dll`).
-/// Other paths come back unchanged.
-pub(super) fn evidence_path(path: &str) -> Cow<'_, str> {
-    if !cfg!(windows) || !drive_path(path) {
-        return Cow::Borrowed(path);
+/// The `/…` path MSYS rewrote into `path` below the root of an MSYS
+/// installation (the directory holding `usr/bin/msys-2.0.dll`).
+fn typed(path: &str) -> Option<String> {
+    if !drive_path(path) {
+        return None;
     }
     let components: Vec<&str> = path
         .split(['/', '\\'])
         .filter(|component| !component.is_empty())
         .collect();
-    for length in 1..=components.len() {
+    (1..=components.len()).find_map(|length| {
         // `C:` alone names the current directory of drive C, not its root.
         let root = format!("{}/", components[..length].join("/"));
-        if std::path::Path::new(&root)
+        std::path::Path::new(&root)
             .join("usr/bin/msys-2.0.dll")
             .is_file()
-        {
-            return Cow::Owned(format!("/{}", components[length..].join("/")));
+            .then(|| format!("/{}", components[length..].join("/")))
+    })
+}
+
+/// The evidence path that was typed, when MSYS rewrote it; other paths come
+/// back unchanged.
+pub(super) fn evidence_path(path: &str) -> Cow<'_, str> {
+    if !cfg!(windows) {
+        return Cow::Borrowed(path);
+    }
+    if path.contains(';') {
+        let parts: Option<Vec<String>> = path.split(';').map(typed).collect();
+        if let Some(parts) = parts {
+            return Cow::Owned(parts.join(":"));
         }
     }
-    Cow::Borrowed(path)
+    typed(path).map_or(Cow::Borrowed(path), Cow::Owned)
+}
+
+const REWRITTEN: &str = "这是 Windows 主机路径，不是检材内路径。Git Bash / MSYS2 会把以 / 开头的参数改写成主机路径：\
+     为该命令设置 MSYS2_ARG_CONV_EXCL='*'（Git Bash 也可设 MSYS_NO_PATHCONV=1），或在 PowerShell / cmd 中运行。";
+
+/// Why `path`, given where an evidence address belongs, is not one.
+pub(super) fn host_path(path: &str) -> Option<String> {
+    (cfg!(windows) && drive_path(path)).then(|| format!("{path}：{REWRITTEN}"))
 }
 
 /// A failure to resolve a host-looking path says what most likely made it.
 pub(super) fn explain(mut error: CliError, path: &str) -> CliError {
     if cfg!(windows) && drive_path(path) {
-        error.message.push_str(
-            "\n这是 Windows 主机路径，不是镜像内路径。Git Bash / MSYS2 会把以 / 开头的参数改写成主机路径：\
-             为该命令设置 MSYS2_ARG_CONV_EXCL='*'，或改用节点 ID（--node-id）。",
-        );
+        error.message.push('\n');
+        error.message.push_str(REWRITTEN);
     }
     error
 }
@@ -71,6 +89,18 @@ mod tests {
         assert_eq!(
             evidence_path(&format!("{}\\分区1", root.replace('/', "\\"))),
             "/分区1"
+        );
+        // `:/` made it a path list: every part is turned back and rejoined.
+        let windows_root = root.replace('/', "\\");
+        assert_eq!(
+            evidence_path(&format!(
+                "{windows_root}\\ev\\folder;{windows_root}\\hello.txt"
+            )),
+            "/ev/folder:/hello.txt"
+        );
+        assert_eq!(
+            evidence_path(&format!("{windows_root}\\ev\\tar;{windows_root}\\")),
+            "/ev/tar:/"
         );
         // Not below an MSYS root, or not a host path at all: unchanged.
         let elsewhere = directory.path().join("other/分区1");

@@ -85,9 +85,7 @@ impl Detection {
                 ),
                 ..CliError::new(
                     "timezoneUnknown",
-                    format!(
-                        "{message}；用 timezones get 检查，或 --timezone Asia/Shanghai 明确指定"
-                    ),
+                    format!("{message}；用 tz 检查，或 --tz Asia/Shanghai 明确指定"),
                 )
             });
         }
@@ -95,7 +93,7 @@ impl Detection {
         selected.warnings = self.warnings.clone();
         selected
             .warnings
-            .push(format!("{message}；暂按 UTC 显示，可用 --timezone 指定"));
+            .push(format!("{message}；暂按 UTC 显示，可用 --tz 指定"));
         Ok(selected)
     }
 }

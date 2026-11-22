@@ -40,13 +40,21 @@ CBC 范围读取借用前一个密文块恢复 IV，SQLite 等分页预览不必
 
 ## CLI
 
-两个命令与桌面共用实现：
+与桌面共用实现：
 
-- `ios-backups unlock [--password]`（`ios_backup_unlock`）：作用于 `--image` 指定的备份，可选 `--task-id`；
-  返回解锁会话的 `ImageInfo`。单写 `--password` 时在终端中以遮盖方式提问，或读取管道传入的标准输入。
-- `ios-backups audit`（`ios_backup_audit`）：可选 `--task-id`；返回上游观察数组。
+- `unlock /<别名> --password @<文件>`（`ios_backup_unlock`，类型可由备份识别，也可写 `--scheme ios`）：
+  返回 `path`（解锁后可浏览的检材地址）与解锁会话的 `image`。单写 `--password` 时在终端中以遮盖方式提问，
+  `--password -` 读取标准输入。解锁只在进程存活期间有效，需在案件后台进程、`shell` 或 `batch` 中进行。
+- `rpc ios_backup_audit --body '{"imageId":"<别名>"}'`（`ios_backup_audit`）：返回上游观察数组。
 
-在 `shell` 或 JSONL 会话中先 `images open` 备份，再解锁，并用返回的子会话 ID 浏览或检查。
+```powershell
+lovelycarve-cli case new "D:\cases\phone" --open
+lovelycarve-cli -C "D:\cases\phone" evidence add "D:\evidence\backup" --as phone
+lovelycarve-cli -C "D:\cases\phone" unlock /phone --password "@D:\keys\backup.txt"
+lovelycarve-cli -C "D:\cases\phone" ls /phone-dec
+```
+
+解锁结果为另一份检材时，别名默认取 `<源别名>-dec`，也可用 `--as` 指定；以结果的 `path` 为准。
 不要将密码写入共享脚本、报告或命令行历史。
 
 ## 来源与验证

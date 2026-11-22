@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $executable = Join-Path $Root 'src-tauri/target/release/lovelycarve-cli.exe'
 if (-not (Test-Path -LiteralPath $executable)) { throw 'Run just build-cli first.' }
-$capabilities = & $executable system get | ConvertFrom-Json
+$capabilities = & $executable --json system | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0) { throw 'Cannot read CLI capabilities.' }
 if (-not $capabilities.components.inference.available) {
     throw "The CLI cannot load its inference component: $($capabilities.components.inference.error)"
@@ -57,7 +57,7 @@ Get-ChildItem -LiteralPath $skillSource -Force | Where-Object Name -ne 'bin' |
     Copy-Item -Destination $stagedSkill -Recurse
 Copy-Item -LiteralPath (Join-Path $Root 'LICENSE') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $Root 'THIRD_PARTY_NOTICES.md') -Destination $stage
-$stagedCapabilities = & (Join-Path $stage 'lovelycarve-cli.exe') system get | ConvertFrom-Json
+$stagedCapabilities = & (Join-Path $stage 'lovelycarve-cli.exe') --json system | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0 -or $stagedCapabilities.qrcode -ne $capabilities.qrcode -or $stagedCapabilities.ocr -ne $capabilities.ocr -or -not $stagedCapabilities.components.inference.available) {
     throw 'The staged CLI cannot report matching capabilities; check its runtime dependencies.'
 }
@@ -71,7 +71,7 @@ if ($StageSkill) {
     if (Test-Path -LiteralPath $ignoreFile) {
         Copy-Item -LiteralPath $ignoreFile -Destination $runtimeStage
     }
-    $runtimeCapabilities = & (Join-Path $runtimeStage 'lovelycarve-cli.exe') system get | ConvertFrom-Json
+    $runtimeCapabilities = & (Join-Path $runtimeStage 'lovelycarve-cli.exe') --json system | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0 -or $runtimeCapabilities.qrcode -ne $capabilities.qrcode -or $runtimeCapabilities.ocr -ne $capabilities.ocr -or -not $runtimeCapabilities.components.inference.available) {
         throw 'The skill runtime cannot report matching capabilities.'
     }

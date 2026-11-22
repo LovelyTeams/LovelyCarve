@@ -16,7 +16,7 @@ just pack-plugins
 
 ## 分析范围
 
-宿主对检材的每个卷识别操作系统，`linuxbaseinfo` 在每个识别出的 Linux 系统上各运行一次：在目标检材的「任务中心 → 快速分析」中选择系统和「Linux信息」，或在命令行用 `plugins tasks create --system-id <系统 ID>`。分析在系统视图上进行：系统卷在根部，`/etc/fstab` 中能对应到检材卷的挂载（如独立的 `/home`、`/boot`、LVM 逻辑卷、Btrfs 子卷）出现在挂载点；Docker 容器作为单独的系统识别。
+宿主对检材的每个卷识别操作系统，`linuxbaseinfo` 在每个识别出的 Linux 系统上各运行一次：在目标检材的「任务中心 → 快速分析」中选择系统和「Linux信息」，或在命令行用 `analyze run org.lovelycarve.linuxinfo/linuxbaseinfo --system <系统 ID>`（`analyze ls` 列出系统 ID）。分析在系统视图上进行：系统卷在根部，`/etc/fstab` 中能对应到检材卷的挂载（如独立的 `/home`、`/boot`、LVM 逻辑卷、Btrfs 子卷）出现在挂载点；Docker 容器作为单独的系统识别。
 
 选项 `items` 可选择子项，不选即全部十五项：
 

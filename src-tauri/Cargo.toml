@@ -105,7 +105,7 @@ cdfs = { path = "vendor/cdfs", default-features = false }
 # Encoding）+ encoding_rs 解码为 UTF-8，避免非 UTF-8 文本被当 UTF-8 解出乱码。纯 Rust。
 chardetng = "1.0.0"
 chrono = { version = "0.4.45", features = ["serde"] }
-# lovelycarve-cli 的子命令与参数解析；帮助由 cli/help.rs 按命令目录渲染。
+# lovelycarve-cli 的命令树（derive）与参数解析；帮助由 cli/help.rs 按命令树渲染。
 clap = { version = "4.6.7", features = ["derive", "string", "env"] }
 classic-hfs = { path = "vendor/classic-hfs" }
 crc32fast = "1.5.2"
@@ -258,11 +258,9 @@ winapi = { version = "0.3.9", features = ["fileapi", "handleapi", "ioapiset", "j
 
 [build-dependencies]
 quote = "1.0.47"
-serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 syn = { version = "3.0.8", features = ["full", "visit"] }
 tauri-build = { version = "2.7.2", features = [], optional = true }
-toml = "1.1.8"
 
 [dev-dependencies]
 # The AD1 tests build images with the reader's independent fixture encoder.

@@ -44,7 +44,7 @@ LovelyCarve 面向电子数据取证、应急响应和 CTF 取证题：加载磁
 - **时间线**：投影文件修改时间、插件事件与 NTFS USN 日志，提供年度活动热力图、趋势钻取、筛选和导出。
 - **文件恢复**：读取 FAT、NTFS、exFAT 的删除记录并重建丢失分区，同时按签名雕刻 JPEG、PNG、GIF、PDF、ZIP/Office、SQLite 等 14 种格式；结果像文件列表一样按目录浏览，扫描可暂停、继续和取消，恢复文件时生成 SHA-256 与来源报告。
 - **插件分析**：基于 C ABI 的 LPP v2 动态库插件，每个任务在独立宿主进程中运行；插件在识别出的操作系统（按 fstab、盘符组装的卷）、整个检材或选中的文件上分析，输出带类型的记录，结果可排序、检索、回溯来源并查看运行审计；`.lcpkg` 插件包可在设置中安装。内置 `linuxinfo`，提取 Linux 系统、用户、登录、网络、服务、软件、定时任务与命令历史等信息。
-- **命令行与挂载**：独立的 `lovelycarve-cli` 不依赖桌面运行时，以 `images open`、`files read` 这样的命令覆盖桌面端全部后端功能，支持交互 shell 和 JSONL 自动化；Windows 下可借助 Dokany 把卷只读挂载为盘符或文件夹。
+- **命令行与挂载**：独立的 `lovelycarve-cli` 不依赖桌面运行时，用 `/<检材>/<卷>/<路径>` 地址和 `ls`、`cat`、`grep` 这样的命令浏览检材，案件后台进程在命令之间保持检材打开，`rpc` 可调用桌面端的全部后端功能，支持交互 shell 和批量请求；Windows 下可借助 Dokany 把卷只读挂载为盘符或文件夹。
 
 ## 界面
 
@@ -85,19 +85,20 @@ LovelyCarve 面向电子数据取证、应急响应和 CTF 取证题：加载磁
 
 ## 命令行
 
-`lovelycarve-cli` 是独立的命令行工具，不链接 Tauri 或 WebView，直接调用与桌面端相同的后端。命令采用 `<集合> <动词>` 结构，结果以 JSON 或原始字节写到标准输出：
+`lovelycarve-cli` 是独立的命令行工具，不链接 Tauri 或 WebView，直接调用与桌面端相同的后端。检材内的位置写成地址 `/<别名>/<卷>/<路径>`；结果默认是文本，加 `--json` 输出 JSON：
 
 ```powershell
-lovelycarve-cli images open "D:\evidence\disk.E01"
-lovelycarve-cli --image "D:\evidence\disk.E01" files tree list --path / --depth 2
-lovelycarve-cli --image "D:\evidence\disk.E01" files read "/<卷名称>/Users/alice/report.txt" > report.txt
-lovelycarve-cli schema files read
+lovelycarve-cli case new "D:\cases\demo" --open
+lovelycarve-cli -C "D:\cases\demo" evidence add "D:\evidence\disk.E01" --as disk --wait
+lovelycarve-cli -C "D:\cases\demo" tree /disk/part:0/Users --depth 2
+lovelycarve-cli -C "D:\cases\demo" cat /disk/part:0/Users/alice/report.txt > report.txt
+lovelycarve-cli -C "D:\cases\demo" case close
 ```
 
-桌面端的每个后端命令都有对应的 CLI 命令；`--help` 列出命令，`schema` 查看请求结构，安装包中的 `skills/lovelycarve-cli` 是供编码代理使用的技能，附带全部命令的参考与多步任务说明。`shell` 在一个进程中逐行执行命令，JSONL 会话适合脚本与代理编排一系列分析：
+`case open` 启动的案件后台进程在命令之间保持检材、解锁与组装结果；没有专门命令的后端功能用 `rpc <后端命令>` 调用。`--help` 列出命令，`schema` 描述参数，安装包中的 `skills/lovelycarve-cli` 是供编码代理使用的技能，附带全部命令的参考与多步任务说明。`shell` 在一个进程中逐行执行命令，`batch` 逐行执行 JSON 请求，适合脚本与代理编排一系列分析：
 
 ```powershell
-Get-Content .\workflow.jsonl | lovelycarve-cli session --events
+Get-Content .\workflow.jsonl | lovelycarve-cli -C "D:\cases\demo" batch
 ```
 
 详见 [CLI 手册](docs/CLI.md)。

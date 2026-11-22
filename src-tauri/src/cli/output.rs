@@ -1,14 +1,23 @@
 //! What reaches the terminal: results on stdout, everything else on stderr,
 //! with the colour roles, the once-per-process banner and the framed error
-//! block.
+//! block. With `--json`, errors and warnings are one JSON line each.
 use std::{
     io::{IsTerminal, Write},
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use super::{
-    catalog::Command, help, incomplete::Incomplete, interactive, CliError, Json, Origin, Output,
-};
+use super::{incomplete::Incomplete, interactive, text, CliError, Json, Origin};
+
+static JSON_MODE: AtomicBool = AtomicBool::new(false);
+
+/// `--json`: errors and warnings on stderr become one JSON line each.
+pub fn set_json_mode(enabled: bool) {
+    JSON_MODE.store(enabled, Ordering::SeqCst);
+}
+
+pub fn json_mode() -> bool {
+    JSON_MODE.load(Ordering::SeqCst)
+}
 
 /// Larger JSON is printed without highlighting.
 const MAX_HIGHLIGHTED_JSON: usize = 50_000;
@@ -128,17 +137,9 @@ pub fn bold(text: &str) -> String {
     }
 }
 
-pub fn italic(text: &str) -> String {
-    if styled() {
-        format!("\x1b[3m{text}\x1b[23m")
-    } else {
-        text.to_owned()
-    }
-}
-
 /// Terminal columns `text` occupies: wide (CJK) characters take two.
-pub fn display_width(text: &str) -> usize {
-    help::display_width(text)
+pub fn display_width(value: &str) -> usize {
+    text::display_width(value)
 }
 
 /// Characters of the Unicode format category (Cf), by range.
@@ -329,13 +330,13 @@ fn pretty(text: &str, highlight: bool) -> String {
     out
 }
 
-/// Compact JSON for pipes and agents; indented, optionally highlighted JSON
-/// for people at a terminal.
+/// Compact JSON for pipes; indented, optionally highlighted JSON for people
+/// at a terminal.
 pub fn format_json(json: &Json) -> String {
     let text = json.text();
     let highlight =
         !interactive::is_non_interactive_or_ci() && styled() && text.len() <= MAX_HIGHLIGHTED_JSON;
-    if !std::io::stdout().is_terminal() || interactive::is_agentic() {
+    if !std::io::stdout().is_terminal() {
         text.into_owned()
     } else {
         pretty(&text, highlight)
@@ -347,40 +348,37 @@ pub fn plain_json(json: &Json) -> String {
     pretty(&json.text(), false)
 }
 
-/// Print a result. Structured data is JSON, `null` included: a lookup that
-/// found nothing says so on stdout. Only a command that has no result leaves
-/// stdout empty and, at a terminal, confirms on stderr; raw content goes to
-/// stdout unchanged (or decoded as UTF-8 with `--text`).
-pub fn print_output(
-    output: Output,
-    command: &Command,
-    quiet: bool,
-    text: bool,
-) -> Result<(), CliError> {
-    match output {
-        Output::Json(json) if json.is_null() && command.unit_result => {
-            if !quiet && std::io::stderr().is_terminal() {
-                let (_, done) = command.category.labels();
-                eprintln!("{} {done}", paint(Role::Success, "✓"));
-            }
-        }
-        Output::Json(json) => {
-            let mut stdout = std::io::stdout().lock();
-            writeln!(stdout, "{}", format_json(&json))?;
-            stdout.flush()?;
-        }
-        Output::Bytes(bytes) => {
-            let mut stdout = std::io::stdout().lock();
-            if text {
-                stdout.write_all(String::from_utf8_lossy(&bytes).as_bytes())?;
-            } else {
-                stdout.write_all(&bytes)?;
-            }
-            stdout.flush()?;
-        }
-        Output::Written => {}
+/// Write `text` to stdout, ending it with a newline when it has none.
+pub fn print_text(text: &str) -> Result<(), CliError> {
+    let mut stdout = std::io::stdout().lock();
+    stdout.write_all(text.as_bytes())?;
+    if !text.is_empty() && !text.ends_with('\n') {
+        stdout.write_all(b"\n")?;
     }
+    stdout.flush()?;
     Ok(())
+}
+
+/// Raw content on stdout, unchanged.
+pub fn print_bytes(bytes: &[u8]) -> Result<(), CliError> {
+    let mut stdout = std::io::stdout().lock();
+    stdout.write_all(bytes)?;
+    stdout.flush()?;
+    Ok(())
+}
+
+/// A command that has nothing to return confirms on stderr at a terminal.
+pub fn confirm_done(message: &str, quiet: bool) {
+    if !quiet && std::io::stderr().is_terminal() {
+        eprintln!("{} {message}", paint(Role::Success, "✓"));
+    }
+}
+
+/// A note for people on stderr (`→ message`), never in quiet or JSON mode.
+pub fn note(message: &str, quiet: bool) {
+    if !quiet && !json_mode() {
+        eprintln!("{}", hint(&sanitize(message)));
+    }
 }
 
 /// A block's content: either plain text that the block wraps and paints, or
@@ -408,7 +406,7 @@ fn framed(role: Role, title: &str, content: Content<'_>, details: Option<&str>) 
         format!("{} {}", paint(role, "┌"), paint(role, &bold(title))),
     ];
     let body = match content {
-        Content::Plain(message) => help::wrap(message, width)
+        Content::Plain(message) => text::wrap(message, width)
             .into_iter()
             .map(|line| {
                 if line.is_empty() {
@@ -429,7 +427,7 @@ fn framed(role: Role, title: &str, content: Content<'_>, details: Option<&str>) 
     }
     if let Some(details) = details {
         lines.push(bar.clone());
-        for line in help::wrap(details, width) {
+        for line in text::wrap(details, width) {
             lines.push(if line.is_empty() {
                 bar.clone()
             } else {
@@ -485,26 +483,26 @@ pub fn render_error(error: &CliError, debug: bool) -> String {
     }
 }
 
-/// An error as one JSON line, in the JSONL session's `error` shape, with the
-/// backend command that failed and any details.
-fn error_line(error: &CliError) -> String {
+/// An error as one JSON line, in the batch response's `error` shape, with the
+/// backend operation that failed and any details.
+pub fn error_line(error: &CliError) -> String {
     let mut body = serde_json::json!({"code": error.code, "message": error.message});
     if let Some(details) = &error.details {
         body["details"] = details.clone();
     }
     if let Origin::Backend(Some(operation)) = &error.origin {
-        body["ipcCommand"] = serde_json::json!(operation);
+        body["operation"] = serde_json::json!(operation);
     }
     serde_json::json!({ "error": body }).to_string()
 }
 
-/// Render an error once, on stderr: a framed block for people, one JSON line
-/// for coding agents, which parse it like the JSON on stdout.
+/// Render an error once, on stderr: a framed block, or with `--json` one JSON
+/// line that parses like the results on stdout.
 pub fn report_error(error: &CliError) {
     if error.reported {
         return;
     }
-    if interactive::is_agentic() {
+    if json_mode() {
         eprintln!("{}", error_line(error));
         return;
     }
@@ -528,10 +526,10 @@ pub fn render_incomplete(incomplete: &Incomplete, debug: bool) -> String {
 }
 
 /// Say on stderr that the result just printed is incomplete, even when
-/// quiet: like an error, it changes what the output means. Coding agents get
-/// one JSON line, the JSONL session's `warning`.
+/// quiet: like an error, it changes what the output means. With `--json` it
+/// is one JSON line, the batch response's `warning`.
 pub fn report_incomplete(incomplete: &Incomplete) {
-    if interactive::is_agentic() {
+    if json_mode() {
         eprintln!("{}", serde_json::json!({ "warning": incomplete }));
         return;
     }
@@ -588,12 +586,12 @@ mod tests {
         );
         let debug = render_error(&backend, true);
         assert!(debug.contains("│ ") && debug.contains("\"path\": \"D:/x\""));
-        // Agents read the same failure as one JSON line, details included.
+        // `--json` reads the same failure as one JSON line, details included.
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&error_line(&backend)).unwrap(),
             serde_json::json!({"error": {"code": "notFound", "message": "找不到检材",
                 "details": {"code": "notFound", "message": "找不到检材", "path": "D:/x"},
-                "ipcCommand": "image_info"}})
+                "operation": "image_info"}})
         );
         assert_eq!(
             error_line(&CliError::invalid("缺少 --path")),

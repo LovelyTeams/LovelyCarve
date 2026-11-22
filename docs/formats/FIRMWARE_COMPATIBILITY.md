@@ -63,9 +63,9 @@ YAFFS1 另检索了 [FsRover](https://github.com/a1ive/FsRover) 和
 
 ```powershell
 @'
-{"id":"open","command":"images open","args":{"path":"C:/samples/firmware.bin"}}
-{"id":"root","command":"files list","args":{"parentId":"part:0"}}
-'@ | just run-cli --quiet session
+{"id":"open","argv":["evidence","add","C:/samples/firmware.bin","--as","fw"]}
+{"id":"root","argv":["ls","/fw/part:0"]}
+'@ | just run-cli --quiet batch
 ```
 
 公开输入的完整 URL、长度、SHA256 与读取状态保存在[公开样本清单](firmware-samples.json)。

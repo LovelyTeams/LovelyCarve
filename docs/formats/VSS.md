@@ -130,9 +130,9 @@ $env:LOVELYCARVE_VSS_TEST = '<dfVFS vss.raw 路径>'
 just test vss_image
 ```
 
-CLI 提供 `shadow-copies list` / `shadow-copies open <分区> --index <序号>`。单次调用可用
-`just run-cli --image <整盘或卷路径> shadow-copies list`；打开、浏览、导出等多步操作应在同一个 `shell` 或 JSONL
-会话中进行，保持父镜像和副本存活，参数见 `just run-cli shadow-copies open --help`。
+CLI 提供 `vss ls /<别名>` / `vss open /<别名>/part:N <序号> [--as 别名]`。单次调用可用
+`just run-cli --image <整盘或卷路径> vss ls /<别名>`；打开、浏览、导出等多步操作应在案件后台进程、`shell` 或
+`batch` 中进行，保持父镜像和副本存活，参数见 `just run-cli vss open --help`。
 副本信息中的原始 `volume_size` 可能已损坏，打开后返回的 `ImageInfo.size` 才是实际可读尺寸。
 
 公开样本使用 dfVFS `test_data/vss.raw`（提交 `0778d3fb20728cbf5c60e14b702527eab0b1c227`，82,771,968 字节，

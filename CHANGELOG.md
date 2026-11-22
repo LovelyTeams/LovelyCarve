@@ -15,34 +15,42 @@
 
 ### Changed
 
+- **破坏性变更**：重新设计 `lovelycarve-cli`，旧命令不再可用，也不提供别名。
+  - 检材内的位置统一写成地址：`/` 列出检材，`/<别名>` 列出分区与卷，`/<别名>/<卷>/<路径>` 指向文件，`/<别名>/@<节点 ID>` 按 ID 指向节点；别名保存在案件中。`--path`、`--node-id`、`--parent-id` 与会话上下文（`context set` / `context use`）不再使用，shell 中用 `cd` / `pwd`。
+  - 读取检材内容用 `ls`、`tree`、`stat`、`cat`、`text`、`strings`、`hash`、`identify`、`streams`、`export`、`find`、`grep`，其余命令为「名词 动词」；没有专门命令的后端功能用 `rpc <后端命令> --body <JSON>` 调用，`rpc --list` 列出全部。
+  - 结果默认输出文本，`--json` 输出 JSON：`--json=字段` 取代 `--fields`，文件内容为 `{"encoding":"hex","data"}`，错误为标准错误上的一行 JSON，进度关闭。`--with-source`、`LOVELYCARVE_AGENT` 和按编码代理环境变量切换输出的行为已移除。
+  - 命名常驻会话（`sessions …`、`--session`）改为每个案件一个后台进程：`case open` / `case close`，之后指向该案件的命令自动交给它执行。没有后台进程时，解锁、手动组装、雕刻、卷影副本和挂载等只在进程存活期间有效的命令以 `needsBackend` 拒绝。
+  - JSONL `session` 改为 `batch`：每行请求是命令行本身，`{"id":…,"argv":[…]}`，`argv` 中可用 `$ref` 引用先前的结果。
+  - 密码与密钥不再接受命令行上的明文：用 `@文件`、`-`（标准输入）或在终端中输入。删除确认的 `--force` 改为 `-y`；`--image` 只接受检材路径；`.env` / `.env.local` 及 `LOVELYCARVE_IMAGE`、`LOVELYCARVE_SESSION` 不再读取。
+  - LUKS、VeraCrypt 与 FileVault 的 `unlock` 默认把明文接在源检材上，`--new-image` 生成独立的解密检材。`find` 列出范围内没有卷索引的卷并以 2 退出，没有任何索引时以 `indexUnavailable` 失败。
+  - 常用命令对照：`images open` → `evidence add`，`images get` → `evidence show`，`images hash` / `images export` → `evidence hash` / `evidence export`，`files list` → `ls`，`files tree list` → `tree`，`files get` → `stat`，`files read` → `cat`，`files text get` → `text`，`files hash` → `hash`，`files export` / `files directories export` → `export`，`files search` → `grep`，`indexes files list` → `find`，`indexes list` / `indexes create` → `index ls` / `index build`，`cases create` → `case new`，`bitlocker unlock` / `encrypted-volumes unlock` / `ios-backups unlock` → `unlock`，`bitlocker metadata get` / `filevault get` → `encryption`，`raid detect --image-ids` → `raid detect --member`，`carve scans create` / `carve scans export` → `carve start` / `carve export`，`plugins tasks create` → `analyze run`，`analysis records list` → `results rows`，`timezones get` / `timezones set` → `tz` / `tz set`，`system get` → `system`。
 - 文件预览可放在列表右侧或下方；工作区较窄时自动放在列表下方，不再覆盖文件表。
 - 文件列表、目录树、预览标签页和详情面板的文件图标换成一套 16px 线性图标：按文件名和后缀区分常见编程语言、脚本、配置、日志、字体和锁文件；可执行文件、压缩包、表格、邮件和数据库各有专门图标（可执行文件不再显示为齿轮，CSV 显示为表格），展开的目录显示为打开的文件夹。分区、未分配空间、NTFS 命名数据流、ReFS 快照、符号链接和 Docker 视图的图标按同一网格重绘，各类别的颜色不变。
 - 调整其余含义不准的图标：时间线改用甘特图、文件恢复改用恢复箱，分析结果、时间线与文件恢复页的起始图标与侧栏一致，「快速分析」按钮统一为闪电；RAID 在添加检材、检材信息、案件管理与 RAID 检测中统一为磁盘阵列，雕刻范围的「分区间隙」与文件树一样画虚线方框；快速分析的系统图标中 Android 改为 Android 头像，鸿蒙改为手机，Windows 与 ESXi 不再与「应用」「系统」分类共用图标；插件时间线事件改用插件图标，ELF / Mach-O 报告与 PE 一样用二进制图标，结构视图的「适应窗口」改为取景框，源镜像不可用时显示断开连接。
 - 重新设计原类型视图：视图切换与当前视图的工具合成一行，查找栏按查找按钮或 Ctrl+F 打开；真实类型识别、文件大小、文本编码与翻页移到底部状态栏。CSV、JSON / YAML / XML、SQLite、Realm 和 ZIP 不再各自叠一层工具条；面板较窄时 SQLite / Realm 的表清单收进下拉框，ZIP 成员树与成员预览上下排列。PE / ELF / Mach-O / ar / GGUF 报告改为平铺分节，加载、出错和不支持的状态统一给出原因与下一步。
 - 原类型视图新增 CHM、UMD、FB2 电子书，HEIC / HEIF、TIFF、JPEG XL 图片，以及韩文（HWP / HWPX）、WordPerfect 和 dBASE 文件，经 Flyfish File Viewer 渲染。
-- Magika 文件类型识别和 OCR 移入随程序分发的推理组件 `lovelycarve_inference.dll`，ONNX Runtime 与模型随组件在首次使用时加载：Windows CLI 从约 52 MB 降至约 30 MB，桌面主程序同样减少约 22 MB；主程序和 CLI 启动时不再加载 DirectML、D3D12 与 DXGI。安装包、便携包和 CLI 包把组件放在主程序旁；`system get` 的 `components.inference` 报告组件能否加载及其 OCR 执行方式。
+- Magika 文件类型识别和 OCR 移入随程序分发的推理组件 `lovelycarve_inference.dll`，ONNX Runtime 与模型随组件在首次使用时加载：Windows CLI 从约 52 MB 降至约 30 MB，桌面主程序同样减少约 22 MB；主程序和 CLI 启动时不再加载 DirectML、D3D12 与 DXGI。安装包、便携包和 CLI 包把组件放在主程序旁；CLI `system` 的 `components.inference` 报告组件能否加载及其 OCR 执行方式。
 - 从源码构建时，OCR 改由推理组件的 `ocr` / `ocr-cuda` 特性开启（`just build-components --features ocr-cuda`），后端 crate 不再提供这两个特性；`*-full` 配方的用法不变。
 - BCP 分析结果按应用、账号和记录类型浏览，并显示各分组的删除数和总数。
 - 桌面端在「卷与分区」的同一弹窗中解锁 BitLocker、LUKS、VeraCrypt 和 FileVault 2，分区行可直接预选对应卷。
 - 卸载检材时先等它的任务停下（最多 5 秒）再释放临时文件、插件卷与挂载，任务中心不再残留已卸载检材的历史。
-- CLI `schema` 的 `requestBodyFields` 把检材、节点和卷标识的类型报告为 `ImageId` / `NodeId` / `VolumeKey`，并在 `schema` 中注明按字符串传递；请求写法不变。
 - 文件列表开启「隐藏空目录」后仍按页读取：空目录改由后端依据卷快照或索引判定，当页与总数同时排除，不再把整个目录逐页读入前端再过滤；索引上的子树判定改为单连接批量查询。快照尚未覆盖、无法判定的目录先保留显示，不再逐个实时探测子项数来隐藏。
 - 目录树展开改用后端分页：排除已删除项、目录优先并按名称自然排序，大目录只读取到前 300 个文件。
 - 文本预览只从后端取编码检测结果（新命令 `fs_preview_text_encoding`），用已读取的预览字节在前端解码，不再重复传输解码后的文本；NTFS 命名流预览命令 `fs_stream_preview` 改为返回二进制数据。
 - 后端错误码改由错误的类型确定，不再根据报错文字推断，报错文字本身不变：检材结构损坏报 `corruptData`（以往常被标成 `invalidInput` 或 `resourceLimit`），主机上文件不存在、拒绝访问分别报 `notFound`、`permissionDenied`，任务在任何环节被取消都报 `cancelled`。
-- CLI 自己执行的读取命令（如 `files read`、`files strings list`）失败时报告与后端命令相同的错误码，不再一律为 `operationFailed`；CLI 内部错误改报 `internal`，主机 I/O 错误按类型报 `notFound`、`permissionDenied` 等，不再一律为 `io`。
+- CLI 自己执行的读取命令（如 `cat`、`strings`）失败时报告与后端命令相同的错误码，不再一律为 `operationFailed`；CLI 内部错误改报 `internal`，主机 I/O 错误按类型报 `notFound`、`permissionDenied` 等，不再一律为 `io`。
 - Python 读取库在检材、节点或源镜像不存在时抛 `FileNotFoundError`，主机拒绝访问时抛 `PermissionError`，两者都是 `OSError` 的子类。
 - 从源码构建需要 Rust 1.100 或更新版本。
 
 ### Removed
 
-- LovelyCarve 的 DSH 取证模式和 CLI skill 移除 forensic-board 看板集成。
+- 移除 DSH 取证模式：不再提供 `integrations/dsh-lovelycarve/` 及 `just stage-dsh`、`just test-dsh`，编码代理直接按 CLI skill 调用 CLI。CLI skill 不再含 forensic-board 看板集成。
 - 安装包、便携包和 CLI 包不再附带 `libcrypto-4-x64.dll`：OpenSSL 已静态链接，没有程序再加载它，每个包少约 7 MB。
 
 ### Fixed
 
 - 使用 Cargo 1.100 及更新版本时，带 OCR 的完整构建不再因 ONNX Runtime 构建脚本按旧目录层级拷贝 DLL 而失败；CUDA / TensorRT 执行提供者与 DirectML DLL 重新放在推理组件旁。
-- 锁定的案件在后端拒绝添加检材和删除卷索引：CLI 的 `images open` 不能再把新检材加入锁定案件，`indexes delete` 也被拒绝；全部锁定拒绝统一使用错误码 `caseLocked`。
+- 锁定的案件在后端拒绝添加检材和删除卷索引：CLI 的 `evidence add` 不能再把新检材加入锁定案件，`index rm` 也被拒绝；全部锁定拒绝统一使用错误码 `caseLocked`。
 
 ## [1.3.0] - 2026-11-07
 

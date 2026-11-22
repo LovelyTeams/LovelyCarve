@@ -1,14 +1,13 @@
-"""Optical source bytes and filesystem bytes through the public CLI commands.
+"""Optical source bytes and file system bytes through the public CLI commands.
 
 Fixtures are invented ISO 9660 / CD sectors built independently of the Rust
 test helpers. No real evidence or external disc tools are required.
 """
 import hashlib
 import json
-from pathlib import Path
 import struct
-import subprocess
-import tempfile
+
+from cli_support import node, path_id, request
 
 
 def iso_fixture(content=None):
@@ -50,57 +49,50 @@ def iso_fixture(content=None):
     return bytes(image), content
 
 
-def test_optical_discs(executable, base_environment):
-    with tempfile.TemporaryDirectory(prefix="lovelycarve-optical-") as directory:
-        root = Path(directory)
-        iso, content = iso_fixture()
-        audio = bytes([0x73]) * 2352 * 2
-        (root / "音轨 one.bin").write_bytes(audio)
-        for mode, width in ((1, 2352), (2, 2352), (2, 2336), (1, 2048)):
-            data = bytearray()
-            for number in range(40):
-                sector = bytearray([0xA7]) * width
-                if width == 2352:
-                    absolute = number + 150
-                    values = (absolute // 4500, absolute // 75 % 60, absolute % 75)
-                    sector[:12] = b"\x00" + bytes([0xFF]) * 10 + b"\x00"
-                    sector[12:15] = bytes(value // 10 * 16 + value % 10 for value in values)
-                    sector[15] = mode
-                start = 16 if mode == 1 and width == 2352 else 0
-                if mode == 2:
-                    subheader = 16 if width == 2352 else 0
-                    sector[subheader:subheader + 8] = bytes((0, 0, 8, 0)) * 2
-                    start = subheader + 8
-                sector[start:start + 2048] = iso[number * 2048:(number + 1) * 2048]
-                data.extend(sector)
-            (root / "data.bin").write_bytes(data)
-            cue = root / "disc.cue"
-            cue.write_text('FILE "音轨 one.bin" BINARY\nTRACK 01 AUDIO\nINDEX 01 00:00:00\n'
-                           f'FILE data.bin BINARY\nTRACK 02 MODE{mode}/{width}\nINDEX 01 00:00:00\n',
-                           encoding="utf-8")
-            raw_export = root / f"source-{mode}-{width}.raw"
-            file_export = root / f"file-{mode}-{width}.bin"
-            node = "cdfs:part:1:" + b"/PAYLOAD.BIN".hex()
-            requests = [
-                {"id": "open", "command": "images open", "args": {"path": str(cue)}},
-                {"id": "list", "command": "files list", "args": {"parentId": "part:1"}},
-                {"id": "read", "command": "files read", "args": {"nodeId": node, "offset": 2043, "length": 29}},
-                {"id": "file-hash", "command": "files hash", "args": {"nodeId": node, "algos": ["sha256"]}},
-                {"id": "source-hash", "command": "images hash", "args": {"algorithms": ["sha256"], "taskId": "optical-hash"}},
-                {"id": "file-export", "command": "files export", "args": {"nodeId": node, "destination": str(file_export)}},
-                {"id": "source-export", "command": "images export", "args": {"destination": str(raw_export), "taskId": "optical-export"}},
-            ]
-            result = subprocess.run([str(executable), "--quiet", "session"],
-                                    input="\n".join(map(json.dumps, requests)).encode(),
-                                    capture_output=True, cwd=root, env=base_environment, timeout=120)
-            assert result.returncode == 0, (mode, width, result.stdout, result.stderr)
-            rows = {row["id"]: row["result"] for row in map(json.loads, result.stdout.splitlines())}
-            assert rows["open"]["opticalDisc"]["tracks"][1]["sectorBytes"] == width
-            assert rows["open"]["partitions"][1]["kind"] == "cdfs"
-            assert "PAYLOAD.BIN" in json.dumps(rows["list"])
-            assert rows["read"] == {"encoding": "hex", "data": content[2043:2072].hex()}
-            assert rows["file-hash"]["sha256"] == hashlib.sha256(content).hexdigest()
-            assert rows["source-hash"]["sha256"] == hashlib.sha256(audio + data).hexdigest()
-            assert file_export.read_bytes() == content
-            assert raw_export.read_bytes() == audio + data
-    print("CLI optical tests passed: CUE mixed tracks, Mode 1, XA 2336/2352, file/source reads, hashes and exports")
+def test_optical_discs(cli, root):
+    iso, content = iso_fixture()
+    audio = bytes([0x73]) * 2352 * 2
+    (root / "音轨 one.bin").write_bytes(audio)
+    for mode, width in ((1, 2352), (2, 2352), (2, 2336), (1, 2048)):
+        data = bytearray()
+        for number in range(40):
+            sector = bytearray([0xA7]) * width
+            if width == 2352:
+                absolute = number + 150
+                values = (absolute // 4500, absolute // 75 % 60, absolute % 75)
+                sector[:12] = b"\x00" + bytes([0xFF]) * 10 + b"\x00"
+                sector[12:15] = bytes(value // 10 * 16 + value % 10 for value in values)
+                sector[15] = mode
+            start = 16 if mode == 1 and width == 2352 else 0
+            if mode == 2:
+                subheader = 16 if width == 2352 else 0
+                sector[subheader:subheader + 8] = bytes((0, 0, 8, 0)) * 2
+                start = subheader + 8
+            sector[start:start + 2048] = iso[number * 2048:(number + 1) * 2048]
+            data.extend(sector)
+        (root / "data.bin").write_bytes(data)
+        cue = root / "disc.cue"
+        cue.write_text('FILE "音轨 one.bin" BINARY\nTRACK 01 AUDIO\nINDEX 01 00:00:00\n'
+                       f'FILE data.bin BINARY\nTRACK 02 MODE{mode}/{width}\nINDEX 01 00:00:00\n', encoding="utf-8")
+        raw_export = root / f"source-{mode}-{width}.raw"
+        file_export = root / f"file-{mode}-{width}.bin"
+        payload = node("disc", path_id("cdfs:part:1:", "/PAYLOAD.BIN"))
+        rows = cli.results([
+            request("open", "evidence", "add", cue, "--as", "disc"),
+            request("list", "ls", "/disc/part:1"),
+            request("read", "cat", payload, "--offset", "2043", "--length", "29"),
+            request("file-hash", "hash", "/disc/part:1/PAYLOAD.BIN", "--algo", "sha256"),
+            request("source-hash", "evidence", "hash", "disc", "--algo", "sha256"),
+            request("file-export", "export", payload, "-o", file_export),
+            request("source-export", "evidence", "export", "disc", "-o", raw_export),
+        ])
+        image = rows["open"]["items"][0]
+        assert image["opticalDisc"]["tracks"][1]["sectorBytes"] == width, image
+        assert image["partitions"][1]["kind"] == "cdfs", image
+        assert "PAYLOAD.BIN" in json.dumps(rows["list"])
+        assert rows["read"] == {"encoding": "hex", "data": content[2043:2072].hex()}
+        assert rows["file-hash"]["items"][0]["sha256"] == hashlib.sha256(content).hexdigest()
+        assert rows["source-hash"]["sha256"] == hashlib.sha256(audio + data).hexdigest()
+        assert file_export.read_bytes() == content
+        assert raw_export.read_bytes() == audio + data
+    print("CLI optical tests passed: CUE mixed tracks, Mode 1, XA 2336/2352, file and source reads, hashes and exports")

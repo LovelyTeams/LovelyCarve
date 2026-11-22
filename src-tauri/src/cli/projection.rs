@@ -1,16 +1,11 @@
-//! CLI-only response shaping. Pagination and forensic provenance survive projection.
+//! `--json=fields`: keep only some fields of each list entry. Paging and
+//! provenance fields at the top level survive projection.
 use serde_json::{json, Map, Value};
 
-use super::{catalog::Command, CliError, Output};
-
-pub(super) fn agent_page_size(command: &Command, values: &mut Map<String, Value>, agentic: bool) {
-    if agentic && command.path() == "files list" {
-        values.entry("pageSize").or_insert(json!(50));
-    }
-}
+use super::{CliError, Output};
 
 pub(super) fn parse(fields: Option<&str>) -> Result<Vec<Vec<String>>, CliError> {
-    let Some(fields) = fields else {
+    let Some(fields) = fields.filter(|fields| !fields.trim().is_empty()) else {
         return Ok(Vec::new());
     };
     fields
@@ -18,27 +13,14 @@ pub(super) fn parse(fields: Option<&str>) -> Result<Vec<Vec<String>>, CliError> 
         .map(|field| {
             let path: Vec<String> = field.trim().split('.').map(str::to_owned).collect();
             if path.iter().any(String::is_empty) {
-                return Err(CliError::invalid(
-                    "--fields 需要逗号分隔的字段名；点路径不能有空段",
+                return Err(CliError::new(
+                    "usage",
+                    "--json= 后面是逗号分隔的字段名；点路径不能有空段",
                 ));
             }
             Ok(path)
         })
         .collect()
-}
-
-pub(super) fn validate(command: &Command, fields: &[Vec<String>]) -> Result<(), CliError> {
-    if !fields.is_empty()
-        && !matches!(
-            command.full_path.last().map(String::as_str),
-            Some("list" | "search")
-        )
-    {
-        return Err(CliError::invalid(
-            "--fields 仅适用于 list / search 的 JSON 列表结果",
-        ));
-    }
-    Ok(())
 }
 
 fn select(source: &Value, target: &mut Map<String, Value>, path: &[String]) {
@@ -68,7 +50,7 @@ pub(super) fn apply(output: Output, fields: &[Vec<String>]) -> Result<Output, Cl
         return Ok(output);
     }
     let Output::Json(output) = output else {
-        return Err(CliError::invalid("--fields 仅适用于 JSON 列表结果"));
+        return Err(CliError::new("usage", "--json=字段 只适用于 JSON 列表结果"));
     };
     let mut value = output.value().clone();
     let items = match &mut value {
@@ -85,8 +67,9 @@ pub(super) fn apply(output: Output, fields: &[Vec<String>]) -> Result<Output, Cl
                 match arrays.as_slice() {
                     [key] => key.clone(),
                     _ => {
-                        return Err(CliError::invalid(
-                            "--fields 无法确定列表：需要 items 或唯一的顶层数组",
+                        return Err(CliError::new(
+                            "usage",
+                            "--json=字段 需要列表结果：items 或唯一的顶层数组",
                         ))
                     }
                 }
@@ -94,12 +77,15 @@ pub(super) fn apply(output: Output, fields: &[Vec<String>]) -> Result<Output, Cl
             object
                 .get_mut(&key)
                 .and_then(Value::as_array_mut)
-                .ok_or_else(|| CliError::invalid("--fields 需要列表数组"))?
+                .ok_or_else(|| CliError::new("usage", "--json=字段 需要列表数组"))?
         }
-        _ => return Err(CliError::invalid("--fields 需要列表结果")),
+        _ => return Err(CliError::new("usage", "--json=字段 需要列表结果")),
     };
     if items.iter().any(|item| !item.is_object()) {
-        return Err(CliError::invalid("--fields 需要对象条目，不能投影标量数组"));
+        return Err(CliError::new(
+            "usage",
+            "--json=字段 需要对象条目，不能投影标量数组",
+        ));
     }
     for item in items {
         let mut projected = Map::new();
@@ -109,12 +95,6 @@ pub(super) fn apply(output: Output, fields: &[Vec<String>]) -> Result<Output, Cl
         for key in ["timestampTimeZone", "timestampUnconvertedFields"] {
             if let Some(value) = item.get(key) {
                 projected.insert(key.into(), value.clone());
-            }
-            if let Some(value) = item.get("node").and_then(|node| node.get(key)) {
-                let node = projected.entry("node").or_insert_with(|| json!({}));
-                if let Some(node) = node.as_object_mut() {
-                    node.insert(key.into(), value.clone());
-                }
             }
         }
         *item = Value::Object(projected);
@@ -172,23 +152,8 @@ mod tests {
         let text = page_text(projected.value()).unwrap();
         assert!(text.starts_with("{\"nextCursor\":\"x\",\"total\":2,\"truncated\":true,"));
         assert!(text.find("timestampDisplay").unwrap() < text.find("items").unwrap());
-
-        let Output::Json(deep) = apply(
-            Output::json(json!([{"node":{"timestamps":{"modified":"m","created":"c"}}}])),
-            &parse(Some(
-                "node.timestamps.modified,node.timestamps.created,node.timestamps.missing",
-            ))
-            .unwrap(),
-        )
-        .unwrap() else {
-            panic!()
-        };
-        assert_eq!(
-            deep.value(),
-            &json!([{"node":{"timestamps":{"modified":"m","created":"c"}}}])
-        );
         let Output::Json(named) = apply(
-            Output::json(json!({"sessions":[{"name":"exam","pid":7}],"total":1})),
+            Output::json(json!({"functions":[{"name":"exam","pid":7}],"total":1})),
             &parse(Some("name")).unwrap(),
         )
         .unwrap() else {
@@ -196,12 +161,20 @@ mod tests {
         };
         assert_eq!(
             named.value(),
-            &json!({"sessions":[{"name":"exam"}],"total":1})
+            &json!({"functions":[{"name":"exam"}],"total":1})
         );
-        let Output::Json(qualified) = apply(Output::json(json!([{"node":{"id":"x","timestampTimeZone":1,"timestampUnconvertedFields":["created"]}}])), &parse(Some("node.id")).unwrap()).unwrap() else { panic!() };
+        let Output::Json(zoned) = apply(
+            Output::json(
+                json!([{"id":"x","timestampTimeZone":1,"timestampUnconvertedFields":["created"]}]),
+            ),
+            &parse(Some("id")).unwrap(),
+        )
+        .unwrap() else {
+            panic!()
+        };
         assert_eq!(
-            qualified.value(),
-            &json!([{"node":{"id":"x","timestampTimeZone":1,"timestampUnconvertedFields":["created"]}}])
+            zoned.value(),
+            &json!([{"id":"x","timestampTimeZone":1,"timestampUnconvertedFields":["created"]}])
         );
         assert!(apply(
             Output::json(json!({"rows":[],"columns":[]})),
@@ -210,23 +183,7 @@ mod tests {
         .is_err());
         assert!(apply(Output::json(json!(["x"])), &parse(Some("id")).unwrap()).is_err());
         assert!(parse(Some("name,,id")).is_err());
-        assert!(parse(Some("timestamps..modified")).is_err());
+        assert!(parse(Some("")).unwrap().is_empty());
         assert!(apply(Output::json(json!({"id":"x"})), &parse(Some("id")).unwrap()).is_err());
-    }
-
-    #[test]
-    fn agent_default_preserves_explicit_page_sizes() {
-        let command = super::super::catalog::catalog()
-            .unwrap()
-            .find_path("files list")
-            .unwrap();
-        let mut values = Map::new();
-        agent_page_size(command, &mut values, false);
-        assert!(values.is_empty());
-        agent_page_size(command, &mut values, true);
-        assert_eq!(values, Map::from_iter([("pageSize".into(), json!(50))]));
-        values.insert("pageSize".into(), json!(500));
-        agent_page_size(command, &mut values, true);
-        assert_eq!(values["pageSize"], 500);
     }
 }

@@ -127,7 +127,7 @@ string_id! {
 }
 
 string_id! {
-    /// A filesystem node within one evidence (`files list` `items[].id`).
+    /// A filesystem node within one evidence (a directory listing's `items[].id`).
     NodeId
 }
 

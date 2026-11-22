@@ -19,11 +19,28 @@ use std::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{native, CliError};
+use super::CliError;
 use crate::{
-    app::workflows::task_center::TASK_ENTRY_EVENT,
-    core::extensions::task_scheduler::SchedTaskStatus, state::AppState,
+    app::{error::AppError, workflows::task_center::TASK_ENTRY_EVENT},
+    core::extensions::task_scheduler::SchedTaskStatus,
+    state::AppState,
 };
+
+/// Whether a process task or a plugin task is still active.
+pub async fn busy(state: &AppState) -> Result<bool, CliError> {
+    if !state.tasks.list().is_empty() {
+        return Ok(true);
+    }
+    if state.active_case.lock().await.is_none() {
+        return Ok(false);
+    }
+    Ok(state
+        .scheduler
+        .list_for_image(None, true)
+        .map_err(|error| CliError::from(AppError::from(error)))?
+        .iter()
+        .any(|task| task.status.is_active()))
+}
 
 /// How long a wait lets the last events arrive once no task is registered.
 const SETTLE: Duration = Duration::from_secs(2);
@@ -380,7 +397,7 @@ impl Background {
     pub async fn wait(&self, state: &AppState) -> Result<Report, CliError> {
         let mut quiet_since = None;
         loop {
-            if native::busy(state).await? {
+            if busy(state).await? {
                 quiet_since = None;
             } else if !self.lock().running() {
                 break;

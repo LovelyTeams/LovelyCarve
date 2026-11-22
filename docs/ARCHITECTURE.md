@@ -94,7 +94,7 @@ src-tauri/src/
 ├── main.rs                 桌面入口（desktop 特性）
 ├── bin/                    lovelycarve-cli 入口
 ├── host.rs + host/         与 Tauri 无关的宿主接口（State、AppHandle、LeaseOwner、Response）及 desktop 适配
-├── cli/                    独立 CLI：commands.toml、参数解析、执行、输出、会话、shell 与生成的分发
+├── cli/                    独立 CLI：命令树、地址与别名、执行、输出、shell、batch、案件后台进程与生成的 rpc 分发
 ├── app.rs + app/           setup、lifecycle、access、error、module_catalog
 │   └── workflows/          证据加载/卸载、案件、快照、识别、Docker、挂载、外部卷和插件任务编排
 ├── state.rs + state/       AppState；预览、快照、遍历与运行状态辅助类型
@@ -117,7 +117,7 @@ src-tauri/src/
 
 `commands` 的十个域是 `evidence`、`casework`、`filesystem`、`preview`、`analysis`、`carving`、`search`、`timeline`、`extensions`、`system`。跨域流程在 `app/workflows` 中复用；应用层不调用命令层，`core` 不依赖 app、commands、state、cli 或 Tauri。应用错误定义在 `app/error.rs`（见[错误与错误码](#错误与错误码)），`commands/app_error.rs` 保留传输层导出。
 
-`lib.rs` 保留唯一的命令注册表，以及 `desktop` 特性下的 Tauri builder。`app/setup.rs` 的 `initialize`（插件发现、任务调度、媒体缓存）由桌面 `setup` 和 CLI 共用，桌面退出和 CLI 共用 `app/lifecycle.rs` 的媒体、插件清理步骤。CLI 生成器沿模块声明解析嵌套命令路径和真实函数签名，与 `cli/commands.toml` 的命令定义一起生成分发代码与命令目录（见[命令行与桌面只读挂载](#命令行与桌面只读挂载)）。
+`lib.rs` 保留唯一的命令注册表，以及 `desktop` 特性下的 Tauri builder。`app/setup.rs` 的 `initialize`（插件发现、任务调度、媒体缓存）由桌面 `setup` 和 CLI 共用，桌面退出和 CLI 共用 `app/lifecycle.rs` 的媒体、插件清理步骤。CLI 的构建脚本沿模块声明解析嵌套命令路径和真实函数签名，生成 `rpc` 的分发代码与参数清单（见[命令行与桌面只读挂载](#命令行与桌面只读挂载)）。
 
 `python/` 是 PyO3 / maturin 的只读 `lovelycarve` 包，直接使用 `DiskImage`、`EvidenceSession` 与文件系统读取接口，不经过命令、`AppState` 或应用初始化。它启用后端 `reader-library` 库配置，排除应用、案件、catalog、分析、预览、搜索、插件和挂载模块；默认 CLI、`desktop` 及后端单元测试仍编译完整模块。Cargo 依赖图暂与后端共用，扩展只链接读取实现。证据路径规范化实现在 `common::evidence_path`，原有 `casework::case::evidence_path_key` 保留同一函数的重导出，使读取器不必依赖案件模块。Python API、构建与限制见 [Python 读取库](../python/README.md)。
 
@@ -133,21 +133,19 @@ src-tauri/src/
 
 ### 原生组件
 
-体积大、接口窄且只在部分操作中用到的依赖放在原生组件里，主程序和 CLI 不链接它们。`src-tauri/components/` 是独立的 Cargo 工作区：`abi`（`lovelycarve-component-abi`）定义 C ABI v1 和各组件的方法契约，宿主与组件共用；`inference` 构建推理组件 `lovelycarve_inference.dll`（Linux / macOS 为 `liblovelycarve_inference.so` / `.dylib`），内含静态链接的 ONNX Runtime、内嵌的 Magika 模型和可选的 PP-OCRv6 管线。`files identify`（`fs_identify_type`）和 OCR（`ocr_scan`）通过它运行，可执行文件因此不再链接 ONNX Runtime，启动时也不加载它依赖的 DirectML、D3D12 与 C++ 运行库。
+体积大、接口窄且只在部分操作中用到的依赖放在原生组件里，主程序和 CLI 不链接它们。`src-tauri/components/` 是独立的 Cargo 工作区：`abi`（`lovelycarve-component-abi`）定义 C ABI v1 和各组件的方法契约，宿主与组件共用；`inference` 构建推理组件 `lovelycarve_inference.dll`（Linux / macOS 为 `liblovelycarve_inference.so` / `.dylib`），内含静态链接的 ONNX Runtime、内嵌的 Magika 模型和可选的 PP-OCRv6 管线。内容类型识别（`fs_identify_type`，CLI 的 `identify`）和 OCR（`ocr_scan`）通过它运行，可执行文件因此不再链接 ONNX Runtime，启动时也不加载它依赖的 DirectML、D3D12 与 C++ 运行库。
 
 `core::platform::components` 在第一次调用时加载组件，此后在进程内一直保留，不卸载。它只搜索可执行文件所在目录；Cargo 的测试与示例程序（位于 `deps/`、`examples/`，或较新构建目录布局下的 `build/<包>/<哈希>/out/`）另加上所在的 profile 目录。当前目录和 `PATH` 不在搜索范围内，检材目录无法植入同名库；组件自身的依赖从组件目录和系统目录解析。入口 `lovelycarve_component_v1` 返回函数表，宿主校验 ABI 版本和表大小。每次调用传入方法名、JSON 参数和二进制载荷（文件字节不重新编码），应答缓冲由组件分配、并由组件的 `free_buffer` 释放；panic 在边界被捕获并转为错误应答。加载失败不缓存，补上组件后下一次调用即可加载。
 
-组件构建在宿主的 target 目录中（`components/.cargo/config.toml`；设置 `CARGO_TARGET_DIR` 时两边一同改变），与开发版、测试和 release 可执行文件相邻，`dev`、`test-cli`、`build-cli` 和 `build-release` 等配方会先运行 `build-components`。安装包、便携包和 CLI 包从 `src-tauri/tauri.components.conf.json` 获取同一组库，放在主程序旁。OCR 由组件的 `ocr` / `ocr-cuda` 特性决定；带 OCR 的构建由 ort-sys 构建脚本把 ONNX Runtime 的执行提供者与 DirectML DLL 链接到同一个 profile 目录，ONNX Runtime 在组件旁加载它们（`src-tauri/vendor/ort-sys` 修正了它在 Cargo 新构建目录布局下的路径推算）。组件的 `component.describe` 报告 `fileTypes` 和 OCR 执行方式（`cpu` / `cuda` / 无）；`system get` 的 `ocr`、`ocrCuda` 和 `components.inference` 都取自实际加载的组件。`ocr_scan` 登记任务前先加载组件，CUDA 构建的 OCR 任务占用 GPU 槽位，其余占用 CPU 槽位。新增组件时，方法与载荷写进 `abi` 的契约模块，宿主只依赖 `abi`，不把组件的依赖加回主 crate。
+组件构建在宿主的 target 目录中（`components/.cargo/config.toml`；设置 `CARGO_TARGET_DIR` 时两边一同改变），与开发版、测试和 release 可执行文件相邻，`dev`、`test-cli`、`build-cli` 和 `build-release` 等配方会先运行 `build-components`。安装包、便携包和 CLI 包从 `src-tauri/tauri.components.conf.json` 获取同一组库，放在主程序旁。OCR 由组件的 `ocr` / `ocr-cuda` 特性决定；带 OCR 的构建由 ort-sys 构建脚本把 ONNX Runtime 的执行提供者与 DirectML DLL 链接到同一个 profile 目录，ONNX Runtime 在组件旁加载它们（`src-tauri/vendor/ort-sys` 修正了它在 Cargo 新构建目录布局下的路径推算）。组件的 `component.describe` 报告 `fileTypes` 和 OCR 执行方式（`cpu` / `cuda` / 无）；CLI `system` 的 `ocr`、`ocrCuda` 和 `components.inference` 都取自实际加载的组件。`ocr_scan` 登记任务前先加载组件，CUDA 构建的 OCR 任务占用 GPU 槽位，其余占用 CPU 槽位。新增组件时，方法与载荷写进 `abi` 的契约模块，宿主只依赖 `abi`，不把组件的依赖加回主 crate。
 
-命令函数不直接依赖 Tauri：状态、应用句柄、二进制响应和媒体租约所有者分别使用 `host::State`、`host::AppHandle`、`host::Response` 和 `host::LeaseOwner`，函数以 `#[cfg_attr(feature = "desktop", tauri::command)]` 标注。`desktop` 特性（`tauri.conf.json` 的 `build.features` 为 `tauri dev/build` 开启）引入 tauri、对话框与文件插件和 tauri-build，并由 `host/tauri_adapter.rs` 为这些类型实现 `CommandArg` / `IpcResponse`：状态取自 Tauri 托管状态，`AppHandle` 把事件转给 Tauri `emit` 并提供应用数据目录，`LeaseOwner` 对应调用窗口（窗口关闭即租约结束），`Response` 以原始字节返回。CLI 构建不启用该特性，`AppHandle` 的事件写到 `session --events` 的标准错误或直接丢弃，`LeaseOwner` 归进程所有。两种构建使用同一个应用数据目录，目录名取自 `tauri.conf.json` 的 identifier（构建脚本导出为 `LOVELYCARVE_APP_IDENTIFIER`）。命令需要新的宿主能力时扩展 `host` 类型，不在命令中引用 Tauri 类型。
+命令函数不直接依赖 Tauri：状态、应用句柄、二进制响应和媒体租约所有者分别使用 `host::State`、`host::AppHandle`、`host::Response` 和 `host::LeaseOwner`，函数以 `#[cfg_attr(feature = "desktop", tauri::command)]` 标注。`desktop` 特性（`tauri.conf.json` 的 `build.features` 为 `tauri dev/build` 开启）引入 tauri、对话框与文件插件和 tauri-build，并由 `host/tauri_adapter.rs` 为这些类型实现 `CommandArg` / `IpcResponse`：状态取自 Tauri 托管状态，`AppHandle` 把事件转给 Tauri `emit` 并提供应用数据目录，`LeaseOwner` 对应调用窗口（窗口关闭即租约结束），`Response` 以原始字节返回。CLI 构建不启用该特性，`AppHandle` 的事件交给 CLI 的进度显示、`--events` 的标准错误和后台任务跟踪，`LeaseOwner` 归进程所有。两种构建使用同一个应用数据目录，目录名取自 `tauri.conf.json` 的 identifier（构建脚本导出为 `LOVELYCARVE_APP_IDENTIFIER`）。命令需要新的宿主能力时扩展 `host` 类型，不在命令中引用 Tauri 类型。
 
-命令参数里的检材、文件节点和卷标识使用 `core::common::ids` 的 `ImageId`、`NodeId`、`VolumeKey`。它们序列化为普通字符串，IPC 与 CLI 的写法不变，CLI 目录也把它们当作字符串选项；`DiskImage::id`、`AppState.images` 的键和任务登记的检材同样是 `ImageId`。按卷、按节点的表用组合键 `VolumeRef` / `NodeRef`，不用字符串元组或拼接字符串。ID 可解引用为 `&str`，仍接收 `&str` 的读取与存储函数可以直接使用；从字符串得到 ID 必须显式转换，所以类型化参数不会误收另一种 ID。前端的对应类型在 `src/lib/ipc/ids.ts`。
-
-CLI 的可选 `--with-source` / JSONL `withSource` 在解析检材与路径后、命令执行前捕获来源，随后独立于条目投影封装 `source/result`；常驻会话传递同一请求标记，客户端先拆开原结果检查完整性、投影，再封装来源。来源不通过命令完成后的上下文查询猜测。SQLite 主键另标记 `sqlite` 地址空间，保留数据库节点和表名。DSH 默认启用来源封装，并在输出超限时保留原页位置生成只读重试建议。
+命令参数里的检材、文件节点和卷标识使用 `core::common::ids` 的 `ImageId`、`NodeId`、`VolumeKey`。它们序列化为普通字符串，IPC 与 CLI `rpc` 的写法不变；`DiskImage::id`、`AppState.images` 的键和任务登记的检材同样是 `ImageId`。按卷、按节点的表用组合键 `VolumeRef` / `NodeRef`，不用字符串元组或拼接字符串。ID 可解引用为 `&str`，仍接收 `&str` 的读取与存储函数可以直接使用；从字符串得到 ID 必须显式转换，所以类型化参数不会误收另一种 ID。前端的对应类型在 `src/lib/ipc/ids.ts`。
 
 `filedb_volumes` 的 `indexes` 列出当前已发布索引对各文件系统的覆盖：直接卷索引的 `pathPrefix` 为 null，父分区内逻辑卷的覆盖由索引中的实际节点路径定位。`filedb_query_files` 区分缺失索引与零命中，并在查询前验证索引身份和完整性；截断索引不能产生完整的否定结论。
 
-CLI JSONL 调度位于 `cli/session.rs`。`session --jobs N` 使用有界输入队列和查询工作线程，主协调器统一发布按请求 ID 关联的 JSON 响应；stdin 等待不会阻塞完成结果输出。并发查询复制派发时的会话上下文，案件／检材／目录切换及其他未标记并发的命令先等待已有查询完成。结构化 `$ref` 等待先前请求结果，EOF 收齐请求后再等待后台任务。新增命令默认是屏障；确认其生命周期与并发安全后，才在 `cli/commands.toml` 中标记 `concurrent = true`，并通过命令目录的 `concurrent` 字段公开。
+CLI 的批量调度位于 `cli/batch.rs`。`batch --jobs N` 使用有界输入队列和阻塞工作线程，主协调器统一发布按请求 ID 关联的 JSON 响应；stdin 等待不会阻塞完成结果输出。只读查询可以重叠执行，其余命令先等待已有请求完成；案件后台进程以读写门实现同样的规则。结构化 `$ref` 等待先前请求结果，EOF 收齐请求后再等待后台任务。新增命令默认是屏障；确认其生命周期与并发安全后，才在 `cli/cmd.rs` 的 `meta_of` 中列为查询，`schema` 的 `concurrent` 字段随之公开。
 
 `src-tauri/examples/` 按用途分类，所有 example 目标在 Cargo 中显式声明，通过 `just run-example <名称>` 调用；`just check-examples` 检查这些目标，用法见 [后端探针](../src-tauri/examples/README.md)。新增模块使用 `<name>.rs` 加 `<name>/`，不新增 `mod.rs`。
 
@@ -369,7 +367,7 @@ LUKS 扇区密码套件由 vendored `sector_cipher` 统一分派，密码槽与�
 路径只查找已注册会话，不写入案件检材清单；RAID 检测不把卷影副本当作候选成员。
 前端由 `useShadowCopies` 读取列表，镜像信息页在对应分区行显示副本数（有 VSS 区而无副本时显示「无卷影副本」），
 展开后由 `ShadowCopyList.vue` 列出副本，打开后在新标签页浏览；解锁 BitLocker 后重新读取列表。
-CLI 的 `shadow-copies list` / `shadow-copies open` 在同一会话中保留父镜像与副本。
+CLI 的 `vss ls` / `vss open` 在同一进程（案件后台进程、shell 或 batch）中保留父镜像与副本。
 读取器公开 `store_blocks` / `store_ranges` 原始枚举和 `Snapshot: Read + Seek`；完整 API 对照与
 验证边界见 [VSS](formats/VSS.md)。catalog 损坏或循环时报错而不是返回部分列表，存储头整块读取并校验。
 原始 catalog 尺寸保留用于调查，布局尺寸独立求值；异常时要求主备 NTFS 几何一致。
@@ -411,8 +409,8 @@ E01、VMDK、VHD/VHDX、PMFX 等容错后端遇到源读取错误时，先沿绝
 `DiskImage::read_range` 命中的源盘坏区；它用于审计导出结果是否包含合成零字节，不表示逐个输出文件的
 逻辑偏移到物理坏区映射。
 
-CLI `files read` 在单次、JSONL 与常驻会话中都拒绝把有读故障的字节流报告为成功：返回
-`readFaultsDetected` 错误，结构化错误的 details 保留本次操作的审计报告。单次 stdout 可能已经写出字节，
+CLI `cat` 在一次性命令、batch 与案件后台进程中都拒绝把有读故障的字节流报告为成功：返回
+`readFaultsDetected` 错误，结构化错误的 details 保留本次操作的审计报告。stdout 可能已经写出字节，
 消费者必须检查退出码并丢弃失败输出。文件摘要继续容错返回并附带同一报告，CLI 把含补零的摘要和导出判为不完整结果
 （照常输出，标准错误警告并以 2 退出）；桌面不将含补零的摘要写入不带审计字段的缓存／存档。
 
@@ -870,8 +868,8 @@ URI 打开（Windows 长路径前缀与 UNC 路径都转成合法 URI），不�
 （`>= prefix AND < prefix+U+10FFFF`，直接命中索引，`LIKE … ESCAPE` 会让 SQLite 放弃索引优化）、子串用
 `LIKE`、扩展名/种类 `IN`、大小区间、`is_delete`，`LIMIT ? OFFSET ?` 分页并按自然序排序；`child_counts`
 点查计数缓存并回传 `inexact` 标志；`category_summary` 按 `kind` 聚合。未覆盖目录返回 `None`，命令层回退
-live 遍历。`filedb_volumes` / `filedb_query_files` / `filedb_resolve_meta_addr` 由 CLI 的 `indexes volumes list`、
-`indexes files list` 与 `indexes files lookup` 调用，`src/lib/ipc/filedb.ts` 保留对应的类型化封装；桌面文件列表经
+live 遍历。`filedb_volumes` / `filedb_query_files` 由 CLI 的 `volumes` 与 `find` 调用（`filedb_resolve_meta_addr` 经 `rpc`），
+`src/lib/ipc/filedb.ts` 保留对应的类型化封装；桌面文件列表经
 `fs_children_page` / `fs_flat_page` 读取同一份索引。
 
 浏览命令的数据源（`commands::filesystem::filesystem_snapshot_index`）：开着案件时是台账里该检材源卷大小与已加载
@@ -1104,57 +1102,61 @@ SecurityRonin/sqlite-forensic），为 SQLite 浏览器的「已删除记录」�
 ## 命令行与桌面只读挂载
 
 独立命令行入口为 `src-tauri/src/bin/lovelycarve-cli.rs`，用法见 [`CLI.md`](CLI.md)。
-CLI 构建不启用 `desktop` 特性，不链接 Tauri、WebView 或 GUI 工具包；进程在 16 MiB 栈的专用线程上
-运行 tokio 多线程运行时，自行创建 `AppState` 并调用 `app::setup::initialize`，退出时取消任务、
-关闭案件、停止插件并释放媒体缓存。Windows 的 `asInvoker` 清单由构建脚本在链接时嵌入。
+CLI 构建不启用 `desktop` 特性，不链接 Tauri、WebView 或 GUI 工具包；Windows 的 `asInvoker` 清单由构建脚本在链接时嵌入。
 
-命令目录由构建脚本生成：`build/cli_catalog.rs` 读取 `lib.rs` 的 `generate_handler!` 注册表和各命令的
-真实函数签名，与 `src/cli/commands.toml` 中逐条审阅的命令定义合并，生成按 API 参数名调用命令函数的
-`cli_dispatch.rs` 和命令目录 `cli_catalog.json`（命令、参数、用法、类别、并发、敏感字段、隐藏标记与示例，以及结果契约：
-后端返回 `()` 的命令记为 `unitResult`，只有它们以 `✓` 代替输出；`missing` 把返回 `Option` 的查找的 `None` 变成
-`notFound`；`incomplete` 列出结果不完整的字段）。构建时检查：每个注册命令映射到恰好一个 `<集合>… <动词>` 命令，或在
-`[[superseded]]` 中注明替代命令；动词在固定动词表内，不使用同义词（info/status→get、remove→delete、
-ls/query→list 等）；命令路径唯一且不是其他命令的前缀；`list`/`count` 不带位置参数；选项名与短选项
-不与 CLI 保留选项冲突；示例以程序名开头；`missing` 只用于返回 `Option` 的后端命令，原始字节输出不带 `incomplete`；
-命令签名中出现不支持的注入参数时构建失败。手写命令（`files list/get/read/search`、
-`files strings list`、`context`、`tasks wait`、`system get`、`schema` 等）也在该文件中声明参数，
-`schema`、帮助、补全、JSONL 会话和代理技能的命令参考读取同一份目录。`hide_command = true` 的命令
-（如 `sessions serve`）可以运行，但不进入帮助、补全、拼写建议和命令参考。
+**命令树。** `cli/cmd.rs` 与 `cli/cmd/*.rs` 用 clap derive 定义整棵命令树：检材内的读取用 `ls`、`cat`、`stat`、
+`find`、`grep` 等熟悉的动词，其余为「名词 动词」。每条命令都是可序列化的类型化值，同一个值从命令行解析、
+在 batch 中解析、发送给案件后台进程并在那里执行。`cmd::meta_of` 为每条命令登记输出类型（JSON / 字节）、
+能否与其他查询并发、删除确认、使结果不完整的字段、查找结果为空时的 `notFound`，以及只在进程存活期间有意义的
+命令（`unlock`、`raid assemble`、`carve start`、`vss open`、`mount`，一次性运行时以 `needsBackend` 拒绝）。
+命令直接调用 `commands::*` 的函数（传 `host::State` 等宿主类型），与桌面端 IPC 走同一份实现；`schema`、帮助、
+补全和代理技能的命令参考都由这棵命令树生成。地址（`/<别名>/<卷>/<路径>`、`/<别名>/@<节点 ID>`）由
+`cli/types.rs` 解析，`cli/workspace.rs` 维护别名（案件检材的别名保存在案件设置 `cli.alias.<规范化路径的哈希>`，
+所有进程看到同一个地址），`cli/browsing.rs` 与 `cli/navigation.rs` 把地址解析为从检材根到节点的位置，
+`cli/msys.rs` 还原 Git Bash / MSYS2 改写的地址。
+
+**rpc。** 构建脚本 `build/cli_rpc.rs` 读取 `lib.rs` 的 `generate_handler!` 注册表与各命令的真实函数签名，生成
+按 IPC 参数名调用任意已注册命令的 `cli_rpc_dispatch.rs`，以及 `rpc --list` 的参数清单 `cli_rpc_operations.json`。
+新注册的后端命令因此自动可以经 `rpc` 调用；需要更合适的命令行写法时再在命令树中增加专门命令。命令签名中
+出现不支持的注入参数时构建失败。
+
+**一次执行。** `cli/runtime.rs` 解析参数后，无需后端的命令（`schema`、`system`、`completion`）直接回答，
+`--dry-run` 只打印解析结果，密码按 `@文件`、标准输入或终端提问读取，再确定案件目录（`-C`、
+`LOVELYCARVE_CASE`、所在目录）。案件有后台进程时把命令交给它；否则在 16 MiB 栈的专用线程上启动 tokio
+运行时（工作线程与阻塞线程使用同样的栈），创建 `AppState` 并调用 `app::setup::initialize`，由 `cli/exec.rs`
+执行：校验时区、拒绝 `needsBackend` 命令、确认删除、显示进度。退出前等待本进程的后台任务，取消任务、
+关闭案件、停止插件并释放媒体缓存。`shell`（`cli/shell.rs`）与 `batch`（`cli/batch.rs`：argv 请求、`$ref`
+引用、只读查询并发与屏障、原始字节的十六进制响应和 `output` 保存）在一个进程中连续执行。
+
+**案件后台进程。** `cli/backend/` 实现 `case open` / `case close`：`case open` 以隐藏的 `case serve <目录>` 启动
+子进程，它持有该案件目录的文件锁（`registry.rs`，记录按 `evidence_path_key` 规范化的目录分组，位于用户数据
+目录的 `cli-backends/`），只监听回环地址并以随机凭据认证（`server.rs` / `client.rs` / `protocol.rs`）。请求携带
+解析后的命令值；只读查询经读写门并发执行，其余命令独占。JSON 结果按长度帧传输，原始字节以至多 8 MiB 的块
+流式传输并以成功或错误帧结束，进度事件在同一连接中按帧转发。持锁即拥有：锁能被取得说明后台进程已退出，
+客户端清除残留记录并报告 `caseBackendExited`，不凭 PID 判断，也不自动重启。`case close` 等待独占工作，
+取消其余任务、关闭案件后退出。桌面状态不参与这条链路。
+
+**输出。** 各命令的 `render` 与 `cli/render.rs` 生成文本；`--json` 时 `cli/output.rs` 输出 JSON（`cli::Json`
+保存后端序列化的文本，保留字段顺序，需要时才解析），字节结果以 `{"encoding":"hex","data"}` 表示，
+`cli/projection.rs` 实现 `--json=fields`，`cli/incomplete.rs` 按 `meta_of` 的字段判断结果是否完整（退出码 2）。
+`cli/progress.rs` 把后端的实际阶段与计数映射为 stderr 的进度行、OSC 9;4 进度和 `--events` 的 JSONL；`Monitor`
+以 RAII 管理刷新线程及 OSC 状态。`cli/background.rs` 跟随任务中心的 `task-entry` 事件：命令返回后仍在运行的
+任务、命令成功而它启动的任务却失败，以及 `automatic` 任务算作后台工作；`tasks wait`、一次性命令和 shell／batch
+退出前的等待以及 `case close` 报告它们的结局，失败或没有报告结果即以 `tasksFailed` 失败。后端命令的错误带上
+IPC 名称，渲染为「后端错误」块。可执行文件旁的 `plugins/` 同样参与插件发现，`lc-plugin-host` 也从可执行文件旁查找。
 
 代理技能 `skills/lovelycarve-cli` 随 CLI 安装包发布：`SKILL.md` 与 `references/workflows.md` 手写，
-`cli/skill_tests.rs` 解析其中的命令行和 JSONL 请求；`references/commands.md` 由同一测试模块从命令目录渲染，
-`just update-cli-skill` 运行其中被忽略的写入测试重新生成，文件与目录不一致时测试失败。
+`cli/skill_tests.rs` 用命令树解析其中的命令行和 batch 请求；`references/commands.md` 由同一测试模块从命令树渲染，
+`just update-cli-skill` 运行其中被忽略的写入测试重新生成，文件与命令树不一致时测试失败。
 
-`cli/` 按职责分为：`argv`（由目录构建 clap 命令树并解析参数、命令行错误）、`help`（yargs 版式的帮助：
-用法、说明、命令／位置参数／全局选项／选项／示例表格与右对齐的类型标注）、`context`（一次执行的统一步骤：
-dry-run、删除确认、默认值与生成 ID、提问、`--image` 作用域与来源提示、镜像内路径解析、不覆盖检查、调用和
-上下文更新）、`native` / `browsing` / `grep` / `strings`（手写命令；`native::offline` 处理无需后端的发现命令）、
-`output` / `prompt` / `progress` / `interactive`（标准输出与标准错误、clack 式提问与进度、终端与代理检测）、
-`schema`、`complete`、`dotenv`、`session`、
-`shell`、`resident`（命名常驻会话的启动、连接、私有传输及串行执行）、`background`（后台任务的结局）、
-`incomplete`（按目录判断结果是否完整）和 `runtime`（进程入口、后端启动与关闭、中断处理）。
-`background` 跟随任务中心的 `task-entry` 事件：命令返回后仍在运行的任务、命令成功而它启动的任务却失败，以及
-`automatic` 任务算作后台工作；`tasks wait`、一次性命令和 shell／JSONL 退出前的等待、`sessions close` 报告它们的结局，
-失败或没有报告结果即以 `tasksFailed` 失败。只跟随在本进程中见到运行的任务，插件任务的 `offline` 是过渡状态。结构化结果以 `cli::Json` 保存后端序列化的 JSON
-文本，打印和会话响应保留字段顺序，需要读取时才解析为值；后端命令的错误带上 IPC 名称，渲染为「后端错误」块。
-可执行文件旁的 `plugins/` 同样参与插件发现，`lc-plugin-host` 也从可执行文件旁查找。
-`resident` 的后台进程持有一个 `AppState` 和可变 `Context`；普通命令通过 `--session` 或
-`LOVELYCARVE_SESSION` 连接，无需重新打开检材或组装卷。每个名称用用户数据目录中的文件锁保证单一拥有者，
-随机凭据只保存在私有连接记录中，服务只监听回环地址；客户端不凭 PID 识别进程、不自动重试请求。
-请求串行执行，任务在后台继续；原始字节按块传输，`files read` 固定本次请求的检材及节点后分段读取，
-短读或连接中断必须报错。`sessions attach` 使用普通命令语法，断开不关闭后台；`sessions close`
-完成共享关闭流程再退出。桌面状态不参与这条连接链路。
-全局 `--events` 在普通命令、shell 和 JSONL 中接收同一份后端事件。普通命令的 `Reporter` 将
-实际阶段/计数映射到 stderr 的进度行，重定向 stdout 不会关闭它；每 5 秒的心跳只声明进程仍在执行。
-`Monitor` 以 RAII 管理刷新线程及 OSC 状态，取消异步 future 时也会清理。命名会话在每次非字节流请求期间
-通过私有传输的事件帧转发后端进度，事件与最终结果使用同一连接并按帧分离；文件字节流由客户端持续显示命令耗时。
-`just test-cli` 以真实进程验证无窗口启动、会话协议、脚本与中断退出码，以及常驻会话跨进程状态、
-组装卷复用、大文件字节与文本传输、会话隔离、认证、案件释放和崩溃后的同名重启。
+`cli/navigation_tests.rs` 用合成镜像验证 RAID → LVM → Btrfs 导航、按成员限定的 RAID 检测、NTFS 大小写回退与
+重名卷；`just test-cli` 以真实进程验证读取器夹具、容器与加密卷、batch、shell、案件、后台进程（跨进程复用、
+解锁与组装、隔离、认证、关闭与崩溃恢复）、输出与事件、时区、读故障以及无窗口启动和中断退出码。
 
 桌面只读挂载由 `app/workflows/mount.rs` 编排，`commands/system/mount.rs` 提供命令，
 `core/platform/dokan_mount/` 负责 Windows Dokan 投影。挂载使用 evidence session，
 范围读取复用文件系统适配器；共享、句柄和挂载点在卸载证据及关闭应用时清理。
-CLI 的 `mounts create/list/delete/share/unshare` 调用同一组命令，进程退出时释放挂载与共享。
+CLI 的 `mount` / `umount` 调用同一组命令（取消共享经 `rpc`），后台进程退出时释放挂载与共享。
 
 ## 界面与交互
 
@@ -1332,7 +1334,7 @@ RAID 成员、当前检材卷快照和案件详情默认折叠，切换与锁定
 | 任务中心 | 任务中心、检材加载页、镜像信息页 | `task_list`、`task_status`、`task_cancel`、`task-entry`；`task-lifecycle`、`task-progress` |
 | 主机路径 | 拖放添加检材 | `system_path_info`（判断拖入的路径是否为目录） |
 
-下列命令目前没有桌面调用方（部分在 `src/lib/ipc/` 保留了类型化封装），上表的通配符不包括它们：`image_bad_regions`、`os_detect`、`case_option_query` / `case_option_save`、`filedb_*`、`fs_stat`、`fs_dir_stats`、`fs_digest_load` / `fs_ftype_load`（整镜像兼容入口）、`fs_streams` / `fs_stream_preview` / `fs_stream_export`、`fs_vim_swap_preview`、`fs_usn_journal*` / `fs_ext4_journal*`、`fs_timeline_export`、`timeline_range`、`carve_latest_scan`、`sched_evidence_post_actions_set`、`module_summary` 与 `reveal_path`。它们大多是 CLI 命令的后端（见 `lovelycarve-cli schema --list` 的 `ipcCommand`）；`fs_usn_journal` 与 `carve_latest_scan` 在 `commands.toml` 的 `[[superseded]]` 中指向替代命令。
+下列命令目前没有桌面调用方（部分在 `src/lib/ipc/` 保留了类型化封装），上表的通配符不包括它们：`image_bad_regions`、`os_detect`、`case_option_query` / `case_option_save`、`filedb_*`、`fs_stat`、`fs_dir_stats`、`fs_digest_load` / `fs_ftype_load`（整镜像兼容入口）、`fs_streams` / `fs_stream_preview` / `fs_stream_export`、`fs_vim_swap_preview`、`fs_usn_journal*` / `fs_ext4_journal*`、`fs_timeline_export`、`timeline_range`、`carve_latest_scan`、`sched_evidence_post_actions_set`、`module_summary` 与 `reveal_path`。它们大多是 CLI 命令的后端，其余都可经 `lovelycarve-cli rpc <命令名>` 调用（`rpc --list` 列出全部）。
 
 ## 扩展流程
 
@@ -1341,7 +1343,7 @@ RAID 成员、当前检材卷快照和案件详情默认折叠，切换与锁定
 1. `src-tauri/src/core/` 增加核心逻辑。
 2. `src-tauri/src/commands/` 增加命令 wrapper（`#[cfg_attr(feature = "desktop", tauri::command)]`，宿主参数使用 `crate::host` 类型，检材、节点和卷标识使用 `ImageId` / `NodeId` / `VolumeKey`）。
 3. `src-tauri/src/lib.rs` 注册到 `tauri::generate_handler!`。
-4. `src-tauri/src/cli/commands.toml` 把它映射为一条 CLI 命令（集合、动词、位置参数、敏感与生成字段），否则构建失败。
+4. 新命令自动可经 CLI 的 `rpc` 调用；常用于命令行的功能另在 `src-tauri/src/cli/cmd/` 的命令树中增加专门命令（地址参数、文本输出与 `meta_of` 登记）。
 5. `src/lib/ipc/<domain>.ts` 增加类型化封装，标识参数使用 `src/lib/ipc/ids.ts` 的类型。
 6. 组件或 composable 调用封装。
 7. 运行 `just ipc-check`、`just typecheck`、`just test-fe`、`just build-fe` 和相关 Rust 检查，完整矩阵见 [贡献指南](../CONTRIBUTING.md)。

@@ -342,14 +342,16 @@ export_plugin!(plugin);
 
 | 命令 | CLI | 用途 |
 | --- | --- | --- |
-| `plugin_list` | `plugins list` | 插件包、分析器、记录类型、语言包、加载失败的包与安装目录 |
-| `plugin_install` / `plugin_uninstall` | `plugins create` / `plugins delete` | 安装 `.lcpkg`、卸载已安装的插件包 |
-| `plugin_restart` | `plugins restart` | 重启文件系统插件的共享实例 |
-| `sched_task_functions` | `plugins functions list` | 可调度的分析器：作用域、平台、选项与画像事实 |
-| `sched_systems_list` | `plugins systems list` | 检材上识别出的系统及其挂载 |
-| `sched_task_create` / `cancel` / `start` / `restart` / `remove` | `plugins tasks …` | 任务生命周期 |
-| `task_list` / `task_status` / `task_cancel` | `tasks list` / `get` / `cancel` | 任务中心：插件任务与内置任务的统一列表 |
-| `analysis_result_tree`、`analysis_records_page`、`analysis_record_detail`、`analysis_run_get` | `analysis tree get`、`analysis records list` / `get`、`analysis runs get` | 结果树、按列排序与检索的分页记录、记录详情、运行审计 |
+| `plugin_list` | `plugin ls` | 插件包、分析器、记录类型、语言包、加载失败的包与安装目录 |
+| `plugin_install` / `plugin_uninstall` | `plugin install` / `plugin rm` | 安装 `.lcpkg`、卸载已安装的插件包 |
+| `plugin_restart` | `rpc plugin_restart` | 重启文件系统插件的共享实例 |
+| `sched_task_functions`、`sched_systems_list` | `analyze ls` | 可调度的分析器（作用域、平台、选项与画像事实），以及检材上识别出的系统及其挂载 |
+| `sched_task_create` | `analyze run` | 创建插件任务 |
+| `sched_task_restart` / `sched_task_remove` | `tasks restart` / `tasks rm` | 重新运行、删除插件任务及其结果 |
+| `task_list` / `task_status` / `task_cancel` | `tasks ls` / `show` / `cancel` | 任务中心：插件任务与内置任务的统一列表 |
+| `analysis_result_tree`、`analysis_records_page`、`analysis_record_detail`、`analysis_run_get` | `results ls`、`results rows`、`results show`、`results run` | 结果树、按列排序与检索的分页记录、记录详情、运行审计 |
+
+没有专门命令的调度接口（如 `sched_task_start`）经 `lovelycarve-cli rpc <命令名>` 调用。
 
 前端经 `src/lib/ipc/plugins.ts`、`tasks.ts`、`taskRuntime.ts`、`analysisResults.ts` 调用。界面：「设置 → 插件」安装、卸载并查看插件包；任务中心的「快速分析」按所选系统列出系统级与检材级分析器；文件列表右键「插件分析任务…」运行文件级分析器（有选项时先填写）；「分析结果」按分析器运行列出记录类型，表格列与排序来自记录结构，运行信息显示审计。
 
