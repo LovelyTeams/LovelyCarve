@@ -27,6 +27,7 @@ use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use xfs_fuse::{FileType, Volume, XfsIno};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{DiskImage, Partition};
 use crate::core::evidence::partitions::lvm2::layout::LinearLayout;
@@ -102,21 +103,22 @@ pub fn open_xfs_source(image: &Arc<DiskImage>, source: XfsSource) -> Result<XfsV
                 partition
                     .start_lba
                     .checked_mul(sector_size)
-                    .ok_or_else(|| anyhow!("XFS partition offset overflow"))?,
+                    .ok_or_else(|| anyhow!(Failure::corrupt("XFS partition offset overflow")))?,
                 partition
                     .length_lba
                     .checked_mul(sector_size)
-                    .ok_or_else(|| anyhow!("XFS partition length overflow"))?,
+                    .ok_or_else(|| anyhow!(Failure::corrupt("XFS partition length overflow")))?,
                 format!("part:{part_id}"),
             )
         }
         XfsSource::Lvm { part_id, lv_index } => {
             let partition = find_partition(image, &part_id.to_string())?;
             let lvm = LvmVolume::open(image, partition)?;
-            let lv = lvm
-                .logical_volumes
-                .get(lv_index)
-                .ok_or_else(|| anyhow!("logical volume not found: lvm:{part_id}:{lv_index}"))?;
+            let lv = lvm.logical_volumes.get(lv_index).ok_or_else(|| {
+                anyhow!(Failure::not_found(format!(
+                    "logical volume not found: lvm:{part_id}:{lv_index}"
+                )))
+            })?;
             XfsVolume::open(
                 Arc::clone(image),
                 source,
@@ -153,7 +155,7 @@ impl XfsVolume {
                 volume
                     .logical_volumes
                     .get(lv_index)
-                    .ok_or_else(|| anyhow!("LVM LV missing"))?
+                    .ok_or_else(|| anyhow!(Failure::not_found("LVM LV missing")))?
                     .reader_geometry()?
             }
             XfsSource::Partition(_) => (base_offset, None),
@@ -166,13 +168,15 @@ impl XfsVolume {
             position: 0,
         };
         let volume = Volume::open(cursor).map_err(|errno| {
-            anyhow!("XFS open: invalid or unsupported metadata (errno {errno})")
+            anyhow!(Failure::unsupported(format!(
+                "XFS open: invalid or unsupported metadata (errno {errno})"
+            )))
         })?;
         let declared_size = volume
             .sb
             .sb_dblocks
             .checked_mul(u64::from(volume.sb.sb_blocksize))
-            .ok_or_else(|| anyhow!("XFS volume size overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("XFS volume size overflow")))?;
         if declared_size > length_bytes {
             anyhow::bail!("XFS declared volume exceeds evidence slice");
         }
@@ -193,11 +197,11 @@ impl XfsVolume {
             partition
                 .start_lba
                 .checked_mul(sector_size)
-                .ok_or_else(|| anyhow!("XFS partition offset overflow"))?,
+                .ok_or_else(|| anyhow!(Failure::corrupt("XFS partition offset overflow")))?,
             partition
                 .length_lba
                 .checked_mul(sector_size)
-                .ok_or_else(|| anyhow!("XFS partition length overflow"))?,
+                .ok_or_else(|| anyhow!(Failure::corrupt("XFS partition length overflow")))?,
             format!("part:{}", partition.id),
         )
     }
@@ -221,7 +225,9 @@ impl XfsVolume {
                 .map_err(|err| anyhow!("XFS readdir {path:?}: errno {err}"))?;
 
             if entries.len() > MAX_CHILDREN_PER_DIR {
-                anyhow::bail!("XFS directory exceeds listing limit");
+                anyhow::bail!(Failure::resource_limit(
+                    "XFS directory exceeds listing limit"
+                ));
             }
             let mut out = Vec::with_capacity(entries.len());
             for entry in entries.into_iter() {
@@ -259,7 +265,7 @@ impl XfsVolume {
                     timestamps,
                     link_target: if kind == NodeKind::Symlink {
                         match vol.readlink(entry.ino) {
-                            Ok(target) => Some(String::from_utf8_lossy(&target).into_owned()),
+                            Ok(target) => Some(String::from_utf8_lossy_owned(target)),
                             Err(errno) => {
                                 tracing::warn!(
                                     "XFS inode {} target unavailable: errno {errno}",
@@ -426,7 +432,7 @@ impl XfsVolume {
                                 .base_offset
                                 .checked_add(extent.physical_offset)
                                 .ok_or_else(|| {
-                                anyhow!("XFS physical offset overflow")
+                                anyhow!(Failure::corrupt("XFS physical offset overflow"))
                             })?,
                             length: extent.length.min(attr.size - extent.logical_offset),
                         });
@@ -468,9 +474,12 @@ impl XfsVolume {
             while output.len() < total {
                 let current = offset
                     .checked_add(output.len() as u64)
-                    .ok_or_else(|| anyhow!("XFS read offset overflow"))?;
-                let current = i64::try_from(current)
-                    .map_err(|_| anyhow!("XFS read offset exceeds format limit"))?;
+                    .ok_or_else(|| anyhow!(Failure::corrupt("XFS read offset overflow")))?;
+                let current = i64::try_from(current).map_err(|_| {
+                    anyhow!(Failure::resource_limit(
+                        "XFS read offset exceeds format limit"
+                    ))
+                })?;
                 let want = (total - output.len()).min(1 << 20) as u32;
                 let bytes = volume
                     .read(inode, current, want)
@@ -506,7 +515,7 @@ impl XfsVolume {
                                 .base_offset
                                 .checked_add(extent.physical_offset)
                                 .ok_or_else(|| {
-                                anyhow!("XFS attribute physical offset overflow")
+                                anyhow!(Failure::corrupt("XFS attribute physical offset overflow"))
                             })?,
                             length: extent.length,
                         })

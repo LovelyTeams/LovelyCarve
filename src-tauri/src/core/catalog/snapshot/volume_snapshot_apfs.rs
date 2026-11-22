@@ -30,6 +30,7 @@ use crate::core::catalog::snapshot::volume_snapshot::{
     snapshot_file_name, volume_size_for_key, write_snapshot_entry, write_snapshot_header,
     SnapshotEntry, SnapshotHeader, VolumeSnapshotBuilt, PROGRESS_EVERY, SNAPSHOT_SCHEMA,
 };
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::{Partition, PartitionKind};
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree::{fs_unalloc_nodes, FsNode, Mactb, NodeKind};
@@ -114,7 +115,7 @@ pub(crate) fn build_apfs_volume_snapshot(
 
     'volumes: for root_node in &root_nodes {
         if cancel.is_cancelled() {
-            anyhow::bail!("snapshot build cancelled");
+            anyhow::bail!(Failure::cancelled("snapshot build cancelled"));
         }
         if entry_count as usize >= max_entries {
             truncated = true;
@@ -200,7 +201,7 @@ pub(crate) fn build_apfs_volume_snapshot(
         match scan {
             Ok(true) => {}
             Ok(false) => {
-                anyhow::bail!("snapshot build cancelled");
+                anyhow::bail!(Failure::cancelled("snapshot build cancelled"));
             }
             Err(err) => {
                 // One unreadable volume shouldn't abort the container snapshot
@@ -213,7 +214,7 @@ pub(crate) fn build_apfs_volume_snapshot(
 
         for (oid, metadata) in &mut inodes {
             if cancel.is_cancelled() {
-                anyhow::bail!("snapshot build cancelled");
+                anyhow::bail!(Failure::cancelled("snapshot build cancelled"));
             }
             if metadata.needs_logical_metadata {
                 let (size, target) = volume.catalog_logical_metadata(*oid)?;
@@ -254,7 +255,7 @@ pub(crate) fn build_apfs_volume_snapshot(
 
         while let Some((dir_oid, dir_rel_path, parent_node_id)) = stack.pop() {
             if cancel.is_cancelled() {
-                anyhow::bail!("snapshot build cancelled");
+                anyhow::bail!(Failure::cancelled("snapshot build cancelled"));
             }
             let Some(edges) = children.get(&dir_oid) else {
                 continue;
@@ -282,7 +283,7 @@ pub(crate) fn build_apfs_volume_snapshot(
                 let size = if edge.kind == NodeKind::Dir {
                     0
                 } else {
-                    meta.map_or(0, |meta| meta.size)
+                    meta.map_or_default(|meta| meta.size)
                 };
                 let node = FsNode {
                     id: node_id.clone(),

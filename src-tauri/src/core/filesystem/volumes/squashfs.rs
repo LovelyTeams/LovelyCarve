@@ -37,6 +37,7 @@ mod legacy_tests;
 #[path = "squashfs_lzma_tests.rs"]
 mod lzma_tests;
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{DiskImage, Partition};
 use crate::core::filesystem::tree::fs_tree::{
@@ -134,11 +135,11 @@ impl SquashfsVolume {
         let base_offset = partition
             .start_lba
             .checked_mul(sector_size)
-            .ok_or_else(|| anyhow!("SquashFS base overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("SquashFS base overflow")))?;
         let length_bytes = partition
             .length_lba
             .checked_mul(sector_size)
-            .ok_or_else(|| anyhow!("SquashFS length overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("SquashFS length overflow")))?;
         anyhow::ensure!(
             base_offset
                 .checked_add(length_bytes)
@@ -364,7 +365,12 @@ fn join_unix(parent: &str, name: &str) -> String {
 fn find_node(fs: &dyn FilesystemReaderTrait, target: &Path) -> Result<Node> {
     fs.files()
         .find(|node| node.fullpath == target)
-        .ok_or_else(|| anyhow!("SquashFS entry not found: {}", target.display()))
+        .ok_or_else(|| {
+            anyhow!(Failure::not_found(format!(
+                "SquashFS entry not found: {}",
+                target.display()
+            )))
+        })
 }
 
 fn node_kind_of(node: &Node) -> NodeKind {

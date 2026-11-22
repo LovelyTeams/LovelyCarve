@@ -12,6 +12,7 @@ use anyhow::{anyhow, Result};
 use rmpv::Value;
 use serde::{Deserialize, Serialize};
 
+use crate::core::common::error::Failure;
 use crate::core::filesystem::tree::fs_tree::{FsNode, FsStat, Mactb, NodeKind};
 
 const MAX_NODE_ID_BYTES: usize = 4 * 1024;
@@ -100,7 +101,11 @@ impl LppFsNodeV1 {
                 "file" => NodeKind::File,
                 "symlink" => NodeKind::Symlink,
                 "unallocated" => NodeKind::Unallocated,
-                kind => return Err(anyhow!("unsupported node kind {kind:?}")),
+                kind => {
+                    return Err(anyhow!(Failure::unsupported(format!(
+                        "unsupported node kind {kind:?}"
+                    ))))
+                }
             },
             size: self.size,
             deleted: self.deleted,

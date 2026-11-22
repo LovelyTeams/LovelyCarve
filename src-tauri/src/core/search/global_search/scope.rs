@@ -1,5 +1,6 @@
 //! scope implementation.
 use super::*;
+use crate::core::common::error::Failure;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 
 // ── 范围解析 ───────────────────────────────────────────────────────────
@@ -12,7 +13,7 @@ pub fn resolve_encodings(labels: &[String]) -> anyhow::Result<Vec<SearchEncoding
     let mut encodings = Vec::new();
     for label in labels {
         let encoding = SearchEncoding::from_label(label)
-            .ok_or_else(|| anyhow::anyhow!("未知编码：{label}"))?;
+            .ok_or_else(|| anyhow::anyhow!(Failure::invalid_input(format!("未知编码：{label}"))))?;
         if !encodings.contains(&encoding) {
             encodings.push(encoding);
         }

@@ -18,6 +18,8 @@ use anyhow::{bail, Result};
 use byteorder::{LittleEndian, ReadBytesExt};
 use serde::Serialize;
 
+use crate::core::common::error::Failure;
+
 /// Magic：ASCII `GGUF` 按小端 u32 读出。
 const GGUF_MAGIC: u32 = 0x4655_4747;
 
@@ -131,7 +133,9 @@ pub fn parse(data: &[u8], file_size: u64) -> Result<GgufReport> {
 
     let version = cur.read_u32::<LittleEndian>()?;
     if version != 2 && version != 3 {
-        bail!("不支持的 GGUF 版本 v{version}（当前仅支持 v2 / v3）");
+        bail!(Failure::unsupported(format!(
+            "不支持的 GGUF 版本 v{version}（当前仅支持 v2 / v3）"
+        )));
     }
 
     let tensor_count = cur.read_u64::<LittleEndian>()?;
@@ -146,10 +150,10 @@ pub fn parse(data: &[u8], file_size: u64) -> Result<GgufReport> {
     for i in 0..metadata_kv_count {
         match parse_metadata_kv(&mut cur) {
             Ok(entry) => metadata.push(entry),
-            Err(e) => bail!(
+            Err(e) => bail!(Failure::corrupt(format!(
                 "解析第 {} 个元数据项失败（文件损坏或头区超出读取上限）：{e}",
                 i + 1
-            ),
+            ))),
         }
     }
 
@@ -164,10 +168,10 @@ pub fn parse(data: &[u8], file_size: u64) -> Result<GgufReport> {
     for i in 0..tensor_count {
         let t = match parse_tensor_info(&mut cur, &mut unknown_types) {
             Ok(t) => t,
-            Err(e) => bail!(
+            Err(e) => bail!(Failure::corrupt(format!(
                 "解析第 {} 个张量信息失败（文件损坏或头区超出读取上限）：{e}",
                 i + 1
-            ),
+            ))),
         };
         total_parameters = total_parameters.saturating_add(t.parameters);
         match type_acc.iter_mut().find(|tc| tc.type_name == t.type_name) {
@@ -239,7 +243,7 @@ fn parse_metadata_kv(cur: &mut Cursor<&[u8]>) -> Result<MetaEntry> {
     if vtype == VT_ARRAY {
         let elem_type = cur.read_u32::<LittleEndian>()?;
         if elem_type == VT_ARRAY {
-            bail!("GGUF 不支持嵌套数组");
+            bail!(Failure::unsupported("GGUF 不支持嵌套数组"));
         }
         let count = cur.read_u64::<LittleEndian>()?;
         // 只取前 MAX_ARRAY_PREVIEW 个元素，其余跳过不分配——词表数组可达十万级。
@@ -286,7 +290,7 @@ fn read_scalar_display(cur: &mut Cursor<&[u8]>, vtype: u32) -> Result<String> {
         VT_UINT64 => cur.read_u64::<LittleEndian>()?.to_string(),
         VT_INT64 => cur.read_i64::<LittleEndian>()?.to_string(),
         VT_FLOAT64 => cur.read_f64::<LittleEndian>()?.to_string(),
-        VT_ARRAY => bail!("GGUF 不支持嵌套数组"),
+        VT_ARRAY => bail!(Failure::unsupported("GGUF 不支持嵌套数组")),
         other => bail!("未知的 GGUF 值类型：{other}"),
     })
 }
@@ -302,7 +306,7 @@ fn skip_scalar(cur: &mut Cursor<&[u8]>, vtype: u32) -> Result<()> {
             }
             advance(cur, len)
         }
-        None => bail!("数组元素类型非法：{vtype}"),
+        None => bail!(Failure::corrupt(format!("数组元素类型非法：{vtype}"))),
     }
 }
 
@@ -321,7 +325,7 @@ fn scalar_size(vtype: u32) -> Option<u64> {
 fn advance(cur: &mut Cursor<&[u8]>, n: u64) -> Result<()> {
     let new = cur.position().saturating_add(n);
     if new > cur.get_ref().len() as u64 {
-        bail!("读取越界（文件被截断或头区超出读取上限）");
+        bail!(Failure::corrupt("读取越界（文件被截断或头区超出读取上限）"));
     }
     cur.set_position(new);
     Ok(())
@@ -336,7 +340,7 @@ fn read_string(cur: &mut Cursor<&[u8]>) -> Result<String> {
     }
     let mut buf = vec![0u8; len as usize];
     cur.read_exact(&mut buf)?;
-    Ok(String::from_utf8_lossy(&buf).into_owned())
+    Ok(String::from_utf8_lossy_owned(buf))
 }
 
 // ── 张量信息解析 ───────────────────────────────────────────────────────────

@@ -7,6 +7,8 @@ use std::path::{Component, Path, PathBuf};
 
 use anyhow::{ensure, Context};
 
+use crate::core::common::error::Failure;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VmdkFileSnapshot {
     pub path: PathBuf,
@@ -100,7 +102,7 @@ impl VmdkHandle {
                         info.disk_type.as_str(),
                         "twoGbMaxExtentSparse" | "vmfsSparse" | "vmfsThin" | "custom"
                     ),
-                    "VMDK multi-extent delta layers are not supported; use a consolidated image"
+                    Failure::unsupported("VMDK multi-extent delta layers are not supported; use a consolidated image")
                 );
                 let hint = reader
                     .descriptor_text()

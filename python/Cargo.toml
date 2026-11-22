@@ -2,7 +2,7 @@
 name = "lovelycarve-python"
 version = "1.3.0"
 edition = "2021"
-rust-version = "1.99"
+rust-version = "1.100"
 license = "AGPL-3.0-only"
 description = "Read-only Python bindings for LovelyCarve image and filesystem readers"
 publish = false

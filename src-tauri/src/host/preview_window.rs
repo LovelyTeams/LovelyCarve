@@ -3,6 +3,8 @@
 use serde::Deserialize;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
+use crate::app::error::AppError;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PreviewWindowOptions {
@@ -20,7 +22,7 @@ struct Position {
 }
 
 #[tauri::command]
-async fn open(app: tauri::AppHandle, options: PreviewWindowOptions) -> Result<(), String> {
+async fn open(app: tauri::AppHandle, options: PreviewWindowOptions) -> Result<(), AppError> {
     // Window creation pumps Windows messages. Serialize requests across file
     // lists, including different preview labels, to avoid reentrant creation.
     let gate = app.state::<CreationGate>();
@@ -32,18 +34,18 @@ async fn open(app: tauri::AppHandle, options: PreviewWindowOptions) -> Result<()
             .as_ref()
             .is_some_and(|position| !position.x.is_finite() || !position.y.is_finite())
     {
-        return Err("Invalid preview window options".to_owned());
+        return Err(AppError::invalid_input("Invalid preview window options"));
     }
     if let Some(window) = app.get_webview_window(&options.label) {
-        window.unminimize().map_err(|error| error.to_string())?;
-        return window.set_focus().map_err(|error| error.to_string());
+        window.unminimize().map_err(window_error)?;
+        return window.set_focus().map_err(window_error);
     }
 
     #[cfg(windows)]
     {
         let main = app
             .get_webview_window("main")
-            .ok_or("Main window is closed")?;
+            .ok_or_else(|| AppError::not_found("Main window is closed"))?;
         let app = app.clone();
         let (sender, receiver) = tokio::sync::oneshot::channel();
         // The native environment stays on its COM apartment. with_webview
@@ -53,19 +55,25 @@ async fn open(app: tauri::AppHandle, options: PreviewWindowOptions) -> Result<()
                 .with_environment(webview.environment())
                 .build()
                 .map(|_| ())
-                .map_err(|error| error.to_string());
+                .map_err(window_error);
             if sender.send(result).is_err() {
                 tracing::warn!("preview window caller disconnected during creation");
             }
         })
-        .map_err(|error| error.to_string())?;
-        receiver.await.map_err(|error| error.to_string())?
+        .map_err(window_error)?;
+        receiver
+            .await
+            .map_err(|error| AppError::internal(format!("preview window creation: {error}")))?
     }
     #[cfg(not(windows))]
     preview_builder(&app, options)
         .build()
         .map(|_| ())
-        .map_err(|error| error.to_string())
+        .map_err(window_error)
+}
+
+fn window_error(error: tauri::Error) -> AppError {
+    AppError::internal(error.to_string())
 }
 
 fn preview_builder(

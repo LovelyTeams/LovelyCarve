@@ -1,5 +1,6 @@
 //! codec implementation.
 use super::*;
+use crate::core::common::error::Failure;
 
 /// The one `bincode` config used for every v2 frame: little-endian, var-int.
 /// Encode and decode MUST go through the same config, so route both here — a
@@ -33,10 +34,10 @@ pub(crate) fn write_snapshot_entry<W: Write>(
     scratch.clear();
     bincode::serde::encode_into_std_write(entry, scratch, snapshot_bincode_config())?;
     let len: u32 = scratch.len().try_into().map_err(|_| {
-        anyhow::anyhow!(
+        anyhow::anyhow!(Failure::resource_limit(format!(
             "snapshot entry too large to frame ({} bytes)",
             scratch.len()
-        )
+        )))
     })?;
     w.write_all(&len.to_le_bytes())?;
     w.write_all(scratch.as_slice())?;
@@ -129,13 +130,17 @@ pub(super) fn read_entry_frames<R: std::io::Read>(
         match read_frame_len(reader, &mut len_buf)? {
             FrameStart::Clean => break,
             FrameStart::Torn => {
-                anyhow::bail!("snapshot truncated: partial frame length prefix")
+                anyhow::bail!(Failure::corrupt(
+                    "snapshot truncated: partial frame length prefix"
+                ))
             }
             FrameStart::Length(len) => {
                 let len = len as usize;
                 body.resize(len, 0);
                 reader.read_exact(&mut body).map_err(|e| {
-                    anyhow::anyhow!("snapshot truncated: frame body ({len} bytes): {e}")
+                    anyhow::anyhow!(Failure::corrupt(format!(
+                        "snapshot truncated: frame body ({len} bytes): {e}"
+                    )))
                 })?;
                 let (mut entry, _consumed): (SnapshotEntry, usize) =
                     bincode::serde::decode_from_slice(&body, snapshot_bincode_config())?;

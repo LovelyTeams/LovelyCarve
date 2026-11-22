@@ -44,7 +44,7 @@ pub(super) fn align_v_css(v: &str) -> Option<&'static str> {
 /// 移植 `xlsx.ts::argbToHex`。
 pub(super) fn argb_to_hex(argb: &str) -> Option<String> {
     let s = argb.trim();
-    let h = s.strip_prefix('#').unwrap_or(s);
+    let h = s.trim_prefix('#');
     if h.len() == 8 && h.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Some(format!("#{}", h[2..].to_uppercase()));
     }

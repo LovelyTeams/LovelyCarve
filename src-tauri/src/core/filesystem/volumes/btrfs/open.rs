@@ -1,5 +1,6 @@
 //! Volume initialization and validation.
 use super::*;
+use crate::core::common::error::Failure;
 
 impl<'a> BtrfsVolume<'a> {
     pub fn open(
@@ -17,7 +18,7 @@ impl<'a> BtrfsVolume<'a> {
                 volume
                     .logical_volumes
                     .get(lv_index)
-                    .ok_or_else(|| anyhow!("LVM LV missing"))?
+                    .ok_or_else(|| anyhow!(Failure::not_found("LVM LV missing")))?
                     .reader_geometry()?
             }
             BtrfsSource::Partition(_) => (base_offset, None),
@@ -30,13 +31,18 @@ impl<'a> BtrfsVolume<'a> {
         )
         .context("btrfs: read primary superblock")?;
         if sb.len() < 4096 {
-            bail!("btrfs: primary superblock truncated ({} bytes)", sb.len());
+            bail!(Failure::corrupt(format!(
+                "btrfs: primary superblock truncated ({} bytes)",
+                sb.len()
+            )));
         }
         let magic = read_u64(&sb, 64);
         // `_BHRfS_M` little-endian u64: bytes are 0x5F 0x42 0x48 0x52 0x66 0x53 0x5F 0x4D
         let expected_magic = u64::from_le_bytes(*b"_BHRfS_M");
         if magic != expected_magic {
-            bail!("btrfs: superblock magic mismatch (0x{magic:016x})");
+            bail!(Failure::corrupt(format!(
+                "btrfs: superblock magic mismatch (0x{magic:016x})"
+            )));
         }
 
         let root = read_u64(&sb, 80);
@@ -186,7 +192,9 @@ impl<'a> BtrfsVolume<'a> {
         // be located).
         subvolumes.retain(|_, entry| entry.bytenr != 0);
         if !subvolumes.contains_key(&FS_TREE_OBJECTID) {
-            bail!("btrfs: default FS tree (objectid {FS_TREE_OBJECTID}) not found in root tree");
+            bail!(Failure::corrupt(format!(
+                "btrfs: default FS tree (objectid {FS_TREE_OBJECTID}) not found in root tree"
+            )));
         }
 
         let default_subvol = FS_TREE_OBJECTID;

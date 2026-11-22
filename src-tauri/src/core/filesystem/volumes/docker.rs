@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Result};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::DiskImage;
 use crate::core::evidence::readers::docker_image::{EntryKind, FileEntry};
 use crate::core::filesystem::tree::fs_tree::{
@@ -173,9 +174,11 @@ pub fn file_stat(image: &Arc<DiskImage>, path: &str, node_id: &str) -> Result<Fs
         .docker
         .as_ref()
         .ok_or_else(|| anyhow!("image is not a docker / OCI archive"))?;
-    let entry = docker
-        .lookup(path)
-        .ok_or_else(|| anyhow!("not found in docker image: {path}"))?;
+    let entry = docker.lookup(path).ok_or_else(|| {
+        anyhow!(Failure::not_found(format!(
+            "not found in docker image: {path}"
+        )))
+    })?;
     let mode = entry.mode & 0xFFFF;
     let sample = if matches!(entry.kind, EntryKind::File | EntryKind::Hardlink) && entry.size > 0 {
         docker.read(path, SAMPLE_BYTES).unwrap_or_default()

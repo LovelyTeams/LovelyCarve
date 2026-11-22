@@ -13,7 +13,7 @@ just dev
 
 | 组件 | 要求 |
 | --- | --- |
-| Rust | stable，最低版本以 `src-tauri/Cargo.toml` 的 `rust-version` 为准，当前为 1.99 |
+| Rust | stable，最低版本以 `src-tauri/Cargo.toml` 的 `rust-version` 为准，当前为 1.100 |
 | Bun | 版本以 `package.json` 的 `packageManager` 为准 |
 | Windows 桌面 | PowerShell 7、Visual Studio C++ x64 工具与「适用于 Windows 的 C++ Clang 工具」（含 `lld-link`）、Windows SDK、OpenSSL 开发文件、WebView2 |
 | macOS | Xcode Command Line Tools；桌面检查另需相应的 Tauri 系统依赖 |

@@ -23,6 +23,7 @@ use crate::core::carving::carver::{
     CarveSource, Carver, FormatKind, BLOCK_BYTES, SCAN_BUFFER_BYTES,
 };
 use crate::core::carving::carver_formats::{self, Candidate};
+use crate::core::common::error::Failure;
 
 /// How many windows each worker may run ahead of the ordered merge. Bounds
 /// memory and lets a blocked observer (a paused scan) stall the workers.
@@ -58,11 +59,11 @@ impl WindowPlan {
             let end = region
                 .offset
                 .checked_add(region.length)
-                .context("carve region range overflow")?
+                .context(Failure::invalid_input("carve region range overflow"))?
                 .min(source_len);
             let start = region.offset.min(end);
             let windows = usize::try_from((end - start).div_ceil(SCAN_BUFFER_BYTES as u64))
-                .context("carve region has too many windows")?;
+                .context(Failure::resource_limit("carve region has too many windows"))?;
             planned.push(PlannedRegion {
                 index,
                 start,
@@ -71,7 +72,7 @@ impl WindowPlan {
             });
             window_count = window_count
                 .checked_add(windows)
-                .context("carve plan has too many windows")?;
+                .context(Failure::resource_limit("carve plan has too many windows"))?;
         }
         Ok(Self {
             regions: planned,

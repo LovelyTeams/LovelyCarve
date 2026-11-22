@@ -3,6 +3,8 @@ use super::*;
 use anyhow::{ensure, Context};
 use ntfs::{attribute_value::NtfsAttributeValue, NtfsAttribute};
 
+use crate::core::common::error::Failure;
+
 pub(super) struct DataStream<'n, 'f> {
     value: NtfsAttributeValue<'n, 'f>,
     length: u64,
@@ -28,8 +30,10 @@ impl<'n, 'f> DataStream<'n, 'f> {
         reject_unreadable_attribute(attribute.flags(), record_number)?;
         ensure!(
             attribute.raw_flags() & 0xff <= 1,
-            "unsupported NTFS compression format {}",
-            attribute.raw_flags() & 0xff
+            Failure::unsupported(format!(
+                "unsupported NTFS compression format {}",
+                attribute.raw_flags() & 0xff
+            ))
         );
         let length = attribute.value_length();
         let storage = attribute.storage_info()?;
@@ -49,13 +53,13 @@ impl<'n, 'f> DataStream<'n, 'f> {
             };
             let clusters = 1u32
                 .checked_shl(u32::from(exponent))
-                .context("NTFS compression exponent overflow")?;
+                .context(Failure::corrupt("NTFS compression exponent overflow"))?;
             let size = cluster_size
                 .checked_mul(clusters)
-                .context("NTFS compression unit overflow")?;
+                .context(Failure::corrupt("NTFS compression unit overflow"))?;
             ensure!(
                 (512..=4096).contains(&cluster_size) && cluster_size.is_power_of_two(),
-                "unsupported NTFS compressed cluster size"
+                Failure::unsupported("unsupported NTFS compressed cluster size")
             );
             ensure!(size <= 1024 * 1024, "NTFS compression unit exceeds 1 MiB");
             ensure!(
@@ -127,8 +131,10 @@ impl<'n, 'f> DataStream<'n, 'f> {
                     .read(fs, &mut buffer[filled..filled + initialized])?;
                 ensure!(
                     read != 0,
-                    "truncated NTFS data stream at byte {}",
-                    self.position
+                    Failure::corrupt(format!(
+                        "truncated NTFS data stream at byte {}",
+                        self.position
+                    ))
                 );
                 read
             };
@@ -141,7 +147,7 @@ impl<'n, 'f> DataStream<'n, 'f> {
     fn load_unit<T: Read + Seek>(&mut self, fs: &mut T, unit: u64, unit_size: usize) -> Result<()> {
         let start = unit
             .checked_mul(unit_size as u64)
-            .context("NTFS unit offset overflow")?;
+            .context(Failure::corrupt("NTFS unit offset overflow"))?;
         self.value.seek(fs, SeekFrom::Start(start))?;
         let mapped = self.value.len().saturating_sub(start).min(unit_size as u64) as usize;
         ensure!(mapped != 0, "missing NTFS compression unit {unit}");
@@ -153,7 +159,7 @@ impl<'n, 'f> DataStream<'n, 'f> {
             // one byte before querying the backing position at a run boundary.
             ensure!(
                 self.value.read(fs, &mut cluster[..1])? == 1,
-                "truncated NTFS compression unit {unit}"
+                Failure::corrupt(format!("truncated NTFS compression unit {unit}"))
             );
             let allocated = self.value.data_position().value().is_some();
             ensure!(
@@ -163,7 +169,10 @@ impl<'n, 'f> DataStream<'n, 'f> {
             let mut filled = 1;
             while filled < cluster.len() {
                 let read = self.value.read(fs, &mut cluster[filled..])?;
-                ensure!(read != 0, "truncated NTFS compression unit {unit}");
+                ensure!(
+                    read != 0,
+                    Failure::corrupt(format!("truncated NTFS compression unit {unit}"))
+                );
                 filled += read;
             }
             if allocated {

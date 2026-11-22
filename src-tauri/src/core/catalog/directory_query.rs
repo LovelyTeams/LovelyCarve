@@ -127,7 +127,7 @@ pub fn memory_page(
     nodes.sort_by(|left, right| query.compare(left, right));
     let total = nodes.len();
     let cursor = decode(cursor)?.map(walk);
-    let start = cursor.map_or(0, |cursor| {
+    let start = cursor.map_or_default(|cursor| {
         nodes.partition_point(|node| query.compare(node, &cursor) != Ordering::Greater)
     });
     finish(

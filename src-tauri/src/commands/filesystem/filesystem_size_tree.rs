@@ -106,7 +106,7 @@ pub async fn fs_size_tree(
                 })
                 .await
                 .map_err(|err| AppError::task_panicked("fs_size_tree build", err))?
-                .map_err(AppError::from_anyhow)
+                .map_err(AppError::from)
             }
         })
         .await
@@ -122,7 +122,7 @@ pub async fn fs_size_tree(
     })
     .await
     .map_err(|err| AppError::task_panicked("fs_size_tree view", err))?
-    .map_err(AppError::from_anyhow)?;
+    .map_err(AppError::from)?;
     tracing::debug!(
         "fs_size_tree image={image_id} node={node_id} volume={} elapsed={:.3?}",
         target.volume_key,
@@ -177,7 +177,5 @@ fn may_be_ntfs(image: &EvidenceSession, node_id: &str) -> bool {
 fn unix_now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| {
-            i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
-        })
+        .map_or_default(|since| i64::try_from(since.as_secs()).unwrap_or(i64::MAX))
 }

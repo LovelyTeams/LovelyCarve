@@ -1,5 +1,6 @@
 //! Directory traversal and filesystem node projection.
 use super::*;
+use crate::core::common::error::Failure;
 
 impl<'a> NtfsVolume<'a> {
     /// Resolve exact evidence names, preserving case-distinct directories.
@@ -19,7 +20,11 @@ impl<'a> NtfsVolume<'a> {
             let node = children
                 .iter()
                 .find(|node| node.name == component)
-                .ok_or_else(|| anyhow!("NTFS path component not found: {component}"))?;
+                .ok_or_else(|| {
+                    anyhow!(Failure::not_found(format!(
+                        "NTFS path component not found: {component}"
+                    )))
+                })?;
             current = node
                 .inode
                 .ok_or_else(|| anyhow!("NTFS path component has no record"))?;

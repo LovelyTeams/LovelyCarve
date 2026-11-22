@@ -95,7 +95,7 @@ pub async fn fs_docker_prepare(
         })
         .await
         .map_err(|error| AppError::task_panicked("Docker 索引", error))?
-        .map_err(AppError::from_anyhow)?;
+        .map_err(AppError::from)?;
         let Some(staged) = prepared.staged else {
             return Ok(DockerIndexStatus {
                 ready: prepared.ready,
@@ -114,7 +114,7 @@ pub async fn fs_docker_prepare(
             else {
                 return Err(AppError::cancelled("案件已切换，容器索引未保存"));
             };
-            host_docker_index::publish(case, staged).map_err(AppError::from_anyhow)
+            host_docker_index::publish(case, staged).map_err(AppError::from)
         })
         .await
         .map_err(|error| AppError::task_panicked("Docker 索引发布", error))??;

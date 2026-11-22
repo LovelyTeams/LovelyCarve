@@ -1,5 +1,6 @@
 //! Bounded dispatch of validated firmware envelopes and filesystem-bearing spans.
 use super::{chk, safeloader, uimage};
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::Partition;
 use crate::core::evidence::partitions::{volume_probe::probe_volume, SectorSource};
 use anyhow::{ensure, Context, Result};
@@ -37,7 +38,8 @@ pub(super) fn parse_image(
         "firmware contains no supported filesystem segments"
     );
     for (index, partition) in partitions.iter_mut().enumerate() {
-        partition.id = u8::try_from(index).context("too many firmware filesystems")?;
+        partition.id = u8::try_from(index)
+            .context(Failure::resource_limit("too many firmware filesystems"))?;
     }
     Ok(partitions)
 }
@@ -51,7 +53,7 @@ pub(super) fn append_partitions(
             .len()
             .checked_add(incoming.len())
             .is_some_and(|count| count <= 256),
-        "firmware filesystem count limit"
+        Failure::resource_limit("firmware filesystem count limit")
     );
     target.extend(incoming);
     Ok(())
@@ -63,8 +65,14 @@ pub(super) fn parse_payload(
     cancel: &CancellationToken,
     depth: usize,
 ) -> Result<Vec<Partition>> {
-    ensure!(!cancel.is_cancelled(), "firmware open cancelled");
-    ensure!(depth <= 4, "firmware envelope nesting limit");
+    ensure!(
+        !cancel.is_cancelled(),
+        Failure::cancelled("firmware open cancelled")
+    );
+    ensure!(
+        depth <= 4,
+        Failure::resource_limit("firmware envelope nesting limit")
+    );
     if bytes.starts_with(b"HDR0") || bytes.starts_with(b"buffalo.enc\n") {
         return super::parse_trx(bytes, base, cancel);
     }
@@ -94,7 +102,10 @@ pub(super) fn parse_payload(
 pub(super) fn crc32(bytes: &[u8], cancel: &CancellationToken) -> Result<u32> {
     let mut hasher = crc32fast::Hasher::new();
     for chunk in bytes.chunks(64 * 1024) {
-        ensure!(!cancel.is_cancelled(), "firmware checksum cancelled");
+        ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("firmware checksum cancelled")
+        );
         hasher.update(chunk);
     }
     Ok(hasher.finalize())
@@ -102,5 +113,5 @@ pub(super) fn crc32(bytes: &[u8], cancel: &CancellationToken) -> Result<u32> {
 
 pub(super) fn source_offset(base: u64, offset: usize) -> Result<u64> {
     base.checked_add(offset as u64)
-        .context("firmware source offset overflow")
+        .context(Failure::corrupt("firmware source offset overflow"))
 }

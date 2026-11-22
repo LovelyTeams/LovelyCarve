@@ -39,6 +39,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use zip::{CompressionMethod, ZipArchive};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::EvidenceCache;
 use crate::core::evidence::readers::tar_image::TarImage;
 
@@ -182,7 +183,10 @@ impl ZipImage {
         progress: &dyn Fn(&str, u64, u64),
         cancel: &tokio_util::sync::CancellationToken,
     ) -> Result<Self> {
-        anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
+        anyhow::ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("image load cancelled")
+        );
         let path = path.as_ref().to_path_buf();
         let outer = {
             let file = File::open(&path).with_context(|| format!("open {}", path.display()))?;
@@ -372,7 +376,7 @@ impl ZipImage {
     fn resolve(&self, rel: &str) -> Result<&ZipEntry> {
         let entry = self
             .lookup(rel)
-            .ok_or_else(|| anyhow!("not found in zip: {rel}"))?;
+            .ok_or_else(|| anyhow!(Failure::not_found(format!("not found in zip: {rel}"))))?;
         match entry.kind {
             ZipEntryKind::File => Ok(entry),
             ZipEntryKind::Symlink if entry.bak_source.is_some() => Ok(entry),
@@ -400,7 +404,9 @@ impl ZipImage {
             }
             ZipEntryKind::Dir => bail!("not a regular file: {rel} (directory)"),
             ZipEntryKind::Other => {
-                bail!("member is not readable (encrypted or unsupported compression): {rel}")
+                bail!(Failure::unsupported(format!(
+                    "member is not readable (encrypted or unsupported compression): {rel}"
+                )))
             }
         }
     }
@@ -449,7 +455,7 @@ impl ZipImage {
         let start = usize::try_from(offset).context("zip offset out of range")?;
         let end = start
             .checked_add(usize::try_from(size).context("zip size out of range")?)
-            .ok_or_else(|| anyhow!("zip entry size overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("zip entry size overflow")))?;
         self.outer
             .get(start..end)
             .ok_or_else(|| anyhow!("zip entry data out of range"))

@@ -1,5 +1,6 @@
 //! Mount-point validation and filesystem path projection.
 use super::*;
+use crate::core::common::error::Failure;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 
 /// Normalize a user-supplied mount point into the form Dokan expects.
@@ -54,7 +55,7 @@ pub(super) fn is_drive_letter_mount(normalized: &str) -> bool {
 pub(super) fn validate_folder_mount(path: &str) -> Result<()> {
     let dir = std::path::Path::new(path);
     if !dir.exists() {
-        anyhow::bail!("挂载文件夹不存在：{path}");
+        anyhow::bail!(Failure::not_found(format!("挂载文件夹不存在：{path}")));
     }
     if !dir.is_dir() {
         anyhow::bail!("挂载点不是文件夹：{path}");
@@ -121,7 +122,11 @@ pub(super) fn root_node(image: &Arc<EvidenceSession>, node_id: &str) -> Result<F
         .into_iter()
         .find(|node| node.id == node_id)
         .or_else(|| find_child_by_id(image, node_id).ok().flatten())
-        .ok_or_else(|| anyhow::anyhow!("mount root node not found: {node_id}"))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!(Failure::not_found(format!(
+                "mount root node not found: {node_id}"
+            )))
+        })?;
     Ok(node)
 }
 
@@ -190,9 +195,7 @@ pub(super) fn mount_suffix_for_root(
     image: &Arc<EvidenceSession>,
     root_node_id: &str,
 ) -> Option<String> {
-    let trimmed = root_node_id
-        .strip_prefix("bde-locked:")
-        .unwrap_or(root_node_id);
+    let trimmed = root_node_id.trim_prefix("bde-locked:");
     let image = image.filesystem_session(trimmed);
     if trimmed == "docker:" {
         let tag = image
@@ -264,9 +267,7 @@ pub(super) fn fs_kind_for_root(
     image: &EvidenceSession,
     root_node_id: &str,
 ) -> Option<PartitionKind> {
-    let trimmed = root_node_id
-        .strip_prefix("bde-locked:")
-        .unwrap_or(root_node_id);
+    let trimmed = root_node_id.trim_prefix("bde-locked:");
     let image = image
         .decrypted_session_for_node(trimmed)
         .map(Arc::as_ref)

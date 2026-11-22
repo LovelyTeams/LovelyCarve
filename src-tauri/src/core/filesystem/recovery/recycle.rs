@@ -1,6 +1,7 @@
 //! Restore recycled names from validated $I companions while retaining the
 //! physical node and its original metadata for read/export provenance.
 use super::*;
+use crate::core::common::error::Failure;
 use crate::core::filesystem::volumes::ntfs::{parse_ntfs_id, NtfsVolume};
 
 pub(super) fn restore_recycle_names(
@@ -24,7 +25,7 @@ pub(super) fn restore_recycle_names(
     }) {
         check_cancel(cancel)?;
         let record = parse_ntfs_id(&metadata.node.id)
-            .context("Invalid recycle metadata node")?
+            .context(Failure::corrupt("Invalid recycle metadata node"))?
             .1;
         let bytes = match volume.read_file(record, 32768) {
             Ok(bytes) => bytes,
@@ -162,7 +163,9 @@ fn original_parent(
             continue;
         }
         if directories.len() >= MAX_CANDIDATES {
-            bail!("Recovered directory limit reached while restoring original paths");
+            bail!(Failure::resource_limit(
+                "Recovered directory limit reached while restoring original paths"
+            ));
         }
         let id = format!(
             "recovery:original-parent:{}",

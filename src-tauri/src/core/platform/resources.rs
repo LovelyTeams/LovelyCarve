@@ -6,6 +6,8 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::core::common::error::Failure;
+
 /// 解析一个相对 `resources/` 的资源文件（如 `"ocr/pp-ocrv6_tiny_det.onnx"`）的磁盘路径。
 /// 命中第一个存在的候选；都找不到则返回带查找说明的错误。
 pub fn resource_path(rel: &str) -> anyhow::Result<PathBuf> {
@@ -24,11 +26,11 @@ pub fn resource_path(rel: &str) -> anyhow::Result<PathBuf> {
             return Ok(candidate);
         }
     }
-    anyhow::bail!(
+    anyhow::bail!(Failure::not_found(format!(
         "找不到外置资源 `resources/{rel}`：请确保 `resources/` 目录在可执行文件旁\
          （安装 / 便携版）或仓库 `src-tauri/` 下（开发）。已查找 {} 个候选位置。",
         roots.len()
-    )
+    )))
 }
 
 /// 从 `start` 起向上 7 级，每级收集 `resources/` 与 `src-tauri/resources/` 作为候选根。

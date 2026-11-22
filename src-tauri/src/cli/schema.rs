@@ -275,7 +275,7 @@ pub fn run(
     } else {
         let mut lines = vec![format!("找不到 \"{path}\" 的请求结构。你是否要找：")];
         for command in matches {
-            let rest = command.strip_prefix(&catalog.binary).unwrap_or(command);
+            let rest = command.trim_prefix(&catalog.binary);
             lines.push(format!("  {} schema{rest}", catalog.binary));
         }
         lines

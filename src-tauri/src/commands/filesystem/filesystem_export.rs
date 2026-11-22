@@ -34,7 +34,7 @@ pub async fn fs_export(
     let image_for_persist = Arc::clone(&image);
     let result = tokio::task::spawn_blocking(move || -> Result<FsExportResult, AppError> {
         fs_tree::export_file_with_fault_report(&image, &node_id, &PathBuf::from(destination))
-            .map_err(AppError::from_anyhow)
+            .map_err(AppError::from)
     })
     .await
     .map_err(|err| AppError::task_panicked("fs_export", err))?;
@@ -178,7 +178,7 @@ pub async fn fs_export_dir(
                 &token_for_walk,
                 &on_progress,
             )
-            .map_err(AppError::from_anyhow),
+            .map_err(AppError::from),
             ExportDirMode::Zip => fs_tree::export_dir_zip_with_fault_report(
                 &image,
                 &node_id,
@@ -186,7 +186,7 @@ pub async fn fs_export_dir(
                 &token_for_walk,
                 &on_progress,
             )
-            .map_err(AppError::from_anyhow),
+            .map_err(AppError::from),
         }
     })
     .await
@@ -276,7 +276,7 @@ pub async fn fs_timeline_export(
                         .map_err(|err| anyhow::anyhow!("write body file: {err}"))?;
                     Ok((line.len() + 1) as u64)
                 })
-                .map_err(AppError::from_anyhow)?;
+                .map_err(AppError::from)?;
             writer
                 .flush()
                 .map_err(|err| AppError::from_io("flush body file", err))?;

@@ -11,6 +11,7 @@ use std::sync::OnceLock;
 use std::time::Instant;
 
 use super::*;
+use crate::core::common::error::Failure;
 use crate::core::evidence::readers::mi_bak::open_bak_archive_from_reader;
 use crate::core::evidence::readers::tar_image::{TarEntry, TarEntryKind};
 
@@ -243,7 +244,10 @@ fn decode_all(
     let mut backups = Vec::new();
     let mut expansions = Vec::with_capacity(candidates.len());
     for entry in candidates {
-        anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
+        anyhow::ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("image load cancelled")
+        );
         if entries.len() >= MAX_ENTRIES {
             break;
         }
@@ -265,7 +269,10 @@ fn decode_all(
             };
             open_bak_archive_from_reader(&mut observed, source_path, entry.rel_path.clone())
         });
-        anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
+        anyhow::ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("image load cancelled")
+        );
         done = done.saturating_add(entry.size);
         progress(&entry.rel_path, done, total);
         let backup = match result {
@@ -325,7 +332,9 @@ fn decode_member(
     size: u64,
     decode: impl FnOnce(&mut dyn Read) -> Result<TarImage>,
 ) -> Result<TarImage> {
-    let limit = size.checked_add(1).context("backup size overflow")?;
+    let limit = size
+        .checked_add(1)
+        .context(Failure::corrupt("backup size overflow"))?;
     let mut reader = archive.by_index(member_index)?.take(limit);
     let backup = decode(&mut reader)?;
     if limit - reader.limit() != size {

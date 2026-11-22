@@ -155,10 +155,7 @@ impl DiskImage {
     /// The collector is thread-local on purpose: all filesystem export loops
     /// run inside one blocking worker thread, and nested scopes stay isolated.
     pub fn collect_read_faults<T>(&self, operation: impl FnOnce() -> T) -> (T, ReadFaultReport) {
-        let scope = ReadFaultCollectionScope::new();
-        let output = operation();
-        let report = scope.finish();
-        (output, report)
+        collect_in_scope(operation)
     }
 
     /// Merges newly-discovered bad-sector spans into the auditable registry,

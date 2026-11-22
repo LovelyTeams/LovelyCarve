@@ -54,7 +54,7 @@ pub(crate) async fn prepare_remote_partition(
     let source = manager
         .sources()
         .register_slice(parent, base, length, sector_size)
-        .map_err(|error| AppError::from_anyhow(anyhow::anyhow!(error)))?;
+        .map_err(AppError::from)?;
     match manager.open_best(&source, parent_id.to_owned()).await {
         Ok(Some(volume)) => image.install_external_volume(volume),
         Ok(None) => {
@@ -62,9 +62,8 @@ pub(crate) async fn prepare_remote_partition(
         }
         Err(error) => {
             manager.sources().remove(&source.source_id);
-            return Err(AppError::from_anyhow(anyhow::anyhow!(
-                "插件无法打开未知分区 {partition_id}：{error}"
-            )));
+            let message = format!("插件无法打开未知分区 {partition_id}：{error}");
+            return Err(AppError::new(AppError::from(error).code, message));
         }
     }
     Ok(())

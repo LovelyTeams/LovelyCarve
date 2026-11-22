@@ -4,6 +4,7 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::SectorSource;
 
 use super::{PluginError, Result};
@@ -60,10 +61,9 @@ impl SectorSource for SourceSlice {
         if length == 0 {
             return Ok(Vec::new());
         }
-        let absolute = self
-            .base
-            .checked_add(offset)
-            .ok_or_else(|| anyhow::anyhow!("source slice offset overflow"))?;
+        let absolute = self.base.checked_add(offset).ok_or_else(|| {
+            anyhow::anyhow!(Failure::invalid_input("source slice offset overflow"))
+        })?;
         let mut bytes = parent.read(absolute, length)?;
         bytes.truncate(length);
         Ok(bytes)

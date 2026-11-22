@@ -17,6 +17,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, bail, Context, Result};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::readers::tar_image::{TarEntry, TarEntryKind, TarImage};
 
 mod ios;
@@ -277,7 +278,7 @@ impl FolderImage {
     pub fn read(&self, rel: &str, max_bytes: usize) -> Result<Vec<u8>> {
         let entry = self
             .lookup(rel)
-            .ok_or_else(|| anyhow!("not found in folder: {rel}"))?;
+            .ok_or_else(|| anyhow!(Failure::not_found(format!("not found in folder: {rel}"))))?;
         match entry.kind {
             FolderEntryKind::Dir => bail!("not a regular file: {rel} (directory)"),
             FolderEntryKind::File | FolderEntryKind::Symlink => {}
@@ -317,7 +318,7 @@ impl FolderImage {
     {
         let entry = self
             .lookup(rel)
-            .ok_or_else(|| anyhow!("not found in folder: {rel}"))?;
+            .ok_or_else(|| anyhow!(Failure::not_found(format!("not found in folder: {rel}"))))?;
         match entry.kind {
             FolderEntryKind::Dir => bail!("not a regular file: {rel} (directory)"),
             FolderEntryKind::File | FolderEntryKind::Symlink => {}

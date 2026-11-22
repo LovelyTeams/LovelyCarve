@@ -6,6 +6,7 @@ use std::{
 };
 
 use lovelycarve_lib::core::{
+    common::error::{code_of, ErrorCode},
     evidence::image::DiskImage,
     filesystem::{
         evidence_session::EvidenceSession,
@@ -13,7 +14,9 @@ use lovelycarve_lib::core::{
     },
 };
 use pyo3::{
-    exceptions::{PyOSError, PyRuntimeError, PyValueError},
+    exceptions::{
+        PyFileNotFoundError, PyOSError, PyPermissionError, PyRuntimeError, PyValueError,
+    },
     prelude::*,
     types::PyBytes,
 };
@@ -38,8 +41,14 @@ impl Image {
     }
 }
 
+/// A reader failure as an `OSError`, using the subclass its typed kind names.
 fn io_error(error: anyhow::Error) -> PyErr {
-    PyOSError::new_err(format!("{error:#}"))
+    let message = format!("{error:#}");
+    match code_of(&error) {
+        Some(ErrorCode::NotFound) => PyFileNotFoundError::new_err(message),
+        Some(ErrorCode::PermissionDenied) => PyPermissionError::new_err(message),
+        _ => PyOSError::new_err(message),
+    }
 }
 
 fn metadata_json(value: impl Serialize) -> anyhow::Result<String> {

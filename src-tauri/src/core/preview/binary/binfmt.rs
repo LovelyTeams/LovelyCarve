@@ -14,6 +14,8 @@ pub use crate::core::preview::binary::binfmt_elf::ElfReport;
 pub use crate::core::preview::binary::binfmt_macho::MachoReport;
 pub use crate::core::preview::binary::binfmt_pe::PeReport;
 
+use crate::core::common::error::Failure;
+
 /// 四类二进制的结构化报告联合。`#[serde(tag = "kind")]` 使前端可按
 /// `report.kind`（`"elf"` / `"macho"` / `"pe"` / `"archive"`）分派子视图。
 #[derive(Debug, Serialize)]
@@ -58,13 +60,17 @@ pub fn parse(data: &[u8], file_size: u64) -> anyhow::Result<NativeReport> {
                 crate::core::preview::binary::binfmt_archive::build(&ar, data, file_size),
             ))
         }
-        Hint::TE => anyhow::bail!("TE（EFI Terse Executable）暂不支持结构化视图"),
-        Hint::COFF => anyhow::bail!("COFF 目标文件（.obj）暂不支持结构化视图"),
+        Hint::TE => anyhow::bail!(Failure::unsupported(
+            "TE（EFI Terse Executable）暂不支持结构化视图"
+        )),
+        Hint::COFF => anyhow::bail!(Failure::unsupported(
+            "COFF 目标文件（.obj）暂不支持结构化视图"
+        )),
         Hint::Unknown(magic) => {
             anyhow::bail!("无法识别为受支持的二进制格式（magic = 0x{magic:x}）")
         }
         // Hint 是 #[non_exhaustive]：goblin 未来新增格式时回到此处补显式分支。
-        _ => anyhow::bail!("不支持的二进制格式"),
+        _ => anyhow::bail!(Failure::unsupported("不支持的二进制格式")),
     }
 }
 

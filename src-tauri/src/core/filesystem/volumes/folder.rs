@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context, Result};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::DiskImage;
 use crate::core::evidence::readers::folder_image::{FolderEntry, FolderEntryKind};
 use crate::core::filesystem::tree::fs_tree::{
@@ -168,7 +169,7 @@ pub fn file_stat(image: &Arc<DiskImage>, rel: &str, node_id: &str) -> Result<FsS
         .ok_or_else(|| anyhow!("image is not a folder source"))?;
     let entry = folder
         .lookup(rel)
-        .ok_or_else(|| anyhow!("not found in folder: {rel}"))?;
+        .ok_or_else(|| anyhow!(Failure::not_found(format!("not found in folder: {rel}"))))?;
     let sample = if matches!(entry.kind, FolderEntryKind::File) && entry.size > 0 {
         folder.read(rel, SAMPLE_BYTES).unwrap_or_default()
     } else {

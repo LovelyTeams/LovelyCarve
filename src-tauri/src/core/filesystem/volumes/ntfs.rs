@@ -43,6 +43,7 @@ use ntfs::{Ntfs, NtfsAttributeFlags, NtfsAttributeType, NtfsFileFlags, NtfsReadS
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::crypto::bitlocker::UnlockedVolume;
 use crate::core::evidence::image::{DiskImage, Partition};
 use crate::core::filesystem::fs_dispatch::MissingDataStream;
@@ -150,10 +151,12 @@ impl<'a> NtfsVolume<'a> {
     /// [`LvmVolume::logical_volumes`].
     pub fn open_lvm(image: &'a DiskImage, partition: &Partition, lv_index: usize) -> Result<Self> {
         let lvm = LvmVolume::open(image, partition)?;
-        let lv = lvm
-            .logical_volumes
-            .get(lv_index)
-            .ok_or_else(|| anyhow!("logical volume not found: lvm:{}:{lv_index}", partition.id))?;
+        let lv = lvm.logical_volumes.get(lv_index).ok_or_else(|| {
+            anyhow!(Failure::not_found(format!(
+                "logical volume not found: lvm:{}:{lv_index}",
+                partition.id
+            )))
+        })?;
         let (base_offset, layout) = lv.reader_geometry()?;
         let backing = PartitionBacking::Image {
             image,

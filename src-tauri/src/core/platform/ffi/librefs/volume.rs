@@ -1,5 +1,6 @@
 //! Serialized ReFS volume and node operations.
 use super::*;
+use crate::core::common::error::Failure;
 
 impl RefsVolume {
     /// Mount a ReFS volume backed by an arbitrary byte reader. `backing`
@@ -193,7 +194,9 @@ impl RefsVolume {
     pub fn walk_tree(&self) -> anyhow::Result<WalkResult> {
         let lib = lib()?;
         let walk = lib.fsapi_volume_walk_tree.ok_or_else(|| {
-            anyhow!("librefs-13.dll does not export fsapi_volume_walk_tree (DLL too old)")
+            anyhow!(Failure::unavailable(
+                "librefs-13.dll does not export fsapi_volume_walk_tree (DLL too old)"
+            ))
         })?;
         let inner = self
             .inner

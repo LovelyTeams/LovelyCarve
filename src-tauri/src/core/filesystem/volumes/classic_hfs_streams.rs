@@ -1,5 +1,6 @@
 //! Classic Macintosh resource forks through the existing named-stream contract.
 use super::*;
+use crate::core::common::error::Failure;
 use crate::core::filesystem::volumes::ntfs::NtfsDataStream;
 use classic_hfs::ForkKind;
 
@@ -44,7 +45,7 @@ impl HfsVolume {
         let mut bytes = vec![0; lamfold::checked_full_read_len(size)?];
         ensure!(
             reader.read_fork_at(node, ForkKind::Resource, 0, &mut bytes)? == bytes.len(),
-            "short HFS resource fork read"
+            Failure::corrupt("short HFS resource fork read")
         );
         Ok(bytes)
     }
@@ -71,12 +72,15 @@ impl HfsVolume {
             ensure!(
                 reader.read_fork_at(node, ForkKind::Resource, offset, &mut bytes[..count])?
                     == count,
-                "short HFS resource fork stream"
+                Failure::corrupt("short HFS resource fork stream")
             );
             visitor(&bytes[..count])?;
             offset += count as u64;
         }
-        ensure!(offset == size, "incomplete HFS resource fork stream");
+        ensure!(
+            offset == size,
+            Failure::corrupt("incomplete HFS resource fork stream")
+        );
         Ok(offset)
     }
 }

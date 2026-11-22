@@ -10,6 +10,7 @@ use anyhow::bail;
 
 use super::traced::TracedRead;
 use super::{present_member, StripedMember};
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::BadRegion;
 use crate::core::evidence::partitions::SectorSource;
 
@@ -34,7 +35,7 @@ impl ConcatVolume {
             }
             end = end
                 .checked_add(member.data_size_bytes)
-                .ok_or_else(|| anyhow::anyhow!("linear array size overflow"))?;
+                .ok_or_else(|| anyhow::anyhow!(Failure::corrupt("linear array size overflow")))?;
             ends.push(end);
             present.push(member);
         }
@@ -168,7 +169,7 @@ impl ZonedStripeVolume {
     }
 
     pub fn size_bytes(&self) -> u64 {
-        self.zones.last().map_or(0, |zone| zone.end)
+        self.zones.last().map_or_default(|zone| zone.end)
     }
 
     /// True when chunks past zone 0 depend on [`Raid0ZoneLayout`].
@@ -178,7 +179,7 @@ impl ZonedStripeVolume {
 
     /// Logical start of the second zone, where the layout choice starts to matter.
     pub fn first_zone_end(&self) -> u64 {
-        self.zones.first().map_or(0, |zone| zone.end)
+        self.zones.first().map_or_default(|zone| zone.end)
     }
 
     pub fn read_at(&self, offset: u64, len: usize) -> anyhow::Result<Vec<u8>> {
@@ -207,7 +208,7 @@ impl ZonedStripeVolume {
             let zone_start = index
                 .checked_sub(1)
                 .and_then(|previous| self.zones.get(previous))
-                .map_or(0, |previous| previous.end);
+                .map_or_default(|previous| previous.end);
             let in_zone = cursor - zone_start;
             let width = zone.slots.len() as u64;
             let selector = match self.layout {
@@ -256,10 +257,10 @@ fn build_zones(sizes: &[u64]) -> anyhow::Result<Vec<Zone>> {
         };
         let span = (limit - member_start)
             .checked_mul(slots.len() as u64)
-            .ok_or_else(|| anyhow::anyhow!("RAID0 zone size overflow"))?;
+            .ok_or_else(|| anyhow::anyhow!(Failure::corrupt("RAID0 zone size overflow")))?;
         end = end
             .checked_add(span)
-            .ok_or_else(|| anyhow::anyhow!("RAID0 size overflow"))?;
+            .ok_or_else(|| anyhow::anyhow!(Failure::corrupt("RAID0 size overflow")))?;
         zones.push(Zone {
             end,
             member_start,

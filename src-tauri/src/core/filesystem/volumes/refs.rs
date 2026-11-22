@@ -6,6 +6,7 @@ mod tests;
 pub use super::refs_backing::BitlockerBacking;
 use super::refs_backing::ImageBacking;
 pub use super::refs_walk::{WalkEntry, WalkResult, WalkStream, REFS_ROOT_OBJECT_ID};
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::{find_partition, DiskImage, Partition};
 use crate::core::filesystem::tree::fs_tree::{
     detect_mime_bytes, shannon_entropy, FsDataRun, FsNode, FsStat, Mactb, NodeKind,
@@ -114,14 +115,14 @@ impl RefsVolume {
         let base_offset = partition
             .start_lba
             .checked_mul(sector_size)
-            .context("ReFS partition offset overflow")?;
+            .context(Failure::corrupt("ReFS partition offset overflow"))?;
         let length_bytes = partition
             .length_lba
             .checked_mul(sector_size)
-            .context("ReFS partition length overflow")?;
+            .context(Failure::corrupt("ReFS partition length overflow"))?;
         base_offset
             .checked_add(length_bytes)
-            .context("ReFS partition range overflow")?;
+            .context(Failure::corrupt("ReFS partition range overflow"))?;
         let source: Arc<dyn ReadAt> = Arc::new(ImageBacking {
             image,
             base_offset,
@@ -293,7 +294,7 @@ impl RefsVolume {
                     physical_offset: self
                         .base_offset
                         .checked_add(physical)
-                        .context("ReFS data run offset overflow")?,
+                        .context(Failure::corrupt("ReFS data run offset overflow"))?,
                     length: extent
                         .length
                         .min(file.entry().size.saturating_sub(extent.logical)),
@@ -337,7 +338,7 @@ where
         visitor(&buffer[..count])?;
         offset = offset
             .checked_add(count as u64)
-            .context("ReFS stream offset overflow")?;
+            .context(Failure::corrupt("ReFS stream offset overflow"))?;
     }
     anyhow::ensure!(offset == file.entry().size, "ReFS stream size mismatch");
     Ok(offset)

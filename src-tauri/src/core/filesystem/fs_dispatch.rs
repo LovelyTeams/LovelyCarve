@@ -361,9 +361,12 @@ macro_rules! path_volume {
         }
         impl $vol {
             fn path_of(&self, id: &str) -> Result<$path_type> {
-                $parse(id)
-                    .map(|(_, path)| path)
-                    .ok_or_else(|| anyhow::anyhow!(concat!($name, " id reparse failed: {}"), id))
+                $parse(id).map(|(_, path)| path).ok_or_else(|| {
+                    anyhow::anyhow!(crate::core::common::error::Failure::invalid_input(format!(
+                        concat!($name, " id reparse failed: {}"),
+                        id
+                    )))
+                })
             }
         }
     };

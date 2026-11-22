@@ -1,5 +1,6 @@
 //! Bounded read and seek adapters for image and BitLocker partitions.
 use super::*;
+use crate::core::common::error::Failure;
 
 /// Backing source for an NTFS volume. Either a raw partition slice of a
 /// `DiskImage` (the common case) or the plaintext stream produced by an
@@ -60,7 +61,7 @@ impl<'a> PartitionBacking<'a> {
             } => Ok(vec![(
                 base_offset
                     .checked_add(position)
-                    .ok_or_else(|| anyhow!("NTFS source offset overflow"))?,
+                    .ok_or_else(|| anyhow!(Failure::corrupt("NTFS source offset overflow")))?,
                 length,
             )]),
             Self::Bitlocker { .. } => Ok(Vec::new()),

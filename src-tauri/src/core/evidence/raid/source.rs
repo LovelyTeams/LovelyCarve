@@ -48,6 +48,7 @@ use std::sync::Arc;
 
 use anyhow::{bail, Context};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::{rebase_bad_regions, BadRegion, DiskImage};
 use crate::core::evidence::partitions::SectorSource;
 use traced::{TracedBytes, TracedRead};
@@ -101,19 +102,18 @@ impl LinearLvSource {
         let mut out = TracedRead::new(offset, remaining);
         let mut seg_start = 0u64;
         for segment in &self.segments {
-            let seg_end = seg_start
-                .checked_add(segment.byte_length)
-                .ok_or_else(|| anyhow::anyhow!("LVM segment boundary overflow"))?;
+            let seg_end = seg_start.checked_add(segment.byte_length).ok_or_else(|| {
+                anyhow::anyhow!(Failure::corrupt("LVM segment boundary overflow"))
+            })?;
             if cursor < seg_end {
                 let local_off = cursor - seg_start;
                 let take = (segment.byte_length - local_off).min(remaining as u64) as usize;
                 if take == 0 {
                     break;
                 }
-                let physical = segment
-                    .byte_offset
-                    .checked_add(local_off)
-                    .ok_or_else(|| anyhow::anyhow!("LVM source offset overflow"))?;
+                let physical = segment.byte_offset.checked_add(local_off).ok_or_else(|| {
+                    anyhow::anyhow!(Failure::corrupt("LVM source offset overflow"))
+                })?;
                 let (bytes, faults) = segment.source.read_traced(physical, take)?;
                 if bytes.len() != take {
                     anyhow::bail!("short LVM allocated segment read");
@@ -178,7 +178,7 @@ impl SectorSource for WholeDiskMember {
         let physical = self
             .byte_offset
             .checked_add(offset)
-            .context("RAID member offset overflow")?;
+            .context(Failure::corrupt("RAID member offset overflow"))?;
         let (bytes, faults) = self.image.read_range_traced(physical, take)?;
         let faults = rebase_bad_regions(&faults, physical, bytes.len() as u64, offset);
         Ok((bytes, faults))
@@ -208,7 +208,7 @@ impl StripedMember {
     ) -> anyhow::Result<TracedBytes> {
         let end = member_offset
             .checked_add(len as u64)
-            .context("RAID member offset overflow")?;
+            .context(Failure::corrupt("RAID member offset overflow"))?;
         if end > self.data_size_bytes {
             bail!(
                 "RAID read at member offset {member_offset} (+{len}) exceeds the member data area of {} bytes",
@@ -218,7 +218,7 @@ impl StripedMember {
         let physical = self
             .data_offset_bytes
             .checked_add(member_offset)
-            .context("RAID member offset overflow")?;
+            .context(Failure::corrupt("RAID member offset overflow"))?;
         let (bytes, faults) = self.reader.read_traced(physical, len)?;
         if bytes.len() != len {
             bail!(

@@ -13,6 +13,7 @@ use std::collections::HashSet;
 
 use anyhow::{bail, Context};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::volume_probe::probe_volume;
 use crate::core::evidence::partitions::{
     DetectCtx, PartParser, Partition, PartitionSlice, TableScheme,
@@ -48,7 +49,7 @@ impl PartParser for XiaomiFirmwareParser {
             return Ok(None);
         }
         if ctx.head.len() < CONTAINER_HEADER_LEN {
-            bail!("Xiaomi HDR1 header is truncated");
+            bail!(Failure::corrupt("Xiaomi HDR1 header is truncated"));
         }
         if ctx.sector_size != 1 {
             bail!("Xiaomi HDR1 container requires byte-addressed source geometry");
@@ -57,8 +58,7 @@ impl PartParser for XiaomiFirmwareParser {
         let signature_offset = u64::from(read_u32(ctx.head, SIGNATURE_OFFSET_OFFSET)?);
         if signature_offset < CONTAINER_HEADER_LEN as u64 || signature_offset > ctx.size {
             bail!(
-                "Xiaomi HDR1 signature offset 0x{signature_offset:x} is outside the {:#x}-byte source",
-                ctx.size
+                Failure::corrupt(format!("Xiaomi HDR1 signature offset 0x{signature_offset:x} is outside the {:#x}-byte source", ctx.size))
             );
         }
 
@@ -72,7 +72,9 @@ impl PartParser for XiaomiFirmwareParser {
             }
         }
         if table_end < CONTAINER_HEADER_LEN || table_end > ctx.head.len() {
-            bail!("Xiaomi HDR1 segment table is truncated or overlaps its header");
+            bail!(Failure::corrupt(
+                "Xiaomi HDR1 segment table is truncated or overlaps its header"
+            ));
         }
         let slot_count = (table_end - SEGMENT_OFFSETS_OFFSET) / 4;
         let mut seen_offsets = HashSet::new();
@@ -89,7 +91,9 @@ impl PartParser for XiaomiFirmwareParser {
             }
             let payload_offset = header_offset
                 .checked_add(SEGMENT_HEADER_LEN as u64)
-                .context("Xiaomi HDR1 segment payload offset overflow")?;
+                .context(Failure::corrupt(
+                    "Xiaomi HDR1 segment payload offset overflow",
+                ))?;
             if header_offset < table_end as u64 || payload_offset > signature_offset {
                 bail!(
                     "Xiaomi HDR1 segment {index} header at 0x{header_offset:x} is outside the payload area"
@@ -103,19 +107,25 @@ impl PartParser for XiaomiFirmwareParser {
                     format!("reading Xiaomi HDR1 segment {index} header at 0x{header_offset:x}")
                 })?;
             if header.len() != SEGMENT_HEADER_LEN {
-                bail!("Xiaomi HDR1 segment {index} header is truncated");
+                bail!(Failure::corrupt(format!(
+                    "Xiaomi HDR1 segment {index} header is truncated"
+                )));
             }
             if header.get(..SEGMENT_MAGIC.len()) != Some(&SEGMENT_MAGIC) {
-                bail!("Xiaomi HDR1 segment {index} has invalid BABE magic");
+                bail!(Failure::corrupt(format!(
+                    "Xiaomi HDR1 segment {index} has invalid BABE magic"
+                )));
             }
 
             let payload_len = u64::from(read_u32(&header, SEGMENT_LENGTH_OFFSET)?);
             let payload_end = payload_offset
                 .checked_add(payload_len)
-                .context("Xiaomi HDR1 segment payload length overflow")?;
+                .context(Failure::corrupt(
+                    "Xiaomi HDR1 segment payload length overflow",
+                ))?;
             if payload_end > signature_offset {
                 bail!(
-                    "Xiaomi HDR1 segment {index} payload ends at 0x{payload_end:x}, beyond signature offset 0x{signature_offset:x}"
+                    Failure::corrupt(format!("Xiaomi HDR1 segment {index} payload ends at 0x{payload_end:x}, beyond signature offset 0x{signature_offset:x}"))
                 );
             }
             if segments
@@ -134,7 +144,8 @@ impl PartParser for XiaomiFirmwareParser {
                 continue;
             };
             let name = segment_name(&header);
-            let id = u8::try_from(partitions.len()).context("too many Xiaomi HDR1 volumes")?;
+            let id = u8::try_from(partitions.len())
+                .context(Failure::resource_limit("too many Xiaomi HDR1 volumes"))?;
             partitions.push(Partition {
                 id,
                 kind: hit.kind,
@@ -155,14 +166,12 @@ impl PartParser for XiaomiFirmwareParser {
 }
 
 fn read_u32(bytes: &[u8], offset: usize) -> anyhow::Result<u32> {
-    let value = bytes
-        .get(offset..offset + 4)
-        .with_context(|| format!("Xiaomi HDR1 field at 0x{offset:x} is truncated"))?;
-    Ok(u32::from_le_bytes(
-        value
-            .try_into()
-            .context("Xiaomi HDR1 field has invalid width")?,
-    ))
+    let value = bytes.get(offset..offset + 4).with_context(|| {
+        Failure::corrupt(format!("Xiaomi HDR1 field at 0x{offset:x} is truncated"))
+    })?;
+    Ok(u32::from_le_bytes(value.try_into().context(
+        Failure::corrupt("Xiaomi HDR1 field has invalid width"),
+    )?))
 }
 
 fn segment_name(header: &[u8]) -> String {

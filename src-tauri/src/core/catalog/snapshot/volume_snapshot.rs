@@ -196,7 +196,7 @@ impl VolumeSnapshot {
     /// the 5M-entry cap — an acceptable cosmetic edge.
     pub fn child_count(&self, parent_id: &str) -> Option<usize> {
         if let Some(key) = self.parent_key(parent_id) {
-            return Some(self.by_parent.get(key).map_or(0, |idxs| idxs.len()));
+            return Some(self.by_parent.get(key).map_or_default(|idxs| idxs.len()));
         }
         // Not a populated parent. If the build descended into this directory it
         // was genuinely empty → 0; otherwise we have no record → None.

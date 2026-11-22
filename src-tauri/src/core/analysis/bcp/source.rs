@@ -10,6 +10,7 @@ use std::{
 use anyhow::{Context, Result};
 use tokio_util::sync::CancellationToken;
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::{image::EvidenceCache, readers::zip_image::ZipImage};
 
 const INDEX: &str = "GAB_ZIP_INDEX.xml";
@@ -50,7 +51,7 @@ impl BcpSource {
         let mut archives = Vec::new();
         for entry in fs::read_dir(path).with_context(|| format!("读取 {} 失败", path.display()))?
         {
-            anyhow::ensure!(!token.is_cancelled(), "BCP 导入已取消");
+            anyhow::ensure!(!token.is_cancelled(), Failure::cancelled("BCP 导入已取消"));
             let entry = entry?;
             if !entry.file_type()?.is_file() {
                 continue;
@@ -122,12 +123,12 @@ impl BcpSource {
         match self {
             Self::Folder(root) => {
                 let (mut file, size) = open_file(root, name)?;
-                anyhow::ensure!(offset <= size, "BCP 分页偏移无效");
+                anyhow::ensure!(offset <= size, Failure::invalid_input("BCP 分页偏移无效"));
                 file.seek(SeekFrom::Start(offset))?;
                 read(&mut BufReader::new(file), size)
             }
             Self::Zip(zip) => zip.with_member_reader(name, |member, size| {
-                anyhow::ensure!(offset <= size, "BCP 分页偏移无效");
+                anyhow::ensure!(offset <= size, Failure::invalid_input("BCP 分页偏移无效"));
                 let skipped = io::copy(&mut member.take(offset), &mut io::sink())?;
                 anyhow::ensure!(skipped == offset, "BCP 分片读取不完整：{name}");
                 read(&mut BufReader::new(member), size)

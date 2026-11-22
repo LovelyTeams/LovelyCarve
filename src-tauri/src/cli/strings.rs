@@ -6,7 +6,10 @@ use serde_json::{json, Map, Value};
 
 use super::{CliError, Output};
 use crate::{
-    core::filesystem::{evidence_session::EvidenceSession, tree::fs_tree::FsSession},
+    core::{
+        common::error::Failure,
+        filesystem::{evidence_session::EvidenceSession, tree::fs_tree::FsSession},
+    },
     state::AppState,
     task_manager::TaskKind,
 };
@@ -194,14 +197,10 @@ impl Scanner {
     }
 }
 
-#[derive(Debug)]
+/// Stops the stream once the requested number of strings was collected.
+#[derive(Debug, thiserror::Error)]
+#[error("strings result limit reached")]
 struct ResultLimitReached;
-impl std::fmt::Display for ResultLimitReached {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("strings result limit reached")
-    }
-}
-impl std::error::Error for ResultLimitReached {}
 
 pub(super) async fn read(
     state: &AppState,
@@ -237,10 +236,7 @@ pub(super) async fn read(
     tokio::task::spawn_blocking(move || -> Result<Output, CliError> {
         let _permit = permit;
         let mut session = FsSession::new(&image);
-        let size = session
-            .file_stat(&node_id)
-            .map_err(super::internal_error)?
-            .size;
+        let size = session.file_stat(&node_id)?.size;
         if offset > size {
             return Err(CliError::invalid("偏移超过文件大小"));
         }
@@ -248,7 +244,10 @@ pub(super) async fn read(
         let mut scanner = Scanner::new(encoding, minimum, limit, offset);
         let (result, faults) = image.collect_read_faults(|| {
             session.stream_file_range(&node_id, offset, length, 1024 * 1024, |chunk| {
-                anyhow::ensure!(!cancellation.is_cancelled(), "字符串提取已取消");
+                anyhow::ensure!(
+                    !cancellation.is_cancelled(),
+                    Failure::cancelled("字符串提取已取消")
+                );
                 if !scanner.push(chunk) {
                     return Err(ResultLimitReached.into());
                 }
@@ -263,11 +262,9 @@ pub(super) async fn read(
                 )))
             }
             Err(error) if error.downcast_ref::<ResultLimitReached>().is_some() => {}
-            Err(error) => return Err(super::internal_error(error)),
+            Err(error) => return Err(error.into()),
         }
-        image
-            .validate_source_file_stable()
-            .map_err(super::internal_error)?;
+        image.validate_source_file_stable()?;
         super::json_output(Extracted {
             strings: scanner.records,
             encoding,

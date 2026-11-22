@@ -5,26 +5,27 @@ use anyhow::bail;
 use crate::core::carving::carver::CarveSource;
 use crate::core::carving::carver_formats::FormatScanResult;
 use crate::core::carving::carver_reader::CarveReader;
+use crate::core::common::error::Failure;
 
 pub(in crate::core) fn scan_bmp<S: CarveSource>(
     reader: &mut CarveReader<'_, S>,
 ) -> anyhow::Result<Option<FormatScanResult>> {
     let file = reader.read_vec(14)?;
     if &file[..2] != b"BM" {
-        bail!("invalid BMP signature");
+        bail!(Failure::corrupt("invalid BMP signature"));
     }
     let file_size = le_u32(&file[2..6]);
     let reserved_one = u16::from_le_bytes(file[6..8].try_into()?);
     let reserved_two = u16::from_le_bytes(file[8..10].try_into()?);
     let data_offset = le_u32(&file[10..14]);
     if reserved_one != 0 || reserved_two != 0 || file_size < 54 || data_offset < 14 {
-        bail!("invalid BMP file header");
+        bail!(Failure::corrupt("invalid BMP file header"));
     }
 
     let header_size_bytes = reader.read_vec(4)?;
     let header_size = le_u32(&header_size_bytes);
     if !matches!(header_size, 12 | 40 | 64 | 108 | 124) {
-        bail!("unsupported BMP DIB header");
+        bail!(Failure::unsupported("unsupported BMP DIB header"));
     }
     let mut dib = header_size_bytes;
     dib.extend_from_slice(&reader.read_vec(header_size.saturating_sub(4) as usize)?);
@@ -44,7 +45,7 @@ pub(in crate::core) fn scan_bmp<S: CarveSource>(
         || width <= 0
         || height == 0
     {
-        bail!("invalid BMP DIB metadata");
+        bail!(Failure::corrupt("invalid BMP DIB metadata"));
     }
 
     let mut expected_min_data_offset = 14u32.wrapping_add(header_size);

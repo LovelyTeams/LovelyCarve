@@ -23,6 +23,7 @@ pub use read::{FatFileMetadata, FatVolumeMetadata};
 mod tests;
 use fatfs::{Date as FatDate, DateTime as FatDateTime, FsOptions, StdIoWrapper};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{DiskImage, Partition};
 use crate::core::evidence::partitions::fat::recover_fat32_boot_sector;
@@ -80,11 +81,11 @@ impl FatVolume {
         let base_offset = partition
             .start_lba
             .checked_mul(sector_size)
-            .ok_or_else(|| anyhow!("FAT partition offset overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("FAT partition offset overflow")))?;
         let length_bytes = partition
             .length_lba
             .checked_mul(sector_size)
-            .ok_or_else(|| anyhow!("FAT partition length overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("FAT partition length overflow")))?;
         let boot_sector_override =
             find_fat32_recovered_boot_sector(&image, base_offset, length_bytes, sector_size)?;
         let boot = match &boot_sector_override {
@@ -92,7 +93,9 @@ impl FatVolume {
             None => image.read_range(base_offset, 512)?,
         };
         if !is_valid_fat_boot_sector(&boot, length_bytes) {
-            anyhow::bail!("FAT invalid boot sector or volume outside partition");
+            anyhow::bail!(Failure::corrupt(
+                "FAT invalid boot sector or volume outside partition"
+            ));
         }
         let volume = Self {
             image,

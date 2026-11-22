@@ -1,5 +1,6 @@
 //! Dynamic library loading and symbol lifetime ownership.
 use super::*;
+use crate::core::common::error::Failure;
 
 // ---------- Loaded library ----------
 
@@ -43,7 +44,9 @@ impl LibRefs {
         unsafe {
             let sys_device_open_callbacks = *library
                 .get::<FnSysDeviceOpenCallbacks>(b"sys_device_open_callbacks\0")
-                .context("sys_device_open_callbacks symbol missing — DLL too old?")?;
+                .context(Failure::unavailable(
+                    "sys_device_open_callbacks symbol missing — DLL too old?",
+                ))?;
             let sys_device_close = *library
                 .get::<FnSysDeviceClose>(b"sys_device_close\0")
                 .context("sys_device_close symbol missing")?;
@@ -64,9 +67,9 @@ impl LibRefs {
                 .context("fsapi_node_list symbol missing")?;
             let fsapi_node_list_streams = *library
                 .get::<FnFsapiNodeListStreams>(b"fsapi_node_list_streams\0")
-                .context(
+                .context(Failure::unavailable(
                     "fsapi_node_list_streams symbol missing — DLL pre-dates the snapshot patch?",
-                )?;
+                ))?;
             let fsapi_node_get_attributes = *library
                 .get::<FnFsapiNodeGetAttributes>(b"fsapi_node_get_attributes\0")
                 .context("fsapi_node_get_attributes symbol missing")?;
@@ -75,9 +78,9 @@ impl LibRefs {
                 .context("fsapi_node_read symbol missing")?;
             let fsapi_node_read_stream = *library
                 .get::<FnFsapiNodeReadStream>(b"fsapi_node_read_stream\0")
-                .context(
+                .context(Failure::unavailable(
                     "fsapi_node_read_stream symbol missing — DLL pre-dates the snapshot patch?",
-                )?;
+                ))?;
             let iohandler_buffer_handle_io = *library
                 .get::<FnIohandlerBufferHandleIo>(b"fsapi_iohandler_buffer_handle_io\0")
                 .context("fsapi_iohandler_buffer_handle_io symbol missing")?;
@@ -130,7 +133,11 @@ pub(super) fn open_library() -> anyhow::Result<Library> {
         .collect::<Vec<_>>()
         .join(", ");
     Err(match last_error {
-        Some(error) => anyhow!("failed to load librefs-13.dll: {error} (tried: {listing})"),
-        None => anyhow!("failed to load librefs-13.dll: no candidate paths"),
+        Some(error) => anyhow!(Failure::unavailable(format!(
+            "failed to load librefs-13.dll: {error} (tried: {listing})"
+        ))),
+        None => anyhow!(Failure::unavailable(
+            "failed to load librefs-13.dll: no candidate paths"
+        )),
     })
 }

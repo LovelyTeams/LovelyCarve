@@ -241,7 +241,7 @@ pub fn parse_v090(buf: &[u8], super_sector: u64) -> Option<MdadmSuperblock> {
         _ => return None,
     };
     let word = |index: usize| -> u32 {
-        words.get(index).map_or(0, |bytes| {
+        words.get(index).map_or_default(|bytes| {
             if big_endian {
                 u32::from_be_bytes(*bytes)
             } else {

@@ -16,7 +16,7 @@ use super::*;
 /// ratio — its post-dropout rows break parity — so callers threshold at
 /// [`PARITY_VOTE_MIN`] rather than requiring a perfect `1.0`.
 pub(super) fn parity_vote(members: &[&MemberSamples]) -> f64 {
-    let rows = members.first().map_or(0, |member| member.blocks.len());
+    let rows = members.first().map_or_default(|member| member.blocks.len());
     let mut dense = 0u64;
     let mut zero = 0u64;
     let mut xor = vec![0u8; SAMPLE_BLOCK];

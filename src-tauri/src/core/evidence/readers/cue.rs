@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 use super::optical_disc::DataTrackLayout;
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::{Partition, PartitionKind, PartitionSlice, SectorSource};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,7 +61,7 @@ impl CueImage {
         let metadata = file.metadata()?;
         ensure!(
             metadata.is_file() && metadata.len() <= 1024 * 1024,
-            "CUE exceeds 1 MiB limit"
+            Failure::resource_limit("CUE exceeds 1 MiB limit")
         );
         let descriptor = smraw::Segment {
             path: std::fs::canonicalize(path)?,
@@ -80,7 +81,10 @@ impl CueImage {
         let (paths, mut info) = parse(text.trim_start_matches('\u{feff}'), path, cancel)?;
         let reader = smraw::RawImage::open_segments(paths).context("open CUE data files")?;
         for (file_index, segment) in reader.segments().iter().enumerate() {
-            ensure!(!cancel.is_cancelled(), "CUE load cancelled");
+            ensure!(
+                !cancel.is_cancelled(),
+                Failure::cancelled("CUE load cancelled")
+            );
             let tracks: Vec<_> = info
                 .tracks
                 .iter()
@@ -90,11 +94,13 @@ impl CueImage {
             let width = tracks[0].sector_bytes;
             ensure!(
                 tracks.iter().all(|track| track.sector_bytes == width),
-                "CUE tracks with different sector sizes in one FILE are unsupported"
+                Failure::unsupported(
+                    "CUE tracks with different sector sizes in one FILE are unsupported"
+                )
             );
             ensure!(
                 segment.len > 0 && segment.len.is_multiple_of(width as u64),
-                "truncated CUE data file"
+                Failure::corrupt("truncated CUE data file")
             );
             let sectors = segment.len / width as u64;
             let mut previous_end = 0;
@@ -177,11 +183,15 @@ impl CueImage {
             let width = track.sector_bytes as u64;
             let offset = segment
                 .offset
-                .checked_add(start.checked_mul(width).context("CUE offset overflow")?)
-                .context("CUE offset overflow")?;
+                .checked_add(
+                    start
+                        .checked_mul(width)
+                        .context(Failure::corrupt("CUE offset overflow"))?,
+                )
+                .context(Failure::corrupt("CUE offset overflow"))?;
             let length = (end - start)
                 .checked_mul(width)
-                .context("CUE length overflow")?;
+                .context(Failure::corrupt("CUE length overflow"))?;
             info.tracks[index].source_offset = offset;
             info.tracks[index].source_length = length;
         }
@@ -203,7 +213,10 @@ impl CueImage {
             .iter()
             .enumerate()
             .map(|(index, track)| {
-                ensure!(!cancel.is_cancelled(), "CUE load cancelled");
+                ensure!(
+                    !cancel.is_cancelled(),
+                    Failure::cancelled("CUE load cancelled")
+                );
                 let source = PartitionSlice::new(self, track.source_offset, track.source_length);
                 let cdfs = match track.mode.as_str() {
                     "MODE1/2048" | "MODE2/2048" => {
@@ -221,10 +234,13 @@ impl CueImage {
                     }
                     "MODE2/2336" | "CDI/2336" => DataTrackLayout::probe_xa2336(&source)?.is_some(),
                     "AUDIO" | "CDG" | "MODE2/2324" | "CDI/2352" => false,
-                    mode => anyhow::bail!("unsupported CUE track mode {mode}"),
+                    mode => anyhow::bail!(Failure::unsupported(format!(
+                        "unsupported CUE track mode {mode}"
+                    ))),
                 };
                 Ok(Partition {
-                    id: u8::try_from(index).context("too many CUE tracks")?,
+                    id: u8::try_from(index)
+                        .context(Failure::resource_limit("too many CUE tracks"))?,
                     kind: if cdfs {
                         PartitionKind::Cdfs
                     } else {
@@ -268,7 +284,10 @@ fn parse(text: &str, path: &Path, cancel: &CancellationToken) -> Result<(Vec<Pat
     };
     let mut session = 1;
     for (line_number, line) in text.lines().enumerate() {
-        ensure!(!cancel.is_cancelled(), "CUE load cancelled");
+        ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("CUE load cancelled")
+        );
         let line = line.trim();
         if line.is_empty() {
             continue;
@@ -278,7 +297,10 @@ fn parse(text: &str, path: &Path, cancel: &CancellationToken) -> Result<(Vec<Pat
         let result: Result<()> = (|| {
             match keyword {
                 "FILE" => {
-                    ensure!(paths.len() < 99, "too many CUE files");
+                    ensure!(
+                        paths.len() < 99,
+                        Failure::resource_limit("too many CUE files")
+                    );
                     let (name, file_type) = if let Some(quoted) = rest.strip_prefix('"') {
                         let (name, remainder) = quoted
                             .split_once('"')
@@ -290,11 +312,13 @@ fn parse(text: &str, path: &Path, cancel: &CancellationToken) -> Result<(Vec<Pat
                     };
                     ensure!(
                         file_type == "BINARY",
-                        "unsupported CUE FILE type {file_type}; expected BINARY"
+                        Failure::unsupported(format!(
+                            "unsupported CUE FILE type {file_type}; expected BINARY"
+                        ))
                     );
                     ensure!(
                         !name.is_empty() && !name.contains('\0'),
-                        "empty or invalid CUE filename"
+                        Failure::corrupt("empty or invalid CUE filename")
                     );
                     paths.push(
                         path.parent()
@@ -308,7 +332,7 @@ fn parse(text: &str, path: &Path, cancel: &CancellationToken) -> Result<(Vec<Pat
                         "CUE TRACK requires FILE; maximum 99 tracks"
                     );
                     let fields: Vec<_> = rest.split_whitespace().collect();
-                    ensure!(fields.len() == 2, "invalid CUE TRACK");
+                    ensure!(fields.len() == 2, Failure::corrupt("invalid CUE TRACK"));
                     let number = decimal(fields[0], 99)? as u8;
                     ensure!(
                         number > 0 && info.tracks.last().is_none_or(|track| track.number < number),
@@ -325,7 +349,9 @@ fn parse(text: &str, path: &Path, cancel: &CancellationToken) -> Result<(Vec<Pat
                         "MODE2/2336" | "CDI/2336" => 2336,
                         "AUDIO" | "MODE1/2352" | "MODE2/2352" | "CDI/2352" => 2352,
                         "CDG" => 2448,
-                        _ => anyhow::bail!("unsupported CUE mode {mode}"),
+                        _ => anyhow::bail!(Failure::unsupported(format!(
+                            "unsupported CUE mode {mode}"
+                        ))),
                     };
                     info.tracks.push(CueTrack {
                         number,
@@ -343,7 +369,7 @@ fn parse(text: &str, path: &Path, cancel: &CancellationToken) -> Result<(Vec<Pat
                 }
                 "INDEX" => {
                     let fields: Vec<_> = rest.split_whitespace().collect();
-                    ensure!(fields.len() == 2, "invalid CUE INDEX");
+                    ensure!(fields.len() == 2, Failure::corrupt("invalid CUE INDEX"));
                     let number = decimal(fields[0], 99)? as u8;
                     let file_sector = msf(fields[1])?;
                     let track = info.tracks.last_mut().context("INDEX without TRACK")?;
@@ -419,7 +445,9 @@ fn parse(text: &str, path: &Path, cancel: &CancellationToken) -> Result<(Vec<Pat
                 // Display annotations do not change byte geometry.
                 "CATALOG" | "CDTEXTFILE" | "TITLE" | "PERFORMER" | "SONGWRITER" | "ISRC"
                 | "FLAGS" => {}
-                _ => anyhow::bail!("unsupported CUE directive {keyword}"),
+                _ => anyhow::bail!(Failure::unsupported(format!(
+                    "unsupported CUE directive {keyword}"
+                ))),
             }
             Ok(())
         })();
@@ -432,7 +460,7 @@ fn parse(text: &str, path: &Path, cancel: &CancellationToken) -> Result<(Vec<Pat
 fn decimal(value: &str, maximum: u64) -> Result<u64> {
     ensure!(
         !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()),
-        "invalid CUE decimal"
+        Failure::corrupt("invalid CUE decimal")
     );
     let number: u64 = value.parse()?;
     ensure!(number <= maximum, "CUE numeric value out of range");
@@ -443,7 +471,7 @@ fn msf(value: &str) -> Result<u64> {
     let fields: Vec<_> = value.split(':').collect();
     ensure!(
         fields.len() == 3 && fields.iter().all(|field| field.len() == 2),
-        "invalid CUE MM:SS:FF"
+        Failure::corrupt("invalid CUE MM:SS:FF")
     );
     Ok((decimal(fields[0], 99)? * 60 + decimal(fields[1], 59)?) * 75 + decimal(fields[2], 74)?)
 }

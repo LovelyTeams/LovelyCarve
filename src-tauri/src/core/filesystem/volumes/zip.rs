@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Result};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::DiskImage;
 use crate::core::evidence::readers::zip_image::{ZipEntry, ZipEntryKind};
 use crate::core::filesystem::tree::fs_tree::{
@@ -170,7 +171,7 @@ pub fn file_stat(image: &Arc<DiskImage>, rel: &str, node_id: &str) -> Result<FsS
         .ok_or_else(|| anyhow!("image is not a zip source"))?;
     let entry = zip
         .lookup(rel)
-        .ok_or_else(|| anyhow!("not found in zip: {rel}"))?;
+        .ok_or_else(|| anyhow!(Failure::not_found(format!("not found in zip: {rel}"))))?;
     // Sample / fingerprint only regular files. A symlink is excluded — its size
     // is the link-path length, so sampling the resolved target would make the
     // stat card's size, mime, and data-run describe three different things

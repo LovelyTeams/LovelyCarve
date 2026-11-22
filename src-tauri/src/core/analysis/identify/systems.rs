@@ -252,7 +252,7 @@ impl<'a> MountContext<'a> {
     fn linux_mounts(&mut self, entry: &FsEntry, node: &str, mounts: &mut Vec<SystemMount>) {
         let fingerprint = Fingerprint::new(Arc::clone(self.image), node.to_owned());
         let text = match fingerprint.read_limited("/etc/fstab", FSTAB_CAP) {
-            Ok(Some(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
+            Ok(Some(bytes)) => String::from_utf8_lossy_owned(bytes),
             Ok(None) => return,
             Err(error) => {
                 tracing::debug!(volume = %entry.volume_key, "fstab unreadable: {error:#}");

@@ -1,5 +1,6 @@
 //! Filesystem session read operations.
 use super::*;
+use crate::core::common::error::Failure;
 
 impl<'a> FsSession<'a> {
     /// Read a bounded logical file using this session's cached volume when the
@@ -71,7 +72,9 @@ impl<'a> FsSession<'a> {
 
         match crate::core::filesystem::fs_dispatch::dispatch(image, node_id)? {
             Some(volume) => volume.read_file(node_id, max_bytes),
-            None => anyhow::bail!("unsupported filesystem node id: {node_id}"),
+            None => anyhow::bail!(Failure::unsupported(format!(
+                "unsupported filesystem node id: {node_id}"
+            ))),
         }
     }
 
@@ -138,7 +141,9 @@ impl<'a> FsSession<'a> {
 
         match crate::core::filesystem::fs_dispatch::dispatch(image, node_id)? {
             Some(volume) => volume.file_stat(node_id, node_id),
-            None => anyhow::bail!("unsupported filesystem node id: {node_id}"),
+            None => anyhow::bail!(Failure::unsupported(format!(
+                "unsupported filesystem node id: {node_id}"
+            ))),
         }
     }
 
@@ -188,21 +193,17 @@ impl<'a> FsSession<'a> {
     ) -> anyhow::Result<Vec<u8>> {
         let image = self.image.filesystem_session(node_id);
         image.require_source()?;
-        #[derive(Debug)]
+        /// Stops the stream once the range is collected.
+        #[derive(Debug, thiserror::Error)]
+        #[error("requested file range collected")]
         struct RangeComplete;
 
-        impl fmt::Display for RangeComplete {
-            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                formatter.write_str("requested file range collected")
-            }
-        }
-
-        impl Error for RangeComplete {}
-
-        let length_u64 =
-            u64::try_from(length).map_err(|_| anyhow::anyhow!("range length overflow"))?;
+        let length_u64 = u64::try_from(length)
+            .map_err(|_| anyhow::anyhow!(Failure::invalid_input("range length overflow")))?;
         let end = offset.checked_add(length_u64).ok_or_else(|| {
-            anyhow::anyhow!("file range overflow: offset={offset}, length={length}")
+            anyhow::anyhow!(Failure::invalid_input(format!(
+                "file range overflow: offset={offset}, length={length}"
+            )))
         })?;
         if length == 0 {
             return Ok(Vec::new());
@@ -221,18 +222,20 @@ impl<'a> FsSession<'a> {
         let mut stream_offset = 0u64;
         let result = self.stream_file(node_id, 1024 * 1024, |chunk| {
             let chunk_length = u64::try_from(chunk.len())
-                .map_err(|_| anyhow::anyhow!("stream chunk length overflow"))?;
+                .map_err(|_| anyhow::anyhow!(Failure::corrupt("stream chunk length overflow")))?;
             let chunk_end = stream_offset
                 .checked_add(chunk_length)
-                .ok_or_else(|| anyhow::anyhow!("stream offset overflow"))?;
+                .ok_or_else(|| anyhow::anyhow!(Failure::corrupt("stream offset overflow")))?;
 
             if chunk_end > offset && stream_offset < end {
                 let start_in_chunk = offset.saturating_sub(stream_offset);
                 let end_in_chunk = end.min(chunk_end) - stream_offset;
-                let start_in_chunk = usize::try_from(start_in_chunk)
-                    .map_err(|_| anyhow::anyhow!("range start conversion overflow"))?;
-                let end_in_chunk = usize::try_from(end_in_chunk)
-                    .map_err(|_| anyhow::anyhow!("range end conversion overflow"))?;
+                let start_in_chunk = usize::try_from(start_in_chunk).map_err(|_| {
+                    anyhow::anyhow!(Failure::corrupt("range start conversion overflow"))
+                })?;
+                let end_in_chunk = usize::try_from(end_in_chunk).map_err(|_| {
+                    anyhow::anyhow!(Failure::corrupt("range end conversion overflow"))
+                })?;
                 output.extend_from_slice(&chunk[start_in_chunk..end_in_chunk]);
             }
 

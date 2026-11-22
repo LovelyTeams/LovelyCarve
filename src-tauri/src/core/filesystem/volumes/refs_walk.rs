@@ -1,4 +1,5 @@
 //! Single traversal shared by live ReFS metadata and volume snapshots.
+use crate::core::common::error::Failure;
 use crate::core::filesystem::tree::fs_tree::Mactb;
 use anyhow::Result;
 use std::collections::HashSet;
@@ -50,12 +51,18 @@ pub(super) fn collect(
         }
     };
     while let Some(object_id) = pending.pop() {
-        anyhow::ensure!(!cancel.is_cancelled(), "snapshot build cancelled");
+        anyhow::ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("snapshot build cancelled")
+        );
         if !visited.insert(object_id) {
             continue;
         }
         for entry in volume.list_directory_checked(object_id, &check)? {
-            anyhow::ensure!(!cancel.is_cancelled(), "snapshot build cancelled");
+            anyhow::ensure!(
+                !cancel.is_cancelled(),
+                Failure::cancelled("snapshot build cancelled")
+            );
             let directory_id = entry.directory_id;
             if let Some(id) = directory_id {
                 pending.push(id);

@@ -18,6 +18,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crate::core::analysis::identify::os_detect::{self, DetectedOs, OsFingerprint};
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::{Partition, PartitionKind};
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree::{self, FsNode, NodeKind};
@@ -110,7 +111,7 @@ impl OsFingerprint for Fingerprint {
         let content = self.read_limited(path, cap.saturating_add(1))?;
         anyhow::ensure!(
             content.as_ref().is_none_or(|bytes| bytes.len() <= cap),
-            "fingerprint file exceeds {cap} bytes: {path}"
+            Failure::resource_limit(format!("fingerprint file exceeds {cap} bytes: {path}"))
         );
         Ok(content)
     }

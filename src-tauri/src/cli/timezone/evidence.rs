@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 
 use super::{parse, CliError, Selection};
 use crate::core::{
+    common::error::Failure,
     evidence::partitions::PartitionKind,
     filesystem::{
         evidence_session::EvidenceSession,
@@ -189,7 +190,9 @@ fn lookup(session: &mut FsSession<'_>, root: &str, path: &str) -> anyhow::Result
     while let Some((component, from_link)) = pending.pop_front() {
         inspected += 1;
         if inspected > MAX_PATH_COMPONENTS || pending.len() > MAX_PATH_COMPONENTS {
-            anyhow::bail!("时区配置路径超过 {MAX_PATH_COMPONENTS} 个分量的解析上限");
+            anyhow::bail!(Failure::resource_limit(format!(
+                "时区配置路径超过 {MAX_PATH_COMPONENTS} 个分量的解析上限"
+            )));
         }
         if component == "." {
             continue;
@@ -210,7 +213,9 @@ fn lookup(session: &mut FsSession<'_>, root: &str, path: &str) -> anyhow::Result
             .find(|node| node.name == component && !node.deleted);
         let Some(node) = node else {
             if from_link {
-                anyhow::bail!("配置目录链接的目标不存在：{component}");
+                anyhow::bail!(Failure::not_found(format!(
+                    "配置目录链接的目标不存在：{component}"
+                )));
             }
             return Ok(None);
         };
@@ -260,7 +265,10 @@ fn read(session: &mut FsSession<'_>, node: &FsNode, cap: usize) -> anyhow::Resul
         anyhow::bail!("只读取普通配置文件，不读取未解析的链接或目录");
     }
     if node.size > cap as u64 {
-        anyhow::bail!("{} 超过时区配置读取上限 {cap} 字节", node.name);
+        anyhow::bail!(Failure::resource_limit(format!(
+            "{} 超过时区配置读取上限 {cap} 字节",
+            node.name
+        )));
     }
     let bytes = session.read_file_limited(&node.id, cap)?;
     if bytes.len() as u64 != node.size {

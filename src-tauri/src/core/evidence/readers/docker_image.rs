@@ -35,6 +35,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use memmap2::Mmap;
 use serde::{Deserialize, Serialize};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::readers::docker_manifest::{
     load_manifest, OuterMemberIndex, ResolvedLayer, ResolvedManifest,
 };
@@ -311,12 +312,12 @@ impl DockerImage {
         let layer = self
             .layers
             .get(loc.layer_index)
-            .ok_or_else(|| anyhow!("invalid layer index"))?;
+            .ok_or_else(|| anyhow!(Failure::invalid_input("invalid layer index")))?;
         let bytes = layer_slice(&self.outer, &layer.bytes);
         let start = loc.offset_in_layer as usize;
         let end = start
             .checked_add(loc.size as usize)
-            .ok_or_else(|| anyhow!("entry size overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("entry size overflow")))?;
         if end > bytes.len() {
             bail!("entry data out of range");
         }
@@ -336,7 +337,7 @@ impl DockerImage {
     fn resolve_data_loc(&self, path: &str) -> Result<&DataLoc> {
         let entry = self
             .lookup(path)
-            .ok_or_else(|| anyhow!("not found: {path}"))?;
+            .ok_or_else(|| anyhow!(Failure::not_found(format!("not found: {path}"))))?;
 
         let resolved = match entry.kind {
             EntryKind::File | EntryKind::Hardlink => entry,
@@ -365,12 +366,12 @@ impl DockerImage {
         let layer = self
             .layers
             .get(loc.layer_index)
-            .ok_or_else(|| anyhow!("invalid layer index"))?;
+            .ok_or_else(|| anyhow!(Failure::invalid_input("invalid layer index")))?;
         let bytes = layer_slice(&self.outer, &layer.bytes);
         let start = loc.offset_in_layer as usize;
         let end = start
             .checked_add(loc.size as usize)
-            .ok_or_else(|| anyhow!("entry size overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("entry size overflow")))?;
         if end > bytes.len() {
             bail!("entry data out of range");
         }
@@ -447,9 +448,12 @@ fn build_layer<I: OuterMemberIndex + ?Sized>(
         .ok_or_else(|| anyhow!("missing layer blob: {}", layer.member))?;
     let start = usize::try_from(offset).context("layer offset out of range")?;
     let size_usize = usize::try_from(size).context("layer size out of range")?;
-    let end = start
-        .checked_add(size_usize)
-        .ok_or_else(|| anyhow!("layer blob size overflow: {}", layer.member))?;
+    let end = start.checked_add(size_usize).ok_or_else(|| {
+        anyhow!(Failure::corrupt(format!(
+            "layer blob size overflow: {}",
+            layer.member
+        )))
+    })?;
     let raw = outer
         .get(start..end)
         .ok_or_else(|| anyhow!("layer blob out of range: {}", layer.member))?;

@@ -1,5 +1,6 @@
 //! navigation implementation.
 use super::*;
+use crate::core::common::error::Failure;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 
 pub fn children_for_image(
@@ -47,7 +48,9 @@ pub(super) fn children_for_image_with_options(
                 .cloned()
                 .collect());
         }
-        anyhow::bail!("此目录未收录在已有索引中，源镜像不可用。请恢复源镜像后重试。");
+        anyhow::bail!(Failure::not_found(
+            "此目录未收录在已有索引中，源镜像不可用。请恢复源镜像后重试。"
+        ));
     }
     // Docker / OCI archives short-circuit the partition list. The whole
     // image surfaces as a single synthetic root; descending into that
@@ -343,10 +346,11 @@ pub(super) fn children_for_image_with_options(
     if let Some((part_id, lv_index)) = parse_lvm_id(parent_id) {
         let partition = find_partition(image, part_id)?;
         let lvm = LvmVolume::open(image, partition)?;
-        let lv = lvm
-            .logical_volumes
-            .get(lv_index)
-            .ok_or_else(|| anyhow::anyhow!("logical volume not found: {parent_id}"))?;
+        let lv = lvm.logical_volumes.get(lv_index).ok_or_else(|| {
+            anyhow::anyhow!(Failure::not_found(format!(
+                "logical volume not found: {parent_id}"
+            )))
+        })?;
         match lv.kind {
             PartitionKind::Ext4 => {
                 let children = Ext4Volume::open(

@@ -7,6 +7,7 @@ use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
 use super::EvidenceSession;
+use crate::core::common::error::Failure;
 use crate::core::evidence::crypto::bitlocker::UnlockedVolume;
 
 #[derive(Clone, Copy, Default, Deserialize)]
@@ -39,7 +40,10 @@ impl PlaintextReader {
                 session,
                 cancellation,
             } => {
-                ensure!(!cancellation.is_cancelled(), "解密会话已关闭");
+                ensure!(
+                    !cancellation.is_cancelled(),
+                    Failure::cancelled("解密会话已关闭")
+                );
                 session.read_into(offset, output)
             }
             Self::Bitlocker(volume) => {
@@ -78,7 +82,10 @@ impl EvidenceSession {
         if matches!(mode, ImageExportMode::UnlockedPartitions) {
             for (partition_id, slot) in self.decrypted_partitions.iter().enumerate() {
                 let Some(attached) = slot.get() else { continue };
-                ensure!(!attached.cancellation.is_cancelled(), "解密会话已关闭");
+                ensure!(
+                    !attached.cancellation.is_cancelled(),
+                    Failure::cancelled("解密会话已关闭")
+                );
                 let partition = self
                     .partitions
                     .iter()
@@ -88,11 +95,11 @@ impl EvidenceSession {
                         partition
                             .start_lba
                             .checked_mul(self.sector_size as u64)
-                            .context("partition offset overflow")?,
+                            .context(Failure::corrupt("partition offset overflow"))?,
                         partition
                             .length_lba
                             .checked_mul(self.sector_size as u64)
-                            .context("partition size overflow")?,
+                            .context(Failure::corrupt("partition size overflow"))?,
                     )
                 } else {
                     ensure!(
@@ -105,7 +112,7 @@ impl EvidenceSession {
                     start,
                     end: start
                         .checked_add(length)
-                        .context("partition end overflow")?,
+                        .context(Failure::corrupt("partition end overflow"))?,
                     reader: PlaintextReader::Native {
                         session: Arc::clone(&attached.session),
                         cancellation: attached.cancellation.clone(),
@@ -119,16 +126,16 @@ impl EvidenceSession {
                 let start = partition
                     .start_lba
                     .checked_mul(self.sector_size as u64)
-                    .context("partition offset overflow")?;
+                    .context(Failure::corrupt("partition offset overflow"))?;
                 let length = partition
                     .length_lba
                     .checked_mul(self.sector_size as u64)
-                    .context("partition size overflow")?;
+                    .context(Failure::corrupt("partition size overflow"))?;
                 regions.push(PlaintextRegion {
                     start,
                     end: start
                         .checked_add(length)
-                        .context("partition end overflow")?,
+                        .context(Failure::corrupt("partition end overflow"))?,
                     reader: PlaintextReader::Bitlocker(volume),
                 });
             }

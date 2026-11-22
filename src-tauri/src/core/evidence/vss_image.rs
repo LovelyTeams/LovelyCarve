@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 use vsc::{SnapshotLayout, StoreDescriptor, StoreInfo, VssVolume};
 
+use crate::core::common::error::Failure;
 use crate::core::common::ids::ImageId;
 use crate::core::evidence::crypto::bitlocker::UnlockedVolume;
 use crate::core::evidence::image::{DerivedImage, DiskImage};
@@ -104,11 +105,11 @@ impl LiveVolume {
                 let offset = partition
                     .start_lba
                     .checked_mul(sector)
-                    .context("partition offset overflows")?;
+                    .context(Failure::corrupt("partition offset overflows"))?;
                 let length = partition
                     .length_lba
                     .checked_mul(sector)
-                    .context("partition size overflows")?;
+                    .context(Failure::corrupt("partition size overflows"))?;
                 ensure!(
                     offset
                         .checked_add(length)
@@ -386,7 +387,7 @@ pub fn open(
         .partitions
         .iter()
         .find(|partition| partition.id == partition_id)
-        .with_context(|| format!("partition {partition_id} not found"))?;
+        .with_context(|| Failure::not_found(format!("partition {partition_id} not found")))?;
     let live = LiveVolume::for_partition(image, partition)?.with_context(|| {
         format!("partition {partition_id} is not a readable NTFS volume (unlock BitLocker first)")
     })?;
@@ -396,15 +397,15 @@ pub fn open(
         "partition {partition_id} has no shadow copies"
     );
     let store = volume.stores().get(index).cloned().with_context(|| {
-        format!(
+        Failure::not_found(format!(
             "shadow copy {} not found on partition {partition_id}",
             index + 1
-        )
+        ))
     })?;
     let shadow_copy_id = Some(volume.store_info(index)?.shadow_copy_id_string());
     let layout = volume.snapshot_layout(index)?;
     if cancellation.is_cancelled() {
-        bail!("shadow copy open cancelled");
+        bail!(Failure::cancelled("shadow copy open cancelled"));
     }
 
     let source = Arc::new(SnapshotSource { layout, live });

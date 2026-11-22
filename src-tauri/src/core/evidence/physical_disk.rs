@@ -14,6 +14,8 @@ use std::path::Path;
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
 
+use crate::core::common::error::Failure;
+
 mod descriptor;
 #[cfg(test)]
 pub(crate) use descriptor::parse as parse_descriptor;
@@ -118,7 +120,7 @@ pub fn read_aligned(
     let aligned_end = logical_end
         .div_ceil(sector)
         .checked_mul(sector)
-        .ok_or_else(|| anyhow!("aligned end overflow"))?
+        .ok_or_else(|| anyhow!(Failure::corrupt("aligned end overflow")))?
         .min(size_bytes.div_ceil(sector) * sector);
     let aligned_len = (aligned_end - aligned_start) as usize;
     let mut buf = vec![0u8; aligned_len];

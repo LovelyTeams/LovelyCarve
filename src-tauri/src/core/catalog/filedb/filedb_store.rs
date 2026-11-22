@@ -19,6 +19,7 @@ use tokio_util::sync::CancellationToken;
 use crate::core::catalog::filedb::filedb_bulk::DirectoryTally;
 use crate::core::catalog::filedb::filedb_file::{self, IndexMeta};
 use crate::core::catalog::snapshot::volume_snapshot::{self, SnapshotEntry, SnapshotHeader};
+use crate::core::common::error::Failure;
 use crate::core::filesystem::meta_addr;
 use crate::core::filesystem::tree::fs_tree::NodeKind;
 
@@ -80,7 +81,7 @@ pub fn build_index(
     cancel: Option<&CancellationToken>,
 ) -> anyhow::Result<u64> {
     if cancel.is_some_and(CancellationToken::is_cancelled) {
-        anyhow::bail!("filedb index build cancelled");
+        anyhow::bail!(Failure::cancelled("filedb index build cancelled"));
     }
     let partial = PartialIndex::new(output);
     let conn = filedb_file::create_build_connection(output)?;
@@ -114,7 +115,7 @@ pub fn build_index(
                     progress(count);
                 }
                 if cancel.is_some_and(CancellationToken::is_cancelled) {
-                    anyhow::bail!("filedb index build cancelled");
+                    anyhow::bail!(Failure::cancelled("filedb index build cancelled"));
                 }
             }
             Ok((count, directories))
@@ -139,7 +140,7 @@ pub fn build_index(
     tx.commit()?;
     filedb_file::create_secondary_indexes(&conn)?;
     if cancel.is_some_and(CancellationToken::is_cancelled) {
-        anyhow::bail!("filedb index build cancelled");
+        anyhow::bail!(Failure::cancelled("filedb index build cancelled"));
     }
     close_and_sync(conn, output)?;
     partial.keep();

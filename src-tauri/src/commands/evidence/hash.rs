@@ -277,7 +277,7 @@ fn run_parallel_hash(
             let mut bytes = vec![0u8; want];
             let read_len = image
                 .read_into(offset, &mut bytes)
-                .map_err(|err| AppError::new(ErrorCode::Io, format!("read @ {offset}: {err:#}")))?;
+                .map_err(|err| AppError::from_read(format!("read @ {offset}"), err))?;
             if read_len == 0 {
                 break;
             }

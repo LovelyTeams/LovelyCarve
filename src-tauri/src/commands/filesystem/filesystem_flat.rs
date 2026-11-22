@@ -465,7 +465,7 @@ fn deleted_splice_rows(
                 },
                 &no_prune,
             )
-            .map_err(AppError::from_anyhow)?;
+            .map_err(AppError::from)?;
     }
     let rows = Arc::new(FlatWalkRows {
         entries,
@@ -511,7 +511,7 @@ fn subtree_walk_rows(
             },
             &no_prune,
         )
-        .map_err(AppError::from_anyhow)?;
+        .map_err(AppError::from)?;
     let rows = Arc::new(FlatWalkRows {
         entries,
         truncated,

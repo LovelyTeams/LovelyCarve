@@ -1,6 +1,7 @@
 //! Physical runs for the classic ext2/3 direct and three-level indirect map.
 
 use super::ext4_raw::RawInode;
+use crate::core::common::error::Failure;
 use crate::core::filesystem::tree::fs_tree::FsDataRun;
 
 pub(super) fn data_runs<F>(
@@ -13,7 +14,9 @@ where
     F: FnMut(u64) -> anyhow::Result<Vec<u8>>,
 {
     if !(1024..=65536).contains(&block_size) || !block_size.is_power_of_two() {
-        anyhow::bail!("invalid ext block size {block_size}");
+        anyhow::bail!(Failure::corrupt(format!(
+            "invalid ext block size {block_size}"
+        )));
     }
     let pointers = block_size / 4;
     let capacity = 12 + pointers + pointers.pow(2) + pointers.pow(3);
@@ -66,7 +69,7 @@ where
     } else if depth == 0 {
         let physical = base
             .checked_add(u64::from(pointer) * block_size)
-            .ok_or_else(|| anyhow::anyhow!("ext block offset overflow"))?;
+            .ok_or_else(|| anyhow::anyhow!(Failure::corrupt("ext block offset overflow")))?;
         let logical_offset = *logical * block_size;
         let length = block_size.min(size - logical_offset);
         if let Some(previous) = runs.last_mut().filter(|previous| {
@@ -85,7 +88,9 @@ where
     } else {
         let bytes = load(u64::from(pointer) * block_size)?;
         if bytes.len() as u64 != block_size {
-            anyhow::bail!("truncated ext indirect block {pointer}");
+            anyhow::bail!(Failure::corrupt(format!(
+                "truncated ext indirect block {pointer}"
+            )));
         }
         for entry in bytes.as_chunks::<4>().0 {
             walk(

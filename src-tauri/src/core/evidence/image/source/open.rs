@@ -1,5 +1,6 @@
 //! Evidence container recognition and source opening.
 use super::*;
+use crate::core::common::error::Failure;
 impl ImageSource {
     #[cfg(test)]
     pub(in crate::core::evidence::image) fn open(path: &Path) -> anyhow::Result<Self> {
@@ -162,7 +163,10 @@ impl ImageSource {
                     });
                 }
                 Err(tar_err) => {
-                    anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
+                    anyhow::ensure!(
+                        !cancel.is_cancelled(),
+                        Failure::cancelled("image load cancelled")
+                    );
                     tracing::debug!(
                         "tar.gz probe: {} is not a usable gzip-compressed tar ({tar_err:#}); falling back to RAW",
                         path.display()
@@ -196,7 +200,10 @@ impl ImageSource {
                     });
                 }
                 Err(zip_err) => {
-                    anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
+                    anyhow::ensure!(
+                        !cancel.is_cancelled(),
+                        Failure::cancelled("image load cancelled")
+                    );
                     tracing::debug!(
                         "zip probe: {} is not a usable zip archive ({zip_err:#}); falling back to RAW",
                         path.display()
@@ -398,7 +405,10 @@ impl ImageSource {
         let is_android_backup =
             mmap.starts_with(b"ANDROID BACKUP\n") || mmap.starts_with(b"MIUI BACKUP\n");
         if extension.as_deref() == Some("ab") && !is_android_backup {
-            anyhow::bail!("invalid Android Backup magic: {}", path.display());
+            anyhow::bail!(Failure::corrupt(format!(
+                "invalid Android Backup magic: {}",
+                path.display()
+            )));
         }
         if is_android_backup {
             return Ok(Self::Raw {

@@ -1,5 +1,6 @@
 //! encryption implementation.
 use super::*;
+use crate::core::common::error::Failure;
 
 impl DiskImage {
     pub fn bitlocker_unlocked(&self, partition_id: u8) -> Option<Arc<UnlockedVolume>> {
@@ -14,9 +15,15 @@ impl DiskImage {
             .partitions
             .iter()
             .find(|p| p.id == partition_id)
-            .ok_or_else(|| anyhow!("partition not found: {partition_id}"))?;
+            .ok_or_else(|| {
+                anyhow!(Failure::not_found(format!(
+                    "partition not found: {partition_id}"
+                )))
+            })?;
         if partition.kind != PartitionKind::Bitlocker {
-            anyhow::bail!("partition {partition_id} is not BitLocker");
+            anyhow::bail!(Failure::unsupported(format!(
+                "partition {partition_id} is not BitLocker"
+            )));
         }
         if let Some(unlocked) = self.bitlocker_unlocked(partition_id) {
             return Ok(BitlockerStatus {
@@ -78,10 +85,16 @@ impl DiskImage {
             .partitions
             .iter()
             .find(|p| p.id == partition_id)
-            .ok_or_else(|| anyhow!("partition not found: {partition_id}"))?
+            .ok_or_else(|| {
+                anyhow!(Failure::not_found(format!(
+                    "partition not found: {partition_id}"
+                )))
+            })?
             .clone();
         if partition.kind != PartitionKind::Bitlocker {
-            anyhow::bail!("partition {partition_id} is not BitLocker");
+            anyhow::bail!(Failure::unsupported(format!(
+                "partition {partition_id} is not BitLocker"
+            )));
         }
         if self.bitlocker_unlocked(partition_id).is_some() {
             return self.bitlocker_status(partition_id);
@@ -91,11 +104,11 @@ impl DiskImage {
             offset: partition
                 .start_lba
                 .checked_mul(self.sector_size as u64)
-                .context("BitLocker partition offset overflow")?,
+                .context(Failure::corrupt("BitLocker partition offset overflow"))?,
             length: partition
                 .length_lba
                 .checked_mul(self.sector_size as u64)
-                .context("BitLocker partition size overflow")?,
+                .context(Failure::corrupt("BitLocker partition size overflow"))?,
         };
         let unlocked = bitlocker::unlock_location(self, location, key, observer)?;
         let unlocked = Arc::new(unlocked);
@@ -135,16 +148,26 @@ impl DiskImage {
             .partitions
             .iter()
             .find(|p| p.id == partition_id)
-            .ok_or_else(|| anyhow!("partition not found: {partition_id}"))?
+            .ok_or_else(|| {
+                anyhow!(Failure::not_found(format!(
+                    "partition not found: {partition_id}"
+                )))
+            })?
             .clone();
         if partition.kind != PartitionKind::Bitlocker {
-            anyhow::bail!("partition {partition_id} is not BitLocker");
+            anyhow::bail!(Failure::unsupported(format!(
+                "partition {partition_id} is not BitLocker"
+            )));
         }
         // Keep the legacy 128-bit recovery-datum path while allowing real 256-bit
         // VMKs to unwrap the FVEK without any recovery-password protector.
         if vmk.len() == 16 {
-            let recovery = bde_vmk::recovery_key_from_vmk(self, &partition, vmk)?
-                .ok_or_else(|| anyhow!("the supplied key does not unlock a recovery datum"))?;
+            let recovery =
+                bde_vmk::recovery_key_from_vmk(self, &partition, vmk)?.ok_or_else(|| {
+                    anyhow!(Failure::invalid_input(
+                        "the supplied key does not unlock a recovery datum"
+                    ))
+                })?;
             let status = self.unlock_bitlocker_partition_with_observer(
                 partition_id,
                 Some(&recovery),

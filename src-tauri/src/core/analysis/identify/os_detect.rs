@@ -24,6 +24,8 @@ use notatin::parser_builder::ParserBuilder;
 use plist::Value;
 use serde::{Deserialize, Serialize};
 
+use crate::core::common::error::Failure;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OsFamily {
@@ -93,7 +95,7 @@ pub trait OsFingerprint {
         let content = self.read(path)?;
         anyhow::ensure!(
             content.as_ref().is_none_or(|bytes| bytes.len() <= cap),
-            "fingerprint file exceeds {cap} bytes: {path}"
+            Failure::resource_limit(format!("fingerprint file exceeds {cap} bytes: {path}"))
         );
         Ok(content)
     }

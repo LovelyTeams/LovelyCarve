@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::DiskImage;
 use crate::core::filesystem::tree::fs_tree::{FsDataRun, Mactb};
 
@@ -84,15 +85,15 @@ impl ExfatGeom {
                 > cluster_heap_offset_sectors
             || heap_end > volume_sectors
         {
-            anyhow::bail!("exFAT invalid volume geometry");
+            anyhow::bail!(Failure::corrupt("exFAT invalid volume geometry"));
         }
         base_offset
             .checked_add(
                 volume_sectors
                     .checked_mul(bytes_per_sector)
-                    .ok_or_else(|| anyhow!("exFAT volume size overflow"))?,
+                    .ok_or_else(|| anyhow!(Failure::corrupt("exFAT volume size overflow")))?,
             )
-            .ok_or_else(|| anyhow!("exFAT volume end overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("exFAT volume end overflow")))?;
         Ok(Self {
             base_offset,
             fat_offset_sectors,
@@ -149,7 +150,7 @@ impl ExfatFat {
         let raw = image.read_range(geom.fat_offset(), len)?;
         let count = geom.cluster_count as usize + 2;
         if raw.len() != len || count > raw.len() / 4 {
-            anyhow::bail!("exFAT truncated allocation table");
+            anyhow::bail!(Failure::corrupt("exFAT truncated allocation table"));
         }
         let mut entries = Vec::with_capacity(count);
         for i in 0..count {
@@ -268,7 +269,7 @@ pub fn read_dir_bytes(
     first_cluster: u32,
 ) -> Result<Vec<u8>> {
     if first_cluster < 2 {
-        anyhow::bail!("exFAT directory first cluster invalid");
+        anyhow::bail!(Failure::corrupt("exFAT directory first cluster invalid"));
     }
     let mut out = Vec::new();
     let cluster_size = geom.cluster_size() as usize;
@@ -293,13 +294,15 @@ pub fn read_dir_bytes(
         }
         let next = fat.next_cluster(cluster);
         if next < 2 || next >= max_cluster {
-            anyhow::bail!("exFAT invalid directory chain");
+            anyhow::bail!(Failure::corrupt("exFAT invalid directory chain"));
         }
         cluster = next;
         guard += 1;
     }
     if guard >= MAX_DIR_CLUSTERS {
-        anyhow::bail!("exFAT directory exceeds recovery limit");
+        anyhow::bail!(Failure::resource_limit(
+            "exFAT directory exceeds recovery limit"
+        ));
     }
     Ok(out)
 }
@@ -519,7 +522,7 @@ pub(super) fn read_effective_boot_sector(
         .unwrap_or(image.sector_size as u64);
     let backup_offset = base_offset
         .checked_add(EXFAT_BACKUP_BOOT_SECTOR * logical_sector)
-        .ok_or_else(|| anyhow!("exFAT backup offset overflow"))?;
+        .ok_or_else(|| anyhow!(Failure::corrupt("exFAT backup offset overflow")))?;
     if let Ok(backup) = image.read_range(backup_offset, BOOT_SECTOR_LEN) {
         if exfat_boot_looks_valid(&backup) {
             return boot_sector_array(&backup);
@@ -565,11 +568,17 @@ pub fn read_directory_path(
                 break;
             }
         }
-        let entry = found.ok_or_else(|| anyhow!("exFAT directory segment not found: {segment}"))?;
+        let entry = found.ok_or_else(|| {
+            anyhow!(Failure::not_found(format!(
+                "exFAT directory segment not found: {segment}"
+            )))
+        })?;
         if entry.size > 64 * 1024 * 1024
             || entry.runs.iter().map(|run| run.length).sum::<u64>() != entry.size
         {
-            anyhow::bail!("exFAT invalid or excessive directory allocation: {segment}");
+            anyhow::bail!(Failure::corrupt(format!(
+                "exFAT invalid or excessive directory allocation: {segment}"
+            )));
         }
         dir_bytes.clear();
         for run in entry.runs {

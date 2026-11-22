@@ -1,4 +1,5 @@
 //! Read-only iOS backup unlock and upstream anomaly audit.
+use crate::core::common::error::Failure;
 use crate::core::common::ids::ImageId;
 use std::sync::Arc;
 
@@ -37,7 +38,7 @@ pub async fn ios_backup_unlock(
         let _permit = permit;
         let _task = task;
         if token_for_unlock.is_cancelled() {
-            anyhow::bail!("iOS backup unlock cancelled");
+            anyhow::bail!(Failure::cancelled("iOS backup unlock cancelled"));
         }
         source_for_unlock.unlock_ios(password, &token_for_unlock)
     })
@@ -46,7 +47,7 @@ pub async fn ios_backup_unlock(
     if token.is_cancelled() {
         return Err(AppError::cancelled("iOS backup unlock cancelled"));
     }
-    let image = result.map_err(AppError::from_anyhow)?;
+    let image = result.map_err(AppError::from)?;
     let mut images = state.images.lock().await;
     if !images
         .get(&image_id)
@@ -89,7 +90,7 @@ pub async fn ios_backup_audit(
         let _permit = permit;
         let _task = task;
         if token_for_audit.is_cancelled() {
-            anyhow::bail!("iOS backup audit cancelled");
+            anyhow::bail!(Failure::cancelled("iOS backup audit cancelled"));
         }
         folder.audit_ios(&token_for_audit)
     })
@@ -109,5 +110,5 @@ pub async fn ios_backup_audit(
             "iOS evidence unloaded during audit",
         ));
     }
-    result.map_err(AppError::from_anyhow)
+    result.map_err(AppError::from)
 }

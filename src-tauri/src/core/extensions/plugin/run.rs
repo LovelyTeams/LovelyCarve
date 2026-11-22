@@ -8,7 +8,7 @@
 //! stream through it — and detached when the call ends, also when the
 //! caller stops waiting.
 
-use std::{sync::Arc, time::Duration};
+use std::{mem::DropGuard, sync::Arc, time::Duration};
 
 use lovelycarve_plugin::protocol::{self, RunFinish, RunStart};
 
@@ -60,10 +60,12 @@ impl TaskWorker {
             });
         }
         self.connection.attach(Arc::clone(&context));
-        let _attached = Attached {
-            connection: &self.connection,
-            run_id: start.run_id.clone(),
-        };
+        // Detached when the run ends, also when the caller stops waiting.
+        let _attached = DropGuard::new(start.run_id.as_str(), |run_id| {
+            if let Some(context) = self.connection.detach(run_id) {
+                context.cancel();
+            }
+        });
         let params = protocol::to_value(start).map_err(|error| PluginError::Rpc {
             code: "HOST_ERROR".to_owned(),
             message: error.message,
@@ -76,20 +78,6 @@ impl TaskWorker {
             code: "INVALID_RUN_RESULT".to_owned(),
             message: error.message,
         })
-    }
-}
-
-/// Detaches a run's context when the run ends or is dropped.
-struct Attached<'a> {
-    connection: &'a PluginConnection,
-    run_id: String,
-}
-
-impl Drop for Attached<'_> {
-    fn drop(&mut self) {
-        if let Some(context) = self.connection.detach(&self.run_id) {
-            context.cancel();
-        }
     }
 }
 

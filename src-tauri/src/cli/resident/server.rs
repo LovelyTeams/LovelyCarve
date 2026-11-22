@@ -277,7 +277,7 @@ async fn stream_file(
         crate::core::filesystem::tree::fs_tree::FsSession::new(&image)
             .file_stat(&stat_node)
             .map(|stat| stat.size)
-            .map_err(crate::cli::internal_error)
+            .map_err(CliError::from)
     })
     .await
     .map_err(crate::cli::internal_error)??;

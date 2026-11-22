@@ -1,5 +1,6 @@
 //! B-tree traversal and inode lookup.
 use super::*;
+use crate::core::common::error::Failure;
 
 impl<'a> BtrfsVolume<'a> {
     /// Diagnostic: yield the first `limit` (objectid, key_type, offset)
@@ -114,7 +115,11 @@ impl<'a> BtrfsVolume<'a> {
             found = parse_inode_item(inode, data);
             Ok(false)
         })?;
-        found.ok_or_else(|| anyhow!("btrfs: inode {inode} not found in subvolume {subvol}"))
+        found.ok_or_else(|| {
+            anyhow!(Failure::not_found(format!(
+                "btrfs: inode {inode} not found in subvolume {subvol}"
+            )))
+        })
     }
 
     /// One sequential pass over `subvol`'s whole FS tree, emitting every
@@ -451,8 +456,11 @@ pub(super) fn item_at(block: &[u8], slot: usize) -> anyhow::Result<Item> {
     if end > block.len() {
         bail!("btrfs: item slot {slot} past block end");
     }
-    let item = Item::ref_from_bytes(&block[start..end])
-        .map_err(|_| anyhow!("btrfs: invalid item record at slot {slot}"))?;
+    let item = Item::ref_from_bytes(&block[start..end]).map_err(|_| {
+        anyhow!(Failure::corrupt(format!(
+            "btrfs: invalid item record at slot {slot}"
+        )))
+    })?;
     Ok(*item)
 }
 
@@ -471,8 +479,11 @@ pub(super) fn key_pointer_at(block: &[u8], slot: usize) -> anyhow::Result<KeyPoi
     if end > block.len() {
         bail!("btrfs: key-pointer slot {slot} past block end");
     }
-    let kp = KeyPointer::ref_from_bytes(&block[start..end])
-        .map_err(|_| anyhow!("btrfs: invalid key pointer at slot {slot}"))?;
+    let kp = KeyPointer::ref_from_bytes(&block[start..end]).map_err(|_| {
+        anyhow!(Failure::corrupt(format!(
+            "btrfs: invalid key pointer at slot {slot}"
+        )))
+    })?;
     Ok(*kp)
 }
 

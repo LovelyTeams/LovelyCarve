@@ -5,6 +5,7 @@ use std::io::{Read, Seek, SeekFrom};
 use anyhow::{anyhow, bail, Result};
 
 use super::{timestamps_to_mactb, ExfatVolume};
+use crate::core::common::error::Failure;
 use crate::core::filesystem::fs_dispatch::build_stat;
 use crate::core::filesystem::tree::fs_tree::{FsDataRun, FsStat, Mactb};
 
@@ -42,7 +43,7 @@ impl ExfatVolume {
             entry_offset: self
                 .base_offset
                 .checked_add(file.entry_offset())
-                .ok_or_else(|| anyhow!("exFAT offset overflow"))?,
+                .ok_or_else(|| anyhow!(Failure::corrupt("exFAT offset overflow")))?,
             name: file.name().to_string(),
             attributes: file.attributes().bits(),
             size: file.len(),
@@ -68,7 +69,7 @@ impl ExfatVolume {
             let physical_offset = self
                 .base_offset
                 .checked_add(offset)
-                .ok_or_else(|| anyhow!("exFAT extent offset overflow"))?;
+                .ok_or_else(|| anyhow!(Failure::corrupt("exFAT extent offset overflow")))?;
             if let Some(previous) = runs
                 .last_mut()
                 .filter(|run| run.physical_offset + run.length == physical_offset)
@@ -122,7 +123,7 @@ impl ExfatVolume {
                 .read(&mut buffer[..want])
                 .map_err(|error| anyhow!("exFAT stream {path}: {error}"))?;
             if count == 0 {
-                bail!("exFAT truncated file {path}");
+                bail!(Failure::corrupt(format!("exFAT truncated file {path}")));
             }
             visitor(&buffer[..count])?;
             total += count as u64;

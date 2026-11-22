@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use anyhow::{anyhow, bail, Result};
 
 use super::{entry_timestamps, leaf_name, parent_dir, FatVolume};
+use crate::core::common::error::Failure;
 use crate::core::filesystem::fs_dispatch::build_stat;
 use crate::core::filesystem::tree::fs_tree::{FsDataRun, FsStat, Mactb};
 
@@ -74,7 +75,7 @@ impl FatVolume {
                     entry_offset: self
                         .base_offset
                         .checked_add(entry.entry_offset())
-                        .ok_or_else(|| anyhow!("FAT entry offset overflow"))?,
+                        .ok_or_else(|| anyhow!(Failure::corrupt("FAT entry offset overflow")))?,
                     name: entry.file_name(),
                     short_name: entry.short_file_name(),
                     attributes: entry.attributes().bits(),
@@ -96,7 +97,9 @@ impl FatVolume {
                     let extent = extent.map_err(|error| anyhow!("FAT extents {path}: {error}"))?;
                     let length = u64::from(extent.size);
                     if length == 0 || !visited.insert(extent.offset) {
-                        bail!("FAT invalid or cyclic cluster chain: {path}");
+                        bail!(Failure::corrupt(format!(
+                            "FAT invalid or cyclic cluster chain: {path}"
+                        )));
                     }
                     if extent
                         .offset
@@ -105,10 +108,12 @@ impl FatVolume {
                     {
                         bail!("FAT extent outside partition: {path}");
                     }
-                    let physical_offset = self
-                        .base_offset
-                        .checked_add(extent.offset)
-                        .ok_or_else(|| anyhow!("FAT extent offset overflow: {path}"))?;
+                    let physical_offset =
+                        self.base_offset.checked_add(extent.offset).ok_or_else(|| {
+                            anyhow!(Failure::corrupt(format!(
+                                "FAT extent offset overflow: {path}"
+                            )))
+                        })?;
                     if let Some(previous) = runs
                         .last_mut()
                         .filter(|run| run.physical_offset + run.length == physical_offset)
@@ -124,14 +129,14 @@ impl FatVolume {
                     logical_offset += length;
                 }
                 if logical_offset != metadata.size {
-                    bail!(
+                    bail!(Failure::corrupt(format!(
                         "FAT truncated cluster chain {path}: {logical_offset}/{} bytes",
                         metadata.size
-                    );
+                    )));
                 }
                 return Ok((metadata, runs));
             }
-            bail!("FAT file not found: {path}")
+            bail!(Failure::not_found(format!("FAT file not found: {path}")))
         })
     }
 

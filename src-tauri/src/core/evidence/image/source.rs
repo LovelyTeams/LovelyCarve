@@ -1,5 +1,6 @@
 //! source implementation.
 use super::*;
+use crate::core::common::error::Failure;
 
 pub(super) enum ImageSource {
     /// Saved evidence identity without a byte source. Reads always fail.
@@ -400,7 +401,7 @@ impl ImageSource {
         dst: &mut [u8],
     ) -> anyhow::Result<(usize, Vec<BadRegion>)> {
         if matches!(self, Self::Indexed { .. }) {
-            anyhow::bail!(INDEX_ONLY_READ_ERROR);
+            anyhow::bail!(Failure::not_found(INDEX_ONLY_READ_ERROR));
         }
         if let Some(reader) = self.forced_raw_reader() {
             return self.read_forced_raw(reader, offset, dst);
@@ -414,7 +415,7 @@ impl ImageSource {
         let dst = &mut dst[..available];
 
         match self {
-            Self::Indexed { .. } => anyhow::bail!(INDEX_ONLY_READ_ERROR),
+            Self::Indexed { .. } => anyhow::bail!(Failure::not_found(INDEX_ONLY_READ_ERROR)),
             Self::Raw { mmap, .. } => {
                 let start = usize::try_from(start)
                     .context("image offset does not fit in memory address space")?;
@@ -529,7 +530,7 @@ impl ImageSource {
         len: usize,
     ) -> anyhow::Result<(Vec<u8>, Vec<BadRegion>)> {
         if matches!(self, Self::Indexed { .. }) {
-            anyhow::bail!(INDEX_ONLY_READ_ERROR);
+            anyhow::bail!(Failure::not_found(INDEX_ONLY_READ_ERROR));
         }
         if let Some(reader) = self.forced_raw_reader() {
             let mut output = vec![0; self.read_length(offset, len)];
@@ -545,7 +546,7 @@ impl ImageSource {
         }
 
         match self {
-            Self::Indexed { .. } => anyhow::bail!(INDEX_ONLY_READ_ERROR),
+            Self::Indexed { .. } => anyhow::bail!(Failure::not_found(INDEX_ONLY_READ_ERROR)),
             Self::Raw { mmap, .. } => {
                 let start = usize::try_from(start)
                     .context("image offset does not fit in memory address space")?;
@@ -695,7 +696,9 @@ impl ImageSource {
                 // gated upstream). Return an empty vec so the command at
                 // least fails loudly with an obvious zero-length result
                 // rather than panicking.
-                anyhow::bail!("folder evidence does not support byte-level reads")
+                anyhow::bail!(Failure::unsupported(
+                    "folder evidence does not support byte-level reads"
+                ))
             }
         }
     }
@@ -776,10 +779,7 @@ pub(super) fn validate_source_file_snapshots(
 ) -> anyhow::Result<()> {
     if current.len != expected.len {
         anyhow::bail!(
-            "源镜像文件已变化：{} 打开时大小为 {} 字节，当前为 {} 字节。请重新加载镜像后再出具哈希或导出结论。",
-            expected.path.display(),
-            expected.len,
-            current.len
+            Failure::source_changed(format!("源镜像文件已变化：{} 打开时大小为 {} 字节，当前为 {} 字节。请重新加载镜像后再出具哈希或导出结论。", expected.path.display(), expected.len, current.len))
         );
     }
     if let (Some(expected_modified), Some(current_modified)) =
@@ -787,10 +787,7 @@ pub(super) fn validate_source_file_snapshots(
     {
         if current_modified != expected_modified {
             anyhow::bail!(
-                "源镜像文件已变化：{} 打开时修改时间为 {}，当前为 {}。请重新加载镜像后再出具哈希或导出结论。",
-                expected.path.display(),
-                expected_modified,
-                current_modified
+                Failure::source_changed(format!("源镜像文件已变化：{} 打开时修改时间为 {}，当前为 {}。请重新加载镜像后再出具哈希或导出结论。", expected.path.display(), expected_modified, current_modified))
             );
         }
     }
@@ -799,10 +796,7 @@ pub(super) fn validate_source_file_snapshots(
     {
         if current_created != expected_created {
             anyhow::bail!(
-                "源镜像文件已变化：{} 打开时创建时间为 {}，当前为 {}。请重新加载镜像后再出具哈希或导出结论。",
-                expected.path.display(),
-                expected_created,
-                current_created
+                Failure::source_changed(format!("源镜像文件已变化：{} 打开时创建时间为 {}，当前为 {}。请重新加载镜像后再出具哈希或导出结论。", expected.path.display(), expected_created, current_created))
             );
         }
     }

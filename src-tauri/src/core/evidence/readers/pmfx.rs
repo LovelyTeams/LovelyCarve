@@ -14,6 +14,8 @@ use anyhow::{anyhow, Context};
 use binrw::{BinRead, BinReaderExt};
 use flate2::read::ZlibDecoder;
 
+use crate::core::common::error::Failure;
+
 pub const PMFX_SIGNATURE: [u8; 4] = *b"PMFX";
 
 const BASE_HEADER_SIZE: usize = 0x40;
@@ -240,7 +242,7 @@ impl PmfxImage {
         }
         let block_offset = block_index
             .checked_mul(self.header.block_size)
-            .ok_or_else(|| anyhow!("PMFX block offset overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("PMFX block offset overflow")))?;
         let remaining = self.header.logical_size.saturating_sub(block_offset);
         usize::try_from(remaining.min(self.header.block_size))
             .context("PMFX block size does not fit in memory address space")
@@ -260,9 +262,9 @@ impl PmfxImage {
         let compressed = self.header.compressed();
         let l2 = self.load_l2(l1_index)?;
         if compressed {
-            let base = l2_index
-                .checked_mul(16)
-                .ok_or_else(|| anyhow!("PMFX L2 compressed entry offset overflow"))?;
+            let base = l2_index.checked_mul(16).ok_or_else(|| {
+                anyhow!(Failure::corrupt("PMFX L2 compressed entry offset overflow"))
+            })?;
             let raw = read_compressed_block_entry(l2, base)?;
             Ok(BlockEntry {
                 offset: raw.offset,
@@ -273,7 +275,7 @@ impl PmfxImage {
         } else {
             let base = l2_index
                 .checked_mul(8)
-                .ok_or_else(|| anyhow!("PMFX L2 raw entry offset overflow"))?;
+                .ok_or_else(|| anyhow!(Failure::corrupt("PMFX L2 raw entry offset overflow")))?;
             let raw = read_raw_block_entry(l2, base)?;
             Ok(BlockEntry {
                 offset: raw.offset,
@@ -293,9 +295,11 @@ impl PmfxImage {
             };
             let table_size_u64 = u64::from(self.header.entries_per_l2)
                 .checked_mul(entry_size)
-                .ok_or_else(|| anyhow!("PMFX L2 table size overflow"))?;
+                .ok_or_else(|| anyhow!(Failure::corrupt("PMFX L2 table size overflow")))?;
             if table_size_u64 > MAX_L2_TABLE_SIZE {
-                anyhow::bail!("PMFX L2 table is too large: {table_size_u64} bytes");
+                anyhow::bail!(Failure::resource_limit(format!(
+                    "PMFX L2 table is too large: {table_size_u64} bytes"
+                )));
             }
             let table_size = usize::try_from(table_size_u64)
                 .context("PMFX L2 table size does not fit in memory address space")?;
@@ -326,20 +330,19 @@ impl PmfxImage {
         let allocation_size = usize::try_from(entry.allocation_size)
             .context("PMFX chained allocation size does not fit in memory address space")?;
         if allocation_size < 4 {
-            anyhow::bail!("invalid PMFX chained payload allocation");
+            anyhow::bail!(Failure::corrupt("invalid PMFX chained payload allocation"));
         }
         let head = self.read_exact_vec_at(entry.offset, allocation_size)?;
         let fragment_count = BinReaderExt::read_le::<u32>(&mut Cursor::new(head.as_slice()))
             .context("read PMFX chained fragment count")? as usize;
-        let table_len = 4_usize
-            .checked_add(
-                fragment_count
-                    .checked_mul(12)
-                    .ok_or_else(|| anyhow!("PMFX chained fragment table overflow"))?,
-            )
-            .ok_or_else(|| anyhow!("PMFX chained fragment table overflow"))?;
+        let table_len =
+            4_usize
+                .checked_add(fragment_count.checked_mul(12).ok_or_else(|| {
+                    anyhow!(Failure::corrupt("PMFX chained fragment table overflow"))
+                })?)
+                .ok_or_else(|| anyhow!(Failure::corrupt("PMFX chained fragment table overflow")))?;
         if table_len > head.len() {
-            anyhow::bail!("invalid PMFX chained fragment table");
+            anyhow::bail!(Failure::corrupt("invalid PMFX chained fragment table"));
         }
 
         let mut fragments = Vec::with_capacity(fragment_count);
@@ -366,7 +369,7 @@ impl PmfxImage {
         }
 
         if out.len() != stored_size {
-            anyhow::bail!("PMFX chained payload ended early");
+            anyhow::bail!(Failure::corrupt("PMFX chained payload ended early"));
         }
         Ok(out)
     }
@@ -377,7 +380,7 @@ impl PmfxImage {
         }
         let end = offset
             .checked_add(len as u64)
-            .ok_or_else(|| anyhow!("PMFX physical read offset overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("PMFX physical read offset overflow")))?;
         if end > self.file_len {
             anyhow::bail!(
                 "PMFX physical read 0x{offset:x}..0x{end:x} exceeds file size 0x{:x}",
@@ -408,7 +411,9 @@ fn read_header(file: &mut File) -> anyhow::Result<PmfxHeader> {
     let fixed = RawPmfxHeader::read(&mut Cursor::new(&base)).context("read PMFX fixed header")?;
     let header_size = fixed.header_size as usize;
     if !(BASE_HEADER_SIZE..=MAX_HEADER_SIZE).contains(&header_size) {
-        anyhow::bail!("invalid PMFX header size: 0x{header_size:x}");
+        anyhow::bail!(Failure::corrupt(format!(
+            "invalid PMFX header size: 0x{header_size:x}"
+        )));
     }
 
     let inspect_size = header_size;
@@ -416,21 +421,23 @@ fn read_header(file: &mut File) -> anyhow::Result<PmfxHeader> {
     read_exact_at(file, 0, &mut raw)?;
 
     if fixed.sector_size == 0 || fixed.block_sectors == 0 || fixed.entries_per_l2 == 0 {
-        anyhow::bail!("invalid PMFX geometry");
+        anyhow::bail!(Failure::corrupt("invalid PMFX geometry"));
     }
 
     let sector_size = usize::try_from(fixed.sector_size)
         .context("PMFX sector size does not fit in memory address space")?;
     let block_size = u64::from(fixed.block_sectors)
         .checked_mul(sector_size as u64)
-        .ok_or_else(|| anyhow!("PMFX block size overflow"))?;
+        .ok_or_else(|| anyhow!(Failure::corrupt("PMFX block size overflow")))?;
     if block_size == 0 || block_size > MAX_BLOCK_SIZE {
-        anyhow::bail!("invalid PMFX block size: {block_size}");
+        anyhow::bail!(Failure::corrupt(format!(
+            "invalid PMFX block size: {block_size}"
+        )));
     }
     let logical_size = fixed
         .total_sectors
         .checked_mul(sector_size as u64)
-        .ok_or_else(|| anyhow!("PMFX logical size overflow"))?;
+        .ok_or_else(|| anyhow!(Failure::corrupt("PMFX logical size overflow")))?;
     let block_count = if fixed.total_sectors == 0 {
         0
     } else {
@@ -461,7 +468,7 @@ fn read_l1(file: &mut File, header: &PmfxHeader) -> anyhow::Result<Vec<u64>> {
     }
     let bytes = u64::from(header.l1_count)
         .checked_mul(8)
-        .ok_or_else(|| anyhow!("PMFX L1 table size overflow"))?;
+        .ok_or_else(|| anyhow!(Failure::corrupt("PMFX L1 table size overflow")))?;
     let rounded = align_up(bytes, TABLE_ALIGNMENT)?;
     let table_len = usize::try_from(rounded)
         .context("PMFX L1 table size does not fit in memory address space")?;
@@ -499,13 +506,13 @@ fn read_utf16le_name(raw: &[u8]) -> String {
 
 fn align_up(value: u64, alignment: u64) -> anyhow::Result<u64> {
     if alignment == 0 {
-        anyhow::bail!("invalid PMFX table alignment");
+        anyhow::bail!(Failure::corrupt("invalid PMFX table alignment"));
     }
     let mask = alignment - 1;
     value
         .checked_add(mask)
         .map(|rounded| rounded & !mask)
-        .ok_or_else(|| anyhow!("PMFX table alignment overflow"))
+        .ok_or_else(|| anyhow!(Failure::corrupt("PMFX table alignment overflow")))
 }
 
 fn block_size_usize(block_size: u64) -> anyhow::Result<usize> {
@@ -519,7 +526,9 @@ fn block_size_u32(block_size: u64) -> anyhow::Result<u32> {
 fn payload_len_usize(block_size: u64, stored_size: u32) -> anyhow::Result<usize> {
     let stored_size = u64::from(stored_size);
     if stored_size > block_size.saturating_add(MAX_PAYLOAD_SLOP) {
-        anyhow::bail!("PMFX payload is too large: {stored_size} bytes");
+        anyhow::bail!(Failure::resource_limit(format!(
+            "PMFX payload is too large: {stored_size} bytes"
+        )));
     }
     usize::try_from(stored_size).context("PMFX payload size does not fit in memory address space")
 }

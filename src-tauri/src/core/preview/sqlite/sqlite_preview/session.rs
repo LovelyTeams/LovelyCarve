@@ -1,5 +1,6 @@
 //! session implementation.
 use super::*;
+use crate::core::common::error::Failure;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 
 /// Ensure `session` holds a VFS import covering `(image_id, node_id)`.
@@ -55,7 +56,10 @@ pub(super) fn load_session(
         {
             let (bytes, truncated) = read_node_prefix(image, &wal.node_id)
                 .with_context(|| format!("read {}", wal.name))?;
-            anyhow::ensure!(!truncated, "{} exceeds the preview import limit", wal.name);
+            anyhow::ensure!(
+                !truncated,
+                Failure::resource_limit(format!("{} exceeds the preview import limit", wal.name))
+            );
             if !bytes.is_empty() {
                 sqlite_vfs::import_file(&wal_vfs_name(&main_name), &bytes)
                     .with_context(|| format!("import {}", wal.name))?;
@@ -109,7 +113,9 @@ fn find_sidecar_nodes(
         .iter()
         .find(|sibling| sibling.id == node_id)
         .map(|sibling| &sibling.name)
-        .context("SQLite node not found in its parent directory")?;
+        .context(Failure::not_found(
+            "SQLite node not found in its parent directory",
+        ))?;
     let mut found = Vec::new();
     for suffix in ["-wal", "-shm", "-journal"] {
         let wanted = format!("{target_name}{suffix}");
@@ -141,8 +147,10 @@ pub(crate) fn read_node_prefix(
     let bytes = fs_tree::read_file_limited(image, node_id, read_limit)?;
     anyhow::ensure!(
         stat.is_none() || bytes.len() == read_limit,
-        "SQLite file was read short ({} of {read_limit} bytes)",
-        bytes.len()
+        Failure::corrupt(format!(
+            "SQLite file was read short ({} of {read_limit} bytes)",
+            bytes.len()
+        ))
     );
     let truncated = stat.is_some_and(|stat| stat.size > MAX_PREVIEW_BYTES);
     Ok((bytes, truncated))

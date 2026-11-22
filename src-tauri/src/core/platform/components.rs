@@ -20,6 +20,8 @@ use lovelycarve_component_abi as abi;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+use crate::core::common::error::Failure;
+
 /// A loaded component and its function table.
 pub(crate) struct Component {
     api: abi::ComponentApiV1,
@@ -61,7 +63,10 @@ impl Component {
         // SAFETY: `api` is writable memory for one table.
         let status = unsafe { entry(api.as_mut_ptr()) };
         if status != abi::STATUS_OK {
-            bail!("组件 {} 初始化失败（ABI 状态 {status}）", path.display());
+            bail!(Failure::unavailable(format!(
+                "组件 {} 初始化失败（ABI 状态 {status}）",
+                path.display()
+            )));
         }
         // SAFETY: every ABI version starts with these two fields, so they are
         // initialised whatever layout the component wrote.
@@ -74,9 +79,7 @@ impl Component {
         };
         if abi_version != abi::ABI_VERSION || struct_size < abi::COMPONENT_API_SIZE {
             bail!(
-                "组件 {} 实现 ABI v{abi_version}（{struct_size} 字节），本程序需要 v{}；请使用与主程序同一次构建的组件",
-                path.display(),
-                abi::ABI_VERSION
+                Failure::unavailable(format!("组件 {} 实现 ABI v{abi_version}（{struct_size} 字节），本程序需要 v{}；请使用与主程序同一次构建的组件", path.display(), abi::ABI_VERSION))
             );
         }
         // SAFETY: a v1 entry point that succeeded wrote the whole v1 table.
@@ -125,11 +128,11 @@ impl Component {
                 format!("组件 {} 对 {method} 的应答格式无效", self.path.display())
             }),
             abi::STATUS_ERROR => Err(anyhow!(message())),
-            abi::STATUS_INVALID_ARGUMENT => Err(anyhow!(
+            abi::STATUS_INVALID_ARGUMENT => Err(anyhow!(Failure::invalid_input(format!(
                 "组件 {} 拒绝了 {method} 调用：{}",
                 self.path.display(),
                 message()
-            )),
+            )))),
             abi::STATUS_PANIC => Err(anyhow!(
                 "组件 {} 处理 {method} 时崩溃：{}",
                 self.path.display(),
@@ -193,8 +196,7 @@ fn missing_library(file_name: &OsString, directories: &[PathBuf]) -> anyhow::Err
         .collect::<Vec<_>>()
         .join("、");
     anyhow!(
-        "缺少组件 {}：发布包应把它放在主程序旁；开发构建请先运行 `just build-components`（已查找：{searched}）",
-        file_name.to_string_lossy()
+        Failure::unavailable(format!("缺少组件 {}：发布包应把它放在主程序旁；开发构建请先运行 `just build-components`（已查找：{searched}）", file_name.to_string_lossy()))
     )
 }
 

@@ -4,7 +4,7 @@
 //! plugin's calls. The task runner (and the probe example) feed the result
 //! to [`super::TaskWorker::run`].
 
-use std::{collections::BTreeMap, path::Path, sync::Arc};
+use std::{collections::BTreeMap, mem::DropGuard, path::Path, sync::Arc};
 
 use anyhow::Context as _;
 use lovelycarve_plugin::{
@@ -14,6 +14,7 @@ use lovelycarve_plugin::{
 use tokio_util::sync::CancellationToken;
 
 use super::{AnalyzerManifest, FindScan, HostView, PluginDefinition, ProgressSink, RunContext};
+use crate::core::common::error::Failure;
 use crate::core::{
     analysis::{
         identify::systems::DetectedSystem,
@@ -172,7 +173,7 @@ pub fn prepare_run(
         }
     };
     if cancel.is_cancelled() {
-        anyhow::bail!("任务已取消");
+        anyhow::bail!(Failure::cancelled("任务已取消"));
     }
 
     let mut options = serde_json::Map::new();
@@ -221,12 +222,12 @@ pub fn prepare_run(
             started_at: &chrono::Utc::now().to_rfc3339(),
         },
     )?;
-    let mut staging = StagingGuard {
-        case_dir: plan.case_dir,
-        image_id: &image_id,
-        run_id,
-        armed: true,
-    };
+    // Discards the staging run unless preparation finishes.
+    let staging = DropGuard::new(run_id, |run_id| {
+        if let Err(error) = record_store::discard(plan.case_dir, &image_id, run_id) {
+            tracing::warn!(run_id = %run_id, "staging run not discarded: {error:#}");
+        }
+    });
     let writer = RecordWriter::open(plan.case_dir, &image_id, run_id, &plan.hello.records)?;
     let context = Arc::new(RunContext::new(
         run_id.to_owned(),
@@ -265,7 +266,7 @@ pub fn prepare_run(
             .collect(),
         locale: "zh-CN".to_owned(),
     };
-    staging.armed = false;
+    DropGuard::dismiss(staging);
     Ok(PreparedRun { context, start })
 }
 
@@ -279,7 +280,7 @@ fn find_inputs(
     let mut paths = Vec::new();
     while !scan.is_complete() {
         if cancel.is_cancelled() {
-            anyhow::bail!("任务已取消");
+            anyhow::bail!(Failure::cancelled("任务已取消"));
         }
         paths.extend(view.find_page(&mut scan)?);
         if paths.len() > MAX_INPUTS {
@@ -299,24 +300,6 @@ fn find_inputs(
         }
     }
     Ok(inputs)
-}
-
-/// Discards the staging run unless preparation finished.
-struct StagingGuard<'a> {
-    case_dir: &'a Path,
-    image_id: &'a str,
-    run_id: &'a str,
-    armed: bool,
-}
-
-impl Drop for StagingGuard<'_> {
-    fn drop(&mut self) {
-        if self.armed {
-            if let Err(error) = record_store::discard(self.case_dir, self.image_id, self.run_id) {
-                tracing::warn!(run_id = %self.run_id, "staging run not discarded: {error:#}");
-            }
-        }
-    }
 }
 
 /// A JSON value as MessagePack.

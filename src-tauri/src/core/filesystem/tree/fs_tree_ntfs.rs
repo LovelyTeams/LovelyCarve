@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{ImageFormat, Partition, PartitionKind};
 use crate::core::filesystem::evidence_session::EvidenceSession;
@@ -26,9 +27,9 @@ pub(crate) fn open_ntfs_for_source(
             let partition = find_partition(image, &partition_id.to_string())?;
             if partition.kind == PartitionKind::Bitlocker {
                 let unlocked = image.bitlocker_unlocked(partition_id).ok_or_else(|| {
-                    anyhow::anyhow!(
+                    anyhow::anyhow!(Failure::invalid_input(format!(
                         "BitLocker partition {partition_id} is locked; unlock it before reading"
-                    )
+                    )))
                 })?;
                 return NtfsVolume::open_bitlocker(unlocked, partition_id);
             }
@@ -54,19 +55,20 @@ pub fn ntfs_usn_journal(
         source
     } else if let Some(rest) = parent_id.strip_prefix("lvm:") {
         let mut parts = rest.split(':');
-        let part_id: u8 = parts
-            .next()
-            .and_then(|p| p.parse().ok())
-            .ok_or_else(|| anyhow::anyhow!("invalid lvm volume key: {parent_id}"))?;
-        let lv_index: usize = parts
-            .next()
-            .and_then(|p| p.parse().ok())
-            .ok_or_else(|| anyhow::anyhow!("invalid lvm volume key: {parent_id}"))?;
+        let part_id: u8 = parts.next().and_then(|p| p.parse().ok()).ok_or_else(|| {
+            anyhow::anyhow!(Failure::invalid_input(format!(
+                "invalid lvm volume key: {parent_id}"
+            )))
+        })?;
+        let lv_index: usize = parts.next().and_then(|p| p.parse().ok()).ok_or_else(|| {
+            anyhow::anyhow!(Failure::invalid_input(format!(
+                "invalid lvm volume key: {parent_id}"
+            )))
+        })?;
         NtfsSource::Lvm { part_id, lv_index }
     } else {
         let part_id: u8 = parent_id
-            .strip_prefix("part:")
-            .unwrap_or(parent_id)
+            .trim_prefix("part:")
             .parse()
             .map_err(|_| anyhow::anyhow!("not an NTFS volume key: {parent_id}"))?;
         NtfsSource::Partition(part_id)

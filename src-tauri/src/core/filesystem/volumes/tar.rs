@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Result};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::DiskImage;
 use crate::core::evidence::readers::tar_image::{TarEntry, TarEntryKind};
 use crate::core::filesystem::tree::fs_tree::{
@@ -175,7 +176,7 @@ pub fn file_stat(image: &Arc<DiskImage>, rel: &str, node_id: &str) -> Result<FsS
         .ok_or_else(|| anyhow!("image is not a tar source"))?;
     let entry = tar
         .lookup(rel)
-        .ok_or_else(|| anyhow!("not found in tar: {rel}"))?;
+        .ok_or_else(|| anyhow!(Failure::not_found(format!("not found in tar: {rel}"))))?;
     // Sample / fingerprint only entries whose OWN size is the content size:
     // regular files and hardlinks (a hardlink reads its target's bytes). A
     // symlink is excluded — its `size` is the link-path length, so sampling the

@@ -5,13 +5,14 @@ use anyhow::bail;
 use crate::core::carving::carver::CarveSource;
 use crate::core::carving::carver_formats::FormatScanResult;
 use crate::core::carving::carver_reader::CarveReader;
+use crate::core::common::error::Failure;
 
 pub(in crate::core) fn scan_gif<S: CarveSource>(
     reader: &mut CarveReader<'_, S>,
 ) -> anyhow::Result<Option<FormatScanResult>> {
     let header = reader.read_vec(13)?;
     if &header[..6] != b"GIF87a" && &header[..6] != b"GIF89a" {
-        bail!("invalid GIF signature");
+        bail!(Failure::corrupt("invalid GIF signature"));
     }
     let width = usize::from(u16::from_le_bytes([header[6], header[7]]));
     let height = usize::from(u16::from_le_bytes([header[8], header[9]]));
@@ -75,7 +76,7 @@ fn read_gif_extension<S: CarveSource>(reader: &mut CarveReader<'_, S>) -> anyhow
         0xf9 => {
             let control = reader.read_vec(6)?;
             if control[0] != 4 || control[5] != 0 {
-                bail!("invalid GIF graphic control extension");
+                bail!(Failure::corrupt("invalid GIF graphic control extension"));
             }
             return Ok(());
         }
@@ -126,7 +127,7 @@ pub(in crate::core) fn scan_pcx<S: CarveSource>(
         || x_max < x_min
         || y_max < y_min
     {
-        bail!("invalid PCX header");
+        bail!(Failure::corrupt("invalid PCX header"));
     }
     let width = u32::from(x_max) - u32::from(x_min) + 1;
     let height = u32::from(y_max) - u32::from(y_min) + 1;
@@ -142,7 +143,7 @@ pub(in crate::core) fn scan_pcx<S: CarveSource>(
     if encoding == 0 {
         let expected = u64::from(bytes_per_line) * u64::from(number_of_planes) * u64::from(height);
         if reader.discard_up_to(expected)? != expected {
-            bail!("truncated PCX image data");
+            bail!(Failure::corrupt("truncated PCX image data"));
         }
         total += expected;
     } else {
@@ -157,7 +158,7 @@ pub(in crate::core) fn scan_pcx<S: CarveSource>(
         total += 1;
         if marker == 0x0c {
             if reader.discard_up_to(256)? != 256 {
-                bail!("truncated PCX palette");
+                bail!(Failure::corrupt("truncated PCX palette"));
             }
             total += 256;
         }
@@ -177,7 +178,7 @@ fn read_pcx_rle_line<S: CarveSource>(
         if byte & 0xc0 == 0xc0 {
             let run = usize::from(byte & 0x3f);
             if run == 0 {
-                bail!("invalid PCX RLE run");
+                bail!(Failure::corrupt("invalid PCX RLE run"));
             }
             reader.read_byte()?;
             consumed += 1;

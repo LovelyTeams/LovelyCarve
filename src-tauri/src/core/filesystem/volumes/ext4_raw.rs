@@ -7,6 +7,7 @@
 
 use chrono::{TimeZone, Utc};
 
+use crate::core::common::error::Failure;
 use crate::core::filesystem::tree::fs_tree::{FsDataRun, Mactb, NodeKind};
 
 const EXT4_EXTENTS_FL: u32 = 0x0008_0000;
@@ -63,7 +64,7 @@ impl RawInode {
 
         let extra_end = 128 + usize::from(read_u16(bytes, 128).unwrap_or(0));
         if extra_end > bytes.len() {
-            anyhow::bail!("invalid ext4 extra inode size");
+            anyhow::bail!(Failure::corrupt("invalid ext4 extra inode size"));
         }
         let extra = |offset: usize| {
             (offset + 4 <= extra_end)
@@ -171,13 +172,13 @@ where
         anyhow::bail!("ext4 extent tree is too deep");
     }
     if read_u16(node, 0)? != EXT4_EXTENT_MAGIC {
-        anyhow::bail!("invalid ext4 extent header");
+        anyhow::bail!(Failure::corrupt("invalid ext4 extent header"));
     }
     let entries = read_u16(node, 2)? as usize;
     let tree_depth = read_u16(node, 6)?;
     let capacity = read_u16(node, 4)? as usize;
     if entries > capacity || 12 + entries * 12 > node.len() || tree_depth > 5 {
-        anyhow::bail!("invalid ext4 extent entries or depth");
+        anyhow::bail!(Failure::corrupt("invalid ext4 extent entries or depth"));
     }
     let mut out = Vec::new();
 
@@ -210,10 +211,9 @@ where
                 break;
             }
             let leaf = read_u32(node, off + 4)? as u64 | ((read_u16(node, off + 8)? as u64) << 32);
-            let child = load_block(
-                leaf.checked_mul(block_size)
-                    .ok_or_else(|| anyhow::anyhow!("ext4 extent offset overflow"))?,
-            )?;
+            let child = load_block(leaf.checked_mul(block_size).ok_or_else(|| {
+                anyhow::anyhow!(Failure::corrupt("ext4 extent offset overflow"))
+            })?)?;
             if read_u16(&child, 6)?.checked_add(1) != Some(tree_depth) {
                 anyhow::bail!("ext4 extent child depth mismatch");
             }
@@ -263,7 +263,9 @@ where
                     .physical_block
                     .checked_mul(block_size)
                     .and_then(|offset| base_offset.checked_add(offset))
-                    .ok_or_else(|| anyhow::anyhow!("ext4 physical extent offset overflow"))?,
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(Failure::corrupt("ext4 physical extent offset overflow"))
+                    })?,
                 length: extent_len.min(inode.size - logical_offset),
             });
         }

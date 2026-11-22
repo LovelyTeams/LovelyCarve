@@ -3,6 +3,8 @@ use super::*;
 use anyhow::{ensure, Context};
 use ntfs::structured_values::NtfsFileAttributeFlags;
 
+use crate::core::common::error::Failure;
+
 pub(super) const WOF_TAG: u32 = 0x8000_0017;
 
 #[derive(Debug, Clone)]
@@ -13,13 +15,18 @@ pub(super) struct ReparsePoint {
 
 impl ReparsePoint {
     pub(super) fn parse(bytes: &[u8]) -> Result<Self> {
-        ensure!(bytes.len() >= 8, "truncated NTFS reparse header");
+        ensure!(
+            bytes.len() >= 8,
+            Failure::corrupt("truncated NTFS reparse header")
+        );
         let tag = u32::from_le_bytes(bytes[..4].try_into()?);
         let size = usize::from(u16::from_le_bytes(bytes[4..6].try_into()?));
         ensure!(
             bytes.len() <= 16 * 1024 && 8 + size <= bytes.len(),
-            "invalid NTFS reparse length: tag {tag:#010x}, declared {size}, attribute {}",
-            bytes.len()
+            Failure::corrupt(format!(
+                "invalid NTFS reparse length: tag {tag:#010x}, declared {size}, attribute {}",
+                bytes.len()
+            ))
         );
         Ok(Self {
             tag,
@@ -45,7 +52,7 @@ impl ReparsePoint {
         Ok(Some(u32::from_le_bytes(
             self.data
                 .get(8..12)
-                .context("truncated symlink flags")?
+                .context(Failure::corrupt("truncated symlink flags"))?
                 .try_into()?,
         )))
     }
@@ -56,28 +63,25 @@ impl ReparsePoint {
             0xa000_0003 => 8,
             _ => return Ok(None),
         };
-        ensure!(self.data.len() >= start, "truncated NTFS link metadata");
+        ensure!(
+            self.data.len() >= start,
+            Failure::corrupt("truncated NTFS link metadata")
+        );
         let offset = usize::from(u16::from_le_bytes(self.data[field..field + 2].try_into()?));
         let length = usize::from(u16::from_le_bytes(
             self.data[field + 2..field + 4].try_into()?,
         ));
         ensure!(
-            offset % 2 == 0 && length % 2 == 0,
-            "unaligned NTFS link target"
+            offset.is_multiple_of(2) && length.is_multiple_of(2),
+            Failure::corrupt("unaligned NTFS link target")
         );
         let bytes = self
             .data
             .get(start + offset..start + offset + length)
-            .context("NTFS link target outside reparse data")?;
-        let words: Vec<_> = bytes
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-            .collect();
-        Ok(Some(
-            String::from_utf16(&words).context("invalid UTF-16 NTFS link target")?,
-        ))
+            .context(Failure::corrupt("NTFS link target outside reparse data"))?;
+        Ok(Some(String::from_utf16le(bytes).context(
+            Failure::corrupt("invalid UTF-16 NTFS link target"),
+        )?))
     }
 }
 

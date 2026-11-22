@@ -8,6 +8,8 @@ use anyhow::{anyhow, bail, ensure, Context, Result};
 use lamfold::FoldError;
 use std::collections::HashSet;
 
+use crate::core::common::error::Failure;
+
 struct RdbSource<'a> {
     source: &'a dyn SectorSource,
     block_size: usize,
@@ -24,12 +26,15 @@ impl amiga_rdb::BlockSource for RdbSource<'_> {
     }
     fn read_block(&mut self, lba: u64, bytes: &mut [u8]) -> Result<()> {
         let result = (|| {
-            ensure!(self.remaining > 0, "RDB metadata read limit");
+            ensure!(
+                self.remaining > 0,
+                Failure::resource_limit("RDB metadata read limit")
+            );
             self.remaining -= 1;
             ensure!(bytes.len() == self.block_size, "RDB block size mismatch");
             let offset = lba
                 .checked_mul(self.block_size as u64)
-                .context("RDB offset overflow")?;
+                .context(Failure::corrupt("RDB offset overflow"))?;
             ensure!(
                 offset
                     .checked_add(bytes.len() as u64)
@@ -103,7 +108,9 @@ impl PartParser for RdbParser {
         }
         let Some(block_size) = valid_size else {
             if saw_magic {
-                bail!("RDB header magic present but no valid checksum/geometry");
+                bail!(Failure::corrupt(
+                    "RDB header magic present but no valid checksum/geometry"
+                ));
             }
             return Ok(None);
         };
@@ -120,41 +127,49 @@ impl PartParser for RdbParser {
         let rdb = parsed.map_err(|error| anyhow!("RDB parse: {error}"))?;
         ensure!(
             rdb.partitions.len() <= 256 && rdb.filesystems.len() <= 256,
-            "RDB partition/driver count limit"
+            Failure::resource_limit("RDB partition/driver count limit")
         );
         ensure!(
             rdb.bad_blocks.is_empty(),
-            "RDB BADB remapping is not supported; refusing unmapped source bytes"
+            Failure::unsupported(
+                "RDB BADB remapping is not supported; refusing unmapped source bytes"
+            )
         );
         let issues = rdb.validate();
-        ensure!(issues.is_empty(), "RDB invalid table: {issues:?}");
+        ensure!(
+            issues.is_empty(),
+            Failure::corrupt(format!("RDB invalid table: {issues:?}"))
+        );
         rdb.partitions
             .iter()
             .enumerate()
             .map(|(index, part)| {
                 let env = &part.envec_raw;
-                ensure!(env.len() > 16, "RDB truncated DosEnvec");
-                ensure!(env[2] == 0, "RDB nonzero sector origin is unsupported");
+                ensure!(env.len() > 16, Failure::corrupt("RDB truncated DosEnvec"));
+                ensure!(
+                    env[2] == 0,
+                    Failure::unsupported("RDB nonzero sector origin is unsupported")
+                );
                 ensure!(
                     env[1].checked_mul(4) == Some(rdb.block_bytes),
                     "RDB DosEnvec device block size mismatch"
                 );
                 ensure!(
                     env[3] > 0 && env[4] > 0 && env[5] > 0 && env[10] >= env[9],
-                    "RDB invalid partition geometry"
+                    Failure::corrupt("RDB invalid partition geometry")
                 );
                 let cylinder_blocks = u64::from(env[3])
                     .checked_mul(u64::from(env[5]))
-                    .context("RDB cylinder overflow")?;
+                    .context(Failure::corrupt("RDB cylinder overflow"))?;
                 let cylinders = u64::from(env[10]) - u64::from(env[9]) + 1;
                 let start = u64::from(env[9])
                     .checked_mul(cylinder_blocks)
                     .and_then(|value| value.checked_mul(block_size as u64))
-                    .context("RDB start overflow")?;
+                    .context(Failure::corrupt("RDB start overflow"))?;
                 let length = cylinders
                     .checked_mul(cylinder_blocks)
                     .and_then(|value| value.checked_mul(block_size as u64))
-                    .context("RDB length overflow")?;
+                    .context(Failure::corrupt("RDB length overflow"))?;
                 ensure!(
                     length > 0
                         && start
@@ -170,11 +185,11 @@ impl PartParser for RdbParser {
                 let block_size = rdb
                     .block_bytes
                     .checked_mul(env[4])
-                    .context("RDB filesystem block size overflow")?;
+                    .context(Failure::corrupt("RDB filesystem block size overflow"))?;
                 let blocks = cylinders
                     .checked_mul(u64::from(env[3]))
                     .and_then(|value| value.checked_mul(u64::from(env[5] / env[4])))
-                    .context("RDB filesystem block count overflow")?;
+                    .context(Failure::corrupt("RDB filesystem block count overflow"))?;
                 let native = is_ofs_ffs(part.dos_type);
                 if native {
                     ensure!(
@@ -182,7 +197,7 @@ impl PartParser for RdbParser {
                             && block_size.is_power_of_two()
                             && (512..=32768).contains(&block_size)
                             && blocks > 0,
-                        "RDB unsupported OFS/FFS block geometry"
+                        Failure::unsupported("RDB unsupported OFS/FFS block geometry")
                     );
                 }
                 let amiga_geometry = Some(AmigaGeometry {
@@ -192,7 +207,8 @@ impl PartParser for RdbParser {
                     dos_type: part.dos_type,
                 });
                 Ok(Partition {
-                    id: u8::try_from(index).context("RDB partition ID overflow")?,
+                    id: u8::try_from(index)
+                        .context(Failure::corrupt("RDB partition ID overflow"))?,
                     kind: if native {
                         PartitionKind::Amiga
                     } else {

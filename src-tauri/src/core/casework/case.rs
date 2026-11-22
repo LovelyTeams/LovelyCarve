@@ -36,6 +36,7 @@ use crate::core::casework::case_ledger_volumes::{
 use crate::core::casework::case_lock::CaseLock;
 use crate::core::casework::case_paths;
 use crate::core::catalog::snapshot::volume_snapshot::VolumeSnapshot;
+use crate::core::common::error::Failure;
 use crate::core::common::ids::VolumeRef;
 
 #[path = "case_guard.rs"]
@@ -249,7 +250,10 @@ pub fn create_case(dir: &Path, options: CreateCaseOptions) -> anyhow::Result<Cas
     std::fs::create_dir_all(dir)?;
     let ledger_path = case_paths::ledger_path(dir);
     if ledger_path.exists() {
-        anyhow::bail!("directory already contains a case: {}", dir.display());
+        anyhow::bail!(Failure::invalid_input(format!(
+            "directory already contains a case: {}",
+            dir.display()
+        )));
     }
     if has_legacy_case(dir) {
         anyhow::bail!(

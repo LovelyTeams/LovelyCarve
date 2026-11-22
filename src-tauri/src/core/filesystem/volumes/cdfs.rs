@@ -18,6 +18,7 @@ use anyhow::{anyhow, ensure, Context, Result};
 use cdfs::{DirectoryEntry, ExtraAttributes, ISO9660};
 use time::format_description::well_known::Rfc3339;
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{DiskImage, Partition};
 use crate::core::evidence::partitions::PartitionSlice;
@@ -76,11 +77,11 @@ impl CdfsVolume {
         let base_offset = partition
             .start_lba
             .checked_mul(sector_size)
-            .context("CDFS base offset overflow")?;
+            .context(Failure::corrupt("CDFS base offset overflow"))?;
         let physical_length = partition
             .length_lba
             .checked_mul(sector_size)
-            .context("CDFS partition length overflow")?;
+            .context(Failure::corrupt("CDFS partition length overflow"))?;
         ensure!(
             base_offset
                 .checked_add(physical_length)
@@ -120,7 +121,11 @@ impl CdfsVolume {
             } else {
                 iso.open(&parent_path)
                     .map_err(|err| anyhow!("CDFS open directory {parent_path}: {err}"))?
-                    .ok_or_else(|| anyhow!("CDFS directory not found: {parent_path}"))?
+                    .ok_or_else(|| {
+                        anyhow!(Failure::not_found(format!(
+                            "CDFS directory not found: {parent_path}"
+                        )))
+                    })?
             };
             let DirectoryEntry::Directory(directory) = directory else {
                 anyhow::bail!("CDFS entry {parent_path} is not a directory");
@@ -169,7 +174,9 @@ impl CdfsVolume {
             let entry = iso
                 .open(&owned)
                 .map_err(|err| anyhow!("CDFS open file {owned}: {err}"))?
-                .ok_or_else(|| anyhow!("CDFS file not found: {owned}"))?;
+                .ok_or_else(|| {
+                    anyhow!(Failure::not_found(format!("CDFS file not found: {owned}")))
+                })?;
             match entry {
                 DirectoryEntry::File(file) => {
                     let total = (file.size() as usize).min(max_bytes);
@@ -201,7 +208,9 @@ impl CdfsVolume {
             let entry = iso
                 .open(&owned)
                 .map_err(|err| anyhow!("CDFS open file {owned}: {err}"))?
-                .ok_or_else(|| anyhow!("CDFS file not found: {owned}"))?;
+                .ok_or_else(|| {
+                    anyhow!(Failure::not_found(format!("CDFS file not found: {owned}")))
+                })?;
             match entry {
                 DirectoryEntry::File(file) => {
                     let mut reader = file.read();
@@ -250,7 +259,9 @@ impl CdfsVolume {
             let entry = iso
                 .open(&owned)
                 .map_err(|err| anyhow!("CDFS stat {owned}: {err}"))?
-                .ok_or_else(|| anyhow!("CDFS entry not found: {owned}"))?;
+                .ok_or_else(|| {
+                    anyhow!(Failure::not_found(format!("CDFS entry not found: {owned}")))
+                })?;
             let (size, sample, is_file) = match &entry {
                 DirectoryEntry::File(file) => {
                     let total = file.size() as u64;
@@ -307,7 +318,9 @@ impl CdfsVolume {
             let entry = iso
                 .open(path)
                 .map_err(|error| anyhow!("CDFS open {path}: {error}"))?
-                .ok_or_else(|| anyhow!("CDFS entry not found: {path}"))?;
+                .ok_or_else(|| {
+                    anyhow!(Failure::not_found(format!("CDFS entry not found: {path}")))
+                })?;
             match entry {
                 DirectoryEntry::File(file) => {
                     let count =
@@ -463,7 +476,7 @@ impl Read for PartitionCursor {
         } else {
             self.base_offset
                 .checked_add(self.position)
-                .context("CDFS read offset overflow")
+                .context(Failure::corrupt("CDFS read offset overflow"))
                 .and_then(|offset| self.image.read_range(offset, buf.len()))
         }
         .map_err(|err| io::Error::other(err.to_string()))?;

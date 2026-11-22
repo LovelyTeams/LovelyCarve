@@ -7,6 +7,8 @@ use ntfs::{
     NtfsIndex,
 };
 
+use crate::core::common::error::Failure;
+
 #[derive(Clone, Debug)]
 struct SecurityIndex;
 #[derive(Debug)]
@@ -70,7 +72,7 @@ impl NtfsVolume<'_> {
             }
             ensure!(
                 attribute.value_length() <= max_bytes as u64,
-                "NTFS security descriptor exceeds caller budget"
+                Failure::resource_limit("NTFS security descriptor exceeds caller budget")
             );
             let mut bytes = vec![0; attribute.value_length() as usize];
             attribute.value(&mut fs)?.read_exact(&mut fs, &mut bytes)?;
@@ -116,7 +118,7 @@ impl NtfsVolume<'_> {
             location.id == id
                 && location.size >= 40
                 && u64::from(location.size - 20) <= max_bytes as u64,
-            "invalid NTFS security descriptor location or size"
+            Failure::corrupt("invalid NTFS security descriptor location or size")
         );
         let item = secure
             .data(&mut fs, "$SDS")
@@ -136,7 +138,10 @@ impl NtfsVolume<'_> {
         let mut filled = 0;
         while filled < bytes.len() {
             let read = value.read(&mut fs, &mut bytes[filled..])?;
-            ensure!(read > 0, "truncated NTFS security descriptor");
+            ensure!(
+                read > 0,
+                Failure::corrupt("truncated NTFS security descriptor")
+            );
             filled += read;
         }
         ensure!(
@@ -152,7 +157,7 @@ impl NtfsVolume<'_> {
 fn validate_descriptor(bytes: &[u8]) -> Result<()> {
     ensure!(
         bytes.len() >= 20 && bytes[0] == 1 && bytes[3] & 0x80 != 0,
-        "invalid self-relative NTFS security descriptor"
+        Failure::corrupt("invalid self-relative NTFS security descriptor")
     );
     for offset in [4, 8, 12, 16] {
         let relative = u32::from_le_bytes(bytes[offset..offset + 4].try_into()?) as usize;
@@ -167,18 +172,18 @@ fn validate_descriptor(bytes: &[u8]) -> Result<()> {
         let length = if offset < 12 {
             ensure!(
                 component.len() >= 8 && component[0] == 1 && component[1] <= 15,
-                "invalid NTFS security SID"
+                Failure::corrupt("invalid NTFS security SID")
             );
             8 + usize::from(component[1]) * 4
         } else {
-            ensure!(component.len() >= 8, "truncated NTFS ACL");
+            ensure!(component.len() >= 8, Failure::corrupt("truncated NTFS ACL"));
             let size = usize::from(u16::from_le_bytes([component[2], component[3]]));
-            ensure!(size >= 8, "invalid NTFS ACL size");
+            ensure!(size >= 8, Failure::corrupt("invalid NTFS ACL size"));
             size
         };
         ensure!(
             length <= component.len(),
-            "truncated NTFS security component"
+            Failure::corrupt("truncated NTFS security component")
         );
     }
     Ok(())

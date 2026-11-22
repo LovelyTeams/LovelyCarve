@@ -51,7 +51,7 @@ fn parse(text: &str, name: &str) -> Option<String> {
         if line.starts_with('#') {
             return None;
         }
-        let line = line.strip_prefix("export ").unwrap_or(line);
+        let line = line.trim_prefix("export ");
         let (key, value) = line.split_once('=')?;
         (key.trim() == name).then(|| unquote(value))
     })

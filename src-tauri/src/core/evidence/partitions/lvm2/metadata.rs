@@ -1,5 +1,6 @@
 //! Verified metadata compatibility helpers and contiguous LV geometry.
 //! Shared by native volume browsing and cross-image RAID reconstruction.
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::{detect_filesystem, PartitionKind};
 use crate::core::evidence::partitions::SectorSource;
 /// One logical volume's complete contiguous byte range plus the filesystem detected
@@ -77,11 +78,11 @@ pub fn locate_active_metadata_region(probe: &[u8]) -> Option<(usize, usize)> {
             let start = usize::try_from(offset)?;
             let end = start
                 .checked_add(length)
-                .ok_or_else(|| anyhow::anyhow!("LVM probe range overflow"))?;
+                .ok_or_else(|| anyhow::anyhow!(Failure::corrupt("LVM probe range overflow")))?;
             Ok(self
                 .0
                 .get(start..end)
-                .ok_or_else(|| anyhow::anyhow!("LVM probe truncated"))?
+                .ok_or_else(|| anyhow::anyhow!(Failure::corrupt("LVM probe truncated")))?
                 .to_vec())
         }
     }

@@ -4,6 +4,8 @@ use super::{data_stream::DataStream, reparse::ReparsePoint};
 use anyhow::{ensure, Context};
 use ntfs::NtfsAttributeItem;
 
+use crate::core::common::error::Failure;
+
 pub(super) struct WofStream<'n, 'f> {
     item: NtfsAttributeItem<'n, 'f>,
     length: u64,
@@ -31,7 +33,7 @@ impl<'n, 'f> WofStream<'n, 'f> {
     ) -> Result<Self> {
         ensure!(
             point.data.len() == 16,
-            "invalid WOF file-provider metadata length"
+            Failure::corrupt("invalid WOF file-provider metadata length")
         );
         let words: Vec<_> = point
             .data
@@ -42,12 +44,14 @@ impl<'n, 'f> WofStream<'n, 'f> {
             .collect();
         ensure!(
             words[0] == 1 && words[2] == 1,
-            "unsupported WOF metadata version"
+            Failure::unsupported("unsupported WOF metadata version")
         );
         ensure!(
             words[1] == 2,
-            "WOF provider {} requires external WIM resources; logical data unavailable",
-            words[1]
+            Failure::unsupported(format!(
+                "WOF provider {} requires external WIM resources; logical data unavailable",
+                words[1]
+            ))
         );
         let algorithm = words[3];
         let chunk_size = match algorithm {
@@ -55,7 +59,9 @@ impl<'n, 'f> WofStream<'n, 'f> {
             1 => 32768,
             2 => 8192,
             3 => 16384,
-            _ => anyhow::bail!("unsupported WOF compression algorithm {algorithm}"),
+            _ => anyhow::bail!(Failure::unsupported(format!(
+                "unsupported WOF compression algorithm {algorithm}"
+            ))),
         };
         let item = file
             .data(fs, "WofCompressedData")
@@ -64,7 +70,7 @@ impl<'n, 'f> WofStream<'n, 'f> {
         reject_unreadable_attribute(attribute.flags(), record)?;
         ensure!(
             !attribute.flags().contains(NtfsAttributeFlags::COMPRESSED),
-            "nested NTFS/WOF compression is invalid"
+            Failure::corrupt("nested NTFS/WOF compression is invalid")
         );
         let stored_length = attribute.value_length();
         let offset_width = if stored_length > u64::from(u32::MAX) {
@@ -76,8 +82,11 @@ impl<'n, 'f> WofStream<'n, 'f> {
         let payload_start = chunks
             .saturating_sub(1)
             .checked_mul(offset_width as u64)
-            .context("WOF offset table overflow")?;
-        ensure!(payload_start <= stored_length, "truncated WOF offset table");
+            .context(Failure::corrupt("WOF offset table overflow"))?;
+        ensure!(
+            payload_start <= stored_length,
+            Failure::corrupt("truncated WOF offset table")
+        );
         ensure!(
             length != 0 || stored_length == 0,
             "nonempty WOF payload for empty file"
@@ -150,7 +159,7 @@ impl<'n, 'f> WofStream<'n, 'f> {
                 let mut filled = 0;
                 while filled < self.offset_width {
                     let read = value.read(fs, &mut bytes[filled..self.offset_width])?;
-                    ensure!(read > 0, "truncated WOF chunk offset");
+                    ensure!(read > 0, Failure::corrupt("truncated WOF chunk offset"));
                     filled += read;
                 }
                 u64::from_le_bytes(bytes)
@@ -158,7 +167,7 @@ impl<'n, 'f> WofStream<'n, 'f> {
         }
         ensure!(
             offsets[0] < offsets[1] && offsets[1] <= self.stored_length - self.payload_start,
-            "invalid WOF chunk offsets"
+            Failure::corrupt("invalid WOF chunk offsets")
         );
         let expected =
             (self.length - chunk * self.chunk_size as u64).min(self.chunk_size as u64) as usize;
@@ -172,7 +181,7 @@ impl<'n, 'f> WofStream<'n, 'f> {
         let mut filled = 0;
         while filled < bytes.len() {
             let read = value.read(fs, &mut bytes[filled..])?;
-            ensure!(read > 0, "truncated WOF compressed chunk");
+            ensure!(read > 0, Failure::corrupt("truncated WOF compressed chunk"));
             filled += read;
         }
         self.decoded.resize(expected, 0);

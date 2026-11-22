@@ -2,6 +2,8 @@
 use super::*;
 use anyhow::{ensure, Context};
 
+use crate::core::common::error::Failure;
+
 #[derive(Debug, Serialize)]
 pub struct NtfsVolumeMetadata {
     pub sector_size: u16,
@@ -134,7 +136,8 @@ impl NtfsVolume<'_> {
                 allocated_size: storage
                     .map_or(attribute.value_length(), |info| info.allocated_size),
                 lowest_vcn: attribute.lowest_vcn(),
-                compression_unit_exponent: storage.map_or(0, |info| info.compression_unit_exponent),
+                compression_unit_exponent: storage
+                    .map_or_default(|info| info.compression_unit_exponent),
                 extents: attribute
                     .data_extents(&mut fs)?
                     .into_iter()
@@ -230,10 +233,10 @@ impl NtfsVolume<'_> {
                 Ok(_) => None,
                 Err(err) => Some(Err(err)),
             })
-            .context("NTFS physical attribute not found")??;
+            .context(Failure::not_found("NTFS physical attribute not found"))??;
         ensure!(
             attribute.value_length() <= max_bytes as u64,
-            "NTFS attribute exceeds caller budget"
+            Failure::resource_limit("NTFS attribute exceeds caller budget")
         );
         let mut value = attribute.value(&mut fs)?;
         let mut bytes = vec![0; attribute.value_length() as usize];

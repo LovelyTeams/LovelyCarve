@@ -366,7 +366,7 @@ pub fn read_piped_stdin() -> Result<String, CliError> {
     let mut text = String::new();
     stdin.read_to_string(&mut text)?;
     if let Some(stripped) = text.strip_suffix('\n') {
-        text = stripped.strip_suffix('\r').unwrap_or(stripped).to_owned();
+        text = stripped.trim_suffix('\r').to_owned();
     }
     Ok(text)
 }

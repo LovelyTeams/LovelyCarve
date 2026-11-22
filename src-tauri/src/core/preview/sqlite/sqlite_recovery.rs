@@ -19,6 +19,7 @@ use sqlite_core::recovery::{self, Attribution, CarvedRecord, RecoverySource};
 use sqlite_core::sqlcipher::{self, CipherParams, DecryptError, SqlCipherKey, SqlCipherVersion};
 use sqlite_core::{Database, Value};
 
+use crate::core::common::error::Failure;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::preview::sqlite::sqlite_preview::{self, SqliteCell, SqliteKey};
 
@@ -186,13 +187,14 @@ fn cipher_key(key: &SqliteKey) -> anyhow::Result<Option<SqlCipherKey>> {
         .filter(|raw| !raw.is_empty())
     {
         let cleaned: String = raw
-            .strip_prefix("0x")
-            .unwrap_or(raw)
+            .trim_prefix("0x")
             .chars()
             .filter(|c| !c.is_whitespace())
             .collect();
         if cleaned.len() == 96 {
-            bail!("暂不支持用带 salt 的原始密钥恢复已删除记录");
+            bail!(Failure::unsupported(
+                "暂不支持用带 salt 的原始密钥恢复已删除记录"
+            ));
         }
         let bytes = hex::decode(&cleaned).context("原始密钥不是有效的十六进制字符串")?;
         let raw: [u8; 32] = bytes
@@ -226,9 +228,10 @@ fn decrypt(bytes: &[u8], key: &SqliteKey) -> anyhow::Result<sqlcipher::Decrypted
     let explicit = key.compatibility.is_some() || key.page_size.is_some() || key.kdf_iter.is_some();
     let result = if explicit {
         let mut params = CipherParams::compatibility(key.compatibility.unwrap_or(4))
-            .context("不支持的 SQLCipher 兼容版本")?;
+            .context(Failure::unsupported("不支持的 SQLCipher 兼容版本"))?;
         if let Some(page_size) = key.page_size {
-            params.page_size = usize::try_from(page_size).context("页大小无效")?;
+            params.page_size =
+                usize::try_from(page_size).context(Failure::corrupt("页大小无效"))?;
         }
         if let Some(kdf_iter) = key.kdf_iter {
             params.kdf_iter = kdf_iter;
@@ -242,7 +245,9 @@ fn decrypt(bytes: &[u8], key: &SqliteKey) -> anyhow::Result<sqlcipher::Decrypted
             anyhow!("SQLITE_LOCKED: 密钥或兼容参数无法按页解密该数据库")
         }
         DecryptError::PageAuthFailed(page) => {
-            anyhow!("第 {page} 页校验失败，数据库可能损坏或被篡改，无法完整解密")
+            anyhow!(Failure::corrupt(format!(
+                "第 {page} 页校验失败，数据库可能损坏或被篡改，无法完整解密"
+            )))
         }
         DecryptError::TooLarge => anyhow!("数据库页数超出可寻址范围"),
     })
@@ -276,7 +281,9 @@ pub fn recover(
 ) -> anyhow::Result<SqliteRecovery> {
     let (bytes, truncated) = sqlite_preview::read_node_prefix(image, node_id)?;
     if truncated {
-        bail!("数据库超过 512 MiB，暂不支持恢复已删除记录");
+        bail!(Failure::unsupported(
+            "数据库超过 512 MiB，暂不支持恢复已删除记录"
+        ));
     }
     let mut notes = Vec::new();
     let mut sidecars = Vec::new();

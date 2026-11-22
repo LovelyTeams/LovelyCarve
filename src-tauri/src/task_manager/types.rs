@@ -11,19 +11,13 @@ use tokio_util::sync::CancellationToken;
 pub const TASK_LIFECYCLE_EVENT: &str = "task-lifecycle";
 pub const TASK_PROGRESS_EVENT: &str = "task-progress";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Why a task could not take its resource permits.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum TaskResourceAcquireError {
+    #[error("任务已取消")]
     Cancelled,
+    #[error("{label} semaphore closed")]
     SemaphoreClosed { label: String },
-}
-
-impl TaskResourceAcquireError {
-    pub fn message(&self) -> String {
-        match self {
-            Self::Cancelled => "任务已取消".to_string(),
-            Self::SemaphoreClosed { label } => format!("{label} semaphore closed"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

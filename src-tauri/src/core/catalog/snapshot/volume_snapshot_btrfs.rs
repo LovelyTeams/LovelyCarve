@@ -43,6 +43,7 @@ use crate::core::catalog::snapshot::volume_snapshot::{
     snapshot_file_name, volume_size_for_key, write_snapshot_entry, write_snapshot_header,
     SnapshotEntry, SnapshotHeader, VolumeSnapshotBuilt, PROGRESS_EVERY, SNAPSHOT_SCHEMA,
 };
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::{Partition, PartitionKind};
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree::{fs_unalloc_nodes, FsNode, NodeKind};
@@ -154,7 +155,7 @@ fn scan_subvol(
         },
     )?;
     if !completed && !budget_hit {
-        anyhow::bail!("snapshot build cancelled");
+        anyhow::bail!(Failure::cancelled("snapshot build cancelled"));
     }
     Ok((data, collected, budget_hit))
 }
@@ -357,7 +358,7 @@ pub(crate) fn build_btrfs_volume_snapshot(
 
         while let Some((dir_id, dir_path)) = stack.pop() {
             if cancel.is_cancelled() {
-                anyhow::bail!("snapshot build cancelled");
+                anyhow::bail!(Failure::cancelled("snapshot build cancelled"));
             }
             // Every queued id was minted by `node_from_inode`/`node_for_subvol`
             // and round-trips; anything else (defensive) is skipped.

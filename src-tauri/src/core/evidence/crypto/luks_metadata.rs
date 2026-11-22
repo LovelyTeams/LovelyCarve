@@ -7,11 +7,13 @@ use base64::Engine;
 use serde_json::Value;
 use sha2::{Digest, Sha256, Sha512};
 
+use crate::core::common::error::Failure;
+
 fn number(value: &Value) -> anyhow::Result<u64> {
     value
         .as_u64()
         .or_else(|| value.as_str()?.parse().ok())
-        .context("invalid LUKS numeric metadata")
+        .context(Failure::corrupt("invalid LUKS numeric metadata"))
 }
 
 pub fn validate(reader: &mut (impl Read + Seek), length: u64) -> anyhow::Result<()> {
@@ -27,11 +29,14 @@ pub fn validate(reader: &mut (impl Read + Seek), length: u64) -> anyhow::Result<
                 &header.cipher_mode,
                 header.key_bytes as usize,
             )?;
-            ensure!(header.mk_digest_iter > 0, "invalid LUKS1 digest iterations");
+            ensure!(
+                header.mk_digest_iter > 0,
+                Failure::corrupt("invalid LUKS1 digest iterations")
+            );
             let offset = header.payload_byte_offset();
             ensure!(
                 offset >= 592 && offset < length && (length - offset).is_multiple_of(512),
-                "invalid LUKS1 payload range"
+                Failure::corrupt("invalid LUKS1 payload range")
             );
             for slot in header.active_keyslots() {
                 let start = u64::from(slot.key_material_offset) * 512;
@@ -44,12 +49,14 @@ pub fn validate(reader: &mut (impl Read + Seek), length: u64) -> anyhow::Result<
                         && slot.iterations > 0
                         && start >= 592
                         && start.checked_add(bytes).is_some_and(|end| end <= offset),
-                    "invalid LUKS1 keyslot range"
+                    Failure::corrupt("invalid LUKS1 keyslot range")
                 );
             }
         }
         2 => validate_luks2(reader, &prefix, length)?,
-        _ => bail!("unsupported LUKS version {version}"),
+        _ => bail!(Failure::unsupported(format!(
+            "unsupported LUKS version {version}"
+        ))),
     }
     Ok(())
 }
@@ -64,7 +71,7 @@ fn validate_luks2(
         (8192..=4 * 1024 * 1024).contains(&declared)
             && declared.is_power_of_two()
             && declared <= length,
-        "invalid LUKS2 header length"
+        Failure::corrupt("invalid LUKS2 header length")
     );
     let mut header = vec![0; declared as usize];
     reader.seek(SeekFrom::Start(0))?;
@@ -74,15 +81,17 @@ fn validate_luks2(
     let algorithm = header[72..104]
         .split(|byte| *byte == 0)
         .next()
-        .context("missing LUKS2 checksum algorithm")?;
+        .context(Failure::corrupt("missing LUKS2 checksum algorithm"))?;
     let digest = match algorithm {
         b"sha256" => Sha256::digest(&header).to_vec(),
         b"sha512" => Sha512::digest(&header).to_vec(),
-        _ => bail!("unsupported LUKS2 header checksum"),
+        _ => bail!(Failure::unsupported("unsupported LUKS2 header checksum")),
     };
     ensure!(
         digest == checksum[..digest.len()],
-        "LUKS2 primary header checksum mismatch; backup recovery is not supported"
+        Failure::unsupported(
+            "LUKS2 primary header checksum mismatch; backup recovery is not supported"
+        )
     );
     let json = header[4096..]
         .split(|byte| *byte == 0)
@@ -93,14 +102,14 @@ fn validate_luks2(
         metadata["config"]["requirements"]["mandatory"]
             .as_array()
             .is_none_or(Vec::is_empty),
-        "LUKS2 mandatory requirements are unsupported"
+        Failure::unsupported("LUKS2 mandatory requirements are unsupported")
     );
     let segments = metadata["segments"]
         .as_object()
         .context("missing LUKS2 segments")?;
     ensure!(
         segments.len() == 1,
-        "LUKS2 multi-segment/reencryption layouts are unsupported"
+        Failure::unsupported("LUKS2 multi-segment/reencryption layouts are unsupported")
     );
     let (segment_id, segment) = segments.iter().next().context("missing LUKS2 segment")?;
     ensure!(
@@ -109,7 +118,7 @@ fn validate_luks2(
     );
     ensure!(
         segment["integrity"].is_null() && segment["flags"].as_array().is_none_or(Vec::is_empty),
-        "LUKS2 integrity/reencryption flags are unsupported"
+        Failure::unsupported("LUKS2 integrity/reencryption flags are unsupported")
     );
     let offset = number(&segment["offset"])?;
     let encryption = segment["encryption"]
@@ -117,7 +126,7 @@ fn validate_luks2(
         .context("missing LUKS2 encryption")?;
     let (cipher, mode) = encryption
         .split_once('-')
-        .context("invalid LUKS2 encryption")?;
+        .context(Failure::corrupt("invalid LUKS2 encryption"))?;
     let sector = number(&segment["sector_size"])?;
     ensure!(
         matches!(sector, 512 | 4096)
@@ -125,33 +134,39 @@ fn validate_luks2(
             && offset < length
             && offset % sector == 0
             && (length - offset).is_multiple_of(sector),
-        "invalid LUKS2 payload geometry"
+        Failure::corrupt("invalid LUKS2 payload geometry")
     );
     let tweak = number(&segment["iv_tweak"])?;
     ensure!(
         tweak
             .checked_add((length - offset - sector) / 512)
             .is_some(),
-        "LUKS2 IV sector range overflow"
+        Failure::corrupt("LUKS2 IV sector range overflow")
     );
     let slots = metadata["keyslots"]
         .as_object()
         .context("missing LUKS2 keyslots")?;
-    ensure!(slots.len() <= 32, "invalid LUKS2 keyslot count");
+    ensure!(
+        slots.len() <= 32,
+        Failure::corrupt("invalid LUKS2 keyslot count")
+    );
     for slot in slots.values() {
         let kdf = &slot["kdf"];
         let salt = base64::engine::general_purpose::STANDARD
             .decode(kdf["salt"].as_str().context("missing LUKS2 KDF salt")?)?;
-        ensure!((16..=64).contains(&salt.len()), "invalid LUKS2 KDF salt");
+        ensure!(
+            (16..=64).contains(&salt.len()),
+            Failure::corrupt("invalid LUKS2 KDF salt")
+        );
         let fields: &[&str] = match kdf["type"].as_str() {
             Some("pbkdf2") => &["iterations"],
             Some("argon2i" | "argon2id") => &["time", "memory", "cpus"],
-            _ => bail!("unsupported LUKS2 KDF"),
+            _ => bail!(Failure::unsupported("unsupported LUKS2 KDF")),
         };
         for field in fields {
             ensure!(
                 (1..=u32::MAX as u64).contains(&number(&kdf[*field])?),
-                "invalid LUKS2 KDF cost"
+                Failure::corrupt("invalid LUKS2 KDF cost")
             );
         }
         let key_size = number(&slot["key_size"])?;
@@ -162,12 +177,12 @@ fn validate_luks2(
         let material = stripes
             .checked_mul(key_size)
             .and_then(|bytes| bytes.checked_add(511))
-            .context("LUKS2 keyslot size overflow")?
+            .context(Failure::corrupt("LUKS2 keyslot size overflow"))?
             / 512
             * 512;
         ensure!(
             slot["type"] == "luks2" && slot["af"]["type"] == "luks1" && area["type"] == "raw",
-            "unsupported LUKS2 keyslot layout"
+            Failure::unsupported("unsupported LUKS2 keyslot layout")
         );
         luks::validate_cipher(cipher, mode, usize::try_from(key_size)?)?;
         let area_encryption = area["encryption"]
@@ -175,7 +190,7 @@ fn validate_luks2(
             .context("missing LUKS2 area encryption")?;
         let (area_cipher, area_mode) = area_encryption
             .split_once('-')
-            .context("invalid LUKS2 area encryption")?;
+            .context(Failure::corrupt("invalid LUKS2 area encryption"))?;
         luks::validate_cipher(
             area_cipher,
             area_mode,
@@ -191,7 +206,7 @@ fn validate_luks2(
                 && start
                     .checked_add(area_size)
                     .is_some_and(|end| end <= offset),
-            "invalid LUKS2 keyslot area"
+            Failure::corrupt("invalid LUKS2 keyslot area")
         );
     }
     let digests = metadata["digests"]
@@ -210,14 +225,14 @@ fn validate_luks2(
             (20..=64).contains(&decoded.len())
                 && (16..=64).contains(&salt.len())
                 && (1..=u32::MAX as u64).contains(&number(&digest["iterations"])?),
-            "invalid LUKS2 key digest"
+            Failure::corrupt("invalid LUKS2 key digest")
         );
         ensure!(
             digest["type"] == "pbkdf2"
                 && digest["segments"]
                     .as_array()
                     .is_some_and(|ids| ids.len() == 1 && ids[0].as_str() == Some(segment_id)),
-            "unbound LUKS2 key digests are unsupported"
+            Failure::unsupported("unbound LUKS2 key digests are unsupported")
         );
     }
     Ok(())

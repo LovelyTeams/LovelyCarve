@@ -1,5 +1,6 @@
 //! metadata implementation.
 use super::*;
+use crate::core::common::error::Failure;
 
 impl DiskImage {
     pub(crate) fn optical_track_sector_size(&self, partition_id: u8) -> Option<usize> {
@@ -239,5 +240,9 @@ pub(crate) fn find_partition<'a>(
         .partitions
         .iter()
         .find(|partition| partition.id == part_id)
-        .ok_or_else(|| anyhow::anyhow!("partition not found: {part_id}"))
+        .ok_or_else(|| {
+            anyhow::anyhow!(Failure::not_found(format!(
+                "partition not found: {part_id}"
+            )))
+        })
 }

@@ -2,6 +2,7 @@
 //! physical bytes; only CDFS consumers see the 2048-byte sector payloads.
 use anyhow::{ensure, Context, Result};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::SectorSource;
 
 pub const RAW_SECTOR_BYTES: usize = 2352;
@@ -45,12 +46,11 @@ impl DataTrackLayout {
         }
         ensure!(
             matches!(head[15], 1 | 2),
-            "unsupported raw CD sector mode {}",
-            head[15]
+            Failure::unsupported(format!("unsupported raw CD sector mode {}", head[15]))
         );
         ensure!(
             source.size().is_multiple_of(RAW_SECTOR_BYTES as u64),
-            "truncated 2352-byte physical CD sector"
+            Failure::corrupt("truncated 2352-byte physical CD sector")
         );
         let layout = Self {
             physical_length: source.size(),
@@ -68,7 +68,7 @@ impl DataTrackLayout {
     pub fn probe_xa2336(source: &dyn SectorSource) -> Result<Option<Self>> {
         ensure!(
             source.size().is_multiple_of(2336),
-            "truncated MODE2/2336 sector"
+            Failure::corrupt("truncated MODE2/2336 sector")
         );
         Self {
             physical_length: source.size(),
@@ -109,7 +109,7 @@ impl DataTrackLayout {
                             && blocks > number as u32
                             && block_size == DATA_BYTES as u16
                             && block_size_be == block_size,
-                        "invalid raw CD ISO 9660 volume geometry"
+                        Failure::corrupt("invalid raw CD ISO 9660 volume geometry")
                     );
                     ensure!(
                         u64::from(blocks) * DATA_BYTES as u64 <= layout.logical_length(),
@@ -128,7 +128,7 @@ impl DataTrackLayout {
                             && size > 0
                             && u64::from(extent) * DATA_BYTES as u64 + u64::from(size)
                                 <= u64::from(blocks) * DATA_BYTES as u64,
-                        "invalid raw CD ISO 9660 root directory bounds"
+                        Failure::corrupt("invalid raw CD ISO 9660 root directory bounds")
                     );
                     return Ok(Some(Self {
                         logical_length: u64::from(blocks) * DATA_BYTES as u64,
@@ -163,21 +163,21 @@ impl DataTrackLayout {
         while output.len() < length {
             let logical = offset
                 .checked_add(output.len() as u64)
-                .context("CD logical offset overflow")?;
+                .context(Failure::corrupt("CD logical offset overflow"))?;
             let sector = logical / DATA_BYTES as u64;
             let within = (logical % DATA_BYTES as u64) as usize;
             let physical = sector
                 .checked_mul(self.sector_bytes as u64)
-                .context("CD physical offset overflow")?;
+                .context(Failure::corrupt("CD physical offset overflow"))?;
             let frame = read_exact(source, physical, self.sector_bytes)?;
             if self.sector_bytes == RAW_SECTOR_BYTES {
                 ensure!(
                     frame[..12] == SYNC && frame[15] == self.mode,
-                    "invalid raw CD header at sector {sector}"
+                    Failure::corrupt(format!("invalid raw CD header at sector {sector}"))
                 );
                 let expected = u64::from(self.first_frame)
                     .checked_add(sector)
-                    .context("CD frame number overflow")?;
+                    .context(Failure::corrupt("CD frame number overflow"))?;
                 ensure!(
                     u64::from(frame_number(&frame)?) == expected,
                     "raw CD address mismatch at sector {sector}"
@@ -191,7 +191,7 @@ impl DataTrackLayout {
                 );
                 ensure!(
                     frame[subheader + 1] < 32,
-                    "invalid XA channel at sector {sector}"
+                    Failure::corrupt(format!("invalid XA channel at sector {sector}"))
                 );
                 ensure!(
                     frame[subheader + 2] & 0x20 == 0,
@@ -212,13 +212,13 @@ fn frame_number(header: &[u8]) -> Result<u32> {
     for (index, value) in header[12..15].iter().copied().enumerate() {
         ensure!(
             value & 15 <= 9 && value >> 4 <= 9,
-            "invalid raw CD BCD address"
+            Failure::corrupt("invalid raw CD BCD address")
         );
         address[index] = u32::from(value >> 4) * 10 + u32::from(value & 15);
     }
     ensure!(
         address[1] < 60 && address[2] < 75,
-        "invalid raw CD MSF address"
+        Failure::corrupt("invalid raw CD MSF address")
     );
     Ok((address[0] * 60 + address[1]) * 75 + address[2])
 }

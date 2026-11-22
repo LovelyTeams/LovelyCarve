@@ -1,5 +1,6 @@
 //! TP-Link SafeLoader's salted MD5 and bounded image (not flash) partition table.
 use super::{be32, segments};
+use crate::core::common::error::Failure;
 use crate::core::common::hash::Md5;
 use crate::core::evidence::partitions::Partition;
 use anyhow::{ensure, Context, Result};
@@ -24,17 +25,20 @@ pub(super) fn parse(
 ) -> Result<Vec<Partition>> {
     ensure!(
         bytes.get(0x14..0x18) != Some(b"?NEW"),
-        "unsupported SafeLoader QNEW layout"
+        Failure::unsupported("unsupported SafeLoader QNEW layout")
     );
     let length = be32(bytes, 0)? as usize;
     ensure!(length == bytes.len(), "SafeLoader declared length mismatch");
     let table = bytes
         .get(TABLE..TABLE + TABLE_SIZE)
-        .context("truncated SafeLoader table")?;
+        .context(Failure::corrupt("truncated SafeLoader table"))?;
     let mut digest = Md5::new();
     digest.update(&SALT);
     for chunk in bytes[0x14..].chunks(64 * 1024) {
-        ensure!(!cancel.is_cancelled(), "SafeLoader checksum cancelled");
+        ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("SafeLoader checksum cancelled")
+        );
         digest.update(chunk);
     }
     ensure!(
@@ -55,14 +59,17 @@ pub(super) fn parse(
     let mut names = HashSet::new();
     let mut spans = Vec::new();
     for line in text.split_terminator('\n') {
-        ensure!(spans.len() < 32, "SafeLoader segment limit");
+        ensure!(
+            spans.len() < 32,
+            Failure::resource_limit("SafeLoader segment limit")
+        );
         let fields: Vec<_> = line.split_ascii_whitespace().collect();
         ensure!(
             fields.len() == 6
                 && fields[0] == "fwup-ptn"
                 && fields[2] == "base"
                 && fields[4] == "size",
-            "malformed SafeLoader segment"
+            Failure::corrupt("malformed SafeLoader segment")
         );
         let name = fields[1];
         ensure!(
@@ -72,7 +79,7 @@ pub(super) fn parse(
                     .bytes()
                     .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
                 && names.insert(name),
-            "duplicate or invalid SafeLoader segment name"
+            Failure::corrupt("duplicate or invalid SafeLoader segment name")
         );
         let number = |text: &str| -> Result<usize> {
             usize::from_str_radix(
@@ -80,7 +87,7 @@ pub(super) fn parse(
                     .context("SafeLoader field is not hex")?,
                 16,
             )
-            .context("invalid SafeLoader hex field")
+            .context(Failure::corrupt("invalid SafeLoader hex field"))
         };
         let relative = number(fields[3])?;
         let size = number(fields[5])?;
@@ -90,10 +97,10 @@ pub(super) fn parse(
         );
         let start = TABLE
             .checked_add(relative)
-            .context("SafeLoader segment offset overflow")?;
+            .context(Failure::corrupt("SafeLoader segment offset overflow"))?;
         let end = start
             .checked_add(size)
-            .context("SafeLoader segment size overflow")?;
+            .context(Failure::corrupt("SafeLoader segment size overflow"))?;
         ensure!(end <= bytes.len(), "SafeLoader segment exceeds source");
         spans.push((start, end, name));
     }

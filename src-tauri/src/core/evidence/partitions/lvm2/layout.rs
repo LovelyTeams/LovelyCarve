@@ -3,6 +3,7 @@ use anyhow::{bail, Context, Result};
 use std::io::{self, Read, Seek, SeekFrom};
 
 use super::text::{LogicalVolume, PhysicalVolume, VolumeGroup};
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::SectorSource;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,20 +29,20 @@ pub fn linear_layout(
 ) -> Result<LinearLayout> {
     let partition_end = partition_offset
         .checked_add(partition_size)
-        .context("LVM partition end overflow")?;
+        .context(Failure::corrupt("LVM partition end overflow"))?;
     let extent_bytes = group
         .extent_size_sectors
         .checked_mul(512)
-        .context("LVM extent size overflow")?;
+        .context(Failure::corrupt("LVM extent size overflow"))?;
     let pe_start = pv
         .pe_start_sectors
         .checked_mul(512)
-        .context("LVM PE offset overflow")?;
+        .context(Failure::corrupt("LVM PE offset overflow"))?;
     let pv_end = pv
         .extent_count
         .checked_mul(extent_bytes)
         .and_then(|size| pe_start.checked_add(size))
-        .context("LVM PV extent range overflow")?;
+        .context(Failure::corrupt("LVM PV extent range overflow"))?;
     if pv_end > partition_size
         || pv
             .size_sectors
@@ -58,12 +59,10 @@ pub fn linear_layout(
     let mut size = 0u64;
     for segment in &volume.segments {
         if segment.kind != "striped" || segment.stripe_count != 1 || segment.stripes.len() != 1 {
-            bail!(
+            bail!(Failure::unsupported(format!(
                 "LVM {} segment type {} with {} stripes is unsupported",
-                volume.name,
-                segment.kind,
-                segment.stripe_count
-            );
+                volume.name, segment.kind, segment.stripe_count
+            )));
         }
         let stripe = &segment.stripes[0];
         if stripe.physical_volume != pv.name {
@@ -76,14 +75,14 @@ pub fn linear_layout(
         let extent_end = stripe
             .physical_extent
             .checked_add(segment.extent_count)
-            .context("LVM physical extent overflow")?;
+            .context(Failure::corrupt("LVM physical extent overflow"))?;
         if extent_end > pv.extent_count {
             bail!("LVM {} allocated extents exceed PV", volume.name);
         }
         let logical_offset = segment
             .start_extent
             .checked_mul(extent_bytes)
-            .context("LVM logical offset overflow")?;
+            .context(Failure::corrupt("LVM logical offset overflow"))?;
         if logical_offset != size {
             bail!("LVM segment coverage gap or overlap");
         }
@@ -92,11 +91,11 @@ pub fn linear_layout(
             .checked_mul(extent_bytes)
             .and_then(|offset| pe_start.checked_add(offset))
             .and_then(|offset| partition_offset.checked_add(offset))
-            .context("LVM physical offset overflow")?;
+            .context(Failure::corrupt("LVM physical offset overflow"))?;
         let byte_length = segment
             .extent_count
             .checked_mul(extent_bytes)
-            .context("LVM segment size overflow")?;
+            .context(Failure::corrupt("LVM segment size overflow"))?;
         if physical_offset
             .checked_add(byte_length)
             .is_none_or(|end| end > partition_end)
@@ -105,7 +104,7 @@ pub fn linear_layout(
         }
         size = size
             .checked_add(byte_length)
-            .context("LVM volume size overflow")?;
+            .context(Failure::corrupt("LVM volume size overflow"))?;
         segments.push(ByteSegment {
             logical_offset,
             physical_offset,
@@ -142,7 +141,9 @@ impl LinearLayout {
 
     /// Translate a logical range to original source ranges, splitting at PEs.
     pub fn ranges(&self, offset: u64, length: u64) -> Result<Vec<ByteSegment>> {
-        let end = offset.checked_add(length).context("LVM range overflow")?;
+        let end = offset
+            .checked_add(length)
+            .context(Failure::corrupt("LVM range overflow"))?;
         if end > self.size {
             bail!("LVM range outside logical volume");
         }
@@ -152,14 +153,14 @@ impl LinearLayout {
             let segment_end = segment
                 .logical_offset
                 .checked_add(segment.size)
-                .context("LVM segment boundary overflow")?;
+                .context(Failure::corrupt("LVM segment boundary overflow"))?;
             let from = offset.max(segment.logical_offset);
             let to = end.min(segment_end);
             if from < to {
                 let physical_offset = segment
                     .physical_offset
                     .checked_add(from - segment.logical_offset)
-                    .context("LVM source offset overflow")?;
+                    .context(Failure::corrupt("LVM source offset overflow"))?;
                 output.push(ByteSegment {
                     logical_offset: from,
                     physical_offset,
@@ -167,7 +168,7 @@ impl LinearLayout {
                 });
                 covered = covered
                     .checked_add(to - from)
-                    .context("LVM read length overflow")?;
+                    .context(Failure::corrupt("LVM read length overflow"))?;
             }
         }
         if covered != length {

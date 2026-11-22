@@ -166,7 +166,7 @@ fn realm_bytes_cached(
     }
 
     let mut session = fs_tree::FsSession::new(image);
-    let stat = session.file_stat(node_id).map_err(AppError::from_anyhow)?;
+    let stat = session.file_stat(node_id).map_err(AppError::from)?;
     if stat.size > REALM_READ_CAP as u64 {
         return Err(AppError::resource_limit(format!(
             "Realm 文件大于 {} MiB 原类型预览上限；为避免误读半截数据库，请导出后用专用工具查看。",
@@ -176,7 +176,7 @@ fn realm_bytes_cached(
 
     let data = session
         .read_file_limited(node_id, REALM_READ_CAP)
-        .map_err(AppError::from_anyhow)?;
+        .map_err(AppError::from)?;
     let bytes: Arc<[u8]> = Arc::from(data.into_boxed_slice());
     *cache = Some(crate::state::RealmBytesCache {
         key,
@@ -243,10 +243,10 @@ pub async fn fs_binary_preview(
     tokio::task::spawn_blocking(
         move || -> Result<crate::core::preview::binary::binfmt::NativeReport, AppError> {
             let mut session = fs_tree::FsSession::new(&image);
-            let stat = session.file_stat(&node_id).map_err(AppError::from_anyhow)?;
+            let stat = session.file_stat(&node_id).map_err(AppError::from)?;
             let data = session
                 .read_file_limited(&node_id, BINARY_READ_CAP)
-                .map_err(AppError::from_anyhow)?;
+                .map_err(AppError::from)?;
             crate::core::preview::binary::binfmt::parse(&data, stat.size.max(data.len() as u64))
                 .map_err(AppError::from)
         },
@@ -271,10 +271,10 @@ pub async fn fs_gguf_preview(
     tokio::task::spawn_blocking(
         move || -> Result<crate::core::preview::gguf::GgufReport, AppError> {
             let mut session = fs_tree::FsSession::new(&image);
-            let stat = session.file_stat(&node_id).map_err(AppError::from_anyhow)?;
+            let stat = session.file_stat(&node_id).map_err(AppError::from)?;
             let data = session
                 .read_file_limited(&node_id, GGUF_READ_CAP)
-                .map_err(AppError::from_anyhow)?;
+                .map_err(AppError::from)?;
             crate::core::preview::gguf::parse(&data, stat.size.max(data.len() as u64))
                 .map_err(AppError::from)
         },
@@ -309,10 +309,10 @@ fn zip_bytes_cached(
         }
     }
     let mut session = fs_tree::FsSession::new(image);
-    let stat = session.file_stat(node_id).map_err(AppError::from_anyhow)?;
+    let stat = session.file_stat(node_id).map_err(AppError::from)?;
     let data = session
         .read_file_limited(node_id, ZIP_READ_CAP)
-        .map_err(AppError::from_anyhow)?;
+        .map_err(AppError::from)?;
     let truncated = stat.size > data.len() as u64;
     let bytes = Arc::new(data);
     *cache = Some(crate::state::ZipBytesCache {
@@ -404,10 +404,10 @@ pub async fn fs_csv_preview(
     tokio::task::spawn_blocking(
         move || -> Result<crate::core::preview::tables::csv_table::CsvTable, AppError> {
             let mut session = fs_tree::FsSession::new(&image);
-            let stat = session.file_stat(&node_id).map_err(AppError::from_anyhow)?;
+            let stat = session.file_stat(&node_id).map_err(AppError::from)?;
             let data = session
                 .read_file_limited(&node_id, CSV_READ_CAP)
-                .map_err(AppError::from_anyhow)?;
+                .map_err(AppError::from)?;
             let truncated_bytes = stat.size > data.len() as u64;
             let delim =
                 crate::core::preview::tables::csv_table::delimiter_from_str(delimiter.as_deref());

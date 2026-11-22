@@ -8,6 +8,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::core::common::error::Failure;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct RecoveryExport {
     pub directory: String,
@@ -90,7 +92,7 @@ pub fn recover(
                 result.bytes_written = result
                     .bytes_written
                     .checked_add(candidate.node.size)
-                    .context("Recovered size overflow")?;
+                    .context(Failure::corrupt("Recovered size overflow"))?;
                 writeln!(
                     report,
                     "{}",
@@ -140,7 +142,7 @@ fn recover_one(
         check_cancel(cancel)?;
         written = written
             .checked_add(bytes.len() as u64)
-            .context("Recovery size overflow")?;
+            .context(Failure::corrupt("Recovery size overflow"))?;
         if written > candidate.node.size {
             bail!("File stream exceeds logical size");
         }
@@ -156,7 +158,7 @@ fn recover_one(
         let recovered_volume = scan
             .volumes
             .get(candidate.volume_index)
-            .context("Invalid recovery volume")?;
+            .context(Failure::corrupt("Invalid recovery volume"))?;
         let partition = &recovered_volume.partition;
         if candidate.node.id.starts_with("deleted:run:") {
             let mut fields = candidate.node.id.rsplit(':');
@@ -165,12 +167,12 @@ fn recover_one(
             let base = partition
                 .start_lba
                 .checked_mul(image.sector_size as u64)
-                .context("Volume offset overflow")?;
+                .context(Failure::corrupt("Volume offset overflow"))?;
             let end = partition
                 .length_lba
                 .checked_mul(image.sector_size as u64)
                 .and_then(|length| base.checked_add(length))
-                .context("Volume bound overflow")?;
+                .context(Failure::corrupt("Volume bound overflow"))?;
             if length != candidate.node.size
                 || offset < base
                 || offset

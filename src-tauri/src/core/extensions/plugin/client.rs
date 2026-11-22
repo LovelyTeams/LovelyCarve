@@ -16,6 +16,7 @@ use router::*;
 
 use std::{
     collections::HashMap,
+    mem::DropGuard,
     path::PathBuf,
     process::Stdio,
     sync::{
@@ -175,12 +176,24 @@ impl PluginClient {
         let request_id = self.next_request_id.fetch_add(2, Ordering::Relaxed);
         let (response_tx, response_rx) = oneshot::channel();
         self.pending.lock().insert(request_id, response_tx);
-        // A dropped call (cancelled task) asks the plugin to stop it.
-        let mut cancel_on_drop = CancelOnDrop {
-            outbound: self.outbound.clone(),
-            pending: Arc::clone(&self.pending),
-            request_id,
-            armed: true,
+        // A call whose caller stops waiting (timeout or a dropped future)
+        // asks the plugin to stop it and forgets its response.
+        let cancel_on_drop = {
+            let outbound = self.outbound.clone();
+            let pending = Arc::clone(&self.pending);
+            DropGuard::new(request_id, move |request_id| {
+                pending.lock().remove(&request_id);
+                let cancel = LppMessage::Cancel {
+                    v: PROTOCOL_VERSION,
+                    request_id,
+                };
+                if outbound.try_send(cancel).is_err() {
+                    tracing::debug!(
+                        request_id,
+                        "plugin cancel not sent: the connection is closed or busy"
+                    );
+                }
+            })
         };
         if self
             .outbound
@@ -188,7 +201,7 @@ impl PluginClient {
             .await
             .is_err()
         {
-            cancel_on_drop.armed = false;
+            DropGuard::dismiss(cancel_on_drop);
             self.pending.lock().remove(&request_id);
             return Err(PluginError::ConnectionClosed);
         }
@@ -201,7 +214,7 @@ impl PluginClient {
                 .await
                 .map_err(|_| PluginError::ConnectionClosed)?,
         };
-        cancel_on_drop.armed = false;
+        DropGuard::dismiss(cancel_on_drop);
         outcome
     }
 
@@ -280,37 +293,6 @@ impl PluginClient {
             if let Err(error) = child.kill().await {
                 tracing::debug!(plugin_id = %self.hello.plugin, "plugin process kill failed: {error}");
             }
-        }
-    }
-}
-
-/// Sends `Cancel` for a host call whose caller stopped waiting (timeout or
-/// a dropped future) and forgets its response.
-struct CancelOnDrop {
-    outbound: mpsc::Sender<LppMessage>,
-    pending: PendingRequests,
-    request_id: u64,
-    armed: bool,
-}
-
-impl Drop for CancelOnDrop {
-    fn drop(&mut self) {
-        if !self.armed {
-            return;
-        }
-        self.pending.lock().remove(&self.request_id);
-        if self
-            .outbound
-            .try_send(LppMessage::Cancel {
-                v: PROTOCOL_VERSION,
-                request_id: self.request_id,
-            })
-            .is_err()
-        {
-            tracing::debug!(
-                request_id = self.request_id,
-                "plugin cancel not sent: the connection is closed or busy"
-            );
         }
     }
 }

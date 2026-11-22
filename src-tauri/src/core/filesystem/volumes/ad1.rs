@@ -11,6 +11,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use chrono::{NaiveDateTime, TimeZone, Utc};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::DiskImage;
 use crate::core::evidence::readers::ad1_image::Ad1Image;
 use crate::core::filesystem::tree::fs_tree::{
@@ -122,9 +123,11 @@ pub fn node(image: &Arc<DiskImage>, id: Ad1NodeId) -> Result<FsNode> {
     match id {
         Ad1NodeId::Root => Ok(root_node(image)),
         Ad1NodeId::Entry(index) => {
-            let entry = image_ad1(image)?
-                .entry(index)
-                .ok_or_else(|| anyhow!("AD1 entry {index} does not exist"))?;
+            let entry = image_ad1(image)?.entry(index).ok_or_else(|| {
+                anyhow!(Failure::not_found(format!(
+                    "AD1 entry {index} does not exist"
+                )))
+            })?;
             Ok(entry_node(index, entry))
         }
     }
@@ -187,9 +190,11 @@ pub fn file_stat(image: &Arc<DiskImage>, id: Ad1NodeId, node_id: &str) -> Result
     let (size, sample) = match id {
         Ad1NodeId::Root => (0, Vec::new()),
         Ad1NodeId::Entry(index) => {
-            let entry = ad1
-                .entry(index)
-                .ok_or_else(|| anyhow!("AD1 entry {index} does not exist"))?;
+            let entry = ad1.entry(index).ok_or_else(|| {
+                anyhow!(Failure::not_found(format!(
+                    "AD1 entry {index} does not exist"
+                )))
+            })?;
             let sample = if entry.is_dir || entry.size == 0 {
                 Vec::new()
             } else {

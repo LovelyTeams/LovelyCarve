@@ -14,6 +14,7 @@ use std::{
 
 use tokio_util::sync::CancellationToken;
 
+use crate::core::common::error::Failure;
 use crate::core::common::export::write_new;
 use crate::core::evidence::image::ReadFaultReport;
 use crate::core::filesystem::evidence_session::EvidenceSession;
@@ -80,7 +81,9 @@ pub fn export_dir(
 ) -> anyhow::Result<FsExportSummary> {
     image.require_source()?;
     if node_id.trim().is_empty() {
-        anyhow::bail!("export_dir requires a directory node id");
+        anyhow::bail!(Failure::invalid_input(
+            "export_dir requires a directory node id"
+        ));
     }
     if let Some(parent) = destination
         .parent()
@@ -223,7 +226,7 @@ fn export_dir_walk(
                 let res = write_new(&child_path, |file| {
                     session.stream_file(&child.id, 1024 * 1024, |chunk| {
                         if cancel.is_cancelled() {
-                            anyhow::bail!("export cancelled");
+                            anyhow::bail!(Failure::cancelled("export cancelled"));
                         }
                         file.write_all(chunk)?;
                         bytes_written += chunk.len() as u64;
@@ -285,7 +288,9 @@ pub fn export_dir_zip(
 ) -> anyhow::Result<FsExportSummary> {
     image.require_source()?;
     if node_id.trim().is_empty() {
-        anyhow::bail!("export_dir_zip requires a directory node id");
+        anyhow::bail!(Failure::invalid_input(
+            "export_dir_zip requires a directory node id"
+        ));
     }
     if let Some(parent) = archive_path.parent() {
         if !parent.as_os_str().is_empty() {
@@ -452,7 +457,7 @@ fn zip_walk(
                 let mut bytes_written = 0u64;
                 let res = session.stream_file(&child.id, 1024 * 1024, |chunk| {
                     if cancel.is_cancelled() {
-                        anyhow::bail!("export cancelled");
+                        anyhow::bail!(Failure::cancelled("export cancelled"));
                     }
                     writer.write_all(chunk)?;
                     bytes_written += chunk.len() as u64;

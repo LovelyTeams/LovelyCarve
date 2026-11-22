@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
+use crate::core::common::error::Failure;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree::{FsNode, FsSession, Mactb, NodeKind};
 use crate::core::filesystem::volumes::ad1 as ad1_volume_mod;
@@ -119,14 +120,22 @@ pub fn directory_stats(
             .children(&format!("part:{part_id}"))?
             .into_iter()
             .find(|node| node.id == node_id)
-            .ok_or_else(|| anyhow::anyhow!("logical volume node not found: {node_id}"))?
+            .ok_or_else(|| {
+                anyhow::anyhow!(Failure::not_found(format!(
+                    "logical volume node not found: {node_id}"
+                )))
+            })?
     } else if let Some((source, path)) = parse_apfs_id(node_id) {
         if path.is_empty() {
             session
                 .children(&format!("part:{}", source.part_id()))?
                 .into_iter()
                 .find(|node| node.id == node_id)
-                .ok_or_else(|| anyhow::anyhow!("APFS volume node not found: {node_id}"))?
+                .ok_or_else(|| {
+                    anyhow::anyhow!(Failure::not_found(format!(
+                        "APFS volume node not found: {node_id}"
+                    )))
+                })?
         } else {
             FsNode {
                 id: node_id.to_string(),
@@ -151,7 +160,11 @@ pub fn directory_stats(
                 .children("")?
                 .into_iter()
                 .find(|node| node.id == node_id)
-                .ok_or_else(|| anyhow::anyhow!("tar root node not found: {node_id}"))?
+                .ok_or_else(|| {
+                    anyhow::anyhow!(Failure::not_found(format!(
+                        "tar root node not found: {node_id}"
+                    )))
+                })?
         } else {
             FsNode {
                 id: node_id.to_string(),
@@ -177,7 +190,11 @@ pub fn directory_stats(
                 .children("")?
                 .into_iter()
                 .find(|node| node.id == node_id)
-                .ok_or_else(|| anyhow::anyhow!("zip root node not found: {node_id}"))?
+                .ok_or_else(|| {
+                    anyhow::anyhow!(Failure::not_found(format!(
+                        "zip root node not found: {node_id}"
+                    )))
+                })?
         } else {
             FsNode {
                 id: node_id.to_string(),
@@ -205,7 +222,11 @@ pub fn directory_stats(
                 .children("")?
                 .into_iter()
                 .find(|node| node.id == node_id)
-                .ok_or_else(|| anyhow::anyhow!("7z root node not found: {node_id}"))?
+                .ok_or_else(|| {
+                    anyhow::anyhow!(Failure::not_found(format!(
+                        "7z root node not found: {node_id}"
+                    )))
+                })?
         } else {
             FsNode {
                 id: node_id.to_string(),
@@ -230,7 +251,11 @@ pub fn directory_stats(
             .children("")?
             .into_iter()
             .find(|node| node.id == node_id)
-            .ok_or_else(|| anyhow::anyhow!("directory node not found: {node_id}"))?
+            .ok_or_else(|| {
+                anyhow::anyhow!(Failure::not_found(format!(
+                    "directory node not found: {node_id}"
+                )))
+            })?
     };
 
     let start_name = start.name.clone();

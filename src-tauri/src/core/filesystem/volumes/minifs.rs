@@ -1,4 +1,5 @@
 //! MINIFS adapter; source identity and compressed extents remain unchanged.
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::{find_partition, DiskImage, Partition};
 use crate::core::filesystem::{
     fs_dispatch::build_stat,
@@ -32,7 +33,7 @@ impl minifs::ReadAt for Source {
             let absolute = self
                 .base
                 .checked_add(offset)
-                .context("MINIFS source offset overflow")?;
+                .context(Failure::corrupt("MINIFS source offset overflow"))?;
             let bytes = if let Some(bytes) = self
                 .image
                 .firmware
@@ -76,11 +77,11 @@ impl MinifsVolume {
         let base = partition
             .start_lba
             .checked_mul(image.sector_size as u64)
-            .context("MINIFS base overflow")?;
+            .context(Failure::corrupt("MINIFS base overflow"))?;
         let length = partition
             .length_lba
             .checked_mul(image.sector_size as u64)
-            .context("MINIFS length overflow")?;
+            .context(Failure::corrupt("MINIFS length overflow"))?;
         ensure!(
             base.checked_add(length)
                 .is_some_and(|end| end <= image.len()),
@@ -123,7 +124,7 @@ impl MinifsVolume {
                 } else {
                     NodeKind::Dir
                 },
-                size: entry.file.map_or(0, |file| file.size),
+                size: entry.file.map_or_default(|file| file.size),
                 deleted: false,
                 inode: None,
                 timestamps: Mactb::default(),

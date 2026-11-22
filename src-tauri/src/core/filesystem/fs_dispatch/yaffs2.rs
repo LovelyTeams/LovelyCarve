@@ -1,5 +1,6 @@
 //! Direct adapter: the boxed volume owns the immutable YAFFS2 reader once.
 use super::{ChildrenOptions, EvidenceSession, FsAdapter, FsNode, FsStat, Volume};
+use crate::core::common::error::Failure;
 use crate::core::filesystem::volumes::yaffs2::{open_yaffs2_source, parse_yaffs2_id, Yaffs2Volume};
 use anyhow::{ensure, Context, Result};
 use std::sync::Arc;
@@ -28,7 +29,7 @@ impl FsAdapter for Yaffs2Adapter {
 }
 fn path(id: &str) -> Result<String> {
     Ok(parse_yaffs2_id(id)
-        .context("YAFFS2 invalid node identity")?
+        .context(Failure::invalid_input("YAFFS2 invalid node identity"))?
         .2)
 }
 impl Volume for Yaffs2Volume {

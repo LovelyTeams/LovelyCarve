@@ -6,6 +6,7 @@
 #![cfg(target_os = "windows")]
 
 mod filesystem;
+use crate::core::common::error::Failure;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use filesystem::*;
 mod callbacks;
@@ -112,8 +113,8 @@ impl DokanMountSession {
 
     pub fn stop(&self) -> Result<()> {
         self.stop.store(true, Ordering::SeqCst);
-        let mount_point =
-            U16CString::from_str(&self.view.mount_point).context("invalid Dokan mount point")?;
+        let mount_point = U16CString::from_str(&self.view.mount_point)
+            .context(Failure::invalid_input("invalid Dokan mount point"))?;
         if !dokan::unmount(&mount_point) {
             tracing::debug!("Dokan unmount returned false for {}", self.view.mount_point);
         }
@@ -172,7 +173,9 @@ pub fn start_readonly_mount(
     mount_point: String,
 ) -> Result<Arc<DokanMountSession>> {
     if root_node_id.trim().is_empty() {
-        anyhow::bail!("mount requires a concrete filesystem node id");
+        anyhow::bail!(Failure::invalid_input(
+            "mount requires a concrete filesystem node id"
+        ));
     }
     let normalized_mount = normalize_mount_point(&mount_point)?;
     let is_drive = is_drive_letter_mount(&normalized_mount);

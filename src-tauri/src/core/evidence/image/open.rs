@@ -1,5 +1,6 @@
 //! open implementation.
 use super::*;
+use crate::core::common::error::Failure;
 
 impl DiskImage {
     /// Create an evidence identity for browsing verified, persisted metadata only.
@@ -24,7 +25,7 @@ impl DiskImage {
 
     pub fn require_source(&self) -> anyhow::Result<()> {
         if self.is_index_only() {
-            anyhow::bail!(INDEX_ONLY_READ_ERROR);
+            anyhow::bail!(Failure::not_found(INDEX_ONLY_READ_ERROR));
         }
         Ok(())
     }
@@ -87,7 +88,10 @@ impl DiskImage {
         cancel: &tokio_util::sync::CancellationToken,
     ) -> anyhow::Result<Self> {
         let id = id.into();
-        anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
+        anyhow::ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("image load cancelled")
+        );
         let path = path.as_ref().to_path_buf();
         progress(OpenProgress::Opening);
         if let Some(key) = qcow_key {
@@ -109,9 +113,15 @@ impl DiskImage {
             return Self::open_ldplayer(id, path, progress, cancel);
         }
         let source = ImageSource::open_observed(&path, progress, cache, cancel)?;
-        anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
+        anyhow::ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("image load cancelled")
+        );
         let image = Self::from_source_cancellable(id, path, source, progress, cancel)?;
-        anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
+        anyhow::ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("image load cancelled")
+        );
         Ok(image)
     }
 
@@ -123,7 +133,9 @@ impl DiskImage {
     ) -> anyhow::Result<Self> {
         let folder = self.folder.as_ref().context("evidence is not a folder")?;
         if !folder.ios_info().is_some_and(|info| info.locked) {
-            anyhow::bail!("evidence is not a locked iOS backup");
+            anyhow::bail!(Failure::invalid_input(
+                "evidence is not a locked iOS backup"
+            ));
         }
         let folder = Arc::new(FolderImage::open_ios(folder.root_path(), password, cancel)?);
         let source = ImageSource::Folder {

@@ -16,6 +16,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use gzipf::GzipDecoder;
 use memchr::memmem::Finder;
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::readers::tar_image::TarImage;
 
 const ANDROID_BACKUP_MAGIC: &[u8] = b"ANDROID BACKUP\n";
@@ -63,22 +64,26 @@ pub fn unpack_bak_file(input_path: &Path, output_dir: &Path) -> Result<MiBakUnpa
     let mut file = File::open(input_path)
         .with_context(|| format!("open bak file {}", input_path.display()))?;
     let backup_offset = find_android_backup_offset(&mut file)?
-        .ok_or_else(|| anyhow!("ANDROID BACKUP marker not found"))?;
+        .ok_or_else(|| anyhow!(Failure::corrupt("ANDROID BACKUP marker not found")))?;
     file.seek(SeekFrom::Start(backup_offset))
         .with_context(|| format!("seek to Android Backup payload in {}", input_path.display()))?;
 
     let mut reader = BufReader::new(file);
     let magic = read_header_line(&mut reader).context("read Android Backup magic")?;
     if magic.as_bytes() != b"ANDROID BACKUP" {
-        bail!("invalid Android Backup magic: {magic}");
+        bail!(Failure::corrupt(format!(
+            "invalid Android Backup magic: {magic}"
+        )));
     }
 
     let version_line = read_header_line(&mut reader).context("read Android Backup version")?;
-    let version = version_line
-        .parse::<u8>()
-        .with_context(|| format!("invalid Android Backup version: {version_line}"))?;
+    let version = version_line.parse::<u8>().with_context(|| {
+        Failure::corrupt(format!("invalid Android Backup version: {version_line}"))
+    })?;
     if !(BACKUP_FILE_V1..=BACKUP_FILE_V5).contains(&version) {
-        bail!("unsupported Android Backup version: {version}");
+        bail!(Failure::unsupported(format!(
+            "unsupported Android Backup version: {version}"
+        )));
     }
 
     let compressed_line =
@@ -86,11 +91,15 @@ pub fn unpack_bak_file(input_path: &Path, output_dir: &Path) -> Result<MiBakUnpa
     let compressed = match compressed_line.as_str() {
         "0" => false,
         "1" => true,
-        _ => bail!("invalid Android Backup compression flag: {compressed_line}"),
+        _ => bail!(Failure::corrupt(format!(
+            "invalid Android Backup compression flag: {compressed_line}"
+        ))),
     };
     let encryption = read_header_line(&mut reader).context("read Android Backup encryption")?;
     if encryption != ENCRYPTION_NONE {
-        bail!("encrypted Android Backup payload is not supported during folder auto-unpack");
+        bail!(Failure::unsupported(
+            "encrypted Android Backup payload is not supported during folder auto-unpack"
+        ));
     }
 
     if compressed {
@@ -144,7 +153,7 @@ pub fn open_bak_archive_from_reader(
     let prefix = loop {
         let read = input.read(&mut buffer[carry_len..])?;
         if read == 0 {
-            bail!("ANDROID BACKUP marker not found");
+            bail!(Failure::corrupt("ANDROID BACKUP marker not found"));
         }
         let filled = carry_len + read;
         if let Some(position) = finder.find(&buffer[..filled]) {
@@ -161,11 +170,15 @@ pub fn open_bak_archive_from_reader(
     let compressed = match compressed_line.as_str() {
         "0" => false,
         "1" => true,
-        _ => bail!("invalid Android Backup compression flag: {compressed_line}"),
+        _ => bail!(Failure::corrupt(format!(
+            "invalid Android Backup compression flag: {compressed_line}"
+        ))),
     };
     let encryption = read_header_line(&mut reader).context("read Android Backup encryption")?;
     if encryption != ENCRYPTION_NONE {
-        bail!("encrypted Android Backup payload is not supported during auto-unpack");
+        bail!(Failure::unsupported(
+            "encrypted Android Backup payload is not supported during auto-unpack"
+        ));
     }
 
     let archive = if compressed {
@@ -243,15 +256,19 @@ fn read_header_line(reader: &mut impl BufRead) -> io::Result<String> {
 fn read_backup_header(reader: &mut impl BufRead) -> Result<u8> {
     let magic = read_header_line(reader).context("read Android Backup magic")?;
     if magic.as_bytes() != b"ANDROID BACKUP" {
-        bail!("invalid Android Backup magic: {magic}");
+        bail!(Failure::corrupt(format!(
+            "invalid Android Backup magic: {magic}"
+        )));
     }
 
     let version_line = read_header_line(reader).context("read Android Backup version")?;
-    let version = version_line
-        .parse::<u8>()
-        .with_context(|| format!("invalid Android Backup version: {version_line}"))?;
+    let version = version_line.parse::<u8>().with_context(|| {
+        Failure::corrupt(format!("invalid Android Backup version: {version_line}"))
+    })?;
     if !(BACKUP_FILE_V1..=BACKUP_FILE_V5).contains(&version) {
-        bail!("unsupported Android Backup version: {version}");
+        bail!(Failure::unsupported(format!(
+            "unsupported Android Backup version: {version}"
+        )));
     }
     Ok(version)
 }

@@ -5,6 +5,7 @@ use std::io::{self, Read, Seek, SeekFrom};
 use anyhow::{ensure, Context};
 
 use super::GptEntry;
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::SectorSource;
 
 /// Independent cursor; no global state or host-file writes. A read that crosses
@@ -28,22 +29,22 @@ impl<'a> GptPartitionReader<'a> {
         );
         ensure!(
             matches!(sector_size, 512 | 1024 | 2048 | 4096),
-            "unsupported GPT sector size: {sector_size}"
+            Failure::unsupported(format!("unsupported GPT sector size: {sector_size}"))
         );
         let volume_offset = partition
             .first_lba
             .checked_mul(sector_size as u64)
-            .context("GPT partition offset overflow")?;
+            .context(Failure::corrupt("GPT partition offset overflow"))?;
         let length = partition
             .last_lba
             .checked_sub(partition.first_lba)
             .and_then(|length| length.checked_add(1))
-            .context("GPT partition LBA length overflow")?
+            .context(Failure::corrupt("GPT partition LBA length overflow"))?
             .checked_mul(sector_size as u64)
-            .context("GPT partition size overflow")?;
+            .context(Failure::corrupt("GPT partition size overflow"))?;
         let end = volume_offset
             .checked_add(length)
-            .context("GPT partition end overflow")?;
+            .context(Failure::corrupt("GPT partition end overflow"))?;
         ensure!(
             end <= source.size(),
             "GPT partition exceeds evidence source"

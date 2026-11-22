@@ -15,7 +15,7 @@ use super::{
     generated, json_output, schema, strings, CliError, Output,
 };
 use crate::{
-    app::workflows::task_center,
+    app::{error::AppError, workflows::task_center},
     core::{
         filesystem::{
             evidence_session::EvidenceSession,
@@ -56,11 +56,9 @@ async fn loaded_image(state: &AppState, image_id: &str) -> Result<Arc<EvidenceSe
 /// still browse.
 pub(super) fn require_source(image: &EvidenceSession) -> Result<(), CliError> {
     if image.is_index_only() {
-        image.require_source().map_err(super::internal_error)
+        image.require_source().map_err(CliError::from)
     } else {
-        image
-            .validate_source_file_stable()
-            .map_err(super::internal_error)
+        image.validate_source_file_stable().map_err(CliError::from)
     }
 }
 
@@ -75,7 +73,7 @@ pub async fn busy(state: &AppState) -> Result<bool, CliError> {
     Ok(state
         .scheduler
         .list_for_image(None, true)
-        .map_err(super::internal_error)?
+        .map_err(|error| CliError::from(AppError::from(error)))?
         .iter()
         .any(|task| task.status.is_active()))
 }
@@ -579,10 +577,7 @@ async fn files_read(
     let to_stdout = exec.mode != Mode::Session;
     tokio::task::spawn_blocking(move || -> Result<Output, CliError> {
         let mut session = FsSession::new(&image);
-        let size = session
-            .file_stat(&node_id)
-            .map_err(super::internal_error)?
-            .size;
+        let size = session.file_stat(&node_id)?.size;
         if offset > size {
             return Err(CliError::invalid(format!(
                 "偏移 {offset} 超过文件大小 {size}"
@@ -602,11 +597,9 @@ async fn files_read(
                     &image, &node_id, offset, length,
                 )
             });
-            let bytes = result.map_err(super::internal_error)?;
+            let bytes = result?;
             reject_read_faults(&faults)?;
-            image
-                .validate_source_file_stable()
-                .map_err(super::internal_error)?;
+            image.validate_source_file_stable()?;
             return Ok(Output::Bytes(bytes));
         }
         let mut stdout = std::io::stdout().lock();
@@ -623,7 +616,7 @@ async fn files_read(
                 Ok(())
             })
         });
-        let read = result.map_err(super::internal_error)?;
+        let read = result?;
         if text_output {
             let mut decoded = String::new();
             decoder.finish(&mut decoded);
@@ -637,9 +630,7 @@ async fn files_read(
             ));
         }
         reject_read_faults(&faults)?;
-        image
-            .validate_source_file_stable()
-            .map_err(super::internal_error)?;
+        image.validate_source_file_stable()?;
         Ok(Output::Written)
     })
     .await

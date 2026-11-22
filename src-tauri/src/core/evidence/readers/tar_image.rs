@@ -30,6 +30,8 @@ use anyhow::{anyhow, bail, Context, Result};
 use gzipf::GzipDecoder;
 use memmap2::Mmap;
 
+use crate::core::common::error::Failure;
+
 /// Soft cap on recorded members. A 63 GiB Android system tar holds a few
 /// hundred thousand entries; this bound keeps a pathological / corrupt archive
 /// from exhausting memory while staying far above any real evidence tar.
@@ -290,7 +292,7 @@ impl TarImage {
     fn resolve_location(&self, rel: &str) -> Result<(u64, u64)> {
         let entry = self
             .lookup(rel)
-            .ok_or_else(|| anyhow!("not found in tar: {rel}"))?;
+            .ok_or_else(|| anyhow!(Failure::not_found(format!("not found in tar: {rel}"))))?;
         let resolved = match entry.kind {
             TarEntryKind::File => entry,
             TarEntryKind::Symlink => {
@@ -337,7 +339,7 @@ impl TarImage {
         let start = usize::try_from(offset).context("tar offset out of range")?;
         let end = start
             .checked_add(usize::try_from(size).context("tar size out of range")?)
-            .ok_or_else(|| anyhow!("tar entry size overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("tar entry size overflow")))?;
         self.outer
             .get(start..end)
             .ok_or_else(|| anyhow!("tar entry data out of range"))

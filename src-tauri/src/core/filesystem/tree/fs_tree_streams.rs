@@ -7,6 +7,7 @@
 
 use std::{io::Write, path::Path, sync::Arc};
 
+use crate::core::common::error::Failure;
 use crate::core::common::export::write_new;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree::open_ntfs_for_source;
@@ -59,7 +60,9 @@ pub fn read_named_stream(
 ) -> anyhow::Result<Vec<u8>> {
     let image = image.filesystem_session(node_id);
     if stream_name.is_empty() {
-        anyhow::bail!("named-stream API requires a non-empty stream name");
+        anyhow::bail!(Failure::invalid_input(
+            "named-stream API requires a non-empty stream name"
+        ));
     }
     if let Some((source, path)) = parse_hfs_id(node_id) {
         return open_hfs_source(image, source)?.read_named_stream(&path, stream_name, max_bytes);
@@ -93,7 +96,9 @@ pub fn export_named_stream(
 ) -> anyhow::Result<u64> {
     let image = image.filesystem_session(node_id);
     if stream_name.is_empty() {
-        anyhow::bail!("named-stream API requires a non-empty stream name");
+        anyhow::bail!(Failure::invalid_input(
+            "named-stream API requires a non-empty stream name"
+        ));
     }
     if let Some((source, path)) = parse_hfs_id(node_id) {
         return write_new(destination, |file| {

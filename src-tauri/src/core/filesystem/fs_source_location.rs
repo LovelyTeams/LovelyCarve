@@ -10,6 +10,8 @@ use {
     crate::core::filesystem::tree::fs_tree::{FsNode, FsSession, NodeKind},
 };
 
+use crate::core::common::error::Failure;
+
 #[derive(Clone, Copy)]
 enum PathRole {
     Ancestor,
@@ -43,7 +45,7 @@ pub fn source_chain(
     anyhow::ensure!(path.len() <= 32_768, "来源路径过长");
     anyhow::ensure!(
         FsAll::for_image(image).vol_id_of(root).is_some(),
-        "来源卷不存在：{root}"
+        Failure::not_found(format!("来源卷不存在：{root}"))
     );
     let mut session = FsSession::new(image);
     let mut ancestors = Vec::new();
@@ -202,8 +204,11 @@ fn resolve_source_path(
         } else {
             PathRole::Ancestor
         };
-        let node = source_node(children(parent)?, &component, role)?
-            .ok_or_else(|| anyhow::anyhow!("源文件不存在：{path}（卷 {root}）"))?;
+        let node = source_node(children(parent)?, &component, role)?.ok_or_else(|| {
+            anyhow::anyhow!(Failure::not_found(format!(
+                "源文件不存在：{path}（卷 {root}）"
+            )))
+        })?;
         if node.kind == NodeKind::Symlink && !components.is_empty() {
             hops += 1;
             anyhow::ensure!(hops <= 16, "来源路径包含循环或过多符号链接");

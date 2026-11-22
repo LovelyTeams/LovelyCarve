@@ -1,5 +1,6 @@
 //! U-Boot legacy images. Validate both CRCs before interpreting filesystem spans.
 use super::{be32, segments};
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::Partition;
 use anyhow::{ensure, Context, Result};
 use tokio_util::sync::CancellationToken;
@@ -14,42 +15,45 @@ pub(super) fn parse(
 ) -> Result<Vec<Partition>> {
     let mut header: [u8; HEADER] = bytes
         .get(..HEADER)
-        .context("truncated uImage header")?
+        .context(Failure::corrupt("truncated uImage header"))?
         .try_into()?;
     let expected = be32(&header, 4)?;
     header[4..8].fill(0);
     ensure!(
         segments::crc32(&header, cancel)? == expected,
-        "uImage header CRC mismatch"
+        Failure::corrupt("uImage header CRC mismatch")
     );
     let length = be32(bytes, 12)? as usize;
     let end = HEADER
         .checked_add(length)
-        .context("uImage length overflow")?;
+        .context(Failure::corrupt("uImage length overflow"))?;
     let data = bytes
         .get(HEADER..end)
         .context("uImage data exceeds source")?;
     ensure!(
         segments::crc32(data, cancel)? == be32(bytes, 24)?,
-        "uImage data CRC mismatch"
+        Failure::corrupt("uImage data CRC mismatch")
     );
     let mut partitions = Vec::new();
     match bytes[30] {
         4 => {
-            ensure!(bytes[31] == 0, "unsupported compressed uImage multi-image");
+            ensure!(
+                bytes[31] == 0,
+                Failure::unsupported("unsupported compressed uImage multi-image")
+            );
             let mut lengths = Vec::new();
             let mut table_end = 0usize;
             loop {
                 let size = be32(data, table_end)? as usize;
                 table_end = table_end
                     .checked_add(4)
-                    .context("uImage component table overflow")?;
+                    .context(Failure::corrupt("uImage component table overflow"))?;
                 if size == 0 {
                     break;
                 }
                 ensure!(
                     lengths.len() < 32,
-                    "uImage component limit or missing terminator"
+                    Failure::corrupt("uImage component limit or missing terminator")
                 );
                 lengths.push(size);
             }
@@ -58,7 +62,7 @@ pub(super) fn parse(
             for (index, size) in lengths.iter().enumerate() {
                 let component_end = start
                     .checked_add(*size)
-                    .context("uImage component length overflow")?;
+                    .context(Failure::corrupt("uImage component length overflow"))?;
                 let span = data
                     .get(start..component_end)
                     .context("uImage component exceeds data")?;
@@ -76,12 +80,12 @@ pub(super) fn parse(
                 } else {
                     let aligned = component_end
                         .checked_add(3)
-                        .context("uImage component alignment overflow")?
+                        .context(Failure::corrupt("uImage component alignment overflow"))?
                         & !3;
                     ensure!(
                         data.get(component_end..aligned)
                             .is_some_and(|pad| pad.iter().all(|byte| *byte == 0)),
-                        "invalid uImage component padding"
+                        Failure::corrupt("invalid uImage component padding")
                     );
                     aligned
                 };
@@ -92,7 +96,10 @@ pub(super) fn parse(
             );
         }
         7 => {
-            ensure!(bytes[31] == 0, "unsupported compressed uImage filesystem");
+            ensure!(
+                bytes[31] == 0,
+                Failure::unsupported("unsupported compressed uImage filesystem")
+            );
             segments::append_partitions(
                 &mut partitions,
                 segments::parse_payload(
@@ -106,7 +113,9 @@ pub(super) fn parse(
         // Kernels / RAM disks are opaque; compression here is intentionally not
         // interpreted as a filesystem. A rootfs may follow the verified payload.
         2 | 3 | 14 => {}
-        kind => anyhow::bail!("unsupported uImage payload type {kind}"),
+        kind => anyhow::bail!(Failure::unsupported(format!(
+            "unsupported uImage payload type {kind}"
+        ))),
     }
     if end < bytes.len() {
         segments::append_partitions(

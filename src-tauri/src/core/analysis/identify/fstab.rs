@@ -175,7 +175,7 @@ fn unescape(field: &str) -> String {
         decoded.push(bytes[index]);
         index += 1;
     }
-    String::from_utf8_lossy(&decoded).into_owned()
+    String::from_utf8_lossy_owned(decoded)
 }
 
 #[cfg(test)]

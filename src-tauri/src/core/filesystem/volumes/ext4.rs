@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use ext4_view::{Ext4, Ext4Read, FileType};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::DiskImage;
 use crate::core::evidence::partitions::lvm2::layout::LinearLayout;
@@ -86,7 +87,9 @@ pub fn open_ext4_source(image: &Arc<DiskImage>, source: Ext4Source) -> anyhow::R
             let partition = find_partition(image, &part_id.to_string())?;
             let lvm = LvmVolume::open(image, partition)?;
             let lv = lvm.logical_volumes.get(lv_index).ok_or_else(|| {
-                anyhow::anyhow!("logical volume not found: lvm:{part_id}:{lv_index}")
+                anyhow::anyhow!(Failure::not_found(format!(
+                    "logical volume not found: lvm:{part_id}:{lv_index}"
+                )))
             })?;
             Ext4Volume::open(
                 Arc::clone(image),
@@ -126,7 +129,7 @@ impl Ext4Volume {
                 volume
                     .logical_volumes
                     .get(lv_index)
-                    .ok_or_else(|| anyhow::anyhow!("LVM LV missing"))?
+                    .ok_or_else(|| anyhow::anyhow!(Failure::not_found("LVM LV missing")))?
                     .reader_geometry()?
             }
             Ext4Source::Partition(_) => (base_offset, None),
@@ -174,7 +177,7 @@ impl Ext4Volume {
         self.volume_info()?
             .free_block_count
             .checked_mul(self.block_size)
-            .ok_or_else(|| anyhow::anyhow!("ext4 free byte count overflow"))
+            .ok_or_else(|| anyhow::anyhow!(Failure::corrupt("ext4 free byte count overflow")))
     }
 
     pub fn children(
@@ -399,7 +402,7 @@ impl Ext4Volume {
 
     pub fn read_inode(&self, inode_number: u64) -> anyhow::Result<Ext4Inode> {
         if inode_number == 0 {
-            anyhow::bail!("invalid ext4 inode 0");
+            anyhow::bail!(Failure::corrupt("invalid ext4 inode 0"));
         }
         let idx = inode_number_to_u32(inode_number)?;
         let bytes = self
@@ -503,7 +506,7 @@ impl Ext4Volume {
         let volume_end = self
             .base_offset
             .checked_add(self.length_bytes)
-            .ok_or_else(|| anyhow::anyhow!("ext4 volume boundary overflow"))?
+            .ok_or_else(|| anyhow::anyhow!(Failure::corrupt("ext4 volume boundary overflow")))?
             .min(self.image.len());
         for run in &runs {
             if run.physical_offset < self.base_offset

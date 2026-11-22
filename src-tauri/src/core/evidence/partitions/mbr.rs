@@ -15,6 +15,7 @@ use anyhow::{ensure, Context};
 use std::collections::HashSet;
 use tokio_util::sync::CancellationToken;
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::{
     volume_probe::probe_volume, DetectCtx, PartParser, Partition, PartitionKind, PartitionSlice,
     SectorSource, TableScheme,
@@ -41,7 +42,7 @@ pub struct MbrParser;
 pub fn infer_sector_size(source: &dyn SectorSource, preferred: usize) -> anyhow::Result<usize> {
     ensure!(
         matches!(preferred, 512 | 1024 | 2048 | 4096),
-        "unsupported MBR sector size: {preferred}"
+        Failure::unsupported(format!("unsupported MBR sector size: {preferred}"))
     );
     let head = source.read(0, 512).context("reading MBR geometry probe")?;
     let Some(record) = MbrBootRecord::decode(&head, 0) else {
@@ -75,7 +76,7 @@ pub fn infer_sector_size(source: &dyn SectorSource, preferred: usize) -> anyhow:
             }
             let offset = base
                 .checked_mul(sector_size as u64)
-                .context("MBR geometry offset overflow")?;
+                .context(Failure::corrupt("MBR geometry offset overflow"))?;
             let bytes = source
                 .read(offset, 512)
                 .with_context(|| format!("reading EBR geometry probe at {offset}"))?;
@@ -129,7 +130,10 @@ impl MbrTable {
         sector_size: usize,
         cancel: &CancellationToken,
     ) -> anyhow::Result<Option<Self>> {
-        ensure!(!cancel.is_cancelled(), "MBR analysis cancelled");
+        ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("MBR analysis cancelled")
+        );
         let head = source.read(0, 512).context("reading MBR boot record")?;
         parse_table(
             &DetectCtx {
@@ -178,8 +182,7 @@ fn parse_table(
 ) -> anyhow::Result<Option<MbrTable>> {
     ensure!(
         matches!(ctx.sector_size, 512 | 1024 | 2048 | 4096),
-        "unsupported MBR sector size: {}",
-        ctx.sector_size
+        Failure::unsupported(format!("unsupported MBR sector size: {}", ctx.sector_size))
     );
     let Some(record) = MbrBootRecord::decode(ctx.head, 0) else {
         return Ok(None);
@@ -214,7 +217,10 @@ fn parse_table(
     let mut extended = Vec::new();
 
     for (index, parsed) in record.entries.iter().copied().enumerate() {
-        ensure!(!cancel.is_cancelled(), "MBR analysis cancelled");
+        ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("MBR analysis cancelled")
+        );
         if !parsed.is_populated() {
             continue;
         }
@@ -242,7 +248,10 @@ fn parse_table(
     for (base, end) in extended {
         follow_ebr_chain(ctx.source, base, end, &mut table, &mut visited, cancel)?;
     }
-    ensure!(!cancel.is_cancelled(), "MBR analysis cancelled");
+    ensure!(
+        !cancel.is_cancelled(),
+        Failure::cancelled("MBR analysis cancelled")
+    );
     Ok(Some(table))
 }
 
@@ -340,7 +349,10 @@ fn follow_ebr_chain(
 ) -> anyhow::Result<()> {
     let mut pending = vec![extended_base];
     while let Some(current) = pending.pop() {
-        ensure!(!cancel.is_cancelled(), "MBR analysis cancelled");
+        ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("MBR analysis cancelled")
+        );
         if current < extended_base || current >= extended_end {
             table.warn(format!("EBR at LBA {current} is outside extended partition {extended_base}..{extended_end}"));
             continue;
@@ -358,7 +370,7 @@ fn follow_ebr_chain(
         visited.insert(current);
         let sector_offset = current
             .checked_mul(table.sector_size as u64)
-            .context("EBR offset overflow")?;
+            .context(Failure::corrupt("EBR offset overflow"))?;
         let sector = source
             .read(sector_offset, 512)
             .with_context(|| format!("reading EBR at LBA {current}"))?;

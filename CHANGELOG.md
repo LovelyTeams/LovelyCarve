@@ -29,6 +29,10 @@
 - 文件列表开启「隐藏空目录」后仍按页读取：空目录改由后端依据卷快照或索引判定，当页与总数同时排除，不再把整个目录逐页读入前端再过滤；索引上的子树判定改为单连接批量查询。快照尚未覆盖、无法判定的目录先保留显示，不再逐个实时探测子项数来隐藏。
 - 目录树展开改用后端分页：排除已删除项、目录优先并按名称自然排序，大目录只读取到前 300 个文件。
 - 文本预览只从后端取编码检测结果（新命令 `fs_preview_text_encoding`），用已读取的预览字节在前端解码，不再重复传输解码后的文本；NTFS 命名流预览命令 `fs_stream_preview` 改为返回二进制数据。
+- 后端错误码改由错误的类型确定，不再根据报错文字推断，报错文字本身不变：检材结构损坏报 `corruptData`（以往常被标成 `invalidInput` 或 `resourceLimit`），主机上文件不存在、拒绝访问分别报 `notFound`、`permissionDenied`，任务在任何环节被取消都报 `cancelled`。
+- CLI 自己执行的读取命令（如 `files read`、`files strings list`）失败时报告与后端命令相同的错误码，不再一律为 `operationFailed`；CLI 内部错误改报 `internal`，主机 I/O 错误按类型报 `notFound`、`permissionDenied` 等，不再一律为 `io`。
+- Python 读取库在检材、节点或源镜像不存在时抛 `FileNotFoundError`，主机拒绝访问时抛 `PermissionError`，两者都是 `OSError` 的子类。
+- 从源码构建需要 Rust 1.100 或更新版本。
 
 ### Removed
 
@@ -38,9 +42,6 @@
 ### Fixed
 
 - 使用 Cargo 1.100 及更新版本时，带 OCR 的完整构建不再因 ONNX Runtime 构建脚本按旧目录层级拷贝 DLL 而失败；CUDA / TensorRT 执行提供者与 DirectML DLL 重新放在推理组件旁。
-
-### Fixed
-
 - 锁定的案件在后端拒绝添加检材和删除卷索引：CLI 的 `images open` 不能再把新检材加入锁定案件，`indexes delete` 也被拒绝；全部锁定拒绝统一使用错误码 `caseLocked`。
 
 ## [1.3.0] - 2026-11-07

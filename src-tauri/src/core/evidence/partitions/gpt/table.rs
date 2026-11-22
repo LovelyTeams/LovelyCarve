@@ -7,6 +7,7 @@ use uuid::Uuid;
 use super::{
     GptEntry, GptHeader, Partition, GPT_ENTRY_ARRAY_CAP, GPT_FALLBACK_LBAS, GPT_HEADER_BYTES,
 };
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::SectorSource;
 
 /// Exact header locations and selected entries, with explicit recovery warnings.
@@ -35,9 +36,12 @@ impl GptTable {
     ) -> anyhow::Result<Option<Self>> {
         ensure!(
             matches!(sector_size, 512 | 1024 | 2048 | 4096),
-            "unsupported GPT sector size: {sector_size}"
+            Failure::unsupported(format!("unsupported GPT sector size: {sector_size}"))
         );
-        ensure!(!cancel.is_cancelled(), "GPT analysis cancelled");
+        ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("GPT analysis cancelled")
+        );
         let sectors = source.size() / sector_size as u64;
         if sectors < 2 {
             return Ok(None);
@@ -52,7 +56,10 @@ impl GptTable {
         // avoids following corrupt pointer chains and bounds total work to 9 arrays.
         let mut location_index = 0;
         while location_index < locations.len() {
-            ensure!(!cancel.is_cancelled(), "GPT analysis cancelled");
+            ensure!(
+                !cancel.is_cancelled(),
+                Failure::cancelled("GPT analysis cancelled")
+            );
             let lba = locations[location_index];
             location_index += 1;
             if lba >= sectors || visited.contains(&lba) {
@@ -88,7 +95,10 @@ impl GptTable {
             headers.push(header);
             arrays.push(array);
         }
-        ensure!(!cancel.is_cancelled(), "GPT analysis cancelled");
+        ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("GPT analysis cancelled")
+        );
         let selected = headers
             .iter()
             .position(|header| header.verified)
@@ -212,7 +222,7 @@ impl GptTable {
 pub fn infer_sector_size(source: &dyn SectorSource, preferred: usize) -> anyhow::Result<usize> {
     ensure!(
         matches!(preferred, 512 | 1024 | 2048 | 4096),
-        "unsupported GPT sector size: {preferred}"
+        Failure::unsupported(format!("unsupported GPT sector size: {preferred}"))
     );
     for sector_size in std::iter::once(preferred).chain(
         [512, 1024, 2048, 4096]
@@ -240,7 +250,10 @@ fn read_array(
     warnings: &mut Vec<String>,
     cancel: &CancellationToken,
 ) -> anyhow::Result<Option<Vec<GptEntry>>> {
-    ensure!(!cancel.is_cancelled(), "GPT analysis cancelled");
+    ensure!(
+        !cancel.is_cancelled(),
+        Failure::cancelled("GPT analysis cancelled")
+    );
     let lba = header.read_lba;
     // Zero header size survives only as explicitly unverified legacy recovery.
     if header.header_size != 0
@@ -258,7 +271,7 @@ fn read_array(
         .with_context(|| format!("reading GPT checksum header at LBA {lba}"))?;
     ensure!(
         header_bytes.len() == header_length,
-        "short GPT checksum header at LBA {lba}"
+        Failure::corrupt(format!("short GPT checksum header at LBA {lba}"))
     );
     header_bytes[16..20].fill(0);
     header.header_crc_valid =
@@ -290,8 +303,8 @@ fn read_array(
         ));
         return Ok(None);
     }
-    let array_offset = array_offset.context("GPT entry offset overflow")?;
-    let array_end = array_end.context("GPT entry end overflow")?;
+    let array_offset = array_offset.context(Failure::corrupt("GPT entry offset overflow"))?;
+    let array_end = array_end.context(Failure::corrupt("GPT entry end overflow"))?;
     let array_last_lba = if array_length == 0 {
         header.entries_lba
     } else {
@@ -331,7 +344,10 @@ fn read_array(
             "GPT header LBA {lba}: unverified geometry, revision or reserved field"
         ));
     }
-    ensure!(!cancel.is_cancelled(), "GPT analysis cancelled");
+    ensure!(
+        !cancel.is_cancelled(),
+        Failure::cancelled("GPT analysis cancelled")
+    );
     let bytes = source
         .read(array_offset, array_length as usize)
         .with_context(|| format!("reading GPT entry array for header LBA {lba}"))?;
@@ -351,7 +367,10 @@ fn read_array(
     let mut entries: Vec<GptEntry> = Vec::new();
     let mut identifiers = std::collections::HashSet::new();
     for (index, bytes) in bytes.chunks_exact(header.entry_size as usize).enumerate() {
-        ensure!(!cancel.is_cancelled(), "GPT analysis cancelled");
+        ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("GPT analysis cancelled")
+        );
         let entry_offset = array_offset + index as u64 * u64::from(header.entry_size);
         let mut entry =
             GptEntry::decode(bytes, index as u32, entry_offset).context("decoding GPT entry")?;

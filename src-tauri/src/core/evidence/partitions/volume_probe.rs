@@ -9,6 +9,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::crypto::bitlocker;
 use crate::core::evidence::partitions::fat::{
     detect_valid_fat_boot_sector, recover_fat32_boot_sector, FAT32_BACKUP_BOOT_SECTOR,
@@ -123,7 +124,7 @@ impl VolumeProbe for UbiProbe {
                     .checked_add(64)
                     .is_some_and(|end| end <= header.data_ofs)
                 && u64::from(header.data_ofs) < ctx.size,
-            "invalid UBI EC geometry"
+            Failure::corrupt("invalid UBI EC geometry")
         );
         Ok(Some(VolumeProbeHit::new(
             "ubi",

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 
 use super::{FatGeom, FatTable, DENTRY_LEN};
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::DiskImage;
 use crate::core::filesystem::tree::fs_tree::FsDataRun;
 
@@ -39,7 +40,7 @@ impl DirectoryData {
         }
         run.physical_offset
             .checked_add(relative_offset)
-            .ok_or_else(|| anyhow!("FAT directory entry offset overflow"))
+            .ok_or_else(|| anyhow!(Failure::corrupt("FAT directory entry offset overflow")))
     }
 }
 
@@ -114,13 +115,15 @@ fn read_cluster_chain(
         }
         let next = fat.next_cluster(cluster);
         if next < 2 || next >= max_cluster {
-            anyhow::bail!("FAT invalid directory chain");
+            anyhow::bail!(Failure::corrupt("FAT invalid directory chain"));
         }
         cluster = next;
         guard += 1;
     }
     if guard >= MAX_DIR_CLUSTERS {
-        anyhow::bail!("FAT directory exceeds recovery limit");
+        anyhow::bail!(Failure::resource_limit(
+            "FAT directory exceeds recovery limit"
+        ));
     }
     Ok(DirectoryData { bytes, runs })
 }

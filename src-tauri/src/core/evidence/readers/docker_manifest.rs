@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, HashSet};
 use anyhow::{anyhow, bail, Context, Result};
 use serde::Deserialize;
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::readers::docker_image::ImageConfig;
 use crate::core::evidence::readers::tar_image::TarImage;
 
@@ -318,12 +319,13 @@ fn outer_slice<'a, I: OuterMemberIndex + ?Sized>(
     let (offset, size) = index
         .member_location(name)
         .ok_or_else(|| anyhow!("missing archive member: {name}"))?;
-    let start =
-        usize::try_from(offset).with_context(|| format!("member offset overflow: {name}"))?;
-    let size = usize::try_from(size).with_context(|| format!("member size overflow: {name}"))?;
+    let start = usize::try_from(offset)
+        .with_context(|| Failure::corrupt(format!("member offset overflow: {name}")))?;
+    let size = usize::try_from(size)
+        .with_context(|| Failure::corrupt(format!("member size overflow: {name}")))?;
     let end = start
         .checked_add(size)
-        .ok_or_else(|| anyhow!("member size overflow: {name}"))?;
+        .ok_or_else(|| anyhow!(Failure::corrupt(format!("member size overflow: {name}"))))?;
     outer
         .get(start..end)
         .ok_or_else(|| anyhow!("member out of range: {name}"))
@@ -332,12 +334,12 @@ fn outer_slice<'a, I: OuterMemberIndex + ?Sized>(
 fn blob_member(digest: &str) -> Result<String> {
     let (algorithm, hex) = digest
         .split_once(':')
-        .ok_or_else(|| anyhow!("malformed digest: {digest}"))?;
+        .ok_or_else(|| anyhow!(Failure::corrupt(format!("malformed digest: {digest}"))))?;
     if algorithm.is_empty()
         || hex.is_empty()
         || !hex.chars().all(|character| character.is_ascii_hexdigit())
     {
-        bail!("invalid digest: {digest}");
+        bail!(Failure::corrupt(format!("invalid digest: {digest}")));
     }
     Ok(format!("blobs/{algorithm}/{hex}"))
 }

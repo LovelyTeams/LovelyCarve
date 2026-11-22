@@ -8,6 +8,7 @@
 use serde::Serialize;
 
 use super::model::TaskParams;
+use super::{SchedError, SchedResult};
 use crate::core::extensions::plugin::{AnalyzerScope, OptionKind, PluginDefinition, TaskTrigger};
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -73,22 +74,21 @@ impl SchedFunction {
     }
 
     /// 校验任务的目标与选项。
-    pub fn check_params(&self, params: &TaskParams) -> Result<(), String> {
+    pub fn check_params(&self, params: &TaskParams) -> SchedResult<()> {
+        let invalid = |message: String| Err(SchedError::InvalidParams(message));
         match self.scope {
             AnalyzerScope::System if params.system_id.is_none() => {
-                return Err(format!("{} 需要选择一个系统", self.display_name));
+                return invalid(format!("{} 需要选择一个系统", self.display_name));
             }
             AnalyzerScope::Files if params.node_id.is_none() => {
-                return Err(format!("{} 需要选择一个文件", self.display_name));
+                return invalid(format!("{} 需要选择一个文件", self.display_name));
             }
             AnalyzerScope::System | AnalyzerScope::Files | AnalyzerScope::Evidence => {}
         }
         for (id, value) in &params.options {
-            let option = self
-                .options
-                .iter()
-                .find(|option| option.id == *id)
-                .ok_or_else(|| format!("{} 没有选项 {id}", self.display_name))?;
+            let Some(option) = self.options.iter().find(|option| option.id == *id) else {
+                return invalid(format!("{} 没有选项 {id}", self.display_name));
+            };
             option.check(value)?;
         }
         Ok(())
@@ -96,7 +96,7 @@ impl SchedFunction {
 }
 
 impl FunctionOption {
-    fn check(&self, value: &serde_json::Value) -> Result<(), String> {
+    fn check(&self, value: &serde_json::Value) -> SchedResult<()> {
         let known = |choice: &str| self.choices.iter().any(|item| item.id == choice);
         let valid = match (self.kind, value) {
             (OptionKind::Flag, serde_json::Value::Bool(_)) => true,
@@ -110,7 +110,10 @@ impl FunctionOption {
         if valid {
             Ok(())
         } else {
-            Err(format!("选项 {} 的值无效", self.id))
+            Err(SchedError::InvalidParams(format!(
+                "选项 {} 的值无效",
+                self.id
+            )))
         }
     }
 }

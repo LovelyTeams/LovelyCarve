@@ -1,5 +1,6 @@
 //! JFFS2 partition view; original evidence bytes remain unchanged.
 use super::ubi::UbiSource;
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::{find_partition, DiskImage};
 use crate::core::filesystem::fs_dispatch::build_stat;
 use crate::core::filesystem::tree::fs_tree::{FsNode, FsStat, Mactb, NodeKind};
@@ -91,7 +92,10 @@ impl Jffs2Volume {
                 | FileType::Socket => NodeKind::File,
             };
             let link_target = if inode.kind == FileType::Symlink {
-                ensure!(inode.size <= 65536, "JFFS2 symlink target exceeds limit");
+                ensure!(
+                    inode.size <= 65536,
+                    Failure::resource_limit("JFFS2 symlink target exceeds limit")
+                );
                 Some(
                     String::from_utf8(self.reader.read_range(
                         &self.bytes,
@@ -99,7 +103,7 @@ impl Jffs2Volume {
                         0,
                         inode.size as usize,
                     )?)
-                    .context("unsupported non-UTF8 JFFS2 symlink")?,
+                    .context(Failure::unsupported("unsupported non-UTF8 JFFS2 symlink"))?,
                 )
             } else {
                 None

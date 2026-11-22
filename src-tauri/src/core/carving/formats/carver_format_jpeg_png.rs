@@ -5,6 +5,7 @@ use anyhow::bail;
 use crate::core::carving::carver::CarveSource;
 use crate::core::carving::carver_formats::FormatScanResult;
 use crate::core::carving::carver_reader::CarveReader;
+use crate::core::common::error::Failure;
 
 pub(in crate::core) fn scan_jpeg<S: CarveSource>(
     reader: &mut CarveReader<'_, S>,
@@ -70,7 +71,9 @@ pub(in crate::core) fn scan_png<S: CarveSource>(
             b"tRNS" => Some(3),
             b"IDAT" if (1..=4).contains(&stage) => Some(4),
             b"IEND" if stage == 4 => Some(5),
-            b"IHDR" | b"PLTE" | b"IDAT" | b"IEND" => bail!("invalid PNG chunk order"),
+            b"IHDR" | b"PLTE" | b"IDAT" | b"IEND" => {
+                bail!(Failure::corrupt("invalid PNG chunk order"))
+            }
             _ => None,
         };
         if length > i32::MAX as u64 {
@@ -81,7 +84,7 @@ pub(in crate::core) fn scan_png<S: CarveSource>(
         reader.consume_with(length, |bytes| crc.update(bytes))?;
         let expected = u32::from_be_bytes(reader.read_array()?);
         if expected != crc.sum() {
-            bail!("invalid PNG checksum");
+            bail!(Failure::corrupt("invalid PNG checksum"));
         }
         if let Some(next_stage) = next_stage {
             stage = next_stage;

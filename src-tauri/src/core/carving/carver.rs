@@ -14,6 +14,7 @@ use serde::Serialize;
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::DiskImage;
 
 pub(in crate::core) const SCAN_BUFFER_BYTES: usize = 4 * 1024 * 1024;
@@ -372,7 +373,7 @@ fn selected_formats(ids: &[String]) -> anyhow::Result<Vec<FormatKind>> {
     let mut selected = BTreeSet::new();
     for id in ids {
         let format = FormatKind::from_id(&id.to_ascii_lowercase())
-            .with_context(|| format!("unsupported carve format: {id}"))?;
+            .with_context(|| Failure::invalid_input(format!("unsupported carve format: {id}")))?;
         selected.insert(format);
     }
     Ok(ALL_FORMATS

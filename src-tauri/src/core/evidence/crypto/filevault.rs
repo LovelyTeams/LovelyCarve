@@ -1,5 +1,6 @@
 //! CoreStorage inventory and upstream forensic observations over read-only evidence.
 use super::encrypted_image::EvidenceReader;
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::DiskImage;
 use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -81,7 +82,10 @@ pub fn inspect(
     let (source_offset, source_length) = reader.bounds();
     let external = read_external_context(options.encrypted_root_plist_path.as_deref())?;
     let container = filevault::storage::Container::open(reader, external.as_deref())?;
-    ensure!(!cancellation.is_cancelled(), "FileVault 元数据读取已取消");
+    ensure!(
+        !cancellation.is_cancelled(),
+        Failure::cancelled("FileVault 元数据读取已取消")
+    );
     let volumes = container
         .volumes()
         .map(|volume| {

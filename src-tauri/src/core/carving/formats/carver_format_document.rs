@@ -5,6 +5,7 @@ use anyhow::bail;
 use crate::core::carving::carver::CarveSource;
 use crate::core::carving::carver_formats::FormatScanResult;
 use crate::core::carving::carver_reader::{seek_at, CarveReader};
+use crate::core::common::error::Failure;
 
 const PDF_EOF: &[u8] = b"%%EOF";
 /// Digler's reach from one position to the next end-of-file marker.
@@ -27,7 +28,7 @@ pub(in crate::core) fn scan_pdf<S: CarveSource>(
     reader: &mut CarveReader<'_, S>,
 ) -> anyhow::Result<Option<FormatScanResult>> {
     if &reader.read_array::<5>()? != b"%PDF-" {
-        bail!("invalid PDF file");
+        bail!(Failure::corrupt("invalid PDF file"));
     }
     let mut fallback_end = None;
     let mut end = None;
@@ -45,7 +46,7 @@ pub(in crate::core) fn scan_pdf<S: CarveSource>(
         fallback_end.get_or_insert(marker_end);
     }
     let Some(mut end) = end.or(fallback_end) else {
-        bail!("PDF end-of-file marker not found");
+        bail!(Failure::corrupt("PDF end-of-file marker not found"));
     };
     while opens_pdf_section(reader)? {
         if !seek_at(reader, PDF_EOF, PDF_EOF_REACH)? {
@@ -176,7 +177,7 @@ pub(in crate::core) fn scan_sqlite<S: CarveSource>(
 ) -> anyhow::Result<Option<FormatScanResult>> {
     let header = reader.read_vec(100)?;
     if &header[..16] != b"SQLite format 3\0" {
-        bail!("invalid SQLite signature");
+        bail!(Failure::corrupt("invalid SQLite signature"));
     }
     let raw_page_size = u16::from_be_bytes([header[16], header[17]]);
     let page_size = if raw_page_size == 1 {
@@ -185,7 +186,7 @@ pub(in crate::core) fn scan_sqlite<S: CarveSource>(
         u64::from(raw_page_size)
     };
     if !page_size.is_power_of_two() || !(512..=65_536).contains(&page_size) {
-        bail!("invalid SQLite page size");
+        bail!(Failure::corrupt("invalid SQLite page size"));
     }
     let file_change_counter = u32::from_be_bytes(header[24..28].try_into()?);
     let file_size_in_pages = u32::from_be_bytes(header[28..32].try_into()?);

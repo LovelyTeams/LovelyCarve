@@ -1,37 +1,26 @@
-//! Structured errors returned by Tauri commands.
+//! Structured errors returned by commands.
 //!
-//! Core modules can keep using `anyhow` or domain-specific errors; command
-//! handlers translate failures into this stable IPC shape so the frontend can
-//! distinguish retryable source changes, missing images, cancellations and
-//! internal worker failures without parsing display strings forever.
+//! Engines propagate failures with `anyhow` and raise the ones whose kind
+//! matters as typed [`Failure`]s (see [`crate::core::common::error`]).
+//! Command handlers convert failures into this stable IPC shape; its `code`
+//! comes from the types in the error chain, never from the message, so the
+//! frontend and the CLI can tell cancellations, missing evidence, locked
+//! cases and retryable source changes apart.
 
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::core::casework::case::CaseLocked;
+pub use crate::core::common::error::ErrorCode;
+use crate::core::common::error::{self, Failure};
+use crate::core::extensions::plugin::PluginError;
 use crate::core::extensions::task_scheduler::SchedError;
+use crate::core::filesystem::fs_dispatch::MissingDataStream;
 use crate::task_manager::{TaskFailure, TaskResourceAcquireError};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ErrorCode {
-    Cancelled,
-    PermissionDenied,
-    UnsupportedFormat,
-    CorruptData,
-    SourceChanged,
-    ResourceLimit,
-    FfiUnavailable,
-    TaskPanicked,
-    NotFound,
-    InvalidInput,
-    /// The active case is locked and refuses the edit.
-    CaseLocked,
-    Io,
-    Internal,
-}
-
-#[derive(Debug, Clone, Serialize)]
+/// A command failure in its IPC shape.
+#[derive(Debug, Clone, Serialize, thiserror::Error)]
+#[error("{message}")]
 pub struct AppError {
     pub code: ErrorCode,
     pub message: String,
@@ -51,12 +40,11 @@ impl TaskFailure for AppError {
 
 impl AppError {
     pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
-        let retryable = matches!(code, ErrorCode::SourceChanged | ErrorCode::Io);
         Self {
             code,
             message: message.into(),
             context: None,
-            retryable,
+            retryable: code.is_retryable(),
         }
     }
 
@@ -80,6 +68,10 @@ impl AppError {
         Self::new(ErrorCode::ResourceLimit, message)
     }
 
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::Internal, message)
+    }
+
     pub fn task_panicked(task: impl Into<String>, error: tokio::task::JoinError) -> Self {
         Self::new(
             ErrorCode::TaskPanicked,
@@ -87,26 +79,18 @@ impl AppError {
         )
     }
 
-    pub fn from_message(message: impl Into<String>) -> Self {
-        let message = message.into();
-        Self::new(classify_message(&message), message)
-    }
-
-    pub fn from_anyhow(error: anyhow::Error) -> Self {
-        if let Some(locked) = error.downcast_ref::<CaseLocked>() {
-            return Self::from(*locked);
-        }
-        Self::from_message(format!("{error:#}"))
-    }
-
     pub fn from_io(operation: impl Into<String>, error: std::io::Error) -> Self {
-        let operation = operation.into();
-        let code = match error.kind() {
-            std::io::ErrorKind::NotFound => ErrorCode::NotFound,
-            std::io::ErrorKind::PermissionDenied => ErrorCode::PermissionDenied,
-            _ => ErrorCode::Io,
-        };
-        Self::new(code, format!("{operation}: {error}"))
+        Self::new(
+            ErrorCode::of_io(error.kind()),
+            format!("{}: {error}", operation.into()),
+        )
+    }
+
+    /// A failed read of evidence bytes: coded by the types in its chain, and
+    /// `io` when they state no code.
+    pub fn from_read(operation: impl Into<String>, error: anyhow::Error) -> Self {
+        let code = error::classify(&error, cause_code).unwrap_or(ErrorCode::Io);
+        Self::new(code, format!("{}: {error:#}", operation.into()))
     }
 
     pub fn with_context_value(mut self, context: Value) -> Self {
@@ -122,7 +106,18 @@ impl AppError {
 
 impl From<anyhow::Error> for AppError {
     fn from(error: anyhow::Error) -> Self {
-        Self::from_anyhow(error)
+        // A case-lock refusal reads the same wherever it was raised.
+        if let Some(locked) = error.downcast_ref::<CaseLocked>() {
+            return Self::from(*locked);
+        }
+        let code = error::classify(&error, cause_code).unwrap_or(ErrorCode::Internal);
+        Self::new(code, format!("{error:#}"))
+    }
+}
+
+impl From<Failure> for AppError {
+    fn from(failure: Failure) -> Self {
+        Self::new(failure.code(), failure.message())
     }
 }
 
@@ -134,10 +129,11 @@ impl From<CaseLocked> for AppError {
 
 impl From<TaskResourceAcquireError> for AppError {
     fn from(error: TaskResourceAcquireError) -> Self {
+        let message = error.to_string();
         match error {
-            TaskResourceAcquireError::Cancelled => Self::cancelled("任务已取消"),
-            TaskResourceAcquireError::SemaphoreClosed { label } => {
-                Self::new(ErrorCode::Internal, format!("{label} semaphore closed")).retryable(true)
+            TaskResourceAcquireError::Cancelled => Self::cancelled(message),
+            TaskResourceAcquireError::SemaphoreClosed { .. } => {
+                Self::internal(message).retryable(true)
             }
         }
     }
@@ -151,89 +147,77 @@ impl From<SchedError> for AppError {
             | SchedError::FunctionUnknown(_)
             | SchedError::EvidenceUnknown(_)
             | SchedError::InvalidParams(_) => Self::invalid_input(error.to_string()),
-            SchedError::Store(inner) => Self::from_anyhow(inner),
+            SchedError::Store(inner) => Self::from(inner),
         }
     }
 }
 
-fn classify_message(message: &str) -> ErrorCode {
-    let lower = message.to_ascii_lowercase();
-    if lower.contains("cancelled") || message.contains("已取消") || message.contains("取消") {
-        ErrorCode::Cancelled
-    } else if message.contains("源镜像文件已变化") {
-        ErrorCode::SourceChanged
-    } else if lower.contains("permission denied")
-        || lower.contains("access denied")
-        || message.contains("拒绝访问")
-        || message.contains("权限")
-    {
-        ErrorCode::PermissionDenied
-    } else if lower.contains("unsupported")
-        || lower.contains("not support")
-        || lower.contains("is not bitlocker")
-        || message.contains("不支持")
-        || message.contains("暂不支持")
-    {
-        ErrorCode::UnsupportedFormat
-    } else if lower.contains("corrupt")
-        || lower.contains("malformed")
-        || lower.contains("crc")
-        || lower.contains("checksum")
-        || lower.contains("ended early")
-        || lower.contains("synthetic zero")
-        || message.contains("损坏")
-        || message.contains("校验和")
-        || message.contains("补零字节")
-    {
-        ErrorCode::CorruptData
-    } else if lower.contains("too large")
-        || lower.contains("resource")
-        || lower.contains("limit")
-        || lower.contains("overflow")
-        || message.contains("最多")
-        || message.contains("上限")
-        || message.contains("溢出")
-    {
-        ErrorCode::ResourceLimit
-    } else if lower.contains("dll")
-        || lower.contains("load library")
-        || message.contains("无法加载")
-    {
-        ErrorCode::FfiUnavailable
-    } else if lower.contains("not found")
-        || lower.contains("not loaded")
-        || message.contains("不存在")
-        || message.contains("未加载")
-    {
-        ErrorCode::NotFound
-    } else if lower.contains("invalid")
-        || lower.contains("bad input")
-        || lower.contains("not unlocked")
-        || lower.contains("does not unlock")
-        || lower.contains("is required")
-        || message.contains("无效")
-        || message.contains("非法")
-    {
-        ErrorCode::InvalidInput
-    } else if lower.starts_with("io ")
-        || lower.starts_with("open ")
-        || lower.starts_with("read ")
-        || lower.starts_with("write ")
-        || lower.starts_with("create ")
-        || lower.starts_with("stat ")
-        || lower.starts_with("flush ")
-    {
-        ErrorCode::Io
-    } else {
-        ErrorCode::Internal
+impl From<PluginError> for AppError {
+    fn from(error: PluginError) -> Self {
+        Self::new(plugin_code(&error), error.to_string())
+    }
+}
+
+/// The code of one cause in an error chain: the core vocabulary, plus the
+/// domain errors that travel inside `anyhow` chains.
+fn cause_code(cause: &(dyn std::error::Error + 'static)) -> Option<ErrorCode> {
+    if let Some(code) = error::cause_code(cause) {
+        return Some(code);
+    }
+    if cause.is::<CaseLocked>() {
+        return Some(ErrorCode::CaseLocked);
+    }
+    if cause.is::<MissingDataStream>() {
+        return Some(ErrorCode::NotFound);
+    }
+    if let Some(plugin) = cause.downcast_ref::<PluginError>() {
+        return Some(plugin_code(plugin));
+    }
+    cause.downcast_ref::<tokio::task::JoinError>().map(|join| {
+        if join.is_cancelled() {
+            ErrorCode::Cancelled
+        } else {
+            ErrorCode::TaskPanicked
+        }
+    })
+}
+
+fn plugin_code(error: &PluginError) -> ErrorCode {
+    match error {
+        PluginError::Io(io) => ErrorCode::of_io(io.kind()),
+        PluginError::Rpc { code, .. } => lpp_code(code),
+        PluginError::Manifest(_) => ErrorCode::InvalidInput,
+        PluginError::Handshake(_) | PluginError::Unavailable(_) => ErrorCode::FfiUnavailable,
+        PluginError::Timeout | PluginError::ResourceLimit(_) => ErrorCode::ResourceLimit,
+        PluginError::InvalidFrame(_)
+        | PluginError::Serialization(_)
+        | PluginError::Deserialization(_)
+        | PluginError::ConnectionClosed
+        | PluginError::BlockingOnAsyncRuntime => ErrorCode::Internal,
+    }
+}
+
+/// The code of an LPP error reply. Plugins may send codes of their own; the
+/// shared ones keep their meaning.
+fn lpp_code(code: &str) -> ErrorCode {
+    match code {
+        "CANCELLED" => ErrorCode::Cancelled,
+        "INVALID_PARAMS" => ErrorCode::InvalidInput,
+        "NOT_FOUND" | "EVIDENCE_PATH_NOT_FOUND" | "UNKNOWN_SOURCE" => ErrorCode::NotFound,
+        "PERMISSION_DENIED" => ErrorCode::PermissionDenied,
+        "RESOURCE_LIMIT" | "READ_TOO_LARGE" | "TOO_MANY_RANGES" => ErrorCode::ResourceLimit,
+        _ => ErrorCode::Internal,
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use anyhow::{anyhow, Context};
     use serde_json::json;
 
     use super::{AppError, ErrorCode};
+    use crate::core::common::error::Failure;
+    use crate::core::extensions::plugin::PluginError;
     use crate::task_manager::TaskResourceAcquireError;
 
     #[test]
@@ -255,62 +239,41 @@ mod tests {
     }
 
     #[test]
-    fn classifies_common_command_messages() {
-        assert_eq!(
-            AppError::from_message("源盘哈希前校验失败：源镜像文件已变化").code,
-            ErrorCode::SourceChanged
+    fn codes_come_from_failure_types_not_messages() {
+        let typed = AppError::from(
+            anyhow!(Failure::source_changed("源镜像文件已变化：a.E01"))
+                .context("源盘哈希前校验失败"),
         );
-        assert_eq!(
-            AppError::from_message("fs_read_range length overflow").code,
-            ErrorCode::ResourceLimit
+        assert_eq!(typed.code, ErrorCode::SourceChanged);
+        assert!(typed.retryable);
+        assert_eq!(typed.message, "源盘哈希前校验失败: 源镜像文件已变化：a.E01");
+
+        // Wording alone no longer decides anything.
+        let untyped = AppError::from(anyhow!("export cancelled: image not found"));
+        assert_eq!(untyped.code, ErrorCode::Internal);
+        assert!(!untyped.retryable);
+    }
+
+    #[test]
+    fn cancellation_wins_over_outer_failures() {
+        let error = AppError::from(
+            anyhow!(Failure::cancelled("memory scan cancelled"))
+                .context(Failure::corrupt("BitLocker metadata unreadable")),
         );
+
+        assert_eq!(error.code, ErrorCode::Cancelled);
+    }
+
+    #[test]
+    fn host_io_errors_keep_their_kind() {
+        let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        let error = AppError::from(anyhow::Error::new(denied).context("open 'memory.raw'"));
+        assert_eq!(error.code, ErrorCode::PermissionDenied);
+
+        let missing = std::io::Error::from(std::io::ErrorKind::NotFound);
         assert_eq!(
-            AppError::from_message("export cancelled").code,
-            ErrorCode::Cancelled
-        );
-        assert_eq!(
-            AppError::from_message("严格读取在偏移 0 的数据块检测到补零字节").code,
-            ErrorCode::CorruptData
-        );
-        assert_eq!(
-            AppError::from_message(
-                "strict read detected synthetic zero bytes in the block at offset 0"
-            )
-            .code,
-            ErrorCode::CorruptData
-        );
-        assert_eq!(
-            AppError::from_message("image not loaded").code,
+            AppError::from_io("open case.json", missing).code,
             ErrorCode::NotFound
-        );
-        assert_eq!(
-            AppError::from_message("partition 1 is not BitLocker").code,
-            ErrorCode::UnsupportedFormat
-        );
-        assert_eq!(
-            AppError::from_message("BitLocker partition 1 is not unlocked").code,
-            ErrorCode::InvalidInput
-        );
-        assert_eq!(
-            AppError::from_message("recovery password or password is required").code,
-            ErrorCode::InvalidInput
-        );
-        assert_eq!(
-            AppError::from_message("the supplied VMK does not unlock this BitLocker volume").code,
-            ErrorCode::InvalidInput
-        );
-        assert_eq!(
-            AppError::from_message("decrypted BitLocker stream ended early at 0 of 4096 bytes")
-                .code,
-            ErrorCode::CorruptData
-        );
-        assert_eq!(
-            AppError::from_message("memory scan cancelled").code,
-            ErrorCode::Cancelled
-        );
-        assert_eq!(
-            AppError::from_message("open 'memory.raw': Access denied").code,
-            ErrorCode::PermissionDenied
         );
     }
 
@@ -333,9 +296,10 @@ mod tests {
     }
 
     #[test]
-    fn maps_task_resource_acquire_errors_without_text_classification() {
+    fn maps_task_resource_acquire_errors() {
         let cancelled = AppError::from(TaskResourceAcquireError::Cancelled);
         assert_eq!(cancelled.code, ErrorCode::Cancelled);
+        assert_eq!(cancelled.message, "任务已取消");
         assert!(!cancelled.retryable);
 
         let closed = AppError::from(TaskResourceAcquireError::SemaphoreClosed {
@@ -344,5 +308,31 @@ mod tests {
         assert_eq!(closed.code, ErrorCode::Internal);
         assert_eq!(closed.message, "per-image random I/O semaphore closed");
         assert!(closed.retryable);
+    }
+
+    #[test]
+    fn maps_plugin_errors_by_variant() {
+        let cancelled = PluginError::Rpc {
+            code: "CANCELLED".to_owned(),
+            message: "request cancelled".to_owned(),
+        };
+        assert_eq!(AppError::from(cancelled).code, ErrorCode::Cancelled);
+        assert_eq!(
+            AppError::from(PluginError::Timeout).code,
+            ErrorCode::ResourceLimit
+        );
+        let boxed = anyhow::Error::new(PluginError::Unavailable("host exited".to_owned()))
+            .context("start linuxinfo");
+        assert_eq!(AppError::from(boxed).code, ErrorCode::FfiUnavailable);
+    }
+
+    #[test]
+    fn a_missing_data_stream_is_not_found() {
+        let missing = crate::core::filesystem::fs_dispatch::MissingDataStream {
+            message: "$Secure has no unnamed data stream".to_owned(),
+        };
+        let error: anyhow::Result<()> = Err(anyhow::Error::new(missing)).context("preview $Secure");
+
+        assert_eq!(AppError::from(error.unwrap_err()).code, ErrorCode::NotFound);
     }
 }

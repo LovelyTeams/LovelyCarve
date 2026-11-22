@@ -326,6 +326,10 @@ DSH 超限响应不交付当前页，`recovery.restartCurrentPage` 为 true。�
   由编码代理运行时（识别方式见[发现命令](#发现命令)）改为标准错误上的一行 JSON，与 JSONL 会话的字段相同：
   `{"error":{"code":"…","message":"…"}}`，后端提供时附 `details`，后端命令失败时附 `ipcCommand`；
   结果不完整的警告同样为一行 `{"warning":{"code":"incompleteResult",…}}`。`--events` 仍优先输出事件。
+- 错误代码与桌面端共用一套，由错误的类型决定而不是从报错文字推断，CLI 自己读取检材时也一样：`notFound`、
+  `invalidInput`、`cancelled`、`corruptData`、`unsupportedFormat`、`resourceLimit`、`permissionDenied`、
+  `sourceChanged`、`caseLocked`、`io`、`internal` 等；CLI 另有 `usage`、`noImage`、`aborted`、`tasksFailed`、
+  `sessionExited` 等自己的代码。
 - 后台任务指命令返回后仍在运行的任务（`carve scans create`、`indexes create`、插件任务等），以及检材登记到案件后
   自动开始的卷索引、平台识别与插件任务；命令自己等待完成的任务由命令结果报告。一次性命令输出结果后等待后台任务，
   任一失败或结束时没有报告结果时显示 `tasksFailed` 错误块，列出每个失败的任务，并以 1 退出；取消不算失败。

@@ -142,7 +142,7 @@ pub async fn carve_start(
             max_results: options.max_results,
             worker_threads: None,
         };
-        Some(Carver::try_new(&config).map_err(AppError::from_anyhow)?)
+        Some(Carver::try_new(&config).map_err(AppError::from)?)
     } else {
         None
     };
@@ -181,7 +181,7 @@ pub async fn carve_start(
                     } else {
                         CarveSessionStatus::Failed
                     },
-                    Some(error.message()),
+                    Some(error.to_string()),
                 );
                 emit_scan_snapshot(&app, &tasks, &session);
                 return;
@@ -520,7 +520,7 @@ pub async fn carve_preview(
     let data = tokio::task::spawn_blocking(move || image.read_range(artifact.offset, length))
         .await
         .map_err(|error| AppError::task_panicked("carve_preview", error))?
-        .map_err(AppError::from_anyhow)?;
+        .map_err(AppError::from)?;
     Ok(crate::host::Response::new(data))
 }
 

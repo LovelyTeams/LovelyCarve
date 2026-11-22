@@ -3,6 +3,7 @@
 //! never persist. There is no persistence layer, so recovered keys and
 //! failed-attempt history are not retained — each unlock runs independently.
 
+use crate::core::common::error::Failure;
 use crate::core::common::ids::ImageId;
 use std::{
     fs::File,
@@ -70,7 +71,7 @@ pub async fn bitlocker_metadata(
             offset,
             length,
         )
-        .map_err(AppError::from_anyhow)
+        .map_err(AppError::from)
     })
     .await
     .map_err(|error| AppError::task_panicked("bitlocker_metadata", error))?
@@ -84,9 +85,7 @@ pub async fn bitlocker_status(
 ) -> Result<BitlockerStatus, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     reject_if_folder(&image)?;
-    image
-        .bitlocker_status(partition_id)
-        .map_err(AppError::from_anyhow)
+    image.bitlocker_status(partition_id).map_err(AppError::from)
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
@@ -179,7 +178,7 @@ pub async fn bitlocker_unlock(
             anyhow::ensure!(count <= 1, "choose exactly one BitLocker credential kind");
             anyhow::ensure!(
                 tweak_hex.is_none() || fvek_hex.is_some(),
-                "TWEAK requires FVEK"
+                Failure::invalid_input("TWEAK requires FVEK")
             );
             let mut startup_key = Vec::new();
             if let Some(path) = startup_key_path {
@@ -191,7 +190,7 @@ pub async fn bitlocker_unlock(
             let decode = |value: &str| -> anyhow::Result<Vec<u8>> {
                 anyhow::ensure!(value.len() <= 256, "key hex input is too long");
                 hex::decode(value.split_whitespace().collect::<String>())
-                    .map_err(|_| anyhow::anyhow!("invalid key hex"))
+                    .map_err(|_| anyhow::anyhow!(Failure::invalid_input("invalid key hex")))
             };
             let fvek = fvek_hex.as_deref().map(decode).transpose()?;
             let tweak = tweak_hex
@@ -226,7 +225,7 @@ pub async fn bitlocker_unlock(
     .await
     .map_err(|err| AppError::task_panicked("bitlocker_unlock", err))?;
 
-    let status = join_outcome.map_err(AppError::from_anyhow)?;
+    let status = join_outcome.map_err(AppError::from)?;
     // Now that the NTFS volume is reachable, kick off the deleted-records
     // scan in the background so the FsTree view sees them inline on first
     // expansion.
@@ -305,7 +304,7 @@ pub async fn bitlocker_scan_memory(
         scan_done.store(true, Ordering::Relaxed);
         let _ = watcher.join();
 
-        let raw_candidates = raw_outcome.map_err(AppError::from_anyhow)?;
+        let raw_candidates = raw_outcome.map_err(AppError::from)?;
 
         let partition = image
             .partitions
@@ -436,7 +435,7 @@ pub async fn bitlocker_unlock_with_vmk(
         .await
         .map_err(|err| AppError::task_panicked("bitlocker_unlock_with_vmk", err))?;
 
-    let (status, recovery_key) = join_outcome.map_err(AppError::from_anyhow)?;
+    let (status, recovery_key) = join_outcome.map_err(AppError::from)?;
     Ok(BitlockerVmkUnlockResult {
         status,
         recovery_key,
@@ -537,7 +536,7 @@ pub async fn bitlocker_export_decrypted_image(
                 return Err(AppError::new(ErrorCode::Io, format!("BitLocker export encountered {} synthesized source bytes; see image_bad_regions", faults.synthetic_bytes)));
             }
             let read_len = read_result
-                .map_err(|err| AppError::new(ErrorCode::Io, format!("read {offset}: {err:#}")))?;
+                .map_err(|err| AppError::from_read(format!("read {offset}"), err))?;
             if read_len == 0 {
                 break;
             }

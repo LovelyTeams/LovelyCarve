@@ -32,6 +32,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::casework::case_paths::EvidenceDb;
 use crate::core::casework::evidence_db::{self, StoreSchema};
+use crate::core::common::error::Failure;
 
 /// `timeline.db` 结构。
 const SCHEMA: StoreSchema = StoreSchema {
@@ -188,7 +189,7 @@ impl TimelineUnit {
             "hour" => Ok(Self::Hour),
             "minute" => Ok(Self::Minute),
             "second" => Ok(Self::Second),
-            other => anyhow::bail!("未知时间粒度：{other}"),
+            other => anyhow::bail!(Failure::invalid_input(format!("未知时间粒度：{other}"))),
         }
     }
 }

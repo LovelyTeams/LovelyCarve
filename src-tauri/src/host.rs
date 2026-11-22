@@ -65,22 +65,13 @@ struct HostServices {
 
 /// Why an event could not be delivered. Callers only log it: events report
 /// progress, never the outcome of a command.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum EmitError {
-    Encode(serde_json::Error),
+    #[error("encode event payload: {0}")]
+    Encode(#[source] serde_json::Error),
+    #[error("deliver event: {0}")]
     Deliver(String),
 }
-
-impl std::fmt::Display for EmitError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Encode(error) => write!(formatter, "encode event payload: {error}"),
-            Self::Deliver(error) => write!(formatter, "deliver event: {error}"),
-        }
-    }
-}
-
-impl std::error::Error for EmitError {}
 
 impl AppHandle {
     pub fn new(

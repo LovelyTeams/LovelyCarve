@@ -10,6 +10,7 @@ use super::parity_layout::{Raid5Layout, Raid6Layout};
 use super::raid10::{Raid10Layout, Raid10Volume};
 use super::striped::{RaidLevel, RaidVolume};
 use super::{smallest_present, StripedMember};
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::SectorSource;
 
 /// Array level and layout, as md records them or as an examiner chooses.
@@ -234,9 +235,9 @@ pub fn build_volume(
                 );
             }
             let data_disks = (raid_disks - striped.parity_disks()) as u64;
-            let size_bytes = per_member
-                .checked_mul(data_disks)
-                .ok_or_else(|| anyhow::anyhow!("{} size overflow", level.label()))?;
+            let size_bytes = per_member.checked_mul(data_disks).ok_or_else(|| {
+                anyhow::anyhow!(Failure::corrupt(format!("{} size overflow", level.label())))
+            })?;
             let volume = RaidVolume::from_slots(striped, 512, chunk, Some(size_bytes), members);
             BuiltVolume {
                 source: Arc::new(volume),

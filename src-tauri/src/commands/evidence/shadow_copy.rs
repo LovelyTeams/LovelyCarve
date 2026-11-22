@@ -71,7 +71,7 @@ pub async fn shadow_copy_open(
     if token.is_cancelled() {
         return Err(AppError::cancelled("shadow copy open cancelled"));
     }
-    let snapshot = result.map_err(AppError::from_anyhow)?;
+    let snapshot = result.map_err(AppError::from)?;
     let mut images = state.images.lock().await;
     if !images
         .get(&image_id)

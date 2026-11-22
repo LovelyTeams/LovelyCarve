@@ -22,6 +22,7 @@ use anyhow::{anyhow, Result};
 use apfs::{ApfsVolume as ContainerVolume, EntryKind, VolumeInfo};
 use chrono::{TimeZone, Utc};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{DiskImage, Partition};
 use crate::core::filesystem::tree::fs_tree::{
@@ -368,7 +369,9 @@ impl ApfsVolume {
                         .phys_block_num
                         .checked_mul(block_size)
                         .and_then(|offset| self.base_offset.checked_add(offset))
-                        .ok_or_else(|| anyhow!("APFS source extent offset overflow"))?;
+                        .ok_or_else(|| {
+                            anyhow!(Failure::corrupt("APFS source extent offset overflow"))
+                        })?;
                     data_runs.push(FsDataRun {
                         logical_offset: record.logical_addr,
                         physical_offset,
@@ -527,11 +530,11 @@ impl PartitionCursor {
         let base_offset = partition
             .start_lba
             .checked_mul(sector_size)
-            .ok_or_else(|| anyhow!("APFS partition offset overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("APFS partition offset overflow")))?;
         let length_bytes = partition
             .length_lba
             .checked_mul(sector_size)
-            .ok_or_else(|| anyhow!("APFS partition length overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("APFS partition length overflow")))?;
         if base_offset
             .checked_add(length_bytes)
             .is_none_or(|end| end > image.len())

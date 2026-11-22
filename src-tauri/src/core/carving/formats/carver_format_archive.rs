@@ -5,6 +5,7 @@ use anyhow::bail;
 use crate::core::carving::carver::CarveSource;
 use crate::core::carving::carver_formats::FormatScanResult;
 use crate::core::carving::carver_reader::CarveReader;
+use crate::core::common::error::Failure;
 
 pub(in crate::core) fn scan_rar<S: CarveSource>(
     reader: &mut CarveReader<'_, S>,
@@ -17,7 +18,7 @@ pub(in crate::core) fn scan_rar<S: CarveSource>(
     if signature == b"Rar!\x1a\x07\x01\x00" {
         return scan_rar_50(reader);
     }
-    bail!("invalid RAR signature");
+    bail!(Failure::corrupt("invalid RAR signature"));
 }
 
 fn scan_rar_15<S: CarveSource>(
@@ -25,7 +26,7 @@ fn scan_rar_15<S: CarveSource>(
 ) -> anyhow::Result<Option<FormatScanResult>> {
     let (header_type, flags) = read_rar_15_block(reader)?;
     if header_type != 0x73 || ((flags >> 8) & 0x0080) != 0 {
-        bail!("invalid or encrypted RAR 1.5 header");
+        bail!(Failure::corrupt("invalid or encrypted RAR 1.5 header"));
     }
     loop {
         let (header_type, _) = read_rar_15_block(reader)?;
@@ -41,7 +42,7 @@ fn read_rar_15_block<S: CarveSource>(reader: &mut CarveReader<'_, S>) -> anyhow:
     let header_type = header[2];
     let flags = le_u16(&header[3..5]);
     if !(0x72..=0x7b).contains(&header_type) {
-        bail!("invalid RAR 1.5 block type");
+        bail!(Failure::corrupt("invalid RAR 1.5 block type"));
     }
     if header_type == 0x7b {
         return Ok((header_type, flags));
@@ -59,7 +60,7 @@ fn read_rar_15_block<S: CarveSource>(reader: &mut CarveReader<'_, S>) -> anyhow:
         bytes_read += 8;
     }
     if payload_size <= bytes_read {
-        bail!("invalid RAR 1.5 block size");
+        bail!(Failure::corrupt("invalid RAR 1.5 block size"));
     }
     reader.discard_exact(u64::from(payload_size - bytes_read))?;
     Ok((header_type, flags))
@@ -70,7 +71,7 @@ fn scan_rar_50<S: CarveSource>(
 ) -> anyhow::Result<Option<FormatScanResult>> {
     let (header_type, flags) = read_rar_5_block(reader)?;
     if header_type != 1 || ((flags >> 56) & 0x0080) != 0 {
-        bail!("invalid or encrypted RAR 5 header");
+        bail!(Failure::corrupt("invalid or encrypted RAR 5 header"));
     }
     loop {
         let (header_type, _) = read_rar_5_block(reader)?;
@@ -85,7 +86,7 @@ fn read_rar_5_block<S: CarveSource>(reader: &mut CarveReader<'_, S>) -> anyhow::
     reader.discard_exact(4)?;
     let (header_size, encoded_header_size) = read_rar_varint(reader)?;
     if encoded_header_size > 3 || header_size > 2 * 1024 * 1024 {
-        bail!("invalid RAR 5 header size");
+        bail!(Failure::corrupt("invalid RAR 5 header size"));
     }
     let (header_type, mut bytes_read) = read_rar_varint(reader)?;
     let (flags, flags_length) = read_rar_varint(reader)?;
@@ -101,7 +102,7 @@ fn read_rar_5_block<S: CarveSource>(reader: &mut CarveReader<'_, S>) -> anyhow::
         total_size = total_size.saturating_add(data_size);
     }
     if total_size <= bytes_read as u64 {
-        bail!("invalid RAR 5 block size");
+        bail!(Failure::corrupt("invalid RAR 5 block size"));
     }
     reader.discard_exact(total_size - bytes_read as u64)?;
     Ok((header_type, flags))

@@ -214,7 +214,8 @@ fn state_view(state: &PluginState) -> (String, Option<String>) {
 
 fn plugin_app_error(error: PluginError) -> AppError {
     match error {
+        // The manifest's own explanation, without the variant's prefix.
         PluginError::Manifest(message) => AppError::invalid_input(message),
-        error => AppError::from_anyhow(anyhow::Error::new(error)),
+        error => AppError::from(error),
     }
 }

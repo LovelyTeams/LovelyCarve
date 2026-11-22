@@ -8,6 +8,8 @@ use uuid::Uuid;
 
 use super::{guid_to_kind, Partition, GPT_HEADER_BYTES, GPT_SIGNATURE};
 
+use crate::core::common::error::Failure;
+
 #[derive(Debug, Clone, BinRead)]
 #[br(little, magic = b"EFI PART")]
 pub struct GptHeader {
@@ -99,7 +101,7 @@ impl GptEntry {
             .last_lba
             .checked_sub(self.first_lba)
             .and_then(|length| length.checked_add(1))
-            .context("GPT partition length overflow")?;
+            .context(Failure::corrupt("GPT partition length overflow"))?;
         let label = self.name().ok().filter(|name| !name.is_empty());
         Ok(Partition {
             id,

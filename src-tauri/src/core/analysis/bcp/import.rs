@@ -15,6 +15,7 @@ use lovelycarve_plugin::{
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
+use crate::core::common::error::Failure;
 use crate::core::{
     analysis::results::{
         record_query,
@@ -85,7 +86,7 @@ impl StagedImport {
                 read_faults: &ReadFaultReport::default(),
             },
         )?
-        .context("BCP 的暂存运行已不存在")?;
+        .context(Failure::not_found("BCP 的暂存运行已不存在"))?;
         self.published = true;
         Ok(BcpImportResult {
             run_id: self.run_id.clone(),
@@ -116,7 +117,7 @@ pub(crate) fn stage(
     let mut inputs = Vec::new();
     let mut names = HashSet::new();
     for file in datasets.iter().flat_map(|table| &table.files) {
-        anyhow::ensure!(!token.is_cancelled(), "BCP 导入已取消");
+        anyhow::ensure!(!token.is_cancelled(), Failure::cancelled("BCP 导入已取消"));
         if names.insert(&file.name) {
             inputs.push(RunInput {
                 path: outer_zip
@@ -129,7 +130,7 @@ pub(crate) fn stage(
             });
         }
     }
-    anyhow::ensure!(!token.is_cancelled(), "BCP 导入已取消");
+    anyhow::ensure!(!token.is_cancelled(), Failure::cancelled("BCP 导入已取消"));
     let run_id = format!("run_{}", uuid::Uuid::new_v4().simple());
     let metadata = serde_json::json!({ "format": "bcp" });
     record_store::begin_run(
@@ -205,7 +206,7 @@ pub(crate) fn stage(
             Ok(())
         })?;
     }
-    anyhow::ensure!(!token.is_cancelled(), "BCP 导入已取消");
+    anyhow::ensure!(!token.is_cancelled(), Failure::cancelled("BCP 导入已取消"));
     if !batch.is_empty() {
         writer.insert_batch(&batch)?;
     }

@@ -8,8 +8,6 @@
 //! [`super::CaseState::ensure_unlocked`], so the desktop app and the CLI
 //! refuse exactly the same edits.
 
-use std::fmt;
-
 /// An edit that a locked case refuses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LockedEdit {
@@ -35,19 +33,8 @@ impl LockedEdit {
 }
 
 /// A locked case refused `edit`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("case is locked; unlock it before {}", edit.activity())]
 pub struct CaseLocked {
     pub edit: LockedEdit,
 }
-
-impl fmt::Display for CaseLocked {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "case is locked; unlock it before {}",
-            self.edit.activity()
-        )
-    }
-}
-
-impl std::error::Error for CaseLocked {}

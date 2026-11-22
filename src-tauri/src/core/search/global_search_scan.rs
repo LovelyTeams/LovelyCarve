@@ -140,28 +140,15 @@ struct FileHit {
 }
 
 /// 扫描提前终止哨兵：段窗口完成 / 取消 / 首命中即停。
+#[derive(Debug, thiserror::Error)]
+#[error("segment window scanned")]
 struct SegmentDone;
+#[derive(Debug, thiserror::Error)]
+#[error("global search cancelled")]
 struct CancelMarker;
+#[derive(Debug, thiserror::Error)]
+#[error("stop after first hit")]
 struct StopAfterFirstMarker;
-
-macro_rules! sentinel_error {
-    ($name:ident, $message:literal) => {
-        impl std::fmt::Debug for $name {
-            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str(stringify!($name))
-            }
-        }
-        impl std::fmt::Display for $name {
-            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str($message)
-            }
-        }
-        impl std::error::Error for $name {}
-    };
-}
-sentinel_error!(SegmentDone, "segment window scanned");
-sentinel_error!(CancelMarker, "global search cancelled");
-sentinel_error!(StopAfterFirstMarker, "stop after first hit");
 
 /// 每个 worker 复用的扫描缓冲（避免逐文件重分配 4 MiB 级缓冲）。
 #[derive(Default)]
@@ -666,7 +653,7 @@ fn collapse_newlines(text: &str, cap: usize) -> String {
     let mut emitted = 0usize;
     let mut first = true;
     for line in text.split('\n') {
-        let line = line.strip_suffix('\r').unwrap_or(line);
+        let line = line.trim_suffix('\r');
         if !first {
             if emitted + 3 >= cap {
                 break;

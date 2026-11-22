@@ -12,7 +12,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="License: AGPL-3.0-only" src="https://img.shields.io/badge/license-AGPL--3.0--only-blue"></a>
   <img alt="Platform: Windows x64" src="https://img.shields.io/badge/platform-Windows%20x64-0078d4">
-  <img alt="Rust 1.99+" src="https://img.shields.io/badge/rust-1.99%2B-dea584">
+  <img alt="Rust 1.100+" src="https://img.shields.io/badge/rust-1.100%2B-dea584">
   <img alt="Tauri 2" src="https://img.shields.io/badge/tauri-2-24c8db">
   <img alt="Vue 3" src="https://img.shields.io/badge/vue-3-42b883">
 </p>
@@ -114,7 +114,7 @@ Get-Content .\workflow.jsonl | lovelycarve-cli session --events
 
 | 依赖 | 版本或说明 |
 | --- | --- |
-| Rust | stable，最低 1.99 |
+| Rust | stable，最低 1.100 |
 | [Bun](https://bun.sh/) | 版本见 `package.json` 的 `packageManager` |
 | [just](https://github.com/casey/just) | 1.53 或更新 |
 | PowerShell | 7 或更新 |

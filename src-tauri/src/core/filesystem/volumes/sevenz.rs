@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Result};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::DiskImage;
 use crate::core::evidence::readers::sevenz_image::{SevenzEntry, SevenzEntryKind};
 use crate::core::filesystem::tree::fs_tree::{
@@ -156,7 +157,7 @@ pub fn file_stat(image: &Arc<DiskImage>, rel: &str, node_id: &str) -> Result<FsS
         .ok_or_else(|| anyhow!("image is not a 7z source"))?;
     let entry = sevenz
         .lookup(rel)
-        .ok_or_else(|| anyhow!("not found in 7z: {rel}"))?;
+        .ok_or_else(|| anyhow!(Failure::not_found(format!("not found in 7z: {rel}"))))?;
     let is_readable = matches!(entry.kind, SevenzEntryKind::File);
     let sample = if is_readable && entry.size > 0 {
         sevenz.read(rel, SAMPLE_BYTES).unwrap_or_default()

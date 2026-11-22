@@ -13,6 +13,7 @@ use anyhow::bail;
 use crate::core::carving::carver::CarveSource;
 use crate::core::carving::carver_formats::FormatScanResult;
 use crate::core::carving::carver_reader::CarveReader;
+use crate::core::common::error::Failure;
 
 const IMAGE_WIDTH: u16 = 256;
 const IMAGE_LENGTH: u16 = 257;
@@ -63,7 +64,7 @@ pub(in crate::core) fn scan_tiff<S: CarveSource>(
     let little_endian = match &header[..4] {
         b"II\x2a\x00" => true,
         b"MM\x00\x2a" => false,
-        _ => bail!("invalid TIFF header"),
+        _ => bail!(Failure::corrupt("invalid TIFF header")),
     };
     let mut tiff = Tiff {
         little_endian,
@@ -72,7 +73,7 @@ pub(in crate::core) fn scan_tiff<S: CarveSource>(
     };
     let first_ifd = u64::from(tiff.u32(&header[4..8]));
     if first_ifd < 8 {
-        bail!("invalid TIFF IFD offset");
+        bail!(Failure::corrupt("invalid TIFF IFD offset"));
     }
     let mut pending = vec![(first_ifd, true)];
     let mut visited = HashSet::new();
@@ -81,7 +82,7 @@ pub(in crate::core) fn scan_tiff<S: CarveSource>(
             continue;
         }
         if visited.len() > MAX_IFDS {
-            bail!("too many TIFF IFDs");
+            bail!(Failure::resource_limit("too many TIFF IFDs"));
         }
         let (entries, next) = tiff.read_ifd(reader, offset)?;
         if primary && visited.len() == 1 {

@@ -33,6 +33,7 @@ use btrfs_diskformat::{Chunk, InodeItem, Item, Key, KeyPointer, RootItem, Stripe
 use chrono::{TimeZone, Utc};
 use zerocopy::FromBytes;
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::DiskImage;
 use crate::core::evidence::partitions::BTRFS_PRIMARY_SUPERBLOCK;
@@ -165,7 +166,9 @@ pub fn open_btrfs_source(
             let partition = find_partition(image, &part_id.to_string())?;
             let lvm = crate::core::filesystem::volumes::lvm::LvmVolume::open(image, partition)?;
             let lv = lvm.logical_volumes.get(lv_index).ok_or_else(|| {
-                anyhow::anyhow!("logical volume not found: lvm:{part_id}:{lv_index}")
+                anyhow::anyhow!(Failure::not_found(format!(
+                    "logical volume not found: lvm:{part_id}:{lv_index}"
+                )))
             })?;
             BtrfsVolume::open(
                 image,

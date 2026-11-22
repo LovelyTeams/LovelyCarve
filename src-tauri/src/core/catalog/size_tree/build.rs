@@ -10,6 +10,7 @@ use super::{
     NTFS_NODE_PREFIX, NTFS_STREAM_PREFIX, UNKNOWN_TIME,
 };
 use crate::core::catalog::filedb::filedb_file;
+use crate::core::common::error::Failure;
 use crate::core::filesystem::meta_addr::IS_DELETE_DELETED;
 
 /// MFT record of `$BadClus`. Its `$Bad` stream is sparse and as long as the
@@ -114,7 +115,12 @@ pub fn build_size_tree(index: &Path, now: i64) -> anyhow::Result<SizeTree> {
         let node_index = u32::try_from(nodes.len())
             .ok()
             .filter(|index| *index != NO_NODE)
-            .ok_or_else(|| anyhow::anyhow!("{} holds too many rows", index.display()))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!(Failure::resource_limit(format!(
+                    "{} holds too many rows",
+                    index.display()
+                )))
+            })?;
         if kind == EntryKind::Directory {
             if let Some(slot) = directory_numbers
                 .get(nid)

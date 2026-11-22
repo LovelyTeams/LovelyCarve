@@ -9,6 +9,8 @@ use anyhow::Context;
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 
+use crate::core::common::error::Failure;
+
 /// Display interpretation only; the original header value remains authoritative.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EwfHeaderDate {
@@ -77,7 +79,7 @@ impl EwfHandle {
                 .with_context(|| format!("stat EWF segment {}", path.display()))?;
             segments_on_disk_bytes = segments_on_disk_bytes
                 .checked_add(metadata.len())
-                .context("EWF segment sizes overflow")?;
+                .context(Failure::corrupt("EWF segment sizes overflow"))?;
             segment_file_snapshots.push(EwfSegmentFileSnapshot {
                 path: path.clone(),
                 len: metadata.len(),
@@ -92,12 +94,12 @@ impl EwfHandle {
         let sector_size = reader.bytes_per_sector();
         anyhow::ensure!(
             (128..=65536).contains(&sector_size) && sector_size.is_power_of_two(),
-            "invalid EWF sector size: {sector_size}"
+            Failure::corrupt(format!("invalid EWF sector size: {sector_size}"))
         );
         let addressable = reader
             .chunk_size()
             .checked_mul(reader.chunk_count() as u64)
-            .context("EWF addressable size overflow")?;
+            .context(Failure::corrupt("EWF addressable size overflow"))?;
         anyhow::ensure!(
             addressable >= reader.total_size(),
             "incomplete EWF segment set: table covers {addressable} of {} bytes",
@@ -138,7 +140,10 @@ impl EwfHandle {
                 other => format!("0x{other:02X}"),
             }),
             compression: metadata.compression.clone(),
-            segment_count: Some(u32::try_from(paths.len()).context("too many EWF segments")?),
+            segment_count: Some(
+                u32::try_from(paths.len())
+                    .context(Failure::resource_limit("too many EWF segments"))?,
+            ),
         };
         Ok(Self {
             reader,

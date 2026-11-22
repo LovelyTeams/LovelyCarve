@@ -1,3 +1,4 @@
+use crate::core::common::error::Failure;
 use crate::core::filesystem::external_volume::{decode_remote_node_id, REMOTE_NODE_PREFIX};
 use std::{sync::Arc, time::Duration};
 
@@ -185,7 +186,7 @@ impl RemoteVolume {
             let requested = (length - bytes.len()).min(REMOTE_READ_CHUNK);
             let position = offset
                 .checked_add(bytes.len() as u64)
-                .context("remote range offset overflow")?;
+                .context(Failure::corrupt("remote range offset overflow"))?;
             let result = self.call(
                 "fs.read_range",
                 self.params(
@@ -273,9 +274,9 @@ impl Volume for RemoteVolume {
                 Some(page) => {
                     nodes.extend(page.items);
                     if nodes.len() > MAX_DIRECTORY_ENTRIES {
-                        anyhow::bail!(
+                        anyhow::bail!(Failure::resource_limit(format!(
                             "remote directory exceeds {MAX_DIRECTORY_ENTRIES} entry safety limit"
-                        );
+                        )));
                     }
                     match page.next_cursor {
                         Some(next_cursor) => cursor = Some(next_cursor),
@@ -358,7 +359,7 @@ impl Volume for RemoteVolume {
             visitor(&bytes)?;
             offset = offset
                 .checked_add(bytes.len() as u64)
-                .context("remote file stream offset overflow")?;
+                .context(Failure::corrupt("remote file stream offset overflow"))?;
         }
         Ok(offset)
     }

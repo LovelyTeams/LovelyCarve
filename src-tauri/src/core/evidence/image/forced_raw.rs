@@ -1,5 +1,6 @@
 //! Explicit RAW compatibility mode, isolated from strict evidence opening.
 use super::*;
+use crate::core::common::error::Failure;
 
 impl DiskImage {
     pub fn raw_read_mode(&self) -> RawReadMode {
@@ -27,7 +28,10 @@ impl DiskImage {
         progress: OpenObserver<'_>,
         cancel: &tokio_util::sync::CancellationToken,
     ) -> anyhow::Result<Self> {
-        anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
+        anyhow::ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("image load cancelled")
+        );
         progress(OpenProgress::Opening);
         let reader = smraw::RawImage::open_forced(path)
             .with_context(|| format!("failed to force open RAW image: {}", path.display()))?;

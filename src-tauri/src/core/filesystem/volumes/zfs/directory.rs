@@ -1,5 +1,6 @@
 //! Directory traversal and filesystem node projection.
 use super::*;
+use crate::core::common::error::Failure;
 
 impl ZfsVolume {
     /// Children of the DSL directory at `dataset_path`. Returns the DSL
@@ -210,7 +211,11 @@ pub(super) fn walk_dsl_dir<'drive, 'mos>(
         let next = current
             .get_child(&key)
             .map_err(|err| anyhow!("ZFS dsl get_child {component}: {err}"))?
-            .ok_or_else(|| anyhow!("ZFS dataset component not found: {component}"))?;
+            .ok_or_else(|| {
+                anyhow!(Failure::not_found(format!(
+                    "ZFS dataset component not found: {component}"
+                )))
+            })?;
         current = next;
     }
     Ok(current)
@@ -231,7 +236,11 @@ pub(super) fn walk_zpl_dir<'drive, 'fs>(
         let entry = current
             .get_child(&key)
             .map_err(|err| anyhow!("ZFS zpl get_child {component}: {err}"))?
-            .ok_or_else(|| anyhow!("ZFS path component not found: {component}"))?;
+            .ok_or_else(|| {
+                anyhow!(Failure::not_found(format!(
+                    "ZFS path component not found: {component}"
+                )))
+            })?;
         current = match entry {
             ZfsDirEntry::Dir(d) => d,
             ZfsDirEntry::File(_) => {

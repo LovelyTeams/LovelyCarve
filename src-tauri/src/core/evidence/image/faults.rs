@@ -1,5 +1,6 @@
 //! faults implementation.
 use super::*;
+use std::mem::DropGuard;
 
 /// A span of the image that could not be read and was zero-filled instead of
 /// aborting the operation. Surfaced for diagnostics; offsets are absolute
@@ -48,34 +49,21 @@ thread_local! {
     pub(super) static READ_FAULT_COLLECTIONS: RefCell<Vec<Vec<BadRegion>>> = const { RefCell::new(Vec::new()) };
 }
 
-pub(super) struct ReadFaultCollectionScope {
-    pub(super) active: bool,
-}
-
-impl ReadFaultCollectionScope {
-    pub(super) fn new() -> Self {
+/// Runs `operation` with a fault collector of its own on this thread and
+/// reports what it collected. A panicking operation still removes its
+/// collector, so an outer scope never receives the inner one's faults.
+pub(super) fn collect_in_scope<T>(operation: impl FnOnce() -> T) -> (T, ReadFaultReport) {
+    READ_FAULT_COLLECTIONS.with(|collections| collections.borrow_mut().push(Vec::new()));
+    let unwind = DropGuard::new((), |()| {
         READ_FAULT_COLLECTIONS.with(|collections| {
-            collections.borrow_mut().push(Vec::new());
+            collections.borrow_mut().pop();
         });
-        Self { active: true }
-    }
-
-    pub(super) fn finish(mut self) -> ReadFaultReport {
-        self.active = false;
-        let regions = READ_FAULT_COLLECTIONS
-            .with(|collections| collections.borrow_mut().pop().unwrap_or_default());
-        ReadFaultReport::from_regions(regions)
-    }
-}
-
-impl Drop for ReadFaultCollectionScope {
-    fn drop(&mut self) {
-        if self.active {
-            READ_FAULT_COLLECTIONS.with(|collections| {
-                let _ = collections.borrow_mut().pop();
-            });
-        }
-    }
+    });
+    let output = operation();
+    DropGuard::dismiss(unwind);
+    let regions = READ_FAULT_COLLECTIONS
+        .with(|collections| collections.borrow_mut().pop().unwrap_or_default());
+    (output, ReadFaultReport::from_regions(regions))
 }
 
 pub(super) fn collect_read_fault_intersections(

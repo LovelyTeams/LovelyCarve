@@ -35,6 +35,7 @@ use crate::core::catalog::flat_query::{
     name_query_like_pattern, time_range_sql_bounds, FlatFileFilter, FlatSort, FlatSortKey,
     FlatTimeRange,
 };
+use crate::core::common::error::Failure;
 use crate::core::filesystem::meta_addr::{IS_DELETE_DELETED, IS_DELETE_LIVE};
 use crate::core::filesystem::tree::fs_tree::FsWalkEntry;
 
@@ -242,7 +243,7 @@ pub fn flat_page(query: FlatPageQuery<'_>) -> anyhow::Result<Option<FlatIndexPag
     let clause = flat_clause(&scope, query.filter);
     let mut binds = clause.binds.clone();
     binds.push(Value::Integer(
-        i64::try_from(limit).context("flat page limit exceeds i64")?,
+        i64::try_from(limit).context(Failure::invalid_input("flat page limit exceeds i64"))?,
     ));
     binds.push(Value::Integer(
         i64::try_from(offset).context("flat page offset exceeds i64")?,

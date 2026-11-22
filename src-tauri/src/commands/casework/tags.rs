@@ -127,7 +127,7 @@ pub async fn fs_tags_apply_changes(
     let total = tokio::task::spawn_blocking(move || -> Result<Option<usize>, AppError> {
         tag_store::apply_changes(&case_dir, &persist_image_id, upserts, delete_node_ids)
             .context("persist tag changes")
-            .map_err(AppError::from_anyhow)
+            .map_err(AppError::from)
     })
     .await
     .map_err(|error| AppError::task_panicked("persist tag changes", error))??;
@@ -162,7 +162,7 @@ pub async fn fs_tags_save(
     let saved = tokio::task::spawn_blocking(move || -> Result<Option<usize>, AppError> {
         tag_store::save(&case_dir, &persist_image_id, entries)
             .context("persist tags")
-            .map_err(AppError::from_anyhow)
+            .map_err(AppError::from)
     })
     .await
     .map_err(|error| AppError::task_panicked("persist tags", error))??;

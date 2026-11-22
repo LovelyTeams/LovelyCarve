@@ -1,6 +1,7 @@
 //! Read USN metadata through the existing NTFS/VMDK reader, without loading a
 //! multi-gigabyte sparse journal into memory.
 use super::{missing_stream_error, reject_unreadable_attribute, NtfsVolume};
+use crate::core::common::error::Failure;
 use crate::core::filesystem::volumes::ntfs_usn::{UsnRecord, UsnStreamDecoder};
 use anyhow::{anyhow, Result};
 use ntfs::NtfsAttributeFlags;
@@ -95,7 +96,7 @@ impl NtfsVolume<'_> {
                 }
                 start = start
                     .checked_add(extent.allocated_size)
-                    .ok_or_else(|| anyhow!("NTFS USN sparse prefix overflow"))?;
+                    .ok_or_else(|| anyhow!(Failure::corrupt("NTFS USN sparse prefix overflow")))?;
             }
         }
         let mut value = super::logical_stream::LogicalStream::new(

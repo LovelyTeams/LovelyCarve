@@ -63,10 +63,10 @@ pub async fn fs_digest(
                 Ok(())
             })
         });
-        let bytes_hashed = result.map_err(AppError::from_anyhow)?;
+        let bytes_hashed = result.map_err(AppError::from)?;
         image
             .validate_source_file_stable()
-            .map_err(AppError::from_anyhow)?;
+            .map_err(AppError::from)?;
 
         let out = hasher.finalize();
         Ok(FsDigest {
@@ -113,7 +113,7 @@ pub async fn fs_identify_type(
     let started = Instant::now();
     let result =
         tokio::task::spawn_blocking(move || -> Result<magika_ident::TypeIdentReport, AppError> {
-            magika_ident::identify_file(&image, &node_id).map_err(AppError::from_anyhow)
+            magika_ident::identify_file(&image, &node_id).map_err(AppError::from)
         })
         .await
         .map_err(|err| AppError::task_panicked("fs_identify_type", err))?;

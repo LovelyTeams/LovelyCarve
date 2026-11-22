@@ -164,7 +164,7 @@ pub(crate) fn recover_files(
             Ok(exported)
         }
         Err(_) if cancellation.is_cancelled() => Err(AppError::cancelled("文件恢复已取消")),
-        Err(error) => Err(AppError::from_anyhow(error)),
+        Err(error) => Err(AppError::from(error)),
     }
 }
 

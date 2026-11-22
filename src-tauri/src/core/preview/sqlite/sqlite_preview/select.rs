@@ -8,6 +8,7 @@ use rusqlite::{params_from_iter, Batch};
 use serde_json::Value as Json;
 
 use super::*;
+use crate::core::common::error::Failure;
 use crate::core::preview::sqlite::sqlite_preview_budget;
 
 const MAX_SQL_BYTES: usize = 64 * 1024;
@@ -52,15 +53,15 @@ pub fn query_session(
     );
     ensure!(
         parameters.len() <= MAX_PARAMETERS,
-        "Too many SQL parameters"
+        Failure::invalid_input("Too many SQL parameters")
     );
     ensure!(
         (1..=MAX_QUERY_ROWS).contains(&limit),
-        "SQL row limit must be 1–100"
+        Failure::invalid_input("SQL row limit must be 1–100")
     );
     ensure!(
         !session.truncated,
-        "SQLite database exceeds the preview import limit"
+        Failure::resource_limit("SQLite database exceeds the preview import limit")
     );
     if let Some(issue) = &session.wal_issue {
         anyhow::bail!("SQLite WAL coverage could not be verified: {issue}");
@@ -71,12 +72,16 @@ pub fn query_session(
             Ok(match parameter {
                 Json::Null => Value::Null,
                 Json::Bool(value) => Value::Integer(i64::from(*value)),
-                Json::Number(number) if number.is_i64() => {
-                    Value::Integer(number.as_i64().context("Invalid SQLite integer")?)
-                }
-                Json::Number(number) if number.is_f64() => {
-                    Value::Real(number.as_f64().context("Invalid SQLite real")?)
-                }
+                Json::Number(number) if number.is_i64() => Value::Integer(
+                    number
+                        .as_i64()
+                        .context(Failure::invalid_input("Invalid SQLite integer"))?,
+                ),
+                Json::Number(number) if number.is_f64() => Value::Real(
+                    number
+                        .as_f64()
+                        .context(Failure::invalid_input("Invalid SQLite real"))?,
+                ),
                 Json::String(value) => Value::Text(value.clone()),
                 _ => {
                     anyhow::bail!("SQL parameters must be JSON scalars with signed 64-bit integers")
@@ -189,7 +194,11 @@ fn select_page(
         page.rows.push(cells);
     }
     if cursor.next()?.is_some() {
-        page.next_offset = Some(offset.checked_add(limit).context("SQL offset overflow")?);
+        page.next_offset = Some(
+            offset
+                .checked_add(limit)
+                .context(Failure::invalid_input("SQL offset overflow"))?,
+        );
     }
     Ok(page)
 }

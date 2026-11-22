@@ -3,6 +3,8 @@ use super::*;
 use anyhow::{ensure, Context};
 use ntfs_core::{apply_fixup, parse_attributes, AttributeBody, MftRecordHeader};
 
+use crate::core::common::error::Failure;
+
 pub struct NtfsMftMetadataFile {
     file: std::fs::File,
     record_size: usize,
@@ -26,7 +28,7 @@ impl NtfsMftMetadataFile {
         let size = header.allocated_size as usize;
         ensure!(
             (512..=65536).contains(&size) && size.is_power_of_two(),
-            "invalid standalone MFT record size"
+            Failure::corrupt("invalid standalone MFT record size")
         );
         ensure!(
             length % size as u64 == 0,
@@ -60,17 +62,17 @@ impl NtfsMftMetadataFile {
             };
             match attribute.type_code {
                 0x60 => {
-                    ensure!(content.len() % 2 == 0, "unaligned MFT volume name");
-                    let words: Vec<_> = content
-                        .as_chunks::<2>()
-                        .0
-                        .iter()
-                        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-                        .collect();
-                    result.name = Some(String::from_utf16_lossy(&words));
+                    ensure!(
+                        content.len().is_multiple_of(2),
+                        Failure::corrupt("unaligned MFT volume name")
+                    );
+                    result.name = Some(String::from_utf16le_lossy(content));
                 }
                 0x70 => {
-                    ensure!(content.len() >= 12, "truncated MFT volume information");
+                    ensure!(
+                        content.len() >= 12,
+                        Failure::corrupt("truncated MFT volume information")
+                    );
                     result.version = Some((content[8], content[9]));
                     result.flags = Some(u16::from_le_bytes([content[10], content[11]]));
                 }
@@ -92,7 +94,7 @@ impl NtfsMftMetadataFile {
             header.allocated_size as usize == self.record_size
                 && header.used_size <= header.allocated_size
                 && usize::from(header.first_attribute_offset) >= 48,
-            "invalid standalone MFT record geometry"
+            Failure::corrupt("invalid standalone MFT record geometry")
         );
         apply_fixup(&mut bytes, 512)?;
         Ok((bytes, header))
@@ -162,7 +164,7 @@ impl NtfsMftMetadataFile {
             } else {
                 header_bytes
                     .get(name_offset..name_offset + name_size)
-                    .context("invalid MFT attribute name")?
+                    .context(Failure::corrupt("invalid MFT attribute name"))?
             };
             result.attributes.push(NtfsAttributeMetadata {
                 record_number: number,
@@ -256,13 +258,13 @@ impl NtfsMftMetadataFile {
         let attribute = attributes
             .iter()
             .find(|attribute| attribute.attribute_id == instance)
-            .context("standalone MFT attribute not found")?;
+            .context(Failure::not_found("standalone MFT attribute not found"))?;
         let content = attribute
             .resident_content(&bytes)
             .context("nonresident MFT attribute requires original volume cluster data")?;
         ensure!(
             content.len() <= max_bytes,
-            "MFT resident attribute exceeds caller budget"
+            Failure::resource_limit("MFT resident attribute exceeds caller budget")
         );
         Ok(content.to_vec())
     }

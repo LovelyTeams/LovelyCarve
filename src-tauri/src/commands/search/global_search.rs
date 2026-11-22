@@ -146,7 +146,7 @@ pub async fn global_search_start(
         search_empty_space: options.search_empty_space,
         calc_hash: options.calc_hash,
         scope_json: serde_json::to_string(&serialize_scope(&options))
-            .map_err(|err| AppError::from_message(format!("序列化搜索范围失败：{err}")))?,
+            .map_err(|err| AppError::internal(format!("序列化搜索范围失败：{err}")))?,
         status: "running".to_string(),
         error: None,
         started_ms,
@@ -181,7 +181,7 @@ pub async fn global_search_start(
     .await
     {
         Ok(Ok(())) => Ok(()),
-        Ok(Err(err)) => Err(AppError::from_anyhow(err.context("创建搜索任务记录失败"))),
+        Ok(Err(err)) => Err(AppError::from(err.context("创建搜索任务记录失败"))),
         Err(err) => Err(AppError::task_panicked("global_search_start", err)),
     };
     if let Err(error) = created {
@@ -250,7 +250,7 @@ pub async fn global_search_start(
     .await;
     let scanned = match outcome {
         Ok(Ok(summary)) => Ok(summary),
-        Ok(Err(err)) => Err(AppError::from_anyhow(err.context("全局搜索执行失败"))),
+        Ok(Err(err)) => Err(AppError::from(err.context("全局搜索执行失败"))),
         Err(err) => Err(AppError::task_panicked("global_search_start", err)),
     };
 
@@ -364,7 +364,7 @@ pub async fn global_search_hits_page(
     tokio::task::spawn_blocking(move || global_search_store::page(&case_dir, &image_id, &query))
         .await
         .map_err(|err| AppError::task_panicked("global_search_hits_page", err))?
-        .map_err(|err| AppError::from_anyhow(err.context("读取搜索命中失败")))
+        .map_err(|err| AppError::from(err.context("读取搜索命中失败")))
 }
 
 /// 任务列表（含运行中；孤儿 running 行改判 failed）。任务面板运行期间每 2 s
@@ -386,7 +386,7 @@ pub async fn global_search_history_list(
     })
     .await
     .map_err(|err| AppError::task_panicked("global_search_history_list", err))?
-    .map_err(|err| AppError::from_anyhow(err.context("读取搜索任务列表失败")))
+    .map_err(|err| AppError::from(err.context("读取搜索任务列表失败")))
 }
 
 /// 删除整次搜索：运行中的先取消并等扫描停下，
@@ -422,7 +422,7 @@ pub async fn global_search_history_delete(
     })
     .await
     .map_err(|err| AppError::task_panicked("global_search_history_delete", err))?
-    .map_err(|err| AppError::from_anyhow(err.context("删除搜索任务失败")))?;
+    .map_err(|err| AppError::from(err.context("删除搜索任务失败")))?;
     state.global_searches.lock().remove(&search_id);
     Ok(deleted)
 }
@@ -485,7 +485,7 @@ pub async fn global_search_export(
             count += 1;
             Ok(())
         })
-        .map_err(|err| AppError::from_anyhow(err.context("导出全局搜索结果失败")))?;
+        .map_err(|err| AppError::from(err.context("导出全局搜索结果失败")))?;
         writer
             .flush()
             .map_err(|err| AppError::from_io("导出全局搜索结果", err))?;

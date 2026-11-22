@@ -59,9 +59,11 @@ function isBackendAppError(value: unknown): value is BackendAppError {
   );
 }
 
-// String errors pass through unchanged for legacy commands. Commands that have
-// migrated to the structured backend shape become `IpcCommandError`, preserving
-// existing `String(err)` UI while exposing stable `code` / `retryable` fields.
+// Every backend command fails with the structured shape, which becomes an
+// `IpcCommandError`: `String(err)` UI keeps working while callers branch on
+// the stable `code` / `retryable` fields. Tauri's own failures (an unknown
+// command, arguments that do not deserialize) still arrive as strings and
+// pass through unchanged.
 export function invokeCmd<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   return invoke<T>(command, args).catch((error: unknown) => {
     if (isBackendAppError(error)) {

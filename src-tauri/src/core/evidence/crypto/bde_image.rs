@@ -2,6 +2,8 @@
 use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::Weak;
 
+use crate::core::common::error::Failure;
+
 /// Public metadata only; key entry payloads never cross IPC.
 #[derive(Debug, serde::Serialize)]
 pub struct BdeMetadataInfo {
@@ -91,7 +93,7 @@ impl BdeVolume {
     ) -> anyhow::Result<BdeMetadataInfo> {
         offset
             .checked_add(length)
-            .context("BitLocker slice offset overflow")?;
+            .context(Failure::corrupt("BitLocker slice offset overflow"))?;
         let mut reader = VolumeReader {
             reader,
             offset,
@@ -133,11 +135,11 @@ impl BdeVolume {
     ) -> anyhow::Result<Self> {
         ensure!(
             length >= 512 && length.is_multiple_of(512),
-            "invalid BitLocker volume length"
+            Failure::corrupt("invalid BitLocker volume length")
         );
         offset
             .checked_add(length)
-            .context("BitLocker slice offset overflow")?;
+            .context(Failure::corrupt("BitLocker slice offset overflow"))?;
         let source = reader.clone();
         let mut reader = VolumeReader {
             reader,

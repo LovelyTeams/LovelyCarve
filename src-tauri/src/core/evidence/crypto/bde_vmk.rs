@@ -31,6 +31,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest as _, Sha1};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::{BitlockerStatus, DiskImage};
 use crate::core::evidence::partitions::{Partition, PartitionKind};
 
@@ -182,7 +183,7 @@ pub fn scan_memory_file_with_progress(
 
     progress(total, total);
     if cancel.load(Ordering::Relaxed) {
-        anyhow::bail!("memory scan cancelled");
+        anyhow::bail!(Failure::cancelled("memory scan cancelled"));
     }
     Ok(candidates)
 }
@@ -248,7 +249,11 @@ fn aes_ctr_decrypt(key: &[u8], counter_base: &[u8; 12], ciphertext: &[u8]) -> Re
         32 => AesCipher::Aes256(
             Aes256::new_from_slice(key).map_err(|_| anyhow!("AES-256 init: bad key length"))?,
         ),
-        other => return Err(anyhow!("unsupported AES key size: {other}")),
+        other => {
+            return Err(anyhow!(Failure::unsupported(format!(
+                "unsupported AES key size: {other}"
+            ))))
+        }
     };
 
     let mut plaintext = ciphertext.to_vec();
@@ -423,7 +428,8 @@ pub fn recovery_key_from_vmk(
 /// Decode a 64-character lowercase/uppercase hex VMK string into 32 bytes.
 pub fn parse_vmk_hex(input: &str) -> Result<Vec<u8>> {
     let trimmed: String = input.chars().filter(|c| !c.is_whitespace()).collect();
-    let bytes = hex::decode(&trimmed).map_err(|err| anyhow!("invalid VMK hex: {err}"))?;
+    let bytes = hex::decode(&trimmed)
+        .map_err(|err| anyhow!(Failure::invalid_input(format!("invalid VMK hex: {err}"))))?;
     if bytes.len() != 32 && bytes.len() != 16 {
         anyhow::bail!(
             "VMK must be 32 bytes (64 hex chars) or 16 bytes (32 hex chars), got {}",

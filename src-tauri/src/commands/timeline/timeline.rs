@@ -93,7 +93,7 @@ pub async fn timeline_status(
     tokio::task::spawn_blocking(move || compute_status(&case_dir, &image_id, running))
         .await
         .map_err(|err| AppError::task_panicked("timeline_status", err))?
-        .map_err(|err| AppError::from_anyhow(err.context("读取时间线状态失败")))
+        .map_err(|err| AppError::from(err.context("读取时间线状态失败")))
 }
 
 /// 创建重建任务并等待完成（长任务，取消走
@@ -176,9 +176,7 @@ pub async fn timeline_start(
     drop(registration);
     let built = outcome
         .map_err(|err| AppError::task_panicked("timeline_start", err))
-        .and_then(|built| {
-            built.map_err(|err| AppError::from_anyhow(err.context("时间线重建失败")))
-        });
+        .and_then(|built| built.map_err(|err| AppError::from(err.context("时间线重建失败"))));
     match &built {
         Ok(summary) => {
             task.update(|view| {
@@ -222,7 +220,7 @@ pub async fn timeline_types(
     )
     .await
     .map_err(|err| AppError::task_panicked("timeline_types", err))?
-    .map_err(|err| AppError::from_anyhow(err.context("读取时间线维度失败")))
+    .map_err(|err| AppError::from(err.context("读取时间线维度失败")))
 }
 
 /// strftime 时间桶聚合（`limit` 为 `None` = 全部桶）。
@@ -244,7 +242,7 @@ pub async fn timeline_count(
     )
     .await
     .map_err(|err| AppError::task_panicked("timeline_count", err))?
-    .map_err(|err| AppError::from_anyhow(err.context("时间线聚合失败")))
+    .map_err(|err| AppError::from(err.context("时间线聚合失败")))
 }
 
 /// 明细分页（默认 `tl_time desc`；`order` = `asc|desc`）。
@@ -280,7 +278,7 @@ pub async fn timeline_datas(
     )
     .await
     .map_err(|err| AppError::task_panicked("timeline_datas", err))?
-    .map_err(|err| AppError::from_anyhow(err.context("读取时间线明细失败")))
+    .map_err(|err| AppError::from(err.context("读取时间线明细失败")))
 }
 
 /// 检材时间线的时间范围 `min/max(tl_time)`。
@@ -303,7 +301,7 @@ pub async fn timeline_range(
     })
     .await
     .map_err(|err| AppError::task_panicked("timeline_range", err))?
-    .map_err(|err| AppError::from_anyhow(err.context("读取时间线范围失败")))
+    .map_err(|err| AppError::from(err.context("读取时间线范围失败")))
 }
 
 /// 导出为 UTF-8 BOM CSV，沿用明细表当前过滤（`tl_time asc` 流式逐行）。
@@ -317,7 +315,7 @@ pub async fn timeline_export(
     let case_dir = active_case_dir(&state).await?;
     tokio::task::spawn_blocking(move || -> Result<TimelineExportResult, AppError> {
         let conn = timeline_store::open_reader(&case_dir, &image_id)
-            .map_err(|err| AppError::from_anyhow(err.context("导出时间线失败")))?
+            .map_err(|err| AppError::from(err.context("导出时间线失败")))?
             .ok_or_else(|| AppError::invalid_input("该检材还没有创建时间线"))?;
         let file = std::fs::File::create_new(&destination)
             .map_err(|err| AppError::from_io("导出时间线", err))?;
@@ -349,7 +347,7 @@ pub async fn timeline_export(
             count += 1;
             Ok(())
         })
-        .map_err(|err| AppError::from_anyhow(err.context("导出时间线失败")))?;
+        .map_err(|err| AppError::from(err.context("导出时间线失败")))?;
         writer
             .flush()
             .map_err(|err| AppError::from_io("导出时间线", err))?;

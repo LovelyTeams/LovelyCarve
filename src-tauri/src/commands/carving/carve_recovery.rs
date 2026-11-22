@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
 
 use crate::app::access::loaded_image_app_error;
-use crate::app::error::AppError;
+use crate::app::error::{AppError, ErrorCode};
 use crate::commands::carving::carve::scan_session;
 use crate::commands::carving::carve_filesystem::{filesystem_result, recover_files};
 use crate::core::carving::carver::CarveArtifact;
@@ -152,7 +152,10 @@ pub async fn carve_recover(
     .and_then(std::convert::identity);
     if let Ok(result) = &recovered {
         task.update(|view| {
-            let files = result.files.as_ref().map_or(0, |files| files.recovered);
+            let files = result
+                .files
+                .as_ref()
+                .map_or_default(|files| files.recovered);
             view.counts
                 .insert(TaskCount::Files, (result.recovered + files) as u64);
             if let Some(files) = &result.files {
@@ -330,17 +333,17 @@ fn recover_one(
         let read = image
             .read_into(artifact.offset + written, &mut buffer[..wanted])
             .map_err(|error| {
-                AppError::from_anyhow(error.context(format!(
+                AppError::from(error.context(format!(
                     "read carved artifact {} at {}",
                     artifact.id,
                     artifact.offset + written
                 )))
             })?;
         if read == 0 {
-            return Err(AppError::from_message(format!(
-                "雕刻结果 {} 在 {} 字节处提前结束",
-                artifact.id, written
-            )));
+            return Err(AppError::new(
+                ErrorCode::CorruptData,
+                format!("雕刻结果 {} 在 {} 字节处提前结束", artifact.id, written),
+            ));
         }
         writer.write_all(&buffer[..read]).map_err(|error| {
             AppError::from_io(format!("write {}", partial_path.display()), error)

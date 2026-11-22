@@ -1,5 +1,6 @@
 //! Filesystem file reads, ranges, streaming and metadata.
 use super::*;
+use crate::core::common::error::Failure;
 
 impl ZfsVolume {
     pub fn read_file(
@@ -29,7 +30,11 @@ impl ZfsVolume {
         let entry = dir
             .get_child(&key)
             .map_err(|err| anyhow!("ZFS get_child {leaf}: {err}"))?
-            .ok_or_else(|| anyhow!("ZFS file not found: {file_path}"))?;
+            .ok_or_else(|| {
+                anyhow!(Failure::not_found(format!(
+                    "ZFS file not found: {file_path}"
+                )))
+            })?;
         let file = match entry {
             ZfsDirEntry::File(f) => f,
             ZfsDirEntry::Dir(_) => bail!("{file_path} is a directory, not a file"),
@@ -86,7 +91,11 @@ impl ZfsVolume {
         let entry = dir
             .get_child(&key)
             .map_err(|err| anyhow!("ZFS get_child {leaf}: {err}"))?
-            .ok_or_else(|| anyhow!("ZFS file not found: {file_path}"))?;
+            .ok_or_else(|| {
+                anyhow!(Failure::not_found(format!(
+                    "ZFS file not found: {file_path}"
+                )))
+            })?;
         let file = match entry {
             ZfsDirEntry::File(f) => f,
             ZfsDirEntry::Dir(_) => bail!("{file_path} is a directory, not a file"),
@@ -132,7 +141,11 @@ impl ZfsVolume {
         let entry = dir
             .get_child(&key)
             .map_err(|err| anyhow!("ZFS get_child {leaf}: {err}"))?
-            .ok_or_else(|| anyhow!("ZFS file not found: {file_path}"))?;
+            .ok_or_else(|| {
+                anyhow!(Failure::not_found(format!(
+                    "ZFS file not found: {file_path}"
+                )))
+            })?;
         let file = match entry {
             ZfsDirEntry::File(f) => f,
             ZfsDirEntry::Dir(_) => bail!("{file_path} is a directory, not a file"),

@@ -8,6 +8,7 @@ use lamfold::{
     BlockCache, BlockSource, FileKind, FoldError, FoldFrontend, NoVerifier, SubstrateCtx,
 };
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::{find_partition, DiskImage, Partition};
 use crate::core::filesystem::fs_dispatch::build_stat;
 use crate::core::filesystem::tree::fs_tree::{FsNode, FsStat, Mactb, NodeKind};
@@ -95,11 +96,11 @@ impl RomImageSource {
         let base = partition
             .start_lba
             .checked_mul(image.sector_size as u64)
-            .context("ROM image base overflow")?;
+            .context(Failure::corrupt("ROM image base overflow"))?;
         let length = partition
             .length_lba
             .checked_mul(image.sector_size as u64)
-            .context("ROM image length overflow")?;
+            .context(Failure::corrupt("ROM image length overflow"))?;
         ensure!(
             base.checked_add(length)
                 .is_some_and(|end| end <= image.len()),
@@ -340,14 +341,20 @@ impl<F: FoldFrontend<RomImageSource>> RomVolume<F> {
         path: &str,
         context: &mut SubstrateCtx<'_>,
     ) -> Result<(u64, HashSet<u64>)> {
-        ensure!(valid_lookup_path(path), "invalid ROM image path");
-        ensure!(path.split('/').count() <= 257, "ROM image path depth limit");
+        ensure!(
+            valid_lookup_path(path),
+            Failure::invalid_input("invalid ROM image path")
+        );
+        ensure!(
+            path.split('/').count() <= 257,
+            Failure::resource_limit("ROM image path depth limit")
+        );
         let mut node = reader.root();
         let mut ancestors = HashSet::from([reader.inode_identity(node, context)?]);
         for component in path.split('/').filter(|component| !component.is_empty()) {
             node = reader
                 .lookup(node, component, context)?
-                .context("ROM image entry not found")?;
+                .context(Failure::not_found("ROM image entry not found"))?;
             let metadata = reader.metadata(node, context)?;
             if metadata.kind == FileKind::Directory {
                 ensure!(

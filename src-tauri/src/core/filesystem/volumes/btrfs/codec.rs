@@ -1,5 +1,6 @@
 //! On-disk item decoding and compression codecs.
 use super::*;
+use crate::core::common::error::Failure;
 
 // =============================================================================
 // Payload parsers.
@@ -10,13 +11,13 @@ pub(super) fn parse_sys_chunk_array(bytes: &[u8]) -> anyhow::Result<Vec<ChunkMap
     let mut pos = 0usize;
     while pos + KEY_RECORD_SIZE + 48 <= bytes.len() {
         let key = Key::ref_from_bytes(&bytes[pos..pos + KEY_RECORD_SIZE])
-            .map_err(|_| anyhow!("btrfs: invalid sys_chunk_array key"))?;
+            .map_err(|_| anyhow!(Failure::corrupt("btrfs: invalid sys_chunk_array key")))?;
         if key.key_type != KEY_CHUNK_ITEM {
             break;
         }
         pos += KEY_RECORD_SIZE;
         let chunk = Chunk::ref_from_bytes(&bytes[pos..pos + 48])
-            .map_err(|_| anyhow!("btrfs: invalid sys_chunk_array chunk"))?;
+            .map_err(|_| anyhow!(Failure::corrupt("btrfs: invalid sys_chunk_array chunk")))?;
         let logical = key.offset.get();
         let length = chunk.length.get();
         let num_stripes = chunk.num_stripes.get() as usize;
@@ -29,7 +30,7 @@ pub(super) fn parse_sys_chunk_array(bytes: &[u8]) -> anyhow::Result<Vec<ChunkMap
             break;
         }
         let stripe = Stripe::ref_from_bytes(&bytes[pos..pos + 32])
-            .map_err(|_| anyhow!("btrfs: invalid sys_chunk_array stripe"))?;
+            .map_err(|_| anyhow!(Failure::corrupt("btrfs: invalid sys_chunk_array stripe")))?;
         out.push(ChunkMapping {
             logical,
             length,
@@ -201,7 +202,9 @@ pub(super) fn decompress_lzo(
         return Ok(Vec::new());
     }
     if !(4096..=LZO_MAX_SECTOR_SIZE).contains(&sector_size) || !sector_size.is_power_of_two() {
-        bail!("btrfs: invalid LZO sector size {sector_size}");
+        bail!(Failure::corrupt(format!(
+            "btrfs: invalid LZO sector size {sector_size}"
+        )));
     }
     if data.len() < LZO_LEN_SIZE {
         bail!("btrfs: LZO extent is missing total length header");
@@ -212,10 +215,10 @@ pub(super) fn decompress_lzo(
         bail!("btrfs: LZO total length {total_len} is too small");
     }
     if total_len > data.len() {
-        bail!(
+        bail!(Failure::corrupt(format!(
             "btrfs: LZO extent truncated: header says {total_len} bytes, have {}",
             data.len()
-        );
+        )));
     }
 
     let mut cursor = LZO_LEN_SIZE;
@@ -231,11 +234,13 @@ pub(super) fn decompress_lzo(
             bail!("btrfs: LZO segment has zero length");
         }
         if segment_len > max_segment_len {
-            bail!("btrfs: LZO segment length {segment_len} exceeds maximum {max_segment_len}");
+            bail!(Failure::resource_limit(format!(
+                "btrfs: LZO segment length {segment_len} exceeds maximum {max_segment_len}"
+            )));
         }
         let segment_end = cursor
             .checked_add(segment_len)
-            .ok_or_else(|| anyhow!("btrfs: LZO segment length overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("btrfs: LZO segment length overflow")))?;
         if segment_end > total_len {
             bail!(
                 "btrfs: LZO segment overruns extent: segment ends at {segment_end}, total {total_len}"
@@ -253,7 +258,7 @@ pub(super) fn decompress_lzo(
         if bytes_left_in_sector < LZO_LEN_SIZE {
             cursor = cursor
                 .checked_add(bytes_left_in_sector)
-                .ok_or_else(|| anyhow!("btrfs: LZO sector padding overflow"))?;
+                .ok_or_else(|| anyhow!(Failure::corrupt("btrfs: LZO sector padding overflow")))?;
         }
     }
 
@@ -267,9 +272,11 @@ pub(super) fn decompress_lzo(
 }
 
 pub(super) fn read_lzo_len(data: &[u8], offset: usize) -> anyhow::Result<usize> {
-    let bytes = data
-        .get(offset..offset + LZO_LEN_SIZE)
-        .ok_or_else(|| anyhow!("btrfs: LZO length field at {offset} is truncated"))?;
+    let bytes = data.get(offset..offset + LZO_LEN_SIZE).ok_or_else(|| {
+        anyhow!(Failure::corrupt(format!(
+            "btrfs: LZO length field at {offset} is truncated"
+        )))
+    })?;
     Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize)
 }
 

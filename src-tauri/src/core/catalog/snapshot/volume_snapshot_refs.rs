@@ -28,6 +28,7 @@ use crate::core::catalog::snapshot::volume_snapshot::{
     snapshot_file_name, volume_size_for_key, write_snapshot_entry, write_snapshot_header,
     SnapshotEntry, SnapshotHeader, VolumeSnapshotBuilt, PROGRESS_EVERY, SNAPSHOT_SCHEMA,
 };
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::{Partition, PartitionKind};
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree::{fs_unalloc_nodes, FsNode, NodeKind};
@@ -82,7 +83,7 @@ pub(crate) fn build_refs_volume_snapshot(
     on_progress(0);
     let WalkResult { entries, streams } = volume.walk_tree(cancel)?;
     if cancel.is_cancelled() {
-        anyhow::bail!("snapshot build cancelled");
+        anyhow::bail!(Failure::cancelled("snapshot build cancelled"));
     }
 
     // Group entries by their parent directory's object id. Within each group,
@@ -139,7 +140,7 @@ pub(crate) fn build_refs_volume_snapshot(
 
         while let Some((dir_oid, parent_node_id, parent_path, ancestors)) = stack.pop() {
             if cancel.is_cancelled() {
-                anyhow::bail!("snapshot build cancelled");
+                anyhow::bail!(Failure::cancelled("snapshot build cancelled"));
             }
             let Some(group) = by_parent.get(&dir_oid) else {
                 continue;

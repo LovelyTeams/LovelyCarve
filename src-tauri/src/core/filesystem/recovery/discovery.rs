@@ -1,5 +1,6 @@
 //! Sector-aligned boot discovery. Geometry and full volume bounds must validate.
 use super::*;
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::fat::detect_valid_fat_boot_sector;
 use crate::core::filesystem::volumes::exfat_recover::ExfatGeom;
 
@@ -23,7 +24,7 @@ pub(super) fn discover(
         let end = range
             .start_sector
             .checked_add(range.sector_count)
-            .context("Scan range overflow")?;
+            .context(Failure::invalid_input("Scan range overflow"))?;
         if end > total {
             bail!("Scan range is outside the evidence");
         }

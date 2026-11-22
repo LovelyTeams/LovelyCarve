@@ -21,6 +21,7 @@
 //! layout and copy selection follow mdadm's `super-ddf.c`; block addresses are
 //! in 512-byte sectors.
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::SectorSource;
 
 pub const HEADER_MAGIC: u32 = 0xDE11_DE11;
@@ -465,7 +466,7 @@ fn config_records(
 fn read_sectors(source: &dyn SectorSource, lba: u64, count: u64) -> anyhow::Result<Vec<u8>> {
     let offset = lba
         .checked_mul(SECTOR as u64)
-        .ok_or_else(|| anyhow::anyhow!("DDF sector {lba} overflows"))?;
+        .ok_or_else(|| anyhow::anyhow!(Failure::corrupt(format!("DDF sector {lba} overflows"))))?;
     let len = count as usize * SECTOR;
     let bytes = source.read(offset, len)?;
     if bytes.len() != len {

@@ -81,7 +81,7 @@ pub(super) async fn run_volume_snapshot(
     let resource_permit = match tasks.acquire_resources(&task).await {
         Ok(permit) => permit,
         Err(err) => {
-            fail("cancelled", err.message());
+            fail("cancelled", err.to_string());
             return;
         }
     };

@@ -171,7 +171,7 @@ pub(super) fn orderings(n: usize) -> Vec<Vec<usize>> {
     let base: Vec<usize> = (0..n).collect();
     let mut out = Vec::new();
     for shift in 0..n {
-        out.push((0..n).map(|i| (i + shift) % n).collect());
+        out.push(Vec::from_fn(n, |i| (i + shift) % n));
     }
     out.push(base.iter().rev().copied().collect());
     out.sort();

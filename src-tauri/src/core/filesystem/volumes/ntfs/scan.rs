@@ -1,5 +1,6 @@
 //! Whole-MFT tree edges and alternate stream discovery.
 use super::*;
+use crate::core::common::error::Failure;
 
 impl<'a> NtfsVolume<'a> {
     /// Sequentially scans every MFT slot once and returns one [`NtfsTreeEdge`]
@@ -45,7 +46,7 @@ impl<'a> NtfsVolume<'a> {
         for record_number in 0..total_records {
             if record_number % SCAN_CHECK_EVERY == 0 {
                 if cancel.is_cancelled() {
-                    anyhow::bail!("snapshot build cancelled");
+                    anyhow::bail!(Failure::cancelled("snapshot build cancelled"));
                 }
                 on_progress(record_number);
             }

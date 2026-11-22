@@ -1,4 +1,5 @@
 //! BitLocker volumes read directly from decoded evidence through a pure Rust reader.
+use crate::core::common::error::Failure;
 use crate::core::evidence::crypto::bde_image::{
     BdeEncryptionMethod, BdeUnlockKey, BdeVolume, VolumeByteReader,
 };
@@ -114,7 +115,7 @@ pub fn unlock_location(
 ) -> anyhow::Result<UnlockedVolume> {
     ensure!(
         !observer.cancel.load(Ordering::Relaxed),
-        "BitLocker 解锁已取消"
+        Failure::cancelled("BitLocker 解锁已取消")
     );
     ensure!(
         location
@@ -135,7 +136,7 @@ pub fn unlock_location(
         })?;
     ensure!(
         !observer.cancel.load(Ordering::Relaxed),
-        "BitLocker 解锁已取消"
+        Failure::cancelled("BitLocker 解锁已取消")
     );
     (observer.progress)(location.length, location.length);
     Ok(UnlockedVolume::new(volume))

@@ -6,6 +6,8 @@ use anyhow::{ensure, Context};
 
 use super::{MbrPartition, SectorSource};
 
+use crate::core::common::error::Failure;
+
 /// Independent cursor; no global state or host-file writes. A read that crosses
 /// the partition end is clamped; a short backing read before EOF is an error.
 pub struct MbrPartitionReader<'a> {
@@ -23,21 +25,21 @@ impl<'a> MbrPartitionReader<'a> {
     ) -> anyhow::Result<Self> {
         ensure!(
             matches!(sector_size, 512 | 1024 | 2048 | 4096),
-            "unsupported MBR sector size: {sector_size}"
+            Failure::unsupported(format!("unsupported MBR sector size: {sector_size}"))
         );
         let volume_offset = partition
             .partition
             .start_lba
             .checked_mul(sector_size as u64)
-            .context("MBR partition offset overflow")?;
+            .context(Failure::corrupt("MBR partition offset overflow"))?;
         let length = partition
             .partition
             .length_lba
             .checked_mul(sector_size as u64)
-            .context("MBR partition size overflow")?;
+            .context(Failure::corrupt("MBR partition size overflow"))?;
         let end = volume_offset
             .checked_add(length)
-            .context("MBR partition end overflow")?;
+            .context(Failure::corrupt("MBR partition end overflow"))?;
         ensure!(
             end <= source.size(),
             "MBR partition exceeds evidence source"

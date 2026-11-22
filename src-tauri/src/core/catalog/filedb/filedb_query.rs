@@ -20,6 +20,7 @@ use rusqlite::{params, params_from_iter, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 use crate::core::catalog::filedb::filedb_file;
+use crate::core::common::error::Failure;
 use crate::core::filesystem::tree::fs_tree::FsNode;
 
 const DEFAULT_PAGE_SIZE: usize = 500;
@@ -453,7 +454,7 @@ fn cursor_for_node(node: &FsNode) -> String {
 fn decode_cursor(cursor: &str) -> anyhow::Result<(String, String)> {
     let (name_hex, id_hex) = cursor
         .split_once(':')
-        .context("invalid filedb node page cursor")?;
+        .context(Failure::invalid_input("invalid filedb node page cursor"))?;
     let name = String::from_utf8(hex::decode(name_hex).context("decode cursor name")?)
         .context("cursor name is not utf8")?;
     let id = String::from_utf8(hex::decode(id_hex).context("decode cursor id")?)

@@ -1,6 +1,7 @@
 //! Read-only LVM navigation over verified metadata and complete linear LV maps.
 //! Fragmented single-PV LVs retain their logical size and source ranges.
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::{
     detect_filesystem, find_partition, DiskImage, Partition, PartitionKind,
 };
@@ -54,11 +55,11 @@ impl LvmVolume {
         let partition_offset = partition
             .start_lba
             .checked_mul(image.sector_size as u64)
-            .ok_or_else(|| anyhow::anyhow!("LVM partition offset overflow"))?;
+            .ok_or_else(|| anyhow::anyhow!(Failure::corrupt("LVM partition offset overflow")))?;
         let partition_size = partition
             .length_lba
             .checked_mul(image.sector_size as u64)
-            .ok_or_else(|| anyhow::anyhow!("LVM partition size overflow"))?;
+            .ok_or_else(|| anyhow::anyhow!(Failure::corrupt("LVM partition size overflow")))?;
         let metadata = read_metadata(image, partition_offset, partition_size)?;
         let group = &metadata.volume_group;
         let pv = group
@@ -70,16 +71,16 @@ impl LvmVolume {
             .pe_start_sectors
             .checked_mul(512)
             .and_then(|offset| partition_offset.checked_add(offset))
-            .ok_or_else(|| anyhow::anyhow!("LVM PE start overflow"))?;
+            .ok_or_else(|| anyhow::anyhow!(Failure::corrupt("LVM PE start overflow")))?;
         let pv_end_bytes = pv
             .extent_count
             .checked_mul(group.extent_size_sectors)
             .and_then(|size| size.checked_mul(512))
             .and_then(|size| pe_start_bytes.checked_add(size))
-            .ok_or_else(|| anyhow::anyhow!("LVM PE end overflow"))?;
+            .ok_or_else(|| anyhow::anyhow!(Failure::corrupt("LVM PE end overflow")))?;
         let partition_end = partition_offset
             .checked_add(partition_size)
-            .ok_or_else(|| anyhow::anyhow!("LVM partition end overflow"))?;
+            .ok_or_else(|| anyhow::anyhow!(Failure::corrupt("LVM partition end overflow")))?;
         if pv_end_bytes > partition_end {
             anyhow::bail!("LVM PE space exceeds partition");
         }
@@ -94,7 +95,7 @@ impl LvmVolume {
                     .checked_mul(group.extent_size_sectors)
                     .and_then(|size| size.checked_mul(512))
                     .and_then(|size| total.checked_add(size))
-                    .ok_or_else(|| anyhow::anyhow!("LVM LV size overflow"))
+                    .ok_or_else(|| anyhow::anyhow!(Failure::corrupt("LVM LV size overflow")))
             })?;
             let (layout, read_error, absolute_offset, kind) =
                 match linear_layout(group, volume, pv, partition_offset, partition_size) {
@@ -111,7 +112,7 @@ impl LvmVolume {
                         let offset = layout
                             .segments
                             .first()
-                            .map_or(0, |segment| segment.physical_offset);
+                            .map_or_default(|segment| segment.physical_offset);
                         (Some(layout), None, offset, kind)
                     }
                     Err(error) => {
@@ -288,14 +289,16 @@ pub(crate) fn physical_runs(
     };
     let mut output = Vec::new();
     for run in runs {
-        run.logical_offset
-            .checked_add(run.length)
-            .ok_or_else(|| anyhow::anyhow!("LVM file logical run end overflow"))?;
+        run.logical_offset.checked_add(run.length).ok_or_else(|| {
+            anyhow::anyhow!(Failure::corrupt("LVM file logical run end overflow"))
+        })?;
         for range in layout.ranges(run.physical_offset, run.length)? {
             let logical_offset = run
                 .logical_offset
                 .checked_add(range.logical_offset - run.physical_offset)
-                .ok_or_else(|| anyhow::anyhow!("LVM file logical run offset overflow"))?;
+                .ok_or_else(|| {
+                    anyhow::anyhow!(Failure::corrupt("LVM file logical run offset overflow"))
+                })?;
             output.push(FsDataRun {
                 logical_offset,
                 physical_offset: range.physical_offset,
@@ -310,14 +313,14 @@ pub(crate) fn logical_volume_for_id(
     image: &DiskImage,
     id: &str,
 ) -> anyhow::Result<LvmLogicalVolume> {
-    let (partition_id, index) =
-        parse_lvm_id(id).ok_or_else(|| anyhow::anyhow!("invalid LVM node {id}"))?;
+    let (partition_id, index) = parse_lvm_id(id)
+        .ok_or_else(|| anyhow::anyhow!(Failure::invalid_input(format!("invalid LVM node {id}"))))?;
     let partition = find_partition(image, partition_id)?;
     LvmVolume::open(image, partition)?
         .logical_volumes
         .into_iter()
         .nth(index)
-        .ok_or_else(|| anyhow::anyhow!("logical volume missing: {id}"))
+        .ok_or_else(|| anyhow::anyhow!(Failure::not_found(format!("logical volume missing: {id}"))))
 }
 
 pub(crate) fn logical_volume_stat(

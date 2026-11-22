@@ -33,6 +33,7 @@ use binrw::BinRead;
 use chrono::{TimeZone, Utc};
 use serde::Serialize;
 
+use crate::core::common::error::Failure;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree;
 
@@ -125,16 +126,23 @@ pub fn preview_vim_swap(
 
 pub fn parse_swap(bytes: &[u8], truncated: bool) -> anyhow::Result<VimSwapDigest> {
     if !looks_like_vim_swap(bytes) {
-        anyhow::bail!("not a vim swap file (missing b0VIM magic)");
+        anyhow::bail!(Failure::unsupported(
+            "not a vim swap file (missing b0VIM magic)"
+        ));
     }
     if bytes.len() < HEADER_BYTES {
-        anyhow::bail!("vim swap header truncated ({} bytes)", bytes.len());
+        anyhow::bail!(Failure::corrupt(format!(
+            "vim swap header truncated ({} bytes)",
+            bytes.len()
+        )));
     }
 
     let header = VimSwapHeader::read(&mut Cursor::new(&bytes[..HEADER_BYTES]))
         .map_err(|err| anyhow::anyhow!("vim swap header parse failed: {err}"))?;
     if header.magic != *b"b0VIM " {
-        anyhow::bail!("not a vim swap file (missing b0VIM magic)");
+        anyhow::bail!(Failure::unsupported(
+            "not a vim swap file (missing b0VIM magic)"
+        ));
     }
     let version = c_string(&header.version);
     let raw_page_size = header.page_size;

@@ -18,6 +18,7 @@ use anyhow::{anyhow, Result};
 use chrono::{TimeZone, Utc};
 use hfsplus::{EntryKind, HfsVolume};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{DiskImage, Partition};
 use crate::core::filesystem::tree::fs_tree::{
@@ -77,11 +78,11 @@ impl HfsPlusVolume {
         let base_offset = partition
             .start_lba
             .checked_mul(sector_size)
-            .ok_or_else(|| anyhow!("HFS+ partition offset overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("HFS+ partition offset overflow")))?;
         let length_bytes = partition
             .length_lba
             .checked_mul(sector_size)
-            .ok_or_else(|| anyhow!("HFS+ partition length overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("HFS+ partition length overflow")))?;
         anyhow::ensure!(
             base_offset
                 .checked_add(length_bytes)

@@ -20,6 +20,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use chrono::NaiveDate;
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::DiskImage;
 use crate::core::filesystem::tree::fs_tree::{FsDataRun, Mactb};
 
@@ -84,7 +85,7 @@ impl FatGeom {
         ) || sectors_per_cluster == 0
             || !sectors_per_cluster.is_power_of_two()
         {
-            anyhow::bail!("FAT BPB geometry invalid");
+            anyhow::bail!(Failure::corrupt("FAT BPB geometry invalid"));
         }
         let reserved_sectors = u16::from_le_bytes([boot[14], boot[15]]) as u32;
         let num_fats = boot[16] as u32;
@@ -118,11 +119,11 @@ impl FatGeom {
         };
         if reserved_sectors == 0 || first_data >= u64::from(total_sectors) || active_fat >= num_fats
         {
-            anyhow::bail!("FAT invalid data region / active table");
+            anyhow::bail!(Failure::corrupt("FAT invalid data region / active table"));
         }
         base_offset
             .checked_add(u64::from(total_sectors) * u64::from(bytes_per_sector))
-            .ok_or_else(|| anyhow!("FAT volume end overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("FAT volume end overflow")))?;
         Ok(Self {
             base_offset,
             bytes_per_sector,
@@ -517,7 +518,7 @@ impl FatTable {
             cluster_count * 2
         };
         if raw.len() as u64 != fat_bytes_len || raw.len() < needed_bytes {
-            anyhow::bail!("FAT truncated allocation table");
+            anyhow::bail!(Failure::corrupt("FAT truncated allocation table"));
         }
         let mut entries = Vec::with_capacity(cluster_count);
         if is_fat32 {
@@ -619,7 +620,7 @@ fn read_effective_boot_sector(image: &Arc<DiskImage>, base_offset: u64) -> Resul
         .unwrap_or(FAT32_BACKUP_BOOT_SECTOR);
     let backup_offset = base_offset
         .checked_add(backup_sector * logical_sector)
-        .ok_or_else(|| anyhow!("FAT backup offset overflow"))?;
+        .ok_or_else(|| anyhow!(Failure::corrupt("FAT backup offset overflow")))?;
     let backup = image.read_range(backup_offset, BOOT_SECTOR_LEN).ok();
     let chosen = choose_boot_sector(&primary, backup.as_deref());
     boot_sector_array(chosen)
@@ -697,7 +698,9 @@ pub fn resolve_dir_cluster(
         let found = find_live_child_cluster(&directory.bytes, segment);
         match found {
             Some(next) => cluster = next,
-            None => anyhow::bail!("FAT directory segment not found: {segment}"),
+            None => anyhow::bail!(Failure::not_found(format!(
+                "FAT directory segment not found: {segment}"
+            ))),
         }
     }
     Ok(cluster)

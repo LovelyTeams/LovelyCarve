@@ -57,7 +57,7 @@ pub(crate) async fn page(
     })
     .await
     .map_err(|error| AppError::task_panicked("directory_page", error))?
-    .map_err(AppError::from_anyhow)?;
+    .map_err(AppError::from)?;
     if let Some(page) = indexed {
         return Ok(page);
     }
@@ -82,7 +82,7 @@ pub(crate) async fn page(
     })
     .await
     .map_err(|error| AppError::task_panicked("directory_page", error))?
-    .map_err(AppError::from_anyhow)
+    .map_err(AppError::from)
 }
 
 /// Whether each directory's subtree holds no file, from the active case's

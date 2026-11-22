@@ -1,5 +1,6 @@
 //! Per-volume enumeration and logical streaming, including lost volumes.
 use super::*;
+use crate::core::common::error::Failure;
 use crate::core::filesystem::volumes::{
     exfat::{parse_exfat_id, ExfatVolume},
     fat::{parse_fat_id, FatVolume},
@@ -19,7 +20,7 @@ impl<'a> Reader<'a> {
             .start_lba
             .checked_add(partition.length_lba)
             .and_then(|end| end.checked_mul(sector))
-            .context("Recovery volume bounds overflow")?;
+            .context(Failure::corrupt("Recovery volume bounds overflow"))?;
         if partition.length_lba == 0 || end > image.len() {
             bail!("Recovery volume is outside the evidence");
         }
@@ -35,7 +36,7 @@ impl<'a> Reader<'a> {
                 Some(geometry) => NtfsVolume::open_recovered(image, partition, geometry)?,
                 None => NtfsVolume::open(image, partition)?,
             })),
-            _ => bail!("Unsupported recovery filesystem"),
+            _ => bail!(Failure::unsupported("Unsupported recovery filesystem")),
         }
     }
     pub(super) fn stream(
@@ -45,19 +46,23 @@ impl<'a> Reader<'a> {
     ) -> Result<u64> {
         match self {
             Self::Fat(volume) => volume.stream_file(
-                &parse_fat_id(&node.id).context("Invalid FAT candidate")?.1,
+                &parse_fat_id(&node.id)
+                    .context(Failure::corrupt("Invalid FAT candidate"))?
+                    .1,
                 1024 * 1024,
                 visitor,
             ),
             Self::Exfat(volume) => volume.stream_file(
                 &parse_exfat_id(&node.id)
-                    .context("Invalid exFAT candidate")?
+                    .context(Failure::corrupt("Invalid exFAT candidate"))?
                     .1,
                 1024 * 1024,
                 visitor,
             ),
             Self::Ntfs(volume) => volume.stream_file(
-                parse_ntfs_id(&node.id).context("Invalid NTFS candidate")?.1,
+                parse_ntfs_id(&node.id)
+                    .context(Failure::corrupt("Invalid NTFS candidate"))?
+                    .1,
                 1024 * 1024,
                 visitor,
             ),

@@ -20,6 +20,7 @@ use anyhow::{bail, Context};
 use binrw::BinRead;
 use memmap2::Mmap;
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::SectorSource;
 
 /// `SparseExtentHeader.flags` bit 16 — grains are compressed. We can only serve
@@ -101,14 +102,15 @@ impl SparseVmdk {
         let header = SparseExtentHeader::read(&mut Cursor::new(data))
             .context("reading VMDK sparse extent header")?;
         if header.flags & FLAG_COMPRESSED_GRAINS != 0 {
-            bail!("compressed-grain VMDK is not supported by the sparse reader");
+            bail!(Failure::unsupported(
+                "compressed-grain VMDK is not supported by the sparse reader"
+            ));
         }
         if header.grain_sectors == 0 || header.num_gtes_per_gt == 0 {
-            bail!(
+            bail!(Failure::corrupt(format!(
                 "invalid VMDK geometry (grainSize={}, numGTEsPerGT={})",
-                header.grain_sectors,
-                header.num_gtes_per_gt
-            );
+                header.grain_sectors, header.num_gtes_per_gt
+            )));
         }
         // Prefer the primary grain directory; fall back to the redundant one.
         // A footer-resident GD (streamOptimized) is out of scope.

@@ -43,7 +43,7 @@ pub async fn analysis_result_tree(
     tokio::task::spawn_blocking(move || analysis_query::analysis_tree(&case_dir, &evidence))
         .await
         .map_err(|error| AppError::task_panicked("analysis_result_tree", error))?
-        .map_err(AppError::from_anyhow)
+        .map_err(AppError::from)
 }
 
 /// 按选中节点的 runId 分页读取一种记录,翻页期间不切换运行。
@@ -80,7 +80,7 @@ pub async fn analysis_records_page(
     })
     .await
     .map_err(|error| AppError::task_panicked("analysis_records_page", error))?
-    .map_err(AppError::from_anyhow)
+    .map_err(AppError::from)
 }
 
 /// 单条记录详情(表格行 → 右侧预览),带它所属类型的列。
@@ -96,7 +96,7 @@ pub async fn analysis_record_detail(
     })
     .await
     .map_err(|error| AppError::task_panicked("analysis_record_detail", error))?
-    .map_err(AppError::from_anyhow)
+    .map_err(AppError::from)
 }
 
 /// 一次运行的审计:目标、输入、选项、画像事实、告警与合成字节。
@@ -110,7 +110,7 @@ pub async fn analysis_run_get(
     tokio::task::spawn_blocking(move || analysis_query::run_audit(&case_dir, &image_id, &run_id))
         .await
         .map_err(|error| AppError::task_panicked("analysis_run_get", error))?
-        .map_err(AppError::from_anyhow)
+        .map_err(AppError::from)
 }
 
 /// 检材节点展示名:镜像文件名(与案件管理列表一致)。

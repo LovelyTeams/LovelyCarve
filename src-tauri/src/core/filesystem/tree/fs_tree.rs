@@ -13,8 +13,6 @@ mod navigation;
 use navigation::*;
 pub use navigation::{children_for_image, children_for_mount};
 
-use std::error::Error;
-use std::fmt;
 use std::sync::Arc;
 
 use std::collections::{HashMap, HashSet};

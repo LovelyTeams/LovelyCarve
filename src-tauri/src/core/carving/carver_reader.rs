@@ -14,6 +14,7 @@ use memchr::memmem;
 use tokio_util::sync::CancellationToken;
 
 use crate::core::carving::carver::{CarveScanError, CarveSource};
+use crate::core::common::error::Failure;
 
 /// First refill of a decoder streaming on past the end of the scan window.
 const FIRST_REFILL_BYTES: usize = 64 * 1024;
@@ -184,7 +185,7 @@ impl<'a, S: CarveSource> CarveReader<'a, S> {
     fn slice_at(&mut self, relative: u64, wanted: usize) -> anyhow::Result<&[u8]> {
         let end = relative
             .checked_add(wanted as u64)
-            .context("carve reader offset overflow")?;
+            .context(Failure::corrupt("carve reader offset overflow"))?;
         if end > self.size {
             bail!("unexpected end of carve reader");
         }
@@ -239,7 +240,7 @@ impl<'a, S: CarveSource> CarveReader<'a, S> {
             let absolute = self
                 .start
                 .checked_add(relative + filled as u64)
-                .context("carve reader absolute offset overflow")?;
+                .context(Failure::corrupt("carve reader absolute offset overflow"))?;
             let read = self
                 .source
                 .read_into(absolute, &mut self.lookahead[filled..length])

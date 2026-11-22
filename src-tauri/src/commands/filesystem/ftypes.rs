@@ -95,7 +95,7 @@ pub async fn fs_ftype_persist(
     let merged = tokio::task::spawn_blocking(move || -> Result<usize, AppError> {
         facts_store::types_merge(&case_dir, &persist_image_id, entries)
             .context("persist ftypes")
-            .map_err(AppError::from_anyhow)
+            .map_err(AppError::from)
     })
     .await
     .map_err(|error| AppError::task_panicked("persist ftypes", error))??;

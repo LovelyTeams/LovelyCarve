@@ -30,6 +30,7 @@ use super::{
     view::{FindScan, HostView},
     PluginError, PluginPermission, Result,
 };
+use crate::core::common::error::Failure;
 use crate::core::{
     analysis::results::record_store::{RecordWriteError, RecordWriter},
     evidence::image::{BadRegion, ReadFaultReport},
@@ -460,7 +461,7 @@ impl RunContext {
         let streamed = self.collect(|| {
             fs_tree::stream_file_chunks(&self.image, &file.node_id, 1024 * 1024, |chunk| {
                 if self.cancellation.is_cancelled() {
-                    anyhow::bail!("the run was cancelled");
+                    anyhow::bail!(Failure::cancelled("the run was cancelled"));
                 }
                 written = written
                     .checked_add(chunk.len() as u64)

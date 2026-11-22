@@ -16,6 +16,8 @@ use ad1::{Ad1Entry, Ad1Error, Ad1Reader};
 use anyhow::{anyhow, bail, Context, Result};
 use memmap2::Mmap;
 
+use crate::core::common::error::Failure;
+
 /// Decompressed bytes handed out per read while streaming a whole file.
 const STREAM_WINDOW: u64 = 1024 * 1024;
 
@@ -73,7 +75,9 @@ impl Ad1Image {
         let reader = match Ad1Reader::open(&path) {
             Ok(reader) => reader,
             Err(Ad1Error::Unsupported(detail)) => {
-                bail!("暂不支持加密的 AD1 镜像（ADCRYPT）：{detail}")
+                bail!(Failure::unsupported(format!(
+                    "暂不支持加密的 AD1 镜像（ADCRYPT）：{detail}"
+                )))
             }
             Err(error) => {
                 return Err(anyhow::Error::new(error))
@@ -210,9 +214,11 @@ impl Ad1Image {
     }
 
     fn file_entry(&self, index: usize) -> Result<&Ad1Entry> {
-        let entry = self
-            .entry(index)
-            .ok_or_else(|| anyhow!("AD1 entry {index} does not exist"))?;
+        let entry = self.entry(index).ok_or_else(|| {
+            anyhow!(Failure::not_found(format!(
+                "AD1 entry {index} does not exist"
+            )))
+        })?;
         if entry.is_dir {
             bail!("not a regular file: {}", entry.path);
         }

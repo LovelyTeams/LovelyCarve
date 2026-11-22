@@ -12,6 +12,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, bail, Context, Result};
 use serde_json::Value;
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::PartitionKind;
 use crate::core::filesystem::docker::host_docker_overlay::MergedContainerFs;
 use crate::core::filesystem::evidence_session::EvidenceSession;
@@ -223,21 +224,27 @@ pub(crate) fn source_file_id(
     Ok(container
         .merged(image)?
         .source_node(path)
-        .ok_or_else(|| anyhow!("path not found in Docker container: {path}"))?
+        .ok_or_else(|| {
+            anyhow!(Failure::not_found(format!(
+                "path not found in Docker container: {path}"
+            )))
+        })?
         .id
         .clone())
 }
 
 impl HostDocker {
     pub(crate) fn container(&self, id: &str) -> Result<&Arc<HostDockerContainer>> {
-        let index = self
-            .container_indexes
-            .get(id)
-            .copied()
-            .ok_or_else(|| anyhow!("Docker container not found: {id}"))?;
-        self.containers
-            .get(index)
-            .ok_or_else(|| anyhow!("Docker container index is invalid: {id}"))
+        let index = self.container_indexes.get(id).copied().ok_or_else(|| {
+            anyhow!(Failure::not_found(format!(
+                "Docker container not found: {id}"
+            )))
+        })?;
+        self.containers.get(index).ok_or_else(|| {
+            anyhow!(Failure::corrupt(format!(
+                "Docker container index is invalid: {id}"
+            )))
+        })
     }
 }
 

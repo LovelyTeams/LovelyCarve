@@ -451,7 +451,7 @@ fn scalar(param: &Param, raw: &str) -> Result<Value, CliError> {
                 let text = read_file(path, &param.option)?;
                 Ok(Value::String(
                     text.strip_suffix('\n')
-                        .map(|text| text.strip_suffix('\r').unwrap_or(text))
+                        .map(|text| text.trim_suffix('\r'))
                         .unwrap_or(&text)
                         .to_owned(),
                 ))

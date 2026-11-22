@@ -15,6 +15,8 @@ use memmap2::Mmap;
 use parking_lot::Mutex;
 use sevenz_rust2::{Archive, ArchiveEntry, ArchiveReader, Password};
 
+use crate::core::common::error::Failure;
+
 const MAX_ENTRIES: usize = 2_000_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,7 +139,7 @@ impl SevenzImage {
     pub fn read(&self, rel: &str, max_bytes: usize) -> Result<Vec<u8>> {
         let entry = self
             .lookup(rel)
-            .ok_or_else(|| anyhow!("not found in 7z: {rel}"))?;
+            .ok_or_else(|| anyhow!(Failure::not_found(format!("not found in 7z: {rel}"))))?;
         if !matches!(entry.kind, SevenzEntryKind::File) {
             bail!("not a regular file: {rel}");
         }
@@ -161,7 +163,7 @@ impl SevenzImage {
     {
         let entry = self
             .lookup(rel)
-            .ok_or_else(|| anyhow!("not found in 7z: {rel}"))?;
+            .ok_or_else(|| anyhow!(Failure::not_found(format!("not found in 7z: {rel}"))))?;
         if !matches!(entry.kind, SevenzEntryKind::File) {
             bail!("not a regular file: {rel}");
         }
@@ -217,7 +219,7 @@ impl SevenzImage {
         if found {
             Ok(())
         } else {
-            bail!("not found in 7z: {target}")
+            bail!(Failure::not_found(format!("not found in 7z: {target}")))
         }
     }
 }

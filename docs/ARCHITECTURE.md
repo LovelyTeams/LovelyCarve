@@ -115,11 +115,21 @@ src-tauri/src/
     └── common.rs + common/         哈希、自然排序和文本解码
 ```
 
-`commands` 的十个域是 `evidence`、`casework`、`filesystem`、`preview`、`analysis`、`carving`、`search`、`timeline`、`extensions`、`system`。跨域流程在 `app/workflows` 中复用；应用层不调用命令层，`core` 不依赖 app、commands、state、cli 或 Tauri。应用错误定义在 `app/error.rs`，`commands/app_error.rs` 保留传输层导出。
+`commands` 的十个域是 `evidence`、`casework`、`filesystem`、`preview`、`analysis`、`carving`、`search`、`timeline`、`extensions`、`system`。跨域流程在 `app/workflows` 中复用；应用层不调用命令层，`core` 不依赖 app、commands、state、cli 或 Tauri。应用错误定义在 `app/error.rs`（见[错误与错误码](#错误与错误码)），`commands/app_error.rs` 保留传输层导出。
 
 `lib.rs` 保留唯一的命令注册表，以及 `desktop` 特性下的 Tauri builder。`app/setup.rs` 的 `initialize`（插件发现、任务调度、媒体缓存）由桌面 `setup` 和 CLI 共用，桌面退出和 CLI 共用 `app/lifecycle.rs` 的媒体、插件清理步骤。CLI 生成器沿模块声明解析嵌套命令路径和真实函数签名，与 `cli/commands.toml` 的命令定义一起生成分发代码与命令目录（见[命令行与桌面只读挂载](#命令行与桌面只读挂载)）。
 
 `python/` 是 PyO3 / maturin 的只读 `lovelycarve` 包，直接使用 `DiskImage`、`EvidenceSession` 与文件系统读取接口，不经过命令、`AppState` 或应用初始化。它启用后端 `reader-library` 库配置，排除应用、案件、catalog、分析、预览、搜索、插件和挂载模块；默认 CLI、`desktop` 及后端单元测试仍编译完整模块。Cargo 依赖图暂与后端共用，扩展只链接读取实现。证据路径规范化实现在 `common::evidence_path`，原有 `casework::case::evidence_path_key` 保留同一函数的重导出，使读取器不必依赖案件模块。Python API、构建与限制见 [Python 读取库](../python/README.md)。
+
+### 错误与错误码
+
+后端只有一套错误码：`core::common::error::ErrorCode`，IPC、CLI 和 Python 绑定共用，线上名称为 `cancelled`、`notFound`、`invalidInput`、`unsupportedFormat`、`corruptData`、`resourceLimit`、`sourceChanged`、`permissionDenied`、`ffiUnavailable`、`taskPanicked`、`caseLocked`、`io`、`internal`。错误类型一律用 `thiserror` 派生，不手写 `Display` / `Error`，也不把 `String` 当作错误类型。
+
+- 引擎内部用 `anyhow` 传播错误，用 `.context(...)` 记录每一步。调用方要据以分支的失败以 `Failure` 抛出（`Failure::not_found(...)`、`Failure::cancelled(...)`、`Failure::corrupt(...)` 等）：既可以是根错误（`bail!` / `ensure!` / `anyhow!`），也可以作为上下文附在下层错误上。`Failure` 的显示文本就是它的消息，抛出它不改变任何用户可见文字。没有声明种类的失败为 `internal`。
+- 失败集合封闭、调用方要逐项处理的领域定义自己的 thiserror 枚举（如 `SchedError`、`PluginError`、`CarveScanError`、`RecordWriteError`、`CaseLocked`），由 `app/error.rs` 以穷举 `match` 映射到错误码。
+- `AppError` 是命令的 IPC 错误形状。`From<anyhow::Error>` 按错误链中的类型确定错误码：链中任一处的取消优先，其次取最外层带类型的原因（`Failure`、按 `io::ErrorKind` 分类的主机 I/O 错误、`CaseLocked`、`MissingDataStream`、`PluginError`、`JoinError`）。错误码不由消息文本推断；消息保留 `{error:#}` 的完整上下文链。`retryable` 由错误码决定（`sourceChanged`、`io`）。
+- CLI 的 `CliError` 使用同一套错误码：后端命令的错误原样转发，CLI 直接调用引擎时按同一规则分类；此外有自己的 `usage`、`noImage`、`aborted`、`tasksFailed`、`sessionExited` 等。Python 绑定把 `notFound` / `permissionDenied` 抛为 `FileNotFoundError` / `PermissionError`，其余读取失败为 `OSError`。
+- 插件任务落库的失败说明和 RAID 元数据探测的诊断原因是记录下来的文本，不是错误类型。
 
 ### 原生组件
 

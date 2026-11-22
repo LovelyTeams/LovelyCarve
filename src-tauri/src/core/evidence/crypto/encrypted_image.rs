@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroize;
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::{DerivedImage, DiskImage, ImageInfo};
 use crate::core::evidence::partitions::{detect_partitions_with_meta, SectorSource};
 
@@ -104,16 +105,16 @@ impl EvidenceReader {
                 .partitions
                 .iter()
                 .find(|partition| partition.id == id)
-                .context("partition not found")?;
+                .context(Failure::not_found("partition not found"))?;
             (
                 partition
                     .start_lba
                     .checked_mul(source.sector_size as u64)
-                    .context("partition offset overflow")?,
+                    .context(Failure::corrupt("partition offset overflow"))?,
                 partition
                     .length_lba
                     .checked_mul(source.sector_size as u64)
-                    .context("partition size overflow")?,
+                    .context(Failure::corrupt("partition size overflow"))?,
             )
         } else {
             let offset = offset.unwrap_or(0);
@@ -248,7 +249,7 @@ pub fn unlock(
 ) -> anyhow::Result<(DiskImage, UnlockResult)> {
     ensure!(
         !cancellation.is_cancelled(),
-        "encrypted volume operation cancelled"
+        Failure::cancelled("encrypted volume operation cancelled")
     );
     ensure!(
         options.master_key_hex.is_some() != !options.password.is_empty(),
@@ -268,7 +269,7 @@ pub fn unlock(
     );
     ensure!(
         options.pim <= 1000,
-        "PIM above 1000 exceeds the supported derivation budget"
+        Failure::resource_limit("PIM above 1000 exceeds the supported derivation budget")
     );
     ensure!(
         options.scheme == EncryptionScheme::Filevault
@@ -304,10 +305,11 @@ pub fn unlock(
                         && key.len().is_multiple_of(2)
                         && !key.is_empty()
                         && key.bytes().all(|byte| byte.is_ascii_hexdigit()),
-                    "invalid LUKS master key hex"
+                    Failure::invalid_input("invalid LUKS master key hex")
                 );
                 let key = zeroize::Zeroizing::new(
-                    hex::decode(key).context("invalid LUKS master key hex")?,
+                    hex::decode(key)
+                        .context(Failure::invalid_input("invalid LUKS master key hex"))?,
                 );
                 luks::LuksVolume::unlock_with_master_key(reader, &key)?
             } else {
@@ -317,7 +319,7 @@ pub fn unlock(
             let info = volume.info();
             ensure!(
                 size > 0 && size % info.sector_size as u64 == 0,
-                "invalid LUKS payload geometry"
+                Failure::corrupt("invalid LUKS payload geometry")
             );
             let cipher = format!(
                 "LUKS{} {}-{}",
@@ -401,7 +403,7 @@ pub fn unlock(
         }
     };
     if cancellation.is_cancelled() {
-        bail!("encrypted volume operation cancelled");
+        bail!(Failure::cancelled("encrypted volume operation cancelled"));
     }
     let plaintext = Arc::new(PlaintextSource {
         reader: Mutex::new(reader),
@@ -431,7 +433,7 @@ pub fn unlock(
     image.disk_id = detected.disk_id;
     ensure!(
         !cancellation.is_cancelled(),
-        "encrypted volume operation cancelled"
+        Failure::cancelled("encrypted volume operation cancelled")
     );
     // Completed views have their own lifetime; a late unlock cancel must not relock them.
     let lifetime = CancellationToken::new();

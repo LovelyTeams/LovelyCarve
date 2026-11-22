@@ -282,7 +282,7 @@ impl RaidVolume {
 
         let member_offset = step.member_offset + range.start as u64;
         let len = range.len();
-        let mut columns: Vec<Option<TracedBytes>> = (0..n).map(|_| None).collect();
+        let mut columns: Vec<Option<TracedBytes>> = Vec::from_fn(n, |_| None);
         let read = |column: usize| {
             present_member(&self.members, column)?.read_exact_traced(member_offset, len)
         };

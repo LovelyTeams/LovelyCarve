@@ -270,7 +270,7 @@ pub fn carve_entry(scan: &CarveScanSnapshot, cancelling: bool) -> TaskEntry {
     };
     view.counts.insert(
         TaskCount::Found,
-        filesystem.map_or(0, |phase| phase.files as u64) + scan.artifacts_found,
+        filesystem.map_or_default(|phase| phase.files as u64) + scan.artifacts_found,
     );
     if scan.truncated || filesystem.is_some_and(|phase| phase.truncated) {
         view.flags.insert(TaskFlag::Truncated);
@@ -483,11 +483,11 @@ fn stored_entries(
             global_search_store::history_list(case_dir, image_id, SEARCH_HISTORY_LIMIT, || {
                 searches.lock().keys().cloned().collect()
             })
-            .map_err(|error| AppError::from_anyhow(error.context("读取搜索任务列表失败")))?;
+            .map_err(|error| AppError::from(error.context("读取搜索任务列表失败")))?;
         entries.extend(history.into_iter().map(search_entry));
         let building = builds.lock().contains_key(image_id);
         let timeline = timeline_project::compute_status(case_dir, image_id, building)
-            .map_err(|error| AppError::from_anyhow(error.context("读取时间线状态失败")))?;
+            .map_err(|error| AppError::from(error.context("读取时间线状态失败")))?;
         if let Some(meta) = timeline.meta {
             entries.push(timeline_entry(image_id, meta));
         }

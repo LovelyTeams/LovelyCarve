@@ -1,5 +1,6 @@
 //! common domain modules.
 
+pub mod error;
 pub mod evidence_path;
 pub mod export;
 pub mod hash;

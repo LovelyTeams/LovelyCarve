@@ -7,6 +7,7 @@ use std::sync::Arc;
 use anyhow::{ensure, Context, Result};
 use tokio_util::sync::CancellationToken;
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::{Partition, PartitionKind};
 
 #[path = "firmware_chk.rs"]
@@ -70,7 +71,10 @@ pub fn has_firmware_magic(bytes: &[u8]) -> bool {
 
 impl FirmwareImage {
     pub fn open(bytes: &[u8], cancel: &CancellationToken) -> Result<Self> {
-        ensure!(!cancel.is_cancelled(), "firmware open cancelled");
+        ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("firmware open cancelled")
+        );
         if minifs_envelope::has_magic(bytes) {
             return minifs_envelope::open(bytes, cancel);
         }
@@ -83,11 +87,14 @@ impl FirmwareImage {
                 "Buffalo bgn source length mismatch"
             );
             let tag = decode_enc(bytes, 20, cancel)?;
-            ensure!(tag.data.len() == 152, "unsupported Buffalo bgn tag layout");
+            ensure!(
+                tag.data.len() == 152,
+                Failure::unsupported("unsupported Buffalo bgn tag layout")
+            );
             Some(
                 tag.end
                     .checked_add(3)
-                    .context("Buffalo alignment overflow")?
+                    .context(Failure::corrupt("Buffalo alignment overflow"))?
                     & !3,
             )
         } else if bytes.starts_with(b"start\0") || bytes.starts_with(b"asar1\0") {
@@ -134,10 +141,11 @@ impl FirmwareImage {
         let relative = offset
             .checked_sub(*base)
             .context("firmware read before plaintext span")?;
-        let start = usize::try_from(relative).context("firmware read offset overflow")?;
+        let start =
+            usize::try_from(relative).context(Failure::corrupt("firmware read offset overflow"))?;
         let end = start
             .checked_add(length)
-            .context("firmware read length overflow")?;
+            .context(Failure::corrupt("firmware read length overflow"))?;
         Ok(Some(
             bytes
                 .get(start..end)
@@ -156,11 +164,13 @@ fn parse_trx(bytes: &[u8], base: u64, cancel: &CancellationToken) -> Result<Vec<
             .filter(|(_, byte)| **byte == b'\n')
             .nth(1)
             .map(|(index, _)| index + 1)
-            .context("truncated Buffalo plaintext header")?;
+            .context(Failure::corrupt("truncated Buffalo plaintext header"))?;
         let value = std::str::from_utf8(&bytes[12..header_end - 1])?
             .strip_prefix("filelen=")
-            .context("invalid Buffalo filelen header")?;
-        let declared: usize = value.parse().context("invalid Buffalo payload length")?;
+            .context(Failure::corrupt("invalid Buffalo filelen header"))?;
+        let declared: usize = value
+            .parse()
+            .context(Failure::corrupt("invalid Buffalo payload length"))?;
         ensure!(
             declared == bytes.len() - header_end,
             "Buffalo plaintext length mismatch"
@@ -172,7 +182,7 @@ fn parse_trx(bytes: &[u8], base: u64, cancel: &CancellationToken) -> Result<Vec<
     let bytes = bytes.get(prefix..).context("TRX prefix exceeds firmware")?;
     ensure!(
         bytes.starts_with(b"HDR0"),
-        "unsupported firmware payload (expected Broadcom TRX)"
+        Failure::unsupported("unsupported firmware payload (expected Broadcom TRX)")
     );
     let length = le32(bytes, 4)? as usize;
     ensure!(
@@ -181,15 +191,21 @@ fn parse_trx(bytes: &[u8], base: u64, cancel: &CancellationToken) -> Result<Vec<
     );
     ensure!(
         le32(bytes, 12)? >> 16 == 1,
-        "unsupported TRX header version"
+        Failure::unsupported("unsupported TRX header version")
     );
     let expected = le32(bytes, 8)?;
     let mut crc = crc32fast::Hasher::new();
     for chunk in bytes[12..length].chunks(64 * 1024) {
-        ensure!(!cancel.is_cancelled(), "firmware open cancelled");
+        ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("firmware open cancelled")
+        );
         crc.update(chunk);
     }
-    ensure!(!crc.finalize() == expected, "TRX checksum mismatch");
+    ensure!(
+        !crc.finalize() == expected,
+        Failure::corrupt("TRX checksum mismatch")
+    );
     let mut offsets = Vec::new();
     let mut empty_slot = false;
     for slot in 0..3 {
@@ -200,7 +216,7 @@ fn parse_trx(bytes: &[u8], base: u64, cancel: &CancellationToken) -> Result<Vec<
         }
         ensure!(
             !empty_slot && offset >= TRX_HEADER && offset < length,
-            "invalid TRX segment offset"
+            Failure::corrupt("invalid TRX segment offset")
         );
         ensure!(
             offsets.last().is_none_or(|previous| offset > *previous),
@@ -234,9 +250,10 @@ fn parse_trx(bytes: &[u8], base: u64, cancel: &CancellationToken) -> Result<Vec<
         let absolute = base
             .checked_add(prefix as u64)
             .and_then(|value| value.checked_add(start as u64))
-            .context("TRX source offset overflow")?;
+            .context(Failure::corrupt("TRX source offset overflow"))?;
         partitions.push(Partition {
-            id: u8::try_from(partitions.len()).context("too many firmware volumes")?,
+            id: u8::try_from(partitions.len())
+                .context(Failure::resource_limit("too many firmware volumes"))?,
             kind,
             start_lba: absolute,
             length_lba: (end - start) as u64,
@@ -260,39 +277,41 @@ fn decode_enc(bytes: &[u8], offset: usize, cancel: &CancellationToken) -> Result
         .context("Buffalo ENC offset exceeds source")?;
     ensure!(
         bytes.starts_with(b"start\0") || bytes.starts_with(b"asar1\0"),
-        "invalid Buffalo ENC magic"
+        Failure::corrupt("invalid Buffalo ENC magic")
     );
-    let seed = *bytes.get(6).context("truncated Buffalo ENC seed")?;
+    let seed = *bytes
+        .get(6)
+        .context(Failure::corrupt("truncated Buffalo ENC seed"))?;
     let product_length = be32(bytes, 7)? as usize;
     ensure!(
         (1..=32).contains(&product_length),
-        "invalid Buffalo product length"
+        Failure::corrupt("invalid Buffalo product length")
     );
     let product = bytes
         .get(11..11 + product_length)
-        .context("truncated Buffalo product")?;
+        .context(Failure::corrupt("truncated Buffalo product"))?;
     let version_offset = 15 + product_length;
     let version_length = be32(bytes, 11 + product_length)? as usize;
     ensure!(
         (1..=8).contains(&version_length),
-        "invalid Buffalo version length"
+        Failure::corrupt("invalid Buffalo version length")
     );
     let version = bytes
         .get(version_offset..version_offset + version_length)
-        .context("truncated Buffalo version")?;
+        .context(Failure::corrupt("truncated Buffalo version"))?;
     let length_offset = version_offset + version_length;
     let length = be32(bytes, length_offset)? as usize;
     ensure!(
         length <= MAX_ENCRYPTED_BYTES,
-        "Buffalo encrypted payload exceeds 512 MiB limit"
+        Failure::resource_limit("Buffalo encrypted payload exceeds 512 MiB limit")
     );
     let start = length_offset + 4;
     let end = start
         .checked_add(length)
-        .context("Buffalo payload length overflow")?;
+        .context(Failure::corrupt("Buffalo payload length overflow"))?;
     let data = bytes
         .get(start..end)
-        .context("truncated Buffalo encrypted payload")?;
+        .context(Failure::corrupt("truncated Buffalo encrypted payload"))?;
     let expected = be32(bytes, end)?;
     let mut product_plain = product.to_vec();
     Rc4::new(seed).apply(&mut product_plain);
@@ -300,13 +319,16 @@ fn decode_enc(bytes: &[u8], offset: usize, cancel: &CancellationToken) -> Result
     Rc4::new(product[0]).apply(&mut version_plain);
     ensure!(
         product_plain.last() == Some(&0) && version_plain.last() == Some(&0),
-        "unsupported Buffalo encryption key or mode"
+        Failure::unsupported("unsupported Buffalo encryption key or mode")
     );
     let mut plaintext = data.to_vec();
     let mut cipher = Rc4::new(version[0]);
     let mut checksum = length as u32;
     for chunk in plaintext.chunks_mut(64 * 1024) {
-        ensure!(!cancel.is_cancelled(), "firmware open cancelled");
+        ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("firmware open cancelled")
+        );
         cipher.apply(chunk);
         for &byte in chunk.iter() {
             checksum ^= (byte as i8 as i32) as u32;
@@ -317,7 +339,7 @@ fn decode_enc(bytes: &[u8], offset: usize, cancel: &CancellationToken) -> Result
     }
     ensure!(
         checksum == expected,
-        "Buffalo ENC checksum mismatch (wrong key/mode or corrupt source)"
+        Failure::corrupt("Buffalo ENC checksum mismatch (wrong key/mode or corrupt source)")
     );
     Ok(EncPayload {
         data: plaintext,
@@ -365,7 +387,7 @@ fn le32(bytes: &[u8], offset: usize) -> Result<u32> {
     Ok(u32::from_le_bytes(
         bytes
             .get(offset..offset + 4)
-            .context("truncated firmware field")?
+            .context(Failure::corrupt("truncated firmware field"))?
             .try_into()?,
     ))
 }
@@ -373,7 +395,7 @@ fn be32(bytes: &[u8], offset: usize) -> Result<u32> {
     Ok(u32::from_be_bytes(
         bytes
             .get(offset..offset + 4)
-            .context("truncated firmware field")?
+            .context(Failure::corrupt("truncated firmware field"))?
             .try_into()?,
     ))
 }

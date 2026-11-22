@@ -7,6 +7,7 @@ use anyhow::bail;
 use crate::core::carving::carver::CarveSource;
 use crate::core::carving::carver_formats::FormatScanResult;
 use crate::core::carving::carver_reader::{seek_at, CarveReader};
+use crate::core::common::error::Failure;
 
 const LOCAL_HEADER: u32 = 0x0403_4b50;
 const CENTRAL_HEADER: u32 = 0x0201_4b50;
@@ -50,7 +51,7 @@ pub(in crate::core) fn scan_zip<S: CarveSource>(
                 )));
             }
             _ if entries > 0 && skip_apk_signing_block(reader)? => {}
-            _ => bail!("invalid ZIP record sequence"),
+            _ => bail!(Failure::corrupt("invalid ZIP record sequence")),
         }
     }
 }
@@ -134,7 +135,7 @@ fn seek_past_descriptor<S: CarveSource>(
     loop {
         let remaining = reader.remaining();
         if !seek_at(reader, b"PK", remaining)? {
-            bail!("ZIP data descriptor not found");
+            bail!(Failure::corrupt("ZIP data descriptor not found"));
         }
         let position = reader.bytes_read();
         match peek_u32(reader, position)? {
@@ -262,7 +263,7 @@ fn walk_central_directory<S: CarveSource>(
                 reader.discard_up_to(u64::from(le_u16(&record[16..18])))?;
                 return Ok((reader.bytes_read(), entries));
             }
-            _ => bail!("invalid ZIP central directory record"),
+            _ => bail!(Failure::corrupt("invalid ZIP central directory record")),
         }
         signature = u32::from_le_bytes(reader.read_array()?);
     }

@@ -4,6 +4,8 @@ use std::collections::BTreeSet;
 use super::source::{build_volume, ArrayLevel, ArraySpec, Raid0ZoneLayout};
 use super::*;
 
+use crate::core::common::error::Failure;
+
 /// Assemble a RAID device from an explicit geometry and member order, detecting
 /// the partition table / filesystem on the result. Used by the manual builder:
 /// the parameters come from the examiner, so nothing is searched — the device
@@ -17,10 +19,10 @@ pub fn manual_assemble(
         anyhow::bail!("no members selected");
     }
     let level = ArrayLevel::from_md(params.level, params.layout).with_context(|| {
-        format!(
+        Failure::unsupported(format!(
             "unsupported RAID level/layout {}/{}",
             params.level, params.layout
-        )
+        ))
     })?;
     let mut missing: BTreeSet<usize> = params.missing_slots.iter().copied().collect();
     missing.extend(params.missing_slot);
@@ -34,7 +36,7 @@ pub fn manual_assemble(
         let image = images
             .iter()
             .find(|im| &im.id == id)
-            .with_context(|| format!("member image {id} is not loaded"))?;
+            .with_context(|| Failure::not_found(format!("member image {id} is not loaded")))?;
         columns.push(Some(image.clone()));
     }
     if let Some(&slot) = missing.iter().find(|&&slot| slot >= columns.len()) {

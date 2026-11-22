@@ -32,6 +32,7 @@ use anyhow::{anyhow, bail, Context};
 use memmap2::Mmap;
 use sevenz_rust2::{Archive, ArchiveReader, Password, SIGNATURE_HEADER_SIZE};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::{OpenObserver, OpenProgress};
 use crate::core::evidence::partitions::{
     detect_partitions_with_meta, refine_partition_kinds, Partition, PartitionKind, PartitionSlice,
@@ -137,7 +138,10 @@ pub(crate) fn open_cancellable(
     progress: OpenObserver<'_>,
     cancel: &tokio_util::sync::CancellationToken,
 ) -> anyhow::Result<PreparedLdplayer> {
-    anyhow::ensure!(!cancel.is_cancelled(), "image load cancelled");
+    anyhow::ensure!(
+        !cancel.is_cancelled(),
+        Failure::cancelled("image load cancelled")
+    );
 
     let file = File::open(path).with_context(|| format!("open {}", path.display()))?;
     // SAFETY: the mmap is only read, and the `.ldbk` is evidence we treat as
@@ -201,7 +205,7 @@ pub(crate) fn open_cancellable(
     let mut partitions: Vec<Partition> = Vec::new();
     let mut next_id: u16 = 0;
     for (name, seg_base, seg_len) in &layout {
-        let stem = name.strip_suffix(".vmdk").unwrap_or(name);
+        let stem = name.trim_suffix(".vmdk");
         let view = PartitionSlice::new(concat.as_ref(), *seg_base, *seg_len);
         let detected = detect_partitions_with_meta(&view, LD_SECTOR)
             .with_context(|| format!("partition detection failed for {name}"))?;
@@ -358,7 +362,8 @@ fn stored_range(archive: &Archive, file_index: usize, file_size: u64) -> Option<
 /// only once the whole `u8` id space (`Partition::id`) is exhausted — so the
 /// last valid id 255 is still handed out (a handful of partitions in practice).
 fn take_id(next: &mut u16) -> anyhow::Result<u8> {
-    let id = u8::try_from(*next).map_err(|_| anyhow!("too many LDPlayer partitions"))?;
+    let id = u8::try_from(*next)
+        .map_err(|_| anyhow!(Failure::resource_limit("too many LDPlayer partitions")))?;
     *next += 1;
     Ok(id)
 }

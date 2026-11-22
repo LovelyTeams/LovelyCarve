@@ -18,6 +18,7 @@
 
 use anyhow::Result;
 
+use crate::core::common::error::Failure;
 use crate::core::filesystem::volumes::ext4::Ext4Volume;
 
 /// jbd2 block-header magic (`JBD2_MAGIC_NUMBER`), big-endian on disk.
@@ -123,7 +124,7 @@ impl Ext4Journal {
             anyhow::bail!("jbd2 journal too small");
         }
         if be32(raw, 0) != Some(JBD2_MAGIC) {
-            anyhow::bail!("not a jbd2 journal (bad magic)");
+            anyhow::bail!(Failure::corrupt("not a jbd2 journal (bad magic)"));
         }
         let blocktype = be32(raw, 4).unwrap_or(0);
         if blocktype != BTYPE_SUPERBLOCK_V1 && blocktype != BTYPE_SUPERBLOCK_V2 {
@@ -135,7 +136,9 @@ impl Ext4Journal {
         let start = be32(raw, 28).unwrap_or(0);
         let incompat = be32(raw, 0x28).unwrap_or(0);
         if block_size == 0 || (block_size as usize) > raw.len() {
-            anyhow::bail!("jbd2 superblock block size invalid: {block_size}");
+            anyhow::bail!(Failure::corrupt(format!(
+                "jbd2 superblock block size invalid: {block_size}"
+            )));
         }
         let bs = block_size as usize;
         let total_blocks = (raw.len() / bs) as u32;

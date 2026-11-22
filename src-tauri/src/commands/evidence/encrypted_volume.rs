@@ -63,7 +63,7 @@ pub async fn filevault_inspect(
             "FileVault evidence unloaded during inspection",
         ));
     }
-    result.map_err(AppError::from_anyhow)
+    result.map_err(AppError::from)
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
@@ -130,7 +130,7 @@ pub async fn encrypted_volume_unlock(
         if token.is_cancelled() {
             return Err(AppError::cancelled("encrypted volume unlock cancelled"));
         }
-        let (image, mut result) = result.map_err(AppError::from_anyhow)?;
+        let (image, mut result) = result.map_err(AppError::from)?;
         let mut images = state.images.lock().await;
         if token.is_cancelled() {
             return Err(AppError::cancelled("encrypted volume unlock cancelled"));
@@ -165,7 +165,7 @@ pub async fn encrypted_volume_unlock(
                 .ok_or_else(|| AppError::invalid_input("请选择源镜像中的完整加密分区"))?;
             source
                 .attach_decrypted_partition(partition_id, image, result.read_cancellation.clone())
-                .map_err(AppError::from_anyhow)?;
+                .map_err(AppError::from)?;
             result.image = source.info();
             result.volume_key = Some(format!("part:{partition_id}"));
             drop(images);

@@ -5,6 +5,8 @@ use std::io::SeekFrom;
 use anyhow::{bail, Result};
 use backhand::{kind, BufReadSeek, FilesystemReaderTrait};
 
+use crate::core::common::error::Failure;
+
 #[inline(never)]
 pub(super) fn open_reader(
     mut reader: Box<dyn BufReadSeek>,
@@ -26,7 +28,10 @@ pub(super) fn open_reader(
     if matches!((&header[..4], version), (b"hsqs" | b"sqsh", 1 | 2)) {
         return Ok(backhand::legacy::open(reader)?);
     }
-    anyhow::ensure!(minor == 0, "unsupported SquashFS version {version}.{minor}");
+    anyhow::ensure!(
+        minor == 0,
+        Failure::unsupported(format!("unsupported SquashFS version {version}.{minor}"))
+    );
     let selected = match (&header[..4], version) {
         (b"hsqs", 4) => kind::LE_V4_0,
         (b"sqsh", 4) => kind::BE_V4_0,
@@ -34,10 +39,10 @@ pub(super) fn open_reader(
         (b"sqsh", 3) => kind::BE_V3_0,
         (b"hsqt", 3) => kind::LE_V3_0_DDWRT,
         (b"tqsh", 3) => kind::BE_V3_0_DDWRT,
-        _ => bail!(
+        _ => bail!(Failure::unsupported(format!(
             "unsupported SquashFS magic/version: {:?} v{version}",
             &header[..4]
-        ),
+        ))),
     };
     let kind = kind::Kind::from_const(selected).map_err(anyhow::Error::msg)?;
     Ok(backhand::create_squashfs_from_kind(reader, 0, kind)?)

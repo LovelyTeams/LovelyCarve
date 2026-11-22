@@ -7,6 +7,7 @@
 //! staging directory outside the case lock and published through [`CaseState`]
 //! like any other volume ([`publish`]).
 
+use crate::core::common::error::Failure;
 use crate::core::filesystem::docker::mapping_cache::{load_mapping, mapping_path, save_mapping};
 
 use std::io::{BufWriter, Write};
@@ -160,7 +161,8 @@ pub fn prepare(
     };
     ensure!(path.is_empty(), "Docker 索引必须从容器根目录开始");
     image.validate_source_file_stable()?;
-    let catalog = host_docker::catalog(image).ok_or_else(|| anyhow!("未找到 Docker 容器"))?;
+    let catalog = host_docker::catalog(image)
+        .ok_or_else(|| anyhow!(Failure::not_found("未找到 Docker 容器")))?;
     let container = catalog.container(&container_id)?;
     let _guard = container.index_lock.lock();
     let mut merged = container.merged.lock().clone();

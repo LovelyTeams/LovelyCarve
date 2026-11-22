@@ -50,7 +50,7 @@ pub async fn qr_scan(
 
     tokio::task::spawn_blocking(move || -> Result<QrScanOutcome, AppError> {
         let _resource_permit = resource_permit;
-        let bytes = fs_tree::read_file(&image, &node_id).map_err(AppError::from_anyhow)?;
+        let bytes = fs_tree::read_file(&image, &node_id).map_err(AppError::from)?;
         let mut last_emit = 0u32;
         qrcode::scan(
             &bytes,
@@ -83,7 +83,7 @@ pub async fn qr_scan(
             if token.is_cancelled() {
                 AppError::cancelled("二维码扫描已取消")
             } else {
-                AppError::from_anyhow(err)
+                AppError::from(err)
             }
         })
     })

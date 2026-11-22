@@ -363,7 +363,7 @@ pub fn catalog() -> Result<&'static Catalog, CliError> {
                 .map_err(|error| format!("命令目录损坏：{error}"))
         })
         .as_ref()
-        .map_err(|error| CliError::new("operationFailed", error.clone()))
+        .map_err(super::internal_error)
 }
 
 #[cfg(test)]

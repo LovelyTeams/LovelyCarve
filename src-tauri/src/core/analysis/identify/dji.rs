@@ -80,7 +80,7 @@ pub(super) fn detect(fs: &dyn OsFingerprint) -> anyhow::Result<Option<Detection>
 
 fn parse_properties(bytes: &[u8]) -> Option<BTreeMap<String, String>> {
     let text = std::str::from_utf8(bytes).ok()?;
-    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    let text = text.trim_prefix('\u{feff}');
     if text.contains('\0') {
         return None;
     }

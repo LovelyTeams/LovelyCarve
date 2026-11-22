@@ -24,7 +24,7 @@ pub async fn ocr_scan(
     tokio::task::spawn_blocking(ocr::ensure_available)
         .await
         .map_err(|err| AppError::task_panicked("ocr_scan", err))?
-        .map_err(AppError::from_anyhow)?;
+        .map_err(AppError::from)?;
     let task_id = task_id.unwrap_or_else(|| format!("ocr:{}", uuid::Uuid::new_v4()));
     let task_id_for_progress = task_id.clone();
     let task = state
@@ -42,8 +42,8 @@ pub async fn ocr_scan(
 
     tokio::task::spawn_blocking(move || -> Result<OcrOutcome, AppError> {
         let _resource_permit = resource_permit;
-        let bytes = fs_tree::read_file(&image, &node_id).map_err(AppError::from_anyhow)?;
-        let outcome = ocr::recognize(&bytes).map_err(AppError::from_anyhow);
+        let bytes = fs_tree::read_file(&image, &node_id).map_err(AppError::from)?;
+        let outcome = ocr::recognize(&bytes).map_err(AppError::from);
         if outcome.is_ok() {
             tasks.emit_progress(
                 &task_id_for_progress,

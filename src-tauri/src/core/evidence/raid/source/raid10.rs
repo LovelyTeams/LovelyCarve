@@ -10,6 +10,7 @@ use anyhow::{bail, Context};
 
 use super::traced::{RepairLog, TracedRead};
 use super::StripedMember;
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::BadRegion;
 use crate::core::evidence::partitions::SectorSource;
 
@@ -140,17 +141,17 @@ impl Geometry {
         let chunks_per_device = device_bytes / chunk_bytes;
         let array_chunks = (chunks_per_device / far)
             .checked_mul(raid_disks)
-            .context("RAID10 size overflow")?
+            .context(Failure::corrupt("RAID10 size overflow"))?
             / near;
         let used_chunks = array_chunks
             .checked_mul(copies)
-            .context("RAID10 size overflow")?
+            .context(Failure::corrupt("RAID10 size overflow"))?
             .div_ceil(raid_disks);
         let stride_chunks = if layout.offset { 1 } else { used_chunks / far };
         // raid10_size over the used device size.
         let size_chunks = (used_chunks / far)
             .checked_mul(raid_disks)
-            .context("RAID10 size overflow")?
+            .context(Failure::corrupt("RAID10 size overflow"))?
             / near;
         let geometry = Self {
             raid_disks,

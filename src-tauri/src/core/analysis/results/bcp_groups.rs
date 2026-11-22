@@ -11,6 +11,8 @@ use super::{
     record_store::{table_name, value_column},
 };
 
+use crate::core::common::error::Failure;
+
 const MAX_GROUPS_PER_TYPE: usize = 4096;
 const MAX_APPLICATIONS_PER_SCOPE: usize = 128;
 const GENERIC_MESSAGING: &str = "1039999";
@@ -185,7 +187,7 @@ pub(crate) fn append_scope(
     anyhow::ensure!(
         schema.record_type.starts_with("bcp.")
             && (1..=MAX_APPLICATIONS_PER_SCOPE).contains(&scope.applications.len()),
-        "无效的 BCP 应用分组筛选"
+        Failure::invalid_input("无效的 BCP 应用分组筛选")
     );
     let columns = GroupColumns::from_schema(schema);
     let placeholders = vec!["?"; scope.applications.len()].join(", ");

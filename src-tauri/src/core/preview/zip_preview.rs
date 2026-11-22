@@ -22,6 +22,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use serde::Serialize;
 use zip::{CompressionMethod, ZipArchive};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::readers::zip_image::{normalize_key, normalize_zip_path, zip_dt_unix};
 
 /// Cap on members walked for aggregate stats. The 128 MiB read cap already
@@ -314,7 +315,8 @@ pub fn read_member(data: &[u8], member_path: &str, max_bytes: usize) -> Result<V
         break;
     }
 
-    let index = target.ok_or_else(|| anyhow!("压缩包内未找到成员：{want}"))?;
+    let index =
+        target.ok_or_else(|| anyhow!(Failure::not_found(format!("压缩包内未找到成员：{want}"))))?;
     let mut reader = archive.by_index(index)?;
     // `take` bounds decompression to the requested window: a preview never
     // inflates the whole member.

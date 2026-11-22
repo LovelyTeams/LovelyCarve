@@ -1,6 +1,7 @@
 //! Filesystem read and lightweight preview IPC: bounded file reads, raw/text
 //! previews, media materialisation, preview cache, and file stat.
 
+use crate::core::common::error::Failure;
 use crate::host::{LeaseOwner, State};
 
 use crate::core::common::ids::{ImageId, NodeId, NodeRef};
@@ -28,7 +29,7 @@ pub async fn fs_read(
     let image = loaded_image_app_error(&state, &image_id).await?;
     let data = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, AppError> {
         let mut session = fs_tree::FsSession::new(&image);
-        let stat = session.file_stat(&node_id).map_err(AppError::from_anyhow)?;
+        let stat = session.file_stat(&node_id).map_err(AppError::from)?;
         if stat.size > FS_READ_MAX_BYTES {
             return Err(AppError::resource_limit(format!(
                 "文件大小 {} 字节，超过单次读取上限 {} 字节；请使用分段读取或导出。",
@@ -37,7 +38,7 @@ pub async fn fs_read(
         }
         session
             .read_file_limited(&node_id, FS_READ_MAX_BYTES as usize)
-            .map_err(AppError::from_anyhow)
+            .map_err(AppError::from)
     })
     .await
     .map_err(|err| AppError::task_panicked("fs_read", err))??;
@@ -70,7 +71,7 @@ pub async fn fs_read_range(
 
     let image = loaded_image_app_error(&state, &image_id).await?;
     let data = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, AppError> {
-        fs_tree::read_file_range(&image, &node_id, offset, length).map_err(AppError::from_anyhow)
+        fs_tree::read_file_range(&image, &node_id, offset, length).map_err(AppError::from)
     })
     .await
     .map_err(|err| AppError::task_panicked("fs_read_range", err))??;
@@ -102,7 +103,7 @@ pub async fn fs_read_large(
     let data = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, AppError> {
         let _permit = permit;
         let mut session = fs_tree::FsSession::new(&image);
-        let stat = session.file_stat(&node_id).map_err(AppError::from_anyhow)?;
+        let stat = session.file_stat(&node_id).map_err(AppError::from)?;
         if stat.size > FS_READ_LARGE_MAX_BYTES {
             return Err(AppError::resource_limit(
                 "文件超过 16 MiB 内存预览上限，请使用流式预览或导出",
@@ -114,15 +115,15 @@ pub async fn fs_read_large(
         let mut data = Vec::with_capacity(stat.size as usize);
         session
             .stream_file(&node_id, 1024 * 1024, |chunk| {
-                anyhow::ensure!(!token.is_cancelled(), "预览已取消");
+                anyhow::ensure!(!token.is_cancelled(), Failure::cancelled("预览已取消"));
                 anyhow::ensure!(
                     data.len().saturating_add(chunk.len()) <= FS_READ_LARGE_MAX_BYTES as usize,
-                    "文件超过内存预览上限"
+                    Failure::resource_limit("文件超过内存预览上限")
                 );
                 data.extend_from_slice(chunk);
                 Ok(())
             })
-            .map_err(AppError::from_anyhow)?;
+            .map_err(AppError::from)?;
         if token.is_cancelled() {
             return Err(AppError::cancelled("预览已取消"));
         }
@@ -216,7 +217,7 @@ pub async fn fs_media_temp(
             return Err(AppError::cancelled("预览已取消"));
         }
         let mut session = fs_tree::FsSession::new(&image);
-        let stat = session.file_stat(&node_id).map_err(AppError::from_anyhow)?;
+        let stat = session.file_stat(&node_id).map_err(AppError::from)?;
         cache
             .blocking_lock()
             .make_room(stat.size)
@@ -229,7 +230,7 @@ pub async fn fs_media_temp(
         let mut last_progress = std::time::Instant::now();
         session
             .stream_file(&node_id, 1024 * 1024, |chunk| {
-                anyhow::ensure!(!token.is_cancelled(), "预览已取消");
+                anyhow::ensure!(!token.is_cancelled(), Failure::cancelled("预览已取消"));
                 written = written.saturating_add(chunk.len() as u64);
                 anyhow::ensure!(written <= stat.size, "预览源文件大小发生变化");
                 file.write_all(chunk)?;
@@ -245,7 +246,7 @@ pub async fn fs_media_temp(
                 }
                 Ok(())
             })
-            .map_err(AppError::from_anyhow)?;
+            .map_err(AppError::from)?;
         if written != stat.size {
             return Err(AppError::source_changed("预览源文件未完整读取"));
         }
@@ -288,7 +289,7 @@ pub async fn fs_preview(
         let mut session = fs_tree::FsSession::new(&image);
         session
             .read_file_limited(&node_id, max_bytes.min(2 * 1024 * 1024))
-            .map_err(AppError::from_anyhow)
+            .map_err(AppError::from)
     })
     .await
     .map_err(|error| AppError::task_panicked("fs_preview", error))??;
@@ -379,7 +380,7 @@ fn read_text_page(
         } else {
             session.read_file_range(node_id, from, limit + 1)
         })
-        .map_err(AppError::from_anyhow)?;
+        .map_err(AppError::from)?;
         let continues = bytes.len() > limit;
         bytes.truncate(limit);
         Ok((bytes, continues))
@@ -420,7 +421,7 @@ pub async fn fs_stat(
     let image = loaded_image_app_error(&state, &image_id).await?;
     tokio::task::spawn_blocking(move || -> Result<FsStat, AppError> {
         let mut session = fs_tree::FsSession::new(&image);
-        session.file_stat(&node_id).map_err(AppError::from_anyhow)
+        session.file_stat(&node_id).map_err(AppError::from)
     })
     .await
     .map_err(|error| AppError::task_panicked("fs_stat", error))?

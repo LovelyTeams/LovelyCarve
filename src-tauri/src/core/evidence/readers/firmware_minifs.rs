@@ -1,5 +1,6 @@
 //! TP-Link legacy update envelope with an explicit MINIFS segment descriptor.
 //! Only the observed v1 envelope geometry is accepted; no arbitrary magic scan.
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::{Partition, PartitionKind};
 use anyhow::{ensure, Context, Result};
 use tokio_util::sync::CancellationToken;
@@ -19,24 +20,30 @@ pub(super) fn has_magic(bytes: &[u8]) -> bool {
 }
 
 pub(super) fn open(bytes: &[u8], cancel: &CancellationToken) -> Result<super::FirmwareImage> {
-    ensure!(!cancel.is_cancelled(), "MINIFS firmware open cancelled");
+    ensure!(
+        !cancel.is_cancelled(),
+        Failure::cancelled("MINIFS firmware open cancelled")
+    );
     ensure!(
         word(bytes, 0x18).and_then(|length| length.checked_add(20)) == Some(bytes.len()),
         "TP-Link MINIFS firmware length mismatch"
     );
     let base = word(bytes, 0x54)
         .and_then(|offset| offset.checked_add(20))
-        .context("MINIFS segment offset overflow")?;
+        .context(Failure::corrupt("MINIFS segment offset overflow"))?;
     let length = word(bytes, 0x58).context("MINIFS segment length missing")?;
     let end = base
         .checked_add(length)
-        .context("MINIFS segment end overflow")?;
+        .context(Failure::corrupt("MINIFS segment end overflow"))?;
     ensure!(base >= 148, "MINIFS segment overlaps firmware header");
     let source = bytes
         .get(base..end)
         .context("MINIFS segment exceeds firmware")?;
     let index = minifs::Index::open(&source, minifs::Limits::default())?;
-    ensure!(!cancel.is_cancelled(), "MINIFS firmware open cancelled");
+    ensure!(
+        !cancel.is_cancelled(),
+        Failure::cancelled("MINIFS firmware open cancelled")
+    );
     Ok(super::FirmwareImage {
         partitions: vec![Partition {
             id: 0,

@@ -1,5 +1,6 @@
 //! Directory traversal and filesystem node projection.
 use super::*;
+use crate::core::common::error::Failure;
 
 impl<'a> BtrfsVolume<'a> {
     /// List `(subvol_id, optional_name)` for every subvolume the open()
@@ -44,10 +45,11 @@ impl<'a> BtrfsVolume<'a> {
     }
 
     pub(super) fn subvol_root(&self, subvol: u64) -> anyhow::Result<(u64, u8)> {
-        let entry = self
-            .subvolumes
-            .get(&subvol)
-            .ok_or_else(|| anyhow!("btrfs: subvolume {subvol} unknown"))?;
+        let entry = self.subvolumes.get(&subvol).ok_or_else(|| {
+            anyhow!(Failure::not_found(format!(
+                "btrfs: subvolume {subvol} unknown"
+            )))
+        })?;
         Ok((entry.bytenr, entry.level))
     }
 

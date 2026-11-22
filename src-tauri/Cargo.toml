@@ -5,9 +5,9 @@ description = "LovelyCarve — a forensic carver with a soft heart."
 authors = ["LovelyCarve contributors"]
 edition = "2021"
 license = "AGPL-3.0-only"
-# WOF's pure Rust XPRESS/LZX decoder (ms-compress) requires 1.99.
-# The installed toolchain is newer; keep the manifest truthful.
-rust-version = "1.99"
+# The backend uses Rust 1.100 APIs (`core::mem::DropGuard`, `str::trim_prefix`,
+# `Vec::from_fn`); WOF's XPRESS/LZX decoder (ms-compress) alone needs 1.99.
+rust-version = "1.100"
 # Multiple binary targets exist (desktop and CLI tools). `tauri dev`
 # runs a bare `cargo run`, and `tauri build` picks the main bundle binary by
 # `default-run` / package name — both need this to keep pointing at the app.

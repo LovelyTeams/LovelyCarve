@@ -22,6 +22,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::host::AppHandle;
+use anyhow::Context;
 use tokio::sync::Mutex;
 
 use crate::app::workflows::snapshot::case_snapshot::{
@@ -70,13 +71,12 @@ fn remove_scratch_file(path: &std::path::Path) {
 }
 
 /// Loads a scratch `.dirz` as the in-memory fallback body.
-async fn load_fallback_body(path: &std::path::Path) -> Result<VolumeSnapshot, String> {
+async fn load_fallback_body(path: &std::path::Path) -> anyhow::Result<VolumeSnapshot> {
     let load_path = path.to_path_buf();
-    match tokio::task::spawn_blocking(move || volume_snapshot::load_snapshot(&load_path)).await {
-        Ok(Ok(body)) => Ok(body),
-        Ok(Err(err)) => Err(format!("load snapshot: {err}")),
-        Err(join_err) => Err(format!("load task crashed: {join_err}")),
-    }
+    tokio::task::spawn_blocking(move || volume_snapshot::load_snapshot(&load_path))
+        .await
+        .context("load task crashed")?
+        .context("load snapshot")
 }
 
 /// Cancel any in-flight caseless session-snapshot build for `image_id` and drop
@@ -225,7 +225,7 @@ pub(crate) fn spawn_session_snapshot(
             Err(err) => {
                 let mut payload =
                     SnapshotProgressPayload::new(&token_id, &image.id, &volume_key, "cancelled");
-                payload.message = Some(err.message());
+                payload.message = Some(err.to_string());
                 emit_unified_snapshot_progress(&tasks, &payload);
                 emit_progress(&app, payload);
                 return;
@@ -379,7 +379,7 @@ pub(crate) fn spawn_session_snapshot(
                 );
                 match load_fallback_body(&out_path).await {
                     Ok(body) => (Some(Arc::new(body)), None),
-                    Err(message) => {
+                    Err(error) => {
                         remove_scratch_file(&out_path);
                         let mut payload = SnapshotProgressPayload::new(
                             &token_id,
@@ -387,7 +387,7 @@ pub(crate) fn spawn_session_snapshot(
                             &volume_key,
                             "error",
                         );
-                        payload.message = Some(message);
+                        payload.message = Some(format!("{error:#}"));
                         emit_unified_snapshot_progress(&tasks, &payload);
                         emit_progress(&app, payload);
                         return;

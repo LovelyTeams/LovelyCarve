@@ -22,7 +22,7 @@ pub async fn fs_streams(
 ) -> Result<Vec<NtfsDataStream>, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     tokio::task::spawn_blocking(move || -> Result<Vec<NtfsDataStream>, AppError> {
-        fs_tree::list_data_streams(&image, &node_id).map_err(AppError::from_anyhow)
+        fs_tree::list_data_streams(&image, &node_id).map_err(AppError::from)
     })
     .await
     .map_err(|error| AppError::task_panicked("fs_streams", error))?
@@ -47,7 +47,7 @@ pub async fn fs_stream_preview(
             &stream_name,
             max_bytes.min(2 * 1024 * 1024),
         )
-        .map_err(AppError::from_anyhow)
+        .map_err(AppError::from)
     })
     .await
     .map_err(|error| AppError::task_panicked("fs_stream_preview", error))??;
@@ -65,7 +65,7 @@ pub async fn fs_stream_export(
     let image = loaded_image_app_error(&state, &image_id).await?;
     tokio::task::spawn_blocking(move || -> Result<u64, AppError> {
         fs_tree::export_named_stream(&image, &node_id, &stream_name, &PathBuf::from(destination))
-            .map_err(AppError::from_anyhow)
+            .map_err(AppError::from)
     })
     .await
     .map_err(|error| AppError::task_panicked("fs_stream_export", error))?
@@ -80,8 +80,7 @@ pub async fn fs_dir_stats(
 ) -> Result<FsDirStats, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     tokio::task::spawn_blocking(move || -> Result<FsDirStats, AppError> {
-        fs_tree::directory_stats(&image, &node_id, &path_hint, 20_000)
-            .map_err(AppError::from_anyhow)
+        fs_tree::directory_stats(&image, &node_id, &path_hint, 20_000).map_err(AppError::from)
     })
     .await
     .map_err(|error| AppError::task_panicked("fs_dir_stats", error))?

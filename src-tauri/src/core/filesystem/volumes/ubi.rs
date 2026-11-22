@@ -5,6 +5,7 @@ use std::sync::Arc;
 use anyhow::{bail, ensure, Context, Result};
 use ubidump::{ReadAt, UbiImage, UbiReader};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::{find_partition, DiskImage, Partition, PartitionKind};
 use crate::core::filesystem::fs_dispatch::build_stat;
 use crate::core::filesystem::tree::fs_tree::{FsNode, FsStat, Mactb, NodeKind};
@@ -26,11 +27,11 @@ impl UbiSource {
         let base = partition
             .start_lba
             .checked_mul(image.sector_size as u64)
-            .context("UBI/UBIFS base overflow")?;
+            .context(Failure::corrupt("UBI/UBIFS base overflow"))?;
         let length = partition
             .length_lba
             .checked_mul(image.sector_size as u64)
-            .context("UBI/UBIFS length overflow")?;
+            .context(Failure::corrupt("UBI/UBIFS length overflow"))?;
         ensure!(
             base.checked_add(length)
                 .is_some_and(|end| end <= image.len()),
@@ -59,7 +60,7 @@ impl ReadAt for UbiSource {
         let absolute = self
             .base
             .checked_add(offset)
-            .context("UBI source offset overflow")?;
+            .context(Failure::corrupt("UBI source offset overflow"))?;
         let bytes = match self
             .image
             .firmware
@@ -117,7 +118,7 @@ impl UbiVolume {
             .layout
             .volumes
             .get(&volume_id)
-            .context("UBI volume not found")?;
+            .context(Failure::not_found("UBI volume not found"))?;
         Ok(UbiReader::new(self.source.clone(), Arc::clone(volume)))
     }
 
@@ -192,7 +193,7 @@ impl UbiVolume {
             .layout
             .volumes
             .get(volume_id)
-            .context("UBI volume not found")?;
+            .context(Failure::not_found("UBI volume not found"))?;
         volume.read_at(&self.source, offset, length)
     }
 
@@ -206,7 +207,7 @@ impl UbiVolume {
             .layout
             .volumes
             .get(volume_id)
-            .context("UBI volume not found")?
+            .context(Failure::not_found("UBI volume not found"))?
             .length;
         let mut offset = 0;
         while offset < length {
@@ -225,7 +226,7 @@ impl UbiVolume {
             .layout
             .volumes
             .get(volume_id)
-            .context("UBI volume not found")?;
+            .context(Failure::not_found("UBI volume not found"))?;
         let sample = volume.read_at(&self.source, 0, 4096)?;
         Ok(build_stat(
             node_id,

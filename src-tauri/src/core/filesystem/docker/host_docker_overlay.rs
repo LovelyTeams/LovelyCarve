@@ -6,6 +6,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::core::common::error::Failure;
 use crate::core::filesystem::docker::host_docker::{
     container_node_id, find_node, HostDockerContainer,
 };
@@ -96,8 +97,12 @@ pub(crate) fn compose(
     let mut entries = BTreeMap::new();
     for layer_id in &layer_ids {
         let layer_path = ["overlay2", layer_id.as_str(), "diff"];
-        let diff = find_node(&volume, container.docker_root_inode, &layer_path)?
-            .ok_or_else(|| anyhow!("overlay2 layer diff not found: {layer_id}"))?;
+        let diff =
+            find_node(&volume, container.docker_root_inode, &layer_path)?.ok_or_else(|| {
+                anyhow!(Failure::not_found(format!(
+                    "overlay2 layer diff not found: {layer_id}"
+                )))
+            })?;
         let diff_inode = diff
             .inode
             .ok_or_else(|| anyhow!("overlay2 layer diff has no inode: {layer_id}"))?;
@@ -131,14 +136,21 @@ fn resolve_lower_layer_ids(
         let trimmed = reference.trim_matches('/');
         let layer_id = if let Some(link_name) = trimmed.strip_prefix("l/") {
             let link_path = ["overlay2", "l", link_name];
-            let link = find_node(volume, container.docker_root_inode, &link_path)?
-                .ok_or_else(|| anyhow!("overlay2 lower link not found: {reference}"))?;
+            let link =
+                find_node(volume, container.docker_root_inode, &link_path)?.ok_or_else(|| {
+                    anyhow!(Failure::not_found(format!(
+                        "overlay2 lower link not found: {reference}"
+                    )))
+                })?;
             let target = link
                 .link_target
                 .as_deref()
                 .ok_or_else(|| anyhow!("overlay2 lower link has no target: {reference}"))?;
-            layer_id_from_target(target)
-                .ok_or_else(|| anyhow!("invalid overlay2 lower link target: {target}"))?
+            layer_id_from_target(target).ok_or_else(|| {
+                anyhow!(Failure::corrupt(format!(
+                    "invalid overlay2 lower link target: {target}"
+                )))
+            })?
         } else {
             layer_id_from_target(trimmed).unwrap_or_else(|| trimmed.to_string())
         };

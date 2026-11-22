@@ -64,8 +64,7 @@ pub(super) async fn locate_node(
             anyhow::Ok(None)
         })
         .await
-        .map_err(super::internal_error)?
-        .map_err(super::internal_error)?;
+        .map_err(super::internal_error)??;
         let mut page = |parent, cursor, limit| exec.page(image_id, parent, cursor, limit);
         match indexed {
             Some((parent, chain)) => {
@@ -107,7 +106,7 @@ pub(super) async fn case_insensitive(
         })
         .await
         .map_err(super::internal_error)?
-        .map_err(super::internal_error);
+        .map_err(CliError::from);
     }
     let parts = parent.split(':').collect::<Vec<_>>();
     let partition_id = if parts.first() == Some(&"part") {

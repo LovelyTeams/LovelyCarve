@@ -5,6 +5,8 @@ use tokio_util::sync::CancellationToken;
 
 use super::*;
 
+use crate::core::common::error::Failure;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IosBackupInfo {
     pub locked: bool,
@@ -51,7 +53,7 @@ impl FolderImage {
     /// Passwords are consumed by the zeroizing upstream credential type.
     pub fn open_ios(root: &Path, password: Password, cancel: &CancellationToken) -> Result<Self> {
         if cancel.is_cancelled() {
-            bail!("iOS backup unlock cancelled");
+            bail!(Failure::cancelled("iOS backup unlock cancelled"));
         }
         let manifest = ios_backup_core::metadata::Manifest::read(root)?;
         if let Some(keybag) = manifest.keybag {
@@ -72,7 +74,7 @@ impl FolderImage {
 
     fn from_ios(backup: Backup, cancel: &CancellationToken) -> Result<Self> {
         if cancel.is_cancelled() {
-            bail!("iOS backup unlock cancelled");
+            bail!(Failure::cancelled("iOS backup unlock cancelled"));
         }
         let root = backup.root().to_path_buf();
         let mut info = backup_info(
@@ -117,7 +119,7 @@ impl FolderImage {
         let mut total_size = 0u64;
         for (index, file) in backup.files().iter().enumerate() {
             if cancel.is_cancelled() {
-                bail!("iOS backup unlock cancelled");
+                bail!(Failure::cancelled("iOS backup unlock cancelled"));
             }
             ensure_safe_path(&file.domain, &file.relative_path)?;
             let rel = if file.relative_path.is_empty() {
@@ -140,7 +142,7 @@ impl FolderImage {
                 FileKind::Directory => FolderEntryKind::Dir,
                 FileKind::Symlink => FolderEntryKind::Symlink,
                 FileKind::File | FileKind::Unknown(_) => FolderEntryKind::File,
-                _ => bail!("unsupported iOS manifest file kind"),
+                _ => bail!(Failure::unsupported("unsupported iOS manifest file kind")),
             };
             if entries
                 .get(&rel)
@@ -162,7 +164,7 @@ impl FolderImage {
             };
             total_size = total_size
                 .checked_add(size)
-                .context("iOS backup size overflow")?;
+                .context(Failure::corrupt("iOS backup size overflow"))?;
             entries.insert(
                 rel.clone(),
                 FolderEntry {
@@ -207,10 +209,10 @@ impl FolderImage {
     pub fn audit_ios(&self, cancel: &CancellationToken) -> Result<serde_json::Value> {
         let reader = self.ios_reader()?;
         if cancel.is_cancelled() {
-            bail!("iOS backup audit cancelled");
+            bail!(Failure::cancelled("iOS backup audit cancelled"));
         }
         let findings = ios_backup_forensic::audit_with_cancel(reader, &|| cancel.is_cancelled())
-            .context("iOS backup audit cancelled")?;
+            .context(Failure::cancelled("iOS backup audit cancelled"))?;
         Ok(serde_json::to_value(findings)?)
     }
 
@@ -233,7 +235,9 @@ impl FolderImage {
     /// Direct reads for reconstructed backup files. Other folder entries keep
     /// their existing stream fallback.
     pub fn read_ios_range(&self, rel: &str, offset: u64, length: usize) -> Result<Option<Vec<u8>>> {
-        let entry = self.lookup(rel).context("folder entry not found")?;
+        let entry = self
+            .lookup(rel)
+            .context(Failure::not_found("folder entry not found"))?;
         let Some(FolderEntrySource::Ios(index)) = entry.source.as_ref() else {
             return Ok(None);
         };

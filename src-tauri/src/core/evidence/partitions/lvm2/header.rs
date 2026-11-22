@@ -2,6 +2,7 @@
 use anyhow::{bail, Context, Result};
 
 use super::text::{parse_volume_group, VolumeGroup};
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::SectorSource;
 
 const MAX_METADATA_BYTES: u64 = 16 * 1024 * 1024;
@@ -47,7 +48,7 @@ fn u64_at(bytes: &[u8], offset: usize) -> Result<u64> {
     Ok(u64::from_le_bytes(
         bytes
             .get(offset..offset + 8)
-            .context("LVM truncated header")?
+            .context(Failure::corrupt("LVM truncated header"))?
             .try_into()?,
     ))
 }
@@ -56,7 +57,7 @@ fn u32_at(bytes: &[u8], offset: usize) -> Result<u32> {
     Ok(u32::from_le_bytes(
         bytes
             .get(offset..offset + 4)
-            .context("LVM truncated header")?
+            .context(Failure::corrupt("LVM truncated header"))?
             .try_into()?,
     ))
 }
@@ -70,10 +71,10 @@ fn read_exact(
 ) -> Result<Vec<u8>> {
     let end = offset
         .checked_add(size as u64)
-        .context("LVM read range overflow")?;
+        .context(Failure::corrupt("LVM read range overflow"))?;
     let absolute = partition_offset
         .checked_add(offset)
-        .context("LVM partition offset overflow")?;
+        .context(Failure::corrupt("LVM partition offset overflow"))?;
     if end > partition_size {
         bail!("LVM read outside physical volume");
     }
@@ -96,20 +97,22 @@ pub fn parse_label(
         || bytes.get(..8) != Some(b"LABELONE")
         || bytes.get(24..32) != Some(b"LVM2 001")
     {
-        bail!("LVM label signature mismatch");
+        bail!(Failure::corrupt("LVM label signature mismatch"));
     }
     if u64_at(bytes, 8)? != label_offset / 512 || u32_at(bytes, 16)? != checksum(&bytes[20..]) {
-        bail!("LVM label sector number or checksum mismatch");
+        bail!(Failure::corrupt(
+            "LVM label sector number or checksum mismatch"
+        ));
     }
     let offset = u32_at(bytes, 20)? as usize;
     if !(32..=440).contains(&offset) {
-        bail!("LVM invalid PV header offset");
+        bail!(Failure::corrupt("LVM invalid PV header offset"));
     }
     let identifier = bytes
         .get(offset..offset + 32)
-        .context("LVM truncated PV identifier")?;
+        .context(Failure::corrupt("LVM truncated PV identifier"))?;
     if !identifier.iter().all(u8::is_ascii_alphanumeric) {
-        bail!("LVM invalid PV identifier");
+        bail!(Failure::corrupt("LVM invalid PV identifier"));
     }
     let size_bytes = u64_at(bytes, offset + 32)?;
     if size_bytes == 0 || size_bytes > partition_size {
@@ -133,7 +136,7 @@ pub fn parse_label(
                     .checked_add(size)
                     .is_none_or(|end| end > size_bytes)
             {
-                bail!("LVM invalid area descriptor");
+                bail!(Failure::corrupt("LVM invalid area descriptor"));
             }
             areas.push(Area {
                 offset: area_offset,
@@ -195,10 +198,10 @@ pub fn read_metadata(
         }
     }
     let header = header.with_context(|| {
-        format!(
+        Failure::corrupt(format!(
             "LVM valid physical volume label not found: {}",
             diagnostics.join("; ")
-        )
+        ))
     })?;
     let mut selected: Option<(VolumeGroup, Vec<Area>)> = None;
     for area in &header.metadata_areas {
@@ -250,15 +253,17 @@ pub fn read_metadata(
     let start = pv
         .pe_start_sectors
         .checked_mul(512)
-        .context("LVM PE start overflow")?;
+        .context(Failure::corrupt("LVM PE start overflow"))?;
     let end = pv
         .extent_count
         .checked_mul(volume_group.extent_size_sectors)
         .and_then(|size| size.checked_mul(512))
         .and_then(|size| start.checked_add(size))
-        .context("LVM PE area overflow")?;
+        .context(Failure::corrupt("LVM PE area overflow"))?;
     if header.data_areas.len() != 1 {
-        bail!("LVM multiple data areas are unsupported");
+        bail!(Failure::unsupported(
+            "LVM multiple data areas are unsupported"
+        ));
     }
     let data_area = &header.data_areas[0];
     let data_end = if data_area.size == 0 {
@@ -267,7 +272,7 @@ pub fn read_metadata(
         data_area
             .offset
             .checked_add(data_area.size)
-            .context("LVM data area overflow")?
+            .context(Failure::corrupt("LVM data area overflow"))?
     };
     if start != data_area.offset
         || end > data_end
@@ -304,7 +309,9 @@ fn read_metadata_area(
         || u64_at(&header, 32)? != area.size
         || u32_at(&header, 0)? != checksum(&header[4..])
     {
-        bail!("LVM metadata area header identity, version or checksum mismatch");
+        bail!(Failure::corrupt(
+            "LVM metadata area header identity, version or checksum mismatch"
+        ));
     }
     // raw_locns[0] is the committed copy. Later entries may be precommitted
     // transactions: never choose them simply because they have a larger seqno.
@@ -323,13 +330,15 @@ fn read_metadata_area(
         || size > MAX_METADATA_BYTES
         || size > area.size - 512
     {
-        bail!("LVM active metadata range invalid or exceeds limit");
+        bail!(Failure::corrupt(
+            "LVM active metadata range invalid or exceeds limit"
+        ));
     }
     let first_size = size.min(area.size - offset);
     let first_offset = area
         .offset
         .checked_add(offset)
-        .context("LVM metadata offset overflow")?;
+        .context(Failure::corrupt("LVM metadata offset overflow"))?;
     let mut ranges = vec![Area {
         offset: first_offset,
         size: first_size,
@@ -345,7 +354,7 @@ fn read_metadata_area(
         let second_offset = area
             .offset
             .checked_add(512)
-            .context("LVM ring offset overflow")?;
+            .context(Failure::corrupt("LVM ring offset overflow"))?;
         ranges.push(Area {
             offset: second_offset,
             size: size - first_size,
@@ -359,7 +368,7 @@ fn read_metadata_area(
         )?);
     }
     if u32_at(&header, 56)? != checksum(&bytes) {
-        bail!("LVM active metadata checksum mismatch");
+        bail!(Failure::corrupt("LVM active metadata checksum mismatch"));
     }
     Ok(Some((parse_volume_group(&bytes)?, ranges)))
 }

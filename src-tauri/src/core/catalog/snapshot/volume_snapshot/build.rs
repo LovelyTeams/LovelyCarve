@@ -1,5 +1,6 @@
 //! build implementation.
 use super::*;
+use crate::core::common::error::Failure;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 
 /// Walk the whole subtree rooted at `volume_key` and stream it to
@@ -175,7 +176,7 @@ pub fn build_volume_snapshot(
 
     'walk: while let Some((parent_id, parent_path)) = stack.pop() {
         if cancel.is_cancelled() {
-            anyhow::bail!("snapshot build cancelled");
+            anyhow::bail!(Failure::cancelled("snapshot build cancelled"));
         }
         let children = match walker.children(&parent_id) {
             Ok(children) => children,
@@ -346,7 +347,7 @@ pub(super) fn write_tree_snapshot(
 
     'walk: while let Some((parent_record, parent_path)) = stack.pop() {
         if cancel.is_cancelled() {
-            anyhow::bail!("snapshot build cancelled");
+            anyhow::bail!(Failure::cancelled("snapshot build cancelled"));
         }
         let Some(idxs) = by_parent.get(&parent_record) else {
             continue;
@@ -406,7 +407,7 @@ pub(super) fn write_tree_snapshot(
             // `read_data_stream` for the read path.
             if let Some(streams) = owner_streams {
                 // `ntfs:part:N:rec` / `ntfs:lvm:N:M:rec` → `part:N:rec` tail.
-                let id_tail = owner_id.strip_prefix("ntfs:").unwrap_or(&owner_id);
+                let id_tail = owner_id.trim_prefix("ntfs:");
                 for stream in streams {
                     if entry_count as usize >= max_entries {
                         truncated = true;

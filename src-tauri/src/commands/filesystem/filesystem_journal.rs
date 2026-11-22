@@ -62,7 +62,7 @@ pub async fn fs_ext4_journal(
     let started = Instant::now();
     tracing::info!("fs_ext4_journal begin image={image_id} node={node_id}");
     let result = tokio::task::spawn_blocking(move || -> Result<Ext4Journal, AppError> {
-        fs_tree::ext4_journal(&image, &node_id, JOURNAL_READ_CAP).map_err(AppError::from_anyhow)
+        fs_tree::ext4_journal(&image, &node_id, JOURNAL_READ_CAP).map_err(AppError::from)
     })
     .await
     .map_err(|err| AppError::task_panicked("fs_ext4_journal", err))?;
@@ -91,8 +91,8 @@ pub async fn fs_ext4_journal_blocks_page(
     let started = Instant::now();
     tracing::debug!("fs_ext4_journal_blocks_page begin image={image_id} node={node_id}");
     let result = tokio::task::spawn_blocking(move || {
-        let journal = fs_tree::ext4_journal(&image, &node_id, JOURNAL_READ_CAP)
-            .map_err(AppError::from_anyhow)?;
+        let journal =
+            fs_tree::ext4_journal(&image, &node_id, JOURNAL_READ_CAP).map_err(AppError::from)?;
         ext4_journal_blocks_page(journal, cursor.as_deref(), page_size)
     })
     .await
@@ -126,7 +126,7 @@ pub async fn fs_usn_journal(
     let started = Instant::now();
     tracing::info!("fs_usn_journal begin image={image_id} node={node_id}");
     let result = tokio::task::spawn_blocking(move || -> Result<Vec<UsnRecord>, AppError> {
-        fs_tree::ntfs_usn_journal(&image, &node_id, JOURNAL_READ_CAP).map_err(AppError::from_anyhow)
+        fs_tree::ntfs_usn_journal(&image, &node_id, JOURNAL_READ_CAP).map_err(AppError::from)
     })
     .await
     .map_err(|err| AppError::task_panicked("fs_usn_journal", err))?;
@@ -154,7 +154,7 @@ pub async fn fs_usn_journal_page(
     tracing::debug!("fs_usn_journal_page begin image={image_id} node={node_id}");
     let result = tokio::task::spawn_blocking(move || {
         let records = fs_tree::ntfs_usn_journal(&image, &node_id, JOURNAL_READ_CAP)
-            .map_err(AppError::from_anyhow)?;
+            .map_err(AppError::from)?;
         usn_journal_page(records, cursor.as_deref(), page_size)
     })
     .await

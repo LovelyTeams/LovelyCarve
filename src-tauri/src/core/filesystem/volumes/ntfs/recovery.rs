@@ -2,6 +2,7 @@
 //! Geometry is inferred only when allocation size, run count, physical location
 //! and neighboring system-record identities agree. The source boot is untouched.
 use super::*;
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::PartitionKind;
 use anyhow::{ensure, Context};
 use ntfs_core::{apply_fixup, decode_runlist, parse_attributes, AttributeBody, MftRecordHeader};
@@ -27,14 +28,17 @@ pub(crate) fn discover_mft(
     let size = header.allocated_size as usize;
     ensure!(
         (1024..=4096).contains(&size) && size.is_power_of_two() && header.usa_count > 1,
-        "invalid MFT record size"
+        Failure::corrupt("invalid MFT record size")
     );
     let sectors = usize::from(header.usa_count - 1);
-    ensure!(size.is_multiple_of(sectors), "invalid MFT sector count");
+    ensure!(
+        size.is_multiple_of(sectors),
+        Failure::corrupt("invalid MFT sector count")
+    );
     let sector_size = size / sectors;
     ensure!(
         (512..=4096).contains(&sector_size) && sector_size.is_power_of_two(),
-        "invalid MFT sector size"
+        Failure::corrupt("invalid MFT sector size")
     );
     let record = read_record(image, offset, size, sector_size, 0)?;
     let attrs = parse_attributes(
@@ -60,7 +64,7 @@ pub(crate) fn discover_mft(
         .context("$MFT has no default data")?;
     ensure!(
         data.flags == 0,
-        "encoded $MFT is unsupported for geometry recovery"
+        Failure::unsupported("encoded $MFT is unsupported for geometry recovery")
     );
     let AttributeBody::NonResident {
         start_vcn: 0,
@@ -77,11 +81,11 @@ pub(crate) fn discover_mft(
     let runs_start = data
         .offset
         .checked_add(usize::from(runs_offset))
-        .context("MFT run offset overflow")?;
+        .context(Failure::corrupt("MFT run offset overflow"))?;
     let runs_end = data
         .offset
         .checked_add(data.length as usize)
-        .context("MFT attribute end overflow")?;
+        .context(Failure::corrupt("MFT attribute end overflow"))?;
     let runs = decode_runlist(
         record
             .get(runs_start..runs_end)
@@ -94,11 +98,14 @@ pub(crate) fn discover_mft(
     let clusters = runs.iter().try_fold(0u64, |total, run| {
         total
             .checked_add(run.length)
-            .context("MFT cluster overflow")
+            .context(Failure::corrupt("MFT cluster overflow"))
     })?;
     ensure!(
         clusters > 0
-            && clusters == last_vcn.checked_add(1).context("MFT last VCN overflow")?
+            && clusters
+                == last_vcn
+                    .checked_add(1)
+                    .context(Failure::corrupt("MFT last VCN overflow"))?
             && allocated_size.is_multiple_of(clusters),
         "inconsistent MFT allocation"
     );
@@ -118,7 +125,7 @@ pub(crate) fn discover_mft(
         .checked_sub(
             first
                 .checked_mul(cluster_size)
-                .context("MFT LCN overflow")?,
+                .context(Failure::corrupt("MFT LCN overflow"))?,
         )
         .context("MFT mapping precedes source")?;
     ensure!(
@@ -139,13 +146,13 @@ pub(crate) fn discover_mft(
             .checked_add(run.length)
             .and_then(|end| end.checked_mul(cluster_size))
             .and_then(|end| base.checked_add(end))
-            .context("MFT run bound overflow")?;
+            .context(Failure::corrupt("MFT run bound overflow"))?;
         ensure!(end <= image.len(), "MFT allocation exceeds evidence");
     }
     for (number, name) in [(1, "$MFTMirr"), (5, ".")] {
         let record_offset = offset
             .checked_add(number * size as u64)
-            .context("MFT record offset overflow")?;
+            .context(Failure::corrupt("MFT record offset overflow"))?;
         let bytes = read_record(image, record_offset, size, sector_size, number as u32)?;
         let other = MftRecordHeader::parse(&bytes)?;
         let attrs = parse_attributes(
@@ -174,16 +181,7 @@ pub(crate) fn discover_mft(
     .and_then(|attr| {
         attr.resident_content(&volume_record)
             .filter(|value| value.len().is_multiple_of(2))
-            .map(|value| {
-                String::from_utf16_lossy(
-                    &value
-                        .as_chunks::<2>()
-                        .0
-                        .iter()
-                        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-                        .collect::<Vec<_>>(),
-                )
-            })
+            .map(String::from_utf16le_lossy)
     });
     let partition = Partition {
         id: 0,
@@ -222,7 +220,7 @@ fn read_record(
             && header.used_size <= header.allocated_size
             && usize::from(header.first_attribute_offset) >= 48
             && !header.is_corrupt(),
-        "invalid MFT record geometry or identity"
+        Failure::corrupt("invalid MFT record geometry or identity")
     );
     apply_fixup(&mut bytes, sector)?;
     Ok(bytes)
@@ -237,11 +235,11 @@ impl<'a> NtfsVolume<'a> {
         let base = partition
             .start_lba
             .checked_mul(image.sector_size as u64)
-            .context("Recovered NTFS base overflow")?;
+            .context(Failure::corrupt("Recovered NTFS base overflow"))?;
         let length = partition
             .length_lba
             .checked_mul(image.sector_size as u64)
-            .context("Recovered NTFS length overflow")?;
+            .context(Failure::corrupt("Recovered NTFS length overflow"))?;
         ensure!(
             base.checked_add(length)
                 .is_some_and(|end| end <= image.len()),

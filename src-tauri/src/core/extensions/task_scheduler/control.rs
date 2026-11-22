@@ -17,6 +17,7 @@ use super::{
     scheduler::{BoundCase, TaskScheduler},
     store::{InsertOutcome, TaskFilter},
 };
+use crate::core::common::error::Failure;
 use crate::core::extensions::plugin::{AnalyzerScope, TaskTrigger};
 
 /// 检材移除前的任务收尾([`TaskScheduler::withdraw_evidence`] 的结果)。
@@ -116,9 +117,7 @@ impl TaskScheduler {
         let function = registry
             .get(function)
             .ok_or_else(|| SchedError::FunctionUnknown(function.to_owned()))?;
-        function
-            .check_params(&params)
-            .map_err(SchedError::InvalidParams)?;
+        function.check_params(&params)?;
         if function.scope == AnalyzerScope::System {
             let system_id = params.system_id.clone().unwrap_or_default();
             let system = self
@@ -324,8 +323,11 @@ impl TaskScheduler {
             .evidence_id_for_image(image_id)?
             .ok_or_else(|| SchedError::EvidenceUnknown(image_id.to_owned()))?;
         if let Some(text) = actions_json {
-            serde_json::from_str::<Vec<super::post_action::PostAction>>(text)
-                .map_err(|error| anyhow::anyhow!("post actions JSON invalid: {error}"))?;
+            serde_json::from_str::<Vec<super::post_action::PostAction>>(text).map_err(|error| {
+                anyhow::anyhow!(Failure::invalid_input(format!(
+                    "post actions JSON invalid: {error}"
+                )))
+            })?;
         }
         bound
             .store

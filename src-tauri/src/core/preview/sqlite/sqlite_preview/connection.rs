@@ -1,5 +1,6 @@
 //! connection implementation.
 use super::*;
+use crate::core::common::error::Failure;
 
 /// Open a VFS-backed preview session read-only, transparently applying
 /// SQLCipher key/params when the file is not a plaintext SQLite database.
@@ -72,7 +73,7 @@ where
             // include the underlying SQLite error text — on the key paths
             // it can embed the PRAGMA statement, hence the raw key.)
             anyhow::bail!(
-                "SQLITE_LOCKED: 无法读取数据库架构（可能已损坏，或为保留明文头的加密库，请尝试提供密钥）"
+                Failure::corrupt("SQLITE_LOCKED: 无法读取数据库架构（可能已损坏，或为保留明文头的加密库，请尝试提供密钥）")
             );
         }
         let detail = if key.has_material() {
@@ -105,8 +106,7 @@ pub(super) fn apply_key(conn: &Connection, key: &SqliteKey) -> anyhow::Result<()
         // hex blob literal `x'…'`, not a quoted string, so we build the
         // PRAGMA by hand — after validating the hex to keep it injection-safe.
         let cleaned: String = raw
-            .strip_prefix("0x")
-            .unwrap_or(raw)
+            .trim_prefix("0x")
             .chars()
             .filter(|c| !c.is_whitespace())
             .collect();

@@ -5,6 +5,7 @@ use anyhow::bail;
 use crate::core::carving::carver::CarveSource;
 use crate::core::carving::carver_formats::FormatScanResult;
 use crate::core::carving::carver_reader::CarveReader;
+use crate::core::common::error::Failure;
 
 pub(in crate::core) fn scan_mp3<S: CarveSource>(
     reader: &mut CarveReader<'_, S>,
@@ -17,7 +18,7 @@ pub(in crate::core) fn scan_mp3<S: CarveSource>(
             break;
         };
         if !(100..=1500).contains(&frame_size) {
-            bail!("invalid MP3 frame size");
+            bail!(Failure::corrupt("invalid MP3 frame size"));
         }
         reader.discard_exact((frame_size - 4) as u64)?;
         size += frame_size as u64;
@@ -90,18 +91,18 @@ pub(in crate::core) fn scan_au<S: CarveSource>(
 ) -> anyhow::Result<Option<FormatScanResult>> {
     let header = reader.read_vec(24)?;
     if u32::from_be_bytes(header[..4].try_into()?) != 0x2e73_6e64 {
-        bail!("invalid AU signature");
+        bail!(Failure::corrupt("invalid AU signature"));
     }
     let header_size = u32::from_be_bytes(header[4..8].try_into()?);
     let data_size = u32::from_be_bytes(header[8..12].try_into()?);
     if header_size < 24 || data_size == u32::MAX {
-        bail!("invalid or unknown AU size");
+        bail!(Failure::corrupt("invalid or unknown AU size"));
     }
     let mut bytes_read = 24u64;
     if header_size > 24 {
         let wanted = u64::from(header_size - 24);
         if reader.discard_up_to(wanted)? != wanted {
-            bail!("truncated AU header");
+            bail!(Failure::corrupt("truncated AU header"));
         }
         bytes_read += wanted;
     }
@@ -125,7 +126,7 @@ pub(in crate::core) fn scan_wav<S: CarveSource>(
     let big_endian = match &header[..4] {
         b"RIFF" | b"RF64" => false,
         b"RIFX" => true,
-        _ => bail!("invalid WAV RIFF signature"),
+        _ => bail!(Failure::corrupt("invalid WAV RIFF signature")),
     };
     if &header[8..12] != b"WAVE" {
         bail!("missing WAVE identifier");
@@ -142,7 +143,7 @@ pub(in crate::core) fn scan_wav<S: CarveSource>(
         }
         let chunk = reader.read_array::<8>()?;
         if !is_fourcc(&chunk[..4]) {
-            bail!("invalid RIFF chunk id");
+            bail!(Failure::corrupt("invalid RIFF chunk id"));
         }
         let mut size = u64::from(riff_u32(&chunk[4..8], big_endian));
         match &chunk[..4] {
@@ -218,12 +219,12 @@ pub(in crate::core) fn scan_wma<S: CarveSource>(
 ) -> anyhow::Result<Option<FormatScanResult>> {
     let header = reader.read_vec(30)?;
     if &header[..16] != ASF_HEADER {
-        bail!("invalid ASF header");
+        bail!(Failure::corrupt("invalid ASF header"));
     }
     let header_size = u64::from_le_bytes(header[16..24].try_into()?);
     let object_count = u32::from_le_bytes(header[24..28].try_into()?);
     if header_size < 30 || object_count < 4 {
-        bail!("invalid ASF header metadata");
+        bail!(Failure::corrupt("invalid ASF header metadata"));
     }
     let mut bytes_read = 30u64;
     let mut total_file_size = 0u64;
@@ -238,20 +239,20 @@ pub(in crate::core) fn scan_wma<S: CarveSource>(
         if !(24..=2_000 * 1024 * 1024).contains(&object_size)
             || bytes_read + object_size > header_size
         {
-            bail!("invalid ASF object size");
+            bail!(Failure::corrupt("invalid ASF object size"));
         }
         if object_id == ASF_FILE_PROPERTIES {
             if object_size < 48 {
-                bail!("invalid ASF file properties object");
+                bail!(Failure::corrupt("invalid ASF file properties object"));
             }
             let payload = reader.peek_vec(24)?;
             total_file_size = u64::from_le_bytes(payload[16..24].try_into()?);
             if total_file_size < header_size {
-                bail!("invalid ASF total file size");
+                bail!(Failure::corrupt("invalid ASF total file size"));
             }
         } else if object_id == ASF_STREAM_PROPERTIES {
             if object_size < 40 {
-                bail!("invalid ASF stream properties object");
+                bail!(Failure::corrupt("invalid ASF stream properties object"));
             }
             wma_stream_found = reader.peek_vec(16)?.as_slice() == WMA_STREAM;
         }

@@ -37,6 +37,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::casework::case_paths::EvidenceDb;
 use crate::core::casework::evidence_db::{self, StoreSchema};
+use crate::core::common::error::Failure;
 
 /// 每镜像保留的搜索任务数上限，超出时删除旧任务。
 pub const HISTORY_MAX_PER_IMAGE: usize = 20;
@@ -192,7 +193,7 @@ impl GlobalSearchDistinct {
             "none" | "" => Ok(Self::None),
             "file" => Ok(Self::File),
             "sha256" => Ok(Self::Sha256),
-            other => anyhow::bail!("未知去重模式：{other}"),
+            other => anyhow::bail!(Failure::invalid_input(format!("未知去重模式：{other}"))),
         }
     }
 }

@@ -115,7 +115,7 @@ pub async fn fs_children(
     // off the tokio worker so other IPCs stay responsive — and so a slow
     // physical-disk read doesn't make the whole UI feel unresponsive.
     let result = tokio::task::spawn_blocking(move || {
-        fs_tree::children_for_image(&image, &parent_id).map_err(AppError::from_anyhow)
+        fs_tree::children_for_image(&image, &parent_id).map_err(AppError::from)
     })
     .await
     .map_err(|err| AppError::task_panicked("fs_children", err))?;
@@ -251,7 +251,7 @@ pub async fn fs_children_page(
                     cursor.as_deref(),
                     normalized_page_size,
                 )
-                .map_err(AppError::from_anyhow)?
+                .map_err(AppError::from)?
             {
                 return Ok(FsNodePage {
                     items: page.items,
@@ -261,8 +261,7 @@ pub async fn fs_children_page(
                 });
             }
         }
-        let nodes =
-            fs_tree::children_for_image(&image, &parent_id).map_err(AppError::from_anyhow)?;
+        let nodes = fs_tree::children_for_image(&image, &parent_id).map_err(AppError::from)?;
         fs_node_page_from_sorted_nodes(nodes, cursor.as_deref(), page_size)
     })
     .await

@@ -27,6 +27,7 @@ mod fixture_tests;
 use exfat::timestamp::{Timestamp as ExfatTimestamp, Timestamps as ExfatTimestamps};
 use exfat::{Item, Root};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{DiskImage, Partition};
 use crate::core::filesystem::tree::fs_tree::{FsNode, Mactb, NodeKind};
@@ -82,17 +83,17 @@ impl ExfatVolume {
         let base_offset = partition
             .start_lba
             .checked_mul(sector_size)
-            .ok_or_else(|| anyhow!("exFAT partition offset overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("exFAT partition offset overflow")))?;
         let length_bytes = partition
             .length_lba
             .checked_mul(sector_size)
-            .ok_or_else(|| anyhow!("exFAT partition length overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("exFAT partition length overflow")))?;
         base_offset
             .checked_add(length_bytes)
-            .ok_or_else(|| anyhow!("exFAT partition end overflow"))?;
+            .ok_or_else(|| anyhow!(Failure::corrupt("exFAT partition end overflow")))?;
         let boot = super::exfat_recover::read_effective_boot_sector(&image, base_offset)?;
         if !(9..=12).contains(&boot[108]) {
-            anyhow::bail!("exFAT invalid boot sector");
+            anyhow::bail!(Failure::corrupt("exFAT invalid boot sector"));
         }
         let declared_sectors = u64::from_le_bytes(boot[72..80].try_into()?);
         if declared_sectors
@@ -257,7 +258,11 @@ impl ExfatVolume {
                 Item::Directory(dir) if dir.name() == *first => Some(dir),
                 _ => None,
             })
-            .ok_or_else(|| anyhow!("exFAT directory not found: {first}"))?;
+            .ok_or_else(|| {
+                anyhow!(Failure::not_found(format!(
+                    "exFAT directory not found: {first}"
+                )))
+            })?;
         let mut items = dir
             .open()
             .map_err(|err| anyhow!("exFAT open dir {first}: {err}"))?;
@@ -268,7 +273,11 @@ impl ExfatVolume {
                     Item::Directory(dir) if dir.name() == *segment => Some(dir),
                     _ => None,
                 })
-                .ok_or_else(|| anyhow!("exFAT directory not found: {segment}"))?;
+                .ok_or_else(|| {
+                    anyhow!(Failure::not_found(format!(
+                        "exFAT directory not found: {segment}"
+                    )))
+                })?;
             items = dir
                 .open()
                 .map_err(|err| anyhow!("exFAT open dir {segment}: {err}"))?;
@@ -323,7 +332,9 @@ impl ExfatVolume {
                 }
             }
         }
-        Err(anyhow!("exFAT file not found: {path}"))
+        Err(anyhow!(Failure::not_found(format!(
+            "exFAT file not found: {path}"
+        ))))
     }
 }
 
@@ -345,7 +356,11 @@ fn navigate_to_dir(
                 }
             }
         }
-        let dir = next.ok_or_else(|| anyhow!("exFAT directory not found: {segment}"))?;
+        let dir = next.ok_or_else(|| {
+            anyhow!(Failure::not_found(format!(
+                "exFAT directory not found: {segment}"
+            )))
+        })?;
         items = dir
             .open()
             .map_err(|err| anyhow!("exFAT open dir {segment}: {err}"))?;

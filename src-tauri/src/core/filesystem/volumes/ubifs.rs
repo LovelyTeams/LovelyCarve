@@ -1,6 +1,7 @@
 //! UBIFS over bare/firmware partitions and reconstructed UBI logical volumes.
 //! Volume and path identities remain independent of source byte transformations.
 use super::ubi::{open_ubi_source, UbiSource};
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::{find_partition, DiskImage};
 use crate::core::filesystem::fs_dispatch::build_stat;
 use crate::core::filesystem::tree::fs_tree::{FsNode, FsStat, Mactb, NodeKind};
@@ -135,7 +136,7 @@ impl UbifsVolume {
             let link_target = if inode.kind == FileType::Symlink {
                 Some(
                     String::from_utf8(inode.inline.clone())
-                        .context("unsupported non-UTF8 UBIFS symlink")?,
+                        .context(Failure::unsupported("unsupported non-UTF8 UBIFS symlink"))?,
                 )
             } else {
                 None

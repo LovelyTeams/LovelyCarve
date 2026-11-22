@@ -42,7 +42,7 @@ pub async fn image_export_raw(
             let total = worker_image.len();
             let reader = worker_image
                 .raw_export_reader(mode.unwrap_or_default())
-                .map_err(AppError::from_anyhow)?;
+                .map_err(AppError::from)?;
             let path = PathBuf::from(&destination);
             let file = File::options()
                 .write(true)
@@ -85,9 +85,8 @@ pub async fn image_export_raw(
                     .collect_read_faults(|| reader.read_into(offset, &mut buffer[..want]));
                 let detected_faults = faults.read_faults_detected;
                 bad_regions.extend(faults.bad_regions);
-                let read_len = read.map_err(|err| {
-                    AppError::new(ErrorCode::Io, format!("read {offset}: {err:#}"))
-                })?;
+                let read_len =
+                    read.map_err(|err| AppError::from_read(format!("read {offset}"), err))?;
                 if read_len == 0 {
                     break;
                 }

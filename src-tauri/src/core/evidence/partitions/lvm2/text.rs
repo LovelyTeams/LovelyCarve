@@ -3,6 +3,8 @@ use std::collections::{BTreeMap, HashSet};
 
 use anyhow::{bail, Context, Result};
 
+use crate::core::common::error::Failure;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VolumeGroup {
     pub name: String,
@@ -122,7 +124,9 @@ impl Parser<'_> {
         self.whitespace();
         self.values += 1;
         if depth >= 32 || self.values > 500_000 {
-            bail!("LVM metadata grammar limit exceeded");
+            bail!(Failure::resource_limit(
+                "LVM metadata grammar limit exceeded"
+            ));
         }
         match self.bytes.get(self.position).copied() {
             Some(b'{') => {
@@ -167,7 +171,7 @@ impl Parser<'_> {
                                 .copied()
                                 .context("LVM incomplete escape")?;
                             if !matches!(escaped, b'"' | b'\\') {
-                                bail!("LVM unsupported string escape");
+                                bail!(Failure::unsupported("LVM unsupported string escape"));
                             }
                             self.position += 1;
                             output.push(char::from(escaped));
@@ -214,7 +218,9 @@ impl Parser<'_> {
 
 fn number(block: &Block, key: &str) -> Result<u64> {
     match block.get(key) {
-        Some(Value::Word(value)) => value.parse().with_context(|| format!("LVM invalid {key}")),
+        Some(Value::Word(value)) => value
+            .parse()
+            .with_context(|| Failure::corrupt(format!("LVM invalid {key}"))),
         _ => bail!("LVM missing numeric {key}"),
     }
 }
@@ -230,7 +236,7 @@ fn identifier(block: &Block) -> Result<String> {
     let identifier = string(block, "id")?;
     let compact = identifier.replace('-', "");
     if compact.len() != 32 || !compact.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
-        bail!("LVM invalid volume identifier");
+        bail!(Failure::corrupt("LVM invalid volume identifier"));
     }
     Ok(identifier)
 }
@@ -245,9 +251,9 @@ fn section<'a>(block: &'a Block, key: &str) -> Result<&'a Block> {
 /// Parse a single committed metadata copy. Old ring contents are not candidates.
 pub fn parse_volume_group(text: &[u8]) -> Result<VolumeGroup> {
     if text.len() > 16 * 1024 * 1024 {
-        bail!("LVM text exceeds 16 MiB limit");
+        bail!(Failure::resource_limit("LVM text exceeds 16 MiB limit"));
     }
-    let text = text.strip_suffix(&[0]).unwrap_or(text);
+    let text = text.trim_suffix(&[0]);
     let mut parser = Parser {
         bytes: text,
         position: 0,
@@ -255,7 +261,7 @@ pub fn parse_volume_group(text: &[u8]) -> Result<VolumeGroup> {
     };
     let root = parser.block(0, false)?;
     if root.contains_key("version") && number(&root, "version")? != 1 {
-        bail!("LVM unsupported text format version");
+        bail!(Failure::unsupported("LVM unsupported text format version"));
     }
     let groups: Vec<_> = root.iter().filter(|(_, value)|
         matches!(value, Value::Block(block) if block.contains_key("physical_volumes"))).collect();
@@ -322,9 +328,9 @@ pub fn parse_volume_group(text: &[u8]) -> Result<VolumeGroup> {
                                 physical_volume: pv.clone(),
                                 physical_extent: extent
                                     .parse()
-                                    .context("LVM invalid stripe extent")?,
+                                    .context(Failure::corrupt("LVM invalid stripe extent"))?,
                             }),
-                            _ => bail!("LVM invalid stripe pair"),
+                            _ => bail!(Failure::corrupt("LVM invalid stripe pair")),
                         }
                     }
                 }
@@ -355,7 +361,7 @@ pub fn parse_volume_group(text: &[u8]) -> Result<VolumeGroup> {
                 }
                 end = end
                     .checked_add(segment.extent_count)
-                    .context("LVM extent count overflow")?;
+                    .context(Failure::corrupt("LVM extent count overflow"))?;
             }
             logical_volumes.push(LogicalVolume {
                 name: name.clone(),

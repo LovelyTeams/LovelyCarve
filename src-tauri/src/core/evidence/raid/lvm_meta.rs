@@ -1,4 +1,5 @@
 //! Verified LVM metadata shared with native filesystem browsing.
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::DiskImage;
 use crate::core::evidence::partitions::lvm2::{header::read_metadata, text::VolumeGroup};
 use crate::core::evidence::partitions::{Partition, PartitionKind, SectorSource};
@@ -42,11 +43,11 @@ pub fn read_pv_metadata_from(
     let partition_byte_offset = partition
         .start_lba
         .checked_mul(sector_size as u64)
-        .ok_or_else(|| anyhow::anyhow!("LVM partition offset overflow"))?;
+        .ok_or_else(|| anyhow::anyhow!(Failure::corrupt("LVM partition offset overflow")))?;
     let partition_byte_length = partition
         .length_lba
         .checked_mul(sector_size as u64)
-        .ok_or_else(|| anyhow::anyhow!("LVM partition length overflow"))?;
+        .ok_or_else(|| anyhow::anyhow!(Failure::corrupt("LVM partition length overflow")))?;
     let metadata = read_metadata(source, partition_byte_offset, partition_byte_length)?;
     for diagnostic in &metadata.diagnostics {
         tracing::warn!("LVM: {diagnostic}");
@@ -56,7 +57,11 @@ pub fn read_pv_metadata_from(
         .physical_volumes
         .iter()
         .find(|pv| pv.identifier.replace('-', "") == metadata.header.identifier)
-        .ok_or_else(|| anyhow::anyhow!("LVM PV label UUID not found in volume group"))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!(Failure::corrupt(
+                "LVM PV label UUID not found in volume group"
+            ))
+        })?;
     Ok(Some(LvmPvMetadata {
         image_id: source_id.to_string(),
         partition_id: partition.id,

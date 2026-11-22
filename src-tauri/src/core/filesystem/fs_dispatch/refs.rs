@@ -1,5 +1,6 @@
 //! ReFS default data and snapshot streams share the same cached volume.
 use super::*;
+use crate::core::common::error::Failure;
 use crate::core::filesystem::volumes::refs::{open_refs_source, RefsSource, RefsVolume};
 
 enum RefsPath {
@@ -39,9 +40,11 @@ impl FsAdapter for RefsAdapter {
 
 impl RefsVol {
     fn path_of(&self, id: &str) -> Result<RefsPath> {
-        parse(id)
-            .map(|(_, path)| path)
-            .ok_or_else(|| anyhow::anyhow!("invalid ReFS node id: {id}"))
+        parse(id).map(|(_, path)| path).ok_or_else(|| {
+            anyhow::anyhow!(Failure::invalid_input(format!(
+                "invalid ReFS node id: {id}"
+            )))
+        })
     }
 }
 

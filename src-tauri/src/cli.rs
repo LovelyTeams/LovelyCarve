@@ -46,6 +46,8 @@ use std::{borrow::Cow, sync::OnceLock};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{Map, Value};
 
+use crate::app::error::{AppError, ErrorCode};
+
 mod generated {
     include!(concat!(env!("OUT_DIR"), "/cli_dispatch.rs"));
 }
@@ -63,7 +65,10 @@ pub enum Origin {
 }
 
 /// A failure reported to the user, with the process status it ends with.
-#[derive(Debug, Serialize)]
+/// `code` is a backend [`ErrorCode`] name or one of the CLI's own codes
+/// (`usage`, `noImage`, `aborted`, `tasksFailed`, ...).
+#[derive(Debug, Serialize, thiserror::Error)]
+#[error("{message}")]
 pub struct CliError {
     pub code: String,
     pub message: String,
@@ -130,17 +135,24 @@ impl CliError {
     }
 }
 
-impl std::fmt::Display for CliError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(&self.message)
+impl From<std::io::Error> for CliError {
+    fn from(error: std::io::Error) -> Self {
+        Self::new(ErrorCode::of_io(error.kind()).as_str(), error.to_string())
     }
 }
 
-impl std::error::Error for CliError {}
+/// A failure of an engine call the CLI makes itself, coded like the same
+/// failure of a backend command.
+impl From<anyhow::Error> for CliError {
+    fn from(error: anyhow::Error) -> Self {
+        let error = AppError::from(error);
+        Self::new(error.code.as_str(), error.message)
+    }
+}
 
-impl From<std::io::Error> for CliError {
-    fn from(error: std::io::Error) -> Self {
-        Self::new("io", error.to_string())
+impl From<AppError> for CliError {
+    fn from(error: AppError) -> Self {
+        command_error(error)
     }
 }
 
@@ -173,8 +185,10 @@ pub(crate) fn command_error(error: impl Serialize) -> CliError {
     }
 }
 
+/// A defect or unexpected state of the CLI itself: a worker that exited, a
+/// command that answered in the wrong shape.
 pub(crate) fn internal_error(error: impl std::fmt::Display) -> CliError {
-    CliError::new("operationFailed", error.to_string())
+    CliError::new(ErrorCode::Internal.as_str(), error.to_string())
 }
 
 /// Structured data. Its JSON text keeps object keys in the order the command

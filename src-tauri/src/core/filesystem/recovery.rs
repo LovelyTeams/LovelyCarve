@@ -6,6 +6,7 @@ use super::{
     evidence_session::EvidenceSession,
     tree::fs_tree::{FsNode, NodeKind},
 };
+use crate::core::common::error::Failure;
 use crate::core::evidence::{
     image::{DiskImage, ReadFaultReport},
     partitions::{Partition, PartitionKind},
@@ -178,7 +179,7 @@ pub fn scan(
 
 fn check_cancel(cancel: &CancellationToken) -> Result<()> {
     if cancel.is_cancelled() {
-        bail!("File recovery cancelled");
+        bail!(Failure::cancelled("File recovery cancelled"));
     }
     Ok(())
 }

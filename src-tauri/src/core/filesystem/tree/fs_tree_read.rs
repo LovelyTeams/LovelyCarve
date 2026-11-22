@@ -6,10 +6,9 @@
 //! re-exports from `fs_tree`, and holds the session's ranged readers
 //! ([`FsSession::read_range_direct`], [`FsSession::stream_file_range`]).
 
-use std::error::Error;
-use std::fmt;
 use std::sync::Arc;
 
+use crate::core::common::error::Failure;
 use crate::core::filesystem::docker::host_docker;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree::{open_ntfs_for_source, FsSession, FsStat};
@@ -165,21 +164,16 @@ where
     let mut visitor = visitor;
     match crate::core::filesystem::fs_dispatch::dispatch(image, node_id)? {
         Some(volume) => volume.stream_file(node_id, chunk_size, &mut visitor),
-        None => anyhow::bail!("unsupported filesystem node id: {node_id}"),
+        None => anyhow::bail!(Failure::unsupported(format!(
+            "unsupported filesystem node id: {node_id}"
+        ))),
     }
 }
 
 /// Visitor marker that stops the fallback stream once the range is delivered.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("requested file range delivered")]
 struct RangeDelivered;
-
-impl fmt::Display for RangeDelivered {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("requested file range delivered")
-    }
-}
-
-impl Error for RangeDelivered {}
 
 /// The image span of a node that is one contiguous byte range of the image:
 /// virtual unallocated / disk-gap / system-area files and deleted-entry runs.
@@ -230,9 +224,11 @@ impl FsSession<'_> {
                 return Ok(Some(Vec::new()));
             }
             let take = usize::try_from((span_len - offset).min(u64::try_from(length)?))?;
-            let start = base
-                .checked_add(offset)
-                .ok_or_else(|| anyhow::anyhow!("image span offset overflow: {node_id}"))?;
+            let start = base.checked_add(offset).ok_or_else(|| {
+                anyhow::anyhow!(Failure::corrupt(format!(
+                    "image span offset overflow: {node_id}"
+                )))
+            })?;
             return self
                 .image()
                 .filesystem_session(node_id)

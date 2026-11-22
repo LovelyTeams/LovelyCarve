@@ -167,7 +167,7 @@ impl UfsVolume {
                     _ => NodeKind::File,
                 };
                 let size = attr.as_ref().map(|a| a.size).unwrap_or(0);
-                let timestamps = attr.as_ref().map(attr_timestamps).unwrap_or_default();
+                let timestamps = attr.as_ref().map_or_default(attr_timestamps);
                 out.push(FsNode {
                     id: self.node_id(&child_path),
                     name: entry.name,

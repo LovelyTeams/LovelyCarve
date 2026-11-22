@@ -15,6 +15,7 @@ use quick_xml::{
 };
 use serde::Serialize;
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::readers::zip_image::ZipImage;
 
 pub(crate) mod import;
@@ -90,7 +91,7 @@ pub struct BcpPage {
 
 fn attribute(element: &BytesStart<'_>, name: &str) -> Result<String> {
     for attribute in element.attributes() {
-        let attribute = attribute.context("BCP 索引属性损坏")?;
+        let attribute = attribute.context(Failure::corrupt("BCP 索引属性损坏"))?;
         if attribute.key.as_ref() == name {
             return Ok(attribute
                 .normalized_value(XmlVersion::Implicit1_0)?
@@ -157,7 +158,7 @@ fn parse_index(xml: &str) -> Result<Vec<BcpDataset>> {
                                 "I010034" => {
                                     file.rows = attribute(&element, "val")?
                                         .parse()
-                                        .context("BCP 记录数无效")?
+                                        .context(Failure::corrupt("BCP 记录数无效"))?
                                 }
                                 _ => {}
                             }
@@ -176,7 +177,9 @@ fn parse_index(xml: &str) -> Result<Vec<BcpDataset>> {
                 }
             }
             Event::End(_) => {
-                let ended = stack.pop().context("BCP 索引 XML 层级无效")?;
+                let ended = stack
+                    .pop()
+                    .context(Failure::corrupt("BCP 索引 XML 层级无效"))?;
                 if ended == "DATA" {
                     match stack.last().map(String::as_str) {
                         Some("WA_COMMON_010014") => {
@@ -213,7 +216,7 @@ fn dataset_encoding(label: &str) -> Result<&'static Encoding> {
     };
     Encoding::for_label(label.as_bytes())
         .filter(|encoding| encoding.is_ascii_compatible())
-        .with_context(|| format!("不支持的 BCP 字符编码：{label}"))
+        .with_context(|| Failure::unsupported(format!("不支持的 BCP 字符编码：{label}")))
 }
 
 fn merge_dataset(datasets: &mut Vec<BcpDataset>, mut incoming: BcpDataset) -> Result<()> {
@@ -235,7 +238,9 @@ fn merge_dataset(datasets: &mut Vec<BcpDataset>, mut incoming: BcpDataset) -> Re
         }
         None => {
             datasets.push(incoming);
-            datasets.last_mut().context("BCP 数据集不存在")?
+            datasets
+                .last_mut()
+                .context(Failure::not_found("BCP 数据集不存在"))?
         }
     };
     for file in files {
@@ -253,7 +258,7 @@ fn merge_dataset(datasets: &mut Vec<BcpDataset>, mut incoming: BcpDataset) -> Re
             dataset.rows = dataset
                 .rows
                 .checked_add(file.rows)
-                .context("BCP 记录总数溢出")?;
+                .context(Failure::corrupt("BCP 记录总数溢出"))?;
             dataset.files.push(file);
         }
     }
@@ -282,7 +287,7 @@ fn fallback_dataset(
         let mut rows = 0u64;
         let mut field_count = 0;
         while read_line(reader, &mut line)? != 0 {
-            anyhow::ensure!(!token.is_cancelled(), "BCP 导入已取消");
+            anyhow::ensure!(!token.is_cancelled(), Failure::cancelled("BCP 导入已取消"));
             if rows == 0 {
                 field_count = line.split(|byte| *byte == b'\t').count();
             }
@@ -315,7 +320,7 @@ impl BcpPackage {
         zip: Option<Arc<ZipImage>>,
         token: &tokio_util::sync::CancellationToken,
     ) -> Result<Self> {
-        anyhow::ensure!(!token.is_cancelled(), "BCP 导入已取消");
+        anyhow::ensure!(!token.is_cancelled(), Failure::cancelled("BCP 导入已取消"));
         let (source, loose_files) = BcpSource::open(path, zip, token)?;
         let mut datasets = Vec::<BcpDataset>::new();
         if let Some(xml) = source.index()? {
@@ -337,13 +342,14 @@ impl BcpPackage {
         }
         anyhow::ensure!(
             !datasets.is_empty(),
-            "未找到 BCP 文件或有效的 GAB_ZIP_INDEX.xml"
+            Failure::not_found("未找到 BCP 文件或有效的 GAB_ZIP_INDEX.xml")
         );
         for file in datasets.iter().flat_map(|dataset| &dataset.files) {
             source::validate_name(&file.name)?;
         }
         let total_rows = datasets.iter().try_fold(0u64, |sum, dataset| {
-            sum.checked_add(dataset.rows).context("BCP 记录总数溢出")
+            sum.checked_add(dataset.rows)
+                .context(Failure::corrupt("BCP 记录总数溢出"))
         })?;
         let total_files = datasets.iter().map(|dataset| dataset.files.len()).sum();
         let catalog = BcpCatalog {
@@ -377,7 +383,7 @@ impl BcpPackage {
                 let mut offset = 0;
                 let mut count = 0;
                 loop {
-                    anyhow::ensure!(!token.is_cancelled(), "BCP 导入已取消");
+                    anyhow::ensure!(!token.is_cancelled(), Failure::cancelled("BCP 导入已取消"));
                     let length = read_line(reader, &mut line)? as u64;
                     if length == 0 {
                         break;
@@ -411,7 +417,7 @@ impl BcpPackage {
             .datasets
             .iter()
             .find(|dataset| dataset.code == code)
-            .context("BCP 数据集不存在")?;
+            .context(Failure::not_found("BCP 数据集不存在"))?;
         let encoding = dataset_encoding(&dataset.encoding)?;
         anyhow::ensure!(
             cursor.is_none() || start_row.is_none(),
@@ -437,7 +443,7 @@ impl BcpPackage {
         }
         anyhow::ensure!(
             position.file_index <= dataset.files.len(),
-            "BCP 分页位置无效"
+            Failure::invalid_input("BCP 分页位置无效")
         );
         let mut rows = Vec::with_capacity(PAGE_SIZE);
         let mut line = Vec::new();
@@ -472,7 +478,7 @@ impl BcpPackage {
                         position.row_index = position
                             .row_index
                             .checked_add(1)
-                            .context("BCP 记录序号溢出")?;
+                            .context(Failure::corrupt("BCP 记录序号溢出"))?;
                         rows.push(BcpRow {
                             number: position.row_index,
                             file_name: file.name.clone(),
@@ -521,16 +527,18 @@ fn decode_values(
     file: &str,
     offset: u64,
 ) -> Result<Vec<String>> {
-    let payload = line.strip_suffix(b"\n").unwrap_or(line);
-    let payload = payload.strip_suffix(b"\r").unwrap_or(payload);
+    let payload = line.trim_suffix(b"\n");
+    let payload = payload.trim_suffix(b"\r");
     let payload = if offset == 0 && encoding == encoding_rs::UTF_8 {
-        payload.strip_prefix(b"\xef\xbb\xbf").unwrap_or(payload)
+        payload.trim_prefix(b"\xef\xbb\xbf")
     } else {
         payload
     };
     let decoded = encoding
         .decode_without_bom_handling_and_without_replacement(payload)
-        .with_context(|| format!("BCP 记录字符编码无效：{file}，偏移 {offset}"))?;
+        .with_context(|| {
+            Failure::corrupt(format!("BCP 记录字符编码无效：{file}，偏移 {offset}"))
+        })?;
     Ok(decoded.split('\t').map(str::to_owned).collect())
 }
 

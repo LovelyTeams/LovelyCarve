@@ -1,5 +1,6 @@
 //! Data stream enumeration and file metadata projection.
 use super::*;
+use crate::core::common::error::Failure;
 
 impl<'a> NtfsVolume<'a> {
     /// Enumerates every `$DATA` attribute on the given MFT record, returning
@@ -160,7 +161,9 @@ impl<'a> NtfsVolume<'a> {
         node_id: &str,
     ) -> Result<FsStat> {
         if stream_name.is_empty() {
-            anyhow::bail!("named-stream stat requires a non-empty stream name");
+            anyhow::bail!(Failure::invalid_input(
+                "named-stream stat requires a non-empty stream name"
+            ));
         }
         let mut fs = self.reader();
         let file = self

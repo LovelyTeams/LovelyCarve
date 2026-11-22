@@ -161,16 +161,9 @@ pub struct AutoDetectReport {
 }
 
 /// 识别因任务取消(卸载镜像或 `task_cancel`)而中止,不产出部分报告。
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+#[error("自动识别已取消")]
 pub struct DetectCancelled;
-
-impl std::fmt::Display for DetectCancelled {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("自动识别已取消")
-    }
-}
-
-impl std::error::Error for DetectCancelled {}
 
 /// 取消检查点:分区、逻辑卷与归档目录之间。单个探测本身有界,不再细分。
 fn ensure_active(cancel: &CancellationToken) -> Result<(), DetectCancelled> {
@@ -588,7 +581,7 @@ fn read_huaweicheck(image: &Arc<EvidenceSession>, entries: &[(String, String)]) 
         .find(|(_, path)| path.rsplit('/').next() == Some("huaweicheck.json"))?;
     let fingerprint = Fingerprint::new(Arc::clone(image), root_id.clone());
     match fingerprint.read_limited(path, HUAWEI_CHECK_READ_CAP) {
-        Ok(Some(bytes)) => Some(String::from_utf8_lossy(&bytes).into_owned()),
+        Ok(Some(bytes)) => Some(String::from_utf8_lossy_owned(bytes)),
         Ok(None) => None,
         Err(err) => {
             tracing::debug!("autodetect: read huaweicheck.json: {err}");
