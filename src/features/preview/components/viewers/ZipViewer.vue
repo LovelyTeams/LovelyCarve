@@ -41,8 +41,7 @@
             <PreviewState v-if="selected.kind === 'symlink'" :icon="Link2" :title="tr('符号链接')"
               :description="selected.link_target || tr('（未知目标）')" mono-description />
             <!-- 加密 / 不支持压缩方法：不可预览 -->
-            <PreviewState v-else-if="selected.kind === 'other'" :icon="Lock" :title="selected.encrypted ? tr('成员已加密') : tr('不支持的压缩方法')"
-              :description="tr('无法解压预览；可导出后用其他工具处理。')" />
+            <PreviewState v-else-if="selected.kind === 'other'" :icon="Lock" :title="selected.encrypted ? tr('成员已加密') : tr('不支持的压缩方法')" />
 
             <template v-else>
               <PreviewState v-if="memberLoading" tone="loading" :title="tr('解压中…')" />
@@ -65,7 +64,7 @@
                   </div>
                   <p v-if="hexCapped" class="ui-alert warn trunc-note" role="note">
                     <AlertTriangle :size="14" />
-                    <span>{{ tr("十六进制仅显示前") }} {{ formatBytes(HEX_VIEW_CAP) }}{{ tr("；如需完整内容请导出该文件。") }}</span>
+                    <span>{{ tr("十六进制仅显示前 {0}", { 0: formatBytes(HEX_VIEW_CAP) }) }}</span>
                   </p>
                 </div>
               </template>

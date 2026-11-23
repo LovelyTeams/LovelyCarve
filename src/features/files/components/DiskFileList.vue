@@ -7,7 +7,7 @@
       @clear-search="clearSearchKeyword" @refresh="refresh" @toggle-preview="togglePreview"
     />
 
-    <div v-if="indexOnly" class="ui-alert info offline-notice" role="status"><CircleAlert :size="16" /><span>{{ tr("离线索引 · 源镜像不可用，可浏览已索引目录、筛选文件和查看属性。正文预览、导出、哈希及分析需恢复源镜像。") }}</span></div>
+    <div v-if="indexOnly" class="ui-alert info offline-notice" role="status"><CircleAlert :size="16" /><span>{{ tr("离线索引：源镜像不可用") }}</span></div>
 
     <!-- 目录树、列表与预览共用一个网格：预览在列表右侧，或在列表下方与之上下分栏（目录树始终占满左侧）。
          换位置只改网格区域，预览里打开的各文件不重新装载。 -->
@@ -110,7 +110,7 @@
             />
           </div>
         </div>
-        <div v-else class="ui-empty preview-empty"><span class="ui-empty-icon accent"><component :is="previewPlacement === 'bottom' ? PanelBottomOpen : PanelRightOpen" :size="26" /></span><p class="ui-empty-title">{{ tr("选择文件，即刻预览") }}</p><p class="ui-empty-desc">{{ tr("单击文件查看内容，双击文件保持打开，在多个文件之间切换不用回到原目录") }}</p><p class="ui-empty-desc">{{ tr("拖动上方标题栏，可拆分为独立窗口") }}</p></div>
+        <div v-else class="ui-empty preview-empty"><span class="ui-empty-icon accent"><component :is="previewPlacement === 'bottom' ? PanelBottomOpen : PanelRightOpen" :size="26" /></span><p class="ui-empty-title">{{ tr("选择文件，即刻预览") }}</p></div>
       </FilePreviewDock>
       </UiTransition>
     </div>

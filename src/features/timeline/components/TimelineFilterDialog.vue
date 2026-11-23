@@ -6,7 +6,6 @@
             <span class="ui-modal-icon"><SlidersHorizontal :size="18" /></span>
             <div class="ui-modal-heading">
               <h3 :id="titleId" class="ui-modal-title">{{ tr("事件类型") }}</h3>
-              <p class="ui-modal-subtitle">{{ tr("默认显示全部类型。勾选后仅显示所选来源与事件类型。") }}</p>
             </div>
             <button type="button" class="ui-icon-btn" :title="tr('关闭筛选配置')" :aria-label="tr('关闭筛选配置')" @click="emit('close')">
               <X :size="16" />

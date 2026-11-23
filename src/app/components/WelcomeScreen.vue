@@ -79,7 +79,6 @@
           <div v-else class="ui-empty recent-empty">
             <span class="ui-empty-icon" aria-hidden="true"><History :size="26" :stroke-width="1.5" /></span>
             <p class="ui-empty-title">{{ tr("还没有最近打开的案件") }}</p>
-            <p class="ui-empty-desc">{{ tr("创建或打开案件后，会显示在这里") }}</p>
           </div>
         </section>
       </div>
@@ -115,7 +114,7 @@ async function handleClearRecent() {
   try {
     const accepted = await confirm({
       title: tr("清空最近案件记录"),
-      message: tr("将清除本地最近案件记录。当前案件、案件目录和案件登记均会保留；创建或打开案件后会重新记录。"),
+      message: tr("将清除本地最近案件记录。当前案件、案件目录和案件登记均会保留。"),
       confirmText: tr("清空记录"),
       danger: true,
     });

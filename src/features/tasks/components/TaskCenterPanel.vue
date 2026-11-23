@@ -11,7 +11,6 @@
       <div v-else-if="!visibleTasks.length" class="ui-empty state-box">
         <span class="ui-empty-icon accent"><ListTodo :size="24" /></span>
         <p class="ui-empty-title">{{ scopedTasks.length ? tr("没有匹配的任务") : tr("当前检材还没有任务") }}</p>
-        <p class="ui-empty-desc">{{ scopedTasks.length ? tr("换个关键词再试。") : tr("在快速分析中选择功能，进度与结果会显示在这里。") }}</p>
         <div class="ui-empty-actions">
           <button v-if="scopedTasks.length" class="ui-btn sm" @click="resetFilters">{{ tr("清除搜索") }}</button>
           <button v-else class="ui-btn sm primary" @click="emit('quickAnalysis')"><Zap :size="13" />{{ tr("快速分析") }}</button>

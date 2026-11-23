@@ -27,7 +27,7 @@
     <!-- 图片：整文件读入内存以 Blob 预览（受 MEDIA_CAP 约束）。 -->
     <template v-else>
       <PreviewState v-if="mediaTooLarge" :icon="ImageOff" :title="tr('图片过大，无法预览')"
-        :description="tr('文件大小 {0}；请导出后查看。', { 0: formatBytes(node.size) })" />
+        :description="formatBytes(node.size)" />
       <PreviewState v-else-if="mediaLoading" tone="loading" :title="tr('加载中…')" />
       <PreviewState v-else-if="mediaError" tone="error" :icon="CircleAlert" :title="tr('无法显示图片')" :description="mediaError" mono-description />
       <template v-else-if="mediaUrl">

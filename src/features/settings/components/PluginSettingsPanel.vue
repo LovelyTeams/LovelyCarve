@@ -11,7 +11,7 @@
         </button>
       </div>
     </div>
-    <p class="plugin-hint">{{ installDirectory ? tr("内置插件包随程序附带；安装的 .lcpkg 插件包保存在 {0}。", { 0: installDirectory }) : tr("内置插件包随程序附带。") }}</p>
+    <p v-if="installDirectory" class="plugin-hint">{{ tr("安装目录：{0}", { 0: installDirectory }) }}</p>
     <p v-if="feedback" class="ui-alert" :class="feedback.failed ? 'danger' : 'success'" :role="feedback.failed ? 'alert' : 'status'">{{ feedback.message }}</p>
     <div v-if="error" class="ui-alert danger" role="alert">
       <CircleAlert :size="16" aria-hidden="true" />
@@ -31,7 +31,6 @@
     <div v-else-if="packages.length === 0 && !error" class="ui-empty plugin-state">
       <span class="ui-empty-icon"><Puzzle :size="28" aria-hidden="true" /></span>
       <p class="ui-empty-title">{{ tr("未发现插件") }}</p>
-      <p class="ui-empty-desc">{{ tr("安装 .lcpkg 插件包后，它的分析器会出现在快速分析与文件分析中。") }}</p>
     </div>
     <div v-else class="plugin-list">
       <article v-for="item in packages" :key="item.id" class="ui-card plugin-card">

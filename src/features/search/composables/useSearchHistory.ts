@@ -132,7 +132,7 @@ export function useSearchHistory(options: { imageId: () => ImageId }) {
     cancelling.value = true;
     try {
       await taskCancel({ taskId });
-      if (valid()) notifyInfo(tr("已请求取消"), tr("扫描会在当前对象完成后停止，已命中的结果保留。"));
+      if (valid()) notifyInfo(tr("已请求取消"));
     } catch (error) { if (valid()) notifyError(tr("取消搜索失败"), String(error)); }
     finally { if (valid()) cancelling.value = false; }
   }

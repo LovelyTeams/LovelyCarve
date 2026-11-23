@@ -184,10 +184,7 @@ describe('useWorkspaceShell case gate', () => {
 
     expect(onNeedCase).toHaveBeenCalledTimes(1);
     expect(onRequestAddImage).not.toHaveBeenCalled();
-    expect(notifyInfoMock).toHaveBeenCalledWith(
-      '请先创建或打开案件',
-      '检材会登记到当前案件，卷快照、标签和哈希结果也会随案件保存。',
-    );
+    expect(notifyInfoMock).toHaveBeenCalledWith('请先创建或打开案件');
 
     caseCreateMock.mockResolvedValue(makeCase());
     await useCaseSession().createCase('D:/cases/one', 'Case One');

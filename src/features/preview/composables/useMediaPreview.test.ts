@@ -63,7 +63,7 @@ describe('media preview lease owner', () => {
     await Promise.all([state.media.loadStreamMedia(), state.media.loadStreamMedia()]);
     expect(mocks.materialize.mock.calls).toEqual([[{ imageId: 'image-a', nodeId: 'file-a', ext: 'mp4', taskId: 'preview-1' }]]);
     expect(state.media.streamUrl.value).toBe('asset:cached.mp4');
-    state.media.onMediaError(); expect(state.media.streamError.value).toContain('HEVC');
+    state.media.onMediaError(); expect(state.media.streamError.value).toBe('内置播放器无法解码此视频编码');
     state.scope.stop();
     expect(mocks.cancel).toHaveBeenCalledWith({ taskId: 'preview-1' }); expect(mocks.release).toHaveBeenCalledWith('preview-1');
   });

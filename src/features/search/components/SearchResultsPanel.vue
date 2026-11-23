@@ -92,7 +92,7 @@
 
       <WorkspaceStartState v-else :icon="Search" :loading="loadingTasks"
         :title="historyError ? tr('读取搜索记录失败') : loadingTasks ? tr('正在读取搜索记录…') : tr('还没有搜索记录')"
-        :description="historyError || tr('输入关键词或正则，查找检材中的文件内容')"
+        :description="historyError || undefined"
         :action-label="historyError ? tr('重试') : tr('新建搜索')" :action-icon="historyError ? RefreshCw : Plus" @action="historyError ? history.refreshTasks() : openCreateDialog()">
         <template #toolbar><button class="ui-btn ghost" :aria-pressed="historyVisible" @click="historyVisible = !historyVisible"><PanelLeft :size="14" />{{ tr("搜索记录") }}</button></template>
       </WorkspaceStartState>

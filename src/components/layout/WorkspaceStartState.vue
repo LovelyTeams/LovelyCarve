@@ -5,7 +5,8 @@ import { Loader2 } from 'lucide-vue-next';
 defineProps<{
   icon: Component;
   title: string;
-  description: string;
+  /** Only an error or a real value; the title and action carry the rest. */
+  description?: string;
   actionLabel?: string;
   actionIcon?: Component;
   loading?: boolean;
@@ -23,7 +24,7 @@ const emit = defineEmits<{ action: [] }>();
         <component :is="icon" v-else :size="30" />
       </span>
       <p class="ui-empty-title">{{ title }}</p>
-      <p class="ui-empty-desc">{{ description }}</p>
+      <p v-if="description" class="ui-empty-desc">{{ description }}</p>
       <div v-if="actionLabel || $slots.actions" class="ui-empty-actions">
         <button v-if="actionLabel" type="button" class="ui-btn primary" :disabled="loading || disabled" @click="emit('action')">
           <component :is="actionIcon" v-if="actionIcon" :size="14" />{{ actionLabel }}

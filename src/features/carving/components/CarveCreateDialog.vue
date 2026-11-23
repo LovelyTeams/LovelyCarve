@@ -1,12 +1,12 @@
 <template>
     <Teleport to="body"><Transition name="ui-modal"><div v-if="open" class="ui-modal-overlay gs-modal-overlay" @keydown.esc.stop="emit('close')">
       <div :ref="elements.dialog" class="ui-modal gs-modal" role="dialog" aria-modal="true" :aria-label="tr('新建扫描')">
-        <header class="ui-modal-header"><span class="ui-modal-icon"><ScanSearch :size="18" /></span><div class="ui-modal-heading"><h2 class="ui-modal-title">{{ tr("新建扫描") }}</h2><p class="ui-modal-subtitle">{{ tr("从目录记录和文件签名中查找可恢复的文件") }}</p></div><button class="ui-icon-btn" :aria-label="tr('关闭扫描设置')" :disabled="starting" @click="emit('close')"><X :size="16" /></button></header>
+        <header class="ui-modal-header"><span class="ui-modal-icon"><ScanSearch :size="18" /></span><div class="ui-modal-heading"><h2 class="ui-modal-title">{{ tr("新建扫描") }}</h2></div><button class="ui-icon-btn" :aria-label="tr('关闭扫描设置')" :disabled="starting" @click="emit('close')"><X :size="16" /></button></header>
         <div class="ui-modal-body gs-modal-body">
         <h3 class="ui-section-title">{{ tr("恢复方式") }}</h3>
         <div class="method-grid" role="group" :aria-label="tr('恢复方式')" :aria-describedby="methodError ? 'carve-method-error' : undefined">
-          <label class="ui-choice method-choice"><input v-model="filesystemOn" type="checkbox" /><span class="ui-choice-icon"><FolderTree :size="18" /></span><span class="ui-choice-text"><span class="ui-choice-title">{{ tr("文件系统恢复") }}</span><span class="ui-choice-desc">{{ tr("读取已删除记录并重建丢失分区，保留原文件名和目录结构") }}</span></span></label>
-          <label class="ui-choice method-choice"><input v-model="signatures" type="checkbox" /><span class="ui-choice-icon"><FileSearch :size="18" /></span><span class="ui-choice-text"><span class="ui-choice-title">{{ tr("签名雕刻") }}</span><span class="ui-choice-desc">{{ tr("按文件签名查找没有目录记录的文件") }}</span></span></label>
+          <label class="ui-choice method-choice"><input v-model="filesystemOn" type="checkbox" /><span class="ui-choice-icon"><FolderTree :size="18" /></span><span class="ui-choice-text"><span class="ui-choice-title">{{ tr("文件系统恢复") }}</span></span></label>
+          <label class="ui-choice method-choice"><input v-model="signatures" type="checkbox" /><span class="ui-choice-icon"><FileSearch :size="18" /></span><span class="ui-choice-text"><span class="ui-choice-title">{{ tr("签名雕刻") }}</span></span></label>
         </div>
         <div v-if="filesystemOn" class="family-row" role="group" :aria-label="tr('文件系统')">
           <span class="family-label">{{ tr("文件系统") }}</span>
@@ -55,8 +55,6 @@
           <p v-if="rangeError" id="carve-range-error" class="ui-field-error range-message">{{ rangeError }}</p>
           <p v-else class="ui-field-hint range-message">{{ tr("每扇区 {0} 字节", { 0: sectorSize }) }}</p>
         </div>
-        <p class="scope-note"><Info :size="14" />{{ scopeNote }}</p>
-
 </div></details>        <details v-if="signatures" v-disclosure-motion class="search-disclosure">
           <summary><span>{{ tr("高级选项") }}</span><small>{{ tr("单文件") }} {{ formatBytes(maxFileSize) }} {{ tr("· 最多") }} {{ maxResults.toLocaleString() }} {{ tr("个结果") }}</small></summary>
           <div class="disclosure-body advanced-fields">
@@ -73,7 +71,7 @@
 import { tr } from '../../../composables/useLocale';
 
 import { computed, type Ref } from 'vue';
-import { ScanSearch, X, Info, Loader2, Play, FolderTree, FileSearch } from 'lucide-vue-next';
+import { ScanSearch, X, Loader2, Play, FolderTree, FileSearch } from 'lucide-vue-next';
 import UiSelect from '../../../components/ui/UiSelect.vue';
 import { vDisclosureMotion } from '../../../composables/uiMotionDirectives';
 import type { CarveCategory, CarveFormatInfo, CarveScope, RecoveryFilesystems } from '../../../lib/ipc/carve';
@@ -103,12 +101,6 @@ const filesystemOn = computed({
 function setFilesystem(key: keyof RecoveryFilesystems, checked: boolean) {
   filesystems.value = { ...filesystems.value, [key]: checked };
 }
-const scopeNote = computed(() => ({
-  whole: tr("扫描整个镜像，覆盖所有分区。"),
-  partition: tr("只扫描所选分区。"),
-  unallocated: tr("仅扫描分区间隙，适合查找丢失分区；不含文件系统内部的空闲空间。"),
-  range: tr("只扫描指定的扇区范围。"),
-}[scope.value]));
 </script>
 <style scoped src="../../../styles/analysis-workspace.css"></style>
 <style scoped src="../styles/carve-workspace.css"></style>

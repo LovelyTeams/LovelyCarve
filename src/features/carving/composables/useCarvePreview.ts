@@ -10,9 +10,9 @@ export function useCarvePreview(options: { imageId: () => ImageId; scan: () => C
   const previewMessage = computed(() => {
     const artifact = options.artifact();
     if (!artifact) return '';
-    if (artifact.category !== 'image') return tr("此格式暂不提供内嵌渲染，可恢复后使用原类型视图复核。");
-    if (artifact.length > MAX_IMAGE_PREVIEW_BYTES) return tr("图像超过 8 MB 预览上限，可恢复后查看。");
-    return tr("无法渲染该图像，结构可能不完整。");
+    if (artifact.category !== 'image') return tr("此格式暂不提供内嵌渲染");
+    if (artifact.length > MAX_IMAGE_PREVIEW_BYTES) return tr("图像超过 8 MB 预览上限");
+    return tr("无法渲染该图像");
   });
 
   function revokePreview() {

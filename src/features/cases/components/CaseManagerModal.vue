@@ -6,7 +6,7 @@
           <span class="ui-modal-icon"><Briefcase :size="18" aria-hidden="true" /></span>
           <div class="ui-modal-heading">
             <h2 id="case-manager-title" class="ui-modal-title" :title="activeCase?.name">{{ activeCase?.name || tr("案件管理") }}</h2>
-            <p class="ui-modal-subtitle">{{ activeCase ? tr("案件 · ") + activeCase.case_number : tr("新建案件，或继续已有工作") }}</p>
+            <p v-if="activeCase" class="ui-modal-subtitle">{{ tr("案件 · ") + activeCase.case_number }}</p>
           </div>
           <span v-if="activeCase?.locked" class="ui-badge warn"><Lock :size="11" /> {{ tr("已锁定") }}</span>
           <button class="ui-icon-btn" type="button" :title="tr('关闭')" :aria-label="tr('关闭案件管理')" :disabled="actionBusy" @click="requestClose"><X :size="16" /></button>
@@ -57,7 +57,6 @@
               <div v-else class="ui-empty evidence-empty">
                 <span class="ui-empty-icon"><HardDrive :size="24" /></span>
                 <p class="ui-empty-title">{{ tr("还没有检材") }}</p>
-                <p class="ui-empty-desc">{{ activeCase.locked ? tr("解锁案件后，可添加检材。") : tr("添加镜像、文件夹或磁盘，开始查看与分析。") }}</p>
               </div>
             </section>
 

@@ -30,7 +30,7 @@
     <div class="qa-scroll">
       <div v-if="loading && !functions.length" class="ui-empty state-box"><span class="ui-empty-icon accent"><Loader2 :size="22" class="spin" /></span><p class="ui-empty-desc">{{ tr("正在加载分析插件…") }}</p></div>
       <div v-else-if="error && !functions.length" class="ui-empty state-box error"><span class="ui-empty-icon"><CircleAlert :size="22" /></span><p class="ui-empty-title">{{ tr("读取分析插件失败") }}</p><p class="ui-empty-desc">{{ error }}</p><div class="ui-empty-actions"><button class="ui-btn sm" @click="refresh">{{ tr("重试") }}</button></div></div>
-      <div v-else-if="!availablePlugins.length" class="ui-empty state-box"><span class="ui-empty-icon"><Zap :size="22" /></span><p class="ui-empty-title">{{ tr("暂无可用的分析插件") }}</p><p class="ui-empty-desc">{{ systems.length ? tr("所选系统与整个检材都没有适用的分析插件。") : tr("安装提供系统或检材分析的插件后，会显示在这里。") }}</p></div>
+      <div v-else-if="!availablePlugins.length" class="ui-empty state-box"><span class="ui-empty-icon"><Zap :size="22" /></span><p class="ui-empty-title">{{ tr("暂无可用的分析插件") }}</p></div>
       <div v-else-if="!groups.length" class="ui-empty state-box"><span class="ui-empty-icon"><Search :size="22" /></span><p class="ui-empty-title">{{ tr("没有匹配的插件") }}</p><div class="ui-empty-actions"><button class="ui-btn sm" @click="search = ''">{{ tr("清除搜索") }}</button></div></div>
       <template v-else>
         <section v-for="group in groups" :key="group.key" class="qa-group" :aria-label="tr('{0} {1} 个插件', { 0: group.label, 1: group.plugins.length })">

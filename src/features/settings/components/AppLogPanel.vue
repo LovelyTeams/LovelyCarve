@@ -21,7 +21,7 @@
     </div>
     <p v-if="feedback" class="ui-alert" :class="copyFailed ? 'danger' : 'success'" :role="copyFailed ? 'alert' : 'status'">{{ feedback }}</p>
     <div ref="bodyEl" class="log-body" tabindex="0" :aria-label="tr('日志内容')" @scroll="onScroll">
-      <p v-if="!filteredEntries.length" class="log-empty" role="status">{{ entries.length ? tr("没有符合筛选条件的日志。") : tr("暂无日志，运行期间的输出会显示在这里。") }}</p>
+      <p v-if="!filteredEntries.length" class="log-empty" role="status">{{ entries.length ? tr("没有符合筛选条件的日志。") : tr("暂无日志") }}</p>
       <div v-for="entry in filteredEntries" :key="entry.id" class="log-entry">
         <time class="log-time" :datetime="new Date(entry.timestamp).toISOString()" :title="formatEpochSeconds(entry.timestamp / 1000)">{{ formatTime(entry.timestamp) }}</time>
         <span class="ui-badge sm log-level" :class="levelOptions.find(level => level.key === entry.level)?.tone">{{ levelLabels[entry.level] }}</span>
@@ -32,7 +32,6 @@
       <span>{{ tr("显示") }} {{ filteredEntries.length.toLocaleString() }} / {{ entries.length.toLocaleString() }} {{ tr("条 · 本地时间") }}</span>
       <label class="ui-check"><input v-model="autoScroll" type="checkbox" />{{ tr("自动滚动") }}</label>
     </div>
-    <p class="ui-field-hint">{{ tr("仅保留当前会话最近 5,000 条输出。") }}</p>
   </section>
 </template>
 
@@ -121,7 +120,6 @@ function clearLogs() { clear(); feedback.value = ''; }
 .log-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .log-empty { color: var(--text-secondary); font-size: 12px; }
 .log-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; color: var(--text-secondary); font-size: 11px; }
-.log-panel > .ui-field-hint { margin: 0; }
 @media (max-width: 480px) {
   .log-entry { grid-template-columns: 88px minmax(0, 1fr); }
   .log-text { grid-column: 1 / -1; }

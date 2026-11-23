@@ -43,7 +43,7 @@
             <div v-if="scan.status === 'cancelled'" class="status-banner warn" role="status"><CircleSlash :size="13" /><span>{{ tr("扫描已取消，以下为部分结果") }}</span></div>
             <div v-if="scan.filesystem?.error && scan.status !== 'failed'" class="status-banner error" role="alert"><CircleAlert :size="13" /><span>{{ tr("文件系统扫描失败：{0}", { 0: scan.filesystem.error }) }}</span></div>
             <div v-for="volume in failedVolumes" :key="volume.key" class="status-banner warn" role="alert"><AlertTriangle :size="13" /><span>{{ tr("{0} · LBA {1}：{2}", { 0: volume.name, 1: volume.volume!.partition.start_lba, 2: volume.volume!.error }) }}</span></div>
-            <div v-if="scan.filesystem?.truncated" class="status-banner warn" role="alert"><AlertTriangle :size="13" /><span>{{ tr("文件系统记录达到安全上限，结果不完整。请缩小扫描范围。") }}</span></div>
+            <div v-if="scan.filesystem?.truncated" class="status-banner warn" role="alert"><AlertTriangle :size="13" /><span>{{ tr("文件系统记录达到安全上限，结果不完整") }}</span></div>
             <div v-if="scan.filesystem?.read_faults_detected" class="status-banner warn" role="alert"><AlertTriangle :size="13" /><span>{{ tr("文件系统扫描遇到读取故障，部分记录可能缺失或来自补零数据。") }}</span></div>
             <div v-if="scan.truncated" class="status-banner warn" role="alert"><AlertTriangle :size="13" /><span>{{ tr("签名雕刻已达到结果数量上限，以下结果仍可恢复") }}</span></div>
             <div v-if="recoveryProgress" class="status-banner running" role="status"><Loader2 :size="13" class="spin" /><span>{{ recoveryProgress.message || tr("正在恢复文件") }}</span><div class="banner-progress"><span :style="{ width: `${recoveryPercent}%` }"></span></div><button class="ui-btn link sm" @click="cancelRecovery">{{ tr("取消恢复") }}</button></div>
@@ -78,7 +78,7 @@
       </template>
       <WorkspaceStartState v-else :icon="ArchiveRestore" :loading="initializing || loadingHistory"
         :title="initializationError || historyError ? tr('读取扫描记录失败') : initializing || loadingHistory ? tr('正在读取扫描记录…') : tr('还没有恢复扫描')"
-        :description="initializationError || historyError || tr('读取已删除记录、重建丢失分区，并按文件签名查找残留文件')"
+        :description="initializationError || historyError || undefined"
         :action-label="initializationError || historyError ? tr('重试') : tr('新建扫描')" :action-icon="initializationError || historyError ? RefreshCw : Plus" @action="initializationError || historyError ? initializePanel() : configExpanded = true">
         <template #toolbar><button class="ui-btn ghost" :aria-pressed="historyVisible" @click="historyVisible = !historyVisible"><PanelLeft :size="14" />{{ tr("扫描记录") }}</button></template>
       </WorkspaceStartState>
@@ -154,7 +154,7 @@ const signatureColumns = computed(() => currentKey.value === SIGNATURE_ROOT || c
 const tableContext = computed(() => `${scan.value?.scan_id}:${currentKey.value}:${query.value}:${categoryFilter.value}`);
 const tableLoading = computed(() => filesystemLoading.value || (syncingResults.value && artifacts.value.length === 0) || (isActive.value && rows.value.length === 0 && currentKey.value === RECOVERY_ROOT));
 const emptyText = computed(() => {
-  if (tableLoading.value) return isActive.value ? tr("正在扫描，发现的卷和文件会显示在这里") : tr("正在读取恢复结果…");
+  if (tableLoading.value) return isActive.value ? tr("正在扫描…") : tr("正在读取恢复结果…");
   if (hasFilters.value) return tr("没有符合当前筛选条件的文件");
   if (currentKey.value === RECOVERY_ROOT) return tr("本次扫描没有发现可恢复的文件");
   return tr("此目录为空");

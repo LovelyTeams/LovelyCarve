@@ -2,7 +2,7 @@
   <div class="csv-viewer">
     <PreviewState v-if="loading" tone="loading" :title="tr('正在解析表格…')" />
     <PreviewState v-else-if="error" tone="error" :icon="CircleAlert" :title="tr('无法解析为表格')" :description="error" mono-description />
-    <PreviewState v-else-if="isEmpty" :icon="Sheet" :title="tr('空文档，无可视化内容。')" />
+    <PreviewState v-else-if="isEmpty" :icon="Sheet" :title="tr('空文档')" />
 
     <template v-else>
       <!-- 首行表头与分隔符（切换即后端重解析）放进视图栏，行列统计与排序放进状态栏。 -->
@@ -287,9 +287,9 @@ const capNotes = computed<string[]>(() => {
   const notes: string[] = [];
   if (t.truncatedBytes) notes.push(tr("文件大于 {0}，仅解析前 {1} 字节。", { 0: READ_CAP_LABEL, 1: READ_CAP_LABEL }));
   if (t.truncatedRows) {
-    notes.push(tr("数据较多，仅解析前 {0} 行（共约 {1} 行）；导出后查看完整数据。", { 0: MAX_ROWS.toLocaleString(), 1: t.totalRows.toLocaleString() }));
+    notes.push(tr("仅解析前 {0} 行（共约 {1} 行）", { 0: MAX_ROWS.toLocaleString(), 1: t.totalRows.toLocaleString() }));
   } else if (sortedRows.value.length > ROW_CAP) {
-    notes.push(tr("行数较多，仅渲染前 {0} 行（排序覆盖已解析的 {1} 行）。", { 0: ROW_CAP.toLocaleString(), 1: sortedRows.value.length.toLocaleString() }));
+    notes.push(tr("仅渲染前 {0} 行（共 {1} 行）", { 0: ROW_CAP.toLocaleString(), 1: sortedRows.value.length.toLocaleString() }));
   }
   return notes;
 });

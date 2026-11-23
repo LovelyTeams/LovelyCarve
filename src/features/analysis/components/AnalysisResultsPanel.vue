@@ -29,7 +29,6 @@
     <div v-if="treeError" class="ui-empty state-box error" role="alert"><span class="ui-empty-icon"><CircleAlert :size="24" /></span><p class="ui-empty-desc">{{ tr("分析结果读取失败：{0}", { 0: treeError }) }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="reload">{{ tr("重试") }}</button></div></div>
     <WorkspaceStartState v-else-if="!selectedNode" :icon="ScanSearch" :loading="treeLoading"
       :title="treeLoading ? tr('正在读取分析结果…') : tree.length ? tr('选择一个结果项') : tr('当前检材还没有分析结果')"
-      :description="tree.length ? tr('在左侧结果目录中选择结果项，查看解析出的记录。') : tr('选择分析功能，完成后结果会显示在这里。')"
       :action-label="tree.length ? undefined : tr('快速分析')" :action-icon="Zap" role="status" @action="emit('quickAnalysis')">
       <template #toolbar><button class="ui-btn ghost" :disabled="treeLoading" @click="reload"><RefreshCw :size="14" />{{ tr("刷新") }}</button></template>
     </WorkspaceStartState>
@@ -41,7 +40,7 @@
         <div class="table-scroll" :class="{ sheet: presentation === 'properties' && records.length > 0 && !recordsLoading && !recordsError }" :aria-busy="recordsLoading">
           <div v-if="recordsLoading" class="ui-empty state-box" role="status"><span class="ui-empty-icon accent"><Loader2 :size="22" class="spin" /></span><p class="ui-empty-desc">{{ tr("正在读取记录…") }}</p></div>
           <div v-else-if="recordsError" class="ui-empty state-box error" role="alert"><span class="ui-empty-icon"><CircleAlert :size="22" /></span><p class="ui-empty-desc">{{ tr("记录读取失败：{0}", { 0: recordsError }) }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="retryRecords">{{ tr("重试") }}</button></div></div>
-          <div v-else-if="records.length === 0" class="ui-empty state-box" role="status"><span class="ui-empty-icon"><Inbox :size="24" /></span><p class="ui-empty-title">{{ keyword ? tr("没有匹配的记录") : tr("此结果项暂无记录") }}</p><p v-if="!keyword && runNode" class="ui-empty-desc">{{ tr("运行信息里有这次运行的输入文件与告警。") }}</p><div class="ui-empty-actions"><button v-if="keyword" class="ui-btn" @click="keywordInput = ''; applyKeyword('')">{{ tr("清除搜索") }}</button><button v-else-if="runNode" class="ui-btn" @click="selectNode(runNode)"><ClipboardList :size="14" />{{ tr("查看运行信息") }}</button></div></div>
+          <div v-else-if="records.length === 0" class="ui-empty state-box" role="status"><span class="ui-empty-icon"><Inbox :size="24" /></span><p class="ui-empty-title">{{ keyword ? tr("没有匹配的记录") : tr("此结果项暂无记录") }}</p><div class="ui-empty-actions"><button v-if="keyword" class="ui-btn" @click="keywordInput = ''; applyKeyword('')">{{ tr("清除搜索") }}</button><button v-else-if="runNode" class="ui-btn" @click="selectNode(runNode)"><ClipboardList :size="14" />{{ tr("查看运行信息") }}</button></div></div>
           <AnalysisPropertyList v-else-if="presentation === 'properties'" :node="selectedNode" :records="records" :columns="columns" :properties="propertyLayout" :selected-record-id="selectedRecordId" :locating="locating" @open-record="openRecord" @open-file="target => emit('openFile', target)" @record-menu="onPropertyContextMenu" />
           <table v-else class="data-table records-table" :style="{ minWidth: `${tableWidth}px` }" :aria-label="nodeLabel(selectedNode)">
             <colgroup>

@@ -41,7 +41,7 @@
         <History :size="12" /> {{ tr("已回放") }} {{ joinList(page.sidecars, tr) }}
       </div>
       <div v-if="page.shortenedCells" class="ui-alert warn query-feedback">
-        {{ tr("部分文本已缩短或包含替换字符，可用 substr() 分段查看。") }}
+        {{ tr("部分文本已缩短或包含替换字符") }}
       </div>
       <div class="grid-scroll">
         <table class="data-table query-table">

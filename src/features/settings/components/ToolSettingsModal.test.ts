@@ -42,7 +42,7 @@ describe('settings entry and preferences', () => {
     expect(host.querySelector('.ui-modal-title')?.textContent).toBe('Settings');
     expect(button('Dark')).toBeDefined();
     expect(host.querySelector('.settings-nav-item[aria-current="page"] strong')?.textContent).toBe('Appearance');
-    expect(host.textContent).toContain('Changes saved automatically');
+    expect(host.textContent).toContain('Interface animations');
     preferences.mountTarget.value = 'folder'; await settle();
     expect(host.querySelector('.path-input')?.getAttribute('placeholder')).toBe('Leave empty to use the case folder');
     button('Restore page defaults').click(); await settle();
@@ -59,7 +59,6 @@ describe('settings entry and preferences', () => {
     button('日志').click();
     await settle();
     expect(host.querySelector('[aria-label="搜索日志"]')).not.toBeNull();
-    expect(host.textContent).toContain('最近 5,000 条');
     expect(host.querySelector('.statusbar')).toBeNull();
     button('界面').click();
     await settle();

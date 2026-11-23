@@ -13,9 +13,7 @@
           <span class="ui-modal-icon"><Puzzle :size="18" /></span>
           <div class="ui-modal-heading">
             <h2 id="plugin-task-title" class="ui-modal-title">{{ tr("插件分析任务") }}</h2>
-            <p class="ui-modal-subtitle task-subtitle">
-              {{ tr("为 {0} 选择一个文件分析器。任务由调度器派发，可在「任务中心」跟踪进度、取消或重新分析。", { 0: fileName }) }}
-            </p>
+            <p class="ui-modal-subtitle task-subtitle" :title="fileName">{{ fileName }}</p>
           </div>
           <button class="ui-icon-btn" type="button" :title="tr('关闭')" :aria-label="tr('关闭')" @click="emit('close')"><X :size="16" /></button>
         </header>
@@ -38,7 +36,6 @@
           <div v-else-if="candidates.length === 0" class="ui-empty state-box">
             <span class="ui-empty-icon"><CircleAlert :size="24" /></span>
             <p class="ui-empty-title">{{ tr("没有可用的文件分析器") }}</p>
-            <p class="ui-empty-desc">{{ tr("安装提供文件分析的插件包后，会显示在这里。") }}</p>
           </div>
 
           <div v-else class="function-options">

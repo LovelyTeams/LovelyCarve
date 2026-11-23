@@ -104,10 +104,10 @@ function announceArrays(result: RaidStack, prompt: boolean) {
     if (incompleteToasts.has(arr.set_uuid)) continue;
     const active = activeMembers(arr);
     const status = arr.degradable
-      ? tr("成员不全 {0}/{1}，加载其余成员盘后将自动重组，也可在 RAID 检测卡片中降级重组", { 0: active, 1: arr.raid_disks })
+      ? tr("成员不全 {0}/{1}，可降级重组", { 0: active, 1: arr.raid_disks })
       : active < arr.raid_disks
-        ? tr("成员不全 {0}/{1}，加载其余成员盘后将自动重组", { 0: active, 1: arr.raid_disks })
-        : tr("未能重组，详见镜像信息页的 RAID 检测卡片");
+        ? tr("成员不全 {0}/{1}", { 0: active, 1: arr.raid_disks })
+        : tr("未能重组");
     incompleteToasts.set(
       arr.set_uuid,
       pushPersistentToast({

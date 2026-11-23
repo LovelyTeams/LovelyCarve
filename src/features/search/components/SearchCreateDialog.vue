@@ -8,7 +8,6 @@
             <span class="ui-modal-icon"><Search :size="18" /></span>
             <div class="ui-modal-heading">
               <h2 :id="titleId" class="ui-modal-title">{{ tr("新建搜索") }}</h2>
-              <p class="ui-modal-subtitle">{{ tr("在检材的文件内容中查找关键词或正则表达式") }}</p>
             </div>
             <button type="button" class="ui-icon-btn" :title="tr('关闭')" :aria-label="tr('关闭')" :disabled="starting" @click="emit('close')">
               <X :size="16" />
@@ -22,13 +21,13 @@
                 v-model="draft.keysText"
                 rows="4"
                 spellcheck="false"
-                :placeholder="tr('例如：password\n每行一个关键词，可同时搜索多个')"
+                placeholder="password&#10;admin"
                 :ref="elements.keyword"
                 :aria-invalid="patternError ? 'true' : undefined"
-                :aria-describedby="patternsNoteId"
+                :aria-describedby="patternError ? patternsNoteId : undefined"
                 @blur="patternsTouched = true"
               ></textarea>
-              <p :id="patternsNoteId" :class="patternError ? 'ui-field-error' : 'ui-field-hint'" :role="patternError ? 'alert' : undefined">{{ patternError || tr("至少输入一个关键词，或在高级选项中填写正则表达式") }}</p>
+              <p v-if="patternError" :id="patternsNoteId" class="ui-field-error" role="alert">{{ patternError }}</p>
             </label>
             <details v-disclosure-motion class="search-disclosure">
               <summary><span>{{ tr("搜索范围") }}</span><small>{{ scopeSummary }}</small></summary>
@@ -55,7 +54,7 @@
                       <Loader2 :size="13" class="spin" /><span>{{ tr("正在读取分区…") }}</span>
                     </div>
                     <div v-else-if="partitionOptions.length === 0" class="gs-scope-empty">
-                      {{ tr("未检测到分区（整个镜像按单一文件系统处理，保持默认范围即可）") }}
+                      {{ tr("未检测到分区") }}
                     </div>
                     <label v-else class="ui-check">
                       <input
@@ -63,7 +62,7 @@
                         :checked="draft.partitions.length === 0"
                         @change="draft.partitions = []"
                       />
-                      <span>{{ tr("全部分区（默认）") }}</span>
+                      <span>{{ tr("全部分区") }}</span>
                     </label>
                     <div v-if="partitionOptions.length > 0" class="gs-partition-grid">
                       <label
@@ -99,9 +98,9 @@
                       v-model="draft.treeNodesText"
                       rows="3"
                       spellcheck="false"
-                      :placeholder="tr('每行一个卷内目录或文件路径，例如：\n/Users/alice/Documents\n/Windows/System32/config')"
+                      placeholder="/Users/alice/Documents&#10;/Windows/System32/config"
+                      :aria-label="tr('卷内路径')"
                     ></textarea>
-                    <span class="gs-scope-hint">{{ tr("目录会连同子目录一起搜索；留空表示不限制") }}</span>
                   </div>
                 </div>
 
@@ -111,7 +110,7 @@
               <summary><span>{{ tr("高级选项") }}</span><small>{{ advancedSummary }}</small></summary>
               <div class="disclosure-body">
                 <label class="ui-field">
-                  <span class="ui-field-label">{{ tr("正则表达式（每行一个）") }}</span>
+                  <span class="ui-field-label">{{ tr("正则表达式") }}</span>
                   <textarea
                     class="ui-textarea mono"
                     v-model="draft.regexesText"
@@ -119,7 +118,7 @@
                     spellcheck="false"
                     placeholder="\d{17}[0-9X]&#10;pass\w+"
                     :aria-invalid="patternError ? 'true' : undefined"
-                    :aria-describedby="patternsNoteId"
+                    :aria-describedby="patternError ? patternsNoteId : undefined"
                     @blur="patternsTouched = true"
                   ></textarea>
                 </label>
@@ -167,13 +166,13 @@
                 <div class="gs-caps-row">
                   <label class="gs-cap">
                     <span>{{ tr("每文件命中上限") }}</span>
-                    <input v-model.number="draft.perFileCap" class="ui-input sm mono" type="number" min="1" step="1" :aria-invalid="errors.perFileCap ? 'true' : undefined" :aria-describedby="perFileNoteId" />
-                    <span :id="perFileNoteId" :class="errors.perFileCap ? 'ui-field-error' : 'ui-field-hint'" :role="errors.perFileCap ? 'alert' : undefined">{{ errors.perFileCap || tr("填写大于 0 的整数") }}</span>
+                    <input v-model.number="draft.perFileCap" class="ui-input sm mono" type="number" min="1" step="1" :aria-invalid="errors.perFileCap ? 'true' : undefined" :aria-describedby="errors.perFileCap ? perFileNoteId : undefined" />
+                    <span v-if="errors.perFileCap" :id="perFileNoteId" class="ui-field-error" role="alert">{{ errors.perFileCap }}</span>
                   </label>
                   <label class="gs-cap">
                     <span>{{ tr("全局命中上限") }}</span>
-                    <input v-model.number="draft.globalCap" class="ui-input sm mono" type="number" min="1" step="1" :aria-invalid="errors.globalCap ? 'true' : undefined" :aria-describedby="globalNoteId" />
-                    <span :id="globalNoteId" :class="errors.globalCap ? 'ui-field-error' : 'ui-field-hint'" :role="errors.globalCap ? 'alert' : undefined">{{ errors.globalCap || tr("填写大于 0 的整数") }}</span>
+                    <input v-model.number="draft.globalCap" class="ui-input sm mono" type="number" min="1" step="1" :aria-invalid="errors.globalCap ? 'true' : undefined" :aria-describedby="errors.globalCap ? globalNoteId : undefined" />
+                    <span v-if="errors.globalCap" :id="globalNoteId" class="ui-field-error" role="alert">{{ errors.globalCap }}</span>
                   </label>
                 </div>
 

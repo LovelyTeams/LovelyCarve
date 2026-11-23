@@ -58,7 +58,7 @@ export function useAppUpdateCheck() {
       latestTag.value = findLatestVersionTag(tags, version.value);
       status.value = latestTag.value ? 'available' : 'current';
       if (announce && latestTag.value) {
-        notifyInfo(tr('发现新版本 {0}', { 0: latestTag.value }), tr('前往「设置中心 → 关于」查看。'));
+        notifyInfo(tr('发现新版本 {0}', { 0: latestTag.value }));
       }
     } catch (cause) {
       if (request !== generation) return;

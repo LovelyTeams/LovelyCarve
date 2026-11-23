@@ -49,7 +49,6 @@
       <div v-if="!result.records.length" class="ui-empty">
         <div class="ui-empty-icon"><ArchiveRestore :size="22" /></div>
         <p class="ui-empty-title">{{ tr("未发现已删除记录") }}</p>
-        <p class="ui-empty-desc">{{ tr("空闲页、页内空闲区以及 WAL 和回滚日志里都没有可恢复的行。开启 secure_delete 或执行过 VACUUM 的库不会留下这类残留。") }}</p>
       </div>
 
       <div v-else-if="!filtered.length" class="ui-empty">

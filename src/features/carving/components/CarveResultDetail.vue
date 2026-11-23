@@ -20,9 +20,8 @@
           <span v-else>{{ previewMessage }}</span>
         </div>
       </FileDetailSection>
-      <FileDetailSection :title="tr('复核提示')" wide>
-        <p class="detail-note">{{ tr("雕刻结果无原始路径与时间戳，请通过偏移和导出哈希复核。") }}</p>
-        <p v-if="artifact.read_fault" class="ui-alert warn detail-alert">{{ tr("包含读取失败后补零的数据，请复核完整性。") }}</p>
+      <FileDetailSection v-if="artifact.read_fault" :title="tr('复核提示')" wide>
+        <p class="ui-alert warn detail-alert">{{ tr("包含读取失败后补零的数据，请复核完整性。") }}</p>
       </FileDetailSection>
     </FileDetailLayout>
   </DetailDock>

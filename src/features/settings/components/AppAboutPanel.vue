@@ -7,10 +7,9 @@
     </dl>
     <div class="update-section">
       <label class="update-preference">
-        <span><strong>{{ tr('自动检查更新') }}</strong><small>{{ tr('默认关闭；开启后每次启动检查 GitHub tags。') }}</small></span>
+        <strong>{{ tr('自动检查更新') }}</strong>
         <input v-model="automatic" class="ui-switch" type="checkbox" role="switch" :aria-label="tr('自动检查更新')" />
       </label>
-      <p class="ui-field-hint">{{ tr('仅检查版本，不会自动下载或安装；正式版忽略预发布标签。') }}</p>
       <div class="update-actions">
         <button class="ui-btn" type="button" :disabled="status === 'checking'" @click="checkNow">
           <Loader2 v-if="status === 'checking'" :size="14" class="spin" aria-hidden="true" />
@@ -65,9 +64,7 @@ const buildTime = computed(() => {
 .about-details dd { margin: 0; color: var(--text-primary); }
 .update-section { display: flex; flex-direction: column; gap: 12px; padding-top: 20px; border-top: 1px solid var(--border-color); }
 .update-preference { display: flex; align-items: center; justify-content: space-between; gap: 16px; cursor: pointer; }
-.update-preference span { display: flex; flex-direction: column; gap: 8px; }
 .update-preference strong { font-size: 13px; font-weight: 600; }
-.update-preference small { color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
 .update-section p { margin: 0; }
 .update-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 </style>

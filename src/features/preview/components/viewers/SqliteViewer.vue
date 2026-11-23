@@ -9,7 +9,6 @@
           <Lock :size="15" />
           <span>{{ tr("数据库已加密（SQLCipher）") }}</span>
         </div>
-        <p class="lock-hint mono">{{ tr("输入密钥以解密预览。多数应用使用文本口令，部分即时通信应用使用 32 字节原始密钥（十六进制）；旧版或微信数据库请设置下方高级参数。") }}</p>
 
         <div class="ui-seg seg">
           <button type="button" class="ui-seg-item" :class="{ active: keyMode === 'passphrase' }" @click="keyMode = 'passphrase'">{{ tr("口令") }}</button>
@@ -37,7 +36,7 @@
         />
 
         <details v-disclosure-motion class="ui-disclosure lock-adv" :open="showAdvanced">
-          <summary><ChevronRight :size="13" class="ui-chevron" />{{ tr("高级参数（旧版库 / 微信）") }}</summary>
+          <summary><ChevronRight :size="13" class="ui-chevron" />{{ tr("高级参数") }}</summary>
           <div class="adv-grid">
             <label class="adv-field">
               <span class="adv-k">{{ tr("兼容版本") }}</span>
@@ -144,8 +143,7 @@
           <PreviewState v-if="error" tone="error" :icon="CircleAlert" :title="tr('SQLite 解析失败')" :description="error" mono-description>
             <button type="button" class="ui-btn sm" @click="openSql"><CodeXml :size="13" />{{ tr("SQL 查询") }}</button>
           </PreviewState>
-          <PreviewState v-else-if="!digest?.tables.length" :icon="Table2" :title="tr('没有用户表')"
-            :description="tr('已删除的表可能留有数据，可打开「已删除记录」查找。')">
+          <PreviewState v-else-if="!digest?.tables.length" :icon="Table2" :title="tr('没有用户表')">
             <button type="button" class="ui-btn sm" @click="openDeleted"><ArchiveRestore :size="13" />{{ tr("已删除记录") }}</button>
           </PreviewState>
           <PreviewState v-else-if="!activeName" :icon="Table2" :title="tr('选择一张表查看数据。')" />
@@ -585,13 +583,6 @@ watch(
   font-weight: 600;
   color: var(--text-primary);
 }
-.lock-hint {
-  margin: 0;
-  font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.55;
-}
-
 .seg { align-self: flex-start; }
 
 .lock-adv { font-size: 12px; }

@@ -78,7 +78,7 @@ export function useCaseWorkspace(options: {
         tr("已打开 {0} 个；以下检材可能已被移动或删除，或 RAID 成员不全：{1}", { 0: opened, 1: failed.join('；') }),
       );
     } else if (queued > 0) {
-      notifyInfo(tr("检材正在后台加载"), tr("{0} 个检材正在加载，可在标签页或任务中心查看进度。", { 0: queued }));
+      notifyInfo(tr("检材正在后台加载"), tr("{0} 个检材正在加载", { 0: queued }));
     } else if (opened > 0) {
       notifyInfo(tr("已加载案件检材"), tr("已加载 {0} 个检材", { 0: opened }));
     }

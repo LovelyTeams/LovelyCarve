@@ -12,10 +12,6 @@
       </header>
 
       <div class="ui-modal-body manual-body">
-        <p class="hint">
-          {{ tr("自动检测无法识别的阵列（未知偏移、缺盘或任意盘序）可在此手动指定几何参数，按列序选择成员盘后预览重组结果。") }}
-        </p>
-
         <!-- Member selection + column order -->
         <div class="cols">
           <section class="col">
@@ -408,13 +404,6 @@ async function open() {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.hint {
-  margin: 0;
-  font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.6;
 }
 
 .cols {

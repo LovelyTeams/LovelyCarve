@@ -121,11 +121,11 @@ export function builtinMessage(entry: BuiltinTaskEntry, tr: Translator = sourceT
     case 'encryptedVolumeUnlock':
       if (status === 'success') return tr("已解锁 · {0}", { 0: view.labels.cipher ?? '' });
       if (status === 'cancel') return tr("已取消解锁");
-      return active ? tr("正在派生密钥并解锁；取消将在当前派生阶段结束后生效") : '';
+      return active ? tr("正在派生密钥并解锁") : '';
     case 'autoDetect':
       if (status === 'success') return detectionConclusion(view, tr);
       if (status === 'queued') return tr("等待识别");
-      return active ? tr("正在按文件系统类型与标志文件判定平台") : '';
+      return active ? tr("正在识别平台") : '';
     case 'volumeSnapshot':
     case 'sessionSnapshot': {
       const limit = truncated ? tr(" · 已达条目上限，结果不完整") : '';

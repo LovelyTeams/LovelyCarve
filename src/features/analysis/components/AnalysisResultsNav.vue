@@ -28,7 +28,7 @@
               <li v-for="node in group.results" :key="node.nodeId">
                 <button class="result-item" :class="{ selected: isCurrent(node), empty: node.childCount === 0 }" :aria-current="isCurrent(node) ? 'true' : undefined" :title="nodeLabel(node)" @click="openResult(node)"><span class="result-name">{{ nodeLabel(node) }}</span><span class="result-count">{{ node.childCount.toLocaleString() }}</span></button>
               </li>
-              <li v-if="!group.results.length" class="group-empty">{{ tr("没有记录，查看运行信息了解告警。") }}</li>
+              <li v-if="!group.results.length" class="group-empty">{{ tr("没有记录") }}</li>
             </ul>
           </UiTransition>
         </div>

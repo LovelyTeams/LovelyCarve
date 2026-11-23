@@ -142,7 +142,7 @@ export function useCarveHistory(options: CarveHistoryOptions) {
     if (!taskId || disposed) return;
     try {
       await taskCancel({ taskId });
-      notifyInfo(tr("正在取消扫描"), tr("已提交取消请求，当前读取块完成后停止。"));
+      notifyInfo(tr("正在取消扫描"));
     } catch (error) {
       notifyError(tr("取消扫描失败"), String(error));
     }

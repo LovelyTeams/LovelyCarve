@@ -30,5 +30,5 @@ it('releases the current URL and ignores a response after disposal', async () =>
 it('keeps non-images and oversized images out of the member read path', async () => {
   const preview = setup(); artifact.value = { ...picture, length: 8 * 1024 ** 2 + 1 };
   expect(preview.previewMessage.value).toContain('8 MB'); artifact.value = { ...picture, category: 'document' };
-  expect(preview.previewMessage.value).toContain('原类型视图'); expect(read).not.toHaveBeenCalled();
+  expect(preview.previewMessage.value).toBe('此格式暂不提供内嵌渲染'); expect(read).not.toHaveBeenCalled();
 });

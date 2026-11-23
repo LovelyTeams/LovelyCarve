@@ -19,7 +19,7 @@
     <!-- 错误 / 空 -->
     <PreviewState v-if="scene.kind === 'error'" tone="error" :icon="CircleAlert" :title="tr('无法解析为 {0} 结构', { 0: format.toUpperCase() })"
       :description="scene.message" mono-description />
-    <PreviewState v-else-if="scene.kind === 'empty'" :icon="Braces" :title="tr('空文档，无可视化内容。')" />
+    <PreviewState v-else-if="scene.kind === 'empty'" :icon="Braces" :title="tr('空文档')" />
 
     <!-- 图视图 -->
     <div
@@ -34,7 +34,7 @@
       @pointerleave="onPointerUp"
     >
       <div v-if="overCap" class="cap-banner mono">
-        <AlertTriangle :size="12" /> {{ tr("结构较大（超过") }} {{ NODE_CAP.toLocaleString() }} {{ tr("节点），部分深层分支已折叠为摘要；可改用「树」或文本视图。") }}
+        <AlertTriangle :size="12" /> {{ tr("超过 {0} 个节点，部分深层分支已折叠", { 0: NODE_CAP.toLocaleString() }) }}
       </div>
 
       <div class="viewport" :style="viewportStyle">

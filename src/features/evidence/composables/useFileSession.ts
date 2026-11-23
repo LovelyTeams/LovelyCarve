@@ -276,7 +276,7 @@ export function useFileSession() {
 
       return {
         opened: false,
-        error: tr("暂不支持该文件类型。当前版本支持磁盘镜像、逻辑镜像与归档文件，以及文件夹；请选择镜像文件，或通过「添加检材」选择文件夹或物理磁盘。"),
+        error: tr("暂不支持该文件类型"),
       };
     } finally {
       if (generation === loadGeneration) { cleanupLoadProgressListener(); loading.value = false; }

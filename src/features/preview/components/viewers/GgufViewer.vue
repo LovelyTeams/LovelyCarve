@@ -132,7 +132,7 @@
             </table>
           </div>
           <div v-if="report.tensors_truncated" class="trunc-note mono">
-            {{ tr("张量较多，仅显示前") }} {{ report.tensors.length.toLocaleString() }} {{ tr("个（共") }} {{ report.tensor_count.toLocaleString() }}{{ tr("）；上方参数量 / 类型分布按全部张量统计。") }}
+            {{ tr("仅显示前 {0} 个张量（共 {1} 个）", { 0: report.tensors.length.toLocaleString(), 1: report.tensor_count.toLocaleString() }) }}
           </div>
         </template>
       </section>

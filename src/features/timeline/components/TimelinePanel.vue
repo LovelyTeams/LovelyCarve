@@ -72,7 +72,7 @@ onScopeDispose(() => { initGeneration++; });
     <WorkspaceStartState v-if="!building && (!statusInfo || statusInfo.status === 'buildRequired')"
       :icon="ChartGantt" :loading="!statusInfo && !statusError"
       :title="statusError ? tr('读取时间线失败') : statusInfo ? tr('还没有时间线') : tr('正在读取时间线…')"
-      :description="statusError || tr('汇总文件时间与分析事件，查看事件发生顺序。')"
+      :description="statusError || undefined"
       :action-label="statusError ? tr('重试') : tr('创建时间线')" :action-icon="statusError ? RefreshCw : Plus"
       @action="statusError ? initPanel() : buildButtonClicked()" />
     <template v-else>
@@ -105,7 +105,7 @@ onScopeDispose(() => { initGeneration++; });
             <Loader2 :size="14" class="spin" /><span>{{ tr("正在构建，当前结果可能不完整") }}</span>
             <span v-if="progress">{{ tr("已处理") }} {{ progress.done.toLocaleString() }}<template v-if="progress.total > 0"> / {{ progress.total.toLocaleString() }}</template> {{ tr("项 · 已生成") }} {{ progress.rows.toLocaleString() }} {{ tr("条事件") }}</span>
           </div>
-          <div v-else-if="statusInfo?.status === 'stale'" class="ui-alert warn tl-notice"><TriangleAlert :size="14" /><span>{{ tr("有新数据尚未加入时间线，点击「更新时间线」即可同步。") }}</span></div>
+          <div v-else-if="statusInfo?.status === 'stale'" class="ui-alert warn tl-notice"><TriangleAlert :size="14" /><span>{{ tr("有新数据尚未加入时间线") }}</span></div>
           <div v-if="statusInfo?.meta?.error" class="ui-alert danger tl-notice" role="alert"><CircleAlert :size="14" /><span>{{ statusInfo.meta.error }}</span></div>
 
           <TimelineOverview v-if="statusInfo && statusInfo.status !== 'buildRequired'" v-model:chart-mode="chartMode" v-model:chart-visible="chartVisible" v-model:unit="unit"

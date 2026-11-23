@@ -18,7 +18,6 @@
           <div v-else class="ui-empty hub-empty">
             <span class="ui-empty-icon accent"><HardDrive :size="24" /></span>
             <p class="ui-empty-title">{{ tr("选择案件检材，开始快速分析") }}</p>
-            <p class="ui-empty-desc">{{ tr("当前镜像的后台任务可在「任务」页查看。") }}</p>
             <div class="ui-empty-actions"><button class="ui-btn sm primary" @click="emit('openCaseManager')">{{ tr("打开案件管理") }}</button></div>
           </div>
         </div>
@@ -26,7 +25,6 @@
       <div v-else class="ui-empty hub-empty">
         <span class="ui-empty-icon accent"><HardDrive :size="24" /></span>
         <p class="ui-empty-title">{{ hasCase ? tr("打开检材，查看分析任务") : tr("打开案件，开始分析") }}</p>
-        <p class="ui-empty-desc">{{ tr("任务与快速分析跟随顶部当前检材标签页。") }}</p>
         <div class="ui-empty-actions"><button class="ui-btn sm primary" @click="emit('openCaseManager')">{{ tr("打开案件管理") }}</button></div>
       </div>
     </aside>

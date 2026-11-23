@@ -22,7 +22,6 @@
               <div v-if="rows.length === 0" class="ui-empty tl-table-empty">
                 <span class="ui-empty-icon" :class="{ accent: loadingRows }"><Loader2 v-if="loadingRows" :size="24" class="spin" /><CalendarDays v-else :size="26" /></span>
                 <p class="ui-empty-title">{{ loadingRows ? tr("正在读取事件…") : rowsError || tr("当前条件下没有事件") }}</p>
-                <p v-if="!loadingRows && !rowsError" class="ui-empty-desc">{{ tr("可切换年份、选择其他日期或重置筛选。") }}</p>
                 <div class="ui-empty-actions">
                   <button v-if="rowsError" class="ui-btn" @click="emit('retry')">{{ tr("重试") }}</button>
                   <button v-else-if="hasFilters && !loadingRows" class="ui-btn" @click="emit('reset-filters')">{{ tr("重置筛选") }}</button>

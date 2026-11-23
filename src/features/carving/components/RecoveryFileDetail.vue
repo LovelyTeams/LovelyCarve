@@ -29,9 +29,8 @@
           { label: tr('MFT 变更'), value: formatTimestamp(node.timestamps.mft_changed), mono: true },
         ]" />
       </FileDetailSection>
-      <FileDetailSection :title="tr('复核提示')" wide>
-        <p class="detail-note">{{ node.deleted ? tr("已删除文件的簇可能已被覆盖。可读映射只表示可以尝试读取，请用导出哈希和内容复核。") : tr("现存文件按文件系统记录读取。") }}</p>
-        <p v-if="!candidate.readable" class="ui-alert warn detail-alert">{{ tr("该记录没有可读的数据映射，无法恢复内容。可尝试签名雕刻查找残留数据。") }}</p>
+      <FileDetailSection v-if="!candidate.readable" :title="tr('复核提示')" wide>
+        <p class="ui-alert warn detail-alert">{{ tr("该记录没有可读的数据映射，无法恢复内容") }}</p>
       </FileDetailSection>
     </FileDetailLayout>
   </DetailDock>

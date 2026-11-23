@@ -2,8 +2,8 @@
   <div class="rich-preview">
     <PreviewState v-if="loading" tone="loading" :title="phaseLabel" />
     <PreviewState v-else-if="tooLarge" :icon="FileWarning" :title="tr('文件过大，不渲染预览')"
-      :description="tr('文件大小 {0}；请导出后查看，或切换到「文本 / 十六进制」视图。', { 0: formatBytes(node.size) })" />
-    <PreviewState v-else-if="empty" :icon="FileX" :title="tr('空文件（0 字节），无可渲染内容。')" />
+      :description="formatBytes(node.size)" />
+    <PreviewState v-else-if="empty" :icon="FileX" :title="tr('空文件')" />
     <PreviewState v-else-if="error" tone="error" :icon="CircleAlert" :title="tr('无法渲染此文件')" :description="error" mono-description />
     <!-- Flyfish File Viewer 自带工具栏 / 渲染面与 Shadow DOM 隔离，整个容器交由其管理；
          theme 经 options 注入，切换主题时以 :key 重挂（库对 options 的响应性未验证）。 -->

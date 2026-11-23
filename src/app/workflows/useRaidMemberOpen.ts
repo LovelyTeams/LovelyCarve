@@ -89,7 +89,7 @@ export function useRaidMemberOpen(options: {
     }
     const freshPaths = [...new Set(paths)].filter(path => !raidMemberQueue.value.some(member => member.path === path));
     if (paths.length > 0 && freshPaths.length === 0) {
-      notifyInfo(tr("成员盘已在队列中"), tr("所选磁盘已经放入 RAID 检测队列。"));
+      notifyInfo(tr("成员盘已在队列中"));
       return Promise.resolve();
     }
     if (freshPaths.length === 0) return Promise.resolve();
@@ -213,7 +213,7 @@ export function useRaidMemberOpen(options: {
 
     const assembled = relevantRaidArrays(stack).filter(array => array.assembled_image_id);
     if (assembled.length === 0) {
-      notifyError(tr("尚无可打开的 RAID 阵列"), tr("请继续添加成员盘，或在镜像信息页使用手动重组。"));
+      notifyError(tr("尚无可打开的 RAID 阵列"));
       return;
     }
 

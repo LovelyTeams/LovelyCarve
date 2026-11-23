@@ -41,14 +41,14 @@
       <FileMetadataPanel v-if="activeTab === 'detail'" :node="node" :full-path="fullPath" :extension="ext"
         :ident="effectiveIdent" :digest="digest" :ext-mismatch="extMismatch" />
       <template v-else>
-        <PreviewState v-if="indexOnly" :icon="Unplug" :title="tr('源镜像不可用')" :description="tr('源镜像不可用，仅能查看索引中的文件属性。')" />
-        <PreviewState v-else-if="node.kind !== 'file'" :icon="FolderOpen" :title="tr('没有内容可预览')" :description="tr('目录没有内容可预览，详见「详细信息」标签页。')" />
+        <PreviewState v-if="indexOnly" :icon="Unplug" :title="tr('源镜像不可用')" />
+        <PreviewState v-else-if="node.kind !== 'file'" :icon="FolderOpen" :title="tr('没有内容可预览')" />
         <FileRangePreview v-else-if="activeTab === 'hex' && focusTarget" class="viewer-fill" :image-id="imageId" :node-id="node.id" :size="node.size" :target="focusTarget" />
         <PreviewState v-else-if="loading" tone="loading" :title="tr('加载中…')" />
         <PreviewState v-else-if="error" tone="error" :icon="CircleAlert" :title="tr('读取文件失败')" :description="error" mono-description>
           <button type="button" class="ui-btn sm" @click="loadPreview">{{ tr("重试") }}</button>
         </PreviewState>
-        <PreviewState v-else-if="node.size === 0" :icon="FileX" :title="tr('空文件')" :description="tr('文件大小为 0 字节，没有可预览的内容。')" />
+        <PreviewState v-else-if="node.size === 0" :icon="FileX" :title="tr('空文件')" />
 
         <!-- 原类型视图：按文件原生类型渲染 -->
         <template v-else-if="activeTab === 'raw'">
@@ -85,8 +85,7 @@
             @media-error="onMediaError" @image-load="onImageLoad" @cancel-qr="cancelQrScan" @copy-qr="copyQrText" @copy-ocr="copyAllOcrText"
           />
 
-          <PreviewState v-else :icon="FileQuestionMark" :title="tr('无法按原类型显示')"
-            :description="tr('该类型暂不支持原类型视图，请切换到文本 / 十六进制视图。')">
+          <PreviewState v-else :icon="FileQuestionMark" :title="tr('无法按原类型显示')">
             <button type="button" class="ui-btn sm" @click="activeTab = 'text'"><TextAlignStart :size="13" />{{ tr("查看文本") }}</button>
             <button type="button" class="ui-btn sm" @click="activeTab = 'hex'"><Binary :size="13" />{{ tr("查看十六进制") }}</button>
             <button v-if="!effectiveIdent" type="button" class="ui-btn sm" :disabled="identifying" @click="identifyType">

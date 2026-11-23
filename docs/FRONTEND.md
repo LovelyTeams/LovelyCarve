@@ -82,7 +82,7 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
 ### 设置与案件管理
 
 - 设置中心使用横向分类导航；界面页以「语言 / 主题 / 动画 / 挂载」选项行组织，更改自动保存。
-  文件夹挂载选中后才显示根目录和自动挂载；说明只保留决策所需信息。
+  文件夹挂载选中后才显示根目录和自动挂载；选项不附说明文字。
 - 主窗口不设全局底部状态栏。主题切换仅在「设置中心 → 界面」提供；「日志」查看当前会话输出，保留搜索、级别筛选、复制、清空及自动滚动；「关于」显示软件版本与本地构建时间。
 - 「关于」提供手动版本检查与默认关闭的自动检查开关；开启后每次启动读取项目 GitHub tags，正式版忽略预发布标签，不自动下载或安装。常驻设置壳拥有检查请求，关闭弹窗不取消请求；关闭自动检查或销毁设置壳取消在途请求并丢弃迟到结果。网络仅允许 `https://api.github.com`，检查不发送凭据或检材信息。
 - 插件列表默认展示名称、版本、运行状态与「重置」操作，能力、权限、指纹与路径放入默认折叠的详情。
@@ -239,7 +239,7 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
   1. `ui-toolbar`：搜索与筛选在左，页面操作放在右侧 `ui-toolbar-actions`，主操作在最右。
   2. 工作区：表格、卡片或预览。
   3. `ui-footbar`：当前任务、状态与计数，数字写成 `<span class="ui-footbar-stat">命中 <strong>213</strong> 处</span>`。
-- 尚无数据的页面使用 `WorkspaceStartState`：图标、标题、说明、一个主操作；历史记录等入口放进其 `toolbar` 插槽。
+- 尚无数据的页面使用 `WorkspaceStartState`：图标、标题、一个主操作；`description` 只放读取失败的原因，历史记录等入口放进其 `toolbar` 插槽。
 - 右侧详情在当前窗口内展开，切换页面与开合详情都不改变原生窗口尺寸：
   - 用 `<UiTransition kind="dock">` 包裹 `DetailDock`，内容用 `FileDetailLayout`、`FileDetailSection`、
     `FileDetailFields` 组织。
@@ -356,8 +356,8 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 - 显示时长随内容增加（约每字 90ms，最长 10 秒）；鼠标悬停或键盘聚焦时暂停计时，离开后至少再停留 1.5 秒。
 - 弹窗（`.ui-modal-overlay`）或菜单（`.ui-menu`）打开时，常驻通知暂时隐藏，关闭后恢复，避免遮挡其按钮。
   提醒类常驻通知在用户开始处理时应主动关闭（如打开加密卷解锁弹窗即收起「检测到加密分区」）。
-- 标题写结果（「导出成功」「复制失败」），说明写对象、原因和下一步；批量操作汇总成一条
-  （「已打开 3 个镜像页」），不要逐项弹出。
+- 标题写结果（「导出成功」「复制失败」），说明只写对象、数量或失败原因，不写操作指引和「可在……查看」；
+  批量操作汇总成一条（「已打开 3 个镜像页」），不要逐项弹出。
 - 通知不能代替表单字段的错误提示，也不重复报告界面上已经可见的结果。
 
 ### 复制
@@ -376,23 +376,23 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 ### 表单与校验
 
 - 校验失败时给控件加 `aria-invalid="true"`（红色边框与焦点环），在控件下方用 `ui-field-error` 写明原因，
-  并通过 `aria-describedby` 关联（id 用 `useId()` 生成）；同一位置平时显示 `ui-field-hint`。
+  并通过 `aria-describedby` 关联（id 用 `useId()` 生成）；没有错误时不显示提示，也不保留 `aria-describedby`。
+  `ui-field-hint` 只放与字段有关的数值（「每扇区 512 字节」），不写格式说明或用法。
 - 确定错误的输入（格式不合法、校验和不通过）在输入时立即提示，并指出具体位置；
   「还没填完」只在提交或离开输入框后提示，半截输入不显示为错误。
-- 输入合法前禁用提交按钮，并在提示里给出进度或格式要求；可以安全规范化的输入（空格、全角符号、
+- 输入合法前禁用提交按钮；格式要求写进文档，占位符可以给一个示例值。可以安全规范化的输入（空格、全角符号、
   缺少分隔符）自动整理，在离开输入框时显示整理后的结果。
 - 实现示例：解锁弹窗的 BitLocker 恢复密钥输入（`EncryptedVolumeUnlockDialog.vue` + `useBitlockerRecoveryKey.ts` + `src/features/evidence/model/bitlockerRecoveryKey.ts`）。
 
 ```html
-<input class="ui-input mono" :aria-invalid="error ? 'true' : undefined" :aria-describedby="noteId" />
-<p v-if="error" :id="noteId" class="ui-field-error" role="alert"><AlertCircle :size="12" /><span>{{ error }}</span></p>
-<p v-else :id="noteId" class="ui-field-hint">共 8 组 6 位数字，可直接粘贴</p>
+<input class="ui-input mono" :aria-invalid="error ? 'true' : undefined" :aria-describedby="error ? noteId : undefined" />
+<p v-if="error" :id="noteId" class="ui-field-error" role="alert">{{ error }}</p>
 ```
 
 ### 空状态与错误状态
 
-- 空状态使用 `ui-empty`：图标、标题（「还没有搜索记录」）、说明下一步（「输入关键词或正则，查找检材中的文件内容」）、
-  一个主操作。区分「还没有数据」与「筛选后没有结果」，后者提供清除筛选的入口。
+- 空状态使用 `ui-empty`：图标、标题（「还没有搜索记录」）和一个主操作，不写「会显示在这里」「可切换……」之类的说明。
+  区分「还没有数据」与「筛选后没有结果」，后者提供清除筛选的入口。
 - 加载失败在原位置显示 `ui-alert danger` 或状态条，给出原因和「重试」；不展示堆栈。
   后端原始错误可附在中文说明之后，并补充恢复步骤（「解密会话已关闭，请重新解锁源镜像」）。
 
@@ -437,7 +437,6 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
         <span class="ui-modal-icon"><Search :size="18" /></span>
         <div class="ui-modal-heading">
           <h2 id="xxx-title" class="ui-modal-title">新建搜索</h2>
-          <p class="ui-modal-subtitle">在检材的文件内容中查找关键词或正则表达式</p>
         </div>
         <button class="ui-icon-btn" aria-label="关闭" title="关闭" @click="close"><X :size="16" /></button>
       </header>
@@ -453,6 +452,7 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 
 - 弹窗是一个闭合表面：`--radius-xl` 圆角、1px 边框与 `--modal-shadow`；标题区、正文与页脚之间靠留白分开，
   不画分隔线，页脚没有底色。标题图标为圆形强调色浅底（`ui-modal-icon`，`danger` / `warn` 换成语义色）。
+  `ui-modal-subtitle` 只写弹窗作用的对象（文件名、案件编号），不写用途说明。
   正文溢出时上下边缘自动淡出（`ui-modal-body` 自带 `ui-scroll-fade` 的效果），提示还有内容可滚动。
 - 用 `useDialogFocus(() => visible, dialogEl)` 在打开时把焦点移入弹窗，关闭后还给打开它的元素；
   Esc 绑在弹窗容器上并 `.stop`，使叠在上层的弹窗只关闭自己。处理中（提交、启动任务）时禁用关闭。
@@ -569,11 +569,15 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 - 文件名、检材路径、卷标签、案件名、解析内容、插件提供的名称/字段和后端原始诊断保留原文；只翻译应用自己定义的标签。持久化标签值、布尔筛选值、命令参数、状态枚举和检材身份不能使用译文。应用自有选项可用 `localizeOptions()` 翻译 label，保留 value。
 - `just i18n-check` 检查词条覆盖、插值参数和模板静态中文；该检查包含在 `just verify-fe` 中。新增或修改文案时同步维护两种语言。
 - 简洁、可执行：按钮用动词短语（「新建搜索」「恢复全部」「导出 CSV」），状态用完成时（「已完成」「已复制」）。
+- 不放解释性语句：弹窗、表单、选项卡片、空状态、通知和状态条只写标签、数值、状态徽章、真实的错误与完整性告警
+  （读取故障补零、清单不完整、结果截断）。功能说明、格式规则、能力边界和操作指引写进 `docs/USAGE.md` 或格式文档；
+  选项标签不带括号说明（「全部分区」而不是「全部分区（默认）」）。确认框照常写后果和不受影响的部分，
+  悬停提示可以说明禁用原因。
 - 中文与英文、数字之间加空格（「BitLocker 已解锁」「共 4 项」）；中文语境使用全角标点；
   引用界面上的按钮或名称用「」（「前往解锁」）；省略号用「…」。
 - 数字：计数用 `toLocaleString()`（「1,204」），容量用 `formatBytes`，时间用 `formatEpochSeconds` 并写明时区
   （本地 / UTC / UTC+8）；表格与页脚中的数字使用等宽字体。
-- 错误：标题写「操作 + 失败」（「打开镜像失败」），说明写原因与恢复步骤；空状态说明下一步。
+- 错误：标题写「操作 + 失败」（「打开镜像失败」），说明写原因，必要时附一句恢复步骤；空状态只有标题和操作。
 - 加密格式名（BitLocker、LUKS、VeraCrypt、FileVault）在徽章与提示中保留原文；中文与英文界面都应简洁可执行。
 
 ### 取证术语表
@@ -636,6 +640,7 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 - [ ] 单击选中、双击或 Enter 打开；右键菜单用 `UiContextMenu`，作用于指针下的对象（勾选行上为全部勾选项），
   顶部写明对象，键盘可打开（见第 7 节）。
 - [ ] 表单错误用 `aria-invalid` + `ui-field-error` 指出具体问题。
+- [ ] 没有解释性语句：提示、空状态说明、副标题和通知正文只写数值、对象、真实错误或完整性告警（见第 13 节）。
 - [ ] 动效开启与关闭两种状态下都正确；虚拟列表没有入场动画。
 - [ ] 窄窗口（约 760px）与右侧详情展开时布局仍可用，原生窗口尺寸不变。
 - [ ] 中英文文案、无障碍名称与校验信息完整，长英文不遮挡控件；标点与空格符合第 13 节，`just i18n-check` 通过。

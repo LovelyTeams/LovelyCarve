@@ -189,7 +189,7 @@ export function useWorkspaceShell(options: WorkspaceShellOptions) {
   const ensureCaseBeforeOpen = (request: PendingOpenRequest): boolean => {
     if (activeCase.value) return true;
     pendingOpenRequest = request;
-    notifyInfo(tr("请先创建或打开案件"), tr("检材会登记到当前案件，卷快照、标签和哈希结果也会随案件保存。"));
+    notifyInfo(tr("请先创建或打开案件"));
     options.onNeedCase();
     return false;
   };

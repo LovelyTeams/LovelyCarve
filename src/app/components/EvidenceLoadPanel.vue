@@ -8,7 +8,6 @@
       role="progressbar" :aria-label="tr('检材加载')" :aria-valuenow="percent ?? undefined" aria-valuemin="0" aria-valuemax="100">
       <span :style="percent !== null ? { width: `${percent}%` } : undefined" />
     </div>
-    <p v-if="running" class="ui-empty-desc">{{ tr('解压完成后自动加载内容，可切换标签页继续操作。') }}</p>
     <div class="ui-empty-actions">
       <button v-if="running" class="ui-btn" :disabled="cancelling" @click="cancelTask">{{ cancelling ? tr('正在取消，请稍候…') : tr('取消') }}</button>
       <button class="ui-btn" @click="emit('tasks')">{{ tr('任务中心') }}</button>

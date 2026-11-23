@@ -43,7 +43,7 @@ describe('RAID member intake', () => {
     options.pickFiles.mockResolvedValue(['D:/sdb.E01']);
     await flow.addRaidMemberFiles();
     expect(calls.load).toHaveBeenCalledTimes(2);
-    expect(calls.notify).toHaveBeenCalledWith('成员盘已在队列中', expect.any(String));
+    expect(calls.notify).toHaveBeenCalledWith('成员盘已在队列中');
   });
 
   it('reserves members immediately and serializes rapid drops through the final detection', async () => {

@@ -8,7 +8,6 @@
             <input type="checkbox" :checked="selectedChoices(option).includes(choice.id)" :disabled="disabled" @change="toggleChoice(option, choice.id)" />{{ choiceLabel(option, choice) }}
           </label>
         </div>
-        <p class="ui-field-hint">{{ tr("不勾选即运行全部子项。") }}</p>
       </template>
       <template v-else-if="option.kind === 'choice'">
         <span :id="fieldId(option.id)" class="ui-field-label">{{ optionLabel(option) }}</span>

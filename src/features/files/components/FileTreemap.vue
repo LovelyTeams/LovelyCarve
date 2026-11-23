@@ -33,7 +33,6 @@
   <div v-else-if="status === 'unsupported'" class="ui-empty treemap-state">
     <span class="ui-empty-icon"><LayoutGrid :size="26" /></span>
     <p class="ui-empty-title">{{ tr("树图仅支持 NTFS 卷") }}</p>
-    <p class="ui-empty-desc">{{ tr("当前位置不是 NTFS 目录。进入 NTFS 分区即可查看各目录的空间占用。") }}</p>
     <div class="ui-empty-actions">
       <button class="ui-btn sm" type="button" @click="emit('showList')"><List :size="14" />{{ tr("切换到列表") }}</button>
     </div>
@@ -41,7 +40,6 @@
   <div v-else-if="status === 'unindexed'" class="ui-empty treemap-state">
     <span class="ui-empty-icon"><Camera :size="26" /></span>
     <p class="ui-empty-title">{{ tr("卷索引尚未覆盖此目录") }}</p>
-    <p class="ui-empty-desc">{{ tr("树图依据卷快照建立的索引汇总空间占用，快照构建完成后自动显示；已删除的目录不在索引中。") }}</p>
     <span v-if="snapshotLabel" class="ui-badge sm info"><Loader2 :size="11" class="spin" />{{ snapshotLabel }}</span>
   </div>
   <div v-else-if="status === 'error'" class="ui-empty treemap-state" role="alert">
@@ -55,7 +53,6 @@
   <div v-else-if="status === 'ready' && measured" class="ui-empty treemap-state">
     <span class="ui-empty-icon"><LayoutGrid :size="26" /></span>
     <p class="ui-empty-title">{{ tr("此目录没有可显示的内容") }}</p>
-    <p class="ui-empty-desc">{{ tr("目录为空，或其中的文件大小都为 0。") }}</p>
   </div>
   <div v-else-if="status !== 'idle'" class="ui-empty treemap-state" role="status">
     <Loader2 :size="20" class="spin" />

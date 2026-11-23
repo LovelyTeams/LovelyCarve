@@ -38,9 +38,6 @@
         @toggle="beginMount(syntheticRoot.id, SYNTHETIC_MOUNT_KEY, syntheticRoot.label)" @share="toggleShare(mountViewFor(syntheticRoot.id)!, syntheticRoot.label)"
         @mount="drive => syntheticRoot && finishMountAt(syntheticRoot.id, SYNTHETIC_MOUNT_KEY, syntheticRoot.label, drive)" @copy="value => emit('copy', tr('共享名'), value)" />
     </div>
-    <p class="synthetic-root-hint">
-      {{ tr("逻辑检材以单一合成根呈现（无分区表），可只读挂载为 Windows 盘符或文件夹后用资源管理器浏览。") }}
-    </p>
   </div>
   <div v-else-if="info.partitions.length === 0" class="ui-empty volume-empty">
     <span class="ui-empty-icon"><Layers :size="24" /></span>
@@ -395,7 +392,6 @@ const { SYNTHETIC_MOUNT_KEY, syntheticRoot, busyPartitions, busyShares, pickerOp
 .synthetic-root-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 40px; }
 .synthetic-root-title { font-size: 13px; font-weight: 600; }
 .synthetic-root-row .mount-wrap { margin-left: auto; }
-.synthetic-root-hint { margin: 4px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
 
 /* Motion: the page parts rise one after another (ui-stagger on .overview),
    partition rows cascade and the disk map fills in from the left. */

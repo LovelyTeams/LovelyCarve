@@ -13,7 +13,6 @@
           <span class="ui-modal-icon"><Server :size="18" /></span>
           <div class="ui-modal-heading">
             <h2 id="raid-detect-title" class="ui-modal-title">{{ tr("RAID 自动检测") }}</h2>
-            <p class="ui-modal-subtitle">{{ tr("逐块放入成员盘，自动检测阵列；确认后再打开重组镜像") }}</p>
           </div>
           <button class="ui-icon-btn" :title="tr('重新检测')" :aria-label="tr('重新检测')" :disabled="detecting || members.length === 0" @click="emit('redetect')">
             <RefreshCw :size="16" :class="{ spin: detecting }" />
@@ -61,7 +60,7 @@
 
             <div v-else class="ui-empty pane-state">
               <span class="ui-empty-icon"><HardDrive :size="22" /></span>
-              <p class="ui-empty-desc">{{ tr("将镜像拖入此处，或点击下方添加成员盘。") }}</p>
+              <p class="ui-empty-desc">{{ tr("还没有成员盘") }}</p>
             </div>
 
             <button class="ui-btn block add-member-btn" :disabled="detecting || opening" @click="emit('add-members')">
@@ -78,7 +77,7 @@
 
             <div v-if="detecting" class="ui-empty pane-state">
               <span class="ui-empty-icon accent"><Loader2 :size="22" class="spin" /></span>
-              <p class="ui-empty-desc">{{ tr("正在扫描已放入成员盘与会话中的 LVM / mdadm 结构…") }}</p>
+              <p class="ui-empty-desc">{{ tr("正在检测阵列…") }}</p>
             </div>
 
             <div v-else-if="error" class="ui-empty pane-state error-state">
@@ -88,12 +87,12 @@
 
             <div v-else-if="members.length === 0" class="ui-empty pane-state">
               <span class="ui-empty-icon"><Search :size="22" /></span>
-              <p class="ui-empty-desc">{{ tr("放入成员盘后会自动检测。") }}</p>
+              <p class="ui-empty-desc">{{ tr("等待成员盘") }}</p>
             </div>
 
             <div v-else-if="relatedArrays.length === 0" class="ui-empty pane-state">
               <span class="ui-empty-icon"><CircleDashed :size="22" /></span>
-              <p class="ui-empty-desc">{{ tr("还没有匹配到完整阵列。可以继续添加下一块成员盘，或稍后在镜像信息页手动重组。") }}</p>
+              <p class="ui-empty-desc">{{ tr("未匹配到完整阵列") }}</p>
             </div>
 
             <div v-else class="array-list">

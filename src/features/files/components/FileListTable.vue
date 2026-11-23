@@ -226,13 +226,11 @@
     <div v-else-if="state === 'filtered'" class="ui-empty" role="status">
       <span class="ui-empty-icon"><FilterX :size="24" /></span>
       <p class="ui-empty-title">{{ tr("没有符合条件的条目") }}</p>
-      <p class="ui-empty-desc">{{ deepsearch ? tr("当前目录及所有子目录中没有文件符合关键词或筛选条件。") : tr("当前目录中的条目都被筛选条件隐藏了。") }}</p>
       <div class="ui-empty-actions"><button class="ui-btn" type="button" @click="emit('clearFilters')">{{ tr("清除筛选") }}</button></div>
     </div>
     <div v-else class="ui-empty" role="status">
       <span class="ui-empty-icon"><FolderOpen :size="24" /></span>
       <p class="ui-empty-title">{{ deepsearch ? tr("子目录中没有文件") : tr("空目录") }}</p>
-      <p class="ui-empty-desc">{{ deepsearch ? tr("当前目录及所有子目录中没有任何文件。") : tr("此目录中没有任何条目。") }}</p>
     </div>
   </div>
 </div>

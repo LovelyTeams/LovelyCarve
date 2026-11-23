@@ -13,7 +13,7 @@
       </FileDetailSection>
       <FileDetailSection :title="tr('事件内容')" wide>
         <p class="detail-block prose">{{ row.content || tr("（无摘要）") }}</p>
-        <p v-if="row.data_type === 3" class="detail-note detail-alert">{{ tr("日志来源：$Extend\\$UsnJrnl:$J。显示事件发生时的文件名与目录编号。") }}</p>
+        <p v-if="row.data_type === 3" class="detail-note detail-alert">{{ tr("日志来源：{0}", { 0: "$Extend\\$UsnJrnl:$J" }) }}</p>
       </FileDetailSection>
       <FileDetailSection :key="row.id" :title="tr('来源标识')" collapsible wide>
         <FileDetailFields :fields="[
