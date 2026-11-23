@@ -51,6 +51,7 @@
 
 ### Fixed
 
+- 分区签名恢复会继续检查残留引导标记后面的 ext 超级块，并核验 NTFS 的首个 `$MFT` 记录与 APFS 对象映射，避免把孤立标记或检查点当作卷。
 - 镜像缺少分区表时，打开检材可按文件系统签名找回完整的 NTFS、ext2/3/4 与 APFS 卷；操作系统及平台识别会逐个探测 APFS 容器内的卷。
 - 使用 Cargo 1.100 及更新版本时，带 OCR 的完整构建不再因 ONNX Runtime 构建脚本按旧目录层级拷贝 DLL 而失败；CUDA / TensorRT 执行提供者与 DirectML DLL 重新放在推理组件旁。
 - 锁定的案件在后端拒绝添加检材和删除卷索引：CLI 的 `evidence add` 不能再把新检材加入锁定案件，`index rm` 也被拒绝；全部锁定拒绝统一使用错误码 `caseLocked`。

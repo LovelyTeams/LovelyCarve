@@ -459,7 +459,7 @@ impl VolumeProbe for ApfsProbe {
     }
 
     fn probe(&self, ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeHit>> {
-        if apfs_size(ctx)?.is_none() {
+        if apfs_superblock(ctx)?.is_none() {
             return Ok(None);
         }
         Ok(Some(VolumeProbeHit::new(
@@ -472,7 +472,9 @@ impl VolumeProbe for ApfsProbe {
     }
 }
 
-pub(super) fn apfs_size(ctx: &DetectCtx<'_>) -> Result<Option<u64>> {
+pub(super) fn apfs_superblock(
+    ctx: &DetectCtx<'_>,
+) -> Result<Option<apfs::superblock::NxSuperblock>> {
     if !has_apfs_header(ctx.head) {
         return Ok(None);
     }
@@ -481,13 +483,16 @@ pub(super) fn apfs_size(ctx: &DetectCtx<'_>) -> Result<Option<u64>> {
     let Ok(superblock) = apfs::superblock::NxSuperblock::parse(&block) else {
         return Ok(None);
     };
-    if block.len() != size as usize || !apfs::fletcher::verify_object(&block) {
+    if block.len() != size as usize
+        || superblock.block_size != size
+        || superblock.header.object_type() != apfs::object::OBJECT_TYPE_NX_SUPERBLOCK
+        || !apfs::fletcher::verify_object(&block)
+        || superblock.block_count == 0
+        || superblock.block_count > ctx.size / u64::from(size)
+    {
         return Ok(None);
     }
-    Ok(superblock
-        .block_count
-        .checked_mul(u64::from(size))
-        .filter(|&length| length <= ctx.size))
+    Ok(Some(superblock))
 }
 
 impl VolumeProbe for SquashfsProbe {

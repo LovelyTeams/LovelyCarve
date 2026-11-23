@@ -31,7 +31,7 @@ LovelyCarve 继续使用 MIT 的 vendored `apfs` 0.4.1 与共享 `cmpfs`，不�
 | decmpfs 13/14、dataless | README 不支持 LZBitmap | 明确拒绝；dataless 不作为空文件导出 |
 | 原生快照 | README 标为不支持；源码可枚举元数据、打开 snapshot APSB，公开 snapshot API 只有名称/释放，未提供历史文件浏览 | `list_snapshots` 保留名称、XID、superblock block、create/change、flags 与 extent-reference 信息；**历史 catalog 浏览未实现**，不能用当前卷冒充历史版本 |
 | sealed / encryption rolling / incomplete restore | 未承诺完整支持 | 明确拒绝相应 incompatible bits；不以普通 catalog 解释 fext/sealed 树 |
-| 容器识别 | signature / fsapfsinfo | 独立 APFS 分区镜像、GPT/APM/MBR 细化和[签名恢复](README.md#缺失分区表)进入原生读者；NXSB 整块校验和与源几何验证；系统与平台识别逐卷探测 |
+| 容器识别 | signature / fsapfsinfo | 独立 APFS 分区镜像、GPT/APM/MBR 细化和[签名恢复](README.md#缺失分区表)进入原生读者；NXSB 整块校验和与源几何验证；签名恢复另行核对候选起点的相对物理对象映射；系统与平台识别逐卷探测 |
 | 取证工具/挂载 | fsapfsinfo / fsapfsmount、Python/C API | 复用 LovelyCarve 浏览、目录索引、哈希、导出与 CLI；Dokan 缓存未命中可使用直接范围读；此次未做真实 Dokan 挂载验证 |
 | 取消、资源与生命周期 | abort、C error/free | Rust `Result` / Drop；宿主任务取消和快照 PartialOutput；库目录 visitor 可停止；压缩文件仍整文件解码到内存，取消不保证能打断单次解码 |
 
