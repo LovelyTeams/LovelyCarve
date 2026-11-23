@@ -57,11 +57,13 @@ beforeEach(() => {
     records: ref([record, { ...record, recordId: 'no-source', sources: [] }]), recordsTotal: ref(2),
     columns: ref([column('username', '用户名'), column('size', '大小', { kind: 'size' }), column('shell', 'Shell', { hidden: true })]),
     properties: ref(null),
-    pageIndex: ref(0), pageCount: ref(1), keyword: ref(''), sort: ref(null), recordsLoading: ref(false), recordsError: ref(null),
+    pageIndex: ref(0), pageCount: ref(1), keyword: ref(''), filters: ref({}), sort: ref(null), recordsLoading: ref(false), recordsError: ref(null),
+    columnValues: ref(null), columnValuesLoading: ref(false), columnValuesError: ref(null),
     detail: ref(record), detailColumns: ref([column('username', '用户名'), column('shell', 'Shell', { hidden: true })]),
     detailLoading: ref(false), detailError: ref(null), selectedRecordId: ref('1'),
     audit: ref(null), auditLoading: ref(false), auditError: ref(null),
     openRecord, setImageId: vi.fn(), ensureFresh: vi.fn(), exportRecords: state.exportRecords, toggleSort: state.toggleSort,
+    applyColumnFilter: vi.fn(), clearColumnFilter: vi.fn(), clearFilters: vi.fn(), loadColumnValues: vi.fn(),
     selectNode: vi.fn(), retryAudit: vi.fn(), retryRecords: vi.fn(), closeDetail: vi.fn(), goToPage: vi.fn(), applyKeyword: vi.fn(), reload: vi.fn(),
   };
   host = document.createElement('div'); document.body.append(host);
@@ -341,5 +343,26 @@ describe('analysis run overview', () => {
     const action = [...host.querySelectorAll<HTMLButtonElement>('.table-scroll .ui-empty-actions button')].find(button => button.textContent?.includes('查看运行信息'))!;
     action.click();
     expect(state.results.selectNode).toHaveBeenCalledWith(run);
+  });
+
+  it('opens column filter popover from header funnel and toggles values', async () => {
+    (state.results.columnValues as ReturnType<typeof ref>).value = { total: 2, truncated: false, values: [{ value: 'root', count: 1 }, { value: null, count: 1 }] };
+    await nextTick();
+    host.querySelectorAll<HTMLButtonElement>('thead .head-funnel')[0].click();
+    await nextTick();
+    expect(state.results.loadColumnValues).toHaveBeenCalledWith('username');
+    const dialog = document.body.querySelector<HTMLElement>('.record-filter-popover')!;
+    expect(dialog).toBeTruthy();
+    const checks = [...dialog.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+    checks[0].checked = true;
+    checks[0].dispatchEvent(new Event('change'));
+    expect(state.results.applyColumnFilter).toHaveBeenCalledWith('username', ['root']);
+
+    (state.results.filters as ReturnType<typeof ref>).value = { username: ['root'] };
+    await nextTick();
+    const chip = host.querySelector<HTMLButtonElement>('.filter-chip')!;
+    expect(chip.textContent).toContain('筛选 1 列');
+    chip.click();
+    expect(state.results.clearFilters).toHaveBeenCalledOnce();
   });
 });

@@ -214,7 +214,7 @@ RAID 检测（`evidence/raid`）分七步：读取各检材的 LVM PV 并物化�
   插件市场 `plugin_market_sources`/`set_sources`/`list`/`download`/`download_official`/`release`/`index`；
   `sched_task_functions`、`sched_systems_list`、`sched_task_create`、
   `sched_task_cancel`/`start`/`restart`/`remove`、`sched_evidence_post_actions_set`；
-  `analysis_result_tree`、`analysis_records_page`、`analysis_record_detail`、`analysis_run_get`
+  `analysis_result_tree`、`analysis_records_page`、`analysis_record_values`、`analysis_record_detail`、`analysis_run_get`
 - 任务中心：`task_list`、`task_status`、`task_cancel`
 - 系统辅助：模块摘要、路径信息与在文件管理器中显示、二维码、OCR、OS 检测、Windows 盘符识别
 - 全局搜索、时间线、加密卷与 iOS 备份解锁、卷影副本、BCP、标签与派生数据等其余命令见[功能与 IPC 对照](#功能与-ipc-对照)
@@ -583,6 +583,9 @@ PostActionWatcher 按检材登记创建/完成计数（案件打开时从台账�
   插件声明，按插件语言包翻译。旧版本 `analysis.db` 的结果（`legacy_query.rs`）以「旧版」节点并列。
 - 中部记录表格（`analysis_records_page`）：按记录类型服务端分页（每页 100），列与字段类型来自记录结构，
   点击列头按列排序（时间戳按换算后的时刻），关键词检索标题与文本类列；分页固定结果树节点的 `runId`。
+  列头的漏斗按值筛选（`AnalysisColumnFilterPopover.vue`）：清单来自 `analysis_record_values`，即该列在关键词与
+  其他列筛选下的去重值与记录数；勾选的值作为 `filters`（每列 `{ column, values }`，同列为或、跨列为且，空串匹配
+  空单元格）交给 `analysis_records_page` 在 SQL 中过滤。列表与 JSON 列的单元格是解析后的值，不提供筛选。
   导出 CSV 复用启动时的 run、排序与过滤条件，逐页读取全部记录并写原始值；结果数量或所属 run 变化、
   提前读到空页时停止并提示重试。
 - 右侧详情（`analysis_record_detail`）：全部字段（含只在详情显示的字段）与来源，「定位源文件」按卷键与

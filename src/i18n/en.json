@@ -2603,5 +2603,18 @@
   "恢复的行": "Recovered lines",
   "高亮关键词": "Highlight keyword",
   "复制恢复的行": "Copy recovered lines",
-  "没有恢复出文本行": "No lines recovered"
+  "没有恢复出文本行": "No lines recovered",
+  "关闭筛选": "Close filter",
+  "正在读取…": "Reading…",
+  "(空)": "(empty)",
+  "搜索值…": "Search values…",
+  "搜索值": "Search values",
+  "筛选 {0} 列": "{0} columns filtered",
+  "筛选「{0}」": "Filter \"{0}\"",
+  "筛选「{0}」：{1}": "Filter \"{0}\": {1}",
+  "值读取失败：{0}": "Failed to load values: {0}",
+  "没有可筛选的值": "No values to filter",
+  "没有匹配的值": "No matching values",
+  "值过多，仅列出前 {0} 项": "Too many values; showing the first {0}",
+  "{0} 条匹配": "{0} matching"
 }

@@ -226,8 +226,10 @@ Each entry is a command's synopsis and its description. Positional arguments com
   创建插件任务：系统级分析器给 --system，文件级分析器给 --file
 - `results ls`
   分析结果树：检材 → 分类 → 分析器运行 → 记录类型（默认）
-- `results rows <运行ID> <记录类型> [--evidence <别名>] [--keyword <文本>] [--sort <列>] [--desc] [--offset <offset>] [--limit <limit>] [--legacy] [--bcp-app <编码>…] [--bcp-account <账号>]`
+- `results rows <运行ID> <记录类型> [--evidence <别名>] [--keyword <文本>] [--filter <列=值>…] [--sort <列>] [--desc] [--offset <offset>] [--limit <limit>] [--legacy] [--bcp-app <编码>…] [--bcp-account <账号>]`
   分页读取一次运行中某种记录
+- `results facets <运行ID> <记录类型> <列> [--evidence <别名>] [--keyword <文本>] [--filter <列=值>…] [--limit <limit>] [--legacy] [--bcp-app <编码>…] [--bcp-account <账号>]`
+  列出记录列的去重值与出现次数
 - `results show <记录ID> [--evidence <别名>]`
   一条记录的详情
 - `results run <运行ID> [--evidence <别名>]`

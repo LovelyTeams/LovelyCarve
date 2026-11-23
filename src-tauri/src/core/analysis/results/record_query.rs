@@ -6,7 +6,7 @@ use std::{collections::BTreeMap, path::Path};
 
 use lovelycarve_plugin::schema::{FieldKind, RecordSchema};
 use rusqlite::{Connection, OptionalExtension, ToSql};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::core::{
     analysis::results::{
@@ -185,12 +185,23 @@ pub struct StoredRecord {
     pub sources: Vec<RecordSource>,
 }
 
+/// One column's checked values (`""` stands for the empty cells); a record
+/// matches when its cell is any of them.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnFilter {
+    pub column: String,
+    pub values: Vec<String>,
+}
+
 /// A page of one record type of one run.
 pub struct RecordsQuery<'a> {
     pub run_id: &'a str,
     pub record_type: &'a str,
     /// Matches the title and every text-like column.
     pub keyword: Option<&'a str>,
+    /// Per-column checked values; a record must match all of them.
+    pub filters: &'a [ColumnFilter],
     pub bcp_scope: Option<&'a BcpRecordScope>,
     /// A field id, or `title`; emission order when absent.
     pub sort: Option<&'a str>,
@@ -213,15 +224,8 @@ pub fn records_page(
     connection: &Connection,
     query: &RecordsQuery<'_>,
 ) -> anyhow::Result<RecordsPage> {
-    let type_id: Option<i64> = connection
-        .query_row(
-            "SELECT t.type_id FROM run_type u JOIN record_type t ON t.type_id = u.type_id
-             WHERE u.run_id = ?1 AND t.record_type = ?2",
-            rusqlite::params![query.run_id, query.record_type],
-            |row| row.get(0),
-        )
-        .optional()?;
-    let Some(type_id) = type_id else {
+    let Some((schema, type_id)) = registered_type(connection, query.run_id, query.record_type)?
+    else {
         return Ok(RecordsPage {
             total: 0,
             columns: Vec::new(),
@@ -229,29 +233,17 @@ pub fn records_page(
             items: Vec::new(),
         });
     };
-    let schema = registered_schema(connection, type_id)?
-        .ok_or_else(|| anyhow::anyhow!("record type {type_id} is not registered"))?;
     let table = table_name(type_id);
-    let mut filter = String::new();
     let mut parameters: Vec<Box<dyn ToSql>> =
         vec![Box::new(query.run_id.to_owned()), Box::new(type_id)];
-    if let Some(keyword) = query
-        .keyword
-        .map(str::trim)
-        .filter(|keyword| !keyword.is_empty())
-    {
-        let mut alternatives = vec!["r.title LIKE ?3 ESCAPE '\\'".to_owned()];
-        for (index, field) in schema.fields.iter().enumerate() {
-            if text_column(field.kind) {
-                alternatives.push(format!("t.{} LIKE ?3 ESCAPE '\\'", value_column(index)));
-            }
-        }
-        filter = format!(" AND ({})", alternatives.join(" OR "));
-        parameters.push(Box::new(format!("%{}%", escape_like(keyword))));
-    }
-    if let Some(scope) = query.bcp_scope {
-        bcp_groups::append_scope(&schema, scope, &mut filter, &mut parameters)?;
-    }
+    let filter = record_filter(
+        &schema,
+        query.keyword,
+        query.bcp_scope,
+        query.filters,
+        None,
+        &mut parameters,
+    )?;
     let order = match query.sort {
         Some("title") => "r.title".to_owned(),
         Some(field) => schema
@@ -295,6 +287,254 @@ pub fn records_page(
         columns: columns(&schema),
         properties: schema.properties.clone(),
         items,
+    })
+}
+
+/// The registered schema and table id of one run's record type.
+fn registered_type(
+    connection: &Connection,
+    run_id: &str,
+    record_type: &str,
+) -> anyhow::Result<Option<(RecordSchema, i64)>> {
+    let type_id: Option<i64> = connection
+        .query_row(
+            "SELECT t.type_id FROM run_type u JOIN record_type t ON t.type_id = u.type_id
+             WHERE u.run_id = ?1 AND t.record_type = ?2",
+            rusqlite::params![run_id, record_type],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(type_id) = type_id else {
+        return Ok(None);
+    };
+    registered_schema(connection, type_id)?
+        .map(|schema| Some((schema, type_id)))
+        .ok_or_else(|| anyhow::anyhow!("record type {type_id} is not registered"))
+}
+
+/// The `AND`-chained predicates after `r.type_id = ?2`: the keyword across
+/// the title and text-like columns, any active BCP scope, then every column
+/// filter except `except` (the facet query excludes its own column). Appends
+/// bound parameters in the exact SQLite placeholder order (`?3+`).
+fn record_filter(
+    schema: &RecordSchema,
+    keyword: Option<&str>,
+    bcp_scope: Option<&BcpRecordScope>,
+    filters: &[ColumnFilter],
+    except: Option<&str>,
+    parameters: &mut Vec<Box<dyn ToSql>>,
+) -> anyhow::Result<String> {
+    let mut filter = String::new();
+    if let Some(keyword) = keyword.map(str::trim).filter(|keyword| !keyword.is_empty()) {
+        let mut alternatives = vec![format!(
+            "r.title LIKE ?{} ESCAPE '\\'",
+            parameters.len() + 1
+        )];
+        for (index, field) in schema.fields.iter().enumerate() {
+            if text_column(field.kind) {
+                alternatives.push(format!(
+                    "t.{} LIKE ?{} ESCAPE '\\'",
+                    value_column(index),
+                    parameters.len() + 1
+                ));
+            }
+        }
+        filter.push_str(&format!(" AND ({})", alternatives.join(" OR ")));
+        parameters.push(Box::new(format!("%{}%", escape_like(keyword))));
+    }
+    if let Some(scope) = bcp_scope {
+        bcp_groups::append_scope(schema, scope, &mut filter, parameters)?;
+    }
+    for item in filters {
+        if except.is_some_and(|column| item.column == column) {
+            continue;
+        }
+        if let Some(predicate) = column_predicate(schema, item, parameters) {
+            filter.push_str(&format!(" AND ({predicate})"));
+        }
+    }
+    Ok(filter)
+}
+
+/// Whether checked values can filter a column: every kind but lists and
+/// JSON, whose cells reach the UI parsed rather than as stored.
+pub fn filterable(kind: FieldKind) -> bool {
+    match kind {
+        FieldKind::List | FieldKind::Json => false,
+        FieldKind::Text
+        | FieldKind::Timestamp
+        | FieldKind::Path
+        | FieldKind::Hash
+        | FieldKind::Ip
+        | FieldKind::Enum
+        | FieldKind::Int
+        | FieldKind::Float
+        | FieldKind::Bool
+        | FieldKind::Size
+        | FieldKind::Duration => true,
+    }
+}
+
+/// One column filter as SQL: the checked values OR'ed together. `""` matches
+/// the empty cells (`IS NULL`, plus the empty string on text columns).
+/// Unknown or unfilterable columns, and values that do not parse for a
+/// numeric column, drop out of the condition — they can only come from a UI
+/// left open across a schema change, not from what the facet listed.
+fn column_predicate(
+    schema: &RecordSchema,
+    filter: &ColumnFilter,
+    parameters: &mut Vec<Box<dyn ToSql>>,
+) -> Option<String> {
+    let index = schema.field_index(&filter.column)?;
+    let kind = schema.fields[index].kind;
+    if !filterable(kind) {
+        return None;
+    }
+    let column = value_column(index);
+    let mut values: Vec<Box<dyn ToSql>> = Vec::new();
+    for value in filter.values.iter().filter(|value| !value.is_empty()) {
+        let literal = value.trim();
+        let bound: Option<Box<dyn ToSql>> = match kind {
+            FieldKind::Int | FieldKind::Size => literal
+                .parse::<i64>()
+                .ok()
+                .map(|number| Box::new(number) as Box<dyn ToSql>),
+            FieldKind::Float | FieldKind::Duration => literal
+                .parse::<f64>()
+                .ok()
+                .map(|number| Box::new(number) as Box<dyn ToSql>),
+            FieldKind::Bool => match literal.to_ascii_lowercase().as_str() {
+                "true" | "1" => Some(Box::new(1_i64)),
+                "false" | "0" => Some(Box::new(0_i64)),
+                _ => None,
+            },
+            FieldKind::Text
+            | FieldKind::Timestamp
+            | FieldKind::Path
+            | FieldKind::Hash
+            | FieldKind::Ip
+            | FieldKind::Enum
+            | FieldKind::List
+            | FieldKind::Json => Some(Box::new(value.clone())),
+        };
+        values.extend(bound);
+    }
+    let mut alternatives = Vec::new();
+    if filter.values.iter().any(String::is_empty) {
+        alternatives.push(if text_column(kind) {
+            format!("(t.{column} IS NULL OR t.{column} = '')")
+        } else {
+            format!("t.{column} IS NULL")
+        });
+    }
+    if !values.is_empty() {
+        let first = parameters.len() + 1;
+        let placeholders = (first..first + values.len())
+            .map(|position| format!("?{position}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        parameters.extend(values);
+        alternatives.push(format!("t.{column} IN ({placeholders})"));
+    }
+    (!alternatives.is_empty()).then(|| alternatives.join(" OR "))
+}
+
+/// One column's distinct values with their record counts (the filter
+/// checklist's options), computed under the keyword and every other column's
+/// filter. Ordered by count, then value; `truncated` when more exist.
+pub struct ColumnValuesQuery<'a> {
+    pub run_id: &'a str,
+    pub record_type: &'a str,
+    pub keyword: Option<&'a str>,
+    pub bcp_scope: Option<&'a BcpRecordScope>,
+    pub column: &'a str,
+    pub filters: &'a [ColumnFilter],
+    /// Most distinct values one facet lists.
+    pub limit: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnValueCount {
+    /// The value as the UI shows it; `null` for the empty cells.
+    pub value: serde_json::Value,
+    pub count: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnValues {
+    pub total: u64,
+    pub truncated: bool,
+    pub values: Vec<ColumnValueCount>,
+}
+
+/// Distinct values of one column (see [`ColumnValuesQuery`]). An unknown run,
+/// type or column, or one that cannot be filtered, yields an empty facet.
+pub fn column_values(
+    connection: &Connection,
+    query: &ColumnValuesQuery<'_>,
+) -> anyhow::Result<ColumnValues> {
+    let empty = ColumnValues {
+        total: 0,
+        truncated: false,
+        values: Vec::new(),
+    };
+    let Some((schema, type_id)) = registered_type(connection, query.run_id, query.record_type)?
+    else {
+        return Ok(empty);
+    };
+    let Some(index) = schema
+        .field_index(query.column)
+        .filter(|&index| filterable(schema.fields[index].kind))
+    else {
+        return Ok(empty);
+    };
+    let column = value_column(index);
+    let kind = schema.fields[index].kind;
+    let mut parameters: Vec<Box<dyn ToSql>> =
+        vec![Box::new(query.run_id.to_owned()), Box::new(type_id)];
+    let filter = record_filter(
+        &schema,
+        query.keyword,
+        query.bcp_scope,
+        query.filters,
+        Some(query.column),
+        &mut parameters,
+    )?;
+    let source = format!(
+        "FROM record r JOIN {} t ON t.record_id = r.record_id
+         WHERE r.run_id = ?1 AND r.type_id = ?2{filter}",
+        table_name(type_id)
+    );
+    let parameter_refs: Vec<&dyn ToSql> = parameters.iter().map(AsRef::as_ref).collect();
+    let total: i64 = connection.query_row(
+        &format!("SELECT COUNT(*) {source}"),
+        parameter_refs.as_slice(),
+        |row| row.get(0),
+    )?;
+    let limit = query.limit.clamp(1, MAX_PAGE_LIMIT);
+    let mut statement = connection.prepare(&format!(
+        "SELECT t.{column}, COUNT(*) {source}
+         GROUP BY t.{column}
+         ORDER BY COUNT(*) DESC, t.{column} ASC
+         LIMIT {}",
+        limit + 1
+    ))?;
+    let mut values = statement
+        .query_map(parameter_refs.as_slice(), |row| {
+            Ok(ColumnValueCount {
+                value: column_json(kind, row, 0)?,
+                count: count(row.get(1)?),
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    let truncated = values.len() > limit as usize;
+    values.truncate(limit as usize);
+    Ok(ColumnValues {
+        total: count(total),
+        truncated,
+        values,
     })
 }
 

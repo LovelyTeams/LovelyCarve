@@ -126,6 +126,7 @@ async fn main() -> anyhow::Result<()> {
                     record_type: &record_type.schema.record_type,
                     bcp_scope: None,
                     keyword: None,
+                    filters: &[],
                     sort: None,
                     descending: false,
                     skip,

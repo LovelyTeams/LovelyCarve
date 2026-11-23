@@ -201,6 +201,12 @@ export function importBcpAnalysis(imageId: ImageId): Promise<{ runId: string; re
   return invokeCmd('bcp_import', { imageId });
 }
 
+/** 一列勾选的值:单元格等于其中任一个即匹配,空串表示空单元格。镜像 Rust `ColumnFilter`。 */
+export interface AnalysisColumnFilter {
+  column: string;
+  values: string[];
+}
+
 /** 按选中结果项的 runId 服务端分页读取一种记录,翻页期间不切换运行。 */
 export function analysisRecordsPage(args: {
   imageId: ImageId;
@@ -208,6 +214,8 @@ export function analysisRecordsPage(args: {
   recordType: string;
   legacy: boolean;
   keyword?: string;
+  /** 列值筛选:同列内或,跨列且。 */
+  filters?: AnalysisColumnFilter[];
   bcpScope?: BcpRecordScope;
   /** 列 id,或 `title`。 */
   sort?: string;
@@ -221,11 +229,53 @@ export function analysisRecordsPage(args: {
     recordType: args.recordType,
     legacy: args.legacy,
     keyword: args.keyword ?? null,
+    filters: args.filters ?? null,
     ...(args.bcpScope ? { bcpScope: args.bcpScope } : {}),
     sort: args.sort ?? null,
     descending: args.descending ?? false,
     skip: args.skip,
     limit: args.limit,
+  });
+}
+
+/** 一列的去重值与计数(筛选清单的候选),按关键词与其它列的筛选计算。 */
+export interface AnalysisRecordValueCount {
+  /** 值本身(字符串/数字/布尔/null,与表格单元格同口径);null 为空单元格。 */
+  value: unknown;
+  count: number;
+}
+
+/** 一列的去重值统计。 */
+export interface AnalysisRecordValues {
+  total: number;
+  /** 去重值多于返回的条数。 */
+  truncated: boolean;
+  values: AnalysisRecordValueCount[];
+}
+
+/** 统计一列的去重值(筛选清单的数据源)。 */
+export function analysisRecordValues(args: {
+  imageId: ImageId;
+  runId: string;
+  recordType: string;
+  legacy: boolean;
+  keyword?: string;
+  bcpScope?: BcpRecordScope;
+  column: string;
+  /** 已生效的列值筛选(同 recordsPage 口径);本列自己的筛选不参与统计。 */
+  filters?: AnalysisColumnFilter[];
+  limit?: number;
+}): Promise<AnalysisRecordValues> {
+  return invokeCmd<AnalysisRecordValues>('analysis_record_values', {
+    imageId: args.imageId,
+    runId: args.runId,
+    recordType: args.recordType,
+    legacy: args.legacy,
+    keyword: args.keyword ?? null,
+    ...(args.bcpScope ? { bcpScope: args.bcpScope } : {}),
+    column: args.column,
+    filters: args.filters ?? null,
+    limit: args.limit ?? null,
   });
 }
 

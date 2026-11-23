@@ -188,6 +188,7 @@ fn application_builder() -> tauri::Builder<tauri::Wry> {
             commands::extensions::plugin_market::plugin_market_index,
             commands::analysis::analysis_results::analysis_result_tree,
             commands::analysis::analysis_results::analysis_records_page,
+            commands::analysis::analysis_results::analysis_record_values,
             commands::analysis::analysis_results::analysis_record_detail,
             commands::analysis::analysis_results::analysis_run_get,
             commands::extensions::task_scheduler::sched_task_functions,

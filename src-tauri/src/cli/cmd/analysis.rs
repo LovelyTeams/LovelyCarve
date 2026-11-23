@@ -13,7 +13,7 @@ use crate::{
         types::{options_object, parse_address, parse_json_text, Address},
         CliError, Output,
     },
-    core::common::ids::NodeId,
+    core::{analysis::results::record_query::ColumnFilter, common::ids::NodeId},
 };
 
 #[derive(Args, Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +77,8 @@ pub enum ResultsCommand {
     Ls,
     /// 分页读取一次运行中某种记录
     Rows(RowsArgs),
+    /// 列出记录列的去重值与出现次数
+    Facets(FacetsArgs),
     /// 一条记录的详情
     Show(RecordArgs),
     /// 一次运行的审计：输入、选项、画像事实、告警与补零的源字节
@@ -100,6 +102,9 @@ pub struct RowsArgs {
     /// 关键词：匹配标题与文本类列（ASCII 不区分大小写）
     #[arg(long, value_name = "文本")]
     pub keyword: Option<String>,
+    /// 列值筛选（列id=值，可重复；同列或、跨列且；空串匹配空单元格）
+    #[arg(long = "filter", value_name = "列=值")]
+    pub filters: Vec<String>,
     /// 排序列：列 id 或标题
     #[arg(long, value_name = "列")]
     pub sort: Option<String>,
@@ -111,6 +116,41 @@ pub struct RowsArgs {
     pub offset: i64,
     /// 每页记录数
     #[arg(long, default_value_t = 100)]
+    pub limit: i64,
+    /// 读取旧版本插件的结果（结果树中 legacy 为 true 时）
+    #[arg(long)]
+    pub legacy: bool,
+    /// BCP：只看这些原始应用编码（可重复）
+    #[arg(long = "bcp-app", value_name = "编码")]
+    pub bcp_apps: Vec<String>,
+    /// BCP：只看这个账号；空字符串表示无账号的记录
+    #[arg(long, value_name = "账号")]
+    pub bcp_account: Option<String>,
+}
+
+#[derive(Args, Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FacetsArgs {
+    /// 运行 ID（results ls 中的 runId）
+    #[arg(value_name = "运行ID")]
+    pub run_id: String,
+    /// 记录类型（results ls 中的 artifactType，如 chat.msg）
+    #[arg(value_name = "记录类型")]
+    pub record_type: String,
+    /// 要统计的列 id（分析结果列定义中的 id）
+    #[arg(value_name = "列")]
+    pub column: String,
+    /// 检材别名；只有一份检材时可省略
+    #[arg(long, value_name = "别名")]
+    pub evidence: Option<String>,
+    /// 关键词：与 results rows 同一口径，先过滤再统计
+    #[arg(long, value_name = "文本")]
+    pub keyword: Option<String>,
+    /// 已生效的列值筛选（列id=值，可重复；统计本列时自动排除自身条件）
+    #[arg(long = "filter", value_name = "列=值")]
+    pub filters: Vec<String>,
+    /// 最多返回的去重值个数（默认 200）
+    #[arg(long, default_value_t = 200)]
     pub limit: i64,
     /// 读取旧版本插件的结果（结果树中 legacy 为 true 时）
     #[arg(long)]
@@ -167,6 +207,7 @@ pub fn results_path(args: &ResultsArgs) -> &'static str {
     match &args.command {
         None | Some(ResultsCommand::Ls) => "results ls",
         Some(ResultsCommand::Rows(_)) => "results rows",
+        Some(ResultsCommand::Facets(_)) => "results facets",
         Some(ResultsCommand::Show(_)) => "results show",
         Some(ResultsCommand::Run(_)) => "results run",
         Some(ResultsCommand::Import(_)) => "results import",
@@ -237,6 +278,45 @@ pub async fn analyze(exec: &Exec, args: AnalyzeArgs) -> Result<Output, CliError>
     }
 }
 
+/// `--filter 列=值` options as per-column filters: each column's values in
+/// the order given (an empty value is the empty cells), the value split at the
+/// first `=`.
+fn column_filters(entries: &[String]) -> Result<Option<Vec<ColumnFilter>>, CliError> {
+    let mut filters: Vec<ColumnFilter> = Vec::new();
+    for entry in entries {
+        let Some((column, value)) = entry
+            .split_once('=')
+            .filter(|(column, _)| !column.is_empty())
+        else {
+            return Err(CliError::new(
+                "usage",
+                format!("--filter 应写作 列=值：{entry}"),
+            ));
+        };
+        match filters.iter_mut().find(|filter| filter.column == column) {
+            Some(filter) if filter.values.iter().any(|item| item == value) => {}
+            Some(filter) => filter.values.push(value.to_owned()),
+            None => filters.push(ColumnFilter {
+                column: column.to_owned(),
+                values: vec![value.to_owned()],
+            }),
+        }
+    }
+    Ok((!filters.is_empty()).then_some(filters))
+}
+
+fn bcp_scope_from_args(
+    apps: &[String],
+    account: Option<&str>,
+) -> Result<Option<crate::core::analysis::results::models::BcpRecordScope>, CliError> {
+    if apps.is_empty() && account.is_none() {
+        return Ok(None);
+    }
+    Ok(Some(serde_json::from_value(
+        json!({"applications": apps, "account": account}),
+    )?))
+}
+
 pub async fn results(exec: &Exec, args: ResultsArgs) -> Result<Output, CliError> {
     use crate::commands::analysis::{analysis_results, bcp};
     match args.command.unwrap_or(ResultsCommand::Ls) {
@@ -247,13 +327,7 @@ pub async fn results(exec: &Exec, args: ResultsArgs) -> Result<Output, CliError>
         ),
         ResultsCommand::Rows(rows) => {
             let evidence = exec.resolve_default(rows.evidence.as_deref()).await?;
-            let scope = (!rows.bcp_apps.is_empty() || rows.bcp_account.is_some())
-                .then(|| {
-                    serde_json::from_value(
-                        json!({"applications": rows.bcp_apps, "account": rows.bcp_account}),
-                    )
-                })
-                .transpose()?;
+            let scope = bcp_scope_from_args(&rows.bcp_apps, rows.bcp_account.as_deref())?;
             crate::cli::json_output(
                 analysis_results::analysis_records_page(
                     exec.state(),
@@ -262,6 +336,7 @@ pub async fn results(exec: &Exec, args: ResultsArgs) -> Result<Output, CliError>
                     rows.record_type,
                     Some(rows.legacy),
                     rows.keyword,
+                    column_filters(&rows.filters)?,
                     scope,
                     rows.sort,
                     Some(rows.desc),
@@ -270,6 +345,26 @@ pub async fn results(exec: &Exec, args: ResultsArgs) -> Result<Output, CliError>
                 )
                 .await
                 .map_err(operation("analysis_records_page"))?,
+            )
+        }
+        ResultsCommand::Facets(facets) => {
+            let evidence = exec.resolve_default(facets.evidence.as_deref()).await?;
+            let scope = bcp_scope_from_args(&facets.bcp_apps, facets.bcp_account.as_deref())?;
+            crate::cli::json_output(
+                analysis_results::analysis_record_values(
+                    exec.state(),
+                    evidence.image_id,
+                    facets.run_id,
+                    facets.record_type,
+                    Some(facets.legacy),
+                    facets.keyword,
+                    scope,
+                    facets.column,
+                    column_filters(&facets.filters)?,
+                    Some(facets.limit.clamp(1, 500)),
+                )
+                .await
+                .map_err(operation("analysis_record_values"))?,
             )
         }
         ResultsCommand::Show(record) => {

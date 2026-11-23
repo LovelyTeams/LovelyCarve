@@ -313,7 +313,8 @@ lovelycarve-cli -C "D:\cases\usb" carve export "<扫描ID>" -o "D:\output\recove
 | `analyze ls [--evidence 别名]` | 分析器（作用域、平台与选项）及检材上识别出的系统（ID 如 `linux@part:2`） |
 | `analyze run <分析器> [--system 系统ID] [--file 地址] [--option 键=值]… [--options-json JSON]` | 创建插件任务：系统级给 `--system`，文件级给 `--file`，检材级都不给；选项值是 JSON 时保持类型，省略的取默认值 |
 | `results ls` | 结果树：检材 → 分类 → 分析器运行 → 记录类型，带 `runId` |
-| `results rows <运行ID> <记录类型> [--keyword] [--sort 列] [--desc] [--offset] [--limit] [--legacy]` | 分页读取记录；同一次分页固定 runId，新任务完成不会切换 |
+| `results rows <运行ID> <记录类型> [--keyword] [--filter 列=值]… [--sort 列] [--desc] [--offset] [--limit] [--legacy]` | 分页读取记录；同一次分页固定 runId，新任务完成不会切换。`--filter` 可重复：同一列的值之间为或，不同列之间为且，`列=` 匹配空单元格；列表与 JSON 列不参与 |
+| `results facets <运行ID> <记录类型> <列> [--keyword] [--filter 列=值]… [--limit]` | 一列的去重值与记录数（按数量降序，默认最多 200 个），在关键词与其他列的筛选下统计 |
 | `results show <记录ID>` / `results run <运行ID>` | 单条记录 / 一次运行的输入、选项、画像事实、告警与补零的源字节 |
 | `results import [别名] [--replace]` | 把 BCP 数据包发布为分析结果 |
 

@@ -3,7 +3,9 @@ use lovelycarve_plugin::{
 };
 
 use super::*;
-use crate::core::analysis::results::record_query::{self, RecordsQuery};
+use crate::core::analysis::results::record_query::{
+    self, ColumnFilter, ColumnValuesQuery, RecordsQuery,
+};
 
 fn user_schema() -> RecordSchema {
     RecordSchema::new("test.user", "用户")
@@ -82,11 +84,19 @@ fn page<'a>(run_id: &'a str, sort: Option<&'a str>, keyword: Option<&'a str>) ->
         run_id,
         record_type: "test.user",
         keyword,
+        filters: &[],
         bcp_scope: None,
         sort,
         descending: false,
         skip: 0,
         limit: 100,
+    }
+}
+
+fn filter(column: &str, values: &[&str]) -> ColumnFilter {
+    ColumnFilter {
+        column: column.to_owned(),
+        values: values.iter().map(|value| value.to_string()).collect(),
     }
 }
 
@@ -131,6 +141,114 @@ fn property_layout_survives_stored_result_queries() {
     .expect("page");
     assert_eq!(result.properties, Some(layout));
     assert_eq!(result.items[0].values["value"], "evidence-host");
+}
+
+/// 列筛选与去重值统计:文本/数值/布尔列按勾选值过滤,空值匹配 NULL 与空串,
+/// 组合跨列相且;facet 在关键词与其它列筛选下统计、排除自身列、可截断。
+#[test]
+fn column_filters_and_value_facets() {
+    let directory = tempfile::tempdir().expect("case");
+    begin(directory.path(), "filters", "org.test/users#linux@part:1");
+    let mut writer =
+        RecordWriter::open(directory.path(), "image", "filters", &[user_schema()]).expect("writer");
+    writer
+        .insert_batch(&[
+            user("root", 0, Some("2026-01-01T08:00:00Z")),
+            user("daemon", 1, None),
+            user("alice", 1000, Some("2026-01-02T09:30:00Z")),
+            user("bob", 1001, None),
+        ])
+        .expect("insert");
+    drop(writer);
+    publish(
+        directory.path(),
+        "image",
+        "filters",
+        &completion(&ReadFaultReport::default()),
+    )
+    .expect("publish");
+    let connection = record_query::open(directory.path(), "image")
+        .expect("open")
+        .expect("database");
+    let page_with = |filters: &[ColumnFilter], keyword: Option<&str>| {
+        record_query::records_page(
+            &connection,
+            &RecordsQuery {
+                filters,
+                ..page("filters", None, keyword)
+            },
+        )
+        .expect("page")
+    };
+
+    // 文本列:勾选值内匹配。
+    let names = page_with(&[filter("name", &["root", "alice"])], None);
+    assert_eq!(names.total, 2);
+    // 数值列按数值比较;布尔列接受 true/false。
+    assert_eq!(page_with(&[filter("uid", &["0", "1"])], None).total, 2);
+    assert_eq!(page_with(&[filter("admin", &["true"])], None).total, 1);
+    assert_eq!(page_with(&[filter("admin", &["false"])], None).total, 3);
+    // 数值列的空值只匹配 NULL;文本/时间列连空串一起算。
+    assert_eq!(page_with(&[filter("uid", &[""])], None).total, 0);
+    assert_eq!(page_with(&[filter("login", &[""])], None).total, 2);
+    // 不同列相且,关键词再过滤。
+    let combo = page_with(
+        &[
+            filter("name", &["root", "alice", "bob"]),
+            filter("uid", &["1001"]),
+        ],
+        None,
+    );
+    assert_eq!(combo.total, 1);
+    assert_eq!(combo.items[0].values["name"], "bob");
+    assert_eq!(page_with(&[filter("uid", &["0"])], Some("root")).total, 1);
+    assert_eq!(page_with(&[filter("uid", &["0"])], Some("bob")).total, 0);
+    // 未知列与解析不了的数值整体忽略该列条件,而不是报错或选出空集。
+    assert_eq!(page_with(&[filter("nope", &["x"])], None).total, 4);
+    assert_eq!(page_with(&[filter("uid", &["abc"])], None).total, 4);
+    // 列表与 JSON 列的单元格是解析后的值,无法按值匹配:不参与筛选。
+    assert_eq!(page_with(&[filter("groups", &["wheel"])], None).total, 4);
+
+    let facet = |column: &str, filters: &[ColumnFilter], limit: i64| {
+        record_query::column_values(
+            &connection,
+            &ColumnValuesQuery {
+                run_id: "filters",
+                record_type: "test.user",
+                keyword: None,
+                bcp_scope: None,
+                column,
+                filters,
+                limit,
+            },
+        )
+        .expect("facet")
+    };
+    // 按计数降序,布尔值以 JSON 形式返回。
+    let admins = facet("admin", &[], 10);
+    assert_eq!(admins.total, 4);
+    assert!(!admins.truncated);
+    assert_eq!(admins.values[0].value, serde_json::json!(false));
+    assert_eq!(admins.values[0].count, 3);
+    assert_eq!(admins.values[1].value, serde_json::json!(true));
+    // 其它列的筛选参与统计。
+    let root_admin = facet("admin", &[filter("uid", &["0"])], 10);
+    assert_eq!(root_admin.total, 1);
+    assert_eq!(root_admin.values[0].value, serde_json::json!(true));
+    // 自身列的筛选不参与统计(勾选后清单不变)。
+    let own = facet("admin", &[filter("admin", &["true"])], 10);
+    assert_eq!(own.total, 4);
+    // NULL 归为一组;同计数按值升序。
+    let logins = facet("login", &[], 10);
+    assert_eq!(logins.values[0].value, serde_json::Value::Null);
+    assert_eq!(logins.values[0].count, 2);
+    assert_eq!(logins.values[1].value, "2026-01-01T08:00:00Z");
+    // 超过上限截断;未知列/未知类型为空。
+    let truncated = facet("name", &[], 2);
+    assert!(truncated.truncated);
+    assert_eq!(truncated.values.len(), 2);
+    assert_eq!(facet("nope", &[], 10).values.len(), 0);
+    assert_eq!(facet("groups", &[], 10).values.len(), 0);
 }
 
 #[test]

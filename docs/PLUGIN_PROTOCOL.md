@@ -416,7 +416,7 @@ export_plugin!(plugin);
 | `sched_task_create` | `analyze run` | 创建插件任务 |
 | `sched_task_restart` / `sched_task_remove` | `tasks restart` / `tasks rm` | 重新运行、删除插件任务及其结果 |
 | `task_list` / `task_status` / `task_cancel` | `tasks ls` / `show` / `cancel` | 任务中心：插件任务与内置任务的统一列表 |
-| `analysis_result_tree`、`analysis_records_page`、`analysis_record_detail`、`analysis_run_get` | `results ls`、`results rows`、`results show`、`results run` | 结果树、按列排序与检索的分页记录、记录详情、运行审计 |
+| `analysis_result_tree`、`analysis_records_page`、`analysis_record_values`、`analysis_record_detail`、`analysis_run_get` | `results ls`、`results rows`、`results facets`、`results show`、`results run` | 结果树、按列排序、检索与按值筛选的分页记录、一列的去重值、记录详情、运行审计 |
 
 没有专门命令的调度接口（如 `sched_task_start`）经 `lovelycarve-cli rpc <命令名>` 调用。
 

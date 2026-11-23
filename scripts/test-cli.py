@@ -500,9 +500,19 @@ def test_analysis(cli, root):
         else:
             assert origin["path"] == bcp_zip.name and "two.bcp" in origin["note"], origin
         assert cli.json(*scope, "results", "show", record["recordId"], "--evidence", alias)["record"] == record
+        # Column filters: values of one column are alternatives, columns combine.
+        assert cli.json(*rows_args, "--filter", "contact_account_type=1030036")["total"] == 1
+        assert cli.json(*rows_args, "--filter", "contact_account_type=1030036",
+                        "--filter", "contact_account_type=1030063")["total"] == 101
+        assert cli.json(*rows_args, "--filter", "contact_account_type=1030063", "--filter", "delete_status=1")["total"] == 0
+        facets = cli.json(*scope, "results", "facets", imported["runId"], "bcp.group_messages", "contact_account_type",
+                          "--evidence", alias, "--filter", "contact_account_type=1030036")
+        assert [(item["value"], item["count"]) for item in facets["values"]] == [("1030063", 100), ("1030036", 1)], facets
+        malformed = cli.run("--json", *rows_args, "--filter", "contact_account_type", expected=1)
+        assert json.loads(malformed.stderr)["error"]["code"] == "usage", malformed.stderr
     missing = cli.run("--json", "-C", case, "results", "show", "no-such-record", "--evidence", "bcp-zip", expected=1)
     assert json.loads(missing.stderr)["error"]["code"] == "notFound", missing.stderr
-    print("CLI analysis tests passed: SQLite WAL by path and node ID, read-only queries, ISO members, KeePass KDBX, BCP import and results")
+    print("CLI analysis tests passed: SQLite WAL by path and node ID, read-only queries, ISO members, KeePass KDBX, BCP import, results and column filters")
 
 
 def test_carving(cli, root):

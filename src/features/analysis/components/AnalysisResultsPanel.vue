@@ -12,7 +12,8 @@
         <input v-model="keywordInput" :aria-label="tr('搜索当前结果')" :placeholder="tr('搜索当前结果，回车确认…')" />
         <button v-if="keywordInput || keyword" class="ui-icon-btn sm" type="button" :aria-label="tr('清除搜索')" :title="tr('清除搜索')" @click="keywordInput = ''; applyKeyword('')"><X :size="13" /></button>
       </form>
-      <span v-else class="toolbar-title"><ClipboardList :size="14" />{{ tr("运行信息") }}</span>
+      <button v-if="selectedNode.kind === 'result' && filtersActive" class="ui-btn ghost sm filter-chip" type="button" :title="filtersChipTitle" @click="clearFilters"><Funnel :size="12" /><span>{{ tr("筛选 {0} 列", { 0: filtersCount }) }}</span><X :size="12" /></button>
+      <span v-else-if="selectedNode.kind !== 'result'" class="toolbar-title"><ClipboardList :size="14" />{{ tr("运行信息") }}</span>
       <div v-if="selectedNode.kind === 'result'" class="ui-seg reading-mode" role="group" :aria-label="tr('结果展示方式')">
         <button class="ui-seg-item" type="button" :aria-pressed="presentation === 'properties'" :title="tr('纵向阅读属性和值')" @click="setPresentation('properties')"><List :size="13" aria-hidden="true" />{{ tr("属性视图") }}</button>
         <button class="ui-seg-item" type="button" :aria-pressed="presentation === 'table'" :title="tr('横向对比多条记录')" @click="setPresentation('table')"><Table2 :size="13" aria-hidden="true" />{{ tr("表格视图") }}</button>
@@ -40,7 +41,7 @@
         <div class="table-scroll" :class="{ sheet: presentation === 'properties' && records.length > 0 && !recordsLoading && !recordsError }" :aria-busy="recordsLoading">
           <div v-if="recordsLoading" class="ui-empty state-box" role="status"><span class="ui-empty-icon accent"><Loader2 :size="22" class="spin" /></span><p class="ui-empty-desc">{{ tr("正在读取记录…") }}</p></div>
           <div v-else-if="recordsError" class="ui-empty state-box error" role="alert"><span class="ui-empty-icon"><CircleAlert :size="22" /></span><p class="ui-empty-desc">{{ tr("记录读取失败：{0}", { 0: recordsError }) }}</p><div class="ui-empty-actions"><button class="ui-btn" @click="retryRecords">{{ tr("重试") }}</button></div></div>
-          <div v-else-if="records.length === 0" class="ui-empty state-box" role="status"><span class="ui-empty-icon"><Inbox :size="24" /></span><p class="ui-empty-title">{{ keyword ? tr("没有匹配的记录") : tr("此结果项暂无记录") }}</p><div class="ui-empty-actions"><button v-if="keyword" class="ui-btn" @click="keywordInput = ''; applyKeyword('')">{{ tr("清除搜索") }}</button><button v-else-if="runNode" class="ui-btn" @click="selectNode(runNode)"><ClipboardList :size="14" />{{ tr("查看运行信息") }}</button></div></div>
+          <div v-else-if="records.length === 0" class="ui-empty state-box" role="status"><span class="ui-empty-icon"><Inbox :size="24" /></span><p class="ui-empty-title">{{ keyword || filtersActive ? tr("没有匹配的记录") : tr("此结果项暂无记录") }}</p><div class="ui-empty-actions"><button v-if="keyword" class="ui-btn" @click="keywordInput = ''; applyKeyword('')">{{ tr("清除搜索") }}</button><button v-if="filtersActive" class="ui-btn" @click="clearFilters">{{ tr("清除筛选") }}</button><button v-if="!keyword && !filtersActive && runNode" class="ui-btn" @click="selectNode(runNode)"><ClipboardList :size="14" />{{ tr("查看运行信息") }}</button></div></div>
           <AnalysisPropertyList v-else-if="presentation === 'properties'" :node="selectedNode" :records="records" :columns="columns" :properties="propertyLayout" :selected-record-id="selectedRecordId" :locating="locating" @open-record="openRecord" @open-file="target => emit('openFile', target)" @record-menu="onPropertyContextMenu" />
           <table v-else class="data-table records-table" :style="{ minWidth: `${tableWidth}px` }" :aria-label="nodeLabel(selectedNode)">
             <colgroup>
@@ -52,7 +53,12 @@
             <thead><tr>
               <th class="row-number">{{ tr("序号") }}</th>
               <th v-if="showTitleColumn" :aria-sort="ariaSort('title')"><button class="sort-header" type="button" :title="tr('按名称排序')" @click="toggleSort('title')"><span>{{ tr("名称") }}</span><component :is="sortIcon('title')" :size="12" aria-hidden="true" /></button></th>
-              <th v-for="column in tableColumns" :key="column.id" :class="{ numeric: NUMERIC_KINDS.has(column.kind) }" :aria-sort="ariaSort(column.id)"><button class="sort-header" type="button" :title="`${columnLabel(selectedNode, column)} · ${column.id}`" @click="toggleSort(column.id)"><span>{{ columnLabel(selectedNode, column) }}</span><component :is="sortIcon(column.id)" :size="12" aria-hidden="true" /></button></th>
+              <th v-for="column in tableColumns" :key="column.id" :class="{ numeric: NUMERIC_KINDS.has(column.kind) }" :aria-sort="ariaSort(column.id)">
+                <div class="head-inner">
+                  <button class="sort-header" type="button" :title="`${columnLabel(selectedNode, column)} · ${column.id}`" @click="toggleSort(column.id)"><span>{{ columnLabel(selectedNode, column) }}</span><component :is="sortIcon(column.id)" :size="12" aria-hidden="true" /></button>
+                  <button v-if="!selectedNode.legacy && !UNFILTERABLE_KINDS.has(column.kind)" class="head-funnel" type="button" :class="{ active: isColumnFiltered(column.id) }" :title="funnelTitle(column)" :aria-label="tr('筛选「{0}」', { 0: columnLabel(selectedNode, column) })" @click.stop="openColumnFilter($event, column)"><Funnel :size="12" /></button>
+                </div>
+              </th>
               <th>{{ tr("源文件") }}</th>
             </tr></thead>
             <tbody><tr v-for="(record, index) in records" :key="record.recordId" :data-record-id="record.recordId" :class="{ active: selectedRecordId === record.recordId }" :aria-selected="selectedRecordId === record.recordId" tabindex="0" @click="openRecord(record.recordId)" @keydown.enter.prevent="openRecord(record.recordId)" @keydown.down.prevent="moveRow($event, index + 1)" @keydown.up.prevent="moveRow($event, index - 1)" @contextmenu="onRecordContextMenu($event, record)">
@@ -65,7 +71,7 @@
         </div>
         <footer class="ui-footbar table-footer">
           <span class="footer-crumb" :title="crumbLabel"><Table2 :size="12" /><span>{{ crumbLabel }}</span></span>
-          <span class="ui-footbar-stat"><strong :key="recordsTotal" class="ui-bump">{{ recordsTotal.toLocaleString() }}</strong> {{ keyword ? tr("条匹配记录") : tr("条记录") }}</span>
+          <span class="ui-footbar-stat"><strong :key="recordsTotal" class="ui-bump">{{ recordsTotal.toLocaleString() }}</strong> {{ keyword || filtersActive ? tr("条匹配记录") : tr("条记录") }}</span>
           <span v-if="completedLabel" class="ui-footbar-stat footer-completed">{{ tr("完成于（本地）") }} <strong>{{ completedLabel }}</strong></span>
           <span class="ui-footbar-spacer"></span>
           <div class="pager">
@@ -120,6 +126,26 @@
       :heading="recordMenu.target?.record.title"
       :subheading="selectedNode ? nodeLabel(selectedNode) : undefined"
     />
+    <AnalysisColumnFilterPopover
+      :open="columnFilter.visible"
+      :x="columnFilter.x"
+      :y="columnFilter.y"
+      :width="columnFilter.width"
+      :column="columnFilter.column"
+      :label="columnFilter.column ? columnLabel(selectedNode, columnFilter.column) : ''"
+      :selected="columnFilter.column ? (filters[columnFilter.column.id] ?? []) : []"
+      :values="columnValues?.values ?? null"
+      :total="columnValues?.total ?? 0"
+      :loading="columnValuesLoading"
+      :error="columnValuesError"
+      :truncated="columnValues?.truncated ?? false"
+      :filtered="columnFilter.column ? isColumnFiltered(columnFilter.column.id) : false"
+      :choice-label="choice => columnFilter.column ? choiceLabel(selectedNode, columnFilter.column, choice) : choice"
+      @close="hideColumnFilter"
+      @toggle="(value, checked) => toggleColumnValue(value, checked)"
+      @clear="columnFilter.column && clearColumnFilter(columnFilter.column.id)"
+      @retry="columnFilter.column && loadColumnValues(columnFilter.column.id)"
+    />
   </section>
 </template>
 
@@ -134,8 +160,9 @@ import FileDetailSection from '../../../components/layout/FileDetailSection.vue'
 import FileDetailFields, { type FileDetailField } from '../../../components/layout/FileDetailFields.vue';
 import AnalysisRunOverview from './AnalysisRunOverview.vue';
 import AnalysisPropertyList from './AnalysisPropertyList.vue';
-import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue';
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, CircleAlert, ClipboardList, Copy, Download, Inbox, Link, List, Loader2, LocateFixed, PanelRightOpen, RefreshCw, ScanSearch, Search, Table2, X, Zap } from 'lucide-vue-next';
+import AnalysisColumnFilterPopover from './AnalysisColumnFilterPopover.vue';
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue';
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, CircleAlert, ClipboardList, Copy, Download, Funnel, Inbox, Link, List, Loader2, LocateFixed, PanelRightOpen, RefreshCw, ScanSearch, Search, Table2, X, Zap } from 'lucide-vue-next';
 import UiContextMenu, { type UiContextMenuEntry } from '../../../components/ui/UiContextMenu.vue';
 import { copyPending, copyText } from '../../../composables/clipboard';
 import { caseLink } from '../../../lib/ipc/cases';
@@ -161,9 +188,10 @@ function locateRecord(record: AnalysisRecord) {
   if (source && !props.locating) emit('openFile', source.target);
 }
 const { tree, treeLoading, treeError, dirty, selectedNode, records, columns, properties, recordsTotal,
-  pageIndex, pageCount, keyword, sort, recordsLoading, recordsError, detail, detailColumns, detailLoading,
+  pageIndex, pageCount, keyword, filters, sort, recordsLoading, recordsError, detail, detailColumns, detailLoading,
   detailError, selectedRecordId, audit, auditLoading, auditError, closeDetail: clearDetail, retryRecords, retryAudit,
-  setImageId, ensureFresh, selectNode, goToPage, applyKeyword, toggleSort, openRecord: loadRecord, exportRecords, reload } = useAnalysisResults();
+  setImageId, ensureFresh, selectNode, goToPage, applyKeyword, applyColumnFilter, clearColumnFilter, clearFilters,
+  loadColumnValues, columnValues, columnValuesLoading, columnValuesError, toggleSort, openRecord: loadRecord, exportRecords, reload } = useAnalysisResults();
 const { nodeLabel, columnLabel, choiceLabel } = useAnalysisLabels();
 const { propertyLayout, presentation, setPresentation } = useAnalysisPresentation(selectedNode, columns, properties);
 const panel = ref<HTMLElement | null>(null);
@@ -224,6 +252,8 @@ watch(keyword, value => { keywordInput.value = value; });
 /** Values set in the monospace face: offsets, hashes, addresses, paths and counts. */
 const MONO_KINDS = new Set<RecordFieldKind>(['int', 'float', 'size', 'duration', 'hash', 'ip', 'path', 'timestamp']);
 const NUMERIC_KINDS = new Set<RecordFieldKind>(['int', 'float', 'size', 'duration']);
+/** Lists and JSON reach the table parsed, so their cells cannot be matched back by value. */
+const UNFILTERABLE_KINDS = new Set<RecordFieldKind>(['list', 'json']);
 const tableColumns = computed(() => columns.value.filter(column => !column.hidden));
 // Schema fields already describe the record; keep a title fallback for results without visible fields.
 const showTitleColumn = computed(() => tableColumns.value.length === 0);
@@ -260,7 +290,7 @@ const statusText = computed(() => {
   if (treeError.value || recordsError.value || !node) return '';
   if (node.kind === 'function') return auditLoading.value ? tr("正在读取运行信息…") : nodeLabel(node);
   if (recordsLoading.value) return tr("正在读取记录…");
-  return tr("{0}，共 {1} 条{2}，第 {3} 页", { 0: nodeLabel(node), 1: recordsTotal.value.toLocaleString(), 2: keyword.value ? tr("匹配记录") : tr("记录"), 3: pageIndex.value + 1 });
+  return tr("{0}，共 {1} 条{2}，第 {3} 页", { 0: nodeLabel(node), 1: recordsTotal.value.toLocaleString(), 2: keyword.value || filtersActive.value ? tr("匹配记录") : tr("记录"), 3: pageIndex.value + 1 });
 });
 
 function ariaSort(column: string): 'ascending' | 'descending' | 'none' {
@@ -272,6 +302,58 @@ function sortIcon(column: string) {
   if (sort.value?.column !== column) return ArrowUpDown;
   return sort.value.descending ? ArrowDown : ArrowUp;
 }
+
+// ── 列筛选 ── 表头漏斗打开气泡,勾选去重值即服务端过滤;不同列之间且、同列内或。
+const filtersActive = computed(() => Object.keys(filters.value).length > 0);
+const filtersCount = computed(() => Object.keys(filters.value).length);
+const filtersChipTitle = computed(() => Object.entries(filters.value)
+  .map(([id, values]) => {
+    const column = columns.value.find(candidate => candidate.id === id);
+    return `${column ? columnLabel(selectedNode.value, column) : id}: ${values.map(value => filterValueText(column, value)).join('、')}`;
+  })
+  .join('\n'));
+/** 一个筛选值按单元格的同一口径显示(空串 = 空单元格)。 */
+function filterValueText(column: RecordColumn | undefined, value: string): string {
+  if (!value) return tr("(空)");
+  if (!column) return value;
+  const json = column.kind === 'bool' ? value === 'true' : value;
+  return recordValueText(json, column.kind, { choice: id => choiceLabel(selectedNode.value, column, id), tr });
+}
+function isColumnFiltered(columnId: string): boolean {
+  return !!filters.value[columnId]?.length;
+}
+function funnelTitle(column: RecordColumn): string {
+  const values = filters.value[column.id];
+  if (!values?.length) return tr("筛选「{0}」", { 0: columnLabel(selectedNode.value, column) });
+  return tr("筛选「{0}」：{1}", { 0: columnLabel(selectedNode.value, column), 1: values.map(value => filterValueText(column, value)).join('、') });
+}
+const columnFilter = reactive<{ visible: boolean; column: RecordColumn | null; x: number; y: number; width: number }>({
+  visible: false, column: null, x: 0, y: 0, width: 264,
+});
+function openColumnFilter(event: MouseEvent, column: RecordColumn) {
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  columnFilter.width = 264;
+  columnFilter.x = Math.max(8, Math.min(rect.left, window.innerWidth - columnFilter.width - 8));
+  columnFilter.y = rect.bottom + 6;
+  columnFilter.column = column;
+  columnFilter.visible = true;
+  void loadColumnValues(column.id);
+}
+function hideColumnFilter() {
+  columnFilter.visible = false;
+}
+function toggleColumnValue(value: string, checked: boolean) {
+  const column = columnFilter.column;
+  if (!column) return;
+  const current = filters.value[column.id] ?? [];
+  applyColumnFilter(column.id, checked ? [...current, value] : current.filter(item => item !== value));
+}
+// 关键词或其它列的筛选变化后,已打开气泡里的计数会过时,重新统计;本列自己的
+// 勾选不参与本列的统计,重查只会闪烁,排除在外。
+watch(() => JSON.stringify([keyword.value, Object.entries(filters.value).filter(([id]) => id !== columnFilter.column?.id)]), () => {
+  if (columnFilter.visible && columnFilter.column) void loadColumnValues(columnFilter.column.id);
+});
+watch(() => props.imageId, () => hideColumnFilter());
 
 function valueText(value: unknown, column: RecordColumn, detailed = false): string {
   return recordValueText(value, column.kind, { choice: id => choiceLabel(selectedNode.value, column, id), detailed, tr });
@@ -474,6 +556,18 @@ async function exportCsv(): Promise<void> {
 .records-table tbody tr:hover:not(.active) td:last-child { background: linear-gradient(var(--surface-tertiary), var(--surface-tertiary)), var(--surface-secondary); }
 .records-table td.empty { color: var(--text-secondary); }
 .sort-header { display: flex; align-items: center; gap: 4px; width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.head-inner { display: flex; align-items: center; gap: 2px; width: 100%; min-width: 0; }
+.head-inner .sort-header { width: auto; flex: 1; min-width: 0; }
+/* 列筛选漏斗:平时隐藏,指针进入表头时淡入;该列有生效条件时常亮填充。 */
+.head-funnel { display: inline-grid; place-items: center; flex-shrink: 0; width: 20px; height: 20px; padding: 0; background: transparent; border: none; border-radius: var(--radius-sm); color: var(--text-secondary); cursor: pointer; opacity: 0; transition: color var(--transition-fast), background var(--transition-fast), opacity var(--transition-fast); }
+thead:hover .head-funnel { opacity: 0.55; }
+.head-funnel:hover { color: var(--primary-color); background: var(--hover-bg); opacity: 1; }
+.head-funnel:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; opacity: 1; }
+.head-funnel.active, thead:hover .head-funnel.active { color: var(--primary-color); background: var(--sidebar-active-bg); opacity: 1; }
+.head-funnel.active svg { fill: currentColor; }
+/* 工具栏的筛选摘要:点了清掉全部列筛选。 */
+.filter-chip { gap: 4px; color: var(--primary-color); }
+.filter-chip > span { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sort-header > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sort-header > svg { flex-shrink: 0; color: var(--text-secondary); opacity: 0.6; }
 th[aria-sort='ascending'] .sort-header > svg, th[aria-sort='descending'] .sort-header > svg { color: var(--primary-color); opacity: 1; }

@@ -7,9 +7,11 @@ use crate::host::State;
 use crate::{
     app::{error::AppError, workflows::casework::active_case_dir},
     core::analysis::results::{
-        analysis_query::{self, AnalysisRecordsQuery, AnalysisTreeEvidence},
+        analysis_query::{
+            self, AnalysisColumnValuesQuery, AnalysisRecordsQuery, AnalysisTreeEvidence,
+        },
         models::{AnalysisRecordDetail, AnalysisRecordsPage, AnalysisTreeNode, BcpRecordScope},
-        record_query::RunAudit,
+        record_query::{ColumnFilter, ColumnValues, RunAudit},
     },
     core::casework::case::EvidenceRef,
     state::AppState,
@@ -56,6 +58,7 @@ pub async fn analysis_records_page(
     record_type: String,
     legacy: Option<bool>,
     keyword: Option<String>,
+    filters: Option<Vec<ColumnFilter>>,
     bcp_scope: Option<BcpRecordScope>,
     sort: Option<String>,
     descending: Option<bool>,
@@ -70,6 +73,7 @@ pub async fn analysis_records_page(
             record_type: &record_type,
             legacy: legacy.unwrap_or(false),
             keyword: keyword.as_deref(),
+            filters: filters.unwrap_or_default(),
             bcp_scope: bcp_scope.as_ref(),
             sort: sort.as_deref(),
             descending: descending.unwrap_or(false),
@@ -82,6 +86,46 @@ pub async fn analysis_records_page(
     .map_err(|error| AppError::task_panicked("analysis_records_page", error))?
     .map_err(AppError::from)
 }
+
+/// 一列的去重值与计数(筛选清单的选项),按当前关键词与其它列的筛选计算;
+/// 本列自己的筛选不参与。
+#[cfg_attr(feature = "desktop", tauri::command)]
+#[allow(clippy::too_many_arguments)] // Flat IPC fields also generate the CLI options.
+pub async fn analysis_record_values(
+    state: State<'_, AppState>,
+    image_id: ImageId,
+    run_id: String,
+    record_type: String,
+    legacy: Option<bool>,
+    keyword: Option<String>,
+    bcp_scope: Option<BcpRecordScope>,
+    column: String,
+    filters: Option<Vec<ColumnFilter>>,
+    limit: Option<i64>,
+) -> Result<ColumnValues, AppError> {
+    let case_dir = active_case_dir(&state).await?;
+    tokio::task::spawn_blocking(move || {
+        let query = AnalysisColumnValuesQuery {
+            image_id: &image_id,
+            run_id: &run_id,
+            record_type: &record_type,
+            legacy: legacy.unwrap_or(false),
+            keyword: keyword.as_deref(),
+            bcp_scope: bcp_scope.as_ref(),
+            column: &column,
+            filters: filters.unwrap_or_default(),
+            limit: limit.unwrap_or(DEFAULT_FACET_LIMIT),
+        };
+        analysis_query::column_values(&case_dir, &query)
+    })
+    .await
+    .map_err(|error| AppError::task_panicked("analysis_record_values", error))?
+    .map_err(AppError::from)
+}
+
+/// The facet's default cap: high enough for real enum-like columns, low
+/// enough to keep the checklist light.
+const DEFAULT_FACET_LIMIT: i64 = 200;
 
 /// 单条记录详情(表格行 → 右侧预览),带它所属类型的列。
 #[cfg_attr(feature = "desktop", tauri::command)]

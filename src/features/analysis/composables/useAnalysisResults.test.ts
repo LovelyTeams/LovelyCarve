@@ -30,8 +30,9 @@ vi.mock('../../cases/composables/useCaseSession', async () => {
   };
 });
 
-import type { AnalysisRecord, AnalysisRecordDetail, AnalysisRecordsPage, AnalysisResultNode, AnalysisRunAudit } from '../../../lib/ipc/analysisResults';
+import type { AnalysisRecord, AnalysisRecordDetail, AnalysisRecordsPage, AnalysisRecordValues, AnalysisResultNode, AnalysisRunAudit } from '../../../lib/ipc/analysisResults';
 import {
+  ANALYSIS_FACET_LIMIT,
   ANALYSIS_PAGE_SIZE,
   focusAnalysisResult,
   resetAnalysisResultsForTests,
@@ -47,6 +48,7 @@ let pageResponse: AnalysisRecordsPage = { total: 0, columns: [], items: [] };
 let pagesQueue: AnalysisRecordsPage[] | null = null;
 let detailResponse: AnalysisRecordDetail | null = null;
 let auditResponse: AnalysisRunAudit | null = null;
+let facetResponse: AnalysisRecordValues = { total: 0, truncated: false, values: [] };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -57,6 +59,7 @@ beforeEach(() => {
   pagesQueue = null;
   detailResponse = null;
   auditResponse = null;
+  facetResponse = { total: 0, truncated: false, values: [] };
   invokeMock.mockImplementation((command: string) => {
     switch (command) {
       case 'analysis_result_tree':
@@ -68,6 +71,8 @@ beforeEach(() => {
         return Promise.resolve(detailResponse);
       case 'analysis_run_get':
         return Promise.resolve(auditResponse);
+      case 'analysis_record_values':
+        return Promise.resolve(facetResponse);
       default:
         return Promise.resolve([]);
     }
@@ -182,6 +187,7 @@ const pageArgs = (overrides: Record<string, unknown> = {}) => ({
   recordType: 'linux.user',
   legacy: false,
   keyword: null,
+  filters: null,
   sort: null,
   descending: false,
   skip: 0,
@@ -258,6 +264,60 @@ describe('useAnalysisResults', () => {
     // Another record type starts unsorted.
     await results.selectNode(resultNode({ nodeId: 'groups', artifactType: 'linux.group' }));
     expect(invokeMock).toHaveBeenLastCalledWith('analysis_records_page', pageArgs({ recordType: 'linux.group' }));
+  });
+
+  it('filters by column values: within a column OR, across columns AND, reset on node switch', async () => {
+    const results = useAnalysisResults();
+    pageResponse = page(2, [record('1', 'root')]);
+    await results.selectNode(resultNode());
+
+    results.applyColumnFilter('username', ['root']);
+    expect(invokeMock).toHaveBeenLastCalledWith('analysis_records_page', pageArgs({ filters: [{ column: 'username', values: ['root'] }] }));
+
+    results.applyColumnFilter('username', ['root', 'daemon']);
+    expect(invokeMock).toHaveBeenLastCalledWith('analysis_records_page', pageArgs({ filters: [{ column: 'username', values: ['root', 'daemon'] }] }));
+
+    // 值原样传递;空串表示空单元格。
+    results.applyColumnFilter('username', ['a=b', '']);
+    expect(invokeMock).toHaveBeenLastCalledWith('analysis_records_page', pageArgs({ filters: [{ column: 'username', values: ['a=b', ''] }] }));
+
+    // 另一列的筛选与它相且。
+    results.applyColumnFilter('title', ['']);
+    expect(invokeMock).toHaveBeenLastCalledWith('analysis_records_page', pageArgs({ filters: [{ column: 'username', values: ['a=b', ''] }, { column: 'title', values: [''] }] }));
+    results.applyColumnFilter('title', []);
+    expect(invokeMock).toHaveBeenLastCalledWith('analysis_records_page', pageArgs({ filters: [{ column: 'username', values: ['a=b', ''] }] }));
+
+    // 清除全部与切换结果项重置。
+    results.clearFilters();
+    expect(invokeMock).toHaveBeenLastCalledWith('analysis_records_page', pageArgs());
+    results.applyColumnFilter('username', ['root']);
+    await results.selectNode(resultNode({ nodeId: 'groups', artifactType: 'linux.group' }));
+    expect(invokeMock).toHaveBeenLastCalledWith('analysis_records_page', pageArgs({ recordType: 'linux.group' }));
+    expect(results.filters.value).toEqual({});
+  });
+
+  it('loads column value facets under the keyword and the other columns filters', async () => {
+    const results = useAnalysisResults();
+    pageResponse = page(2, [record('1', 'root')]);
+    await results.selectNode(resultNode());
+    results.applyKeyword('root');
+    results.applyColumnFilter('username', ['root']);
+    facetResponse = { total: 3, truncated: true, values: [{ value: 'received', count: 2 }, { value: null, count: 1 }] };
+
+    void results.loadColumnValues('direction');
+    await vi.waitFor(() => expect(results.columnValuesLoading.value).toBe(false));
+    expect(invokeMock).toHaveBeenLastCalledWith('analysis_record_values', {
+      imageId: 'image-1', runId: 'run-1', recordType: 'linux.user', legacy: false, keyword: 'root',
+      column: 'direction', filters: [{ column: 'username', values: ['root'] }], limit: ANALYSIS_FACET_LIMIT,
+    });
+    expect(results.columnValues.value?.truncated).toBe(true);
+    expect(results.columnValues.value?.values[1].value).toBeNull();
+
+    // 失败可重试,不留旧数据。
+    invokeMock.mockImplementationOnce(command => command === 'analysis_record_values'
+      ? Promise.reject(new Error('facet failed')) : Promise.resolve(pageResponse));
+    void results.loadColumnValues('direction');
+    await vi.waitFor(() => expect(results.columnValuesError.value).toContain('facet failed'));
   });
 
   it('selecting a run loads its audit; legacy runs have none', async () => {

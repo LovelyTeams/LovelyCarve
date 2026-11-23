@@ -8,10 +8,13 @@ import { computed, effectScope, ref, shallowRef, watch, type EffectScope } from 
 
 import {
   analysisRecordDetail,
+  analysisRecordValues,
   analysisRecordsPage,
   analysisResultTree,
   analysisRunGet,
+  type AnalysisColumnFilter,
   type AnalysisRecord,
+  type AnalysisRecordValues,
   type AnalysisResultNode,
   type AnalysisRunAudit,
   type RecordColumn,
@@ -24,6 +27,9 @@ import type { ImageId } from '../../../lib/ipc/ids';
 
 /** 分析结果表格的分页大小。 */
 export const ANALYSIS_PAGE_SIZE = 100;
+
+/** 筛选清单一次列出的去重值上限(与后端 facet 默认一致)。 */
+export const ANALYSIS_FACET_LIMIT = 200;
 
 /** Per-export cancellation and page progress, independent of the visible result selection. */
 export interface AnalysisExportOptions {
@@ -52,6 +58,8 @@ const properties = shallowRef<RecordPropertyLayout | null>(null);
 const recordsTotal = ref(0);
 const pageIndex = ref(0);
 const keyword = ref('');
+/** 每列勾选的值(column id → 值数组;'' = 空单元格),不同列之间且、同列内或。 */
+const filters = ref<Record<string, string[]>>({});
 const sort = shallowRef<AnalysisSort | null>(null);
 const recordsLoading = ref(false);
 const detail = shallowRef<AnalysisRecord | null>(null);
@@ -63,11 +71,17 @@ const selectedRecordId = ref<string | null>(null);
 const audit = shallowRef<AnalysisRunAudit | null>(null);
 const auditLoading = ref(false);
 const auditError = ref<string | null>(null);
+/** 筛选清单的去重值(打开气泡的那一列)。 */
+const columnValues = shallowRef<AnalysisRecordValues | null>(null);
+const columnValuesColumn = ref('');
+const columnValuesLoading = ref(false);
+const columnValuesError = ref<string | null>(null);
 const currentImageId = ref<string | null>(null);
 let treeRequestId = 0;
 let recordsRequestId = 0;
 let detailRequestId = 0;
 let auditRequestId = 0;
+let columnValuesRequestId = 0;
 let caseVersion = 0;
 /** Run ID or fully qualified function whose results the next tree load opens (任务中心「查看分析结果」). */
 let requestedAnalyzer: string | null = null;
@@ -96,6 +110,7 @@ function closeDetail(): void {
 function clearSelection(): void {
   recordsRequestId += 1;
   auditRequestId += 1;
+  columnValuesRequestId += 1;
   selectedNode.value = null;
   records.value = [];
   columns.value = [];
@@ -103,9 +118,14 @@ function clearSelection(): void {
   recordsTotal.value = 0;
   pageIndex.value = 0;
   keyword.value = '';
+  filters.value = {};
   sort.value = null;
   recordsError.value = null;
   recordsLoading.value = false;
+  columnValues.value = null;
+  columnValuesColumn.value = '';
+  columnValuesLoading.value = false;
+  columnValuesError.value = null;
   audit.value = null;
   auditLoading.value = false;
   auditError.value = null;
@@ -184,6 +204,12 @@ async function refreshTree(): Promise<void> {
   }
 }
 
+/** 筛选状态的 IPC 形式:每列一项,没有勾选时省略。 */
+function filtersToIpc(entries: [string, string[]][]): AnalysisColumnFilter[] | undefined {
+  const filters = entries.filter(([, values]) => values.length > 0).map(([column, values]) => ({ column, values }));
+  return filters.length ? filters : undefined;
+}
+
 async function loadRecords(): Promise<void> {
   const node = selectedNode.value;
   if (!node || node.kind !== 'result') return;
@@ -196,6 +222,7 @@ async function loadRecords(): Promise<void> {
     const page = await analysisRecordsPage({
       imageId: node.imageId, runId: node.runId, recordType: node.artifactType, legacy: node.legacy,
       keyword: keyword.value.trim() || undefined,
+      filters: filtersToIpc(Object.entries(filters.value)),
       bcpScope: node.bcpScope,
       sort: sort.value?.column, descending: sort.value?.descending,
       skip: pageIndex.value * ANALYSIS_PAGE_SIZE, limit: ANALYSIS_PAGE_SIZE,
@@ -295,6 +322,58 @@ export function useAnalysisResults() {
     void loadRecords();
   }
 
+  /** 勾选/取消一列的值(空数组即清除该列);回到第一页重查。 */
+  function applyColumnFilter(column: string, values: string[]): void {
+    const next = { ...filters.value };
+    if (values.length) next[column] = [...values];
+    else delete next[column];
+    filters.value = next;
+    pageIndex.value = 0;
+    void loadRecords();
+  }
+
+  /** 清除一列的筛选。 */
+  function clearColumnFilter(column: string): void {
+    if (!filters.value[column]) return;
+    applyColumnFilter(column, []);
+  }
+
+  /** 清除全部列筛选。 */
+  function clearFilters(): void {
+    if (!Object.keys(filters.value).length) return;
+    filters.value = {};
+    pageIndex.value = 0;
+    void loadRecords();
+  }
+
+  /** 读取筛选清单的一列去重值(按当前关键词与其它列的筛选统计)。 */
+  async function loadColumnValues(column: string): Promise<void> {
+    const node = selectedNode.value;
+    if (!node || node.kind !== 'result') return;
+    const requestId = ++columnValuesRequestId;
+    columnValuesColumn.value = column;
+    columnValuesLoading.value = true;
+    columnValuesError.value = null;
+    columnValues.value = null;
+    const others = filtersToIpc(Object.entries(filters.value).filter(([id]) => id !== column));
+    try {
+      const found = await analysisRecordValues({
+        imageId: node.imageId, runId: node.runId, recordType: node.artifactType, legacy: node.legacy,
+        keyword: keyword.value.trim() || undefined,
+        bcpScope: node.bcpScope,
+        column,
+        filters: others, limit: ANALYSIS_FACET_LIMIT,
+      });
+      if (requestId !== columnValuesRequestId) return;
+      columnValues.value = found;
+    } catch (error) {
+      if (requestId !== columnValuesRequestId) return;
+      columnValuesError.value = String(error);
+    } finally {
+      if (requestId === columnValuesRequestId) columnValuesLoading.value = false;
+    }
+  }
+
   /** Orders the table by a column (`title` for the name): ascending first, then descending, then stored order. */
   function toggleSort(column: string): void {
     const current = sort.value;
@@ -337,6 +416,7 @@ export function useAnalysisResults() {
     if (!node || node.kind !== 'result') return 0;
     const exportKeyword = keyword.value.trim() || undefined;
     const exportSort = sort.value;
+    const exportFilters = filtersToIpc(Object.entries(filters.value));
     const exportCaseVersion = caseVersion;
     const collected: AnalysisRecord[] = [];
     let exportColumns: RecordColumn[] = [];
@@ -353,6 +433,7 @@ export function useAnalysisResults() {
         recordType: node.artifactType,
         legacy: node.legacy,
         keyword: exportKeyword,
+        filters: exportFilters,
         bcpScope: node.bcpScope,
         sort: exportSort?.column,
         descending: exportSort?.descending,
@@ -401,6 +482,7 @@ export function useAnalysisResults() {
     pageIndex,
     pageCount,
     keyword,
+    filters,
     sort,
     recordsLoading,
     recordsError,
@@ -420,6 +502,14 @@ export function useAnalysisResults() {
     selectNode,
     goToPage,
     applyKeyword,
+    applyColumnFilter,
+    clearColumnFilter,
+    clearFilters,
+    loadColumnValues,
+    columnValues,
+    columnValuesColumn,
+    columnValuesLoading,
+    columnValuesError,
     toggleSort,
     openRecord,
     exportRecords,

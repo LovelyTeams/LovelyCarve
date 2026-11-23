@@ -346,6 +346,7 @@ pub fn meta_of(path: &str) -> Meta {
         | "analyze ls"
         | "results ls"
         | "results rows"
+        | "results facets"
         | "tasks ls"
         | "index ls"
         | "tz"

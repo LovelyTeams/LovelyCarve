@@ -13,7 +13,10 @@ use crate::core::analysis::results::{
     models::{
         AnalysisRecord, AnalysisRecordDetail, AnalysisRecordsPage, AnalysisTreeNode, BcpRecordScope,
     },
-    record_query::{self, PublishedRun, RecordsQuery, RunAudit, StoredRecord},
+    record_query::{
+        self, ColumnFilter, ColumnValues, ColumnValuesQuery, PublishedRun, RecordsQuery, RunAudit,
+        StoredRecord,
+    },
 };
 
 /// An evidence item of the case, as the tree shows it.
@@ -194,6 +197,8 @@ pub struct AnalysisRecordsQuery<'a> {
     pub record_type: &'a str,
     pub legacy: bool,
     pub keyword: Option<&'a str>,
+    /// Per-column checked values (旧版结果不支持，忽略)。
+    pub filters: Vec<ColumnFilter>,
     pub bcp_scope: Option<&'a BcpRecordScope>,
     /// A column id, or `title`.
     pub sort: Option<&'a str>,
@@ -236,6 +241,7 @@ pub fn records_page(
             run_id: query.run_id,
             record_type: query.record_type,
             keyword: query.keyword,
+            filters: &query.filters,
             bcp_scope: query.bcp_scope,
             sort: query.sort,
             descending: query.descending,
@@ -253,6 +259,52 @@ pub fn records_page(
             .map(|record| analysis_record(record, query.image_id))
             .collect(),
     })
+}
+
+/// One column's distinct values (the filter checklist). 旧版结果没有结构化
+/// 列，返回空。
+pub struct AnalysisColumnValuesQuery<'a> {
+    pub image_id: &'a str,
+    pub run_id: &'a str,
+    pub record_type: &'a str,
+    pub legacy: bool,
+    pub keyword: Option<&'a str>,
+    pub bcp_scope: Option<&'a BcpRecordScope>,
+    pub column: &'a str,
+    pub filters: Vec<ColumnFilter>,
+    pub limit: i64,
+}
+
+pub fn column_values(
+    case_dir: &Path,
+    query: &AnalysisColumnValuesQuery<'_>,
+) -> anyhow::Result<ColumnValues> {
+    if query.legacy {
+        return Ok(ColumnValues {
+            total: 0,
+            truncated: false,
+            values: Vec::new(),
+        });
+    }
+    let Some(connection) = record_query::open(case_dir, query.image_id)? else {
+        return Ok(ColumnValues {
+            total: 0,
+            truncated: false,
+            values: Vec::new(),
+        });
+    };
+    record_query::column_values(
+        &connection,
+        &ColumnValuesQuery {
+            run_id: query.run_id,
+            record_type: query.record_type,
+            keyword: query.keyword,
+            bcp_scope: query.bcp_scope,
+            column: query.column,
+            filters: &query.filters,
+            limit: query.limit,
+        },
+    )
 }
 
 /// One record by id: a number is a `records.db` record, anything else a

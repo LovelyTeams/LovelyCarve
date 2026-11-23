@@ -341,6 +341,7 @@ mod tests {
                 run_id: &imported.run_id,
                 record_type: "bcp.group_messages",
                 keyword: Some("second"),
+                filters: &[],
                 bcp_scope: None,
                 sort: None,
                 descending: false,
