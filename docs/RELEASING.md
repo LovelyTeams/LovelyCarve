@@ -47,6 +47,19 @@ git push origin v1.3.0
 
 标签的基础版本必须与应用和 Python 包清单一致。`v1.3.0-rc.1` 这类带后缀的标签发布为预发行版，`v1.3.0` 发布为正式版。已有标签不会因添加工作流而重新触发，请勿移动已发布的标签。发布任务通过仓库内置的 `GITHUB_TOKEN` 和 `contents: write` 权限上传 GitHub Release 产物。
 
+`LovelyTeams/LovelyCarve` 的正式标签在 GitHub Release 发布成功后，会把同一份 Windows x64 wheel 上传到 PyPI。预发行标签沿用清单中的正式版本号，Python wheel 只随 GitHub 预发行版提供。PyPI 上传失败时，可以在 GitHub Actions 重跑失败的任务，复用同次运行的 wheel。
+
+首次启用时，在 GitHub 仓库的 **Settings → Environments** 创建 `pypi` 环境，将部署来源限定为 `v*` 标签，并在 [PyPI 项目的 Publishing 设置](https://pypi.org/manage/project/lovelycarve/settings/publishing/)中添加 GitHub Trusted Publisher：
+
+| 字段 | 值 |
+| --- | --- |
+| Owner | `LovelyTeams` |
+| Repository name | `LovelyCarve` |
+| Workflow name | `windows-release.yml` |
+| Environment name | `pypi` |
+
+发布任务通过 GitHub OIDC 向 PyPI 换取短期上传凭据，无需配置 PyPI API token。配置步骤见 [PyPI Trusted Publishing 文档](https://docs.pypi.org/trusted-publishers/adding-a-publisher/)。
+
 自动构建默认不含 QR/OCR，二进制未做代码签名；原生 GUI、安装及 Dokany 驱动仍需人工验证。完整功能构建和桌面便携包继续使用上表的本地配方。
 
 自动 Release 说明包含源码提交、构建范围和外部驱动要求；维护者应补充版本变化与已知限制。本地发行时，从该标签创建 GitHub Release，并上传实际构建的产物与 SHA-256：
