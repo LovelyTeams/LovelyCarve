@@ -3,6 +3,9 @@ use crate::core::filesystem::evidence_session::EvidenceSession;
 
 #[test]
 fn dispatches_bitlocker_partition_locked_then_unlocked() {
+    use crate::core::evidence::crypto::encrypted_image::{
+        self, EncryptionScheme, UnlockCredential, UnlockOptions, UnlockTarget,
+    };
     let Some(path) = std::env::var_os("LOVELYCARVE_BDE_TEST") else {
         return;
     };
@@ -10,31 +13,53 @@ fn dispatches_bitlocker_partition_locked_then_unlocked() {
         .expect("LOVELYCARVE_BDE_RECOVERY must accompany LOVELYCARVE_BDE_TEST");
 
     let image = Arc::new(EvidenceSession::open(path).expect("BDE-bearing E01 should open"));
-    let bitlocker_partition = image
+    let partition_id = image
         .partitions
         .iter()
         .find(|p| p.kind == PartitionKind::Bitlocker)
-        .cloned()
+        .map(|partition| partition.id)
         .expect("expected a BitLocker partition in the image");
 
-    // Locked: dispatcher returns a single placeholder node.
-    let parent_id = format!("part:{}", bitlocker_partition.id);
-    let locked_children =
-        children_for_image(&image, &parent_id).expect("locked listing should succeed");
-    assert_eq!(locked_children.len(), 1);
-    assert!(locked_children[0].id.starts_with("bde-locked:part:"));
+    // Locked: the volume is an unsupported root entry, like any locked container.
+    let roots = children_for_image(&image, "").expect("root listing should succeed");
+    assert!(roots
+        .iter()
+        .any(|node| node.id == format!("unsupported:{partition_id}")));
 
-    // Unlock through the EvidenceSession API and re-list: now we should see real
-    // NTFS root entries with `ntfs:part:N:…` ids.
+    // Unlock through the shared path and re-list: now we should see real NTFS
+    // root entries with `ntfs:part:N:…` ids under the source partition id.
+    let (plaintext, result) = encrypted_image::unlock(
+        image.disk_image(),
+        UnlockOptions {
+            target: UnlockTarget::SourcePartition,
+            scheme: EncryptionScheme::Bitlocker,
+            credential: UnlockCredential::RecoveryPassword {
+                recovery_password: recovery,
+            },
+            partition_id: Some(partition_id),
+            offset: None,
+            length: None,
+            hidden: false,
+            pim: 0,
+            logical_volume_index: None,
+            encrypted_root_plist_path: None,
+        },
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .expect("BitLocker unlock should succeed");
     image
-        .unlock_bitlocker_partition(bitlocker_partition.id, Some(&recovery), None)
-        .expect("BitLocker unlock should succeed");
-    let unlocked_children =
-        children_for_image(&image, &parent_id).expect("unlocked listing should succeed");
-    assert!(!unlocked_children.is_empty());
+        .attach_decrypted_partition(
+            partition_id,
+            plaintext,
+            result.scheme,
+            result.read_cancellation.clone(),
+        )
+        .expect("attach the plaintext view");
+    let unlocked_children = children_for_image(&image, &format!("part:{partition_id}"))
+        .expect("unlocked listing should succeed");
     assert!(unlocked_children
         .iter()
-        .all(|node| node.id.starts_with("ntfs:part:")));
+        .any(|node| node.id.starts_with("ntfs:part:")));
 }
 
 #[test]

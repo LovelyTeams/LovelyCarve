@@ -1,4 +1,5 @@
 import { invokeCmd } from './client';
+import type { EncryptionScheme } from './encrypted';
 import { type HashAlgo } from './fs/derived';
 import type { ImageId } from './ids';
 // Wire types for a loaded evidence image, shared by the image-load, RAID and
@@ -60,9 +61,15 @@ export interface ShadowCopyOrigin {
   created_unix_ms: number | null;
 }
 
+/** A source partition the session reads through its unlocked plaintext view. */
+export interface UnlockedPartition {
+  id: number;
+  scheme: EncryptionScheme;
+}
+
 export interface ImageInfo {
   raw_read_mode?: 'strict' | 'force';
-  unlocked_partitions?: number[];
+  unlocked_partitions?: UnlockedPartition[];
   /** Source unavailable; the session serves published case metadata indexes. */
   index_only?: boolean;
   id: ImageId;

@@ -23,8 +23,7 @@ export function builtinTaskTitle(kind: BackendTaskKind, tr: Translator = sourceT
   switch (kind) {
     case 'imageLoad': return tr("检材加载");
     case 'bcpImport': return tr("导入 BCP 结果");
-    case 'imageExport':
-    case 'bitlockerExport': return tr("镜像导出");
+    case 'imageExport': return tr("镜像导出");
     case 'imageHash': return tr("镜像哈希");
     case 'encryptedVolumeUnlock': return tr("加密卷解锁");
     case 'autoDetect': return tr("自动识别平台");
@@ -48,7 +47,7 @@ function volumeLabel(volumeKey: VolumeKey, tr: Translator, label?: string): stri
   return volumeKey === 'root' ? tr("根目录") : volumeKey;
 }
 
-const SCHEME_LABEL: Record<string, string> = { luks: 'LUKS', veracrypt: 'VeraCrypt', filevault: 'FileVault 2' };
+const SCHEME_LABEL: Record<string, string> = { bitlocker: 'BitLocker', luks: 'LUKS', veracrypt: 'VeraCrypt', filevault: 'FileVault 2' };
 
 /** What a native task works on. */
 export function builtinSubject(entry: BuiltinTaskEntry, tr: Translator = sourceText): string {
@@ -113,7 +112,6 @@ export function builtinMessage(entry: BuiltinTaskEntry, tr: Translator = sourceT
       if (status === 'queued') return tr("等待加载");
       return active ? [openingStage(view, tr), bytes].filter(Boolean).join(' · ') : '';
     case 'imageExport':
-    case 'bitlockerExport':
       if (status === 'success') return tr("已导出 {0}{1}", { 0: formatBytes(done), 1: faults });
       if (status === 'cancel') return tr("导出已取消（保留部分文件）");
       return active ? bytes : '';

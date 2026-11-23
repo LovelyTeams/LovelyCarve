@@ -154,8 +154,9 @@ fn locate(targets: &[SnapshotIndexTarget], node_id: &str) -> Option<(SnapshotInd
 }
 
 /// Whether an unindexed `node_id` could still be an NTFS directory once its
-/// volume is indexed: an NTFS id, an NTFS (or unlocked BitLocker) partition,
-/// or a logical volume, whose filesystem only its index tells.
+/// volume is indexed: an NTFS id, a partition that reads as NTFS (unlocked
+/// encrypted ones included), or a logical volume, whose filesystem only its
+/// index tells.
 fn may_be_ntfs(image: &EvidenceSession, node_id: &str) -> bool {
     if node_id.starts_with(size_tree::NTFS_NODE_PREFIX) || node_id.starts_with("lvm:") {
         return true;
@@ -168,9 +169,7 @@ fn may_be_ntfs(image: &EvidenceSession, node_id: &str) -> bool {
     };
     image.partitions.iter().any(|partition| {
         partition.id == partition_id
-            && (partition.kind == PartitionKind::Ntfs
-                || (partition.kind == PartitionKind::Bitlocker
-                    && image.bitlocker_unlocked(partition_id).is_some()))
+            && image.readable_partition_kind(partition_id, partition.kind) == PartitionKind::Ntfs
     })
 }
 

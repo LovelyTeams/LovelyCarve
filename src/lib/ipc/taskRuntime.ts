@@ -11,9 +11,7 @@ import type { ImageId } from './ids';
 export type BackendTaskKind =
   | 'autoDetect'
   | 'bcpImport'
-  | 'bitlockerExport'
   | 'bitlockerScan'
-  | 'bitlockerUnlock'
   | 'encryptedVolumeUnlock'
   | 'filevaultInspect'
   | 'carveRecovery'

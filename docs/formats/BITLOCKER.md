@@ -3,6 +3,10 @@
 BitLocker 由 Apache-2.0 的 vendored `bitlocker-core` 0.3.5 加本地补丁读取，直接解密检材中的分区，
 不加载 libbde DLL，也不复制 libbde 的 C 实现。原始镜像与分区的 ID、偏移和长度保持不变。
 
+解锁与 LUKS、VeraCrypt、FileVault 共用 `encrypted_volume_unlock`：凭据是 `credential`（按 `kind` 区分），
+明文作为单卷派生镜像挂到原分区（或用 `target: newImage` 打开为独立检材），文件系统按卷首识别，
+NTFS、ReFS、FAT / exFAT 等都按普通分区浏览，卷内 NTFS 卷影副本也从明文视图列出。
+
 本文以 [libyal/libbde](https://github.com/libyal/libbde/tree/dd48d476e3da4a19d7bf1c4d16d14b3b6efeddf0)
 提交 `dd48d476e3da4a19d7bf1c4d16d14b3b6efeddf0`（2026-10-13 核对）为参照，比较了 README、公共头文件、格式文档、
 `volume_header`、`metadata_block_header`、`metadata`、`sector_data`、`encryption_context` 和 EOW 读取路径。
@@ -28,20 +32,20 @@ libbde 自身也不支持 TPM / SID 解锁，因此它们不算作相对缺口�
 
 | 能力 | libbde | LovelyCarve 入口 |
 | --- | --- | --- |
-| 用户密码 | 支持 | `bitlocker_unlock.password`，尝试每个同类保护器，AES-CCM 认证 |
-| 48 位恢复密码 | 支持 | `recoveryPassword`；格式、范围、除 11 校验及 AES-CCM 认证 |
-| 明文密钥 / 暂停保护 | 支持 | 不传其他凭据即尝试 clear protector；界面「其他密钥 → 明文密钥」 |
-| BEK 启动密钥 | 支持 | `startupKeyPath`；64 KiB 上限；匹配 BEK/保护器 GUID 并认证 VMK/FVEK |
-| 原始 FVEK / TWEAK | 支持 `set_keys` | `fvekHex` / `tweakHex`；严格校验算法对应长度；界面可输入 |
-| 原始 VMK | 无同名公共解锁入口，保护器链内处理 | 32 字节 VMK 直接认证 FVEK，不要求恢复密码保护器；`bitlocker_unlock_with_vmk` |
-| 内存 VMK 扫描、提取恢复密码 | 不属于 libbde 公共扫描接口 | 支持。16 字节候选走恢复 datum 路径；32 字节 VMK 可直接解锁 |
+| 用户密码 | 支持 | `credential.kind = password`，尝试每个同类保护器，AES-CCM 认证 |
+| 48 位恢复密码 | 支持 | `recoveryPassword`；格式、范围、除 11 校验（界面逐组提示）及 AES-CCM 认证 |
+| 明文密钥 / 暂停保护 | 支持 | `clearKey`；CLI 不给凭据即尝试 clear protector；界面「其他密钥 → 明文密钥」 |
+| BEK 启动密钥 | 支持 | `startupKey.path`；64 KiB 上限；匹配 BEK/保护器 GUID 并认证 VMK/FVEK |
+| 原始 FVEK / TWEAK | 支持 `set_keys` | `masterKey.keyHex` / `tweakHex`；严格校验算法对应长度；界面可输入 |
+| 原始 VMK | 无同名公共解锁入口，保护器链内处理 | `vmk.keyHex`；32 字节 VMK 直接认证 FVEK，不要求恢复密码保护器 |
+| 内存 VMK 扫描、提取恢复密码 | 不属于 libbde 公共扫描接口 | `bitlocker_scan_memory` 列出候选及其派生的恢复密码，选中后以 `vmk` 凭据解锁。16 字节候选走恢复 datum 路径；32 字节 VMK 可直接解锁 |
 | TPM / SID | README 明确不支持 | 不支持；元数据查询可以报告相应的保护器类型 |
 
 一个请求只选一种凭据。TWEAK 只能与 FVEK 一起提交。密码、恢复密码、BEK 和 VMK 的错误密钥
 通过认证失败；原始 FVEK/TWEAK 的扇区加密本身没有认证标签，长度正确不代表密钥正确，须核验
-解密后的文件系统/文件。界面有对应提示。凭据不持久化。
+解密后的文件系统/文件。凭据不持久化。
 
-VMK 解锁结果保留 `{ status, recovery_key }` 契约；没有可提取的恢复密码时 `recovery_key` 为 `""`，
+VMK 解锁在结果的 `recovery_password` 中报告派生出的恢复密码；没有可提取的恢复密码时省略该字段，
 不会把已通过 FVEK 认证的解锁标成失败。
 
 ## 字节读取、元数据与工具/API
@@ -49,19 +53,19 @@ VMK 解锁结果保留 `{ status, recovery_key }` 契约；没有可提取的恢
 | libbde 能力/API | 本项目对应实现/差异 |
 | --- | --- |
 | signature check、open、offset/file I/O handle | 检材解码器 + 有界 `VolumeReader` + `VolumeHeader`；RAW/EWF/VMDK 等共用读取器 |
-| read、seek、read_buffer_at_offset、get_offset | `DecryptedVolume` 的 `Read + Seek` / `read_at`；应用 `UnlockedVolume` 用 Mutex 串行保护，弱引用避免延长检材生命周期 |
+| read、seek、read_buffer_at_offset、get_offset | `DecryptedVolume` 的 `Read + Seek` / `read_at`；共用解锁的明文源用 Mutex 串行保护，弱引用避免延长检材生命周期，检材关闭后读取失败 |
 | metadata 三份副本 | 完整结构校验后选择有效副本；坏偏移、截断/畸形块与读取失败可继续备份；Vista 从块头补充备份偏移，最多六个去重候选 |
 | metadata 清零 | v1 每份 16 KiB、v2 每份 64 KiB，覆盖整个元数据区而不只是 entry 内容长度 |
 | relocated volume header | 逻辑启动区读取重定位字节并按物理偏移生成 IV；原重定位存储区在解密视图清零 |
 | EOW metadata 清零 | descriptor、map 和 relocation log 保留区清零；明文位图作用于物理扇区地址 |
 | get_size | 使用传入的检材分区边界；不会将容器总文件长度或解密偏移冒充原分区几何。此契约不等同于 libbde 从 NTFS 头推导卷大小 |
-| get_encryption_method / is_locked | `bitlocker_metadata` / `bitlocker_status` |
-| get_volume_identifier / creation_time | `bitlocker_metadata.volume_guid` / `creation_time`；后者为原始 FILETIME 的十进制字符串，防止 JavaScript 丢低位 |
+| get_encryption_method / is_locked | `bitlocker_inspect` / `ImageInfo.unlocked_partitions`（`{ id, scheme }`） |
+| get_volume_identifier / creation_time | `bitlocker_inspect.volume_guid` / `creation_time`；后者为原始 FILETIME 的十进制字符串，防止 JavaScript 丢低位 |
 | UTF-8 / UTF-16 description | `description` 由 UTF-16LE 严格解码成 Unicode 字符串；非法编码报错 |
 | key-protector count / identifier / type | `key_protectors[]` 和 `protector_types[]`，不暴露密钥 payload |
 | signal_abort | 既有任务管理与取消；密钥派生前后检查，派生中不保证立即响应；内存扫描和导出支持取消 |
-| bdeinfo | `bitlocker_metadata`（无凭据）、界面格式/保护器摘要；全部 metadata 信息可通过 CLI JSONL 获取 |
-| bdeexport | `bitlocker_export_decrypted_image` 输出完整 RAW 镜像，将目标分区替换为解密字节；这是既有完整镜像契约，非单卷 bdeexport 字节布局 |
+| bdeinfo | `bitlocker_inspect`（无凭据，CLI `encryption`）；全部 metadata 信息可通过 CLI JSONL 获取 |
+| bdeexport | `image_export_raw` 的 `unlockedPartitions` 模式输出完整 RAW 镜像，把已解锁分区（不论格式）替换为解密字节；这是完整镜像契约，非单卷 bdeexport 字节布局 |
 | bdemount / Dokan / FUSE | 复用应用已有只读文件系统挂载/共享路径；不增加 libbde/Dokan/FUSE 兼容 API |
 | C / Python bindings、library version/error helpers | 对应 Rust 类型/API、typed IPC、生成的 CLI 命令。不是二进制 ABI 或 pybde 兼容替代品 |
 

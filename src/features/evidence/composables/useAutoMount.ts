@@ -8,7 +8,7 @@ import { tr } from '../../../composables/useLocale';
 // 把整个案件的分区都挂上，省去逐块磁盘、逐分区点「挂载」。
 //
 // 仅「文件夹」模式：驱动器盘符 H–Y 只有十几个，多块磁盘的案件会很快耗尽。
-// BitLocker 等需密钥解锁的分区跳过（自动挂载拿不到密钥）。已挂载的分区按
+// BitLocker、LUKS 等需密钥解锁的分区跳过（自动挂载拿不到密钥）。已挂载的分区按
 // (镜像 id, 分区节点) 去重跳过，故重复打开同一案件不会重复挂或建出 `分区0 (2)`。
 import { ref } from 'vue';
 
@@ -18,8 +18,8 @@ import { imageLoadDetail } from '../../../lib/ipc/image';
 import { useUiPreferences } from '../../../composables/useUiPreferences';
 import { notifyError, notifyInfo, notifySuccess } from '../../../composables/useToast';
 
-// 可自动挂载的分区类型：自带文件系统、无需解锁。与 DiskImageInfo 的
-// MOUNTABLE_KINDS 保持一致，但去掉 bitlocker（需解锁，自动流程跳过）。
+// 可自动挂载的分区类型：自带文件系统、无需解锁，与 useEvidenceMounts 的
+// MOUNTABLE_KINDS 一致。锁定的加密分区不在其中。
 const AUTO_MOUNTABLE_KINDS = new Set([
   'ext4', 'btrfs', 'fat32', 'fat12', 'fat16', 'exfat', 'cdfs', 'squashfs', 'cramfs', 'romfs', 'minifs', 'erofs', 'f2fs', 'qnx4', 'qnx6', 'udf', 'minix', 'jfs', 'reiserfs', 'amiga', 'befs', 'gfs2', 'ocfs2', 'nilfs2', 'bcachefs', 'hfs', 'ubifs', 'jffs2', 'yaffs1', 'yaffs2', 'ubi',
   'apfscontainer', 'hfsplus', 'hfsx', 'lvm', 'ntfs', 'refs',

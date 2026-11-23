@@ -11,7 +11,7 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({ open: ipc.open }));
 vi.mock('../../../composables/useToast', () => ({ notifySuccess: vi.fn(), notifyError: vi.fn() }));
 
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
-function image(id: string): ImageInfo { return { id, path: id, source_format: 'raw', size_bytes: 1024, sector_size: 512, table_scheme: 'gpt', partitions: [{ id: 1, kind: 'bitlocker', label: null, start_lba: 0, length_lba: 2 }], disk_id: null, on_disk_bytes: null, modified_unix_ms: null, created_unix_ms: null, ewf: null }; }
+function image(id: string): ImageInfo { return { id, path: id, source_format: 'raw', size_bytes: 1024, sector_size: 512, table_scheme: 'gpt', partitions: [{ id: 1, kind: 'ntfs', label: null, start_lba: 0, length_lba: 2 }], disk_id: null, on_disk_bytes: null, modified_unix_ms: null, created_unix_ms: null, ewf: null }; }
 function view(image_id: string): DokanMountView { return { id: `${image_id}-mount`, image_id, root_node_id: 'part:1', mount_point: 'H:\\', share: null } as DokanMountView; }
 let app: App; let host: HTMLElement;
 async function settle() { for (let index = 0; index < 5; index++) await nextTick(); }
@@ -19,7 +19,7 @@ async function setup(target: 'drive' | 'folder' = 'folder') {
   const info = shallowRef(image('a')); const caseDirectory = ref<string | null>(null); const folder = ref('');
   let controller!: ReturnType<typeof useEvidenceMounts>;
   host = document.createElement('div'); document.body.append(host);
-  app = createApp(defineComponent({ setup() { controller = useEvidenceMounts({ info: () => info.value, mountTarget: () => target, mountFolderRoot: () => folder.value, caseDirectory: () => caseDirectory.value, onUnlocked: vi.fn() }); return () => h('div'); } }));
+  app = createApp(defineComponent({ setup() { controller = useEvidenceMounts({ info: () => info.value, mountTarget: () => target, mountFolderRoot: () => folder.value, caseDirectory: () => caseDirectory.value }); return () => h('div'); } }));
   app.mount(host); await settle(); return { controller, info, caseDirectory, folder };
 }
 beforeEach(() => { vi.resetAllMocks(); ipc.mounts.mockResolvedValue([]); });

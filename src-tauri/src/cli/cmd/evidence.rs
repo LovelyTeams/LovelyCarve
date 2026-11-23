@@ -5,7 +5,6 @@ use serde_json::{json, Value};
 
 use crate::{
     cli::{
-        browsing::LastLink,
         exec::Exec,
         json_output, render,
         types::{parse_address, parse_host_path, parse_secret, Address, HostPath, Parts, Secret},
@@ -37,7 +36,7 @@ pub enum EvidenceCommand {
     Rm(AliasRequired),
     /// 计算整份检材的哈希
     Hash(HashEvidence),
-    /// 导出整份检材，或解锁后的 BitLocker 卷，为 RAW
+    /// 导出整份检材为 RAW；加 --unlocked 时已解锁的分区写成明文
     Export(ExportEvidence),
     /// 读取时以零填充的坏区域
     BadRegions(AliasArg),
@@ -128,13 +127,13 @@ pub struct HashEvidence {
 #[derive(Args, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportEvidence {
-    /// 检材别名，或已解锁的 BitLocker 卷（/<别名>/part:N）
+    /// 检材别名
     #[arg(value_name = "检材")]
     pub target: String,
     /// 输出文件（必须不存在）
     #[arg(short = 'o', long, value_parser = parse_host_path, value_name = "文件")]
     pub output: HostPath,
-    /// 把已解锁的分区写成明文，其余字节保持源数据
+    /// 把已解锁的分区（BitLocker、LUKS、VeraCrypt、FileVault）写成明文，其余字节保持源数据
     #[arg(long)]
     pub unlocked: bool,
     /// 遇到读不出的扇区立即失败（默认补零并报告）
@@ -342,31 +341,13 @@ async fn export_evidence(exec: &Exec, export: ExportEvidence) -> Result<Output, 
         Address::new(format!("/{}", export.target))
     };
     match address.parts() {
-        Parts::Path { path, .. } if !path.trim_matches('/').is_empty() => {
-            // A volume: the decrypted BitLocker partition.
-            let target = exec.target(&address, LastLink::Follow).await?;
-            let partition = super::crypto::partition_number(target.node_id()).ok_or_else(|| {
-                CliError::new(
-                    "usage",
-                    format!("{} 不是分区；导出整份检材写别名，导出解锁后的 BitLocker 卷写 /<别名>/part:N", target.address()),
-                )
-            })?;
-            let bytes = crate::commands::evidence::bitlocker::bitlocker_export_decrypted_image(
-                exec.host.clone(),
-                exec.state(),
-                target.image_id().clone(),
-                partition,
-                export.output.text(),
-                super::task_id("evidence export"),
-            )
-            .await
-            .map_err(operation("bitlocker_export_decrypted_image"))?;
-            Ok(Output::json(json!({
-                "source": target.address(),
-                "destination": export.output.text(),
-                "bytesWritten": bytes,
-            })))
-        }
+        Parts::Path { path, .. } if !path.trim_matches('/').is_empty() => Err(CliError::new(
+            "usage",
+            format!(
+                "{} 不是检材别名；导出整份检材写别名，已解锁的分区要写成明文时加 --unlocked",
+                export.target
+            ),
+        )),
         Parts::Root => Err(CliError::new("usage", "需要检材别名")),
         Parts::Path { alias, .. } | Parts::Node { alias, .. } => {
             let evidence = exec.resolve(alias).await?;

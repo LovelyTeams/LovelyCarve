@@ -1,96 +1,50 @@
-//! Bounded read and seek adapters for image and BitLocker partitions.
+//! Bounded read and seek adapters for NTFS partitions.
 use super::*;
 use crate::core::common::error::Failure;
 
-/// Backing source for an NTFS volume. Either a raw partition slice of a
-/// `DiskImage` (the common case) or the plaintext stream produced by an
-/// unlocked BitLocker volume.
+/// Backing source for an NTFS volume: a partition slice of a `DiskImage`, or
+/// an LVM2 logical volume mapped over one. An unlocked encrypted volume is a
+/// partition of its plaintext image.
 #[derive(Clone)]
-pub(super) enum PartitionBacking<'a> {
-    Image {
-        image: &'a DiskImage,
-        base_offset: u64,
-        length_bytes: u64,
-        layout: Option<crate::core::evidence::partitions::lvm2::layout::LinearLayout>,
-    },
-    Bitlocker {
-        unlocked: Arc<UnlockedVolume>,
-        length_bytes: u64,
-    },
+pub(super) struct PartitionBacking<'a> {
+    pub(super) image: &'a DiskImage,
+    pub(super) base_offset: u64,
+    pub(super) length_bytes: u64,
+    pub(super) layout: Option<crate::core::evidence::partitions::lvm2::layout::LinearLayout>,
 }
 
 impl<'a> PartitionBacking<'a> {
     pub(super) fn length(&self) -> u64 {
-        match self {
-            Self::Image { length_bytes, .. } => *length_bytes,
-            Self::Bitlocker { length_bytes, .. } => *length_bytes,
-        }
-    }
-
-    /// Coordinate base for run capture: original image offset for a slice,
-    /// zero for a mapped LV. `physical_ranges` resolves original image offsets.
-    /// BitLocker has no direct source runs and returns `None`.
-    pub(super) fn base_offset(&self) -> Option<u64> {
-        match self {
-            Self::Image {
-                base_offset,
-                layout: None,
-                ..
-            } => Some(*base_offset),
-            Self::Image {
-                layout: Some(_), ..
-            } => Some(0),
-            Self::Bitlocker { .. } => None,
-        }
+        self.length_bytes
     }
 
     pub(super) fn physical_ranges(&self, position: u64, length: u64) -> Result<Vec<(u64, u64)>> {
-        match self {
-            Self::Image {
-                layout: Some(layout),
-                ..
-            } => Ok(layout
+        match &self.layout {
+            Some(layout) => Ok(layout
                 .ranges(position, length)?
                 .into_iter()
                 .map(|range| (range.physical_offset, range.size))
                 .collect()),
-            Self::Image {
-                base_offset,
-                layout: None,
-                ..
-            } => Ok(vec![(
-                base_offset
+            None => Ok(vec![(
+                self.base_offset
                     .checked_add(position)
                     .ok_or_else(|| anyhow!(Failure::corrupt("NTFS source offset overflow")))?,
                 length,
             )]),
-            Self::Bitlocker { .. } => Ok(Vec::new()),
         }
     }
 
     pub(super) fn read_into(&self, position: u64, buf: &mut [u8]) -> io::Result<usize> {
-        match self {
-            Self::Image {
-                image,
-                base_offset,
-                layout,
-                ..
-            } => {
-                let bytes = crate::core::filesystem::volumes::lvm::read_backing_range(
-                    image,
-                    layout.as_ref(),
-                    base_offset + position,
-                    buf.len(),
-                )
-                .map_err(|err| io::Error::other(err.to_string()))?;
-                let copied = bytes.len();
-                buf[..copied].copy_from_slice(&bytes);
-                Ok(copied)
-            }
-            Self::Bitlocker { unlocked, .. } => unlocked
-                .read_at(position, buf)
-                .map_err(|err| io::Error::other(err.to_string())),
-        }
+        let bytes = crate::core::filesystem::volumes::lvm::read_backing_range(
+            self.image,
+            self.layout.as_ref(),
+            self.base_offset + position,
+            buf.len(),
+        )
+        .map_err(|err| io::Error::other(err.to_string()))?;
+        let copied = bytes.len();
+        buf[..copied].copy_from_slice(&bytes);
+        Ok(copied)
     }
 
     pub(super) fn reader(&self) -> PartitionReader<'a> {

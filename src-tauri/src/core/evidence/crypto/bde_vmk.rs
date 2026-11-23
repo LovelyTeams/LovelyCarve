@@ -12,11 +12,10 @@
 //!    candidate VMK and, if the embedded Key datum is 16 bytes, formats the
 //!    BitLocker 48-digit recovery password.
 //!
-//! The recovered password enters the same pure Rust authenticated unlock path
-//! as an explicitly supplied recovery password; the existing IPC contract
-//! returns both the recovered password and the unlocked-volume status.
+//! A VMK credential enters the shared unlock path in `encrypted_image`; a
+//! 128-bit one opens the volume through its recovered password, and the
+//! unlock result reports the recovered password either way.
 
-use std::collections::HashSet;
 use std::fs::File;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -29,10 +28,9 @@ use memchr::memchr_iter;
 use memmap2::Mmap;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use sha1::{Digest as _, Sha1};
 
 use crate::core::common::error::Failure;
-use crate::core::evidence::image::{BitlockerStatus, DiskImage};
+use crate::core::evidence::image::DiskImage;
 use crate::core::evidence::partitions::{Partition, PartitionKind};
 
 const FVE_MAGIC: &[u8; 8] = b"-FVE-FS-";
@@ -416,6 +414,16 @@ pub fn recovery_key_from_vmk(
     let Some(volume_offset) = partition_volume_offset(partition, image.sector_size) else {
         return Ok(None);
     };
+    recovery_key_at(image, volume_offset, vmk)
+}
+
+/// Derive the 48-digit recovery key of the BitLocker volume whose header
+/// starts at `volume_offset` of `image`, as [`recovery_key_from_vmk`] does.
+pub fn recovery_key_at(
+    image: &DiskImage,
+    volume_offset: u64,
+    vmk: &[u8],
+) -> Result<Option<String>> {
     let Some((metadata_offset, _slot)) = locate_fve_metadata(image, volume_offset)? else {
         return Ok(None);
     };
@@ -439,20 +447,10 @@ pub fn parse_vmk_hex(input: &str) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-// ── IPC types and input fingerprinting ───────────────────────────────────────
-//
-// The structs below augment `VmkCandidate` with the recovery key derived
-// against a specific partition's FVE metadata, plus a "已尝试" flag the
-// frontend uses to dim VMKs the user already pasted into a failed unlock.
-// They live here so `bde_vmk` owns the full BitLocker-input domain
-// end-to-end — input normalisation, hashing for de-dup, and the
-// IPC-shaped result types.
-//
-// Hash fingerprints are SHA-1 of the *normalised* input. SHA-1 is fine
-// for identity-only de-dup (we are never proving a key is good — we are
-// just recognising "the user pasted this exact wrong key already"); we
-// never retain plaintext credentials.
+// ── IPC types ────────────────────────────────────────────────────────────────
 
+/// A memory-image VMK candidate with the recovery key it derives against one
+/// BitLocker partition's FVE metadata.
 #[derive(Debug, Serialize)]
 pub struct VmkScanCandidate {
     pub offset: u64,
@@ -462,9 +460,8 @@ pub struct VmkScanCandidate {
     /// Recovery key derived against the BitLocker partition's FVE
     /// metadata. `None` when this VMK does not unlock that volume.
     pub recovery_key: Option<String>,
-    /// True when this exact VMK has already failed an unlock attempt on
-    /// this `(image_id, partition_id)` in the current session — surfaced
-    /// to the UI as a "已尝试" pill so the operator does not re-click it.
+    /// Always false from a scan: nothing records failed attempts, so the
+    /// unlock dialog marks a candidate it has already tried itself.
     pub already_tried: bool,
 }
 
@@ -481,92 +478,6 @@ pub struct BitlockerScanProgress {
     pub task_id: String,
     pub bytes_done: u64,
     pub bytes_total: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct BitlockerVmkUnlockResult {
-    pub status: BitlockerStatus,
-    pub recovery_key: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct BdeStoredKey {
-    pub partition_id: u8,
-    pub recovery_key: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct BdeAttemptsView {
-    pub password_hashes: Vec<String>,
-    pub recovery_hashes: Vec<String>,
-    pub vmk_hashes: Vec<String>,
-}
-
-/// Per-partition record of every previously-failed unlock attempt. Stored
-/// SHA-1 hashes (20 bytes each) are sufficient to recognise repeat inputs
-/// without ever retaining plaintext credentials. Materialised on demand
-/// from `CaseDb::bitlocker_attempts_for_partition`.
-#[derive(Default, Debug, Clone)]
-pub struct BdeAttempts {
-    pub failed_password_hashes: HashSet<[u8; 20]>,
-    pub failed_recovery_hashes: HashSet<[u8; 20]>,
-    pub failed_vmk_hashes: HashSet<[u8; 20]>,
-}
-
-/// Discriminator used by `CaseDb::bitlocker_attempts` to tag a SHA-1
-/// fingerprint by which BitLocker input it came from. Exhaustive `match`
-/// over this enum forces every storage call site to address all three
-/// kinds.
-#[derive(Debug, Clone, Copy)]
-pub enum BdeAttemptKind {
-    Password,
-    Recovery,
-    Vmk,
-}
-
-impl BdeAttemptKind {
-    pub fn as_db(self) -> &'static str {
-        match self {
-            Self::Password => "password",
-            Self::Recovery => "recovery",
-            Self::Vmk => "vmk",
-        }
-    }
-
-    pub fn from_db(value: &str) -> Option<Self> {
-        match value {
-            "password" => Some(Self::Password),
-            "recovery" => Some(Self::Recovery),
-            "vmk" => Some(Self::Vmk),
-            _ => None,
-        }
-    }
-}
-
-/// SHA-1 fingerprint of a normalised BitLocker input. The 20-byte hash is
-/// the canonical key used by `CaseDb::bitlocker_attempts` so we never
-/// retain plaintext passwords / VMKs in any persistent store.
-pub fn hash_attempt(value: &str) -> [u8; 20] {
-    let digest = Sha1::digest(value.as_bytes());
-    digest.into()
-}
-
-/// Normalise a BitLocker recovery password so equivalent user inputs
-/// (with or without dashes / whitespace) hash to the same fingerprint.
-/// Recovery keys are 48 digits regardless of presentation, so we keep
-/// digits only — dashed and undashed pastes of the same key collide
-/// intentionally.
-pub fn normalize_recovery(value: &str) -> String {
-    value.chars().filter(|ch| ch.is_ascii_digit()).collect()
-}
-
-/// Normalise a VMK hex string (lowercase, whitespace removed).
-pub fn normalize_vmk_hex(value: &str) -> String {
-    value
-        .chars()
-        .filter(|ch| !ch.is_whitespace())
-        .flat_map(char::to_lowercase)
-        .collect()
 }
 
 #[cfg(test)]
@@ -655,28 +566,5 @@ mod tests {
     #[test]
     fn parse_vmk_hex_rejects_wrong_length() {
         assert!(parse_vmk_hex("deadbeef").is_err());
-    }
-
-    #[test]
-    fn recovery_normalisation_collapses_whitespace_and_dashes() {
-        // All three presentations of the same 48-digit recovery key must
-        // produce the same fingerprint so a re-typed-with-different-spacing
-        // duplicate hits the failure cache.
-        let with_dashes =
-            normalize_recovery("123456-234567-345678-456789-567890-678901-789012-890123");
-        let with_spaces =
-            normalize_recovery(" 123456-234567 345678 456789-567890-678901-789012-890123 ");
-        let without_dashes = normalize_recovery("123456234567345678456789567890678901789012890123");
-        assert_eq!(hash_attempt(&with_dashes), hash_attempt(&with_spaces));
-        assert_eq!(hash_attempt(&with_dashes), hash_attempt(&without_dashes));
-    }
-
-    #[test]
-    fn vmk_hex_normalisation_is_case_and_whitespace_insensitive() {
-        let lower_packed = normalize_vmk_hex("4a564b20bbb766ff35df3f48aea7bee8");
-        let mixed_spaced = normalize_vmk_hex("4A56 4B20 BBb7 66FF 35Df 3F48 aEa7 bEe8");
-        let tab_separated = normalize_vmk_hex("4A56\t4B20\tBBB7\t66FF\t35DF\t3F48\tAEA7\tBEE8");
-        assert_eq!(hash_attempt(&lower_packed), hash_attempt(&mixed_spaced));
-        assert_eq!(hash_attempt(&lower_packed), hash_attempt(&tab_separated));
     }
 }

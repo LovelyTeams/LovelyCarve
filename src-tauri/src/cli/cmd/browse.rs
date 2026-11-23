@@ -525,9 +525,15 @@ pub async fn volumes(exec: &Exec, args: VolumesArgs) -> Result<Output, CliError>
                 .await
                 .map_err(operation("image_info"))?;
         let info = serde_json::to_value(crate::cli::wire::Camel(info))?;
-        let unlocked: Vec<u64> = info["unlockedPartitions"]
+        // Each unlocked partition with the scheme it was opened with.
+        let unlocked: Vec<(u64, Value)> = info["unlockedPartitions"]
             .as_array()
-            .map(|ids| ids.iter().filter_map(Value::as_u64).collect())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| Some((item["id"].as_u64()?, item["scheme"].clone())))
+                    .collect()
+            })
             .unwrap_or_default();
         let filesystems = crate::commands::filesystem::filedb::filedb_volumes(
             exec.state(),
@@ -564,16 +570,20 @@ pub async fn volumes(exec: &Exec, args: VolumesArgs) -> Result<Output, CliError>
                 .and_then(|partition| partition["kind"].as_str())
                 .map(str::to_owned);
             let number = super::crypto::partition_number(&node.id);
-            let encryption = match (kind.as_deref(), number) {
-                (Some(scheme @ ("bitlocker" | "luks" | "filevault")), Some(number)) => {
-                    let open = if scheme == "bitlocker" {
-                        super::crypto::bitlocker_unlocked(exec, &item.image_id, number).await
-                    } else {
-                        unlocked.contains(&u64::from(number))
-                    };
-                    json!({"scheme": scheme, "state": if open { "unlocked" } else { "locked" }})
+            // An unlocked partition reads as its plaintext kind; a locked one
+            // still has its encryption header's.
+            let opened = number.and_then(|number| {
+                unlocked
+                    .iter()
+                    .find(|(id, _)| *id == u64::from(number))
+                    .map(|(_, scheme)| scheme.clone())
+            });
+            let encryption = match (opened, kind.as_deref(), number) {
+                (Some(scheme), _, _) => json!({"scheme": scheme, "state": "unlocked"}),
+                (None, Some(scheme @ ("bitlocker" | "luks" | "filevault")), Some(_)) => {
+                    json!({"scheme": scheme, "state": "locked"})
                 }
-                _ => Value::Null,
+                (None, _, _) => Value::Null,
             };
             let filesystem = filesystems
                 .iter()

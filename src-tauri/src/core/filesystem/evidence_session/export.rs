@@ -8,7 +8,6 @@ use tokio_util::sync::CancellationToken;
 
 use super::EvidenceSession;
 use crate::core::common::error::Failure;
-use crate::core::evidence::crypto::bitlocker::UnlockedVolume;
 
 #[derive(Clone, Copy, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,44 +17,23 @@ pub enum ImageExportMode {
     UnlockedPartitions,
 }
 
-enum PlaintextReader {
-    Native {
-        session: Arc<EvidenceSession>,
-        cancellation: CancellationToken,
-    },
-    Bitlocker(Arc<UnlockedVolume>),
+/// The plaintext of one attached decrypted view.
+struct PlaintextReader {
+    session: Arc<EvidenceSession>,
+    cancellation: CancellationToken,
 }
 
 impl PlaintextReader {
     fn len(&self) -> u64 {
-        match self {
-            Self::Native { session, .. } => session.len(),
-            Self::Bitlocker(volume) => volume.size(),
-        }
+        self.session.len()
     }
 
     fn read_into(&self, offset: u64, output: &mut [u8]) -> anyhow::Result<usize> {
-        match self {
-            Self::Native {
-                session,
-                cancellation,
-            } => {
-                ensure!(
-                    !cancellation.is_cancelled(),
-                    Failure::cancelled("解密会话已关闭")
-                );
-                session.read_into(offset, output)
-            }
-            Self::Bitlocker(volume) => {
-                let mut filled = 0;
-                while filled < output.len() {
-                    let read = volume.read_at(offset + filled as u64, &mut output[filled..])?;
-                    ensure!(read > 0, "BitLocker plaintext short read at {offset}");
-                    filled += read;
-                }
-                Ok(filled)
-            }
-        }
+        ensure!(
+            !self.cancellation.is_cancelled(),
+            Failure::cancelled("解密会话已关闭")
+        );
+        self.session.read_into(offset, output)
     }
 }
 
@@ -113,30 +91,10 @@ impl EvidenceSession {
                     end: start
                         .checked_add(length)
                         .context(Failure::corrupt("partition end overflow"))?,
-                    reader: PlaintextReader::Native {
+                    reader: PlaintextReader {
                         session: Arc::clone(&attached.session),
                         cancellation: attached.cancellation.clone(),
                     },
-                });
-            }
-            for partition in &self.partitions {
-                let Some(volume) = self.bitlocker_unlocked(partition.id) else {
-                    continue;
-                };
-                let start = partition
-                    .start_lba
-                    .checked_mul(self.sector_size as u64)
-                    .context(Failure::corrupt("partition offset overflow"))?;
-                let length = partition
-                    .length_lba
-                    .checked_mul(self.sector_size as u64)
-                    .context(Failure::corrupt("partition size overflow"))?;
-                regions.push(PlaintextRegion {
-                    start,
-                    end: start
-                        .checked_add(length)
-                        .context(Failure::corrupt("partition end overflow"))?,
-                    reader: PlaintextReader::Bitlocker(volume),
                 });
             }
             regions.sort_by_key(|region| region.start);

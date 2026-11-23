@@ -110,7 +110,7 @@ pub(crate) fn fs_unalloc_nodes(image: &Arc<EvidenceSession>, partition: &Partiti
         | PartitionKind::Refs => Some(VolumeFree::WholeVolume),
         // No FS-level unallocated node:
         // - Lvm: free PE space is surfaced at the VG level (`vg_unalloc_nodes`)
-        // - Bitlocker: locked container; its inner NTFS handles its own once unlocked
+        // - Bitlocker: locked container; unlocked, its plaintext view handles its own
         // - Cdfs / Squashfs: read-only packed images, no allocation pool
         // - Extended / Apm / Bsd / Mdadm / Luks / Swap / BiosBoot: containers /
         //   non-filesystem regions with no per-file allocation to complement
@@ -288,7 +288,6 @@ pub(crate) fn partition_node(image: &Arc<EvidenceSession>, partition: &Partition
             | PartitionKind::Ufs
             | PartitionKind::Xfs
             | PartitionKind::Zfs
-            | PartitionKind::Bitlocker
             // Unknown volumes remain expandable so the LPP manager can lazily
             // probe external filesystem parsers when the user opens them.
             | PartitionKind::Unknown

@@ -266,7 +266,7 @@ def test_encryption(cli, root):
         ], "-C", case)
         unlocked = rows["unlock"]
         assert unlocked["path"] == "/ev/part:0" and unlocked["volumeKey"] == "part:0", unlocked
-        assert unlocked["image"]["id"] == opened(rows)["id"] and unlocked["image"]["unlockedPartitions"] == [0]
+        assert unlocked["image"]["id"] == opened(rows)["id"] and unlocked["image"]["unlockedPartitions"] == [{"id": 0, "scheme": scheme[1]}], unlocked
         assert len(rows["evidence"]["items"]) == 1, "unlocking in place created another evidence item"
         assert any(index["address"] == "/ev/part:0" and index["state"] == "ready" for index in rows["indexes"]["items"]), rows["indexes"]
         assert attached_file.read_bytes() == hello
@@ -280,31 +280,35 @@ def test_encryption(cli, root):
         assert "Aborted." in refused.stderr and (case / "case.db").exists(), refused.stderr
         cli.run("case", "rm", case, "-y")
 
-    # BitLocker: unlock and export, checking only the retained oracle sectors of
-    # the minimized dfvfs projection (not the omitted data).
+    # BitLocker unlocks like the containers: in place, then exported with the
+    # unlocked partitions in plaintext. Only the retained oracle sectors of the
+    # minimized dfvfs projection are checked (not the omitted data).
     fixture = VENDOR / "bitlocker/tests/data/bdetogo-projection.bin.gz"
     encrypted = root / "bitlocker.bin"
     encrypted.write_bytes(gzip.decompress(fixture.read_bytes()))
     decrypted = root / "bitlocker-decrypted.bin"
-    current_raw = root / "bitlocker-current.raw"
     result, rows = cli.batch([
         add(encrypted),
         request("locked", "volumes", ALIAS),
         request("unlock", "unlock", "/ev/part:0", "--password", secret(root, "bde.txt", "bde-TEST")),
         request("status", "encryption", "/ev/part:0"),
         request("unlocked", "volumes", ALIAS),
-        export_evidence("export", "/ev/part:0", decrypted),
-        export_evidence("current", ALIAS, current_raw, "--unlocked"),
+        export_evidence("export", ALIAS, decrypted, "--unlocked"),
     ])
     rows = {row["id"]: row.get("result", row) for row in rows}
+    unlocked = rows["unlock"]
     assert all("error" not in row for row in rows.values()), rows
-    assert rows["unlock"]["status"]["locked"] is False and rows["status"]["status"]["locked"] is False, rows
-    assert rows["status"]["scheme"] == "bitlocker" and rows["status"]["unlocked"], rows["status"]
+    assert unlocked["scheme"] == "bitlocker" and unlocked["path"] == "/ev/part:0" and unlocked["volumeKey"] == "part:0", unlocked
+    assert unlocked["cipher"] == "BitLocker AES-128-CBC + diffuser" and "recoveryPassword" not in unlocked, unlocked
+    assert unlocked["image"]["unlockedPartitions"] == [{"id": 0, "scheme": "bitlocker"}], unlocked
+    assert rows["status"]["scheme"] == "bitlocker" and rows["status"]["unlocked"] is True, rows["status"]
+    assert rows["status"]["metadata"]["encryptionMethod"] == 0x8000, rows["status"]
     for key, state in [("locked", "locked"), ("unlocked", "unlocked")]:
         assert rows[key]["items"][0]["encryption"] == {"scheme": "bitlocker", "state": state}, rows[key]
+    assert rows["locked"]["items"][0]["path"] == "/ev/unsupported:0", rows["locked"]
+    assert rows["unlocked"]["items"][0]["path"] == "/ev/part:0", rows["unlocked"]
     assert "bde-TEST" not in result.stdout + result.stderr
     assert decrypted.stat().st_size == encrypted.stat().st_size
-    assert current_raw.read_bytes() == decrypted.read_bytes()
     with decrypted.open("rb") as stream:
         assert hashlib.sha256(stream.read(512)).hexdigest() == "139b857c537e341ceb98bcfde2d31825efcf4b0c0281dd66672e954b34ed28f3"
         stream.seek(0x8000)
@@ -335,15 +339,14 @@ def test_encryption(cli, root):
             add(encrypted),
             request("metadata", "encryption", "/ev/part:0"),
             request("unlock", "unlock", "/ev/part:0", *credential),
-            export_evidence("export", "/ev/part:0", decrypted),
+            export_evidence("export", ALIAS, decrypted, "--unlocked"),
         ])
         metadata = rows["metadata"]["metadata"]
         assert metadata["encryptionMethod"] == method and metadata["bytesPerSector"] == sector_size, metadata
         assert metadata["protectorTypes"] == [0, 0x0200], metadata
-        if "--vmk" in credential:
-            assert rows["unlock"]["result"]["status"]["locked"] is False and rows["unlock"]["result"]["recoveryKey"] == ""
-        else:
-            assert rows["unlock"]["status"]["locked"] is False, rows["unlock"]
+        unlocked = rows["unlock"]
+        assert unlocked["scheme"] == "bitlocker" and unlocked["path"] == "/ev/part:0", unlocked
+        assert unlocked["encryptionSectorSize"] == sector_size and "recoveryPassword" not in unlocked, unlocked
         plain = bytearray((index * 7 + 19) % 256 for index in range(sector_size))
         plain[3:11] = b"NTFS    "
         decrypted_bytes = decrypted.read_bytes()
@@ -351,4 +354,4 @@ def test_encryption(cli, root):
         assert decrypted_bytes[0x12000:0x12000 + sector_size] == plain
         assert decrypted_bytes[0x10000:0x10000 + sector_size] == bytes(sector_size)
         assert decrypted_bytes[0x20000:0x30000] == bytes(0x10000)
-    print("CLI encryption tests passed: LUKS and VeraCrypt as new evidence and in place, BitLocker password, clear key, startup key, VMK and FVEK")
+    print("CLI encryption tests passed: LUKS, VeraCrypt and BitLocker through one unlock, as new evidence and in place; BitLocker password, clear key, startup key, VMK and FVEK")

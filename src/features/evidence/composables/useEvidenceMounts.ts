@@ -14,7 +14,6 @@ interface EvidenceMountOptions {
   mountTarget: () => MountTarget;
   mountFolderRoot: () => string;
   caseDirectory: () => string | null | undefined;
-  onUnlocked: () => void;
 }
 
 /** Owns overview mount UI; native mounts outlive this view and remain backend-owned. */
@@ -25,10 +24,12 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
   // ── Dokan read-only mount ─────────────────────────────────────────────────
   // Mirror the supported partition set in fs_tree.rs::partition_node; only
   // these surface a `part:{id}` directory node that dokan_mount can project.
+  // A locked encrypted partition is not one; unlocked, it carries its
+  // plaintext filesystem's kind.
   const MOUNTABLE_KINDS = new Set([
     'ext4', 'btrfs', 'fat32', 'fat12', 'fat16', 'exfat', 'cdfs', 'squashfs', 'cramfs', 'romfs', 'minifs', 'erofs', 'f2fs', 'qnx4', 'qnx6', 'udf', 'minix', 'jfs', 'reiserfs', 'amiga', 'befs', 'gfs2', 'ocfs2', 'nilfs2', 'bcachefs', 'hfs', 'ubifs', 'jffs2', 'yaffs1', 'yaffs2', 'ubi',
     'apfscontainer', 'hfsplus', 'hfsx', 'lvm', 'ntfs', 'refs',
-    'ufs', 'xfs', 'zfs', 'bitlocker',
+    'ufs', 'xfs', 'zfs',
   ]);
 
   const mounts = ref<DokanMountView[]>([]);
@@ -67,23 +68,6 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
     return MOUNTABLE_KINDS.has(p.kind);
   }
 
-  // BitLocker partitions only surface a usable filesystem after unlock — show
-  // the mount button once the unlock control reports success. For every other
-  // mountable kind the button is always available.
-  const bitlockerUnlocked = ref<Set<number>>(new Set());
-
-  function canShowMount(p: DiskPartition): boolean {
-    if (p.kind !== 'bitlocker') return true;
-    return bitlockerUnlocked.value.has(p.id);
-  }
-
-  function onBitlockerUnlocked(partitionId: number) {
-    const next = new Set(bitlockerUnlocked.value);
-    next.add(partitionId);
-    bitlockerUnlocked.value = next;
-    // 解锁后的卷才能读到 VSS 区，重新列一次卷影副本。
-    options.onUnlocked();
-  }
 
   function mountViewFor(nodeId: NodeId): DokanMountView | null {
     const imageId = options.info()?.id;
@@ -275,7 +259,6 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
     mounts.value = [];
     busyPartitions.value = new Set();
     busyShares.value = new Set();
-    bitlockerUnlocked.value = new Set();
     pickerLoading.value = false;
     availableDrives.value = [];
     pickerOpenFor.value = null;
@@ -304,5 +287,5 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
   onDeactivated(detach);
   onScopeDispose(() => { disposed = true; generation += 1; detach(); });
 
-  return { SYNTHETIC_MOUNT_KEY, syntheticRoot, mounts, busyPartitions, busyShares, pickerOpenFor, availableDrives, pickerLoading, isMountable, canShowMount, onBitlockerUnlocked, mountViewFor, mountFor, toggleShare, beginMount, finishMountAt, toggleMount, mountAt };
+  return { SYNTHETIC_MOUNT_KEY, syntheticRoot, mounts, busyPartitions, busyShares, pickerOpenFor, availableDrives, pickerLoading, isMountable, mountViewFor, mountFor, toggleShare, beginMount, finishMountAt, toggleMount, mountAt };
 }

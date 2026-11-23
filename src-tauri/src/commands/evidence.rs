@@ -1,6 +1,5 @@
 //! evidence command adapters.
 
-pub mod bitlocker;
 pub mod encrypted_volume;
 pub mod hash;
 pub mod image;

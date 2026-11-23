@@ -220,6 +220,16 @@ where
     Ok(location)
 }
 
+/// Whether a root entry answers to `component`: its ID, and for a partition
+/// whose contents are not readable yet (`unsupported:N`, such as a locked
+/// encrypted volume) also `part:N`, the address it has once unlocked.
+fn root_id_matches(node_id: &str, component: &str) -> bool {
+    node_id == component
+        || node_id
+            .strip_prefix("unsupported:")
+            .is_some_and(|number| component.strip_prefix("part:") == Some(number))
+}
+
 /// The entry named `component` in the directory `location` leads to: an
 /// exact name (at the synthetic root also a root ID), else a unique
 /// case-insensitive match on a volume that folds case.
@@ -250,7 +260,9 @@ where
             // Root IDs provide script-friendly volume paths without changing
             // evidence names. Match both in one pass so a name/ID collision
             // reports ambiguity instead of silently selecting another volume.
-            if node.name == component || (location.is_empty() && node.id == component) {
+            if node.name == component
+                || (location.is_empty() && root_id_matches(&node.id, component))
+            {
                 if child.is_some() {
                     return Err(CliError::invalid(
                         "同名节点不唯一：改用 /<别名>/@<节点ID> 指定（ls -l 显示节点 ID）",

@@ -195,7 +195,7 @@ pub(super) fn mount_suffix_for_root(
     image: &Arc<EvidenceSession>,
     root_node_id: &str,
 ) -> Option<String> {
-    let trimmed = root_node_id.trim_prefix("bde-locked:");
+    let trimmed = root_node_id;
     let image = image.filesystem_session(trimmed);
     if trimmed == "docker:" {
         let tag = image
@@ -267,7 +267,7 @@ pub(super) fn fs_kind_for_root(
     image: &EvidenceSession,
     root_node_id: &str,
 ) -> Option<PartitionKind> {
-    let trimmed = root_node_id.trim_prefix("bde-locked:");
+    let trimmed = root_node_id;
     let image = image
         .decrypted_session_for_node(trimmed)
         .map(Arc::as_ref)

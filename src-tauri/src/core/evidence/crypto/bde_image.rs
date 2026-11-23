@@ -73,6 +73,7 @@ impl BdeEncryptionMethod {
 pub struct BdeVolume {
     volume: ::bitlocker::DecryptedVolume<VolumeReader>,
     source: Weak<dyn VolumeByteReader>,
+    bytes_per_sector: u16,
 }
 
 impl std::fmt::Debug for BdeVolume {
@@ -172,11 +173,19 @@ impl BdeVolume {
             }
         }
         .context("BitLocker key derivation or authenticated key unwrap failed")?;
-        Ok(Self { volume, source })
+        Ok(Self {
+            volume,
+            source,
+            bytes_per_sector: header.bytes_per_sector,
+        })
     }
 
     pub fn size(&self) -> u64 {
         self.volume.volume_size()
+    }
+    /// The encryption sector size recorded in the volume header.
+    pub fn bytes_per_sector(&self) -> u16 {
+        self.bytes_per_sector
     }
     pub fn encryption_method(&self) -> BdeEncryptionMethod {
         BdeEncryptionMethod::from_raw(self.volume.metadata().encryption_method)

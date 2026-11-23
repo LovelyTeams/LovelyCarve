@@ -145,8 +145,8 @@ impl<'a> NtfsVolume<'a> {
     /// Captures the deleted record's unnamed `$DATA` non-resident runlist as
     /// image-absolute byte runs `(offset, len)`, clamped to the volume and to
     /// `logical_size` (the `$DATA` valid length). Returns empty for resident
-    /// data, streams with sparse holes/uninitialized tails, compressed/encrypted streams, or BitLocker
-    /// backings (no stable image offset). The runs let a deleted file be read
+    /// data, streams with sparse holes/uninitialized tails, or compressed/encrypted
+    /// streams. The runs let a deleted file be read
     /// even after its MFT record is reused (P1-5). Clamping to `logical_size`
     /// keeps the recovered content from including the final cluster's slack
     /// tail — runs are otherwise cluster-granular (allocated size), which would
@@ -157,9 +157,6 @@ impl<'a> NtfsVolume<'a> {
         fs: &mut PartitionReader<'_>,
         logical_size: u64,
     ) -> Vec<(u64, u64)> {
-        let Some(_) = self.backing.base_offset() else {
-            return Vec::new();
-        };
         let length = self.backing.length();
         let Some(Ok(item)) = file.data(fs, "") else {
             return Vec::new();

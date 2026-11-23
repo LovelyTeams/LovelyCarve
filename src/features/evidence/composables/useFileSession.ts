@@ -4,11 +4,13 @@ import { ref, shallowRef, onScopeDispose, getCurrentScope } from 'vue';
 import { open } from '@tauri-apps/plugin-dialog';
 
 import { pushPersistentToast, type PersistentToastHandle } from '../../../composables/useToast';
-import { bitlockerStatus } from '../../../lib/ipc/bitlocker';
 import { onEvent } from '../../../lib/ipc/events';
 import { imageLoadFull } from '../../../lib/ipc/image';
 import type { ImageInfo } from '../../../lib/ipc/image';
 import { forgetUnlockedImageInfo, latestUnlockedImageInfo } from './unlockedImageInfo';
+import { isLockedEncrypted } from '../model/encryptedUnlock';
+import { KIND_LABELS } from '../../../lib/models/filesystemLabels';
+import { joinList } from '../../../i18n/translate';
 import type { ImageId } from '../../../lib/ipc/ids';
 
 
@@ -114,82 +116,59 @@ function isDiskImagePath(fileName: string): boolean {
   return lower.endsWith('.tar.gz') || lower.split(/[\\/]/).pop() === 'diskdescriptor.xml' || isDiskImageExtension(extension);
 }
 
-// Image ids we've already raised the locked-BitLocker alert for. Module-scoped
+// Image ids we've already raised the locked-volume alert for. Module-scoped
 // so re-activating a tab (which restores a snapshot, not re-runs `loadFile`) or
 // any re-render can't re-pop. Keyed on the stable backend image id.
-const alertedBitlockerImageIds = new Set<string>();
+const alertedLockedImageIds = new Set<string>();
 
-// 「前往解锁」跳转回调：把用户带到镜像信息面板（BitLocker 解锁控件所在）。由
+// 「前往解锁」跳转回调：把用户带到镜像信息面板（加密卷解锁入口所在）。由
 // AppShell 注入——组合式函数不持有面板状态，沿用 useRaidStack 的
 // registerRaidImageOpener 解耦套路。
-let bitlockerUnlockNavigator: (() => void) | null = null;
+let unlockNavigator: (() => void) | null = null;
 
-/** Register the handler that navigates to the 镜像信息 panel where
- *  BitLocker unlock lives. Called once by AppShell. */
-export function registerBitlockerUnlockNavigator(navigate: () => void) {
-  bitlockerUnlockNavigator = navigate;
-  return () => { if (bitlockerUnlockNavigator === navigate) bitlockerUnlockNavigator = null; };
+/** Register the handler that navigates to the 镜像信息 panel where encrypted
+ *  volumes unlock. Called once by AppShell. */
+export function registerEncryptedUnlockNavigator(navigate: () => void) {
+  unlockNavigator = navigate;
+  return () => { if (unlockNavigator === navigate) unlockNavigator = null; };
 }
 
-// The open 「检测到 BitLocker」 reminder of each image, keyed like the claim set.
-const bitlockerReminders = new Map<string, PersistentToastHandle>();
+// The open 「检测到加密分区」 reminder of each image, keyed like the claim set.
+const unlockReminders = new Map<string, PersistentToastHandle>();
 
-/** Dismiss the reminder when this image's BitLocker unlock panel opens. */
-export function dismissBitlockerReminder(imageId: ImageId) {
-  bitlockerReminders.get(imageId)?.dismiss();
-  bitlockerReminders.delete(imageId);
+/** Dismiss the reminder when this image's unlock dialog opens. */
+export function dismissUnlockReminder(imageId: ImageId) {
+  unlockReminders.get(imageId)?.dismiss();
+  unlockReminders.delete(imageId);
 }
 
-/** After a disk image loads, if it carries one or more *locked* BitLocker
- *  partitions, raise a persistent bottom-right toast (with a 前往解锁 CTA).
- *  Fire-and-forget — never blocks the load on the per-partition status probes.
- *  Fires at most once per image id. `kind === 'bitlocker'` alone only says a
- *  BitLocker volume exists; we probe `bitlockerStatus` to avoid a false alert
- *  on a volume already unlocked earlier this session. */
-async function maybeAlertLockedBitlocker(info: ImageInfo): Promise<void> {
-  if (!info.id || alertedBitlockerImageIds.has(info.id)) return;
-  const bdeParts = info.partitions.filter(p => p.kind === 'bitlocker');
-  if (bdeParts.length === 0) return;
-  // Claim the id up-front so two near-simultaneous loads of the same image
-  // can't both fire while the async probes are in flight.
-  alertedBitlockerImageIds.add(info.id);
-  try {
-    const statuses = await Promise.all(
-      bdeParts.map(p =>
-        bitlockerStatus({ imageId: info.id, partitionId: p.id })
-          .then(s => s.locked)
-          .catch(() => true), // probe failed → assume locked (a fresh image usually is)
-      ),
-    );
-    const lockedCount = statuses.filter(Boolean).length;
-    if (lockedCount === 0) {
-      // Already unlocked this session — drop the claim so a later re-lock /
-      // re-load can still alert.
-      alertedBitlockerImageIds.delete(info.id);
-      return;
-    }
-    const handle = pushPersistentToast({
-      kind: 'info',
-      title: tr("检测到 BitLocker 加密分区"),
-      detail:
-        lockedCount > 1
-          ? tr("镜像包含 {0} 个已锁定的 BitLocker 分区，需解锁后才能浏览其文件系统。", { 0: lockedCount })
-          : tr("镜像包含一个已锁定的 BitLocker 分区，需解锁后才能浏览其文件系统。"),
-      action: {
-        get label() { return tr("前往解锁"); },
-        onClick: () => {
-          bitlockerUnlockNavigator?.();
-          dismissBitlockerReminder(info.id);
-        },
+/** After a disk image loads, if it carries locked BitLocker, LUKS or FileVault
+ *  partitions, raise a persistent bottom-right toast with a 前往解锁 action.
+ *  An unlocked partition reads as its plaintext filesystem, so the partition
+ *  kinds alone tell what is still locked. Fires at most once per image id. */
+function maybeAlertLockedVolumes(info: ImageInfo): void {
+  if (!info.id || alertedLockedImageIds.has(info.id)) return;
+  const locked = info.partitions.filter(partition => isLockedEncrypted(info, partition));
+  if (locked.length === 0) return;
+  alertedLockedImageIds.add(info.id);
+  const schemes = joinList([...new Set(locked.map(partition => partition.kind))].map(kind => KIND_LABELS[kind] ?? kind), tr);
+  const handle = pushPersistentToast({
+    kind: 'info',
+    title: tr("检测到加密分区"),
+    detail:
+      locked.length > 1
+        ? tr("{0} 个加密分区已锁定：{1}", { 0: locked.length, 1: schemes })
+        : tr("{0} 分区已锁定", { 0: schemes }),
+    action: {
+      get label() { return tr("前往解锁"); },
+      onClick: () => {
+        unlockNavigator?.();
+        dismissUnlockReminder(info.id);
       },
-    });
-    bitlockerReminders.set(info.id, handle);
-  } catch {
-    // Any unexpected failure: release the claim so detection can retry later.
-    alertedBitlockerImageIds.delete(info.id);
-  }
+    },
+  });
+  unlockReminders.set(info.id, handle);
 }
-
 /** Frozen view of a file-session's reactive state, suitable for stashing
  *  in a Map and restoring later (e.g. multi-tab swap). The shape mirrors
  *  the refs returned by `useFileSession()` 1-to-1 — capture is just a
@@ -289,10 +268,8 @@ export function useFileSession() {
         forgetUnlockedImageInfo(info.id);
         imageInfo.value = info;
         isEvidenceMode.value = true;
-        // Fire-and-forget: alert (bottom-right) if the image has a locked
-        // BitLocker partition. Must not block the load / panel switch on the
-        // per-partition status probes.
-        if (!info.index_only) void maybeAlertLockedBitlocker(info);
+        // Alert (bottom-right) when the image has locked encrypted partitions.
+        if (!info.index_only) maybeAlertLockedVolumes(info);
         parserName.value = info.index_only ? tr("离线索引（{0}）", { 0: info.source_format }) : `Disk Image (${info.source_format})`;
         return { opened: true, mode: 'image', nextPanel: info.index_only ? 'files' : 'dashboard', imageId: info.id };
       }

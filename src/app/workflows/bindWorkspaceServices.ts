@@ -3,7 +3,7 @@ import { initTabManagerHooks, useTabManager } from '../workspace/useTabManager';
 import { raidMemberTabAliases, raidTabPathKey } from '../workspace/raidTabAliases';
 import type { LoadFileOptions } from '../workspace/useTabManager';
 import { registerCaseWorkspaceTeardown, registerCaseOpened, disposeCaseSession, useCaseSession } from '../../features/cases/api';
-import { registerBitlockerUnlockNavigator, type OpenFileOutcome } from '../../features/evidence/api';
+import { registerEncryptedUnlockNavigator, type OpenFileOutcome } from '../../features/evidence/api';
 import type { useFileSession } from '../../features/evidence/api';
 import { registerRaidImageOpener, useRaidOverview, disposeRaidStack } from '../../features/raid/api';
 
@@ -17,7 +17,7 @@ import { disposeAnalysisResults } from '../../features/analysis/api';
 import { registerTaskContext } from '../../features/tasks/api';
 import { registerAnalysisContext } from '../../features/analysis/api';
 
-import { registerBitlockerSnapshotWorkflow, disposeBitlockerJobs, disposeImageHashJobs, registerEvidenceContext, disposeImageExportJobs } from '../../features/evidence/api';
+import { disposeBitlockerMemoryScans, disposeImageHashJobs, registerEvidenceContext, disposeImageExportJobs } from '../../features/evidence/api';
 import { registerEncryptedVolumeImageUpdater, registerEncryptedVolumeImageOpener, disposeEncryptedVolumeUnlockJobs } from '../../features/evidence/api';
 
 type FileSession = ReturnType<typeof useFileSession>;
@@ -59,20 +59,10 @@ export function bindWorkspaceServices(options: {
   let caseEpoch = 0;
   watch(() => caseSession.activeCase.value?.dir ?? null, () => { caseEpoch++; }, { flush: 'sync' });
   const stopEvidenceContext = registerEvidenceContext(() => caseEpoch);
-  const stopSnapshot = registerBitlockerSnapshotWorkflow({
-    context: () => caseEpoch,
-    unlocked: (imageId, partitionId) => {
-      if (!caseSession.activeCase.value?.evidence.some(evidence => evidence.image_id === imageId)) return;
-      const volumeKey = `part:${partitionId}`;
-      if (caseSession.snapshots.value.some(snapshot => snapshot.image_id === imageId && snapshot.volume_key === volumeKey && !snapshot.stale)
-        || caseSession.buildProgress.value.has(`${imageId}:${volumeKey}`)) return;
-      void caseSession.buildSnapshot(imageId, volumeKey).catch(error => console.warn('解锁后构建快照失败', error));
-    },
-  });
   const stopRaid = registerRaidImageOpener(path => void onOpenImageFromInfo(path));
   const stopEncryptedUnlock = registerEncryptedVolumeImageUpdater(options.updateImageInfo);
   const stopEncryptedOpener = registerEncryptedVolumeImageOpener(onOpenImageFromInfo);
-  const stopUnlock = registerBitlockerUnlockNavigator(() => handleSidebarSelect('dashboard'));
+  const stopUnlock = registerEncryptedUnlockNavigator(() => handleSidebarSelect('dashboard'));
   /** Bundle every per-composable snapshot into one opaque object. The
    *  tab manager treats this as a black box; only this file knows how
    *  the pieces fit together. Up to 5 tabs' bundles stay live in the
@@ -134,7 +124,7 @@ export function bindWorkspaceServices(options: {
   });
   onScopeDispose(() => {
     stopEncryptedUnlock(); stopEncryptedOpener(); disposeEncryptedVolumeUnlockJobs();
-    stopEvidenceContext(); stopSnapshot(); disposeBitlockerJobs(); disposeImageHashJobs(); disposeImageExportJobs(); stopTaskContext(); stopAnalysisContext(); stopCase(); stopOpened(); stopReport(); stopRaid(); stopUnlock(); stopTabs();
+    stopEvidenceContext(); disposeBitlockerMemoryScans(); disposeImageHashJobs(); disposeImageExportJobs(); stopTaskContext(); stopAnalysisContext(); stopCase(); stopOpened(); stopReport(); stopRaid(); stopUnlock(); stopTabs();
     disposeAnalysisResults(); disposeTaskCenter(); disposeAutoDetect(); disposeCaseSession();
     disposeRaidStack();
     void flushFileTagWrites();

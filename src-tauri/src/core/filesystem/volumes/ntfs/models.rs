@@ -4,7 +4,8 @@ use std::collections::HashMap;
 /// Where an NTFS volume lives inside a `DiskImage`. Used as the cache key for
 /// deleted-MFT snapshots and as a namespace for IDs emitted by
 /// `core::filesystem::volumes::ntfs`. `Partition` covers both raw NTFS partitions and
-/// BitLocker-unlocked NTFS (since a BitLocker volume IS a partition); `Lvm`
+/// NTFS inside an unlocked encrypted partition, read through its plaintext
+/// view under the same partition id; `Lvm`
 /// covers NTFS volumes that live inside an LVM2 logical volume on top of a
 /// partition (Windows-side-of-dual-boot installs that use Linux LVM).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

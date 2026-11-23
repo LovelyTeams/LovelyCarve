@@ -170,7 +170,7 @@ pub fn vol_id_for_key(image: &Arc<EvidenceSession>, volume_key: &str) -> anyhow:
 
 pub fn fs_prefix_for_kind(kind: PartitionKind) -> &'static str {
     match kind {
-        PartitionKind::Ntfs | PartitionKind::Bitlocker => "ntfs",
+        PartitionKind::Ntfs => "ntfs",
         PartitionKind::Ext4 => "ext4",
         PartitionKind::Btrfs => "btrfs",
         PartitionKind::Refs
@@ -208,6 +208,7 @@ pub fn fs_prefix_for_kind(kind: PartitionKind) -> &'static str {
         | PartitionKind::ApfsContainer
         | PartitionKind::HfsPlus
         | PartitionKind::HfsX
+        | PartitionKind::Bitlocker
         | PartitionKind::Filevault
         | PartitionKind::Luks
         | PartitionKind::Apm

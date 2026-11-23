@@ -56,7 +56,7 @@ LovelyCarve 是信息密集的取证工作台：界面要让人一眼看清当�
 - 功能之间使用小型 `api.ts`、明确的组件入口或纯模型契约；功能内部不回引自己的 API，不能反向依赖 `app/`。公开 API 不导出整批 viewer。共享组件/状态不引用业务模块，纯模型不读取 Vue 状态、宿主对象或调用 IPC。`just frontend-structure-check` 检查允许边、静态/动态导入、运行时依赖环及失效路径。
 - 单例由主窗口装配持有清理；工厂由实例 scope 持有。切页不取消后台任务；面板停用关闭键盘/菜单等可见性资源，销毁释放订阅、计时器、读取租约和 Blob URL。异步读取用请求代际校验，迟到的订阅/媒体句柄立即释放；切案先收尾标签及派生数据写入。具体所有权见结构方案第 7、14 节。
 - 组件和 composable 不直接 import `@tauri-apps/api/core` 或 `@tauri-apps/api/event`，统一调用
-  `src/lib/ipc/*` 中带类型的函数（如 `bitlockerStatus({ imageId, partitionId })`）。`just ipc-check`
+  `src/lib/ipc/*` 中带类型的函数（如 `shadowCopyList({ imageId })`）。`just ipc-check`
   强制检查这一边界。后端错误以 `IpcCommandError`（`code`、`message`、`retryable`）抛出。
 - 检材、文件节点和卷标识使用 `src/lib/ipc/ids.ts` 的 `ImageId`、`NodeId`、`VolumeKey`，IPC 封装、composable、
   纯模型和组件 props 的参数与字段都这样声明。它们是“风味类型”：普通字符串（字面量、持久化的值）可以直接赋值，
@@ -355,7 +355,7 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 
 - 显示时长随内容增加（约每字 90ms，最长 10 秒）；鼠标悬停或键盘聚焦时暂停计时，离开后至少再停留 1.5 秒。
 - 弹窗（`.ui-modal-overlay`）或菜单（`.ui-menu`）打开时，常驻通知暂时隐藏，关闭后恢复，避免遮挡其按钮。
-  提醒类常驻通知在用户开始处理时应主动关闭（如打开 BitLocker 解锁弹层即收起「检测到 BitLocker」）。
+  提醒类常驻通知在用户开始处理时应主动关闭（如打开加密卷解锁弹窗即收起「检测到加密分区」）。
 - 标题写结果（「导出成功」「复制失败」），说明写对象、原因和下一步；批量操作汇总成一条
   （「已打开 3 个镜像页」），不要逐项弹出。
 - 通知不能代替表单字段的错误提示，也不重复报告界面上已经可见的结果。
@@ -381,7 +381,7 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
   「还没填完」只在提交或离开输入框后提示，半截输入不显示为错误。
 - 输入合法前禁用提交按钮，并在提示里给出进度或格式要求；可以安全规范化的输入（空格、全角符号、
   缺少分隔符）自动整理，在离开输入框时显示整理后的结果。
-- 实现示例：BitLocker 恢复密钥输入（`BitlockerUnlockControl.vue` + `src/features/evidence/model/bitlockerRecoveryKey.ts`）。
+- 实现示例：解锁弹窗的 BitLocker 恢复密钥输入（`EncryptedVolumeUnlockDialog.vue` + `useBitlockerRecoveryKey.ts` + `src/features/evidence/model/bitlockerRecoveryKey.ts`）。
 
 ```html
 <input class="ui-input mono" :aria-invalid="error ? 'true' : undefined" :aria-describedby="noteId" />
@@ -569,12 +569,12 @@ combobox 模式：方向键、Home / End、PageUp / PageDown、首字母跳转�
 - 文件名、检材路径、卷标签、案件名、解析内容、插件提供的名称/字段和后端原始诊断保留原文；只翻译应用自己定义的标签。持久化标签值、布尔筛选值、命令参数、状态枚举和检材身份不能使用译文。应用自有选项可用 `localizeOptions()` 翻译 label，保留 value。
 - `just i18n-check` 检查词条覆盖、插值参数和模板静态中文；该检查包含在 `just verify-fe` 中。新增或修改文案时同步维护两种语言。
 - 简洁、可执行：按钮用动词短语（「新建搜索」「恢复全部」「导出 CSV」），状态用完成时（「已完成」「已复制」）。
-- 中文与英文、数字之间加空格（「检测到 BitLocker 加密分区」「共 4 项」）；中文语境使用全角标点；
+- 中文与英文、数字之间加空格（「BitLocker 已解锁」「共 4 项」）；中文语境使用全角标点；
   引用界面上的按钮或名称用「」（「前往解锁」）；省略号用「…」。
 - 数字：计数用 `toLocaleString()`（「1,204」），容量用 `formatBytes`，时间用 `formatEpochSeconds` 并写明时区
   （本地 / UTC / UTC+8）；表格与页脚中的数字使用等宽字体。
 - 错误：标题写「操作 + 失败」（「打开镜像失败」），说明写原因与恢复步骤；空状态说明下一步。
-- BitLocker 状态徽章 LOCKED / UNLOCKED 保留英文；中文与英文界面都应简洁可执行。
+- 加密格式名（BitLocker、LUKS、VeraCrypt、FileVault）在徽章与提示中保留原文；中文与英文界面都应简洁可执行。
 
 ### 取证术语表
 

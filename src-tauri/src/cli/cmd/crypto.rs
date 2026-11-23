@@ -1,5 +1,6 @@
 //! Encrypted volumes: what a partition or container is encrypted with, and
 //! one `unlock` for BitLocker, LUKS, VeraCrypt, FileVault and iOS backups.
+//! The disk schemes share one backend unlock and differ only in credentials.
 use clap::{Args, ValueEnum};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -13,7 +14,7 @@ use crate::{
         CliError, Output,
     },
     core::evidence::crypto::{
-        encrypted_image::{EncryptionScheme, UnlockOptions, UnlockTarget},
+        encrypted_image::{EncryptionScheme, UnlockCredential, UnlockOptions, UnlockTarget},
         filevault::InspectOptions,
     },
 };
@@ -52,7 +53,7 @@ pub struct EncryptionArgs {
 #[derive(Args, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnlockArgs {
-    /// 分区（/<别名>/part:N），或整份加密检材（/<别名>：VeraCrypt 容器、iOS 备份）
+    /// 分区（/<别名>/part:N），或整份加密检材（/<别名>：VeraCrypt 容器、BitLocker To Go、iOS 备份）
     #[arg(value_parser = parse_address, value_name = "路径")]
     pub path: Address,
     /// 加密类型；默认按分区类型识别（VeraCrypt 没有签名，须指定）
@@ -67,7 +68,7 @@ pub struct UnlockArgs {
     /// BitLocker 启动密钥（.BEK 文件）
     #[arg(long, value_parser = parse_host_path, value_name = "文件")]
     pub startup_key: Option<HostPath>,
-    /// BitLocker FVEK（十六进制）；原始 FVEK 没有认证，须核验解密结果
+    /// BitLocker FVEK（十六进制，即 BitLocker 的主密钥）；原始 FVEK 没有认证，须核验解密结果
     #[arg(long, num_args = 0..=1, default_missing_value = "", value_parser = parse_secret, value_name = "@文件")]
     pub fvek: Option<Secret>,
     /// BitLocker Elephant Diffuser 的 tweak 密钥（十六进制，配合 --fvek）
@@ -79,7 +80,7 @@ pub struct UnlockArgs {
     /// BitLocker：在这个内存镜像中搜索 VMK 并用它解锁
     #[arg(long, value_parser = parse_host_path, value_name = "内存镜像")]
     pub vmk_from: Option<HostPath>,
-    /// LUKS、VeraCrypt、FileVault：已恢复的主密钥（十六进制）
+    /// LUKS、FileVault（以及 BitLocker FVEK）：已恢复的主密钥（十六进制）
     #[arg(long, num_args = 0..=1, default_missing_value = "", value_parser = parse_secret, value_name = "@文件")]
     pub master_key: Option<Secret>,
     /// VeraCrypt PIM（0–1000）
@@ -97,7 +98,7 @@ pub struct UnlockArgs {
     /// 加密区域相对检材的字节偏移（不按分区选择时）
     #[arg(long)]
     pub offset: Option<u64>,
-    /// 加密区域的字节长度；默认到检材末尾
+    /// 加密区域的字节长度；默认到检材末尾。VeraCrypt 区域须为检材扇区大小的整数倍
     #[arg(long)]
     pub length: Option<u64>,
     /// 解密结果作为新的检材，而不是在原检材中直接可读（给 --offset 时总是新检材）
@@ -161,45 +162,39 @@ async fn partition(
     Ok((number, kind, info))
 }
 
-/// Whether a BitLocker partition has a decryptor in this process.
-pub async fn bitlocker_unlocked(
-    exec: &Exec,
-    image_id: &crate::core::common::ids::ImageId,
-    number: u8,
-) -> bool {
-    crate::commands::evidence::bitlocker::bitlocker_status(exec.state(), image_id.clone(), number)
-        .await
-        .is_ok_and(|status| !status.locked)
+/// The scheme an unlocked partition was opened with, from `image_info`.
+fn unlocked_scheme(info: &Value, number: u8) -> Option<String> {
+    info["unlockedPartitions"]
+        .as_array()?
+        .iter()
+        .find(|unlocked| unlocked["id"] == number)
+        .and_then(|unlocked| unlocked["scheme"].as_str().map(str::to_owned))
+}
+
+/// Whether `kind` names a partition still locked behind an encryption header.
+fn locked_scheme(kind: Option<&str>) -> Option<&str> {
+    kind.filter(|kind| matches!(*kind, "bitlocker" | "luks" | "filevault"))
 }
 
 pub async fn encryption(exec: &Exec, args: EncryptionArgs) -> Result<Output, CliError> {
     let target = exec.target(&args.path, LastLink::Follow).await?;
     let (number, kind, info) = partition(exec, &target).await?;
-    let unlocked = number.is_some_and(|number| {
-        info["unlockedPartitions"]
-            .as_array()
-            .is_some_and(|ids| ids.iter().any(|id| *id == number))
-    });
-    let mut value = match (number, kind.as_deref()) {
+    let unlocked = number.and_then(|number| unlocked_scheme(&info, number));
+    let scheme = unlocked
+        .clone()
+        .or_else(|| locked_scheme(kind.as_deref()).map(str::to_owned));
+    let is_unlocked = unlocked.is_some();
+    let mut value = match (number, scheme.as_deref()) {
         (Some(number), Some("bitlocker")) => {
-            let status = crate::commands::evidence::bitlocker::bitlocker_status(
+            // The metadata stays readable from the source after an unlock.
+            let metadata = crate::commands::evidence::encrypted_volume::bitlocker_inspect(
                 exec.state(),
                 target.image_id().clone(),
                 number,
             )
             .await
-            .map_err(operation("bitlocker_status"))?;
-            let metadata = crate::commands::evidence::bitlocker::bitlocker_metadata(
-                exec.state(),
-                target.image_id().clone(),
-                number,
-            )
-            .await
-            .map_err(operation("bitlocker_metadata"))?;
-            // BitLocker keeps its own decryptor rather than a decrypted view.
-            let status = serde_json::to_value(crate::cli::wire::Camel(status))?;
-            json!({"scheme": "bitlocker", "unlocked": status["locked"] == Value::Bool(false),
-                "status": status,
+            .map_err(operation("bitlocker_inspect"))?;
+            json!({"scheme": "bitlocker", "unlocked": is_unlocked,
                 "metadata": serde_json::to_value(crate::cli::wire::Camel(metadata))?})
         }
         (Some(number), Some("filevault")) => {
@@ -216,16 +211,16 @@ pub async fn encryption(exec: &Exec, args: EncryptionArgs) -> Result<Output, Cli
             )
             .await
             .map_err(operation("filevault_inspect"))?;
-            json!({"scheme": "filevault", "unlocked": unlocked,
+            json!({"scheme": "filevault", "unlocked": is_unlocked,
                 "inventory": serde_json::to_value(crate::cli::wire::Camel(inventory))?})
         }
-        (Some(_), Some("luks")) => json!({"scheme": "luks", "unlocked": unlocked}),
-        (Some(_), kind) => json!({"scheme": null, "partitionKind": kind}),
+        (Some(_), Some(scheme)) => json!({"scheme": scheme, "unlocked": is_unlocked}),
+        (Some(_), None) => json!({"scheme": null, "partitionKind": kind}),
         (None, _) if !info["iosBackup"].is_null() => {
             json!({"scheme": "ios", "iosBackup": info["iosBackup"]})
         }
         (None, _) => json!({"scheme": null, "sourceFormat": info["sourceFormat"],
-            "note": "整份检材没有可识别的加密签名；VeraCrypt 容器用 unlock --scheme veracrypt"}),
+            "note": "整份检材没有可识别的加密签名；VeraCrypt 容器（大小须为扇区的整数倍）用 unlock --scheme veracrypt"}),
     };
     value["path"] = json!(target.address());
     Ok(Output::json(value))
@@ -252,138 +247,161 @@ pub async fn unlock(exec: &Exec, args: UnlockArgs) -> Result<Output, CliError> {
             ))
         }
     };
-    match scheme {
-        Scheme::Bitlocker => bitlocker(exec, &target, number, &args).await,
-        Scheme::Ios => {
-            let password = value(&args.password)?
-                .ok_or_else(|| CliError::new("usage", "iOS 备份需要 --password"))?;
-            let unlocked = crate::commands::evidence::ios_backup::ios_backup_unlock(
-                exec.state(),
-                target.image_id().clone(),
-                password,
-                Some(super::task_id("unlock")),
-            )
-            .await
-            .map_err(operation("ios_backup_unlock"))?;
-            let image_id = crate::core::common::ids::ImageId::from(unlocked.id.clone());
-            let alias = if image_id == *target.image_id() {
-                target.evidence.alias.clone()
-            } else {
-                exec.adopt(
-                    &image_id,
-                    args.alias
-                        .as_deref()
-                        .unwrap_or(&format!("{}-dec", target.evidence.alias)),
-                )
-                .await?
-            };
-            Ok(Output::json(json!({
-                "scheme": "ios",
-                "path": format!("/{alias}"),
-                "image": serde_json::to_value(crate::cli::wire::Camel(unlocked))?,
-            })))
-        }
-        Scheme::Luks | Scheme::Veracrypt | Scheme::Filevault => {
-            container(exec, &target, number, scheme, &args).await
-        }
+    let scheme = match scheme {
+        Scheme::Ios => return ios_backup(exec, &target, &args).await,
+        Scheme::Bitlocker => EncryptionScheme::Bitlocker,
+        Scheme::Luks => EncryptionScheme::Luks,
+        Scheme::Veracrypt => EncryptionScheme::Veracrypt,
+        Scheme::Filevault => EncryptionScheme::Filevault,
+    };
+    if let Some(memory) = &args.vmk_from {
+        return vmk_from_memory(exec, &target, number, scheme, memory, &args).await;
+    }
+    let credential = credential(&args, scheme)?;
+    Ok(Output::json(
+        volume(exec, &target, number, scheme, credential, &args).await?,
+    ))
+}
+
+async fn ios_backup(exec: &Exec, target: &Target, args: &UnlockArgs) -> Result<Output, CliError> {
+    let password =
+        value(&args.password)?.ok_or_else(|| CliError::new("usage", "iOS 备份需要 --password"))?;
+    let unlocked = crate::commands::evidence::ios_backup::ios_backup_unlock(
+        exec.state(),
+        target.image_id().clone(),
+        password,
+        Some(super::task_id("unlock")),
+    )
+    .await
+    .map_err(operation("ios_backup_unlock"))?;
+    let image_id = crate::core::common::ids::ImageId::from(unlocked.id.clone());
+    let alias = if image_id == *target.image_id() {
+        target.evidence.alias.clone()
+    } else {
+        exec.adopt(
+            &image_id,
+            args.alias
+                .as_deref()
+                .unwrap_or(&format!("{}-dec", target.evidence.alias)),
+        )
+        .await?
+    };
+    Ok(Output::json(json!({
+        "scheme": "ios",
+        "path": format!("/{alias}"),
+        "image": serde_json::to_value(crate::cli::wire::Camel(unlocked))?,
+    })))
+}
+
+/// The one credential the options give; none is BitLocker's clear key.
+fn credential(args: &UnlockArgs, scheme: EncryptionScheme) -> Result<UnlockCredential, CliError> {
+    if args.tweak.is_some() && args.fvek.is_none() {
+        return Err(CliError::new("usage", "--tweak 只能配合 --fvek"));
+    }
+    let mut given = Vec::new();
+    if let Some(password) = value(&args.password)? {
+        given.push(UnlockCredential::Password { password });
+    }
+    if let Some(recovery_password) = value(&args.recovery_password)? {
+        given.push(UnlockCredential::RecoveryPassword { recovery_password });
+    }
+    if let Some(path) = &args.startup_key {
+        given.push(UnlockCredential::StartupKey { path: path.text() });
+    }
+    if let Some(key_hex) = value(&args.fvek)? {
+        given.push(UnlockCredential::MasterKey {
+            key_hex,
+            tweak_hex: value(&args.tweak)?,
+        });
+    }
+    if let Some(key_hex) = value(&args.vmk)? {
+        given.push(UnlockCredential::Vmk { key_hex });
+    }
+    if let Some(key_hex) = value(&args.master_key)? {
+        given.push(UnlockCredential::MasterKey {
+            key_hex,
+            tweak_hex: None,
+        });
+    }
+    if given.len() > 1 {
+        return Err(CliError::new(
+            "usage",
+            "只能给一种凭据：--password、--recovery-password、--startup-key、--fvek、--vmk、--vmk-from 或 --master-key",
+        ));
+    }
+    match given.pop() {
+        Some(credential) => Ok(credential),
+        // A suspended BitLocker volume opens with the clear key it keeps.
+        None if scheme == EncryptionScheme::Bitlocker => Ok(UnlockCredential::ClearKey),
+        None => Err(CliError::new("usage", "需要 --password 或 --master-key")),
     }
 }
 
-async fn bitlocker(
+/// Find VMKs in a memory image and unlock with the first that opens the volume.
+async fn vmk_from_memory(
     exec: &Exec,
     target: &Target,
     number: Option<u8>,
+    scheme: EncryptionScheme,
+    memory: &HostPath,
     args: &UnlockArgs,
 ) -> Result<Output, CliError> {
+    if scheme != EncryptionScheme::Bitlocker {
+        return Err(CliError::new("usage", "--vmk-from 只用于 BitLocker"));
+    }
     let number =
-        number.ok_or_else(|| CliError::new("usage", "BitLocker 解锁需要分区：/<别名>/part:N"))?;
-    let address = format!("/{}/part:{number}", target.evidence.alias);
-    if let Some(memory) = &args.vmk_from {
-        let scan = crate::commands::evidence::bitlocker::bitlocker_scan_memory(
-            exec.host.clone(),
-            exec.state(),
-            target.image_id().clone(),
-            number,
-            memory.text(),
-            super::task_id("unlock vmk-scan"),
-        )
-        .await
-        .map_err(operation("bitlocker_scan_memory"))?;
-        let mut candidates: Vec<&_> = scan.candidates.iter().collect();
-        candidates.sort_by_key(|candidate| candidate.recovery_key.is_none());
-        for candidate in candidates {
-            let attempt = crate::commands::evidence::bitlocker::bitlocker_unlock_with_vmk(
-                exec.host.clone(),
-                exec.state(),
-                target.image_id().clone(),
-                number,
-                candidate.vmk_hex.clone(),
-                Some(super::task_id("unlock")),
-            )
-            .await;
-            if let Ok(result) = attempt {
-                return Ok(Output::json(json!({
-                    "scheme": "bitlocker",
-                    "path": address,
-                    "vmkOffset": candidate.offset,
-                    "result": serde_json::to_value(crate::cli::wire::Camel(result))?,
-                })));
-            }
-        }
-        return Err(CliError::new(
-            "unlockFailed",
-            format!(
-                "内存镜像中找到 {} 个 VMK 候选，没有一个能解锁 {address}",
-                scan.candidates.len()
-            ),
-        ));
+        number.ok_or_else(|| CliError::new("usage", "--vmk-from 需要分区：/<别名>/part:N"))?;
+    let other_secrets = [
+        &args.password,
+        &args.recovery_password,
+        &args.fvek,
+        &args.tweak,
+        &args.vmk,
+        &args.master_key,
+    ];
+    if other_secrets.iter().any(|secret| secret.is_some()) || args.startup_key.is_some() {
+        return Err(CliError::new("usage", "--vmk-from 不能与其他凭据同时使用"));
     }
-    if let Some(vmk) = value(&args.vmk)? {
-        let result = crate::commands::evidence::bitlocker::bitlocker_unlock_with_vmk(
-            exec.host.clone(),
-            exec.state(),
-            target.image_id().clone(),
-            number,
-            vmk,
-            Some(super::task_id("unlock")),
-        )
-        .await
-        .map_err(operation("bitlocker_unlock_with_vmk"))?;
-        return Ok(Output::json(json!({
-            "scheme": "bitlocker",
-            "path": address,
-            "result": serde_json::to_value(crate::cli::wire::Camel(result))?,
-        })));
-    }
-    let status = crate::commands::evidence::bitlocker::bitlocker_unlock(
+    let scan = crate::commands::evidence::encrypted_volume::bitlocker_scan_memory(
         exec.host.clone(),
         exec.state(),
         target.image_id().clone(),
         number,
-        value(&args.recovery_password)?,
-        value(&args.password)?,
-        args.startup_key.as_ref().map(HostPath::text),
-        value(&args.fvek)?,
-        value(&args.tweak)?,
-        Some(super::task_id("unlock")),
+        memory.text(),
+        super::task_id("unlock vmk-scan"),
     )
     .await
-    .map_err(operation("bitlocker_unlock"))?;
-    Ok(Output::json(json!({
-        "scheme": "bitlocker",
-        "path": address,
-        "status": serde_json::to_value(crate::cli::wire::Camel(status))?,
-    })))
+    .map_err(operation("bitlocker_scan_memory"))?;
+    let mut candidates: Vec<&_> = scan.candidates.iter().collect();
+    candidates.sort_by_key(|candidate| candidate.recovery_key.is_none());
+    for candidate in candidates {
+        let credential = UnlockCredential::Vmk {
+            key_hex: candidate.vmk_hex.clone(),
+        };
+        if let Ok(mut value) = volume(exec, target, Some(number), scheme, credential, args).await {
+            value["vmkOffset"] = json!(candidate.offset);
+            return Ok(Output::json(value));
+        }
+    }
+    Err(CliError::new(
+        "unlockFailed",
+        format!(
+            "内存镜像中找到 {} 个 VMK 候选，没有一个能解锁 /{}/part:{number}",
+            scan.candidates.len(),
+            target.evidence.alias
+        ),
+    ))
 }
 
-async fn container(
+async fn volume(
     exec: &Exec,
     target: &Target,
     number: Option<u8>,
-    scheme: Scheme,
+    scheme: EncryptionScheme,
+    credential: UnlockCredential,
     args: &UnlockArgs,
-) -> Result<Output, CliError> {
-    // An encrypted partition, or a whole-image container such as a VeraCrypt
+) -> Result<Value, CliError> {
+    // An encrypted partition, or a whole-image volume such as a VeraCrypt
     // file, becomes readable in the source evidence; a byte range always
     // becomes evidence of its own.
     let in_place = !args.new_image && args.offset.is_none();
@@ -393,13 +411,8 @@ async fn container(
         } else {
             UnlockTarget::NewImage
         },
-        scheme: match scheme {
-            Scheme::Luks => EncryptionScheme::Luks,
-            Scheme::Veracrypt => EncryptionScheme::Veracrypt,
-            _ => EncryptionScheme::Filevault,
-        },
-        password: value(&args.password)?.unwrap_or_default(),
-        master_key_hex: value(&args.master_key)?,
+        scheme,
+        credential,
         partition_id: number,
         offset: args.offset,
         length: args.length,
@@ -408,9 +421,6 @@ async fn container(
         logical_volume_index: args.logical_volume,
         encrypted_root_plist_path: args.plist.as_ref().map(HostPath::text),
     };
-    if options.password.is_empty() && options.master_key_hex.is_none() {
-        return Err(CliError::new("usage", "需要 --password 或 --master-key"));
-    }
     let result = crate::commands::evidence::encrypted_volume::encrypted_volume_unlock(
         exec.host.clone(),
         exec.state(),
@@ -437,9 +447,8 @@ async fn container(
     };
     let mut value = serde_json::to_value(crate::cli::wire::Camel(result))?;
     value["path"] = json!(path);
-    Ok(Output::json(value))
+    Ok(value)
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

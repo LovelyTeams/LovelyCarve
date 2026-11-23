@@ -3,7 +3,6 @@
 #[cfg(test)]
 #[path = "refs_tests.rs"]
 mod tests;
-pub use super::refs_backing::BitlockerBacking;
 use super::refs_backing::ImageBacking;
 pub use super::refs_walk::{WalkEntry, WalkResult, WalkStream, REFS_ROOT_OBJECT_ID};
 use crate::core::common::error::Failure;

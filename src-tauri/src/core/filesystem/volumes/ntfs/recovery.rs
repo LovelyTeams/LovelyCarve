@@ -245,7 +245,7 @@ impl<'a> NtfsVolume<'a> {
                 .is_some_and(|end| end <= image.len()),
             "Recovered NTFS outside source"
         );
-        let backing = PartitionBacking::Image {
+        let backing = PartitionBacking {
             image,
             base_offset: base,
             length_bytes: length,

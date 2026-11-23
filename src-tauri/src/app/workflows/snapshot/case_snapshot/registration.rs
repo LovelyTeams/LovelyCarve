@@ -5,8 +5,8 @@ use crate::core::filesystem::evidence_session::EvidenceSession;
 
 /// Volume keys worth snapshotting on an image: the supported partition roots,
 /// or the single synthetic `"root"` for docker / folder / tar / zip / 7z / AD1 evidence.
-/// Locked BitLocker partitions are skipped (their listing is only a placeholder
-/// node) and snapshot after they are unlocked instead.
+/// Locked encrypted partitions are skipped and snapshot after they are
+/// unlocked instead.
 pub(super) fn browsable_volume_keys(image: &Arc<EvidenceSession>) -> Vec<String> {
     if image.docker.is_some()
         || image.folder.is_some()
@@ -36,10 +36,7 @@ pub(super) fn snapshot_supported_partition(
             .iter()
             .any(|partition| snapshot_supported_plain_partition(partition.kind));
     }
-    match kind {
-        PartitionKind::Bitlocker => image.bitlocker_unlocked(partition_id).is_some(),
-        other => snapshot_supported_plain_partition(other),
-    }
+    snapshot_supported_plain_partition(kind)
 }
 
 /// Index just the newly unlocked native volume under its original evidence identity.

@@ -556,3 +556,13 @@ async fn unindexed_id_lookup_pages_duplicate_volumes_without_visiting_other_part
         "cancelled"
     );
 }
+
+#[test]
+fn locked_partition_roots_answer_to_their_unlocked_address() {
+    assert!(root_id_matches("unsupported:3", "part:3"));
+    assert!(root_id_matches("unsupported:3", "unsupported:3"));
+    assert!(root_id_matches("part:3", "part:3"));
+    assert!(!root_id_matches("unsupported:3", "part:4"));
+    assert!(!root_id_matches("part:3", "unsupported:3"));
+    assert!(!root_id_matches("unsupported:3", "3"));
+}

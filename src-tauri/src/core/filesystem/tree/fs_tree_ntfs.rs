@@ -4,13 +4,12 @@ use crate::core::common::error::Failure;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{ImageFormat, Partition, PartitionKind};
 use crate::core::filesystem::evidence_session::EvidenceSession;
-use crate::core::filesystem::tree::fs_tree::{ChildrenOptions, FsNode, Mactb, NodeKind};
+use crate::core::filesystem::tree::fs_tree::{ChildrenOptions, FsNode};
 use crate::core::filesystem::volumes::lvm::{parse_lvm_id, LvmVolume};
 use crate::core::filesystem::volumes::ntfs::{parse_ntfs_id, NtfsVolume};
 use crate::core::filesystem::volumes::ntfs::{NtfsDeletedSnapshot, NtfsSource};
 use crate::core::filesystem::volumes::ntfs_usn::UsnRecord;
 
-const BDE_LOCKED_PREFIX: &str = "bde-locked:part:";
 const NTFS_ROOT_RECORD: u64 = 5;
 
 pub(crate) fn open_ntfs_for_source(
@@ -25,13 +24,14 @@ pub(crate) fn open_ntfs_for_source(
     match source {
         NtfsSource::Partition(partition_id) => {
             let partition = find_partition(image, &partition_id.to_string())?;
-            if partition.kind == PartitionKind::Bitlocker {
-                let unlocked = image.bitlocker_unlocked(partition_id).ok_or_else(|| {
-                    anyhow::anyhow!(Failure::invalid_input(format!(
-                        "BitLocker partition {partition_id} is locked; unlock it before reading"
-                    )))
-                })?;
-                return NtfsVolume::open_bitlocker(unlocked, partition_id);
+            // Unlocked, the partition reads through its plaintext view instead.
+            if matches!(
+                partition.kind,
+                PartitionKind::Bitlocker | PartitionKind::Luks | PartitionKind::Filevault
+            ) {
+                anyhow::bail!(Failure::invalid_input(format!(
+                    "partition {partition_id} is encrypted; unlock it before reading"
+                )));
             }
             NtfsVolume::open(image, partition)
         }
@@ -78,13 +78,13 @@ pub fn ntfs_usn_journal(
 }
 
 /// If `volume_key` (`"part:N"` or `"lvm:N:M"`) names an NTFS volume root —
-/// including an unlocked BitLocker partition — open it. Returns `None` for any
+/// including NTFS in an unlocked encrypted partition — open it. Returns `None` for any
 /// other key so a caller (e.g. the volume-snapshot builder) can fall back to
 /// the generic per-directory walker. `Some(Err(..))` means the key IS an NTFS
 /// volume but opening it failed; the error is propagated, not swallowed.
 ///
 /// This shares the exact open path (`open_ntfs_for_source`) used by live
-/// directory listings, so the BitLocker / LVM handling stays in one place.
+/// directory listings, so the decrypted-view / LVM handling stays in one place.
 pub fn open_ntfs_volume_for_key<'a>(
     image: &'a Arc<EvidenceSession>,
     volume_key: &str,
@@ -95,9 +95,6 @@ pub fn open_ntfs_volume_for_key<'a>(
         let partition = find_partition(image, &part_id.to_string()).ok()?;
         match partition.kind {
             PartitionKind::Ntfs => {
-                Some(open_ntfs_for_source(image, NtfsSource::Partition(part_id)))
-            }
-            PartitionKind::Bitlocker if image.bitlocker_unlocked(part_id).is_some() => {
                 Some(open_ntfs_for_source(image, NtfsSource::Partition(part_id)))
             }
             _ => None,
@@ -246,32 +243,42 @@ fn ensure_ntfs_deleted_snapshot(
 
 /// Spawns a background task that pre-builds the deleted-records snapshot for
 /// every NTFS volume on `image` whose source is reachable right now — plain
-/// NTFS partitions, BitLocker partitions that have already been unlocked,
-/// and NTFS volumes that live inside LVM2 logical volumes. Called from
-/// `image_load` (covers plain NTFS + LVM-backed NTFS) and from
-/// `bitlocker_unlock` (covers a partition that just became reachable). The
-/// FsTree view sees deleted entries inline as soon as the user clicks into
-/// the partition. Failures are logged and swallowed — the lazy fallback in
+/// NTFS partitions, NTFS in partitions that have already been unlocked, and
+/// NTFS volumes that live inside LVM2 logical volumes. Called from
+/// `image_load` (covers plain NTFS + LVM-backed NTFS) and after an in-place
+/// unlock (covers a partition that just became reachable). Each snapshot is
+/// cached on the session that lists the volume, so the FsTree view sees
+/// deleted entries inline as soon as the user clicks into the partition.
+/// Failures are logged and swallowed — the lazy fallback in
 /// [`ensure_ntfs_deleted_snapshot`] still works if the background scan never
 /// finishes (e.g. process exits early).
 pub fn prefetch_ntfs_deleted_snapshots(image: Arc<EvidenceSession>) {
-    let mut targets: Vec<NtfsSource> = Vec::new();
-    for partition in &image.partitions {
+    let mut targets: Vec<(Arc<EvidenceSession>, NtfsSource)> = Vec::new();
+    for source_partition in &image.partitions {
+        let session =
+            Arc::clone(image.filesystem_session(&format!("part:{}", source_partition.id)));
+        // A plaintext view holds the partition under the same id, at its own offset.
+        let Some(partition) = session
+            .partitions
+            .iter()
+            .find(|partition| partition.id == source_partition.id)
+            .cloned()
+        else {
+            continue;
+        };
         match partition.kind {
-            PartitionKind::Ntfs => targets.push(NtfsSource::Partition(partition.id)),
-            PartitionKind::Bitlocker if image.bitlocker_unlocked(partition.id).is_some() => {
-                targets.push(NtfsSource::Partition(partition.id));
-            }
+            PartitionKind::Ntfs => targets.push((session, NtfsSource::Partition(partition.id))),
             PartitionKind::Lvm => {
-                let Ok(lvm) = LvmVolume::open(&image, partition) else {
+                let Ok(lvm) = LvmVolume::open(&session, &partition) else {
                     continue;
                 };
                 for lv in &lvm.logical_volumes {
                     if lv.kind == PartitionKind::Ntfs {
-                        targets.push(NtfsSource::Lvm {
+                        let source = NtfsSource::Lvm {
                             part_id: partition.id,
                             lv_index: lv.index,
-                        });
+                        };
+                        targets.push((Arc::clone(&session), source));
                     }
                 }
             }
@@ -282,11 +289,11 @@ pub fn prefetch_ntfs_deleted_snapshots(image: Arc<EvidenceSession>) {
         return;
     }
     tokio::task::spawn_blocking(move || {
-        for source in targets {
-            if image.ntfs_deleted_snapshot(source).is_some() {
+        for (session, source) in targets {
+            if session.ntfs_deleted_snapshot(source).is_some() {
                 continue;
             }
-            let volume = match open_ntfs_for_source(&image, source) {
+            let volume = match open_ntfs_for_source(&session, source) {
                 Ok(volume) => volume,
                 Err(err) => {
                     tracing::warn!("NTFS prefetch: open {source:?} failed: {err}");
@@ -295,7 +302,7 @@ pub fn prefetch_ntfs_deleted_snapshots(image: Arc<EvidenceSession>) {
             };
             match volume.build_deleted_snapshot() {
                 Ok(snapshot) => {
-                    image.install_ntfs_deleted_snapshot(source, Arc::new(snapshot));
+                    session.install_ntfs_deleted_snapshot(source, Arc::new(snapshot));
                 }
                 Err(err) => tracing::warn!(
                     "NTFS prefetch: deleted-records scan failed for {source:?}: {err}"
@@ -303,31 +310,4 @@ pub fn prefetch_ntfs_deleted_snapshots(image: Arc<EvidenceSession>) {
             }
         }
     });
-}
-
-/// Returns the children of a BitLocker partition. If the volume has been
-/// unlocked via `EvidenceSession::unlock_bitlocker_partition`, this enumerates the
-/// underlying NTFS root (with deleted MFT records inlined). Otherwise it
-/// returns a single placeholder node that the frontend recognises and turns
-/// into an unlock prompt.
-pub(crate) fn bitlocker_partition_children(
-    image: &Arc<EvidenceSession>,
-    partition: &Partition,
-    options: ChildrenOptions,
-) -> anyhow::Result<Vec<FsNode>> {
-    if image.bitlocker_unlocked(partition.id).is_some() {
-        return ntfs_root_children(image, partition, options);
-    }
-    Ok(vec![FsNode {
-        id: format!("{BDE_LOCKED_PREFIX}{}", partition.id),
-        name: "BitLocker 加密卷（未解锁）".to_string(),
-        parent_id: Some(format!("part:{}", partition.id)),
-        kind: NodeKind::Unallocated,
-        size: 0,
-        deleted: false,
-        inode: None,
-        timestamps: Mactb::default(),
-        link_target: None,
-        has_snapshot: false,
-    }])
 }

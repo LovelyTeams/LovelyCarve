@@ -14,77 +14,66 @@
           <header class="ui-modal-header">
             <span class="ui-modal-icon"><LockKeyhole :size="18" /></span>
             <div class="ui-modal-heading">
-              <h2 id="encrypted-unlock-title" class="ui-modal-title">{{ partitionId === null ? tr("解锁加密容器") : tr("解锁分区 {0}", { 0: partitionId }) }}</h2>
+              <h2 id="encrypted-unlock-title" class="ui-modal-title">{{ partitionId === null ? tr("解锁加密卷") : tr("解锁分区 {0}", { 0: partitionId }) }}</h2>
             </div>
             <button class="ui-icon-btn" type="button" :title="tr('关闭')" :aria-label="tr('关闭')" @click="emit('close')"><X :size="16" /></button>
           </header>
-          <div class="unlock-form">
+          <form :id="formId" class="unlock-form" @submit.prevent="unlock">
             <div class="ui-modal-body unlock-body">
-              <fieldset :class="{ fixed: partitionId !== null }">
-                <label>{{ tr("加密格式") }}
-                  <UiSelect v-model="scheme" :options="schemeOptions" :disabled="!open || schemeOptions.length === 1" />
-                </label>
-                <label v-if="partitionId === null && scheme === 'bitlocker'">{{ tr("加密区域") }}
-                  <UiSelect v-model="bitlockerRegion" :options="bitlockerRegionOptions" :disabled="!open" />
-                </label>
-                <label v-else-if="partitionId === null">{{ tr("加密区域") }}
-                  <UiSelect v-model="region" :options="regionOptions" :disabled="!open" />
-                </label>
-              </fieldset>
-              <BitlockerUnlockPanel
-                v-for="partition in bitlockerPartitions"
-                :key="partition.id"
-                :image-id="info.id"
-                :partition-id="partition.id"
-                :active="open && scheme === 'bitlocker' && selectedBitlockerId === partition.id"
-                :unlocked="isBitlockerUnlocked(partition)"
-                @close="emit('close')"
-              />
-              <form v-if="scheme !== 'bitlocker'" :id="formId" @submit.prevent="unlock">
-                <fieldset>
-                  <template v-if="scheme === 'filevault'">
-                    <label class="wide">{{ tr("外部加密上下文（可选）") }}
-                      <input v-model="encryptedRootPath" class="ui-input" :placeholder="tr('EncryptedRoot.plist.wipekey 或 XML 的本地路径')" :aria-invalid="encryptedRootPath && inventoryError ? 'true' : undefined" :aria-describedby="inventoryNoteId" @input="resetInventory" />
-                    </label>
-                    <div class="wide"><button class="ui-btn ghost sm" type="button" :disabled="inventoryBusy" @click="loadInventory">{{ inventoryBusy ? tr("正在读取卷信息…") : tr("读取卷信息") }}</button></div>
-                    <div v-if="inventoryError" :id="inventoryNoteId" class="wide ui-field-error" role="alert">{{ inventoryError }}</div>
-                    <p v-if="inventory && inventory.header_offset > 0" class="wide ui-alert">{{ tr("已从备用卷头恢复元数据（区域内偏移 {0}）。", { 0: inventory.header_offset }) }}</p>
-                    <label v-if="inventory" class="wide">{{ tr("逻辑卷") }}
-                      <UiSelect v-model="logicalVolumeIndex" :options="logicalVolumeOptions" :disabled="!open" />
-                    </label>
-                    <div v-if="selectedLogicalVolume" class="wide ui-field-hint" role="status">
-                      {{ tr("状态：{0} · PBKDF2 最低迭代数：{1} 次 · 保护器：{2}", {
-                        0: selectedLogicalVolume.conversion_status === 'Complete' ? tr("已完成加密") : selectedLogicalVolume.conversion_status || tr("未知"),
-                        1: selectedLogicalVolume.pbkdf2_iterations.toLocaleString(),
-                        2: joinList(selectedLogicalVolume.protectors.map(protectorLabel), tr) || tr("未发现"),
-                      }) }}
-                      <p v-if="selectedLogicalVolume.findings.some(finding => finding.code === 'FVDE-WEAK-KDF-ITERATIONS')" class="ui-alert">{{ tr("密码派生迭代数低于 20,000；这是强度观察项，不能据此判断卷已被破解。") }}</p>
-                    </div>
-                    <p v-if="inventory && inventory.volumes.length > 1" class="wide ui-field-hint">{{ tr("该容器包含多个逻辑卷，所选卷会打开为独立的只读明文会话。") }}</p>
-                    <p class="wide ui-field-hint">{{ tr("支持 CoreStorage / FileVault 2。APFS 原生加密和未完成加密的卷暂不支持。") }}</p>
-                  </template>
-                  <div v-if="scheme !== 'veracrypt'" class="ui-seg wide" role="group" :aria-label="tr('解锁凭据')">
-                    <button class="ui-seg-item" :class="{ active: credential === 'password' }" type="button" :aria-pressed="credential === 'password'" @click="credential = 'password'">{{ tr("密码") }}</button>
-                    <button class="ui-seg-item" :class="{ active: credential === 'masterKey' }" type="button" :aria-pressed="credential === 'masterKey'" @click="credential = 'masterKey'">{{ tr("主密钥") }}</button>
-                  </div>
-                  <label v-if="!usesMasterKey" class="wide">{{ scheme === 'filevault' ? tr("密码 / 个人恢复密码") : tr("密码") }}<input v-model="password" class="ui-input" type="password" autocomplete="off" required maxlength="4096" /></label>
-                  <label v-else class="wide">{{ tr("主密钥（十六进制）") }}
-                    <input v-model="masterKey" class="ui-input mono" type="password" autocomplete="off" required maxlength="1024" :aria-invalid="keyError ? 'true' : undefined" :aria-describedby="keyNoteId" @blur="keyTouched = true" />
-                    <span v-if="keyError" :id="keyNoteId" class="ui-field-error" role="alert">{{ keyError }}</span>
-                    <span v-else :id="keyNoteId" class="ui-field-hint">{{ scheme === 'filevault' ? tr("16 字节 VMK 或 32 字节 XTS 密钥对；会验证解密后的卷头。") : tr("填写已恢复的卷主密钥，可粘贴带空格的十六进制字节。") }}</span>
+              <p v-if="!schemeOptions.length" class="ui-alert" role="status">{{ tr("没有可解锁的加密区域") }}</p>
+              <template v-else>
+                <fieldset :class="{ fixed: partitionId !== null }">
+                  <label>{{ tr("加密格式") }}
+                    <UiSelect v-model="scheme" :options="schemeOptions" :disabled="!open || schemeOptions.length === 1" />
                   </label>
+                  <label v-if="partitionId === null">{{ tr("加密区域") }}
+                    <UiSelect v-model="region" :options="regionOptions" :disabled="!open" />
+                  </label>
+                </fieldset>
+                <fieldset v-if="scheme === 'filevault'">
+                  <label class="wide">{{ tr("外部加密上下文（可选）") }}
+                    <input v-model="encryptedRootPath" class="ui-input" :placeholder="tr('EncryptedRoot.plist.wipekey 或 XML 的本地路径')" :aria-invalid="encryptedRootPath && inventoryError ? 'true' : undefined" :aria-describedby="inventoryNoteId" @input="resetInventory" />
+                  </label>
+                  <div class="wide"><button class="ui-btn ghost sm" type="button" :disabled="inventoryBusy" @click="loadInventory">{{ inventoryBusy ? tr("正在读取卷信息…") : tr("读取卷信息") }}</button></div>
+                  <div v-if="inventoryError" :id="inventoryNoteId" class="wide ui-field-error" role="alert">{{ inventoryError }}</div>
+                  <label v-if="inventory" class="wide">{{ tr("逻辑卷") }}
+                    <UiSelect v-model="logicalVolumeIndex" :options="logicalVolumeOptions" :disabled="!open" />
+                    <span v-if="selectedLogicalVolume && selectedLogicalVolume.conversion_status !== 'Complete'" class="ui-field-error" role="alert">{{ tr("加密尚未完成，无法解锁") }}</span>
+                  </label>
+                </fieldset>
+                <div v-if="modes.length > 1" class="ui-seg" role="group" :aria-label="tr('解锁凭据')">
+                  <button v-for="item in modes" :key="item" class="ui-seg-item" :class="{ active: mode === item }" type="button"
+                    :aria-pressed="mode === item" @click="mode = item">{{ credentialModeLabel(item, tr) }}</button>
+                </div>
+                <fieldset>
+                  <label v-if="mode === 'password'" class="wide">{{ passwordLabel }}
+                    <input v-model="password" class="ui-input" type="password" autocomplete="off" spellcheck="false" maxlength="4096" />
+                  </label>
+                  <label v-else-if="mode === 'masterKey'" class="wide">{{ tr("主密钥（十六进制）") }}
+                    <input v-model="masterKey" class="ui-input mono" type="password" autocomplete="off" maxlength="1024" :aria-invalid="keyError ? 'true' : undefined" :aria-describedby="keyError ? keyNoteId : undefined" @blur="keyTouched = true" />
+                    <span v-if="keyError" :id="keyNoteId" class="ui-field-error" role="alert">{{ keyError }}</span>
+                  </label>
+                  <label v-else-if="mode === 'recovery'" class="wide">{{ tr("恢复密钥") }}
+                    <input v-model="recoveryInput" class="ui-input mono" type="text" autocomplete="off" spellcheck="false"
+                      placeholder="xxxxxx-xxxxxx-xxxxxx-xxxxxx-xxxxxx-xxxxxx-xxxxxx-xxxxxx"
+                      :aria-invalid="recoveryError ? 'true' : undefined" :aria-describedby="recoveryError ? recoveryNoteId : undefined" @blur="onRecoveryBlur" />
+                    <span v-if="recoveryError" :id="recoveryNoteId" class="ui-field-error" role="alert">{{ recoveryError }}</span>
+                  </label>
+                  <BitlockerMemoryCandidates v-else-if="mode === 'memory'" ref="memoryFields" v-model:credential="memoryCredential" class="wide"
+                    :image-id="info.id" :partition-id="selectedPartitionId" :active="open" />
+                  <BitlockerKeyFields v-else-if="mode === 'otherKey'" v-model:credential="keyCredential" class="wide" :active="open" />
                   <template v-if="scheme === 'veracrypt'">
-                    <label>{{ tr("PIM（0 为默认）") }}<input v-model.number="pim" class="ui-input mono" type="number" min="0" max="1000" step="1" required /></label>
+                    <label>PIM<input v-model.number="pim" class="ui-input mono" type="number" min="0" max="1000" step="1" required /></label>
                     <label class="ui-check check"><input v-model="hidden" type="checkbox" />{{ tr("打开隐藏卷") }}</label>
                   </template>
                 </fieldset>
-              </form>
+              </template>
             </div>
-            <footer v-if="scheme !== 'bitlocker'" class="ui-modal-footer">
+            <footer class="ui-modal-footer">
               <button class="ui-btn" type="button" @click="emit('close')">{{ tr("取消") }}</button>
-              <button class="ui-btn primary" type="submit" :form="formId" :disabled="!canUnlock">{{ tr("开始后台解锁") }}</button>
+              <button class="ui-btn primary" type="submit" :disabled="!canUnlock">{{ tr("解锁") }}</button>
             </footer>
-          </div>
+          </form>
         </div>
       </div>
     </Transition>
@@ -93,72 +82,73 @@
 
 <script setup lang="ts">
 import { tr } from '../../../composables/useLocale';
-import { joinList } from '../../../i18n/translate';
 
 import { computed, onBeforeUnmount, ref, useId, watch } from 'vue';
 import { LockKeyhole, X } from 'lucide-vue-next';
 import type { DiskPartition, ImageInfo } from '../../../lib/ipc/image';
-import type { EncryptedUnlockOptions } from '../../../lib/ipc/encrypted';
+import type { EncryptedUnlockOptions, EncryptionScheme, UnlockCredential } from '../../../lib/ipc/encrypted';
 import { useDialogFocus } from '../../../composables/useDialogFocus';
 import { startEncryptedVolumeUnlock } from '../composables/useEncryptedVolumeUnlocks';
 import { useFilevaultInventory } from '../composables/useFilevaultInventory';
+import { useBitlockerRecoveryKey } from '../composables/useBitlockerRecoveryKey';
+import { dismissUnlockReminder } from '../composables/useFileSession';
+import { availableSchemes, credentialModeLabel, credentialModes, initialSelection, schemeLabel, unlockRegions, type CredentialMode } from '../model/encryptedUnlock';
 import { formatBytes } from '../../../utils/format';
 import UiSelect, { type UiSelectOption } from '../../../components/ui/UiSelect.vue';
-import BitlockerUnlockPanel from './BitlockerUnlockPanel.vue';
-
-type UnlockScheme = EncryptedUnlockOptions['scheme'] | 'bitlocker';
+import BitlockerKeyFields from './BitlockerKeyFields.vue';
+import BitlockerMemoryCandidates from './BitlockerMemoryCandidates.vue';
 
 const props = defineProps<{
   open: boolean;
   info: ImageInfo;
   /** 从分区行打开时固定该分区，从卷卡标题打开时允许选择区域。 */
   partitionId: number | null;
-  isBitlockerUnlocked: (partition: DiskPartition) => boolean;
 }>();
 const emit = defineEmits<{ close: [] }>();
-const BITLOCKER_OPTION: UiSelectOption<UnlockScheme> = { value: 'bitlocker', label: 'BitLocker' };
-const CONTAINER_OPTIONS: UiSelectOption<UnlockScheme>[] = [
-  { value: 'luks', label: 'LUKS1 / LUKS2' },
-  { value: 'veracrypt', label: 'VeraCrypt' },
-  { value: 'filevault', label: 'FileVault 2 / CoreStorage' },
-];
-const scheme = ref<UnlockScheme>('luks');
-const fixedPartition = computed(() => props.info.partitions.find(partition => partition.id === props.partitionId));
-const bitlockerPartitions = computed(() => props.info.partitions.filter(partition => partition.kind === 'bitlocker'));
-const schemeOptions = computed(() => {
-  if (fixedPartition.value?.kind === 'bitlocker') return [BITLOCKER_OPTION];
-  if (props.partitionId === null && bitlockerPartitions.value.length) return [BITLOCKER_OPTION, ...CONTAINER_OPTIONS];
-  return CONTAINER_OPTIONS;
-});
+
+// ── 格式与区域 ────────────────────────────────────────────────────────────
+const scheme = ref<EncryptionScheme>('luks');
+const mode = ref<CredentialMode>('password');
+const schemeOptions = computed<UiSelectOption<EncryptionScheme>[]>(() =>
+  availableSchemes(props.info, props.partitionId).map(value => ({ value, label: schemeLabel(value) })));
 const region = ref('whole');
-const selectedContainerPartitionId = computed(() => props.partitionId ?? (region.value === 'whole' ? undefined : Number(region.value)));
-const bitlockerRegion = ref<number | null>(null);
-const selectedBitlockerId = computed(() => props.partitionId ?? bitlockerRegion.value);
+const regions = computed(() => unlockRegions(props.info, scheme.value));
 function regionLabel(partition: DiskPartition) {
   return tr("分区 {0} · {1}", { 0: partition.id, 1: partition.label || partition.kind });
 }
-function detectedScheme(partition: DiskPartition): UnlockScheme | undefined {
-  switch (partition.kind) {
-    case 'bitlocker':
-    case 'luks':
-    case 'filevault': return partition.kind;
-    default: return undefined;
+const regionOptions = computed<UiSelectOption<string>[]>(() => regions.value.map(candidate => {
+  const partition = candidate.partitionId === undefined ? undefined : props.info.partitions.find(item => item.id === candidate.partitionId);
+  return partition
+    ? { value: String(partition.id), get label() { return regionLabel(partition); } }
+    : { value: 'whole', get label() { return tr("整个镜像 / 容器"); } };
+}));
+const selectedPartitionId = computed(() => props.partitionId ?? (region.value === 'whole' ? undefined : Number(region.value)));
+const regionValid = computed(() => props.partitionId !== null
+  ? regions.value.some(candidate => candidate.partitionId === props.partitionId)
+  : regionOptions.value.some(option => option.value === region.value));
+
+// A scheme keeps the region when it can open it, and otherwise starts from its first one.
+watch(scheme, next => {
+  if (props.partitionId === null && !regionOptions.value.some(option => option.value === region.value)) {
+    region.value = regionOptions.value[0]?.value ?? 'whole';
   }
-}
-const regionOptions = computed<UiSelectOption<string>[]>(() => [
-  { value: 'whole', get label() { return tr("整个镜像 / 容器"); } },
-  ...props.info.partitions.map(partition => ({ value: String(partition.id), get label() { return regionLabel(partition); } })),
-]);
-const bitlockerRegionOptions = computed(() => bitlockerPartitions.value.map(partition => ({
-  value: partition.id, get label() { return regionLabel(partition); },
-})));
-const formId = useId();
+  if (!credentialModes(next).includes(mode.value)) mode.value = credentialModes(next)[0]!;
+});
+
+// ── 凭据 ──────────────────────────────────────────────────────────────────
+const modes = computed(() => credentialModes(scheme.value));
+const passwordLabel = computed(() => {
+  switch (scheme.value) {
+    case 'bitlocker': return tr("用户密码");
+    case 'filevault': return tr("密码 / 个人恢复密码");
+    case 'luks':
+    case 'veracrypt': return tr("密码");
+  }
+});
 const password = ref('');
-const credential = ref<'password' | 'masterKey'>('password');
 const masterKey = ref('');
 const keyTouched = ref(false);
 const keyNoteId = useId();
-const usesMasterKey = computed(() => scheme.value !== 'veracrypt' && credential.value === 'masterKey');
 const normalizedKey = computed(() => masterKey.value.replace(/\s/g, ''));
 const keyError = computed(() => {
   if (/[^0-9a-f]/i.test(normalizedKey.value)) return tr("主密钥只能包含十六进制字符 0–9、A–F。");
@@ -167,75 +157,87 @@ const keyError = computed(() => {
   if (keyTouched.value && (!normalizedKey.value || normalizedKey.value.length % 2)) return tr("每个字节需要两个十六进制字符。");
   return '';
 });
+const { recoveryInput, recoveryCheck, recoveryNoteId, recoveryError, canSubmitRecovery, onRecoveryBlur, clearRecovery } = useBitlockerRecoveryKey();
+const memoryCredential = ref<UnlockCredential | null>(null);
+const keyCredential = ref<UnlockCredential | null>(null);
+const memoryFields = ref<InstanceType<typeof BitlockerMemoryCandidates> | null>(null);
+
+/** The credential the form holds now; `null` while it is incomplete or malformed. */
+const credential = computed<UnlockCredential | null>(() => {
+  switch (mode.value) {
+    case 'password': return password.value ? { kind: 'password', password: password.value } : null;
+    case 'masterKey': return normalizedKey.value && normalizedKey.value.length % 2 === 0 && !keyError.value
+      ? { kind: 'masterKey', keyHex: normalizedKey.value } : null;
+    case 'recovery': return canSubmitRecovery.value ? { kind: 'recoveryPassword', recoveryPassword: recoveryCheck.value.normalized } : null;
+    case 'memory': return memoryCredential.value;
+    case 'otherKey': return keyCredential.value;
+  }
+});
+
+// ── 格式专属信息 ──────────────────────────────────────────────────────────
 const encryptedRootPath = ref('');
 const inventoryNoteId = useId();
 const logicalVolumeIndex = ref(0);
 const { inventory, busy: inventoryBusy, error: inventoryError, load: loadInventory, reset: resetInventory } = useFilevaultInventory(
   () => props.open && scheme.value === 'filevault',
   () => ({ imageId: props.info.id, options: {
-    ...(selectedContainerPartitionId.value === undefined ? {} : { partitionId: selectedContainerPartitionId.value }),
+    ...(selectedPartitionId.value === undefined ? {} : { partitionId: selectedPartitionId.value }),
     ...(encryptedRootPath.value ? { encryptedRootPlistPath: encryptedRootPath.value } : {}),
   } }),
 );
 const logicalVolumeOptions = computed(() => inventory.value?.volumes.map(volume => ({ value: volume.index, label: `${volume.name || volume.identifier || tr("逻辑卷 {0}", { 0: volume.index })} · ${formatBytes(volume.size)}` })) || []);
 const selectedLogicalVolume = computed(() => inventory.value?.volumes.find(volume => volume.index === logicalVolumeIndex.value));
 watch(inventory, value => { logicalVolumeIndex.value = value?.volumes[0]?.index ?? 0; });
-function protectorLabel(kind: string) { return ({ password: tr("密码"), recovery: tr("个人恢复"), institutional: tr("机构恢复"), unknown: tr("未知") } as Record<string, string>)[kind] || kind; }
-const canUnlock = computed(() => (scheme.value !== 'filevault' || (!!selectedLogicalVolume.value && selectedLogicalVolume.value.conversion_status === 'Complete')) && (usesMasterKey.value
-  ? !!normalizedKey.value && normalizedKey.value.length % 2 === 0 && !keyError.value
-  : !!password.value));
+
 const pim = ref(0);
 const hidden = ref(false);
-const dialogEl = ref<HTMLElement | null>(null);
 
+const canUnlock = computed(() => regionValid.value && !!credential.value
+  && (scheme.value !== 'filevault' || (!!selectedLogicalVolume.value && selectedLogicalVolume.value.conversion_status === 'Complete')));
+
+const formId = useId();
+const dialogEl = ref<HTMLElement | null>(null);
 useDialogFocus(() => props.open, dialogEl);
 
-// 分区行固定目标。卡片入口优先选第一个检测到的锁定分区，
-// 无检测结果时允许直接解锁整个容器。
+function clearCredentials() {
+  password.value = '';
+  masterKey.value = '';
+  keyTouched.value = false;
+  clearRecovery();
+}
+
+// 分区行固定目标；卡片入口优先选第一个检测到且未解锁的加密分区，否则整个镜像。
 watch(() => props.open, isOpen => {
   if (!isOpen) {
-    password.value = '';
-    masterKey.value = '';
-    keyTouched.value = false;
+    clearCredentials();
     return;
   }
-  const lockedBitlocker = bitlockerPartitions.value.find(candidate => !props.isBitlockerUnlocked(candidate));
-  bitlockerRegion.value = lockedBitlocker?.id ?? bitlockerPartitions.value[0]?.id ?? null;
-  const partition = fixedPartition.value ?? props.info.partitions.find(candidate =>
-    candidate.kind === 'bitlocker'
-      ? !props.isBitlockerUnlocked(candidate)
-      : detectedScheme(candidate) && !props.info.unlocked_partitions?.includes(candidate.id),
-  );
-  scheme.value = (partition && detectedScheme(partition)) ?? 'luks';
-  region.value = partition && scheme.value !== 'bitlocker' ? String(partition.id) : 'whole';
+  dismissUnlockReminder(props.info.id);
+  const start = initialSelection(props.info, props.partitionId);
+  if (!start) return;
+  scheme.value = start.scheme;
+  region.value = start.partitionId === undefined ? 'whole' : String(start.partitionId);
+  mode.value = credentialModes(start.scheme)[0]!;
 }, { immediate: true });
 
 function unlock() {
-  if (!props.open || scheme.value === 'bitlocker' || !canUnlock.value) return;
-  const options = {
+  const value = credential.value;
+  if (!props.open || !value || !canUnlock.value) return;
+  const options: EncryptedUnlockOptions = {
     scheme: scheme.value,
-    ...(usesMasterKey.value ? { masterKeyHex: normalizedKey.value } : { password: password.value }),
-    ...(selectedContainerPartitionId.value === undefined ? {} : { partitionId: selectedContainerPartitionId.value }),
+    credential: value,
+    ...(selectedPartitionId.value === undefined ? {} : { partitionId: selectedPartitionId.value }),
     ...(scheme.value === 'veracrypt' ? { pim: pim.value, hidden: hidden.value } : {}),
     ...(scheme.value === 'filevault' ? { ...(inventory.value && inventory.value.volumes.length > 1 ? { target: 'newImage' as const } : {}), logicalVolumeIndex: logicalVolumeIndex.value, ...(encryptedRootPath.value ? { encryptedRootPlistPath: encryptedRootPath.value } : {}) } : {}),
   };
-  password.value = '';
-  masterKey.value = '';
-  keyTouched.value = false;
+  if (mode.value === 'memory') memoryFields.value?.markSubmitted();
+  clearCredentials();
   if (startEncryptedVolumeUnlock(props.info, options)) emit('close');
 }
 
-onBeforeUnmount(() => {
-  password.value = '';
-  masterKey.value = '';
-  // The backend job remains visible in the task center when changing views.
-});
+onBeforeUnmount(clearCredentials);
 
-watch([scheme, region, credential], () => {
-  password.value = '';
-  masterKey.value = '';
-  keyTouched.value = false;
-});
+watch([scheme, region, mode], clearCredentials);
 </script>
 
 <style scoped>
@@ -248,6 +250,7 @@ label { display: grid; gap: 6px; min-width: 0; color: var(--text-primary); font-
 label .ui-select { width: 100%; }
 .wide { grid-column: 1 / -1; }
 .check { display: flex; align-self: end; height: 30px; }
+.ui-seg-item { flex: 1; }
 @media (max-width: 520px) {
   fieldset { grid-template-columns: minmax(0, 1fr); }
 }

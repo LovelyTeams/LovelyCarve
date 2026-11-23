@@ -1,8 +1,9 @@
 //! Volume Shadow Copy discovery and session-only snapshot images.
 //!
-//! [`list`] reports the shadow copies stored on each NTFS volume of an image —
-//! plain NTFS partitions and unlocked BitLocker volumes — and [`open`] exposes
-//! one of them as a read-only session image (`vss://…`). Its bytes are
+//! [`list`] reports the shadow copies stored on each NTFS partition of an
+//! image — the evidence itself, or the plaintext view of an unlocked encrypted
+//! volume — and [`open`] exposes one of them as a read-only session image
+//! (`vss://…`). Its bytes are
 //! reconstructed on demand by the vendored `vsc-core` chain reader from the
 //! live volume and the copy-on-write stores; nothing is written to disk. Reads
 //! that touch unreadable evidence sectors fail instead of returning zeros.
@@ -17,7 +18,6 @@ use vsc::{SnapshotLayout, StoreDescriptor, StoreInfo, VssVolume};
 
 use crate::core::common::error::Failure;
 use crate::core::common::ids::ImageId;
-use crate::core::evidence::crypto::bitlocker::UnlockedVolume;
 use crate::core::evidence::image::{DerivedImage, DiskImage};
 use crate::core::evidence::partitions::{
     detect_partitions_with_meta, Partition, PartitionKind, SectorSource,
@@ -79,22 +79,18 @@ pub struct ShadowCopyOrigin {
     pub created_unix_ms: Option<i64>,
 }
 
-/// The live bytes of an NTFS volume that may carry shadow copies.
+/// The live bytes of an NTFS partition that may carry shadow copies, read
+/// straight from its image.
 #[derive(Clone)]
-enum LiveVolume {
-    /// A plain partition, read straight from the image.
-    Partition {
-        image: Weak<DiskImage>,
-        offset: u64,
-        length: u64,
-    },
-    /// An unlocked BitLocker volume, read through its decryptor.
-    Bitlocker(Arc<UnlockedVolume>),
+struct LiveVolume {
+    image: Weak<DiskImage>,
+    offset: u64,
+    length: u64,
 }
 
 impl LiveVolume {
     /// The volume of `partition`, or `None` when it cannot hold NTFS shadow
-    /// copies (another file system, or a still-locked BitLocker volume).
+    /// copies (another file system, or a still-locked encrypted volume).
     fn for_partition(
         image: &Arc<DiskImage>,
         partition: &Partition,
@@ -117,24 +113,18 @@ impl LiveVolume {
                     "partition {} lies outside the image",
                     partition.id
                 );
-                Ok(Some(Self::Partition {
+                Ok(Some(Self {
                     image: Arc::downgrade(image),
                     offset,
                     length,
                 }))
-            }
-            PartitionKind::Bitlocker => {
-                Ok(image.bitlocker_unlocked(partition.id).map(Self::Bitlocker))
             }
             _ => Ok(None),
         }
     }
 
     fn len(&self) -> u64 {
-        match self {
-            Self::Partition { length, .. } => *length,
-            Self::Bitlocker(volume) => volume.size(),
-        }
+        self.length
     }
 
     /// Fill `buffer` from the volume at `offset`, or fail.
@@ -148,45 +138,20 @@ impl LiveVolume {
                 "shadow copy read runs past the volume",
             ));
         }
-        match self {
-            Self::Partition {
-                image,
-                offset: base,
-                ..
-            } => {
-                let image = image
-                    .upgrade()
-                    .ok_or_else(|| io::Error::other("shadow copy evidence closed"))?;
-                let absolute = base + offset;
-                let filled = image
-                    .read_into(absolute, buffer)
-                    .map_err(io::Error::other)?;
-                if filled != buffer.len()
-                    || image.has_bad_region_in_range(absolute, buffer.len() as u64)
-                {
-                    return Err(io::Error::other(
-                        "shadow copy evidence contains unreadable sectors",
-                    ));
-                }
-                Ok(())
-            }
-            Self::Bitlocker(volume) => {
-                let mut filled = 0;
-                while filled < buffer.len() {
-                    let read = volume
-                        .read_at(offset + filled as u64, &mut buffer[filled..])
-                        .map_err(io::Error::other)?;
-                    if read == 0 {
-                        return Err(io::Error::new(
-                            io::ErrorKind::UnexpectedEof,
-                            "BitLocker volume ended early",
-                        ));
-                    }
-                    filled += read;
-                }
-                Ok(())
-            }
+        let image = self
+            .image
+            .upgrade()
+            .ok_or_else(|| io::Error::other("shadow copy evidence closed"))?;
+        let absolute = self.offset + offset;
+        let filled = image
+            .read_into(absolute, buffer)
+            .map_err(io::Error::other)?;
+        if filled != buffer.len() || image.has_bad_region_in_range(absolute, buffer.len() as u64) {
+            return Err(io::Error::other(
+                "shadow copy evidence contains unreadable sectors",
+            ));
         }
+        Ok(())
     }
 }
 
@@ -389,7 +354,7 @@ pub fn open(
         .find(|partition| partition.id == partition_id)
         .with_context(|| Failure::not_found(format!("partition {partition_id} not found")))?;
     let live = LiveVolume::for_partition(image, partition)?.with_context(|| {
-        format!("partition {partition_id} is not a readable NTFS volume (unlock BitLocker first)")
+        format!("partition {partition_id} is not a readable NTFS volume (unlock it first if it is encrypted)")
     })?;
     let mut volume = VssVolume::open(LiveCursor::new(live.clone(), Some(cancellation.clone())))?;
     ensure!(

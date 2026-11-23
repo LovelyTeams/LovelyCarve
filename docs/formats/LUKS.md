@@ -26,7 +26,7 @@ LUKS 由 Apache-2.0 的 vendored `luks-core` 与 RustCrypto 读取；libluksde �
 | UTF-8 密码 | 按原始 UTF-8 字节，不做规范化 | 支持 |
 | UTF-16 密码 | reader 提供 `unlock_with_utf16_password`，拒绝非法代理项 | 支持 |
 | 二进制密码 / keyfile 内容 | `unlock_with_passphrase(&[u8])` 接受任意字节；桌面没有 keyfile 选择器 | UTF-8/UTF-16 密码 API |
-| 已恢复卷主密钥 | LUKS1/2 reader、桌面弹窗和 CLI/IPC 的 `masterKeyHex`；先核验卷密钥摘要 | `set_key`，旧别名 `set_keys` |
+| 已恢复卷主密钥 | LUKS1/2 reader、桌面弹窗、CLI `--master-key` 与 IPC 的 `masterKey` 凭据；先核验卷密钥摘要 | `set_key`，旧别名 `set_keys` |
 | LUKS2 密钥槽与卷密钥长度不同 | 分开保存和推导 `area.key_size` / `key_size` | 不适用 |
 | UUID、版本、密码套件、扇区大小 | 原始头部字段及 `VolumeInfo.uuid` | 加密方法、卷标识接口 |
 
@@ -91,7 +91,7 @@ LUKS 由 Apache-2.0 的 vendored `luks-core` 与 RustCrypto 读取；libluksde �
 | `volume_get_size` | `payload_size()` |
 | `volume_get_encryption_method` | `info().cipher_name` / `cipher_mode` / `key_bytes` / `sector_size` |
 | `volume_get_volume_identifier` | `Luks1Header.uuid` / `VolumeInfo.uuid` |
-| `volume_set_key` | `unlock_with_master_key`；桌面/CLI/IPC `masterKeyHex` |
+| `volume_set_key` | `unlock_with_master_key`；桌面/CLI/IPC 的 `masterKey` 凭据 |
 | `volume_set_keys` | 上游已弃用的别名，与上行相同 |
 | `volume_set_utf8_password` | `unlock_with_passphrase(password.as_bytes())` |
 | `volume_set_utf16_password` | `unlock_with_utf16_password` |
@@ -104,17 +104,17 @@ LUKS 由 Apache-2.0 的 vendored `luks-core` 与 RustCrypto 读取；libluksde �
 
 ## 桌面与 CLI
 
-在镜像信息的「解锁加密容器」或 LUKS 分区行的「解锁」中，选 LUKS1 / LUKS2 后可切换「密码」/「主密钥」。
+在镜像信息的「解锁加密卷」或 LUKS 分区行的「解锁」中，选 LUKS1 / LUKS2 后可切换「密码」/「主密钥」。
 主密钥输入为十六进制，自动去除空白；非法字符、奇数长度和超过 256 字节会阻止提交。
 关闭、切换凭据或格式会清空输入；后台完成/失败或重复任务拒绝也清空传输对象里的凭据。
 
-`encrypted_volume_unlock` 的 `options.password` 与 `options.masterKeyHex` 必须恰好提供一个非空凭据：
+`encrypted_volume_unlock` 的 `options.credential` 是一种凭据：LUKS 接受 `{"kind":"password","password":…}` 或 `{"kind":"masterKey","keyHex":…}`，其他种类（以及 `tweakHex`）在读取前以 `invalidInput` 拒绝：
 
 ```json
-{"imageId":"<已加载镜像 ID>","options":{"scheme":"luks","partitionId":0,"masterKeyHex":"<卷主密钥的十六进制>"}}
+{"imageId":"<已加载镜像 ID>","options":{"scheme":"luks","partitionId":0,"credential":{"kind":"masterKey","keyHex":"<卷主密钥的十六进制>"}}}
 ```
 
-它是卷主密钥，不是 PBKDF2 之后的密码槽密钥；VeraCrypt 不接受该选项。
+它是卷主密钥，不是 PBKDF2 之后的密码槽密钥；VeraCrypt 不接受主密钥。
 `target`、源分区/区域选择、任务取消、会话卸载和导出入口沿用现有契约。
 结果中的 `volume_key` 是导航标识（例如 `part:0`），不包含密码或加密主密钥。
 

@@ -318,7 +318,6 @@ pub(super) fn children_for_image_with_options(
             }
             PartitionKind::Ntfs => ntfs_root_children(image, partition, options),
             PartitionKind::Refs => RefsVolume::open(Arc::clone(image), partition)?.root_children(),
-            PartitionKind::Bitlocker => bitlocker_partition_children(image, partition, options),
             PartitionKind::Unknown => match image.external_volume(parent_id) {
                 Some(volume) => volume.children(image, parent_id, options),
                 None => Ok(Vec::new()),
@@ -328,7 +327,7 @@ pub(super) fn children_for_image_with_options(
         // Append a "$未分配簇" virtual file for the partition's unallocated
         // space (a filesystem-level free-cluster node, sibling to the real
         // files). `fs_unalloc_nodes` returns empty for kinds with no physical
-        // unallocated concept (LVM/Bitlocker/read-only/aggregate), so the
+        // unallocated concept (LVM/locked containers/read-only/aggregate), so the
         // exhaustive decision lives in one place.
         let mut children = children?;
         if options.include_unallocated_nodes {

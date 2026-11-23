@@ -65,7 +65,7 @@ lovelycarve-cli --image "D:\evidence\disk.E01" cat /disk/part:0/Windows/System32
 ## 地址
 
 - `/` 列出检材；`/<别名>` 列出一份检材的分区与卷；`/<别名>/<卷>/<路径>` 指向卷内的文件或目录，例如 `/nas/part:0/etc/passwd`。
-- 卷这一段写根目录条目的 ID：分区 `part:0`、LVM 逻辑卷 `lvm:0:1`、尚不可读的分区（如锁定的 LUKS 容器）`unsupported:0`；目录与归档检材只有一个根条目，如 `/<别名>/folder:`、`/<别名>/tar:`。这一段也接受该条目的名称，但 ID 稳定、只含 ASCII，不受卷名中的空格、括号、`·` 或重名影响。卷入口名称只保留字母、数字、中文、`.`、`-`、`_`，其余分隔符合并为 `_`（`ext4 (md · host:0)` → `ext4_md_host_0`），转换后重名的卷须用 ID。
+- 卷这一段写根目录条目的 ID：分区 `part:0`、LVM 逻辑卷 `lvm:0:1`、尚不可读的分区（如锁定的 BitLocker、LUKS 或 FileVault 卷）`unsupported:0`，也可写作 `part:0`；目录与归档检材只有一个根条目，如 `/<别名>/folder:`、`/<别名>/tar:`。这一段也接受该条目的名称，但 ID 稳定、只含 ASCII，不受卷名中的空格、括号、`·` 或重名影响。卷入口名称只保留字母、数字、中文、`.`、`-`、`_`，其余分隔符合并为 `_`（`ext4 (md · host:0)` → `ext4_md_host_0`），转换后重名的卷须用 ID。
 - 卷以下的各级按实际文件名解析，支持 `.` 与 `..`。名称优先精确匹配；没有精确命中时，NTFS、FAT/exFAT、HFS+ 与不区分大小写的 APFS 卷接受唯一的忽略大小写匹配，多个候选报歧义；其他文件系统保持精确匹配。合成节点使用中文名，如 `分区0`、`$未分配簇`、`未使用空间1`，以列表为准。
 - `/<别名>/@<节点 ID>` 按结果返回的 `id` 指向节点，用于同名文件、已删除条目、命名流和未分配空间；`ls -l` 显示 ID。ID 精确指向该节点，不跟随符号链接。不要按名称拼接 ID。
 - 每个列出的条目都带有可直接使用的 `path`。路径解析不到时以 `notFound` 失败，并写明所在目录和找不到的名称。
@@ -227,26 +227,25 @@ lovelycarve-cli -C "D:\cases\nas" find "auth*.log.*" --under /nas/part:0/var/log
 | 命令 | 作用 |
 | --- | --- |
 | `encryption <地址>` | 加密类型与状态：BitLocker 元数据（算法、卷 GUID、FILETIME、描述、保护器类型，不含密钥）、FileVault 逻辑卷目录、LUKS 状态 |
-| `unlock <地址> [凭据] [--scheme bitlocker\|luks\|veracrypt\|filevault\|ios]` | 解锁；类型按分区识别，VeraCrypt（没有签名）须指定 |
-| `evidence export /<别名>/part:N -o <新文件>` | 导出解锁后的 BitLocker 卷 |
+| `unlock <地址> [凭据] [--scheme bitlocker\|luks\|veracrypt\|filevault\|ios]` | 解锁；BitLocker、LUKS、VeraCrypt 与 FileVault 走同一条解锁路径，类型按分区识别，VeraCrypt（没有签名）须指定 |
 | `evidence export <别名> -o <新文件> --unlocked` | 整盘导出，已解锁的分区写成明文，其余字节保持源数据 |
 
-解锁只在进程存活期间有效，需在后台进程、`shell` 或 `batch` 中进行；解锁的卷和凭据不保存为案件检材，后台进程重启后需重新解锁。`tasks cancel <任务ID>` 可取消解锁，KDF 执行中可能延迟响应。
+解锁只在进程存活期间有效，需在后台进程、`shell` 或 `batch` 中进行；解锁的卷和凭据不保存为案件检材，后台进程重启后需重新解锁。`tasks cancel <任务ID>` 可取消解锁，KDF 执行中可能延迟响应。锁定的分区列为 `unsupported:N`，也可以写 `part:N`；`volumes` 显示每个加密卷的格式与锁定状态。
 
-- **BitLocker**：只给一种凭据 `--password`、`--recovery-password`、`--startup-key <.BEK>`、`--fvek`（Elephant Diffuser 另给 `--tweak`）或 `--vmk`；都不给时尝试卷内明文密钥。`--vmk-from <内存镜像>` 在内存中搜索 VMK 并逐个尝试，卷没有恢复密码保护器时也可解锁。原始 FVEK 没有认证，须核验解密结果；TPM / SID 保护器不支持。明文接在原分区上，之后照常浏览。能力与限制见 [BitLocker](formats/BITLOCKER.md)。
+- **BitLocker**：只给一种凭据 `--password`、`--recovery-password`、`--startup-key <.BEK>`、`--fvek`（Elephant Diffuser 另给 `--tweak`）或 `--vmk`；都不给时尝试卷内明文密钥。`--vmk-from <内存镜像>` 在内存中搜索 VMK 并逐个尝试，卷没有恢复密码保护器时也可解锁；结果的 `vmkOffset` 是生效的候选，`recoveryPassword` 是由它派生的恢复密码。原始 FVEK 没有认证，须核验解密结果；TPM / SID 保护器不支持。明文卷按卷首识别文件系统（NTFS、ReFS、FAT / exFAT 等），之后照常浏览。能力与限制见 [BitLocker](formats/BITLOCKER.md)。
 - **LUKS**：LUKS1 / LUKS2 用 `--password`，或已恢复的卷主密钥 `--master-key`（按头部摘要核验）。整份镜像的 LUKS 容器显示为 `unsupported:0`。见 [LUKS](formats/LUKS.md)。
-- **VeraCrypt**：`--scheme veracrypt`，按需给 `--pim`（0–1000）与 `--hidden`。不支持密钥文件、系统加密和备份头恢复。
+- **VeraCrypt**：`--scheme veracrypt`，按需给 `--pim`（0–1000）与 `--hidden`。VeraCrypt 卷总是整数个扇区，区域长度不是检材扇区大小整数倍时直接拒绝（`invalidInput`）；较大文件中的容器用 `--offset` / `--length` 指出它的范围。不支持密钥文件、系统加密和备份头恢复。
 - **FileVault 2**：先用 `encryption` 列出逻辑卷，再用 `--logical-volume <index>` 解锁；`--password` 也接受个人恢复密码，也可给 `--master-key`；`--plist` 指向本地 EncryptedRoot.plist(.wipekey)，`encryption` 与 `unlock` 应给同一个。多个逻辑卷须各自用 `--new-image`。APFS 原生加密不能由此解锁。见 [FileVault](formats/FILEVAULT.md)。
 - **iOS 备份**：`unlock /<别名> --password @文件`（`--scheme ios`）。见 [iOS 备份](IOS_BACKUPS.md#cli)。
 
-LUKS、VeraCrypt 与 FileVault 默认把明文接在源检材上：结果的 `path` 指向可读的卷（如 `/lk/part:0`），源检材 ID 不变，案件随后为它补建索引。`--new-image [--as 别名]` 改为注册一份独立的解密检材（`decrypted://…`），关闭源检材时一并关闭；`--offset` / `--length`（相对源检材的字节）选择非分区区域，总是生成独立检材。明文接在源检材上时，`evidence hash` 和普通 `evidence export` 仍读取源密文，`--unlocked` 才按导出开始时的解锁状态把明文写进原分区位置（较短明文之后补零，分区表、其他区域及整盘大小保留）。不支持的布局（分离头部、LUKS2 完整性 / 重加密 / 多数据段）和超过 KDF 资源预算时明确报错。
+BitLocker、LUKS、VeraCrypt 与 FileVault 默认把明文接在源检材上：结果的 `path` 指向可读的卷（如 `/lk/part:0`），源检材 ID 不变，案件随后为它补建索引。`--new-image [--as 别名]` 改为注册一份独立的解密检材（`decrypted://…`），关闭源检材时一并关闭；`--offset` / `--length`（相对源检材的字节）选择非分区区域，总是生成独立检材。明文接在源检材上时，`evidence hash` 和普通 `evidence export` 仍读取源密文，`evidence export <别名> --unlocked` 才按导出开始时的解锁状态把各已解锁分区的明文写进原分区位置（较短明文之后补零，分区表、其他区域及整盘大小保留）。不支持的布局（分离头部、LUKS2 完整性 / 重加密 / 多数据段）和超过 KDF 资源预算时明确报错。
 
 ```powershell
 lovelycarve-cli case open "D:\cases\laptop"
 lovelycarve-cli -C "D:\cases\laptop" encryption /laptop/part:2
 lovelycarve-cli -C "D:\cases\laptop" unlock /laptop/part:2 --recovery-password "@D:\keys\recovery.txt"
 lovelycarve-cli -C "D:\cases\laptop" ls /laptop/part:2
-lovelycarve-cli -C "D:\cases\laptop" evidence export /laptop/part:2 -o "D:\output\volume.raw"
+lovelycarve-cli -C "D:\cases\laptop" evidence export laptop -o "D:\output\laptop-decrypted.raw" --unlocked
 ```
 
 ## RAID、LVM 与卷影副本

@@ -190,7 +190,8 @@ pub fn detect_image(image: &Arc<EvidenceSession>) -> anyhow::Result<Vec<OsDetect
                     }),
                 }
             }
-            PartitionKind::Bitlocker if image.bitlocker_unlocked(partition.id).is_none() => {
+            // Unlocked, a partition reports its plaintext filesystem instead.
+            PartitionKind::Bitlocker => {
                 out.push(OsDetectionPartition {
                     partition_id: partition.id,
                     partition_label: partition_label(partition),
@@ -220,14 +221,11 @@ pub(super) fn apfs_roots(
 }
 
 fn detect_partition(image: &Arc<EvidenceSession>, partition: &Partition) -> OsDetectionPartition {
-    let mut result = detect_root(
+    detect_root(
         image,
         format!("part:{}", partition.id),
         unsupported_partition_entry(partition),
-    );
-    result.bitlocker_locked =
-        result.filesystem_opened && partition.kind == PartitionKind::Bitlocker;
-    result
+    )
 }
 
 fn detect_logical_volume(
@@ -330,7 +328,6 @@ pub(crate) fn supports_os_detect(kind: PartitionKind) -> bool {
             | PartitionKind::HfsX
             | PartitionKind::Ufs
             | PartitionKind::Xfs
-            | PartitionKind::Bitlocker
     )
 }
 
@@ -417,7 +414,6 @@ mod tests {
             PartitionKind::HfsX,
             PartitionKind::Ufs,
             PartitionKind::Xfs,
-            PartitionKind::Bitlocker,
         ];
         for kind in supported {
             assert!(supports_os_detect(kind), "{kind:?} should be supported");
@@ -442,6 +438,7 @@ mod tests {
             .attach_decrypted_partition(
                 0,
                 DiskImage::open(fixture("plain.img")).expect("open plaintext"),
+                crate::core::evidence::crypto::credential::EncryptionScheme::Luks,
                 CancellationToken::new(),
             )
             .expect("attach plaintext view");

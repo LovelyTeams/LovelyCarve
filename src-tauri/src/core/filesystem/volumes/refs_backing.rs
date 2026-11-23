@@ -1,5 +1,4 @@
 //! Exact partition-relative byte adapters for the pure Rust ReFS reader.
-use crate::core::evidence::crypto::bitlocker::UnlockedVolume;
 use crate::core::evidence::image::DiskImage;
 use refs_reader::ReadAt;
 use std::{io, sync::Arc};
@@ -28,31 +27,6 @@ impl ReadAt for ImageBacking {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "short ReFS evidence read",
-            ));
-        }
-        Ok(())
-    }
-}
-
-pub struct BitlockerBacking {
-    pub unlocked: Arc<UnlockedVolume>,
-    pub length_bytes: u64,
-}
-
-impl ReadAt for BitlockerBacking {
-    fn len(&self) -> u64 {
-        self.length_bytes
-    }
-    fn read_exact_at(&self, offset: u64, buffer: &mut [u8]) -> io::Result<()> {
-        check_range(offset, buffer.len(), self.length_bytes)?;
-        let count = self
-            .unlocked
-            .read_at(offset, buffer)
-            .map_err(io::Error::other)?;
-        if count != buffer.len() {
-            return Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                "short decrypted ReFS read",
             ));
         }
         Ok(())

@@ -309,36 +309,37 @@ Report the installed PVE version, the installed kernel release and a confirmed r
 
 ## Encrypted volumes
 
-`encryption <address>` reports a partition's or container's scheme and state without credentials: BitLocker metadata (method, volume GUID, protector types), FileVault logical volumes, LUKS. `unlock <address>` opens one with a credential given as `@<file>`, `-` (stdin) or a terminal prompt; the scheme comes from the partition type, except VeraCrypt (no signature) and some iOS backups, which take `--scheme`. Unlocking lasts as long as the process: do it in the backend, a shell or a batch, and unlock again after a restart. Unlock before building indexes for the volumes it reveals.
+`encryption <address>` reports a partition's or container's scheme and state without credentials: BitLocker metadata (method, volume GUID, protector types), FileVault logical volumes, LUKS. `unlock <address>` opens BitLocker, LUKS, VeraCrypt and FileVault the same way, with a credential given as `@<file>`, `-` (stdin) or a terminal prompt; the scheme comes from the partition type, except VeraCrypt (no signature) and some iOS backups, which take `--scheme`. Unlocking lasts as long as the process: do it in the backend, a shell or a batch, and unlock again after a restart. Unlock before building indexes for the volumes it reveals.
+
+- A locked partition is listed as `unsupported:N`; `part:N` names it too. `volumes` shows each encrypted volume's scheme and whether it is locked.
+- By default the plaintext attaches to the source evidence and the partition then browses as usual (`path` in the result names the readable volume); `--new-image --as <alias>` makes it separate evidence instead. `--offset` and `--length` (bytes in the source) select a region that is not a partition; that always makes new evidence.
+- With the plaintext attached in place, `evidence hash` and a plain `evidence export` still read the ciphertext; `evidence export <alias> --unlocked` writes every unlocked partition in plaintext into the disk layout, keeping the partition table, other regions and the total length.
+- Unsupported layouts and KDF resource limits fail explicitly: report the reason rather than retrying other schemes or concluding the password is wrong. Cancellation may wait for a running KDF.
 
 ### BitLocker
 
-- One credential: `--password`, `--recovery-password`, `--startup-key <.BEK file>`, `--fvek` (with `--tweak` for the Elephant Diffuser) or `--vmk`; with none, a clear key stored on the volume is tried. `--vmk-from <memory image>` finds VMKs in memory and tries each. A raw FVEK has no authentication: check the decrypted content. TPM and SID protectors are not supported.
-- The plaintext is attached to the partition, which then browses as usual. `evidence export /<alias>/part:N -o <new file>` writes the decrypted volume; `evidence export <alias> -o <new file> --unlocked` writes the whole disk with unlocked partitions in plaintext.
+- One credential: `--password`, `--recovery-password`, `--startup-key <.BEK file>`, `--fvek` (with `--tweak` for the Elephant Diffuser) or `--vmk`; with none, a clear key stored on the volume is tried. `--vmk-from <memory image>` finds VMKs in memory and tries each; the result names the one that worked (`vmkOffset`) and the recovery password it yields (`recoveryPassword`). A raw FVEK has no authentication: check the decrypted content. TPM and SID protectors are not supported.
 
 ```text
 lovelycarve-cli -C "<case-dir>" encryption /nas/part:2
 lovelycarve-cli -C "<case-dir>" unlock /nas/part:2 --recovery-password "@<absolute-recovery-password-file>"
 lovelycarve-cli -C "<case-dir>" ls /nas/part:2
-lovelycarve-cli -C "<case-dir>" evidence export /nas/part:2 -o "<new-host-path>"
+lovelycarve-cli -C "<case-dir>" evidence export nas -o "<new-host-path>" --unlocked
 ```
 
 Partition `part:2` is illustrative: take the encrypted partition from `volumes`.
 
 ### LUKS
 
-LUKS1 and LUKS2 unlock with `--password` or a recovered volume master key (`--master-key`, verified against the header digest; it is not a key-slot passphrase). A whole-image LUKS container shows as `unsupported:0`. By default the plaintext attaches to the source evidence (`path` in the result names the readable volume); `--new-image --as <alias>` makes it separate evidence instead. `--offset` and `--length` (bytes in the source) select a region that is not a partition; that always makes new evidence.
+LUKS1 and LUKS2 unlock with `--password` or a recovered volume master key (`--master-key`, verified against the header digest; it is not a key-slot passphrase). A whole-image LUKS container shows as `unsupported:0`. Detached headers, LUKS2 integrity or reencryption and several data segments are not supported. See `docs/formats/LUKS.md`.
 
 ```text
 lovelycarve-cli -C "<case-dir>" unlock /lk/unsupported:0 --password "@<absolute-password-file>"
 lovelycarve-cli -C "<case-dir>" ls /lk/part:0
 ```
-
-With the plaintext attached in place, `evidence hash` and a plain `evidence export` still read the ciphertext; `evidence export <alias> --unlocked` writes the plaintext into the disk layout, keeping the partition table, other regions and the total length. Unsupported layouts (detached headers, LUKS2 integrity or reencryption, several data segments) and KDF resource limits fail explicitly: report the reason rather than retrying other schemes or concluding the password is wrong. Cancellation may wait for a running KDF. See `docs/formats/LUKS.md`.
-
 ### VeraCrypt, FileVault and iOS backups
 
-VeraCrypt has no signature: give `--scheme veracrypt`, with `--pim` and `--hidden` where they apply. FileVault: read the logical volumes with `encryption`, then unlock one by its `--logical-volume` index (`--password` also accepts the personal recovery key); with several logical volumes, make each new evidence with `--new-image`. APFS native encryption is not supported. Encrypted iOS backups unlock with `--password` on the evidence root.
+VeraCrypt has no signature: give `--scheme veracrypt`, with `--pim` and `--hidden` where they apply. A VeraCrypt volume is a whole number of the evidence's sectors, so a region of any other size is refused (`invalidInput`); for a container inside a larger file, give its span with `--offset` and `--length`. FileVault: read the logical volumes with `encryption`, then unlock one by its `--logical-volume` index (`--password` also accepts the personal recovery key); with several logical volumes, make each new evidence with `--new-image`. APFS native encryption is not supported. Encrypted iOS backups unlock with `--password` on the evidence root.
 
 ```text
 lovelycarve-cli -C "<case-dir>" unlock /vc --scheme veracrypt --password "@<absolute-password-file>" --pim 0

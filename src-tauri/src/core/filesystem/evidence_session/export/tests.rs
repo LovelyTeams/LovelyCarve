@@ -1,5 +1,7 @@
 use super::*;
-use crate::core::evidence::crypto::encrypted_image::{self, EncryptionScheme, UnlockOptions};
+use crate::core::evidence::crypto::encrypted_image::{
+    self, EncryptionScheme, UnlockCredential, UnlockOptions,
+};
 use crate::core::evidence::image::{DiskImage, Partition, PartitionKind};
 use crate::core::evidence::partitions::SectorSource;
 use std::path::PathBuf;
@@ -47,8 +49,9 @@ fn raw_export_projects_multiple_unlocked_partitions_and_preserves_disk_layout() 
             UnlockOptions {
                 target: Default::default(),
                 scheme: EncryptionScheme::Luks,
-                password: "lovelycarve-test".into(),
-                master_key_hex: None,
+                credential: UnlockCredential::Password {
+                    password: "lovelycarve-test".into(),
+                },
                 logical_volume_index: None,
                 encrypted_root_plist_path: None,
                 partition_id: Some(id),
@@ -61,7 +64,7 @@ fn raw_export_projects_multiple_unlocked_partitions_and_preserves_disk_layout() 
         )
         .unwrap();
         source
-            .attach_decrypted_partition(id, plain, result.read_cancellation)
+            .attach_decrypted_partition(id, plain, result.scheme, result.read_cancellation)
             .unwrap();
     }
     let reader = source
@@ -126,7 +129,7 @@ fn raw_export_handles_whole_containers_without_partition_metadata() {
     let plain = DiskImage::open(fixture("plain.img")).unwrap();
     let expected = plain.read_range(0, plain.len() as usize).unwrap();
     source
-        .attach_decrypted_partition(0, plain, CancellationToken::new())
+        .attach_decrypted_partition(0, plain, EncryptionScheme::Luks, CancellationToken::new())
         .unwrap();
     let reader = source
         .raw_export_reader(ImageExportMode::UnlockedPartitions)
@@ -148,6 +151,7 @@ fn raw_export_rejects_invalid_plaintext_geometry() {
             .attach_decrypted_partition(
                 0,
                 DiskImage::open(fixture("plain.img")).unwrap(),
+                EncryptionScheme::Luks,
                 CancellationToken::new(),
             )
             .unwrap();
@@ -165,6 +169,7 @@ fn raw_export_rejects_invalid_plaintext_geometry() {
             .attach_decrypted_partition(
                 id,
                 DiskImage::open(fixture("plain.img")).unwrap(),
+                EncryptionScheme::Luks,
                 CancellationToken::new(),
             )
             .unwrap();

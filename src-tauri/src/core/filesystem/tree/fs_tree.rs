@@ -33,8 +33,8 @@ pub(crate) use crate::core::filesystem::tree::fs_tree_nodes::{
     disk_gap_nodes, fat_system_nodes, fs_unalloc_nodes, partition_node,
 };
 pub(crate) use crate::core::filesystem::tree::fs_tree_ntfs::{
-    bitlocker_partition_children, ntfs_deleted_snapshot_for_listing, ntfs_lvm_root_children,
-    ntfs_root_children, open_ntfs_for_source,
+    ntfs_deleted_snapshot_for_listing, ntfs_lvm_root_children, ntfs_root_children,
+    open_ntfs_for_source,
 };
 pub use crate::core::filesystem::tree::fs_tree_ntfs::{
     ntfs_usn_journal, open_ntfs_volume_for_key, prefetch_ntfs_deleted_snapshots,

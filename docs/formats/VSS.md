@@ -30,7 +30,7 @@ NTFS 卷影副本由 Apache-2.0 的 vendored `vsc-core` 加本地 Rust 实现读
 | NTFS 备份扇区及尺寸溢出 | 支持 | BPB sector count 加最后备份扇区；主备几何必须一致、完整位于源卷 | 512/1024/2048/4096 合成回归；不猜测被截断的卷尺寸 |
 | 顺序、定位、范围、seek/read | 支持 | `Snapshot: Read + Seek`、`read_at`、共享 `SnapshotLayout` | 跨 16 KiB/512 字节边界、尾部、负 seek、溢出；定位读取不移动游标 |
 | 并发只读 | README 列为进行中，源码有条件锁 | owned layout/map 为不可变 `Send + Sync`，每次传定位 reader | 独立游标；并发共享可变 File 时由调用方同步 |
-| 任意证据源、分区 offset、已解锁 BitLocker | BFIO/工具 offset | 泛型 `Read + Seek`；应用 `LiveCursor` 在 NTFS 分区/解密卷上定位 | 主工程合成分区及真实 RAW；尚无 BitLocker 卷内 VSS 的真实样本 |
+| 任意证据源、分区 offset、已解锁的加密卷 | BFIO/工具 offset | 泛型 `Read + Seek`；应用 `LiveCursor` 在 NTFS 分区上定位，已解锁的 BitLocker / LUKS / VeraCrypt 分区按其明文视图中的 NTFS 分区读取 | 主工程合成分区及真实 RAW；尚无加密卷内 VSS 的真实样本 |
 | 取消、源短读/坏区、源卸载 | abort/错误传播 | 应用 reader 轮询 CancellationToken；源弱引用、范围/坏区校验 | 已取消任务与源卸载回归；不额外创建轮询线程 |
 | info、完整副本导出、文件浏览 | vshadowinfo/export/mount | `probe-vsc`；副本作为会话镜像复用 RAW 导出、哈希、NTFS 文件浏览/导出 | 不另建一套导出或挂载生命周期 |
 | Python、C ABI、FUSE/Dokan 专用块挂载 | 包装/工具 | Rust API、桌面和现有无窗口 CLI；应用文件挂载走既有路径 | 没有 pyvshadow 模块、C ABI 或 `/vssN` FUSE 兼容路径 |

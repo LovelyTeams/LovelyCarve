@@ -70,7 +70,7 @@ Each entry is a command's synopsis and its description. Positional arguments com
   计算整份检材的哈希
   (exit 2 when set: readFaultsDetected, syntheticBytes)
 - `evidence export <检材> -o|--output <文件> [--unlocked] [--strict]`
-  导出整份检材，或解锁后的 BitLocker 卷，为 RAW
+  导出整份检材为 RAW；加 --unlocked 时已解锁的分区写成明文
   (exit 2 when set: readFaultsDetected, syntheticBytes)
 - `evidence bad-regions [别名]`
   读取时以零填充的坏区域

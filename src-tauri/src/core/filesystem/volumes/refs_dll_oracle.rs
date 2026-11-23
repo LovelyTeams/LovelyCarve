@@ -34,7 +34,6 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use chrono::{TimeZone, Utc};
 
-use crate::core::evidence::crypto::bitlocker::UnlockedVolume;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{DiskImage, Partition};
 use crate::core::filesystem::tree::fs_tree::{
@@ -605,37 +604,6 @@ impl LibRefsBacking for ImageBacking {
                 buf.copy_from_slice(&bytes);
                 Ok(())
             }
-            _ => Err(5),
-        }
-    }
-
-    fn size(&self) -> u64 {
-        self.length_bytes
-    }
-}
-
-/// `librefs::RefsBacking` impl that pipes I/O through an unlocked
-/// BitLocker volume. ReFS-on-BitLocker is a supported Windows Server
-/// layout (BitLocker To Go USB drives, encrypted Storage Spaces), so the
-/// adapter exposes this path even though the existing test fixtures
-/// don't exercise it yet.
-pub struct BitlockerBacking {
-    pub unlocked: Arc<UnlockedVolume>,
-    pub length_bytes: u64,
-}
-
-impl LibRefsBacking for BitlockerBacking {
-    fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<(), i32> {
-        let want = buf.len();
-        if want == 0 {
-            return Ok(());
-        }
-        let end = offset.checked_add(want as u64).ok_or(5_i32)?;
-        if end > self.length_bytes {
-            return Err(5);
-        }
-        match self.unlocked.read_at(offset, buf) {
-            Ok(n) if n == want => Ok(()),
             _ => Err(5),
         }
     }

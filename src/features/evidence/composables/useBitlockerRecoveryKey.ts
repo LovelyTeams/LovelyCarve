@@ -3,14 +3,9 @@ import { tr } from '../../../composables/useLocale';
 import { computed, ref, useId } from 'vue';
 import { checkRecoveryKey } from '../model/bitlockerRecoveryKey';
 
-export function useBitlockerCredentials() {
-  const passwordInput = ref('');
+/** The BitLocker 48-digit recovery password field of the unlock dialog. */
+export function useBitlockerRecoveryKey() {
   const recoveryInput = ref('');
-  const passwordEl = ref<HTMLInputElement | null>(null);
-  const recoveryEl = ref<HTMLInputElement | null>(null);
-  const credentialElements = { password: passwordEl, recovery: recoveryEl };
-
-  const canSubmitPassword = computed(() => passwordInput.value.length > 0);
 
   // Recovery key: a finished group that fails the checksum is flagged as soon as
   // it is typed; what is merely missing waits until the user submits or leaves
@@ -20,7 +15,7 @@ export function useBitlockerCredentials() {
   const recoveryNoteId = useId();
   const recoveryError = computed(() => recoveryCheck.value.groupError
     ?? (recoveryTouched.value && recoveryInput.value.trim() ? recoveryCheck.value.formatError : null));
-  const canSubmitRecovery = computed(() => !recoveryCheck.value.groupError && !recoveryCheck.value.formatError);
+  const canSubmitRecovery = computed(() => !!recoveryInput.value.trim() && !recoveryCheck.value.groupError && !recoveryCheck.value.formatError);
 
   /** Leaving the field shows the canonical grouping and any missing part. */
   function onRecoveryBlur() {
@@ -29,6 +24,6 @@ export function useBitlockerCredentials() {
     recoveryTouched.value = true;
   }
 
-  function clearCredentials() { passwordInput.value = ''; recoveryInput.value = ''; recoveryTouched.value = false; }
-  return { passwordInput, recoveryInput, passwordEl, recoveryEl, credentialElements, canSubmitPassword, recoveryCheck, recoveryTouched, recoveryNoteId, recoveryError, canSubmitRecovery, onRecoveryBlur, clearCredentials };
+  function clearRecovery() { recoveryInput.value = ''; recoveryTouched.value = false; }
+  return { recoveryInput, recoveryCheck, recoveryNoteId, recoveryError, canSubmitRecovery, onRecoveryBlur, clearRecovery };
 }

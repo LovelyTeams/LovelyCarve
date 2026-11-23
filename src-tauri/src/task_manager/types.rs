@@ -25,9 +25,7 @@ pub enum TaskResourceAcquireError {
 pub enum TaskKind {
     AutoDetect,
     BcpImport,
-    BitlockerExport,
     BitlockerScan,
-    BitlockerUnlock,
     EncryptedVolumeUnlock,
     FilevaultInspect,
     CarveRecovery,

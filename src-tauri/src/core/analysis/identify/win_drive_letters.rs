@@ -169,11 +169,8 @@ fn is_candidate_partition(
     image: &Arc<EvidenceSession>,
     partition_id: u8,
 ) -> bool {
-    match kind {
-        PartitionKind::Ntfs => true,
-        PartitionKind::Bitlocker => image.bitlocker_unlocked(partition_id).is_some(),
-        _ => false,
-    }
+    // An unlocked encrypted partition reads as its plaintext filesystem.
+    image.readable_partition_kind(partition_id, kind) == PartitionKind::Ntfs
 }
 
 /// 按 POSIX 路径在卷里逐段解析（大小写不敏感），读出文件内容。与

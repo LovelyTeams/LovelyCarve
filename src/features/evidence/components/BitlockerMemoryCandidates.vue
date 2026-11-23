@@ -1,144 +1,120 @@
 <template>
-  <div v-if="candidates === null" class="bde-mem-pick">
-    <button class="ui-btn sm bde-file-btn" @click="emit('pick')">
-      <FileSearch :size="13" />
-      <span>{{ memoryPath ? tr("更换内存镜像") : tr("选择内存镜像") }}</span>
-    </button>
-    <div v-if="memoryPath" class="bde-file-path mono" :title="memoryPath">{{ memoryPath }}</div>
-    <div class="bde-actions">
-      <button class="ui-btn sm" @click="emit('close')">{{ tr("取消") }}</button>
-      <button
-        class="ui-btn sm primary"
-        :disabled="!memoryPath"
-        @click="emit('scan')"
-      >{{ tr("开始扫描") }}</button>
-    </div>
-  </div>
-
-  <template v-else>
-    <div class="bde-mem-summary">
-      {{ tr("找到") }} {{ candidates.length }} {{ tr("个 VMK 候选 ·") }}
-      <span :class="{ 'bde-mem-derived': derivedCount > 0 }">{{ derivedCount }} {{ tr("个可派生恢复密钥") }}</span>
-    </div>
-    <div class="bde-mem-list">
-      <button
-        v-for="cand in candidates"
-        :key="cand.offset + ':' + cand.vmk_hex"
-        class="bde-mem-row mono"
-        :class="{
-          'is-derived': cand.recovery_key !== null,
-          'is-tried': cand.already_tried,
-        }"
-        :disabled="cand.already_tried"
-        :title="cand.already_tried ? tr('此 VMK 此前已尝试过') : tr('点击使用此 VMK 解锁')"
-        @click="emit('unlock', cand)"
-      >
-        <span v-if="cand.recovery_key" class="bde-mem-key">{{ cand.recovery_key }}</span>
-        <span v-else class="bde-mem-nokey">{{ tr("未能派生恢复密钥 · 点击仍可用此 VMK 解锁") }}</span>
-        <span v-if="cand.already_tried" class="ui-badge sm bde-mem-state">{{ tr("已尝试") }}</span>
+  <div class="memory-scan">
+    <div class="memory-file">
+      <button class="ui-btn ghost sm" type="button" :disabled="!active || !!scan" @click="pickMemoryFile">
+        <FileSearch :size="13" />{{ memoryPath ? tr("更换内存镜像") : tr("选择内存镜像") }}
+      </button>
+      <span v-if="memoryPath" class="memory-path mono" :title="memoryPath">{{ memoryPath }}</span>
+      <button v-if="!scan" class="ui-btn sm" type="button" :disabled="!active || !memoryPath || partitionId === undefined" @click="startScan">
+        {{ candidates ? tr("重新扫描") : tr("开始扫描") }}
       </button>
     </div>
-    <div class="bde-actions">
-      <button class="ui-btn sm" @click="emit('reset')">{{ tr("重新扫描") }}</button>
-      <button class="ui-btn sm" @click="emit('close')">{{ tr("关闭") }}</button>
+    <div v-if="scan" class="scan-progress" role="status">
+      <div class="ui-progress" :class="{ indeterminate: !scan.bytesTotal }"><span :style="scan.bytesTotal ? { width: `${percent}%` } : undefined"></span></div>
+      <span v-if="scan.cancelling" class="scan-text">{{ tr("取消中…") }}</span>
+      <span v-else-if="scan.bytesTotal" class="scan-text mono">{{ `${percent.toFixed(1)}%` }}<span>{{ `${formatBytes(scan.bytesDone)} / ${formatBytes(scan.bytesTotal)}` }}</span></span>
+      <span v-else class="scan-text">{{ tr("准备中…") }}</span>
+      <button class="ui-btn ghost sm" type="button" :disabled="scan.cancelling" @click="cancelScan">{{ tr("取消扫描") }}</button>
     </div>
-  </template>
+    <template v-else-if="candidates">
+      <p v-if="!candidates.length" class="ui-field-hint" role="status">{{ tr("未找到 VMK 候选") }}</p>
+      <div v-else class="candidate-list" role="radiogroup" :aria-label="tr('VMK 候选')">
+        <label v-for="candidate in candidates" :key="`${candidate.offset}:${candidate.vmk_hex}`" class="ui-choice candidate">
+          <input v-model="selected" type="radio" :name="groupName" :value="candidate.vmk_hex" :disabled="!active" />
+          <span class="ui-choice-text">
+            <span class="ui-choice-title mono">{{ candidate.recovery_key ?? `VMK ${candidate.vmk_hex.slice(0, 16)}…` }}</span>
+            <span class="ui-choice-desc mono">0x{{ candidate.offset.toString(16) }}</span>
+          </span>
+          <span v-if="candidate.already_tried" class="ui-badge sm">{{ tr("已尝试") }}</span>
+        </label>
+      </div>
+    </template>
+  </div>
 </template>
+
 <script setup lang="ts">
-import { tr } from '../../../composables/useLocale';
-
-import { computed } from 'vue';
+import { computed, onScopeDispose, ref, useId, watch } from 'vue';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { FileSearch } from 'lucide-vue-next';
-import type { BitlockerVmkCandidate } from '../model/bitlocker';
-const props = defineProps<{ memoryPath: string; candidates: BitlockerVmkCandidate[] | null }>();
-const emit = defineEmits<{ pick: []; scan: []; reset: []; close: []; unlock: [candidate: BitlockerVmkCandidate] }>();
-const derivedCount = computed(() => props.candidates?.filter(candidate => candidate.recovery_key !== null).length ?? 0);
+import { tr } from '../../../composables/useLocale';
+import { formatBytes } from '../../../utils/format';
+import type { BitlockerVmkCandidate, UnlockCredential } from '../../../lib/ipc/encrypted';
+import type { ImageId } from '../../../lib/ipc/ids';
+import { cancelBitlockerMemoryScan, startBitlockerMemoryScan, useBitlockerScanJob } from '../composables/useBitlockerMemoryScan';
+
+/** Find VMKs in a memory image and pick one to unlock with; the credential is
+ *  the chosen candidate's VMK. */
+const props = defineProps<{ imageId: ImageId; partitionId: number | undefined; active: boolean }>();
+const credential = defineModel<UnlockCredential | null>('credential', { required: true });
+
+const memoryPath = ref('');
+const candidates = ref<BitlockerVmkCandidate[] | null>(null);
+const selected = ref('');
+const groupName = useId();
+const scan = useBitlockerScanJob(() => props.imageId, () => props.partitionId);
+const percent = computed(() => scan.value?.bytesTotal ? Math.min(100, scan.value.bytesDone / scan.value.bytesTotal * 100) : 0);
+watch(selected, vmk => { credential.value = vmk ? { kind: 'vmk', keyHex: vmk } : null; }, { immediate: true });
+
+// Results and file pickers belong to one partition of one image.
+let context = 0;
+onScopeDispose(() => { context++; });
+watch(() => [props.imageId, props.partitionId], () => {
+  context++;
+  memoryPath.value = '';
+  candidates.value = null;
+  selected.value = '';
+}, { flush: 'sync' });
+watch(() => props.active, active => { if (!active) selected.value = ''; });
+
+async function pickMemoryFile() {
+  const captured = context;
+  const picked = await openDialog({
+    multiple: false,
+    title: tr("选择内存镜像"),
+    filters: [
+      { name: tr("内存镜像"), extensions: ['raw', 'mem', 'bin', 'dmp', 'vmem'] },
+      { name: tr("所有文件"), extensions: ['*'] },
+    ],
+  });
+  if (captured !== context || !props.active || typeof picked !== 'string') return;
+  memoryPath.value = picked;
+  candidates.value = null;
+  selected.value = '';
+}
+
+async function startScan() {
+  if (!memoryPath.value || props.partitionId === undefined || scan.value) return;
+  const captured = context;
+  selected.value = '';
+  const result = await startBitlockerMemoryScan(props.imageId, props.partitionId, memoryPath.value);
+  if (!result || captured !== context) return;
+  candidates.value = result.candidates;
+  // Prefer a VMK that derives this volume's recovery key.
+  selected.value = result.candidates.find(candidate => candidate.recovery_key)?.vmk_hex ?? '';
+}
+
+function cancelScan() {
+  if (props.partitionId !== undefined) void cancelBitlockerMemoryScan(props.imageId, props.partitionId);
+}
+
+/** Mark the chosen candidate as tried once an unlock with it is submitted. */
+function markSubmitted() {
+  const candidate = candidates.value?.find(item => item.vmk_hex === selected.value);
+  if (candidate) candidate.already_tried = true;
+  selected.value = '';
+}
+defineExpose({ markSubmitted });
 </script>
-<style scoped src="../styles/bitlocker-form.css"></style>
+
 <style scoped>
-.bde-mem-pick {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.bde-file-btn {
-  align-self: flex-start;
-  border-style: dashed;
-}
-
-.bde-file-path {
-  font-size: 11px;
-  color: var(--text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bde-mem-summary {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.bde-mem-derived {
-  color: var(--primary-color);
-}
-
-.bde-mem-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 260px;
-  overflow-y: auto;
-  padding-right: 2px;
-}
-
-.bde-mem-row {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  background: var(--surface-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 9px 11px;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color var(--transition-fast), background var(--transition-fast);
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.bde-mem-row:hover:not(:disabled) {
-  border-color: var(--primary-color);
-  background: var(--sidebar-active-bg);
-}
-
-.bde-mem-row.is-derived {
-  border-color: color-mix(in srgb, var(--primary-color) 60%, var(--border-color));
-}
-
-.bde-mem-row.is-tried {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.bde-mem-row:disabled {
-  cursor: not-allowed;
-}
-
-/* The 48-digit recovery key is the actionable payload — show it prominently. */
-.bde-mem-key {
-  font-size: 13px;
-  letter-spacing: 0.04em;
-  color: var(--primary-color);
-  word-break: break-all;
-}
-
-.bde-mem-nokey {
-  font-family: var(--font-ui);
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
+.memory-scan { display: grid; gap: 10px; min-width: 0; }
+.memory-file { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.memory-path { flex: 1; min-width: 0; overflow: hidden; color: var(--text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.scan-progress { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 10px; }
+.scan-progress .ui-progress { grid-column: 1 / -1; }
+.scan-text { display: flex; gap: 10px; color: var(--text-secondary); font-size: 11px; }
+.candidate-list { display: grid; gap: 6px; max-height: 240px; overflow-y: auto; padding: 2px; }
+.candidate { gap: 10px; padding: 10px 12px; }
+.candidate .ui-choice-title { overflow-wrap: anywhere; }
+.ui-field-hint { margin: 0; }
 </style>

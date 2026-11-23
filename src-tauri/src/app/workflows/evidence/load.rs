@@ -390,8 +390,8 @@ async fn load_image_runtime(
     // scan the complete MFT (including deleted records), so do not also launch
     // `prefetch_ntfs_deleted_snapshots` here: that used to parse the entire MFT
     // a second time and competed with the snapshot for the same image cache.
-    // Locked BitLocker volumes still start the dedicated prefetch after unlock,
-    // when no automatic snapshot is scheduled by this load path.
+    // A locked encrypted volume is snapshot the same way once it is unlocked
+    // in place (snapshot_unlocked_volume).
     if let Err(error) = crate::app::workflows::snapshot::case_snapshot::register_and_snapshot(
         app,
         state,

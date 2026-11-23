@@ -7,6 +7,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- 解锁后的 BitLocker 卷按卷首识别文件系统：BitLocker To Go 卷中的 FAT / exFAT 可以浏览，卷内的 NTFS 卷影副本与盘符还原也照常可用。卷影副本、盘符还原和树图同样覆盖 LUKS、VeraCrypt 中解锁出的 NTFS。
+- 打开含锁定加密分区的镜像时，「检测到加密分区」提示覆盖 BitLocker、LUKS 与 FileVault 2。
+
+### Changed
+
+- BitLocker、LUKS、VeraCrypt 与 FileVault 2 共用一条解锁路径：桌面端在同一张表单中选择格式、区域与凭据并统一提交，所有解锁都在任务中心后台进行、可取消；BitLocker 的用户密码、恢复密钥、内存镜像 VMK 与其他密钥（BEK、VMK、FVEK / TWEAK、明文密钥）是这张表单的凭据选项。锁定的加密分区行只有一个「解锁」按钮，解锁后按明文文件系统显示，并标出「BitLocker 已解锁」等标签。
+- VeraCrypt 只能解锁大小为检材扇区整数倍的区域：弹窗不再列出其他区域，CLI 与后端以 `invalidInput` 拒绝。
+- 解锁后的整盘导出统一由镜像头部「导出源镜像」（CLI `evidence export <别名> --unlocked`）完成，BitLocker 分区行的单独导出已移除。
+- **破坏性变更**：IPC 的 `encrypted_volume_unlock` 改用 `credential`（按 `kind` 区分的凭据）并接受 `scheme: "bitlocker"`；`ImageInfo.unlocked_partitions` 改为 `{ id, scheme }` 列表；`bitlocker_metadata` 更名为 `bitlocker_inspect`；`bitlocker_status`、`bitlocker_unlock`、`bitlocker_unlock_with_vmk`、`bitlocker_export_decrypted_image` 与 `bitlocker-unlock-progress` 事件已移除。
+- **破坏性变更**：CLI 的 BitLocker `unlock` 与其他格式输出同样的结果（`path`、`scheme`、`cipher`、`image`、`volumeKey`；VMK 派生的恢复密码在 `recoveryPassword`），锁定的 BitLocker 分区列为 `unsupported:N`，`part:N` 仍可指向它；`volumes` 为所有解锁的加密卷显示格式与状态；`evidence export /<别名>/part:N` 已移除。
+
 ## [1.4.0] - 2026-11-23
 
 ### Added

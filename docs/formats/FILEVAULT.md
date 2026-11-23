@@ -7,7 +7,7 @@
 ## 接入后的工作流
 
 1. GPT Apple CoreStorage GUID 或经 CRC 验证的主/备 CS 头识别为 `filevault`。
-2. 加密分区行或“解锁加密容器”对话框选择 FileVault 2，先读取逻辑卷目录。显示卷名、大小、转换状态、保护器和最低 PBKDF2 迭代数；多卷必须选择索引。
+2. 加密分区行或“解锁加密卷”对话框选择 FileVault 2，先读取逻辑卷目录。界面显示卷名与大小，多卷必须选择索引，未完成加密的卷不能解锁；转换状态、保护器和最低 PBKDF2 迭代数由 CLI `encryption` 报告。
 3. 可以使用密码、包含连字符的个人恢复密码，或已恢复的 16-byte VMK / 32-byte XTS pair。可提供本地 XML / EncryptedRoot.plist.wipekey；wipekey 按物理 UUID + 全零第二密钥、整文件 XTS 单元解码。
 4. 单逻辑卷通过已有 EvidenceSession 原分区投影接入目录、预览、范围读、哈希、导出和快照；证据 ID、原盘分区起点和长度保留。多逻辑卷分别打开独立的只读明文会话，各自使用独立 image ID 隔离文件 ID 与索引；源字节仍是原密文，派生视图依赖源会话。
 5. `filevault_inspect` 是带 TaskManager 资源预算与取消的只读命令；UI 的异步查询在切区域 / 关闭后取消并防止迟到回填。CLI 与桌面共用命令注册。
@@ -149,6 +149,6 @@ $env:CARGO_BUILD_JOBS = '1'
 just test --lib filevault_real_oracle
 ```
 
-CLI 使用现有注册命令：`filevault_inspect` 的 options 可指定 `partitionId` / `offset,length` 和 `encryptedRootPlistPath`；`encrypted_volume_unlock` 指定 `scheme: "filevault"`、`logicalVolumeIndex`、`password` 或 `masterKeyHex`、`target: "sourcePartition"`（单 LV）或 `"newImage"`（多 LV 必须使用独立会话）。结果包含所选 LV UUID / index，原分区挂接不允许不同 LV 复用同一个根索引。不要把真实凭据写进示例仓库或报告；CLI 运行方法见 [CLI 手册](../CLI.md)。
+CLI 使用现有注册命令：`filevault_inspect` 的 options 可指定 `partitionId` / `offset,length` 和 `encryptedRootPlistPath`；`encrypted_volume_unlock` 指定 `scheme: "filevault"`、`logicalVolumeIndex`、`credential`（`password` 或 `masterKey`）、`target: "sourcePartition"`（单 LV）或 `"newImage"`（多 LV 必须使用独立会话）。结果包含所选 LV UUID / index，原分区挂接不允许不同 LV 复用同一个根索引。不要把真实凭据写进示例仓库或报告；CLI 运行方法见 [CLI 手册](../CLI.md)。
 
 参考：[libfvde 固定源码与格式文档](https://github.com/libyal/libfvde/tree/878f3fc8cb30f1f5ac6255e5fdcec9d1af482224)、[filevault-forensic](https://github.com/SecurityRonin/filevault-forensic/tree/857e04033e09c84324948b2cbfdd9e043b24d62b)、[HFS 对照](HFS.md)、[APFS 边界](APFS.md)。

@@ -8,7 +8,7 @@ import { onEvent, type UnlistenFn } from '../../../lib/ipc/events';
 import type { ImageId } from '../../../lib/ipc/ids';
 
 // Module-scoped registry of in-flight source-image hash jobs. Pattern
-// mirrors useBitlockerUnlocks: the backend task runs on tokio's blocking
+// mirrors useBitlockerMemoryScan: the backend task runs on tokio's blocking
 // pool, the listener is owned here rather than in any component, so
 // closing the hash panel or switching views never cancels the job.
 

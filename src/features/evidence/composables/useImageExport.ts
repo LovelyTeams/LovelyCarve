@@ -9,7 +9,6 @@
 // in flight — the backend `image_export_raw` is the single writer.
 import { reactive } from 'vue';
 import { save } from '@tauri-apps/plugin-dialog';
-import { bitlockerExportDecryptedImage } from '../../../lib/ipc/bitlocker';
 import { imageExportRaw, IMAGE_EXPORT_PROGRESS_EVENT, type ImageExportResult, type ImageExportProgress } from '../../../lib/ipc/image';
 import { taskCancel } from '../../../lib/ipc/taskRuntime';
 import { onEvent, type UnlistenFn } from '../../../lib/ipc/events';
@@ -42,11 +41,6 @@ export function disposeImageExportJobs() {
   listeners.clear(); choices.clear(); jobs.clear();
 }
 
-type Exporter = (args: {
-  imageId: ImageId;
-  destination: string;
-  taskId: string;
-}) => Promise<number | ImageExportResult>;
 
 function newTaskId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -77,7 +71,7 @@ async function startImageExport(opts: {
   runningTitle?: string;
   doneTitle?: string;
   duplicateMessage?: string;
-  exporter?: Exporter;
+  /** `unlockedPartitions` writes every unlocked partition (any scheme) in plaintext. */
   mode?: 'source' | 'unlockedPartitions';
 }): Promise<boolean> {
   if (jobs.has(opts.imageId) || choices.has(opts.imageId)) {
@@ -165,16 +159,15 @@ async function startImageExport(opts: {
   try {
     // The task center lists the export under `job.taskId`; cancelling there
     // ends this call like the toast's cancel button.
-    const exporter = opts.exporter ?? imageExportRaw;
-    const outcome = await exporter({
+    const outcome: ImageExportResult = await imageExportRaw({
       imageId: opts.imageId,
       destination,
       taskId: job.taskId,
       ...(opts.mode ? { mode: opts.mode } : {}),
     });
     if (epoch !== generation) return true;
-    const written = typeof outcome === 'number' ? outcome : outcome.bytes_written;
-    const faultDetail = typeof outcome !== 'number' && outcome.read_faults_detected
+    const written = outcome.bytes_written;
+    const faultDetail = outcome.read_faults_detected
       ? tr(" · 警告：含 {0} 补零字节（{1} 个坏区）", { 0: formatBytes(outcome.synthetic_bytes), 1: outcome.bad_regions.length })
       : '';
     toast.update({
@@ -206,24 +199,6 @@ async function startImageExport(opts: {
   }
 }
 
-async function startBitlockerDecryptedImageExport(opts: {
-  imageId: ImageId;
-  partitionId: number;
-  defaultFileName: string;
-}): Promise<boolean> {
-  return startImageExport({
-    imageId: opts.imageId,
-    defaultFileName: opts.defaultFileName,
-    title: tr("导出 BitLocker 解密后完整镜像"),
-    runningTitle: tr("导出解密后完整镜像中…"),
-    doneTitle: tr("解密后完整镜像导出完成"),
-    exporter: args =>
-      bitlockerExportDecryptedImage({
-        ...args,
-        partitionId: opts.partitionId,
-      }),
-  });
-}
 
 /** Request cancellation of an in-flight export. Idempotent. */
 async function cancelImageExport(imageId: ImageId): Promise<void> {
@@ -245,7 +220,6 @@ async function cancelExportJob(job: ImageExportJob): Promise<void> {
 export function useImageExport() {
   return {
     startImageExport,
-    startBitlockerDecryptedImageExport,
     cancelImageExport,
     /** In-flight job for an image, or undefined. Reads the module-scoped
      *  reactive map, so calling it in a template / computed is tracked. */

@@ -337,7 +337,8 @@ fn walk_partitions(
                     }
                 }
             }
-            PartitionKind::Bitlocker if image.bitlocker_unlocked(partition.id).is_none() => {
+            // Unlocked, a partition reports its plaintext filesystem instead.
+            PartitionKind::Bitlocker => {
                 let mut entry = unsupported_partition(partition);
                 entry.bitlocker_locked = true;
                 out.push(entry);
@@ -972,6 +973,7 @@ mod tests {
             .attach_decrypted_partition(
                 0,
                 DiskImage::open(fixture("plain.img")).expect("open plaintext"),
+                crate::core::evidence::crypto::credential::EncryptionScheme::Luks,
                 CancellationToken::new(),
             )
             .expect("attach plaintext view");

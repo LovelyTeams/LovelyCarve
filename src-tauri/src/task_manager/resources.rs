@@ -128,8 +128,6 @@ impl TaskKind {
             // Browsing waits for a container's merged index.
             Self::AutoDetect | Self::DockerPrepare => TaskResourceProfile::unbudgeted(),
             Self::BcpImport
-            | Self::BitlockerExport
-            | Self::BitlockerUnlock
             | Self::EncryptedVolumeUnlock
             | Self::CarveRecovery
             | Self::CarveScan

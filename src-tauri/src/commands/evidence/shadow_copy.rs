@@ -14,7 +14,8 @@ use {
 };
 
 /// Shadow copies of every NTFS volume of the image, oldest first, with any
-/// session image already open for each.
+/// session image already open for each. An unlocked encrypted partition is
+/// read through its plaintext view.
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn shadow_copy_list(
     state: State<'_, AppState>,
@@ -22,9 +23,16 @@ pub async fn shadow_copy_list(
 ) -> Result<Vec<ShadowVolumeInfo>, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     reject_if_folder(&image)?;
-    let mut volumes = tokio::task::spawn_blocking(move || vss_image::list(&image))
-        .await
-        .map_err(|error| AppError::task_panicked("shadow copy listing", error))?;
+    let mut volumes = tokio::task::spawn_blocking(move || {
+        let mut volumes = vss_image::list(image.disk_image());
+        for view in image.decrypted_views() {
+            volumes.extend(vss_image::list(view.disk_image()));
+        }
+        volumes.sort_by_key(|volume| volume.partition_id);
+        volumes
+    })
+    .await
+    .map_err(|error| AppError::task_panicked("shadow copy listing", error))?;
     let images = state.images.lock().await;
     for volume in &mut volumes {
         for copy in &mut volume.shadow_copies {
@@ -64,7 +72,8 @@ pub async fn shadow_copy_open(
     let result = tokio::task::spawn_blocking(move || {
         let _permit = permit;
         let _task = task;
-        vss_image::open(&source_for_open, partition_id, index, &token_for_open)
+        let volume = source_for_open.filesystem_session(&format!("part:{partition_id}"));
+        vss_image::open(volume.disk_image(), partition_id, index, &token_for_open)
     })
     .await
     .map_err(|error| AppError::task_panicked("shadow copy open", error))?;

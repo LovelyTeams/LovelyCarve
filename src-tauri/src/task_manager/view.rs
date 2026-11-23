@@ -31,9 +31,7 @@ impl TaskKind {
             Self::FlatList | Self::MediaMaterialization | Self::OcrScan | Self::QrScan => false,
             Self::AutoDetect
             | Self::BcpImport
-            | Self::BitlockerExport
             | Self::BitlockerScan
-            | Self::BitlockerUnlock
             | Self::CarveRecovery
             | Self::CarveScan
             | Self::DirectoryExport
@@ -57,7 +55,6 @@ impl TaskKind {
         match self {
             Self::AutoDetect
             | Self::BcpImport
-            | Self::BitlockerExport
             | Self::CarveRecovery
             | Self::DirectoryExport
             | Self::DockerPrepare
@@ -69,7 +66,6 @@ impl TaskKind {
             | Self::VolumeSnapshot => TaskListing::Session,
             Self::CarveScan | Self::GlobalSearch | Self::TimelineBuild => TaskListing::Domain,
             Self::BitlockerScan
-            | Self::BitlockerUnlock
             | Self::FilevaultInspect
             | Self::FlatList
             | Self::IosBackupAudit

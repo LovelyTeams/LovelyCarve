@@ -7,7 +7,7 @@
 //! navigates into a partition.
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fmt;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -21,11 +21,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
 use crate::core::common::ids::ImageId;
-use crate::core::evidence::crypto::bde_image::{
-    BdeEncryptionMethod, BdeUnlockKey, VolumeByteReader,
-};
-use crate::core::evidence::crypto::bde_vmk;
-use crate::core::evidence::crypto::bitlocker::{self, UnlockedVolume};
+use crate::core::evidence::crypto::bde_image::VolumeByteReader;
+use crate::core::evidence::crypto::credential::EncryptionScheme;
 use crate::core::evidence::partitions::{self, SectorSource, TableScheme};
 use crate::core::evidence::physical_disk;
 use crate::core::evidence::readers::ad1_image::{self, Ad1Image};
@@ -48,7 +45,7 @@ pub const INDEX_ONLY_READ_ERROR: &str = "源镜像不可用，当前仅能浏览
 /// unloaded together with their parent.
 #[derive(Debug, Clone)]
 pub enum DerivedImage {
-    /// Plaintext view of an unlocked LUKS / VeraCrypt container.
+    /// Plaintext view of an unlocked BitLocker / LUKS / VeraCrypt / FileVault volume.
     Decrypted { parent: ImageId },
     /// Point-in-time view of an NTFS volume reconstructed from a shadow copy.
     ShadowCopy {
@@ -107,7 +104,6 @@ pub struct DiskImage {
     /// image's item tree, file data inflates on demand, and the hex view reads
     /// the raw segment bytes.
     pub ad1: Option<Arc<Ad1Image>>,
-    unlocked_bde: Mutex<HashMap<u8, Arc<UnlockedVolume>>>,
     /// Located 64 KiB block cache, present only for FFI-backed sources
     /// (EWF / VMDK / VHDX / PMFX) where each miss costs a decompress. Same-
     /// block misses are single-flighted so concurrent readers wait for the
@@ -166,7 +162,7 @@ pub struct ImageInfo {
     pub raw_read_mode: RawReadMode,
     /// Session-unlocked partitions; source bytes and original disk geometry remain unchanged.
     #[serde(default)]
-    pub unlocked_partitions: Vec<u8>,
+    pub unlocked_partitions: Vec<UnlockedPartition>,
     /// Metadata-only session backed by published case indexes; source bytes are unavailable.
     #[serde(default)]
     pub index_only: bool,
@@ -203,6 +199,13 @@ pub struct ImageInfo {
     /// iTunes/Finder backup metadata, including whether its logical view is locked.
     #[serde(default)]
     pub ios_backup: Option<crate::core::evidence::readers::folder_image::IosBackupInfo>,
+}
+
+/// A source partition the session reads through an unlocked plaintext view.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UnlockedPartition {
+    pub id: u8,
+    pub scheme: EncryptionScheme,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -328,11 +331,10 @@ pub enum EvidenceCache<'a> {
     Directory(&'a Path),
 }
 
-/// Reads a BitLocker volume directly out of the decoded image
-/// (raw / E01 / VMDK alike) through a bounded Rust reader — see
-/// `core::evidence::crypto::bitlocker::unlock_location`. The handle holds only a `Weak` to the
-/// image, so an unlocked volume never keeps the image (and its mmap / evidence
-/// file handle) alive past case-close.
+/// Ciphertext for the BitLocker reader, read out of the decoded image
+/// (raw / E01 / VMDK alike). The unlock reaches the image only through a
+/// `Weak`, so an unlocked volume never keeps the image (and its mmap /
+/// evidence file handle) alive past case-close.
 impl VolumeByteReader for DiskImage {
     fn read_at(&self, offset: u64, buf: &mut [u8]) -> anyhow::Result<usize> {
         let (result, faults) = self.collect_read_faults(|| self.read_into(offset, buf));
@@ -342,27 +344,6 @@ impl VolumeByteReader for DiskImage {
             faults.synthetic_bytes
         );
         result
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BitlockerStatus {
-    pub locked: bool,
-    pub size_bytes: Option<u64>,
-    pub encryption_method: Option<String>,
-    pub cached_dump: Option<String>,
-}
-
-fn encryption_method_label(method: BdeEncryptionMethod) -> String {
-    match method {
-        BdeEncryptionMethod::None => "none".into(),
-        BdeEncryptionMethod::Aes128CbcDiffuser => "AES-128-CBC + diffuser".into(),
-        BdeEncryptionMethod::Aes256CbcDiffuser => "AES-256-CBC + diffuser".into(),
-        BdeEncryptionMethod::Aes128Cbc => "AES-128-CBC".into(),
-        BdeEncryptionMethod::Aes256Cbc => "AES-256-CBC".into(),
-        BdeEncryptionMethod::Aes128Xts => "AES-128-XTS".into(),
-        BdeEncryptionMethod::Aes256Xts => "AES-256-XTS".into(),
-        BdeEncryptionMethod::Other(value) => format!("unknown (0x{value:04x})"),
     }
 }
 
@@ -379,8 +360,6 @@ mod detect;
 use detect::*;
 
 mod open;
-
-mod encryption;
 
 mod forced_raw;
 mod read;

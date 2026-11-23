@@ -101,7 +101,7 @@
             ref="diskFileListRef"
             :image-id="imageId"
             :index-only="imageInfo?.index_only === true"
-            :volume-revision="imageInfo?.unlocked_partitions?.join(',') ?? ''"
+            :volume-revision="imageInfo?.unlocked_partitions?.map(unlocked => unlocked.id).join(',') ?? ''"
             :activate-preview="activateFilePreview"
           />
           <SearchResultsPanel
@@ -329,8 +329,8 @@ function handleCaseManagerClose() {
   clearPendingOpenRequest();
 }
 
-// 「检测到 BitLocker 加密分区」提示的「前往解锁」按钮把用户带到镜像信息面板
-// （BitLocker 解锁控件所在）。useFileSession 不持有面板状态，故在此注入跳转。
+// 「检测到加密分区」提示的「前往解锁」按钮把用户带到镜像信息面板（加密卷解锁
+// 入口所在）。useFileSession 不持有面板状态，跳转由 bindWorkspaceServices 注入。
 
 // ── Multi-tab orchestrator wiring ─────────────────────────────────────
 //

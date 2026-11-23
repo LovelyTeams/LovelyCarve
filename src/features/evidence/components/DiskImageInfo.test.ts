@@ -8,13 +8,11 @@ import { fsAvailableMountPoints, fsMountReadonly, fsMounts, type DokanMountView 
 import { useUiPreferences } from '../../../composables/useUiPreferences';
 
 vi.mock('../../../lib/ipc/mount', () => ({ fsMounts: vi.fn(async () => []), fsAvailableMountPoints: vi.fn(), fsCreateMountDir: vi.fn(), fsMountReadonly: vi.fn(), fsShareMount: vi.fn(), fsUnmountReadonly: vi.fn(), fsUnshareMount: vi.fn() }));
-const bitlocker = vi.hoisted(() => ({ status: vi.fn() }));
-vi.mock('../../../lib/ipc/bitlocker', () => ({ bitlockerStatus: bitlocker.status }));
 const shadow = vi.hoisted(() => ({ list: vi.fn(), open: vi.fn() }));
 vi.mock('../../../lib/ipc/shadow', () => ({ shadowCopyList: shadow.list, shadowCopyOpen: shadow.open }));
 const hash = vi.hoisted(() => ({ result: { value: undefined as Record<string, string | null> | undefined } }));
-const imageExport = vi.hoisted(() => ({ start: vi.fn(), bitlocker: vi.fn(), job: vi.fn() }));
-vi.mock('../composables/useImageExport', () => ({ useImageExport: () => ({ startImageExport: imageExport.start, startBitlockerDecryptedImageExport: imageExport.bitlocker, jobFor: imageExport.job }) }));
+const imageExport = vi.hoisted(() => ({ start: vi.fn(), job: vi.fn() }));
+vi.mock('../composables/useImageExport', () => ({ useImageExport: () => ({ startImageExport: imageExport.start, jobFor: imageExport.job }) }));
 vi.mock('../composables/useImageHash', () => ({ useImageHashResult: () => hash.result }));
 vi.mock('../../cases/composables/useCaseSession', () => ({ useCaseSession: () => ({ activeCase: { value: null } }) }));
 vi.mock('../../../composables/useToast', () => ({ notifySuccess: vi.fn(), notifyError: vi.fn() }));
@@ -96,7 +94,6 @@ function button(scope: ParentNode, label: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   imageExport.job.mockReset();
-  bitlocker.status.mockReset().mockResolvedValue({ locked: true, encryption_method: null });
   vi.mocked(fsMounts).mockReset().mockResolvedValue([]);
   hash.result.value = undefined;
   shadow.list.mockResolvedValue([]);
@@ -169,8 +166,9 @@ describe('DiskImageInfo evidence overview', () => {
     expect(row(1).querySelector('.col-start')?.textContent).toContain('2,048');
     expect(row(1).querySelector('.col-start')?.getAttribute('title')).toContain('字节偏移 0x100000');
     expect(row(1).querySelector('.col-size')?.textContent).toBe('500.00 MiB');
-    expect(row(2).textContent).toContain('LOCKED');
+    expect(row(2).textContent).toContain('BitLocker');
     expect(button(row(2), '解锁')).toBeDefined();
+    expect(row(2).querySelector('.mount-btn')).toBeNull();
 
     const details = section('details')!.textContent;
     expect(details).toContain('1,073,741,824 字节');
@@ -279,35 +277,22 @@ describe('DiskImageInfo evidence overview', () => {
     expect(host.querySelector('.unlock-dialog')?.getAttribute('data-partition')).toBe('2');
   });
 
-  it('keeps the mount and decrypted export actions on an unlocked BitLocker row', async () => {
-    bitlocker.status.mockResolvedValue({ locked: false, encryption_method: 'AES' });
-    await mount();
-    expect(row(2).textContent).toContain('UNLOCKED');
-    expect(row(2).querySelector('.mount-btn')).not.toBeNull();
-    expect(shadow.list).toHaveBeenCalled();
-    button(row(2), '导出解密镜像')!.click();
-    expect(imageExport.bitlocker).toHaveBeenCalledWith({
-      imageId: fixture.id, partitionId: 2, defaultFileName: 'bitlocker-part2-decrypted-full.dd',
-    });
-  });
-
-  it('ignores a stale BitLocker status after switching away and back', async () => {
-    let resolveStatus!: (status: { locked: boolean }) => void;
-    bitlocker.status.mockReturnValueOnce(new Promise(resolve => { resolveStatus = resolve; }));
+  it('shows an unlocked partition by its plaintext file system and relists its shadow copies', async () => {
     const currentInfo = await mount();
-    currentInfo.value = { ...fixture, id: 'disk-two' };
+    expect(shadow.list).toHaveBeenCalledOnce();
+    currentInfo.value = { ...fixture, unlocked_partitions: [{ id: 2, scheme: 'bitlocker' }],
+      partitions: [fixture.partitions[0], { ...fixture.partitions[1], kind: 'ntfs' }] };
     await settle();
-    currentInfo.value = fixture;
-    await settle();
-    resolveStatus({ locked: false });
-    await settle();
-    expect(row(2).querySelector('.mount-btn')).toBeNull();
-    expect(button(row(2), '解锁')).toBeDefined();
+    expect(row(2).textContent).toContain('NTFS');
+    expect(row(2).textContent).toContain('BitLocker 已解锁');
+    expect(button(row(2), '解锁')).toBeUndefined();
+    expect(row(2).querySelector('.mount-btn')).not.toBeNull();
+    expect(shadow.list).toHaveBeenCalledTimes(2);
   });
 
-  it('opens the container unlock for the whole image from the card header', async () => {
+  it('opens the unlock for the whole image from the card header', async () => {
     await mount();
-    button(section('volumes')!.querySelector('.ui-card-header')!, '解锁加密容器')!.click();
+    button(section('volumes')!.querySelector('.ui-card-header')!, '解锁加密卷')!.click();
     await settle();
     expect(host.querySelector('.unlock-dialog')?.getAttribute('data-partition')).toBe('null');
   });
@@ -317,7 +302,7 @@ describe('DiskImageInfo evidence overview', () => {
     expect(host.querySelector('.synthetic-root-title')?.textContent).toBe('归档根');
     expect(host.querySelector('.synthetic-root-mount .mount-btn')).not.toBeNull();
     expect(host.querySelector('.partition-table')).toBeNull();
-    expect(button(host, '解锁加密容器')).toBeUndefined();
+    expect(button(host, '解锁加密卷')).toBeUndefined();
     expect(button(host, '导出源镜像')).toBeUndefined();
     expect(shadow.list).not.toHaveBeenCalled();
     if (sourceFormat === 'android_backup') expect(host.querySelector('.evidence-head .ui-badge')?.textContent).toBe('Android 备份');

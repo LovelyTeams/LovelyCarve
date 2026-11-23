@@ -49,14 +49,14 @@
 | --- | --- |
 | app/bootstrap | 挂载前应用主题/动效/日志；main 仍用两个动态根分派窗口 |
 | app/workspace/useTabManager | 主窗口标签、MRU 与五份 fileSession LRU；关闭/切案清空快照，不替代五类 KeepAlive 面板状态 |
-| bindWorkspaceServices | 持有案件/任务/分析/证据上下文和回调注册；scope 销毁解除注册并调用案件、识别、任务中心、分析、BitLocker、镜像哈希/导出的生产 dispose |
+| bindWorkspaceServices | 持有案件/任务/分析/证据上下文和回调注册；scope 销毁解除注册并调用案件、识别、任务中心、分析、加密卷解锁、BitLocker 内存扫描、镜像哈希/导出的生产 dispose |
 | 案件切换 | busy 防止并发变更；关闭标签/视图 → flush 标签防抖和已发出的派生数据写入 → 后端 create/open/close/remove；旧 active/snapshot/list 查询不能覆盖新案件 |
 | 文件标签/派生缓存 | 保留 `lc.fileTags` 等持久化键及格式；hydration generation 阻止旧案件水合触发写入；flush 等待已发出写入，失败保留本地副本并反馈 |
 | fileSession 工厂 | 各实例拥有 load generation；reset/restore/dispose 失效在途读取；迟到 progress 订阅即时释放 |
 | 缓存面板 | 切页停用文档键盘、菜单与未执行排序；后台任务继续。image/context 改变使查询和界面回填失效，组件销毁释放计时器/订阅 |
 | 预览/ZIP/雕刻读取 | 各实例拥有读取代际、租约和 Blob URL；旧完成/销毁后不创建新 URL，迟到资源释放；范围及容量限制保留 |
 | 文件预览标签页 | 文件列表面板按 imageId 各存一组打开的文件（节点、打开时的路径、字节定位、阅读位置），切检材时换组而不清空，切换或关闭案件时清空；最近使用的查看器保持挂载，卸载前把阅读位置交给标签页，隐藏的查看器暂停音视频 |
-| BitLocker/哈希/导出注册表 | 工作区资源 owner；部分订阅失败释放已成功句柄并允许重试，迟到句柄停止，dispose 幂等；选择目录时捕获原上下文，旧选择不能启动新案件操作 |
+| 加密卷解锁/BitLocker 内存扫描/哈希/导出注册表 | 工作区资源 owner；部分订阅失败释放已成功句柄并允许重试，迟到句柄停止，dispose 幂等；选择目录时捕获原上下文，旧选择不能启动新案件操作 |
 | 识别/任务/分析单例 | 可重试订阅、可释放 effectScope、请求/案件代际；主窗口装配结束才 dispose，不因普通面板卸载取消后端任务 |
 | 独立预览 | 保留 owner/preview/revision、先订阅后请求最新选择、停靠确认及关闭协议；窗口媒体资源随实例释放，主题/动效同步维持原 storage 协议 |
 

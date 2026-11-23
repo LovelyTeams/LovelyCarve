@@ -5,7 +5,7 @@
     <span v-if="schemeLabel" class="ui-badge sm mono">{{ schemeLabel }}</span>
     <span v-if="info.partitions.length > 0" class="ui-count">{{ info.partitions.length }}</span>
     <button v-if="canUnlockContainer" class="ui-btn sm head-action" type="button" aria-haspopup="dialog" @click="openUnlock(null)">
-      <LockKeyhole :size="13" />{{ tr("解锁加密容器") }}
+      <LockKeyhole :size="13" />{{ tr("解锁加密卷") }}
     </button>
   </header>
 
@@ -73,7 +73,7 @@
             <span class="part-label" :title="partitionTitle(row.partition, tr)">{{ partitionTitle(row.partition, tr) }}</span>
             <span v-if="row.partition.label" class="part-index mono">#{{ row.partition.id }}</span>
           </span>
-          <span class="cell col-fs" role="cell"><span class="ui-badge sm mono">{{ KIND_LABELS[row.partition.kind] || row.partition.kind }}</span><span v-if="info.unlocked_partitions?.includes(row.partition.id)" class="ui-badge sm success">{{ tr("已解锁") }}</span></span>
+          <span class="cell col-fs" role="cell"><span class="ui-badge sm mono">{{ KIND_LABELS[row.partition.kind] || row.partition.kind }}</span><span v-if="unlockedScheme(info, row.partition.id)" class="ui-badge sm success">{{ tr("{0} 已解锁", { 0: schemeShortLabel(unlockedScheme(info, row.partition.id)!) }) }}</span></span>
           <span class="cell col-start mono" role="cell" :title="geometryTitle(row.partition)"><span class="cell-label">{{ addressUnit }}</span>{{ row.partition.start_lba.toLocaleString() }}</span>
           <span class="cell col-size mono" role="cell">{{ formatBytes(row.partition.length_lba * info.sector_size) }}</span>
           <div class="cell col-actions" role="cell">
@@ -99,24 +99,19 @@
               </button>
 
             </template>
-            <BitlockerVolumeActions
-              v-if="row.partition.kind === 'bitlocker' && canUnlockContainer"
-              :image-id="info.id"
-              :partition-id="row.partition.id"
-              @open="openUnlock(row.partition.id)"
-              @unlocked="onBitlockerUnlocked"
-            />
             <button
-              v-else-if="['luks', 'filevault'].includes(row.partition.kind) && canUnlockContainer"
+              v-if="isLockedEncrypted(info, row.partition) && canUnlockContainer"
               class="ui-btn sm"
               type="button"
               aria-haspopup="dialog"
-              :title="tr('解锁该加密分区并以只读方式浏览文件')"
+              :disabled="!!encryptedUnlockJobFor(info.id, row.partition.id)"
+              :title="encryptedUnlockJobFor(info.id, row.partition.id) ? tr('正在后台解锁') : undefined"
               @click="openUnlock(row.partition.id)"
             >
-              <KeyRound :size="13" />{{ tr("解锁") }}
+              <Loader2 v-if="encryptedUnlockJobFor(info.id, row.partition.id)" :size="13" class="spin" />
+              <KeyRound v-else :size="13" />{{ encryptedUnlockJobFor(info.id, row.partition.id) ? tr("解锁中") : tr("解锁") }}
             </button>
-            <EvidenceMountControl v-if="isMountable(row.partition) && canShowMount(row.partition)" :view="mountFor(row.partition)"
+            <EvidenceMountControl v-if="isMountable(row.partition)" :view="mountFor(row.partition)"
               :busy="busyPartitions.has(row.partition.id)" :share-busy="!!mountFor(row.partition) && busyShares.has(mountFor(row.partition)!.id)"
               :mount-target="mountTarget" :picker-loading="pickerLoading" :picker-open="pickerOpenFor === row.partition.id" :available-drives="availableDrives"
               @toggle="toggleMount(row.partition)" @share="toggleShare(mountFor(row.partition)!, partitionTitle(row.partition, tr))"
@@ -150,7 +145,6 @@
     :open="unlockOpen"
     :info="info"
     :partition-id="unlockPartitionId"
-    :is-bitlocker-unlocked="canShowMount"
     @close="unlockOpen = false"
   />
 </section>
@@ -158,8 +152,8 @@
 <script setup lang="ts">
 import { tr } from '../../../composables/useLocale';
 
-import { computed, nextTick, onScopeDispose, ref } from 'vue';
-import { ChevronDown, History, KeyRound, Layers, LockKeyhole, TriangleAlert } from 'lucide-vue-next';
+import { computed, nextTick, onScopeDispose, ref, watch } from 'vue';
+import { ChevronDown, History, KeyRound, Layers, Loader2, LockKeyhole, TriangleAlert } from 'lucide-vue-next';
 import type { ImageInfo, DiskPartition } from '../../../lib/ipc/image';
 import type { ShadowCopyInfo, ShadowVolumeInfo } from '../../../lib/ipc/shadow';
 import { useUiPreferences } from '../../../composables/useUiPreferences';
@@ -167,7 +161,8 @@ import { useEvidenceMounts } from '../composables/useEvidenceMounts';
 import { useShadowCopies } from '../composables/useShadowCopies';
 import { KIND_LABELS, QUIET_KINDS, SCHEME_LABELS, evidenceLayout, formatBytes, partColor, partitionGeometry, partitionTitle } from '../model/evidenceOverview';
 import EvidenceMountControl from './EvidenceMountControl.vue';
-import BitlockerVolumeActions from './BitlockerVolumeActions.vue';
+import { encryptedUnlockJobFor } from '../composables/useEncryptedVolumeUnlocks';
+import { isLockedEncrypted, schemeShortLabel, unlockedScheme } from '../model/encryptedUnlock';
 import EncryptedVolumeUnlockDialog from './EncryptedVolumeUnlockDialog.vue';
 import ShadowCopyList from './ShadowCopyList.vue';
 const props = defineProps<{ info: ImageInfo; canUnlockContainer: boolean; caseDirectory?: string | null }>();
@@ -262,9 +257,14 @@ const partitionRows = computed<PartitionRow[]>(() =>
   })),
 );
 
-const { SYNTHETIC_MOUNT_KEY, syntheticRoot, busyPartitions, busyShares, pickerOpenFor, availableDrives, pickerLoading, isMountable, canShowMount, onBitlockerUnlocked, mountViewFor, mountFor, toggleShare, beginMount, finishMountAt, toggleMount, mountAt } = useEvidenceMounts({
+// An unlocked volume can hold shadow copies its ciphertext did not show.
+watch(() => [props.info.id, props.info.unlocked_partitions?.map(unlocked => unlocked.id).join(',') ?? ''] as const, ([id, unlocked], [previousId, previousUnlocked]) => {
+  if (id === previousId && unlocked !== previousUnlocked) void loadShadowCopies();
+});
+
+const { SYNTHETIC_MOUNT_KEY, syntheticRoot, busyPartitions, busyShares, pickerOpenFor, availableDrives, pickerLoading, isMountable, mountViewFor, mountFor, toggleShare, beginMount, finishMountAt, toggleMount, mountAt } = useEvidenceMounts({
   info: () => props.info, mountTarget: () => mountTarget.value, mountFolderRoot: () => mountFolderRoot.value,
-  caseDirectory: () => props.caseDirectory, onUnlocked: () => { void loadShadowCopies(); },
+  caseDirectory: () => props.caseDirectory,
 });
 
 </script>

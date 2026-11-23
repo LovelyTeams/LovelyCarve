@@ -37,12 +37,14 @@ function job(extra: Partial<SchedTaskRecord> = {}): SchedTaskRecord {
 
 describe('native task titles and subjects', () => {
   it('names each listed kind and formats what it works on', () => {
-    expect(['imageLoad', 'imageExport', 'bitlockerExport', 'volumeSnapshot', 'carveScan', 'dockerPrepare'].map(kind => builtinTaskTitle(kind as BackendTaskKind)))
-      .toEqual(['检材加载', '镜像导出', '镜像导出', '文件系统加载', '文件恢复', 'Docker 分析']);
+    expect(['imageLoad', 'imageExport', 'encryptedVolumeUnlock', 'volumeSnapshot', 'carveScan', 'dockerPrepare'].map(kind => builtinTaskTitle(kind as BackendTaskKind)))
+      .toEqual(['检材加载', '镜像导出', '加密卷解锁', '文件系统加载', '文件恢复', 'Docker 分析']);
     expect(builtinSubject(builtin('volumeSnapshot', { view: view({ subject: ['part:2'] }) }))).toBe('分区 2');
     expect(builtinSubject(builtin('sessionSnapshot', { view: view({ subject: ['root'] }) }))).toBe('根目录');
     expect(builtinSubject(builtin('encryptedVolumeUnlock', { view: view({ subject: ['part:2', 'Linux'], labels: { scheme: 'luks' } }) })))
       .toBe('LUKS · 分区 2 · Linux');
+    expect(builtinSubject(builtin('encryptedVolumeUnlock', { view: view({ subject: ['part:3'], labels: { scheme: 'bitlocker' } }) })))
+      .toBe('BitLocker · 分区 3');
     expect(builtinSubject(builtin('encryptedVolumeUnlock', { view: view({ labels: { scheme: 'veracrypt' } }) })))
       .toBe('VeraCrypt · 整个镜像 / 容器');
     expect(builtinSubject(builtin('globalSearch', { view: view({ subject: ['password', 'token'] }) }))).toBe('password、token');

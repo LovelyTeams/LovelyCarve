@@ -1,10 +1,10 @@
 //! Read-only NTFS volume adapter built on top of the `ntfs` crate.
 //!
-//! The volume is opened against either a partition slice of a `DiskImage`
-//! or the plaintext output of an unlocked BitLocker volume. Each filesystem
-//! call instantiates a fresh `Read + Seek` reader over the chosen backing
-//! so the underlying image source (raw mmap, EWF, VMDK, BitLocker, ...) only
-//! needs to expose a byte-addressable `read` API.
+//! The volume is opened against a partition slice of a `DiskImage` — an
+//! unlocked encrypted volume is a partition of its plaintext image. Each
+//! filesystem call instantiates a fresh `Read + Seek` reader over the chosen
+//! backing so the underlying image source (raw mmap, EWF, VMDK, decrypted
+//! plaintext, ...) only needs to expose a byte-addressable `read` API.
 
 mod backing;
 mod deleted;
@@ -34,7 +34,6 @@ use backing::*;
 
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Read, Seek, SeekFrom};
-use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use chrono::{TimeZone, Utc};
@@ -44,7 +43,6 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::common::error::Failure;
-use crate::core::evidence::crypto::bitlocker::UnlockedVolume;
 use crate::core::evidence::image::{DiskImage, Partition};
 use crate::core::filesystem::fs_dispatch::MissingDataStream;
 use crate::core::filesystem::tree::fs_tree::{
@@ -137,7 +135,7 @@ pub struct NtfsVolume<'a> {
 
 impl<'a> NtfsVolume<'a> {
     pub fn open(image: &'a DiskImage, partition: &Partition) -> Result<Self> {
-        let backing = PartitionBacking::Image {
+        let backing = PartitionBacking {
             image,
             base_offset: partition.start_lba * image.sector_size as u64,
             length_bytes: partition.length_lba * image.sector_size as u64,
@@ -158,7 +156,7 @@ impl<'a> NtfsVolume<'a> {
             )))
         })?;
         let (base_offset, layout) = lv.reader_geometry()?;
-        let backing = PartitionBacking::Image {
+        let backing = PartitionBacking {
             image,
             base_offset,
             length_bytes: lv.size_bytes,
@@ -171,16 +169,6 @@ impl<'a> NtfsVolume<'a> {
                 lv_index,
             },
         )
-    }
-
-    /// Opens an NTFS volume backed by an already-unlocked BitLocker volume.
-    pub fn open_bitlocker(unlocked: Arc<UnlockedVolume>, partition_id: u8) -> Result<Self> {
-        let length_bytes = unlocked.size();
-        let backing = PartitionBacking::Bitlocker {
-            unlocked,
-            length_bytes,
-        };
-        Self::from_backing(backing, NtfsSource::Partition(partition_id))
     }
 
     fn from_backing(backing: PartitionBacking<'a>, source: NtfsSource) -> Result<Self> {

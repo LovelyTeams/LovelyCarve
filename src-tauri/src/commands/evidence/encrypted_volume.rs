@@ -1,16 +1,28 @@
-//! Unlock encrypted evidence into its source partition or a separate session image.
-//! Source-partition unlock also starts the existing snapshot/index workflow,
-//! whose `snapshot-build-progress` events report its independent completion.
+//! Encrypted volumes: inspect their metadata, find BitLocker keys in memory,
+//! and unlock BitLocker, LUKS, VeraCrypt or FileVault through one command into
+//! the source partition or a separate session image. Source-partition unlock
+//! also starts the existing snapshot/index workflow, whose
+//! `snapshot-build-progress` events report its independent completion.
 
 use crate::core::common::ids::ImageId;
 use crate::host::{AppHandle, State};
-use std::sync::Arc;
-
-use crate::core::evidence::crypto::encrypted_image::{
-    self, EncryptionScheme, UnlockOptions, UnlockResult, UnlockTarget,
+use std::path::PathBuf;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
 };
+use std::time::Duration;
+
+use crate::core::evidence::crypto::bde_image::{BdeMetadataInfo, BdeVolume, VolumeByteReader};
+use crate::core::evidence::crypto::bde_vmk::{
+    self, BitlockerScanProgress, VmkCandidate, VmkScanCandidate, VmkScanResult,
+};
+use crate::core::evidence::crypto::encrypted_image::{
+    self, UnlockOptions, UnlockResult, UnlockTarget,
+};
+use crate::core::evidence::image::PartitionKind;
 use crate::state::AppState;
-use crate::task_manager::{TaskKind, TaskLabel};
+use crate::task_manager::{TaskKind, TaskLabel, TaskProgressUnit};
 use {
     crate::app::access::loaded_image_app_error, crate::app::access::reject_if_folder,
     crate::app::error::AppError,
@@ -66,6 +78,158 @@ pub async fn filevault_inspect(
     result.map_err(AppError::from)
 }
 
+/// Inspect a BitLocker partition's format, protector kinds and volume
+/// identity without credentials.
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn bitlocker_inspect(
+    state: State<'_, AppState>,
+    image_id: ImageId,
+    partition_id: u8,
+) -> Result<BdeMetadataInfo, AppError> {
+    let image = loaded_image_app_error(&state, &image_id).await?;
+    reject_if_folder(&image)?;
+    tokio::task::spawn_blocking(move || {
+        let partition = image
+            .partitions
+            .iter()
+            .find(|partition| partition.id == partition_id)
+            .ok_or_else(|| AppError::not_found("partition not found"))?;
+        if partition.kind != PartitionKind::Bitlocker {
+            return Err(AppError::invalid_input("partition is not BitLocker"));
+        }
+        let offset = partition
+            .start_lba
+            .checked_mul(image.sector_size as u64)
+            .ok_or_else(|| AppError::invalid_input("partition offset overflow"))?;
+        let length = partition
+            .length_lba
+            .checked_mul(image.sector_size as u64)
+            .ok_or_else(|| AppError::invalid_input("partition size overflow"))?;
+        let source: Arc<dyn VolumeByteReader> = image.disk_image().clone();
+        BdeVolume::read_metadata_io(Arc::downgrade(&source), offset, length).map_err(AppError::from)
+    })
+    .await
+    .map_err(|error| AppError::task_panicked("bitlocker_inspect", error))?
+}
+
+/// Scan a memory image for BitLocker VMK candidates, each with the recovery
+/// password it derives against the partition; an unlock with a candidate's
+/// VMK goes through `encrypted_volume_unlock`.
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn bitlocker_scan_memory(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    image_id: ImageId,
+    partition_id: u8,
+    memory_path: String,
+    task_id: String,
+) -> Result<VmkScanResult, AppError> {
+    let image = loaded_image_app_error(&state, &image_id).await?;
+    reject_if_folder(&image)?;
+    let memory_path = PathBuf::from(memory_path);
+
+    // Register a cancellation token so `task_cancel(taskId)` drains the
+    // rayon scan within seconds.
+    let task = state.tasks.register(
+        task_id.clone(),
+        TaskKind::BitlockerScan,
+        Some(image_id.clone()),
+    );
+    let resource_permit = state.tasks.acquire_resources(&task).await?;
+    let token = task.token();
+
+    let task_id_inner = task_id.clone();
+    let app_inner = app.clone();
+    let tasks_inner = state.tasks.clone();
+
+    tokio::task::spawn_blocking(move || -> Result<VmkScanResult, AppError> {
+        let _resource_permit = resource_permit;
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        let scan_done = Arc::new(AtomicBool::new(false));
+
+        // Bridge tokio CancellationToken → AtomicBool so `bde_vmk` stays
+        // tokio-agnostic. The watcher exits cleanly when the scan signals
+        // done, regardless of whether cancellation fired.
+        let cancel_for_poll = Arc::clone(&cancel_flag);
+        let scan_done_for_poll = Arc::clone(&scan_done);
+        let watcher = std::thread::spawn(move || {
+            while !scan_done_for_poll.load(Ordering::Relaxed) {
+                if token.is_cancelled() {
+                    cancel_for_poll.store(true, Ordering::Relaxed);
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        });
+
+        let progress = |done: u64, total: u64| {
+            if let Err(error) = app_inner.emit(
+                "bitlocker-scan-progress",
+                BitlockerScanProgress {
+                    task_id: task_id_inner.clone(),
+                    bytes_done: done,
+                    bytes_total: total,
+                },
+            ) {
+                tracing::debug!("emit bitlocker-scan-progress failed: {error}");
+            }
+            tasks_inner.emit_progress(
+                &task_id_inner,
+                TaskProgressUnit::Bytes,
+                done,
+                Some(total),
+                None,
+            );
+        };
+
+        let raw_outcome =
+            bde_vmk::scan_memory_file_with_progress(&memory_path, &progress, cancel_flag.as_ref());
+
+        scan_done.store(true, Ordering::Relaxed);
+        if watcher.join().is_err() {
+            tracing::warn!("BitLocker memory-scan cancellation watcher panicked");
+        }
+
+        let raw_candidates = raw_outcome.map_err(AppError::from)?;
+
+        let partition = image
+            .partitions
+            .iter()
+            .find(|p| p.id == partition_id)
+            .cloned()
+            .ok_or_else(|| AppError::not_found(format!("partition not found: {partition_id}")))?;
+        let mut candidates = Vec::with_capacity(raw_candidates.len());
+        for VmkCandidate {
+            offset,
+            type_flag,
+            key_type,
+            vmk_hex,
+        } in raw_candidates
+        {
+            let recovery_key = match ::hex::decode(&vmk_hex) {
+                Ok(vmk) => bde_vmk::recovery_key_from_vmk(&image, &partition, &vmk)
+                    .ok()
+                    .flatten(),
+                Err(_) => None,
+            };
+            candidates.push(VmkScanCandidate {
+                offset,
+                type_flag,
+                key_type,
+                vmk_hex,
+                recovery_key,
+                already_tried: false,
+            });
+        }
+        Ok(VmkScanResult {
+            partition_id,
+            candidates,
+        })
+    })
+    .await
+    .map_err(|err| AppError::task_panicked("bitlocker_scan_memory", err))?
+}
+
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn encrypted_volume_unlock(
     app: AppHandle,
@@ -80,7 +244,11 @@ pub async fn encrypted_volume_unlock(
     let partition_id = options.partition_id;
     if let Some(id) = partition_id {
         if target == UnlockTarget::SourcePartition
-            && source.info().unlocked_partitions.contains(&id)
+            && source
+                .info()
+                .unlocked_partitions
+                .iter()
+                .any(|unlocked| unlocked.id == id)
         {
             return Err(AppError::invalid_input("分区已解锁"));
         }
@@ -95,15 +263,8 @@ pub async fn encrypted_volume_unlock(
         )
         .ok_or_else(|| AppError::invalid_input("task id is already in use"))?;
     task.update(|view| {
-        view.labels.insert(
-            TaskLabel::Scheme,
-            match options.scheme {
-                EncryptionScheme::Luks => "luks",
-                EncryptionScheme::Veracrypt => "veracrypt",
-                EncryptionScheme::Filevault => "filevault",
-            }
-            .to_owned(),
-        );
+        view.labels
+            .insert(TaskLabel::Scheme, options.scheme.as_str().to_owned());
         // The volume, then its label (none: the whole image or container).
         if let Some(id) = partition_id {
             view.subject.push(format!("part:{id}"));
@@ -164,7 +325,12 @@ pub async fn encrypted_volume_unlock(
                 })
                 .ok_or_else(|| AppError::invalid_input("请选择源镜像中的完整加密分区"))?;
             source
-                .attach_decrypted_partition(partition_id, image, result.read_cancellation.clone())
+                .attach_decrypted_partition(
+                    partition_id,
+                    image,
+                    result.scheme,
+                    result.read_cancellation.clone(),
+                )
                 .map_err(AppError::from)?;
             result.image = source.info();
             result.volume_key = Some(format!("part:{partition_id}"));

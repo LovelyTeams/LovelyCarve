@@ -1,10 +1,10 @@
-export { useFileSession, registerBitlockerUnlockNavigator } from './composables/useFileSession';
+export { useFileSession, registerEncryptedUnlockNavigator } from './composables/useFileSession';
 export type { OpenFileOutcome } from './composables/useFileSession';
 export { useAutoMount } from './composables/useAutoMount';
 export { useImageExport } from './composables/useImageExport';
 export { ensureAutoDetectListener, registerAutoDetectReportPublished, disposeAutoDetect } from './composables/useAutoDetect';
 
-export { registerBitlockerSnapshotWorkflow, disposeBitlockerJobs } from './composables/useBitlockerUnlocks';
+export { disposeBitlockerMemoryScans } from './composables/useBitlockerMemoryScan';
 
 export { disposeImageHashJobs } from './composables/useImageHash';
 

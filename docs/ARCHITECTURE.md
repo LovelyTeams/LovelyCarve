@@ -155,7 +155,7 @@ BCP 导入由内置任务流式读取 ZIP 成员或目录分片，按索引字�
 
 BCP 的应用与账号分组从已发布记录读取，提供各组的总数和已删除数。桌面端用应用编码映射构建目录；结果查询沿用已发布的运行和记录类型，以原始应用编码及账号限定范围。
 
-`EvidenceSession::raw_export_reader` 提供独立的 RAW 导出投影。`image_export_raw` 默认 `mode: source`，桌面镜像头部使用 `unlockedPartitions`，导出开始时固定已解锁的 LUKS / VeraCrypt / BitLocker 读者。明文放在原分区起始位置，容器开销对应的分区尾部补零；整盘大小、分区表、未解锁分区和分区间隙保留原字节。范围重叠、溢出、越界、明文过长及短读明确失败，关闭解密会话不回退到密文。该投影不影响普通读取、源哈希和证据身份；尾部补零是导出转换规则，源坏区仍沿用读故障审计。导出目标以 `create_new` 创建。
+`EvidenceSession::raw_export_reader` 提供独立的 RAW 导出投影。`image_export_raw` 默认 `mode: source`，桌面镜像头部使用 `unlockedPartitions`，导出开始时固定各已解锁分区（BitLocker / LUKS / VeraCrypt / FileVault）的明文视图。明文放在原分区起始位置，容器开销对应的分区尾部补零；整盘大小、分区表、未解锁分区和分区间隙保留原字节。范围重叠、溢出、越界、明文过长及短读明确失败，关闭解密会话不回退到密文。该投影不影响普通读取、源哈希和证据身份；尾部补零是导出转换规则，源坏区仍沿用读故障审计。导出目标以 `create_new` 创建。
 
 Buffalo ENC / Broadcom TRX、TP-Link SafeLoader、U-Boot legacy uImage 与 Netgear CHK 固件由 `evidence/readers/firmware.rs` 在打开阶段校验封装并定位分段，Buffalo ENC 另建立明文视图；原始字节读取与源哈希保留容器内容。固件段按字节寻址，SquashFS 适配器通过 backhand 的版本无关接口选择 v1/v2、标准 v3/v4 或 DD-WRT `hsqt` 逐块参数 LZMA 读者，标准 v3 块优先 gzip、其次用纯 Rust adaptive / 标准 LZMA 解码并验证终止与源边界；范围、流式与完整读取共用同一逻辑内容。v1/v2 在读取器 crate 内建立有界元数据与块计划，旧特殊文件时间不代入文件系统创建时间，无 EOS 的已知长度 LZMA 由独立 Rust 解码器验证最终 range code 和源 EOF。范围与上游依据见 [固件](formats/FIRMWARE.md) 和 [SquashFS](formats/SQUASHFS.md)。
 
@@ -206,7 +206,7 @@ RAID 检测（`evidence/raid`）分六步：读取各检材的 LVM PV 并物化�
   `MediaTempCache` 的 4 GiB / 6 文件预算只淘汰无人引用的最久未使用文件；独立窗口销毁由后端兜底释放引用。
   新缓存位于 `lovelycarve-preview-cache/<uuid>`，持有目录外的进程锁；启动只回收能取得锁的旧目录，退出清理当前目录。
 - 卷/挂载：`fs_mount_readonly`、`fs_unmount_readonly`、`fs_mounts`、`fs_share_mount` / `fs_unshare_mount`、挂载点建议和创建
-- BitLocker：状态、密码/恢复密钥/VMK 解锁、内存扫描、导出解密镜像
+- 加密卷：`encrypted_volume_unlock` 统一解锁 BitLocker / LUKS / VeraCrypt / FileVault，`bitlocker_inspect` / `filevault_inspect` 读取无凭据元数据，`bitlocker_scan_memory` 在内存镜像中查找 VMK
 - 案件和快照：案件创建/打开/关闭、证据列表/移除、卷快照构建/列表/删除
 - 插件与任务调度：`plugin_list`/`plugin_restart`/`plugin_install`/`plugin_uninstall`；
   `sched_task_functions`、`sched_systems_list`、`sched_task_create`、
@@ -245,7 +245,7 @@ RAID 检测（`evidence/raid`）分六步：读取各检材的 LVM PV 并物化�
 | QCOW / QCOW2 | vendored `qcow2` | v1/2/3 稀疏/DEFLATE 虚拟盘、RAW/QCOW backing chains；legacy AES 通过 image_load 可选凭据打开，能力与边界见 [QCOW](formats/QCOW.md) |
 | VDI | vendored `vdi` | VirtualBox VDI 1.1 动态盘与固定盘，只读稀疏随机访问；差分盘明确拒绝 |
 | Parallels PHDI | vendored `phdi` | XML / .hdd bundle、v2 Plain / Sparse / Split / 差分父链；直接逻辑随机读、所有父链文件稳定性与指纹，见 [PHDI](formats/PHDI.md) |
-| BitLocker | `core::evidence::crypto::bde_image` + `vendor/bitlocker` | 纯 Rust 密码/恢复密码/明文密钥/BEK/VMK/FVEK；六种 AES、Vista、EOW；直接读取分区，无 DLL 或临时整卷转储；验证边界见 [BITLOCKER](formats/BITLOCKER.md) |
+| BitLocker | `core::evidence::crypto::{bitlocker, bde_image}` + `vendor/bitlocker` | 纯 Rust 密码/恢复密码/明文密钥/BEK/VMK/FVEK；六种 AES、Vista、EOW；经共用的 `encrypted_image` 解锁为单卷明文视图，直接读取分区，无 DLL 或临时整卷转储；验证边界见 [BITLOCKER](formats/BITLOCKER.md) |
 | VHD / VHDX | `core::evidence::readers::vhd_image` → `vendor/vhd` / `vendor/vhdx` | 纯 Rust 固定/动态盘随机读取。VHDX 支持内存日志重放与校验过的相对路径父链，见 [VHD / VHDX](formats/VHD.md) |
 | DMG | vendored `udif` + `hfsplus` | UDIF 容器与 HFS+ |
 | Xiaomi HDR1 firmware / UBI | `core::evidence::partitions::xiaomi_firmware` + `filesystem::volumes::ubi` → `vendor/ubidump` | HDR1 旧版与扩展分段表按字节寻址；UBI 命名卷重组为可读文件，内嵌 SquashFS 通过有界 seek 读者浏览，原始容器字节保持不变；边界见 [UBI](formats/UBI.md) |
@@ -330,15 +330,20 @@ Dokan 挂载层直接解析
 不引入哈希 DLL。SHA-1、SHA-256 与 SM3 沿用原有实现。RustCrypto `md-5` 仅用于
 测试和探针中的独立对照；MD5 块边界、填充边界、空更新及多算法流水线有回归覆盖。
 
-### 加密容器的会话视图
+### 加密卷的会话视图
 
-`core/evidence/crypto/encrypted_image.rs` 接入 vendored `luks-core` 与 `veracrypt-core`。
+`core/evidence/crypto/encrypted_image.rs` 是 BitLocker、LUKS、VeraCrypt 与 FileVault 共用的解锁入口，
+接入 vendored `bitlocker-core`（`crypto/bitlocker.rs`）、`luks-core`、`veracrypt-core` 与 FileVault 读取器。
+凭据是 `crypto::credential::UnlockCredential`（密码、恢复密码、BEK、主密钥 / FVEK+TWEAK、VMK、明文密钥），
+`UnlockCredential::opens` 决定各格式接受哪些凭据，不适用的凭据和选项在读取前以 `invalidInput` 拒绝。
+VeraCrypt 没有签名，区域长度必须是检材扇区大小的整数倍。BitLocker 明文总是单个卷，按卷首识别文件系统；
+LUKS / VeraCrypt / FileVault 的明文按磁盘检测分区。
 `EvidenceReader` 对源 `DiskImage` 持有弱引用，限制在用户指定的分区或字节区域内；
 读取拒绝有损坏区域记录的密文。解锁后通过现有 `SectorSource` / `from_assembled`
 建立按需解密的镜像，`source_format=decrypted`、路径 `decrypted://<uuid>`，
 不生成整卷明文临时文件。`DiskImage.derived` 记录父镜像以支持递归卸载。
 
-`commands/evidence/encrypted_volume.rs` 提供 `encrypted_volume_unlock`，使用 CPU 资源调度和
+`commands/evidence/encrypted_volume.rs` 提供 `encrypted_volume_unlock`、`bitlocker_inspect`、`bitlocker_scan_memory` 与 `filevault_inspect`；解锁使用资源调度和
 `encryptedVolumeUnlock` 任务生命周期事件；注册结果前再次确认父镜像仍在当前会话。
 `image_load` 对解密路径只执行已注册会话查找，不写入案件检材清单。
 解密视图与卷影副本统一记为 `DiskImage.derived`（`DerivedImage::Decrypted` / `ShadowCopy`），
@@ -348,13 +353,13 @@ LUKS2 在 KDF 前通过 `core/evidence/crypto/luks_metadata.rs` 校验头部大�
 解锁参数不实现 `Debug` / `Serialize`，结果不包含凭据或主密钥。
 LUKS 扇区密码套件由 vendored `sector_cipher` 统一分派，密码槽与数据段使用同一只读路径；
 支持 AES CBC/ECB/XTS、Blowfish/Serpent CBC/ECB 和 ARC4 ECB，LUKS2 的 area key 与卷主密钥独立。
-`masterKeyHex` 通过同一命令/任务建立会话，验证摘要后才暴露明文；凭据和恢复的主密钥缓冲区在释放时清零。
+`masterKey` 凭据通过同一命令/任务建立会话，验证摘要后才暴露明文；凭据和恢复的主密钥缓冲区在释放时清零。
 完整算法、IV、36 个 libluksde API 对照及边界见 [LUKS](formats/LUKS.md)。
 
 ### 卷影副本（VSS）的会话视图
 
 `core/evidence/vss_image.rs` 接入 vendored `vsc-core`（`src-tauri/vendor/vsc`，来自 SecurityRonin/vsc-forensic）。
-`list` 逐个检查 NTFS 分区及已解锁的 BitLocker 卷，读取卷内 0x1E00 处的 VSS 头与 catalog，
+`list` 逐个检查 NTFS 分区，读取卷内 0x1E00 处的 VSS 头与 catalog；命令层同时列出各已解锁分区明文视图中的 NTFS 卷，
 按创建时间（最早在前）列出卷影副本的存储区 ID、卷影副本 ID、创建时间、属性和计算机名；
 有 VSS 头而无副本的卷也会列出（未创建或已被删除）。`open` 为所选副本构建该存储区及所有更新
 存储区的块映射（`vsc::SnapshotLayout`），以 `SectorSource` 按需重建快照时刻的卷：
@@ -369,7 +374,7 @@ LUKS 扇区密码套件由 vendored `sector_cipher` 统一分派，密码槽与�
 资源调度，注册前确认父镜像仍在会话中，同一副本已打开时复用原会话。`image_load` 对 `vss://`
 路径只查找已注册会话，不写入案件检材清单；RAID 检测不把卷影副本当作候选成员。
 前端由 `useShadowCopies` 读取列表，镜像信息页在对应分区行显示副本数（有 VSS 区而无副本时显示「无卷影副本」），
-展开后由 `ShadowCopyList.vue` 列出副本，打开后在新标签页浏览；解锁 BitLocker 后重新读取列表。
+展开后由 `ShadowCopyList.vue` 列出副本，打开后在新标签页浏览；任一分区解锁后重新读取列表。
 CLI 的 `vss ls` / `vss open` 在同一进程（案件后台进程、shell 或 batch）中保留父镜像与副本。
 读取器公开 `store_blocks` / `store_ranges` 原始枚举和 `Snapshot: Read + Seek`；完整 API 对照与
 验证边界见 [VSS](formats/VSS.md)。catalog 损坏或循环时报错而不是返回部分列表，存储头整块读取并校验。
@@ -442,7 +447,7 @@ CLI `cat` 在一次性命令、batch 与案件后台进程中都拒绝把有读�
 填写（`TaskRegistration::update`，或按 id 的 `TaskManager::update` / `emit_progress`），并在最后一个登记释放前
 报告结局（`finish` / `finish_with`：成功、失败附错误、取消）；没有报告结局就释放的任务按令牌状态记为取消或
 中断。取消的任务立即让出 id，在 worker 停下前仍列为「取消中」。任务种类决定列出方式（`TaskKind::listing`）：
-页面自己展示的短任务（预览物化、二维码、OCR、BitLocker 扫描与解锁等）不列出；加载、哈希、镜像与目录导出、
+页面自己展示的短任务（预览物化、二维码、OCR、BitLocker 内存扫描等）不列出；加载、哈希、镜像与目录导出、
 加密卷解锁、平台识别、快照与索引、Docker 合并、恢复文件导出结束后留在本次会话的历史里（检材卸载时清除，
 不属于任何检材的打开检材任务在切换案件时清除）；全局搜索、时间线与文件恢复扫描结束后由各自的存储列出
 （搜索历史、时间线状态、内存中的扫描会话）。
@@ -458,7 +463,7 @@ CLI `cat` 在一次性命令、batch 与案件后台进程中都拒绝把有读�
 取消原生任务或 `plugin:<id>` 插件任务。启动时（`app/setup.rs`）把调度器事件、原生任务的生命周期与进度事件和
 文件恢复会话的变化统一转成 `task-entry` 事件：`changed` 带条目、`removed` 带 id、`notice` 带调度通知。
 
-`TaskManager` 还负责后台资源预算：哈希、镜像/目录导出、BitLocker、二维码、媒体物化和
+`TaskManager` 还负责后台资源预算：哈希、镜像/目录导出、加密卷解锁与 BitLocker 内存扫描、二维码、媒体物化和
 快照构建会先取得全局后台任务 permit；需要顺序读取镜像的任务还会取得按镜像的
 semaphore，默认同一镜像最多一个顺序 I/O 后台任务。任务快照的 `resourceClasses` 会标明
 `globalBackground`、`imageSequentialIo`、`imageRandomIo`、`cpu` 或 `gpu` 资源类别；
@@ -633,8 +638,8 @@ app/workflows/identify.rs      `autodetect_evidence` 命令 + 证据首次上线
                             `autodetect-failed`
 ```
 
-三路分发：磁盘镜像路按会话的分区视图逐分区（已解锁的 LUKS、FileVault 与 VeraCrypt 分区与文件树一样取明文文件系统的
-类型，其中的 LVM 经明文视图展开到逻辑卷；锁定的 BitLocker 单列，解锁后按 NTFS 判定）先按文件系统类型
+三路分发：磁盘镜像路按会话的分区视图逐分区（已解锁的 BitLocker、LUKS、FileVault 与 VeraCrypt 分区与文件树一样取明文文件系统的
+类型，其中的 LVM 经明文视图展开到逻辑卷；锁定的 BitLocker 单列）先按文件系统类型
 选择标志文件组：NTFS → `/$MFT`、`/Windows/System32`、`/Users`、
 `/Program Files`；HFS/APFS → `/bin /sbin /etc /var /usr /Applications
 /System/Library/CoreServices/SystemVersion.plist /private/var/db/dslocal/nodes/Default/users`；
@@ -975,7 +980,6 @@ offset。当前普通目录已提供 `fs_children_page`，案件模式下会优�
 - `image-hash-progress`
 - `image-export-progress`
 - `fs-export-dir-progress`
-- `bitlocker-unlock-progress`
 - `bitlocker-scan-progress`
 - `snapshot-build-progress`
 - `autodetect-finished` / `autodetect-failed`
@@ -1280,7 +1284,7 @@ RAID 成员、当前检材卷快照和案件详情默认折叠，切换与锁定
 
 内置任务的状态全部来自后端登记：命令在登记上写入对象、阶段、计数与结局，前端只按种类格式化（`builtinMessage`），不从领域事件或命令返回值推断结局；关闭面板、切换页面不影响跟踪，执行记录按上述列出方式保留。取消请求先于任务登记发出时（例如检材刚开始加载），任务一出现就再取消一次。
 
-镜像信息页的卷卡入口和分区行打开同一个 `EncryptedVolumeUnlockDialog`。BitLocker 在弹窗内显示扫描与解锁进度，扫描结果按分区保留在卷卡会话中。LUKS / VeraCrypt / FileVault 2 解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提交后立即关闭凭据弹窗。
+镜像信息页的卷卡入口和锁定加密分区行打开同一个 `EncryptedVolumeUnlockDialog`：格式与区域由纯模型 `model/encryptedUnlock.ts` 给出（检测到签名的分区只配它自己的格式，VeraCrypt 只列扇区整数倍的区域），各格式的凭据在同一表单中填写，统一提交。BitLocker 的内存扫描由 `useBitlockerMemoryScan` 按分区登记，扫描结果保留在卷卡会话中。所有格式的解锁由 `useEncryptedVolumeUnlocks` 持有会话任务，提交后立即关闭凭据弹窗，分区行据其登记显示「解锁中」。
 任务中心显示「加密卷解锁」、加密方案与源分区（后端写入的方案与卷键）、排队/运行状态与不定进度，按任务 ID 取消，
 结局与解锁所用的算法由解锁命令报告。桌面使用 `sourcePartition` 目标，`EvidenceSession`
 持有按原分区 ID 绑定的原生解密文件系统视图；源 `DiskImage` 的字节、几何、哈希与 RAW 导出不变。
@@ -1329,7 +1333,7 @@ RAID 成员、当前检材卷快照和案件详情默认折叠，切换与锁定
 | 全局搜索 | `SearchResultsPanel.vue` | `global_search_*`、`global-search-progress` |
 | 时间线 | `TimelinePanel.vue` | `timeline_*`、`timeline-progress` |
 | 文件恢复 | `CarvePanel.vue` | `carve_*`（含 `carve_filesystem_results`）、`carve-scan-progress`、`task-progress` |
-| 加密与历史卷 | 解锁控件、卷影副本 | `bitlocker_*`、`encrypted_volume_unlock`、`filevault_inspect`、`shadow_copy_*`、`bitlocker-unlock-progress` / `bitlocker-scan-progress` |
+| 加密与历史卷 | 解锁弹窗、卷影副本 | `encrypted_volume_unlock`、`bitlocker_scan_memory`、`filevault_inspect`、`shadow_copy_*`、`bitlocker-scan-progress` |
 | iOS 本地备份 | 镜像信息页的解锁与异常检查 | `ios_backup_unlock`、`ios_backup_audit`，操作与边界见 [iOS 备份](IOS_BACKUPS.md) |
 | 挂载 | 卷挂载与共享控件 | `fs_mount_readonly`、`fs_unmount_readonly`、`fs_mounts`、`fs_share_mount` / `fs_unshare_mount`、挂载点命令 |
 | QR/OCR | 文件详情 | `qr_scan`、`ocr_scan`、`qr-scan-progress`，可用性由构建特性决定 |

@@ -7,7 +7,6 @@ import { disposeImageExportJobs, useImageExport } from './useImageExport';
 const ipc = vi.hoisted(() => ({
   save: vi.fn(),
   exportRaw: vi.fn(),
-  exportBitlocker: vi.fn(),
   cancel: vi.fn(),
   listen: vi.fn(),
   stop: vi.fn(),
@@ -20,7 +19,6 @@ vi.mock('../../../lib/ipc/image', () => ({
   imageExportRaw: ipc.exportRaw,
   IMAGE_EXPORT_PROGRESS_EVENT: 'image-export-progress',
 }));
-vi.mock('../../../lib/ipc/bitlocker', () => ({ bitlockerExportDecryptedImage: ipc.exportBitlocker }));
 vi.mock('../../../lib/ipc/taskRuntime', () => ({ taskCancel: ipc.cancel }));
 vi.mock('../../../lib/ipc/events', () => ({ onEvent: ipc.listen }));
 vi.mock('../../../composables/useToast', () => ({
@@ -55,7 +53,6 @@ beforeEach(() => {
   ipc.save.mockResolvedValue('D:/exports/raid.dd');
   ipc.listen.mockResolvedValue(ipc.stop);
   ipc.exportRaw.mockResolvedValue(result);
-  ipc.exportBitlocker.mockResolvedValue(result.bytes_written);
   ipc.cancel.mockResolvedValue(undefined);
 });
 
@@ -65,18 +62,16 @@ afterEach(() => {
 });
 
 describe('image export task lifecycle', () => {
-  it.each(['raw', 'bitlocker'] as const)('releases a completed %s export so the image can be exported again', async mode => {
-    const { startImageExport, startBitlockerDecryptedImageExport, jobFor } = useImageExport();
-    const startExport = () => mode === 'raw'
-      ? startImageExport(options)
-      : startBitlockerDecryptedImageExport({ ...options, partitionId: 2 });
-    const exporter = mode === 'raw' ? ipc.exportRaw : ipc.exportBitlocker;
+  it.each(['source', 'unlockedPartitions'] as const)('releases a completed %s export so the image can be exported again', async mode => {
+    const { startImageExport, jobFor } = useImageExport();
+    const startExport = () => startImageExport({ ...options, mode });
 
     expect(await startExport()).toBe(true);
     expect(jobFor(options.imageId)).toBeUndefined();
     expect(await startExport()).toBe(true);
     expect(jobFor(options.imageId)).toBeUndefined();
-    expect(exporter).toHaveBeenCalledTimes(2);
+    expect(ipc.exportRaw).toHaveBeenCalledTimes(2);
+    expect(ipc.exportRaw).toHaveBeenLastCalledWith(expect.objectContaining({ mode }));
     expect(ipc.stop).toHaveBeenCalledTimes(2);
   });
 

@@ -1,14 +1,26 @@
-
+// BitLocker、LUKS、VeraCrypt、FileVault 的解锁都走 `encrypted_volume_unlock`：
+// 立即提交、后台运行，任务中心按 taskId 列出并可取消；结果更新检材信息或打开
+// 新的明文会话。登记表按检材与区域去重，分区行据此显示“解锁中”。
+import { reactive } from 'vue';
 import { tr } from '../../../composables/useLocale';
 import { notifyError, notifyInfo, notifySuccess } from '../../../composables/useToast';
-import { encryptedVolumeUnlock, type EncryptedUnlockOptions } from '../../../lib/ipc/encrypted';
+import { encryptedVolumeUnlock, type EncryptedUnlockOptions, type EncryptionScheme, type UnlockCredential } from '../../../lib/ipc/encrypted';
 import { imageUnload, type ImageInfo } from '../../../lib/ipc/image';
 import { IpcCommandError } from '../../../lib/ipc/client';
+import type { ImageId } from '../../../lib/ipc/ids';
 import { evidenceContext } from './evidenceContext';
 import { clearUnlockedImageInfo, rememberUnlockedImageInfo } from './unlockedImageInfo';
 
+export interface EncryptedUnlockJob {
+  imageId: ImageId;
+  /** Undefined for the whole image or container. */
+  partitionId?: number;
+  scheme: EncryptionScheme;
+  taskId: string;
+}
+
 // The main window owns completion and source metadata, independently of the dialog.
-const jobs = new Map<string, string>();
+const jobs = reactive(new Map<string, EncryptedUnlockJob>());
 let generation = 0;
 let updateImage: ((info: ImageInfo) => void) | null = null;
 let openDerivedImage: ((path: string) => Promise<boolean>) | null = null;
@@ -29,14 +41,34 @@ export function disposeEncryptedVolumeUnlockJobs() {
   clearUnlockedImageInfo();
 }
 
+/** The unlock running for a partition of an image, if any. Reads the reactive
+ *  registry, so templates and computeds track it. */
+export function encryptedUnlockJobFor(imageId: ImageId, partitionId: number): EncryptedUnlockJob | undefined {
+  for (const job of jobs.values()) {
+    if (job.imageId === imageId && job.partitionId === partitionId) return job;
+  }
+  return undefined;
+}
+
+/** Drop the secret text the caller still holds; the request keeps its own copy. */
+function forgetCredential(credential: UnlockCredential) {
+  switch (credential.kind) {
+    case 'password': credential.password = ''; break;
+    case 'recoveryPassword': credential.recoveryPassword = ''; break;
+    case 'masterKey': credential.keyHex = ''; credential.tweakHex = undefined; break;
+    case 'vmk': credential.keyHex = ''; break;
+    case 'startupKey':
+    case 'clearKey': break;
+  }
+}
+
 /** Submit immediately; the task center lists the unlock under `taskId`, and
  *  metadata updates outlive the page. */
 export function startEncryptedVolumeUnlock(info: ImageInfo, options: EncryptedUnlockOptions): boolean {
   const key = `${info.id}:${options.partitionId ?? 'whole'}${options.target === 'newImage' ? `:lv:${options.logicalVolumeIndex ?? 0}` : ''}`;
   if (jobs.has(key)) {
-    options.password = '';
-    options.masterKeyHex = undefined;
-    notifyError(tr("解锁加密容器失败"), tr("此加密区域已有解锁任务，可在任务中心查看或取消"));
+    forgetCredential(options.credential);
+    notifyError(tr("解锁加密卷失败"), tr("此加密区域已在解锁"));
     return false;
   }
   const taskId = crypto.randomUUID();
@@ -45,14 +77,14 @@ export function startEncryptedVolumeUnlock(info: ImageInfo, options: EncryptedUn
   const updater = updateImage;
   const opener = openDerivedImage;
   const current = () => epoch === generation && context === evidenceContext();
-  jobs.set(key, taskId);
+  jobs.set(key, { imageId: info.id, ...(options.partitionId === undefined ? {} : { partitionId: options.partitionId }), scheme: options.scheme, taskId });
   void (async () => {
     try {
       options.target ??= 'sourcePartition';
       // IPC may defer transport: the request carries its own copy of the
-      // credentials, so clearing the local ones cannot change its payload.
-      const request = encryptedVolumeUnlock({ imageId: info.id, options: { ...options }, taskId });
-      options.password = '';
+      // credential, so clearing the local one cannot change its payload.
+      const request = encryptedVolumeUnlock({ imageId: info.id, options: { ...options, credential: { ...options.credential } }, taskId });
+      forgetCredential(options.credential);
       const result = await request;
       if (!current()) {
         if (result.image.id !== info.id) await imageUnload({ imageId: result.image.id });
@@ -73,19 +105,20 @@ export function startEncryptedVolumeUnlock(info: ImageInfo, options: EncryptedUn
           throw error;
         }
       }
-      notifySuccess(tr("加密卷解锁成功"), result.cipher);
+      notifySuccess(tr("加密卷解锁成功"), result.recovery_password
+        ? tr("恢复密码：{0}", { 0: result.recovery_password })
+        : result.cipher);
     } catch (error) {
       if (current() && !(error instanceof IpcCommandError && error.code === 'cancelled')) {
-        notifyError(tr("解锁加密容器失败"), String(error));
+        notifyError(tr("解锁加密卷失败"), String(error));
       } else if (!current()) {
         console.warn('旧会话加密卷解锁已结束', error);
       }
     } finally {
-      options.password = '';
-      options.masterKeyHex = undefined;
-      if (jobs.get(key) === taskId) jobs.delete(key);
+      forgetCredential(options.credential);
+      if (jobs.get(key)?.taskId === taskId) jobs.delete(key);
     }
   })();
-  notifyInfo(tr("已开始后台解锁"), tr("可在任务中心查看状态或取消"));
+  notifyInfo(tr("已开始后台解锁"));
   return true;
 }
