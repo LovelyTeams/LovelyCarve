@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-23
+
 ### Added
 
 - 文件列表的预览可同时打开同一检材的多个文件：单击文件在预览位查看，双击、Enter 或菜单「预览」保持打开，勾选的多个文件可一次各开一个标签页。打开的文件不随目录切换关闭，切回时保留视图、搜索与滚动位置；每个检材记住自己打开的文件。
@@ -362,7 +364,8 @@
 - 可选二维码识别与 OCR 构建；默认轻量构建关闭这些功能，完整构建通过 `*-full` 配方启用。
 - 源码构建、Windows 安装包与便携包、CLI 和插件的本地打包配方，以及使用、开发、接口和第三方来源说明。
 
-[Unreleased]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.1.0...v1.1.1

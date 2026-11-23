@@ -938,7 +938,7 @@ dependencies = [
 
 [[package]]
 name = "lovelycarve-component-abi"
-version = "1.3.0"
+version = "1.4.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -946,7 +946,7 @@ dependencies = [
 
 [[package]]
 name = "lovelycarve-inference"
-version = "1.3.0"
+version = "1.4.0"
 dependencies = [
  "image",
  "lovelycarve-component-abi",
