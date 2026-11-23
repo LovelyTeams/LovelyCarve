@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-// The verifier runs in Node/Bun; these fixtures exercise the same AST rules.
-import { auditModule, importTarget, runtimeCycles } from '../scripts/lib/frontend-structure.mjs';
+// The verifier runs on Bun; these fixtures exercise the same AST rules.
+import { auditModule, importTarget, runtimeCycles } from '../scripts/lib/frontend-structure.ts';
 
 describe('frontend architecture verifier', () => {
   it('detects multi-module and self cycles without flagging a shared leaf', () => {

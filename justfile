@@ -39,9 +39,10 @@ bootstrap:
     git submodule update --init --recursive
     bun install --frozen-lockfile
 
-# Run the complete frontend checks required for a contribution.
+# Run the complete frontend checks required for a contribution, side by side, and report every failure.
 [group("verify")]
-verify-fe: ipc-check frontend-structure-check i18n-check typecheck test-fe build-fe
+verify-fe:
+    bun run --parallel --no-exit-on-error 'check:*' test build
 
 # Run the backend checks required for a contribution.
 [group("verify")]
@@ -79,18 +80,19 @@ clippy-python *args:
 # Start Vite after preparing offline viewer assets.
 [group("frontend")]
 dev-fe:
-    bun scripts/copy-file-viewer-assets.mjs
+    bun scripts/copy-file-viewer-assets.ts
     bun run dev
 
-# Type-check Vue and TypeScript.
+# Type-check the Vue app with vue-tsc, and the Bun scripts and Vite configs with bun check.
 [group("frontend")]
 typecheck:
     bun run typecheck
+    bun run check:tooling
 
 # Run frontend unit tests.
 [group("frontend")]
 test-fe:
-    bunx vitest run
+    bun run test
 
 # Type-check and build the frontend bundle.
 [group("frontend")]
@@ -105,24 +107,24 @@ ipc-check:
 # Check frontend module ownership and explicit cross-feature contracts.
 [group("frontend")]
 frontend-structure-check:
-    bun scripts/check-frontend-structure.mjs
+    bun run check:structure
 
 # Check translations, interpolation parameters and untranslated template text.
 [group("frontend")]
 i18n-check:
-    bun scripts/check-i18n.mjs
+    bun run check:i18n
 
 # Upgrade both viewer packages and refresh offline assets.
 [group("frontend")]
 update-file-viewer version *args:
     bun update --exact @file-viewer/vue3-full@{{ version }} @file-viewer/vite-plugin@{{ version }} {{ args }}
-    bun scripts/copy-file-viewer-assets.mjs
+    bun scripts/copy-file-viewer-assets.ts
 
 # Refresh frontend dependencies within the reviewed manifest constraints.
 [group("frontend")]
 update-fe:
     bun update
-    bun scripts/copy-file-viewer-assets.mjs
+    bun scripts/copy-file-viewer-assets.ts
 
 # Format the backend, the component and plugin workspaces and all maintained reader crates.
 [group("backend")]
@@ -238,7 +240,7 @@ clippy-components:
 # Build lc-plugin-host and stage every plugin package (library and schema.json); pass --release for bundles.
 [group("plugins")]
 build-plugins *args:
-    {{ cargo_env }}bun scripts/build-plugins.mjs {{ args }}
+    {{ cargo_env }}bun scripts/build-plugins.ts {{ args }}
 
 # Package every workspace plugin as an installable .lcpkg.
 [group("plugins")]
@@ -264,7 +266,7 @@ update-plugins:
 # Generate platform icons and both frontend brand variants from the source images.
 [group("desktop")]
 icons:
-    bun scripts/generate-icons.mjs
+    bun scripts/generate-icons.ts
 
 # Refresh the Tauri v2 JS packages and Rust dependency family together.
 [group("desktop")]
@@ -276,16 +278,16 @@ update-tauri:
 [group("desktop")]
 [windows]
 dev: build-components
-    bun scripts/copy-file-viewer-assets.mjs
-    {{ cargo_env }}bun scripts/build-plugins.mjs
+    bun scripts/copy-file-viewer-assets.ts
+    {{ cargo_env }}bun scripts/build-plugins.ts
     {{ windowsenv }}; bun run tauri dev
 
 # Run the Tauri desktop app with WeChat QR and CUDA OCR (Windows).
 [group("desktop")]
 [windows]
 dev-full: (build-components "--features" "ocr-cuda")
-    bun scripts/copy-file-viewer-assets.mjs
-    {{ cargo_env }}bun scripts/build-plugins.mjs
+    bun scripts/copy-file-viewer-assets.ts
+    {{ cargo_env }}bun scripts/build-plugins.ts
     {{ vsenv }}; bun run tauri dev --features qrcode-wechat --config '{{ justfile_directory() }}\src-tauri\tauri.full.conf.json'
 
 # Build the desktop backend and inference component without QR/OCR (Windows).
@@ -312,7 +314,7 @@ build-full: (build-components "--features" "ocr-cuda")
 [group("desktop")]
 [windows]
 build-release *args: (build-components "--release")
-    {{ cargo_env }}bun scripts/build-plugins.mjs --release
+    {{ cargo_env }}bun scripts/build-plugins.ts --release
     pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\prune-bundle-dlls.ps1'
     {{ windowsenv }}; bun run tauri build --config '{{ justfile_directory() }}\src-tauri\tauri.plugins.conf.json' --config '{{ justfile_directory() }}\src-tauri\tauri.components.conf.json' {{ args }}
 
@@ -320,7 +322,7 @@ build-release *args: (build-components "--release")
 [group("desktop")]
 [windows]
 build-release-full *args: (build-components "--release" "--features" "ocr-cuda")
-    {{ cargo_env }}bun scripts/build-plugins.mjs --release
+    {{ cargo_env }}bun scripts/build-plugins.ts --release
     {{ vsenv }}; bun run tauri build --features qrcode-wechat --config '{{ justfile_directory() }}\src-tauri\tauri.plugins.conf.json' --config '{{ justfile_directory() }}\src-tauri\tauri.components.conf.json' --config '{{ justfile_directory() }}\src-tauri\tauri.full.conf.json' {{ args }}
 
 # Build and package the portable Windows desktop app.
@@ -402,14 +404,14 @@ update-cli-skill:
 [group("cli")]
 [windows]
 pack-cli: build-cli
-    {{ cargo_env }}bun scripts/build-plugins.mjs --release
+    {{ cargo_env }}bun scripts/build-plugins.ts --release
     pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\pack-cli.ps1'
 
 # Build and package the full Windows CLI with QR/OCR and plugins.
 [group("cli")]
 [windows]
 pack-cli-full: build-cli-full
-    {{ cargo_env }}bun scripts/build-plugins.mjs --release
+    {{ cargo_env }}bun scripts/build-plugins.ts --release
     pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\pack-cli.ps1' -RequireQrOcr
 
 # Package an existing Windows CLI release using its actual capabilities.

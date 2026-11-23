@@ -10,7 +10,7 @@
 - `src/lib/ipc/` 封装所有 Tauri 命令与事件；传输类型放在该层，跨功能纯契约放在 `src/lib/models/`。
 - 功能内部直接引用邻近实现，不回引自身 API barrel。公开 API 不导出重格式 viewer；主窗口面板和格式预览保持按需加载。
 
-依赖规则在 `scripts/lib/frontend-structure.mjs` 中维护；新增跨功能边需说明实际消费者，并同步本页。
+依赖规则在 `scripts/lib/frontend-structure.ts` 中维护；新增跨功能边需说明实际消费者，并同步本页。
 
 ## 公开接口与允许依赖
 
@@ -28,7 +28,7 @@
 | search → files/model/tags；tasks → evidence/model/autodetectLabels | 小型纯定义；没有反向状态引用 |
 | 跨功能 type-only → model | 纯契约，不作为运行时 bundle 依赖 |
 
-应用装配向任务/分析提供可替换的只读案件和完成运行列表，向证据操作提供案件代际及解锁后快照回调。所有已声明边在 `scripts/lib/frontend-structure.mjs` 中检查；新增边需要说明实际消费者，不能扩大成任意内部引用。当前生产运行时图没有强连通依赖环。
+应用装配向任务/分析提供可替换的只读案件和完成运行列表，向证据操作提供案件代际及解锁后快照回调。所有已声明边在 `scripts/lib/frontend-structure.ts` 中检查；新增边需要说明实际消费者，不能扩大成任意内部引用。当前生产运行时图没有强连通依赖环。
 
 ## 状态范围
 

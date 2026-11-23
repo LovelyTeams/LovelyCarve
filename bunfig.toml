@@ -1,0 +1,7 @@
+# Bun settings for this repository: https://bun.com/docs/runtime/bunfig
+
+[run]
+# Run the Node tools behind package.json scripts (Vite, Vitest, vue-tsc, the Tauri CLI) on
+# Bun's runtime even where Node.js is installed, as on CI runners, so every machine runs the
+# same runtime. `bunx` does not read this setting; call those tools through `bun run`.
+bun = true

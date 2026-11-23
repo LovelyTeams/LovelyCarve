@@ -37,18 +37,19 @@ Use `docs/README.md` for the documentation map and `CONTRIBUTING.md` / `docs/DEV
 - `src-tauri/vendor/`: vendored filesystem and parser crates.
 - `src-tauri/examples/`: standalone probes for partition and filesystem work.
 - `plugins/`: Git submodule pointing to `LovelyTeams/LovelyCarve-Plugins`, with a separate Cargo workspace — `sdk` (crate `lovelycarve-plugin`: C ABI, LPP v2 payloads, record schemas, Rust plugin API and the `testing` harness; also a host dependency), `sdk-derive` (`#[derive(Record)]`), `host` (`lc-plugin-host`, the process-isolation loader), and the bundled analyzer `linuxinfo`, a `cdylib` next to its `plugin.toml`, `schema.json` and `locales/`. Initialize with `just bootstrap`; commit and push plugin changes before updating the main repository's submodule pointer.
+- `scripts/`: repository tooling — TypeScript scripts run by Bun (frontend checks, plugin staging, viewer assets, icons; checked by `bun check` through `tsconfig.node.json`), the PowerShell environment and packaging scripts, and Python fixture generators and CLI end-to-end tests.
 - `docs/`: Chinese documentation — the user guide (`USAGE.md`), CLI manual, iOS backup and plugin guides, development, architecture, frontend and release guides; `docs/formats/` holds per-format capability and limitation guides; `docs/images/` holds the README screenshots.
 
 ## Build, Test, and Development Commands
 
 Use the repository-root `Justfile` as the task entry point. Do not replace an existing recipe with a direct `bun`, `cargo`, or Tauri command. Run `just bootstrap` for initial setup; it initializes the pinned plugin submodule and installs frontend dependencies with the frozen lockfile. Run `just --list` when the available tasks may have changed, and use `just --show <recipe>` or `just --dry-run <recipe>` to inspect platform-specific commands and dependencies. Prerequisites and environment overrides are documented in `docs/DEVELOPMENT.md`; toolchain versions come from `src-tauri/Cargo.toml` and `package.json`.
 
-- `just verify-fe`: run IPC, structure and translation checks, type-checking, frontend tests and the production build.
+- `just verify-fe`: run IPC, structure and translation checks, type-checking, frontend tests and the production build side by side (`bun run --parallel`), reporting every failure.
 - `just verify-rust`: run `fmt`, `check`, `clippy` and backend tests, plus the component workspace's Clippy and tests.
 - `just verify-plugins`: run formatting, plugin linting and plugin tests.
 - `just dev-fe`: run the Vite frontend, including the file-viewer asset preparation step.
 - `just dev`: run the Tauri desktop app without QR/OCR using the configured Visual Studio and OpenSSL environment; `just dev-full` also enables QR/OCR and configures OpenCV.
-- `just typecheck`: run `vue-tsc --noEmit`.
+- `just typecheck`: run `vue-tsc --noEmit` for the app and `bun check` for the Bun scripts and Vite configs (`tsconfig.node.json`).
 - `just build-fe`: type-check and build the frontend production bundle.
 - `just test-fe`: run the complete frontend Vitest suite once.
 - `just ipc-check`: enforce the typed frontend IPC boundary.
@@ -100,6 +101,8 @@ Use the repository-root `Justfile` as the task entry point. Do not replace an ex
 - `just qr-env` / `just build-opencv-contrib` / `just qr-test <image> [count]`: show the resolved Visual Studio and OpenCV paths, build contrib OpenCV with `wechat_qrcode` into `OPENCV_INSTALL`, and decode a QR image with the WeChat detector.
 
 Windows `*-full` builds enable `qrcode-wechat` on the host and `ocr-cuda` (CUDA OCR with CPU fallback) on the inference component; Unix `build-cli-full` enables `qrcode-wechat` and the component's `ocr`. Default builds need neither OpenCV nor CUDA. Windows host and plugin recipes load `scripts/windows-env.ps1` in the same shell, initialize the VS x64 environment, and default to VS's `lld-link`, one Cargo job, one linker thread and Thin LTO for release. Install the Visual Studio C++ Clang tools; only OpenCV builds configure libclang. Preserve caller overrides through the documented Cargo environment variables and just variables rather than hard-coding local paths into recipes. Standalone vendored reader recipes retain their own Cargo configuration.
+
+`bunfig.toml` sets `[run] bun = true`, so package.json scripts run Vite, Vitest, vue-tsc and the Tauri CLI on Bun's runtime even where Node.js is installed; `bunx` ignores that setting, so call those tools through `bun run`. Repository tooling scripts are TypeScript run directly by Bun: prefer Bun's built-ins (`Bun.Glob`, `Bun.file` / `Bun.write`, `Bun.spawnSync`, `Bun.TOML`, `Bun.Image`) over hand-written Node equivalents, and keep them passing `bun check` (`just typecheck`). `bun check` does not read `.vue` files, so the app stays on vue-tsc.
 
 Vue type-checking uses the `typescript` npm alias for `typescript-native-bridge`, with the alias and override pinned to the same complete version. Preserve compatibility with `vue-tsc`; do not replace it directly with `typescript@7`. Rich previews use matching `@file-viewer/vue3-full` / `@file-viewer/vite-plugin` versions and offline assets; generated `public/file-viewer/` resources are not committed.
 
@@ -203,7 +206,7 @@ Vue 3 single-file components with `<script setup lang="ts">` and the Composition
 
 - Component state is `ref` / `computed` / `watch`. Business state lives in `features/<domain>/composables/useXxx.ts`; generic capabilities live in root `composables/`. Do not add Vuex, Pinia, or any global store without explicit direction.
 - Analysis reading layouts come from plugin record schemas: tables compare records across columns, and `properties` declares a vertical label/value/secondary layout. Keep a per-plugin record-type view choice; do not infer layouts from plugin names or row counts. Schema fields replace the generic title column when visible fields exist; all fields and sources remain available in details.
-- Keep pure models free of reactive state, host globals, and IPC calls. Feature internals must not import their own API barrel; API barrels must not eagerly export heavy viewer components. Cross-feature dependencies are declared in `scripts/lib/frontend-structure.mjs`; run `just frontend-structure-check` after structural changes.
+- Keep pure models free of reactive state, host globals, and IPC calls. Feature internals must not import their own API barrel; API barrels must not eagerly export heavy viewer components. Cross-feature dependencies are declared in `scripts/lib/frontend-structure.ts`; run `just frontend-structure-check` after structural changes.
 - Main-window wiring owns workspace singleton disposers; instance scopes own subscriptions, timers, media leases, and Blob URLs. Deactivation releases visible-panel keyboard/menu resources without cancelling backend work. Guard asynchronous publication by context generation, immediately release late handles, and flush tag/derived writes before switching cases. See `docs/FRONTEND_STRUCTURE.md` for the ownership matrix.
 - Tauri access goes through `src/lib/ipc/`; never call `invoke`/`listen` inline in a component or composable.
 - Evidence, filesystem-node and volume ids are `ImageId` / `NodeId` / `VolumeKey` from `src/lib/ipc/ids.ts` in IPC wrappers, composables, models and props. They are flavored: a plain string is accepted, but one kind of id is rejected where another is expected. Other ids (analysis tree nodes, structured-graph nodes, tasks, runs) stay plain strings.

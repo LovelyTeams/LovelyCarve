@@ -41,6 +41,7 @@
 - CLI 自己执行的读取命令（如 `cat`、`strings`）失败时报告与后端命令相同的错误码，不再一律为 `operationFailed`；CLI 内部错误改报 `internal`，主机 I/O 错误按类型报 `notFound`、`permissionDenied` 等，不再一律为 `io`。
 - Python 读取库在检材、节点或源镜像不存在时抛 `FileNotFoundError`，主机拒绝访问时抛 `PermissionError`，两者都是 `OSError` 的子类。
 - 从源码构建需要 Rust 1.100 或更新版本。
+- 从源码构建需要 Bun 1.4.5 或更新版本；Vite、Vitest、vue-tsc 与 Tauri CLI 即使系统装有 Node.js 也在 Bun 上运行。
 
 ### Removed
 

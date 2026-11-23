@@ -65,7 +65,7 @@ src/
   Viewer，当前 3.1.2），按 `name` prop 的扩展名懒加载渲染器；worker / WASM / 字体等重资产由
   `@file-viewer/vite-plugin`（`vite.config.ts` 中 `copyAssets: { mode: 'build' }, inject: false`）
   复制到 `dist/file-viewer/`（随 frontendDist 进 Tauri 包）。开发环境通过
-  `scripts/copy-file-viewer-assets.mjs` 按包版本同步到 `public/file-viewer/`，运行时相对
+  `scripts/copy-file-viewer-assets.ts` 按包版本同步到 `public/file-viewer/`，运行时相对
   `{base}/file-viewer/` 取用，不依赖外网。升级使用 `just update-file-viewer <version>`，
   同步固定 Vue 组件和 Vite 插件版本、更新锁文件并刷新开发资源；升级后运行
   `just typecheck`、`just test-fe` 和 `just build-fe`。
@@ -80,7 +80,7 @@ just ipc-check
 
 应用层 `bindWorkspaceServices.ts` 持有案件、任务、分析、证据的注册回调和生产 disposer。任务/分析通过可替换的只读上下文订阅当前案件，避免直接引用案件单例造成循环。案件切换先关闭标签和视图，再等待标签防抖及已发出的派生数据写入，然后调用后端；请求代际防止旧读取、水合、选择器或订阅回填。迟到句柄即时释放，dispose 幂等；切页保留后台任务，不等于取消或卸载证据。
 
-功能内部就近引用实现；功能之间只使用声明的 `api.ts`、组件入口或纯契约。共享层不引用业务，纯模型无响应式/宿主 I/O。`just frontend-structure-check` 使用 TS AST 和 Vue SFC 解析器检查两类 script、静态/动态/type-only import、别名、失效 import/style 路径、允许的跨功能边及运行时依赖环。允许边与所有权表见 [前端模块与生命周期](FRONTEND_STRUCTURE.md)，具体规则在 `scripts/lib/frontend-structure.mjs`。
+功能内部就近引用实现；功能之间只使用声明的 `api.ts`、组件入口或纯契约。共享层不引用业务，纯模型无响应式/宿主 I/O。`just frontend-structure-check` 使用 TS AST 和 Vue SFC 解析器检查两类 script、静态/动态/type-only import、别名、失效 import/style 路径、允许的跨功能边及运行时依赖环。允许边与所有权表见 [前端模块与生命周期](FRONTEND_STRUCTURE.md)，具体规则在 `scripts/lib/frontend-structure.ts`。
 
 主窗口与独立预览保持两个动态根；`app/workspace/panels.ts` 的七个面板仍懒加载，加载提示延迟 120ms。五类 KeepAlive 面板保持原 id 和证据复用规则；标签的五份 fileSession LRU 不是全部面板的状态快照。重格式 viewer 继续在详情内懒加载，公开状态 API 不导出 viewer。
 

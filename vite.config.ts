@@ -16,7 +16,8 @@ type ResolveFilename = (
 
 // @file-viewer/vite-plugin 3.1.2 的 config() 生成 alias / include 时,每查一个包都把
 // preset-all 的几十个锚点包重新 require.resolve 一遍且不缓存:实测 27.9 万次解析里
-// 只有 1.8 千次不同,每次启动 vite(dev / build / vitest)多花约 25s。该钩子是同步的,
+// 只有 1.8 千次不同,每次启动 vite(dev / build / vitest)都要多花时间:旧运行时上约 25s,
+// Bun 1.4.5 上约 0.5s。该钩子是同步的,
 // 执行期间 node_modules 不会变,所以只在钩子内缓存 Node 的解析结果(含失败),
 // 插件产出的配置不变。上游修复后可删除。
 function withMemoizedConfigResolution(plugin: Plugin): Plugin {
@@ -77,7 +78,7 @@ export default defineConfig({
       // 只在生产构建时拷贝资产(closeBundle → dist)。dev 不再拷贝:插件默认
       // 每次启动都在 configureServer 里全量重写 ~2881 个文件,watcher 对每次
       // 写入发事件,实测把 vite 启动从 ~5s 拖到 ~170s(见 git blame 同提交)。
-      // dev 下的 public/file-viewer 由 scripts/copy-file-viewer-assets.mjs
+      // dev 下的 public/file-viewer 由 scripts/copy-file-viewer-assets.ts
       // 按版本一次性填充,`just dev` / `just dev-fe` 已内置。
       copyAssets: { mode: 'build' },
       inject: false,
