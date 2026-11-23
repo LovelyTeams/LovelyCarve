@@ -336,8 +336,8 @@ Dokan 挂载层直接解析
 接入 vendored `bitlocker-core`（`crypto/bitlocker.rs`）、`luks-core`、`veracrypt-core` 与 FileVault 读取器。
 凭据是 `crypto::credential::UnlockCredential`（密码、恢复密码、BEK、主密钥 / FVEK+TWEAK、VMK、明文密钥），
 `UnlockCredential::opens` 决定各格式接受哪些凭据，不适用的凭据和选项在读取前以 `invalidInput` 拒绝。
-VeraCrypt 没有签名，区域长度必须是检材扇区大小的整数倍。BitLocker 明文总是单个卷，按卷首识别文件系统；
-LUKS / VeraCrypt / FileVault 的明文按磁盘检测分区。
+VeraCrypt 没有签名，区域长度必须是检材扇区大小的整数倍。BitLocker 与 VeraCrypt 系统分区的明文总是单个卷，按卷首识别文件系统；
+LUKS / VeraCrypt 容器与整盘视图 / FileVault 的明文按磁盘检测分区。
 `EvidenceReader` 对源 `DiskImage` 持有弱引用，限制在用户指定的分区或字节区域内；
 读取拒绝有损坏区域记录的密文。解锁后通过现有 `SectorSource` / `from_assembled`
 建立按需解密的镜像，`source_format=decrypted`、路径 `decrypted://<uuid>`，
@@ -355,6 +355,11 @@ LUKS 扇区密码套件由 vendored `sector_cipher` 统一分派，密码槽与�
 支持 AES CBC/ECB/XTS、Blowfish/Serpent CBC/ECB 和 ARC4 ECB，LUKS2 的 area key 与卷主密钥独立。
 `masterKey` 凭据通过同一命令/任务建立会话，验证摘要后才暴露明文；凭据和恢复的主密钥缓冲区在释放时清零。
 完整算法、IV、36 个 libluksde API 对照及边界见 [LUKS](formats/LUKS.md)。
+VeraCrypt 的卷头、PIM、PRF 和密钥文件选项及结果字段在 `core/evidence/crypto/veracrypt_volume.rs`：
+密钥文件在宿主读取并混入密码，读取器错误按 `Failure` 分类。`veracrypt-core` 在全部核心上并行派生头部密钥、
+每 1024 次迭代检查取消，并通过 `unlock_with_progress` 把派生任务数报告给任务中心。系统加密卷头位于磁盘第 62 扇区，
+此时 `EvidenceReader` 覆盖整份检材，明文为所选分区（`source_range`）或整盘视图。VeraCrypt 明文按偏移读取（`veracrypt::ReadAt`），
+不进入其他格式共用的读取锁，大范围读取并行解密。格式能力与边界见 [VeraCrypt](formats/VERACRYPT.md)。
 
 ### 卷影副本（VSS）的会话视图
 

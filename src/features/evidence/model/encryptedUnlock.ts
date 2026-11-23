@@ -1,7 +1,7 @@
 // 加密卷解锁的纯模型：哪些格式、哪些区域可以解锁，以及每种格式接受的凭据。
 // BitLocker、LUKS、VeraCrypt、FileVault 走同一个解锁命令，区别只在这里。
 import { sourceText, type Translator } from '../../../i18n/translate';
-import type { EncryptionScheme } from '../../../lib/ipc/encrypted';
+import type { EncryptionScheme, VeracryptHeader, VeracryptPrf } from '../../../lib/ipc/encrypted';
 import type { DiskPartition, ImageInfo } from '../../../lib/ipc/image';
 
 /** Every scheme, in the order the dialog offers them. */
@@ -118,6 +118,48 @@ export function credentialModes(scheme: EncryptionScheme): CredentialMode[] {
     case 'filevault': return ['password', 'masterKey'];
     case 'veracrypt': return ['password'];
   }
+}
+
+/** VeraCrypt header choices, in the order the dialog offers them. */
+export const VERACRYPT_HEADERS: readonly VeracryptHeader[] = ['auto', 'normal', 'hidden', 'backup', 'system'];
+
+export function veracryptHeaderLabel(header: VeracryptHeader, tr: Translator = sourceText): string {
+  switch (header) {
+    case 'auto': return tr("自动");
+    case 'normal': return tr("标准卷");
+    case 'hidden': return tr("隐藏卷");
+    case 'backup': return tr("备份卷头");
+    case 'system': return tr("系统加密");
+  }
+}
+
+/** A VeraCrypt key derivation choice; `auto` tries every one. */
+export type VeracryptPrfChoice = VeracryptPrf | 'auto';
+
+export const VERACRYPT_PRFS: readonly VeracryptPrfChoice[] = ['auto', 'sha512', 'sha256', 'blake2s', 'whirlpool', 'streebog', 'argon2id', 'ripemd160'];
+
+export function veracryptPrfLabel(prf: VeracryptPrfChoice, tr: Translator = sourceText): string {
+  switch (prf) {
+    case 'auto': return tr("自动");
+    case 'sha512': return 'SHA-512';
+    case 'sha256': return 'SHA-256';
+    case 'blake2s': return 'BLAKE2s-256';
+    case 'whirlpool': return 'Whirlpool';
+    case 'streebog': return 'Streebog';
+    case 'argon2id': return 'Argon2id';
+    case 'ripemd160': return 'RIPEMD-160';
+  }
+}
+
+/** The largest PIM VeraCrypt accepts: pre-boot authentication allows less. */
+export function veracryptPimLimit(header: VeracryptHeader): number {
+  return header === 'system' ? 65_535 : 2_147_468;
+}
+
+/** Whether the key derivation can open the header: system encryption never
+ *  uses Argon2id. */
+export function veracryptPrfFits(header: VeracryptHeader, prf: VeracryptPrfChoice): boolean {
+  return !(header === 'system' && prf === 'argon2id');
 }
 
 export function credentialModeLabel(mode: CredentialMode, tr: Translator = sourceText): string {

@@ -635,15 +635,22 @@ README and SOURCES files. Independent decoded hashes are recorded separately in
 
 ## VeraCrypt / LUKS readers
 
-`veracrypt-core` 0.2.4 from <https://github.com/SecurityRonin/veracrypt-forensic>,
+`veracrypt-core` (derived from 0.2.4, rewritten locally as 0.3.0) from <https://github.com/SecurityRonin/veracrypt-forensic>,
 commit `e3883a5b347f50b51de70ca08655b2fd4b0885b2`, and `luks-core` 0.1.8 from
 <https://github.com/SecurityRonin/luks-forensic>, commit
 `284f06487d7a66f13ed27c61be5e26f0863c0e4f`, are by Albert Hui / Security Ronin.
 Both are Apache-2.0; licenses and integration notes are retained in
 `src-tauri/vendor/veracrypt` and `src-tauri/vendor/luks`. Only the core readers
 are integrated, not the separate forensic analyzers. The committed encrypted
-integration fixtures are generated independently using Python cryptography;
-their generator and public test credentials are included.
+integration fixtures and the VeraCrypt compatibility corpus are generated
+independently using Python cryptography, hashlib and twofish; their generators
+and public test credentials are included. The VeraCrypt self-test vectors in
+the reader's unit tests come from VeraCrypt's `src/Common/Tests.c`
+(Apache-2.0 portions by AM Crypto). The rewritten VeraCrypt reader adds the
+unmodified RustCrypto crates camellia 0.1.0, kuznyechik 0.8.2, blake2 0.10.6 and
+argon2 0.5.3, plus rayon 1.12 (all MIT OR Apache-2.0); versions are pinned in
+the Rust lockfiles. cryptsetup's public `tcrypt-images` corpus is an optional
+external oracle and is not redistributed.
 
 ## Volume Shadow Copy reader
 

@@ -15,6 +15,10 @@ use tokio_util::sync::CancellationToken;
 use crate::core::common::error::Failure;
 use crate::core::evidence::crypto::bitlocker;
 pub use crate::core::evidence::crypto::credential::{EncryptionScheme, UnlockCredential};
+use crate::core::evidence::crypto::veracrypt_volume;
+pub use crate::core::evidence::crypto::veracrypt_volume::{
+    VeracryptDetails, VeracryptHeader, VeracryptPrf,
+};
 use crate::core::evidence::image::{DerivedImage, DiskImage, ImageInfo};
 use crate::core::evidence::partitions::volume_probe::probe_volume;
 use crate::core::evidence::partitions::{
@@ -43,10 +47,18 @@ pub struct UnlockOptions {
     pub partition_id: Option<u8>,
     pub offset: Option<u64>,
     pub length: Option<u64>,
+    /// VeraCrypt: which headers to read.
     #[serde(default)]
-    pub hidden: bool,
+    pub header: VeracryptHeader,
+    /// VeraCrypt: the PIM, 0 for the default.
     #[serde(default)]
     pub pim: u32,
+    /// VeraCrypt: only this key derivation.
+    #[serde(default)]
+    pub prf: Option<VeracryptPrf>,
+    /// VeraCrypt: host paths of keyfiles or keyfile directories.
+    #[serde(default)]
+    pub keyfiles: Vec<String>,
     pub logical_volume_index: Option<usize>,
     pub encrypted_root_plist_path: Option<String>,
 }
@@ -71,6 +83,9 @@ pub struct UnlockResult {
     /// The BitLocker recovery password a VMK credential yielded.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recovery_password: Option<String>,
+    /// What the VeraCrypt or TrueCrypt header that opened says.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub veracrypt: Option<VeracryptDetails>,
 }
 
 pub(crate) struct EvidenceReader {
@@ -97,21 +112,7 @@ impl EvidenceReader {
                 offset.is_none() && length.is_none(),
                 "partitionId cannot be combined with offset/length"
             );
-            let partition = source
-                .partitions
-                .iter()
-                .find(|partition| partition.id == id)
-                .context(Failure::not_found("partition not found"))?;
-            (
-                partition
-                    .start_lba
-                    .checked_mul(source.sector_size as u64)
-                    .context(Failure::corrupt("partition offset overflow"))?,
-                partition
-                    .length_lba
-                    .checked_mul(source.sector_size as u64)
-                    .context(Failure::corrupt("partition size overflow"))?,
-            )
+            partition_range(source, id)?
         } else {
             let offset = offset.unwrap_or(0);
             (
@@ -134,10 +135,9 @@ impl EvidenceReader {
             cancellation,
         })
     }
-}
 
-impl Read for EvidenceReader {
-    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+    /// The source, unless the operation was cancelled or the evidence closed.
+    fn open_source(&self) -> std::io::Result<Arc<DiskImage>> {
         if self
             .cancellation
             .lock()
@@ -148,33 +148,79 @@ impl Read for EvidenceReader {
                 "encrypted volume operation cancelled",
             ));
         }
-        let source = self
-            .source
+        self.source
             .upgrade()
-            .ok_or_else(|| std::io::Error::other("encrypted evidence closed"))?;
+            .ok_or_else(|| std::io::Error::other("encrypted evidence closed"))
+    }
+
+    /// Fill `buffer` from region offset `offset`; short reads and
+    /// synthesized (bad-sector) bytes fail rather than become ciphertext.
+    fn fill(&self, source: &DiskImage, offset: u64, buffer: &mut [u8]) -> std::io::Result<()> {
+        let absolute = self.offset + offset;
+        let filled = source
+            .read_into(absolute, buffer)
+            .map_err(std::io::Error::other)?;
+        if filled != buffer.len() || source.has_bad_region_in_range(absolute, buffer.len() as u64) {
+            return Err(std::io::Error::other(
+                "encrypted evidence contains unreadable ciphertext",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// The byte range of partition `id` in `source`.
+pub(super) fn partition_range(source: &DiskImage, id: u8) -> anyhow::Result<(u64, u64)> {
+    let partition = source
+        .partitions
+        .iter()
+        .find(|partition| partition.id == id)
+        .context(Failure::not_found("partition not found"))?;
+    Ok((
+        partition
+            .start_lba
+            .checked_mul(source.sector_size as u64)
+            .context(Failure::corrupt("partition offset overflow"))?,
+        partition
+            .length_lba
+            .checked_mul(source.sector_size as u64)
+            .context(Failure::corrupt("partition size overflow"))?,
+    ))
+}
+
+impl Read for EvidenceReader {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        let source = self.open_source()?;
         let count = buffer
             .len()
             .min(self.length.saturating_sub(self.position) as usize);
         if count == 0 {
             return Ok(0);
         }
-        let offset = self.offset + self.position;
-        let bytes = source
-            .read_range(offset, count)
-            .map_err(std::io::Error::other)?;
-        if bytes.len() != count
-            || source.bad_regions().iter().any(|region| {
-                region.offset < offset + count as u64
-                    && region.offset.saturating_add(region.len) > offset
-            })
-        {
-            return Err(std::io::Error::other(
-                "encrypted evidence contains unreadable ciphertext",
-            ));
-        }
-        buffer[..count].copy_from_slice(&bytes);
+        self.fill(&source, self.position, &mut buffer[..count])?;
         self.position += count as u64;
         Ok(count)
+    }
+}
+
+/// VeraCrypt reads ciphertext at explicit offsets, from several threads.
+impl veracrypt::ReadAt for EvidenceReader {
+    fn size(&self) -> u64 {
+        self.length
+    }
+
+    fn read_exact_at(&self, offset: u64, buffer: &mut [u8]) -> std::io::Result<()> {
+        let source = self.open_source()?;
+        if offset
+            .checked_add(buffer.len() as u64)
+            .is_none_or(|end| end > self.length)
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "read past the encrypted region",
+            ));
+        }
+        self.fill(&source, offset, buffer)
     }
 }
 
@@ -201,18 +247,31 @@ impl Seek for EvidenceReader {
     }
 }
 
-enum PlaintextReader {
+/// A plaintext reader that moves a cursor, so reads take turns.
+pub(super) enum PlaintextReader {
     Bitlocker {
         volume: Box<crate::core::evidence::crypto::bde_image::BdeVolume>,
         _ciphertext: Arc<bitlocker::Ciphertext>,
     },
     Luks(Box<luks::DecryptedPayload<EvidenceReader>>),
-    Veracrypt(veracrypt::DecryptedVolume<EvidenceReader>),
-    Filevault(filevault::FileVaultVolume<EvidenceReader>),
+    Filevault(Box<filevault::FileVaultVolume<EvidenceReader>>),
+}
+
+pub(super) enum Plaintext {
+    Locked(Mutex<PlaintextReader>),
+    /// VeraCrypt reads at explicit offsets and decrypts on the caller's
+    /// thread, so concurrent reads do not wait for each other.
+    Veracrypt(Box<veracrypt::Volume<EvidenceReader>>),
+}
+
+impl Plaintext {
+    fn locked(reader: PlaintextReader) -> Self {
+        Self::Locked(Mutex::new(reader))
+    }
 }
 
 struct PlaintextSource {
-    reader: Mutex<PlaintextReader>,
+    plaintext: Plaintext,
     length: u64,
 }
 
@@ -224,21 +283,27 @@ impl SectorSource for PlaintextSource {
     fn read(&self, offset: u64, length: usize) -> anyhow::Result<Vec<u8>> {
         let length = (length as u64).min(self.length.saturating_sub(offset)) as usize;
         let mut bytes = vec![0; length];
-        let mut reader = self
-            .reader
+        let offset = offset.min(self.length);
+        let reader = match &self.plaintext {
+            Plaintext::Veracrypt(volume) => {
+                volume
+                    .read_at(offset, &mut bytes)
+                    .map_err(veracrypt_volume::map_error)?;
+                return Ok(bytes);
+            }
+            Plaintext::Locked(reader) => reader,
+        };
+        let mut reader = reader
             .lock()
             .map_err(|_| anyhow!("decrypted reader lock poisoned"))?;
         match &mut *reader {
             PlaintextReader::Bitlocker { volume, .. } => {
-                let count = volume.read_at(offset.min(self.length), &mut bytes)?;
+                let count = volume.read_at(offset, &mut bytes)?;
                 ensure!(count == length, "short BitLocker plaintext read");
             }
-            PlaintextReader::Luks(reader) => reader.read_at(offset.min(self.length), &mut bytes)?,
-            PlaintextReader::Veracrypt(reader) => {
-                reader.read_at(offset.min(self.length), &mut bytes)?
-            }
+            PlaintextReader::Luks(reader) => reader.read_at(offset, &mut bytes)?,
             PlaintextReader::Filevault(reader) => {
-                let count = reader.read_at(offset.min(self.length), &mut bytes)?;
+                let count = reader.read_at(offset, &mut bytes)?;
                 ensure!(count == length, "short FileVault plaintext read");
             }
         }
@@ -248,7 +313,7 @@ impl SectorSource for PlaintextSource {
 
 /// How an opened plaintext is laid out.
 #[derive(Clone, Copy)]
-enum PlaintextLayout {
+pub(super) enum PlaintextLayout {
     /// A disk: its partition table, or a filesystem filling it, is detected.
     Disk,
     /// Exactly one filesystem volume, whatever its contents look like.
@@ -263,14 +328,41 @@ struct LogicalVolume {
 }
 
 /// One scheme's opened volume, before it becomes an image.
-struct OpenedVolume {
-    reader: PlaintextReader,
+pub(super) struct OpenedVolume {
+    plaintext: Plaintext,
     length: u64,
     cipher: String,
     encryption_sector_size: usize,
-    layout: PlaintextLayout,
+    pub(super) layout: PlaintextLayout,
     logical_volume: Option<LogicalVolume>,
     recovery_password: Option<String>,
+    pub(super) hidden: bool,
+    pub(super) veracrypt: Option<VeracryptDetails>,
+    /// The source bytes the plaintext stands for, when they are not the
+    /// region the reader covers (a system partition read through its drive).
+    pub(super) source_range: Option<(u64, u64)>,
+}
+
+impl OpenedVolume {
+    pub(super) fn new(
+        plaintext: Plaintext,
+        length: u64,
+        cipher: String,
+        encryption_sector_size: usize,
+    ) -> Self {
+        Self {
+            plaintext,
+            length,
+            cipher,
+            encryption_sector_size,
+            layout: PlaintextLayout::Disk,
+            logical_volume: None,
+            recovery_password: None,
+            hidden: false,
+            veracrypt: None,
+            source_range: None,
+        }
+    }
 }
 
 pub fn unlock(
@@ -278,19 +370,44 @@ pub fn unlock(
     options: UnlockOptions,
     cancellation: CancellationToken,
 ) -> anyhow::Result<(DiskImage, UnlockResult)> {
+    unlock_with_progress(source, options, cancellation, &|_, _| {})
+}
+
+/// [`unlock`], reporting `(done, total)` key derivation jobs while a
+/// VeraCrypt header search runs.
+pub fn unlock_with_progress(
+    source: &Arc<DiskImage>,
+    options: UnlockOptions,
+    cancellation: CancellationToken,
+    progress: &(dyn Fn(u64, u64) + Sync),
+) -> anyhow::Result<(DiskImage, UnlockResult)> {
     ensure!(
         !cancellation.is_cancelled(),
         Failure::cancelled("encrypted volume operation cancelled")
     );
     check_options(&options)?;
     let read_cancellation = Arc::new(Mutex::new(cancellation.clone()));
-    let reader = EvidenceReader::new(
-        source,
-        options.partition_id,
-        options.offset,
-        options.length,
-        Arc::clone(&read_cancellation),
-    )?;
+    // A system encryption header sits in sector 62 of the drive, outside the
+    // partition it protects: read the whole drive.
+    let system =
+        options.scheme == EncryptionScheme::Veracrypt && options.header == VeracryptHeader::System;
+    let reader = if system {
+        EvidenceReader::new(
+            source,
+            None,
+            Some(0),
+            Some(source.len()),
+            Arc::clone(&read_cancellation),
+        )?
+    } else {
+        EvidenceReader::new(
+            source,
+            options.partition_id,
+            options.offset,
+            options.length,
+            Arc::clone(&read_cancellation),
+        )?
+    };
     let (offset, source_length) = reader.bounds();
     let opened = match options.scheme {
         EncryptionScheme::Bitlocker => {
@@ -301,39 +418,43 @@ pub fn unlock(
                 &options.credential,
                 Arc::clone(&read_cancellation),
             )?;
-            OpenedVolume {
-                length: unlocked.volume.size(),
-                reader: PlaintextReader::Bitlocker {
+            let length = unlocked.volume.size();
+            let mut opened = OpenedVolume::new(
+                Plaintext::locked(PlaintextReader::Bitlocker {
                     volume: Box::new(unlocked.volume),
                     _ciphertext: unlocked.ciphertext,
-                },
-                cipher: unlocked.cipher,
-                encryption_sector_size: unlocked.sector_size,
-                layout: PlaintextLayout::Volume,
-                logical_volume: None,
-                recovery_password: unlocked.recovery_password,
-            }
+                }),
+                length,
+                unlocked.cipher,
+                unlocked.sector_size,
+            );
+            opened.layout = PlaintextLayout::Volume;
+            opened.recovery_password = unlocked.recovery_password;
+            opened
         }
         EncryptionScheme::Luks => open_luks(reader, &options)?,
-        EncryptionScheme::Veracrypt => open_veracrypt(source, reader, &options)?,
+        EncryptionScheme::Veracrypt => {
+            veracrypt_volume::open(source, reader, &options, &cancellation, progress)?
+        }
         EncryptionScheme::Filevault => open_filevault(reader, &options, &cancellation)?,
     };
     if cancellation.is_cancelled() {
         bail!(Failure::cancelled("encrypted volume operation cancelled"));
     }
     let OpenedVolume {
-        reader,
+        plaintext,
         length,
         cipher,
         encryption_sector_size,
         layout,
         logical_volume,
         recovery_password,
+        hidden,
+        veracrypt,
+        source_range,
     } = opened;
-    let plaintext = Arc::new(PlaintextSource {
-        reader: Mutex::new(reader),
-        length,
-    });
+    let (offset, source_length) = source_range.unwrap_or((offset, source_length));
+    let plaintext = Arc::new(PlaintextSource { plaintext, length });
     let (partitions, table_scheme, disk_id) = match layout {
         PlaintextLayout::Disk => {
             let detected = detect_partitions_with_meta(plaintext.as_ref(), PLAINTEXT_SECTOR)?;
@@ -387,11 +508,12 @@ pub fn unlock(
         encryption_sector_size,
         source_offset: offset,
         source_length,
-        hidden: options.hidden,
+        hidden,
         volume_key: None,
         logical_volume_identifier,
         logical_volume_index,
         recovery_password,
+        veracrypt,
     };
     Ok((image, result))
 }
@@ -408,8 +530,10 @@ fn check_options(options: &UnlockOptions) -> anyhow::Result<()> {
         ))
     );
     if let UnlockCredential::Password { password } = &options.credential {
+        // A VeraCrypt volume may open with keyfiles alone.
         ensure!(
-            !password.is_empty(),
+            !password.is_empty()
+                || (scheme == EncryptionScheme::Veracrypt && !options.keyfiles.is_empty()),
             Failure::invalid_input("the password is empty")
         );
         ensure!(
@@ -418,12 +542,42 @@ fn check_options(options: &UnlockOptions) -> anyhow::Result<()> {
         );
     }
     ensure!(
-        scheme == EncryptionScheme::Veracrypt || (!options.hidden && options.pim == 0),
-        Failure::invalid_input("hidden volumes and PIM apply only to VeraCrypt")
+        scheme == EncryptionScheme::Veracrypt
+            || (options.header == VeracryptHeader::Auto
+                && options.pim == 0
+                && options.prf.is_none()
+                && options.keyfiles.is_empty()),
+        Failure::invalid_input(
+            "headers, PIM, key derivations and keyfiles apply only to VeraCrypt"
+        )
+    );
+    if options.header == VeracryptHeader::System {
+        ensure!(
+            options.offset.is_none() && options.length.is_none(),
+            Failure::invalid_input("a system encryption header is read from the whole drive; choose a partition or the whole image")
+        );
+        ensure!(
+            options.partition_id.is_some() || options.target == UnlockTarget::NewImage,
+            Failure::invalid_input("a system-encrypted drive opens as new evidence")
+        );
+        ensure!(
+            options.pim <= veracrypt::MAX_BOOT_PIM,
+            Failure::invalid_input(format!(
+                "system encryption PIM is at most {}",
+                veracrypt::MAX_BOOT_PIM
+            ))
+        );
+    }
+    ensure!(
+        options.pim <= veracrypt::MAX_PIM,
+        Failure::invalid_input(format!("PIM is at most {}", veracrypt::MAX_PIM))
     );
     ensure!(
-        options.pim <= 1000,
-        Failure::resource_limit("PIM above 1000 exceeds the supported derivation budget")
+        options.keyfiles.len() <= veracrypt_volume::MAX_KEYFILES,
+        Failure::resource_limit(format!(
+            "more than {} VeraCrypt keyfiles",
+            veracrypt_volume::MAX_KEYFILES
+        ))
     );
     ensure!(
         scheme == EncryptionScheme::Filevault
@@ -438,7 +592,10 @@ fn check_options(options: &UnlockOptions) -> anyhow::Result<()> {
 
 /// The error for a credential the scheme's opener cannot use; `check_options`
 /// rejects these first.
-fn wrong_credential(credential: &UnlockCredential, scheme: EncryptionScheme) -> anyhow::Error {
+pub(super) fn wrong_credential(
+    credential: &UnlockCredential,
+    scheme: EncryptionScheme,
+) -> anyhow::Error {
     anyhow!(Failure::invalid_input(format!(
         "a {} does not open {} volumes",
         credential.label(),
@@ -486,61 +643,12 @@ fn open_luks(mut reader: EvidenceReader, options: &UnlockOptions) -> anyhow::Res
         info.version, info.cipher_name, info.cipher_mode
     );
     let sector = info.sector_size;
-    Ok(OpenedVolume {
-        reader: PlaintextReader::Luks(Box::new(volume)),
-        length: size,
+    Ok(OpenedVolume::new(
+        Plaintext::locked(PlaintextReader::Luks(Box::new(volume))),
+        size,
         cipher,
-        encryption_sector_size: sector,
-        layout: PlaintextLayout::Disk,
-        logical_volume: None,
-        recovery_password: None,
-    })
-}
-
-/// VeraCrypt volumes carry no signature; a region that is not a whole number
-/// of the evidence's sectors cannot be one.
-fn open_veracrypt(
-    source: &DiskImage,
-    reader: EvidenceReader,
-    options: &UnlockOptions,
-) -> anyhow::Result<OpenedVolume> {
-    let (_, length) = reader.bounds();
-    let sector = source.sector_size as u64;
-    ensure!(
-        sector > 0 && length.is_multiple_of(sector),
-        Failure::invalid_input(format!(
-            "a VeraCrypt volume is a whole number of {sector}-byte sectors; the region is {length} bytes"
-        ))
-    );
-    let password = match &options.credential {
-        UnlockCredential::Password { password } => password,
-        credential @ (UnlockCredential::RecoveryPassword { .. }
-        | UnlockCredential::StartupKey { .. }
-        | UnlockCredential::MasterKey { .. }
-        | UnlockCredential::Vmk { .. }
-        | UnlockCredential::ClearKey) => {
-            return Err(wrong_credential(credential, EncryptionScheme::Veracrypt))
-        }
-    };
-    let volume = if options.hidden {
-        veracrypt::VeraVolume::unlock_hidden_with_pim(reader, password.as_bytes(), options.pim)?
-    } else {
-        veracrypt::VeraVolume::unlock_with_pim(reader, password.as_bytes(), options.pim)?
-    };
-    let cipher = format!(
-        "{} / {}",
-        volume.info().cipher_display(),
-        volume.info().prf.name()
-    );
-    Ok(OpenedVolume {
-        length: volume.data_size(),
-        reader: PlaintextReader::Veracrypt(volume),
-        cipher,
-        encryption_sector_size: 512,
-        layout: PlaintextLayout::Disk,
-        logical_volume: None,
-        recovery_password: None,
-    })
+        sector,
+    ))
 }
 
 fn open_filevault(
@@ -590,15 +698,15 @@ fn open_filevault(
         identifier: volume.info().lv_identifier.clone(),
         name: volume.info().lv_name.clone(),
     };
-    Ok(OpenedVolume {
-        length: volume.size(),
-        reader: PlaintextReader::Filevault(volume),
-        cipher: "FileVault 2 AES-XTS-128".to_string(),
-        encryption_sector_size: 512,
-        layout: PlaintextLayout::Disk,
-        logical_volume: Some(logical_volume),
-        recovery_password: None,
-    })
+    let length = volume.size();
+    let mut opened = OpenedVolume::new(
+        Plaintext::locked(PlaintextReader::Filevault(Box::new(volume))),
+        length,
+        "FileVault 2 AES-XTS-128".to_string(),
+        512,
+    );
+    opened.logical_volume = Some(logical_volume);
+    Ok(opened)
 }
 
 /// The one partition of a plaintext that is a single volume: all of it, typed

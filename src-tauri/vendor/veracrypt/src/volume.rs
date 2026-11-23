@@ -1,519 +1,338 @@
-//! Public API: brute the VeraCrypt header PRF+cipher from a password, recover the
-//! master key, and decrypt the data area.
+//! Opening a volume and reading its plaintext.
 
-use std::io::{Read, Seek, SeekFrom};
+use rayon::prelude::*;
+use zeroize::Zeroizing;
 
-use crate::crypto::{cipher_chains, xts_decrypt_chain, Cipher, Prf, MAX_CHAIN_KEY_LEN};
+use crate::cipher::CipherChain;
 use crate::error::{Result, VeraError};
-use crate::header::{
-    Flavor, VeraHeader, HEADER_LEN, HIDDEN_HEADER_OFFSET, NORMAL_HEADER_OFFSET, SALT_LEN,
-    VOLUME_HEADER_LEN,
-};
+use crate::header::{Flavor, Header, FLAG_IN_PLACE, FLAG_SYSTEM, HEADER_SECTOR_LEN};
+use crate::kdf::{self, Kdf, Prf};
+use crate::layout::{self, Geometry, HeaderKind, HeaderSelection, SystemRange};
+use crate::search::{self, Candidate, Control};
+use crate::source::ReadAt;
+use crate::xts::{Xts, DATA_UNIT};
 
-/// VeraCrypt data-area encryption sector size (bytes).
-const DATA_SECTOR: usize = 512;
+/// Argon2id passes an automatic search still tries: PIM 31, 13 passes over
+/// 1 GiB. Higher PIMs only run when Argon2id is asked for by name.
+pub const AUTO_ARGON2_MAX_PASSES: u32 = 13;
 
-/// Namespace for opening a VeraCrypt volume.
-pub struct VeraVolume;
+/// Spans at least this long decrypt on several threads.
+const PARALLEL_SPAN: usize = 256 * 1024;
+/// Bytes each parallel decryption task takes.
+const PARALLEL_CHUNK: usize = 64 * 1024;
 
-/// The recovered facts about an unlocked volume.
-#[derive(Debug, Clone)]
+/// The first eight bytes of an NTFS boot sector.
+const NTFS_BOOT_SIGNATURE: [u8; 8] = [0xEB, 0x52, 0x90, b'N', b'T', b'F', b'S', b' '];
+
+/// What to unlock with.
+pub struct UnlockRequest<'a> {
+    /// The password, already mixed with keyfiles (see
+    /// [`crate::keyfile::KeyfilePool`]); at most 128 bytes, or exactly the
+    /// keyfile pool.
+    pub password: &'a [u8],
+    /// Personal Iterations Multiplier; 0 for VeraCrypt's default.
+    pub pim: u32,
+    /// Only this key derivation; every one when `None`.
+    pub prf: Option<Prf>,
+    /// Which headers to read.
+    pub headers: HeaderSelection,
+}
+
+/// The facts of an unlocked volume.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VolumeInfo {
     /// VeraCrypt or TrueCrypt.
     pub flavor: Flavor,
-    /// The PRF that decrypted the header.
-    pub prf: Prf,
-    /// The cipher chain in cryptsetup array order (one entry for a single cipher,
-    /// more for a cascade). Ciphers are *applied* in reverse of this order.
-    pub ciphers: Vec<Cipher>,
+    /// The header that opened.
+    pub header: HeaderKind,
+    /// The derivation that opened it.
+    pub kdf: Kdf,
+    /// The encryption algorithm.
+    pub chain: CipherChain,
     /// Header format version.
-    pub version: u16,
-    /// Byte offset where the encrypted data area begins.
+    pub header_version: u16,
+    /// The oldest program version that opens the volume.
+    pub required_program_version: u16,
+    /// The volume's sector size.
+    pub sector_size: u32,
+    /// Header flags.
+    pub flags: u32,
+    /// TrueCrypt's volume creation time (Windows FILETIME); zero in VeraCrypt.
+    pub volume_created: u64,
+    /// TrueCrypt's header creation time (Windows FILETIME); zero in VeraCrypt.
+    pub header_created: u64,
+    /// Volume size from the header.
+    pub volume_size: u64,
+    /// Hidden volume size from the header (non-zero in hidden volumes).
+    pub hidden_volume_size: u64,
+    /// Encrypted area, from the start of the source.
     pub encrypted_area_start: u64,
-    /// Size of the encrypted data area in bytes.
-    pub encrypted_area_size: u64,
+    /// Encrypted area length.
+    pub encrypted_area_length: u64,
+    /// Where the plaintext view starts in the source.
+    pub view_start: u64,
+    /// Plaintext bytes.
+    pub size: u64,
+    /// Whether the whole volume is encrypted; a system volume whose
+    /// encryption was paused reads its unencrypted tail as stored.
+    pub encryption_complete: bool,
+    /// The primary and secondary master keys are equal (VeraCrypt warns
+    /// about such volumes).
+    pub weak_master_key: bool,
+    /// The first sector holds a plaintext NTFS boot sector, which VeraCrypt
+    /// passes through on system partitions (Windows repair rewrites it).
+    pub plaintext_boot_sector: bool,
 }
 
 impl VolumeInfo {
-    /// The cipher chain as a VeraCrypt display string (`aes`, `aes-twofish`, …),
-    /// i.e. the ciphers in *application* (decrypt) order — the reverse of the
-    /// cryptsetup array order stored in `ciphers`.
+    /// Whether the header is a system encryption header.
     #[must_use]
-    pub fn cipher_display(&self) -> String {
-        self.ciphers
-            .iter()
-            .rev()
-            .map(|c| c.name())
-            .collect::<Vec<_>>()
-            .join("-")
+    pub fn system(&self) -> bool {
+        self.header == HeaderKind::System || self.flags & FLAG_SYSTEM != 0
+    }
+
+    /// Whether non-system in-place encryption made the volume.
+    #[must_use]
+    pub fn in_place(&self) -> bool {
+        self.flags & FLAG_IN_PLACE != 0
     }
 }
 
-impl VeraVolume {
-    /// Unlock a VeraCrypt/TrueCrypt volume with `password` (no PIM).
-    ///
-    /// # Errors
-    /// [`VeraError::TooSmall`] if the container is under 512 bytes, or
-    /// [`VeraError::AuthenticationFailed`] if no PRF/cipher yields a valid header.
-    pub fn unlock_with_password<R: Read + Seek>(
-        reader: R,
-        password: &[u8],
-    ) -> Result<DecryptedVolume<R>> {
-        Self::unlock_at(reader, password, 0, NORMAL_HEADER_OFFSET)
-    }
-
-    /// Unlock with an explicit PIM (personal iterations multiplier; 0 = default).
-    ///
-    /// # Errors
-    /// As [`Self::unlock_with_password`].
-    pub fn unlock_with_pim<R: Read + Seek>(
-        reader: R,
-        password: &[u8],
-        pim: u32,
-    ) -> Result<DecryptedVolume<R>> {
-        Self::unlock_at(reader, password, pim, NORMAL_HEADER_OFFSET)
-    }
-
-    /// Unlock the HIDDEN volume with `password` (its header is at 64 KiB). Used to
-    /// access — or prove the presence of — a deniable hidden volume.
-    ///
-    /// # Errors
-    /// As [`Self::unlock_with_password`].
-    pub fn unlock_hidden_with_password<R: Read + Seek>(
-        reader: R,
-        password: &[u8],
-    ) -> Result<DecryptedVolume<R>> {
-        Self::unlock_at(reader, password, 0, HIDDEN_HEADER_OFFSET)
-    }
-
-    /// Unlock the hidden volume with an explicit PIM.
-    ///
-    /// # Errors
-    /// As [`Self::unlock_with_password`].
-    pub fn unlock_hidden_with_pim<R: Read + Seek>(
-        reader: R,
-        password: &[u8],
-        pim: u32,
-    ) -> Result<DecryptedVolume<R>> {
-        Self::unlock_at(reader, password, pim, HIDDEN_HEADER_OFFSET)
-    }
-
-    /// Shared unlock: read the 512-byte volume header at `header_offset`, brute the
-    /// PRF x cipher, and build the decrypting reader.
-    fn unlock_at<R: Read + Seek>(
-        mut reader: R,
-        password: &[u8],
-        pim: u32,
-        header_offset: u64,
-    ) -> Result<DecryptedVolume<R>> {
-        let total_size = reader.seek(SeekFrom::End(0))?;
-        if total_size < header_offset + VOLUME_HEADER_LEN as u64 {
-            return Err(VeraError::TooSmall {
-                got: total_size as usize,
-            });
-        }
-
-        let mut hdr = [0u8; VOLUME_HEADER_LEN];
-        reader.seek(SeekFrom::Start(header_offset))?;
-        read_fill(&mut reader, &mut hdr)?;
-        let salt = &hdr[0..SALT_LEN];
-        let header_ct = &hdr[SALT_LEN..VOLUME_HEADER_LEN];
-
-        // PBKDF2 is a prefix function, so derive the max cascade key length once
-        // per PRF and slice per chain rather than re-deriving.
-        for prf in Prf::all() {
-            reader.stream_position()?;
-            let hk = prf.derive(password, salt, prf.iterations_pim(pim), MAX_CHAIN_KEY_LEN);
-            reader.stream_position()?;
-            for chain in cipher_chains() {
-                let klen = 64 * chain.len();
-                let mut dec = header_ct.to_vec();
-                xts_decrypt_chain(&chain, &hk[..klen], &mut dec, HEADER_LEN, 0)?;
-                let Some(h) = VeraHeader::validate(&dec) else {
-                    continue;
-                };
-                if h.flags != 0
-                    || h.volume_size != h.encrypted_area_size
-                    || h.sector_size != 512
-                    || h.encrypted_area_size == 0
-                    || h.encrypted_area_start % 512 != 0
-                    || h.encrypted_area_size % 512 != 0
-                    || h.encrypted_area_start
-                        .checked_add(h.encrypted_area_size)
-                        .map_or(true, |end| end > total_size)
-                {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "invalid VeraCrypt data geometry",
-                    )
-                    .into());
-                }
-                let master_key = h.master_keys[..klen].to_vec();
-                return Ok(DecryptedVolume {
-                    reader,
-                    ciphers: chain.clone(),
-                    master_key,
-                    data_offset: h.encrypted_area_start,
-                    base_unit: u128::from(h.encrypted_area_start / DATA_SECTOR as u64),
-                    total_size,
-                    position: 0,
-                    info: VolumeInfo {
-                        flavor: h.flavor,
-                        prf,
-                        ciphers: chain,
-                        version: h.version,
-                        encrypted_area_start: h.encrypted_area_start,
-                        encrypted_area_size: h.encrypted_area_size,
-                    },
-                });
-            }
-        }
-        Err(VeraError::AuthenticationFailed)
-    }
-}
-
-/// A plaintext view of an unlocked VeraCrypt data area.
-pub struct DecryptedVolume<R> {
-    reader: R,
-    ciphers: Vec<Cipher>,
-    master_key: Vec<u8>,
-    data_offset: u64,
-    base_unit: u128,
-    total_size: u64,
-    position: u64,
+/// An unlocked volume over its source. Reads take `&self` and may run from
+/// several threads at once.
+pub struct Volume<S> {
+    source: S,
+    xts: Xts,
+    geometry: Geometry,
+    plaintext_sector: Option<(u64, u64)>,
+    master_key: Zeroizing<Vec<u8>>,
     info: VolumeInfo,
 }
 
-impl<R: Read + Seek> DecryptedVolume<R> {
-    /// The recovered volume facts (flavor, PRF, cipher, offsets).
+/// Unlock the volume `source` holds.
+///
+/// # Errors
+/// [`VeraError::AuthenticationFailed`] when no header opens,
+/// [`VeraError::Cancelled`], [`VeraError::TooSmall`] when no requested
+/// header fits the source, and the header or geometry errors of the header
+/// that opened.
+pub fn unlock<S: ReadAt>(
+    source: S,
+    request: &UnlockRequest,
+    control: &Control,
+) -> Result<Volume<S>> {
+    if request.password.len() > crate::keyfile::MAX_PASSWORD_LEN {
+        return Err(VeraError::InvalidRequest(format!(
+            "VeraCrypt passwords are at most {} bytes",
+            crate::keyfile::MAX_PASSWORD_LEN
+        )));
+    }
+    if request.password.is_empty() {
+        return Err(VeraError::InvalidRequest("no password or keyfile".into()));
+    }
+    let size = source.size();
+    let mut candidates = Vec::new();
+    let mut any_header_fits = false;
+    for &kind in request.headers.kinds() {
+        let Some(offset) = kind.offset(size).filter(|offset| {
+            offset
+                .checked_add(HEADER_SECTOR_LEN as u64)
+                .is_some_and(|end| end <= size)
+        }) else {
+            continue;
+        };
+        any_header_fits = true;
+        let mut kdfs = kdf::candidates(
+            kind.kdf_target(),
+            request.pim,
+            request.prf,
+            AUTO_ARGON2_MAX_PASSES,
+        )?;
+        if kind.truecrypt_only() {
+            kdfs.retain(|kdf| kdf.family == kdf::Family::TrueCrypt);
+        }
+        if kdfs.is_empty() {
+            continue;
+        }
+        let mut sector = [0u8; HEADER_SECTOR_LEN];
+        source.read_exact_at(offset, &mut sector)?;
+        candidates.push(Candidate { kind, sector, kdfs });
+    }
+    if !any_header_fits {
+        let what = match request.headers {
+            HeaderSelection::System(_) => "system encryption",
+            HeaderSelection::Backup => "backup",
+            HeaderSelection::Auto | HeaderSelection::Normal | HeaderSelection::Hidden => "volume",
+        };
+        return Err(VeraError::TooSmall { what, len: size });
+    }
+    let found = search::search(&candidates, request.password, control)?;
+    let system = match request.headers {
+        HeaderSelection::System(range) => Some(range),
+        HeaderSelection::Auto
+        | HeaderSelection::Normal
+        | HeaderSelection::Hidden
+        | HeaderSelection::Backup => None,
+    };
+    Volume::open(
+        source,
+        found.kind,
+        found.kdf,
+        found.chain,
+        &found.header,
+        system,
+    )
+}
+
+impl<S: ReadAt> Volume<S> {
+    fn open(
+        source: S,
+        kind: HeaderKind,
+        kdf: Kdf,
+        chain: CipherChain,
+        header: &Header,
+        system: Option<SystemRange>,
+    ) -> Result<Self> {
+        let geometry = layout::geometry(kind, header, source.size(), system)?;
+        let key_len = chain.key_len();
+        let master_key = Zeroizing::new(header.master_keys[..key_len].to_vec());
+        let xts = Xts::new(chain, &master_key)?;
+        let half = key_len / 2;
+        let weak_master_key = master_key[..half] == master_key[half..];
+        let mut plaintext_sector = None;
+        if let Some(candidate) = geometry.boot_sector_candidate {
+            let mut first = [0u8; 8];
+            source.read_exact_at(candidate, &mut first)?;
+            if first == NTFS_BOOT_SIGNATURE {
+                plaintext_sector = Some((candidate, candidate + u64::from(header.sector_size)));
+            }
+        }
+        let info = VolumeInfo {
+            flavor: header.flavor,
+            header: kind,
+            kdf,
+            chain,
+            header_version: header.version,
+            required_program_version: header.required_program_version,
+            sector_size: header.sector_size,
+            flags: header.flags,
+            volume_created: header.volume_created,
+            header_created: header.header_created,
+            volume_size: header.volume_size,
+            hidden_volume_size: header.hidden_volume_size,
+            encrypted_area_start: header.encrypted_area_start,
+            encrypted_area_length: header.encrypted_area_length,
+            view_start: geometry.view_start,
+            size: geometry.view_len,
+            encryption_complete: geometry.complete,
+            weak_master_key,
+            plaintext_boot_sector: plaintext_sector.is_some(),
+        };
+        Ok(Self {
+            source,
+            xts,
+            geometry,
+            plaintext_sector,
+            master_key,
+            info,
+        })
+    }
+
+    /// The facts of the volume.
     #[must_use]
     pub fn info(&self) -> &VolumeInfo {
         &self.info
     }
 
-    /// The recovered master key (sensitive).
+    /// Plaintext bytes.
+    #[must_use]
+    pub fn size(&self) -> u64 {
+        self.geometry.view_len
+    }
+
+    /// The master key material of the cipher chain (sensitive).
     #[must_use]
     pub fn master_key(&self) -> &[u8] {
         &self.master_key
     }
 
-    /// Size of the decrypted data area in bytes.
+    /// The source the volume reads.
     #[must_use]
-    pub fn data_size(&self) -> u64 {
-        if self.info.encrypted_area_size != 0 {
-            self.info.encrypted_area_size
-        } else {
-            self.total_size.saturating_sub(self.data_offset)
-        }
+    pub fn source(&self) -> &S {
+        &self.source
     }
 
-    /// Read decrypted data at data-area-relative `offset` into `buf`, filling it
-    /// completely; reads beyond the declared data area fail.
+    /// Fill `buf` with plaintext from `offset`.
     ///
     /// # Errors
-    /// Propagates I/O and cipher errors.
-    pub fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<()> {
-        if offset
+    /// [`VeraError::InvalidRequest`] for a range past the end, and source
+    /// read errors (a short read is never padded).
+    pub fn read_at(&self, offset: u64, buf: &mut [u8]) -> Result<()> {
+        let end = offset
             .checked_add(buf.len() as u64)
-            .map_or(true, |end| end > self.data_size())
-        {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                "read exceeds decrypted data area",
-            )
-            .into());
+            .filter(|end| *end <= self.size())
+            .ok_or_else(|| {
+                VeraError::InvalidRequest(format!(
+                    "read of {} bytes at {offset} leaves the {}-byte volume",
+                    buf.len(),
+                    self.size()
+                ))
+            })?;
+        if buf.is_empty() {
+            return Ok(());
         }
-        let mut done = 0usize;
-        while done < buf.len() {
-            let pos = offset + done as u64;
-            let unit = pos / DATA_SECTOR as u64;
-            let within = (pos % DATA_SECTOR as u64) as usize;
-            let physical = self.data_offset + unit * DATA_SECTOR as u64;
-
-            let mut ct = [0u8; DATA_SECTOR];
-            self.reader.seek(SeekFrom::Start(physical))?;
-            self.reader.read_exact(&mut ct)?;
-            xts_decrypt_chain(
-                &self.ciphers,
-                &self.master_key,
-                &mut ct,
-                DATA_SECTOR,
-                self.base_unit + u128::from(unit),
-            )?; // cov:unreachable: chain+key came from a successful unlock
-
-            let take = (DATA_SECTOR - within).min(buf.len() - done);
-            buf[done..done + take].copy_from_slice(&ct[within..within + take]);
-            done += take;
+        let unit = DATA_UNIT as u64;
+        let absolute = self.geometry.view_start + offset;
+        let absolute_end = self.geometry.view_start + end;
+        let first = absolute / unit * unit;
+        let last = absolute_end.div_ceil(unit) * unit;
+        if first == absolute && last == absolute_end {
+            self.source.read_exact_at(first, buf)?;
+            self.decrypt_span(buf, first);
+            return Ok(());
         }
+        let span = usize::try_from(last - first)
+            .map_err(|_| VeraError::InvalidRequest("read too large".into()))?;
+        let mut scratch = Zeroizing::new(vec![0u8; span]);
+        self.source.read_exact_at(first, &mut scratch)?;
+        self.decrypt_span(&mut scratch, first);
+        let skip = (absolute - first) as usize;
+        buf.copy_from_slice(&scratch[skip..skip + buf.len()]);
         Ok(())
     }
-}
 
-impl<R: Read + Seek> Read for DecryptedVolume<R> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let size = self.data_size();
-        if self.position >= size {
-            return Ok(0);
-        }
-        let n = (buf.len() as u64).min(size - self.position) as usize;
-        self.read_at(self.position, &mut buf[..n])
-            .map_err(|e| std::io::Error::other(e.to_string()))?;
-        self.position += n as u64;
-        Ok(n)
-    }
-}
-
-impl<R: Read + Seek> Seek for DecryptedVolume<R> {
-    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
-        let size = self.data_size();
-        let new = match pos {
-            SeekFrom::Start(o) => i128::from(o),
-            SeekFrom::End(o) => i128::from(size) + i128::from(o),
-            SeekFrom::Current(o) => i128::from(self.position) + i128::from(o),
-        };
-        if new < 0 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "seek before start",
-            ));
-        }
-        self.position = new as u64;
-        Ok(self.position)
-    }
-}
-
-fn read_fill<R: Read>(reader: &mut R, buf: &mut [u8]) -> Result<()> {
-    reader.read_exact(buf)?;
-    Ok(())
-}
-
-#[cfg(test)]
-fn read_available<R: Read>(reader: &mut R, buf: &mut [u8]) -> Result<usize> {
-    let mut filled = 0;
-    while filled < buf.len() {
-        match reader.read(&mut buf[filled..]) {
-            Ok(0) => break,
-            Ok(n) => filled += n,
-            Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => {}
-            Err(e) => return Err(e.into()),
-        }
-    }
-    for b in &mut buf[filled..] {
-        *b = 0;
-    }
-    Ok(filled)
-}
-
-#[cfg(test)]
-mod tests {
-    use std::io::{Cursor, Read as _, Seek as _, SeekFrom};
-
-    use aes::cipher::KeyInit;
-    use aes::Aes256;
-    use xts_mode::Xts128;
-
-    use super::*;
-    use crate::crypto::Prf;
-
-    const PASSWORD: &[u8] = b"correct horse";
-    const DATA_START: u64 = 512; // encrypted area begins right after the 512-byte header
-    const DATA_SECTORS: usize = 3;
-
-    /// AES-256-XTS encrypt (the inverse of `crypto::decrypt_units`) for fixtures.
-    fn xts_encrypt_aes(key64: &[u8; 64], buf: &mut [u8], unit_size: usize, base: u128) {
-        let (k1, k2) = key64.split_at(32);
-        let xts = Xts128::new(Aes256::new(k1.into()), Aes256::new(k2.into()));
-        for (u, chunk) in buf.chunks_mut(unit_size).enumerate() {
-            xts.encrypt_sector(chunk, (base + u as u128).to_le_bytes());
-        }
-    }
-
-    /// Assemble a synthetic AES-256-XTS VeraCrypt container in memory and return
-    /// `(container_bytes, plaintext_data_area)`. The header is a real VeraCrypt
-    /// header (VERA magic + both CRC-32s) XTS-encrypted under the SHA-512 header
-    /// key at PIM 1, so the crate's own brute recovers it. Correctness of the
-    /// crypto itself is proven by the Tier-1 oracle; this only drives the paths.
-    fn build_volume() -> (Vec<u8>, Vec<u8>) {
-        build_volume_with(true)
-    }
-
-    fn build_volume_with(declare_size: bool) -> (Vec<u8>, Vec<u8>) {
-        let salt = [0x11u8; SALT_LEN];
-        let master_key = [0x24u8; 64];
-
-        // Decrypted 448-byte header.
-        let mut dec = [0u8; HEADER_LEN];
-        dec[0..4].copy_from_slice(b"VERA");
-        dec[4..6].copy_from_slice(&5u16.to_be_bytes());
-        let data_size = (DATA_SECTORS * DATA_SECTOR) as u64;
-        dec[36..44].copy_from_slice(&data_size.to_be_bytes()); // volume size
-        dec[44..52].copy_from_slice(&DATA_START.to_be_bytes()); // encrypted-area start
-                                                                // 0 = "size not declared" ⇒ reader falls back to total_size - data_offset.
-        let declared = if declare_size { data_size } else { 0 };
-        dec[52..60].copy_from_slice(&declared.to_be_bytes()); // encrypted-area size
-        dec[64..68].copy_from_slice(&512u32.to_be_bytes());
-        dec[192..256].copy_from_slice(&master_key); // master-key material
-        let crc_mk = crc32fast::hash(&dec[192..448]);
-        dec[8..12].copy_from_slice(&crc_mk.to_be_bytes());
-        let crc_hdr = crc32fast::hash(&dec[0..188]);
-        dec[188..192].copy_from_slice(&crc_hdr.to_be_bytes());
-
-        // Encrypt the header with the SHA-512 header key (PIM 1 = 16000 iterations).
-        let header_key = Prf::Sha512.derive(PASSWORD, &salt, Prf::Sha512.iterations_pim(1), 64);
-        let mut header_ct = dec.to_vec();
-        let hk: [u8; 64] = header_key.try_into().unwrap();
-        xts_encrypt_aes(&hk, &mut header_ct, HEADER_LEN, 0);
-
-        // Plaintext data area, then encrypt each sector at tweak base_unit + lba.
-        let mut plain = vec![0u8; DATA_SECTORS * DATA_SECTOR];
-        for (i, b) in plain.iter_mut().enumerate() {
-            *b = (i as u8).wrapping_mul(7) ^ 0xa5;
-        }
-        let base_unit = u128::from(DATA_START / DATA_SECTOR as u64);
-        let mut data_ct = plain.clone();
-        xts_encrypt_aes(&master_key, &mut data_ct, DATA_SECTOR, base_unit);
-
-        let mut container = Vec::new();
-        container.extend_from_slice(&salt);
-        container.extend_from_slice(&header_ct);
-        container.extend_from_slice(&data_ct);
-        (container, plain)
-    }
-
-    #[test]
-    fn hermetic_unlock_and_read_roundtrip() {
-        let (container, plain) = build_volume();
-        let mut vol = VeraVolume::unlock_with_pim(Cursor::new(container), PASSWORD, 1)
-            .expect("unlock synthetic volume");
-
-        assert_eq!(vol.info().prf.name(), "sha512");
-        assert_eq!(vol.info().cipher_display(), "aes");
-        assert_eq!(vol.info().flavor, Flavor::VeraCrypt);
-        assert_eq!(vol.info().version, 5);
-        assert_eq!(vol.info().encrypted_area_start, DATA_START);
-        assert_eq!(vol.master_key().len(), 64);
-        assert_eq!(vol.data_size(), plain.len() as u64);
-
-        // Sector-by-sector read_at.
-        for lba in 0..DATA_SECTORS as u64 {
-            let mut buf = [0u8; DATA_SECTOR];
-            vol.read_at(lba * DATA_SECTOR as u64, &mut buf).unwrap();
-            let want = &plain[(lba as usize) * DATA_SECTOR..(lba as usize + 1) * DATA_SECTOR];
-            assert_eq!(&buf[..], want, "sector {lba}");
-        }
-
-        // Unaligned read spanning a sector boundary.
-        let mut span = [0u8; 10];
-        vol.read_at(510, &mut span).unwrap();
-        assert_eq!(&span[..], &plain[510..520]);
-    }
-
-    #[test]
-    fn hermetic_read_and_seek_traits() {
-        let (container, plain) = build_volume();
-        let mut vol =
-            VeraVolume::unlock_with_pim(Cursor::new(container), PASSWORD, 1).expect("unlock");
-
-        // Read the whole data area via the Read impl.
-        let mut all = Vec::new();
-        vol.read_to_end(&mut all).unwrap();
-        assert_eq!(all, plain);
-        // At EOF the Read impl yields 0.
-        assert_eq!(vol.read(&mut [0u8; 16]).unwrap(), 0);
-
-        // Seek from End then Current, and reject a negative seek.
-        let pos = vol.seek(SeekFrom::End(-512)).unwrap();
-        assert_eq!(pos, (plain.len() - 512) as u64);
-        assert_eq!(vol.seek(SeekFrom::Current(0)).unwrap(), pos);
-        assert_eq!(vol.seek(SeekFrom::Start(0)).unwrap(), 0);
-        assert!(vol.seek(SeekFrom::Current(-1)).is_err());
-    }
-
-    #[test]
-    fn hidden_offset_too_small_errors() {
-        // A container large enough for a normal header but not the hidden one.
-        let small = vec![0u8; VOLUME_HEADER_LEN];
-        assert!(matches!(
-            VeraVolume::unlock_hidden_with_password(Cursor::new(small), PASSWORD),
-            Err(VeraError::TooSmall { .. })
-        ));
-    }
-
-    #[test]
-    fn hidden_pim_offset_too_small_errors() {
-        // Big enough for a normal header but not the hidden one at 64 KiB.
-        let small = vec![0u8; VOLUME_HEADER_LEN];
-        assert!(matches!(
-            VeraVolume::unlock_hidden_with_pim(Cursor::new(small), PASSWORD, 1),
-            Err(VeraError::TooSmall { .. })
-        ));
-    }
-
-    #[test]
-    fn too_small_container_errors() {
-        assert!(matches!(
-            VeraVolume::unlock_with_password(Cursor::new(vec![0u8; 100]), PASSWORD),
-            Err(VeraError::TooSmall { got }) if got == 100
-        ));
-    }
-
-    #[test]
-    fn wrong_password_fails() {
-        let (container, _) = build_volume();
-        assert!(matches!(
-            VeraVolume::unlock_with_pim(Cursor::new(container), b"wrong", 1),
-            Err(VeraError::AuthenticationFailed)
-        ));
-    }
-
-    #[test]
-    fn undeclared_size_is_rejected() {
-        let (container, _) = build_volume_with(false);
-        assert!(VeraVolume::unlock_with_pim(Cursor::new(container), PASSWORD, 1).is_err());
-    }
-
-    #[test]
-    fn read_available_handles_eof_interrupt_and_hard_error() {
-        use std::io;
-
-        // EOF immediately -> break, then zero-fill the whole buffer.
-        struct Eof;
-        impl io::Read for Eof {
-            fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
-                Ok(0)
-            }
-        }
-        let mut buf = [0xffu8; 8];
-        assert_eq!(read_available(&mut Eof, &mut buf).unwrap(), 0);
-        assert_eq!(buf, [0u8; 8]);
-
-        // Interrupted once, then one byte, then EOF (covers the Interrupted arm).
-        struct Flaky(u8);
-        impl io::Read for Flaky {
-            fn read(&mut self, b: &mut [u8]) -> io::Result<usize> {
-                self.0 += 1;
-                match self.0 {
-                    1 => Err(io::Error::new(io::ErrorKind::Interrupted, "eintr")),
-                    2 => {
-                        b[0] = 0xAB;
-                        Ok(1)
-                    }
-                    _ => Ok(0),
+    /// Decrypt whole data units at absolute offset `start`, leaving units
+    /// outside the encrypted area (and a plaintext boot sector) as stored.
+    fn decrypt_span(&self, data: &mut [u8], start: u64) {
+        let end = start + data.len() as u64;
+        let mut from = start.max(self.geometry.encrypted_start);
+        let to = end.min(self.geometry.encrypted_end);
+        if let Some((skip_start, skip_end)) = self.plaintext_sector {
+            if skip_start < to && skip_end > from {
+                if from < skip_start {
+                    self.decrypt_run(data, start, from, skip_start);
                 }
+                from = from.max(skip_end);
             }
         }
-        let mut b2 = [0u8; 4];
-        assert_eq!(read_available(&mut Flaky(0), &mut b2).unwrap(), 1);
-        assert_eq!(b2[0], 0xAB);
+        if from < to {
+            self.decrypt_run(data, start, from, to);
+        }
+    }
 
-        // A hard error propagates.
-        struct Boom;
-        impl io::Read for Boom {
-            fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
-                Err(io::Error::other("boom"))
-            }
+    fn decrypt_run(&self, data: &mut [u8], start: u64, from: u64, to: u64) {
+        let run = &mut data[(from - start) as usize..(to - start) as usize];
+        let first_unit = from / DATA_UNIT as u64;
+        if run.len() < PARALLEL_SPAN {
+            self.xts.decrypt(run, first_unit);
+            return;
         }
-        let mut b3 = [0u8; 4];
-        assert!(read_available(&mut Boom, &mut b3).is_err());
+        let units_per_chunk = (PARALLEL_CHUNK / DATA_UNIT) as u64;
+        run.par_chunks_mut(PARALLEL_CHUNK)
+            .enumerate()
+            .for_each(|(index, chunk)| {
+                self.xts
+                    .decrypt(chunk, first_unit + index as u64 * units_per_chunk)
+            });
     }
 }

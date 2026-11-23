@@ -14,7 +14,10 @@ use crate::{
         CliError, Output,
     },
     core::evidence::crypto::{
-        encrypted_image::{EncryptionScheme, UnlockCredential, UnlockOptions, UnlockTarget},
+        encrypted_image::{
+            EncryptionScheme, UnlockCredential, UnlockOptions, UnlockTarget, VeracryptHeader,
+            VeracryptPrf,
+        },
         filevault::InspectOptions,
     },
 };
@@ -37,6 +40,61 @@ pub enum Scheme {
     Veracrypt,
     Filevault,
     Ios,
+}
+
+/// Which VeraCrypt headers `unlock` reads.
+#[derive(Clone, Copy, Debug, ValueEnum, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum HeaderArg {
+    /// 标准卷与隐藏卷的卷头
+    Auto,
+    /// 只读标准卷头
+    Normal,
+    /// 只读隐藏卷头
+    Hidden,
+    /// 卷内嵌入的备份卷头
+    Backup,
+    /// 系统加密：读取磁盘第 62 扇区的卷头
+    System,
+}
+
+impl HeaderArg {
+    fn header(self) -> VeracryptHeader {
+        match self {
+            Self::Auto => VeracryptHeader::Auto,
+            Self::Normal => VeracryptHeader::Normal,
+            Self::Hidden => VeracryptHeader::Hidden,
+            Self::Backup => VeracryptHeader::Backup,
+            Self::System => VeracryptHeader::System,
+        }
+    }
+}
+
+/// The VeraCrypt key derivation `unlock` is limited to.
+#[derive(Clone, Copy, Debug, ValueEnum, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum PrfArg {
+    Sha512,
+    Sha256,
+    Blake2s,
+    Whirlpool,
+    Streebog,
+    Ripemd160,
+    Argon2id,
+}
+
+impl PrfArg {
+    fn prf(self) -> VeracryptPrf {
+        match self {
+            Self::Sha512 => VeracryptPrf::Sha512,
+            Self::Sha256 => VeracryptPrf::Sha256,
+            Self::Blake2s => VeracryptPrf::Blake2s,
+            Self::Whirlpool => VeracryptPrf::Whirlpool,
+            Self::Streebog => VeracryptPrf::Streebog,
+            Self::Ripemd160 => VeracryptPrf::Ripemd160,
+            Self::Argon2id => VeracryptPrf::Argon2id,
+        }
+    }
 }
 
 #[derive(Args, Debug, Clone, Serialize, Deserialize)]
@@ -83,12 +141,19 @@ pub struct UnlockArgs {
     /// LUKS、FileVault（以及 BitLocker FVEK）：已恢复的主密钥（十六进制）
     #[arg(long, num_args = 0..=1, default_missing_value = "", value_parser = parse_secret, value_name = "@文件")]
     pub master_key: Option<Secret>,
-    /// VeraCrypt PIM（0–1000）
+    /// VeraCrypt PIM（0 为默认值）
     #[arg(long, default_value_t = 0)]
     pub pim: u32,
-    /// VeraCrypt 隐藏卷
-    #[arg(long)]
-    pub hidden: bool,
+    /// VeraCrypt 卷头；默认同时尝试标准卷与隐藏卷
+    #[arg(long, value_enum)]
+    pub header: Option<HeaderArg>,
+    /// VeraCrypt 只尝试这一种密钥派生（默认全部尝试）
+    #[arg(long, value_enum)]
+    pub prf: Option<PrfArg>,
+    /// VeraCrypt 密钥文件或密钥文件目录（可重复）
+    #[arg(long = "keyfile", value_parser = parse_host_path, value_name = "文件")]
+    #[serde(default)]
+    pub keyfiles: Vec<HostPath>,
     /// FileVault：逻辑卷序号（encryption 输出的 index）
     #[arg(long, value_name = "序号")]
     pub logical_volume: Option<usize>,
@@ -333,6 +398,12 @@ fn credential(args: &UnlockArgs, scheme: EncryptionScheme) -> Result<UnlockCrede
         Some(credential) => Ok(credential),
         // A suspended BitLocker volume opens with the clear key it keeps.
         None if scheme == EncryptionScheme::Bitlocker => Ok(UnlockCredential::ClearKey),
+        // A VeraCrypt volume may open with keyfiles alone.
+        None if scheme == EncryptionScheme::Veracrypt && !args.keyfiles.is_empty() => {
+            Ok(UnlockCredential::Password {
+                password: String::new(),
+            })
+        }
         None => Err(CliError::new("usage", "需要 --password 或 --master-key")),
     }
 }
@@ -402,9 +473,11 @@ async fn volume(
     args: &UnlockArgs,
 ) -> Result<Value, CliError> {
     // An encrypted partition, or a whole-image volume such as a VeraCrypt
-    // file, becomes readable in the source evidence; a byte range always
-    // becomes evidence of its own.
-    let in_place = !args.new_image && args.offset.is_none();
+    // file, becomes readable in the source evidence; a byte range, and a
+    // system-encrypted drive opened whole, always become evidence of their own.
+    let header = args.header.map_or(VeracryptHeader::Auto, HeaderArg::header);
+    let system_drive = header == VeracryptHeader::System && number.is_none();
+    let in_place = !args.new_image && args.offset.is_none() && !system_drive;
     let options = UnlockOptions {
         target: if in_place {
             UnlockTarget::SourcePartition
@@ -416,8 +489,10 @@ async fn volume(
         partition_id: number,
         offset: args.offset,
         length: args.length,
-        hidden: args.hidden,
+        header,
         pim: args.pim,
+        prf: args.prf.map(PrfArg::prf),
+        keyfiles: args.keyfiles.iter().map(HostPath::text).collect(),
         logical_volume_index: args.logical_volume,
         encrypted_root_plist_path: args.plist.as_ref().map(HostPath::text),
     };

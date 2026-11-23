@@ -3,5 +3,8 @@
   "luks1.img": "f673432707b57ee3e01abdfcfa92ef1cb362b9b3398b5d6fefcb5710e5ef9795",
   "luks2.img": "629676f5ef99e3eae0010ed92b7f4f2d89af18bd191faf0b3f51754ed020c024",
   "veracrypt.hc": "e3020e4b1fc7ac582ce276264facf68ad69fba8ed1048b36c430ecd5f42893a9",
-  "hidden.hc": "9e214f290f4a5b1e9c3a6ee78b934e97b95f7c63c35d9044d9bb975bb422ec20"
+  "hidden.hc": "9e214f290f4a5b1e9c3a6ee78b934e97b95f7c63c35d9044d9bb975bb422ec20",
+  "veracrypt-keyfile.hc": "808d9ac8277e11dd3ddbb3de42462d3cce1927ff1806334396561e1bf784a9ad",
+  "veracrypt-keyfile.bin": "5097e7d587352f5097062ae679f37bda5802d9f875aba14c8cb4d1a188ada179",
+  "veracrypt-system.img": "2e1132a961aaaf9497a1b84585eaca61946b6b1333b1f557d1669a85e0800bee"
 }

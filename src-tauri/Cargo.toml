@@ -288,6 +288,31 @@ opt-level = 3
 [profile.dev.package.blake2]
 opt-level = 3
 
+# A VeraCrypt header search derives every PRF at 500000 iterations; unoptimised
+# hashes and ciphers would turn seconds into minutes in development builds.
+[profile.dev.package.veracrypt-core]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3
+[profile.dev.package.whirlpool]
+opt-level = 3
+[profile.dev.package.streebog]
+opt-level = 3
+[profile.dev.package.ripemd]
+opt-level = 3
+[profile.dev.package.hmac]
+opt-level = 3
+[profile.dev.package.aes]
+opt-level = 3
+[profile.dev.package.serpent]
+opt-level = 3
+[profile.dev.package.twofish]
+opt-level = 3
+[profile.dev.package.camellia]
+opt-level = 3
+[profile.dev.package.kuznyechik]
+opt-level = 3
+
 # Reopening logical phone evidence can inflate tens of GiB before showing the
 # file tree. Keep the DEFLATE/CRC hot paths optimised in development as well.
 [profile.dev.package.flate2]
@@ -344,6 +369,21 @@ opt-level = 3
 [profile.release.package.rc4]
 opt-level = 3
 [profile.release.package.serpent]
+opt-level = 3
+# VeraCrypt header search and XTS decryption.
+[profile.release.package.veracrypt-core]
+opt-level = 3
+[profile.release.package.twofish]
+opt-level = 3
+[profile.release.package.whirlpool]
+opt-level = 3
+[profile.release.package.streebog]
+opt-level = 3
+[profile.release.package.ripemd]
+opt-level = 3
+[profile.release.package.camellia]
+opt-level = 3
+[profile.release.package.kuznyechik]
 opt-level = 3
 
 [profile.release.package.pbkdf2]

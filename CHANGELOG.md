@@ -11,6 +11,7 @@
 
 - 解锁后的 BitLocker 卷按卷首识别文件系统：BitLocker To Go 卷中的 FAT / exFAT 可以浏览，卷内的 NTFS 卷影副本与盘符还原也照常可用。卷影副本、盘符还原和树图同样覆盖 LUKS、VeraCrypt 中解锁出的 NTFS。
 - 打开含锁定加密分区的镜像时，「检测到加密分区」提示覆盖 BitLocker、LUKS 与 FileVault 2。
+- VeraCrypt / TrueCrypt 解锁支持密钥文件（文件与文件夹，可只用密钥文件）、BLAKE2s-256 与 Argon2id 密钥派生、Camellia 与 Kuznyechik 及其级联、卷内嵌的备份卷头，以及系统加密：从磁盘第 62 扇区读取卷头，在被加密的系统分区上原位解锁，或把整盘读成明文的新检材；暂停的系统加密按 VeraCrypt 的方式读取并提示「加密未完成」。「卷头」「密钥派生」可缩小搜索范围，结果给出所用卷头、PRF、迭代次数与算法。
 
 ### Changed
 
@@ -18,8 +19,14 @@
 - VeraCrypt 只能解锁大小为检材扇区整数倍的区域：弹窗不再列出其他区域，CLI 与后端以 `invalidInput` 拒绝。
 - 桌面端去掉解释性文字：弹窗副标题、表单提示、选项卡片说明、空状态说明和通知正文只保留对象、数值、真实错误与完整性告警，输入格式错误时才显示字段提示；原先的用法说明移入[使用指南](docs/USAGE.md)。
 - 解锁后的整盘导出统一由镜像头部「导出源镜像」（CLI `evidence export <别名> --unlocked`）完成，BitLocker 分区行的单独导出已移除。
+- VeraCrypt 头部搜索在全部核心上并行派生密钥，先尝试单一加密算法所需的密钥，可随时取消，任务中心显示派生进度；默认同时尝试标准卷与隐藏卷，与 VeraCrypt 挂载时一致。解锁后按偏移读取，密钥扩展只做一次，大范围读取并行解密，多个读取不再互相等待。
 - **破坏性变更**：IPC 的 `encrypted_volume_unlock` 改用 `credential`（按 `kind` 区分的凭据）并接受 `scheme: "bitlocker"`；`ImageInfo.unlocked_partitions` 改为 `{ id, scheme }` 列表；`bitlocker_metadata` 更名为 `bitlocker_inspect`；`bitlocker_status`、`bitlocker_unlock`、`bitlocker_unlock_with_vmk`、`bitlocker_export_decrypted_image` 与 `bitlocker-unlock-progress` 事件已移除。
 - **破坏性变更**：CLI 的 BitLocker `unlock` 与其他格式输出同样的结果（`path`、`scheme`、`cipher`、`image`、`volumeKey`；VMK 派生的恢复密码在 `recoveryPassword`），锁定的 BitLocker 分区列为 `unsupported:N`，`part:N` 仍可指向它；`volumes` 为所有解锁的加密卷显示格式与状态；`evidence export /<别名>/part:N` 已移除。
+- **破坏性变更**：IPC `encrypted_volume_unlock` 的 VeraCrypt 选项 `hidden` 改为 `header`（`auto` / `normal` / `hidden` / `backup` / `system`），新增 `prf` 与 `keyfiles`，结果新增 `veracrypt`；CLI `unlock` 的 `--hidden` 改为 `--header hidden`，新增 `--header`、`--prf` 与 `--keyfile`。PIM 上限改为 VeraCrypt 的 2147468（系统加密 65535）。
+
+### Fixed
+
+- VeraCrypt：设置了 PIM 的 RIPEMD-160 卷按 `15000 + 1000·PIM` 次迭代派生（此前误用系统加密公式），TrueCrypt 卷按 TrueCrypt 自己的迭代次数派生，二者此前都无法打开；就地加密完成的卷、4096 字节扇区的卷和卷头版本 3–4 的 TrueCrypt 卷不再被拒绝。
 
 ## [1.4.0] - 2026-11-23
 

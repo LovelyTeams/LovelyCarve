@@ -7,7 +7,7 @@ export type EncryptionScheme = 'bitlocker' | 'luks' | 'veracrypt' | 'filevault';
 
 /** What opens a volume. The backend checks that the kind fits the scheme:
  *  BitLocker takes every kind, LUKS and FileVault a password or master key,
- *  VeraCrypt a password. */
+ *  VeraCrypt a password (empty when keyfiles alone open it). */
 export type UnlockCredential =
   | { kind: 'password'; password: string }
   | { kind: 'recoveryPassword'; recoveryPassword: string }
@@ -17,6 +17,13 @@ export type UnlockCredential =
   | { kind: 'vmk'; keyHex: string }
   | { kind: 'clearKey' };
 
+/** Which VeraCrypt headers an unlock reads: `auto` tries the normal and the
+ *  hidden one; `system` reads sector 62 of the drive. */
+export type VeracryptHeader = 'auto' | 'normal' | 'hidden' | 'backup' | 'system';
+
+/** The VeraCrypt key derivation an unlock may be limited to. */
+export type VeracryptPrf = 'sha512' | 'sha256' | 'blake2s' | 'whirlpool' | 'streebog' | 'ripemd160' | 'argon2id';
+
 export interface EncryptedUnlockOptions {
   target?: 'newImage' | 'sourcePartition';
   scheme: EncryptionScheme;
@@ -24,10 +31,41 @@ export interface EncryptedUnlockOptions {
   partitionId?: number;
   offset?: number;
   length?: number;
-  hidden?: boolean;
+  /** VeraCrypt only. */
+  header?: VeracryptHeader;
+  /** VeraCrypt only; 0 is the default. */
   pim?: number;
+  /** VeraCrypt only; every derivation when absent. */
+  prf?: VeracryptPrf;
+  /** VeraCrypt only: host paths of keyfiles or keyfile folders. */
+  keyfiles?: string[];
   logicalVolumeIndex?: number;
   encryptedRootPlistPath?: string;
+}
+
+/** What the VeraCrypt or TrueCrypt header that opened says. */
+export interface VeracryptDetails {
+  flavor: 'VeraCrypt' | 'TrueCrypt';
+  header: 'normal' | 'hidden' | 'backupNormal' | 'backupHidden' | 'legacyHidden' | 'system';
+  prf: VeracryptPrf;
+  iterations: number;
+  /** Argon2id memory in KiB; 0 for PBKDF2. */
+  memory_kib: number;
+  cipher: string;
+  header_version: number;
+  required_program_version: number;
+  sector_size: number;
+  volume_size: number;
+  hidden_volume_size: number;
+  encrypted_area_start: number;
+  encrypted_area_length: number;
+  system: boolean;
+  in_place: boolean;
+  /** False for paused system encryption: the rest reads as stored. */
+  encryption_complete: boolean;
+  weak_master_key: boolean;
+  plaintext_boot_sector: boolean;
+  keyfiles: number;
 }
 
 export interface EncryptedUnlockResult {
@@ -43,6 +81,7 @@ export interface EncryptedUnlockResult {
   hidden: boolean;
   /** The BitLocker recovery password a VMK yielded. */
   recovery_password?: string;
+  veracrypt?: VeracryptDetails;
 }
 
 export function encryptedVolumeUnlock(args: {

@@ -63,8 +63,27 @@
                     :image-id="info.id" :partition-id="selectedPartitionId" :active="open" />
                   <BitlockerKeyFields v-else-if="mode === 'otherKey'" v-model:credential="keyCredential" class="wide" :active="open" />
                   <template v-if="scheme === 'veracrypt'">
-                    <label>PIM<input v-model.number="pim" class="ui-input mono" type="number" min="0" max="1000" step="1" required /></label>
-                    <label class="ui-check check"><input v-model="hidden" type="checkbox" />{{ tr("打开隐藏卷") }}</label>
+                    <div class="wide keyfiles">
+                      <button class="ui-btn ghost sm" type="button" :disabled="!open" @click="pickKeyfiles(false)"><FileKey :size="13" />{{ tr("添加密钥文件") }}</button>
+                      <button class="ui-btn ghost sm" type="button" :disabled="!open" @click="pickKeyfiles(true)"><FolderKey :size="13" />{{ tr("添加密钥文件夹") }}</button>
+                    </div>
+                    <ul v-if="keyfiles.length" class="wide keyfile-list" :aria-label="tr('密钥文件')">
+                      <li v-for="(path, index) in keyfiles" :key="path">
+                        <span class="key-path mono" :title="path">{{ path }}</span>
+                        <button class="ui-icon-btn sm" type="button" :title="tr('移除')" :aria-label="tr('移除密钥文件 {0}', { 0: path })" @click="keyfiles.splice(index, 1)"><X :size="12" /></button>
+                      </li>
+                    </ul>
+                    <label>{{ tr("卷头") }}
+                      <UiSelect v-model="veracryptHeader" :options="headerOptions" :disabled="!open" />
+                    </label>
+                    <label>{{ tr("密钥派生") }}
+                      <UiSelect v-model="veracryptPrf" :options="prfOptions" :disabled="!open" />
+                    </label>
+                    <label>PIM
+                      <input v-model.number="pim" class="ui-input mono" type="number" min="0" :max="pimLimit" step="1" required
+                        :aria-invalid="pimError ? 'true' : undefined" :aria-describedby="pimError ? pimNoteId : undefined" />
+                      <span v-if="pimError" :id="pimNoteId" class="ui-field-error" role="alert">{{ pimError }}</span>
+                    </label>
                   </template>
                 </fieldset>
               </template>
@@ -84,15 +103,20 @@
 import { tr } from '../../../composables/useLocale';
 
 import { computed, onBeforeUnmount, ref, useId, watch } from 'vue';
-import { LockKeyhole, X } from 'lucide-vue-next';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { FileKey, FolderKey, LockKeyhole, X } from 'lucide-vue-next';
 import type { DiskPartition, ImageInfo } from '../../../lib/ipc/image';
-import type { EncryptedUnlockOptions, EncryptionScheme, UnlockCredential } from '../../../lib/ipc/encrypted';
+import type { EncryptedUnlockOptions, EncryptionScheme, UnlockCredential, VeracryptHeader } from '../../../lib/ipc/encrypted';
 import { useDialogFocus } from '../../../composables/useDialogFocus';
 import { startEncryptedVolumeUnlock } from '../composables/useEncryptedVolumeUnlocks';
 import { useFilevaultInventory } from '../composables/useFilevaultInventory';
 import { useBitlockerRecoveryKey } from '../composables/useBitlockerRecoveryKey';
 import { dismissUnlockReminder } from '../composables/useFileSession';
-import { availableSchemes, credentialModeLabel, credentialModes, initialSelection, schemeLabel, unlockRegions, type CredentialMode } from '../model/encryptedUnlock';
+import {
+  availableSchemes, credentialModeLabel, credentialModes, initialSelection, schemeLabel, unlockRegions,
+  VERACRYPT_HEADERS, VERACRYPT_PRFS, veracryptHeaderLabel, veracryptPimLimit, veracryptPrfFits, veracryptPrfLabel,
+  type CredentialMode, type VeracryptPrfChoice,
+} from '../model/encryptedUnlock';
 import { formatBytes } from '../../../utils/format';
 import UiSelect, { type UiSelectOption } from '../../../components/ui/UiSelect.vue';
 import BitlockerKeyFields from './BitlockerKeyFields.vue';
@@ -165,7 +189,10 @@ const memoryFields = ref<InstanceType<typeof BitlockerMemoryCandidates> | null>(
 /** The credential the form holds now; `null` while it is incomplete or malformed. */
 const credential = computed<UnlockCredential | null>(() => {
   switch (mode.value) {
-    case 'password': return password.value ? { kind: 'password', password: password.value } : null;
+    case 'password':
+      if (password.value) return { kind: 'password', password: password.value };
+      // A VeraCrypt volume may open with keyfiles alone.
+      return scheme.value === 'veracrypt' && keyfiles.value.length ? { kind: 'password', password: '' } : null;
     case 'masterKey': return normalizedKey.value && normalizedKey.value.length % 2 === 0 && !keyError.value
       ? { kind: 'masterKey', keyHex: normalizedKey.value } : null;
     case 'recovery': return canSubmitRecovery.value ? { kind: 'recoveryPassword', recoveryPassword: recoveryCheck.value.normalized } : null;
@@ -189,10 +216,35 @@ const logicalVolumeOptions = computed(() => inventory.value?.volumes.map(volume 
 const selectedLogicalVolume = computed(() => inventory.value?.volumes.find(volume => volume.index === logicalVolumeIndex.value));
 watch(inventory, value => { logicalVolumeIndex.value = value?.volumes[0]?.index ?? 0; });
 
+// ── VeraCrypt ─────────────────────────────────────────────────────────────
 const pim = ref(0);
-const hidden = ref(false);
+const veracryptHeader = ref<VeracryptHeader>('auto');
+const veracryptPrf = ref<VeracryptPrfChoice>('auto');
+const keyfiles = ref<string[]>([]);
+const pimNoteId = useId();
+const headerOptions = computed<UiSelectOption<VeracryptHeader>[]>(() =>
+  VERACRYPT_HEADERS.map(value => ({ value, get label() { return veracryptHeaderLabel(value, tr); } })));
+const prfOptions = computed<UiSelectOption<VeracryptPrfChoice>[]>(() => VERACRYPT_PRFS
+  .filter(value => veracryptPrfFits(veracryptHeader.value, value))
+  .map(value => ({ value, get label() { return veracryptPrfLabel(value, tr); } })));
+const pimLimit = computed(() => veracryptPimLimit(veracryptHeader.value));
+const pimError = computed(() => scheme.value === 'veracrypt' && !(Number.isInteger(pim.value) && pim.value >= 0 && pim.value <= pimLimit.value)
+  ? tr("PIM 应为 0–{0} 的整数", { 0: pimLimit.value }) : '');
+watch(veracryptHeader, header => { if (!veracryptPrfFits(header, veracryptPrf.value)) veracryptPrf.value = 'auto'; });
 
-const canUnlock = computed(() => regionValid.value && !!credential.value
+let keyfileContext = 0;
+async function pickKeyfiles(directory: boolean) {
+  const captured = keyfileContext;
+  const picked = await openDialog(directory
+    ? { directory: true, multiple: true, title: tr("选择密钥文件夹") }
+    : { multiple: true, title: tr("选择密钥文件") });
+  if (captured !== keyfileContext || !props.open || !picked) return;
+  for (const path of Array.isArray(picked) ? picked : [picked]) {
+    if (!keyfiles.value.includes(path)) keyfiles.value.push(path);
+  }
+}
+
+const canUnlock = computed(() => regionValid.value && !!credential.value && !pimError.value
   && (scheme.value !== 'filevault' || (!!selectedLogicalVolume.value && selectedLogicalVolume.value.conversion_status === 'Complete')));
 
 const formId = useId();
@@ -203,6 +255,8 @@ function clearCredentials() {
   password.value = '';
   masterKey.value = '';
   keyTouched.value = false;
+  keyfiles.value = [];
+  keyfileContext += 1;
   clearRecovery();
 }
 
@@ -227,7 +281,14 @@ function unlock() {
     scheme: scheme.value,
     credential: value,
     ...(selectedPartitionId.value === undefined ? {} : { partitionId: selectedPartitionId.value }),
-    ...(scheme.value === 'veracrypt' ? { pim: pim.value, hidden: hidden.value } : {}),
+    ...(scheme.value === 'veracrypt' ? {
+      pim: pim.value,
+      ...(veracryptHeader.value === 'auto' ? {} : { header: veracryptHeader.value }),
+      ...(veracryptPrf.value === 'auto' ? {} : { prf: veracryptPrf.value }),
+      ...(keyfiles.value.length ? { keyfiles: [...keyfiles.value] } : {}),
+      // A system-encrypted drive opened whole becomes evidence of its own.
+      ...(veracryptHeader.value === 'system' && selectedPartitionId.value === undefined ? { target: 'newImage' as const } : {}),
+    } : {}),
     ...(scheme.value === 'filevault' ? { ...(inventory.value && inventory.value.volumes.length > 1 ? { target: 'newImage' as const } : {}), logicalVolumeIndex: logicalVolumeIndex.value, ...(encryptedRootPath.value ? { encryptedRootPlistPath: encryptedRootPath.value } : {}) } : {}),
   };
   if (mode.value === 'memory') memoryFields.value?.markSubmitted();
@@ -249,7 +310,10 @@ fieldset.fixed { grid-template-columns: minmax(0, 1fr); }
 label { display: grid; gap: 6px; min-width: 0; color: var(--text-primary); font-size: 12px; font-weight: 500; }
 label .ui-select { width: 100%; }
 .wide { grid-column: 1 / -1; }
-.check { display: flex; align-self: end; height: 30px; }
+.keyfiles { display: flex; flex-wrap: wrap; gap: 8px; }
+.keyfile-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.keyfile-list li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.key-path { flex: 1; min-width: 0; overflow: hidden; color: var(--text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .ui-seg-item { flex: 1; }
 @media (max-width: 520px) {
   fieldset { grid-template-columns: minmax(0, 1fr); }

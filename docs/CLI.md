@@ -234,7 +234,7 @@ lovelycarve-cli -C "D:\cases\nas" find "auth*.log.*" --under /nas/part:0/var/log
 
 - **BitLocker**：只给一种凭据 `--password`、`--recovery-password`、`--startup-key <.BEK>`、`--fvek`（Elephant Diffuser 另给 `--tweak`）或 `--vmk`；都不给时尝试卷内明文密钥。`--vmk-from <内存镜像>` 在内存中搜索 VMK 并逐个尝试，卷没有恢复密码保护器时也可解锁；结果的 `vmkOffset` 是生效的候选，`recoveryPassword` 是由它派生的恢复密码。原始 FVEK 没有认证，须核验解密结果；TPM / SID 保护器不支持。明文卷按卷首识别文件系统（NTFS、ReFS、FAT / exFAT 等），之后照常浏览。能力与限制见 [BitLocker](formats/BITLOCKER.md)。
 - **LUKS**：LUKS1 / LUKS2 用 `--password`，或已恢复的卷主密钥 `--master-key`（按头部摘要核验）。整份镜像的 LUKS 容器显示为 `unsupported:0`。见 [LUKS](formats/LUKS.md)。
-- **VeraCrypt**：`--scheme veracrypt`，按需给 `--pim`（0–1000）与 `--hidden`。VeraCrypt 卷总是整数个扇区，区域长度不是检材扇区大小整数倍时直接拒绝（`invalidInput`）；较大文件中的容器用 `--offset` / `--length` 指出它的范围。不支持密钥文件、系统加密和备份头恢复。
+- **VeraCrypt / TrueCrypt**：`--scheme veracrypt`，按需给 `--pim`（卷 0–2147468，系统加密 0–65535）、`--keyfile <文件或文件夹>`（可重复；只用密钥文件时省略 `--password`）、`--prf sha512|sha256|blake2s|whirlpool|streebog|ripemd160|argon2id` 与 `--header auto|normal|hidden|backup|system`。默认 `auto` 同时尝试标准卷与隐藏卷；`backup` 读取卷内嵌的备份卷头；`system` 从磁盘第 62 扇区读取系统加密卷头，地址给被加密的分区（`/<别名>/part:N`）时明文接在该分区上，给整份检材时生成整盘明文的新检材。结果的 `veracrypt` 字段给出 PRF、迭代次数、算法、卷头与加密是否完成。VeraCrypt 卷总是整数个扇区，区域长度不是检材扇区大小整数倍时直接拒绝（`invalidInput`）；较大文件中的容器用 `--offset` / `--length` 指出它的范围。见 [VeraCrypt](formats/VERACRYPT.md)。
 - **FileVault 2**：先用 `encryption` 列出逻辑卷，再用 `--logical-volume <index>` 解锁；`--password` 也接受个人恢复密码，也可给 `--master-key`；`--plist` 指向本地 EncryptedRoot.plist(.wipekey)，`encryption` 与 `unlock` 应给同一个。多个逻辑卷须各自用 `--new-image`。APFS 原生加密不能由此解锁。见 [FileVault](formats/FILEVAULT.md)。
 - **iOS 备份**：`unlock /<别名> --password @文件`（`--scheme ios`）。见 [iOS 备份](IOS_BACKUPS.md#cli)。
 

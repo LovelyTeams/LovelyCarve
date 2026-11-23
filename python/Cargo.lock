@@ -171,6 +171,7 @@ dependencies = [
  "blake2",
  "cpufeatures 0.2.17",
  "password-hash",
+ "zeroize",
 ]
 
 [[package]]
@@ -525,6 +526,16 @@ dependencies = [
  "quick-xml 0.41.0",
  "serde",
  "zip 8.6.0",
+]
+
+[[package]]
+name = "camellia"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3264e2574e9ef2b53ce6f536dea83a69ac0bc600b762d1523ff83fe07230ce30"
+dependencies = [
+ "byteorder",
+ "cipher 0.4.4",
 ]
 
 [[package]]
@@ -1859,6 +1870,15 @@ dependencies = [
  "cfg-if",
  "futures-util",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "kuznyechik"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca7899a524198c60ded686fc826703de2a04470aff9d042e8cc1f845b912c12f"
+dependencies = [
+ "cipher 0.4.4",
 ]
 
 [[package]]
@@ -4202,12 +4222,17 @@ dependencies = [
 
 [[package]]
 name = "veracrypt-core"
-version = "0.2.4"
+version = "0.3.0"
 dependencies = [
  "aes 0.8.4",
+ "argon2",
+ "blake2",
+ "camellia",
+ "cipher 0.4.4",
  "crc32fast",
  "hmac 0.12.1",
- "pbkdf2",
+ "kuznyechik",
+ "rayon",
  "ripemd",
  "serpent",
  "sha2 0.10.9",
@@ -4215,7 +4240,7 @@ dependencies = [
  "thiserror 2.0.21",
  "twofish",
  "whirlpool",
- "xts-mode",
+ "zeroize",
 ]
 
 [[package]]

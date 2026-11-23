@@ -221,12 +221,15 @@ def test_encryption(cli, root):
         ("luks1.img", ["--scheme", "luks"], "/ev/unsupported:0"),
         ("luks2.img", ["--scheme", "luks"], "/ev/unsupported:0"),
         ("veracrypt.hc", ["--scheme", "veracrypt", "--pim", "1"], "/ev"),
-        ("hidden.hc", ["--scheme", "veracrypt", "--pim", "1", "--hidden"], "/ev"),
+        # The hidden header opens without asking for it, as VeraCrypt mounts it.
+        ("hidden.hc", ["--scheme", "veracrypt", "--pim", "1"], "/ev"),
+        ("hidden.hc", ["--scheme", "veracrypt", "--pim", "1", "--header", "hidden", "--prf", "sha512"], "/ev"),
     ]
-    for filename, scheme, target in fixtures:
+    for number, (filename, scheme, target) in enumerate(fixtures):
+        stem = f"{number}-{filename}"
         # A decrypted container as evidence of its own: it closes with its source.
-        exported_plain = root / (filename + ".raw")
-        exported_file = root / (filename + ".txt")
+        exported_plain = root / (stem + ".raw")
+        exported_file = root / (stem + ".txt")
         result, rows = cli.batch([
             add(ENCRYPTED / filename),
             request("unlock", "unlock", target, *scheme, "--password", password, "--new-image", "--as", "plain"),
@@ -240,6 +243,11 @@ def test_encryption(cli, root):
         rows = {row["id"]: row.get("result", row) for row in rows}
         assert all("error" not in row for row in rows.values()), rows
         assert rows["unlock"]["path"] == "/plain" and rows["unlock"]["image"]["sourceFormat"] == "decrypted", rows["unlock"]
+        if scheme[1] == "veracrypt":
+            header = "hidden" if filename.startswith("hidden") else "normal"
+            details = rows["unlock"]["veracrypt"]
+            assert (details["header"], details["prf"], details["iterations"], details["cipher"]) == (header, "sha512", 16000, "AES"), details
+            assert rows["unlock"]["hidden"] == (header == "hidden"), rows["unlock"]
         assert rows["again"]["items"][0]["alias"] == "plain", rows["again"]
         assert "HELLO.TXT" in [item["name"] for item in rows["files"]["items"]], rows["files"]
         assert exported_plain.read_bytes() == plaintext, filename
@@ -249,10 +257,10 @@ def test_encryption(cli, root):
 
         # In place in a case: the source evidence shows the decrypted volume,
         # indexes it, and exports either its source or its plaintext bytes.
-        attached_file = root / (filename + ".attached.txt")
-        attached_raw = root / (filename + ".source.raw")
-        attached_plain = root / (filename + ".attached.raw")
-        case = root / (filename + "-case")
+        attached_file = root / (stem + ".attached.txt")
+        attached_raw = root / (stem + ".source.raw")
+        attached_plain = root / (stem + ".attached.raw")
+        case = root / (stem + "-case")
         cli.run("case", "new", case, "--name", "attached unlock")
         rows = cli.results([
             add(ENCRYPTED / filename),

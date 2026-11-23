@@ -104,28 +104,72 @@ def luks2(plain):
     return image + xts(plain, MASTER, 4096)
 
 
-def veracrypt(plain, hidden=False):
+def veracrypt_header(volume, start, hidden=0, flags=0):
     header = bytearray(448)
     header[:4] = b'VERA'
     struct.pack_into('>HH', header, 4, 5, 0x010b)
-    struct.pack_into('>QQQQ', header, 28, len(plain) if hidden else 0, len(plain), 131072, len(plain))
-    struct.pack_into('>I', header, 64, 512)
+    struct.pack_into('>QQQQ', header, 28, hidden, volume, start, volume)
+    struct.pack_into('>II', header, 60, flags, 512)
     header[192:256] = MASTER
     struct.pack_into('>I', header, 8, zlib.crc32(header[192:]))
     struct.pack_into('>I', header, 188, zlib.crc32(header[:188]))
+    return header
+
+
+def veracrypt(plain, hidden=False, password=PASSWORD):
+    header = veracrypt_header(len(plain), 131072, len(plain) if hidden else 0)
     salt = bytes(range(64))
-    key = hashlib.pbkdf2_hmac('sha512', PASSWORD, salt, 16000, 64)  # PIM = 1
+    key = hashlib.pbkdf2_hmac('sha512', password, salt, 16000, 64)  # PIM = 1
     image = bytearray(131072)
     start = 65536 if hidden else 0
     image[start:start+512] = salt + xts(header, key, 448)
     return image + xts(plain, MASTER, base=256)
 
 
+KEYFILE = bytes((index * 31 + 7) % 256 for index in range(1000))
+
+
+def keyfile_password(password, keyfile):
+    """VeraCrypt's keyfile pool: a running CRC-32 of the keyfile added into 64 bytes, then the password."""
+    table = []
+    for value in range(256):
+        for _ in range(8):
+            value = (value >> 1) ^ 0xEDB88320 if value & 1 else value >> 1
+        table.append(value)
+    pool, crc, position = bytearray(64), 0xFFFFFFFF, 0
+    for byte in keyfile:
+        crc = table[(crc ^ byte) & 0xff] ^ (crc >> 8)
+        for shift in (24, 16, 8, 0):
+            pool[position] = (pool[position] + ((crc >> shift) & 0xff)) & 0xff
+            position += 1
+        position %= 64
+    for index, byte in enumerate(password):
+        pool[index] = (pool[index] + byte) & 0xff
+    return bytes(pool)
+
+
+def veracrypt_system(plain):
+    """A disk whose MBR partition 1 (at 64 KiB) is system-encrypted: the header in sector 62,
+    SHA-256 at the pre-boot count for PIM 1 (2048), data units numbered from the disk start."""
+    start = 65536
+    image = bytearray(start + len(plain) + 32768)
+    struct.pack_into('<B3sB3sII', image, 446, 0x80, b'\x00\x02\x00', 0x07, b'\xfe\xff\xff',
+                     start // 512, len(plain) // 512)
+    image[510:512] = b'\x55\xaa'
+    salt = bytes(range(64, 128))
+    key = hashlib.pbkdf2_hmac('sha256', PASSWORD, salt, 2048, 64)
+    image[31744:32256] = salt + xts(veracrypt_header(len(plain), start, flags=1), key, 448)
+    image[start:start + len(plain)] = xts(plain, MASTER, base=start // 512)
+    return image
+
+
 if __name__ == '__main__':
     DEST.mkdir(parents=True, exist_ok=True)
     plain = filesystem()
     files = {'plain.img': plain, 'luks1.img': luks1(plain), 'luks2.img': luks2(plain),
-             'veracrypt.hc': veracrypt(plain), 'hidden.hc': veracrypt(plain, True)}
+             'veracrypt.hc': veracrypt(plain), 'hidden.hc': veracrypt(plain, True),
+             'veracrypt-keyfile.hc': veracrypt(plain, password=keyfile_password(PASSWORD, KEYFILE)),
+             'veracrypt-keyfile.bin': KEYFILE, 'veracrypt-system.img': veracrypt_system(plain)}
     for name, data in files.items():
         (DEST / name).write_bytes(data)
     (DEST / 'sha256.json').write_text(json.dumps({name: hashlib.sha256(data).hexdigest() for name, data in files.items()}, indent=2) + '\n')

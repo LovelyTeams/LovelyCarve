@@ -129,7 +129,8 @@ pub enum Command {
     /// 加密卷的类型、状态与元数据
     Encryption(crypto::EncryptionArgs),
     /// 解锁 BitLocker、LUKS、VeraCrypt、FileVault 或加密的 iOS 备份
-    Unlock(crypto::UnlockArgs),
+    // Boxed: its credential and VeraCrypt options outweigh every other command.
+    Unlock(Box<crypto::UnlockArgs>),
     /// RAID 与 LVM 组装
     Raid(raid::RaidArgs),
     /// NTFS 卷影副本
@@ -429,7 +430,7 @@ pub async fn run(
         Command::Ocr(args) => inspect::ocr(exec, args).await,
         Command::Qr(args) => inspect::qr(exec, args).await,
         Command::Encryption(args) => crypto::encryption(exec, args).await,
-        Command::Unlock(args) => crypto::unlock(exec, args).await,
+        Command::Unlock(args) => crypto::unlock(exec, *args).await,
         Command::Raid(args) => raid::raid(exec, args).await,
         Command::Vss(args) => raid::vss(exec, args).await,
         Command::Search(args) => search::run(exec, args).await,

@@ -78,7 +78,7 @@ Each entry is a command's synopsis and its description. Positional arguments com
   检材中的分区与卷：文件系统、加密与索引状态
 - `encryption <路径> [--plist <文件>]`
   加密卷的类型、状态与元数据
-- `unlock <路径> [--scheme <bitlocker|luks|veracrypt|filevault|ios>] [--password[=<@文件>]] [--recovery-password[=<@文件>]] [--startup-key <文件>] [--fvek[=<@文件>]] [--tweak[=<@文件>]] [--vmk[=<@文件>]] [--vmk-from <内存镜像>] [--master-key[=<@文件>]] [--pim <pim>] [--hidden] [--logical-volume <序号>] [--plist <文件>] [--offset <offset>] [--length <length>] [--new-image] [--as <别名>]`
+- `unlock <路径> [--scheme <bitlocker|luks|veracrypt|filevault|ios>] [--password[=<@文件>]] [--recovery-password[=<@文件>]] [--startup-key <文件>] [--fvek[=<@文件>]] [--tweak[=<@文件>]] [--vmk[=<@文件>]] [--vmk-from <内存镜像>] [--master-key[=<@文件>]] [--pim <pim>] [--header <auto|normal|hidden|backup|system>] [--prf <sha512|sha256|blake2s|whirlpool|streebog|ripemd160|argon2id>] [--keyfile <文件>…] [--logical-volume <序号>] [--plist <文件>] [--offset <offset>] [--length <length>] [--new-image] [--as <别名>]`
   解锁 BitLocker、LUKS、VeraCrypt、FileVault 或加密的 iOS 备份
   (needs a case backend, shell or batch)
 - `raid detect [--member <别名>…] [--degraded <uuid>…]`

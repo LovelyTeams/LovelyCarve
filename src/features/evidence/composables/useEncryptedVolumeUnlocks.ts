@@ -108,6 +108,8 @@ export function startEncryptedVolumeUnlock(info: ImageInfo, options: EncryptedUn
       notifySuccess(tr("加密卷解锁成功"), result.recovery_password
         ? tr("恢复密码：{0}", { 0: result.recovery_password })
         : result.cipher);
+      // Paused system encryption: the unencrypted rest reads as stored.
+      if (result.veracrypt && !result.veracrypt.encryption_complete) notifyInfo(tr("加密未完成"), result.cipher);
     } catch (error) {
       if (current() && !(error instanceof IpcCommandError && error.code === 'cancelled')) {
         notifyError(tr("解锁加密卷失败"), String(error));

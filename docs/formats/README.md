@@ -45,6 +45,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | Linux md RAID | [MDRAID.md](MDRAID.md) | 元数据 0.90 / 1.0 / 1.1 / 1.2；linear 与 RAID0/1/4/5/6/10 全部布局；陈旧成员、降级重建与 RAID6 双盘恢复；md 上的 LVM |
 | 固件 RAID | [FIRMWARE_RAID.md](FIRMWARE_RAID.md) | Intel IMSM（RST / VROC）与 SNIA DDF（PERC、MegaRAID、Adaptec、mdadm ddf）；校验和与 CRC、主备副本、按序列号或引用号定位成员；RAID0/1/4/5/6/10、RAID1E 与串联；降级规则同 md |
 | LUKS | [LUKS.md](LUKS.md) | libluksde 对照；LUKS1/2、AES / Serpent / Blowfish / ARC4、IV 方案、主密钥解锁 |
+| VeraCrypt / TrueCrypt | [VERACRYPT.md](VERACRYPT.md) | VeraCrypt 源码对照；七种密钥派生（含 Argon2id）、15 种算法与级联、PIM、密钥文件、隐藏 / 备份 / 系统加密卷头、TrueCrypt 5–7 |
 | BitLocker | [BITLOCKER.md](BITLOCKER.md) | libbde 对照；Vista、Windows 7+ 与 To Go 卷，六种加密方法、EOW 与各种解锁方式 |
 | FileVault 2 | [FILEVAULT.md](FILEVAULT.md) | filevault-forensic 接入与 libfvde 88 API；多 LV、密码/恢复/VMK、主备元数据、segment map 与 HFS 明文视图 |
 | 卷影副本 | [VSS.md](VSS.md) | libvshadow 对照；存储区链重建、原始块枚举、catalog 校验与尺寸恢复 |

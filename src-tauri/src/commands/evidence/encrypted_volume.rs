@@ -254,6 +254,7 @@ pub async fn encrypted_volume_unlock(
         }
     }
     let task_id = task_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let progress_task_id = task_id.clone();
     let task = state
         .tasks
         .register_if_absent(
@@ -282,9 +283,25 @@ pub async fn encrypted_volume_unlock(
         let token = task.token();
         let source_for_unlock = Arc::clone(&source);
         let token_for_unlock = token.clone();
+        let tasks = state.tasks.clone();
         let result = tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            encrypted_image::unlock(&source_for_unlock, options, token_for_unlock)
+            // VeraCrypt reports its header search in key derivation jobs.
+            let progress = |done: u64, total: u64| {
+                tasks.emit_progress(
+                    &progress_task_id,
+                    TaskProgressUnit::Attempts,
+                    done,
+                    Some(total),
+                    None,
+                );
+            };
+            encrypted_image::unlock_with_progress(
+                &source_for_unlock,
+                options,
+                token_for_unlock,
+                &progress,
+            )
         })
         .await
         .map_err(|error| AppError::task_panicked("encrypted volume unlock", error))?;

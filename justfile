@@ -874,11 +874,17 @@ test-luks *args:
 clippy-luks *args:
     cargo clippy --all-targets {{ args }}
 
-# Test the VeraCrypt reader.
+# Test the VeraCrypt reader, its VeraCrypt self-test vectors and its independent corpus.
 [group("readers")]
 [working-directory("src-tauri/vendor/veracrypt")]
 test-veracrypt *args:
     cargo test {{ args }}
+
+# Lint the VeraCrypt reader and its tests.
+[group("readers")]
+[working-directory("src-tauri/vendor/veracrypt")]
+clippy-veracrypt *args:
+    cargo clippy --all-targets {{ args }}
 
 # Compare the Rust ReFS port against the explicitly enabled legacy DLL oracle.
 [group("tools")]

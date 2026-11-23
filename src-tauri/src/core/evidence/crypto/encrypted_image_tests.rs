@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::core::common::error::{code_of, ErrorCode};
 use crate::core::evidence::crypto::encrypted_image::{
-    unlock, EncryptionScheme, UnlockCredential, UnlockOptions,
+    unlock, EncryptionScheme, UnlockCredential, UnlockOptions, UnlockTarget, VeracryptHeader,
 };
 use crate::core::evidence::image::{DiskImage, ImageFormat, PartitionKind, UnlockedPartition};
 
@@ -45,7 +45,9 @@ fn options(scheme: EncryptionScheme) -> UnlockOptions {
         partition_id: None,
         offset: None,
         length: None,
-        hidden: false,
+        header: Default::default(),
+        prf: None,
+        keyfiles: Vec::new(),
         pim: if scheme == EncryptionScheme::Veracrypt {
             1
         } else {
@@ -147,9 +149,9 @@ fn independent_encrypted_fixtures_match_plaintext_and_detect_fat() {
         ("hidden.hc", EncryptionScheme::Veracrypt, true),
     ] {
         let source = Arc::new(DiskImage::open(&fixture(name)).unwrap());
-        let mut options = options(scheme);
-        options.hidden = hidden;
-        let (image, result) = unlock(&source, options, CancellationToken::new()).unwrap();
+        // VeraCrypt finds a hidden volume's header on its own.
+        let (image, result) = unlock(&source, options(scheme), CancellationToken::new()).unwrap();
+        assert_eq!(result.hidden, hidden, "{name}");
         assert_eq!(
             image.read_range(0, expected.len()).unwrap(),
             expected,
@@ -199,6 +201,121 @@ fn veracrypt_regions_must_be_whole_sectors() {
     assert_eq!(
         image.read_range(0, 512).unwrap(),
         std::fs::read(fixture("plain.img")).unwrap()[..512]
+    );
+}
+
+#[test]
+fn veracrypt_system_encryption_opens_its_partition_in_place_or_the_drive_as_evidence() {
+    use crate::core::filesystem::evidence_session::EvidenceSession;
+    use crate::core::filesystem::tree::fs_tree;
+
+    let expected = std::fs::read(fixture("plain.img")).unwrap();
+    let disk = Arc::new(DiskImage::open(&fixture("veracrypt-system.img")).unwrap());
+    let partition = disk
+        .partitions
+        .iter()
+        .find(|partition| partition.start_lba == 128)
+        .map(|partition| partition.id)
+        .unwrap();
+    let mut system = options(EncryptionScheme::Veracrypt);
+    system.header = VeracryptHeader::System;
+    system.partition_id = Some(partition);
+    system.target = UnlockTarget::SourcePartition;
+    let (plain, result) = unlock(&disk, system, CancellationToken::new()).unwrap();
+    let details = result.veracrypt.clone().unwrap();
+    assert_eq!(
+        (
+            result.source_offset,
+            result.source_length,
+            details.header,
+            details.prf,
+            details.iterations,
+            details.system,
+            details.encryption_complete,
+        ),
+        (65536, 65536, "system", "sha256", 2048, true, true)
+    );
+    assert_eq!(plain.read_range(0, expected.len()).unwrap(), expected);
+    let source = Arc::new(EvidenceSession::from(Arc::clone(&disk)));
+    source
+        .attach_decrypted_partition(partition, plain, result.scheme, result.read_cancellation)
+        .unwrap();
+    let children = fs_tree::children_for_image(&source, &format!("part:{partition}")).unwrap();
+    assert!(children.iter().any(|node| node.name == "HELLO.TXT"));
+
+    // The whole drive reads as stored outside the encrypted partition.
+    let mut drive = options(EncryptionScheme::Veracrypt);
+    drive.header = VeracryptHeader::System;
+    drive.target = UnlockTarget::NewImage;
+    let (whole, _) = unlock(&disk, drive, CancellationToken::new()).unwrap();
+    assert_eq!(whole.len(), disk.len());
+    assert_eq!(
+        whole.read_range(0, 512).unwrap(),
+        disk.read_range(0, 512).unwrap()
+    );
+    assert_eq!(whole.read_range(65536, expected.len()).unwrap(), expected);
+    // The partition table of the drive view is the source's (type 0x07, as
+    // Windows system partitions are).
+    assert_eq!(
+        whole
+            .partitions
+            .iter()
+            .map(|partition| (partition.start_lba, partition.length_lba))
+            .collect::<Vec<_>>(),
+        [(128, 128)]
+    );
+
+    // A drive view cannot replace a partition; a system header needs no offsets.
+    let mut in_place = options(EncryptionScheme::Veracrypt);
+    in_place.header = VeracryptHeader::System;
+    in_place.target = UnlockTarget::SourcePartition;
+    assert_eq!(
+        error_code(unlock(&disk, in_place, CancellationToken::new())),
+        Some(ErrorCode::InvalidInput)
+    );
+    let mut offsets = options(EncryptionScheme::Veracrypt);
+    offsets.header = VeracryptHeader::System;
+    offsets.target = UnlockTarget::NewImage;
+    offsets.offset = Some(0);
+    assert_eq!(
+        error_code(unlock(&disk, offsets, CancellationToken::new())),
+        Some(ErrorCode::InvalidInput)
+    );
+}
+
+#[test]
+fn veracrypt_keyfiles_are_read_from_host_paths() {
+    let expected = std::fs::read(fixture("plain.img")).unwrap();
+    let source = Arc::new(DiskImage::open(&fixture("veracrypt-keyfile.hc")).unwrap());
+    let keyfile = fixture("veracrypt-keyfile.bin")
+        .to_string_lossy()
+        .into_owned();
+    let mut with_keyfile = options(EncryptionScheme::Veracrypt);
+    with_keyfile.keyfiles = vec![keyfile.clone()];
+    let (plain, result) = unlock(&source, with_keyfile, CancellationToken::new()).unwrap();
+    assert_eq!(plain.read_range(0, expected.len()).unwrap(), expected);
+    assert_eq!(result.veracrypt.map(|details| details.keyfiles), Some(1));
+    // The password alone does not open it, and a missing keyfile is a bad request.
+    assert_eq!(
+        error_code(unlock(
+            &source,
+            options(EncryptionScheme::Veracrypt),
+            CancellationToken::new()
+        )),
+        Some(ErrorCode::InvalidInput)
+    );
+    let mut missing = options(EncryptionScheme::Veracrypt);
+    missing.keyfiles = vec![format!("{keyfile}.missing")];
+    assert_eq!(
+        error_code(unlock(&source, missing, CancellationToken::new())),
+        Some(ErrorCode::InvalidInput)
+    );
+    // Keyfiles belong to VeraCrypt only.
+    let mut luks = options(EncryptionScheme::Luks);
+    luks.keyfiles = vec![keyfile];
+    assert_eq!(
+        error_code(unlock(&source, luks, CancellationToken::new())),
+        Some(ErrorCode::InvalidInput)
     );
 }
 

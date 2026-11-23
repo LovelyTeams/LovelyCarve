@@ -339,10 +339,12 @@ lovelycarve-cli -C "<case-dir>" ls /lk/part:0
 ```
 ### VeraCrypt, FileVault and iOS backups
 
-VeraCrypt has no signature: give `--scheme veracrypt`, with `--pim` and `--hidden` where they apply. A VeraCrypt volume is a whole number of the evidence's sectors, so a region of any other size is refused (`invalidInput`); for a container inside a larger file, give its span with `--offset` and `--length`. FileVault: read the logical volumes with `encryption`, then unlock one by its `--logical-volume` index (`--password` also accepts the personal recovery key); with several logical volumes, make each new evidence with `--new-image`. APFS native encryption is not supported. Encrypted iOS backups unlock with `--password` on the evidence root.
+VeraCrypt (and TrueCrypt) has no signature: give `--scheme veracrypt`, with `--pim`, `--keyfile <file or folder>` (repeatable; keyfiles alone need no `--password`) and `--prf` where they apply. The default `--header auto` tries the normal and the hidden volume header, like VeraCrypt; `--header backup` reads the embedded backup headers when the primary ones are damaged; `--header system` reads a system encryption header from sector 62 of the drive: address the encrypted system partition to read it in place, or the whole evidence for a plaintext view of the drive as new evidence. The result's `veracrypt` field names the header, PRF, iterations and cipher that opened, and `encryptionComplete: false` marks paused system encryption whose rest reads as stored. A VeraCrypt volume is a whole number of the evidence's sectors, so a region of any other size is refused (`invalidInput`); for a container inside a larger file, give its span with `--offset` and `--length`. See `docs/formats/VERACRYPT.md`. FileVault: read the logical volumes with `encryption`, then unlock one by its `--logical-volume` index (`--password` also accepts the personal recovery key); with several logical volumes, make each new evidence with `--new-image`. APFS native encryption is not supported. Encrypted iOS backups unlock with `--password` on the evidence root.
 
 ```text
 lovelycarve-cli -C "<case-dir>" unlock /vc --scheme veracrypt --password "@<absolute-password-file>" --pim 0
+lovelycarve-cli -C "<case-dir>" unlock /vc --scheme veracrypt --keyfile "<absolute-keyfile>" --header hidden
+lovelycarve-cli -C "<case-dir>" unlock /disk/part:2 --scheme veracrypt --header system --password "@<absolute-password-file>"
 lovelycarve-cli -C "<case-dir>" encryption /mac/part:1
 lovelycarve-cli -C "<case-dir>" unlock /mac/part:1 --scheme filevault --password "@<absolute-password-file>" --logical-volume 0 --new-image --as mac-hd
 lovelycarve-cli -C "<case-dir>" unlock /phone --scheme ios --password "@<absolute-password-file>"

@@ -4,9 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import EncryptedVolumeUnlockDialog from './EncryptedVolumeUnlockDialog.vue';
 import type { DiskPartition, ImageInfo } from '../../../lib/ipc/image';
 
-const rpc = vi.hoisted(() => ({ start: vi.fn(), dismiss: vi.fn() }));
+const rpc = vi.hoisted(() => ({ start: vi.fn(), dismiss: vi.fn(), pick: vi.fn() }));
 vi.mock('../composables/useEncryptedVolumeUnlocks', () => ({ startEncryptedVolumeUnlock: rpc.start }));
 vi.mock('../composables/useFileSession', () => ({ dismissUnlockReminder: rpc.dismiss }));
+vi.mock('@tauri-apps/plugin-dialog', () => ({ open: rpc.pick }));
 
 function partition(id: number, kind: string, label: string | null, start_lba: number): DiskPartition {
   return { id, kind, label, start_lba, length_lba: 2048 } as DiskPartition;
@@ -132,13 +133,48 @@ describe('encrypted volume unlock dialog', () => {
     await choose(1, '分区 3 · unknown');
     await value('input[type=password]', 'secret');
     await value('input[type=number]', '1');
-    dialog().querySelector<HTMLInputElement>('input[type=checkbox]')!.click();
-    await nextTick();
+    await choose(2, '隐藏卷');
+    await choose(3, 'SHA-512');
     await submit();
-    expect(sent).toMatchObject({ imageId: 'source', options: { scheme: 'veracrypt', credential: { kind: 'password', password: 'secret' }, partitionId: 3, pim: 1, hidden: true } });
+    expect(sent).toEqual({ imageId: 'source', options: { scheme: 'veracrypt', credential: { kind: 'password', password: 'secret' }, partitionId: 3, pim: 1, header: 'hidden', prf: 'sha512' } });
     expect(closed).toHaveBeenCalled();
     await reopen({});
     expect(dialog().querySelector<HTMLInputElement>('input[type=password]')!.value).toBe('');
+  });
+
+  it('opens a VeraCrypt volume with keyfiles alone and forgets them on close', async () => {
+    rpc.pick.mockResolvedValueOnce(['C:\\keys\\photo.jpg', 'C:\\keys\\notes.txt']).mockResolvedValueOnce('C:\\keys\\photo.jpg');
+    await choose(0, 'VeraCrypt');
+    await choose(1, '整个镜像 / 容器');
+    expect(submitButton().disabled).toBe(true);
+    const [addFiles] = [...dialog().querySelectorAll<HTMLButtonElement>('.keyfiles button')];
+    addFiles!.click();
+    await settle();
+    addFiles!.click();
+    await settle();
+    expect([...dialog().querySelectorAll('.keyfile-list .key-path')].map(item => item.textContent)).toEqual(['C:\\keys\\photo.jpg', 'C:\\keys\\notes.txt']);
+    dialog().querySelector<HTMLButtonElement>('.keyfile-list button')!.click();
+    await settle();
+    await submit();
+    expect(rpc.start).toHaveBeenCalledWith(info, { scheme: 'veracrypt', credential: { kind: 'password', password: '' }, pim: 0, keyfiles: ['C:\\keys\\notes.txt'] });
+    await reopen({});
+    await choose(0, 'VeraCrypt');
+    expect(dialog().querySelector('.keyfile-list')).toBeNull();
+  });
+
+  it('reads a system-encrypted drive as new evidence and keeps its PIM in range', async () => {
+    await choose(0, 'VeraCrypt');
+    await choose(1, '整个镜像 / 容器');
+    await choose(2, '系统加密');
+    expect(await options(3)).not.toContain('Argon2id');
+    await value('input[type=password]', 'secret');
+    await value('input[type=number]', '70000');
+    const pim = dialog().querySelector<HTMLInputElement>('input[type=number]')!;
+    expect(pim.getAttribute('aria-invalid')).toBe('true');
+    expect(submitButton().disabled).toBe(true);
+    await value('input[type=number]', '5');
+    await submit();
+    expect(rpc.start).toHaveBeenCalledWith(info, { scheme: 'veracrypt', credential: { kind: 'password', password: 'secret' }, pim: 5, header: 'system', target: 'newImage' });
   });
 
   it('does not offer VeraCrypt for a container whose size is not a whole number of sectors', async () => {

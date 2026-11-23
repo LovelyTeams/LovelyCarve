@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { DiskPartition, ImageInfo } from '../../../lib/ipc/image';
-import { availableSchemes, credentialModes, initialSelection, isLockedEncrypted, isWholeSectors, unlockRegions } from './encryptedUnlock';
+import {
+  availableSchemes, credentialModes, initialSelection, isLockedEncrypted, isWholeSectors, unlockRegions,
+  VERACRYPT_HEADERS, VERACRYPT_PRFS, veracryptHeaderLabel, veracryptPimLimit, veracryptPrfFits, veracryptPrfLabel,
+} from './encryptedUnlock';
 
 function partition(id: number, kind: string, start_lba: number, length_lba: number): DiskPartition {
   return { id, kind, label: null, start_lba, length_lba } as DiskPartition;
@@ -65,5 +68,20 @@ describe('encrypted unlock defaults and credentials', () => {
     expect(credentialModes('luks')).toEqual(['password', 'masterKey']);
     expect(credentialModes('filevault')).toEqual(['password', 'masterKey']);
     expect(credentialModes('veracrypt')).toEqual(['password']);
+  });
+});
+
+describe('VeraCrypt options', () => {
+  it('names every header and key derivation the backend accepts', () => {
+    expect(VERACRYPT_HEADERS.map(header => veracryptHeaderLabel(header))).toEqual(['自动', '标准卷', '隐藏卷', '备份卷头', '系统加密']);
+    expect(VERACRYPT_PRFS.map(prf => veracryptPrfLabel(prf))).toEqual(['自动', 'SHA-512', 'SHA-256', 'BLAKE2s-256', 'Whirlpool', 'Streebog', 'Argon2id', 'RIPEMD-160']);
+  });
+
+  it('keeps system encryption to its pre-boot PIM range and away from Argon2id', () => {
+    expect(veracryptPimLimit('auto')).toBe(2_147_468);
+    expect(veracryptPimLimit('system')).toBe(65_535);
+    expect(veracryptPrfFits('system', 'argon2id')).toBe(false);
+    expect(veracryptPrfFits('system', 'sha256')).toBe(true);
+    expect(veracryptPrfFits('hidden', 'argon2id')).toBe(true);
   });
 });

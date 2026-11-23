@@ -43,7 +43,7 @@
 | `sqlite-core` | `0.12.0` | [df511309e086](https://github.com/SecurityRonin/sqlite-forensic/commit/df511309e086825fb194ea8a721e94bbd0033fe0) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
 | `udif` | `0.4.2` | [3a73ee28fdab](https://github.com/Dil4rd/dpp/commit/3a73ee28fdab192fcdfbe8edcad7b520867f2417) | 升级 0.3.4 → 0.4.2；采用上游有边界的块解码及纯 Rust XZ。 |
 | `vdi` | `0.2.0` | [f1f88806c260](https://github.com/cohaereo/vdi-rs/commit/f1f88806c26042de342d1fbcb7f286590686e2fc) | 发布版本已最新；保留稀疏块、边界检查和 positioned I/O 重写。 |
-| `veracrypt` | `0.2.4` | [e3883a5b347f](https://github.com/SecurityRonin/veracrypt-forensic/commit/e3883a5b347f50b51de70ca08655b2fd4b0885b2) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
+| `veracrypt` | `0.3.0` | [e3883a5b347f](https://github.com/SecurityRonin/veracrypt-forensic/commit/e3883a5b347f50b51de70ca08655b2fd4b0885b2) | 2026-11-24 以 VeraCrypt 源码为准改写：BLAKE2s / Argon2id、TrueCrypt 迭代次数、Camellia / Kuznyechik 及全部级联、密钥文件、隐藏 / 备份 / 系统加密卷头、并行头部搜索与按偏移读取；见 LOVELYCARVE.md 与 [VERACRYPT](../../docs/formats/VERACRYPT.md)。 |
 | `vhd` | `0.1.4` | [2835523fe39c](https://github.com/SecurityRonin/vhd-forensic/commit/2835523fe39c16740133dc8d51932cad46bcc4b6) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
 | `vhdx` | `0.4.1` | [b03f1f5c1be9](https://github.com/SecurityRonin/vhdx-forensic/commit/b03f1f5c1be960d79af73f895017169171c00996) | 增加父盘定位器解析及父盘身份与几何校验，见 [VHD / VHDX](../../docs/formats/VHD.md)。 |
 | `vmdk` | `0.8.4` | [8a9831125c6d](https://github.com/SecurityRonin/vmdk-forensic/commit/8a9831125c6db5cff9a24414481037487a92d410) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
