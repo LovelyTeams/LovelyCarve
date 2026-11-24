@@ -5,7 +5,7 @@ import { tr } from '../../../composables/useLocale';
 //
 // - preprocessFunctions:剔除内部与文件级功能;系统级功能只在选中系统的系统族
 //   适用时列出,检材级功能总是列出;
-// - 同一插件的功能归并为一项,勾选插件即以默认选项运行它的全部功能;
+// - 同一插件的功能归并为一项,勾选插件运行它的全部功能(声明了选项时可在提交前编辑);
 // - 分类 = { favour(收藏), ...各分类, longtime };
 // - 选中的系统按检材记忆(localStorage),缺省为第一个识别出的系统。
 import { computed, ref } from 'vue';

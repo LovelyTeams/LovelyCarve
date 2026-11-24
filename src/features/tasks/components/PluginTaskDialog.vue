@@ -21,7 +21,7 @@
         <div v-if="chosen" class="ui-modal-body task-body">
           <button class="ui-btn link sm back" type="button" :disabled="submitting !== null" @click="chosen = null"><ChevronLeft :size="14" />{{ tr("返回分析器列表") }}</button>
           <h3 class="chosen-title">{{ functionName(chosen) }}</h3>
-          <AnalyzerOptionsForm v-model="options" :fn="chosen" :disabled="submitting !== null" />
+          <AnalyzerOptionsForm v-model="options" :fields="chosenFields" :disabled="submitting !== null" />
         </div>
         <div v-else class="ui-modal-body task-body">
           <label v-if="internalCount" class="ui-check toggle">
@@ -86,6 +86,7 @@ import { useDialogFocus } from '../../../composables/useDialogFocus';
 import { useTaskCenter } from '../composables/useTaskCenter';
 import { usePluginCatalog } from '../composables/usePluginCatalog';
 import AnalyzerOptionsForm from './AnalyzerOptionsForm.vue';
+import { analyzerOptionFields } from '../model/analyzerOptions';
 import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 const props = defineProps<{
@@ -108,6 +109,8 @@ const showInternal = ref(false);
 const submitting = ref<string | null>(null);
 const chosen = shallowRef<SchedFunction | null>(null);
 const options = ref<Record<string, unknown>>({});
+/** One function's fields are keyed by option id, the shape `options` is sent in. */
+const chosenFields = computed(() => (chosen.value ? analyzerOptionFields([chosen.value]) : []));
 
 watch(
   () => props.visible,

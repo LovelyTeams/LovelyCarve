@@ -255,4 +255,213 @@ describe('quick analysis submission', () => {
     expect(mocks.restart.mock.calls.map(([id]) => id)).toEqual([1, 3, 6]);
     expect(mocks.start).toHaveBeenCalledExactlyOnceWith(7);
   });
+
+  it('renders deduplicated plugin options and passes values only to analyzers declaring each option', async () => {
+    functions.value = [
+      ...functions.value,
+      fn('hm/overview', 'HarmonyOS NEXT', '系统概览', 'baseinfo', {
+        scope: 'evidence',
+        platforms: [],
+        options: [{ id: 'backup_password', kind: 'text', label: '备份密码', default: '', choices: [] }],
+      }),
+      fn('hm/comm', 'HarmonyOS NEXT', '通信社交', 'communication', {
+        scope: 'evidence',
+        platforms: [],
+        options: [{ id: 'backup_password', kind: 'text', label: '备份密码', default: '', choices: [] }],
+      }),
+      fn('hm/plain', 'HarmonyOS NEXT', '基础文件', 'baseinfo', {
+        scope: 'evidence',
+        platforms: [],
+        options: [],
+      }),
+    ];
+    await mount();
+    await tick(checkbox('HarmonyOS NEXT'));
+    const pwInputs = host.querySelectorAll<HTMLInputElement>('.qa-options input[type="text"]');
+    expect(pwInputs).toHaveLength(1);
+    pwInputs[0].value = 'P9x#rG1t6h';
+    pwInputs[0].dispatchEvent(new Event('input', { bubbles: true }));
+    await settle();
+    await click('开始分析');
+    expect(mocks.create.mock.calls).toEqual([
+      [{ function: 'hm/overview', imageId: 'disk-a', systemId: null, options: { backup_password: 'P9x#rG1t6h' } }, { quiet: true }],
+      [{ function: 'hm/comm', imageId: 'disk-a', systemId: null, options: { backup_password: 'P9x#rG1t6h' } }, { quiet: true }],
+      [{ function: 'hm/plain', imageId: 'disk-a', systemId: null }, { quiet: true }],
+    ]);
+    expect(host.querySelector('.qa-options')).toBeNull();
+  });
+
+  it('supports flag, choice and multi options and hides options when deselected', async () => {
+    functions.value = [
+      ...functions.value,
+      fn('opt/run', '参数插件', '全量扫描', 'baseinfo', {
+        scope: 'evidence',
+        platforms: [],
+        options: [
+          { id: 'deep', kind: 'flag', label: '深度扫描', default: false, choices: [] },
+          {
+            id: 'mode',
+            kind: 'choice',
+            label: '模式',
+            default: 'fast',
+            choices: [
+              { id: 'fast', label: '快速' },
+              { id: 'full', label: '完整' },
+            ],
+          },
+          {
+            id: 'scopes',
+            kind: 'multi',
+            label: '范围',
+            default: [],
+            choices: [
+              { id: 'chat', label: '聊天' },
+              { id: 'media', label: '媒体' },
+            ],
+          },
+        ],
+      }),
+    ];
+    await mount();
+    await tick(checkbox('参数插件'));
+    expect(host.querySelector('.qa-options')).not.toBeNull();
+
+    const flag = host.querySelector<HTMLInputElement>('.qa-options input[type="checkbox"].ui-switch')!;
+    await tick(flag);
+
+    const selectTrigger = host.querySelector<HTMLButtonElement>('.qa-options button[role="combobox"]')!;
+    selectTrigger.click();
+    await settle();
+    const fullOption = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(el => el.textContent?.trim() === '完整')!;
+    fullOption.click();
+    await settle();
+
+    const chatCheckbox = [...host.querySelectorAll<HTMLLabelElement>('.qa-options label.ui-check')]
+      .find(el => el.textContent?.includes('聊天'))!
+      .querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    await tick(chatCheckbox);
+
+    // Deselecting hides the bar; reselecting keeps edited values until submitted.
+    await tick(checkbox('参数插件'));
+    expect(host.querySelector('.qa-options')).toBeNull();
+    await tick(checkbox('参数插件'));
+    expect(host.querySelector('.qa-options')).not.toBeNull();
+
+    await click('开始分析');
+    expect(mocks.create.mock.calls).toEqual([
+      [{ function: 'opt/run', imageId: 'disk-a', systemId: null, options: { deep: true, mode: 'full', scopes: ['chat'] } }, { quiet: true }],
+    ]);
+  });
+
+  it('omits unchanged defaults when toggled back and resets options on clear', async () => {
+    functions.value = [
+      ...functions.value,
+      fn('opt/run', '参数插件', '全量扫描', 'baseinfo', {
+        scope: 'evidence',
+        platforms: [],
+        options: [
+          { id: 'deep', kind: 'flag', label: '深度扫描', default: false, choices: [] },
+          {
+            id: 'mode',
+            kind: 'choice',
+            label: '模式',
+            default: 'fast',
+            choices: [
+              { id: 'fast', label: '快速' },
+              { id: 'full', label: '完整' },
+            ],
+          },
+          {
+            id: 'scopes',
+            kind: 'multi',
+            label: '范围',
+            default: [],
+            choices: [
+              { id: 'chat', label: '聊天' },
+              { id: 'media', label: '媒体' },
+            ],
+          },
+        ],
+      }),
+    ];
+    await mount();
+    await tick(checkbox('参数插件'));
+    const flag = host.querySelector<HTMLInputElement>('.qa-options input[type="checkbox"].ui-switch')!;
+    await tick(flag);
+    await tick(flag);
+    await click('开始分析');
+    expect(mocks.create.mock.calls).toEqual([
+      [{ function: 'opt/run', imageId: 'disk-a', systemId: null }, { quiet: true }],
+    ]);
+
+    mocks.create.mockClear();
+    await tick(checkbox('参数插件'));
+    const flagAgain = host.querySelector<HTMLInputElement>('.qa-options input[type="checkbox"].ui-switch')!;
+    await tick(flagAgain);
+    await click('清空');
+    expect(host.querySelector('.qa-options')).toBeNull();
+    await tick(checkbox('参数插件'));
+    await click('开始分析');
+    expect(mocks.create.mock.calls).toEqual([
+      [{ function: 'opt/run', imageId: 'disk-a', systemId: null }, { quiet: true }],
+    ]);
+  });
+
+  it('omits options when a text option with empty default is cleared back to empty', async () => {
+    functions.value = [
+      ...functions.value,
+      fn('hm/overview', 'HarmonyOS NEXT', '系统概览', 'baseinfo', {
+        scope: 'evidence',
+        platforms: [],
+        options: [{ id: 'backup_password', kind: 'text', label: '备份密码', default: '', choices: [] }],
+      }),
+    ];
+    await mount();
+    await tick(checkbox('HarmonyOS NEXT'));
+    const pwInput = host.querySelector<HTMLInputElement>('.qa-options input[type="text"]')!;
+    pwInput.value = 'temp';
+    pwInput.dispatchEvent(new Event('input', { bubbles: true }));
+    await settle();
+    pwInput.value = '';
+    pwInput.dispatchEvent(new Event('input', { bubbles: true }));
+    await settle();
+    await click('开始分析');
+    expect(mocks.create.mock.calls).toEqual([
+      [{ function: 'hm/overview', imageId: 'disk-a', systemId: null }, { quiet: true }],
+    ]);
+  });
+
+  it('separates options sharing the same id when analyzers declare incompatible schemas', async () => {
+    functions.value = [
+      ...functions.value,
+      fn('mix/fast', '混合插件', '快速扫描', 'baseinfo', {
+        scope: 'evidence',
+        platforms: [],
+        options: [{ id: 'mode', kind: 'flag', label: '严格模式', default: false, choices: [] }],
+      }),
+      fn('mix/custom', '混合插件', '自定义扫描', 'baseinfo', {
+        scope: 'evidence',
+        platforms: [],
+        options: [{ id: 'mode', kind: 'text', label: '模式参数', default: '', choices: [] }],
+      }),
+    ];
+    await mount();
+    await tick(checkbox('混合插件'));
+    const labels = [...host.querySelectorAll('.qa-options label')].map(el => el.textContent?.trim());
+    expect(labels).toContain('快速扫描：严格模式');
+    expect(labels).toContain('自定义扫描：模式参数');
+
+    const flagInput = host.querySelector<HTMLInputElement>('.qa-options input[type="checkbox"].ui-switch')!;
+    await tick(flagInput);
+    const textInput = host.querySelector<HTMLInputElement>('.qa-options input[type="text"]')!;
+    textInput.value = 'deep';
+    textInput.dispatchEvent(new Event('input', { bubbles: true }));
+    await settle();
+
+    await click('开始分析');
+    expect(mocks.create.mock.calls).toEqual([
+      [{ function: 'mix/fast', imageId: 'disk-a', systemId: null, options: { mode: true } }, { quiet: true }],
+      [{ function: 'mix/custom', imageId: 'disk-a', systemId: null, options: { mode: 'deep' } }, { quiet: true }],
+    ]);
+  });
 });

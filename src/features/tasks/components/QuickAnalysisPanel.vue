@@ -86,6 +86,19 @@
       </template>
     </div>
 
+    <div v-if="optionGroups.length" class="qa-options">
+      <div v-for="group in optionGroups" :key="group.pluginId" class="qa-option-group" role="group" :aria-labelledby="optionGroupId(group.pluginId)">
+        <span :id="optionGroupId(group.pluginId)" class="qa-option-plugin">{{ group.pluginName }}</span>
+        <AnalyzerOptionsForm
+          :model-value="optionValues[group.pluginId] ?? {}"
+          :fields="group.fields"
+          :disabled="submitting"
+          compact
+          @update:model-value="value => setPluginOptions(group.pluginId, value)"
+        />
+      </div>
+    </div>
+
     <footer class="qa-foot">
       <div v-if="evidenceTasks.length" ref="moreMenuRoot" class="qa-more" @keydown.esc.stop="moreOpen = false">
         <button class="ui-icon-btn" :aria-expanded="moreOpen" aria-haspopup="menu" :aria-label="tr('更多操作')" :title="tr('更多操作')" @click="moreOpen = !moreOpen"><MoreHorizontal :size="16" /></button>
@@ -96,7 +109,7 @@
         <span v-else>{{ tr("勾选要运行的插件") }}</span>
         <span v-if="rerunCount" class="qa-rerun">{{ tr("其中 {0} 个已有结果，重新分析成功后替换", { 0: rerunCount }) }}</span>
       </span>
-      <button v-if="selectedCount" class="ui-btn ghost" :disabled="submitting" @click="selection.clear()">{{ tr("清空") }}</button>
+      <button v-if="selectedCount" class="ui-btn ghost" :disabled="submitting" @click="onClear">{{ tr("清空") }}</button>
       <button class="ui-btn primary" :disabled="submitting || !selectedCount" @click="onConfirm"><Loader2 v-if="submitting" :size="13" class="spin" /><Play v-else :size="13" />{{ submitting ? tr("提交中…") : tr("开始分析") }}</button>
     </footer>
   </section>
@@ -106,7 +119,7 @@
 import { tr } from '../../../composables/useLocale';
 import { joinList } from '../../../i18n/translate';
 
-/** 系统与检材级分析插件清单：按分类平铺插件，勾选插件即以默认选项运行它在所选系统（与整个检材）上的全部分析；
+/** 系统与检材级分析插件清单：按分类平铺插件，勾选插件即可在底栏上方编辑其声明的参数并运行所选系统（与整个检材）上的全部分析；
  *  顶部与每个分类各有一个三态全选框，格子右侧的图标是该插件在当前目标上的最近任务状态。 */
 import UiSelect from '../../../components/ui/UiSelect.vue';
 import UiTransition from '../../../components/ui/UiTransition.vue';
@@ -135,6 +148,8 @@ import {
   schedSystemsList,
   type DetectedSystem, type SchedFunction, type SchedTaskRecord, type SchedTaskStatus,
 } from '../../../lib/ipc/tasks';
+import AnalyzerOptionsForm from './AnalyzerOptionsForm.vue';
+import { analyzerOptionFields, functionOptions } from '../model/analyzerOptions';
 import type { ImageId } from '../../../lib/ipc/ids';
 
 const props = defineProps<{ imageId: ImageId }>();
@@ -221,6 +236,12 @@ watch(availablePlugins, (plugins) => {
   const available = new Set(plugins.map(plugin => plugin.id));
   const gone = selection.selectionList.value.filter(id => !available.has(id));
   if (gone.length) selection.deselectMany(gone);
+  const staleOptionPlugins = Object.keys(optionValues.value).filter(id => !available.has(id));
+  if (staleOptionPlugins.length) {
+    const next = { ...optionValues.value };
+    for (const id of staleOptionPlugins) delete next[id];
+    optionValues.value = next;
+  }
 });
 
 /** A job is a function on one target: the selected system, or the whole evidence. */
@@ -338,6 +359,29 @@ const selectedPlugins = computed(() =>
 const selectedCount = computed(() => selectedPlugins.value.length);
 const rerunCount = computed(() => selectedPlugins.value.filter(plugin => stateOf(plugin).published).length);
 
+/** The option fields of the selected plugins, one group per plugin that declares any. */
+const optionGroups = computed(() => selectedPlugins.value
+  .map(plugin => ({ pluginId: plugin.id, pluginName: plugin.name, fields: analyzerOptionFields(plugin.functions) }))
+  .filter(group => group.fields.length > 0));
+const optionGroupUid = Math.random().toString(36).slice(2, 8);
+function optionGroupId(pluginId: string): string {
+  return `qa-option-group-${optionGroupUid}-${pluginId}`;
+}
+
+/** Form values by plugin id. They outlive a deselection, and go once the
+ *  plugin is submitted, the selection is cleared or the evidence changes. */
+const optionValues = ref<Record<string, Record<string, unknown>>>({});
+watch(() => props.imageId, () => { optionValues.value = {}; });
+
+function setPluginOptions(pluginId: string, value: Record<string, unknown>): void {
+  optionValues.value = { ...optionValues.value, [pluginId]: value };
+}
+
+function onClear(): void {
+  selection.clear();
+  optionValues.value = {};
+}
+
 type CheckState = 'all' | 'some' | 'none';
 
 function selectable(plugins: QuickPlugin[]): QuickPlugin[] {
@@ -395,7 +439,7 @@ function familyIcon(family: string): LucideIcon {
   return icons[family] ?? Monitor;
 }
 
-/** 确定:已有结果时确认替换,再为每个插件的每个功能建任务(默认选项)。 */
+/** 确定:已有结果时确认替换,再为每个插件的每个功能建任务(附带已编辑的参数,未填写则沿用默认选项)。 */
 async function onConfirm(): Promise<void> {
   const chosen = selectedPlugins.value;
   if (!chosen.length || submitting.value) return;
@@ -419,13 +463,22 @@ async function onConfirm(): Promise<void> {
       for (const fn of plugin.functions) {
         if (disposed) return;
         const systemId = fn.scope === 'system' ? targetSystemId : null;
-        const task = await create({ function: fn.function, imageId: targetImageId, systemId }, { quiet: true });
+        const options = functionOptions(optionValues.value[plugin.id] ?? {}, fn);
+        const task = await create(
+          options ? { function: fn.function, imageId: targetImageId, systemId, options } : { function: fn.function, imageId: targetImageId, systemId },
+          { quiet: true },
+        );
         if (task) createdTasks += 1;
         else complete = false;
       }
       if (complete) {
         completePlugins += 1;
         selection.deselectMany([plugin.id]);
+        if (Object.hasOwn(optionValues.value, plugin.id)) {
+          const next = { ...optionValues.value };
+          delete next[plugin.id];
+          optionValues.value = next;
+        }
       }
     }
     if (disposed || !createdTasks) return;
@@ -520,6 +573,10 @@ async function onRestartAll(): Promise<void> {
 .qa-star.saved { position: static; flex-shrink: 0; margin-right: 2px; translate: none; opacity: 1; color: var(--sev-warn-fg); }
 .qa-star.saved svg { fill: currentColor; }
 @media (hover: none) { .qa-star { position: static; flex-shrink: 0; translate: none; opacity: 1; } }
+
+.qa-options { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; max-height: 180px; overflow-y: auto; padding: 8px 12px; border-top: 1px solid var(--border-color); background: var(--surface-secondary); }
+.qa-option-group { display: flex; flex-direction: column; gap: 6px; }
+.qa-option-plugin { color: var(--text-secondary); font-size: 11px; font-weight: 600; }
 
 .qa-foot { display: flex; align-items: center; gap: 8px; flex-shrink: 0; min-height: 54px; padding: 10px 12px; border-top: 1px solid var(--border-color); background: var(--surface-secondary); }
 .qa-more { position: relative; flex-shrink: 0; }
