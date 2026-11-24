@@ -9,11 +9,17 @@ use crate::{
         browsing::LastLink,
         exec::Exec,
         stream::{self, ReadPlan},
-        types::{parse_address, parse_secret, Address, Secret},
+        types::{parse_address, parse_host_path, parse_secret, Address, HostPath, Secret},
         workspace::Target,
         CliError, Output,
     },
-    core::{common::ids::NodeId, preview::sqlite::sqlite_preview::SqliteKey},
+    core::{
+        common::ids::NodeId,
+        preview::{
+            kdbx_preview::{KdbxCredentials, KdbxKeyfile},
+            sqlite::sqlite_preview::SqliteKey,
+        },
+    },
 };
 
 #[derive(Clone, Copy, Debug, ValueEnum, Serialize, Deserialize, PartialEq, Eq)]
@@ -27,6 +33,58 @@ pub enum Format {
     Binary,
     Gguf,
     VimSwap,
+    Kdbx,
+}
+
+#[derive(Args, Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KdbxKeyArgs {
+    /// KeePass 主密码（@文件、- 或在终端中输入）
+    #[arg(long, num_args = 0..=1, default_missing_value = "", value_parser = parse_secret, value_name = "@文件")]
+    pub password: Option<Secret>,
+    /// KeePass 密钥文件（主机上的文件）
+    #[arg(long, value_parser = parse_host_path, value_name = "文件")]
+    pub keyfile: Option<HostPath>,
+    /// KeePass 转换密钥（64 个十六进制字符）
+    #[arg(long, num_args = 0..=1, default_missing_value = "", value_parser = parse_secret, value_name = "@文件")]
+    pub transformed_key: Option<Secret>,
+}
+
+impl KdbxKeyArgs {
+    fn credentials(&self) -> Result<Option<KdbxCredentials>, CliError> {
+        if self.password.is_none() && self.keyfile.is_none() && self.transformed_key.is_none() {
+            return Ok(None);
+        }
+        Ok(Some(KdbxCredentials {
+            password: self
+                .password
+                .as_ref()
+                .map(Secret::value)
+                .transpose()?
+                .map(str::to_owned),
+            keyfile: self
+                .keyfile
+                .as_ref()
+                .map(|path| KdbxKeyfile::Host { path: path.text() }),
+            transformed_key: self
+                .transformed_key
+                .as_ref()
+                .map(Secret::value)
+                .transpose()?
+                .map(str::to_owned),
+        }))
+    }
+
+    fn secrets_mut(&mut self) -> Vec<(&'static str, &mut Secret)> {
+        let mut secrets = Vec::new();
+        if let Some(secret) = self.password.as_mut() {
+            secrets.push(("password", secret));
+        }
+        if let Some(secret) = self.transformed_key.as_mut() {
+            secrets.push(("transformed-key", secret));
+        }
+        secrets
+    }
 }
 
 #[derive(Args, Debug, Clone, Default, Serialize, Deserialize)]
@@ -99,6 +157,9 @@ pub struct InspectArgs {
     pub delimiter: Option<String>,
     #[command(flatten)]
     pub key: SqliteKeyArgs,
+    #[command(flatten)]
+    #[serde(default)]
+    pub kdbx: KdbxKeyArgs,
 }
 
 #[derive(Args, Debug, Clone, Serialize, Deserialize)]
@@ -215,7 +276,9 @@ pub fn sqlite_secrets_mut(args: &mut SqliteArgs) -> Vec<(&'static str, &mut Secr
 }
 
 pub fn inspect_secrets_mut(args: &mut InspectArgs) -> Vec<(&'static str, &mut Secret)> {
-    args.key.secrets_mut()
+    let mut secrets = args.key.secrets_mut();
+    secrets.extend(args.kdbx.secrets_mut());
+    secrets
 }
 
 fn operation(name: &'static str) -> impl Fn(crate::app::error::AppError) -> CliError {
@@ -267,6 +330,10 @@ fn recognize(head: &[u8], name: &str) -> Option<Format> {
     if starts(b"b0VIM") {
         return Some(Format::VimSwap);
     }
+    // KeePass 2.x / KDBX, and the KeePass 2 pre-release signature.
+    if starts(b"\x03\xd9\xa2\x9a\x67\xfb\x4b\xb5") || starts(b"\x03\xd9\xa2\x9a\x66\xfb\x4b\xb5") {
+        return Some(Format::Kdbx);
+    }
     if head.get(16..20) == Some(b"T-DB") {
         return Some(Format::Realm);
     }
@@ -295,6 +362,7 @@ fn recognize(head: &[u8], name: &str) -> Option<Format> {
         "csv" | "tsv" => Some(Format::Csv),
         "gguf" => Some(Format::Gguf),
         "swp" | "swo" => Some(Format::VimSwap),
+        "kdbx" => Some(Format::Kdbx),
         "exe" | "dll" | "sys" | "so" | "dylib" | "elf" | "o" | "a" | "ko" => Some(Format::Binary),
         _ => None,
     }
@@ -318,7 +386,7 @@ pub async fn inspect(exec: &Exec, args: InspectArgs) -> Result<Output, CliError>
                 CliError::new(
                     "unsupportedFormat",
                     format!(
-                        "无法识别 {} 的格式；用 --as sqlite|realm|zip|csv|binary|gguf|vim-swap 指定，或用 identify 识别内容类型",
+                        "无法识别 {} 的格式；用 --as sqlite|realm|zip|csv|binary|gguf|vim-swap|kdbx 指定，或用 identify 识别内容类型",
                         target.address()
                     ),
                 )
@@ -379,6 +447,25 @@ pub async fn inspect(exec: &Exec, args: InspectArgs) -> Result<Output, CliError>
             &target,
             Some("vim-swap"),
         ),
+        Format::Kdbx => {
+            use crate::commands::preview::kdbx_preview as kdbx;
+            match args.kdbx.credentials()? {
+                None => with_path(
+                    kdbx::fs_kdbx_header(state, image_id, node_id)
+                        .await
+                        .map_err(operation("fs_kdbx_header"))?,
+                    &target,
+                    Some("kdbx"),
+                ),
+                Some(credentials) => with_path(
+                    kdbx::fs_kdbx_open(state, image_id, node_id, credentials)
+                        .await
+                        .map_err(operation("fs_kdbx_open"))?,
+                    &target,
+                    Some("kdbx"),
+                ),
+            }
+        }
         Format::Auto => Err(crate::cli::internal_error("格式未确定")),
     }
 }
@@ -648,6 +735,19 @@ mod tests {
         realm[16..20].copy_from_slice(b"T-DB");
         assert_eq!(recognize(&realm, "default"), Some(Format::Realm));
         assert_eq!(recognize(b"a,b,c\n", "data.CSV"), Some(Format::Csv));
+        assert_eq!(
+            recognize(
+                b"\x03\xd9\xa2\x9a\x67\xfb\x4b\xb5\x01\x00\x04\x00",
+                "vault.bin"
+            ),
+            Some(Format::Kdbx)
+        );
+        assert_eq!(recognize(b"", "Passwords.KDBX"), Some(Format::Kdbx));
+        // KeePass 1.x shares the first signature but is not KDBX.
+        assert_eq!(
+            recognize(b"\x03\xd9\xa2\x9a\x65\xfb\x4b\xb5", "old.kdb"),
+            None
+        );
         assert_eq!(recognize(b"", "notes.txt"), None);
         assert_eq!(parameter("5"), json!(5));
         assert_eq!(parameter("2026-08-01"), json!("2026-08-01"));

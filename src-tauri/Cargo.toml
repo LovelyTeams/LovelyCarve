@@ -141,6 +141,7 @@ ios-backup-forensic = { path = "vendor/ios-backup/forensic" }
 jffs2 = { path = "vendor/jffs2" }
 jfs-reader = { path = "vendor/jfs-reader" }
 jiff = { version = "0.2.38", default-features = false, features = ["std", "tzdb-bundle-always"] }
+kdbx = { path = "vendor/kdbx", package = "kdbx-reader" }
 lamfold = { path = "vendor/lamfold", default-features = false, features = ["std", "codec-deflate"] }
 lamfold-cramfs = { path = "vendor/lamfold-cramfs", default-features = false, features = ["std"] }
 lamfold-erofs = { path = "vendor/lamfold-erofs", default-features = false, features = ["std", "lz4", "deflate", "zstd", "lzma"] }
@@ -311,6 +312,13 @@ opt-level = 3
 [profile.dev.package.camellia]
 opt-level = 3
 [profile.dev.package.kuznyechik]
+opt-level = 3
+
+# KeePass databases run AES-KDF rounds and Argon2 passes the header chooses,
+# and decrypt and verify every payload block.
+[profile.dev.package.kdbx-reader]
+opt-level = 3
+[profile.dev.package.chacha20]
 opt-level = 3
 
 # Reopening logical phone evidence can inflate tens of GiB before showing the

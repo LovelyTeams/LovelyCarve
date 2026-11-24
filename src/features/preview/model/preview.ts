@@ -8,6 +8,7 @@ export type PreviewCategory =
   | 'code'
   | 'binary'
   | 'gguf'
+  | 'kdbx'
   | 'sqlite'
   | 'realm'
   | 'rich'

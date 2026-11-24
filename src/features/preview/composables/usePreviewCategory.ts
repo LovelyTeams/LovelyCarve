@@ -8,6 +8,7 @@ import {
   EXECUTABLE_EXT,
   GGUF_EXT,
   IMAGE_EXT,
+  KDBX_EXT,
   MD_EXT,
   PE_EXT,
   REALM_EXT,
@@ -91,6 +92,13 @@ function looksRealm(bytes: Uint8Array): boolean {
     REALM_MAGIC.every((value, index) => bytes[REALM_MAGIC_OFFSET + index] === value);
 }
 
+/** KeePass 2.x / KDBX (second signature 0xB54BFB67, or 0xB54BFB66 for KeePass 2 pre-releases). */
+function looksKdbx(bytes: Uint8Array): boolean {
+  return bytes.length >= 8 &&
+    bytes[0] === 0x03 && bytes[1] === 0xd9 && bytes[2] === 0xa2 && bytes[3] === 0x9a &&
+    (bytes[4] === 0x67 || bytes[4] === 0x66) && bytes[5] === 0xfb && bytes[6] === 0x4b && bytes[7] === 0xb5;
+}
+
 function categoryFromExtAndBytes(nodeKind: string, ext: string, bytes: Uint8Array): PreviewCategory {
   if (nodeKind !== 'file') return 'unsupported';
   const normalizedExt = ext.toLowerCase();
@@ -100,6 +108,7 @@ function categoryFromExtAndBytes(nodeKind: string, ext: string, bytes: Uint8Arra
   if (VIDEO_EXT.has(normalizedExt)) return 'video';
   if (PE_EXT.has(normalizedExt) || EXECUTABLE_EXT.has(normalizedExt) || AR_EXT.has(normalizedExt)) return 'binary';
   if (GGUF_EXT.has(normalizedExt)) return 'gguf';
+  if (KDBX_EXT.has(normalizedExt)) return 'kdbx';
   if (REALM_EXT.has(normalizedExt)) return 'realm';
   if (SQLITE_EXT.has(normalizedExt)) return 'sqlite';
   if (RICH_EXT.has(normalizedExt)) return 'rich';
@@ -125,6 +134,7 @@ function categoryFromExtAndBytes(nodeKind: string, ext: string, bytes: Uint8Arra
     return 'binary';
   }
   if (bytes.length >= 4 && bytes[0] === 0x47 && bytes[1] === 0x47 && bytes[2] === 0x55 && bytes[3] === 0x46) return 'gguf';
+  if (looksKdbx(bytes)) return 'kdbx';
   if (looksRealm(bytes)) return 'realm';
   if (looksSqlite(bytes)) return 'sqlite';
   if (bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b) return 'zip';
@@ -237,6 +247,9 @@ export function usePreviewCategory(options: UsePreviewCategoryOptions) {
 
   const category = computed<PreviewCategory>(() => {
     if (options.nodeKind() !== 'file') return 'unsupported';
+    // Magika has no KeePass label and reads the encrypted payload as noise;
+    // the KDBX signature decides.
+    if (looksKdbx(options.bytes())) return 'kdbx';
     const ident = identCategory.value;
     // 特例：扩展名已指明 rich（Flyfish 渲染）而 magika 只给出泛文本判定时让扩展名
     // 赢——否则 .eml/.rtf/.mbox 这类文本型扩展会被 text/plain 高置信度识别抢到

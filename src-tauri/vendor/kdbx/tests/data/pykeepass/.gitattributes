@@ -1,0 +1,5 @@
+# Keyfiles that are not KeePass XML are hashed byte for byte; keep every
+# fixture exactly as pykeepass ships it.
+*.kdbx binary
+*.key binary
+*.keyx binary

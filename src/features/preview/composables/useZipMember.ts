@@ -1,10 +1,9 @@
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { fsZipMemberRead, type ZipPreviewEntry } from '../../../lib/ipc/zip';
 import type { ImageId, NodeId } from '../../../lib/ipc/ids';
+import { HEX_VIEW_CAP, hexRows as toHexRows, looksTextual, textChunks as toTextChunks } from '../model/bytePreview';
 export function useZipMember(options: { imageId: () => ImageId; nodeId: () => NodeId }) {
   const MEMBER_FETCH_CAP = 1024 * 1024;
-  const HEX_VIEW_CAP = 32 * 1024;
-  const TEXT_CHUNK_CHARS = 8000;
   let generation = 0; let disposed = false;
   const selected = ref<ZipPreviewEntry | null>(null);
   const memberBytes = ref<Uint8Array | null>(null);
@@ -49,60 +48,9 @@ export function useZipMember(options: { imageId: () => ImageId; nodeId: () => No
     }
   }
 
-  // 头部嗅探：含 NUL → 二进制（默认十六进制）；否则可打印比例够高 → 文本。
-  function looksTextual(b: Uint8Array): boolean {
-    const n = Math.min(b.length, 4096);
-    if (n === 0) return true;
-    let printable = 0;
-    for (let i = 0; i < n; i++) {
-      const c = b[i];
-      if (c === 0) return false;
-      if (c === 9 || c === 10 || c === 13 || (c >= 0x20 && c <= 0x7e) || c >= 0x80) printable += 1;
-    }
-    return printable / n > 0.85;
-  }
-
-  const memberText = computed(() => {
-    const b = memberBytes.value;
-    if (!b || b.length === 0) return '';
-    try {
-      return new TextDecoder('utf-8', { fatal: false }).decode(b);
-    } catch {
-      return '';
-    }
-  });
-
-  const textChunks = computed<string[]>(() => {
-    const text = memberText.value;
-    if (!text) return [];
-    const out: string[] = [];
-    for (let i = 0; i < text.length; i += TEXT_CHUNK_CHARS) {
-      out.push(text.slice(i, i + TEXT_CHUNK_CHARS));
-    }
-    return out;
-  });
-
+  const textChunks = computed<string[]>(() => toTextChunks(memberBytes.value));
   const hexCapped = computed(() => !!memberBytes.value && memberBytes.value.length > HEX_VIEW_CAP);
-
-  const hexRows = computed(() => {
-    const b = memberBytes.value;
-    if (!b) return [] as { offset: string; bytes: string; ascii: string }[];
-    const n = Math.min(b.length, HEX_VIEW_CAP);
-    const rows: { offset: string; bytes: string; ascii: string }[] = [];
-    for (let off = 0; off < n; off += 16) {
-      const end = Math.min(off + 16, n);
-      let bytes = '';
-      let ascii = '';
-      for (let j = off; j < end; j++) {
-        bytes += b[j].toString(16).padStart(2, '0').toUpperCase() + ' ';
-        ascii += b[j] >= 0x20 && b[j] <= 0x7e ? String.fromCharCode(b[j]) : '.';
-      }
-      // 末行补齐字节列宽，ASCII 列对齐。
-      bytes = bytes.padEnd(16 * 3, ' ');
-      rows.push({ offset: off.toString(16).padStart(8, '0').toUpperCase(), bytes, ascii });
-    }
-    return rows;
-  });
+  const hexRows = computed(() => toHexRows(memberBytes.value));
 
 
   watch([options.imageId, options.nodeId], () => {

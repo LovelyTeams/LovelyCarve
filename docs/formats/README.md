@@ -6,7 +6,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 
 ## 专题
 
-表格按文件系统、分区与阵列、加密与快照、镜像容器、压缩与备份的顺序排列。
+表格按文件系统、分区与阵列、加密与快照、镜像容器、压缩与备份、文件内容的顺序排列。
 
 | 格式 | 文档 | 要点 |
 | --- | --- | --- |
@@ -61,6 +61,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | Android 备份 | [ANDROID_BACKUP.md](ANDROID_BACKUP.md) | `.ab` 1–5 与小米 `.bak` 独立打开；原始容器字节与逻辑文件树分离 |
 | 小米备份 | [MIUI_BAK.md](MIUI_BAK.md) | ZIP / 目录内 `.bak` 自动展开；Android Backup 头、TAR 与压缩流 |
 | iOS 备份 | [IOS_BACKUPS.md](../IOS_BACKUPS.md) | 本地备份浏览、加密备份解锁与异常检查 |
+| KeePass KDBX | [KDBX.md](KDBX.md) | pykeepass 读取部分的 Rust 改写；KDBX 3 / 4、AES / Twofish / ChaCha20、AES-KDF / Argon2、密钥文件与转换密钥、头部与数据块校验、原类型视图 |
 
 其余格式（Btrfs、ZFS、UFS，以及 VDI、DMG、AD1 等镜像容器）的实现位置见 [架构说明的镜像与证据源](../ARCHITECTURE.md#镜像与证据源)，上游版本、本地补丁与测试样本记录在各 vendor 目录的 `LOVELYCARVE.md` / `ORIGIN.md` 中。命令行下的检材登记、解锁和导出示例见 [CLI 手册](../CLI.md)。
 

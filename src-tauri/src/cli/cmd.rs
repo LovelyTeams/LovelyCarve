@@ -118,7 +118,7 @@ pub enum Command {
     Grep(find::GrepArgs),
     /// 文件系统日志：NTFS USN 与 ext4 jbd2
     Journal(find::JournalArgs),
-    /// 解析文件结构：SQLite、Realm、ZIP、CSV、可执行文件、GGUF、Vim 交换文件
+    /// 解析文件结构：SQLite、Realm、ZIP、CSV、可执行文件、GGUF、Vim 交换文件、KeePass 数据库
     Inspect(inspect::InspectArgs),
     /// SQLite 数据库：表、记录、只读查询与删除记录恢复
     Sqlite(inspect::SqliteArgs),

@@ -142,6 +142,7 @@ fmt:
     cd src-tauri/vendor/vhdx && cargo fmt
     cd src-tauri/vendor/luks && cargo fmt
     cd src-tauri/vendor/veracrypt && cargo fmt
+    cd src-tauri/vendor/kdbx && cargo fmt
     cd src-tauri/vendor/vsc && cargo fmt
     cd src-tauri/vendor/gzipf && cargo fmt
     cd src-tauri/vendor/smraw && cargo fmt
@@ -884,6 +885,18 @@ test-veracrypt *args:
 [group("readers")]
 [working-directory("src-tauri/vendor/veracrypt")]
 clippy-veracrypt *args:
+    cargo clippy --all-targets {{ args }}
+
+# Test the KeePass KDBX reader on pykeepass's KeePass / KeePassXC databases and its independent corpus.
+[group("readers")]
+[working-directory("src-tauri/vendor/kdbx")]
+test-kdbx *args:
+    cargo test {{ args }}
+
+# Lint the KeePass KDBX reader and its tests.
+[group("readers")]
+[working-directory("src-tauri/vendor/kdbx")]
+clippy-kdbx *args:
     cargo clippy --all-targets {{ args }}
 
 # Compare the Rust ReFS port against the explicitly enabled legacy DLL oracle.

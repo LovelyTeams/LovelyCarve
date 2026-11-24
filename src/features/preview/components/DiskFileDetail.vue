@@ -72,6 +72,8 @@
 
           <RealmViewer v-else-if="category === 'realm'" :key="node.id" class="viewer-fill" :image-id="imageId" :node-id="node.id" />
 
+          <KdbxViewer v-else-if="category === 'kdbx'" :key="node.id" class="viewer-fill" :image-id="imageId" :node-id="node.id" :parent-id="node.parent_id" />
+
           <!-- 文档 / 办公 / 邮件 / 非 zip 压缩包 / CAD / 3D / 图表等「rich」类别统一交给
                Flyfish File Viewer（RichPreviewViewer），库内按扩展名分派渲染器。 -->
           <RichPreviewViewer v-else-if="category === 'rich'" :key="node.id" class="viewer-fill" :image-id="imageId" :node="node" />
@@ -235,6 +237,7 @@ const BinaryViewer = defineAsyncComponent(() => import('./viewers/BinaryViewer.v
 const GgufViewer = defineAsyncComponent(() => import('./viewers/GgufViewer.vue'));
 const SqliteViewer = defineAsyncComponent(() => import('./viewers/SqliteViewer.vue'));
 const RealmViewer = defineAsyncComponent(() => import('./viewers/RealmViewer.vue'));
+const KdbxViewer = defineAsyncComponent(() => import('./viewers/KdbxViewer.vue'));
 const ZipViewer = defineAsyncComponent(() => import('./viewers/ZipViewer.vue'));
 const RichPreviewViewer = defineAsyncComponent(() => import('./viewers/RichPreviewViewer.vue'));
 

@@ -12,6 +12,7 @@
 - 解锁后的 BitLocker 卷按卷首识别文件系统：BitLocker To Go 卷中的 FAT / exFAT 可以浏览，卷内的 NTFS 卷影副本与盘符还原也照常可用。卷影副本、盘符还原和树图同样覆盖 LUKS、VeraCrypt 中解锁出的 NTFS。
 - 打开含锁定加密分区的镜像时，「检测到加密分区」提示覆盖 BitLocker、LUKS 与 FileVault 2。
 - VeraCrypt / TrueCrypt 解锁支持密钥文件（文件与文件夹，可只用密钥文件）、BLAKE2s-256 与 Argon2id 密钥派生、Camellia 与 Kuznyechik 及其级联、卷内嵌的备份卷头，以及系统加密：从磁盘第 62 扇区读取卷头，在被加密的系统分区上原位解锁，或把整盘读成明文的新检材；暂停的系统加密按 VeraCrypt 的方式读取并提示「加密未完成」。「卷头」「密钥派生」可缩小搜索范围，结果给出所用卷头、PRF、迭代次数与算法。
+- KeePass 密码库（`.kdbx`，或以 KDBX 签名开头的改名文件）的原类型视图：无需密码即可查看外部头部与密钥派生参数；用主密码、密钥文件（同目录检材文件或主机文件）或转换密钥解密后，浏览群组与回收站、条目与全部字段（受保护字段默认遮蔽）、字段引用解析结果、历史版本及其改动、附件内容、自定义数据与已删除对象。读取器 `kdbx-reader` 是 pykeepass 读取部分的纯 Rust 改写，支持 KDBX 3.x / 4.x、AES / Twofish / ChaCha20、AES-KDF / Argon2d / Argon2id，校验头部与每个数据块。CLI `inspect` 识别 KDBX，`--password`、`--keyfile`、`--transformed-key` 解密。
 
 ### Changed
 

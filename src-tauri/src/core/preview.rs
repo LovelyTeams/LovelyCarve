@@ -2,6 +2,7 @@
 
 pub mod binary;
 pub mod gguf;
+pub mod kdbx_preview;
 pub mod media_cache;
 pub mod ocr;
 pub mod qrcode;

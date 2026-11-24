@@ -70,6 +70,17 @@ describe('usePreviewCategory', () => {
     expect(resolve({ ext: 'crc', bytes: TEXT }).category).toBe('code');
   });
 
+  it('opens KeePass databases by extension or signature, over a content guess', () => {
+    const kdbx = new Uint8Array([0x03, 0xd9, 0xa2, 0x9a, 0x67, 0xfb, 0x4b, 0xb5, 0x01, 0x00, 0x04, 0x00]);
+    const preRelease = new Uint8Array([0x03, 0xd9, 0xa2, 0x9a, 0x66, 0xfb, 0x4b, 0xb5]);
+    const keepass1 = new Uint8Array([0x03, 0xd9, 0xa2, 0x9a, 0x65, 0xfb, 0x4b, 0xb5, 0x00]);
+    expect(resolve({ ext: 'kdbx' }).category).toBe('kdbx');
+    expect(resolve({ ext: 'dat', bytes: kdbx }).category).toBe('kdbx');
+    expect(resolve({ ext: '', bytes: preRelease }).category).toBe('kdbx');
+    expect(resolve({ ext: 'txt', bytes: kdbx, typeIdent: ident({}) }).category).toBe('kdbx');
+    expect(resolve({ ext: 'kdb', bytes: keepass1 }).category).toBe('unsupported');
+  });
+
   it('keeps directories out of file viewers even when content hints exist', () => {
     expect(resolve({ ext: 'sqlite', kind: 'dir', bytes: TEXT, typeIdent: ident({}) }).category).toBe('unsupported');
   });

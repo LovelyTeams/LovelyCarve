@@ -181,7 +181,14 @@ lovelycarve-cli -C "<case-dir>" sqlite tables /nas/part:0/data/msgstore.db
 lovelycarve-cli -C "<case-dir>" sqlite query /nas/part:0/data/msgstore.db "SELECT id, body FROM messages WHERE chat_id = ?1 ORDER BY id" --param 12 --limit 50
 ```
 
-`inspect` parses SQLite, Realm, ZIP, CSV, executables (PE, ELF, Mach-O, ar), GGUF and Vim swap files; `--as` chooses the parser when the content type is ambiguous. `cat --member <path>` reads one member of a ZIP.
+`inspect` parses SQLite, Realm, ZIP, CSV, executables (PE, ELF, Mach-O, ar), GGUF, Vim swap files and KeePass KDBX databases; `--as` chooses the parser when the content type is ambiguous. `cat --member <path>` reads one member of a ZIP.
+
+A KDBX database without credentials reports its outer header (version, cipher, key derivation parameters, seeds). `--password`, `--keyfile` (a host file) or `--transformed-key` decrypt it and report groups, entries, history, attachments and metadata, protected values in plaintext; wrong credentials fail with `invalidInput`:
+
+```text
+lovelycarve-cli -C "<case-dir>" inspect /nas/part:0/home/alice/Passwords.kdbx
+lovelycarve-cli -C "<case-dir>" inspect /nas/part:0/home/alice/Passwords.kdbx --password @pw.txt --keyfile "<absolute-keyfile>"
+```
 
 ### BCP exchange packages
 

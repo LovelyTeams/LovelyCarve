@@ -38,7 +38,7 @@ LovelyCarve 面向电子数据取证、应急响应和 CTF 取证题：加载磁
 - **检材接入**：磁盘镜像、文件夹、归档、AD1 逻辑镜像、Docker/OCI 镜像、iOS 本地备份、Windows 物理磁盘，以及由成员盘重组的 RAID。
 - **分区、卷与加密**：GPT、MBR/EBR、APM、Amiga RDB、BSD 分区与 LVM2 逻辑卷；mdadm（元数据 0.90 / 1.x）linear 与 RAID0/1/4/5/6/10 重组，含降级重建、RAID6 双盘恢复与 md 上的 LVM，Intel RST / VROC（IMSM）与 PERC、MegaRAID 等控制器（SNIA DDF）的固件 RAID 卷按元数据重组，无元数据成员盘按 RAID0/RAID5 推定；解锁 BitLocker、LUKS、VeraCrypt / TrueCrypt、FileVault 2 和加密的 iOS 备份，浏览 NTFS 卷影副本。解密视图按需读取，不生成整卷明文。
 - **文件浏览**：目录树与分页文件列表，排序、列筛选和递归“全显”；按文件系统能力展示删除项、未分配空间、命名流、符号链接与元数据节点。
-- **原类型预览**：文本、十六进制、图片、音视频、PDF、Office 文档和归档；SQLite（含 WAL 回放与删除记录恢复）、Realm、PE / ELF / Mach-O / GGUF 等结构化视图；预览可拆出为独立窗口。
+- **原类型预览**：文本、十六进制、图片、音视频、PDF、Office 文档和归档；SQLite（含 WAL 回放与删除记录恢复）、Realm、KeePass 密码库（KDBX 3 / 4 解密浏览）、PE / ELF / Mach-O / GGUF 等结构化视图；预览可拆出为独立窗口。
 - **校验与导出**：MD5、SHA-1、SHA-256、SM3；E01 采集哈希核对；导出文件、目录、ZIP、RAW 镜像与解密镜像。读取遇到坏区时报告补零字节，短读不会被当作完整结果。
 - **全局搜索**：关键词与正则，覆盖 ASCII、UTF-8、UTF-16LE/BE、GBK，可包含删除文件与未分配空间；命中可回到源文件并定位字节偏移，支持去重与 CSV 导出。
 - **时间线**：投影文件修改时间、插件事件与 NTFS USN 日志，提供年度活动热力图、趋势钻取、筛选和导出。

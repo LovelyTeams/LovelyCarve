@@ -47,6 +47,9 @@ export const AR_EXT = new Set(['a', 'ar', 'lib']);
 /** GGUF（llama.cpp / ggml 大模型权重容器）——预览侧走 GGUF 结构解析视图
  *  （头部 / 元数据 / 张量布局 / 量化 / 参数量）。 */
 export const GGUF_EXT = new Set(['gguf']);
+/** KeePass KDBX 密码库——预览侧走 KDBX 视图（无需密钥的外部头部；解密后浏览群组、
+ *  条目、历史版本与附件）。改后缀的库靠文件头签名识别。 */
+export const KDBX_EXT = new Set(['kdbx']);
 /** ZIP 压缩包——预览侧走内部结构目录树 + 成员内容预览（ZipViewer，经
  *  fs_zip_preview 解析中央目录、fs_zip_member_read 解压单成员）。仅纯 `.zip`：
  *  jar/apk/war/ipa 等 ZIP 容器仍由 Magika 识别 / PK 魔数路径进入该视图，但不放进
@@ -62,7 +65,7 @@ export const DOCUMENT_EXT = new Set([
 ]);
 export const SPREADSHEET_EXT = new Set(['xls', 'xlsx', 'xlsm', 'xlsb', 'ods', 'et']);
 export const DATABASE_EXT = new Set([
-  'db', 'db3', 'sqlite', 'sqlite3', 'mdb', 'accdb', 'edb', 'frm', 'ibd', 'realm',
+  'db', 'db3', 'sqlite', 'sqlite3', 'mdb', 'accdb', 'edb', 'frm', 'ibd', 'realm', 'kdbx', 'kdb',
 ]);
 /** SQLite 库——预览侧走 SQLite 表浏览视图。DATABASE_EXT 的子集：
  *  mdb/edb/frm 等非 SQLite 库不在此列。`.db` 有歧义（也可能是其他格式），

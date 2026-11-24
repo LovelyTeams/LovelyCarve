@@ -1,0 +1,48 @@
+[package]
+name = "kdbx-reader"
+description = "Read-only KeePass KDBX 3.x / 4.x reader rewritten from pykeepass: outer header, AES-KDF and Argon2, AES / Twofish / ChaCha20 payloads, protected values and the XML database."
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "GPL-3.0-only"
+authors = [
+  "Philipp Schmitt <philipp@schmitt.co>",
+  "Evan Widloski <evan_gh@widloski.com>",
+  "LovelyCarve contributors",
+]
+repository = "https://github.com/libkeepass/pykeepass"
+readme = "README.md"
+publish = false
+keywords = ["keepass", "kdbx", "forensics"]
+categories = ["cryptography", "parser-implementations"]
+
+[lib]
+name = "kdbx"
+
+[dependencies]
+aes = { version = "0.8", features = ["zeroize"] }
+argon2 = { version = "0.5", default-features = false, features = ["alloc", "zeroize"] }
+base64 = "0.22"
+chacha20 = { version = "0.9", features = ["zeroize"] }
+cipher = "0.4"
+flate2 = "1"
+hmac = "0.12"
+quick-xml = "0.42"
+sha2 = "0.10"
+thiserror = "2"
+twofish = { version = "0.7", features = ["zeroize"] }
+zeroize = "1"
+
+[dev-dependencies]
+serde_json = "1"
+
+# Standalone runs (`just test-kdbx`) derive AES-KDF and Argon2 keys for every
+# fixture; optimise the dependencies so the suite stays quick.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[lints.rust]
+unsafe_code = "forbid"

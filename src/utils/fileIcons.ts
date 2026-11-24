@@ -153,6 +153,7 @@ export const SUFFIXES_BY_ICON_KEY: Associations = [
 export const EXTRA_SUFFIXES_BY_ICON_KEY: Associations = [
   ['document', ['text']],
   ['json', ['json5']],
+  ['lock', ['kdbx', 'kdb', 'keyx']],
   ['kotlin', ['kts']],
   ['python', ['pyi']],
   ['settings', ['cfg', 'env', 'properties']],

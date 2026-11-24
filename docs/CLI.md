@@ -177,7 +177,7 @@ MSYS2_ARG_CONV_EXCL='*' lovelycarve-cli -C 'D:/cases/nas' grep /etc/passwd /nas/
 
 浏览命令优先查询案件卷索引或本进程的临时索引，未被索引覆盖的目录回退到快照或实时读取。`ls`、`tree`、`stat` 按[文件时间与时区](#文件时间与时区)显示时间。
 
-**结构化文件。** `inspect <地址>` 解析 SQLite、Realm、ZIP、CSV、可执行文件（PE / ELF / Mach-O / ar）、GGUF 与 Vim 交换文件，`--as` 在类型不明确时指定解析器。SQLite 另有：
+**结构化文件。** `inspect <地址>` 解析 SQLite、Realm、ZIP、CSV、可执行文件（PE / ELF / Mach-O / ar）、GGUF、Vim 交换文件与 KeePass KDBX，`--as` 在类型不明确时指定解析器。KDBX 不给凭据时输出外部头部（版本、加密算法、压缩、密钥派生参数、种子与头部 SHA-256）；`--password @文件`（或 `-`、终端输入）、`--keyfile <主机文件>`、`--transformed-key @文件` 解密并输出群组、条目、历史版本、附件与元数据，受保护的值按明文输出。凭据错误以 `invalidInput` 失败，见 [KDBX](formats/KDBX.md)。SQLite 另有：
 
 - `sqlite tables <db>` 列出表、视图与索引的结构和行数；`sqlite rows <db> <表> [--order-by 列] [--desc] [--offset N] [--limit N]` 分页读取记录；`sqlite deleted <db>` 从空闲页、日志与 WAL 恢复已删除的记录。
 - `sqlite query <db> "<SQL>" [--param 值]… [--offset N] [--limit N]` 执行单条只读 `SELECT` 或 `WITH … SELECT`，`?1`、`?2`… 按顺序绑定 `--param`；禁止写操作、`ATTACH`、`PRAGMA` 和扩展加载。单页最多 100 行，有后续时用相同 SQL、参数和返回的 `nextOffset` 继续，应使用能唯一排序的 `ORDER BY`。`columns` 按 SELECT 顺序对应单元格，整数编码为十进制字符串以保留 64 位精度。

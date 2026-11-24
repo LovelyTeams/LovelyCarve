@@ -1,0 +1,4 @@
+/target/
+/Cargo.lock
+# Keyfile fixtures; the repository ignores *.key everywhere else.
+!/tests/data/pykeepass/*.key

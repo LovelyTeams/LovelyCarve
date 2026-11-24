@@ -3020,6 +3020,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "kdbx-reader"
+version = "0.1.0"
+dependencies = [
+ "aes 0.8.4",
+ "argon2",
+ "base64 0.22.1",
+ "chacha20 0.9.1",
+ "cipher 0.4.4",
+ "flate2",
+ "hmac 0.12.1",
+ "quick-xml 0.42.0",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "twofish",
+ "zeroize",
+]
+
+[[package]]
 name = "keyboard-types"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3281,6 +3299,7 @@ dependencies = [
  "jffs2",
  "jfs-reader",
  "jiff",
+ "kdbx-reader",
  "lamfold",
  "lamfold-cramfs",
  "lamfold-erofs",

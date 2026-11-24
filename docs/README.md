@@ -23,6 +23,7 @@
 | 加密与快照 | [LUKS](formats/LUKS.md) · [VeraCrypt](formats/VERACRYPT.md) · [BitLocker](formats/BITLOCKER.md) · [FileVault 2](formats/FILEVAULT.md) · [卷影副本](formats/VSS.md) |
 | 镜像容器与固件 | [RAW / 分段 RAW](formats/SMRAW.md) · [EWF](formats/EWF.md) · [VMDK](formats/VMDK.md) · [VHD / VHDX](formats/VHD.md) · [QCOW / QCOW2](formats/QCOW.md) · [Parallels PHDI](formats/PHDI.md) · [UBI / 小米 HDR1 固件](formats/UBI.md) · [路由器固件](formats/FIRMWARE.md) · [固件兼容性调查](formats/FIRMWARE_COMPATIBILITY.md) |
 | 压缩与备份 | [GZIP](formats/GZIP.md) · [Android 备份](formats/ANDROID_BACKUP.md) · [小米备份](formats/MIUI_BAK.md) · [iOS 备份](IOS_BACKUPS.md) |
+| 文件内容 | [KeePass KDBX](formats/KDBX.md) |
 
 vendored 读取器的上游版本与本地补丁记录在 [vendor/UPSTREAM.md](../src-tauri/vendor/UPSTREAM.md)，后端探针程序见 [examples/README.md](../src-tauri/examples/README.md)。
 

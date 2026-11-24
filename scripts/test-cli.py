@@ -414,6 +414,27 @@ def test_analysis(cli, root):
     counted = cli.json("--image", iso, "sqlite", "query", "/sqlite/part:0/PAYLOAD.BIN", "SELECT COUNT(*) FROM messages")
     assert counted["rows"] == [[{"kind": "integer", "value": "3"}]], counted
 
+    # KeePass: a renamed database is recognized by its signature, its header
+    # needs no key, and a password file with a host keyfile decrypts it.
+    fixtures = Path(__file__).resolve().parents[1] / "src-tauri" / "vendor" / "kdbx" / "tests" / "data" / "pykeepass"
+    vault = root / "vault"
+    vault.mkdir()
+    (vault / "renamed.bin").write_bytes((fixtures / "test3.kdbx").read_bytes())
+    keyfile = root / "test3.key"
+    keyfile.write_bytes((fixtures / "test3.key").read_bytes())
+    password = root / "kdbx-password.txt"
+    password.write_text("password", encoding="utf-8")
+    address = "/vault/folder:/renamed.bin"
+    header = cli.json("--image", vault, "inspect", address)
+    assert (header["format"], header["version"], header["cipher"], header["kdf"]["rounds"]) == ("kdbx", "3.1", "AES-256", 100), header
+    opened = cli.json("--image", vault, "inspect", address, "--password", f"@{password}", "--keyfile", keyfile)
+    assert opened["counts"] == {"groups": 7, "entries": 15, "history": 18, "attachments": 6}, opened["counts"]
+    assert (opened["headerHash"], opened["key"]["keyfile"]) == ("matches", "XML 1.0"), opened
+    fields = [{field["key"]: field["value"] for field in entry["fields"]} for entry in opened["root"]["entries"]]
+    assert next(entry for entry in fields if entry["Title"] == "root_entry")["Password"] == "passw0rd", fields
+    wrong = cli.run("--json", "--image", vault, "inspect", address, "--password", f"@{password}", expected=1)
+    assert json.loads(wrong.stderr)["error"]["code"] == "invalidInput", wrong.stderr
+
     # BCP packages, as a ZIP and as a directory, publish once and reuse the run.
     bcp_directory = root / "bcp export"
     bcp_directory.mkdir()
@@ -477,7 +498,7 @@ def test_analysis(cli, root):
         assert cli.json(*scope, "results", "show", record["recordId"], "--evidence", alias)["record"] == record
     missing = cli.run("--json", "-C", case, "results", "show", "no-such-record", "--evidence", "bcp-zip", expected=1)
     assert json.loads(missing.stderr)["error"]["code"] == "notFound", missing.stderr
-    print("CLI analysis tests passed: SQLite WAL by path and node ID, read-only queries, ISO members, BCP import and results")
+    print("CLI analysis tests passed: SQLite WAL by path and node ID, read-only queries, ISO members, KeePass KDBX, BCP import and results")
 
 
 def test_carving(cli, root):

@@ -130,8 +130,8 @@ Each entry is a command's synopsis and its description. Positional arguments com
   (exit 2 when set: summary.readErrors, summary.truncated)
 - `journal <路径> [--limit <limit>] [--cursor <游标>]`
   文件系统日志：NTFS USN 与 ext4 jbd2
-- `inspect <路径> [--as <auto|sqlite|realm|zip|csv|binary|gguf|vim-swap>] [--delimiter <字符>] [--passphrase[=<@文件>]] [--raw-key[=<@文件>]] [--cipher-compat <版本>] [--cipher-page-size <字节>] [--kdf-iter <次数>]`
-  解析文件结构：SQLite、Realm、ZIP、CSV、可执行文件、GGUF、Vim 交换文件
+- `inspect <路径> [--as <auto|sqlite|realm|zip|csv|binary|gguf|vim-swap|kdbx>] [--delimiter <字符>] [--passphrase[=<@文件>]] [--raw-key[=<@文件>]] [--cipher-compat <版本>] [--cipher-page-size <字节>] [--kdf-iter <次数>] [--password[=<@文件>]] [--keyfile <文件>] [--transformed-key[=<@文件>]]`
+  解析文件结构：SQLite、Realm、ZIP、CSV、可执行文件、GGUF、Vim 交换文件、KeePass 数据库
 - `sqlite tables <路径> [--passphrase[=<@文件>]] [--raw-key[=<@文件>]] [--cipher-compat <版本>] [--cipher-page-size <字节>] [--kdf-iter <次数>]`
   表、视图与索引的结构及行数
 - `sqlite rows <路径> <表> [--offset <offset>] [--limit <limit>] [--order-by <列>] [--desc] [--passphrase[=<@文件>]] [--raw-key[=<@文件>]] [--cipher-compat <版本>] [--cipher-page-size <字节>] [--kdf-iter <次数>]`
