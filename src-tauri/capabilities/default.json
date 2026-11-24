@@ -22,6 +22,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-set-title",
     "preview-window:allow-open",
+    "evidence-links:allow-take",
     "dialog:default",
     "dialog:allow-open",
     "fs:default",

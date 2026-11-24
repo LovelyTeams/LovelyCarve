@@ -25,6 +25,8 @@ just dev
 
 Windows 桌面程序在开发版和发布版中均嵌入 `asInvoker` 权限声明，启动时不自动请求管理员权限。读取物理磁盘或采集实时内存时，需要用户手动以管理员身份启动程序。
 
+桌面程序启动时，若 `lovelycarve://` 没有注册到当前程序，就为当前用户把它注册过去，开发版也一样：运行 `just dev` 之后点击的链接交给开发版程序（开发服务器未运行时窗口打不开页面），再运行一次安装版或便携版即可改回。运行中的桌面进程在用户数据目录的 `desktop-links/` 中登记接收链接的回环端口，进程退出后由下一个进程清理。
+
 前端的离线预览资源由准备脚本从依赖复制到 `public/file-viewer/`，不提交到 Git；`just dev-fe` 与 `just dev` 会先准备这些资源。只运行前端无法读取证据。Vite 固定监听 `http://127.0.0.1:14200`，更换端口时同时修改 `vite.config.ts` 与 `src-tauri/tauri.conf.json`，并保留 `strictPort`。
 
 仓库根的 `bunfig.toml` 设置 `[run] bun = true`：经 `bun run` 启动的 Vite、Vitest、vue-tsc 与 Tauri CLI 即使在装有 Node.js 的机器上（例如 GitHub Actions 运行器）也在 Bun 运行时中执行，本地与 CI 使用同一运行时。`bunx` 不读取这项设置，这些工具应通过 `package.json` 脚本或 `bun run <工具>` 调用。`scripts/` 下的前端检查、插件打包、预览资源同步和图标脚本用 TypeScript 编写、由 Bun 直接运行，优先使用 Bun 的内置 API（`Bun.Glob`、`Bun.file` / `Bun.write`、`Bun.spawnSync`、`Bun.TOML`、`Bun.Image`）；它们与 `vite.config.ts`、`vitest.config.ts` 同属 `tsconfig.node.json`，由 `just typecheck` 中的 `bun check` 检查，类型来自 `@types/bun`。
@@ -175,7 +177,7 @@ just run-example probe_carve <image-path>
 
 ## 更新依赖
 
-先审查清单约束，再用 `update-fe`、`update-rust` 或 `update-plugins` 更新对应的锁文件。前端依赖可先用 `bun outdated` 查看可更新的包，用 `bun pm diff <包>` 查看已装版本与最新版本之间的改动（会标出新增的安装脚本与 `child_process`、`fs`、`net`、`vm` 引用）；改动打包内容的依赖后，用 `bun pm licenses --prod` 复核许可证。`update-tauri` 同步前后端的 Tauri 包族，各包独立发布，补丁版本号不必一致。vendor 的来源与补丁见 [UPSTREAM.md](../src-tauri/vendor/UPSTREAM.md)，更新后用对应读取器的配方验证。
+先审查清单约束，再用 `update-fe`、`update-rust` 或 `update-plugins` 更新对应的锁文件。前端依赖可先用 `bun outdated` 查看可更新的包，用 `bun pm diff <包>` 查看已装版本与最新版本之间的改动（会标出新增的安装脚本与 `child_process`、`fs`、`net`、`vm` 引用）；改动打包内容的依赖后，用 `bun pm licenses --prod` 复核许可证。`update-tauri` 同步前后端的 Tauri 包族（含 `tauri-plugin-deep-link`），各包独立发布，补丁版本号不必一致；前端包按精确版本固定，配方以 `@^2` 限定在 Tauri 2 内更新。vendor 的来源与补丁见 [UPSTREAM.md](../src-tauri/vendor/UPSTREAM.md)，更新后用对应读取器的配方验证。
 
 Vue 类型检查通过 `typescript` 的 npm 别名接入 `typescript-native-bridge@6.0.3-bridge.18.tsgo.7.0.2`，以兼容 `vue-tsc` 需要的经典编译器 API；别名与 override 固定为同一完整版本，不要直接替换为 `typescript@7`。`just typecheck` 会显示 `TNB ACTIVE`，随后用 Bun 内置的 `bun check` 检查 `tsconfig.node.json` 中的脚本与 Vite 配置；`bun check` 不读取 `.vue` 文件，应用代码仍由 vue-tsc 检查。普通组件测试默认关闭动效，动效专用测试单独验证开关与收尾。
 

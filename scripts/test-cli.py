@@ -16,6 +16,7 @@ import struct
 import subprocess
 import tempfile
 import threading
+from urllib.parse import parse_qs, urlsplit
 import zipfile
 import zlib
 
@@ -581,6 +582,13 @@ def test_carving(cli, root):
     print("CLI carving tests passed: PNG carving, scan tasks, carve cat, FAT record recovery and export layout")
 
 
+def link_fields(link):
+    """The parameters of a lovelycarve://open link."""
+    parts = urlsplit(link)
+    assert (parts.scheme, parts.netloc, parts.path) == ("lovelycarve", "open", ""), link
+    return {key: values[0] for key, values in parse_qs(parts.query, strict_parsing=True).items()}
+
+
 def test_cases(cli, root):
     """A case outlives its processes: indexes, searches and timelines persist,
     and evidence that went missing stays browsable from the indexes."""
@@ -626,6 +634,25 @@ def test_cases(cli, root):
     assert len(rows["saved"]["items"]) >= 4, rows["saved"]
     # grep needs a case to keep its results in.
     assert says(cli.run("--image", evidence, "grep", "password", expected=1).stderr, "案件")
+
+    # Links name the case by its uid and nodes by ID, with the bytes to highlight.
+    rows = cli.results([
+        request("case", "case", "link"),
+        request("root", "case", "link", "/ev"),
+        request("file", "case", "link", hello, "--offset", "6", "--length", "8"),
+        request("stat", "stat", hello),
+        request("evidence", "evidence", "ls"),
+    ], *scope)
+    image_id = rows["evidence"]["items"][0]["imageId"]
+    assert link_fields(rows["case"]["link"]) == {"case": created["id"]}, rows["case"]
+    assert link_fields(rows["root"]["link"]) == {"case": created["id"], "evidence": image_id}, rows["root"]
+    assert link_fields(rows["file"]["link"]) == {
+        "case": created["id"], "evidence": image_id, "node": rows["stat"]["nodeId"], "offset": "6", "length": "8",
+    }, rows["file"]
+    assert rows["file"]["path"] == hello and rows["file"]["length"] == 8, rows["file"]
+    assert cli.run(*scope, "case", "link", hello).stdout.strip() == rows["file"]["link"].split("&offset=")[0]
+    assert says(cli.run("--image", evidence, "case", "link", hello, expected=1).stderr, "案件")
+    assert says(cli.run(*scope, "case", "link", "/ev", "--offset", "1", expected=1).stderr, "--offset")
 
     # Evidence that went missing stays browsable from the case's indexes; its
     # bytes fail explicitly.

@@ -80,7 +80,7 @@
               :files-done-label="filesDoneLabel" :files-total-label="filesTotalLabel" :total-matches-label="totalMatchesLabel" />
             <SearchHitTable :hits="hits" :hits-total="hitsTotal" :loading-hits="loadingHits" :selected-running="selectedRunning"
               :filter-keyword="filterKeyword" :read-error="hitsError" :selected-hit-seq="selectedHitSeq" :locating="locating" :context-key="`${imageId}:${selectedSearchId}`"
-              @select="selectedHitSeq = $event" @open="openHit" @load-through="ensureHitsThrough" @clear-filter="clearResultFilter" />
+              @select="selectedHitSeq = $event" @open="openHit" @copy-link="copyHitLink" @load-through="ensureHitsThrough" @clear-filter="clearResultFilter" />
 
             <SearchResultsFooter :selected-task="selectedTask" :selected-patterns="selectedPatterns" :search-status-tone="searchStatusTone"
               :scanned-label="scannedLabel" :matched-file-count-label="matchedFileCountLabel" :total-matches-label="totalMatchesLabel"
@@ -124,6 +124,8 @@ import { useSearchHistory } from '../composables/useSearchHistory';
 import { useSearchHits } from '../composables/useSearchHits';
 import { useSearchExecution } from '../composables/useSearchExecution';
 import { useSearchExport } from '../composables/useSearchExport';
+import { copyPending } from '../../../composables/clipboard';
+import { caseLink } from '../../../lib/ipc/cases';
 import type { GlobalSearchHit } from '../../../lib/ipc/search';
 import type { FileLocationTarget } from '../../../lib/models/fileLocation';
 import type { ImageId } from '../../../lib/ipc/ids';
@@ -153,9 +155,16 @@ const { exporting, exportResults } = useSearchExport({
   imageId: () => props.imageId, selectedTask: () => selectedTask.value,
   keyword: () => filterKeyword.value, distinct: () => distinctMode.value,
 });
+/** A hit's file, with the matched bytes to highlight. */
+function hitLocation(hit: GlobalSearchHit): FileLocationTarget {
+  return { imageId: props.imageId, nodeId: hit.node_id, offset: hit.file_offset, length: hit.match_len };
+}
 function openHit(hit: GlobalSearchHit) {
   if (props.locating) return;
-  emit('open-file', { imageId: props.imageId, nodeId: hit.node_id, offset: hit.file_offset, length: hit.match_len });
+  emit('open-file', hitLocation(hit));
+}
+function copyHitLink(hit: GlobalSearchHit) {
+  void copyPending(caseLink(hitLocation(hit)), tr("链接"));
 }
 </script>
 <style scoped src="../../../styles/analysis-workspace.css"></style>

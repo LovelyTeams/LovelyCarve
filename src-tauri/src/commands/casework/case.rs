@@ -10,6 +10,7 @@
 //! | `case_list` | 本地登记簿 + 台账档案摘要 |
 //! | `case_rename` | 改名并同步登记簿 |
 //! | `case_option_query` / `case_option_save` | 台账 `setting` 表的案件级 KV |
+//! | `case_link` | 案件或其中某处的 `lovelycarve://` 链接 |
 //! | `case_evidence_platform_set` | 手动指定检材平台,优先于自动识别;`auto` 恢复自动结论 |
 //!
 //! Snapshot orchestration and the `snapshot_*` commands live in
@@ -128,6 +129,18 @@ pub async fn case_option_save(
     crate::app::workflows::casework::case_option_save(state, entries).await
 }
 
+/// The `lovelycarve://` link of the active case, or of a place in one of its
+/// evidence items: a node by ID with an optional byte range, or a path below
+/// one of the evidence's root nodes. Opening it in the desktop app shows and
+/// highlights the place.
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn case_link(
+    state: State<'_, AppState>,
+    place: Option<LinkPlace>,
+) -> Result<String, AppError> {
+    crate::app::workflows::case_link::case_link(state, place).await
+}
+
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn case_evidence_list(state: State<'_, AppState>) -> Result<Vec<EvidenceRef>, AppError> {
     crate::app::workflows::casework::case_evidence_list(state).await
@@ -151,4 +164,5 @@ pub async fn case_evidence_platform_set(
     crate::app::workflows::casework::case_evidence_platform_set(state, image_id, platform).await
 }
 
+pub use crate::app::workflows::case_link::LinkPlace;
 pub use crate::app::workflows::casework::{CaseListItem, CaseOption};

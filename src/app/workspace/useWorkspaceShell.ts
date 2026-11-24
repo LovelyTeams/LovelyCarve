@@ -136,8 +136,10 @@ export function useWorkspaceShell(options: WorkspaceShellOptions) {
     activePanel.value = id;
   };
 
-  async function handleOpenRecentCase(entry: RecentCase): Promise<void> {
-    if (isOpeningRecentCase.value || caseBusy.value) return;
+  /** Open a case and restore its evidence tabs, as a recent case or a link
+   *  opens it; false when another case operation runs or opening failed. */
+  async function handleOpenRecentCase(entry: Pick<RecentCase, 'dir' | 'name'>): Promise<boolean> {
+    if (isOpeningRecentCase.value || caseBusy.value) return false;
     isOpeningRecentCase.value = true;
     clearPendingOpenRequest();
     try {
@@ -148,8 +150,10 @@ export function useWorkspaceShell(options: WorkspaceShellOptions) {
       } else {
         options.onNeedCase();
       }
+      return true;
     } catch (error) {
       notifyError(tr("打开案件失败"), `${entry.name}：${error}`);
+      return false;
     } finally {
       isOpeningRecentCase.value = false;
     }

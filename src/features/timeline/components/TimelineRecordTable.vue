@@ -43,9 +43,10 @@
 import { tr } from '../../../composables/useLocale';
 
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue';
-import { ArrowDown, ArrowUp, ArrowUpRight, PanelRightOpen, Loader2, CalendarDays, Clock3, ClipboardList, TextQuote } from 'lucide-vue-next';
+import { ArrowDown, ArrowUp, ArrowUpRight, PanelRightOpen, Loader2, CalendarDays, Clock3, ClipboardList, Link, TextQuote } from 'lucide-vue-next';
 import UiContextMenu, { type UiContextMenuEntry } from '../../../components/ui/UiContextMenu.vue';
-import { copyText } from '../../../composables/clipboard';
+import { copyPending, copyText } from '../../../composables/clipboard';
+import { caseLink } from '../../../lib/ipc/cases';
 import { useContextMenu } from '../../../composables/useContextMenu';
 import { useVirtualList } from '../../../composables/useVirtualList';
 import { tsvEscape } from '../../../utils/exportFormat';
@@ -94,6 +95,9 @@ const rowMenuEntries = computed<UiContextMenuEntry[]>(() => {
         .map(cells => cells.map(tsvEscape).join('\t')).join('\n'), tr('{0} 行事件', { 0: 1 })),
     },
   );
+  if (row.data_type === 1) {
+    entries.push({ id: 'copy-link', label: tr('复制源文件链接'), icon: Link, action: () => void copyPending(caseLink({ imageId: row.eid, nodeId: row.oid }), tr('链接')) });
+  }
   return entries;
 });
 </script>

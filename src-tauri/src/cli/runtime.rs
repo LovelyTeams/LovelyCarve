@@ -261,7 +261,10 @@ fn case_dir(globals: &Globals, command: &Command) -> Result<Option<String>, CliE
             CaseCommand::Serve(dir) => return Ok(Some(dir.dir.text())),
             // Creating, listing or removing cases happens outside any case.
             CaseCommand::New(_) | CaseCommand::Ls | CaseCommand::Rm(_) => return Ok(None),
-            CaseCommand::Status | CaseCommand::Lock | CaseCommand::Unlock => {}
+            CaseCommand::Status
+            | CaseCommand::Lock
+            | CaseCommand::Unlock
+            | CaseCommand::Link(_) => {}
         }
     }
     if let Some(dir) = &globals.case {

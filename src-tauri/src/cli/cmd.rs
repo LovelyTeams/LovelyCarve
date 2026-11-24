@@ -289,6 +289,7 @@ pub fn meta_of(path: &str) -> Meta {
         "carve start" | "mount" | "unlock" | "vss open" | "raid assemble" => Meta::LASTING,
         "case status"
         | "case ls"
+        | "case link"
         | "evidence ls"
         | "evidence show"
         | "evidence bad-regions"

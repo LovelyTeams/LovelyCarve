@@ -269,11 +269,12 @@ update-plugins:
 icons:
     bun scripts/generate-icons.ts
 
-# Refresh the Tauri v2 JS packages and Rust dependency family together.
+# Refresh the Tauri v2 JS packages and Rust dependency family together. The JS
+# packages are pinned exactly, so the update names the v2 range it may move in.
 [group("desktop")]
 update-tauri:
-    bun update --exact @tauri-apps/api @tauri-apps/cli @tauri-apps/plugin-dialog @tauri-apps/plugin-fs
-    cargo update --manifest-path src-tauri/Cargo.toml -p tauri -p tauri-build -p tauri-codegen -p tauri-macros -p tauri-plugin -p tauri-runtime -p tauri-runtime-wry -p tauri-utils -p tauri-plugin-dialog -p tauri-plugin-fs
+    bun update --exact '@tauri-apps/api@^2' '@tauri-apps/cli@^2' '@tauri-apps/plugin-dialog@^2' '@tauri-apps/plugin-fs@^2'
+    cargo update --manifest-path src-tauri/Cargo.toml -p tauri -p tauri-build -p tauri-codegen -p tauri-macros -p tauri-plugin -p tauri-runtime -p tauri-runtime-wry -p tauri-utils -p tauri-plugin-deep-link -p tauri-plugin-dialog -p tauri-plugin-fs
 
 # Run the Tauri desktop app without QR/OCR (Windows).
 [group("desktop")]

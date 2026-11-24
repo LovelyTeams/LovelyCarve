@@ -44,6 +44,7 @@ pub(crate) fn on_event(app_handle: &tauri::AppHandle, event: tauri::RunEvent) {
         });
     }
     if matches!(event, tauri::RunEvent::Exit) {
+        crate::host::evidence_links::stop(app_handle);
         let state = app_handle.state::<AppState>();
         tauri::async_runtime::block_on(flush_task_journal(&state));
         tauri::async_runtime::block_on(release_media(&state));

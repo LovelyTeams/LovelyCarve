@@ -11,5 +11,6 @@ pub mod case_paths;
 pub mod case_registry;
 pub mod drive_letter_store;
 pub mod evidence_db;
+pub mod evidence_link;
 pub mod facts_store;
 pub mod tag_store;

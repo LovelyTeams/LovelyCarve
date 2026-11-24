@@ -13,3 +13,16 @@ export async function copyText(text: string, what: string): Promise<boolean> {
     return false;
   }
 }
+
+/** Copies the text `pending` resolves to, such as a link the backend makes;
+ *  failing to make it is reported like a failed copy. */
+export async function copyPending(pending: Promise<string>, what: string): Promise<boolean> {
+  let text: string;
+  try {
+    text = await pending;
+  } catch (error) {
+    notifyError(tr("复制失败"), String(error));
+    return false;
+  }
+  return copyText(text, what);
+}

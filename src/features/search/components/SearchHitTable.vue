@@ -72,7 +72,7 @@
 import { tr } from '../../../composables/useLocale';
 
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue';
-import { ArrowUpRight, ClipboardCopy, Copy, Hash, Loader2, SearchX, TextQuote } from 'lucide-vue-next';
+import { ArrowUpRight, ClipboardCopy, Copy, Hash, Link, Loader2, SearchX, TextQuote } from 'lucide-vue-next';
 import FileNodeIcon from '../../../components/display/FileNodeIcon.vue';
 import UiContextMenu, { type UiContextMenuEntry } from '../../../components/ui/UiContextMenu.vue';
 import { copyText } from '../../../composables/clipboard';
@@ -84,7 +84,7 @@ const props = defineProps<{
   hits: GlobalSearchHit[]; hitsTotal: number; loadingHits: boolean; selectedRunning: boolean;
   filterKeyword: string; readError: string; selectedHitSeq: number | null; locating?: boolean; contextKey: string;
 }>();
-const emit = defineEmits<{ select: [sequence: number]; open: [hit: GlobalSearchHit]; 'load-through': [index: number]; 'clear-filter': [] }>();
+const emit = defineEmits<{ select: [sequence: number]; open: [hit: GlobalSearchHit]; 'copy-link': [hit: GlobalSearchHit]; 'load-through': [index: number]; 'clear-filter': [] }>();
 const tableWrapRef = ref<HTMLElement | null>(null);
 const { visibleItems, paddingTop, paddingBottom, range } = useVirtualList({
   items: computed(() => props.hits), itemHeight: 36, containerRef: tableWrapRef,
@@ -115,6 +115,7 @@ const hitMenuEntries = computed<UiContextMenuEntry[]>(() => {
     { kind: 'separator' },
     { id: 'copy-name', label: tr('复制名称'), icon: Copy, action: () => void copyText(hit.file_name, tr('{0} 个名称', { 0: 1 })) },
     { id: 'copy-path', label: tr('复制完整路径'), icon: ClipboardCopy, disabled: !hit.file_path, action: () => void copyText(hit.file_path, tr('{0} 条完整路径', { 0: 1 })) },
+    { id: 'copy-link', label: tr('复制链接'), icon: Link, action: () => emit('copy-link', hit) },
     { id: 'copy-context', label: tr('复制命中内容'), icon: TextQuote, action: () => void copyText(hit.context_full, tr('命中内容')) },
     { id: 'copy-offset', label: tr('复制偏移'), icon: Hash, action: () => void copyText(hexOffset(hit.file_offset), tr('命中偏移')) },
   ];

@@ -11,6 +11,7 @@ import type { EvidencePlatform } from './autodetect';
 import { invokeCmd } from './client';
 import { onEvent } from './events';
 import type { ImageId, VolumeKey } from './ids';
+import type { FileLocationTarget } from '../models/fileLocation';
 
 /** Disk-image source format (matches Rust `ImageFormat`, serde snake_case). */
 export type ImageFormat =
@@ -182,6 +183,22 @@ export function caseOptionSave(args: { entries: CaseOption[] }): Promise<void> {
 
 export function caseEvidenceList(): Promise<EvidenceRef[]> {
   return invokeCmd<EvidenceRef[]>('case_evidence_list');
+}
+
+/** A place `caseLink` links to: a file location, or an evidence root. */
+export type CaseLinkPlace = FileLocationTarget | { imageId: ImageId };
+
+/** The `lovelycarve://` link of the active case, or of a place in one of its
+ *  evidence items; opening it in the desktop app shows and highlights it. */
+export function caseLink(place?: CaseLinkPlace): Promise<string> {
+  if (!place) return invokeCmd<string>('case_link');
+  const location = place as Partial<FileLocationTarget>;
+  const wire = location.nodeId
+    ? { imageId: place.imageId, nodeId: location.nodeId, offset: location.offset, length: location.length }
+    : location.rootId && location.path !== undefined
+      ? { imageId: place.imageId, rootId: location.rootId, path: location.path }
+      : { imageId: place.imageId };
+  return invokeCmd<string>('case_link', { place: wire });
 }
 
 /** Remove an evidence image from the active case (cascades to its volumes,

@@ -160,8 +160,9 @@ fn discover_plugins(state: &AppState, host: &AppHandle) {
     }
 }
 
-/// Desktop setup hook: register the host handle for commands and let the
-/// asset protocol stream materialised media previews.
+/// Desktop setup hook: register the host handle for commands, let the asset
+/// protocol stream materialised media previews and start taking
+/// `lovelycarve://` links.
 #[cfg(feature = "desktop")]
 pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::Manager as _;
@@ -170,6 +171,7 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
     app.asset_protocol_scope()
         .allow_directory(scratch.path(), true)?;
     app.manage(host);
+    crate::host::evidence_links::start(app.handle());
     Ok(())
 }
 

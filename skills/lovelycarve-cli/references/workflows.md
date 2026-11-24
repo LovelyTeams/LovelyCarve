@@ -5,6 +5,7 @@ Read the sections the task needs. `lovelycarve-cli` means the executable resolve
 ## Contents
 
 - [Cases, evidence and the backend](#cases-evidence-and-the-backend)
+  - [Links for the examiner](#links-for-the-examiner)
 - [Shells, quoting and Git Bash](#shells-quoting-and-git-bash)
 - [Pages and projection](#pages-and-projection)
 - [Batch requests](#batch-requests)
@@ -67,6 +68,17 @@ lovelycarve-cli -C "<case-dir>" evidence ls
 `case status` reports the backend (`process.mode` is `Backend` while one serves the case), the evidence with aliases, the indexes and the running tasks. Reuse evidence already collected for follow-ups. When the work is done, `case close "<case-dir>"` stops a backend you started; it waits for running work and cancels the rest. Leave a user's backend running unless asked.
 
 A backend that ended without `case close` (a crash, a killed process, a restart) is reported once with `caseBackendExited` and its record is cleared; later commands run in their own processes until `case open` starts a new backend. Unlocked volumes, assembled arrays, scans and mounts lived in the old process and must be set up again.
+
+### Links for the examiner
+
+`case link` prints a `lovelycarve://` link to the case, an evidence root or a node; clicking it in the desktop app opens the case there, selects the node and, with `--offset` and `--length`, highlights those bytes (a `grep` hit's offset and length within its file):
+
+```text
+lovelycarve-cli -C "<case-dir>" case link /nas/part:0/Users/alice/notes.txt --offset 1024 --length 16
+lovelycarve-cli -C "<case-dir>" --json case link /nas/@ntfs:part:0:42
+```
+
+Put the link next to each finding a person will review. A link names the case by its uid and the node by ID, so it stays valid while the case and its indexes do; it carries no host paths. The desktop app cannot open a case while its backend runs: `case close` it before the examiner follows the links.
 
 ## Shells, quoting and Git Bash
 

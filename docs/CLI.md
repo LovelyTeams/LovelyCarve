@@ -53,7 +53,7 @@ lovelycarve-cli --image "D:\evidence\disk.E01" cat /disk/part:0/Windows/System32
 
 | 分组 | 命令 |
 | --- | --- |
-| 案件与检材 | `case`（`status` / `new` / `open` / `close` / `ls` / `lock` / `unlock` / `rm`）、`evidence`（`ls` / `add` / `show` / `close` / `rm` / `hash` / `export` / `bad-regions`）、`volumes`、`encryption`、`unlock`、`raid`（`detect` / `assemble`）、`vss`（`ls` / `open`） |
+| 案件与检材 | `case`（`status` / `new` / `open` / `close` / `ls` / `lock` / `unlock` / `link` / `rm`）、`evidence`（`ls` / `add` / `show` / `close` / `rm` / `hash` / `export` / `bad-regions`）、`volumes`、`encryption`、`unlock`、`raid`（`detect` / `assemble`）、`vss`（`ls` / `open`） |
 | 浏览与读取 | `ls`、`tree`、`stat`、`cat`、`text`、`strings`、`hash`、`identify`、`streams`、`export`、`bodyfile` |
 | 查找与解析 | `find`、`grep`、`journal`、`inspect`、`sqlite`（`tables` / `rows` / `query` / `deleted`）、`ocr`、`qr` |
 | 分析 | `search`（`ls` / `hits` / `export` / `rm`）、`timeline`（`status` / `build` / `ls` / `stats` / `export`）、`carve`（`ls` / `formats` / `start` / `status` / `results` / `cat` / `pause` / `resume` / `export` / `rm`）、`plugin`、`analyze`、`results`（`ls` / `rows` / `show` / `run` / `import`） |
@@ -96,6 +96,7 @@ MSYS2_ARG_CONV_EXCL='*' lovelycarve-cli -C 'D:/cases/nas' grep /etc/passwd /nas/
 | `case status` | 当前案件、后台进程、检材与别名、卷索引和运行中的任务 |
 | `case ls` | 本机登记的案件，`backend` 标出有后台进程的 |
 | `case lock` / `case unlock` | 锁定 / 解锁案件 |
+| `case link [路径] [--offset <字节>] [--length <字节>]` | 案件或其中文件、目录的 `lovelycarve://` 链接；在桌面端打开链接即定位到该处，`--offset` / `--length` 给出要高亮的字节（长度默认 1） |
 | `case rm <目录>` | 删除案件目录中由 LovelyCarve 创建的台账、检材数据与暂存区；先确认，后台进程运行时拒绝 |
 | `evidence add <检材路径>… [--as 别名] [--wait]` | 打开检材；有案件时登记进案件并在后台建立卷索引 |
 | `evidence ls` / `evidence show [别名]` | 检材与别名 / 一份检材的格式、大小、分区与采集元数据 |
@@ -111,6 +112,8 @@ MSYS2_ARG_CONV_EXCL='*' lovelycarve-cli -C 'D:/cases/nas' grep /etc/passwd /nas/
 后台进程意外结束（崩溃、被结束、主机重启）时，记录它的文件锁随之释放：下一条命令清理残留记录并以 `caseBackendExited` 失败一次，之后的命令各自运行，直到再次 `case open`。解锁、组装、扫描和挂载属于旧进程，需要重新建立。后台进程只监听本机回环地址，用私有随机凭据认证，`case status` 不显示凭据；连接记录与日志在用户数据目录的 `cli-backends/`（测试可用 `LOVELYCARVE_BACKEND_DIR` 隔离）。主机路径在输入命令处解析为绝对路径，再交给后台进程。
 
 **检材与卷索引。** 有案件时，`evidence add` 把检材登记进案件并在后台为各卷建立索引；`--wait` 等待索引与识别任务并报告各卷状态。`volumes` 与 `index ls` 的 `state` 为 `ready` 时索引覆盖该卷；`building` 尚未完成，`stale`、`truncated` 不代表卷的当前全部内容。缺失或过期的卷用 `index build /<别名>/<卷>` 构建，再 `tasks wait` 并核对。目录与归档检材整体是一个卷，索引显示在 `/<别名>`。没有案件时索引只在本进程内使用，退出即丢弃。
+
+**链接。** `case link` 输出的链接按案件 uid、检材 ID 与节点 ID 指向位置，不含主机路径，例如 `lovelycarve://open?case=<案件 uid>&evidence=<检材 ID>&node=ntfs:part:0:42&offset=256&length=12`；格式与桌面端行为见使用指南的[链接](USAGE.md#链接)。`--json` 结果另给出 `path`、`nodeId`、`offset` 与 `length`。桌面端打开链接时要打开该案件，案件后台进程运行时先 `case close`。
 
 案件中原始检材缺失时（`indexOnly: true`），仍可按索引浏览已索引的目录，读取字节的命令明确报错，不会自动启动快照、哈希或平台识别。锁定的案件以 `caseLocked` 拒绝改名、添加或移除检材、手动指定平台以及构建或删除卷索引。案件检材上任务的开始与结局写入案件审计（`task.started` / `task.settled`）。
 

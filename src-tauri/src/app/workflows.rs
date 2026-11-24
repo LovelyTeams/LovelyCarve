@@ -1,5 +1,6 @@
 //! Application operations shared by command adapters and lifecycle hooks.
 pub(crate) mod bcp;
+pub(crate) mod case_link;
 pub(crate) mod casework;
 pub(crate) mod docker;
 pub(crate) mod evidence;

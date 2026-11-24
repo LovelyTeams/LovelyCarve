@@ -11,6 +11,11 @@ use std::{
 use serde::Serialize;
 
 #[cfg(feature = "desktop")]
+pub(crate) mod evidence_links;
+#[cfg(any(feature = "desktop", test))]
+#[cfg_attr(not(feature = "desktop"), allow(dead_code))]
+pub(crate) mod link_relay;
+#[cfg(feature = "desktop")]
 pub(crate) mod preview_window;
 #[cfg(feature = "desktop")]
 mod tauri_adapter;

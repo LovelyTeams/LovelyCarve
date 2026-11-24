@@ -1,7 +1,8 @@
 
 import { tr } from '../../../composables/useLocale';
 import { computed, reactive } from 'vue';
-import { copyText } from '../../../composables/clipboard';
+import { copyPending, copyText } from '../../../composables/clipboard';
+import { caseLink } from '../../../lib/ipc/cases';
 import { notifySuccess } from '../../../composables/useToast';
 import { tsvEscape } from '../../../utils/exportFormat';
 import { formatTimestamp } from '../../../utils/time';
@@ -69,6 +70,14 @@ export function useFileActions(options: {
     options.closeMenu();
     if (nodes.length === 0) return;
     void copyText(nodes.map(n => fullPathOf(n)).join('\n'), tr("{0} 条完整路径", { 0: nodes.length }));
+  }
+
+  /** The `lovelycarve://` link of the one target, which opens and selects it. */
+  function onCopyLink() {
+    const [node, ...others] = targets.value;
+    options.closeMenu();
+    if (!node || others.length > 0) return;
+    void copyPending(caseLink({ imageId: options.imageId(), nodeId: node.id }), tr("链接"));
   }
 
   // 证据级信息行：制表符分隔，多行带表头，可直接粘进 Excel / 笔录。检材文件名不可信，每个单元格
@@ -156,7 +165,7 @@ export function useFileActions(options: {
     }
   }
 
-  return { targetSummary, copyCurrentPath, onCopyNames, onCopyPaths, onCopyForensic,
+  return { targetSummary, copyCurrentPath, onCopyNames, onCopyPaths, onCopyLink, onCopyForensic,
     canExportFile, canExportDir, canHash, canIdentify, canPluginTask, pluginTaskDialog, onPluginTask,
     onExportFile, onExportDir, onComputeHash, onIdentifyType, onTagPick };
 }

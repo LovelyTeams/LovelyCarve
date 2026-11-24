@@ -26,6 +26,10 @@ pub fn run() {
         )
         .init();
 
+    // Started for a link that a running window took: nothing left to do.
+    if crate::host::evidence_links::handed_over() {
+        return;
+    }
     let app = application_builder().build(tauri::generate_context!());
     let app = match app {
         Ok(app) => app,
@@ -43,8 +47,10 @@ pub fn run() {
 #[cfg(feature = "desktop")]
 fn application_builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(crate::host::evidence_links::init())
         .plugin(crate::host::preview_window::init())
         .manage(state::AppState::new())
         .setup(crate::app::setup::setup)
@@ -200,6 +206,7 @@ fn application_builder() -> tauri::Builder<tauri::Wry> {
             commands::casework::case::case_rename,
             commands::casework::case::case_option_query,
             commands::casework::case::case_option_save,
+            commands::casework::case::case_link,
             commands::casework::case::case_evidence_list,
             commands::casework::case::case_evidence_remove,
             commands::casework::case::case_evidence_platform_set,

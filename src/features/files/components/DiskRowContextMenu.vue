@@ -59,6 +59,7 @@ import {
   HardDriveDownload,
   HardDriveUpload,
   Info,
+  Link,
   ListChecks,
   Puzzle,
   ScanSearch,
@@ -102,6 +103,7 @@ const emit = defineEmits<{
   'plugin-task': [];
   'copy-names': [];
   'copy-paths': [];
+  'copy-link': [];
   'copy-forensic': [];
   'tag-pick': [tag: FileTag | null];
 }>();
@@ -210,6 +212,7 @@ const entries = computed<UiContextMenuEntry[]>(() => {
   const shown = count.toLocaleString();
   list.push({ id: 'copy-names', label: many ? tr('复制名称（{0}）', { 0: shown }) : tr('复制名称'), icon: Copy, action: () => emit('copy-names') });
   list.push({ id: 'copy-paths', label: many ? tr('复制完整路径（{0}）', { 0: shown }) : tr('复制完整路径'), icon: ClipboardCopy, action: () => emit('copy-paths') });
+  if (!many) list.push({ id: 'copy-link', label: tr('复制链接'), icon: Link, action: () => emit('copy-link') });
   list.push({ id: 'copy-forensic', label: many ? tr('复制取证信息（{0}）', { 0: shown }) : tr('复制取证信息'), icon: ClipboardList, action: () => emit('copy-forensic') });
   return compactMenuEntries(list);
 });

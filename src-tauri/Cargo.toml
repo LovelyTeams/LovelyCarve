@@ -57,6 +57,7 @@ default = []
 reader-library = []
 desktop = [
     "dep:tauri",
+    "dep:tauri-plugin-deep-link",
     "dep:tauri-plugin-dialog",
     "dep:tauri-plugin-fs",
     "dep:tauri-build",
@@ -174,6 +175,8 @@ ocfs2-reader = { path = "vendor/ocfs2-reader" }
 # 具体启用的 OpenCV 模块由上面的 feature 经 `opencv/<模块>` 选择，需系统 OpenCV + LLVM。
 opencv = { version = "0.101.1", optional = true, default-features = false }
 parking_lot = "0.12.5"
+# lovelycarve:// 链接的查询参数编解码（core::casework::evidence_link）。
+percent-encoding = "2.3.2"
 phdi = { path = "vendor/phdi" }
 plist = "1.10.1"
 qcow2 = { path = "vendor/qcow2" }
@@ -209,6 +212,8 @@ smraw = { path = "vendor/smraw" }
 sqlite-core = { path = "vendor/sqlite-core" }
 tar = "0.4.46"
 tauri = { version = "2.12.3", features = ["protocol-asset"], optional = true }
+# 注册 lovelycarve:// 协议（安装包、便携版与开发版）并接收 macOS 的打开事件。
+tauri-plugin-deep-link = { version = "2.6.3", optional = true }
 tauri-plugin-dialog = { version = "2.8.2", optional = true }
 tauri-plugin-fs = { version = "2.7.0", optional = true }
 tempfile = "3.27.0"
@@ -255,7 +260,7 @@ dokan-sys = "0.3.1"
 widestring = "0.4"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3.9", features = ["fileapi", "handleapi", "ioapiset", "jobapi2", "minwinbase", "ntdef", "ntstatus", "winioctl", "winnt"] }
+winapi = { version = "0.3.9", features = ["fileapi", "handleapi", "ioapiset", "jobapi2", "minwinbase", "ntdef", "ntstatus", "winioctl", "winnt", "winuser"] }
 
 [build-dependencies]
 quote = "1.0.47"

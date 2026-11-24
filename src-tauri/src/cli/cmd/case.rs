@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::cli::{
+    browsing::LastLink,
     exec::Exec,
     json_output, render,
-    types::{parse_host_path, HostPath},
+    types::{parse_address, parse_host_path, Address, HostPath, Parts},
     CliError, Output,
 };
 
@@ -35,6 +36,8 @@ pub enum CaseCommand {
     Lock,
     /// 解除案件锁定
     Unlock,
+    /// 当前案件或其中文件的 lovelycarve:// 链接：桌面端打开后定位并高亮
+    Link(LinkArgs),
     /// 删除案件：移除案件目录中由 LovelyCarve 创建的台账、检材数据与暂存区
     Rm(RequiredDir),
     /// 运行案件后台进程（由 case open 启动）
@@ -75,6 +78,20 @@ pub struct CaseDir {
 
 #[derive(Args, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct LinkArgs {
+    /// 检材内的文件或目录；省略时链接到案件本身
+    #[arg(value_parser = parse_address, value_name = "路径")]
+    pub path: Option<Address>,
+    /// 要高亮的内容起点（字节）
+    #[arg(long, value_name = "字节")]
+    pub offset: Option<u64>,
+    /// 要高亮的字节数，默认 1
+    #[arg(long, value_name = "字节", requires = "offset")]
+    pub length: Option<u64>,
+}
+
+#[derive(Args, Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RequiredDir {
     /// 案件目录
     #[arg(value_parser = parse_host_path, value_name = "目录")]
@@ -90,6 +107,7 @@ pub fn path(args: &CaseArgs) -> &'static str {
         Some(CaseCommand::Ls) => "case ls",
         Some(CaseCommand::Lock) => "case lock",
         Some(CaseCommand::Unlock) => "case unlock",
+        Some(CaseCommand::Link(_)) => "case link",
         Some(CaseCommand::Rm(_)) => "case rm",
         Some(CaseCommand::Serve(_)) => "case serve",
     }
@@ -148,6 +166,7 @@ pub async fn run(exec: &Exec, args: CaseArgs) -> Result<Output, CliError> {
                 .await
                 .map_err(operation("case_unlock"))?,
         ),
+        CaseCommand::Link(args) => link(exec, args).await,
         CaseCommand::Rm(dir) => {
             if crate::cli::backend::running(&dir.dir.text()) {
                 return Err(CliError::new(
@@ -173,6 +192,50 @@ pub async fn run(exec: &Exec, args: CaseArgs) -> Result<Output, CliError> {
             crate::cli::internal_error("case open/close/serve 由进程入口处理"),
         ),
     }
+}
+
+/// The link of the active case, or of a node in its evidence with an
+/// optional byte range to highlight.
+async fn link(exec: &Exec, args: LinkArgs) -> Result<Output, CliError> {
+    if exec.case_dir().await.is_none() {
+        return Err(CliError::new(
+            "usage",
+            "链接指向案件中的位置：用 -C <案件目录>，或在案件目录中运行",
+        ));
+    }
+    let target = match &args.path {
+        Some(address) if address.parts() != Parts::Root => {
+            Some(exec.target(address, LastLink::Keep).await?)
+        }
+        _ => None,
+    };
+    let node_id = target.as_ref().map_or("", |target| target.node_id());
+    if args.offset.is_some() && node_id.is_empty() {
+        return Err(CliError::new(
+            "usage",
+            "--offset 需要检材内的文件或目录：case link /<别名>/<路径> --offset <字节>",
+        ));
+    }
+    let place = target
+        .as_ref()
+        .map(|target| crate::commands::casework::case::LinkPlace {
+            image_id: target.image_id().clone(),
+            node_id: (!node_id.is_empty()).then(|| node_id.into()),
+            root_id: None,
+            path: None,
+            offset: args.offset,
+            length: args.length,
+        });
+    let link = crate::commands::casework::case::case_link(exec.state(), place)
+        .await
+        .map_err(operation("case_link"))?;
+    Ok(Output::json(json!({
+        "link": link,
+        "path": target.as_ref().map(crate::cli::workspace::Target::address),
+        "nodeId": (!node_id.is_empty()).then_some(node_id),
+        "offset": args.offset,
+        "length": args.offset.map(|_| args.length.unwrap_or(1)),
+    })))
 }
 
 /// The case, this process, the evidence, the indexes and the active tasks.
@@ -299,6 +362,9 @@ pub fn render(args: &CaseArgs, value: &Value) -> Option<String> {
             }
             Some(out)
         }
+        Some(CaseCommand::Link(_)) => value["link"]
+            .as_str()
+            .map(|link| format!("{}\n", crate::cli::output::sanitize(link))),
         Some(CaseCommand::Ls) => Some(render::table(
             value["items"].as_array().map_or(&[][..], Vec::as_slice),
             &[

@@ -55,7 +55,7 @@ lovelycarve-cli -C "<case-dir>" case close
 - Exports never overwrite: an existing destination fails with `alreadyExists` before anything is written. Rerun into new paths.
 - Commands that delete or discard data ask first; scripts and batches need `-y`. `--dry-run` shows the parsed request without running it.
 - Passwords and keys are never literal arguments: `--password @<file>`, `--password -` (stdin), or `--password` alone to be asked at a terminal.
-- Report the evidence, address, examined scope, findings, relevant times, output paths and anything incomplete or unsupported. Missing source bytes, failed indexes and unsupported formats do not establish absence. Format limits are in `docs/formats/` of the [LovelyCarve repository](https://github.com/LovelyTeams/LovelyCarve).
+- Report the evidence, address, examined scope, findings, relevant times, output paths and anything incomplete or unsupported. Give each finding a person will review its `lovelycarve://` link from `case link <address>` (with `--offset` and `--length` for matched bytes), which opens and highlights it in the desktop app; see [links](references/workflows.md#links-for-the-examiner). Missing source bytes, failed indexes and unsupported formats do not establish absence. Format limits are in `docs/formats/` of the [LovelyCarve repository](https://github.com/LovelyTeams/LovelyCarve).
 
 ## Choose the workflow
 

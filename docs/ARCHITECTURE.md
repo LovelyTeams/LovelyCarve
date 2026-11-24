@@ -994,6 +994,7 @@ offset。当前普通目录已提供 `fs_children_page`，案件模式下会优�
 - `timeline-progress`
 - `carve-scan-progress`
 - `qr-scan-progress`
+- `evidence-link-received`（只发给主窗口，无负载；链接留在队列中，由 `plugin:evidence-links|take` 取走）
 
 事件订阅必须通过 `src/lib/ipc/events.ts` 或领域 wrapper。
 
@@ -1200,6 +1201,13 @@ CLI 的 `mount` / `umount` 调用同一组命令（取消共享经 `rpc`），�
 - `lib/ipc/windows.ts` 只负责独立预览窗口的创建与主窗口聚焦；详情生命周期不管理主窗口几何尺寸。
 - 独立预览经桌面专用的内联 Tauri 插件 `preview-window` 创建，适配器位于 `host/preview_window.rs`，在 `lib.rs` 注册并由 capability 授权；只接受预览标签与本地预览页面，不进入取证命令注册表或 CLI。Windows 在 UI 线程复用主窗口的 WebView2 environment，保持原有同源存储与跨窗口同步，原生创建请求按应用串行执行。前端合并同一标签的在途请求，创建前订阅销毁事件，失败时释放订阅。预览窗口可通过标题栏图钉切换原生置顶状态，不持久化到其他窗口。
 
+### `lovelycarve://` 链接
+
+- 链接格式只在 `core::casework::evidence_link` 定义：`EvidenceLink` 由案件 uid 和 `LinkTarget`（案件、检材根、节点 ID 加可选字节范围、卷根加卷内路径）组成，`Display` 写出链接，`parse` 校验方案、动作、参数组合、长度和整数范围（偏移与长度不超过 JavaScript 安全整数）。链接只含案件内的 ID，不含主机路径；`case_link` 命令为当前案件生成链接并要求检材已登记，桌面的「复制链接」与 CLI 的 `case link` 都经它生成。
+- 方案注册用 `tauri-plugin-deep-link`：安装包与应用包按 `tauri.conf.json` 的 `plugins.deep-link` 声明；Windows 与 Linux 启动时若注册不指向当前程序则为当前用户注册（便携版、开发版）。macOS 的打开事件经插件的 `on_open_url` 送达。
+- Windows 与 Linux 把链接作为唯一参数启动新进程。`lib::run` 在建立 Tauri 应用前调用 `host::evidence_links::handed_over`：`host::link_relay` 读取用户数据目录 `desktop-links/` 中运行中桌面进程的记录（端口、随机凭据、进程 ID，旁边是进程持有的锁文件；能取得锁的记录已过期并被删除），先把链接交给打开着该案件的进程，再交给没有打开案件的进程，都不接收时本进程照常启动并自己打开链接。解析失败的链接交给任意运行中的进程报告。接收方只在应答送达后入队，发送方因此不会重复打开；发送前调用 `AllowSetForegroundWindow` 允许接收方窗口来到前台。桌面进程因此可以同时运行多个（每个打开一个案件），没有使用单实例插件。
+- 接收方把链接放进内联插件 `evidence-links` 的队列（最多 16 条），向主窗口发出 `evidence-link-received` 并把主窗口带到前台；前端 `app/workflows/useEvidenceLinks.ts` 先订阅再取队列，只打开最新的有效链接：找本机登记的案件（另一案件已打开时确认切换），按最近案件的流程恢复检材，再交给回源定位（`useResultNavigation`），在文件列表中选中节点、打开预览并用 `detailFocus` 高亮字节范围。
+
 ### 界面动画
 
 标题栏的「设置中心」默认进入「界面」页，另有「插件」「日志」「关于」；界面页集中提供浅色／深色主题、动画与挂载偏好。
@@ -1337,6 +1345,7 @@ RAID 成员、当前检材卷快照和案件详情默认折叠，切换与锁定
 | 校验与导出 | 哈希、导出任务 | `image_hash_compute`、`image_export_raw`、`fs_digest`、`fs_export*`、`image-hash-progress`、`image-export-progress`、`fs-export-dir-progress` |
 | 数据浏览 | 数据库预览与 BCP 分析结果导入 | `fs_sqlite*`、`fs_realm*`、`bcp_import` |
 | 回源定位 | 搜索、时间线与分析结果的定位 | `fs_node_locate`、`fs_source_locate` |
+| 链接 | 右键「复制链接」、主壳接收 `lovelycarve://` | `case_link`；桌面专用的 `plugin:evidence-links\|take`、`evidence-link-received` |
 | 全局搜索 | `SearchResultsPanel.vue` | `global_search_*`、`global-search-progress` |
 | 时间线 | `TimelinePanel.vue` | `timeline_*`、`timeline-progress` |
 | 文件恢复 | `CarvePanel.vue` | `carve_*`（含 `carve_filesystem_results`）、`carve-scan-progress`、`task-progress` |

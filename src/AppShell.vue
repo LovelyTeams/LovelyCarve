@@ -167,6 +167,7 @@ import { vContentMotion } from './composables/uiMotionDirectives';
 import WelcomeScreen from './app/components/WelcomeScreen.vue';
 import EvidenceLoadPanel from './app/components/EvidenceLoadPanel.vue';
 import { useResultNavigation } from './app/workflows/useResultNavigation';
+import { useEvidenceLinks } from './app/workflows/useEvidenceLinks';
 import { type FileListNavigator } from './features/files/model/navigation';
 import TaskHub from './features/tasks/components/TaskHub.vue';
 import { useRecentCases } from './features/cases/api';
@@ -308,20 +309,41 @@ function activateFilePreview(previewImageId: ImageId): boolean {
   return true;
 }
 
+/** Open an evidence item of the active case as its tab, once it is ready. */
+async function openCaseImage(targetImageId: ImageId): Promise<void> {
+  const evidence = activeCase.value?.evidence.find(item => item.image_id === targetImageId);
+  if (!evidence) throw new Error(tr("来源检材不在当前案件中"));
+  const result = await openImagePath(evidence.path, { forceImage: !evidence.path.startsWith('assembled://'), quiet: true, waitUntilReady: true });
+  if (!result.ok) throw new Error(tr("无法打开来源检材：{0}", { 0: result.error }));
+}
+
 const { locating: locatingResult, openLocation: openResultLocation } = useResultNavigation({
   caseKey: () => activeCase.value?.dir ?? null,
   imageId: () => imageId.value,
   openImage: async targetImageId => {
-    const evidence = activeCase.value?.evidence.find(item => item.image_id === targetImageId);
-    if (!evidence) throw new Error(tr("来源检材不在当前案件中"));
-    const result = await openImagePath(evidence.path, { forceImage: !evidence.path.startsWith('assembled://'), quiet: true, waitUntilReady: true });
-    if (!result.ok) throw new Error(tr("无法打开来源检材：{0}", { 0: result.error }));
+    await openCaseImage(targetImageId);
     return true;
   },
   showFiles: () => { activePanel.value = 'files'; },
   isFilesActive: () => activePanel.value === 'files',
   panel: () => diskFileListRef.value,
   onError: message => notifyError(tr("定位失败"), message),
+});
+
+// lovelycarve:// links open their case, evidence and file here.
+useEvidenceLinks({
+  activeCase: () => activeCase.value,
+  refreshActiveCase,
+  openCase: entry => {
+    showCaseManager.value = false;
+    return handleOpenRecentCase(entry);
+  },
+  openEvidence: async targetImageId => {
+    await openCaseImage(targetImageId);
+    activePanel.value = 'files';
+  },
+  openLocation: openResultLocation,
+  onError: (title, message) => notifyError(title, message),
 });
 
 function handleCaseManagerClose() {

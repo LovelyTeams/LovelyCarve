@@ -140,6 +140,7 @@
       @plugin-task="onPluginTask"
       @copy-names="onCopyNames"
       @copy-paths="onCopyPaths"
+      @copy-link="onCopyLink"
       @copy-forensic="onCopyForensic"
     />
 
@@ -1110,7 +1111,7 @@ watch(
   { immediate: true, flush: 'sync' },
 );
 
-const { targetSummary, copyCurrentPath, onCopyNames, onCopyPaths, onCopyForensic,
+const { targetSummary, copyCurrentPath, onCopyNames, onCopyPaths, onCopyLink, onCopyForensic,
   canPluginTask, pluginTaskDialog, onPluginTask,
   onExportFile, onExportDir, onComputeHash, onIdentifyType, onTagPick } = useFileActions({
   imageId: () => props.imageId, rows: () => filteredEntries.value,

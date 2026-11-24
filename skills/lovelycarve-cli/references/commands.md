@@ -52,6 +52,8 @@ Each entry is a command's synopsis and its description. Positional arguments com
   锁定当前案件：拒绝添加或移除检材、构建或删除卷索引等修改
 - `case unlock`
   解除案件锁定
+- `case link [路径] [--offset <字节>] [--length <字节>]`
+  当前案件或其中文件的 lovelycarve:// 链接：桌面端打开后定位并高亮
 - `case rm <目录>`
   删除案件：移除案件目录中由 LovelyCarve 创建的台账、检材数据与暂存区
   (asks first; `-y` in scripts)

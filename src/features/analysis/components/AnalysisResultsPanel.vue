@@ -135,9 +135,10 @@ import FileDetailFields, { type FileDetailField } from '../../../components/layo
 import AnalysisRunOverview from './AnalysisRunOverview.vue';
 import AnalysisPropertyList from './AnalysisPropertyList.vue';
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue';
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, CircleAlert, ClipboardList, Copy, Download, Inbox, List, Loader2, LocateFixed, PanelRightOpen, RefreshCw, ScanSearch, Search, Table2, X, Zap } from 'lucide-vue-next';
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, CircleAlert, ClipboardList, Copy, Download, Inbox, Link, List, Loader2, LocateFixed, PanelRightOpen, RefreshCw, ScanSearch, Search, Table2, X, Zap } from 'lucide-vue-next';
 import UiContextMenu, { type UiContextMenuEntry } from '../../../components/ui/UiContextMenu.vue';
-import { copyText } from '../../../composables/clipboard';
+import { copyPending, copyText } from '../../../composables/clipboard';
+import { caseLink } from '../../../lib/ipc/cases';
 import { useContextMenu } from '../../../composables/useContextMenu';
 import { tsvEscape } from '../../../utils/exportFormat';
 import { ANALYSIS_PAGE_SIZE, useAnalysisResults } from '../composables/useAnalysisResults';
@@ -318,6 +319,10 @@ const recordMenuEntries = computed<UiContextMenuEntry[]>(() => {
     entries.push({ id: 'copy-value', label: tr("复制「{0}」", { 0: label }), icon: Copy, action: () => void copyText(valueText(record.values[column.id], column, true), label) });
   }
   entries.push({ id: 'copy-record', label: tr("复制整条记录"), icon: ClipboardList, action: () => void copyText(recordTsv(record), tr("{0} 条记录", { 0: 1 })) });
+  const source = recordSources[0];
+  if (source) {
+    entries.push({ id: 'copy-link', label: tr("复制源文件链接"), icon: Link, action: () => void copyPending(caseLink(source.target), tr("链接")) });
+  }
   return entries;
 });
 
