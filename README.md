@@ -105,6 +105,8 @@ Get-Content .\workflow.jsonl | lovelycarve-cli -C "D:\cases\demo" batch
 
 ## 插件
 
+在[插件发布页](https://lovelyteams.github.io/LovelyCarve-Plugin-Site/)下载 `.lcpkg`、查看 SHA-256，或复制市场源地址到 LovelyCarve 的「设置 → 插件市场」。
+
 插件是导出 `lovelycarve_plugin_v1` C ABI 的动态库，连同清单、记录结构与语言包打成插件包。插件通过 LPP v2（LovelyCarve Plugin Protocol）经只读视图访问检材，按声明的记录结构输出带类型的记录，由宿主保存、投影时间线并保留来源。SDK、隔离宿主 `lc-plugin-host` 与内置的 `linuxinfo` 由子模块 [LovelyCarve-Plugins](https://github.com/LovelyTeams/LovelyCarve-Plugins) 维护。已发现的插件被视为可信代码，进程隔离用于故障隔离，不是权限沙箱。
 
 协议与开发说明见 [插件协议](docs/PLUGIN_PROTOCOL.md) 和 [Linux 基本信息插件](docs/LINUXINFO.md)。
@@ -138,7 +140,7 @@ just dev         # 启动桌面开发版
 | 含二维码识别与 OCR 的版本 | `just build-release-full` / `just pack-full` / `just pack-cli-full` |
 | 全部检查 | `just verify-fe` / `just verify-rust` / `just verify-plugins` |
 
-GitHub 自动生成的源码压缩包不含插件子模块，请使用 `--recurse-submodules` 克隆，已有克隆可运行 `git submodule update --init --recursive`。Visual Studio、OpenSSL 路径、可选 QR/OCR 依赖和跨平台 CLI 构建见 [开发指南](docs/DEVELOPMENT.md)；`just --list` 列出全部配方。
+GitHub 自动生成的源码压缩包不含 Git 子模块，请使用 `--recurse-submodules` 克隆，已有克隆可运行 `git submodule update --init --recursive`。Visual Studio、OpenSSL 路径、可选 QR/OCR 依赖和跨平台 CLI 构建见 [开发指南](docs/DEVELOPMENT.md)；`just --list` 列出全部配方。
 
 ## 文档
 

@@ -1,3 +1,6 @@
 [submodule "LovelyCarve-Plugins"]
 	path = plugins
 	url = https://github.com/LovelyTeams/LovelyCarve-Plugins.git
+[submodule "LovelyCarve-Plugin-Site"]
+	path = plugin-site
+	url = https://github.com/LovelyTeams/LovelyCarve-Plugin-Site.git
