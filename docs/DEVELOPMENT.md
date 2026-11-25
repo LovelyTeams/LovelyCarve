@@ -135,6 +135,8 @@ ReFS 使用纯 Rust 读取器；旧的 `librefs-13.dll` 只在显式的 `refs-dl
 
 图标保留透明和带背景两张原图，位于 `src-tauri/icons/source*.png`；修改后执行 `just icons` 同步各平台图标和前端 512px 资源。
 
+`plugin-site/` 是[插件发布页](https://lovelyteams.github.io/LovelyCarve-Plugin-Site/)的 Git 子模块。GitHub Pages 从站点仓库 `main` 的 `/docs` 发布网页、插件包及市场索引。将待发布的 `.lcpkg` 放到 `plugin-site/docs/`，运行 `just market-index plugin-site/docs LovelyCarve` 更新索引。先提交并推送站点仓库，再更新主仓库中的子模块指针。见[站点发布说明](https://github.com/LovelyTeams/LovelyCarve-Plugin-Site#发布插件)。
+
 ## 可选 QR/OCR 与发布构建
 
 Windows 的 `dev-full`、`build-full`、`build-release-full` 和 `build-cli-full` 启用 WeChat 二维码识别和带 CPU 回退的 CUDA OCR：主程序开启 `qrcode-wechat`，推理组件以 `ocr-cuda` 特性构建。带 OCR 的组件构建会把 ONNX Runtime 的 CUDA / TensorRT 执行提供者和 DirectML DLL 链接到 `src-tauri/target/<profile>/`，与组件相邻（组件工作区通过 `[patch.crates-io]` 使用 `src-tauri/vendor/ort-sys`，修正其构建脚本在 Cargo 新构建目录布局下的路径推算）。完整构建的 MSI 随 `target/release` 根目录的 DLL 一并收入它们；便携包和 CLI 包不携带，其中的 OCR 在 CPU 上运行。CUDA 执行提供者还需要系统中可用的 CUDA 运行库，缺失时回退 CPU。需要准备版本匹配的 OpenCV 及 contrib 源码，用 `just build-opencv-contrib` 构建含 `wechat_qrcode` 的 OpenCV；核对安装目录中的 `vc*` 与 world 库名称后设置对应变量。官方的核心 OpenCV 发行包不包含所需模块。
