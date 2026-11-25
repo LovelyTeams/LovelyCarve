@@ -135,7 +135,7 @@ ReFS 使用纯 Rust 读取器；旧的 `librefs-13.dll` 只在显式的 `refs-dl
 
 图标保留透明和带背景两张原图，位于 `src-tauri/icons/source*.png`；修改后执行 `just icons` 同步各平台图标和前端 512px 资源。
 
-`plugin-site/` 是[插件发布页](https://lovelyteams.github.io/LovelyCarve-Plugin-Site/)的 Git 子模块。GitHub Pages 从站点仓库 `main` 的 `/docs` 发布网页、插件包及市场索引。将待发布的 `.lcpkg` 放到 `plugin-site/docs/`，运行 `just market-index plugin-site/docs LovelyCarve` 更新索引。先提交并推送站点仓库，再更新主仓库中的子模块指针。见[站点发布说明](https://github.com/LovelyTeams/LovelyCarve-Plugin-Site#发布插件)。
+`plugin-site/` 是[插件发布页](https://lovelyteams.github.io/LovelyCarve-Plugin-Site/)的 Git 子模块。站点用 Vue 3 和 Bun 构建，GitHub Actions 将站点仓库 `main` 的构建产物部署到 GitHub Pages。将待发布的 `.lcpkg` 放到 `plugin-site/docs/`，运行 `just market-index plugin-site/docs LovelyCarve` 更新索引。先提交并推送站点仓库，再更新主仓库中的子模块指针。见[站点开发与发布说明](https://github.com/LovelyTeams/LovelyCarve-Plugin-Site#本地开发)。
 
 ## 可选 QR/OCR 与发布构建
 
