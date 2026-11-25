@@ -15,6 +15,12 @@
       <div class="alert-text"><strong>{{ sourcesFailure.title }}</strong><span>{{ sourcesFailure.detail }}</span></div>
       <button class="ui-btn sm" type="button" @click="loadSources">{{ tr("重试") }}</button>
     </div>
+    <div v-if="downloadingLinkedPackage" class="ui-alert" role="status">
+      <Loader2 :size="16" class="spin" aria-hidden="true" />{{ tr("正在下载插件包…") }}
+    </div>
+    <div v-if="feedback" class="ui-alert" :class="feedback.failed ? 'danger' : 'success'" :role="feedback.failed ? 'alert' : 'status'">
+      <div class="alert-text"><strong>{{ feedback.title }}</strong><span v-if="feedback.detail">{{ feedback.detail }}</span></div>
+    </div>
     <div v-if="loadingSources && !sources.length" class="ui-empty market-state" role="status">
       <span class="ui-empty-icon accent"><Loader2 :size="24" class="spin" /></span>
     </div>
@@ -39,9 +45,6 @@
             <Trash2 :size="14" aria-hidden="true" />
           </button>
         </div>
-      </div>
-      <div v-if="feedback" class="ui-alert" :class="feedback.failed ? 'danger' : 'success'" :role="feedback.failed ? 'alert' : 'status'">
-        <div class="alert-text"><strong>{{ feedback.title }}</strong><span v-if="feedback.detail">{{ feedback.detail }}</span></div>
       </div>
       <div v-if="catalogFailure" class="ui-alert danger" role="alert">
         <CircleAlert :size="16" aria-hidden="true" />
@@ -115,7 +118,7 @@ import { tr, useLocale } from '../../../composables/useLocale';
 /** The plugin market: index sources, the selected source's packages against
  *  what is installed, and installing a version through the same inspection
  *  and confirmation as a local package. */
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useId } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useId, watch } from 'vue';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
   ChevronRight, CircleAlert, Download, FolderOpen, Loader2, Plus, Puzzle, RefreshCw, Search, Store, Trash2, X,
@@ -123,7 +126,8 @@ import {
 import UiSelect from '../../../components/ui/UiSelect.vue';
 import { vDisclosureMotion } from '../../../composables/uiMotionDirectives';
 import { notifyError } from '../../../composables/useToast';
-import { pluginMarketDownload, pluginMarketRelease, type MarketDownload, type MarketPackage, type MarketStatus } from '../../../lib/ipc/pluginMarket';
+import { pluginMarketDownload, pluginMarketDownloadOfficial, pluginMarketRelease, type MarketDownload, type MarketPackage, type MarketStatus } from '../../../lib/ipc/pluginMarket';
+import type { PluginInstallLink } from '../../../lib/ipc/evidenceLinks';
 import { pluginText, pluginTextKey } from '../../../lib/models/pluginText';
 import { formatBytes } from '../../../utils/format';
 import { usePluginCatalog } from '../../tasks/api';
@@ -132,6 +136,9 @@ import { marketStatusLabel, permissionLabel, pluginFailure, type PluginFailure }
 import PluginInstallDialog from './PluginInstallDialog.vue';
 
 const INSTALLING = '\u0000install';
+const RELEASING = '\u0000release';
+const props = defineProps<{ installLink?: PluginInstallLink | null }>();
+const emit = defineEmits<{ consumeInstallLink: [] }>();
 const { locale } = useLocale();
 const plugins = usePluginCatalog();
 const market = usePluginMarket();
@@ -141,6 +148,7 @@ const draft = ref('');
 const sourceError = ref('');
 const query = ref('');
 const busy = ref<string | null>(null);
+const downloadingLinkedPackage = ref(false);
 const feedback = shallowRef<{ failed: boolean; title: string; detail?: string } | null>(null);
 const pending = shallowRef<MarketDownload | null>(null);
 const installFailure = shallowRef<PluginFailure | null>(null);
@@ -150,7 +158,7 @@ onMounted(() => { void loadSources(); });
 onBeforeUnmount(() => {
   disposed = true;
   // A download nobody confirmed is not kept.
-  if (pending.value) release(pending.value.sha256);
+  if (pending.value && busy.value !== INSTALLING) void release(pending.value.sha256);
 });
 
 const selectedSource = computed({
@@ -223,25 +231,44 @@ async function removeSelected() {
 }
 
 /** Downloads one version and opens its inspection for confirmation. */
-async function download(entry: MarketPackage, version: string) {
+function download(entry: MarketPackage, version: string) {
   const source = selected.value;
-  if (!source || busy.value !== null) return;
-  busy.value = key(entry.id, version);
+  if (source && busy.value === null && !pending.value) {
+    void inspectDownload(entry.id, version, source);
+  }
+}
+
+watch(() => props.installLink, link => {
+  if (!link) return;
+  emit('consumeInstallLink');
+  if (busy.value !== null || pending.value) {
+    notifyError(tr("另一个插件安装正在进行"));
+    return;
+  }
+  void inspectDownload(link.pluginId, link.version, null);
+}, { immediate: true });
+
+async function inspectDownload(pluginId: string, version: string, source: string | null) {
+  busy.value = key(pluginId, version);
+  downloadingLinkedPackage.value = source === null;
   feedback.value = null;
   try {
-    const downloaded = await pluginMarketDownload(source, entry.id, version);
-    if (disposed) { release(downloaded.sha256); return; }
+    const downloaded = source === null
+      ? await pluginMarketDownloadOfficial(pluginId, version)
+      : await pluginMarketDownload(source, pluginId, version);
+    if (disposed) { await release(downloaded.sha256); return; }
     installFailure.value = null;
     pending.value = downloaded;
   } catch (cause) {
     if (!disposed) feedback.value = { failed: true, ...pluginFailure(cause, tr("下载失败"), tr) };
   } finally {
+    downloadingLinkedPackage.value = false;
     busy.value = null;
   }
 }
 
 function release(sha256: string) {
-  pluginMarketRelease(sha256).catch(cause => notifyError(tr("删除下载的插件包失败"), String(cause)));
+  return pluginMarketRelease(sha256).catch(cause => { notifyError(tr("删除下载的插件包失败"), String(cause)); });
 }
 
 async function confirmInstall() {
@@ -251,7 +278,7 @@ async function confirmInstall() {
   installFailure.value = null;
   try {
     const installed = await plugins.install(downloaded.archive, downloaded.sha256);
-    release(downloaded.sha256);
+    await release(downloaded.sha256);
     if (disposed) return;
     pending.value = null;
     feedback.value = {
@@ -262,17 +289,22 @@ async function confirmInstall() {
     };
     await loadCatalog();
   } catch (cause) {
-    if (!disposed) installFailure.value = pluginFailure(cause, tr("安装失败"), tr);
+    if (disposed) await release(downloaded.sha256);
+    else installFailure.value = pluginFailure(cause, tr("安装失败"), tr);
   } finally {
     busy.value = null;
   }
 }
 
-function cancelInstall() {
+async function cancelInstall() {
   const downloaded = pending.value;
   pending.value = null;
   installFailure.value = null;
-  if (downloaded) release(downloaded.sha256);
+  if (downloaded) {
+    busy.value = RELEASING;
+    await release(downloaded.sha256);
+    busy.value = null;
+  }
 }
 </script>
 

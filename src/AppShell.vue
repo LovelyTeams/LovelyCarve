@@ -34,6 +34,8 @@
   <ToolSettingsModal
     :visible="showToolSettings"
     :initial-section="settingsInitialSection"
+    :plugin-install-link="pluginInstallLink"
+    @consume-plugin-install="pluginInstallLink = null"
     @close="showToolSettings = false"
   />
   <CaseManagerModal
@@ -162,7 +164,7 @@
 import { tr } from './composables/useLocale';
 
 import './styles/workspace.css';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 import { vContentMotion } from './composables/uiMotionDirectives';
 import WelcomeScreen from './app/components/WelcomeScreen.vue';
 import EvidenceLoadPanel from './app/components/EvidenceLoadPanel.vue';
@@ -194,11 +196,13 @@ import { useTabManager } from './app/workspace/useTabManager';
 import { notifyError } from './composables/useToast';
 import { focusAnalysisResult } from './features/analysis/api';
 import type { SettingsSection } from './features/settings/model/types';
+import type { PluginInstallLink } from './lib/ipc/evidenceLinks';
 import type { ImageId } from './lib/ipc/ids';
 
 const { recentCases, clearRecentCases } = useRecentCases();
 const showToolSettings = ref(false);
 const settingsInitialSection = ref<SettingsSection>('appearance');
+const pluginInstallLink = shallowRef<PluginInstallLink | null>(null);
 
 function openSettings(section: SettingsSection = 'appearance') {
   settingsInitialSection.value = section;
@@ -330,7 +334,7 @@ const { locating: locatingResult, openLocation: openResultLocation } = useResult
   onError: message => notifyError(tr("定位失败"), message),
 });
 
-// lovelycarve:// links open their case, evidence and file here.
+// lovelycarve:// links open evidence or send an install request to Settings.
 useEvidenceLinks({
   activeCase: () => activeCase.value,
   refreshActiveCase,
@@ -343,6 +347,10 @@ useEvidenceLinks({
     activePanel.value = 'files';
   },
   openLocation: openResultLocation,
+  openPluginInstall: link => {
+    pluginInstallLink.value = link;
+    openSettings('market');
+  },
   onError: (title, message) => notifyError(title, message),
 });
 

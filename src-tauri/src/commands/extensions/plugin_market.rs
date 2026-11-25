@@ -2,7 +2,7 @@
 //! 以及从一个目录的插件包生成 `index.json`。
 //!
 //! 下载得到的插件包仍经 `plugin_install` 安装(带检视时的 SHA-256),之后或取消时
-//! 调 `plugin_market_release` 删掉下载文件。只读取已配置的源。
+//! 调 `plugin_market_release` 删掉下载文件。发布页安装使用固定的官方索引。
 
 use serde::Serialize;
 
@@ -77,6 +77,19 @@ pub async fn plugin_market_download(
     let manager = plugin_manager(&state)?;
     Ok(plugin_market(&state)?
         .download(&manager, &source, &plugin_id, &version)
+        .await?)
+}
+
+/// Downloads and inspects a version from the fixed official market index.
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn plugin_market_download_official(
+    state: State<'_, AppState>,
+    plugin_id: String,
+    version: String,
+) -> Result<MarketDownload, AppError> {
+    let manager = plugin_manager(&state)?;
+    Ok(plugin_market(&state)?
+        .download_official(&manager, &plugin_id, &version)
         .await?)
 }
 

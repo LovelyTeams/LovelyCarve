@@ -182,6 +182,7 @@ fn application_builder() -> tauri::Builder<tauri::Wry> {
             commands::extensions::plugin_market::plugin_market_set_sources,
             commands::extensions::plugin_market::plugin_market_list,
             commands::extensions::plugin_market::plugin_market_download,
+            commands::extensions::plugin_market::plugin_market_download_official,
             commands::extensions::plugin_market::plugin_market_release,
             commands::extensions::plugin_market::plugin_market_index,
             commands::analysis::analysis_results::analysis_result_tree,

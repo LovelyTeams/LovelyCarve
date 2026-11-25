@@ -54,6 +54,7 @@ function start(active: CaseInfo | null) {
     }),
     openEvidence: vi.fn(async () => {}),
     openLocation: vi.fn(async () => {}),
+    openPluginInstall: vi.fn(),
     onError: vi.fn(),
   };
   const scope = effectScope();
@@ -73,6 +74,18 @@ beforeEach(() => {
 });
 
 describe('evidence links', () => {
+  it('routes a release-page install without opening or switching a case', async () => {
+    const plugin = { pluginId: 'org.example.demo', version: '1.2.0' };
+    ipc.take.mockResolvedValueOnce([{
+      url: 'lovelycarve://install-plugin?id=org.example.demo&version=1.2.0',
+      link: null, plugin_install: plugin, error: null,
+    } satisfies ReceivedEvidenceLink]);
+    const { options } = start(registered.c1);
+    await vi.waitFor(() => expect(options.openPluginInstall).toHaveBeenCalledExactlyOnceWith(plugin));
+    expect(options.openCase).not.toHaveBeenCalled();
+    expect(options.onError).not.toHaveBeenCalled();
+  });
+
   it('highlights a byte range in the case that is already open', async () => {
     ipc.take.mockResolvedValueOnce(received({ case_id: 'c1', image_id: 'e1', node_id: 'ntfs:part:0:42', offset: 256, length: 12 }));
     const { options } = start(registered.c1);

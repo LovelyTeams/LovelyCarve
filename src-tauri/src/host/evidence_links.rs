@@ -16,6 +16,7 @@ use serde::Serialize;
 use tauri::{Emitter, Manager};
 
 use super::link_relay::{self, Relay, Workspace};
+use super::plugin_install_link::PluginInstallLink;
 use crate::{
     core::{
         casework::{
@@ -57,12 +58,13 @@ impl Inbox {
 #[derive(Default)]
 struct Published(Mutex<Option<Relay>>);
 
-/// A link as the main window receives it: the place it names, or why it
-/// names none.
+/// A link as the main window receives it.
 #[derive(Debug, PartialEq, Eq, Serialize)]
 struct Received {
     url: String,
     link: Option<Place>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    plugin_install: Option<PluginInstallLink>,
     error: Option<String>,
 }
 
@@ -86,14 +88,28 @@ struct Place {
 
 impl Received {
     fn of(url: String) -> Self {
+        if PluginInstallLink::matches(&url) {
+            let (plugin_install, error) = match PluginInstallLink::parse(&url) {
+                Ok(install) => (Some(install), None),
+                Err(error) => (None, Some(error.to_string())),
+            };
+            return Self {
+                url,
+                link: None,
+                plugin_install,
+                error,
+            };
+        }
         match EvidenceLink::parse(&url) {
             Ok(link) => Self {
                 link: Some(Place::of(link)),
+                plugin_install: None,
                 error: None,
                 url,
             },
             Err(error) => Self {
                 link: None,
+                plugin_install: None,
                 error: Some(error.to_string()),
                 url,
             },

@@ -2,14 +2,14 @@ import { onScopeDispose } from 'vue';
 import { tr } from '../../composables/useLocale';
 import { confirm } from '../../composables/useConfirm';
 import { caseList, type CaseInfo, type CaseListItem } from '../../lib/ipc/cases';
-import { onEvidenceLinkReceived, takeEvidenceLinks, type EvidenceLinkPlace } from '../../lib/ipc/evidenceLinks';
+import { onEvidenceLinkReceived, takeEvidenceLinks, type EvidenceLinkPlace, type PluginInstallLink } from '../../lib/ipc/evidenceLinks';
 import type { FileLocationTarget } from '../../lib/models/fileLocation';
 import type { ImageId } from '../../lib/ipc/ids';
 
 /** Opens what received `lovelycarve://` links name: their case (asking before
  *  another open case closes), evidence and file, which the file list selects,
  *  previews and, for a byte range, highlights. Links that arrive while one
- *  opens wait; only the latest of them opens next. */
+ *  opens wait; only the latest of them opens next. Plugin links go to Settings. */
 export function useEvidenceLinks(options: {
   activeCase: () => CaseInfo | null;
   refreshActiveCase: () => Promise<void>;
@@ -18,6 +18,7 @@ export function useEvidenceLinks(options: {
   /** Show an evidence item of the active case at its root. */
   openEvidence: (imageId: ImageId) => Promise<void>;
   openLocation: (target: FileLocationTarget) => Promise<void>;
+  openPluginInstall: (link: PluginInstallLink) => void;
   onError: (title: string, message: string) => void;
 }) {
   let disposed = false;
@@ -35,8 +36,10 @@ export function useEvidenceLinks(options: {
     }
     if (disposed) return;
     for (const item of received) {
-      if (!item.link) options.onError(tr("链接无效"), item.error ?? item.url);
+      if (!item.link && !item.plugin_install) options.onError(tr("链接无效"), item.error ?? item.url);
     }
+    const install = received.filter(item => item.plugin_install).at(-1)?.plugin_install;
+    if (install) options.openPluginInstall(install);
     const next = received.filter(item => item.link).at(-1)?.link;
     if (!next) return;
     latest = next;
