@@ -356,7 +356,9 @@ export_plugin!(plugin);
 - `https://` 地址：索引文件的 URL，以 `/` 结尾时指目录下的 `index.json`；不能带凭据、查询或片段；
 - 本地或网络驱动器上的绝对路径：市场目录（取其中的 `index.json`）或索引文件本身。离线环境把整个市场目录复制过去即可。
 
-`http://`、`file://` 等其他形式一律拒绝，也没有镜像或回退：插件包的完整性依赖索引列出的 SHA-256，索引在传输中不能被篡改。只读取已配置的索引源，配置之前不发出任何请求；索引源保存在用户数据目录的 `plugin-market/sources.json`，桌面端与 CLI 共用。读到的索引在进程内缓存 10 分钟，刷新时重新读取。
+`http://`、`file://` 等其他形式一律拒绝，也没有镜像或回退。插件包的完整性依赖索引列出的 SHA-256。浏览插件市场需要先配置索引源，配置保存在用户数据目录的 `plugin-market/sources.json`，桌面端与 CLI 共用。读到的索引在进程内缓存 10 分钟，刷新时重新读取。
+
+官方发布页通过 `lovelycarve://install-plugin?id=<插件 ID>&version=<语义化版本>` 打开桌面安装流程。LovelyCarve 用固定的官方索引解析当前平台的包、校验并检视，确认后安装。链接只传插件 ID 和版本，使用该流程无需添加市场源。
 
 ```json
 {
@@ -407,6 +409,7 @@ export_plugin!(plugin);
 | `plugin_market_sources` / `plugin_market_set_sources` | `plugin market sources` / `add` / `rm` | 插件市场索引源 |
 | `plugin_market_list` | `plugin market ls` | 一个索引源的插件、版本与安装状态 |
 | `plugin_market_download` / `plugin_market_release` | `plugin market install` | 下载并校验、检视一个版本；安装后或放弃时删除下载 |
+| `plugin_market_download_official` | `rpc plugin_market_download_official` | 从固定的官方索引下载、校验并检视发布页指定的版本 |
 | `plugin_market_index` | `plugin market index` | 为目录中的 `.lcpkg` 生成 `index.json` |
 | `plugin_restart` | `rpc plugin_restart` | 重启文件系统插件的共享实例 |
 | `sched_task_functions`、`sched_systems_list` | `analyze ls` | 可调度的分析器（作用域、平台、选项与画像事实），以及检材上识别出的系统及其挂载 |

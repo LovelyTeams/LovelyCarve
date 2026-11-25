@@ -3,10 +3,10 @@
 //! ([`catalog`]), and downloads that keep only bytes with the SHA-256 the
 //! index lists.
 //!
-//! Only configured sources are ever read, so no request can make the host
-//! fetch an arbitrary address, and nothing is fetched before a source is
-//! added. There is no mirror or fallback: a source is read from where it
-//! says. A downloaded package is inspected like any other archive and must
+//! Market browsing and downloads use configured sources. Opening an explicit
+//! install request from the release page uses the fixed official index,
+//! without adding it to the user's sources. A downloaded package is
+//! inspected like any other archive and must
 //! name the listed id and version; it installs through
 //! [`PluginManager::install`] with its inspected digest, after the user saw
 //! the inspection. Sources live in `plugin-market/sources.json` under the
@@ -43,6 +43,8 @@ const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 const DOWNLOAD_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 /// Most sources kept.
 const MAX_SOURCES: usize = 32;
+/// The only index used for release-page requests.
+const OFFICIAL_INDEX: &str = "https://lovelyteams.github.io/LovelyCarve-Plugin-Site/index.json";
 
 /// Why a market request failed. [`MarketError::reason`] names the kind for
 /// the interface.
@@ -228,6 +230,14 @@ impl PluginMarket {
     /// on `refresh`.
     pub async fn index(&self, source: &str, refresh: bool) -> Result<(Arc<MarketIndex>, String)> {
         let location = self.configured(source)?;
+        self.index_at(&location, refresh).await
+    }
+
+    async fn index_at(
+        &self,
+        location: &SourceLocation,
+        refresh: bool,
+    ) -> Result<(Arc<MarketIndex>, String)> {
         let key = location.key();
         let mut cache = self.cache.lock().await;
         if let Some(cached) = cache.get(&key) {
@@ -284,6 +294,32 @@ impl PluginMarket {
     ) -> Result<MarketDownload> {
         let (index, _) = self.index(source, false).await?;
         let location = self.configured(source)?;
+        self.download_from(manager, &location, &index, plugin_id, version)
+            .await
+    }
+
+    /// Inspects a version from the official release page without modifying
+    /// the list of market sources.
+    pub async fn download_official(
+        &self,
+        manager: &PluginManager,
+        plugin_id: &str,
+        version: &str,
+    ) -> Result<MarketDownload> {
+        let location = SourceLocation::parse(OFFICIAL_INDEX)?;
+        let (index, _) = self.index_at(&location, false).await?;
+        self.download_from(manager, &location, &index, plugin_id, version)
+            .await
+    }
+
+    async fn download_from(
+        &self,
+        manager: &PluginManager,
+        location: &SourceLocation,
+        index: &MarketIndex,
+        plugin_id: &str,
+        version: &str,
+    ) -> Result<MarketDownload> {
         let package = index
             .packages
             .iter()

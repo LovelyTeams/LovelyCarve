@@ -17,10 +17,17 @@ export interface EvidenceLinkPlace {
   length?: number;
 }
 
-/** One received link: the place it names, or why it names none. */
+/** The package identity from an official release-page link. */
+export interface PluginInstallLink {
+  pluginId: string;
+  version: string;
+}
+
+/** One received link: a case location, a package install request, or an error. */
 export interface ReceivedEvidenceLink {
   url: string;
   link: EvidenceLinkPlace | null;
+  plugin_install?: PluginInstallLink;
   error: string | null;
 }
 

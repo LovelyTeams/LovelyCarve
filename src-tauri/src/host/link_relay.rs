@@ -16,6 +16,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use super::plugin_install_link::PluginInstallLink;
 use crate::core::casework::evidence_link::EvidenceLink;
 
 const PROTOCOL: u32 = 1;
@@ -60,6 +61,9 @@ enum Accept {
     Idle,
     /// Any process: the link does not parse, and the process says so.
     Any,
+    /// A process that understands plugin installs. Older desktops do not
+    /// recognize this offer and leave it for the sending process.
+    PluginInstall,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -92,6 +96,7 @@ impl Workspace {
     fn takes(&self, accept: Accept, url: &str) -> bool {
         match (accept, self) {
             (Accept::Any, _) | (Accept::Idle, Self::Empty) => true,
+            (Accept::PluginInstall, _) => PluginInstallLink::matches(url),
             (Accept::Case, Self::Case(case_id)) => {
                 EvidenceLink::parse(url).is_ok_and(|link| link.case_id() == case_id)
             }
@@ -211,7 +216,9 @@ pub(crate) fn forward(directory: &Path, url: &str) -> bool {
     if records.is_empty() {
         return false;
     }
-    let passes: &[Accept] = if EvidenceLink::parse(url).is_ok() {
+    let passes: &[Accept] = if PluginInstallLink::matches(url) {
+        &[Accept::PluginInstall]
+    } else if EvidenceLink::parse(url).is_ok() {
         &[Accept::Case, Accept::Idle]
     } else {
         &[Accept::Any]
@@ -400,6 +407,16 @@ mod tests {
 
     const LINK_C1: &str = "lovelycarve://open?case=c1&evidence=e&node=n";
     const LINK_C2: &str = "lovelycarve://open?case=c2";
+
+    #[test]
+    fn release_page_install_reaches_a_running_workspace_without_opening_a_case() {
+        const LINK: &str = "lovelycarve://install-plugin?id=org.example.demo&version=1.0.0";
+        let directory = tempfile::tempdir().expect("tempdir");
+        let (_holder, holder_links) = relay(directory.path(), Workspace::Case("c1".into()));
+        assert!(forward(directory.path(), LINK));
+        assert_eq!(received(&holder_links).as_deref(), Some(LINK));
+        assert!(!Workspace::Busy.takes(Accept::PluginInstall, LINK_C1));
+    }
 
     fn relay(directory: &Path, workspace: Workspace) -> (Relay, mpsc::Receiver<String>) {
         let (sender, receiver) = mpsc::channel();

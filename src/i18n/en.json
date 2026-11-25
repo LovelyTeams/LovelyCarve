@@ -2574,6 +2574,8 @@
   "重新读取索引": "Read the index again",
   "移除索引源": "Remove source",
   "正在读取插件清单…": "Reading the plugin list…",
+  "正在下载插件包…": "Downloading the plugin package…",
+  "另一个插件安装正在进行": "Another plugin installation is in progress",
   "读取时间": "Read at",
   "索引中没有插件": "The index lists no plugins",
   "更新": "Update",

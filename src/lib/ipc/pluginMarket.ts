@@ -92,6 +92,11 @@ export function pluginMarketDownload(source: string, pluginId: string, version: 
   return invokeCmd<MarketDownload>('plugin_market_download', { source, pluginId, version });
 }
 
+/** Download and inspect from the official index without adding a market source. */
+export function pluginMarketDownloadOfficial(pluginId: string, version: string): Promise<MarketDownload> {
+  return invokeCmd<MarketDownload>('plugin_market_download_official', { pluginId, version });
+}
+
 /** 删除安装过或放弃的下载。 */
 export function pluginMarketRelease(sha256: string): Promise<void> {
   return invokeCmd<void>('plugin_market_release', { sha256 });

@@ -21,7 +21,8 @@
 
         <main class="ui-modal-body settings-content" v-content-motion.rise="activeSection">
           <PluginSettingsPanel v-if="activeSection === 'plugins'" />
-          <PluginMarketPanel v-else-if="activeSection === 'market'" />
+          <PluginMarketPanel v-else-if="activeSection === 'market'" :install-link="pluginInstallLink"
+            @consume-install-link="$emit('consumePluginInstall')" />
           <AppLogPanel v-else-if="activeSection === 'logs'" />
           <AppAboutPanel v-else-if="activeSection === 'about'" :updates="updates" />
           <section v-else class="settings-panel" :aria-label="tr('界面设置')">
@@ -114,6 +115,7 @@ import { useCaseContext } from '../../cases/api';
 import { useDialogFocus } from '../../../composables/useDialogFocus';
 import { useTheme, type ThemeName } from '../../../composables/useTheme';
 import type { SettingsSection } from '../model/types';
+import type { PluginInstallLink } from '../../../lib/ipc/evidenceLinks';
 import PluginSettingsPanel from './PluginSettingsPanel.vue';
 import PluginMarketPanel from './PluginMarketPanel.vue';
 import AppLogPanel from './AppLogPanel.vue';
@@ -125,6 +127,7 @@ const updates = useAppUpdateCheck();
 const props = withDefaults(defineProps<{
   visible?: boolean;
   initialSection?: SettingsSection;
+  pluginInstallLink?: PluginInstallLink | null;
 }>(), {
   visible: false,
   initialSection: 'appearance',
@@ -132,6 +135,7 @@ const props = withDefaults(defineProps<{
 
 defineEmits<{
   close: [];
+  consumePluginInstall: [];
 }>();
 
 const sections = [
@@ -145,9 +149,9 @@ const sections = [
 const activeSection = ref<SettingsSection>(props.initialSection);
 
 watch(
-  () => [props.visible, props.initialSection] as const,
-  ([visible, section]) => {
-    if (visible) activeSection.value = section;
+  () => [props.visible, props.initialSection, props.pluginInstallLink] as const,
+  ([visible, section, installLink]) => {
+    if (visible) activeSection.value = installLink ? 'market' : section;
   },
 );
 

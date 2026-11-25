@@ -5,16 +5,18 @@ import PluginMarketPanel from './PluginMarketPanel.vue';
 import { IpcCommandError } from '../../../lib/ipc/client';
 import type { PackageInspection } from '../../../lib/ipc/plugins';
 import type { MarketCatalog, MarketDownload } from '../../../lib/ipc/pluginMarket';
+import type { PluginInstallLink } from '../../../lib/ipc/evidenceLinks';
 import { resetPluginCatalogForTests } from '../../tasks/composables/usePluginCatalog';
 import { resetTaskCenterForTests } from '../../tasks/composables/useTaskCenter';
 
 const ipc = vi.hoisted(() => ({
-  sources: vi.fn(), setSources: vi.fn(), list: vi.fn(), download: vi.fn(), release: vi.fn(),
+  sources: vi.fn(), setSources: vi.fn(), list: vi.fn(), download: vi.fn(), downloadOfficial: vi.fn(), release: vi.fn(),
   pluginList: vi.fn(), install: vi.fn(), invoke: vi.fn(), open: vi.fn(),
 }));
 vi.mock('../../../lib/ipc/pluginMarket', () => ({
   pluginMarketSources: ipc.sources, pluginMarketSetSources: ipc.setSources, pluginMarketList: ipc.list,
   pluginMarketDownload: ipc.download, pluginMarketRelease: ipc.release,
+  pluginMarketDownloadOfficial: ipc.downloadOfficial,
 }));
 vi.mock('../../../lib/ipc/plugins', async original => ({
   ...await original<typeof import('../../../lib/ipc/plugins')>(),
@@ -53,7 +55,11 @@ async function settle() { for (let index = 0; index < 8; index++) await nextTick
 function button(label: string, root: ParentNode = host) {
   return [...root.querySelectorAll<HTMLButtonElement>('button')].find(element => element.textContent?.trim() === label)!;
 }
-async function mount() { app = createApp(PluginMarketPanel); app.mount(host); await settle(); }
+async function mount(installLink?: PluginInstallLink) {
+  app = createApp(PluginMarketPanel, { installLink });
+  app.mount(host);
+  await settle();
+}
 async function dialog() {
   return vi.waitFor(() => {
     const element = document.body.querySelector<HTMLElement>('.install-modal');
@@ -83,6 +89,24 @@ async function closed() {
 }
 
 describe('plugin market', () => {
+  it('uses the official index without adding a source and installs only after confirmation', async () => {
+    const source = 'https://lovelyteams.github.io/LovelyCarve-Plugin-Site/index.json';
+    ipc.sources.mockResolvedValueOnce({ sources: [] });
+    ipc.downloadOfficial.mockResolvedValueOnce({ ...download, source });
+    await mount({ pluginId: inspection.pluginId, version: inspection.version });
+    const confirmation = await dialog();
+    expect(ipc.downloadOfficial).toHaveBeenCalledExactlyOnceWith(inspection.pluginId, inspection.version);
+    expect(ipc.setSources).not.toHaveBeenCalled();
+    expect(ipc.install).not.toHaveBeenCalled();
+    expect(confirmation.textContent).toContain(source);
+
+    ipc.install.mockResolvedValueOnce({ pluginId: inspection.pluginId, version: inspection.version, replaced: null });
+    button('安装', confirmation).click();
+    await vi.waitFor(() => expect(host.querySelector('[role="status"]')?.textContent).toContain('已安装 org.example.demo 1.2.0'));
+    expect(ipc.install).toHaveBeenCalledExactlyOnceWith(inspection.archive, inspection.sha256);
+    expect(ipc.release).toHaveBeenCalledExactlyOnceWith(inspection.sha256);
+  });
+
   it('adds a source and states a rejected one at its field', async () => {
     ipc.sources.mockResolvedValueOnce({ sources: [] });
     await mount();
