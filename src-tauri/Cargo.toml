@@ -191,12 +191,17 @@ refs-reader = { path = "vendor/refs-reader" }
 regex = "1.13.1"
 regex-syntax = "0.8.11"
 reiserfs-reader = { path = "vendor/reiserfs-reader" }
+# 插件市场：读取 https 索引并下载插件包。用系统 TLS（Windows schannel），不带
+# rustls / aws-lc；系统代理设置照常生效。
+reqwest = { version = "0.13.5", default-features = false, features = ["native-tls", "system-proxy"] }
 rmp-serde = "1.3.1"
 rmpv = { version = "1.3.1", features = ["with-serde"] }
 rsqlite-vfs = { path = "vendor/rsqlite-vfs" }
 rufs = { path = "vendor/rufs" }
 
 rusqlite = { version = "0.40.2", features = ["bundled-sqlcipher-vendored-openssl", "collation", "hooks", "limits"] }
+# 插件包与市场索引的版本号。
+semver = "1.0.28"
 sercomm-firmware = { path = "vendor/sercomm-firmware" }
 
 serde = { version = "1.0.229", features = ["derive"] }

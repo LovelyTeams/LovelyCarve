@@ -31,12 +31,37 @@ const MAX_MEMORY: u64 = 64 * 1024 * 1024 * 1024;
 /// Memory limit of a package that declares none.
 pub const DEFAULT_MEMORY: u64 = 2 * 1024 * 1024 * 1024;
 
+/// Longest `description`, and longest `publisher` / `license`.
+pub const MAX_DESCRIPTION: usize = 1024;
+pub const MAX_ATTRIBUTION: usize = 128;
+
+/// A plugin id: 1–128 ASCII letters, digits, `.`, `-` or `_`.
+pub fn is_valid_plugin_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 128
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct PluginManifest {
     pub id: String,
     pub name: String,
+    /// A semantic version (`1.2.0`), which orders installed and offered
+    /// packages.
     pub version: String,
+    /// One line on what the plugin does (Chinese default; `plugin.description`
+    /// in a locale file translates it).
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Who publishes the package.
+    #[serde(default)]
+    pub publisher: Option<String>,
+    /// The package's license (an SPDX expression such as `GPL-3.0-only`).
+    #[serde(default)]
+    pub license: Option<String>,
     /// LPP protocol version; must be 2.
     pub protocol: u16,
     /// Library path relative to the package directory. A name without a
@@ -247,17 +272,33 @@ impl PluginManifest {
 
     pub fn validate(&self) -> Result<()> {
         let invalid = |message: String| Err(PluginError::Manifest(message));
-        if self.id.is_empty()
-            || self.id.len() > 128
-            || !self
-                .id
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
-        {
+        if !is_valid_plugin_id(&self.id) {
             return invalid("id must be 1..=128 ASCII letters, digits, '.', '-' or '_'".to_owned());
         }
-        if self.name.trim().is_empty() || self.version.trim().is_empty() {
-            return invalid("name and version must not be empty".to_owned());
+        if self.name.trim().is_empty() {
+            return invalid("name must not be empty".to_owned());
+        }
+        if let Err(error) = semver::Version::parse(&self.version) {
+            return invalid(format!(
+                "version {:?} is not a semantic version such as 1.2.0: {error}",
+                self.version
+            ));
+        }
+        for (field, value, limit) in [
+            ("description", &self.description, MAX_DESCRIPTION),
+            ("publisher", &self.publisher, MAX_ATTRIBUTION),
+            ("license", &self.license, MAX_ATTRIBUTION),
+        ] {
+            if let Some(value) = value {
+                if value.trim().is_empty()
+                    || value.chars().count() > limit
+                    || value.chars().any(char::is_control)
+                {
+                    return invalid(format!(
+                        "{field} must be one line of at most {limit} characters"
+                    ));
+                }
+            }
         }
         if self.protocol != PROTOCOL_VERSION {
             return invalid(format!(
@@ -319,6 +360,12 @@ impl PluginManifest {
             }
         }
         Ok(())
+    }
+
+    /// The version, parsed (manifests are validated when they load).
+    pub fn semantic_version(&self) -> Result<semver::Version> {
+        semver::Version::parse(&self.version)
+            .map_err(|error| PluginError::Manifest(format!("version {:?}: {error}", self.version)))
     }
 
     /// The plugin process memory limit in bytes.

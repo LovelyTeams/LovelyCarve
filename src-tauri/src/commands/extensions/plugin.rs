@@ -1,7 +1,8 @@
-//! 插件包 IPC:列出、重置共享实例、安装(.lcpkg)与卸载。
+//! 插件包 IPC:列出、重置共享实例、检视与安装(.lcpkg)、卸载、读取说明。
 //!
-//! 分析器不再直接调用:文件、系统与检材分析一律建任务(`sched_task_create`),
-//! 结果进分析结果树。
+//! 安装分两步:`plugin_inspect` 只读出插件包是什么,`plugin_install` 带上检视
+//! 时的 SHA-256 才安装同一份字节。分析器不再直接调用:文件、系统与检材分析一律
+//! 建任务(`sched_task_create`),结果进分析结果树。
 
 use std::sync::Arc;
 
@@ -13,8 +14,8 @@ use crate::{
     core::{
         analysis::results::{models::RecordColumn, record_query},
         extensions::plugin::{
-            AnalyzerScope, InstalledPackage, Locales, PluginError, PluginManager, PluginPermission,
-            PluginState, RejectedPackage, TaskTrigger,
+            AnalyzerScope, InstalledPackage, Locales, PackageInspection, PluginError,
+            PluginManager, PluginPermission, PluginState, RejectedPackage, TaskTrigger,
         },
     },
     state::AppState,
@@ -36,6 +37,11 @@ pub struct PluginPackageInfo {
     id: String,
     name: String,
     version: String,
+    description: Option<String>,
+    publisher: Option<String>,
+    license: Option<String>,
+    /// The package ships a `README.md` (`plugin_readme`).
+    has_readme: bool,
     directory: String,
     /// The library file for this platform.
     library: String,
@@ -99,6 +105,10 @@ pub async fn plugin_list(state: State<'_, AppState>) -> Result<PluginListRespons
                     id: manifest.id.clone(),
                     name: manifest.name.clone(),
                     version: manifest.version.clone(),
+                    description: manifest.description.clone(),
+                    publisher: manifest.publisher.clone(),
+                    license: manifest.license.clone(),
+                    has_readme: definition.has_readme(),
                     directory: definition.directory.to_string_lossy().into_owned(),
                     library_present: library.is_file(),
                     library: library.to_string_lossy().into_owned(),
@@ -170,16 +180,47 @@ pub async fn plugin_restart(state: State<'_, AppState>, plugin_id: String) -> Re
         .map_err(plugin_app_error)
 }
 
-/// Installs a package archive (`.lcpkg`), replacing an installed version of
-/// the same plugin.
+/// What a package archive (`.lcpkg`) would install, read without running
+/// anything from it: identity, declarations, digests and the relation to the
+/// installed version.
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn plugin_inspect(
+    state: State<'_, AppState>,
+    archive: String,
+) -> Result<PackageInspection, AppError> {
+    plugin_manager(&state)?
+        .inspect(archive.into())
+        .await
+        .map_err(plugin_app_error)
+}
+
+/// Installs the package archive whose SHA-256 is `sha256` (the one
+/// `plugin_inspect` reported), replacing an installed version of the same
+/// plugin once the staged library passed its start check.
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn plugin_install(
     state: State<'_, AppState>,
     archive: String,
+    sha256: String,
 ) -> Result<InstalledPackage, AppError> {
     plugin_manager(&state)?
-        .install(archive.into())
+        .install(archive.into(), &sha256)
         .await
+        .map_err(plugin_app_error)
+}
+
+/// The package's `README.md`, or `null` without one.
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn plugin_readme(
+    state: State<'_, AppState>,
+    plugin_id: String,
+) -> Result<Option<String>, AppError> {
+    let definition = plugin_manager(&state)?
+        .definition(&plugin_id)
+        .map_err(plugin_app_error)?;
+    tokio::task::spawn_blocking(move || definition.readme())
+        .await
+        .map_err(|err| AppError::task_panicked("plugin_readme", err))?
         .map_err(plugin_app_error)
 }
 
@@ -195,7 +236,7 @@ pub async fn plugin_uninstall(
         .map_err(plugin_app_error)
 }
 
-fn plugin_manager(state: &AppState) -> Result<Arc<PluginManager>, AppError> {
+pub(crate) fn plugin_manager(state: &AppState) -> Result<Arc<PluginManager>, AppError> {
     state
         .plugins
         .read()

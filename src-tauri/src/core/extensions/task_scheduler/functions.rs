@@ -237,7 +237,7 @@ pub(super) mod tests {
                 r#"
 id = "org.test.first"
 name = "First"
-version = "1"
+version = "1.0.0"
 protocol = 2
 library = "test"
 [[analyzer]]
@@ -253,7 +253,7 @@ provides = ["stage_one_done"]
                 r#"
 id = "org.test.second"
 name = "Second"
-version = "2"
+version = "2.0.0"
 protocol = 2
 library = "test"
 [[analyzer]]
@@ -269,7 +269,7 @@ requires = ["stage_one_done"]
                 r#"
 id = "org.test.manual"
 name = "Manual"
-version = "3"
+version = "3.0.0"
 protocol = 2
 library = "test"
 [[analyzer]]
@@ -306,7 +306,7 @@ id = "demo-fs"
                 function: "org.test.first/stage_one".to_owned(),
                 plugin_id: "org.test.first".to_owned(),
                 plugin_name: "First".to_owned(),
-                plugin_version: "1".to_owned(),
+                plugin_version: "1.0.0".to_owned(),
                 analyzer: "stage_one".to_owned(),
                 display_name: "First · stage_one".to_owned(),
                 type_name: "filesystem".to_owned(),

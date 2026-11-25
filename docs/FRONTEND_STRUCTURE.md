@@ -14,14 +14,15 @@
 
 ## 公开接口与允许依赖
 
-`cases/api.ts` 提供只读案件/快照查询及案件操作；`tasks/api.ts` 提供任务中心条目（后端统一列表）、操作、插件包目录（含各包的语言包）和只读上下文注册；`evidence/api.ts` 提供证据会话、资源操作和回调注册；`preview/api.ts` 提供停靠/同步；`raid/api.ts` 提供只读检测概览和打开回调；`files/api.ts` 提供写入收尾及定位契约；`analysis/api.ts` 提供结果/焦点及上下文注册。其余功能没有跨域状态消费者，不为目录对称添加出口。功能内部不回引自身 API，公开 API 不导出重面板。
+`cases/api.ts` 提供只读案件/快照查询及案件操作；`tasks/api.ts` 提供任务中心条目（后端统一列表）、操作、插件包目录（含各包的语言包）和只读上下文注册；`evidence/api.ts` 提供证据会话、资源操作和回调注册；`preview/api.ts` 提供停靠/同步与 Markdown 渲染；`raid/api.ts` 提供只读检测概览和打开回调；`files/api.ts` 提供写入收尾及定位契约；`analysis/api.ts` 提供结果/焦点及上下文注册。其余功能没有跨域状态消费者，不为目录对称添加出口。功能内部不回引自身 API，公开 API 不导出重面板。
 
 | 边 | 用途 |
 | --- | --- |
 | files → preview/cases API | 预览、卷快照状态与 Docker 合并的案件目录 |
 | evidence → tasks API | 镜像信息页读取平台识别任务的状态 |
 | evidence/settings → cases API | 挂载与案件上下文、设置显示 |
-| analysis/settings → tasks API | 插件包目录：结果标签按插件语言包翻译，插件包的安装、卸载与列表 |
+| analysis/settings → tasks API | 插件包目录：结果标签按插件语言包翻译，插件包的检视、安装、卸载、说明与列表 |
+| settings → preview API | 插件包说明（README.md）用原类型视图的 Markdown 渲染 |
 | cases → raid API | 只读 RAID 检测概览 |
 | raid → evidence API | RAW 导出操作 |
 | files → DiskFileDetail/FilePreviewDock/PluginTaskDialog；evidence → RaidStackPanel | 明确的按需组件入口，props/emits 协作 |

@@ -10,6 +10,7 @@ use crate::{
         common::ids::ImageId,
         extensions::{
             plugin::PluginManager,
+            plugin_market::PluginMarket,
             task_scheduler::{
                 FunctionRegistry, RegistrySource, RunnerFactory, SchedEvent, SchedulerConfig,
                 SystemTarget, TaskRunner, TaskScheduler,
@@ -39,6 +40,15 @@ pub(crate) fn initialize(
     )?);
     *state.media_scratch.lock() = Some(Arc::clone(&scratch));
     discover_plugins(state, host);
+    if let Some(data_dir) = host.app_data_dir() {
+        if state
+            .plugin_market
+            .set(PluginMarket::new(data_dir))
+            .is_err()
+        {
+            tracing::warn!("plugin market was already set up; keeping the first one");
+        }
+    }
     let journal = TaskJournal::start(Arc::clone(&state.active_case))?;
     if state.task_journal.set(journal.clone()).is_err() {
         tracing::warn!("task journal was already started; keeping the first writer");

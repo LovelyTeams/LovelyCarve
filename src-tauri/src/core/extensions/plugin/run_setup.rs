@@ -67,6 +67,9 @@ pub struct RunPlan<'a> {
     pub systems: &'a [DetectedSystem],
     /// The worker library's verified `plugin.hello`.
     pub hello: &'a Hello,
+    /// The SHA-256 of the library the worker loaded
+    /// ([`super::TaskWorker::library_sha256`]).
+    pub library_sha256: Option<&'a str>,
     /// The evidence's display name.
     pub evidence_label: &'a str,
 }
@@ -219,6 +222,7 @@ pub fn prepare_run(
             profile: &serde_json::Value::Object(facts.clone().into_iter().collect()),
             inputs: &run_inputs,
             schema_hash: &plan.hello.schema_hash,
+            library_sha256: plan.library_sha256,
             started_at: &chrono::Utc::now().to_rfc3339(),
         },
     )?;

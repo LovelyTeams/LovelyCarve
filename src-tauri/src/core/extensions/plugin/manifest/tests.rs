@@ -4,11 +4,44 @@ fn manifest(body: &str) -> Result<PluginManifest> {
     PluginManifest::parse(&format!(
         r#"id = "org.test.plugin"
 name = "Test"
-version = "1"
+version = "1.0.0"
 protocol = 2
 library = "test"
 {body}"#
     ))
+}
+
+#[test]
+fn versions_are_semantic_and_attribution_is_one_line() {
+    let parse = |header: &str| {
+        PluginManifest::parse(&format!(
+            "id = \"org.test.version\"\nname = \"V\"\n{header}\nprotocol = 2\nlibrary = \"v\"\n"
+        ))
+    };
+    let described = parse(
+        "version = \"1.2.0-rc.1\"\ndescription = \"分析 Linux 系统\"\npublisher = \"LovelyTeams\"\nlicense = \"GPL-3.0-only\"",
+    )
+    .expect("described package");
+    assert_eq!(
+        described.semantic_version().expect("version"),
+        semver::Version::parse("1.2.0-rc.1").expect("version")
+    );
+    assert_eq!(described.description.as_deref(), Some("分析 Linux 系统"));
+    assert_eq!(described.publisher.as_deref(), Some("LovelyTeams"));
+    assert_eq!(described.license.as_deref(), Some("GPL-3.0-only"));
+    for header in [
+        "version = \"1\"",
+        "version = \"1.0\"",
+        "version = \"v1.0.0\"",
+        "version = \"1.0.0\"\ndescription = \"\"",
+        "version = \"1.0.0\"\ndescription = \"两行\\n说明\"",
+        "version = \"1.0.0\"\npublisher = \"   \"",
+    ] {
+        assert!(
+            matches!(parse(header), Err(PluginError::Manifest(_))),
+            "{header} must be rejected"
+        );
+    }
 }
 
 #[test]
@@ -34,7 +67,7 @@ fn lpp_v1_manifests_explain_the_rebuild() {
     let Err(PluginError::Manifest(message)) = PluginManifest::parse(
         r#"id = "org.test.legacy"
 name = "Legacy"
-version = "1"
+version = "1.0.0"
 protocol_min = 1
 protocol_max = 1
 [library]
@@ -48,7 +81,7 @@ path = "legacy"
     let Err(PluginError::Manifest(message)) = PluginManifest::parse(
         r#"id = "org.test.future"
 name = "Future"
-version = "1"
+version = "1.0.0"
 protocol = 3
 library = "future"
 "#,
@@ -129,7 +162,7 @@ fn option_values_are_checked_against_their_kind() {
 fn library_paths_resolve_to_platform_file_names() {
     let library = |path: &str| {
         PluginManifest::parse(&format!(
-            "id = \"org.test.library\"\nname = \"L\"\nversion = \"1\"\nprotocol = 2\nlibrary = \"{path}\""
+            "id = \"org.test.library\"\nname = \"L\"\nversion = \"1.0.0\"\nprotocol = 2\nlibrary = \"{path}\""
         ))
     };
     let directory = Path::new("plugins").join("demo");

@@ -292,7 +292,7 @@ describe('analysis run overview', () => {
   const audit = {
     runId: 'run-1', state: 'published', pluginId: 'p', pluginVersion: '2.0.0', analyzer: 'linux', analyzerName: 'Linux 基本信息',
     target: { kind: 'system', id: 'sys', label: 'Ubuntu · part:2' }, options: { items: [] }, profile: { os: 'linux' },
-    inputs: [{ path: '/etc/passwd', root: 'part:2', rootPath: 'etc/passwd', nodeId: null, size: 1873 }], inputCount: 1, schemaHash: 'hash', summary: '识别到 Ubuntu',
+    inputs: [{ path: '/etc/passwd', root: 'part:2', rootPath: 'etc/passwd', nodeId: null, size: 1873 }], inputCount: 1, schemaHash: 'hash', librarySha256: null, summary: '识别到 Ubuntu',
     recordCount: 34, recordTypes: [], warningCount: 1, warnings: [{ code: 'parse.skipped', message: '跳过一条记录', path: '/var/log/wtmp', nodeId: 'ext4:12' }],
     badRegions: [{ offset: 4096, len: 512 }], syntheticBytes: 512,
     startedAt: '2026-10-19T13:30:21Z', finishedAt: '2026-10-19T13:30:32.5Z', publishedAt: '2026-10-19T13:30:32.5Z',

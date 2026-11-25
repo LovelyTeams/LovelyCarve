@@ -170,7 +170,7 @@ function auditOf(runId: string): AnalysisRunAudit {
   return {
     runId, state: 'published', pluginId: 'org.lovelycarve.linuxinfo', pluginVersion: '2.0.0', analyzer: 'linuxbaseinfo', analyzerName: 'Linux基本信息',
     target: { kind: 'system', id: 'linux@part:2', label: 'Kali · part:2' }, options: {}, profile: { hostname: 'kali' },
-    inputs: [], inputCount: 0, schemaHash: 'fnv1a64:0', summary: null, recordCount: 2, recordTypes: [], warningCount: 1,
+    inputs: [], inputCount: 0, schemaHash: 'fnv1a64:0', librarySha256: 'a'.repeat(64), summary: null, recordCount: 2, recordTypes: [], warningCount: 1,
     warnings: [{ code: 'MALFORMED_LINE', message: '第 2 行字段不足', path: 'etc/passwd', nodeId: null }],
     badRegions: [], syntheticBytes: 0, startedAt: '2026-09-18T00:00:00Z', finishedAt: '2026-09-18T00:00:01Z', publishedAt: '2026-09-18T00:00:01Z',
   };

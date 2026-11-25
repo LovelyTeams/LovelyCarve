@@ -210,7 +210,8 @@ RAID 检测（`evidence/raid`）分六步：读取各检材的 LVM PV 并物化�
 - 卷/挂载：`fs_mount_readonly`、`fs_unmount_readonly`、`fs_mounts`、`fs_share_mount` / `fs_unshare_mount`、挂载点建议和创建
 - 加密卷：`encrypted_volume_unlock` 统一解锁 BitLocker / LUKS / VeraCrypt / FileVault，`bitlocker_inspect` / `filevault_inspect` 读取无凭据元数据，`bitlocker_scan_memory` 在内存镜像中查找 VMK
 - 案件和快照：案件创建/打开/关闭、证据列表/移除、卷快照构建/列表/删除
-- 插件与任务调度：`plugin_list`/`plugin_restart`/`plugin_install`/`plugin_uninstall`；
+- 插件与任务调度：`plugin_list`/`plugin_restart`/`plugin_inspect`/`plugin_install`/`plugin_uninstall`/`plugin_readme`；
+  插件市场 `plugin_market_sources`/`set_sources`/`list`/`download`/`release`/`index`；
   `sched_task_functions`、`sched_systems_list`、`sched_task_create`、
   `sched_task_cancel`/`start`/`restart`/`remove`、`sched_evidence_post_actions_set`；
   `analysis_result_tree`、`analysis_records_page`、`analysis_record_detail`、`analysis_run_get`
@@ -590,7 +591,11 @@ PostActionWatcher 按检材登记创建/完成计数（案件打开时从台账�
 
 插件运行时位于 `core::extensions::plugin`。插件包是 `plugin.toml`（`manifest.rs`）、导出 C ABI
 （`lovelycarve_plugin_v1`）的原生动态库、构建时导出的 `schema.json` 与 `locales/`（`package.rs`）；
-`manager.rs` 发现、登记与重新发现插件包，`package_install.rs` 安装与卸载 `.lcpkg`。每个插件实例由随应用分发的
+`manager.rs` 发现、登记与重新发现插件包；`.lcpkg` 由 `package_archive.rs` 逐条目校验后读取或解包，
+`package_inspect.rs` 只读出待安装的清单、摘要与和已安装版本的关系（不加载库），`package_install.rs` 校验检视时的
+压缩包 SHA-256、解包到暂存目录、在 `lc-plugin-host` 中启动暂存的库核对 `plugin.hello`，通过后才原子替换；
+拒绝原因是 `PackageRejection`，经 `app/error.rs` 映射为错误码并以 `context.reason` 交给界面。
+`package_platforms.rs` 从库文件头判断插件包的平台（市场索引生成）。每个插件实例由随应用分发的
 `lc-plugin-host` 子进程加载，宿主经 4 字节大端长度前缀的 MessagePack stdio 帧（LPP v2）与之通信，
 独立 reader/writer loop 支持双向嵌套 RPC（`client.rs`）。握手时核对库的 `plugin.hello` 与清单、
 `schema.json`。插件 SDK、C ABI 定义、协议载荷、记录结构与 `lc-plugin-host` 在 `plugins/` Rust 工作区
@@ -619,9 +624,18 @@ UUID 与卷标，`win_drive_letters` 读取盘符），结果按检材缓存，�
 
 插件**发现即信任**：清单合法的插件包初始即为可用（`Configured`），可直接探测、派发与分析；
 没有批准步骤与禁用开关，插件目录 SHA-256 指纹仅用于设置页展示与版本标识（已加载的库不会卸载）。
-加载失败的插件包连同原因列在 `plugin_list` 的 `rejected` 中。插件列表、重启、安装与卸载通过
-`commands::extensions::plugin` 与 `src/lib/ipc/plugins.ts` 形成完整 IPC 链。协议、安全边界与限制见
-[插件协议](PLUGIN_PROTOCOL.md)。
+加载失败的插件包连同原因列在 `plugin_list` 的 `rejected` 中。插件列表、重启、检视、安装、卸载与说明文档通过
+`commands::extensions::plugin` 与 `src/lib/ipc/plugins.ts` 形成完整 IPC 链。安装是唯一的信任决定，因此检视在前、
+确认在后，插件包中的代码在确认之前不运行。任务实例启动并占用库文件后计算它的 SHA-256，写进 `records.db` 的运行
+记录（`run.library_sha256`，内置的 BCP 导入为空）。协议、安全边界与限制见 [插件协议](PLUGIN_PROTOCOL.md)。
+
+插件市场位于 `core::extensions::plugin_market`：`index.rs` 定义并严格校验索引格式（format 1，未知成员即拒绝），
+`source.rs` 解析索引源（只接受 `https://` 与本地绝对路径）、读取索引并下载或复制插件包，`catalog.rs` 把索引与
+已安装的插件比较，`generate.rs` 从一个目录的插件包写出索引。`PluginMarket`（`AppState.plugin_market`，启动时按
+应用数据目录建立）保存索引源（`plugin-market/sources.json`）、缓存读到的索引并管理下载目录
+（`plugin-market/downloads/<SHA-256>.lcpkg`）；只读取已配置的源，下载只保留大小与 SHA-256 都与索引一致的字节，
+再经插件管理器检视并核对 ID 与版本。HTTP 用 `reqwest` 与系统 TLS（Windows schannel），没有镜像或回退。命令在
+`commands::extensions::plugin_market`，前端经 `src/lib/ipc/pluginMarket.ts`。
 
 ## 自动识别平台
 

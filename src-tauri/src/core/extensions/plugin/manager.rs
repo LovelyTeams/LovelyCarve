@@ -84,6 +84,9 @@ impl PluginManager {
     /// first root wins. `install_root` (also scanned) is where installed
     /// packages go; only those can be uninstalled.
     pub fn discover(roots: &[PathBuf], install_root: Option<PathBuf>) -> Result<Self> {
+        if let Some(install_root) = &install_root {
+            super::package_install::sweep_abandoned(install_root, std::time::SystemTime::now());
+        }
         let mut all_roots: Vec<PathBuf> = install_root.iter().cloned().collect();
         for root in roots {
             if !all_roots.contains(root) {
@@ -437,7 +440,7 @@ mod tests {
         fs::write(
             directory.join(MANIFEST_FILE),
             format!(
-                "id = \"{id}\"\nname = \"Test\"\nversion = \"1\"\nprotocol = 2\nlibrary = \"test\"\n"
+                "id = \"{id}\"\nname = \"Test\"\nversion = \"1.0.0\"\nprotocol = 2\nlibrary = \"test\"\n"
             ),
         )
         .expect("manifest");

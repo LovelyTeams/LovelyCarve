@@ -195,11 +195,29 @@ Each entry is a command's synopsis and its description. Positional arguments com
   (asks first; `-y` in scripts)
 - `plugin ls`
   列出插件包（默认）
+- `plugin inspect <插件包>`
+  检视插件包（.lcpkg）：标识、版本、权限、摘要与已安装版本的关系，不安装
 - `plugin install <插件包>`
-  安装插件包（.lcpkg）
+  安装插件包（.lcpkg）：检视后安装同一份字节，替换已安装的同 ID 版本
+  (asks first; `-y` in scripts)
 - `plugin rm <插件ID>`
   卸载插件包
   (asks first; `-y` in scripts)
+- `plugin readme <插件ID>`
+  插件包的说明（README.md）
+- `plugin market sources`
+  列出索引源（默认）
+- `plugin market add <索引源>`
+  添加索引源：https:// 地址，或本地市场目录、index.json 的绝对路径
+- `plugin market rm <索引源>`
+  移除索引源
+- `plugin market ls [--source <索引源>] [--refresh]`
+  列出一个索引源的插件及其安装状态
+- `plugin market install <插件ID> [--version <版本>] [--source <索引源>]`
+  从索引源下载插件包，按索引校验大小与 SHA-256，检视后安装
+  (asks first; `-y` in scripts)
+- `plugin market index <目录> --title <标题> [--description <说明>]`
+  为目录中的 .lcpkg 生成 index.json
 - `analyze ls [--evidence <别名>]`
   列出分析器，以及检材上识别出的系统
 - `analyze run <分析器> [--evidence <别名>] [--system <系统ID>] [--file <路径>] [--option <键=值>…] [--options-json <json>]`

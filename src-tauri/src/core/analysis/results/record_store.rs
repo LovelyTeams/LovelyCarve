@@ -51,7 +51,7 @@ pub(crate) const SCHEMA: StoreSchema = StoreSchema {
     db: EvidenceDb::Records,
     // ASCII "LCRC".
     application_id: 0x4C43_5243,
-    version: 1,
+    version: 2,
     ddl: r#"
         CREATE TABLE run (
             run_id TEXT PRIMARY KEY,
@@ -72,6 +72,9 @@ pub(crate) const SCHEMA: StoreSchema = StoreSchema {
             inputs TEXT NOT NULL,
             input_count INTEGER NOT NULL,
             schema_hash TEXT NOT NULL,
+            -- SHA-256 of the plugin library that ran; NULL for built-in
+            -- importers.
+            library_sha256 TEXT,
             summary TEXT,
             record_count INTEGER NOT NULL DEFAULT 0,
             warning_count INTEGER NOT NULL DEFAULT 0,
@@ -188,6 +191,9 @@ pub struct NewRun<'a> {
     pub profile: &'a serde_json::Value,
     pub inputs: &'a [RunInput],
     pub schema_hash: &'a str,
+    /// SHA-256 of the plugin library that runs; `None` for built-in
+    /// importers.
+    pub library_sha256: Option<&'a str>,
     pub started_at: &'a str,
 }
 
@@ -243,9 +249,9 @@ pub fn begin_run(case_dir: &Path, image_id: &str, run: &NewRun<'_>) -> anyhow::R
         "INSERT INTO run (
             run_id, job_key, owner, state, plugin_id, plugin_version, analyzer, analyzer_name,
             category, target_kind, target_id, target_label, options, profile, inputs,
-            input_count, schema_hash, started_at
+            input_count, schema_hash, library_sha256, started_at
         ) VALUES (?1, ?2, ?3, 'staging', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
-                  ?16, ?17)",
+                  ?16, ?17, ?18)",
         params![
             run.run_id,
             run.job_key,
@@ -263,6 +269,7 @@ pub fn begin_run(case_dir: &Path, image_id: &str, run: &NewRun<'_>) -> anyhow::R
             serde_json::to_string(listed)?,
             run.inputs.len() as i64,
             run.schema_hash,
+            run.library_sha256,
             run.started_at,
         ],
     )?;

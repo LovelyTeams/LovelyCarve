@@ -153,6 +153,8 @@ pub(crate) fn stage(
             profile: &serde_json::json!({}),
             inputs: &inputs,
             schema_hash: &schema::schema_hash(&schemas),
+            // Built into LovelyCarve: its version names the code.
+            library_sha256: None,
             started_at: &chrono::Utc::now().to_rfc3339(),
         },
     )?;

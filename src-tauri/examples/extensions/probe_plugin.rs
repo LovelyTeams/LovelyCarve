@@ -83,6 +83,7 @@ async fn main() -> anyhow::Result<()> {
             options: &serde_json::Map::new(),
             systems: &detected,
             hello: worker.hello(),
+            library_sha256: worker.library_sha256(),
             evidence_label: &label,
         },
         &run_id,

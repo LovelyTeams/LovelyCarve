@@ -249,6 +249,13 @@ build-plugins *args:
 pack-plugins: (build-plugins "--release")
     pwsh -NoProfile -File '{{ justfile_directory() }}\scripts\pack-plugins.ps1'
 
+# Write the plugin market index.json for the .lcpkg files of a directory (default dist-pack).
+[group("plugins")]
+[windows]
+[working-directory("src-tauri")]
+market-index directory="dist-pack" title="LovelyCarve":
+    {{ cargo_env }}cargo run --no-default-features --bin lovelycarve-cli -- plugin market index ([IO.Path]::GetFullPath('{{ directory }}', '{{ justfile_directory() }}')) --title '{{ title }}'
+
 # Test the SDK, lc-plugin-host and the plugins.
 [group("plugins")]
 test-plugins *args:

@@ -8,9 +8,10 @@ LovelyCarve 插件是原生动态库（`.dll` / `.so` / `.dylib`），连同清�
 
 ```text
 org.example.demo/
-├── plugin.toml        # 清单：身份、库、内存上限、权限、分析器与选项
+├── plugin.toml        # 清单：身份、版本、说明、库、内存上限、权限、分析器与选项
 ├── demo.dll           # 库（Linux 为 libdemo.so，macOS 为 libdemo.dylib）
 ├── schema.json        # 构建时从库导出的分析器与记录结构
+├── README.md          # 可选：说明文档，「设置 → 插件」的详情中显示
 └── locales/
     ├── en.toml        # 英文标签
     └── zh-CN.toml     # 可选：清单无字段承载的中文名（如分类名）
@@ -31,12 +32,16 @@ LovelyCarve 启动时扫描以下根目录，每个根目录本身可以是插�
 
 ### 安装与卸载
 
-`.lcpkg` 是插件包目录的 ZIP 压缩包：`plugin.toml` 位于压缩包根部，或位于唯一的顶层目录中。安装时：
+`.lcpkg` 是插件包目录的 ZIP 压缩包：`plugin.toml` 位于压缩包根部，或位于唯一的顶层目录中。压缩包最多 4096 个条目、单个条目 512 MiB、压缩包与解压后总计各 2 GiB；条目路径必须是包内的普通相对路径（不含 `..`、绝对路径、链接、Windows 设备名、保留字符或结尾的点与空格），同一路径（不区分大小写）只能出现一次。
 
-- 压缩包最多 4096 个条目、单个条目 512 MiB、解压后总计 2 GiB；条目路径不能离开包目录，不能是链接；
-- 先解压到安装根目录下的临时目录，校验清单、`schema.json`、语言包与当前平台的库文件，全部通过后再以 `<安装根目录>/<插件 ID>` 原子替换；
-- 同 ID 的已安装版本被替换，替换前停止它的共享实例；内置插件不能被替换或卸载；
-- 卸载删除插件包目录；已发布的分析结果保留在案件里，结果树与列名继续使用存下的标签。
+安装分两步，插件包中的代码在用户确认之前不会运行：
+
+1. **检视**（`plugin_inspect`）：只读出压缩包里的清单、`schema.json`、语言包与说明文档，按发现时的规则校验，并计算压缩包和当前平台库文件的 SHA-256。结果列出插件 ID、名称、版本、说明、发布者、许可证、权限、内存上限、分析器、文件系统、记录类型数、SDK 与两个摘要，以及与已安装版本的关系：`new`（未安装）、`upgrade` / `downgrade`（按语义化版本比较）、`reinstall`（同版本、同一个库）或 `rebuild`（同版本号、不同的库）。内置同 ID 插件、没有当前平台的库或没有安装目录时，检视结果带上不能安装的原因。
+2. **安装**（`plugin_install`）：必须带上检视报告的压缩包 SHA-256，字节不同就拒绝。宿主先解压到安装根目录下的 `.staging-*` 临时目录并再次校验，然后在 `lc-plugin-host` 中启动这份暂存的库一次，按每次运行相同的规则核对它的 `plugin.hello`（协议、插件 ID、分析器、文件系统与 `schema.json`），通过后才停止旧版本的共享实例，以 `<安装根目录>/<插件 ID>` 原子替换。任何一步失败，已安装的版本保持原样。
+
+不能检视或安装时，错误带一个原因（IPC 错误的 `context.reason`，界面据此给出说明，原始诊断一并显示）：`invalidArchive`（压缩包无效）、`invalidPackage`（清单、`schema.json` 或语言包无效）、`noLibrary`（没有当前平台的库）、`bundled`（内置插件不能替换）、`changed`（压缩包在检视后被修改）、`libraryRejected`（库未通过启动校验）、`inUse`（旧版本仍被运行中的任务占用）、`noInstallRoot`（没有安装目录）。
+
+内置插件不能被替换或卸载。卸载删除插件包目录；已发布的分析结果保留在案件里，结果树与列名继续使用存下的标签。中断的安装留下的 `.staging-*` / `.old-*` 目录在发现时跳过，满一小时后于下次启动时删除（更新的目录可能属于另一个正在安装的进程）。
 
 ### 日志
 
@@ -48,6 +53,9 @@ LovelyCarve 启动时扫描以下根目录，每个根目录本身可以是插�
 id = "org.example.demo"
 name = "示例插件"
 version = "1.2.0"
+description = "示例系统的用户与登录记录"
+publisher = "Example Labs"
+license = "MIT"
 protocol = 2
 library = "demo"          # demo.dll / libdemo.so / libdemo.dylib
 memory = "1GiB"           # 插件进程内存上限，缺省 2GiB
@@ -86,6 +94,8 @@ priority = 100
 | 字段 | 说明 |
 | --- | --- |
 | `id` | 1–128 个 ASCII 字母、数字、`.`、`-`、`_` |
+| `version` | 语义化版本（`1.2.0`、`2.0.0-rc.1`），用于比较已安装与待安装的版本 |
+| `description` / `publisher` / `license` | 可选：一行说明（最多 1024 个字符，`plugin.description` 键翻译）、发布者与许可证（SPDX 表达式，各最多 128 个字符） |
 | `protocol` | 必须为 `2` |
 | `library` | 包目录内的相对路径；没有库扩展名时按平台补前后缀 |
 | `memory` | `64MiB`–`64GiB`，缺省 `2GiB`，Windows 以 Job Object 强制 |
@@ -147,6 +157,7 @@ Rust SDK 使用 `schema.properties(PropertyLayout::new("value").label("name").se
 | 键 | 内容 |
 | --- | --- |
 | `plugin.name` | 插件名 |
+| `plugin.description` | 插件说明 |
 | `analyzer.<分析器>` | 分析器名 |
 | `category.<分类>` | 分类名（清单没有分类名字段，中文名也放在 `zh-CN.toml`） |
 | `option.<分析器>.<选项>`、`option.<分析器>.<选项>.<选项值>` | 选项及其取值 |
@@ -187,7 +198,7 @@ LovelyCarve 以 `lc-plugin-host --library <库>` 启动加载器（在程序目�
 1. **目标与视图**：system 作用域打开所选系统的系统视图，evidence 作用域打开检材视图，files 作用域没有视图，输入就是选中的文件。
 2. **输入**：system / evidence 作用域按清单 `inputs` 在视图中查找文件（evidence 作用域的模式加上 `*/` 前缀，在每个卷下匹配），按路径排序，最多 100,000 个；打不开的输入记为告警。
 3. **选项与画像事实**：用户选项按清单校验，缺省值补齐；画像事实取整个检材与该目标已发布的事实。
-4. **暂存运行**：在 `records.db` 中写入一条暂存运行，记录插件版本、目标、选项、事实、输入清单与结构哈希。
+4. **暂存运行**：在 `records.db` 中写入一条暂存运行，记录插件版本、目标、选项、事实、输入清单、结构哈希，以及任务实例加载的库文件的 SHA-256（实例启动、库文件被占用后计算；版本号与结构哈希由插件自报，同版本号的不同构建靠它区分）。
 
 ```text
 run.start  → { run_id, analyzer, target, inputs: [FileInfo], options, profile, locale }
@@ -334,16 +345,69 @@ export_plugin!(plugin);
 - `FileRef`：`read_at`、`read_all`、`read_text`、`read_lines`、`readv`、`reader`（`Read + Seek`）、`materialize`、`source` / `source_at`。
 - `Timestamp`：`from_unix`、`from_unix_millis`、`from_unix_nanos`、`with_offset`、`local`（时区未知的本地时间）、`parse`。
 - 文件系统：实现 `FileSystemParser` 与 `Volume`，以 `Plugin::filesystem` 注册。
-- 测试：feature `testing` 的 `Harness` 通过真实的 C ABI 入口扮演宿主，在本地目录上运行分析器（`Fixture::system`、`Fixture::evidence`、`Fixture::files`），并按结构校验每条记录。
+- 测试：feature `testing` 的 `Harness` 通过真实的 C ABI 入口扮演宿主，在本地目录上运行分析器（`Fixture::system`、`Fixture::evidence`、`Fixture::files`），并按结构校验每条记录。`TestRun::snapshot()` 把一次运行的摘要、告警和按输出顺序排列的全部记录（标题、严重度、各字段值与来源，不含进度和夹具的节点 ID）写成稳定的文本，配合 `insta::assert_snapshot!` 做快照测试：插件输出的任何变化都以快照差异的形式出现，确认后用 `cargo insta review` 或 `INSTA_UPDATE=always` 更新。
 
 插件 crate 是 `cdylib`，`[lib] name` 与清单的 `library` 一致。插件代码在宿主工作线程上运行，可以阻塞；宿主取消运行后，所有宿主调用返回 `CANCELLED`，纯计算循环应轮询 `check_cancelled()`。
+
+## 插件市场
+
+插件市场是一份 `index.json` 索引，列出可安装的插件、版本和每个平台的 `.lcpkg`。索引源只能是：
+
+- `https://` 地址：索引文件的 URL，以 `/` 结尾时指目录下的 `index.json`；不能带凭据、查询或片段；
+- 本地或网络驱动器上的绝对路径：市场目录（取其中的 `index.json`）或索引文件本身。离线环境把整个市场目录复制过去即可。
+
+`http://`、`file://` 等其他形式一律拒绝，也没有镜像或回退：插件包的完整性依赖索引列出的 SHA-256，索引在传输中不能被篡改。只读取已配置的索引源，配置之前不发出任何请求；索引源保存在用户数据目录的 `plugin-market/sources.json`，桌面端与 CLI 共用。读到的索引在进程内缓存 10 分钟，刷新时重新读取。
+
+```json
+{
+  "format": 1,
+  "title": "实验室插件",
+  "description": "可选",
+  "packages": [{
+    "id": "org.example.demo",
+    "name": "示例插件",
+    "description": "示例系统的用户与登录记录",
+    "publisher": "Example Labs",
+    "license": "MIT",
+    "locales": { "en": { "plugin.name": "Demo", "plugin.description": "Users and logins of the example system" } },
+    "versions": [{
+      "version": "1.2.0",
+      "published": "2026-11-25T08:00:00Z",
+      "permissions": ["file_materialize"],
+      "packages": [{
+        "platform": "windows-x86_64",
+        "url": "org.example.demo-1.2.0-windows-x86_64.lcpkg",
+        "size": 1048576,
+        "sha256": "<64 位小写十六进制>"
+      }]
+    }]
+  }]
+}
+```
+
+读取规则是严格的：`format` 必须为 `1`，任何未知成员或违反下列规则的值都使整份索引被拒绝，错误指出出问题的成员（如 `packages[3].versions[0].packages[1].sha256`）。
+
+- `title` 与各插件的 `name` 是 1–256 个字符的一行文本；`description` 最多 1024 个字符，`publisher` / `license` 最多 128 个字符；`locales` 只能有 `plugin.name` 和 `plugin.description`。
+- 插件 `id` 遵循清单规则且在索引中唯一；每个插件 1–256 个版本，`version` 是语义化版本且不重复，`published` 是 RFC 3339 时间。
+- 每个版本 1–16 个平台的插件包，`platform` 形如 `<系统>-<架构>`（Rust 的命名：`windows-x86_64`、`linux-aarch64`、`macos-aarch64`）且不重复；`size` 为 1 字节到 2 GiB；`sha256` 为 64 位小写十六进制。
+- `url` 是相对索引所在目录、只用 `/` 分隔且不离开该目录的路径，或绝对 `https://` URL（不带凭据与片段）。
+
+清单把每个插件与已安装版本比较：安装取当前平台可安装的最高正式版，没有正式版时取最高预发布版；状态为未安装、已安装、可更新、已安装更新版本、内置（不能替换）或当前平台不可用。安装一个版本时，宿主把插件包下载（或从本地目录复制）到用户数据目录的 `plugin-market/downloads/<SHA-256>.lcpkg`，大小或 SHA-256 与索引不符时丢弃；然后按[安装与卸载](#安装与卸载)检视它，插件包的 ID 与版本必须与索引列出的一致。用户在检视结果上确认后才安装，安装或放弃后删除下载；中断留下的下载满一天后于下次启动时删除。索引的名称、说明与权限是发布者的声明，实际安装的内容以插件包自己的清单为准。
+
+`plugin market index <目录> --title <标题>`（或 `just market-index [目录] [标题]`）为目录中的 `.lcpkg` 写出 `index.json`：每个插件包按安装时的规则读取清单与语言包（不运行其中代码），从库文件头（PE、ELF、Mach-O）判断平台，同一插件的多个插件包成为多个版本，名称与说明取最高版本；同一版本同一平台只能有一个插件包。已有 `index.json` 中 SHA-256 相同的插件包保留原发布时间，目录不变时输出不变。把目录连同 `index.json` 发布到 https 静态主机或共享目录即可作为索引源。
 
 ## 应用接口
 
 | 命令 | CLI | 用途 |
 | --- | --- | --- |
-| `plugin_list` | `plugin ls` | 插件包、分析器、记录类型、语言包、加载失败的包与安装目录 |
-| `plugin_install` / `plugin_uninstall` | `plugin install` / `plugin rm` | 安装 `.lcpkg`、卸载已安装的插件包 |
+| `plugin_list` | `plugin ls` | 插件包、说明、发布者、许可证、分析器、记录类型、语言包、加载失败的包与安装目录 |
+| `plugin_inspect` | `plugin inspect` | 检视 `.lcpkg`：标识、声明、摘要与已安装版本的关系，不安装 |
+| `plugin_install` / `plugin_uninstall` | `plugin install` / `plugin rm` | 安装检视过的 `.lcpkg`（带它的 SHA-256；CLI 内部先检视）、卸载已安装的插件包 |
+| `plugin_readme` | `plugin readme` | 插件包的 `README.md` |
+| `plugin_market_sources` / `plugin_market_set_sources` | `plugin market sources` / `add` / `rm` | 插件市场索引源 |
+| `plugin_market_list` | `plugin market ls` | 一个索引源的插件、版本与安装状态 |
+| `plugin_market_download` / `plugin_market_release` | `plugin market install` | 下载并校验、检视一个版本；安装后或放弃时删除下载 |
+| `plugin_market_index` | `plugin market index` | 为目录中的 `.lcpkg` 生成 `index.json` |
 | `plugin_restart` | `rpc plugin_restart` | 重启文件系统插件的共享实例 |
 | `sched_task_functions`、`sched_systems_list` | `analyze ls` | 可调度的分析器（作用域、平台、选项与画像事实），以及检材上识别出的系统及其挂载 |
 | `sched_task_create` | `analyze run` | 创建插件任务 |
@@ -353,7 +417,7 @@ export_plugin!(plugin);
 
 没有专门命令的调度接口（如 `sched_task_start`）经 `lovelycarve-cli rpc <命令名>` 调用。
 
-前端经 `src/lib/ipc/plugins.ts`、`tasks.ts`、`taskRuntime.ts`、`analysisResults.ts` 调用。界面：「设置 → 插件」安装、卸载并查看插件包；任务中心的「快速分析」按所选系统列出系统级与检材级分析器；文件列表右键「插件分析任务…」运行文件级分析器（有选项时先填写）；「分析结果」按分析器运行列出记录类型，表格列与排序来自记录结构，运行信息显示审计。
+前端经 `src/lib/ipc/plugins.ts`、`pluginMarket.ts`、`tasks.ts`、`taskRuntime.ts`、`analysisResults.ts` 调用。界面：「设置 → 插件」检视后安装、卸载并查看插件包与说明文档；「设置 → 插件市场」管理索引源、浏览并安装插件；任务中心的「快速分析」按所选系统列出系统级与检材级分析器；文件列表右键「插件分析任务…」运行文件级分析器（有选项时先填写）；「分析结果」按分析器运行列出记录类型，表格列与排序来自记录结构，运行信息显示审计。
 
 ## 旧版本数据
 
@@ -367,6 +431,7 @@ export_plugin!(plugin);
 
 - `just build-plugins [--release]`：构建工作区，把各插件库复制到其 `plugin.toml` 旁，并写出 `schema.json`；`--plugin <目录>` 只构建一个插件库（沿用已构建的加载器）。
 - `just pack-plugins`：为每个工作区插件生成可安装的 `.lcpkg`（含说明、许可证、构建信息与 SHA-256 校验），输出到 `dist-pack/`。
+- `just market-index [目录] [标题]`：为目录（缺省 `dist-pack/`）中的 `.lcpkg` 写出插件市场的 `index.json`（见[插件市场](#插件市场)）。
 - `just test-plugins`、`just clippy-plugins`：测试与检查工作区。
 - `just run-example probe_plugin <镜像路径> <插件 ID> <分析器> <输出 JSON> [--system <系统 ID> | --file <卷键> <路径>]`：在临时案件中走完整的任务流程（加载器、视图、输入、`records.db`），输出已发布的记录与运行审计。
 - `just run-example probe_evidence_path <镜像路径> <卷键> <路径>...`：以插件看到的检材视图读取路径。

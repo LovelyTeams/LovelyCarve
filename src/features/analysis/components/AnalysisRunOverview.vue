@@ -109,6 +109,7 @@
                   { label: tr('运行 ID'), value: audit.runId, mono: true, copyable: true },
                   { label: tr('分析器'), value: `${audit.pluginId}/${audit.analyzer}`, mono: true, copyable: true },
                   { label: tr('结构哈希'), value: audit.schemaHash, mono: true, copyable: true },
+                  { label: tr('库 SHA-256'), value: audit.librarySha256 ?? '—', mono: true, copyable: audit.librarySha256 !== null },
                   { label: tr('开始'), value: timestampText(audit.startedAt), mono: true },
                   { label: tr('结束'), value: audit.finishedAt ? timestampText(audit.finishedAt) : '—', mono: true },
                   { label: tr('发布'), value: audit.publishedAt ? timestampText(audit.publishedAt) : '—', mono: true },

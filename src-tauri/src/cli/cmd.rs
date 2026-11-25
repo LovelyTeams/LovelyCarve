@@ -10,6 +10,7 @@ pub mod crypto;
 pub mod evidence;
 pub mod find;
 pub mod inspect;
+pub mod plugin;
 pub mod raid;
 pub mod read;
 pub mod search;
@@ -141,8 +142,8 @@ pub enum Command {
     Timeline(timeline::TimelineArgs),
     /// 文件恢复：文件系统记录恢复与签名雕刻
     Carve(carve::CarveArgs),
-    /// 插件包
-    Plugin(analysis::PluginArgs),
+    /// 插件包与插件市场
+    Plugin(plugin::PluginArgs),
     /// 运行插件分析器
     Analyze(analysis::AnalyzeArgs),
     /// 分析结果：结果树、记录、运行审计与 BCP 导入
@@ -283,6 +284,12 @@ pub fn meta_of(path: &str) -> Meta {
         "search rm" => Meta::destructive("这会删除这次搜索及其全部命中。"),
         "carve rm" => Meta::destructive("这会删除这次扫描及其结果记录。"),
         "plugin rm" => Meta::destructive("这会卸载该插件包。"),
+        "plugin install" => Meta::destructive(
+            "这会安装该插件包，已安装的同 ID 版本会被替换；它的代码会在插件进程中运行。",
+        ),
+        "plugin market install" => Meta::destructive(
+            "这会下载并安装该插件包，已安装的同 ID 版本会被替换；它的代码会在插件进程中运行。",
+        ),
         "tasks rm" => Meta::destructive("这会删除该插件任务及其发布的分析结果。"),
         "index rm" => Meta::destructive("这会删除该卷的索引。"),
         "umount" => Meta::destructive("这会卸载该挂载点，正在读取它的程序会失去访问。"),
@@ -318,6 +325,10 @@ pub fn meta_of(path: &str) -> Meta {
         | "carve status"
         | "carve results"
         | "plugin ls"
+        | "plugin inspect"
+        | "plugin readme"
+        | "plugin market sources"
+        | "plugin market ls"
         | "analyze ls"
         | "results ls"
         | "results rows"
@@ -366,7 +377,7 @@ impl Command {
             Self::Search(args) => search::path(args),
             Self::Timeline(args) => timeline::path(args),
             Self::Carve(args) => carve::path(args),
-            Self::Plugin(args) => analysis::plugin_path(args),
+            Self::Plugin(args) => plugin::path(args),
             Self::Analyze(args) => analysis::analyze_path(args),
             Self::Results(args) => analysis::results_path(args),
             Self::Tasks(args) => tasks::tasks_path(args),
@@ -437,7 +448,7 @@ pub async fn run(
         Command::Search(args) => search::run(exec, args).await,
         Command::Timeline(args) => timeline::run(exec, args).await,
         Command::Carve(args) => carve::run(exec, args).await,
-        Command::Plugin(args) => analysis::plugin(exec, args).await,
+        Command::Plugin(args) => plugin::run(exec, args).await,
         Command::Analyze(args) => analysis::analyze(exec, args).await,
         Command::Results(args) => analysis::results(exec, args).await,
         Command::Tasks(args) => tasks::tasks(exec, args).await,
@@ -486,9 +497,8 @@ pub fn render(command: &Command, value: &Value) -> Option<String> {
         Command::Tasks(args) => tasks::render_tasks(args, value),
         Command::Index(args) => tasks::render_index(args, value),
         Command::Carve(args) => carve::render(args, value),
-        Command::Plugin(_) | Command::Analyze(_) | Command::Results(_) => {
-            analysis::render(command, value)
-        }
+        Command::Plugin(args) => plugin::render(args, value),
+        Command::Analyze(_) | Command::Results(_) => analysis::render(command, value),
         _ => None,
     }
 }

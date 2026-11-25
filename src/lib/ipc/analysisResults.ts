@@ -178,6 +178,8 @@ export interface AnalysisRunAudit {
   inputs: AnalysisRunInput[];
   inputCount: number;
   schemaHash: string;
+  /** 运行的插件库的 SHA-256;内置导入(BCP)为 null。 */
+  librarySha256: string | null;
   summary: string | null;
   recordCount: number;
   recordTypes: AnalysisRunRecordType[];

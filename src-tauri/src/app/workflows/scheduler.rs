@@ -186,6 +186,7 @@ impl Execution {
             let case_dir = self.case_dir.clone();
             let options = task.params.options.clone();
             let hello = worker.hello().clone();
+            let library_sha256 = worker.library_sha256().map(str::to_owned);
             let run_id = run_id.clone();
             let token = token.clone();
             let progress: ProgressSink = Arc::new(move |current, total| progress(current, total));
@@ -210,6 +211,7 @@ impl Execution {
                         options: &options,
                         systems: &systems,
                         hello: &hello,
+                        library_sha256: library_sha256.as_deref(),
                         evidence_label: &evidence_label,
                     },
                     &run_id,

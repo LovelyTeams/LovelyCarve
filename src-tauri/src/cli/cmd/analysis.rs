@@ -1,4 +1,4 @@
-//! Plugins and their results: packages, analyzers, published records, run
+//! Analyzers and their results: running analyzers, published records, run
 //! audits and BCP imports.
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -10,47 +10,11 @@ use crate::{
         browsing::LastLink,
         exec::Exec,
         render,
-        types::{
-            options_object, parse_address, parse_host_path, parse_json_text, Address, HostPath,
-        },
+        types::{options_object, parse_address, parse_json_text, Address},
         CliError, Output,
     },
     core::common::ids::NodeId,
 };
-
-#[derive(Args, Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PluginArgs {
-    #[command(subcommand)]
-    pub command: Option<PluginCommand>,
-}
-
-#[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum PluginCommand {
-    /// 列出插件包（默认）
-    Ls,
-    /// 安装插件包（.lcpkg）
-    Install(PackageArgs),
-    /// 卸载插件包
-    Rm(PluginId),
-}
-
-#[derive(Args, Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PackageArgs {
-    /// 插件包文件
-    #[arg(value_parser = parse_host_path, value_name = "插件包")]
-    pub package: HostPath,
-}
-
-#[derive(Args, Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PluginId {
-    /// 插件 ID（plugin ls 返回）
-    #[arg(value_name = "插件ID")]
-    pub plugin_id: String,
-}
 
 #[derive(Args, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -192,14 +156,6 @@ pub struct ImportArgs {
     pub replace: bool,
 }
 
-pub fn plugin_path(args: &PluginArgs) -> &'static str {
-    match &args.command {
-        None | Some(PluginCommand::Ls) => "plugin ls",
-        Some(PluginCommand::Install(_)) => "plugin install",
-        Some(PluginCommand::Rm(_)) => "plugin rm",
-    }
-}
-
 pub fn analyze_path(args: &AnalyzeArgs) -> &'static str {
     match args.command {
         AnalyzeCommand::Ls(_) => "analyze ls",
@@ -219,30 +175,6 @@ pub fn results_path(args: &ResultsArgs) -> &'static str {
 
 fn operation(name: &'static str) -> impl Fn(crate::app::error::AppError) -> CliError {
     move |error| crate::cli::command_error(error).in_operation(name)
-}
-
-pub async fn plugin(exec: &Exec, args: PluginArgs) -> Result<Output, CliError> {
-    use crate::commands::extensions::plugin as plugins;
-    match args.command.unwrap_or(PluginCommand::Ls) {
-        PluginCommand::Ls => crate::cli::json_output(
-            plugins::plugin_list(exec.state())
-                .await
-                .map_err(operation("plugin_list"))?,
-        ),
-        PluginCommand::Install(package) => crate::cli::json_output(
-            plugins::plugin_install(exec.state(), package.package.text())
-                .await
-                .map_err(operation("plugin_install"))?,
-        ),
-        PluginCommand::Rm(id) => {
-            plugins::plugin_uninstall(exec.state(), id.plugin_id.clone())
-                .await
-                .map_err(operation("plugin_uninstall"))?;
-            Ok(Output::json(
-                json!({"pluginId": id.plugin_id, "removed": true}),
-            ))
-        }
-    }
 }
 
 pub async fn analyze(exec: &Exec, args: AnalyzeArgs) -> Result<Output, CliError> {
@@ -373,18 +305,6 @@ pub async fn results(exec: &Exec, args: ResultsArgs) -> Result<Output, CliError>
 
 pub fn render(command: &Command, value: &Value) -> Option<String> {
     match command {
-        Command::Plugin(PluginArgs {
-            command: None | Some(PluginCommand::Ls),
-        }) => {
-            let plugins = value["plugins"]
-                .as_array()
-                .or_else(|| value["items"].as_array())
-                .map_or(&[][..], Vec::as_slice);
-            Some(render::table(
-                plugins,
-                &[("插件", "id"), ("版本", "version"), ("名称", "name")],
-            ))
-        }
         Command::Analyze(AnalyzeArgs {
             command: AnalyzeCommand::Ls(_),
         }) => {

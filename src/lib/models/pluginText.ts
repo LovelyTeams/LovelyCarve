@@ -4,6 +4,7 @@ import type { PluginLocales } from '../ipc/plugins';
 /** Keys of a plugin package's locale catalog (`locales/<locale>.toml`). */
 export const pluginTextKey = {
   plugin: () => 'plugin.name',
+  description: () => 'plugin.description',
   analyzer: (analyzer: string) => `analyzer.${analyzer}`,
   category: (category: string) => `category.${category}`,
   option: (analyzer: string, option: string) => `option.${analyzer}.${option}`,

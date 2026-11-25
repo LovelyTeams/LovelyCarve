@@ -60,6 +60,9 @@ fn begin(case_dir: &Path, run_id: &str, job: &str) {
                 size: 64,
             }],
             schema_hash: "fnv1a64:0",
+            library_sha256: Some(
+                "a5f3c6a11b03839d46af9fb43c97c188a5f3c6a11b03839d46af9fb43c97c188",
+            ),
             started_at: "2026-10-19T00:00:00Z",
         },
     )
@@ -268,6 +271,10 @@ fn staged_records_are_typed_validated_and_published_with_provenance() {
         .expect("audit")
         .expect("run");
     assert_eq!(audit.state, "published");
+    assert_eq!(
+        audit.library_sha256.as_deref(),
+        Some("a5f3c6a11b03839d46af9fb43c97c188a5f3c6a11b03839d46af9fb43c97c188")
+    );
     assert_eq!(audit.warnings[0].node_id.as_deref(), Some("ext4:12"));
     assert_eq!(audit.inputs[0].path, "etc/passwd");
     assert_eq!(audit.bad_regions.len(), 1);
@@ -407,6 +414,7 @@ fn publish_facts(case_dir: &Path, run_id: &str, target: &str, facts: &[(&str, &s
             profile: &serde_json::json!({}),
             inputs: &[],
             schema_hash: "fnv1a64:0",
+            library_sha256: None,
             started_at: "2026-10-19T00:00:00Z",
         },
     )

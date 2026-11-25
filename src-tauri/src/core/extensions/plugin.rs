@@ -25,7 +25,10 @@ mod log_file;
 mod manager;
 mod manifest;
 mod package;
+mod package_archive;
+mod package_inspect;
 mod package_install;
+mod package_platforms;
 mod process_guard;
 mod remote_volume;
 mod run;
@@ -37,16 +40,22 @@ mod wire;
 
 pub use codec::MAX_FRAME_SIZE;
 pub use connection::PluginConnection;
-pub use error::{PluginError, Result};
+pub use error::{PackageRejection, PluginError, Result};
 pub use log_file::{PluginLogLevel, PluginLogStore};
 pub use lovelycarve_plugin::wire::{LppMessage, RpcError};
 pub use manager::{PluginManager, PluginState, ProbeMatch, RejectedPackage};
 pub use manifest::{
-    AnalyzerManifest, AnalyzerScope, FilesystemManifest, OptionChoice, OptionKind, OptionManifest,
-    PluginManifest, PluginPermission, TaskTrigger, SYSTEM_FAMILIES,
+    is_valid_plugin_id, AnalyzerManifest, AnalyzerScope, FilesystemManifest, OptionChoice,
+    OptionKind, OptionManifest, PluginManifest, PluginPermission, TaskTrigger, MAX_ATTRIBUTION,
+    MAX_DESCRIPTION, SYSTEM_FAMILIES,
 };
-pub use package::{Locales, PluginDefinition};
+pub use package::{Locales, PluginDefinition, README_FILE};
+pub use package_archive::{digest_file, FileDigest, PackageArchive, MAX_PACKAGE_BYTES};
+pub use package_inspect::{
+    InspectedAnalyzer, InstallBlock, InstalledVersion, PackageChange, PackageInspection,
+};
 pub use package_install::{InstalledPackage, PACKAGE_EXTENSION};
+pub use package_platforms::{current_platform, describe_archive, ArchiveDescription};
 pub(crate) use remote_volume::RemoteVolume;
 pub use run::TaskWorker;
 pub use run_context::{ProgressSink, RunContext};

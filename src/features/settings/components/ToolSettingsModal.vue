@@ -21,6 +21,7 @@
 
         <main class="ui-modal-body settings-content" v-content-motion.rise="activeSection">
           <PluginSettingsPanel v-if="activeSection === 'plugins'" />
+          <PluginMarketPanel v-else-if="activeSection === 'market'" />
           <AppLogPanel v-else-if="activeSection === 'logs'" />
           <AppAboutPanel v-else-if="activeSection === 'about'" :updates="updates" />
           <section v-else class="settings-panel" :aria-label="tr('界面设置')">
@@ -105,7 +106,7 @@ import { useLocale, DEFAULT_LOCALE, type Locale } from '../../../composables/use
 import { vContentMotion } from '../../../composables/uiMotionDirectives';
 import { markRaw, ref, useId, watch, type Component } from 'vue';
 import {
-  FolderOpen, HardDrive, Info, Loader2, Moon, Palette, Puzzle, Settings, Sun, Terminal, X,
+  FolderOpen, HardDrive, Info, Loader2, Moon, Palette, Puzzle, Settings, Store, Sun, Terminal, X,
 } from 'lucide-vue-next';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useUiPreferences, type MotionPreference } from '../../../composables/useUiPreferences';
@@ -114,6 +115,7 @@ import { useDialogFocus } from '../../../composables/useDialogFocus';
 import { useTheme, type ThemeName } from '../../../composables/useTheme';
 import type { SettingsSection } from '../model/types';
 import PluginSettingsPanel from './PluginSettingsPanel.vue';
+import PluginMarketPanel from './PluginMarketPanel.vue';
 import AppLogPanel from './AppLogPanel.vue';
 import AppAboutPanel from './AppAboutPanel.vue';
 import { useAppUpdateCheck } from '../composables/useAppUpdateCheck';
@@ -135,6 +137,7 @@ defineEmits<{
 const sections = [
   { id: 'appearance' as const, get label() { return tr("界面"); }, icon: markRaw(Palette) },
   { id: 'plugins' as const, get label() { return tr("插件"); }, icon: markRaw(Puzzle) },
+  { id: 'market' as const, get label() { return tr("插件市场"); }, icon: markRaw(Store) },
   { id: 'logs' as const, get label() { return tr("日志"); }, icon: markRaw(Terminal) },
   { id: 'about' as const, get label() { return tr("关于"); }, icon: markRaw(Info) },
 ];

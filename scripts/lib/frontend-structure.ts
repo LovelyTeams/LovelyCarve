@@ -11,6 +11,7 @@ const componentEdges = new Set([
 const apiEdges = new Set([
   'files>preview', 'files>cases', 'evidence>tasks', 'evidence>cases',
   'settings>cases', 'cases>raid', 'raid>evidence', 'analysis>tasks', 'settings>tasks',
+  'settings>preview',
 ]);
 const modelEdges = new Set([
   'search>files/model/tags',

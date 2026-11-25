@@ -423,6 +423,9 @@ pub struct RunAudit {
     pub inputs: Vec<RunInput>,
     pub input_count: u64,
     pub schema_hash: String,
+    /// SHA-256 of the plugin library that ran; `None` for built-in
+    /// importers.
+    pub library_sha256: Option<String>,
     pub summary: Option<String>,
     pub record_count: u64,
     pub record_types: Vec<AuditRecordType>,
@@ -445,7 +448,7 @@ pub fn run_audit(connection: &Connection, run_id: &str) -> anyhow::Result<Option
             "SELECT state, plugin_id, plugin_version, analyzer, analyzer_name, target_kind,
                     target_id, target_label, options, profile, inputs, input_count, schema_hash,
                     summary, record_count, warning_count, bad_regions, synthetic_bytes,
-                    started_at, finished_at, published_at
+                    started_at, finished_at, published_at, library_sha256
              FROM run WHERE run_id = ?1 AND state <> 'staging'",
             [run_id],
             |row| {
@@ -480,6 +483,7 @@ pub fn run_audit(connection: &Connection, run_id: &str) -> anyhow::Result<Option
                         row.get::<_, String>(18)?,
                         row.get::<_, Option<String>>(19)?,
                         row.get::<_, Option<String>>(20)?,
+                        row.get::<_, Option<String>>(21)?,
                     ),
                 ))
             },
@@ -490,7 +494,7 @@ pub fn run_audit(connection: &Connection, run_id: &str) -> anyhow::Result<Option
         target,
         (options, profile, inputs, input_count, schema_hash),
         (summary, record_count, warning_count, bad_regions, synthetic_bytes),
-        (started_at, finished_at, published_at),
+        (started_at, finished_at, published_at, library_sha256),
     )) = row
     else {
         return Ok(None);
@@ -548,6 +552,7 @@ pub fn run_audit(connection: &Connection, run_id: &str) -> anyhow::Result<Option
         inputs: serde_json::from_str(&inputs)?,
         input_count: count(input_count),
         schema_hash,
+        library_sha256,
         summary,
         record_count: count(record_count),
         record_types,

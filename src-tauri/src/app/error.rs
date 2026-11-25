@@ -13,7 +13,8 @@ use serde_json::Value;
 use crate::core::casework::case::CaseLocked;
 pub use crate::core::common::error::ErrorCode;
 use crate::core::common::error::{self, Failure};
-use crate::core::extensions::plugin::PluginError;
+use crate::core::extensions::plugin::{PackageRejection, PluginError};
+use crate::core::extensions::plugin_market::MarketError;
 use crate::core::extensions::task_scheduler::SchedError;
 use crate::core::filesystem::fs_dispatch::MissingDataStream;
 use crate::task_manager::{TaskFailure, TaskResourceAcquireError};
@@ -154,7 +155,39 @@ impl From<SchedError> for AppError {
 
 impl From<PluginError> for AppError {
     fn from(error: PluginError) -> Self {
-        Self::new(plugin_code(&error), error.to_string())
+        let app_error = Self::new(plugin_code(&error), error.to_string());
+        match &error {
+            // The interface states each rejection in its own words.
+            PluginError::Package(rejection) => {
+                app_error.with_context_value(serde_json::json!({ "reason": rejection.reason() }))
+            }
+            _ => app_error,
+        }
+    }
+}
+
+impl From<MarketError> for AppError {
+    fn from(error: MarketError) -> Self {
+        let reason = error.reason();
+        let app_error = match error {
+            MarketError::Plugin(plugin) => return Self::from(plugin),
+            MarketError::Io(io) => return Self::from_io("plugin market", io),
+            MarketError::InvalidSource(_)
+            | MarketError::InvalidIndex { .. }
+            | MarketError::Mismatch { .. } => Self::invalid_input(error.to_string()),
+            MarketError::UnknownSource(_)
+            | MarketError::UnknownPackage { .. }
+            | MarketError::UnknownVersion { .. }
+            | MarketError::NoPackageForPlatform { .. } => Self::not_found(error.to_string()),
+            MarketError::Fetch { .. } | MarketError::Download { .. } => {
+                Self::new(ErrorCode::Io, error.to_string())
+            }
+            MarketError::Integrity { .. } => Self::new(ErrorCode::CorruptData, error.to_string()),
+        };
+        match reason {
+            Some(reason) => app_error.with_context_value(serde_json::json!({ "reason": reason })),
+            None => app_error,
+        }
     }
 }
 
@@ -189,6 +222,16 @@ fn plugin_code(error: &PluginError) -> ErrorCode {
         PluginError::Manifest(_) => ErrorCode::InvalidInput,
         PluginError::Handshake(_) | PluginError::Unavailable(_) => ErrorCode::FfiUnavailable,
         PluginError::Timeout | PluginError::ResourceLimit(_) => ErrorCode::ResourceLimit,
+        PluginError::Package(rejection) => match rejection {
+            PackageRejection::NoInstallRoot => ErrorCode::NotFound,
+            PackageRejection::InvalidArchive(_)
+            | PackageRejection::InvalidPackage(_)
+            | PackageRejection::NoLibrary { .. }
+            | PackageRejection::Bundled { .. } => ErrorCode::InvalidInput,
+            PackageRejection::Changed { .. } => ErrorCode::SourceChanged,
+            PackageRejection::LibraryRejected(_) => ErrorCode::FfiUnavailable,
+            PackageRejection::InUse(_) => ErrorCode::Io,
+        },
         PluginError::InvalidFrame(_)
         | PluginError::Serialization(_)
         | PluginError::Deserialization(_)

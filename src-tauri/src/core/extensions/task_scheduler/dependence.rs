@@ -218,7 +218,7 @@ mod tests {
             r#"
 id = "org.test.system"
 name = "System"
-version = "1"
+version = "1.0.0"
 protocol = 2
 library = "test"
 [[analyzer]]

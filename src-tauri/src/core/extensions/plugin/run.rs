@@ -23,11 +23,18 @@ const RUN_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
 pub struct TaskWorker {
     plugin_id: String,
     connection: PluginConnection,
+    library_sha256: Option<String>,
 }
 
 impl TaskWorker {
     pub fn plugin_id(&self) -> &str {
         &self.plugin_id
+    }
+
+    /// The SHA-256 of the library this worker loaded, read once it was
+    /// loaded; `None` for an entry point served in this process (tests).
+    pub fn library_sha256(&self) -> Option<&str> {
+        self.library_sha256.as_deref()
     }
 
     /// The worker library's `plugin.hello` (verified against the package).
@@ -92,13 +99,27 @@ impl PluginManager {
             return Ok(TaskWorker {
                 plugin_id: plugin_id.to_owned(),
                 connection,
+                library_sha256: None,
             });
         }
         let connection =
             PluginConnection::open(&definition, self.sources().clone(), self.log_store()).await?;
+        // The process holds the library open now, so this is the file it
+        // runs.
+        let digest = tokio::task::spawn_blocking(move || definition.library_sha256())
+            .await
+            .map_err(|error| PluginError::Unavailable(error.to_string()));
+        let library_sha256 = match digest {
+            Ok(Ok(digest)) => digest,
+            Ok(Err(error)) | Err(error) => {
+                connection.terminate().await;
+                return Err(error);
+            }
+        };
         Ok(TaskWorker {
             plugin_id: plugin_id.to_owned(),
             connection,
+            library_sha256: Some(library_sha256),
         })
     }
 }

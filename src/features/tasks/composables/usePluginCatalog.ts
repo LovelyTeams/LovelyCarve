@@ -5,11 +5,14 @@ import { computed, shallowRef } from 'vue';
 
 import { useLocale } from '../../../composables/useLocale';
 import {
+  pluginInspect,
   pluginInstall,
   pluginList,
+  pluginReadme,
   pluginRestart,
   pluginUninstall,
   type InstalledPluginPackage,
+  type PackageInspection,
   type PluginListResponse,
 } from '../../../lib/ipc/plugins';
 import { pluginText, type PluginTextLookup } from '../../../lib/models/pluginText';
@@ -55,10 +58,20 @@ export function usePluginCatalog() {
     await Promise.all([refresh(), taskCenter.refresh()]);
   }
 
-  async function install(archive: string): Promise<InstalledPluginPackage> {
-    const installed = await pluginInstall(archive);
+  /** What an archive would install; nothing changes yet. */
+  function inspect(archive: string): Promise<PackageInspection> {
+    return pluginInspect(archive);
+  }
+
+  /** Installs the inspected archive (`sha256` from its inspection). */
+  async function install(archive: string, sha256: string): Promise<InstalledPluginPackage> {
+    const installed = await pluginInstall(archive, sha256);
     await reloadAll();
     return installed;
+  }
+
+  function readme(pluginId: string): Promise<string | null> {
+    return pluginReadme(pluginId);
   }
 
   async function uninstall(pluginId: string): Promise<void> {
@@ -71,7 +84,7 @@ export function usePluginCatalog() {
     await refresh();
   }
 
-  return { packages, rejected, installDirectory, loading, error, refresh, text, install, uninstall, restart };
+  return { packages, rejected, installDirectory, loading, error, refresh, text, inspect, install, readme, uninstall, restart, reloadAll };
 }
 
 /** Forget the catalog (tests; the workspace keeps it for the session). */

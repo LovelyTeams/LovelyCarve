@@ -8,6 +8,7 @@ use crate::core::carving::carve_session::CarveScanSession;
 use crate::core::casework::case::CaseState;
 use crate::core::common::ids::ImageId;
 use crate::core::extensions::plugin::PluginManager;
+use crate::core::extensions::plugin_market::PluginMarket;
 use crate::core::extensions::task_scheduler::TaskScheduler;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 #[cfg(all(windows, not(target_arch = "aarch64")))]
@@ -37,6 +38,9 @@ pub struct AppState {
     /// Discovered plugin packages. The setup hook installs the manager
     /// after Tauri resolves the per-user application-data directory.
     pub plugins: Arc<parking_lot::RwLock<Option<Arc<PluginManager>>>>,
+    /// Plugin market sources, indexes and downloads, set by the setup hook
+    /// once the application-data directory is known.
+    pub plugin_market: std::sync::OnceLock<PluginMarket>,
     /// Operating systems detected per loaded image (system-scope plugin
     /// runs and the analysis dialog). Purged per image on unload.
     pub systems: Arc<SystemCache>,
@@ -147,6 +151,7 @@ impl AppState {
             image_load_context: Mutex::new(0),
             bcp_imports: Arc::default(),
             plugins,
+            plugin_market: std::sync::OnceLock::new(),
             systems,
             plugin_open_lock: Arc::default(),
             tasks: TaskManager::default(),

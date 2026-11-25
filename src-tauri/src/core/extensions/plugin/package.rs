@@ -26,8 +26,10 @@ use super::{fingerprint::fingerprint_directory, PluginError, PluginManifest, Res
 pub const MANIFEST_FILE: &str = "plugin.toml";
 pub const SCHEMA_FILE: &str = "schema.json";
 pub const LOCALES_DIRECTORY: &str = "locales";
+/// The package's guide, shown with its details.
+pub const README_FILE: &str = "README.md";
 
-/// Largest `schema.json` and locale file read.
+/// Largest `schema.json`, locale file and README read.
 const MAX_METADATA_FILE: u64 = 4 * 1024 * 1024;
 const MAX_LOCALE_KEY: usize = 256;
 const MAX_LOCALE_TEXT: usize = 4096;
@@ -109,6 +111,28 @@ impl PluginDefinition {
                 }
             })
             .clone()
+    }
+
+    /// Whether the package ships a `README.md`.
+    pub fn has_readme(&self) -> bool {
+        self.directory.join(README_FILE).is_file()
+    }
+
+    /// The package's `README.md`, if it has one. Blocking.
+    pub fn readme(&self) -> Result<Option<String>> {
+        let path = self.directory.join(README_FILE);
+        let Some(bytes) = read_bounded(&path)? else {
+            return Ok(None);
+        };
+        String::from_utf8(bytes)
+            .map(Some)
+            .map_err(|_| PluginError::Manifest(format!("{} is not UTF-8", path.display())))
+    }
+
+    /// The SHA-256 of the library file for this platform. Blocking.
+    pub fn library_sha256(&self) -> Result<String> {
+        let library = self.manifest.library_path(&self.directory);
+        Ok(super::package_archive::digest_file(&library)?.sha256)
     }
 
     /// Checks a library's `plugin.hello` against the manifest and the
@@ -282,7 +306,7 @@ mod tests {
             directory.join(MANIFEST_FILE),
             r#"id = "org.test.package"
 name = "测试"
-version = "1"
+version = "1.0.0"
 protocol = 2
 library = "test"
 [[analyzer]]

@@ -618,6 +618,7 @@ mod tests {
                 profile: &serde_json::json!({}),
                 inputs: &[],
                 schema_hash: "fnv1a64:0",
+                library_sha256: None,
                 started_at: "2026-01-03T00:00:00Z",
             },
         )
