@@ -1725,6 +1725,10 @@ AGPL-3.0-only. [Fixture source and hashes](src-tauri/vendor/hpfs-reader/ORIGIN.m
 [Upstream license](src-tauri/vendor/vxfs-reader/LICENSE-MIT) and
 [origin and verification](src-tauri/vendor/vxfs-reader/ORIGIN.md).
 
+`aix-jfs-reader` adapts Dani Sarfati's MIT AIX JFS1 reader from `fs-unix` 0.2.1.
+[Upstream license](src-tauri/vendor/aix-jfs-reader/LICENSE-MIT) and
+[origin and verification](src-tauri/vendor/aix-jfs-reader/ORIGIN.md).
+
 ## BCP application icons
 
 The result directory icons in `src/assets/bcp-apps` come from the local

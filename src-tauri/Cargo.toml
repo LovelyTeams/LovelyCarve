@@ -80,6 +80,7 @@ aes = "0.9.3"
 # 命中（含重叠），逐编码（ASCII/UTF-8/UTF-16LE/UTF-16BE/GBK）各建一台自动机。
 aho-corasick = "1.1.5"
 amiga-rdb = { path = "vendor/amiga-rdb" }
+aix-jfs-reader = { path = "vendor/aix-jfs-reader" }
 amiga-reader = { path = "vendor/amiga-reader" }
 anyhow = "1.0.104"
 apfs = { path = "vendor/apfs" }

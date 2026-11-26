@@ -21,7 +21,7 @@ import { notifyError, notifyInfo, notifySuccess } from '../../../composables/use
 // 可自动挂载的分区类型：自带文件系统、无需解锁，与 useEvidenceMounts 的
 // MOUNTABLE_KINDS 一致。锁定的加密分区不在其中。
 const AUTO_MOUNTABLE_KINDS = new Set([
-  'ext4', 'btrfs', 'fat32', 'fat12', 'fat16', 'exfat', 'cdfs', 'squashfs', 'cramfs', 'romfs', 'minifs', 'erofs', 'f2fs', 'qnx4', 'qnx6', 'udf', 'minix', 'jfs', 'reiserfs', 'amiga', 'befs', 'gfs2', 'ocfs2', 'nilfs2', 'bcachefs', 'vmfs', 'hpfs', 'vxfs', 'hfs', 'ubifs', 'jffs2', 'yaffs1', 'yaffs2', 'ubi',
+  'ext4', 'btrfs', 'fat32', 'fat12', 'fat16', 'exfat', 'cdfs', 'squashfs', 'cramfs', 'romfs', 'minifs', 'erofs', 'f2fs', 'qnx4', 'qnx6', 'udf', 'minix', 'jfs', 'reiserfs', 'amiga', 'befs', 'gfs2', 'ocfs2', 'nilfs2', 'bcachefs', 'vmfs', 'hpfs', 'vxfs', 'aixjfs', 'hfs', 'ubifs', 'jffs2', 'yaffs1', 'yaffs2', 'ubi',
   'apfscontainer', 'hfsplus', 'hfsx', 'lvm', 'ntfs', 'refs',
   'ufs', 'xfs', 'zfs',
 ]);

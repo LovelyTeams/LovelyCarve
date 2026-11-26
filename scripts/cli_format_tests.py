@@ -207,6 +207,50 @@ def test_vxfs(cli, root):
     print("VxFS CLI tests passed: layouts 2–4, MBR, hard links, ranges beyond 5 GiB, hash and export")
 
 
+def test_aix_jfs(cli, root):
+    fixtures = VENDOR / "aix-jfs-reader/tests/fixtures"
+    for name in ["fsv3", "fsv3p-512", "fsv3p-1024"]:
+        volume = bytearray(zlib.decompress((fixtures / f"{name}.zlib").read_bytes()))
+        image = root / f"aix-{name}.img"
+        if name == "fsv3p-512":
+            # Force backup-superblock recovery inside a nonzero partition.
+            volume[4096 + 20:4096 + 22] = b"\0\0"
+            mbr = bytearray(512)
+            mbr[450] = 0x83
+            struct.pack_into("<II", mbr, 454, 8, len(volume) // 512)
+            mbr[510:] = b"\x55\xaa"
+            image.write_bytes(mbr + bytes(7 * 512) + volume)
+        else:
+            image.write_bytes(volume)
+        exported = root / f"aix-{name}-single.bin"
+        payload = b"A" * 4096 + bytes(7 * 4096) + b"Z" * 4096
+        rows = cli.results([
+            add(image),
+            ls("root", "/ev/part:0"),
+            ls("dir", "/ev/part:0/dir"),
+            cat("tiny", at(path_id("aixjfs:part:0:", "/tiny"))),
+            cat("link", "/ev/part:0/link"),
+            cat("group", "/ev/part:0/dir/follow"),
+            cat("far", "/ev/part:0/double", 1025 * 4096 - 2, 10),
+            request("stat", "stat", "/ev/part:0/dir/alias"),
+            digest("hash", "/ev/part:0/single"),
+            export("export", "/ev/part:0/single", exported),
+        ])
+        assert opened(rows)["partitions"][0]["kind"] == "aixjfs"
+        assert names(rows["root"]) == {"tiny", "dir", "single", "double", "link", "longlink"}
+        assert names(rows["dir"]) == {"alias", "follow"}
+        assert rows["tiny"] == rows["link"] == hex_of(b"aixjfs\n")
+        assert rows["group"] == hex_of(b"allocation group")
+        assert rows["far"] == hex_of(bytes(2) + bytes(range(8)))
+        assert rows["stat"]["inode"] == 5
+        stamp = datetime.fromisoformat(rows["stat"]["timestamps"]["modified"].replace("Z", "+00:00"))
+        assert stamp.utcoffset() == timedelta(0) and stamp.microsecond == 85
+        assert stamp.replace(microsecond=0).timestamp() == -2
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert exported.read_bytes() == payload
+    print("AIX JFS1 CLI tests passed: fsv3 and fsv3p, backup superblock, fragments, indirection and export")
+
+
 def test_formats(cli, root):
     firmware_node = path_id("squashfs:part:0:", "/hello")
     firmware_content = b"Independent DD-WRT fixture.\n" * 64

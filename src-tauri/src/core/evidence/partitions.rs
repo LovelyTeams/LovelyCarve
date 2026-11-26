@@ -17,6 +17,7 @@
 //! sibling submodule; adding a new format means adding one trait impl and one
 //! entry to `PARSERS`.
 
+pub(crate) mod aix_jfs;
 pub mod amiga;
 pub mod apfs;
 pub mod apm;
@@ -166,6 +167,7 @@ pub enum PartitionKind {
     Vmfs,
     Hpfs,
     Vxfs,
+    AixJfs,
     Ubifs,
     Lvm,
     Bitlocker,
@@ -394,6 +396,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Vmfs
         | PartitionKind::Hpfs
         | PartitionKind::Vxfs
+        | PartitionKind::AixJfs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

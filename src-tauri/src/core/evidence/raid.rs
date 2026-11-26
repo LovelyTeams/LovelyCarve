@@ -351,6 +351,7 @@ pub fn kind_label(kind: PartitionKind) -> &'static str {
         PartitionKind::Vmfs => "vmfs",
         PartitionKind::Hpfs => "hpfs",
         PartitionKind::Vxfs => "vxfs",
+        PartitionKind::AixJfs => "aixjfs",
         PartitionKind::Minix => "minix",
         PartitionKind::Minifs => "minifs",
         PartitionKind::Romfs => "romfs",

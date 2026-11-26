@@ -215,3 +215,9 @@ mkfs / Linux kernel / fsck 验证见 [ORIGIN.md](gfs2-reader/ORIGIN.md)。
 `4969de813a1ec4439ccce69a1247c2ecf3f50cb4`。本地实现增加有界读取、链式对象定位表、
 可寻址的逻辑范围读取、格式校验和宿主适配。原始许可、样本来源与哈希见
 [ORIGIN.md](vxfs-reader/ORIGIN.md)。
+
+## AIX JFS1
+
+`aix-jfs-reader` 0.1.0 适配 `fs-unix` 0.2.1 的 MIT AIX JFS 读取算法，固定源码提交
+`4969de813a1ec4439ccce69a1247c2ecf3f50cb4`。本地实现补齐备用超级块选择、打包片段与有界范围读取。
+原始许可见 `LICENSE-MIT`，样本和来源见 [ORIGIN.md](aix-jfs-reader/ORIGIN.md)。

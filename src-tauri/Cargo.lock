@@ -72,6 +72,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "aix-jfs-reader"
+version = "0.1.0"
+dependencies = [
+ "lamfold",
+]
+
+[[package]]
 name = "alloc-no-stdlib"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3425,6 +3432,7 @@ dependencies = [
  "ad1-core",
  "aes 0.9.3",
  "aho-corasick",
+ "aix-jfs-reader",
  "amiga-rdb",
  "amiga-reader",
  "anyhow",

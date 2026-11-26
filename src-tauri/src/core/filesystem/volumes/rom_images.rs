@@ -83,6 +83,7 @@ pub type MinixVolume = RomVolume<minix_reader::Minix<RomImageSource>>;
 pub type HfsVolume = RomVolume<classic_hfs::Hfs<RomImageSource>>;
 pub type HpfsVolume = RomVolume<hpfs_reader::Hpfs<RomImageSource>>;
 pub type VxfsVolume = RomVolume<vxfs_reader::Vxfs<RomImageSource>>;
+pub type AixJfsVolume = RomVolume<aix_jfs_reader::AixJfs<RomImageSource>>;
 pub type JfsVolume = RomVolume<jfs_reader::Jfs<RomImageSource>>;
 pub type ReiserFsVolume = RomVolume<reiserfs_reader::ReiserFs<RomImageSource>>;
 pub type AmigaVolume = RomVolume<amiga_reader::Amiga<RomImageSource>>;
@@ -175,6 +176,11 @@ pub fn open_qnx4_source(image: &Arc<DiskImage>, partition: u8) -> Result<Qnx4Vol
 pub fn parse_minix_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "minix")
 }
+pub fn parse_aix_jfs_id(id: &str) -> Option<(u8, String)> {
+    let (partition, path) = id.strip_prefix("aixjfs:part:")?.split_once(':')?;
+    let path = String::from_utf8(hex::decode(path).ok()?).ok()?;
+    valid_lookup_path(&path).then_some((partition.parse().ok()?, path))
+}
 pub fn parse_vxfs_id(id: &str) -> Option<(u8, String)> {
     let (partition, path) = id.strip_prefix("vxfs:part:")?.split_once(':')?;
     let path = String::from_utf8(hex::decode(path).ok()?).ok()?;
@@ -239,6 +245,12 @@ pub fn open_amiga_source(image: &Arc<DiskImage>, partition: u8) -> Result<AmigaV
         partition_id: partition.id,
         reader: RefCell::new(reader),
     })
+}
+pub fn open_aix_jfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<AixJfsVolume> {
+    AixJfsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
 }
 pub fn open_vxfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<VxfsVolume> {
     VxfsVolume::open(

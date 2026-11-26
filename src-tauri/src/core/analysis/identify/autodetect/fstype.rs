@@ -124,6 +124,7 @@ pub fn partition_ftype(kind: PartitionKind) -> Option<u64> {
         | PartitionKind::Vmfs
         | PartitionKind::Hpfs
         | PartitionKind::Vxfs
+        | PartitionKind::AixJfs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs
