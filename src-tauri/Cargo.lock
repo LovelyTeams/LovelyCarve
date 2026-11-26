@@ -5254,8 +5254,11 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "reiser4-reader"
 version = "0.1.0"
 dependencies = [
+ "adler2",
  "crc32c",
+ "flate2",
  "lamfold",
+ "ruzstd",
 ]
 
 [[package]]

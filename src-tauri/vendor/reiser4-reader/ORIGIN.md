@@ -22,3 +22,29 @@ Both images are 16 MiB and use UUID `8ae13701-95da-49db-9661-cf2cce323084`. The 
 | --- | --- | --- |
 | `node40-large.reiser4z` | `a1edc26af8decf4365de31318114420cce681802796c88ed2cae18a729c76330` | `4733518b64364470f58288bd580d1eedfd38b05dbdcef9039771eac54c9b0c1f` |
 | `node41-short.reiser4z` | `bfb1a5f2ec70b7ac9cd08fa763db889055724eaf782c7d812f947afbb74ee58f` | `e2a0d472aa42c5718feb7a3d1f2b11fb6c6bf28347a36be7839151268f79b082` |
+
+## Native compressed volumes
+
+Three 128 MiB images were formatted with the same `mkfs.reiser4` using
+`-o node=node40,key=key_large,create=ccreg40,compress=<plugin>,compressMode=force,cluster=16K`.
+Files were created in QEMU with Linux `5.17.0-3+reiser4.0.2-amd64`, copied from
+the boot image's installer initramfs, and verified after unmounting and mounting
+the volumes read-only. The boot image came directly from the distributor.
+[Metztli Reiser4 Bookworm](https://metztli.it/amatlocuilin)
+
+Each `/nested/payload.bin` has one 16 KiB compressible cluster, 16 KiB of
+deterministic pseudorandom bytes stored as an uncompressed cluster across
+five leaves, and a 1217-byte compressible final cluster. Each `/sparse.bin`
+starts with `first bytes of a sparse file\n`, has four intervening absent
+clusters, and ends with `last bytes of a sparse file\n` at offset 81920.
+The kernel read back `/sparse.bin` with SHA-256
+`e9d3aa0b1f38fc1314e1de780abdc0832afb156291833a658a82be0e4063496e`.
+`debugfs.reiser4 --print-tree` identified the ctail40 items and the codec
+and cluster size stored on the root. The fixtures are zlib-compressed copies of
+the unmounted volumes.
+
+| Fixture | Raw SHA-256 | zlib SHA-256 | Kernel payload SHA-256 |
+| --- | --- | --- | --- |
+| `lzo1.reiser4z` | `64e02fb56a9edea283c0490f93e01ea76a79326420c4a1bc4cf3703f480002f3` | `9fbc29c664e7a84a4635d618ef8875488968eeffe111c754ef1a51e5a1e828aa` | `cd45bbcea146424c2affe97c07d381ecdf73aa059d7d9151be3225a2db83d65b` |
+| `gzip1.reiser4z` | `7b4df48345ff2dc74d2a25b53d63866a577702fdc1aa79cc88a9d146b9a6c649` | `eda854ed751cc2111b16b7d57885f8f991f28740bbfeb8ede71a3b673eeb2632` | `71db1e58c437c56317c4a3fea3dd30ed6310039f475f71400253d3f3297012f7` |
+| `zstd1.reiser4z` | `943ed6cf04879b0faf1995d01ad1620b423256569a8e4007bb1f234999b12168` | `cf9f7b921afba6d2fe4a0a0fbb0150cd3c4527fe72c973a958d6ddf2fe7ead33` | `36ae9eb7cf5d0fb38f754d0ec28ebe355e5f4e960d689b119e1f82d42a638849` |

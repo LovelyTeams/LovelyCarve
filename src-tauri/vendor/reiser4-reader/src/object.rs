@@ -1,7 +1,8 @@
 use crate::{
+    cluster::Compression,
     format::BLOCK_SIZE,
     le16, le32, le64, require,
-    tree::{Item, Key, COMPRESSED_TAIL, DIRECTORY, EXTENT, STAT, TAIL},
+    tree::{Item, Key, DIRECTORY, EXTENT, STAT, TAIL},
 };
 use lamfold::{FileKind, FileTimes, FoldError, Metadata, Result};
 use std::collections::HashSet;
@@ -12,6 +13,15 @@ pub(crate) struct Stat {
     pub(crate) times: FileTimes,
     pub(crate) target: Option<Vec<u8>>,
     pub(crate) encrypted: bool,
+    pub(crate) plugins: FilePlugins,
+}
+
+#[derive(Clone, Copy, Default)]
+pub(crate) struct FilePlugins {
+    pub(crate) object: Option<u16>,
+    pub(crate) cipher: Option<u16>,
+    pub(crate) compression: Option<u16>,
+    pub(crate) cluster: Option<u16>,
 }
 
 impl Stat {
@@ -64,7 +74,7 @@ impl Stat {
             require(kind != FileKind::Symlink, "reiser4: missing symlink target")?;
             None
         };
-        let mut encrypted = mask & 128 != 0;
+        let mut plugins = FilePlugins::default();
         if mask & 16 != 0 {
             let count = usize::from(le16(bytes, cursor)?);
             cursor += 2;
@@ -79,11 +89,16 @@ impl Stat {
                     "reiser4: stat-data plugin slot",
                 )?;
                 seen |= 1 << slot;
-                if slot == 8 && plugin != 0 {
-                    encrypted = true;
+                match slot {
+                    0 => plugins.object = Some(plugin),
+                    8 => plugins.cipher = Some(plugin),
+                    10 => plugins.compression = Some(plugin),
+                    12 => plugins.cluster = Some(plugin),
+                    _ => {}
                 }
             }
         }
+        let encrypted = mask & 128 != 0 || plugins.cipher.is_some_and(|cipher| cipher != 0);
         if mask & 32 != 0 {
             cursor += 4;
         }
@@ -105,6 +120,7 @@ impl Stat {
             times,
             target,
             encrypted,
+            plugins,
         })
     }
 }
@@ -236,6 +252,7 @@ fn name(bytes: &[u8], entry: usize, key_size: usize, start: usize, end: usize) -
 pub(crate) enum Content {
     Inline(Vec<u8>),
     Blocks(u64),
+    Compressed(Compression, Vec<u8>),
     Hole,
 }
 
@@ -298,9 +315,6 @@ pub(crate) fn file_segments(items: Vec<Item>, size: u64) -> Result<Vec<Segment>>
                     });
                     covered = end;
                 }
-            }
-            COMPRESSED_TAIL => {
-                return Err(FoldError::Unsupported("reiser4: compressed file items"))
             }
             _ => return Err(FoldError::Unsupported("reiser4: file item plugin")),
         }

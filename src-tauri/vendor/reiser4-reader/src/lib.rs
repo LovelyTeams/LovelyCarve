@@ -1,6 +1,7 @@
 //! Immutable reader for the Reiser4 format40 on-disk layout.
 #![forbid(unsafe_code)]
 
+mod cluster;
 mod format;
 mod object;
 mod reader;

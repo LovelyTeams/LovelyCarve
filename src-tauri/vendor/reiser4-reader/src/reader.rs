@@ -1,8 +1,9 @@
 use crate::{
+    cluster::{self, CCREG},
     format::BLOCK_SIZE,
-    object::{file_segments, Content, Directory, Segment, Stat},
+    object::{file_segments, Content, Directory, FilePlugins, Segment, Stat},
     require,
-    tree::{Item, Key, Tree},
+    tree::{Item, Key, Tree, COMPRESSED_TAIL},
     Header,
 };
 use lamfold::{
@@ -16,6 +17,7 @@ pub struct Reiser4<S> {
     header: Header,
     tree: Tree,
     root: NodeId,
+    root_plugins: FilePlugins,
     stats: VecDeque<(NodeId, Arc<Stat>)>,
     directory: Option<(NodeId, Arc<Directory>)>,
     file: Option<(NodeId, Vec<Segment>)>,
@@ -115,7 +117,20 @@ impl<S: BlockSource> Reiser4<S> {
         let items = self
             .tree
             .items(&mut self.source, &self.header, stat.key.file_body())?;
-        let segments = file_segments(items, stat.metadata.size)?;
+        let has_clusters = items.iter().any(|item| item.plugin == COMPRESSED_TAIL);
+        let clustered = stat.plugins.object == Some(CCREG) || has_clusters;
+        let segments = if clustered {
+            if stat.plugins.cipher.or(self.root_plugins.cipher).unwrap_or(0) != 0 {
+                return Err(FoldError::Unsupported("reiser4: encrypted file"));
+            }
+            require(
+                stat.plugins.object.is_none_or(|object| object == CCREG),
+                "reiser4: cluster items on a non-clustered file",
+            )?;
+            cluster::file_segments(items, stat.metadata.size, stat.plugins, self.root_plugins)?
+        } else {
+            file_segments(items, stat.metadata.size)?
+        };
         let mut physical = Vec::new();
         for part in &segments {
             if let Content::Blocks(block) = part.content {
@@ -151,12 +166,14 @@ impl<S: BlockSource> FoldFrontend<S> for Reiser4<S> {
             header,
             tree: Tree::default(),
             root: 0,
+            root_plugins: FilePlugins::default(),
             stats: VecDeque::new(),
             directory: None,
             file: None,
         };
-        let (root, _) = volume.resolve(Key::ROOT)?;
+        let (root, stat) = volume.resolve(Key::ROOT)?;
         volume.root = root;
+        volume.root_plugins = stat.plugins;
         require(
             volume.directory(root)?.parent == Key::ROOT,
             "reiser4: root parent key",
@@ -255,6 +272,10 @@ impl<S: BlockSource> FoldFrontend<S> for Reiser4<S> {
                 Content::Hole => target.fill(0),
                 Content::Inline(bytes) => {
                     target.copy_from_slice(&bytes[local as usize..local as usize + target.len()])
+                }
+                Content::Compressed(codec, payload) => {
+                    let bytes = codec.decode(payload, (part.end - part.start) as usize)?;
+                    target.copy_from_slice(&bytes[local as usize..local as usize + target.len()]);
                 }
                 Content::Blocks(block) => self
                     .source

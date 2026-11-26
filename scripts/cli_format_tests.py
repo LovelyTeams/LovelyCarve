@@ -854,7 +854,26 @@ def test_reiser4(cli, root):
         assert sha256(rows["hash"]) == expected_hash
         assert output.read_bytes() == payload
         source.unlink()
-    print("Reiser4 CLI tests passed: both key sizes, protected nodes, MBR, links, sparse ranges, hash and export")
+    source = root / "reiser4-zstd1.img"
+    source.write_bytes(zlib.decompress((fixtures / "zstd1.reiser4z").read_bytes()))
+    output = root / "reiser4-zstd1-export.bin"
+    address = f"{volume}/nested/payload.bin"
+    across = 16384 - 31
+    rows = cli.results([
+        add(source),
+        cat("range", address, across, 63),
+        cat("hole", f"{volume}/sparse.bin", 5 * 16384 - 20, 48),
+        digest("hash", address),
+        export("export", address, output),
+    ])
+    assert opened(rows)["partitions"][0]["kind"] == "reiser4"
+    exported = output.read_bytes()
+    expected = "36ae9eb7cf5d0fb38f754d0ec28ebe355e5f4e960d689b119e1f82d42a638849"
+    assert sha256(rows["hash"]) == hashlib.sha256(exported).hexdigest() == expected
+    assert rows["range"] == hex_of(exported[across:across + 63])
+    assert rows["hole"] == hex_of(bytes(20) + b"last bytes of a sparse file\n")
+    source.unlink()
+    print("Reiser4 CLI tests passed: both key sizes, protected nodes, MBR, links, sparse ranges, ctail, hash and export")
 
 
 def test_ocfs1(cli, root):
