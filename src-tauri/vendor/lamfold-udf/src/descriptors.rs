@@ -92,18 +92,21 @@ pub fn valid_anchor(bytes: &[u8], location: u32) -> bool {
     descriptor(bytes, location, 512).is_ok_and(|tag| tag == 2)
 }
 
-pub(crate) fn domain(bytes: &[u8]) -> Result<()> {
+pub(crate) fn domain(bytes: &[u8]) -> Result<u16> {
     require(
         bytes.get(1..24) == Some(b"*OSTA UDF Compliant\0\0\0\0"),
         "udf: unknown domain identifier",
     )?;
     let revision = u16_at(bytes, 24)?;
-    if !matches!(revision, 0x0102 | 0x0150 | 0x0200 | 0x0201) {
+    if !matches!(
+        revision,
+        0x0102 | 0x0150 | 0x0200 | 0x0201 | 0x0250 | 0x0260
+    ) {
         return Err(FoldError::Unsupported(
-            "udf: revision outside 1.02–2.01 physical-partition profile",
+            "udf: unsupported volume domain revision",
         ));
     }
-    Ok(())
+    Ok(revision)
 }
 
 pub(crate) fn decode_name(bytes: &[u8]) -> Result<String> {

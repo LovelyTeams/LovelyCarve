@@ -1,5 +1,59 @@
 [
   {
+    "file": "metadata-250.zlib",
+    "sha256": "eabf41a552de802cca77a8281f17f281e6fbbb7e150b4e3c15ba1a24790cd2b0",
+    "logical_bytes": 1310720,
+    "logical_sha256": "67a2d36ba6a3e52e28b35cbc2a199935f947a917cec3d4da793d5178d13bcb3f",
+    "source": "scripts/udf-fixtures.py, invented ECMA-167 fields",
+    "license": "CC0-1.0",
+    "generation": "Python standard library, no filesystem reader"
+  },
+  {
+    "file": "metadata-260.zlib",
+    "sha256": "1d7efd7c7262a1ea7dbe1f647b795f27131c340899bc0b3822b4483a566f1905",
+    "logical_bytes": 1310720,
+    "logical_sha256": "de4ed7d51140a4926aa660adca1ab22b93cdaf5e9186e27773b030b0fdea75a2",
+    "source": "scripts/udf-fixtures.py, invented ECMA-167 fields",
+    "license": "CC0-1.0",
+    "generation": "Python standard library, no filesystem reader"
+  },
+  {
+    "file": "mkudffs-sparable.zlib",
+    "sha256": "ec96f80ee47ca49c40e16d7e30f9f093d113c2325e1df2be1c117b09644cc69f",
+    "logical_bytes": 8388608,
+    "logical_sha256": "12b315e238f0aa76208ad40a7f5f0039e18f223c11c703ad735e145b54d16f66",
+    "source": "https://archive.ubuntu.com/ubuntu/pool/universe/u/udftools/udftools_2.3-1_amd64.deb",
+    "license": "CC0-1.0",
+    "generation": "mkudffs --new-file --media-type=cdrw --udfrev=2.01 --spartable=2 --label=SPARABLE sparable.img 4096; lossless zlib copy"
+  },
+  {
+    "file": "mkudffs-vat150.zlib",
+    "sha256": "2800a7a3ef4340fa2815f686d7b81ffbf9e31c39acaef919341cd098d13922c7",
+    "logical_bytes": 614400,
+    "logical_sha256": "f550196e22382ef68770edc096bb708e76566e26a740c44deeaefe9caf0f299e",
+    "source": "https://archive.ubuntu.com/ubuntu/pool/universe/u/udftools/udftools_2.3-1_amd64.deb",
+    "license": "CC0-1.0",
+    "generation": "mkudffs --new-file --media-type=cdr --udfrev=1.50 --vat --label=VAT150 vat150.img 2048; lossless zlib copy"
+  },
+  {
+    "file": "mkudffs-vat201.zlib",
+    "sha256": "dbe79545f843812a677575b58b18ab82aa22d41b3fc59eff61256aa96423f9f9",
+    "logical_bytes": 614400,
+    "logical_sha256": "4b7e2ba7f251e4e383aafc813ed5022066b700f71f11acfc13a671e2f4fae66c",
+    "source": "https://archive.ubuntu.com/ubuntu/pool/universe/u/udftools/udftools_2.3-1_amd64.deb",
+    "license": "CC0-1.0",
+    "generation": "mkudffs --new-file --media-type=cdr --udfrev=2.01 --vat --label=VAT201 vat201.img 2048; lossless zlib copy"
+  },
+  {
+    "file": "sparable.zlib",
+    "sha256": "5365bc71f2c269e4b917ba94155c865379b90ba0946d13385a508ddade3f7657",
+    "logical_bytes": 1310720,
+    "logical_sha256": "db283a485da0c34f8b40609aec9c5a8a39be36a5356d271e6577aa5a8ea30a1d",
+    "source": "scripts/udf-fixtures.py, invented ECMA-167 fields",
+    "license": "CC0-1.0",
+    "generation": "Python standard library, no filesystem reader"
+  },
+  {
     "file": "synthetic-1024.zlib",
     "sha256": "6c8aa09149c0d6611176efe1b05dc9ab62c40558b43d89bd5bea95cd3e08e6dd",
     "logical_bytes": 655360,
@@ -52,5 +106,23 @@
     "source": "https://github.com/lamco-admin/lamfold/blob/fabaad6af0c28b80535307b339b84110f3a3c12e/crates/lamfold-udf/tests/fixtures/udf201.img",
     "license": "MIT OR Apache-2.0",
     "generation": "mkudffs and Linux UDF kernel; lossless zlib copy"
+  },
+  {
+    "file": "vat-150.zlib",
+    "sha256": "2a0056c24bdc4da9e4028f2f188f01c0666c560197c420be7023943b111f3bf8",
+    "logical_bytes": 1228800,
+    "logical_sha256": "a71acdff825a7394a12b5dfa5c26eed67897c3fa23e7ef45641b2b8cd1d51e43",
+    "source": "scripts/udf-fixtures.py, invented ECMA-167 fields",
+    "license": "CC0-1.0",
+    "generation": "Python standard library, no filesystem reader"
+  },
+  {
+    "file": "vat-201.zlib",
+    "sha256": "ceb9b1265a54afe78fd08b57824b8ae911d6ef383576f4964f5657abeab9f9be",
+    "logical_bytes": 1228800,
+    "logical_sha256": "372b6f7bdb5554facfb0a0cf18ae0228650d141cb363f723550f61c54a9c3610",
+    "source": "scripts/udf-fixtures.py, invented ECMA-167 fields",
+    "license": "CC0-1.0",
+    "generation": "Python standard library, no filesystem reader"
   }
 ]
