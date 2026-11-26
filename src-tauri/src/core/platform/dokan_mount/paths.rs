@@ -321,6 +321,7 @@ pub(super) fn fs_label_for_kind(kind: PartitionKind) -> &'static str {
         PartitionKind::Bcachefs => "bcachefs",
         PartitionKind::Vmfs => "vmfs",
         PartitionKind::Hpfs => "hpfs",
+        PartitionKind::Vxfs => "vxfs",
         PartitionKind::Minix => "MINIX",
         PartitionKind::Minifs => "MINIFS",
         PartitionKind::Romfs => "ROMFS",
@@ -382,6 +383,7 @@ pub(super) fn is_case_sensitive_fs(kind: PartitionKind) -> bool {
             | PartitionKind::Bcachefs
             | PartitionKind::Vmfs
             | PartitionKind::Hpfs
+            | PartitionKind::Vxfs
             | PartitionKind::Minix
             | PartitionKind::Minifs
             | PartitionKind::Romfs

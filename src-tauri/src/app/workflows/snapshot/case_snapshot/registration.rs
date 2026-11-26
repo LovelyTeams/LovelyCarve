@@ -110,6 +110,7 @@ pub(super) fn snapshot_supported_plain_partition(kind: PartitionKind) -> bool {
             | PartitionKind::Bcachefs
             | PartitionKind::Vmfs
             | PartitionKind::Hpfs
+            | PartitionKind::Vxfs
             | PartitionKind::Minix
             | PartitionKind::Minifs
             | PartitionKind::Romfs

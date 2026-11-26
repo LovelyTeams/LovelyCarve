@@ -4,6 +4,7 @@ read by range, hashed and exported, by node ID and by path.
 Fixtures are the readers' committed synthetic or reference images; the
 optional native images come from the environment variables named below.
 """
+from datetime import datetime, timedelta
 import hashlib
 import json
 import os
@@ -162,6 +163,48 @@ def test_hpfs(cli, root):
         assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
         assert exported.read_bytes() == payload
     print("HPFS CLI tests passed: bare and MBR volumes, split directories, ranges, times, hash and export")
+
+
+def test_vxfs(cli, root):
+    fixtures = VENDOR / "vxfs-reader/tests/fixtures"
+    for name, block_size in [("le2", 1024), ("le3", 2048), ("be4", 8192)]:
+        volume = zlib.decompress((fixtures / f"{name}.zlib").read_bytes())
+        source = root / f"vxfs-{name}.img"
+        if name == "be4":
+            table = bytearray(512)
+            table[450] = 0x83
+            struct.pack_into("<II", table, 454, 8, len(volume) // 512)
+            table[510:] = b"\x55\xaa"
+            source.write_bytes(table + bytes(7 * 512) + volume)
+        else:
+            source.write_bytes(volume)
+        exported = root / f"{name}-linear.bin"
+        expected = b"D" * block_size + bytes(block_size) + b"I" * (block_size - 19)
+        rows = cli.results([
+            add(source),
+            ls("root", "/ev/part:0"),
+            ls("dir", "/ev/part:0/dir"),
+            cat("tiny", at(path_id("vxfs:part:0:", "/tiny"))),
+            cat("link", "/ev/part:0/link"),
+            cat("far", "/ev/part:0/dir/large", (5 << 30) + block_size - 2, 10),
+            cat("linear", "/ev/part:0/linear", 2 * block_size - 3, 10),
+            request("stat", "stat", "/ev/part:0/tiny"),
+            request("alias", "stat", "/ev/part:0/dir/alias"),
+            digest("hash", "/ev/part:0/linear"),
+            export("export", "/ev/part:0/linear", exported),
+        ])
+        assert opened(rows)["partitions"][0]["kind"] == "vxfs"
+        assert names(rows["root"]) == {"tiny", "dir", "link", "linear", "empty"}
+        assert names(rows["dir"]) == {"alias", "large"}
+        assert rows["tiny"] == rows["link"] == hex_of(b"tiny\n")
+        assert rows["far"] == hex_of(bytes(2) + bytes(range(8)))
+        assert rows["linear"] == hex_of(bytes(3) + b"I" * 7)
+        assert rows["stat"]["inode"] == rows["alias"]["inode"] == 3
+        changed = datetime.fromisoformat(rows["stat"]["timestamps"]["mftChanged"].replace("Z", "+00:00"))
+        assert changed.microsecond == 9876 and changed.utcoffset() == timedelta(0), changed
+        assert sha256(rows["hash"]) == hashlib.sha256(expected).hexdigest()
+        assert exported.read_bytes() == expected
+    print("VxFS CLI tests passed: layouts 2–4, MBR, hard links, ranges beyond 5 GiB, hash and export")
 
 
 def test_formats(cli, root):

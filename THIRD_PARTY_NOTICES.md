@@ -1721,6 +1721,10 @@ The HPFS test volume was formatted and populated by nepx's BSD-3-Clause
 The generated test data accompanies the pure Rust `hpfs-reader`, which is
 AGPL-3.0-only. [Fixture source and hashes](src-tauri/vendor/hpfs-reader/ORIGIN.md).
 
+`vxfs-reader` adapts Dani Sarfati's MIT VxFS reader from `fs-unix` 0.2.1.
+[Upstream license](src-tauri/vendor/vxfs-reader/LICENSE-MIT) and
+[origin and verification](src-tauri/vendor/vxfs-reader/ORIGIN.md).
+
 ## BCP application icons
 
 The result directory icons in `src/assets/bcp-apps` come from the local

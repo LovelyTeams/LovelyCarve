@@ -201,6 +201,7 @@ pub fn fs_prefix_for_kind(kind: PartitionKind) -> &'static str {
         | PartitionKind::Bcachefs
         | PartitionKind::Vmfs
         | PartitionKind::Hpfs
+        | PartitionKind::Vxfs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

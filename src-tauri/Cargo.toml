@@ -251,6 +251,7 @@ vhd = { package = "vhd-core", path = "vendor/vhd" }
 vhdx = { package = "vhdx-core", path = "vendor/vhdx" }
 vmdk = { package = "vmdk-core", path = "vendor/vmdk", features = ["full-encoding", "trace"] }
 vmfs-reader = { path = "vendor/vmfs-reader" }
+vxfs-reader = { path = "vendor/vxfs-reader" }
 vsc = { package = "vsc-core", path = "vendor/vsc" }
 xfs-fuse = { path = "vendor/xfs-fuse" }
 yaffs2-reader = { path = "vendor/yaffs2-reader" }

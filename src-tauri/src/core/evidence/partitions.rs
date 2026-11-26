@@ -54,6 +54,7 @@ pub mod udf;
 pub mod ufs;
 pub(crate) mod vmfs;
 pub mod volume_probe;
+pub(crate) mod vxfs;
 pub mod xfs;
 pub mod xiaomi_firmware;
 pub mod yaffs2;
@@ -164,6 +165,7 @@ pub enum PartitionKind {
     Bcachefs,
     Vmfs,
     Hpfs,
+    Vxfs,
     Ubifs,
     Lvm,
     Bitlocker,
@@ -391,6 +393,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Bcachefs
         | PartitionKind::Vmfs
         | PartitionKind::Hpfs
+        | PartitionKind::Vxfs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

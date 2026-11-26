@@ -140,6 +140,7 @@ pub(crate) fn fs_unalloc_nodes(image: &Arc<EvidenceSession>, partition: &Partiti
         | PartitionKind::Bcachefs
         | PartitionKind::Vmfs
         | PartitionKind::Hpfs
+        | PartitionKind::Vxfs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs
@@ -279,6 +280,7 @@ pub(crate) fn partition_node(image: &Arc<EvidenceSession>, partition: &Partition
             | PartitionKind::Bcachefs
             | PartitionKind::Vmfs
             | PartitionKind::Hpfs
+            | PartitionKind::Vxfs
             | PartitionKind::Minix
             | PartitionKind::Minifs
             | PartitionKind::Romfs

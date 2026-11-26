@@ -173,6 +173,7 @@ fmt:
     cd src-tauri/vendor/bcachefs-reader && cargo fmt
     cd src-tauri/vendor/vmfs-reader && cargo fmt
     cd src-tauri/vendor/hpfs-reader && cargo fmt
+    cd src-tauri/vendor/vxfs-reader && cargo fmt
     cd src-tauri/vendor/rust-fs-bcachefs && cargo fmt
     cd src-tauri/vendor/rust-fs-core && cargo fmt
     cd src-tauri/vendor/amiga-ffs && cargo fmt
@@ -490,6 +491,10 @@ clippy-vmfs:
 [group("readers")]
 clippy-hpfs:
     cargo clippy --manifest-path src-tauri/vendor/hpfs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+clippy-vxfs:
+    cargo clippy --manifest-path src-tauri/vendor/vxfs-reader/Cargo.toml --all-targets -- -D warnings
 
 # Validate the Minix V1/V2/V3 reader, including util-linux reference images.
 [group("readers")]

@@ -208,3 +208,10 @@ mkfs / Linux kernel / fsck 验证见 [ORIGIN.md](gfs2-reader/ORIGIN.md)。
 `hpfs-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。磁盘结构对照 Linux HPFS
 定义与 nepx 的 BSD-3-Clause `hpfsutils`。验证镜像由固定版本的工具生成，未引入 C 源码或运行时组件。
 具体提交、临时工具修正和样本哈希见 [ORIGIN.md](hpfs-reader/ORIGIN.md)。
+
+## VxFS
+
+`vxfs-reader` 0.1.0 适配 `fs-unix` 0.2.1 的 MIT VxFS 读取算法，固定源码提交
+`4969de813a1ec4439ccce69a1247c2ecf3f50cb4`。本地实现增加有界读取、链式对象定位表、
+可寻址的逻辑范围读取、格式校验和宿主适配。原始许可、样本来源与哈希见
+[ORIGIN.md](vxfs-reader/ORIGIN.md)。

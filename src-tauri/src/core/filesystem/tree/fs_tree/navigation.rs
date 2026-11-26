@@ -239,6 +239,10 @@ pub(super) fn children_for_image_with_options(
                 )?
                 .root_children()
             }
+            PartitionKind::Vxfs => {
+                crate::core::filesystem::volumes::rom_images::open_vxfs_source(image, partition.id)?
+                    .root_children()
+            }
             PartitionKind::Hpfs => {
                 crate::core::filesystem::volumes::rom_images::open_hpfs_source(image, partition.id)?
                     .root_children()
