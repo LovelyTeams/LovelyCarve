@@ -204,6 +204,7 @@ rsqlite-vfs = { path = "vendor/rsqlite-vfs" }
 rufs = { path = "vendor/rufs" }
 
 rusqlite = { version = "0.40.2", features = ["bundled-sqlcipher-vendored-openssl", "collation", "hooks", "limits"] }
+ruzstd = "0.9.1"
 # 插件包与市场索引的版本号。
 semver = "1.0.28"
 sercomm-firmware = { path = "vendor/sercomm-firmware" }

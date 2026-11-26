@@ -23,28 +23,13 @@ impl<'a> BtrfsVolume<'a> {
             }
             BtrfsSource::Partition(_) => (base_offset, None),
         };
-        let sb = crate::core::filesystem::volumes::lvm::read_backing_range(
+        let (sb, devices) = super::devices::DeviceSet::open(
             image,
             layout.as_ref(),
-            base_offset + BTRFS_PRIMARY_SUPERBLOCK,
-            4096,
-        )
-        .context("btrfs: read primary superblock")?;
-        if sb.len() < 4096 {
-            bail!(Failure::corrupt(format!(
-                "btrfs: primary superblock truncated ({} bytes)",
-                sb.len()
-            )));
-        }
-        let magic = read_u64(&sb, 64);
-        // `_BHRfS_M` little-endian u64: bytes are 0x5F 0x42 0x48 0x52 0x66 0x53 0x5F 0x4D
-        let expected_magic = u64::from_le_bytes(*b"_BHRfS_M");
-        if magic != expected_magic {
-            bail!(Failure::corrupt(format!(
-                "btrfs: superblock magic mismatch (0x{magic:016x})"
-            )));
-        }
-
+            source,
+            base_offset,
+            length_bytes,
+        )?;
         let root = read_u64(&sb, 80);
         let chunk_root = read_u64(&sb, 88);
         let root_dir_objectid = read_u64(&sb, 128);
@@ -55,28 +40,23 @@ impl<'a> BtrfsVolume<'a> {
         let chunk_root_level = sb[199];
         let label = decode_label(&sb[299..299 + 256]);
 
-        if !nodesize.is_power_of_two() || nodesize < 4096 {
+        if !nodesize.is_power_of_two() || !(4096..=65536).contains(&nodesize) {
             bail!("btrfs: implausible nodesize {nodesize}");
         }
         if sys_chunk_array_size > 2048 {
             bail!("btrfs: sys_chunk_array_size {sys_chunk_array_size} > 2048");
         }
 
-        let bootstrap = parse_sys_chunk_array(&sb[811..811 + sys_chunk_array_size])
-            .context("btrfs: parse sys_chunk_array")?;
+        let bootstrap =
+            ChunkMapping::from_system_array(&sb[811..811 + sys_chunk_array_size], &devices)
+                .context("btrfs: parse sys_chunk_array")?;
         if bootstrap.is_empty() {
             bail!("btrfs: sys_chunk_array did not yield any system chunk mappings");
         }
 
         let mut chunks: Vec<ChunkMapping> = Vec::new();
         {
-            let walker = TreeWalker::new(
-                image,
-                base_offset,
-                &bootstrap,
-                nodesize as usize,
-                layout.as_ref(),
-            );
+            let walker = TreeWalker::new(image, &bootstrap, nodesize as usize, layout.as_ref());
             walker.iter_range(
                 chunk_root,
                 chunk_root_level,
@@ -92,31 +72,34 @@ impl<'a> BtrfsVolume<'a> {
                 },
                 |key, data| {
                     if key.key_type == KEY_CHUNK_ITEM {
-                        if let Some(map) = parse_chunk_item(key, data) {
-                            chunks.push(map);
-                        }
+                        let (map, used) = ChunkMapping::parse(key.offset.get(), data, &devices)?;
+                        anyhow::ensure!(
+                            used == data.len(),
+                            Failure::corrupt("btrfs: trailing bytes in chunk item")
+                        );
+                        chunks.push(map);
                     }
                     Ok(true)
                 },
             )?;
         }
-        for cm in &bootstrap {
-            if !chunks.iter().any(|c| c.logical == cm.logical) {
-                chunks.push(*cm);
+        super::chunks::sort_chunks(&mut chunks)?;
+        // Match bootstrap items against the selected chunk tree. A legacy
+        // system-only map may be absent there, but cannot disagree with it.
+        for map in bootstrap {
+            match chunks.binary_search_by_key(&map.logical, |chunk| chunk.logical) {
+                Ok(index) => anyhow::ensure!(
+                    chunks[index] == map,
+                    Failure::corrupt("btrfs: system chunk disagrees with chunk tree")
+                ),
+                Err(index) => chunks.insert(index, map),
             }
         }
-        chunks.sort_by_key(|c| c.logical);
-        chunks.dedup_by_key(|c| c.logical);
+        super::chunks::sort_chunks(&mut chunks)?;
 
         let mut subvolumes: BTreeMap<u64, SubvolEntry> = BTreeMap::new();
         {
-            let walker = TreeWalker::new(
-                image,
-                base_offset,
-                &chunks,
-                nodesize as usize,
-                layout.as_ref(),
-            );
+            let walker = TreeWalker::new(image, &chunks, nodesize as usize, layout.as_ref());
             walker.iter_range(
                 root,
                 root_level,

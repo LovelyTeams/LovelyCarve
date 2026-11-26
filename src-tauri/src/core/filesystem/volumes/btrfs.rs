@@ -9,11 +9,12 @@
 //! iterator, file-extent and dir-item payload parsers, and the zlib/zstd
 //! decompressors — are provided here.
 //!
-//! The walker assumes a single-device filesystem and the first stripe in
-//! every chunk. RAID0/1/10/5/6 striping, multi-device pools, encrypted
-//! extents are not supported and are surfaced as errors; we keep the walker
-//! honest rather than silently returning wrong bytes.
+//! Chunk mappings are bound to their declared device IDs and UUIDs.
+//! Metadata and extent data use the same source runs.
 
+mod chunks;
+mod devices;
+use chunks::ChunkMapping;
 mod directory;
 mod open;
 mod tree;
@@ -36,7 +37,6 @@ use zerocopy::FromBytes;
 use crate::core::common::error::Failure;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::DiskImage;
-use crate::core::evidence::partitions::BTRFS_PRIMARY_SUPERBLOCK;
 use crate::core::filesystem::tree::fs_tree::{FsDataRun, FsNode, Mactb, NodeKind};
 
 /// Reserved object IDs (subset). See `fs/btrfs/ctree.h` in the kernel.
@@ -213,13 +213,6 @@ struct SubvolEntry {
     /// 引用本子卷的父子卷（ROOT_REF 的 objectid 侧）。空 = 没有任何树挂载它
     /// （真正的孤立快照根），应提升到分区根列出。
     parent_subvols: Vec<u64>,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct ChunkMapping {
-    logical: u64,
-    length: u64,
-    physical: u64,
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -264,6 +264,7 @@ lovelycarve-cli -C "D:\cases\laptop" evidence export laptop -o "D:\output\laptop
 
 - 克隆主机可能有相同的 VG/PV UUID：`raid detect --member <别名>`（可重复）只检测这些源检材，可在同一进程内分别组装各主机；组装出的检材和卷影副本不能作为成员。
 - 成员缺失或过期的 md 阵列等待确认：`raid detect --degraded <setUuid>` 降级组装该阵列。
+- 跨镜像的 [Btrfs](formats/BTRFS.md) 卷也通过 `raid detect` 登记。先加载所有成员，再从结果的 `assembled[].path` 下进入任一成员分区浏览卷。
 - `raid assemble --members a,b,c --level 5 [--layout] [--chunk-sectors] [--data-offset-sectors] [--missing 列] [--as 别名]` 按给定几何手动组装，缺失的列写 `-`。
 - `assembled://` 引用只在组装它的进程中有效；后台进程结束后需重新检测。
 

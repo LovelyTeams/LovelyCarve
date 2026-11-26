@@ -32,6 +32,7 @@ pub mod mdadm_super;
 pub mod source;
 pub mod xfs_probe;
 
+mod btrfs_devices;
 mod manual;
 pub use manual::manual_assemble;
 mod ddf_array;

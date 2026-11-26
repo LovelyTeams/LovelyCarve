@@ -11,6 +11,155 @@ use crate::core::evidence::partitions::{
     DetectCtx, PartParser, Partition, PartitionKind, BTRFS_MAGIC, BTRFS_PRIMARY_SUPERBLOCK,
 };
 
+use super::SectorSource;
+use crate::core::common::error::Failure;
+use anyhow::{bail, ensure, Context};
+
+const SUPER_LEN: usize = 4096;
+const DEVICE_ITEM: usize = 201;
+const DEVICE_UUID: usize = DEVICE_ITEM + 66;
+const MAX_DEVICES: u64 = 256;
+const REQUIRED_PHYSICAL_MAP_FEATURES: u64 = (1 << 14) | (1 << 17);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct MemberHeader {
+    pub(crate) fsid: [u8; 16],
+    pub(crate) devid: u64,
+    pub(crate) uuid: [u8; 16],
+    pub(crate) device_bytes: u64,
+    pub(crate) num_devices: u64,
+    pub(crate) generation: u64,
+    root: u64,
+    chunk_root: u64,
+}
+
+impl MemberHeader {
+    pub(crate) fn identifies(superblock: &[u8], fsid: [u8; 16]) -> bool {
+        superblock.get(64..72) == Some(BTRFS_MAGIC)
+            && superblock.get(32..48) == Some(fsid.as_slice())
+    }
+
+    pub(crate) fn parse(superblock: &[u8], available: u64) -> anyhow::Result<Self> {
+        ensure!(
+            superblock.len() == SUPER_LEN
+                && superblock.get(64..72) == Some(b"_BHRfS_M")
+                && read_u64(superblock, 48) == BTRFS_PRIMARY_SUPERBLOCK,
+            Failure::corrupt("btrfs: invalid primary superblock")
+        );
+        let num_devices = read_u64(superblock, 136);
+        let device_bytes = read_u64(superblock, DEVICE_ITEM + 8);
+        let devid = read_u64(superblock, DEVICE_ITEM);
+        ensure!(
+            (1..=MAX_DEVICES).contains(&num_devices)
+                && devid != 0
+                && (BTRFS_PRIMARY_SUPERBLOCK + SUPER_LEN as u64..=available)
+                    .contains(&device_bytes),
+            Failure::corrupt("btrfs: invalid device identity or length")
+        );
+        ensure!(
+            read_u64(superblock, 188) & REQUIRED_PHYSICAL_MAP_FEATURES == 0,
+            Failure::unsupported("btrfs: allocation requires the stripe or remap tree")
+        );
+        if num_devices > 1 {
+            verify_checksum(superblock)?;
+        }
+        let fsid = superblock[32..48].try_into().unwrap();
+        let uuid = superblock[DEVICE_UUID..DEVICE_UUID + 16]
+            .try_into()
+            .unwrap();
+        ensure!(
+            num_devices == 1 || (fsid != [0; 16] && uuid != [0; 16]),
+            Failure::corrupt("btrfs: multi-device superblock has no UUID")
+        );
+        Ok(Self {
+            fsid,
+            devid,
+            uuid,
+            device_bytes,
+            num_devices,
+            generation: read_u64(superblock, 72),
+            root: read_u64(superblock, 80),
+            chunk_root: read_u64(superblock, 88),
+        })
+    }
+
+    pub(crate) fn same_commit(self, other: Self) -> bool {
+        self.fsid == other.fsid
+            && self.generation == other.generation
+            && self.num_devices == other.num_devices
+            && self.root == other.root
+            && self.chunk_root == other.chunk_root
+    }
+}
+
+fn verify_checksum(superblock: &[u8]) -> anyhow::Result<()> {
+    match u16::from_le_bytes(superblock[196..198].try_into().unwrap()) {
+        0 => {
+            ensure!(
+                read_u32(superblock, 0) == superblock_crc32c(&superblock[32..]),
+                Failure::corrupt("btrfs: member superblock CRC32C mismatch")
+            );
+        }
+        2 => {
+            use sha2::{Digest, Sha256};
+            ensure!(
+                superblock[..32] == Sha256::digest(&superblock[32..])[..],
+                Failure::corrupt("btrfs: member superblock SHA-256 mismatch")
+            );
+        }
+        other => bail!(Failure::unsupported(format!(
+            "btrfs: member checksum type {other}"
+        ))),
+    }
+    Ok(())
+}
+
+pub(crate) fn superblock_crc32c(bytes: &[u8]) -> u32 {
+    let mut crc = !0u32;
+    for &byte in bytes {
+        crc ^= u32::from(byte);
+        for _ in 0..8 {
+            crc = (crc >> 1) ^ (0x82f6_3b78 & 0u32.wrapping_sub(crc & 1));
+        }
+    }
+    !crc
+}
+
+pub(crate) fn read_member(
+    source: &dyn SectorSource,
+    base: u64,
+    length: u64,
+) -> anyhow::Result<MemberHeader> {
+    let superblock = read_member_superblock(source, base, length)?;
+    MemberHeader::parse(&superblock, length)
+}
+
+pub(crate) fn read_member_superblock(
+    source: &dyn SectorSource,
+    base: u64,
+    length: u64,
+) -> anyhow::Result<Vec<u8>> {
+    source.read(superblock_offset(base, length)?, SUPER_LEN)
+}
+
+pub(crate) fn superblock_offset(base: u64, length: u64) -> anyhow::Result<u64> {
+    ensure!(
+        length >= BTRFS_PRIMARY_SUPERBLOCK + SUPER_LEN as u64,
+        Failure::corrupt("btrfs: device shorter than primary superblock")
+    );
+    base.checked_add(BTRFS_PRIMARY_SUPERBLOCK)
+        .context(Failure::corrupt(
+            "btrfs: primary superblock offset overflow",
+        ))
+}
+
+fn read_u64(bytes: &[u8], offset: usize) -> u64 {
+    u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap())
+}
+fn read_u32(bytes: &[u8], offset: usize) -> u32 {
+    u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap())
+}
+
 pub struct BtrfsParser;
 
 impl PartParser for BtrfsParser {

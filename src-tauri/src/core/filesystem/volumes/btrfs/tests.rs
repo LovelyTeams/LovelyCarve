@@ -20,12 +20,8 @@ fn lvm_fragmented_btrfs_tree_node_crosses_pe_segment_boundary() {
         image.len(),
     )
     .unwrap();
-    let chunks = [ChunkMapping {
-        logical: 4096,
-        physical: 7168,
-        length: 8192,
-    }];
-    let walker = TreeWalker::new(&image, 0, &chunks, 4096, Some(&layout));
+    let chunks = [ChunkMapping::linear(4096, 7168, 8192)];
+    let walker = TreeWalker::new(&image, &chunks, 4096, Some(&layout));
     assert_eq!(
         walker.read_node(4096).unwrap(),
         [vec![0x11; 1024], vec![0x22; 3072]].concat()
@@ -183,9 +179,88 @@ fn decompress_lzo_rejects_truncated_wrapper() {
 }
 
 #[test]
+fn btrfs_zstd_ignores_padding_after_the_frame_and_zeroes_the_tail_sector() {
+    let expected = vec![b'Z'; 2300];
+    let mut frame = zstd::bulk::compress(&expected, 1).unwrap();
+    frame.resize(4096, 0);
+    assert_eq!(
+        decompress(COMPRESS_ZSTD, &frame, expected.len(), 4096).unwrap(),
+        expected
+    );
+    let regular = decompress_regular(COMPRESS_ZSTD, &frame, 4096, 4096).unwrap();
+    assert_eq!(regular[..expected.len()], expected);
+    assert!(regular[expected.len()..].iter().all(|&byte| byte == 0));
+    assert!(decompress_regular(COMPRESS_ZSTD, &frame, 8192, 4096).is_err());
+}
+
+#[test]
 fn decode_label_strips_trailing_nuls() {
     let mut buf = [0u8; 16];
     buf[..5].copy_from_slice(b"my-fs");
     assert_eq!(decode_label(&buf).as_deref(), Some("my-fs"));
     assert_eq!(decode_label(&[0u8; 16]), None);
+}
+
+#[test]
+fn btrfs_grouped_raid0_uses_the_member_uuid_and_preserves_sparse_and_physical_runs() {
+    use crate::core::evidence::raid::detect_with_sources;
+    use std::sync::Arc;
+
+    let member_bytes = test_support::striped_members();
+    let directory = tempfile::tempdir().unwrap();
+    let images: Vec<_> = member_bytes
+        .iter()
+        .enumerate()
+        .map(|(i, bytes)| {
+            let path = directory.path().join(format!("stripe-{i}.img"));
+            std::fs::write(&path, bytes).unwrap();
+            Arc::new(DiskImage::open(path).unwrap())
+        })
+        .collect();
+    assert!(open_btrfs_source(&images[0], BtrfsSource::Partition(0)).is_err());
+    let (incomplete, groups) = detect_with_sources(&images[..1]);
+    assert!(groups.is_empty());
+    assert!(incomplete
+        .diagnostics
+        .iter()
+        .any(|error| error.contains("1 available")));
+    let (stack, groups) = detect_with_sources(&images);
+    assert_eq!(groups.len(), 1, "{:?}", stack.diagnostics);
+    assert_eq!(stack.arrays[0].metadata_version, "btrfs");
+    let group = &groups[0];
+    let image = DiskImage::from_assembled(
+        group.label.clone(),
+        Arc::clone(&group.source),
+        group.partitions.clone().unwrap(),
+        512,
+    )
+    .unwrap();
+    let volume = open_btrfs_source(&image, BtrfsSource::Partition(0)).unwrap();
+    let inode = volume.read_inode(5, 257).unwrap();
+    let expected = [vec![0; 4096], vec![0x7a; 4096], vec![0x6b; 4096]].concat();
+    assert_eq!(
+        volume.read_inode_data(5, &inode, usize::MAX).unwrap(),
+        expected
+    );
+    assert_eq!(
+        volume.read_inode_range(5, &inode, 8189, 11).unwrap(),
+        expected[8189..8200]
+    );
+    let mut streamed = Vec::new();
+    assert_eq!(
+        volume
+            .stream_inode_data(5, &inode, 4096, |bytes| {
+                streamed.extend_from_slice(bytes);
+                Ok(())
+            })
+            .unwrap(),
+        expected.len() as u64
+    );
+    assert_eq!(streamed, expected);
+    let runs = volume.data_runs(5, &inode).unwrap();
+    assert_eq!(runs.len(), 2);
+    assert_eq!(runs[0].logical_offset, 4096);
+    assert_eq!(runs[1].logical_offset, 8192);
+    assert_eq!(runs[0].physical_offset, 0x4f000);
+    assert_eq!(runs[1].physical_offset, 0xc0000);
 }

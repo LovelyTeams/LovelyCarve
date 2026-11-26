@@ -3507,6 +3507,7 @@ dependencies = [
  "rsqlite-vfs 0.2.0",
  "rufs",
  "rusqlite",
+ "ruzstd",
  "semver",
  "sercomm-firmware",
  "serde",

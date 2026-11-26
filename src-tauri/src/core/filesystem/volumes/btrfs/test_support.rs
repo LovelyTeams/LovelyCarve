@@ -24,6 +24,9 @@ pub(crate) fn image() -> Vec<u8> {
     let mut bytes = vec![0; 512 * 1024];
     let size = bytes.len() as u64;
     let superblock = &mut bytes[0x10000..0x11000];
+    superblock[48..56].copy_from_slice(&0x10000u64.to_le_bytes());
+    superblock[201..209].copy_from_slice(&1u64.to_le_bytes());
+    superblock[209..217].copy_from_slice(&size.to_le_bytes());
     superblock[0x40..0x48].copy_from_slice(b"_BHRfS_M");
     superblock[80..88].copy_from_slice(&0x20000u64.to_le_bytes());
     superblock[88..96].copy_from_slice(&0x21000u64.to_le_bytes());
@@ -49,10 +52,18 @@ pub(crate) fn image() -> Vec<u8> {
     root[176..184].copy_from_slice(&0x22000u64.to_le_bytes());
     bytes[0x20000..0x21000].copy_from_slice(&leaf(&[(5, 132, 0, root)]));
     bytes[0x21000..0x22000].copy_from_slice(&leaf(&[]));
+    let mut extent = vec![0; 21];
+    extent[8..16].copy_from_slice(&(CONTENT.len() as u64).to_le_bytes());
+    extent.extend_from_slice(CONTENT);
+    bytes[0x22000..0x23000].copy_from_slice(&file_tree(CONTENT.len() as u64, 0, extent));
+    bytes
+}
+
+fn file_tree(size: u64, file_offset: u64, extent: Vec<u8>) -> Vec<u8> {
     let mut directory = vec![0; 160];
     directory[52..56].copy_from_slice(&0o40755u32.to_le_bytes());
     let mut file = vec![0; 160];
-    file[16..24].copy_from_slice(&(CONTENT.len() as u64).to_le_bytes());
+    file[16..24].copy_from_slice(&size.to_le_bytes());
     file[52..56].copy_from_slice(&0o100644u32.to_le_bytes());
     let mut entry = vec![0; 30];
     entry[..8].copy_from_slice(&257u64.to_le_bytes());
@@ -60,14 +71,63 @@ pub(crate) fn image() -> Vec<u8> {
     entry[27..29].copy_from_slice(&9u16.to_le_bytes());
     entry[29] = 1;
     entry.extend_from_slice(b"hello.txt");
-    let mut extent = vec![0; 21];
-    extent[8..16].copy_from_slice(&(CONTENT.len() as u64).to_le_bytes());
-    extent.extend_from_slice(CONTENT);
-    bytes[0x22000..0x23000].copy_from_slice(&leaf(&[
+    leaf(&[
         (256, 1, 0, directory),
         (256, 96, 2, entry),
         (257, 1, 0, file),
-        (257, 108, 0, extent),
-    ]));
-    bytes
+        (257, 108, file_offset, extent),
+    ])
+}
+
+pub(crate) fn striped_members() -> [Vec<u8>; 2] {
+    use crate::core::evidence::partitions::btrfs::superblock_crc32c;
+
+    const STRIPE: usize = 64 * 1024;
+    const STRIPE_BASE: usize = 2 * STRIPE;
+    let mut logical = image();
+    let size = logical.len();
+    // The chunk tree lives on device 2. The root and file trees live on device 1.
+    logical.copy_within(0x21000..0x22000, 0x31000);
+    let mut extent = vec![0; 53];
+    extent[8..16].copy_from_slice(&8192u64.to_le_bytes()); // decoded bytes
+    extent[20] = 1;
+    extent[21..29].copy_from_slice(&0x4f000u64.to_le_bytes()); // crosses stripe boundary
+    extent[29..37].copy_from_slice(&8192u64.to_le_bytes()); // allocated bytes
+    extent[45..53].copy_from_slice(&8192u64.to_le_bytes());
+    logical[0x22000..0x23000].copy_from_slice(&file_tree(12288, 4096, extent));
+    logical[0x4f000..0x50000].fill(0x7a);
+    logical[0x50000..0x51000].fill(0x6b);
+
+    let mut members = [vec![0; size], vec![0; size]];
+    for (stripe, bytes) in logical.chunks_exact(STRIPE).enumerate() {
+        let physical = STRIPE_BASE + (stripe / 2) * STRIPE;
+        members[stripe % 2][physical..physical + STRIPE].copy_from_slice(bytes);
+    }
+    let sb = &mut logical[0x10000..0x11000];
+    sb[32..48].fill(0x50);
+    sb[72..80].copy_from_slice(&7u64.to_le_bytes());
+    sb[88..96].copy_from_slice(&0x31000u64.to_le_bytes());
+    sb[112..120].copy_from_slice(&((2 * size) as u64).to_le_bytes());
+    sb[136..144].copy_from_slice(&2u64.to_le_bytes());
+    sb[160..164].copy_from_slice(&129u32.to_le_bytes());
+    let chunk = 828;
+    sb[chunk + 24..chunk + 32].copy_from_slice(&10u64.to_le_bytes()); // SYSTEM + RAID0
+    sb[chunk + 44..chunk + 46].copy_from_slice(&2u16.to_le_bytes());
+    sb[chunk + 48..chunk + 80].fill(0);
+    sb[chunk + 48..chunk + 56].copy_from_slice(&1u64.to_le_bytes());
+    sb[chunk + 56..chunk + 64].copy_from_slice(&(STRIPE_BASE as u64).to_le_bytes());
+    sb[chunk + 64..chunk + 80].fill(0x70);
+    sb[chunk + 80..chunk + 88].copy_from_slice(&2u64.to_le_bytes());
+    sb[chunk + 88..chunk + 96].copy_from_slice(&(STRIPE_BASE as u64).to_le_bytes());
+    sb[chunk + 96..chunk + 112].fill(0x71);
+    for (index, member) in members.iter_mut().enumerate() {
+        let header = &mut member[0x10000..0x11000];
+        header.copy_from_slice(sb);
+        header[201..209].copy_from_slice(&((index + 1) as u64).to_le_bytes());
+        header[267..283].fill(0x70 + index as u8);
+        header[283..299].fill(0x50);
+        let crc = superblock_crc32c(&header[32..]);
+        header[..4].copy_from_slice(&crc.to_le_bytes());
+    }
+    members
 }
