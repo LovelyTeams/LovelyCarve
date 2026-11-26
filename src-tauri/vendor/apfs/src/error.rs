@@ -26,6 +26,15 @@ pub enum ApfsError {
     #[error("unsupported: {0}")]
     Unsupported(String),
 
+    #[error("encrypted APFS volume requires FileVault keybag unlock")]
+    Locked,
+
+    #[error("the credential did not unlock this APFS volume")]
+    InvalidCredential,
+
+    #[error("APFS volume unlock cancelled")]
+    Cancelled,
+
     #[error("no volume found in container")]
     NoVolume,
 

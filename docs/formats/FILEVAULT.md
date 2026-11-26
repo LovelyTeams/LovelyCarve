@@ -2,7 +2,7 @@
 
 对照日期 2026-10-13。接入 [filevault-forensic 857e04033e09c84324948b2cbfdd9e043b24d62b](https://github.com/SecurityRonin/filevault-forensic/tree/857e04033e09c84324948b2cbfdd9e043b24d62b)，包括 `filevault-core` 与实际调用的 `filevault-forensic::audit_info`。参照 [libfvde 878f3fc8cb30f1f5ac6255e5fdcec9d1af482224](https://github.com/libyal/libfvde/tree/878f3fc8cb30f1f5ac6255e5fdcec9d1af482224) 的 README、公开头文件、metadata / encrypted_metadata / encryption_context / logical_volume 实现与格式文档；**全部 88 个不同公开函数**见后面的表。C 库仅作为参照，运行时不依赖 libfvde DLL。
 
-本功能读取 CoreStorage / FileVault 2，通常得到 HFS+ 明文卷；**APFS 原生加密是不同格式，不能由此解锁**。
+本功能读取 CoreStorage / FileVault 2，通常得到 HFS+ 明文卷。APFS 软件加密使用 [APFS 卷解锁](APFS.md#原生软件加密)。
 
 ## 接入后的工作流
 
@@ -33,7 +33,7 @@
 
 CRC 是损坏校验，**不是对攻击者的密码学认证**。RFC3394 的 unwrap integrity 验证与恢复密钥的明文卷头校验另行执行。
 
-当前仅支持一个物理 CoreStorage 成员、512-byte 加密 sector、8192-byte metadata 对象。多物理成员、部分加密 / reencryption、未加密的 CoreStorage LV、机构恢复私钥自动 unwrap、APFS 原生加密尚未实现；不猜布局或使用零填充掩盖失败。元数据区域上限 256 MiB，plist / 外部上下文上限 16 MiB；复杂的 0505 多入口 base descriptor 明确拒绝。源 header / metadata 选择偏移由 inspect 返回，均相对于指定证据区域。
+当前仅支持一个物理 CoreStorage 成员、512-byte 加密 sector、8192-byte metadata 对象。多物理成员、部分加密 / reencryption、未加密的 CoreStorage LV 和机构恢复私钥自动 unwrap 尚未实现。元数据区域上限 256 MiB，plist / 外部上下文上限 16 MiB；复杂的 0505 多入口 base descriptor 明确拒绝。源 header / metadata 选择偏移由 inspect 返回，均相对于指定证据区域。
 
 ## 全部公开 API 对照
 

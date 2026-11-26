@@ -437,6 +437,9 @@ pub fn unlock_with_progress(
             veracrypt_volume::open(source, reader, &options, &cancellation, progress)?
         }
         EncryptionScheme::Filevault => open_filevault(reader, &options, &cancellation)?,
+        EncryptionScheme::Apfs => anyhow::bail!(Failure::unsupported(
+            "APFS unlock applies to a filesystem volume"
+        )),
     };
     if cancellation.is_cancelled() {
         bail!(Failure::cancelled("encrypted volume operation cancelled"));

@@ -8,6 +8,7 @@ import gzip
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import struct
 import tarfile
@@ -363,3 +364,56 @@ def test_encryption(cli, root):
         assert decrypted_bytes[0x10000:0x10000 + sector_size] == bytes(sector_size)
         assert decrypted_bytes[0x20000:0x30000] == bytes(0x10000)
     print("CLI encryption tests passed: LUKS, VeraCrypt and BitLocker through one unlock, as new evidence and in place; BitLocker password, clear key, startup key, VMK and FVEK")
+    if os.environ.get("LOVELYCARVE_APFS_ENCRYPTION_ORACLE"):
+        test_native_apfs(cli, root, Path(os.environ["LOVELYCARVE_APFS_ENCRYPTION_ORACLE"]))
+
+
+def test_native_apfs(cli, root, fixtures):
+    source = fixtures / "dfvfs-apfs-encrypted.img"
+    part = "/ev/part:0"
+    prefix = "apfs:part:0:0:"
+    file = node(ALIAS, path_id(prefix, "/a_directory/another_file"))
+    credential = secret(root, "apfs-password.txt", "apfs-TEST")
+    wrong = secret(root, "apfs-wrong.txt", "apfs-wrong")
+    plain = b"This is another file.\n"
+    file_output = root / "apfs-file.txt"
+    raw_output = root / "apfs-source.raw"
+    case = root / "native-apfs-case"
+    cli.run("case", "new", case, "--name", "Native APFS unlock")
+    result, answers = cli.batch([
+        add(source),
+        request("locked", "encryption", part),
+        request("locked_index", "tasks", "wait"),
+        request("bad", "unlock", part, "--password", wrong),
+        request("unlock", "unlock", part, "--logical-volume", "0", "--password", credential),
+        request("ready", "encryption", part),
+        request("ls", "ls", {"$ref": "unlock#/path"}),
+        request("read", "cat", file),
+        request("range", "cat", file, "--offset", "5", "--length", "11"),
+        request("file", "export", file, "-o", file_output),
+        request("wait", "tasks", "wait"),
+        request("indexes", "index", "ls"),
+        export_evidence("source", ALIAS, raw_output, "--strict", "--unlocked"),
+        request("close", "evidence", "close", ALIAS),
+        add(source, identifier="reopen"),
+        request("locked_again", "encryption", part),
+    ], "-C", case, expected=1)
+    rows = {row["id"]: row.get("result", row) for row in answers}
+    assert [key for key, row in rows.items() if "error" in row] == ["bad"], rows
+    assert rows["bad"]["error"]["code"] == "permissionDenied", rows["bad"]
+    unlocked = rows["unlock"]
+    assert unlocked["scheme"] == "apfs" and unlocked["path"] == node(ALIAS, prefix), unlocked
+    assert unlocked["image"]["id"] == opened(rows)["id"]
+    assert unlocked["image"]["unlockedPartitions"] == []
+    for state, expected_unlocked in (("locked", False), ("ready", True), ("locked_again", False)):
+        volume, = rows[state]["volumes"]
+        assert (volume["name"], volume["index"], volume["encrypted"], volume["unlocked"]) == ("SingleVolume", 0, True, expected_unlocked), rows[state]
+    assert "a_directory" in [item["name"] for item in rows["ls"]["items"]]
+    assert rows["read"] == {"encoding": "hex", "data": plain.hex()}, rows["read"]
+    assert rows["range"] == {"encoding": "hex", "data": plain[5:16].hex()}, rows["range"]
+    assert file_output.read_bytes() == plain
+    assert raw_output.read_bytes() == source.read_bytes()
+    assert any(item["address"] == part and item["state"] == "ready" for item in rows["indexes"]["items"]), rows["indexes"]
+    assert "apfs-TEST" not in result.stdout + result.stderr
+    cli.run("case", "rm", case, "-y")
+    print("CLI native APFS tests passed: key lifetime, file bytes, export, index and unchanged source")

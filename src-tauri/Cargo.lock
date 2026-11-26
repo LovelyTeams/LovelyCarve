@@ -171,11 +171,17 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 name = "apfs"
 version = "0.4.1"
 dependencies = [
+ "aes 0.8.4",
+ "aes-kw",
  "byteorder",
  "cmpfs",
+ "hmac 0.12.1",
+ "sha2 0.10.9",
  "thiserror 2.0.21",
  "unicode-casefold",
  "unicode-normalization",
+ "xts-mode",
+ "zeroize",
 ]
 
 [[package]]

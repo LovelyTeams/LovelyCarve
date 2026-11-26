@@ -118,6 +118,133 @@ fn independently_formatted_fusion_pair_opens() {
 }
 
 #[test]
+#[ignore = "requires four APFS software encryption fixtures"]
+fn native_software_encryption_matches_plaintext_oracles() {
+    use std::fs::File;
+
+    struct Source {
+        file: File,
+        base: u64,
+    }
+    impl Read for Source {
+        fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+            self.file.read(bytes)
+        }
+    }
+    impl Seek for Source {
+        fn seek(&mut self, position: SeekFrom) -> std::io::Result<u64> {
+            let position = match position {
+                SeekFrom::Start(offset) => SeekFrom::Start(self.base + offset),
+                other => other,
+            };
+            Ok(self.file.seek(position)? - self.base)
+        }
+    }
+
+    let folder = std::path::PathBuf::from(
+        std::env::var_os("LOVELYCARVE_APFS_ENCRYPTION_ORACLE")
+            .expect("APFS software encryption fixture directory"),
+    );
+    let pattern: Vec<u8> = (0..262144)
+        .map(|index| ((index * 131 + 17) % 253) as u8)
+        .collect();
+    for (image, base, index, password, path, expected) in [
+        (
+            "dfvfs-apfs-encrypted.img",
+            20480,
+            0,
+            "apfs-TEST",
+            "/a_directory/another_file",
+            b"This is another file.\n".as_slice(),
+        ),
+        (
+            "macos-apfs-native-filevault.img",
+            0,
+            0,
+            "apfs-FV-TEST-2026",
+            "/marker.txt",
+            b"APFS-FILEVAULT-GROUND-TRUTH-MARKER-0123456789\n".as_slice(),
+        ),
+        (
+            "qnxprobe/apfs-encrypted.img",
+            20480,
+            1,
+            "qnxprobe-apfs-test",
+            "/docs/pattern.bin",
+            &pattern,
+        ),
+        (
+            "qnxprobe/apfs-converted.img",
+            20480,
+            0,
+            "qnxprobe-apfs-convert",
+            "/docs/pattern.bin",
+            &pattern,
+        ),
+    ] {
+        let source = || Source {
+            file: File::open(folder.join(image)).unwrap(),
+            base,
+        };
+        let listed = ApfsVolume::list_volumes(source()).unwrap();
+        assert!(
+            listed
+                .iter()
+                .any(|volume| volume.index == index && volume.encrypted)
+        );
+        assert!(
+            matches!(
+                ApfsVolume::open_index(source(), index),
+                Err(ApfsError::Locked)
+            ),
+            "{image}"
+        );
+        assert!(
+            matches!(
+                ApfsVolume::unlock_sources(source(), None, index, b"wrong"),
+                Err(ApfsError::InvalidCredential)
+            ),
+            "{image}"
+        );
+        let mut volume = ApfsVolume::unlock_sources(source(), None, index, password.as_bytes())
+            .unwrap_or_else(|error| panic!("{image}: {error}"));
+        let key = volume.unlocked_key().unwrap();
+        assert!(!volume.list_directory("/").unwrap().is_empty(), "{image}");
+        assert!(volume.list_snapshots().unwrap().is_empty(), "{image}");
+        assert_eq!(volume.read_file(path).unwrap(), expected, "{image}");
+        let mut streamed = Vec::new();
+        volume.read_file_to(path, &mut streamed).unwrap();
+        assert_eq!(streamed, expected, "{image}");
+        let start = (expected.len() / 2).min(511);
+        let end = (start + 1053).min(expected.len());
+        assert_eq!(
+            volume
+                .read_file_range(path, start as u64, end - start)
+                .unwrap(),
+            &expected[start..end],
+            "{image}"
+        );
+        let mut count = 0;
+        assert!(
+            volume
+                .walk_catalog(&mut |_| {
+                    count += 1;
+                    true
+                })
+                .unwrap()
+        );
+        assert!(count > 0, "{image}");
+        let mut reopened = ApfsVolume::open_with_key(source(), None, index, &key).unwrap();
+        assert_eq!(reopened.read_file(path).unwrap(), expected, "{image}");
+        if index == 1 {
+            let mut plain = ApfsVolume::open_index(source(), 0).unwrap();
+            assert_eq!(plain.read_file(path).unwrap(), expected, "{image}");
+            assert!(ApfsVolume::open_with_key(source(), None, 0, &key).is_err());
+        }
+    }
+}
+
+#[test]
 fn checkpoint_transaction_and_volume_slots_are_preserved() {
     let info = ApfsVolume::container_info(Cursor::new(BASIC)).unwrap();
     assert_eq!(info.transaction_id, 10);
@@ -343,6 +470,7 @@ fn malformed_btree_offsets_and_counts_return_errors_without_panics() {
 #[test]
 fn unicode_lookup_policy_preserves_case_and_canonical_equivalence() {
     let context = catalog::CatalogContext {
+        cipher: None,
         omap: 0.into(),
         incompatible_features: 9,
     };

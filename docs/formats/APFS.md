@@ -2,7 +2,7 @@
 
 对照日期：2026-10-13。基准为 [libyal/libfsapfs `cc122619a0fa5cecf7c077742ac62251fb85fb6c`](https://github.com/libyal/libfsapfs/tree/cc122619a0fa5cecf7c077742ac62251fb85fb6c)，逐项检查 README、`include/libfsapfs.h.in` 的 **110 个公开函数**、对应实现、工具与测试；结构依据 [Apple File System Reference（2020-06-22）](https://developer.apple.com/support/downloads/Apple-File-System-Reference.pdf)。
 
-LovelyCarve 继续使用 MIT 的 vendored `apfs` 0.4.1 与共享 `cmpfs`，不加载 libfsapfs DLL，也没有复制 libfsapfs 的 C 实现。格式能力、Rust API 和桌面入口分别列出；API 对照不等于完整真实镜像 oracle 验证，更不代表 FileVault 已经可以解锁。
+LovelyCarve 使用 MIT 的 vendored `apfs` 0.4.1、共享 `cmpfs` 和纯 Rust 加密库。下表记录格式能力、Rust API 和桌面入口，样本覆盖范围见本文的验证部分。
 
 ## 格式与工具能力
 
@@ -13,7 +13,7 @@ LovelyCarve 继续使用 MIT 的 vendored `apfs` 0.4.1 与共享 `cmpfs`，不�
 | 容器身份、尺寸、features | 公开 API | `container_info`；UUID、XID、block size/count、三类 feature masks、原始非零卷槽位 |
 | 多卷 | 按卷枚举/选择 | `list_volumes` / `open_index`；保留空槽、卷 UUID、group UUID、role、XID、flags、allocated size |
 | 卷尺寸 | `volume_get_size` 实现仍为 TODO，返回失败 | 单独暴露 allocated size，不能误称每卷独立逻辑容量；APFS 各卷共享容器 |
-| 加密 | 密码、恢复密码、keybag 与 AES-XTS 路径 | **未实现解锁**；可枚举未加密 APSB 中的加密标志，打开时明确报错；加密 OMAP 不伪装为普通数据 |
+| 加密 | 密码、恢复密码、keybag 与 AES-XTS 路径 | `APFS_FS_ONEKEY` 软件加密卷可通过密码或兼容的个人恢复密钥记录解锁，在原检材下浏览、导出文件。逐卷保留锁定状态 |
 | 检查点 | 最新事务及对象映射 | NXSB 检查 Fletcher、块尺寸、完整源几何；候选必须同 UUID/几何/版本特性；B-tree descriptor area 不支持 |
 | OMAP 多版本与删除 | 按事务查找 | 取 `(OID, XID)` 的前驱，XID 不超过选中容器/卷事务；tombstone 不回退旧块；批量缓存和随机查找一致 |
 | B-tree | 物理/虚拟树 | 检查表、key/value 边界、节点类型/层级；层级递减限制递归与循环；OMAP 前驱限制 64 层 |
@@ -30,12 +30,23 @@ LovelyCarve 继续使用 MIT 的 vendored `apfs` 0.4.1 与共享 `cmpfs`，不�
 | decmpfs 1 | README 不支持 | 支持原样 xattr payload |
 | decmpfs 13/14、dataless | README 不支持 LZBitmap | 明确拒绝；dataless 不作为空文件导出 |
 | 原生快照 | README 标为不支持；源码可枚举元数据、打开 snapshot APSB，公开 snapshot API 只有名称/释放，未提供历史文件浏览 | `list_snapshots` 保留名称、XID、superblock block、create/change、flags 与 extent-reference 信息；桌面与 CLI 可按 XID 浏览、读取和导出历史 catalog。历史 APSB 身份、校验和与 OMAP 事务均独立校验 |
-| sealed / encryption rolling / incomplete restore | 未承诺完整支持 | 明确拒绝相应 incompatible bits；不以普通 catalog 解释 fext/sealed 树 |
+| sealed / encryption rolling / incomplete restore | 未承诺完整支持 | 明确拒绝 sealed、未完成还原及活动加密转换。允许已经完成的加密转换 |
 | 容器识别 | signature / fsapfsinfo | 独立 APFS 分区镜像、Fusion 成员、GPT/APM/MBR 细化和[签名恢复](README.md#缺失分区表)进入原生读者。Fusion 组装验证两个成员，单设备签名恢复另行核对候选起点的相对物理对象映射 |
 | 取证工具/挂载 | fsapfsinfo / fsapfsmount、Python/C API | 复用 LovelyCarve 浏览、目录索引、哈希、导出与 CLI；Dokan 缓存未命中可使用直接范围读；此次未做真实 Dokan 挂载验证 |
 | 取消、资源与生命周期 | abort、C error/free | Rust `Result` / Drop；宿主任务取消和快照 PartialOutput；库目录 visitor 可停止；压缩文件仍整文件解码到内存，取消不保证能打断单次解码 |
 
 ## 本次修正与新增
+
+### 原生软件加密
+
+在桌面端的「解锁加密卷」对话框选择 APFS 容器和卷槽。CLI 的 `encryption /<别名>/part:N` 列出卷槽、UUID、加密和解锁状态。用 `unlock /<别名>/part:N --logical-volume <index> --password @文件` 解锁，再用返回的 `path` 浏览。只有一个加密卷时可省略 `--logical-volume`。
+
+- 从已选检查点读取容器密钥袋，按卷 UUID 核对卷密钥和卷密钥袋。两级密钥袋验证对象类型、事务、长度和 Fletcher-64。密码派生使用 PBKDF2-HMAC-SHA256，单次解锁累积上限 20,000,000 轮，派生期间检查取消。KEK 和 VEK 用 RFC 3394 AES Key Wrap 解包。
+- 仅对 OMAP 标为加密的对象，以其所在容器地址作为 AES-XTS tweak 的起点，解密后验证 Fletcher-64 和对象身份。读取文件及流式属性时，按 extent 的 `crypto_id` 初始化 tweak，再按 512 字节扇区前进。完整读取、范围读取与流式导出共用这个寻址路径。
+- 密钥在当前检材会话中缓存，关闭检材或退出后需重新输入。文件读取和导出返回明文，文件来源 runs、源盘哈希以及整盘 RAW 导出保留密文对应的物理来源。其他卷保留各自的加密和解锁状态。
+- 每文件密钥、硬件绑定密钥、CoreStorage 兼容的 AES-128 密钥包装、机构恢复密钥及正在转换或轮换的卷会明确报错。历史加密快照和加密 Fusion 组合尚缺真实样本。
+
+密钥袋结构和标志依据 [Apple File System Reference](https://developer.apple.com/support/downloads/Apple-File-System-Reference.pdf) 与 [libfsapfs 的密钥袋说明](https://github.com/libyal/libfsapfs/blob/cc122619a0fa5cecf7c077742ac62251fb85fb6c/documentation/Apple%20File%20System%20%28APFS%29.asciidoc)。四份真实镜像覆盖较早 APFS、macOS 原生软件 FileVault、同容器明文和密文并存以及原地转换为加密。样本和校验命令见[夹具说明](../../src-tauri/vendor/apfs/tests/data/README.md#native-software-encryption-oracles)。
 
 ### Fusion 双设备
 
@@ -43,7 +54,7 @@ LovelyCarve 继续使用 MIT 的 vendored `apfs` 0.4.1 与共享 `cmpfs`，不�
 
 - 校验两个成员的 NXSB、Fusion UUID、角色、容器 UUID 和事务。检查点中的 spaceman 给出各成员的分配边界，截断的成员会报错。
 - 按地址标记选择设备，规划普通目录、文件、快照和数据流属性的读取。Fusion middle tree 标记为 dirty 的记录从主设备读取，普通记录从第二层读取。文件的物理 runs 记录组装检材内实际提供字节的成员范围。
-- 缺盘、重复成员、身份不符，以及需要重放的活动写回队列会明确报错。原生加密卷继续报告需要解锁。
+- 缺盘、重复成员、身份不符，以及需要重放的活动写回队列会明确报错。
 
 以 [apfsprogs `b9c4cb4`](https://github.com/linux-apfs/apfsprogs/tree/b9c4cb404f88ffab6c4f260bbab29a8fb4784907) 的 `mkapfs -F` 生成 128 MiB / 192 MiB 双盘，并以 `apfsck -F` 检查。用该样本验证成员配对、容器识别和卷目录。独立合成夹具覆盖第二层物理 OMAP、跨设备正文、主设备上的 dirty 副本、范围读取、导出及真实物理偏移。[夹具与复现命令](../../src-tauri/vendor/apfs/tests/data/README.md)
 
@@ -89,11 +100,11 @@ LovelyCarve 继续使用 MIT 的 vendored `apfs` 0.4.1 与共享 `cmpfs`，不�
 | `libfsapfs_container_close` | 不同接口 | Rust 所有权 / Drop / reader 借用生命周期，无显式 free |
 | `libfsapfs_container_get_size` | 等价 | `ContainerInfo.size`，checked geometry |
 | `libfsapfs_container_get_identifier` | 等价 | `ContainerInfo.uuid` 原始 16 bytes |
-| `libfsapfs_container_is_locked` | 部分 | 逐卷 `VolumeInfo.encrypted`；container keybag locked 状态未解析 |
+| `libfsapfs_container_is_locked` | 部分 | `apfs_inspect` 投影逐卷加密标志和会话解锁状态 |
 | `libfsapfs_container_get_number_of_volumes` | 等价 | `list_volumes().len()` / 原始非零槽 |
 | `libfsapfs_container_get_volume_by_index` | 等价 | `open_index` 使用原始槽位 index |
 | `libfsapfs_volume_free` | 不同接口 | Rust 所有权 / Drop / reader 借用生命周期，无显式 free |
-| `libfsapfs_volume_unlock` | 未实现 | 没有 FileVault/keybag 解锁链 |
+| `libfsapfs_volume_unlock` | 部分 | `unlock_sources` 支持 ONEKEY 软件加密，见对应限制 |
 | `libfsapfs_volume_get_features_flags` | 等价 | `VolumeInfo` 三类 feature masks |
 | `libfsapfs_volume_get_size` | 不同接口 | 上游 TODO 返回失败；本地 `allocated_size` 不能称逻辑容量 |
 | `libfsapfs_volume_get_identifier` | 等价 | `VolumeInfo.uuid` |
@@ -101,11 +112,11 @@ LovelyCarve 继续使用 MIT 的 vendored `apfs` 0.4.1 与共享 `cmpfs`，不�
 | `libfsapfs_volume_get_utf8_name` | 等价 | `VolumeInfo.name`，UTF-8 String；UTF-16 用标准 encode_utf16，无额外 buffer-size ABI |
 | `libfsapfs_volume_get_utf16_name_size` | 等价 | `VolumeInfo.name`，UTF-8 String；UTF-16 用标准 encode_utf16，无额外 buffer-size ABI |
 | `libfsapfs_volume_get_utf16_name` | 等价 | `VolumeInfo.name`，UTF-8 String；UTF-16 用标准 encode_utf16，无额外 buffer-size ABI |
-| `libfsapfs_volume_is_locked` | 部分 | `encrypted` 标志；加密卷打开明确拒绝 |
-| `libfsapfs_volume_set_utf8_password` | 未实现 | 密码/恢复密码编码入口依赖尚未实现的 FileVault 解锁 |
-| `libfsapfs_volume_set_utf16_password` | 未实现 | 密码/恢复密码编码入口依赖尚未实现的 FileVault 解锁 |
-| `libfsapfs_volume_set_utf8_recovery_password` | 未实现 | 密码/恢复密码编码入口依赖尚未实现的 FileVault 解锁 |
-| `libfsapfs_volume_set_utf16_recovery_password` | 未实现 | 密码/恢复密码编码入口依赖尚未实现的 FileVault 解锁 |
+| `libfsapfs_volume_is_locked` | 等价 | `apfs_inspect` 的 `encrypted` 和 `unlocked` 字段 |
+| `libfsapfs_volume_set_utf8_password` | 部分 | `unlock_sources` 接受 UTF-8 密码字节，凭据随解锁请求传入 |
+| `libfsapfs_volume_set_utf16_password` | 部分 | 调用者把 UTF-16 凭据转换为 UTF-8，再调用 `unlock_sources` |
+| `libfsapfs_volume_set_utf8_recovery_password` | 部分 | 兼容的个人恢复记录共用密码入口，尚无独立样本 |
+| `libfsapfs_volume_set_utf16_recovery_password` | 部分 | UTF-16 转换为 UTF-8，兼容的个人恢复记录共用密码入口 |
 | `libfsapfs_volume_get_root_directory` | 等价 | `list_directory("/")` / `stat_by_id(2)` |
 | `libfsapfs_volume_get_next_file_entry_identifier` | 等价 | `VolumeInfo.next_object_id`，不是文件数量 |
 | `libfsapfs_volume_get_file_entry_by_identifier` | 等价 | `stat_by_id` / `open_file_by_id` |
@@ -187,16 +198,14 @@ just test --lib
 just check-examples
 ```
 
-本次已运行：`fmt`、`check`、宿主及 APFS `clippy`、`check-examples`；APFS 37 通过 / 1 ignored，cmpfs 27 通过，HFS+ 29 通过，后端全量库测试 1023 通过 / 12 ignored。默认并行的宿主测试编译曾出现 rustc `STATUS_ACCESS_VIOLATION`；通过设置 `CARGO_BUILD_JOBS=1` 并运行 `just test --lib` 成功完成。没有运行桌面/CLI 二进制 smoke 或真实挂载。
-
 固定合成结构在 [vendor/apfs/tests/data](../../src-tauri/vendor/apfs/tests/data/README.md)，由独立 Python 字段构造器生成，包含两个目录键布局、非连续卷槽、加密卷标志、多版本 OMAP、克隆、空洞、压缩、symlink、embedded/data-stream xattr 与冻结 APSB / 历史 catalog。当前与历史版本的同名文件使用不同物理区段。它们没有完整 allocator/extent-reference 树，不是可由 macOS 挂载的完整磁盘，因此只能证明所覆盖结构和读取路径。
 
 库回归核对完整/流式/范围读、past-EOF 和大偏移、事务/删除与 cache 一致、8 KiB superblock、跨来源边界、损坏表/extent/xfield。宿主回归核对 MBR 分区的 APFS 类型 refinement、原检材 runs、dispatcher range、live / `.dirz` 压缩/symlink 元数据一致及取消清理。共享 `cmpfs` 的编码测试独立执行。
 
-真实样本可用已有 `LOVELYCARVE_APFS_SNAPSHOT_TEST` / `LOVELYCARVE_APFS_DECMPFS_TEST` 环境入口；未设置时跳过，不能算作真实镜像验证。上游旧 `test_omap_lookup` 因缺少 `../tests/appfs.raw` 默认 ignored。没有构建 libfsapfs 做真实镜像字节 oracle，本次不声称完整实现等价、密码解锁、真实历史快照浏览或跨平台挂载已验证。
+真实历史快照和压缩样本可通过 `LOVELYCARVE_APFS_SNAPSHOT_TEST` 与 `LOVELYCARVE_APFS_DECMPFS_TEST` 测试。对应变量未设置时跳过。上游旧 `test_omap_lookup` 需要 `../tests/appfs.raw`，默认跳过。
 
 ## 剩余差距
 
-FileVault 的 container/volume keybag、PBKDF、KEK/VEK 解包、AES-XTS、crypto-state 与解锁会话/IPC/UI 尚未实现；这是相对 libfsapfs 的主要功能差距。已提交的原生快照作为容器下的独立只读节点浏览，ID 格式为 `apfs:part:<分区>:<卷槽>@<XID>:<路径hex>`。案件当前卷索引继续覆盖当前卷。dataless / merge-in-progress 快照拒绝打开。独立 xattr UI、完整硬链接 sibling 信息、sealed/fext、checkpoint descriptor B-tree、损坏卷恢复以及大压缩文件的分块解码/取消也未完成。
+原生快照作为容器下的独立只读节点浏览，ID 格式为 `apfs:part:<分区>:<卷槽>@<XID>:<路径hex>`。案件当前卷索引继续覆盖当前卷。dataless / merge-in-progress 快照拒绝打开。独立 xattr UI、完整硬链接 sibling 信息、sealed/fext、checkpoint descriptor B-tree、损坏卷恢复以及大压缩文件的分块解码和取消仍待支持。
 
 这些条目不能通过加一个 capability 标志或接入未验证的 DLL 视为完成；后续需各自独立实现及外部样本核验。

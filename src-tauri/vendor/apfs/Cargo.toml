@@ -9,8 +9,17 @@ keywords = ["apfs", "apple", "macos", "filesystem"]
 categories = ["parsing", "filesystem"]
 
 [dependencies]
+aes = { version = "0.8", features = ["zeroize"] }
+aes-kw = "0.2"
 byteorder = "1.5"
 cmpfs = { version = "0.1.0", path = "../cmpfs" }
+hmac = "0.12"
+sha2 = "0.10"
 thiserror = "2"
 unicode-casefold = "=0.2.0"
 unicode-normalization = "=0.1.25"
+xts-mode = "0.5"
+zeroize = "1"
+
+[dev-dependencies]
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }

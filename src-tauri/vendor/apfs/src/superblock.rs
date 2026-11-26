@@ -44,6 +44,8 @@ pub struct NxSuperblock {
     pub max_file_systems: u32,
     pub fs_oids: Vec<u64>, // Volume superblock OIDs (virtual)
     pub fusion_uuid: [u8; 16],
+    pub keylocker_block: u64,
+    pub keylocker_count: u64,
     pub fusion_tree: u64,
     pub fusion_wbc_oid: u64,
 }
@@ -95,6 +97,9 @@ impl NxSuperblock {
         for _ in 0..fs_count {
             fs_oids.push(cursor.read_u64::<LittleEndian>()?);
         }
+        cursor.set_position(0x510);
+        let keylocker_block = cursor.read_u64::<LittleEndian>()?;
+        let keylocker_count = cursor.read_u64::<LittleEndian>()?;
         let (fusion_uuid, fusion_tree, fusion_wbc_oid) =
             if incompatible_features & NX_INCOMPAT_FUSION != 0 {
                 let uuid = block
@@ -137,6 +142,8 @@ impl NxSuperblock {
             max_file_systems,
             fs_oids,
             fusion_uuid,
+            keylocker_block,
+            keylocker_count,
             fusion_tree,
             fusion_wbc_oid,
         })
@@ -194,6 +201,7 @@ pub struct ApfsSuperblock {
     pub volume_name: String,
     pub role: u16,
     pub volume_group_id: [u8; 16],
+    pub encryption_state_oid: u64,
 }
 
 impl ApfsSuperblock {
@@ -282,6 +290,8 @@ impl ApfsSuperblock {
                 .get(1008..1024)
                 .ok_or_else(|| ApfsError::CorruptedData("short APSB volume group".into()))?,
         );
+        cursor.set_position(976);
+        let encryption_state_oid = cursor.read_u64::<LittleEndian>()?;
         Ok(ApfsSuperblock {
             header,
             magic,
@@ -316,6 +326,7 @@ impl ApfsSuperblock {
             volume_name,
             role,
             volume_group_id,
+            encryption_state_oid,
         })
     }
 }

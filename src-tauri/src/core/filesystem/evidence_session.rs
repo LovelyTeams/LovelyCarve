@@ -25,6 +25,7 @@ pub use export::{ImageExportMode, RawExportReader};
 #[derive(Debug)]
 pub struct EvidenceSession {
     decrypted_partitions: [OnceLock<AttachedEncryptedVolume>; 256],
+    apfs_keys: parking_lot::RwLock<HashMap<(u64, usize), apfs::ApfsVolumeKey>>,
     firmware_views: HashMap<u8, Arc<EvidenceSession>>,
     indexed_roots: Option<Vec<super::tree::fs_tree::FsNode>>,
     image: Arc<DiskImage>,
@@ -71,6 +72,7 @@ impl From<Arc<DiskImage>> for EvidenceSession {
         }
         Self {
             decrypted_partitions: std::array::from_fn(|_| OnceLock::new()),
+            apfs_keys: Default::default(),
             firmware_views,
             indexed_roots: None,
             image,
@@ -124,6 +126,33 @@ impl EvidenceSession {
 
     pub fn disk_image(&self) -> &Arc<DiskImage> {
         &self.image
+    }
+
+    pub(crate) fn apfs_key(
+        &self,
+        container_offset: u64,
+        volume: usize,
+    ) -> Option<apfs::ApfsVolumeKey> {
+        self.apfs_keys
+            .read()
+            .get(&(container_offset, volume))
+            .cloned()
+    }
+
+    pub(crate) fn attach_apfs_key(
+        &self,
+        container_offset: u64,
+        volume: usize,
+        key: apfs::ApfsVolumeKey,
+    ) {
+        self.apfs_keys
+            .write()
+            .entry((container_offset, volume))
+            .or_insert(key);
+    }
+
+    pub(crate) fn revoke_apfs_keys(&self) {
+        self.apfs_keys.write().clear();
     }
 
     pub(crate) fn install_external_volume(&self, volume: impl ExternalVolume + 'static) {

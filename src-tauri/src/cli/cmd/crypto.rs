@@ -39,6 +39,7 @@ pub enum Scheme {
     Luks,
     Veracrypt,
     Filevault,
+    Apfs,
     Ios,
 }
 
@@ -154,7 +155,7 @@ pub struct UnlockArgs {
     #[arg(long = "keyfile", value_parser = parse_host_path, value_name = "文件")]
     #[serde(default)]
     pub keyfiles: Vec<HostPath>,
-    /// FileVault：逻辑卷序号（encryption 输出的 index）
+    /// FileVault 或 APFS：逻辑卷序号（encryption 输出的 index）
     #[arg(long, value_name = "序号")]
     pub logical_volume: Option<usize>,
     /// FileVault：本地 EncryptedRoot.plist(.wipekey)
@@ -279,6 +280,22 @@ pub async fn encryption(exec: &Exec, args: EncryptionArgs) -> Result<Output, Cli
             json!({"scheme": "filevault", "unlocked": is_unlocked,
                 "inventory": serde_json::to_value(crate::cli::wire::Camel(inventory))?})
         }
+        (Some(number), _) if kind.as_deref() == Some("apfscontainer") => {
+            let inventory = crate::commands::evidence::encrypted_volume::apfs_inspect(
+                exec.state(),
+                target.image_id().clone(),
+                number,
+            )
+            .await
+            .map_err(operation("apfs_inspect"))?;
+            let encrypted = inventory.iter().filter(|volume| volume.encrypted).count();
+            let unlocked = encrypted != 0
+                && inventory
+                    .iter()
+                    .all(|volume| !volume.encrypted || volume.unlocked);
+            json!({"scheme": if encrypted == 0 { None } else { Some("apfs") }, "unlocked": unlocked,
+                "volumes": serde_json::to_value(crate::cli::wire::Camel(inventory))?})
+        }
         (Some(_), Some(scheme)) => json!({"scheme": scheme, "unlocked": is_unlocked}),
         (Some(_), None) => json!({"scheme": null, "partitionKind": kind}),
         (None, _) if !info["iosBackup"].is_null() => {
@@ -299,12 +316,13 @@ pub async fn unlock(exec: &Exec, args: UnlockArgs) -> Result<Output, CliError> {
         (None, Some("bitlocker")) => Scheme::Bitlocker,
         (None, Some("luks")) => Scheme::Luks,
         (None, Some("filevault")) => Scheme::Filevault,
+        (None, Some("apfscontainer")) => Scheme::Apfs,
         (None, _) if number.is_none() && !info["iosBackup"].is_null() => Scheme::Ios,
         (None, kind) => {
             return Err(CliError::new(
                 "usage",
                 format!(
-                "无法识别 {} 的加密类型{}；用 --scheme bitlocker|luks|veracrypt|filevault|ios 指定",
+                    "无法识别 {} 的加密类型{}；用 --scheme bitlocker|luks|veracrypt|filevault|apfs|ios 指定",
                 target.address(),
                 kind.map(|kind| format!("（分区类型 {kind}）"))
                     .unwrap_or_default()
@@ -318,6 +336,7 @@ pub async fn unlock(exec: &Exec, args: UnlockArgs) -> Result<Output, CliError> {
         Scheme::Luks => EncryptionScheme::Luks,
         Scheme::Veracrypt => EncryptionScheme::Veracrypt,
         Scheme::Filevault => EncryptionScheme::Filevault,
+        Scheme::Apfs => EncryptionScheme::Apfs,
     };
     if let Some(memory) = &args.vmk_from {
         return vmk_from_memory(exec, &target, number, scheme, memory, &args).await;
@@ -478,6 +497,34 @@ async fn volume(
     let header = args.header.map_or(VeracryptHeader::Auto, HeaderArg::header);
     let system_drive = header == VeracryptHeader::System && number.is_none();
     let in_place = !args.new_image && args.offset.is_none() && !system_drive;
+    let logical_volume_index = if scheme == EncryptionScheme::Apfs {
+        use crate::core::filesystem::volumes::apfs::{parse_apfs_id, ApfsSource};
+        match parse_apfs_id(target.node_id()) {
+            Some((
+                ApfsSource::Partition {
+                    volume_index,
+                    snapshot_xid: None,
+                    ..
+                },
+                path,
+            )) if path.is_empty() => {
+                if args
+                    .logical_volume
+                    .is_some_and(|index| index != volume_index)
+                {
+                    return Err(CliError::new(
+                        "usage",
+                        "--logical-volume 必须与路径中的 APFS 卷一致",
+                    ));
+                }
+                Some(volume_index)
+            }
+            Some(_) => return Err(CliError::new("usage", "请选择 APFS 容器或卷的根目录")),
+            None => args.logical_volume,
+        }
+    } else {
+        args.logical_volume
+    };
     let options = UnlockOptions {
         target: if in_place {
             UnlockTarget::SourcePartition
@@ -493,7 +540,7 @@ async fn volume(
         pim: args.pim,
         prf: args.prf.map(PrfArg::prf),
         keyfiles: args.keyfiles.iter().map(HostPath::text).collect(),
-        logical_volume_index: args.logical_volume,
+        logical_volume_index,
         encrypted_root_plist_path: args.plist.as_ref().map(HostPath::text),
     };
     let result = crate::commands::evidence::encrypted_volume::encrypted_volume_unlock(
@@ -509,6 +556,9 @@ async fn volume(
     let path = if image_id == *target.image_id() {
         // The decrypted volume, where the source evidence now shows it.
         match (&result.volume_key, number) {
+            (Some(volume), _) if scheme == EncryptionScheme::Apfs => {
+                format!("/{}/@{volume}", target.evidence.alias)
+            }
             (Some(volume), _) => format!("/{}/{volume}", target.evidence.alias),
             (None, Some(number)) => format!("/{}/part:{number}", target.evidence.alias),
             (None, None) => format!("/{}", target.evidence.alias),

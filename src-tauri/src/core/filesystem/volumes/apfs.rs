@@ -17,7 +17,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use apfs::{ApfsVolume as ContainerVolume, EntryKind, FusionTier, VolumeInfo};
 use chrono::{TimeZone, Utc};
 
@@ -25,6 +25,7 @@ use crate::core::common::error::Failure;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{DiskImage, Partition, PartitionKind};
 use crate::core::evidence::partitions::apfs::{open_members, PartitionCursor};
+use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree::{
     detect_mime_bytes, shannon_entropy, FsDataRun, FsNode, FsStat, Mactb, NodeKind,
 };
@@ -117,7 +118,7 @@ pub fn parse_apfs_id(id: &str) -> Option<(ApfsSource, String)> {
     }
 }
 
-pub fn open_apfs_source(image: &Arc<DiskImage>, source: ApfsSource) -> Result<ApfsVolume> {
+pub fn open_apfs_source(image: &Arc<EvidenceSession>, source: ApfsSource) -> Result<ApfsVolume> {
     match source {
         ApfsSource::Partition {
             part_id,
@@ -130,11 +131,12 @@ pub fn open_apfs_source(image: &Arc<DiskImage>, source: ApfsSource) -> Result<Ap
                 partition,
                 Some(volume_index),
                 snapshot_xid,
+                Some(image),
             )
         }
         ApfsSource::LegacyPartition(part_id) => {
             let partition = find_partition(image, &part_id.to_string())?;
-            ApfsVolume::open(Arc::clone(image), partition)
+            ApfsVolume::open_with(Arc::clone(image), partition, None, None, Some(image))
         }
     }
 }
@@ -148,36 +150,165 @@ pub fn apfs_volume_nodes(image: Arc<DiskImage>, partition: &Partition) -> Result
         .collect())
 }
 
-/// APFS snapshots are separate browse roots. The current-volume index is
-/// also usable without source bytes, so only live browsing adds these roots.
+#[derive(serde::Serialize)]
+pub struct ApfsEncryptionVolume {
+    pub index: usize,
+    pub name: String,
+    pub uuid: uuid::Uuid,
+    pub encrypted: bool,
+    pub unlocked: bool,
+}
+
+pub(crate) fn encryption_inventory(
+    image: &EvidenceSession,
+    partition_id: u8,
+) -> Result<Vec<ApfsEncryptionVolume>> {
+    let partition = find_partition(image, &partition_id.to_string())?;
+    anyhow::ensure!(
+        partition.kind == PartitionKind::ApfsContainer,
+        Failure::invalid_input("partition is not APFS")
+    );
+    let (main, tier2) = open_members(Arc::clone(image.disk_image()), partition)?;
+    let container_offset = main.base_offset;
+    Ok(ContainerVolume::list_source_volumes(main, tier2)
+        .map_err(apfs_error)?
+        .into_iter()
+        .map(|volume| ApfsEncryptionVolume {
+            index: volume.index,
+            name: volume.name,
+            uuid: uuid::Uuid::from_bytes(volume.uuid),
+            encrypted: volume.encrypted,
+            unlocked: image.apfs_key(container_offset, volume.index).is_some(),
+        })
+        .collect())
+}
+
+pub(crate) struct PreparedApfsUnlock {
+    pub partition_id: u8,
+    pub container_offset: u64,
+    pub source_offset: u64,
+    pub source_length: u64,
+    pub volume_index: usize,
+    pub uuid: uuid::Uuid,
+    pub key: apfs::ApfsVolumeKey,
+}
+
+pub(crate) fn prepare_unlock(
+    image: &EvidenceSession,
+    partition_id: u8,
+    volume_index: Option<usize>,
+    credential: &[u8],
+    cancellation: &tokio_util::sync::CancellationToken,
+) -> Result<PreparedApfsUnlock> {
+    let partition = find_partition(image, &partition_id.to_string())?;
+    anyhow::ensure!(
+        partition.kind == PartitionKind::ApfsContainer,
+        Failure::invalid_input("partition is not APFS")
+    );
+    let disk = image.disk_image();
+    let volume_index = match volume_index {
+        Some(index) => index,
+        None => {
+            let candidates = encryption_inventory(image, partition_id)?;
+            let mut encrypted = candidates.iter().filter(|volume| volume.encrypted);
+            let first = encrypted.next().context(Failure::not_found(
+                "APFS container has no encrypted volumes",
+            ))?;
+            anyhow::ensure!(
+                encrypted.next().is_none(),
+                Failure::invalid_input(
+                    "select an APFS volume index when the container has several encrypted volumes"
+                )
+            );
+            first.index
+        }
+    };
+    let selected = PartitionCursor::new(Arc::clone(disk), partition)?;
+    let (main, tier2) = open_members(Arc::clone(disk), partition)?;
+    let container_offset = main.base_offset;
+    let volume =
+        ContainerVolume::unlock_sources_cancellable(main, tier2, volume_index, credential, &|| {
+            cancellation.is_cancelled()
+        })
+        .map_err(apfs_error)?;
+    let key = volume
+        .unlocked_key()
+        .context(Failure::corrupt("APFS unlock returned no volume key"))?;
+    Ok(PreparedApfsUnlock {
+        partition_id,
+        container_offset,
+        source_offset: selected.base_offset,
+        source_length: selected.length_bytes,
+        volume_index,
+        uuid: uuid::Uuid::from_bytes(volume.volume_info().uuid),
+        key,
+    })
+}
+
+fn apfs_error(error: apfs::ApfsError) -> anyhow::Error {
+    use apfs::ApfsError;
+    match error {
+        ApfsError::Locked | ApfsError::InvalidCredential => {
+            Failure::permission_denied(error.to_string()).into()
+        }
+        ApfsError::Cancelled => Failure::cancelled(error.to_string()).into(),
+        ApfsError::Unsupported(_) => Failure::unsupported(error.to_string()).into(),
+        ApfsError::NoVolume | ApfsError::FileNotFound(_) => {
+            Failure::not_found(error.to_string()).into()
+        }
+        ApfsError::InvalidMagic(_)
+        | ApfsError::InvalidChecksum
+        | ApfsError::InvalidBTree(_)
+        | ApfsError::CorruptedData(_) => Failure::corrupt(error.to_string()).into(),
+        other => other.into(),
+    }
+}
+
+/// Read APFS container and volume roots live when source bytes are available.
+/// Container roots include historical snapshots, and an index built while a
+/// volume was locked may contain its root directory entry without its catalog.
 pub(crate) fn has_live_apfs_roots(image: &DiskImage, parent_id: &str) -> bool {
-    !image.is_index_only()
-        && parent_id
-            .strip_prefix("part:")
-            .and_then(|id| id.parse::<u8>().ok())
-            .is_some_and(|id| {
-                image.partitions.iter().any(|partition| {
-                    partition.id == id && partition.kind == PartitionKind::ApfsContainer
-                })
+    if image.is_index_only() {
+        return false;
+    }
+    if parent_id.ends_with(':') && parse_apfs_id(parent_id).is_some() {
+        return true;
+    }
+    parent_id
+        .strip_prefix("part:")
+        .and_then(|id| id.parse::<u8>().ok())
+        .is_some_and(|id| {
+            image.partitions.iter().any(|partition| {
+                partition.id == id && partition.kind == PartitionKind::ApfsContainer
             })
+        })
 }
 
 pub(crate) fn apfs_browse_nodes(
-    image: Arc<DiskImage>,
+    image: &Arc<EvidenceSession>,
     partition: &Partition,
 ) -> Result<Vec<FsNode>> {
     let parent_id = format!("part:{}", partition.id);
-    let infos = list_apfs_volumes(Arc::clone(&image), partition)?;
+    let (main, tier2) = open_members(Arc::clone(image), partition)?;
+    let container_offset = main.base_offset;
+    let infos = ContainerVolume::list_source_volumes(main, tier2).map_err(apfs_error)?;
     let mut nodes = Vec::new();
     for info in infos {
         let volume_index = info.index;
-        let can_read_snapshots = !info.encrypted && info.num_snapshots > 0;
+        let can_read_snapshots = info.num_snapshots > 0
+            && (!info.encrypted || image.apfs_key(container_offset, volume_index).is_some());
         nodes.push(apfs_volume_node(partition.id, &parent_id, info));
         if !can_read_snapshots {
             continue;
         }
-        let snapshots = ApfsVolume::open_index(Arc::clone(&image), partition, volume_index)
-            .and_then(|volume| volume.with_volume(|reader| Ok(reader.list_snapshots()?)));
+        let snapshots = ApfsVolume::open_with(
+            Arc::clone(image),
+            partition,
+            Some(volume_index),
+            None,
+            Some(image),
+        )
+        .and_then(|volume| volume.with_volume(|reader| Ok(reader.list_snapshots()?)));
         match snapshots {
             Ok(snapshots) => {
                 for snapshot in snapshots {
@@ -229,15 +360,7 @@ pub struct ApfsVolume {
 
 impl ApfsVolume {
     pub fn open(image: Arc<DiskImage>, partition: &Partition) -> Result<Self> {
-        Self::open_with(image, partition, None, None)
-    }
-
-    pub fn open_index(
-        image: Arc<DiskImage>,
-        partition: &Partition,
-        volume_index: usize,
-    ) -> Result<Self> {
-        Self::open_with(image, partition, Some(volume_index), None)
+        Self::open_with(image, partition, None, None, None)
     }
 
     fn open_with(
@@ -245,12 +368,36 @@ impl ApfsVolume {
         partition: &Partition,
         volume_index: Option<usize>,
         snapshot_xid: Option<u64>,
+        session: Option<&EvidenceSession>,
     ) -> Result<Self> {
-        let (cursor, tier2) = open_members(image, partition)?;
+        let (cursor, tier2) = open_members(Arc::clone(&image), partition)?;
         let base_offset = cursor.base_offset;
         let tier2_base = tier2.as_ref().map(|cursor| cursor.base_offset);
-        let volume = ContainerVolume::open_sources(cursor, tier2, volume_index)
-            .map_err(|err| anyhow!("APFS open partition {}: {err}", partition.id))?;
+        let key = session
+            .zip(volume_index)
+            .and_then(|(session, index)| session.apfs_key(base_offset, index));
+        let volume = if let (Some(index), Some(key)) = (volume_index, key) {
+            ContainerVolume::open_with_key(cursor, tier2, index, &key).map_err(apfs_error)
+        } else {
+            let volume = ContainerVolume::open_sources(cursor, tier2, volume_index);
+            if let (Err(apfs::ApfsError::Locked), None, Some(session)) =
+                (&volume, volume_index, session)
+            {
+                let index = list_apfs_volumes(Arc::clone(&image), partition)?
+                    .into_iter()
+                    .next()
+                    .context(Failure::not_found("APFS container has no volumes"))?
+                    .index;
+                let key = session
+                    .apfs_key(base_offset, index)
+                    .context(Failure::permission_denied("APFS volume is locked"))?;
+                let (cursor, tier2) = open_members(image, partition)?;
+                ContainerVolume::open_with_key(cursor, tier2, index, &key).map_err(apfs_error)
+            } else {
+                volume.map_err(apfs_error)
+            }
+        }
+        .with_context(|| format!("APFS open partition {}", partition.id))?;
         let volume = if let Some(xid) = snapshot_xid {
             volume.into_snapshot(xid).map_err(|error| match error {
                 apfs::ApfsError::FileNotFound(message) => anyhow!(Failure::not_found(message)),

@@ -11,6 +11,7 @@ pub enum EncryptionScheme {
     Luks,
     Veracrypt,
     Filevault,
+    Apfs,
 }
 
 impl EncryptionScheme {
@@ -21,6 +22,7 @@ impl EncryptionScheme {
             Self::Luks => "luks",
             Self::Veracrypt => "veracrypt",
             Self::Filevault => "filevault",
+            Self::Apfs => "apfs",
         }
     }
 
@@ -31,6 +33,7 @@ impl EncryptionScheme {
             Self::Luks => "LUKS",
             Self::Veracrypt => "VeraCrypt",
             Self::Filevault => "FileVault",
+            Self::Apfs => "APFS",
         }
     }
 }
@@ -73,7 +76,7 @@ impl UnlockCredential {
             Self::MasterKey { tweak_hex, .. } => match scheme {
                 EncryptionScheme::Bitlocker => true,
                 EncryptionScheme::Luks | EncryptionScheme::Filevault => tweak_hex.is_none(),
-                EncryptionScheme::Veracrypt => false,
+                EncryptionScheme::Veracrypt | EncryptionScheme::Apfs => false,
             },
             Self::RecoveryPassword { .. }
             | Self::StartupKey { .. }

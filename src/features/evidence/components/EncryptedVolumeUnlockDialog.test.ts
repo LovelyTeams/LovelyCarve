@@ -4,10 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import EncryptedVolumeUnlockDialog from './EncryptedVolumeUnlockDialog.vue';
 import type { DiskPartition, ImageInfo } from '../../../lib/ipc/image';
 
-const rpc = vi.hoisted(() => ({ start: vi.fn(), dismiss: vi.fn(), pick: vi.fn() }));
+const rpc = vi.hoisted(() => ({ start: vi.fn(), dismiss: vi.fn(), pick: vi.fn(), apfs: vi.fn() }));
 vi.mock('../composables/useEncryptedVolumeUnlocks', () => ({ startEncryptedVolumeUnlock: rpc.start }));
 vi.mock('../composables/useFileSession', () => ({ dismissUnlockReminder: rpc.dismiss }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: rpc.pick }));
+vi.mock('../../../lib/ipc/encrypted', async importOriginal => ({ ...await importOriginal<typeof import('../../../lib/ipc/encrypted')>(), apfsInspect: rpc.apfs }));
 
 function partition(id: number, kind: string, label: string | null, start_lba: number): DiskPartition {
   return { id, kind, label, start_lba, length_lba: 2048 } as DiskPartition;
@@ -99,6 +100,26 @@ afterEach(() => {
 });
 
 describe('encrypted volume unlock dialog', () => {
+  it('targets a locked APFS volume slot inside the selected partition', async () => {
+    rpc.apfs.mockResolvedValueOnce([
+      { index: 0, name: 'Plain', encrypted: false, unlocked: false },
+      { index: 2, name: 'First', encrypted: true, unlocked: false },
+      { index: 3, name: 'Already open', encrypted: true, unlocked: true },
+      { index: 5, name: 'Second', encrypted: true, unlocked: false },
+    ]);
+    const evidence = image([partition(4, 'apfscontainer', 'APFS', 2048)]);
+    await reopen({ info: evidence, partition: 4 });
+    expect(rpc.apfs).toHaveBeenCalledWith({ imageId: 'source', partitionId: 4 });
+    expect(await options(1)).toEqual(['First', 'Second']);
+    await choose(1, 'Second');
+    await value('input[type=password]', 'fixture secret');
+    await submit();
+    expect(rpc.start).toHaveBeenCalledWith(evidence, {
+      scheme: 'apfs', partitionId: 4, logicalVolumeIndex: 5,
+      credential: { kind: 'password', password: 'fixture secret' },
+    });
+  });
+
   it('normalizes a LUKS master key, submits only that credential, and clears it on close', async () => {
     expect(rpc.dismiss).toHaveBeenCalledWith('source');
     await choose(1, '整个镜像 / 容器');

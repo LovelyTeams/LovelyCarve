@@ -163,6 +163,7 @@ fn application_builder() -> tauri::Builder<tauri::Wry> {
             commands::evidence::encrypted_volume::bitlocker_scan_memory,
             commands::evidence::encrypted_volume::encrypted_volume_unlock,
             commands::evidence::encrypted_volume::filevault_inspect,
+            commands::evidence::encrypted_volume::apfs_inspect,
             commands::evidence::ios_backup::ios_backup_unlock,
             commands::evidence::ios_backup::ios_backup_audit,
             commands::evidence::shadow_copy::shadow_copy_list,

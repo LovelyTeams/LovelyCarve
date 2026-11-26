@@ -49,3 +49,23 @@ containing the two member images.
 ```text
 just test-apfs independently_formatted_fusion_pair_opens -- --ignored
 ```
+
+## Native software encryption oracles
+
+Set `LOVELYCARVE_APFS_ENCRYPTION_ORACLE` to a directory with these uncompressed
+images. The external fixtures are used only when running the ignored test.
+
+| Path | Raw SHA-256 | Origin |
+| --- | --- | --- |
+| `dfvfs-apfs-encrypted.img` | `33fe6f183aeb1a95fec68efdab17d59aedbad3d8ef1a117d411117376d9d8485` | [dfvfs encrypted APFS test image](https://raw.githubusercontent.com/log2timeline/dfvfs/db39a1508c75f1df888f242150d88b98c3b6ad3c/test_data/apfs_encrypted.dmg), raw GPT despite the extension |
+| `macos-apfs-native-filevault.img` | `1a46eb22cdab37ae553c5c70b7b172419c9cda7285de7f5b4fd3129c73e29171` | [apfs-forensic native FileVault fixture](https://raw.githubusercontent.com/SecurityRonin/apfs-forensic/3b55bc3938beedf712842ca021c16ef8ca01fe95/tests/data/filevault/apfs-native-filevault.raw.gz), decompress gzip |
+| `qnxprobe/apfs-encrypted.img` | `c5ffc45bc88c7e03d13d398792e0f9f7ca523035ce0d9c243f640e766ad21e23` | [qnxprobe fixture corpus](https://github.com/abrignoni/qnxprobe/tree/8ec9f8a26601fdb5a2d0cda892a49c0958ce03f2), decompress `apfs-encrypted.sparseimage.gz` and expand as a sector stream with the project's image reader |
+| `qnxprobe/apfs-converted.img` | `fc7fb4f33d402ac3dbe4440d71d41ab1bb22164773fd9647040b9c4394b06b4c` | The same qnxprobe corpus and procedure for `apfs-converted.sparseimage.gz` |
+
+```text
+just test-apfs native_software_encryption_matches_plaintext_oracles -- --ignored
+```
+
+Checks locked volume enumeration, wrong passwords, catalog walks, full and
+streamed file bytes, an unaligned range crossing sectors, verified key reuse,
+and coexistence with an independently readable plaintext volume.

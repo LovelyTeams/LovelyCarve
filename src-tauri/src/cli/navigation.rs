@@ -94,7 +94,7 @@ pub(super) async fn case_insensitive(
         if session.is_index_only() {
             return Ok(false);
         }
-        let image = Arc::clone(session.disk_image());
+        let image = Arc::clone(session);
         return tokio::task::spawn_blocking(move || {
             open_apfs_source(&image, source)?.names_case_insensitive()
         })

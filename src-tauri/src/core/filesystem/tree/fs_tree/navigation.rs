@@ -297,7 +297,7 @@ pub(super) fn children_for_image_with_options(
                 partition,
             )?
             .root_children(),
-            PartitionKind::ApfsContainer => apfs_browse_nodes(Arc::clone(image), partition),
+            PartitionKind::ApfsContainer => apfs_browse_nodes(image, partition),
             PartitionKind::HfsPlus | PartitionKind::HfsX => {
                 HfsPlusVolume::open(Arc::clone(image), partition)?.root_children()
             }

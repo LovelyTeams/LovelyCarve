@@ -5,6 +5,8 @@
 //! `snapshot-build-progress` events report its independent completion.
 
 use crate::core::common::ids::ImageId;
+use crate::core::filesystem::evidence_session::EvidenceSession;
+use crate::core::filesystem::volumes::apfs::{self, ApfsEncryptionVolume};
 use crate::host::{AppHandle, State};
 use std::path::PathBuf;
 use std::sync::{
@@ -18,15 +20,30 @@ use crate::core::evidence::crypto::bde_vmk::{
     self, BitlockerScanProgress, VmkCandidate, VmkScanCandidate, VmkScanResult,
 };
 use crate::core::evidence::crypto::encrypted_image::{
-    self, UnlockOptions, UnlockResult, UnlockTarget,
+    self, EncryptionScheme, UnlockCredential, UnlockOptions, UnlockResult, UnlockTarget,
 };
 use crate::core::evidence::image::PartitionKind;
 use crate::state::AppState;
-use crate::task_manager::{TaskKind, TaskLabel, TaskProgressUnit};
+use crate::task_manager::{TaskKind, TaskLabel, TaskProgressUnit, TaskRegistration};
 use {
     crate::app::access::loaded_image_app_error, crate::app::access::reject_if_folder,
     crate::app::error::AppError,
 };
+
+/// List the APFS container's volume slots and their current session unlock state.
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn apfs_inspect(
+    state: State<'_, AppState>,
+    image_id: ImageId,
+    partition_id: u8,
+) -> Result<Vec<ApfsEncryptionVolume>, AppError> {
+    let source = loaded_image_app_error(&state, &image_id).await?;
+    reject_if_folder(&source)?;
+    tokio::task::spawn_blocking(move || apfs::encryption_inventory(&source, partition_id))
+        .await
+        .map_err(|error| AppError::task_panicked("APFS encryption inspection", error))?
+        .map_err(AppError::from)
+}
 
 /// Inspect locked CoreStorage metadata and run the upstream forensic auditor.
 #[cfg_attr(feature = "desktop", tauri::command)]
@@ -279,6 +296,9 @@ pub async fn encrypted_volume_unlock(
         }
     });
     let unlocked = async {
+        if options.scheme == EncryptionScheme::Apfs {
+            return unlock_apfs(&app, &state, source, options, &task).await;
+        }
         let permit = state.tasks.acquire_resources(&task).await?;
         let token = task.token();
         let source_for_unlock = Arc::clone(&source);
@@ -377,4 +397,96 @@ pub async fn encrypted_volume_unlock(
     }
     task.finish_with(&unlocked);
     unlocked
+}
+
+async fn unlock_apfs(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    source: Arc<EvidenceSession>,
+    options: UnlockOptions,
+    task: &TaskRegistration,
+) -> Result<UnlockResult, AppError> {
+    if options.target != UnlockTarget::SourcePartition
+        || options.offset.is_some()
+        || options.length.is_some()
+        || options.encrypted_root_plist_path.is_some()
+        || options.header != encrypted_image::VeracryptHeader::Auto
+        || options.pim != 0
+        || options.prf.is_some()
+        || !options.keyfiles.is_empty()
+    {
+        return Err(AppError::invalid_input(
+            "APFS requires a source partition and volume slot",
+        ));
+    }
+    let partition_id = options
+        .partition_id
+        .ok_or_else(|| AppError::invalid_input("请选择 APFS 容器分区"))?;
+    if !matches!(options.credential, UnlockCredential::Password { .. }) {
+        return Err(AppError::invalid_input(
+            "APFS requires a password or personal recovery key",
+        ));
+    }
+    let permit = state.tasks.acquire_resources(task).await?;
+    let token = task.token();
+    let source_for_unlock = Arc::clone(&source);
+    let token_for_unlock = token.clone();
+    let prepared = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        let UnlockCredential::Password { password } = &options.credential else {
+            unreachable!()
+        };
+        apfs::prepare_unlock(
+            &source_for_unlock,
+            partition_id,
+            options.logical_volume_index,
+            password.as_bytes(),
+            &token_for_unlock,
+        )
+    })
+    .await
+    .map_err(|error| AppError::task_panicked("APFS unlock", error))?
+    .map_err(AppError::from)?;
+    let images = state.images.lock().await;
+    if token.is_cancelled() {
+        return Err(AppError::cancelled("APFS volume unlock cancelled"));
+    }
+    if !images
+        .get(&source.id)
+        .is_some_and(|current| Arc::ptr_eq(current, &source))
+    {
+        return Err(AppError::source_changed(
+            "APFS evidence was unloaded during unlock",
+        ));
+    }
+    source.attach_apfs_key(
+        prepared.container_offset,
+        prepared.volume_index,
+        prepared.key,
+    );
+    drop(images);
+    state.flat_walk_cache.lock().purge_image(&source.id);
+    let partition_key = format!("part:{}", prepared.partition_id);
+    crate::app::workflows::snapshot::case_snapshot::snapshot_unlocked_volume(
+        app,
+        state,
+        Arc::clone(&source),
+        partition_key.into(),
+    )
+    .await;
+    Ok(UnlockResult {
+        read_cancellation: token,
+        image: source.info(),
+        scheme: EncryptionScheme::Apfs,
+        cipher: "AES-128-XTS".into(),
+        encryption_sector_size: 512,
+        source_offset: prepared.source_offset,
+        source_length: prepared.source_length,
+        hidden: false,
+        volume_key: Some(apfs::apfs_node_id(partition_id, prepared.volume_index, "")),
+        logical_volume_identifier: Some(prepared.uuid.to_string()),
+        logical_volume_index: Some(prepared.volume_index),
+        recovery_password: None,
+        veracrypt: None,
+    })
 }

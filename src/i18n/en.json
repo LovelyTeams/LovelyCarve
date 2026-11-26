@@ -536,6 +536,7 @@
   "外部加密上下文（可选）": "External encryption context (optional)",
   "EncryptedRoot.plist.wipekey 或 XML 的本地路径": "Local path to EncryptedRoot.plist.wipekey or XML",
   "正在读取卷信息…": "Reading volume information…",
+  "没有锁定的 APFS 卷": "No locked APFS volumes",
   "读取卷信息": "Read volume information",
   "逻辑卷": "Logical volume",
   "解锁凭据": "Unlock credentials",

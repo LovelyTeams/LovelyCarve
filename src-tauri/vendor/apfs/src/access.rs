@@ -77,7 +77,8 @@ impl<R: Read + Seek> ApfsVolume<R> {
         let inode = catalog::lookup_inode(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             oid,
         )?;
@@ -89,7 +90,8 @@ impl<R: Read + Seek> ApfsVolume<R> {
         let inode = catalog::lookup_inode(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             oid,
         )?;
@@ -162,7 +164,8 @@ impl<R: Read + Seek> ApfsVolume<R> {
         let records = catalog::lookup_extents(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             inode.private_id,
         )?;
@@ -171,6 +174,7 @@ impl<R: Read + Seek> ApfsVolume<R> {
             self.block_size,
             records,
             inode.size(),
+            self.key.as_ref().map(crate::ApfsVolumeKey::cipher),
         )?))
     }
 
@@ -188,7 +192,8 @@ impl<R: Read + Seek> ApfsVolume<R> {
         let (oid, inode) = catalog::resolve_path(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             path,
         )?;
@@ -198,7 +203,8 @@ impl<R: Read + Seek> ApfsVolume<R> {
         let records = catalog::lookup_extents(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             inode.private_id,
         )?;
@@ -208,6 +214,7 @@ impl<R: Read + Seek> ApfsVolume<R> {
             self.block_size,
             records.clone(),
             inode.size(),
+            self.key.as_ref().map(crate::ApfsVolumeKey::cipher),
         )?;
         Ok(Some(records))
     }
@@ -226,14 +233,16 @@ impl<R: Read + Seek> ApfsVolume<R> {
         let (oid, _) = catalog::resolve_path(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             path,
         )?;
         let value = catalog::lookup_xattr_value(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             oid,
             name,
@@ -245,7 +254,8 @@ impl<R: Read + Seek> ApfsVolume<R> {
                 let records = catalog::lookup_extents(
                     &mut self.reader,
                     self.catalog_root_block,
-                    self.vol_omap_root_block,
+                    self.vol_omap_root_block
+                        .with_cipher(self.key.as_ref().map(|key| key.cipher())),
                     self.block_size,
                     obj_id,
                 )?;
@@ -254,6 +264,7 @@ impl<R: Read + Seek> ApfsVolume<R> {
                     self.block_size,
                     records,
                     size,
+                    self.key.as_ref().map(crate::ApfsVolumeKey::cipher),
                 )?)))
             }
         }
@@ -264,14 +275,16 @@ impl<R: Read + Seek> ApfsVolume<R> {
         let (oid, _) = catalog::resolve_path(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             path,
         )?;
         let value = catalog::lookup_xattr_value(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             oid,
             name,
@@ -283,7 +296,8 @@ impl<R: Read + Seek> ApfsVolume<R> {
                 let records = catalog::lookup_extents(
                     &mut self.reader,
                     self.catalog_root_block,
-                    self.vol_omap_root_block,
+                    self.vol_omap_root_block
+                        .with_cipher(self.key.as_ref().map(|key| key.cipher())),
                     self.block_size,
                     obj_id,
                 )?;
@@ -292,6 +306,7 @@ impl<R: Read + Seek> ApfsVolume<R> {
                     self.block_size,
                     records.clone(),
                     size,
+                    self.key.as_ref().map(crate::ApfsVolumeKey::cipher),
                 )?;
                 (Some(obj_id), size, records)
             }
