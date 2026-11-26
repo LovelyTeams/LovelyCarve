@@ -7,8 +7,10 @@ use std::fmt;
 use nom::{number::complete as number, IResult};
 
 use enum_repr_derive::TryFrom;
+use sha2::{Digest, Sha256};
 
 use crate::fletcher::{Fletcher2, Fletcher4};
+use crate::{ZfsError, ZfsErrorKind};
 
 pub use crate::label::Label;
 
@@ -85,7 +87,7 @@ impl Uberblock {
 }
 
 /// Data Virtual Address, a raw pointer of sorts to a location on disk
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct DVA {
     /// The id of the vdev the pointed at blocks reside on
     pub vdev: u32,
@@ -235,7 +237,7 @@ impl ChecksumType {
 /// The data may be compressed using the algorithm specified in `compression_type`
 ///
 /// The data may also be stored inline in the block pointer itself
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BlockPtr {
     /// Either the inline data or the pointer data
     pub embedded: BlockPtrKind,
@@ -264,7 +266,7 @@ pub struct BlockPtr {
 }
 
 /// Fields of the block pointer present when data is not stored inline
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BlockPtrPtr {
     /// Pointers to the data on disk. Each `DVA` points to the same data, stored in a different
     /// location, for redundancy. If only one or two `DVA`s are used the others will be zeroed
@@ -278,8 +280,30 @@ pub struct BlockPtrPtr {
     pub checksum: Checksum,
 }
 
+impl BlockPtrPtr {
+    pub(crate) fn verify_data(&self, bytes: &[u8]) -> Result<(), ZfsError> {
+        let matches = match self.checksum_type {
+            ChecksumType::ZILog | ChecksumType::Fletcher2 => {
+                self.checksum == Fletcher2::parse(bytes)?.1.into()
+            }
+            ChecksumType::On | ChecksumType::Fletcher4 => {
+                self.checksum == Fletcher4::parse(bytes)?.1.into()
+            }
+            ChecksumType::SHA256 => Sha256::digest(bytes)
+                .chunks_exact(8)
+                .zip(self.checksum.checksum)
+                .all(|(bytes, expected)| u64::from_be_bytes(bytes.try_into().unwrap()) == expected),
+            ChecksumType::Off => true,
+            _ => return Err(ZfsErrorKind::UnsupportedFeature.into()),
+        };
+        matches
+            .then_some(())
+            .ok_or_else(|| ZfsErrorKind::Checksum.into())
+    }
+}
+
 /// Whether this `BlockPtr` has data stored inline or not
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BlockPtrKind {
     Ptr(BlockPtrPtr),
     Data { embedded_type: u8, data: Vec<u8> },

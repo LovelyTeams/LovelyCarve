@@ -33,6 +33,7 @@ pub mod source;
 pub mod xfs_probe;
 
 mod bcachefs_devices;
+mod zfs_devices;
 mod btrfs_devices;
 mod manual;
 pub use manual::manual_assemble;

@@ -22,8 +22,8 @@ impl ZfsVolume {
         if file_path.is_empty() {
             bail!("cannot read ZFS filesystem root as a file");
         }
-        let drive = self.open_drive()?;
-        let mos = drive
+        let mos = self
+            .drive
             .get_most_recent_mos()
             .map_err(|err| anyhow!("ZFS get_most_recent_mos: {err}"))?;
         let dsl_dir = walk_dsl_dir(&mos, dataset_path)?;
@@ -76,8 +76,8 @@ impl ZfsVolume {
         if file_path.is_empty() {
             bail!("cannot stream ZFS filesystem root as a file");
         }
-        let drive = self.open_drive()?;
-        let mos = drive
+        let mos = self
+            .drive
             .get_most_recent_mos()
             .map_err(|err| anyhow!("ZFS get_most_recent_mos: {err}"))?;
         let dsl_dir = walk_dsl_dir(&mos, dataset_path)?;
@@ -126,8 +126,8 @@ impl ZfsVolume {
         if file_path.is_empty() {
             bail!("cannot stat ZFS filesystem root as a file");
         }
-        let drive = self.open_drive()?;
-        let mos = drive
+        let mos = self
+            .drive
             .get_most_recent_mos()
             .map_err(|err| anyhow!("ZFS get_most_recent_mos: {err}"))?;
         let dsl_dir = walk_dsl_dir(&mos, dataset_path)?;

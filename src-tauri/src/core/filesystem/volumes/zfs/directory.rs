@@ -10,8 +10,8 @@ impl ZfsVolume {
     /// doesn't blank the whole DSL listing.
     pub fn dsl_children(&self, dataset_path: &str) -> Result<Vec<FsNode>> {
         let parent_id = self.dsl_id(dataset_path);
-        let drive = self.open_drive()?;
-        let mos = drive
+        let mos = self
+            .drive
             .get_most_recent_mos()
             .map_err(|err| anyhow!("ZFS get_most_recent_mos: {err}"))?;
         let dsl_dir = walk_dsl_dir(&mos, dataset_path)
@@ -59,8 +59,8 @@ impl ZfsVolume {
     /// dataset at `dataset_path`. `file_path` of `""` denotes the ZPL root.
     pub fn zpl_children(&self, dataset_path: &str, file_path: &str) -> Result<Vec<FsNode>> {
         let parent_id = self.zpl_id(dataset_path, file_path);
-        let drive = self.open_drive()?;
-        let mos = drive
+        let mos = self
+            .drive
             .get_most_recent_mos()
             .map_err(|err| anyhow!("ZFS get_most_recent_mos: {err}"))?;
         let dsl_dir = walk_dsl_dir(&mos, dataset_path)
@@ -118,7 +118,7 @@ impl ZfsVolume {
     /// were already collected.
     pub(super) fn try_zpl_root_entries(
         &self,
-        mos: &ZfsMetaObjectSet<'_, PartitionDrive>,
+        mos: &ZfsMetaObjectSet<'_, PoolDrive>,
         dataset_path: &str,
         parent_id: &str,
     ) -> Option<Vec<FsNode>> {
@@ -195,9 +195,9 @@ impl ZfsVolume {
 /// the leaf `ZfsDslDir` — borrows from `mos`, so the caller must keep both
 /// the drive and MOS alive.
 pub(super) fn walk_dsl_dir<'drive, 'mos>(
-    mos: &'mos ZfsMetaObjectSet<'drive, PartitionDrive>,
+    mos: &'mos ZfsMetaObjectSet<'drive, PoolDrive>,
     dataset_path: &str,
-) -> Result<ZfsDslDir<'drive, 'mos, PartitionDrive>> {
+) -> Result<ZfsDslDir<'drive, 'mos, PoolDrive>> {
     let mut current = mos
         .get_root_dir()
         .map_err(|err| anyhow!("ZFS get_root_dir: {err}"))?;
@@ -220,9 +220,9 @@ pub(super) fn walk_dsl_dir<'drive, 'mos>(
 /// Walk a `/`-rooted UTF-8 path inside a ZPL filesystem. Empty `file_path`
 /// returns the filesystem root. The returned dir borrows from `zpl`.
 pub(super) fn walk_zpl_dir<'drive, 'fs>(
-    zpl: &'fs ZfsZPLObjectSet<'drive, PartitionDrive>,
+    zpl: &'fs ZfsZPLObjectSet<'drive, PoolDrive>,
     file_path: &str,
-) -> Result<ZfsZPLDir<'drive, 'fs, PartitionDrive>> {
+) -> Result<ZfsZPLDir<'drive, 'fs, PoolDrive>> {
     let mut current = zpl
         .get_root()
         .map_err(|err| anyhow!("ZFS zpl get_root: {err}"))?;

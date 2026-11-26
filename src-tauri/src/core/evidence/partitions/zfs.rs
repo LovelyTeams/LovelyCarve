@@ -1,10 +1,73 @@
 //! Probe ZFS leaf labels at both ends of a bounded volume.
 
+use crate::core::evidence::image::DiskImage;
 use crate::core::evidence::partitions::{DetectCtx, PartParser, Partition, PartitionKind};
+use anyhow::{ensure, Context};
+use std::{io, sync::Arc};
 use zfs_rs::label::{
-    has_label_checksum_magic, has_verified_label, label_offsets, CONFIG_CHECKSUM_OFFSET,
+    has_label_checksum_magic, has_verified_label, label_offsets, Label, CONFIG_CHECKSUM_OFFSET,
     LABEL_SIZE, UBERBLOCK_OFFSET,
 };
+use zfs_rs::{read_device_label, RawDevice};
+
+pub(crate) struct PartitionSource {
+    image: Arc<DiskImage>,
+    pub(crate) base: u64,
+    pub(crate) length: u64,
+}
+
+impl PartitionSource {
+    pub(crate) fn new(image: &Arc<DiskImage>, partition: &Partition) -> anyhow::Result<Self> {
+        let sector = image.sector_size as u64;
+        let base = partition
+            .start_lba
+            .checked_mul(sector)
+            .context("ZFS member offset overflow")?;
+        let length = partition
+            .length_lba
+            .checked_mul(sector)
+            .context("ZFS member length overflow")?;
+        ensure!(
+            length != 0
+                && base
+                    .checked_add(length)
+                    .is_some_and(|end| end <= image.len()),
+            "ZFS member exceeds its source"
+        );
+        Ok(Self {
+            image: Arc::clone(image),
+            base,
+            length,
+        })
+    }
+
+    pub(crate) fn label(&self) -> anyhow::Result<Label> {
+        Ok(read_device_label(self)?)
+    }
+}
+
+impl RawDevice for PartitionSource {
+    type Block = Vec<u8>;
+
+    fn size_bytes(&self) -> Option<u64> {
+        Some(self.length)
+    }
+
+    fn read_raw(&self, offset: u64, size: u64) -> io::Result<Self::Block> {
+        if offset.checked_add(size).is_none_or(|end| end > self.length) {
+            return Err(io::ErrorKind::UnexpectedEof.into());
+        }
+        let size = usize::try_from(size).map_err(|_| io::ErrorKind::InvalidInput)?;
+        let bytes = self
+            .image
+            .read_range(self.base + offset, size)
+            .map_err(io::Error::other)?;
+        if bytes.len() != size {
+            return Err(io::ErrorKind::UnexpectedEof.into());
+        }
+        Ok(bytes)
+    }
+}
 
 pub(super) fn probe_zfs(ctx: &DetectCtx<'_>) -> anyhow::Result<Option<u64>> {
     for offset in label_offsets(ctx.size).into_iter().flatten() {

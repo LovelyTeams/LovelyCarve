@@ -25,11 +25,12 @@ use std::path::Path;
 use thiserror::Error;
 
 use nom::number::complete as number;
-use sha2::{Digest, Sha256};
 
+pub mod config;
 pub mod dmu;
 pub mod dsl;
 pub mod label;
+pub mod pool;
 pub mod spa;
 pub mod zap;
 pub mod zil;
@@ -39,11 +40,10 @@ pub mod compression;
 pub mod fletcher;
 
 use crate::compression::decompress_lz4;
-use crate::fletcher::{Fletcher2, Fletcher4};
 
 use crate::dmu::{DNodePhys, ObjsetPhys};
 use crate::dsl::{DatasetPhys, DirPhys};
-use crate::spa::{BlockPtr, BlockPtrKind, ChecksumType, CompressionType, Label, DVA};
+use crate::spa::{BlockPtr, BlockPtrKind, CompressionType, Label, DVA};
 use crate::zap::{
     zap_hash, zap_hash_idx, zap_leaf_hash_numentries, ZapBlock, ZapLeafPhys, ZapResult, ZapStr,
     ZapString,
@@ -113,7 +113,9 @@ impl Into<IoError> for ZfsError {
     fn into(self) -> IoError {
         use ZfsErrorKind::*;
         let kind = match self.source {
-            Checksum | Parse(_) | UnsupportedFeature | Invalid => IoErrorKind::InvalidData,
+            Checksum | Parse(_) | UnsupportedFeature | Invalid | Topology(_) => {
+                IoErrorKind::InvalidData
+            }
             NotFound => IoErrorKind::NotFound,
             Io(ref e) => e.kind(),
         };
@@ -135,6 +137,8 @@ pub enum ZfsErrorKind {
     Parse(nom::error::ErrorKind),
     #[error("Invalid data error")]
     Invalid,
+    #[error("ZFS pool topology: {0}")]
+    Topology(String),
     #[error("Unsupported feature present")]
     UnsupportedFeature,
     #[error("Required data not found")]
@@ -180,6 +184,17 @@ pub trait Device {
     /// Offset and length in units of 512bytes
     fn read_offset(&self, vdev: u32, offset: u64, length: u32) -> IoResult<Self::Block>;
     fn get_label(&self, label_num: u8) -> Result<Option<Label>, ZfsError>;
+
+    fn copies(&self, _vdev: u32) -> usize {
+        1
+    }
+
+    fn read_copy(&self, address: DVA, length: u32, copy: usize) -> IoResult<Self::Block> {
+        if copy != 0 {
+            return Err(IoErrorKind::NotFound.into());
+        }
+        self.read_offset(address.vdev, address.offset, length)
+    }
 }
 
 impl<T, B> Device for T
@@ -214,6 +229,20 @@ where
 
 pub trait SPA {
     type Block: AsRef<[u8]>;
+    fn copies(&self, _vdev: u32) -> usize {
+        1
+    }
+    fn read_copy(
+        &self,
+        addr: DVA,
+        psize: u32,
+        copy: usize,
+    ) -> Result<RawOrNah<Self::Block>, ZfsError> {
+        if copy != 0 {
+            return Err(ZfsErrorKind::NotFound.into());
+        }
+        self.read(addr, psize)
+    }
     fn get(&self, ptr: &BlockPtr) -> Result<RawOrNah<Self::Block>, ZfsError> {
         if ptr.encryption
             || !(ptr.compression_type == CompressionType::LZ4
@@ -224,69 +253,35 @@ pub trait SPA {
         }
         match &ptr.embedded {
             BlockPtrKind::Ptr(ptrdata) => {
-                let r: Result<Vec<ZfsError>, RawOrNah<Self::Block>> = ptrdata
-                    .addresses
-                    .iter()
-                    .filter(|dva| dva.asize != 0)
-                    .map(|dva| {
-                        let block = self.read(*dva, ptr.physical_size as u32 + 1)?;
-                        let data_size = (ptr.physical_size as usize + 1) * 512;
-                        let data = block.as_ref();
-                        if data.len() != data_size {
-                            return Err(ZfsErrorKind::Invalid.into());
+                let mut error = ZfsError::from(ZfsErrorKind::Invalid);
+                let sectors = u32::from(ptr.physical_size) + 1;
+                let byte_size = sectors as usize * 512;
+                for dva in ptrdata.addresses.iter().filter(|dva| dva.asize != 0) {
+                    for copy in 0..self.copies(dva.vdev) {
+                        let attempt = self.read_copy(*dva, sectors, copy).and_then(|block| {
+                            let data = block.as_ref();
+                            if data.len() != byte_size {
+                                return Err(ZfsErrorKind::Invalid.into());
+                            }
+                            ptrdata.verify_data(data)?;
+                            Ok(match ptr.compression_type {
+                                CompressionType::Off => block,
+                                CompressionType::LZ4 | CompressionType::On => {
+                                    RawOrNah::Nah(decompress_lz4(data)?.1)
+                                }
+                                _ => Err(ZfsErrorKind::UnsupportedFeature)?,
+                            })
+                        });
+                        match attempt {
+                            Ok(block) => return Ok(block),
+                            Err(failure) if !matches!(error.source, ZfsErrorKind::Checksum) => {
+                                error = failure;
+                            }
+                            Err(_) => {}
                         }
-                        // check checksums
-                        match ptrdata.checksum_type {
-                            ChecksumType::ZILog | ChecksumType::Fletcher2 => {
-                                // fletcher2
-                                let (_input, cksum) = Fletcher2::parse(data)?;
-                                if ptrdata.checksum == cksum.into() {
-                                    Ok(())
-                                } else {
-                                    Err(ZfsErrorKind::Checksum)
-                                }
-                            }
-                            ChecksumType::On | ChecksumType::Fletcher4 => {
-                                // fletcher4
-                                let (_input, cksum) = Fletcher4::parse(data)?;
-                                if ptrdata.checksum == cksum.clone().into() {
-                                    Ok(())
-                                } else {
-                                    Err(ZfsErrorKind::Checksum)
-                                }
-                            }
-                            ChecksumType::SHA256 => Sha256::digest(data)
-                                .chunks_exact(8)
-                                .zip(ptrdata.checksum.checksum)
-                                .all(|(bytes, expected)| {
-                                    u64::from_be_bytes(bytes.try_into().unwrap()) == expected
-                                })
-                                .then_some(())
-                                .ok_or(ZfsErrorKind::Checksum),
-                            ChecksumType::Off => Ok(()), // do nothing
-                            _ => {
-                                // unsupported
-                                Err(ZfsErrorKind::UnsupportedFeature)
-                            }
-                        }?;
-                        // decompress
-                        Ok(match ptr.compression_type {
-                            CompressionType::Off => block,
-                            CompressionType::LZ4 | CompressionType::On => {
-                                RawOrNah::Nah(decompress_lz4(data)?.1)
-                            }
-                            _ => Err(ZfsErrorKind::UnsupportedFeature)?,
-                        })
-                    })
-                    .map(|r| match r {
-                        Ok(o) => Err(o),
-                        Err(e) => Ok(e),
-                    })
-                    .collect();
-                match r.map(|mut v| v.pop().unwrap_or_else(|| ZfsErrorKind::Invalid.into())) {
-                    Ok(e) => Err(e),
-                    Err(o) => Ok(o),
+                    }
                 }
+                Err(error)
             }
             BlockPtrKind::Data {
                 data: block,
@@ -340,14 +335,23 @@ where
 {
     type Block = B;
     fn read(&self, addr: DVA, psize: u32) -> Result<RawOrNah<Self::Block>, ZfsError> {
+        SPA::read_copy(self, addr, psize, 0)
+    }
+
+    fn copies(&self, vdev: u32) -> usize {
+        Device::copies(self, vdev)
+    }
+
+    fn read_copy(
+        &self,
+        addr: DVA,
+        psize: u32,
+        copy: usize,
+    ) -> Result<RawOrNah<Self::Block>, ZfsError> {
         if addr.gang {
             return Err(ZfsErrorKind::UnsupportedFeature.into());
         }
-        Ok(RawOrNah::Raw(self.read_offset(
-            addr.vdev,
-            addr.offset,
-            psize,
-        )?))
+        Ok(RawOrNah::Raw(Device::read_copy(self, addr, psize, copy)?))
     }
 }
 
@@ -671,28 +675,43 @@ impl<Z: DMU + SPA> ZfsDrive<Z> {
 
 impl<Z: DMU + DSL + ZPL + Device> ZfsDrive<Z> {
     pub fn new(inner: Z) -> Result<Self, ZfsError> {
-        let mut selected: Option<Label> = None;
-        let mut failure = ZfsErrorKind::Invalid.into();
-        for index in 0..4 {
-            match inner.get_label(index) {
-                Ok(Some(mut label)) => {
-                    if let Some(current) = &mut selected {
-                        // An old label from a previously formatted pool may
-                        // survive at the tail. Never mix transaction histories.
-                        if current.identity == label.identity {
-                            current.uberblocks.append(&mut label.uberblocks);
-                        }
-                    } else {
-                        selected = Some(label);
-                    }
-                }
-                Ok(None) => {}
-                Err(error) => failure = error,
-            }
-        }
-        let label = selected.ok_or(failure)?;
+        let label = read_device_label(&inner)?;
         Ok(Self { inner, label })
     }
+}
+
+pub fn read_device_label<D: Device>(device: &D) -> Result<Label, ZfsError> {
+    let mut selected: Option<Label> = None;
+    let mut failure = ZfsErrorKind::Invalid.into();
+    for index in 0..4 {
+        match device.get_label(index) {
+            Ok(Some(mut label)) => {
+                if let Some(current) = &mut selected {
+                    // An old label from a previously formatted pool may
+                    // survive at the tail. Never mix transaction histories.
+                    if current.identity == label.identity {
+                        let generation = |label: &Label| label.config.as_ref().map(|c| c.txg);
+                        if generation(&label) > generation(current) {
+                            current.config = label.config.take();
+                        } else if generation(&label) == generation(current)
+                            && label.config != current.config
+                        {
+                            return Err(ZfsErrorKind::Topology(
+                                "conflicting labels at the same transaction group".into(),
+                            )
+                            .into());
+                        }
+                        current.uberblocks.append(&mut label.uberblocks);
+                    }
+                } else {
+                    selected = Some(label);
+                }
+            }
+            Ok(None) => {}
+            Err(error) => failure = error,
+        }
+    }
+    selected.ok_or(failure)
 }
 
 #[derive(Debug)]

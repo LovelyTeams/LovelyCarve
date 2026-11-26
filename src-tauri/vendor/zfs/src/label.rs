@@ -76,58 +76,24 @@ fn verify_embedded(block: &[u8], offset: u64) -> Option<ByteOrder> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Identity {
-    pool_guid: u64,
-    leaf_guid: u64,
+    pub pool_guid: u64,
+    pub leaf_guid: u64,
 }
 
-fn xdr_u32(bytes: &[u8]) -> Option<usize> {
-    Some(u32::from_be_bytes(bytes.get(..4)?.try_into().ok()?) as usize)
-}
+use crate::config::{Config, NvList};
 
-/// Read the scalar identities from the top-level XDR nvlist. Embedded nvlists
-/// and arrays are skipped using their parent pair's encoded length.
-fn read_identity(mut bytes: &[u8]) -> Option<Identity> {
-    if bytes.first() != Some(&1) || xdr_u32(bytes.get(4..)?)? != 0 {
-        return None;
-    }
-    bytes = bytes.get(12..)?;
-    let (mut pool, mut leaf) = (None, None);
-    loop {
-        let encoded = xdr_u32(bytes)?;
-        let decoded = xdr_u32(bytes.get(4..)?)?;
-        if encoded == 0 && decoded == 0 {
-            break;
-        }
-        if encoded < 20 || encoded % 4 != 0 || decoded == 0 {
-            return None;
-        }
-        let (pair, rest) = bytes.split_at_checked(encoded)?;
-        bytes = rest;
-        let name_size = xdr_u32(pair.get(8..)?)?;
-        let name = pair.get(12..12usize.checked_add(name_size)?)?;
-        let dest = match name {
-            b"pool_guid" => &mut pool,
-            b"guid" => &mut leaf,
-            _ => continue,
-        };
-        let aligned_name_size = name_size.checked_add(3)? & !3;
-        let data = pair.get(12usize.checked_add(aligned_name_size)?..)?;
-        if xdr_u32(data)? != 8 || xdr_u32(data.get(4..)?)? != 1 || dest.is_some() {
-            return None;
-        }
-        *dest = Some(u64::from_be_bytes(data.get(8..16)?.try_into().ok()?));
-    }
+fn read_identity(config: &NvList<'_>) -> Option<Identity> {
     let identity = Identity {
-        pool_guid: pool?,
-        leaf_guid: leaf?,
+        pool_guid: config.number(b"pool_guid")?,
+        leaf_guid: config.number(b"guid")?,
     };
     (identity.pool_guid != 0 && identity.leaf_guid != 0).then_some(identity)
 }
 
-fn config_identity(label: &[u8], offset: u64) -> Option<Identity> {
+fn verified_config(label: &[u8], offset: u64) -> Option<NvList<'_>> {
     let config = label.get(CONFIG_OFFSET..UBERBLOCK_OFFSET)?;
     verify_embedded(config, offset.checked_add(CONFIG_OFFSET as u64)?)?;
-    read_identity(&config[..config.len() - ECK_SIZE])
+    NvList::from_packed(&config[..config.len() - ECK_SIZE])
 }
 
 fn verified_slots(label: &[u8], offset: u64) -> impl Iterator<Item = (&[u8], ByteOrder)> {
@@ -153,18 +119,24 @@ fn verified_slots(label: &[u8], offset: u64) -> impl Iterator<Item = (&[u8], Byt
 }
 
 pub fn has_verified_label(label: &[u8], offset: u64) -> bool {
-    config_identity(label, offset).is_some() && verified_slots(label, offset).next().is_some()
+    verified_config(label, offset)
+        .and_then(|config| read_identity(&config))
+        .is_some()
+        && verified_slots(label, offset).next().is_some()
 }
 
 #[derive(Debug, Clone)]
 pub struct Label {
     pub uberblocks: Vec<Uberblock>,
     pub identity: Identity,
+    pub config: Option<Config>,
 }
 
 impl Label {
     pub fn parse_at(label: &[u8], offset: u64) -> Result<Self, ZfsErrorKind> {
-        let identity = config_identity(label, offset).ok_or(ZfsErrorKind::Invalid)?;
+        let config = verified_config(label, offset).ok_or(ZfsErrorKind::Invalid)?;
+        let identity = read_identity(&config).ok_or(ZfsErrorKind::Invalid)?;
+        let config = Config::parse(&config).ok_or(ZfsErrorKind::Invalid)?;
         let mut slots = verified_slots(label, offset).peekable();
         if slots.peek().is_none() {
             return Err(ZfsErrorKind::Checksum);
@@ -181,6 +153,7 @@ impl Label {
         Ok(Self {
             uberblocks,
             identity,
+            config,
         })
     }
 }
