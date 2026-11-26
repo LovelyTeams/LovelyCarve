@@ -327,6 +327,7 @@ pub(crate) fn supports_os_detect(kind: PartitionKind) -> bool {
             | PartitionKind::Hfs
             | PartitionKind::Mfs
             | PartitionKind::Littlefs
+            | PartitionKind::Spiffs
             | PartitionKind::Jfs
             | PartitionKind::Reiserfs
             | PartitionKind::Amiga
@@ -371,6 +372,7 @@ pub(crate) fn kind_str(kind: PartitionKind) -> &'static str {
         PartitionKind::Hfs => "hfs",
         PartitionKind::Mfs => "mfs",
         PartitionKind::Littlefs => "littlefs",
+        PartitionKind::Spiffs => "spiffs",
         PartitionKind::Jfs => "jfs",
         PartitionKind::Reiserfs => "reiserfs",
         PartitionKind::Amiga => "amiga",

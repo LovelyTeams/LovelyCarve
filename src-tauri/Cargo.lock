@@ -3579,6 +3579,7 @@ dependencies = [
  "sha2 0.11.0",
  "sm3",
  "smraw",
+ "spiffs-reader",
  "sqlite-core",
  "syn 3.0.8",
  "tar",
@@ -6034,6 +6035,13 @@ dependencies = [
  "gobject-sys",
  "libc",
  "system-deps",
+]
+
+[[package]]
+name = "spiffs-reader"
+version = "0.1.0"
+dependencies = [
+ "lamfold",
 ]
 
 [[package]]

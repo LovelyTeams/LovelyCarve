@@ -52,6 +52,7 @@ pub mod qnx;
 pub(super) mod recovery;
 pub mod reiserfs;
 pub mod rom_images;
+mod spiffs;
 pub mod squashfs;
 pub mod ubifs;
 pub mod udf;
@@ -186,6 +187,7 @@ pub enum PartitionKind {
     Hfs,
     Mfs,
     Littlefs,
+    Spiffs,
     HfsPlus,
     HfsX,
     Luks,
@@ -401,6 +403,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Hfs
         | PartitionKind::Mfs
         | PartitionKind::Littlefs
+        | PartitionKind::Spiffs
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
         | PartitionKind::Amiga

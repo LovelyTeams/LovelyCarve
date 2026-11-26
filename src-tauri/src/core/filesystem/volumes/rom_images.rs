@@ -83,6 +83,7 @@ pub type MinixVolume = RomVolume<minix_reader::Minix<RomImageSource>>;
 pub type HfsVolume = RomVolume<classic_hfs::Hfs<RomImageSource>>;
 pub type MfsVolume = RomVolume<mfs_reader::Mfs<RomImageSource>>;
 pub type LittlefsVolume = RomVolume<littlefs_reader::LittleFs<RomImageSource>>;
+pub type SpiffsVolume = RomVolume<spiffs_reader::Spiffs<RomImageSource>>;
 pub type HpfsVolume = RomVolume<hpfs_reader::Hpfs<RomImageSource>>;
 pub type VxfsVolume = RomVolume<vxfs_reader::Vxfs<RomImageSource>>;
 pub type AixJfsVolume = RomVolume<aix_jfs_reader::AixJfs<RomImageSource>>;
@@ -211,6 +212,9 @@ pub fn parse_mfs_id(id: &str) -> Option<(u8, String)> {
 pub fn parse_littlefs_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "littlefs")
 }
+pub fn parse_spiffs_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "spiffs")
+}
 pub fn parse_hfs_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "hfs")
 }
@@ -315,6 +319,12 @@ pub fn open_mfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<MfsVolum
 }
 pub fn open_littlefs_source(image: &Arc<DiskImage>, partition: u8) -> Result<LittlefsVolume> {
     LittlefsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn open_spiffs_source(image: &Arc<DiskImage>, partition: u8) -> Result<SpiffsVolume> {
+    SpiffsVolume::open(
         Arc::clone(image),
         find_partition(image, &partition.to_string())?,
     )

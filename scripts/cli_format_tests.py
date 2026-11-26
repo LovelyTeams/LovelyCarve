@@ -584,6 +584,53 @@ def test_littlefs(cli, root):
     print("LittleFS CLI tests passed: v2.0 and v2.1, bare and MBR volumes, split directories, ranges, hash and export")
 
 
+def test_spiffs(cli, root):
+    fixtures = VENDOR / "spiffs-reader/tests/fixtures"
+    payload = bytes((n * 23 + n // 61) % 256 for n in range(49281))
+    sources = []
+    for name in ("esp32-default", "esp32-no-magic", "be-aligned", "constant", "esp32-native"):
+        volume = zlib.decompress((fixtures / f"{name}.zlib").read_bytes())
+        source = root / f"spiffs-{name}.img"
+        source.write_bytes(volume)
+        sources.append((source, 0, len(volume)))
+        if name == "esp32-default":
+            base = 8 * 512
+            mbr = bytearray(base)
+            mbr[446 + 4] = 0x83
+            struct.pack_into("<II", mbr, 446 + 8, 8, len(volume) // 512)
+            mbr[510:512] = b"\x55\xaa"
+            partitioned = root / "spiffs-mbr.img"
+            partitioned.write_bytes(mbr + volume)
+            sources.append((partitioned, base, len(volume)))
+
+    for source, base, length in sources:
+        name = "%2Flogs%2Fevent.bin"
+        entry = at(path_id("spiffs:part:0:", f"/{name}"))
+        output = root / f"{source.stem}.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", "/ev/part:0"),
+            cat("read", f"/ev/part:0/{name}", 24991, 14087),
+            cat("empty", "/ev/part:0/%2Fempty"),
+            request("stat", "stat", entry),
+            digest("hash", entry),
+            export("export", entry, output),
+        ])
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "spiffs", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == length
+        if base:
+            assert info["tableScheme"] == "mbr"
+        assert names(rows["root"]) == {"%2Fempty", "%2Fhello.txt", name}
+        assert rows["read"] == hex_of(payload[24991:39078]) and rows["empty"] == hex_of(b"")
+        assert rows["stat"]["size"] == len(payload)
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert output.read_bytes() == payload
+    print("SPIFFS CLI tests passed: signed and unsigned layouts, big endian, MBR, ranges, hash and export")
+
+
 def test_formats(cli, root):
     firmware_node = path_id("squashfs:part:0:", "/hello")
     firmware_content = b"Independent DD-WRT fixture.\n" * 64

@@ -64,9 +64,9 @@ use crate::core::filesystem::volumes::rom_images::{
     parse_reiserfs_id, parse_romfs_id, parse_udf_id,
 };
 use crate::core::filesystem::volumes::rom_images::{
-    open_fatx_source, open_littlefs_source, open_mfs_source, open_unixware_bfs_source,
-    open_xdvdfs_source, parse_fatx_id, parse_littlefs_id, parse_mfs_id, parse_unixware_bfs_id,
-    parse_xdvdfs_id,
+    open_fatx_source, open_littlefs_source, open_mfs_source, open_spiffs_source,
+    open_unixware_bfs_source, open_xdvdfs_source, parse_fatx_id, parse_littlefs_id, parse_mfs_id,
+    parse_spiffs_id, parse_unixware_bfs_id, parse_xdvdfs_id,
 };
 use crate::core::filesystem::volumes::squashfs::{open_squashfs_source, parse_squashfs_id};
 use crate::core::filesystem::volumes::ubi::{open_ubi_source, parse_ubi_id};
@@ -174,6 +174,7 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &HfsAdapter,
     &MfsAdapter,
     &LittlefsAdapter,
+    &SpiffsAdapter,
     &JfsAdapter,
     &ReiserFsAdapter,
     &AmigaAdapter,
@@ -244,6 +245,9 @@ pub(crate) fn volume_root_key(id: &str) -> Option<String> {
     }
     if let Some((partition, _)) = parse_littlefs_id(id) {
         return Some(format!("littlefs:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_spiffs_id(id) {
+        return Some(format!("spiffs:part:{partition}"));
     }
     if let Some((partition, _)) = parse_hfs_id(id) {
         return Some(format!("hfs:part:{partition}"));
@@ -573,6 +577,15 @@ path_volume!(
     open_littlefs_source
 );
 path_volume_impl!(LittlefsVol, plain_range);
+path_volume!(
+    SpiffsAdapter,
+    SpiffsVol,
+    "spiffs",
+    crate::core::filesystem::volumes::rom_images::SpiffsVolume,
+    parse_spiffs_id,
+    open_spiffs_source
+);
+path_volume_impl!(SpiffsVol, plain_range);
 path_volume!(
     JfsAdapter,
     JfsVol,

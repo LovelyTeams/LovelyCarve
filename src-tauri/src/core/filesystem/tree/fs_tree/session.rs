@@ -200,6 +200,12 @@ impl<'a> FsSession<'a> {
                         )?
                         .root_children(),
                     ),
+                    PartitionKind::Spiffs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_spiffs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::Hfs => Some(
                         crate::core::filesystem::volumes::rom_images::open_hfs_source(
                             self.image, pid,

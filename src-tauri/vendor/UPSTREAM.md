@@ -251,3 +251,8 @@ Velocity 和 Xbox 格式研究。样本由 libfatx 与 fatx-rs 独立生成并�
 `littlefs-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。布局依据 LittleFS
 v2.11.0 官方规范，外部官方实现生成并回读 2.0 / 2.1 测试镜像。来源、几何和哈希见
 [ORIGIN.md](littlefs-reader/ORIGIN.md)。
+
+## SPIFFS
+
+`spiffs-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。布局对照 pellepl/spiffs，
+样本由 ESP-IDF 官方生成器写入，小端样本经上游回读。来源及 SHA-256 见 [ORIGIN.md](spiffs-reader/ORIGIN.md)。

@@ -213,6 +213,13 @@ pub(super) fn children_for_image_with_options(
                 )?
                 .root_children()
             }
+            PartitionKind::Spiffs => {
+                crate::core::filesystem::volumes::rom_images::open_spiffs_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
             PartitionKind::Hfs => {
                 crate::core::filesystem::volumes::rom_images::open_hfs_source(image, partition.id)?
                     .root_children()
