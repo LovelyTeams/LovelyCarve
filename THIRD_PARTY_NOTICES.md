@@ -1601,6 +1601,14 @@ rusty-backup revision; invented fixtures and `scripts/hfs-fixtures.py` are CC0-1
 See [ORIGIN.md](src-tauri/vendor/classic-hfs/ORIGIN.md) for precise source paths,
 licenses, changes and fixture hashes.
 
+## Reiser4 format and fixtures
+
+The original Rust reader was developed using the on-disk layouts documented by
+[reiser4progs](https://github.com/edward6/reiser4progs/tree/23e8ccb6442e4829479c602574215a6cb58ba6f9)
+and the [Reiser4 kernel source](https://github.com/edward6/reiser4/tree/05021f10e4fceaad2439b84f200a51c65a8fe9b0).
+The two native fixtures contain invented data. The upstream tools run only for
+fixture production and independent checks. See [ORIGIN.md](src-tauri/vendor/reiser4-reader/ORIGIN.md).
+
 ## ReiserFS v3 reader and fixtures
 
 `reiserfs-reader` adapts layouts/read algorithms from Dani's

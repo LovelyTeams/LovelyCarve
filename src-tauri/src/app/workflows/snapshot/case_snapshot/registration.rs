@@ -109,6 +109,7 @@ pub(super) fn snapshot_supported_plain_partition(kind: PartitionKind) -> bool {
             | PartitionKind::Hammer2
             | PartitionKind::Jfs
             | PartitionKind::Reiserfs
+            | PartitionKind::Reiser4
             | PartitionKind::Amiga
             | PartitionKind::Befs
             | PartitionKind::Gfs1

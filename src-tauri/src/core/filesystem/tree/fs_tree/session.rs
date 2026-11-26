@@ -230,6 +230,12 @@ impl<'a> FsSession<'a> {
                         )?
                         .root_children(),
                     ),
+                    PartitionKind::Reiser4 => Some(
+                        crate::core::filesystem::volumes::rom_images::open_reiser4_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::Reiserfs => Some(
                         crate::core::filesystem::volumes::rom_images::open_reiserfs_source(
                             self.image, pid,

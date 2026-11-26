@@ -200,6 +200,7 @@ pub fn fs_prefix_for_kind(kind: PartitionKind) -> &'static str {
         | PartitionKind::Hammer2
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
+        | PartitionKind::Reiser4
         | PartitionKind::Amiga
         | PartitionKind::Befs
         | PartitionKind::Gfs1

@@ -96,6 +96,7 @@ pub type XdvdfsVolume = RomVolume<xdvdfs_reader::Xdvdfs<RomImageSource>>;
 pub type FatxVolume = RomVolume<fatx_reader::Fatx<RomImageSource>>;
 pub type JfsVolume = RomVolume<jfs_reader::Jfs<RomImageSource>>;
 pub type ReiserFsVolume = RomVolume<reiserfs_reader::ReiserFs<RomImageSource>>;
+pub type Reiser4Volume = RomVolume<reiser4_reader::Reiser4<RomImageSource>>;
 pub type AmigaVolume = RomVolume<amiga_reader::Amiga<RomImageSource>>;
 pub type Gfs1Volume = RomVolume<gfs1_reader::Gfs1<RomImageSource>>;
 
@@ -257,6 +258,19 @@ pub fn open_jfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<JfsVolum
     }
     Ok(volume)
 }
+pub fn parse_reiser4_id(id: &str) -> Option<(u8, String)> {
+    let (partition, path) = id.strip_prefix("reiser4:part:")?.split_once(':')?;
+    let path = String::from_utf8(hex::decode(path).ok()?).ok()?;
+    valid_lookup_path(&path).then_some((partition.parse().ok()?, path))
+}
+
+pub fn open_reiser4_source(image: &Arc<DiskImage>, partition: u8) -> Result<Reiser4Volume> {
+    Reiser4Volume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+
 pub fn parse_reiserfs_id(id: &str) -> Option<(u8, String)> {
     let rest = id.strip_prefix("reiserfs:part:")?;
     let (partition, path) = rest.split_once(':')?;

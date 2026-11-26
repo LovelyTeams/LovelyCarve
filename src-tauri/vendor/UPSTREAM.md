@@ -119,6 +119,12 @@ QNX EFS 支持对照 [QNX mkefs 文档](https://www.qnx.com/developers/docs/7.1/
 和 [CLASSIC_HFS.md](../../docs/formats/CLASSIC_HFS.md)。`lamfold` 新增默认空值的 `LocalFileTimes`
 / `local_timestamps` 接口，避免把传统 HFS 无偏移本地时间标成 UTC；现有 UTC 接口不变。
 
+## Reiser4 只读适配
+
+`reiser4-reader` 0.1.0 是原创 Rust 读取器，参考维护者的 reiser4progs 1.2.2 与内核树。
+原生工具仅用来生成和对照两种测试卷。固定提交、生成方法和校验值见
+[ORIGIN.md](reiser4-reader/ORIGIN.md) 与 [Reiser4 能力说明](../../docs/formats/REISER4.md)。
+
 ## ReiserFS v3 只读适配
 
 `reiserfs-reader` 0.1.0：格式布局与读取算法来自 rusty-backup 0.1.0 固定提交

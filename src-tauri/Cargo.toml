@@ -202,6 +202,7 @@ refs-reader = { path = "vendor/refs-reader" }
 # 字面量，给解码文本通道做原始字节预筛。
 regex = "1.13.1"
 regex-syntax = "0.8.11"
+reiser4-reader = { path = "vendor/reiser4-reader" }
 reiserfs-reader = { path = "vendor/reiserfs-reader" }
 # 插件市场：读取 https 索引并下载插件包。用系统 TLS（Windows schannel），不带
 # rustls / aws-lc；系统代理设置照常生效。

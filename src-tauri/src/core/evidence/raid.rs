@@ -348,6 +348,7 @@ pub fn kind_label(kind: PartitionKind) -> &'static str {
         PartitionKind::Hammer => "hammer",
         PartitionKind::Hammer2 => "hammer2",
         PartitionKind::Jfs => "jfs",
+        PartitionKind::Reiser4 => "reiser4",
         PartitionKind::Reiserfs => "reiserfs",
         PartitionKind::Amiga => "amiga",
         PartitionKind::Befs => "befs",

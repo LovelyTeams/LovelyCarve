@@ -37,7 +37,8 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | UnixWare BFS | [UNIXWARE_BFS.md](UNIXWARE_BFS.md) | `/stand` 启动卷、经典 VTOC 切片、平面目录、硬链接与连续范围读 |
 | XDVDFS | [XDVDFS.md](XDVDFS.md) | Xbox 裸 XISO 和 XGD1/2/3 游戏区、视频区保留、二叉目录、范围读 |
 | Xbox FATX / XTAF | [FATX.md](FATX.md) | 原版和 360、16/32 位分配表、LBA48、Devkit、局部时间与范围读 |
-| ReiserFS v3 | [REISERFS.md](REISERFS.md) | 3.5 / 3.6、混合键、多层树、尾部打包、稀疏块、硬链接与范围读；dirty 拒绝，Reiser4 独立未支持 |
+| ReiserFS v3 | [REISERFS.md](REISERFS.md) | 3.5 / 3.6、混合键、多层树、尾部打包、稀疏块、硬链接与范围读；拒绝 dirty 卷 |
+| Reiser4 | [REISER4.md](REISER4.md) | 单设备 Format40、长短键、node40 / node41、尾部打包、extent、显式空洞与范围读 |
 | Amiga OFS / FFS | [AMIGA.md](AMIGA.md) | DOS0–7、Latin-1 / LNFS、硬链接、原生 RDB 与多块几何；dirty / BADB 明确拒绝 |
 | BeFS | [BEFS.md](BEFS.md) | BeOS / Haiku、大小端、四种块大小、B+tree、全部 run 层级及扩展属性；原生官方镜像 / 系统包验证 |
 | GFS1 | [GFS1.md](GFS1.md) | 1309 / 1401、双日志头、资源组分配位图、线性与 exhash 目录、间接块与稀疏范围读 |

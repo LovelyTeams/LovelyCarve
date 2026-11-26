@@ -55,6 +55,7 @@ pub mod qnx;
 mod qnx_efs;
 mod qnx_etfs;
 pub(super) mod recovery;
+mod reiser4;
 pub mod reiserfs;
 pub mod rom_images;
 mod spiffs;
@@ -173,6 +174,7 @@ pub enum PartitionKind {
     Minix,
     Jfs,
     Reiserfs,
+    Reiser4,
     Amiga,
     Befs,
     Gfs1,
@@ -420,6 +422,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Hammer2
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
+        | PartitionKind::Reiser4
         | PartitionKind::Amiga
         | PartitionKind::Befs
         | PartitionKind::Gfs1

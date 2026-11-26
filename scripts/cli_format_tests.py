@@ -808,10 +808,59 @@ def test_gfs1(cli, root):
     print("GFS1 CLI tests passed: native block sizes, MBR, exhash, hard links, indirect sparse ranges and export")
 
 
-def write_qnx_flash_image(source, volume_bytes, base):
+def test_reiser4(cli, root):
+    fixtures = VENDOR / "reiser4-reader/tests/fixtures"
+    volume = "/ev/part:0"
+    expected_hash = "1ba2c07e284591e221fc293083eba7ea89a5be0000de60ff9792026f1fbda751"
+    payload = bytes((n * 31 + n // 211) % 256 for n in range(11113))
+    path = "/nested/native-long-name-for-hash.bin"
+    node = at(path_id("reiser4:part:0:", path))
+    for label, base in (("node40-large", 0), ("node41-short", 4096)):
+        source = root / f"reiser4-{label}.img"
+        volume_bytes = zlib.decompress((fixtures / f"{label}.reiser4z").read_bytes())
+        write_partition_image(source, volume_bytes, base, 0x83)
+        output = root / f"reiser4-{label}-export.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", volume),
+            ls("nested", f"{volume}/nested"),
+            request("file", "stat", node),
+            request("tail", "stat", f"{volume}/nested/tail.txt"),
+            request("hardlink", "stat", f"{volume}/hard-link"),
+            request("symbolic", "stat", f"{volume}/symbolic"),
+            cat("link_bytes", f"{volume}/symbolic", 0, 30),
+            cat("range", f"{volume}{path}", 3103, 271),
+            cat("sparse_range", f"{volume}/sparse.bin", 32768 - 17, 75),
+            digest("sparse_hash", f"{volume}/sparse.bin"),
+            digest("hash", node),
+            export("export", node, output),
+        ])
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "reiser4", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == len(volume_bytes)
+        if base:
+            assert info["tableScheme"] == "mbr"
+        assert names(rows["root"]) == {"nested", "hard-link", "sparse.bin", "symbolic"}
+        assert names(rows["nested"]) == {"tail.txt", "native-long-name-for-hash.bin"}
+        assert rows["file"]["inode"] == 0x10002
+        assert rows["tail"]["inode"] == rows["hardlink"]["inode"] > 0
+        assert rows["symbolic"]["linkTarget"] == "nested/tail.txt"
+        assert rows["link_bytes"] == hex_of(b"reiser4 inline bytes\n")
+        assert rows["range"] == hex_of(payload[3103:3374])
+        assert rows["sparse_range"] == hex_of(bytes(17) + payload[:58])
+        assert sha256(rows["sparse_hash"]) == "fa156d414f5af9579eb6d30f917c1629772811682bb39232bc752821fadd2ee6"
+        assert sha256(rows["hash"]) == expected_hash
+        assert output.read_bytes() == payload
+        source.unlink()
+    print("Reiser4 CLI tests passed: both key sizes, protected nodes, MBR, links, sparse ranges, hash and export")
+
+
+def write_partition_image(source, volume_bytes, base, partition_type):
     if base:
         mbr = bytearray(base)
-        mbr[450] = 0x77
+        mbr[450] = partition_type
         struct.pack_into("<II", mbr, 454, base // 512, len(volume_bytes) // 512)
         mbr[510:512] = b"\x55\xaa"
         source.write_bytes(mbr + volume_bytes)
@@ -825,7 +874,7 @@ def test_qnx_etfs(cli, root):
     for label, base in (("nfi-etfs-old", 0), ("nfi-etfs", 4096), ("nfi-etfs-transactions", 0)):
         volume_bytes = zlib.decompress((fixtures / f"{label}.zlib").read_bytes())
         source = root / f"{label}.img"
-        write_qnx_flash_image(source, volume_bytes, base)
+        write_partition_image(source, volume_bytes, base, 0x77)
         message = "/directory_1/directory_1_1/message.txt"
         entry = at(path_id("qnxetfs:part:0:", message))
         output = root / f"{label}-export.bin"
@@ -874,7 +923,7 @@ def test_qnx_efs(cli, root):
     volume = "/ev/part:0"
     for label, volume_bytes, base in (("native", original, 0), ("relocated", relocated, 4096)):
         source = root / f"qnx-efs-{label}.img"
-        write_qnx_flash_image(source, volume_bytes, base)
+        write_partition_image(source, volume_bytes, base, 0x77)
         large_path = f"{volume}/this_file_is_large"
         entry = at(path_id("qnxefs:part:0:", "/this_file_is_large"))
         link = f"{volume}/directory_1/link_message.txt"

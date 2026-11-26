@@ -169,6 +169,7 @@ fmt:
     cd src-tauri/vendor/hammer-reader && cargo fmt
     cd src-tauri/vendor/hammer2-reader && cargo fmt
     cd src-tauri/vendor/jfs-reader && cargo fmt
+    cd src-tauri/vendor/reiser4-reader && cargo fmt
     cd src-tauri/vendor/reiserfs-reader && cargo fmt
     cd src-tauri/vendor/amiga-reader && cargo fmt
     cd src-tauri/vendor/befs-reader && cargo fmt
@@ -681,6 +682,9 @@ generate-amiga-fixtures:
     {{ python }} scripts/amiga-fixtures.py
 
 [group("readers")]
+clippy-reiser4:
+    cargo clippy --manifest-path src-tauri/vendor/reiser4-reader/Cargo.toml --all-targets -- -D warnings
+
 clippy-reiserfs:
     cargo clippy --manifest-path src-tauri/vendor/reiserfs-reader/Cargo.toml --all-targets -- -D warnings
 

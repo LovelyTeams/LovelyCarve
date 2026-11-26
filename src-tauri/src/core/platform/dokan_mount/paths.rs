@@ -319,6 +319,7 @@ pub(super) fn fs_label_for_kind(kind: PartitionKind) -> &'static str {
         PartitionKind::Hammer => "HAMMER",
         PartitionKind::Hammer2 => "HAMMER2",
         PartitionKind::Jfs => "JFS",
+        PartitionKind::Reiser4 => "Reiser4",
         PartitionKind::Reiserfs => "ReiserFS",
         PartitionKind::Amiga => "Amiga OFS/FFS",
         PartitionKind::Befs => "BeFS",
@@ -390,6 +391,7 @@ pub(super) fn is_case_sensitive_fs(kind: PartitionKind) -> bool {
             | PartitionKind::Udf
             | PartitionKind::Jfs
             | PartitionKind::Reiserfs
+            | PartitionKind::Reiser4
             | PartitionKind::Befs
             | PartitionKind::Gfs1
             | PartitionKind::Gfs2

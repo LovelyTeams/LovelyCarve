@@ -122,6 +122,7 @@ pub fn partition_ftype(kind: PartitionKind) -> Option<u64> {
         | PartitionKind::Hammer2
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
+        | PartitionKind::Reiser4
         | PartitionKind::Amiga
         | PartitionKind::Befs
         | PartitionKind::Gfs1
