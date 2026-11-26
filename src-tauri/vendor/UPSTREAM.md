@@ -49,7 +49,7 @@
 | `vmdk` | `0.8.4` | [8a9831125c6d](https://github.com/SecurityRonin/vmdk-forensic/commit/8a9831125c6db5cff9a24414481037487a92d410) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
 | `vsc` | `0.2.2` | [0af70bed6910](https://github.com/SecurityRonin/vsc-forensic/commit/0af70bed6910fef542224ecd94928b4bc0ae920b) | 2026-10-13 对照 libvshadow 全部 48 个 API；补块/区间枚举、seek/read、严格 catalog/存储头与 NTFS 尺寸校验；真实双副本验证及限制见 [VSS](../../docs/formats/VSS.md)。 |
 | `xfs-fuse` | `0.6.0` | [2ea4e250db00](https://github.com/KhaledEmaraDev/xfuse/commit/2ea4e250db00d3f0f845499c8a83f85b9a77b7f8) | 合入上游 v1 inode / real-time 标记；本地 XFS 1–5、目录、属性、checked extent/范围读取、纳秒时间与 meta UUID 补丁见 [XFS](../../docs/formats/XFS.md)。无独立 real-time 设备时拒绝正文。未引入上游 FUSE 服务或 libfsxfs C 实现。 |
-| `zfs` | `0.1.0` | [原来源](https://github.com/Hopffenn/zfs-rs) | 原来源返回 Repository not found；保留现有稳定 Rust 移植，不能声称已同步无法访问的上游。 |
+| `zfs` | `0.1.0` | [原来源](https://github.com/Hopffenn/zfs-rs) | 原来源不可访问。现有稳定 Rust 移植已加入四份标签校验、可变 uberblock 槽、大 dnode 和系统属性 spill。磁盘格式参照 [OpenZFS](https://github.com/openzfs/zfs)。 |
 
 `leveldb-rs-binding` 是已移除 LevelDB/MMKV 功能后遗留的空目录，没有被 Git 跟踪的源码或 Cargo 依赖，不属于待更新库。
 

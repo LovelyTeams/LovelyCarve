@@ -269,8 +269,8 @@ pub trait PartParser: Sync {
 /// GPT / LUKS / etc.) — FAT's BPB lives in the first sector with a common
 /// FAT32 backup at sector 6, Btrfs's 8-byte `_BHRfS_M` magic at fixed offset
 /// `0x10040`, Ext4's 2-byte `0xEF53` magic at fixed offset `0x438`,
-/// SquashFS v4's 4-byte `hsqs` / `sqsh` magic at offset 0, ZFS's three
-/// consecutive 8-byte uberblock magics at offset `0x20000`, and HFS+'s
+/// SquashFS v4's 4-byte `hsqs` / `sqsh` magic at offset 0, ZFS's verified
+/// leaf labels, and HFS+'s
 /// 2-byte `H+` / `HX` magic at fixed offset `0x400` cannot collide with
 /// anything the earlier parsers would have claimed.
 static PARSERS: &[&dyn PartParser] = &[

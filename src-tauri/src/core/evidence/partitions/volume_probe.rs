@@ -36,12 +36,6 @@ const CDFS_FIRST_VOLUME_DESCRIPTOR: u64 = 16 * 2048;
 const CDFS_VOLUME_DESCRIPTOR_SIZE: usize = 2048;
 const CDFS_MAX_VOLUME_DESCRIPTORS: u64 = 32;
 const LVM2_SCAN_OFFSETS: [usize; 4] = [0, 512, 1024, 1536];
-const ZFS_LABEL_SIZE: u64 = 256 * 1024;
-const ZFS_UBERBLOCK_ARRAY_OFFSET: u64 = 128 * 1024;
-const ZFS_UBERBLOCK_STRIDE: u64 = 1024;
-const ZFS_UBERBLOCK_PROBE_COUNT: usize = 3;
-const ZFS_UBERBLOCK_MAGIC_LE: [u8; 8] = [0x0c, 0xb1, 0xba, 0x00, 0, 0, 0, 0];
-const ZFS_UBERBLOCK_MAGIC_BE: [u8; 8] = [0, 0, 0, 0, 0, 0xba, 0xb1, 0x0c];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VolumeProbeHit {
@@ -817,28 +811,15 @@ impl VolumeProbe for ZfsProbe {
     }
 
     fn probe(&self, ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeHit>> {
-        if ctx.size < ZFS_LABEL_SIZE {
-            return Ok(None);
-        }
-        let probe_len = ZFS_UBERBLOCK_STRIDE as usize * ZFS_UBERBLOCK_PROBE_COUNT;
-        let probe = ctx.source.read(ZFS_UBERBLOCK_ARRAY_OFFSET, probe_len)?;
-        if probe.len() < probe_len {
-            return Ok(None);
-        }
-        for index in 0..ZFS_UBERBLOCK_PROBE_COUNT {
-            let offset = index * ZFS_UBERBLOCK_STRIDE as usize;
-            let magic = &probe[offset..offset + 8];
-            if magic != ZFS_UBERBLOCK_MAGIC_LE && magic != ZFS_UBERBLOCK_MAGIC_BE {
-                return Ok(None);
-            }
-        }
-        Ok(Some(VolumeProbeHit::new(
-            self.name(),
-            PartitionKind::Zfs,
-            94,
-            ZFS_UBERBLOCK_ARRAY_OFFSET,
-            "three consecutive ZFS uberblock magic values",
-        )))
+        Ok(super::zfs::probe_zfs(ctx)?.map(|offset| {
+            VolumeProbeHit::new(
+                self.name(),
+                PartitionKind::Zfs,
+                94,
+                offset,
+                "verified ZFS vdev label",
+            )
+        }))
     }
 }
 

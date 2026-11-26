@@ -243,6 +243,9 @@ pub struct PartitionDrive {
 
 impl RawDevice for PartitionDrive {
     type Block = Vec<u8>;
+    fn size_bytes(&self) -> Option<u64> {
+        Some(self.length_bytes)
+    }
     fn read_raw(&self, addr: u64, size: u64) -> io::Result<Self::Block> {
         if size == 0 {
             return Ok(Vec::new());

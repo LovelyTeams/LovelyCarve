@@ -10,49 +10,7 @@ use enum_repr_derive::TryFrom;
 
 use crate::fletcher::{Fletcher2, Fletcher4};
 
-/// The disk label contains the top level metadata for the filesystem
-///
-/// There are four copies of the disk label stored per disk, two at the start and two at the
-/// end of the disk.
-///
-/// The `nv_pairs` contains metadata about the disk including options used when creating the
-/// filesystem. Parsing this datastructure is not currently implemented
-///
-/// The `uberblocks` array contains the most recent uberblocks written, each of which includes a
-/// `BlockPtr` referencing the top level meta object set
-// TODO: implement boot_header and nv_pairs parsing
-#[derive(Debug, Clone)]
-pub struct Label {
-    pub boot_header: Vec<u8>,
-    pub nv_pairs: Vec<u8>,
-    pub uberblocks: Vec<Uberblock>,
-}
-
-impl Label {
-    pub fn parse(input: &[u8]) -> IResult<&[u8], Self> {
-        let (input, (_pad, boot_header, nv_pairs, uberblocks)) = nom::sequence::tuple((
-            nom::bytes::complete::take(8 * 1024usize),
-            nom::bytes::complete::take(8 * 1024usize),
-            nom::bytes::complete::take(112 * 1024usize),
-            nom::bytes::complete::take(128 * 1024usize),
-        ))(input)?;
-        let asize = 12; // TODO: read this from nv_pairs
-        let uberblock_count = 1 << (17 - asize.max(10));
-        let uberblock_size = 1 << asize.max(10);
-        let (_, uberblocks) = nom::multi::count(
-            |i| Uberblock::parse(i, uberblock_size),
-            uberblock_count,
-        )(uberblocks)?;
-        Ok((
-            input,
-            Self {
-                boot_header: boot_header.to_vec(),
-                nv_pairs: nv_pairs.to_vec(),
-                uberblocks,
-            },
-        ))
-    }
-}
+pub use crate::label::Label;
 
 /// The uberblock points to the meta object set for the current transaction group
 #[derive(Debug, Clone)]
@@ -328,6 +286,10 @@ pub enum BlockPtrKind {
 }
 
 impl BlockPtr {
+    pub fn is_hole(&self) -> bool {
+        matches!(&self.embedded, BlockPtrKind::Ptr(ptr) if ptr.addresses.iter().all(|dva| dva.asize == 0))
+    }
+
     pub fn parse(input: &[u8]) -> IResult<&[u8], Self> {
         let (input, (_pad, flags)) = nom::combinator::peek(nom::sequence::tuple((
             nom::bytes::complete::take(6 * 8usize),
@@ -340,8 +302,8 @@ impl BlockPtr {
                 nom::sequence::tuple((number::le_u24, number::le_u8))(input)?;
             let (input, compression_type_embedded) = number::le_u8(input)?;
             let embedded_data = compression_type_embedded & (1 << 7);
-            let compression_type =
-                CompressionType::try_from(compression_type_embedded & ((1 << 7) - 1)).unwrap();
+            let compression_type = CompressionType::try_from(compression_type_embedded & 0x7f)
+                .map_err(|_| nom::Err::Error((input, nom::error::ErrorKind::MapRes)))?;
             let embedded_data = embedded_data != 0;
             let (input, (embedded_type, kind)) =
                 nom::sequence::tuple((number::le_u8, number::le_u8))(input)?;
@@ -399,8 +361,8 @@ impl BlockPtr {
                 nom::sequence::tuple((number::le_u16, number::le_u16))(input)?;
             let (input, compression_type_embedded) = number::le_u8(input)?;
             let embedded_data = compression_type_embedded & (1 << 7);
-            let compression_type =
-                CompressionType::try_from(compression_type_embedded & ((1 << 7) - 1)).unwrap();
+            let compression_type = CompressionType::try_from(compression_type_embedded & 0x7f)
+                .map_err(|_| nom::Err::Error((input, nom::error::ErrorKind::MapRes)))?;
             let embedded_data = embedded_data != 0;
             let (input, (checksum_type, kind)) =
                 nom::sequence::tuple((ChecksumType::parse, number::le_u8))(input)?;

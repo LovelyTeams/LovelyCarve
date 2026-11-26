@@ -14,6 +14,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | ext2/3/4 | [EXT.md](EXT.md) | libfsext 对照；内联数据、EA-inode、旧式目录、`meta_bg`、全部间接块层级、带符号与纳秒时间戳 |
 | FAT / exFAT | [FAT.md](FAT.md) | libfsfat 对照；按簇数判定 FAT 类型、大逻辑扇区、范围读取、ValidDataLength、时区与删除项 |
 | Btrfs | [BTRFS.md](BTRFS.md) | 子卷、快照、完整多设备组装、逐 chunk 寻址、范围读与条带来源 |
+| ZFS | [ZFS.md](ZFS.md) | 单设备池、四份标签与 uberblock 校验、大 dnode、系统属性 spill 和范围读取 |
 | UFS1 / UFS2 | [UFS.md](UFS.md) | BSD FFS；大小端、4.4BSD inode、柱面组偏移、直接与间接块、碎片、范围读取 |
 | XFS | [XFS.md](XFS.md) | libfsxfs 对照；格式 1–5、目录与属性全部布局、BIGTIME、metadata UUID、范围读取与来源映射 |
 | ReFS | [REFS.md](REFS.md) | 纯 Rust `refs-reader`；文件流快照、CoW 共享块、公开镜像来源与独立解析器验证 |
@@ -65,7 +66,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | iOS 备份 | [IOS_BACKUPS.md](../IOS_BACKUPS.md) | 本地备份浏览、加密备份解锁与异常检查 |
 | KeePass KDBX | [KDBX.md](KDBX.md) | pykeepass 读取部分的 Rust 改写；KDBX 3 / 4、AES / Twofish / ChaCha20、AES-KDF / Argon2、密钥文件与转换密钥、头部与数据块校验、原类型视图 |
 
-其余格式（ZFS，以及 VDI、DMG、AD1 等镜像容器）的实现位置见 [架构说明的镜像与证据源](../ARCHITECTURE.md#镜像与证据源)，上游版本、本地补丁与测试样本记录在各 vendor 目录的 `LOVELYCARVE.md` / `ORIGIN.md` 中。命令行下的检材登记、解锁和导出示例见 [CLI 手册](../CLI.md)。
+其余格式（VDI、DMG、AD1 等镜像容器）的实现位置见 [架构说明的镜像与证据源](../ARCHITECTURE.md#镜像与证据源)，上游版本、本地补丁与测试样本记录在各 vendor 目录的 `LOVELYCARVE.md` / `ORIGIN.md` 中。命令行下的检材登记、解锁和导出示例见 [CLI 手册](../CLI.md)。
 
 ## 维护要求
 

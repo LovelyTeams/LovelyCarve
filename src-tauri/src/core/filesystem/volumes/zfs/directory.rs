@@ -122,10 +122,6 @@ impl ZfsVolume {
         dataset_path: &str,
         parent_id: &str,
     ) -> Option<Vec<FsNode>> {
-        // Pool root has no head dataset of its own.
-        if dataset_path.is_empty() {
-            return None;
-        }
         let dsl_dir = match walk_dsl_dir(mos, dataset_path) {
             Ok(d) => d,
             Err(err) => {

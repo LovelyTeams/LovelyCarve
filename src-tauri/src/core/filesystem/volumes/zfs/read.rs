@@ -9,6 +9,16 @@ impl ZfsVolume {
         file_path: &str,
         max_bytes: usize,
     ) -> Result<Vec<u8>> {
+        self.read_file_range(dataset_path, file_path, 0, max_bytes)
+    }
+
+    pub fn read_file_range(
+        &self,
+        dataset_path: &str,
+        file_path: &str,
+        offset: u64,
+        max_bytes: usize,
+    ) -> Result<Vec<u8>> {
         if file_path.is_empty() {
             bail!("cannot read ZFS filesystem root as a file");
         }
@@ -40,24 +50,16 @@ impl ZfsVolume {
             ZfsDirEntry::Dir(_) => bail!("{file_path} is a directory, not a file"),
         };
 
-        use std::io::Read;
-        let total = zpl_file_size(&file).unwrap_or(u64::MAX);
-        let cap = (max_bytes as u64).min(total) as usize;
+        use std::io::{Read, Seek, SeekFrom};
         let mut reader = file
             .reader()
             .map_err(|err| anyhow!("ZFS reader {file_path}: {err}"))?;
-        let mut out = vec![0u8; cap];
-        let mut filled = 0usize;
-        while filled < out.len() {
-            let n = reader
-                .read(&mut out[filled..])
-                .map_err(|err| anyhow!("ZFS read {file_path}: {err}"))?;
-            if n == 0 {
-                break;
-            }
-            filled += n;
-        }
-        out.truncate(filled);
+        reader.seek(SeekFrom::Start(offset))?;
+        let mut out = Vec::new();
+        reader
+            .take(max_bytes as u64)
+            .read_to_end(&mut out)
+            .map_err(|err| anyhow!("ZFS read {file_path}: {err}"))?;
         Ok(out)
     }
 
@@ -208,7 +210,7 @@ impl ZfsVolume {
 
 pub(super) fn zpl_file_size<Z>(file: &ZfsZPLFile<'_, '_, Z>) -> Option<u64>
 where
-    Z: zfs_rs::ZAP,
+    Z: zfs_rs::ZAP + zfs_rs::SPA,
 {
     let attrs = file.list_attributes().ok()?;
     for (attr, value) in &attrs {
@@ -225,7 +227,7 @@ where
 
 pub(super) fn zpl_file_mode<Z>(file: &ZfsZPLFile<'_, '_, Z>) -> Option<u16>
 where
-    Z: zfs_rs::ZAP,
+    Z: zfs_rs::ZAP + zfs_rs::SPA,
 {
     let attrs = file.list_attributes().ok()?;
     for (attr, value) in &attrs {
@@ -242,7 +244,7 @@ where
 
 pub(super) fn zpl_file_timestamps<Z>(file: &ZfsZPLFile<'_, '_, Z>) -> Mactb
 where
-    Z: zfs_rs::ZAP,
+    Z: zfs_rs::ZAP + zfs_rs::SPA,
 {
     let mut ts = Mactb::default();
     let attrs = match file.list_attributes() {
