@@ -30,6 +30,7 @@ pub mod ext4;
 pub mod fat;
 mod fatx;
 pub mod flashfs;
+mod gfs1;
 pub mod gfs2;
 pub mod gpt;
 mod hammer;
@@ -170,6 +171,7 @@ pub enum PartitionKind {
     Reiserfs,
     Amiga,
     Befs,
+    Gfs1,
     Gfs2,
     Ocfs2,
     Nilfs2,
@@ -414,6 +416,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Reiserfs
         | PartitionKind::Amiga
         | PartitionKind::Befs
+        | PartitionKind::Gfs1
         | PartitionKind::Gfs2
         | PartitionKind::Ocfs2
         | PartitionKind::Nilfs2

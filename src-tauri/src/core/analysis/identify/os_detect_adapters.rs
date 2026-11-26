@@ -334,6 +334,7 @@ pub(crate) fn supports_os_detect(kind: PartitionKind) -> bool {
             | PartitionKind::Reiserfs
             | PartitionKind::Amiga
             | PartitionKind::Befs
+            | PartitionKind::Gfs1
             | PartitionKind::Gfs2
             | PartitionKind::Ocfs2
             | PartitionKind::Nilfs2
@@ -381,6 +382,7 @@ pub(crate) fn kind_str(kind: PartitionKind) -> &'static str {
         PartitionKind::Reiserfs => "reiserfs",
         PartitionKind::Amiga => "amiga",
         PartitionKind::Befs => "befs",
+        PartitionKind::Gfs1 => "gfs1",
         PartitionKind::Gfs2 => "gfs2",
         PartitionKind::Ocfs2 => "ocfs2",
         PartitionKind::Nilfs2 => "nilfs2",

@@ -172,6 +172,7 @@ fmt:
     cd src-tauri/vendor/reiserfs-reader && cargo fmt
     cd src-tauri/vendor/amiga-reader && cargo fmt
     cd src-tauri/vendor/befs-reader && cargo fmt
+    cd src-tauri/vendor/gfs1-reader && cargo fmt
     cd src-tauri/vendor/gfs2-reader && cargo fmt
     cd src-tauri/vendor/ocfs2-reader && cargo fmt
     cd src-tauri/vendor/nilfs2-reader && cargo fmt
@@ -577,6 +578,10 @@ test-befs *args:
 [group("readers")]
 test-gfs2 *args:
     cargo test --manifest-path src-tauri/vendor/gfs2-reader/Cargo.toml --lib {{ args }}
+
+[group("readers")]
+clippy-gfs1:
+    cargo clippy --manifest-path src-tauri/vendor/gfs1-reader/Cargo.toml --all-targets -- -D warnings
 
 [group("readers")]
 clippy-gfs2:

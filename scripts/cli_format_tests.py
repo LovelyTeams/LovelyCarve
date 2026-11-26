@@ -632,7 +632,7 @@ def test_spiffs(cli, root):
     print("SPIFFS CLI tests passed: signed and unsigned layouts, big endian, MBR, ranges, hash and export")
 
 
-def materialize_hammer_image(packed, source, base):
+def materialize_sparse_image(packed, source, base, partition_type):
     archive = zlib.decompress(packed.read_bytes())
     length, = struct.unpack_from("<Q", archive)
     source.touch(exist_ok=False)
@@ -641,7 +641,7 @@ def materialize_hammer_image(packed, source, base):
     with source.open("r+b") as image:
         if base:
             mbr = bytearray(512)
-            mbr[450] = 0xA5
+            mbr[450] = partition_type
             struct.pack_into("<II", mbr, 454, base // 512, length // 512)
             mbr[510:512] = b"\x55\xaa"
             image.write(mbr)
@@ -666,7 +666,7 @@ def test_hammer(cli, root):
     snapshot = f"{address}/@snapshots/0000000100000001"
     for name, base in (("v7-empty", 0), ("v1-content", 0), ("v7-content", 4096)):
         source = root / f"hammer-{name}.img"
-        length = materialize_hammer_image(fixtures / f"hammer1-{name}.h1z", source, base)
+        length = materialize_sparse_image(fixtures / f"hammer1-{name}.h1z", source, base, 0xA5)
         entry = at(path_id("hammer:part:0:", "/payload.bin"))
         output = root / f"hammer-{name}-export.bin"
         requests = [add(source), ls("root", address)]
@@ -723,7 +723,7 @@ def test_hammer2(cli, root):
         base = 4096 if name == "mbr" else 0
         source = root / f"hammer2-{name}.img"
         packed = fixtures / f"{'lz4' if name == 'mbr' else name}.h2z"
-        length = materialize_hammer_image(packed, source, base)
+        length = materialize_sparse_image(packed, source, base, 0xA5)
 
         entry = at(path_id("hammer2:part:0:", "/DATA/var/log/event.bin"))
         output = root / f"hammer2-{name}-export.bin"
@@ -761,6 +761,51 @@ def test_hammer2(cli, root):
         assert output.read_bytes() == payload
         source.unlink()
     print("HAMMER2 CLI tests passed: v1/v2, current mirror, MBR, PFS snapshots, links, sparse ranges and export")
+
+
+def test_gfs1(cli, root):
+    fixtures = VENDOR / "gfs1-reader/tests/fixtures"
+    address = "/ev/part:0"
+    for block, sparse, base, expected_hash in (
+        (512, 42, 0, "11a0adc308355c21cc464bbf3f1ad6860838fc19ca38b3cd164213a69fd20e37"),
+        (4096, 520, 4096, "30b1d0589647cd7829b5ed17b747edd101f3973cc5c6932f7f5a9d9e47f2dc9b"),
+    ):
+        label = f"gfs1-{block}"
+        source = root / f"{label}.img"
+        length = materialize_sparse_image(fixtures / f"{label}.gfs1z", source, base, 0x83)
+        payload = bytes((i * 11 + i // 43) & 255 for i in range(block))
+        payload += bytes((sparse - 1) * block + 7) + b"GFS1 sparse tail"
+        entry = at(path_id("gfs1:part:0:", "/data/payload.bin"))
+        output = root / f"{label}-export.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", address),
+            ls("data", f"{address}/data"),
+            request("file", "stat", entry),
+            request("hardlink", "stat", f"{address}/data/same-inode"),
+            request("link", "stat", f"{address}/data/latest"),
+            cat("begin", f"{address}/data/latest", block - 11, 73),
+            cat("tail", entry, sparse * block - 23, 99),
+            digest("hash", entry),
+            export("export", entry, output),
+        ])
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "gfs1", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == length
+        if base:
+            assert info["tableScheme"] == "mbr"
+        assert names(rows["root"]) == {"data"}
+        assert names(rows["data"]) == {"empty", "payload.bin", "same-inode", "latest"}
+        assert rows["file"]["inode"] == rows["hardlink"]["inode"] > 0
+        assert rows["link"]["linkTarget"] == "payload.bin"
+        assert rows["begin"] == hex_of(payload[block - 11:block + 62])
+        assert rows["tail"] == hex_of(payload[sparse * block - 23:])
+        assert sha256(rows["hash"]) == expected_hash
+        assert output.read_bytes() == payload
+        source.unlink()
+    print("GFS1 CLI tests passed: native block sizes, MBR, exhash, hard links, indirect sparse ranges and export")
 
 
 def test_formats(cli, root):

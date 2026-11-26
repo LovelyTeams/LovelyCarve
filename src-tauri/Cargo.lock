@@ -2313,6 +2313,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gfs1-reader"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "lamfold",
+]
+
+[[package]]
 name = "gfs2-reader"
 version = "0.1.0"
 dependencies = [
@@ -3527,6 +3535,7 @@ dependencies = [
  "filevault-forensic",
  "flate2",
  "fs2",
+ "gfs1-reader",
  "gfs2-reader",
  "goblin",
  "gpt",

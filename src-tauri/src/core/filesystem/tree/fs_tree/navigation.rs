@@ -253,6 +253,10 @@ pub(super) fn children_for_image_with_options(
                 crate::core::filesystem::volumes::rom_images::open_befs_source(image, partition.id)?
                     .root_children()
             }
+            PartitionKind::Gfs1 => {
+                crate::core::filesystem::volumes::rom_images::open_gfs1_source(image, partition.id)?
+                    .root_children()
+            }
             PartitionKind::Gfs2 => {
                 crate::core::filesystem::volumes::rom_images::open_gfs2_source(image, partition.id)?
                     .root_children()

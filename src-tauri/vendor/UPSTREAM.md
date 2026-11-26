@@ -160,6 +160,11 @@ Haiku 编码解释在 Rust API 中提供。原生 Haiku 官方镜像及独立发
 不随仓库分发；自制夹具为 CC0-1.0。见 [ORIGIN.md](befs-reader/ORIGIN.md) 与
 [格式说明](../../docs/formats/BEFS.md)。
 
+## GFS1
+
+`gfs1-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。磁盘布局和日志头检查依据 Red Hat GFS 源码，
+卷由 Cluster 2.03.05 原生工具格式化并对照验证。[ORIGIN.md](gfs1-reader/ORIGIN.md)
+
 ## GFS2
 
 `gfs2-reader` 0.1.0：适配前检索现有 Rust 代码，复用 unearth 的 MIT 超级块识别布局，

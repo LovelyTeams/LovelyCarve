@@ -130,6 +130,7 @@ filevault-forensic = { path = "vendor/filevault/forensic" }
 flate2 = "1.1.10"
 
 fs2 = "0.4.3"
+gfs1-reader = { path = "vendor/gfs1-reader" }
 gfs2-reader = { path = "vendor/gfs2-reader" }
 # 二进制「原类型视图」结构化解析：ELF / Mach-O / PE / Unix ar 统一走 goblin 的
 # Object::parse（纯 Rust，无 FFI）。默认 features 已含 elf32/64、mach32/64、pe32/64、

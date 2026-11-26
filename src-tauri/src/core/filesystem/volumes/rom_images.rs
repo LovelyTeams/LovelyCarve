@@ -95,6 +95,7 @@ pub type FatxVolume = RomVolume<fatx_reader::Fatx<RomImageSource>>;
 pub type JfsVolume = RomVolume<jfs_reader::Jfs<RomImageSource>>;
 pub type ReiserFsVolume = RomVolume<reiserfs_reader::ReiserFs<RomImageSource>>;
 pub type AmigaVolume = RomVolume<amiga_reader::Amiga<RomImageSource>>;
+pub type Gfs1Volume = RomVolume<gfs1_reader::Gfs1<RomImageSource>>;
 
 pub struct RomImageSource {
     image: Arc<DiskImage>,
@@ -183,6 +184,16 @@ pub fn open_qnx4_source(image: &Arc<DiskImage>, partition: u8) -> Result<Qnx4Vol
 }
 pub fn parse_minix_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "minix")
+}
+pub fn parse_gfs1_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "gfs1")
+}
+
+pub fn open_gfs1_source(image: &Arc<DiskImage>, partition: u8) -> Result<Gfs1Volume> {
+    Gfs1Volume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
 }
 pub fn parse_fatx_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "fatx")

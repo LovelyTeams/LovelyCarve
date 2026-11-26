@@ -40,6 +40,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | ReiserFS v3 | [REISERFS.md](REISERFS.md) | 3.5 / 3.6、混合键、多层树、尾部打包、稀疏块、硬链接与范围读；dirty 拒绝，Reiser4 独立未支持 |
 | Amiga OFS / FFS | [AMIGA.md](AMIGA.md) | DOS0–7、Latin-1 / LNFS、硬链接、原生 RDB 与多块几何；dirty / BADB 明确拒绝 |
 | BeFS | [BEFS.md](BEFS.md) | BeOS / Haiku、大小端、四种块大小、B+tree、全部 run 层级及扩展属性；原生官方镜像 / 系统包验证 |
+| GFS1 | [GFS1.md](GFS1.md) | 1309 / 1401、双日志头、资源组分配位图、线性与 exhash 目录、间接块与稀疏范围读 |
 | GFS2 | [GFS2.md](GFS2.md) | 1801 / 1802、大端、rindex / 分配位图、exhash、定高文件树、稀疏与 EA；检查全部日志并明确拒绝重放 |
 | OCFS2 | [OCFS2.md](OCFS2.md) | 分配链 / 位图、extent / refcount、内联及索引目录、稀疏 / unwritten 与属性；全部 slot 必须离线干净 |
 | NILFS2 | [NILFS2.md](NILFS2.md) | 双超级块 / 日志 CRC、DAT / 分配位图、direct / B-tree、检查点与 GC 搬移；应用读取当前视图，独立库可读历史 snapshot |
