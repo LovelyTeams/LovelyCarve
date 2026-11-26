@@ -78,6 +78,7 @@ pub type ErofsVolume = RomVolume<lamfold_erofs::Erofs<RomImageSource>>;
 pub type F2fsVolume = RomVolume<f2fs_reader::F2fs<RomImageSource>>;
 pub type Qnx4Volume = RomVolume<qnx_reader::Qnx4<RomImageSource>>;
 pub type Qnx6Volume = RomVolume<qnx_reader::Qnx6<RomImageSource>>;
+pub type QnxEtfsVolume = RomVolume<qnx_reader::Etfs<RomImageSource>>;
 pub type UdfVolume = RomVolume<lamfold_udf::Udf<RomImageSource>>;
 pub type MinixVolume = RomVolume<minix_reader::Minix<RomImageSource>>;
 pub type HfsVolume = RomVolume<classic_hfs::Hfs<RomImageSource>>;
@@ -384,8 +385,17 @@ pub fn open_udf_source(image: &Arc<DiskImage>, partition: u8) -> Result<UdfVolum
 pub fn parse_qnx6_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "qnx6")
 }
+pub fn parse_qnxetfs_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "qnxetfs")
+}
 pub fn open_qnx6_source(image: &Arc<DiskImage>, partition: u8) -> Result<Qnx6Volume> {
     Qnx6Volume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn open_qnxetfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<QnxEtfsVolume> {
+    QnxEtfsVolume::open(
         Arc::clone(image),
         find_partition(image, &partition.to_string())?,
     )

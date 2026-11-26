@@ -371,6 +371,7 @@ impl DiskImage {
                                 | PartitionKind::F2fs
                                 | PartitionKind::Qnx4
                                 | PartitionKind::Qnx6
+                                | PartitionKind::QnxEtfs
                                 | PartitionKind::Minifs
                                 | PartitionKind::Romfs
                                 | PartitionKind::Squashfs

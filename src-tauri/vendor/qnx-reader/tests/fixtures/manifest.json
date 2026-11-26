@@ -1,8 +1,35 @@
 {
   "nfi_source": "https://github.com/NetherlandsForensicInstitute/qnxmount/tree/11c8a7f9ee9b945d584263743f6ea8524e8776d2/tests/qnx6/test_data",
+  "nfi_etfs_source": "https://github.com/NetherlandsForensicInstitute/qnxmount/tree/11c8a7f9ee9b945d584263743f6ea8524e8776d2/tests/qnx_etfs/test_data",
   "nfi_license": "Apache-2.0",
   "synthetic_license": "CC0-1.0",
   "files": {
+    "nfi-etfs-old.tar.gz": {
+      "sha256": "7249bb2f2a5769c6b81175e05ab6385044fde9bcf0980a0c5f93e57a5c6cd2c0",
+      "size": 17579
+    },
+    "nfi-etfs-old.zlib": {
+      "sha256": "abec38e956a4b673be4499cd151345aa0a7e573a0a2829b4032a9edcd7faa01a",
+      "size": 32132,
+      "raw_sha256": "2eefcd2737074a09dc8b9adb966042322a7c6cba12a1a62f8b31aabfebfac5a5",
+      "raw_size": 998400
+    },
+    "nfi-etfs-transactions.zlib": {
+      "sha256": "2a26a630398e591223d27d0125115ba0f1c893da831e4f162a8b85e7540e8e4b",
+      "size": 21876,
+      "raw_sha256": "3cf108878fef6348a707da66337dbf9a6f887341cce8831ab0dd3c02949ba859",
+      "raw_size": 46800
+    },
+    "nfi-etfs.tar.gz": {
+      "sha256": "6602a25801754102738166c24d898927e7b7fc1134316503612add3fb3a30729",
+      "size": 17746
+    },
+    "nfi-etfs.zlib": {
+      "sha256": "795e93e900cea6abdf842379b87019c1bd5c1f8d1e755f2ed1f0f0cbd5d49cd9",
+      "size": 32301,
+      "raw_sha256": "de727e05990e87389df137f0e8c53f1923b64ed2cbb8440b5978a04b89367e1a",
+      "raw_size": 998400
+    },
     "nfi-qnx6.tar.gz": {
       "sha256": "c0e9a2c9cc2eda05ff02589e75179ae590773da3b2477f67ee28cd7b1983b0a0",
       "size": 17743

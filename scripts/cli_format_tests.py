@@ -808,6 +808,57 @@ def test_gfs1(cli, root):
     print("GFS1 CLI tests passed: native block sizes, MBR, exhash, hard links, indirect sparse ranges and export")
 
 
+def test_qnx_etfs(cli, root):
+    fixtures = VENDOR / "qnx-reader/tests/fixtures"
+    volume = "/ev/part:0"
+    for label, base in (("nfi-etfs-old", 0), ("nfi-etfs", 4096), ("nfi-etfs-transactions", 0)):
+        volume_bytes = zlib.decompress((fixtures / f"{label}.zlib").read_bytes())
+        source = root / f"{label}.img"
+        if base:
+            mbr = bytearray(base)
+            mbr[450] = 0x77
+            struct.pack_into("<II", mbr, 454, base // 512, len(volume_bytes) // 512)
+            mbr[510:512] = b"\x55\xaa"
+            source.write_bytes(mbr + volume_bytes)
+        else:
+            source.write_bytes(volume_bytes)
+        message = "/directory_1/directory_1_1/message.txt"
+        entry = at(path_id("qnxetfs:part:0:", message))
+        output = root / f"{label}-export.bin"
+        requests = [
+            add(source),
+            ls("root", volume),
+            request("link", "stat", f"{volume}/directory_1/link_message.txt"),
+            cat("linked", f"{volume}/directory_1/link_message.txt"),
+            export("export", entry, output),
+        ]
+        if label != "nfi-etfs-transactions":
+            with tarfile.open(fixtures / f"{label}.tar.gz") as archive:
+                large = archive.extractfile("this_file_is_large").read()
+            requests.extend([
+                cat("range", f"{volume}/this_file_is_large", 5091, 2089),
+                digest("hash", f"{volume}/this_file_is_large"),
+            ])
+        rows = cli.results(requests)
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "qnxetfs", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == len(volume_bytes)
+        if base:
+            assert info["tableScheme"] == "mbr"
+        assert "this_file_is_removed" not in names(rows["root"])
+        assert "this_file_is_not_renamed" not in names(rows["root"])
+        assert rows["link"]["linkTarget"] == "directory_1_1/message.txt"
+        assert rows["linked"] == hex_of(b"This is a test file system!\n")
+        assert output.read_bytes() == b"This is a test file system!\n"
+        if label != "nfi-etfs-transactions":
+            assert rows["range"] == hex_of(large[5091:7180])
+            assert sha256(rows["hash"]) == hashlib.sha256(large).hexdigest()
+        source.unlink()
+    print("QNX ETFS CLI tests passed: native flash, exact transaction export length, MBR, links, ranges and export")
+
+
 def test_formats(cli, root):
     firmware_node = path_id("squashfs:part:0:", "/hello")
     firmware_content = b"Independent DD-WRT fixture.\n" * 64

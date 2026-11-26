@@ -98,6 +98,7 @@ pub(super) fn snapshot_supported_plain_partition(kind: PartitionKind) -> bool {
             | PartitionKind::F2fs
             | PartitionKind::Qnx4
             | PartitionKind::Qnx6
+            | PartitionKind::QnxEtfs
             | PartitionKind::Udf
             | PartitionKind::Hfs
             | PartitionKind::Mfs

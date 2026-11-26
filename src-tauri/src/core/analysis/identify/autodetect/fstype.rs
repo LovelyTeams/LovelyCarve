@@ -111,6 +111,7 @@ pub fn partition_ftype(kind: PartitionKind) -> Option<u64> {
         | PartitionKind::F2fs
         | PartitionKind::Qnx4
         | PartitionKind::Qnx6
+        | PartitionKind::QnxEtfs
         | PartitionKind::Udf
         | PartitionKind::Hfs
         | PartitionKind::Mfs

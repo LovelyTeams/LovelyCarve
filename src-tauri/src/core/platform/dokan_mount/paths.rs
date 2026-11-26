@@ -309,6 +309,7 @@ pub(super) fn fs_label_for_kind(kind: PartitionKind) -> &'static str {
         PartitionKind::F2fs => "F2FS",
         PartitionKind::Qnx4 => "QNX4",
         PartitionKind::Qnx6 => "QNX6",
+        PartitionKind::QnxEtfs => "QNX ETFS",
         PartitionKind::Udf => "UDF",
         PartitionKind::Hfs => "HFS",
         PartitionKind::Mfs => "MFS",
@@ -383,6 +384,7 @@ pub(super) fn is_case_sensitive_fs(kind: PartitionKind) -> bool {
             | PartitionKind::F2fs
             | PartitionKind::Qnx4
             | PartitionKind::Qnx6
+            | PartitionKind::QnxEtfs
             | PartitionKind::Udf
             | PartitionKind::Jfs
             | PartitionKind::Reiserfs

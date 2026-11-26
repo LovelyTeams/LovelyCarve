@@ -24,7 +24,7 @@ from cli_backend_tests import test_backend
 from cli_container_tests import test_containers, test_encryption
 from cli_format_tests import (
     test_aix_jfs, test_fatx, test_formats, test_gfs1, test_hammer, test_hammer2, test_hpfs, test_littlefs, test_mfs, test_spiffs, test_unixware_bfs,
-    test_vmfs, test_vxfs, test_xdvdfs,
+    test_qnx_etfs, test_vmfs, test_vxfs, test_xdvdfs,
 )
 from cli_integrity_tests import test_integrity
 from cli_navigation_tests import test_navigation
@@ -786,6 +786,7 @@ SECTIONS = {
     "hammer": test_hammer,
     "hammer2": test_hammer2,
     "gfs1": test_gfs1,
+    "qnx_etfs": test_qnx_etfs,
     "containers": test_containers,
     "encryption": test_encryption,
     "batch": test_batches,

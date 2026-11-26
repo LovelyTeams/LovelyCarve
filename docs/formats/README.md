@@ -50,6 +50,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | F2FS | [F2FS.md](F2FS.md) | 纯 Rust checkpoint / NAT 读取、动态内联区域、完整间接寻址、inode CRC、硬链接及纳秒时间 |
 | EROFS | [EROFS.md](EROFS.md) | lamfold-erofs；紧凑 / 扩展 inode、四种压缩、chunk 空洞、有界范围读取与超级块 CRC32C |
 | QNX4 / QNX6 | [QNX.md](QNX.md) | 原创 Rust 库；QNX4 extent 链、QNX6 Power-Safe / MMI、大小端、代际 CRC、间接树及 QNX 原生镜像 TAR oracle |
+| QNX ETFS | [QNX_ETFS.md](QNX_ETFS.md) | 尾随事务头、当前文件表、长文件名、原生事务导出和有界文件范围读 |
 | SquashFS | [SQUASHFS.md](SQUASHFS.md) | backhand Rust 读取器；v1/v2 旧布局、v3/v4、大小端、尾片段和有界 LZMA / 范围读取 |
 | JFFS2 | [JFFS2.md](JFFS2.md) | jffs2-rs 结构 / RTIME 改造；新格式大小端、CRC、版本化目录与片段、空洞和范围读取 |
 | YAFFS1 | [YAFFS1.md](YAFFS1.md) | 原生 Rust 分散 tags、标签 / 页正文 ECC、两位序号、删除页、shadow、硬链接及独立文件长度策略 |
