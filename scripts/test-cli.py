@@ -22,7 +22,9 @@ import zlib
 
 from cli_backend_tests import test_backend
 from cli_container_tests import test_containers, test_encryption
-from cli_format_tests import test_aix_jfs, test_fatx, test_formats, test_hpfs, test_unixware_bfs, test_vmfs, test_vxfs, test_xdvdfs
+from cli_format_tests import (
+    test_aix_jfs, test_fatx, test_formats, test_hpfs, test_mfs, test_unixware_bfs, test_vmfs, test_vxfs, test_xdvdfs,
+)
 from cli_integrity_tests import test_integrity
 from cli_navigation_tests import test_navigation
 from cli_observability_tests import test_observability
@@ -777,6 +779,7 @@ SECTIONS = {
     "unixwarebfs": test_unixware_bfs,
     "xdvdfs": test_xdvdfs,
     "fatx": test_fatx,
+    "mfs": test_mfs,
     "containers": test_containers,
     "encryption": test_encryption,
     "batch": test_batches,

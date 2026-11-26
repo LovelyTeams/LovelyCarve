@@ -40,6 +40,7 @@ pub mod luks;
 pub mod lvm2;
 pub mod mbr;
 pub mod mdadm;
+mod mfs;
 pub mod minifs;
 pub mod minix;
 pub mod nilfs2;
@@ -182,6 +183,7 @@ pub enum PartitionKind {
     BiosBoot,
     ApfsContainer,
     Hfs,
+    Mfs,
     HfsPlus,
     HfsX,
     Luks,
@@ -395,6 +397,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Qnx6
         | PartitionKind::Udf
         | PartitionKind::Hfs
+        | PartitionKind::Mfs
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
         | PartitionKind::Amiga

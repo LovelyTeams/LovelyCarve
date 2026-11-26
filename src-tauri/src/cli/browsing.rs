@@ -272,12 +272,13 @@ where
                 }
                 child = Some(node);
             } else {
-                let same_name =
-                    if node.id.starts_with("xdvdfs:part:") || node.id.starts_with("fatx:part:") {
-                        node.name.eq_ignore_ascii_case(component)
-                    } else {
-                        node.name.to_lowercase() == folded_component
-                    };
+                let same_name = if node.id.starts_with("mfs:part:") {
+                    mfs_reader::names_equal(&node.name, component)
+                } else if node.id.starts_with("xdvdfs:part:") || node.id.starts_with("fatx:part:") {
+                    node.name.eq_ignore_ascii_case(component)
+                } else {
+                    node.name.to_lowercase() == folded_component
+                };
                 if same_name {
                     folded_ambiguous |= folded_child.is_some();
                     folded_child = Some(node);

@@ -71,15 +71,26 @@ pub fn encode(name: &str) -> Option<Vec<u8>> {
                 Some(b'/')
             } else if character == '＼' {
                 Some(b'\\')
-            } else if character.is_ascii() {
-                Some(character as u8)
             } else {
-                HIGH.iter()
-                    .position(|value| *value == character)
-                    .map(|index| index as u8 + 128)
+                encode_char(character)
             }
         })
         .collect()
+}
+
+/// Encode characters without applying HFS path-display substitutions.
+pub fn encode_raw(name: &str) -> Option<Vec<u8>> {
+    name.chars().map(encode_char).collect()
+}
+
+fn encode_char(character: char) -> Option<u8> {
+    if character.is_ascii() {
+        Some(character as u8)
+    } else {
+        HIGH.iter()
+            .position(|value| *value == character)
+            .map(|index| index as u8 + 128)
+    }
 }
 pub fn display(name: &[u8]) -> String {
     match name {

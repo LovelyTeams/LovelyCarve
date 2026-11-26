@@ -143,6 +143,7 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &ExtProbe,
     &ApfsProbe,
     &super::classic_hfs::ClassicHfsProbe,
+    &super::mfs::MfsProbe,
     &HfsProbe,
     &LvmProbe,
     &LuksProbe,
@@ -327,6 +328,7 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::Qnx6
         | PartitionKind::Udf
         | PartitionKind::Hfs
+        | PartitionKind::Mfs
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
         | PartitionKind::Amiga

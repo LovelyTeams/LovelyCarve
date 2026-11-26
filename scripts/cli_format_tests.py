@@ -460,6 +460,82 @@ def test_fatx(cli, root):
     print("FATX CLI tests passed: both FAT widths and byte orders, LBA48, Devkit and memory unit, ranges, hash and export")
 
 
+def test_mfs(cli, root):
+    fixtures = VENDOR / "mfs-reader/tests/fixtures"
+    data = bytes((n * 13 + n // 47) % 256 for n in range(8199))
+    resource = bytes((n * 7 + n // 81) % 256 for n in range(4673))
+    stream = "com.apple.ResourceFork"
+    sources = []
+    for name in ("raw-400", "raw-800", "dc42-400", "dc42-800"):
+        volume = zlib.decompress((fixtures / f"{name}.zlib").read_bytes())
+        source = root / f"mfs-{name}.img"
+        source.write_bytes(volume)
+        sources.append((source, 0, len(volume)))
+        if name == "raw-400":
+            base = 8 * 512
+            apm = bytearray(base)
+            struct.pack_into(">2sH", apm, 0, b"ER", 512)
+            struct.pack_into(">2sHIII32s32s", apm, 512, b"PM", 0, 1, 8, len(volume) // 512, b"MFS", b"Apple_MFS")
+            source = root / "mfs-apm.img"
+            source.write_bytes(apm + volume)
+            sources.append((source, base, len(volume)))
+
+    address = "/ev/part:0"
+    entry = at(path_id("mfs:part:0:", "/Résumé"))
+    resource_only = f"{address}/Only Resource"
+    for source, base, length in sources:
+        data_output = root / f"{source.stem}-data.bin"
+        resource_output = root / f"{source.stem}-resource.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", address),
+            cat("range", f"{address}/RÉSUMÉ", 1001, 3101),
+            cat("empty-data", resource_only),
+            cat("only-resource", resource_only, length=93, stream=stream),
+            request("stat", "stat", entry),
+            request("streams", "streams", entry),
+            cat("resource", entry, length=2341, stream=stream),
+            digest("hash", entry),
+            export("data-export", entry, data_output),
+            export("resource-export", entry, resource_output, stream=stream),
+        ])
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["id"] == 0 and part["kind"] == "mfs", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == length
+        if base:
+            assert info["tableScheme"] == "apm" and part["label"] == "MFS (Apple_MFS)"
+        assert names(rows["root"]) == {"Résumé", "Only Resource", "Empty"}
+        assert rows["range"] == hex_of(data[1001:4102]) and rows["empty-data"] == hex_of(b"")
+        assert rows["stat"]["size"] == len(data)
+        assert datetime.fromisoformat(rows["stat"]["timestamps"]["created"]).tzinfo is None
+        assert {item["name"]: item["size"] for item in rows["streams"]["items"]} == {"": len(data), stream: len(resource)}
+        assert rows["resource"] == hex_of(resource[:2341]) and rows["only-resource"] == hex_of(resource[:93])
+        assert sha256(rows["hash"]) == hashlib.sha256(data).hexdigest()
+        assert data_output.read_bytes() == data and resource_output.read_bytes() == resource
+
+    apple_image = os.environ.get("LOVELYCARVE_MFS_APPLE_ORACLE")
+    if apple_image:
+        entry = f"{address}/TN.002.Compatibility"
+        output = root / "apple-mfs-resource.bin"
+        rows = cli.results([
+            add(Path(apple_image)),
+            ls("root", address),
+            digest("hash", entry),
+            export("resource-export", entry, output, stream=stream),
+        ])
+        assert opened(rows)["partitions"][0]["kind"] == "mfs"
+        assert names(rows["root"]) == {
+            "DeskTop", "TN.002.Compatibility", "TN.002.Compatibility.pdf", "CSillyBalls", "CSillyBalls.make",
+            "PSillyBalls", "PSillyBalls.make", "SCN.003.SillyBalls", "SillyBalls.c", "SillyBalls.p",
+        }
+        assert sha256(rows["hash"]) == "bc23503a695764123759f006dfc4fa0052d96ec293c35168090aedbc9e497a8a"
+        assert hashlib.sha256(output.read_bytes()).hexdigest() == "65d4a524d31c5c9c76579ef3656d592266bd11bd073c255c331029c20ea55cf5"
+        print("MFS Apple oracle passed: original Disk Copy image and both fork hashes")
+    print("MFS CLI tests passed: 400K and 800K raw and Disk Copy images, APM, local timestamps and both forks")
+
+
 def test_formats(cli, root):
     firmware_node = path_id("squashfs:part:0:", "/hello")
     firmware_content = b"Independent DD-WRT fixture.\n" * 64

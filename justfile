@@ -163,6 +163,7 @@ fmt:
     cd src-tauri/vendor/lamfold-udf && cargo fmt
     cd src-tauri/vendor/minix-reader && cargo fmt
     cd src-tauri/vendor/classic-hfs && cargo fmt
+    cd src-tauri/vendor/mfs-reader && cargo fmt
     cd src-tauri/vendor/jfs-reader && cargo fmt
     cd src-tauri/vendor/reiserfs-reader && cargo fmt
     cd src-tauri/vendor/amiga-reader && cargo fmt
@@ -527,6 +528,10 @@ test-classic-hfs:
 [group("readers")]
 clippy-classic-hfs:
     cargo clippy --manifest-path src-tauri/vendor/classic-hfs/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+clippy-mfs:
+    cargo clippy --manifest-path src-tauri/vendor/mfs-reader/Cargo.toml --all-targets -- -D warnings
 
 [group("readers")]
 generate-hfs-fixtures:

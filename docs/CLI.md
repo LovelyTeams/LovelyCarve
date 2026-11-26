@@ -179,7 +179,7 @@ lovelycarve-cli -C '<案件目录>' ls /nas/part:0/Users --jq '.items[] | select
 | `strings <地址> [--encoding ascii\|utf-8\|utf-16le\|utf-16be] [--min-length N] [--offset N] [--length N] [--limit N]` | 可打印字符串及其文件内偏移 |
 | `hash <地址>… [--algo md5,sha1,sha256,sm3]` | 文件哈希，默认 MD5、SHA-1、SHA-256 |
 | `identify <地址>` | 按内容识别类型（Magika），不看扩展名 |
-| `streams <地址>` | NTFS 命名数据流、HFS+ 资源分叉，以及 BeFS / GFS2 / OCFS2 的扩展属性 |
+| `streams <地址>` | NTFS / ReFS 命名数据流、MFS / HFS / HFS+ 资源分叉，以及 BeFS / GFS2 / OCFS2 的扩展属性 |
 | `export <地址>… -o <输出> [--zip] [--stream 流名]` | 导出文件，目录导出为目录树（`--zip` 为 ZIP）；多个地址导出到一个新目录，各自按名称放入 |
 | `bodyfile <卷或目录> -o <文件>` | 导出 mactime body 文件 |
 

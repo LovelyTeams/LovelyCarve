@@ -118,8 +118,8 @@ fn read_apm_string(bytes: &[u8]) -> String {
 
 fn apm_type_to_kind(type_name: &str) -> PartitionKind {
     match type_name {
-        "Apple_HFS" | "Apple_HFSX" | "Apple_MFS" | "Apple_APFS" => PartitionKind::ApfsContainer,
-        "Apple_UFS" | "Linux" => PartitionKind::Unknown,
+        "Apple_HFS" | "Apple_HFSX" | "Apple_APFS" => PartitionKind::ApfsContainer,
+        "Apple_MFS" | "Apple_UFS" | "Linux" => PartitionKind::Unknown,
         _ => PartitionKind::Apm,
     }
 }

@@ -100,6 +100,7 @@ pub(super) fn snapshot_supported_plain_partition(kind: PartitionKind) -> bool {
             | PartitionKind::Qnx6
             | PartitionKind::Udf
             | PartitionKind::Hfs
+            | PartitionKind::Mfs
             | PartitionKind::Jfs
             | PartitionKind::Reiserfs
             | PartitionKind::Amiga

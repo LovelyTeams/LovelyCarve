@@ -239,3 +239,9 @@ util-linux 与 UnixWare 文档。空卷由 util-linux 格式化，含文件的�
 `fatx-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。磁盘结构对照 XboxDev、
 Velocity 和 Xbox 格式研究。样本由 libfatx 与 fatx-rs 独立生成并验证，具体版本与哈希见
 [ORIGIN.md](fatx-reader/ORIGIN.md)。
+
+## Macintosh MFS
+
+`mfs-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。磁盘布局对照 Apple MFSLives
+与 CiderPress II 的格式记录。常规样本由 macfs 生成并由 fs-mac 交叉验证。Apple 的 Disk Copy 4.2
+样本作为外部对照，来源及双叉哈希见 [ORIGIN.md](mfs-reader/ORIGIN.md)。

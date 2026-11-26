@@ -1,0 +1,15 @@
+[package]
+name = "mfs-reader"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+description = "Read-only Macintosh File System and Disk Copy 4.2 volumes"
+
+[dependencies]
+classic-hfs = { path = "../classic-hfs" }
+lamfold = { path = "../lamfold", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+flate2 = "1"
+
+[workspace]

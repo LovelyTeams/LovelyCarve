@@ -47,7 +47,7 @@ Apple [TN1150](https://developer.apple.com/library/archive/technotes/tn/tn1150.h
 ## 已知限制
 
 - 只使用主 MDB；不自动恢复损坏主 MDB、回放未提交修改、扫描删除目录项或修复文件系统。
-- HFS+ wrapper 内嵌卷、MFS、Disk Copy 4.2 容器、原始软盘 GCR / MFM / flux 流不属于本读取器支持范围；原始 HFS 卷字节可读。HFS+ / HFSX 仍走[原有读取器](HFS.md)。
+- 可直接读取传统 HFS 裸卷。[HFS+ / HFSX](HFS.md) 与 [MFS 及其 Disk Copy 4.2 封装](MFS.md) 各有独立读取器。HFS+ wrapper 内嵌卷、含传统 HFS 的 Disk Copy 4.2，以及原始软盘 GCR / MFM / flux 流仍不受此读取器支持。
 - 单个元数据 B-tree 上限 64 MiB，目录深度上限 256；超过范围明确报错。元数据需载入有界内存，文件 fork 按需范围读。
 - extents 树自身的下一段映射必须能从已知段覆盖的 header / leaf 链取得；若自描述记录不可达则失败，不扫描不属于已验证树的区域。
 - 不宣称完整 fsck 或全卷跨文件块所有权审计。损坏内容不会用零补齐；分配块仍须在源卷内且位图已分配。

@@ -188,6 +188,12 @@ impl<'a> FsSession<'a> {
                         )?
                         .root_children(),
                     ),
+                    PartitionKind::Mfs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_mfs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::Hfs => Some(
                         crate::core::filesystem::volumes::rom_images::open_hfs_source(
                             self.image, pid,

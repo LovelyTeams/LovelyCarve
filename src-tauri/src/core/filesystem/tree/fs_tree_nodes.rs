@@ -130,6 +130,7 @@ pub(crate) fn fs_unalloc_nodes(image: &Arc<EvidenceSession>, partition: &Partiti
         | PartitionKind::Qnx6
         | PartitionKind::Udf
         | PartitionKind::Hfs
+        | PartitionKind::Mfs
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
         | PartitionKind::Amiga
@@ -274,6 +275,7 @@ pub(crate) fn partition_node(image: &Arc<EvidenceSession>, partition: &Partition
             | PartitionKind::Qnx6
             | PartitionKind::Udf
             | PartitionKind::Hfs
+            | PartitionKind::Mfs
             | PartitionKind::Jfs
             | PartitionKind::Reiserfs
             | PartitionKind::Amiga

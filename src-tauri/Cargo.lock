@@ -3529,6 +3529,7 @@ dependencies = [
  "md-5 0.11.0",
  "memchr",
  "memmap2",
+ "mfs-reader",
  "minifs",
  "minix-reader",
  "ms-compress",
@@ -3832,6 +3833,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "mfs-reader"
+version = "0.1.0"
+dependencies = [
+ "classic-hfs",
+ "lamfold",
 ]
 
 [[package]]
