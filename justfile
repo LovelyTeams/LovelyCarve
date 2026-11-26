@@ -175,6 +175,7 @@ fmt:
     cd src-tauri/vendor/befs-reader && cargo fmt
     cd src-tauri/vendor/gfs1-reader && cargo fmt
     cd src-tauri/vendor/gfs2-reader && cargo fmt
+    cd src-tauri/vendor/ocfs1-reader && cargo fmt
     cd src-tauri/vendor/ocfs2-reader && cargo fmt
     cd src-tauri/vendor/nilfs2-reader && cargo fmt
     cd src-tauri/vendor/bcachefs-reader && cargo fmt
@@ -601,6 +602,9 @@ test-ocfs2 *args:
     cargo test --manifest-path src-tauri/vendor/ocfs2-reader/Cargo.toml --lib {{ args }}
 
 [group("readers")]
+clippy-ocfs1:
+    cargo clippy --manifest-path src-tauri/vendor/ocfs1-reader/Cargo.toml --all-targets -- -D warnings
+
 clippy-ocfs2:
     cargo clippy --manifest-path src-tauri/vendor/ocfs2-reader/Cargo.toml --all-targets -- -D warnings
 

@@ -857,6 +857,50 @@ def test_reiser4(cli, root):
     print("Reiser4 CLI tests passed: both key sizes, protected nodes, MBR, links, sparse ranges, hash and export")
 
 
+def test_ocfs1(cli, root):
+    fixture = VENDOR / "ocfs1-reader/tests/fixtures/oraclecfs-12.zlib"
+    raw = zlib.decompress(fixture.read_bytes())
+    volume = "/ev/part:0"
+    path = "/archive/archive-file.dbf"
+    entry = at(path_id("ocfs1:part:0:", path))
+    chunk = 131072
+    payload = b"".join(bytes((i * 29 + i // 193 + run * 7) & 255 for i in range(chunk)) for run in range(4))[:-71]
+    for base in (0, 4096):
+        source = root / f"ocfs1-{base}.img"
+        write_partition_image(source, raw, base, 0x83)
+        output = root / f"ocfs1-{base}-export.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", volume),
+            ls("archive", f"{volume}/archive"),
+            request("file", "stat", entry),
+            request("link", "stat", f"{volume}/shortcut"),
+            cat("direct", f"{volume}/control.bin", 690, 100),
+            cat("cross_leaf", entry, 2 * chunk - 9, 75),
+            cat("empty", f"{volume}/empty.dbf"),
+            digest("hash", f"{volume}/shortcut"),
+            export("export", entry, output),
+        ])
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "ocfs1", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == len(raw)
+        if base:
+            assert info["tableScheme"] == "mbr"
+        assert names(rows["root"]) == {"archive", "control.bin", "shortcut", "empty.dbf"}
+        assert names(rows["archive"]) == {"archive-file.dbf"}
+        assert rows["file"]["size"] == len(payload)
+        assert rows["link"]["linkTarget"] == "archive/archive-file.dbf"
+        assert rows["direct"] == hex_of(bytes((i ^ 0xA5) & 255 for i in range(690, 715)))
+        assert rows["cross_leaf"] == hex_of(payload[2 * chunk - 9:2 * chunk + 66])
+        assert rows["empty"] == hex_of(b"")
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert output.read_bytes() == payload
+        source.unlink()
+    print("OCFS1 CLI tests passed: bare and MBR volumes, directory chains, local and external extents, hash and export")
+
+
 def write_partition_image(source, volume_bytes, base, partition_type):
     if base:
         mbr = bytearray(base)

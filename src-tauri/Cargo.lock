@@ -3578,6 +3578,7 @@ dependencies = [
  "notatin",
  "ntfs",
  "ntfs-core",
+ "ocfs1-reader",
  "ocfs2-reader",
  "opencv",
  "parking_lot",
@@ -4489,6 +4490,13 @@ dependencies = [
  "objc2-app-kit",
  "objc2-core-foundation",
  "objc2-foundation",
+]
+
+[[package]]
+name = "ocfs1-reader"
+version = "0.1.0"
+dependencies = [
+ "lamfold",
 ]
 
 [[package]]

@@ -48,6 +48,7 @@ mod mfs;
 pub mod minifs;
 pub mod minix;
 pub mod nilfs2;
+mod ocfs1;
 pub mod ocfs2;
 pub mod optical_disc;
 pub(crate) mod partition_cursor;
@@ -179,6 +180,7 @@ pub enum PartitionKind {
     Befs,
     Gfs1,
     Gfs2,
+    Ocfs1,
     Ocfs2,
     Nilfs2,
     Bcachefs,
@@ -427,6 +429,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Befs
         | PartitionKind::Gfs1
         | PartitionKind::Gfs2
+        | PartitionKind::Ocfs1
         | PartitionKind::Ocfs2
         | PartitionKind::Nilfs2
         | PartitionKind::Bcachefs

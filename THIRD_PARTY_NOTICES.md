@@ -1680,6 +1680,12 @@ as format references; no kernel code or native filesystem library is linked.
 The optional native test uses separately installed Linux tooling and invented
 CC0 inputs. See [ORIGIN.md](src-tauri/vendor/gfs2-reader/ORIGIN.md).
 
+## OCFS1 format and fixture
+
+The original Rust reader uses the on-disk layout documented by the Oracle OCFS
+project. See [ORIGIN.md](src-tauri/vendor/ocfs1-reader/ORIGIN.md) for Oracle's
+commit archives and the source of the synthetic test fixture.
+
 ## OCFS2 reader
 
 `src-tauri/vendor/ocfs2-reader` contains an original AGPL-3.0-only immutable

@@ -57,13 +57,13 @@ use crate::core::filesystem::volumes::rom_images::{
 use crate::core::filesystem::volumes::rom_images::{
     open_amiga_source, open_bcachefs_source, open_befs_source, open_cramfs_source,
     open_erofs_source, open_f2fs_source, open_gfs1_source, open_gfs2_source, open_hfs_source,
-    open_jfs_source, open_minix_source, open_nilfs2_source, open_ocfs2_source, open_qnx4_source,
-    open_qnx6_source, open_qnxefs_source, open_qnxetfs_source, open_reiser4_source,
-    open_reiserfs_source, open_romfs_source, open_udf_source, parse_amiga_id, parse_bcachefs_id,
-    parse_befs_id, parse_cramfs_id, parse_erofs_id, parse_f2fs_id, parse_gfs1_id, parse_gfs2_id,
-    parse_hfs_id, parse_jfs_id, parse_minix_id, parse_nilfs2_id, parse_ocfs2_id, parse_qnx4_id,
-    parse_qnx6_id, parse_qnxefs_id, parse_qnxetfs_id, parse_reiser4_id, parse_reiserfs_id,
-    parse_romfs_id, parse_udf_id,
+    open_jfs_source, open_minix_source, open_nilfs2_source, open_ocfs1_source, open_ocfs2_source,
+    open_qnx4_source, open_qnx6_source, open_qnxefs_source, open_qnxetfs_source,
+    open_reiser4_source, open_reiserfs_source, open_romfs_source, open_udf_source, parse_amiga_id,
+    parse_bcachefs_id, parse_befs_id, parse_cramfs_id, parse_erofs_id, parse_f2fs_id,
+    parse_gfs1_id, parse_gfs2_id, parse_hfs_id, parse_jfs_id, parse_minix_id, parse_nilfs2_id,
+    parse_ocfs1_id, parse_ocfs2_id, parse_qnx4_id, parse_qnx6_id, parse_qnxefs_id,
+    parse_qnxetfs_id, parse_reiser4_id, parse_reiserfs_id, parse_romfs_id, parse_udf_id,
 };
 use crate::core::filesystem::volumes::rom_images::{
     open_fatx_source, open_hammer2_source, open_hammer_source, open_littlefs_source,
@@ -189,6 +189,7 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &BeFsAdapter,
     &Gfs1Adapter,
     &Gfs2Adapter,
+    &Ocfs1Adapter,
     &Ocfs2Adapter,
     &Nilfs2Adapter,
     &BcachefsAdapter,
@@ -287,6 +288,9 @@ pub(crate) fn volume_root_key(id: &str) -> Option<String> {
     }
     if let Some((partition, _)) = parse_gfs2_id(id) {
         return Some(format!("gfs2:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_ocfs1_id(id) {
+        return Some(format!("ocfs1:part:{partition}"));
     }
     if let Some((partition, _)) = parse_ocfs2_id(id) {
         return Some(format!("ocfs2:part:{partition}"));
@@ -712,6 +716,15 @@ path_volume!(
     open_gfs2_source
 );
 path_volume_impl!(Gfs2Vol, plain_range);
+path_volume!(
+    Ocfs1Adapter,
+    Ocfs1Vol,
+    "ocfs1",
+    crate::core::filesystem::volumes::rom_images::Ocfs1Volume,
+    parse_ocfs1_id,
+    open_ocfs1_source
+);
+path_volume_impl!(Ocfs1Vol, plain_range);
 path_volume!(
     Ocfs2Adapter,
     Ocfs2Vol,

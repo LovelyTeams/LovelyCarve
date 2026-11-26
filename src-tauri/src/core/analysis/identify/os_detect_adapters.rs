@@ -339,6 +339,7 @@ pub(crate) fn supports_os_detect(kind: PartitionKind) -> bool {
             | PartitionKind::Befs
             | PartitionKind::Gfs1
             | PartitionKind::Gfs2
+            | PartitionKind::Ocfs1
             | PartitionKind::Ocfs2
             | PartitionKind::Nilfs2
             | PartitionKind::Bcachefs
@@ -390,6 +391,7 @@ pub(crate) fn kind_str(kind: PartitionKind) -> &'static str {
         PartitionKind::Befs => "befs",
         PartitionKind::Gfs1 => "gfs1",
         PartitionKind::Gfs2 => "gfs2",
+        PartitionKind::Ocfs1 => "ocfs1",
         PartitionKind::Ocfs2 => "ocfs2",
         PartitionKind::Nilfs2 => "nilfs2",
         PartitionKind::Bcachefs => "bcachefs",

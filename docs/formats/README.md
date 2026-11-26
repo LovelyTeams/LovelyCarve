@@ -43,6 +43,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | BeFS | [BEFS.md](BEFS.md) | BeOS / Haiku、大小端、四种块大小、B+tree、全部 run 层级及扩展属性；原生官方镜像 / 系统包验证 |
 | GFS1 | [GFS1.md](GFS1.md) | 1309 / 1401、双日志头、资源组分配位图、线性与 exhash 目录、间接块与稀疏范围读 |
 | GFS2 | [GFS2.md](GFS2.md) | 1801 / 1802、大端、rindex / 分配位图、exhash、定高文件树、稀疏与 EA；检查全部日志并明确拒绝重放 |
+| OCFS1 | [OCFS1.md](OCFS1.md) | OracleCFS 1.2、目录索引和续链、内置与多层 extent、分配位图和范围读 |
 | OCFS2 | [OCFS2.md](OCFS2.md) | 分配链 / 位图、extent / refcount、内联及索引目录、稀疏 / unwritten 与属性；全部 slot 必须离线干净 |
 | NILFS2 | [NILFS2.md](NILFS2.md) | 双超级块 / 日志 CRC、DAT / 分配位图、direct / B-tree、检查点与 GC 搬移；应用读取当前视图，独立库可读历史 snapshot |
 | bcachefs | [BCACHEFS.md](BCACHEFS.md) | MIT Rust 库；单设备和完整多设备、子卷 / snapshot、reflink、压缩 / 校验、稀疏 / unwritten、内存日志及范围读 |

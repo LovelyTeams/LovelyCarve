@@ -181,6 +181,11 @@ Haiku 编码解释在 Rust API 中提供。原生 Haiku 官方镜像及独立发
 新增纯 Rust 的资源组、目录、文件、日志及 EA 读取；固定版本、许可和原生
 mkfs / Linux kernel / fsck 验证见 [ORIGIN.md](gfs2-reader/ORIGIN.md)。
 
+## OCFS1
+
+`ocfs1-reader` 0.1.0 是原创纯 Rust 读取器，参考 Oracle 原始提交归档中的
+OracleCFS 1.2 磁盘结构。原始来源与独立夹具见 [ORIGIN.md](ocfs1-reader/ORIGIN.md)。
+
 ## OCFS2 (2026-10-24)
 
 `ocfs2-reader` 0.1.0：先检索现有 Rust 库，复用 unearth 的 MIT 超级块前缀布局

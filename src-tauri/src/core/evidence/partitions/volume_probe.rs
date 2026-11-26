@@ -168,6 +168,7 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &super::gfs1::Gfs1Probe,
     &super::gfs2::Gfs2Probe,
     &super::ocfs2::Ocfs2Probe,
+    &super::ocfs1::Ocfs1Probe,
     &super::nilfs2::Nilfs2Probe,
     &super::bcachefs::BcachefsProbe,
     &super::vmfs::VmfsProbe,
@@ -219,6 +220,9 @@ pub fn detect_filesystem_bytes(bytes: &[u8], fallback: PartitionKind) -> Partiti
     }
     if super::ocfs2::detect(bytes) {
         return PartitionKind::Ocfs2;
+    }
+    if super::ocfs1::detect(bytes) {
+        return PartitionKind::Ocfs1;
     }
     if super::nilfs2::detect(bytes) {
         return PartitionKind::Nilfs2;
@@ -356,6 +360,7 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::Befs
         | PartitionKind::Gfs1
         | PartitionKind::Gfs2
+        | PartitionKind::Ocfs1
         | PartitionKind::Ocfs2
         | PartitionKind::Nilfs2
         | PartitionKind::Bcachefs

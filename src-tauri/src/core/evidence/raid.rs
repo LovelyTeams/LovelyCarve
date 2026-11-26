@@ -354,6 +354,7 @@ pub fn kind_label(kind: PartitionKind) -> &'static str {
         PartitionKind::Befs => "befs",
         PartitionKind::Gfs1 => "gfs1",
         PartitionKind::Gfs2 => "gfs2",
+        PartitionKind::Ocfs1 => "ocfs1",
         PartitionKind::Ocfs2 => "ocfs2",
         PartitionKind::Nilfs2 => "nilfs2",
         PartitionKind::Bcachefs => "bcachefs",

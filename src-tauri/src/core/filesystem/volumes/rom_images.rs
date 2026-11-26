@@ -99,6 +99,7 @@ pub type ReiserFsVolume = RomVolume<reiserfs_reader::ReiserFs<RomImageSource>>;
 pub type Reiser4Volume = RomVolume<reiser4_reader::Reiser4<RomImageSource>>;
 pub type AmigaVolume = RomVolume<amiga_reader::Amiga<RomImageSource>>;
 pub type Gfs1Volume = RomVolume<gfs1_reader::Gfs1<RomImageSource>>;
+pub type Ocfs1Volume = RomVolume<ocfs1_reader::Ocfs1<RomImageSource>>;
 
 pub struct RomImageSource {
     image: Arc<DiskImage>,
@@ -188,6 +189,19 @@ pub fn open_qnx4_source(image: &Arc<DiskImage>, partition: u8) -> Result<Qnx4Vol
 pub fn parse_minix_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "minix")
 }
+pub fn parse_ocfs1_id(id: &str) -> Option<(u8, String)> {
+    let (partition, path) = id.strip_prefix("ocfs1:part:")?.split_once(':')?;
+    let path = String::from_utf8(hex::decode(path).ok()?).ok()?;
+    valid_lookup_path(&path).then_some((partition.parse().ok()?, path))
+}
+
+pub fn open_ocfs1_source(image: &Arc<DiskImage>, partition: u8) -> Result<Ocfs1Volume> {
+    Ocfs1Volume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+
 pub fn parse_gfs1_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "gfs1")
 }

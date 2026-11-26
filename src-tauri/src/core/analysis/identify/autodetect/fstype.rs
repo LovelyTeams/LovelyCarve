@@ -127,6 +127,7 @@ pub fn partition_ftype(kind: PartitionKind) -> Option<u64> {
         | PartitionKind::Befs
         | PartitionKind::Gfs1
         | PartitionKind::Gfs2
+        | PartitionKind::Ocfs1
         | PartitionKind::Ocfs2
         | PartitionKind::Nilfs2
         | PartitionKind::Bcachefs

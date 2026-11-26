@@ -114,6 +114,7 @@ pub(super) fn snapshot_supported_plain_partition(kind: PartitionKind) -> bool {
             | PartitionKind::Befs
             | PartitionKind::Gfs1
             | PartitionKind::Gfs2
+            | PartitionKind::Ocfs1
             | PartitionKind::Ocfs2
             | PartitionKind::Nilfs2
             | PartitionKind::Bcachefs
