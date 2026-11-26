@@ -11,8 +11,8 @@ macOS-mountable filesystems: allocator and extent-reference trees are omitted.
 
 | File | SHA-256 |
 | --- | --- |
-| basic.apfs | fab44b9ea72d71bbe708fcc07197a2285d3e4ccc55e7b408a19d3373427e5d54 |
-| case-sensitive.apfs | af9dffa7fdcb0368ace54d9419ef5525f8c4acb48b11f5a46b710a94c6ca04ef |
+| basic.apfs | 01d3c854682f34ca4faf7061403e9a6ef3afa06f75f108213752dfaee2043d15 |
+| case-sensitive.apfs | 71317b389a7237c6eac64ed1510d5d8b3fba7b06666d4fba7a111d86437b4e70 |
 
 Covered: block-zero XID 5 / checkpoint XID 10; volume slots 0 and 2 (slot 2
 flagged encrypted); volume OMAP XIDs 5/10/11; plain and hashed directory keys;

@@ -8,7 +8,7 @@ const CASE_SENSITIVE: &[u8] = include_bytes!("../tests/data/case-sensitive.apfs"
 fn checkpoint_transaction_and_volume_slots_are_preserved() {
     let info = ApfsVolume::container_info(Cursor::new(BASIC)).unwrap();
     assert_eq!(info.transaction_id, 10);
-    assert_eq!(info.size, 65536);
+    assert_eq!(info.size, 18 * 4096);
     assert_eq!(info.volume_slots, [(0, 100), (2, 101)]);
     let volumes = ApfsVolume::list_volumes(Cursor::new(BASIC)).unwrap();
     assert_eq!(volumes.len(), 2);
@@ -252,9 +252,51 @@ fn snapshot_metadata_keeps_identity_times_and_superblock_provenance() {
     assert_eq!(snapshots.len(), 1);
     assert_eq!(snapshots[0].name, "snap-one");
     assert_eq!(snapshots[0].transaction_id, 5);
-    assert_eq!(snapshots[0].superblock_block, 4);
+    assert_eq!(snapshots[0].superblock_block, 16);
     assert_eq!(snapshots[0].create_time, -1);
     assert_eq!(snapshots[0].change_time, 123456789);
+}
+
+#[test]
+fn historical_snapshot_uses_its_own_catalog_and_old_extents() {
+    let mut live = ApfsVolume::open(Cursor::new(BASIC)).unwrap();
+    let mut historical = ApfsVolume::open_index(Cursor::new(BASIC), 0)
+        .unwrap()
+        .into_snapshot(5)
+        .unwrap();
+    assert_eq!(historical.volume_info().transaction_id, 5);
+    assert_eq!(live.volume_info().transaction_id, 10);
+    assert!(historical.stat("/plain.bin").is_err());
+    assert!(live.stat("/old.bin").is_err());
+    assert_eq!(
+        &live.read_file("/clone.bin").unwrap()[..4096],
+        &[b'A'; 4096]
+    );
+    assert_eq!(
+        &historical.read_file("/clone.bin").unwrap()[..4096],
+        &[b'P'; 4096]
+    );
+    let bytes = historical.read_file("/old.bin").unwrap();
+    assert_eq!(bytes.len(), 5000);
+    assert_eq!(&bytes[4092..4100], b"PPPPBBBB");
+    assert!(historical.list_snapshots().unwrap().is_empty());
+    assert!(matches!(
+        live.into_snapshot(6),
+        Err(ApfsError::FileNotFound(_))
+    ));
+}
+
+#[test]
+fn historical_snapshot_fails_when_frozen_identity_is_wrong() {
+    for (offset, value) in [(8, 23u8), (16, 9), (36, 2), (128, 7), (240, 1)] {
+        let mut broken = BASIC.to_vec();
+        let snapshot = &mut broken[16 * 4096..17 * 4096];
+        snapshot[offset] = value;
+        let checksum = fletcher::fletcher64(&snapshot[8..]);
+        snapshot[..8].copy_from_slice(&checksum.to_le_bytes());
+        let live = ApfsVolume::open(Cursor::new(broken)).unwrap();
+        assert!(live.into_snapshot(5).is_err());
+    }
 }
 
 #[test]
@@ -266,7 +308,7 @@ fn file_extent_cannot_use_bytes_after_the_declared_container() {
         logical_addr: 0,
         value: catalog::FileExtentVal {
             flags_and_length: 4096,
-            phys_block_num: 16,
+            phys_block_num: (BASIC.len() / 4096) as u64,
             crypto_id: 0,
         },
     }];

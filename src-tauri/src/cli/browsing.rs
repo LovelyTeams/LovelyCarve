@@ -63,7 +63,9 @@ pub(super) fn volume_root(id: &str) -> bool {
     match id.split(':').collect::<Vec<_>>().as_slice() {
         ["part", partition] => number(partition),
         ["lvm", partition, volume] => number(partition) && number(volume),
-        ["apfs", "part", partition, volume, ""] => number(partition) && number(volume),
+        ["apfs", "part", _, _, ""] => {
+            crate::core::filesystem::volumes::apfs::parse_apfs_id(id).is_some()
+        }
         // The root directory of every btrfs subvolume is inode 256.
         ["btrfs", "part", _, _, "256"] | ["btrfs", "lvm", _, _, _, "256"] => true,
         ["host-docker", container, ""] => !container.is_empty(),

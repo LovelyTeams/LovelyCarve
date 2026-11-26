@@ -29,7 +29,7 @@ LovelyCarve 继续使用 MIT 的 vendored `apfs` 0.4.1 与共享 `cmpfs`，不�
 | decmpfs 3/4、7/8、9/10、11/12 | zlib、LZVN、raw、LZFSE | 共享 `cmpfs` 已实现；列表、stat、预览、导出、范围读和目录索引使用解压逻辑长度 |
 | decmpfs 1 | README 不支持 | 支持原样 xattr payload |
 | decmpfs 13/14、dataless | README 不支持 LZBitmap | 明确拒绝；dataless 不作为空文件导出 |
-| 原生快照 | README 标为不支持；源码可枚举元数据、打开 snapshot APSB，公开 snapshot API 只有名称/释放，未提供历史文件浏览 | `list_snapshots` 保留名称、XID、superblock block、create/change、flags 与 extent-reference 信息；**历史 catalog 浏览未实现**，不能用当前卷冒充历史版本 |
+| 原生快照 | README 标为不支持；源码可枚举元数据、打开 snapshot APSB，公开 snapshot API 只有名称/释放，未提供历史文件浏览 | `list_snapshots` 保留名称、XID、superblock block、create/change、flags 与 extent-reference 信息；桌面与 CLI 可按 XID 浏览、读取和导出历史 catalog。历史 APSB 身份、校验和与 OMAP 事务均独立校验 |
 | sealed / encryption rolling / incomplete restore | 未承诺完整支持 | 明确拒绝相应 incompatible bits；不以普通 catalog 解释 fext/sealed 树 |
 | 容器识别 | signature / fsapfsinfo | 独立 APFS 分区镜像、GPT/APM/MBR 细化和[签名恢复](README.md#缺失分区表)进入原生读者；NXSB 整块校验和与源几何验证；签名恢复另行核对候选起点的相对物理对象映射；系统与平台识别逐卷探测 |
 | 取证工具/挂载 | fsapfsinfo / fsapfsmount、Python/C API | 复用 LovelyCarve 浏览、目录索引、哈希、导出与 CLI；Dokan 缓存未命中可使用直接范围读；此次未做真实 Dokan 挂载验证 |
@@ -102,7 +102,7 @@ LovelyCarve 继续使用 MIT 的 vendored `apfs` 0.4.1 与共享 `cmpfs`，不�
 | `libfsapfs_volume_get_file_entry_by_utf8_path` | 等价 | `stat(path)` / `open_file(path)`；UTF-16 输入显式转 UTF-8 |
 | `libfsapfs_volume_get_file_entry_by_utf16_path` | 等价 | `stat(path)` / `open_file(path)`；UTF-16 输入显式转 UTF-8 |
 | `libfsapfs_volume_get_number_of_snapshots` | 等价 | `VolumeInfo.num_snapshots` / `list_snapshots` |
-| `libfsapfs_volume_get_snapshot_by_index` | 部分 | `list_snapshots` 元数据；未打开历史 catalog/文件 |
+| `libfsapfs_volume_get_snapshot_by_index` | 等价并扩展 | `list_snapshots` 枚举，`into_snapshot(xid)` 打开历史 catalog / 文件 |
 | `libfsapfs_snapshot_free` | 不同接口 | Rust 所有权 / Drop / reader 借用生命周期，无显式 free |
 | `libfsapfs_snapshot_get_utf8_name_size` | 等价 | `SnapshotInfo.name`；UTF-16 用标准编码转换 |
 | `libfsapfs_snapshot_get_utf8_name` | 等价 | `SnapshotInfo.name`；UTF-16 用标准编码转换 |
@@ -179,14 +179,14 @@ just check-examples
 
 本次已运行：`fmt`、`check`、宿主及 APFS `clippy`、`check-examples`；APFS 37 通过 / 1 ignored，cmpfs 27 通过，HFS+ 29 通过，后端全量库测试 1023 通过 / 12 ignored。默认并行的宿主测试编译曾出现 rustc `STATUS_ACCESS_VIOLATION`；通过设置 `CARGO_BUILD_JOBS=1` 并运行 `just test --lib` 成功完成。没有运行桌面/CLI 二进制 smoke 或真实挂载。
 
-固定合成结构在 [vendor/apfs/tests/data](../../src-tauri/vendor/apfs/tests/data/README.md)，由独立 Python 字段构造器生成，包含两个目录键布局、非连续卷槽、加密卷标志、多版本 OMAP、克隆、空洞、压缩、symlink、embedded/data-stream xattr 与快照元数据。它们没有完整 allocator/extent-reference 树，不是可由 macOS 挂载的完整磁盘，因此只能证明所覆盖结构和读取路径。
+固定合成结构在 [vendor/apfs/tests/data](../../src-tauri/vendor/apfs/tests/data/README.md)，由独立 Python 字段构造器生成，包含两个目录键布局、非连续卷槽、加密卷标志、多版本 OMAP、克隆、空洞、压缩、symlink、embedded/data-stream xattr 与冻结 APSB / 历史 catalog。当前与历史版本的同名文件使用不同物理区段。它们没有完整 allocator/extent-reference 树，不是可由 macOS 挂载的完整磁盘，因此只能证明所覆盖结构和读取路径。
 
 库回归核对完整/流式/范围读、past-EOF 和大偏移、事务/删除与 cache 一致、8 KiB superblock、跨来源边界、损坏表/extent/xfield。宿主回归核对 MBR 分区的 APFS 类型 refinement、原检材 runs、dispatcher range、live / `.dirz` 压缩/symlink 元数据一致及取消清理。共享 `cmpfs` 的编码测试独立执行。
 
-真实样本可用已有 `LOVELYCARVE_APFS_SNAPSHOT_TEST` / `LOVELYCARVE_APFS_DECMPFS_TEST` 环境入口；未设置时跳过，不能算作真实镜像验证。上游旧 `test_omap_lookup` 因缺少 `../tests/appfs.raw` 默认 ignored。没有构建 libfsapfs 做真实镜像字节 oracle，本次不声称完整实现等价、密码解锁、历史快照浏览或跨平台挂载已验证。
+真实样本可用已有 `LOVELYCARVE_APFS_SNAPSHOT_TEST` / `LOVELYCARVE_APFS_DECMPFS_TEST` 环境入口；未设置时跳过，不能算作真实镜像验证。上游旧 `test_omap_lookup` 因缺少 `../tests/appfs.raw` 默认 ignored。没有构建 libfsapfs 做真实镜像字节 oracle，本次不声称完整实现等价、密码解锁、真实历史快照浏览或跨平台挂载已验证。
 
 ## 剩余差距
 
-FileVault 的 container/volume keybag、PBKDF、KEK/VEK 解包、AES-XTS、crypto-state 与解锁会话/IPC/UI 尚未实现；这是相对 libfsapfs 的主要功能差距。快照元数据已补，历史浏览需要 snapshot APSB、同 XID 的 OMAP/catalog、历史卷身份和宿主缓存隔离。独立 xattr UI、完整硬链接 sibling 信息、sealed/fext、checkpoint descriptor B-tree、损坏卷恢复以及大压缩文件的分块解码/取消也未完成。
+FileVault 的 container/volume keybag、PBKDF、KEK/VEK 解包、AES-XTS、crypto-state 与解锁会话/IPC/UI 尚未实现；这是相对 libfsapfs 的主要功能差距。已提交的原生快照作为容器下的独立只读节点浏览，ID 格式为 `apfs:part:<分区>:<卷槽>@<XID>:<路径hex>`。案件当前卷索引继续覆盖当前卷。dataless / merge-in-progress 快照拒绝打开。独立 xattr UI、完整硬链接 sibling 信息、sealed/fext、checkpoint descriptor B-tree、损坏卷恢复以及大压缩文件的分块解码/取消也未完成。
 
 这些条目不能通过加一个 capability 标志或接入未验证的 DLL 视为完成；后续需各自独立实现及外部样本核验。

@@ -216,7 +216,20 @@ pub(super) fn apfs_roots(
     root_id: &str,
 ) -> anyhow::Result<Vec<FsNode>> {
     let mut nodes = fs_tree::children_for_image(image, root_id)?;
-    nodes.retain(|node| node.kind == NodeKind::Dir);
+    use crate::core::filesystem::volumes::apfs::{parse_apfs_id, ApfsSource};
+    nodes.retain(|node| {
+        node.kind == NodeKind::Dir
+            && matches!(
+                parse_apfs_id(&node.id),
+                Some((
+                    ApfsSource::Partition {
+                        snapshot_xid: None,
+                        ..
+                    },
+                    _
+                ))
+            )
+    });
     Ok(nodes)
 }
 

@@ -257,17 +257,7 @@ impl<R: Read + Seek> ApfsVolume<R> {
             vol_oid,
         )?;
 
-        if vol_sb.fs_flags & 1 == 0 {
-            return Err(ApfsError::Unsupported(
-                "encrypted APFS volume requires FileVault keybag unlock".into(),
-            ));
-        }
-        if vol_sb.incompatible_features & !0x0b != 0 {
-            return Err(ApfsError::Unsupported(format!(
-                "volume incompatible features {:#x} (sealed, encryption rolling or incomplete restore)",
-                vol_sb.incompatible_features
-            )));
-        }
+        validate_readable_volume(&vol_sb)?;
 
         let vol_omap_root_block = omap::OmapTree {
             root: omap::read_omap_tree_root(&mut reader, vol_sb.omap_oid, block_size)?,
@@ -699,6 +689,22 @@ fn read_volume_superblock<R: Read + Seek>(
         ));
     }
     Ok(block)
+}
+
+fn validate_readable_volume(volume: &superblock::ApfsSuperblock) -> Result<()> {
+    if volume.fs_flags & 1 == 0 {
+        return Err(ApfsError::Unsupported(
+            "encrypted APFS volume requires FileVault keybag unlock".into(),
+        ));
+    }
+    if volume.incompatible_features & !0x0b != 0 {
+        return Err(ApfsError::Unsupported(format!(
+            "volume incompatible features {:#x} (sealed, encryption rolling or incomplete restore)",
+            volume.incompatible_features
+        )));
+    }
+
+    Ok(())
 }
 
 fn volume_info_from_superblock(

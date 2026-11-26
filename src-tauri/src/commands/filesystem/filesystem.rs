@@ -21,6 +21,7 @@ use crate::commands::filesystem::filesystem_snapshot_index::{
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::fs_dispatch::Volume as _;
 use crate::core::filesystem::tree::fs_tree::{self, FsNode};
+use crate::core::filesystem::volumes::apfs::has_live_apfs_roots;
 use crate::core::{catalog::filedb::filedb_file, catalog::filedb::filedb_query};
 use crate::state::AppState;
 use {crate::app::access::loaded_image_app_error, crate::app::error::AppError};
@@ -37,6 +38,13 @@ pub async fn fs_children(
     parent_id: NodeId,
 ) -> Result<Vec<FsNode>, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
+    if has_live_apfs_roots(&image, &parent_id) {
+        return tokio::task::spawn_blocking(move || {
+            fs_tree::children_for_image(&image, &parent_id).map_err(AppError::from)
+        })
+        .await
+        .map_err(|error| AppError::task_panicked("fs_children APFS roots", error))?;
+    }
     prepare_remote_partition(&state, &image, &parent_id).await?;
     // Volume index fast path: the case's published indexes, or the caseless
     // session indexes.
@@ -151,6 +159,10 @@ pub async fn fs_children_page(
         )
         .await
         .map(fs_node_page_from_filedb);
+    }
+    if has_live_apfs_roots(&image, &parent_id) {
+        let nodes = fs_children(state, image_id, parent_id).await?;
+        return fs_node_page_from_sorted_nodes(nodes, cursor.as_deref(), page_size);
     }
     // Volume index fast path. This avoids cloning and sorting a whole
     // in-memory directory vector just to return one page. A miss falls through

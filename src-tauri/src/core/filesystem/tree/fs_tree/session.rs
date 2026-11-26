@@ -292,7 +292,7 @@ impl<'a> FsSession<'a> {
                         open_exfat_source(self.image, ExfatSource::Partition(pid))?
                             .children_with_deleted(""),
                     ),
-                    PartitionKind::ApfsContainer => Some(apfs_volume_nodes(
+                    PartitionKind::ApfsContainer => Some(apfs_browse_nodes(
                         Arc::clone(self.image),
                         find_partition(self.image, part_str)?,
                     )),

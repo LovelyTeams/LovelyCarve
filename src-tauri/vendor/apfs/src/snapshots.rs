@@ -1,5 +1,8 @@
-//! Snapshot metadata enumeration; this does not mount a historical catalog.
-use crate::{ApfsError, ApfsVolume, Result, btree, catalog, object, omap};
+//! Snapshot metadata enumeration and read-only transaction views.
+use crate::{
+    ApfsError, ApfsVolume, Result, btree, catalog, object, omap, superblock::ApfsSuperblock,
+    validate_readable_volume, volume_info_from_superblock,
+};
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::io::{Cursor, Read, Seek};
 
@@ -54,8 +57,80 @@ impl SnapshotInfo {
 }
 
 impl<R: Read + Seek> ApfsVolume<R> {
+    /// Open a historical catalog using its own APSB and the volume object's
+    /// mappings at the snapshot XID. The current view's reader is consumed.
+    pub fn into_snapshot(mut self, xid: u64) -> Result<Self> {
+        let mut matches = self
+            .list_snapshots()?
+            .into_iter()
+            .filter(|snapshot| snapshot.transaction_id == xid);
+        let snapshot = matches
+            .next()
+            .ok_or_else(|| ApfsError::FileNotFound(format!("APFS snapshot XID {xid}")))?;
+        if matches.next().is_some() {
+            return Err(ApfsError::CorruptedData(format!(
+                "duplicate snapshot XID {xid}"
+            )));
+        }
+        if snapshot.flags != 0 {
+            return Err(ApfsError::Unsupported(format!(
+                "snapshot XID {xid} has incomplete or unsupported state {:#x}",
+                snapshot.flags
+            )));
+        }
+        let (header, bytes) =
+            object::read_object(&mut self.reader, snapshot.superblock_block, self.block_size)?;
+        let volume = ApfsSuperblock::parse(&bytes)?;
+        if header.object_type() != object::OBJECT_TYPE_FS
+            || header.xid != xid
+            || !header.is_physical()
+            || header.oid != snapshot.superblock_block
+            || volume.uuid != self.info.uuid
+            || volume.fs_index as usize != self.info.index
+            || volume.omap_oid != 0
+            || volume
+                .fs_alloc_count
+                .checked_mul(u64::from(self.block_size))
+                .is_none()
+        {
+            return Err(ApfsError::CorruptedData(format!(
+                "snapshot APSB identity or geometry does not match XID {xid}"
+            )));
+        }
+        validate_readable_volume(&volume)?;
+        let historical_omap = omap::OmapTree {
+            xid,
+            ..self.vol_omap_root_block.omap
+        };
+        let root = omap::omap_lookup(
+            &mut self.reader,
+            historical_omap,
+            self.block_size,
+            volume.root_tree_oid,
+        )?;
+        let (catalog_header, _) = object::read_object(&mut self.reader, root, self.block_size)?;
+        if catalog_header.object_type() != object::OBJECT_TYPE_BTREE
+            || catalog_header.oid != volume.root_tree_oid
+            || catalog_header.xid > xid
+        {
+            return Err(ApfsError::CorruptedData(format!(
+                "snapshot catalog root does not match XID {xid}"
+            )));
+        }
+        self.vol_omap_root_block = catalog::CatalogContext {
+            omap: historical_omap,
+            incompatible_features: volume.incompatible_features,
+        };
+        self.catalog_root_block = root;
+        self.snapshot_tree_oid = 0;
+        self.snapshot_tree_type = 0;
+        self.info =
+            volume_info_from_superblock(self.info.index, self.info.oid, self.block_size, &volume);
+        self.info.num_snapshots = 0;
+        Ok(self)
+    }
+
     /// Enumerate the snapshot metadata tree, preserving snapshot XIDs and source blocks.
-    /// Historical file browsing is intentionally a separate, unsupported operation.
     pub fn list_snapshots(&mut self) -> Result<Vec<SnapshotInfo>> {
         if self.snapshot_tree_oid == 0 {
             if self.info.num_snapshots != 0 {

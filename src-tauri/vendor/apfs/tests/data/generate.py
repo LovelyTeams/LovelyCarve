@@ -7,7 +7,7 @@ from pathlib import Path
 import struct
 
 BLOCK = 4096
-COUNT = 16
+COUNT = 18
 
 
 def put(block, offset, fmt, *values):
@@ -50,8 +50,8 @@ def omap(oid, root):
     return checksum(block)
 
 
-def tree(oid, records, fixed=False):
-    block = object_block(oid, 0x40000002 if fixed else 2)
+def tree(oid, records, fixed=False, xid=10):
+    block = object_block(oid, 0x40000002 if fixed else 2, xid)
     width = 4 if fixed else 8
     put(block, 32, 'HHIHH', 3 | (4 if fixed else 0), 0, len(records), 0, width * len(records))
     key_base = 56 + width * len(records)
@@ -111,7 +111,7 @@ def attr(name, data, stream=False):
     return suffix, value
 
 
-def catalog(hashed, label='plain.bin'):
+def catalog(hashed, label='plain.bin', xid=10, first_data_block=12):
     names = [(label, 20, 8), ('clone.bin', 21, 8), ('compressed.txt', 22, 8), ('link', 23, 10), ('hole.bin', 24, 8)]
     records = [(key(2, 3), inode(2, 0, 0o040755))]
     for name, oid, kind in names:
@@ -126,10 +126,10 @@ def catalog(hashed, label='plain.bin'):
             (23, 'com.apple.fs.symlink', b'../plain.bin\0', False)]:
         suffix, value = attr(name, data, stream)
         records.append((key(oid, 4, suffix), value))
-    for oid, logical, size, physical in [(70, 0, BLOCK, 12), (70, BLOCK, BLOCK, 13), (74, 0, 8192, 0), (80, 0, BLOCK, 14)]:
+    for oid, logical, size, physical in [(70, 0, BLOCK, first_data_block), (70, BLOCK, BLOCK, 13), (74, 0, 8192, 0), (80, 0, BLOCK, 14)]:
         records.append((key(oid, 8, struct.pack('<Q', logical)), struct.pack('<QQQ', size, physical, 0)))
     records.sort(key=lambda pair: (struct.unpack('<Q', pair[0][:8])[0] & 0x0fffffffffffffff, pair[0][7] >> 4, pair[0][8:]))
-    return tree(200, records)
+    return tree(200, records, xid=xid)
 
 
 def generate(hashed):
@@ -139,11 +139,19 @@ def generate(hashed):
     blocks[4], blocks[5], blocks[6] = volume(100, hashed), volume(100, hashed), volume(101, hashed, True)
     blocks[7] = omap(7, 8)
     blocks[8] = tree(8, [mapping(200, 5, 9), mapping(200, 10, 10), mapping(200, 11, 11)], True)
-    blocks[9], blocks[10], blocks[11] = catalog(hashed, 'old.bin'), catalog(hashed), catalog(hashed, 'future.bin')
+    blocks[9] = catalog(hashed, 'old.bin', xid=5, first_data_block=17)
+    blocks[10], blocks[11] = catalog(hashed), catalog(hashed, 'future.bin', xid=11)
     blocks[12], blocks[13] = bytearray(b'A' * BLOCK), bytearray(b'B' * BLOCK)
     blocks[14][:6] = b'ATTR!!'
-    snapshot = struct.pack('<QQqqQIIH', 0, 4, -1, 123456789, 0, 0, 0, 9) + b'snap-one\0'
+    snapshot = struct.pack('<QQqqQIIH', 0, 16, -1, 123456789, 0, 0, 0, 9) + b'snap-one\0'
     blocks[15] = tree(15, [(key(5, 1), snapshot)])
+    historical = volume(100, hashed)
+    put(historical, 8, 'QQI', 16, 5, 0x4000000d)
+    put(historical, 128, 'Q', 0)
+    put(historical, 152, 'Q', 0)
+    put(historical, 216, 'Q', 0)
+    blocks[16] = checksum(historical)
+    blocks[17] = bytearray(b'P' * BLOCK)
     return b''.join(blocks)
 
 
