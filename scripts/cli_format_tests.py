@@ -536,6 +536,54 @@ def test_mfs(cli, root):
     print("MFS CLI tests passed: 400K and 800K raw and Disk Copy images, APM, local timestamps and both forks")
 
 
+def test_littlefs(cli, root):
+    fixtures = VENDOR / "littlefs-reader/tests/fixtures"
+    payload = bytes((n * 21 + n // 49) % 256 for n in range(19473))
+    sources = []
+    for name in ("128-2.0", "512-2.1", "4096-2.1"):
+        volume = zlib.decompress((fixtures / f"{name}.zlib").read_bytes())
+        source = root / f"littlefs-{name}.img"
+        source.write_bytes(volume)
+        sources.append((source, 0, len(volume)))
+        if name == "512-2.1":
+            base = 8 * 512
+            mbr = bytearray(base)
+            mbr[446 + 4] = 0x83
+            struct.pack_into("<II", mbr, 446 + 8, 8, len(volume) // 512)
+            mbr[510:512] = b"\x55\xaa"
+            partitioned = root / "littlefs-mbr.img"
+            partitioned.write_bytes(mbr + volume)
+            sources.append((partitioned, base, len(volume)))
+    for source, base, length in sources:
+        entry = at(path_id("littlefs:part:0:", "/Logs/event.bin"))
+        output = root / f"{source.stem}.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", "/ev/part:0"),
+            ls("split", "/ev/part:0/Split"),
+            cat("inline", "/ev/part:0/tiny"),
+            cat("byte-name", "/ev/part:0/Logs/odd-%FF"),
+            cat("range", entry, 4291, 6987),
+            cat("empty", "/ev/part:0/Logs/Nested/EmptyLater"),
+            digest("hash", entry),
+            export("export", entry, output),
+        ])
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "littlefs", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == length
+        if base:
+            assert info["tableScheme"] == "mbr"
+        assert names(rows["root"]) == {"Logs", "Split", "tiny"}
+        assert names(rows["split"]) == {f"entry-{n:02}-long-file-name-for-split" for n in range(20)}
+        assert rows["inline"] == hex_of(b"init-end") and rows["byte-name"] == hex_of(b"name")
+        assert rows["range"] == hex_of(payload[4291:11278]) and rows["empty"] == hex_of(b"")
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert output.read_bytes() == payload
+    print("LittleFS CLI tests passed: v2.0 and v2.1, bare and MBR volumes, split directories, ranges, hash and export")
+
+
 def test_formats(cli, root):
     firmware_node = path_id("squashfs:part:0:", "/hello")
     firmware_content = b"Independent DD-WRT fixture.\n" * 64

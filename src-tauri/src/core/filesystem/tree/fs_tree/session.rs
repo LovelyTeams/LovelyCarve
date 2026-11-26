@@ -194,6 +194,12 @@ impl<'a> FsSession<'a> {
                         )?
                         .root_children(),
                     ),
+                    PartitionKind::Littlefs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_littlefs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::Hfs => Some(
                         crate::core::filesystem::volumes::rom_images::open_hfs_source(
                             self.image, pid,

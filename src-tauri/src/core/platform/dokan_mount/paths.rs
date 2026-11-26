@@ -312,6 +312,7 @@ pub(super) fn fs_label_for_kind(kind: PartitionKind) -> &'static str {
         PartitionKind::Udf => "UDF",
         PartitionKind::Hfs => "HFS",
         PartitionKind::Mfs => "MFS",
+        PartitionKind::Littlefs => "LittleFS",
         PartitionKind::Jfs => "JFS",
         PartitionKind::Reiserfs => "ReiserFS",
         PartitionKind::Amiga => "Amiga OFS/FFS",
@@ -392,6 +393,7 @@ pub(super) fn is_case_sensitive_fs(kind: PartitionKind) -> bool {
             | PartitionKind::AixJfs
             | PartitionKind::UnixwareBfs
             | PartitionKind::Mfs
+            | PartitionKind::Littlefs
             | PartitionKind::Xdvdfs
             | PartitionKind::Fatx
             | PartitionKind::Minix

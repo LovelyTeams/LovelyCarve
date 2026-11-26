@@ -245,3 +245,9 @@ Velocity 和 Xbox 格式研究。样本由 libfatx 与 fatx-rs 独立生成并�
 `mfs-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。磁盘布局对照 Apple MFSLives
 与 CiderPress II 的格式记录。常规样本由 macfs 生成并由 fs-mac 交叉验证。Apple 的 Disk Copy 4.2
 样本作为外部对照，来源及双叉哈希见 [ORIGIN.md](mfs-reader/ORIGIN.md)。
+
+## LittleFS
+
+`littlefs-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。布局依据 LittleFS
+v2.11.0 官方规范，外部官方实现生成并回读 2.0 / 2.1 测试镜像。来源、几何和哈希见
+[ORIGIN.md](littlefs-reader/ORIGIN.md)。

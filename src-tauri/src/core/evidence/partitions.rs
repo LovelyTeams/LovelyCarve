@@ -36,6 +36,7 @@ pub mod hfsplus;
 pub(crate) mod hpfs;
 pub mod jffs2;
 pub mod jfs;
+mod littlefs;
 pub mod luks;
 pub mod lvm2;
 pub mod mbr;
@@ -184,6 +185,7 @@ pub enum PartitionKind {
     ApfsContainer,
     Hfs,
     Mfs,
+    Littlefs,
     HfsPlus,
     HfsX,
     Luks,
@@ -398,6 +400,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Udf
         | PartitionKind::Hfs
         | PartitionKind::Mfs
+        | PartitionKind::Littlefs
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
         | PartitionKind::Amiga

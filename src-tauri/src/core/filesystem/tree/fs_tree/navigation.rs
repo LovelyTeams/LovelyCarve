@@ -206,6 +206,13 @@ pub(super) fn children_for_image_with_options(
                 crate::core::filesystem::volumes::rom_images::open_mfs_source(image, partition.id)?
                     .root_children()
             }
+            PartitionKind::Littlefs => {
+                crate::core::filesystem::volumes::rom_images::open_littlefs_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
             PartitionKind::Hfs => {
                 crate::core::filesystem::volumes::rom_images::open_hfs_source(image, partition.id)?
                     .root_children()

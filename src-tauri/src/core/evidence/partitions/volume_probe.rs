@@ -173,6 +173,7 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &super::vxfs::VxfsProbe,
     &super::aix_jfs::AixJfsProbe,
     &super::unixware_bfs::UnixwareBfsProbe,
+    &super::littlefs::LittlefsProbe,
 ];
 
 pub fn probe_volume(
@@ -329,6 +330,7 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::Udf
         | PartitionKind::Hfs
         | PartitionKind::Mfs
+        | PartitionKind::Littlefs
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
         | PartitionKind::Amiga

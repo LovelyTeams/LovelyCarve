@@ -274,6 +274,8 @@ where
             } else {
                 let same_name = if node.id.starts_with("mfs:part:") {
                     mfs_reader::names_equal(&node.name, component)
+                } else if node.id.starts_with("littlefs:part:") {
+                    false
                 } else if node.id.starts_with("xdvdfs:part:") || node.id.starts_with("fatx:part:") {
                     node.name.eq_ignore_ascii_case(component)
                 } else {

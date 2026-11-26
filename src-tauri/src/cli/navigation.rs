@@ -94,6 +94,7 @@ pub(super) async fn case_insensitive(
         || parent.starts_with("xdvdfs:part:")
         || parent.starts_with("fatx:part:")
         || parent.starts_with("mfs:part:")
+        || parent.starts_with("littlefs:part:")
     {
         return Ok(true);
     }
@@ -137,6 +138,7 @@ pub(super) async fn case_insensitive(
                     | PartitionKind::Xdvdfs
                     | PartitionKind::Fatx
                     | PartitionKind::Mfs
+                    | PartitionKind::Littlefs
             )
         }))
 }

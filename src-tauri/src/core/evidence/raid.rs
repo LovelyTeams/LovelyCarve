@@ -341,6 +341,7 @@ pub fn kind_label(kind: PartitionKind) -> &'static str {
         PartitionKind::Udf => "udf",
         PartitionKind::Hfs => "hfs",
         PartitionKind::Mfs => "mfs",
+        PartitionKind::Littlefs => "littlefs",
         PartitionKind::Jfs => "jfs",
         PartitionKind::Reiserfs => "reiserfs",
         PartitionKind::Amiga => "amiga",

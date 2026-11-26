@@ -114,6 +114,7 @@ pub fn partition_ftype(kind: PartitionKind) -> Option<u64> {
         | PartitionKind::Udf
         | PartitionKind::Hfs
         | PartitionKind::Mfs
+        | PartitionKind::Littlefs
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
         | PartitionKind::Amiga
