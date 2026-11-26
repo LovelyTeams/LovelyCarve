@@ -57,7 +57,7 @@ fn child_path(location: &[(String, String)], name: &str) -> String {
 }
 
 /// The root directory of a volume: a partition, a logical volume, an APFS
-/// volume, a btrfs subvolume, a HAMMER2 PFS or a container's file system.
+/// volume, a btrfs subvolume, a HAMMER snapshot, a HAMMER2 PFS or a container's file system.
 pub(super) fn volume_root(id: &str) -> bool {
     let number = |text: &str| !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit());
     match id.split(':').collect::<Vec<_>>().as_slice() {
@@ -68,6 +68,14 @@ pub(super) fn volume_root(id: &str) -> bool {
         }
         // The root directory of every btrfs subvolume is inode 256.
         ["btrfs", "part", _, _, "256"] | ["btrfs", "lvm", _, _, _, "256"] => true,
+        ["hammer", "part", _, _] => crate::core::filesystem::volumes::rom_images::parse_hammer_id(
+            id,
+        )
+        .is_some_and(|(_, path)| {
+            path.strip_prefix("/@snapshots/").is_some_and(|tid| {
+                tid.len() == 16 && tid.bytes().all(|byte| byte.is_ascii_hexdigit())
+            })
+        }),
         ["hammer2", "part", _, _] => {
             crate::core::filesystem::volumes::rom_images::parse_hammer2_id(id)
                 .and_then(|(_, path)| {
@@ -284,6 +292,7 @@ where
                     mfs_reader::names_equal(&node.name, component)
                 } else if node.id.starts_with("littlefs:part:")
                     || node.id.starts_with("spiffs:part:")
+                    || node.id.starts_with("hammer:part:")
                     || node.id.starts_with("hammer2:part:")
                 {
                     false

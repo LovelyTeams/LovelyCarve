@@ -632,34 +632,98 @@ def test_spiffs(cli, root):
     print("SPIFFS CLI tests passed: signed and unsigned layouts, big endian, MBR, ranges, hash and export")
 
 
+def materialize_hammer_image(packed, source, base):
+    archive = zlib.decompress(packed.read_bytes())
+    length, = struct.unpack_from("<Q", archive)
+    source.touch(exist_ok=False)
+    if os.name == "nt":
+        subprocess.run(["fsutil", "sparse", "setflag", source], capture_output=True, check=False)
+    with source.open("r+b") as image:
+        if base:
+            mbr = bytearray(512)
+            mbr[450] = 0xA5
+            struct.pack_into("<II", mbr, 454, base // 512, length // 512)
+            mbr[510:512] = b"\x55\xaa"
+            image.write(mbr)
+        offset = 8
+        while offset < len(archive):
+            extent_start, count = struct.unpack_from("<QI", archive, offset)
+            offset += 12
+            assert offset + count <= len(archive) and extent_start + count <= length
+            image.seek(base + extent_start)
+            image.write(archive[offset:offset + count])
+            offset += count
+        image.truncate(base + length)
+    return length
+
+
+def test_hammer(cli, root):
+    fixtures = VENDOR / "hammer-reader/tests/fixtures"
+    live = bytes((i * 17 + i // 47) % 256 for i in range(16384))
+    old = bytes((i * 49 + i // 71) % 256 for i in range(16384))
+    tail = bytes(32768) + b"HAMMER sparse tail"
+    address = "/ev/part:0"
+    snapshot = f"{address}/@snapshots/0000000100000001"
+    for name, base in (("v7-empty", 0), ("v1-content", 0), ("v7-content", 4096)):
+        source = root / f"hammer-{name}.img"
+        length = materialize_hammer_image(fixtures / f"hammer1-{name}.h1z", source, base)
+        entry = at(path_id("hammer:part:0:", "/payload.bin"))
+        output = root / f"hammer-{name}-export.bin"
+        requests = [add(source), ls("root", address)]
+        expected_names = set()
+        if name.endswith("content"):
+            expected_names = {"payload.bin", "same-inode", "latest"}
+            requests.extend([
+                request("file", "stat", entry),
+                request("hardlink", "stat", f"{address}/same-inode"),
+                request("link-meta", "stat", f"{address}/latest"),
+                cat("link", f"{address}/latest", 16000, 1500),
+                cat("tail", entry, 49145, 40),
+                digest("hash", entry),
+                export("export", entry, output),
+            ])
+        if base:
+            expected_names.add("@snapshots")
+            requests.extend([
+                ls("snapshots", f"{address}/@snapshots"),
+                ls("history", snapshot),
+                cat("retired", f"{snapshot}/retired", 16000, 1500),
+                cat("history-link", f"{snapshot}/latest", 16000, 1500),
+                digest("history-hash", f"{snapshot}/payload.bin"),
+            ])
+        rows = cli.results(requests)
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "hammer", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == length
+        assert names(rows["root"]) == expected_names
+        if name.endswith("content"):
+            assert rows["file"]["inode"] == rows["hardlink"]["inode"] == 2
+            assert rows["link-meta"]["linkTarget"] == "payload.bin"
+            assert rows["link"] == hex_of((live + tail)[16000:17500])
+            assert rows["tail"] == hex_of((live + tail)[49145:])
+            assert sha256(rows["hash"]) == "4e04f28fd9244bb9f8d53e63a825952d3796ebc9cc5bd94fd572215e7be74d59"
+            assert output.read_bytes() == live + tail
+        if base:
+            assert info["tableScheme"] == "mbr"
+            assert names(rows["snapshots"]) == {"0000000100000001"}
+            assert names(rows["history"]) == expected_names - {"@snapshots"} | {"retired"}
+            assert rows["retired"] == rows["history-link"] == hex_of((old + tail)[16000:17500])
+            assert sha256(rows["history-hash"]) == hashlib.sha256(old + tail).hexdigest()
+        source.unlink()
+    print("HAMMER CLI tests passed: v1/v7, MBR, snapshot history, links, sparse ranges, hash and export")
+
+
 def test_hammer2(cli, root):
     fixtures = VENDOR / "hammer2-reader/tests/fixtures"
     payload = bytes((n * 17 + n // 51) % 256 for n in range(196613))
     address = "/ev/part:0"
     for name in ("lz4", "zlib", "mirror", "v1", "snapshot", "mbr"):
-        archive = zlib.decompress((fixtures / f"{'lz4' if name == 'mbr' else name}.h2z").read_bytes())
-        length, = struct.unpack_from("<Q", archive)
         base = 4096 if name == "mbr" else 0
         source = root / f"hammer2-{name}.img"
-        source.touch(exist_ok=False)
-        if os.name == "nt":
-            subprocess.run(["fsutil", "sparse", "setflag", source], capture_output=True, check=False)
-        with source.open("r+b") as image:
-            if base:
-                mbr = bytearray(512)
-                mbr[450] = 0xA5
-                struct.pack_into("<II", mbr, 454, base // 512, length // 512)
-                mbr[510:512] = b"\x55\xaa"
-                image.write(mbr)
-            offset = 8
-            while offset < len(archive):
-                extent_start, count = struct.unpack_from("<QI", archive, offset)
-                offset += 12
-                assert offset + count <= len(archive) and extent_start + count <= length
-                image.seek(base + extent_start)
-                image.write(archive[offset:offset + count])
-                offset += count
-            image.truncate(base + length)
+        packed = fixtures / f"{'lz4' if name == 'mbr' else name}.h2z"
+        length = materialize_hammer_image(packed, source, base)
 
         entry = at(path_id("hammer2:part:0:", "/DATA/var/log/event.bin"))
         output = root / f"hammer2-{name}-export.bin"

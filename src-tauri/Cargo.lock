@@ -2497,6 +2497,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hammer-reader"
+version = "0.1.0"
+dependencies = [
+ "crc32c",
+ "crc32fast",
+ "lamfold",
+]
+
+[[package]]
 name = "hammer2-reader"
 version = "0.1.0"
 dependencies = [
@@ -3522,6 +3531,7 @@ dependencies = [
  "goblin",
  "gpt",
  "gzipf",
+ "hammer-reader",
  "hammer2-reader",
  "hex",
  "hfsplus",

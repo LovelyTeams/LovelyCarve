@@ -194,6 +194,7 @@ pub fn fs_prefix_for_kind(kind: PartitionKind) -> &'static str {
         | PartitionKind::Mfs
         | PartitionKind::Littlefs
         | PartitionKind::Spiffs
+        | PartitionKind::Hammer
         | PartitionKind::Hammer2
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs

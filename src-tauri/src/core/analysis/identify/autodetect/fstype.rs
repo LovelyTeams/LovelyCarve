@@ -116,6 +116,7 @@ pub fn partition_ftype(kind: PartitionKind) -> Option<u64> {
         | PartitionKind::Mfs
         | PartitionKind::Littlefs
         | PartitionKind::Spiffs
+        | PartitionKind::Hammer
         | PartitionKind::Hammer2
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs

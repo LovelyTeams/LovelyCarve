@@ -27,7 +27,7 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
   // A locked encrypted partition is not one; unlocked, it carries its
   // plaintext filesystem's kind.
   const MOUNTABLE_KINDS = new Set([
-    'ext4', 'btrfs', 'fat32', 'fat12', 'fat16', 'exfat', 'cdfs', 'squashfs', 'cramfs', 'romfs', 'minifs', 'erofs', 'f2fs', 'qnx4', 'qnx6', 'udf', 'minix', 'jfs', 'reiserfs', 'amiga', 'befs', 'gfs2', 'ocfs2', 'nilfs2', 'bcachefs', 'vmfs', 'hpfs', 'vxfs', 'aixjfs', 'unixwarebfs', 'xdvdfs', 'fatx', 'hfs', 'mfs', 'littlefs', 'spiffs', 'hammer2', 'ubifs', 'jffs2', 'yaffs1', 'yaffs2', 'ubi',
+    'ext4', 'btrfs', 'fat32', 'fat12', 'fat16', 'exfat', 'cdfs', 'squashfs', 'cramfs', 'romfs', 'minifs', 'erofs', 'f2fs', 'qnx4', 'qnx6', 'udf', 'minix', 'jfs', 'reiserfs', 'amiga', 'befs', 'gfs2', 'ocfs2', 'nilfs2', 'bcachefs', 'vmfs', 'hpfs', 'vxfs', 'aixjfs', 'unixwarebfs', 'xdvdfs', 'fatx', 'hfs', 'mfs', 'littlefs', 'spiffs', 'hammer', 'hammer2', 'ubifs', 'jffs2', 'yaffs1', 'yaffs2', 'ubi',
     'apfscontainer', 'hfsplus', 'hfsx', 'lvm', 'ntfs', 'refs',
     'ufs', 'xfs', 'zfs',
   ]);

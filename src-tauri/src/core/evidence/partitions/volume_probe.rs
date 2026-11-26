@@ -175,6 +175,7 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &super::unixware_bfs::UnixwareBfsProbe,
     &super::littlefs::LittlefsProbe,
     &super::spiffs::SpiffsProbe,
+    &super::hammer::HammerProbe,
     &super::hammer2::Hammer2Probe,
 ];
 
@@ -334,6 +335,7 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::Mfs
         | PartitionKind::Littlefs
         | PartitionKind::Spiffs
+        | PartitionKind::Hammer
         | PartitionKind::Hammer2
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs

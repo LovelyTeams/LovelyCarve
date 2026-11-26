@@ -32,6 +32,7 @@ mod fatx;
 pub mod flashfs;
 pub mod gfs2;
 pub mod gpt;
+mod hammer;
 mod hammer2;
 pub mod hfsplus;
 pub(crate) mod hpfs;
@@ -189,6 +190,7 @@ pub enum PartitionKind {
     Mfs,
     Littlefs,
     Spiffs,
+    Hammer,
     Hammer2,
     HfsPlus,
     HfsX,
@@ -406,6 +408,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Mfs
         | PartitionKind::Littlefs
         | PartitionKind::Spiffs
+        | PartitionKind::Hammer
         | PartitionKind::Hammer2
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
