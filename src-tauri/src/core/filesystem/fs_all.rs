@@ -204,6 +204,7 @@ pub fn fs_prefix_for_kind(kind: PartitionKind) -> &'static str {
         | PartitionKind::Vxfs
         | PartitionKind::AixJfs
         | PartitionKind::UnixwareBfs
+        | PartitionKind::Xdvdfs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

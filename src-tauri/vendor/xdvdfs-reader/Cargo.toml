@@ -1,0 +1,15 @@
+[package]
+name = "xdvdfs-reader"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+description = "Bounded read-only XDVDFS adapter"
+
+[dependencies]
+lamfold = { path = "../lamfold", default-features = false, features = ["std"] }
+xdvdfs = { version = "=0.8.3", default-features = false, features = ["read"] }
+
+[dev-dependencies]
+flate2 = "1"
+
+[workspace]

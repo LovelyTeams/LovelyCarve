@@ -227,3 +227,9 @@ mkfs / Linux kernel / fsck 验证见 [ORIGIN.md](gfs2-reader/ORIGIN.md)。
 `unixware-bfs-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。磁盘字段对照 Linux、
 util-linux 与 UnixWare 文档。空卷由 util-linux 格式化，含文件的测试卷以该卷为基础构造。
 具体版本、样本与哈希见 [ORIGIN.md](unixware-bfs-reader/ORIGIN.md)。
+
+## XDVDFS
+
+`xdvdfs-reader` 0.1.0（AGPL-3.0-only）调用 crates.io 的 MIT 读取库 `xdvdfs` 0.8.3，增加
+有界二叉目录遍历和文件范围读取。样本由 XboxDev 的独立工具生成，来源见
+[ORIGIN.md](xdvdfs-reader/ORIGIN.md)。

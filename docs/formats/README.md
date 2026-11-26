@@ -30,6 +30,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | JFS（Linux JFS2） | [JFS.md](JFS.md) | rusty-backup / partmgr 改造；多 IAG、dtree / xtree、分配位图、目录索引、EA / 符号链接与纳秒范围读 |
 | AIX JFS1 | [AIX_JFS.md](AIX_JFS.md) | 大端 fsv3 / fsv3p、双超级块、片段与分配组、两级间接寻址、稀疏与范围读 |
 | UnixWare BFS | [UNIXWARE_BFS.md](UNIXWARE_BFS.md) | `/stand` 启动卷、经典 VTOC 切片、平面目录、硬链接与连续范围读 |
+| XDVDFS | [XDVDFS.md](XDVDFS.md) | Xbox 裸 XISO 和 XGD1/2/3 游戏区、视频区保留、二叉目录、范围读 |
 | ReiserFS v3 | [REISERFS.md](REISERFS.md) | 3.5 / 3.6、混合键、多层树、尾部打包、稀疏块、硬链接与范围读；dirty 拒绝，Reiser4 独立未支持 |
 | Amiga OFS / FFS | [AMIGA.md](AMIGA.md) | DOS0–7、Latin-1 / LNFS、硬链接、原生 RDB 与多块几何；dirty / BADB 明确拒绝 |
 | BeFS | [BEFS.md](BEFS.md) | BeOS / Haiku、大小端、四种块大小、B+tree、全部 run 层级及扩展属性；原生官方镜像 / 系统包验证 |

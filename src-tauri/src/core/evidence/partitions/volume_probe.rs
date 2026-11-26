@@ -149,6 +149,7 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &NtfsProbe,
     &RefsProbe,
     &ExfatProbe,
+    &super::xdvdfs::XdvdfsProbe,
     &super::udf::UdfProbe,
     &CdfsProbe,
     &FatProbe,
@@ -338,6 +339,7 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::Vxfs
         | PartitionKind::AixJfs
         | PartitionKind::UnixwareBfs
+        | PartitionKind::Xdvdfs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

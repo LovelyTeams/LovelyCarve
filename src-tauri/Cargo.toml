@@ -255,6 +255,7 @@ vmdk = { package = "vmdk-core", path = "vendor/vmdk", features = ["full-encoding
 vmfs-reader = { path = "vendor/vmfs-reader" }
 vxfs-reader = { path = "vendor/vxfs-reader" }
 vsc = { package = "vsc-core", path = "vendor/vsc" }
+xdvdfs-reader = { path = "vendor/xdvdfs-reader" }
 xfs-fuse = { path = "vendor/xfs-fuse" }
 yaffs2-reader = { path = "vendor/yaffs2-reader" }
 zerocopy = "0.8.62"

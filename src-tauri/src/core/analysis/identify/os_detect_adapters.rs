@@ -380,6 +380,7 @@ pub(crate) fn kind_str(kind: PartitionKind) -> &'static str {
         PartitionKind::Vxfs => "vxfs",
         PartitionKind::AixJfs => "aixjfs",
         PartitionKind::UnixwareBfs => "unixwarebfs",
+        PartitionKind::Xdvdfs => "xdvdfs",
         PartitionKind::Minix => "minix",
         PartitionKind::Minifs => "minifs",
         PartitionKind::Romfs => "romfs",

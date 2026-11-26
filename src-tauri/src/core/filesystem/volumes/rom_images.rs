@@ -85,6 +85,7 @@ pub type HpfsVolume = RomVolume<hpfs_reader::Hpfs<RomImageSource>>;
 pub type VxfsVolume = RomVolume<vxfs_reader::Vxfs<RomImageSource>>;
 pub type AixJfsVolume = RomVolume<aix_jfs_reader::AixJfs<RomImageSource>>;
 pub type UnixwareBfsVolume = RomVolume<unixware_bfs_reader::UnixwareBfs<RomImageSource>>;
+pub type XdvdfsVolume = RomVolume<xdvdfs_reader::Xdvdfs<RomImageSource>>;
 pub type JfsVolume = RomVolume<jfs_reader::Jfs<RomImageSource>>;
 pub type ReiserFsVolume = RomVolume<reiserfs_reader::ReiserFs<RomImageSource>>;
 pub type AmigaVolume = RomVolume<amiga_reader::Amiga<RomImageSource>>;
@@ -177,6 +178,9 @@ pub fn open_qnx4_source(image: &Arc<DiskImage>, partition: u8) -> Result<Qnx4Vol
 pub fn parse_minix_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "minix")
 }
+pub fn parse_xdvdfs_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "xdvdfs")
+}
 pub fn parse_unixware_bfs_id(id: &str) -> Option<(u8, String)> {
     let (partition, path) = id.strip_prefix("unixwarebfs:part:")?.split_once(':')?;
     let path = String::from_utf8(hex::decode(path).ok()?).ok()?;
@@ -251,6 +255,12 @@ pub fn open_amiga_source(image: &Arc<DiskImage>, partition: u8) -> Result<AmigaV
         partition_id: partition.id,
         reader: RefCell::new(reader),
     })
+}
+pub fn open_xdvdfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<XdvdfsVolume> {
+    XdvdfsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
 }
 pub fn open_unixware_bfs_source(
     image: &Arc<DiskImage>,

@@ -1729,6 +1729,11 @@ AGPL-3.0-only. [Fixture source and hashes](src-tauri/vendor/hpfs-reader/ORIGIN.m
 [Upstream license](src-tauri/vendor/aix-jfs-reader/LICENSE-MIT) and
 [origin and verification](src-tauri/vendor/aix-jfs-reader/ORIGIN.md).
 
+`xdvdfs-reader` uses antangelo's MIT `xdvdfs` 0.8.3. The independent fixture was
+produced with XboxDev's `extract-xiso`. See the
+[upstream MIT license](src-tauri/vendor/xdvdfs-reader/LICENSE-MIT) and
+[fixture provenance](src-tauri/vendor/xdvdfs-reader/ORIGIN.md).
+
 ## BCP application icons
 
 The result directory icons in `src/assets/bcp-apps` come from the local

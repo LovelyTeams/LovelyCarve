@@ -13,6 +13,7 @@ import struct
 import tarfile
 import zlib
 
+from cli_optical_tests import iso_fixture
 from cli_support import REPOSITORY, node, path_id, request
 
 ALIAS = "ev"
@@ -335,6 +336,51 @@ def test_unixware_bfs(cli, root):
     assert parts[0]["startLba"] == owner_start and parts[0]["lengthLba"] == owner_length
     assert parts[1]["startLba"] == foreign_start
     print("UnixWare BFS CLI tests passed: native empty volume, VTOC, hard links, ranges, hash and export")
+
+
+def test_xdvdfs(cli, root):
+    fixture = VENDOR / "xdvdfs-reader/tests/fixtures/extract-xiso.zlib"
+    volume = zlib.decompress(fixture.read_bytes())
+    video, video_payload = iso_fixture(b"ISO 9660 video partition data\n")
+    payload = bytes(range(256)) * 19 + b"ending"
+    for name, base in [("xiso", 0), ("xgd1", 0x18300000), ("xgd2", 0x0FD90000), ("xgd3", 0x02080000)]:
+        source = root / f"{name}.iso"
+        has_video = name == "xgd3"
+        with source.open("xb") as disk:
+            if has_video:
+                disk.write(video)
+            disk.seek(base)
+            disk.write(volume)
+        game = int(has_video)
+        path = f"/ev/part:{game}"
+        output = root / f"{name}-frame.bin"
+        commands = [
+            add(source),
+            ls("root", path),
+            ls("textures", f"{path}/textures", "--limit", 500),
+            cat("range", f"{path}/TEXTURES/frame.bin", 2043, 29),
+            cat("nested", at(path_id(f"xdvdfs:part:{game}:", "/Textures/Nested/Text.txt"))),
+            cat("empty", f"{path}/empty"),
+            request("stat", "stat", f"{path}/textures/Frame.bin"),
+            digest("hash", f"{path}/Textures/Frame.bin"),
+            export("export", f"{path}/Textures/Frame.bin", output),
+        ]
+        if has_video:
+            commands += [cat("video", "/ev/part:0/PAYLOAD.BIN")]
+        rows = cli.results(commands)
+        parts = {p["id"]: p for p in opened(rows)["partitions"]}
+        assert parts[game]["kind"] == "xdvdfs" and parts[game]["startLba"] * opened(rows)["sectorSize"] == base
+        assert names(rows["root"]) == {"Textures", "EMPTY", "readme.txt"}
+        assert names(rows["textures"]) == {"Frame.bin", "Nested"} | {f"Data-{index:03}.dat" for index in range(120)}
+        assert rows["range"] == hex_of(payload[2043:2072])
+        assert rows["nested"] == hex_of(b"Independent Xbox DVD image.\n")
+        assert rows["empty"] == hex_of(b"") and rows["stat"]["size"] == len(payload)
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert output.read_bytes() == payload
+        if has_video:
+            assert parts[0]["kind"] == "cdfs" and rows["video"] == hex_of(video_payload)
+        source.unlink()
+    print("XDVDFS CLI tests passed: native XISO, XGD1/2/3 bases, concurrent ISO 9660 view, ranges, hash and export")
 
 
 def test_formats(cli, root):

@@ -58,6 +58,7 @@ pub(crate) mod unixware_bfs;
 pub(crate) mod vmfs;
 pub mod volume_probe;
 pub(crate) mod vxfs;
+mod xdvdfs;
 pub mod xfs;
 pub mod xiaomi_firmware;
 pub mod yaffs2;
@@ -171,6 +172,7 @@ pub enum PartitionKind {
     Vxfs,
     AixJfs,
     UnixwareBfs,
+    Xdvdfs,
     Ubifs,
     Lvm,
     Bitlocker,
@@ -297,6 +299,7 @@ static PARSERS: &[&dyn PartParser] = &[
     &BsdParser,
     &MbrParser,
     &Lvm2Parser,
+    &xdvdfs::XboxDiscParser,
     &WholeVolumeParser,
 ];
 
@@ -401,6 +404,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Vxfs
         | PartitionKind::AixJfs
         | PartitionKind::UnixwareBfs
+        | PartitionKind::Xdvdfs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs
