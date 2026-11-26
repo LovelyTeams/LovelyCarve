@@ -256,3 +256,9 @@ v2.11.0 官方规范，外部官方实现生成并回读 2.0 / 2.1 测试镜像�
 
 `spiffs-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。布局对照 pellepl/spiffs，
 样本由 ESP-IDF 官方生成器写入，小端样本经上游回读。来源及 SHA-256 见 [ORIGIN.md](spiffs-reader/ORIGIN.md)。
+
+## HAMMER2
+
+`hammer2-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。磁盘格式对照 DragonFly BSD
+和 libhammer2，原生样本由独立的 HAMMER2 makefs 生成。固定提交、样本及验证记录见
+[ORIGIN.md](hammer2-reader/ORIGIN.md)。

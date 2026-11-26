@@ -220,6 +220,13 @@ pub(super) fn children_for_image_with_options(
                 )?
                 .root_children()
             }
+            PartitionKind::Hammer2 => {
+                crate::core::filesystem::volumes::rom_images::open_hammer2_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
             PartitionKind::Hfs => {
                 crate::core::filesystem::volumes::rom_images::open_hfs_source(image, partition.id)?
                     .root_children()

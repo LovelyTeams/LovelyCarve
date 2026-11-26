@@ -25,6 +25,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | Macintosh MFS | [MFS.md](MFS.md) | 裸卷、Disk Copy 4.2、APM、MacRoman、数据叉与资源叉、备用 MDB |
 | LittleFS | [LITTLEFS.md](LITTLEFS.md) | 2.0 / 2.1、提交 CRC、拆分目录、内联数据与 CTZ 范围读取 |
 | SPIFFS | [SPIFFS.md](SPIFFS.md) | 大小端、签名与无签名几何、扁平对象和跨索引范围读取 |
+| HAMMER2 | [HAMMER2.md](HAMMER2.md) | v1/v2 单物理卷、PFS、主备卷头、稀疏与 LZ4/zlib 范围读取 |
 | 传统 HFS | [CLASSIC_HFS.md](CLASSIC_HFS.md) | fstool / rusty-backup 改造；catalog / overflow、MacRoman、data / resource fork、本地时间和范围读 |
 | HFS+ / HFSX | [HFS.md](HFS.md) | libfshfs 95 API；完整 fork / overflow、resource fork、attr continuation、Unicode 3.2、硬链接与逻辑范围读取 |
 | ISO 9660 / 光盘 BIN / CUE | [CDFS.md](CDFS.md) | libodraw 全 API 对照；多文件/多轨 CUE、Mode 1 / XA Form 1、来源字节保留与范围读取 |

@@ -103,6 +103,7 @@ pub(super) fn snapshot_supported_plain_partition(kind: PartitionKind) -> bool {
             | PartitionKind::Mfs
             | PartitionKind::Littlefs
             | PartitionKind::Spiffs
+            | PartitionKind::Hammer2
             | PartitionKind::Jfs
             | PartitionKind::Reiserfs
             | PartitionKind::Amiga

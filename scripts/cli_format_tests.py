@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import struct
+import subprocess
 import tarfile
 import zlib
 
@@ -629,6 +630,73 @@ def test_spiffs(cli, root):
         assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
         assert output.read_bytes() == payload
     print("SPIFFS CLI tests passed: signed and unsigned layouts, big endian, MBR, ranges, hash and export")
+
+
+def test_hammer2(cli, root):
+    fixtures = VENDOR / "hammer2-reader/tests/fixtures"
+    payload = bytes((n * 17 + n // 51) % 256 for n in range(196613))
+    address = "/ev/part:0"
+    for name in ("lz4", "zlib", "mirror", "v1", "snapshot", "mbr"):
+        archive = zlib.decompress((fixtures / f"{'lz4' if name == 'mbr' else name}.h2z").read_bytes())
+        length, = struct.unpack_from("<Q", archive)
+        base = 4096 if name == "mbr" else 0
+        source = root / f"hammer2-{name}.img"
+        source.touch(exist_ok=False)
+        if os.name == "nt":
+            subprocess.run(["fsutil", "sparse", "setflag", source], capture_output=True, check=False)
+        with source.open("r+b") as image:
+            if base:
+                mbr = bytearray(512)
+                mbr[450] = 0xA5
+                struct.pack_into("<II", mbr, 454, base // 512, length // 512)
+                mbr[510:512] = b"\x55\xaa"
+                image.write(mbr)
+            offset = 8
+            while offset < len(archive):
+                extent_start, count = struct.unpack_from("<QI", archive, offset)
+                offset += 12
+                assert offset + count <= len(archive) and extent_start + count <= length
+                image.seek(base + extent_start)
+                image.write(archive[offset:offset + count])
+                offset += count
+            image.truncate(base + length)
+
+        entry = at(path_id("hammer2:part:0:", "/DATA/var/log/event.bin"))
+        output = root / f"hammer2-{name}-export.bin"
+        requests = [
+            add(source),
+            ls("pfs", address),
+            cat("data", entry, 65381, 12923),
+            cat("link", f"{address}/DATA/latest", 65381, 12923),
+            cat("sparse", f"{address}/DATA/sparse.bin", 5 * 65536 - 31, 150),
+            request("hi", "stat", f"{address}/DATA/hello"),
+            request("hardlink", "stat", f"{address}/DATA/same-inode"),
+            digest("hash", entry),
+            export("export", entry, output),
+        ]
+        if name == "snapshot":
+            requests.extend([
+                cat("absolute", f"{address}/ARCHIVE/absolute-link", 65381, 12923),
+                request("absolute-stat", "stat", f"{address}/ARCHIVE/absolute-link"),
+            ])
+        rows = cli.results(requests)
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "hammer2", info
+        assert part["startLba"] * info["sectorSize"] == base and part["lengthLba"] * info["sectorSize"] == length
+        expected_pfs = {"DATA", "LOCAL"}
+        if name == "snapshot":
+            expected_pfs.add("ARCHIVE")
+            assert rows["absolute"] == hex_of(payload[65381:78304])
+            assert rows["absolute-stat"]["linkTarget"] == "/var/log/event.bin"
+        assert names(rows["pfs"]) == expected_pfs
+        assert rows["data"] == rows["link"] == hex_of(payload[65381:78304])
+        assert rows["sparse"] == hex_of(bytes(124) + b"hole-tail")
+        assert rows["hi"]["inode"] > 0 and rows["hi"]["inode"] == rows["hardlink"]["inode"], (name, rows["hi"], rows["hardlink"])
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert output.read_bytes() == payload
+        source.unlink()
+    print("HAMMER2 CLI tests passed: v1/v2, current mirror, MBR, PFS snapshots, links, sparse ranges and export")
 
 
 def test_formats(cli, root):

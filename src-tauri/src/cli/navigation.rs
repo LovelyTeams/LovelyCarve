@@ -96,6 +96,7 @@ pub(super) async fn case_insensitive(
         || parent.starts_with("mfs:part:")
         || parent.starts_with("littlefs:part:")
         || parent.starts_with("spiffs:part:")
+        || parent.starts_with("hammer2:part:")
     {
         return Ok(true);
     }
@@ -141,6 +142,7 @@ pub(super) async fn case_insensitive(
                     | PartitionKind::Mfs
                     | PartitionKind::Littlefs
                     | PartitionKind::Spiffs
+                    | PartitionKind::Hammer2
             )
         }))
 }

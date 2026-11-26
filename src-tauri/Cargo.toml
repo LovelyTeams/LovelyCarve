@@ -137,6 +137,7 @@ gfs2-reader = { path = "vendor/gfs2-reader" }
 goblin = "0.10.7"
 gpt = { path = "vendor/gpt" }
 gzipf = { path = "vendor/gzipf" }
+hammer2-reader = { path = "vendor/hammer2-reader" }
 hex = "0.4.3"
 hfsplus = { path = "vendor/hfsplus" }
 hpfs-reader = { path = "vendor/hpfs-reader" }

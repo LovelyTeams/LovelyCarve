@@ -206,6 +206,12 @@ impl<'a> FsSession<'a> {
                         )?
                         .root_children(),
                     ),
+                    PartitionKind::Hammer2 => Some(
+                        crate::core::filesystem::volumes::rom_images::open_hammer2_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::Hfs => Some(
                         crate::core::filesystem::volumes::rom_images::open_hfs_source(
                             self.image, pid,

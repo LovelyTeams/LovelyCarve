@@ -2497,6 +2497,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "hammer2-reader"
+version = "0.1.0"
+dependencies = [
+ "crc32c",
+ "lamfold",
+ "lz4_flex 0.13.1",
+ "miniz_oxide 0.9.1",
+ "sha2 0.11.0",
+ "xxhash-rust",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3510,6 +3522,7 @@ dependencies = [
  "goblin",
  "gpt",
  "gzipf",
+ "hammer2-reader",
  "hex",
  "hfsplus",
  "hpfs-reader",
@@ -3897,6 +3910,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b63fbc4a50860e98e7b2aa7804ded1db5cbc3aff9193adaff57a6931bf7c4b4c"
 dependencies = [
  "adler2",
+ "serde",
  "simd-adler32",
 ]
 

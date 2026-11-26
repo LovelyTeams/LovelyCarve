@@ -166,6 +166,7 @@ fmt:
     cd src-tauri/vendor/mfs-reader && cargo fmt
     cd src-tauri/vendor/littlefs-reader && cargo fmt
     cd src-tauri/vendor/spiffs-reader && cargo fmt
+    cd src-tauri/vendor/hammer2-reader && cargo fmt
     cd src-tauri/vendor/jfs-reader && cargo fmt
     cd src-tauri/vendor/reiserfs-reader && cargo fmt
     cd src-tauri/vendor/amiga-reader && cargo fmt
@@ -542,6 +543,10 @@ clippy-littlefs:
 [group("readers")]
 clippy-spiffs:
     cargo clippy --manifest-path src-tauri/vendor/spiffs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+clippy-hammer2:
+    cargo clippy --manifest-path src-tauri/vendor/hammer2-reader/Cargo.toml --all-targets -- -D warnings
 
 [group("readers")]
 generate-hfs-fixtures:
