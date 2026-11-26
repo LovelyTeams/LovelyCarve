@@ -264,7 +264,7 @@ pub async fn tree(
     }
     let target = exec.target(&args.path, LastLink::Follow).await?;
     let task = exec.state.tasks.register(
-        format!("cli-tree-{}", uuid::Uuid::new_v4()),
+        exec.task_id("tree"),
         crate::task_manager::TaskKind::FlatList,
         Some(target.image_id().clone()),
     );

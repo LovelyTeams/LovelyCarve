@@ -246,7 +246,7 @@ pub async fn strings(exec: &Exec, args: StringsArgs) -> Result<Output, CliError>
         values.insert("length".into(), json!(length));
     }
     let output =
-        crate::cli::strings::read(&exec.state, image, target.node_id().to_owned(), &values).await?;
+        crate::cli::strings::read(exec, image, target.node_id().to_owned(), &values).await?;
     with_path(output, &target.address())
 }
 
@@ -350,7 +350,7 @@ async fn export_one(
             target.image_id().clone(),
             target.node_id().into(),
             destination.text(),
-            super::task_id("export"),
+            exec.task_id("export"),
             if zip {
                 ExportDirMode::Zip
             } else {

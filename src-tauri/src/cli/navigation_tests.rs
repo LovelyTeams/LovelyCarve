@@ -25,6 +25,7 @@ fn exec(directory: &std::path::Path, state: Arc<AppState>, mode: Mode) -> Exec {
         mode,
         background: Default::default(),
         workspace: Default::default(),
+        request: Default::default(),
     }
 }
 

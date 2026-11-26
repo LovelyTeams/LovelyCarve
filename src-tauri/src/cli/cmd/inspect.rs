@@ -565,7 +565,7 @@ pub async fn ocr(exec: &Exec, args: ImageArgs) -> Result<Output, CliError> {
         exec.state(),
         target.image_id().clone(),
         target.node_id().into(),
-        Some(super::task_id("ocr")),
+        Some(exec.task_id("ocr")),
     )
     .await
     .map_err(operation("ocr_scan"))?;
@@ -580,7 +580,7 @@ pub async fn qr(exec: &Exec, args: QrArgs) -> Result<Output, CliError> {
         target.image_id().clone(),
         target.node_id().into(),
         args.expect,
-        super::task_id("qr"),
+        exec.task_id("qr"),
     )
     .await
     .map_err(operation("qr_scan"))?;

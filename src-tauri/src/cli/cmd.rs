@@ -538,11 +538,6 @@ pub fn parse_size(text: &str) -> Result<u64, String> {
         .ok_or_else(|| format!("大小超出范围：{text}"))
 }
 
-/// A task ID for backend work, so it can be found and cancelled.
-pub fn task_id(path: &str) -> String {
-    format!("cli-{}-{}", path.replace(' ', "-"), uuid::Uuid::new_v4())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

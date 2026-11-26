@@ -247,7 +247,7 @@ pub async fn run(exec: &Exec, args: EvidenceArgs) -> Result<Output, CliError> {
                 exec.state(),
                 evidence.image_id.clone(),
                 algorithms,
-                super::task_id("evidence hash"),
+                exec.task_id("evidence hash"),
                 Some(policy(hash.strict)),
             )
             .await
@@ -356,7 +356,7 @@ async fn export_evidence(exec: &Exec, export: ExportEvidence) -> Result<Output, 
                 exec.state(),
                 evidence.image_id.clone(),
                 export.output.text(),
-                super::task_id("evidence export"),
+                exec.task_id("evidence export"),
                 Some(policy(export.strict)),
                 Some(if export.unlocked {
                     crate::core::filesystem::evidence_session::ImageExportMode::UnlockedPartitions

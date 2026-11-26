@@ -1,7 +1,7 @@
 //! Running one command where the evidence is held: confirmation, progress,
 //! the command itself and the verdict on its result. The same steps run in a
 //! one-shot process, the shell, a batch and a case backend.
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
@@ -41,6 +41,47 @@ pub struct Exec {
     pub reporter: Reporter,
     pub background: Background,
     pub workspace: Workspace,
+    /// The tasks of the request this executor runs, in a case backend.
+    pub request: RequestTasks,
+}
+
+/// The IDs of the tasks one case backend request started, so the backend
+/// can cancel the work of a request whose client went away. Executors that
+/// serve no single request keep none.
+#[derive(Clone, Default)]
+pub struct RequestTasks(Option<Arc<Mutex<Vec<String>>>>);
+
+impl RequestTasks {
+    /// Keeps the IDs handed out from now on.
+    pub fn tracked() -> Self {
+        Self(Some(Arc::default()))
+    }
+
+    fn record(&self, task_id: &str) {
+        if let Some(ids) = &self.0 {
+            ids.lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(task_id.to_owned());
+        }
+    }
+
+    /// Cancels every task of the request that still runs; returns how many.
+    pub fn cancel(&self, state: &AppState) -> usize {
+        let Some(ids) = &self.0 else {
+            return 0;
+        };
+        let ids = ids
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        let mut cancelled = 0;
+        for id in &ids {
+            if state.tasks.cancel(id) {
+                cancelled += 1;
+            }
+        }
+        cancelled
+    }
 }
 
 /// What applies to one request besides the command itself.
@@ -133,6 +174,14 @@ impl Exec {
             monitor.finish(&executed);
         }
         executed
+    }
+
+    /// A task ID for work this command starts, so it can be found and
+    /// cancelled, also by a case backend whose client went away.
+    pub fn task_id(&self, path: &str) -> String {
+        let id = format!("cli-{}-{}", path.replace(' ', "-"), uuid::Uuid::new_v4());
+        self.request.record(&id);
+        id
     }
 
     /// An open image.

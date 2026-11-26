@@ -1,7 +1,8 @@
 """Case backends across processes: every command for a case shares one
 backend's evidence, unlocked volumes and assembled arrays; byte results
-stream intact; cases stay apart; the transport authenticates; and a backend
-that died is reported once, then cleared."""
+stream intact; cases stay apart; the transport authenticates; a backend
+that died is reported once, then cleared; and an interrupted client ends
+with 130 while the backend cancels the request it left behind."""
 import json
 import os
 from pathlib import Path
@@ -152,6 +153,69 @@ def test_backend(cli, root):
         for directory in (case, other):
             if (directory / "case.db").exists():
                 cli.run("-C", directory, "case", "close")
+    interrupted = test_interrupted_client(cli, root)
     assert not list((root / "backends").glob("*.json"))
     print("CLI backend tests passed: shared evidence across clients, shell and batch, streamed reads, unlock and RAID reuse, "
-          "isolation, authentication, close and crash recovery")
+          "isolation, authentication, close and crash recovery" + (", interrupted clients" if interrupted else ""))
+
+
+def test_interrupted_client(cli, root):
+    """On Windows, Ctrl+Break ends a forwarded command with 130 instead of the
+    console's default termination, and the backend cancels the request instead
+    of finishing it for nobody, so the next client is served at once."""
+    if os.name != "nt":
+        return False
+    case = root / "interrupted case"
+    cli.run("case", "new", case, "--name", "Interrupted client")
+    scope = ("-C", case)
+    backend = cli.json(*scope, "case", "open")["pid"]
+    try:
+        cli.run(*scope, "evidence", "add", ENCRYPTED / "veracrypt.hc", "--as", "vc")
+        wrong = root / "wrong password.txt"
+        wrong.write_text("not the password", encoding="utf-8")
+        # The largest PIM keeps the key derivation busy far longer than this
+        # test in any build, and an unlock runs alone: abandoned, it would hold
+        # the backend for every other client.
+        process = subprocess.Popen(
+            [str(cli.executable), "--events", "-q", *map(str, scope), "unlock", "/vc", "--scheme", "veracrypt",
+             "--password", "@" + str(wrong), "--pim", "2147468", "--prf", "sha512", "--header", "normal"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, encoding="utf-8",
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP, cwd=cli.cwd, env=cli.environment)
+        try:
+            started, task = False, None
+            for line in process.stderr:
+                record = json.loads(line)
+                payload = record.get("payload") or {}
+                started |= record["event"] == "cli-command" and payload.get("phase") == "started"
+                entry = payload.get("entry") or {}
+                # The backend relays its task center: the unlock runs there now.
+                if started and record["event"] == "task-entry" and entry.get("kind") == "encryptedVolumeUnlock" \
+                        and entry.get("status") == "running":
+                    task = entry["id"]
+                    break
+            else:
+                raise AssertionError(f"the unlock never ran in the backend: exit {process.wait(timeout=30)}")
+            process.send_signal(signal.CTRL_BREAK_EVENT)
+            assert process.wait(timeout=30) == 130
+            records = [json.loads(line) for line in process.stderr.read().splitlines() if line.startswith("{")]
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.communicate(timeout=30)
+        # The client reported the cancellation itself instead of being cut off.
+        phases = [record["payload"]["phase"] for record in records if record["event"] == "cli-command"]
+        assert phases[-1:] == ["cancelled"], records
+        # The next client is served at once, and the unlock was cancelled rather
+        # than left running for nobody.
+        assert cli.json(*scope, "case", "status", timeout=60)["process"] == {"pid": backend, "mode": "Backend"}
+        tasks = {item["id"]: item["status"] for item in cli.json(*scope, "tasks", "ls", timeout=60)["items"]}
+        assert tasks.get(task) == "cancel", (task, tasks)
+        assert [item["name"] for item in cli.json(*scope, "evidence", "ls", timeout=60)["items"]] == ["vc"]
+    finally:
+        try:
+            cli.run(*scope, "case", "close", timeout=60)
+        except BaseException:
+            # A backend that no longer answers must not outlive the test.
+            subprocess.run(["taskkill", "/F", "/PID", str(backend)], capture_output=True)
+            raise
+    return True

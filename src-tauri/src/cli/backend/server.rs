@@ -1,15 +1,21 @@
 //! A case backend serving other processes. It owns one `AppState` with the
 //! case open; clients never recreate it. Read-only queries run side by side,
-//! every other command runs alone.
+//! every other command runs alone. A request whose client goes away is
+//! cancelled: it stops waiting for its turn or its work, and the tasks it
+//! started are cancelled.
 use std::{
-    io::{BufReader, Write},
+    io::{BufReader, ErrorKind, Read, Write},
     net::{Ipv4Addr, TcpListener, TcpStream},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use serde_json::json;
 use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 
 use super::{
     protocol::{self, Header, Work},
@@ -17,9 +23,17 @@ use super::{
 };
 use crate::cli::{
     cmd::Command,
-    exec::{Exec, RequestOptions},
+    exec::{Exec, RequestOptions, RequestTasks},
     CliError, Output,
 };
+
+/// How often a request's watch looks up from its connection to see whether
+/// the request has settled.
+const WATCH_INTERVAL: Duration = Duration::from_millis(500);
+/// How long a command other than a query still runs once its client left:
+/// time to finish, or to unwind the tasks cancelled for it, so a change is
+/// not cut off half-way. One that only waits (`tasks wait`) is dropped then.
+const UNWIND: Duration = Duration::from_secs(2);
 
 pub(crate) struct Prepared {
     listener: TcpListener,
@@ -146,27 +160,69 @@ async fn handle(
     options: RequestOptions,
     progress: bool,
 ) {
+    let path = command.path();
+    let exec = Exec {
+        request: RequestTasks::tracked(),
+        ..exec
+    };
+    let departure = match Departure::watch(&stream) {
+        Ok(departure) => Some(departure),
+        Err(error) => {
+            tracing::warn!("backend request {path}: cannot watch its connection: {error}");
+            None
+        }
+    };
+    let gone = departure
+        .as_ref()
+        .map(|departure| departure.gone.clone())
+        .unwrap_or_default();
+    let concurrent = command.meta().concurrent;
     // Held until the response is sent.
-    let (_shared, _alone) = if command.meta().concurrent {
-        (Some(gate.read_owned().await), None)
-    } else {
-        (None, Some(gate.write_owned().await))
+    let (_shared, _alone) = tokio::select! {
+        guards = async move {
+            if concurrent {
+                (Some(gate.read_owned().await), None)
+            } else {
+                (None, Some(gate.write_owned().await))
+            }
+        } => guards,
+        () = gone.cancelled() => {
+            tracing::info!("backend request {path}: its client left before it ran");
+            return;
+        }
     };
     let (sender, mut events) = tokio::sync::mpsc::unbounded_channel();
     let subscription = progress.then(|| exec.reporter.subscribe(sender));
+    let mut relaying = subscription.is_some();
     let result = {
         let work = exec.run(command, &options);
         tokio::pin!(work);
         loop {
             tokio::select! {
                 biased;
-                event = events.recv(), if subscription.is_some() => {
-                    if let Some(event) = event {
+                () = gone.cancelled() => {
+                    // The work still holds its tasks: cancel them first. A query
+                    // is dropped at once, anything else after it settles or
+                    // [`UNWIND`] passes; its result goes nowhere.
+                    let cancelled = exec.request.cancel(&exec.state);
+                    let settled =
+                        !concurrent && tokio::time::timeout(UNWIND, &mut work).await.is_ok();
+                    tracing::info!(
+                        "backend request {path}: its client left; cancelled {cancelled} task(s), {}",
+                        if settled { "the command settled" } else { "the command was dropped" }
+                    );
+                    return;
+                }
+                event = events.recv(), if relaying => match event {
+                    Some(event) => {
                         if let Err(error) = protocol::header(&mut stream, &Header::Event { event }) {
                             tracing::debug!("backend progress delivery: {error}");
                         }
                     }
-                }
+                    // Another request took the progress subscription over;
+                    // a closed channel would answer at once, forever.
+                    None => relaying = false,
+                },
                 result = &mut work => break result,
             }
         }
@@ -185,6 +241,61 @@ async fn handle(
         // A disconnected client never tears down the shared evidence and
         // never causes a mutation to be retried.
         tracing::debug!("backend response delivery: {error}");
+    }
+}
+
+/// Watches a request's connection for its client going away (Ctrl+C, a
+/// killed process). A client sends nothing after its request, so whatever a
+/// read returns, the end of the stream, a reset or stray bytes, means the
+/// request is abandoned.
+struct Departure {
+    gone: CancellationToken,
+    settled: Arc<AtomicBool>,
+}
+
+impl Departure {
+    fn watch(stream: &TcpStream) -> std::io::Result<Self> {
+        let mut connection = stream.try_clone()?;
+        // Nothing else reads from the connection after the request.
+        connection.set_read_timeout(Some(WATCH_INTERVAL))?;
+        let gone = CancellationToken::new();
+        let settled = Arc::new(AtomicBool::new(false));
+        let (left, done) = (gone.clone(), Arc::clone(&settled));
+        std::thread::Builder::new()
+            .name("lovelycarve-cli-request-watch".into())
+            .spawn(move || {
+                let mut byte = [0; 1];
+                while !done.load(Ordering::Relaxed) {
+                    match connection.read(&mut byte) {
+                        Err(error)
+                            if matches!(
+                                error.kind(),
+                                ErrorKind::WouldBlock
+                                    | ErrorKind::TimedOut
+                                    | ErrorKind::Interrupted
+                            ) => {}
+                        // A connection that ends reads as its end or a reset;
+                        // a copy that thinks itself unconnected tells nothing.
+                        Err(error) if error.kind() == ErrorKind::NotConnected => {
+                            tracing::warn!("backend request connection cannot be watched: {error}");
+                            return;
+                        }
+                        read => {
+                            tracing::debug!("backend request connection ended: {read:?}");
+                            left.cancel();
+                            return;
+                        }
+                    }
+                }
+            })?;
+        Ok(Self { gone, settled })
+    }
+}
+
+impl Drop for Departure {
+    /// The request settled: its watch ends within [`WATCH_INTERVAL`].
+    fn drop(&mut self) {
+        self.settled.store(true, Ordering::Relaxed);
     }
 }
 

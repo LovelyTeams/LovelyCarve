@@ -104,6 +104,11 @@ fn main(args: &[String]) -> Result<i32, CliError> {
         },
         None => None,
     };
+    if running.is_some() {
+        // Only a client of the backend from here: Ctrl+C closes its
+        // connections, which cancels their requests, and ends it with 130.
+        backend::guard_interrupts();
+    }
     if let Command::Shell = command {
         return match running {
             Some(dir) => runtime()?.block_on(super::shell::run_with(
@@ -566,6 +571,7 @@ pub(super) fn exec(mode: Mode, quiet: bool, events: bool) -> Result<Exec, CliErr
         reporter,
         background,
         workspace: Workspace::default(),
+        request: Default::default(),
     })
 }
 
@@ -683,7 +689,7 @@ async fn finish(exec: &Exec) -> Result<(), CliError> {
     Ok(())
 }
 
-async fn interrupted() {
+pub(super) async fn interrupted() {
     #[cfg(windows)]
     {
         use tokio::signal::windows::{ctrl_break, ctrl_c};

@@ -255,7 +255,7 @@ pub async fn vss(exec: &Exec, args: VssArgs) -> Result<Output, CliError> {
                 target.image_id().clone(),
                 number,
                 open.index,
-                Some(super::task_id("vss open")),
+                Some(exec.task_id("vss open")),
             )
             .await
             .map_err(operation("shadow_copy_open"))?;

@@ -272,7 +272,7 @@ pub async fn encryption(exec: &Exec, args: EncryptionArgs) -> Result<Output, Cli
                     length: None,
                     encrypted_root_plist_path: args.plist.as_ref().map(HostPath::text),
                 },
-                Some(super::task_id("encryption")),
+                Some(exec.task_id("encryption")),
             )
             .await
             .map_err(operation("filevault_inspect"))?;
@@ -335,7 +335,7 @@ async fn ios_backup(exec: &Exec, target: &Target, args: &UnlockArgs) -> Result<O
         exec.state(),
         target.image_id().clone(),
         password,
-        Some(super::task_id("unlock")),
+        Some(exec.task_id("unlock")),
     )
     .await
     .map_err(operation("ios_backup_unlock"))?;
@@ -439,7 +439,7 @@ async fn vmk_from_memory(
         target.image_id().clone(),
         number,
         memory.text(),
-        super::task_id("unlock vmk-scan"),
+        exec.task_id("unlock vmk-scan"),
     )
     .await
     .map_err(operation("bitlocker_scan_memory"))?;
@@ -501,7 +501,7 @@ async fn volume(
         exec.state(),
         target.image_id().clone(),
         options,
-        Some(super::task_id("unlock")),
+        Some(exec.task_id("unlock")),
     )
     .await
     .map_err(operation("encrypted_volume_unlock"))?;

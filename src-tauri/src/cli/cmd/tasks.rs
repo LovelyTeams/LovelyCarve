@@ -303,7 +303,7 @@ pub async fn index(exec: &Exec, args: IndexArgs) -> Result<Output, CliError> {
         IndexCommand::Build(volume) => {
             let target = exec.target(&volume.volume, LastLink::Follow).await?;
             let key = volume_key(exec, &target).await?;
-            let task_id = super::task_id("index build");
+            let task_id = exec.task_id("index build");
             crate::commands::casework::case_snapshot::snapshot_build(
                 exec.host.clone(),
                 exec.state(),

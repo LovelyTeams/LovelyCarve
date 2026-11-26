@@ -19,6 +19,7 @@ use serde_json::{json, Value};
 
 use super::{cmd, exec::RequestOptions, progress::Reporter, CliError, Output};
 
+pub(super) use client::guard_interrupts;
 pub(super) use server::{prepare, serve, Prepared};
 pub(super) const PROTOCOL_VERSION: u32 = protocol::VERSION;
 

@@ -303,7 +303,7 @@ pub async fn grep(exec: &Exec, args: GrepArgs) -> Result<Output, CliError> {
             "search_deleted": !args.no_deleted,
             "scope": { "partitions": partitions, "tree_nodes": tree_nodes },
         }))?;
-        let search_id = super::task_id("grep");
+        let search_id = exec.task_id("grep");
         let summary = global_search_start(
             exec.host.clone(),
             exec.state(),

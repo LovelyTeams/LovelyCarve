@@ -98,13 +98,18 @@ impl Reporter {
         }
         Ok(())
     }
+    /// Sends every event to `sender` until the subscription drops or a later
+    /// subscription takes over.
     pub fn subscribe(&self, sender: tokio::sync::mpsc::UnboundedSender<Event>) -> Subscription {
         *self
             .0
             .remote
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(sender);
-        Subscription(self.clone())
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(sender.clone());
+        Subscription {
+            reporter: self.clone(),
+            sender,
+        }
     }
     pub fn start(&self, command: &str) -> Monitor {
         let options = self.0.options;
@@ -180,15 +185,25 @@ impl Reporter {
         }
     }
 }
-pub struct Subscription(Reporter);
+pub struct Subscription {
+    reporter: Reporter,
+    sender: tokio::sync::mpsc::UnboundedSender<Event>,
+}
 impl Drop for Subscription {
     fn drop(&mut self) {
-        *self
+        let mut remote = self
+            .reporter
             .0
-             .0
             .remote
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // A later subscription keeps its events.
+        if remote
+            .as_ref()
+            .is_some_and(|current| current.same_channel(&self.sender))
+        {
+            *remote = None;
+        }
     }
 }
 struct Active {
@@ -437,6 +452,21 @@ mod tests {
             .contains("总量未知"));
         assert!(reporter.0.active.lock().unwrap().upgrade().is_none());
         assert_eq!(timer(Duration::from_secs(65)), "[1m 5s]");
+    }
+    #[test]
+    fn an_ended_subscription_leaves_a_later_one_its_events() {
+        let reporter = Reporter::silent();
+        let (first, mut first_events) = tokio::sync::mpsc::unbounded_channel();
+        let (second, mut second_events) = tokio::sync::mpsc::unbounded_channel();
+        let older = reporter.subscribe(first);
+        let newer = reporter.subscribe(second);
+        drop(older);
+        reporter.event("task-progress", json!({})).unwrap();
+        assert_eq!(second_events.try_recv().unwrap().event, "task-progress");
+        assert!(first_events.try_recv().is_err());
+        drop(newer);
+        reporter.event("task-progress", json!({})).unwrap();
+        assert!(second_events.try_recv().is_err());
     }
     #[test]
     fn null_message_progress_uses_real_bytes_and_unknown_totals_have_no_percent() {

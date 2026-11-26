@@ -4,13 +4,12 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-use super::{CliError, Output};
+use super::{exec::Exec, CliError, Output};
 use crate::{
     core::{
         common::error::Failure,
         filesystem::{evidence_session::EvidenceSession, tree::fs_tree::FsSession},
     },
-    state::AppState,
     task_manager::TaskKind,
 };
 
@@ -203,7 +202,7 @@ impl Scanner {
 struct ResultLimitReached;
 
 pub(super) async fn read(
-    state: &AppState,
+    exec: &Exec,
     image: Arc<EvidenceSession>,
     node_id: String,
     values: &Map<String, Value>,
@@ -220,13 +219,14 @@ pub(super) async fn read(
     let limit = number("limit").unwrap_or(10_000).clamp(1, 100_000) as usize;
     let offset = number("offset").unwrap_or(0);
     let length = number("length").filter(|length| *length > 0);
-    let task_id = format!("cli-strings-{}", uuid::Uuid::new_v4());
-    let task = state.tasks.register(
+    let task_id = exec.task_id("strings");
+    let task = exec.state.tasks.register(
         task_id.clone(),
         TaskKind::MediaMaterialization,
         Some(image.id.clone()),
     );
-    let permit = state
+    let permit = exec
+        .state
         .tasks
         .acquire_resources(&task)
         .await

@@ -22,7 +22,7 @@ pub(super) async fn locate_node(
     node_id: &str,
 ) -> Result<Vec<(String, String)>, CliError> {
     let task = exec.state.tasks.register(
-        format!("cli-node-locate-{}", uuid::Uuid::new_v4()),
+        exec.task_id("node locate"),
         TaskKind::FlatList,
         Some(image_id.clone()),
     );

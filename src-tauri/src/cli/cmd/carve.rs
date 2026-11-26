@@ -326,7 +326,7 @@ pub async fn run(exec: &Exec, args: CarveArgs) -> Result<Output, CliError> {
                 },
                 "file_ids": export.files,
                 "destination": export.output.text(),
-                "task_id": super::task_id("carve export"),
+                "task_id": exec.task_id("carve export"),
             }))?;
             crate::cli::json_output(
                 carve_recovery::carve_recover(exec.state(), export.scan_id, options)
