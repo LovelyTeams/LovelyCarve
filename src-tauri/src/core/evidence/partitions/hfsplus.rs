@@ -1,26 +1,87 @@
-//! HFS+ / HFSX whole-device detection.
-//!
-//! Sits at the end of the `PARSERS` table in `partitions.rs` so it only fires
-//! when no real partition table (MBR / GPT / APM) claimed the disk. HFS+
-//! places its volume header at byte offset 1024 (sector 2 with a 512-byte
-//! sector size) — a 2-byte big-endian magic that is either `H+` (`0x482B`)
-//! for the case-insensitive variant or `HX` (`0x4858`) for HFSX
-//! (case-sensitive).
-//!
-//! Synthesizes a single whole-device `Partition` so the rest of the pipeline
-//! can treat the bare filesystem the same way as a partitioned one.
-//! This is the path that fires for DMGs whose main partition was extracted
-//! to a temp file by [`crate::core::evidence::image::ImageSource::Dmg`]: the extracted
-//! HFS+/HFSX partition has no MBR/GPT around it.
+//! HFS+ / HFSX signatures and the byte window of an embedded HFS+ volume.
 
+use ::hfsplus::volume::{VolumeHeader, VOLUME_HEADER_SIZE};
+use anyhow::{ensure, Result};
+
+use crate::core::common::error::Failure;
 use crate::core::evidence::partitions::{DetectCtx, PartParser, Partition, PartitionKind};
 
 /// Byte offset of the HFS+ volume header from the start of the volume.
 pub(crate) const HFS_VOLUME_HEADER_OFFSET: usize = 1024;
+pub(crate) const HFS_MDB_SIZE: usize = 512;
 /// Big-endian "H+" — case-insensitive HFS+.
 pub(crate) const HFS_PLUS_MAGIC: [u8; 2] = [0x48, 0x2B];
 /// Big-endian "HX" — case-sensitive HFSX.
 pub(crate) const HFSX_MAGIC: [u8; 2] = [0x48, 0x58];
+
+const HFS_SECTOR_BYTES: u64 = 512;
+const MDB_END: u64 = (HFS_VOLUME_HEADER_OFFSET + HFS_MDB_SIZE) as u64;
+const VOLUME_SPARED: u16 = 1 << 9;
+const VOLUME_SOFTWARE_LOCK: u16 = 1 << 15;
+
+#[derive(Clone, Copy)]
+pub(crate) struct WrappedHfsPlus {
+    pub(crate) offset: u64,
+    pub(crate) length: u64,
+    pub(crate) signature: u16,
+}
+
+impl WrappedHfsPlus {
+    pub(crate) fn parse(mdb: &[u8], source_size: u64) -> Result<Option<Self>> {
+        if !mdb.starts_with(b"BD") {
+            return Ok(None);
+        }
+        ensure!(mdb.len() >= 130, Failure::corrupt("short HFS wrapper MDB"));
+        let word = |offset| u16::from_be_bytes([mdb[offset], mdb[offset + 1]]);
+        let signature = word(124);
+        if !matches!(signature.to_be_bytes(), HFS_PLUS_MAGIC | HFSX_MAGIC) {
+            return Ok(None);
+        }
+        let attributes = word(10);
+        let total_blocks = u64::from(word(18));
+        let block_size = u64::from(u32::from_be_bytes([mdb[20], mdb[21], mdb[22], mdb[23]]));
+        let allocation_base = u64::from(word(28)) * HFS_SECTOR_BYTES;
+        let start = u64::from(word(126));
+        let count = u64::from(word(128));
+        ensure!(
+            attributes & (VOLUME_SPARED | VOLUME_SOFTWARE_LOCK)
+                == (VOLUME_SPARED | VOLUME_SOFTWARE_LOCK)
+                && block_size >= HFS_SECTOR_BYTES
+                && block_size.is_multiple_of(HFS_SECTOR_BYTES)
+                && allocation_base >= MDB_END
+                && allocation_base + total_blocks * block_size <= source_size
+                && start + count <= total_blocks
+                && count * block_size >= 5 * HFS_SECTOR_BYTES,
+            Failure::corrupt("invalid HFS wrapper allocation geometry")
+        );
+        Ok(Some(Self {
+            offset: allocation_base + start * block_size,
+            length: count * block_size,
+            signature,
+        }))
+    }
+
+    pub(crate) fn probe(self, context: &DetectCtx<'_>) -> Result<Option<PartitionKind>> {
+        for relative_offset in [
+            HFS_VOLUME_HEADER_OFFSET as u64,
+            self.length - HFS_VOLUME_HEADER_OFFSET as u64,
+        ] {
+            let bytes = context
+                .source
+                .read(self.offset + relative_offset, VOLUME_HEADER_SIZE)?;
+            if let Ok(header) = VolumeHeader::from_bytes(&bytes, self.length) {
+                return Ok(
+                    (header.signature == self.signature).then_some(if header.is_hfsx {
+                        PartitionKind::HfsX
+                    } else {
+                        PartitionKind::HfsPlus
+                    }),
+                );
+            }
+        }
+        Ok(None)
+    }
+}
 
 /// Returns true when `bytes` (read from offset 0 of the volume) carries an
 /// HFS+ or HFSX magic at the canonical volume-header offset.

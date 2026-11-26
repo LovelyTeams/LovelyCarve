@@ -1363,6 +1363,32 @@ def test_formats(cli, root):
     assert rows["resource"] == hex_of(hfs_resource[:100])
     assert hfs_resource_export.read_bytes() == hfs_resource
 
+    # HFS wrappers keep the evidence partition and use the inner catalog.
+    fixtures = REPOSITORY / "src-tauri/test_data/hfsplus"
+    for kind in ("hfsplus", "hfsx"):
+        source = root / f"wrapped-{kind}.img"
+        source.write_bytes(zlib.decompress((fixtures / f"wrapped-{kind}.hfsz").read_bytes()))
+        output = root / f"wrapped-{kind}-payload.bin"
+        path = "/ev/part:0/Nested/Payload.bin"
+        entries = [
+            add(source),
+            ls("nested", "/ev/part:0/Nested"),
+            cat("read", path, 4084, 47),
+            digest("hash", path),
+            export("export", path, output),
+        ]
+        if kind == "hfsx":
+            entries.append(cat("lower", "/ev/part:0/Nested/payload.bin"))
+        rows = cli.results(entries)
+        assert opened(rows)["partitions"][0]["kind"] == kind
+        assert "Payload.bin" in names(rows["nested"])
+        exported = output.read_bytes()
+        expected = "ac61e47d19009febed3505e10edcc20d651facb427fbc469d944982dbf941f1a"
+        assert sha256(rows["hash"]) == hashlib.sha256(exported).hexdigest() == expected
+        assert rows["read"] == hex_of(exported[4084:4131])
+        if kind == "hfsx":
+            assert rows["lower"] == hex_of(b"case-sensitive\n")
+
     # Minix V1/V2/V3: all read paths share sparse and indirect mappings.
     for minix_name, zone_size, pointers in [("v1-30-1024-1-be", 2048, 512), ("v2-30-1024-2-le", 4096, 256),
                                             ("v3-60-1024-0-le", 1024, 256)]:

@@ -15,7 +15,7 @@ use crate::core::evidence::partitions::fat::{
     detect_valid_fat_boot_sector, recover_fat32_boot_sector, FAT32_BACKUP_BOOT_SECTOR,
 };
 use crate::core::evidence::partitions::hfsplus::{
-    is_hfs_plus_magic, HFSX_MAGIC, HFS_VOLUME_HEADER_OFFSET,
+    is_hfs_plus_magic, WrappedHfsPlus, HFSX_MAGIC, HFS_VOLUME_HEADER_OFFSET,
 };
 use crate::core::evidence::partitions::luks::LUKS_MAGIC;
 use crate::core::evidence::partitions::squashfs::is_squashfs_magic;
@@ -603,7 +603,21 @@ impl VolumeProbe for HfsProbe {
 
     fn probe(&self, ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeHit>> {
         if !is_hfs_plus_magic(ctx.head) {
-            return Ok(None);
+            let Some(mdb) = ctx.head.get(HFS_VOLUME_HEADER_OFFSET..) else {
+                return Ok(None);
+            };
+            let Ok(Some(wrapper)) = WrappedHfsPlus::parse(mdb, ctx.size) else {
+                return Ok(None);
+            };
+            return Ok(wrapper.probe(ctx)?.map(|kind| {
+                VolumeProbeHit::new(
+                    self.name(),
+                    kind,
+                    100,
+                    HFS_VOLUME_HEADER_OFFSET as u64,
+                    "HFS master directory block and embedded HFS+/HFSX header",
+                )
+            }));
         }
         let magic = &ctx.head[HFS_VOLUME_HEADER_OFFSET..HFS_VOLUME_HEADER_OFFSET + 2];
         let kind = if magic == HFSX_MAGIC {

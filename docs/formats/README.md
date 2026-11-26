@@ -28,7 +28,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | HAMMER | [HAMMER.md](HAMMER.md) | v1–v7 单物理卷、B-tree 事务视图、已登记快照、链接和稀疏范围读取 |
 | HAMMER2 | [HAMMER2.md](HAMMER2.md) | v1/v2 单物理卷、PFS、主备卷头、稀疏与 LZ4/zlib 范围读取 |
 | 传统 HFS | [CLASSIC_HFS.md](CLASSIC_HFS.md) | fstool / rusty-backup 改造；catalog / overflow、MacRoman、data / resource fork、本地时间和范围读 |
-| HFS+ / HFSX | [HFS.md](HFS.md) | libfshfs 95 API；完整 fork / overflow、resource fork、attr continuation、Unicode 3.2、硬链接与逻辑范围读取 |
+| HFS+ / HFSX | [HFS.md](HFS.md) | 裸卷、HFS 包裹卷、完整 fork / overflow、resource fork、attr continuation、Unicode 3.2、硬链接与逻辑范围读取 |
 | ISO 9660 / 光盘 BIN / CUE | [CDFS.md](CDFS.md) | libodraw 全 API 对照；多文件/多轨 CUE、Mode 1 / XA Form 1、来源字节保留与范围读取 |
 | UDF | [UDF.md](UDF.md) | lamfold-udf；1.02–2.60 单底层分区、metadata / VAT / sparable 映射、FE / EFE、tag / CRC、续链和范围读取 |
 | CramFS / Linux ROMFS | [ROM_IMAGES.md](ROM_IMAGES.md) | CramFS v1/v2、512 字节引导填充、v2 CRC、扩展块指针、XIP 与按页范围读取；ROMFS 校验和、硬链接、目录链边界 |

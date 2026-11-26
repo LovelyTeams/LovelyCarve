@@ -7,6 +7,7 @@ use anyhow::{ensure, Context, Result};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub(crate) struct PartitionCursor {
     image: Arc<DiskImage>,
     pub base_offset: u64,

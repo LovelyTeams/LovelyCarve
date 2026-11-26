@@ -5,6 +5,7 @@ use crate::error::{HfsPlusError, Result};
 
 /// HFS+ volume header offset from the start of the partition
 pub const VOLUME_HEADER_OFFSET: u64 = 1024;
+pub const VOLUME_HEADER_SIZE: usize = 512;
 
 /// HFS+ signature: "H+" (0x482B)
 pub const HFS_PLUS_SIGNATURE: u16 = 0x482B;
@@ -105,7 +106,14 @@ impl VolumeHeader {
 
     fn parse_at<R: Read + Seek>(reader: &mut R, offset: u64) -> Result<Self> {
         reader.seek(SeekFrom::Start(offset))?;
+        let mut bytes = [0; VOLUME_HEADER_SIZE];
+        reader.read_exact(&mut bytes)?;
+        let source_size = reader.seek(SeekFrom::End(0))?;
+        Self::from_bytes(&bytes, source_size)
+    }
 
+    /// Parse a header sector and validate its allocation against the volume size.
+    pub fn from_bytes(mut reader: &[u8], source_size: u64) -> Result<Self> {
         let signature = reader.read_u16::<BigEndian>()?;
         let is_hfsx = match signature {
             HFS_PLUS_SIGNATURE => false,
@@ -153,13 +161,12 @@ impl VolumeHeader {
             *fi = reader.read_u32::<BigEndian>()?;
         }
 
-        let allocation_file = read_fork_data(reader)?;
-        let extents_file = read_fork_data(reader)?;
-        let catalog_file = read_fork_data(reader)?;
-        let attributes_file = read_fork_data(reader)?;
-        let startup_file = read_fork_data(reader)?;
+        let allocation_file = read_fork_data(&mut reader)?;
+        let extents_file = read_fork_data(&mut reader)?;
+        let catalog_file = read_fork_data(&mut reader)?;
+        let attributes_file = read_fork_data(&mut reader)?;
+        let startup_file = read_fork_data(&mut reader)?;
 
-        let source_size = reader.seek(SeekFrom::End(0))?;
         if u64::from(total_blocks) * u64::from(block_size) > source_size {
             return Err(HfsPlusError::CorruptedData(
                 "declared volume exceeds source".into(),
