@@ -4,6 +4,7 @@
 
 #![forbid(unsafe_code)]
 
+pub use fs_bcachefs::devices::{member_geometry, select_superblock};
 pub use fs_bcachefs::superblock::{Layout, Superblock, BCACHEFS_MAGIC, SB_HEADER_BYTES};
 use fs_bcachefs::{fs::Node, inode::Inode, Error, Filesystem};
 use lamfold::{
@@ -85,6 +86,11 @@ fn device<S: BlockSource>(source: S) -> (Device<S>, Fault) {
     )
 }
 
+pub fn read_superblock<S: BlockSource + Send>(source: S) -> Result<Superblock> {
+    let (device, fault) = device(source);
+    result(&fault, Superblock::read(&device))
+}
+
 pub struct Bcachefs<S: BlockSource + Send> {
     reader: Filesystem<Device<S>>,
     fault: Fault,
@@ -93,6 +99,42 @@ pub struct Bcachefs<S: BlockSource + Send> {
 }
 
 impl<S: BlockSource + Send> Bcachefs<S> {
+    pub fn open_members(sources: Vec<S>) -> Result<Self> {
+        let fault = Arc::new(Mutex::new(None));
+        let mut devices = Vec::with_capacity(sources.len());
+        for source in sources {
+            let device = Device {
+                size: source.len(),
+                source: Mutex::new(source),
+                fault: Arc::clone(&fault),
+            };
+            let header = result(&fault, Superblock::read(&device))?;
+            if header.version.major() != 1 || header.version.minor() > 39 {
+                return Err(FoldError::Unsupported(
+                    "bcachefs metadata version newer than 1.39",
+                ));
+            }
+            if header.block_size == 0
+                || !header.block_size.is_power_of_two()
+                || header.block_size > 128
+            {
+                return Err(FoldError::Corrupt("invalid bcachefs block size"));
+            }
+            devices.push(device);
+        }
+        let reader = result(&fault, Filesystem::open_members(devices))?;
+        let root = reader.root();
+        if !result(&fault, reader.inode_at(root))?.is_dir() {
+            return Err(FoldError::Corrupt("bcachefs root is not a directory"));
+        }
+        Ok(Self {
+            reader,
+            fault,
+            nodes: vec![root],
+            identities: BTreeMap::from([((root.snapshot, root.ino), 0)]),
+        })
+    }
+
     pub fn header(&self) -> &Superblock {
         self.reader.superblock()
     }
@@ -154,46 +196,7 @@ impl<S: BlockSource + Send> FoldFrontend<S> for Bcachefs<S> {
     }
 
     fn open(source: S, _context: &mut SubstrateCtx<'_>) -> Result<Self> {
-        let (source, fault) = device(source);
-        let header = result(&fault, Superblock::read(&source))?;
-        if header.version.major() != 1 || header.version.minor() > 39 {
-            return Err(FoldError::Unsupported(
-                "bcachefs metadata version newer than 1.39",
-            ));
-        }
-        if header.nr_devices != 1 || header.dev_idx != 0 {
-            return Err(FoldError::Unsupported("multi-device bcachefs"));
-        }
-        let members = result(&fault, header.members())?;
-        let member = members
-            .first()
-            .ok_or(FoldError::Corrupt("bcachefs member missing"))?;
-        if header.block_size == 0
-            || !header.block_size.is_power_of_two()
-            || header.block_size > 128
-            || member.bucket_size == 0
-            || member.first_bucket as u64 >= member.nbuckets
-            || member
-                .nbuckets
-                .checked_mul(u64::from(member.bucket_size))
-                .and_then(|sectors| sectors.checked_mul(512))
-                .is_none_or(|bytes| bytes > source.size)
-        {
-            return Err(FoldError::Corrupt(
-                "bcachefs member geometry exceeds source",
-            ));
-        }
-        let reader = result(&fault, Filesystem::open(source))?;
-        let root = reader.root();
-        if !result(&fault, reader.inode_at(root))?.is_dir() {
-            return Err(FoldError::Corrupt("bcachefs root is not a directory"));
-        }
-        Ok(Self {
-            reader,
-            fault,
-            nodes: vec![root],
-            identities: BTreeMap::from([((root.snapshot, root.ino), 0)]),
-        })
+        Self::open_members(vec![source])
     }
 
     fn root(&self) -> NodeId {

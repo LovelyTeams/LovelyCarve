@@ -16,7 +16,8 @@
 //! subvolume and in each of its snapshots.
 
 use crate::bkey::{Bkey, Bpos};
-use crate::btree::{btree_id, Cursor};
+use crate::btree::{btree_id, Cursor, NodeSource};
+use crate::devices::{DeviceSet, MemberRead};
 use crate::error::{Error, Result};
 use crate::extent::{compression, DataExtent};
 use crate::inode::{Dirent, Inode, InodeV3Raw, ROOT_INO};
@@ -59,7 +60,7 @@ pub struct Usage {
 }
 
 pub struct Filesystem<D: BlockRead> {
-    dev: D,
+    devices: DeviceSet<D>,
     sb: Superblock,
     /// What a replay of the journal adds, when the filesystem was not shut
     /// down cleanly.
@@ -71,10 +72,8 @@ pub struct Filesystem<D: BlockRead> {
     /// Each snapshot's parent (0 for a tree's root), from the snapshots
     /// btree; empty on a filesystem without one.
     parents: std::collections::BTreeMap<u32, u32>,
-    /// This device's index and bucket size (sectors), for judging pointers.
+    /// The primary member for the capacity report.
     dev_idx: u8,
-    bucket_size: u64,
-    device_sectors: u64,
     /// The master key of an encrypted filesystem, stored unsealed in its
     /// crypt field: every data extent is decrypted with it (#272).
     key: Option<crate::crypt::MasterKey>,
@@ -82,7 +81,11 @@ pub struct Filesystem<D: BlockRead> {
 
 impl<D: BlockRead> Filesystem<D> {
     pub fn open(dev: D) -> Result<Self> {
-        let sb = Superblock::read(&dev)?;
+        Self::open_members(vec![dev])
+    }
+
+    pub fn open_members(sources: Vec<D>) -> Result<Self> {
+        let (devices, sb) = DeviceSet::open(sources)?;
         // An encrypted filesystem is read when its master key is stored
         // unsealed: its btree nodes by crate::btree (#271), its data here
         // (#272). One whose key a passphrase seals is refused, saying so,
@@ -98,35 +101,26 @@ impl<D: BlockRead> Filesystem<D> {
             Some(crypt) => crypt.master_key(),
             None => None,
         };
-        if sb.nr_devices != 1 {
-            return Err(Error::Unsupported(format!(
-                "{} devices: only single-device filesystems are read",
-                sb.nr_devices
-            )));
-        }
         // The roots in the superblock are as of the last clean shutdown;
         // after an unclean one everything since is in the journal, which
         // is replayed here, in memory. So is a clean one whose superblock
         // records a root that will not read (#166).
-        let replay = crate::btree::journal_for(&dev, &sb)?;
+        let replay = if sb.nr_devices == 1 {
+            let (dev, _, _) = devices.resolve(sb.dev_idx)?;
+            crate::btree::journal_for(dev, &sb)?
+        } else if sb.is_clean()
+            && sb.field(crate::superblock::FIELD_CLEAN).is_some()
+            && crate::btree::clean_roots_read(NodeSource::Members(&devices), &sb).is_ok()
+        {
+            None
+        } else {
+            Some(crate::journal::replay_members(devices.sources())?)
+        };
         // The root inode must be there: a filesystem without it is not
         // one to read. Its snapshot is the one every other key must carry.
-        let member = sb
-            .members()?
-            .into_iter()
-            .nth(sb.dev_idx as usize)
-            .ok_or_else(|| Error::Corrupt("no member entry for this device".into()))?;
-        if member.bucket_size == 0 {
-            return Err(Error::Corrupt("bucket size 0".into()));
-        }
         let mut fs = Filesystem {
             dev_idx: sb.dev_idx,
-            bucket_size: u64::from(member.bucket_size),
-            device_sectors: member
-                .nbuckets
-                .checked_mul(u64::from(member.bucket_size))
-                .ok_or_else(|| Error::Corrupt("member size overflow".into()))?,
-            dev,
+            devices,
             sb,
             replay,
             cache: Default::default(),
@@ -322,7 +316,13 @@ impl<D: BlockRead> Filesystem<D> {
     }
 
     fn cursor(&self, id: u8) -> Result<Cursor<'_>> {
-        Ok(Cursor::new(&self.dev, &self.sb, id, self.replay.as_ref())?.with_cache(&self.cache))
+        Ok(Cursor::from_source(
+            NodeSource::Members(&self.devices),
+            &self.sb,
+            id,
+            self.replay.as_ref(),
+        )?
+        .with_cache(&self.cache))
     }
 
     /// The keys of btree `id` at `inode` that a snapshot whose chain is
@@ -616,7 +616,7 @@ impl<D: BlockRead> Filesystem<D> {
         // crafted size makes it up to 2^64 bytes. Refusing the allocation
         // is not enough: Linux and macOS overcommit, and a process is killed
         // when the zeros are written (#149). Such a file is read in ranges.
-        if size > self.dev.size_bytes() {
+        if size > self.devices.total_bytes() {
             return Err(Error::Unsupported(format!(
                 "inode {}: {size} bytes is more than the device holds; read it with read_range",
                 n.ino
@@ -728,18 +728,16 @@ impl<D: BlockRead> Filesystem<D> {
                             k.pos.offset
                         )));
                     }
-                    let e = DataExtent::from_key(&k)?;
-                    let start = e
-                        .file_start
+                    let start = k
+                        .start_offset()
                         .checked_mul(512)
                         .ok_or_else(|| Error::Corrupt("extent logical offset overflow".into()))?;
-                    let bytes = e
-                        .len
+                    let bytes = u64::from(k.size)
                         .checked_mul(512)
                         .ok_or_else(|| Error::Corrupt("extent logical size overflow".into()))?;
                     let from = offset.saturating_sub(start).min(bytes);
                     let to = end.saturating_sub(start).min(bytes);
-                    let data = self.extent_window(&k, &e, from, to)?;
+                    let data = self.extent_window(&k, from, to)?;
                     copy_window(&mut out, offset, end, start + from, &data);
                 }
                 crate::bkey::key_type::INLINE_DATA => {
@@ -786,16 +784,15 @@ impl<D: BlockRead> Filesystem<D> {
     /// `sector`: byte 4 of the second word of the `alloc_v4` key at
     /// `dev:bucket` (docs/clean-room.md, "Allocating space"), or `None`
     /// when the bucket has no alloc key.
-    fn bucket_gen(&self, sector: u64) -> Result<Option<u8>> {
-        let bucket = sector / self.bucket_size;
+    fn bucket_gen(&self, device: u8, bucket: u64) -> Result<Option<u8>> {
         let mut c = self.cursor(btree_id::ALLOC)?;
         c.seek(Bpos {
-            inode: u64::from(self.dev_idx),
+            inode: u64::from(device),
             offset: bucket,
             snapshot: 0,
         })?;
         while let Some(k) = c.next_key()? {
-            if k.pos.inode != u64::from(self.dev_idx) || k.pos.offset != bucket {
+            if k.pos.inode != u64::from(device) || k.pos.offset != bucket {
                 break;
             }
             if k.key_type == crate::bkey::key_type::ALLOC_V4 {
@@ -814,12 +811,12 @@ impl<D: BlockRead> Filesystem<D> {
     /// that has none either, the extent's own data checksum does, by taking
     /// the pointer's generation as it is. An extent with no checksum is
     /// then refused with what the alloc btree said.
-    fn pointer_gen(&self, e: &DataExtent) -> Result<Option<u8>> {
-        let alloc = match self.bucket_gen(e.ptr.offset) {
+    fn pointer_gen(&self, e: &DataExtent, bucket: u64) -> Result<Option<u8>> {
+        let alloc = match self.bucket_gen(e.ptr.dev, bucket) {
             Ok(g) => return Ok(g),
             Err(err) => err,
         };
-        if let Ok(Some(g)) = self.bucket_gens_gen(e.ptr.offset) {
+        if let Ok(Some(g)) = self.bucket_gens_gen(e.ptr.dev, bucket) {
             return Ok(Some(g));
         }
         match e.crc {
@@ -833,12 +830,11 @@ impl<D: BlockRead> Filesystem<D> {
     /// 256`, which holds 256 one-byte generations (S3 + S4: the lister
     /// prints them in order, and the alloc keys of reused buckets carry the
     /// same), or `None` when there is no such key.
-    fn bucket_gens_gen(&self, sector: u64) -> Result<Option<u8>> {
+    fn bucket_gens_gen(&self, device: u8, bucket: u64) -> Result<Option<u8>> {
         const BUCKET_GENS: u8 = 14;
         const BUCKET_GENS_KEY: u8 = 30;
-        let bucket = sector / self.bucket_size;
         let at = Bpos {
-            inode: u64::from(self.dev_idx),
+            inode: u64::from(device),
             offset: bucket >> 8,
             snapshot: 0,
         };
@@ -898,11 +894,11 @@ impl<D: BlockRead> Filesystem<D> {
                     v.key_type, v.pos
                 )));
             }
-            let e = DataExtent::from_key(&Bkey {
+            let extent = Bkey {
                 key_type: crate::bkey::key_type::EXTENT,
                 value: v.value[8..].to_vec(),
                 ..v.clone()
-            })?;
+            };
             // The part of this shared extent the pointer covers, at the
             // file sector it shows up at.
             let to = v.pos.offset.min(hi);
@@ -913,8 +909,7 @@ impl<D: BlockRead> Filesystem<D> {
             let window_start = offset.saturating_sub(file_start).min(covered);
             let window_end = end.saturating_sub(file_start).min(covered);
             let data = self.extent_window(
-                &v,
-                &e,
+                &extent,
                 (at - from) * 512 + window_start,
                 (at - from) * 512 + window_end,
             )?;
@@ -931,7 +926,28 @@ impl<D: BlockRead> Filesystem<D> {
     /// unwritten extent's are zeros, whatever its sectors hold (#158). `k`
     /// is the key it is in, whose version is part of an encrypted extent's
     /// nonce.
-    fn extent_window(&self, k: &Bkey, e: &DataExtent, from: u64, to: u64) -> Result<Vec<u8>> {
+    fn extent_window(&self, k: &Bkey, from: u64, to: u64) -> Result<Vec<u8>> {
+        let mut error = None;
+        let copies = DataExtent::replicas(k)?;
+        let has_written_copy = copies.iter().any(|copy| copy.ptr.flags == 0);
+        for replica in copies
+            .into_iter()
+            .filter(|copy| !has_written_copy || !copy.ptr.is_unwritten())
+        {
+            match self.extent_copy(k, &replica, from, to) {
+                Ok(bytes) => return Ok(bytes),
+                Err(failure) if error.is_none() || matches!(failure, Error::BadChecksum { .. }) => {
+                    error = Some(failure);
+                }
+                Err(_) => {}
+            }
+        }
+        Err(error.unwrap_or_else(|| {
+            Error::Corrupt(format!("extent at {} has no readable replica", k.pos))
+        }))
+    }
+
+    fn extent_copy(&self, k: &Bkey, e: &DataExtent, from: u64, to: u64) -> Result<Vec<u8>> {
         let length = e
             .len
             .checked_mul(512)
@@ -939,12 +955,14 @@ impl<D: BlockRead> Filesystem<D> {
         if from > to || to > length {
             return Err(Error::Corrupt("extent window exceeds logical data".into()));
         }
-        e.ptr.check(self.dev_idx, self.pointer_gen(e)?)?;
+        let (source, member, member_bytes) = self.devices.resolve(e.ptr.dev)?;
+        let bucket = e.ptr.offset / u64::from(member.bucket_size);
+        e.ptr.check(e.ptr.dev, self.pointer_gen(e, bucket)?)?;
         let stored_sectors = e.crc.map_or(e.len, |crc| u64::from(crc.compressed_size));
         if e.ptr
             .offset
             .checked_add(stored_sectors)
-            .is_none_or(|end| end > self.device_sectors)
+            .is_none_or(|end| end > member_bytes / 512)
         {
             return Err(Error::Corrupt(
                 "allocated extent exceeds filesystem member".into(),
@@ -965,7 +983,7 @@ impl<D: BlockRead> Filesystem<D> {
                 .ok_or_else(|| Error::Corrupt("extent physical offset overflow".into()))?;
             if start
                 .checked_add(length)
-                .is_none_or(|end| end > self.dev.size_bytes())
+                .is_none_or(|end| end > member_bytes)
             {
                 return Err(Error::Corrupt("allocated extent exceeds device".into()));
             }
@@ -974,7 +992,7 @@ impl<D: BlockRead> Filesystem<D> {
                     .map_err(|_| Error::Unsupported("extent window exceeds memory".into()))?,
                 "extent window",
             )?;
-            self.dev.read_at(start + from, &mut data)?;
+            source.read_at(start + from, &mut data)?;
             return Ok(data);
         }
         let decrypt = self.key.as_ref().map(|key| Decrypt {
@@ -982,8 +1000,8 @@ impl<D: BlockRead> Filesystem<D> {
             version_hi: k.version_hi,
             version_lo: k.version_lo,
         });
-        let data = extent_bytes(e, decrypt, self.dev.size_bytes(), |at, buf| {
-            Ok(self.dev.read_at(at, buf)?)
+        let data = extent_bytes(e, decrypt, member_bytes, |at, buf| {
+            Ok(source.read_at(at, buf)?)
         })?;
         let from = usize::try_from(from)
             .map_err(|_| Error::Corrupt("extent window offset exceeds memory".into()))?;

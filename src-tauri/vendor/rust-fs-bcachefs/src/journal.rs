@@ -55,7 +55,7 @@ pub struct Jset {
 }
 
 /// One sub-entry of a jset.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JsetEntry {
     pub entry_type: u8,
     pub btree_id: u8,
@@ -169,7 +169,11 @@ fn scan(dev: &dyn BlockRead, sb: &Superblock) -> Result<Vec<(Jset, Option<Error>
     let magic = jset_magic(&sb.uuid);
     let mut found: BTreeMap<u64, (Jset, Option<Error>)> = BTreeMap::new();
     for (start, nr) in bucket_ranges(sb)? {
-        for bucket in start..start.saturating_add(nr) {
+        let end = start
+            .checked_add(nr)
+            .filter(|end| *end <= m.nbuckets && start >= u64::from(m.first_bucket))
+            .ok_or_else(|| Error::Corrupt("journal bucket range exceeds member".into()))?;
+        for bucket in start..end {
             let base = bucket
                 .checked_mul(bucket_bytes)
                 .ok_or_else(|| Error::Corrupt("journal bucket offset overflows".into()))?;
@@ -347,7 +351,50 @@ pub struct Replay {
 /// Collect what replaying the journal applies: the entries from the newest
 /// flush entry's `last_seq` to that entry, in order.
 pub fn replay(dev: &dyn BlockRead, sb: &Superblock) -> Result<Replay> {
-    let scanned = scan(dev, sb)?;
+    replay_scanned(scan(dev, sb)?)
+}
+
+pub(crate) fn replay_members<'a>(
+    devices: impl Iterator<Item = (&'a dyn BlockRead, &'a Superblock)>,
+) -> Result<Replay> {
+    use std::collections::btree_map::Entry;
+
+    let mut entries = BTreeMap::new();
+    for (dev, sb) in devices {
+        if sb.field(FIELD_JOURNAL_V2).is_none() && sb.field(0).is_none() {
+            continue;
+        }
+        for (entry, damage) in scan(dev, sb)? {
+            match entries.entry(entry.seq) {
+                Entry::Vacant(slot) => {
+                    slot.insert((entry, damage));
+                }
+                Entry::Occupied(mut slot) => {
+                    let (prior, prior_damage) = slot.get_mut();
+                    if prior.last_seq != entry.last_seq
+                        || prior.flush != entry.flush
+                        || prior.version != entry.version
+                        || prior.bytes != entry.bytes
+                        || (prior_damage.is_none()
+                            && damage.is_none()
+                            && prior.entries != entry.entries)
+                    {
+                        return Err(Error::Corrupt(format!(
+                            "conflicting journal copies at sequence {}",
+                            entry.seq
+                        )));
+                    }
+                    if let Some(error) = damage {
+                        *prior_damage = Some(error);
+                    }
+                }
+            }
+        }
+    }
+    replay_scanned(entries.into_values().collect())
+}
+
+fn replay_scanned(scanned: Vec<(Jset, Option<Error>)>) -> Result<Replay> {
     let newest = scanned
         .iter()
         .map(|(j, _)| j)
@@ -360,28 +407,34 @@ pub fn replay(dev: &dyn BlockRead, sb: &Superblock) -> Result<Replay> {
     // not overwritten yet, and one newer than its last flush was never
     // committed: recovery reads neither, and the reference replays such a
     // journal without looking inside them (#165).
-    let mut entries = Vec::with_capacity(scanned.len());
+    let mut entries = Vec::new();
+    let mut next = Some(from);
     for (j, damage) in scanned {
-        if let Some(e) = damage {
-            if (from..=to).contains(&j.seq) {
-                return Err(e);
-            }
+        if !(from..=to).contains(&j.seq) {
+            continue;
         }
-        entries.push(j);
-    }
-    // Every entry in the window must be there: a gap means lost updates.
-    for seq in from..=to {
-        if !entries.iter().any(|j| j.seq == seq) {
+        if let Some(e) = damage {
+            return Err(e);
+        }
+        if next != Some(j.seq) {
             return Err(Error::Corrupt(format!(
-                "journal entry {seq} is missing from the replay window {from}..={to}"
+                "journal entry missing before {} in replay window {from}..={to}",
+                j.seq
             )));
         }
+        next = j.seq.checked_add(1);
+        entries.push(j);
+    }
+    if entries.last().map(|entry| entry.seq) != Some(to) {
+        return Err(Error::Corrupt(format!(
+            "incomplete journal replay window {from}..={to}"
+        )));
     }
     let mut out = Replay {
         seq: to,
         ..Replay::default()
     };
-    for j in entries.iter().filter(|j| j.seq >= from && j.seq <= to) {
+    for j in &entries {
         for e in &j.entries {
             match e.entry_type {
                 // A blacklist carried by the journal applies to the bsets

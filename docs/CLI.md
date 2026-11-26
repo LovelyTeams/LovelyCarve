@@ -264,7 +264,7 @@ lovelycarve-cli -C "D:\cases\laptop" evidence export laptop -o "D:\output\laptop
 
 - 克隆主机可能有相同的 VG/PV UUID：`raid detect --member <别名>`（可重复）只检测这些源检材，可在同一进程内分别组装各主机；组装出的检材和卷影副本不能作为成员。
 - 成员缺失或过期的 md 阵列等待确认：`raid detect --degraded <setUuid>` 降级组装该阵列。
-- 跨镜像的 [Btrfs](formats/BTRFS.md) 卷也通过 `raid detect` 登记。先加载所有成员，再从结果的 `assembled[].path` 下进入任一成员分区浏览卷。
+- 跨镜像的 [Btrfs](formats/BTRFS.md) 与 [bcachefs](formats/BCACHEFS.md) 卷也通过 `raid detect` 登记。先加载所有成员，再从结果的 `assembled[].path` 下进入任一成员分区浏览卷。
 - `raid assemble --members a,b,c --level 5 [--layout] [--chunk-sectors] [--data-offset-sectors] [--missing 列] [--as 别名]` 按给定几何手动组装，缺失的列写 `-`。
 - `assembled://` 引用只在组装它的进程中有效；后台进程结束后需重新检测。
 
@@ -411,7 +411,7 @@ lovelycarve-cli completion powershell >> $PROFILE
 - **EWF、VMDK、VHD / VHDX**：纯 Rust 读取器，不依赖 libewf / libvmdk / libvhdi。能力与限制见 [EWF](formats/EWF.md)、[VMDK](formats/VMDK.md)、[VHD / VHDX](formats/VHD.md)。
 - **光盘**：ISO、Mode 1 / XA Form 1 的 BIN 和 CUE；多轨或多数据文件选择 `.cue`，`evidence show` 的 `opticalDisc` 给出轨道、会话与来源范围。见 [CDFS](formats/CDFS.md)。
 - **UBI 与小米 HDR1 固件**：命名卷列在 `/<别名>/part:0` 下，`<卷名>.img` 提供原始逻辑字节。见 [UBI](formats/UBI.md)。
-- **bcachefs**：按列出的目录项进入原生子卷与 snapshot，不同视图中相同的 inode 编号指向各自的内容；只支持单设备。见 [bcachefs](formats/BCACHEFS.md)。
+- **bcachefs**：支持单设备和完整多设备卷。按列出的目录项进入原生子卷与 snapshot，不同视图中相同的 inode 编号指向各自的内容。见 [bcachefs](formats/BCACHEFS.md)。
 - **NILFS2**：显示最新提交的目录树；稀疏区读零，已分配数据缺失或日志 CRC 不匹配报错，dirty / recovery 卷明确拒绝；CLI 暂不选择历史检查点。见 [NILFS2](formats/NILFS2.md)。
 - **BeFS / GFS2 / OCFS2**：内联与外联扩展属性用 `streams`、`cat --stream`、`export --stream` 读取，GFS2 / OCFS2 保留 `user.` 等命名空间前缀；需要日志重放的卷明确拒绝。
 

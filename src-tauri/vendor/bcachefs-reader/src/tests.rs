@@ -192,6 +192,90 @@ fn bad_checksums_backup_copy_and_truncated_source() {
     assert!(Bcachefs::open(source(broken), context).is_err());
 }
 
+#[test]
+fn a_checked_extent_can_use_a_replica_on_another_member() {
+    let mut image = fixture();
+    let extent = key_at(&image, 0, 5004, 2);
+    let end = extent + usize::from(image[extent]) * 8;
+    let mut pointer = <[u8; 8]>::try_from(&image[end - 8..end]).unwrap();
+    pointer[6] = 1;
+    insert_node_bytes(&mut image, 0, end, &pointer);
+    image[extent] += 1;
+    stamp_node(&mut image, 0);
+
+    let first = key_at(&image, 3, 0, 16);
+    let last = key_at(&image, 3, 0, 19);
+    let mut allocation = image[first..first + usize::from(image[first]) * 8].to_vec();
+    allocation[32] = 1;
+    let end = last + usize::from(image[last]) * 8;
+    insert_node_bytes(&mut image, 3, end, &allocation);
+    stamp_node(&mut image, 3);
+
+    let mut replica = image.clone();
+    for (device, member) in [&mut image, &mut replica].into_iter().enumerate() {
+        for sector in [8, 2056] {
+            let base = sector * 512;
+            let words = u32::from_le_bytes(member[base + 124..base + 128].try_into().unwrap());
+            let end = base + SB_HEADER_BYTES + words as usize * 8;
+            let table = base + SB_HEADER_BYTES;
+            let first = table + 16;
+            let second = first + 48;
+            member.copy_within(second..end, second + 48);
+            member.copy_within(first..second, second);
+            member[second] ^= 1;
+            member[table..table + 4].copy_from_slice(&14u32.to_le_bytes());
+            member[base + 122] = device as u8;
+            member[base + 123] = 2;
+            member[base + 124..base + 128].copy_from_slice(&(words + 6).to_le_bytes());
+            let csum = fs_bcachefs::csum::crc32c_nonzero(&member[base + 16..end + 48]);
+            member[base..base + 4].copy_from_slice(&csum.to_le_bytes());
+        }
+    }
+
+    let mut cache = BlockCache::new(0);
+    let context = &mut SubstrateCtx {
+        cache: &mut cache,
+        verifier: &NoVerifier,
+    };
+    let data = 4100 * 512;
+    let device = source(image.clone());
+    device.fail_at.store(data as u64, Ordering::Relaxed);
+    let mut faulted = Bcachefs::open_members(vec![device, source(replica.clone())]).unwrap();
+    let file = faulted.lookup(0, "checksum.bin", context).unwrap().unwrap();
+    assert!(faulted
+        .read_at(file, 0, &mut [0; 30], context)
+        .unwrap_err()
+        .to_string()
+        .contains("injected source failure"));
+
+    image[data] ^= 1;
+    let mut volume =
+        Bcachefs::open_members(vec![source(replica.clone()), source(image.clone())]).unwrap();
+    let file = volume.lookup(0, "checksum.bin", context).unwrap().unwrap();
+    let mut bytes = [0; 30];
+    assert_eq!(volume.read_at(file, 500, &mut bytes, context).unwrap(), 13);
+    assert_eq!(bytes[..13], replica[data + 500..data + 513]);
+
+    replica[data] ^= 1;
+    let mut damaged = Bcachefs::open_members(vec![source(image), source(replica)]).unwrap();
+    let file = damaged.lookup(0, "checksum.bin", context).unwrap().unwrap();
+    assert!(damaged
+        .read_at(file, 500, &mut bytes, context)
+        .unwrap_err()
+        .to_string()
+        .contains("checksum mismatch"));
+}
+
+fn insert_node_bytes(image: &mut [u8], tree_index: usize, at: usize, bytes: &[u8]) {
+    let base = (1024 + tree_index * 64) * 512;
+    let words = u16::from_le_bytes(image[base + 158..base + 160].try_into().unwrap());
+    let end = base + 160 + usize::from(words) * 8;
+    image.copy_within(at..end, at + bytes.len());
+    image[at..at + bytes.len()].copy_from_slice(bytes);
+    let new_words = words + (bytes.len() / 8) as u16;
+    image[base + 158..base + 160].copy_from_slice(&new_words.to_le_bytes());
+}
+
 pub(super) fn key_at(bytes: &[u8], tree_index: usize, inode: u64, offset: u64) -> usize {
     let base = (1024 + tree_index * 64) * 512;
     let end = base
