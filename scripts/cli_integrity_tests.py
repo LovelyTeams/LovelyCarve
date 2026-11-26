@@ -64,6 +64,14 @@ def test_integrity(cli, root):
     warning = json.loads(partial.stderr)["warning"]
     assert warning["code"] == "incompleteResult", warning
     assert warning["details"]["fields"] == {"items.readFaultsDetected": True, "items.syntheticBytes": 116}, warning
+    filtered = cli.run(*damaged_scope, "hash", PATH, "--algo", "md5", "--jq", ".items[0].md5", expected=2)
+    assert filtered.stdout == digest["md5"] + "\n" and json.loads(filtered.stderr)["warning"] == warning, filtered
+    no_match = cli.run(*damaged_scope, "hash", PATH, "--algo", "md5", "--jq", "empty", expected=2)
+    assert no_match.stdout == "" and json.loads(no_match.stderr)["warning"] == warning, no_match
+    failed_filter = cli.run(*damaged_scope, "hash", PATH, "--algo", "md5", "--jq", 'error("bad filter")', expected=1)
+    diagnostics = [json.loads(line) for line in failed_filter.stderr.splitlines()]
+    assert failed_filter.stdout == "" and diagnostics[0]["warning"] == warning, failed_filter
+    assert diagnostics[1]["error"]["code"] == "invalidInput", failed_filter
     framed = cli.run("-q", *damaged_scope, "hash", PATH, "--algo", "md5", expected=2)
     assert "readFaultsDetected" in framed.stderr and "┌" in framed.stderr, framed.stderr
     observed = cli.run("--events", *damaged_scope, "hash", PATH, "--algo", "md5", expected=2)
@@ -110,6 +118,8 @@ def test_integrity(cli, root):
     cli.json("-C", case, "case", "open")
     try:
         assert cli.json("-C", case, "hash", PATH, "--algo", "md5", expected=2)["items"][0] == digest
+        remote_filter = cli.run("-C", case, "hash", PATH, "--algo", "md5", "--jq", ".items[0].md5", expected=2)
+        assert remote_filter.stdout == filtered.stdout and json.loads(remote_filter.stderr)["warning"] == warning
         for options in ((), ("--offset", "4", "--length", "8")):
             cli.run("-C", case, "cat", PATH, *options, expected=1, binary=True)
         record = next(value for value in (json.loads(path.read_text(encoding="utf-8"))

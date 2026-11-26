@@ -78,6 +78,7 @@ const EXAMPLES: &[(&str, &[(&str, &str)])] = &[
         ("ls /nas", "列出检材的分区与卷"),
         ("ls -l /nas/part:0/Users --sort modified --desc", "按修改时间倒序，显示节点 ID"),
         ("ls /nas/@ntfs:part:0:1234", "按节点 ID 列目录（重名、已删除条目）"),
+        ("ls /nas/part:0/Users --jq \".items[] | select(.size >= 104857600) | .path\"", "100 MiB 以上文件的路径"),
     ]),
     ("cat", &[
         ("cat /nas/part:0/Windows/System32/config/SAM > SAM", "保存原始字节"),
@@ -119,7 +120,7 @@ const EXAMPLES: &[(&str, &[(&str, &str)])] = &[
 ];
 
 /// Global options that take a separate value.
-const VALUED_GLOBALS: &[&str] = &["-C", "--case", "--image", "--tz"];
+const VALUED_GLOBALS: &[&str] = &["-C", "--case", "--image", "--tz", "--jq"];
 
 /// The subcommand path the words name, stopping at the first word that is
 /// not a subcommand.

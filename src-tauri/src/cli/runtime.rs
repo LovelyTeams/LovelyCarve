@@ -53,26 +53,47 @@ fn main(args: &[String]) -> Result<i32, CliError> {
         return Ok(code);
     }
     // A line that does not parse still fails in the form it asked for.
-    output::set_json_mode(
-        args.iter()
-            .any(|arg| arg == "--json" || arg.starts_with("--json=")),
-    );
+    output::set_json_mode(args.iter().take_while(|arg| *arg != "--").any(|arg| {
+        matches!(arg.as_str(), "--json" | "--jq")
+            || arg.starts_with("--json=")
+            || arg.starts_with("--jq=")
+    }));
     let cli = parse(args)?;
     let mut globals = cli.globals;
     // JSON is for programs: progress for people stays off (--events reports it).
-    globals.quiet |= globals.json.is_some();
-    output::set_json_mode(globals.json.is_some());
+    globals.quiet |= globals.json_enabled();
+    output::set_json_mode(globals.json_enabled());
     let Some(mut command) = cli.command else {
+        if globals.jq.is_some() {
+            return Err(CliError::new("usage", "--jq 需要指定命令"));
+        }
         help::splash();
         return Ok(0);
     };
     check_projection(&command, &globals)?;
+    if globals.jq.is_some()
+        && matches!(
+            command,
+            Command::Shell
+                | Command::Batch(_)
+                | Command::Completion(_)
+                | Command::Complete(_)
+                | Command::Case(cmd::case::CaseArgs {
+                    command: Some(CaseCommand::Serve(_))
+                })
+        )
+    {
+        return Err(CliError::new(
+            "usage",
+            format!("{} 不支持 --jq", command.path()),
+        ));
+    }
     if let Some(code) = local(&command, &globals)? {
         return Ok(code);
     }
     if globals.dry_run {
         output::open_session(true);
-        print_json(&dry_run(&command)?, None)?;
+        print_json(dry_run(&command)?.into(), None, globals.jq.as_ref())?;
         return Ok(0);
     }
     output::open_session(globals.quiet || globals.events);
@@ -171,7 +192,11 @@ fn backend_exited(dir: &str) -> CliError {
 pub(super) fn local(command: &Command, globals: &Globals) -> Result<Option<i32>, CliError> {
     match command {
         Command::Schema(args) => {
-            print_json(&super::schema::describe(&args.words)?, None)?;
+            print_json(
+                super::schema::describe(&args.words)?.into(),
+                None,
+                globals.jq.as_ref(),
+            )?;
             Ok(Some(0))
         }
         Command::Completion(args) => {
@@ -189,8 +214,8 @@ pub(super) fn local(command: &Command, globals: &Globals) -> Result<Option<i32>,
         }
         Command::System => {
             let value = cmd::system::capabilities();
-            if globals.json.is_some() {
-                print_json(&value, globals.json.as_deref())?;
+            if globals.json_enabled() {
+                print_json(value.into(), globals.json.as_deref(), globals.jq.as_ref())?;
             } else {
                 output::print_text(&render::outline(&value))?;
             }
@@ -373,7 +398,7 @@ pub(super) fn forwarded(
     reporter: &Reporter,
     globals: &Globals,
 ) -> Result<Output, CliError> {
-    if globals.json.is_none() || command.meta().output != cmd::OutputKind::Bytes {
+    if !globals.json_enabled() || command.meta().output != cmd::OutputKind::Bytes {
         return backend::forward(dir, command, options, reporter);
     }
     let mut bytes = super::stream::Bounded::default();
@@ -392,45 +417,63 @@ pub(super) fn present(
 ) -> Result<i32, CliError> {
     let meta = command.meta();
     let incomplete = incomplete::check(meta.incomplete, &output);
-    match output {
+    let printed = match output {
         Output::Json(json) => {
-            if globals.json.is_some() {
-                print_json(json.value(), globals.json.as_deref())?;
+            if globals.json_enabled() {
+                print_json(json, globals.json.as_deref(), globals.jq.as_ref())
             } else if json.is_null() {
                 output::confirm_done("完成", globals.quiet || globals.events);
+                Ok(())
             } else {
                 let value = json.value();
                 let text = cmd::render(command, value).unwrap_or_else(|| render::generic(value));
-                output::print_text(&text)?;
+                output::print_text(&text)
             }
         }
         // JSON consumers get raw content as JSON too, as batch responses carry it.
-        Output::Bytes(bytes) if globals.json.is_some() => {
-            print_json(
-                &json!({"encoding": "hex", "data": hex::encode(bytes)}),
-                None,
-            )?;
+        Output::Bytes(bytes) if globals.json_enabled() => print_json(
+            json!({"encoding": "hex", "data": hex::encode(bytes)}).into(),
+            None,
+            globals.jq.as_ref(),
+        ),
+        Output::Bytes(bytes) => output::print_bytes(&bytes),
+        Output::Written => Ok(()),
+        Output::Stream(_) => Err(super::internal_error("流式结果没有写出")),
+    };
+    if let Some(incomplete) = &incomplete {
+        // A jq program that failed part way may have printed some values.
+        if printed.is_ok() || globals.jq.is_some() {
+            report_incomplete(incomplete, globals.events);
         }
-        Output::Bytes(bytes) => output::print_bytes(&bytes)?,
-        Output::Written => {}
-        Output::Stream(_) => return Err(super::internal_error("流式结果没有写出")),
     }
-    Ok(match incomplete {
-        Some(incomplete) => {
-            report_incomplete(&incomplete, globals.events);
-            EXIT_INCOMPLETE
-        }
-        None => 0,
+    printed?;
+    Ok(if incomplete.is_some() {
+        EXIT_INCOMPLETE
+    } else {
+        0
     })
 }
 
-fn print_json(value: &Value, fields: Option<&str>) -> Result<(), CliError> {
+/// A JSON result with `--json=fields` applied, as it is or as the jq
+/// program reshapes it.
+fn print_json(
+    json: super::Json,
+    fields: Option<&str>,
+    filter: Option<&super::jq::Filter>,
+) -> Result<(), CliError> {
     let fields = projection::parse(fields)?;
-    let output = projection::apply(Output::json(value.clone()), &fields)?;
-    if let Output::Json(json) = output {
-        output::print_text(&output::format_json(&json))?;
+    // jq reads the text the command wrote, with its key order.
+    let output = match filter {
+        Some(_) => Output::Json(json),
+        None => Output::json(json.value().clone()),
+    };
+    let Output::Json(json) = projection::apply(output, &fields)? else {
+        return Ok(());
+    };
+    match filter {
+        Some(filter) => filter.print(&json),
+        None => output::print_text(&output::format_json(&json)),
     }
-    Ok(())
 }
 
 /// Say that the result just printed is incomplete: a framed warning, or a
@@ -664,9 +707,9 @@ pub(super) async fn deliver(
     globals: &Globals,
 ) -> Result<i32, CliError> {
     match executed.output {
-        Output::Stream(plan) if globals.json.is_some() => {
+        Output::Stream(plan) if globals.json_enabled() => {
             let bytes = super::stream::buffer(exec, plan).await?;
-            present(command, Output::Bytes(bytes), globals)
+            present_interruptibly(command, Output::Bytes(bytes), globals).await
         }
         Output::Stream(plan) => {
             super::stream::stream(exec, plan, |chunk| {
@@ -677,8 +720,34 @@ pub(super) async fn deliver(
             .await?;
             Ok(0)
         }
-        output => present(command, output, globals),
+        output => present_interruptibly(command, output, globals).await,
     }
+}
+
+/// [`present`], with a jq program run on a thread of its own: this process
+/// handles Ctrl+C itself, and a program can run for as long as it is written
+/// to, so the runtime stays free to notice the interruption.
+async fn present_interruptibly(
+    command: &Command,
+    output: Output,
+    globals: &Globals,
+) -> Result<i32, CliError> {
+    if globals.jq.is_none() {
+        return present(command, output, globals);
+    }
+    let (command, globals) = (command.clone(), globals.clone());
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    std::thread::Builder::new()
+        .name("lovelycarve-cli-jq".into())
+        .stack_size(STACK_SIZE)
+        .spawn(move || {
+            if sender.send(present(&command, output, &globals)).is_err() {
+                tracing::debug!("jq output abandoned: the command was interrupted");
+            }
+        })?;
+    receiver
+        .await
+        .map_err(|_| super::internal_error("jq 线程异常退出"))?
 }
 
 /// Before exit: wait for every task the work left behind. A failed

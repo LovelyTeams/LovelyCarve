@@ -466,6 +466,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bstr"
+version = "1.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a680398c10c7bc0488067c4612226ea905a85f607134b69f3068d505d58c4214"
+dependencies = [
+ "memchr",
+ "regex-automata",
+ "serde_core",
+]
+
+[[package]]
 name = "btrfs-diskformat"
 version = "0.5.1"
 dependencies = [
@@ -1181,6 +1192,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dyn-clone"
+version = "1.0.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
+
+[[package]]
 name = "either"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1417,6 +1434,12 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
 name = "foldhash"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
+
+[[package]]
+name = "foldhash"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
@@ -1590,7 +1613,7 @@ version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
 dependencies = [
- "foldhash",
+ "foldhash 0.2.0",
 ]
 
 [[package]]
@@ -1599,7 +1622,7 @@ version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 dependencies = [
- "foldhash",
+ "foldhash 0.2.0",
 ]
 
 [[package]]
@@ -1631,6 +1654,12 @@ dependencies = [
  "cmpfs",
  "thiserror 2.0.21",
 ]
+
+[[package]]
+name = "hifijson"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a9dfcf92104a9752d8dbac1879032a51873d7cebcf7e4cb2bdd0513e069440f"
 
 [[package]]
 name = "hmac"
@@ -1785,6 +1814,53 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
+name = "jaq-core"
+version = "3.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "723ad9253808e95daa2d10ad5b258ac4e65c07003e223e08d1d8734c2942d606"
+dependencies = [
+ "dyn-clone",
+ "once_cell",
+ "typed-arena",
+]
+
+[[package]]
+name = "jaq-json"
+version = "2.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4be2f53207ffb1313a2d2ad819cfa8bfaa7936cb85a110eda10fd5da822cec94"
+dependencies = [
+ "bstr",
+ "bytes",
+ "foldhash 0.1.5",
+ "hifijson",
+ "indexmap",
+ "jaq-core",
+ "jaq-std",
+ "num-bigint",
+ "num-traits",
+ "ryu",
+ "self_cell",
+]
+
+[[package]]
+name = "jaq-std"
+version = "3.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56b378d4f7587d332111a92608348db6d6b9b8f7cb5ee1d2bd162ec715d7c5bf"
+dependencies = [
+ "aho-corasick",
+ "base64 0.22.1",
+ "bstr",
+ "jaq-core",
+ "jiff",
+ "libm",
+ "log",
+ "regex-bites",
+ "urlencoding",
+]
+
+[[package]]
 name = "jetscii"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1817,10 +1893,12 @@ dependencies = [
  "jiff-core",
  "jiff-static",
  "jiff-tzdb",
+ "jiff-tzdb-platform",
  "log",
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
+ "windows-link",
 ]
 
 [[package]]
@@ -1850,6 +1928,15 @@ name = "jiff-tzdb"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa8377070c6bae868759445e5a77f66d84f0b72f3a054bfb00e6d038b8282da7"
+
+[[package]]
+name = "jiff-tzdb-platform"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "875a5a69ac2bab1a891711cf5eccbec1ce0341ea805560dcd90b7a2e925132e8"
+dependencies = [
+ "jiff-tzdb",
+]
 
 [[package]]
 name = "jobserver"
@@ -1965,6 +2052,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "libm"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
+
+[[package]]
 name = "libredox"
 version = "0.1.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2063,6 +2156,9 @@ dependencies = [
  "hfsplus",
  "ios-backup-core",
  "ios-backup-forensic",
+ "jaq-core",
+ "jaq-json",
+ "jaq-std",
  "jffs2",
  "jfs-reader",
  "jiff",
@@ -3201,6 +3297,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "regex-bites"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6a15a2fa0bfda9361941c45550896ae87b15cc6c8c939ea350079670332e211"
+
+[[package]]
 name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3403,6 +3505,12 @@ dependencies = [
  "quote",
  "syn 3.0.9",
 ]
+
+[[package]]
+name = "self_cell"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ab42ca02749e120097e328d91d415325bdf43b1c72c4c8badf37375fe40a813"
 
 [[package]]
 name = "semver"
@@ -4053,6 +4161,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "86a801b3cea342a06d468c8710662aa29e5e05e4f5c0d62f00bbb7f2ad7941c2"
 
 [[package]]
+name = "typed-arena"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6af6ae20167a9ece4bcb41af5b80f8a1f1df981f6391189ce00fd257af04126a"
+
+[[package]]
 name = "typed-path"
 version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4180,6 +4294,12 @@ name = "unty-next"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "16062d030850f35054e37746427b9febb74a2f24c9c6dd6fa2d0c13c5f53221e"
+
+[[package]]
+name = "urlencoding"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 
 [[package]]
 name = "utf8parse"

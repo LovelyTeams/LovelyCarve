@@ -9,6 +9,7 @@
 
 ### Added
 
+- CLI 支持 `--jq <表达式>`，可在本地筛选、排序、统计或重组 JSON 结果，无需另外安装 jq。
 - 官方插件发布页可以在桌面版打开指定插件版本。LovelyCarve 自动下载当前平台的插件包，检视确认后安装到用户插件目录。
 - 官方[插件发布页](https://lovelyteams.github.io/LovelyCarve-Plugin-Site/)提供 `.lcpkg` 下载、运行平台、版本和 SHA-256，可复制同一份索引的地址添加到「设置 → 插件市场」。页面适配手机屏幕，并跟随系统浅色或深色主题。
 - 解锁后的 BitLocker 卷按卷首识别文件系统：BitLocker To Go 卷中的 FAT / exFAT 可以浏览，卷内的 NTFS 卷影副本与盘符还原也照常可用。卷影副本、盘符还原和树图同样覆盖 LUKS、VeraCrypt 中解锁出的 NTFS。
