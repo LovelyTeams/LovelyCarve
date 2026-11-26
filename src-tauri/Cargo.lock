@@ -3560,6 +3560,7 @@ dependencies = [
  "udif",
  "umya-spreadsheet",
  "unicode-width",
+ "unixware-bfs-reader",
  "uuid",
  "vdi",
  "veracrypt-core",
@@ -7078,6 +7079,13 @@ checksum = "fc1de2c688dc15305988b563c3854064043356019f97a4b46276fe734c4f07ea"
 dependencies = [
  "crypto-common 0.1.7",
  "subtle",
+]
+
+[[package]]
+name = "unixware-bfs-reader"
+version = "0.1.0"
+dependencies = [
+ "lamfold",
 ]
 
 [[package]]

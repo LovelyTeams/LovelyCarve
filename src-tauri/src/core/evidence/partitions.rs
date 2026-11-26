@@ -53,6 +53,8 @@ pub mod squashfs;
 pub mod ubifs;
 pub mod udf;
 pub mod ufs;
+mod unixware;
+pub(crate) mod unixware_bfs;
 pub(crate) mod vmfs;
 pub mod volume_probe;
 pub(crate) mod vxfs;
@@ -168,6 +170,7 @@ pub enum PartitionKind {
     Hpfs,
     Vxfs,
     AixJfs,
+    UnixwareBfs,
     Ubifs,
     Lvm,
     Bitlocker,
@@ -397,6 +400,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Hpfs
         | PartitionKind::Vxfs
         | PartitionKind::AixJfs
+        | PartitionKind::UnixwareBfs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

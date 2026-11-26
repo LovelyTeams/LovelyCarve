@@ -379,6 +379,7 @@ pub(crate) fn kind_str(kind: PartitionKind) -> &'static str {
         PartitionKind::Hpfs => "hpfs",
         PartitionKind::Vxfs => "vxfs",
         PartitionKind::AixJfs => "aixjfs",
+        PartitionKind::UnixwareBfs => "unixwarebfs",
         PartitionKind::Minix => "minix",
         PartitionKind::Minifs => "minifs",
         PartitionKind::Romfs => "romfs",

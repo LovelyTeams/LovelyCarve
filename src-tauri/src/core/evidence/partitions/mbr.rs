@@ -162,17 +162,31 @@ impl PartParser for MbrParser {
     }
 
     fn try_parse(&self, ctx: &DetectCtx<'_>) -> anyhow::Result<Option<Vec<Partition>>> {
-        Ok(
-            parse_table(ctx, &CancellationToken::new())?.and_then(|table| {
-                (!table.partitions.is_empty()).then(|| {
-                    table
-                        .partitions
-                        .into_iter()
-                        .map(|entry| entry.partition)
-                        .collect()
-                })
-            }),
-        )
+        let Some(table) = parse_table(ctx, &CancellationToken::new())? else {
+            return Ok(None);
+        };
+        let mut next_id = table.partitions.len();
+        let mut partitions = Vec::with_capacity(next_id);
+        for entry in table.partitions {
+            if entry.entry.type_byte == super::unixware::MBR_TYPE {
+                let slices =
+                    super::unixware::slices(ctx.source, ctx.sector_size, &entry.partition)?;
+                if !slices.is_empty() {
+                    for (index, mut slice) in slices.into_iter().enumerate() {
+                        if index != 0 {
+                            slice.id = u8::try_from(next_id).context(Failure::corrupt(
+                                "UnixWare slice IDs exceed MBR partition capacity",
+                            ))?;
+                            next_id += 1;
+                        }
+                        partitions.push(slice);
+                    }
+                    continue;
+                }
+            }
+            partitions.push(entry.partition);
+        }
+        Ok((!partitions.is_empty()).then_some(partitions))
     }
 }
 

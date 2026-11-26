@@ -251,6 +251,92 @@ def test_aix_jfs(cli, root):
     print("AIX JFS1 CLI tests passed: fsv3 and fsv3p, backup superblock, fragments, indirection and export")
 
 
+def test_unixware_bfs(cli, root):
+    fixtures = VENDOR / "unixware-bfs-reader/tests/fixtures"
+    empty = root / "bfs-empty.img"
+    empty.write_bytes(zlib.decompress((fixtures / "util-linux-empty.zlib").read_bytes()))
+    rows = cli.results([add(empty), ls("root", "/ev/part:0")])
+    assert opened(rows)["partitions"][0]["kind"] == "unixwarebfs"
+    assert names(rows["root"]) == set()
+
+    volume = zlib.decompress((fixtures / "populated.zlib").read_bytes())
+    bare = root / "bfs-bare.img"
+    bare.write_bytes(volume)
+    wrapped = root / "bfs-vtoc.img"
+    sector = 512
+    owner_start = 64
+    stand_start = owner_start + 64
+    volume_sectors = len(volume) // sector
+    swap_start = stand_start + volume_sectors
+    foreign_start = swap_start + 64
+    owner_length = foreign_start - owner_start
+    disk = bytearray((foreign_start + 64) * sector)
+    disk[450] = 0x63
+    disk[466] = 0x82
+    struct.pack_into("<II", disk, 454, owner_start, owner_length)
+    struct.pack_into("<II", disk, 470, foreign_start, 64)
+    disk[510:512] = b"\x55\xaa"
+    label = (owner_start + 29) * sector
+    struct.pack_into("<I", disk, label + 4, 0xCA5E600D)
+    struct.pack_into("<II", disk, label + 36, sector, owner_start)
+    struct.pack_into("<I", disk, label + 156, 0x600DDEEE)
+    struct.pack_into("<H", disk, label + 172, 16)
+    slices = label + 216
+    struct.pack_into("<HHII", disk, slices, 5, 0x200, owner_start, owner_length)
+    struct.pack_into("<HHII", disk, slices + 7 * 12, 9, 0x201, stand_start, volume_sectors)
+    struct.pack_into("<HHII", disk, slices + 8 * 12, 3, 0x200, swap_start, 32)
+    struct.pack_into("<HHII", disk, slices + 9 * 12, 4, 0x200, foreign_start - 1, 2)
+    struct.pack_into("<HHII", disk, slices + 10 * 12, 4, 0, stand_start + 1, 1)
+    disk[stand_start * sector:swap_start * sector] = volume
+    wrapped.write_bytes(disk)
+
+    payload = bytes(range(256)) * 5 + b"unixware\n"
+    for source in (bare, wrapped):
+        output = root / f"{source.stem}-export.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", "/ev/part:0"),
+            cat("alias", at(path_id("unixwarebfs:part:0:", "/unix.old"))),
+            cat("long", "/ev/part:0/1234567890.dat"),
+            cat("range", "/ev/part:0/unix", 509, 522),
+            cat("tail", "/ev/part:0/unix", len(payload) - 4, 50),
+            cat("empty", "/ev/part:0/empty"),
+            request("stat", "stat", "/ev/part:0/unix"),
+            request("alias_stat", "stat", "/ev/part:0/unix.old"),
+            digest("hash", "/ev/part:0/unix"),
+            export("export", "/ev/part:0/unix", output),
+        ])
+        parts = {p["id"]: p for p in opened(rows)["partitions"]}
+        assert parts[0]["kind"] == "unixwarebfs"
+        if source == wrapped:
+            assert set(parts) == {0, 1, 2}
+            assert parts[0]["startLba"] == stand_start and parts[0]["lengthLba"] == volume_sectors
+            assert parts[0]["label"] == "/stand (UnixWare slice 7)"
+            assert parts[1]["kind"] == "swap" and parts[1]["startLba"] == foreign_start
+            assert parts[2]["kind"] == "swap" and parts[2]["startLba"] == swap_start
+        assert names(rows["root"]) == {"unix", "unix.old", "empty", "1234567890.dat"}
+        assert rows["alias"] == hex_of(payload)
+        assert rows["long"] == hex_of(b"UnixWare BFS fixture\n")
+        assert rows["range"] == hex_of(payload[509:1031])
+        assert rows["tail"] == hex_of(payload[-4:])
+        assert rows["empty"] == hex_of(b"")
+        assert rows["stat"]["inode"] == rows["alias_stat"]["inode"] == 3
+        modified = datetime.fromisoformat(rows["stat"]["timestamps"]["modified"].replace("Z", "+00:00"))
+        assert modified.utcoffset() == timedelta(0) and modified.timestamp() == 1706010001
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert output.read_bytes() == payload
+
+    # A conflicting, otherwise valid slice must not replace the original MBR span.
+    overlapping = root / "bfs-vtoc-overlap.img"
+    struct.pack_into("<HHII", disk, slices + 10 * 12, 4, 0x200, stand_start + 1, 1)
+    overlapping.write_bytes(disk)
+    parts = {p["id"]: p for p in opened(cli.results([add(overlapping)]))["partitions"]}
+    assert set(parts) == {0, 1}
+    assert parts[0]["startLba"] == owner_start and parts[0]["lengthLba"] == owner_length
+    assert parts[1]["startLba"] == foreign_start
+    print("UnixWare BFS CLI tests passed: native empty volume, VTOC, hard links, ranges, hash and export")
+
+
 def test_formats(cli, root):
     firmware_node = path_id("squashfs:part:0:", "/hello")
     firmware_content = b"Independent DD-WRT fixture.\n" * 64

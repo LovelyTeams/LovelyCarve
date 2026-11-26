@@ -245,6 +245,7 @@ udif = { path = "vendor/udif" }
 umya-spreadsheet = "3.1.0"
 # lovelycarve-cli 帮助与提示的列宽：中日韩全角字符占两列（已在依赖树中）。
 unicode-width = "0.2.2"
+unixware-bfs-reader = { path = "vendor/unixware-bfs-reader" }
 uuid = { version = "1.28.0", features = ["v4", "serde"] }
 vdi = { path = "vendor/vdi" }
 veracrypt = { path = "vendor/veracrypt", package = "veracrypt-core" }

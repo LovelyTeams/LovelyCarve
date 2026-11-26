@@ -23,6 +23,8 @@ MBR 与 EBR 由独立的 Rust 代码解析，不引入 libvsmbr 源码、动态�
 原始类型与文件系统类型是不同信息：`0x07` 不保证 NTFS，`0x83` 不保证 ext4，`0xAF` 也不保证 APFS。
 `refine_partition_kinds` 继续使用卷签名细化；未知类型字节仍完整保留，未知文件系统不因此变得可浏览。
 
+自动探测还会检查 `0x63` 数据分区内的经典 UnixWare VTOC。有效切片使用整盘绝对 LBA，必须完整落在所属 MBR 分区内。切片 0、备用区和引导区从浏览视图中略过。相互重叠的候选切片会保留原 MBR 分区入口。分析接口 `MbrTable` 始终保留原始分区及槽位。`/stand` 切片通过卷签名进一步识别为 [UnixWare BFS](UNIXWARE_BFS.md)。
+
 ## 格式、遍历与容错
 
 | 项目 | libvsmbr 基准行为 | LovelyCarve |

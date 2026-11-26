@@ -221,3 +221,9 @@ mkfs / Linux kernel / fsck 验证见 [ORIGIN.md](gfs2-reader/ORIGIN.md)。
 `aix-jfs-reader` 0.1.0 适配 `fs-unix` 0.2.1 的 MIT AIX JFS 读取算法，固定源码提交
 `4969de813a1ec4439ccce69a1247c2ecf3f50cb4`。本地实现补齐备用超级块选择、打包片段与有界范围读取。
 原始许可见 `LICENSE-MIT`，样本和来源见 [ORIGIN.md](aix-jfs-reader/ORIGIN.md)。
+
+## UnixWare BFS
+
+`unixware-bfs-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。磁盘字段对照 Linux、
+util-linux 与 UnixWare 文档。空卷由 util-linux 格式化，含文件的测试卷以该卷为基础构造。
+具体版本、样本与哈希见 [ORIGIN.md](unixware-bfs-reader/ORIGIN.md)。

@@ -239,6 +239,13 @@ pub(super) fn children_for_image_with_options(
                 )?
                 .root_children()
             }
+            PartitionKind::UnixwareBfs => {
+                crate::core::filesystem::volumes::rom_images::open_unixware_bfs_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
             PartitionKind::AixJfs => {
                 crate::core::filesystem::volumes::rom_images::open_aix_jfs_source(
                     image,

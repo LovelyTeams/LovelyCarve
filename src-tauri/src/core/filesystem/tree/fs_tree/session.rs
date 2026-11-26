@@ -230,6 +230,12 @@ impl<'a> FsSession<'a> {
                         )?
                         .root_children(),
                     ),
+                    PartitionKind::UnixwareBfs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_unixware_bfs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::AixJfs => Some(
                         crate::core::filesystem::volumes::rom_images::open_aix_jfs_source(
                             self.image, pid,

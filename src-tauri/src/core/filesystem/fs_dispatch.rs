@@ -63,6 +63,9 @@ use crate::core::filesystem::volumes::rom_images::{
     parse_jfs_id, parse_minix_id, parse_nilfs2_id, parse_ocfs2_id, parse_qnx4_id, parse_qnx6_id,
     parse_reiserfs_id, parse_romfs_id, parse_udf_id,
 };
+use crate::core::filesystem::volumes::rom_images::{
+    open_unixware_bfs_source, parse_unixware_bfs_id,
+};
 use crate::core::filesystem::volumes::squashfs::{open_squashfs_source, parse_squashfs_id};
 use crate::core::filesystem::volumes::ubi::{open_ubi_source, parse_ubi_id};
 use crate::core::filesystem::volumes::ubifs::{open_ubifs_source, parse_ubifs_id};
@@ -179,6 +182,7 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &HpfsAdapter,
     &VxfsAdapter,
     &AixJfsAdapter,
+    &UnixwareBfsAdapter,
     &MinixAdapter,
     &UbifsAdapter,
     &Jffs2Adapter,
@@ -252,6 +256,9 @@ pub(crate) fn volume_root_key(id: &str) -> Option<String> {
     }
     if let Some((partition, _)) = parse_nilfs2_id(id) {
         return Some(format!("nilfs2:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_unixware_bfs_id(id) {
+        return Some(format!("unixwarebfs:part:{partition}"));
     }
     if let Some((partition, _)) = parse_aix_jfs_id(id) {
         return Some(format!("aixjfs:part:{partition}"));
@@ -638,6 +645,15 @@ path_volume!(
     open_aix_jfs_source
 );
 path_volume_impl!(AixJfsVol, plain_range);
+path_volume!(
+    UnixwareBfsAdapter,
+    UnixwareBfsVol,
+    "unixwarebfs",
+    crate::core::filesystem::volumes::rom_images::UnixwareBfsVolume,
+    parse_unixware_bfs_id,
+    open_unixware_bfs_source
+);
+path_volume_impl!(UnixwareBfsVol, plain_range);
 path_volume!(
     MinixAdapter,
     MinixVol,
