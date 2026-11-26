@@ -334,13 +334,18 @@ fn pretty(text: &str, highlight: bool) -> String {
 /// at a terminal.
 pub fn format_json(json: &Json) -> String {
     let text = json.text();
+    if std::io::stdout().is_terminal() {
+        indent_json(&text)
+    } else {
+        text.into_owned()
+    }
+}
+
+/// JSON text as a terminal shows it: indented, and highlighted unless large.
+pub fn indent_json(text: &str) -> String {
     let highlight =
         !interactive::is_non_interactive_or_ci() && styled() && text.len() <= MAX_HIGHLIGHTED_JSON;
-    if !std::io::stdout().is_terminal() {
-        text.into_owned()
-    } else {
-        pretty(&text, highlight)
-    }
+    pretty(text, highlight)
 }
 
 /// Indented JSON without colour, for files.

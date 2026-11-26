@@ -14,6 +14,8 @@ Each entry is a command's synopsis and its description. Positional arguments com
   文件时间的显示时区：auto、evidence、case、UTC、IANA 名称或 ±HH:MM
 - `--json[=<字段>]`
   输出 JSON（文件内容为十六进制）；--json=字段1,字段2 只保留列表条目的这些字段
+- `--jq <表达式>`
+  用 jq 表达式筛选或重组 JSON 结果（自动启用 --json）
 - `-q|--quiet`
   不输出进度等非必要信息
 - `--events`

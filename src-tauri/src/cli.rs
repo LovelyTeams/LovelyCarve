@@ -18,6 +18,7 @@ mod exec;
 mod help;
 mod incomplete;
 mod interactive;
+mod jq;
 mod msys;
 mod navigation;
 #[cfg(test)]

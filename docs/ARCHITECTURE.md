@@ -1168,6 +1168,9 @@ CLI 构建不启用 `desktop` 特性，不链接 Tauri、WebView 或 GUI 工具�
 **输出。** 各命令的 `render` 与 `cli/render.rs` 生成文本；`--json` 时 `cli/output.rs` 输出 JSON（`cli::Json`
 保存后端序列化的文本，保留字段顺序，需要时才解析），字节结果以 `{"encoding":"hex","data"}` 表示，
 `cli/projection.rs` 实现 `--json=fields`，`cli/incomplete.rs` 按 `meta_of` 的字段判断结果是否完整（退出码 2）。
+`cli/jq.rs` 在 CLI 解析参数时编译 `--jq`，并去掉会自定退出码或写标准错误的内置函数（`halt`、`debug`、`stderr` 等）。
+一次性命令在输出端运行表达式，输入是本地或案件后台返回的 JSON，可先选取 `--json=fields` 指定的字段。本进程执行的命令
+在单独的线程上求值，运行时仍能处理 Ctrl+C。完整性判断使用原始命令结果。
 `cli/progress.rs` 把后端的实际阶段与计数映射为 stderr 的进度行、OSC 9;4 进度和 `--events` 的 JSONL；`Monitor`
 以 RAII 管理刷新线程及 OSC 状态。`cli/background.rs` 跟随任务中心的 `task-entry` 事件：命令返回后仍在运行的
 任务、命令成功而它启动的任务却失败，以及 `automatic` 任务算作后台工作；`tasks wait`、一次性命令和 shell／batch

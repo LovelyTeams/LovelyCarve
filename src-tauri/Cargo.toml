@@ -139,6 +139,10 @@ hex = "0.4.3"
 hfsplus = { path = "vendor/hfsplus" }
 ios-backup-core = { path = "vendor/ios-backup/core" }
 ios-backup-forensic = { path = "vendor/ios-backup/forensic" }
+# CLI 的 --jq 在进程内编译并执行表达式。
+jaq-core = "3.1.2"
+jaq-json = "2.0.3"
+jaq-std = "3.0.4"
 jffs2 = { path = "vendor/jffs2" }
 jfs-reader = { path = "vendor/jfs-reader" }
 jiff = { version = "0.2.38", default-features = false, features = ["std", "tzdb-bundle-always"] }

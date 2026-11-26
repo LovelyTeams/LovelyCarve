@@ -62,6 +62,14 @@ pub struct Globals {
     /// 输出 JSON（文件内容为十六进制）；--json=字段1,字段2 只保留列表条目的这些字段
     #[arg(long, global = true, num_args = 0..=1, require_equals = true, default_missing_value = "", value_name = "字段")]
     pub json: Option<String>,
+    /// 用 jq 表达式筛选或重组 JSON 结果（自动启用 --json）
+    #[arg(
+        long,
+        global = true,
+        allow_negative_numbers = true,
+        value_name = "表达式"
+    )]
+    pub jq: Option<super::jq::Filter>,
     /// 不输出进度等非必要信息
     #[arg(short = 'q', long, global = true)]
     pub quiet: bool,
@@ -80,6 +88,12 @@ pub struct Globals {
     /// 显示版本
     #[arg(short = 'V', long, global = true)]
     pub version: bool,
+}
+
+impl Globals {
+    pub fn json_enabled(&self) -> bool {
+        self.json.is_some() || self.jq.is_some()
+    }
 }
 
 #[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]

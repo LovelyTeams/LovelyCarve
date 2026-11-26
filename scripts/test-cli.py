@@ -742,7 +742,29 @@ def test_process(cli, root):
         if process.poll() is None:
             process.kill()
         process.communicate(timeout=30)
-    print("CLI process tests passed: optional image recognition, windowless startup, no elevation, interrupt status")
+    # A jq program that never ends still ends with Ctrl+Break once the command it filters is done.
+    evidence = root / "filtered"
+    evidence.mkdir()
+    (evidence / "a.txt").write_bytes(b"a")
+    process = subprocess.Popen([str(cli.executable), "--events", "--image", str(evidence), "ls", "/filtered/folder:",
+                                "--jq", "last(repeat(.))"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                               encoding="utf-8", creationflags=subprocess.CREATE_NEW_PROCESS_GROUP, cwd=root,
+                               env=cli.environment)
+    try:
+        for line in process.stderr:
+            payload = json.loads(line).get("payload") or {}
+            if payload.get("command") == "ls" and payload.get("phase") == "completed":
+                break
+        else:
+            raise AssertionError(f"ls never completed: exit {process.wait(timeout=30)}")
+        process.send_signal(signal.CTRL_BREAK_EVENT)
+        assert process.wait(timeout=30) == 130
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.communicate(timeout=30)
+    print("CLI process tests passed: optional image recognition, windowless startup, no elevation, interrupt status "
+          "(also while a jq program runs)")
 
 
 SECTIONS = {

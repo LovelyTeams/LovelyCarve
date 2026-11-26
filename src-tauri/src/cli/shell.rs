@@ -164,6 +164,9 @@ async fn line(
     }
     let cli = types::with_shell_directory(Some(directory), || super::runtime::parse(&words))?;
     let line_globals = cli.globals;
+    if line_globals.jq.is_some() {
+        return Err(CliError::new("usage", "交互式 shell 不支持 --jq"));
+    }
     if line_globals.case.is_some() || !line_globals.images.is_empty() {
         return Err(CliError::new(
             "usage",

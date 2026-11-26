@@ -124,8 +124,15 @@ MSYS2_ARG_CONV_EXCL='*' lovelycarve-cli -C 'D:/cases/nas' grep /etc/passwd /nas/
 - 默认是给人看的文本：列表为对齐的表格并在末尾提示如何继续翻页，单个对象为「字段 值」，`hash` 为 `SHA256 (<地址>) = <摘要>` 形式，可直接用于核对。
 - `--json` 输出一份 JSON：标准输出是终端时缩进显示，管道和重定向中为单行。结构字段统一为 camelCase；检材中的数据库列名、插件字段名等保持原样。列表结果中 `nextCursor`、`total`、`truncated` 写在 `items` 之前。
 - `--json=字段1,字段2` 只保留列表条目的这些字段，点路径保持嵌套（`timestamps.modified`），分页与时区字段保留；不适用于文件内容，写错格式在执行前失败。
+- `--jq <表达式>` 启用 JSON 模式，用内置的 jaq 筛选、排序、统计或重组当前命令返回的结果；与 `--json=字段` 一起使用时先选字段。表达式产出的每个值各输出一次并换行：字符串原样输出，其他值的格式与 `--json` 相同。`empty` 或无匹配时标准输出为空。
 - `cat`、`carve cat` 输出原始字节，可直接重定向到文件；加 `--json` 时改为 `{"encoding":"hex","data":"…"}`，单次最多 16 MiB。
 - 没有返回值的命令标准输出为空，终端中在标准错误显示 `✓ 完成`。按 ID 查找且对象必须存在的命令（`tasks show`、`results show`、`results run`）找不到时以 `notFound` 失败。
+
+`--jq` 可用于一次性调用，包括转发给案件后台的命令。它处理命令已经取到的结果，例如 `ls` 当前页。保留 `nextCursor` 可以继续翻页。表达式在命令执行前编译，写错时以 `usage` 失败，命令不会执行。表达式只读取当前命令的结果、只写标准输出：不提供 `halt`、`halt_error`、`debug`、`stderr`、`input`、`inputs`，不能导入模块或数据文件，jaq 也没有 `@csv`、`@tsv`。求值出错时退出码为 `1`，此前已输出的值可能只有一部分。取证完整性始终按原始结果判定，筛掉相关字段或返回空结果也会保留原命令的不完整警告与退出码 `2`。`batch` 与交互式 `shell` 拒绝 `--jq`。
+
+```powershell
+lovelycarve-cli -C '<案件目录>' ls /nas/part:0/Users --jq '.items[] | select(.size >= 104857600) | {path, size}'
+```
 
 **标准错误**放进度、提示和错误：
 

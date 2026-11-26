@@ -216,6 +216,9 @@ fn prepare(
 ) -> Result<Result<Prepared, Answer>, CliError> {
     let cli = super::runtime::parse(words)?;
     let globals = cli.globals;
+    if globals.jq.is_some() {
+        return Err(CliError::new("usage", "batch 请求不支持 --jq"));
+    }
     if globals.case.is_some() || !globals.images.is_empty() {
         return Err(CliError::new(
             "usage",

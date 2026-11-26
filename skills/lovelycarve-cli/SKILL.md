@@ -38,6 +38,7 @@ lovelycarve-cli -C "<case-dir>" case close
 ## Keep output small without losing evidence
 
 - `--json=name,path,size` keeps only those fields of each list entry; paging and time zone fields stay.
+- `--jq <expression>` enables JSON mode and filters or reshapes the returned result after optional field selection. When paging, keep `nextCursor` in the filtered output. Read stderr and the exit code even when the filter yields no values.
 - Directory pages hold `--limit` entries (default 200): follow `nextCursor` with `--cursor` until it is null, or use `--all`. Text follows `nextOffset` with `--offset`; `find`, `search hits` and `results rows` page with `--offset` / `--limit`.
 - A page, a bounded `tree` walk or a capped `grep` cannot show that nothing else matches. Prefer `find` (indexed names), `grep` (contents), `text` (decoded text) or a format parser (`sqlite`, `inspect`) over dumping bytes.
 
