@@ -59,6 +59,7 @@ use crate::core::filesystem::volumes::rom_images::{
     parse_jfs_id, parse_minix_id, parse_nilfs2_id, parse_ocfs2_id, parse_qnx4_id, parse_qnx6_id,
     parse_reiserfs_id, parse_romfs_id, parse_udf_id,
 };
+use crate::core::filesystem::volumes::rom_images::{open_hpfs_source, parse_hpfs_id};
 use crate::core::filesystem::volumes::squashfs::{open_squashfs_source, parse_squashfs_id};
 use crate::core::filesystem::volumes::ubi::{open_ubi_source, parse_ubi_id};
 use crate::core::filesystem::volumes::ubifs::{open_ubifs_source, parse_ubifs_id};
@@ -172,6 +173,7 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &Nilfs2Adapter,
     &BcachefsAdapter,
     &VmfsAdapter,
+    &HpfsAdapter,
     &MinixAdapter,
     &UbifsAdapter,
     &Jffs2Adapter,
@@ -245,6 +247,9 @@ pub(crate) fn volume_root_key(id: &str) -> Option<String> {
     }
     if let Some((partition, _)) = parse_nilfs2_id(id) {
         return Some(format!("nilfs2:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_hpfs_id(id) {
+        return Some(format!("hpfs:part:{partition}"));
     }
     if let Some((partition, _)) = parse_vmfs_id(id) {
         return Some(format!("vmfs:part:{partition}"));
@@ -595,6 +600,15 @@ path_volume!(
     open_vmfs_source
 );
 path_volume_impl!(VmfsVol, plain_range);
+path_volume!(
+    HpfsAdapter,
+    HpfsVol,
+    "hpfs",
+    crate::core::filesystem::volumes::rom_images::HpfsVolume,
+    parse_hpfs_id,
+    open_hpfs_source
+);
+path_volume_impl!(HpfsVol, plain_range);
 path_volume!(
     MinixAdapter,
     MinixVol,

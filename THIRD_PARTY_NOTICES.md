@@ -1716,6 +1716,11 @@ VMFS format layouts and the external verification corpus are based on Fox-IT's
 AGPL-3.0-or-later. The bundled implementation is LovelyCarve's pure Rust
 `vmfs-reader` (AGPL-3.0-only). See [origin and verification](src-tauri/vendor/vmfs-reader/ORIGIN.md).
 
+The HPFS test volume was formatted and populated by nepx's BSD-3-Clause
+[hpfsutils](https://github.com/nepx/hpfsutils/tree/ceeb8170a88a11d11e00a5a75deb97f7e2eda93e).
+The generated test data accompanies the pure Rust `hpfs-reader`, which is
+AGPL-3.0-only. [Fixture source and hashes](src-tauri/vendor/hpfs-reader/ORIGIN.md).
+
 ## BCP application icons
 
 The result directory icons in `src/assets/bcp-apps` come from the local

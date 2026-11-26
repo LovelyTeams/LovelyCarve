@@ -2552,6 +2552,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "hpfs-reader"
+version = "0.1.0"
+dependencies = [
+ "encoding_rs",
+ "lamfold",
+]
+
+[[package]]
 name = "html5ever"
 version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3459,6 +3467,7 @@ dependencies = [
  "gzipf",
  "hex",
  "hfsplus",
+ "hpfs-reader",
  "ios-backup-core",
  "ios-backup-forensic",
  "jaq-core",

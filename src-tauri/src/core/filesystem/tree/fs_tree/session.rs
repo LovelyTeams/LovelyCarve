@@ -230,6 +230,12 @@ impl<'a> FsSession<'a> {
                         )?
                         .root_children(),
                     ),
+                    PartitionKind::Hpfs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_hpfs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::Vmfs => Some(
                         crate::core::filesystem::volumes::vmfs::open_vmfs_source(self.image, pid)?
                             .root_children(),

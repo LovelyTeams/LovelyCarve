@@ -81,6 +81,7 @@ pub type Qnx6Volume = RomVolume<qnx_reader::Qnx6<RomImageSource>>;
 pub type UdfVolume = RomVolume<lamfold_udf::Udf<RomImageSource>>;
 pub type MinixVolume = RomVolume<minix_reader::Minix<RomImageSource>>;
 pub type HfsVolume = RomVolume<classic_hfs::Hfs<RomImageSource>>;
+pub type HpfsVolume = RomVolume<hpfs_reader::Hpfs<RomImageSource>>;
 pub type JfsVolume = RomVolume<jfs_reader::Jfs<RomImageSource>>;
 pub type ReiserFsVolume = RomVolume<reiserfs_reader::ReiserFs<RomImageSource>>;
 pub type AmigaVolume = RomVolume<amiga_reader::Amiga<RomImageSource>>;
@@ -173,6 +174,9 @@ pub fn open_qnx4_source(image: &Arc<DiskImage>, partition: u8) -> Result<Qnx4Vol
 pub fn parse_minix_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "minix")
 }
+pub fn parse_hpfs_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "hpfs")
+}
 pub fn parse_hfs_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "hfs")
 }
@@ -229,6 +233,12 @@ pub fn open_amiga_source(image: &Arc<DiskImage>, partition: u8) -> Result<AmigaV
         partition_id: partition.id,
         reader: RefCell::new(reader),
     })
+}
+pub fn open_hpfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<HpfsVolume> {
+    HpfsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
 }
 pub fn open_hfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<HfsVolume> {
     HfsVolume::open(

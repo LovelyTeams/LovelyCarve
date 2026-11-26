@@ -202,3 +202,9 @@ mkfs / Linux kernel / fsck 验证见 [ORIGIN.md](gfs2-reader/ORIGIN.md)。
 `dissect.vmfs`（AGPL-3.0-or-later）固定提交 `0a385a1d80f5881f73402b7b847305dc478eae1c`。
 上游 Python 读取器与测试镜像用于独立核验，构建和运行无需这些文件。样本来源、哈希验证和覆盖范围见
 [ORIGIN.md](vmfs-reader/ORIGIN.md) 与 [VMFS](../../docs/formats/VMFS.md)。
+
+## HPFS
+
+`hpfs-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。磁盘结构对照 Linux HPFS
+定义与 nepx 的 BSD-3-Clause `hpfsutils`。验证镜像由固定版本的工具生成，未引入 C 源码或运行时组件。
+具体提交、临时工具修正和样本哈希见 [ORIGIN.md](hpfs-reader/ORIGIN.md)。

@@ -137,6 +137,7 @@ gpt = { path = "vendor/gpt" }
 gzipf = { path = "vendor/gzipf" }
 hex = "0.4.3"
 hfsplus = { path = "vendor/hfsplus" }
+hpfs-reader = { path = "vendor/hpfs-reader" }
 ios-backup-core = { path = "vendor/ios-backup/core" }
 ios-backup-forensic = { path = "vendor/ios-backup/forensic" }
 # CLI 的 --jq 在进程内编译并执行表达式。

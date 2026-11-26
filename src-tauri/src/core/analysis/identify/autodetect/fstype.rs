@@ -122,6 +122,7 @@ pub fn partition_ftype(kind: PartitionKind) -> Option<u64> {
         | PartitionKind::Nilfs2
         | PartitionKind::Bcachefs
         | PartitionKind::Vmfs
+        | PartitionKind::Hpfs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

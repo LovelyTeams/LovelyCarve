@@ -125,6 +125,45 @@ def test_vmfs(cli, root):
     print("VMFS CLI oracle passed: native paths, sparse reads, hash, export and two-image assembly")
 
 
+def test_hpfs(cli, root):
+    fixture = VENDOR / "hpfs-reader/tests/fixtures/hpfsutils.zlib"
+    volume = zlib.decompress(fixture.read_bytes())
+    bare = root / "hpfs.bin"
+    bare.write_bytes(volume)
+    disk = root / "hpfs-mbr.img"
+    base = 2048
+    table = bytearray(512)
+    table[450] = 7
+    struct.pack_into("<II", table, 454, base, len(volume) // 512)
+    table[510:] = b"\x55\xaa"
+    with disk.open("xb") as output:
+        output.write(table)
+        output.seek(base * 512)
+        output.write(volume)
+    payload = bytes(range(256)) * 4129 + b"tail"
+    for index, source in enumerate([bare, disk]):
+        exported = root / f"hpfs-{index}-payload.bin"
+        rows = cli.results([
+            add(source),
+            ls("tree", "/ev/part:0/TREE", "--limit", 1000),
+            cat("read", at(path_id("hpfs:part:0:", "/Read Me.txt"))),
+            cat("casefold", "/ev/part:0/TREE/item 0512.txt"),
+            cat("range", "/ev/part:0/payload.bin", 509, 1027),
+            request("stat", "stat", "/ev/part:0/Read Me.txt"),
+            digest("hash", "/ev/part:0/payload.bin"),
+            export("export", "/ev/part:0/payload.bin", exported),
+        ])
+        assert opened(rows)["partitions"][0]["kind"] == "hpfs"
+        assert names(rows["tree"]) == {f"Item {n:04}.txt" for n in range(513)}
+        assert rows["read"] == hex_of(b"independent HPFS fixture\n")
+        assert rows["casefold"] == hex_of(b"0512 HPFS entry\n")
+        assert rows["range"] == hex_of(payload[509:1536])
+        assert not rows["stat"]["timestamps"]["created"].endswith("Z")
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert exported.read_bytes() == payload
+    print("HPFS CLI tests passed: bare and MBR volumes, split directories, ranges, times, hash and export")
+
+
 def test_formats(cli, root):
     firmware_node = path_id("squashfs:part:0:", "/hello")
     firmware_content = b"Independent DD-WRT fixture.\n" * 64

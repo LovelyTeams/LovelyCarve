@@ -31,6 +31,7 @@ pub mod flashfs;
 pub mod gfs2;
 pub mod gpt;
 pub mod hfsplus;
+pub(crate) mod hpfs;
 pub mod jffs2;
 pub mod jfs;
 pub mod luks;
@@ -162,6 +163,7 @@ pub enum PartitionKind {
     Nilfs2,
     Bcachefs,
     Vmfs,
+    Hpfs,
     Ubifs,
     Lvm,
     Bitlocker,
@@ -388,6 +390,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Nilfs2
         | PartitionKind::Bcachefs
         | PartitionKind::Vmfs
+        | PartitionKind::Hpfs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

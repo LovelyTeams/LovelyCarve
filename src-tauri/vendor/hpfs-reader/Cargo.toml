@@ -1,0 +1,15 @@
+[package]
+name = "hpfs-reader"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+description = "Read-only OS/2 HPFS filesystem reader"
+
+[dependencies]
+encoding_rs = "0.8.42"
+lamfold = { path = "../lamfold", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+flate2 = "1"
+
+[workspace]

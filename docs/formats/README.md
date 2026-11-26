@@ -16,6 +16,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | Btrfs | [BTRFS.md](BTRFS.md) | 子卷、快照、完整多设备组装、逐 chunk 寻址、范围读与条带来源 |
 | ZFS | [ZFS.md](ZFS.md) | 单设备与完整多设备池、镜像、RAIDZ1/2/3、标签与 uberblock 校验、大 dnode、系统属性 spill 和范围读取 |
 | VMFS 5 / 6 | [VMFS.md](VMFS.md) | VMFS-L、裸逻辑卷、单盘和完整跨盘 extent、目录分配图、稀疏文件与范围读 |
+| HPFS | [HPFS.md](HPFS.md) | OS/2 HPFS 功能版本 2/3、dnode 与 anode 树、OEM 文件名、热修复寻址、本地时间与范围读 |
 | UFS1 / UFS2 | [UFS.md](UFS.md) | BSD FFS；大小端、4.4BSD inode、柱面组偏移、直接与间接块、碎片、范围读取 |
 | XFS | [XFS.md](XFS.md) | libfsxfs 对照；格式 1–5、目录与属性全部布局、BIGTIME、metadata UUID、范围读取与来源映射 |
 | ReFS | [REFS.md](REFS.md) | 纯 Rust `refs-reader`；文件流快照、CoW 共享块、公开镜像来源与独立解析器验证 |

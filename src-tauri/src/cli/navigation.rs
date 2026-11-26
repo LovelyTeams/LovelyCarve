@@ -87,7 +87,11 @@ pub(super) async fn case_insensitive(
     parent: String,
 ) -> Result<bool, CliError> {
     let session = image.filesystem_session(&parent);
-    if parent.starts_with("ntfs:") || parent.starts_with("fat:") || parent.starts_with("exfat:") {
+    if parent.starts_with("ntfs:")
+        || parent.starts_with("fat:")
+        || parent.starts_with("exfat:")
+        || parent.starts_with("hpfs:part:")
+    {
         return Ok(true);
     }
     if let Some((source, _)) = parse_apfs_id(&parent) {
@@ -126,6 +130,7 @@ pub(super) async fn case_insensitive(
                     | PartitionKind::Fat32
                     | PartitionKind::ExFat
                     | PartitionKind::HfsPlus
+                    | PartitionKind::Hpfs
             )
         }))
 }

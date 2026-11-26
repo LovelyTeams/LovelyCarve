@@ -22,7 +22,7 @@ import zlib
 
 from cli_backend_tests import test_backend
 from cli_container_tests import test_containers, test_encryption
-from cli_format_tests import test_formats, test_vmfs
+from cli_format_tests import test_formats, test_hpfs, test_vmfs
 from cli_integrity_tests import test_integrity
 from cli_navigation_tests import test_navigation
 from cli_observability_tests import test_observability
@@ -771,6 +771,7 @@ SECTIONS = {
     "discovery": test_discovery,
     "formats": test_formats,
     "vmfs": test_vmfs,
+    "hpfs": test_hpfs,
     "containers": test_containers,
     "encryption": test_encryption,
     "batch": test_batches,
