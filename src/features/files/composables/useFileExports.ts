@@ -74,6 +74,7 @@ export function useFileExports(options: UseFileExportsOptions) {
         imageId: options.imageId(),
         nodeId: single.id,
         destination: dest,
+        taskId: newTaskId(),
       });
       notifySuccess(
         result.read_faults_detected ? tr("导出成功（含补零）") : tr("导出成功"),
@@ -157,6 +158,7 @@ export function useFileExports(options: UseFileExportsOptions) {
           imageId: options.imageId(),
           nodeId: file.id,
           destination: joinExportDest(dest, name),
+          taskId: newTaskId(),
         });
         bytes += result.bytes_written;
         if (result.read_faults_detected) {

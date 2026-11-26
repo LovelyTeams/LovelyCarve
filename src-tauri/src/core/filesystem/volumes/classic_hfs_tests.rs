@@ -83,7 +83,13 @@ fn check(image: &Arc<EvidenceSession>, partition: u8) {
     assert_eq!(std::fs::read(&export).unwrap(), resource);
     assert!(fs_tree::export_named_stream(image, &file.id, &streams[1].name, &export).is_err());
     let data_export = temp.path().join("data.bin");
-    fs_tree::export_file_with_fault_report(image, &file.id, &data_export).unwrap();
+    fs_tree::export_file_with_fault_report(
+        image,
+        &file.id,
+        &data_export,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .unwrap();
     assert_eq!(std::fs::read(data_export).unwrap(), expected);
     let only = children
         .iter()

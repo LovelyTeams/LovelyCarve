@@ -42,7 +42,13 @@ fn check_file(image: &Arc<EvidenceSession>, id: &str, expected: &[u8]) {
     assert_eq!(session.file_stat(id).unwrap().size, expected.len() as u64);
     let directory = tempfile::tempdir().unwrap();
     let target = directory.path().join("file.bin");
-    fs_tree::export_file_with_fault_report(image, id, &target).unwrap();
+    fs_tree::export_file_with_fault_report(
+        image,
+        id,
+        &target,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .unwrap();
     assert_eq!(std::fs::read(target).unwrap(), expected);
 }
 

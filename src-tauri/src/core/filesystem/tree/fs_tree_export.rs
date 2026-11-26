@@ -44,17 +44,33 @@ pub struct FsExportSummary {
 const EXPORT_DIR_MAX_ENTRIES: u64 = 200_000;
 const EXPORT_DIR_MAX_DEPTH: usize = 64;
 
+/// Writes one file to `destination`, publishing it only once complete. A
+/// cancellation stops the stream at its next chunk or after the final flush,
+/// and nothing is published.
 pub fn export_file(
     image: &Arc<EvidenceSession>,
     node_id: &str,
     destination: &Path,
+    cancel: &CancellationToken,
 ) -> anyhow::Result<u64> {
     image.require_source()?;
     write_new(destination, |file| {
-        stream_file_chunks(image, node_id, 1024 * 1024, |chunk| {
+        let written = stream_file_chunks(image, node_id, 1024 * 1024, |chunk| {
+            anyhow::ensure!(
+                !cancel.is_cancelled(),
+                Failure::cancelled("export cancelled")
+            );
             file.write_all(chunk)?;
             Ok(())
-        })
+        })?;
+        // Flushing a large file can take as long as writing it; a
+        // cancellation meanwhile still keeps it from being published.
+        file.sync_all()?;
+        anyhow::ensure!(
+            !cancel.is_cancelled(),
+            Failure::cancelled("export cancelled")
+        );
+        Ok(written)
     })
 }
 
@@ -62,9 +78,10 @@ pub fn export_file_with_fault_report(
     image: &Arc<EvidenceSession>,
     node_id: &str,
     destination: &Path,
+    cancel: &CancellationToken,
 ) -> anyhow::Result<FsExportResult> {
     let (result, read_faults) =
-        image.collect_read_faults(|| export_file(image, node_id, destination));
+        image.collect_read_faults(|| export_file(image, node_id, destination, cancel));
     Ok(FsExportResult {
         bytes_written: result?,
         read_faults,
@@ -599,7 +616,7 @@ mod tests {
         let cancel = CancellationToken::new();
         let root = "folder:";
         assert!(export_dir_zip(&image, root, &destination, &cancel, &|_, _| {}).is_err());
-        assert!(export_file(&image, "folder:68656c6c6f2e747874", &destination).is_err());
+        assert!(export_file(&image, "folder:68656c6c6f2e747874", &destination, &cancel).is_err());
         assert_eq!(fs::read(&destination).unwrap(), b"preserve");
         let tree = directory.path().join("tree");
         fs::create_dir(&tree).unwrap();
@@ -615,10 +632,39 @@ mod tests {
         fs::write(evidence.join("hello.txt"), b"authentic").unwrap();
         let image = Arc::new(EvidenceSession::open(&evidence).unwrap());
         let destination = directory.path().join("retry");
-        assert!(export_file(&image, "folder:", &destination).is_err());
+        let cancel = CancellationToken::new();
+        assert!(export_file(&image, "folder:", &destination, &cancel).is_err());
         assert!(!destination.exists());
-        export_file(&image, "folder:68656c6c6f2e747874", &destination).unwrap();
+        export_file(&image, "folder:68656c6c6f2e747874", &destination, &cancel).unwrap();
         assert_eq!(fs::read(destination).unwrap(), b"authentic");
+    }
+
+    #[test]
+    fn cancelled_single_file_export_publishes_nothing() {
+        let directory = tempfile::tempdir().unwrap();
+        let evidence = directory.path().join("evidence");
+        fs::create_dir(&evidence).unwrap();
+        fs::write(evidence.join("hello.txt"), b"authentic").unwrap();
+        let image = Arc::new(EvidenceSession::open(&evidence).unwrap());
+        let output = directory.path().join("output");
+        fs::create_dir(&output).unwrap();
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+
+        let error = export_file_with_fault_report(
+            &image,
+            "folder:68656c6c6f2e747874",
+            &output.join("hello.txt"),
+            &cancel,
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            crate::core::common::error::code_of(&error),
+            Some(crate::core::common::error::ErrorCode::Cancelled)
+        );
+        // Neither the file nor its staging copy is left behind.
+        assert_eq!(fs::read_dir(&output).unwrap().count(), 0);
     }
 
     #[test]

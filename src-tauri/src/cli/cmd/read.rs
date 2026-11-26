@@ -274,6 +274,7 @@ pub async fn hash(exec: &Exec, args: HashArgs) -> Result<Output, CliError> {
             target.image_id().clone(),
             target.node_id().into(),
             algos.clone(),
+            exec.task_id("hash"),
         )
         .await
         .map_err(operation("fs_digest"))?;
@@ -293,6 +294,7 @@ pub async fn identify(exec: &Exec, args: IdentifyArgs) -> Result<Output, CliErro
         exec.state(),
         target.image_id().clone(),
         target.node_id().into(),
+        exec.task_id("identify"),
     )
     .await
     .map_err(operation("fs_identify_type"))?;
@@ -369,6 +371,7 @@ async fn export_one(
             target.image_id().clone(),
             target.node_id().into(),
             destination.text(),
+            exec.task_id("export"),
         )
         .await
         .map_err(operation("fs_export"))?;

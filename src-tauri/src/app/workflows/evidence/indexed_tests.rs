@@ -201,11 +201,11 @@ fn offline_indexes_restore_saved_identity_and_directory_without_source_bytes() -
     assert!(fs_tree::stream_file_chunks(&session, "ntfs:0:42", 1024, |_| Ok(())).is_err());
     let existing = directory.path().join("existing.txt");
     std::fs::write(&existing, b"preserve existing content")?;
-    assert!(fs_tree::export_file(&session, "ntfs:0:42", &existing).is_err());
+    let cancel = tokio_util::sync::CancellationToken::new();
+    assert!(fs_tree::export_file(&session, "ntfs:0:42", &existing, &cancel).is_err());
     assert_eq!(std::fs::read(&existing)?, b"preserve existing content");
     let output_directory = directory.path().join("exported");
     let output_zip = directory.path().join("exported.zip");
-    let cancel = tokio_util::sync::CancellationToken::new();
     assert!(fs_tree::export_dir(&session, "root", &output_directory, &cancel, &|_, _| {}).is_err());
     assert!(fs_tree::export_dir_zip(&session, "root", &output_zip, &cancel, &|_, _| {}).is_err());
     assert!(!output_directory.exists());

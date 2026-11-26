@@ -125,9 +125,12 @@ fn befs_native_bare_and_mbr_cover_endian_blocks_attributes_and_read_paths() {
                 fs_tree::export_named_stream(&image, &big.id, "big-attribute", &output).is_err()
             );
             let output = temp.path().join("file.bin");
-            fs_tree::export_file_with_fault_report(&image, &big.id, &output).unwrap();
+            let cancel = tokio_util::sync::CancellationToken::new();
+            fs_tree::export_file_with_fault_report(&image, &big.id, &output, &cancel).unwrap();
             assert_eq!(std::fs::read(&output).unwrap(), expected);
-            assert!(fs_tree::export_file_with_fault_report(&image, &big.id, &output).is_err());
+            assert!(
+                fs_tree::export_file_with_fault_report(&image, &big.id, &output, &cancel).is_err()
+            );
             let sub = root.iter().find(|node| node.name == "sub").unwrap();
             assert_eq!(session.children(&sub.id).unwrap()[0].name, "nested.txt");
             let unicode = root

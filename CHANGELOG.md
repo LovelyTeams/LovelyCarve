@@ -35,11 +35,13 @@
 - **破坏性变更**：IPC 的 `encrypted_volume_unlock` 改用 `credential`（按 `kind` 区分的凭据）并接受 `scheme: "bitlocker"`；`ImageInfo.unlocked_partitions` 改为 `{ id, scheme }` 列表；`bitlocker_metadata` 更名为 `bitlocker_inspect`；`bitlocker_status`、`bitlocker_unlock`、`bitlocker_unlock_with_vmk`、`bitlocker_export_decrypted_image` 与 `bitlocker-unlock-progress` 事件已移除。
 - **破坏性变更**：CLI 的 BitLocker `unlock` 与其他格式输出同样的结果（`path`、`scheme`、`cipher`、`image`、`volumeKey`；VMK 派生的恢复密码在 `recoveryPassword`），锁定的 BitLocker 分区列为 `unsupported:N`，`part:N` 仍可指向它；`volumes` 为所有解锁的加密卷显示格式与状态；`evidence export /<别名>/part:N` 已移除。
 - **破坏性变更**：IPC `encrypted_volume_unlock` 的 VeraCrypt 选项 `hidden` 改为 `header`（`auto` / `normal` / `hidden` / `backup` / `system`），新增 `prf` 与 `keyfiles`，结果新增 `veracrypt`；CLI `unlock` 的 `--hidden` 改为 `--header hidden`，新增 `--header`、`--prf` 与 `--keyfile`。PIM 上限改为 VeraCrypt 的 2147468（系统加密 65535）。
+- **破坏性变更**：IPC `fs_digest`、`fs_identify_type` 与 `fs_export` 必须带调用方给的 `taskId`（与 `fs_export_dir` 相同，`rpc` 调用也一样），作为任务运行，可用 `task_cancel` 取消；它们不进任务中心列表，启动时也不排队。单个文件的导出与目录导出一样写入案件审计（`task.started` / `task.settled`）。
 
 ### Fixed
 
 - CLI：交给案件后台进程的命令（一次性命令、`shell`、`batch`）按 Ctrl+C / Ctrl+Break 时以 130 退出，此前由控制台直接结束（退出码 0xC000013A）。后台进程放弃客户端已离开的请求：排队的不再执行，执行中的停止并取消它启动的任务，不再替已退出的客户端做完、一直占着后台进程。
 - CLI 案件后台进程：两个带进度的请求重叠时，先开始的那个不再空转占满一个 CPU 核心、永不应答，并让之后的独占命令和 `case close` 一直等待。
+- CLI：被中断的 `hash`、`identify` 与单个文件的 `export` 在下一个数据块处停下。此前它们无法取消：案件后台进程替已退出的客户端读完整个文件，单个文件的导出仍写出目标文件；没有后台进程时 Ctrl+C 要等它们最多 10 秒才退出。
 - CLI `plugin ls` 的文本输出列出插件包（此前表格为空）。
 - 插件包中的条目若是 Windows 设备名（如 `locales/CON.toml`）、带保留字符或以点、空格结尾，或同一路径出现两次，安装时拒绝，不再写出这样的文件。
 - VeraCrypt：设置了 PIM 的 RIPEMD-160 卷按 `15000 + 1000·PIM` 次迭代派生（此前误用系统加密公式），TrueCrypt 卷按 TrueCrypt 自己的迭代次数派生，二者此前都无法打开；就地加密完成的卷、4096 字节扇区的卷和卷头版本 3–4 的 TrueCrypt 卷不再被拒绝。

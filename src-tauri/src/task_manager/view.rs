@@ -24,11 +24,18 @@ pub enum TaskListing {
 
 impl TaskKind {
     /// Whether the case journal records the start and settlement of this
-    /// kind's tasks on case evidence. Only preview helpers that serve the
-    /// interface and touch no examination result are left out.
+    /// kind's tasks on case evidence. Left out are preview helpers that serve
+    /// the interface and touch no examination result, and the digests and
+    /// content types of single files, which the file list computes over whole
+    /// selections and keeps in the evidence's own stores.
     pub fn journaled(self) -> bool {
         match self {
-            Self::FlatList | Self::MediaMaterialization | Self::OcrScan | Self::QrScan => false,
+            Self::FileHash
+            | Self::FlatList
+            | Self::MediaMaterialization
+            | Self::OcrScan
+            | Self::QrScan
+            | Self::TypeIdentify => false,
             Self::AutoDetect
             | Self::BcpImport
             | Self::BitlockerScan
@@ -37,6 +44,7 @@ impl TaskKind {
             | Self::DirectoryExport
             | Self::DockerPrepare
             | Self::EncryptedVolumeUnlock
+            | Self::FileExport
             | Self::FilevaultInspect
             | Self::GlobalSearch
             | Self::ImageExport
@@ -65,7 +73,11 @@ impl TaskKind {
             | Self::SessionSnapshot
             | Self::VolumeSnapshot => TaskListing::Session,
             Self::CarveScan | Self::GlobalSearch | Self::TimelineBuild => TaskListing::Domain,
+            // One file's hash, type or export is shown where it was asked
+            // for; listed, a selection's worth would crowd out the session.
             Self::BitlockerScan
+            | Self::FileExport
+            | Self::FileHash
             | Self::FilevaultInspect
             | Self::FlatList
             | Self::IosBackupAudit
@@ -73,7 +85,8 @@ impl TaskKind {
             | Self::MediaMaterialization
             | Self::OcrScan
             | Self::QrScan
-            | Self::ShadowCopyOpen => TaskListing::Hidden,
+            | Self::ShadowCopyOpen
+            | Self::TypeIdentify => TaskListing::Hidden,
         }
     }
 }

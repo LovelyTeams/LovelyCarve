@@ -49,7 +49,13 @@ fn verify_file(image: DiskImage, partition_id: u8, expected: &[u8]) {
     assert_eq!(streamed, expected);
     let directory = tempfile::tempdir().unwrap();
     let destination = directory.path().join("output.bin");
-    fs_tree::export_file(&image, id, &destination).unwrap();
+    fs_tree::export_file(
+        &image,
+        id,
+        &destination,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .unwrap();
     assert_eq!(std::fs::read(destination).unwrap(), expected);
 }
 

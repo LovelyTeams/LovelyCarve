@@ -19,22 +19,47 @@ use {
     crate::app::error::AppError,
 };
 
+/// Exports one file as the caller's task. The blocking worker owns the
+/// registration, so the task stays cancellable while the file is written,
+/// also when the caller went away; an export cancelled before it is
+/// published leaves no file behind.
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_export(
     state: State<'_, AppState>,
     image_id: ImageId,
     node_id: NodeId,
     destination: String,
+    task_id: String,
 ) -> Result<FsExportResult, AppError> {
     let image = loaded_image_app_error(&state, &image_id).await?;
     let node_for_log = node_id.clone();
     let dest_for_log = destination.clone();
     let started = Instant::now();
-    tracing::info!("fs_export begin image={image_id} node={node_for_log} dest={dest_for_log}");
+    tracing::info!(
+        "fs_export begin image={image_id} node={node_for_log} dest={dest_for_log} task={task_id}"
+    );
+    let task = state
+        .tasks
+        .register(task_id, TaskKind::FileExport, Some(image_id.clone()));
+    task.update(|view| view.subject = vec![destination.clone()]);
+    let resource_permit = state.tasks.acquire_resources(&task).await?;
     let image_for_persist = Arc::clone(&image);
     let result = tokio::task::spawn_blocking(move || -> Result<FsExportResult, AppError> {
-        fs_tree::export_file_with_fault_report(&image, &node_id, &PathBuf::from(destination))
-            .map_err(AppError::from)
+        let _resource_permit = resource_permit;
+        let exported = fs_tree::export_file_with_fault_report(
+            &image,
+            &node_id,
+            &PathBuf::from(destination),
+            &task.token(),
+        )
+        .map_err(AppError::from);
+        if let Ok(exported) = &exported {
+            task.update(|view| {
+                crate::app::workflows::task_center::count_read_faults(view, &exported.read_faults);
+            });
+        }
+        task.finish_with(&exported);
+        exported
     })
     .await
     .map_err(|err| AppError::task_panicked("fs_export", err))?;

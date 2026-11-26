@@ -59,9 +59,10 @@ fn check_file(image: &Arc<EvidenceSession>, id: &str, expected: &[u8]) {
     assert_eq!(session.file_stat(id).unwrap().size, expected.len() as u64);
     let directory = tempfile::tempdir().unwrap();
     let target = directory.path().join("file.bin");
-    fs_tree::export_file_with_fault_report(image, id, &target).unwrap();
+    let cancel = tokio_util::sync::CancellationToken::new();
+    fs_tree::export_file_with_fault_report(image, id, &target, &cancel).unwrap();
     assert_eq!(std::fs::read(&target).unwrap(), expected);
-    assert!(fs_tree::export_file_with_fault_report(image, id, &target).is_err());
+    assert!(fs_tree::export_file_with_fault_report(image, id, &target, &cancel).is_err());
     assert_eq!(std::fs::read(target).unwrap(), expected);
 }
 

@@ -94,9 +94,10 @@ fn reiserfs_native_versions_bare_mbr_range_stream_export_and_names() {
         .unwrap();
         assert_eq!(streamed, expected);
         let output = directory.path().join("export.bin");
-        fs_tree::export_file_with_fault_report(&image, &big.id, &output).unwrap();
+        let cancel = tokio_util::sync::CancellationToken::new();
+        fs_tree::export_file_with_fault_report(&image, &big.id, &output, &cancel).unwrap();
         assert_eq!(std::fs::read(&output).unwrap(), expected);
-        assert!(fs_tree::export_file_with_fault_report(&image, &big.id, &output).is_err());
+        assert!(fs_tree::export_file_with_fault_report(&image, &big.id, &output, &cancel).is_err());
         let named = root
             .iter()
             .find(|node| node.name == "中文\\evidence")

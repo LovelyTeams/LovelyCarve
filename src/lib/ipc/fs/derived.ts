@@ -17,8 +17,9 @@ export interface FsDigest extends ReadFaultReport {
   truncated: boolean;
 }
 
-/** 按需计算一个文件的内容哈希；`algos` 选要算的算法（结果只回填这些字段）。 */
-export function fsDigest(args: { imageId: ImageId; nodeId: NodeId; algos: HashAlgo[] }): Promise<FsDigest> {
+/** 按需计算一个文件的内容哈希；`algos` 选要算的算法（结果只回填这些字段）。
+ *  作为任务 `taskId` 运行，可用 `task_cancel` 取消。 */
+export function fsDigest(args: { imageId: ImageId; nodeId: NodeId; algos: HashAlgo[]; taskId: string }): Promise<FsDigest> {
   return invokeCmd<FsDigest>('fs_digest', args);
 }
 
@@ -40,8 +41,9 @@ export interface FsTypeIdent {
 }
 
 /** 按文件内容识别类型（Google Magika 本地推理），与扩展名无关——适合
- *  发现改后缀伪装的文件。只采样文件头尾各 4 KiB，大文件也很快。 */
-export function fsIdentifyType(args: { imageId: ImageId; nodeId: NodeId }): Promise<FsTypeIdent> {
+ *  发现改后缀伪装的文件。只采样文件头尾各 4 KiB，大文件也很快。
+ *  作为任务 `taskId` 运行，可用 `task_cancel` 取消。 */
+export function fsIdentifyType(args: { imageId: ImageId; nodeId: NodeId; taskId: string }): Promise<FsTypeIdent> {
   return invokeCmd<FsTypeIdent>('fs_identify_type', args);
 }
 

@@ -53,7 +53,7 @@ export function useFileDerivedActions(options: {
         continue;
       }
       try {
-        const d = await fsDigest({ imageId, nodeId: f.id, algos: missing });
+        const d = await fsDigest({ imageId, nodeId: f.id, algos: missing, taskId: crypto.randomUUID() });
         if (gen !== options.data.generation()) {
           cancelled = true;
           break;
@@ -129,7 +129,7 @@ export function useFileDerivedActions(options: {
         continue;
       }
       try {
-        const t = await fsIdentifyType({ imageId, nodeId: f.id });
+        const t = await fsIdentifyType({ imageId, nodeId: f.id, taskId: crypto.randomUUID() });
         if (gen !== options.data.generation()) {
           cancelled = true;
           break;

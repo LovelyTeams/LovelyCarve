@@ -43,7 +43,8 @@ export interface FsExportDirProgress {
 
 export type ExportDirMode = 'tree' | 'zip';
 
-export function fsExport(args: { imageId: ImageId; nodeId: NodeId; destination: string }): Promise<FsExportResult> {
+/** 导出一个文件，作为任务 `taskId` 运行：可用 `task_cancel` 取消，取消后不写出目标文件。 */
+export function fsExport(args: { imageId: ImageId; nodeId: NodeId; destination: string; taskId: string }): Promise<FsExportResult> {
   return invokeCmd<FsExportResult>('fs_export', args);
 }
 

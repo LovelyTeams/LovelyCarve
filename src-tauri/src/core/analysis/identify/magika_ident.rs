@@ -10,7 +10,9 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
 
+use crate::core::common::error::Failure;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree;
 use crate::core::platform::components::inference::{self, SAMPLE_WINDOW};
@@ -34,14 +36,17 @@ pub struct TypeIdentReport {
     pub file_len: u64,
 }
 
-/// 识别镜像内单个文件的内容类型。读盘在调用方的 `spawn_blocking` 里进行。
+/// 识别镜像内单个文件的内容类型。读盘在调用方的 `spawn_blocking` 里进行；
+/// `cancel` 在每个数据块之间检查，取消后不再读下去。
 pub fn identify_file(
     image: &Arc<EvidenceSession>,
     node_id: &str,
+    cancel: &CancellationToken,
 ) -> anyhow::Result<TypeIdentReport> {
     let mut head: Vec<u8> = Vec::with_capacity(SAMPLE_WINDOW);
     let mut tail: Vec<u8> = Vec::with_capacity(2 * SAMPLE_WINDOW);
     let len = fs_tree::stream_file_chunks(image, node_id, 1024 * 1024, |chunk| {
+        anyhow::ensure!(!cancel.is_cancelled(), Failure::cancelled("类型识别已取消"));
         if head.len() < SAMPLE_WINDOW {
             let take = (SAMPLE_WINDOW - head.len()).min(chunk.len());
             head.extend_from_slice(&chunk[..take]);
@@ -66,4 +71,23 @@ pub fn identify_file(
         inferred: content_type.inferred,
         file_len: len,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::common::error::{code_of, ErrorCode};
+
+    #[test]
+    fn a_cancelled_identification_stops_before_inference() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("hello.txt"), b"plain text sample").unwrap();
+        let image = Arc::new(EvidenceSession::open(directory.path()).unwrap());
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+
+        let error = identify_file(&image, "folder:68656c6c6f2e747874", &cancel).unwrap_err();
+
+        assert_eq!(code_of(&error), Some(ErrorCode::Cancelled));
+    }
 }

@@ -1,6 +1,8 @@
 use super::*;
 use std::sync::Arc;
 
+use tokio_util::sync::CancellationToken;
+
 use crate::core::evidence::image::{DiskImage, PartitionKind};
 use crate::core::evidence::partitions::test_support::BufSource;
 use crate::core::filesystem::evidence_session::EvidenceSession;
@@ -165,7 +167,7 @@ fn raw_cd_mode1_reads_joliet_files_and_preserves_source_bytes() {
         assert_eq!(count, content.len() as u64);
         let export = temp.path().join(format!("{name}.export"));
         assert_eq!(
-            fs_tree::export_file(&image, id, &export).unwrap(),
+            fs_tree::export_file(&image, id, &export, &CancellationToken::new()).unwrap(),
             content.len() as u64
         );
         assert_eq!(std::fs::read(export).unwrap(), content);
@@ -216,7 +218,9 @@ fn raw_cd_mode1_file_extent_beyond_volume_fails_without_synthetic_content() {
     );
     assert!(count < 7001);
     let export = temp.path().join("invalid.export");
-    assert!(fs_tree::export_file(&image, &files[0].id, &export).is_err());
+    assert!(
+        fs_tree::export_file(&image, &files[0].id, &export, &CancellationToken::new()).is_err()
+    );
     assert!(!export.exists());
 }
 

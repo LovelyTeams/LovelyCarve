@@ -2,7 +2,9 @@
 backend's evidence, unlocked volumes and assembled arrays; byte results
 stream intact; cases stay apart; the transport authenticates; a backend
 that died is reported once, then cleared; and an interrupted client ends
-with 130 while the backend cancels the request it left behind."""
+with 130 while the backend cancels the request it left behind, down to the
+read of a single file."""
+import ctypes
 import json
 import os
 from pathlib import Path
@@ -14,6 +16,7 @@ import time
 from cli_support import REPOSITORY, Cli, says
 
 ENCRYPTED = REPOSITORY / "src-tauri/tests/data/encrypted"
+FSCTL_SET_SPARSE = 0x000900C4
 
 
 def descriptor(root, case):
@@ -159,12 +162,77 @@ def test_backend(cli, root):
           "isolation, authentication, close and crash recovery" + (", interrupted clients" if interrupted else ""))
 
 
+def sparse_file(path, size):
+    """A file of `size` zero bytes that takes no disk space, so that hashing or
+    exporting all of it outlasts this test in any build."""
+    import msvcrt
+    from ctypes import wintypes
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.DeviceIoControl.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD,
+                                         wintypes.LPVOID, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD),
+                                         wintypes.LPVOID]
+    kernel32.DeviceIoControl.restype = wintypes.BOOL
+    with open(path, "wb") as file:
+        returned = wintypes.DWORD()
+        if not kernel32.DeviceIoControl(msvcrt.get_osfhandle(file.fileno()), FSCTL_SET_SPARSE, None, 0, None, 0,
+                                        ctypes.byref(returned), None):
+            raise ctypes.WinError(ctypes.get_last_error())
+        file.truncate(size)
+
+
+def interrupt_running(cli, scope, kind, *argv):
+    """Run a command, press Ctrl+Break once its task of `kind` runs, and check
+    that the client ends with 130. Returns the task's ID and the seconds from
+    the interrupt to the exit."""
+    process = subprocess.Popen(
+        [str(cli.executable), "--events", "-q", *map(str, scope), *map(str, argv)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, encoding="utf-8",
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP, cwd=cli.cwd, env=cli.environment)
+    try:
+        started, task = False, None
+        # Heartbeats keep the events coming while the command runs.
+        deadline = time.monotonic() + 120
+        for line in process.stderr:
+            record = json.loads(line)
+            payload = record.get("payload") or {}
+            started |= record["event"] == "cli-command" and payload.get("phase") == "started"
+            snapshot = payload.get("task") or {}
+            # A backend relays the lifecycle of its tasks: the work runs there now.
+            if started and record["event"] == "task-lifecycle" and payload.get("phase") == "running" \
+                    and snapshot.get("kind") == kind:
+                task = snapshot["id"]
+                break
+            assert time.monotonic() < deadline, f"no {kind} task ran for {argv}"
+        else:
+            raise AssertionError(f"no {kind} task ran for {argv}: exit {process.wait(timeout=30)}")
+        process.send_signal(signal.CTRL_BREAK_EVENT)
+        interrupted = time.monotonic()
+        # Keep reading: the events of the cancellation would fill the pipe and
+        # stall a client that has not exited yet.
+        _, rest = process.communicate(timeout=30)
+        exited = time.monotonic() - interrupted
+        assert process.returncode == 130, (process.returncode, rest)
+        records = [json.loads(line) for line in rest.splitlines() if line.startswith("{")]
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.communicate(timeout=30)
+    # The client reported the cancellation itself instead of being cut off.
+    phases = [record["payload"]["phase"] for record in records if record["event"] == "cli-command"]
+    assert phases[-1:] == ["cancelled"], records
+    return task, exited
+
+
 def test_interrupted_client(cli, root):
     """On Windows, Ctrl+Break ends a forwarded command with 130 instead of the
     console's default termination, and the backend cancels the request instead
     of finishing it for nobody, so the next client is served at once."""
     if os.name != "nt":
         return False
+    large = root / "large"
+    large.mkdir()
+    sparse_file(large / "hash.bin", 64 << 30)
+    sparse_file(large / "export.bin", 16 << 30)
     case = root / "interrupted case"
     cli.run("case", "new", case, "--name", "Interrupted client")
     scope = ("-C", case)
@@ -176,41 +244,31 @@ def test_interrupted_client(cli, root):
         # The largest PIM keeps the key derivation busy far longer than this
         # test in any build, and an unlock runs alone: abandoned, it would hold
         # the backend for every other client.
-        process = subprocess.Popen(
-            [str(cli.executable), "--events", "-q", *map(str, scope), "unlock", "/vc", "--scheme", "veracrypt",
-             "--password", "@" + str(wrong), "--pim", "2147468", "--prf", "sha512", "--header", "normal"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, encoding="utf-8",
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP, cwd=cli.cwd, env=cli.environment)
-        try:
-            started, task = False, None
-            for line in process.stderr:
-                record = json.loads(line)
-                payload = record.get("payload") or {}
-                started |= record["event"] == "cli-command" and payload.get("phase") == "started"
-                entry = payload.get("entry") or {}
-                # The backend relays its task center: the unlock runs there now.
-                if started and record["event"] == "task-entry" and entry.get("kind") == "encryptedVolumeUnlock" \
-                        and entry.get("status") == "running":
-                    task = entry["id"]
-                    break
-            else:
-                raise AssertionError(f"the unlock never ran in the backend: exit {process.wait(timeout=30)}")
-            process.send_signal(signal.CTRL_BREAK_EVENT)
-            assert process.wait(timeout=30) == 130
-            records = [json.loads(line) for line in process.stderr.read().splitlines() if line.startswith("{")]
-        finally:
-            if process.poll() is None:
-                process.kill()
-            process.communicate(timeout=30)
-        # The client reported the cancellation itself instead of being cut off.
-        phases = [record["payload"]["phase"] for record in records if record["event"] == "cli-command"]
-        assert phases[-1:] == ["cancelled"], records
+        task, _ = interrupt_running(cli, scope, "encryptedVolumeUnlock", "unlock", "/vc", "--scheme", "veracrypt",
+                                    "--password", "@" + str(wrong), "--pim", "2147468", "--prf", "sha512",
+                                    "--header", "normal")
         # The next client is served at once, and the unlock was cancelled rather
         # than left running for nobody.
         assert cli.json(*scope, "case", "status", timeout=60)["process"] == {"pid": backend, "mode": "Backend"}
         tasks = {item["id"]: item["status"] for item in cli.json(*scope, "tasks", "ls", timeout=60)["items"]}
         assert tasks.get(task) == "cancel", (task, tasks)
         assert [item["name"] for item in cli.json(*scope, "evidence", "ls", timeout=60)["items"]] == ["vc"]
+
+        # Reading one file is a task of its request too: a hash or a single-file
+        # export stops at its next chunk instead of reading on for nobody.
+        cli.run(*scope, "evidence", "add", large, "--as", "large", "--wait", timeout=120)
+        output = root / "interrupted export"
+        output.mkdir()
+        for kind, argv in (("fileHash", ("hash", "/large/folder:/hash.bin", "--algo", "sm3")),
+                           ("fileExport", ("export", "/large/folder:/export.bin", "-o", output / "export.bin"))):
+            interrupt_running(cli, scope, kind, *argv)
+            # `tasks wait` returns once no task runs, and the read's worker holds
+            # its task until the read stops.
+            waiting = time.monotonic()
+            cli.run(*scope, "tasks", "wait", timeout=60)
+            assert time.monotonic() - waiting < 15, f"the backend read on after {argv[0]} was interrupted"
+        # The export published nothing, and its staging file is gone.
+        assert list(output.iterdir()) == []
     finally:
         try:
             cli.run(*scope, "case", "close", timeout=60)
@@ -218,4 +276,9 @@ def test_interrupted_client(cli, root):
             # A backend that no longer answers must not outlive the test.
             subprocess.run(["taskkill", "/F", "/PID", str(backend)], capture_output=True)
             raise
+    # Without a backend, Ctrl+Break cancels the read as well instead of waiting
+    # for the runtime's 10 s shutdown.
+    _, exited = interrupt_running(cli, ("--image", large), "fileHash", "hash", "/large/folder:/hash.bin",
+                                  "--algo", "sm3")
+    assert exited < 5, f"the interrupted one-shot hash took {exited:.1f} s to exit"
     return True

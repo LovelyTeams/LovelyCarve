@@ -18,6 +18,8 @@ export type BackendTaskKind =
   | 'carveScan'
   | 'directoryExport'
   | 'dockerPrepare'
+  | 'fileExport'
+  | 'fileHash'
   | 'flatList'
   | 'imageExport'
   | 'imageHash'
@@ -31,6 +33,7 @@ export type BackendTaskKind =
   | 'sessionSnapshot'
   | 'shadowCopyOpen'
   | 'timelineBuild'
+  | 'typeIdentify'
   | 'volumeSnapshot';
 
 export type BackendTaskStatus = 'queued' | 'running' | 'cancellationRequested';

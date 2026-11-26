@@ -48,7 +48,13 @@ fn exercise(bytes: &[u8], prefix: &str, kind: PartitionKind, path: &str, expecte
     assert_eq!(actual, expected);
     assert!(session.file_stat(&id).unwrap().data_runs.is_empty());
     let exported = directory.path().join("exported.bin");
-    fs_tree::export_file_with_fault_report(&evidence, &id, &exported).unwrap();
+    fs_tree::export_file_with_fault_report(
+        &evidence,
+        &id,
+        &exported,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .unwrap();
     assert_eq!(std::fs::read(exported).unwrap(), expected);
 }
 

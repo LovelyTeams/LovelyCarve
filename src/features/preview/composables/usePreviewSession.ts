@@ -68,7 +68,7 @@ export function usePreviewSession(options: {
     const valid = () => identityGeneration === identifyingGeneration && current(requestGeneration, imageId, node.id);
     identifying.value = true;
     try {
-      const ident = await fsIdentifyType({ imageId, nodeId: node.id });
+      const ident = await fsIdentifyType({ imageId, nodeId: node.id, taskId: crypto.randomUUID() });
       if (!valid()) return;
       localIdent.value = ident;
       options.identified({ nodeId: node.id, ident });

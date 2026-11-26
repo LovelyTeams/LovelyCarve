@@ -88,7 +88,8 @@ impl TaskResourceProfile {
 
     /// Short, bounded probes start at once. Their reads are as small as
     /// interactive browsing, and queueing them behind hashes or snapshot
-    /// builds would hold back a result the UI is waiting for.
+    /// builds would hold back a result the UI is waiting for. So do the
+    /// reads of one file a caller waits on (its hash, type or export).
     const fn unbudgeted() -> Self {
         Self {
             global_background: false,
@@ -127,6 +128,9 @@ impl TaskKind {
         match self {
             // Browsing waits for a container's merged index.
             Self::AutoDetect | Self::DockerPrepare => TaskResourceProfile::unbudgeted(),
+            Self::FileExport | Self::FileHash | Self::TypeIdentify => {
+                TaskResourceProfile::unbudgeted()
+            }
             Self::BcpImport
             | Self::EncryptedVolumeUnlock
             | Self::CarveRecovery

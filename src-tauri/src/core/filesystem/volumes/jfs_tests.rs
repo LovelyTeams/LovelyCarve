@@ -65,9 +65,12 @@ fn jfs_native_bare_and_mbr_read_range_stream_export_and_large_directory() {
         .unwrap();
         assert_eq!(actual, expected);
         let output = temp.path().join("export.bin");
-        fs_tree::export_file_with_fault_report(&image, &large.id, &output).unwrap();
+        let cancel = tokio_util::sync::CancellationToken::new();
+        fs_tree::export_file_with_fault_report(&image, &large.id, &output, &cancel).unwrap();
         assert_eq!(std::fs::read(&output).unwrap(), expected);
-        assert!(fs_tree::export_file_with_fault_report(&image, &large.id, &output).is_err());
+        assert!(
+            fs_tree::export_file_with_fault_report(&image, &large.id, &output, &cancel).is_err()
+        );
         let big = root.iter().find(|node| node.name == "bigdir").unwrap();
         let entries = session.children(&big.id).unwrap();
         assert_eq!(entries.len(), 200);

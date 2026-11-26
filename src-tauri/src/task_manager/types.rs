@@ -33,6 +33,10 @@ pub enum TaskKind {
     DirectoryExport,
     /// Merging a Docker container's layers into its browsable index.
     DockerPrepare,
+    /// Exporting one file to the host.
+    FileExport,
+    /// Hashing one file.
+    FileHash,
     FlatList,
     ImageExport,
     ImageHash,
@@ -46,6 +50,8 @@ pub enum TaskKind {
     SessionSnapshot,
     ShadowCopyOpen,
     TimelineBuild,
+    /// Identifying one file's content type (Magika).
+    TypeIdentify,
     VolumeSnapshot,
 }
 
