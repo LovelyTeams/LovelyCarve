@@ -31,7 +31,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | HFS+ / HFSX | [HFS.md](HFS.md) | libfshfs 95 API；完整 fork / overflow、resource fork、attr continuation、Unicode 3.2、硬链接与逻辑范围读取 |
 | ISO 9660 / 光盘 BIN / CUE | [CDFS.md](CDFS.md) | libodraw 全 API 对照；多文件/多轨 CUE、Mode 1 / XA Form 1、来源字节保留与范围读取 |
 | UDF | [UDF.md](UDF.md) | lamfold-udf；1.02–2.60 单底层分区、metadata / VAT / sparable 映射、FE / EFE、tag / CRC、续链和范围读取 |
-| CramFS / Linux ROMFS | [ROM_IMAGES.md](ROM_IMAGES.md) | lamfold Rust 库；CramFS v2 大小端、CRC、按页范围读取；ROMFS 校验和、硬链接、目录链边界 |
+| CramFS / Linux ROMFS | [ROM_IMAGES.md](ROM_IMAGES.md) | CramFS v1/v2、512 字节引导填充、v2 CRC、扩展块指针、XIP 与按页范围读取；ROMFS 校验和、硬链接、目录链边界 |
 | JFS（Linux JFS2） | [JFS.md](JFS.md) | rusty-backup / partmgr 改造；多 IAG、dtree / xtree、分配位图、目录索引、EA / 符号链接与纳秒范围读 |
 | AIX JFS1 | [AIX_JFS.md](AIX_JFS.md) | 大端 fsv3 / fsv3p、双超级块、片段与分配组、两级间接寻址、稀疏与范围读 |
 | UnixWare BFS | [UNIXWARE_BFS.md](UNIXWARE_BFS.md) | `/stand` 启动卷、经典 VTOC 切片、平面目录、硬链接与连续范围读 |

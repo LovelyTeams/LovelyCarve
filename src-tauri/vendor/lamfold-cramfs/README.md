@@ -18,7 +18,8 @@ heavy. Spec: `the lamfold design spec` §4.
 | **Directory records** (`inode + name` run over the inode size) | ✅ done + tested |
 | **Per-page zlib block index** (u32 end-offsets → substrate `Codec::Zlib`, hole zero-fill) | ✅ done + tested |
 | **Symlinks** via `read_link` (zlib-stored target) | ✅ done + tested |
-| big-endian images, `EXT_BLOCK_POINTERS` extension | rejected `Unsupported` (not mis-read) |
+| Big-endian images, boot padding, `EXT_BLOCK_POINTERS` | supported, including raw XIP pages and direct compressed pages |
+| FSID v1 / v2 | v1 uses source bounds, v2 validates the declared length and CRC |
 
 **Complete.** Verified against a **real** `mkcramfs` (cramfs-tools) image,
 cross-checked with `cramfsck`: probe, tree walk, a 300 KB file across 74

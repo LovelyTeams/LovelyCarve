@@ -1455,6 +1455,22 @@ def test_formats(cli, root):
         assert rows["read"]["data"] == rom_content[8180:8280].hex()
         assert sha256(rows["hash"]) == hashlib.sha256(rom_content).hexdigest()
 
+    for layout in ("extended-le", "extended-be", "v1"):
+        source = rom_fixtures / f"native-{layout}.cramfs"
+        path = "/ev/part:0/program"
+        output = root / f"cramfs-{layout}.bin"
+        rows = cli.results([
+            add(source),
+            cat("range", path, 12280, 44),
+            digest("hash", path),
+            export("export", path, output),
+        ])
+        assert opened(rows)["partitions"][0]["kind"] == "cramfs"
+        exported = output.read_bytes()
+        expected = "4777fda08bd4c1b7ec65be151cfb1ba562bcdde8e696303a91d59342b88e28dc"
+        assert sha256(rows["hash"]) == hashlib.sha256(exported).hexdigest() == expected
+        assert rows["range"] == hex_of(exported[12280:12324])
+
     # Native firmware envelopes retain the established CramFS content paths.
     for wrapper in ("synthetic-uimage.bin", "synthetic-safeloader.bin", "synthetic.chk"):
         rows = cli.results([

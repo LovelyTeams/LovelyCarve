@@ -411,7 +411,7 @@ impl VolumeProbe for RomImagesProbe {
                 kind,
                 100,
                 0,
-                "CramFS or Linux ROMFS signature at volume offset 0",
+                "CramFS or Linux ROMFS signature",
             )
         }))
     }
