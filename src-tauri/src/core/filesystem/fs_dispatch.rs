@@ -64,7 +64,8 @@ use crate::core::filesystem::volumes::rom_images::{
     parse_reiserfs_id, parse_romfs_id, parse_udf_id,
 };
 use crate::core::filesystem::volumes::rom_images::{
-    open_unixware_bfs_source, open_xdvdfs_source, parse_unixware_bfs_id, parse_xdvdfs_id,
+    open_fatx_source, open_unixware_bfs_source, open_xdvdfs_source, parse_fatx_id,
+    parse_unixware_bfs_id, parse_xdvdfs_id,
 };
 use crate::core::filesystem::volumes::squashfs::{open_squashfs_source, parse_squashfs_id};
 use crate::core::filesystem::volumes::ubi::{open_ubi_source, parse_ubi_id};
@@ -184,6 +185,7 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &AixJfsAdapter,
     &UnixwareBfsAdapter,
     &XdvdfsAdapter,
+    &FatxAdapter,
     &MinixAdapter,
     &UbifsAdapter,
     &Jffs2Adapter,
@@ -257,6 +259,9 @@ pub(crate) fn volume_root_key(id: &str) -> Option<String> {
     }
     if let Some((partition, _)) = parse_nilfs2_id(id) {
         return Some(format!("nilfs2:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_fatx_id(id) {
+        return Some(format!("fatx:part:{partition}"));
     }
     if let Some((partition, _)) = parse_xdvdfs_id(id) {
         return Some(format!("xdvdfs:part:{partition}"));
@@ -667,6 +672,15 @@ path_volume!(
     open_xdvdfs_source
 );
 path_volume_impl!(XdvdfsVol, plain_range);
+path_volume!(
+    FatxAdapter,
+    FatxVol,
+    "fatx",
+    crate::core::filesystem::volumes::rom_images::FatxVolume,
+    parse_fatx_id,
+    open_fatx_source
+);
+path_volume_impl!(FatxVol, plain_range);
 path_volume!(
     MinixAdapter,
     MinixVol,

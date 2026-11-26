@@ -124,6 +124,7 @@ ext4-view = { path = "vendor/ext4-view", default-features = false, features = ["
 f2fs-reader = { path = "vendor/f2fs-reader" }
 fast-md5 = "=1.0.0"
 fatfs = { path = "vendor/fatfs", default-features = false, features = ["std", "alloc", "lfn", "unicode"] }
+fatx-reader = { path = "vendor/fatx-reader" }
 filevault = { package = "filevault-core", path = "vendor/filevault/core" }
 filevault-forensic = { path = "vendor/filevault/forensic" }
 flate2 = "1.1.10"

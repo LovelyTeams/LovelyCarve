@@ -92,6 +92,7 @@ pub(super) async fn case_insensitive(
         || parent.starts_with("exfat:")
         || parent.starts_with("hpfs:part:")
         || parent.starts_with("xdvdfs:part:")
+        || parent.starts_with("fatx:part:")
     {
         return Ok(true);
     }
@@ -133,6 +134,7 @@ pub(super) async fn case_insensitive(
                     | PartitionKind::HfsPlus
                     | PartitionKind::Hpfs
                     | PartitionKind::Xdvdfs
+                    | PartitionKind::Fatx
             )
         }))
 }

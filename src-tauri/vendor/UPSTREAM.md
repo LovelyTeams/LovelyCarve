@@ -233,3 +233,9 @@ util-linux 与 UnixWare 文档。空卷由 util-linux 格式化，含文件的�
 `xdvdfs-reader` 0.1.0（AGPL-3.0-only）调用 crates.io 的 MIT 读取库 `xdvdfs` 0.8.3，增加
 有界二叉目录遍历和文件范围读取。样本由 XboxDev 的独立工具生成，来源见
 [ORIGIN.md](xdvdfs-reader/ORIGIN.md)。
+
+## Xbox FATX / XTAF
+
+`fatx-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。磁盘结构对照 XboxDev、
+Velocity 和 Xbox 格式研究。样本由 libfatx 与 fatx-rs 独立生成并验证，具体版本与哈希见
+[ORIGIN.md](fatx-reader/ORIGIN.md)。

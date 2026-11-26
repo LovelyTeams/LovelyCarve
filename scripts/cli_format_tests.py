@@ -383,6 +383,83 @@ def test_xdvdfs(cli, root):
     print("XDVDFS CLI tests passed: native XISO, XGD1/2/3 bases, concurrent ISO 9660 view, ranges, hash and export")
 
 
+def test_fatx(cli, root):
+    fixtures = VENDOR / "fatx-reader/tests/fixtures"
+    payload = bytes((n * 17 + n // 117) % 256 for n in range(13013))
+    sources = []
+    for name in ("xbox-fat16", "xbox-fat32", "xtaf-fat16-compact", "xtaf-fat32-compact"):
+        encoded = (fixtures / f"{name}.zlib").read_bytes()
+        length = struct.unpack_from("<I", encoded)[0]
+        prefix = zlib.decompress(encoded[4:])
+        path = root / f"{name}.img"
+        with path.open("xb") as image:
+            image.write(prefix)
+            image.truncate(length)
+        sources.append((path, 0, 0, length, None))
+        if name == "xbox-fat16":
+            # Two inactive and invalid table records precede the valid slot.
+            offset = 0x100000
+            disk = root / "xbox-lba48.img"
+            table = bytearray(512)
+            table[:16] = b"****PARTINFO****"
+            struct.pack_into("<16sIII", table, 48, b"INACTIVE", 0, offset // 512, length // 512)
+            struct.pack_into("<16sIII", table, 80, b"OUTSIDE", 0x80000000, 0xFFFFFF00, 0x800)
+            struct.pack_into("<16sIII", table, 112, b"XBOX DATA", 0x80000000, offset // 512, length // 512)
+            with disk.open("xb") as image:
+                image.write(table)
+                image.seek(offset)
+                image.write(prefix)
+                image.truncate(offset + length)
+            sources.append((disk, 2, offset, length, "XBOX DATA"))
+        if name == "xtaf-fat16-compact":
+            offset = 0x140000
+            disk = root / "xbox360-devkit.img"
+            table = bytearray(512)
+            struct.pack_into(">I", table, 0, 0x00020000)
+            struct.pack_into(">II", table, 16, offset // 512, length // 512)
+            with disk.open("xb") as image:
+                image.write(table)
+                image.seek(offset)
+                image.write(prefix)
+                image.truncate(offset + length)
+            sources.append((disk, 1, offset, length, "Xbox 360 Devkit Dashboard"))
+            offset = 0x7FF000
+            disk = root / "xbox360-memory.img"
+            with disk.open("xb") as image:
+                image.seek(offset)
+                image.write(prefix)
+                image.truncate(offset + length)
+            sources.append((disk, 0, offset, length, "Xbox 360 Memory Unit"))
+
+    for source, partition, base, length, label in sources:
+        address = f"/ev/part:{partition}"
+        exported = root / f"{source.stem}-export.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", address),
+            ls("dir", f"{address}/cache"),
+            cat("range", f"{address}/CACHE/data.bin", 2043, 4097),
+            cat("empty", at(path_id(f"fatx:part:{partition}:", "/Empty"))),
+            request("stat", "stat", f"{address}/Cache/Data.bin"),
+            digest("hash", f"{address}/Cache/Data.bin"),
+            export("export", f"{address}/Cache/Data.bin", exported),
+        ])
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["id"] == partition and part["kind"] == "fatx"
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == length
+        if label is not None:
+            assert part["label"] == label and info["tableScheme"] == "xbox"
+        assert names(rows["root"]) == {"Cache", "Empty"} and names(rows["dir"]) == {"Data.bin"}
+        assert rows["range"] == hex_of(payload[2043:6140]) and rows["empty"] == hex_of(b"")
+        assert rows["stat"]["size"] == len(payload)
+        assert datetime.fromisoformat(rows["stat"]["timestamps"]["created"]).tzinfo is None
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert exported.read_bytes() == payload
+    print("FATX CLI tests passed: both FAT widths and byte orders, LBA48, Devkit and memory unit, ranges, hash and export")
+
+
 def test_formats(cli, root):
     firmware_node = path_id("squashfs:part:0:", "/hello")
     firmware_content = b"Independent DD-WRT fixture.\n" * 64

@@ -239,6 +239,10 @@ pub(super) fn children_for_image_with_options(
                 )?
                 .root_children()
             }
+            PartitionKind::Fatx => {
+                crate::core::filesystem::volumes::rom_images::open_fatx_source(image, partition.id)?
+                    .root_children()
+            }
             PartitionKind::Xdvdfs => {
                 crate::core::filesystem::volumes::rom_images::open_xdvdfs_source(
                     image,

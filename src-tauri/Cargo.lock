@@ -1902,6 +1902,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fatx-reader"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "lamfold",
+]
+
+[[package]]
 name = "fdeflate"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3485,6 +3493,7 @@ dependencies = [
  "f2fs-reader",
  "fast-md5",
  "fatfs",
+ "fatx-reader",
  "filevault-core",
  "filevault-forensic",
  "flate2",

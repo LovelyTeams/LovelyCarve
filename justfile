@@ -177,6 +177,7 @@ fmt:
     cd src-tauri/vendor/aix-jfs-reader && cargo fmt
     cd src-tauri/vendor/unixware-bfs-reader && cargo fmt
     cd src-tauri/vendor/xdvdfs-reader && cargo fmt
+    cd src-tauri/vendor/fatx-reader && cargo fmt
     cd src-tauri/vendor/rust-fs-bcachefs && cargo fmt
     cd src-tauri/vendor/rust-fs-core && cargo fmt
     cd src-tauri/vendor/amiga-ffs && cargo fmt
@@ -509,6 +510,9 @@ clippy-unixware-bfs:
 
 clippy-xdvdfs:
     cargo clippy --manifest-path src-tauri/vendor/xdvdfs-reader/Cargo.toml --all-targets -- -D warnings
+
+clippy-fatx:
+    cargo clippy --manifest-path src-tauri/vendor/fatx-reader/Cargo.toml --all-targets -- -D warnings
 
 # Validate the Minix V1/V2/V3 reader, including util-linux reference images.
 [group("readers")]

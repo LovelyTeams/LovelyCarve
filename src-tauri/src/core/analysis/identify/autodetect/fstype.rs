@@ -127,6 +127,7 @@ pub fn partition_ftype(kind: PartitionKind) -> Option<u64> {
         | PartitionKind::AixJfs
         | PartitionKind::UnixwareBfs
         | PartitionKind::Xdvdfs
+        | PartitionKind::Fatx
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

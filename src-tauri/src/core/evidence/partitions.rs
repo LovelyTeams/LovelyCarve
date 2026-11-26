@@ -28,6 +28,7 @@ pub mod btrfs;
 pub mod classic_hfs;
 pub mod ext4;
 pub mod fat;
+mod fatx;
 pub mod flashfs;
 pub mod gfs2;
 pub mod gpt;
@@ -129,6 +130,7 @@ pub enum TableScheme {
     Apm,
     Rdb,
     Bsd,
+    Xbox,
     Luks,
     Mdadm,
     Lvm2,
@@ -173,6 +175,7 @@ pub enum PartitionKind {
     AixJfs,
     UnixwareBfs,
     Xdvdfs,
+    Fatx,
     Ubifs,
     Lvm,
     Bitlocker,
@@ -300,6 +303,7 @@ static PARSERS: &[&dyn PartParser] = &[
     &MbrParser,
     &Lvm2Parser,
     &xdvdfs::XboxDiscParser,
+    &fatx::XboxDiskParser,
     &WholeVolumeParser,
 ];
 
@@ -405,6 +409,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::AixJfs
         | PartitionKind::UnixwareBfs
         | PartitionKind::Xdvdfs
+        | PartitionKind::Fatx
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

@@ -230,6 +230,12 @@ impl<'a> FsSession<'a> {
                         )?
                         .root_children(),
                     ),
+                    PartitionKind::Fatx => Some(
+                        crate::core::filesystem::volumes::rom_images::open_fatx_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::Xdvdfs => Some(
                         crate::core::filesystem::volumes::rom_images::open_xdvdfs_source(
                             self.image, pid,
