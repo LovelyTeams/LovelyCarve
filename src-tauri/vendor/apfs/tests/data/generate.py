@@ -111,7 +111,7 @@ def attr(name, data, stream=False):
     return suffix, value
 
 
-def catalog(hashed, label='plain.bin', xid=10, first_data_block=12):
+def catalog(hashed, label='plain.bin', xid=10, first_data_block=12, second_data_block=13):
     names = [(label, 20, 8), ('clone.bin', 21, 8), ('compressed.txt', 22, 8), ('link', 23, 10), ('hole.bin', 24, 8)]
     records = [(key(2, 3), inode(2, 0, 0o040755))]
     for name, oid, kind in names:
@@ -126,7 +126,7 @@ def catalog(hashed, label='plain.bin', xid=10, first_data_block=12):
             (23, 'com.apple.fs.symlink', b'../plain.bin\0', False)]:
         suffix, value = attr(name, data, stream)
         records.append((key(oid, 4, suffix), value))
-    for oid, logical, size, physical in [(70, 0, BLOCK, first_data_block), (70, BLOCK, BLOCK, 13), (74, 0, 8192, 0), (80, 0, BLOCK, 14)]:
+    for oid, logical, size, physical in [(70, 0, BLOCK, first_data_block), (70, BLOCK, BLOCK, second_data_block), (74, 0, 8192, 0), (80, 0, BLOCK, 14)]:
         records.append((key(oid, 8, struct.pack('<Q', logical)), struct.pack('<QQQ', size, physical, 0)))
     records.sort(key=lambda pair: (struct.unpack('<Q', pair[0][:8])[0] & 0x0fffffffffffffff, pair[0][7] >> 4, pair[0][8:]))
     return tree(200, records, xid=xid)
@@ -155,7 +155,55 @@ def generate(hashed):
     return b''.join(blocks)
 
 
+def generate_fusion():
+    data = generate(True)
+    main_count, tier2_count = 24, 8
+    main = [bytearray(data[i*BLOCK:(i+1)*BLOCK]) for i in range(COUNT)]
+    main += [bytearray(BLOCK) for _ in range(main_count - COUNT)]
+    tier2 = [bytearray(BLOCK) for _ in range(tier2_count)]
+    tag = (1 << 62) // BLOCK
+    main[0] = nx(10)
+    put(main[0], 40, 'Q', main_count + tier2_count)
+    put(main[0], 64, 'Q', 0x102)
+    put(main[0], 104, 'IIQQIIIIIIQQ', 2, 2, 18, 20, 0, 0, 0, 2, 0, 2, 1024, tag + 1)
+    main[0][0x500:0x510] = bytes(range(32, 47)) + b'\x30'
+    put(main[0], 0x548, 'QQQQ', 22, 1025, 13, 1)
+    checksum(main[0])
+    main[19] = main[0].copy()
+    tier2[0] = main[0].copy()
+    tier2[0][0x50f] |= 1
+    checksum(tier2[0])
+
+    main[18] = object_block(18, 0x4000000c)
+    put(main[18], 32, 'II', 1, 2)
+    put(main[18], 40, 'IIIIQQQ', 0x80000005, 0, BLOCK, 0, 0, 1024, 20)
+    put(main[18], 80, 'IIIIQQQ', 0x80000016, 0, BLOCK, 0, 0, 1025, 21)
+    checksum(main[18])
+    main[20] = object_block(1024, 0x80000005)
+    put(main[20], 32, 'I', BLOCK)
+    put(main[20], 48, 'Q', main_count)
+    put(main[20], 96, 'Q', tier2_count)
+    checksum(main[20])
+    main[21] = checksum(object_block(1025, 0x80000016))
+    main[22] = tree(22, [(struct.pack('<Q', tag+4), struct.pack('<QII', 13, 1, 1))], fixed=True)
+    put(main[22], 28, 'I', 0x15)
+    put(main[22], BLOCK-40, 'IIII', 0x10, BLOCK, 8, 16)
+    checksum(main[22])
+
+    # Put the container OMAP and the first file extent on tier 2. The second
+    # extent has stale bytes on tier 2 and a committed dirty copy on the main tier.
+    tier2[1] = omap(tag+1, 3)
+    tier2[3] = main[12]
+    tier2[4] = bytearray(b'!' * BLOCK)
+    main[10] = catalog(True, first_data_block=tag+3, second_data_block=tag+4)
+    main[12] = bytearray(BLOCK)
+    return b''.join(main), b''.join(tier2)
+
+
 if __name__ == '__main__':
     directory = Path(__file__).resolve().parent
     for hashed, name in [(True, 'basic.apfs'), (False, 'case-sensitive.apfs')]:
         (directory / name).write_bytes(generate(hashed))
+    main, tier2 = generate_fusion()
+    (directory / 'fusion-main.apfs').write_bytes(main)
+    (directory / 'fusion-tier2.apfs').write_bytes(tier2)

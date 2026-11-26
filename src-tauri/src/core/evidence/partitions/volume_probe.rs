@@ -480,7 +480,13 @@ pub(super) fn apfs_superblock(
         || superblock.header.object_type() != apfs::object::OBJECT_TYPE_NX_SUPERBLOCK
         || !apfs::fletcher::verify_object(&block)
         || superblock.block_count == 0
-        || superblock.block_count > ctx.size / u64::from(size)
+        || if superblock.incompatible_features & apfs::superblock::NX_INCOMPAT_FUSION != 0 {
+            superblock.fusion_member().is_none()
+                || superblock.block_count < 2
+                || superblock.block_count >= apfs::fusion::TIER2_OFFSET / u64::from(size)
+        } else {
+            superblock.block_count > ctx.size / u64::from(size)
+        }
     {
         return Ok(None);
     }

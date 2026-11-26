@@ -9,7 +9,7 @@ LovelyCarve 继续使用 MIT 的 vendored `apfs` 0.4.1 与共享 `cmpfs`，不�
 | 项目 | libfsapfs 基准 | LovelyCarve 当前行为 |
 | --- | --- | --- |
 | APFS v2，只读 | 支持 | 支持；原始证据只读 |
-| APFS v1、Fusion、T2 | README 不支持 | v1 / Fusion 明确拒绝；T2 / 硬件密钥不支持 |
+| APFS v1、Fusion、T2 | README 不支持 | 支持完整双设备 Fusion 的只读浏览。v1、T2 和硬件密钥仍待支持 |
 | 容器身份、尺寸、features | 公开 API | `container_info`；UUID、XID、block size/count、三类 feature masks、原始非零卷槽位 |
 | 多卷 | 按卷枚举/选择 | `list_volumes` / `open_index`；保留空槽、卷 UUID、group UUID、role、XID、flags、allocated size |
 | 卷尺寸 | `volume_get_size` 实现仍为 TODO，返回失败 | 单独暴露 allocated size，不能误称每卷独立逻辑容量；APFS 各卷共享容器 |
@@ -31,11 +31,21 @@ LovelyCarve 继续使用 MIT 的 vendored `apfs` 0.4.1 与共享 `cmpfs`，不�
 | decmpfs 13/14、dataless | README 不支持 LZBitmap | 明确拒绝；dataless 不作为空文件导出 |
 | 原生快照 | README 标为不支持；源码可枚举元数据、打开 snapshot APSB，公开 snapshot API 只有名称/释放，未提供历史文件浏览 | `list_snapshots` 保留名称、XID、superblock block、create/change、flags 与 extent-reference 信息；桌面与 CLI 可按 XID 浏览、读取和导出历史 catalog。历史 APSB 身份、校验和与 OMAP 事务均独立校验 |
 | sealed / encryption rolling / incomplete restore | 未承诺完整支持 | 明确拒绝相应 incompatible bits；不以普通 catalog 解释 fext/sealed 树 |
-| 容器识别 | signature / fsapfsinfo | 独立 APFS 分区镜像、GPT/APM/MBR 细化和[签名恢复](README.md#缺失分区表)进入原生读者；NXSB 整块校验和与源几何验证；签名恢复另行核对候选起点的相对物理对象映射；系统与平台识别逐卷探测 |
+| 容器识别 | signature / fsapfsinfo | 独立 APFS 分区镜像、Fusion 成员、GPT/APM/MBR 细化和[签名恢复](README.md#缺失分区表)进入原生读者。Fusion 组装验证两个成员，单设备签名恢复另行核对候选起点的相对物理对象映射 |
 | 取证工具/挂载 | fsapfsinfo / fsapfsmount、Python/C API | 复用 LovelyCarve 浏览、目录索引、哈希、导出与 CLI；Dokan 缓存未命中可使用直接范围读；此次未做真实 Dokan 挂载验证 |
 | 取消、资源与生命周期 | abort、C error/free | Rust `Result` / Drop；宿主任务取消和快照 PartialOutput；库目录 visitor 可停止；压缩文件仍整文件解码到内存，取消不保证能打断单次解码 |
 
 ## 本次修正与新增
+
+### Fusion 双设备
+
+将两张成员镜像登记到同一案件，运行 `raid detect`，再从组装结果进入任一成员分区。同一镜像内的两个成员分区可直接浏览。
+
+- 校验两个成员的 NXSB、Fusion UUID、角色、容器 UUID 和事务。检查点中的 spaceman 给出各成员的分配边界，截断的成员会报错。
+- 按地址标记选择设备，规划普通目录、文件、快照和数据流属性的读取。Fusion middle tree 标记为 dirty 的记录从主设备读取，普通记录从第二层读取。文件的物理 runs 记录组装检材内实际提供字节的成员范围。
+- 缺盘、重复成员、身份不符，以及需要重放的活动写回队列会明确报错。原生加密卷继续报告需要解锁。
+
+以 [apfsprogs `b9c4cb4`](https://github.com/linux-apfs/apfsprogs/tree/b9c4cb404f88ffab6c4f260bbab29a8fb4784907) 的 `mkapfs -F` 生成 128 MiB / 192 MiB 双盘，并以 `apfsck -F` 检查。用该样本验证成员配对、容器识别和卷目录。独立合成夹具覆盖第二层物理 OMAP、跨设备正文、主设备上的 dirty 副本、范围读取、导出及真实物理偏移。[夹具与复现命令](../../src-tauri/vendor/apfs/tests/data/README.md)
 
 - 原实现 OMAP 的直接查找按 OID 返回第一项，未遵守事务上限；现在随机查找与批量 cache 使用相同提交视图，删除记录不复活旧对象。
 - 原实现先校验固定 4096 字节，导致更大 APFS block 无法打开；改为先读取受限几何，再校验完整块。分区游标与容器游标分别限制来源，后面的分区/容器外数据不能用于补足 extent。

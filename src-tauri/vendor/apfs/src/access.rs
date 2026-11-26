@@ -1,7 +1,5 @@
 //! Metadata and seekable access share the same inode and extent interpretation.
-use crate::{
-    ApfsError, ApfsVolume, EntryKind, FileStat, ReadSeek, Result, catalog, extents, superblock,
-};
+use crate::{ApfsError, ApfsVolume, EntryKind, FileStat, ReadSeek, Result, catalog, extents};
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
 /// Identity and geometry of the selected committed container checkpoint.
@@ -46,9 +44,12 @@ impl FileStat {
 
 impl<R: Read + Seek> ApfsVolume<R> {
     /// Inspect a container without opening any filesystem, including locked volumes.
-    pub fn container_info(mut reader: R) -> Result<ContainerInfo> {
-        let initial = superblock::read_nxsb(&mut reader)?;
-        let block = superblock::find_latest_nxsb(&mut reader, &initial)?;
+    pub fn container_info(reader: R) -> Result<ContainerInfo> {
+        Self::container_source_info(reader, None)
+    }
+
+    pub fn container_source_info(main: R, tier2: Option<R>) -> Result<ContainerInfo> {
+        let (_, block) = crate::read_container_checkpoint(main, tier2)?;
         let size = block
             .block_count
             .checked_mul(u64::from(block.block_size))
@@ -165,7 +166,7 @@ impl<R: Read + Seek> ApfsVolume<R> {
             self.block_size,
             inode.private_id,
         )?;
-        Ok(Box::new(extents::ApfsForkReader::new(
+        Ok(Box::new(extents::ApfsForkReader::from_container(
             &mut self.reader,
             self.block_size,
             records,
@@ -202,13 +203,21 @@ impl<R: Read + Seek> ApfsVolume<R> {
             inode.private_id,
         )?;
         // Validate before advertising these ranges as authentic source locations.
-        extents::ApfsForkReader::new(
+        extents::ApfsForkReader::from_container(
             &mut self.reader,
             self.block_size,
             records.clone(),
             inode.size(),
         )?;
         Ok(Some(records))
+    }
+
+    /// Translate a validated physical extent to byte spans on the member sources.
+    pub fn extent_source_spans(&self, block: u64, length: u64) -> Result<Vec<crate::SourceSpan>> {
+        let start = block
+            .checked_mul(u64::from(self.block_size))
+            .ok_or_else(|| ApfsError::CorruptedData("extent physical offset overflow".into()))?;
+        self.reader.source_spans(start, length)
     }
 
     /// Open an attribute independently of the file's transparent compression.
@@ -240,7 +249,7 @@ impl<R: Read + Seek> ApfsVolume<R> {
                     self.block_size,
                     obj_id,
                 )?;
-                Ok(Some(Box::new(extents::ApfsForkReader::new(
+                Ok(Some(Box::new(extents::ApfsForkReader::from_container(
                     &mut self.reader,
                     self.block_size,
                     records,
@@ -278,7 +287,7 @@ impl<R: Read + Seek> ApfsVolume<R> {
                     self.block_size,
                     obj_id,
                 )?;
-                extents::ApfsForkReader::new(
+                extents::ApfsForkReader::from_container(
                     &mut self.reader,
                     self.block_size,
                     records.clone(),

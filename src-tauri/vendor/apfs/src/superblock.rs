@@ -13,6 +13,7 @@ pub const APSB_MAGIC: u32 = 0x42535041;
 
 /// Maximum number of volume OIDs in a container
 pub const NX_MAX_FILE_SYSTEMS: usize = 100;
+pub const NX_INCOMPAT_FUSION: u64 = 0x100;
 
 /// Container superblock (NXSB) — the root structure of an APFS container.
 #[derive(Debug, Clone)]
@@ -42,6 +43,9 @@ pub struct NxSuperblock {
     pub reaper_oid: u64,
     pub max_file_systems: u32,
     pub fs_oids: Vec<u64>, // Volume superblock OIDs (virtual)
+    pub fusion_uuid: [u8; 16],
+    pub fusion_tree: u64,
+    pub fusion_wbc_oid: u64,
 }
 
 impl NxSuperblock {
@@ -91,6 +95,20 @@ impl NxSuperblock {
         for _ in 0..fs_count {
             fs_oids.push(cursor.read_u64::<LittleEndian>()?);
         }
+        let (fusion_uuid, fusion_tree, fusion_wbc_oid) =
+            if incompatible_features & NX_INCOMPAT_FUSION != 0 {
+                let uuid = block
+                    .get(0x500..0x510)
+                    .ok_or_else(|| ApfsError::CorruptedData("short Fusion superblock".into()))?;
+                cursor.set_position(0x548);
+                (
+                    uuid.try_into().unwrap(),
+                    cursor.read_u64::<LittleEndian>()?,
+                    cursor.read_u64::<LittleEndian>()?,
+                )
+            } else {
+                ([0; 16], 0, 0)
+            };
 
         Ok(NxSuperblock {
             header,
@@ -118,7 +136,24 @@ impl NxSuperblock {
             reaper_oid,
             max_file_systems,
             fs_oids,
+            fusion_uuid,
+            fusion_tree,
+            fusion_wbc_oid,
         })
+    }
+
+    pub fn fusion_member(&self) -> Option<([u8; 16], crate::FusionTier)> {
+        if self.incompatible_features & NX_INCOMPAT_FUSION == 0 {
+            return None;
+        }
+        let mut id = self.fusion_uuid;
+        let tier = if id[15] & 1 == 0 {
+            crate::FusionTier::Main
+        } else {
+            crate::FusionTier::Secondary
+        };
+        id[15] &= !1;
+        (id != [0; 16]).then_some((id, tier))
     }
 }
 
@@ -350,6 +385,8 @@ pub fn find_latest_nxsb<R: Read + Seek>(
             || candidate.block_size != nxsb.block_size
             || candidate.block_count != nxsb.block_count
             || candidate.incompatible_features != nxsb.incompatible_features
+            || candidate.fusion_uuid != nxsb.fusion_uuid
+            || candidate.max_file_systems as usize > NX_MAX_FILE_SYSTEMS
         {
             continue;
         }
@@ -370,6 +407,18 @@ pub fn find_latest_nxsb<R: Read + Seek>(
 
 /// Read and parse the container superblock from block 0.
 pub fn read_nxsb<R: Read + Seek>(reader: &mut R) -> Result<NxSuperblock> {
+    let nx = read_member_nxsb(reader)?;
+    if nx.fusion_member().is_some() {
+        return Err(ApfsError::Unsupported(
+            "APFS Fusion requires both member devices".into(),
+        ));
+    }
+    Ok(nx)
+}
+
+/// Read a single source's verified superblock, including a Fusion member.
+/// Opening a Fusion container also requires a verified matching device.
+pub fn read_member_nxsb<R: Read + Seek>(reader: &mut R) -> Result<NxSuperblock> {
     reader.seek(SeekFrom::Start(0))?;
 
     // Read geometry before verifying the full object. A checksum over the
@@ -401,10 +450,7 @@ pub fn read_nxsb<R: Read + Seek>(reader: &mut R) -> Result<NxSuperblock> {
     if superblock.incompatible_features & 1 != 0 {
         return Err(ApfsError::Unsupported("APFS version 1".into()));
     }
-    if superblock.incompatible_features & 0x100 != 0 {
-        return Err(ApfsError::Unsupported("APFS Fusion drive".into()));
-    }
-    if superblock.incompatible_features & !2 != 0 {
+    if superblock.incompatible_features & !(2 | NX_INCOMPAT_FUSION) != 0 {
         return Err(ApfsError::Unsupported(format!(
             "container incompatible features {:#x}",
             superblock.incompatible_features
@@ -415,7 +461,13 @@ pub fn read_nxsb<R: Read + Seek>(reader: &mut R) -> Result<NxSuperblock> {
         || superblock
             .block_count
             .checked_mul(u64::from(size))
-            .is_none_or(|bytes| bytes > length)
+            .is_none_or(|bytes| {
+                if superblock.incompatible_features & NX_INCOMPAT_FUSION != 0 {
+                    superblock.fusion_member().is_none() || bytes >= crate::fusion::TIER2_OFFSET
+                } else {
+                    bytes > length
+                }
+            })
         || superblock.max_file_systems as usize > NX_MAX_FILE_SYSTEMS
     {
         return Err(ApfsError::CorruptedData(

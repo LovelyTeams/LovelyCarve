@@ -10,6 +10,8 @@ pub use snapshots::SnapshotInfo;
 pub mod error;
 pub mod extents;
 pub mod fletcher;
+pub mod fusion;
+pub use fusion::{FusionTier, SourceSpan};
 pub mod object;
 pub mod omap;
 pub mod superblock;
@@ -181,39 +183,38 @@ impl<R: Read + Seek> ApfsVolume<R> {
     /// 7. Read volume OMAP at vol.omap_oid physical block
     /// 8. Resolve vol.root_tree_oid → physical block via volume OMAP → catalog B-tree root
     /// 9. Store all state
-    pub fn open(mut reader: R) -> Result<Self> {
-        let container = read_container(&mut reader)?;
+    pub fn open(reader: R) -> Result<Self> {
+        Self::open_sources(reader, None, None)
+    }
+
+    pub fn open_sources(main: R, tier2: Option<R>, volume_index: Option<usize>) -> Result<Self> {
+        let (reader, container) = read_container(main, tier2)?;
         let (volume_index, vol_oid) = container
             .nxsb
             .fs_oids
             .iter()
             .enumerate()
-            .find_map(|(index, &oid)| (oid != 0).then_some((index, oid)))
+            .find_map(|(index, &oid)| {
+                (oid != 0 && volume_index.is_none_or(|wanted| wanted == index))
+                    .then_some((index, oid))
+            })
             .ok_or(ApfsError::NoVolume)?;
         Self::open_volume(reader, container, volume_index, vol_oid)
     }
 
     /// Open a specific APFS volume by its slot index in the container
     /// `fs_oids` array.
-    pub fn open_index(mut reader: R, volume_index: usize) -> Result<Self> {
-        let container = read_container(&mut reader)?;
-        let vol_oid = container
-            .nxsb
-            .fs_oids
-            .get(volume_index)
-            .copied()
-            .filter(|&oid| oid != 0)
-            .ok_or(ApfsError::NoVolume)?;
-        Self::open_volume(reader, container, volume_index, vol_oid)
+    pub fn open_index(reader: R, volume_index: usize) -> Result<Self> {
+        Self::open_sources(reader, None, Some(volume_index))
     }
 
     /// List every APFS volume advertised by the container `fs_oids` array.
-    pub fn list_volumes(mut reader: R) -> Result<Vec<VolumeInfo>> {
-        let container = read_container(&mut reader)?;
-        let mut reader = backing::ContainerReader::new(
-            reader,
-            container.nxsb.block_count * u64::from(container.nxsb.block_size),
-        );
+    pub fn list_volumes(reader: R) -> Result<Vec<VolumeInfo>> {
+        Self::list_source_volumes(reader, None)
+    }
+
+    pub fn list_source_volumes(main: R, tier2: Option<R>) -> Result<Vec<VolumeInfo>> {
+        let (mut reader, container) = read_container(main, tier2)?;
         let mut volumes = Vec::new();
         for (volume_index, vol_oid) in container
             .nxsb
@@ -240,16 +241,12 @@ impl<R: Read + Seek> ApfsVolume<R> {
     }
 
     fn open_volume(
-        reader: R,
+        mut reader: backing::ContainerReader<R>,
         container: ContainerState,
         volume_index: usize,
         vol_oid: u64,
     ) -> Result<Self> {
         let block_size = container.nxsb.block_size;
-        let mut reader = backing::ContainerReader::new(
-            reader,
-            container.nxsb.block_count * u64::from(block_size),
-        );
         let vol_sb = read_volume_superblock(
             &mut reader,
             container.container_omap_root,
@@ -642,24 +639,58 @@ struct ContainerState {
     container_omap_root: omap::OmapTree,
 }
 
-fn read_container<R: Read + Seek>(reader: &mut R) -> Result<ContainerState> {
-    let nxsb = superblock::read_nxsb(reader)?;
-    let nxsb = superblock::find_latest_nxsb(reader, &nxsb)?;
+fn read_container<R: Read + Seek>(
+    main: R,
+    tier2: Option<R>,
+) -> Result<(backing::ContainerReader<R>, ContainerState)> {
+    let (mut reader, nxsb) = read_container_checkpoint(main, tier2)?;
     let container_omap_root = omap::OmapTree {
-        root: omap::read_omap_tree_root(
-            &mut backing::ContainerReader::new(
-                reader,
-                nxsb.block_count * u64::from(nxsb.block_size),
-            ),
-            nxsb.omap_oid,
-            nxsb.block_size,
-        )?,
+        root: omap::read_omap_tree_root(&mut reader, nxsb.omap_oid, nxsb.block_size)?,
         xid: nxsb.header.xid,
     };
-    Ok(ContainerState {
-        nxsb,
-        container_omap_root,
-    })
+    Ok((
+        reader,
+        ContainerState {
+            nxsb,
+            container_omap_root,
+        },
+    ))
+}
+
+fn read_container_checkpoint<R: Read + Seek>(
+    mut main: R,
+    tier2: Option<R>,
+) -> Result<(backing::ContainerReader<R>, superblock::NxSuperblock)> {
+    use std::io::SeekFrom;
+    let nxsb = superblock::read_member_nxsb(&mut main)?;
+    let mut reader = match (nxsb.fusion_member(), tier2) {
+        (None, None) => {
+            backing::ContainerReader::new(main, nxsb.block_count * u64::from(nxsb.block_size))
+        }
+        (Some(_), Some(mut tier2)) => {
+            let main_len = main.seek(SeekFrom::End(0))?;
+            let tier2_nxsb = superblock::read_member_nxsb(&mut tier2)?;
+            let tier2_len = tier2.seek(SeekFrom::End(0))?;
+            fusion::validate_fusion_pair(&nxsb, main_len, &tier2_nxsb, tier2_len)?;
+            fusion::check_checkpoint_region(&nxsb, main_len)?;
+            backing::ContainerReader::new_fusion(main, main_len, tier2, tier2_len)
+        }
+        (Some(_), None) => {
+            return Err(ApfsError::Unsupported(
+                "APFS Fusion requires both member devices".into(),
+            ));
+        }
+        (None, Some(_)) => {
+            return Err(ApfsError::CorruptedData(
+                "APFS main source is not a Fusion member".into(),
+            ));
+        }
+    };
+    let nxsb = superblock::find_latest_nxsb(&mut reader, &nxsb)?;
+    if nxsb.fusion_member().is_some() {
+        fusion::load_fusion_state(&mut reader, &nxsb)?;
+    }
+    Ok((reader, nxsb))
 }
 
 fn read_volume_superblock<R: Read + Seek>(

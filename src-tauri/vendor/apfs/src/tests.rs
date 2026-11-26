@@ -3,6 +3,119 @@ use std::io::{Cursor, Read, Seek, SeekFrom};
 
 const BASIC: &[u8] = include_bytes!("../tests/data/basic.apfs");
 const CASE_SENSITIVE: &[u8] = include_bytes!("../tests/data/case-sensitive.apfs");
+const FUSION_MAIN: &[u8] = include_bytes!("../tests/data/fusion-main.apfs");
+const FUSION_TIER2: &[u8] = include_bytes!("../tests/data/fusion-tier2.apfs");
+
+#[test]
+fn fusion_reads_tier2_metadata_data_and_dirty_cache_bytes() {
+    let mut volume = ApfsVolume::open_sources(
+        Cursor::new(FUSION_MAIN),
+        Some(Cursor::new(FUSION_TIER2)),
+        Some(0),
+    )
+    .unwrap();
+    let mut expected = vec![b'A'; 4096];
+    expected.extend([b'B'; 904]);
+    assert_eq!(volume.read_file("/plain.bin").unwrap(), expected);
+    let mut streamed = Vec::new();
+    volume.read_file_to("/clone.bin", &mut streamed).unwrap();
+    assert_eq!(streamed, expected);
+    assert_eq!(
+        volume.read_file_range("/plain.bin", 4095, 3).unwrap(),
+        b"ABB"
+    );
+    let tag = fusion::TIER2_OFFSET / 4096;
+    assert_eq!(
+        volume.extent_source_spans(tag + 3, 5000).unwrap(),
+        [
+            SourceSpan {
+                tier: FusionTier::Secondary,
+                offset: 3 * 4096,
+                length: 4096
+            },
+            SourceSpan {
+                tier: FusionTier::Main,
+                offset: 13 * 4096,
+                length: 904
+            },
+        ]
+    );
+    assert!(volume.extent_source_spans(tag + 7, 4097).is_err());
+    assert!(volume.extent_source_spans(23, 4097).is_err());
+}
+
+#[test]
+fn fusion_rejects_a_mixed_pair_truncated_member_or_pending_write_back() {
+    let stamp = |block: &mut [u8]| {
+        let sum = fletcher::fletcher64(&block[8..]).to_le_bytes();
+        block[..8].copy_from_slice(&sum);
+    };
+    let mut unrelated = FUSION_TIER2.to_vec();
+    unrelated[0x500] ^= 1;
+    stamp(&mut unrelated[..4096]);
+    assert!(
+        ApfsVolume::list_source_volumes(
+            Cursor::new(FUSION_MAIN),
+            Some(Cursor::new(unrelated.as_slice()))
+        )
+        .is_err()
+    );
+
+    let mut padded_main = FUSION_MAIN.to_vec();
+    padded_main.extend([0; 4096]);
+    assert!(
+        ApfsVolume::list_source_volumes(
+            Cursor::new(padded_main.as_slice()),
+            Some(Cursor::new(&FUSION_TIER2[..7 * 4096]))
+        )
+        .is_err()
+    );
+
+    let mut pending = FUSION_MAIN.to_vec();
+    let wbc = &mut pending[21 * 4096..22 * 4096];
+    wbc[72] = 1;
+    stamp(wbc);
+    let result = ApfsVolume::list_source_volumes(
+        Cursor::new(pending.as_slice()),
+        Some(Cursor::new(FUSION_TIER2)),
+    );
+    assert!(
+        matches!(result, Err(ApfsError::Unsupported(message)) if message.contains("write-back"))
+    );
+}
+
+#[test]
+#[ignore = "requires a paired mkapfs Fusion fixture"]
+fn independently_formatted_fusion_pair_opens() {
+    let folder = std::path::PathBuf::from(
+        std::env::var_os("LOVELYCARVE_APFS_FUSION_ORACLE").expect("Fusion sample directory"),
+    );
+    let devices = || {
+        (
+            std::fs::File::open(folder.join("first-tier.img")).unwrap(),
+            std::fs::File::open(folder.join("second-tier.img")).unwrap(),
+        )
+    };
+    let (main, tier2) = devices();
+    let info = ApfsVolume::container_source_info(main, Some(tier2)).unwrap();
+    assert_ne!(
+        info.incompatible_features & superblock::NX_INCOMPAT_FUSION,
+        0
+    );
+    let (main, tier2) = devices();
+    let volumes = ApfsVolume::list_source_volumes(main, Some(tier2)).unwrap();
+    assert_eq!(volumes[0].name, "LovelyCarveFusion");
+    let (main, tier2) = devices();
+    let mut volume = ApfsVolume::open_sources(main, Some(tier2), None).unwrap();
+    volume.list_directory("/").unwrap();
+    let (main, _) = devices();
+    assert!(matches!(
+        ApfsVolume::open(main),
+        Err(ApfsError::Unsupported(_))
+    ));
+    let (main, tier2) = devices();
+    assert!(ApfsVolume::open_sources(tier2, Some(main), None).is_err());
+}
 
 #[test]
 fn checkpoint_transaction_and_volume_slots_are_preserved() {

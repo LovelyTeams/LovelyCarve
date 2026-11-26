@@ -28,13 +28,31 @@ impl<'a, R: Read + Seek> ApfsForkReader<'a, R> {
     pub fn new(
         reader: &'a mut R,
         block_size: u32,
+        extents: Vec<FileExtentRecord>,
+        logical_size: u64,
+    ) -> Result<Self> {
+        let source_length = reader.seek(SeekFrom::End(0))?;
+        Self::new_checked(
+            reader,
+            block_size,
+            extents,
+            logical_size,
+            source_length,
+            None,
+        )
+    }
+
+    fn new_checked(
+        reader: &'a mut R,
+        block_size: u32,
         mut extents: Vec<FileExtentRecord>,
         logical_size: u64,
+        main: u64,
+        tier2: Option<u64>,
     ) -> Result<Self> {
         if block_size == 0 {
             return Err(ApfsError::CorruptedData("zero block size".into()));
         }
-        let source_length = reader.seek(SeekFrom::End(0))?;
         extents.sort_by_key(|record| record.logical_addr);
         let mut extent_map = Vec::new();
         let mut previous_end = 0;
@@ -63,10 +81,7 @@ impl<'a, R: Read + Seek> ApfsForkReader<'a, R> {
                     .ok_or_else(|| {
                         ApfsError::CorruptedData("extent physical offset overflow".into())
                     })?;
-                let physical_end = start.checked_add(length).ok_or_else(|| {
-                    ApfsError::CorruptedData("extent physical end overflow".into())
-                })?;
-                if physical_end > source_length {
+                if !crate::backing::contains(start, length, main, tier2) {
                     return Err(ApfsError::CorruptedData(
                         "allocated extent exceeds source".into(),
                     ));
@@ -89,6 +104,18 @@ impl<'a, R: Read + Seek> ApfsForkReader<'a, R> {
             extent_map,
             position: 0,
         })
+    }
+}
+
+impl<'a, R: Read + Seek> ApfsForkReader<'a, crate::backing::ContainerReader<R>> {
+    pub(crate) fn from_container(
+        reader: &'a mut crate::backing::ContainerReader<R>,
+        block_size: u32,
+        extents: Vec<FileExtentRecord>,
+        logical_size: u64,
+    ) -> Result<Self> {
+        let (main, tier2) = reader.range_limits();
+        Self::new_checked(reader, block_size, extents, logical_size, main, tier2)
     }
 }
 

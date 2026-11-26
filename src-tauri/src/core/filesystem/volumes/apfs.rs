@@ -15,16 +15,16 @@
 //! `apfs:part:{N}:{volume_index}:{hex(/path/to/entry)}`. The empty-hex form is
 //! the selected volume root. Historical sources append @<XID> to the slot.
 
-use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{anyhow, Result};
-use apfs::{ApfsVolume as ContainerVolume, EntryKind, VolumeInfo};
+use apfs::{ApfsVolume as ContainerVolume, EntryKind, FusionTier, VolumeInfo};
 use chrono::{TimeZone, Utc};
 
 use crate::core::common::error::Failure;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{DiskImage, Partition, PartitionKind};
+use crate::core::evidence::partitions::apfs::{open_members, PartitionCursor};
 use crate::core::filesystem::tree::fs_tree::{
     detect_mime_bytes, shannon_entropy, FsDataRun, FsNode, FsStat, Mactb, NodeKind,
 };
@@ -220,6 +220,7 @@ pub struct ApfsVolume {
     volume_index: usize,
     snapshot_xid: Option<u64>,
     base_offset: u64,
+    tier2_base: Option<u64>,
     /// Parsed selected APFS volume, built once in [`ApfsVolume::open`] and
     /// reused behind a mutex (the `apfs` crate's reads take `&mut`). See the
     /// module header for why it is held rather than rebuilt per call.
@@ -245,15 +246,11 @@ impl ApfsVolume {
         volume_index: Option<usize>,
         snapshot_xid: Option<u64>,
     ) -> Result<Self> {
-        let cursor = PartitionCursor::new(image, partition)?;
+        let (cursor, tier2) = open_members(image, partition)?;
         let base_offset = cursor.base_offset;
-        let volume = match volume_index {
-            Some(index) => ContainerVolume::open_index(cursor, index).map_err(|err| {
-                anyhow!("APFS open partition {} volume {index}: {err}", partition.id)
-            })?,
-            None => ContainerVolume::open(cursor)
-                .map_err(|err| anyhow!("APFS open partition {}: {err}", partition.id))?,
-        };
+        let tier2_base = tier2.as_ref().map(|cursor| cursor.base_offset);
+        let volume = ContainerVolume::open_sources(cursor, tier2, volume_index)
+            .map_err(|err| anyhow!("APFS open partition {}: {err}", partition.id))?;
         let volume = if let Some(xid) = snapshot_xid {
             volume.into_snapshot(xid).map_err(|error| match error {
                 apfs::ApfsError::FileNotFound(message) => anyhow!(Failure::not_found(message)),
@@ -268,6 +265,7 @@ impl ApfsVolume {
             volume_index,
             snapshot_xid,
             base_offset,
+            tier2_base,
             volume: Mutex::new(volume),
         })
     }
@@ -458,26 +456,31 @@ impl ApfsVolume {
                 Vec::new()
             };
 
-            let block_size = u64::from(vol.volume_info().block_size);
             let mut data_runs = Vec::new();
             if let Some(extents) = vol.file_extents(&owned)? {
                 for record in extents {
                     if record.value.phys_block_num == 0 || record.logical_addr >= stat.size {
                         continue;
                     }
-                    let physical_offset = record
-                        .value
-                        .phys_block_num
-                        .checked_mul(block_size)
-                        .and_then(|offset| self.base_offset.checked_add(offset))
-                        .ok_or_else(|| {
+                    let mut logical_offset = record.logical_addr;
+                    let length = record.value.length().min(stat.size - logical_offset);
+                    for span in vol.extent_source_spans(record.value.phys_block_num, length)? {
+                        let base = match span.tier {
+                            FusionTier::Main => Some(self.base_offset),
+                            FusionTier::Secondary => self.tier2_base,
+                        };
+                        let physical_offset = base
+                            .and_then(|base| base.checked_add(span.offset))
+                            .ok_or_else(|| {
                             anyhow!(Failure::corrupt("APFS source extent offset overflow"))
                         })?;
-                    data_runs.push(FsDataRun {
-                        logical_offset: record.logical_addr,
-                        physical_offset,
-                        length: record.value.length().min(stat.size - record.logical_addr),
-                    });
+                        data_runs.push(FsDataRun {
+                            logical_offset,
+                            physical_offset,
+                            length: span.length,
+                        });
+                        logical_offset += span.length;
+                    }
                 }
             }
             Ok(FsStat {
@@ -534,8 +537,8 @@ impl ApfsVolume {
 }
 
 fn list_apfs_volumes(image: Arc<DiskImage>, partition: &Partition) -> Result<Vec<VolumeInfo>> {
-    let cursor = PartitionCursor::new(image, partition)?;
-    ContainerVolume::list_volumes(cursor)
+    let (main, tier2) = open_members(image, partition)?;
+    ContainerVolume::list_source_volumes(main, tier2)
         .map_err(|err| anyhow!("APFS list volumes partition {}: {err}", partition.id))
 }
 
@@ -620,82 +623,59 @@ fn epoch_ns_to_rfc3339(nanos: i64) -> Option<String> {
         .map(|dt| dt.to_rfc3339())
 }
 
-/// Cursor exposing a partition slice of `DiskImage` as `std::io::Read +
-/// Seek`. Read-only — APFS parsing never writes back, so no `Write` impl
-/// is needed (unlike `core::fat_volume::PartitionCursor`).
-struct PartitionCursor {
-    image: Arc<DiskImage>,
-    base_offset: u64,
-    length_bytes: u64,
-    position: u64,
-}
-
-impl PartitionCursor {
-    fn new(image: Arc<DiskImage>, partition: &Partition) -> Result<Self> {
-        let sector_size = image.sector_size as u64;
-        let base_offset = partition
-            .start_lba
-            .checked_mul(sector_size)
-            .ok_or_else(|| anyhow!(Failure::corrupt("APFS partition offset overflow")))?;
-        let length_bytes = partition
-            .length_lba
-            .checked_mul(sector_size)
-            .ok_or_else(|| anyhow!(Failure::corrupt("APFS partition length overflow")))?;
-        if base_offset
-            .checked_add(length_bytes)
-            .is_none_or(|end| end > image.len())
-        {
-            anyhow::bail!("APFS partition exceeds source");
-        }
-        Ok(Self {
-            image,
-            base_offset,
-            length_bytes,
-            position: 0,
-        })
-    }
-}
-
-impl Read for PartitionCursor {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.position >= self.length_bytes || buf.is_empty() {
-            return Ok(0);
-        }
-        let remaining = self.length_bytes - self.position;
-        let want = (buf.len() as u64).min(remaining) as usize;
-        let bytes = self
-            .image
-            .read_range(self.base_offset + self.position, want)
-            .map_err(|err| io::Error::other(err.to_string()))?;
-        let copied = bytes.len();
-        buf[..copied].copy_from_slice(&bytes);
-        self.position += copied as u64;
-        Ok(copied)
-    }
-}
-
-impl Seek for PartitionCursor {
-    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        let target = match pos {
-            SeekFrom::Start(offset) => offset as i128,
-            SeekFrom::Current(delta) => self.position as i128 + delta as i128,
-            SeekFrom::End(delta) => self.length_bytes as i128 + delta as i128,
-        };
-        if target < 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "APFS cursor seek before start",
-            ));
-        }
-        self.position = u64::try_from(target)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "APFS seek out of range"))?;
-        Ok(self.position)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apfs_fusion_partitions_keep_member_run_offsets() {
+        use crate::core::filesystem::evidence_session::EvidenceSession;
+        use crate::core::filesystem::fs_dispatch::dispatch;
+
+        let main = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/vendor/apfs/tests/data/fusion-main.apfs"
+        ));
+        let tier2 = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/vendor/apfs/tests/data/fusion-tier2.apfs"
+        ));
+        let mut disk = vec![0; 4096];
+        disk[510..512].copy_from_slice(&[0x55, 0xaa]);
+        let offsets = [4096, 4096 + tier2.len()];
+        for (slot, (fixture, offset)) in [(&tier2[..], offsets[0]), (&main[..], offsets[1])]
+            .into_iter()
+            .enumerate()
+        {
+            let entry = 446 + 16 * slot;
+            disk[entry + 4] = 0xaf;
+            disk[entry + 8..entry + 12].copy_from_slice(&((offset / 512) as u32).to_le_bytes());
+            disk[entry + 12..entry + 16]
+                .copy_from_slice(&((fixture.len() / 512) as u32).to_le_bytes());
+            disk.extend_from_slice(fixture);
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("fusion.raw");
+        std::fs::write(&path, disk).unwrap();
+        let session = Arc::new(EvidenceSession::open(&path).unwrap());
+        assert_eq!(session.partitions.len(), 2);
+        for partition in &session.partitions {
+            assert_eq!(partition.kind, PartitionKind::ApfsContainer);
+            let id = apfs_node_id(partition.id, 0, "/plain.bin");
+            let volume = dispatch(&session, &id).unwrap().unwrap();
+            assert_eq!(volume.read_range(&id, 4095, 3).unwrap().unwrap(), b"ABB");
+            let stat = volume.file_stat(&id, &id).unwrap();
+            assert_eq!(stat.data_runs.len(), 2);
+            assert_eq!(
+                stat.data_runs[0].physical_offset,
+                (offsets[0] + 3 * 4096) as u64
+            );
+            assert_eq!(
+                stat.data_runs[1].physical_offset,
+                (offsets[1] + 13 * 4096) as u64
+            );
+        }
+    }
 
     #[test]
     fn apfs_synthetic_partition_supports_source_runs_symlinks_and_direct_ranges() {

@@ -18,6 +18,7 @@
 //! entry to `PARSERS`.
 
 pub mod amiga;
+pub mod apfs;
 pub mod apm;
 pub mod bcachefs;
 pub mod befs;

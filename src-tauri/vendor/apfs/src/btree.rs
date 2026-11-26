@@ -31,11 +31,7 @@ pub const BTNODE_LEAF: u16 = 0x0002;
 pub const BTNODE_FIXED_KV_SIZE: u16 = 0x0004;
 
 // BTreeInfo flags
-#[expect(
-    dead_code,
-    reason = "mirrors the on-disk layout; parsed and kept so the struct documents the format"
-)]
-pub const BTREE_PHYSICAL: u32 = 0x0001;
+pub const BTREE_PHYSICAL: u32 = 0x0010;
 
 /// B-tree node header — 56 bytes after the object header.
 #[derive(Debug, Clone)]
@@ -114,10 +110,6 @@ pub struct BTreeInfo {
 }
 
 #[derive(Debug, Clone)]
-#[expect(
-    dead_code,
-    reason = "mirrors the on-disk layout; parsed and kept so the struct documents the format"
-)]
 pub struct BTreeInfoFixed {
     pub bt_flags: u32,
     pub bt_node_size: u32,
@@ -582,7 +574,36 @@ pub fn btree_walk_leaves<R: Read + Seek>(
     omap_cache: Option<&std::collections::HashMap<u64, u64>>,
     visit: &mut dyn FnMut(&[u8], &[u8]) -> bool,
 ) -> Result<bool> {
-    let (_, block_data) = object::read_object(reader, root_block, block_size)?;
+    walk_leaves(
+        reader,
+        root_block,
+        block_size,
+        omap_cache,
+        visit,
+        |_, _, _| Ok(()),
+    )
+}
+
+pub(crate) fn walk_checked_physical<R: Read + Seek>(
+    reader: &mut R,
+    root_block: u64,
+    block_size: u32,
+    visit: &mut dyn FnMut(&[u8], &[u8]) -> bool,
+    check: impl Fn(&ObjectHeader, u64, bool) -> Result<()>,
+) -> Result<bool> {
+    walk_leaves(reader, root_block, block_size, None, visit, check)
+}
+
+fn walk_leaves<R: Read + Seek>(
+    reader: &mut R,
+    root_block: u64,
+    block_size: u32,
+    omap_cache: Option<&std::collections::HashMap<u64, u64>>,
+    visit: &mut dyn FnMut(&[u8], &[u8]) -> bool,
+    check: impl Fn(&ObjectHeader, u64, bool) -> Result<()>,
+) -> Result<bool> {
+    let (header, block_data) = object::read_object(reader, root_block, block_size)?;
+    check(&header, root_block, true)?;
     let node = BTreeNode::parse(&block_data)?;
 
     let (fks, fvs) = match node.info {
@@ -595,7 +616,7 @@ pub fn btree_walk_leaves<R: Read + Seek>(
         fixed_val_size: fvs,
         omap_root: None,
     };
-    btree_walk_node(reader, &node, &params, omap_cache, visit)
+    btree_walk_node(reader, &node, &params, omap_cache, visit, &check)
 }
 
 fn btree_walk_node<R: Read + Seek>(
@@ -604,6 +625,7 @@ fn btree_walk_node<R: Read + Seek>(
     params: &BTreeParams,
     omap_cache: Option<&std::collections::HashMap<u64, u64>>,
     visit: &mut dyn FnMut(&[u8], &[u8]) -> bool,
+    check: &impl Fn(&ObjectHeader, u64, bool) -> Result<()>,
 ) -> Result<bool> {
     if node.node_header.is_leaf() {
         for i in 0..node.node_header.btn_nkeys as usize {
@@ -623,14 +645,15 @@ fn btree_walk_node<R: Read + Seek>(
             })?,
             None => child_oid,
         };
-        let (_, child_data) = object::read_object(reader, child_block, params.block_size)?;
+        let (header, child_data) = object::read_object(reader, child_block, params.block_size)?;
+        check(&header, child_block, false)?;
         let child_node = BTreeNode::parse(&child_data)?;
         if child_node.node_header.btn_level + 1 != node.node_header.btn_level {
             return Err(ApfsError::InvalidBTree(
                 "child level does not decrease (cycle or malformed tree)".into(),
             ));
         }
-        if !btree_walk_node(reader, &child_node, params, omap_cache, visit)? {
+        if !btree_walk_node(reader, &child_node, params, omap_cache, visit, check)? {
             return Ok(false);
         }
     }

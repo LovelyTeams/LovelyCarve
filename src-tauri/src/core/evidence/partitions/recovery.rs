@@ -107,7 +107,9 @@ fn apfs_size(ctx: &DetectCtx<'_>) -> Result<Option<u64>> {
     let Some(superblock) = apfs_superblock(ctx)? else {
         return Ok(None);
     };
-    if !(1..superblock.block_count).contains(&superblock.omap_oid) {
+    if superblock.fusion_member().is_some()
+        || !(1..superblock.block_count).contains(&superblock.omap_oid)
+    {
         return Ok(None);
     }
     // A checkpoint NXSB has the same magic and geometry as block zero. Its
