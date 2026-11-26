@@ -239,6 +239,10 @@ pub(super) fn children_for_image_with_options(
                 )?
                 .root_children()
             }
+            PartitionKind::Vmfs => {
+                crate::core::filesystem::volumes::vmfs::open_vmfs_source(image, partition.id)?
+                    .root_children()
+            }
             PartitionKind::Bcachefs => {
                 crate::core::filesystem::volumes::rom_images::open_bcachefs_source(
                     image,

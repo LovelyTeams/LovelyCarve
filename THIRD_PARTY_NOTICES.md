@@ -1711,6 +1711,11 @@ images and native tools are not redistributed. Local changes and evidence:
 [framework origin](src-tauri/vendor/rust-fs-core/ORIGIN.md),
 [adapter and fixtures](src-tauri/vendor/bcachefs-reader/ORIGIN.md).
 
+VMFS format layouts and the external verification corpus are based on Fox-IT's
+[dissect.vmfs](https://github.com/fox-it/dissect.vmfs/tree/0a385a1d80f5881f73402b7b847305dc478eae1c),
+AGPL-3.0-or-later. The bundled implementation is LovelyCarve's pure Rust
+`vmfs-reader` (AGPL-3.0-only). See [origin and verification](src-tauri/vendor/vmfs-reader/ORIGIN.md).
+
 ## BCP application icons
 
 The result directory icons in `src/assets/bcp-apps` come from the local

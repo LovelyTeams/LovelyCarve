@@ -63,6 +63,7 @@ use crate::core::filesystem::volumes::squashfs::{open_squashfs_source, parse_squ
 use crate::core::filesystem::volumes::ubi::{open_ubi_source, parse_ubi_id};
 use crate::core::filesystem::volumes::ubifs::{open_ubifs_source, parse_ubifs_id};
 use crate::core::filesystem::volumes::ufs::{open_ufs_source, parse_ufs_id};
+use crate::core::filesystem::volumes::vmfs::{open_vmfs_source, parse_vmfs_id};
 use crate::core::filesystem::volumes::xfs::{open_xfs_source, parse_xfs_id};
 use crate::core::filesystem::volumes::yaffs2::parse_yaffs2_id;
 use crate::core::filesystem::volumes::zfs::{open_zfs_source, parse_zfs_id, ZfsPath};
@@ -170,6 +171,7 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &Ocfs2Adapter,
     &Nilfs2Adapter,
     &BcachefsAdapter,
+    &VmfsAdapter,
     &MinixAdapter,
     &UbifsAdapter,
     &Jffs2Adapter,
@@ -243,6 +245,9 @@ pub(crate) fn volume_root_key(id: &str) -> Option<String> {
     }
     if let Some((partition, _)) = parse_nilfs2_id(id) {
         return Some(format!("nilfs2:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_vmfs_id(id) {
+        return Some(format!("vmfs:part:{partition}"));
     }
     if let Some((partition, _)) = parse_bcachefs_id(id) {
         return Some(format!("bcachefs:part:{partition}"));
@@ -581,6 +586,15 @@ path_volume!(
     open_bcachefs_source
 );
 path_volume_impl!(BcachefsVol, plain_range);
+path_volume!(
+    VmfsAdapter,
+    VmfsVol,
+    "vmfs",
+    crate::core::filesystem::volumes::vmfs::VmfsVolume,
+    parse_vmfs_id,
+    open_vmfs_source
+);
+path_volume_impl!(VmfsVol, plain_range);
 path_volume!(
     MinixAdapter,
     MinixVol,

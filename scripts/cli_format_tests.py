@@ -64,6 +64,67 @@ def hex_of(data):
     return {"encoding": "hex", "data": data.hex()}
 
 
+def test_vmfs(cli, root):
+    fixture_path = os.environ.get("LOVELYCARVE_VMFS_ORACLE")
+    if not fixture_path:
+        print("VMFS CLI oracle skipped: set LOVELYCARVE_VMFS_ORACLE")
+        return
+    fixtures = Path(fixture_path)
+    case = root / "vmfs-case"
+    scope = ("-C", case)
+    cli.run("case", "new", case, "--name", "VMFS test")
+    cli.run(*scope, "case", "open")
+    try:
+        for version, descriptor_prefix in [
+            (5, "c800000040000000000001000008000000009101183601000700000000000000"),
+            (6, "0001000008000000000001000020000000000101004000000800000000000000"),
+        ]:
+            output = root / f"vmfs{version}-small.txt"
+            rows = cli.results([
+                add(fixtures / f"vmfs{version}.bin"),
+                ls("directory", "/ev/part:0/directory"),
+                cat("read", at(path_id("vmfs:part:0:", "/directory/file100"))),
+                cat("large", "/ev/part:0/large-flat.vmdk", 117 << 30, 512),
+                cat("hole", "/ev/part:0/large-flat.vmdk", 0, 513),
+                request("stat", "stat", "/ev/part:0/large-flat.vmdk"),
+                digest("hash", "/ev/part:0/small"),
+                export("export", "/ev/part:0/small", output),
+            ])
+            assert opened(rows)["partitions"][0]["kind"] == "vmfs", rows["open"]
+            assert names(rows["directory"]) == {f"file{index}" for index in range(1, 101)}
+            assert rows["read"] == hex_of(b"File 100\n")
+            assert rows["large"] == hex_of(b"\x42" * 512)
+            assert rows["hole"] == hex_of(bytes(513))
+            assert rows["stat"]["size"] == 42 << 40, rows["stat"]
+            assert sha256(rows["hash"]) == hashlib.sha256(b"tiny\n").hexdigest()
+            assert output.read_bytes() == b"tiny\n"
+
+            for suffix in ["d", "l", "ld"]:
+                view = cli.results([
+                    add(fixtures / f"vmfs{version}{suffix}.bin"),
+                    ls("root", "/ev/part:0"),
+                ])
+                assert opened(view)["partitions"][0]["kind"] == "vmfs"
+                assert {".fdc.sf", ".pbc.sf", ".sbc.sf"} <= names(view["root"])
+
+            # Load the members out of extent order. An incomplete datastore is
+            # recognized but exposes no synthetic filesystem until complete.
+            member_paths = [fixtures / "span" / f"vmfs{version}-span-{index}.bin" for index in [1, 0]]
+            aliases = [f"v{version}second", f"v{version}first"]
+            cli.run(*scope, "evidence", "add", member_paths[0], "--as", aliases[0])
+            lone = cli.json(*scope, "raid", "detect", "--member", aliases[0])
+            assert lone["assembled"] == [] and any("VMFS" in message for message in lone["diagnostics"]), lone
+            cli.run(*scope, "evidence", "add", member_paths[1], "--as", aliases[1])
+            stack = cli.json(*scope, "raid", "detect", "--member", aliases[0], "--member", aliases[1])
+            assert len(stack["assembled"]) == 1 and stack["arrays"][0]["raidDisks"] == 2, stack
+            path = stack["assembled"][0]["path"]
+            for partition in [0, 1]:
+                assert cli.run(*scope, "cat", f"{path}/part:{partition}/.fdc.sf", "--length", "32", binary=True).stdout.hex() == descriptor_prefix
+    finally:
+        cli.run(*scope, "case", "close")
+    print("VMFS CLI oracle passed: native paths, sparse reads, hash, export and two-image assembly")
+
+
 def test_formats(cli, root):
     firmware_node = path_id("squashfs:part:0:", "/hello")
     firmware_content = b"Independent DD-WRT fixture.\n" * 64

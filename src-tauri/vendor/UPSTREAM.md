@@ -195,3 +195,10 @@ mkfs / Linux kernel / fsck 验证见 [ORIGIN.md](gfs2-reader/ORIGIN.md)。
 [读取器](rust-fs-bcachefs/ORIGIN.md)、[框架](rust-fs-core/ORIGIN.md) 与
 [适配器 / 验证](bcachefs-reader/ORIGIN.md)；能力边界见
 [BCACHEFS](../../docs/formats/BCACHEFS.md)。
+
+## VMFS 5 / 6
+
+`vmfs-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。格式对照采用 Fox-IT 的
+`dissect.vmfs`（AGPL-3.0-or-later）固定提交 `0a385a1d80f5881f73402b7b847305dc478eae1c`。
+上游 Python 读取器与测试镜像用于独立核验，构建和运行无需这些文件。样本来源、哈希验证和覆盖范围见
+[ORIGIN.md](vmfs-reader/ORIGIN.md) 与 [VMFS](../../docs/formats/VMFS.md)。

@@ -42,6 +42,7 @@ pub mod minix;
 pub mod nilfs2;
 pub mod ocfs2;
 pub mod optical_disc;
+pub(crate) mod partition_cursor;
 pub mod qnx;
 pub(super) mod recovery;
 pub mod reiserfs;
@@ -50,6 +51,7 @@ pub mod squashfs;
 pub mod ubifs;
 pub mod udf;
 pub mod ufs;
+pub(crate) mod vmfs;
 pub mod volume_probe;
 pub mod xfs;
 pub mod xiaomi_firmware;
@@ -159,6 +161,7 @@ pub enum PartitionKind {
     Ocfs2,
     Nilfs2,
     Bcachefs,
+    Vmfs,
     Ubifs,
     Lvm,
     Bitlocker,
@@ -384,6 +387,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Ocfs2
         | PartitionKind::Nilfs2
         | PartitionKind::Bcachefs
+        | PartitionKind::Vmfs
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

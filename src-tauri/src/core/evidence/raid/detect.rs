@@ -289,6 +289,14 @@ pub fn detect_with_options_observed(
         &mut assembled,
         &mut diagnostics,
     );
+    super::vmfs_devices::assemble(
+        images,
+        &mut consumed,
+        &mut arrays,
+        &mut filesystems,
+        &mut assembled,
+        &mut diagnostics,
+    );
     observer(DetectProgress::new(DetectStage::Heuristic, 0, None));
     let heur = heuristic::detect(images, &consumed);
     arrays.extend(heur.arrays);

@@ -36,6 +36,7 @@ mod apfs_devices;
 mod bcachefs_devices;
 mod btrfs_devices;
 mod manual;
+mod vmfs_devices;
 mod zfs_devices;
 pub use manual::manual_assemble;
 mod ddf_array;
@@ -347,6 +348,7 @@ pub fn kind_label(kind: PartitionKind) -> &'static str {
         PartitionKind::Ocfs2 => "ocfs2",
         PartitionKind::Nilfs2 => "nilfs2",
         PartitionKind::Bcachefs => "bcachefs",
+        PartitionKind::Vmfs => "vmfs",
         PartitionKind::Minix => "minix",
         PartitionKind::Minifs => "minifs",
         PartitionKind::Romfs => "romfs",
