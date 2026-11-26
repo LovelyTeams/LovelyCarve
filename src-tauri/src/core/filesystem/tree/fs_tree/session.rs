@@ -342,6 +342,12 @@ impl<'a> FsSession<'a> {
                         )?
                         .root_children(),
                     ),
+                    PartitionKind::QnxEfs => Some(
+                        crate::core::filesystem::volumes::rom_images::open_qnxefs_source(
+                            self.image, pid,
+                        )?
+                        .root_children(),
+                    ),
                     PartitionKind::F2fs => Some(
                         crate::core::filesystem::volumes::rom_images::open_f2fs_source(
                             self.image, pid,

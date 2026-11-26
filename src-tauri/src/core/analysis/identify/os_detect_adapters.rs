@@ -324,6 +324,7 @@ pub(crate) fn supports_os_detect(kind: PartitionKind) -> bool {
             | PartitionKind::Qnx4
             | PartitionKind::Qnx6
             | PartitionKind::QnxEtfs
+            | PartitionKind::QnxEfs
             | PartitionKind::Udf
             | PartitionKind::Hfs
             | PartitionKind::Mfs
@@ -373,6 +374,7 @@ pub(crate) fn kind_str(kind: PartitionKind) -> &'static str {
         PartitionKind::Qnx4 => "qnx4",
         PartitionKind::Qnx6 => "qnx6",
         PartitionKind::QnxEtfs => "qnxetfs",
+        PartitionKind::QnxEfs => "qnxefs",
         PartitionKind::Udf => "udf",
         PartitionKind::Hfs => "hfs",
         PartitionKind::Mfs => "mfs",

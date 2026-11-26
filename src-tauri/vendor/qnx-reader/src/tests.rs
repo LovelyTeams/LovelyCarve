@@ -113,6 +113,50 @@ fn etfs_native_transaction_export_and_reported_read_fault() {
     ));
 }
 
+#[test]
+fn efs_native_flash_matches_tar_after_logical_unit_relocation() {
+    let image = unpack(include_bytes!("../tests/fixtures/nfi-efs.zlib"));
+    let mut relocated = image.clone();
+    let unit = 131072;
+    relocated[..unit].copy_from_slice(&image[unit..2 * unit]);
+    relocated[unit..2 * unit].copy_from_slice(&image[..unit]);
+    // The boot record names its physical unit. All other references remain logical.
+    relocated[unit + 52..unit + 54].copy_from_slice(&1_u16.to_le_bytes());
+    for volume in [image.as_slice(), relocated.as_slice()] {
+        let mut cache = BlockCache::new(0);
+        let mut cx = context(&mut cache);
+        let mut fs = Efs::open(SliceSource::new(volume), &mut cx).unwrap();
+        assert_eq!(
+            assert_tar(
+                &mut fs,
+                include_bytes!("../tests/fixtures/nfi-efs.tar.gz"),
+                &mut cx
+            ),
+            31
+        );
+    }
+}
+
+#[test]
+fn efs_refuses_truncated_units_and_supersession_cycles() {
+    let mut image = unpack(include_bytes!("../tests/fixtures/nfi-efs.zlib"));
+    let mut cache = BlockCache::new(0);
+    let mut cx = context(&mut cache);
+    assert!(matches!(
+        Efs::open(SliceSource::new(&image[..4 * 131072 - 1]), &mut cx),
+        Err(FoldError::Corrupt("truncated QNX EFS volume"))
+    ));
+    let pointer = 131072 - 5 * 32 + 28;
+    image[pointer..pointer + 4].copy_from_slice(&[1, 0, 4, 0]);
+    let mut fs = Efs::open(SliceSource::new(&image), &mut cx).unwrap();
+    assert!(matches!(
+        fs.read_dir(fs.root(), &mut cx),
+        Err(FoldError::Corrupt(
+            "QNX EFS supersession cycle or depth limit"
+        ))
+    ));
+}
+
 fn assert_tar<S: BlockSource, F: FoldFrontend<S>>(
     fs: &mut F,
     archive: &[u8],

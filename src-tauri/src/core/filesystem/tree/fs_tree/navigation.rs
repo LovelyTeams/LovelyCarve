@@ -348,6 +348,13 @@ pub(super) fn children_for_image_with_options(
                 )?
                 .root_children()
             }
+            PartitionKind::QnxEfs => {
+                crate::core::filesystem::volumes::rom_images::open_qnxefs_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
             PartitionKind::F2fs => {
                 crate::core::filesystem::volumes::rom_images::open_f2fs_source(image, partition.id)?
                     .root_children()

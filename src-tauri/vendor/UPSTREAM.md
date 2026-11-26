@@ -99,6 +99,8 @@ LZMA 复用 Apache-2.0 的 `lzma-rust2`。没有复制无明确代码许可的 H
 
 QNX ETFS 支持对照 [QNX mketfs 文档](https://qnx.com/developers/docs/7.1/com.qnx.doc.neutrino.utilities/topic/m/mketfs.html) 和同一提交的 [NFI ETFS 位布局](https://github.com/NetherlandsForensicInstitute/qnxmount/blob/11c8a7f9ee9b945d584263743f6ea8524e8776d2/qnxmount/etfs/parser.ksy)。原生 ETFS 闪存镜像、QNX TAR 与事务导出沿用该许可证，哈希见同一 manifest。[ETFS 支持范围](../../docs/formats/QNX_ETFS.md)
 
+QNX EFS 支持对照 [QNX mkefs 文档](https://www.qnx.com/developers/docs/7.1/com.qnx.doc.neutrino.utilities/topic/m/mkefs.html) 和同一提交的 [NFI EFS 位布局](https://github.com/NetherlandsForensicInstitute/qnxmount/blob/11c8a7f9ee9b945d584263743f6ea8524e8776d2/qnxmount/efs/parser.ksy)。原生 F3S 镜像与 QNX TAR 沿用 Apache-2.0。[EFS 支持范围](../../docs/formats/QNX_EFS.md)
+
 ## UDF
 
 `lamfold-udf` 0.1.1 来源于 [lamco-admin/lamfold fabaad6af0c28](https://github.com/lamco-admin/lamfold/tree/fabaad6af0c28b80535307b339b84110f3a3c12e/crates/lamfold-udf)，MIT OR Apache-2.0。复用既有 lamfold；补 descriptor tag / CRC、物理 / metadata / VAT / sparable 分区映射与边界检查、512–4096 字节块、FE / EFE、AED 续链、稀疏区、符号链接、时间与资源限额；不含 C/DLL。固定来源、本地改造和上游 mkudffs / Linux 内核夹具见 [LOVELYCARVE.md](lamfold-udf/LOVELYCARVE.md) 与 [UDF](../../docs/formats/UDF.md)。

@@ -808,20 +808,24 @@ def test_gfs1(cli, root):
     print("GFS1 CLI tests passed: native block sizes, MBR, exhash, hard links, indirect sparse ranges and export")
 
 
+def write_qnx_flash_image(source, volume_bytes, base):
+    if base:
+        mbr = bytearray(base)
+        mbr[450] = 0x77
+        struct.pack_into("<II", mbr, 454, base // 512, len(volume_bytes) // 512)
+        mbr[510:512] = b"\x55\xaa"
+        source.write_bytes(mbr + volume_bytes)
+    else:
+        source.write_bytes(volume_bytes)
+
+
 def test_qnx_etfs(cli, root):
     fixtures = VENDOR / "qnx-reader/tests/fixtures"
     volume = "/ev/part:0"
     for label, base in (("nfi-etfs-old", 0), ("nfi-etfs", 4096), ("nfi-etfs-transactions", 0)):
         volume_bytes = zlib.decompress((fixtures / f"{label}.zlib").read_bytes())
         source = root / f"{label}.img"
-        if base:
-            mbr = bytearray(base)
-            mbr[450] = 0x77
-            struct.pack_into("<II", mbr, 454, base // 512, len(volume_bytes) // 512)
-            mbr[510:512] = b"\x55\xaa"
-            source.write_bytes(mbr + volume_bytes)
-        else:
-            source.write_bytes(volume_bytes)
+        write_qnx_flash_image(source, volume_bytes, base)
         message = "/directory_1/directory_1_1/message.txt"
         entry = at(path_id("qnxetfs:part:0:", message))
         output = root / f"{label}-export.bin"
@@ -857,6 +861,49 @@ def test_qnx_etfs(cli, root):
             assert sha256(rows["hash"]) == hashlib.sha256(large).hexdigest()
         source.unlink()
     print("QNX ETFS CLI tests passed: native flash, exact transaction export length, MBR, links, ranges and export")
+
+
+def test_qnx_efs(cli, root):
+    fixtures = VENDOR / "qnx-reader/tests/fixtures"
+    original = zlib.decompress((fixtures / "nfi-efs.zlib").read_bytes())
+    with tarfile.open(fixtures / "nfi-efs.tar.gz") as archive:
+        large = archive.extractfile("this_file_is_large").read()
+    unit = 131072
+    relocated = bytearray(original[unit:2 * unit] + original[:unit] + original[2 * unit:])
+    struct.pack_into("<H", relocated, unit + 52, 1)
+    volume = "/ev/part:0"
+    for label, volume_bytes, base in (("native", original, 0), ("relocated", relocated, 4096)):
+        source = root / f"qnx-efs-{label}.img"
+        write_qnx_flash_image(source, volume_bytes, base)
+        large_path = f"{volume}/this_file_is_large"
+        entry = at(path_id("qnxefs:part:0:", "/this_file_is_large"))
+        link = f"{volume}/directory_1/link_message.txt"
+        output = root / f"qnx-efs-{label}-export.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", volume),
+            request("link", "stat", link),
+            cat("message", link),
+            cat("range", entry, 1001, 2089),
+            digest("hash", large_path),
+            export("export", entry, output),
+        ])
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "qnxefs", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == len(volume_bytes)
+        if base:
+            assert info["tableScheme"] == "mbr"
+        assert "this_file_is_removed" not in names(rows["root"])
+        assert "this_file_is_not_renamed" not in names(rows["root"])
+        assert rows["link"]["linkTarget"] == "directory_1_1/message.txt"
+        assert rows["message"] == hex_of(b"This is a test file system!\n")
+        assert rows["range"] == hex_of(large[1001:3090])
+        assert sha256(rows["hash"]) == hashlib.sha256(large).hexdigest()
+        assert output.read_bytes() == large
+        source.unlink()
+    print("QNX EFS CLI tests passed: native flash, relocated logical units, MBR, extents, links, hash and export")
 
 
 def test_formats(cli, root):

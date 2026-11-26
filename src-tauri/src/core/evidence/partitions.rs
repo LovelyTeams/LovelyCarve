@@ -52,6 +52,7 @@ pub mod ocfs2;
 pub mod optical_disc;
 pub(crate) mod partition_cursor;
 pub mod qnx;
+mod qnx_efs;
 mod qnx_etfs;
 pub(super) mod recovery;
 pub mod reiserfs;
@@ -167,6 +168,7 @@ pub enum PartitionKind {
     Qnx4,
     Qnx6,
     QnxEtfs,
+    QnxEfs,
     Udf,
     Minix,
     Jfs,
@@ -408,6 +410,7 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::Qnx4
         | PartitionKind::Qnx6
         | PartitionKind::QnxEtfs
+        | PartitionKind::QnxEfs
         | PartitionKind::Udf
         | PartitionKind::Hfs
         | PartitionKind::Mfs

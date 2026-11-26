@@ -178,6 +178,7 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &super::spiffs::SpiffsProbe,
     &super::hammer::HammerProbe,
     &super::hammer2::Hammer2Probe,
+    &super::qnx_efs::EfsProbe,
     &super::qnx_etfs::EtfsProbe,
 ];
 
@@ -336,6 +337,7 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::Qnx4
         | PartitionKind::Qnx6
         | PartitionKind::QnxEtfs
+        | PartitionKind::QnxEfs
         | PartitionKind::Udf
         | PartitionKind::Hfs
         | PartitionKind::Mfs

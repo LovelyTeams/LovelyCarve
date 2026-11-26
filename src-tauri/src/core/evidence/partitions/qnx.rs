@@ -1,9 +1,36 @@
 //! Structural QNX4 root and QNX6 endian-aware superblock signatures.
+use lamfold::FoldError;
+
 use super::{
     volume_probe::{VolumeProbe, VolumeProbeHit},
     DetectCtx, PartitionKind,
 };
 pub struct QnxProbe;
+
+pub(super) fn read_flash_probe(
+    ctx: &DetectCtx<'_>,
+    offset: u64,
+    bytes: &mut [u8],
+) -> lamfold::Result<()> {
+    if let Some(head) = usize::try_from(offset)
+        .ok()
+        .and_then(|start| ctx.head.get(start..))
+        .and_then(|remaining| remaining.get(..bytes.len()))
+    {
+        bytes.copy_from_slice(head);
+        return Ok(());
+    }
+    let part = ctx
+        .source
+        .read(offset, bytes.len())
+        .map_err(|error| FoldError::Source(format!("reading QNX flash metadata: {error:#}")))?;
+    if part.len() != bytes.len() {
+        return Err(FoldError::Io("short QNX flash probe read"));
+    }
+    bytes.copy_from_slice(&part);
+    Ok(())
+}
+
 pub fn detect(bytes: &[u8]) -> Option<PartitionKind> {
     for offset in [8192, 0] {
         if matches!(
