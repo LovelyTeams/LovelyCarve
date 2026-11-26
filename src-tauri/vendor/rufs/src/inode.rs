@@ -12,19 +12,13 @@ use bincode_next::{
 
 use crate::data::*;
 
-fn timetosys(mut s: UfsTime, ns: u32) -> SystemTime {
-    let neg = s < 0;
-    if neg {
-        s = -s;
-    }
-    let dur = Duration::new(s as u64, ns);
-    let mut time = SystemTime::UNIX_EPOCH;
-    if neg {
-        time -= dur;
+fn timetosys(seconds: UfsTime, nanos: u32) -> SystemTime {
+    let epoch = SystemTime::UNIX_EPOCH;
+    if seconds < 0 {
+        epoch - Duration::from_secs(seconds.unsigned_abs()) + Duration::from_nanos(u64::from(nanos))
     } else {
-        time += dur;
+        epoch + Duration::new(seconds as u64, nanos)
     }
-    time
 }
 
 fn systotime(t: SystemTime) -> (UfsTime, u32) {

@@ -19,9 +19,7 @@ use crate::core::evidence::partitions::hfsplus::{
 };
 use crate::core::evidence::partitions::luks::LUKS_MAGIC;
 use crate::core::evidence::partitions::squashfs::is_squashfs_magic;
-use crate::core::evidence::partitions::ufs::{
-    is_ufs2_magic_at_superblock, UFS_MAGIC_OFFSET, UFS_SBLOCK_UFS2,
-};
+use crate::core::evidence::partitions::ufs::probe_ufs;
 use crate::core::evidence::partitions::xfs::is_xfs_magic;
 use crate::core::evidence::partitions::{
     DetectCtx, PartParser, Partition, PartitionKind, SectorSource, BTRFS_MAGIC,
@@ -807,22 +805,9 @@ impl VolumeProbe for UfsProbe {
     }
 
     fn probe(&self, ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeHit>> {
-        let needed = UFS_SBLOCK_UFS2 as u64 + UFS_MAGIC_OFFSET + 4;
-        if ctx.size < needed {
-            return Ok(None);
-        }
-        let probe = ctx.source.read(UFS_SBLOCK_UFS2 as u64, 0x800)?;
-        if is_ufs2_magic_at_superblock(&probe) {
-            Ok(Some(VolumeProbeHit::new(
-                self.name(),
-                PartitionKind::Ufs,
-                93,
-                UFS_SBLOCK_UFS2 as u64 + UFS_MAGIC_OFFSET,
-                "UFS2 superblock magic",
-            )))
-        } else {
-            Ok(None)
-        }
+        Ok(probe_ufs(ctx)?.map(|(offset, version)| {
+            VolumeProbeHit::new(self.name(), PartitionKind::Ufs, 93, offset, version)
+        }))
     }
 }
 

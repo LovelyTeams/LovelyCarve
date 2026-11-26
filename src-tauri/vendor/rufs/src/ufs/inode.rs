@@ -24,7 +24,7 @@ impl<R: Backend> Ufs<R> {
         let ino = self.read_inode(inr)?;
 
         let mut boff = 0;
-        let len = (buffer.len() as u64).min(ino.size - offset);
+        let len = (buffer.len() as u64).min(ino.size.saturating_sub(offset));
         let end = offset + len;
 
         while offset < end {
@@ -153,12 +153,28 @@ impl<R: Backend> Ufs<R> {
 
     pub(super) fn read_inode(&mut self, inr: InodeNum) -> IoResult<Inode> {
         log::trace!("read_inode({inr});");
-        let off = self.superblock.ino_to_fso(inr);
-        let ino: Inode = self.file.decode_at(off)?;
+        let sb = &self.superblock;
+        let (group, index) = sb.ino_in_cg(inr);
+        let fragment = self.group_start(group)? + sb.iblkno as u64;
+        let inode_size = if self.is_ufs1() {
+            UFS1_INODE_SIZE
+        } else {
+            UFS_INOSZ
+        } as u64;
+        let position =
+            self.fragment_offset(fragment, (index + 1) * inode_size)? + index * inode_size;
+        let ino = if self.is_ufs1() {
+            super::ufs1::read_inode(&mut self.file, position, sb.maxsymlinklen)?
+        } else {
+            self.file.decode_at(position)?
+        };
         let mode = ino.mode;
 
-        if (mode & S_IFMT) == 0 {
-            log::warn!("invalid inode {inr}: Mode {mode:#o}, S_IFMT is 0");
+        if !matches!(
+            mode & S_IFMT,
+            S_IFIFO | S_IFCHR | S_IFDIR | S_IFBLK | S_IFREG | S_IFLNK | S_IFSOCK
+        ) {
+            log::warn!("invalid inode {inr}: mode {mode:#o}");
             return Err(err!(EINVAL));
         }
 
@@ -203,11 +219,11 @@ impl<R: Backend> Ufs<R> {
         buf: &mut [u8],
     ) -> IoResult<usize> {
         log::trace!("inode_read_block({inr}, {blkidx}, [u8; {}]);", buf.len());
-        let fs = self.superblock.fsize as u64;
         let size = self.inode_get_block_size(ino, blkidx);
         match self.inode_resolve_block(inr, ino, blkidx)? {
             Some(blkno) => {
-                self.file.read_at(blkno.get() * fs, &mut buf[0..size])?;
+                let offset = self.fragment_offset(blkno.get(), size as u64)?;
+                self.file.read_at(offset, &mut buf[0..size])?;
             }
             None => buf.fill(0u8),
         }
@@ -270,7 +286,7 @@ impl<R: Backend> Ufs<R> {
 
     pub(super) fn inode_data_zones(&self) -> (u64, u64, u64, u64) {
         let nd = UFS_NDADDR as u64;
-        let pbp = self.superblock.bsize as u64 / size_of::<u64>() as u64;
+        let pbp = self.superblock.bsize as u64 / self.pointer_size() as u64;
 
         (
             nd,
@@ -282,7 +298,7 @@ impl<R: Backend> Ufs<R> {
 
     pub(super) fn decode_blkidx(&self, blkidx: u64) -> IoResult<InodeBlock> {
         let bs = self.superblock.bsize as u64;
-        let pbp = bs / size_of::<u64>() as u64;
+        let pbp = bs / self.pointer_size() as u64;
         let (begin_indir1, begin_indir2, begin_indir3, begin_indir4) = self.inode_data_zones();
 
         if blkidx < begin_indir1 {
@@ -316,69 +332,32 @@ impl<R: Backend> Ufs<R> {
         ino: &Inode,
         blkno: u64,
     ) -> IoResult<Option<NonZeroU64>> {
-        let sb = &self.superblock;
-        let bs = sb.bsize as u64;
-        let su64 = size_of::<UfsDaddr>() as u64;
-        let pbp = bs / su64;
-
         let InodeData::Blocks(InodeBlocks { direct, indirect }) = &ino.data else {
             log::warn!("inode_resolve_block({inr}, {blkno}): inode doesn't have blocks");
             return Err(err!(EIO));
         };
-
-        let mut data = vec![0u64; pbp as usize];
-        let bno = match self.decode_blkidx(blkno)? {
-            InodeBlock::Direct(off) => NonZeroU64::new(direct[off] as u64),
-            InodeBlock::Indirect1(off) => {
-                let x1 = indirect[0] as u64;
-                if x1 == 0 {
-                    return Ok(None);
-                }
-
-                self.read_pblock(x1, &mut data)?;
-                NonZeroU64::new(data[off])
-            }
-            InodeBlock::Indirect2(high, low) => {
-                let x1 = indirect[1] as u64;
-                if x1 == 0 {
-                    return Ok(None);
-                }
-
-                self.read_pblock(x1, &mut data)?;
-                let x2 = data[high];
-                if x2 == 0 {
-                    return Ok(None);
-                }
-
-                self.read_pblock(x2, &mut data)?;
-                NonZeroU64::new(data[low])
-            }
-            InodeBlock::Indirect3(high, mid, low) => {
-                let x1 = indirect[2] as u64;
-                if x1 == 0 {
-                    return Ok(None);
-                }
-
-                self.read_pblock(x1, &mut data)?;
-                let x2 = data[high];
-                if x2 == 0 {
-                    return Ok(None);
-                }
-
-                self.read_pblock(x2, &mut data)?;
-                let x3 = data[mid];
-                if x3 == 0 {
-                    return Ok(None);
-                }
-
-                self.read_pblock(x3, &mut data)?;
-                NonZeroU64::new(data[low])
-            }
+        let (mut pointer, offsets): (i64, &[usize]) = match self.decode_blkidx(blkno)? {
+            InodeBlock::Direct(index) => (direct[index], &[]),
+            InodeBlock::Indirect1(index) => (indirect[0], &[index]),
+            InodeBlock::Indirect2(high, low) => (indirect[1], &[high, low]),
+            InodeBlock::Indirect3(high, mid, low) => (indirect[2], &[high, mid, low]),
         };
-
-        log::trace!("inode_resolve_block({inr}, {blkno}): bno={bno:?}");
-
-        Ok(bno)
+        let pointer_size = self.pointer_size() as u64;
+        for &index in offsets {
+            if pointer == 0 {
+                return Ok(None);
+            }
+            let block = u64::try_from(pointer).map_err(|_| err!(EIO))?;
+            let start = self.fragment_offset(block, self.superblock.bsize as u64)?;
+            let address = start + index as u64 * pointer_size;
+            pointer = if self.is_ufs1() {
+                i64::from(self.file.decode_at::<i32>(address)?)
+            } else {
+                self.file.decode_at(address)?
+            };
+        }
+        let block = u64::try_from(pointer).map_err(|_| err!(EIO))?;
+        Ok(NonZeroU64::new(block))
     }
 
     pub(super) fn inode_get_block_size(&mut self, ino: &Inode, blkidx: u64) -> usize {

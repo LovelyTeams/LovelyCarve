@@ -410,14 +410,6 @@ macro_rules! path_volume_impl {
             path_volume_impl!(@common $vol);
         }
     };
-    ($vol:ident, plain) => {
-        impl Volume for $vol {
-            fn children(&self, _image: &Arc<EvidenceSession>, id: &str, _opts: ChildrenOptions) -> Result<Vec<FsNode>> {
-                self.volume.children(&self.path_of(id)?)
-            }
-            path_volume_impl!(@common $vol);
-        }
-    };
     (@common $vol:ident) => {
         fn read_file(&self, id: &str, max_bytes: usize) -> Result<Vec<u8>> {
             self.volume.read_file(&self.path_of(id)?, max_bytes)
@@ -670,7 +662,7 @@ path_volume!(
     parse_ufs_id,
     open_ufs_source
 );
-path_volume_impl!(UfsVol, plain);
+path_volume_impl!(UfsVol, plain_range);
 path_volume!(
     XfsAdapter,
     XfsVol,

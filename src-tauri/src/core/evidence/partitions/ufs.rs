@@ -1,22 +1,4 @@
-//! UFS2 (FreeBSD Fast Filesystem v2) whole-device detection.
-//!
-//! Sits at the end of the `PARSERS` table in `partitions.rs` so it only fires
-//! when no real partition table claimed the disk. UFS2 stashes its primary
-//! superblock at byte offset `0x10000` (= 65536) within the volume, with the
-//! 4-byte magic word `0x19540119` at byte 1372 *inside* that superblock —
-//! both little-endian (`19 01 54 19`) and big-endian (`19 54 01 19`) layouts
-//! exist on FreeBSD. Synthesizes a single whole-device `Partition` so the rest
-//! of the pipeline can treat the bare filesystem the same way as a partitioned
-//! one.
-//!
-//! Partitioned UFS (e.g. FreeBSD installer images that ship the rootfs as a
-//! `516e7cb6-6ecf-11d6-8ff8-00022d09712b` GPT partition) is handled by
-//! [`crate::core::evidence::partitions::refine_partition_kinds`] via the dedicated UFS
-//! probe at byte offset `UFS_SBLOCK_UFS2` of each candidate partition.
-//!
-//! UFS1 (FreeBSD ≤ 4.x, OpenBSD, NetBSD's older variants) lives at byte
-//! offset 8192 with magic `0x11954` and is not currently recognised — `rufs`
-//! itself is UFS2-only.
+//! UFS1 and UFS2 primary superblock probes for bare and partitioned images.
 
 use crate::core::evidence::partitions::{DetectCtx, PartParser, Partition, PartitionKind};
 
@@ -46,6 +28,25 @@ pub fn is_ufs2_magic_at_superblock(superblock_bytes: &[u8]) -> bool {
     magic == UFS2_MAGIC_LE_BYTES || magic == UFS2_MAGIC_BE_BYTES
 }
 
+/// Return the on-disk magic offset and the detected revision.
+pub(super) fn probe_ufs(ctx: &DetectCtx<'_>) -> anyhow::Result<Option<(u64, &'static str)>> {
+    for (start, magic, version) in [
+        (UFS_SBLOCK_UFS2 as u64, 0x1954_0119i32, "UFS2"),
+        (8192, 0x0001_1954, "UFS1"),
+        (8192, 0x1954_0119, "UFS2"),
+    ] {
+        let offset = start + UFS_MAGIC_OFFSET;
+        if ctx.size < offset + 4 {
+            continue;
+        }
+        let read = ctx.source.read(offset, 4)?;
+        if read.as_slice() == magic.to_le_bytes() || read.as_slice() == magic.to_be_bytes() {
+            return Ok(Some((offset, version)));
+        }
+    }
+    Ok(None)
+}
+
 pub struct UfsParser;
 
 impl PartParser for UfsParser {
@@ -57,19 +58,7 @@ impl PartParser for UfsParser {
         if ctx.sector_size == 0 {
             return Ok(None);
         }
-        // The probe buffer cached in `ctx.head` is only `HEADER_PROBE_BYTES`
-        // (0x2000) wide; UFS2's magic is much further in (≈ 0x10000 + 1372),
-        // so we have to issue an explicit read against the underlying source
-        // to check it.
-        let needed = UFS_SBLOCK_UFS2 as u64 + UFS_MAGIC_OFFSET + 4;
-        if ctx.size < needed {
-            return Ok(None);
-        }
-        let probe = ctx
-            .source
-            .read(UFS_SBLOCK_UFS2 as u64, 0x800)
-            .unwrap_or_default();
-        if !is_ufs2_magic_at_superblock(&probe) {
+        if probe_ufs(ctx)?.is_none() {
             return Ok(None);
         }
         let length_lba = ctx.size / ctx.sector_size as u64;
