@@ -105,7 +105,9 @@ MSYS2_ARG_CONV_EXCL='*' lovelycarve-cli -C 'D:/cases/nas' grep /etc/passwd /nas/
 | `volumes [别名]` | 分区与卷：文件系统、加密状态与索引状态 |
 | `index ls` / `index build <卷>` / `index rm <卷>` | 卷索引的列表 / 构建（后台运行）/ 删除 |
 
-**后台进程。** `case open` 为案件启动一个后台 `lovelycarve-cli` 进程，它持有案件、检材句柄、读取缓存、解锁的卷、组装的阵列、雕刻扫描和挂载。之后指向该案件的命令（以及 `shell`、`batch`）都交给它执行，原始字节分块传回，进度和事件照常显示。同一个案件同一时间只由一个进程打开；后台进程运行时不要让桌面端打开同一案件。`case close` 等待仍在运行的工作，取消其余任务，释放检材后退出；关闭前已经失败、但还没有报告的后台任务在此时以 `tasksFailed` 报告。
+**后台进程。** `case open` 为案件启动一个后台 `lovelycarve-cli` 进程，它持有案件、检材句柄、读取缓存、解锁的卷、组装的阵列、雕刻扫描和挂载。之后指向该案件的命令（以及 `shell`、`batch`）都交给它执行，原始字节分块传回，进度和事件照常显示。同一个案件同一时间只由一个进程打开；后台进程运行时不要让桌面端打开同一案件。`case close` 等待正在运行和已在排队的命令结束，取消其余任务，释放检材后退出；关闭前已经失败、但还没有报告的后台任务在此时以 `tasksFailed` 报告。等待期间后台进程照常应答：之后到达的命令（包括 `case status`）和 `case open` 立即以 `caseBackendClosing` 失败。
+
+多个客户端同时使用后台进程时，每条命令的进度和 `--events` 只包含它自己启动的任务，包括它打开检材的进度。只读查询以外的命令单独运行，它们还会收到不属于任何运行中命令的事件，例如 RAID 检测的进度和之前的命令留在后台的任务，`tasks wait` 因此显示它所等任务的进度；同时运行的只读查询收不到这类事件。客户端读取跟不上时，后台进程最多为它保留 256 条进度事件，更新的事件被丢弃，结果照常送达；一次写入 60 秒没有进展时，后台进程放弃这条连接。
 
 交给后台进程的命令（包括 `shell` 与 `batch` 中的）被 Ctrl+C / Ctrl+Break 中断时，客户端关闭连接并以 130 退出。后台进程随即放弃这条请求：还在排队的不再执行，执行中的停止，它启动的任务（`hash`、`identify`、`export`、`grep`、解锁、检材哈希与导出等）被取消，文件读取在下一个数据块处停下，被中断的单个文件导出不写出目标文件；已经开始的后台任务、其他客户端和打开的检材不受影响。中断前已经开始的修改可能已经生效，重试前先用 `case status`、`evidence ls` 等核对。仍不登记任务的导出（`bodyfile`、`export --stream`）无法中途停止，会在后台做完并写出目标文件，结果不再返回。
 
@@ -133,7 +135,7 @@ MSYS2_ARG_CONV_EXCL='*' lovelycarve-cli -C 'D:/cases/nas' grep /etc/passwd /nas/
 
 - 普通命令显示命令名、后端阶段、该阶段的完成量与耗时；终端中原地刷新，管道和日志中输出普通文本，长命令每 5 秒报告一次仍在执行。阶段来自真实后端观察，未知总量不显示百分比。支持 OSC 9;4 的终端（如 Windows Terminal）在标签页或任务栏显示进度，`LOVELYCARVE_NO_OSC_PROGRESS=1` 关闭。
 - `-q` / `--quiet` 或 `LOVELYCARVE_QUIET=1` 关闭进度、横幅等非必要输出；`--json` 同样关闭进度。错误与「结果不完整」警告不受影响。
-- `--events` 把生命周期与进度事件以 `{"event":"…","payload":…}` 行写到标准错误：`cli-command`（`command`、`commandId`、`phase`、`elapsedMs`、`stage`）、`cli-error`、`cli-warning`、任务事件，以及 `image-load-progress`、`raid-detect-progress` 等后端事件。启用后不显示人类进度行；`-q --events` 适合脚本。
+- `--events` 把生命周期与进度事件以 `{"event":"…","payload":…}` 行写到标准错误：`cli-command`（`command`、`commandId`、`phase`、`elapsedMs`、`stage`）、`cli-error`、`cli-warning`、任务事件，以及 `image-load-progress`、`raid-detect-progress` 等后端事件；交给后台进程的命令收到哪些事件见[案件与后台进程](#案件与后台进程)。启用后不显示人类进度行；`-q --events` 适合脚本。
 - 错误显示为带边框的块：命令行与本程序的错误为 `┌ 错误`，后端命令失败为 `┌ 后端错误`、`│ [错误代码] 说明` 与一行 `IPC <后端命令>`；设置 `DEBUG=1` 时附带详情。加 `--json` 时改为一行 `{"error":{"code":"…","message":"…","details":…,"operation":"…"}}`，不完整结果的警告为一行 `{"warning":{…}}`。
 - 只有输出是终端且不在 CI 中时才着色，`NO_COLOR` 关闭、`FORCE_COLOR` 强制。后端诊断默认过滤到 `error`，`RUST_LOG=lovelycarve_lib=debug` 等可放宽。
 
@@ -150,7 +152,7 @@ MSYS2_ARG_CONV_EXCL='*' lovelycarve-cli -C 'D:/cases/nas' grep /etc/passwd /nas/
 | `sqlite query` | `shortenedCells`（长文本被缩短或无效 UTF-8 被替换） |
 | `carve export` | 失败文件、合成字节、报告写入失败 |
 
-`--limit` 等调用方给出的上限不算不完整。错误代码与桌面端共用，由错误类型决定：`notFound`、`invalidInput`、`alreadyExists`、`cancelled`、`corruptData`、`unsupportedFormat`、`resourceLimit`、`permissionDenied`、`sourceChanged`、`caseLocked`、`readFaultsDetected`、`internal` 等；CLI 另有 `usage`、`noImage`、`needsBackend`、`aborted`、`tasksFailed`、`indexUnavailable`、`caseBackendExited`、`caseBackendRunning` 等。
+`--limit` 等调用方给出的上限不算不完整。错误代码与桌面端共用，由错误类型决定：`notFound`、`invalidInput`、`alreadyExists`、`cancelled`、`corruptData`、`unsupportedFormat`、`resourceLimit`、`permissionDenied`、`sourceChanged`、`caseLocked`、`readFaultsDetected`、`internal` 等；CLI 另有 `usage`、`noImage`、`needsBackend`、`aborted`、`tasksFailed`、`indexUnavailable`、`caseBackendExited`、`caseBackendRunning`、`caseBackendClosing` 等。
 
 ## 参数
 

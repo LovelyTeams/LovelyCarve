@@ -410,7 +410,9 @@ impl Exec {
             path.to_owned(),
             options.qcow_password,
             options.qcow_key_hex,
-            None,
+            // Its progress belongs to the request that opens it, also when
+            // that request is a query that needs the evidence.
+            Some(self.task_id("image load")),
             case_dir,
             options.raw_read_mode,
         )

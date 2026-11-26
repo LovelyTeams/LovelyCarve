@@ -81,6 +81,7 @@ fn emit_load_progress(
     if let Err(error) = app.emit(
         "image-load-progress",
         ImageLoadProgress {
+            task_id: task_id.to_owned(),
             path: path.to_string(),
             stage,
             current,

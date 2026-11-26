@@ -46,8 +46,8 @@ pub struct Exec {
 }
 
 /// The IDs of the tasks one case backend request started, so the backend
-/// can cancel the work of a request whose client went away. Executors that
-/// serve no single request keep none.
+/// can send their progress to that request's client and cancel them when
+/// the client goes away. Executors that serve no single request keep none.
 #[derive(Clone, Default)]
 pub struct RequestTasks(Option<Arc<Mutex<Vec<String>>>>);
 
@@ -57,12 +57,22 @@ impl RequestTasks {
         Self(Some(Arc::default()))
     }
 
-    fn record(&self, task_id: &str) {
+    pub(super) fn record(&self, task_id: &str) {
         if let Some(ids) = &self.0 {
             ids.lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .push(task_id.to_owned());
         }
+    }
+
+    /// Whether the request started the task `task_id`.
+    pub fn contains(&self, task_id: &str) -> bool {
+        self.0.as_ref().is_some_and(|ids| {
+            ids.lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .iter()
+                .any(|id| id == task_id)
+        })
     }
 
     /// Cancels every task of the request that still runs; returns how many.
@@ -177,7 +187,8 @@ impl Exec {
     }
 
     /// A task ID for work this command starts, so it can be found and
-    /// cancelled, also by a case backend whose client went away.
+    /// cancelled; a case backend also sends its progress to this request's
+    /// client, and cancels it when the client goes away.
     pub fn task_id(&self, path: &str) -> String {
         let id = format!("cli-{}-{}", path.replace(' ', "-"), uuid::Uuid::new_v4());
         self.request.record(&id);

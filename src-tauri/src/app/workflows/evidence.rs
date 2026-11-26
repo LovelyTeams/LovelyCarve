@@ -46,10 +46,12 @@ const EXPORT_PROGRESS_THROTTLE: Duration = Duration::from_millis(150);
 
 /// Phase + progress of an in-flight `image_load`, emitted as `image-load-progress`
 /// so the loading overlay shows what's happening instead of a blank spinner.
-/// `path` lets a tab filter to the load it kicked off; `current`/`total` are
-/// bytes (decode) or partition counts, and `total == 0` means "no percentage".
+/// `path` lets a tab filter to the load it kicked off, `task_id` names the
+/// load's task; `current`/`total` are bytes (decode) or partition counts, and
+/// `total == 0` means "no percentage".
 #[derive(Debug, Clone, Serialize)]
 pub struct ImageLoadProgress {
+    pub task_id: String,
     pub path: String,
     pub stage: String,
     pub current: u64,

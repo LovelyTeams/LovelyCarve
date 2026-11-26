@@ -1,9 +1,10 @@
 """Case backends across processes: every command for a case shares one
 backend's evidence, unlocked volumes and assembled arrays; byte results
 stream intact; cases stay apart; the transport authenticates; a backend
-that died is reported once, then cleared; and an interrupted client ends
-with 130 while the backend cancels the request it left behind, down to the
-read of a single file."""
+that died is reported once, then cleared; an interrupted client ends with
+130 while the backend cancels the request it left behind, down to the read
+of a single file; and a close that waits for busy work leaves the backend
+answering."""
 import ctypes
 import json
 import os
@@ -11,6 +12,7 @@ from pathlib import Path
 import signal
 import socket
 import subprocess
+import threading
 import time
 
 from cli_support import REPOSITORY, Cli, says
@@ -37,6 +39,42 @@ def alive(pid):
     except OSError:
         return False
     return True
+
+
+def attempt(cli, *arguments, timeout=60):
+    """Run a command whatever it exits with."""
+    return subprocess.run([str(cli.executable), *map(str, arguments)], capture_output=True, text=True,
+                          encoding="utf-8", cwd=cli.cwd, env=cli.environment, timeout=timeout)
+
+
+def error_code(stderr):
+    """The code of the JSON error line a command wrote."""
+    for line in reversed(stderr.splitlines()):
+        if line.startswith("{") and "error" in (record := json.loads(line)):
+            return record["error"]["code"]
+    return None
+
+
+def slow_unlock(cli, scope, password, **options):
+    """Start an unlock in the backend of `scope` that runs alone far longer than
+    any test: the largest PIM keeps the key derivation of a wrong `password`
+    busy. Returns the client once the unlock runs, and the unlock's task ID."""
+    process = subprocess.Popen(
+        [str(cli.executable), "--events", "-q", *map(str, scope), "unlock", "/vc", "--scheme", "veracrypt",
+         "--password", "@" + str(password), "--pim", "2147468", "--prf", "sha512", "--header", "normal"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, encoding="utf-8", cwd=cli.cwd,
+        env=cli.environment, **options)
+    started = False
+    for line in process.stderr:
+        record = json.loads(line)
+        payload = record.get("payload") or {}
+        started |= record["event"] == "cli-command" and payload.get("phase") == "started"
+        entry = payload.get("entry") or {}
+        # The backend relays its task center: the unlock runs there now.
+        if started and record["event"] == "task-entry" and entry.get("kind") == "encryptedVolumeUnlock" \
+                and entry.get("status") == "running":
+            return process, entry["id"]
+    raise AssertionError(f"the unlock never ran in the backend: exit {process.wait(timeout=30)}")
 
 
 def test_backend(cli, root):
@@ -157,9 +195,11 @@ def test_backend(cli, root):
             if (directory / "case.db").exists():
                 cli.run("-C", directory, "case", "close")
     interrupted = test_interrupted_client(cli, root)
+    test_close_while_busy(cli, root)
     assert not list((root / "backends").glob("*.json"))
     print("CLI backend tests passed: shared evidence across clients, shell and batch, streamed reads, unlock and RAID reuse, "
-          "isolation, authentication, close and crash recovery" + (", interrupted clients" if interrupted else ""))
+          "isolation, authentication, close and crash recovery" + (", interrupted clients" if interrupted else "")
+          + ", closing while busy")
 
 
 def sparse_file(path, size):
@@ -282,3 +322,59 @@ def test_interrupted_client(cli, root):
                                   "--algo", "sm3")
     assert exited < 5, f"the interrupted one-shot hash took {exited:.1f} s to exit"
     return True
+
+
+def test_close_while_busy(cli, root):
+    """A close waits for the command that runs alone, and the backend keeps
+    answering meanwhile: `case open` and other commands fail at once with
+    caseBackendClosing instead of waiting for the backend to exit."""
+    case = root / "busy case"
+    cli.run("case", "new", case, "--name", "Busy close")
+    scope = ("-C", case)
+    backend = cli.json(*scope, "case", "open")["pid"]
+    unlock = closer = None
+    try:
+        cli.run(*scope, "evidence", "add", ENCRYPTED / "veracrypt.hc", "--as", "vc")
+        wrong = root / "wrong password for the busy case.txt"
+        wrong.write_text("not the password", encoding="utf-8")
+        unlock, _ = slow_unlock(cli, scope, wrong)
+        # Its progress keeps coming; read it so that it never stops reading.
+        threading.Thread(target=unlock.stderr.read, daemon=True).start()
+        closer = subprocess.Popen([str(cli.executable), "--json", *map(str, scope), "case", "close"],
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
+                                  cwd=cli.cwd, env=cli.environment)
+        deadline = time.monotonic() + 60
+        while True:
+            asked = time.monotonic()
+            opened = attempt(cli, "--json", *scope, "case", "open", timeout=60)
+            # Answered at once, before and after the close arrived.
+            assert time.monotonic() - asked < 15, ("case open waited for the busy backend", opened)
+            if opened.returncode:
+                break
+            assert time.monotonic() < deadline, "the close never reached the backend"
+            time.sleep(0.1)
+        assert error_code(opened.stderr) == "caseBackendClosing", opened
+        # A command is refused rather than queued behind the close.
+        status = attempt(cli, "--json", *scope, "case", "status", timeout=60)
+        assert status.returncode == 1 and error_code(status.stderr) == "caseBackendClosing", status
+        assert closer.poll() is None, "the close did not wait for the unlock"
+        # Once the unlock's client is gone, the unlock is cancelled and the close completes.
+        unlock.kill()
+        unlock.wait(timeout=30)
+        out, err = closer.communicate(timeout=120)
+        assert closer.returncode == 0 and json.loads(out) == {"caseDir": str(case), "closed": True}, (out, err)
+        deadline = time.monotonic() + 30
+        while alive(backend) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not alive(backend), "backend did not stop"
+        assert cli.json(*scope, "case", "status")["process"]["mode"] == "OneShot"
+    finally:
+        for process in (unlock, closer):
+            if process is not None and process.poll() is None:
+                process.kill()
+        if alive(backend):
+            # A backend that no longer answers must not outlive the test.
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/F", "/PID", str(backend)], capture_output=True)
+            else:
+                os.kill(backend, signal.SIGKILL)

@@ -1,14 +1,24 @@
 //! Progress stays on stderr when stdout is a pipe. A heartbeat proves CLI
-//! liveness; only backend observations describe completed work.
-use super::{interactive, output, CliError};
+//! liveness; only backend observations describe completed work. A case
+//! backend relays each event to the requests it belongs to.
+use super::{exec::RequestTasks, interactive, output, CliError};
+use crate::{
+    app::workflows::task_center::TASK_ENTRY_EVENT,
+    commands::search::global_search::GLOBAL_SEARCH_PROGRESS_EVENT,
+    task_manager::{TASK_LIFECYCLE_EVENT, TASK_PROGRESS_EVENT},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     io::{IsTerminal, Write},
-    sync::{mpsc, Arc, Mutex, Weak},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        mpsc, Arc, Mutex, Weak,
+    },
     thread::JoinHandle,
     time::{Duration, Instant},
 };
+use tokio::sync::mpsc::error::TrySendError;
 
 #[cfg(not(test))]
 const HEARTBEAT: Duration = Duration::from_secs(5);
@@ -32,8 +42,42 @@ type EventSink = dyn Fn(&Event) -> Result<(), String> + Send + Sync;
 struct Shared {
     options: Options,
     active: Mutex<Weak<Active>>,
-    remote: Mutex<Option<tokio::sync::mpsc::UnboundedSender<Event>>>,
+    subscribers: Mutex<Vec<Subscriber>>,
+    next_subscriber: AtomicU64,
     sink: Box<EventSink>,
+}
+
+/// What a progress subscriber receives besides the events of its own tasks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Claims {
+    /// Nothing else: a query, which runs beside others.
+    Own,
+    /// Every event no subscriber's tasks account for, that is progress that
+    /// names no task (opening evidence, RAID detection) and tasks that no
+    /// subscribed request started: a command that runs alone.
+    Unclaimed,
+}
+
+/// A backend request that receives progress.
+struct Subscriber {
+    id: u64,
+    sender: tokio::sync::mpsc::Sender<Event>,
+    tasks: RequestTasks,
+    claims: Claims,
+    /// Events lost because the subscriber fell behind.
+    dropped: u64,
+}
+
+impl Subscriber {
+    fn send(&mut self, event: &Event) {
+        match self.sender.try_send(event.clone()) {
+            Ok(()) => {}
+            // Falling behind costs events, never the emitter's time.
+            Err(TrySendError::Full(_)) => self.dropped += 1,
+            // Its connection broke; the request reports that.
+            Err(TrySendError::Closed(_)) => {}
+        }
+    }
 }
 
 /// The observation sink shared by a CLI's host and command executor.
@@ -63,7 +107,8 @@ impl Reporter {
         Self(Arc::new(Shared {
             options,
             active: Mutex::new(Weak::new()),
-            remote: Mutex::new(None),
+            subscribers: Mutex::new(Vec::new()),
+            next_subscriber: AtomicU64::new(0),
             sink: Box::new(sink),
         }))
     }
@@ -73,17 +118,7 @@ impl Reporter {
             event: event.into(),
             payload,
         };
-        if let Some(sender) = self
-            .0
-            .remote
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
-        {
-            if sender.send(event.clone()).is_err() {
-                tracing::debug!("resident progress receiver disconnected");
-            }
-        }
+        self.relay(&event);
         if self.0.options.events {
             (self.0.sink)(&event)?;
         }
@@ -98,17 +133,54 @@ impl Reporter {
         }
         Ok(())
     }
-    /// Sends every event to `sender` until the subscription drops or a later
-    /// subscription takes over.
-    pub fn subscribe(&self, sender: tokio::sync::mpsc::UnboundedSender<Event>) -> Subscription {
-        *self
-            .0
-            .remote
+    /// Sends the events of `tasks`, the tasks one request started, to
+    /// `sender` until the subscription drops; with [`Claims::Unclaimed`] also
+    /// every event that no subscriber's tasks account for. `sender` is
+    /// bounded: a subscriber that falls behind loses the newer events.
+    pub fn subscribe(
+        &self,
+        sender: tokio::sync::mpsc::Sender<Event>,
+        tasks: RequestTasks,
+        claims: Claims,
+    ) -> Subscription {
+        let id = self.0.next_subscriber.fetch_add(1, Ordering::Relaxed);
+        self.0
+            .subscribers
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(sender.clone());
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(Subscriber {
+                id,
+                sender,
+                tasks,
+                claims,
+                dropped: 0,
+            });
         Subscription {
             reporter: self.clone(),
-            sender,
+            id,
+        }
+    }
+    /// Hand `event` to the subscribers whose requests started the task it
+    /// names, or, when none did, to those that take unclaimed events.
+    fn relay(&self, event: &Event) {
+        let mut subscribers = self
+            .0
+            .subscribers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if subscribers.is_empty() {
+            return;
+        }
+        let task = task_of(event);
+        let owners: Vec<bool> = subscribers
+            .iter()
+            .map(|subscriber| task.is_some_and(|task| subscriber.tasks.contains(task)))
+            .collect();
+        let claimed = owners.contains(&true);
+        for (subscriber, owner) in subscribers.iter_mut().zip(owners) {
+            if owner || (!claimed && subscriber.claims == Claims::Unclaimed) {
+                subscriber.send(event);
+            }
         }
     }
     pub fn start(&self, command: &str) -> Monitor {
@@ -185,24 +257,31 @@ impl Reporter {
         }
     }
 }
+/// While it lives, one request receives its progress. Once it drops, no
+/// event reaches that request's sender any more.
 pub struct Subscription {
     reporter: Reporter,
-    sender: tokio::sync::mpsc::UnboundedSender<Event>,
+    id: u64,
 }
 impl Drop for Subscription {
     fn drop(&mut self) {
-        let mut remote = self
+        let mut subscribers = self
             .reporter
             .0
-            .remote
+            .subscribers
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        // A later subscription keeps its events.
-        if remote
-            .as_ref()
-            .is_some_and(|current| current.same_channel(&self.sender))
+        if let Some(position) = subscribers
+            .iter()
+            .position(|subscriber| subscriber.id == self.id)
         {
-            *remote = None;
+            let subscriber = subscribers.swap_remove(position);
+            if subscriber.dropped > 0 {
+                tracing::debug!(
+                    "progress subscriber fell behind: {} event(s) dropped",
+                    subscriber.dropped
+                );
+            }
         }
     }
 }
@@ -409,9 +488,39 @@ fn stage(event: &Event) -> Option<String> {
         _ => label,
     })
 }
+/// The task an event reports on, when it names one: the task registry's own
+/// events carry the task, the progress events of single tasks its ID.
+fn task_of(event: &Event) -> Option<&str> {
+    let payload = &event.payload;
+    match event.event.as_str() {
+        TASK_LIFECYCLE_EVENT | TASK_PROGRESS_EVENT => payload.pointer("/task/id"),
+        // A changed entry, or the ID of a removed one.
+        TASK_ENTRY_EVENT => payload.pointer("/entry/id").or_else(|| payload.get("id")),
+        GLOBAL_SEARCH_PROGRESS_EVENT => payload.get("search_id"),
+        _ => payload.get("task_id"),
+    }
+    .and_then(Value::as_str)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// A request's tasks.
+    fn started(ids: &[&str]) -> RequestTasks {
+        let tasks = RequestTasks::tracked();
+        for id in ids {
+            tasks.record(id);
+        }
+        tasks
+    }
+    /// What reached a subscriber so far: each event and the task it names.
+    fn received(events: &mut tokio::sync::mpsc::Receiver<Event>) -> Vec<(String, Option<String>)> {
+        std::iter::from_fn(|| events.try_recv().ok())
+            .map(|event| (event.event.clone(), task_of(&event).map(str::to_owned)))
+            .collect()
+    }
+    fn of(event: &str, task: Option<&str>) -> (String, Option<String>) {
+        (event.to_owned(), task.map(str::to_owned))
+    }
     #[test]
     fn cancellation_stops_monitor_and_keeps_stages_distinct_from_percentages() {
         let events = Arc::new(Mutex::new(Vec::new()));
@@ -454,19 +563,125 @@ mod tests {
         assert_eq!(timer(Duration::from_secs(65)), "[1m 5s]");
     }
     #[test]
-    fn an_ended_subscription_leaves_a_later_one_its_events() {
+    fn overlapping_requests_each_receive_the_progress_of_their_own_tasks() {
         let reporter = Reporter::silent();
-        let (first, mut first_events) = tokio::sync::mpsc::unbounded_channel();
-        let (second, mut second_events) = tokio::sync::mpsc::unbounded_channel();
-        let older = reporter.subscribe(first);
-        let newer = reporter.subscribe(second);
-        drop(older);
-        reporter.event("task-progress", json!({})).unwrap();
-        assert_eq!(second_events.try_recv().unwrap().event, "task-progress");
-        assert!(first_events.try_recv().is_err());
-        drop(newer);
-        reporter.event("task-progress", json!({})).unwrap();
-        assert!(second_events.try_recv().is_err());
+        let (grep, mut grep_events) = tokio::sync::mpsc::channel(16);
+        let (hash, mut hash_events) = tokio::sync::mpsc::channel(16);
+        // Two queries side by side; the later one takes nothing from the first.
+        let grep = reporter.subscribe(grep, started(&["cli-grep-1"]), Claims::Own);
+        let _hash = reporter.subscribe(hash, started(&["cli-evidence-hash-2"]), Claims::Own);
+        let progress = |id: &str| json!({"task": {"id": id}, "done": 1});
+        reporter
+            .event("task-progress", progress("cli-grep-1"))
+            .unwrap();
+        reporter
+            .event("global-search-progress", json!({"search_id": "cli-grep-1"}))
+            .unwrap();
+        reporter
+            .event(
+                "image-hash-progress",
+                json!({"task_id": "cli-evidence-hash-2"}),
+            )
+            .unwrap();
+        reporter
+            .event(
+                "task-entry",
+                json!({"kind": "changed", "entry": {"id": "cli-evidence-hash-2"}}),
+            )
+            .unwrap();
+        // Neither started these: a task of earlier work, progress of no task.
+        reporter
+            .event("task-progress", progress("index-0"))
+            .unwrap();
+        reporter
+            .event("raid-detect-progress", json!({"stage": "heuristic"}))
+            .unwrap();
+        assert_eq!(
+            received(&mut grep_events),
+            [
+                of("task-progress", Some("cli-grep-1")),
+                of("global-search-progress", Some("cli-grep-1")),
+            ]
+        );
+        assert_eq!(
+            received(&mut hash_events),
+            [
+                of("image-hash-progress", Some("cli-evidence-hash-2")),
+                of("task-entry", Some("cli-evidence-hash-2")),
+            ]
+        );
+        // An ended request receives nothing more, and leaves the other its own.
+        drop(grep);
+        reporter
+            .event("task-progress", progress("cli-grep-1"))
+            .unwrap();
+        reporter
+            .event(
+                "task-entry",
+                json!({"kind": "removed", "id": "cli-evidence-hash-2"}),
+            )
+            .unwrap();
+        assert_eq!(received(&mut grep_events), []);
+        assert_eq!(
+            received(&mut hash_events),
+            [of("task-entry", Some("cli-evidence-hash-2"))]
+        );
+    }
+    #[test]
+    fn a_command_that_runs_alone_also_receives_what_nobody_claims() {
+        let reporter = Reporter::silent();
+        let index = json!({"task": {"id": "cli-index-build-1"}, "done": 1});
+        // A request started an index build and returned; the build goes on.
+        let (build, mut build_events) = tokio::sync::mpsc::channel(16);
+        let build = reporter.subscribe(build, started(&["cli-index-build-1"]), Claims::Own);
+        reporter.event("task-progress", index.clone()).unwrap();
+        drop(build);
+        assert_eq!(
+            received(&mut build_events),
+            [of("task-progress", Some("cli-index-build-1"))]
+        );
+        // `tasks wait` runs alone and started nothing: what it waits for is
+        // nobody's, and so is progress that names no task.
+        let (waiter, mut waiter_events) = tokio::sync::mpsc::channel(16);
+        let _waiter = reporter.subscribe(waiter, started(&[]), Claims::Unclaimed);
+        reporter.event("task-progress", index).unwrap();
+        reporter
+            .event(
+                "snapshot-build-progress",
+                json!({"task_id": "cli-index-build-1"}),
+            )
+            .unwrap();
+        reporter
+            .event("raid-detect-progress", json!({"stage": "complete"}))
+            .unwrap();
+        reporter
+            .event("task-entry", json!({"kind": "notice", "notice": {}}))
+            .unwrap();
+        assert_eq!(
+            received(&mut waiter_events),
+            [
+                of("task-progress", Some("cli-index-build-1")),
+                of("snapshot-build-progress", Some("cli-index-build-1")),
+                of("raid-detect-progress", None),
+                of("task-entry", None),
+            ]
+        );
+    }
+    #[test]
+    fn a_subscriber_that_falls_behind_loses_events_without_holding_the_emitter() {
+        let reporter = Reporter::silent();
+        let (sender, mut events) = tokio::sync::mpsc::channel(2);
+        let _subscription = reporter.subscribe(sender, started(&[]), Claims::Unclaimed);
+        for done in 0..5 {
+            reporter
+                .event("raid-detect-progress", json!({"current": done}))
+                .unwrap();
+        }
+        let delivered: Vec<Value> = std::iter::from_fn(|| events.try_recv().ok())
+            .map(|event| event.payload["current"].clone())
+            .collect();
+        assert_eq!(delivered, [json!(0), json!(1)]);
+        assert_eq!(reporter.0.subscribers.lock().unwrap()[0].dropped, 3);
     }
     #[test]
     fn null_message_progress_uses_real_bytes_and_unknown_totals_have_no_percent() {
