@@ -2,3 +2,12 @@
 # on '\n'; a CRLF checkout (core.autocrlf on Windows) leaves '\r' in every hash
 # and URL, so the cached ONNX Runtime binaries are never found.
 src-tauri/vendor/ort-sys/** text eol=lf
+
+*.h1z binary
+*.gfs1z binary
+*.reiser4z binary
+src-tauri/test_data/rom-images/native-*.cramfs binary
+src-tauri/test_data/hfsplus/*.hfsz binary
+src-tauri/vendor/ocfs1-reader/tests/fixtures/*.zlib binary
+src-tauri/vendor/qnx-reader/tests/fixtures/nfi-etfs* binary
+src-tauri/vendor/qnx-reader/tests/fixtures/nfi-efs* binary

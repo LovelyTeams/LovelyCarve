@@ -218,6 +218,8 @@ pub struct Member {
     pub bucket_size: u16,
     /// Seconds since the Unix epoch.
     pub last_mount: u64,
+    /// The last superblock sequence written to this member, when recorded.
+    pub last_sb_seq: Option<u64>,
 }
 
 /// A btree root recorded in the `clean` field: the btree id, its level, and
@@ -521,6 +523,8 @@ impl Superblock {
     /// the body starts with a u16 per-member size and 6 bytes of padding;
     /// each member is uuid(16), nbuckets u64, first_bucket u16,
     /// bucket_size u16, 4 bytes we do not interpret, last_mount u64.
+    /// The optional sequence at byte 120 matches the native tool's
+    /// "Last superblock write" in both tiered and replicated volumes.
     pub fn members(&self) -> Result<Vec<Member>> {
         let f = self
             .field(FIELD_MEMBERS_V2)
@@ -539,7 +543,7 @@ impl Superblock {
         let mut out = Vec::with_capacity(n);
         for i in 0..n {
             let off = 8 + i * member_bytes;
-            if off + 48 > b.len() {
+            if off + member_bytes > b.len() {
                 return Err(Error::Corrupt("members_v2 shorter than nr_devices".into()));
             }
             out.push(Member {
@@ -548,6 +552,9 @@ impl Superblock {
                 first_bucket: le16(b, off + 24),
                 bucket_size: le16(b, off + 26),
                 last_mount: le64(b, off + 32),
+                last_sb_seq: (self.version.minor() >= 4 && member_bytes >= 128)
+                    .then(|| le64(b, off + 120))
+                    .filter(|seq| *seq != 0),
             });
         }
         Ok(out)
@@ -727,6 +734,45 @@ mod tests {
         assert_eq!(sb.field_names(), vec!["ext"]);
         assert_eq!(sb.feature_names(), vec!["new_siphash"]);
         assert_eq!(sb.compat_names().len(), 7);
+    }
+
+    #[test]
+    fn a_member_at_its_recorded_sequence_can_lag_the_shared_state() {
+        use crate::devices::select_superblock;
+
+        let mut primary = Superblock::parse(&synthetic()).unwrap();
+        primary.nr_devices = 2;
+        let mut members = vec![0; 8 + 2 * 128];
+        members[..2].copy_from_slice(&128u16.to_le_bytes());
+        for (index, member) in members[8..].as_chunks_mut::<128>().0.iter_mut().enumerate() {
+            member[0] = index as u8 + 1;
+            member[16..24].copy_from_slice(&16u64.to_le_bytes());
+            member[26..28].copy_from_slice(&32u16.to_le_bytes());
+            member[120..128].copy_from_slice(&(primary.seq - index as u64).to_le_bytes());
+        }
+        primary.fields.push(Field {
+            field_type: FIELD_MEMBERS_V2,
+            body: members,
+        });
+        let mut secondary = primary.clone();
+        secondary.dev_idx = 1;
+        secondary.seq -= 1;
+        primary.fields.push(Field {
+            field_type: FIELD_CLEAN,
+            body: vec![0; 8],
+        });
+
+        assert_eq!(
+            select_superblock(&[secondary.clone(), primary.clone()]),
+            Ok(1)
+        );
+        assert!(matches!(
+            select_superblock(&[primary.clone()]),
+            Err(Error::Unsupported(_))
+        ));
+        assert!(select_superblock(&[primary.clone(), primary.clone()]).is_err());
+        secondary.seq -= 1;
+        assert!(select_superblock(&[primary, secondary]).is_err());
     }
 
     #[test]

@@ -54,6 +54,19 @@ fn check_file(image: &Arc<EvidenceSession>, id: &str, expected: &[u8]) {
 
 #[test]
 fn udf_native_reference_and_sparse_tree_ranges_stream_and_export() {
+    let sparse_bytes = |block_size| {
+        (0..4 * block_size + 37)
+            .map(|index| {
+                if index < block_size {
+                    ((index * 17 + 3) & 255) as u8
+                } else if index < 3 * block_size {
+                    0
+                } else {
+                    (((index - 3 * block_size) * 19 + 5) & 255) as u8
+                }
+            })
+            .collect()
+    };
     for (compressed, path, expected) in [
         (
             include_bytes!("../../../../vendor/lamfold-udf/tests/fixtures/udf102.zlib").as_slice(),
@@ -73,17 +86,30 @@ fn udf_native_reference_and_sparse_tree_ranges_stream_and_export() {
             include_bytes!("../../../../vendor/lamfold-udf/tests/fixtures/synthetic-512.zlib")
                 .as_slice(),
             "/big.bin",
-            (0..2085)
-                .map(|index| {
-                    if index < 512 {
-                        ((index * 17 + 3) & 255) as u8
-                    } else if index < 1536 {
-                        0
-                    } else {
-                        (((index - 1536) * 19 + 5) & 255) as u8
-                    }
-                })
-                .collect(),
+            sparse_bytes(512),
+        ),
+        (
+            include_bytes!("../../../../vendor/lamfold-udf/tests/fixtures/metadata-250.zlib")
+                .as_slice(),
+            "/big.bin",
+            sparse_bytes(2048),
+        ),
+        (
+            include_bytes!("../../../../vendor/lamfold-udf/tests/fixtures/metadata-260.zlib")
+                .as_slice(),
+            "/big.bin",
+            sparse_bytes(2048),
+        ),
+        (
+            include_bytes!("../../../../vendor/lamfold-udf/tests/fixtures/vat-201.zlib").as_slice(),
+            "/big.bin",
+            sparse_bytes(2048),
+        ),
+        (
+            include_bytes!("../../../../vendor/lamfold-udf/tests/fixtures/sparable.zlib")
+                .as_slice(),
+            "/big.bin",
+            sparse_bytes(2048),
         ),
     ] {
         let bytes = decompress(compressed);

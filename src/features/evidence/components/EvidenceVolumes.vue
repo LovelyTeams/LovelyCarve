@@ -97,7 +97,7 @@
 
             </template>
             <button
-              v-if="isLockedEncrypted(info, row.partition) && canUnlockContainer"
+              v-if="canUnlockContainer && (isLockedEncrypted(info, row.partition) || row.partition.kind === 'apfscontainer')"
               class="ui-btn sm"
               type="button"
               aria-haspopup="dialog"

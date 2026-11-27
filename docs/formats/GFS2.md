@@ -10,7 +10,7 @@ crates.io / GitHub，现有 Rust `unearth` 仅识别超级块；本实现复用�
 
 | 项目 | 范围 |
 | --- | --- |
-| 格式 | 大端 GFS2 1801 / 1802、multihost 1900；GFS1（1309）保持独立，不冒充支持 |
+| 格式 | 大端 GFS2 1801 / 1802、multihost 1900。1309 / 1401 卷由 [GFS1 读取器](GFS1.md) 处理。 |
 | 几何 | 字节 65536 的超级块、块大小 / shift、root / master 双重 inode 身份；卷分配范围由 rindex 决定，源长度只是上限 |
 | 分配 | 多资源组、首 RG 页和续 RB 页的两位分配状态，区分 free / used / unlinked / dinode；组重叠、rindex / 组头不一致及组头 CRC 错误明确拒绝 |
 | 目录 | stuffed 线性目录、exhash 表、重复桶范围及碰撞链；名称 CRC32、叶深度 / 格式 / 所有者、记录边界、目录计数和 `.` / `..` 身份校验 |

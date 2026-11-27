@@ -111,16 +111,33 @@ pub fn partition_ftype(kind: PartitionKind) -> Option<u64> {
         | PartitionKind::F2fs
         | PartitionKind::Qnx4
         | PartitionKind::Qnx6
+        | PartitionKind::QnxEtfs
+        | PartitionKind::QnxEfs
         | PartitionKind::Udf
         | PartitionKind::Hfs
+        | PartitionKind::Mfs
+        | PartitionKind::Littlefs
+        | PartitionKind::Spiffs
+        | PartitionKind::Hammer
+        | PartitionKind::Hammer2
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
+        | PartitionKind::Reiser4
         | PartitionKind::Amiga
         | PartitionKind::Befs
+        | PartitionKind::Gfs1
         | PartitionKind::Gfs2
+        | PartitionKind::Ocfs1
         | PartitionKind::Ocfs2
         | PartitionKind::Nilfs2
         | PartitionKind::Bcachefs
+        | PartitionKind::Vmfs
+        | PartitionKind::Hpfs
+        | PartitionKind::Vxfs
+        | PartitionKind::AixJfs
+        | PartitionKind::UnixwareBfs
+        | PartitionKind::Xdvdfs
+        | PartitionKind::Fatx
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs

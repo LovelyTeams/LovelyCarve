@@ -10,6 +10,11 @@ use std::{
 
 use bincode_next::{Decode, Encode};
 
+pub const FS_UFS1_MAGIC: i32 = 0x00011954;
+pub const SBLOCK_UFS1: usize = 8192;
+pub(crate) const UFS1_INODE_SIZE: usize = 128;
+pub(crate) const UFS1_POINTER_SIZE: usize = 4;
+
 /// UFS2 fast filesystem magic number
 pub const FS_UFS2_MAGIC: i32 = 0x19540119;
 

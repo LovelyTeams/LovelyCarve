@@ -45,6 +45,16 @@ impl Volume for BtrfsVol<'_> {
         }
         self.volume.read_inode_data(subvol, &inode, max_bytes)
     }
+    fn read_range(&self, id: &str, offset: u64, length: usize) -> Result<Option<Vec<u8>>> {
+        let (_, subvol, inode_number) = reparse_btrfs(id)?;
+        let inode = self.volume.read_inode(subvol, inode_number)?;
+        if !matches!(inode.kind(), NodeKind::File | NodeKind::Symlink) {
+            anyhow::bail!("node is not a regular file");
+        }
+        self.volume
+            .read_inode_range(subvol, &inode, offset, length)
+            .map(Some)
+    }
     fn file_stat(&self, id: &str, node_id: &str) -> Result<FsStat> {
         let (_, subvol, inode_number) = reparse_btrfs(id)?;
         let inode = self.volume.read_inode(subvol, inode_number)?;

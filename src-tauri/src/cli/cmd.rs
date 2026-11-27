@@ -143,7 +143,7 @@ pub enum Command {
     Qr(inspect::QrArgs),
     /// 加密卷的类型、状态与元数据
     Encryption(crypto::EncryptionArgs),
-    /// 解锁 BitLocker、LUKS、VeraCrypt、FileVault 或加密的 iOS 备份
+    /// 解锁 BitLocker、LUKS、VeraCrypt、FileVault、APFS 或加密的 iOS 备份
     // Boxed: its credential and VeraCrypt options outweigh every other command.
     Unlock(Box<crypto::UnlockArgs>),
     /// RAID 与 LVM 组装

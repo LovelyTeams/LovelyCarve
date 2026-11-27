@@ -4,6 +4,7 @@ use crate::core::filesystem::{
     evidence_session::EvidenceSession,
     tree::fs_tree::{self, FsSession},
 };
+use sha2::{Digest, Sha256};
 
 const CRAM_LE: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -12,6 +13,18 @@ const CRAM_LE: &[u8] = include_bytes!(concat!(
 const CRAM_BE: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/test_data/rom-images/synthetic-be.cramfs"
+));
+const CRAM_EXT_LE: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/test_data/rom-images/native-extended-le.cramfs"
+));
+const CRAM_EXT_BE: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/test_data/rom-images/native-extended-be.cramfs"
+));
+const CRAM_V1: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/test_data/rom-images/native-v1.cramfs"
 ));
 const ROM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -33,9 +46,10 @@ fn image(bytes: &[u8]) -> (tempfile::TempDir, Arc<EvidenceSession>) {
 }
 
 fn refresh_cram_crc(bytes: &mut [u8]) {
-    bytes[32..36].fill(0);
-    let crc = crc32fast::hash(bytes);
-    bytes[32..36].copy_from_slice(&crc.to_le_bytes());
+    let offset = lamfold_cramfs::superblock_offset(bytes).unwrap();
+    bytes[offset + 32..offset + 36].fill(0);
+    let crc = crc32fast::hash(&bytes[offset..]);
+    bytes[offset + 32..offset + 36].copy_from_slice(&crc.to_le_bytes());
 }
 
 fn refresh_rom_checksum(bytes: &mut [u8], offset: usize, length: usize) {
@@ -162,7 +176,7 @@ fn rom_images_reject_crc_truncation_outside_extents_and_partial_decodes() {
                 bytes[100..104].copy_from_slice(&(size + 1).to_le_bytes());
             }
             2 => bytes[8..12].copy_from_slice(&1u32.to_le_bytes()),
-            3 => bytes[8..12].copy_from_slice(&0x801u32.to_le_bytes()),
+            3 => bytes[8..12].copy_from_slice(&0x201u32.to_le_bytes()),
             _ => unreachable!(),
         }
         refresh_cram_crc(&mut bytes);
@@ -173,6 +187,147 @@ fn rom_images_reject_crc_truncation_outside_extents_and_partial_decodes() {
                 &format!("cramfs:part:0:{}", hex::encode("/payload.bin")),
                 usize::MAX
             )
+            .is_err());
+    }
+}
+
+#[test]
+fn rom_images_cramfs_native_extended_pointers_and_boot_padding() {
+    for fixture in [CRAM_EXT_LE, CRAM_EXT_BE] {
+        for base in [0, 512] {
+            let mut disk = vec![0; base];
+            if base != 0 {
+                disk[450] = 0x83;
+                disk[454..458].copy_from_slice(&1u32.to_le_bytes());
+                disk[458..462].copy_from_slice(&((fixture.len() / 512) as u32).to_le_bytes());
+                disk[510..512].copy_from_slice(&[0x55, 0xaa]);
+            }
+            disk.extend_from_slice(fixture);
+            // Boot bytes have no effect on the filesystem checksum.
+            disk[base + 17] = 0x7a;
+            let (_directory, evidence) = image(&disk);
+            assert_eq!(evidence.partitions[0].kind, PartitionKind::Cramfs);
+            assert_eq!(
+                evidence.partitions[0].start_lba * evidence.sector_size as u64,
+                base as u64
+            );
+            assert_eq!(evidence.read_range(0, disk.len()).unwrap(), disk);
+            let mut session = FsSession::new(&evidence);
+            let root = session.children("part:0").unwrap();
+            for (name, hash) in [
+                (
+                    "payload.bin",
+                    "d3e976619a6b7499471669dc3c587da9a4685b350a13bcd8ff871ad227fd68c6",
+                ),
+                (
+                    "program",
+                    "4777fda08bd4c1b7ec65be151cfb1ba562bcdde8e696303a91d59342b88e28dc",
+                ),
+            ] {
+                let file = root.iter().find(|node| node.name == name).unwrap();
+                let whole = session.read_file_limited(&file.id, usize::MAX).unwrap();
+                assert_eq!(hex::encode(Sha256::digest(&whole)), hash);
+                for offset in [4091, 8185, 8197, 12_280, 12_289] {
+                    assert_eq!(
+                        session
+                            .read_file_range(&file.id, offset as u64, 45)
+                            .unwrap(),
+                        whole[offset..(offset + 45).min(whole.len())]
+                    );
+                }
+            }
+            let link = root.iter().find(|node| node.name == "link").unwrap();
+            assert_eq!(link.link_target.as_deref(), Some("nested/note"));
+        }
+    }
+}
+
+#[test]
+fn rom_images_cramfs_fsid_v1_uses_source_boundary() {
+    let historical_size = u32::from_le_bytes(CRAM_V1[4..8].try_into().unwrap());
+    assert_eq!(historical_size, 65_536);
+    assert!(CRAM_V1.len() < historical_size as usize);
+    let file = format!("cramfs:part:0:{}", hex::encode("/payload.bin"));
+    let (_directory, evidence) = image(CRAM_V1);
+    assert_eq!(evidence.partitions[0].kind, PartitionKind::Cramfs);
+    let mut session = FsSession::new(&evidence);
+    let full = session.read_file_limited(&file, usize::MAX).unwrap();
+    assert_eq!(
+        hex::encode(Sha256::digest(&full)),
+        "d3e976619a6b7499471669dc3c587da9a4685b350a13bcd8ff871ad227fd68c6"
+    );
+    assert_eq!(
+        session.read_file_range(&file, 8192, 4096).unwrap(),
+        vec![0; 4096]
+    );
+    assert_eq!(
+        session.read_file_range(&file, 4093, 29).unwrap(),
+        full[4093..4122]
+    );
+
+    let (_directory, truncated) = image(&CRAM_V1[..4096]);
+    assert!(FsSession::new(&truncated)
+        .read_file_limited(&file, usize::MAX)
+        .is_err());
+    assert!(FsSession::new(&truncated)
+        .read_file_range(&file, 4100, 1)
+        .is_err());
+}
+
+#[test]
+fn rom_images_cramfs_direct_zlib_before_sequential_raw() {
+    let mut bytes = CRAM_EXT_LE.to_vec();
+    let inode = bytes.windows(11).position(|s| s == b"payload.bin").unwrap() - 12;
+    let word = u32::from_le_bytes(bytes[inode + 8..inode + 12].try_into().unwrap());
+    let table = ((word >> 6) * 4) as usize;
+    let compressed_end = u32::from_le_bytes(bytes[table..table + 4].try_into().unwrap()) as usize;
+    let old_end =
+        u32::from_le_bytes(bytes[table + 12..table + 16].try_into().unwrap()) & 0x3fff_ffff;
+
+    // Move the same stream away from the table and give its zlib page a
+    // length-prefixed direct pointer. The next raw page uses a regular end pointer.
+    let start = bytes.len();
+    let body = bytes[table + 16..old_end as usize].to_vec();
+    let compressed_len = compressed_end - (table + 16);
+    bytes.extend_from_slice(&(compressed_len as u16).to_le_bytes());
+    bytes.extend_from_slice(&body);
+    let raw_end = (start + 2 + compressed_len + 4096) as u32;
+    for (index, pointer) in [
+        0x4000_0000 | (start / 4) as u32,
+        0x8000_0000 | raw_end,
+        raw_end,
+        0x8000_0000 | (raw_end + 6),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let at = table + index * 4;
+        bytes[at..at + 4].copy_from_slice(&pointer.to_le_bytes());
+    }
+    bytes.resize(bytes.len().next_multiple_of(4096), 0);
+    let len = bytes.len() as u32;
+    bytes[516..520].copy_from_slice(&len.to_le_bytes());
+    refresh_cram_crc(&mut bytes);
+    let (_directory, evidence) = image(&bytes);
+    let file = format!("cramfs:part:0:{}", hex::encode("/payload.bin"));
+    let mut session = FsSession::new(&evidence);
+    let full = session.read_file_limited(&file, usize::MAX).unwrap();
+    assert_eq!(
+        hex::encode(Sha256::digest(&full)),
+        "d3e976619a6b7499471669dc3c587da9a4685b350a13bcd8ff871ad227fd68c6"
+    );
+    assert_eq!(
+        session.read_file_range(&file, 4100, 37).unwrap(),
+        full[4100..4137]
+    );
+
+    for (offset, value) in [(start, 0), (start, u16::MAX), (table + 4, 0)] {
+        let mut corrupt = bytes.clone();
+        corrupt[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
+        refresh_cram_crc(&mut corrupt);
+        let (_directory, evidence) = image(&corrupt);
+        assert!(FsSession::new(&evidence)
+            .read_file_range(&file, 4100, 37)
             .is_err());
     }
 }

@@ -15,7 +15,7 @@
 | `yaffs2-reader` | `0.1.0` | 本仓库原创；Rust 前缀参考 binwalk-ng [845806c16374](https://github.com/binwalk-ng/binwalk-ng/blob/845806c163747eb524d66b5fe3de2ed86ea3aaad/src/formats/yaffs.rs) | AGPL-3.0-only；复用的 MIT Rust 结构保留独立版权与许可，补 YAFFS2 page / spare、tags / ECC、版本、shrink / shadow、命名空间和范围读取。YAFFS1 扩展独立实现分散 tags、两位 serial、页正文 ECC 与显式长度策略，共用 Rust 目录接口。没有引入 C 或外部提取入口；原始夹具 CC0，范围见 yaffs2-reader/LOVELYCARVE.md。 |
 | `ubidump` | `0.1.0` | [19782c3eabc2](https://github.com/aspnmy/rust_ubidump/commit/19782c3eabc25a1baab7faefe12fe6f4bd362dac) | UBI 层改为有界只读库，修正 VTBL 长度与名称边界，重写逻辑块映射及校验；增补有界 UBIFS v4/v5 已提交索引、主节点副本和按块文件读取，复用 Rust 解码库，不引入 CLI / C LZO。见 LOVELYCARVE.md 与 [UBI](../../docs/formats/UBI.md) / [UBIFS](../../docs/formats/UBIFS.md)。 |
 | `ad1` | `0.1.2` | [afc3963659a1](https://github.com/SecurityRonin/ad1-forensic/commit/afc3963659a13acf10082e7d76194d3ab789583e) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
-| `apfs` | `0.4.1` | [3a73ee28fdab](https://github.com/Dil4rd/dpp/commit/3a73ee28fdab192fcdfbe8edcad7b520867f2417) | 保留多卷、MACB 和目录遍历；2026-10-13 对照 libfsapfs 补事务 OMAP、目录键、seek/range、inode/xattr/快照元数据及严格来源边界。完整范围与限制见 [APFS](../../docs/formats/APFS.md)。 |
+| `apfs` | `0.4.1` | [3a73ee28fdab](https://github.com/Dil4rd/dpp/commit/3a73ee28fdab192fcdfbe8edcad7b520867f2417) | 本地补事务 OMAP、目录键、seek/range、inode/xattr/快照元数据和来源边界；历史视图按冻结 APSB 和对应事务的 OMAP 读取。新增双设备 Fusion 和 ONEKEY 软件加密解锁。见 [APFS](../../docs/formats/APFS.md)。 |
 | `sercomm-firmware` | `0.1.0` | 本仓库原创 Rust（AGPL-3.0-only） | 先复用 zip / flate2 / ubidump；验证 Sercomm ZIP32 NAND 布局、长度、CRC、EOF 与取消，宿主通过独立 native view 保留源身份 / 压缩几何；格式依据与边界见 sercomm-firmware/LOVELYCARVE.md。 |
 | `backhand` | `0.25.5` | [bf678c7f9237](https://github.com/wcampbell0x2a/backhand/commit/bf678c7f923799a57d972cf695daf69d8c6ddafb) | 升级 0.25.1 → 0.25.5；保留精简特性、std I/O 别名及可读错误信息，修复 Windows 根路径判断；2026-10-21 对照 FMK c72f45d7a062 补 DD-WRT v3 hsqt/tqsh、逐块 LZMA 参数与 v3/v4 精确范围读取；v3 adaptive / 标准 LZMA 复用 lzma-rust2 并去除 adaptive C/C++ 依赖，补终止、EOF 与输出限制，另补 v1/v2 有界大小端读者、尾片段、跨元数据块及有符号 / 缺失时间；无 EOS 块以 Rust lzma-rs 交叉验证最终 range code，另将 XZ / Zstandard 读取改用 lzma-rust2 / ms-compress-ruzstd，补完整输入、校验和、索引和内存上限；C Zstandard 写入仅保留为宿主不启用的独立特性。见 backhand/LOVELYCARVE.md。 |
 | `lzma-rs` | `0.3.0` | [da82bd118299](https://github.com/gendx/lzma-rs/commit/da82bd1182993a07db035e285a8f8a87d32a30c2) | 发布包保留原始 MIT 来源；补显式严格 LZMA 完成接口，校验已知输出长度后的 range code 与真实 EOF，供旧 SquashFS 无 EOS 块独立核对；未引入 C 开发依赖，见 LOVELYCARVE.md。 |
@@ -49,7 +49,7 @@
 | `vmdk` | `0.8.4` | [8a9831125c6d](https://github.com/SecurityRonin/vmdk-forensic/commit/8a9831125c6db5cff9a24414481037487a92d410) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
 | `vsc` | `0.2.2` | [0af70bed6910](https://github.com/SecurityRonin/vsc-forensic/commit/0af70bed6910fef542224ecd94928b4bc0ae920b) | 2026-10-13 对照 libvshadow 全部 48 个 API；补块/区间枚举、seek/read、严格 catalog/存储头与 NTFS 尺寸校验；真实双副本验证及限制见 [VSS](../../docs/formats/VSS.md)。 |
 | `xfs-fuse` | `0.6.0` | [2ea4e250db00](https://github.com/KhaledEmaraDev/xfuse/commit/2ea4e250db00d3f0f845499c8a83f85b9a77b7f8) | 合入上游 v1 inode / real-time 标记；本地 XFS 1–5、目录、属性、checked extent/范围读取、纳秒时间与 meta UUID 补丁见 [XFS](../../docs/formats/XFS.md)。无独立 real-time 设备时拒绝正文。未引入上游 FUSE 服务或 libfsxfs C 实现。 |
-| `zfs` | `0.1.0` | [原来源](https://github.com/Hopffenn/zfs-rs) | 原来源返回 Repository not found；保留现有稳定 Rust 移植，不能声称已同步无法访问的上游。 |
+| `zfs` | `0.1.0` | [原来源](https://github.com/Hopffenn/zfs-rs) | 原来源不可访问。现有稳定 Rust 移植已加入四份标签校验、可变 uberblock 槽、大 dnode 和系统属性 spill。磁盘格式参照 [OpenZFS](https://github.com/openzfs/zfs)。 |
 
 `leveldb-rs-binding` 是已移除 LevelDB/MMKV 功能后遗留的空目录，没有被 Git 跟踪的源码或 Cargo 依赖，不属于待更新库。
 
@@ -97,9 +97,13 @@ LZMA 复用 Apache-2.0 的 `lzma-rust2`。没有复制无明确代码许可的 H
 
 纯 Rust QNX4 / QNX6 Power-Safe / MMI 只读库，AGPL-3.0-only；未移植内核 C 驱动。格式参考 Linux v6.12 公开布局及 NFI qnxmount 的 Apache-2.0 Kaitai 结构。真实 QNX6 工具生成夹具与 TAR 来自 NFI qnxmount `11c8a7f9ee9b945d584263743f6ea8524e8776d2`，其许可证和生成脚本保留在 `qnx-reader/tests/fixtures/`，来源与 SHA-256 见 manifest.json。合成数据及生成器为 CC0；能力、拒绝策略与验证边界见 [QNX](../../docs/formats/QNX.md)。
 
+QNX ETFS 支持对照 [QNX mketfs 文档](https://qnx.com/developers/docs/7.1/com.qnx.doc.neutrino.utilities/topic/m/mketfs.html) 和同一提交的 [NFI ETFS 位布局](https://github.com/NetherlandsForensicInstitute/qnxmount/blob/11c8a7f9ee9b945d584263743f6ea8524e8776d2/qnxmount/etfs/parser.ksy)。原生 ETFS 闪存镜像、QNX TAR 与事务导出沿用该许可证，哈希见同一 manifest。[ETFS 支持范围](../../docs/formats/QNX_ETFS.md)
+
+QNX EFS 支持对照 [QNX mkefs 文档](https://www.qnx.com/developers/docs/7.1/com.qnx.doc.neutrino.utilities/topic/m/mkefs.html) 和同一提交的 [NFI EFS 位布局](https://github.com/NetherlandsForensicInstitute/qnxmount/blob/11c8a7f9ee9b945d584263743f6ea8524e8776d2/qnxmount/efs/parser.ksy)。原生 F3S 镜像与 QNX TAR 沿用 Apache-2.0。[EFS 支持范围](../../docs/formats/QNX_EFS.md)
+
 ## UDF
 
-`lamfold-udf` 0.1.1 来源于 [lamco-admin/lamfold fabaad6af0c28](https://github.com/lamco-admin/lamfold/tree/fabaad6af0c28b80535307b339b84110f3a3c12e/crates/lamfold-udf)，MIT OR Apache-2.0。复用既有 lamfold；补 descriptor tag / CRC、单物理分区映射与边界检查、512–4096 字节块、FE / EFE、AED 续链、稀疏区、符号链接、时间与资源限额；不含 C/DLL。固定来源、本地改造和上游 mkudffs / Linux 内核夹具见 [LOVELYCARVE.md](lamfold-udf/LOVELYCARVE.md) 与 [UDF](../../docs/formats/UDF.md)。
+`lamfold-udf` 0.1.1 来源于 [lamco-admin/lamfold fabaad6af0c28](https://github.com/lamco-admin/lamfold/tree/fabaad6af0c28b80535307b339b84110f3a3c12e/crates/lamfold-udf)，MIT OR Apache-2.0。复用既有 lamfold；补 descriptor tag / CRC、物理 / metadata / VAT / sparable 分区映射与边界检查、512–4096 字节块、FE / EFE、AED 续链、稀疏区、符号链接、时间与资源限额；不含 C/DLL。固定来源、本地改造和上游 mkudffs / Linux 内核夹具见 [LOVELYCARVE.md](lamfold-udf/LOVELYCARVE.md) 与 [UDF](../../docs/formats/UDF.md)。
 
 ## Minix FS
 
@@ -114,6 +118,12 @@ LZMA 复用 Apache-2.0 的 `lzma-rust2`。没有复制无明确代码许可的 H
 外部 hfsutils 样本与原创 Python 样本均保留来源和哈希；详见 [ORIGIN.md](classic-hfs/ORIGIN.md)
 和 [CLASSIC_HFS.md](../../docs/formats/CLASSIC_HFS.md)。`lamfold` 新增默认空值的 `LocalFileTimes`
 / `local_timestamps` 接口，避免把传统 HFS 无偏移本地时间标成 UTC；现有 UTC 接口不变。
+
+## Reiser4 只读适配
+
+`reiser4-reader` 0.1.0 是原创 Rust 读取器，参考维护者的 reiser4progs 1.2.2 与内核树。
+原生工具仅用来生成和对照两种测试卷。固定提交、生成方法和校验值见
+[ORIGIN.md](reiser4-reader/ORIGIN.md) 与 [Reiser4 能力说明](../../docs/formats/REISER4.md)。
 
 ## ReiserFS v3 只读适配
 
@@ -160,11 +170,21 @@ Haiku 编码解释在 Rust API 中提供。原生 Haiku 官方镜像及独立发
 不随仓库分发；自制夹具为 CC0-1.0。见 [ORIGIN.md](befs-reader/ORIGIN.md) 与
 [格式说明](../../docs/formats/BEFS.md)。
 
+## GFS1
+
+`gfs1-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。磁盘布局和日志头检查依据 Red Hat GFS 源码，
+卷由 Cluster 2.03.05 原生工具格式化并对照验证。[ORIGIN.md](gfs1-reader/ORIGIN.md)
+
 ## GFS2
 
 `gfs2-reader` 0.1.0：适配前检索现有 Rust 代码，复用 unearth 的 MIT 超级块识别布局，
 新增纯 Rust 的资源组、目录、文件、日志及 EA 读取；固定版本、许可和原生
 mkfs / Linux kernel / fsck 验证见 [ORIGIN.md](gfs2-reader/ORIGIN.md)。
+
+## OCFS1
+
+`ocfs1-reader` 0.1.0 是原创纯 Rust 读取器，参考 Oracle 原始提交归档中的
+OracleCFS 1.2 磁盘结构。原始来源与独立夹具见 [ORIGIN.md](ocfs1-reader/ORIGIN.md)。
 
 ## OCFS2 (2026-10-24)
 
@@ -195,3 +215,75 @@ mkfs / Linux kernel / fsck 验证见 [ORIGIN.md](gfs2-reader/ORIGIN.md)。
 [读取器](rust-fs-bcachefs/ORIGIN.md)、[框架](rust-fs-core/ORIGIN.md) 与
 [适配器 / 验证](bcachefs-reader/ORIGIN.md)；能力边界见
 [BCACHEFS](../../docs/formats/BCACHEFS.md)。
+
+## VMFS 5 / 6
+
+`vmfs-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。格式对照采用 Fox-IT 的
+`dissect.vmfs`（AGPL-3.0-or-later）固定提交 `0a385a1d80f5881f73402b7b847305dc478eae1c`。
+上游 Python 读取器与测试镜像用于独立核验，构建和运行无需这些文件。样本来源、哈希验证和覆盖范围见
+[ORIGIN.md](vmfs-reader/ORIGIN.md) 与 [VMFS](../../docs/formats/VMFS.md)。
+
+## HPFS
+
+`hpfs-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。磁盘结构对照 Linux HPFS
+定义与 nepx 的 BSD-3-Clause `hpfsutils`。验证镜像由固定版本的工具生成，未引入 C 源码或运行时组件。
+具体提交、临时工具修正和样本哈希见 [ORIGIN.md](hpfs-reader/ORIGIN.md)。
+
+## VxFS
+
+`vxfs-reader` 0.1.0 适配 `fs-unix` 0.2.1 的 MIT VxFS 读取算法，固定源码提交
+`4969de813a1ec4439ccce69a1247c2ecf3f50cb4`。本地实现增加有界读取、链式对象定位表、
+可寻址的逻辑范围读取、格式校验和宿主适配。原始许可、样本来源与哈希见
+[ORIGIN.md](vxfs-reader/ORIGIN.md)。
+
+## AIX JFS1
+
+`aix-jfs-reader` 0.1.0 适配 `fs-unix` 0.2.1 的 MIT AIX JFS 读取算法，固定源码提交
+`4969de813a1ec4439ccce69a1247c2ecf3f50cb4`。本地实现补齐备用超级块选择、打包片段与有界范围读取。
+原始许可见 `LICENSE-MIT`，样本和来源见 [ORIGIN.md](aix-jfs-reader/ORIGIN.md)。
+
+## UnixWare BFS
+
+`unixware-bfs-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。磁盘字段对照 Linux、
+util-linux 与 UnixWare 文档。空卷由 util-linux 格式化，含文件的测试卷以该卷为基础构造。
+具体版本、样本与哈希见 [ORIGIN.md](unixware-bfs-reader/ORIGIN.md)。
+
+## XDVDFS
+
+`xdvdfs-reader` 0.1.0（AGPL-3.0-only）调用 crates.io 的 MIT 读取库 `xdvdfs` 0.8.3，增加
+有界二叉目录遍历和文件范围读取。样本由 XboxDev 的独立工具生成，来源见
+[ORIGIN.md](xdvdfs-reader/ORIGIN.md)。
+
+## Xbox FATX / XTAF
+
+`fatx-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。磁盘结构对照 XboxDev、
+Velocity 和 Xbox 格式研究。样本由 libfatx 与 fatx-rs 独立生成并验证，具体版本与哈希见
+[ORIGIN.md](fatx-reader/ORIGIN.md)。
+
+## Macintosh MFS
+
+`mfs-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。磁盘布局对照 Apple MFSLives
+与 CiderPress II 的格式记录。常规样本由 macfs 生成并由 fs-mac 交叉验证。Apple 的 Disk Copy 4.2
+样本作为外部对照，来源及双叉哈希见 [ORIGIN.md](mfs-reader/ORIGIN.md)。
+
+## LittleFS
+
+`littlefs-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。布局依据 LittleFS
+v2.11.0 官方规范，外部官方实现生成并回读 2.0 / 2.1 测试镜像。来源、几何和哈希见
+[ORIGIN.md](littlefs-reader/ORIGIN.md)。
+
+## SPIFFS
+
+`spiffs-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。布局对照 pellepl/spiffs，
+样本由 ESP-IDF 官方生成器写入，小端样本经上游回读。来源及 SHA-256 见 [ORIGIN.md](spiffs-reader/ORIGIN.md)。
+
+## HAMMER
+
+`hammer-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。磁盘格式对照 DragonFly BSD，
+样本由 `lh1` 的 HAMMER 格式化工具及其分配器生成。[ORIGIN.md](hammer-reader/ORIGIN.md)
+
+## HAMMER2
+
+`hammer2-reader` 0.1.0（AGPL-3.0-only）由 LovelyCarve 以 Rust 实现。磁盘格式对照 DragonFly BSD
+和 libhammer2，原生样本由独立的 HAMMER2 makefs 生成。固定提交、样本及验证记录见
+[ORIGIN.md](hammer2-reader/ORIGIN.md)。

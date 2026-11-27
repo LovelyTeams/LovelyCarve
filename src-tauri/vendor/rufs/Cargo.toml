@@ -8,7 +8,7 @@ authors = [
     "Alan Somers <asomers@gmail.com>",
     "Davids Paskevics <davids.paskevics@gmail.com>",
 ]
-description = "Read-only UFSv2 reader, vendored from fuse-ufs (https://github.com/realchonk/fuse-ufs) and patched for cross-platform (Windows) builds in lovelycarve."
+description = "Read-only UFS1 and UFS2 reader, vendored from fuse-ufs (https://github.com/realchonk/fuse-ufs) and patched for cross-platform (Windows) builds in lovelycarve."
 rust-version = "1.90.0"
 
 [dependencies]

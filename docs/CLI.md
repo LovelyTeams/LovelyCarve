@@ -183,7 +183,7 @@ lovelycarve-cli -C '<案件目录>' ls /nas/part:0/Users --jq '.items[] | select
 | `strings <地址> [--encoding ascii\|utf-8\|utf-16le\|utf-16be] [--min-length N] [--offset N] [--length N] [--limit N]` | 可打印字符串及其文件内偏移 |
 | `hash <地址>… [--algo md5,sha1,sha256,sm3]` | 文件哈希，默认 MD5、SHA-1、SHA-256 |
 | `identify <地址>` | 按内容识别类型（Magika），不看扩展名 |
-| `streams <地址>` | NTFS 命名数据流、HFS+ 资源分叉，以及 BeFS / GFS2 / OCFS2 的扩展属性 |
+| `streams <地址>` | NTFS / ReFS 命名数据流、MFS / HFS / HFS+ 资源分叉，以及 BeFS / GFS2 / OCFS2 的扩展属性 |
 | `export <地址>… -o <输出> [--zip] [--stream 流名]` | 导出文件，目录导出为目录树（`--zip` 为 ZIP）；多个地址导出到一个新目录，各自按名称放入 |
 | `bodyfile <卷或目录> -o <文件>` | 导出 mactime body 文件 |
 
@@ -240,16 +240,17 @@ lovelycarve-cli -C "D:\cases\nas" find "auth*.log.*" --under /nas/part:0/var/log
 
 | 命令 | 作用 |
 | --- | --- |
-| `encryption <地址>` | 加密类型与状态：BitLocker 元数据（算法、卷 GUID、FILETIME、描述、保护器类型，不含密钥）、FileVault 逻辑卷目录、LUKS 状态 |
-| `unlock <地址> [凭据] [--scheme bitlocker\|luks\|veracrypt\|filevault\|ios]` | 解锁；BitLocker、LUKS、VeraCrypt 与 FileVault 走同一条解锁路径，类型按分区识别，VeraCrypt（没有签名）须指定 |
+| `encryption <地址>` | 加密类型与状态：BitLocker 元数据（算法、卷 GUID、FILETIME、描述、保护器类型，不含密钥）、FileVault 逻辑卷与 APFS 卷目录、LUKS 状态 |
+| `unlock <地址> [凭据] [--scheme bitlocker\|luks\|veracrypt\|filevault\|apfs\|ios]` | 解锁，类型按分区识别，VeraCrypt（没有签名）须指定 |
 | `evidence export <别名> -o <新文件> --unlocked` | 整盘导出，已解锁的分区写成明文，其余字节保持源数据 |
 
-解锁只在进程存活期间有效，需在后台进程、`shell` 或 `batch` 中进行；解锁的卷和凭据不保存为案件检材，后台进程重启后需重新解锁。`tasks cancel <任务ID>` 可取消解锁，KDF 执行中可能延迟响应。锁定的分区列为 `unsupported:N`，也可以写 `part:N`；`volumes` 显示每个加密卷的格式与锁定状态。
+解锁只在进程存活期间有效，需在后台进程、`shell` 或 `batch` 中进行；解锁的卷和凭据不保存为案件检材，后台进程重启后需重新解锁。`tasks cancel <任务ID>` 可取消解锁，KDF 执行中可能延迟响应。锁定的分区列为 `unsupported:N`，也可以写 `part:N`；`volumes` 显示每个加密卷的格式与锁定状态，APFS 容器只要还有加密卷未解锁就显示为锁定。
 
 - **BitLocker**：只给一种凭据 `--password`、`--recovery-password`、`--startup-key <.BEK>`、`--fvek`（Elephant Diffuser 另给 `--tweak`）或 `--vmk`；都不给时尝试卷内明文密钥。`--vmk-from <内存镜像>` 在内存中搜索 VMK 并逐个尝试，卷没有恢复密码保护器时也可解锁；结果的 `vmkOffset` 是生效的候选，`recoveryPassword` 是由它派生的恢复密码。原始 FVEK 没有认证，须核验解密结果；TPM / SID 保护器不支持。明文卷按卷首识别文件系统（NTFS、ReFS、FAT / exFAT 等），之后照常浏览。能力与限制见 [BitLocker](formats/BITLOCKER.md)。
 - **LUKS**：LUKS1 / LUKS2 用 `--password`，或已恢复的卷主密钥 `--master-key`（按头部摘要核验）。整份镜像的 LUKS 容器显示为 `unsupported:0`。见 [LUKS](formats/LUKS.md)。
 - **VeraCrypt / TrueCrypt**：`--scheme veracrypt`，按需给 `--pim`（卷 0–2147468，系统加密 0–65535）、`--keyfile <文件或文件夹>`（可重复；只用密钥文件时省略 `--password`）、`--prf sha512|sha256|blake2s|whirlpool|streebog|ripemd160|argon2id` 与 `--header auto|normal|hidden|backup|system`。默认 `auto` 同时尝试标准卷与隐藏卷；`backup` 读取卷内嵌的备份卷头；`system` 从磁盘第 62 扇区读取系统加密卷头，地址给被加密的分区（`/<别名>/part:N`）时明文接在该分区上，给整份检材时生成整盘明文的新检材。结果的 `veracrypt` 字段给出 PRF、迭代次数、算法、卷头与加密是否完成。VeraCrypt 卷总是整数个扇区，区域长度不是检材扇区大小整数倍时直接拒绝（`invalidInput`）；较大文件中的容器用 `--offset` / `--length` 指出它的范围。见 [VeraCrypt](formats/VERACRYPT.md)。
-- **FileVault 2**：先用 `encryption` 列出逻辑卷，再用 `--logical-volume <index>` 解锁；`--password` 也接受个人恢复密码，也可给 `--master-key`；`--plist` 指向本地 EncryptedRoot.plist(.wipekey)，`encryption` 与 `unlock` 应给同一个。多个逻辑卷须各自用 `--new-image`。APFS 原生加密不能由此解锁。见 [FileVault](formats/FILEVAULT.md)。
+- **FileVault 2**：先用 `encryption` 列出逻辑卷，再用 `--logical-volume <index>` 解锁；`--password` 也接受个人恢复密码，也可给 `--master-key`；`--plist` 指向本地 EncryptedRoot.plist(.wipekey)，`encryption` 与 `unlock` 应给同一个。多个逻辑卷须各自用 `--new-image`。见 [FileVault](formats/FILEVAULT.md)。
+- **APFS 原生软件加密**：容器分区下的每个卷列为 `APFS_<index>_<卷名>`。`encryption /<别名>/part:N` 列出各卷的 `index`、`encrypted` 和 `unlocked`，地址在某个卷内时只列该卷。`unlock /<别名>/part:N/<卷> --password @文件` 解锁该卷，`--password` 也接受个人恢复密钥；地址给容器分区时用 `--logical-volume <index>` 选卷，容器只有一个加密卷时可省略。结果的 `path` 是解锁后的卷。APFS 卷在现有检材内解锁，`--new-image`、`--offset` / `--length` 不适用，整盘导出保留 APFS 源密文。见 [APFS](formats/APFS.md#原生软件加密)。
 - **iOS 备份**：`unlock /<别名> --password @文件`（`--scheme ios`）。见 [iOS 备份](IOS_BACKUPS.md#cli)。
 
 BitLocker、LUKS、VeraCrypt 与 FileVault 默认把明文接在源检材上：结果的 `path` 指向可读的卷（如 `/lk/part:0`），源检材 ID 不变，案件随后为它补建索引。`--new-image [--as 别名]` 改为注册一份独立的解密检材（`decrypted://…`），关闭源检材时一并关闭；`--offset` / `--length`（相对源检材的字节）选择非分区区域，总是生成独立检材。明文接在源检材上时，`evidence hash` 和普通 `evidence export` 仍读取源密文，`evidence export <别名> --unlocked` 才按导出开始时的解锁状态把各已解锁分区的明文写进原分区位置（较短明文之后补零，分区表、其他区域及整盘大小保留）。不支持的布局（分离头部、LUKS2 完整性 / 重加密 / 多数据段）和超过 KDF 资源预算时明确报错。
@@ -268,6 +269,7 @@ lovelycarve-cli -C "D:\cases\laptop" evidence export laptop -o "D:\output\laptop
 
 - 克隆主机可能有相同的 VG/PV UUID：`raid detect --member <别名>`（可重复）只检测这些源检材，可在同一进程内分别组装各主机；组装出的检材和卷影副本不能作为成员。
 - 成员缺失或过期的 md 阵列等待确认：`raid detect --degraded <setUuid>` 降级组装该阵列。
+- 跨镜像的 [Btrfs](formats/BTRFS.md)、[bcachefs](formats/BCACHEFS.md)、[APFS Fusion](formats/APFS.md)、[VMFS 5 / 6](formats/VMFS.md) 卷和 [ZFS](formats/ZFS.md) 池也通过 `raid detect` 登记。先加载所有成员，再从结果的 `assembled[].path` 下进入任一成员分区浏览。
 - `raid assemble --members a,b,c --level 5 [--layout] [--chunk-sectors] [--data-offset-sectors] [--missing 列] [--as 别名]` 按给定几何手动组装，缺失的列写 `-`。
 - `assembled://` 引用只在组装它的进程中有效；后台进程结束后需重新检测。
 
@@ -414,7 +416,7 @@ lovelycarve-cli completion powershell >> $PROFILE
 - **EWF、VMDK、VHD / VHDX**：纯 Rust 读取器，不依赖 libewf / libvmdk / libvhdi。能力与限制见 [EWF](formats/EWF.md)、[VMDK](formats/VMDK.md)、[VHD / VHDX](formats/VHD.md)。
 - **光盘**：ISO、Mode 1 / XA Form 1 的 BIN 和 CUE；多轨或多数据文件选择 `.cue`，`evidence show` 的 `opticalDisc` 给出轨道、会话与来源范围。见 [CDFS](formats/CDFS.md)。
 - **UBI 与小米 HDR1 固件**：命名卷列在 `/<别名>/part:0` 下，`<卷名>.img` 提供原始逻辑字节。见 [UBI](formats/UBI.md)。
-- **bcachefs**：按列出的目录项进入原生子卷与 snapshot，不同视图中相同的 inode 编号指向各自的内容；只支持单设备。见 [bcachefs](formats/BCACHEFS.md)。
+- **bcachefs**：支持单设备和完整多设备卷。按列出的目录项进入原生子卷与 snapshot，不同视图中相同的 inode 编号指向各自的内容。见 [bcachefs](formats/BCACHEFS.md)。
 - **NILFS2**：显示最新提交的目录树；稀疏区读零，已分配数据缺失或日志 CRC 不匹配报错，dirty / recovery 卷明确拒绝；CLI 暂不选择历史检查点。见 [NILFS2](formats/NILFS2.md)。
 - **BeFS / GFS2 / OCFS2**：内联与外联扩展属性用 `streams`、`cat --stream`、`export --stream` 读取，GFS2 / OCFS2 保留 `user.` 等命名空间前缀；需要日志重放的卷明确拒绝。
 

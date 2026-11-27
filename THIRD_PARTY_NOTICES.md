@@ -1601,6 +1601,14 @@ rusty-backup revision; invented fixtures and `scripts/hfs-fixtures.py` are CC0-1
 See [ORIGIN.md](src-tauri/vendor/classic-hfs/ORIGIN.md) for precise source paths,
 licenses, changes and fixture hashes.
 
+## Reiser4 format and fixtures
+
+The original Rust reader was developed using the on-disk layouts documented by
+[reiser4progs](https://github.com/edward6/reiser4progs/tree/23e8ccb6442e4829479c602574215a6cb58ba6f9)
+and the [Reiser4 kernel source](https://github.com/edward6/reiser4/tree/05021f10e4fceaad2439b84f200a51c65a8fe9b0).
+The two native fixtures contain invented data. The upstream tools run only for
+fixture production and independent checks. See [ORIGIN.md](src-tauri/vendor/reiser4-reader/ORIGIN.md).
+
 ## ReiserFS v3 reader and fixtures
 
 `reiserfs-reader` adapts layouts/read algorithms from Dani's
@@ -1672,6 +1680,12 @@ as format references; no kernel code or native filesystem library is linked.
 The optional native test uses separately installed Linux tooling and invented
 CC0 inputs. See [ORIGIN.md](src-tauri/vendor/gfs2-reader/ORIGIN.md).
 
+## OCFS1 format and fixture
+
+The original Rust reader uses the on-disk layout documented by the Oracle OCFS
+project. See [ORIGIN.md](src-tauri/vendor/ocfs1-reader/ORIGIN.md) for Oracle's
+commit archives and the source of the synthetic test fixture.
+
 ## OCFS2 reader
 
 `src-tauri/vendor/ocfs2-reader` contains an original AGPL-3.0-only immutable
@@ -1710,6 +1724,29 @@ images and native tools are not redistributed. Local changes and evidence:
 [reader origin](src-tauri/vendor/rust-fs-bcachefs/ORIGIN.md),
 [framework origin](src-tauri/vendor/rust-fs-core/ORIGIN.md),
 [adapter and fixtures](src-tauri/vendor/bcachefs-reader/ORIGIN.md).
+
+VMFS format layouts and the external verification corpus are based on Fox-IT's
+[dissect.vmfs](https://github.com/fox-it/dissect.vmfs/tree/0a385a1d80f5881f73402b7b847305dc478eae1c),
+AGPL-3.0-or-later. The bundled implementation is LovelyCarve's pure Rust
+`vmfs-reader` (AGPL-3.0-only). See [origin and verification](src-tauri/vendor/vmfs-reader/ORIGIN.md).
+
+The HPFS test volume was formatted and populated by nepx's BSD-3-Clause
+[hpfsutils](https://github.com/nepx/hpfsutils/tree/ceeb8170a88a11d11e00a5a75deb97f7e2eda93e).
+The generated test data accompanies the pure Rust `hpfs-reader`, which is
+AGPL-3.0-only. [Fixture source and hashes](src-tauri/vendor/hpfs-reader/ORIGIN.md).
+
+`vxfs-reader` adapts Dani Sarfati's MIT VxFS reader from `fs-unix` 0.2.1.
+[Upstream license](src-tauri/vendor/vxfs-reader/LICENSE-MIT) and
+[origin and verification](src-tauri/vendor/vxfs-reader/ORIGIN.md).
+
+`aix-jfs-reader` adapts Dani Sarfati's MIT AIX JFS1 reader from `fs-unix` 0.2.1.
+[Upstream license](src-tauri/vendor/aix-jfs-reader/LICENSE-MIT) and
+[origin and verification](src-tauri/vendor/aix-jfs-reader/ORIGIN.md).
+
+`xdvdfs-reader` uses antangelo's MIT `xdvdfs` 0.8.3. The independent fixture was
+produced with XboxDev's `extract-xiso`. See the
+[upstream MIT license](src-tauri/vendor/xdvdfs-reader/LICENSE-MIT) and
+[fixture provenance](src-tauri/vendor/xdvdfs-reader/ORIGIN.md).
 
 ## BCP application icons
 

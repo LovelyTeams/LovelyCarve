@@ -3,12 +3,252 @@ use std::io::{Cursor, Read, Seek, SeekFrom};
 
 const BASIC: &[u8] = include_bytes!("../tests/data/basic.apfs");
 const CASE_SENSITIVE: &[u8] = include_bytes!("../tests/data/case-sensitive.apfs");
+const FUSION_MAIN: &[u8] = include_bytes!("../tests/data/fusion-main.apfs");
+const FUSION_TIER2: &[u8] = include_bytes!("../tests/data/fusion-tier2.apfs");
+
+#[test]
+fn fusion_reads_tier2_metadata_data_and_dirty_cache_bytes() {
+    let mut volume = ApfsVolume::open_sources(
+        Cursor::new(FUSION_MAIN),
+        Some(Cursor::new(FUSION_TIER2)),
+        Some(0),
+    )
+    .unwrap();
+    let mut expected = vec![b'A'; 4096];
+    expected.extend([b'B'; 904]);
+    assert_eq!(volume.read_file("/plain.bin").unwrap(), expected);
+    let mut streamed = Vec::new();
+    volume.read_file_to("/clone.bin", &mut streamed).unwrap();
+    assert_eq!(streamed, expected);
+    assert_eq!(
+        volume.read_file_range("/plain.bin", 4095, 3).unwrap(),
+        b"ABB"
+    );
+    let tag = fusion::TIER2_OFFSET / 4096;
+    assert_eq!(
+        volume.extent_source_spans(tag + 3, 5000).unwrap(),
+        [
+            SourceSpan {
+                tier: FusionTier::Secondary,
+                offset: 3 * 4096,
+                length: 4096
+            },
+            SourceSpan {
+                tier: FusionTier::Main,
+                offset: 13 * 4096,
+                length: 904
+            },
+        ]
+    );
+    assert!(volume.extent_source_spans(tag + 7, 4097).is_err());
+    assert!(volume.extent_source_spans(23, 4097).is_err());
+}
+
+#[test]
+fn fusion_rejects_a_mixed_pair_truncated_member_or_pending_write_back() {
+    let stamp = |block: &mut [u8]| {
+        let sum = fletcher::fletcher64(&block[8..]).to_le_bytes();
+        block[..8].copy_from_slice(&sum);
+    };
+    let mut unrelated = FUSION_TIER2.to_vec();
+    unrelated[0x500] ^= 1;
+    stamp(&mut unrelated[..4096]);
+    assert!(
+        ApfsVolume::list_source_volumes(
+            Cursor::new(FUSION_MAIN),
+            Some(Cursor::new(unrelated.as_slice()))
+        )
+        .is_err()
+    );
+
+    let mut padded_main = FUSION_MAIN.to_vec();
+    padded_main.extend([0; 4096]);
+    assert!(
+        ApfsVolume::list_source_volumes(
+            Cursor::new(padded_main.as_slice()),
+            Some(Cursor::new(&FUSION_TIER2[..7 * 4096]))
+        )
+        .is_err()
+    );
+
+    let mut pending = FUSION_MAIN.to_vec();
+    let wbc = &mut pending[21 * 4096..22 * 4096];
+    wbc[72] = 1;
+    stamp(wbc);
+    let result = ApfsVolume::list_source_volumes(
+        Cursor::new(pending.as_slice()),
+        Some(Cursor::new(FUSION_TIER2)),
+    );
+    assert!(
+        matches!(result, Err(ApfsError::Unsupported(message)) if message.contains("write-back"))
+    );
+}
+
+#[test]
+#[ignore = "requires a paired mkapfs Fusion fixture"]
+fn independently_formatted_fusion_pair_opens() {
+    let folder = std::path::PathBuf::from(
+        std::env::var_os("LOVELYCARVE_APFS_FUSION_ORACLE").expect("Fusion sample directory"),
+    );
+    let devices = || {
+        (
+            std::fs::File::open(folder.join("first-tier.img")).unwrap(),
+            std::fs::File::open(folder.join("second-tier.img")).unwrap(),
+        )
+    };
+    let (main, tier2) = devices();
+    let info = ApfsVolume::container_source_info(main, Some(tier2)).unwrap();
+    assert_ne!(
+        info.incompatible_features & superblock::NX_INCOMPAT_FUSION,
+        0
+    );
+    let (main, tier2) = devices();
+    let volumes = ApfsVolume::list_source_volumes(main, Some(tier2)).unwrap();
+    assert_eq!(volumes[0].name, "LovelyCarveFusion");
+    let (main, tier2) = devices();
+    let mut volume = ApfsVolume::open_sources(main, Some(tier2), None).unwrap();
+    volume.list_directory("/").unwrap();
+    let (main, _) = devices();
+    assert!(matches!(
+        ApfsVolume::open(main),
+        Err(ApfsError::Unsupported(_))
+    ));
+    let (main, tier2) = devices();
+    assert!(ApfsVolume::open_sources(tier2, Some(main), None).is_err());
+}
+
+#[test]
+#[ignore = "requires four APFS software encryption fixtures"]
+fn native_software_encryption_matches_plaintext_oracles() {
+    use std::fs::File;
+
+    struct Source {
+        file: File,
+        base: u64,
+    }
+    impl Read for Source {
+        fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+            self.file.read(bytes)
+        }
+    }
+    impl Seek for Source {
+        fn seek(&mut self, position: SeekFrom) -> std::io::Result<u64> {
+            let position = match position {
+                SeekFrom::Start(offset) => SeekFrom::Start(self.base + offset),
+                other => other,
+            };
+            Ok(self.file.seek(position)? - self.base)
+        }
+    }
+
+    let folder = std::path::PathBuf::from(
+        std::env::var_os("LOVELYCARVE_APFS_ENCRYPTION_ORACLE")
+            .expect("APFS software encryption fixture directory"),
+    );
+    let pattern: Vec<u8> = (0..262144)
+        .map(|index| ((index * 131 + 17) % 253) as u8)
+        .collect();
+    for (image, base, index, password, path, expected) in [
+        (
+            "dfvfs-apfs-encrypted.img",
+            20480,
+            0,
+            "apfs-TEST",
+            "/a_directory/another_file",
+            b"This is another file.\n".as_slice(),
+        ),
+        (
+            "macos-apfs-native-filevault.img",
+            0,
+            0,
+            "apfs-FV-TEST-2026",
+            "/marker.txt",
+            b"APFS-FILEVAULT-GROUND-TRUTH-MARKER-0123456789\n".as_slice(),
+        ),
+        (
+            "qnxprobe/apfs-encrypted.img",
+            20480,
+            1,
+            "qnxprobe-apfs-test",
+            "/docs/pattern.bin",
+            &pattern,
+        ),
+        (
+            "qnxprobe/apfs-converted.img",
+            20480,
+            0,
+            "qnxprobe-apfs-convert",
+            "/docs/pattern.bin",
+            &pattern,
+        ),
+    ] {
+        let source = || Source {
+            file: File::open(folder.join(image)).unwrap(),
+            base,
+        };
+        let listed = ApfsVolume::list_volumes(source()).unwrap();
+        assert!(
+            listed
+                .iter()
+                .any(|volume| volume.index == index && volume.encrypted)
+        );
+        assert!(
+            matches!(
+                ApfsVolume::open_index(source(), index),
+                Err(ApfsError::Locked)
+            ),
+            "{image}"
+        );
+        assert!(
+            matches!(
+                ApfsVolume::unlock_sources(source(), None, index, b"wrong"),
+                Err(ApfsError::InvalidCredential)
+            ),
+            "{image}"
+        );
+        let mut volume = ApfsVolume::unlock_sources(source(), None, index, password.as_bytes())
+            .unwrap_or_else(|error| panic!("{image}: {error}"));
+        let key = volume.unlocked_key().unwrap();
+        assert!(!volume.list_directory("/").unwrap().is_empty(), "{image}");
+        assert!(volume.list_snapshots().unwrap().is_empty(), "{image}");
+        assert_eq!(volume.read_file(path).unwrap(), expected, "{image}");
+        let mut streamed = Vec::new();
+        volume.read_file_to(path, &mut streamed).unwrap();
+        assert_eq!(streamed, expected, "{image}");
+        let start = (expected.len() / 2).min(511);
+        let end = (start + 1053).min(expected.len());
+        assert_eq!(
+            volume
+                .read_file_range(path, start as u64, end - start)
+                .unwrap(),
+            &expected[start..end],
+            "{image}"
+        );
+        let mut count = 0;
+        assert!(
+            volume
+                .walk_catalog(&mut |_| {
+                    count += 1;
+                    true
+                })
+                .unwrap()
+        );
+        assert!(count > 0, "{image}");
+        let mut reopened = ApfsVolume::open_with_key(source(), None, index, &key).unwrap();
+        assert_eq!(reopened.read_file(path).unwrap(), expected, "{image}");
+        if index == 1 {
+            let mut plain = ApfsVolume::open_index(source(), 0).unwrap();
+            assert_eq!(plain.read_file(path).unwrap(), expected, "{image}");
+            assert!(ApfsVolume::open_with_key(source(), None, 0, &key).is_err());
+        }
+    }
+}
 
 #[test]
 fn checkpoint_transaction_and_volume_slots_are_preserved() {
     let info = ApfsVolume::container_info(Cursor::new(BASIC)).unwrap();
     assert_eq!(info.transaction_id, 10);
-    assert_eq!(info.size, 65536);
+    assert_eq!(info.size, 18 * 4096);
     assert_eq!(info.volume_slots, [(0, 100), (2, 101)]);
     let volumes = ApfsVolume::list_volumes(Cursor::new(BASIC)).unwrap();
     assert_eq!(volumes.len(), 2);
@@ -230,6 +470,7 @@ fn malformed_btree_offsets_and_counts_return_errors_without_panics() {
 #[test]
 fn unicode_lookup_policy_preserves_case_and_canonical_equivalence() {
     let context = catalog::CatalogContext {
+        cipher: None,
         omap: 0.into(),
         incompatible_features: 9,
     };
@@ -252,9 +493,51 @@ fn snapshot_metadata_keeps_identity_times_and_superblock_provenance() {
     assert_eq!(snapshots.len(), 1);
     assert_eq!(snapshots[0].name, "snap-one");
     assert_eq!(snapshots[0].transaction_id, 5);
-    assert_eq!(snapshots[0].superblock_block, 4);
+    assert_eq!(snapshots[0].superblock_block, 16);
     assert_eq!(snapshots[0].create_time, -1);
     assert_eq!(snapshots[0].change_time, 123456789);
+}
+
+#[test]
+fn historical_snapshot_uses_its_own_catalog_and_old_extents() {
+    let mut live = ApfsVolume::open(Cursor::new(BASIC)).unwrap();
+    let mut historical = ApfsVolume::open_index(Cursor::new(BASIC), 0)
+        .unwrap()
+        .into_snapshot(5)
+        .unwrap();
+    assert_eq!(historical.volume_info().transaction_id, 5);
+    assert_eq!(live.volume_info().transaction_id, 10);
+    assert!(historical.stat("/plain.bin").is_err());
+    assert!(live.stat("/old.bin").is_err());
+    assert_eq!(
+        &live.read_file("/clone.bin").unwrap()[..4096],
+        &[b'A'; 4096]
+    );
+    assert_eq!(
+        &historical.read_file("/clone.bin").unwrap()[..4096],
+        &[b'P'; 4096]
+    );
+    let bytes = historical.read_file("/old.bin").unwrap();
+    assert_eq!(bytes.len(), 5000);
+    assert_eq!(&bytes[4092..4100], b"PPPPBBBB");
+    assert!(historical.list_snapshots().unwrap().is_empty());
+    assert!(matches!(
+        live.into_snapshot(6),
+        Err(ApfsError::FileNotFound(_))
+    ));
+}
+
+#[test]
+fn historical_snapshot_fails_when_frozen_identity_is_wrong() {
+    for (offset, value) in [(8, 23u8), (16, 9), (36, 2), (128, 7), (240, 1)] {
+        let mut broken = BASIC.to_vec();
+        let snapshot = &mut broken[16 * 4096..17 * 4096];
+        snapshot[offset] = value;
+        let checksum = fletcher::fletcher64(&snapshot[8..]);
+        snapshot[..8].copy_from_slice(&checksum.to_le_bytes());
+        let live = ApfsVolume::open(Cursor::new(broken)).unwrap();
+        assert!(live.into_snapshot(5).is_err());
+    }
 }
 
 #[test]
@@ -266,7 +549,7 @@ fn file_extent_cannot_use_bytes_after_the_declared_container() {
         logical_addr: 0,
         value: catalog::FileExtentVal {
             flags_and_length: 4096,
-            phys_block_num: 16,
+            phys_block_num: (BASIC.len() / 4096) as u64,
             crypto_id: 0,
         },
     }];

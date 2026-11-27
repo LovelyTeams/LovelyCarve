@@ -9,6 +9,11 @@
 
 ### Added
 
+- 新增只读文件系统：HPFS、VxFS（layout 2–4）、AIX JFS1、UnixWare BFS、UFS1（4.4BSD）、Reiser4（Format40，含 ctail 压缩簇）、GFS1、OCFS1、VMFS 5 / 6、HAMMER（含已登记快照）、HAMMER2（含 PFS）、QNX ETFS、QNX EFS（F3S）、LittleFS 2.0 / 2.1、SPIFFS、Macintosh MFS（含 Disk Copy 4.2 镜像）、Xbox XDVDFS 与 FATX / XTAF。它们与其他文件系统一样浏览、预览、哈希、按范围读取和导出，CLI 地址照常使用；能力与限制见[格式说明](docs/formats/README.md)。
+- 跨镜像的 Btrfs、bcachefs、ZFS 池、APFS Fusion 与跨盘 VMFS 卷：加载全部成员后由 RAID 自动检测（CLI `raid detect`）组装，成员缺失、重复或提交不一致时拒绝组装。
+- APFS 原生软件加密的卷可用密码或个人恢复密钥解锁：桌面端在「解锁加密卷」中选择容器与卷，CLI `unlock` 按分区识别 APFS，地址给容器下列出的卷，或给容器并用 `--logical-volume` 选卷。卷在现有检材内解锁，整盘导出保留源密文；`encryption` 列出各卷的加密与解锁状态，`volumes` 把仍有加密卷锁定的容器显示为锁定。
+- APFS 历史快照可按事务浏览、读取和导出（需要检材原始字节）。
+- UDF 读取 metadata、虚拟（VAT）与 sparable 分区映射；CramFS 读取 v1、512 字节引导填充、扩展块指针与 XIP 卷；HFS 包裹卷中的 HFS+ / HFSX 直接打开内层目录；ZFS 读取大 dnode，并校验 vdev 标签与 uberblock。
 - CLI 支持 `--jq <表达式>`，可在本地筛选、排序、统计或重组 JSON 结果，无需另外安装 jq。
 - 官方插件发布页可以在桌面版打开指定插件版本。LovelyCarve 自动下载当前平台的插件包，检视确认后安装到用户插件目录。
 - 官方[插件发布页](https://lovelyteams.github.io/LovelyCarve-Plugin-Site/)提供 `.lcpkg` 下载、运行平台、版本和 SHA-256，可复制同一份索引的地址添加到「设置 → 插件市场」。页面适配手机屏幕，并跟随系统浅色或深色主题。

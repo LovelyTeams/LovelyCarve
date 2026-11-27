@@ -24,7 +24,7 @@ compressed/symlink snapshot metadata aligned with live listings.
 APIs changed: ApfsForkReader::new returns Result; open_file returns a ReadSeek
 trait object; catalog OMAP parameters accept CatalogContext (legacy u64
 converts to the prior hashed policy). New metadata fields preserve source
-values. Encryption and historical snapshot browsing remain unsupported.
+values. Unencrypted historical snapshot catalogs use the frozen volume superblock and the volume OMAP at the snapshot XID. Encryption remains unsupported.
 
 Dependencies: unicode-casefold 0.2.0 (Chris Wong, MIT OR Apache-2.0) and
 unicode-normalization 0.1.25 (Rust Project Developers, MIT OR Apache-2.0),

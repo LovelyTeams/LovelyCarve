@@ -9,7 +9,7 @@
 
 | 格式 | 已接入 | 明确限制 |
 | --- | --- | --- |
-| CramFS FSID v2 | 小端 / 大端 bitfield、完整文件系统 CRC32、zlib 4 KiB 页、HOLES 空洞、普通文件、目录和符号链接；范围读取只解压涉及的页 | v1 无 CRC、EXT_BLOCK_POINTERS / XIP、未知 flags、前置 512 字节引导填充尚未接入 |
+| CramFS FSID v1 / v2 | 小端 / 大端位字段、可选 512 字节引导填充、v2 CRC32、4 KiB zlib 页、HOLES 空洞、扩展块指针、XIP 直接页、普通文件、目录和符号链接 | 未知 flags 明确拒绝。v1 没有卷 CRC 或可信的声明长度，读取以镜像或分区边界为上限 |
 | Linux ROMFS `-rom1fs-` | 声明长度、前 512 字节或完整短镜像的校验和、每个文件头含名称与填充的校验和；普通文件、目录、符号链接、硬链接和执行权限 | genromfs 扩展、Neotron ROMFS 不在范围内；硬链接最多 8 次跳转 |
 
 裸镜像、MBR / GPT 分区和 HDR1 / TRX 文件系统段使用相同适配器。扩展名
@@ -21,6 +21,8 @@ UBI 内嵌文件系统目前仍只自动展开 SquashFS。
 socket 显示在树中但拒绝正文读取。符号链接保留目标且不在适配器内自动跟随；
 硬链接保留各自的路径身份并读取同一目标内容。压缩数据不虚构物理 data runs。
 两种格式没有 MACB 时间戳，显示未知，不使用镜像创建时间代替。
+
+CramFS 的块指针可以指向相邻页的结尾，也可以直接指向不连续的原始页或带长度前缀的压缩页。同一文件可以混用这些布局。范围读取只解压覆盖请求的页，原始页直接读取请求范围。带引导填充的卷保留原始起点和前 512 字节，CRC32 从超级块开始计算。
 
 ROMFS 的格式校验和只覆盖规定的超级块与文件头区域，不能校验所有文件正文。
 单次返回缓冲区最多 512 MiB；较大文件可分段或流式读取。
@@ -61,4 +63,15 @@ just test rom_images_external_samples -- --ignored
 的 `cramfs.bin`（4096 字节，SHA256 `1e75d47c5c759bfb964011a4530ce353bcf7fe2377eb59b32b773445dbad4216`）
 及 `romfs.bin`（1024 字节，SHA256 `31259785aa0c9404e6ae496b27c37d0620e10f783b127848aa3d5cc2a25cb6d3`）。
 两者含同一份 104 字节 `/lsb-release`；外部样本不提交仓库。
+
+`native-extended-le.cramfs` 和 `native-extended-be.cramfs` 由上游 `mkcramfs` 使用 `-p -z -X -X -q` 和分别指定小端或大端的 `-L` / `-B` 选项生成。两卷包含普通压缩页、随机字节形成的原始页、空洞、短尾页和 32 位 ELF 的 XIP 页。上游 `cramfsck` 提取了小端卷，并独立验证了把一页移动到非连续位置、改用带长度前缀的直接指针后的卷。测试比较两种字节序的文件哈希、跨页读取、裸卷与 MBR 入口，并拒绝损坏的块指针。 [上游工具与格式说明](https://github.com/npitre/cramfs-tools/tree/a95eecbf899479f8b3d65fb2822c5b7cbcdacfdd)
+
+`native-v1.cramfs` 由 Linux 2.4.0 源码包中的 `scripts/cramfs/mkcramfs.c` 以 `-DDO_HOLES` 编译后生成。工具写入 65,536 字节的占位值，实物只有 8,192 字节。v1 用相邻的相同块指针表示空洞，当时尚无 HOLES 标志。上游 `cramfsck` 提取了同一组源文件，回归测试验证完整读取、跨页读取、空洞和截断。 [Linux 2.4.0 官方源码包](https://www.kernel.org/pub/linux/kernel/v2.4/linux-2.4.0.tar.xz)
+
+| 原生镜像 | SHA-256 |
+| --- | --- |
+| `native-extended-le.cramfs` | `6ba5717eaf604ff533982dbea48fd980ba066442fbd39766e74c9a8c77235dd7` |
+| `native-extended-be.cramfs` | `2bd6d1e0e8168c4ca0f232637b645dd3a821883c1c522983202ef2342a66db3a` |
+| `native-v1.cramfs` | `ea888cd6cc0e313123ca5a3697ca79ab50f3931394effb587b62bb463d5a67e7` |
+
 Windows 原生 GUI / Dokan 挂载和其他平台运行仍需单独验证。

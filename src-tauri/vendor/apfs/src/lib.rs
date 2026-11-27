@@ -4,12 +4,15 @@ mod access;
 mod backing;
 pub(crate) mod btree;
 pub mod catalog;
+mod crypto;
 pub use access::{ContainerInfo, XattrInfo};
 mod snapshots;
 pub use snapshots::SnapshotInfo;
 pub mod error;
 pub mod extents;
 pub mod fletcher;
+pub mod fusion;
+pub use fusion::{FusionTier, SourceSpan};
 pub mod object;
 pub mod omap;
 pub mod superblock;
@@ -26,6 +29,7 @@ pub use cmpfs::Storage as CompressionStorage;
 pub use cmpfs::XattrKind;
 
 use std::io::{Read, Seek, Write};
+use std::sync::Arc;
 
 /// A seekable logical file stream. Implementers return the same logical bytes
 /// through Read and Seek, preserving EOF and errors rather than shortening files.
@@ -162,11 +166,40 @@ fn classify(names: Vec<String>) -> Vec<XattrEntry> {
 pub struct ApfsVolume<R: Read + Seek> {
     reader: backing::ContainerReader<R>,
     block_size: u32,
-    vol_omap_root_block: catalog::CatalogContext,
-    catalog_root_block: u64,
+    vol_omap_root_block: catalog::CatalogContext<'static>,
+    catalog_root_block: omap::Mapping,
     snapshot_tree_oid: u64,
     snapshot_tree_type: u32,
     info: VolumeInfo,
+    key: Option<ApfsVolumeKey>,
+}
+
+/// A verified, in-memory key for one APFS container and volume.
+#[derive(Clone)]
+pub struct ApfsVolumeKey(Arc<VolumeKeyState>);
+
+impl std::fmt::Debug for ApfsVolumeKey {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fmt.debug_struct("ApfsVolumeKey").finish_non_exhaustive()
+    }
+}
+
+struct VolumeKeyState {
+    container: [u8; 16],
+    volume: [u8; 16],
+    cipher: crypto::VolumeCipher,
+}
+
+impl ApfsVolumeKey {
+    fn cipher(&self) -> &crypto::VolumeCipher {
+        &self.0.cipher
+    }
+}
+
+enum OpenCredential<'a> {
+    None,
+    Password(&'a [u8], &'a dyn Fn() -> bool),
+    Verified(&'a ApfsVolumeKey),
 }
 
 impl<R: Read + Seek> ApfsVolume<R> {
@@ -181,39 +214,91 @@ impl<R: Read + Seek> ApfsVolume<R> {
     /// 7. Read volume OMAP at vol.omap_oid physical block
     /// 8. Resolve vol.root_tree_oid → physical block via volume OMAP → catalog B-tree root
     /// 9. Store all state
-    pub fn open(mut reader: R) -> Result<Self> {
-        let container = read_container(&mut reader)?;
+    pub fn open(reader: R) -> Result<Self> {
+        Self::open_sources(reader, None, None)
+    }
+
+    pub fn open_sources(main: R, tier2: Option<R>, volume_index: Option<usize>) -> Result<Self> {
+        Self::open_selected(main, tier2, volume_index, OpenCredential::None)
+    }
+
+    /// Unlock one native software-encrypted volume with a password or personal recovery key.
+    pub fn unlock_sources(
+        main: R,
+        tier2: Option<R>,
+        volume_index: usize,
+        credential: &[u8],
+    ) -> Result<Self> {
+        Self::unlock_sources_cancellable(main, tier2, volume_index, credential, &|| false)
+    }
+
+    pub fn unlock_sources_cancellable(
+        main: R,
+        tier2: Option<R>,
+        volume_index: usize,
+        credential: &[u8],
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<Self> {
+        Self::open_selected(
+            main,
+            tier2,
+            Some(volume_index),
+            OpenCredential::Password(credential, cancelled),
+        )
+    }
+
+    /// Reopen this volume using an already verified key from this process.
+    pub fn open_with_key(
+        main: R,
+        tier2: Option<R>,
+        volume_index: usize,
+        key: &ApfsVolumeKey,
+    ) -> Result<Self> {
+        Self::open_selected(
+            main,
+            tier2,
+            Some(volume_index),
+            OpenCredential::Verified(key),
+        )
+    }
+
+    pub fn unlocked_key(&self) -> Option<ApfsVolumeKey> {
+        self.key.clone()
+    }
+
+    fn open_selected(
+        main: R,
+        tier2: Option<R>,
+        volume_index: Option<usize>,
+        credential: OpenCredential<'_>,
+    ) -> Result<Self> {
+        let (reader, container) = read_container(main, tier2)?;
         let (volume_index, vol_oid) = container
             .nxsb
             .fs_oids
             .iter()
             .enumerate()
-            .find_map(|(index, &oid)| (oid != 0).then_some((index, oid)))
+            .find_map(|(index, &oid)| {
+                (oid != 0 && volume_index.is_none_or(|wanted| wanted == index))
+                    .then_some((index, oid))
+            })
             .ok_or(ApfsError::NoVolume)?;
-        Self::open_volume(reader, container, volume_index, vol_oid)
+        Self::open_volume(reader, container, volume_index, vol_oid, credential)
     }
 
     /// Open a specific APFS volume by its slot index in the container
     /// `fs_oids` array.
-    pub fn open_index(mut reader: R, volume_index: usize) -> Result<Self> {
-        let container = read_container(&mut reader)?;
-        let vol_oid = container
-            .nxsb
-            .fs_oids
-            .get(volume_index)
-            .copied()
-            .filter(|&oid| oid != 0)
-            .ok_or(ApfsError::NoVolume)?;
-        Self::open_volume(reader, container, volume_index, vol_oid)
+    pub fn open_index(reader: R, volume_index: usize) -> Result<Self> {
+        Self::open_sources(reader, None, Some(volume_index))
     }
 
     /// List every APFS volume advertised by the container `fs_oids` array.
-    pub fn list_volumes(mut reader: R) -> Result<Vec<VolumeInfo>> {
-        let container = read_container(&mut reader)?;
-        let mut reader = backing::ContainerReader::new(
-            reader,
-            container.nxsb.block_count * u64::from(container.nxsb.block_size),
-        );
+    pub fn list_volumes(reader: R) -> Result<Vec<VolumeInfo>> {
+        Self::list_source_volumes(reader, None)
+    }
+
+    pub fn list_source_volumes(main: R, tier2: Option<R>) -> Result<Vec<VolumeInfo>> {
+        let (mut reader, container) = read_container(main, tier2)?;
         let mut volumes = Vec::new();
         for (volume_index, vol_oid) in container
             .nxsb
@@ -240,16 +325,13 @@ impl<R: Read + Seek> ApfsVolume<R> {
     }
 
     fn open_volume(
-        reader: R,
+        mut reader: backing::ContainerReader<R>,
         container: ContainerState,
         volume_index: usize,
         vol_oid: u64,
+        credential: OpenCredential<'_>,
     ) -> Result<Self> {
         let block_size = container.nxsb.block_size;
-        let mut reader = backing::ContainerReader::new(
-            reader,
-            container.nxsb.block_count * u64::from(block_size),
-        );
         let vol_sb = read_volume_superblock(
             &mut reader,
             container.container_omap_root,
@@ -257,29 +339,70 @@ impl<R: Read + Seek> ApfsVolume<R> {
             vol_oid,
         )?;
 
-        if vol_sb.fs_flags & 1 == 0 {
+        validate_readable_volume(&vol_sb)?;
+        let encrypted = vol_sb.fs_flags & crypto::FS_UNENCRYPTED == 0;
+        if encrypted && matches!(credential, OpenCredential::None) {
+            return Err(ApfsError::Locked);
+        }
+        if !encrypted && !matches!(credential, OpenCredential::None) {
             return Err(ApfsError::Unsupported(
-                "encrypted APFS volume requires FileVault keybag unlock".into(),
+                "APFS volume is not encrypted".into(),
             ));
         }
-        if vol_sb.incompatible_features & !0x0b != 0 {
-            return Err(ApfsError::Unsupported(format!(
-                "volume incompatible features {:#x} (sealed, encryption rolling or incomplete restore)",
-                vol_sb.incompatible_features
-            )));
-        }
 
+        let (omap_root, omap_flags) =
+            omap::read_omap_info(&mut reader, vol_sb.omap_oid, block_size)?;
+        if omap_flags & 0x0e != 0 {
+            return Err(ApfsError::Unsupported(
+                "APFS object map encryption transition".into(),
+            ));
+        }
         let vol_omap_root_block = omap::OmapTree {
-            root: omap::read_omap_tree_root(&mut reader, vol_sb.omap_oid, block_size)?,
+            root: omap_root,
             xid: vol_sb.header.xid,
         };
 
-        let catalog_root_block = omap::omap_lookup(
+        let catalog_root_block = omap::lookup_mapping(
             &mut reader,
             vol_omap_root_block,
             block_size,
             vol_sb.root_tree_oid,
         )?;
+        let key = match credential {
+            OpenCredential::None => None,
+            OpenCredential::Password(password, cancelled) => {
+                Some(ApfsVolumeKey(Arc::new(VolumeKeyState {
+                    container: container.nxsb.uuid,
+                    volume: vol_sb.uuid,
+                    cipher: crypto::unlock(
+                        &mut reader,
+                        &container.nxsb,
+                        &vol_sb,
+                        password,
+                        cancelled,
+                    )?,
+                })))
+            }
+            OpenCredential::Verified(key) => {
+                if key.0.container != container.nxsb.uuid || key.0.volume != vol_sb.uuid {
+                    return Err(ApfsError::InvalidCredential);
+                }
+                Some(key.clone())
+            }
+        };
+        if encrypted {
+            verify_encrypted_catalog(
+                &mut reader,
+                catalog_root_block,
+                block_size,
+                &vol_sb,
+                key.as_ref(),
+            )?;
+        } else if catalog_root_block.encrypted {
+            return Err(ApfsError::CorruptedData(
+                "encrypted catalog on an unencrypted APFS volume".into(),
+            ));
+        }
 
         Ok(ApfsVolume {
             reader,
@@ -287,11 +410,13 @@ impl<R: Read + Seek> ApfsVolume<R> {
             vol_omap_root_block: catalog::CatalogContext {
                 omap: vol_omap_root_block,
                 incompatible_features: vol_sb.incompatible_features,
+                cipher: None,
             },
             catalog_root_block,
             snapshot_tree_oid: vol_sb.snap_meta_tree_oid,
             snapshot_tree_type: vol_sb.snap_meta_tree_type,
             info: volume_info_from_superblock(volume_index, vol_oid, block_size, &vol_sb),
+            key,
         })
     }
 
@@ -313,7 +438,7 @@ impl<R: Read + Seek> ApfsVolume<R> {
     /// `catalog::list_directory`. The visitor returns `false` to stop early
     /// (e.g. cancellation); the walk then returns `Ok(false)`.
     pub fn walk_catalog(&mut self, visit: &mut dyn FnMut(CatalogRecord) -> bool) -> Result<bool> {
-        let omap_cache = omap::load_omap(
+        let omap_cache = omap::load_mappings(
             &mut self.reader,
             self.vol_omap_root_block.omap,
             self.block_size,
@@ -323,6 +448,7 @@ impl<R: Read + Seek> ApfsVolume<R> {
             self.catalog_root_block,
             self.block_size,
             Some(&omap_cache),
+            self.key.as_ref().map(ApfsVolumeKey::cipher),
             &mut |key: &[u8], val: &[u8]| {
                 let Ok((oid, j_type)) = catalog::decode_catalog_key(key) else {
                     return true;
@@ -363,7 +489,8 @@ impl<R: Read + Seek> ApfsVolume<R> {
             let (oid, inode) = catalog::resolve_path(
                 &mut self.reader,
                 self.catalog_root_block,
-                self.vol_omap_root_block,
+                self.vol_omap_root_block
+                    .with_cipher(self.key.as_ref().map(|key| key.cipher())),
                 self.block_size,
                 path,
             )?;
@@ -382,7 +509,8 @@ impl<R: Read + Seek> ApfsVolume<R> {
         let mut entries = catalog::list_directory(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             parent,
         )?;
@@ -442,7 +570,8 @@ impl<R: Read + Seek> ApfsVolume<R> {
         let (oid, _inode) = catalog::resolve_path(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             path,
         )?;
@@ -459,14 +588,16 @@ impl<R: Read + Seek> ApfsVolume<R> {
         let (oid, _inode) = catalog::resolve_path(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             path,
         )?;
         let names = catalog::list_xattr_names(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             oid,
         )?;
@@ -477,7 +608,8 @@ impl<R: Read + Seek> ApfsVolume<R> {
         let value = catalog::lookup_xattr_value(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             oid,
             name,
@@ -490,18 +622,20 @@ impl<R: Read + Seek> ApfsVolume<R> {
                 let extents = catalog::lookup_extents(
                     &mut self.reader,
                     self.catalog_root_block,
-                    self.vol_omap_root_block,
+                    self.vol_omap_root_block
+                        .with_cipher(self.key.as_ref().map(|key| key.cipher())),
                     self.block_size,
                     obj_id,
                 )?;
                 let mut data = Vec::new();
-                extents::read_file_data(
+                extents::ApfsForkReader::from_container(
                     &mut self.reader,
                     self.block_size,
-                    &extents,
+                    extents,
                     size,
-                    &mut data,
-                )?;
+                    self.key.as_ref().map(ApfsVolumeKey::cipher),
+                )?
+                .read_to_end(&mut data)?;
                 Ok(Some(data))
             }
         }
@@ -549,7 +683,8 @@ impl<R: Read + Seek> ApfsVolume<R> {
         let (oid, inode) = catalog::resolve_path(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             path,
         )?;
@@ -565,7 +700,8 @@ impl<R: Read + Seek> ApfsVolume<R> {
         let (oid, inode) = catalog::resolve_path(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             path,
         )?;
@@ -578,7 +714,8 @@ impl<R: Read + Seek> ApfsVolume<R> {
         let (oid, inode) = catalog::resolve_path(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             path,
         )?;
@@ -598,7 +735,8 @@ impl<R: Read + Seek> ApfsVolume<R> {
         match catalog::resolve_path(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             path,
         ) {
@@ -617,7 +755,8 @@ impl<R: Read + Seek> ApfsVolume<R> {
         let mut dir_entries = catalog::list_directory(
             &mut self.reader,
             self.catalog_root_block,
-            self.vol_omap_root_block,
+            self.vol_omap_root_block
+                .with_cipher(self.key.as_ref().map(|key| key.cipher())),
             self.block_size,
             parent_oid,
         )?;
@@ -652,24 +791,58 @@ struct ContainerState {
     container_omap_root: omap::OmapTree,
 }
 
-fn read_container<R: Read + Seek>(reader: &mut R) -> Result<ContainerState> {
-    let nxsb = superblock::read_nxsb(reader)?;
-    let nxsb = superblock::find_latest_nxsb(reader, &nxsb)?;
+fn read_container<R: Read + Seek>(
+    main: R,
+    tier2: Option<R>,
+) -> Result<(backing::ContainerReader<R>, ContainerState)> {
+    let (mut reader, nxsb) = read_container_checkpoint(main, tier2)?;
     let container_omap_root = omap::OmapTree {
-        root: omap::read_omap_tree_root(
-            &mut backing::ContainerReader::new(
-                reader,
-                nxsb.block_count * u64::from(nxsb.block_size),
-            ),
-            nxsb.omap_oid,
-            nxsb.block_size,
-        )?,
+        root: omap::read_omap_tree_root(&mut reader, nxsb.omap_oid, nxsb.block_size)?,
         xid: nxsb.header.xid,
     };
-    Ok(ContainerState {
-        nxsb,
-        container_omap_root,
-    })
+    Ok((
+        reader,
+        ContainerState {
+            nxsb,
+            container_omap_root,
+        },
+    ))
+}
+
+fn read_container_checkpoint<R: Read + Seek>(
+    mut main: R,
+    tier2: Option<R>,
+) -> Result<(backing::ContainerReader<R>, superblock::NxSuperblock)> {
+    use std::io::SeekFrom;
+    let nxsb = superblock::read_member_nxsb(&mut main)?;
+    let mut reader = match (nxsb.fusion_member(), tier2) {
+        (None, None) => {
+            backing::ContainerReader::new(main, nxsb.block_count * u64::from(nxsb.block_size))
+        }
+        (Some(_), Some(mut tier2)) => {
+            let main_len = main.seek(SeekFrom::End(0))?;
+            let tier2_nxsb = superblock::read_member_nxsb(&mut tier2)?;
+            let tier2_len = tier2.seek(SeekFrom::End(0))?;
+            fusion::validate_fusion_pair(&nxsb, main_len, &tier2_nxsb, tier2_len)?;
+            fusion::check_checkpoint_region(&nxsb, main_len)?;
+            backing::ContainerReader::new_fusion(main, main_len, tier2, tier2_len)
+        }
+        (Some(_), None) => {
+            return Err(ApfsError::Unsupported(
+                "APFS Fusion requires both member devices".into(),
+            ));
+        }
+        (None, Some(_)) => {
+            return Err(ApfsError::CorruptedData(
+                "APFS main source is not a Fusion member".into(),
+            ));
+        }
+    };
+    let nxsb = superblock::find_latest_nxsb(&mut reader, &nxsb)?;
+    if nxsb.fusion_member().is_some() {
+        fusion::load_fusion_state(&mut reader, &nxsb)?;
+    }
+    Ok((reader, nxsb))
 }
 
 fn read_volume_superblock<R: Read + Seek>(
@@ -701,6 +874,43 @@ fn read_volume_superblock<R: Read + Seek>(
     Ok(block)
 }
 
+fn verify_encrypted_catalog<R: Read + Seek>(
+    reader: &mut R,
+    mapping: omap::Mapping,
+    block_size: u32,
+    volume: &superblock::ApfsSuperblock,
+    key: Option<&ApfsVolumeKey>,
+) -> Result<()> {
+    if !mapping.encrypted {
+        return Err(ApfsError::Unsupported(
+            "encrypted APFS volume has a clear catalog".into(),
+        ));
+    }
+    let (header, data) =
+        object::read_mapped_object(reader, mapping, block_size, key.map(ApfsVolumeKey::cipher))?;
+    if header.object_type() != object::OBJECT_TYPE_BTREE
+        || header.oid != volume.root_tree_oid
+        || header.xid > volume.header.xid
+        || !btree::BTreeNode::parse(&data)?.node_header.is_root()
+    {
+        return Err(ApfsError::CorruptedData(
+            "APFS encrypted catalog identity or transaction".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_readable_volume(volume: &superblock::ApfsSuperblock) -> Result<()> {
+    if volume.incompatible_features & !0x0f != 0 {
+        return Err(ApfsError::Unsupported(format!(
+            "volume incompatible features {:#x} (sealed, encryption rolling or incomplete restore)",
+            volume.incompatible_features
+        )));
+    }
+
+    crypto::validate_volume(volume)
+}
+
 fn volume_info_from_superblock(
     index: usize,
     oid: u64,
@@ -719,7 +929,7 @@ fn volume_info_from_superblock(
         allocated_size: vol_sb.fs_alloc_count * u64::from(block_size),
         num_snapshots: vol_sb.num_snapshots,
         next_object_id: vol_sb.next_obj_id,
-        encrypted: vol_sb.fs_flags & 1 == 0,
+        encrypted: vol_sb.fs_flags & crypto::FS_UNENCRYPTED == 0,
         index,
         oid,
         name: vol_sb.volume_name.clone(),

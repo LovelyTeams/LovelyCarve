@@ -61,8 +61,16 @@ fn compare_to(search: u64) -> impl Fn(&[u8]) -> Result<std::cmp::Ordering> {
 fn lookup_reads_a_checksummed_node() {
     let block = synthetic_root_leaf(42, 7);
     let mut reader = Cursor::new(block);
-    let found = btree_lookup(&mut reader, 0, BLOCK_SIZE, 0, 0, &compare_to(42), None)
-        .expect("lookup on a valid node");
+    let found = btree_lookup(
+        &mut reader,
+        0u64.into(),
+        BLOCK_SIZE,
+        0,
+        0,
+        &compare_to(42),
+        TreeSource::default(),
+    )
+    .expect("lookup on a valid node");
     assert_eq!(found.as_deref(), Some(&7u64.to_le_bytes()[..]));
 }
 
@@ -71,8 +79,16 @@ fn lookup_rejects_a_corrupt_node() {
     let mut block = synthetic_root_leaf(42, 7);
     block[100] ^= 0xFF;
     let mut reader = Cursor::new(block);
-    let err = btree_lookup(&mut reader, 0, BLOCK_SIZE, 0, 0, &compare_to(42), None)
-        .expect_err("corrupt node must not be traversed");
+    let err = btree_lookup(
+        &mut reader,
+        0u64.into(),
+        BLOCK_SIZE,
+        0,
+        0,
+        &compare_to(42),
+        TreeSource::default(),
+    )
+    .expect_err("corrupt node must not be traversed");
     assert!(matches!(err, ApfsError::InvalidChecksum), "{err:?}");
 }
 
@@ -83,8 +99,16 @@ fn comparator_errors_propagate_instead_of_reading_as_a_miss() {
     let failing = |_key: &[u8]| -> Result<std::cmp::Ordering> {
         Err(ApfsError::CorruptedData("undecodable key".into()))
     };
-    let err = btree_lookup(&mut reader, 0, BLOCK_SIZE, 0, 0, &failing, None)
-        .expect_err("an undecodable key must fail the lookup, not report a miss");
+    let err = btree_lookup(
+        &mut reader,
+        0u64.into(),
+        BLOCK_SIZE,
+        0,
+        0,
+        &failing,
+        TreeSource::default(),
+    )
+    .expect_err("an undecodable key must fail the lookup, not report a miss");
     assert!(matches!(err, ApfsError::CorruptedData(_)), "{err:?}");
 }
 
@@ -93,8 +117,16 @@ fn scan_rejects_a_corrupt_node() {
     let mut block = synthetic_root_leaf(42, 7);
     block[100] ^= 0xFF;
     let mut reader = Cursor::new(block);
-    let err = btree_scan(&mut reader, 0, BLOCK_SIZE, 0, 0, &compare_to(42), None)
-        .expect_err("corrupt node must not be scanned");
+    let err = btree_scan(
+        &mut reader,
+        0u64.into(),
+        BLOCK_SIZE,
+        0,
+        0,
+        &compare_to(42),
+        TreeSource::default(),
+    )
+    .expect_err("corrupt node must not be scanned");
     assert!(matches!(err, ApfsError::InvalidChecksum), "{err:?}");
 }
 
@@ -103,10 +135,17 @@ fn bulk_walk_preserves_cancellation_and_rejects_corrupt_nodes() {
     let block = synthetic_root_leaf(42, 7);
     let mut reader = Cursor::new(block.clone());
     let mut records = Vec::new();
-    let completed = btree_walk_leaves(&mut reader, 0, BLOCK_SIZE, None, &mut |key, value| {
-        records.push((key.to_vec(), value.to_vec()));
-        false
-    })
+    let completed = btree_walk_leaves(
+        &mut reader,
+        0u64.into(),
+        BLOCK_SIZE,
+        None,
+        None,
+        &mut |key, value| {
+            records.push((key.to_vec(), value.to_vec()));
+            false
+        },
+    )
     .unwrap();
     assert!(!completed);
     assert_eq!(
@@ -117,8 +156,13 @@ fn bulk_walk_preserves_cancellation_and_rejects_corrupt_nodes() {
     let mut corrupt = block;
     corrupt[100] ^= 0xff;
     let mut reader = Cursor::new(corrupt);
-    let result = btree_walk_leaves(&mut reader, 0, BLOCK_SIZE, None, &mut |_, _| {
-        panic!("a corrupt node must fail before publishing catalog records")
-    });
+    let result = btree_walk_leaves(
+        &mut reader,
+        0u64.into(),
+        BLOCK_SIZE,
+        None,
+        None,
+        &mut |_, _| panic!("a corrupt node must fail before publishing catalog records"),
+    );
     assert!(matches!(result, Err(ApfsError::InvalidChecksum)));
 }

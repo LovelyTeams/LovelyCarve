@@ -64,6 +64,15 @@ impl<T: Backend> BlockReader<T> {
         self.rw
     }
 
+    /// Query source length without invalidating the current buffered block.
+    pub(crate) fn source_len(&mut self) -> IoResult<u64> {
+        self.flush()?;
+        let previous = self.inner.stream_position()?;
+        let length = self.inner.seek(SeekFrom::End(0));
+        self.inner.seek(SeekFrom::Start(previous))?;
+        length
+    }
+
     fn refill(&mut self) -> IoResult<()> {
         if self.dirty {
             panic!("Cannot refill dirty BlockReader");

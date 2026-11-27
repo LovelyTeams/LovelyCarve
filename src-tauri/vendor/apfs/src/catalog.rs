@@ -8,25 +8,45 @@ use unicode_casefold::UnicodeCaseFold;
 use unicode_normalization::UnicodeNormalization;
 
 /// Catalog lookup policy belongs to the selected volume, never the host OS.
-#[derive(Debug, Clone, Copy)]
-pub struct CatalogContext {
+#[derive(Clone, Copy)]
+pub struct CatalogContext<'a> {
     pub omap: crate::omap::OmapTree,
     pub incompatible_features: u64,
+    pub(crate) cipher: Option<&'a crate::crypto::VolumeCipher>,
 }
-impl From<crate::omap::OmapTree> for CatalogContext {
+impl From<crate::omap::OmapTree> for CatalogContext<'_> {
     fn from(omap: crate::omap::OmapTree) -> Self {
         Self {
             omap,
             incompatible_features: 8,
+            cipher: None,
         }
     }
 }
-impl From<u64> for CatalogContext {
+impl From<u64> for CatalogContext<'_> {
     fn from(root: u64) -> Self {
         crate::omap::OmapTree::from(root).into()
     }
 }
-impl CatalogContext {
+impl<'a> CatalogContext<'a> {
+    pub(crate) fn with_cipher(
+        self,
+        cipher: Option<&crate::crypto::VolumeCipher>,
+    ) -> CatalogContext<'_> {
+        CatalogContext {
+            omap: self.omap,
+            incompatible_features: self.incompatible_features,
+            cipher,
+        }
+    }
+
+    fn source(self) -> btree::TreeSource<'a> {
+        btree::TreeSource {
+            omap: Some(self.omap),
+            cipher: self.cipher,
+        }
+    }
+
     pub(crate) fn name_key(self, name: &str) -> String {
         let name = if self.incompatible_features & 8 != 0 {
             name.nfd().collect()
@@ -245,10 +265,10 @@ pub(crate) fn decode_drec_name(key: &[u8], hashed: bool) -> Result<String> {
 ///
 /// Scans the catalog B-tree for all J_TYPE_DIR_REC entries whose obj_id matches
 /// the parent directory OID. For each, looks up the inode to get size/timestamps.
-pub fn list_directory<R: Read + Seek>(
+pub fn list_directory<'a, R: Read + Seek>(
     reader: &mut R,
-    catalog_root: u64,
-    omap_root: impl Into<CatalogContext>,
+    catalog_root: impl Into<crate::omap::Mapping> + Copy,
+    omap_root: impl Into<CatalogContext<'a>>,
     block_size: u32,
     parent_oid: u64,
 ) -> Result<Vec<DirEntry>> {
@@ -257,12 +277,12 @@ pub fn list_directory<R: Read + Seek>(
 
     let entries = btree::btree_scan(
         reader,
-        catalog_root,
+        catalog_root.into(),
         block_size,
         0,
         0, // variable-size keys and values
         &compare_fn,
-        Some(omap_root.omap),
+        omap_root.source(),
     )?;
 
     let mut dir_entries = Vec::new();
@@ -314,10 +334,10 @@ pub fn list_directory<R: Read + Seek>(
 }
 
 /// Look up an inode record in the catalog B-tree.
-pub fn lookup_inode<R: Read + Seek>(
+pub fn lookup_inode<'a, R: Read + Seek>(
     reader: &mut R,
-    catalog_root: u64,
-    omap_root: impl Into<CatalogContext>,
+    catalog_root: impl Into<crate::omap::Mapping> + Copy,
+    omap_root: impl Into<CatalogContext<'a>>,
     block_size: u32,
     oid: u64,
 ) -> Result<InodeVal> {
@@ -326,12 +346,12 @@ pub fn lookup_inode<R: Read + Seek>(
 
     let val = btree::btree_lookup(
         reader,
-        catalog_root,
+        catalog_root.into(),
         block_size,
         0,
         0,
         &compare_fn,
-        Some(omap_root.omap),
+        omap_root.source(),
     )?;
 
     match val {
@@ -341,10 +361,10 @@ pub fn lookup_inode<R: Read + Seek>(
 }
 
 /// Look up all file extent records for a given file OID (private_id).
-pub fn lookup_extents<R: Read + Seek>(
+pub fn lookup_extents<'a, R: Read + Seek>(
     reader: &mut R,
-    catalog_root: u64,
-    omap_root: impl Into<CatalogContext>,
+    catalog_root: impl Into<crate::omap::Mapping> + Copy,
+    omap_root: impl Into<CatalogContext<'a>>,
     block_size: u32,
     file_oid: u64,
 ) -> Result<Vec<FileExtentRecord>> {
@@ -353,12 +373,12 @@ pub fn lookup_extents<R: Read + Seek>(
 
     let entries = btree::btree_scan(
         reader,
-        catalog_root,
+        catalog_root.into(),
         block_size,
         0,
         0,
         &compare_fn,
-        Some(omap_root.omap),
+        omap_root.source(),
     )?;
 
     let mut extents = Vec::new();
@@ -422,10 +442,10 @@ pub enum XattrValue {
 /// Returns `None` when the inode carries no attribute of that name. Attributes
 /// stored as a data stream are rejected with [`ApfsError::Unsupported`]; use
 /// [`lookup_xattr_value`] to handle both forms.
-pub fn lookup_xattr<R: Read + Seek>(
+pub fn lookup_xattr<'a, R: Read + Seek>(
     reader: &mut R,
-    catalog_root: u64,
-    omap_root: impl Into<CatalogContext>,
+    catalog_root: impl Into<crate::omap::Mapping> + Copy,
+    omap_root: impl Into<CatalogContext<'a>>,
     block_size: u32,
     oid: u64,
     name: &str,
@@ -442,10 +462,10 @@ pub fn lookup_xattr<R: Read + Seek>(
 
 /// Look up an extended attribute, reporting whether its value is embedded or
 /// held in a data stream.
-pub fn lookup_xattr_value<R: Read + Seek>(
+pub fn lookup_xattr_value<'a, R: Read + Seek>(
     reader: &mut R,
-    catalog_root: u64,
-    omap_root: impl Into<CatalogContext>,
+    catalog_root: impl Into<crate::omap::Mapping> + Copy,
+    omap_root: impl Into<CatalogContext<'a>>,
     block_size: u32,
     oid: u64,
     name: &str,
@@ -458,12 +478,12 @@ pub fn lookup_xattr_value<R: Read + Seek>(
 
     let value = btree::btree_lookup(
         reader,
-        catalog_root,
+        catalog_root.into(),
         block_size,
         0,
         0,
         &compare_fn,
-        Some(omap_root.omap),
+        omap_root.source(),
     )?;
 
     match value {
@@ -473,10 +493,10 @@ pub fn lookup_xattr_value<R: Read + Seek>(
 }
 
 /// Names of every extended attribute on an inode, in on-disk order.
-pub fn list_xattr_names<R: Read + Seek>(
+pub fn list_xattr_names<'a, R: Read + Seek>(
     reader: &mut R,
-    catalog_root: u64,
-    omap_root: impl Into<CatalogContext>,
+    catalog_root: impl Into<crate::omap::Mapping> + Copy,
+    omap_root: impl Into<CatalogContext<'a>>,
     block_size: u32,
     oid: u64,
 ) -> Result<Vec<String>> {
@@ -484,12 +504,12 @@ pub fn list_xattr_names<R: Read + Seek>(
     let compare_fn = catalog_key(oid, J_TYPE_XATTR);
     let records = btree::btree_scan(
         reader,
-        catalog_root,
+        catalog_root.into(),
         block_size,
         0,
         0,
         &compare_fn,
-        Some(omap_root.omap),
+        omap_root.source(),
     )?;
 
     let mut names = Vec::with_capacity(records.len());
@@ -573,10 +593,10 @@ fn catalog_key(oid: u64, j_type: u8) -> impl Fn(&[u8]) -> Result<std::cmp::Order
 }
 
 /// Resolve a path like "/Applications/Upscayl.app/Contents/Info.plist" to its (OID, InodeVal).
-pub fn resolve_path<R: Read + Seek>(
+pub fn resolve_path<'a, R: Read + Seek>(
     reader: &mut R,
-    catalog_root: u64,
-    omap_root: impl Into<CatalogContext>,
+    catalog_root: impl Into<crate::omap::Mapping> + Copy,
+    omap_root: impl Into<CatalogContext<'a>>,
     block_size: u32,
     path: &str,
 ) -> Result<(u64, InodeVal)> {
@@ -621,10 +641,10 @@ pub fn resolve_path<R: Read + Seek>(
 }
 
 /// Look up a specific directory record by name under a parent OID.
-fn lookup_drec<R: Read + Seek>(
+fn lookup_drec<'a, R: Read + Seek>(
     reader: &mut R,
-    omap_root: impl Into<CatalogContext>,
-    catalog_root: u64,
+    omap_root: impl Into<CatalogContext<'a>>,
+    catalog_root: impl Into<crate::omap::Mapping> + Copy,
     block_size: u32,
     parent_oid: u64,
     name: &str,
@@ -635,12 +655,12 @@ fn lookup_drec<R: Read + Seek>(
 
     let entries = btree::btree_scan(
         reader,
-        catalog_root,
+        catalog_root.into(),
         block_size,
         0,
         0,
         &compare_fn,
-        Some(omap_root.omap),
+        omap_root.source(),
     )?;
 
     let wanted = omap_root.name_key(name);

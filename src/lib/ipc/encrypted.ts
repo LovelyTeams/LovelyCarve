@@ -3,7 +3,7 @@ import type { ImageInfo } from './image';
 import type { ImageId, VolumeKey } from './ids';
 
 /** Encryption formats the one unlock command opens. */
-export type EncryptionScheme = 'bitlocker' | 'luks' | 'veracrypt' | 'filevault';
+export type EncryptionScheme = 'bitlocker' | 'luks' | 'veracrypt' | 'filevault' | 'apfs';
 
 /** What opens a volume. The backend checks that the kind fits the scheme:
  *  BitLocker takes every kind, LUKS and FileVault a password or master key,
@@ -110,6 +110,18 @@ export function filevaultInspect(args: {
   taskId?: string;
 }): Promise<FilevaultInventory> {
   return invokeCmd<FilevaultInventory>('filevault_inspect', args);
+}
+
+export interface ApfsEncryptionVolume {
+  index: number;
+  name: string;
+  uuid: string;
+  encrypted: boolean;
+  unlocked: boolean;
+}
+
+export function apfsInspect(args: { imageId: ImageId; partitionId: number }): Promise<ApfsEncryptionVolume[]> {
+  return invokeCmd<ApfsEncryptionVolume[]>('apfs_inspect', args);
 }
 
 export interface BitlockerVmkCandidate {

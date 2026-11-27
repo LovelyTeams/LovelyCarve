@@ -371,6 +371,8 @@ impl DiskImage {
                                 | PartitionKind::F2fs
                                 | PartitionKind::Qnx4
                                 | PartitionKind::Qnx6
+                                | PartitionKind::QnxEtfs
+                                | PartitionKind::QnxEfs
                                 | PartitionKind::Minifs
                                 | PartitionKind::Romfs
                                 | PartitionKind::Squashfs
@@ -378,7 +380,11 @@ impl DiskImage {
                                 | PartitionKind::Jffs2
                                 | PartitionKind::Yaffs2
                                 | PartitionKind::Yaffs1
-                        )
+                        ) || (matches!(
+                            partition.kind,
+                            PartitionKind::Mfs | PartitionKind::Littlefs
+                        ) && !partitions::SectorSource::size(&probe_source)
+                            .is_multiple_of(sector_size as u64))
                     })
                 {
                     sector_size = 1;

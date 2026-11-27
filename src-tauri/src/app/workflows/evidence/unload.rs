@@ -150,6 +150,7 @@ pub(crate) async fn remove_image_runtime(
     }
     if let Some(image) = removed_image {
         image.revoke_decrypted_partitions();
+        image.revoke_apfs_keys();
         let manager = plugins.read().clone();
         for volume in image.take_external_volumes() {
             if let Err(error) = volume.close().await {

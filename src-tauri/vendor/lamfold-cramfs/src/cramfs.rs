@@ -4,8 +4,7 @@
 //! bitfield-packed (`mode`/`uid` in word 0, `size`/`gid` in word 1, `namelen`
 //! and `offset` — both in 4-byte units — in word 2); a name follows each inode.
 //! A directory's data is a run of `inode + name` records; a file's data is a
-//! per-page block index (one u32 end-offset per 4 KiB page) followed by the
-//! zlib-compressed pages.
+//! per-page block index (one u32 per 4 KiB page) and the data it references.
 
 use alloc::collections::BTreeSet;
 use alloc::string::String;
@@ -18,9 +17,47 @@ use lamfold::{
 };
 
 const MAGIC: u32 = 0x28CD_3D45;
-const ROOT_INODE_OFF: u64 = 64;
+const ROOT_INODE_OFF: usize = 64;
+const SUPER_LEN: usize = 76;
+const BOOT_PAD: usize = 512;
+const SIGNATURE: &[u8; 16] = b"Compressed ROMFS";
 const PAGE: u64 = 4096;
+const FLAG_FSID_V2: u32 = 1;
+const FLAG_SORTED_DIRS: u32 = 2;
+const FLAG_HOLES: u32 = 0x100;
+const FLAG_SHIFTED_ROOT: u32 = 0x400;
 const FLAG_EXT_BLOCK_POINTERS: u32 = 0x0000_0800;
+const SUPPORTED_FLAGS: u32 =
+    FLAG_FSID_V2 | FLAG_SORTED_DIRS | FLAG_HOLES | FLAG_SHIFTED_ROOT | FLAG_EXT_BLOCK_POINTERS;
+const BLOCK_UNCOMPRESSED: u32 = 1 << 31;
+const BLOCK_DIRECT: u32 = 1 << 30;
+const BLOCK_FLAGS: u32 = BLOCK_UNCOMPRESSED | BLOCK_DIRECT;
+
+/// Locate the superblock in a prefix of the original filesystem bytes.
+pub fn superblock_offset(prefix: &[u8]) -> Option<usize> {
+    [0, BOOT_PAD].into_iter().find(|&offset| {
+        prefix
+            .get(offset..offset + 4)
+            .is_some_and(|magic| magic == MAGIC.to_le_bytes() || magic == MAGIC.to_be_bytes())
+            && (offset == 0 || prefix.get(offset + 16..offset + 32) == Some(SIGNATURE))
+    })
+}
+
+struct BlockPointer(u32);
+
+impl BlockPointer {
+    fn value(&self) -> u64 {
+        u64::from(self.0 & !BLOCK_FLAGS)
+    }
+
+    fn direct(&self) -> bool {
+        self.0 & BLOCK_DIRECT != 0
+    }
+
+    fn uncompressed(&self) -> bool {
+        self.0 & BLOCK_UNCOMPRESSED != 0
+    }
+}
 
 struct CrInode {
     mode: u16,
@@ -33,6 +70,7 @@ struct CrInode {
 pub struct Cramfs<S: BlockSource> {
     src: S,
     size: u64,
+    super_offset: u64,
     big_endian: bool,
     flags: u32,
 }
@@ -91,112 +129,129 @@ impl<S: BlockSource> Cramfs<S> {
         }
     }
 
+    fn block_pointer(&mut self, offset: u64) -> Result<BlockPointer> {
+        let mut word = [0; 4];
+        self.read_checked(offset, &mut word)?;
+        let value = self.word(word);
+        if value & BLOCK_FLAGS != 0 && self.flags & FLAG_EXT_BLOCK_POINTERS == 0 {
+            return Err(FoldError::Corrupt("cramfs: missing extended pointer flag"));
+        }
+        Ok(BlockPointer(value))
+    }
+
+    fn validate_block(&self, start: u64, end: u64, table: (u64, u64)) -> Result<()> {
+        if start < self.super_offset + SUPER_LEN as u64
+            || end < start
+            || end > self.size
+            || end - start > PAGE * 2
+            || (start < table.1 && end > table.0)
+        {
+            return Err(FoldError::Corrupt("cramfs: invalid block pointer"));
+        }
+        Ok(())
+    }
+
+    fn direct_block(
+        &mut self,
+        pointer: &BlockPointer,
+        want: u64,
+        table: (u64, u64),
+    ) -> Result<(u64, u64)> {
+        let start = pointer.value() << 2;
+        if pointer.uncompressed() {
+            self.validate_block(start, start + want, table)?;
+            return Ok((start, start + want));
+        }
+        let mut length = [0; 2];
+        self.validate_block(start, start + 2, table)?;
+        self.read_checked(start, &mut length)?;
+        let length = u64::from(if self.big_endian {
+            u16::from_be_bytes(length)
+        } else {
+            u16::from_le_bytes(length)
+        });
+        if length == 0 {
+            return Err(FoldError::Corrupt("cramfs: empty direct compressed block"));
+        }
+        self.validate_block(start + 2, start + 2 + length, table)?;
+        Ok((start + 2, start + 2 + length))
+    }
+
     /// Decode only the 4 KiB pages intersecting the logical range.
     fn read_bytes(&mut self, inode: &CrInode, offset: u64, length: usize) -> Result<Vec<u8>> {
         let total = checked_full_read_len(inode.size.saturating_sub(offset).min(length as u64))?;
         if total == 0 {
             return Ok(Vec::new());
         }
-        let nblocks = inode.size.div_ceil(PAGE) as usize;
-        // block index: one u32 end-offset per page
-        let table_end = inode.data_off + nblocks as u64 * 4;
-        if inode.data_off < 76 || table_end > self.size {
+        let table_end = inode.data_off + inode.size.div_ceil(PAGE) * 4;
+        if inode.data_off < self.super_offset + SUPER_LEN as u64 || table_end > self.size {
             return Err(FoldError::Corrupt("cramfs: invalid block table"));
         }
+        let table = (inode.data_off, table_end);
         let first = offset / PAGE;
         let last = (offset + total as u64 - 1) / PAGE;
         let mut out = Vec::with_capacity(total);
+        let mut previous_end = table_end;
         for page in first..=last {
-            let mut pointer = [0; 4];
-            let start = if page == 0 {
-                table_end
+            let want = PAGE.min(inode.size - page * PAGE);
+            let pointer = self.block_pointer(inode.data_off + page * 4)?;
+            let (start, end) = if pointer.direct() {
+                self.direct_block(&pointer, want, table)?
             } else {
-                self.read_checked(inode.data_off + (page - 1) * 4, &mut pointer)?;
-                u64::from(self.word(pointer))
+                if page == first && first != 0 {
+                    let previous = self.block_pointer(inode.data_off + (page - 1) * 4)?;
+                    previous_end = if previous.direct() {
+                        self.direct_block(&previous, PAGE, table)?.1
+                    } else {
+                        previous.value()
+                    };
+                }
+                if self.flags & FLAG_EXT_BLOCK_POINTERS == 0
+                    && (previous_end < table_end
+                        || pointer.value() > table_end + (page + 1) * PAGE * 2)
+                {
+                    return Err(FoldError::Corrupt("cramfs: page outside sequential data"));
+                }
+                self.validate_block(previous_end, pointer.value(), table)?;
+                (previous_end, pointer.value())
             };
-            self.read_checked(inode.data_off + page * 4, &mut pointer)?;
-            let end = u64::from(self.word(pointer));
-            let want = core::cmp::min(PAGE, inode.size - page * PAGE) as usize;
-            if start < table_end || end < start || end > self.size || end - start > PAGE * 2 {
-                return Err(FoldError::Corrupt("cramfs: invalid block pointer"));
-            }
-            let decoded = if end == start {
-                if self.flags & 0x100 == 0 {
+            previous_end = end;
+            let want = want as usize;
+            let skip = offset.saturating_sub(page * PAGE) as usize;
+            let count = (want - skip).min(total - out.len());
+            if pointer.uncompressed() {
+                if end - start != want as u64 {
+                    return Err(FoldError::Corrupt("cramfs: invalid raw page length"));
+                }
+                let written = out.len();
+                out.resize(written + count, 0);
+                self.read_checked(start + skip as u64, &mut out[written..])?;
+            } else if end == start {
+                if self.flags & FLAG_FSID_V2 != 0 && self.flags & FLAG_HOLES == 0 {
                     return Err(FoldError::Corrupt("cramfs: hole without HOLES flag"));
                 }
-                // a hole: the page is all zeros
-                vec![0; want]
+                out.resize(out.len() + count, 0);
             } else {
-                let mut comp = vec![0u8; (end - start) as usize];
+                let mut comp = vec![0; (end - start) as usize];
                 self.read_checked(start, &mut comp)?;
                 let decoded = decode(Codec::Zlib, &comp, want)?;
                 if decoded.len() != want {
                     return Err(FoldError::Corrupt("cramfs: short decoded page"));
                 }
-                decoded
-            };
-            let skip = offset.saturating_sub(page * PAGE) as usize;
-            let count = core::cmp::min(want - skip, total - out.len());
-            out.extend_from_slice(&decoded[skip..skip + count]);
+                out.extend_from_slice(&decoded[skip..skip + count]);
+            }
         }
-        out.truncate(total);
         Ok(out)
     }
-}
 
-impl<S: BlockSource> FoldFrontend<S> for Cramfs<S> {
-    const TAG: &'static str = "cramfs";
-
-    fn probe(src: &mut S) -> Result<bool> {
-        if src.len() < ROOT_INODE_OFF + 12 {
-            return Ok(false);
-        }
-        let mut m = [0u8; 4];
-        src.read_at(0, &mut m)?;
-        Ok(u32::from_le_bytes(m) == MAGIC || u32::from_be_bytes(m) == MAGIC)
-    }
-
-    fn open(src: S, _cx: &mut SubstrateCtx<'_>) -> Result<Self> {
-        let mut src = src;
-        if src.len() < ROOT_INODE_OFF + 12 {
-            return Err(FoldError::Corrupt("cramfs: shorter than superblock"));
-        }
-        let mut head = [0u8; 76];
-        src.read_at(0, &mut head)?;
-        let magic = u32::from_le_bytes([head[0], head[1], head[2], head[3]]);
-        if magic != MAGIC && magic.swap_bytes() != MAGIC {
-            return Err(FoldError::Corrupt("cramfs: bad magic"));
-        }
-        let mut fs = Cramfs {
-            src,
-            size: 76,
-            big_endian: magic != MAGIC,
-            flags: 0,
-        };
-        let flags = fs.word([head[8], head[9], head[10], head[11]]);
-        if flags & FLAG_EXT_BLOCK_POINTERS != 0 || flags & !0x503 != 0 {
-            return Err(FoldError::Unsupported(
-                "cramfs: unsupported filesystem flags (including EXT_BLOCK_POINTERS)",
-            ));
-        }
-        fs.flags = flags;
-        if flags & 1 == 0 {
-            return Err(FoldError::Unsupported("cramfs: FSID v1 without CRC"));
-        }
-        fs.size = u64::from(fs.word([head[4], head[5], head[6], head[7]]));
-        if fs.size < 76 || fs.size > fs.src.len() || &head[16..32] != b"Compressed ROMFS" {
-            return Err(FoldError::Corrupt(
-                "cramfs: invalid superblock size or signature",
-            ));
-        }
-        let expected = fs.word([head[32], head[33], head[34], head[35]]);
+    fn verify_crc(&mut self, expected: u32) -> Result<()> {
         let mut hasher = crc32fast::Hasher::new();
-        let mut offset = 0;
+        let mut offset = self.super_offset;
         let mut buffer = vec![0; 64 * 1024];
-        while offset < fs.size {
-            let count = core::cmp::min(buffer.len() as u64, fs.size - offset) as usize;
-            fs.read_checked(offset, &mut buffer[..count])?;
-            if offset == 0 {
+        while offset < self.size {
+            let count = (buffer.len() as u64).min(self.size - offset) as usize;
+            self.read_checked(offset, &mut buffer[..count])?;
+            if offset == self.super_offset {
                 buffer[32..36].fill(0);
             }
             hasher.update(&buffer[..count]);
@@ -205,10 +260,69 @@ impl<S: BlockSource> FoldFrontend<S> for Cramfs<S> {
         if hasher.finalize() != expected {
             return Err(FoldError::Corrupt("cramfs: CRC mismatch"));
         }
-        let root = fs.parse_inode(ROOT_INODE_OFF)?;
+        Ok(())
+    }
+}
+
+impl<S: BlockSource> FoldFrontend<S> for Cramfs<S> {
+    const TAG: &'static str = "cramfs";
+
+    fn probe(src: &mut S) -> Result<bool> {
+        if src.len() < SUPER_LEN as u64 {
+            return Ok(false);
+        }
+        let mut prefix = [0; BOOT_PAD + SUPER_LEN];
+        let len = src.len().min(prefix.len() as u64) as usize;
+        src.read_at(0, &mut prefix[..len])?;
+        Ok(superblock_offset(&prefix[..len]).is_some_and(|offset| offset + SUPER_LEN <= len))
+    }
+
+    fn open(src: S, _cx: &mut SubstrateCtx<'_>) -> Result<Self> {
+        let mut src = src;
+        let mut prefix = [0; BOOT_PAD + SUPER_LEN];
+        let len = src.len().min(prefix.len() as u64) as usize;
+        src.read_at(0, &mut prefix[..len])?;
+        let super_offset =
+            superblock_offset(&prefix[..len]).ok_or(FoldError::Corrupt("cramfs: bad magic"))?;
+        let head = prefix[..len]
+            .get(super_offset..super_offset + SUPER_LEN)
+            .ok_or(FoldError::Corrupt("cramfs: shorter than superblock"))?;
+        let magic = u32::from_le_bytes([head[0], head[1], head[2], head[3]]);
+        let mut fs = Cramfs {
+            src,
+            size: 0,
+            super_offset: super_offset as u64,
+            big_endian: magic != MAGIC,
+            flags: 0,
+        };
+        let flags = fs.word([head[8], head[9], head[10], head[11]]);
+        if flags & !SUPPORTED_FLAGS != 0 {
+            return Err(FoldError::Unsupported(
+                "cramfs: unsupported filesystem flags",
+            ));
+        }
+        fs.flags = flags;
+        let has_crc = flags & FLAG_FSID_V2 != 0;
+        fs.size = if has_crc {
+            u64::from(fs.word([head[4], head[5], head[6], head[7]]))
+        } else {
+            // FSID v1 mkcramfs writes a placeholder instead of the volume size.
+            fs.src.len()
+        };
+        let data_start = fs.super_offset + SUPER_LEN as u64;
+        if fs.size < data_start || fs.size > fs.src.len() || &head[16..32] != SIGNATURE {
+            return Err(FoldError::Corrupt(
+                "cramfs: invalid superblock size or signature",
+            ));
+        }
+        if has_crc {
+            fs.verify_crc(fs.word([head[32], head[33], head[34], head[35]]))?;
+        }
+        let root = fs.parse_inode(fs.root())?;
         if Self::kind(root.mode) != FileKind::Directory
             || (root.size != 0
-                && (root.data_off < 76 || (flags & 0x400 == 0 && root.data_off != 76)))
+                && (root.data_off < data_start
+                    || (flags & FLAG_SHIFTED_ROOT == 0 && root.data_off != data_start)))
         {
             return Err(FoldError::Corrupt("cramfs: invalid root directory"));
         }
@@ -216,7 +330,7 @@ impl<S: BlockSource> FoldFrontend<S> for Cramfs<S> {
     }
 
     fn root(&self) -> NodeId {
-        ROOT_INODE_OFF
+        self.super_offset + ROOT_INODE_OFF as u64
     }
 
     fn lookup(
@@ -238,7 +352,9 @@ impl<S: BlockSource> FoldFrontend<S> for Cramfs<S> {
             return Err(FoldError::NotDirectory);
         }
         let end = inode.data_off + inode.size;
-        if end > self.size || inode.data_off % 4 != 0 {
+        if end > self.size
+            || (inode.size != 0 && inode.data_off < self.super_offset + SUPER_LEN as u64)
+        {
             return Err(FoldError::Corrupt("cramfs: directory outside filesystem"));
         }
         let mut out = Vec::new();

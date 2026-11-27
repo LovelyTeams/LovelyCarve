@@ -1,12 +1,7 @@
 //! Read-only ZFS volume adapter built on the vendored `zfs-rs` crate.
 //!
-//! Mirrors the `core::ufs_volume` / `core::squashfs_volume` shape: each
-//! backend operation instantiates a fresh `ZfsDrive` over a transient
-//! `PartitionDrive` against the partition slice, so the dispatcher can fan
-//! out concurrent listings / reads without per-volume locking. Re-parsing
-//! the disk label and walking the MOS each call costs roughly 1–5 ms on a
-//! warm image; if profiling later shows this as a hotspot we can switch to
-//! a lazy `Arc<Mutex<…>>` cache like `image::ntfs_deleted`.
+//! A volume holds the verified topology and routes each DVA to its member
+//! partition or group. Traversal borrows this immutable drive.
 //!
 //! Two node-ID flavours are emitted, mirroring the two layers of the ZFS
 //! object model:
@@ -34,21 +29,21 @@ use directory::*;
 mod read;
 use read::*;
 
-use std::io;
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Result};
 use chrono::{DateTime, Utc};
 use zfs_rs::dmu::OsType;
+use zfs_rs::pool::Pool;
 use zfs_rs::zap::{ToByteSlice, ZapString};
 use zfs_rs::zpl::{DirEntryType, SAValue};
 use zfs_rs::{
-    DefaultDMU, DefaultDSL, DefaultSPA, DefaultZAP, DefaultZPL, RawDevice, ZfsDirEntry, ZfsDrive,
-    ZfsDslDir, ZfsMetaObjectSet, ZfsZPLDir, ZfsZPLFile, ZfsZPLObjectSet,
+    ZfsDirEntry, ZfsDrive, ZfsDslDir, ZfsMetaObjectSet, ZfsZPLDir, ZfsZPLFile, ZfsZPLObjectSet,
 };
 
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{DiskImage, Partition};
+use crate::core::evidence::partitions::zfs::PartitionSource;
 use crate::core::filesystem::tree::fs_tree::{
     detect_mime_bytes, shannon_entropy, FsDataRun, FsNode, FsStat, Mactb, NodeKind,
 };
@@ -144,25 +139,36 @@ pub fn open_zfs_source(image: &Arc<DiskImage>, source: ZfsSource) -> Result<ZfsV
 }
 
 pub struct ZfsVolume {
-    image: Arc<DiskImage>,
     partition_id: u8,
-    base_offset: u64,
-    length_bytes: u64,
+    drive: ZfsDrive<PoolDrive>,
 }
+
+type PoolDrive = Pool<PartitionSource>;
 
 impl ZfsVolume {
     pub fn open(image: Arc<DiskImage>, partition: &Partition) -> Result<Self> {
-        let sector_size = image.sector_size as u64;
-        let volume = Self {
-            image,
+        let source = PartitionSource::new(&image, partition)?;
+        let label = source.label()?;
+        let pool_guid = label.identity.pool_guid;
+        let mut members = vec![(source, label)];
+        for candidate in image
+            .partitions
+            .iter()
+            .filter(|part| part.id != partition.id && part.kind == partition.kind)
+        {
+            let Ok(source) = PartitionSource::new(&image, candidate) else {
+                continue;
+            };
+            let Ok(label) = source.label() else { continue };
+            if label.identity.pool_guid == pool_guid {
+                members.push((source, label));
+            }
+        }
+        let (pool, label) = Pool::from_members(members)?;
+        Ok(Self {
             partition_id: partition.id,
-            base_offset: partition.start_lba * sector_size,
-            length_bytes: partition.length_lba * sector_size,
-        };
-        // Eager-validate the label so the caller sees a parse error here
-        // rather than only when listing children.
-        volume.open_drive()?;
-        Ok(volume)
+            drive: ZfsDrive::new_with_label(pool, label),
+        })
     }
 
     /// Children of the partition root (the pool root). Lists the top-level
@@ -196,20 +202,6 @@ impl ZfsVolume {
             hex::encode(file_path.as_bytes())
         )
     }
-
-    /// Construct a fresh `ZfsDrive` over the partition slice. Each public
-    /// method opens its own drive — the cost is dominated by parsing the
-    /// 256 KiB label, which is cached in the OS page cache after the first
-    /// call.
-    fn open_drive(&self) -> Result<ZfsDrive<PartitionDrive>> {
-        let cursor = PartitionDrive {
-            image: Arc::clone(&self.image),
-            base_offset: self.base_offset,
-            length_bytes: self.length_bytes,
-        };
-        ZfsDrive::new(cursor)
-            .map_err(|err| anyhow!("ZfsDrive::new part:{}: {err}", self.partition_id))
-    }
 }
 
 /// Decode a ZapString as a (lossy) UTF-8 owned String for display.
@@ -227,52 +219,6 @@ fn split_path(path: &str) -> (&str, &str) {
         None => ("", path),
     }
 }
-
-/// Adapter that exposes a partition slice of `DiskImage` as a `RawDevice`
-/// for `zfs-rs`. ZFS labels live at byte offset 0 and 0x40000 of the vdev
-/// (which is the partition for a partitioned ZFS pool); the upstream
-/// `DefaultDrive::read_offset` adds an additional 4 MiB boot-block offset
-/// for the active filesystem area, and we leave that addition to the
-/// upstream `Device` blanket impl rather than baking it into our base
-/// offset.
-pub struct PartitionDrive {
-    image: Arc<DiskImage>,
-    base_offset: u64,
-    length_bytes: u64,
-}
-
-impl RawDevice for PartitionDrive {
-    type Block = Vec<u8>;
-    fn read_raw(&self, addr: u64, size: u64) -> io::Result<Self::Block> {
-        if size == 0 {
-            return Ok(Vec::new());
-        }
-        // Range-check against the partition bounds — anything past the end
-        // is a parse error in the upstream code, so we surface it as
-        // `UnexpectedEof` for a clearer message.
-        let end = addr
-            .checked_add(size)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "ZFS read overflow"))?;
-        if end > self.length_bytes {
-            return Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                format!(
-                    "ZFS read past partition end: addr={addr} size={size} len={}",
-                    self.length_bytes
-                ),
-            ));
-        }
-        self.image
-            .read_range(self.base_offset + addr, size as usize)
-            .map_err(|err| io::Error::other(err.to_string()))
-    }
-}
-
-impl DefaultSPA for PartitionDrive {}
-impl DefaultDMU for PartitionDrive {}
-impl DefaultZAP for PartitionDrive {}
-impl DefaultDSL for PartitionDrive {}
-impl DefaultZPL for PartitionDrive {}
 
 // `DirEntryType` is currently only used for documentation of the upstream
 // enum shape; we route through `ZfsDirEntry` which already carves

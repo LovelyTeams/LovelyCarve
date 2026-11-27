@@ -80,21 +80,31 @@ pub(super) async fn locate_node(
     located
 }
 
-/// Only known insensitive filesystems opt in. Synthetic roots and unknown or
-/// offline Apple volumes retain exact matching; host OS rules never apply.
+/// Whether names in the directory `parent` ignore case. Only known
+/// insensitive filesystems opt in: NTFS, FAT, exFAT, HPFS, the Xbox file
+/// systems, MFS, HFS+ and APFS volumes formatted that way. Synthetic roots and
+/// unknown or offline Apple volumes retain exact matching; host OS rules never
+/// apply. How each one compares names is `browsing::folded_match`.
 pub(super) async fn case_insensitive(
     image: Arc<EvidenceSession>,
     parent: String,
 ) -> Result<bool, CliError> {
     let session = image.filesystem_session(&parent);
-    if parent.starts_with("ntfs:") || parent.starts_with("fat:") || parent.starts_with("exfat:") {
+    if parent.starts_with("ntfs:")
+        || parent.starts_with("fat:")
+        || parent.starts_with("exfat:")
+        || parent.starts_with("hpfs:part:")
+        || parent.starts_with("xdvdfs:part:")
+        || parent.starts_with("fatx:part:")
+        || parent.starts_with("mfs:part:")
+    {
         return Ok(true);
     }
     if let Some((source, _)) = parse_apfs_id(&parent) {
         if session.is_index_only() {
             return Ok(false);
         }
-        let image = Arc::clone(session.disk_image());
+        let image = Arc::clone(session);
         return tokio::task::spawn_blocking(move || {
             open_apfs_source(&image, source)?.names_case_insensitive()
         })
@@ -126,6 +136,10 @@ pub(super) async fn case_insensitive(
                     | PartitionKind::Fat32
                     | PartitionKind::ExFat
                     | PartitionKind::HfsPlus
+                    | PartitionKind::Hpfs
+                    | PartitionKind::Xdvdfs
+                    | PartitionKind::Fatx
+                    | PartitionKind::Mfs
             )
         }))
 }

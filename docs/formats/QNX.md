@@ -31,8 +31,7 @@
   符号链接限 64 KiB，宿主路径限 256 层。达到上限返回错误。
 - 非 UTF-8、反斜线或带 NUL 的名称拒绝，避免有损解码合并不同目录身份。
   Unicode 短名有合成验证，非 ASCII 长名 checksum 的厂商差异尚未真实验证。
-- 本次不包含 QNX IFS 启动镜像、ETFS、EFS、QTD 或其他 QNX 文件系统；它们不能当作 QNX4 / QNX6 读取。
-  原生 GUI / Dokan 驱动行为需另行验证。
+- [QNX ETFS](QNX_ETFS.md) 和 [QNX EFS](QNX_EFS.md) 使用各自的闪存读取器。QNX IFS 和 QTD 尚未覆盖。原生 GUI / Dokan 驱动行为需另行验证。
 
 ## 来源与验证
 

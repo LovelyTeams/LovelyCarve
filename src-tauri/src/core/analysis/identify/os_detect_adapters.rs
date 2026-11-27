@@ -216,7 +216,20 @@ pub(super) fn apfs_roots(
     root_id: &str,
 ) -> anyhow::Result<Vec<FsNode>> {
     let mut nodes = fs_tree::children_for_image(image, root_id)?;
-    nodes.retain(|node| node.kind == NodeKind::Dir);
+    use crate::core::filesystem::volumes::apfs::{parse_apfs_id, ApfsSource};
+    nodes.retain(|node| {
+        node.kind == NodeKind::Dir
+            && matches!(
+                parse_apfs_id(&node.id),
+                Some((
+                    ApfsSource::Partition {
+                        snapshot_xid: None,
+                        ..
+                    },
+                    _
+                ))
+            )
+    });
     Ok(nodes)
 }
 
@@ -310,13 +323,23 @@ pub(crate) fn supports_os_detect(kind: PartitionKind) -> bool {
             | PartitionKind::F2fs
             | PartitionKind::Qnx4
             | PartitionKind::Qnx6
+            | PartitionKind::QnxEtfs
+            | PartitionKind::QnxEfs
             | PartitionKind::Udf
             | PartitionKind::Hfs
+            | PartitionKind::Mfs
+            | PartitionKind::Littlefs
+            | PartitionKind::Spiffs
+            | PartitionKind::Hammer
+            | PartitionKind::Hammer2
             | PartitionKind::Jfs
             | PartitionKind::Reiserfs
+            | PartitionKind::Reiser4
             | PartitionKind::Amiga
             | PartitionKind::Befs
+            | PartitionKind::Gfs1
             | PartitionKind::Gfs2
+            | PartitionKind::Ocfs1
             | PartitionKind::Ocfs2
             | PartitionKind::Nilfs2
             | PartitionKind::Bcachefs
@@ -352,16 +375,33 @@ pub(crate) fn kind_str(kind: PartitionKind) -> &'static str {
         PartitionKind::F2fs => "f2fs",
         PartitionKind::Qnx4 => "qnx4",
         PartitionKind::Qnx6 => "qnx6",
+        PartitionKind::QnxEtfs => "qnxetfs",
+        PartitionKind::QnxEfs => "qnxefs",
         PartitionKind::Udf => "udf",
         PartitionKind::Hfs => "hfs",
+        PartitionKind::Mfs => "mfs",
+        PartitionKind::Littlefs => "littlefs",
+        PartitionKind::Spiffs => "spiffs",
+        PartitionKind::Hammer => "hammer",
+        PartitionKind::Hammer2 => "hammer2",
         PartitionKind::Jfs => "jfs",
+        PartitionKind::Reiser4 => "reiser4",
         PartitionKind::Reiserfs => "reiserfs",
         PartitionKind::Amiga => "amiga",
         PartitionKind::Befs => "befs",
+        PartitionKind::Gfs1 => "gfs1",
         PartitionKind::Gfs2 => "gfs2",
+        PartitionKind::Ocfs1 => "ocfs1",
         PartitionKind::Ocfs2 => "ocfs2",
         PartitionKind::Nilfs2 => "nilfs2",
         PartitionKind::Bcachefs => "bcachefs",
+        PartitionKind::Vmfs => "vmfs",
+        PartitionKind::Hpfs => "hpfs",
+        PartitionKind::Vxfs => "vxfs",
+        PartitionKind::AixJfs => "aixjfs",
+        PartitionKind::UnixwareBfs => "unixwarebfs",
+        PartitionKind::Xdvdfs => "xdvdfs",
+        PartitionKind::Fatx => "fatx",
         PartitionKind::Minix => "minix",
         PartitionKind::Minifs => "minifs",
         PartitionKind::Romfs => "romfs",

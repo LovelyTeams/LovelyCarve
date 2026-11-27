@@ -5,7 +5,51 @@ use crate::core::filesystem::volumes::ntfs::NtfsDataStream;
 use classic_hfs::ForkKind;
 
 const RESOURCE: &str = "com.apple.ResourceFork";
-impl HfsVolume {
+
+pub trait AppleForks: FoldFrontend<RomImageSource> {
+    fn fork_size(&mut self, node: lamfold::NodeId, kind: ForkKind) -> lamfold::Result<u64>;
+    fn read_fork_at(
+        &mut self,
+        node: lamfold::NodeId,
+        kind: ForkKind,
+        offset: u64,
+        bytes: &mut [u8],
+    ) -> lamfold::Result<usize>;
+}
+
+impl AppleForks for classic_hfs::Hfs<RomImageSource> {
+    fn fork_size(&mut self, node: lamfold::NodeId, kind: ForkKind) -> lamfold::Result<u64> {
+        Self::fork_size(self, node, kind)
+    }
+
+    fn read_fork_at(
+        &mut self,
+        node: lamfold::NodeId,
+        kind: ForkKind,
+        offset: u64,
+        bytes: &mut [u8],
+    ) -> lamfold::Result<usize> {
+        Self::read_fork_at(self, node, kind, offset, bytes)
+    }
+}
+
+impl AppleForks for mfs_reader::Mfs<RomImageSource> {
+    fn fork_size(&mut self, node: lamfold::NodeId, kind: ForkKind) -> lamfold::Result<u64> {
+        mfs_reader::Mfs::fork_size(self, node, kind)
+    }
+
+    fn read_fork_at(
+        &mut self,
+        node: lamfold::NodeId,
+        kind: ForkKind,
+        offset: u64,
+        bytes: &mut [u8],
+    ) -> lamfold::Result<usize> {
+        Self::read_fork_at(self, node, kind, offset, bytes)
+    }
+}
+
+impl<F: AppleForks> RomVolume<F> {
     pub fn list_streams(&self, path: &str) -> Result<Vec<NtfsDataStream>> {
         let mut reader = self.reader.borrow_mut();
         let mut cache = BlockCache::new(0);
@@ -31,7 +75,7 @@ impl HfsVolume {
         ])
     }
     pub fn read_named_stream(&self, path: &str, name: &str, max_bytes: usize) -> Result<Vec<u8>> {
-        ensure!(name == RESOURCE, "unknown classic HFS named fork: {name}");
+        ensure!(name == RESOURCE, "unknown Macintosh named fork: {name}");
         let mut reader = self.reader.borrow_mut();
         let mut cache = BlockCache::new(0);
         let mut context = SubstrateCtx {
@@ -45,7 +89,7 @@ impl HfsVolume {
         let mut bytes = vec![0; lamfold::checked_full_read_len(size)?];
         ensure!(
             reader.read_fork_at(node, ForkKind::Resource, 0, &mut bytes)? == bytes.len(),
-            Failure::corrupt("short HFS resource fork read")
+            Failure::corrupt("short Macintosh resource fork read")
         );
         Ok(bytes)
     }
@@ -56,7 +100,7 @@ impl HfsVolume {
         chunk_size: usize,
         mut visitor: impl FnMut(&[u8]) -> Result<()>,
     ) -> Result<u64> {
-        ensure!(name == RESOURCE, "unknown classic HFS named fork: {name}");
+        ensure!(name == RESOURCE, "unknown Macintosh named fork: {name}");
         let mut reader = self.reader.borrow_mut();
         let mut cache = BlockCache::new(0);
         let mut context = SubstrateCtx {
@@ -72,14 +116,14 @@ impl HfsVolume {
             ensure!(
                 reader.read_fork_at(node, ForkKind::Resource, offset, &mut bytes[..count])?
                     == count,
-                Failure::corrupt("short HFS resource fork stream")
+                Failure::corrupt("short Macintosh resource fork stream")
             );
             visitor(&bytes[..count])?;
             offset += count as u64;
         }
         ensure!(
             offset == size,
-            Failure::corrupt("incomplete HFS resource fork stream")
+            Failure::corrupt("incomplete Macintosh resource fork stream")
         );
         Ok(offset)
     }

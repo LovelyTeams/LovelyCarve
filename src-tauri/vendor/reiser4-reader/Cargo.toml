@@ -1,0 +1,19 @@
+[package]
+name = "reiser4-reader"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "Read-only pure Rust Reiser4 filesystem reader"
+
+[dependencies]
+adler2 = "2"
+crc32c = "0.6"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+lamfold = { path = "../lamfold", default-features = false, features = ["codec-lzo", "std"] }
+ruzstd = { version = "0.9.1", default-features = false }
+
+[dev-dependencies]
+hex = "0.4"
+sha2 = "0.11"
+
+[workspace]

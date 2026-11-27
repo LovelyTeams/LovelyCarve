@@ -78,12 +78,28 @@ pub type ErofsVolume = RomVolume<lamfold_erofs::Erofs<RomImageSource>>;
 pub type F2fsVolume = RomVolume<f2fs_reader::F2fs<RomImageSource>>;
 pub type Qnx4Volume = RomVolume<qnx_reader::Qnx4<RomImageSource>>;
 pub type Qnx6Volume = RomVolume<qnx_reader::Qnx6<RomImageSource>>;
+pub type QnxEtfsVolume = RomVolume<qnx_reader::Etfs<RomImageSource>>;
+pub type QnxEfsVolume = RomVolume<qnx_reader::Efs<RomImageSource>>;
 pub type UdfVolume = RomVolume<lamfold_udf::Udf<RomImageSource>>;
 pub type MinixVolume = RomVolume<minix_reader::Minix<RomImageSource>>;
 pub type HfsVolume = RomVolume<classic_hfs::Hfs<RomImageSource>>;
+pub type MfsVolume = RomVolume<mfs_reader::Mfs<RomImageSource>>;
+pub type LittlefsVolume = RomVolume<littlefs_reader::LittleFs<RomImageSource>>;
+pub type SpiffsVolume = RomVolume<spiffs_reader::Spiffs<RomImageSource>>;
+pub type HammerVolume = RomVolume<hammer_reader::Hammer<RomImageSource>>;
+pub type Hammer2Volume = RomVolume<hammer2_reader::Hammer2<RomImageSource>>;
+pub type HpfsVolume = RomVolume<hpfs_reader::Hpfs<RomImageSource>>;
+pub type VxfsVolume = RomVolume<vxfs_reader::Vxfs<RomImageSource>>;
+pub type AixJfsVolume = RomVolume<aix_jfs_reader::AixJfs<RomImageSource>>;
+pub type UnixwareBfsVolume = RomVolume<unixware_bfs_reader::UnixwareBfs<RomImageSource>>;
+pub type XdvdfsVolume = RomVolume<xdvdfs_reader::Xdvdfs<RomImageSource>>;
+pub type FatxVolume = RomVolume<fatx_reader::Fatx<RomImageSource>>;
 pub type JfsVolume = RomVolume<jfs_reader::Jfs<RomImageSource>>;
 pub type ReiserFsVolume = RomVolume<reiserfs_reader::ReiserFs<RomImageSource>>;
+pub type Reiser4Volume = RomVolume<reiser4_reader::Reiser4<RomImageSource>>;
 pub type AmigaVolume = RomVolume<amiga_reader::Amiga<RomImageSource>>;
+pub type Gfs1Volume = RomVolume<gfs1_reader::Gfs1<RomImageSource>>;
+pub type Ocfs1Volume = RomVolume<ocfs1_reader::Ocfs1<RomImageSource>>;
 
 pub struct RomImageSource {
     image: Arc<DiskImage>,
@@ -173,6 +189,68 @@ pub fn open_qnx4_source(image: &Arc<DiskImage>, partition: u8) -> Result<Qnx4Vol
 pub fn parse_minix_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "minix")
 }
+pub fn parse_ocfs1_id(id: &str) -> Option<(u8, String)> {
+    let (partition, path) = id.strip_prefix("ocfs1:part:")?.split_once(':')?;
+    let path = String::from_utf8(hex::decode(path).ok()?).ok()?;
+    valid_lookup_path(&path).then_some((partition.parse().ok()?, path))
+}
+
+pub fn open_ocfs1_source(image: &Arc<DiskImage>, partition: u8) -> Result<Ocfs1Volume> {
+    Ocfs1Volume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+
+pub fn parse_gfs1_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "gfs1")
+}
+
+pub fn open_gfs1_source(image: &Arc<DiskImage>, partition: u8) -> Result<Gfs1Volume> {
+    Gfs1Volume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn parse_fatx_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "fatx")
+}
+pub fn parse_xdvdfs_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "xdvdfs")
+}
+pub fn parse_unixware_bfs_id(id: &str) -> Option<(u8, String)> {
+    let (partition, path) = id.strip_prefix("unixwarebfs:part:")?.split_once(':')?;
+    let path = String::from_utf8(hex::decode(path).ok()?).ok()?;
+    valid_lookup_path(&path).then_some((partition.parse().ok()?, path))
+}
+pub fn parse_aix_jfs_id(id: &str) -> Option<(u8, String)> {
+    let (partition, path) = id.strip_prefix("aixjfs:part:")?.split_once(':')?;
+    let path = String::from_utf8(hex::decode(path).ok()?).ok()?;
+    valid_lookup_path(&path).then_some((partition.parse().ok()?, path))
+}
+pub fn parse_vxfs_id(id: &str) -> Option<(u8, String)> {
+    let (partition, path) = id.strip_prefix("vxfs:part:")?.split_once(':')?;
+    let path = String::from_utf8(hex::decode(path).ok()?).ok()?;
+    valid_lookup_path(&path).then_some((partition.parse().ok()?, path))
+}
+pub fn parse_hpfs_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "hpfs")
+}
+pub fn parse_mfs_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "mfs")
+}
+pub fn parse_littlefs_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "littlefs")
+}
+pub fn parse_spiffs_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "spiffs")
+}
+pub fn parse_hammer_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "hammer")
+}
+pub fn parse_hammer2_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "hammer2")
+}
 pub fn parse_hfs_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "hfs")
 }
@@ -194,6 +272,19 @@ pub fn open_jfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<JfsVolum
     }
     Ok(volume)
 }
+pub fn parse_reiser4_id(id: &str) -> Option<(u8, String)> {
+    let (partition, path) = id.strip_prefix("reiser4:part:")?.split_once(':')?;
+    let path = String::from_utf8(hex::decode(path).ok()?).ok()?;
+    valid_lookup_path(&path).then_some((partition.parse().ok()?, path))
+}
+
+pub fn open_reiser4_source(image: &Arc<DiskImage>, partition: u8) -> Result<Reiser4Volume> {
+    Reiser4Volume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+
 pub fn parse_reiserfs_id(id: &str) -> Option<(u8, String)> {
     let rest = id.strip_prefix("reiserfs:part:")?;
     let (partition, path) = rest.split_once(':')?;
@@ -230,6 +321,75 @@ pub fn open_amiga_source(image: &Arc<DiskImage>, partition: u8) -> Result<AmigaV
         reader: RefCell::new(reader),
     })
 }
+pub fn open_fatx_source(image: &Arc<DiskImage>, partition: u8) -> Result<FatxVolume> {
+    FatxVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn open_xdvdfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<XdvdfsVolume> {
+    XdvdfsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn open_unixware_bfs_source(
+    image: &Arc<DiskImage>,
+    partition: u8,
+) -> Result<UnixwareBfsVolume> {
+    UnixwareBfsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn open_aix_jfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<AixJfsVolume> {
+    AixJfsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn open_vxfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<VxfsVolume> {
+    VxfsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn open_hpfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<HpfsVolume> {
+    HpfsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn open_mfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<MfsVolume> {
+    MfsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn open_littlefs_source(image: &Arc<DiskImage>, partition: u8) -> Result<LittlefsVolume> {
+    LittlefsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn open_spiffs_source(image: &Arc<DiskImage>, partition: u8) -> Result<SpiffsVolume> {
+    SpiffsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn open_hammer_source(image: &Arc<DiskImage>, partition: u8) -> Result<HammerVolume> {
+    HammerVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn open_hammer2_source(image: &Arc<DiskImage>, partition: u8) -> Result<Hammer2Volume> {
+    Hammer2Volume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
 pub fn open_hfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<HfsVolume> {
     HfsVolume::open(
         Arc::clone(image),
@@ -254,8 +414,26 @@ pub fn open_udf_source(image: &Arc<DiskImage>, partition: u8) -> Result<UdfVolum
 pub fn parse_qnx6_id(id: &str) -> Option<(u8, String)> {
     parse_id(id, "qnx6")
 }
+pub fn parse_qnxetfs_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "qnxetfs")
+}
+pub fn parse_qnxefs_id(id: &str) -> Option<(u8, String)> {
+    parse_id(id, "qnxefs")
+}
 pub fn open_qnx6_source(image: &Arc<DiskImage>, partition: u8) -> Result<Qnx6Volume> {
     Qnx6Volume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn open_qnxetfs_source(image: &Arc<DiskImage>, partition: u8) -> Result<QnxEtfsVolume> {
+    QnxEtfsVolume::open(
+        Arc::clone(image),
+        find_partition(image, &partition.to_string())?,
+    )
+}
+pub fn open_qnxefs_source(image: &Arc<DiskImage>, partition: u8) -> Result<QnxEfsVolume> {
+    QnxEfsVolume::open(
         Arc::clone(image),
         find_partition(image, &partition.to_string())?,
     )

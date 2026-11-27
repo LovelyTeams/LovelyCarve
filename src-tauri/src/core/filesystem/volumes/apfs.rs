@@ -13,18 +13,19 @@
 //! The APFS partition node lists each filesystem volume. Node IDs then encode
 //! the volume slot plus absolute UTF-8 path as hex bytes:
 //! `apfs:part:{N}:{volume_index}:{hex(/path/to/entry)}`. The empty-hex form is
-//! the selected volume root.
+//! the selected volume root. Historical sources append @<XID> to the slot.
 
-use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::{Arc, Mutex};
 
-use anyhow::{anyhow, Result};
-use apfs::{ApfsVolume as ContainerVolume, EntryKind, VolumeInfo};
+use anyhow::{anyhow, Context, Result};
+use apfs::{ApfsVolume as ContainerVolume, EntryKind, FusionTier, VolumeInfo};
 use chrono::{TimeZone, Utc};
 
 use crate::core::common::error::Failure;
 use crate::core::evidence::image::find_partition;
-use crate::core::evidence::image::{DiskImage, Partition};
+use crate::core::evidence::image::{DiskImage, Partition, PartitionKind};
+use crate::core::evidence::partitions::apfs::{open_members, PartitionCursor};
+use crate::core::filesystem::evidence_session::EvidenceSession;
 use crate::core::filesystem::tree::fs_tree::{
     detect_mime_bytes, shannon_entropy, FsDataRun, FsNode, FsStat, Mactb, NodeKind,
 };
@@ -34,7 +35,11 @@ const STREAM_FLOOR: usize = 64 * 1024;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ApfsSource {
-    Partition { part_id: u8, volume_index: usize },
+    Partition {
+        part_id: u8,
+        volume_index: usize,
+        snapshot_xid: Option<u64>,
+    },
     LegacyPartition(u8),
 }
 
@@ -50,7 +55,13 @@ impl ApfsSource {
             ApfsSource::Partition {
                 part_id,
                 volume_index,
+                snapshot_xid: None,
             } => format!("apfs:part:{part_id}:{volume_index}"),
+            ApfsSource::Partition {
+                part_id,
+                volume_index,
+                snapshot_xid: Some(xid),
+            } => format!("apfs:part:{part_id}:{volume_index}@{xid}"),
             ApfsSource::LegacyPartition(part_id) => format!("apfs:part:{part_id}:legacy"),
         }
     }
@@ -59,7 +70,7 @@ impl ApfsSource {
 /// Parse an `apfs:part:{N}:{volume_index}:{hex(path)}` ID. Returns the source
 /// plus the decoded UTF-8 path (with a leading `/`, or empty for the volume
 /// root). The legacy `apfs:part:{N}:{hex(path)}` form is still accepted for
-/// existing snapshots and bookmarks, and maps to the container's first volume.
+/// existing indexes and bookmarks, and maps to the container's first volume.
 pub fn parse_apfs_id(id: &str) -> Option<(ApfsSource, String)> {
     let mut parts = id.splitn(5, ':');
     match (
@@ -71,7 +82,13 @@ pub fn parse_apfs_id(id: &str) -> Option<(ApfsSource, String)> {
     ) {
         (Some("apfs"), Some("part"), Some(part_id), Some(volume_index), Some(hex_path)) => {
             let part_id = part_id.parse().ok()?;
-            let volume_index = volume_index.parse().ok()?;
+            let (volume_index, snapshot_xid) = match volume_index.split_once('@') {
+                Some((index, xid)) => (
+                    index.parse().ok()?,
+                    Some(xid.parse::<u64>().ok().filter(|xid| *xid > 0)?),
+                ),
+                None => (volume_index.parse().ok()?, None),
+            };
             let path = if hex_path.is_empty() {
                 String::new()
             } else {
@@ -82,6 +99,7 @@ pub fn parse_apfs_id(id: &str) -> Option<(ApfsSource, String)> {
                 ApfsSource::Partition {
                     part_id,
                     volume_index,
+                    snapshot_xid,
                 },
                 path,
             ))
@@ -100,18 +118,25 @@ pub fn parse_apfs_id(id: &str) -> Option<(ApfsSource, String)> {
     }
 }
 
-pub fn open_apfs_source(image: &Arc<DiskImage>, source: ApfsSource) -> Result<ApfsVolume> {
+pub fn open_apfs_source(image: &Arc<EvidenceSession>, source: ApfsSource) -> Result<ApfsVolume> {
     match source {
         ApfsSource::Partition {
             part_id,
             volume_index,
+            snapshot_xid,
         } => {
             let partition = find_partition(image, &part_id.to_string())?;
-            ApfsVolume::open_index(Arc::clone(image), partition, volume_index)
+            ApfsVolume::open_with(
+                Arc::clone(image),
+                partition,
+                Some(volume_index),
+                snapshot_xid,
+                Some(image),
+            )
         }
         ApfsSource::LegacyPartition(part_id) => {
             let partition = find_partition(image, &part_id.to_string())?;
-            ApfsVolume::open(Arc::clone(image), partition)
+            ApfsVolume::open_with(Arc::clone(image), partition, None, None, Some(image))
         }
     }
 }
@@ -125,10 +150,208 @@ pub fn apfs_volume_nodes(image: Arc<DiskImage>, partition: &Partition) -> Result
         .collect())
 }
 
+#[derive(serde::Serialize)]
+pub struct ApfsEncryptionVolume {
+    pub index: usize,
+    pub name: String,
+    pub uuid: uuid::Uuid,
+    pub encrypted: bool,
+    pub unlocked: bool,
+}
+
+pub(crate) fn encryption_inventory(
+    image: &EvidenceSession,
+    partition_id: u8,
+) -> Result<Vec<ApfsEncryptionVolume>> {
+    let partition = find_partition(image, &partition_id.to_string())?;
+    anyhow::ensure!(
+        partition.kind == PartitionKind::ApfsContainer,
+        Failure::invalid_input("partition is not APFS")
+    );
+    let (main, tier2) = open_members(Arc::clone(image.disk_image()), partition)?;
+    let container_offset = main.base_offset;
+    Ok(ContainerVolume::list_source_volumes(main, tier2)
+        .map_err(apfs_error)?
+        .into_iter()
+        .map(|volume| ApfsEncryptionVolume {
+            index: volume.index,
+            name: volume.name,
+            uuid: uuid::Uuid::from_bytes(volume.uuid),
+            encrypted: volume.encrypted,
+            unlocked: image.apfs_key(container_offset, volume.index).is_some(),
+        })
+        .collect())
+}
+
+pub(crate) struct PreparedApfsUnlock {
+    pub partition_id: u8,
+    pub container_offset: u64,
+    pub source_offset: u64,
+    pub source_length: u64,
+    pub volume_index: usize,
+    pub uuid: uuid::Uuid,
+    pub key: apfs::ApfsVolumeKey,
+}
+
+pub(crate) fn prepare_unlock(
+    image: &EvidenceSession,
+    partition_id: u8,
+    volume_index: Option<usize>,
+    credential: &[u8],
+    cancellation: &tokio_util::sync::CancellationToken,
+) -> Result<PreparedApfsUnlock> {
+    let partition = find_partition(image, &partition_id.to_string())?;
+    anyhow::ensure!(
+        partition.kind == PartitionKind::ApfsContainer,
+        Failure::invalid_input("partition is not APFS")
+    );
+    let disk = image.disk_image();
+    let volume_index = match volume_index {
+        Some(index) => index,
+        None => {
+            let candidates = encryption_inventory(image, partition_id)?;
+            let mut encrypted = candidates.iter().filter(|volume| volume.encrypted);
+            let first = encrypted.next().context(Failure::not_found(
+                "APFS container has no encrypted volumes",
+            ))?;
+            anyhow::ensure!(
+                encrypted.next().is_none(),
+                Failure::invalid_input(
+                    "select an APFS volume index when the container has several encrypted volumes"
+                )
+            );
+            first.index
+        }
+    };
+    let selected = PartitionCursor::new(Arc::clone(disk), partition)?;
+    let (main, tier2) = open_members(Arc::clone(disk), partition)?;
+    let container_offset = main.base_offset;
+    let volume =
+        ContainerVolume::unlock_sources_cancellable(main, tier2, volume_index, credential, &|| {
+            cancellation.is_cancelled()
+        })
+        .map_err(apfs_error)?;
+    let key = volume
+        .unlocked_key()
+        .context(Failure::corrupt("APFS unlock returned no volume key"))?;
+    Ok(PreparedApfsUnlock {
+        partition_id,
+        container_offset,
+        source_offset: selected.base_offset,
+        source_length: selected.length_bytes,
+        volume_index,
+        uuid: uuid::Uuid::from_bytes(volume.volume_info().uuid),
+        key,
+    })
+}
+
+fn apfs_error(error: apfs::ApfsError) -> anyhow::Error {
+    use apfs::ApfsError;
+    match error {
+        ApfsError::Locked | ApfsError::InvalidCredential => {
+            Failure::permission_denied(error.to_string()).into()
+        }
+        ApfsError::Cancelled => Failure::cancelled(error.to_string()).into(),
+        ApfsError::Unsupported(_) => Failure::unsupported(error.to_string()).into(),
+        ApfsError::NoVolume | ApfsError::FileNotFound(_) => {
+            Failure::not_found(error.to_string()).into()
+        }
+        ApfsError::InvalidMagic(_)
+        | ApfsError::InvalidChecksum
+        | ApfsError::InvalidBTree(_)
+        | ApfsError::CorruptedData(_) => Failure::corrupt(error.to_string()).into(),
+        other => other.into(),
+    }
+}
+
+/// Read APFS container and volume roots live when source bytes are available.
+/// Container roots include historical snapshots, and an index built while a
+/// volume was locked may contain its root directory entry without its catalog.
+pub(crate) fn has_live_apfs_roots(image: &DiskImage, parent_id: &str) -> bool {
+    if image.is_index_only() {
+        return false;
+    }
+    if parent_id.ends_with(':') && parse_apfs_id(parent_id).is_some() {
+        return true;
+    }
+    parent_id
+        .strip_prefix("part:")
+        .and_then(|id| id.parse::<u8>().ok())
+        .is_some_and(|id| {
+            image.partitions.iter().any(|partition| {
+                partition.id == id && partition.kind == PartitionKind::ApfsContainer
+            })
+        })
+}
+
+pub(crate) fn apfs_browse_nodes(
+    image: &Arc<EvidenceSession>,
+    partition: &Partition,
+) -> Result<Vec<FsNode>> {
+    let parent_id = format!("part:{}", partition.id);
+    let (main, tier2) = open_members(Arc::clone(image), partition)?;
+    let container_offset = main.base_offset;
+    let infos = ContainerVolume::list_source_volumes(main, tier2).map_err(apfs_error)?;
+    let mut nodes = Vec::new();
+    for info in infos {
+        let volume_index = info.index;
+        let can_read_snapshots = info.num_snapshots > 0
+            && (!info.encrypted || image.apfs_key(container_offset, volume_index).is_some());
+        nodes.push(apfs_volume_node(partition.id, &parent_id, info));
+        if !can_read_snapshots {
+            continue;
+        }
+        let snapshots = ApfsVolume::open_with(
+            Arc::clone(image),
+            partition,
+            Some(volume_index),
+            None,
+            Some(image),
+        )
+        .and_then(|volume| volume.with_volume(|reader| Ok(reader.list_snapshots()?)));
+        match snapshots {
+            Ok(snapshots) => {
+                for snapshot in snapshots {
+                    let xid = snapshot.transaction_id;
+                    let source = ApfsSource::Partition {
+                        part_id: partition.id,
+                        volume_index,
+                        snapshot_xid: Some(xid),
+                    };
+                    let name = format!("APFS_{volume_index}_snapshot_{xid}_{}", snapshot.name);
+                    nodes.push(FsNode {
+                        id: format!("{}:", source.cache_key()),
+                        name: crate::core::common::navigation_name::volume_name(&name),
+                        parent_id: Some(parent_id.clone()),
+                        kind: NodeKind::Dir,
+                        size: 0,
+                        deleted: false,
+                        inode: None,
+                        timestamps: apfs_timestamps(
+                            snapshot.create_time,
+                            0,
+                            snapshot.change_time,
+                            0,
+                        ),
+                        link_target: None,
+                        has_snapshot: false,
+                    });
+                }
+            }
+            Err(error) => tracing::warn!(
+                partition = partition.id, volume_index, %error, "APFS snapshot discovery failed"
+            ),
+        }
+    }
+    Ok(nodes)
+}
+
 pub struct ApfsVolume {
     partition_id: u8,
     volume_index: usize,
+    snapshot_xid: Option<u64>,
     base_offset: u64,
+    tier2_base: Option<u64>,
     /// Parsed selected APFS volume, built once in [`ApfsVolume::open`] and
     /// reused behind a mutex (the `apfs` crate's reads take `&mut`). See the
     /// module header for why it is held rather than rebuilt per call.
@@ -137,36 +360,59 @@ pub struct ApfsVolume {
 
 impl ApfsVolume {
     pub fn open(image: Arc<DiskImage>, partition: &Partition) -> Result<Self> {
-        Self::open_with(image, partition, None)
-    }
-
-    pub fn open_index(
-        image: Arc<DiskImage>,
-        partition: &Partition,
-        volume_index: usize,
-    ) -> Result<Self> {
-        Self::open_with(image, partition, Some(volume_index))
+        Self::open_with(image, partition, None, None, None)
     }
 
     fn open_with(
         image: Arc<DiskImage>,
         partition: &Partition,
         volume_index: Option<usize>,
+        snapshot_xid: Option<u64>,
+        session: Option<&EvidenceSession>,
     ) -> Result<Self> {
-        let cursor = PartitionCursor::new(image, partition)?;
+        let (cursor, tier2) = open_members(Arc::clone(&image), partition)?;
         let base_offset = cursor.base_offset;
-        let volume = match volume_index {
-            Some(index) => ContainerVolume::open_index(cursor, index).map_err(|err| {
-                anyhow!("APFS open partition {} volume {index}: {err}", partition.id)
-            })?,
-            None => ContainerVolume::open(cursor)
-                .map_err(|err| anyhow!("APFS open partition {}: {err}", partition.id))?,
+        let tier2_base = tier2.as_ref().map(|cursor| cursor.base_offset);
+        let key = session
+            .zip(volume_index)
+            .and_then(|(session, index)| session.apfs_key(base_offset, index));
+        let volume = if let (Some(index), Some(key)) = (volume_index, key) {
+            ContainerVolume::open_with_key(cursor, tier2, index, &key).map_err(apfs_error)
+        } else {
+            let volume = ContainerVolume::open_sources(cursor, tier2, volume_index);
+            if let (Err(apfs::ApfsError::Locked), None, Some(session)) =
+                (&volume, volume_index, session)
+            {
+                let index = list_apfs_volumes(Arc::clone(&image), partition)?
+                    .into_iter()
+                    .next()
+                    .context(Failure::not_found("APFS container has no volumes"))?
+                    .index;
+                let key = session
+                    .apfs_key(base_offset, index)
+                    .context(Failure::permission_denied("APFS volume is locked"))?;
+                let (cursor, tier2) = open_members(image, partition)?;
+                ContainerVolume::open_with_key(cursor, tier2, index, &key).map_err(apfs_error)
+            } else {
+                volume.map_err(apfs_error)
+            }
+        }
+        .with_context(|| format!("APFS open partition {}", partition.id))?;
+        let volume = if let Some(xid) = snapshot_xid {
+            volume.into_snapshot(xid).map_err(|error| match error {
+                apfs::ApfsError::FileNotFound(message) => anyhow!(Failure::not_found(message)),
+                other => anyhow!(other),
+            })?
+        } else {
+            volume
         };
         let volume_index = volume.volume_info().index;
         Ok(Self {
             partition_id: partition.id,
             volume_index,
+            snapshot_xid,
             base_offset,
+            tier2_base,
             volume: Mutex::new(volume),
         })
     }
@@ -357,26 +603,31 @@ impl ApfsVolume {
                 Vec::new()
             };
 
-            let block_size = u64::from(vol.volume_info().block_size);
             let mut data_runs = Vec::new();
             if let Some(extents) = vol.file_extents(&owned)? {
                 for record in extents {
                     if record.value.phys_block_num == 0 || record.logical_addr >= stat.size {
                         continue;
                     }
-                    let physical_offset = record
-                        .value
-                        .phys_block_num
-                        .checked_mul(block_size)
-                        .and_then(|offset| self.base_offset.checked_add(offset))
-                        .ok_or_else(|| {
+                    let mut logical_offset = record.logical_addr;
+                    let length = record.value.length().min(stat.size - logical_offset);
+                    for span in vol.extent_source_spans(record.value.phys_block_num, length)? {
+                        let base = match span.tier {
+                            FusionTier::Main => Some(self.base_offset),
+                            FusionTier::Secondary => self.tier2_base,
+                        };
+                        let physical_offset = base
+                            .and_then(|base| base.checked_add(span.offset))
+                            .ok_or_else(|| {
                             anyhow!(Failure::corrupt("APFS source extent offset overflow"))
                         })?;
-                    data_runs.push(FsDataRun {
-                        logical_offset: record.logical_addr,
-                        physical_offset,
-                        length: record.value.length().min(stat.size - record.logical_addr),
-                    });
+                        data_runs.push(FsDataRun {
+                            logical_offset,
+                            physical_offset,
+                            length: span.length,
+                        });
+                        logical_offset += span.length;
+                    }
                 }
             }
             Ok(FsStat {
@@ -408,7 +659,12 @@ impl ApfsVolume {
     }
 
     fn node_id(&self, path: &str) -> String {
-        apfs_node_id(self.partition_id, self.volume_index, path)
+        let source = ApfsSource::Partition {
+            part_id: self.partition_id,
+            volume_index: self.volume_index,
+            snapshot_xid: self.snapshot_xid,
+        };
+        format!("{}:{}", source.cache_key(), hex::encode(path.as_bytes()))
     }
 
     /// Runs `op` against the parsed `apfs::ApfsVolume` held by this volume.
@@ -428,8 +684,8 @@ impl ApfsVolume {
 }
 
 fn list_apfs_volumes(image: Arc<DiskImage>, partition: &Partition) -> Result<Vec<VolumeInfo>> {
-    let cursor = PartitionCursor::new(image, partition)?;
-    ContainerVolume::list_volumes(cursor)
+    let (main, tier2) = open_members(image, partition)?;
+    ContainerVolume::list_source_volumes(main, tier2)
         .map_err(|err| anyhow!("APFS list volumes partition {}: {err}", partition.id))
 }
 
@@ -514,82 +770,59 @@ fn epoch_ns_to_rfc3339(nanos: i64) -> Option<String> {
         .map(|dt| dt.to_rfc3339())
 }
 
-/// Cursor exposing a partition slice of `DiskImage` as `std::io::Read +
-/// Seek`. Read-only — APFS parsing never writes back, so no `Write` impl
-/// is needed (unlike `core::fat_volume::PartitionCursor`).
-struct PartitionCursor {
-    image: Arc<DiskImage>,
-    base_offset: u64,
-    length_bytes: u64,
-    position: u64,
-}
-
-impl PartitionCursor {
-    fn new(image: Arc<DiskImage>, partition: &Partition) -> Result<Self> {
-        let sector_size = image.sector_size as u64;
-        let base_offset = partition
-            .start_lba
-            .checked_mul(sector_size)
-            .ok_or_else(|| anyhow!(Failure::corrupt("APFS partition offset overflow")))?;
-        let length_bytes = partition
-            .length_lba
-            .checked_mul(sector_size)
-            .ok_or_else(|| anyhow!(Failure::corrupt("APFS partition length overflow")))?;
-        if base_offset
-            .checked_add(length_bytes)
-            .is_none_or(|end| end > image.len())
-        {
-            anyhow::bail!("APFS partition exceeds source");
-        }
-        Ok(Self {
-            image,
-            base_offset,
-            length_bytes,
-            position: 0,
-        })
-    }
-}
-
-impl Read for PartitionCursor {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.position >= self.length_bytes || buf.is_empty() {
-            return Ok(0);
-        }
-        let remaining = self.length_bytes - self.position;
-        let want = (buf.len() as u64).min(remaining) as usize;
-        let bytes = self
-            .image
-            .read_range(self.base_offset + self.position, want)
-            .map_err(|err| io::Error::other(err.to_string()))?;
-        let copied = bytes.len();
-        buf[..copied].copy_from_slice(&bytes);
-        self.position += copied as u64;
-        Ok(copied)
-    }
-}
-
-impl Seek for PartitionCursor {
-    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        let target = match pos {
-            SeekFrom::Start(offset) => offset as i128,
-            SeekFrom::Current(delta) => self.position as i128 + delta as i128,
-            SeekFrom::End(delta) => self.length_bytes as i128 + delta as i128,
-        };
-        if target < 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "APFS cursor seek before start",
-            ));
-        }
-        self.position = u64::try_from(target)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "APFS seek out of range"))?;
-        Ok(self.position)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apfs_fusion_partitions_keep_member_run_offsets() {
+        use crate::core::filesystem::evidence_session::EvidenceSession;
+        use crate::core::filesystem::fs_dispatch::dispatch;
+
+        let main = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/vendor/apfs/tests/data/fusion-main.apfs"
+        ));
+        let tier2 = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/vendor/apfs/tests/data/fusion-tier2.apfs"
+        ));
+        let mut disk = vec![0; 4096];
+        disk[510..512].copy_from_slice(&[0x55, 0xaa]);
+        let offsets = [4096, 4096 + tier2.len()];
+        for (slot, (fixture, offset)) in [(&tier2[..], offsets[0]), (&main[..], offsets[1])]
+            .into_iter()
+            .enumerate()
+        {
+            let entry = 446 + 16 * slot;
+            disk[entry + 4] = 0xaf;
+            disk[entry + 8..entry + 12].copy_from_slice(&((offset / 512) as u32).to_le_bytes());
+            disk[entry + 12..entry + 16]
+                .copy_from_slice(&((fixture.len() / 512) as u32).to_le_bytes());
+            disk.extend_from_slice(fixture);
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("fusion.raw");
+        std::fs::write(&path, disk).unwrap();
+        let session = Arc::new(EvidenceSession::open(&path).unwrap());
+        assert_eq!(session.partitions.len(), 2);
+        for partition in &session.partitions {
+            assert_eq!(partition.kind, PartitionKind::ApfsContainer);
+            let id = apfs_node_id(partition.id, 0, "/plain.bin");
+            let volume = dispatch(&session, &id).unwrap().unwrap();
+            assert_eq!(volume.read_range(&id, 4095, 3).unwrap().unwrap(), b"ABB");
+            let stat = volume.file_stat(&id, &id).unwrap();
+            assert_eq!(stat.data_runs.len(), 2);
+            assert_eq!(
+                stat.data_runs[0].physical_offset,
+                (offsets[0] + 3 * 4096) as u64
+            );
+            assert_eq!(
+                stat.data_runs[1].physical_offset,
+                (offsets[1] + 13 * 4096) as u64
+            );
+        }
+    }
 
     #[test]
     fn apfs_synthetic_partition_supports_source_runs_symlinks_and_direct_ranges() {
@@ -603,7 +836,7 @@ mod tests {
         let mut disk = vec![0u8; 4096];
         disk[446 + 4] = 0xaf;
         disk[446 + 8..446 + 12].copy_from_slice(&8u32.to_le_bytes());
-        disk[446 + 12..446 + 16].copy_from_slice(&128u32.to_le_bytes());
+        disk[446 + 12..446 + 16].copy_from_slice(&((fixture.len() / 512) as u32).to_le_bytes());
         disk[510..512].copy_from_slice(&[0x55, 0xaa]);
         disk.extend_from_slice(fixture);
         let directory = tempfile::tempdir().unwrap();
@@ -644,6 +877,38 @@ mod tests {
                 .as_deref(),
             Some("../plain.bin")
         );
+
+        use crate::core::filesystem::tree::fs_tree::FsSession;
+        let mut fs = FsSession::new(&session);
+        let root_nodes = fs.children(&format!("part:{}", partition.id)).unwrap();
+        let snapshot = root_nodes
+            .iter()
+            .find(|node| node.name.ends_with("snap-one"))
+            .unwrap();
+        assert_eq!(snapshot.id, format!("apfs:part:{}:0@5:", partition.id));
+        let snapshot_nodes = fs.children(&snapshot.id).unwrap();
+        let historical = snapshot_nodes
+            .iter()
+            .find(|node| node.name == "old.bin")
+            .unwrap();
+        let historical_clone = snapshot_nodes
+            .iter()
+            .find(|node| node.name == "clone.bin")
+            .unwrap();
+        let live_clone = children
+            .iter()
+            .find(|node| node.name == "clone.bin")
+            .unwrap();
+        assert_ne!(historical_clone.id, live_clone.id);
+        assert_eq!(
+            fs.read_file_range(&historical.id, 4090, 20).unwrap(),
+            [vec![b'P'; 6], vec![b'B'; 14]].concat()
+        );
+        assert_eq!(fs.read_file_range(&live_clone.id, 0, 8).unwrap(), [b'A'; 8]);
+        assert_eq!(
+            fs.read_file_range(&historical_clone.id, 0, 8).unwrap(),
+            [b'P'; 8]
+        );
     }
     use crate::core::evidence::image::{DiskImage, PartitionKind};
 
@@ -657,7 +922,8 @@ mod tests {
             source,
             ApfsSource::Partition {
                 part_id: 2,
-                volume_index: 7
+                volume_index: 7,
+                snapshot_xid: None,
             }
         ));
         assert_eq!(path, "/Users");

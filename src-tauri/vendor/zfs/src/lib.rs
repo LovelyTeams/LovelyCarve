@@ -26,8 +26,11 @@ use thiserror::Error;
 
 use nom::number::complete as number;
 
+pub mod config;
 pub mod dmu;
 pub mod dsl;
+pub mod label;
+pub mod pool;
 pub mod spa;
 pub mod zap;
 pub mod zil;
@@ -37,11 +40,10 @@ pub mod compression;
 pub mod fletcher;
 
 use crate::compression::decompress_lz4;
-use crate::fletcher::{Fletcher2, Fletcher4};
 
 use crate::dmu::{DNodePhys, ObjsetPhys};
 use crate::dsl::{DatasetPhys, DirPhys};
-use crate::spa::{BlockPtr, BlockPtrKind, ChecksumType, CompressionType, Label, DVA};
+use crate::spa::{BlockPtr, BlockPtrKind, CompressionType, Label, DVA};
 use crate::zap::{
     zap_hash, zap_hash_idx, zap_leaf_hash_numentries, ZapBlock, ZapLeafPhys, ZapResult, ZapStr,
     ZapString,
@@ -70,12 +72,18 @@ pub trait RawDevice {
     type Block: AsRef<[u8]>;
     /// Read the requested amount, given in bytes
     fn read_raw(&self, addr: u64, size: u64) -> IoResult<Self::Block>;
+    fn size_bytes(&self) -> Option<u64> {
+        None
+    }
 }
 
 impl RawDevice for DefaultDrive {
     type Block = Vec<u8>;
     fn read_raw(&self, addr: u64, size: u64) -> IoResult<Self::Block> {
         self.read(addr, size)
+    }
+    fn size_bytes(&self) -> Option<u64> {
+        self.file.metadata().ok().map(|metadata| metadata.len())
     }
 }
 
@@ -105,7 +113,9 @@ impl Into<IoError> for ZfsError {
     fn into(self) -> IoError {
         use ZfsErrorKind::*;
         let kind = match self.source {
-            Checksum | Parse(_) | UnsupportedFeature | Invalid => IoErrorKind::InvalidData,
+            Checksum | Parse(_) | UnsupportedFeature | Invalid | Topology(_) => {
+                IoErrorKind::InvalidData
+            }
             NotFound => IoErrorKind::NotFound,
             Io(ref e) => e.kind(),
         };
@@ -127,6 +137,8 @@ pub enum ZfsErrorKind {
     Parse(nom::error::ErrorKind),
     #[error("Invalid data error")]
     Invalid,
+    #[error("ZFS pool topology: {0}")]
+    Topology(String),
     #[error("Unsupported feature present")]
     UnsupportedFeature,
     #[error("Required data not found")]
@@ -172,6 +184,17 @@ pub trait Device {
     /// Offset and length in units of 512bytes
     fn read_offset(&self, vdev: u32, offset: u64, length: u32) -> IoResult<Self::Block>;
     fn get_label(&self, label_num: u8) -> Result<Option<Label>, ZfsError>;
+
+    fn copies(&self, _vdev: u32) -> usize {
+        1
+    }
+
+    fn read_copy(&self, address: DVA, length: u32, copy: usize) -> IoResult<Self::Block> {
+        if copy != 0 {
+            return Err(IoErrorKind::NotFound.into());
+        }
+        self.read_offset(address.vdev, address.offset, length)
+    }
 }
 
 impl<T, B> Device for T
@@ -182,30 +205,44 @@ where
     type Block = B;
     /// Length in units of 512bytes
     fn read_offset(&self, vdev: u32, offset: u64, length: u32) -> IoResult<Self::Block> {
-        // offset is stored in units of 512, but read_raw takes units of bytes
-        // this could overflow offset, but I don't have any 2^55 byte drives to test on
         if vdev != 0 {
             return Err(IoErrorKind::NotFound.into());
         }
-        self.read_raw((offset * 512) + 0x400000, length as u64 * 512)
+        let byte_offset = offset
+            .checked_mul(512)
+            .and_then(|offset| offset.checked_add(0x400000))
+            .ok_or(IoErrorKind::InvalidData)?;
+        self.read_raw(byte_offset, u64::from(length) * 512)
     }
     fn get_label(&self, label_num: u8) -> Result<Option<Label>, ZfsError> {
-        if label_num < 2 {
-            Ok(Some(
-                Label::parse(
-                    self.read_raw(label_num as u64 * 256 * 1024, 256 * 1024)?
-                        .as_ref(),
-                )?
-                .1,
-            ))
-        } else {
-            Err(ZfsErrorKind::UnsupportedFeature.into())
-        }
+        let offsets = self.size_bytes().map_or(
+            [Some(0), Some(label::LABEL_SIZE as u64), None, None],
+            label::label_offsets,
+        );
+        let Some(offset) = offsets.get(usize::from(label_num)).copied().flatten() else {
+            return Ok(None);
+        };
+        let raw = self.read_raw(offset, label::LABEL_SIZE as u64)?;
+        Ok(Some(Label::parse_at(raw.as_ref(), offset)?))
     }
 }
 
 pub trait SPA {
     type Block: AsRef<[u8]>;
+    fn copies(&self, _vdev: u32) -> usize {
+        1
+    }
+    fn read_copy(
+        &self,
+        addr: DVA,
+        psize: u32,
+        copy: usize,
+    ) -> Result<RawOrNah<Self::Block>, ZfsError> {
+        if copy != 0 {
+            return Err(ZfsErrorKind::NotFound.into());
+        }
+        self.read(addr, psize)
+    }
     fn get(&self, ptr: &BlockPtr) -> Result<RawOrNah<Self::Block>, ZfsError> {
         if ptr.encryption
             || !(ptr.compression_type == CompressionType::LZ4
@@ -216,64 +253,35 @@ pub trait SPA {
         }
         match &ptr.embedded {
             BlockPtrKind::Ptr(ptrdata) => {
-                let r: Result<Vec<ZfsError>, RawOrNah<Self::Block>> = ptrdata
-                    .addresses
-                    .iter()
-                    .filter(|dva| dva.asize != 0)
-                    .map(|dva| {
-                        let block = self.read(*dva, ptr.physical_size as u32 + 1)?;
-                        let data_size = (ptr.physical_size as usize + 1) * 512;
-                        let data = &block.as_ref()[..data_size];
-                        // check checksums
-                        match ptrdata.checksum_type {
-                            ChecksumType::ZILog | ChecksumType::Fletcher2 => {
-                                // fletcher2
-                                let (_input, cksum) = Fletcher2::parse(data)?;
-                                if ptrdata.checksum == cksum.into() {
-                                    Ok(())
-                                } else {
-                                    Err(ZfsErrorKind::Checksum)
+                let mut error = ZfsError::from(ZfsErrorKind::Invalid);
+                let sectors = u32::from(ptr.physical_size) + 1;
+                let byte_size = sectors as usize * 512;
+                for dva in ptrdata.addresses.iter().filter(|dva| dva.asize != 0) {
+                    for copy in 0..self.copies(dva.vdev) {
+                        let attempt = self.read_copy(*dva, sectors, copy).and_then(|block| {
+                            let data = block.as_ref();
+                            if data.len() != byte_size {
+                                return Err(ZfsErrorKind::Invalid.into());
+                            }
+                            ptrdata.verify_data(data)?;
+                            Ok(match ptr.compression_type {
+                                CompressionType::Off => block,
+                                CompressionType::LZ4 | CompressionType::On => {
+                                    RawOrNah::Nah(decompress_lz4(data)?.1)
                                 }
+                                _ => Err(ZfsErrorKind::UnsupportedFeature)?,
+                            })
+                        });
+                        match attempt {
+                            Ok(block) => return Ok(block),
+                            Err(failure) if !matches!(error.source, ZfsErrorKind::Checksum) => {
+                                error = failure;
                             }
-                            ChecksumType::On | ChecksumType::Fletcher4 => {
-                                // fletcher4
-                                let (_input, cksum) = Fletcher4::parse(data)?;
-                                if ptrdata.checksum == cksum.clone().into() {
-                                    Ok(())
-                                } else {
-                                    Err(ZfsErrorKind::Checksum)
-                                }
-                            }
-                            ChecksumType::Label
-                            | ChecksumType::GangHeader
-                            | ChecksumType::SHA256 => {
-                                // SHA256
-                                Err(ZfsErrorKind::UnsupportedFeature)
-                            }
-                            ChecksumType::Off => Ok(()), // do nothing
-                            _ => {
-                                // unsupported
-                                Err(ZfsErrorKind::UnsupportedFeature)
-                            }
-                        }?;
-                        // decompress
-                        Ok(match ptr.compression_type {
-                            CompressionType::Off => block,
-                            CompressionType::LZ4 | CompressionType::On => {
-                                RawOrNah::Nah(decompress_lz4(data)?.1)
-                            }
-                            _ => Err(ZfsErrorKind::UnsupportedFeature)?,
-                        })
-                    })
-                    .map(|r| match r {
-                        Ok(o) => Err(o),
-                        Err(e) => Ok(e),
-                    })
-                    .collect();
-                match r.map(|mut v| v.pop().unwrap()) {
-                    Ok(e) => Err(e),
-                    Err(o) => Ok(o),
+                            Err(_) => {}
+                        }
+                    }
                 }
+                Err(error)
             }
             BlockPtrKind::Data {
                 data: block,
@@ -293,10 +301,17 @@ pub trait SPA {
         level_shift: u8,
         data_block_size: u32,
     ) -> Result<RawOrNah<Self::Block>, ZfsError> {
+        if block.is_hole() {
+            return Ok(RawOrNah::Nah(vec![0; data_block_size as usize]));
+        }
         let block = self.get(block)?;
         if level != 0 {
             let idx = get_level_index(block_id, level - 1, level_shift);
-            let (_input, block_pointer) = BlockPtr::parse(&block.as_ref()[idx as usize * 128..])?;
+            let input = block
+                .as_ref()
+                .get(idx as usize * 128..)
+                .ok_or(ZfsErrorKind::Invalid)?;
+            let (_input, block_pointer) = BlockPtr::parse(input)?;
             self.lookup_block(
                 &block_pointer,
                 block_id,
@@ -320,14 +335,23 @@ where
 {
     type Block = B;
     fn read(&self, addr: DVA, psize: u32) -> Result<RawOrNah<Self::Block>, ZfsError> {
+        SPA::read_copy(self, addr, psize, 0)
+    }
+
+    fn copies(&self, vdev: u32) -> usize {
+        Device::copies(self, vdev)
+    }
+
+    fn read_copy(
+        &self,
+        addr: DVA,
+        psize: u32,
+        copy: usize,
+    ) -> Result<RawOrNah<Self::Block>, ZfsError> {
         if addr.gang {
             return Err(ZfsErrorKind::UnsupportedFeature.into());
         }
-        Ok(RawOrNah::Raw(self.read_offset(
-            addr.vdev,
-            addr.offset,
-            psize,
-        )?))
+        Ok(RawOrNah::Raw(Device::read_copy(self, addr, psize, copy)?))
     }
 }
 
@@ -335,13 +359,14 @@ pub trait DMU {
     type Block: AsRef<[u8]>;
     fn get_objset(&self, ptr: &BlockPtr) -> Result<ObjsetPhys, ZfsError>;
     fn get_dnode(&self, objset: &ObjsetPhys, dnode_id: u64) -> Result<DNodePhys, ZfsError> {
-        let dnode_per_block = objset.metadnode.header.datablkszsec as u64; // dnodes are 512 bytes so this just works
+        let dnode_per_block = u64::from(objset.metadnode.header.datablkszsec);
+        if dnode_per_block == 0 {
+            return Err(ZfsErrorKind::Invalid.into());
+        }
         let block_id = dnode_id / dnode_per_block;
         let dnode_id = dnode_id % dnode_per_block;
         let block = self.read_block(&objset.metadnode, block_id)?;
-        let input = &block.as_ref()[dnode_id as usize * 512..];
-        let (_input, dnode) = DNodePhys::parse(&input)?;
-        Ok(dnode)
+        DNodePhys::at_slot(block.as_ref(), dnode_id as usize)
     }
     fn read_block(&self, dnode: &DNodePhys, block_id: u64) -> Result<Self::Block, ZfsError>;
 }
@@ -365,16 +390,26 @@ where
         if block_id > dnode.header.max_block_id {
             return Err(ZfsErrorKind::NotFound.into());
         }
-        let level_shift = dnode.header.indirect_block_shift - 7;
+        let level = dnode
+            .header
+            .levels
+            .checked_sub(1)
+            .ok_or(ZfsErrorKind::Invalid)?;
+        let level_shift = if level == 0 {
+            0
+        } else {
+            match dnode.header.indirect_block_shift {
+                shift @ 12..=24 => shift - 7,
+                _ => return Err(ZfsErrorKind::Invalid.into()),
+            }
+        };
         let data_block_size = dnode.header.datablkszsec as u32 * 512;
-        let idx = get_level_index(block_id, dnode.header.levels - 1, level_shift);
-        self.lookup_block(
-            &dnode.block_pointers[idx as usize],
-            block_id,
-            dnode.header.levels - 1,
-            level_shift,
-            data_block_size,
-        )
+        let idx = block_id
+            .checked_shr(u32::from(level) * u32::from(level_shift))
+            .and_then(|idx| usize::try_from(idx).ok())
+            .ok_or(ZfsErrorKind::Invalid)?;
+        let ptr = dnode.block_pointers.get(idx).ok_or(ZfsErrorKind::Invalid)?;
+        self.lookup_block(ptr, block_id, level, level_shift, data_block_size)
     }
 }
 
@@ -617,9 +652,12 @@ impl<Z> ZfsDrive<Z> {
 
 impl<Z: DMU + SPA> ZfsDrive<Z> {
     pub fn get_most_recent_mos<'a>(&'a self) -> Result<ZfsMetaObjectSet<'a, Z>, ZfsError> {
-        let mut ubers = self.label.uberblocks.clone();
-        ubers.sort_unstable_by_key(|u| u.txg);
-        let uber = ubers.pop().ok_or(ZfsErrorKind::Invalid)?;
+        let uber = self
+            .label
+            .uberblocks
+            .iter()
+            .max_by_key(|ub| (ub.txg, ub.timestamp))
+            .ok_or(ZfsErrorKind::Invalid)?;
         self.get_object_set(&uber.rootbp)?
             .as_mos()
             .ok_or(ZfsErrorKind::Invalid.into())
@@ -637,9 +675,43 @@ impl<Z: DMU + SPA> ZfsDrive<Z> {
 
 impl<Z: DMU + DSL + ZPL + Device> ZfsDrive<Z> {
     pub fn new(inner: Z) -> Result<Self, ZfsError> {
-        let label = inner.get_label(0)?.ok_or(ZfsErrorKind::Invalid)?; // TODO: try checking other labels
+        let label = read_device_label(&inner)?;
         Ok(Self { inner, label })
     }
+}
+
+pub fn read_device_label<D: Device>(device: &D) -> Result<Label, ZfsError> {
+    let mut selected: Option<Label> = None;
+    let mut failure = ZfsErrorKind::Invalid.into();
+    for index in 0..4 {
+        match device.get_label(index) {
+            Ok(Some(mut label)) => {
+                if let Some(current) = &mut selected {
+                    // An old label from a previously formatted pool may
+                    // survive at the tail. Never mix transaction histories.
+                    if current.identity == label.identity {
+                        let generation = |label: &Label| label.config.as_ref().map(|c| c.txg);
+                        if generation(&label) > generation(current) {
+                            current.config = label.config.take();
+                        } else if generation(&label) == generation(current)
+                            && label.config != current.config
+                        {
+                            return Err(ZfsErrorKind::Topology(
+                                "conflicting labels at the same transaction group".into(),
+                            )
+                            .into());
+                        }
+                        current.uberblocks.append(&mut label.uberblocks);
+                    }
+                } else {
+                    selected = Some(label);
+                }
+            }
+            Ok(None) => {}
+            Err(error) => failure = error,
+        }
+    }
+    selected.ok_or(failure)
 }
 
 #[derive(Debug)]
@@ -980,12 +1052,23 @@ impl<'drive, 'fs, Z> ZfsZPLFile<'drive, 'fs, Z> {
         Self { fs, file }
     }
 }
-impl<'drive, 'fs, Z: ZAP> ZfsZPLFile<'drive, 'fs, Z> {
+impl<'drive, 'fs, Z: ZAP + SPA> ZfsZPLFile<'drive, 'fs, Z> {
     pub fn list_attributes(&self) -> Result<Vec<(SAAttr, SAValue)>, ZfsError> {
-        let (_input, buf) = SABuf::parse(&self.file.bonus)?;
         let registry = self.fs.get_registry().ok_or(ZfsErrorKind::NotFound)?;
-        let layout = registry.lookup_layout(buf.layout)?;
-        buf.parse_attrs(layout)
+        let mut attrs = Vec::new();
+        let mut add_attributes = |bytes: &[u8]| -> Result<(), ZfsError> {
+            let (_, buf) = SABuf::parse(bytes)?;
+            attrs.extend(buf.parse_attrs(registry.lookup_layout(buf.layout)?)?);
+            Ok(())
+        };
+        if !self.file.bonus.is_empty() {
+            add_attributes(&self.file.bonus)?;
+        }
+        if let Some(spill) = &self.file.spill {
+            let block = self.fs.os.drive.inner.get(spill)?;
+            add_attributes(block.as_ref())?;
+        }
+        Ok(attrs)
     }
     pub fn reader<'file>(&'file self) -> Result<ZfsZPLFileReader<'drive, 'fs, 'file, Z>, ZfsError> {
         ZfsZPLFileReader::new(self)
@@ -1006,12 +1089,12 @@ impl<'drive, 'fs, B: AsRef<[u8]>, Z: DMU<Block = B>> ZfsZPLFile<'drive, 'fs, Z> 
 pub struct ZfsZPLFileReader<'drive, 'fs, 'file, Z> {
     file: &'file ZfsZPLFile<'drive, 'fs, Z>,
     buf: Vec<u8>,
-    buf_pos: usize,
-    block_num: u64,
+    cached_block: Option<u64>,
+    position: u64,
     file_size: u64,
 }
 
-impl<'drive, 'fs, 'file, Z: ZAP> ZfsZPLFileReader<'drive, 'fs, 'file, Z> {
+impl<'drive, 'fs, 'file, Z: ZAP + SPA> ZfsZPLFileReader<'drive, 'fs, 'file, Z> {
     pub fn new(file: &'file ZfsZPLFile<'drive, 'fs, Z>) -> Result<Self, ZfsError> {
         let attr_name = ZapString::from_byte_slice(b"ZPL_SIZE").unwrap();
         let file_size = match file
@@ -1025,10 +1108,10 @@ impl<'drive, 'fs, 'file, Z: ZAP> ZfsZPLFileReader<'drive, 'fs, 'file, Z> {
             _ => Err(ZfsErrorKind::Invalid),
         }?;
         Ok(Self {
-            file: file,
-            buf: Vec::with_capacity(file.file.header.datablkszsec as usize * 512),
-            buf_pos: 0,
-            block_num: 0,
+            file,
+            buf: Vec::new(),
+            cached_block: None,
+            position: 0,
             file_size,
         })
     }
@@ -1036,28 +1119,51 @@ impl<'drive, 'fs, 'file, Z: ZAP> ZfsZPLFileReader<'drive, 'fs, 'file, Z> {
 
 impl<'drive, 'fs, 'file, Z: DMU> std::io::Read for ZfsZPLFileReader<'drive, 'fs, 'file, Z> {
     fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
-        if self.buf_pos >= self.buf.len() {
-            if self.block_num > self.file.file.header.max_block_id {
-                return Ok(0);
-            }
-            let block = self
-                .file
-                .read_block(self.block_num)
-                .map_err(Into::<IoError>::into)?;
-            self.block_num += 1;
-            self.buf.clear();
-            self.buf_pos = 0;
-            self.buf.extend_from_slice(block.as_ref());
-            let bytes_read = self.block_num * self.file.file.header.datablkszsec as u64 * 512;
-            let last_chunk = (self.block_num - 1) * self.file.file.header.datablkszsec as u64 * 512;
-            if bytes_read > self.file_size {
-                self.buf.truncate((self.file_size - last_chunk) as usize);
-            }
+        if buf.is_empty() || self.position >= self.file_size {
+            return Ok(0);
         }
-        let bytes_copied = buf.len().min(self.buf.len() - self.buf_pos);
-        buf[..bytes_copied].copy_from_slice(&self.buf[self.buf_pos..(self.buf_pos + bytes_copied)]);
-        self.buf_pos += bytes_copied;
+        let block_size = u64::from(self.file.file.header.datablkszsec) * 512;
+        if block_size == 0 {
+            return Err(IoErrorKind::InvalidData.into());
+        }
+        let block_num = self.position / block_size;
+        if self.cached_block != Some(block_num) {
+            let start = block_num * block_size;
+            let len = (self.file_size - start).min(block_size) as usize;
+            if block_num > self.file.file.header.max_block_id {
+                self.buf.clear();
+                self.buf.resize(len, 0);
+            } else {
+                let block = self
+                    .file
+                    .read_block(block_num)
+                    .map_err(Into::<IoError>::into)?;
+                let data = block
+                    .as_ref()
+                    .get(..len)
+                    .ok_or(IoErrorKind::UnexpectedEof)?;
+                self.buf.clear();
+                self.buf.extend_from_slice(data);
+            }
+            self.cached_block = Some(block_num);
+        }
+        let within = (self.position % block_size) as usize;
+        let bytes_copied = buf.len().min(self.buf.len() - within);
+        buf[..bytes_copied].copy_from_slice(&self.buf[within..within + bytes_copied]);
+        self.position += bytes_copied as u64;
         Ok(bytes_copied)
+    }
+}
+
+impl<Z> Seek for ZfsZPLFileReader<'_, '_, '_, Z> {
+    fn seek(&mut self, from: SeekFrom) -> IoResult<u64> {
+        self.position = match from {
+            SeekFrom::Start(offset) => Some(offset),
+            SeekFrom::Current(offset) => self.position.checked_add_signed(offset),
+            SeekFrom::End(offset) => self.file_size.checked_add_signed(offset),
+        }
+        .ok_or(IoErrorKind::InvalidInput)?;
+        Ok(self.position)
     }
 }
 

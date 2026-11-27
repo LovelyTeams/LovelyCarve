@@ -22,7 +22,10 @@ import zlib
 
 from cli_backend_tests import test_backend
 from cli_container_tests import test_containers, test_encryption
-from cli_format_tests import test_formats
+from cli_format_tests import (
+    test_aix_jfs, test_fatx, test_formats, test_gfs1, test_hammer, test_hammer2, test_hpfs, test_littlefs, test_mfs, test_spiffs, test_unixware_bfs,
+    test_ocfs1, test_qnx_efs, test_qnx_etfs, test_reiser4, test_vmfs, test_vxfs, test_xdvdfs,
+)
 from cli_integrity_tests import test_integrity
 from cli_navigation_tests import test_navigation
 from cli_observability_tests import test_observability
@@ -770,6 +773,23 @@ def test_process(cli, root):
 SECTIONS = {
     "discovery": test_discovery,
     "formats": test_formats,
+    "vmfs": test_vmfs,
+    "hpfs": test_hpfs,
+    "vxfs": test_vxfs,
+    "aixjfs": test_aix_jfs,
+    "unixwarebfs": test_unixware_bfs,
+    "xdvdfs": test_xdvdfs,
+    "fatx": test_fatx,
+    "mfs": test_mfs,
+    "littlefs": test_littlefs,
+    "spiffs": test_spiffs,
+    "hammer": test_hammer,
+    "hammer2": test_hammer2,
+    "gfs1": test_gfs1,
+    "reiser4": test_reiser4,
+    "ocfs1": test_ocfs1,
+    "qnx_etfs": test_qnx_etfs,
+    "qnx_efs": test_qnx_efs,
     "containers": test_containers,
     "encryption": test_encryption,
     "batch": test_batches,

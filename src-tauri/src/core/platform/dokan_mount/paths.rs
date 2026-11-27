@@ -309,16 +309,33 @@ pub(super) fn fs_label_for_kind(kind: PartitionKind) -> &'static str {
         PartitionKind::F2fs => "F2FS",
         PartitionKind::Qnx4 => "QNX4",
         PartitionKind::Qnx6 => "QNX6",
+        PartitionKind::QnxEtfs => "QNX ETFS",
+        PartitionKind::QnxEfs => "QNX EFS",
         PartitionKind::Udf => "UDF",
         PartitionKind::Hfs => "HFS",
+        PartitionKind::Mfs => "MFS",
+        PartitionKind::Littlefs => "LittleFS",
+        PartitionKind::Spiffs => "SPIFFS",
+        PartitionKind::Hammer => "HAMMER",
+        PartitionKind::Hammer2 => "HAMMER2",
         PartitionKind::Jfs => "JFS",
+        PartitionKind::Reiser4 => "Reiser4",
         PartitionKind::Reiserfs => "ReiserFS",
         PartitionKind::Amiga => "Amiga OFS/FFS",
         PartitionKind::Befs => "BeFS",
+        PartitionKind::Gfs1 => "GFS1",
         PartitionKind::Gfs2 => "GFS2",
+        PartitionKind::Ocfs1 => "OCFS1",
         PartitionKind::Ocfs2 => "OCFS2",
         PartitionKind::Nilfs2 => "NILFS2",
         PartitionKind::Bcachefs => "bcachefs",
+        PartitionKind::Vmfs => "vmfs",
+        PartitionKind::Hpfs => "hpfs",
+        PartitionKind::Vxfs => "vxfs",
+        PartitionKind::AixJfs => "aixjfs",
+        PartitionKind::UnixwareBfs => "unixwarebfs",
+        PartitionKind::Xdvdfs => "xdvdfs",
+        PartitionKind::Fatx => "fatx",
         PartitionKind::Minix => "MINIX",
         PartitionKind::Minifs => "MINIFS",
         PartitionKind::Romfs => "ROMFS",
@@ -370,14 +387,31 @@ pub(super) fn is_case_sensitive_fs(kind: PartitionKind) -> bool {
             | PartitionKind::F2fs
             | PartitionKind::Qnx4
             | PartitionKind::Qnx6
+            | PartitionKind::QnxEtfs
+            | PartitionKind::QnxEfs
             | PartitionKind::Udf
             | PartitionKind::Jfs
             | PartitionKind::Reiserfs
+            | PartitionKind::Reiser4
             | PartitionKind::Befs
+            | PartitionKind::Gfs1
             | PartitionKind::Gfs2
+            | PartitionKind::Ocfs1
             | PartitionKind::Ocfs2
             | PartitionKind::Nilfs2
             | PartitionKind::Bcachefs
+            | PartitionKind::Vmfs
+            | PartitionKind::Hpfs
+            | PartitionKind::Vxfs
+            | PartitionKind::AixJfs
+            | PartitionKind::UnixwareBfs
+            | PartitionKind::Mfs
+            | PartitionKind::Littlefs
+            | PartitionKind::Spiffs
+            | PartitionKind::Hammer
+            | PartitionKind::Hammer2
+            | PartitionKind::Xdvdfs
+            | PartitionKind::Fatx
             | PartitionKind::Minix
             | PartitionKind::Minifs
             | PartitionKind::Romfs

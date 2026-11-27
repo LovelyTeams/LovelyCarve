@@ -1,11 +1,15 @@
-//! Read-only QNX4 extent and QNX6 Power-Safe tree readers. Source reads are
+//! Read-only QNX4, QNX6 Power-Safe, ETFS and EFS readers. Source reads are
 //! exact and bounded; no mounting, journal replay or host path traversal.
 #![forbid(unsafe_code)]
+mod efs;
+mod etfs;
 mod qnx4;
 mod qnx6;
 #[cfg(test)]
 mod tests;
 
+pub use efs::{Efs, EfsLayout};
+pub use etfs::{Etfs, EtfsLayout};
 use lamfold::{
     BlockSource, DirEntry, FileKind, FileTimes, FoldError, FoldFrontend, Metadata, NodeId, Result,
     SubstrateCtx,
@@ -182,3 +186,5 @@ macro_rules! frontend {
 }
 frontend!(Qnx4, "qnx4");
 frontend!(Qnx6, "qnx6");
+frontend!(Etfs, "qnxetfs");
+frontend!(Efs, "qnxefs");

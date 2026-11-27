@@ -30,9 +30,139 @@ fn qnx6_qnx_created_image_matches_independent_tar() {
         .lookup(1, "this_file_is_not_renamed", &mut cx)
         .unwrap()
         .is_none());
-    let archive = flate2::read::GzDecoder::new(
-        include_bytes!("../tests/fixtures/nfi-qnx6.tar.gz").as_slice(),
+    assert_eq!(
+        assert_tar(
+            &mut fs,
+            include_bytes!("../tests/fixtures/nfi-qnx6.tar.gz"),
+            &mut cx
+        ),
+        32
     );
+}
+
+#[test]
+fn etfs_native_flash_matches_independent_tar() {
+    for (image, archive, entries) in [
+        (
+            include_bytes!("../tests/fixtures/nfi-etfs.zlib").as_slice(),
+            include_bytes!("../tests/fixtures/nfi-etfs.tar.gz").as_slice(),
+            32,
+        ),
+        (
+            include_bytes!("../tests/fixtures/nfi-etfs-old.zlib").as_slice(),
+            include_bytes!("../tests/fixtures/nfi-etfs-old.tar.gz").as_slice(),
+            22,
+        ),
+    ] {
+        let image = unpack(image);
+        let mut cache = BlockCache::new(0);
+        let mut cx = context(&mut cache);
+        let mut fs = Etfs::open(SliceSource::new(&image), &mut cx).unwrap();
+        let root = fs.root();
+        assert_eq!(
+            fs.lookup(root, "this_file_is_removed", &mut cx).unwrap(),
+            None
+        );
+        assert_eq!(
+            fs.lookup(root, "this_file_is_not_renamed", &mut cx)
+                .unwrap(),
+            None
+        );
+        assert_eq!(assert_tar(&mut fs, archive, &mut cx), entries);
+    }
+}
+
+#[test]
+fn etfs_native_transaction_export_and_reported_read_fault() {
+    let mut cache = BlockCache::new(0);
+    let mut cx = context(&mut cache);
+    let mut image = unpack(include_bytes!(
+        "../tests/fixtures/nfi-etfs-transactions.zlib"
+    ));
+    let mut fs = Etfs::open(SliceSource::new(&image), &mut cx).unwrap();
+    let dir = fs
+        .lookup(fs.root(), "directory_1", &mut cx)
+        .unwrap()
+        .unwrap();
+    let nested = fs.lookup(dir, "directory_1_1", &mut cx).unwrap().unwrap();
+    let message = fs.lookup(nested, "message.txt", &mut cx).unwrap().unwrap();
+    let mut bytes = [0; 40];
+    let count = fs.read_at(message, 0, &mut bytes, &mut cx).unwrap();
+    assert_eq!(&bytes[..count], b"This is a test file system!\n");
+    let source = image
+        .as_chunks::<1040>()
+        .0
+        .iter()
+        .enumerate()
+        .filter_map(|(i, page)| {
+            let tx = &page[1024..];
+            let fid = u32::from_le_bytes(tx[..4].try_into().unwrap());
+            (u64::from(fid) == message)
+                .then(|| (u32::from_le_bytes(tx[12..16].try_into().unwrap()), i))
+        })
+        .max()
+        .unwrap()
+        .1;
+    image[source * 1040 + 1024 + 11] = 5;
+    let mut fs = Etfs::open(SliceSource::new(&image), &mut cx).unwrap();
+    assert!(matches!(
+        fs.read_at(message, 0, &mut bytes, &mut cx),
+        Err(FoldError::Corrupt(
+            "QNX ETFS data cluster records a flash read error"
+        ))
+    ));
+}
+
+#[test]
+fn efs_native_flash_matches_tar_after_logical_unit_relocation() {
+    let image = unpack(include_bytes!("../tests/fixtures/nfi-efs.zlib"));
+    let mut relocated = image.clone();
+    let unit = 131072;
+    relocated[..unit].copy_from_slice(&image[unit..2 * unit]);
+    relocated[unit..2 * unit].copy_from_slice(&image[..unit]);
+    // The boot record names its physical unit. All other references remain logical.
+    relocated[unit + 52..unit + 54].copy_from_slice(&1_u16.to_le_bytes());
+    for volume in [image.as_slice(), relocated.as_slice()] {
+        let mut cache = BlockCache::new(0);
+        let mut cx = context(&mut cache);
+        let mut fs = Efs::open(SliceSource::new(volume), &mut cx).unwrap();
+        assert_eq!(
+            assert_tar(
+                &mut fs,
+                include_bytes!("../tests/fixtures/nfi-efs.tar.gz"),
+                &mut cx
+            ),
+            31
+        );
+    }
+}
+
+#[test]
+fn efs_refuses_truncated_units_and_supersession_cycles() {
+    let mut image = unpack(include_bytes!("../tests/fixtures/nfi-efs.zlib"));
+    let mut cache = BlockCache::new(0);
+    let mut cx = context(&mut cache);
+    assert!(matches!(
+        Efs::open(SliceSource::new(&image[..4 * 131072 - 1]), &mut cx),
+        Err(FoldError::Corrupt("truncated QNX EFS volume"))
+    ));
+    let pointer = 131072 - 5 * 32 + 28;
+    image[pointer..pointer + 4].copy_from_slice(&[1, 0, 4, 0]);
+    let mut fs = Efs::open(SliceSource::new(&image), &mut cx).unwrap();
+    assert!(matches!(
+        fs.read_dir(fs.root(), &mut cx),
+        Err(FoldError::Corrupt(
+            "QNX EFS supersession cycle or depth limit"
+        ))
+    ));
+}
+
+fn assert_tar<S: BlockSource, F: FoldFrontend<S>>(
+    fs: &mut F,
+    archive: &[u8],
+    cx: &mut SubstrateCtx<'_>,
+) -> usize {
+    let archive = flate2::read::GzDecoder::new(archive);
     let mut archive = tar::Archive::new(archive);
     let mut count = 0;
     for entry in archive.entries().unwrap() {
@@ -46,16 +176,16 @@ fn qnx6_qnx_created_image_matches_independent_tar() {
             .to_owned();
         let mut node = fs.root();
         for component in path.split('/') {
-            node = fs.lookup(node, component, &mut cx).unwrap().unwrap();
+            node = fs.lookup(node, component, cx).unwrap().unwrap();
         }
-        let metadata = fs.metadata(node, &mut cx).unwrap();
+        let metadata = fs.metadata(node, cx).unwrap();
         assert_eq!(
             metadata.mode & 0xfff,
             entry.header().mode().unwrap() & 0xfff,
             "{path}"
         );
         assert_eq!(
-            fs.timestamps(node, &mut cx).unwrap().modified,
+            fs.timestamps(node, cx).unwrap().modified,
             Some((entry.header().mtime().unwrap() as i64, 0)),
             "{path}"
         );
@@ -64,7 +194,7 @@ fn qnx6_qnx_created_image_matches_independent_tar() {
             entry.read_to_end(&mut expected).unwrap();
             let mut actual = vec![0; expected.len()];
             assert_eq!(
-                fs.read_at(node, 0, &mut actual, &mut cx).unwrap(),
+                fs.read_at(node, 0, &mut actual, cx).unwrap(),
                 expected.len()
             );
             assert_eq!(actual, expected, "{path}");
@@ -73,9 +203,7 @@ fn qnx6_qnx_created_image_matches_independent_tar() {
                     continue;
                 }
                 let mut bytes = [0; 83];
-                let size = fs
-                    .read_at(node, offset as u64, &mut bytes, &mut cx)
-                    .unwrap();
+                let size = fs.read_at(node, offset as u64, &mut bytes, cx).unwrap();
                 assert_eq!(
                     &bytes[..size],
                     &expected[offset..(offset + 83).min(expected.len())]
@@ -84,7 +212,7 @@ fn qnx6_qnx_created_image_matches_independent_tar() {
         } else if entry.header().entry_type().is_symlink() {
             assert_eq!(metadata.kind, FileKind::Symlink);
             assert_eq!(
-                fs.read_link(node, &mut cx).unwrap().unwrap(),
+                fs.read_link(node, cx).unwrap().unwrap(),
                 entry
                     .link_name()
                     .unwrap()
@@ -100,7 +228,7 @@ fn qnx6_qnx_created_image_matches_independent_tar() {
         }
         count += 1;
     }
-    assert_eq!(count, 32);
+    count
 }
 
 #[test]

@@ -5,7 +5,7 @@ import type { EncryptionScheme, VeracryptHeader, VeracryptPrf } from '../../../l
 import type { DiskPartition, ImageInfo } from '../../../lib/ipc/image';
 
 /** Every scheme, in the order the dialog offers them. */
-export const ENCRYPTION_SCHEMES: readonly EncryptionScheme[] = ['bitlocker', 'luks', 'veracrypt', 'filevault'];
+export const ENCRYPTION_SCHEMES: readonly EncryptionScheme[] = ['bitlocker', 'luks', 'veracrypt', 'filevault', 'apfs'];
 
 export function schemeLabel(scheme: EncryptionScheme): string {
   switch (scheme) {
@@ -13,6 +13,7 @@ export function schemeLabel(scheme: EncryptionScheme): string {
     case 'luks': return 'LUKS1 / LUKS2';
     case 'veracrypt': return 'VeraCrypt';
     case 'filevault': return 'FileVault 2 / CoreStorage';
+    case 'apfs': return 'APFS / FileVault';
   }
 }
 
@@ -23,6 +24,7 @@ export function schemeShortLabel(scheme: EncryptionScheme): string {
     case 'luks': return 'LUKS';
     case 'veracrypt': return 'VeraCrypt';
     case 'filevault': return 'FileVault';
+    case 'apfs': return 'APFS';
   }
 }
 
@@ -72,11 +74,12 @@ export function unlockRegions(info: ImageInfo, scheme: EncryptionScheme): Unlock
   const partitions = info.partitions
     .filter(partition => unlockedScheme(info, partition.id) === undefined)
     .filter(partition => {
+      if (partition.kind === 'apfscontainer' || scheme === 'apfs') return partition.kind === 'apfscontainer' && scheme === 'apfs';
       const detected = detectedScheme(partition);
       return scheme === 'bitlocker' ? detected === 'bitlocker' : detected === undefined || detected === scheme;
     })
     .map(partition => ({ partitionId: partition.id, bytes: partition.length_lba * info.sector_size }));
-  if (scheme === 'bitlocker') return partitions;
+  if (scheme === 'bitlocker' || scheme === 'apfs') return partitions;
   const regions = wholeImageUnlocked(info) ? partitions : [{ bytes: info.size_bytes }, ...partitions];
   return scheme === 'veracrypt' ? regions.filter(region => isWholeSectors(info, region.bytes)) : regions;
 }
@@ -102,6 +105,8 @@ export function initialSelection(info: ImageInfo, partitionId: number | null): {
   }
   const locked = info.partitions.find(partition => isLockedEncrypted(info, partition));
   if (locked) return { scheme: pick(detectedScheme(locked)), partitionId: locked.id };
+  const apfs = info.partitions.find(partition => partition.kind === 'apfscontainer');
+  if (apfs && schemes.includes('apfs')) return { scheme: 'apfs', partitionId: apfs.id };
   const scheme = pick('luks');
   const region = unlockRegions(info, scheme)[0];
   return { scheme, ...(region?.partitionId === undefined ? {} : { partitionId: region.partitionId }) };
@@ -116,6 +121,7 @@ export function credentialModes(scheme: EncryptionScheme): CredentialMode[] {
     case 'bitlocker': return ['password', 'recovery', 'memory', 'otherKey'];
     case 'luks':
     case 'filevault': return ['password', 'masterKey'];
+    case 'apfs':
     case 'veracrypt': return ['password'];
   }
 }

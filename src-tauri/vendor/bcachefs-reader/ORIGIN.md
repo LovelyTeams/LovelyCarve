@@ -44,6 +44,8 @@ validates its physical pointer and allocator entry, and measures bounded I/O
 for a 14-byte window without allocating an 8 GiB image.
 Corruption tests re-sign CRCs before exercising stale allocation and snapshot
 cycles; source failures remain errors despite a readable spare superblock.
+The adapter also extends the invented fixture with two checked extent copies
+to verify replica recovery and source-fault reporting on distinct members.
 
 ## Native oracle
 
@@ -78,3 +80,12 @@ Creation time is an on-disk `otime` value, not an independently observed FUSE
 birth time. Native snapshot/reflink/unwritten cases and 64 KiB blocks have not
 yet been independently mounted here; their invented tests are distinct from
 the native controls. Actual Windows Dokan mounting remains unverified.
+
+Multi-device controls used the same version of the official tool. The member
+sequence is based on the tool's `show-super` output and raw bytes, with the
+format rationale in the [official changelog](https://github.com/koverstreet/bcachefs-tools/blob/master/Changelog.mdwn).
+Native format and FUSE writes produced separate images with target groups and
+with two data and metadata replicas. The official `fsck -n` accepted the
+images, and CLI reads matched the input file hashes, including after the FUSE
+writer exited without a clean shutdown. The replica recovery tests flip bytes
+in scratch copies of those member images.

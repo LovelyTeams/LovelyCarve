@@ -20,11 +20,46 @@
 //! keys, with the checksum type in the low 4 bits of the bset's flags.
 
 use crate::bkey::{self, key_type, Bkey, BkeyFormat, Bpos};
+use crate::devices::MemberRead;
 use crate::error::{Error, Result};
 use crate::extent::{self, ExtentEntry};
 use crate::superblock::Superblock;
 use crate::util::{le16, le32, le64};
 use fs_core::BlockRead;
+
+#[derive(Clone, Copy)]
+pub(crate) enum NodeSource<'a> {
+    Single(&'a dyn BlockRead),
+    Members(&'a dyn MemberRead),
+}
+
+impl NodeSource<'_> {
+    fn read(self, sb: &Superblock, pointer: extent::Ptr, buffer: &mut [u8]) -> Result<()> {
+        let (source, limit) = match self {
+            Self::Single(source) if pointer.dev == sb.dev_idx => (source, source.size_bytes()),
+            Self::Members(members) => {
+                let (source, _, length) = members.resolve(pointer.dev)?;
+                (source, length)
+            }
+            Self::Single(_) => {
+                return Err(Error::Corrupt(format!(
+                    "btree pointer references device {} from member {}",
+                    pointer.dev, sb.dev_idx
+                )))
+            }
+        };
+        let offset = pointer
+            .offset
+            .checked_mul(512)
+            .filter(|offset| {
+                offset
+                    .checked_add(buffer.len() as u64)
+                    .is_some_and(|end| end <= limit)
+            })
+            .ok_or_else(|| Error::Corrupt("btree node exceeds device geometry".into()))?;
+        Ok(source.read_at(offset, buffer)?)
+    }
+}
 
 /// A btree node's magic is this constant XOR the first eight bytes of the
 /// filesystem's internal UUID read as a little-endian u64. INFERRED: the
@@ -455,7 +490,7 @@ pub fn walk_replayed(
         )));
     }
     let walk = Walk {
-        dev,
+        dev: NodeSource::Single(dev),
         sb,
         id,
         replay,
@@ -522,6 +557,15 @@ impl<'a> Cursor<'a> {
     /// its replay, as for [`walk_replayed`].
     pub fn new(
         dev: &'a dyn BlockRead,
+        sb: &'a Superblock,
+        id: u8,
+        replay: Option<&'a crate::journal::Replay>,
+    ) -> Result<Self> {
+        Self::from_source(NodeSource::Single(dev), sb, id, replay)
+    }
+
+    pub(crate) fn from_source(
+        dev: NodeSource<'a>,
         sb: &'a Superblock,
         id: u8,
         replay: Option<&'a crate::journal::Replay>,
@@ -644,7 +688,7 @@ pub struct NodeCache {
 
 /// A cached node's identity: device offset, bucket generation, sequence
 /// number, sectors written, and the newest journal sequence read.
-type NodeKey = (u64, u8, u64, u16, u64);
+type NodeKey = (u64, u8, u64, u16, u64, u8);
 
 /// How many nodes a cache holds before it starts over.
 const NODE_CACHE_CAP: usize = 512;
@@ -652,7 +696,7 @@ const NODE_CACHE_CAP: usize = 512;
 impl NodeCache {
     fn get(
         &self,
-        dev: &dyn BlockRead,
+        dev: NodeSource<'_>,
         sb: &Superblock,
         ptr: &NodePtr,
         max_seq: u64,
@@ -666,6 +710,7 @@ impl NodeCache {
             ptr.seq,
             ptr.sectors_written,
             max_seq,
+            ptr.ptrs[0].dev,
         );
         if let Some(n) = self.nodes.lock().ok().and_then(|m| m.get(&key).cloned()) {
             return Ok(n);
@@ -701,7 +746,7 @@ pub fn journal_for(dev: &dyn BlockRead, sb: &Superblock) -> Result<Option<crate:
     if !sb.is_clean() {
         return crate::journal::replay(dev, sb).map(Some);
     }
-    let Err(bad) = clean_roots_read(dev, sb) else {
+    let Err(bad) = clean_roots_read(NodeSource::Single(dev), sb) else {
         return Ok(None);
     };
     crate::journal::replay(dev, sb).map(Some).map_err(|e| {
@@ -713,7 +758,7 @@ pub fn journal_for(dev: &dyn BlockRead, sb: &Superblock) -> Result<Option<crate:
 
 /// Whether every root the clean section records reads: its key decodes,
 /// its node reads, and the node is of that btree and level.
-fn clean_roots_read(dev: &dyn BlockRead, sb: &Superblock) -> Result<()> {
+pub(crate) fn clean_roots_read(dev: NodeSource<'_>, sb: &Superblock) -> Result<()> {
     let blacklist = sb.journal_seq_blacklist()?;
     for root in sb.btree_roots()? {
         let id = root.btree_id;
@@ -779,7 +824,7 @@ fn root_of(
 
 /// One walk of one btree, with the replay (if any) it applies.
 struct Walk<'a> {
-    dev: &'a dyn BlockRead,
+    dev: NodeSource<'a>,
     sb: &'a Superblock,
     id: u8,
     replay: Option<&'a crate::journal::Replay>,
@@ -898,17 +943,22 @@ fn check_header(node: &Node, id: u8, level: u8, ptr: &NodePtr, max: Bpos) -> Res
 }
 
 pub fn read_node(dev: &dyn BlockRead, sb: &Superblock, ptr: &NodePtr) -> Result<Node> {
-    read_node_upto(dev, sb, ptr, u64::MAX, &sb.journal_seq_blacklist()?)
+    read_node_upto(
+        NodeSource::Single(dev),
+        sb,
+        ptr,
+        u64::MAX,
+        &sb.journal_seq_blacklist()?,
+    )
 }
 
 fn read_node_upto(
-    dev: &dyn BlockRead,
+    dev: NodeSource<'_>,
     sb: &Superblock,
     ptr: &NodePtr,
     max_seq: u64,
     blacklist: &[(u64, u64)],
 ) -> Result<Node> {
-    let p = &ptr.ptrs[0];
     let len = ptr.sectors_written as usize * 512;
     if len == 0 || len > (sb.btree_node_size() as usize * 512).max(512) {
         return Err(Error::Corrupt(format!(
@@ -916,17 +966,29 @@ fn read_node_upto(
         )));
     }
     let mut b = vec![0u8; len];
-    dev.read_at(p.offset * 512, &mut b)?;
     let key = sb.crypt()?.and_then(|c| c.master_key());
-    Node::parse_keyed(
-        &b,
-        node_magic(&sb.uuid),
-        sb.block_size as usize * 512,
-        Some(ptr.seq),
-        max_seq,
-        blacklist,
-        key.as_ref(),
-    )
+    let mut error = None;
+    for &p in &ptr.ptrs {
+        let node = dev.read(sb, p, &mut b).and_then(|()| {
+            Node::parse_keyed(
+                &b,
+                node_magic(&sb.uuid),
+                sb.block_size as usize * 512,
+                Some(ptr.seq),
+                max_seq,
+                blacklist,
+                key.as_ref(),
+            )
+        });
+        match node {
+            Ok(node) => return Ok(node),
+            Err(failure) if error.is_none() || matches!(failure, Error::BadChecksum { .. }) => {
+                error = Some(failure);
+            }
+            Err(_) => {}
+        }
+    }
+    Err(error.unwrap_or_else(|| Error::Corrupt("btree node has no readable replica".into())))
 }
 
 #[cfg(test)]

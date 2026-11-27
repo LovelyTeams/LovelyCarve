@@ -11,10 +11,8 @@
 //! shared substrate codec (`Codec::Zlib`), so this frontend carries only the
 //! on-disk structure.
 //!
-//! Scope: little-endian classic cramfs — superblock, the 12-byte bitfield inode,
-//! directory records, the per-page zlib block index (with hole/zero-fill), and
-//! symlinks. Big-endian images and the `EXT_BLOCK_POINTERS` extension are
-//! rejected cleanly (`Unsupported`) rather than mis-read.
+//! Reads FSID v1 and v2 volumes, including big-endian images, boot padding
+//! and extended pointers to raw or compressed pages.
 //!
 //! Derived only from the public format (kernel
 //! `Documentation/filesystems/cramfs.rst` + `cramfs_fs.h`); the GPL-2
@@ -28,4 +26,4 @@ extern crate alloc;
 
 mod cramfs;
 
-pub use cramfs::Cramfs;
+pub use cramfs::{superblock_offset, Cramfs};

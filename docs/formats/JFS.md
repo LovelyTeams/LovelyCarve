@@ -37,7 +37,7 @@ CLI 中建议对包含反斜杠的文件使用列表返回的节点 ID 地址（
 
 ## 限制
 
-- 支持 Linux JFS2 读取；AIX JFS1、AIX 专用布局、OS/2 大小写折叠命名空间和 DCE DFS 不在支持范围。
+- 本读取器支持 Linux JFS2。[AIX JFS1](AIX_JFS.md) 有独立读取器。其他 AIX 专用布局、OS/2 大小写折叠命名空间和 DCE DFS 未接入。
 - 不回放日志、不恢复 dirty 卷、不扫描删除目录项或孤儿、不修改分配图 / 目录索引；未提交状态明确拒绝。
 - 压缩、COW、transient XAD、indexed / file 型 EA / ACL 等未实现的布局明确拒绝，不当作普通字节或空洞。
 - 校验实际读取的元数据、inode 和引用的分配位，**不是全卷 fsck**：不审计所有未访问 inode / 块的所有权，也不重算全部 buddy summary / control tree。

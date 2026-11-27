@@ -41,11 +41,19 @@
                     <span v-if="selectedLogicalVolume && selectedLogicalVolume.conversion_status !== 'Complete'" class="ui-field-error" role="alert">{{ tr("加密尚未完成，无法解锁") }}</span>
                   </label>
                 </fieldset>
+                <fieldset v-if="scheme === 'apfs'">
+                  <p v-if="apfsLoading" class="wide" role="status">{{ tr("正在读取卷信息…") }}</p>
+                  <p v-else-if="apfsError" class="wide ui-field-error" role="alert">{{ apfsError }}</p>
+                  <label v-else-if="apfsVolumeOptions.length" class="wide">{{ tr("逻辑卷") }}
+                    <UiSelect v-model="apfsVolumeIndex" :options="apfsVolumeOptions" :disabled="!open" />
+                  </label>
+                  <p v-else class="wide ui-alert" role="status">{{ tr("没有锁定的 APFS 卷") }}</p>
+                </fieldset>
                 <div v-if="modes.length > 1" class="ui-seg" role="group" :aria-label="tr('解锁凭据')">
                   <button v-for="item in modes" :key="item" class="ui-seg-item" :class="{ active: mode === item }" type="button"
                     :aria-pressed="mode === item" @click="mode = item">{{ credentialModeLabel(item, tr) }}</button>
                 </div>
-                <fieldset>
+                <fieldset v-if="scheme !== 'apfs' || apfsVolumeOptions.length">
                   <label v-if="mode === 'password'" class="wide">{{ passwordLabel }}
                     <input v-model="password" class="ui-input" type="password" autocomplete="off" spellcheck="false" maxlength="4096" />
                   </label>
@@ -106,7 +114,7 @@ import { computed, onBeforeUnmount, ref, useId, watch } from 'vue';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { FileKey, FolderKey, LockKeyhole, X } from 'lucide-vue-next';
 import type { DiskPartition, ImageInfo } from '../../../lib/ipc/image';
-import type { EncryptedUnlockOptions, EncryptionScheme, UnlockCredential, VeracryptHeader } from '../../../lib/ipc/encrypted';
+import { apfsInspect, type ApfsEncryptionVolume, type EncryptedUnlockOptions, type EncryptionScheme, type UnlockCredential, type VeracryptHeader } from '../../../lib/ipc/encrypted';
 import { useDialogFocus } from '../../../composables/useDialogFocus';
 import { startEncryptedVolumeUnlock } from '../composables/useEncryptedVolumeUnlocks';
 import { useFilevaultInventory } from '../composables/useFilevaultInventory';
@@ -164,6 +172,7 @@ const modes = computed(() => credentialModes(scheme.value));
 const passwordLabel = computed(() => {
   switch (scheme.value) {
     case 'bitlocker': return tr("用户密码");
+    case 'apfs':
     case 'filevault': return tr("密码 / 个人恢复密码");
     case 'luks':
     case 'veracrypt': return tr("密码");
@@ -216,6 +225,33 @@ const logicalVolumeOptions = computed(() => inventory.value?.volumes.map(volume 
 const selectedLogicalVolume = computed(() => inventory.value?.volumes.find(volume => volume.index === logicalVolumeIndex.value));
 watch(inventory, value => { logicalVolumeIndex.value = value?.volumes[0]?.index ?? 0; });
 
+const apfsLoading = ref(false);
+const apfsError = ref('');
+const apfsVolumes = ref<ApfsEncryptionVolume[]>([]);
+const apfsVolumeIndex = ref(0);
+const apfsVolumeOptions = computed(() => apfsVolumes.value.map(volume => ({
+  value: volume.index,
+  label: volume.name || tr("逻辑卷 {0}", { 0: volume.index }),
+})));
+watch([() => props.open, scheme, selectedPartitionId, () => props.info.id], async ([open, format, partitionId, imageId], _, onCleanup) => {
+  apfsVolumes.value = [];
+  apfsError.value = '';
+  apfsLoading.value = open && format === 'apfs' && partitionId !== undefined;
+  if (!apfsLoading.value || partitionId === undefined) return;
+  let stale = false;
+  onCleanup(() => { stale = true; });
+  try {
+    const volumes = await apfsInspect({ imageId, partitionId });
+    if (stale) return;
+    apfsVolumes.value = volumes.filter(volume => volume.encrypted && !volume.unlocked);
+    apfsVolumeIndex.value = apfsVolumes.value[0]?.index ?? 0;
+  } catch (error) {
+    if (!stale) apfsError.value = String(error);
+  } finally {
+    if (!stale) apfsLoading.value = false;
+  }
+});
+
 // ── VeraCrypt ─────────────────────────────────────────────────────────────
 const pim = ref(0);
 const veracryptHeader = ref<VeracryptHeader>('auto');
@@ -245,6 +281,7 @@ async function pickKeyfiles(directory: boolean) {
 }
 
 const canUnlock = computed(() => regionValid.value && !!credential.value && !pimError.value
+  && (scheme.value !== 'apfs' || apfsVolumes.value.some(volume => volume.index === apfsVolumeIndex.value))
   && (scheme.value !== 'filevault' || (!!selectedLogicalVolume.value && selectedLogicalVolume.value.conversion_status === 'Complete')));
 
 const formId = useId();
@@ -290,6 +327,7 @@ function unlock() {
       ...(veracryptHeader.value === 'system' && selectedPartitionId.value === undefined ? { target: 'newImage' as const } : {}),
     } : {}),
     ...(scheme.value === 'filevault' ? { ...(inventory.value && inventory.value.volumes.length > 1 ? { target: 'newImage' as const } : {}), logicalVolumeIndex: logicalVolumeIndex.value, ...(encryptedRootPath.value ? { encryptedRootPlistPath: encryptedRootPath.value } : {}) } : {}),
+    ...(scheme.value === 'apfs' ? { logicalVolumeIndex: apfsVolumeIndex.value } : {}),
   };
   if (mode.value === 'memory') memoryFields.value?.markSubmitted();
   clearCredentials();

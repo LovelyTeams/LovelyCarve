@@ -31,11 +31,7 @@ pub const BTNODE_LEAF: u16 = 0x0002;
 pub const BTNODE_FIXED_KV_SIZE: u16 = 0x0004;
 
 // BTreeInfo flags
-#[expect(
-    dead_code,
-    reason = "mirrors the on-disk layout; parsed and kept so the struct documents the format"
-)]
-pub const BTREE_PHYSICAL: u32 = 0x0001;
+pub const BTREE_PHYSICAL: u32 = 0x0010;
 
 /// B-tree node header — 56 bytes after the object header.
 #[derive(Debug, Clone)]
@@ -114,10 +110,6 @@ pub struct BTreeInfo {
 }
 
 #[derive(Debug, Clone)]
-#[expect(
-    dead_code,
-    reason = "mirrors the on-disk layout; parsed and kept so the struct documents the format"
-)]
 pub struct BTreeInfoFixed {
     pub bt_flags: u32,
     pub bt_node_size: u32,
@@ -344,26 +336,36 @@ impl BTreeNode {
 }
 
 /// Tree-shape constants passed through recursive B-tree traversal.
-struct BTreeParams {
+struct BTreeParams<'a> {
     block_size: u32,
     fixed_key_size: u32,
     fixed_val_size: u32,
-    omap_root: Option<omap::OmapTree>,
+    source: TreeSource<'a>,
 }
 
-/// Resolve a child OID to a physical block number.
-/// If `omap_root` is Some, the OID is virtual and needs OMAP resolution.
-/// If `omap_root` is None, the OID is already a physical block number.
-fn resolve_child_oid<R: Read + Seek>(
+#[derive(Clone, Copy, Default)]
+pub(crate) struct TreeSource<'a> {
+    pub omap: Option<omap::OmapTree>,
+    pub cipher: Option<&'a crate::crypto::VolumeCipher>,
+}
+
+fn resolve_child<R: Read + Seek>(
     reader: &mut R,
     child_oid: u64,
-    block_size: u32,
-    omap_root: Option<omap::OmapTree>,
-) -> Result<u64> {
-    match omap_root {
-        Some(omap) => omap::omap_lookup(reader, omap, block_size, child_oid),
-        None => Ok(child_oid),
+    params: &BTreeParams<'_>,
+) -> Result<Vec<u8>> {
+    let mapping = match params.source.omap {
+        Some(tree) => omap::lookup_mapping(reader, tree, params.block_size, child_oid)?,
+        None => child_oid.into(),
+    };
+    let (header, bytes) =
+        object::read_mapped_object(reader, mapping, params.block_size, params.source.cipher)?;
+    if mapping.encrypted && header.oid != child_oid {
+        return Err(ApfsError::InvalidBTree(
+            "encrypted node OID does not match OMAP".into(),
+        ));
     }
+    Ok(bytes)
 }
 
 /// Find the greatest key not exceeding a target in a physical fixed-size tree.
@@ -429,17 +431,18 @@ where
 /// Returns the raw value bytes if found.
 pub fn btree_lookup<R: Read + Seek, F>(
     reader: &mut R,
-    root_block: u64,
+    root_block: omap::Mapping,
     block_size: u32,
     fixed_key_size: u32,
     fixed_val_size: u32,
     compare_fn: &F,
-    omap_root: Option<omap::OmapTree>,
+    source: TreeSource<'_>,
 ) -> Result<Option<Vec<u8>>>
 where
     F: Fn(&[u8]) -> Result<std::cmp::Ordering>,
 {
-    let (_, block_data) = object::read_object(reader, root_block, block_size)?;
+    let (_, block_data) =
+        object::read_mapped_object(reader, root_block, block_size, source.cipher)?;
     let node = BTreeNode::parse(&block_data)?;
 
     // Get fixed sizes from BTreeInfo if available (root node)
@@ -464,7 +467,7 @@ where
         block_size,
         fixed_key_size: fks,
         fixed_val_size: fvs,
-        omap_root,
+        source,
     };
     btree_lookup_node(reader, &node, &params, compare_fn)
 }
@@ -480,7 +483,7 @@ where
 #[cfg(debug_assertions)]
 fn debug_assert_comparator_matches_node_order<F>(
     node: &BTreeNode,
-    params: &BTreeParams,
+    params: &BTreeParams<'_>,
     compare_fn: &F,
 ) -> Result<()>
 where
@@ -504,7 +507,7 @@ where
 fn btree_lookup_node<R: Read + Seek, F>(
     reader: &mut R,
     node: &BTreeNode,
-    params: &BTreeParams,
+    params: &BTreeParams<'_>,
     compare_fn: &F,
 ) -> Result<Option<Vec<u8>>>
 where
@@ -547,10 +550,7 @@ where
         };
 
         let child_oid = node.child_oid(child_idx)?;
-        let child_block =
-            resolve_child_oid(reader, child_oid, params.block_size, params.omap_root)?;
-
-        let (_, child_data) = object::read_object(reader, child_block, params.block_size)?;
+        let child_data = resolve_child(reader, child_oid, params)?;
         let child_node = BTreeNode::parse(&child_data)?;
         if child_node.node_header.btn_level + 1 != node.node_header.btn_level {
             return Err(ApfsError::InvalidBTree(
@@ -577,12 +577,52 @@ where
 /// returns `Ok(false)` without an error.
 pub fn btree_walk_leaves<R: Read + Seek>(
     reader: &mut R,
-    root_block: u64,
+    root_block: omap::Mapping,
     block_size: u32,
-    omap_cache: Option<&std::collections::HashMap<u64, u64>>,
+    omap_cache: Option<&std::collections::HashMap<u64, omap::Mapping>>,
+    cipher: Option<&crate::crypto::VolumeCipher>,
     visit: &mut dyn FnMut(&[u8], &[u8]) -> bool,
 ) -> Result<bool> {
-    let (_, block_data) = object::read_object(reader, root_block, block_size)?;
+    walk_leaves(
+        reader,
+        root_block,
+        block_size,
+        omap_cache,
+        cipher,
+        visit,
+        |_, _, _| Ok(()),
+    )
+}
+
+pub(crate) fn walk_checked_physical<R: Read + Seek>(
+    reader: &mut R,
+    root_block: u64,
+    block_size: u32,
+    visit: &mut dyn FnMut(&[u8], &[u8]) -> bool,
+    check: impl Fn(&ObjectHeader, u64, bool) -> Result<()>,
+) -> Result<bool> {
+    walk_leaves(
+        reader,
+        root_block.into(),
+        block_size,
+        None,
+        None,
+        visit,
+        check,
+    )
+}
+
+fn walk_leaves<R: Read + Seek>(
+    reader: &mut R,
+    root_block: omap::Mapping,
+    block_size: u32,
+    omap_cache: Option<&std::collections::HashMap<u64, omap::Mapping>>,
+    cipher: Option<&crate::crypto::VolumeCipher>,
+    visit: &mut dyn FnMut(&[u8], &[u8]) -> bool,
+    check: impl Fn(&ObjectHeader, u64, bool) -> Result<()>,
+) -> Result<bool> {
+    let (header, block_data) = object::read_mapped_object(reader, root_block, block_size, cipher)?;
+    check(&header, root_block.block, true)?;
     let node = BTreeNode::parse(&block_data)?;
 
     let (fks, fvs) = match node.info {
@@ -593,17 +633,18 @@ pub fn btree_walk_leaves<R: Read + Seek>(
         block_size,
         fixed_key_size: fks,
         fixed_val_size: fvs,
-        omap_root: None,
+        source: TreeSource { omap: None, cipher },
     };
-    btree_walk_node(reader, &node, &params, omap_cache, visit)
+    btree_walk_node(reader, &node, &params, omap_cache, visit, &check)
 }
 
 fn btree_walk_node<R: Read + Seek>(
     reader: &mut R,
     node: &BTreeNode,
-    params: &BTreeParams,
-    omap_cache: Option<&std::collections::HashMap<u64, u64>>,
+    params: &BTreeParams<'_>,
+    omap_cache: Option<&std::collections::HashMap<u64, omap::Mapping>>,
     visit: &mut dyn FnMut(&[u8], &[u8]) -> bool,
+    check: &impl Fn(&ObjectHeader, u64, bool) -> Result<()>,
 ) -> Result<bool> {
     if node.node_header.is_leaf() {
         for i in 0..node.node_header.btn_nkeys as usize {
@@ -621,16 +662,27 @@ fn btree_walk_node<R: Read + Seek>(
             Some(map) => *map.get(&child_oid).ok_or_else(|| {
                 ApfsError::CorruptedData(format!("OMAP cache: OID {child_oid} not found"))
             })?,
-            None => child_oid,
+            None => child_oid.into(),
         };
-        let (_, child_data) = object::read_object(reader, child_block, params.block_size)?;
+        let (header, child_data) = object::read_mapped_object(
+            reader,
+            child_block,
+            params.block_size,
+            params.source.cipher,
+        )?;
+        if child_block.encrypted && header.oid != child_oid {
+            return Err(ApfsError::InvalidBTree(
+                "encrypted node OID does not match OMAP".into(),
+            ));
+        }
+        check(&header, child_block.block, false)?;
         let child_node = BTreeNode::parse(&child_data)?;
         if child_node.node_header.btn_level + 1 != node.node_header.btn_level {
             return Err(ApfsError::InvalidBTree(
                 "child level does not decrease (cycle or malformed tree)".into(),
             ));
         }
-        if !btree_walk_node(reader, &child_node, params, omap_cache, visit)? {
+        if !btree_walk_node(reader, &child_node, params, omap_cache, visit, check)? {
             return Ok(false);
         }
     }
@@ -648,17 +700,18 @@ fn btree_walk_node<R: Read + Seek>(
 /// `omap_root`: Some(block) for virtual B-trees, None for physical.
 pub fn btree_scan<R: Read + Seek, F>(
     reader: &mut R,
-    root_block: u64,
+    root_block: omap::Mapping,
     block_size: u32,
     fixed_key_size: u32,
     fixed_val_size: u32,
     compare_fn: &F,
-    omap_root: Option<omap::OmapTree>,
+    source: TreeSource<'_>,
 ) -> Result<Vec<(Vec<u8>, Vec<u8>)>>
 where
     F: Fn(&[u8]) -> Result<std::cmp::Ordering>,
 {
-    let (_, block_data) = object::read_object(reader, root_block, block_size)?;
+    let (_, block_data) =
+        object::read_mapped_object(reader, root_block, block_size, source.cipher)?;
     let node = BTreeNode::parse(&block_data)?;
 
     let (fks, fvs) = if let Some(ref info) = node.info {
@@ -682,7 +735,7 @@ where
         block_size,
         fixed_key_size: fks,
         fixed_val_size: fvs,
-        omap_root,
+        source,
     };
     let mut results = Vec::new();
     btree_scan_node(reader, &node, &params, compare_fn, &mut results)?;
@@ -692,7 +745,7 @@ where
 fn btree_scan_node<R: Read + Seek, F>(
     reader: &mut R,
     node: &BTreeNode,
-    params: &BTreeParams,
+    params: &BTreeParams<'_>,
     compare_fn: &F,
     results: &mut Vec<(Vec<u8>, Vec<u8>)>,
 ) -> Result<bool>
@@ -723,9 +776,7 @@ where
         // In APFS B-trees, btn_nkeys IS the number of children for internal nodes.
         for i in 0..node.node_header.btn_nkeys as usize {
             let child_oid = node.child_oid(i)?;
-            let child_block =
-                resolve_child_oid(reader, child_oid, params.block_size, params.omap_root)?;
-            let (_, child_data) = object::read_object(reader, child_block, params.block_size)?;
+            let child_data = resolve_child(reader, child_oid, params)?;
             let child_node = BTreeNode::parse(&child_data)?;
             if child_node.node_header.btn_level + 1 != node.node_header.btn_level {
                 return Err(ApfsError::InvalidBTree(

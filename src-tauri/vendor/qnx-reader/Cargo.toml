@@ -3,7 +3,7 @@ name = "qnx-reader"
 version = "0.1.0"
 edition = "2021"
 license = "AGPL-3.0-only"
-description = "Bounded read-only QNX4 and QNX6 Power-Safe filesystem readers"
+description = "Bounded read-only QNX4, QNX6 Power-Safe, ETFS, and EFS filesystem readers"
 
 [dependencies]
 lamfold = { path = "../lamfold", default-features = false, features = ["std"] }

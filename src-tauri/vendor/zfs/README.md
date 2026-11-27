@@ -10,12 +10,13 @@ Automatic recovery from
 Supported Features
 ------------------
  - Reading files from datasets on a single drive
- - ZFS System Attributes
- - ashift=11 is hardcoded
+ - ZFS system attributes in the dnode bonus area and spill blocks
+ - Standard and large dnodes up to 16 KiB
+ - Four vdev label copies with verified 1–8 KiB uberblock slots
+ - Seekable reads with sparse block handling, LZ4 and SHA-256 data checksums
 
 Unsupported Features
 --------------------
- - Large DNodes
  - raidz
  - mirrors
  - Big Endian

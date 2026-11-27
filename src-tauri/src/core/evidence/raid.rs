@@ -32,7 +32,12 @@ pub mod mdadm_super;
 pub mod source;
 pub mod xfs_probe;
 
+mod apfs_devices;
+mod bcachefs_devices;
+mod btrfs_devices;
 mod manual;
+mod vmfs_devices;
+mod zfs_devices;
 pub use manual::manual_assemble;
 mod ddf_array;
 mod ddf_geometry;
@@ -333,16 +338,33 @@ pub fn kind_label(kind: PartitionKind) -> &'static str {
         PartitionKind::F2fs => "f2fs",
         PartitionKind::Qnx4 => "qnx4",
         PartitionKind::Qnx6 => "qnx6",
+        PartitionKind::QnxEtfs => "qnxetfs",
+        PartitionKind::QnxEfs => "qnxefs",
         PartitionKind::Udf => "udf",
         PartitionKind::Hfs => "hfs",
+        PartitionKind::Mfs => "mfs",
+        PartitionKind::Littlefs => "littlefs",
+        PartitionKind::Spiffs => "spiffs",
+        PartitionKind::Hammer => "hammer",
+        PartitionKind::Hammer2 => "hammer2",
         PartitionKind::Jfs => "jfs",
+        PartitionKind::Reiser4 => "reiser4",
         PartitionKind::Reiserfs => "reiserfs",
         PartitionKind::Amiga => "amiga",
         PartitionKind::Befs => "befs",
+        PartitionKind::Gfs1 => "gfs1",
         PartitionKind::Gfs2 => "gfs2",
+        PartitionKind::Ocfs1 => "ocfs1",
         PartitionKind::Ocfs2 => "ocfs2",
         PartitionKind::Nilfs2 => "nilfs2",
         PartitionKind::Bcachefs => "bcachefs",
+        PartitionKind::Vmfs => "vmfs",
+        PartitionKind::Hpfs => "hpfs",
+        PartitionKind::Vxfs => "vxfs",
+        PartitionKind::AixJfs => "aixjfs",
+        PartitionKind::UnixwareBfs => "unixwarebfs",
+        PartitionKind::Xdvdfs => "xdvdfs",
+        PartitionKind::Fatx => "fatx",
         PartitionKind::Minix => "minix",
         PartitionKind::Minifs => "minifs",
         PartitionKind::Romfs => "romfs",

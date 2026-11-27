@@ -1,9 +1,80 @@
 //! Checksum-validated primary and layout-listed superblock recognition.
+use super::Partition;
 use super::{
     volume_probe::{VolumeProbe, VolumeProbeHit},
     DetectCtx, PartitionKind,
 };
+use crate::core::evidence::image::DiskImage;
 use bcachefs_reader::{Layout, Superblock, BCACHEFS_MAGIC, SB_HEADER_BYTES};
+use lamfold::{BlockSource, FoldError};
+
+pub(crate) struct DeviceHeader {
+    pub superblock: Superblock,
+    pub uuid: [u8; 16],
+    pub base: u64,
+    pub length: u64,
+}
+
+pub(crate) fn read_member(
+    image: &DiskImage,
+    partition: &Partition,
+) -> anyhow::Result<DeviceHeader> {
+    use anyhow::{ensure, Context};
+
+    let sector_size = image.sector_size as u64;
+    let base = partition
+        .start_lba
+        .checked_mul(sector_size)
+        .context("bcachefs member offset overflow")?;
+    let available = partition
+        .length_lba
+        .checked_mul(sector_size)
+        .context("bcachefs member length overflow")?
+        .min(image.len().saturating_sub(base));
+    let superblock = bcachefs_reader::read_superblock(MemberSource {
+        image,
+        base,
+        available,
+    })?;
+    let (member, length) = bcachefs_reader::member_geometry(&superblock)?;
+    ensure!(length <= available, "bcachefs member exceeds source");
+    Ok(DeviceHeader {
+        superblock,
+        uuid: member.uuid,
+        base,
+        length,
+    })
+}
+
+struct MemberSource<'a> {
+    image: &'a DiskImage,
+    base: u64,
+    available: u64,
+}
+
+impl BlockSource for MemberSource<'_> {
+    fn len(&self) -> u64 {
+        self.available
+    }
+
+    fn read_at(&mut self, offset: u64, out: &mut [u8]) -> lamfold::Result<()> {
+        if offset
+            .checked_add(out.len() as u64)
+            .is_none_or(|end| end > self.available)
+        {
+            return Err(FoldError::Io("bcachefs member read exceeds source"));
+        }
+        let bytes = self
+            .image
+            .read_range(self.base + offset, out.len())
+            .map_err(|error| FoldError::Source(format!("{error:#}")))?;
+        if bytes.len() != out.len() {
+            return Err(FoldError::Io("short bcachefs member read"));
+        }
+        out.copy_from_slice(&bytes);
+        Ok(())
+    }
+}
 
 pub struct BcachefsProbe;
 

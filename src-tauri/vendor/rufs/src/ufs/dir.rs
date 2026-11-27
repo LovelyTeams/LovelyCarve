@@ -110,40 +110,6 @@ impl Header {
     }
 }
 
-fn readdir_block<T>(
-    inr: InodeNum,
-    block: &[u8],
-    config: Config,
-    mut f: impl FnMut(&OsStr, InodeNum, InodeType) -> Option<T>,
-) -> IoResult<Option<T>> {
-    let mut file = Decoder::new(Cursor::new(block), config);
-
-    loop {
-        let Ok(Some(hdr)) = Header::parse(&mut file) else {
-            break;
-        };
-
-        if hdr.inr.get() == 0 {
-            break;
-        }
-
-        let Some(kind) = hdr.kind else {
-            log::warn!(
-                "readdir_block({inr}): encountered a whiteout entry: {:?}",
-                hdr.name()
-            );
-            continue;
-        };
-
-        let res = f(hdr.name(), hdr.inr, kind);
-        if res.is_some() {
-            return Ok(res);
-        }
-    }
-
-    Ok(None)
-}
-
 fn newlink_block(block: &mut [u8], mut entry: Header, config: Config) -> IoResult<bool> {
     let mut file = Decoder::new(Cursor::new(block), config);
 
@@ -275,9 +241,62 @@ impl<R: Backend> Ufs<R> {
         let mut pos = 0;
         while pos < ino.size {
             let n = self.inode_read(inr, pos, &mut block)?;
-            assert_eq!(n, DIRBLKSIZE);
-            if let Some(x) = readdir_block(inr, &block, self.file.config(), &mut f)? {
-                return Ok(Some(x));
+            if n != DIRBLKSIZE {
+                iobail!(ErrorKind::InvalidData, "short UFS directory block");
+            }
+            let mut tail = block.as_slice();
+            while !tail.is_empty() {
+                let mut header = Decoder::new(Cursor::new(tail), self.file.config());
+                let entry: InodeNum = header.decode()?;
+                let length = usize::from(header.decode::<u16>()?);
+                if length < 8 || !length.is_multiple_of(4) || length > tail.len() {
+                    iobail!(ErrorKind::InvalidData, "UFS directory record boundary");
+                }
+                let (record, remaining) = tail.split_at(length);
+                tail = remaining;
+                if entry.get() == 0 {
+                    continue;
+                }
+                let (kind, name_len) = if self.is_ufs1() && self.superblock.maxsymlinklen <= 0 {
+                    (DT_UNKNOWN, usize::from(header.decode::<u16>()?))
+                } else {
+                    (header.decode()?, usize::from(header.decode::<u8>()?))
+                };
+                if kind == DT_WHT {
+                    continue;
+                }
+                let name = record
+                    .get(8..8 + name_len)
+                    .filter(|name| {
+                        !name.is_empty()
+                            && name.len() <= UFS_MAXNAMELEN
+                            && !name.contains(&0)
+                            && !name.contains(&b'/')
+                            && record.get(8 + name_len) == Some(&0)
+                    })
+                    .ok_or_else(|| {
+                        IoError::new(ErrorKind::InvalidData, "invalid UFS directory name")
+                    })?;
+                let kind = match kind {
+                    DT_FIFO => InodeType::NamedPipe,
+                    DT_CHR => InodeType::CharDevice,
+                    DT_DIR => InodeType::Directory,
+                    DT_BLK => InodeType::BlockDevice,
+                    DT_REG => InodeType::RegularFile,
+                    DT_LNK => InodeType::Symlink,
+                    DT_SOCK => InodeType::Socket,
+                    DT_UNKNOWN => self.read_inode(entry)?.kind(),
+                    _ => iobail!(ErrorKind::InvalidData, "invalid UFS directory inode type"),
+                };
+                #[cfg(unix)]
+                let name = OsStr::from_bytes(name);
+                #[cfg(not(unix))]
+                let name = OsStr::new(std::str::from_utf8(name).map_err(|_| {
+                    IoError::new(ErrorKind::InvalidData, "UFS directory name is not UTF-8")
+                })?);
+                if let Some(value) = f(name, entry, kind) {
+                    return Ok(Some(value));
+                }
             }
 
             pos += DIRBLKSIZE as u64;

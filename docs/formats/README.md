@@ -13,27 +13,47 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | NTFS | [NTFS.md](NTFS.md) | libfsntfs 对照；MFT 与属性链、LZNT1 / WOF 压缩、命名流、硬链接、重解析点、安全描述符、独立 `$MFT`、USN 日志 |
 | ext2/3/4 | [EXT.md](EXT.md) | libfsext 对照；内联数据、EA-inode、旧式目录、`meta_bg`、全部间接块层级、带符号与纳秒时间戳 |
 | FAT / exFAT | [FAT.md](FAT.md) | libfsfat 对照；按簇数判定 FAT 类型、大逻辑扇区、范围读取、ValidDataLength、时区与删除项 |
+| Btrfs | [BTRFS.md](BTRFS.md) | 子卷、快照、完整多设备组装、逐 chunk 寻址、范围读与条带来源 |
+| ZFS | [ZFS.md](ZFS.md) | 单设备与完整多设备池、镜像、RAIDZ1/2/3、标签与 uberblock 校验、大 dnode、系统属性 spill 和范围读取 |
+| VMFS 5 / 6 | [VMFS.md](VMFS.md) | VMFS-L、裸逻辑卷、单盘和完整跨盘 extent、目录分配图、稀疏文件与范围读 |
+| HPFS | [HPFS.md](HPFS.md) | OS/2 HPFS 功能版本 2/3、dnode 与 anode 树、OEM 文件名、热修复寻址、本地时间与范围读 |
+| VxFS | [VXFS.md](VXFS.md) | layout 2–4、大小端超级块、对象定位表、内联和哈希目录、typed extent 与稀疏范围读 |
+| UFS1 / UFS2 | [UFS.md](UFS.md) | BSD FFS；大小端、4.4BSD inode、柱面组偏移、直接与间接块、碎片、范围读取 |
 | XFS | [XFS.md](XFS.md) | libfsxfs 对照；格式 1–5、目录与属性全部布局、BIGTIME、metadata UUID、范围读取与来源映射 |
 | ReFS | [REFS.md](REFS.md) | 纯 Rust `refs-reader`；文件流快照、CoW 共享块、公开镜像来源与独立解析器验证 |
-| APFS | [APFS.md](APFS.md) | libfsapfs 110 API 对照；事务 OMAP、多卷、两类目录键、克隆/空洞、范围读、xattr 与快照元数据；明确加密/历史浏览边界 |
+| APFS | [APFS.md](APFS.md) | 事务 OMAP、多卷、Fusion 双设备、ONEKEY 软件加密、范围读、xattr 与历史快照浏览 |
+| Macintosh MFS | [MFS.md](MFS.md) | 裸卷、Disk Copy 4.2、APM、MacRoman、数据叉与资源叉、备用 MDB |
+| LittleFS | [LITTLEFS.md](LITTLEFS.md) | 2.0 / 2.1、提交 CRC、拆分目录、内联数据与 CTZ 范围读取 |
+| SPIFFS | [SPIFFS.md](SPIFFS.md) | 大小端、签名与无签名几何、扁平对象和跨索引范围读取 |
+| HAMMER | [HAMMER.md](HAMMER.md) | v1–v7 单物理卷、B-tree 事务视图、已登记快照、链接和稀疏范围读取 |
+| HAMMER2 | [HAMMER2.md](HAMMER2.md) | v1/v2 单物理卷、PFS、主备卷头、稀疏与 LZ4/zlib 范围读取 |
 | 传统 HFS | [CLASSIC_HFS.md](CLASSIC_HFS.md) | fstool / rusty-backup 改造；catalog / overflow、MacRoman、data / resource fork、本地时间和范围读 |
-| HFS+ / HFSX | [HFS.md](HFS.md) | libfshfs 95 API；完整 fork / overflow、resource fork、attr continuation、Unicode 3.2、硬链接与逻辑范围读取 |
+| HFS+ / HFSX | [HFS.md](HFS.md) | 裸卷、HFS 包裹卷、完整 fork / overflow、resource fork、attr continuation、Unicode 3.2、硬链接与逻辑范围读取 |
 | ISO 9660 / 光盘 BIN / CUE | [CDFS.md](CDFS.md) | libodraw 全 API 对照；多文件/多轨 CUE、Mode 1 / XA Form 1、来源字节保留与范围读取 |
-| UDF | [UDF.md](UDF.md) | lamfold-udf；1.02–2.01 单物理分区、FE / EFE、tag / CRC、续链、空洞和范围读取；高级 partition maps 明确拒绝 |
-| CramFS / Linux ROMFS | [ROM_IMAGES.md](ROM_IMAGES.md) | lamfold Rust 库；CramFS v2 大小端、CRC、按页范围读取；ROMFS 校验和、硬链接、目录链边界 |
+| UDF | [UDF.md](UDF.md) | lamfold-udf；1.02–2.60 单底层分区、metadata / VAT / sparable 映射、FE / EFE、tag / CRC、续链和范围读取 |
+| CramFS / Linux ROMFS | [ROM_IMAGES.md](ROM_IMAGES.md) | CramFS v1/v2、512 字节引导填充、v2 CRC、扩展块指针、XIP 与按页范围读取；ROMFS 校验和、硬链接、目录链边界 |
 | JFS（Linux JFS2） | [JFS.md](JFS.md) | rusty-backup / partmgr 改造；多 IAG、dtree / xtree、分配位图、目录索引、EA / 符号链接与纳秒范围读 |
-| ReiserFS v3 | [REISERFS.md](REISERFS.md) | 3.5 / 3.6、混合键、多层树、尾部打包、稀疏块、硬链接与范围读；dirty 拒绝，Reiser4 独立未支持 |
+| AIX JFS1 | [AIX_JFS.md](AIX_JFS.md) | 大端 fsv3 / fsv3p、双超级块、片段与分配组、两级间接寻址、稀疏与范围读 |
+| UnixWare BFS | [UNIXWARE_BFS.md](UNIXWARE_BFS.md) | `/stand` 启动卷、经典 VTOC 切片、平面目录、硬链接与连续范围读 |
+| XDVDFS | [XDVDFS.md](XDVDFS.md) | Xbox 裸 XISO 和 XGD1/2/3 游戏区、视频区保留、二叉目录、范围读 |
+| Xbox FATX / XTAF | [FATX.md](FATX.md) | 原版和 360、16/32 位分配表、LBA48、Devkit、局部时间与范围读 |
+| ReiserFS v3 | [REISERFS.md](REISERFS.md) | 3.5 / 3.6、混合键、多层树、尾部打包、稀疏块、硬链接与范围读；拒绝 dirty 卷 |
+| Reiser4 | [REISER4.md](REISER4.md) | 单设备 Format40、长短键、node40 / node41、尾部打包、extent、显式空洞与范围读 |
 | Amiga OFS / FFS | [AMIGA.md](AMIGA.md) | DOS0–7、Latin-1 / LNFS、硬链接、原生 RDB 与多块几何；dirty / BADB 明确拒绝 |
 | BeFS | [BEFS.md](BEFS.md) | BeOS / Haiku、大小端、四种块大小、B+tree、全部 run 层级及扩展属性；原生官方镜像 / 系统包验证 |
+| GFS1 | [GFS1.md](GFS1.md) | 1309 / 1401、双日志头、资源组分配位图、线性与 exhash 目录、间接块与稀疏范围读 |
 | GFS2 | [GFS2.md](GFS2.md) | 1801 / 1802、大端、rindex / 分配位图、exhash、定高文件树、稀疏与 EA；检查全部日志并明确拒绝重放 |
+| OCFS1 | [OCFS1.md](OCFS1.md) | OracleCFS 1.2、目录索引和续链、内置与多层 extent、分配位图和范围读 |
 | OCFS2 | [OCFS2.md](OCFS2.md) | 分配链 / 位图、extent / refcount、内联及索引目录、稀疏 / unwritten 与属性；全部 slot 必须离线干净 |
 | NILFS2 | [NILFS2.md](NILFS2.md) | 双超级块 / 日志 CRC、DAT / 分配位图、direct / B-tree、检查点与 GC 搬移；应用读取当前视图，独立库可读历史 snapshot |
-| bcachefs | [BCACHEFS.md](BCACHEFS.md) | MIT Rust 库；单设备、子卷 / snapshot、reflink、压缩 / 校验、稀疏 / unwritten、内存日志及范围读 |
+| bcachefs | [BCACHEFS.md](BCACHEFS.md) | MIT Rust 库；单设备和完整多设备、子卷 / snapshot、reflink、压缩 / 校验、稀疏 / unwritten、内存日志及范围读 |
 | Minix FS V1 / V2 / V3 | [MINIX.md](MINIX.md) | rusty-backup 元数据改造；五种布局、大小端、位图 / zone 边界、全部间接层级与有界范围读；独立于 MINIFS |
 | MINIFS | [MINIFS.md](MINIFS.md) | 原创独立 Rust 库；VxWorks / TP-Link v3、共享 LZMA 块、有界范围读及官方固件逐文件 oracle |
 | F2FS | [F2FS.md](F2FS.md) | 纯 Rust checkpoint / NAT 读取、动态内联区域、完整间接寻址、inode CRC、硬链接及纳秒时间 |
 | EROFS | [EROFS.md](EROFS.md) | lamfold-erofs；紧凑 / 扩展 inode、四种压缩、chunk 空洞、有界范围读取与超级块 CRC32C |
 | QNX4 / QNX6 | [QNX.md](QNX.md) | 原创 Rust 库；QNX4 extent 链、QNX6 Power-Safe / MMI、大小端、代际 CRC、间接树及 QNX 原生镜像 TAR oracle |
+| QNX ETFS | [QNX_ETFS.md](QNX_ETFS.md) | 尾随事务头、当前文件表、长文件名、原生事务导出和有界文件范围读 |
+| QNX EFS | [QNX_EFS.md](QNX_EFS.md) | F3S 3.0、逻辑单元重排、替换 extent、原生镜像与 TAR 对照 |
 | SquashFS | [SQUASHFS.md](SQUASHFS.md) | backhand Rust 读取器；v1/v2 旧布局、v3/v4、大小端、尾片段和有界 LZMA / 范围读取 |
 | JFFS2 | [JFFS2.md](JFFS2.md) | jffs2-rs 结构 / RTIME 改造；新格式大小端、CRC、版本化目录与片段、空洞和范围读取 |
 | YAFFS1 | [YAFFS1.md](YAFFS1.md) | 原生 Rust 分散 tags、标签 / 页正文 ECC、两位序号、删除页、shadow、硬链接及独立文件长度策略 |
@@ -63,7 +83,7 @@ LovelyCarve 用纯 Rust 读取镜像容器、分区表、文件系统和加密�
 | iOS 备份 | [IOS_BACKUPS.md](../IOS_BACKUPS.md) | 本地备份浏览、加密备份解锁与异常检查 |
 | KeePass KDBX | [KDBX.md](KDBX.md) | pykeepass 读取部分的 Rust 改写；KDBX 3 / 4、AES / Twofish / ChaCha20、AES-KDF / Argon2、密钥文件与转换密钥、头部与数据块校验、原类型视图 |
 
-其余格式（Btrfs、ZFS、UFS，以及 VDI、DMG、AD1 等镜像容器）的实现位置见 [架构说明的镜像与证据源](../ARCHITECTURE.md#镜像与证据源)，上游版本、本地补丁与测试样本记录在各 vendor 目录的 `LOVELYCARVE.md` / `ORIGIN.md` 中。命令行下的检材登记、解锁和导出示例见 [CLI 手册](../CLI.md)。
+其余格式（VDI、DMG、AD1 等镜像容器）的实现位置见 [架构说明的镜像与证据源](../ARCHITECTURE.md#镜像与证据源)，上游版本、本地补丁与测试样本记录在各 vendor 目录的 `LOVELYCARVE.md` / `ORIGIN.md` 中。命令行下的检材登记、解锁和导出示例见 [CLI 手册](../CLI.md)。
 
 ## 维护要求
 

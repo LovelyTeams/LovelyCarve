@@ -4,14 +4,17 @@ read by range, hashed and exported, by node ID and by path.
 Fixtures are the readers' committed synthetic or reference images; the
 optional native images come from the environment variables named below.
 """
+from datetime import datetime, timedelta
 import hashlib
 import json
 import os
 from pathlib import Path
 import struct
+import subprocess
 import tarfile
 import zlib
 
+from cli_optical_tests import iso_fixture
 from cli_support import REPOSITORY, node, path_id, request
 
 ALIAS = "ev"
@@ -62,6 +65,957 @@ def names(result):
 
 def hex_of(data):
     return {"encoding": "hex", "data": data.hex()}
+
+
+def test_vmfs(cli, root):
+    fixture_path = os.environ.get("LOVELYCARVE_VMFS_ORACLE")
+    if not fixture_path:
+        print("VMFS CLI oracle skipped: set LOVELYCARVE_VMFS_ORACLE")
+        return
+    fixtures = Path(fixture_path)
+    case = root / "vmfs-case"
+    scope = ("-C", case)
+    cli.run("case", "new", case, "--name", "VMFS test")
+    cli.run(*scope, "case", "open")
+    try:
+        for version, descriptor_prefix in [
+            (5, "c800000040000000000001000008000000009101183601000700000000000000"),
+            (6, "0001000008000000000001000020000000000101004000000800000000000000"),
+        ]:
+            output = root / f"vmfs{version}-small.txt"
+            rows = cli.results([
+                add(fixtures / f"vmfs{version}.bin"),
+                ls("directory", "/ev/part:0/directory"),
+                cat("read", at(path_id("vmfs:part:0:", "/directory/file100"))),
+                cat("large", "/ev/part:0/large-flat.vmdk", 117 << 30, 512),
+                cat("hole", "/ev/part:0/large-flat.vmdk", 0, 513),
+                request("stat", "stat", "/ev/part:0/large-flat.vmdk"),
+                digest("hash", "/ev/part:0/small"),
+                export("export", "/ev/part:0/small", output),
+            ])
+            assert opened(rows)["partitions"][0]["kind"] == "vmfs", rows["open"]
+            assert names(rows["directory"]) == {f"file{index}" for index in range(1, 101)}
+            assert rows["read"] == hex_of(b"File 100\n")
+            assert rows["large"] == hex_of(b"\x42" * 512)
+            assert rows["hole"] == hex_of(bytes(513))
+            assert rows["stat"]["size"] == 42 << 40, rows["stat"]
+            assert sha256(rows["hash"]) == hashlib.sha256(b"tiny\n").hexdigest()
+            assert output.read_bytes() == b"tiny\n"
+
+            for suffix in ["d", "l", "ld"]:
+                view = cli.results([
+                    add(fixtures / f"vmfs{version}{suffix}.bin"),
+                    ls("root", "/ev/part:0"),
+                ])
+                assert opened(view)["partitions"][0]["kind"] == "vmfs"
+                assert {".fdc.sf", ".pbc.sf", ".sbc.sf"} <= names(view["root"])
+
+            # Load the members out of extent order. An incomplete datastore is
+            # recognized but exposes no synthetic filesystem until complete.
+            member_paths = [fixtures / "span" / f"vmfs{version}-span-{index}.bin" for index in [1, 0]]
+            aliases = [f"v{version}second", f"v{version}first"]
+            cli.run(*scope, "evidence", "add", member_paths[0], "--as", aliases[0])
+            lone = cli.json(*scope, "raid", "detect", "--member", aliases[0])
+            assert lone["assembled"] == [] and any("VMFS" in message for message in lone["diagnostics"]), lone
+            cli.run(*scope, "evidence", "add", member_paths[1], "--as", aliases[1])
+            stack = cli.json(*scope, "raid", "detect", "--member", aliases[0], "--member", aliases[1])
+            assert len(stack["assembled"]) == 1 and stack["arrays"][0]["raidDisks"] == 2, stack
+            path = stack["assembled"][0]["path"]
+            for partition in [0, 1]:
+                assert cli.run(*scope, "cat", f"{path}/part:{partition}/.fdc.sf", "--length", "32", binary=True).stdout.hex() == descriptor_prefix
+    finally:
+        cli.run(*scope, "case", "close")
+    print("VMFS CLI oracle passed: native paths, sparse reads, hash, export and two-image assembly")
+
+
+def test_hpfs(cli, root):
+    fixture = VENDOR / "hpfs-reader/tests/fixtures/hpfsutils.zlib"
+    volume = zlib.decompress(fixture.read_bytes())
+    bare = root / "hpfs.bin"
+    bare.write_bytes(volume)
+    disk = root / "hpfs-mbr.img"
+    base = 2048
+    table = bytearray(512)
+    table[450] = 7
+    struct.pack_into("<II", table, 454, base, len(volume) // 512)
+    table[510:] = b"\x55\xaa"
+    with disk.open("xb") as output:
+        output.write(table)
+        output.seek(base * 512)
+        output.write(volume)
+    payload = bytes(range(256)) * 4129 + b"tail"
+    for index, source in enumerate([bare, disk]):
+        exported = root / f"hpfs-{index}-payload.bin"
+        rows = cli.results([
+            add(source),
+            ls("tree", "/ev/part:0/TREE", "--limit", 1000),
+            cat("read", at(path_id("hpfs:part:0:", "/Read Me.txt"))),
+            cat("casefold", "/ev/part:0/TREE/item 0512.txt"),
+            cat("range", "/ev/part:0/payload.bin", 509, 1027),
+            request("stat", "stat", "/ev/part:0/Read Me.txt"),
+            digest("hash", "/ev/part:0/payload.bin"),
+            export("export", "/ev/part:0/payload.bin", exported),
+        ])
+        assert opened(rows)["partitions"][0]["kind"] == "hpfs"
+        assert names(rows["tree"]) == {f"Item {n:04}.txt" for n in range(513)}
+        assert rows["read"] == hex_of(b"independent HPFS fixture\n")
+        assert rows["casefold"] == hex_of(b"0512 HPFS entry\n")
+        assert rows["range"] == hex_of(payload[509:1536])
+        assert not rows["stat"]["timestamps"]["created"].endswith("Z")
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert exported.read_bytes() == payload
+    print("HPFS CLI tests passed: bare and MBR volumes, split directories, ranges, times, hash and export")
+
+
+def test_vxfs(cli, root):
+    fixtures = VENDOR / "vxfs-reader/tests/fixtures"
+    for name, block_size in [("le2", 1024), ("le3", 2048), ("be4", 8192)]:
+        volume = zlib.decompress((fixtures / f"{name}.zlib").read_bytes())
+        source = root / f"vxfs-{name}.img"
+        if name == "be4":
+            table = bytearray(512)
+            table[450] = 0x83
+            struct.pack_into("<II", table, 454, 8, len(volume) // 512)
+            table[510:] = b"\x55\xaa"
+            source.write_bytes(table + bytes(7 * 512) + volume)
+        else:
+            source.write_bytes(volume)
+        exported = root / f"{name}-linear.bin"
+        expected = b"D" * block_size + bytes(block_size) + b"I" * (block_size - 19)
+        rows = cli.results([
+            add(source),
+            ls("root", "/ev/part:0"),
+            ls("dir", "/ev/part:0/dir"),
+            cat("tiny", at(path_id("vxfs:part:0:", "/tiny"))),
+            cat("link", "/ev/part:0/link"),
+            cat("far", "/ev/part:0/dir/large", (5 << 30) + block_size - 2, 10),
+            cat("linear", "/ev/part:0/linear", 2 * block_size - 3, 10),
+            request("stat", "stat", "/ev/part:0/tiny"),
+            request("alias", "stat", "/ev/part:0/dir/alias"),
+            digest("hash", "/ev/part:0/linear"),
+            export("export", "/ev/part:0/linear", exported),
+        ])
+        assert opened(rows)["partitions"][0]["kind"] == "vxfs"
+        assert names(rows["root"]) == {"tiny", "dir", "link", "linear", "empty"}
+        assert names(rows["dir"]) == {"alias", "large"}
+        assert rows["tiny"] == rows["link"] == hex_of(b"tiny\n")
+        assert rows["far"] == hex_of(bytes(2) + bytes(range(8)))
+        assert rows["linear"] == hex_of(bytes(3) + b"I" * 7)
+        assert rows["stat"]["inode"] == rows["alias"]["inode"] == 3
+        changed = datetime.fromisoformat(rows["stat"]["timestamps"]["mftChanged"].replace("Z", "+00:00"))
+        assert changed.microsecond == 9876 and changed.utcoffset() == timedelta(0), changed
+        assert sha256(rows["hash"]) == hashlib.sha256(expected).hexdigest()
+        assert exported.read_bytes() == expected
+    print("VxFS CLI tests passed: layouts 2–4, MBR, hard links, ranges beyond 5 GiB, hash and export")
+
+
+def test_aix_jfs(cli, root):
+    fixtures = VENDOR / "aix-jfs-reader/tests/fixtures"
+    for name in ["fsv3", "fsv3p-512", "fsv3p-1024"]:
+        volume = bytearray(zlib.decompress((fixtures / f"{name}.zlib").read_bytes()))
+        image = root / f"aix-{name}.img"
+        if name == "fsv3p-512":
+            # Force backup-superblock recovery inside a nonzero partition.
+            volume[4096 + 20:4096 + 22] = b"\0\0"
+            mbr = bytearray(512)
+            mbr[450] = 0x83
+            struct.pack_into("<II", mbr, 454, 8, len(volume) // 512)
+            mbr[510:] = b"\x55\xaa"
+            image.write_bytes(mbr + bytes(7 * 512) + volume)
+        else:
+            image.write_bytes(volume)
+        exported = root / f"aix-{name}-single.bin"
+        payload = b"A" * 4096 + bytes(7 * 4096) + b"Z" * 4096
+        rows = cli.results([
+            add(image),
+            ls("root", "/ev/part:0"),
+            ls("dir", "/ev/part:0/dir"),
+            cat("tiny", at(path_id("aixjfs:part:0:", "/tiny"))),
+            cat("link", "/ev/part:0/link"),
+            cat("group", "/ev/part:0/dir/follow"),
+            cat("far", "/ev/part:0/double", 1025 * 4096 - 2, 10),
+            request("stat", "stat", "/ev/part:0/dir/alias"),
+            digest("hash", "/ev/part:0/single"),
+            export("export", "/ev/part:0/single", exported),
+        ])
+        assert opened(rows)["partitions"][0]["kind"] == "aixjfs"
+        assert names(rows["root"]) == {"tiny", "dir", "single", "double", "link", "longlink"}
+        assert names(rows["dir"]) == {"alias", "follow"}
+        assert rows["tiny"] == rows["link"] == hex_of(b"aixjfs\n")
+        assert rows["group"] == hex_of(b"allocation group")
+        assert rows["far"] == hex_of(bytes(2) + bytes(range(8)))
+        assert rows["stat"]["inode"] == 5
+        stamp = datetime.fromisoformat(rows["stat"]["timestamps"]["modified"].replace("Z", "+00:00"))
+        assert stamp.utcoffset() == timedelta(0) and stamp.microsecond == 85
+        assert stamp.replace(microsecond=0).timestamp() == -2
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert exported.read_bytes() == payload
+    print("AIX JFS1 CLI tests passed: fsv3 and fsv3p, backup superblock, fragments, indirection and export")
+
+
+def test_unixware_bfs(cli, root):
+    fixtures = VENDOR / "unixware-bfs-reader/tests/fixtures"
+    empty = root / "bfs-empty.img"
+    empty.write_bytes(zlib.decompress((fixtures / "util-linux-empty.zlib").read_bytes()))
+    rows = cli.results([add(empty), ls("root", "/ev/part:0")])
+    assert opened(rows)["partitions"][0]["kind"] == "unixwarebfs"
+    assert names(rows["root"]) == set()
+
+    volume = zlib.decompress((fixtures / "populated.zlib").read_bytes())
+    bare = root / "bfs-bare.img"
+    bare.write_bytes(volume)
+    wrapped = root / "bfs-vtoc.img"
+    sector = 512
+    owner_start = 64
+    stand_start = owner_start + 64
+    volume_sectors = len(volume) // sector
+    swap_start = stand_start + volume_sectors
+    foreign_start = swap_start + 64
+    owner_length = foreign_start - owner_start
+    disk = bytearray((foreign_start + 64) * sector)
+    disk[450] = 0x63
+    disk[466] = 0x82
+    struct.pack_into("<II", disk, 454, owner_start, owner_length)
+    struct.pack_into("<II", disk, 470, foreign_start, 64)
+    disk[510:512] = b"\x55\xaa"
+    label = (owner_start + 29) * sector
+    struct.pack_into("<I", disk, label + 4, 0xCA5E600D)
+    struct.pack_into("<II", disk, label + 36, sector, owner_start)
+    struct.pack_into("<I", disk, label + 156, 0x600DDEEE)
+    struct.pack_into("<H", disk, label + 172, 16)
+    slices = label + 216
+    struct.pack_into("<HHII", disk, slices, 5, 0x200, owner_start, owner_length)
+    struct.pack_into("<HHII", disk, slices + 7 * 12, 9, 0x201, stand_start, volume_sectors)
+    struct.pack_into("<HHII", disk, slices + 8 * 12, 3, 0x200, swap_start, 32)
+    struct.pack_into("<HHII", disk, slices + 9 * 12, 4, 0x200, foreign_start - 1, 2)
+    struct.pack_into("<HHII", disk, slices + 10 * 12, 4, 0, stand_start + 1, 1)
+    disk[stand_start * sector:swap_start * sector] = volume
+    wrapped.write_bytes(disk)
+
+    payload = bytes(range(256)) * 5 + b"unixware\n"
+    for source in (bare, wrapped):
+        output = root / f"{source.stem}-export.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", "/ev/part:0"),
+            cat("alias", at(path_id("unixwarebfs:part:0:", "/unix.old"))),
+            cat("long", "/ev/part:0/1234567890.dat"),
+            cat("range", "/ev/part:0/unix", 509, 522),
+            cat("tail", "/ev/part:0/unix", len(payload) - 4, 50),
+            cat("empty", "/ev/part:0/empty"),
+            request("stat", "stat", "/ev/part:0/unix"),
+            request("alias_stat", "stat", "/ev/part:0/unix.old"),
+            digest("hash", "/ev/part:0/unix"),
+            export("export", "/ev/part:0/unix", output),
+        ])
+        parts = {p["id"]: p for p in opened(rows)["partitions"]}
+        assert parts[0]["kind"] == "unixwarebfs"
+        if source == wrapped:
+            assert set(parts) == {0, 1, 2}
+            assert parts[0]["startLba"] == stand_start and parts[0]["lengthLba"] == volume_sectors
+            assert parts[0]["label"] == "/stand (UnixWare slice 7)"
+            assert parts[1]["kind"] == "swap" and parts[1]["startLba"] == foreign_start
+            assert parts[2]["kind"] == "swap" and parts[2]["startLba"] == swap_start
+        assert names(rows["root"]) == {"unix", "unix.old", "empty", "1234567890.dat"}
+        assert rows["alias"] == hex_of(payload)
+        assert rows["long"] == hex_of(b"UnixWare BFS fixture\n")
+        assert rows["range"] == hex_of(payload[509:1031])
+        assert rows["tail"] == hex_of(payload[-4:])
+        assert rows["empty"] == hex_of(b"")
+        assert rows["stat"]["inode"] == rows["alias_stat"]["inode"] == 3
+        modified = datetime.fromisoformat(rows["stat"]["timestamps"]["modified"].replace("Z", "+00:00"))
+        assert modified.utcoffset() == timedelta(0) and modified.timestamp() == 1706010001
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert output.read_bytes() == payload
+
+    # A conflicting, otherwise valid slice must not replace the original MBR span.
+    overlapping = root / "bfs-vtoc-overlap.img"
+    struct.pack_into("<HHII", disk, slices + 10 * 12, 4, 0x200, stand_start + 1, 1)
+    overlapping.write_bytes(disk)
+    parts = {p["id"]: p for p in opened(cli.results([add(overlapping)]))["partitions"]}
+    assert set(parts) == {0, 1}
+    assert parts[0]["startLba"] == owner_start and parts[0]["lengthLba"] == owner_length
+    assert parts[1]["startLba"] == foreign_start
+    print("UnixWare BFS CLI tests passed: native empty volume, VTOC, hard links, ranges, hash and export")
+
+
+def test_xdvdfs(cli, root):
+    fixture = VENDOR / "xdvdfs-reader/tests/fixtures/extract-xiso.zlib"
+    volume = zlib.decompress(fixture.read_bytes())
+    video, video_payload = iso_fixture(b"ISO 9660 video partition data\n")
+    payload = bytes(range(256)) * 19 + b"ending"
+    for name, base in [("xiso", 0), ("xgd1", 0x18300000), ("xgd2", 0x0FD90000), ("xgd3", 0x02080000)]:
+        source = root / f"{name}.iso"
+        has_video = name == "xgd3"
+        with source.open("xb") as disk:
+            if has_video:
+                disk.write(video)
+            disk.seek(base)
+            disk.write(volume)
+        game = int(has_video)
+        path = f"/ev/part:{game}"
+        output = root / f"{name}-frame.bin"
+        commands = [
+            add(source),
+            ls("root", path),
+            ls("textures", f"{path}/textures", "--limit", 500),
+            cat("range", f"{path}/TEXTURES/frame.bin", 2043, 29),
+            cat("nested", at(path_id(f"xdvdfs:part:{game}:", "/Textures/Nested/Text.txt"))),
+            cat("empty", f"{path}/empty"),
+            request("stat", "stat", f"{path}/textures/Frame.bin"),
+            digest("hash", f"{path}/Textures/Frame.bin"),
+            export("export", f"{path}/Textures/Frame.bin", output),
+        ]
+        if has_video:
+            commands += [cat("video", "/ev/part:0/PAYLOAD.BIN")]
+        rows = cli.results(commands)
+        parts = {p["id"]: p for p in opened(rows)["partitions"]}
+        assert parts[game]["kind"] == "xdvdfs" and parts[game]["startLba"] * opened(rows)["sectorSize"] == base
+        assert names(rows["root"]) == {"Textures", "EMPTY", "readme.txt"}
+        assert names(rows["textures"]) == {"Frame.bin", "Nested"} | {f"Data-{index:03}.dat" for index in range(120)}
+        assert rows["range"] == hex_of(payload[2043:2072])
+        assert rows["nested"] == hex_of(b"Independent Xbox DVD image.\n")
+        assert rows["empty"] == hex_of(b"") and rows["stat"]["size"] == len(payload)
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert output.read_bytes() == payload
+        if has_video:
+            assert parts[0]["kind"] == "cdfs" and rows["video"] == hex_of(video_payload)
+        source.unlink()
+    print("XDVDFS CLI tests passed: native XISO, XGD1/2/3 bases, concurrent ISO 9660 view, ranges, hash and export")
+
+
+def test_fatx(cli, root):
+    fixtures = VENDOR / "fatx-reader/tests/fixtures"
+    payload = bytes((n * 17 + n // 117) % 256 for n in range(13013))
+    sources = []
+    for name in ("xbox-fat16", "xbox-fat32", "xtaf-fat16-compact", "xtaf-fat32-compact"):
+        encoded = (fixtures / f"{name}.zlib").read_bytes()
+        length = struct.unpack_from("<I", encoded)[0]
+        prefix = zlib.decompress(encoded[4:])
+        path = root / f"{name}.img"
+        with path.open("xb") as image:
+            image.write(prefix)
+            image.truncate(length)
+        sources.append((path, 0, 0, length, None))
+        if name == "xbox-fat16":
+            # Two inactive and invalid table records precede the valid slot.
+            offset = 0x100000
+            disk = root / "xbox-lba48.img"
+            table = bytearray(512)
+            table[:16] = b"****PARTINFO****"
+            struct.pack_into("<16sIII", table, 48, b"INACTIVE", 0, offset // 512, length // 512)
+            struct.pack_into("<16sIII", table, 80, b"OUTSIDE", 0x80000000, 0xFFFFFF00, 0x800)
+            struct.pack_into("<16sIII", table, 112, b"XBOX DATA", 0x80000000, offset // 512, length // 512)
+            with disk.open("xb") as image:
+                image.write(table)
+                image.seek(offset)
+                image.write(prefix)
+                image.truncate(offset + length)
+            sources.append((disk, 2, offset, length, "XBOX DATA"))
+        if name == "xtaf-fat16-compact":
+            offset = 0x140000
+            disk = root / "xbox360-devkit.img"
+            table = bytearray(512)
+            struct.pack_into(">I", table, 0, 0x00020000)
+            struct.pack_into(">II", table, 16, offset // 512, length // 512)
+            with disk.open("xb") as image:
+                image.write(table)
+                image.seek(offset)
+                image.write(prefix)
+                image.truncate(offset + length)
+            sources.append((disk, 1, offset, length, "Xbox 360 Devkit Dashboard"))
+            offset = 0x7FF000
+            disk = root / "xbox360-memory.img"
+            with disk.open("xb") as image:
+                image.seek(offset)
+                image.write(prefix)
+                image.truncate(offset + length)
+            sources.append((disk, 0, offset, length, "Xbox 360 Memory Unit"))
+
+    for source, partition, base, length, label in sources:
+        address = f"/ev/part:{partition}"
+        exported = root / f"{source.stem}-export.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", address),
+            ls("dir", f"{address}/cache"),
+            cat("range", f"{address}/CACHE/data.bin", 2043, 4097),
+            cat("empty", at(path_id(f"fatx:part:{partition}:", "/Empty"))),
+            request("stat", "stat", f"{address}/Cache/Data.bin"),
+            digest("hash", f"{address}/Cache/Data.bin"),
+            export("export", f"{address}/Cache/Data.bin", exported),
+        ])
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["id"] == partition and part["kind"] == "fatx"
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == length
+        if label is not None:
+            assert part["label"] == label and info["tableScheme"] == "xbox"
+        assert names(rows["root"]) == {"Cache", "Empty"} and names(rows["dir"]) == {"Data.bin"}
+        assert rows["range"] == hex_of(payload[2043:6140]) and rows["empty"] == hex_of(b"")
+        assert rows["stat"]["size"] == len(payload)
+        assert datetime.fromisoformat(rows["stat"]["timestamps"]["created"]).tzinfo is None
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert exported.read_bytes() == payload
+    print("FATX CLI tests passed: both FAT widths and byte orders, LBA48, Devkit and memory unit, ranges, hash and export")
+
+
+def test_mfs(cli, root):
+    fixtures = VENDOR / "mfs-reader/tests/fixtures"
+    data = bytes((n * 13 + n // 47) % 256 for n in range(8199))
+    resource = bytes((n * 7 + n // 81) % 256 for n in range(4673))
+    stream = "com.apple.ResourceFork"
+    sources = []
+    for name in ("raw-400", "raw-800", "dc42-400", "dc42-800"):
+        volume = zlib.decompress((fixtures / f"{name}.zlib").read_bytes())
+        source = root / f"mfs-{name}.img"
+        source.write_bytes(volume)
+        sources.append((source, 0, len(volume)))
+        if name == "raw-400":
+            base = 8 * 512
+            apm = bytearray(base)
+            struct.pack_into(">2sH", apm, 0, b"ER", 512)
+            struct.pack_into(">2sHIII32s32s", apm, 512, b"PM", 0, 1, 8, len(volume) // 512, b"MFS", b"Apple_MFS")
+            source = root / "mfs-apm.img"
+            source.write_bytes(apm + volume)
+            sources.append((source, base, len(volume)))
+
+    address = "/ev/part:0"
+    entry = at(path_id("mfs:part:0:", "/Résumé"))
+    resource_only = f"{address}/Only Resource"
+    for source, base, length in sources:
+        data_output = root / f"{source.stem}-data.bin"
+        resource_output = root / f"{source.stem}-resource.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", address),
+            cat("range", f"{address}/RÉSUMÉ", 1001, 3101),
+            cat("empty-data", resource_only),
+            cat("only-resource", resource_only, length=93, stream=stream),
+            request("stat", "stat", entry),
+            request("streams", "streams", entry),
+            cat("resource", entry, length=2341, stream=stream),
+            digest("hash", entry),
+            export("data-export", entry, data_output),
+            export("resource-export", entry, resource_output, stream=stream),
+        ])
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["id"] == 0 and part["kind"] == "mfs", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == length
+        if base:
+            assert info["tableScheme"] == "apm" and part["label"] == "MFS (Apple_MFS)"
+        assert names(rows["root"]) == {"Résumé", "Only Resource", "Empty"}
+        assert rows["range"] == hex_of(data[1001:4102]) and rows["empty-data"] == hex_of(b"")
+        assert rows["stat"]["size"] == len(data)
+        assert datetime.fromisoformat(rows["stat"]["timestamps"]["created"]).tzinfo is None
+        assert {item["name"]: item["size"] for item in rows["streams"]["items"]} == {"": len(data), stream: len(resource)}
+        assert rows["resource"] == hex_of(resource[:2341]) and rows["only-resource"] == hex_of(resource[:93])
+        assert sha256(rows["hash"]) == hashlib.sha256(data).hexdigest()
+        assert data_output.read_bytes() == data and resource_output.read_bytes() == resource
+
+    apple_image = os.environ.get("LOVELYCARVE_MFS_APPLE_ORACLE")
+    if apple_image:
+        entry = f"{address}/TN.002.Compatibility"
+        output = root / "apple-mfs-resource.bin"
+        rows = cli.results([
+            add(Path(apple_image)),
+            ls("root", address),
+            digest("hash", entry),
+            export("resource-export", entry, output, stream=stream),
+        ])
+        assert opened(rows)["partitions"][0]["kind"] == "mfs"
+        assert names(rows["root"]) == {
+            "DeskTop", "TN.002.Compatibility", "TN.002.Compatibility.pdf", "CSillyBalls", "CSillyBalls.make",
+            "PSillyBalls", "PSillyBalls.make", "SCN.003.SillyBalls", "SillyBalls.c", "SillyBalls.p",
+        }
+        assert sha256(rows["hash"]) == "bc23503a695764123759f006dfc4fa0052d96ec293c35168090aedbc9e497a8a"
+        assert hashlib.sha256(output.read_bytes()).hexdigest() == "65d4a524d31c5c9c76579ef3656d592266bd11bd073c255c331029c20ea55cf5"
+        print("MFS Apple oracle passed: original Disk Copy image and both fork hashes")
+    print("MFS CLI tests passed: 400K and 800K raw and Disk Copy images, APM, local timestamps and both forks")
+
+
+def test_littlefs(cli, root):
+    fixtures = VENDOR / "littlefs-reader/tests/fixtures"
+    payload = bytes((n * 21 + n // 49) % 256 for n in range(19473))
+    sources = []
+    for name in ("128-2.0", "512-2.1", "4096-2.1"):
+        volume = zlib.decompress((fixtures / f"{name}.zlib").read_bytes())
+        source = root / f"littlefs-{name}.img"
+        source.write_bytes(volume)
+        sources.append((source, 0, len(volume)))
+        if name == "512-2.1":
+            base = 8 * 512
+            mbr = bytearray(base)
+            mbr[446 + 4] = 0x83
+            struct.pack_into("<II", mbr, 446 + 8, 8, len(volume) // 512)
+            mbr[510:512] = b"\x55\xaa"
+            partitioned = root / "littlefs-mbr.img"
+            partitioned.write_bytes(mbr + volume)
+            sources.append((partitioned, base, len(volume)))
+    for source, base, length in sources:
+        entry = at(path_id("littlefs:part:0:", "/Logs/event.bin"))
+        output = root / f"{source.stem}.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", "/ev/part:0"),
+            ls("split", "/ev/part:0/Split"),
+            cat("inline", "/ev/part:0/tiny"),
+            cat("byte-name", "/ev/part:0/Logs/odd-%FF"),
+            cat("range", entry, 4291, 6987),
+            cat("empty", "/ev/part:0/Logs/Nested/EmptyLater"),
+            digest("hash", entry),
+            export("export", entry, output),
+        ])
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "littlefs", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == length
+        if base:
+            assert info["tableScheme"] == "mbr"
+        assert names(rows["root"]) == {"Logs", "Split", "tiny"}
+        assert names(rows["split"]) == {f"entry-{n:02}-long-file-name-for-split" for n in range(20)}
+        assert rows["inline"] == hex_of(b"init-end") and rows["byte-name"] == hex_of(b"name")
+        assert rows["range"] == hex_of(payload[4291:11278]) and rows["empty"] == hex_of(b"")
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert output.read_bytes() == payload
+    print("LittleFS CLI tests passed: v2.0 and v2.1, bare and MBR volumes, split directories, ranges, hash and export")
+
+
+def test_spiffs(cli, root):
+    fixtures = VENDOR / "spiffs-reader/tests/fixtures"
+    payload = bytes((n * 23 + n // 61) % 256 for n in range(49281))
+    sources = []
+    for name in ("esp32-default", "esp32-no-magic", "be-aligned", "constant", "esp32-native"):
+        volume = zlib.decompress((fixtures / f"{name}.zlib").read_bytes())
+        source = root / f"spiffs-{name}.img"
+        source.write_bytes(volume)
+        sources.append((source, 0, len(volume)))
+        if name == "esp32-default":
+            base = 8 * 512
+            mbr = bytearray(base)
+            mbr[446 + 4] = 0x83
+            struct.pack_into("<II", mbr, 446 + 8, 8, len(volume) // 512)
+            mbr[510:512] = b"\x55\xaa"
+            partitioned = root / "spiffs-mbr.img"
+            partitioned.write_bytes(mbr + volume)
+            sources.append((partitioned, base, len(volume)))
+
+    for source, base, length in sources:
+        name = "%2Flogs%2Fevent.bin"
+        entry = at(path_id("spiffs:part:0:", f"/{name}"))
+        output = root / f"{source.stem}.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", "/ev/part:0"),
+            cat("read", f"/ev/part:0/{name}", 24991, 14087),
+            cat("empty", "/ev/part:0/%2Fempty"),
+            request("stat", "stat", entry),
+            digest("hash", entry),
+            export("export", entry, output),
+        ])
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "spiffs", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == length
+        if base:
+            assert info["tableScheme"] == "mbr"
+        assert names(rows["root"]) == {"%2Fempty", "%2Fhello.txt", name}
+        assert rows["read"] == hex_of(payload[24991:39078]) and rows["empty"] == hex_of(b"")
+        assert rows["stat"]["size"] == len(payload)
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert output.read_bytes() == payload
+    print("SPIFFS CLI tests passed: signed and unsigned layouts, big endian, MBR, ranges, hash and export")
+
+
+def materialize_sparse_image(packed, source, base, partition_type):
+    archive = zlib.decompress(packed.read_bytes())
+    length, = struct.unpack_from("<Q", archive)
+    source.touch(exist_ok=False)
+    if os.name == "nt":
+        subprocess.run(["fsutil", "sparse", "setflag", source], capture_output=True, check=False)
+    with source.open("r+b") as image:
+        if base:
+            mbr = bytearray(512)
+            mbr[450] = partition_type
+            struct.pack_into("<II", mbr, 454, base // 512, length // 512)
+            mbr[510:512] = b"\x55\xaa"
+            image.write(mbr)
+        offset = 8
+        while offset < len(archive):
+            extent_start, count = struct.unpack_from("<QI", archive, offset)
+            offset += 12
+            assert offset + count <= len(archive) and extent_start + count <= length
+            image.seek(base + extent_start)
+            image.write(archive[offset:offset + count])
+            offset += count
+        image.truncate(base + length)
+    return length
+
+
+def test_hammer(cli, root):
+    fixtures = VENDOR / "hammer-reader/tests/fixtures"
+    live = bytes((i * 17 + i // 47) % 256 for i in range(16384))
+    old = bytes((i * 49 + i // 71) % 256 for i in range(16384))
+    tail = bytes(32768) + b"HAMMER sparse tail"
+    address = "/ev/part:0"
+    snapshot = f"{address}/@snapshots/0000000100000001"
+    for name, base in (("v7-empty", 0), ("v1-content", 0), ("v7-content", 4096)):
+        source = root / f"hammer-{name}.img"
+        length = materialize_sparse_image(fixtures / f"hammer1-{name}.h1z", source, base, 0xA5)
+        entry = at(path_id("hammer:part:0:", "/payload.bin"))
+        output = root / f"hammer-{name}-export.bin"
+        requests = [add(source), ls("root", address)]
+        expected_names = set()
+        if name.endswith("content"):
+            expected_names = {"payload.bin", "same-inode", "latest"}
+            requests.extend([
+                request("file", "stat", entry),
+                request("hardlink", "stat", f"{address}/same-inode"),
+                request("link-meta", "stat", f"{address}/latest"),
+                cat("link", f"{address}/latest", 16000, 1500),
+                cat("tail", entry, 49145, 40),
+                digest("hash", entry),
+                export("export", entry, output),
+            ])
+        if base:
+            expected_names.add("@snapshots")
+            requests.extend([
+                ls("snapshots", f"{address}/@snapshots"),
+                ls("history", snapshot),
+                cat("retired", f"{snapshot}/retired", 16000, 1500),
+                cat("history-link", f"{snapshot}/latest", 16000, 1500),
+                digest("history-hash", f"{snapshot}/payload.bin"),
+            ])
+        rows = cli.results(requests)
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "hammer", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == length
+        assert names(rows["root"]) == expected_names
+        if name.endswith("content"):
+            assert rows["file"]["inode"] == rows["hardlink"]["inode"] == 2
+            assert rows["link-meta"]["linkTarget"] == "payload.bin"
+            assert rows["link"] == hex_of((live + tail)[16000:17500])
+            assert rows["tail"] == hex_of((live + tail)[49145:])
+            assert sha256(rows["hash"]) == "4e04f28fd9244bb9f8d53e63a825952d3796ebc9cc5bd94fd572215e7be74d59"
+            assert output.read_bytes() == live + tail
+        if base:
+            assert info["tableScheme"] == "mbr"
+            assert names(rows["snapshots"]) == {"0000000100000001"}
+            assert names(rows["history"]) == expected_names - {"@snapshots"} | {"retired"}
+            assert rows["retired"] == rows["history-link"] == hex_of((old + tail)[16000:17500])
+            assert sha256(rows["history-hash"]) == hashlib.sha256(old + tail).hexdigest()
+        source.unlink()
+    print("HAMMER CLI tests passed: v1/v7, MBR, snapshot history, links, sparse ranges, hash and export")
+
+
+def test_hammer2(cli, root):
+    fixtures = VENDOR / "hammer2-reader/tests/fixtures"
+    payload = bytes((n * 17 + n // 51) % 256 for n in range(196613))
+    address = "/ev/part:0"
+    for name in ("lz4", "zlib", "mirror", "v1", "snapshot", "mbr"):
+        base = 4096 if name == "mbr" else 0
+        source = root / f"hammer2-{name}.img"
+        packed = fixtures / f"{'lz4' if name == 'mbr' else name}.h2z"
+        length = materialize_sparse_image(packed, source, base, 0xA5)
+
+        entry = at(path_id("hammer2:part:0:", "/DATA/var/log/event.bin"))
+        output = root / f"hammer2-{name}-export.bin"
+        requests = [
+            add(source),
+            ls("pfs", address),
+            cat("data", entry, 65381, 12923),
+            cat("link", f"{address}/DATA/latest", 65381, 12923),
+            cat("sparse", f"{address}/DATA/sparse.bin", 5 * 65536 - 31, 150),
+            request("hi", "stat", f"{address}/DATA/hello"),
+            request("hardlink", "stat", f"{address}/DATA/same-inode"),
+            digest("hash", entry),
+            export("export", entry, output),
+        ]
+        if name == "snapshot":
+            requests.extend([
+                cat("absolute", f"{address}/ARCHIVE/absolute-link", 65381, 12923),
+                request("absolute-stat", "stat", f"{address}/ARCHIVE/absolute-link"),
+            ])
+        rows = cli.results(requests)
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "hammer2", info
+        assert part["startLba"] * info["sectorSize"] == base and part["lengthLba"] * info["sectorSize"] == length
+        expected_pfs = {"DATA", "LOCAL"}
+        if name == "snapshot":
+            expected_pfs.add("ARCHIVE")
+            assert rows["absolute"] == hex_of(payload[65381:78304])
+            assert rows["absolute-stat"]["linkTarget"] == "/var/log/event.bin"
+        assert names(rows["pfs"]) == expected_pfs
+        assert rows["data"] == rows["link"] == hex_of(payload[65381:78304])
+        assert rows["sparse"] == hex_of(bytes(124) + b"hole-tail")
+        assert rows["hi"]["inode"] > 0 and rows["hi"]["inode"] == rows["hardlink"]["inode"], (name, rows["hi"], rows["hardlink"])
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert output.read_bytes() == payload
+        source.unlink()
+    print("HAMMER2 CLI tests passed: v1/v2, current mirror, MBR, PFS snapshots, links, sparse ranges and export")
+
+
+def test_gfs1(cli, root):
+    fixtures = VENDOR / "gfs1-reader/tests/fixtures"
+    address = "/ev/part:0"
+    for block, sparse, base, expected_hash in (
+        (512, 42, 0, "11a0adc308355c21cc464bbf3f1ad6860838fc19ca38b3cd164213a69fd20e37"),
+        (4096, 520, 4096, "30b1d0589647cd7829b5ed17b747edd101f3973cc5c6932f7f5a9d9e47f2dc9b"),
+    ):
+        label = f"gfs1-{block}"
+        source = root / f"{label}.img"
+        length = materialize_sparse_image(fixtures / f"{label}.gfs1z", source, base, 0x83)
+        payload = bytes((i * 11 + i // 43) & 255 for i in range(block))
+        payload += bytes((sparse - 1) * block + 7) + b"GFS1 sparse tail"
+        entry = at(path_id("gfs1:part:0:", "/data/payload.bin"))
+        output = root / f"{label}-export.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", address),
+            ls("data", f"{address}/data"),
+            request("file", "stat", entry),
+            request("hardlink", "stat", f"{address}/data/same-inode"),
+            request("link", "stat", f"{address}/data/latest"),
+            cat("begin", f"{address}/data/latest", block - 11, 73),
+            cat("tail", entry, sparse * block - 23, 99),
+            digest("hash", entry),
+            export("export", entry, output),
+        ])
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "gfs1", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == length
+        if base:
+            assert info["tableScheme"] == "mbr"
+        assert names(rows["root"]) == {"data"}
+        assert names(rows["data"]) == {"empty", "payload.bin", "same-inode", "latest"}
+        assert rows["file"]["inode"] == rows["hardlink"]["inode"] > 0
+        assert rows["link"]["linkTarget"] == "payload.bin"
+        assert rows["begin"] == hex_of(payload[block - 11:block + 62])
+        assert rows["tail"] == hex_of(payload[sparse * block - 23:])
+        assert sha256(rows["hash"]) == expected_hash
+        assert output.read_bytes() == payload
+        source.unlink()
+    print("GFS1 CLI tests passed: native block sizes, MBR, exhash, hard links, indirect sparse ranges and export")
+
+
+def test_reiser4(cli, root):
+    fixtures = VENDOR / "reiser4-reader/tests/fixtures"
+    volume = "/ev/part:0"
+    expected_hash = "1ba2c07e284591e221fc293083eba7ea89a5be0000de60ff9792026f1fbda751"
+    payload = bytes((n * 31 + n // 211) % 256 for n in range(11113))
+    path = "/nested/native-long-name-for-hash.bin"
+    node = at(path_id("reiser4:part:0:", path))
+    for label, base in (("node40-large", 0), ("node41-short", 4096)):
+        source = root / f"reiser4-{label}.img"
+        volume_bytes = zlib.decompress((fixtures / f"{label}.reiser4z").read_bytes())
+        write_partition_image(source, volume_bytes, base, 0x83)
+        output = root / f"reiser4-{label}-export.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", volume),
+            ls("nested", f"{volume}/nested"),
+            request("file", "stat", node),
+            request("tail", "stat", f"{volume}/nested/tail.txt"),
+            request("hardlink", "stat", f"{volume}/hard-link"),
+            request("symbolic", "stat", f"{volume}/symbolic"),
+            cat("link_bytes", f"{volume}/symbolic", 0, 30),
+            cat("range", f"{volume}{path}", 3103, 271),
+            cat("sparse_range", f"{volume}/sparse.bin", 32768 - 17, 75),
+            digest("sparse_hash", f"{volume}/sparse.bin"),
+            digest("hash", node),
+            export("export", node, output),
+        ])
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "reiser4", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == len(volume_bytes)
+        if base:
+            assert info["tableScheme"] == "mbr"
+        assert names(rows["root"]) == {"nested", "hard-link", "sparse.bin", "symbolic"}
+        assert names(rows["nested"]) == {"tail.txt", "native-long-name-for-hash.bin"}
+        assert rows["file"]["inode"] == 0x10002
+        assert rows["tail"]["inode"] == rows["hardlink"]["inode"] > 0
+        assert rows["symbolic"]["linkTarget"] == "nested/tail.txt"
+        assert rows["link_bytes"] == hex_of(b"reiser4 inline bytes\n")
+        assert rows["range"] == hex_of(payload[3103:3374])
+        assert rows["sparse_range"] == hex_of(bytes(17) + payload[:58])
+        assert sha256(rows["sparse_hash"]) == "fa156d414f5af9579eb6d30f917c1629772811682bb39232bc752821fadd2ee6"
+        assert sha256(rows["hash"]) == expected_hash
+        assert output.read_bytes() == payload
+        source.unlink()
+    source = root / "reiser4-zstd1.img"
+    source.write_bytes(zlib.decompress((fixtures / "zstd1.reiser4z").read_bytes()))
+    output = root / "reiser4-zstd1-export.bin"
+    address = f"{volume}/nested/payload.bin"
+    across = 16384 - 31
+    rows = cli.results([
+        add(source),
+        cat("range", address, across, 63),
+        cat("hole", f"{volume}/sparse.bin", 5 * 16384 - 20, 48),
+        digest("hash", address),
+        export("export", address, output),
+    ])
+    assert opened(rows)["partitions"][0]["kind"] == "reiser4"
+    exported = output.read_bytes()
+    expected = "36ae9eb7cf5d0fb38f754d0ec28ebe355e5f4e960d689b119e1f82d42a638849"
+    assert sha256(rows["hash"]) == hashlib.sha256(exported).hexdigest() == expected
+    assert rows["range"] == hex_of(exported[across:across + 63])
+    assert rows["hole"] == hex_of(bytes(20) + b"last bytes of a sparse file\n")
+    source.unlink()
+    print("Reiser4 CLI tests passed: both key sizes, protected nodes, MBR, links, sparse ranges, ctail, hash and export")
+
+
+def test_ocfs1(cli, root):
+    fixture = VENDOR / "ocfs1-reader/tests/fixtures/oraclecfs-12.zlib"
+    raw = zlib.decompress(fixture.read_bytes())
+    volume = "/ev/part:0"
+    path = "/archive/archive-file.dbf"
+    entry = at(path_id("ocfs1:part:0:", path))
+    chunk = 131072
+    payload = b"".join(bytes((i * 29 + i // 193 + run * 7) & 255 for i in range(chunk)) for run in range(4))[:-71]
+    for base in (0, 4096):
+        source = root / f"ocfs1-{base}.img"
+        write_partition_image(source, raw, base, 0x83)
+        output = root / f"ocfs1-{base}-export.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", volume),
+            ls("archive", f"{volume}/archive"),
+            request("file", "stat", entry),
+            request("link", "stat", f"{volume}/shortcut"),
+            cat("direct", f"{volume}/control.bin", 690, 100),
+            cat("cross_leaf", entry, 2 * chunk - 9, 75),
+            cat("empty", f"{volume}/empty.dbf"),
+            digest("hash", f"{volume}/shortcut"),
+            export("export", entry, output),
+        ])
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "ocfs1", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == len(raw)
+        if base:
+            assert info["tableScheme"] == "mbr"
+        assert names(rows["root"]) == {"archive", "control.bin", "shortcut", "empty.dbf"}
+        assert names(rows["archive"]) == {"archive-file.dbf"}
+        assert rows["file"]["size"] == len(payload)
+        assert rows["link"]["linkTarget"] == "archive/archive-file.dbf"
+        assert rows["direct"] == hex_of(bytes((i ^ 0xA5) & 255 for i in range(690, 715)))
+        assert rows["cross_leaf"] == hex_of(payload[2 * chunk - 9:2 * chunk + 66])
+        assert rows["empty"] == hex_of(b"")
+        assert sha256(rows["hash"]) == hashlib.sha256(payload).hexdigest()
+        assert output.read_bytes() == payload
+        source.unlink()
+    print("OCFS1 CLI tests passed: bare and MBR volumes, directory chains, local and external extents, hash and export")
+
+
+def write_partition_image(source, volume_bytes, base, partition_type):
+    if base:
+        mbr = bytearray(base)
+        mbr[450] = partition_type
+        struct.pack_into("<II", mbr, 454, base // 512, len(volume_bytes) // 512)
+        mbr[510:512] = b"\x55\xaa"
+        source.write_bytes(mbr + volume_bytes)
+    else:
+        source.write_bytes(volume_bytes)
+
+
+def test_qnx_etfs(cli, root):
+    fixtures = VENDOR / "qnx-reader/tests/fixtures"
+    volume = "/ev/part:0"
+    for label, base in (("nfi-etfs-old", 0), ("nfi-etfs", 4096), ("nfi-etfs-transactions", 0)):
+        volume_bytes = zlib.decompress((fixtures / f"{label}.zlib").read_bytes())
+        source = root / f"{label}.img"
+        write_partition_image(source, volume_bytes, base, 0x77)
+        message = "/directory_1/directory_1_1/message.txt"
+        entry = at(path_id("qnxetfs:part:0:", message))
+        output = root / f"{label}-export.bin"
+        requests = [
+            add(source),
+            ls("root", volume),
+            request("link", "stat", f"{volume}/directory_1/link_message.txt"),
+            cat("linked", f"{volume}/directory_1/link_message.txt"),
+            export("export", entry, output),
+        ]
+        if label != "nfi-etfs-transactions":
+            with tarfile.open(fixtures / f"{label}.tar.gz") as archive:
+                large = archive.extractfile("this_file_is_large").read()
+            requests.extend([
+                cat("range", f"{volume}/this_file_is_large", 5091, 2089),
+                digest("hash", f"{volume}/this_file_is_large"),
+            ])
+        rows = cli.results(requests)
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "qnxetfs", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == len(volume_bytes)
+        if base:
+            assert info["tableScheme"] == "mbr"
+        assert "this_file_is_removed" not in names(rows["root"])
+        assert "this_file_is_not_renamed" not in names(rows["root"])
+        assert rows["link"]["linkTarget"] == "directory_1_1/message.txt"
+        assert rows["linked"] == hex_of(b"This is a test file system!\n")
+        assert output.read_bytes() == b"This is a test file system!\n"
+        if label != "nfi-etfs-transactions":
+            assert rows["range"] == hex_of(large[5091:7180])
+            assert sha256(rows["hash"]) == hashlib.sha256(large).hexdigest()
+        source.unlink()
+    print("QNX ETFS CLI tests passed: native flash, exact transaction export length, MBR, links, ranges and export")
+
+
+def test_qnx_efs(cli, root):
+    fixtures = VENDOR / "qnx-reader/tests/fixtures"
+    original = zlib.decompress((fixtures / "nfi-efs.zlib").read_bytes())
+    with tarfile.open(fixtures / "nfi-efs.tar.gz") as archive:
+        large = archive.extractfile("this_file_is_large").read()
+    unit = 131072
+    relocated = bytearray(original[unit:2 * unit] + original[:unit] + original[2 * unit:])
+    struct.pack_into("<H", relocated, unit + 52, 1)
+    volume = "/ev/part:0"
+    for label, volume_bytes, base in (("native", original, 0), ("relocated", relocated, 4096)):
+        source = root / f"qnx-efs-{label}.img"
+        write_partition_image(source, volume_bytes, base, 0x77)
+        large_path = f"{volume}/this_file_is_large"
+        entry = at(path_id("qnxefs:part:0:", "/this_file_is_large"))
+        link = f"{volume}/directory_1/link_message.txt"
+        output = root / f"qnx-efs-{label}-export.bin"
+        rows = cli.results([
+            add(source),
+            ls("root", volume),
+            request("link", "stat", link),
+            cat("message", link),
+            cat("range", entry, 1001, 2089),
+            digest("hash", large_path),
+            export("export", entry, output),
+        ])
+        info = opened(rows)
+        part, = info["partitions"]
+        assert part["kind"] == "qnxefs", info
+        assert part["startLba"] * info["sectorSize"] == base
+        assert part["lengthLba"] * info["sectorSize"] == len(volume_bytes)
+        if base:
+            assert info["tableScheme"] == "mbr"
+        assert "this_file_is_removed" not in names(rows["root"])
+        assert "this_file_is_not_renamed" not in names(rows["root"])
+        assert rows["link"]["linkTarget"] == "directory_1_1/message.txt"
+        assert rows["message"] == hex_of(b"This is a test file system!\n")
+        assert rows["range"] == hex_of(large[1001:3090])
+        assert sha256(rows["hash"]) == hashlib.sha256(large).hexdigest()
+        assert output.read_bytes() == large
+        source.unlink()
+    print("QNX EFS CLI tests passed: native flash, relocated logical units, MBR, extents, links, hash and export")
 
 
 def test_formats(cli, root):
@@ -409,6 +1363,32 @@ def test_formats(cli, root):
     assert rows["resource"] == hex_of(hfs_resource[:100])
     assert hfs_resource_export.read_bytes() == hfs_resource
 
+    # HFS wrappers keep the evidence partition and use the inner catalog.
+    fixtures = REPOSITORY / "src-tauri/test_data/hfsplus"
+    for kind in ("hfsplus", "hfsx"):
+        source = root / f"wrapped-{kind}.img"
+        source.write_bytes(zlib.decompress((fixtures / f"wrapped-{kind}.hfsz").read_bytes()))
+        output = root / f"wrapped-{kind}-payload.bin"
+        path = "/ev/part:0/Nested/Payload.bin"
+        entries = [
+            add(source),
+            ls("nested", "/ev/part:0/Nested"),
+            cat("read", path, 4084, 47),
+            digest("hash", path),
+            export("export", path, output),
+        ]
+        if kind == "hfsx":
+            entries.append(cat("lower", "/ev/part:0/Nested/payload.bin"))
+        rows = cli.results(entries)
+        assert opened(rows)["partitions"][0]["kind"] == kind
+        assert "Payload.bin" in names(rows["nested"])
+        exported = output.read_bytes()
+        expected = "ac61e47d19009febed3505e10edcc20d651facb427fbc469d944982dbf941f1a"
+        assert sha256(rows["hash"]) == hashlib.sha256(exported).hexdigest() == expected
+        assert rows["read"] == hex_of(exported[4084:4131])
+        if kind == "hfsx":
+            assert rows["lower"] == hex_of(b"case-sensitive\n")
+
     # Minix V1/V2/V3: all read paths share sparse and indirect mappings.
     for minix_name, zone_size, pointers in [("v1-30-1024-1-be", 2048, 512), ("v2-30-1024-2-le", 4096, 256),
                                             ("v3-60-1024-0-le", 1024, 256)]:
@@ -500,6 +1480,22 @@ def test_formats(cli, root):
         assert any(item["name"] == "nested" and item["kind"] == "dir" for item in rows["list"]["items"])
         assert rows["read"]["data"] == rom_content[8180:8280].hex()
         assert sha256(rows["hash"]) == hashlib.sha256(rom_content).hexdigest()
+
+    for layout in ("extended-le", "extended-be", "v1"):
+        source = rom_fixtures / f"native-{layout}.cramfs"
+        path = "/ev/part:0/program"
+        output = root / f"cramfs-{layout}.bin"
+        rows = cli.results([
+            add(source),
+            cat("range", path, 12280, 44),
+            digest("hash", path),
+            export("export", path, output),
+        ])
+        assert opened(rows)["partitions"][0]["kind"] == "cramfs"
+        exported = output.read_bytes()
+        expected = "4777fda08bd4c1b7ec65be151cfb1ba562bcdde8e696303a91d59342b88e28dc"
+        assert sha256(rows["hash"]) == hashlib.sha256(exported).hexdigest() == expected
+        assert rows["range"] == hex_of(exported[12280:12324])
 
     # Native firmware envelopes retain the established CramFS content paths.
     for wrapper in ("synthetic-uimage.bin", "synthetic-safeloader.bin", "synthetic.chk"):

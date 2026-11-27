@@ -22,6 +22,7 @@ pub mod check;
 pub mod compress;
 pub mod crypt;
 pub mod csum;
+pub mod devices;
 pub mod error;
 pub mod extent;
 pub mod fs;

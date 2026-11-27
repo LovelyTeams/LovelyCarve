@@ -7,52 +7,12 @@ use std::fmt;
 use nom::{number::complete as number, IResult};
 
 use enum_repr_derive::TryFrom;
+use sha2::{Digest, Sha256};
 
 use crate::fletcher::{Fletcher2, Fletcher4};
+use crate::{ZfsError, ZfsErrorKind};
 
-/// The disk label contains the top level metadata for the filesystem
-///
-/// There are four copies of the disk label stored per disk, two at the start and two at the
-/// end of the disk.
-///
-/// The `nv_pairs` contains metadata about the disk including options used when creating the
-/// filesystem. Parsing this datastructure is not currently implemented
-///
-/// The `uberblocks` array contains the most recent uberblocks written, each of which includes a
-/// `BlockPtr` referencing the top level meta object set
-// TODO: implement boot_header and nv_pairs parsing
-#[derive(Debug, Clone)]
-pub struct Label {
-    pub boot_header: Vec<u8>,
-    pub nv_pairs: Vec<u8>,
-    pub uberblocks: Vec<Uberblock>,
-}
-
-impl Label {
-    pub fn parse(input: &[u8]) -> IResult<&[u8], Self> {
-        let (input, (_pad, boot_header, nv_pairs, uberblocks)) = nom::sequence::tuple((
-            nom::bytes::complete::take(8 * 1024usize),
-            nom::bytes::complete::take(8 * 1024usize),
-            nom::bytes::complete::take(112 * 1024usize),
-            nom::bytes::complete::take(128 * 1024usize),
-        ))(input)?;
-        let asize = 12; // TODO: read this from nv_pairs
-        let uberblock_count = 1 << (17 - asize.max(10));
-        let uberblock_size = 1 << asize.max(10);
-        let (_, uberblocks) = nom::multi::count(
-            |i| Uberblock::parse(i, uberblock_size),
-            uberblock_count,
-        )(uberblocks)?;
-        Ok((
-            input,
-            Self {
-                boot_header: boot_header.to_vec(),
-                nv_pairs: nv_pairs.to_vec(),
-                uberblocks,
-            },
-        ))
-    }
-}
+pub use crate::label::Label;
 
 /// The uberblock points to the meta object set for the current transaction group
 #[derive(Debug, Clone)]
@@ -127,7 +87,7 @@ impl Uberblock {
 }
 
 /// Data Virtual Address, a raw pointer of sorts to a location on disk
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct DVA {
     /// The id of the vdev the pointed at blocks reside on
     pub vdev: u32,
@@ -277,7 +237,7 @@ impl ChecksumType {
 /// The data may be compressed using the algorithm specified in `compression_type`
 ///
 /// The data may also be stored inline in the block pointer itself
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BlockPtr {
     /// Either the inline data or the pointer data
     pub embedded: BlockPtrKind,
@@ -306,7 +266,7 @@ pub struct BlockPtr {
 }
 
 /// Fields of the block pointer present when data is not stored inline
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BlockPtrPtr {
     /// Pointers to the data on disk. Each `DVA` points to the same data, stored in a different
     /// location, for redundancy. If only one or two `DVA`s are used the others will be zeroed
@@ -320,14 +280,40 @@ pub struct BlockPtrPtr {
     pub checksum: Checksum,
 }
 
+impl BlockPtrPtr {
+    pub(crate) fn verify_data(&self, bytes: &[u8]) -> Result<(), ZfsError> {
+        let matches = match self.checksum_type {
+            ChecksumType::ZILog | ChecksumType::Fletcher2 => {
+                self.checksum == Fletcher2::parse(bytes)?.1.into()
+            }
+            ChecksumType::On | ChecksumType::Fletcher4 => {
+                self.checksum == Fletcher4::parse(bytes)?.1.into()
+            }
+            ChecksumType::SHA256 => Sha256::digest(bytes)
+                .chunks_exact(8)
+                .zip(self.checksum.checksum)
+                .all(|(bytes, expected)| u64::from_be_bytes(bytes.try_into().unwrap()) == expected),
+            ChecksumType::Off => true,
+            _ => return Err(ZfsErrorKind::UnsupportedFeature.into()),
+        };
+        matches
+            .then_some(())
+            .ok_or_else(|| ZfsErrorKind::Checksum.into())
+    }
+}
+
 /// Whether this `BlockPtr` has data stored inline or not
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BlockPtrKind {
     Ptr(BlockPtrPtr),
     Data { embedded_type: u8, data: Vec<u8> },
 }
 
 impl BlockPtr {
+    pub fn is_hole(&self) -> bool {
+        matches!(&self.embedded, BlockPtrKind::Ptr(ptr) if ptr.addresses.iter().all(|dva| dva.asize == 0))
+    }
+
     pub fn parse(input: &[u8]) -> IResult<&[u8], Self> {
         let (input, (_pad, flags)) = nom::combinator::peek(nom::sequence::tuple((
             nom::bytes::complete::take(6 * 8usize),
@@ -340,8 +326,8 @@ impl BlockPtr {
                 nom::sequence::tuple((number::le_u24, number::le_u8))(input)?;
             let (input, compression_type_embedded) = number::le_u8(input)?;
             let embedded_data = compression_type_embedded & (1 << 7);
-            let compression_type =
-                CompressionType::try_from(compression_type_embedded & ((1 << 7) - 1)).unwrap();
+            let compression_type = CompressionType::try_from(compression_type_embedded & 0x7f)
+                .map_err(|_| nom::Err::Error((input, nom::error::ErrorKind::MapRes)))?;
             let embedded_data = embedded_data != 0;
             let (input, (embedded_type, kind)) =
                 nom::sequence::tuple((number::le_u8, number::le_u8))(input)?;
@@ -399,8 +385,8 @@ impl BlockPtr {
                 nom::sequence::tuple((number::le_u16, number::le_u16))(input)?;
             let (input, compression_type_embedded) = number::le_u8(input)?;
             let embedded_data = compression_type_embedded & (1 << 7);
-            let compression_type =
-                CompressionType::try_from(compression_type_embedded & ((1 << 7) - 1)).unwrap();
+            let compression_type = CompressionType::try_from(compression_type_embedded & 0x7f)
+                .map_err(|_| nom::Err::Error((input, nom::error::ErrorKind::MapRes)))?;
             let embedded_data = embedded_data != 0;
             let (input, (checksum_type, kind)) =
                 nom::sequence::tuple((ChecksumType::parse, number::le_u8))(input)?;

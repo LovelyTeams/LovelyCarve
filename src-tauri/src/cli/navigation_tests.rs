@@ -467,6 +467,14 @@ async fn path_case_fallback_obeys_selected_apple_volume_flags_and_filesystem_kin
         (PartitionKind::HfsPlus, true),
         (PartitionKind::HfsX, false),
         (PartitionKind::Ext4, false),
+        (PartitionKind::Hpfs, true),
+        (PartitionKind::Xdvdfs, true),
+        (PartitionKind::Fatx, true),
+        (PartitionKind::Mfs, true),
+        (PartitionKind::Littlefs, false),
+        (PartitionKind::Spiffs, false),
+        (PartitionKind::Hammer, false),
+        (PartitionKind::Hammer2, false),
     ] {
         let mut image = DiskImage::open_with_id("policy", source.clone()).unwrap();
         image.partitions[0].kind = kind;
@@ -475,10 +483,34 @@ async fn path_case_fallback_obeys_selected_apple_volume_flags_and_filesystem_kin
             super::navigation::case_insensitive(image.clone(), "part:0".into())
                 .await
                 .unwrap(),
-            insensitive
+            insensitive,
+            "{kind:?}"
         );
         assert!(!super::navigation::case_insensitive(image, String::new())
             .await
             .unwrap());
+    }
+    // Directories below a volume's root answer by their file system's ID.
+    let image = Arc::new(EvidenceSession::from(
+        DiskImage::open_with_id("policy", source).unwrap(),
+    ));
+    for (scheme, path, insensitive) in [
+        ("hpfs", "/TREE", true),
+        ("xdvdfs", "/Textures", true),
+        ("fatx", "/Cache", true),
+        ("mfs", "/Folder", true),
+        ("littlefs", "/Logs", false),
+        ("spiffs", "", false),
+        ("hammer", "/@snapshots/0000000100000001", false),
+        ("hammer2", "/DATA", false),
+    ] {
+        let parent = format!("{scheme}:part:0:{}", hex::encode(path));
+        assert_eq!(
+            super::navigation::case_insensitive(image.clone(), parent.clone())
+                .await
+                .unwrap(),
+            insensitive,
+            "{parent}"
+        );
     }
 }

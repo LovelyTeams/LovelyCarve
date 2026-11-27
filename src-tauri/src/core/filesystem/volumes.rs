@@ -38,6 +38,7 @@ pub mod tar;
 pub mod ubi;
 pub mod ubifs;
 pub mod ufs;
+pub mod vmfs;
 pub mod xfs;
 pub mod yaffs2;
 pub mod zfs;

@@ -72,6 +72,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "aix-jfs-reader"
+version = "0.1.0"
+dependencies = [
+ "lamfold",
+]
+
+[[package]]
 name = "alloc-no-stdlib"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -171,11 +178,17 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 name = "apfs"
 version = "0.4.1"
 dependencies = [
+ "aes 0.8.4",
+ "aes-kw",
  "byteorder",
  "cmpfs",
+ "hmac 0.12.1",
+ "sha2 0.10.9",
  "thiserror 2.0.21",
  "unicode-casefold",
  "unicode-normalization",
+ "xts-mode",
+ "zeroize",
 ]
 
 [[package]]
@@ -208,6 +221,17 @@ name = "arrayvec"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
+
+[[package]]
+name = "async-trait"
+version = "0.1.92"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82f6aeea286b8eb4dd3431a1be1b59d290ace00f5bfd8e2a159bc2a05e2c1667"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.8",
+]
 
 [[package]]
 name = "atk"
@@ -310,6 +334,15 @@ name = "befs-reader"
 version = "0.1.0"
 dependencies = [
  "lamfold",
+]
+
+[[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -1869,6 +1902,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fatx-reader"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "lamfold",
+]
+
+[[package]]
 name = "fdeflate"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2272,6 +2313,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gfs1-reader"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "lamfold",
+]
+
+[[package]]
 name = "gfs2-reader"
 version = "0.1.0"
 dependencies = [
@@ -2456,6 +2505,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "hammer-reader"
+version = "0.1.0"
+dependencies = [
+ "crc32c",
+ "crc32fast",
+ "lamfold",
+]
+
+[[package]]
+name = "hammer2-reader"
+version = "0.1.0"
+dependencies = [
+ "crc32c",
+ "lamfold",
+ "lz4_flex 0.13.1",
+ "miniz_oxide 0.9.1",
+ "sha2 0.11.0",
+ "xxhash-rust",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2543,6 +2613,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6303bc9732ae41b04cb554b844a762b4115a61bfaa81e3e83050991eeb56863f"
 dependencies = [
  "digest 0.11.3",
+]
+
+[[package]]
+name = "hpfs-reader"
+version = "0.1.0"
+dependencies = [
+ "encoding_rs",
+ "lamfold",
 ]
 
 [[package]]
@@ -3390,6 +3468,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 
 [[package]]
+name = "littlefs-reader"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "lamfold",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3411,6 +3497,7 @@ dependencies = [
  "ad1-core",
  "aes 0.9.3",
  "aho-corasick",
+ "aix-jfs-reader",
  "amiga-rdb",
  "amiga-reader",
  "anyhow",
@@ -3419,7 +3506,7 @@ dependencies = [
  "base64 0.23.1",
  "bcachefs-reader",
  "befs-reader",
- "bincode",
+ "bincode 2.0.1",
  "binrw",
  "bitlocker-core",
  "btrfs-diskformat",
@@ -3443,16 +3530,21 @@ dependencies = [
  "f2fs-reader",
  "fast-md5",
  "fatfs",
+ "fatx-reader",
  "filevault-core",
  "filevault-forensic",
  "flate2",
  "fs2",
+ "gfs1-reader",
  "gfs2-reader",
  "goblin",
  "gpt",
  "gzipf",
+ "hammer-reader",
+ "hammer2-reader",
  "hex",
  "hfsplus",
+ "hpfs-reader",
  "ios-backup-core",
  "ios-backup-forensic",
  "jaq-core",
@@ -3469,6 +3561,7 @@ dependencies = [
  "lamfold-udf",
  "libloading 0.9.0",
  "librefs",
+ "littlefs-reader",
  "lovelycarve-component-abi",
  "lovelycarve-plugin",
  "lru",
@@ -3477,6 +3570,7 @@ dependencies = [
  "md-5 0.11.0",
  "memchr",
  "memmap2",
+ "mfs-reader",
  "minifs",
  "minix-reader",
  "ms-compress",
@@ -3484,6 +3578,7 @@ dependencies = [
  "notatin",
  "ntfs",
  "ntfs-core",
+ "ocfs1-reader",
  "ocfs2-reader",
  "opencv",
  "parking_lot",
@@ -3500,6 +3595,7 @@ dependencies = [
  "refs-reader",
  "regex",
  "regex-syntax",
+ "reiser4-reader",
  "reiserfs-reader",
  "reqwest",
  "rmp-serde",
@@ -3507,6 +3603,7 @@ dependencies = [
  "rsqlite-vfs 0.2.0",
  "rufs",
  "rusqlite",
+ "ruzstd",
  "semver",
  "sercomm-firmware",
  "serde",
@@ -3516,6 +3613,7 @@ dependencies = [
  "sha2 0.11.0",
  "sm3",
  "smraw",
+ "spiffs-reader",
  "sqlite-core",
  "syn 3.0.8",
  "tar",
@@ -3536,15 +3634,19 @@ dependencies = [
  "udif",
  "umya-spreadsheet",
  "unicode-width",
+ "unixware-bfs-reader",
  "uuid",
  "vdi",
  "veracrypt-core",
  "vhd-core",
  "vhdx-core",
  "vmdk-core",
+ "vmfs-reader",
  "vsc-core",
+ "vxfs-reader",
  "widestring 0.4.3",
  "winapi",
+ "xdvdfs-reader",
  "xfs-fuse",
  "yaffs2-reader",
  "zerocopy",
@@ -3717,6 +3819,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "maybe-async"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "746873a384ad60adc5db74471dfaba74bd278afbdcfd81db93fafcdfc8b5ca0c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "md-5"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3767,6 +3880,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mfs-reader"
+version = "0.1.0"
+dependencies = [
+ "classic-hfs",
+ "lamfold",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3810,6 +3931,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b63fbc4a50860e98e7b2aa7804ded1db5cbc3aff9193adaff57a6931bf7c4b4c"
 dependencies = [
  "adler2",
+ "serde",
  "simd-adler32",
 ]
 
@@ -4371,6 +4493,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ocfs1-reader"
+version = "0.1.0"
+dependencies = [
+ "lamfold",
+]
+
+[[package]]
 name = "ocfs2-reader"
 version = "0.1.0"
 dependencies = [
@@ -4804,6 +4933,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
+name = "proc-bitfield"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "095c6eb206c97ddef87ce3d7e3e492b017093d80bce62317afdf0665df514ade"
+dependencies = [
+ "proc-bitfield-macros",
+ "static_assertions",
+]
+
+[[package]]
+name = "proc-bitfield-macros"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "89409e6b315ead7f4c4d9a79e27dc1e11272f930cbb1fb3d31f2fc64671deb77"
+dependencies = [
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "proc-macro-crate"
 version = "1.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5100,6 +5249,17 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+
+[[package]]
+name = "reiser4-reader"
+version = "0.1.0"
+dependencies = [
+ "adler2",
+ "crc32c",
+ "flate2",
+ "lamfold",
+ "ruzstd",
+]
 
 [[package]]
 name = "reiserfs-reader"
@@ -5538,6 +5698,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-big-array"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11fc7cc2c76d73e0f27ee52abbd64eec84d46f370c88371120433196934e4b7f"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde-untagged"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5919,6 +6088,13 @@ dependencies = [
  "gobject-sys",
  "libc",
  "system-deps",
+]
+
+[[package]]
+name = "spiffs-reader"
+version = "0.1.0"
+dependencies = [
+ "lamfold",
 ]
 
 [[package]]
@@ -7055,6 +7231,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "unixware-bfs-reader"
+version = "0.1.0"
+dependencies = [
+ "lamfold",
+]
+
+[[package]]
 name = "unty"
 version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7217,6 +7400,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "vmfs-reader"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "vsc-core"
 version = "0.2.2"
 dependencies = [
@@ -7242,6 +7432,13 @@ checksum = "fb067e4cbd1ff067d1df46c9194b5de0e98efd2810bbc95c5d5e5f25a3231150"
 dependencies = [
  "cc",
  "libc",
+]
+
+[[package]]
+name = "vxfs-reader"
+version = "0.1.0"
+dependencies = [
+ "lamfold",
 ]
 
 [[package]]
@@ -7878,6 +8075,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "xdvdfs"
+version = "0.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1777c1ccae32a2185ac98adae015aed3fb06242084b5e7f8b08a811fe0e7b936"
+dependencies = [
+ "async-trait",
+ "bincode 1.3.3",
+ "encoding_rs",
+ "maybe-async",
+ "proc-bitfield",
+ "serde",
+ "serde-big-array",
+]
+
+[[package]]
+name = "xdvdfs-reader"
+version = "0.1.0"
+dependencies = [
+ "lamfold",
+ "xdvdfs",
+]
+
+[[package]]
 name = "xfs-fuse"
 version = "0.6.0"
 dependencies = [
@@ -8041,6 +8261,7 @@ dependencies = [
  "enum-repr-derive",
  "lz4_flex 0.11.6",
  "nom 5.1.3",
+ "sha2 0.10.9",
  "thiserror 1.0.69",
 ]
 

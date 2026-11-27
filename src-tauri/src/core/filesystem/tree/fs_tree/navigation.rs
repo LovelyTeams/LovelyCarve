@@ -202,6 +202,38 @@ pub(super) fn children_for_image_with_options(
                 crate::core::filesystem::volumes::rom_images::open_qnx4_source(image, partition.id)?
                     .root_children()
             }
+            PartitionKind::Mfs => {
+                crate::core::filesystem::volumes::rom_images::open_mfs_source(image, partition.id)?
+                    .root_children()
+            }
+            PartitionKind::Littlefs => {
+                crate::core::filesystem::volumes::rom_images::open_littlefs_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
+            PartitionKind::Spiffs => {
+                crate::core::filesystem::volumes::rom_images::open_spiffs_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
+            PartitionKind::Hammer => {
+                crate::core::filesystem::volumes::rom_images::open_hammer_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
+            PartitionKind::Hammer2 => {
+                crate::core::filesystem::volumes::rom_images::open_hammer2_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
             PartitionKind::Hfs => {
                 crate::core::filesystem::volumes::rom_images::open_hfs_source(image, partition.id)?
                     .root_children()
@@ -209,6 +241,13 @@ pub(super) fn children_for_image_with_options(
             PartitionKind::Jfs => {
                 crate::core::filesystem::volumes::rom_images::open_jfs_source(image, partition.id)?
                     .root_children()
+            }
+            PartitionKind::Reiser4 => {
+                crate::core::filesystem::volumes::rom_images::open_reiser4_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
             }
             PartitionKind::Reiserfs => {
                 crate::core::filesystem::volumes::rom_images::open_reiserfs_source(
@@ -221,9 +260,20 @@ pub(super) fn children_for_image_with_options(
                 crate::core::filesystem::volumes::rom_images::open_befs_source(image, partition.id)?
                     .root_children()
             }
+            PartitionKind::Gfs1 => {
+                crate::core::filesystem::volumes::rom_images::open_gfs1_source(image, partition.id)?
+                    .root_children()
+            }
             PartitionKind::Gfs2 => {
                 crate::core::filesystem::volumes::rom_images::open_gfs2_source(image, partition.id)?
                     .root_children()
+            }
+            PartitionKind::Ocfs1 => {
+                crate::core::filesystem::volumes::rom_images::open_ocfs1_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
             }
             PartitionKind::Ocfs2 => {
                 crate::core::filesystem::volumes::rom_images::open_ocfs2_source(
@@ -238,6 +288,43 @@ pub(super) fn children_for_image_with_options(
                     partition.id,
                 )?
                 .root_children()
+            }
+            PartitionKind::Fatx => {
+                crate::core::filesystem::volumes::rom_images::open_fatx_source(image, partition.id)?
+                    .root_children()
+            }
+            PartitionKind::Xdvdfs => {
+                crate::core::filesystem::volumes::rom_images::open_xdvdfs_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
+            PartitionKind::UnixwareBfs => {
+                crate::core::filesystem::volumes::rom_images::open_unixware_bfs_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
+            PartitionKind::AixJfs => {
+                crate::core::filesystem::volumes::rom_images::open_aix_jfs_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
+            PartitionKind::Vxfs => {
+                crate::core::filesystem::volumes::rom_images::open_vxfs_source(image, partition.id)?
+                    .root_children()
+            }
+            PartitionKind::Hpfs => {
+                crate::core::filesystem::volumes::rom_images::open_hpfs_source(image, partition.id)?
+                    .root_children()
+            }
+            PartitionKind::Vmfs => {
+                crate::core::filesystem::volumes::vmfs::open_vmfs_source(image, partition.id)?
+                    .root_children()
             }
             PartitionKind::Bcachefs => {
                 crate::core::filesystem::volumes::rom_images::open_bcachefs_source(
@@ -268,6 +355,20 @@ pub(super) fn children_for_image_with_options(
                 crate::core::filesystem::volumes::rom_images::open_qnx6_source(image, partition.id)?
                     .root_children()
             }
+            PartitionKind::QnxEtfs => {
+                crate::core::filesystem::volumes::rom_images::open_qnxetfs_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
+            PartitionKind::QnxEfs => {
+                crate::core::filesystem::volumes::rom_images::open_qnxefs_source(
+                    image,
+                    partition.id,
+                )?
+                .root_children()
+            }
             PartitionKind::F2fs => {
                 crate::core::filesystem::volumes::rom_images::open_f2fs_source(image, partition.id)?
                     .root_children()
@@ -297,7 +398,7 @@ pub(super) fn children_for_image_with_options(
                 partition,
             )?
             .root_children(),
-            PartitionKind::ApfsContainer => apfs_volume_nodes(Arc::clone(image), partition),
+            PartitionKind::ApfsContainer => apfs_browse_nodes(image, partition),
             PartitionKind::HfsPlus | PartitionKind::HfsX => {
                 HfsPlusVolume::open(Arc::clone(image), partition)?.root_children()
             }

@@ -13,7 +13,7 @@
 
 - Standalone Cargo workspace, `rlib` only, no automatic binaries/examples;
   upstream integration tests, build scripts and CI orchestration are not
-  vendored. The 69 source-local read/check/crypto tests remain runnable.
+  vendored. The source-local read/check/crypto tests remain runnable.
 - C ABI moved behind an opt-in `capi` feature; the application enables neither
   it nor `write` / `cli`. Evidence implements only `BlockRead`.
 - Public component lookup and directory-entry conversion preserve `Node`'s
@@ -24,6 +24,9 @@
   window, including shared reflink extents. Check physical spans against the
   member's declared geometry, reject logical size underflow, and cap one
   checked/decompressed region at 64 MiB before allocation.
+- Bind tree nodes, journals and data extents to their member-device index.
+  Validate the newest complete member table and its recorded write sequences,
+  and try other recorded pointer copies when one fails verification.
 - Three `chunks_exact` loops use equivalent `as_chunks` on the repository's
   Rust toolchain; SipHash's published vector remains a regression.
 

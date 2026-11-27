@@ -20,6 +20,8 @@ use {
     },
 };
 
+use crate::core::filesystem::volumes::apfs::has_live_apfs_roots;
+
 pub(crate) async fn page(
     state: State<'_, AppState>,
     image_id: ImageId,
@@ -35,7 +37,11 @@ pub(crate) async fn page(
     };
     let limit =
         crate::commands::filesystem::filesystem_page::normalize_fs_node_page_size(page_size);
-    let targets = index_targets(&state, &image, &image_id, IndexCoverage::Any).await;
+    let targets = if has_live_apfs_roots(&image, &parent_id) {
+        Vec::new()
+    } else {
+        index_targets(&state, &image, &image_id, IndexCoverage::Any).await
+    };
     let indexed = tokio::task::spawn_blocking({
         let parent_id = parent_id.clone();
         let query = query.clone();

@@ -1,6 +1,7 @@
 //! Encrypted volumes: what a partition or container is encrypted with, and
-//! one `unlock` for BitLocker, LUKS, VeraCrypt, FileVault and iOS backups.
-//! The disk schemes share one backend unlock and differ only in credentials.
+//! one `unlock` for BitLocker, LUKS, VeraCrypt, FileVault, APFS and iOS
+//! backups. The disk schemes share one backend unlock and differ only in
+//! credentials.
 use clap::{Args, ValueEnum};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -13,12 +14,15 @@ use crate::{
         workspace::Target,
         CliError, Output,
     },
-    core::evidence::crypto::{
-        encrypted_image::{
-            EncryptionScheme, UnlockCredential, UnlockOptions, UnlockTarget, VeracryptHeader,
-            VeracryptPrf,
+    core::{
+        evidence::crypto::{
+            encrypted_image::{
+                EncryptionScheme, UnlockCredential, UnlockOptions, UnlockTarget, VeracryptHeader,
+                VeracryptPrf,
+            },
+            filevault::InspectOptions,
         },
-        filevault::InspectOptions,
+        filesystem::volumes::apfs::{parse_apfs_id, ApfsSource},
     },
 };
 
@@ -39,6 +43,7 @@ pub enum Scheme {
     Luks,
     Veracrypt,
     Filevault,
+    Apfs,
     Ios,
 }
 
@@ -154,7 +159,7 @@ pub struct UnlockArgs {
     #[arg(long = "keyfile", value_parser = parse_host_path, value_name = "文件")]
     #[serde(default)]
     pub keyfiles: Vec<HostPath>,
-    /// FileVault：逻辑卷序号（encryption 输出的 index）
+    /// FileVault 逻辑卷或 APFS 卷的序号（encryption 输出的 index）
     #[arg(long, value_name = "序号")]
     pub logical_volume: Option<usize>,
     /// FileVault：本地 EncryptedRoot.plist(.wipekey)
@@ -279,6 +284,29 @@ pub async fn encryption(exec: &Exec, args: EncryptionArgs) -> Result<Output, Cli
             json!({"scheme": "filevault", "unlocked": is_unlocked,
                 "inventory": serde_json::to_value(crate::cli::wire::Camel(inventory))?})
         }
+        (Some(number), _) if kind.as_deref() == Some("apfscontainer") => {
+            let mut volumes = crate::commands::evidence::encrypted_volume::apfs_inspect(
+                exec.state(),
+                target.image_id().clone(),
+                number,
+            )
+            .await
+            .map_err(operation("apfs_inspect"))?;
+            // An address inside a volume asks about that volume.
+            if let Some(index) = apfs_volume_of(&target) {
+                volumes.retain(|volume| volume.index == index);
+            }
+            let encrypted = volumes.iter().any(|volume| volume.encrypted);
+            let unlocked = volumes
+                .iter()
+                .all(|volume| !volume.encrypted || volume.unlocked);
+            let volumes = serde_json::to_value(crate::cli::wire::Camel(volumes))?;
+            if encrypted {
+                json!({"scheme": "apfs", "unlocked": unlocked, "volumes": volumes})
+            } else {
+                json!({"scheme": null, "partitionKind": kind, "volumes": volumes})
+            }
+        }
         (Some(_), Some(scheme)) => json!({"scheme": scheme, "unlocked": is_unlocked}),
         (Some(_), None) => json!({"scheme": null, "partitionKind": kind}),
         (None, _) if !info["iosBackup"].is_null() => {
@@ -299,12 +327,13 @@ pub async fn unlock(exec: &Exec, args: UnlockArgs) -> Result<Output, CliError> {
         (None, Some("bitlocker")) => Scheme::Bitlocker,
         (None, Some("luks")) => Scheme::Luks,
         (None, Some("filevault")) => Scheme::Filevault,
+        (None, Some("apfscontainer")) => Scheme::Apfs,
         (None, _) if number.is_none() && !info["iosBackup"].is_null() => Scheme::Ios,
         (None, kind) => {
             return Err(CliError::new(
                 "usage",
                 format!(
-                "无法识别 {} 的加密类型{}；用 --scheme bitlocker|luks|veracrypt|filevault|ios 指定",
+                    "无法识别 {} 的加密类型{}；用 --scheme bitlocker|luks|veracrypt|filevault|apfs|ios 指定",
                 target.address(),
                 kind.map(|kind| format!("（分区类型 {kind}）"))
                     .unwrap_or_default()
@@ -318,6 +347,7 @@ pub async fn unlock(exec: &Exec, args: UnlockArgs) -> Result<Output, CliError> {
         Scheme::Luks => EncryptionScheme::Luks,
         Scheme::Veracrypt => EncryptionScheme::Veracrypt,
         Scheme::Filevault => EncryptionScheme::Filevault,
+        Scheme::Apfs => EncryptionScheme::Apfs,
     };
     if let Some(memory) = &args.vmk_from {
         return vmk_from_memory(exec, &target, number, scheme, memory, &args).await;
@@ -478,6 +508,11 @@ async fn volume(
     let header = args.header.map_or(VeracryptHeader::Auto, HeaderArg::header);
     let system_drive = header == VeracryptHeader::System && number.is_none();
     let in_place = !args.new_image && args.offset.is_none() && !system_drive;
+    let logical_volume_index = if scheme == EncryptionScheme::Apfs {
+        apfs_volume_slot(target, args.logical_volume)?
+    } else {
+        args.logical_volume
+    };
     let options = UnlockOptions {
         target: if in_place {
             UnlockTarget::SourcePartition
@@ -493,7 +528,7 @@ async fn volume(
         pim: args.pim,
         prf: args.prf.map(PrfArg::prf),
         keyfiles: args.keyfiles.iter().map(HostPath::text).collect(),
-        logical_volume_index: args.logical_volume,
+        logical_volume_index,
         encrypted_root_plist_path: args.plist.as_ref().map(HostPath::text),
     };
     let result = crate::commands::evidence::encrypted_volume::encrypted_volume_unlock(
@@ -509,6 +544,9 @@ async fn volume(
     let path = if image_id == *target.image_id() {
         // The decrypted volume, where the source evidence now shows it.
         match (&result.volume_key, number) {
+            (Some(volume), _) if scheme == EncryptionScheme::Apfs => {
+                apfs_volume_address(exec, target, volume).await?
+            }
             (Some(volume), _) => format!("/{}/{volume}", target.evidence.alias),
             (None, Some(number)) => format!("/{}/part:{number}", target.evidence.alias),
             (None, None) => format!("/{}", target.evidence.alias),
@@ -524,6 +562,79 @@ async fn volume(
     value["path"] = json!(path);
     Ok(value)
 }
+
+/// The APFS volume slot an address lies in: none for the container itself,
+/// nor for the legacy IDs that do not name their volume.
+fn apfs_volume_of(target: &Target) -> Option<usize> {
+    target
+        .location
+        .iter()
+        .find_map(|(_, id)| match parse_apfs_id(id)? {
+            (ApfsSource::Partition { volume_index, .. }, _) => Some(volume_index),
+            (ApfsSource::LegacyPartition(_), _) => None,
+        })
+}
+
+/// The APFS volume slot an unlock opens: the volume the address names, or the
+/// `--logical-volume` given with the container's address (none: the
+/// container's only encrypted volume).
+fn apfs_volume_slot(target: &Target, given: Option<usize>) -> Result<Option<usize>, CliError> {
+    match parse_apfs_id(target.node_id()) {
+        Some((
+            ApfsSource::Partition {
+                volume_index,
+                snapshot_xid: None,
+                ..
+            },
+            path,
+        )) if path.is_empty() => {
+            if given.is_some_and(|index| index != volume_index) {
+                return Err(CliError::new(
+                    "usage",
+                    format!(
+                        "{} 是 APFS 卷 {volume_index}，与 --logical-volume 不一致",
+                        target.address()
+                    ),
+                ));
+            }
+            Ok(Some(volume_index))
+        }
+        Some(_) => Err(CliError::new(
+            "usage",
+            "APFS 解锁的地址须是容器分区或卷的根目录（ls 容器分区列出各卷）",
+        )),
+        None => Ok(given),
+    }
+}
+
+/// The address of an unlocked APFS volume: its entry in the container, as
+/// `ls` of the container lists it.
+async fn apfs_volume_address(
+    exec: &Exec,
+    target: &Target,
+    volume: &str,
+) -> Result<String, CliError> {
+    if target.node_id() == volume {
+        return Ok(target.address());
+    }
+    let container = target
+        .location
+        .first()
+        .cloned()
+        .ok_or_else(|| crate::cli::internal_error("APFS 解锁结果没有容器分区"))?;
+    let mut location = vec![container, (String::new(), volume.to_owned())];
+    let image_id = target.image_id();
+    let mut page = |parent: String, cursor, limit| exec.page(image_id, parent, cursor, limit);
+    let entry = crate::cli::browsing::node(&location, &mut page)
+        .await?
+        .ok_or_else(|| crate::cli::internal_error("APFS 容器中没有解锁的卷"))?;
+    location[1].0 = entry.name;
+    Ok(crate::cli::workspace::cli_path(
+        &target.evidence.alias,
+        &location,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

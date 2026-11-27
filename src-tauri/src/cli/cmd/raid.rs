@@ -25,7 +25,7 @@ pub struct RaidArgs {
 #[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RaidCommand {
-    /// 识别并组装已打开检材中的 mdadm、LVM 与固件 RAID；无元数据的等大成员盘按 RAID0/5 推定
+    /// 识别并组装已打开检材中的 mdadm、LVM、固件 RAID 与跨盘的 Btrfs、bcachefs、ZFS、APFS Fusion、VMFS；无元数据的等大成员盘按 RAID0/5 推定
     Detect(DetectArgs),
     /// 按给定几何手动组装 RAID
     Assemble(AssembleArgs),

@@ -82,11 +82,11 @@ Each entry is a command's synopsis and its description. Positional arguments com
   检材中的分区与卷：文件系统、加密与索引状态
 - `encryption <路径> [--plist <文件>]`
   加密卷的类型、状态与元数据
-- `unlock <路径> [--scheme <bitlocker|luks|veracrypt|filevault|ios>] [--password[=<@文件>]] [--recovery-password[=<@文件>]] [--startup-key <文件>] [--fvek[=<@文件>]] [--tweak[=<@文件>]] [--vmk[=<@文件>]] [--vmk-from <内存镜像>] [--master-key[=<@文件>]] [--pim <pim>] [--header <auto|normal|hidden|backup|system>] [--prf <sha512|sha256|blake2s|whirlpool|streebog|ripemd160|argon2id>] [--keyfile <文件>…] [--logical-volume <序号>] [--plist <文件>] [--offset <offset>] [--length <length>] [--new-image] [--as <别名>]`
-  解锁 BitLocker、LUKS、VeraCrypt、FileVault 或加密的 iOS 备份
+- `unlock <路径> [--scheme <bitlocker|luks|veracrypt|filevault|apfs|ios>] [--password[=<@文件>]] [--recovery-password[=<@文件>]] [--startup-key <文件>] [--fvek[=<@文件>]] [--tweak[=<@文件>]] [--vmk[=<@文件>]] [--vmk-from <内存镜像>] [--master-key[=<@文件>]] [--pim <pim>] [--header <auto|normal|hidden|backup|system>] [--prf <sha512|sha256|blake2s|whirlpool|streebog|ripemd160|argon2id>] [--keyfile <文件>…] [--logical-volume <序号>] [--plist <文件>] [--offset <offset>] [--length <length>] [--new-image] [--as <别名>]`
+  解锁 BitLocker、LUKS、VeraCrypt、FileVault、APFS 或加密的 iOS 备份
   (needs a case backend, shell or batch)
 - `raid detect [--member <别名>…] [--degraded <uuid>…]`
-  识别并组装已打开检材中的 mdadm、LVM 与固件 RAID；无元数据的等大成员盘按 RAID0/5 推定
+  识别并组装已打开检材中的 mdadm、LVM、固件 RAID 与跨盘的 Btrfs、bcachefs、ZFS、APFS Fusion、VMFS；无元数据的等大成员盘按 RAID0/5 推定
 - `raid assemble --members <别名>… --level <level> [--layout <layout>] [--chunk-sectors <chunk-sectors>] [--data-offset-sectors <data-offset-sectors>] [--missing <列>…] [--as <别名>]`
   按给定几何手动组装 RAID
   (needs a case backend, shell or batch)

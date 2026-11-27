@@ -3,6 +3,7 @@ use std::io::{Cursor, Read, Seek, SeekFrom};
 
 use crate::error::{ApfsError, Result};
 use crate::fletcher;
+use crate::omap::Mapping;
 
 // Object type constants (lower 16 bits of type_and_flags)
 pub const OBJECT_TYPE_NX_SUPERBLOCK: u32 = 0x01;
@@ -75,16 +76,21 @@ pub fn read_object<R: Read + Seek>(
     block_number: u64,
     block_size: u32,
 ) -> Result<(ObjectHeader, Vec<u8>)> {
-    let offset = block_number
-        .checked_mul(u64::from(block_size))
-        .ok_or_else(|| ApfsError::CorruptedData("object offset overflow".into()))?;
-    if !(4096..=65536).contains(&block_size) || !block_size.is_power_of_two() {
-        return Err(ApfsError::CorruptedData("invalid object block size".into()));
-    }
-    reader.seek(SeekFrom::Start(offset))?;
+    read_mapped_object(reader, block_number.into(), block_size, None)
+}
 
-    let mut block = vec![0u8; block_size as usize];
-    reader.read_exact(&mut block)?;
+pub(crate) fn read_mapped_object<R: Read + Seek>(
+    reader: &mut R,
+    mapping: Mapping,
+    block_size: u32,
+    cipher: Option<&crate::crypto::VolumeCipher>,
+) -> Result<(ObjectHeader, Vec<u8>)> {
+    let mut block = read_block(reader, mapping.block, block_size)?;
+    if mapping.encrypted {
+        let cipher = cipher.ok_or(ApfsError::Locked)?;
+        let sector = mapping.block * u64::from(block_size) / crate::crypto::CRYPTO_SECTOR as u64;
+        cipher.decrypt(&mut block, sector);
+    }
 
     if !fletcher::verify_object(&block) {
         return Err(ApfsError::InvalidChecksum);

@@ -332,3 +332,211 @@ fn udf_name_and_timestamp_invalid_values_are_explicit() {
         assert!(descriptors::timestamp(&stamp).is_err());
     }
 }
+
+fn metadata_fixture(revision: u16) -> Vec<u8> {
+    let compressed = match revision {
+        0x0250 => include_bytes!("../tests/fixtures/metadata-250.zlib").as_slice(),
+        0x0260 => include_bytes!("../tests/fixtures/metadata-260.zlib").as_slice(),
+        _ => panic!("test metadata revision"),
+    };
+    decompress_map_fixture(compressed)
+}
+
+fn decompress_map_fixture(compressed: &[u8]) -> Vec<u8> {
+    let mut image = Vec::new();
+    flate2::read::ZlibDecoder::new(compressed)
+        .read_to_end(&mut image)
+        .unwrap();
+    image
+}
+
+#[test]
+fn udf_mapped_partitions_read_directories_ranges_and_cross_packet_extents() {
+    for (index, (compressed, last_name)) in [
+        (
+            include_bytes!("../tests/fixtures/metadata-250.zlib").as_slice(),
+            "late.txt",
+        ),
+        (
+            include_bytes!("../tests/fixtures/metadata-260.zlib").as_slice(),
+            "late.txt",
+        ),
+        (
+            include_bytes!("../tests/fixtures/vat-150.zlib").as_slice(),
+            "中文.txt",
+        ),
+        (
+            include_bytes!("../tests/fixtures/vat-201.zlib").as_slice(),
+            "中文.txt",
+        ),
+        (
+            include_bytes!("../tests/fixtures/sparable.zlib").as_slice(),
+            "中文.txt",
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let image = decompress_map_fixture(compressed);
+        let mut reader = open(&image).unwrap();
+        let mut cache = BlockCache::new(0);
+        let mut context = SubstrateCtx {
+            cache: &mut cache,
+            verifier: &NoVerifier,
+        };
+        let root = reader.root();
+        let entries = reader
+            .read_dir(root, &mut context)
+            .unwrap_or_else(|error| panic!("partition fixture {index}: {error:?}"));
+        assert_eq!(entries.len(), if last_name == "late.txt" { 8 } else { 7 });
+        let big = reader
+            .lookup(root, "big.bin", &mut context)
+            .unwrap()
+            .unwrap();
+        let alias = reader
+            .lookup(root, "alias.bin", &mut context)
+            .unwrap()
+            .unwrap();
+        assert_eq!(big, alias);
+        let late = reader
+            .lookup(root, last_name, &mut context)
+            .unwrap()
+            .unwrap();
+        let mut inline = [0; 10];
+        assert_eq!(
+            reader.read_at(late, 0, &mut inline, &mut context).unwrap(),
+            10
+        );
+        assert_eq!(&inline, b"hello UDF\n");
+
+        let mut bytes = vec![0xff; 4 * 2048 + 37];
+        let expected: Vec<_> = (0..bytes.len())
+            .map(|index| match index {
+                0..2048 => ((index * 17 + 3) & 255) as u8,
+                2048..6144 => 0,
+                _ => (((index - 6144) * 19 + 5) & 255) as u8,
+            })
+            .collect();
+        assert_eq!(
+            reader.read_at(big, 0, &mut bytes, &mut context).unwrap(),
+            expected.len()
+        );
+        assert_eq!(bytes, expected);
+        for offset in [2041, 4090, 6112, expected.len() - 7, expected.len()] {
+            let mut part = [0xff; 63];
+            let count = reader
+                .read_at(big, offset as u64, &mut part, &mut context)
+                .unwrap();
+            assert_eq!(
+                &part[..count],
+                &expected[offset..(offset + part.len()).min(expected.len())]
+            );
+        }
+    }
+}
+
+#[test]
+fn udf_metadata_partition_recovers_with_mirror_and_rejects_bad_maps() {
+    const BLOCK: usize = 2048;
+    const BASE: usize = 300;
+    let original = metadata_fixture(0x0260);
+    for address in [10, 64, 65] {
+        let mut image = original.clone();
+        image[(BASE + address) * BLOCK + 8] ^= 1;
+        assert!(!directory_error(&image));
+        let mirror = match address {
+            10 => 11,
+            64 => 160,
+            65 => 161,
+            _ => unreachable!(),
+        };
+        image[(BASE + mirror) * BLOCK + 8] ^= 1;
+        assert!(directory_error(&image));
+    }
+    for (relative, value) in [(256, 1), (478, 8), (493, 4), (499, 1)] {
+        let mut image = original.clone();
+        for block in [33, 49] {
+            image[block * BLOCK + relative] = value;
+            repair_tag(&mut image, block * BLOCK);
+        }
+        assert!(open(&image).is_err(), "invalid LVD field at {relative}");
+    }
+    for (relative, value) in [(216, 0x4001_0000u32), (220, 288), (216, 2048)] {
+        let mut image = original.clone();
+        for descriptor in [10, 11] {
+            let start = (BASE + descriptor) * BLOCK;
+            // Both copies have distinct extent plans. Break the first extent or its length.
+            image[start + relative..start + relative + 4].copy_from_slice(&value.to_le_bytes());
+            repair_tag(&mut image, start);
+        }
+        assert!(open(&image).is_err());
+    }
+}
+
+#[test]
+fn udf_sparing_table_recovers_copy_and_rejects_conflicting_or_truncated_copies() {
+    const BLOCK: usize = 2048;
+    let original = decompress_map_fixture(include_bytes!("../tests/fixtures/sparable.zlib"));
+    let mut image = original.clone();
+    image[96 * BLOCK + 8] ^= 1;
+    assert!(!directory_error(&image));
+    image[80 * BLOCK + 8] ^= 1;
+    assert!(open(&image).is_err());
+
+    let mut image = original;
+    let old = 80 * BLOCK;
+    image[old + 52..old + 56].copy_from_slice(&2u32.to_le_bytes());
+    image[old + 60..old + 64].copy_from_slice(&592u32.to_le_bytes());
+    repair_tag(&mut image, old);
+    assert!(open(&image).is_err());
+
+    for table in [80, 96] {
+        let start = table * BLOCK;
+        image[start + 60..start + 64].copy_from_slice(&640u32.to_le_bytes());
+        repair_tag(&mut image, start);
+    }
+    assert!(open(&image).is_err());
+}
+
+#[test]
+fn udf_vat_rejects_unmapped_root_bad_header_and_out_of_recording_entries() {
+    const BLOCK: usize = 2048;
+    let original = decompress_map_fixture(include_bytes!("../tests/fixtures/vat-201.zlib"));
+    for (relative, replacement) in [(0, 153u32), (152, u32::MAX), (156, 300)] {
+        let mut image = original.clone();
+        let offset = 500 * BLOCK + relative;
+        image[offset..offset + 4].copy_from_slice(&replacement.to_le_bytes());
+        assert!(open(&image).is_err(), "invalid VAT field at {relative}");
+    }
+    assert!(open(&original[..original.len() - BLOCK]).is_err());
+}
+
+#[test]
+fn udf_mkudffs_reference_virtual_and_sparable_volumes() {
+    for (name, fixture) in [
+        (
+            "VAT 1.50",
+            include_bytes!("../tests/fixtures/mkudffs-vat150.zlib").as_slice(),
+        ),
+        (
+            "VAT 2.01",
+            include_bytes!("../tests/fixtures/mkudffs-vat201.zlib").as_slice(),
+        ),
+        (
+            "sparable",
+            include_bytes!("../tests/fixtures/mkudffs-sparable.zlib").as_slice(),
+        ),
+    ] {
+        let image = decompress_map_fixture(fixture);
+        let mut reader = open(&image).unwrap_or_else(|error| panic!("{name}: {error:?}"));
+        let mut cache = BlockCache::new(0);
+        let mut context = SubstrateCtx {
+            cache: &mut cache,
+            verifier: &NoVerifier,
+        };
+        assert!(reader
+            .read_dir(reader.root(), &mut context)
+            .unwrap()
+            .is_empty());
+    }
+}

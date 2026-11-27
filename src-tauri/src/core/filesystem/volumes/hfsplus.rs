@@ -11,7 +11,7 @@
 //! volume root and is never emitted directly — the partition node itself
 //! stands in for the root.
 
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
@@ -21,6 +21,10 @@ use hfsplus::{EntryKind, HfsVolume};
 use crate::core::common::error::Failure;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{DiskImage, Partition};
+use crate::core::evidence::partitions::hfsplus::{
+    WrappedHfsPlus, HFS_MDB_SIZE, HFS_VOLUME_HEADER_OFFSET,
+};
+use crate::core::evidence::partitions::partition_cursor::PartitionCursor;
 use crate::core::filesystem::tree::fs_tree::{
     detect_mime_bytes, shannon_entropy, FsDataRun, FsNode, FsStat, Mactb, NodeKind,
 };
@@ -66,34 +70,39 @@ pub fn open_hfsplus_source(image: &Arc<DiskImage>, source: HfsPlusSource) -> Res
 }
 
 pub struct HfsPlusVolume {
-    image: Arc<DiskImage>,
     partition_id: u8,
-    base_offset: u64,
-    length_bytes: u64,
+    cursor: PartitionCursor,
+    embedded_signature: Option<u16>,
+    decrypted: bool,
 }
 
 impl HfsPlusVolume {
     pub fn open(image: Arc<DiskImage>, partition: &Partition) -> Result<Self> {
-        let sector_size = image.sector_size as u64;
-        let base_offset = partition
-            .start_lba
-            .checked_mul(sector_size)
-            .ok_or_else(|| anyhow!(Failure::corrupt("HFS+ partition offset overflow")))?;
-        let length_bytes = partition
-            .length_lba
-            .checked_mul(sector_size)
-            .ok_or_else(|| anyhow!(Failure::corrupt("HFS+ partition length overflow")))?;
-        anyhow::ensure!(
-            base_offset
-                .checked_add(length_bytes)
-                .is_some_and(|end| end <= image.len()),
-            "HFS+ partition exceeds evidence"
-        );
+        let mut cursor = PartitionCursor::new(Arc::clone(&image), partition)?;
+        let wrapper = if cursor.length_bytes >= (HFS_VOLUME_HEADER_OFFSET + HFS_MDB_SIZE) as u64 {
+            // An unreadable primary is left to the HFS+ reader's alternate-header path.
+            match image.read_range(
+                cursor.base_offset + HFS_VOLUME_HEADER_OFFSET as u64,
+                HFS_MDB_SIZE,
+            ) {
+                Ok(mdb) => WrappedHfsPlus::parse(&mdb, cursor.length_bytes)?,
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+        if let Some(wrapper) = wrapper {
+            cursor.base_offset += wrapper.offset;
+            cursor.length_bytes = wrapper.length;
+        }
         let volume = Self {
-            image,
             partition_id: partition.id,
-            base_offset,
-            length_bytes,
+            cursor,
+            embedded_signature: wrapper.map(|wrapper| wrapper.signature),
+            decrypted: matches!(
+                image.derived,
+                Some(crate::core::evidence::image::DerivedImage::Decrypted { .. })
+            ),
         };
         // Eager-validate the volume header so the caller sees parse errors
         // at open time instead of only when listing the root.
@@ -268,11 +277,7 @@ impl HfsPlusVolume {
             };
 
             let mime = detect_mime_bytes(&sample).to_string();
-            let data_runs = if compressed
-                || matches!(
-                    self.image.derived,
-                    Some(crate::core::evidence::image::DerivedImage::Decrypted { .. })
-                ) {
+            let data_runs = if compressed || self.decrypted {
                 Vec::new()
             } else {
                 let block_size = u64::from(vol.volume_header().block_size);
@@ -284,7 +289,7 @@ impl HfsPlusVolume {
                             .min(stat.size.saturating_sub(logical_offset));
                         let run = FsDataRun {
                             logical_offset,
-                            physical_offset: self.base_offset
+                            physical_offset: self.cursor.base_offset
                                 + u64::from(extent.start_block) * block_size,
                             length,
                         };
@@ -342,14 +347,13 @@ impl HfsPlusVolume {
         &self,
         op: impl FnOnce(&mut HfsVolume<PartitionCursor>) -> Result<R>,
     ) -> Result<R> {
-        let cursor = PartitionCursor {
-            image: Arc::clone(&self.image),
-            base_offset: self.base_offset,
-            length_bytes: self.length_bytes,
-            position: 0,
-        };
-        let mut vol = HfsVolume::open(cursor)
+        let mut vol = HfsVolume::open(self.cursor.clone())
             .map_err(|err| anyhow!("HFS+ open partition {}: {err}", self.partition_id))?;
+        anyhow::ensure!(
+            self.embedded_signature
+                .is_none_or(|signature| signature == vol.volume_header().signature),
+            Failure::corrupt("embedded HFS+ signature differs from the HFS wrapper")
+        );
         op(&mut vol)
     }
 }
@@ -399,55 +403,185 @@ fn hfs_time_to_rfc3339(seconds: u32) -> Option<String> {
         .map(|dt| dt.to_rfc3339())
 }
 
-/// Cursor exposing a partition slice of `DiskImage` as `std::io::Read +
-/// Seek`. Read-only — HFS+ parsing never writes back, so no `Write` impl is
-/// needed (mirrors `core::filesystem::volumes::apfs::PartitionCursor`).
-struct PartitionCursor {
-    image: Arc<DiskImage>,
-    base_offset: u64,
-    length_bytes: u64,
-    position: u64,
-}
-
-impl Read for PartitionCursor {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.position >= self.length_bytes || buf.is_empty() {
-            return Ok(0);
-        }
-        let remaining = self.length_bytes - self.position;
-        let want = (buf.len() as u64).min(remaining) as usize;
-        let bytes = self
-            .image
-            .read_range(self.base_offset + self.position, want)
-            .map_err(|err| io::Error::other(err.to_string()))?;
-        let copied = bytes.len();
-        buf[..copied].copy_from_slice(&bytes);
-        self.position += copied as u64;
-        Ok(copied)
-    }
-}
-
-impl Seek for PartitionCursor {
-    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        let target = match pos {
-            SeekFrom::Start(offset) => offset as i128,
-            SeekFrom::Current(delta) => self.position as i128 + delta as i128,
-            SeekFrom::End(delta) => self.length_bytes as i128 + delta as i128,
-        };
-        if target < 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "HFS+ cursor seek before start",
-            ));
-        }
-        self.position = target as u64;
-        Ok(self.position)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::evidence::image::PartitionKind;
+    use crate::core::filesystem::evidence_session::EvidenceSession;
+    use crate::core::filesystem::tree::fs_tree::{self, FsSession};
+    use flate2::read::ZlibDecoder;
+    use sha2::{Digest, Sha256};
+
+    const HFSPLUS_WRAPPED: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/test_data/hfsplus/wrapped-hfsplus.hfsz"
+    ));
+    const HFSX_WRAPPED: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/test_data/hfsplus/wrapped-hfsx.hfsz"
+    ));
+    const EMBEDDED_START: usize = 45056;
+    const EMBEDDED_LENGTH: usize = 16728064;
+
+    fn inflate(compressed: &[u8]) -> Vec<u8> {
+        let mut raw = Vec::new();
+        ZlibDecoder::new(compressed).read_to_end(&mut raw).unwrap();
+        raw
+    }
+
+    fn evidence(bytes: &[u8]) -> (tempfile::TempDir, Arc<EvidenceSession>) {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("wrapper.img");
+        std::fs::write(&path, bytes).unwrap();
+        let image = DiskImage::open(&path).unwrap();
+        (directory, Arc::new(EvidenceSession::from(image)))
+    }
+
+    #[test]
+    fn hfsplus_native_wrappers_keep_partition_identity_and_file_bytes() {
+        for (compressed, expected_kind) in [
+            (HFSPLUS_WRAPPED, PartitionKind::HfsPlus),
+            (HFSX_WRAPPED, PartitionKind::HfsX),
+        ] {
+            let native = inflate(compressed);
+            let mut source = Vec::new();
+            let base = if expected_kind == PartitionKind::HfsX {
+                source.resize(4096, 0);
+                source[..2].copy_from_slice(b"ER");
+                source[2..4].copy_from_slice(&512u16.to_be_bytes());
+                let (map, volume) = source[512..1536].split_at_mut(512);
+                for (entry, start, count, name, kind) in [
+                    (
+                        map,
+                        1u32,
+                        2u32,
+                        b"Map".as_slice(),
+                        b"Apple_partition_map".as_slice(),
+                    ),
+                    (
+                        volume,
+                        8,
+                        (native.len() / 512) as u32,
+                        b"Wrapped".as_slice(),
+                        b"Apple_HFS".as_slice(),
+                    ),
+                ] {
+                    entry[..2].copy_from_slice(b"PM");
+                    entry[4..8].copy_from_slice(&2u32.to_be_bytes());
+                    entry[8..12].copy_from_slice(&start.to_be_bytes());
+                    entry[12..16].copy_from_slice(&count.to_be_bytes());
+                    entry[16..16 + name.len()].copy_from_slice(name);
+                    entry[48..48 + kind.len()].copy_from_slice(kind);
+                }
+                4096
+            } else {
+                0
+            };
+            source.extend_from_slice(&native);
+            let (_directory, disk) = evidence(&source);
+            let part = disk
+                .partitions
+                .iter()
+                .find(|part| part.kind == expected_kind)
+                .unwrap();
+            assert_eq!(part.start_lba * disk.sector_size as u64, base as u64);
+            assert_eq!(
+                part.length_lba * disk.sector_size as u64,
+                native.len() as u64
+            );
+            assert_eq!(disk.read_range(base as u64, native.len()).unwrap(), native);
+            let id = part.id;
+            assert_eq!(id, u8::from(expected_kind == PartitionKind::HfsX));
+            let mut session = FsSession::new(&disk);
+            let root = session.children(&format!("part:{id}")).unwrap();
+            let folder = root.iter().find(|node| node.name == "Nested").unwrap();
+            let link = root.iter().find(|node| node.name == "link").unwrap();
+            assert_eq!(link.link_target.as_deref(), Some("Nested/Payload.bin"));
+            let children = session.children(&folder.id).unwrap();
+            let upper = children
+                .iter()
+                .find(|node| node.name == "Payload.bin")
+                .unwrap();
+            assert!(upper.id.starts_with(&format!("hfsplus:part:{id}:")));
+            let full = session.read_file_limited(&upper.id, usize::MAX).unwrap();
+            assert_eq!(
+                hex::encode(Sha256::digest(&full)),
+                "ac61e47d19009febed3505e10edcc20d651facb427fbc469d944982dbf941f1a"
+            );
+            assert_eq!(
+                session.read_file_range(&upper.id, 4084, 47).unwrap(),
+                full[4084..4131]
+            );
+            let mut streamed = Vec::new();
+            let total = fs_tree::stream_file_chunks(&disk, &upper.id, 4096, |chunk| {
+                streamed.extend_from_slice(chunk);
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(total, full.len() as u64);
+            assert_eq!(streamed, full);
+
+            let stat = session.file_stat(&upper.id).unwrap();
+            let start = (base + EMBEDDED_START) as u64;
+            let end = start + EMBEDDED_LENGTH as u64;
+            let mut from_source = Vec::new();
+            for run in stat.data_runs {
+                assert!(run.physical_offset >= start && run.physical_offset + run.length <= end);
+                assert_eq!(run.logical_offset, from_source.len() as u64);
+                from_source.extend(
+                    disk.read_range(run.physical_offset, run.length as usize)
+                        .unwrap(),
+                );
+            }
+            assert_eq!(from_source, full);
+            if expected_kind == PartitionKind::HfsX {
+                let lower = children
+                    .iter()
+                    .find(|node| node.name == "payload.bin")
+                    .unwrap();
+                assert_ne!(lower.id, upper.id);
+                assert_eq!(
+                    session.read_file_limited(&lower.id, 100).unwrap(),
+                    b"case-sensitive\n"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn hfsplus_wrapper_uses_embedded_alternate_header_and_refuses_invalid_windows() {
+        let native = inflate(HFSPLUS_WRAPPED);
+        let mut mbr = vec![0; 512];
+        mbr[450] = 0xaf;
+        mbr[454..458].copy_from_slice(&1u32.to_le_bytes());
+        mbr[458..462].copy_from_slice(&((native.len() / 512) as u32).to_le_bytes());
+        mbr[510..512].copy_from_slice(&[0x55, 0xaa]);
+        mbr.extend_from_slice(&native);
+        let offset = 512 + EMBEDDED_START + 1024;
+        mbr[offset..offset + 512].fill(0);
+        let (_directory, disk) = evidence(&mbr);
+        let partition = &disk.partitions[0];
+        assert_eq!(partition.kind, PartitionKind::HfsPlus);
+        assert_eq!(partition.start_lba, 1);
+        let volume =
+            open_hfsplus_source(disk.disk_image(), HfsPlusSource::Partition(partition.id)).unwrap();
+        assert_eq!(volume.children("/Nested").unwrap()[0].name, "Payload.bin");
+
+        for (offset, value) in [
+            (1024 + 10, 0x0300u16),
+            (1024 + 124, 0x4858),
+            (1024 + 128, u16::MAX),
+        ] {
+            let mut damaged = mbr.clone();
+            let offset = 512 + offset;
+            damaged[offset..offset + 2].copy_from_slice(&value.to_be_bytes());
+            let (_directory, disk) = evidence(&damaged);
+            assert!(HfsPlusVolume::open(Arc::clone(disk.disk_image()), partition).is_err());
+        }
+        let mut shorter = partition.clone();
+        shorter.length_lba = (EMBEDDED_START + EMBEDDED_LENGTH - 512) as u64 / 512;
+        assert!(HfsPlusVolume::open(Arc::clone(disk.disk_image()), &shorter).is_err());
+    }
 
     fn hfs_timestamp(unix_seconds: i64) -> u32 {
         (unix_seconds + HFS_EPOCH_OFFSET_SECS) as u32

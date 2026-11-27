@@ -6,13 +6,16 @@ image, personal data or third-party fixture was copied. Fixture generator and
 binary test structures are AGPL-3.0-only project contributions; the vendored
 reader retains its upstream MIT license.
 
-Each file is 65,536 bytes. These are limited reader structures, not complete
-macOS-mountable filesystems: allocator and extent-reference trees are omitted.
+The fixtures omit allocator and extent-reference trees. The main and tier-2
+Fusion images include the checkpoint structures required to validate device
+geometry and direct reads.
 
 | File | SHA-256 |
 | --- | --- |
-| basic.apfs | fab44b9ea72d71bbe708fcc07197a2285d3e4ccc55e7b408a19d3373427e5d54 |
-| case-sensitive.apfs | af9dffa7fdcb0368ace54d9419ef5525f8c4acb48b11f5a46b710a94c6ca04ef |
+| basic.apfs | 01d3c854682f34ca4faf7061403e9a6ef3afa06f75f108213752dfaee2043d15 |
+| case-sensitive.apfs | 71317b389a7237c6eac64ed1510d5d8b3fba7b06666d4fba7a111d86437b4e70 |
+| fusion-main.apfs | adf97aa284fec5813c2968f61fffb5d0eadf765874fa628bb5b4fd760ebc79a9 |
+| fusion-tier2.apfs | 744183789d750106e0305be14c54e065b853b627cab204968082ba0507b61b98 |
 
 Covered: block-zero XID 5 / checkpoint XID 10; volume slots 0 and 2 (slot 2
 flagged encrypted); volume OMAP XIDs 5/10/11; plain and hashed directory keys;
@@ -34,3 +37,35 @@ Rust tests also mutate copies for tombstones, malformed extent/table/geometry,
 8 KiB NXSB checksums and invalid checkpoint UUIDs. Host tests wrap the fixture
 in an MBR partition to verify evidence-relative runs and compare live metadata
 against a directory snapshot, including cancellation cleanup.
+
+The Fusion pair holds a tagged container OMAP and file data on tier 2. The
+second file extent has different bytes on its two devices and a committed
+dirty middle-tree record. The tests check both file bytes and physical member
+offsets. An external test also opens a clean pair formatted independently by
+apfsprogs with `mkapfs -L LovelyCarveFusion -F second-tier.img first-tier.img`.
+Run this last test with `LOVELYCARVE_APFS_FUSION_ORACLE` pointing to the directory
+containing the two member images.
+
+```text
+just test-apfs independently_formatted_fusion_pair_opens -- --ignored
+```
+
+## Native software encryption oracles
+
+Set `LOVELYCARVE_APFS_ENCRYPTION_ORACLE` to a directory with these uncompressed
+images. The external fixtures are used only when running the ignored test.
+
+| Path | Raw SHA-256 | Origin |
+| --- | --- | --- |
+| `dfvfs-apfs-encrypted.img` | `33fe6f183aeb1a95fec68efdab17d59aedbad3d8ef1a117d411117376d9d8485` | [dfvfs encrypted APFS test image](https://raw.githubusercontent.com/log2timeline/dfvfs/db39a1508c75f1df888f242150d88b98c3b6ad3c/test_data/apfs_encrypted.dmg), raw GPT despite the extension |
+| `macos-apfs-native-filevault.img` | `1a46eb22cdab37ae553c5c70b7b172419c9cda7285de7f5b4fd3129c73e29171` | [apfs-forensic native FileVault fixture](https://raw.githubusercontent.com/SecurityRonin/apfs-forensic/3b55bc3938beedf712842ca021c16ef8ca01fe95/tests/data/filevault/apfs-native-filevault.raw.gz), decompress gzip |
+| `qnxprobe/apfs-encrypted.img` | `c5ffc45bc88c7e03d13d398792e0f9f7ca523035ce0d9c243f640e766ad21e23` | [qnxprobe fixture corpus](https://github.com/abrignoni/qnxprobe/tree/8ec9f8a26601fdb5a2d0cda892a49c0958ce03f2), decompress `apfs-encrypted.sparseimage.gz` and expand as a sector stream with the project's image reader |
+| `qnxprobe/apfs-converted.img` | `fc7fb4f33d402ac3dbe4440d71d41ab1bb22164773fd9647040b9c4394b06b4c` | The same qnxprobe corpus and procedure for `apfs-converted.sparseimage.gz` |
+
+```text
+just test-apfs native_software_encryption_matches_plaintext_oracles -- --ignored
+```
+
+Checks locked volume enumeration, wrong passwords, catalog walks, full and
+streamed file bytes, an unaligned range crossing sectors, verified key reuse,
+and coexistence with an independently readable plaintext volume.

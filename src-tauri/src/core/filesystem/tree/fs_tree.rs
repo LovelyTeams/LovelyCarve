@@ -51,7 +51,7 @@ pub use crate::core::filesystem::tree::fs_tree_walk::{
 };
 use crate::core::filesystem::unalloc::parse_virtual_unalloc_id;
 use crate::core::filesystem::volumes::ad1 as ad1_volume;
-use crate::core::filesystem::volumes::apfs::apfs_volume_nodes;
+use crate::core::filesystem::volumes::apfs::apfs_browse_nodes;
 use crate::core::filesystem::volumes::btrfs::{open_btrfs_source, BtrfsSource};
 use crate::core::filesystem::volumes::cdfs::{open_cdfs_source, CdfsSource, CdfsVolume};
 use crate::core::filesystem::volumes::docker as docker_volume;

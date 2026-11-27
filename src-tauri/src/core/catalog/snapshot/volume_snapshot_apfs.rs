@@ -238,6 +238,7 @@ pub(crate) fn build_apfs_volume_snapshot(
             crate::core::filesystem::volumes::apfs::ApfsSource::Partition {
                 part_id,
                 volume_index,
+                ..
             } => (part_id, volume_index),
             crate::core::filesystem::volumes::apfs::ApfsSource::LegacyPartition(part_id) => {
                 (part_id, 0)

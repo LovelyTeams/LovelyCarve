@@ -348,7 +348,9 @@ impl SABuf {
         ))(input)?; // read 4 + 2 bytes
         let header_size = ((size_layout >> 10) & ((1 << 6) - 1)) * 8;
         let layout = (size_layout) & ((1 << 10) - 1);
-        let length_size = header_size - (4 + 2); // subtract the bytes we have already read
+        let length_size = header_size
+            .checked_sub(6)
+            .ok_or(nom::Err::Error((input, nom::error::ErrorKind::Verify)))?;
         let (input, lengths) = nom::combinator::map_parser(
             nom::bytes::complete::take(length_size),
             nom::multi::many0(number::le_u16),
@@ -366,22 +368,17 @@ impl SABuf {
         ))
     }
     pub fn parse_attrs(&self, layout: Vec<SAAttr>) -> Result<Vec<(SAAttr, SAValue)>, ZfsError> {
+        let mut lengths = self.lengths.iter().copied();
         let attr_count = layout.len();
         layout
             .into_iter()
-            .scan(0, |var_length_idx, attr| {
-                // find out all the variable lengths first
-                if attr.length == 0 {
-                    Some(
-                        self.lengths
-                            .get(*var_length_idx as usize)
-                            .ok_or(ZfsErrorKind::Invalid.into())
-                            .map(|len| (attr, *len)),
-                    )
+            .map(|attr| {
+                let len = if attr.length == 0 {
+                    lengths.next().ok_or(ZfsErrorKind::Invalid)?
                 } else {
-                    let len = attr.length;
-                    Some(Ok((attr, len)))
-                }
+                    attr.length
+                };
+                Ok((attr, len))
             })
             .try_fold(
                 (&self.data[..], Vec::with_capacity(attr_count)),

@@ -1,0 +1,15 @@
+[package]
+name = "fatx-reader"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+description = "Read-only Xbox FATX and XTAF file systems"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+lamfold = { path = "../lamfold", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+flate2 = "1"
+
+[workspace]

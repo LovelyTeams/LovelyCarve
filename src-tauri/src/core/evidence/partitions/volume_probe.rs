@@ -15,13 +15,11 @@ use crate::core::evidence::partitions::fat::{
     detect_valid_fat_boot_sector, recover_fat32_boot_sector, FAT32_BACKUP_BOOT_SECTOR,
 };
 use crate::core::evidence::partitions::hfsplus::{
-    is_hfs_plus_magic, HFSX_MAGIC, HFS_VOLUME_HEADER_OFFSET,
+    is_hfs_plus_magic, WrappedHfsPlus, HFSX_MAGIC, HFS_VOLUME_HEADER_OFFSET,
 };
 use crate::core::evidence::partitions::luks::LUKS_MAGIC;
 use crate::core::evidence::partitions::squashfs::is_squashfs_magic;
-use crate::core::evidence::partitions::ufs::{
-    is_ufs2_magic_at_superblock, UFS_MAGIC_OFFSET, UFS_SBLOCK_UFS2,
-};
+use crate::core::evidence::partitions::ufs::probe_ufs;
 use crate::core::evidence::partitions::xfs::is_xfs_magic;
 use crate::core::evidence::partitions::{
     DetectCtx, PartParser, Partition, PartitionKind, SectorSource, BTRFS_MAGIC,
@@ -38,12 +36,6 @@ const CDFS_FIRST_VOLUME_DESCRIPTOR: u64 = 16 * 2048;
 const CDFS_VOLUME_DESCRIPTOR_SIZE: usize = 2048;
 const CDFS_MAX_VOLUME_DESCRIPTORS: u64 = 32;
 const LVM2_SCAN_OFFSETS: [usize; 4] = [0, 512, 1024, 1536];
-const ZFS_LABEL_SIZE: u64 = 256 * 1024;
-const ZFS_UBERBLOCK_ARRAY_OFFSET: u64 = 128 * 1024;
-const ZFS_UBERBLOCK_STRIDE: u64 = 1024;
-const ZFS_UBERBLOCK_PROBE_COUNT: usize = 3;
-const ZFS_UBERBLOCK_MAGIC_LE: [u8; 8] = [0x0c, 0xb1, 0xba, 0x00, 0, 0, 0, 0];
-const ZFS_UBERBLOCK_MAGIC_BE: [u8; 8] = [0, 0, 0, 0, 0, 0xba, 0xb1, 0x0c];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VolumeProbeHit {
@@ -151,12 +143,15 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &ExtProbe,
     &ApfsProbe,
     &super::classic_hfs::ClassicHfsProbe,
+    &super::mfs::MfsProbe,
     &HfsProbe,
     &LvmProbe,
     &LuksProbe,
     &NtfsProbe,
     &RefsProbe,
     &ExfatProbe,
+    &super::xdvdfs::XdvdfsProbe,
+    &super::fatx::FatxProbe,
     &super::udf::UdfProbe,
     &CdfsProbe,
     &FatProbe,
@@ -167,12 +162,26 @@ static VOLUME_PROBES: &[&dyn VolumeProbe] = &[
     &super::yaffs2::Yaffs2Probe,
     &super::jfs::JfsProbe,
     &super::reiserfs::ReiserFsProbe,
+    &super::reiser4::Reiser4Probe,
     &super::amiga::AmigaProbe,
     &super::befs::BeFsProbe,
+    &super::gfs1::Gfs1Probe,
     &super::gfs2::Gfs2Probe,
     &super::ocfs2::Ocfs2Probe,
+    &super::ocfs1::Ocfs1Probe,
     &super::nilfs2::Nilfs2Probe,
     &super::bcachefs::BcachefsProbe,
+    &super::vmfs::VmfsProbe,
+    &super::hpfs::HpfsProbe,
+    &super::vxfs::VxfsProbe,
+    &super::aix_jfs::AixJfsProbe,
+    &super::unixware_bfs::UnixwareBfsProbe,
+    &super::littlefs::LittlefsProbe,
+    &super::spiffs::SpiffsProbe,
+    &super::hammer::HammerProbe,
+    &super::hammer2::Hammer2Probe,
+    &super::qnx_efs::EfsProbe,
+    &super::qnx_etfs::EtfsProbe,
 ];
 
 pub fn probe_volume(
@@ -203,11 +212,17 @@ pub fn detect_filesystem_bytes(bytes: &[u8], fallback: PartitionKind) -> Partiti
     if super::classic_hfs::detect(bytes) {
         return PartitionKind::Hfs;
     }
+    if super::gfs1::detect(bytes) {
+        return PartitionKind::Gfs1;
+    }
     if super::gfs2::detect(bytes) {
         return PartitionKind::Gfs2;
     }
     if super::ocfs2::detect(bytes) {
         return PartitionKind::Ocfs2;
+    }
+    if super::ocfs1::detect(bytes) {
+        return PartitionKind::Ocfs1;
     }
     if super::nilfs2::detect(bytes) {
         return PartitionKind::Nilfs2;
@@ -220,6 +235,9 @@ pub fn detect_filesystem_bytes(bytes: &[u8], fallback: PartitionKind) -> Partiti
     }
     if super::reiserfs::detect(bytes) {
         return PartitionKind::Reiserfs;
+    }
+    if super::reiser4::detect(bytes) {
+        return PartitionKind::Reiser4;
     }
     if super::jfs::detect(bytes) {
         return PartitionKind::Jfs;
@@ -326,16 +344,33 @@ pub fn fallback_after_probe(fallback: PartitionKind) -> PartitionKind {
         | PartitionKind::F2fs
         | PartitionKind::Qnx4
         | PartitionKind::Qnx6
+        | PartitionKind::QnxEtfs
+        | PartitionKind::QnxEfs
         | PartitionKind::Udf
         | PartitionKind::Hfs
+        | PartitionKind::Mfs
+        | PartitionKind::Littlefs
+        | PartitionKind::Spiffs
+        | PartitionKind::Hammer
+        | PartitionKind::Hammer2
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
+        | PartitionKind::Reiser4
         | PartitionKind::Amiga
         | PartitionKind::Befs
+        | PartitionKind::Gfs1
         | PartitionKind::Gfs2
+        | PartitionKind::Ocfs1
         | PartitionKind::Ocfs2
         | PartitionKind::Nilfs2
         | PartitionKind::Bcachefs
+        | PartitionKind::Vmfs
+        | PartitionKind::Hpfs
+        | PartitionKind::Vxfs
+        | PartitionKind::AixJfs
+        | PartitionKind::UnixwareBfs
+        | PartitionKind::Xdvdfs
+        | PartitionKind::Fatx
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs
@@ -376,7 +411,7 @@ impl VolumeProbe for RomImagesProbe {
                 kind,
                 100,
                 0,
-                "CramFS or Linux ROMFS signature at volume offset 0",
+                "CramFS or Linux ROMFS signature",
             )
         }))
     }
@@ -488,7 +523,13 @@ pub(super) fn apfs_superblock(
         || superblock.header.object_type() != apfs::object::OBJECT_TYPE_NX_SUPERBLOCK
         || !apfs::fletcher::verify_object(&block)
         || superblock.block_count == 0
-        || superblock.block_count > ctx.size / u64::from(size)
+        || if superblock.incompatible_features & apfs::superblock::NX_INCOMPAT_FUSION != 0 {
+            superblock.fusion_member().is_none()
+                || superblock.block_count < 2
+                || superblock.block_count >= apfs::fusion::TIER2_OFFSET / u64::from(size)
+        } else {
+            superblock.block_count > ctx.size / u64::from(size)
+        }
     {
         return Ok(None);
     }
@@ -562,7 +603,21 @@ impl VolumeProbe for HfsProbe {
 
     fn probe(&self, ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeHit>> {
         if !is_hfs_plus_magic(ctx.head) {
-            return Ok(None);
+            let Some(mdb) = ctx.head.get(HFS_VOLUME_HEADER_OFFSET..) else {
+                return Ok(None);
+            };
+            let Ok(Some(wrapper)) = WrappedHfsPlus::parse(mdb, ctx.size) else {
+                return Ok(None);
+            };
+            return Ok(wrapper.probe(ctx)?.map(|kind| {
+                VolumeProbeHit::new(
+                    self.name(),
+                    kind,
+                    100,
+                    HFS_VOLUME_HEADER_OFFSET as u64,
+                    "HFS master directory block and embedded HFS+/HFSX header",
+                )
+            }));
         }
         let magic = &ctx.head[HFS_VOLUME_HEADER_OFFSET..HFS_VOLUME_HEADER_OFFSET + 2];
         let kind = if magic == HFSX_MAGIC {
@@ -807,22 +862,9 @@ impl VolumeProbe for UfsProbe {
     }
 
     fn probe(&self, ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeHit>> {
-        let needed = UFS_SBLOCK_UFS2 as u64 + UFS_MAGIC_OFFSET + 4;
-        if ctx.size < needed {
-            return Ok(None);
-        }
-        let probe = ctx.source.read(UFS_SBLOCK_UFS2 as u64, 0x800)?;
-        if is_ufs2_magic_at_superblock(&probe) {
-            Ok(Some(VolumeProbeHit::new(
-                self.name(),
-                PartitionKind::Ufs,
-                93,
-                UFS_SBLOCK_UFS2 as u64 + UFS_MAGIC_OFFSET,
-                "UFS2 superblock magic",
-            )))
-        } else {
-            Ok(None)
-        }
+        Ok(probe_ufs(ctx)?.map(|(offset, version)| {
+            VolumeProbeHit::new(self.name(), PartitionKind::Ufs, 93, offset, version)
+        }))
     }
 }
 
@@ -832,28 +874,15 @@ impl VolumeProbe for ZfsProbe {
     }
 
     fn probe(&self, ctx: &DetectCtx<'_>) -> Result<Option<VolumeProbeHit>> {
-        if ctx.size < ZFS_LABEL_SIZE {
-            return Ok(None);
-        }
-        let probe_len = ZFS_UBERBLOCK_STRIDE as usize * ZFS_UBERBLOCK_PROBE_COUNT;
-        let probe = ctx.source.read(ZFS_UBERBLOCK_ARRAY_OFFSET, probe_len)?;
-        if probe.len() < probe_len {
-            return Ok(None);
-        }
-        for index in 0..ZFS_UBERBLOCK_PROBE_COUNT {
-            let offset = index * ZFS_UBERBLOCK_STRIDE as usize;
-            let magic = &probe[offset..offset + 8];
-            if magic != ZFS_UBERBLOCK_MAGIC_LE && magic != ZFS_UBERBLOCK_MAGIC_BE {
-                return Ok(None);
-            }
-        }
-        Ok(Some(VolumeProbeHit::new(
-            self.name(),
-            PartitionKind::Zfs,
-            94,
-            ZFS_UBERBLOCK_ARRAY_OFFSET,
-            "three consecutive ZFS uberblock magic values",
-        )))
+        Ok(super::zfs::probe_zfs(ctx)?.map(|offset| {
+            VolumeProbeHit::new(
+                self.name(),
+                PartitionKind::Zfs,
+                94,
+                offset,
+                "verified ZFS vdev label",
+            )
+        }))
     }
 }
 

@@ -57,15 +57,33 @@ fn child_path(location: &[(String, String)], name: &str) -> String {
 }
 
 /// The root directory of a volume: a partition, a logical volume, an APFS
-/// volume, a btrfs subvolume or a container's file system.
+/// volume, a btrfs subvolume, a HAMMER snapshot, a HAMMER2 PFS or a container's file system.
 pub(super) fn volume_root(id: &str) -> bool {
     let number = |text: &str| !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit());
     match id.split(':').collect::<Vec<_>>().as_slice() {
         ["part", partition] => number(partition),
         ["lvm", partition, volume] => number(partition) && number(volume),
-        ["apfs", "part", partition, volume, ""] => number(partition) && number(volume),
+        ["apfs", "part", _, _, ""] => {
+            crate::core::filesystem::volumes::apfs::parse_apfs_id(id).is_some()
+        }
         // The root directory of every btrfs subvolume is inode 256.
         ["btrfs", "part", _, _, "256"] | ["btrfs", "lvm", _, _, _, "256"] => true,
+        ["hammer", "part", _, _] => crate::core::filesystem::volumes::rom_images::parse_hammer_id(
+            id,
+        )
+        .is_some_and(|(_, path)| {
+            path.strip_prefix("/@snapshots/").is_some_and(|tid| {
+                tid.len() == 16 && tid.bytes().all(|byte| byte.is_ascii_hexdigit())
+            })
+        }),
+        ["hammer2", "part", _, _] => {
+            crate::core::filesystem::volumes::rom_images::parse_hammer2_id(id)
+                .and_then(|(_, path)| {
+                    path.strip_prefix('/')
+                        .map(|name| !name.is_empty() && !name.contains('/'))
+                })
+                .unwrap_or(false)
+        }
         ["host-docker", container, ""] => !container.is_empty(),
         ["docker", ""] => true,
         _ => false,
@@ -269,7 +287,7 @@ where
                     ));
                 }
                 child = Some(node);
-            } else if node.name.to_lowercase() == folded_component {
+            } else if folded_match(&node.id, &node.name, component, &folded_component) {
                 folded_ambiguous |= folded_child.is_some();
                 folded_child = Some(node);
             }
@@ -297,6 +315,18 @@ where
         error.details = Some(serde_json::json!({"missing": component, "parent": location}));
         error
     })
+}
+
+/// Whether `name` matches `wanted` once case is ignored, by the rule of the
+/// file system that holds the entry: classic Mac OS ordering for MFS, ASCII
+/// only for the Xbox file systems and Unicode for the rest. A directory takes
+/// such a match only on a volume that ignores case (`case_insensitive`).
+fn folded_match(node_id: &str, name: &str, wanted: &str, folded_wanted: &str) -> bool {
+    match node_id.split(':').next() {
+        Some("mfs") => mfs_reader::names_equal(name, wanted),
+        Some("xdvdfs" | "fatx") => name.eq_ignore_ascii_case(wanted),
+        _ => name.to_lowercase() == folded_wanted,
+    }
 }
 
 /// Locate an unindexed ID through directory pages, preserving duplicate names.

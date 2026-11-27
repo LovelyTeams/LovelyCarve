@@ -1,5 +1,11 @@
 //! Volume descriptor chain and the lamfold frontend; based on upstream udf.rs.
-use crate::{descriptors::*, inode::UdfInode};
+use crate::{
+    descriptors::*,
+    inode::UdfInode,
+    partitions::{Address, MetadataMap, PartitionMaps},
+    sparing::SparingTable,
+    virtual_map::VirtualMap,
+};
 use alloc::{
     collections::{BTreeMap, BTreeSet},
     vec,
@@ -10,13 +16,17 @@ use lamfold::{
     SubstrateCtx,
 };
 
-/// Mounted UDF physical partition. Node handles are partition-relative ICB LBAs,
+/// Mounted UDF volume. Node handles are ICB LBAs within the file set's partition,
 /// so bounded cache eviction cannot change identity or hard-link relationships.
 pub struct Udf<S: BlockSource> {
     pub(crate) src: S,
     pub(crate) block_size: u32,
     pub(crate) partition_start: u32,
     pub(crate) partition_length: u32,
+    pub(crate) maps: PartitionMaps,
+    pub(crate) metadata_map: Option<MetadataMap>,
+    pub(crate) sparing_table: Option<SparingTable>,
+    pub(crate) virtual_map: Option<VirtualMap>,
     root: u32,
     nodes: BTreeMap<u32, UdfInode>,
     cached_bytes: usize,
@@ -32,25 +42,14 @@ impl<S: BlockSource> Udf<S> {
         )?;
         Ok(bytes)
     }
-    pub(crate) fn physical(&self, block: u32, length: u64) -> Result<u64> {
-        let start = u64::from(block) * u64::from(self.block_size);
-        require(
-            start.checked_add(length).is_some_and(|end| {
-                end <= u64::from(self.partition_length) * u64::from(self.block_size)
-            }),
-            "udf: extent outside physical partition",
-        )?;
-        Ok(u64::from(self.partition_start) * u64::from(self.block_size) + start)
-    }
-    pub(crate) fn partition_block(&mut self, block: u32) -> Result<Vec<u8>> {
-        let offset = self.physical(block, u64::from(self.block_size))?;
+    pub(crate) fn partition_block(&mut self, address: Address) -> Result<Vec<u8>> {
         let mut bytes = vec![0; self.block_size as usize];
-        exact(&mut self.src, offset, &mut bytes)?;
+        self.read_partition(address, 0, &mut bytes)?;
         Ok(bytes)
     }
     pub(crate) fn icb(&self, bytes: &[u8]) -> Result<u32> {
         require(
-            u16_at(bytes, 8)? == 0,
+            u16_at(bytes, 8)? == self.maps.tree_ref(),
             "udf: invalid ICB partition reference",
         )?;
         let length = u32_at(bytes, 0)?;
@@ -59,7 +58,7 @@ impl<S: BlockSource> Udf<S> {
             "udf: unsupported ICB extent length/type",
         )?;
         let block = u32_at(bytes, 4)?;
-        self.physical(block, u64::from(length))?;
+        self.check_partition(self.maps.tree_address(block), u64::from(length))?;
         Ok(block)
     }
     pub(crate) fn inode(&mut self, node: NodeId) -> Result<UdfInode> {
@@ -67,7 +66,7 @@ impl<S: BlockSource> Udf<S> {
         if let Some(inode) = self.nodes.get(&block) {
             return Ok(inode.clone());
         }
-        let inode = self.read_fe(block)?;
+        let inode = self.read_fe(self.maps.tree_address(block))?;
         let cost = inode.cache_cost();
         if self.nodes.len() >= 4096 || self.cached_bytes + cost > 16 * 1024 * 1024 {
             self.nodes.clear();
@@ -140,30 +139,59 @@ impl<S: BlockSource> Udf<S> {
             u32_at(&logical, 212)? == self.block_size,
             "udf: logical/physical block sizes disagree",
         )?;
-        domain(&logical[216..248])?;
-        if u32_at(&logical, 264)? != 6
-            || u32_at(&logical, 268)? != 1
-            || logical.get(440..442) != Some(&[1, 6])
-        {
-            return Err(FoldError::Unsupported("udf: only a single Type-1 physical partition map is supported (no VAT/sparable/metadata maps)"));
-        }
-        // Include the complete partition-map table in CRC coverage.
-        descriptor(&logical, u32_at(&logical, 12)?, 446)?;
-        require(
-            u16_at(&logical, 442)? == 1 && u16_at(&logical, 444)? == u16_at(&partition, 22)?,
-            "udf: physical partition map identity",
-        )?;
+        self.maps = PartitionMaps::parse(&logical, u16_at(&partition, 22)?)?;
+        self.metadata_map = None;
+        self.sparing_table = None;
+        self.virtual_map = None;
         self.partition_start = u32_at(&partition, 188)?;
-        self.partition_length = u32_at(&partition, 192)?;
+        let declared_length = u32_at(&partition, 192)?;
+        let recorded_blocks = (self.src.len() / u64::from(self.block_size))
+            .saturating_sub(u64::from(self.partition_start));
+        // On sequential media the partition descriptor describes the capacity
+        // of the track. A cooked image can end at the last recorded VAT ICB.
+        self.partition_length = if self.maps.virtual_map.is_some() {
+            u64::from(declared_length).min(recorded_blocks) as u32
+        } else {
+            declared_length
+        };
         require(
-            self.partition_length > 0
-                && (u64::from(self.partition_start) + u64::from(self.partition_length))
-                    * u64::from(self.block_size)
-                    <= self.src.len(),
+            self.partition_length > 0 && u64::from(self.partition_length) <= recorded_blocks,
             "udf: physical partition exceeds source",
         )?;
+        if let Some(sparable) = self.maps.sparable {
+            self.sparing_table = Some(self.read_sparing_table(sparable)?);
+        }
+        if let Some((_, revision)) = self.maps.virtual_map {
+            self.virtual_map = Some(self.read_virtual_map(revision)?);
+        }
+        let Some(metadata) = self.maps.metadata else {
+            return self.open_file_set(&logical);
+        };
+        let mut primary_error = None;
+        for (location, file_type) in [(metadata.main, 250), (metadata.mirror, 251)] {
+            if location == u32::MAX {
+                continue;
+            }
+            self.nodes.clear();
+            self.cached_bytes = 0;
+            let result = self
+                .open_metadata(location, file_type, metadata.geometry)
+                .and_then(|map| {
+                    self.metadata_map = Some(map);
+                    self.open_file_set(&logical)
+                });
+            match result {
+                Ok(()) => return Ok(()),
+                Err(error) => {
+                    primary_error.get_or_insert(error);
+                }
+            }
+        }
+        Err(primary_error.unwrap_or(FoldError::Corrupt("udf: no metadata file")))
+    }
+    fn open_file_set(&mut self, logical: &[u8]) -> Result<()> {
         let fsd_block = self.icb(&logical[248..264])?;
-        let fsd = self.partition_block(fsd_block)?;
+        let fsd = self.partition_block(self.maps.tree_address(fsd_block))?;
         require(
             descriptor(&fsd, fsd_block, 512)? == 256,
             "udf: expected file set descriptor",
@@ -283,6 +311,10 @@ impl<S: BlockSource> FoldFrontend<S> for Udf<S> {
             block_size: 2048,
             partition_start: 0,
             partition_length: 0,
+            maps: PartitionMaps::default(),
+            metadata_map: None,
+            sparing_table: None,
+            virtual_map: None,
             root: 0,
             nodes: BTreeMap::new(),
             cached_bytes: 0,

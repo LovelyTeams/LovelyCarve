@@ -12,6 +12,9 @@ mod reader;
 mod tests;
 use lamfold::{BlockSource, FoldError, Result};
 pub use metadata::Header;
+pub use names::{
+    compare as compare_mac_roman, decode as decode_mac_roman, encode_raw as encode_mac_roman,
+};
 pub use reader::{ForkKind, Hfs};
 
 fn require(condition: bool, reason: &'static str) -> Result<()> {

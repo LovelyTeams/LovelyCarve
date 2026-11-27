@@ -1,0 +1,16 @@
+[package]
+name = "hammer-reader"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+description = "Read-only DragonFly BSD HAMMER v1–v7 filesystem"
+
+[dependencies]
+crc32c = "0.6"
+crc32fast = "1"
+lamfold = { path = "../lamfold", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+flate2 = "1"
+
+[workspace]

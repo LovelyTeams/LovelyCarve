@@ -163,14 +163,29 @@ fmt:
     cd src-tauri/vendor/lamfold-udf && cargo fmt
     cd src-tauri/vendor/minix-reader && cargo fmt
     cd src-tauri/vendor/classic-hfs && cargo fmt
+    cd src-tauri/vendor/mfs-reader && cargo fmt
+    cd src-tauri/vendor/littlefs-reader && cargo fmt
+    cd src-tauri/vendor/spiffs-reader && cargo fmt
+    cd src-tauri/vendor/hammer-reader && cargo fmt
+    cd src-tauri/vendor/hammer2-reader && cargo fmt
     cd src-tauri/vendor/jfs-reader && cargo fmt
+    cd src-tauri/vendor/reiser4-reader && cargo fmt
     cd src-tauri/vendor/reiserfs-reader && cargo fmt
     cd src-tauri/vendor/amiga-reader && cargo fmt
     cd src-tauri/vendor/befs-reader && cargo fmt
+    cd src-tauri/vendor/gfs1-reader && cargo fmt
     cd src-tauri/vendor/gfs2-reader && cargo fmt
+    cd src-tauri/vendor/ocfs1-reader && cargo fmt
     cd src-tauri/vendor/ocfs2-reader && cargo fmt
     cd src-tauri/vendor/nilfs2-reader && cargo fmt
     cd src-tauri/vendor/bcachefs-reader && cargo fmt
+    cd src-tauri/vendor/vmfs-reader && cargo fmt
+    cd src-tauri/vendor/hpfs-reader && cargo fmt
+    cd src-tauri/vendor/vxfs-reader && cargo fmt
+    cd src-tauri/vendor/aix-jfs-reader && cargo fmt
+    cd src-tauri/vendor/unixware-bfs-reader && cargo fmt
+    cd src-tauri/vendor/xdvdfs-reader && cargo fmt
+    cd src-tauri/vendor/fatx-reader && cargo fmt
     cd src-tauri/vendor/rust-fs-bcachefs && cargo fmt
     cd src-tauri/vendor/rust-fs-core && cargo fmt
     cd src-tauri/vendor/amiga-ffs && cargo fmt
@@ -481,6 +496,32 @@ clippy-yaffs2:
 test-vendor name *args:
     cargo test --manifest-path src-tauri/vendor/{{ name }}/Cargo.toml --lib {{ args }}
 
+[group("readers")]
+clippy-vmfs:
+    cargo clippy --manifest-path src-tauri/vendor/vmfs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+clippy-hpfs:
+    cargo clippy --manifest-path src-tauri/vendor/hpfs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+clippy-vxfs:
+    cargo clippy --manifest-path src-tauri/vendor/vxfs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+clippy-aix-jfs:
+    cargo clippy --manifest-path src-tauri/vendor/aix-jfs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+clippy-unixware-bfs:
+    cargo clippy --manifest-path src-tauri/vendor/unixware-bfs-reader/Cargo.toml --all-targets -- -D warnings
+
+clippy-xdvdfs:
+    cargo clippy --manifest-path src-tauri/vendor/xdvdfs-reader/Cargo.toml --all-targets -- -D warnings
+
+clippy-fatx:
+    cargo clippy --manifest-path src-tauri/vendor/fatx-reader/Cargo.toml --all-targets -- -D warnings
+
 # Validate the Minix V1/V2/V3 reader, including util-linux reference images.
 [group("readers")]
 test-minix:
@@ -494,6 +535,26 @@ test-classic-hfs:
 [group("readers")]
 clippy-classic-hfs:
     cargo clippy --manifest-path src-tauri/vendor/classic-hfs/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+clippy-mfs:
+    cargo clippy --manifest-path src-tauri/vendor/mfs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+clippy-littlefs:
+    cargo clippy --manifest-path src-tauri/vendor/littlefs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+clippy-spiffs:
+    cargo clippy --manifest-path src-tauri/vendor/spiffs-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+clippy-hammer:
+    cargo clippy --manifest-path src-tauri/vendor/hammer-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
+clippy-hammer2:
+    cargo clippy --manifest-path src-tauri/vendor/hammer2-reader/Cargo.toml --all-targets -- -D warnings
 
 [group("readers")]
 generate-hfs-fixtures:
@@ -521,6 +582,10 @@ test-gfs2 *args:
     cargo test --manifest-path src-tauri/vendor/gfs2-reader/Cargo.toml --lib {{ args }}
 
 [group("readers")]
+clippy-gfs1:
+    cargo clippy --manifest-path src-tauri/vendor/gfs1-reader/Cargo.toml --all-targets -- -D warnings
+
+[group("readers")]
 clippy-gfs2:
     cargo clippy --manifest-path src-tauri/vendor/gfs2-reader/Cargo.toml --all-targets -- -D warnings
 
@@ -537,6 +602,9 @@ test-ocfs2 *args:
     cargo test --manifest-path src-tauri/vendor/ocfs2-reader/Cargo.toml --lib {{ args }}
 
 [group("readers")]
+clippy-ocfs1:
+    cargo clippy --manifest-path src-tauri/vendor/ocfs1-reader/Cargo.toml --all-targets -- -D warnings
+
 clippy-ocfs2:
     cargo clippy --manifest-path src-tauri/vendor/ocfs2-reader/Cargo.toml --all-targets -- -D warnings
 
@@ -618,6 +686,9 @@ generate-amiga-fixtures:
     {{ python }} scripts/amiga-fixtures.py
 
 [group("readers")]
+clippy-reiser4:
+    cargo clippy --manifest-path src-tauri/vendor/reiser4-reader/Cargo.toml --all-targets -- -D warnings
+
 clippy-reiserfs:
     cargo clippy --manifest-path src-tauri/vendor/reiserfs-reader/Cargo.toml --all-targets -- -D warnings
 

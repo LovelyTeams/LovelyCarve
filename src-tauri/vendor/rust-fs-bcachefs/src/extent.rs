@@ -342,28 +342,33 @@ impl DataExtent {
     /// From an extent key (whose position is its end) and its value: the
     /// first pointer, with the crc entry that precedes it.
     pub fn from_key(k: &crate::bkey::Bkey) -> Result<Self> {
+        Self::replicas(k)?
+            .into_iter()
+            .next()
+            .ok_or_else(|| Error::Corrupt(format!("extent at {} has no pointer", k.pos)))
+    }
+
+    /// All copies of the file range, each with its own preceding checksum
+    /// and compression entry.
+    pub fn replicas(k: &crate::bkey::Bkey) -> Result<Vec<Self>> {
         if u64::from(k.size) > k.pos.offset {
             return Err(Error::Corrupt("extent size exceeds its logical end".into()));
         }
         let mut crc = None;
+        let mut copies = Vec::new();
         for e in parse_entries(&k.value)? {
             match e {
                 ExtentEntry::Crc(c) => crc = Some(c),
-                ExtentEntry::Ptr(ptr) => {
-                    return Ok(DataExtent {
-                        file_start: k.start_offset(),
-                        len: k.size as u64,
-                        ptr,
-                        skip: crc.map(|c| c.offset as u64).unwrap_or(0),
-                        crc,
-                    })
-                }
+                ExtentEntry::Ptr(ptr) => copies.push(DataExtent {
+                    file_start: k.start_offset(),
+                    len: k.size as u64,
+                    ptr,
+                    skip: crc.map(|c| c.offset as u64).unwrap_or(0),
+                    crc,
+                }),
             }
         }
-        Err(Error::Corrupt(format!(
-            "extent at {} has no pointer",
-            k.pos
-        )))
+        Ok(copies)
     }
 }
 

@@ -51,18 +51,31 @@ use crate::core::filesystem::volumes::ntfs::NtfsSource;
 use crate::core::filesystem::volumes::ntfs::{parse_ntfs_id, NtfsVolume};
 use crate::core::filesystem::volumes::refs::{parse_refs_id, parse_refs_snap_id};
 use crate::core::filesystem::volumes::rom_images::{
+    open_aix_jfs_source, open_hpfs_source, open_vxfs_source, parse_aix_jfs_id, parse_hpfs_id,
+    parse_vxfs_id,
+};
+use crate::core::filesystem::volumes::rom_images::{
     open_amiga_source, open_bcachefs_source, open_befs_source, open_cramfs_source,
-    open_erofs_source, open_f2fs_source, open_gfs2_source, open_hfs_source, open_jfs_source,
-    open_minix_source, open_nilfs2_source, open_ocfs2_source, open_qnx4_source, open_qnx6_source,
-    open_reiserfs_source, open_romfs_source, open_udf_source, parse_amiga_id, parse_bcachefs_id,
-    parse_befs_id, parse_cramfs_id, parse_erofs_id, parse_f2fs_id, parse_gfs2_id, parse_hfs_id,
-    parse_jfs_id, parse_minix_id, parse_nilfs2_id, parse_ocfs2_id, parse_qnx4_id, parse_qnx6_id,
-    parse_reiserfs_id, parse_romfs_id, parse_udf_id,
+    open_erofs_source, open_f2fs_source, open_gfs1_source, open_gfs2_source, open_hfs_source,
+    open_jfs_source, open_minix_source, open_nilfs2_source, open_ocfs1_source, open_ocfs2_source,
+    open_qnx4_source, open_qnx6_source, open_qnxefs_source, open_qnxetfs_source,
+    open_reiser4_source, open_reiserfs_source, open_romfs_source, open_udf_source, parse_amiga_id,
+    parse_bcachefs_id, parse_befs_id, parse_cramfs_id, parse_erofs_id, parse_f2fs_id,
+    parse_gfs1_id, parse_gfs2_id, parse_hfs_id, parse_jfs_id, parse_minix_id, parse_nilfs2_id,
+    parse_ocfs1_id, parse_ocfs2_id, parse_qnx4_id, parse_qnx6_id, parse_qnxefs_id,
+    parse_qnxetfs_id, parse_reiser4_id, parse_reiserfs_id, parse_romfs_id, parse_udf_id,
+};
+use crate::core::filesystem::volumes::rom_images::{
+    open_fatx_source, open_hammer2_source, open_hammer_source, open_littlefs_source,
+    open_mfs_source, open_spiffs_source, open_unixware_bfs_source, open_xdvdfs_source,
+    parse_fatx_id, parse_hammer2_id, parse_hammer_id, parse_littlefs_id, parse_mfs_id,
+    parse_spiffs_id, parse_unixware_bfs_id, parse_xdvdfs_id,
 };
 use crate::core::filesystem::volumes::squashfs::{open_squashfs_source, parse_squashfs_id};
 use crate::core::filesystem::volumes::ubi::{open_ubi_source, parse_ubi_id};
 use crate::core::filesystem::volumes::ubifs::{open_ubifs_source, parse_ubifs_id};
 use crate::core::filesystem::volumes::ufs::{open_ufs_source, parse_ufs_id};
+use crate::core::filesystem::volumes::vmfs::{open_vmfs_source, parse_vmfs_id};
 use crate::core::filesystem::volumes::xfs::{open_xfs_source, parse_xfs_id};
 use crate::core::filesystem::volumes::yaffs2::parse_yaffs2_id;
 use crate::core::filesystem::volumes::zfs::{open_zfs_source, parse_zfs_id, ZfsPath};
@@ -160,16 +173,33 @@ static ADAPTERS: &[&dyn FsAdapter] = &[
     &F2fsAdapter,
     &Qnx4Adapter,
     &Qnx6Adapter,
+    &QnxEtfsAdapter,
+    &QnxEfsAdapter,
     &UdfAdapter,
     &HfsAdapter,
+    &MfsAdapter,
+    &LittlefsAdapter,
+    &SpiffsAdapter,
+    &HammerAdapter,
+    &Hammer2Adapter,
     &JfsAdapter,
     &ReiserFsAdapter,
+    &Reiser4Adapter,
     &AmigaAdapter,
     &BeFsAdapter,
+    &Gfs1Adapter,
     &Gfs2Adapter,
+    &Ocfs1Adapter,
     &Ocfs2Adapter,
     &Nilfs2Adapter,
     &BcachefsAdapter,
+    &VmfsAdapter,
+    &HpfsAdapter,
+    &VxfsAdapter,
+    &AixJfsAdapter,
+    &UnixwareBfsAdapter,
+    &XdvdfsAdapter,
+    &FatxAdapter,
     &MinixAdapter,
     &UbifsAdapter,
     &Jffs2Adapter,
@@ -220,11 +250,29 @@ pub(crate) fn volume_root_key(id: &str) -> Option<String> {
     if let Some((partition, _)) = parse_qnx4_id(id) {
         return Some(format!("qnx4:part:{partition}"));
     }
+    if let Some((partition, _)) = parse_mfs_id(id) {
+        return Some(format!("mfs:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_littlefs_id(id) {
+        return Some(format!("littlefs:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_spiffs_id(id) {
+        return Some(format!("spiffs:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_hammer_id(id) {
+        return Some(format!("hammer:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_hammer2_id(id) {
+        return Some(format!("hammer2:part:{partition}"));
+    }
     if let Some((partition, _)) = parse_hfs_id(id) {
         return Some(format!("hfs:part:{partition}"));
     }
     if let Some((partition, _)) = parse_jfs_id(id) {
         return Some(format!("jfs:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_reiser4_id(id) {
+        return Some(format!("reiser4:part:{partition}"));
     }
     if let Some((partition, _)) = parse_reiserfs_id(id) {
         return Some(format!("reiserfs:part:{partition}"));
@@ -235,14 +283,41 @@ pub(crate) fn volume_root_key(id: &str) -> Option<String> {
     if let Some((partition, _)) = parse_befs_id(id) {
         return Some(format!("befs:part:{partition}"));
     }
+    if let Some((partition, _)) = parse_gfs1_id(id) {
+        return Some(format!("gfs1:part:{partition}"));
+    }
     if let Some((partition, _)) = parse_gfs2_id(id) {
         return Some(format!("gfs2:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_ocfs1_id(id) {
+        return Some(format!("ocfs1:part:{partition}"));
     }
     if let Some((partition, _)) = parse_ocfs2_id(id) {
         return Some(format!("ocfs2:part:{partition}"));
     }
     if let Some((partition, _)) = parse_nilfs2_id(id) {
         return Some(format!("nilfs2:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_fatx_id(id) {
+        return Some(format!("fatx:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_xdvdfs_id(id) {
+        return Some(format!("xdvdfs:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_unixware_bfs_id(id) {
+        return Some(format!("unixwarebfs:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_aix_jfs_id(id) {
+        return Some(format!("aixjfs:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_vxfs_id(id) {
+        return Some(format!("vxfs:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_hpfs_id(id) {
+        return Some(format!("hpfs:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_vmfs_id(id) {
+        return Some(format!("vmfs:part:{partition}"));
     }
     if let Some((partition, _)) = parse_bcachefs_id(id) {
         return Some(format!("bcachefs:part:{partition}"));
@@ -255,6 +330,12 @@ pub(crate) fn volume_root_key(id: &str) -> Option<String> {
     }
     if let Some((partition, _)) = parse_qnx6_id(id) {
         return Some(format!("qnx6:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_qnxetfs_id(id) {
+        return Some(format!("qnxetfs:part:{partition}"));
+    }
+    if let Some((partition, _)) = parse_qnxefs_id(id) {
+        return Some(format!("qnxefs:part:{partition}"));
     }
     if let Some((partition, _)) = parse_f2fs_id(id) {
         return Some(format!("f2fs:part:{partition}"));
@@ -410,14 +491,6 @@ macro_rules! path_volume_impl {
             path_volume_impl!(@common $vol);
         }
     };
-    ($vol:ident, plain) => {
-        impl Volume for $vol {
-            fn children(&self, _image: &Arc<EvidenceSession>, id: &str, _opts: ChildrenOptions) -> Result<Vec<FsNode>> {
-                self.volume.children(&self.path_of(id)?)
-            }
-            path_volume_impl!(@common $vol);
-        }
-    };
     (@common $vol:ident) => {
         fn read_file(&self, id: &str, max_bytes: usize) -> Result<Vec<u8>> {
             self.volume.read_file(&self.path_of(id)?, max_bytes)
@@ -500,6 +573,24 @@ path_volume!(
 );
 path_volume_impl!(Qnx6Vol, plain_range);
 path_volume!(
+    QnxEtfsAdapter,
+    QnxEtfsVol,
+    "qnxetfs",
+    crate::core::filesystem::volumes::rom_images::QnxEtfsVolume,
+    parse_qnxetfs_id,
+    open_qnxetfs_source
+);
+path_volume_impl!(QnxEtfsVol, plain_range);
+path_volume!(
+    QnxEfsAdapter,
+    QnxEfsVol,
+    "qnxefs",
+    crate::core::filesystem::volumes::rom_images::QnxEfsVolume,
+    parse_qnxefs_id,
+    open_qnxefs_source
+);
+path_volume_impl!(QnxEfsVol, plain_range);
+path_volume!(
     UdfAdapter,
     UdfVol,
     "udf",
@@ -517,6 +608,51 @@ path_volume!(
     open_hfs_source
 );
 path_volume_impl!(HfsVol, plain_range);
+path_volume!(
+    MfsAdapter,
+    MfsVol,
+    "mfs",
+    crate::core::filesystem::volumes::rom_images::MfsVolume,
+    parse_mfs_id,
+    open_mfs_source
+);
+path_volume_impl!(MfsVol, plain_range);
+path_volume!(
+    LittlefsAdapter,
+    LittlefsVol,
+    "littlefs",
+    crate::core::filesystem::volumes::rom_images::LittlefsVolume,
+    parse_littlefs_id,
+    open_littlefs_source
+);
+path_volume_impl!(LittlefsVol, plain_range);
+path_volume!(
+    SpiffsAdapter,
+    SpiffsVol,
+    "spiffs",
+    crate::core::filesystem::volumes::rom_images::SpiffsVolume,
+    parse_spiffs_id,
+    open_spiffs_source
+);
+path_volume_impl!(SpiffsVol, plain_range);
+path_volume!(
+    HammerAdapter,
+    HammerVol,
+    "hammer",
+    crate::core::filesystem::volumes::rom_images::HammerVolume,
+    parse_hammer_id,
+    open_hammer_source
+);
+path_volume_impl!(HammerVol, plain_range);
+path_volume!(
+    Hammer2Adapter,
+    Hammer2Vol,
+    "hammer2",
+    crate::core::filesystem::volumes::rom_images::Hammer2Volume,
+    parse_hammer2_id,
+    open_hammer2_source
+);
+path_volume_impl!(Hammer2Vol, plain_range);
 path_volume!(
     JfsAdapter,
     JfsVol,
@@ -536,6 +672,15 @@ path_volume!(
 );
 path_volume_impl!(ReiserFsVol, plain_range);
 path_volume!(
+    Reiser4Adapter,
+    Reiser4Vol,
+    "reiser4",
+    crate::core::filesystem::volumes::rom_images::Reiser4Volume,
+    parse_reiser4_id,
+    open_reiser4_source
+);
+path_volume_impl!(Reiser4Vol, plain_range);
+path_volume!(
     AmigaAdapter,
     AmigaVol,
     "amiga",
@@ -554,6 +699,15 @@ path_volume!(
 );
 path_volume_impl!(BeFsVol, plain_range);
 path_volume!(
+    Gfs1Adapter,
+    Gfs1Vol,
+    "gfs1",
+    crate::core::filesystem::volumes::rom_images::Gfs1Volume,
+    parse_gfs1_id,
+    open_gfs1_source
+);
+path_volume_impl!(Gfs1Vol, plain_range);
+path_volume!(
     Gfs2Adapter,
     Gfs2Vol,
     "gfs2",
@@ -562,6 +716,15 @@ path_volume!(
     open_gfs2_source
 );
 path_volume_impl!(Gfs2Vol, plain_range);
+path_volume!(
+    Ocfs1Adapter,
+    Ocfs1Vol,
+    "ocfs1",
+    crate::core::filesystem::volumes::rom_images::Ocfs1Volume,
+    parse_ocfs1_id,
+    open_ocfs1_source
+);
+path_volume_impl!(Ocfs1Vol, plain_range);
 path_volume!(
     Ocfs2Adapter,
     Ocfs2Vol,
@@ -589,6 +752,69 @@ path_volume!(
     open_bcachefs_source
 );
 path_volume_impl!(BcachefsVol, plain_range);
+path_volume!(
+    VmfsAdapter,
+    VmfsVol,
+    "vmfs",
+    crate::core::filesystem::volumes::vmfs::VmfsVolume,
+    parse_vmfs_id,
+    open_vmfs_source
+);
+path_volume_impl!(VmfsVol, plain_range);
+path_volume!(
+    HpfsAdapter,
+    HpfsVol,
+    "hpfs",
+    crate::core::filesystem::volumes::rom_images::HpfsVolume,
+    parse_hpfs_id,
+    open_hpfs_source
+);
+path_volume_impl!(HpfsVol, plain_range);
+path_volume!(
+    VxfsAdapter,
+    VxfsVol,
+    "vxfs",
+    crate::core::filesystem::volumes::rom_images::VxfsVolume,
+    parse_vxfs_id,
+    open_vxfs_source
+);
+path_volume_impl!(VxfsVol, plain_range);
+path_volume!(
+    AixJfsAdapter,
+    AixJfsVol,
+    "aixjfs",
+    crate::core::filesystem::volumes::rom_images::AixJfsVolume,
+    parse_aix_jfs_id,
+    open_aix_jfs_source
+);
+path_volume_impl!(AixJfsVol, plain_range);
+path_volume!(
+    UnixwareBfsAdapter,
+    UnixwareBfsVol,
+    "unixwarebfs",
+    crate::core::filesystem::volumes::rom_images::UnixwareBfsVolume,
+    parse_unixware_bfs_id,
+    open_unixware_bfs_source
+);
+path_volume_impl!(UnixwareBfsVol, plain_range);
+path_volume!(
+    XdvdfsAdapter,
+    XdvdfsVol,
+    "xdvdfs",
+    crate::core::filesystem::volumes::rom_images::XdvdfsVolume,
+    parse_xdvdfs_id,
+    open_xdvdfs_source
+);
+path_volume_impl!(XdvdfsVol, plain_range);
+path_volume!(
+    FatxAdapter,
+    FatxVol,
+    "fatx",
+    crate::core::filesystem::volumes::rom_images::FatxVolume,
+    parse_fatx_id,
+    open_fatx_source
+);
+path_volume_impl!(FatxVol, plain_range);
 path_volume!(
     MinixAdapter,
     MinixVol,
@@ -670,7 +896,7 @@ path_volume!(
     parse_ufs_id,
     open_ufs_source
 );
-path_volume_impl!(UfsVol, plain);
+path_volume_impl!(UfsVol, plain_range);
 path_volume!(
     XfsAdapter,
     XfsVol,

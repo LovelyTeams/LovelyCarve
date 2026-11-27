@@ -87,7 +87,6 @@ impl<'a> BtrfsVolume<'a> {
     pub(super) fn walker(&self) -> TreeWalker<'a, '_> {
         TreeWalker::new(
             self.image,
-            self.base_offset,
             &self.chunks,
             self.nodesize as usize,
             self.layout.as_ref(),
@@ -201,7 +200,6 @@ impl<'a> BtrfsVolume<'a> {
 
 pub(super) struct TreeWalker<'img, 'c> {
     pub(super) image: &'img DiskImage,
-    pub(super) base_offset: u64,
     pub(super) chunks: &'c [ChunkMapping],
     pub(super) nodesize: usize,
     layout: Option<&'c crate::core::evidence::partitions::lvm2::layout::LinearLayout>,
@@ -219,14 +217,12 @@ pub(super) struct Frame {
 impl<'img, 'c> TreeWalker<'img, 'c> {
     pub(super) fn new(
         image: &'img DiskImage,
-        base_offset: u64,
         chunks: &'c [ChunkMapping],
         nodesize: usize,
         layout: Option<&'c crate::core::evidence::partitions::lvm2::layout::LinearLayout>,
     ) -> Self {
         Self {
             image,
-            base_offset,
             chunks,
             nodesize,
             layout,
@@ -234,25 +230,8 @@ impl<'img, 'c> TreeWalker<'img, 'c> {
     }
 
     pub(super) fn read_node(&self, logical: u64) -> anyhow::Result<Vec<u8>> {
-        let cm = self
-            .chunks
-            .iter()
-            .find(|c| logical >= c.logical && logical < c.logical + c.length)
-            .ok_or_else(|| anyhow!("btrfs: tree node logical 0x{logical:x} unmapped"))?;
-        let delta = logical - cm.logical;
-        let phys = self.base_offset + cm.physical + delta;
-        let block = crate::core::filesystem::volumes::lvm::read_backing_range(
-            self.image,
-            self.layout,
-            phys,
-            self.nodesize,
-        )?;
-        if block.len() < HEADER_SIZE {
-            bail!(
-                "btrfs: tree node short-read: got {} bytes for logical 0x{logical:x}",
-                block.len()
-            );
-        }
+        let mut block = vec![0; self.nodesize];
+        super::chunks::read_logical(self.image, self.layout, self.chunks, logical, &mut block)?;
         Ok(block)
     }
 

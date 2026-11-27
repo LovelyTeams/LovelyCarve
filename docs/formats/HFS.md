@@ -9,6 +9,7 @@
 | 能力 | libfshfs 基线 | LovelyCarve 现在的实现 |
 | --- | --- | --- |
 | HFS+ / HFSX | Unicode 3.2 的 HFS+ / HFSX | 支持；HFSX 依据 Catalog B-tree 的 BC / CF 类型选择二进制或折叠比较 |
+| HFS 包裹卷 | 以裸 HFS+ / HFSX 头为基准 | 验证外层 MDB 和内嵌区间，按内层格式浏览。保留原分区身份、几何及源镜像范围 |
 | 名称 | Unicode 路径 / 名称 | 固定 Apple 折叠表、忽略字符、Unicode 3.2 NFD / Hangul；保留 HFS 的不分解区间；CNID / thread 使用原始 UTF-16 查询 |
 | 目录 / 标识 | 路径、CNID、父记录、子项 | `list_directory`、`walk`、`entry_by_id`；原始目录项 CNID 与硬链接 backing reference 分开 |
 | 硬链接 / 符号链接 | backing inode / link target | 文件和目录间接链接按 private directory 解析，限深与查环；应用发布符号链接目标 |
@@ -129,7 +130,8 @@
 
 ## 限制与验证
 
-- 传统 HFS 由[独立读取器](CLASSIC_HFS.md)支持。HFS-wrapper 的 embedded HFS+、Unicode 2.1 旧卷、journal replay / deleted record recovery 尚未实现；这些也不能从 libfshfs 的 README 名称“支持 HFS”推断为支持。
+- 传统 HFS 由[独立读取器](CLASSIC_HFS.md)支持。Unicode 2.1 旧卷、日志重放和删除记录恢复尚未实现。
+- HFS 包裹卷的分配块起点以 512 字节扇区为单位。只在 MDB 指定的内嵌范围内读取 HFS+ 或 HFSX，备用卷头也以该范围的末尾为准。普通文件的 data runs 指回原始镜像中的绝对字节位置。测试覆盖裸卷、APM、MBR、主卷头损坏以及越界的包裹区间。[Apple TN1150](https://developer.apple.com/library/archive/technotes/tn/tn1150.html)
 - LZBitmap 13/14 与 dataless 内容明确报错。压缩文件暂时整文件解码后 seek：解码输出及压缩 resource fork各限制 512 MiB，fork xattr 值限制 16 MiB；超过预算明确失败。zlib / LZFSE 解码输出按期望长度加一限界，不让畸形流无限膨胀。
 - metadata forks 通过 overflow tree 重建；如果 Extents B-tree 自己的下一条记录位于尚未可访问的 fragment，明确失败，没有猜测或全盘扫描 bootstrap。
 - FileVault 派生视图的 FsStat 不发布伪装成原盘密文地址的 HFS data runs；普通未加密 HFS 卷可以返回真实图像地址。FileVault 的逻辑卷 segment 映射另由 CoreStorage 读者保留。
@@ -137,11 +139,19 @@
 
 ```powershell
 just test-vendor hfsplus
+just test --lib hfsplus
 just clippy-hfsplus
 just test-vendor cmpfs
 # 真实 CoreStorage/HFS 样本（不要提交检材）：
 $env:FVDE_ORACLE_IMAGE = 'C:/path/to/fvdetest.cs.raw'
 just test-filevault --test oracle_fvde
 ```
+
+原生回归样本位于 `src-tauri/test_data/hfsplus`。16 MiB 的包裹卷由 Ubuntu 的 `mkfs.hfsplus 540.1.linux3-5build1` 使用 `-w` 生成。生成时以等长全零数据替代启动程序数据，保留格式化工具生成的元数据。HFSX 样本在同样的区间内格式化为区分大小写的内嵌卷，并将主备 MDB 的内嵌签名设为 `HX`。Linux 5.15.0-204 分别挂载这两个卷，写入目录、符号链接及 10,037 字节的文件，卸载后只读重挂并校验文件 SHA-256。完整 HFS+ 包裹卷和 HFSX 内嵌区均通过 `fsck.hfsplus -fn`。完整 HFSX 包裹卷由 Linux 验证，Apple 的检查器只通过了独立的内嵌区检查。
+
+| 样本 | zlib 文件 SHA-256 | 原始卷 SHA-256 |
+| --- | --- | --- |
+| `wrapped-hfsplus.hfsz` | `34e0e27f0be06f3b6fced27bb3af5f26842ccb88dd545363de3940ba672f3a44` | `f6859f3942393280f21f4d76301a97163889894981fab51c925450c2090c72b8` |
+| `wrapped-hfsx.hfsz` | `009fca708cfc44e391a2bfbf8bded9615ae6944e7b7d1ddf0d6dacf7a342be5f` | `463db528f8597c18337a60f1237ed96e542dd0a77f7c11c5345d41e98aaa69a5` |
 
 参考：[libfshfs 固定源码](https://github.com/libyal/libfshfs/tree/78321de1eda54b30261adf59b938781128591b2e)、[Apple TN1150](https://developer.apple.com/library/archive/technotes/tn/tn1150.html)、[Apple 固定 HFS 表](https://github.com/apple-oss-distributions/hfs/tree/d1bac2f062e6e9c0dfcce302d9aacb10173d0eea)、[FileVault 对照](FILEVAULT.md)。上游来源与各表的许可证见 `src-tauri/vendor/hfsplus/LOVELYCARVE.md`。

@@ -22,6 +22,7 @@ use anyhow::{anyhow, Result};
 use chrono::DateTime;
 use rufs::{BlockReader, InodeAttr, InodeNum, InodeType, Ufs};
 
+use crate::core::common::error::Failure;
 use crate::core::evidence::image::find_partition;
 use crate::core::evidence::image::{DiskImage, Partition};
 use crate::core::filesystem::tree::fs_tree::{
@@ -167,7 +168,16 @@ impl UfsVolume {
                     _ => NodeKind::File,
                 };
                 let size = attr.as_ref().map(|a| a.size).unwrap_or(0);
-                let timestamps = attr.as_ref().map_or_default(attr_timestamps);
+                let timestamps = attr
+                    .as_ref()
+                    .map_or_default(|attr| attr_timestamps(attr, !fs.is_ufs1()));
+                let link_target = if entry.kind == InodeType::Symlink {
+                    fs.symlink_read(entry.inr)
+                        .ok()
+                        .and_then(|bytes| String::from_utf8(bytes).ok())
+                } else {
+                    None
+                };
                 out.push(FsNode {
                     id: self.node_id(&child_path),
                     name: entry.name,
@@ -177,7 +187,7 @@ impl UfsVolume {
                     deleted: false,
                     inode: Some(entry.inr.get64()),
                     timestamps,
-                    link_target: None,
+                    link_target,
                     has_snapshot: false,
                 });
             }
@@ -202,22 +212,7 @@ impl UfsVolume {
                 .inode_attr(inr)
                 .map_err(|err| anyhow!("UFS inode_attr {owned}: {err}"))?;
             match attr.kind {
-                InodeType::RegularFile => {
-                    let total = (attr.size as usize).min(max_bytes);
-                    let mut out = vec![0u8; total];
-                    let mut filled = 0usize;
-                    while filled < out.len() {
-                        let read = fs
-                            .inode_read(inr, filled as u64, &mut out[filled..])
-                            .map_err(|err| anyhow!("UFS inode_read {owned}: {err}"))?;
-                        if read == 0 {
-                            break;
-                        }
-                        filled += read;
-                    }
-                    out.truncate(filled);
-                    Ok(out)
-                }
+                InodeType::RegularFile => read_inode_range(fs, inr, attr.size, 0, max_bytes),
                 InodeType::Symlink => {
                     let bytes = fs
                         .symlink_read(inr)
@@ -225,6 +220,23 @@ impl UfsVolume {
                     Ok(bytes)
                 }
                 _ => anyhow::bail!("UFS entry {owned} is not a regular file"),
+            }
+        })
+    }
+
+    pub fn read_file_range(&self, path: &str, offset: u64, length: usize) -> Result<Vec<u8>> {
+        self.with_fs(|fs| {
+            let inr = lookup_path(fs, path)?;
+            let attr = fs.inode_attr(inr)?;
+            match attr.kind {
+                InodeType::RegularFile => read_inode_range(fs, inr, attr.size, offset, length),
+                InodeType::Symlink => {
+                    let link = fs.symlink_read(inr)?;
+                    let start = offset.min(link.len() as u64) as usize;
+                    let end = start + length.min(link.len() - start);
+                    Ok(link[start..end].to_vec())
+                }
+                _ => anyhow::bail!("UFS entry {path} is not a regular file"),
             }
         })
     }
@@ -253,8 +265,8 @@ impl UfsVolume {
                 let read = fs
                     .inode_read(inr, offset, &mut buf[..want])
                     .map_err(|err| anyhow!("UFS inode_read {owned}@{offset}: {err}"))?;
-                if read == 0 {
-                    break;
+                if read != want {
+                    anyhow::bail!(Failure::corrupt(format!("short UFS read {owned}@{offset}")));
                 }
                 visitor(&buf[..read])?;
                 offset += read as u64;
@@ -351,19 +363,39 @@ impl UfsVolume {
     }
 }
 
+fn read_inode_range(
+    fs: &mut Ufs<PartitionCursor>,
+    inode: InodeNum,
+    total: u64,
+    offset: u64,
+    length: usize,
+) -> Result<Vec<u8>> {
+    let count = (length as u64).min(total.saturating_sub(offset)) as usize;
+    let mut bytes = vec![0; count];
+    if count != 0 && fs.inode_read(inode, offset, &mut bytes)? != count {
+        anyhow::bail!(Failure::corrupt(format!(
+            "short UFS inode {inode} read at byte {offset}"
+        )));
+    }
+    Ok(bytes)
+}
+
 struct DirEntry {
     name: String,
     inr: InodeNum,
     kind: InodeType,
 }
 
-fn attr_timestamps(attr: &InodeAttr) -> Mactb {
+fn attr_timestamps(attr: &InodeAttr, has_birth_time: bool) -> Mactb {
+    let birth = has_birth_time
+        .then(|| system_time_to_rfc3339(attr.btime))
+        .flatten();
     Mactb {
         modified: system_time_to_rfc3339(attr.mtime),
         accessed: system_time_to_rfc3339(attr.atime),
-        created: system_time_to_rfc3339(attr.btime),
+        created: birth.clone(),
         mft_changed: system_time_to_rfc3339(attr.ctime),
-        birth: system_time_to_rfc3339(attr.btime),
+        birth,
     }
 }
 
@@ -457,6 +489,70 @@ impl Write for PartitionCursor {
 mod tests {
     use super::*;
     use crate::core::evidence::image::PartitionKind;
+
+    #[test]
+    fn ufs1_makefs_reference_volumes_support_partition_detection_and_logical_bytes() {
+        use crate::core::filesystem::{
+            evidence_session::EvidenceSession, tree::fs_tree::FsSession,
+        };
+        for (compressed, wrapped) in [
+            (
+                include_bytes!("../../../../tests/fixtures/ufs1/little.zlib").as_slice(),
+                false,
+            ),
+            (
+                include_bytes!("../../../../tests/fixtures/ufs1/big.zlib").as_slice(),
+                true,
+            ),
+        ] {
+            let mut bytes = Vec::new();
+            flate2::read::ZlibDecoder::new(compressed)
+                .read_to_end(&mut bytes)
+                .unwrap();
+            if wrapped {
+                let mut disk = vec![0; 4096];
+                disk[450] = 0x83;
+                disk[454..458].copy_from_slice(&8u32.to_le_bytes());
+                disk[458..462].copy_from_slice(&((bytes.len() / 512) as u32).to_le_bytes());
+                disk[510..512].copy_from_slice(&[0x55, 0xaa]);
+                disk.extend(bytes);
+                bytes = disk;
+            }
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("ufs1.img");
+            std::fs::write(&path, bytes).unwrap();
+            let evidence = Arc::new(EvidenceSession::open(&path).unwrap());
+            let partition = evidence
+                .partitions
+                .iter()
+                .find(|p| p.kind == PartitionKind::Ufs)
+                .unwrap();
+            let mut session = FsSession::new(&evidence);
+            let children = session.children(&format!("part:{}", partition.id)).unwrap();
+            let big = children.iter().find(|node| node.name == "big.bin").unwrap();
+            let alias = children
+                .iter()
+                .find(|node| node.name == "alias.bin")
+                .unwrap();
+            let link = children.iter().find(|node| node.name == "link").unwrap();
+            assert_eq!(big.inode, alias.inode);
+            assert!(big.timestamps.birth.is_none());
+            assert!(big.timestamps.modified.is_some());
+            assert_eq!(link.link_target.as_deref(), Some("sub/readme.txt"));
+            let expected: Vec<u8> = (0..164000)
+                .map(|i| ((i * 7 + i / 257) % 256) as u8)
+                .collect();
+            assert_eq!(
+                session.read_file_limited(&big.id, usize::MAX).unwrap(),
+                expected
+            );
+            let offset = 12 * 4096 - 11;
+            assert_eq!(
+                session.read_file_range(&big.id, offset as u64, 73).unwrap(),
+                expected[offset..offset + 73],
+            );
+        }
+    }
 
     /// Drive the adapter against a real UFS image when the path is supplied
     /// via `LOVELYCARVE_UFS_TEST`. Walks the root, samples the first regular

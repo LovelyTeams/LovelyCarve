@@ -51,6 +51,18 @@ impl Volume for ZfsVol {
             } => self.volume.read_file(&dataset_path, &file_path, max_bytes),
         }
     }
+    fn read_range(&self, id: &str, offset: u64, length: usize) -> Result<Option<Vec<u8>>> {
+        match reparse_zfs(id)? {
+            ZfsPath::Dsl { .. } => anyhow::bail!("ZFS DSL directory is not a regular file"),
+            ZfsPath::Zpl {
+                dataset_path,
+                file_path,
+            } => self
+                .volume
+                .read_file_range(&dataset_path, &file_path, offset, length)
+                .map(Some),
+        }
+    }
     fn file_stat(&self, id: &str, node_id: &str) -> Result<FsStat> {
         match reparse_zfs(id)? {
             ZfsPath::Dsl { .. } => anyhow::bail!("ZFS DSL directory has no file_stat"),

@@ -17,7 +17,9 @@
 //! sibling submodule; adding a new format means adding one trait impl and one
 //! entry to `PARSERS`.
 
+pub(crate) mod aix_jfs;
 pub mod amiga;
+pub mod apfs;
 pub mod apm;
 pub mod bcachefs;
 pub mod befs;
@@ -26,30 +28,48 @@ pub mod btrfs;
 pub mod classic_hfs;
 pub mod ext4;
 pub mod fat;
+mod fatx;
 pub mod flashfs;
+mod gfs1;
 pub mod gfs2;
 pub mod gpt;
+mod hammer;
+mod hammer2;
 pub mod hfsplus;
+pub(crate) mod hpfs;
 pub mod jffs2;
 pub mod jfs;
+mod littlefs;
 pub mod luks;
 pub mod lvm2;
 pub mod mbr;
 pub mod mdadm;
+mod mfs;
 pub mod minifs;
 pub mod minix;
 pub mod nilfs2;
+mod ocfs1;
 pub mod ocfs2;
 pub mod optical_disc;
+pub(crate) mod partition_cursor;
 pub mod qnx;
+mod qnx_efs;
+mod qnx_etfs;
 pub(super) mod recovery;
+mod reiser4;
 pub mod reiserfs;
 pub mod rom_images;
+mod spiffs;
 pub mod squashfs;
 pub mod ubifs;
 pub mod udf;
 pub mod ufs;
+mod unixware;
+pub(crate) mod unixware_bfs;
+pub(crate) mod vmfs;
 pub mod volume_probe;
+pub(crate) mod vxfs;
+mod xdvdfs;
 pub mod xfs;
 pub mod xiaomi_firmware;
 pub mod yaffs2;
@@ -120,6 +140,7 @@ pub enum TableScheme {
     Apm,
     Rdb,
     Bsd,
+    Xbox,
     Luks,
     Mdadm,
     Lvm2,
@@ -148,22 +169,39 @@ pub enum PartitionKind {
     F2fs,
     Qnx4,
     Qnx6,
+    QnxEtfs,
+    QnxEfs,
     Udf,
     Minix,
     Jfs,
     Reiserfs,
+    Reiser4,
     Amiga,
     Befs,
+    Gfs1,
     Gfs2,
+    Ocfs1,
     Ocfs2,
     Nilfs2,
     Bcachefs,
+    Vmfs,
+    Hpfs,
+    Vxfs,
+    AixJfs,
+    UnixwareBfs,
+    Xdvdfs,
+    Fatx,
     Ubifs,
     Lvm,
     Bitlocker,
     BiosBoot,
     ApfsContainer,
     Hfs,
+    Mfs,
+    Littlefs,
+    Spiffs,
+    Hammer,
+    Hammer2,
     HfsPlus,
     HfsX,
     Luks,
@@ -264,13 +302,15 @@ pub trait PartParser: Sync {
 /// protective MBR (type `0xEE`, offset 1) cannot be mistaken for a real DOS
 /// partition table. LVM2 sits before Btrfs / Ext4 so a normally-partitioned
 /// disk that happens to embed an LVM PV label gets recognised by its real
-/// partition table first. FAT / Btrfs / Ext4 / Squashfs / UFS / XFS / ZFS / HFS+
+/// partition table first. The Xbox disc and hard-disk layouts come next: Xbox
+/// media keep their volumes at fixed offsets or behind Xbox-specific tables, so
+/// a standard partition table always wins. FAT / Btrfs / Ext4 / Squashfs / UFS / XFS / ZFS / HFS+
 /// sit last so they only fire on bare, whole-device filesystems (no MBR /
 /// GPT / LUKS / etc.) — FAT's BPB lives in the first sector with a common
 /// FAT32 backup at sector 6, Btrfs's 8-byte `_BHRfS_M` magic at fixed offset
 /// `0x10040`, Ext4's 2-byte `0xEF53` magic at fixed offset `0x438`,
-/// SquashFS v4's 4-byte `hsqs` / `sqsh` magic at offset 0, ZFS's three
-/// consecutive 8-byte uberblock magics at offset `0x20000`, and HFS+'s
+/// SquashFS v4's 4-byte `hsqs` / `sqsh` magic at offset 0, ZFS's verified
+/// leaf labels, and HFS+'s
 /// 2-byte `H+` / `HX` magic at fixed offset `0x400` cannot collide with
 /// anything the earlier parsers would have claimed.
 static PARSERS: &[&dyn PartParser] = &[
@@ -284,6 +324,8 @@ static PARSERS: &[&dyn PartParser] = &[
     &BsdParser,
     &MbrParser,
     &Lvm2Parser,
+    &xdvdfs::XboxDiscParser,
+    &fatx::XboxDiskParser,
     &WholeVolumeParser,
 ];
 
@@ -373,16 +415,33 @@ fn is_container_leaf(kind: PartitionKind) -> bool {
         | PartitionKind::F2fs
         | PartitionKind::Qnx4
         | PartitionKind::Qnx6
+        | PartitionKind::QnxEtfs
+        | PartitionKind::QnxEfs
         | PartitionKind::Udf
         | PartitionKind::Hfs
+        | PartitionKind::Mfs
+        | PartitionKind::Littlefs
+        | PartitionKind::Spiffs
+        | PartitionKind::Hammer
+        | PartitionKind::Hammer2
         | PartitionKind::Jfs
         | PartitionKind::Reiserfs
+        | PartitionKind::Reiser4
         | PartitionKind::Amiga
         | PartitionKind::Befs
+        | PartitionKind::Gfs1
         | PartitionKind::Gfs2
+        | PartitionKind::Ocfs1
         | PartitionKind::Ocfs2
         | PartitionKind::Nilfs2
         | PartitionKind::Bcachefs
+        | PartitionKind::Vmfs
+        | PartitionKind::Hpfs
+        | PartitionKind::Vxfs
+        | PartitionKind::AixJfs
+        | PartitionKind::UnixwareBfs
+        | PartitionKind::Xdvdfs
+        | PartitionKind::Fatx
         | PartitionKind::Minix
         | PartitionKind::Minifs
         | PartitionKind::Romfs
@@ -654,6 +713,8 @@ mod tests {
                 "bsd",
                 "mbr",
                 "lvm2",
+                "xbox_disc",
+                "xbox_disk",
                 "volume"
             ]
         );

@@ -6,54 +6,6 @@ use crate::core::common::error::Failure;
 // Payload parsers.
 // =============================================================================
 
-pub(super) fn parse_sys_chunk_array(bytes: &[u8]) -> anyhow::Result<Vec<ChunkMapping>> {
-    let mut out = Vec::new();
-    let mut pos = 0usize;
-    while pos + KEY_RECORD_SIZE + 48 <= bytes.len() {
-        let key = Key::ref_from_bytes(&bytes[pos..pos + KEY_RECORD_SIZE])
-            .map_err(|_| anyhow!(Failure::corrupt("btrfs: invalid sys_chunk_array key")))?;
-        if key.key_type != KEY_CHUNK_ITEM {
-            break;
-        }
-        pos += KEY_RECORD_SIZE;
-        let chunk = Chunk::ref_from_bytes(&bytes[pos..pos + 48])
-            .map_err(|_| anyhow!(Failure::corrupt("btrfs: invalid sys_chunk_array chunk")))?;
-        let logical = key.offset.get();
-        let length = chunk.length.get();
-        let num_stripes = chunk.num_stripes.get() as usize;
-        pos += 48;
-        if num_stripes == 0 {
-            break;
-        }
-        let stripes_total = num_stripes * 32;
-        if pos + stripes_total > bytes.len() {
-            break;
-        }
-        let stripe = Stripe::ref_from_bytes(&bytes[pos..pos + 32])
-            .map_err(|_| anyhow!(Failure::corrupt("btrfs: invalid sys_chunk_array stripe")))?;
-        out.push(ChunkMapping {
-            logical,
-            length,
-            physical: stripe.offset.get(),
-        });
-        pos += stripes_total;
-    }
-    Ok(out)
-}
-
-pub(super) fn parse_chunk_item(key: &Key, data: &[u8]) -> Option<ChunkMapping> {
-    if data.len() < 48 + 32 {
-        return None;
-    }
-    let chunk = Chunk::ref_from_bytes(&data[..48]).ok()?;
-    let stripe = Stripe::ref_from_bytes(&data[48..80]).ok()?;
-    Some(ChunkMapping {
-        logical: key.offset.get(),
-        length: chunk.length.get(),
-        physical: stripe.offset.get(),
-    })
-}
-
 pub(super) fn parse_root_item(data: &[u8]) -> Option<(u64, u8)> {
     if data.len() < 439 {
         return None;
@@ -126,8 +78,9 @@ pub(super) fn parse_file_extent(file_offset: u64, data: &[u8]) -> Option<FileExt
     let _generation = u64::from_le_bytes(data[0..8].try_into().ok()?);
     let ram_bytes = u64::from_le_bytes(data[8..16].try_into().ok()?);
     let compression = data[16];
-    let _encryption = data[17];
-    let _other_encoding = u16::from_le_bytes(data[18..20].try_into().ok()?);
+    if data[17..20] != [0; 3] {
+        return None;
+    }
     let ext_type = data[20];
 
     if ext_type == EXTENT_INLINE {
@@ -141,7 +94,9 @@ pub(super) fn parse_file_extent(file_offset: u64, data: &[u8]) -> Option<FileExt
         });
     }
 
-    if data.len() < FILE_EXTENT_REGULAR_FIXED {
+    if !matches!(ext_type, EXTENT_REGULAR | EXTENT_PREALLOC)
+        || data.len() != FILE_EXTENT_REGULAR_FIXED
+    {
         return None;
     }
     let disk_bytenr = u64::from_le_bytes(data[21..29].try_into().ok()?);
@@ -173,17 +128,21 @@ pub(super) fn decompress(
         COMPRESS_NONE => Ok(data.to_vec()),
         COMPRESS_ZLIB => {
             let mut out = Vec::with_capacity(ram_bytes);
-            let mut decoder = flate2::read::ZlibDecoder::new(data);
+            let decoder = flate2::read::ZlibDecoder::new(data);
             decoder
+                .take(ram_bytes as u64 + 1)
                 .read_to_end(&mut out)
                 .context("btrfs: zlib decompression failed")?;
             Ok(out)
         }
         COMPRESS_ZSTD => {
             let mut out = Vec::with_capacity(ram_bytes);
-            let mut decoder = zstd::stream::read::Decoder::new(data)
+            let mut frame = ruzstd::decoding::FrameDecoder::new();
+            frame.set_max_window_size(128 * 1024);
+            let decoder = ruzstd::decoding::StreamingDecoder::new_with_decoder(data, frame)
                 .context("btrfs: zstd decoder init failed")?;
             decoder
+                .take(ram_bytes as u64 + 1)
                 .read_to_end(&mut out)
                 .context("btrfs: zstd decompression failed")?;
             Ok(out)
@@ -191,6 +150,29 @@ pub(super) fn decompress(
         COMPRESS_LZO => decompress_lzo(data, ram_bytes, sector_size),
         other => bail!("btrfs: unknown compression code {other}"),
     }
+}
+
+pub(super) fn decompress_regular(
+    comp: u8,
+    data: &[u8],
+    ram_bytes: usize,
+    sector_size: usize,
+) -> anyhow::Result<Vec<u8>> {
+    let mut decoded = decompress(comp, data, ram_bytes, sector_size)?;
+    if decoded.len() != ram_bytes {
+        // The final sector of an on-disk compressed extent can end beyond
+        // the bytes stored by the compressor. The kernel zeroes that tail.
+        anyhow::ensure!(
+            !decoded.is_empty()
+                && ram_bytes.is_multiple_of(sector_size)
+                && ram_bytes
+                    .checked_sub(decoded.len())
+                    .is_some_and(|tail| tail < sector_size),
+            Failure::corrupt("btrfs: decompressed extent disagrees with logical size")
+        );
+        decoded.resize(ram_bytes, 0);
+    }
+    Ok(decoded)
 }
 
 pub(super) fn decompress_lzo(
@@ -250,8 +232,11 @@ pub(super) fn decompress_lzo(
         let mut page = vec![0u8; sector_size];
         let decoded = lzokay::decompress::decompress(&data[cursor..segment_end], &mut page)
             .context("btrfs: LZO decompression failed")?;
-        let remaining = ram_bytes - out.len();
-        out.extend_from_slice(&page[..decoded.min(remaining)]);
+        anyhow::ensure!(
+            decoded <= ram_bytes - out.len(),
+            Failure::corrupt("btrfs: LZO extent exceeds logical size")
+        );
+        out.extend_from_slice(&page[..decoded]);
         cursor = segment_end;
 
         let bytes_left_in_sector = sector_size - (cursor % sector_size);
@@ -262,12 +247,6 @@ pub(super) fn decompress_lzo(
         }
     }
 
-    if out.len() < ram_bytes {
-        bail!(
-            "btrfs: LZO decompressed {} bytes, expected {ram_bytes}",
-            out.len()
-        );
-    }
     Ok(out)
 }
 
