@@ -43,12 +43,12 @@ impl MemberHeader {
         ensure!(
             superblock.len() == SUPER_LEN
                 && superblock.get(64..72) == Some(b"_BHRfS_M")
-                && read_u64(superblock, 48) == BTRFS_PRIMARY_SUPERBLOCK,
+                && read_u64(superblock, 48)? == BTRFS_PRIMARY_SUPERBLOCK,
             Failure::corrupt("btrfs: invalid primary superblock")
         );
-        let num_devices = read_u64(superblock, 136);
-        let device_bytes = read_u64(superblock, DEVICE_ITEM + 8);
-        let devid = read_u64(superblock, DEVICE_ITEM);
+        let num_devices = read_u64(superblock, 136)?;
+        let device_bytes = read_u64(superblock, DEVICE_ITEM + 8)?;
+        let devid = read_u64(superblock, DEVICE_ITEM)?;
         ensure!(
             (1..=MAX_DEVICES).contains(&num_devices)
                 && devid != 0
@@ -57,16 +57,14 @@ impl MemberHeader {
             Failure::corrupt("btrfs: invalid device identity or length")
         );
         ensure!(
-            read_u64(superblock, 188) & REQUIRED_PHYSICAL_MAP_FEATURES == 0,
+            read_u64(superblock, 188)? & REQUIRED_PHYSICAL_MAP_FEATURES == 0,
             Failure::unsupported("btrfs: allocation requires the stripe or remap tree")
         );
         if num_devices > 1 {
             verify_checksum(superblock)?;
         }
-        let fsid = superblock[32..48].try_into().unwrap();
-        let uuid = superblock[DEVICE_UUID..DEVICE_UUID + 16]
-            .try_into()
-            .unwrap();
+        let fsid = field(superblock, 32)?;
+        let uuid = field(superblock, DEVICE_UUID)?;
         ensure!(
             num_devices == 1 || (fsid != [0; 16] && uuid != [0; 16]),
             Failure::corrupt("btrfs: multi-device superblock has no UUID")
@@ -77,9 +75,9 @@ impl MemberHeader {
             uuid,
             device_bytes,
             num_devices,
-            generation: read_u64(superblock, 72),
-            root: read_u64(superblock, 80),
-            chunk_root: read_u64(superblock, 88),
+            generation: read_u64(superblock, 72)?,
+            root: read_u64(superblock, 80)?,
+            chunk_root: read_u64(superblock, 88)?,
         })
     }
 
@@ -93,10 +91,10 @@ impl MemberHeader {
 }
 
 fn verify_checksum(superblock: &[u8]) -> anyhow::Result<()> {
-    match u16::from_le_bytes(superblock[196..198].try_into().unwrap()) {
+    match u16::from_le_bytes(field(superblock, 196)?) {
         0 => {
             ensure!(
-                read_u32(superblock, 0) == superblock_crc32c(&superblock[32..]),
+                read_u32(superblock, 0)? == superblock_crc32c(&superblock[32..]),
                 Failure::corrupt("btrfs: member superblock CRC32C mismatch")
             );
         }
@@ -153,11 +151,21 @@ pub(crate) fn superblock_offset(base: u64, length: u64) -> anyhow::Result<u64> {
         ))
 }
 
-fn read_u64(bytes: &[u8], offset: usize) -> u64 {
-    u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap())
+/// The `N` superblock bytes at `offset`; a superblock too short for them is corrupt.
+fn field<const N: usize>(bytes: &[u8], offset: usize) -> anyhow::Result<[u8; N]> {
+    bytes
+        .get(offset..)
+        .and_then(<[u8]>::first_chunk::<N>)
+        .copied()
+        .context(Failure::corrupt("btrfs: superblock field out of range"))
 }
-fn read_u32(bytes: &[u8], offset: usize) -> u32 {
-    u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap())
+
+fn read_u64(bytes: &[u8], offset: usize) -> anyhow::Result<u64> {
+    field(bytes, offset).map(u64::from_le_bytes)
+}
+
+fn read_u32(bytes: &[u8], offset: usize) -> anyhow::Result<u32> {
+    field(bytes, offset).map(u32::from_le_bytes)
 }
 
 pub struct BtrfsParser;

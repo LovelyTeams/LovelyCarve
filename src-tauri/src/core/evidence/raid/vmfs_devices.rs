@@ -163,7 +163,7 @@ fn assemble_datastore(
     };
     let filesystem = RaidFilesystem {
         set_uuid: set_uuid.clone(),
-        kind: "vmfs".into(),
+        kind: "vmfs",
         fsid: Some(fsid),
         total_bytes: Some(logical_bytes),
         bytes_used: None,

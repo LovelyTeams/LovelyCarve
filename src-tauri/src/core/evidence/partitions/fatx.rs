@@ -112,13 +112,13 @@ fn lba48(ctx: &DetectCtx<'_>) -> Result<Vec<Partition>> {
         .ok_or_else(|| Failure::corrupt("short Xbox LBA48 table"))?;
     let mut table = Vec::new();
     let mut parts = Vec::new();
-    for (slot, row) in rows.chunks_exact(32).enumerate() {
-        let flags = u32::from_le_bytes(row[16..20].try_into().unwrap());
+    for (slot, row) in rows.as_chunks::<32>().0.iter().enumerate() {
+        let flags = u32::from_le_bytes(word(row, 16));
         if flags & 0x8000_0000 == 0 {
             continue;
         }
-        let start = u32::from_le_bytes(row[20..24].try_into().unwrap());
-        let length = u32::from_le_bytes(row[24..28].try_into().unwrap());
+        let start = u32::from_le_bytes(word(row, 20));
+        let length = u32::from_le_bytes(word(row, 24));
         let (start, length) = (
             u64::from(start) * SECTOR_BYTES,
             u64::from(length) * SECTOR_BYTES,
@@ -159,12 +159,14 @@ fn devkit(ctx: &DetectCtx<'_>) -> Result<Vec<Partition>> {
     };
     let mut parts = Vec::new();
     for (slot, (row, label)) in bytes
-        .chunks_exact(8)
+        .as_chunks::<8>()
+        .0
+        .iter()
         .zip(["Xbox 360 Devkit Content", "Xbox 360 Devkit Dashboard"])
         .enumerate()
     {
-        let start = u32::from_be_bytes(row[..4].try_into().unwrap());
-        let length = u32::from_be_bytes(row[4..].try_into().unwrap());
+        let start = u32::from_be_bytes(word(row, 0));
+        let length = u32::from_be_bytes(word(row, 4));
         if let Some(part) = detect(
             ctx,
             u64::from(start) * SECTOR_BYTES,
@@ -178,6 +180,11 @@ fn devkit(ctx: &DetectCtx<'_>) -> Result<Vec<Partition>> {
     }
     require_disjoint(&parts)?;
     Ok(parts)
+}
+
+/// Bytes `offset..offset + 4` of a fixed-size partition table row.
+fn word<const N: usize>(row: &[u8; N], offset: usize) -> [u8; 4] {
+    std::array::from_fn(|index| row[offset + index])
 }
 
 fn detect(

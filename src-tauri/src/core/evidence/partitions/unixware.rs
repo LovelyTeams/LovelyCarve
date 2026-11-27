@@ -32,17 +32,17 @@ pub(super) fn slices(
         bytes.len() == LABEL_SIZE,
         Failure::corrupt("UnixWare short disklabel read")
     );
-    if le32(&bytes, 4) != DISK_MAGIC || le32(&bytes, 156) != VTOC_MAGIC {
+    if le32(&bytes, 4)? != DISK_MAGIC || le32(&bytes, 156)? != VTOC_MAGIC {
         return Ok(Vec::new());
     }
-    if u64::from(le32(&bytes, 36)) != SECTOR || u64::from(le32(&bytes, 40)) != owner.start_lba {
+    if u64::from(le32(&bytes, 36)?) != SECTOR || u64::from(le32(&bytes, 40)?) != owner.start_lba {
         tracing::warn!(
             absolute_label,
             "UnixWare disklabel geometry disagrees with its MBR partition"
         );
         return Ok(Vec::new());
     }
-    let declared = usize::from(le16(&bytes, 172));
+    let declared = usize::from(le16(&bytes, 172)?);
     if !(1..=184).contains(&declared) {
         tracing::warn!(
             absolute_label,
@@ -70,13 +70,13 @@ pub(super) fn slices(
         .enumerate()
         .skip(1)
     {
-        let tag = le16(record, 0);
-        let flags = le16(record, 2);
+        let tag = le16(record, 0)?;
+        let flags = le16(record, 2)?;
         if matches!(tag, 0 | 1 | 5 | 6 | 8 | 13) || flags & VALID == 0 {
             continue;
         }
-        let start_lba = u64::from(le32(record, 4));
-        let length_lba = u64::from(le32(record, 8));
+        let start_lba = u64::from(le32(record, 4)?);
+        let length_lba = u64::from(le32(record, 8)?);
         if length_lba == 0
             || start_lba < owner.start_lba
             || start_lba + length_lba > end
@@ -125,9 +125,19 @@ pub(super) fn slices(
     Ok(found)
 }
 
-fn le16(bytes: &[u8], offset: usize) -> u16 {
-    u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap())
+/// The `N` disklabel bytes at `offset`; a label too short for them is corrupt.
+fn field<const N: usize>(bytes: &[u8], offset: usize) -> anyhow::Result<[u8; N]> {
+    bytes
+        .get(offset..)
+        .and_then(<[u8]>::first_chunk::<N>)
+        .copied()
+        .context(Failure::corrupt("UnixWare disklabel field out of range"))
 }
-fn le32(bytes: &[u8], offset: usize) -> u32 {
-    u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap())
+
+fn le16(bytes: &[u8], offset: usize) -> anyhow::Result<u16> {
+    field(bytes, offset).map(u16::from_le_bytes)
+}
+
+fn le32(bytes: &[u8], offset: usize) -> anyhow::Result<u32> {
+    field(bytes, offset).map(u32::from_le_bytes)
 }

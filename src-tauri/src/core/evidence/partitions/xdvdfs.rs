@@ -1,6 +1,6 @@
 //! Locate the game filesystem in bare XISO and complete Xbox DVD images.
 
-use anyhow::{ensure, Result};
+use anyhow::Result;
 use xdvdfs_reader::{inspect_descriptor, DESCRIPTOR_OFFSET, SECTOR_SIZE, VOLUME_HEADER_MAGIC};
 
 use super::volume_probe::{probe_volume, VolumeProbe, VolumeProbeHit};
@@ -23,11 +23,9 @@ fn volume(ctx: &DetectCtx<'_>, base: u64) -> Result<bool> {
         return Ok(false);
     }
     let bytes = ctx.source.read(at, SECTOR_SIZE)?;
-    ensure!(
-        bytes.len() == SECTOR_SIZE,
-        Failure::corrupt("XDVDFS short volume descriptor")
-    );
-    Ok(inspect_descriptor(bytes.as_slice().try_into().unwrap(), ctx.size - base)?.is_some())
+    let descriptor = <&[u8; SECTOR_SIZE]>::try_from(bytes.as_slice())
+        .map_err(|_| Failure::corrupt("XDVDFS short volume descriptor"))?;
+    Ok(inspect_descriptor(descriptor, ctx.size - base)?.is_some())
 }
 
 pub(crate) struct XdvdfsProbe;
