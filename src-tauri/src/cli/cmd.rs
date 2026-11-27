@@ -341,7 +341,6 @@ pub fn meta_of(path: &str) -> Meta {
         | "plugin ls"
         | "plugin inspect"
         | "plugin readme"
-        | "plugin market sources"
         | "plugin market ls"
         | "analyze ls"
         | "results ls"

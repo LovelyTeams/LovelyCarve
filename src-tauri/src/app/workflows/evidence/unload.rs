@@ -32,7 +32,7 @@ pub(crate) async fn remove_image_runtime(
         // Weak per-path entries that free themselves.
         image_load_locks: _,
         plugins,
-        // Machine-wide market sources and downloads; holds no image state.
+        // Machine-wide market index and downloads; holds no image state.
         plugin_market: _,
         systems,
         // Serialises plugin opens; holds no image state.

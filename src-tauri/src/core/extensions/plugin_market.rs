@@ -1,18 +1,16 @@
-//! Plugin market: indexes of installable packages ([`index`]) at sources the
-//! user configured ([`source`]), listed against what is installed
-//! ([`catalog`]), and downloads that keep only bytes with the SHA-256 the
-//! index lists.
+//! Plugin market: the official index of installable packages ([`index`],
+//! the `index.json` of the plugin release page), listed against what is
+//! installed ([`catalog`]), and downloads that keep only bytes with the
+//! SHA-256 the index lists.
 //!
-//! Market browsing and downloads use configured sources. Opening an explicit
-//! install request from the release page uses the fixed official index,
-//! without adding it to the user's sources. A downloaded package is
-//! inspected like any other archive and must
-//! name the listed id and version; it installs through
-//! [`PluginManager::install`] with its inspected digest, after the user saw
-//! the inspection. Sources live in `plugin-market/sources.json` under the
-//! application-data directory, downloads in `plugin-market/downloads/`
-//! (named by their SHA-256, removed after install or cancel, and swept
-//! when a day old).
+//! The market reads that one index ([`OFFICIAL_INDEX`]): there are no other
+//! sources, mirrors or fallbacks, and browsing and install links from the
+//! release page read the same copy. A downloaded package is inspected like
+//! any other archive and must name the listed id and version; it installs
+//! through [`PluginManager::install`] with its inspected digest, after the
+//! user saw the inspection. Downloads live in `plugin-market/downloads/`
+//! under the application-data directory (named by their SHA-256, removed
+//! after install or cancel, and swept when a day old).
 
 pub mod catalog;
 mod generate;
@@ -20,13 +18,12 @@ pub mod index;
 pub mod source;
 
 use std::{
-    collections::HashMap,
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
     time::{Duration, Instant, SystemTime},
 };
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 pub use catalog::{MarketCatalog, MarketPackage, MarketStatus, MarketVersion};
 pub use generate::{generate_index, GeneratedIndex};
@@ -41,10 +38,8 @@ use crate::core::extensions::plugin::{
 const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 /// Downloads older than this were left by an install that never finished.
 const DOWNLOAD_TTL: Duration = Duration::from_secs(24 * 60 * 60);
-/// Most sources kept.
-const MAX_SOURCES: usize = 32;
-/// The only index used for release-page requests.
-const OFFICIAL_INDEX: &str = "https://lovelyteams.github.io/LovelyCarve-Plugin-Site/index.json";
+/// The index the market reads: the plugin release page's.
+pub const OFFICIAL_INDEX: &str = "https://lovelyteams.github.io/LovelyCarve-Plugin-Site/index.json";
 
 /// Why a market request failed. [`MarketError::reason`] names the kind for
 /// the interface.
@@ -52,8 +47,6 @@ const OFFICIAL_INDEX: &str = "https://lovelyteams.github.io/LovelyCarve-Plugin-S
 pub enum MarketError {
     #[error("{0}")]
     InvalidSource(String),
-    #[error("{0} is not a configured plugin source")]
-    UnknownSource(String),
     #[error("reading {location} failed: {message}")]
     Fetch { location: String, message: String },
     #[error("{location} is not a valid plugin index: {message}")]
@@ -86,7 +79,6 @@ impl MarketError {
     pub fn reason(&self) -> Option<&'static str> {
         match self {
             Self::InvalidSource(_) => Some("invalidSource"),
-            Self::UnknownSource(_) => Some("unknownSource"),
             Self::Fetch { .. } => Some("fetchFailed"),
             Self::InvalidIndex { .. } => Some("invalidIndex"),
             Self::UnknownPackage { .. } => Some("unknownPackage"),
@@ -114,101 +106,49 @@ pub struct MarketDownload {
     pub inspection: PackageInspection,
 }
 
-#[derive(Default, Deserialize, Serialize)]
-struct SourcesFile {
-    sources: Vec<String>,
-}
-
 struct CachedIndex {
     index: Arc<MarketIndex>,
     fetched_at: String,
     fetched: Instant,
 }
 
+/// The index as [`PluginMarket::read`] gave it.
+struct ReadIndex {
+    index: Arc<MarketIndex>,
+    fetched_at: String,
+    /// Taken from the copy read within [`CACHE_TTL`], not read just now.
+    cached: bool,
+}
+
 /// The market's state (see the module docs).
 pub struct PluginMarket {
-    sources_file: PathBuf,
+    location: SourceLocation,
     downloads: PathBuf,
-    cache: tokio::sync::Mutex<HashMap<String, CachedIndex>>,
+    cache: tokio::sync::Mutex<Option<CachedIndex>>,
     client: OnceLock<reqwest::Client>,
 }
 
 impl PluginMarket {
-    /// The market of the application-data directory `data_dir`. Sweeps
-    /// downloads a day old.
-    pub fn new(data_dir: &Path) -> Self {
-        let root = data_dir.join("plugin-market");
+    /// The market of the application-data directory `data_dir`, reading
+    /// [`OFFICIAL_INDEX`]. Sweeps downloads a day old.
+    pub fn new(data_dir: &Path) -> Result<Self> {
+        Ok(Self::reading(
+            data_dir,
+            SourceLocation::parse(OFFICIAL_INDEX)?,
+        ))
+    }
+
+    /// A market reading the index at `location` (tests read a market
+    /// directory).
+    fn reading(data_dir: &Path, location: SourceLocation) -> Self {
         let market = Self {
-            sources_file: root.join("sources.json"),
-            downloads: root.join("downloads"),
+            location,
+            downloads: data_dir.join("plugin-market").join("downloads"),
             cache: tokio::sync::Mutex::default(),
             client: OnceLock::new(),
         };
         market.sweep_downloads(SystemTime::now());
         market
-    }
-
-    /// The configured sources, in the user's order.
-    pub fn sources(&self) -> Result<Vec<String>> {
-        match std::fs::read(&self.sources_file) {
-            Ok(bytes) => {
-                let file: SourcesFile = serde_json::from_slice(&bytes).map_err(|error| {
-                    MarketError::InvalidSource(format!("{}: {error}", self.sources_file.display()))
-                })?;
-                Ok(file.sources)
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
-            Err(error) => Err(error.into()),
-        }
-    }
-
-    /// Replaces the sources; each is checked and stored in its stable
-    /// spelling ([`SourceLocation::key`]). Returns the stored list.
-    pub async fn set_sources(&self, sources: &[String]) -> Result<Vec<String>> {
-        if sources.len() > MAX_SOURCES {
-            return Err(MarketError::InvalidSource(format!(
-                "at most {MAX_SOURCES} sources"
-            )));
-        }
-        let mut keys = Vec::with_capacity(sources.len());
-        for source in sources {
-            let key = SourceLocation::parse(source)?.key();
-            if keys.contains(&key) {
-                return Err(MarketError::InvalidSource(format!("{key} is listed twice")));
-            }
-            keys.push(key);
-        }
-        if let Some(directory) = self.sources_file.parent() {
-            std::fs::create_dir_all(directory)?;
-        }
-        let temporary = self
-            .sources_file
-            .with_extension(format!("json.{}", uuid::Uuid::new_v4().simple()));
-        let bytes = serde_json::to_vec_pretty(&SourcesFile {
-            sources: keys.clone(),
-        })
-        .map_err(|error| MarketError::InvalidSource(error.to_string()))?;
-        std::fs::write(&temporary, bytes)?;
-        if let Err(error) = std::fs::rename(&temporary, &self.sources_file) {
-            if let Err(cleanup) = std::fs::remove_file(&temporary) {
-                tracing::warn!(path = %temporary.display(), "market sources temporary file not removed: {cleanup}");
-            }
-            return Err(error.into());
-        }
-        self.cache
-            .lock()
-            .await
-            .retain(|source, _| keys.contains(source));
-        Ok(keys)
-    }
-
-    /// The configured source spelled `source`, parsed.
-    fn configured(&self, source: &str) -> Result<SourceLocation> {
-        let location = SourceLocation::parse(source)?;
-        if !self.sources()?.contains(&location.key()) {
-            return Err(MarketError::UnknownSource(location.key()));
-        }
-        Ok(location)
     }
 
     fn client(&self) -> Result<&reqwest::Client> {
@@ -226,100 +166,89 @@ impl PluginMarket {
         Ok(self.client.get_or_init(|| client))
     }
 
-    /// The index of a configured source, read again after [`CACHE_TTL`] or
-    /// on `refresh`.
-    pub async fn index(&self, source: &str, refresh: bool) -> Result<(Arc<MarketIndex>, String)> {
-        let location = self.configured(source)?;
-        self.index_at(&location, refresh).await
-    }
-
-    async fn index_at(
-        &self,
-        location: &SourceLocation,
-        refresh: bool,
-    ) -> Result<(Arc<MarketIndex>, String)> {
-        let key = location.key();
+    /// The index: the copy read within [`CACHE_TTL`], unless `refresh` or
+    /// there is none.
+    async fn read(&self, refresh: bool) -> Result<ReadIndex> {
         let mut cache = self.cache.lock().await;
-        if let Some(cached) = cache.get(&key) {
+        if let Some(cached) = cache.as_ref() {
             if !refresh && cached.fetched.elapsed() < CACHE_TTL {
-                return Ok((Arc::clone(&cached.index), cached.fetched_at.clone()));
+                return Ok(ReadIndex {
+                    index: Arc::clone(&cached.index),
+                    fetched_at: cached.fetched_at.clone(),
+                    cached: true,
+                });
             }
         }
-        let bytes = location
+        let bytes = self
+            .location
             .read_index(self.client()?, index::MAX_INDEX_BYTES)
             .await?;
         let index = MarketIndex::parse(&bytes).map_err(|message| MarketError::InvalidIndex {
-            location: key.clone(),
+            location: self.location.key(),
             message,
         })?;
         let index = Arc::new(index);
         let fetched_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-        cache.insert(
-            key,
-            CachedIndex {
-                index: Arc::clone(&index),
-                fetched_at: fetched_at.clone(),
-                fetched: Instant::now(),
-            },
-        );
-        Ok((index, fetched_at))
+        *cache = Some(CachedIndex {
+            index: Arc::clone(&index),
+            fetched_at: fetched_at.clone(),
+            fetched: Instant::now(),
+        });
+        Ok(ReadIndex {
+            index,
+            fetched_at,
+            cached: false,
+        })
     }
 
-    /// The source's packages against what `manager` has installed.
-    pub async fn catalog(
-        &self,
-        manager: &PluginManager,
-        source: &str,
-        refresh: bool,
-    ) -> Result<MarketCatalog> {
-        let (index, fetched_at) = self.index(source, refresh).await?;
-        let location = self.configured(source)?;
+    /// The index's packages against what `manager` has installed; `refresh`
+    /// reads the index again.
+    pub async fn catalog(&self, manager: &PluginManager, refresh: bool) -> Result<MarketCatalog> {
+        let read = self.read(refresh).await?;
         Ok(catalog::catalog(
-            &location.key(),
-            &index,
-            &fetched_at,
+            &self.location.key(),
+            &read.index,
+            &read.fetched_at,
             &current_platform(),
             &manager.definitions(),
         ))
     }
 
-    /// Downloads `plugin_id` `version` for this platform from a configured
-    /// source, verifies it against the index and inspects it.
+    /// Downloads `plugin_id` `version` for this platform, verifies it
+    /// against the index and inspects it. A cached index that does not list
+    /// the version is read again first: the release page offers a version
+    /// as soon as it is published, before the cached copy expires.
     pub async fn download(
         &self,
         manager: &PluginManager,
-        source: &str,
         plugin_id: &str,
         version: &str,
     ) -> Result<MarketDownload> {
-        let (index, _) = self.index(source, false).await?;
-        let location = self.configured(source)?;
-        self.download_from(manager, &location, &index, plugin_id, version)
-            .await
-    }
-
-    /// Inspects a version from the official release page without modifying
-    /// the list of market sources.
-    pub async fn download_official(
-        &self,
-        manager: &PluginManager,
-        plugin_id: &str,
-        version: &str,
-    ) -> Result<MarketDownload> {
-        let location = SourceLocation::parse(OFFICIAL_INDEX)?;
-        let (index, _) = self.index_at(&location, false).await?;
-        self.download_from(manager, &location, &index, plugin_id, version)
+        let mut read = self.read(false).await?;
+        let lists = |index: &MarketIndex| {
+            index.packages.iter().any(|package| {
+                package.id == plugin_id
+                    && package
+                        .versions
+                        .iter()
+                        .any(|listed| listed.version == version)
+            })
+        };
+        if read.cached && !lists(&read.index) {
+            read = self.read(true).await?;
+        }
+        self.download_from(manager, &read.index, plugin_id, version)
             .await
     }
 
     async fn download_from(
         &self,
         manager: &PluginManager,
-        location: &SourceLocation,
         index: &MarketIndex,
         plugin_id: &str,
         version: &str,
     ) -> Result<MarketDownload> {
+        let location = &self.location;
         let package = index
             .packages
             .iter()

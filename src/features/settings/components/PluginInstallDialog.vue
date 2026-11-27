@@ -56,7 +56,7 @@ import { blockTitle, changeIsWarning, changeLabel, permissionLabel, type PluginF
 
 const props = defineProps<{
   inspection: PackageInspection | null;
-  /** The market source it comes from; a local file shows its path. */
+  /** The market index it comes from; a local file shows its path. */
   source?: string | null;
   installing?: boolean;
   failure?: PluginFailure | null;

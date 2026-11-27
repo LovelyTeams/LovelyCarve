@@ -1,6 +1,7 @@
-//! The market end to end on a local market directory: an index generated
-//! from packages, listed against the installed plugins, downloaded with its
-//! digest checked, inspected and installed.
+//! The market end to end on a local market directory in place of the
+//! official index: an index generated from packages, listed against the
+//! installed plugins, downloaded with its digest checked, inspected and
+//! installed.
 
 use std::{io::Write as _, path::Path};
 
@@ -76,7 +77,6 @@ struct Market {
     directory: tempfile::TempDir,
     market: PluginMarket,
     manager: PluginManager,
-    source: String,
 }
 
 async fn market() -> Market {
@@ -85,12 +85,8 @@ async fn market() -> Market {
     let directory = tempfile::tempdir().expect("market directory");
     write_package(&directory.path().join("market-1.0.0.lcpkg"), "1.0.0");
     generate_index(directory.path(), "实验室", None).expect("index");
-    let market = PluginMarket::new(data.path());
-    let source = market
-        .set_sources(&[directory.path().to_string_lossy().into_owned()])
-        .await
-        .expect("sources")
-        .remove(0);
+    let location = SourceLocation::parse(&directory.path().to_string_lossy()).expect("location");
+    let market = PluginMarket::reading(data.path(), location);
     let manager = PluginManager::discover(&[], Some(install.path().to_owned())).expect("manager");
     manager.serve_in_process(PLUGIN_ID, market_entry);
     Market {
@@ -99,37 +95,14 @@ async fn market() -> Market {
         directory,
         market,
         manager,
-        source,
     }
 }
 
-#[tokio::test]
-async fn sources_are_stored_in_their_stable_spelling() {
+#[test]
+fn the_market_reads_the_official_index() {
     let data = tempfile::tempdir().expect("data");
-    let market = PluginMarket::new(data.path());
-    assert_eq!(market.sources().expect("none yet"), Vec::<String>::new());
-    let stored = market
-        .set_sources(&["https://plugins.example.com/lab/".to_owned()])
-        .await
-        .expect("sources");
-    assert_eq!(stored, vec!["https://plugins.example.com/lab/index.json"]);
-    assert_eq!(market.sources().expect("stored"), stored);
-    for bad in [
-        vec!["http://plugins.example.com/index.json".to_owned()],
-        vec![
-            "https://plugins.example.com/lab/".to_owned(),
-            "https://plugins.example.com/lab/index.json".to_owned(),
-        ],
-    ] {
-        assert!(market.set_sources(&bad).await.is_err(), "{bad:?}");
-    }
-    assert_eq!(market.sources().expect("unchanged"), stored);
-    assert!(matches!(
-        market
-            .index("https://elsewhere.example.com/index.json", false)
-            .await,
-        Err(MarketError::UnknownSource(_))
-    ));
+    let market = PluginMarket::new(data.path()).expect("market");
+    assert_eq!(market.location.key(), OFFICIAL_INDEX);
 }
 
 #[tokio::test]
@@ -137,7 +110,7 @@ async fn a_local_market_lists_downloads_and_installs() {
     let fixture = market().await;
     let listing = fixture
         .market
-        .catalog(&fixture.manager, &fixture.source, false)
+        .catalog(&fixture.manager, false)
         .await
         .expect("catalog");
     assert_eq!(listing.title, "实验室");
@@ -164,7 +137,7 @@ async fn a_local_market_lists_downloads_and_installs() {
 
     let download = fixture
         .market
-        .download(&fixture.manager, &fixture.source, PLUGIN_ID, "1.0.0")
+        .download(&fixture.manager, PLUGIN_ID, "1.0.0")
         .await
         .expect("download");
     assert_eq!(download.inspection.change, PackageChange::New);
@@ -183,7 +156,7 @@ async fn a_local_market_lists_downloads_and_installs() {
     assert!(!Path::new(&download.archive).exists());
     let listing = fixture
         .market
-        .catalog(&fixture.manager, &fixture.source, false)
+        .catalog(&fixture.manager, false)
         .await
         .expect("catalog");
     assert_eq!(listing.packages[0].status, MarketStatus::Installed);
@@ -196,11 +169,43 @@ async fn a_local_market_lists_downloads_and_installs() {
 }
 
 #[tokio::test]
+async fn a_version_the_cached_index_lacks_is_read_again() {
+    let fixture = market().await;
+    fixture
+        .market
+        .catalog(&fixture.manager, false)
+        .await
+        .expect("first read");
+    // Published after the index was read.
+    write_package(
+        &fixture.directory.path().join("market-1.1.0.lcpkg"),
+        "1.1.0",
+    );
+    generate_index(fixture.directory.path(), "实验室", None).expect("index");
+    let download = fixture
+        .market
+        .download(&fixture.manager, PLUGIN_ID, "1.1.0")
+        .await
+        .expect("read again");
+    assert_eq!(download.inspection.version, "1.1.0");
+    fixture.market.release(&download.sha256).expect("release");
+    let error = fixture
+        .market
+        .download(&fixture.manager, PLUGIN_ID, "9.9.9")
+        .await
+        .expect_err("not listed");
+    assert!(
+        matches!(error, MarketError::UnknownVersion { .. }),
+        "{error}"
+    );
+}
+
+#[tokio::test]
 async fn downloads_must_match_what_the_index_lists() {
     let fixture = market().await;
     fixture
         .market
-        .index(&fixture.source, false)
+        .catalog(&fixture.manager, false)
         .await
         .expect("first read");
     let index_path = fixture.directory.path().join(INDEX_FILE);
@@ -214,18 +219,18 @@ async fn downloads_must_match_what_the_index_lists() {
     // The cached index still lists the right digest until a refresh.
     let cached = fixture
         .market
-        .download(&fixture.manager, &fixture.source, PLUGIN_ID, "1.0.0")
+        .download(&fixture.manager, PLUGIN_ID, "1.0.0")
         .await
         .expect("cached index");
     fixture.market.release(&cached.sha256).expect("release");
     fixture
         .market
-        .index(&fixture.source, true)
+        .catalog(&fixture.manager, true)
         .await
         .expect("refresh");
     let error = fixture
         .market
-        .download(&fixture.manager, &fixture.source, PLUGIN_ID, "1.0.0")
+        .download(&fixture.manager, PLUGIN_ID, "1.0.0")
         .await
         .expect_err("digest mismatch");
     assert!(matches!(error, MarketError::Integrity { .. }), "{error}");
@@ -236,12 +241,12 @@ async fn downloads_must_match_what_the_index_lists() {
     std::fs::write(&index_path, serde_json::to_vec(&index).expect("json")).expect("write");
     fixture
         .market
-        .index(&fixture.source, true)
+        .catalog(&fixture.manager, true)
         .await
         .expect("refresh");
     let error = fixture
         .market
-        .download(&fixture.manager, &fixture.source, PLUGIN_ID, "1.0.1")
+        .download(&fixture.manager, PLUGIN_ID, "1.0.1")
         .await
         .expect_err("version mismatch");
     assert!(matches!(error, MarketError::Mismatch { .. }), "{error}");

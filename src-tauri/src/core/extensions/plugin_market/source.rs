@@ -1,9 +1,10 @@
-//! Where an index comes from: an `https://` address, or an index file or
-//! market directory on a local or network drive (an offline lab copies the
-//! directory). Nothing else is accepted, `http://` included: a package's
-//! integrity rests on the SHA-256 the index lists, so the index must not be
-//! open to tampering on the way. Package files resolve against the index:
-//! a relative path stays next to it, an absolute URL must be `https://`.
+//! Where an index comes from: an `https://` address (the market reads the
+//! official one), or an index file or market directory on a drive (the
+//! market's tests). Nothing else is accepted, `http://` included: a
+//! package's integrity rests on the SHA-256 the index lists, so the index
+//! must not be open to tampering on the way. Package files resolve against
+//! the index: a relative path stays next to it, an absolute URL must be
+//! `https://`.
 
 use std::{
     io::{Read as _, Write as _},
@@ -19,7 +20,7 @@ use super::{index::INDEX_FILE, MarketError};
 const INDEX_TIMEOUT: Duration = Duration::from_secs(30);
 const PACKAGE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
-/// A configured index location.
+/// An index location.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SourceLocation {
     /// The index file's URL.
@@ -45,8 +46,8 @@ impl std::fmt::Display for PackageLocation {
 }
 
 impl SourceLocation {
-    /// Parses a source as the user typed it. A directory, or an address
-    /// ending in `/`, means its `index.json`.
+    /// Parses an index location. A directory, or an address ending in `/`,
+    /// means its `index.json`.
     pub fn parse(text: &str) -> Result<Self, MarketError> {
         let text = text.trim();
         let invalid = |message: &str| MarketError::InvalidSource(format!("{text}: {message}"));
@@ -87,7 +88,7 @@ impl SourceLocation {
         }))
     }
 
-    /// The source's stable spelling: what is stored and shown.
+    /// The location's stable spelling, as listings and errors show it.
     pub fn key(&self) -> String {
         match self {
             Self::Https(url) => url.to_string(),

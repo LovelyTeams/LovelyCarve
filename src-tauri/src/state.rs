@@ -38,8 +38,8 @@ pub struct AppState {
     /// Discovered plugin packages. The setup hook installs the manager
     /// after Tauri resolves the per-user application-data directory.
     pub plugins: Arc<parking_lot::RwLock<Option<Arc<PluginManager>>>>,
-    /// Plugin market sources, indexes and downloads, set by the setup hook
-    /// once the application-data directory is known.
+    /// The plugin market (official index cache and downloads), set by the
+    /// setup hook once the application-data directory is known.
     pub plugin_market: std::sync::OnceLock<PluginMarket>,
     /// Operating systems detected per loaded image (system-scope plugin
     /// runs and the analysis dialog). Purged per image on unload.

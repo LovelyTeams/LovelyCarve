@@ -351,14 +351,9 @@ export_plugin!(plugin);
 
 ## 插件市场
 
-插件市场是一份 `index.json` 索引，列出可安装的插件、版本和每个平台的 `.lcpkg`。索引源只能是：
+插件市场是一份 `index.json` 索引，列出可安装的插件、版本和每个平台的 `.lcpkg`。LovelyCarve 只读取[插件发布页](https://lovelyteams.github.io/LovelyCarve-Plugin-Site/)的官方索引 `https://lovelyteams.github.io/LovelyCarve-Plugin-Site/index.json`：不能添加其他索引源，也没有镜像或回退。插件包的完整性依赖索引列出的 SHA-256。读到的索引在进程内缓存 10 分钟，刷新时或要安装的版本不在缓存的索引中时重新读取。
 
-- `https://` 地址：索引文件的 URL，以 `/` 结尾时指目录下的 `index.json`；不能带凭据、查询或片段；
-- 本地或网络驱动器上的绝对路径：市场目录（取其中的 `index.json`）或索引文件本身。离线环境把整个市场目录复制过去即可。
-
-`http://`、`file://` 等其他形式一律拒绝，也没有镜像或回退。插件包的完整性依赖索引列出的 SHA-256。浏览插件市场需要先配置索引源，配置保存在用户数据目录的 `plugin-market/sources.json`，桌面端与 CLI 共用。读到的索引在进程内缓存 10 分钟，刷新时重新读取。
-
-官方发布页通过 `lovelycarve://install-plugin?id=<插件 ID>&version=<语义化版本>` 打开桌面安装流程。LovelyCarve 用固定的官方索引解析当前平台的包、校验并检视，确认后安装。链接只传插件 ID 和版本，使用该流程无需添加市场源。
+发布页通过 `lovelycarve://install-plugin?id=<插件 ID>&version=<语义化版本>` 打开桌面安装流程。LovelyCarve 用官方索引解析当前平台的包、校验并检视，确认后安装。链接只传插件 ID 和版本。
 
 ```json
 {
@@ -394,9 +389,9 @@ export_plugin!(plugin);
 - 每个版本 1–16 个平台的插件包，`platform` 形如 `<系统>-<架构>`（Rust 的命名：`windows-x86_64`、`linux-aarch64`、`macos-aarch64`）且不重复；`size` 为 1 字节到 2 GiB；`sha256` 为 64 位小写十六进制。
 - `url` 是相对索引所在目录、只用 `/` 分隔且不离开该目录的路径，或绝对 `https://` URL（不带凭据与片段）。
 
-清单把每个插件与已安装版本比较：安装取当前平台可安装的最高正式版，没有正式版时取最高预发布版；状态为未安装、已安装、可更新、已安装更新版本、内置（不能替换）或当前平台不可用。安装一个版本时，宿主把插件包下载（或从本地目录复制）到用户数据目录的 `plugin-market/downloads/<SHA-256>.lcpkg`，大小或 SHA-256 与索引不符时丢弃；然后按[安装与卸载](#安装与卸载)检视它，插件包的 ID 与版本必须与索引列出的一致。用户在检视结果上确认后才安装，安装或放弃后删除下载；中断留下的下载满一天后于下次启动时删除。索引的名称、说明与权限是发布者的声明，实际安装的内容以插件包自己的清单为准。
+清单把每个插件与已安装版本比较：安装取当前平台可安装的最高正式版，没有正式版时取最高预发布版；状态为未安装、已安装、可更新、已安装更新版本、内置（不能替换）或当前平台不可用。安装一个版本时，宿主把插件包下载到用户数据目录的 `plugin-market/downloads/<SHA-256>.lcpkg`，大小或 SHA-256 与索引不符时丢弃；然后按[安装与卸载](#安装与卸载)检视它，插件包的 ID 与版本必须与索引列出的一致。用户在检视结果上确认后才安装，安装或放弃后删除下载；中断留下的下载满一天后于下次启动时删除。索引的名称、说明与权限是发布者的声明，实际安装的内容以插件包自己的清单为准。
 
-`plugin market index <目录> --title <标题>`（或 `just market-index [目录] [标题]`）为目录中的 `.lcpkg` 写出 `index.json`：每个插件包按安装时的规则读取清单与语言包（不运行其中代码），从库文件头（PE、ELF、Mach-O）判断平台，同一插件的多个插件包成为多个版本，名称与说明取最高版本；同一版本同一平台只能有一个插件包。已有 `index.json` 中 SHA-256 相同的插件包保留原发布时间，目录不变时输出不变。把目录连同 `index.json` 发布到 https 静态主机或共享目录即可作为索引源。
+`plugin market index <目录> --title <标题>`（或 `just market-index [目录] [标题]`）为目录中的 `.lcpkg` 写出 `index.json`：每个插件包按安装时的规则读取清单与语言包（不运行其中代码），从库文件头（PE、ELF、Mach-O）判断平台，同一插件的多个插件包成为多个版本，名称与说明取最高版本；同一版本同一平台只能有一个插件包。已有 `index.json` 中 SHA-256 相同的插件包保留原发布时间，目录不变时输出不变。插件发布页用它为 `plugin-site/docs/` 写出官方索引（见[开发](DEVELOPMENT.md)）。
 
 ## 应用接口
 
@@ -406,10 +401,8 @@ export_plugin!(plugin);
 | `plugin_inspect` | `plugin inspect` | 检视 `.lcpkg`：标识、声明、摘要与已安装版本的关系，不安装 |
 | `plugin_install` / `plugin_uninstall` | `plugin install` / `plugin rm` | 安装检视过的 `.lcpkg`（带它的 SHA-256；CLI 内部先检视）、卸载已安装的插件包 |
 | `plugin_readme` | `plugin readme` | 插件包的 `README.md` |
-| `plugin_market_sources` / `plugin_market_set_sources` | `plugin market sources` / `add` / `rm` | 插件市场索引源 |
-| `plugin_market_list` | `plugin market ls` | 一个索引源的插件、版本与安装状态 |
-| `plugin_market_download` / `plugin_market_release` | `plugin market install` | 下载并校验、检视一个版本；安装后或放弃时删除下载 |
-| `plugin_market_download_official` | `rpc plugin_market_download_official` | 从固定的官方索引下载、校验并检视发布页指定的版本 |
+| `plugin_market_list` | `plugin market ls` | 官方索引的插件、版本与安装状态 |
+| `plugin_market_download` / `plugin_market_release` | `plugin market install` | 从官方索引下载并校验、检视一个版本；安装后或放弃时删除下载 |
 | `plugin_market_index` | `plugin market index` | 为目录中的 `.lcpkg` 生成 `index.json` |
 | `plugin_restart` | `rpc plugin_restart` | 重启文件系统插件的共享实例 |
 | `sched_task_functions`、`sched_systems_list` | `analyze ls` | 可调度的分析器（作用域、平台、选项与画像事实），以及检材上识别出的系统及其挂载 |
@@ -420,7 +413,7 @@ export_plugin!(plugin);
 
 没有专门命令的调度接口（如 `sched_task_start`）经 `lovelycarve-cli rpc <命令名>` 调用。
 
-前端经 `src/lib/ipc/plugins.ts`、`pluginMarket.ts`、`tasks.ts`、`taskRuntime.ts`、`analysisResults.ts` 调用。界面：「设置 → 插件」检视后安装、卸载并查看插件包与说明文档；「设置 → 插件市场」管理索引源、浏览并安装插件；任务中心的「快速分析」按所选系统列出系统级与检材级分析器；文件列表右键「插件分析任务…」运行文件级分析器（有选项时先填写）；「分析结果」按分析器运行列出记录类型，表格列与排序来自记录结构，运行信息显示审计。
+前端经 `src/lib/ipc/plugins.ts`、`pluginMarket.ts`、`tasks.ts`、`taskRuntime.ts`、`analysisResults.ts` 调用。界面：「设置 → 插件」检视后安装、卸载并查看插件包与说明文档；「设置 → 插件市场」浏览官方索引并安装插件；任务中心的「快速分析」按所选系统列出系统级与检材级分析器；文件列表右键「插件分析任务…」运行文件级分析器（有选项时先填写）；「分析结果」按分析器运行列出记录类型，表格列与排序来自记录结构，运行信息显示审计。
 
 ## 旧版本数据
 

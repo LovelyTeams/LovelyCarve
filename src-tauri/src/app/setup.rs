@@ -41,12 +41,13 @@ pub(crate) fn initialize(
     *state.media_scratch.lock() = Some(Arc::clone(&scratch));
     discover_plugins(state, host);
     if let Some(data_dir) = host.app_data_dir() {
-        if state
-            .plugin_market
-            .set(PluginMarket::new(data_dir))
-            .is_err()
-        {
-            tracing::warn!("plugin market was already set up; keeping the first one");
+        match PluginMarket::new(data_dir) {
+            Ok(market) => {
+                if state.plugin_market.set(market).is_err() {
+                    tracing::warn!("plugin market was already set up; keeping the first one");
+                }
+            }
+            Err(error) => tracing::warn!("plugin market is unavailable: {error}"),
         }
     }
     let journal = TaskJournal::start(Arc::clone(&state.active_case))?;

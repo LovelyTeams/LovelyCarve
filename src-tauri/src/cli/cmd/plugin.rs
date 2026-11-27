@@ -1,6 +1,6 @@
 //! Plugin packages and the plugin market: list, inspect, install and remove
-//! packages; manage index sources, list a source and install from it; write
-//! a market directory's `index.json`.
+//! packages; list the official market index and install from it; write a
+//! market directory's `index.json`.
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -36,7 +36,7 @@ pub enum PluginCommand {
     Rm(PluginId),
     /// 插件包的说明（README.md）
     Readme(PluginId),
-    /// 插件市场：索引源、清单与安装
+    /// 插件市场：官方索引的清单与安装
     Market(MarketArgs),
 }
 
@@ -66,34 +66,17 @@ pub struct MarketArgs {
 #[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum MarketCommand {
-    /// 列出索引源（默认）
-    Sources,
-    /// 添加索引源：https:// 地址，或本地市场目录、index.json 的绝对路径
-    Add(SourceArg),
-    /// 移除索引源
-    Rm(SourceArg),
-    /// 列出一个索引源的插件及其安装状态
+    /// 列出官方索引的插件及其安装状态（默认）
     Ls(MarketListArgs),
-    /// 从索引源下载插件包，按索引校验大小与 SHA-256，检视后安装
+    /// 从官方索引下载插件包，按索引校验大小与 SHA-256，检视后安装
     Install(MarketInstallArgs),
     /// 为目录中的 .lcpkg 生成 index.json
     Index(MarketIndexArgs),
 }
 
-#[derive(Args, Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SourceArg {
-    /// 索引源
-    #[arg(value_name = "索引源")]
-    pub source: String,
-}
-
-#[derive(Args, Debug, Clone, Serialize, Deserialize)]
+#[derive(Args, Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MarketListArgs {
-    /// 索引源；省略时取第一个
-    #[arg(long, value_name = "索引源")]
-    pub source: Option<String>,
     /// 重新读取索引，不用十分钟内读到的
     #[arg(long)]
     pub refresh: bool,
@@ -108,9 +91,6 @@ pub struct MarketInstallArgs {
     /// 版本；省略时取当前平台可安装的最新版本
     #[arg(long, value_name = "版本")]
     pub version: Option<String>,
-    /// 索引源；省略时取第一个
-    #[arg(long, value_name = "索引源")]
-    pub source: Option<String>,
 }
 
 #[derive(Args, Debug, Clone, Serialize, Deserialize)]
@@ -135,10 +115,7 @@ pub fn path(args: &PluginArgs) -> &'static str {
         Some(PluginCommand::Rm(_)) => "plugin rm",
         Some(PluginCommand::Readme(_)) => "plugin readme",
         Some(PluginCommand::Market(market)) => match &market.command {
-            None | Some(MarketCommand::Sources) => "plugin market sources",
-            Some(MarketCommand::Add(_)) => "plugin market add",
-            Some(MarketCommand::Rm(_)) => "plugin market rm",
-            Some(MarketCommand::Ls(_)) => "plugin market ls",
+            None | Some(MarketCommand::Ls(_)) => "plugin market ls",
             Some(MarketCommand::Install(_)) => "plugin market install",
             Some(MarketCommand::Index(_)) => "plugin market index",
         },
@@ -209,82 +186,23 @@ async fn install(
     })))
 }
 
-async fn sources(exec: &Exec) -> Result<Vec<String>, CliError> {
-    Ok(market::plugin_market_sources(exec.state())
-        .await
-        .map_err(operation("plugin_market_sources"))?
-        .sources)
-}
-
-/// The named source, or the first configured one.
-async fn source_or_first(exec: &Exec, source: Option<String>) -> Result<String, CliError> {
-    match source {
-        Some(source) => Ok(source),
-        None => sources(exec).await?.into_iter().next().ok_or_else(|| {
-            CliError::new(
-                "notFound",
-                "没有配置插件市场索引源（plugin market add <索引源>）",
-            )
-        }),
-    }
-}
-
 async fn run_market(exec: &Exec, args: MarketArgs) -> Result<Output, CliError> {
-    match args.command.unwrap_or(MarketCommand::Sources) {
-        MarketCommand::Sources => crate::cli::json_output(
-            market::plugin_market_sources(exec.state())
+    match args
+        .command
+        .unwrap_or_else(|| MarketCommand::Ls(MarketListArgs::default()))
+    {
+        MarketCommand::Ls(list) => crate::cli::json_output(
+            market::plugin_market_list(exec.state(), Some(list.refresh))
                 .await
-                .map_err(operation("plugin_market_sources"))?,
+                .map_err(operation("plugin_market_list"))?,
         ),
-        MarketCommand::Add(source) => {
-            let mut configured = sources(exec).await?;
-            configured.push(source.source);
-            crate::cli::json_output(
-                market::plugin_market_set_sources(exec.state(), configured)
-                    .await
-                    .map_err(operation("plugin_market_set_sources"))?,
-            )
-        }
-        MarketCommand::Rm(source) => {
-            let configured = sources(exec).await?;
-            let key = crate::core::extensions::plugin_market::SourceLocation::parse(&source.source)
-                .map(|location| location.key())
-                .unwrap_or_else(|_| source.source.trim().to_owned());
-            if !configured.contains(&key) {
-                return Err(CliError::new(
-                    "notFound",
-                    format!("{key} 不是已配置的索引源"),
-                ));
-            }
-            crate::cli::json_output(
-                market::plugin_market_set_sources(
-                    exec.state(),
-                    configured
-                        .into_iter()
-                        .filter(|stored| *stored != key)
-                        .collect(),
-                )
-                .await
-                .map_err(operation("plugin_market_set_sources"))?,
-            )
-        }
-        MarketCommand::Ls(list) => {
-            let source = source_or_first(exec, list.source).await?;
-            crate::cli::json_output(
-                market::plugin_market_list(exec.state(), source, Some(list.refresh))
-                    .await
-                    .map_err(operation("plugin_market_list"))?,
-            )
-        }
         MarketCommand::Install(request) => {
-            let source = source_or_first(exec, request.source).await?;
             let version = match request.version {
                 Some(version) => version,
                 None => {
-                    let catalog =
-                        market::plugin_market_list(exec.state(), source.clone(), Some(false))
-                            .await
-                            .map_err(operation("plugin_market_list"))?;
+                    let catalog = market::plugin_market_list(exec.state(), Some(false))
+                        .await
+                        .map_err(operation("plugin_market_list"))?;
                     catalog
                         .packages
                         .into_iter()
@@ -292,7 +210,7 @@ async fn run_market(exec: &Exec, args: MarketArgs) -> Result<Output, CliError> {
                         .ok_or_else(|| {
                             CliError::new(
                                 "notFound",
-                                format!("{source} 没有列出 {}", request.plugin_id),
+                                format!("插件市场没有列出 {}", request.plugin_id),
                             )
                         })?
                         .latest
@@ -304,10 +222,9 @@ async fn run_market(exec: &Exec, args: MarketArgs) -> Result<Output, CliError> {
                         })?
                 }
             };
-            let download =
-                market::plugin_market_download(exec.state(), source, request.plugin_id, version)
-                    .await
-                    .map_err(operation("plugin_market_download"))?;
+            let download = market::plugin_market_download(exec.state(), request.plugin_id, version)
+                .await
+                .map_err(operation("plugin_market_download"))?;
             let installed = install(exec, download.archive.clone(), &download.inspection).await;
             market::plugin_market_release(exec.state(), download.sha256.clone())
                 .await
@@ -335,20 +252,7 @@ pub fn render(args: &PluginArgs, value: &Value) -> Option<String> {
                 .map_or_else(String::new, |readme| format!("{}\n", readme.trim_end())),
         ),
         Some(PluginCommand::Market(MarketArgs {
-            command:
-                None | Some(MarketCommand::Sources | MarketCommand::Add(_) | MarketCommand::Rm(_)),
-        })) => Some(
-            value["sources"]
-                .as_array()
-                .map_or_else(String::new, |sources| {
-                    sources
-                        .iter()
-                        .map(|source| format!("{}\n", render::cell(source)))
-                        .collect()
-                }),
-        ),
-        Some(PluginCommand::Market(MarketArgs {
-            command: Some(MarketCommand::Ls(_)),
+            command: None | Some(MarketCommand::Ls(_)),
         })) => Some(render::table(
             value["packages"].as_array().map_or(&[][..], Vec::as_slice),
             &[

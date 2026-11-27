@@ -23,8 +23,7 @@ function reasonTitle(reason: FailureReason, tr: Translator): string {
     case 'changed': return tr("插件包在检视后被修改");
     case 'libraryRejected': return tr("插件库未通过启动校验");
     case 'inUse': return tr("已安装的版本正在使用");
-    case 'invalidSource': return tr("索引源无效");
-    case 'unknownSource': return tr("索引源未配置");
+    case 'invalidSource': return tr("索引地址无效");
     case 'fetchFailed': return tr("读取索引失败");
     case 'invalidIndex': return tr("索引格式无效");
     case 'unknownPackage': return tr("索引中没有该插件");
@@ -38,7 +37,7 @@ function reasonTitle(reason: FailureReason, tr: Translator): string {
 
 const REASONS = new Set<string>([
   'noInstallRoot', 'invalidArchive', 'invalidPackage', 'noLibrary', 'bundled', 'changed', 'libraryRejected', 'inUse',
-  'invalidSource', 'unknownSource', 'fetchFailed', 'invalidIndex', 'unknownPackage', 'unknownVersion', 'unavailable',
+  'invalidSource', 'fetchFailed', 'invalidIndex', 'unknownPackage', 'unknownVersion', 'unavailable',
   'downloadFailed', 'integrity', 'mismatch',
 ]);
 

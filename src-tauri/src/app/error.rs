@@ -175,8 +175,7 @@ impl From<MarketError> for AppError {
             MarketError::InvalidSource(_)
             | MarketError::InvalidIndex { .. }
             | MarketError::Mismatch { .. } => Self::invalid_input(error.to_string()),
-            MarketError::UnknownSource(_)
-            | MarketError::UnknownPackage { .. }
+            MarketError::UnknownPackage { .. }
             | MarketError::UnknownVersion { .. }
             | MarketError::NoPackageForPlatform { .. } => Self::not_found(error.to_string()),
             MarketError::Fetch { .. } | MarketError::Download { .. } => {

@@ -1,5 +1,6 @@
-// 插件市场 IPC:索引源、某个源的插件清单、下载并检视一个版本、释放下载。下载
-// 结果经 `pluginInstall`(plugins.ts)安装,安装后或取消时调 `pluginMarketRelease`。
+// 插件市场 IPC:官方索引的插件清单、下载并检视一个版本、释放下载。市场只读取插件
+// 发布页的官方索引,没有其他索引源。下载结果经 `pluginInstall`(plugins.ts)安装,
+// 安装后或取消时调 `pluginMarketRelease`。
 import { invokeCmd } from './client';
 import type { PackageInspection, PluginLocales, PluginPermission } from './plugins';
 
@@ -15,7 +16,6 @@ export type MarketStatus =
 /** Rust `MarketError::reason`(以及插件包拒绝原因)。 */
 export type MarketErrorReason =
   | 'invalidSource'
-  | 'unknownSource'
   | 'fetchFailed'
   | 'invalidIndex'
   | 'unknownPackage'
@@ -53,6 +53,7 @@ export interface MarketPackage {
 }
 
 export interface MarketCatalog {
+  /** 读取的索引(官方索引的地址)。 */
   source: string;
   title: string;
   description: string | null;
@@ -62,10 +63,6 @@ export interface MarketCatalog {
   packages: MarketPackage[];
 }
 
-export interface MarketSources {
-  sources: string[];
-}
-
 export interface MarketDownload {
   source: string;
   archive: string;
@@ -73,28 +70,14 @@ export interface MarketDownload {
   inspection: PackageInspection;
 }
 
-export function pluginMarketSources(): Promise<MarketSources> {
-  return invokeCmd<MarketSources>('plugin_market_sources');
+/** 官方索引的插件清单;`refresh` 重新读取索引。 */
+export function pluginMarketList(refresh = false): Promise<MarketCatalog> {
+  return invokeCmd<MarketCatalog>('plugin_market_list', { refresh });
 }
 
-/** 替换索引源:https:// 地址,或本地市场目录、index.json 的绝对路径。 */
-export function pluginMarketSetSources(sources: string[]): Promise<MarketSources> {
-  return invokeCmd<MarketSources>('plugin_market_set_sources', { sources });
-}
-
-/** 一个已配置索引源的插件清单;`refresh` 重新读取索引。 */
-export function pluginMarketList(source: string, refresh = false): Promise<MarketCatalog> {
-  return invokeCmd<MarketCatalog>('plugin_market_list', { source, refresh });
-}
-
-/** 下载当前平台的插件包,按索引校验大小与 SHA-256,并检视它。 */
-export function pluginMarketDownload(source: string, pluginId: string, version: string): Promise<MarketDownload> {
-  return invokeCmd<MarketDownload>('plugin_market_download', { source, pluginId, version });
-}
-
-/** Download and inspect from the official index without adding a market source. */
-export function pluginMarketDownloadOfficial(pluginId: string, version: string): Promise<MarketDownload> {
-  return invokeCmd<MarketDownload>('plugin_market_download_official', { pluginId, version });
+/** 从官方索引下载当前平台的插件包,按索引校验大小与 SHA-256,并检视它。 */
+export function pluginMarketDownload(pluginId: string, version: string): Promise<MarketDownload> {
+  return invokeCmd<MarketDownload>('plugin_market_download', { pluginId, version });
 }
 
 /** 删除安装过或放弃的下载。 */

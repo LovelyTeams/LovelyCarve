@@ -10,13 +10,10 @@ import { resetPluginCatalogForTests } from '../../tasks/composables/usePluginCat
 import { resetTaskCenterForTests } from '../../tasks/composables/useTaskCenter';
 
 const ipc = vi.hoisted(() => ({
-  sources: vi.fn(), setSources: vi.fn(), list: vi.fn(), download: vi.fn(), downloadOfficial: vi.fn(), release: vi.fn(),
-  pluginList: vi.fn(), install: vi.fn(), invoke: vi.fn(), open: vi.fn(),
+  list: vi.fn(), download: vi.fn(), release: vi.fn(), pluginList: vi.fn(), install: vi.fn(), invoke: vi.fn(),
 }));
 vi.mock('../../../lib/ipc/pluginMarket', () => ({
-  pluginMarketSources: ipc.sources, pluginMarketSetSources: ipc.setSources, pluginMarketList: ipc.list,
-  pluginMarketDownload: ipc.download, pluginMarketRelease: ipc.release,
-  pluginMarketDownloadOfficial: ipc.downloadOfficial,
+  pluginMarketList: ipc.list, pluginMarketDownload: ipc.download, pluginMarketRelease: ipc.release,
 }));
 vi.mock('../../../lib/ipc/plugins', async original => ({
   ...await original<typeof import('../../../lib/ipc/plugins')>(),
@@ -27,11 +24,10 @@ vi.mock('../../../lib/ipc/client', async original => ({
   invokeCmd: ipc.invoke,
 }));
 vi.mock('../../../lib/ipc/events', () => ({ onEvent: async () => () => {}, emitEvent: vi.fn() }));
-vi.mock('@tauri-apps/plugin-dialog', () => ({ open: ipc.open }));
 
-const SOURCE = 'https://plugins.example.com/lab/index.json';
+const SOURCE = 'https://lovelyteams.github.io/LovelyCarve-Plugin-Site/index.json';
 const catalog = (status: MarketCatalog['packages'][number]['status'], installed: string | null = null): MarketCatalog => ({
-  source: SOURCE, title: '实验室', description: null, fetchedAt: '2026-11-25T08:00:00Z', platform: 'windows-x86_64',
+  source: SOURCE, title: 'LovelyCarve', description: null, fetchedAt: '2026-11-25T08:00:00Z', platform: 'windows-x86_64',
   packages: [{
     id: 'org.example.demo', name: '示例', description: '示例插件', publisher: 'Example', license: 'MIT',
     locales: { en: { 'plugin.name': 'Demo' } }, latest: '1.2.0', installed, status,
@@ -72,7 +68,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   resetPluginCatalogForTests();
   resetTaskCenterForTests();
-  ipc.sources.mockResolvedValue({ sources: [SOURCE] });
   ipc.list.mockResolvedValue(catalog('notInstalled'));
   ipc.release.mockResolvedValue(undefined);
   ipc.pluginList.mockResolvedValue({ packages: [], rejected: [], installDirectory: null });
@@ -89,45 +84,28 @@ async function closed() {
 }
 
 describe('plugin market', () => {
-  it('uses the official index without adding a source and installs only after confirmation', async () => {
-    const source = 'https://lovelyteams.github.io/LovelyCarve-Plugin-Site/index.json';
-    ipc.sources.mockResolvedValueOnce({ sources: [] });
-    ipc.downloadOfficial.mockResolvedValueOnce({ ...download, source });
+  it('lists the official index and reads it again on request', async () => {
+    await mount();
+    expect(ipc.list).toHaveBeenCalledExactlyOnceWith(false);
+    expect(host.querySelector('.market-meta')?.textContent).toContain('LovelyCarve');
+    expect(host.querySelector('.source-form')).toBeNull();
+    host.querySelector<HTMLButtonElement>('[aria-label="重新读取索引"]')!.click(); await settle();
+    expect(ipc.list).toHaveBeenLastCalledWith(true);
+  });
+
+  it('opens an install link from the release page and installs only after confirmation', async () => {
+    ipc.download.mockResolvedValueOnce(download);
     await mount({ pluginId: inspection.pluginId, version: inspection.version });
     const confirmation = await dialog();
-    expect(ipc.downloadOfficial).toHaveBeenCalledExactlyOnceWith(inspection.pluginId, inspection.version);
-    expect(ipc.setSources).not.toHaveBeenCalled();
+    expect(ipc.download).toHaveBeenCalledExactlyOnceWith(inspection.pluginId, inspection.version);
     expect(ipc.install).not.toHaveBeenCalled();
-    expect(confirmation.textContent).toContain(source);
+    expect(confirmation.textContent).toContain(SOURCE);
 
     ipc.install.mockResolvedValueOnce({ pluginId: inspection.pluginId, version: inspection.version, replaced: null });
     button('安装', confirmation).click();
     await vi.waitFor(() => expect(host.querySelector('[role="status"]')?.textContent).toContain('已安装 org.example.demo 1.2.0'));
     expect(ipc.install).toHaveBeenCalledExactlyOnceWith(inspection.archive, inspection.sha256);
     expect(ipc.release).toHaveBeenCalledExactlyOnceWith(inspection.sha256);
-  });
-
-  it('adds a source and states a rejected one at its field', async () => {
-    ipc.sources.mockResolvedValueOnce({ sources: [] });
-    await mount();
-    expect(host.textContent).toContain('未配置索引源');
-    const input = host.querySelector<HTMLInputElement>('.source-input')!;
-    input.value = 'http://plugins.example.com/index.json'; input.dispatchEvent(new Event('input'));
-    ipc.setSources.mockRejectedValueOnce(new IpcCommandError({
-      code: 'invalidInput', message: 'only https:// addresses and local directories are accepted', context: { reason: 'invalidSource' }, retryable: false,
-    }));
-    host.querySelector<HTMLFormElement>('.source-form')!.dispatchEvent(new Event('submit'));
-    await settle();
-    expect(input.getAttribute('aria-invalid')).toBe('true');
-    expect(host.querySelector('.ui-field-error')?.textContent).toContain('索引源无效');
-
-    input.value = 'https://plugins.example.com/lab/'; input.dispatchEvent(new Event('input'));
-    ipc.setSources.mockResolvedValueOnce({ sources: [SOURCE] });
-    host.querySelector<HTMLFormElement>('.source-form')!.dispatchEvent(new Event('submit'));
-    await vi.waitFor(() => expect(host.querySelector('.market-card')).not.toBeNull());
-    expect(ipc.setSources).toHaveBeenLastCalledWith(['https://plugins.example.com/lab/']);
-    expect(ipc.list).toHaveBeenCalledWith(SOURCE, false);
-    expect(input.value).toBe('');
   });
 
   it('downloads, confirms and installs a listed version, then releases the download', async () => {
@@ -138,7 +116,7 @@ describe('plugin market', () => {
     ipc.download.mockResolvedValueOnce(download);
     button('安装', card).click();
     const confirmation = await dialog();
-    expect(ipc.download).toHaveBeenCalledWith(SOURCE, 'org.example.demo', '1.2.0');
+    expect(ipc.download).toHaveBeenCalledWith('org.example.demo', '1.2.0');
     expect(confirmation.textContent).toContain(SOURCE);
     expect(confirmation.textContent).toContain('新安装');
 

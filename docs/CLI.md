@@ -306,9 +306,8 @@ lovelycarve-cli -C "D:\cases\usb" carve export "<扫描ID>" -o "D:\output\recove
 | `plugin ls` / `plugin rm <插件ID>` / `plugin readme <插件ID>` | 插件包（含说明、发布者与许可证）、卸载、说明文档 |
 | `plugin inspect <插件包>` | 检视 `.lcpkg`：标识、版本变化、权限、分析器与压缩包和库文件的 SHA-256，不安装 |
 | `plugin install <插件包>` | 先检视，再安装同一份字节；需要确认（`-y`），暂存的库通过启动校验后才替换已安装的版本 |
-| `plugin market [sources]` / `plugin market add <索引源>` / `plugin market rm <索引源>` | 插件市场索引源：`https://` 地址，或本地市场目录、`index.json` 的绝对路径 |
-| `plugin market ls [--source 索引源] [--refresh]` | 一个索引源的插件、最新版本与安装状态；省略 `--source` 取第一个 |
-| `plugin market install <插件ID> [--version 版本] [--source 索引源]` | 下载当前平台的插件包，按索引校验大小与 SHA-256，检视后安装（需要确认）；省略版本取最新正式版 |
+| `plugin market [ls] [--refresh]` | 插件发布页官方索引中的插件、最新版本与安装状态；`--refresh` 不用十分钟内读到的索引 |
+| `plugin market install <插件ID> [--version 版本]` | 从官方索引下载当前平台的插件包，按索引校验大小与 SHA-256，检视后安装（需要确认）；省略版本取最新正式版 |
 | `plugin market index <目录> --title <标题> [--description 说明]` | 为目录中的 `.lcpkg` 写出 `index.json` |
 | `analyze ls [--evidence 别名]` | 分析器（作用域、平台与选项）及检材上识别出的系统（ID 如 `linux@part:2`） |
 | `analyze run <分析器> [--system 系统ID] [--file 地址] [--option 键=值]… [--options-json JSON]` | 创建插件任务：系统级给 `--system`，文件级给 `--file`，检材级都不给；选项值是 JSON 时保持类型，省略的取默认值 |

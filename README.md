@@ -43,7 +43,7 @@ LovelyCarve 面向电子数据取证、应急响应和 CTF 取证题：加载磁
 - **全局搜索**：关键词与正则，覆盖 ASCII、UTF-8、UTF-16LE/BE、GBK，可包含删除文件与未分配空间；命中可回到源文件并定位字节偏移，支持去重与 CSV 导出。
 - **时间线**：投影文件修改时间、插件事件与 NTFS USN 日志，提供年度活动热力图、趋势钻取、筛选和导出。
 - **文件恢复**：读取 FAT、NTFS、exFAT 的删除记录并重建丢失分区，同时按签名雕刻 JPEG、PNG、GIF、PDF、ZIP/Office、SQLite 等 14 种格式；结果像文件列表一样按目录浏览，扫描可暂停、继续和取消，恢复文件时生成 SHA-256 与来源报告。
-- **插件分析**：基于 C ABI 的 LPP v2 动态库插件，每个任务在独立宿主进程中运行；插件在识别出的操作系统（按 fstab、盘符组装的卷）、整个检材或选中的文件上分析，输出带类型的记录，结果可排序、检索、回溯来源并查看运行审计；`.lcpkg` 插件包在设置中检视后安装，也可从插件市场（`https://` 或本地目录的索引源，按 SHA-256 校验）安装。内置 `linuxinfo`，提取 Linux 系统、用户、登录、网络、服务、软件、定时任务与命令历史等信息。
+- **插件分析**：基于 C ABI 的 LPP v2 动态库插件，每个任务在独立宿主进程中运行；插件在识别出的操作系统（按 fstab、盘符组装的卷）、整个检材或选中的文件上分析，输出带类型的记录，结果可排序、检索、回溯来源并查看运行审计；`.lcpkg` 插件包在设置中检视后安装，也可从插件市场（插件发布页的官方索引，按 SHA-256 校验）安装。内置 `linuxinfo`，提取 Linux 系统、用户、登录、网络、服务、软件、定时任务与命令历史等信息。
 - **命令行与挂载**：独立的 `lovelycarve-cli` 不依赖桌面运行时，用 `/<检材>/<卷>/<路径>` 地址和 `ls`、`cat`、`grep` 这样的命令浏览检材，案件后台进程在命令之间保持检材打开，`rpc` 可调用桌面端的全部后端功能，支持交互 shell 和批量请求；Windows 下可借助 Dokany 把卷只读挂载为盘符或文件夹。
 
 ## 界面
@@ -105,7 +105,7 @@ Get-Content .\workflow.jsonl | lovelycarve-cli -C "D:\cases\demo" batch
 
 ## 插件
 
-在[插件发布页](https://lovelyteams.github.io/LovelyCarve-Plugin-Site/)下载 `.lcpkg`、查看 SHA-256，或复制市场源地址到 LovelyCarve 的「设置 → 插件市场」。
+在[插件发布页](https://lovelyteams.github.io/LovelyCarve-Plugin-Site/)一键安装到 LovelyCarve，或下载 `.lcpkg`、查看 SHA-256；LovelyCarve 的「设置 → 插件市场」列出同一份官方索引。
 
 插件是导出 `lovelycarve_plugin_v1` C ABI 的动态库，连同清单、记录结构与语言包打成插件包。插件通过 LPP v2（LovelyCarve Plugin Protocol）经只读视图访问检材，按声明的记录结构输出带类型的记录，由宿主保存、投影时间线并保留来源。SDK、隔离宿主 `lc-plugin-host` 与内置的 `linuxinfo` 由子模块 [LovelyCarve-Plugins](https://github.com/LovelyTeams/LovelyCarve-Plugins) 维护。已发现的插件被视为可信代码，进程隔离用于故障隔离，不是权限沙箱。
 

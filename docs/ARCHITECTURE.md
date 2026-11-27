@@ -211,7 +211,7 @@ RAID 检测（`evidence/raid`）分七步：读取各检材的 LVM PV 并物化�
 - 加密卷：`encrypted_volume_unlock` 统一解锁 BitLocker / LUKS / VeraCrypt / FileVault，`bitlocker_inspect` / `filevault_inspect` 读取无凭据元数据，`bitlocker_scan_memory` 在内存镜像中查找 VMK
 - 案件和快照：案件创建/打开/关闭、证据列表/移除、卷快照构建/列表/删除
 - 插件与任务调度：`plugin_list`/`plugin_restart`/`plugin_inspect`/`plugin_install`/`plugin_uninstall`/`plugin_readme`；
-  插件市场 `plugin_market_sources`/`set_sources`/`list`/`download`/`download_official`/`release`/`index`；
+  插件市场 `plugin_market_list`/`download`/`release`/`index`；
   `sched_task_functions`、`sched_systems_list`、`sched_task_create`、
   `sched_task_cancel`/`start`/`restart`/`remove`、`sched_evidence_post_actions_set`；
   `analysis_result_tree`、`analysis_records_page`、`analysis_record_values`、`analysis_record_detail`、`analysis_run_get`
@@ -638,12 +638,12 @@ UUID 与卷标，`win_drive_letters` 读取盘符），结果按检材缓存，�
 记录（`run.library_sha256`，内置的 BCP 导入为空）。协议、安全边界与限制见 [插件协议](PLUGIN_PROTOCOL.md)。
 
 插件市场位于 `core::extensions::plugin_market`：`index.rs` 定义并严格校验索引格式（format 1，未知成员即拒绝），
-`source.rs` 解析索引源（只接受 `https://` 与本地绝对路径）、读取索引并下载或复制插件包，`catalog.rs` 把索引与
+`source.rs` 解析索引地址、读取索引并下载插件包（测试用本地市场目录代替官方地址），`catalog.rs` 把索引与
 已安装的插件比较，`generate.rs` 从一个目录的插件包写出索引。`PluginMarket`（`AppState.plugin_market`，启动时按
-应用数据目录建立）保存索引源（`plugin-market/sources.json`）、缓存读到的索引并管理下载目录
-（`plugin-market/downloads/<SHA-256>.lcpkg`）。市场浏览使用已配置的源，发布页的安装请求使用固定的官方索引。下载只保留大小与 SHA-256 都与索引一致的字节，
-再经插件管理器检视并核对 ID 与版本。HTTP 用 `reqwest` 与系统 TLS（Windows schannel），没有镜像或回退。命令在
-`commands::extensions::plugin_market`，前端经 `src/lib/ipc/pluginMarket.ts`。
+应用数据目录建立）只读取插件发布页的官方索引（`OFFICIAL_INDEX`），没有其他索引源；它缓存读到的索引并管理下载目录
+（`plugin-market/downloads/<SHA-256>.lcpkg`）。市场浏览与发布页的安装请求读取同一份索引，要安装的版本不在缓存的索引中时先重新读取一次。
+下载只保留大小与 SHA-256 都与索引一致的字节，再经插件管理器检视并核对 ID 与版本。HTTP 用 `reqwest` 与系统 TLS（Windows schannel），
+没有镜像或回退。命令在 `commands::extensions::plugin_market`，前端经 `src/lib/ipc/pluginMarket.ts`。
 
 ## 自动识别平台
 
@@ -1248,7 +1248,7 @@ CLI 的 `mount` / `umount` 调用同一组命令（取消共享经 `rpc`），�
 - 方案注册用 `tauri-plugin-deep-link`：安装包与应用包按 `tauri.conf.json` 的 `plugins.deep-link` 声明；Windows 与 Linux 启动时若注册不指向当前程序则为当前用户注册（便携版、开发版）。macOS 的打开事件经插件的 `on_open_url` 送达。
 - Windows 与 Linux 把链接作为唯一参数启动新进程。`lib::run` 在建立 Tauri 应用前调用 `host::evidence_links::handed_over`：`host::link_relay` 读取用户数据目录 `desktop-links/` 中运行中桌面进程的记录（端口、随机凭据、进程 ID，旁边是进程持有的锁文件；能取得锁的记录已过期并被删除），先把链接交给打开着该案件的进程，再交给没有打开案件的进程，都不接收时本进程照常启动并自己打开链接。解析失败的链接交给任意运行中的进程报告。接收方只在应答送达后入队，发送方因此不会重复打开；发送前调用 `AllowSetForegroundWindow` 允许接收方窗口来到前台。桌面进程因此可以同时运行多个（每个打开一个案件），没有使用单实例插件。
 - 接收方把链接放进内联插件 `evidence-links` 的队列（最多 16 条），向主窗口发出 `evidence-link-received` 并把主窗口带到前台。前端 `app/workflows/useEvidenceLinks.ts` 先订阅再取队列。对于案件链接，找到本机登记的案件（另一案件已打开时确认切换），按最近案件的流程恢复检材，再交给回源定位（`useResultNavigation`），在文件列表中选中节点、打开预览并用 `detailFocus` 高亮字节范围。
-- 插件安装链接由 `host::plugin_install_link` 解析，仅含插件 ID 和语义化版本。运行中支持该动作的进程可接收链接，无需切换案件。设置中心通过 `plugin_market_download_official` 从固定的官方索引获取并检视当前平台的插件包，再走插件市场的确认安装流程。
+- 插件安装链接由 `host::plugin_install_link` 解析，仅含插件 ID 和语义化版本。运行中支持该动作的进程可接收链接，无需切换案件。设置中心打开「插件市场」，通过 `plugin_market_download` 从官方索引获取并检视当前平台的插件包，再走插件市场的确认安装流程。
 
 ### 界面动画
 
