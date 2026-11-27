@@ -44,8 +44,8 @@ impl EncryptionScheme {
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub enum UnlockCredential {
     /// A password or passphrase: the BitLocker user password, the LUKS
-    /// passphrase, the VeraCrypt password, or the FileVault password or
-    /// personal recovery key.
+    /// passphrase, the VeraCrypt password, or the FileVault or APFS password
+    /// or personal recovery key.
     Password { password: String },
     /// The BitLocker 48-digit recovery password.
     #[serde(rename_all = "camelCase")]
@@ -167,20 +167,21 @@ mod tests {
                 EncryptionScheme::Luks,
                 EncryptionScheme::Veracrypt,
                 EncryptionScheme::Filevault,
+                EncryptionScheme::Apfs,
             ]
             .map(|scheme| credential.opens(scheme))
         };
         assert_eq!(
             opens(r#"{"kind":"password","password":"x"}"#),
-            [true, true, true, true]
+            [true, true, true, true, true]
         );
         assert_eq!(
             opens(r#"{"kind":"masterKey","keyHex":"00"}"#),
-            [true, true, false, true]
+            [true, true, false, true, false]
         );
         assert_eq!(
             opens(r#"{"kind":"masterKey","keyHex":"00","tweakHex":"11"}"#),
-            [true, false, false, false]
+            [true, false, false, false, false]
         );
         for json in [
             r#"{"kind":"recoveryPassword","recoveryPassword":"1"}"#,
@@ -188,7 +189,7 @@ mod tests {
             r#"{"kind":"vmk","keyHex":"00"}"#,
             r#"{"kind":"clearKey"}"#,
         ] {
-            assert_eq!(opens(json), [true, false, false, false], "{json}");
+            assert_eq!(opens(json), [true, false, false, false, false], "{json}");
         }
     }
 }

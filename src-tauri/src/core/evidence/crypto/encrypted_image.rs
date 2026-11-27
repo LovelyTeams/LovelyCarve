@@ -522,7 +522,7 @@ pub fn unlock_with_progress(
 }
 
 /// Options that cannot apply to the chosen scheme fail before any read.
-fn check_options(options: &UnlockOptions) -> anyhow::Result<()> {
+pub(crate) fn check_options(options: &UnlockOptions) -> anyhow::Result<()> {
     let scheme = options.scheme;
     ensure!(
         options.credential.opens(scheme),
@@ -583,12 +583,22 @@ fn check_options(options: &UnlockOptions) -> anyhow::Result<()> {
         ))
     );
     ensure!(
-        scheme == EncryptionScheme::Filevault
-            || (options.logical_volume_index.is_none()
-                && options.encrypted_root_plist_path.is_none()),
-        Failure::invalid_input(
-            "logical volume / encryption context options apply only to FileVault"
-        )
+        scheme == EncryptionScheme::Filevault || options.encrypted_root_plist_path.is_none(),
+        Failure::invalid_input("encryption context options apply only to FileVault")
+    );
+    ensure!(
+        matches!(scheme, EncryptionScheme::Filevault | EncryptionScheme::Apfs)
+            || options.logical_volume_index.is_none(),
+        Failure::invalid_input("a logical volume index applies only to FileVault and APFS")
+    );
+    // APFS encrypts inside the file system, so its volumes unlock in place.
+    ensure!(
+        scheme != EncryptionScheme::Apfs
+            || (options.target == UnlockTarget::SourcePartition
+                && options.partition_id.is_some()
+                && options.offset.is_none()
+                && options.length.is_none()),
+        Failure::invalid_input("an APFS volume unlocks in place on its container partition")
     );
     Ok(())
 }

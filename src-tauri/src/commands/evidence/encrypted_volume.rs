@@ -399,6 +399,9 @@ pub async fn encrypted_volume_unlock(
     unlocked
 }
 
+/// Unlock one APFS volume in place: APFS encrypts inside the file system, so
+/// the container stays the source evidence and the session keeps the verified
+/// volume key for the volume's reads.
 async fn unlock_apfs(
     app: &AppHandle,
     state: &State<'_, AppState>,
@@ -406,35 +409,22 @@ async fn unlock_apfs(
     options: UnlockOptions,
     task: &TaskRegistration,
 ) -> Result<UnlockResult, AppError> {
-    if options.target != UnlockTarget::SourcePartition
-        || options.offset.is_some()
-        || options.length.is_some()
-        || options.encrypted_root_plist_path.is_some()
-        || options.header != encrypted_image::VeracryptHeader::Auto
-        || options.pim != 0
-        || options.prf.is_some()
-        || !options.keyfiles.is_empty()
-    {
-        return Err(AppError::invalid_input(
-            "APFS requires a source partition and volume slot",
-        ));
-    }
-    let partition_id = options
-        .partition_id
-        .ok_or_else(|| AppError::invalid_input("请选择 APFS 容器分区"))?;
-    if !matches!(options.credential, UnlockCredential::Password { .. }) {
-        return Err(AppError::invalid_input(
-            "APFS requires a password or personal recovery key",
-        ));
-    }
+    encrypted_image::check_options(&options).map_err(AppError::from)?;
+    let partition_id = options.partition_id.ok_or_else(|| {
+        AppError::invalid_input("an APFS volume unlocks in place on its container partition")
+    })?;
     let permit = state.tasks.acquire_resources(task).await?;
     let token = task.token();
     let source_for_unlock = Arc::clone(&source);
     let token_for_unlock = token.clone();
     let prepared = tokio::task::spawn_blocking(move || {
         let _permit = permit;
+        // `check_options` admits only a password (or recovery key) for APFS.
         let UnlockCredential::Password { password } = &options.credential else {
-            unreachable!()
+            anyhow::bail!(crate::core::common::error::Failure::invalid_input(format!(
+                "a {} does not open APFS volumes",
+                options.credential.label()
+            )));
         };
         apfs::prepare_unlock(
             &source_for_unlock,
