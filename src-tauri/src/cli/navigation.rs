@@ -80,8 +80,11 @@ pub(super) async fn locate_node(
     located
 }
 
-/// Only known insensitive filesystems opt in. Synthetic roots and unknown or
-/// offline Apple volumes retain exact matching; host OS rules never apply.
+/// Whether names in the directory `parent` ignore case. Only known
+/// insensitive filesystems opt in: NTFS, FAT, exFAT, HPFS, the Xbox file
+/// systems, MFS, HFS+ and APFS volumes formatted that way. Synthetic roots and
+/// unknown or offline Apple volumes retain exact matching; host OS rules never
+/// apply. How each one compares names is `browsing::folded_match`.
 pub(super) async fn case_insensitive(
     image: Arc<EvidenceSession>,
     parent: String,
@@ -94,10 +97,6 @@ pub(super) async fn case_insensitive(
         || parent.starts_with("xdvdfs:part:")
         || parent.starts_with("fatx:part:")
         || parent.starts_with("mfs:part:")
-        || parent.starts_with("littlefs:part:")
-        || parent.starts_with("spiffs:part:")
-        || parent.starts_with("hammer:part:")
-        || parent.starts_with("hammer2:part:")
     {
         return Ok(true);
     }
@@ -141,10 +140,6 @@ pub(super) async fn case_insensitive(
                     | PartitionKind::Xdvdfs
                     | PartitionKind::Fatx
                     | PartitionKind::Mfs
-                    | PartitionKind::Littlefs
-                    | PartitionKind::Spiffs
-                    | PartitionKind::Hammer
-                    | PartitionKind::Hammer2
             )
         }))
 }

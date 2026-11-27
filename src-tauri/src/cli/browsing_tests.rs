@@ -558,6 +558,27 @@ async fn unindexed_id_lookup_pages_duplicate_volumes_without_visiting_other_part
 }
 
 #[test]
+fn folded_matches_follow_each_file_systems_case_rule() {
+    let matches =
+        |id: &str, name: &str, wanted: &str| folded_match(id, name, wanted, &wanted.to_lowercase());
+    // NTFS, FAT, exFAT and HPFS ignore Unicode case.
+    assert!(matches("ntfs:part:0:5", "Café.txt", "CAFÉ.TXT"));
+    assert!(matches(
+        "hpfs:part:0:/Read Me.txt",
+        "Read Me.txt",
+        "READ ME.TXT"
+    ));
+    // The Xbox file systems fold ASCII letters only.
+    for id in ["fatx:part:0:/Cache", "xdvdfs:part:1:/Textures"] {
+        assert!(matches(id, "Café", "CAFé"), "{id}");
+        assert!(!matches(id, "Café", "CAFÉ"), "{id}");
+    }
+    // MFS compares names as the classic Mac OS does.
+    assert!(matches("mfs:part:0:/Résumé", "Résumé", "RÉSUMÉ"));
+    assert!(!matches("mfs:part:0:/Résumé", "Résumé", "Résumé ⟨v2⟩"));
+}
+
+#[test]
 fn locked_partition_roots_answer_to_their_unlocked_address() {
     assert!(root_id_matches("unsupported:3", "part:3"));
     assert!(root_id_matches("unsupported:3", "unsupported:3"));

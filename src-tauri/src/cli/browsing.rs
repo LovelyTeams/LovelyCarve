@@ -287,24 +287,9 @@ where
                     ));
                 }
                 child = Some(node);
-            } else {
-                let same_name = if node.id.starts_with("mfs:part:") {
-                    mfs_reader::names_equal(&node.name, component)
-                } else if node.id.starts_with("littlefs:part:")
-                    || node.id.starts_with("spiffs:part:")
-                    || node.id.starts_with("hammer:part:")
-                    || node.id.starts_with("hammer2:part:")
-                {
-                    false
-                } else if node.id.starts_with("xdvdfs:part:") || node.id.starts_with("fatx:part:") {
-                    node.name.eq_ignore_ascii_case(component)
-                } else {
-                    node.name.to_lowercase() == folded_component
-                };
-                if same_name {
-                    folded_ambiguous |= folded_child.is_some();
-                    folded_child = Some(node);
-                }
+            } else if folded_match(&node.id, &node.name, component, &folded_component) {
+                folded_ambiguous |= folded_child.is_some();
+                folded_child = Some(node);
             }
         }
         cursor = result.next_cursor;
@@ -330,6 +315,18 @@ where
         error.details = Some(serde_json::json!({"missing": component, "parent": location}));
         error
     })
+}
+
+/// Whether `name` matches `wanted` once case is ignored, by the rule of the
+/// file system that holds the entry: classic Mac OS ordering for MFS, ASCII
+/// only for the Xbox file systems and Unicode for the rest. A directory takes
+/// such a match only on a volume that ignores case (`case_insensitive`).
+fn folded_match(node_id: &str, name: &str, wanted: &str, folded_wanted: &str) -> bool {
+    match node_id.split(':').next() {
+        Some("mfs") => mfs_reader::names_equal(name, wanted),
+        Some("xdvdfs" | "fatx") => name.eq_ignore_ascii_case(wanted),
+        _ => name.to_lowercase() == folded_wanted,
+    }
 }
 
 /// Locate an unindexed ID through directory pages, preserving duplicate names.
