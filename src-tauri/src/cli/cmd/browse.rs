@@ -583,6 +583,9 @@ pub async fn volumes(exec: &Exec, args: VolumesArgs) -> Result<Output, CliError>
                 (None, Some(scheme @ ("bitlocker" | "luks" | "filevault")), Some(_)) => {
                     json!({"scheme": scheme, "state": "locked"})
                 }
+                (None, Some("apfscontainer"), Some(number)) => {
+                    apfs_encryption(exec, &item.image_id, number).await
+                }
                 (None, _, _) => Value::Null,
             };
             let filesystem = filesystems
@@ -620,6 +623,34 @@ pub async fn volumes(exec: &Exec, args: VolumesArgs) -> Result<Output, CliError>
         }
     }
     Ok(Output::json(json!({ "items": rows })))
+}
+
+/// An APFS container's native encryption: locked while any of its encrypted
+/// volumes is. None when no volume is encrypted or the container is unreadable.
+async fn apfs_encryption(exec: &Exec, image_id: &ImageId, partition: u8) -> Value {
+    let volumes = match crate::commands::evidence::encrypted_volume::apfs_inspect(
+        exec.state(),
+        image_id.clone(),
+        partition,
+    )
+    .await
+    {
+        Ok(volumes) => volumes,
+        Err(error) => {
+            tracing::debug!(%image_id, partition, ?error, "APFS encryption state unavailable");
+            return Value::Null;
+        }
+    };
+    let mut encrypted = volumes.iter().filter(|volume| volume.encrypted).peekable();
+    if encrypted.peek().is_none() {
+        return Value::Null;
+    }
+    let state = if encrypted.all(|volume| volume.unlocked) {
+        "unlocked"
+    } else {
+        "locked"
+    };
+    json!({"scheme": "apfs", "state": state})
 }
 
 /// `ready`, `stale`, `truncated` or `building` for a published index row.

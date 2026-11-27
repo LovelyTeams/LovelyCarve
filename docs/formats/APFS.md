@@ -39,7 +39,7 @@ LovelyCarve 使用 MIT 的 vendored `apfs` 0.4.1、共享 `cmpfs` 和纯 Rust �
 
 ### 原生软件加密
 
-在桌面端的「解锁加密卷」对话框选择 APFS 容器和卷槽。CLI 的 `encryption /<别名>/part:N` 列出卷槽、UUID、加密和解锁状态。用 `unlock /<别名>/part:N --logical-volume <index> --password @文件` 解锁，再用返回的 `path` 浏览。只有一个加密卷时可省略 `--logical-volume`。
+在桌面端的「解锁加密卷」对话框选择 APFS 容器和卷槽。CLI 的 `encryption /<别名>/part:N` 列出卷槽、UUID、加密和解锁状态。用 `unlock /<别名>/part:N/<卷> --password @文件` 解锁容器下列出的卷，或给容器地址并用 `--logical-volume <index>` 选卷（只有一个加密卷时可省略），再用返回的 `path` 浏览。
 
 - 从已选检查点读取容器密钥袋，按卷 UUID 核对卷密钥和卷密钥袋。两级密钥袋验证对象类型、事务、长度和 Fletcher-64。密码派生使用 PBKDF2-HMAC-SHA256，单次解锁累积上限 20,000,000 轮，派生期间检查取消。KEK 和 VEK 用 RFC 3394 AES Key Wrap 解包。
 - 仅对 OMAP 标为加密的对象，以其所在容器地址作为 AES-XTS tweak 的起点，解密后验证 Fletcher-64 和对象身份。读取文件及流式属性时，按 extent 的 `crypto_id` 初始化 tweak，再按 512 字节扇区前进。完整读取、范围读取与流式导出共用这个寻址路径。
