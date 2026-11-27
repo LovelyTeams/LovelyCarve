@@ -6,6 +6,13 @@ use crate::state::AppState;
 
 use crate::app::error::AppError;
 
+/// Whether this platform has read-only mounts at all (Windows, through
+/// Dokany). Whether Dokany is installed is checked when a mount starts.
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub fn fs_mount_supported() -> Result<bool, AppError> {
+    Ok(cfg!(windows))
+}
+
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fs_mount_readonly(
     state: State<'_, AppState>,

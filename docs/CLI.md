@@ -407,7 +407,7 @@ lovelycarve-cli completion powershell >> $PROFILE
 
 ## 挂载
 
-`mount <地址> [挂载点] [--share 共享名]` 把卷或目录以只读方式挂载（Windows，Dokan），`--share` 同时以 SMB 共享；不带参数时列出挂载，`umount <挂载ID>` 卸载（先确认）。挂载只在后台进程存活期间有效，需要长期保留的内容请导出。
+`mount <地址> [挂载点] [--share 共享名]` 把卷或目录以只读方式挂载（Windows x64 / ARM64，需要 Dokany 2；`system` 的 `dokanMount` 表示当前能否挂载，`dokan` 给出加载的库与驱动版本或不可用原因），`--share` 同时以 SMB 共享；不带参数时列出挂载，`umount <挂载ID>` 卸载（先确认）。挂载只在后台进程存活期间有效，需要长期保留的内容请导出。
 
 ## 检材格式说明
 

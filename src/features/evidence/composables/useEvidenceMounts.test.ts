@@ -19,7 +19,7 @@ async function setup(target: 'drive' | 'folder' = 'folder') {
   const info = shallowRef(image('a')); const caseDirectory = ref<string | null>(null); const folder = ref('');
   let controller!: ReturnType<typeof useEvidenceMounts>;
   host = document.createElement('div'); document.body.append(host);
-  app = createApp(defineComponent({ setup() { controller = useEvidenceMounts({ info: () => info.value, mountTarget: () => target, mountFolderRoot: () => folder.value, caseDirectory: () => caseDirectory.value }); return () => h('div'); } }));
+  app = createApp(defineComponent({ setup() { controller = useEvidenceMounts({ supported: true, info: () => info.value, mountTarget: () => target, mountFolderRoot: () => folder.value, caseDirectory: () => caseDirectory.value }); return () => h('div'); } }));
   app.mount(host); await settle(); return { controller, info, caseDirectory, folder };
 }
 beforeEach(() => { vi.resetAllMocks(); ipc.mounts.mockResolvedValue([]); });

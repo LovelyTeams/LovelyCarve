@@ -294,6 +294,24 @@ the provenance of every separately bundled DLL or model.
 The Quicksand font notice and OFL 1.1 terms are reproduced at the end of this
 file, so portable packages that include this document retain the font license.
 
+## Dokany and dokan-rust
+
+Read-only mounts on Windows use [Dokany 2](https://github.com/dokan-dev/dokany).
+LovelyCarve does not link Dokany's user-mode library: when a mount starts it
+loads the `dokan2.dll` that Dokany installed in System32, and otherwise one
+beside the executable. Windows x64 packages ship the unmodified Dokany 2.3.1
+x64 `dokan2.dll` (`src-tauri/binaries/dokan2.dll`) for systems with only the
+Dokany driver installed. Dokany's user-mode library and driver are licensed
+under the GNU Lesser General Public License v3; their source is available from
+the Dokany repository, and the bundled library can be replaced by the one of
+any compatible Dokany 2 installation. The driver is not distributed.
+
+The Rust bindings in `src-tauri/vendor/dokan-rust` are DDoSolitary's `dokan`
+and `dokan-sys` 0.3.1 (MIT, `LICENSE` in that directory), modified to load
+`dokan2.dll` at run time and to use the `system` calling convention. The
+Dokany C sources bundled with the upstream `dokan-sys` crate are not included;
+local changes are recorded in `LOVELYCARVE.md`.
+
 ## ReFS Rust reader and comparison tools
 
 The production Rust reader at `src-tauri/vendor/refs-reader` ports parsing

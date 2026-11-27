@@ -42,10 +42,10 @@ pub(crate) async fn remove_image_runtime(
         scheduler: _,
         carve_scans,
         assembled_arrays,
-        #[cfg(all(windows, not(target_arch = "aarch64")))]
+        #[cfg(windows)]
         dokan_mounts,
         // Unshared with each Dokan mount below.
-        #[cfg(all(windows, not(target_arch = "aarch64")))]
+        #[cfg(windows)]
             dokan_mount_shares: _,
         active_case: _,
         // Case-scope tombstones, cleared when the case changes.
@@ -122,7 +122,7 @@ pub(crate) async fn remove_image_runtime(
         .lock()
         .await
         .retain(|_, session| session.read().image_id != image_id);
-    #[cfg(all(windows, not(target_arch = "aarch64")))]
+    #[cfg(windows)]
     {
         let mounts = {
             let mut mounts = dokan_mounts.lock().await;

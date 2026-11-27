@@ -10,6 +10,7 @@ import { registerRaidImageOpener, useRaidOverview, disposeRaidStack } from '../.
 import { flushFileTagWrites } from '../../features/files/api';
 import { flushFileDerivedWrites } from '../../features/files/api';
 import { useAutoMount } from '../../features/evidence/api';
+import { useReadonlyMountSupport } from '../../composables/useReadonlyMountSupport';
 import { registerAutoDetectReportPublished, disposeAutoDetect, ensureAutoDetectListener } from '../../features/evidence/api';
 import { disposeTaskCenter, useTaskCenter, useTaskEntries } from '../../features/tasks/api';
 import { disposeAnalysisResults } from '../../features/analysis/api';
@@ -115,7 +116,8 @@ export function bindWorkspaceServices(options: {
     disposeRaidStack();
     await Promise.all([flushFileTagWrites(), flushFileDerivedWrites()]);
   });
-  const stopOpened = registerCaseOpened(info => void useAutoMount().maybeAutoMountCase(info));
+  const { maybeAutoMountCase } = useAutoMount(useReadonlyMountSupport());
+  const stopOpened = registerCaseOpened(info => void maybeAutoMountCase(info));
   const stopReport = registerAutoDetectReportPublished(report => {
     const session = useCaseSession();
     if (session.activeCase.value?.evidence.some(evidence => evidence.image_id === report.image_id)) {

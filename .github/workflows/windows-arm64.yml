@@ -1,7 +1,8 @@
-name: Windows ARM64 compile
+name: Windows ARM64 packages
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -12,7 +13,7 @@ concurrency:
 
 jobs:
   arm64:
-    name: Native ARM64 desktop and CLI
+    name: Package Windows ARM64 desktop and CLI
     runs-on: windows-11-arm
     timeout-minutes: 120
     defaults:
@@ -28,19 +29,43 @@ jobs:
           submodules: recursive
           persist-credentials: false
       - uses: ./.github/actions/setup-windows
-      - name: Build desktop and bundled plugins
-        run: just build-release --no-bundle --config "${{ github.workspace }}/src-tauri/tauri.arm64.conf.json"
-      - name: Build standalone CLI
-        run: just build-cli
-      - name: Verify native binaries and stage artifact
+      - name: Stage the ARM64 Visual C++ runtime
         run: |
+          . ./scripts/windows-env.ps1 -VisualStudio -OpenSSLDir $env:OPENSSL_DIR -OpenSSLLib $env:OPENSSL_LIB
+          $crt = Get-ChildItem -LiteralPath (Join-Path $env:VCToolsRedistDir 'arm64') -Filter 'Microsoft.VC*.CRT' -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $crt) { throw 'Missing the ARM64 Visual C++ redistributable files' }
+          $stage = New-Item -ItemType Directory -Path src-tauri/target/arm64-runtime -Force
+          Get-ChildItem -LiteralPath $crt.FullName -Filter '*.dll' -File | Copy-Item -Destination $stage.FullName
+          foreach ($name in 'vcruntime140.dll', 'msvcp140.dll') {
+            if (-not (Test-Path -LiteralPath (Join-Path $stage.FullName $name) -PathType Leaf)) { throw "Missing ARM64 runtime $name" }
+          }
+      - name: Build desktop installer and bundled plugins
+        run: just build-release --bundles nsis --config "${{ github.workspace }}/src-tauri/tauri.arm64.conf.json"
+      - name: Package standalone CLI
+        run: just pack-cli -Arm64
+      - name: Install the desktop package and verify native binaries
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $installers = @(Get-ChildItem "src-tauri/target/release/bundle/nsis/LovelyCarve_${version}_arm64-setup.exe" -File)
+          $cliPackages = @(Get-ChildItem "dist-pack/lovelycarve-cli-v${version}-win-arm64-*.zip" -File)
+          if ($installers.Count -ne 1 -or $cliPackages.Count -ne 1) { throw 'Expected an ARM64 installer and CLI ZIP' }
+          $installDir = Join-Path $env:RUNNER_TEMP 'lovelycarve-arm64-install'
+          $setup = Start-Process -FilePath $installers[0].FullName -ArgumentList '/S', "/D=$installDir" -Wait -PassThru -WindowStyle Hidden
+          if ($setup.ExitCode -ne 0) { throw "ARM64 installer exited with $($setup.ExitCode)" }
+          $cliDir = Join-Path $env:RUNNER_TEMP 'lovelycarve-arm64-cli'
+          Expand-Archive -LiteralPath $cliPackages[0].FullName -DestinationPath $cliDir
+          $cliDir = Join-Path $cliDir $cliPackages[0].BaseName
           $binaries = @(
-            'src-tauri/target/release/LovelyCarve.exe',
-            'src-tauri/target/release/lovelycarve-cli.exe',
-            'plugins/target/release/lc-plugin-host.exe',
-            'plugins/linuxinfo/linuxinfo.dll',
-            'src-tauri/target/release/lovelycarve_inference.dll'
+            (Join-Path $installDir 'LovelyCarve.exe'),
+            (Join-Path $cliDir 'lovelycarve-cli.exe')
           )
+          foreach ($directory in $installDir, $cliDir) {
+            # Mounts load the ARM64 dokan2.dll that Dokany installs in System32.
+            if (Test-Path -LiteralPath (Join-Path $directory 'dokan2.dll')) { throw 'ARM64 packages must not ship the x64 dokan2.dll' }
+            foreach ($file in 'lc-plugin-host.exe', 'lovelycarve_inference.dll', 'msvcp140.dll', 'vcruntime140.dll', 'plugins/linuxinfo/linuxinfo.dll') {
+              $binaries += Join-Path $directory $file
+            }
+          }
           foreach ($binary in $binaries) {
             $bytes = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $binary).Path)
             $header = [BitConverter]::ToInt32($bytes, 0x3c)
@@ -50,18 +75,15 @@ jobs:
             }
             Write-Host "$binary is ARM64"
           }
-          & ./src-tauri/target/release/lovelycarve-cli.exe --json system
-          if ($LASTEXITCODE -ne 0) { throw "CLI smoke check failed: $LASTEXITCODE" }
-          $pluginFiles = @('linuxinfo.dll', 'plugin.toml', 'schema.json', 'locales')
-          $pluginPath = 'arm64-build/plugins/linuxinfo'
-          New-Item -ItemType Directory -Path $pluginPath | Out-Null
-          Copy-Item -LiteralPath $binaries[0], $binaries[1], $binaries[2], $binaries[4], 'LICENSE', 'THIRD_PARTY_NOTICES.md' -Destination arm64-build
-          foreach ($file in $pluginFiles) {
-            Copy-Item -LiteralPath "plugins/linuxinfo/$file" -Destination $pluginPath -Recurse
+          $capabilities = & (Join-Path $cliDir 'lovelycarve-cli.exe') --json system | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $capabilities.version -ne $version -or $capabilities.platform -ne 'windows' -or -not $capabilities.components.inference.available -or -not $capabilities.components.inference.fileTypes) {
+            throw "Unexpected ARM64 CLI capabilities: $($capabilities | ConvertTo-Json -Depth 10 -Compress)"
           }
+          New-Item -ItemType Directory -Path release-assets | Out-Null
+          ($installers + $cliPackages) | Copy-Item -Destination release-assets
       - uses: actions/upload-artifact@v7.0.2
         with:
-          name: windows-arm64
-          path: arm64-build
+          name: lovelycarve-windows-arm64
+          path: release-assets/*
           if-no-files-found: error
           retention-days: 7

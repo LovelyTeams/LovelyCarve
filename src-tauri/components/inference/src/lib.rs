@@ -6,11 +6,17 @@
 //! or text is recognized. The methods and their payloads are listed in
 //! `abi::inference`.
 
-use abi::inference::{self, Capabilities, OcrExecution};
+use abi::inference::{self, Capabilities, ContentType, OcrExecution};
 use abi::{Buffer, Bytes, CallError, ComponentApiV1, Description};
 
+// ONNX Runtime publishes no prebuilt library for Intel Macs, so the component
+// built there carries no Magika model (see Cargo.toml).
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 mod content_type;
 mod ocr;
+
+/// Whether this build links ONNX Runtime and the Magika model.
+const FILE_TYPES: bool = cfg!(not(all(target_os = "macos", target_arch = "x86_64")));
 
 /// Entry point the host resolves after loading the library.
 ///
@@ -33,7 +39,7 @@ unsafe extern "C" fn free_buffer(buffer: *mut Buffer) {
 fn dispatch(method: &str, params: &[u8], payload: &[u8]) -> Result<Vec<u8>, CallError> {
     match method {
         abi::METHOD_DESCRIBE => encode(&description()),
-        inference::METHOD_IDENTIFY => encode(&content_type::identify(params, payload)?),
+        inference::METHOD_IDENTIFY => encode(&identify(params, payload)?),
         inference::METHOD_RECOGNIZE => encode(&ocr::recognize(params, payload)?),
         other => Err(CallError::InvalidArgument(format!(
             "{} does not implement method `{other}`",
@@ -47,10 +53,22 @@ fn description() -> Description<Capabilities> {
         name: inference::LIBRARY.to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         capabilities: Capabilities {
-            file_types: true,
+            file_types: FILE_TYPES,
             ocr: ocr_execution(),
         },
     }
+}
+
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
+fn identify(params: &[u8], payload: &[u8]) -> Result<ContentType, CallError> {
+    content_type::identify(params, payload)
+}
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+fn identify(_params: &[u8], _payload: &[u8]) -> Result<ContentType, CallError> {
+    Err(CallError::Failed(
+        "本平台的推理组件不含 ONNX Runtime（Intel Mac 没有预编译库），无法识别文件类型".to_string(),
+    ))
 }
 
 fn ocr_execution() -> Option<OcrExecution> {

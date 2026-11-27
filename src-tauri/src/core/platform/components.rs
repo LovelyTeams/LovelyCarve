@@ -148,7 +148,7 @@ impl Component {
 
 /// The executable's directory, plus the Cargo profile directory when the
 /// executable is a test or example binary below it.
-fn search_directories() -> anyhow::Result<Vec<PathBuf>> {
+pub(crate) fn search_directories() -> anyhow::Result<Vec<PathBuf>> {
     let executable = std::env::current_exe().context("无法确定本程序的位置，不能加载组件")?;
     let directory = executable
         .parent()

@@ -4,11 +4,10 @@
 pub mod components;
 #[cfg(all(
     windows,
-    not(target_arch = "aarch64"),
     any(not(feature = "reader-library"), feature = "desktop", test)
 ))]
 pub mod dokan_mount;
 pub mod ffi;
 pub mod resources;
-#[cfg(all(windows, not(target_arch = "aarch64")))]
+#[cfg(windows)]
 pub mod windows_share;

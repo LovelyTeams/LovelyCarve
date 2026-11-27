@@ -28,12 +28,13 @@ const AUTO_MOUNTABLE_KINDS = new Set([
 
 const autoMounting = ref(false);
 
-export function useAutoMount() {
+export function useAutoMount(supported: boolean) {
   const { mountTarget, mountFolderRoot, autoMountCaseEvidence } = useUiPreferences();
 
   // 打开案件后调用：满足条件就把案件内全部证据的可挂载分区挂上。设计为
   // 即发即忘（不阻塞案件打开），自带起止提示。并发再入用 autoMounting 挡掉。
   async function maybeAutoMountCase(caseInfo: CaseInfo | null): Promise<void> {
+    if (!supported) return;
     if (!autoMountCaseEvidence.value) return; // 开关关闭
     if (mountTarget.value !== 'folder') return; // 仅文件夹模式
     if (autoMounting.value) return; // 上一轮还没跑完

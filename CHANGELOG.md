@@ -7,12 +7,11 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- 多设备 Btrfs、bcachefs、ZFS 池、APFS Fusion 和跨盘 VMFS 只浏览一次：第一个成员分区打开整个文件系统，其余成员分区列为成员设备，不再各自重复显示同一棵目录树、重复建索引或在搜索与 `find` 中重复报告文件。
+## [1.5.0] - 2026-11-28
 
 ### Added
 
+- 新增 Windows ARM64、macOS 与 Linux 发行包：Windows ARM64 提供桌面安装程序和 CLI ZIP；macOS 15 或更新版本（Apple Silicon 与 Intel）提供桌面 DMG 和 CLI 压缩包；Linux x64 与 ARM64（glibc 2.35 或更新，如 Ubuntu 22.04）提供桌面 AppImage 和 CLI 压缩包。各包附带推理组件和内置 `linuxinfo` 插件；ONNX Runtime 没有 Intel Mac 的预编译库，该平台的推理组件不识别文件类型。
 - 新增只读文件系统：HPFS、VxFS（layout 2–4）、AIX JFS1、UnixWare BFS、UFS1（4.4BSD）、Reiser4（Format40，含 ctail 压缩簇）、GFS1、OCFS1、VMFS 5 / 6、HAMMER（含已登记快照）、HAMMER2（含 PFS）、QNX ETFS、QNX EFS（F3S）、LittleFS 2.0 / 2.1、SPIFFS、Macintosh MFS（含 Disk Copy 4.2 镜像）、Xbox XDVDFS 与 FATX / XTAF。它们与其他文件系统一样浏览、预览、哈希、按范围读取和导出，CLI 地址照常使用；能力与限制见[格式说明](docs/formats/README.md)。
 - 跨镜像的 Btrfs、bcachefs、ZFS 池、APFS Fusion 与跨盘 VMFS 卷：加载全部成员后由 RAID 自动检测（CLI `raid detect`）组装，成员缺失、重复或提交不一致时拒绝组装。
 - APFS 原生软件加密的卷可用密码或个人恢复密钥解锁：桌面端在「解锁加密卷」中选择容器与卷，CLI `unlock` 按分区识别 APFS，地址给容器下列出的卷，或给容器并用 `--logical-volume` 选卷。卷在现有检材内解锁，整盘导出保留源密文；`encryption` 列出各卷的加密与解锁状态，`volumes` 把仍有加密卷锁定的容器显示为锁定。
@@ -38,6 +37,8 @@
 
 ### Changed
 
+- 只读挂载改为在运行时加载 Dokany 的 `dokan2.dll`：先找 Dokany 安装在 System32 中的库，再找程序目录，不再在链接时依赖它。未安装 Dokany 时程序照常启动，挂载时分别报告缺少库或驱动；Windows ARM64 安装 Dokany 后同样可以挂载。Windows x64 安装包仍附带 `dokan2.dll`，供只装了驱动的系统使用。
+- CLI `system` 的 `dokanMount` 改为报告当前能否挂载（Dokany 库可加载且驱动应答），新增的 `dokan` 给出库路径与版本、驱动版本或不可用的原因；此前它只表示构建是否支持挂载。
 - **破坏性变更**：插件清单的 `version` 必须是语义化版本（如 `1.2.0`），否则插件包不会加载。
 - **破坏性变更**：IPC `plugin_install` 必须带检视结果中的 `sha256`；CLI `plugin install` 需要确认（`-y`）。
 - **破坏性变更**：检材的 `records.db` 结构升到第 2 版（运行记录库文件的 SHA-256）；旧版本生成的插件结果库不再打开，需从案件移除该检材后重新添加并重新分析。
@@ -53,6 +54,7 @@
 
 ### Fixed
 
+- 多设备 Btrfs、bcachefs、ZFS 池、APFS Fusion 和跨盘 VMFS 只浏览一次：第一个成员分区打开整个文件系统，其余成员分区列为成员设备，不再各自重复显示同一棵目录树、重复建索引或在搜索与 `find` 中重复报告文件。
 - CLI：交给案件后台进程的命令（一次性命令、`shell`、`batch`）按 Ctrl+C / Ctrl+Break 时以 130 退出，此前由控制台直接结束（退出码 0xC000013A）。后台进程放弃客户端已离开的请求：排队的不再执行，执行中的停止并取消它启动的任务，不再替已退出的客户端做完、一直占着后台进程。
 - CLI 案件后台进程：两个带进度的请求重叠时，先开始的那个不再空转占满一个 CPU 核心、永不应答，并让之后的独占命令和 `case close` 一直等待。
 - CLI：被中断的 `hash`、`identify` 与单个文件的 `export` 在下一个数据块处停下。此前它们无法取消：案件后台进程替已退出的客户端读完整个文件，单个文件的导出仍写出目标文件；没有后台进程时 Ctrl+C 要等它们最多 10 秒才退出。
@@ -421,7 +423,8 @@
 - 可选二维码识别与 OCR 构建；默认轻量构建关闭这些功能，完整构建通过 `*-full` 配方启用。
 - 源码构建、Windows 安装包与便携包、CLI 和插件的本地打包配方，以及使用、开发、接口和第三方来源说明。
 
-[Unreleased]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/LovelyTeams/LovelyCarve/compare/v1.1.1...v1.2.0

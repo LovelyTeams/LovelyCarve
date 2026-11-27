@@ -29,6 +29,7 @@
 | `fatfs` | `0.4.0` | [2aefc2a027ce](https://github.com/rafalh/rust-fatfs/commit/2aefc2a027ce94ed0671752814dac203f0450e11) | 保留显式 root_dir 生命周期；本地目录项偏移、簇链防环、有限 extent 与大扇区补丁见 [FAT](../../docs/formats/FAT.md)。 |
 | `gpt` | `4.1.0` | [73086deff58c](https://github.com/Quyzi/gpt/commit/73086deff58cb3c741b2ba51a53a2a7c6231a3f1) | 同步上游整数边界测试修正；保留精简测试依赖。 |
 | `hfsplus` | `0.4.0` | [3a73ee28fdab](https://github.com/Dil4rd/dpp/commit/3a73ee28fdab192fcdfbe8edcad7b520867f2417) | 2026-10-13 对照 libfshfs 95 API：完整 fork 与属性续接、固定名称规则、硬链接、逻辑压缩读取及严格 B-tree / 来源校验；Apple 表 APSL 归属见 LOVELYCARVE.md。 |
+| `dokan-rust`（`dokan` / `dokan-sys`） | `0.3.1+dokan206` | crates.io 包，[d88cbf15d681](https://github.com/dokan-dev/dokan-rust/commit/d88cbf15d681b37b4cb5cd5e79f0f90d877219b5) | 2026-11-28 带入：去掉 `dokan-sys` 的构建脚本与随包 Dokany C 源码，改为与 MemProcFS 相同的运行时加载 `dokan2.dll`（先 System32，再程序目录），x64 与 ARM64 共用；调用约定改为 `extern "system"`；上游 master 已升至 Dokany 2.3 头文件但未发布，绑定仍停在 2.0.6 API。见 dokan-rust/LOVELYCARVE.md。 |
 | `ios-backup` | `0.1.0` | [8d8cef447ae2](https://github.com/SecurityRonin/ios-backup-forensic/commit/8d8cef447ae212e7dd22dc0425156bf4ddfcfa05) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
 | `luks` | `0.1.8` | [284f06487d7a](https://github.com/SecurityRonin/luks-forensic/commit/284f06487d7a66f13ed27c61be5e26f0863c0e4f) | 来源记录与上游最新提交一致，保留现有本地补丁。 |
 | `magika` | `1.1.1-dev` | [26b6a9ba7e92](https://github.com/google/magika/commit/26b6a9ba7e92f2b0a3745970a9190ec0dde9bf83) | 同步最后的 ORT 兼容源码（RAR MIME 修正）；上游 2.0.0-dev 已迁至 tract 且未发布，本次不迁移推理运行时，也不降级至 1.1.0。 |

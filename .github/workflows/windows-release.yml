@@ -1,8 +1,11 @@
-name: Windows release
+name: Release
 
+# A v* tag builds, verifies and publishes every package. A push to a
+# release-check/* branch runs the same builds and checks without publishing.
 on:
   push:
     tags: ['v*']
+    branches: ['release-check/**']
 
 permissions:
   contents: read
@@ -12,12 +15,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Build and publish Windows x64
+  tests:
+    uses: ./.github/workflows/windows-tests.yml
+
+  windows-arm64:
+    uses: ./.github/workflows/windows-arm64.yml
+
+  macos:
+    uses: ./.github/workflows/macos.yml
+
+  linux:
+    uses: ./.github/workflows/linux.yml
+
+  windows:
+    name: Package Windows x64
     runs-on: windows-2025
     timeout-minutes: 240
-    permissions:
-      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     defaults:
       run:
         shell: pwsh
@@ -30,7 +45,8 @@ jobs:
         with:
           submodules: recursive
           persist-credentials: false
-      - name: Check tag and manifest versions
+      - name: Check manifest versions
+        id: version
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $tauriVersion = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
@@ -38,10 +54,16 @@ jobs:
           $pythonVersion = [regex]::Match((Get-Content python/pyproject.toml -Raw), '(?m)^version = "([^"]+)"').Groups[1].Value
           $pythonRustVersion = [regex]::Match((Get-Content python/Cargo.toml -Raw), '(?m)^version = "([^"]+)"').Groups[1].Value
           $componentVersion = [regex]::Match((Get-Content src-tauri/components/Cargo.toml -Raw), '(?m)^version = "([^"]+)"').Groups[1].Value
-          $tag = $env:GITHUB_REF_NAME
-          if ($tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$' -or $tag.Split('-')[0] -ne "v$version" -or $version -ne $tauriVersion -or $version -ne $rustVersion -or $version -ne $pythonVersion -or $version -ne $pythonRustVersion -or $version -ne $componentVersion) {
-            throw "Tag $tag does not match manifest versions: $version / $tauriVersion / $rustVersion / $pythonVersion / $pythonRustVersion / $componentVersion"
+          if ($version -ne $tauriVersion -or $version -ne $rustVersion -or $version -ne $pythonVersion -or $version -ne $pythonRustVersion -or $version -ne $componentVersion) {
+            throw "Manifest versions differ: $version / $tauriVersion / $rustVersion / $pythonVersion / $pythonRustVersion / $componentVersion"
           }
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $tag = $env:GITHUB_REF_NAME
+            if ($tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$' -or $tag.Split('-')[0] -ne "v$version") {
+              throw "Tag $tag does not match manifest version $version"
+            }
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
       - uses: ./.github/actions/setup-windows
       - name: Build desktop MSI
         run: just build-release --bundles msi
@@ -56,63 +78,103 @@ jobs:
         run: |
           $env:OPENSSL_LIB = Join-Path $env:OPENSSL_DIR 'lib/VC/x64/MD'
           just build-python
-      - name: Stage assets and SHA-256 checksums
+      - name: Stage Windows packages
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           $installers = @(Get-ChildItem src-tauri/target/release/bundle/msi/*.msi -File)
           $cliPackages = @(Get-ChildItem dist-pack/lovelycarve-cli-*.zip -File)
-          $version = $env:GITHUB_REF_NAME.Split('-')[0].Substring(1)
-          $wheels = @(Get-ChildItem "dist-pack/python/lovelycarve-$version-*-win_amd64.whl" -File)
-          if (-not $installers.Count -or -not $cliPackages.Count -or $wheels.Count -ne 1) {
-            throw 'Expected an MSI, CLI ZIP and one matching Windows x64 Python wheel'
+          $wheels = @(Get-ChildItem "dist-pack/python/lovelycarve-$env:VERSION-*-win_amd64.whl" -File)
+          if ($installers.Count -ne 1 -or $cliPackages.Count -ne 1 -or $wheels.Count -ne 1) {
+            throw 'Expected one MSI, CLI ZIP and Python wheel for Windows x64'
           }
           $assets = $installers + $cliPackages + $wheels
           New-Item -ItemType Directory -Path release-assets | Out-Null
           $assets | Copy-Item -Destination release-assets
-          Get-ChildItem release-assets -File | Sort-Object Name | ForEach-Object {
-            $hash = Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256
-            "$($hash.Hash.ToLowerInvariant())  $($_.Name)"
-          } | Set-Content release-assets/SHA256SUMS.txt -Encoding utf8NoBOM
-          @"
-          Windows x64 build of $env:GITHUB_SHA. QR/OCR is disabled. Binaries are unsigned.
-
-          Includes the desktop MSI, standalone CLI ZIP, Python wheel for CPython 3.10+ and SHA-256 checksums.
-          Download the wheel and install it with ``python -m pip install <wheel file>``.
-          See the [changelog](https://github.com/$env:GITHUB_REPOSITORY/blob/$env:GITHUB_REF_NAME/CHANGELOG.md) for release changes.
-          Dokany mounts require a separately installed driver. Native GUI and driver checks remain manual.
-
-          Source checkout (GitHub source archives do not include the pinned plugin submodule):
-          ``git clone --recurse-submodules https://github.com/$env:GITHUB_REPOSITORY.git``
-          ``git checkout $env:GITHUB_REF_NAME``
-          ``git submodule update --init --recursive``
-          "@ | Set-Content release-notes.md -Encoding utf8NoBOM
       - uses: actions/upload-artifact@v7.0.2
         with:
-          name: windows-x64-${{ github.ref_name }}
+          name: lovelycarve-windows-x64
           path: release-assets/*
           if-no-files-found: error
           retention-days: 7
       - name: Stage wheel for PyPI
-        if: github.repository == 'LovelyTeams/LovelyCarve' && !contains(github.ref_name, '-')
+        if: github.repository == 'LovelyTeams/LovelyCarve' && github.ref_type == 'tag' && !contains(github.ref_name, '-')
         uses: actions/upload-artifact@v7.0.2
         with:
           name: pypi-wheel
           path: release-assets/*.whl
           if-no-files-found: error
           retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: [tests, windows, windows-arm64, macos, linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: lovelycarve-*
+          path: release-assets
+          merge-multiple: true
+      - name: Verify packages and write checksums
+        shell: bash
+        working-directory: release-assets
+        env:
+          VERSION: ${{ needs.windows.outputs.version }}
+        run: |
+          shopt -s nullglob
+          test -n "$VERSION"
+          msi=(LovelyCarve_"${VERSION}"_x64_*.msi)
+          zip=(lovelycarve-cli-v"${VERSION}"-win-x64-*.zip)
+          wheel=(lovelycarve-"${VERSION}"-*-win_amd64.whl)
+          arm64_zip=(lovelycarve-cli-v"${VERSION}"-win-arm64-*.zip)
+          test "${#msi[@]}" -eq 1
+          test "${#zip[@]}" -eq 1
+          test "${#wheel[@]}" -eq 1
+          test "${#arm64_zip[@]}" -eq 1
+          assets=("${msi[0]}" "${zip[0]}" "${wheel[0]}" "LovelyCarve_${VERSION}_arm64-setup.exe" "${arm64_zip[0]}")
+          for platform in macos-arm64 macos-x64; do
+            assets+=("LovelyCarve-v${VERSION}-${platform}.dmg" "lovelycarve-cli-v${VERSION}-${platform}.tar.gz")
+          done
+          for platform in linux-x64 linux-arm64; do
+            assets+=("LovelyCarve-v${VERSION}-${platform}.AppImage" "lovelycarve-cli-v${VERSION}-${platform}.tar.gz")
+          done
+          for file in "${assets[@]}"; do test -s "$file"; done
+          files=(*)
+          test "${#files[@]}" -eq "${#assets[@]}"
+          sha256sum -- "${assets[@]}" > SHA256SUMS.txt
+          sha256sum --check SHA256SUMS.txt
       - name: Publish GitHub Release
+        if: github.ref_type == 'tag'
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          $arguments = @('release', 'create', $env:GITHUB_REF_NAME, '--verify-tag', '--title', "LovelyCarve $env:GITHUB_REF_NAME (Windows x64)", '--notes-file', 'release-notes.md')
-          if ($env:GITHUB_REF_NAME.Contains('-')) { $arguments += '--prerelease' }
-          $arguments += @(Get-ChildItem release-assets -File | ForEach-Object FullName)
-          gh @arguments
-          if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publication failed' }
+          cat > release-notes.md <<EOF
+          Builds from ${GITHUB_SHA}. QR/OCR is disabled on every platform.
+
+          - **Windows x64**: desktop MSI, standalone CLI ZIP and a Python wheel for CPython 3.10+.
+          - **Windows ARM64**: desktop installer and standalone CLI ZIP.
+          - **macOS 15+**: desktop DMG and CLI tarball for Apple Silicon and for Intel. Intel builds cannot identify file types, because ONNX Runtime publishes no x86_64 macOS library. Apps are ad-hoc signed without Apple notarization, so Gatekeeper may ask for approval in Privacy & Security.
+          - **Linux x64 and ARM64** (glibc 2.35+, such as Ubuntu 22.04): desktop AppImage, which needs FUSE 2, and CLI tarball.
+
+          Read-only mounts work on Windows x64 and ARM64 with [Dokany 2](https://github.com/dokan-dev/dokany/releases/latest) installed. Windows binaries are unsigned.
+
+          SHA-256 hashes for all packages are in \`SHA256SUMS.txt\`. See the [changelog](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md) for changes and compatibility notes.
+
+          Clone the source with \`git clone --recurse-submodules https://github.com/${GITHUB_REPOSITORY}.git\`, check out \`${GITHUB_REF_NAME}\` and run \`git submodule update --init --recursive\`.
+          EOF
+          args=(--verify-tag --title "LovelyCarve $GITHUB_REF_NAME" --notes-file release-notes.md)
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then args+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" "${args[@]}" release-assets/*
 
   publish-pypi:
     name: Publish Python wheel to PyPI
-    if: github.repository == 'LovelyTeams/LovelyCarve' && !contains(github.ref_name, '-')
+    if: github.repository == 'LovelyTeams/LovelyCarve' && github.ref_type == 'tag' && !contains(github.ref_name, '-')
     needs: release
     runs-on: ubuntu-latest
     timeout-minutes: 10

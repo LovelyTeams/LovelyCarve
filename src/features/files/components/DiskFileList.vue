@@ -261,6 +261,7 @@ import FileColumnFilterPopover from './FileColumnFilterPopover.vue';
 import { useMarqueeSelection } from '../composables/useMarqueeSelection';
 import { useVolumeSnapshotStatus } from '../composables/useVolumeSnapshotStatus';
 import { useUiPreferences } from '../../../composables/useUiPreferences';
+import { useReadonlyMountSupport } from '../../../composables/useReadonlyMountSupport';
 import { useDirectoryQuery } from '../composables/useDirectoryQuery';
 import { useFlatFileQuery } from '../composables/useFlatFileQuery';
 import { useDirectoryMetadata } from '../composables/useDirectoryMetadata';
@@ -1075,6 +1076,7 @@ function parentDirectoryPathOf(node: FsNode): string {
 }
 
 const { mountBusy, rowCanMount, rowMountView, rowMountLabel, refreshReadonlyMounts, onToggleRowMount } = useReadonlyMountActions({
+  supported: useReadonlyMountSupport(),
   imageId: () => props.imageId,
   node: () => rowMenu.target?.node ?? null,
   target: () => mountTarget.value,

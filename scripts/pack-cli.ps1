@@ -3,7 +3,8 @@
 param(
     [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path,
     [switch]$RequireQrOcr,
-    [switch]$StageSkill
+    [switch]$StageSkill,
+    [switch]$Arm64
 )
 $ErrorActionPreference = 'Stop'
 $executable = Join-Path $Root 'src-tauri/target/release/lovelycarve-cli.exe'
@@ -18,11 +19,13 @@ if ($RequireQrOcr -and (-not $capabilities.qrcode -or -not $capabilities.ocr)) {
 }
 $version = (Get-Content -LiteralPath (Join-Path $Root 'src-tauri/tauri.conf.json') -Raw | ConvertFrom-Json).version
 $distRoot = Join-Path $Root 'dist-pack'
-$packageName = "lovelycarve-cli-v$version-win-x64-$(Get-Date -Format yyyyMMdd-HHmmss)-$([Guid]::NewGuid().ToString('N').Substring(0, 6))"
+$architecture = if ($Arm64) { 'arm64' } else { 'x64' }
+$runtimeDir = if ($Arm64) { 'src-tauri/target/arm64-runtime' } else { 'src-tauri/binaries' }
+$packageName = "lovelycarve-cli-v$version-win-$architecture-$(Get-Date -Format yyyyMMdd-HHmmss)-$([Guid]::NewGuid().ToString('N').Substring(0, 6))"
 $stage = Join-Path $distRoot $packageName
 New-Item -ItemType Directory -Path $stage | Out-Null
 Copy-Item -LiteralPath $executable -Destination $stage
-Get-ChildItem -LiteralPath (Join-Path $Root 'src-tauri/binaries') -Filter '*.dll' -File | Where-Object {
+Get-ChildItem -LiteralPath (Join-Path $Root $runtimeDir) -Filter '*.dll' -File | Where-Object {
     $_.Name -notin @('libewf.dll', 'libvmdk.dll', 'libbde.dll', 'libvhdi.dll', 'librefs-13.dll', 'bzip2.dll', 'zlib.dll') -and
     ($capabilities.qrcode -or $_.Name -ne 'opencv_world4130.dll')
 } | Copy-Item -Destination $stage

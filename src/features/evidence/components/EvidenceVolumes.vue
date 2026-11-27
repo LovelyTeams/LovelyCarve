@@ -155,6 +155,7 @@ import { ChevronDown, History, KeyRound, Layers, Loader2, LockKeyhole, TriangleA
 import type { ImageInfo, DiskPartition } from '../../../lib/ipc/image';
 import type { ShadowCopyInfo, ShadowVolumeInfo } from '../../../lib/ipc/shadow';
 import { useUiPreferences } from '../../../composables/useUiPreferences';
+import { useReadonlyMountSupport } from '../../../composables/useReadonlyMountSupport';
 import { useEvidenceMounts } from '../composables/useEvidenceMounts';
 import { useShadowCopies } from '../composables/useShadowCopies';
 import { KIND_LABELS, QUIET_KINDS, SCHEME_LABELS, evidenceLayout, formatBytes, partColor, partitionGeometry, partitionTitle } from '../model/evidenceOverview';
@@ -270,6 +271,7 @@ watch(() => [props.info.id, props.info.unlocked_partitions?.map(unlocked => unlo
 });
 
 const { SYNTHETIC_MOUNT_KEY, syntheticRoot, busyPartitions, busyShares, pickerOpenFor, availableDrives, pickerLoading, isMountable, mountViewFor, mountFor, toggleShare, beginMount, finishMountAt, toggleMount, mountAt } = useEvidenceMounts({
+  supported: useReadonlyMountSupport(),
   info: () => props.info, mountTarget: () => mountTarget.value, mountFolderRoot: () => mountFolderRoot.value,
   caseDirectory: () => props.caseDirectory,
 });

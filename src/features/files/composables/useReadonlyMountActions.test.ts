@@ -12,7 +12,7 @@ afterEach(() => scope?.stop());
 it('does not mount an old Docker root after an A to B to A chooser round trip', async () => {
   const image = ref('A'); const node = { id: 'host-docker:container:', name: 'Container', kind: 'dir' } as DiskFsNode;
   let resolve!: (value: string) => void; ipc.choose.mockReturnValue(new Promise(yes => { resolve = yes; }));
-  scope = effectScope(); const actions = scope.run(() => useReadonlyMountActions({ imageId: () => image.value, node: () => node,
+  scope = effectScope(); const actions = scope.run(() => useReadonlyMountActions({ supported: true, imageId: () => image.value, node: () => node,
     target: () => 'folder', folderRoot: () => '', caseDirectory: () => null, closeMenu: () => {} }))!;
   const mounting = actions.onToggleRowMount(); for (let index = 0; index < 5; index++) await Promise.resolve();
   expect(ipc.choose).toHaveBeenCalledOnce(); image.value = 'B'; image.value = 'A'; resolve('C:/empty'); await mounting;

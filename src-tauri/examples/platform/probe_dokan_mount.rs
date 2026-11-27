@@ -4,7 +4,7 @@
 //! Usage:
 //!   cargo run --example probe_dokan_mount -- <image> [mount-point] [root-node-id]
 
-#[cfg(all(windows, not(target_arch = "aarch64")))]
+#[cfg(windows)]
 fn main() -> anyhow::Result<()> {
     use std::{env, process::Command, sync::Arc, thread, time::Duration};
 
@@ -132,7 +132,7 @@ try {{
     }
 }
 
-#[cfg(not(all(windows, not(target_arch = "aarch64"))))]
+#[cfg(not(windows))]
 fn main() -> anyhow::Result<()> {
-    anyhow::bail!("probe_dokan_mount is only available on x86 or x64 Windows")
+    anyhow::bail!("probe_dokan_mount is only available on Windows")
 }

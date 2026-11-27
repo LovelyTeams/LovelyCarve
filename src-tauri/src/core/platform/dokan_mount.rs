@@ -9,6 +9,8 @@ mod filesystem;
 use crate::core::common::error::Failure;
 use crate::core::filesystem::evidence_session::EvidenceSession;
 use filesystem::*;
+mod library;
+pub use library::require as require_library;
 mod callbacks;
 use callbacks::*;
 mod read;
@@ -191,6 +193,7 @@ pub fn start_readonly_mount(
     if root.kind != NodeKind::Dir {
         anyhow::bail!("Dokan mount root must be a directory-like node");
     }
+    require_library()?;
 
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = Arc::clone(&stop);

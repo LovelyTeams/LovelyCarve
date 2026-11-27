@@ -11,7 +11,9 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: AGPL-3.0-only" src="https://img.shields.io/badge/license-AGPL--3.0--only-blue"></a>
-  <img alt="Platform: Windows x64" src="https://img.shields.io/badge/platform-Windows%20x64-0078d4">
+  <img alt="Platform: Windows x64 / ARM64" src="https://img.shields.io/badge/platform-Windows%20x64%20%7C%20ARM64-0078d4">
+  <img alt="Platform: macOS Apple Silicon / Intel" src="https://img.shields.io/badge/platform-macOS%20Apple%20Silicon%20%7C%20Intel-333333">
+  <img alt="Platform: Linux x64 / ARM64" src="https://img.shields.io/badge/platform-Linux%20x64%20%7C%20ARM64-555555">
   <img alt="Rust 1.100+" src="https://img.shields.io/badge/rust-1.100%2B-dea584">
   <img alt="Tauri 2" src="https://img.shields.io/badge/tauri-2-24c8db">
   <img alt="Vue 3" src="https://img.shields.io/badge/vue-3-42b883">
@@ -75,7 +77,7 @@ LovelyCarve 面向电子数据取证、应急响应和 CTF 取证题：加载磁
 
 ## 快速开始
 
-1. 获取程序：Windows x64 预编译包通过 [GitHub Releases](https://github.com/LovelyTeams/LovelyCarve/releases) 发布，也可以按下文[从源码构建](#从源码构建)。运行需要 WebView2（Windows 10/11 通常已内置）；只读挂载另需 [Dokany](https://github.com/dokan-dev/dokany) 驱动，读取物理磁盘需要管理员权限。
+1. 从 [GitHub Releases](https://github.com/LovelyTeams/LovelyCarve/releases/latest) 下载对应平台的桌面包：Windows x64 的 MSI、Windows ARM64 的安装程序、macOS（Apple Silicon 或 Intel）的 DMG，或 Linux（x64 或 ARM64）的 AppImage；各平台另有独立 CLI 包。Windows 需要 WebView2（Windows 10/11 通常已内置），只读挂载需要 [Dokany 2](https://github.com/dokan-dev/dokany/releases/latest)，读取物理磁盘需要管理员权限。macOS 版需要 macOS 15 或更新版本，首次打开时可能需要在「系统设置 → 隐私与安全性」中确认，Intel Mac 版不能识别文件类型。Linux 版需要 glibc 2.35 或更新版本（如 Ubuntu 22.04），AppImage 需要 FUSE 2。
 2. 在起始页或「案件管理」中新建案件，选择一个空目录。
 3. 「添加检材」选择镜像文件、文件夹、BCP 数据、RAID 成员或物理磁盘。分段镜像选第一段，其余分段放在同一目录。
 4. 检材加入后会自动识别平台并在后台建立卷快照和文件索引，进度在右上角「任务中心」查看。
@@ -95,7 +97,7 @@ lovelycarve-cli -C "D:\cases\demo" cat /disk/part:0/Users/alice/report.txt > rep
 lovelycarve-cli -C "D:\cases\demo" case close
 ```
 
-`case open` 启动的案件后台进程在命令之间保持检材、解锁与组装结果；没有专门命令的后端功能用 `rpc <后端命令>` 调用。`--help` 列出命令，`schema` 描述参数，安装包中的 `skills/lovelycarve-cli` 是供编码代理使用的技能，附带全部命令的参考与多步任务说明。`shell` 在一个进程中逐行执行命令，`batch` 逐行执行 JSON 请求，适合脚本与代理编排一系列分析：
+`case open` 启动的案件后台进程在命令之间保持检材、解锁与组装结果；没有专门命令的后端功能用 `rpc <后端命令>` 调用。`--help` 列出命令，`schema` 描述参数，Windows CLI ZIP 中的 `skills/lovelycarve-cli` 提供命令参考与多步任务说明，供编码代理使用。`shell` 在一个进程中逐行执行命令，`batch` 逐行执行 JSON 请求，适合脚本与代理编排一系列分析：
 
 ```powershell
 Get-Content .\workflow.jsonl | lovelycarve-cli -C "D:\cases\demo" batch
@@ -113,7 +115,7 @@ Get-Content .\workflow.jsonl | lovelycarve-cli -C "D:\cases\demo" batch
 
 ## 从源码构建
 
-桌面开发与发布配方面向 Windows x64。默认构建不包含二维码识别和 OCR，不需要 OpenCV 或 CUDA。
+以下是 Windows x64 的构建依赖和入口。macOS 安装 Xcode Command Line Tools 和 OpenSSL 3、Linux 安装 Tauri 的系统依赖（WebKitGTK 4.1 等）后，先用 `just bootstrap` 初始化，再分别用 `just build-macos` 构建 DMG、`just build-linux` 构建 AppImage。各平台的默认构建都关闭二维码识别和 OCR。
 
 | 依赖 | 版本或说明 |
 | --- | --- |
@@ -157,7 +159,6 @@ GitHub 自动生成的源码压缩包不含 Git 子模块，请使用 `--recurse
 
 - 删除项和雕刻结果不保证内容完整：雕刻受块对齐、碎片化和格式覆盖范围限制，未命中不代表文件不存在。
 - 独立的孤儿文件扫描尚未接入；丢失分区只能在「文件恢复」中按 FAT、NTFS、exFAT 的引导扇区与残留 `$MFT` 查找。文件时间线目前只投影修改时间。
-- 桌面开发与发布只在 Windows 上验证；macOS 和 Linux 需要自行构建和验证。
 - 当前案件格式不兼容早期开发版的 `.carve` 案件。
 
 ## 参与贡献

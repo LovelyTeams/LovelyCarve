@@ -20,6 +20,10 @@ export interface MountShareView {
   running: boolean;
 }
 
+export function fsMountSupported(): Promise<boolean> {
+  return invokeCmd<boolean>('fs_mount_supported');
+}
+
 export function fsMounts(): Promise<DokanMountView[]> {
   return invokeCmd<DokanMountView[]>('fs_mounts');
 }

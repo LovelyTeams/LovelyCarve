@@ -5,7 +5,8 @@
       "binaries/msvcp140.dll": null,
       "binaries/msvcp140_1.dll": null,
       "binaries/vcruntime140.dll": null,
-      "binaries/vcruntime140_1.dll": null
+      "binaries/vcruntime140_1.dll": null,
+      "target/arm64-runtime/": ""
     }
   }
 }

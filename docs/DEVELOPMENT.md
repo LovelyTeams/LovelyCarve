@@ -16,12 +16,12 @@ just dev
 | Rust | stable，最低版本以 `src-tauri/Cargo.toml` 的 `rust-version` 为准，当前为 1.100 |
 | Bun | 版本以 `package.json` 的 `packageManager` 为准，当前为 1.4.5；前端工具在 Bun 上运行，不需要 Node.js |
 | Windows 桌面 | PowerShell 7、Visual Studio C++ x64 工具与「适用于 Windows 的 C++ Clang 工具」（含 `lld-link`）、Windows SDK、OpenSSL 开发文件、WebView2 |
-| macOS | Xcode Command Line Tools；桌面检查另需相应的 Tauri 系统依赖 |
-| Linux | 编译工具链、WebKitGTK、OpenSSL 等 Tauri 系统依赖 |
+| macOS | Xcode Command Line Tools、OpenSSL 3（Homebrew `openssl@3`）；桌面检查另需相应的 Tauri 系统依赖 |
+| Linux | 编译工具链、WebKitGTK 4.1、OpenSSL 开发文件等 Tauri 系统依赖 |
 | CLI smoke 测试 | Python 3 |
 | Windows 便携打包 | PATH 中的 `upx` 与 `7z` |
 
-默认构建关闭二维码识别与 OCR，不需要 OpenCV 或 CUDA。桌面开发和打包配方只支持 Windows；Rust 检查、前端任务、插件构建和 CLI 构建可以在其他平台运行，但 macOS / Linux 产物需要单独验证。
+默认构建关闭二维码识别与 OCR，不需要 OpenCV 或 CUDA。桌面开发配方在 Windows 上运行；macOS 用 `just build-macos` 构建桌面 DMG，Linux 用 `just build-linux` 构建桌面 AppImage。Rust 检查、前端任务、插件构建和 CLI 构建也可在其他平台运行，各平台产物需单独验证。ONNX Runtime 没有 Intel Mac 的预编译库，在 Intel Mac 上构建的推理组件不链接 ONNX Runtime，`component.describe` 报告不支持文件类型识别。
 
 Windows 桌面程序在开发版和发布版中均嵌入 `asInvoker` 权限声明，启动时不自动请求管理员权限。读取物理磁盘或采集实时内存时，需要用户手动以管理员身份启动程序。
 
@@ -70,7 +70,9 @@ just dev
 
 SQLCipher 配方设置 `OPENSSL_NO_VENDOR=1` 和 `OPENSSL_STATIC=1`，使用本机安装的 OpenSSL 开发文件。Windows 配方默认通过 `OPENSSL_LIBS=libssl_static:libcrypto_static` 选择静态库；Shining Light 的 `libssl.lib` 和 `libcrypto.lib` 即使位于 `MT` 目录下也是 DLL 导入库。使用其他 OpenSSL 发行版时，可通过 `OPENSSL_LIBS` 指定其实际静态库名称，并检查二进制的 DLL 依赖。如改为从源码编译 OpenSSL，需要准备 Windows Perl 与 NASM。
 
-实验性的 Windows ARM64 工作流由 GitHub Actions 手动触发，编译桌面端、CLI 与随附插件，并上传供测试的二进制文件。OpenSSL 使用 ARM64 的 `MD` 静态库，以匹配 MSVC 动态运行库。这个构建关闭 QR/OCR、Dokan 挂载与挂载共享，跳过安装包生成；Dokan Rust 依赖当前只支持 x86 和 x64。
+Windows ARM64 包由 `Windows ARM64 packages` 工作流在 ARM64 运行器上原生构建：`just build-release --bundles nsis --config src-tauri/tauri.arm64.conf.json` 生成桌面安装程序，`just pack-cli -Arm64` 生成 CLI ZIP。OpenSSL 使用 ARM64 的 `MD` 静态库，以匹配 MSVC 动态运行库；ARM64 Visual C++ 运行库从 Visual Studio 的 redist 目录暂存到 `src-tauri/target/arm64-runtime/` 后随包分发，仓库中的 x64 运行库与 x64 `dokan2.dll` 不进入 ARM64 包。
+
+主程序与 CLI 不在链接时依赖 Dokany：随附的 `src-tauri/vendor/dokan-rust` 在挂载时加载 `dokan2.dll`，先找 Dokany 安装在 System32 中的库（与驱动来自同一次安装），再找程序目录，以及测试与 example 程序上一级的 Cargo profile 目录。因此 x64 与 ARM64 共用同一份挂载代码，未安装 Dokany 时程序照常启动。开发机只装了 Dokany 驱动、System32 中没有 `dokan2.dll` 时，把 `src-tauri/binaries/dokan2.dll` 复制到 `src-tauri/target/<profile>/` 即可挂载。
 
 ## 日常任务
 
@@ -86,6 +88,8 @@ just --dry-run pack           # 展开依赖与命令，但不执行
 | 前端 | `dev-fe`、`typecheck`、`test-fe`、`build-fe`、`ipc-check`、`frontend-structure-check`、`i18n-check` |
 | 后端 | `fmt`、`check`、`clippy`、`test [名称及 Cargo 参数]`、`check-examples`；原生组件用 `build-components [--release] [--features ocr / ocr-cuda]`、`test-components`、`clippy-components` |
 | Windows 桌面 | `dev`、`build`、`build-release`、`pack`、`repack`；含 QR/OCR 的版本使用对应的 `*-full` |
+| macOS 桌面 | `build-macos`，生成含推理组件和内置插件的 DMG |
+| Linux 桌面 | `build-linux`，生成含推理组件和内置插件的 AppImage |
 | CLI | `run-cli`、`build-cli`、`build-cli-full`、`test-cli`、`smoke-cli <exe>`、`update-cli-skill`（重新生成代理技能的命令参考）；Windows 另有 `pack-cli`、`pack-cli-full`、`repack-cli`、`stage-cli-skill` |
 | Python 读取库 | `develop-python`、`build-python`、`test-python`、`fmt-python`、`clippy-python`；使用 uv 管理解释器，默认 Python 3.15，详见 [Python 文档](../python/README.md) |
 | 插件 | `build-plugins [--release]`、`test-plugins`、`clippy-plugins`；Windows 另有 `pack-plugins`（生成 `.lcpkg`）与 `market-index [目录] [标题]`（为插件包目录写出插件市场的 `index.json`） |
@@ -131,7 +135,7 @@ Windows rustc 在大型测试 crate 发生增量编译崩溃时，可通过原�
 
 安装包和便携包共用 `src-tauri/tauri.plugins.conf.json`：主程序旁放置 `lc-plugin-host.exe`，`plugins/linuxinfo/` 包含 `plugin.toml`、DLL、`schema.json` 与 `locales/`，插件不嵌入主程序。`just pack-plugins` 为每个工作区插件生成可在「设置 → 插件」或 CLI `plugin install` 安装的 `.lcpkg`。接口与工件来源见 [插件协议](PLUGIN_PROTOCOL.md) 和 [Linux 基本信息插件](LINUXINFO.md)。
 
-ReFS 使用纯 Rust 读取器；旧的 `librefs-13.dll` 只在显式的 `refs-dll-oracle` 特性下用于对照，不随正式包分发。Dokan 与可选的 OpenCV DLL，以及模型和许可证属于构建 / 运行资源，按打包配置分发；OpenSSL 静态链接进主程序、CLI 和 Python 扩展，不随包分发 DLL；推理组件 `lovelycarve_inference.dll` 由 `src-tauri/tauri.components.conf.json` 声明，从 `src-tauri/target/release` 随包放在主程序旁。`src-tauri/binaries` 中的 `vcruntime140.dll`、`vcruntime140_1.dll`、`msvcp140.dll` 和 `msvcp140_1.dll` 是 Visual Studio 可再发行目录中的 VC++ 运行库，随主程序放在同一目录：桌面主程序静态链接 `vcruntime`，独立 CLI、`lc-plugin-host` 和 `linuxinfo` 动态依赖 `vcruntime140`；含 ONNX Runtime 的推理组件另外依赖 C++ 标准库 `msvcp140` / `msvcp140_1`（它们又依赖 `vcruntime140` / `vcruntime140_1`），以及系统自带的 DirectML、D3D12 与 DXGI。便携包打包时不对这些 VC++ 运行库做 UPX 压缩。Tauri 的 MSI 打包会收入 `src-tauri/target/release` 根目录下的所有 DLL，`build-release` 因此先删除其中未在打包配置里声明的 DLL（例如完整构建留下的 OpenCV 和 ONNX Runtime 执行提供者）。发布前用 `dumpbin /dependents` 核对主程序、CLI、推理组件、插件宿主、插件和随附 DLL 的依赖，除 Windows 自带组件外都应能在包内找到。测试夹具及其来源说明保存在 vendor 与 tests 目录中，不要用真实检材替换。
+ReFS 使用纯 Rust 读取器；旧的 `librefs-13.dll` 只在显式的 `refs-dll-oracle` 特性下用于对照，不随正式包分发。Windows x64 包附带的 `dokan2.dll` 只在 System32 没有 Dokany 库（只装了驱动）时使用，可选的 OpenCV DLL 以及模型和许可证同样属于运行资源，按打包配置分发；OpenSSL 静态链接进主程序、CLI 和 Python 扩展，不随包分发 DLL；推理组件 `lovelycarve_inference.dll` 由 `src-tauri/tauri.components.conf.json` 声明，从 `src-tauri/target/release` 随包放在主程序旁。`src-tauri/binaries` 中的 `vcruntime140.dll`、`vcruntime140_1.dll`、`msvcp140.dll` 和 `msvcp140_1.dll` 是 Visual Studio 可再发行目录中的 VC++ 运行库，随主程序放在同一目录：桌面主程序静态链接 `vcruntime`，独立 CLI、`lc-plugin-host` 和 `linuxinfo` 动态依赖 `vcruntime140`；含 ONNX Runtime 的推理组件另外依赖 C++ 标准库 `msvcp140` / `msvcp140_1`（它们又依赖 `vcruntime140` / `vcruntime140_1`），以及系统自带的 DirectML、D3D12 与 DXGI。便携包打包时不对这些 VC++ 运行库做 UPX 压缩。Tauri 的 MSI 打包会收入 `src-tauri/target/release` 根目录下的所有 DLL，`build-release` 因此先删除其中未在打包配置里声明的 DLL（例如完整构建留下的 OpenCV 和 ONNX Runtime 执行提供者）。发布前用 `dumpbin /dependents` 核对主程序、CLI、推理组件、插件宿主、插件和随附 DLL 的依赖，除 Windows 自带组件外都应能在包内找到。测试夹具及其来源说明保存在 vendor 与 tests 目录中，不要用真实检材替换。
 
 图标保留透明和带背景两张原图，位于 `src-tauri/icons/source*.png`；修改后执行 `just icons` 同步各平台图标和前端 512px 资源。
 
@@ -147,7 +151,7 @@ Unix 的 `build-cli-full` 为 CLI 启用 `qrcode-wechat`，推理组件以 `ocr`
 
 `stage-cli-skill` 复用现有 Windows release CLI 与插件，按同一打包清单生成 `skills/lovelycarve-cli/bin/`；它不执行编译。运行文件与 DLL 保持相邻，插件与可选模型沿用包内路径，许可证随运行文件复制。该目录的生成文件由其 `.gitignore` 排除，独立安装时需复制完整 skill 目录；具体使用见 [CLI 代理技能](CLI.md#编码代理)。
 
-Windows GitHub Actions 使用 `windows-2025` 执行 `just test-fe`、`just test`、`just test-components` 与 `just test-plugins`；PR 只运行测试，不执行发行构建或上传构建产物。Rust 测试仍需编译测试程序。`v*` 标签在测试成功后自动构建 MSI、CLI ZIP 与插件包并发布到 GitHub Release。云端默认不启用 QR/OCR，macOS/Linux、原生 GUI 与驱动功能仍需单独验证，发布步骤见 [发布指南](RELEASING.md)。
+Windows GitHub Actions 使用 `windows-2025` 执行 `just test-fe`、`just test`、`just test-components` 与 `just test-plugins`。PR 只运行测试。`v*` 标签并行运行测试以及 Windows x64 / ARM64、macOS Apple Silicon / Intel、Linux x64 / ARM64 的发行构建，全部成功后统一发布到 GitHub Release；推送 `release-check/*` 分支运行同一套构建与检查但不发布。macOS 与 Linux 的平台工作流（`macos.yml`、`linux.yml`）和 `windows-arm64.yml` 也可单独手动运行。云端默认关闭 QR/OCR，原生 GUI 与驱动功能仍需单独验证。发布步骤见 [发布指南](RELEASING.md)。
 
 ## 性能验证
 

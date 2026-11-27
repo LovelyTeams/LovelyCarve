@@ -12,7 +12,7 @@
 //! Example (ReFS partition #2 of the Win Server E01):
 //!   cargo run --example probe_dokan_slice -- X:\EWF1 227540992 272501833728 Y
 
-#[cfg(all(windows, not(target_arch = "aarch64")))]
+#[cfg(windows)]
 use std::{
     env,
     fs::File,
@@ -21,15 +21,15 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-#[cfg(all(windows, not(target_arch = "aarch64")))]
+#[cfg(windows)]
 use dokan::{
     CreateFileInfo, DiskSpaceInfo, FileInfo, FileSystemHandler, FileSystemMounter, FillDataResult,
     FindData, MountFlags, MountOptions, OperationInfo, OperationResult, VolumeInfo,
     IO_SECURITY_CONTEXT,
 };
-#[cfg(all(windows, not(target_arch = "aarch64")))]
+#[cfg(windows)]
 use widestring::{U16CStr, U16CString};
-#[cfg(all(windows, not(target_arch = "aarch64")))]
+#[cfg(windows)]
 use winapi::{
     shared::ntstatus::{STATUS_ACCESS_DENIED, STATUS_INVALID_PARAMETER, STATUS_NO_SUCH_FILE},
     um::winnt::{
@@ -38,24 +38,24 @@ use winapi::{
     },
 };
 
-#[cfg(all(windows, not(target_arch = "aarch64")))]
+#[cfg(windows)]
 const VOLUME_FILE: &str = "volume.bin";
 
-#[cfg(all(windows, not(target_arch = "aarch64")))]
+#[cfg(windows)]
 struct SliceFs {
     backing: Arc<File>,
     base: u64,
     length: u64,
 }
 
-#[cfg(all(windows, not(target_arch = "aarch64")))]
+#[cfg(windows)]
 #[derive(Clone, Copy)]
 enum Node {
     Root,
     Volume,
 }
 
-#[cfg(all(windows, not(target_arch = "aarch64")))]
+#[cfg(windows)]
 impl SliceFs {
     fn resolve(&self, name: &U16CStr) -> OperationResult<Node> {
         let s = name.to_string_lossy();
@@ -86,7 +86,7 @@ impl SliceFs {
     }
 }
 
-#[cfg(all(windows, not(target_arch = "aarch64")))]
+#[cfg(windows)]
 impl<'c, 'h: 'c> FileSystemHandler<'c, 'h> for SliceFs {
     type Context = Node;
 
@@ -191,7 +191,7 @@ impl<'c, 'h: 'c> FileSystemHandler<'c, 'h> for SliceFs {
     }
 }
 
-#[cfg(all(windows, not(target_arch = "aarch64")))]
+#[cfg(windows)]
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = env::args().collect();
     if args.len() != 5 {
@@ -233,7 +233,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(not(all(windows, not(target_arch = "aarch64"))))]
+#[cfg(not(windows))]
 fn main() -> anyhow::Result<()> {
-    anyhow::bail!("This Dokan probe requires an x86 or x64 Windows build");
+    anyhow::bail!("This Dokan probe requires Windows");
 }

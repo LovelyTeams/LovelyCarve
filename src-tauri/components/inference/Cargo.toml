@@ -23,17 +23,21 @@ ocr-cuda = ["ocr", "oar-ocr/cuda"]
 abi = { package = "lovelycarve-component-abi", path = "../abi" }
 # OCR 把文件字节解成 RgbImage 喂给 oar-ocr；版本对齐 oar-ocr 传递依赖的 image 0.25。
 image = { version = "0.25.10", optional = true }
-magika = { path = "../../vendor/magika" }
 # PP-OCRv6-tiny 检测 + 识别管线，复用 magika 同版本的 ort 2.0.0-rc.12。
 # 0.10 要求 ort rc.13，与 vendored magika 的 rc.12 固定版本冲突；两者暂留 0.7。
 oar-ocr = { version = "0.7.4", optional = true }
 # 直接命名 OrtSessionConfig / OrtExecutionProvider 以显式配置执行提供者（CUDA 优先 + CPU 回退）。
 oar-ocr-core = { version = "0.7.4", optional = true }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+
+# ONNX Runtime 没有 Intel Mac（x86_64-apple-darwin）的预编译库：该平台的组件不含
+# Magika，`component.describe` 报告不支持文件类型识别，其余平台照常静态链接。
+[target.'cfg(not(all(target_os = "macos", target_arch = "x86_64")))'.dependencies]
+magika = { path = "../../vendor/magika" }
 # magika 依赖 ort 但把链接方式留给最终库；download-binaries 让 ort 的构建脚本在构建期
 # 拉取并静态链接 ONNX Runtime，组件运行时无需额外的 ONNX Runtime DLL。
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["ndarray", "std", "download-binaries", "tls-native"] }
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.154"
 
 [lints]
 workspace = true

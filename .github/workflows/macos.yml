@@ -1,0 +1,134 @@
+name: macOS packages
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Package macOS ${{ matrix.arch }} desktop and CLI
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            triple: aarch64-apple-darwin
+            bundle: aarch64
+          # ONNX Runtime has no x86_64 macOS library, so the Intel inference
+          # component carries no Magika model and reports no file types.
+          - runner: macos-15-intel
+            arch: x64
+            triple: x86_64-apple-darwin
+            bundle: x64
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_RELEASE_LTO: thin
+      CARGO_TERM_COLOR: always
+      MACOSX_DEPLOYMENT_TARGET: '15.0'
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: package.json
+      - uses: extractions/setup-just@v4
+      - name: Configure native Rust and OpenSSL
+        shell: bash
+        run: |
+          case "$(uname -m)" in
+            arm64) test "${{ matrix.arch }}" = arm64 ;;
+            x86_64) test "${{ matrix.arch }}" = x64 ;;
+            *) exit 1 ;;
+          esac
+          rust_version="$(sed -n 's/^rust-version = "\([^"]*\)"/\1/p' src-tauri/Cargo.toml)"
+          test -n "$rust_version"
+          if [[ "$rust_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            rust_version="$rust_version.0"
+          fi
+          toolchain="$rust_version-${{ matrix.triple }}"
+          rustup toolchain install "$toolchain" --profile minimal
+          rustup override set "$toolchain"
+          brew list --versions openssl@3 >/dev/null || brew install openssl@3
+          openssl_dir="$(brew --prefix openssl@3)"
+          test -f "$openssl_dir/lib/libcrypto.a"
+          {
+            echo "OPENSSL_DIR=$openssl_dir"
+            echo 'OPENSSL_NO_VENDOR=1'
+            echo 'OPENSSL_STATIC=1'
+          } >> "$GITHUB_ENV"
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.bun/install/cache
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/git/db
+          key: macos-dependencies-${{ runner.arch }}-${{ hashFiles('bun.lock', '**/Cargo.lock') }}
+          restore-keys: macos-dependencies-${{ runner.arch }}-
+      - run: just bootstrap
+      - run: just build-macos
+      - run: just build-cli
+      - name: Verify and stage the desktop DMG
+        shell: bash
+        run: |
+          version=$(jq -er '.version' package.json)
+          lipo_arch=${{ matrix.arch == 'x64' && 'x86_64' || 'arm64' }}
+          dmg="src-tauri/target/release/bundle/dmg/LovelyCarve_${version}_${{ matrix.bundle }}.dmg"
+          mount=$(mktemp -d)
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$dmg"
+          trap 'hdiutil detach "$mount" && rmdir "$mount"' EXIT
+          app="$mount/LovelyCarve.app"
+          bin="$app/Contents/MacOS"
+          plugin="$bin/plugins/linuxinfo"
+          for binary in "$bin/LovelyCarve" "$bin/lc-plugin-host" "$bin/liblovelycarve_inference.dylib" "$plugin/liblinuxinfo.dylib"; do
+            test "$(lipo -archs "$binary")" = "$lipo_arch"
+            otool -L "$binary"
+          done
+          for file in "$app/Contents/Resources/LICENSE" "$app/Contents/Resources/THIRD_PARTY_NOTICES.md" "$plugin"/{plugin.toml,schema.json,locales/en.toml}; do
+            test -s "$file"
+          done
+          codesign --verify --deep --strict "$app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$version"
+          "$bin/lc-plugin-host" --describe --library "$plugin/liblinuxinfo.dylib" | jq -e 'type == "object"'
+          mkdir -p release-assets
+          cp "$dmg" "release-assets/LovelyCarve-v${version}-macos-${{ matrix.arch }}.dmg"
+      - name: Package and smoke-test the CLI archive
+        shell: bash
+        run: |
+          version=$(jq -er '.version' package.json)
+          lipo_arch=${{ matrix.arch == 'x64' && 'x86_64' || 'arm64' }}
+          file_types=${{ matrix.arch == 'x64' && 'false' || 'true' }}
+          name="lovelycarve-cli-v${version}-macos-${{ matrix.arch }}"
+          stage=$(mktemp -d)
+          mkdir -p "$stage/$name/plugins/linuxinfo"
+          cp src-tauri/target/release/{lovelycarve-cli,liblovelycarve_inference.dylib} \
+            plugins/target/release/lc-plugin-host LICENSE THIRD_PARTY_NOTICES.md "$stage/$name/"
+          cp -R plugins/linuxinfo/{liblinuxinfo.dylib,plugin.toml,schema.json,locales} "$stage/$name/plugins/linuxinfo/"
+          tar -czf "release-assets/$name.tar.gz" -C "$stage" "$name"
+          unpacked=$(mktemp -d)
+          tar -xzf "release-assets/$name.tar.gz" -C "$unpacked"
+          cli="$unpacked/$name/lovelycarve-cli"
+          test "$(lipo -archs "$cli")" = "$lipo_arch"
+          "$cli" --json system | tee /dev/stderr | jq -e --arg version "$version" --argjson fileTypes "$file_types" '
+            .version == $version and .platform == "macos" and .standalone and (.dokanMount | not) and
+            .components.inference.available and .components.inference.version == $version and
+            .components.inference.fileTypes == $fileTypes'
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: lovelycarve-macos-${{ matrix.arch }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7

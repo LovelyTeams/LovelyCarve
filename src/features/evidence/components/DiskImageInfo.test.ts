@@ -5,6 +5,7 @@ import type { ImageInfo } from '../../../lib/ipc/image';
 import type { EwfAcquiryInfo } from '../../../lib/ipc/image';
 import type { ShadowCopyInfo, ShadowVolumeInfo } from '../../../lib/ipc/shadow';
 import { fsAvailableMountPoints, fsMountReadonly, fsMounts, type DokanMountView } from '../../../lib/ipc/mount';
+import { readonlyMountSupportKey } from '../../../composables/useReadonlyMountSupport';
 import { useUiPreferences } from '../../../composables/useUiPreferences';
 
 vi.mock('../../../lib/ipc/mount', () => ({ fsMounts: vi.fn(async () => []), fsAvailableMountPoints: vi.fn(), fsCreateMountDir: vi.fn(), fsMountReadonly: vi.fn(), fsShareMount: vi.fn(), fsUnmountReadonly: vi.fn(), fsUnshareMount: vi.fn() }));
@@ -69,12 +70,12 @@ async function settle() {
   for (let i = 0; i < 4; i += 1) await nextTick();
 }
 
-async function mount(info: ImageInfo = fixture) {
+async function mount(info: ImageInfo = fixture, mountSupported = true) {
   host = document.createElement('div');
   document.body.append(host);
   const currentInfo = shallowRef(info);
   app = createApp(defineComponent({ render: () => h(DiskImageInfo, { info: currentInfo.value, 'onOpen-image': opened }) }));
-  app.mount(host);
+  app.provide(readonlyMountSupportKey, mountSupported).mount(host);
   await settle();
   return currentInfo;
 }
@@ -143,6 +144,11 @@ describe('DiskImageInfo evidence overview', () => {
     button(row(1), 'I:')!.click(); await settle();
     expect(fsMountReadonly).toHaveBeenCalledWith({ imageId: fixture.id, nodeId: 'part:1', mountPoint: 'I:\\' });
     expect(row(1).querySelector('.drive-picker')).toBeNull(); expect(row(1).querySelector('.mount-btn')?.textContent).toContain('I:');
+  });
+  it('does not show or query mounts when this build cannot mount', async () => {
+    await mount(fixture, false);
+    expect(row(1).querySelector('.mount-btn')).toBeNull();
+    expect(fsMounts).not.toHaveBeenCalled();
   });
   it('opens on the evidence and its platform, then its partitions, integrity and details', async () => {
     await mount();

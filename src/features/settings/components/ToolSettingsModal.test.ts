@@ -5,6 +5,7 @@ import ToolSettingsModal from './ToolSettingsModal.vue';
 import Titlebar from '../../../app/components/Titlebar.vue';
 import { useTheme } from '../../../composables/useTheme';
 import { useUiPreferences } from '../../../composables/useUiPreferences';
+import { readonlyMountSupportKey } from '../../../composables/useReadonlyMountSupport';
 import { open } from '@tauri-apps/plugin-dialog';
 import { setLocale } from '../../../composables/useLocale';
 
@@ -35,7 +36,7 @@ function button(label: string) { return [...host.querySelectorAll<HTMLButtonElem
 
 describe('settings entry and preferences', () => {
   it('switches the open settings to English immediately and persists the choice', async () => {
-    app = createApp(ToolSettingsModal, { visible: true }); app.mount(host);
+    app = createApp(ToolSettingsModal, { visible: true }); app.provide(readonlyMountSupportKey, true).mount(host);
     const language = host.querySelector<HTMLInputElement>('input[type="radio"][value="en"]')!;
     language.click(); await settle();
     expect(localStorage.getItem('lovelycarve-locale')).toBe('en');
@@ -113,7 +114,7 @@ describe('settings entry and preferences', () => {
   it('labels the mount path, groups mount choices and reports picker failures inline', async () => {
     preferences.mountTarget.value = 'folder';
     vi.mocked(open).mockRejectedValue(new Error('目录选择器不可用'));
-    app = createApp(ToolSettingsModal, { visible: true }); app.mount(host);
+    app = createApp(ToolSettingsModal, { visible: true }); app.provide(readonlyMountSupportKey, true).mount(host);
     const radios = [...host.querySelectorAll<HTMLInputElement>('input[type="radio"]')].filter(input => ['drive', 'folder'].includes(input.value));
     expect(radios[0].name).toBeTruthy();
     expect(radios[0].name).toBe(radios[1].name);
@@ -122,5 +123,12 @@ describe('settings entry and preferences', () => {
     button('选择').click(); await settle();
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('目录选择器不可用');
     expect(button('选择').disabled).toBe(false);
+  });
+
+  it('hides mount preferences when this build cannot mount', () => {
+    preferences.mountTarget.value = 'folder';
+    app = createApp(ToolSettingsModal, { visible: true }); app.mount(host);
+    expect(host.querySelector('.mount-setting')).toBeNull();
+    expect(host.querySelector('.theme-options')).not.toBeNull();
   });
 });

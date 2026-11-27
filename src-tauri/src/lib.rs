@@ -151,6 +151,7 @@ fn application_builder() -> tauri::Builder<tauri::Wry> {
             commands::preview::kdbx_preview::fs_kdbx_header,
             commands::preview::kdbx_preview::fs_kdbx_open,
             commands::preview::kdbx_preview::fs_kdbx_attachment,
+            commands::system::mount::fs_mount_supported,
             commands::system::mount::fs_mount_readonly,
             commands::system::mount::fs_unmount_readonly,
             commands::system::mount::fs_mounts,

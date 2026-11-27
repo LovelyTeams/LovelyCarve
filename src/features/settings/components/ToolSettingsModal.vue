@@ -59,7 +59,7 @@
               </div>
             </div>
 
-            <div class="setting-row mount-setting">
+            <div v-if="mountSupported" class="setting-row mount-setting">
               <h3 class="setting-label" :id="mountLabelId">{{ tr("分区挂载") }}</h3>
               <div class="setting-control">
                 <div class="ui-seg" role="radiogroup" :aria-labelledby="mountLabelId">
@@ -111,6 +111,7 @@ import {
 } from 'lucide-vue-next';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useUiPreferences, type MotionPreference } from '../../../composables/useUiPreferences';
+import { useReadonlyMountSupport } from '../../../composables/useReadonlyMountSupport';
 import { useCaseContext } from '../../cases/api';
 import { useDialogFocus } from '../../../composables/useDialogFocus';
 import { useTheme, type ThemeName } from '../../../composables/useTheme';
@@ -171,6 +172,7 @@ const pickingDirectory = ref(false);
 const directoryError = ref('');
 
 const { motionPreference, mountTarget, mountFolderRoot, autoMountCaseEvidence } = useUiPreferences();
+const mountSupported = useReadonlyMountSupport();
 const { currentTheme, setTheme, themes } = useTheme();
 const themeIcons: Record<ThemeName, Component> = { light: Sun, dark: Moon };
 const themeNames: Record<ThemeName, string> = { get light() { return tr("浅色"); }, get dark() { return tr("深色"); } };

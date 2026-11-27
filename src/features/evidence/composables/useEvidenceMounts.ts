@@ -10,6 +10,7 @@ import { partitionTitle } from '../model/evidenceOverview';
 import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 interface EvidenceMountOptions {
+  supported: boolean;
   info: () => ImageInfo | null;
   mountTarget: () => MountTarget;
   mountFolderRoot: () => string;
@@ -48,6 +49,7 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
   // so mounting it adds nothing and is intentionally excluded.)
   const SYNTHETIC_MOUNT_KEY = -1;
   const syntheticRoot = computed<{ id: string; label: string } | null>(() => {
+    if (!options.supported) return null;
     switch (options.info()?.source_format) {
       case 'tar':
       case 'android_backup':
@@ -66,7 +68,7 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
   });
 
   function isMountable(p: DiskPartition): boolean {
-    return p.member_of === undefined && MOUNTABLE_KINDS.has(p.kind);
+    return options.supported && p.member_of === undefined && MOUNTABLE_KINDS.has(p.kind);
   }
 
 
@@ -80,12 +82,13 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
   }
 
   async function refreshMounts() {
+    if (!options.supported) return;
     const captured = generation;
     try {
       const result = await fsMounts();
       if (current(captured)) mounts.value = result;
     } catch {
-      // Non-Windows or transient; quietly leave the list empty.
+      // Ignore a transient read failure.
       if (current(captured)) mounts.value = [];
     }
   }
@@ -116,6 +119,7 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
   }
 
   async function toggleShare(view: DokanMountView, title: string) {
+    if (!options.supported) return;
     const captured = generation;
     if (busyShares.value.has(view.id)) return;
     setShareBusy(view.id, true);
@@ -148,7 +152,7 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
   // `docker:`, key = SYNTHETIC_MOUNT_KEY) mounts share one code path.
   async function beginMount(nodeId: NodeId, key: number, title: string) {
     const info = options.info();
-    if (!info || disposed) return;
+    if (!options.supported || !info || disposed) return;
     const context = { imageId: info.id, generation };
     if (busyPartitions.value.has(key)) return;
     const existing = mountViewFor(nodeId);
@@ -229,7 +233,7 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
   }
 
   async function performMount(context: { imageId: ImageId; generation: number }, nodeId: NodeId, key: number, title: string, mountPoint: string) {
-    if (!current(context.generation) || busyPartitions.value.has(key)) return;
+    if (!options.supported || !current(context.generation) || busyPartitions.value.has(key)) return;
     pickerOpenFor.value = null;
     setBusy(key, true);
     try {

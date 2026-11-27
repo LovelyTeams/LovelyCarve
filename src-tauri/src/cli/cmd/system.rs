@@ -211,6 +211,7 @@ pub fn capabilities() -> Value {
         }
         Err(error) => json!({"available": false, "error": format!("{error:#}")}),
     };
+    let dokan = dokan_status();
     json!({
         "version": env!("CARGO_PKG_VERSION"),
         "platform": std::env::consts::OS,
@@ -218,7 +219,8 @@ pub fn capabilities() -> Value {
         "qrcode": cfg!(feature = "qrcode-wechat"),
         "ocr": ocr.is_some(),
         "ocrCuda": ocr == Some(OcrExecution::Cuda),
-        "dokanMount": cfg!(all(windows, not(target_arch = "aarch64"))),
+        "dokanMount": dokan["available"] == true,
+        "dokan": dokan,
         "components": {"inference": component},
         "output": {"default": "text", "json": "--json[=fields]", "errors": "framed text on stderr; one JSON line with --json"},
         "exitCodes": {"success": 0, "failure": 1, "incompleteResult": crate::cli::incomplete::EXIT_INCOMPLETE, "interrupted": 130},
@@ -227,4 +229,24 @@ pub fn capabilities() -> Value {
             "references": "{\"$ref\":\"<id>#/<json pointer>\"} as an argv element", "maxJobs": 64},
         "rpcOperations": operations().ok().and_then(|items| items.as_array().map(Vec::len)),
     })
+}
+
+/// Whether read-only mounts can start now: Dokany's library loads and its
+/// driver answers.
+#[cfg(windows)]
+fn dokan_status() -> Value {
+    match crate::core::platform::dokan_mount::require_library() {
+        Ok(library) => json!({
+            "available": true,
+            "path": library.path().display().to_string(),
+            "version": library.version(),
+            "driverVersion": library.driver_version(),
+        }),
+        Err(error) => json!({"available": false, "error": format!("{error:#}")}),
+    }
+}
+
+#[cfg(not(windows))]
+fn dokan_status() -> Value {
+    json!({"available": false, "error": "只读挂载需要 Windows 与 Dokany"})
 }

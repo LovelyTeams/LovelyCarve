@@ -9,6 +9,7 @@ import type { ImageId, NodeId } from '../../../lib/ipc/ids';
 
 /** Readonly mount actions for synthetic container roots; query state is independent. */
 export function useReadonlyMountActions(options: {
+  supported: boolean;
   imageId: () => ImageId;
   node: () => FsNode | null;
   target: () => 'drive' | 'folder';
@@ -33,7 +34,7 @@ export function useReadonlyMountActions(options: {
     return readonlyMounts.value.find(view => view.image_id === options.imageId() && view.root_node_id === nodeId) ?? null;
   }
 
-  const rowCanMount = computed(() => isHostDockerMountRoot(options.node()));
+  const rowCanMount = computed(() => options.supported && isHostDockerMountRoot(options.node()));
   const rowMountView = computed(() => { const node = options.node(); return node ? mountViewForNode(node.id) : null; });
   const rowMountLabel = computed(() => {
     const view = rowMountView.value;
@@ -46,6 +47,7 @@ export function useReadonlyMountActions(options: {
   });
 
   async function refreshReadonlyMounts() {
+    if (!options.supported) return;
     const request = ++queryGeneration;
     try {
       const views = await fsMounts();
@@ -70,7 +72,7 @@ export function useReadonlyMountActions(options: {
 
   async function onToggleRowMount() {
     const node = options.node();
-    if (!isHostDockerMountRoot(node) || mountBusy.value) return;
+    if (!options.supported || !isHostDockerMountRoot(node) || mountBusy.value) return;
     const epoch = generation;
     const imageId = options.imageId();
     const target = options.target();

@@ -10,7 +10,7 @@
 - 保留 vendor 目录的许可证、`ORIGIN.md` / `UPSTREAM.md` / `LOVELYCARVE.md` 说明及合成测试数据的来源；[ReFS](formats/REFS.md) 等格式专题中记录的公开镜像来源和哈希需要继续维护。
 - 仓库设置中保持私密漏洞报告开启，使 [SECURITY.md](../SECURITY.md) 的报告入口可用，操作见 [GitHub 文档](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/configure-vulnerability-reporting/configure-for-a-repository)。
 
-发布含 QR/OCR 的完整版本时，还需在目标 Windows 环境中检查模型加载、CPU 回退、离线文件预览、插件宿主和 DLL 加载。安装包与便携包分别做启动、建案、添加合成证据、浏览、哈希、导出及关闭的验证；挂载功能需要 Dokany 驱动并做实际挂载测试。macOS / Linux 只有完成对应平台的验证后才提供产物。
+发布含 QR/OCR 的完整版本时，还需在目标 Windows 环境中检查模型加载、CPU 回退、离线文件预览、插件宿主和 DLL 加载。安装包与便携包分别做启动、建案、添加合成证据、浏览、哈希、导出及关闭的验证；挂载功能需要 Dokany 驱动并做实际挂载测试（x64 与 ARM64 各自安装对应架构的 Dokany）。macOS / Linux 产物由 CI 检查架构、包内文件、插件描述和 CLI 能力；图形界面仍需在对应平台上启动验证。
 
 ## 版本与构建
 
@@ -24,6 +24,9 @@
 | Windows 桌面便携包 | `just pack` | `just pack-full` |
 | Windows CLI 包 | `just pack-cli` | `just pack-cli-full` |
 | Windows Python wheel | `just build-python` | — |
+| Windows ARM64 桌面安装程序 / CLI 包 | `just build-release --bundles nsis --config src-tauri/tauri.arm64.conf.json` / `just pack-cli -Arm64` | — |
+| macOS 桌面 DMG（Apple Silicon / Intel） | `just build-macos` | — |
+| Linux 桌面 AppImage（x64 / ARM64） | `just build-linux` | — |
 | 插件独立包 | `just pack-plugins` | — |
 
 `repack` / `repack-full` 复用已有的桌面产物，必须与编译特性一致；`repack-cli` 按 CLI 的实际能力选择资源。运行库、原生组件、模型与插件清单由打包配置决定，不要按文件后缀猜测所需资源。
@@ -38,11 +41,20 @@ CHANGELOG 只使用实际有内容的英文分类（`Added`、`Changed`、`Depre
 
 ## 标签与发行产物
 
-把 `v<版本号>` 标签推送到对应的源码提交后，`Windows release` 工作流执行 `just build-release --bundles msi`、`just pack-cli` 和 `just build-python`，把 Windows x64 MSI、CLI ZIP、Python wheel 与 `SHA256SUMS.txt` 发布到 GitHub Release。PR 测试由独立的 `Windows tests` 工作流运行。例如，版本同步为 `1.3.0` 并提交后：
+把 `v<版本号>` 标签推送到对应的源码提交后，`Release` 工作流（`windows-release.yml`）并行运行 `Windows tests` 并构建各平台的发行包。所有任务成功后，在同一个 GitHub Release 上传以下 13 个产物和一份覆盖全部下载项的 `SHA256SUMS.txt`。
+
+- Windows x64 通过 `just build-release --bundles msi`、`just pack-cli` 和 `just build-python` 生成 MSI、CLI ZIP 和 Python wheel。
+- Windows ARM64（`windows-arm64.yml`）生成 NSIS 安装程序和 CLI ZIP，静默安装后检查全部可执行文件和 DLL 都是 ARM64，并确认包内没有 x64 的 `dokan2.dll`。
+- macOS（`macos.yml`）在 Apple Silicon 与 Intel 运行器上通过 `just build-macos` 和 `just build-cli` 生成桌面 DMG 和 CLI 压缩包。工作流从 DMG 读取应用并检查架构、签名、版本与插件，在解包后的 CLI 中检查推理组件能否加载；Intel 组件应报告不支持文件类型识别。
+- Linux（`linux.yml`）在 Ubuntu 22.04 的 x64 与 ARM64 运行器上通过 `just build-linux` 和 `just build-cli` 生成 AppImage 和 CLI 压缩包，解开 AppImage 检查架构与插件，并检查 CLI 能否加载推理组件。
+
+推送 `release-check/<名称>` 分支会运行同一个工作流：构建、检查全部产物并写出校验和，但不创建 GitHub Release，也不上传 PyPI。打标签前可以用它验证全部平台。
+
+例如，版本同步为 `1.5.0` 并提交后，将标签推送到公开仓库：
 
 ```powershell
-git tag v1.3.0
-git push origin v1.3.0
+git tag v1.5.0
+git push <公开仓库远端名> v1.5.0
 ```
 
 标签的基础版本必须与应用和 Python 包清单一致。`v1.3.0-rc.1` 这类带后缀的标签发布为预发行版，`v1.3.0` 发布为正式版。已有标签不会因添加工作流而重新触发，请勿移动已发布的标签。发布任务通过仓库内置的 `GITHUB_TOKEN` 和 `contents: write` 权限上传 GitHub Release 产物。
@@ -60,7 +72,7 @@ git push origin v1.3.0
 
 发布任务通过 GitHub OIDC 向 PyPI 换取短期上传凭据，无需配置 PyPI API token。配置步骤见 [PyPI Trusted Publishing 文档](https://docs.pypi.org/trusted-publishers/adding-a-publisher/)。
 
-自动构建默认不含 QR/OCR，二进制未做代码签名；原生 GUI、安装及 Dokany 驱动仍需人工验证。完整功能构建和桌面便携包继续使用上表的本地配方。
+自动构建默认关闭 QR/OCR。Windows 二进制未签名。macOS 应用使用 ad-hoc 签名，未经 Apple 公证，首次打开时可能需要在「系统设置 → 隐私与安全性」中确认。Linux AppImage 需要 FUSE 2 和 glibc 2.35 或更新版本。原生 GUI、安装及 Dokany 驱动仍需人工验证。完整功能构建和桌面便携包继续使用上表的本地配方。
 
 自动 Release 说明包含源码提交、构建范围和外部驱动要求；维护者应补充版本变化与已知限制。本地发行时，从该标签创建 GitHub Release，并上传实际构建的产物与 SHA-256：
 

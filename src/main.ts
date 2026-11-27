@@ -2,6 +2,8 @@ import { createApp, type Component } from "vue";
 import "./styles/global.css";
 
 import { bootstrapWindow } from "./app/bootstrap";
+import { readonlyMountSupportKey } from "./composables/useReadonlyMountSupport";
+import { fsMountSupported } from "./lib/ipc/mount";
 
 bootstrapWindow();
 
@@ -12,10 +14,12 @@ bootstrapWindow();
 const view = new URLSearchParams(window.location.search).get("view");
 
 async function mount() {
-  const root: Component = view === "file-preview"
+  const detached = view === "file-preview";
+  const mountSupported = detached ? Promise.resolve(false) : fsMountSupported().catch(() => false);
+  const root: Component = detached
     ? (await import("./views/FilePreviewWindow.vue")).default
     : (await import("./App.vue")).default;
-  createApp(root).mount("#app");
+  createApp(root).provide(readonlyMountSupportKey, await mountSupported).mount("#app");
 }
 
 void mount();

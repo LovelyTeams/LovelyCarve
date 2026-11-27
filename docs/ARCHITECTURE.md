@@ -207,7 +207,7 @@ RAID 检测（`evidence/raid`）分七步：读取各检材的 LVM PV 并物化�
   同一 `(image,node,ext)` 的物化互斥，完成前使用唯一临时文件，单写入通道约束瞬时磁盘占用。
   `MediaTempCache` 的 4 GiB / 6 文件预算只淘汰无人引用的最久未使用文件；独立窗口销毁由后端兜底释放引用。
   新缓存位于 `lovelycarve-preview-cache/<uuid>`，持有目录外的进程锁；启动只回收能取得锁的旧目录，退出清理当前目录。
-- 卷/挂载：`fs_mount_readonly`、`fs_unmount_readonly`、`fs_mounts`、`fs_share_mount` / `fs_unshare_mount`、挂载点建议和创建
+- 卷/挂载：`fs_mount_supported`、`fs_mount_readonly`、`fs_unmount_readonly`、`fs_mounts`、`fs_share_mount` / `fs_unshare_mount`、挂载点建议和创建
 - 加密卷：`encrypted_volume_unlock` 统一解锁 BitLocker / LUKS / VeraCrypt / FileVault，`bitlocker_inspect` / `filevault_inspect` 读取无凭据元数据，`bitlocker_scan_memory` 在内存镜像中查找 VMK
 - 案件和快照：案件创建/打开/关闭、证据列表/移除、卷快照构建/列表/删除
 - 插件与任务调度：`plugin_list`/`plugin_restart`/`plugin_inspect`/`plugin_install`/`plugin_uninstall`/`plugin_readme`；
@@ -1212,6 +1212,11 @@ IPC 名称，渲染为「后端错误」块。可执行文件旁的 `plugins/` �
 桌面只读挂载由 `app/workflows/mount.rs` 编排，`commands/system/mount.rs` 提供命令，
 `core/platform/dokan_mount/` 负责 Windows Dokan 投影。挂载使用 evidence session，
 范围读取复用文件系统适配器；共享、句柄和挂载点在卸载证据及关闭应用时清理。
+主程序与 CLI 不链接 `dokan2.dll`：随附的 `vendor/dokan-rust` 在首次使用时按 MemProcFS 的方式加载它，
+先找 Dokany 安装在 System32 中的库（与驱动同一次安装），再找程序目录和测试 / example 程序上一级的
+Cargo profile 目录，只解析一次、不卸载；`dokan_mount::require_library` 在挂载前确认库可加载、驱动应答，
+否则以 `ffiUnavailable` 报告缺少库或驱动。x64 与 ARM64 共用这条路径，未装 Dokany 时程序照常启动。
+`fs_mount_supported` 只表示平台是否提供挂载（Windows），前端据此隐藏其他平台的挂载入口。
 CLI 的 `mount` / `umount` 调用同一组命令（取消共享经 `rpc`），后台进程退出时释放挂载与共享。
 
 ## 界面与交互
@@ -1393,7 +1398,7 @@ RAID 成员、当前检材卷快照和案件详情默认折叠，切换与锁定
 | 文件恢复 | `CarvePanel.vue` | `carve_*`（含 `carve_filesystem_results`）、`carve-scan-progress`、`task-progress` |
 | 加密与历史卷 | 解锁弹窗、卷影副本 | `encrypted_volume_unlock`、`bitlocker_scan_memory`、`filevault_inspect`、`shadow_copy_*`、`bitlocker-scan-progress` |
 | iOS 本地备份 | 镜像信息页的解锁与异常检查 | `ios_backup_unlock`、`ios_backup_audit`，操作与边界见 [iOS 备份](IOS_BACKUPS.md) |
-| 挂载 | 卷挂载与共享控件 | `fs_mount_readonly`、`fs_unmount_readonly`、`fs_mounts`、`fs_share_mount` / `fs_unshare_mount`、挂载点命令 |
+| 挂载 | 卷挂载与共享控件 | `fs_mount_supported`、`fs_mount_readonly`、`fs_unmount_readonly`、`fs_mounts`、`fs_share_mount` / `fs_unshare_mount`、挂载点命令 |
 | QR/OCR | 文件详情 | `qr_scan`、`ocr_scan`、`qr-scan-progress`，可用性由构建特性决定 |
 | 插件与任务 | 设置、任务中心、结果面板 | `plugin_*`、`sched_*`、`analysis_*` |
 | 任务中心 | 任务中心、检材加载页、镜像信息页 | `task_list`、`task_status`、`task_cancel`、`task-entry`；`task-lifecycle`、`task-progress` |

@@ -1,0 +1,132 @@
+name: Linux packages
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Package Linux ${{ matrix.arch }} desktop and CLI
+    # Ubuntu 22.04 keeps the packages on glibc 2.35, so they also run on
+    # newer distributions.
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x64
+            machine: x86_64
+            elf: x86-64
+            bundle: amd64
+          - runner: ubuntu-22.04-arm
+            arch: arm64
+            machine: aarch64
+            elf: aarch64
+            bundle: aarch64
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_RELEASE_LTO: thin
+      CARGO_TERM_COLOR: always
+      # Link the distribution's static OpenSSL instead of building the vendored copy.
+      OPENSSL_NO_VENDOR: '1'
+      OPENSSL_STATIC: '1'
+      # linuxdeploy ships as an AppImage; extract it rather than mount it through FUSE.
+      APPIMAGE_EXTRACT_AND_RUN: '1'
+      NO_STRIP: 'true'
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Install system packages
+        run: |
+          test "$(uname -m)" = "${{ matrix.machine }}"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential curl file jq patchelf pkg-config libssl-dev \
+            libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: package.json
+      - uses: extractions/setup-just@v4
+      - name: Install the manifest Rust toolchain
+        run: |
+          rust_version="$(sed -n 's/^rust-version = "\([^"]*\)"/\1/p' src-tauri/Cargo.toml)"
+          test -n "$rust_version"
+          if [[ "$rust_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            rust_version="$rust_version.0"
+          fi
+          if ! command -v rustup >/dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
+          rustup toolchain install "$rust_version" --profile minimal
+          rustup override set "$rust_version"
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.bun/install/cache
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/git/db
+          key: linux-dependencies-${{ runner.arch }}-${{ hashFiles('bun.lock', '**/Cargo.lock') }}
+          restore-keys: linux-dependencies-${{ runner.arch }}-
+      - run: just bootstrap
+      - run: just build-linux
+      - run: just build-cli
+      - name: Verify and stage the AppImage
+        run: |
+          version=$(jq -er '.version' package.json)
+          appimage="$PWD/src-tauri/target/release/bundle/appimage/LovelyCarve_${version}_${{ matrix.bundle }}.AppImage"
+          test -s "$appimage"
+          work=$(mktemp -d)
+          (cd "$work" && "$appimage" --appimage-extract >/dev/null)
+          bin="$work/squashfs-root/usr/bin"
+          plugin="$bin/plugins/linuxinfo"
+          for binary in "$bin/LovelyCarve" "$bin/lc-plugin-host" "$bin/liblovelycarve_inference.so" "$plugin/liblinuxinfo.so"; do
+            file -L "$binary" | tee /dev/stderr | grep -q "${{ matrix.elf }}"
+          done
+          for file in "$plugin"/{plugin.toml,schema.json,locales/en.toml}; do
+            test -s "$file"
+          done
+          "$bin/lc-plugin-host" --describe --library "$plugin/liblinuxinfo.so" | jq -e 'type == "object"'
+          mkdir -p release-assets
+          cp "$appimage" "release-assets/LovelyCarve-v${version}-linux-${{ matrix.arch }}.AppImage"
+      - name: Package and smoke-test the CLI archive
+        run: |
+          version=$(jq -er '.version' package.json)
+          name="lovelycarve-cli-v${version}-linux-${{ matrix.arch }}"
+          stage=$(mktemp -d)
+          mkdir -p "$stage/$name/plugins/linuxinfo"
+          cp src-tauri/target/release/{lovelycarve-cli,liblovelycarve_inference.so} \
+            plugins/target/release/lc-plugin-host LICENSE THIRD_PARTY_NOTICES.md "$stage/$name/"
+          cp -R plugins/linuxinfo/{liblinuxinfo.so,plugin.toml,schema.json,locales} "$stage/$name/plugins/linuxinfo/"
+          tar -czf "release-assets/$name.tar.gz" -C "$stage" "$name"
+          unpacked=$(mktemp -d)
+          tar -xzf "release-assets/$name.tar.gz" -C "$unpacked"
+          cli="$unpacked/$name/lovelycarve-cli"
+          file "$cli" | tee /dev/stderr | grep -q "${{ matrix.elf }}"
+          "$cli" --json system | tee /dev/stderr | jq -e --arg version "$version" '
+            .version == $version and .platform == "linux" and .standalone and (.dokanMount | not) and
+            .components.inference.available and .components.inference.version == $version and
+            .components.inference.fileTypes'
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: lovelycarve-linux-${{ matrix.arch }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
