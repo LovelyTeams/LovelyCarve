@@ -6,19 +6,6 @@
       "binaries/msvcp140_1.dll": null,
       "binaries/vcruntime140.dll": null,
       "binaries/vcruntime140_1.dll": null
-    },
-    "macOS": {
-      "minimumSystemVersion": "15.0",
-      "signingIdentity": "-",
-      "hardenedRuntime": false,
-      "files": {
-        "MacOS/liblovelycarve_inference.dylib": "target/release/liblovelycarve_inference.dylib",
-        "MacOS/lc-plugin-host": "../plugins/target/release/lc-plugin-host",
-        "MacOS/plugins/linuxinfo/liblinuxinfo.dylib": "../plugins/linuxinfo/liblinuxinfo.dylib",
-        "MacOS/plugins/linuxinfo/plugin.toml": "../plugins/linuxinfo/plugin.toml",
-        "MacOS/plugins/linuxinfo/schema.json": "../plugins/linuxinfo/schema.json",
-        "MacOS/plugins/linuxinfo/locales/en.toml": "../plugins/linuxinfo/locales/en.toml"
-      }
     }
   }
 }

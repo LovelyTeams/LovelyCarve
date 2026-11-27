@@ -21,7 +21,7 @@ just dev
 | CLI smoke 测试 | Python 3 |
 | Windows 便携打包 | PATH 中的 `upx` 与 `7z` |
 
-默认构建关闭二维码识别与 OCR，不需要 OpenCV 或 CUDA。桌面开发配方在 Windows 上运行，macOS Apple Silicon 可用 `just build-macos` 构建桌面 DMG。Rust 检查、前端任务、插件构建和 CLI 构建也可在其他平台运行，各平台产物需单独验证。
+默认构建关闭二维码识别与 OCR，不需要 OpenCV 或 CUDA。桌面开发和打包配方只支持 Windows；Rust 检查、前端任务、插件构建和 CLI 构建可以在其他平台运行，但 macOS / Linux 产物需要单独验证。
 
 Windows 桌面程序在开发版和发布版中均嵌入 `asInvoker` 权限声明，启动时不自动请求管理员权限。读取物理磁盘或采集实时内存时，需要用户手动以管理员身份启动程序。
 
@@ -86,7 +86,6 @@ just --dry-run pack           # 展开依赖与命令，但不执行
 | 前端 | `dev-fe`、`typecheck`、`test-fe`、`build-fe`、`ipc-check`、`frontend-structure-check`、`i18n-check` |
 | 后端 | `fmt`、`check`、`clippy`、`test [名称及 Cargo 参数]`、`check-examples`；原生组件用 `build-components [--release] [--features ocr / ocr-cuda]`、`test-components`、`clippy-components` |
 | Windows 桌面 | `dev`、`build`、`build-release`、`pack`、`repack`；含 QR/OCR 的版本使用对应的 `*-full` |
-| macOS Apple Silicon 桌面 | `build-macos`，生成含推理组件和内置插件的 DMG |
 | CLI | `run-cli`、`build-cli`、`build-cli-full`、`test-cli`、`smoke-cli <exe>`、`update-cli-skill`（重新生成代理技能的命令参考）；Windows 另有 `pack-cli`、`pack-cli-full`、`repack-cli`、`stage-cli-skill` |
 | Python 读取库 | `develop-python`、`build-python`、`test-python`、`fmt-python`、`clippy-python`；使用 uv 管理解释器，默认 Python 3.15，详见 [Python 文档](../python/README.md) |
 | 插件 | `build-plugins [--release]`、`test-plugins`、`clippy-plugins`；Windows 另有 `pack-plugins`（生成 `.lcpkg`）与 `market-index [目录] [标题]`（为插件包目录写出插件市场的 `index.json`） |
@@ -148,7 +147,7 @@ Unix 的 `build-cli-full` 为 CLI 启用 `qrcode-wechat`，推理组件以 `ocr`
 
 `stage-cli-skill` 复用现有 Windows release CLI 与插件，按同一打包清单生成 `skills/lovelycarve-cli/bin/`；它不执行编译。运行文件与 DLL 保持相邻，插件与可选模型沿用包内路径，许可证随运行文件复制。该目录的生成文件由其 `.gitignore` 排除，独立安装时需复制完整 skill 目录；具体使用见 [CLI 代理技能](CLI.md#编码代理)。
 
-Windows GitHub Actions 使用 `windows-2025` 执行 `just test-fe`、`just test`、`just test-components` 与 `just test-plugins`。PR 只运行测试。`v*` 标签并行运行测试以及 Windows x64、macOS Apple Silicon 的发行构建，全部成功后统一发布到 GitHub Release。云端默认关闭 QR/OCR，原生 GUI 与驱动功能仍需单独验证。发布步骤见 [发布指南](RELEASING.md)。
+Windows GitHub Actions 使用 `windows-2025` 执行 `just test-fe`、`just test`、`just test-components` 与 `just test-plugins`；PR 只运行测试，不执行发行构建或上传构建产物。Rust 测试仍需编译测试程序。`v*` 标签在测试成功后自动构建 MSI、CLI ZIP 与插件包并发布到 GitHub Release。云端默认不启用 QR/OCR，macOS/Linux、原生 GUI 与驱动功能仍需单独验证，发布步骤见 [发布指南](RELEASING.md)。
 
 ## 性能验证
 

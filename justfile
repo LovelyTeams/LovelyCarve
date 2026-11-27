@@ -321,11 +321,11 @@ dev-full: (build-components "--features" "ocr-cuda")
 build: build-components
     {{ windowsenv }}; cargo build --no-default-features --features desktop
 
-# Build the macOS desktop DMG with the inference component and bundled plugins.
+# Compile the macOS desktop executable and inference component with its frontend assets.
 [group("desktop")]
 [macos]
-build-macos *args: (build-components "--release") (build-plugins "--release")
-    bun run tauri build --bundles app,dmg {{ args }}
+build-macos: (build-components "--release")
+    bun run tauri build --no-bundle
 
 # Build the desktop backend with WeChat QR and the inference component with CUDA OCR (Windows).
 [group("desktop")]
