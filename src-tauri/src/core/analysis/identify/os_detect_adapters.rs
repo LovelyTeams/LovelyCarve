@@ -138,6 +138,11 @@ pub fn detect_image(image: &Arc<EvidenceSession>) -> anyhow::Result<Vec<OsDetect
     // filesystem in the session's partition view, as in the file tree.
     let partitions = image.info().partitions;
     for partition in &partitions {
+        // A member device belongs to the filesystem its first member opens.
+        if !partition.opens_volume() {
+            out.push(unsupported_partition_entry(partition));
+            continue;
+        }
         match partition.kind {
             PartitionKind::ApfsContainer => {
                 let root_id = format!("part:{}", partition.id);

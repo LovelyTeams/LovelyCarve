@@ -521,6 +521,7 @@ fn pvs_seen_through_member_disks_are_not_counted_again() {
         label: None,
         unique_guid: None,
         amiga_geometry: None,
+        member_of: None,
     };
     let images: Vec<_> = (0..2)
         .map(|slot| {

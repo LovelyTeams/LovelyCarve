@@ -117,6 +117,7 @@ fn assemble_set(
             label: Some(format!("Btrfs device {}", member.header.devid)),
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         });
         partition_start = partition_start
             .checked_add(sectors)

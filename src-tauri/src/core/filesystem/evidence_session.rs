@@ -64,6 +64,7 @@ impl From<Arc<DiskImage>> for EvidenceSession {
                         label: Some(view.label.clone()),
                         unique_guid: None,
                         amiga_geometry: None,
+                        member_of: None,
                     }],
                     1,
                 );

@@ -1,6 +1,6 @@
 //! Bounded seekable access to a disk-image partition.
 
-use super::Partition;
+use super::{Partition, SectorSource};
 use crate::core::common::error::Failure;
 use crate::core::evidence::image::DiskImage;
 use anyhow::{ensure, Context, Result};
@@ -71,6 +71,57 @@ impl Seek for PartitionCursor {
         self.position = u64::try_from(target).map_err(|_| {
             io::Error::new(io::ErrorKind::InvalidInput, "partition seek out of range")
         })?;
+        Ok(self.position)
+    }
+}
+
+/// Seekable reads over a borrowed byte source, for header probes that run
+/// while partitions are detected, before a disk image exists. Reads end at
+/// the end of the source.
+pub(crate) struct SourceCursor<'a> {
+    source: &'a dyn SectorSource,
+    position: u64,
+}
+
+impl<'a> SourceCursor<'a> {
+    pub(crate) fn new(source: &'a dyn SectorSource) -> Self {
+        Self {
+            source,
+            position: 0,
+        }
+    }
+}
+
+impl Read for SourceCursor<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let want = self
+            .source
+            .size()
+            .saturating_sub(self.position)
+            .min(buf.len() as u64) as usize;
+        if want == 0 {
+            return Ok(0);
+        }
+        let bytes = self
+            .source
+            .read(self.position, want)
+            .map_err(io::Error::other)?;
+        let copied = bytes.len().min(want);
+        buf[..copied].copy_from_slice(&bytes[..copied]);
+        self.position += copied as u64;
+        Ok(copied)
+    }
+}
+
+impl Seek for SourceCursor<'_> {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        let target = match pos {
+            SeekFrom::Start(offset) => i128::from(offset),
+            SeekFrom::Current(delta) => i128::from(self.position) + i128::from(delta),
+            SeekFrom::End(delta) => i128::from(self.source.size()) + i128::from(delta),
+        };
+        self.position = u64::try_from(target)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "source seek out of range"))?;
         Ok(self.position)
     }
 }

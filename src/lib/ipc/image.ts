@@ -18,6 +18,10 @@ export interface DiskPartition {
     reserved: number;
     dos_type: number;
   };
+  /** 多设备文件系统（Btrfs、bcachefs、ZFS 池、APFS Fusion、跨盘 VMFS）中除第一个
+   *  成员以外的成员设备：打开整个文件系统的那个分区的 id。成员设备不单独浏览、
+   *  索引、搜索或挂载。 */
+  member_of?: number;
 }
 
 /** Optional display interpretation; raw acquisition fields remain unchanged. */
@@ -217,6 +221,8 @@ export interface ImageLoadPartition {
   id: number;
   kind: string;
   label: string | null;
+  /** 见 `DiskPartition.member_of`。 */
+  member_of?: number;
 }
 
 /** Full result of `image_load`: the (stable) image id plus its detected

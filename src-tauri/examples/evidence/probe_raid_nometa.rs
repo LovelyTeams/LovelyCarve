@@ -94,6 +94,7 @@ fn main() -> anyhow::Result<()> {
                 label: Some(synthetic_partition_label(a)),
                 unique_guid: None,
                 amiga_geometry: None,
+                member_of: None,
             }]
         });
         let img = Arc::new(DiskImage::from_assembled(

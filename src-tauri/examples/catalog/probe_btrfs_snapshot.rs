@@ -113,6 +113,7 @@ fn main() -> anyhow::Result<()> {
                 label: Some(raid::synthetic_partition_label(array)),
                 unique_guid: None,
                 amiga_geometry: None,
+                member_of: None,
             }];
             Arc::new(DiskImage::from_assembled(
                 format!("md:{}", array.set_uuid),

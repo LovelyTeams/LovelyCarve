@@ -86,6 +86,7 @@ fn decodes_raw_flags_chs_and_entry_origin() {
                 label: None,
                 unique_guid: None,
                 amiga_geometry: None,
+                member_of: None,
             },
             entry: expected,
             record_lba: 0,

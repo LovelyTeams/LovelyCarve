@@ -92,6 +92,7 @@ fn open(bytes: &[u8]) -> (tempfile::NamedTempFile, Result<ExfatVolume>) {
         label: None,
         unique_guid: None,
         amiga_geometry: None,
+        member_of: None,
     };
     (temporary, ExfatVolume::open(image, &partition))
 }

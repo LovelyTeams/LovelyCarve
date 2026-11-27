@@ -29,6 +29,7 @@ fn firmware_trx_validates_crc_offsets_and_truncation() {
             label: Some("TRX rootfs (segment 0)".into()),
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         }]
     );
     for end in 0..bytes.len() {

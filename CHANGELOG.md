@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 多设备 Btrfs、bcachefs、ZFS 池、APFS Fusion 和跨盘 VMFS 只浏览一次：第一个成员分区打开整个文件系统，其余成员分区列为成员设备，不再各自重复显示同一棵目录树、重复建索引或在搜索与 `find` 中重复报告文件。
+
 ### Added
 
 - 新增只读文件系统：HPFS、VxFS（layout 2–4）、AIX JFS1、UnixWare BFS、UFS1（4.4BSD）、Reiser4（Format40，含 ctail 压缩簇）、GFS1、OCFS1、VMFS 5 / 6、HAMMER（含已登记快照）、HAMMER2（含 PFS）、QNX ETFS、QNX EFS（F3S）、LittleFS 2.0 / 2.1、SPIFFS、Macintosh MFS（含 Disk Copy 4.2 镜像）、Xbox XDVDFS 与 FATX / XTAF。它们与其他文件系统一样浏览、预览、哈希、按范围读取和导出，CLI 地址照常使用；能力与限制见[格式说明](docs/formats/README.md)。

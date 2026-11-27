@@ -108,6 +108,7 @@ pub(super) fn slices(
             label: Some(label),
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         });
     }
     let mut sorted: Vec<_> = found.iter().collect();

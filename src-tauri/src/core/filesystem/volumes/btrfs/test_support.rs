@@ -79,6 +79,37 @@ fn file_tree(size: u64, file_offset: u64, extent: Vec<u8>) -> Vec<u8> {
     ])
 }
 
+/// [`striped_members`] written as two evidence files under `directory`,
+/// grouped by `raid detect` and registered as its synthetic evidence item.
+pub(crate) fn assembled_striped_set(
+    directory: &std::path::Path,
+) -> std::sync::Arc<crate::core::filesystem::evidence_session::EvidenceSession> {
+    use crate::core::evidence::image::DiskImage;
+    use std::sync::Arc;
+
+    let images: Vec<_> = striped_members()
+        .iter()
+        .enumerate()
+        .map(|(index, bytes)| {
+            let path = directory.join(format!("stripe-{index}.img"));
+            std::fs::write(&path, bytes).unwrap();
+            Arc::new(DiskImage::open(path).unwrap())
+        })
+        .collect();
+    let (stack, groups) = crate::core::evidence::raid::detect_with_sources(&images);
+    let [group] = groups.as_slice() else {
+        panic!("one Btrfs set expected: {:?}", stack.diagnostics);
+    };
+    let image = DiskImage::from_assembled(
+        group.label.clone(),
+        Arc::clone(&group.source),
+        group.partitions.clone().unwrap(),
+        512,
+    )
+    .unwrap();
+    Arc::new(image.into())
+}
+
 pub(crate) fn striped_members() -> [Vec<u8>; 2] {
     use crate::core::evidence::partitions::btrfs::superblock_crc32c;
 

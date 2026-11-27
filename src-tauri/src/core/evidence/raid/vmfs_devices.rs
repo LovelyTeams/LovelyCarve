@@ -97,6 +97,7 @@ fn assemble_datastore(
             label: Some(format!("VMFS extent {}", member.header.first_extent)),
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         });
         start = start
             .checked_add(sectors)

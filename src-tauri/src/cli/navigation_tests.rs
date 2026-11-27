@@ -168,6 +168,80 @@ async fn navigate_raid_lvm_btrfs(on_md: bool) {
 }
 
 #[test]
+fn assembled_btrfs_device_set_is_listed_indexed_and_found_once() {
+    std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Runtime::new().unwrap().block_on(async {
+                let temporary = tempfile::tempdir().unwrap();
+                let state = Arc::new(AppState::new());
+                let exec = exec(temporary.path(), state.clone(), Mode::Batch);
+                for (index, member) in btrfs::striped_members().iter().enumerate() {
+                    let path = temporary.path().join(format!("stripe-{index}.raw"));
+                    std::fs::write(&path, member).unwrap();
+                    let alias = format!("stripe{index}");
+                    run(
+                        &exec,
+                        &["evidence", "add", path.to_str().unwrap(), "--as", &alias],
+                    )
+                    .await;
+                }
+                let stack = run(&exec, &["raid", "detect"]).await;
+                let address = stack["assembled"][0]["path"].as_str().unwrap().to_owned();
+                // A case created now folds the assembled set in and indexes it.
+                let case = temporary.path().join("case");
+                run(&exec, &["case", "new", case.to_str().unwrap()]).await;
+                exec.background.wait(&state).await.unwrap();
+
+                let roots = run(&exec, &["ls", &address]).await;
+                let entries: Vec<_> = roots["items"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|item| (item["id"].clone(), item["kind"].clone()))
+                    .collect();
+                assert_eq!(
+                    entries,
+                    vec![
+                        (json!("part:0"), json!("dir")),
+                        (json!("unsupported:1"), json!("unallocated")),
+                    ]
+                );
+                let member = try_run(&exec, &["ls", &format!("{address}/part:1/hello.txt")])
+                    .await
+                    .unwrap_err();
+                assert!(member.message.contains("part:0"), "{}", member.message);
+                let volumes = run(&exec, &["volumes", &address]).await;
+                let members: Vec<_> = volumes["items"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|row| row["memberOf"].clone())
+                    .collect();
+                assert_eq!(members, vec![Value::Null, json!(format!("{address}/part:0"))]);
+
+                let alias = address.trim_start_matches('/');
+                let indexes = run(&exec, &["index", "ls"]).await;
+                let indexed: Vec<_> = indexes["items"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|row| row["evidence"] == alias)
+                    .map(|row| row["volumeKey"].clone())
+                    .collect();
+                assert_eq!(indexed, vec![json!("part:0")], "{indexes}");
+                let found = run(&exec, &["find", "hello.txt", "--under", &address]).await;
+                assert_eq!(found["total"], 1, "{found}");
+                assert_eq!(found["items"][0]["path"], format!("{address}/part:0/hello.txt"));
+                exec.background.wait(&state).await.unwrap();
+            });
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
 fn scoped_raid_detection_isolates_cloned_volume_bytes_and_cache_identity() {
     std::thread::Builder::new()
         .stack_size(16 * 1024 * 1024)

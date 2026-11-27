@@ -67,6 +67,7 @@ impl PartParser for MdadmParser {
                     label: Some("MDADM RAID member".into()),
                     unique_guid: None,
                     amiga_geometry: None,
+                    member_of: None,
                 }]));
             }
         }

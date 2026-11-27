@@ -881,7 +881,10 @@ rusqlite `create_collation` 注册的数字感知比较器，构建与读取连�
 
 **寻址模型。** 读取以 `(image, volId, metaAddr, metaAddrHigh)` 四元组寻址（`meta_addr::FileQuery`）。
 `fs_all::FsAll` 按分区表顺序枚举文件系统，LVM 容器后紧跟其逻辑卷，无分区表的归档/文件夹证据得到
-单个 `root` 条目；`vol_id` 就是数组下标，`part:N` / `lvm:N:M` 卷键与之双向映射，台账的卷记录同时保存
+单个 `root` 条目；多设备文件系统（Btrfs、bcachefs、ZFS、APFS Fusion、跨盘 VMFS）的成员设备不是
+独立文件系统，只有打开它的第一个成员分区有条目（`partitions::device_sets` 在检材打开和合成检材
+注册时写入 `Partition::member_of`；文件树把其余成员列为 `unsupported:N`，浏览、索引、快照与挂载都拒绝
+它们）；`vol_id` 就是数组下标，`part:N` / `lvm:N:M` 卷键与之双向映射，台账的卷记录同时保存
 两者。`meta_addr::classify` 把适配器节点 id 归类：NTFS MFT 记录号、ext4/btrfs inode 是元数据地址
 （已删除文件的地址仍然有效）；NTFS 命名流用 `meta_addr_high` 携带流名哈希，btrfs 用它携带子卷 id；
 未分配簇、盘隙、FAT 系统结构与 `deleted:run:` 走块级 `(offset, length)` 寻址而不经过元数据地址；

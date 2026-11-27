@@ -189,6 +189,7 @@ fn v12_raid5_assembles_and_labels_its_volume() {
             label: Some("ext4_md_host_0".into()),
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         }])
     );
     assert_eq!(stack.filesystems[0].kind, "ext4");
@@ -372,6 +373,7 @@ fn tail_superblock_belongs_to_the_innermost_partition() {
         label: None,
         unique_guid: None,
         amiga_geometry: None,
+        member_of: None,
     };
     let images = vec![disk_with(disk_bytes, vec![partition]), disk(member(1))];
     let (stack, assembled) = detect_with_sources(&images);

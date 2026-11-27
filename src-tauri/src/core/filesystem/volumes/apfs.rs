@@ -806,6 +806,28 @@ mod tests {
         std::fs::write(&path, disk).unwrap();
         let session = Arc::new(EvidenceSession::open(&path).unwrap());
         assert_eq!(session.partitions.len(), 2);
+        // One container: the first member partition (tier 2 here) opens both.
+        let members: Vec<_> = session
+            .partitions
+            .iter()
+            .map(|partition| partition.member_of)
+            .collect();
+        assert_eq!(members, vec![None, Some(0)]);
+        let roots: Vec<_> =
+            crate::core::filesystem::tree::fs_tree::children_for_image(&session, "")
+                .unwrap()
+                .into_iter()
+                .map(|node| node.id)
+                .collect();
+        assert_eq!(roots, vec!["part:0", "unsupported:1"]);
+        let volumes = crate::core::filesystem::fs_all::FsAll::for_image(&session);
+        assert_eq!(volumes.entries().len(), 1);
+        for member in ["part:1", "unsupported:1"] {
+            let error =
+                crate::core::filesystem::tree::fs_tree::children_for_image(&session, member)
+                    .unwrap_err();
+            assert!(format!("{error:#}").contains("part:0"), "{error:#}");
+        }
         for partition in &session.partitions {
             assert_eq!(partition.kind, PartitionKind::ApfsContainer);
             let id = apfs_node_id(partition.id, 0, "/plain.bin");

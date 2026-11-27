@@ -10,6 +10,7 @@ mod session;
 mod walk;
 
 mod navigation;
+pub(crate) use navigation::ensure_not_member_device;
 use navigation::*;
 pub use navigation::{children_for_image, children_for_mount};
 

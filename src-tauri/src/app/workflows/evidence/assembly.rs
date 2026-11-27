@@ -177,6 +177,7 @@ pub async fn raid_auto_detect(
                 label: Some(raid::synthetic_partition_label(materialised)),
                 unique_guid: None,
                 amiga_geometry: None,
+                member_of: None,
             }],
         };
         // The label doubles as the synthetic image's `assembled://<label>`
@@ -365,6 +366,7 @@ async fn register_assembled_image(
             label: Some(raid::synthetic_partition_label(array)),
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         }],
     };
     let synthetic = DiskImage::from_assembled(label, array.source.clone(), partitions, 512)

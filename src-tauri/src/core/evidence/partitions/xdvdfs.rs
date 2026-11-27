@@ -72,6 +72,7 @@ impl PartParser for XboxDiscParser {
                     label: Some("Xbox DVD video".into()),
                     unique_guid: None,
                     amiga_geometry: None,
+                    member_of: None,
                 });
             }
             partitions.push(Partition {
@@ -82,6 +83,7 @@ impl PartParser for XboxDiscParser {
                 label: Some(format!("Xbox {layout}")),
                 unique_guid: None,
                 amiga_geometry: None,
+                member_of: None,
             });
             return Ok(Some(partitions));
         }

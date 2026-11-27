@@ -294,6 +294,7 @@ mod tests {
                 label: label.map(str::to_string),
                 unique_guid: None,
                 amiga_geometry: None,
+                member_of: None,
             },
             lost: true,
             reconstruction: None,

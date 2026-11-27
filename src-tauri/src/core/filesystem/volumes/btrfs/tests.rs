@@ -264,3 +264,73 @@ fn btrfs_grouped_raid0_uses_the_member_uuid_and_preserves_sparse_and_physical_ru
     assert_eq!(runs[0].physical_offset, 0x4f000);
     assert_eq!(runs[1].physical_offset, 0xc0000);
 }
+
+#[test]
+fn assembled_btrfs_set_is_one_volume_and_lists_its_second_device_as_a_member() {
+    use crate::core::filesystem::fs_all::{vol_id_for_key, FsAll};
+    use crate::core::filesystem::tree::fs_tree::{children_for_image, NodeKind};
+
+    let directory = tempfile::tempdir().unwrap();
+    let session = test_support::assembled_striped_set(directory.path());
+    let members: Vec<_> = session
+        .partitions
+        .iter()
+        .map(|partition| partition.member_of)
+        .collect();
+    assert_eq!(members, vec![None, Some(0)]);
+    let roots: Vec<_> = children_for_image(&session, "")
+        .unwrap()
+        .into_iter()
+        .map(|node| (node.id, node.kind))
+        .collect();
+    assert_eq!(
+        roots,
+        vec![
+            ("part:0".to_owned(), NodeKind::Dir),
+            ("unsupported:1".to_owned(), NodeKind::Unallocated),
+        ]
+    );
+    // The volume holds the file once, and the raw span of both devices.
+    let device = 512 * 1024;
+    let volume: Vec<_> = children_for_image(&session, "part:0")
+        .unwrap()
+        .into_iter()
+        .map(|node| (node.name, node.id))
+        .collect();
+    assert_eq!(
+        volume
+            .iter()
+            .filter(|(name, _)| name == "hello.txt")
+            .count(),
+        1
+    );
+    let unallocated: Vec<_> = volume
+        .iter()
+        .filter(|(_, id)| id.starts_with("unalloc:"))
+        .cloned()
+        .collect();
+    assert_eq!(
+        unallocated,
+        vec![
+            (
+                "$未分配簇1".to_owned(),
+                format!("unalloc:part:0:0x0:{device:#x}")
+            ),
+            (
+                "$未分配簇2".to_owned(),
+                format!("unalloc:part:0:{device:#x}:{device:#x}")
+            ),
+        ]
+    );
+    for member in ["part:1", "unsupported:1"] {
+        let error = children_for_image(&session, member).unwrap_err();
+        assert!(format!("{error:#}").contains("part:0"), "{error:#}");
+    }
+    let volumes: Vec<_> = FsAll::for_image(&session)
+        .entries()
+        .iter()
+        .map(|entry| entry.volume_key.clone())
+        .collect();
+    assert_eq!(volumes, vec!["part:0"]);
+    assert!(vol_id_for_key(&session, "part:1").is_err());
+}

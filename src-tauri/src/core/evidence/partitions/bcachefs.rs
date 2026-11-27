@@ -2,9 +2,10 @@
 use super::Partition;
 use super::{
     volume_probe::{VolumeProbe, VolumeProbeHit},
-    DetectCtx, PartitionKind,
+    DetectCtx, PartitionKind, SectorSource,
 };
 use crate::core::evidence::image::DiskImage;
+use anyhow::{ensure, Context};
 use bcachefs_reader::{Layout, Superblock, BCACHEFS_MAGIC, SB_HEADER_BYTES};
 use lamfold::{BlockSource, FoldError};
 
@@ -19,9 +20,16 @@ pub(crate) fn read_member(
     image: &DiskImage,
     partition: &Partition,
 ) -> anyhow::Result<DeviceHeader> {
-    use anyhow::{ensure, Context};
+    read_member_at(image, partition, image.sector_size)
+}
 
-    let sector_size = image.sector_size as u64;
+/// The member header of the bcachefs device on `partition` of `source`.
+pub(crate) fn read_member_at(
+    source: &(dyn SectorSource + Sync),
+    partition: &Partition,
+    sector_size: usize,
+) -> anyhow::Result<DeviceHeader> {
+    let sector_size = sector_size as u64;
     let base = partition
         .start_lba
         .checked_mul(sector_size)
@@ -30,9 +38,9 @@ pub(crate) fn read_member(
         .length_lba
         .checked_mul(sector_size)
         .context("bcachefs member length overflow")?
-        .min(image.len().saturating_sub(base));
+        .min(source.size().saturating_sub(base));
     let superblock = bcachefs_reader::read_superblock(MemberSource {
-        image,
+        source,
         base,
         available,
     })?;
@@ -47,7 +55,7 @@ pub(crate) fn read_member(
 }
 
 struct MemberSource<'a> {
-    image: &'a DiskImage,
+    source: &'a (dyn SectorSource + Sync),
     base: u64,
     available: u64,
 }
@@ -65,8 +73,8 @@ impl BlockSource for MemberSource<'_> {
             return Err(FoldError::Io("bcachefs member read exceeds source"));
         }
         let bytes = self
-            .image
-            .read_range(self.base + offset, out.len())
+            .source
+            .read(self.base + offset, out.len())
             .map_err(|error| FoldError::Source(format!("{error:#}")))?;
         if bytes.len() != out.len() {
             return Err(FoldError::Io("short bcachefs member read"));

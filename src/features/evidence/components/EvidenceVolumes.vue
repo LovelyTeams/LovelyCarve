@@ -58,7 +58,7 @@
         <div
           :id="`part-row-${row.partition.id}`"
           class="partition-row"
-          :class="{ active: highlightedPartition === row.partition.id, hover: hoveredPartition === row.partition.id, quiet: QUIET_KINDS.has(row.partition.kind) }"
+          :class="{ active: highlightedPartition === row.partition.id, hover: hoveredPartition === row.partition.id, quiet: QUIET_KINDS.has(row.partition.kind) || row.openedBy !== null }"
           :style="{ '--part-color': row.color }"
           role="row"
           tabindex="-1"
@@ -69,6 +69,7 @@
             <span class="part-swatch" aria-hidden="true"></span>
             <span class="part-label" :title="partitionTitle(row.partition, tr)">{{ partitionTitle(row.partition, tr) }}</span>
             <span v-if="row.partition.label" class="part-index mono">#{{ row.partition.id }}</span>
+            <span v-if="row.openedBy !== null" class="ui-badge sm part-member">{{ tr("{0} 的成员", { 0: row.openedBy }) }}</span>
           </span>
           <span class="cell col-fs" role="cell"><span class="ui-badge sm mono">{{ KIND_LABELS[row.partition.kind] || row.partition.kind }}</span><span v-if="unlockedScheme(info, row.partition.id)" class="ui-badge sm success">{{ tr("{0} 已解锁", { 0: schemeShortLabel(unlockedScheme(info, row.partition.id)!) }) }}</span></span>
           <span class="cell col-start mono" role="cell" :title="geometryTitle(row.partition)"><span class="cell-label">{{ addressUnit }}</span>{{ row.partition.start_lba.toLocaleString() }}</span>
@@ -244,6 +245,14 @@ interface PartitionRow {
   partition: DiskPartition;
   color: string;
   shadow: ShadowVolumeInfo | undefined;
+  /** 成员设备所属文件系统从哪个分区浏览（其标题）；其余分区为 null。 */
+  openedBy: string | null;
+}
+
+function openedByTitle(partition: DiskPartition): string | null {
+  if (partition.member_of === undefined) return null;
+  const opening = props.info.partitions.find(candidate => candidate.id === partition.member_of);
+  return opening ? partitionTitle(opening, tr) : tr("分区 {0}", { 0: partition.member_of });
 }
 
 const partitionRows = computed<PartitionRow[]>(() =>
@@ -251,6 +260,7 @@ const partitionRows = computed<PartitionRow[]>(() =>
     partition,
     color: partColor(index),
     shadow: shadowVolumeOf(partition.id),
+    openedBy: openedByTitle(partition),
   })),
 );
 
@@ -370,6 +380,7 @@ const { SYNTHETIC_MOUNT_KEY, syntheticRoot, busyPartitions, busyShares, pickerOp
 .part-swatch { flex-shrink: 0; width: 10px; height: 10px; border-radius: 3px; background: var(--part-color); }
 .part-label { min-width: 0; overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .part-index { flex-shrink: 0; color: var(--text-secondary); font-size: 11px; }
+.part-member { flex-shrink: 0; }
 .partition-row.quiet :is(.part-label, .col-start, .col-size) { color: var(--text-secondary); }
 .partition-row .col-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
 

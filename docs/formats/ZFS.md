@@ -12,7 +12,7 @@ LovelyCarve 通过 vendored `zfs-rs` 以纯 Rust 浏览单设备及完整多设�
 
 - 支持多个顶层磁盘 vdev、镜像、RAIDZ1/2/3，以及使用磁盘或镜像的 `special` 分配类。按 XDR 标签记录的池 GUID、顶层 vdev ID 和叶 GUID 绑定成员。选取与完整拓扑 GUID 总和匹配的最新事务根。
 - 文件的 DVA 按顶层 vdev 寻址。镜像按块校验后可尝试其他副本。RAIDZ 按各列的实际大小与扇区位置拼回数据，并依据块指针校验。
-- 多张镜像先登记进同一案件，再运行 `raid detect`。从结果的 `assembled[].path` 进入任一成员分区即可浏览池。同一张镜像包含完整成员分区时也可直接打开。
+- 多张镜像先登记进同一案件，再运行 `raid detect`，从结果 `assembled[].path` 下的第一个成员分区 `part:0` 浏览池。同一张镜像包含完整成员分区时，从分区表中第一个同池叶设备直接打开。池 GUID 相同的其余分区列为成员设备，不单独浏览、建索引、搜索或挂载；池的 `$未分配簇` 覆盖每个成员设备。
 
 ## 目录与文件
 
@@ -24,11 +24,11 @@ LovelyCarve 通过 vendored `zfs-rs` 以纯 Rust 浏览单设备及完整多设�
 
 ## 验证
 
-`just test-vendor zfs` 覆盖跨槽 dnode、下一对象、spill、池拓扑匹配、RAIDZ 列转序和分配边界。`just test zfs` 覆盖离散槽、标签偏移校验以及备用标签的识别。
+`just test-vendor zfs` 覆盖跨槽 dnode、下一对象、spill、池拓扑匹配、RAIDZ 列转序和分配边界。`just test zfs` 覆盖离散槽、标签偏移校验、备用标签的识别，以及同池叶设备按池 GUID 归入第一个成员分区。
 
 原生验证使用 FreeBSD 14.4 的 OpenZFS，生成四组对应的 `ashift=9/11/12/13` 与 `dnodesize=1k/2k/4k/16k` 检材。从 CLI 浏览根数据集及其目录，核对稀疏文件和 LZ4 文件的读取范围与导出 SHA-256。另以仅保留尾部标签的副本和嵌入 MBR 分区的副本验证两种入口。
 
-多设备样本使用相同版本的 OpenZFS，分别生成 stripe、mirror、RAIDZ1/2/3、普通磁盘加 special mirror。由 CLI 从每个成员分区读取稀疏文件与 LZ4 文件，并与 FreeBSD 的 SHA-256 交叉核对。同一 MBR 镜像中的双分区读取也通过。缺少成员或重复成员会被拒绝。损坏一份镜像副本时可读取校验通过的另一份，两份都损坏时读取和导出会报错。
+多设备样本使用相同版本的 OpenZFS，分别生成 stripe、mirror、RAIDZ1/2/3、普通磁盘加 special mirror。由 CLI 读取池中的稀疏文件与 LZ4 文件，并与 FreeBSD 的 SHA-256 交叉核对。同一 MBR 镜像中的双分区读取也通过。缺少成员或重复成员会被拒绝。损坏一份镜像副本时可读取校验通过的另一份，两份都损坏时读取和导出会报错。
 
 格式参见 [OpenZFS dnode 布局](https://github.com/openzfs/zfs/blob/master/include/sys/dnode.h)、[vdev 标签和 uberblock 槽](https://github.com/openzfs/zfs/blob/master/include/sys/vdev_impl.h) 与 [嵌入式标签校验](https://github.com/openzfs/zfs/blob/master/module/zfs/zio_checksum.c)。
 

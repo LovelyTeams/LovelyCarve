@@ -219,6 +219,7 @@ impl PartParser for RdbParser {
                     label: Some(part.name.clone()),
                     unique_guid: None,
                     amiga_geometry,
+                    member_of: None,
                 })
             })
             .collect::<Result<Vec<_>>>()

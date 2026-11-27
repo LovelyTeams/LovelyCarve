@@ -34,6 +34,7 @@ impl PartParser for LuksParser {
             label: Some("LUKS container".into()),
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         }]))
     }
 }

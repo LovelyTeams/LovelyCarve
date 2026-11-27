@@ -101,6 +101,7 @@ fn assemble_pool(
             label: Some(format!("ZFS leaf {leaf}")),
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         });
         start = start
             .checked_add(sectors)

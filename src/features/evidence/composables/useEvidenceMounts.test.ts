@@ -56,6 +56,12 @@ describe('evidence mount context ownership', () => {
     app.unmount(); drives.resolve(['H:\\']); await pending;
     expect(controller.availableDrives.value).toEqual([]); expect(controller.pickerOpenFor.value).toBeNull();
   });
+  it('mounts a multi-device filesystem only through its first member partition', async () => {
+    const { controller } = await setup();
+    const device = { kind: 'btrfs', label: null, start_lba: 0, length_lba: 2 };
+    expect(controller.isMountable({ ...device, id: 0 })).toBe(true);
+    expect(controller.isMountable({ ...device, id: 1, member_of: 0 })).toBe(false);
+  });
   it('uses the synthetic node identity and preserves the existing mount/unmount commands', async () => {
     const { controller, info, folder } = await setup(); info.value = { ...image('a'), partitions: [], source_format: 'docker' }; folder.value = 'D:/root';
     ipc.create.mockResolvedValue('D:/root/container'); ipc.mount.mockResolvedValue({ ...view('a'), root_node_id: 'docker:' });

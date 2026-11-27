@@ -1,7 +1,9 @@
 //! Probe ZFS leaf labels at both ends of a bounded volume.
 
 use crate::core::evidence::image::DiskImage;
-use crate::core::evidence::partitions::{DetectCtx, PartParser, Partition, PartitionKind};
+use crate::core::evidence::partitions::{
+    DetectCtx, PartParser, Partition, PartitionKind, PartitionSlice, SectorSource,
+};
 use anyhow::{ensure, Context};
 use std::{io, sync::Arc};
 use zfs_rs::label::{
@@ -69,6 +71,33 @@ impl RawDevice for PartitionSource {
     }
 }
 
+/// Pool GUID in the newest valid label of the leaf device `leaf`.
+pub(crate) fn member_pool(leaf: &PartitionSlice<'_>) -> anyhow::Result<u64> {
+    Ok(read_device_label(leaf)?.identity.pool_guid)
+}
+
+/// A leaf device read through a bounded slice of its parent source, before
+/// a disk image exists.
+impl RawDevice for PartitionSlice<'_> {
+    type Block = Vec<u8>;
+
+    fn size_bytes(&self) -> Option<u64> {
+        Some(self.size())
+    }
+
+    fn read_raw(&self, offset: u64, size: u64) -> io::Result<Self::Block> {
+        if offset.checked_add(size).is_none_or(|end| end > self.size()) {
+            return Err(io::ErrorKind::UnexpectedEof.into());
+        }
+        let size = usize::try_from(size).map_err(|_| io::ErrorKind::InvalidInput)?;
+        let bytes = self.read(offset, size).map_err(io::Error::other)?;
+        if bytes.len() != size {
+            return Err(io::ErrorKind::UnexpectedEof.into());
+        }
+        Ok(bytes)
+    }
+}
+
 pub(super) fn probe_zfs(ctx: &DetectCtx<'_>) -> anyhow::Result<Option<u64>> {
     for offset in label_offsets(ctx.size).into_iter().flatten() {
         let magic = ctx.source.read(offset + CONFIG_CHECKSUM_OFFSET as u64, 8)?;
@@ -102,6 +131,7 @@ impl PartParser for ZfsParser {
             label: None,
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         }]))
     }
 }
@@ -138,12 +168,17 @@ mod tests {
     }
 
     fn build_zfs_image(base: usize, stride: usize, big: bool) -> Vec<u8> {
+        build_zfs_leaf(base, stride, big, 7, 23)
+    }
+
+    /// One verified label of leaf `leaf` in pool `pool`, without a vdev tree.
+    fn build_zfs_leaf(base: usize, stride: usize, big: bool, pool: u64, leaf: u64) -> Vec<u8> {
         let mut buf = vec![0; 4 * LABEL_SIZE];
         const CONFIG: usize = 16 * 1024;
         let config = &mut buf[base + CONFIG..base + UBERBLOCK_OFFSET];
         config[0] = 1;
         let mut cursor = 12;
-        for (name, guid) in [(b"pool_guid".as_slice(), 7u64), (b"guid".as_slice(), 23)] {
+        for (name, guid) in [(b"pool_guid".as_slice(), pool), (b"guid".as_slice(), leaf)] {
             let name_end = 12 + (name.len() + 3) / 4 * 4;
             let length = name_end + 16;
             let pair = &mut config[cursor..cursor + length];
@@ -167,6 +202,38 @@ mod tests {
         put_word(&mut slot[16..24], 7, big);
         sign(slot, offset, big);
         buf
+    }
+
+    #[test]
+    fn leaves_of_one_pool_point_at_the_first_member_partition() {
+        use crate::core::evidence::partitions::device_sets::mark_members;
+
+        let leaves = [(7, 23), (9, 31), (7, 29)]
+            .map(|(pool, leaf)| build_zfs_leaf(0, 4096, false, pool, leaf));
+        let mut bytes = Vec::new();
+        let mut partitions = Vec::new();
+        for (id, leaf) in leaves.iter().enumerate() {
+            partitions.push(Partition {
+                id: id as u8,
+                kind: PartitionKind::Zfs,
+                start_lba: bytes.len() as u64 / 512,
+                length_lba: leaf.len() as u64 / 512,
+                label: None,
+                unique_guid: None,
+                amiga_geometry: None,
+                member_of: None,
+            });
+            bytes.extend_from_slice(leaf);
+        }
+        mark_members(&BufSource(bytes), &mut partitions, 512);
+        // Pool 9 is a volume of its own; the second leaf of pool 7 belongs to the first.
+        assert_eq!(
+            partitions
+                .iter()
+                .map(|partition| partition.member_of)
+                .collect::<Vec<_>>(),
+            vec![None, None, Some(0)]
+        );
     }
 
     #[test]

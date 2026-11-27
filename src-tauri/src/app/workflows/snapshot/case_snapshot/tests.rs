@@ -748,6 +748,41 @@ fn old_file_only_backup_index_is_retired_before_browsing_and_rebuilt_as_director
 }
 
 #[test]
+fn assembled_btrfs_set_is_indexed_once_through_its_first_device() {
+    let directory = tempfile::tempdir().unwrap();
+    let image = crate::core::filesystem::volumes::btrfs::test_support::assembled_striped_set(
+        directory.path(),
+    );
+    assert_eq!(browsable_volume_keys(&image), vec!["part:0"]);
+    let snapshot = |volume_key: &str| {
+        volume_snapshot::build_volume_snapshot(
+            &image,
+            volume_key,
+            &directory
+                .path()
+                .join(format!("{}.dirz", volume_key.replace(':', "-"))),
+            1000,
+            "2026-01-01T00:00:00Z".into(),
+            &CancellationToken::new(),
+            &mut |_| {},
+        )
+    };
+    let built = snapshot("part:0").unwrap();
+    assert!(!built.truncated);
+    let index = volume_snapshot::load_snapshot(&directory.path().join("part-0.dirz")).unwrap();
+    let files: Vec<_> = index
+        .children("part:0")
+        .unwrap()
+        .iter()
+        .filter(|node| node.kind == NodeKind::File && !node.id.starts_with("unalloc:"))
+        .map(|node| node.name.clone())
+        .collect();
+    assert_eq!(files, vec!["hello.txt"]);
+    let error = snapshot("part:1").unwrap_err();
+    assert!(format!("{error:#}").contains("part:0"), "{error:#}");
+}
+
+#[test]
 fn lvm_partition_is_auto_snapshot_supported() {
     assert!(snapshot_supported_plain_partition(PartitionKind::Lvm));
 }

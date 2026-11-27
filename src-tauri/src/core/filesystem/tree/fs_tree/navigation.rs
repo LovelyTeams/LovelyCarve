@@ -34,11 +34,39 @@ pub fn children_for_mount(
     )
 }
 
+/// Refuse to list a member device of a multi-device filesystem as a volume
+/// (`part:N` or its `unsupported:N` root entry): the first member partition
+/// opens the whole filesystem. See `core::evidence::partitions::device_sets`.
+pub(crate) fn ensure_not_member_device(
+    image: &EvidenceSession,
+    node_id: &str,
+) -> anyhow::Result<()> {
+    let Some(id) = node_id
+        .strip_prefix("part:")
+        .or_else(|| node_id.strip_prefix("unsupported:"))
+        .and_then(|id| id.parse::<u8>().ok())
+    else {
+        return Ok(());
+    };
+    if let Some(primary) = image
+        .partitions
+        .iter()
+        .find(|partition| partition.id == id)
+        .and_then(|partition| partition.member_of)
+    {
+        anyhow::bail!(Failure::invalid_input(format!(
+            "分区 {id} 是多设备文件系统的成员设备，文件系统从 part:{primary} 浏览"
+        )));
+    }
+    Ok(())
+}
+
 pub(super) fn children_for_image_with_options(
     image: &Arc<EvidenceSession>,
     parent_id: &str,
     options: ChildrenOptions,
 ) -> anyhow::Result<Vec<FsNode>> {
+    ensure_not_member_device(image, parent_id)?;
     let image = image.filesystem_session(parent_id);
     if let Some(roots) = image.indexed_roots() {
         if parent_id.trim().is_empty() || parent_id == "root" {

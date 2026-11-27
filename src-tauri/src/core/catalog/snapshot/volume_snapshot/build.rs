@@ -26,6 +26,8 @@ pub fn build_volume_snapshot(
     cancel: &CancellationToken,
     on_progress: &mut dyn FnMut(u64),
 ) -> anyhow::Result<VolumeSnapshotBuilt> {
+    // A member device's filesystem is indexed through its first member.
+    crate::core::filesystem::tree::fs_tree::ensure_not_member_device(image, volume_key)?;
     let image = image.filesystem_session(volume_key);
     if let Some(parent) = out_path.parent() {
         std::fs::create_dir_all(parent)?;

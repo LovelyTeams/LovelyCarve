@@ -80,6 +80,7 @@ pub(in crate::core::evidence) fn scan(
                 label: None,
                 unique_guid: None,
                 amiga_geometry: None,
+                member_of: None,
             });
             claimed_end = start + length;
             if partitions.len() == MAX_VOLUMES {

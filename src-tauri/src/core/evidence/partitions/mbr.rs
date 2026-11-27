@@ -345,6 +345,7 @@ fn append_partition(
             label: None,
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         },
         entry,
         record_lba,

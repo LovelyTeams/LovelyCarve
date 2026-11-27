@@ -286,6 +286,11 @@ fn walk_partitions(
     let partitions = image.info().partitions;
     for partition in &partitions {
         ensure_active(cancel)?;
+        // 多设备文件系统的成员设备由第一个成员分区打开，这里只列出。
+        if !partition.opens_volume() {
+            out.push(unsupported_partition(partition));
+            continue;
+        }
         match partition.kind {
             PartitionKind::ApfsContainer => {
                 let root_id = format!("part:{}", partition.id);

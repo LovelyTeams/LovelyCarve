@@ -9,6 +9,8 @@
 //! immediately followed by its logical volumes, then the synthetic root for
 //! evidence without a partition table, followed by metadata-only Docker
 //! container roots. Enumerating these roots never composes their layers.
+//! A member device of a multi-device filesystem is not a filesystem of its
+//! own; only the partition that opens the filesystem has an entry.
 
 use std::sync::Arc;
 
@@ -50,6 +52,9 @@ impl FsAll {
         let mut entries = Vec::new();
         let sector = image.sector_size as u64;
         for partition in &image.info().partitions {
+            if !partition.opens_volume() {
+                continue;
+            }
             let offset = partition.start_lba * sector;
             let size = partition.length_lba * sector;
             entries.push(FsEntry {
@@ -163,6 +168,7 @@ pub fn directory_root(image: &Arc<EvidenceSession>, volume_key: &str) -> anyhow:
 /// Resolve `vol_id` for a volume key on a loaded image, erroring when the key
 /// is not part of the filesystem array.
 pub fn vol_id_for_key(image: &Arc<EvidenceSession>, volume_key: &str) -> anyhow::Result<i64> {
+    fs_tree::ensure_not_member_device(image, volume_key)?;
     FsAll::for_image(image)
         .vol_id_of(volume_key)
         .ok_or_else(|| anyhow::anyhow!("volume {volume_key} is not in the filesystem array"))

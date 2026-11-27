@@ -221,6 +221,7 @@ pub(crate) fn open_cancellable(
                 label: Some(stem.to_string()),
                 unique_guid: None,
                 amiga_geometry: None,
+                member_of: None,
             });
             continue;
         }

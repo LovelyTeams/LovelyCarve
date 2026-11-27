@@ -254,6 +254,7 @@ impl CueImage {
                     )),
                     unique_guid: None,
                     amiga_geometry: None,
+                    member_of: None,
                 })
             })
             .collect()

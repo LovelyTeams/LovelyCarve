@@ -49,6 +49,7 @@ impl PartParser for Lvm2Parser {
                 label: Some("LVM2 PV".into()),
                 unique_guid: None,
                 amiga_geometry: None,
+                member_of: None,
             }]));
         }
         Ok(None)

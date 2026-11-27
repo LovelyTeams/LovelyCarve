@@ -75,6 +75,7 @@ impl<'a> FsSession<'a> {
         if self.image.is_index_only() {
             return children_for_image_with_options(self.image, parent_id, options);
         }
+        ensure_not_member_device(self.image, parent_id)?;
         // Listing options for cached subtree dispatch: deleted NTFS / exFAT
         // entries follow the caller's profile; unallocated nodes are
         // appended by the explicit root branches below, never by the per-FS

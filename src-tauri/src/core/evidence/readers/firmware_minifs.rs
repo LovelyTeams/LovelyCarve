@@ -53,6 +53,7 @@ pub(super) fn open(bytes: &[u8], cancel: &CancellationToken) -> Result<super::Fi
             label: Some("MINIFS".into()),
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         }],
         plaintext: None,
         native_views: Vec::new(),

@@ -40,6 +40,7 @@ impl PartParser for Ext4Parser {
             label: None,
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         }]))
     }
 }

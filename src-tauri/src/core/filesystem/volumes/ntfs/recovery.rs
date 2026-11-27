@@ -192,6 +192,7 @@ pub(crate) fn discover_mft(
         label,
         unique_guid: None,
         amiga_geometry: None,
+        member_of: None,
     };
     Ok((
         partition,

@@ -1,9 +1,8 @@
 //! Probe a VMware LVM member or a standalone VMFS filesystem descriptor.
 
-use std::io::{self, Read, Seek, SeekFrom};
-
+use super::partition_cursor::SourceCursor;
 use super::volume_probe::{VolumeProbe, VolumeProbeHit};
-use super::{DetectCtx, PartitionKind};
+use super::{DetectCtx, PartitionKind, SectorSource};
 use vmfs_reader::{Error, Geometry, MemberInfo};
 
 pub(crate) struct VmfsProbe;
@@ -12,13 +11,24 @@ pub(crate) fn same_datastore(first: &MemberInfo, second: &MemberInfo) -> bool {
     first.volume_uuid == second.volume_uuid && first.snapshot_id == second.snapshot_id
 }
 
+/// Datastore identity of an extent member of a datastore spanning several
+/// devices: its volume UUID and snapshot ID, as [`same_datastore`] matches
+/// them. `None` for a single-extent datastore or a bare filesystem.
+pub(crate) fn spanned_datastore(
+    source: &dyn SectorSource,
+) -> anyhow::Result<Option<([u8; 16], u32)>> {
+    Ok(vmfs_reader::probe_member(&mut SourceCursor::new(source))?
+        .filter(|member| member.member_count > 1)
+        .map(|member| (member.volume_uuid, member.snapshot_id)))
+}
+
 impl VolumeProbe for VmfsProbe {
     fn name(&self) -> &'static str {
         "vmfs"
     }
 
     fn probe(&self, ctx: &DetectCtx<'_>) -> anyhow::Result<Option<VolumeProbeHit>> {
-        let mut source = ProbeCursor { ctx, offset: 0 };
+        let mut source = SourceCursor::new(ctx.source);
         let evidence = match vmfs_reader::probe_member(&mut source)? {
             Some(member) => format!(
                 "VMware LVM {}, {} extent members, volume {}",
@@ -45,45 +55,6 @@ impl VolumeProbe for VmfsProbe {
             evidence: vec![evidence],
             relative_offset: 0,
         }))
-    }
-}
-
-struct ProbeCursor<'a> {
-    ctx: &'a DetectCtx<'a>,
-    offset: u64,
-}
-
-impl Read for ProbeCursor<'_> {
-    fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
-        let count = self
-            .ctx
-            .size
-            .saturating_sub(self.offset)
-            .min(out.len() as u64) as usize;
-        if count == 0 {
-            return Ok(0);
-        }
-        let bytes = self
-            .ctx
-            .source
-            .read(self.offset, count)
-            .map_err(io::Error::other)?;
-        out[..bytes.len()].copy_from_slice(&bytes);
-        self.offset += bytes.len() as u64;
-        Ok(bytes.len())
-    }
-}
-
-impl Seek for ProbeCursor<'_> {
-    fn seek(&mut self, from: SeekFrom) -> io::Result<u64> {
-        let offset = match from {
-            SeekFrom::Start(value) => Some(value),
-            SeekFrom::End(delta) => self.ctx.size.checked_add_signed(delta),
-            SeekFrom::Current(delta) => self.offset.checked_add_signed(delta),
-        };
-        self.offset =
-            offset.ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "VMFS probe seek"))?;
-        Ok(self.offset)
     }
 }
 

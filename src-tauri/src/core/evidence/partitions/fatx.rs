@@ -221,6 +221,7 @@ fn detect(
         label: Some(label),
         unique_guid: None,
         amiga_geometry: None,
+        member_of: None,
     }))
 }
 

@@ -619,6 +619,11 @@ pub async fn volumes(exec: &Exec, args: VolumesArgs) -> Result<Output, CliError>
                 "encryption": encryption,
                 "index": index.as_ref().map(index_state),
                 "indexFiles": index.as_ref().map(|index| index["entryCount"].clone()),
+                // A member device of a multi-device filesystem: the volume that opens it.
+                "memberOf": partition
+                    .as_ref()
+                    .and_then(|partition| partition["memberOf"].as_u64())
+                    .map(|primary| format!("/{}/part:{primary}", item.alias)),
             }));
         }
     }
@@ -688,6 +693,9 @@ pub fn render_volumes(value: &Value) -> String {
                         )),
                         None => Value::Null,
                     };
+                    if let Some(volume) = item["memberOf"].as_str() {
+                        row["index"] = json!(format!("成员设备 → {volume}"));
+                    }
                     row
                 })
                 .collect()

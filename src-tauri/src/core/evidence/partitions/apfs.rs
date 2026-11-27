@@ -1,7 +1,8 @@
 //! Bounded APFS member sources within one raw or assembled image.
 
 pub(crate) use super::partition_cursor::PartitionCursor;
-use super::{Partition, PartitionKind};
+use super::partition_cursor::SourceCursor;
+use super::{Partition, PartitionKind, SectorSource};
 use crate::core::common::error::Failure;
 use crate::core::evidence::image::DiskImage;
 use anyhow::{ensure, Context, Result};
@@ -14,6 +15,14 @@ impl PartitionCursor {
     pub(crate) fn superblock(&mut self) -> Result<NxSuperblock> {
         Ok(read_member_nxsb(self)?)
     }
+}
+
+/// Fusion set UUID of the APFS container tier on `source`, which both tiers
+/// share; `None` for an ordinary container.
+pub(crate) fn fusion_set(source: &dyn SectorSource) -> Result<Option<[u8; 16]>> {
+    Ok(read_member_nxsb(&mut SourceCursor::new(source))?
+        .fusion_member()
+        .map(|(id, _)| id))
 }
 
 pub(crate) fn open_members(

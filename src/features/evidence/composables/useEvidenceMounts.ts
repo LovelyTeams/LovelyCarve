@@ -25,7 +25,8 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
   // Mirror the supported partition set in fs_tree.rs::partition_node; only
   // these surface a `part:{id}` directory node that dokan_mount can project.
   // A locked encrypted partition is not one; unlocked, it carries its
-  // plaintext filesystem's kind.
+  // plaintext filesystem's kind. Neither is a member device of a multi-device
+  // filesystem: its first member partition mounts the whole filesystem.
   const MOUNTABLE_KINDS = new Set([
     'ext4', 'btrfs', 'fat32', 'fat12', 'fat16', 'exfat', 'cdfs', 'squashfs', 'cramfs', 'romfs', 'minifs', 'erofs', 'f2fs', 'qnx4', 'qnx6', 'qnxetfs', 'qnxefs', 'udf', 'minix', 'jfs', 'reiserfs', 'reiser4', 'amiga', 'befs', 'gfs1', 'gfs2', 'ocfs1', 'ocfs2', 'nilfs2', 'bcachefs', 'vmfs', 'hpfs', 'vxfs', 'aixjfs', 'unixwarebfs', 'xdvdfs', 'fatx', 'hfs', 'mfs', 'littlefs', 'spiffs', 'hammer', 'hammer2', 'ubifs', 'jffs2', 'yaffs1', 'yaffs2', 'ubi',
     'apfscontainer', 'hfsplus', 'hfsx', 'lvm', 'ntfs', 'refs',
@@ -65,7 +66,7 @@ export function useEvidenceMounts(options: EvidenceMountOptions) {
   });
 
   function isMountable(p: DiskPartition): boolean {
-    return MOUNTABLE_KINDS.has(p.kind);
+    return p.member_of === undefined && MOUNTABLE_KINDS.has(p.kind);
   }
 
 

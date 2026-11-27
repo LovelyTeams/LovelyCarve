@@ -37,6 +37,7 @@ fn raw_export_projects_multiple_unlocked_partitions_and_preserves_disk_layout() 
             label: None,
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         })
         .collect();
     let source = Arc::new(EvidenceSession::from(disk));

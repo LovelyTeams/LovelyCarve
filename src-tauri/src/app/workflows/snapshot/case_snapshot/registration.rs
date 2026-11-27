@@ -6,7 +6,8 @@ use crate::core::filesystem::evidence_session::EvidenceSession;
 /// Volume keys worth snapshotting on an image: the supported partition roots,
 /// or the single synthetic `"root"` for docker / folder / tar / zip / 7z / AD1 evidence.
 /// Locked encrypted partitions are skipped and snapshot after they are
-/// unlocked instead.
+/// unlocked instead. A multi-device filesystem is indexed once, through the
+/// partition that opens it; its other member devices are skipped.
 pub(super) fn browsable_volume_keys(image: &Arc<EvidenceSession>) -> Vec<String> {
     if image.docker.is_some()
         || image.folder.is_some()
@@ -20,7 +21,10 @@ pub(super) fn browsable_volume_keys(image: &Arc<EvidenceSession>) -> Vec<String>
     image
         .partitions
         .iter()
-        .filter(|partition| snapshot_supported_partition(image, partition.kind, partition.id))
+        .filter(|partition| {
+            partition.opens_volume()
+                && snapshot_supported_partition(image, partition.kind, partition.id)
+        })
         .map(|partition| format!("part:{}", partition.id))
         .collect()
 }

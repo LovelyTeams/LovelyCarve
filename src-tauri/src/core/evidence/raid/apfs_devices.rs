@@ -111,6 +111,7 @@ fn assemble_pair(
             }),
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         });
         start = start
             .checked_add(sectors)

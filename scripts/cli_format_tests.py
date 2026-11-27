@@ -121,8 +121,13 @@ def test_vmfs(cli, root):
             stack = cli.json(*scope, "raid", "detect", "--member", aliases[0], "--member", aliases[1])
             assert len(stack["assembled"]) == 1 and stack["arrays"][0]["raidDisks"] == 2, stack
             path = stack["assembled"][0]["path"]
-            for partition in [0, 1]:
-                assert cli.run(*scope, "cat", f"{path}/part:{partition}/.fdc.sf", "--length", "32", binary=True).stdout.hex() == descriptor_prefix
+            # The datastore is one volume, opened through its first extent member.
+            roots = cli.json(*scope, "ls", path)
+            assert [(item["id"], item["kind"]) for item in roots["items"]] == [("part:0", "dir"), ("unsupported:1", "unallocated")], roots
+            volumes = cli.json(*scope, "volumes", path)
+            assert [item["memberOf"] for item in volumes["items"]] == [None, f"{path}/part:0"], volumes
+            assert cli.run(*scope, "cat", f"{path}/part:0/.fdc.sf", "--length", "32", binary=True).stdout.hex() == descriptor_prefix
+            cli.run(*scope, "cat", f"{path}/part:1/.fdc.sf", "--length", "32", expected=1)
     finally:
         cli.run(*scope, "case", "close")
     print("VMFS CLI oracle passed: native paths, sparse reads, hash, export and two-image assembly")

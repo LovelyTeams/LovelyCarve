@@ -93,6 +93,7 @@ fn assemble_members(
             label: Some(format!("bcachefs device {}", superblock.dev_idx)),
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         });
         partition_start = partition_start
             .checked_add(sectors)

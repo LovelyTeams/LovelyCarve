@@ -1083,6 +1083,7 @@
   "识别图中的文字（PP-OCRv6 OCR）": "Recognize text in the image (PP-OCRv6 OCR)",
   "识别文字": "Recognize text",
   "成员": "Members",
+  "{0} 的成员": "Member of {0}",
   "符号": "Symbols",
   "读取已截断": "Read truncated",
   "导出符号": "Exported symbols",

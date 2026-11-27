@@ -455,6 +455,7 @@ impl DiskImage {
                         sector_size,
                     )?;
                 }
+                partitions::device_sets::mark_members(&probe_source, &mut partitions, sector_size);
                 progress(OpenProgress::DetectingFilesystems {
                     done: partitions.len(),
                     total: partitions.len(),
@@ -563,13 +564,16 @@ impl DiskImage {
     /// start_lba: 0, length_lba: size_bytes / sector_size }`.
     ///
     /// `path` is set to `assembled://<label>` so the frontend has a stable
-    /// human-readable identifier; `id` is a fresh UUID.
+    /// human-readable identifier; `id` is a fresh UUID. Member devices of a
+    /// multi-device filesystem among `partitions` are bound to the first one
+    /// (see [`partitions::device_sets`]).
     pub fn from_assembled(
         label: String,
         source: Arc<dyn SectorSource + Send + Sync>,
-        partitions: Vec<Partition>,
+        mut partitions: Vec<Partition>,
         sector_size: usize,
     ) -> anyhow::Result<Self> {
+        partitions::device_sets::mark_members(source.as_ref(), &mut partitions, sector_size);
         Ok(Self::from_logical_source(
             uuid::Uuid::new_v4().to_string(),
             label,

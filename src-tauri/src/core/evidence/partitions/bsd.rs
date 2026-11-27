@@ -54,6 +54,7 @@ impl PartParser for BsdParser {
             label: Some("BSD disklabel".into()),
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         }]))
     }
 }

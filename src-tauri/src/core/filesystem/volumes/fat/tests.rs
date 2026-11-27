@@ -147,6 +147,7 @@ impl Fixture {
             label: None,
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         };
         let volume = FatVolume::open(image, &partition).unwrap();
         (temporary, volume)

@@ -105,6 +105,7 @@ impl PartParser for ApmParser {
                 },
                 unique_guid: None,
                 amiga_geometry: None,
+                member_of: None,
             });
         }
         Ok(Some(out))

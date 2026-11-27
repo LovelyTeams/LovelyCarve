@@ -26,6 +26,7 @@ pub mod befs;
 pub mod bsd;
 pub mod btrfs;
 pub mod classic_hfs;
+pub mod device_sets;
 pub mod ext4;
 pub mod fat;
 mod fatx;
@@ -114,6 +115,22 @@ pub struct Partition {
     /// image's sectors, while these counts are filesystem blocks.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub amiga_geometry: Option<AmigaGeometry>,
+    /// Set on a member device of a multi-device filesystem (Btrfs, bcachefs,
+    /// ZFS pool, APFS Fusion, spanned VMFS) other than the first one of this
+    /// image: the id of that first member partition, which opens the whole
+    /// filesystem. A member keeps its geometry for byte access but is not a
+    /// volume of its own: it is not browsed, indexed, searched or mounted.
+    /// See [`device_sets`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub member_of: Option<u8>,
+}
+
+impl Partition {
+    /// Whether this partition is a volume of its own rather than a member
+    /// device of a filesystem another partition opens.
+    pub fn opens_volume(&self) -> bool {
+        self.member_of.is_none()
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -786,6 +803,7 @@ mod tests {
             label: None,
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         };
         let slice = PartitionSlice::for_partition(&src, &partition, 16);
         let bytes = slice.read(0, 16).expect("read");

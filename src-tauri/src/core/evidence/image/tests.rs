@@ -223,10 +223,12 @@ fn opens_raw_mbr_with_primary_and_large_sector_logical_partitions() {
                         label: None,
                         unique_guid: None,
                         amiga_geometry: None,
+                        member_of: None,
                     },
                     Partition {
                         id: 1,
                         amiga_geometry: None,
+                        member_of: None,
                         kind: PartitionKind::Unknown,
                         start_lba: 17,
                         length_lba: 4,
@@ -338,6 +340,7 @@ fn xiaomi_firmware_opens_with_byte_addressed_volume_offsets() {
             label: Some("rootfs.img".into()),
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         }]
     );
 }
@@ -875,6 +878,7 @@ fn from_assembled_round_trips_reads() {
             label: Some("test".into()),
             unique_guid: None,
             amiga_geometry: None,
+            member_of: None,
         }],
         512,
     )

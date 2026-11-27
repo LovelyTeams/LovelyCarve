@@ -59,7 +59,13 @@ pub(crate) fn fat_system_nodes(image: &Arc<EvidenceSession>, partition: &Partiti
 /// physical unallocated concept (LVM — handled at VG level; BitLocker — locked
 /// container; read-only SquashFS/CDFS; logical Extended/aggregate; the
 /// non-filesystem markers) return an empty list.
+///
+/// A member device of a multi-device filesystem has none of its own: the
+/// volume that opens the filesystem lists one node per member device.
 pub(crate) fn fs_unalloc_nodes(image: &Arc<EvidenceSession>, partition: &Partition) -> Vec<FsNode> {
+    if !partition.opens_volume() {
+        return Vec::new();
+    }
     let sector_size = image.sector_size as u64;
     let part_offset = partition.start_lba * sector_size;
     let part_len = partition.length_lba * sector_size;
@@ -173,16 +179,29 @@ pub(crate) fn fs_unalloc_nodes(image: &Arc<EvidenceSession>, partition: &Partiti
     let Some(free) = free else {
         return Vec::new();
     };
-    fs_unalloc_nodes_from_free(partition.id, part_offset, part_len, free)
+    let members: Vec<(u64, u64)> = image
+        .partitions
+        .iter()
+        .filter(|member| member.member_of == Some(partition.id))
+        .map(|member| {
+            (
+                member.start_lba * sector_size,
+                member.length_lba * sector_size,
+            )
+        })
+        .collect();
+    fs_unalloc_nodes_from_free(partition.id, part_offset, part_len, &members, free)
 }
 
 /// Turn a [`VolumeFree`] report into one or more "$未分配簇" nodes. Exact
 /// (`Allocated`) reports yield one node per free segment; coarse reports yield
-/// a single node spanning the partition with the best `size` available.
+/// a single node spanning the partition with the best `size` available, and
+/// a whole-volume report covers each `members` device range as well.
 fn fs_unalloc_nodes_from_free(
     part_id: u8,
     part_offset: u64,
     part_len: u64,
+    members: &[(u64, u64)],
     free: VolumeFree,
 ) -> Vec<FsNode> {
     let make = |offset: u64, len: u64, size: u64, multi: Option<usize>| {
@@ -223,7 +242,15 @@ fn fs_unalloc_nodes_from_free(
         // No bitmap: one node over the whole partition; `size` is the whole
         // volume (an upper bound — the name is left plain, the size is honest
         // about being the partition span rather than a measured free count).
-        VolumeFree::WholeVolume => vec![make(part_offset, part_len, part_len, None)],
+        // A multi-device filesystem spans every member device.
+        VolumeFree::WholeVolume => {
+            let multi = !members.is_empty();
+            std::iter::once((part_offset, part_len))
+                .chain(members.iter().copied())
+                .enumerate()
+                .map(|(idx, (offset, len))| make(offset, len, len, multi.then_some(idx)))
+                .collect()
+        }
     }
 }
 
@@ -262,10 +289,14 @@ pub(crate) fn disk_gap_nodes(image: &Arc<EvidenceSession>) -> Vec<FsNode> {
         .collect()
 }
 
+/// The evidence-root entry of `partition`: a browsable `part:N` volume, or an
+/// `unsupported:N` leaf for kinds without a reader and for member devices of
+/// a filesystem another partition opens.
 pub(crate) fn partition_node(image: &Arc<EvidenceSession>, partition: &Partition) -> FsNode {
-    let supported = matches!(
-        partition.kind,
-        PartitionKind::Ext4
+    let supported = partition.opens_volume()
+        && matches!(
+            partition.kind,
+            PartitionKind::Ext4
             | PartitionKind::Btrfs
             | PartitionKind::Fat32
             | PartitionKind::Fat12
@@ -325,7 +356,7 @@ pub(crate) fn partition_node(image: &Arc<EvidenceSession>, partition: &Partition
             // Unknown volumes remain expandable so the LPP manager can lazily
             // probe external filesystem parsers when the user opens them.
             | PartitionKind::Unknown
-    );
+        );
     FsNode {
         id: if supported {
             format!("part:{}", partition.id)

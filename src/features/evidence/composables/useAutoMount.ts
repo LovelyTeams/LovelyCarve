@@ -66,7 +66,8 @@ export function useAutoMount() {
           continue;
         }
         for (const p of detail.partitions) {
-          if (!AUTO_MOUNTABLE_KINDS.has(p.kind)) continue;
+          // 多设备文件系统只从第一个成员分区挂载一次。
+          if (p.member_of !== undefined || !AUTO_MOUNTABLE_KINDS.has(p.kind)) continue;
           const nodeId = `part:${p.id}`;
           if (alreadyMounted.has(`${detail.id}::${nodeId}`)) {
             skipped += 1;
