@@ -24,6 +24,7 @@
 | Windows 桌面便携包 | `just pack` | `just pack-full` |
 | Windows CLI 包 | `just pack-cli` | `just pack-cli-full` |
 | Windows Python wheel | `just build-python` | — |
+| macOS Apple Silicon 桌面 DMG | `just build-macos` | — |
 | 插件独立包 | `just pack-plugins` | — |
 
 `repack` / `repack-full` 复用已有的桌面产物，必须与编译特性一致；`repack-cli` 按 CLI 的实际能力选择资源。运行库、原生组件、模型与插件清单由打包配置决定，不要按文件后缀猜测所需资源。
@@ -38,11 +39,16 @@ CHANGELOG 只使用实际有内容的英文分类（`Added`、`Changed`、`Depre
 
 ## 标签与发行产物
 
-把 `v<版本号>` 标签推送到对应的源码提交后，`Windows release` 工作流执行 `just build-release --bundles msi`、`just pack-cli` 和 `just build-python`，把 Windows x64 MSI、CLI ZIP、Python wheel 与 `SHA256SUMS.txt` 发布到 GitHub Release。PR 测试由独立的 `Windows tests` 工作流运行。例如，版本同步为 `1.3.0` 并提交后：
+把 `v<版本号>` 标签推送到对应的源码提交后，`Release` 工作流并行运行 `Windows tests` 并构建两端的发行包。所有任务成功后，在同一个 GitHub Release 上传以下产物和一份覆盖全部下载项的 `SHA256SUMS.txt`。
+
+- Windows x64 通过 `just build-release --bundles msi`、`just pack-cli` 和 `just build-python` 生成 MSI、CLI ZIP 和 Python wheel。
+- macOS Apple Silicon 通过 `just build-macos` 和 `just build-cli` 生成桌面 DMG 和 CLI tarball。工作流从 DMG 读取应用并检查签名、版本与插件，在解包后的 CLI 中检查推理组件能否加载。
+
+例如，版本同步为 `1.5.0` 并提交后，将标签推送到公开仓库：
 
 ```powershell
-git tag v1.3.0
-git push origin v1.3.0
+git tag v1.5.0
+git push <公开仓库远端名> v1.5.0
 ```
 
 标签的基础版本必须与应用和 Python 包清单一致。`v1.3.0-rc.1` 这类带后缀的标签发布为预发行版，`v1.3.0` 发布为正式版。已有标签不会因添加工作流而重新触发，请勿移动已发布的标签。发布任务通过仓库内置的 `GITHUB_TOKEN` 和 `contents: write` 权限上传 GitHub Release 产物。
@@ -60,7 +66,7 @@ git push origin v1.3.0
 
 发布任务通过 GitHub OIDC 向 PyPI 换取短期上传凭据，无需配置 PyPI API token。配置步骤见 [PyPI Trusted Publishing 文档](https://docs.pypi.org/trusted-publishers/adding-a-publisher/)。
 
-自动构建默认不含 QR/OCR，二进制未做代码签名；原生 GUI、安装及 Dokany 驱动仍需人工验证。完整功能构建和桌面便携包继续使用上表的本地配方。
+自动构建默认关闭 QR/OCR。Windows 二进制未签名。macOS 应用使用 ad-hoc 签名，未经 Apple 公证，首次打开时可能需要在「系统设置 → 隐私与安全性」中确认。原生 GUI、安装及 Dokany 驱动仍需人工验证。完整功能构建和桌面便携包继续使用上表的本地配方。
 
 自动 Release 说明包含源码提交、构建范围和外部驱动要求；维护者应补充版本变化与已知限制。本地发行时，从该标签创建 GitHub Release，并上传实际构建的产物与 SHA-256：
 

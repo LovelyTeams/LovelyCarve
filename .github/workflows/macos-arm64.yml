@@ -1,9 +1,8 @@
-name: macOS ARM64 compile
+name: macOS ARM64 packages
 
 on:
-  push:
-    branches: [codex/macos-arm64]
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -14,7 +13,7 @@ concurrency:
 
 jobs:
   arm64:
-    name: Native Apple Silicon desktop and CLI
+    name: Package Apple Silicon desktop and CLI
     runs-on: macos-15
     timeout-minutes: 120
     env:
@@ -22,6 +21,7 @@ jobs:
       CARGO_INCREMENTAL: '0'
       CARGO_PROFILE_RELEASE_LTO: thin
       CARGO_TERM_COLOR: always
+      MACOSX_DEPLOYMENT_TARGET: '15.0'
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -61,31 +61,52 @@ jobs:
           key: macos-dependencies-${{ runner.arch }}-${{ hashFiles('bun.lock', '**/Cargo.lock') }}
           restore-keys: macos-dependencies-${{ runner.arch }}-
       - run: just bootstrap
-      - run: just build-plugins --release
       - run: just build-macos
       - run: just build-cli
-      - name: Verify native binaries and archive artifact
+      - name: Verify and stage the desktop DMG
         shell: bash
         run: |
-          desktop=src-tauri/target/release/LovelyCarve
-          cli=src-tauri/target/release/lovelycarve-cli
-          plugin_host=plugins/target/release/lc-plugin-host
-          plugin=plugins/linuxinfo/liblinuxinfo.dylib
-          inference=src-tauri/target/release/liblovelycarve_inference.dylib
-          for binary in "$desktop" "$cli" "$plugin_host" "$plugin" "$inference"; do
+          version=$(jq -er '.version' package.json)
+          dmg="src-tauri/target/release/bundle/dmg/LovelyCarve_${version}_aarch64.dmg"
+          mount=$(mktemp -d)
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$dmg"
+          trap 'hdiutil detach "$mount" && rmdir "$mount"' EXIT
+          app="$mount/LovelyCarve.app"
+          bin="$app/Contents/MacOS"
+          plugin="$bin/plugins/linuxinfo"
+          for binary in "$bin/LovelyCarve" "$bin/lc-plugin-host" "$bin/liblovelycarve_inference.dylib" "$plugin/liblinuxinfo.dylib"; do
             test "$(lipo -archs "$binary")" = arm64
-            file "$binary"
             otool -L "$binary"
           done
-          "$cli" --json system
-          stage=macos-arm64
-          mkdir -p "$stage/plugins/linuxinfo"
-          cp "$desktop" "$cli" "$plugin_host" "$inference" LICENSE THIRD_PARTY_NOTICES.md "$stage/"
-          cp -R "$plugin" plugins/linuxinfo/{plugin.toml,schema.json,locales} "$stage/plugins/linuxinfo/"
-          tar -czf lovelycarve-macos-arm64.tar.gz "$stage"
+          for file in "$app/Contents/Resources/LICENSE" "$app/Contents/Resources/THIRD_PARTY_NOTICES.md" "$plugin"/{plugin.toml,schema.json,locales/en.toml}; do
+            test -s "$file"
+          done
+          codesign --verify --deep --strict "$app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$version"
+          "$bin/lc-plugin-host" --describe --library "$plugin/liblinuxinfo.dylib" | jq -e 'type == "object"'
+          mkdir -p release-assets
+          cp "$dmg" "release-assets/LovelyCarve-v${version}-macos-arm64.dmg"
+      - name: Package and smoke-test the CLI archive
+        shell: bash
+        run: |
+          version=$(jq -er '.version' package.json)
+          name="lovelycarve-cli-v${version}-macos-arm64"
+          stage=$(mktemp -d)
+          mkdir -p "$stage/$name/plugins/linuxinfo"
+          cp src-tauri/target/release/{lovelycarve-cli,liblovelycarve_inference.dylib} \
+            plugins/target/release/lc-plugin-host LICENSE THIRD_PARTY_NOTICES.md "$stage/$name/"
+          cp -R plugins/linuxinfo/{liblinuxinfo.dylib,plugin.toml,schema.json,locales} "$stage/$name/plugins/linuxinfo/"
+          tar -czf "release-assets/$name.tar.gz" -C "$stage" "$name"
+          unpacked=$(mktemp -d)
+          tar -xzf "release-assets/$name.tar.gz" -C "$unpacked"
+          cli="$unpacked/$name/lovelycarve-cli"
+          test "$(lipo -archs "$cli")" = arm64
+          "$cli" --json system | tee /dev/stderr | jq -e --arg version "$version" '
+            .version == $version and .platform == "macos" and .standalone and
+            .components.inference.available and .components.inference.version == $version'
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: lovelycarve-macos-arm64
-          path: lovelycarve-macos-arm64.tar.gz
+          path: release-assets/*
           if-no-files-found: error
           retention-days: 7
