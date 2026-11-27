@@ -302,7 +302,9 @@ pub trait PartParser: Sync {
 /// protective MBR (type `0xEE`, offset 1) cannot be mistaken for a real DOS
 /// partition table. LVM2 sits before Btrfs / Ext4 so a normally-partitioned
 /// disk that happens to embed an LVM PV label gets recognised by its real
-/// partition table first. FAT / Btrfs / Ext4 / Squashfs / UFS / XFS / ZFS / HFS+
+/// partition table first. The Xbox disc and hard-disk layouts come next: Xbox
+/// media keep their volumes at fixed offsets or behind Xbox-specific tables, so
+/// a standard partition table always wins. FAT / Btrfs / Ext4 / Squashfs / UFS / XFS / ZFS / HFS+
 /// sit last so they only fire on bare, whole-device filesystems (no MBR /
 /// GPT / LUKS / etc.) — FAT's BPB lives in the first sector with a common
 /// FAT32 backup at sector 6, Btrfs's 8-byte `_BHRfS_M` magic at fixed offset
@@ -711,6 +713,8 @@ mod tests {
                 "bsd",
                 "mbr",
                 "lvm2",
+                "xbox_disc",
+                "xbox_disk",
                 "volume"
             ]
         );

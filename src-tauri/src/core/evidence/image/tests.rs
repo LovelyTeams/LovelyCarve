@@ -115,7 +115,11 @@ fn opens_filesystems_at_nonzero_offsets_without_a_partition_table() {
         vec![
             (PartitionKind::Ntfs, (NTFS_START / 512) as u64, 6016),
             (PartitionKind::Ext4, (EXT_START / 512) as u64, 128),
-            (PartitionKind::ApfsContainer, (APFS_START / 512) as u64, 128),
+            (
+                PartitionKind::ApfsContainer,
+                (APFS_START / 512) as u64,
+                (APFS.len() / 512) as u64
+            ),
         ]
     );
     for root in ["part:0", "part:1", "apfs:part:2:0:"] {
