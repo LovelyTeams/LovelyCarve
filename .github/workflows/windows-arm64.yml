@@ -43,6 +43,27 @@ jobs:
         run: just build-release --bundles nsis --config "${{ github.workspace }}/src-tauri/tauri.arm64.conf.json"
       - name: Package standalone CLI
         run: just pack-cli -Arm64
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: '0.11.28'
+      # The abi3 wheel is tagged for CPython 3.10+ whichever interpreter builds it.
+      - name: Build Python wheel
+        env:
+          LOVELYCARVE_PYTHON: '3.12'
+        run: just build-python
+      - name: Install the Python wheel and import it natively
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $wheels = @(Get-ChildItem "dist-pack/python/lovelycarve-$version-*-win_arm64.whl" -File)
+          if ($wheels.Count -ne 1) { throw 'Expected one Windows ARM64 Python wheel' }
+          $venv = Join-Path $env:RUNNER_TEMP 'lovelycarve-wheel'
+          uv venv $venv --python 3.12
+          if ($LASTEXITCODE -ne 0) { throw 'Creating the wheel test environment failed' }
+          $python = Join-Path $venv 'Scripts/python.exe'
+          uv pip install --python $python $wheels[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw 'Installing the wheel failed' }
+          & $python -c "import lovelycarve, platform, sys; assert lovelycarve.__version__ == sys.argv[1], lovelycarve.__version__; assert platform.machine() == 'ARM64', platform.machine()" $version
+          if ($LASTEXITCODE -ne 0) { throw 'Importing the wheel failed' }
       - name: Install the desktop package and verify native binaries
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
@@ -79,8 +100,9 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $capabilities.version -ne $version -or $capabilities.platform -ne 'windows' -or -not $capabilities.components.inference.available -or -not $capabilities.components.inference.fileTypes) {
             throw "Unexpected ARM64 CLI capabilities: $($capabilities | ConvertTo-Json -Depth 10 -Compress)"
           }
+          $wheels = @(Get-ChildItem "dist-pack/python/lovelycarve-$version-*-win_arm64.whl" -File)
           New-Item -ItemType Directory -Path release-assets | Out-Null
-          ($installers + $cliPackages) | Copy-Item -Destination release-assets
+          ($installers + $cliPackages + $wheels) | Copy-Item -Destination release-assets
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: lovelycarve-windows-arm64

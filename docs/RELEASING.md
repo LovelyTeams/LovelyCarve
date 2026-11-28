@@ -23,7 +23,7 @@
 | Windows 桌面安装包 | `just build-release` | `just build-release-full` |
 | Windows 桌面便携包 | `just pack` | `just pack-full` |
 | Windows CLI 包 | `just pack-cli` | `just pack-cli-full` |
-| Windows Python wheel | `just build-python` | — |
+| Python wheel（各平台） | `just build-python` | — |
 | Windows ARM64 桌面安装程序 / CLI 包 | `just build-release --bundles nsis --config src-tauri/tauri.arm64.conf.json` / `just pack-cli -Arm64` | — |
 | macOS 桌面 DMG（Apple Silicon / Intel） | `just build-macos` | — |
 | Linux 桌面 AppImage（x64 / ARM64） | `just build-linux` | — |
@@ -41,7 +41,7 @@ CHANGELOG 只使用实际有内容的英文分类（`Added`、`Changed`、`Depre
 
 ## 标签与发行产物
 
-把 `v<版本号>` 标签推送到对应的源码提交后，`Release` 工作流（`windows-release.yml`）并行运行 `Windows tests` 并构建各平台的发行包。所有任务成功后，在同一个 GitHub Release 上传以下 13 个产物和一份覆盖全部下载项的 `SHA256SUMS.txt`。
+把 `v<版本号>` 标签推送到对应的源码提交后，`Release` 工作流（`windows-release.yml`）并行运行 `Windows tests` 并构建各平台的发行包。所有任务成功后，在同一个 GitHub Release 上传以下 18 个产物和一份覆盖全部下载项的 `SHA256SUMS.txt`。每个平台另用 `just build-python` 生成 Python wheel（abi3，CPython 3.10+），安装到新的虚拟环境中按本机架构导入一次后随其他产物上传。
 
 - Windows x64 通过 `just build-release --bundles msi`、`just pack-cli` 和 `just build-python` 生成 MSI、CLI ZIP 和 Python wheel。
 - Windows ARM64（`windows-arm64.yml`）生成 NSIS 安装程序和 CLI ZIP，静默安装后检查全部可执行文件和 DLL 都是 ARM64，并确认包内没有 x64 的 `dokan2.dll`。
@@ -59,7 +59,7 @@ git push <公开仓库远端名> v1.5.0
 
 标签的基础版本必须与应用和 Python 包清单一致。`v1.3.0-rc.1` 这类带后缀的标签发布为预发行版，`v1.3.0` 发布为正式版。已有标签不会因添加工作流而重新触发，请勿移动已发布的标签。发布任务通过仓库内置的 `GITHUB_TOKEN` 和 `contents: write` 权限上传 GitHub Release 产物。
 
-`LovelyTeams/LovelyCarve` 的正式标签在 GitHub Release 发布成功后，会把同一份 Windows x64 wheel 上传到 PyPI。预发行标签沿用清单中的正式版本号，Python wheel 只随 GitHub 预发行版提供。PyPI 上传失败时，可以在 GitHub Actions 重跑失败的任务，复用同次运行的 wheel。
+`LovelyTeams/LovelyCarve` 的正式标签在 GitHub Release 发布成功后，会把 Windows x64 / ARM64、macOS Apple Silicon / Intel 与 Linux x64 / ARM64 的六个 wheel 一并上传到 PyPI。预发行标签沿用清单中的正式版本号，Python wheel 只随 GitHub 预发行版提供。PyPI 上传失败时，可以在 GitHub Actions 重跑失败的任务，复用同次运行的 wheel。
 
 首次启用时，在 GitHub 仓库的 **Settings → Environments** 创建 `pypi` 环境，将部署来源限定为 `v*` 标签，并在 [PyPI 项目的 Publishing 设置](https://pypi.org/manage/project/lovelycarve/settings/publishing/)中添加 GitHub Trusted Publisher：
 

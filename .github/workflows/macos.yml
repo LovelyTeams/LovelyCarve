@@ -81,6 +81,14 @@ jobs:
       - run: just bootstrap
       - run: just build-macos
       - run: just build-cli
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: '0.11.28'
+      # The abi3 wheel is tagged for CPython 3.10+ whichever interpreter builds it.
+      - name: Build Python wheel
+        env:
+          LOVELYCARVE_PYTHON: '3.12'
+        run: just build-python
       - name: Verify and stage the desktop DMG
         shell: bash
         run: |
@@ -127,6 +135,19 @@ jobs:
             .version == $version and .platform == "macos" and .standalone and (.dokanMount | not) and
             .components.inference.available and .components.inference.version == $version and
             .components.inference.fileTypes == $fileTypes'
+      - name: Install the Python wheel and import it natively
+        shell: bash
+        run: |
+          version=$(jq -er '.version' package.json)
+          machine=${{ matrix.arch == 'x64' && 'x86_64' || 'arm64' }}
+          wheels=(dist-pack/python/lovelycarve-"${version}"-*-macosx_*_"${machine}".whl)
+          test "${#wheels[@]}" -eq 1
+          test -f "${wheels[0]}"
+          venv="$(mktemp -d)/venv"
+          uv venv "$venv" --python 3.12
+          uv pip install --python "$venv/bin/python" "${wheels[0]}"
+          "$venv/bin/python" -c 'import lovelycarve, platform, sys; assert lovelycarve.__version__ == sys.argv[1], lovelycarve.__version__; assert platform.machine() == sys.argv[2], platform.machine()' "$version" "$machine"
+          cp "${wheels[0]}" release-assets/
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: lovelycarve-macos-${{ matrix.arch }}

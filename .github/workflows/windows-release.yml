@@ -78,6 +78,20 @@ jobs:
         run: |
           $env:OPENSSL_LIB = Join-Path $env:OPENSSL_DIR 'lib/VC/x64/MD'
           just build-python
+      - name: Install the Python wheel and import it
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $wheels = @(Get-ChildItem "dist-pack/python/lovelycarve-$env:VERSION-*-win_amd64.whl" -File)
+          if ($wheels.Count -ne 1) { throw 'Expected one Windows x64 Python wheel' }
+          $venv = Join-Path $env:RUNNER_TEMP 'lovelycarve-wheel'
+          uv venv $venv --python 3.10
+          if ($LASTEXITCODE -ne 0) { throw 'Creating the wheel test environment failed' }
+          $python = Join-Path $venv 'Scripts/python.exe'
+          uv pip install --python $python $wheels[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw 'Installing the wheel failed' }
+          & $python -c "import lovelycarve, platform, sys; assert lovelycarve.__version__ == sys.argv[1], lovelycarve.__version__; assert platform.machine() == 'AMD64', platform.machine()" $env:VERSION
+          if ($LASTEXITCODE -ne 0) { throw 'Importing the wheel failed' }
       - name: Stage Windows packages
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -95,14 +109,6 @@ jobs:
         with:
           name: lovelycarve-windows-x64
           path: release-assets/*
-          if-no-files-found: error
-          retention-days: 7
-      - name: Stage wheel for PyPI
-        if: github.repository == 'LovelyTeams/LovelyCarve' && github.ref_type == 'tag' && !contains(github.ref_name, '-')
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: pypi-wheel
-          path: release-assets/*.whl
           if-no-files-found: error
           retention-days: 7
 
@@ -129,13 +135,17 @@ jobs:
           test -n "$VERSION"
           msi=(LovelyCarve_"${VERSION}"_x64_*.msi)
           zip=(lovelycarve-cli-v"${VERSION}"-win-x64-*.zip)
-          wheel=(lovelycarve-"${VERSION}"-*-win_amd64.whl)
           arm64_zip=(lovelycarve-cli-v"${VERSION}"-win-arm64-*.zip)
           test "${#msi[@]}" -eq 1
           test "${#zip[@]}" -eq 1
-          test "${#wheel[@]}" -eq 1
           test "${#arm64_zip[@]}" -eq 1
-          assets=("${msi[0]}" "${zip[0]}" "${wheel[0]}" "LovelyCarve_${VERSION}_arm64-setup.exe" "${arm64_zip[0]}")
+          assets=("${msi[0]}" "${zip[0]}" "LovelyCarve_${VERSION}_arm64-setup.exe" "${arm64_zip[0]}")
+          # One abi3 wheel per platform for PyPI.
+          for platform in win_amd64 win_arm64 'macosx_*_arm64' 'macosx_*_x86_64' 'manylinux*_x86_64' 'manylinux*_aarch64'; do
+            wheel=(lovelycarve-"${VERSION}"-cp310-abi3-${platform}.whl)
+            test "${#wheel[@]}" -eq 1
+            assets+=("${wheel[0]}")
+          done
           for platform in macos-arm64 macos-x64; do
             assets+=("LovelyCarve-v${VERSION}-${platform}.dmg" "lovelycarve-cli-v${VERSION}-${platform}.tar.gz")
           done
@@ -157,10 +167,12 @@ jobs:
           cat > release-notes.md <<EOF
           Builds from ${GITHUB_SHA}. QR/OCR is disabled on every platform.
 
-          - **Windows x64**: desktop MSI, standalone CLI ZIP and a Python wheel for CPython 3.10+.
+          - **Windows x64**: desktop MSI and standalone CLI ZIP.
           - **Windows ARM64**: desktop installer and standalone CLI ZIP.
           - **macOS 15+**: desktop DMG and CLI tarball for Apple Silicon and for Intel. Intel builds cannot identify file types, because ONNX Runtime publishes no x86_64 macOS library. Apps are ad-hoc signed without Apple notarization, so Gatekeeper may ask for approval in Privacy & Security.
           - **Linux x64 and ARM64** (glibc 2.39+, such as Ubuntu 24.04): desktop AppImage, which needs FUSE 2, and CLI tarball.
+
+          Every platform also has a Python wheel for CPython 3.10+, published to PyPI as \`lovelycarve\` (\`pip install lovelycarve\`).
 
           Read-only mounts work on Windows x64 and ARM64 with [Dokany 2](https://github.com/dokan-dev/dokany/releases/latest) installed. Windows binaries are unsigned.
 
@@ -184,11 +196,16 @@ jobs:
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: pypi-wheel
+          pattern: lovelycarve-*
           path: dist
+          merge-multiple: true
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: '0.11.28'
           enable-cache: false
-      - name: Upload wheel
-        run: uv publish --no-config --trusted-publishing always --check-url https://pypi.org/simple/ dist/*.whl
+      - name: Upload the six platform wheels
+        run: |
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          test "${#wheels[@]}" -eq 6
+          uv publish --no-config --trusted-publishing always --check-url https://pypi.org/simple/ "${wheels[@]}"

@@ -11,7 +11,7 @@
 
 ### Added
 
-- 新增 Windows ARM64、macOS 与 Linux 发行包：Windows ARM64 提供桌面安装程序和 CLI ZIP；macOS 15 或更新版本（Apple Silicon 与 Intel）提供桌面 DMG 和 CLI 压缩包；Linux x64 与 ARM64（glibc 2.39 或更新，如 Ubuntu 24.04）提供桌面 AppImage 和 CLI 压缩包。各包附带推理组件和内置 `linuxinfo` 插件；ONNX Runtime 没有 Intel Mac 的预编译库，该平台的推理组件不识别文件类型。
+- 新增 Windows ARM64、macOS 与 Linux 发行包：Windows ARM64 提供桌面安装程序和 CLI ZIP；macOS 15 或更新版本（Apple Silicon 与 Intel）提供桌面 DMG 和 CLI 压缩包；Linux x64 与 ARM64（glibc 2.39 或更新，如 Ubuntu 24.04）提供桌面 AppImage 和 CLI 压缩包。各包附带推理组件和内置 `linuxinfo` 插件。Python 读取库 `lovelycarve` 在 PyPI 上同样提供这六个平台的 wheel（CPython 3.10+），此前只有 Windows x64。ONNX Runtime 没有 Intel Mac 的预编译库，该平台的推理组件不识别文件类型。
 - 新增只读文件系统：HPFS、VxFS（layout 2–4）、AIX JFS1、UnixWare BFS、UFS1（4.4BSD）、Reiser4（Format40，含 ctail 压缩簇）、GFS1、OCFS1、VMFS 5 / 6、HAMMER（含已登记快照）、HAMMER2（含 PFS）、QNX ETFS、QNX EFS（F3S）、LittleFS 2.0 / 2.1、SPIFFS、Macintosh MFS（含 Disk Copy 4.2 镜像）、Xbox XDVDFS 与 FATX / XTAF。它们与其他文件系统一样浏览、预览、哈希、按范围读取和导出，CLI 地址照常使用；能力与限制见[格式说明](docs/formats/README.md)。
 - 跨镜像的 Btrfs、bcachefs、ZFS 池、APFS Fusion 与跨盘 VMFS 卷：加载全部成员后由 RAID 自动检测（CLI `raid detect`）组装，成员缺失、重复或提交不一致时拒绝组装。
 - APFS 原生软件加密的卷可用密码或个人恢复密钥解锁：桌面端在「解锁加密卷」中选择容器与卷，CLI `unlock` 按分区识别 APFS，地址给容器下列出的卷，或给容器并用 `--logical-volume` 选卷。卷在现有检材内解锁，整盘导出保留源密文；`encryption` 列出各卷的加密与解锁状态，`volumes` 把仍有加密卷锁定的容器显示为锁定。

@@ -4,7 +4,7 @@
 
 ## 安装与验证
 
-从 [GitHub Releases](https://github.com/LovelyTeams/LovelyCarve/releases) 下载 Windows x64 的 wheel 后，可在 CPython 3.10 及以上版本用 `python -m pip install <wheel路径>` 安装。
+在 CPython 3.10 及以上版本用 `python -m pip install lovelycarve` 安装。PyPI 提供 Windows x64 / ARM64、macOS 15 或更新版本（Apple Silicon / Intel）和 Linux x64 / ARM64（glibc 2.39 或更新）的 wheel，同样的 wheel 也随 [GitHub Releases](https://github.com/LovelyTeams/LovelyCarve/releases) 发布。
 
 在仓库根目录操作，需要 Rust、uv 及后端原有的编译依赖；Windows 的 OpenSSL 配置沿用 [开发指南](../docs/DEVELOPMENT.md)。默认使用 uv 管理的 Python 3.15，可用 `LOVELYCARVE_PYTHON` 或 just 同名变量 `python_version` 指定其他解释器。
 
@@ -16,7 +16,7 @@ just build-python
 
 开发环境位于 `python/.venv`。wheel 输出到 `dist-pack/python`，可用 `uv pip install <wheel路径>` 安装到目标环境。PyO3 使用 Python 3.10 起的稳定 ABI；实际平台兼容性以对应平台构建和测试为准。`just fmt-python` 与 `just clippy-python` 检查绑定的 Rust 代码。
 
-Windows Python 配方默认链接 OpenSSL `lib/VC/x64/MD` 下的 `libssl_static.lib` / `libcrypto_static.lib`，与 Python / Rust 的动态 CRT 匹配，并避免 wheel 依赖宿主 PATH 中的 OpenSSL DLL；仍使用开发指南中的 OpenSSL 路径变量，可通过 `OPENSSL_LIB` 覆盖目录、`OPENSSL_LIBS` 覆盖库名。
+Windows Python 配方默认链接 OpenSSL `lib/VC/x64/MD`（ARM64 由 `OPENSSL_LIB` 指向 `lib/VC/arm64/MD`）下的 `libssl_static.lib` / `libcrypto_static.lib`，与 Python / Rust 的动态 CRT 匹配，并避免 wheel 依赖宿主 PATH 中的 OpenSSL DLL；仍使用开发指南中的 OpenSSL 路径变量，可通过 `OPENSSL_LIB` 覆盖目录、`OPENSSL_LIBS` 覆盖库名。
 
 ## 使用
 
