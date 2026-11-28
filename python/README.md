@@ -4,7 +4,7 @@
 
 ## 安装与验证
 
-在 CPython 3.10 及以上版本用 `python -m pip install lovelycarve` 安装。PyPI 提供 Windows x64 / ARM64、macOS 15 或更新版本（Apple Silicon / Intel）和 Linux x64 / ARM64（glibc 2.39 或更新）的 wheel，同样的 wheel 也随 [GitHub Releases](https://github.com/LovelyTeams/LovelyCarve/releases) 发布。
+在 CPython 3.10 及以上版本用 `python -m pip install lovelycarve` 安装。PyPI 提供 Windows x64 / ARM64、macOS 15 或更新版本（Apple Silicon / Intel）和 Linux x64 / ARM64（manylinux_2_34，glibc 2.34 或更新）的 wheel，同样的 wheel 也随 [GitHub Releases](https://github.com/LovelyTeams/LovelyCarve/releases) 发布。
 
 在仓库根目录操作，需要 Rust、uv 及后端原有的编译依赖；Windows 的 OpenSSL 配置沿用 [开发指南](../docs/DEVELOPMENT.md)。默认使用 uv 管理的 Python 3.15，可用 `LOVELYCARVE_PYTHON` 或 just 同名变量 `python_version` 指定其他解释器。
 
