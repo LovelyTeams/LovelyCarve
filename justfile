@@ -325,6 +325,7 @@ build: build-components
 [group("desktop")]
 [macos]
 build-macos *args: (build-components "--release") (build-plugins "--release")
+    codesign --force --sign - src-tauri/target/release/liblovelycarve_inference.dylib plugins/target/release/lc-plugin-host plugins/linuxinfo/liblinuxinfo.dylib
     bun run tauri build --bundles app,dmg {{ args }}
 
 # Build the Linux desktop AppImage with the inference component and bundled plugins.

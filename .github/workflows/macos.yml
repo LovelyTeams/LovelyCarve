@@ -92,7 +92,8 @@ jobs:
           trap 'hdiutil detach "$mount" && rmdir "$mount"' EXIT
           app="$mount/LovelyCarve.app"
           bin="$app/Contents/MacOS"
-          plugin="$bin/plugins/linuxinfo"
+          # Plugin packages hold data files, so the bundle keeps them in Resources.
+          plugin="$app/Contents/Resources/plugins/linuxinfo"
           for binary in "$bin/LovelyCarve" "$bin/lc-plugin-host" "$bin/liblovelycarve_inference.dylib" "$plugin/liblinuxinfo.dylib"; do
             test "$(lipo -archs "$binary")" = "$lipo_arch"
             otool -L "$binary"

@@ -14,20 +14,20 @@ concurrency:
 jobs:
   package:
     name: Package Linux ${{ matrix.arch }} desktop and CLI
-    # Ubuntu 22.04 keeps the packages on glibc 2.35, so they also run on
-    # newer distributions.
+    # Ubuntu 24.04 (glibc 2.39) is the oldest base: ort's prebuilt ONNX Runtime
+    # for Linux references glibc 2.38 symbols.
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-22.04
+          - runner: ubuntu-24.04
             arch: x64
             machine: x86_64
             elf: x86-64
             bundle: amd64
-          - runner: ubuntu-22.04-arm
+          - runner: ubuntu-24.04-arm
             arch: arm64
             machine: aarch64
             elf: aarch64

@@ -77,7 +77,7 @@ LovelyCarve 面向电子数据取证、应急响应和 CTF 取证题：加载磁
 
 ## 快速开始
 
-1. 从 [GitHub Releases](https://github.com/LovelyTeams/LovelyCarve/releases/latest) 下载对应平台的桌面包：Windows x64 的 MSI、Windows ARM64 的安装程序、macOS（Apple Silicon 或 Intel）的 DMG，或 Linux（x64 或 ARM64）的 AppImage；各平台另有独立 CLI 包。Windows 需要 WebView2（Windows 10/11 通常已内置），只读挂载需要 [Dokany 2](https://github.com/dokan-dev/dokany/releases/latest)，读取物理磁盘需要管理员权限。macOS 版需要 macOS 15 或更新版本，首次打开时可能需要在「系统设置 → 隐私与安全性」中确认，Intel Mac 版不能识别文件类型。Linux 版需要 glibc 2.35 或更新版本（如 Ubuntu 22.04），AppImage 需要 FUSE 2。
+1. 从 [GitHub Releases](https://github.com/LovelyTeams/LovelyCarve/releases/latest) 下载对应平台的桌面包：Windows x64 的 MSI、Windows ARM64 的安装程序、macOS（Apple Silicon 或 Intel）的 DMG，或 Linux（x64 或 ARM64）的 AppImage；各平台另有独立 CLI 包。Windows 需要 WebView2（Windows 10/11 通常已内置），只读挂载需要 [Dokany 2](https://github.com/dokan-dev/dokany/releases/latest)，读取物理磁盘需要管理员权限。macOS 版需要 macOS 15 或更新版本，首次打开时可能需要在「系统设置 → 隐私与安全性」中确认，Intel Mac 版不能识别文件类型。Linux 版需要 glibc 2.39 或更新版本（如 Ubuntu 24.04），AppImage 需要 FUSE 2。
 2. 在起始页或「案件管理」中新建案件，选择一个空目录。
 3. 「添加检材」选择镜像文件、文件夹、BCP 数据、RAID 成员或物理磁盘。分段镜像选第一段，其余分段放在同一目录。
 4. 检材加入后会自动识别平台并在后台建立卷快照和文件索引，进度在右上角「任务中心」查看。

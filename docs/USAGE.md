@@ -6,7 +6,7 @@
 
 - Windows 10 / 11（x64 或 ARM64），需要 WebView2 运行时（系统通常已内置）。
 - macOS 15 或更新版本（Apple Silicon 或 Intel）。应用未经 Apple 公证，首次打开时可能需要在「系统设置 → 隐私与安全性」中确认；Intel Mac 版不能识别文件类型。
-- Linux x64 或 ARM64，glibc 2.35 或更新版本（如 Ubuntu 22.04）；AppImage 需要 FUSE 2。
+- Linux x64 或 ARM64，glibc 2.39 或更新版本（如 Ubuntu 24.04）；AppImage 需要 FUSE 2。
 - 程序默认以普通用户权限启动，浏览镜像和文件夹无需管理员权限；读取物理磁盘或采集实时内存时，请手动以管理员身份运行。
 - 只读挂载只在 Windows 上提供，需要安装与系统架构对应的 [Dokany 2](https://github.com/dokan-dev/dokany/releases/latest)。程序在挂载时才加载 Dokany，未安装时其他功能不受影响，挂载会提示缺少 Dokany 库或驱动。
 - 二维码识别与 OCR 只在 `*-full` 构建中可用；默认构建中对应按钮会提示功能未启用。

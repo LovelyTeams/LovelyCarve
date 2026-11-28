@@ -132,6 +132,14 @@ fn discover_plugins(state: &AppState, host: &AppHandle) {
     if let Ok(executable) = std::env::current_exe() {
         if let Some(directory) = executable.parent() {
             plugin_roots.push(directory.join("plugins"));
+            // A macOS app bundle keeps the bundled packages, which hold data
+            // files, in Contents/Resources: code signing admits only code
+            // beside the executable in Contents/MacOS.
+            if cfg!(target_os = "macos") {
+                if let Some(contents) = directory.parent() {
+                    plugin_roots.push(contents.join("Resources").join("plugins"));
+                }
+            }
         }
     }
     if let Some(configured) = std::env::var_os("LOVELYCARVE_PLUGIN_DIR") {

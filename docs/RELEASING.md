@@ -46,7 +46,7 @@ CHANGELOG 只使用实际有内容的英文分类（`Added`、`Changed`、`Depre
 - Windows x64 通过 `just build-release --bundles msi`、`just pack-cli` 和 `just build-python` 生成 MSI、CLI ZIP 和 Python wheel。
 - Windows ARM64（`windows-arm64.yml`）生成 NSIS 安装程序和 CLI ZIP，静默安装后检查全部可执行文件和 DLL 都是 ARM64，并确认包内没有 x64 的 `dokan2.dll`。
 - macOS（`macos.yml`）在 Apple Silicon 与 Intel 运行器上通过 `just build-macos` 和 `just build-cli` 生成桌面 DMG 和 CLI 压缩包。工作流从 DMG 读取应用并检查架构、签名、版本与插件，在解包后的 CLI 中检查推理组件能否加载；Intel 组件应报告不支持文件类型识别。
-- Linux（`linux.yml`）在 Ubuntu 22.04 的 x64 与 ARM64 运行器上通过 `just build-linux` 和 `just build-cli` 生成 AppImage 和 CLI 压缩包，解开 AppImage 检查架构与插件，并检查 CLI 能否加载推理组件。
+- Linux（`linux.yml`）在 Ubuntu 24.04 的 x64 与 ARM64 运行器上通过 `just build-linux` 和 `just build-cli` 生成 AppImage 和 CLI 压缩包，解开 AppImage 检查架构与插件，并检查 CLI 能否加载推理组件。
 
 推送 `release-check/<名称>` 分支会运行同一个工作流：构建、检查全部产物并写出校验和，但不创建 GitHub Release，也不上传 PyPI。打标签前可以用它验证全部平台。
 
@@ -72,7 +72,7 @@ git push <公开仓库远端名> v1.5.0
 
 发布任务通过 GitHub OIDC 向 PyPI 换取短期上传凭据，无需配置 PyPI API token。配置步骤见 [PyPI Trusted Publishing 文档](https://docs.pypi.org/trusted-publishers/adding-a-publisher/)。
 
-自动构建默认关闭 QR/OCR。Windows 二进制未签名。macOS 应用使用 ad-hoc 签名，未经 Apple 公证，首次打开时可能需要在「系统设置 → 隐私与安全性」中确认。Linux AppImage 需要 FUSE 2 和 glibc 2.35 或更新版本。原生 GUI、安装及 Dokany 驱动仍需人工验证。完整功能构建和桌面便携包继续使用上表的本地配方。
+自动构建默认关闭 QR/OCR。Windows 二进制未签名。macOS 应用使用 ad-hoc 签名，未经 Apple 公证，首次打开时可能需要在「系统设置 → 隐私与安全性」中确认。Linux AppImage 需要 FUSE 2 和 glibc 2.39 或更新版本：ort 的 Linux 预编译 ONNX Runtime 引用 glibc 2.38 的符号，Linux 包因此在 Ubuntu 24.04 上构建。原生 GUI、安装及 Dokany 驱动仍需人工验证。完整功能构建和桌面便携包继续使用上表的本地配方。
 
 自动 Release 说明包含源码提交、构建范围和外部驱动要求；维护者应补充版本变化与已知限制。本地发行时，从该标签创建 GitHub Release，并上传实际构建的产物与 SHA-256：
 

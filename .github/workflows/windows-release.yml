@@ -160,7 +160,7 @@ jobs:
           - **Windows x64**: desktop MSI, standalone CLI ZIP and a Python wheel for CPython 3.10+.
           - **Windows ARM64**: desktop installer and standalone CLI ZIP.
           - **macOS 15+**: desktop DMG and CLI tarball for Apple Silicon and for Intel. Intel builds cannot identify file types, because ONNX Runtime publishes no x86_64 macOS library. Apps are ad-hoc signed without Apple notarization, so Gatekeeper may ask for approval in Privacy & Security.
-          - **Linux x64 and ARM64** (glibc 2.35+, such as Ubuntu 22.04): desktop AppImage, which needs FUSE 2, and CLI tarball.
+          - **Linux x64 and ARM64** (glibc 2.39+, such as Ubuntu 24.04): desktop AppImage, which needs FUSE 2, and CLI tarball.
 
           Read-only mounts work on Windows x64 and ARM64 with [Dokany 2](https://github.com/dokan-dev/dokany/releases/latest) installed. Windows binaries are unsigned.
 
