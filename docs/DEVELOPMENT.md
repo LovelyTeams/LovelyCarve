@@ -21,7 +21,7 @@ just dev
 | CLI smoke 测试 | Python 3 |
 | Windows 便携打包 | PATH 中的 `upx` 与 `7z` |
 
-默认构建关闭二维码识别与 OCR，不需要 OpenCV 或 CUDA。桌面开发配方在 Windows 上运行；macOS 用 `just build-macos` 构建桌面 DMG，Linux 用 `just build-linux` 构建桌面 AppImage。Rust 检查、前端任务、插件构建和 CLI 构建也可在其他平台运行，各平台产物需单独验证。ONNX Runtime 没有 Intel Mac 的预编译库，在 Intel Mac 上构建的推理组件不链接 ONNX Runtime，`component.describe` 报告不支持文件类型识别。
+默认构建关闭二维码识别与 OCR，不需要 OpenCV 或 CUDA。桌面开发配方在 Windows 上运行；macOS 用 `just build-macos` 构建桌面 DMG，Linux 用 `just build-linux` 构建桌面 AppImage。Rust 检查、前端任务、插件构建和 CLI 构建也可在其他平台运行，各平台产物需单独验证。ONNX Runtime 没有 Intel Mac 的预编译库，在 Intel Mac 上构建的推理组件不链接 ONNX Runtime，`component.describe` 报告不支持文件类型识别。Intel Mac 的链接器不像 Apple Silicon 那样给产物加 ad-hoc 签名，而 `codesign` 拒绝应用包中未签名的程序；在 Intel Mac 上运行 `just build-macos` 前设置 `CARGO_TARGET_X86_64_APPLE_DARWIN_RUSTFLAGS='-C link-arg=-Wl,-adhoc_codesign'`（macOS 工作流同样这样设置）。
 
 Windows 桌面程序在开发版和发布版中均嵌入 `asInvoker` 权限声明，启动时不自动请求管理员权限。读取物理磁盘或采集实时内存时，需要用户手动以管理员身份启动程序。
 

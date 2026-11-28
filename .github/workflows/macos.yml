@@ -36,6 +36,9 @@ jobs:
       CARGO_PROFILE_RELEASE_LTO: thin
       CARGO_TERM_COLOR: always
       MACOSX_DEPLOYMENT_TARGET: '15.0'
+      # The Intel linker, unlike Apple Silicon's, leaves binaries unsigned, and
+      # codesign refuses an app with unsigned code beside its executable.
+      CARGO_TARGET_X86_64_APPLE_DARWIN_RUSTFLAGS: -C link-arg=-Wl,-adhoc_codesign
     steps:
       - uses: actions/checkout@v7.0.1
         with:

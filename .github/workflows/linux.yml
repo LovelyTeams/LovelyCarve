@@ -92,10 +92,13 @@ jobs:
         with:
           version: '0.11.28'
       # The abi3 wheel is tagged for CPython 3.10+ whichever interpreter builds
-      # it; maturin picks the lowest manylinux tag its glibc symbols allow.
+      # it. As a PEP 517 backend maturin defaults to the plain linux tag, which
+      # PyPI rejects; `pypi` picks the lowest manylinux tag the glibc symbols
+      # allow and fails if none fits.
       - name: Build Python wheel
         env:
           LOVELYCARVE_PYTHON: '3.12'
+          MATURIN_PEP517_ARGS: --compatibility pypi
         run: just build-python
       - name: Verify and stage the AppImage
         run: |
